@@ -92,7 +92,14 @@ export interface CameraInfo {
     ageS: number;
     jpegKB: number;
     durationMs: number;
-    skewUs: number;
+    /**
+     * Spread of the shared trigger edge's arrival across the four cameras.
+     * NOT exposure alignment: 300 µs here is routine while the sensors were
+     * 20 ms apart. It was called `skewUs`, and the same quantity was called
+     * `triggerSkewUs` in capture metadata — two names, neither saying GPIO,
+     * which is how it kept being read as proof of sync.
+     */
+    gpioSkewUs: number;
   } | null;
 }
 
@@ -351,7 +358,7 @@ export interface CaptureInfo extends CaptureSummary {
     batteryV: number;
     p4Firmware: string;
     cameraFirmware: string[];
-    triggerSkewUs: number;
+    gpioSkewUs: number;
     exposure: { cam: CamId; shutter: string; gain: number }[];
   };
 }

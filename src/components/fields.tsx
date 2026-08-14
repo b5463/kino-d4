@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 // Small form-field kit. Every control renders inside a `.field` row with a
@@ -73,6 +73,14 @@ export function SelectField({
   );
 }
 
+/**
+ * One-of-N segmented control, as a real radio group.
+ *
+ * It used to be a `role="group"` of `aria-pressed` buttons, each its own tab
+ * stop: 28 seg buttons on Quad meant 28 Tab presses to cross the page instead
+ * of 7. Radios take one stop per group and move with the arrows, which is both
+ * the standard and what the era it borrows from actually did.
+ */
 export function SegField({
   label,
   value,
@@ -91,17 +99,65 @@ export function SegField({
   hintWarn?: boolean;
 }) {
   const hintId = useId();
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const current = options.findIndex((o) => o.value === value);
+
+  const step = (dir: 1 | -1) => {
+    if (options.length === 0) return;
+    const from = current < 0 ? 0 : current;
+    const next = (from + dir + options.length) % options.length;
+    onChange(options[next].value);
+    refs.current[next]?.focus();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        e.preventDefault();
+        step(1);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        e.preventDefault();
+        step(-1);
+        break;
+      case 'Home':
+        e.preventDefault();
+        onChange(options[0].value);
+        refs.current[0]?.focus();
+        break;
+      case 'End':
+        e.preventDefault();
+        onChange(options[options.length - 1].value);
+        refs.current[options.length - 1]?.focus();
+        break;
+    }
+  };
+
   return (
     <div className="field">
       <span className="field-label">{label}</span>
-      <div className="control" role="group" aria-label={label} aria-describedby={hint ? hintId : undefined}>
-        <span className="seg">
-          {options.map((o) => (
+      <div className="control">
+        <span
+          className="seg"
+          role="radiogroup"
+          aria-label={label}
+          aria-describedby={hint ? hintId : undefined}
+          onKeyDown={disabled ? undefined : onKeyDown}
+        >
+          {options.map((o, i) => (
             <button
               key={o.value}
               type="button"
               className="seg-opt"
-              aria-pressed={o.value === value}
+              role="radio"
+              aria-checked={o.value === value}
+              // Roving tab stop: the group is one stop, arrows move inside it.
+              tabIndex={i === (current < 0 ? 0 : current) ? 0 : -1}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
               disabled={disabled}
               onClick={() => onChange(o.value)}
             >
@@ -160,6 +216,14 @@ export function ToggleField({
   );
 }
 
+/**
+ * Slider with an optional typed entry for the value.
+ *
+ * `entry` matters wherever the range is fine-grained: SATURATION is 0–1.6 at
+ * step 0.01, which is 160 arrow presses end to end. The readout becomes the
+ * input, so no second control appears, and it commits on Enter or blur like
+ * `NumberField`.
+ */
 export function SliderField({
   label,
   value,
@@ -167,6 +231,8 @@ export function SliderField({
   max,
   step = 1,
   format,
+  entry,
+  unit,
   onChange,
   disabled,
   hint,
@@ -178,12 +244,35 @@ export function SliderField({
   max: number;
   step?: number;
   format?: (v: number) => string;
+  /** Turn the readout into a typed entry box. */
+  entry?: boolean;
+  /** Shown after the entry box, never uppercased. */
+  unit?: string;
   onChange: (value: number) => void;
   disabled?: boolean;
   hint?: string;
   hintWarn?: boolean;
 }) {
   const id = useId();
+  const entryId = useId();
+  const [typed, setTyped] = useState<string | null>(null);
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    setTyped(null);
+  }
+
+  const decimals = step < 1 ? String(step).split('.')[1]?.length ?? 2 : 0;
+
+  const commit = (raw: string) => {
+    setTyped(null);
+    const v = Number(raw);
+    if (raw.trim() === '' || !Number.isFinite(v)) return;
+    const clamped = Math.min(max, Math.max(min, v));
+    const snapped = Number(clamped.toFixed(decimals));
+    if (snapped !== value) onChange(snapped);
+  };
+
   return (
     <FieldRow label={label} htmlFor={id} hint={hint} hintWarn={hintWarn}>
       <span className="sliderwrap">
@@ -197,7 +286,29 @@ export function SliderField({
           disabled={disabled}
           onChange={(e) => onChange(Number(e.target.value))}
         />
-        <span className="slider-val">{format ? format(value) : value}</span>
+        {entry ? (
+          <>
+            <input
+              id={entryId}
+              type="number"
+              className="input slider-entry"
+              aria-label={`${label} value`}
+              min={min}
+              max={max}
+              step={step}
+              disabled={disabled}
+              value={typed ?? value.toFixed(decimals)}
+              onChange={(e) => setTyped(e.target.value)}
+              onBlur={(e) => commit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit((e.target as HTMLInputElement).value);
+              }}
+            />
+            {unit ? <span className="unit">{unit}</span> : null}
+          </>
+        ) : (
+          <span className="slider-val">{format ? format(value) : value}</span>
+        )}
       </span>
     </FieldRow>
   );

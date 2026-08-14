@@ -17,12 +17,18 @@ export function DebugPanel() {
 
   return (
     <div className="debugpanel">
-      <button type="button" className="debugpanel-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <button
+        type="button"
+        className="debugpanel-head"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="sim-faults-body"
+      >
         <span className="microlabel">SIMULATOR FAULTS</span>
         <span className="microlabel">{open ? '▾' : '▴'}</span>
       </button>
       {open ? (
-        <div className="debugpanel-body">
+        <div className="debugpanel-body" id="sim-faults-body">
           {SCENARIO_LIST.map((s) => {
             const active = device.scenarios[s.key];
             return (

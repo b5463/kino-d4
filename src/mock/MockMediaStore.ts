@@ -46,7 +46,7 @@ const LIGHT_COLORS = ['#ff5f8a', '#4fc3f7', '#ffd54f', '#9575ff', '#4dd0a1', '#f
 interface StoredCapture {
   summary: CaptureSummary;
   flash: boolean;
-  triggerSkewUs: number;
+  gpioSkewUs: number;
 }
 
 export class MockMediaStore {
@@ -79,7 +79,7 @@ export class MockMediaStore {
           totalKB: 0, // filled lazily after first encode
         },
         flash: rnd() < 0.8,
-        triggerSkewUs: Math.floor(rnd() * 380 + 60),
+        gpioSkewUs: Math.floor(rnd() * 380 + 60),
       });
     }
     this.captures = list;
@@ -101,7 +101,7 @@ export class MockMediaStore {
         totalKB: 0,
       },
       flash,
-      triggerSkewUs: Math.floor(Math.random() * 380 + 60),
+      gpioSkewUs: Math.floor(Math.random() * 380 + 60),
     });
     return id;
   }
@@ -157,7 +157,7 @@ export class MockMediaStore {
         batteryV: Math.round((3.55 + rnd() * 0.5) * 100) / 100,
         p4Firmware: '0.1.0',
         cameraFirmware: ['0.1.0', '0.1.0', '0.1.0', '0.1.0'],
-        triggerSkewUs: c.triggerSkewUs,
+        gpioSkewUs: c.gpioSkewUs,
         exposure: CAM_IDS.map((cam: CamId) => ({
           cam,
           shutter: c.flash ? '1/60' : '1/30',

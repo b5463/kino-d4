@@ -52,7 +52,7 @@ const QUAD_PRESETS: { name: string; slots: QuadConfig['slots'] }[] = [
 
 export function QuadPage() {
   const state = useDeviceStore();
-  const { draft, dirty, changes, patch, discard } = useDraft<QuadConfig>(state.config?.quad ?? null, {
+  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<QuadConfig>(state.config?.quad ?? null, {
     key: 'quad',
     label: 'Quad',
   });
@@ -207,7 +207,7 @@ export function QuadPage() {
         })}
       </div>
 
-      <ApplyBar dirty={dirty} changeCount={changes} onApply={apply} onDiscard={discard} />
+      <ApplyBar dirty={dirty} changeCount={changes} changedFields={changedFields} onApply={apply} onDiscard={discard} />
     </>
   );
 }

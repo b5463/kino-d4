@@ -560,11 +560,37 @@ export function CaptureInspector({
                     <dd>{info.resolution.replace('x', '×')} · {info.totalKB} KB total</dd>
                   </div>
                   <div className="datarow"><dt>Flash</dt><dd>{info.meta.flash ? 'FIRED' : 'OFF'}</dd></div>
-                  <div className="datarow">
-                    <dt>GPIO trigger skew</dt>
+                  {info.meta.exposure.length > 0 ? (
+                    <div className="datarow" style={{ maxWidth: 'none' }}>
+                      <dt>Shutter / gain</dt>
+                      <dd>
+                        {info.meta.exposure.map((e) => (
+                          <span key={e.cam} style={{ marginRight: 14, whiteSpace: 'nowrap' }}>
+                            {e.cam.toUpperCase().replace('CAM', 'CAM ')} {e.shutter} · {e.gain}×
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {/* The number that decides a wigglegram is the effective
+                      exposure spread, and firmware does not record it per
+                      capture — only GPIO distribution reaches the card. Say
+                      that, in the place the spread would occupy, instead of
+                      leaving the µs figure below to be read as the answer. */}
+                  <div className="datarow" style={{ maxWidth: 'none' }}>
+                    <dt>Effective exposure spread</dt>
                     <dd>
-                      {info.meta.triggerSkewUs} µs{' '}
-                      <span className="dim">— trigger distribution, not exposure spread</span>
+                      <strong>—</strong>{' '}
+                      <span className="dim">
+                        not recorded per capture — measure it live on Developer › TIMING BENCH
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="datarow" style={{ maxWidth: 'none' }}>
+                    <dt>GPIO trigger skew</dt>
+                    <dd className="dim">
+                      {info.meta.gpioSkewUs} µs — when the shared trigger edge reached each
+                      camera. It does not say when each sensor exposed.
                     </dd>
                   </div>
                   <div className="datarow"><dt>Battery at capture</dt><dd>{info.meta.batteryV.toFixed(2)} V</dd></div>

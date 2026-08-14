@@ -47,7 +47,16 @@ export const PAGE_LABEL: Record<PageId, string> = {
   bringup: 'Bring-Up',
 };
 
-export function Sidebar({ page, onNavigate }: { page: PageId; onNavigate: (page: PageId) => void }) {
+export function Sidebar({
+  page,
+  onNavigate,
+  locked,
+}: {
+  page: PageId;
+  onNavigate: (page: PageId) => void;
+  /** Reason navigation is blocked, e.g. while firmware is being written. */
+  locked?: string | null;
+}) {
   const phase = useConnectionStore((s) => s.phase);
   const transportKind = useConnectionStore((s) => s.transportKind);
   const serial = useDeviceStore((s) => s.info?.serial);
@@ -79,6 +88,8 @@ export function Sidebar({ page, onNavigate }: { page: PageId; onNavigate: (page:
             type="button"
             className="nav-item"
             aria-current={page === item.id ? 'page' : undefined}
+            disabled={locked ? page !== item.id : undefined}
+            title={locked && page !== item.id ? locked : undefined}
             onClick={() => onNavigate(item.id)}
           >
             <Icon name={item.icon} />

@@ -81,7 +81,8 @@ export function WiggleViz({
       </div>
       <div
         className="wiggleviz-seq"
-        aria-label={`Playback order at ${fps} frames per second, ${loop} loop, ${direction === 'ltr' ? 'left to right' : 'right to left'}`}
+        role="img"
+        aria-label={`Playback order ${sequence.map((c) => c + 1).join(' then ')} at ${fps} frames per second, ${loop} loop, ${direction === 'ltr' ? 'left to right' : 'right to left'}. Showing camera ${active + 1}.`}
       >
         {sequence.map((cam, i) => (
           <span key={i}>

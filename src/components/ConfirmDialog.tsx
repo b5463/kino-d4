@@ -11,11 +11,17 @@ import { useModal } from '../hooks/useModal';
  * A danger dialog focuses CANCEL, never the destructive button. The dialog
  * exists to introduce a deliberate pause; pre-arming the trigger means one
  * reflexive Space wipes the device.
+ *
+ * `danger` and `focusCancel` are separate on purpose. A firmware update or a
+ * reboot is routine enough that red chrome would cry wolf, but it still writes
+ * flash and still must not be armed by a stray Space — so it passes
+ * `focusCancel` without `danger`.
  */
 export function ConfirmDialog({
   open,
   title,
   danger,
+  focusCancel,
   confirmLabel,
   cancelLabel = 'CANCEL',
   onConfirm,
@@ -26,6 +32,8 @@ export function ConfirmDialog({
   open: boolean;
   title: string;
   danger?: boolean;
+  /** Focus CANCEL without the red treatment. Implied by `danger`. */
+  focusCancel?: boolean;
   confirmLabel: string;
   cancelLabel?: string;
   onConfirm: () => void;
@@ -40,7 +48,7 @@ export function ConfirmDialog({
   const dialogRef = useModal({
     open,
     onClose: onCancel,
-    initialFocus: danger ? cancelRef : confirmRef,
+    initialFocus: danger || focusCancel ? cancelRef : confirmRef,
   });
 
   if (!open) return null;

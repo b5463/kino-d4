@@ -13,6 +13,12 @@ import { Unsupported } from '../../components/Unsupported';
 import { getDevice } from '../../app/session';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
+import {
+  benchStamp,
+  clearBenchResult,
+  putBenchResult,
+  useBenchResult,
+} from '../../state/benchResults';
 import { gradeSkew, usColumn } from '../../protocol/timing';
 import type { CamTiming } from '../../protocol/timing';
 import { CAM_IDS } from '../../protocol/types';
@@ -27,28 +33,43 @@ function Unit({ children }: { children: string }) {
   return <span style={{ textTransform: 'none' }}>{children}</span>;
 }
 
-interface Stats {
+export interface TimingStats {
   runs: number;
   perCam: { cam: CamId; gpio: number; vsync: number; exposure: number }[];
+  /** Mean, over the runs, of each run's own max−min. */
   gpioSpread: number;
   vsyncSpread: number;
   exposureSpread: number;
-  exposureWorst: number;
+  /** Lowest and highest single-run spread, so the mean can be judged. */
+  gpioRange: [number, number];
+  vsyncRange: [number, number];
+  exposureRange: [number, number];
   vsyncMeasured: boolean;
   frameIntervalUs: number;
   samples: { gpio: number; vsync: number; exposure: number }[];
 }
 
 const avg = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
+const range = (v: number[]): [number, number] => [
+  Math.round(Math.min(...v)),
+  Math.round(Math.max(...v)),
+];
+/** max−min of a set of per-camera means. Not the same as the mean of spreads. */
+const spread = (v: number[]) => Math.round(Math.max(...v) - Math.min(...v));
 
 export function TimingBench() {
   const state = useDeviceStore();
   const [runs, setRuns] = useState(10);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const blockedBy = useBlockedBy(OWNER);
+
+  // Results outlive the page. A sidebar click used to discard a 50-capture
+  // run together with the EXPORT button that would have saved it.
+  const entry = useBenchResult<TimingStats>(OWNER);
+  const stats = entry?.result ?? null;
+  const stamp = benchStamp(entry);
 
   const hasVsync = supports(state, 'vsyncTelemetry');
 
@@ -58,9 +79,9 @@ export function TimingBench() {
     if (!claimDevice(OWNER, LABEL)) return;
     setRunning(true);
     setError(null);
-    setStats(null);
+    clearBenchResult(OWNER);
     const perCam: Record<CamId, CamTiming[]> = { cam1: [], cam2: [], cam3: [], cam4: [] };
-    const samples: Stats['samples'] = [];
+    const samples: TimingStats['samples'] = [];
     let vsyncMeasured = true;
     let frameIntervalUs = 33_333;
     try {
@@ -72,7 +93,7 @@ export function TimingBench() {
         for (const c of r.cams) perCam[c.cam].push(c);
         samples.push({ gpio: r.gpioSpreadUs, vsync: r.vsyncSpreadUs, exposure: r.exposureSpreadUs });
       }
-      setStats({
+      putBenchResult<TimingStats>(OWNER, {
         runs,
         perCam: CAM_IDS.map((cam) => ({
           cam,
@@ -83,7 +104,9 @@ export function TimingBench() {
         gpioSpread: Math.round(avg(samples.map((s) => s.gpio))),
         vsyncSpread: Math.round(avg(samples.map((s) => s.vsync))),
         exposureSpread: Math.round(avg(samples.map((s) => s.exposure))),
-        exposureWorst: Math.max(...samples.map((s) => s.exposure)),
+        gpioRange: range(samples.map((s) => s.gpio)),
+        vsyncRange: range(samples.map((s) => s.vsync)),
+        exposureRange: range(samples.map((s) => s.exposure)),
         vsyncMeasured,
         frameIntervalUs,
         samples,
@@ -97,7 +120,11 @@ export function TimingBench() {
     }
   };
 
-  const grade = stats ? gradeSkew(stats.exposureSpread) : null;
+  // Only grade what was actually measured. Computing the grade regardless of
+  // `vsyncMeasured` tinted the card green while its value read `—`, leaving
+  // colour as the only verdict on the one metric that matters — and saying
+  // pass.
+  const grade = stats && stats.vsyncMeasured ? gradeSkew(stats.exposureSpread) : null;
 
   // One unit per column, taken from that column's own values. Switching
   // unit per cell made 139 µs scan as larger than 7.48 ms.
@@ -106,23 +133,38 @@ export function TimingBench() {
   const expCol = usColumn(stats ? stats.perCam.map((r) => r.exposure) : []);
   // Cards each hold a single value, so the unit goes in the card label and
   // every number printed on that card uses it.
-  const gpioCard = usColumn(stats ? [stats.gpioSpread] : []);
-  const vsyncCard = usColumn(stats ? [stats.vsyncSpread, stats.frameIntervalUs] : []);
-  const expCard = usColumn(stats ? [stats.exposureSpread, stats.exposureWorst] : []);
+  const gpioCard = usColumn(stats ? [stats.gpioSpread, stats.gpioRange[1]] : []);
+  const vsyncCard = usColumn(stats ? [stats.vsyncSpread, stats.vsyncRange[1], stats.frameIntervalUs] : []);
+  const expCard = usColumn(stats ? [stats.exposureSpread, stats.exposureRange[1]] : []);
+
+  // The cards and the table are two different aggregations of the same
+  // captures, and subtracting the table used to give a different answer from
+  // the card with nothing on screen to explain the gap. Print both.
+  const meanSpreads = stats
+    ? {
+        gpio: spread(stats.perCam.map((r) => r.gpio)),
+        vsync: spread(stats.perCam.map((r) => r.vsync)),
+        exposure: spread(stats.perCam.map((r) => r.exposure)),
+      }
+    : null;
+
+  const rangeText = (card: ReturnType<typeof usColumn>, [lo, hi]: [number, number]) =>
+    `${card.format(lo)}–${card.format(hi)}`;
 
   return (
     <Panel
       title="TIMING BENCH"
       actions={
         <>
-          {stats ? (
+          {stats && entry ? (
             <Button
               size="sm"
               onClick={() =>
                 downloadJson(`kino-timing-${state.info?.serial ?? 'unknown'}-${Date.now()}.json`, {
                   device: state.info?.serial,
                   firmware: state.firmwareLabel,
-                  ranAt: new Date().toISOString(),
+                  ranAt: new Date(entry.ranAt).toISOString(),
+                  staleReason: entry.staleReason,
                   ...stats,
                 })
               }
@@ -143,9 +185,11 @@ export function TimingBench() {
         </>
       }
     >
+      <p className="dim" style={{ marginBottom: 2 }}>
+        The shared trigger is a timing reference, not proof of synchronized exposure.
+      </p>
       <p className="dim" style={{ marginBottom: 6 }}>
-        The shared trigger is a common timing reference, not proof of synchronized exposure. Four
-        free-running OV3660s can share a trigger edge to 100 µs and still record images a whole
+        Four free-running OV3660s can share a trigger edge to 100 µs and still record images a whole
         frame interval apart.
       </p>
       <SegField
@@ -168,15 +212,18 @@ export function TimingBench() {
             : ''}
       </p>
 
-      {!hasVsync ? (
+      {/* Driven by the measurement, not the capability list: firmware can
+          advertise VSYNC telemetry and still fail to report it, and the run is
+          what decides whether metrics 2 and 3 exist. */}
+      {!hasVsync || (stats && !stats.vsyncMeasured) ? (
         <Unsupported
           feature="VSYNC telemetry"
           firmware={state.firmwareLabel}
-          note="Only GPIO distribution skew can be measured. That number says nothing about exposure alignment."
+          note="Only GPIO distribution skew can be measured. That number says nothing about exposure alignment, so VSYNC PHASE and EFFECTIVE EXPOSURE stay blank and ungraded."
         />
       ) : null}
 
-      {stats ? (
+      {stats && meanSpreads ? (
         <>
           <div className="timing-metrics">
             <div className="timing-metric">
@@ -184,6 +231,11 @@ export function TimingBench() {
                 1 · GPIO DISTRIBUTION (<Unit>{gpioCard.unit}</Unit>)
               </span>
               <span className="timing-value">{gpioCard.format(stats.gpioSpread)}</span>
+              {/* The aggregation is named on the card, because the table
+                  below aggregates the same captures the other way round. */}
+              <span className="spark-minmax">
+                SPREAD, MEAN OF {stats.runs} RUNS · RANGE {rangeText(gpioCard, stats.gpioRange)}
+              </span>
               <span className="spark-minmax">trigger edge arrival — not photographic</span>
             </div>
             <div className="timing-metric">
@@ -194,10 +246,17 @@ export function TimingBench() {
                 {stats.vsyncMeasured ? vsyncCard.format(stats.vsyncSpread) : '—'}
               </span>
               <span className="spark-minmax">
+                {stats.vsyncMeasured
+                  ? `SPREAD, MEAN OF ${stats.runs} RUNS · RANGE ${rangeText(vsyncCard, stats.vsyncRange)}`
+                  : 'not measurable without VSYNC telemetry'}
+              </span>
+              <span className="spark-minmax">
                 frame interval {vsyncCard.format(stats.frameIntervalUs)} {vsyncCard.unit}
               </span>
             </div>
-            <div className={`timing-metric timing-metric--primary timing-metric--${grade?.state}`}>
+            <div
+              className={`timing-metric timing-metric--primary${grade ? ` timing-metric--${grade.state}` : ''}`}
+            >
               <span className="microlabel">
                 3 · EFFECTIVE EXPOSURE (<Unit>{expCard.unit}</Unit>)
               </span>
@@ -205,7 +264,9 @@ export function TimingBench() {
                 {stats.vsyncMeasured ? expCard.format(stats.exposureSpread) : '—'}
               </span>
               <span className="spark-minmax">
-                worst {expCard.format(stats.exposureWorst)} {expCard.unit}
+                {stats.vsyncMeasured
+                  ? `SPREAD, MEAN OF ${stats.runs} RUNS · RANGE ${rangeText(expCard, stats.exposureRange)}`
+                  : 'not measurable without VSYNC telemetry'}
               </span>
             </div>
           </div>
@@ -218,19 +279,22 @@ export function TimingBench() {
             </p>
           ) : null}
 
-          <div className="tablewrap" style={{ marginTop: 8 }}>
+          <p className="microlabel" style={{ paddingTop: 4 }}>
+            PER-CAMERA MEAN OF {stats.runs} CAPTURES
+          </p>
+          <div className="tablewrap" style={{ marginTop: 4 }}>
             <table className="table">
               <thead>
                 <tr>
                   <th>CAMERA</th>
                   <th className="num">
-                    GPIO (<Unit>{gpioCol.unit}</Unit>)
+                    GPIO vs EARLIEST (<Unit>{gpioCol.unit}</Unit>)
                   </th>
                   <th className="num">
                     VSYNC PHASE (<Unit>{vsyncCol.unit}</Unit>)
                   </th>
                   <th className="num">
-                    EXPOSURE Δ (<Unit>{expCol.unit}</Unit>)
+                    EFFECTIVE EXPOSURE (<Unit>{expCol.unit}</Unit>)
                   </th>
                 </tr>
               </thead>
@@ -239,7 +303,7 @@ export function TimingBench() {
                   <tr key={row.cam}>
                     <td>
                       CAM {row.cam.slice(-1)}
-                      {row.cam === 'cam2' ? ' (ref)' : ''}
+                      {row.cam === 'cam2' ? ' (exposure ref)' : ''}
                     </td>
                     <td className="num">{gpioCol.format(row.gpio)}</td>
                     <td className="num">{stats.vsyncMeasured ? vsyncCol.format(row.vsync) : '—'}</td>
@@ -249,16 +313,45 @@ export function TimingBench() {
               </tbody>
             </table>
           </div>
-          {/* Two different references sit in this table. Stating which is
-              which stops SENSOR PHASE and TIMING BENCH from looking like
-              they contradict each other over CAM2. */}
+
+          {/* Subtracting this table gave a different number from the cards
+              above, with nothing on screen to reconcile them. Both numbers
+              are printed so the arithmetic can be checked here. */}
           <p className="spark-minmax" style={{ display: 'block', paddingTop: 4 }}>
-            GPIO and VSYNC PHASE are absolute per-sensor waits from the trigger edge — CAM2 is not
-            zero here. EXPOSURE Δ is measured against CAM2. SENSOR PHASE reports frame phase
-            against CAM2, so CAM2 is 0 there by definition.
+            SPREAD OF THESE MEANS: GPIO {gpioCol.format(meanSpreads.gpio)} {gpioCol.unit}
+            {stats.vsyncMeasured
+              ? ` · VSYNC ${vsyncCol.format(meanSpreads.vsync)} ${vsyncCol.unit} · EXPOSURE ${expCol.format(meanSpreads.exposure)} ${expCol.unit}`
+              : ''}
           </p>
+          <p className="spark-minmax" style={{ display: 'block' }}>
+            Never higher than the cards above, which average each run's own spread. Averaging per
+            camera first cancels run-to-run jitter.
+          </p>
+
+          {/* The two panels do not use different reference conventions — they
+              report the same wait, and saying otherwise invented a difference
+              to explain a 100 µs jitter gap. */}
+          <p className="spark-minmax" style={{ display: 'block', paddingTop: 4 }}>
+            GPIO is trigger-edge arrival relative to the earliest camera, so the earliest reads 0.
+          </p>
+          <p className="spark-minmax" style={{ display: 'block' }}>
+            VSYNC PHASE is each sensor's trigger-to-VSYNC wait. SENSOR PHASE measures the same wait
+            against CAM2, so the two panels print the same numbers within run-to-run jitter.
+          </p>
+          <p className="spark-minmax" style={{ display: 'block' }}>
+            EFFECTIVE EXPOSURE is that wait against CAM2 plus each camera's own rolling-shutter row
+            offset — which is why CAM2 is not zero here.
+          </p>
+          {stamp ? (
+            <p
+              className={stamp.stale ? 'notice notice--warn' : 'spark-minmax'}
+              style={{ display: 'block', marginTop: 6, marginBottom: 0 }}
+            >
+              {stamp.text}
+            </p>
+          ) : null}
           <p className="microlabel" style={{ paddingTop: 4 }}>
-            AVERAGE OF {stats.runs} CAPTURES · TARGET ≤ 1–2 <Unit>ms</Unit> EFFECTIVE SPREAD
+            TARGET ≤ 1–2 <Unit>ms</Unit> EFFECTIVE SPREAD
           </p>
         </>
       ) : null}

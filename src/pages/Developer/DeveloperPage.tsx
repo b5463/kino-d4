@@ -7,14 +7,16 @@ import { LogViewer } from './LogViewer';
 import { ConformancePanel } from './ConformancePanel';
 import { BurnInPanel } from './BurnInPanel';
 import { TimingBench } from './TimingBench';
+import type { TimingStats } from './TimingBench';
 import { PhasePanel } from './PhasePanel';
 import { LinkBenchPanel } from './LinkBenchPanel';
 import { useDeviceStore } from '../../state/deviceStore';
 import { useConnectionStore } from '../../state/connectionStore';
 import { useLogStore } from '../../state/logStore';
+import { formatRanAt, useBenchResult } from '../../state/benchResults';
 import { getDevice } from '../../app/session';
 import { Cmd, Evt, FrameFlags } from '../../protocol/commands';
-import { usColumn } from '../../protocol/timing';
+import { formatUs, usColumn } from '../../protocol/timing';
 import { formatMB, formatUptime, formatLogTime } from '../../utils/format';
 import { downloadJson } from '../../utils/download';
 
@@ -38,6 +40,10 @@ export function DeveloperPage() {
   const [traceVisible, setTraceVisible] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The matrix column is GPIO distribution. The number that decides the
+  // photograph is measured next door, so print it next door's answer here
+  // rather than let 286–439 µs stand as the verdict on a 21.76 ms capture.
+  const timing = useBenchResult<TimingStats>('timing');
 
   if (!info) return null;
 
@@ -47,8 +53,16 @@ export function DeveloperPage() {
 
   // Skew is one column and gets one unit, chosen from the column's values.
   const skewCol = usColumn(
-    cameras.map((c) => c.lastCapture?.skewUs).filter((v): v is number => typeof v === 'number'),
+    cameras.map((c) => c.lastCapture?.gpioSkewUs).filter((v): v is number => typeof v === 'number'),
   );
+
+  const exposureSpread =
+    timing && timing.result.vsyncMeasured ? formatUs(timing.result.exposureSpread) : '—';
+  const exposureSource = !timing
+    ? 'TIMING BENCH NOT RUN'
+    : !timing.result.vsyncMeasured
+      ? 'NOT MEASURABLE WITHOUT VSYNC TELEMETRY'
+      : `TIMING BENCH · RAN ${formatRanAt(timing.ranAt)}${timing.staleReason ? ` · STALE: ${timing.staleReason}` : ''}`;
 
   const client = getDevice()?.client;
 
@@ -185,8 +199,11 @@ export function DeveloperPage() {
                 <th className="num">LAST CAPTURE</th>
                 <th className="num">JPEG</th>
                 <th className="num">DURATION</th>
+                {/* Named for what it is. Called "SKEW" it read as the verdict
+                    on the capture, on the same page as a bench reporting
+                    21.76 ms NOT ACCEPTABLE for those same four frames. */}
                 <th className="num">
-                  SKEW (<span style={{ textTransform: 'none' }}>{skewCol.unit}</span>)
+                  GPIO SKEW (<span style={{ textTransform: 'none' }}>{skewCol.unit}</span>)
                 </th>
               </tr>
             </thead>
@@ -206,12 +223,22 @@ export function DeveloperPage() {
                   <td className="num">{cam.lastCapture ? `${cam.lastCapture.ageS}s ago` : '—'}</td>
                   <td className="num">{cam.lastCapture ? `${cam.lastCapture.jpegKB} KB` : '—'}</td>
                   <td className="num">{cam.lastCapture ? `${cam.lastCapture.durationMs} ms` : '—'}</td>
-                  <td className="num">{cam.lastCapture ? skewCol.format(cam.lastCapture.skewUs) : '—'}</td>
+                  <td className="num">{cam.lastCapture ? skewCol.format(cam.lastCapture.gpioSkewUs) : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p className="val" style={{ marginTop: 8 }}>
+          LAST MEASURED EFFECTIVE EXPOSURE SPREAD {exposureSpread}
+        </p>
+        <p className="spark-minmax" style={{ display: 'block' }}>
+          {exposureSource}
+        </p>
+        <p className="spark-minmax" style={{ display: 'block', paddingTop: 4 }}>
+          GPIO SKEW is trigger distribution, not exposure spread. Four sensors can share the trigger
+          edge to 100 µs and still record a whole frame interval apart.
+        </p>
       </Panel>
 
       <Panel

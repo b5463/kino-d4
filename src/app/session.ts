@@ -21,7 +21,7 @@ import { MockKinoDevice } from '../mock/MockKinoDevice';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import { clearDeviceState, setDeviceState, useDeviceStore } from '../state/deviceStore';
 import { resetDrafts } from '../state/draftStore';
-import { resetDeviceBusy } from '../state/deviceBusy';
+import { claimDevice, releaseDevice, resetDeviceBusy } from '../state/deviceBusy';
 import { CONFIG_SCHEMA_VERSION } from '../protocol/types';
 import { appendLog } from '../state/logStore';
 import { recordCamera } from '../state/knownCameras';
@@ -287,10 +287,22 @@ async function populateAll() {
   recordCamera(info, lastKind === 'mock');
 }
 
-/** Re-read every device-owned value (toolbar SYNC). */
-export async function refreshAll() {
-  if (!device) return;
-  await populateAll();
+/**
+ * Re-read every device-owned value (toolbar SYNC / F5).
+ *
+ * This is many round trips at 921600, so it takes the same exclusive claim the
+ * benches take. Without it a reflexive F5 contended on the UART with a running
+ * burn-in and both reported numbers as if nothing had happened.
+ */
+export async function refreshAll(): Promise<'done' | 'blocked' | 'offline'> {
+  if (!device) return 'offline';
+  if (!claimDevice('sync', 'SYNC')) return 'blocked';
+  try {
+    await populateAll();
+    return 'done';
+  } finally {
+    releaseDevice('sync');
+  }
 }
 
 export async function refreshDeviceInfo() {

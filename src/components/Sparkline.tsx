@@ -13,9 +13,15 @@ import { useEffect, useRef } from 'react';
  *
  * Either way the axis range is printed next to MIN/MAX, so the reader can
  * see whether the shape is scaled or absolute.
+ *
+ * `unit` goes in the label and `format` returns bare numbers, the same
+ * contract as `usColumn`. A widget that switched unit per readout printed
+ * `MIN 889 µs · AXIS AUTO 889 µs–2.27 ms · MAX 2.27 ms` and made the smallest
+ * number look like the largest.
  */
 export function Sparkline({
   label,
+  unit,
   values,
   format,
   color = '#2f70c9',
@@ -24,6 +30,8 @@ export function Sparkline({
   yMax,
 }: {
   label: string;
+  /** One unit for every number in the widget. Keeps its real case. */
+  unit?: string;
   values: number[];
   format: (v: number) => string;
   color?: string;
@@ -46,11 +54,19 @@ export function Sparkline({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const w = canvas.parentElement ? canvas.parentElement.clientWidth - 16 : 260;
-    canvas.width = Math.max(120, w);
-    canvas.height = height;
+    const cssW = Math.max(120, w);
+    // The backing store used to be sized in CSS pixels, so every sparkline on
+    // a Retina or 4K bench was drawn at half resolution and upscaled — a
+    // blurred 1.5px line under crisp text.
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.height = `${height}px`;
     const ctx = canvas.getContext('2d')!;
+    // Draw in CSS pixels; the transform handles the device ratio.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, height);
+    ctx.fillRect(0, 0, cssW, height);
 
     // dotted grid
     ctx.strokeStyle = '#dfe5ec';
@@ -59,7 +75,7 @@ export function Sparkline({
       const y = (height / 4) * i;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
+      ctx.lineTo(cssW, y);
       ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -67,7 +83,7 @@ export function Sparkline({
     if (values.length < 2) return;
     const span = axisMax - axisMin || 1;
     const pad = 6;
-    const px = (i: number) => (i / (values.length - 1)) * (canvas.width - 2 * pad) + pad;
+    const px = (i: number) => (i / (values.length - 1)) * (cssW - 2 * pad) + pad;
     const py = (v: number) => {
       const frac = Math.min(1, Math.max(0, (v - axisMin) / span));
       return height - pad - frac * (height - 2 * pad);
@@ -93,11 +109,19 @@ export function Sparkline({
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-        <span className="microlabel">{label}</span>
+        <span className="microlabel">
+          {label}
+          {/* Units keep their real case inside an uppercased label. */}
+          {unit ? <> (<span style={{ textTransform: 'none' }}>{unit}</span>)</> : null}
+        </span>
         <span className="val">{values.length ? format(last) : '—'}</span>
       </div>
       <div className="well" style={{ padding: 8 }}>
-        <canvas ref={canvasRef} aria-label={`${label} chart`} style={{ display: 'block', width: '100%' }} />
+        <canvas
+          ref={canvasRef}
+          aria-label={unit ? `${label} chart, ${unit}` : `${label} chart`}
+          style={{ display: 'block', width: '100%' }}
+        />
       </div>
       {/* Units keep their real case — uppercasing turns µs into MS. */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>

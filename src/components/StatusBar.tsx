@@ -26,7 +26,10 @@ export function StatusBar() {
     : 'off';
 
   return (
-    <div className="statusbar">
+    // A landmark, not a live region: the cells inside announce themselves, and
+    // wrapping the whole bar in role="status" would re-read every number on
+    // every 4 s poll.
+    <div className="statusbar" role="region" aria-label="Camera vital signs">
       <span className="status-cell status-cell--stretch">
         <Led state={ledState} label={PHASE_LABEL[phase]} />
       </span>
@@ -43,7 +46,7 @@ export function StatusBar() {
         </span>
       ) : null}
       {cameras.length === 4 ? (
-        <span className="status-cell status-cam" aria-label="Camera module status">
+        <span className="status-cell status-cam" aria-label="Camera module status" aria-live="polite">
           {cameras.map((cam) => {
             const cls = !cam.online ? 'bad' : cam.state === 'ready' ? 'ok' : 'warn';
             const mark = !cam.online ? '✗' : cam.state === 'ready' ? '✓' : '…';

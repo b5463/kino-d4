@@ -5,6 +5,12 @@ import { ToggleField } from '../../components/fields';
 import { getDevice } from '../../app/session';
 import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
+import {
+  benchStamp,
+  clearBenchResult,
+  putBenchResult,
+  useBenchResult,
+} from '../../state/benchResults';
 import { runConformance, conformanceCaseCount } from '../../developer/conformance';
 import type { ConformanceResult, ConformanceStatus } from '../../developer/conformance';
 import { downloadJson } from '../../utils/download';
@@ -26,8 +32,13 @@ export function ConformancePanel() {
   const [includeActive, setIncludeActive] = useState(true);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, current: '' });
-  const [results, setResults] = useState<ConformanceResult[] | null>(null);
   const blockedBy = useBlockedBy(OWNER);
+
+  // The report outlives the page — a full pass is the firmware acceptance
+  // record, and it used to die on the next sidebar click.
+  const entry = useBenchResult<ConformanceResult[]>(OWNER);
+  const results = entry?.result ?? null;
+  const stamp = benchStamp(entry);
 
   const run = async () => {
     const dev = getDevice();
@@ -36,12 +47,12 @@ export function ConformancePanel() {
     // disagreed with each other by 5×.
     if (!claimDevice(OWNER, LABEL)) return;
     setRunning(true);
-    setResults(null);
+    clearBenchResult(OWNER);
     try {
       const res = await runConformance(dev, includeActive, (done, total, current) =>
         setProgress({ done, total, current }),
       );
-      setResults(res);
+      putBenchResult<ConformanceResult[]>(OWNER, res);
     } finally {
       releaseDevice(OWNER);
       setRunning(false);
@@ -57,14 +68,15 @@ export function ConformancePanel() {
       title="PROTOCOL CONFORMANCE"
       actions={
         <>
-          {results ? (
+          {results && entry ? (
             <Button
               size="sm"
               onClick={() =>
                 downloadJson(`kino-conformance-${info?.serial ?? 'unknown'}-${Date.now()}.json`, {
                   device: info?.serial,
                   p4Firmware: info?.p4Firmware,
-                  ranAt: new Date().toISOString(),
+                  ranAt: new Date(entry.ranAt).toISOString(),
+                  staleReason: entry.staleReason,
                   results,
                 })
               }
@@ -87,9 +99,12 @@ export function ConformancePanel() {
         </>
       }
     >
+      {/* "All green" taught colour as the verdict. The table prints PASS. */}
+      <p className="dim" style={{ marginBottom: 2 }}>
+        Fires every protocol command and validates the response shape.
+      </p>
       <p className="dim" style={{ marginBottom: 6 }}>
-        Fires every protocol command and validates the response shape. Firmware is done when this
-        is all green.
+        Firmware is done when every check reads PASS.
       </p>
       <ToggleField
         label="INCLUDE ACTIVE CHECKS"
@@ -136,6 +151,14 @@ export function ConformancePanel() {
             </table>
           </div>
           <p className="microlabel" style={{ paddingTop: 4 }}>* ACTIVE CHECK — WRITES OR CAPTURES</p>
+          {stamp ? (
+            <p
+              className={stamp.stale ? 'notice notice--warn' : 'spark-minmax'}
+              style={{ display: 'block', marginTop: 6, marginBottom: 0 }}
+            >
+              {stamp.text}
+            </p>
+          ) : null}
         </>
       ) : null}
     </Panel>

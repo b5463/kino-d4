@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { OrderPanel, SpacingPanel, FlashPanel } from './procedures';
 import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
+import { invalidateBench } from '../../state/benchResults';
 import { getDevice, onCalibrationEvent, refreshCalibration } from '../../app/session';
 import type { CamCalibration, CamId, CalibrationEvent } from '../../protocol/types';
 import { CAM_IDS, NEUTRAL_CAL } from '../../protocol/types';
@@ -215,6 +216,8 @@ export function CalibrationPage() {
     setBusy(true);
     try {
       await dev.applyCalibration(proposed);
+      // The capture benches shot their frames through the old offsets.
+      invalidateBench(['timing', 'burnin'], 'calibration offsets were written after this run');
       await refreshCalibration();
       setPhase('idle');
       setProposed(null);
@@ -232,6 +235,7 @@ export function CalibrationPage() {
     setBusy(true);
     try {
       await dev.resetCalibration();
+      invalidateBench(['timing', 'burnin'], 'calibration was reset after this run');
       await refreshCalibration();
     } finally {
       setBusy(false);

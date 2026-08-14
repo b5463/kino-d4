@@ -14,6 +14,7 @@ import { useConnectionStore } from '../state/connectionStore';
 import { useDeviceStore } from '../state/deviceStore';
 import { usePrefs, setDensity, setDeveloperMode } from '../state/prefs';
 import { emitUi } from '../state/uiBus';
+import { blockedBy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
 import {
   connectSerial,
@@ -66,11 +67,17 @@ export function App() {
   const [page, setPage] = useState<PageId>(loadPage);
   const [rebootOpen, setRebootOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
   const dirtyDrafts = useDraftStore((s) => s.dirty);
   const workRef = useRef<HTMLElement>(null);
+  const syncRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     localStorage.setItem(PAGE_KEY, page);
+    // The old scroll offset was carried across and merely clamped, so a new
+    // section opened part-way down.
+    workRef.current?.scrollTo({ top: 0 });
   }, [page]);
 
   // Drafts survive the page swap, so navigating away is safe — closing the
@@ -104,12 +111,29 @@ export function App() {
       }
       if (e.key === 'F5' && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        void refreshAll();
+        syncRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [connected]);
+
+  // One entry point for SYNC and F5 so both report progress and both respect
+  // the exclusive link claim.
+  const sync = () => {
+    if (syncBusy) return;
+    setSyncBusy(true);
+    setSyncNote(null);
+    void refreshAll()
+      .then((r) => {
+        if (r === 'blocked') {
+          setSyncNote(`${blockedBy('sync') ?? 'Another operation'} is using the link — SYNC skipped`);
+        }
+      })
+      .finally(() => setSyncBusy(false));
+  };
+
+  syncRef.current = sync;
 
   const goto = (target: PageId) => setPage(target);
 
@@ -226,14 +250,20 @@ export function App() {
         SKIP TO {inSession ? PAGE_LABEL[page].toUpperCase() : 'CONNECT'}
       </a>
       <MenuBar menus={menus} version={APP_VERSION} />
-      <Toolbar onNavigate={goto} onSelfTest={runSelfTest} onSync={() => void refreshAll()} />
+      <Toolbar onNavigate={goto} onSelfTest={runSelfTest} onSync={sync} syncBusy={syncBusy} />
       {/* Section changes are a page change in every way except the URL, so
           they get announced like one. */}
       <p className="sr-only" role="status">
-        {inSession ? `${PAGE_LABEL[page]} — KINO Studio` : ''}
+        {syncNote ?? (inSession ? `${PAGE_LABEL[page]} — KINO Studio` : '')}
       </p>
       <div className="mainrow">
-        {inSession ? <Sidebar page={page} onNavigate={goto} /> : null}
+        {inSession ? (
+          <Sidebar
+            page={page}
+            onNavigate={goto}
+            locked={phase === 'updating' ? 'Not while firmware is being written' : null}
+          />
+        ) : null}
         <main className="workspace" id="work" tabIndex={-1} ref={workRef} aria-label={inSession ? PAGE_LABEL[page] : 'Connect'}>
           {inSession ? (
             <>
@@ -252,11 +282,12 @@ export function App() {
           )}
         </main>
       </div>
-      <StatusBar />
       {inSession && isDemo() ? <DebugPanel /> : null}
+      <StatusBar />
 
       <ConfirmDialog
         open={rebootOpen}
+        focusCancel
         title="REBOOT KINO"
         confirmLabel="REBOOT"
         onCancel={() => setRebootOpen(false)}

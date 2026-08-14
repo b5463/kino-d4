@@ -13,10 +13,13 @@ export function Toolbar({
   onNavigate,
   onSelfTest,
   onSync,
+  syncBusy,
 }: {
   onNavigate: (page: PageId) => void;
   onSelfTest: () => void;
   onSync: () => void;
+  /** SYNC is many round trips at 921600 — it has to look like work. */
+  syncBusy?: boolean;
 }) {
   const phase = useConnectionStore((s) => s.phase);
   const transportKind = useConnectionStore((s) => s.transportKind);
@@ -77,13 +80,14 @@ export function Toolbar({
       )}
       <button
         type="button"
-        className="tool-btn"
+        className={syncBusy ? 'tool-btn is-busy' : 'tool-btn'}
         disabled={!connected}
-        onClick={onSync}
+        aria-busy={syncBusy || undefined}
+        onClick={syncBusy ? undefined : onSync}
         title="Re-read all state from the camera (F5)"
       >
         <Icon name="sync" size={20} />
-        SYNC
+        {syncBusy ? 'READING…' : 'SYNC'}
       </button>
       <span className="tool-sep" />
       <button
@@ -119,7 +123,9 @@ export function Toolbar({
       </button>
 
       <span className="tool-device">
-        <Led state={ledState} label="" />
+        {/* The lamp used to carry `updating` / `reconnecting` by colour alone
+            here, while every other Led in the app is required to carry text. */}
+        <Led state={ledState} label={connected ? '' : PHASE_LABEL[phase]} />
         {serial ? `${serial}${transportKind === 'mock' ? ' · DEMO DEVICE' : ' · USB'}` : PHASE_LABEL[phase]}
       </span>
     </div>

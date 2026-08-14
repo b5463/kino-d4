@@ -136,7 +136,7 @@ interface CamModel {
   lastCaptureAt: number;
   jpegKB: number;
   durationMs: number;
-  skewUs: number;
+  gpioSkewUs: number;
   uartErrors: number;
   updating: boolean;
   rebootUntil: number;
@@ -199,7 +199,7 @@ export class MockKinoDevice {
       lastCaptureAt: Date.now() - randInt(40_000, 300_000),
       jpegKB: randInt(320, 520),
       durationMs: randInt(140, 260),
-      skewUs: randInt(80, 400),
+      gpioSkewUs: randInt(80, 400),
       uartErrors: randInt(0, 2),
       updating: false,
       rebootUntil: 0,
@@ -313,7 +313,7 @@ export class MockKinoDevice {
       }
       cam.jpegKB = randInt(300, 560);
       cam.durationMs = randInt(130, 280);
-      cam.skewUs = randInt(60, 450);
+      cam.gpioSkewUs = randInt(60, 450);
       cam.lastCaptureAt = Date.now();
       this.after(delay, () => this.log(src, `jpeg ${cam.jpegKB} KB in ${cam.durationMs} ms`));
       delay += randInt(15, 45);
@@ -434,7 +434,7 @@ export class MockKinoDevice {
             ageS: Math.round((Date.now() - cam.lastCaptureAt) / 1000),
             jpegKB: cam.jpegKB,
             durationMs: cam.durationMs,
-            skewUs: cam.skewUs,
+            gpioSkewUs: cam.gpioSkewUs,
           },
     };
   }

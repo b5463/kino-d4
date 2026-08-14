@@ -1,5 +1,13 @@
-node_modules
-dist
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage/
 *.local
 .DS_Store
-.playwright-mcp
+.playwright-mcp/
+.claude/
+.impeccable/
+.superpowers/

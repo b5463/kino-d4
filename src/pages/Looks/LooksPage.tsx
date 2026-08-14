@@ -145,7 +145,7 @@ export function LooksPage() {
   const selected = recipes.find((r) => r.id === selectedId) ?? recipes[0] ?? null;
   // Keyed per look: an unsaved edit to Party Neg must not follow you onto
   // Mono, and it must still be there when you come back from another section.
-  const { draft, dirty, patch, discard } = useDraft<Recipe>(selected, {
+  const { draft, dirty, changedFields, patch, discard } = useDraft<Recipe>(selected, {
     key: `looks:${selected?.id ?? 'none'}`,
     label: 'Looks',
   });
@@ -186,13 +186,28 @@ export function LooksPage() {
       setNotice(`Saved as ${copy.name}`);
     });
 
+  /**
+   * Duplicates the look **as stored on KINO**, never the unsaved draft.
+   *
+   * Copying the draft wrote the edit into the copy and left the original
+   * dirty, so the status bar said `UNSAVED: Looks` with no unsaved control
+   * anywhere on screen. Unsaved work now stays on the look it belongs to —
+   * and so does the selection, or the ApplyBar holding it would scroll out of
+   * existence. Either way the notice says which.
+   */
   const duplicate = (source: Recipe) =>
     withDevice(async (dev) => {
+      const unsaved = draft ? countChangedLeaves(draft, source) : 0;
       const id = uniqueId(`${source.id}-copy`, takenIds);
       const copy: Recipe = { ...structuredClone(source), id, name: `${source.name} Copy`.slice(0, 40), factory: false };
       await dev.uploadRecipe(copy);
       await refreshRecipes();
-      setSelectedId(id);
+      if (unsaved === 0) setSelectedId(id);
+      setNotice(
+        unsaved === 0
+          ? `Duplicated ${source.name} as ${copy.name}. Editing the copy.`
+          : `Duplicated ${source.name} as saved on KINO — ${copy.name}. Your ${unsaved} unsaved change${unsaved === 1 ? '' : 's'} stayed on ${source.name}, still open here.`,
+      );
     });
 
   const remove = () =>
@@ -326,7 +341,11 @@ export function LooksPage() {
                   <Button size="sm" onClick={() => downloadJson(`${draft.id}.json`, { ...draft, factory: undefined })}>
                     EXPORT JSON
                   </Button>
-                  <Button size="sm" onClick={() => void duplicate(draft)}>
+                  <Button
+                    size="sm"
+                    title={dirty ? 'Copies the look as stored on KINO — unsaved edits stay here' : undefined}
+                    onClick={() => void duplicate(selected)}
+                  >
                     DUPLICATE
                   </Button>
                   {!selected.factory ? (
@@ -364,11 +383,14 @@ export function LooksPage() {
                   patch((d) => ({ ...d, capture: { ...d.capture, resolution: v as Recipe['capture']['resolution'] } }))
                 }
               />
+              {/* Every slider here takes a typed value: SATURATION alone is
+                  0–1.6 at step 0.01, which is 160 arrow presses end to end. */}
               <SliderField
                 label="JPEG QUALITY"
                 value={draft.capture.jpegQuality}
                 min={60}
                 max={95}
+                entry
                 onChange={(v) => patch((d) => ({ ...d, capture: { ...d.capture, jpegQuality: v } }))}
               />
               <SliderField
@@ -377,6 +399,8 @@ export function LooksPage() {
                 min={-2}
                 max={2}
                 step={0.1}
+                entry
+                unit="EV"
                 format={formatEv}
                 onChange={(v) => patch((d) => ({ ...d, capture: { ...d.capture, exposureBias: Math.round(v * 10) / 10 } }))}
               />
@@ -385,6 +409,8 @@ export function LooksPage() {
                 value={draft.capture.gainLimit}
                 min={1}
                 max={32}
+                entry
+                unit="×"
                 format={(v) => `${v}×`}
                 onChange={(v) => patch((d) => ({ ...d, capture: { ...d.capture, gainLimit: v } }))}
               />
@@ -416,6 +442,7 @@ export function LooksPage() {
                 min={0.8}
                 max={1.4}
                 step={0.01}
+                entry
                 format={(v) => v.toFixed(2)}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, contrast: v } }))}
               />
@@ -425,6 +452,7 @@ export function LooksPage() {
                 min={0}
                 max={1.6}
                 step={0.01}
+                entry
                 format={(v) => v.toFixed(2)}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, saturation: v } }))}
               />
@@ -434,6 +462,8 @@ export function LooksPage() {
                 min={-400}
                 max={400}
                 step={10}
+                entry
+                unit="MIRED"
                 format={(v) => `${formatSigned(v)} MIRED`}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, temperature: v } }))}
               />
@@ -442,6 +472,7 @@ export function LooksPage() {
                 value={draft.look.tint}
                 min={-20}
                 max={20}
+                entry
                 format={(v) => formatSigned(v)}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, tint: v } }))}
               />
@@ -450,6 +481,7 @@ export function LooksPage() {
                 value={draft.look.blackPoint}
                 min={0}
                 max={16}
+                entry
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, blackPoint: v } }))}
               />
               <SliderField
@@ -458,6 +490,7 @@ export function LooksPage() {
                 min={0}
                 max={0.3}
                 step={0.01}
+                entry
                 format={(v) => v.toFixed(2)}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, highlightCompression: v } }))}
               />
@@ -469,6 +502,7 @@ export function LooksPage() {
                 min={0}
                 max={0.5}
                 step={0.01}
+                entry
                 format={(v) => v.toFixed(2)}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, grain: v } }))}
               />
@@ -478,6 +512,7 @@ export function LooksPage() {
                 min={0}
                 max={0.3}
                 step={0.01}
+                entry
                 format={(v) => v.toFixed(2)}
                 onChange={(v) => patch((d) => ({ ...d, look: { ...d.look, vignette: v } }))}
               />
@@ -520,6 +555,7 @@ export function LooksPage() {
               <ApplyBar
                 dirty={dirty}
                 changeCount={changeCount}
+                changedFields={changedFields}
                 applyLabel="SAVE AS CUSTOM LOOK"
                 onApply={async () => {
                   await saveAsCustom(draft);
@@ -531,6 +567,7 @@ export function LooksPage() {
               <ApplyBar
                 dirty={dirty}
                 changeCount={changeCount}
+                changedFields={changedFields}
                 applyLabel="SAVE TO KINO"
                 onApply={saveToKino}
                 onDiscard={discard}

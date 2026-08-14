@@ -92,11 +92,14 @@
   --grad-btn: linear-gradient(to bottom, #ffffff 0%, #f0f4f9 45%, #dde6f0 50%, #cfdae7 100%);
   --grad-btn-hover: linear-gradient(to bottom, #ffffff 0%, #f4f8fc 45%, #e6eef7 50%, #d8e3f0 100%);
   --grad-btn-down: linear-gradient(to bottom, #c8d4e2 0%, #d8e1ec 60%, #e4ebf3 100%);
-  /* primary: 4.9:1 at the top stop (was 2.26:1) */
+  /* primary: white measures 4.55:1 on the lightest stop #3576cc and 4.90:1 on
+     the 45% stop — AA at every stop, and the top one is the binding case. */
   --grad-primary: linear-gradient(to bottom, #3576cc 0%, #2f70c9 45%, #26619f 50%, #1d4c94 100%);
   --grad-primary-hover: linear-gradient(to bottom, #3d80d6 0%, #3576cc 45%, #2b6aad 50%, #22569f 100%);
-  /* green/red carry white text on solid buttons — both ≥5:1 now */
-  --grad-green: linear-gradient(to bottom, #3d9434 0%, #35872d 45%, #2f7a28 50%, #276821 100%);
+  /* Red carries white text on solid buttons: 5.1:1 on the lightest stop
+     #c83a3a. There is no --grad-green: no solid green button exists, and the
+     one that was defined here measured 3.83:1 against white while claiming
+     ≥5:1. Success is carried by a Led plus text, not a green fill. */
   --grad-red: linear-gradient(to bottom, #c83a3a 0%, #b93232 45%, #a02525 50%, #8f1f1f 100%);
   --grad-head: linear-gradient(to bottom, #f4f8fc, #dfe7f1);
   --grad-sel: linear-gradient(to bottom, var(--sel-top), var(--sel-bot));

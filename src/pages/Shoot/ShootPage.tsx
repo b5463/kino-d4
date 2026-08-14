@@ -113,7 +113,7 @@ export function ShootPage() {
   const state = useDeviceStore();
   const config = state.config;
   const storage = state.storage;
-  const { draft, dirty, changes, patch, discard } = useDraft<ShootConfig>(config?.shoot ?? null, {
+  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<ShootConfig>(config?.shoot ?? null, {
     key: 'shoot',
     label: 'Shoot',
   });
@@ -306,7 +306,7 @@ export function ShootPage() {
 
       <CustomSoundsPanel />
 
-      <ApplyBar dirty={dirty} changeCount={changes} onApply={apply} onDiscard={discard} />
+      <ApplyBar dirty={dirty} changeCount={changes} changedFields={changedFields} onApply={apply} onDiscard={discard} />
     </>
   );
 }

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDraftEntry, putDraftEntry, setDraftDirty, useDraftStore } from '../state/draftStore';
+import { diffConfigs } from '../utils/diffConfig';
 import type { DraftEntry } from '../state/draftStore';
+
+/** Stable empty array so a clean draft never re-renders its consumers. */
+const EMPTY: string[] = [];
 
 function deepEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -83,6 +87,9 @@ export function useDraft<T>(source: T | null, persist?: { key: string; label: st
   const draft = entry?.draft ?? null;
   const dirty = draft !== null && source !== null && !deepEqual(draft, source);
   const changes = dirty ? countChanges(draft, source) : 0;
+  // Which fields, not just how many — "1 UNSAVED CHANGE" made the user open
+  // every panel to find it, while a *file* restore already showed a field diff.
+  const changedFields = dirty ? diffConfigs(source, draft).map((d) => d.path) : EMPTY;
 
   // Not cleared on unmount, on purpose: the point of a persisted draft is
   // that the section still reports unsaved work while you are on another one.
@@ -113,5 +120,5 @@ export function useDraft<T>(source: T | null, persist?: { key: string; label: st
     [read, write],
   );
 
-  return { draft, dirty, changes, patch, discard, setDraft } as const;
+  return { draft, dirty, changes, changedFields, patch, discard, setDraft } as const;
 }

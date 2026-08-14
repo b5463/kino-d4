@@ -10,6 +10,7 @@ import { NumberField, SegField } from '../../components/fields';
 import { getDevice, refreshCalibration } from '../../app/session';
 import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
+import { invalidateBench } from '../../state/benchResults';
 import type { CamId, FlashDistance, FlashLevel } from '../../protocol/types';
 import { CAM_IDS } from '../../protocol/types';
 
@@ -17,6 +18,13 @@ const POSITION_LABELS = ['LEFT-MOST', 'CENTER-LEFT', 'CENTER-RIGHT', 'RIGHT-MOST
 
 const FLASH_OWNER = 'flash-test';
 const FLASH_LABEL = 'FLASH TEST';
+
+/** Metres, en dash, lower case. The unit is m, not M. */
+const DISTANCE_LABEL: Record<FlashDistance, string> = {
+  '0.5-1': '0.5–1 m',
+  '1-2': '1–2 m',
+  '2-3': '2–3 m',
+};
 
 // ---- physical camera order ----
 
@@ -69,10 +77,12 @@ export function OrderPanel() {
   };
 
   const complete = answers.every((a) => a !== null);
-  const duplicate = complete && new Set(answers).size !== 4;
 
+  // No duplicate branch: an already-used position is a disabled button, so a
+  // complete set of answers is always a permutation. The error state it
+  // guarded was unreachable.
   // answers[logical] = physical position → order[physical] = logical cam
-  const order: CamId[] = complete && !duplicate
+  const order: CamId[] = complete
     ? answers.reduce<CamId[]>((acc, pos, logical) => {
         acc[pos!] = CAM_IDS[logical];
         return acc;
@@ -86,6 +96,11 @@ export function OrderPanel() {
     setError(null);
     try {
       await dev.saveCameraOrder(order as [CamId, CamId, CamId, CamId]);
+      // Every per-camera row on the benches now names a different lens.
+      invalidateBench(
+        ['timing', 'phase', 'burnin'],
+        'the camera order was remapped after this run',
+      );
       await refreshCalibration();
       setAnswers([null, null, null, null]);
     } catch (err) {
@@ -108,9 +123,11 @@ export function OrderPanel() {
         ) : null
       }
     >
+      <p className="dim" style={{ marginBottom: 2 }}>
+        Checks that logical CAM1–4 matches the physical left-to-right lens row.
+      </p>
       <p className="dim" style={{ marginBottom: 8 }}>
-        Checks that logical CAM1–4 matches the physical left-to-right lens row after assembly or a
-        module swap. Current map:{' '}
+        Current map:{' '}
         <span className="val">
           {calibration ? calibration.order.map((c) => c.toUpperCase().replace('CAM', 'C')).join(' · ') : '—'}
         </span>
@@ -139,7 +156,7 @@ export function OrderPanel() {
         </>
       ) : null}
 
-      {complete && !duplicate ? (
+      {complete ? (
         <>
           <p className="notice notice--ok" style={{ marginTop: 8 }}>
             New map, left to right:{' '}
@@ -154,9 +171,6 @@ export function OrderPanel() {
             </Button>
           </div>
         </>
-      ) : null}
-      {duplicate ? (
-        <p className="notice notice--err">Two cameras got the same position — run the check again.</p>
       ) : null}
       {error ? <p className="notice notice--err">{error}</p> : null}
 
@@ -234,10 +248,11 @@ export function SpacingPanel() {
         Optical centers in mm from CAM1. Stored in capture metadata. Current values:{' '}
         <span className="val">{calibration?.spacingSource === 'measured' ? 'MEASURED' : 'NOMINAL'}</span>.
       </p>
+      <p className="dim" style={{ marginBottom: 2 }}>
+        Nominal pitch is about 19 mm: 0 / 19 / 38 / 57 mm, outer baseline near 57 mm.
+      </p>
       <p className="dim" style={{ marginBottom: 8 }}>
-        Nominal pitch is about 19 mm, so a plausible measured set runs 0 / 19 / 38 / 57 mm with an
-        outer baseline near 57 mm. Values more than a few mm off that are a measuring error, not a
-        build tolerance.
+        More than a few mm off that is a measuring error, not a build tolerance.
       </p>
       {CAM_IDS.map((cam, i) => (
         <NumberField
@@ -273,8 +288,21 @@ export function FlashPanel() {
   const [error, setError] = useState<string | null>(null);
   const blockedBy = useBlockedBy(FLASH_OWNER);
 
-  const curLevel = level ?? calibration?.flash.level ?? 'medium';
-  const curDistance = distance ?? calibration?.flash.distance ?? '1-2';
+  // Same dirty model as LENS SPACING: what the device holds, what the panel
+  // is showing, and whether those differ. Selecting HIGH against a stored
+  // MEDIUM used to show nothing at all, and CAPTURE TEST then fired at the
+  // unsaved level without saying so.
+  // Null means the device reported nothing, which is not the same as MEDIUM.
+  const storedLevel = calibration?.flash.level ?? null;
+  const storedDistance = calibration?.flash.distance ?? null;
+  const curLevel = level ?? storedLevel ?? 'medium';
+  const curDistance = distance ?? storedDistance ?? '1-2';
+  const dirty = curLevel !== storedLevel || curDistance !== storedDistance;
+
+  const discard = () => {
+    setLevel(null);
+    setDistance(null);
+  };
 
   const runTest = async () => {
     const dev = getDevice();
@@ -304,6 +332,8 @@ export function FlashPanel() {
     setError(null);
     try {
       await dev.saveFlashCalibration({ level: saveLevel, distance: curDistance });
+      // Burn-in logs battery sag per shot, and the flash is the load.
+      invalidateBench(['burnin'], 'the flash level was changed after this run');
       await refreshCalibration();
       setLevel(null);
       setDistance(null);
@@ -316,13 +346,35 @@ export function FlashPanel() {
   };
 
   return (
-    <Panel title="FLASH">
-      <p className="dim" style={{ marginBottom: 8 }}>
+    <Panel
+      title="FLASH"
+      actions={
+        dirty ? (
+          <>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={discard}>
+              DISCARD
+            </Button>
+            <Button size="sm" variant="primary" busy={busy} onClick={() => void save(curLevel)}>
+              SAVE LEVEL
+            </Button>
+          </>
+        ) : null
+      }
+    >
+      <p className="dim" style={{ marginBottom: 2 }}>
         Fires a test pulse and measures highlight clipping per sensor. Test captures are discarded.
-        Stored level: <span className="val">{calibration?.flash.level.toUpperCase() ?? '—'}</span>
+      </p>
+      <p className="dim" style={{ marginBottom: 8 }}>
+        Stored level:{' '}
+        <span className="val">
+          {storedLevel && storedDistance
+            ? `${storedLevel.toUpperCase()} at ${DISTANCE_LABEL[storedDistance]}`
+            : '—'}
+        </span>
         {calibration?.flash.calibratedAt
           ? ` (${new Date(calibration.flash.calibratedAt).toLocaleDateString()})`
           : ''}
+        {dirty ? <span className="tag" style={{ marginLeft: 8 }}>UNSAVED</span> : null}
       </p>
       <SegField
         label="FLASH LEVEL"
@@ -338,13 +390,23 @@ export function FlashPanel() {
         label="SUBJECT DISTANCE"
         value={curDistance}
         options={[
-          { value: '0.5-1', label: '0.5–1 M' },
-          { value: '1-2', label: '1–2 M' },
-          { value: '2-3', label: '2–3 M' },
+          { value: '0.5-1', label: DISTANCE_LABEL['0.5-1'] },
+          { value: '1-2', label: DISTANCE_LABEL['1-2'] },
+          { value: '2-3', label: DISTANCE_LABEL['2-3'] },
         ]}
         onChange={(v) => setDistance(v as FlashDistance)}
       />
-      <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
+      {dirty ? (
+        <p className="notice notice--warn" style={{ marginTop: 8, marginBottom: 0 }}>
+          Selected {curLevel.toUpperCase()} at {DISTANCE_LABEL[curDistance]} is not stored on KINO.
+          CAPTURE TEST fires at the selected level, not the stored one.
+        </p>
+      ) : null}
+      {/* Read before the click, not after it. */}
+      <p className="microlabel" style={{ paddingTop: 8 }}>
+        CAPTURE TEST FIRES A BRIGHT FLASH
+      </p>
+      <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
         <Button
           variant="primary"
           busy={testing}
@@ -354,15 +416,9 @@ export function FlashPanel() {
         >
           CAPTURE TEST
         </Button>
-        <Button busy={busy} onClick={() => void save(curLevel)}>
-          SAVE LEVEL
-        </Button>
       </div>
       <p className="val" role="status" style={{ padding: '6px 0 0', minHeight: 18 }}>
         {testing ? 'FIRING FLASH · CAPTURING 4 CAMERAS…' : blockedBy ? `${blockedBy} is running.` : ''}
-      </p>
-      <p className="microlabel" style={{ paddingTop: 6 }}>
-        FIRES A BRIGHT FLASH
       </p>
 
       {results ? (
@@ -385,7 +441,7 @@ export function FlashPanel() {
           </table>
           {suggested ? (
             <p className="notice notice--ok" style={{ marginTop: 8, marginBottom: 0 }}>
-              Suggested level for {curDistance} m: <strong>{suggested.toUpperCase()}</strong>
+              Suggested level for {DISTANCE_LABEL[curDistance]}: <strong>{suggested.toUpperCase()}</strong>
               {suggested !== curLevel ? (
                 <Button size="sm" busy={busy} style={{ marginLeft: 10 }} onClick={() => void save(suggested)}>
                   APPLY {suggested.toUpperCase()}

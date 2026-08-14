@@ -12,6 +12,13 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { getDevice, refreshAll } from '../../app/session';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
+import {
+  benchStamp,
+  clearBenchResult,
+  invalidateBench,
+  putBenchResult,
+  useBenchResult,
+} from '../../state/benchResults';
 import type { LinkBenchResult } from '../../protocol/types';
 import { downloadJson } from '../../utils/download';
 
@@ -20,26 +27,47 @@ const LADDER = [921600, 1500000, 2000000, 3000000];
 const OWNER = 'link';
 const LABEL = 'UART LINK';
 
+/**
+ * Frame size used for the 4-FRAME SET estimate when nothing has been captured
+ * yet. It is the V1 nominal JPEG, not a measurement, and the panel says so —
+ * real captures on this device have measured 306–554 KB.
+ */
+const NOMINAL_FRAME_KB = 380;
+
 function baudLabel(baud: number): string {
   return baud >= 1_000_000 ? `${(baud / 1_000_000).toFixed(baud % 1_000_000 ? 1 : 0)}M` : `${baud / 1000}k`;
 }
 
 export function LinkBenchPanel() {
   const state = useDeviceStore();
-  const [results, setResults] = useState<LinkBenchResult[]>([]);
   const [running, setRunning] = useState(false);
   const [current, setCurrent] = useState<number | null>(null);
   const [rung, setRung] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [applied, setApplied] = useState<number | null>(null);
   const [pendingAdopt, setPendingAdopt] = useState<number | null>(null);
   const [adoptingBaud, setAdoptingBaud] = useState<number | null>(null);
   const blockedBy = useBlockedBy(OWNER);
+
+  // The ladder survives navigation, together with the EXPORT that saves it.
+  const entry = useBenchResult<LinkBenchResult[]>(OWNER);
+  const results = entry?.result ?? [];
+  const stamp = benchStamp(entry);
 
   const hasBench = supports(state, 'linkBench');
   const maxBaud = state.limits?.maxUartBaud ?? 3_000_000;
   const rungs = LADDER.filter((b) => b <= maxBaud);
   const currentBaud = state.limits?.currentUartBaud ?? 921600;
+
+  // The set time is an estimate sitting in a table of measurements, so the
+  // frame size behind it is derived where possible and named either way.
+  const measuredJpegKB = state.cameras
+    .map((c) => c.lastCapture?.jpegKB)
+    .filter((v): v is number => typeof v === 'number');
+  const frameKB = measuredJpegKB.length ? Math.max(...measuredJpegKB) : NOMINAL_FRAME_KB;
+  const frameSource = measuredJpegKB.length
+    ? 'the largest of the four last-capture JPEGs'
+    : 'the V1 nominal frame — nothing captured yet this session';
+  const streamKB = results.length ? Math.round(results[0].channels[0].bytes / 1024) : 256;
 
   const runLadder = async () => {
     const dev = getDevice();
@@ -47,7 +75,8 @@ export function LinkBenchPanel() {
     if (!claimDevice(OWNER, LABEL)) return;
     setRunning(true);
     setError(null);
-    setResults([]);
+    clearBenchResult(OWNER);
+    const collected: LinkBenchResult[] = [];
     try {
       let i = 0;
       for (const baud of rungs) {
@@ -55,7 +84,8 @@ export function LinkBenchPanel() {
         setRung(i);
         setCurrent(baud);
         const r = await dev.linkBench(baud);
-        setResults((prev) => [...prev, r]);
+        collected.push(r);
+        putBenchResult<LinkBenchResult[]>(OWNER, [...collected]);
         // A dirty rate means everything above it is dirty too.
         if (!r.clean) break;
       }
@@ -77,7 +107,12 @@ export function LinkBenchPanel() {
     setError(null);
     try {
       await dev.setLinkBaud(baud);
-      setApplied(baud);
+      // Every transfer rate and command latency measured before this was
+      // measured on a different link.
+      invalidateBench(
+        ['burnin', 'conformance'],
+        `the camera UART moved to ${baudLabel(baud)} after this run`,
+      );
       await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -106,13 +141,16 @@ export function LinkBenchPanel() {
       title="UART LINK"
       actions={
         <>
-          {results.length > 0 && !running ? (
+          {results.length > 0 && !running && entry ? (
             <Button
               size="sm"
               onClick={() =>
                 downloadJson(`kino-linkbench-${state.info?.serial ?? 'unknown'}-${Date.now()}.json`, {
                   device: state.info?.serial,
-                  ranAt: new Date().toISOString(),
+                  ranAt: new Date(entry.ranAt).toISOString(),
+                  staleReason: entry.staleReason,
+                  frameKB,
+                  frameSource,
                   results,
                 })
               }
@@ -133,9 +171,12 @@ export function LinkBenchPanel() {
         </>
       }
     >
+      <p className="dim" style={{ marginBottom: 2 }}>
+        Streams {streamKB} KB per channel concurrently at each rate. Stops at the first rate with
+        CRC or framing errors.
+      </p>
       <p className="dim" style={{ marginBottom: 6 }}>
-        Streams 256 KB per channel concurrently at each rate and stops at the first rate with CRC or
-        framing errors. Current link: <span className="val">{baudLabel(currentBaud)}</span>.
+        Current link: <span className="val">{baudLabel(currentBaud)}</span>.
       </p>
       {/* Which rung is on the wire belongs in a status line, not in the
           button's label. */}
@@ -156,8 +197,14 @@ export function LinkBenchPanel() {
               <tr>
                 <th>BAUD</th>
                 <th>RESULT</th>
-                <th className="num">PER CHANNEL</th>
-                <th className="num">4-FRAME SET</th>
+                {/* This column is the slowest of the four channels, not a
+                    per-channel average. It printed Math.min unlabelled. */}
+                <th className="num">
+                  SLOWEST CHANNEL (<span style={{ textTransform: 'none' }}>KB/s</span>)
+                </th>
+                <th className="num">
+                  4-FRAME SET (<span style={{ textTransform: 'none' }}>s</span>)
+                </th>
                 <th className="num">CRC ERR</th>
                 <th />
               </tr>
@@ -166,16 +213,20 @@ export function LinkBenchPanel() {
               {results.map((r) => {
                 const slowest = Math.min(...r.channels.map((c) => c.kbytesPerSec));
                 const crc = r.channels.reduce((a, c) => a + c.crcErrors + c.framingErrors, 0);
-                // Concurrent: a 4×380 KB set lands in the time of one channel.
-                const setSeconds = 380 / slowest;
+                // Concurrent: a 4-frame set lands in the time of one channel.
+                const setSeconds = frameKB / slowest;
                 return (
                   <tr key={r.baud}>
                     <td>{baudLabel(r.baud)}</td>
                     <td>
                       <Led state={r.clean ? 'ok' : 'err'} label={r.clean ? 'CLEAN' : 'ERRORS'} />
                     </td>
-                    <td className="num">{slowest} KB/s</td>
-                    <td className="num">{setSeconds.toFixed(1)} s</td>
+                    {/* A rung with errors gets no throughput and no set time.
+                        The bytes did not arrive intact, so the derived numbers
+                        were the most attractive figures in the table and they
+                        belonged to the rate you must not adopt. */}
+                    <td className="num">{r.clean ? slowest : '—'}</td>
+                    <td className="num">{r.clean ? setSeconds.toFixed(1) : '—'}</td>
                     <td className="num">{crc}</td>
                     <td className="num">
                       {r.clean && r.baud !== currentBaud ? (
@@ -198,10 +249,34 @@ export function LinkBenchPanel() {
         </div>
       ) : null}
 
+      {results.length > 0 ? (
+        <>
+          <p className="spark-minmax" style={{ display: 'block', paddingTop: 4 }}>
+            4-FRAME SET = {frameKB} KB ÷ the slowest channel. {frameKB} KB is {frameSource}.
+          </p>
+          <p className="spark-minmax" style={{ display: 'block' }}>
+            Throughput here is a {streamKB} KB continuous stream per channel. BURN-IN reads 3 × 8 KB
+            media chunks with a round-trip each and reports a lower rate at the same baud.
+          </p>
+          {stamp ? (
+            <p
+              className={stamp.stale ? 'notice notice--warn' : 'spark-minmax'}
+              style={{ display: 'block', marginTop: 6, marginBottom: 0 }}
+            >
+              {stamp.text}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+
       {fastestClean ? (
         <p className="notice notice--ok" style={{ marginTop: 8, marginBottom: 0 }}>
           Fastest clean rate: <strong>{baudLabel(fastestClean.baud)}</strong>
-          {applied === fastestClean.baud ? ' — adopted.' : ' — adopt it to shorten the shot cycle.'}
+          {/* Device truth, not a local flag: coming back to the page used to
+              lose the "adopted" state while the link was already switched. */}
+          {currentBaud === fastestClean.baud
+            ? ' — adopted.'
+            : ' — adopt it to shorten the shot cycle.'}
         </p>
       ) : null}
       {results.length > 0 && !fastestClean ? (

@@ -179,15 +179,39 @@ export function UpdatesPage() {
 
           {pkg ? (
             <>
+              {/* These rows carry a package name and two digests. The 46ch
+                  default broke `demo package (in / memory)` across two lines
+                  with a third of the panel sitting empty next to it. */}
               <dl>
-                <div className="datarow"><dt>Package</dt><dd>{pkg.manifest.version} · {pkg.sourceName}</dd></div>
-                <div className="datarow"><dt>P4 image</dt><dd>{pkg.manifest.p4.version} · {(pkg.p4Image.length / 1024).toFixed(0)} KB · SHA OK</dd></div>
-                <div className="datarow"><dt>Camera image</dt><dd>{pkg.manifest.xiao.version} · {(pkg.xiaoImage.length / 1024).toFixed(0)} KB · SHA OK</dd></div>
-                <div className="datarow">
+                <div className="datarow" style={{ maxWidth: 'none' }}>
+                  <dt>Package</dt>
+                  <dd>{pkg.manifest.version} · {pkg.sourceName}</dd>
+                </div>
+                <div className="datarow" style={{ maxWidth: 'none' }}>
+                  <dt>P4 image</dt>
+                  <dd title={`SHA-256 ${pkg.manifest.p4.sha256}`}>
+                    {pkg.manifest.p4.version} · {(pkg.p4Image.length / 1024).toFixed(0)} KB · SHA-256{' '}
+                    {pkg.manifest.p4.sha256.slice(0, 12)}… matches manifest
+                  </dd>
+                </div>
+                <div className="datarow" style={{ maxWidth: 'none' }}>
+                  <dt>Camera image</dt>
+                  <dd title={`SHA-256 ${pkg.manifest.xiao.sha256}`}>
+                    {pkg.manifest.xiao.version} · {(pkg.xiaoImage.length / 1024).toFixed(0)} KB · SHA-256{' '}
+                    {pkg.manifest.xiao.sha256.slice(0, 12)}… matches manifest
+                  </dd>
+                </div>
+                <div className="datarow" style={{ maxWidth: 'none' }}>
                   <dt>Compatibility</dt>
                   <dd>{compat?.ok ? <Led state="ok" label="COMPATIBLE" /> : <Led state="err" label="BLOCKED" />}</dd>
                 </div>
               </dl>
+              {/* "SHA OK" said nothing about what was hashed, against what,
+                  or when. */}
+              <p className="dim" style={{ marginTop: 8, marginBottom: 0 }}>
+                Both files were hashed when the package was loaded. Nothing has been sent to the
+                camera yet.
+              </p>
               {compat && !compat.ok
                 ? compat.problems.map((p) => (
                     <p key={p} className="notice notice--err" style={{ marginTop: 10, marginBottom: 0 }}>{p}</p>
@@ -334,6 +358,7 @@ export function UpdatesPage() {
 
       <ConfirmDialog
         open={confirmOpen}
+        focusCancel
         title="UPDATE KINO"
         confirmLabel="START UPDATE"
         onCancel={() => setConfirmOpen(false)}
@@ -350,6 +375,7 @@ export function UpdatesPage() {
 
       <ConfirmDialog
         open={confirm2 === 'reboot'}
+        focusCancel
         title="REBOOT KINO"
         confirmLabel="REBOOT"
         onCancel={() => setConfirm2(null)}

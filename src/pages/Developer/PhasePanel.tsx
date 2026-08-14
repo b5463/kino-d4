@@ -11,6 +11,13 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { getDevice, onPhaseEvent } from '../../app/session';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
+import {
+  benchStamp,
+  getBenchResult,
+  invalidateBench,
+  putBenchResult,
+  useBenchResult,
+} from '../../state/benchResults';
 import { formatUs, gradeSkew, usColumn } from '../../protocol/timing';
 import { formatSigned } from '../../utils/format';
 import type { PhaseResult } from '../../protocol/types';
@@ -18,15 +25,34 @@ import type { PhaseResult } from '../../protocol/types';
 const OWNER = 'phase';
 const LABEL = 'SENSOR PHASE';
 
+interface PhaseStats {
+  result: PhaseResult;
+  /** Spread after each pass, oldest first. */
+  history: number[];
+}
+
+/**
+ * Restarting the sensors changes the thing TIMING BENCH and BURN-IN measured,
+ * so their old numbers stop describing this device the moment this succeeds.
+ */
+function invalidateCaptureBenches(reason: string) {
+  invalidateBench(['timing', 'burnin'], reason);
+}
+
 export function PhasePanel() {
   const state = useDeviceStore();
-  const [result, setResult] = useState<PhaseResult | null>(null);
-  const [history, setHistory] = useState<number[]>([]);
   const [busy, setBusy] = useState<'measure' | 'rephase' | 'reset' | null>(null);
   const [step, setStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'rephase' | 'reset' | null>(null);
   const blockedBy = useBlockedBy(OWNER);
+
+  // Held in the bench store, so leaving the page does not throw the result
+  // away and the panel can print when it was measured.
+  const entry = useBenchResult<PhaseStats>(OWNER);
+  const result = entry?.result.result ?? null;
+  const history = entry?.result.history ?? [];
+  const stamp = benchStamp(entry);
 
   const hasPhase = supports(state, 'phaseCalibration');
 
@@ -37,8 +63,12 @@ export function PhasePanel() {
         return;
       }
       const snapshot = e as PhaseResult;
-      setResult(snapshot);
-      setHistory((h) => [...h, snapshot.spreadUs]);
+      const prior = getBenchResult<PhaseStats>(OWNER)?.result.history ?? [];
+      putBenchResult<PhaseStats>(OWNER, {
+        result: snapshot,
+        history: [...prior, snapshot.spreadUs],
+      });
+      invalidateCaptureBenches('sensors were re-phased after this run');
       setStep('');
       setBusy(null);
       // Re-phase finishes on this event, not when the command returns.
@@ -55,14 +85,14 @@ export function PhasePanel() {
     try {
       if (action === 'measure') {
         const r = await dev.measurePhase();
-        setResult(r);
-        setHistory((h) => [...h, r.spreadUs]);
+        const prior = getBenchResult<PhaseStats>(OWNER)?.result.history ?? [];
+        putBenchResult<PhaseStats>(OWNER, { result: r, history: [...prior, r.spreadUs] });
         setBusy(null);
         releaseDevice(OWNER);
       } else if (action === 'reset') {
         const r = await dev.resetPhase();
-        setResult(r);
-        setHistory([r.spreadUs]);
+        putBenchResult<PhaseStats>(OWNER, { result: r, history: [r.spreadUs] });
+        invalidateCaptureBenches('sensor phase was reset after this run');
         setBusy(null);
         releaseDevice(OWNER);
       } else {
@@ -131,9 +161,11 @@ export function PhasePanel() {
         </>
       }
     >
+      <p className="dim" style={{ marginBottom: 2 }}>
+        Each sensor free-runs on its own clock.
+      </p>
       <p className="dim" style={{ marginBottom: 6 }}>
-        Each sensor free-runs on its own clock. Re-phasing restarts them with compensating delays so
-        their frame timelines line up; repeat until the spread stops improving.
+        Re-phasing restarts them with compensating delays. Repeat until the spread stops improving.
       </p>
       {/* Progress is a status line, not a button label. */}
       <p className="val" role="status" style={{ padding: '2px 0 6px', minHeight: 18 }}>
@@ -173,12 +205,17 @@ export function PhasePanel() {
               </tbody>
             </table>
           </div>
-          {/* CAM2 reads 0 here and non-zero in TIMING BENCH. Different
-              references, not a contradiction — say so. */}
+          {/* This used to claim a reference convention that differs from
+              TIMING BENCH's. It does not: both report the same wait, and the
+              two panels agreed to ~100 µs while the note explained a
+              difference that was never there. */}
           <p className="spark-minmax" style={{ display: 'block', paddingTop: 4 }}>
             Phase is measured against {result.reference.toUpperCase()}, so{' '}
-            {result.reference.toUpperCase()} is 0 by definition. TIMING BENCH reports the absolute
-            trigger-to-VSYNC wait per sensor, where {result.reference.toUpperCase()} is not zero.
+            {result.reference.toUpperCase()} is 0 by definition.
+          </p>
+          <p className="spark-minmax" style={{ display: 'block' }}>
+            TIMING BENCH's VSYNC PHASE column is the same trigger-to-VSYNC wait. Expect the same
+            numbers there, within run-to-run jitter.
           </p>
           <p className={`timing-grade timing-grade--${grade?.state}`} style={{ marginTop: 8 }}>
             <Led state={grade?.state ?? 'off'} label="" />
@@ -188,6 +225,14 @@ export function PhasePanel() {
           {history.length > 1 ? (
             <p className="spark-minmax">
               PASSES: {history.map((h) => formatUs(h)).join(' → ')}
+            </p>
+          ) : null}
+          {stamp ? (
+            <p
+              className={stamp.stale ? 'notice notice--warn' : 'spark-minmax'}
+              style={{ display: 'block', marginTop: 6, marginBottom: 0 }}
+            >
+              {stamp.text}
             </p>
           ) : null}
         </>

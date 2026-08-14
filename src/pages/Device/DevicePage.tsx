@@ -20,6 +20,7 @@ import { useDraft } from '../../hooks/useDraft';
 import type { BodyConfig } from '../../protocol/types';
 import { formatMB } from '../../utils/format';
 import { diffConfigs } from '../../utils/diffConfig';
+import { configLabel, configValue } from '../../utils/configLabels';
 import { buildBackup, backupFilename, validateBackup, bytesToBase64, base64ToBytes } from '../../device/backup';
 import type { BackupSound, KinoBackup } from '../../device/backup';
 import { readSound, uploadSound } from '../../device/sounds';
@@ -31,9 +32,45 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
+/**
+ * Calibration leaves are single letters on the wire (`x`, `rot`, `ev`) and the
+ * shared config map does not cover them — it only knows settings paths. The
+ * restore diff is the last screen before the camera is overwritten, so it
+ * names the calibration fields the way the calibration screens do.
+ */
+const CAL_FIELDS: Record<string, string> = {
+  ev: 'Exposure offset (EV)',
+  r: 'Red gain',
+  g: 'Green gain',
+  b: 'Blue gain',
+  x: 'X offset (px)',
+  y: 'Y offset (px)',
+  rot: 'Rotation (°)',
+  reference: 'Reference camera',
+  capturedAt: 'Captured',
+  orderVerifiedAt: 'Order verified',
+  spacingMm: 'Lens spacing (mm)',
+  spacingSource: 'Spacing source',
+  order: 'Physical order',
+  saved: 'Stored on device',
+  level: 'Flash level',
+  distance: 'Flash distance',
+  calibratedAt: 'Flash calibrated',
+};
+
+/** Row label for one flattened restore-diff path. */
+function diffLabel(path: string): string {
+  if (!path.startsWith('calibration.')) return configLabel(path);
+  const parts = path.split('.');
+  const last = parts[parts.length - 1];
+  const cam = parts.find((p) => /^cam[1-4]$/.test(p));
+  const field = CAL_FIELDS[last] ?? configLabel(path);
+  return ['Calibration', cam ? `CAM ${cam.slice(-1)}` : null, field].filter(Boolean).join(' · ');
+}
+
 export function DevicePage() {
   const state = useDeviceStore();
-  const { draft, dirty, changes, patch, discard } = useDraft<BodyConfig>(state.config?.body ?? null, {
+  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<BodyConfig>(state.config?.body ?? null, {
     key: 'device',
     label: 'Device',
   });
@@ -381,10 +418,13 @@ export function DevicePage() {
         />
       </Panel>
 
-      <ApplyBar dirty={dirty} changeCount={changes} onApply={applyBody} onDiscard={discard} />
+      <ApplyBar dirty={dirty} changeCount={changes} changedFields={changedFields} onApply={applyBody} onDiscard={discard} />
 
+      {/* Restore overwrites every setting and every calibration value on the
+          camera. It gets the red treatment and CANCEL keeps the focus. */}
       <ConfirmDialog
         open={pendingRestore !== null}
+        danger
         title="RESTORE FROM BACKUP"
         confirmLabel="RESTORE"
         onCancel={() => setPendingRestore(null)}
@@ -424,11 +464,15 @@ export function DevicePage() {
                         </tr>
                       </thead>
                       <tbody>
+                        {/* Named the way the controls name themselves —
+                            `config.body.sleepS 60 → 120` for a control whose
+                            own options read 1 MIN / 2 MIN. The key path stays
+                            available on hover. */}
                         {shown.map((d) => (
                           <tr key={d.path}>
-                            <td>{d.path}</td>
-                            <td className="num">{d.from}</td>
-                            <td className="num">{d.to}</td>
+                            <td title={d.path}>{diffLabel(d.path)}</td>
+                            <td className="num">{configValue(d.path, d.from)}</td>
+                            <td className="num">{configValue(d.path, d.to)}</td>
                           </tr>
                         ))}
                       </tbody>

@@ -141,12 +141,15 @@
   gap: var(--gap);
 }
 
+/* Columns of a panel, not cards inside a card. They used to carry their own
+   border, background and inset highlight inside CAMERAS · LEFT TO RIGHT,
+   which is a card in a card — the detector counted five on Overview alone. */
 .camcard {
-  border: 1px solid var(--border-mid);
-  border-radius: var(--r);
-  background: #fff;
-  box-shadow: inset 0 1px 0 var(--hilite);
-  padding: 8px 10px;
+  padding: 8px 12px;
+}
+
+.camstrip > .camcard + .camcard {
+  border-left: 1px solid var(--border-light);
 }
 
 .camcard-head {
@@ -245,7 +248,9 @@
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-faint);
+  /* --text-faint measures 4.15:1 on --panel-inset and 4.36:1 on this
+     gradient's dark stop. --text-mut is 5.28:1 on the same pair. */
+  color: var(--text-mut);
   position: relative;
 }
 
@@ -272,9 +277,12 @@
 
 /* ---- quad ---- */
 
+/* Four cameras side by side is the reason Quad exists. auto-fit keeps two
+   columns at 1024 (where it used to stack into 1400px of scroll) and reaches
+   four on a wide bench, with no breakpoint to maintain. */
 .quadgrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: var(--pad);
 }
 
@@ -737,18 +745,19 @@
 
 /* ---- simulator faults ---- */
 
+/* Docked strip above the status bar, not a floating overlay. As `position:
+   fixed` it sat on top of the workspace and `elementFromPoint` at 1024x800
+   returned the panel where two Gallery cards and CAM 2's NOTE input were —
+   a demo-only control blocking real ones. In flow it can't occlude anything. */
 .debugpanel {
-  position: fixed;
-  right: 14px;
-  /* Clears the status bar and the sticky apply bar; it used to half-cover
-     the Bring-Up inline test readout even when collapsed. */
-  bottom: 40px;
+  flex: none;
+  align-self: flex-end;
   width: 232px;
+  margin: 0 14px 4px;
   border: 1px solid var(--border-dark);
   border-radius: 3px;
   background: var(--panel);
-  z-index: var(--z-fixed-panel);
-  box-shadow: 4px 5px 14px rgb(15 30 55 / 35%);
+  box-shadow: 0 -2px 8px rgb(15 30 55 / 18%);
 }
 
 .debugpanel-head {
@@ -969,7 +978,6 @@
 
 @media (max-width: 1100px) {
   .camstrip { grid-template-columns: 1fr 1fr; }
-  .quadgrid { grid-template-columns: 1fr; }
   .recipes-layout { grid-template-columns: 210px 1fr; }
 }
 
@@ -997,9 +1005,6 @@
 
 /* Wide layouts: use the width instead of stretching a two-column design. */
 @media (min-width: 1800px) {
-  .quadgrid {
-    grid-template-columns: repeat(4, 1fr);
-  }
   .looks-editor {
     grid-template-columns: 460px 1fr;
   }

@@ -317,8 +317,11 @@
     --ctl-h: 42px;
     --sidebar-w: 330px;
   }
+  /* 2900px produced panels 2867px wide holding five short rows — 89% of each
+     field row was empty. Wide margins are a better use of a 4K display than
+     air inside the panels. */
   .workspace-inner {
-    max-width: 2900px;
+    max-width: 2200px;
   }
   .menubar,
   .toolbar {
@@ -629,7 +632,8 @@ dl { margin: 0; }
   grid-template-columns: minmax(0, 15ch) minmax(0, 1fr);
   align-items: baseline;
   gap: 12px;
-  padding: 3px 0;
+  /* A little air above the rule: values used to sit flush on it. */
+  padding: 3px 0 4px;
   border-bottom: 1px dotted var(--border-light);
   max-width: 46ch;
 }
@@ -898,7 +902,10 @@ textarea.input {
 
 .seg-opt:hover { background: var(--grad-btn-hover); }
 
-.seg-opt[aria-pressed='true'] {
+/* Selected. `aria-checked` is SegField's radio group; `aria-pressed` is the
+   hand-rolled seg groups elsewhere (frame strip, filters). Same look. */
+.seg-opt[aria-pressed='true'],
+.seg-opt[aria-checked='true'] {
   background: var(--grad-sel);
   color: #fff;
   font-weight: 700;
@@ -912,7 +919,8 @@ textarea.input {
   cursor: not-allowed;
 }
 
-.seg-opt:disabled[aria-pressed='true'] {
+.seg-opt:disabled[aria-pressed='true'],
+.seg-opt:disabled[aria-checked='true'] {
   background: linear-gradient(to bottom, #8ba7c8, #6d8bad);
   color: #f2f6fa;
   text-shadow: none;
@@ -1061,6 +1069,13 @@ input[type='range']:disabled::-webkit-slider-thumb {
   min-width: 84px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Typed entry in the readout's place — same width and alignment, so a row
+   with entry and a row without still line up in one column. */
+input[type='number'].slider-entry {
+  width: 84px;
+  flex: none;
 }
 
 /* ---- meter ---- */
@@ -1254,6 +1269,40 @@ input[type='range']:disabled::-webkit-slider-thumb {
   font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--orange-dark);
+}
+
+/* Which fields are unsaved, not just how many. */
+.applybar-fields {
+  font-size: var(--fs-sm);
+  color: var(--orange-dark);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The confirmation the bar used to withhold. Green, held for a few seconds,
+   focusable so a keyboard user lands here instead of at <body>. */
+.applybar--saved {
+  border-color: #a8cfa4;
+  background: #f4fbf3;
+}
+
+.applybar-saved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--green-dark);
+}
+
+.applybar-saved:focus {
+  outline: none;
+}
+.applybar-saved:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* A failed write is its own row, not text appended to the unsaved label. */

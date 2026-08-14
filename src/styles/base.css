@@ -119,7 +119,8 @@ code,
   font-variant-numeric: tabular-nums;
 }
 
-/* Keyboard-only jump past the 19-stop chrome run into the work area. */
+/* Keyboard-only jump past the chrome run (21 stops with Developer Mode on)
+   into the work area. */
 .skiplink {
   position: absolute;
   left: -9999px;
