@@ -230,7 +230,7 @@ git commit -m "chore: npm workspaces monorepo; studio -> apps/studio"
 **Interfaces:**
 - Produces: CI running typecheck, lint, tests, and production builds for every workspace on every push/PR (07§12). API/upload test jobs are added by WS3 tasks; the workflow is structured so they slot in.
 
-- [ ] **Step 1: Write the workflow**
+- [x] **Step 1: Write the workflow**
 
 ```yaml
 name: ci
@@ -250,12 +250,12 @@ jobs:
       - run: npm run build
 ```
 
-- [ ] **Step 2: Verify the same commands pass locally**
+- [x] **Step 2: Verify the same commands pass locally**
 
 Run: `npm run lint && npm run test && npm run build`
 Expected: PASS (this is what CI will run).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github && git commit -m "ci: typecheck, lint, test, build for all workspaces"
