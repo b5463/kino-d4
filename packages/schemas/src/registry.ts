@@ -4,7 +4,15 @@ import { SchemaTooNewError, MissingMigrationError } from './errors';
 export interface SchemaDef<T> {
   schema: string;
   version: number;
-  shape: z.ZodType<T>;
+  /**
+   * The current-version zod schema. The input side is deliberately left as
+   * `unknown` rather than pinned to `T`: schemas that use `.default()`,
+   * `.transform()`, or `z.coerce` have an input type that differs from their
+   * output type, and `z.ZodType<T>` (which is `ZodType<T, ZodTypeDef, T>`)
+   * would infer `T` from the input side and drop defaulted fields to optional.
+   * `T` must always be the parsed *output* type.
+   */
+  shape: z.ZodType<T, z.ZodTypeDef, unknown>;
   migrations: Record<number, (doc: Record<string, unknown>) => Record<string, unknown>>;
 }
 

@@ -40,3 +40,27 @@ describe('parseVersioned', () => {
       .toThrow(MissingMigrationError);
   });
 });
+
+// Regression guard for schemas whose zod input type differs from their output type.
+// `.default()` makes `n` optional on the way in but required on the way out, so a
+// `shape` field typed as `z.ZodType<T>` (which pins Input === Output) would infer T
+// from the *input* side and hand back `n?: number | undefined`.
+const withDefaults = defineSchema({
+  schema: 'kino.test-defaults',
+  version: 1,
+  shape: z.object({
+    schema: z.literal('kino.test-defaults'),
+    version: z.literal(1),
+    n: z.number().default(1),
+  }),
+  migrations: {},
+});
+
+describe('parseVersioned with input/output-divergent schemas', () => {
+  it('applies zod defaults and types the result as non-optional', () => {
+    const out = parseVersioned(withDefaults, { schema: 'kino.test-defaults', version: 1 });
+    // Compile-level assertion: this only typechecks if T is the zod *output* type.
+    const n: number = out.n;
+    expect(n).toBe(1);
+  });
+});
