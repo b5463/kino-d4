@@ -1,0 +1,177 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs);
+  line-height: 1.4;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--link);
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+}
+
+::selection {
+  background: var(--sel-bot);
+  color: #fff;
+}
+
+/* Focus: 2px solid ring plus a white keyline so it reads on light chrome,
+   on the blue selection gradient and on white fields alike. A 1px dotted
+   outline measured 3.2:1 on selected items and failed the 2px minimum. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  box-shadow: var(--focus-ring);
+}
+
+/* Placeholders were inheriting the UA default (4.61:1 — passing by 0.11 and
+   only by luck). Pin them to a token that has margin. */
+::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+
+/* Classic light scrollbars with a beveled thumb. */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+::-webkit-scrollbar-track {
+  background: #eef1f6;
+  border-left: 1px solid var(--border-light);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--grad-btn);
+  border: 1px solid var(--border-mid);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--grad-btn-hover);
+}
+
+/* Small uppercase technical caption. */
+.microlabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mut);
+}
+
+/* Captions sitting on a coloured header inherit that header's ink instead
+   of the muted token — the muted grey measured 1.27:1 on the blue strip. */
+.dialog-head .microlabel,
+.debugpanel-head .microlabel,
+.nav-item[aria-current='page'] .microlabel {
+  color: inherit;
+}
+
+.dim {
+  color: var(--text-mut);
+}
+.faint {
+  color: var(--text-faint);
+}
+/* Muted text inside a dark image well needs the light end of the ramp. */
+.well--dark .faint,
+.well--dark .dim,
+.inspector-stage .faint {
+  color: var(--text-on-dark);
+}
+.val {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard-only jump past the 19-stop chrome run into the work area. */
+.skiplink {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: var(--z-modal);
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border-dark);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.skiplink:focus {
+  left: 8px;
+  top: 8px;
+}
+
+/* Text for screen readers only: live-region announcements, and labels that
+   would be redundant noise on screen but are the only label in the tree. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The work area is the skip-link target, so it takes focus programmatically
+   without ever showing a ring for mouse users. */
+.workspace:focus {
+  outline: none;
+}
+.workspace:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* Reduced motion. CSS animation is neutralised here; JS-driven motion
+   (wiggle sequencer, capture autoplay) is gated in code via
+   useReducedMotion, because a setInterval cannot be reached from CSS. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

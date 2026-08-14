@@ -1,0 +1,452 @@
+import { useEffect, useRef, useState } from 'react';
+import { Panel } from '../../components/Panel';
+import { Button } from '../../components/Button';
+import { Led } from '../../components/Led';
+import { Icon } from '../../components/Icon';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ApplyBar } from '../../components/ApplyBar';
+import { SegField, SelectField, SliderField, ToggleField } from '../../components/fields';
+import { useDeviceStore, supports } from '../../state/deviceStore';
+import {
+  getDevice,
+  refreshCalibration,
+  refreshConfig,
+  refreshDeviceInfo,
+  refreshRecipes,
+  refreshSounds,
+} from '../../app/session';
+import { onUi } from '../../state/uiBus';
+import { useDraft } from '../../hooks/useDraft';
+import type { BodyConfig } from '../../protocol/types';
+import { formatMB } from '../../utils/format';
+import { diffConfigs } from '../../utils/diffConfig';
+import { buildBackup, backupFilename, validateBackup, bytesToBase64, base64ToBytes } from '../../device/backup';
+import type { BackupSound, KinoBackup } from '../../device/backup';
+import { readSound, uploadSound } from '../../device/sounds';
+import { downloadText } from '../../utils/download';
+import { playBuiltin } from '../../utils/soundFx';
+
+/** "1 look" / "2 looks" — never "1 look(s)". */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+export function DevicePage() {
+  const state = useDeviceStore();
+  const { draft, dirty, changes, patch, discard } = useDraft<BodyConfig>(state.config?.body ?? null, {
+    key: 'device',
+    label: 'Device',
+  });
+  const [pendingRestore, setPendingRestore] = useState<{
+    backup: KinoBackup;
+    skipped: string[];
+    skippedSounds: string[];
+  } | null>(null);
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const restoreFileRef = useRef<HTMLInputElement>(null);
+
+  const { info, power, storage, config } = state;
+
+  const backUp = async () => {
+    if (!info || !config || !state.calibration) {
+      setBackupNotice('Device state is still loading — try again in a moment.');
+      return;
+    }
+    // Custom sound bytes come off the device (cached after the first read).
+    let sounds: BackupSound[] = [];
+    const dev = getDevice();
+    if (dev && state.sounds.length > 0) {
+      try {
+        sounds = await Promise.all(
+          state.sounds.map(async (s) => ({
+            id: s.id,
+            name: s.name,
+            durationMs: s.durationMs,
+            wavBase64: bytesToBase64(await readSound(dev, s)),
+          })),
+        );
+      } catch (err) {
+        setBackupNotice(`Backup failed reading sounds: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+    }
+    const backup = buildBackup(info, config, state.calibration, state.customRecipes, sounds);
+    downloadText(backupFilename(info), JSON.stringify(backup, null, 2), 'application/json');
+    setBackupNotice(
+      `Backed up settings, calibration, ${plural(state.customRecipes.length, 'custom look')} and ${plural(sounds.length, 'custom sound')}. Photos stay on the SD card.`,
+    );
+  };
+
+  const pickRestoreFile = (file: File) => {
+    setBackupNotice(null);
+    void file.text().then((text) => {
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        setBackupNotice('Restore failed: file is not valid JSON.');
+        return;
+      }
+      const check = validateBackup(json);
+      if (!check.ok || !check.backup) {
+        setBackupNotice(`Restore failed: ${check.error}`);
+        return;
+      }
+      setPendingRestore({
+        backup: check.backup,
+        skipped: check.skippedRecipes ?? [],
+        skippedSounds: check.skippedSounds ?? [],
+      });
+    });
+  };
+
+  useEffect(() => onUi('backup', () => void backUp()), [info, config, state.calibration, state.customRecipes, state.sounds]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => onUi('restore', () => restoreFileRef.current?.click()), []);
+
+  const runRestore = async () => {
+    const dev = getDevice();
+    if (!dev || !pendingRestore) return;
+    const { backup, skipped, skippedSounds } = pendingRestore;
+    setPendingRestore(null);
+    setRestoreBusy(true);
+    try {
+      // Sounds first — the config may name a custom clip as shutter sound.
+      const soundsSupported = supports(state, 'customSounds');
+      let soundsWritten = 0;
+      if (soundsSupported) {
+        for (const snd of backup.customSounds) {
+          const wav = base64ToBytes(snd.wavBase64);
+          await uploadSound(dev, { id: snd.id, name: snd.name, sizeBytes: wav.length, durationMs: snd.durationMs }, wav);
+          soundsWritten++;
+        }
+      }
+      await dev.applyConfig(backup.config);
+      await dev.applyCalibration(backup.calibration.cams);
+      for (const recipe of backup.customRecipes) {
+        await dev.uploadRecipe({ ...recipe, factory: false });
+      }
+      await Promise.all([refreshConfig(), refreshCalibration(), refreshRecipes(), refreshSounds().catch(() => {}), refreshDeviceInfo()]);
+      const notes: string[] = [];
+      if (skipped.length > 0) notes.push(`Skipped ${plural(skipped.length, 'invalid look')}: ${skipped.join(', ')}.`);
+      if (skippedSounds.length > 0) notes.push(`Skipped ${plural(skippedSounds.length, 'invalid sound')}: ${skippedSounds.join(', ')}.`);
+      if (!soundsSupported && backup.customSounds.length > 0) {
+        notes.push(`${plural(backup.customSounds.length, 'sound')} not written — this firmware has no custom sounds.`);
+      }
+      setBackupNotice(
+        `Restore complete — settings, calibration, ${plural(backup.customRecipes.length, 'look')} and ${plural(soundsWritten, 'sound')} written to KINO.${notes.length ? ' ' + notes.join(' ') : ''}`,
+      );
+    } catch (err) {
+      setBackupNotice(
+        `Restore stopped: ${err instanceof Error ? err.message : String(err)}. The KINO may be partially restored — check settings before shooting.`,
+      );
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  const applyBody = async () => {
+    const dev = getDevice();
+    if (!dev || !draft) throw new Error('Not connected');
+    await dev.applyConfig({ body: draft });
+    await refreshConfig();
+  };
+
+  if (!info) return null;
+
+  const sdUsedPct =
+    storage && storage.present && storage.totalMB > 0
+      ? Math.round(((storage.totalMB - storage.freeMB) / storage.totalMB) * 100)
+      : 0;
+  const battPct = power?.batteryPct ?? 0;
+
+  return (
+    <>
+      <div className="pagehead">
+        <h1>
+          <Icon name="device" />
+          Device
+        </h1>
+        <span className="microlabel">
+          {info.product} {info.hardware} · {info.serial}
+        </span>
+      </div>
+
+      <div className="panel-grid">
+        <Panel title="MAIN CONTROLLER">
+          <dl>
+            <div className="datarow"><dt>Product</dt><dd>{info.product} {info.hardware}</dd></div>
+            <div className="datarow"><dt>Serial</dt><dd>{info.serial}</dd></div>
+            <div className="datarow"><dt>Protocol</dt><dd>{info.protocol}</dd></div>
+            <div className="datarow"><dt>P4 firmware</dt><dd>{info.p4Firmware}</dd></div>
+            <div className="datarow"><dt>Camera firmware</dt><dd>{info.cameraFirmware.join(' / ')}</dd></div>
+          </dl>
+        </Panel>
+
+        <Panel title="STORAGE">
+          {storage?.present ? (
+            <>
+              <dl>
+                <div className="datarow"><dt>SD card</dt><dd><Led state="ok" label="MOUNTED" /></dd></div>
+                <div className="datarow"><dt>Capacity</dt><dd>{formatMB(storage.totalMB)}</dd></div>
+                <div className="datarow"><dt>Free</dt><dd>{formatMB(storage.freeMB)}</dd></div>
+              </dl>
+              <div className="meter" style={{ marginTop: 6 }} role="img" aria-label={`Card ${sdUsedPct}% full`}>
+                <div
+                  className={`meter-fill ${sdUsedPct > 90 ? 'meter-fill--err' : sdUsedPct > 75 ? 'meter-fill--warn' : 'meter-fill--ok'}`}
+                  style={{ width: `${sdUsedPct}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <dl>
+              <div className="datarow"><dt>SD card</dt><dd><Led state="err" label="NO CARD" /></dd></div>
+            </dl>
+          )}
+        </Panel>
+
+        <Panel title="POWER">
+          <dl>
+            <div className="datarow"><dt>Battery</dt><dd>{power ? `${power.batteryV.toFixed(2)} V` : '—'}</dd></div>
+            <div className="datarow"><dt>Charge</dt><dd>{battPct}%</dd></div>
+            <div className="datarow">
+              <dt>State</dt>
+              <dd>
+                {power?.charging ? (
+                  <Led state="busy" label="CHARGING" />
+                ) : battPct <= 15 ? (
+                  <Led state="warn" label="LOW BATTERY" />
+                ) : (
+                  <Led state="ok" label={power?.state.toUpperCase() ?? '—'} />
+                )}
+              </dd>
+            </div>
+          </dl>
+          <div className="meter" style={{ marginTop: 6 }} role="img" aria-label={`Battery ${battPct}%`}>
+            <div
+              className={`meter-fill ${battPct <= 15 ? 'meter-fill--err' : battPct <= 30 ? 'meter-fill--warn' : 'meter-fill--ok'}`}
+              style={{ width: `${battPct}%` }}
+            />
+          </div>
+        </Panel>
+      </div>
+
+      {draft ? (
+        <>
+          <div className="panel-grid">
+            <Panel title="REAR DISPLAY">
+              <SliderField
+                label="BRIGHTNESS"
+                value={draft.brightness}
+                min={1}
+                max={10}
+                onChange={(brightness) => patch((d) => ({ ...d, brightness }))}
+              />
+              <SegField
+                label="AUTO-DIM"
+                value={String(draft.autoDimS)}
+                options={[
+                  { value: '10', label: '10 S' },
+                  { value: '20', label: '20 S' },
+                  { value: '45', label: '45 S' },
+                  { value: '0', label: 'NEVER' },
+                ]}
+                onChange={(v) => patch((d) => ({ ...d, autoDimS: Number(v) }))}
+              />
+              <SegField
+                label="SLEEP"
+                value={String(draft.sleepS)}
+                options={[
+                  { value: '60', label: '1 MIN' },
+                  { value: '120', label: '2 MIN' },
+                  { value: '300', label: '5 MIN' },
+                  { value: '0', label: 'NEVER' },
+                ]}
+                onChange={(v) => patch((d) => ({ ...d, sleepS: Number(v) }))}
+              />
+              <SegField
+                label="CAM BANK IDLE OFF"
+                value={String(draft.camIdleTimeoutS)}
+                options={[
+                  { value: '120', label: '2 MIN' },
+                  { value: '180', label: '3 MIN' },
+                  { value: '300', label: '5 MIN' },
+                  { value: '0', label: 'NEVER' },
+                ]}
+                onChange={(v) => patch((d) => ({ ...d, camIdleTimeoutS: Number(v) }))}
+              />
+            </Panel>
+
+            <Panel title="BODY SOUNDS">
+              <ToggleField
+                label="STARTUP SOUND"
+                checked={draft.sounds.startup}
+                onChange={(startup) => patch((d) => ({ ...d, sounds: { ...d.sounds, startup } }))}
+              />
+              <ToggleField
+                label="UI SOUNDS"
+                checked={draft.sounds.ui}
+                onChange={(ui) => patch((d) => ({ ...d, sounds: { ...d.sounds, ui } }))}
+              />
+              <ToggleField
+                label="SAVE-COMPLETE SOUND"
+                checked={draft.sounds.save}
+                onChange={(save) => patch((d) => ({ ...d, sounds: { ...d.sounds, save } }))}
+              />
+              <ToggleField
+                label="WARNING SOUND"
+                checked={draft.sounds.warning}
+                onChange={(warning) => patch((d) => ({ ...d, sounds: { ...d.sounds, warning } }))}
+              />
+              <div className="field">
+                <span className="field-label">PREVIEW</span>
+                <div className="control" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {(['startup', 'ui', 'save', 'warning'] as const).map((id) => (
+                    <Button
+                      key={id}
+                      size="sm"
+                      disabled={(config?.shoot.volume ?? 0) === 0}
+                      onClick={() => playBuiltin(id, config?.shoot.volume ?? 6)}
+                    >
+                      {id.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <p className="microlabel" style={{ marginBottom: 0 }}>
+                {(config?.shoot.volume ?? 0) === 0 ? 'MASTER VOLUME IS MUTED — SET IT ON THE SHOOT PAGE' : 'PLAYS AT MASTER VOLUME FROM THE SHOOT PAGE'}
+              </p>
+            </Panel>
+          </div>
+
+          <Panel title="PHYSICAL CONTROLS">
+            <SelectField
+              label="FUNCTION BUTTON"
+              value={draft.buttons.fn}
+              options={[
+                { value: 'flash', label: 'TOGGLE FLASH' },
+                { value: 'mode', label: 'SWITCH WIGGLE / QUAD' },
+                { value: 'next-look', label: 'NEXT LOOK' },
+                { value: 'gallery', label: 'OPEN GALLERY' },
+                { value: 'favorite', label: 'FAVORITE LAST SHOT' },
+              ]}
+              onChange={(v) => patch((d) => ({ ...d, buttons: { ...d.buttons, fn: v as BodyConfig['buttons']['fn'] } }))}
+            />
+            <SelectField
+              label="SLIDE SWITCH"
+              value={draft.buttons.slide}
+              options={[
+                { value: 'power-lock', label: 'POWER LOCK' },
+                { value: 'mode', label: 'MODE SELECTOR' },
+                { value: 'flash', label: 'FLASH SELECTOR' },
+              ]}
+              onChange={(v) =>
+                patch((d) => ({ ...d, buttons: { ...d.buttons, slide: v as BodyConfig['buttons']['slide'] } }))
+              }
+            />
+            <p className="dim" style={{ paddingTop: 6 }}>
+              The shutter button is not remappable.
+            </p>
+          </Panel>
+        </>
+      ) : null}
+
+      <Panel
+        title="BACKUP"
+        actions={
+          <>
+            <Button variant="primary" onClick={() => void backUp()}>
+              BACK UP KINO
+            </Button>
+            <Button busy={restoreBusy} onClick={() => restoreFileRef.current?.click()}>
+              RESTORE FROM FILE…
+            </Button>
+          </>
+        }
+      >
+        <p className="dim">
+          One .kino file with settings, calibration, custom looks and custom sounds. Photos are not included.
+        </p>
+        {backupNotice ? <p className="notice" style={{ marginTop: 8, marginBottom: 0 }}>{backupNotice}</p> : null}
+        <input
+          ref={restoreFileRef}
+          type="file"
+          accept=".kino,.json,application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) pickRestoreFile(f);
+            e.target.value = '';
+          }}
+        />
+      </Panel>
+
+      <ApplyBar dirty={dirty} changeCount={changes} onApply={applyBody} onDiscard={discard} />
+
+      <ConfirmDialog
+        open={pendingRestore !== null}
+        title="RESTORE FROM BACKUP"
+        confirmLabel="RESTORE"
+        onCancel={() => setPendingRestore(null)}
+        onConfirm={() => void runRestore()}
+      >
+        {pendingRestore ? (
+          (() => {
+            const diffs = diffConfigs(
+              { config: config ?? {}, calibration: state.calibration ?? {} },
+              { config: pendingRestore.backup.config, calibration: pendingRestore.backup.calibration },
+            );
+            const shown = diffs.slice(0, 12);
+            return (
+              <>
+                <p>
+                  Backup of <strong>{pendingRestore.backup.device.serial}</strong>,{' '}
+                  {new Date(pendingRestore.backup.createdAt).toLocaleDateString()}. Writes{' '}
+                  {plural(pendingRestore.backup.customRecipes.length, 'custom look')} and{' '}
+                  {plural(pendingRestore.backup.customSounds.length, 'custom sound')}
+                  {pendingRestore.skipped.length + pendingRestore.skippedSounds.length > 0
+                    ? `, skips ${pendingRestore.skipped.length + pendingRestore.skippedSounds.length} invalid`
+                    : ''}
+                  . Photos are not touched.
+                </p>
+                {diffs.length === 0 ? (
+                  <p className="dim" style={{ marginTop: 8 }}>
+                    Settings and calibration are identical to the current state.
+                  </p>
+                ) : (
+                  <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }} className="well">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>SETTING</th>
+                          <th className="num">NOW</th>
+                          <th className="num">AFTER</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {shown.map((d) => (
+                          <tr key={d.path}>
+                            <td>{d.path}</td>
+                            <td className="num">{d.from}</td>
+                            <td className="num">{d.to}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {diffs.length > shown.length ? (
+                      <p className="microlabel" style={{ padding: '4px 8px' }}>
+                        +{diffs.length - shown.length} MORE CHANGES
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </>
+            );
+          })()
+        ) : (
+          <p />
+        )}
+      </ConfirmDialog>
+    </>
+  );
+}

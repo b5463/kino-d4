@@ -1,0 +1,1041 @@
+/* ---- disconnected home ---- */
+
+.connect {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 0;
+}
+
+.connect-card {
+  width: 460px;
+  background: var(--panel);
+  border: 1px solid var(--border-mid);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 var(--hilite), 0 4px 14px rgb(40 60 90 / 18%);
+  padding: 26px 30px 22px;
+  text-align: center;
+}
+
+.connect-mark {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  margin-right: -0.42em;
+}
+
+.connect-sub {
+  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.5em;
+  margin-right: -0.5em;
+  color: var(--text-mut);
+  font-weight: 700;
+}
+
+.connect-cams {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 22px 0;
+}
+
+.connect-cam {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  background: linear-gradient(to bottom, #f2f5f9, #d5dee9);
+  box-shadow: inset 0 1px 0 var(--hilite);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.connect-cam::after {
+  content: '';
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid #56637a;
+  background: radial-gradient(circle at 35% 32%, #6f8092, #1d2733 65%);
+}
+
+.connect-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.connect-status {
+  margin-top: 14px;
+  min-height: 18px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-mut);
+}
+
+.connect-note {
+  margin-top: 14px;
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+.connect-facts {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 10px;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+}
+
+/* ---- readiness banner ---- */
+
+/* Status by bordered tinted box + lamp + word, not a coloured left edge. */
+.readybar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: #fff;
+  box-shadow: inset 0 1px 0 var(--hilite);
+  margin-bottom: var(--pad);
+}
+
+.readybar--ok { border-color: #a8cfa4; background: #f4fbf3; }
+.readybar--warn { border-color: #ddc98d; background: #fdf9ec; }
+.readybar--err { border-color: #d9a6a6; background: #fdf2f2; }
+
+.readybar-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.readybar--ok .readybar-state { color: var(--green-dark); }
+.readybar--warn .readybar-state { color: var(--orange-dark); }
+.readybar--err .readybar-state { color: var(--red-dark); }
+
+.readybar-issues {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+/* ---- camera strip ---- */
+
+.camstrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--gap);
+}
+
+.camcard {
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: #fff;
+  box-shadow: inset 0 1px 0 var(--hilite);
+  padding: 8px 10px;
+}
+
+.camcard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.camcard-name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.camcard .datarow { padding: 2px 0; }
+.camcard .datarow dt { font-size: 10px; }
+.camcard .datarow dd { font-size: 10px; }
+
+/* ---- mode selector ---- */
+
+.modeselect {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  margin-bottom: var(--pad);
+}
+
+.modecard {
+  padding: 12px 14px 10px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: var(--grad-btn);
+  box-shadow: inset 0 1px 0 var(--hilite);
+  text-align: left;
+  cursor: default;
+}
+
+.modecard:hover { background: var(--grad-btn-hover); }
+
+.modecard[aria-pressed='true'] {
+  background: linear-gradient(to bottom, #eaf2fd, #d9e7f8);
+  border-color: var(--blue-dark);
+  box-shadow: inset 0 0 0 1px var(--blue-hi), inset 0 1px 0 var(--hilite);
+}
+
+.modecard-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.modecard[aria-pressed='true'] .modecard-name { color: var(--blue-dark); }
+
+.modecard-desc {
+  margin-top: 4px;
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+/* ---- wiggle viz ---- */
+
+.wiggleviz {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  /* Sits in the same 160px-label grid as every other row in the panel. */
+  padding: 8px 0 10px 174px;
+}
+
+@media (max-width: 900px) {
+  .wiggleviz { padding-left: 0; }
+}
+
+.wiggleviz-cams {
+  display: flex;
+  gap: 10px;
+}
+
+.wigglecam {
+  width: 60px;
+  height: 46px;
+  border: 1px solid var(--border-mid);
+  border-radius: 3px;
+  background: linear-gradient(to bottom, #f4f7fb, #dde5ee);
+  box-shadow: inset 0 1px 0 var(--hilite);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  position: relative;
+}
+
+.wigglecam--active {
+  border-color: var(--blue-dark);
+  color: #fff;
+  background: var(--grad-sel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 40%);
+}
+
+.wiggleviz-seq {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.1em;
+  color: var(--text-mut);
+}
+
+.wiggleviz-seq b { color: var(--blue-dark); }
+
+.wiggleviz-controls {
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- quad ---- */
+
+.quadgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pad);
+}
+
+/* ---- looks ---- */
+
+.recipes-layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: var(--pad);
+  align-items: start;
+}
+
+.recipe-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 9px;
+  border: 1px solid var(--border-light);
+  border-radius: 2px;
+  background: #fff;
+  cursor: default;
+  margin-bottom: 4px;
+}
+
+.recipe-item:hover { border-color: var(--blue-hi); }
+
+.recipe-item[aria-pressed='true'] {
+  background: linear-gradient(to bottom, #e8f1fc, #d6e5f8);
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue-hi);
+}
+
+.recipe-item-name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.recipe-item-desc {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-mut);
+}
+
+.tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border: 1px solid var(--border-mid);
+  border-radius: 2px;
+  color: var(--text-mut);
+  background: var(--panel);
+  flex: none;
+}
+
+/* Dark ink on the orange measures 6.3:1; white measured 2.5:1. */
+.tag--accent {
+  border-color: var(--orange-border);
+  color: #3a1d02;
+  background: linear-gradient(to bottom, #f6a458, var(--orange));
+}
+
+.lookpreview {
+  display: grid;
+  gap: 6px;
+}
+
+.lookpreview canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 1px;
+}
+
+.lookpreview-well {
+  padding: 8px;
+}
+
+.lookpreview-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ---- calibration ---- */
+
+.calsteps {
+  display: grid;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calsteps li {
+  display: flex;
+  gap: 8px;
+  color: var(--text-mut);
+}
+
+.calsteps li::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero);
+  font-family: var(--mono);
+  color: var(--blue-dark);
+  font-weight: 700;
+}
+
+.tablewrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.orderwizard-lens {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.orderwizard-lens .btn { flex: 1; }
+
+/* ---- updates ---- */
+
+.fwrow {
+  display: grid;
+  grid-template-columns: 56px 132px 1fr 120px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-light);
+  background: #fff;
+}
+
+.fwrow:nth-child(even) { background: #f3f6fa; }
+.fwrow:last-child { border-bottom: 0; }
+
+/* The total, above the five per-target rows. Heavier rule under it so the
+   list below reads as its detail. */
+.fwrow--overall {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-mid);
+  font-weight: 700;
+}
+.fwrow--overall .meter { height: 14px; }
+
+.fwrow-target {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.fwrow-status { font-size: 10px; }
+
+.fwrow-err {
+  grid-column: 2 / -1;
+  font-size: var(--fs-sm);
+  color: var(--red-dark);
+  padding-bottom: 4px;
+}
+
+.recovery { border-color: var(--red); }
+
+.recovery .panel-head {
+  background: linear-gradient(to bottom, #fdf0f0, #f5d9d9);
+  border-bottom-color: #dfb0b0;
+}
+
+.recovery .panel-title::before {
+  background: var(--grad-red);
+  border-color: var(--red-dark);
+}
+
+/* ---- gallery ---- */
+
+.gallery-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: var(--pad);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--gap);
+}
+
+.capturecard {
+  border: 1px solid var(--border-mid);
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: inset 0 1px 0 var(--hilite);
+  padding: 5px;
+  text-align: left;
+  cursor: default;
+}
+
+.capturecard:hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue-hi), inset 0 1px 0 var(--hilite);
+}
+
+.capturecard-thumb {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--well-dark);
+  border: 1px solid var(--border-dark);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.capturecard-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.capturecard-kind {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: rgb(20 32 48 / 75%);
+  border: 1px solid rgb(255 255 255 / 25%);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.capturecard-fav {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  color: #ffd24a;
+  font-size: 13px;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+}
+
+.capturecard-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 3px 2px;
+}
+
+.capturecard-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.capturecard-sub {
+  font-size: 9px;
+  color: var(--text-mut);
+}
+
+/* capture inspector (viewer window) */
+.inspector-stage {
+  background: var(--well-dark);
+  border: 1px solid var(--border-dark);
+  border-radius: 2px;
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 330px;
+  position: relative;
+  overflow: hidden;
+}
+
+.inspector-stage canvas,
+.inspector-stage img {
+  max-width: 100%;
+  max-height: 420px;
+  display: block;
+}
+
+.inspector-quad {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  width: 100%;
+}
+
+.inspector-quad figure {
+  margin: 0;
+  position: relative;
+}
+
+.inspector-quad img {
+  width: 100%;
+  display: block;
+  border: 1px solid #46536a;
+}
+
+.inspector-quad figcaption {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  background: rgb(20 32 48 / 75%);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.inspector-strip {
+  display: flex;
+  gap: 5px;
+  padding: 6px 0 0;
+}
+
+/* Frame thumbnails only. Scoped off `.btn` so the per-frame download chips
+   next to them keep real button chrome instead of resting flat white. */
+.inspector-strip button:not(.btn) {
+  border: 1px solid var(--border-mid);
+  padding: 2px;
+  background: #fff;
+  cursor: default;
+  border-radius: 2px;
+}
+
+.inspector-strip button:not(.btn)[aria-pressed='true'] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue-hi);
+}
+
+.inspector-strip img {
+  width: 64px;
+  height: 48px;
+  object-fit: cover;
+  display: block;
+}
+
+.inspector-strip .sliderwrap {
+  max-width: 190px;
+  min-width: 0;
+}
+
+/* Groups keep their own line: a wrapping parent broke the line before it
+   shrank anything, which put DELETE on row two directly under the export
+   chips. The exports absorb the wrapping instead. */
+.inspector-tools {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: nowrap;
+  padding-top: 8px;
+}
+
+.toolgroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.toolgroup--exports {
+  flex: 1 1 auto;
+}
+
+/* DELETE is not an eleventh export. */
+.toolgroup--danger {
+  border-left: 1px solid var(--border-mid);
+  padding-left: 14px;
+  flex: none;
+}
+
+.transferbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-sm);
+}
+
+.transferbar .meter { flex: 1; }
+
+/* ---- logs ---- */
+
+.logviewer {
+  display: flex;
+  flex-direction: column;
+  height: 360px;
+}
+
+.logtools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-mid);
+  background: var(--grad-head);
+  flex-wrap: wrap;
+}
+
+.logfilters {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.logfilter {
+  min-height: var(--ctl-h);
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-mut);
+  cursor: default;
+}
+
+.logfilter:hover { border-color: var(--border-mid); background: #fff; }
+
+.logfilter[aria-pressed='true'] {
+  background: var(--grad-sel);
+  border-color: var(--blue-dark);
+  color: #fff;
+}
+
+.logbody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  background: #fff;
+}
+
+.logline { white-space: pre-wrap; word-break: break-word; }
+.logline .t { color: #66727f; }
+.logline .src { color: var(--blue-dark); font-weight: 700; }
+.logline .src--pwr { color: #8a4a08; }
+.logline .src--sd { color: #0b666e; }
+.logline .src--proto { color: #5f6b7a; }
+
+/* ---- simulator faults ---- */
+
+.debugpanel {
+  position: fixed;
+  right: 14px;
+  /* Clears the status bar and the sticky apply bar; it used to half-cover
+     the Bring-Up inline test readout even when collapsed. */
+  bottom: 40px;
+  width: 232px;
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  background: var(--panel);
+  z-index: var(--z-fixed-panel);
+  box-shadow: 4px 5px 14px rgb(15 30 55 / 35%);
+}
+
+.debugpanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 9px;
+  min-height: 24px;
+  cursor: default;
+  background: var(--grad-sel);
+  color: #fff;
+  border: 0;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.debugpanel-body {
+  padding: 6px 9px 9px;
+  display: grid;
+  gap: 3px;
+}
+
+.debugtoggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--ctl-h);
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  cursor: default;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-mut);
+  text-align: left;
+}
+
+.debugtoggle:hover { background: #fff; border-color: var(--border-mid); }
+
+.debugtoggle .state { color: var(--text-faint); }
+.debugtoggle[aria-pressed='true'] .state { color: var(--red-dark); }
+
+/* ---- reconnect banner ---- */
+
+.reconnectbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--pad);
+  padding: 6px 12px;
+  background: linear-gradient(to bottom, #fef3d8, #f8dfa4);
+  border: 1px solid var(--orange-dark);
+  border-radius: var(--r);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--orange-dark);
+}
+
+/* ---- self test ---- */
+
+.selftest-list {
+  display: grid;
+  gap: 0;
+  font-size: var(--fs-sm);
+  background: #fff;
+  border: 1px solid var(--border-light);
+  border-radius: 2px;
+}
+
+.selftest-row {
+  display: grid;
+  grid-template-columns: 160px 68px 1fr;
+  gap: 10px;
+  padding: 4px 9px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.selftest-row:nth-child(even) { background: #f5f8fb; }
+.selftest-row:last-child { border-bottom: 0; }
+
+.st-pass { color: var(--green-dark); font-weight: 700; }
+.st-fail { color: var(--red-dark); font-weight: 700; }
+.st-skip { color: var(--text-mut); }
+.st-running { color: var(--blue-dark); font-weight: 700; }
+
+/* Chart min/max readouts: bold and small, but never uppercased — unit
+   symbols like µs must survive. */
+.spark-minmax {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-mut);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- timing bench ---- */
+
+.timing-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--gap);
+  margin: 10px 0 6px;
+}
+
+.timing-metric {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: #fff;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+/* The metric that decides the photograph gets the weight — via a full
+   ring, a tinted fill and a larger value, not a coloured left edge. */
+.timing-metric--primary {
+  border-color: var(--border-dark);
+  box-shadow: inset 0 0 0 1px var(--border-mid), inset 0 1px 0 var(--hilite);
+}
+
+.timing-metric--primary .timing-value {
+  font-size: 23px;
+}
+
+.timing-metric--ok { border-color: #a8cfa4; background: #f4fbf3; }
+.timing-metric--warn { border-color: #ddc98d; background: #fdf9ec; }
+.timing-metric--err { border-color: #d9a6a6; background: #fdf2f2; }
+
+.timing-value {
+  font-family: var(--mono);
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timing-metric--ok .timing-value { color: var(--green-dark); }
+.timing-metric--warn .timing-value { color: var(--orange-dark); }
+.timing-metric--err .timing-value { color: var(--red-dark); }
+
+.timing-grade {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 6px 0;
+}
+
+.timing-grade--ok { color: var(--green-dark); }
+.timing-grade--warn { color: var(--orange-dark); }
+.timing-grade--err { color: var(--red-dark); }
+
+/* ---- bring-up checklist ---- */
+
+.bringup-list {
+  display: grid;
+  gap: 0;
+}
+
+.bringup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 4px 2px;
+  border-bottom: 1px dotted var(--border-light);
+}
+
+.bringup-item:last-child { border-bottom: 0; }
+
+.bringup-item label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  cursor: default;
+}
+
+.bringup-item input[type='checkbox'] {
+  accent-color: var(--blue);
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: none;
+}
+
+/* The whole label row is the target, so the 16px box is not the hit area. */
+.bringup-item label {
+  min-height: var(--ctl-h);
+  align-items: center;
+  padding: 2px 0;
+}
+
+.bringup-item label:has(input:checked) span {
+  color: var(--text-mut);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-mid);
+}
+
+.bringup-test {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* ---- responsive ---- */
+
+@media (max-width: 1100px) {
+  .camstrip { grid-template-columns: 1fr 1fr; }
+  .quadgrid { grid-template-columns: 1fr; }
+  .recipes-layout { grid-template-columns: 210px 1fr; }
+}
+
+/* The preview is the whole point of the look editor, and it used to sit
+   ~200px above the first slider — you dragged GRAIN with the result off
+   screen. From 1400px the editor column is wide enough to put them side by
+   side, which is the width most benches actually run. */
+@media (min-width: 1400px) {
+  .looks-editor {
+    display: grid;
+    grid-template-columns: minmax(380px, 420px) 1fr;
+    gap: var(--pad);
+    align-items: start;
+  }
+  /* The preview panel is the first child; it stays put while the controls
+     under it scroll. */
+  .looks-editor > .panel:first-child {
+    position: sticky;
+    top: 0;
+  }
+  .looks-editor > .applybar {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Wide layouts: use the width instead of stretching a two-column design. */
+@media (min-width: 1800px) {
+  .quadgrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .looks-editor {
+    grid-template-columns: 460px 1fr;
+  }
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  }
+  .recipes-layout {
+    grid-template-columns: 300px 1fr;
+  }
+  .dialog--wide {
+    width: min(1200px, calc(100vw - 120px));
+  }
+  .inspector-stage img,
+  .inspector-stage canvas {
+    max-height: 56vh;
+  }
+  .logviewer {
+    height: clamp(360px, 44vh, 720px);
+  }
+}
+
+@media (min-width: 2600px) {
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .connect-card {
+    width: 560px;
+  }
+  .dialog {
+    width: 540px;
+  }
+  .dialog--wide {
+    width: min(1500px, calc(100vw - 160px));
+  }
+  .inspector-strip img {
+    width: 88px;
+    height: 66px;
+  }
+}

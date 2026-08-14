@@ -1,0 +1,1289 @@
+/* ---- application frame ---- */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 900px;
+  background: var(--canvas);
+}
+
+/* menu strip with product mark */
+.menubar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  background: var(--grad-chrome);
+  border-bottom: 1px solid var(--border-mid);
+  padding: 0 6px;
+  user-select: none;
+}
+
+.menubar-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+}
+
+.menubar-brand .studio {
+  font-weight: 400;
+  color: var(--text-mut);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+}
+
+.menu-root {
+  position: relative;
+  display: flex;
+}
+
+.menu-btn {
+  border: 1px solid transparent;
+  background: none;
+  padding: 4px 10px;
+  min-height: 24px;
+  cursor: default;
+  font-size: var(--fs);
+}
+
+/* Alt mnemonic. Underlined all the time rather than only while Alt is held —
+   the shortcut is worth more than the period detail. */
+.menu-btn .mn {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.menu-btn:hover,
+.menu-btn[aria-expanded='true'] {
+  background: var(--grad-sel);
+  color: #fff;
+  border-color: var(--blue-dark);
+}
+
+.menu-pop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 210px;
+  background: #fff;
+  border: 1px solid var(--border-dark);
+  box-shadow: 3px 3px 6px rgb(20 35 60 / 30%);
+  padding: 2px;
+  z-index: var(--z-dropdown);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 5px 10px 5px 26px;
+  min-height: 24px;
+  text-align: left;
+  font-size: var(--fs);
+  cursor: default;
+  position: relative;
+}
+
+/* Keyboard highlight is the same highlight as the mouse one — arrow keys move
+   real focus through the items. */
+.menu-item:hover:not(:disabled),
+.menu-item:focus:not(:disabled) {
+  background: var(--grad-sel);
+  color: #fff;
+}
+
+.menu-item:disabled {
+  color: #5f6b7a;
+  cursor: not-allowed;
+}
+
+.menu-item .check {
+  position: absolute;
+  left: 8px;
+}
+
+.menu-sep {
+  height: 1px;
+  background: var(--border-light);
+  margin: 3px 6px;
+}
+
+.menubar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+  font-size: 10px;
+  color: var(--text-mut);
+}
+
+/* toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--grad-toolbar);
+  border-bottom: 1px solid var(--border-mid);
+  padding: 3px 6px;
+  user-select: none;
+}
+
+.tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 56px;
+  padding: 4px 8px 3px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  font-size: 10px;
+  color: var(--text);
+  cursor: default;
+}
+
+.tool-btn:hover:not(:disabled) {
+  border-color: var(--border-mid);
+  background: var(--grad-btn-hover);
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.tool-btn:active:not(:disabled) {
+  background: var(--grad-btn-down);
+  box-shadow: inset 0 1px 2px rgb(40 60 90 / 25%);
+}
+
+/* Unavailable, not invisible. The old grayscale+opacity filter pushed the
+   whole first-run toolbar to ~1.8:1. */
+/* Disabled is exempt from WCAG, but the whole toolbar is disabled before a
+   camera is attached — a first launch you cannot read is not a fair trade.
+   #5f6b7a measures 5.4:1 on chrome, the old #6f7c8c measured 4.2:1. */
+.tool-btn:disabled {
+  color: #5f6b7a;
+}
+
+.tool-btn:disabled svg {
+  opacity: 0.55;
+}
+
+.tool-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 4px;
+  background: var(--border-mid);
+  box-shadow: 1px 0 0 var(--hilite);
+}
+
+.tool-device {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-mid);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgb(40 60 90 / 12%);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+/* main row */
+.mainrow {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.workspace {
+  flex: 1;
+  overflow-y: auto;
+  /* Bottom padding + scroll-padding clear the sticky apply bar, which used
+     to permanently cover whatever field sat last in the scroll region. */
+  padding: var(--pad) 16px 64px;
+  scroll-padding-bottom: 64px;
+  min-width: 0;
+}
+
+.workspace-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* Large desktops: scale type, controls and content width up so the layout
+   is not a small strip in the corner of a 4K display. */
+@media (min-width: 1800px) {
+  :root {
+    --fs: 13px;
+    --fs-sm: 12px;
+    --ctl-h: 27px;
+    --sidebar-w: 208px;
+    --pad: 12px;
+  }
+  :root.density-comfortable {
+    --fs: 14px;
+    --fs-sm: 13px;
+    --ctl-h: 32px;
+    --sidebar-w: 224px;
+  }
+  .workspace {
+    padding: var(--pad) 24px 48px;
+  }
+  .workspace-inner {
+    max-width: 1780px;
+  }
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+@media (min-width: 2600px) {
+  :root {
+    --fs: 15px;
+    --fs-sm: 14px;
+    --ctl-h: 32px;
+    --sidebar-w: 248px;
+    --pad: 14px;
+  }
+  :root.density-comfortable {
+    --fs: 16px;
+    --fs-sm: 15px;
+    --ctl-h: 36px;
+    --sidebar-w: 280px;
+  }
+  .workspace {
+    padding: var(--pad) 32px 56px;
+  }
+  .workspace-inner {
+    max-width: 2400px;
+  }
+  .menubar,
+  .toolbar {
+    font-size: 13px;
+  }
+  .tool-btn {
+    font-size: 12px;
+    min-width: 68px;
+  }
+  .tool-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+  .nav-item svg {
+    width: 20px;
+    height: 20px;
+  }
+  .pagehead h1 {
+    font-size: 16px;
+  }
+  .panel-title {
+    font-size: 13px;
+  }
+  .led-label,
+  .microlabel {
+    font-size: 12px;
+  }
+  .statusbar {
+    font-size: 13px;
+  }
+  .table,
+  .logbody {
+    font-size: 13px;
+  }
+}
+
+/* 4K at 100% OS scaling. */
+@media (min-width: 3400px) {
+  :root {
+    --fs: 17px;
+    --fs-sm: 15px;
+    --ctl-h: 36px;
+    --sidebar-w: 300px;
+    --pad: 16px;
+  }
+  :root.density-comfortable {
+    --fs: 18px;
+    --fs-sm: 16px;
+    --ctl-h: 42px;
+    --sidebar-w: 330px;
+  }
+  .workspace-inner {
+    max-width: 2900px;
+  }
+  .menubar,
+  .toolbar {
+    font-size: 15px;
+  }
+  .tool-btn {
+    font-size: 13px;
+    min-width: 84px;
+  }
+  .tool-btn svg {
+    width: 28px;
+    height: 28px;
+  }
+  .nav-item svg {
+    width: 24px;
+    height: 24px;
+  }
+  .pagehead h1 {
+    font-size: 19px;
+  }
+  .panel-title {
+    font-size: 15px;
+  }
+  .led-dot {
+    width: 14px;
+    height: 14px;
+  }
+  .led-label,
+  .microlabel {
+    font-size: 13px;
+  }
+  .statusbar {
+    font-size: 15px;
+  }
+  .table,
+  .logbody {
+    font-size: 15px;
+  }
+}
+
+/* section title band */
+.pagehead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 var(--pad);
+  padding: 6px 10px;
+  background: var(--grad-head);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.pagehead h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pagehead-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ---- sidebar ---- */
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--grad-sidebar);
+  border-right: 1px solid var(--border-mid);
+  box-shadow: inset -1px 0 0 var(--hilite);
+  user-select: none;
+}
+
+.nav {
+  flex: 1;
+  padding: 6px 4px;
+  overflow-y: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  margin-bottom: 1px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  font-size: var(--fs);
+  font-weight: 400;
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+}
+
+.nav-item:hover {
+  border-color: var(--border-mid);
+  background: rgb(255 255 255 / 55%);
+}
+
+.nav-item[aria-current='page'] {
+  background: var(--grad-sel);
+  border-color: var(--blue-dark);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 35%);
+}
+
+.nav-badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 7px;
+  background: var(--orange);
+  color: #3a1d02;
+  border: 1px solid var(--orange-border);
+}
+
+.conn-footer {
+  border-top: 1px solid var(--border-mid);
+  box-shadow: 0 1px 0 var(--hilite) inset;
+  padding: 8px 10px;
+  display: grid;
+  gap: 5px;
+  font-size: var(--fs-sm);
+}
+
+/* ---- status bar ---- */
+
+.statusbar {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  background: var(--grad-status);
+  border-top: 1px solid var(--border-mid);
+  padding: 3px 6px;
+  font-size: var(--fs-sm);
+  user-select: none;
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-mid);
+  border-radius: 2px;
+  background: rgb(255 255 255 / 55%);
+  box-shadow: inset 0 1px 2px rgb(40 60 90 / 10%);
+  white-space: nowrap;
+}
+
+.status-cell--stretch {
+  flex: 1;
+}
+
+.status-cam {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.status-cam .ok { color: var(--green-dark); }
+.status-cam .bad { color: var(--red); }
+.status-cam .warn { color: var(--orange-dark); }
+
+/* ---- LED lamp ---- */
+
+.led {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.led-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: none;
+  position: relative;
+  border: 1px solid rgb(30 45 65 / 55%);
+  background: radial-gradient(circle at 35% 30%, #cfd6dd, #79828c 70%);
+}
+
+.led-dot::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  width: 4px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 85%);
+}
+
+.led--ok .led-dot { background: radial-gradient(circle at 35% 30%, #b8f0a8, #3d9434 70%); }
+.led--warn .led-dot { background: radial-gradient(circle at 35% 30%, #ffe9a8, #d8a213 70%); }
+.led--err .led-dot { background: radial-gradient(circle at 35% 30%, #ffb3b3, #b02e2e 70%); }
+.led--busy .led-dot {
+  background: radial-gradient(circle at 35% 30%, #a8d4ff, #2f70c9 70%);
+  animation: led-blink 0.9s steps(2, start) infinite;
+}
+.led--off .led-dot { background: radial-gradient(circle at 35% 30%, #d6dbe1, #8a939d 70%); }
+
+.led-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mut);
+}
+
+@keyframes led-blink {
+  to { opacity: 0.35; }
+}
+
+/* ---- group box (panel) ---- */
+
+.panel {
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: var(--panel);
+  box-shadow: inset 0 1px 0 var(--hilite), 0 1px 2px rgb(40 60 90 / 12%);
+  margin-bottom: var(--pad);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-mid);
+  background: var(--grad-head);
+  border-radius: var(--r) var(--r) 0 0;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.panel-title::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--blue-dark);
+  background: var(--grad-primary);
+  flex: none;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.panel-body {
+  padding: var(--pad);
+}
+
+.panel-body--log,
+.panel-body--flush {
+  padding: 0;
+}
+
+/* 230px was small enough that two panels fitted at 1024 and left a `.field`
+   row 203px for a 160px label plus a slider — the control overflowed its
+   panel by 24px. A panel with form rows in it needs ~420px to be honest. */
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: var(--pad);
+}
+
+/* ---- data rows ---- */
+
+dl { margin: 0; }
+
+/* Label column then value, both left-aligned. Space-between across the full
+   panel put 1319px of empty row between "Product" and "KINO V1" at 3840 and
+   568px even capped at 68ch — a properties list is read by running down the
+   values, so the values line up in a column of their own. */
+.datarow {
+  display: grid;
+  grid-template-columns: minmax(0, 15ch) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--border-light);
+  max-width: 46ch;
+}
+
+.datarow:last-child { border-bottom: 0; }
+
+.datarow dt {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+.datarow dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--ctl-h);
+  padding: 0 12px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--r);
+  background: var(--grad-btn);
+  box-shadow: inset 0 1px 0 var(--hilite), inset 0 -1px 0 rgb(60 80 110 / 12%);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+  cursor: default;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 60%);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--grad-btn-hover);
+  border-color: var(--blue);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--grad-btn-down);
+  box-shadow: inset 0 1px 3px rgb(40 60 90 / 30%);
+}
+
+.btn:active:not(:disabled) > * {
+  transform: translate(1px, 1px);
+}
+
+.btn:disabled {
+  color: #5f6b7a;
+  text-shadow: none;
+  background: linear-gradient(to bottom, #f2f5f9, #e2e8f0);
+  border-color: var(--border-mid);
+  cursor: not-allowed;
+}
+
+/* Busy keeps the button's identity — only the click is blocked. */
+.btn.is-busy {
+  cursor: progress;
+}
+
+.btn-spinner {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-spinner {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.5;
+  }
+}
+
+.btn--primary {
+  background: var(--grad-primary);
+  border-color: var(--blue-dark);
+  color: #fff;
+  text-shadow: 0 -1px 0 rgb(0 30 80 / 35%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 40%);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--grad-primary-hover);
+  border-color: var(--blue-dark);
+}
+
+.btn--primary:active:not(:disabled) {
+  background: linear-gradient(to bottom, #2a63b2, #4a87d8);
+}
+
+.btn--danger {
+  color: var(--red-dark);
+}
+
+.btn--danger:hover:not(:disabled) {
+  border-color: var(--red);
+}
+
+.btn--danger-solid {
+  background: var(--grad-red);
+  border-color: var(--red-dark);
+  color: #fff;
+  text-shadow: 0 -1px 0 rgb(80 0 0 / 35%);
+}
+
+.btn--ghost {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  font-weight: 400;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--border-mid);
+  background: var(--grad-btn-hover);
+}
+
+.btn--lg {
+  height: 34px;
+  padding: 0 22px;
+  font-size: 13px;
+}
+
+.btn--sm {
+  height: var(--ctl-h-sm);
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+/* A disabled primary stays recognisably primary. Specificity has to beat
+   .btn:disabled, which used to repaint every busy primary grey. */
+.btn.btn--primary:disabled {
+  background: linear-gradient(to bottom, #7f9fc4, #5d7fa8);
+  border-color: #4b6b91;
+  color: #eef3f9;
+  text-shadow: none;
+}
+
+/* ---- form fields ---- */
+
+.field {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 4px 0;
+  border-bottom: 1px dotted var(--border-light);
+}
+
+.field:last-child { border-bottom: 0; }
+
+/* Second row under the control: why a field is disabled, what it depends on,
+   or why a typed value was rejected. Sits in the control column so it reads
+   as part of the control, not as body copy. */
+.field-hint {
+  grid-column: 2;
+  margin: 0;
+  padding-bottom: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+.field-hint--warn {
+  color: var(--orange-dark);
+  font-weight: 700;
+}
+
+/* Unit beside an entry box. Lower case on purpose: mm is not MM. */
+.unit {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+  text-transform: none;
+}
+
+.field > label,
+.field-label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-mut);
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ctl-h);
+}
+
+select.input,
+textarea.input,
+input[type='text'].input,
+input[type='number'].input {
+  height: var(--ctl-h);
+  background: #fff;
+  border: 1px solid var(--border-mid);
+  border-top-color: var(--border-dark);
+  border-left-color: var(--border-dark);
+  border-radius: 2px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  padding: 0 6px;
+  box-shadow: inset 1px 1px 2px rgb(40 60 90 / 12%);
+  min-width: 0;
+}
+
+select.input { min-width: 150px; }
+input[type='number'].input { width: 74px; text-align: right; font-family: var(--mono); }
+input[type='text'].input { width: 100%; }
+
+/* Keep the global 2px focus ring — the old `outline: none` + #6ea3e8 glow
+   measured 2.6:1, under the 3:1 non-text minimum. The border change stays
+   as reinforcement. */
+select.input:focus-visible,
+textarea.input:focus-visible,
+input.input:focus-visible {
+  border-color: var(--blue);
+}
+
+textarea.input {
+  height: auto;
+  min-height: 110px;
+  padding: 6px;
+  font-family: var(--mono);
+  resize: vertical;
+}
+
+/* segmented control — joined beveled buttons */
+.seg {
+  display: inline-flex;
+  border-radius: 2px;
+}
+
+.seg-opt {
+  height: var(--ctl-h);
+  padding: 0 10px;
+  border: 1px solid var(--border-dark);
+  border-right-width: 0;
+  background: var(--grad-btn);
+  box-shadow: inset 0 1px 0 var(--hilite);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text);
+  cursor: default;
+}
+
+.seg-opt:first-child { border-radius: 2px 0 0 2px; }
+.seg-opt:last-child { border-right-width: 1px; border-radius: 0 2px 2px 0; }
+
+.seg-opt:hover { background: var(--grad-btn-hover); }
+
+.seg-opt[aria-pressed='true'] {
+  background: var(--grad-sel);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: inset 0 1px 3px rgb(0 30 80 / 35%);
+  text-shadow: 0 -1px 0 rgb(0 30 80 / 30%);
+}
+
+.seg-opt:disabled {
+  color: #5f6b7a;
+  background: linear-gradient(to bottom, #f2f5f9, #e6ebf2);
+  cursor: not-allowed;
+}
+
+.seg-opt:disabled[aria-pressed='true'] {
+  background: linear-gradient(to bottom, #8ba7c8, #6d8bad);
+  color: #f2f6fa;
+  text-shadow: none;
+}
+
+/* toggle — small beveled switch with ON/OFF text */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  /* 24px minimum target (WCAG 2.5.8); the switch itself stays era-sized. */
+  min-height: var(--ctl-h);
+  padding: 0 2px;
+  cursor: default;
+}
+
+.toggle-track {
+  width: 38px;
+  height: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--border-dark);
+  background: linear-gradient(to bottom, #cfd8e2, #eef2f7);
+  box-shadow: inset 0 1px 2px rgb(40 60 90 / 25%);
+  position: relative;
+  flex: none;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-dark);
+  background: var(--grad-btn);
+  transition: transform 0.1s;
+}
+
+.toggle[aria-checked='true'] .toggle-track {
+  background: linear-gradient(to bottom, #3d7fd2, #7cb0ee);
+  border-color: var(--blue-dark);
+}
+
+.toggle[aria-checked='true'] .toggle-thumb {
+  transform: translateX(18px);
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+}
+
+.toggle:disabled .toggle-track {
+  opacity: 0.6;
+}
+
+.toggle:disabled .toggle-state {
+  color: #5f6b7a;
+}
+
+.toggle-state {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-mut);
+  min-width: 26px;
+  text-align: left;
+}
+
+/* slider */
+.sliderwrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 340px;
+}
+
+/* The element box is a 24px target; the visible track is a 5px pseudo-
+   element, so the era look survives WCAG 2.5.8. */
+input[type='range'] {
+  flex: 1;
+  appearance: none;
+  height: var(--ctl-h);
+  min-height: 24px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  cursor: pointer;
+  min-width: 0;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 5px;
+  background: linear-gradient(to bottom, #b9c4d2, #e2e8f0);
+  border: 1px solid var(--border-mid);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 1px rgb(40 60 90 / 20%);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 22px;
+  /* centre the thumb on the 5px track: -(22 - 5 - 2) / 2 */
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--grad-btn);
+  border: 1px solid var(--border-dark);
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+  background: var(--grad-btn-hover);
+  border-color: var(--blue);
+}
+
+input[type='range']::-moz-range-track {
+  height: 5px;
+  background: linear-gradient(to bottom, #b9c4d2, #e2e8f0);
+  border: 1px solid var(--border-mid);
+  border-radius: 3px;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 13px;
+  height: 22px;
+  border-radius: 2px;
+  background: #e8eef5;
+  border: 1px solid var(--border-dark);
+}
+
+input[type='range']:disabled {
+  cursor: not-allowed;
+}
+
+input[type='range']:disabled::-webkit-slider-thumb {
+  background: linear-gradient(to bottom, #eef2f7, #dde3ea);
+  border-color: var(--border-mid);
+}
+
+.slider-val {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  min-width: 84px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- meter ---- */
+
+.meter {
+  height: 12px;
+  background: #fff;
+  border: 1px solid var(--border-mid);
+  border-top-color: var(--border-dark);
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 2px rgb(40 60 90 / 15%);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  transform-origin: left center;
+  background: repeating-linear-gradient(
+    to right,
+    #5f9be6 0 6px,
+    #4a87d8 6px 8px
+  );
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%);
+  /* Was `transition: width`, which invalidates layout on every progress
+     tick. Same visual, compositor-only. */
+  transition: transform var(--dur-state) linear;
+}
+
+.meter-fill--ok {
+  background: repeating-linear-gradient(to right, #6cc75f 0 6px, #55b348 6px 8px);
+}
+.meter-fill--warn {
+  background: repeating-linear-gradient(to right, #f0c455 0 6px, #e0af31 6px 8px);
+}
+.meter-fill--err {
+  background: repeating-linear-gradient(to right, #e06d6d 0 6px, #cc4b4b 6px 8px);
+}
+
+/* ---- tables ---- */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  background: #fff;
+}
+
+.table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-mut);
+  padding: 4px 8px;
+  background: var(--grad-head);
+  border: 1px solid var(--border-mid);
+  border-width: 0 1px 1px 0;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #e4e9f0;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.table tr:nth-child(even) td {
+  background: #f3f6fa;
+}
+
+.table td.num,
+.table th.num {
+  text-align: right;
+}
+
+/* ---- dialogs — small app windows ---- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(30 45 70 / 35%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal-backdrop);
+  padding: 16px;
+}
+
+.dialog {
+  width: 440px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border-dark);
+  border-radius: 4px 4px var(--r) var(--r);
+  box-shadow: 4px 6px 18px rgb(15 30 55 / 45%);
+}
+
+.dialog--wide { width: 760px; }
+
+.dialog {
+  z-index: var(--z-modal);
+}
+
+.dialog-head {
+  padding: 5px 10px;
+  background: var(--grad-sel);
+  color: #fff;
+  border-radius: 3px 3px 0 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: 0 -1px 0 rgb(0 30 80 / 40%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dialog-head--danger {
+  background: var(--grad-red);
+}
+
+.dialog-body {
+  padding: 12px;
+  font-size: var(--fs);
+  color: var(--text);
+  overflow-y: auto;
+}
+
+.dialog-body strong { color: var(--blue-dark); }
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+/* ---- notices ---- */
+
+/* Full 1px border + tinted fill. A >1px coloured left edge is a modern
+   callout tell; the era idiom states status with a bordered inset box. */
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border: 1px solid var(--border-mid);
+  background: #f4f7fb;
+  padding: 7px 10px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  border-radius: 2px;
+  margin-bottom: var(--pad);
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.notice svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.notice--err { border-color: #d9a6a6; background: #fdf2f2; }
+.notice--ok { border-color: #a8cfa4; background: #f2fbf1; }
+.notice--warn { border-color: #ddc98d; background: #fdf9ec; }
+
+/* ---- apply bar ---- */
+
+.applybar {
+  position: sticky;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  border: 1px solid var(--orange-border);
+  border-radius: var(--r);
+  background: var(--applybar-fill);
+  box-shadow: 0 3px 10px rgb(40 60 90 / 30%), inset 0 1px 0 var(--hilite);
+  z-index: var(--z-sticky);
+}
+
+.applybar-label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--orange-dark);
+}
+
+/* A failed write is its own row, not text appended to the unsaved label. */
+.applybar-error {
+  flex-basis: 100%;
+  order: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  border: 1px solid #d9a6a6;
+  border-radius: 2px;
+  background: #fdf2f2;
+  font-size: var(--fs-sm);
+  color: var(--red-dark);
+}
+
+/* ---- inset wells ---- */
+
+.well {
+  background: #fff;
+  border: 1px solid var(--border-mid);
+  border-top-color: var(--border-dark);
+  border-left-color: var(--border-dark);
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 3px rgb(40 60 90 / 15%);
+}
+
+.well--dark {
+  background: var(--well-dark);
+  color: #dfe5ec;
+}
