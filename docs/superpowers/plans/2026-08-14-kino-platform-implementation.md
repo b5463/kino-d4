@@ -277,7 +277,7 @@ git add .github && git commit -m "ci: typecheck, lint, test, build for all works
 **Interfaces:**
 - Produces: `defineSchema<T>(def): SchemaDef<T>`, `parseVersioned<T>(def: SchemaDef<T>, raw: unknown): T`, errors `SchemaTooNewError`, `MissingMigrationError`. Every `kino.*` document in every app parses through this. Package name `@kino/schemas`, dep: `zod@^3`.
 
-- [ ] **Step 1: Scaffold the package**
+- [x] **Step 1: Scaffold the package**
 
 `packages/schemas/package.json`:
 
@@ -297,7 +297,7 @@ git add .github && git commit -m "ci: typecheck, lint, test, build for all works
 
 `tsconfig.json` extends `../../tsconfig.base.json` with `"include": ["src", "tests"]`.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 // packages/schemas/tests/registry.test.ts
@@ -345,12 +345,12 @@ describe('parseVersioned', () => {
 });
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `npm run test -w @kino/schemas`
 Expected: FAIL — module `../src/index` not found.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // packages/schemas/src/errors.ts
@@ -410,7 +410,7 @@ export { defineSchema, parseVersioned, type SchemaDef } from './registry';
 export { SchemaTooNewError, MissingMigrationError } from './errors';
 ```
 
-- [ ] **Step 5: Run test to verify it passes, then commit**
+- [x] **Step 5: Run test to verify it passes, then commit**
 
 Run: `npm run test -w @kino/schemas`
 Expected: PASS.
