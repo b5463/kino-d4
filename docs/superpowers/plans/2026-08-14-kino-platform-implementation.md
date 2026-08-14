@@ -121,14 +121,14 @@ Maps to spec phases: WS0+WS1 = Phase 0; WS2 = Phase 1; WS3+WS4+WS5 = Phase 2; WS
 **Interfaces:**
 - Produces: a git repository with the current working Studio as the first commit. Every later task assumes `git` is available and commits frequently.
 
-- [ ] **Step 1: Initialize the repository**
+- [x] **Step 1: Initialize the repository**
 
 ```bash
 cd "c:/Users/AlexanderMoravcik/Desktop/kino d4"
 git init -b main
 ```
 
-- [ ] **Step 2: Write `.gitignore`**
+- [x] **Step 2: Write `.gitignore`**
 
 ```gitignore
 node_modules/
@@ -141,12 +141,12 @@ coverage/
 .DS_Store
 ```
 
-- [ ] **Step 3: Verify the tree is clean of junk**
+- [x] **Step 3: Verify the tree is clean of junk**
 
 Run: `git status --short | head -40`
 Expected: source files, specs, config — no `node_modules/`, no `dist/`, no `.tsbuildinfo`.
 
-- [ ] **Step 4: Baseline commit**
+- [x] **Step 4: Baseline commit**
 
 ```bash
 git add -A
@@ -165,7 +165,7 @@ Note: `KINO_PROJECT_RECOVERY_PACK.zip` in the root is a binary recovery artifact
 **Interfaces:**
 - Produces: workspace root where `npm install` hoists deps; `npm run test -w @kino/studio` runs Studio tests. All later apps/packages are workspace members named `@kino/<name>`.
 
-- [ ] **Step 1: Move the app with git mv**
+- [x] **Step 1: Move the app with git mv**
 
 ```bash
 mkdir -p apps/studio
@@ -173,7 +173,7 @@ git mv src index.html public tests vite.config.ts tsconfig.json tsconfig.app.jso
 rm -f tsconfig.app.tsbuildinfo tsconfig.node.tsbuildinfo package-lock.json
 ```
 
-- [ ] **Step 2: Write the new workspace root `package.json`**
+- [x] **Step 2: Write the new workspace root `package.json`**
 
 ```json
 {
@@ -190,7 +190,7 @@ rm -f tsconfig.app.tsbuildinfo tsconfig.node.tsbuildinfo package-lock.json
 }
 ```
 
-- [ ] **Step 3: Rename Studio package and add base tsconfig**
+- [x] **Step 3: Rename Studio package and add base tsconfig**
 
 In `apps/studio/package.json` set `"name": "@kino/studio"`. Write `tsconfig.base.json` at root:
 
@@ -210,12 +210,12 @@ In `apps/studio/package.json` set `"name": "@kino/studio"`. Write `tsconfig.base
 
 Point `apps/studio/tsconfig.json` `extends` at `../../tsconfig.base.json` (keep its existing compiler options that differ, e.g. JSX settings, by leaving them in the app tsconfig).
 
-- [ ] **Step 4: Reinstall and verify Studio still builds and tests pass**
+- [x] **Step 4: Reinstall and verify Studio still builds and tests pass**
 
 Run: `npm install && npm run test -w @kino/studio && npm run build -w @kino/studio`
 Expected: all existing tests PASS (14 test files), `vite build` succeeds. If `vite.config.ts` or `index.html` referenced root-relative paths, fix them now — they moved one directory down.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
