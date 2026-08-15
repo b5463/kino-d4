@@ -805,7 +805,7 @@ export class StubRollServerClient implements RollServerClient { /* rejects with 
 - Produces: `docker compose -f infra/docker-compose.dev.yml up -d` starts postgres:16, redis:7, minio (+ bucket bootstrap). `buildServer(config): FastifyInstance` (exported for tests — tests build the server in-process, no port binding). `GET /api/healthz` → `{ ok: true, db: true, redis: true, storage: true }`. Config from env: `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET=kino-media`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `PUBLIC_BASE_URL=https://kino.acronym.sk`.
 - Deps: `fastify@^5`, `drizzle-orm`, `postgres` (driver), `ioredis`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `zod`, `@kino/schemas`; dev: `drizzle-kit`, `vitest`.
 
-- [ ] **Step 1: Write compose file**
+- [x] **Step 1: Write compose file**
 
 ```yaml
 # infra/docker-compose.dev.yml
@@ -833,13 +833,13 @@ services:
 volumes: { pgdata: {}, miniodata: {} }
 ```
 
-- [ ] **Step 2: Write failing health test** (`buildServer` + `app.inject({ url: '/api/healthz' })`, expect 200 and all three booleans true — test runs against the compose services; document `docker compose up -d` as a test precondition in `apps/api/README.md`).
+- [x] **Step 2: Write failing health test** (`buildServer` + `app.inject({ url: '/api/healthz' })`, expect 200 and all three booleans true — test runs against the compose services; document `docker compose up -d` as a test precondition in `apps/api/README.md`).
 
-- [ ] **Step 3: Implement scaffold** — `buildServer` registers db/redis/s3 plugins (fastify decorators `app.db`, `app.redis`, `app.s3`), healthz pings each (`select 1`, `PING`, `HeadBucket`). Structured logging: fastify's pino with request IDs (05§17). Never log request bodies on device routes (Wi-Fi rule is device-side, but belt-and-braces: redact `password` keys in the serializer).
+- [x] **Step 3: Implement scaffold** — `buildServer` registers db/redis/s3 plugins (fastify decorators `app.db`, `app.redis`, `app.s3`), healthz pings each (`select 1`, `PING`, `HeadBucket`). Structured logging: fastify's pino with request IDs (05§17). Never log request bodies on device routes (Wi-Fi rule is device-side, but belt-and-braces: redact `password` keys in the serializer).
 
-- [ ] **Step 4: Run** `npm run test -w @kino/api` → PASS. Add an `api-test` job to CI with `services:` postgres/redis/minio matching compose.
+- [x] **Step 4: Run** `npm run test -w @kino/api` → PASS. Add an `api-test` job to CI with `services:` postgres/redis/minio matching compose.
 
-- [ ] **Step 5: Commit** — `feat(api): fastify scaffold + dev infra compose + healthz`
+- [x] **Step 5: Commit** — `feat(api): fastify scaffold + dev infra compose + healthz`
 
 ### Task 15: Database schema (Drizzle) + migration 0001
 
