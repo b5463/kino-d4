@@ -556,22 +556,22 @@ git add -A && git commit -m "feat(schemas): kino.* core schemas with spec-exampl
 - Produces: `@kino/kdp` exporting (names must match what Studio already uses — do not rename during the move): the packet encoder/decoder from `packet.ts`, `crc32`, `KinoProtocolClient`, command constants from `commands.ts`, timing types from `timing.ts`, `Transport` interface, `SerialTransport`, `MockTransport`.
 - Consumes: nothing new. The mock *device* (`src/mock/`) does NOT move here — it goes to `@kino/test-fixtures` (Task 8).
 
-- [ ] **Step 1: Move files with git mv, scaffold package.json** (same shape as Task 4's, name `@kino/kdp`, no runtime deps).
+- [x] **Step 1: Move files with git mv, scaffold package.json** (same shape as Task 4's, name `@kino/kdp`, no runtime deps).
 
-- [ ] **Step 2: Create the barrel export `packages/kdp/src/index.ts` re-exporting every public symbol Studio imports today.** Find the exact list first:
+- [x] **Step 2: Create the barrel export `packages/kdp/src/index.ts` re-exporting every public symbol Studio imports today.** Find the exact list first:
 
 Run: `grep -rhn "from '.*\(protocol\|transport\)/" apps/studio/src --include="*.ts*" | grep -o "{[^}]*}" | tr -d '{}' | tr ',' '\n' | sort -u`
 
-- [ ] **Step 3: Update Studio imports**
+- [x] **Step 3: Update Studio imports**
 
 Run: `grep -rl "protocol/\|transport/" apps/studio/src | xargs sed -i "s|from '[./]*\(protocol\|transport\)[^']*'|from '@kino/kdp'|g"` — then hand-fix any relative-depth stragglers the typechecker finds. Add `"@kino/kdp": "*"` to Studio's dependencies.
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 Run: `npm run test`
 Expected: kdp tests (packet, crc32) PASS in the new package; all Studio tests still PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "refactor: extract @kino/kdp (protocol + transports) from studio"
