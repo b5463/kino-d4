@@ -1,11 +1,11 @@
 # @kino/api
 
-Fastify server behind `https://kino.acronym.sk/api/...`. Currently a scaffold:
-config, the postgres/redis/S3 plugins, and `GET /api/healthz`. No tables yet.
+Fastify server behind `https://kino.acronym.sk/api/...`. Currently config, the
+postgres/redis/S3 plugins, `GET /api/healthz`, and the database schema.
 
 ## Test precondition — start the dev services
 
-The health test talks to real services. Start them first:
+The health and database tests talk to real services. Start them first:
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d
@@ -77,6 +77,57 @@ cp infra/.env.example infra/.env    # then edit
 dotenv dependency. Precedence follows `node --env-file`: a variable already in
 the environment wins over the file, so option 1 still overrides option 2, and CI
 (which sets everything explicitly and has no `.env`) is unaffected.
+
+## Database
+
+`src/db/schema.ts` is the drizzle schema and the single source of truth for
+table and column names. PostgreSQL stores metadata only — no media blobs
+(05 §5); bytes live in object storage and `assets.object_key` is the only link.
+
+Two indexes are load-bearing contracts, not optimisations:
+
+| Index | On | Why |
+| --- | --- | --- |
+| `captures_roll_uuid` | `(roll_id, capture_uuid)` | idempotency anchor — a retried upload of the same device-generated capture UUID cannot create a second row (05 §9) |
+| `assets_capture_role_frame` | `(capture_id, role, frame_index)` | same, one level down: one asset per role per frame |
+
+### Migrations
+
+drizzle-kit runs outside the server, as a CLI, from this directory:
+
+```bash
+cd apps/api
+npx drizzle-kit generate --name <what-changed>   # writes drizzle/NNNN_<name>.sql
+npx drizzle-kit migrate                          # applies pending files
+```
+
+`drizzle.config.ts` takes the target database from `loadConfig().DATABASE_URL`,
+so it honours the same precedence as everything else — shell environment first,
+then `infra/.env`, then the dev default. Point it elsewhere the usual way:
+
+```powershell
+$env:DATABASE_URL = 'postgres://kino:kino@db.internal:5432/kino'
+npx drizzle-kit migrate
+Remove-Item Env:\DATABASE_URL
+```
+
+`drizzle/` is committed in full — the `.sql` files, `meta/*_snapshot.json` and
+`meta/_journal.json`. The snapshots are how drizzle-kit diffs the next change;
+without them it would regenerate the whole schema every time.
+
+**Numbering.** drizzle-kit starts at `0000`; the first migration was renamed to
+`0001_init` (file, snapshot and journal `idx`/`tag` together) so the numbers
+line up with the plan's migration numbering. drizzle-kit derives the next index
+from the last journal entry, so the following migration is `0002_*` as expected.
+
+### How the tests get a clean database
+
+`tests/db.test.ts` never migrates the dev `kino` database. It drops and
+re-creates a throwaway `kino_test` database on every run and applies the
+committed migrations to that, which is what makes the run repeatable: it proves
+the migration works on an *empty* database rather than inheriting whatever a
+previous run left behind. `kino_test` is dropped again afterwards, and the
+`DROP` is also repeated up front, so an aborted run cannot wedge the next one.
 
 ## Scripts
 

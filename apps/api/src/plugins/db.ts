@@ -2,9 +2,9 @@ import fp from 'fastify-plugin';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import type { ApiConfig } from '../config';
+import * as schema from '../db/schema';
 
-/** No tables yet — Task 15 introduces the schema. */
-export type KinoDatabase = PostgresJsDatabase<Record<string, never>>;
+export type KinoDatabase = PostgresJsDatabase<typeof schema>;
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -24,7 +24,7 @@ export const dbPlugin = fp<DbPluginOptions>(
       onnotice: () => {},
     });
 
-    app.decorate('db', drizzle(client));
+    app.decorate('db', drizzle(client, { schema }));
     app.addHook('onClose', async () => {
       await client.end({ timeout: 5 });
     });
