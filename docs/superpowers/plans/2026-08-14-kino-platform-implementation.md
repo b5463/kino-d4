@@ -637,15 +637,15 @@ git add packages/kdp && git commit -m "feat(kdp): decoder acceptance suite + asy
 - Produces: `MockKinoDevice`, `MockMediaStore`, `scenarios` export where every 04§19 scenario is a named entry: `splitFrames, coalescedFrames, badCrc, bootSpew, delayedResponses, unsupportedCommands, disconnect, failedUpdate, offlineCameraNode, sessionRestart, largeGallery2k, uploadBacklog`. Mock now answers the Task 7 command groups: `NETWORK_*` (stores networks in-memory, never echoes passwords back in full — masked as `••••`), `ROLL_*` (fake roll state machine), `UPLOAD_QUEUE_*` (scripted backlog that drains over time). Consumed by Studio dev/demo mode and by WS2 tests.
 - Consumes: `@kino/kdp` command constants, `@kino/schemas`.
 
-- [ ] **Step 1: Move + rewire imports, run full test suite** (same mechanics as Task 6).
+- [x] **Step 1: Move + rewire imports, run full test suite** (same mechanics as Task 6).
 
-- [ ] **Step 2: Write failing scenario-coverage test** — asserts `Object.keys(scenarios)` includes all twelve 04§19 names, and one behavioral test per newly added scenario (`uploadBacklog`: `UPLOAD_QUEUE_STATUS` returns `{ pending: 12, uploading: 1, failed: 2 }` then drains on simulated ticks; `ROLL_CREATE` returns `{ rollId, slug, guestUrl }`).
+- [x] **Step 2: Write failing scenario-coverage test** — asserts `Object.keys(scenarios)` includes all twelve 04§19 names, and one behavioral test per newly added scenario (`uploadBacklog`: `UPLOAD_QUEUE_STATUS` returns `{ pending: 12, uploading: 1, failed: 2 }` then drains on simulated ticks; `ROLL_CREATE` returns `{ rollId, slug, guestUrl }`).
 
-- [ ] **Step 3: Implement missing scenarios + new mock commands.**
+- [x] **Step 3: Implement missing scenarios + new mock commands.**
 
-- [ ] **Step 4: Run tests, verify Studio demo mode still boots** (`npm run dev -w @kino/studio`, connect Demo mode, Overview renders).
+- [x] **Step 4: Run tests, verify Studio demo mode still boots** (`npm run dev -w @kino/studio`, connect Demo mode, Overview renders).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat(fixtures): @kino/test-fixtures with full 04§19 scenario coverage + roll/network mock"
