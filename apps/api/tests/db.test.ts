@@ -65,6 +65,10 @@ let db: PostgresJsDatabase<typeof schema>;
 const DEVICE_ID = 'dev_fixture';
 const ROLL_ID = 'roll_fixture';
 
+/** Two capture parents for the asset tests, so none of them share state. */
+const ASSET_CAPTURE_ID = 'cap_assets';
+const ROLE_CAPTURE_ID = 'cap_roles';
+
 beforeAll(async () => {
   await resetTestDatabase('recreate');
   client = postgres(testUrl, { max: 1, onnotice: () => {} });
@@ -92,6 +96,22 @@ beforeAll(async () => {
       createdByDeviceId: DEVICE_ID,
     })
     .execute();
+
+  await db
+    .insert(schema.captures)
+    .values(
+      [ASSET_CAPTURE_ID, ROLE_CAPTURE_ID].map((id, i) => ({
+        id,
+        captureUuid: `2222222${i}-2222-4222-8222-222222222222`,
+        rollId: ROLL_ID,
+        deviceId: DEVICE_ID,
+        mode: 'quad',
+        capturedAt: new Date('2026-08-14T23:42:19Z'),
+        frameCount: 4,
+        resolution: '1600x1200',
+      })),
+    )
+    .execute();
 }, 60_000);
 
 afterAll(async () => {
@@ -112,8 +132,8 @@ async function expectUniqueViolation(query: Promise<unknown>, index: string): Pr
   });
 }
 
-describe('migration 0001', () => {
-  it('applies to a clean database and creates every table', async () => {
+describe('migrations', () => {
+  it('apply to a clean database and create every table', async () => {
     const rows = await client<{ table_name: string }[]>`
       select table_name
         from information_schema.tables
@@ -135,7 +155,10 @@ describe('migration 0001', () => {
     ]);
   });
 
-  it('creates the idempotency indexes by their contract names', async () => {
+  it('create the idempotency indexes by their contract names', async () => {
+    // `assets_capture_role_frame` became a table CONSTRAINT in 0002, but
+    // PostgreSQL still backs it with an index of the same name — which is what
+    // ON CONFLICT inference and every later task will reach for.
     const rows = await client<{ indexname: string }[]>`
       select indexname
         from pg_indexes
@@ -147,6 +170,18 @@ describe('migration 0001', () => {
     expect(rows.map((row) => row.indexname)).toEqual([
       'assets_capture_role_frame',
       'captures_roll_uuid',
+    ]);
+  });
+
+  it('leaves assets_capture_role_frame NULLS NOT DISTINCT', async () => {
+    const rows = await client<{ definition: string }[]>`
+      select pg_get_constraintdef(oid) as definition
+        from pg_constraint
+       where conname = 'assets_capture_role_frame'
+    `;
+
+    expect(rows.map((row) => row.definition)).toEqual([
+      'UNIQUE NULLS NOT DISTINCT (capture_id, role, frame_index)',
     ]);
   });
 });
@@ -177,47 +212,106 @@ describe('idempotency anchors (05§9)', () => {
     );
   });
 
-  it('rejects a second asset with the same (captureId, role, frameIndex)', async () => {
-    const captureId = 'cap_assets';
-
-    await db
-      .insert(schema.captures)
-      .values({
-        id: captureId,
-        captureUuid: '22222222-2222-4222-8222-222222222222',
-        rollId: ROLL_ID,
-        deviceId: DEVICE_ID,
-        mode: 'quad',
-        capturedAt: new Date('2026-08-14T23:42:19Z'),
-        frameCount: 4,
-        resolution: '1600x1200',
-      })
-      .execute();
-
+  it('rejects a second original-frame asset with the same frameIndex', async () => {
     const row = {
-      id: 'asset_first',
-      captureId,
+      id: 'asset_frame_first',
+      captureId: ASSET_CAPTURE_ID,
       role: 'original-frame',
       frameIndex: 0,
       mime: 'image/jpeg',
-      objectKey: `rolls/${ROLL_ID}/captures/${captureId}/original/cam-01.jpg`,
+      objectKey: `rolls/${ROLL_ID}/captures/${ASSET_CAPTURE_ID}/original/cam-01.jpg`,
     };
 
     await db.insert(schema.assets).values(row).execute();
 
     // A *different* object key, so the failure can only come from the
-    // (captureId, role, frameIndex) index and not from objectKey's uniqueness.
+    // (captureId, role, frameIndex) constraint and not from objectKey's own
+    // uniqueness. Same reasoning in every case below.
     await expectUniqueViolation(
       db
         .insert(schema.assets)
         .values({
           ...row,
-          id: 'asset_retry',
-          objectKey: `rolls/${ROLL_ID}/captures/${captureId}/original/cam-01-retry.jpg`,
+          id: 'asset_frame_retry',
+          objectKey: `rolls/${ROLL_ID}/captures/${ASSET_CAPTURE_ID}/original/cam-01-retry.jpg`,
         })
         .execute(),
       'assets_capture_role_frame',
     );
+  });
+
+  /**
+   * The case the plain unique *index* silently missed. `frameIndex` is NULL for
+   * every derived role, and PostgreSQL's default NULLS DISTINCT would let both
+   * of these rows in — so re-running a render would produce two `thumb` rows for
+   * one capture. NULLS NOT DISTINCT (migration 0002) is what makes Task 23's
+   * "running thumbnail twice produces one asset row" hold.
+   */
+  it('rejects a second derived asset when frameIndex is NULL on both', async () => {
+    const row = {
+      id: 'asset_thumb_first',
+      captureId: ASSET_CAPTURE_ID,
+      role: 'thumb',
+      mime: 'image/webp',
+      objectKey: `rolls/${ROLL_ID}/captures/${ASSET_CAPTURE_ID}/derived/thumb.webp`,
+    };
+
+    await db.insert(schema.assets).values(row).execute();
+
+    const [stored] = await db
+      .select({ frameIndex: schema.assets.frameIndex })
+      .from(schema.assets)
+      .where(eq(schema.assets.id, 'asset_thumb_first'));
+    // Guards the premise: if `frameIndex` ever gained a default, this test
+    // would pass for the wrong reason and prove nothing about NULL handling.
+    expect(stored?.frameIndex).toBeNull();
+
+    await expectUniqueViolation(
+      db
+        .insert(schema.assets)
+        .values({
+          ...row,
+          id: 'asset_thumb_retry',
+          objectKey: `rolls/${ROLL_ID}/captures/${ASSET_CAPTURE_ID}/derived/thumb-retry.webp`,
+        })
+        .execute(),
+      'assets_capture_role_frame',
+    );
+  });
+
+  it('still allows different roles that both have a NULL frameIndex', async () => {
+    // NULLS NOT DISTINCT must not overreach: the rule is one asset per
+    // (capture, role), not one NULL-frameIndex asset per capture. Own capture,
+    // so this holds regardless of what the tests above inserted.
+    await db
+      .insert(schema.assets)
+      .values([
+        {
+          id: 'asset_roles_thumb',
+          captureId: ROLE_CAPTURE_ID,
+          role: 'thumb',
+          mime: 'image/webp',
+          objectKey: `rolls/${ROLL_ID}/captures/${ROLE_CAPTURE_ID}/derived/thumb.webp`,
+        },
+        {
+          id: 'asset_roles_wiggle',
+          captureId: ROLE_CAPTURE_ID,
+          role: 'wiggle-webp',
+          mime: 'image/webp',
+          objectKey: `rolls/${ROLL_ID}/captures/${ROLE_CAPTURE_ID}/derived/wiggle.webp`,
+        },
+      ])
+      .execute();
+
+    const rows = await db
+      .select({ role: schema.assets.role, frameIndex: schema.assets.frameIndex })
+      .from(schema.assets)
+      .where(eq(schema.assets.captureId, ROLE_CAPTURE_ID));
+
+    expect(rows).toEqual([
+      { role: 'thumb', frameIndex: null },
+      { role: 'wiggle-webp', frameIndex: null },
+    ]);
   });
 });
 

@@ -7,6 +7,7 @@ import {
   timestamp,
   jsonb,
   uniqueIndex,
+  unique,
   index,
 } from 'drizzle-orm/pg-core';
 import type { Capture, FirmwareManifest } from '@kino/schemas';
@@ -98,7 +99,24 @@ export const assets = pgTable(
     status: text('status').notNull().default('pending'), // pending|uploading|ready|failed
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('assets_capture_role_frame').on(t.captureId, t.role, t.frameIndex)],
+  (t) => [
+    /**
+     * NULLS NOT DISTINCT is the whole point, not a detail. PostgreSQL treats
+     * NULLs as distinct in a unique index by default, and `frame_index` is NULL
+     * for every derived role (thumb, wiggle-webp, metadata, ...) — i.e. for most
+     * assets. Without this, re-running a render would happily insert a second
+     * `thumb` row for the same capture and the 05§9 idempotency contract would
+     * cover only `original-frame`.
+     *
+     * It has to be a table CONSTRAINT rather than `uniqueIndex(...)`: drizzle
+     * exposes `nullsNotDistinct()` only on `unique()`. PostgreSQL still backs
+     * the constraint with an index of this name, so `ON CONFLICT` inference and
+     * the error's `constraint_name` are unchanged.
+     */
+    unique('assets_capture_role_frame')
+      .on(t.captureId, t.role, t.frameIndex)
+      .nullsNotDistinct(),
+  ],
 );
 
 export const uploadSessions = pgTable('upload_sessions', {

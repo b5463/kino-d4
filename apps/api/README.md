@@ -89,7 +89,17 @@ Two indexes are load-bearing contracts, not optimisations:
 | Index | On | Why |
 | --- | --- | --- |
 | `captures_roll_uuid` | `(roll_id, capture_uuid)` | idempotency anchor — a retried upload of the same device-generated capture UUID cannot create a second row (05 §9) |
-| `assets_capture_role_frame` | `(capture_id, role, frame_index)` | same, one level down: one asset per role per frame |
+| `assets_capture_role_frame` | `(capture_id, role, frame_index)`, **NULLS NOT DISTINCT** | same, one level down: one asset per role per frame |
+
+`NULLS NOT DISTINCT` on the second one is load-bearing, not a flourish.
+`frame_index` is NULL for every derived role — `thumb`, `wiggle-webp`,
+`metadata` — which is most assets. Under PostgreSQL's default (NULLS DISTINCT)
+those rows are all mutually distinct, so re-running a render would insert a
+*second* `thumb` row for the same capture and the idempotency contract would
+quietly cover `original-frame` and nothing else. It is a table constraint rather
+than an index because drizzle exposes `nullsNotDistinct()` only on `unique()`;
+PostgreSQL still backs it with an index of the same name, so `ON CONFLICT`
+inference and error `constraint_name` are unaffected.
 
 ### Migrations
 
@@ -118,7 +128,9 @@ without them it would regenerate the whole schema every time.
 **Numbering.** drizzle-kit starts at `0000`; the first migration was renamed to
 `0001_init` (file, snapshot and journal `idx`/`tag` together) so the numbers
 line up with the plan's migration numbering. drizzle-kit derives the next index
-from the last journal entry, so the following migration is `0002_*` as expected.
+from the last journal entry's `idx`, not from the entry count, so everything
+after that numbers itself — `0002_asset_role_frame_nulls_not_distinct` came out
+of a plain `generate` with no renaming. Do not rename migrations again.
 
 ### How the tests get a clean database
 
