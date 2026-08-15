@@ -16,11 +16,20 @@
 // dependency, and static markup is enough to assert that a section printed a
 // reason instead of a number.
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Cmd, KinoProtocolClient, MockTransport } from '@kino/kdp';
 import type { JobHandle, JobProgress } from '@kino/kdp';
 import { MockKinoDevice } from '@kino/test-fixtures';
+
+// SkewBench's only use of the session module is `getDevice()`, and the run
+// lifecycle tests need a client they can hold open mid-run. Everything else in
+// this file talks to the real protocol stack directly.
+const session = vi.hoisted(() => ({ client: null as { startJob: unknown } | null }));
+vi.mock('../src/app/session', () => ({
+  getDevice: () => (session.client ? { client: session.client } : null),
+}));
+
 import {
   buildSkewReport,
   consumeSkewBenchJob,
@@ -30,8 +39,21 @@ import {
   SKEW_BANDS,
 } from '../src/skew/skewReport';
 import type { SkewProgress, SyncBenchJobResult } from '../src/skew/skewReport';
-import { SkewBench, SkewMetricCard, SkewReportView, SkewVerdict } from '../src/pages/Calibration/SkewBench';
+import {
+  cancelSkewRun,
+  IDLE_SKEW_RUN,
+  publishSkewRun,
+  SkewBench,
+  SkewMetricCard,
+  SkewReportView,
+  skewRunView,
+  SkewVerdict,
+  startSkewRun,
+  useSkewRun,
+} from '../src/pages/Calibration/SkewBench';
 import { getBenchResult, putBenchResult, resetBenchResults } from '../src/state/benchResults';
+import { useDeviceBusy } from '../src/state/deviceBusy';
+import { clearNavRequest, openSection, useNavRequest } from '../src/state/navRequest';
 import type { SkewReport } from '../src/skew/skewReport';
 
 /**
@@ -60,6 +82,18 @@ function scriptedJob(
     result: Promise.resolve(result),
   };
 }
+
+/** A job result the test decides when to settle, so a run can be held open. */
+function gate() {
+  let resolve!: (r: SyncBenchJobResult) => void;
+  const promise = new Promise<SyncBenchJobResult>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+/** Let the microtask queue drain so an in-flight run reaches its await. */
+const settle = () => new Promise((r) => setTimeout(r, 0));
 
 let transport: MockTransport | null = null;
 
@@ -176,6 +210,33 @@ describe('skew report from a bench run', () => {
     expect(report.metrics[0].cameras).toHaveLength(3);
   });
 
+  it('refuses to summarise a run whose camera order changed mid-way', () => {
+    // Same four cameras, same finite values, cam3 and cam4 swapped on the
+    // second trigger. Matching by index alone would average cam3's samples
+    // into cam4's column and print the result under a CAM3 label.
+    const swapped = {
+      trigger: 1,
+      cams: [
+        EXAMPLE.cams[0],
+        EXAMPLE.cams[1],
+        { ...EXAMPLE.cams[3], cam: 'cam4' },
+        { ...EXAMPLE.cams[2], cam: 'cam3' },
+      ],
+    };
+    const report = buildSkewReport({ samples: [EXAMPLE, swapped] }, 25);
+
+    for (const metric of report.metrics) {
+      expect(metric.unavailableReason).toMatch(/different order/i);
+      expect(metric.spreadUs).toBeNull();
+      expect(metric.band).toBeNull();
+      expect(metric.cameras).toEqual([]);
+    }
+
+    const html = renderToStaticMarkup(<SkewReportView report={report} />);
+    expect(html).toContain('NOT MEASURABLE');
+    expect(html).not.toMatch(/[+-]\d+\.\d+ms/);
+  });
+
   it('routes a non-finite sample to the reason path instead of throwing', () => {
     const report = buildSkewReport(
       {
@@ -280,6 +341,125 @@ describe('the panel and the verdict it publishes', () => {
     expect(verdict).toContain('has not been measured');
     expect(verdict).toContain('RUN SKEW BENCH');
     expect(verdict).not.toMatch(/\d+\.\d+\s*ms/);
+  });
+});
+
+describe('run lifecycle across an unmount', () => {
+  afterEach(() => {
+    session.client = null;
+    useSkewRun.setState(IDLE_SKEW_RUN);
+    useDeviceBusy.setState({ owner: null, label: null });
+    resetBenchResults();
+  });
+
+  it('keeps a run alive across an unmount and refuses a second one', async () => {
+    const held = gate();
+    let started = 0;
+    session.client = {
+      startJob: async () => {
+        started += 1;
+        return scriptedJob(held.promise, [
+          { jobId: 'job_scripted', progress: 0.2, message: '200/1000 triggers' },
+        ]);
+      },
+    };
+
+    const inFlight = startSkewRun(1000);
+    await settle();
+
+    // The run is device work: it is still live with no panel mounted.
+    const live = useSkewRun.getState();
+    expect(live.token).not.toBeNull();
+    expect(live.requested).toBe(1000);
+    expect(live.done).toBe(200);
+    expect(useDeviceBusy.getState().owner).toBe('skew');
+
+    // A remounted panel lands in the running state, not a lying idle one, and
+    // RUN is not startable.
+    const view = skewRunView(useSkewRun.getState(), null);
+    expect(view.running).toBe(true);
+    expect(view.canStart).toBe(false);
+    expect(view.showCancel).toBe(true);
+    expect(view.status).toBe('RUNNING 200/1000 TRIGGERS');
+
+    // A second bench on the same UART is refused — no new job, no new token.
+    await startSkewRun(25);
+    expect(started).toBe(1);
+    expect(useSkewRun.getState().token).toBe(live.token);
+    expect(useSkewRun.getState().requested).toBe(1000);
+
+    held.resolve({ triggers: 1, samples: [EXAMPLE] });
+    await inFlight;
+
+    // Only now is the link released and the result published.
+    expect(useSkewRun.getState().token).toBeNull();
+    expect(useDeviceBusy.getState().owner).toBeNull();
+    expect(getBenchResult<SkewReport>('skew')).not.toBeNull();
+  });
+
+  it('cancels the live run and records nothing', async () => {
+    const held = gate();
+    session.client = { startJob: async () => scriptedJob(held.promise) };
+
+    const inFlight = startSkewRun(250);
+    await settle();
+    cancelSkewRun();
+    expect(skewRunView(useSkewRun.getState(), null).status).toBe(
+      'Stopping after current trigger…',
+    );
+    expect(skewRunView(useSkewRun.getState(), null).showCancel).toBe(false);
+
+    held.resolve({ triggers: 1, samples: [EXAMPLE] });
+    await inFlight;
+
+    expect(getBenchResult('skew')).toBeNull();
+    expect(useSkewRun.getState().cancelled).toBe(true);
+    expect(useDeviceBusy.getState().owner).toBeNull();
+    expect(skewRunView(useSkewRun.getState(), null).status).toBe(
+      'Run cancelled. Nothing was recorded.',
+    );
+  });
+
+  it('does not let a superseded run overwrite a newer result', () => {
+    const newer = buildSkewReport({ samples: [EXAMPLE, { ...EXAMPLE, trigger: 1 }] }, 250);
+    const older = buildSkewReport({ samples: [EXAMPLE] }, 25);
+    putBenchResult<SkewReport>('skew', newer);
+    // Token 1's run is over; token 2 is the live one.
+    useSkewRun.setState({ ...IDLE_SKEW_RUN, token: 2, requested: 250 });
+
+    expect(publishSkewRun(1, older)).toBe(false);
+    expect(getBenchResult<SkewReport>('skew')!.result.triggers).toBe(2);
+
+    // The live run still publishes normally.
+    expect(publishSkewRun(2, older)).toBe(true);
+    expect(getBenchResult<SkewReport>('skew')!.result.triggers).toBe(1);
+  });
+});
+
+describe('cross-section nav requests', () => {
+  afterEach(() => useNavRequest.setState({ request: null }));
+
+  it('is spent once handled, so a later visit keeps its own tab', () => {
+    openSection('calibration', 'skew');
+    const request = useNavRequest.getState().request;
+    expect(request).toMatchObject({ page: 'calibration', tab: 'skew' });
+
+    // What CalibrationPage's effect does after applying the tab.
+    clearNavRequest(request!.nonce);
+    expect(useNavRequest.getState().request).toBeNull();
+
+    // A page mounting later sees nothing to act on and keeps its default.
+    expect(useNavRequest.getState().request).toBeNull();
+  });
+
+  it('does not let a stale handler swallow a newer request', () => {
+    openSection('calibration', 'skew');
+    const stale = useNavRequest.getState().request!.nonce;
+    openSection('calibration', 'calibration');
+    const current = useNavRequest.getState().request!;
+
+    clearNavRequest(stale);
+    expect(useNavRequest.getState().request).toEqual(current);
   });
 });
 

@@ -8,7 +8,7 @@ import { SkewBench } from './SkewBench';
 import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { invalidateBench } from '../../state/benchResults';
-import { useNavRequest } from '../../state/navRequest';
+import { clearNavRequest, useNavRequest } from '../../state/navRequest';
 import { getDevice, onCalibrationEvent, refreshCalibration } from '../../app/session';
 import type { CamCalibration, CamId, CalibrationEvent } from '@kino/kdp';
 import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
@@ -186,11 +186,14 @@ export function CalibrationPage() {
   const blockedBy = useBlockedBy(OWNER);
 
   // A link from another section (Overview's sync verdict) opens the tab it
-  // was talking about, not the one this page happened to be left on.
+  // was talking about, not the one this page happened to be left on. The
+  // request is consumed here: it is an instruction for one navigation, not a
+  // standing override of every later visit to this page.
   const navRequest = useNavRequest((s) => s.request);
   useEffect(() => {
     if (navRequest?.page !== 'calibration') return;
     if (TABS.some((t) => t.id === navRequest.tab)) setTab(navRequest.tab as Tab);
+    clearNavRequest(navRequest.nonce);
   }, [navRequest]);
 
   useEffect(() => {

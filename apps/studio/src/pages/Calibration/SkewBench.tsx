@@ -7,7 +7,8 @@
 // The Developer page keeps its own raw timing views. This is the product one:
 // it grades against 02 §10's band table wording, not kdp's `gradeSkew`.
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { create } from 'zustand';
 import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { SegField } from '../../components/fields';
@@ -46,6 +47,137 @@ const RUN_SIZES = [
   { value: '250', label: '250 BENCH' },
   { value: '1000', label: '1000 SOAK' },
 ];
+
+// ---- the run, which outlives the panel ----
+
+/**
+ * A bench run is device work, not component state.
+ *
+ * Calibration unmounts this panel on a tab switch and a 1000-trigger soak
+ * takes minutes. With the run in `useState` that was three bugs at once:
+ * coming back showed an idle panel, `useBlockedBy('skew')` reported the link
+ * free to its own owner, and `claimDevice('skew')` handed the claim straight
+ * back — so a second SYNC_BENCH went out on the same UART while the first was
+ * still consuming, the first run's cleanup released the link out from under
+ * the second, and whichever finished last wrote its numbers over the other's.
+ *
+ * So the run lives here, module-level, identified by a token. The panel
+ * renders whatever is in flight; a run that is no longer the live one can
+ * neither publish a result nor release the link.
+ */
+export interface SkewRunState {
+  /** Identifies the live run. Null when no bench is running. */
+  token: number | null;
+  requested: number;
+  done: number;
+  stopping: boolean;
+  cancelled: boolean;
+  unsupported: boolean;
+  error: string | null;
+}
+
+export const IDLE_SKEW_RUN: SkewRunState = {
+  token: null,
+  requested: 0,
+  done: 0,
+  stopping: false,
+  cancelled: false,
+  unsupported: false,
+  error: null,
+};
+
+export const useSkewRun = create<SkewRunState>(() => IDLE_SKEW_RUN);
+
+let nextRunToken = 0;
+/** Cancel flag, honoured by the live run only. */
+let stopRequested = false;
+
+function isCurrentRun(token: number): boolean {
+  return useSkewRun.getState().token === token;
+}
+
+/**
+ * A finished run publishes only while it is still the live one. Returns false
+ * when it has been superseded — its numbers describe a device state that has
+ * already been re-measured, and overwriting a newer result with them is how a
+ * bench ends up reporting the wrong verdict with a current timestamp.
+ */
+export function publishSkewRun(token: number, report: SkewReport | null): boolean {
+  if (!isCurrentRun(token)) return false;
+  if (report) putBenchResult<SkewReport>(OWNER, report);
+  else useSkewRun.setState({ cancelled: true });
+  return true;
+}
+
+/**
+ * Start a bench. Refuses while another one is in flight, whether or not the
+ * panel that started it is still mounted.
+ */
+export async function startSkewRun(triggers: number): Promise<void> {
+  if (useSkewRun.getState().token !== null) return;
+  const client = getDevice()?.client;
+  if (!client) return;
+  if (!claimDevice(OWNER, LABEL)) return;
+
+  const token = (nextRunToken += 1);
+  stopRequested = false;
+  useSkewRun.setState({ ...IDLE_SKEW_RUN, token, requested: triggers });
+  clearBenchResult(OWNER);
+
+  try {
+    const handle = await client.startJob<SyncBenchJobResult>(Cmd.SYNC_BENCH, { triggers });
+    const report = await consumeSkewBenchJob(handle, {
+      requestedTriggers: triggers,
+      onProgress: (p) => {
+        if (isCurrentRun(token)) useSkewRun.setState({ done: p.done });
+      },
+      stopped: () => stopRequested && isCurrentRun(token),
+    });
+    publishSkewRun(token, report);
+  } catch (err) {
+    if (isCurrentRun(token)) {
+      if (err instanceof KinoUnsupportedError) useSkewRun.setState({ unsupported: true });
+      else useSkewRun.setState({ error: err instanceof Error ? err.message : String(err) });
+    }
+  } finally {
+    // Only the current run owns the claim. A superseded run releasing it would
+    // hand the link to a third party while a bench is still triggering.
+    if (isCurrentRun(token)) {
+      releaseDevice(OWNER);
+      useSkewRun.setState({ token: null, stopping: false });
+    }
+  }
+}
+
+export function cancelSkewRun(): void {
+  const run = useSkewRun.getState();
+  if (run.token === null || run.stopping) return;
+  stopRequested = true;
+  useSkewRun.setState({ stopping: true });
+}
+
+/**
+ * What the panel shows for a given run state. Pure, so the state a remounted
+ * panel lands in is testable without a DOM.
+ */
+export function skewRunView(
+  run: SkewRunState,
+  blockedBy: string | null,
+): { running: boolean; canStart: boolean; showCancel: boolean; status: string } {
+  const running = run.token !== null;
+  let status = '';
+  if (run.stopping) status = 'Stopping after current trigger…';
+  else if (running) status = `RUNNING ${run.done}/${run.requested} TRIGGERS`;
+  else if (blockedBy) status = `${blockedBy} is running.`;
+  else if (run.cancelled) status = 'Run cancelled. Nothing was recorded.';
+
+  return {
+    running,
+    canStart: !running && blockedBy === null,
+    showCancel: running && !run.stopping,
+    status,
+  };
+}
 
 /** One metric section. Exported so the display can be tested without a device. */
 export function SkewMetricCard({ metric, order }: { metric: SkewMetricReport; order?: number }) {
@@ -229,87 +361,35 @@ export function SkewVerdict() {
 export function SkewBench() {
   const firmwareLabel = useDeviceStore((s) => s.firmwareLabel);
   const [triggers, setTriggers] = useState(250);
-  const [phase, setPhase] = useState<'idle' | 'running' | 'stopping'>('idle');
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [unsupported, setUnsupported] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
-  // A ref, not state: `consumeSkewBenchJob` polls this from inside an await
-  // loop that never re-renders, so a state value would stay at its captured
-  // value forever and CANCEL would do nothing.
-  const stopRef = useRef(false);
   const blockedBy = useBlockedBy(OWNER);
+  // Whatever is in flight, started by this mount of the panel or a previous
+  // one. A remount lands in the running state, not a lying idle one.
+  const run = useSkewRun();
+  const view = skewRunView(run, blockedBy);
 
   const entry = useBenchResult<SkewReport>(OWNER);
   const report = entry?.result ?? null;
   const stamp = benchStamp(entry);
-  const running = phase !== 'idle';
-
-  const run = async () => {
-    const client = getDevice()?.client;
-    if (!client || running) return;
-    if (!claimDevice(OWNER, LABEL)) return;
-    stopRef.current = false;
-    setError(null);
-    setUnsupported(false);
-    setCancelled(false);
-    setPhase('running');
-    setProgress({ done: 0, total: triggers });
-    clearBenchResult(OWNER);
-    try {
-      const handle = await client.startJob<SyncBenchJobResult>(Cmd.SYNC_BENCH, { triggers });
-      const result = await consumeSkewBenchJob(handle, {
-        requestedTriggers: triggers,
-        onProgress: (p) => setProgress({ done: p.done, total: p.total }),
-        stopped: () => stopRef.current,
-      });
-      if (result) putBenchResult<SkewReport>(OWNER, result);
-      else setCancelled(true);
-    } catch (err) {
-      if (err instanceof KinoUnsupportedError) setUnsupported(true);
-      else setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      releaseDevice(OWNER);
-      setPhase('idle');
-      setProgress(null);
-    }
-  };
-
-  const cancel = () => {
-    if (phase !== 'running') return;
-    stopRef.current = true;
-    setPhase('stopping');
-  };
-
-  const status = () => {
-    if (phase === 'stopping') return 'Stopping after current trigger…';
-    if (phase === 'running' && progress) {
-      return `RUNNING ${progress.done}/${progress.total} TRIGGERS`;
-    }
-    if (blockedBy) return `${blockedBy} is running.`;
-    if (cancelled) return 'Run cancelled. Nothing was recorded.';
-    return '';
-  };
 
   return (
     <Panel
       title="SKEW BENCH"
       actions={
         <>
-          {phase === 'running' ? (
-            <Button size="sm" onClick={cancel}>
+          {view.showCancel ? (
+            <Button size="sm" onClick={cancelSkewRun}>
               CANCEL
             </Button>
           ) : null}
           <Button
             variant="primary"
             size="sm"
-            busy={running}
-            disabled={!running && blockedBy !== null}
+            busy={view.running}
+            disabled={!view.running && !view.canStart}
             title={blockedBy ? `${blockedBy} is running` : undefined}
-            onClick={() => void run()}
+            onClick={() => void startSkewRun(triggers)}
           >
-            RUN {triggers} TRIGGERS
+            RUN {view.running ? run.requested : triggers} TRIGGERS
           </Button>
         </>
       }
@@ -321,25 +401,25 @@ export function SkewBench() {
 
       <SegField
         label="RUN SIZE"
-        value={String(triggers)}
+        value={String(view.running ? run.requested : triggers)}
         options={RUN_SIZES}
-        disabled={running}
+        disabled={view.running}
         onChange={(v) => setTriggers(Number(v))}
         hint="250 is the verdict run. 1000 finds the trigger in a thousand that misses a frame."
       />
 
       <p className="val" role="status" style={{ padding: '6px 0', minHeight: 18 }}>
-        {status()}
+        {view.status}
       </p>
 
-      {phase === 'stopping' ? (
+      {run.stopping ? (
         <p className="spark-minmax" style={{ display: 'block', textTransform: 'none' }}>
           The protocol has no cancel command. The camera finishes the triggers it started; Studio
           stops listening and records nothing.
         </p>
       ) : null}
 
-      {unsupported ? (
+      {run.unsupported ? (
         <Unsupported
           feature="Skew Bench"
           firmware={firmwareLabel}
@@ -358,9 +438,9 @@ export function SkewBench() {
         </p>
       ) : null}
 
-      {error ? (
+      {run.error ? (
         <p className="notice notice--err" style={{ marginTop: 8 }}>
-          {error}
+          {run.error}
         </p>
       ) : null}
     </Panel>

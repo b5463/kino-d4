@@ -168,6 +168,13 @@ function isFiniteNumber(value: unknown): value is number {
  * and a trigger that reported a different camera set all mean the same thing:
  * the run cannot be summarised without quietly changing what is being
  * summarised. All three land here.
+ *
+ * Cameras are matched **by id, per position** — not by index alone. Nothing in
+ * the protocol promises a stable order across triggers, and a device that
+ * reports `cam1,cam2,cam4,cam3` on one pass of a 250-trigger run would
+ * otherwise average cam3's samples into cam4's column and print the result
+ * under a CAM3 label: a plausible-looking wrong number on the surface that
+ * decides whether the hardware is acceptable.
  */
 function collect(
   samples: SyncBenchTriggerSample[],
@@ -183,7 +190,12 @@ function collect(
     const row: number[] = [];
     for (let i = 0; i < cams.length; i += 1) {
       const cam = sample.cams[i];
-      const value = cam?.[key];
+      if (cam?.cam !== cams[i]) {
+        return {
+          reason: `trigger ${sample.trigger} reported the cameras in a different order`,
+        };
+      }
+      const value = cam[key];
       if (!isFiniteNumber(value)) {
         return { reason: `the device did not report ${title} for every camera` };
       }

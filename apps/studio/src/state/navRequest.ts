@@ -29,3 +29,16 @@ export function openSection(page: PageId, tab?: string): void {
   nonce += 1;
   useNavRequest.setState({ request: { page, tab, nonce } });
 }
+
+/**
+ * A request is spent once the target page has acted on it.
+ *
+ * Without this it never was: one click of Overview's OPEN SKEW BENCH left the
+ * request standing, and every later visit to Calibration for the rest of the
+ * session force-landed on the Skew Bench tab, ignoring the tab the user had
+ * actually chosen. Clearing is nonce-matched so a stale handler cannot swallow
+ * a newer request that arrived in between.
+ */
+export function clearNavRequest(handled: number): void {
+  useNavRequest.setState((s) => (s.request?.nonce === handled ? { request: null } : s));
+}
