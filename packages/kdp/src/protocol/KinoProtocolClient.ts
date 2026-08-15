@@ -160,6 +160,19 @@ const HELLO_RETRY_MS = 150;
  * without bound; the oldest entry is dropped.
  */
 const ORPHAN_JOBS_MAX = 32;
+/**
+ * Cap on buffered progress per unclaimed jobId. Bounding the number of buckets
+ * is not enough: one chatty job whose start reply never arrived would retain
+ * every update it ever sent. The newest are kept — they are what a UI shows.
+ */
+const ORPHAN_PROGRESS_MAX = 16;
+/**
+ * Tombstones for jobIds that already settled. A trailing or retransmitted
+ * event must not be buffered under a settled ID, or the next job that reuses
+ * that ID (a rebooted device restarting at job_1) inherits the old run's
+ * result. Bounded like everything else here.
+ */
+const SETTLED_JOBS_MAX = 32;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const randomNonce = () => Math.floor(Math.random() * 0xffffffff);
@@ -175,8 +188,10 @@ export class KinoProtocolClient {
   private readonly pending = new Map<number, Pending>();
   private eventHandlers = new Map<Evt, Set<(payload: unknown) => void>>();
   private sessionHandlers = new Set<(change: SessionChange) => void>();
+  /** Live jobs only — a record leaves this map the moment it settles. */
   private readonly jobs = new Map<string, JobRecord>();
   private readonly orphanJobs = new Map<string, OrphanEvents>();
+  private readonly settledJobs = new Set<string>();
   private session: string | null = null;
   private protocol: number | null = null;
   private seq = 1;
@@ -320,6 +335,10 @@ export class KinoProtocolClient {
     const previous = this.session;
     this.session = current;
     if (previous === null || previous === current) return;
+    // A new boot ID is proof every job from the old session died with it —
+    // including one still in flight over a port that never dropped. Tear them
+    // down before anyone reacts to the change and starts new work.
+    this.failAllJobs('SESSION_CHANGED', `Device restarted (session ${previous} → ${current})`);
     const change: SessionChange = { previous, current, deviceId: res.deviceId };
     for (const handler of this.sessionHandlers) handler(change);
   }
@@ -371,12 +390,26 @@ export class KinoProtocolClient {
     // rejection handled here is what stops that from killing the process.
     void result.catch(() => {});
 
+    // Anything still in this map under that ID is live (settled records leave
+    // it), so the device handed out an ID that is already in flight. Whatever
+    // it reports next belongs to the new run, and the old handle can never be
+    // reported on again — end it rather than leave its consumer hanging.
+    if (this.jobs.has(jobId)) {
+      this.settleJob(jobId, {
+        kind: 'failed',
+        error: { code: 'JOB_SUPERSEDED', message: `Job ${jobId} was restarted by the device` },
+      });
+    }
+    // A new job legitimately claims this ID, so its tombstone goes.
+    this.settledJobs.delete(jobId);
+
     const record: JobRecord = { queue: [], waiters: [], finished: false, resolve, reject };
     this.jobs.set(jobId, record);
 
     // Events routinely beat this registration: the device can pack the reply
     // and the first progress event into one read, and the reply only resumes
-    // this function a microtask later.
+    // this function a microtask later. Nothing from a *previous* run can be
+    // waiting here — settled IDs never get a bucket.
     const orphan = this.orphanJobs.get(jobId);
     if (orphan) {
       this.orphanJobs.delete(jobId);
@@ -423,13 +456,26 @@ export class KinoProtocolClient {
     return bucket;
   }
 
+  /** Remember a settled jobId, evicting the oldest tombstone past the cap. */
+  private markSettled(jobId: string) {
+    this.settledJobs.delete(jobId);
+    this.settledJobs.add(jobId);
+    while (this.settledJobs.size > SETTLED_JOBS_MAX) {
+      const oldest = this.settledJobs.values().next().value;
+      if (oldest === undefined) break;
+      this.settledJobs.delete(oldest);
+    }
+  }
+
   private deliverProgress(p: JobProgress) {
     const record = this.jobs.get(p.jobId);
     if (!record) {
-      this.orphanBucket(p.jobId).progress.push(p);
+      if (this.settledJobs.has(p.jobId)) return; // trailing event; that job is over
+      const bucket = this.orphanBucket(p.jobId);
+      bucket.progress.push(p);
+      if (bucket.progress.length > ORPHAN_PROGRESS_MAX) bucket.progress.shift();
       return;
     }
-    if (record.finished) return;
     const waiter = record.waiters.shift();
     if (waiter) waiter({ value: p, done: false });
     else record.queue.push(p);
@@ -438,16 +484,34 @@ export class KinoProtocolClient {
   private settleJob(jobId: string, outcome: JobOutcome) {
     const record = this.jobs.get(jobId);
     if (!record) {
+      // A duplicate or late JOB_COMPLETE for a job that already settled must
+      // not be parked in a bucket: the next run to use this ID would drain it
+      // and report the previous run's result as its own.
+      if (this.settledJobs.has(jobId)) return;
       this.orphanBucket(jobId).outcome = outcome;
       return;
     }
     this.jobs.delete(jobId);
-    record.finished = true;
+    this.markSettled(jobId);
+    record.finished = true; // the iterator's terminal flag
     // Anything still queued is delivered by next() before it reports done.
     for (const waiter of record.waiters) waiter({ value: undefined, done: true });
     record.waiters.length = 0;
     if (outcome.kind === 'complete') record.resolve(outcome.result);
     else record.reject(new KinoJobError(jobId, outcome.error));
+  }
+
+  /**
+   * End every live job with the same error and drop unclaimed buffers. Used
+   * when the connection or the device session underneath the jobs is gone —
+   * they can never report again, and a progress iterable left open hangs
+   * whatever is rendering it.
+   */
+  private failAllJobs(code: string, message: string) {
+    for (const jobId of [...this.jobs.keys()]) {
+      this.settleJob(jobId, { kind: 'failed', error: { code, message } });
+    }
+    this.orphanJobs.clear();
   }
 
   /** Send a binary command (firmware chunks) and decode the JSON response. */
@@ -552,15 +616,8 @@ export class KinoProtocolClient {
       p.reject(new Error(reason));
     }
     this.pending.clear();
-    // A job whose device just vanished never reports again; leaving its
-    // progress iterable open would hang whoever is rendering it.
-    for (const jobId of [...this.jobs.keys()]) {
-      this.settleJob(jobId, {
-        kind: 'failed',
-        error: { code: 'DISCONNECTED', message: reason },
-      });
-    }
-    this.orphanJobs.clear();
+    this.failAllJobs('DISCONNECTED', reason);
+    this.settledJobs.clear();
     this.eventHandlers.clear();
     this.sessionHandlers.clear();
   }

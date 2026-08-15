@@ -148,11 +148,16 @@ function makeClientWithScriptedDevice(script: Step[], options?: ScriptOptions) {
 
 describe('async job model (04 §15)', () => {
   it('startJob yields progress then resolves result', async () => {
-    const { client } = makeClientWithScriptedDevice([
-      { onCommand: Cmd.SELF_TEST, reply: { jobId: 'job_1', accepted: true } },
-      { emit: { type: Evt.JOB_PROGRESS, payload: { jobId: 'job_1', progress: 0.5 } } },
-      { emit: { type: Evt.JOB_COMPLETE, payload: { jobId: 'job_1', result: { ok: true } } } },
-    ]);
+    // 'paced': reply, progress and completion land on separate ticks, so the
+    // job is registered before any event arrives — the ordinary path.
+    const { client } = makeClientWithScriptedDevice(
+      [
+        { onCommand: Cmd.SELF_TEST, reply: { jobId: 'job_1', accepted: true } },
+        { emit: { type: Evt.JOB_PROGRESS, payload: { jobId: 'job_1', progress: 0.5 } } },
+        { emit: { type: Evt.JOB_COMPLETE, payload: { jobId: 'job_1', result: { ok: true } } } },
+      ],
+      { delivery: 'paced' },
+    );
 
     const job = await client.startJob(Cmd.SELF_TEST, {});
     expect(job.jobId).toBe('job_1');
@@ -319,6 +324,106 @@ describe('async job model (04 §15)', () => {
     client.dispose('KINO disconnected unexpectedly');
     await expect(drained).resolves.toEqual([]);
     await expect(job.result).rejects.toThrow('KINO disconnected unexpectedly');
+  });
+
+  it('does not resurrect a settled job when the device reuses its jobId', async () => {
+    // A rebooted device restarts its counter at job_1. If a trailing event
+    // from the previous run were still buffered under that ID, the next job
+    // would settle with the previous run's result the instant it started.
+    const { client, transport } = makeClientWithScriptedDevice([
+      { onCommand: Cmd.SELF_TEST, reply: { jobId: 'job_1', accepted: true } },
+      { emit: { type: Evt.JOB_COMPLETE, payload: { jobId: 'job_1', result: { run: 1 } } } },
+      { onCommand: Cmd.LINK_BENCH, reply: { jobId: 'job_1', accepted: true } },
+    ]);
+
+    const first = await client.startJob(Cmd.SELF_TEST, {});
+    expect(await first.result).toEqual({ run: 1 });
+
+    // Stray and duplicate events after settlement.
+    transport.emit(Evt.JOB_PROGRESS, { jobId: 'job_1', progress: 0.99 });
+    transport.emit(Evt.JOB_COMPLETE, { jobId: 'job_1', result: { run: 1 } });
+
+    const second = await client.startJob(Cmd.LINK_BENCH, {});
+    const seen: number[] = [];
+    const drain = (async () => {
+      for await (const p of second.progress) seen.push(p.progress);
+    })();
+
+    // The new job must still be running, not settled from the old run.
+    const state = await Promise.race([
+      second.result.then(() => 'settled', () => 'settled'),
+      new Promise<string>((r) => setTimeout(() => r('pending'), 10)),
+    ]);
+    expect(state).toBe('pending');
+    expect(seen).toEqual([]); // no stale progress leaked in either
+
+    transport.emit(Evt.JOB_PROGRESS, { jobId: 'job_1', progress: 0.5 });
+    transport.emit(Evt.JOB_COMPLETE, { jobId: 'job_1', result: { run: 2 } });
+    await drain;
+    expect(seen).toEqual([0.5]);
+    expect(await second.result).toEqual({ run: 2 });
+    client.dispose();
+  });
+
+  it('caps how much progress one unclaimed job may buffer', async () => {
+    const { client, transport } = makeClientWithScriptedDevice([
+      { onCommand: Cmd.SELF_TEST, reply: { jobId: 'job_big', accepted: true } },
+    ]);
+
+    // A chatty device whose start reply has not arrived yet: 200 updates for
+    // an ID nobody has claimed. Only the newest may be retained.
+    for (let i = 1; i <= 200; i++) transport.emit(Evt.JOB_PROGRESS, { jobId: 'job_big', progress: i });
+
+    const job = await client.startJob(Cmd.SELF_TEST, {});
+    transport.emit(Evt.JOB_COMPLETE, { jobId: 'job_big', result: { ok: true } });
+    const seen: number[] = [];
+    for await (const p of job.progress) seen.push(p.progress);
+
+    expect(seen.length).toBeLessThanOrEqual(16);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[seen.length - 1]).toBe(200); // newest kept, oldest dropped
+    client.dispose();
+  });
+
+  it('fails in-flight jobs when HELLO reports a new device session', async () => {
+    // The port never dropped, so dispose() never runs — but the device did
+    // reboot, and the job it was running went with it.
+    const { client } = makeClientWithScriptedDevice([
+      { onCommand: Cmd.CAMERA_CALIBRATE, reply: { jobId: 'job_s', accepted: true } },
+      {
+        onCommand: Cmd.HELLO,
+        reply: { product: 'KINO', protocol: PROTOCOL_VERSION, sessionId: 'boot-2' },
+      },
+    ]);
+
+    const job = await client.startJob(Cmd.CAMERA_CALIBRATE, {});
+    const drained = (async () => {
+      const seen: JobProgress[] = [];
+      for await (const p of job.progress) seen.push(p);
+      return seen;
+    })();
+
+    await client.hello({ knownSessionId: 'boot-1', timeoutMs: 50, retryDelayMs: 0 });
+    expect(client.sessionId).toBe('boot-2');
+
+    await expect(drained).resolves.toEqual([]);
+    const err = await job.result.then(() => null).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(KinoJobError);
+    expect((err as KinoJobError).code).toBe('SESSION_CHANGED');
+    client.dispose();
+  });
+
+  it('ends the older handle when the device restarts a job ID still in flight', async () => {
+    const { client } = makeClientWithScriptedDevice([
+      { onCommand: Cmd.SELF_TEST, reply: { jobId: 'job_dup', accepted: true } },
+      { onCommand: Cmd.LINK_BENCH, reply: { jobId: 'job_dup', accepted: true } },
+    ]);
+
+    const first = await client.startJob(Cmd.SELF_TEST, {});
+    const second = await client.startJob(Cmd.LINK_BENCH, {});
+    await expect(first.result).rejects.toMatchObject({ code: 'JOB_SUPERSEDED' });
+    expect(second.jobId).toBe('job_dup');
+    client.dispose();
   });
 
   it('ignores job events for a job that was never started', async () => {
