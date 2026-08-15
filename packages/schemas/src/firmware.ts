@@ -25,23 +25,46 @@ const target = z
  * nodes. `updateOrder` lets the manifest override Studio's default sequencing
  * (02§21) and is optional — absent means Studio picks the order.
  */
+const manifestObject = z
+  .object({
+    schema: z.literal('kino.firmware-manifest'),
+    version: z.literal(1),
+    release: z.string().min(1),
+    /** Release channel, e.g. "stable" (05§19). Absent on a hand-built package. */
+    channel: z.string().min(1).optional(),
+    protocolMin: z.number().int().nonnegative(),
+    protocolMax: z.number().int().nonnegative(),
+    compatibleHardware: z.array(z.string().min(1)).min(1),
+    targets: z.record(target),
+    updateOrder: z.array(z.string().min(1)).optional(),
+  })
+  .passthrough();
+
 export const firmwareManifest = defineSchema({
   schema: 'kino.firmware-manifest',
   version: 1,
-  shape: z
-    .object({
-      schema: z.literal('kino.firmware-manifest'),
-      version: z.literal(1),
-      release: z.string().min(1),
-      /** Release channel, e.g. "stable" (05§19). Absent on a hand-built package. */
-      channel: z.string().min(1).optional(),
-      protocolMin: z.number().int().nonnegative(),
-      protocolMax: z.number().int().nonnegative(),
-      compatibleHardware: z.array(z.string().min(1)).min(1),
-      targets: z.record(target),
-      updateOrder: z.array(z.string().min(1)).optional(),
-    })
-    .passthrough(),
+  /**
+   * `updateOrder` must name only targets this manifest actually ships. A typo
+   * would otherwise parse clean and make a flasher silently skip a node, which
+   * is the worst possible failure mode for an OTA (04§11 rollback assumes every
+   * target was attempted).
+   *
+   * Subset check only: listing FEWER entries than `targets` has is legal, so a
+   * manifest may pin the order of the targets that matter and leave the rest to
+   * Studio. Requiring both directions would break that.
+   */
+  shape: manifestObject.superRefine((doc, ctx) => {
+    if (!doc.updateOrder) return;
+    doc.updateOrder.forEach((name, i) => {
+      if (!Object.prototype.hasOwnProperty.call(doc.targets, name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['updateOrder', i],
+          message: `updateOrder entry "${name}" is not one of this manifest's targets`,
+        });
+      }
+    });
+  }),
   migrations: {},
 });
 export type FirmwareManifest = z.infer<typeof firmwareManifest.shape>;

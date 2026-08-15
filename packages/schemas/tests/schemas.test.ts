@@ -350,6 +350,35 @@ describe('kino.capture', () => {
     expect(parseVersioned(capture, noTiming).timing).toBeUndefined();
   });
 
+  it('rejects a partial timing block — missing data must be null, not absent (04§13)', () => {
+    // The locked rule is "null + reason, never fabricate". Omitting a key is not
+    // an allowed substitute for null: absent reads as "no such concept", null
+    // reads as "measured, unavailable". A timing block must carry all three.
+    expect(() =>
+      parseVersioned(capture, { ...captureExample, timing: { gpioTriggerSkewUs: 140 } }),
+    ).toThrow();
+    expect(() =>
+      parseVersioned(capture, {
+        ...captureExample,
+        timing: { gpioTriggerSkewUs: 140, vsyncPhaseSkewUs: 1200 },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseVersioned(capture, {
+        ...captureExample,
+        timing: { unavailableReason: 'no telemetry' },
+      }),
+    ).toThrow();
+  });
+
+  it('keeps unknown future keys inside a timing block (07§14)', () => {
+    const out = parseVersioned(capture, {
+      ...captureExample,
+      timing: { ...captureExample.timing, shutterOpenSkewUs: 7 },
+    });
+    expect(out.timing?.shutterOpenSkewUs).toBe(7);
+  });
+
   it('does not hard-code a 4-frame media model (03§12)', () => {
     expect(parseVersioned(capture, { ...captureExample, mode: 'single', frameCount: 1 }).frameCount).toBe(1);
     expect(parseVersioned(capture, { ...captureExample, frameCount: 12 }).frameCount).toBe(12);
@@ -455,8 +484,33 @@ describe('kino.firmware-manifest', () => {
       parseVersioned(firmwareManifest, {
         ...firmwareManifestExample,
         targets: { main: { file: 'p4-app.bin', sha256: 'not-a-digest' } },
+        updateOrder: ['main'],
       }),
     ).toThrow();
+  });
+
+  it('rejects an updateOrder entry that is not a target of this manifest', () => {
+    // A typo here would otherwise parse clean and make the flasher silently
+    // skip a node — the worst failure mode for an OTA.
+    expect(() =>
+      parseVersioned(firmwareManifest, {
+        ...firmwareManifestExample,
+        updateOrder: ['cameraNod', 'main'],
+      }),
+    // ZodError.message is the JSON-serialised issue list, so the quotes around
+    // the offending name arrive escaped — match around them.
+    ).toThrow(/updateOrder entry .*cameraNod.* is not one of this manifest's targets/);
+  });
+
+  it('accepts an updateOrder that pins only a subset of the targets', () => {
+    // Subset is legal: the manifest may fix the order of what matters and leave
+    // the remaining targets to Studio.
+    const out = parseVersioned(firmwareManifest, {
+      ...firmwareManifestExample,
+      updateOrder: ['cameraNode'],
+    });
+    expect(out.updateOrder).toEqual(['cameraNode']);
+    expect(Object.keys(out.targets)).toEqual(['main', 'cameraNode']);
   });
 });
 
@@ -516,6 +570,18 @@ describe('unknown future fields on portable documents (07§14)', () => {
         someFutureTopLevelField: { added: 'in a later release' },
       });
       expect(out.version).toBe(1);
+    });
+
+    it(`${name} preserves the unknown field on the parsed output`, () => {
+      // Parsing must not be the only thing that survives: a `.strip()`
+      // regression would silently drop the field, and Studio would then erase
+      // it on the next read-modify-write round trip.
+      const future = { added: 'in a later release', nested: { deep: [1, 2, 3] } };
+      const out = parseVersioned(def, {
+        ...(example as Record<string, unknown>),
+        someFutureTopLevelField: future,
+      });
+      expect((out as Record<string, unknown>).someFutureTopLevelField).toEqual(future);
     });
   }
 });

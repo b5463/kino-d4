@@ -43,15 +43,23 @@ const SHA256 = /^[0-9a-f]{64}$/;
 /**
  * Timing telemetry (04§13). The three skews are distinct measurements and must
  * never be conflated: a tight GPIO trigger does not prove tight exposure on a
- * free-running rolling shutter (04§14). Anything the device could not measure
- * is `null` plus an `unavailableReason` — never a fabricated number.
+ * free-running rolling shutter (04§14).
+ *
+ * All three keys are REQUIRED whenever a `timing` block is present. The locked
+ * platform rule is "missing timing data is `null` with a reason" — omitting a
+ * key is not an allowed substitute for `null`, because an absent field reads as
+ * "this build has no such concept" while `null` reads as "measured, unavailable
+ * here". Only the whole block is optional (a device that reported no telemetry
+ * at all). `unavailableReason` stays optional and explains the nulls.
  */
-const timing = z.object({
-  gpioTriggerSkewUs: z.number().nullable(),
-  vsyncPhaseSkewUs: z.number().nullable(),
-  effectiveExposureSkewUs: z.number().nullable(),
-  unavailableReason: z.string().optional(),
-});
+const timing = z
+  .object({
+    gpioTriggerSkewUs: z.number().nullable(),
+    vsyncPhaseSkewUs: z.number().nullable(),
+    effectiveExposureSkewUs: z.number().nullable(),
+    unavailableReason: z.string().optional(),
+  })
+  .passthrough();
 
 /** `kino.capture` — one shutter press and its frames (05§19). */
 export const capture = defineSchema({
@@ -74,7 +82,7 @@ export const capture = defineSchema({
       frameCount: z.number().int().positive(),
       resolution: z.string().regex(RESOLUTION),
       /** Absent when the device reported no telemetry at all (04§13). */
-      timing: timing.partial().passthrough().optional(),
+      timing: timing.optional(),
       status: z.enum(CAPTURE_STATUSES),
       visible: z.boolean().default(true),
     })
