@@ -693,15 +693,15 @@ export interface SkewRun {                                          // one bench
 export function spreadUs(offsets: number[]): number;                // max - min within one trigger
 ```
 
-- [ ] **Step 1: Write the failing test** — cases: `skewStats([100,200,300,400])` → mean 250, median 250, max 400; p95 uses nearest-rank (`p95 of 100 samples = 95th sorted value`); band boundaries exactly per 02§10/07§18: `bandForSpreadMs(0.49)==='excellent'`, `0.5→'very-good'`, `1→'good'`, `2→'warning'`, `5→'poor'`, `10.01→'fail'` (bands are `<0.5`, `0.5–1`, `1–2`, `2–5`, `5–10`, `>10`); `skewStats([])` throws.
+- [x] **Step 1: Write the failing test** — cases: `skewStats([100,200,300,400])` → mean 250, median 250, max 400; p95 uses nearest-rank (`p95 of 100 samples = 95th sorted value`); band boundaries exactly per 02§10/07§18: `bandForSpreadMs(0.49)==='excellent'`, `0.5→'very-good'`, `1→'good'`, `2→'warning'`, `5→'poor'`, `10.01→'fail'` (bands are `<0.5`, `0.5–1`, `1–2`, `2–5`, `5–10`, `>10`); `skewStats([])` throws.
 
-- [ ] **Step 2: Run to verify FAIL.** Run: `npm run test -w @kino/studio -- skewStats`
+- [x] **Step 2: Run to verify FAIL.** Run: `npm run test -w @kino/studio -- skewStats`
 
-- [ ] **Step 3: Implement** (pure functions, no deps; nearest-rank p95: `sorted[Math.ceil(0.95 * n) - 1]`).
+- [x] **Step 3: Implement** (pure functions, no deps; nearest-rank p95: `sorted[Math.ceil(0.95 * n) - 1]`).
 
-- [ ] **Step 4: Run to verify PASS.**
+- [x] **Step 4: Run to verify PASS.**
 
-- [ ] **Step 5: Commit** — `feat(studio): skew statistics with 07§18 quality bands`
+- [x] **Step 5: Commit** — `feat(studio): skew statistics with 07§18 quality bands`
 
 ### Task 11: Skew Bench — first-class UI
 
