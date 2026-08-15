@@ -1,0 +1,23 @@
+{
+  "schema": "kino.twin-scene-layout",
+  "version": 1,
+  "profile": "D4-V1",
+  "units": "mm",
+  "coordinateSystem": {"+x": "camera-right when viewed from front", "+y": "up", "+z": "toward subject"},
+  "body": {"size": [126, 80, 36], "confidence": "PROVISIONAL"},
+  "cameraPitchMm": 22,
+  "cameraPitchRangeMm": [20, 24],
+  "instances": [
+    {"id": "cam1", "component": "camera-node", "position": [-33, 10, 14], "rotationDeg": [0, 0, 0]},
+    {"id": "cam2", "component": "camera-node", "position": [-11, 10, 14], "rotationDeg": [0, 0, 0]},
+    {"id": "cam3", "component": "camera-node", "position": [11, 10, 14], "rotationDeg": [0, 0, 0]},
+    {"id": "cam4", "component": "camera-node", "position": [33, 10, 14], "rotationDeg": [0, 0, 0]},
+    {"id": "flash", "component": "flash-led", "position": [0, 27, 15], "rotationDeg": [0, 0, 0]},
+    {"id": "display", "component": "main-display", "position": [0, 0, -15], "rotationDeg": [0, 180, 90]},
+    {"id": "battery", "component": "battery", "position": [0, -8, -2], "rotationDeg": [0, 0, 90]}
+  ],
+  "notes": [
+    "Transforms are provisional visualization coordinates, not final CAD.",
+    "Measure actual parts and rerun collision/clearance checks before enclosure lock."
+  ]
+}

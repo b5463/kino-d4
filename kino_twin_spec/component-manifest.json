@@ -1,0 +1,53 @@
+{
+  "schema": "kino.component-manifest",
+  "version": 1,
+  "profile": "KINO D4 V1",
+  "units": "mm",
+  "components": [
+    {
+      "id": "main-display",
+      "qty": 1,
+      "name": "Guition ESP32-P4 4.3in display",
+      "model": "JC4880P443C-I-W",
+      "dimensions": {"primary": [117.01, 69.41, null], "alternate": [114.40, 66.80, null]},
+      "dimensionConfidence": "OFFICIAL_SPEC_CONFLICT",
+      "specs": {"display": "4.3in IPS capacitive", "resolution": "480x800", "mcu": ["ESP32-P4", "ESP32-C6"], "psramMB": 32, "flashMB": 16, "voltageV": 5, "publicApproxCurrentA": 0.32}
+    },
+    {
+      "id": "camera-node",
+      "qty": 4,
+      "name": "Seeed Studio XIAO ESP32-S3 Sense",
+      "dimensions": [21.0, 17.8, 15.0],
+      "dimensionConfidence": "OFFICIAL_SPEC",
+      "specs": {"mcu": "ESP32-S3", "clockMHz": 240, "psramMB": 8, "flashMB": 8, "sensor": "OV3660", "maxResolution": [2048, 1536]}
+    },
+    {
+      "id": "battery",
+      "qty": 1,
+      "name": "505573 LiPo",
+      "dimensions": [73.0, 55.0, 5.0],
+      "dimensionConfidence": "PROVISIONAL_SIZE_CODE_MEASURE_ACTUAL",
+      "specs": {"cells": "1S", "nominalVoltageV": 3.7, "capacitymAh": 3000, "energyWh": 11.1, "safeContinuousHarnessA": 3.0, "shortPulseMaxA": 6.0, "recommendedChargeA": 0.6, "maxChargeA": 1.5, "wire": "24AWG power + 26-28AWG NTC", "connector": "PH2.0-3P"}
+    },
+    {"id": "fuse", "qty": 1, "name": "F3A fast axial fuse", "dimensionConfidence": "SELLER_SPEC", "specs": {"ratingA": 3.0, "type": "fast"}},
+    {"id": "bms", "qty": 1, "name": "1S 10A protection board", "dimensions": null, "dimensionConfidence": "MEASURE_REQUIRED"},
+    {"id": "power-module", "qty": 1, "name": "SW6106 bidirectional power module", "dimensions": [28.0, 28.0, 11.36], "dimensionConfidence": "SELLER_SPEC_PROVISIONAL", "specs": {"controller": "SW6106", "powerClassW": 18, "systemRailV": 5}},
+    {"id": "camera-switch", "qty": 4, "name": "AO4407/AO4407A high-side switch assembly", "dimensionConfidence": "PCB_LAYOUT_DEPENDENT", "parts": ["AO4407/AO4407A", "SOP8-DIP8 adapter", "2N3904", "4.7k", "100k", "100k", "1N5819"]},
+    {"id": "flash-led", "qty": 1, "name": "3W CRI90 natural white LED star", "dimensions": null, "dimensionConfidence": "MEASURE_REQUIRED", "specs": {"forwardVoltageV": "3.0-3.6", "initialDriveA": 0.35}},
+    {"id": "flash-heatsink", "qty": 1, "name": "Copper pin-fin heatsink", "dimensions": [20.0, 20.0, 7.0], "dimensionConfidence": "SELLER_SPEC"},
+    {"id": "flash-thermal-pad", "qty": 1, "name": "Thermal pad", "dimensions": [20.0, 20.0, 0.5], "dimensionConfidence": "CUT_TO_FIT"},
+    {"id": "flash-diffuser", "qty": 1, "name": "Opal acrylic diffuser", "dimensions": [null, null, 1.0], "dimensionConfidence": "CUT_TO_FIT"},
+    {"id": "speaker", "qty": 1, "name": "8ohm 2W speaker", "dimensions": [35.0, 25.0, null], "dimensionConfidence": "SELLER_SPEC_MEASURE_THICKNESS", "specs": {"impedanceOhm": 8, "powerW": 2, "connector": "1.25mm 2-pin"}},
+    {"id": "micro-sd", "qty": 1, "name": "SanDisk Ultra microSD", "dimensions": [15.0, 11.0, 1.0], "dimensionConfidence": "STANDARD", "specs": {"capacityGB": 32}},
+    {"id": "p4-ribbon", "qty": 1, "name": "26-pin 2x13 IDC ribbon", "dimensions": {"length": 100.0, "pitch": 2.54}, "dimensionConfidence": "SELLER_SPEC"},
+    {"id": "camera-harness", "qty": 4, "name": "PH2.0 4P camera harness", "dimensions": {"length": 100.0}, "dimensionConfidence": "SELLER_SPEC", "nets": ["5V", "GND", "UART_TX", "UART_RX"]},
+    {"id": "sync-wire", "qty": 4, "name": "28AWG sync wire", "dimensionConfidence": "KNOWN_WIRE_GAUGE"},
+    {"id": "main-power-wire", "qty": "as-routed", "name": "20AWG silicone wire", "dimensionConfidence": "KNOWN_WIRE_GAUGE", "nets": ["BAT+", "BAT-", "5V", "GND"]},
+    {"id": "bulk-cap", "qty": "design-dependent", "name": "1000uF 10V low-ESR capacitor", "dimensionConfidence": "MEASURE_REQUIRED"},
+    {"id": "bypass-cap", "qty": "design-dependent", "name": "100nF 50V ceramic", "dimensionConfidence": "PACKAGE_MEASURE_REQUIRED"},
+    {"id": "tact-switch", "qty": "design-dependent", "name": "6x6x4.3mm tactile switch", "dimensions": [6.0, 6.0, 4.3], "dimensionConfidence": "SELLER_SPEC"},
+    {"id": "slide-switch", "qty": 1, "name": "MSK-22D14 SPDT slide switch", "dimensions": null, "dimensionConfidence": "MEASURE_REQUIRED"},
+    {"id": "perfboard", "qty": 1, "name": "DKAWS/Perma-Proto style carrier", "dimensions": null, "dimensionConfidence": "MEASURE_REQUIRED"},
+    {"id": "enclosure", "qty": 1, "name": "KINO D4 enclosure envelope", "dimensions": [126.0, 80.0, 36.0], "dimensionConfidence": "PROVISIONAL", "construction": ["black PETG skeleton", "2-3mm clear acrylic panels", "M2 heat-set inserts"]}
+  ]
+}
