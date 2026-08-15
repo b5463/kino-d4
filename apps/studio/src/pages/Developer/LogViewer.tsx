@@ -8,7 +8,7 @@ import {
   setLogPaused,
   useLogStore,
 } from '../../state/logStore';
-import type { LogSource } from '../../protocol/types';
+import type { LogSource } from '@kino/kdp';
 import { formatLogTime } from '../../utils/format';
 import { downloadText } from '../../utils/download';
 

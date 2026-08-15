@@ -3,7 +3,7 @@
 // bar for real P4 firmware — Studio is the test harness.
 
 import type { KinoDevice } from '../device/KinoDevice';
-import { KinoCommandError, KinoTimeoutError } from '../protocol/KinoProtocolClient';
+import { KinoCommandError, KinoTimeoutError } from '@kino/kdp';
 
 export type ConformanceStatus = 'pass' | 'shape' | 'unsupported' | 'timeout' | 'error' | 'skipped';
 

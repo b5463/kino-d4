@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TargetId } from '../protocol/types';
+import type { TargetId } from '@kino/kdp';
 import type { FwPackage } from '../firmware/manifest';
 import type { CompatibilityCheck } from '../firmware/manifest';
 

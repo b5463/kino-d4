@@ -15,8 +15,8 @@ import { useConnectionStore } from '../../state/connectionStore';
 import { useLogStore } from '../../state/logStore';
 import { formatRanAt, useBenchResult } from '../../state/benchResults';
 import { getDevice } from '../../app/session';
-import { Cmd, Evt, FrameFlags } from '../../protocol/commands';
-import { formatUs, usColumn } from '../../protocol/timing';
+import { Cmd, Evt, FrameFlags } from '@kino/kdp';
+import { formatUs, usColumn } from '@kino/kdp';
 import { formatMB, formatUptime, formatLogTime } from '../../utils/format';
 import { downloadJson } from '../../utils/download';
 

@@ -6,8 +6,8 @@ import { Button } from '../../components/Button';
 import { NumberField, SegField, SliderField } from '../../components/fields';
 import { useDeviceStore } from '../../state/deviceStore';
 import { getDevice, refreshCalibration } from '../../app/session';
-import type { CalibrationData, CamCalibration, CamId } from '../../protocol/types';
-import { CAM_IDS, NEUTRAL_CAL } from '../../protocol/types';
+import type { CalibrationData, CamCalibration, CamId } from '@kino/kdp';
+import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
 import { formatSigned } from '../../utils/format';
 
 const REF: CamId = 'cam2';

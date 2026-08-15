@@ -1,7 +1,7 @@
 // Minimal ZIP writer (store method, no compression). Enough for shoot
 // packages: originals are already JPEGs, so compression would buy nothing.
 
-import { crc32 } from '../protocol/crc32';
+import { crc32 } from '@kino/kdp';
 
 export interface ZipEntry {
   name: string;

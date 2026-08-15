@@ -11,8 +11,8 @@ import { getDevice, refreshCalibration } from '../../app/session';
 import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { invalidateBench } from '../../state/benchResults';
-import type { CamId, FlashDistance, FlashLevel } from '../../protocol/types';
-import { CAM_IDS } from '../../protocol/types';
+import type { CamId, FlashDistance, FlashLevel } from '@kino/kdp';
+import { CAM_IDS } from '@kino/kdp';
 
 const POSITION_LABELS = ['LEFT-MOST', 'CENTER-LEFT', 'CENTER-RIGHT', 'RIGHT-MOST'];
 

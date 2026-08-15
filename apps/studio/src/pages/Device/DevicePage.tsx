@@ -17,7 +17,7 @@ import {
 } from '../../app/session';
 import { onUi } from '../../state/uiBus';
 import { useDraft } from '../../hooks/useDraft';
-import type { BodyConfig } from '../../protocol/types';
+import type { BodyConfig } from '@kino/kdp';
 import { formatMB } from '../../utils/format';
 import { diffConfigs } from '../../utils/diffConfig';
 import { configLabel, configValue } from '../../utils/configLabels';

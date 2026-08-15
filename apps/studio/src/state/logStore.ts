@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LogEntry, LogSource } from '../protocol/types';
+import type { LogEntry, LogSource } from '@kino/kdp';
 
 // Bounded in-memory log. The cap keeps the DOM and memory flat during long
 // sessions; EXPORT is the way to keep more.

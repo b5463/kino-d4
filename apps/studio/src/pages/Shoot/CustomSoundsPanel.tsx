@@ -7,7 +7,7 @@ import { useDeviceStore, supports } from '../../state/deviceStore';
 import { getDevice, refreshSounds, refreshConfig } from '../../app/session';
 import { dropSound, readSound, uploadSound } from '../../device/sounds';
 import { playWav, prepareSoundFile, soundIdFromName, soundNameFromFile } from '../../utils/soundFx';
-import type { SoundInfo } from '../../protocol/types';
+import type { SoundInfo } from '@kino/kdp';
 
 // Uploaded clips stored on the KINO. Unlike the shutter-sound selection
 // above (draft + apply), everything here writes to the device immediately —

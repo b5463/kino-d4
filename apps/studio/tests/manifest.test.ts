@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseManifest, checkCompatibility } from '../src/firmware/manifest';
 import type { FwManifest } from '../src/firmware/manifest';
-import type { DeviceInfo } from '../src/protocol/types';
+import type { DeviceInfo } from '@kino/kdp';
 
 const SHA = 'a'.repeat(64);
 

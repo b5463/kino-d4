@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TransportKind } from '../transport/Transport';
+import type { TransportKind } from '@kino/kdp';
 
 // Connection lifecycle. "connected" is only entered after a successful
 // HELLO handshake and protocol check — never on port-open alone.

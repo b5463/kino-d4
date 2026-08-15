@@ -8,8 +8,8 @@ import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { invalidateBench } from '../../state/benchResults';
 import { getDevice, onCalibrationEvent, refreshCalibration } from '../../app/session';
-import type { CamCalibration, CamId, CalibrationEvent } from '../../protocol/types';
-import { CAM_IDS, NEUTRAL_CAL } from '../../protocol/types';
+import type { CamCalibration, CamId, CalibrationEvent } from '@kino/kdp';
+import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
 import { formatSigned } from '../../utils/format';
 
 type Phase = 'idle' | 'capturing' | 'analyzing' | 'review' | 'error';

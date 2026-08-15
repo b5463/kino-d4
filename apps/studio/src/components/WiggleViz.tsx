@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { WiggleDirection, WiggleLoop } from '../protocol/types';
+import type { WiggleDirection, WiggleLoop } from '@kino/kdp';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { Button } from './Button';
 

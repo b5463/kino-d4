@@ -18,9 +18,9 @@ import {
   putBenchResult,
   useBenchResult,
 } from '../../state/benchResults';
-import { formatUs, gradeSkew, usColumn } from '../../protocol/timing';
+import { formatUs, gradeSkew, usColumn } from '@kino/kdp';
 import { formatSigned } from '../../utils/format';
-import type { PhaseResult } from '../../protocol/types';
+import type { PhaseResult } from '@kino/kdp';
 
 const OWNER = 'phase';
 const LABEL = 'SENSOR PHASE';

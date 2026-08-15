@@ -7,7 +7,7 @@ import { Icon } from '../../components/Icon';
 import { useDeviceStore, recipeName } from '../../state/deviceStore';
 import { getDevice, onSelfTestEvent } from '../../app/session';
 import { onUi } from '../../state/uiBus';
-import type { CameraInfo, SelfTestEvent } from '../../protocol/types';
+import type { CameraInfo, SelfTestEvent } from '@kino/kdp';
 import { resolutionLabel, formatMB } from '../../utils/format';
 
 function camLed(cam: CameraInfo): { state: LedState; label: string } {

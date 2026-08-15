@@ -3,7 +3,7 @@
 // download until its checksum matches what the camera reported.
 
 import type { KinoDevice } from './KinoDevice';
-import type { CaptureInfo } from '../protocol/types';
+import type { CaptureInfo } from '@kino/kdp';
 import { sha256Hex } from '../firmware/hashing';
 
 const CHUNK = 8192;

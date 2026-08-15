@@ -1,9 +1,9 @@
 // Integration: the full protocol stack (client -> frames -> mock transport
 // -> mock device and back) with the same code paths real hardware will use.
 import { afterEach, describe, expect, it } from 'vitest';
-import { KinoProtocolClient } from '../src/protocol/KinoProtocolClient';
+import { KinoProtocolClient } from '@kino/kdp';
 import { KinoDevice } from '../src/device/KinoDevice';
-import { MockTransport } from '../src/transport/MockTransport';
+import { MockTransport } from '@kino/kdp';
 import { MockKinoDevice } from '../src/mock/MockKinoDevice';
 
 let transport: MockTransport | null = null;

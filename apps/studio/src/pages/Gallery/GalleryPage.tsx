@@ -6,7 +6,7 @@ import { useConnectionStore } from '../../state/connectionStore';
 import { getDevice, onCaptureEvent } from '../../app/session';
 import { getThumbUrl, dropThumb } from '../../device/media';
 import { useTetherStore, startTether, stopTether } from '../../device/tether';
-import type { CaptureSummary } from '../../protocol/types';
+import type { CaptureSummary } from '@kino/kdp';
 import { CaptureInspector } from './CaptureInspector';
 
 type Filter = 'all' | 'wiggle' | 'quad' | 'favorites';

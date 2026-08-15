@@ -2,9 +2,9 @@
 // full stack above the transport (decoder, client, device facade, UI) runs
 // unchanged against it. State survives simulated reboots, like real NVS.
 
-import { Cmd, Evt, FrameFlags, PROTOCOL_VERSION } from '../protocol/commands';
-import { FrameDecoder, encodeFrame, encodeJson, decodeJson } from '../protocol/packet';
-import type { Frame } from '../protocol/packet';
+import { Cmd, Evt, FrameFlags, PROTOCOL_VERSION } from '@kino/kdp';
+import { FrameDecoder, encodeFrame, encodeJson, decodeJson } from '@kino/kdp';
+import type { Frame } from '@kino/kdp';
 import type {
   CamId,
   CameraInfo,
@@ -14,13 +14,13 @@ import type {
   LogSource,
   SelfTestCheck,
   TargetId,
-} from '../protocol/types';
-import { CAM_IDS, NEUTRAL_CAL } from '../protocol/types';
+} from '@kino/kdp';
+import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
 import { validateRecipe } from '../recipes/recipeTypes';
 import { FACTORY_RECIPES } from '../recipes/factoryRecipes';
-import { BUILTIN_SHUTTER_SOUNDS } from '../protocol/types';
-import type { SoundInfo } from '../protocol/types';
+import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
+import type { SoundInfo } from '@kino/kdp';
 import { encodeWav, SOUND_SAMPLE_RATE } from '../utils/soundFx';
 import type { ScenarioFlags } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';

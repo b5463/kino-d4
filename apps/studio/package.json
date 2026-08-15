@@ -12,6 +12,7 @@
     "lint": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@kino/kdp": "*",
     "@fontsource/ibm-plex-mono": "^5.2.5",
     "@fontsource/ibm-plex-sans": "^5.2.5",
     "mp4-muxer": "^5.2.2",

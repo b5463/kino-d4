@@ -1,5 +1,5 @@
 import { sha256Hex } from './hashing';
-import type { DeviceInfo } from '../protocol/types';
+import type { DeviceInfo } from '@kino/kdp';
 
 export interface FwManifest {
   schema: number;

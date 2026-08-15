@@ -15,7 +15,7 @@ import {
   putBenchResult,
   useBenchResult,
 } from '../../state/benchResults';
-import { usColumn } from '../../protocol/timing';
+import { usColumn } from '@kino/kdp';
 import { downloadJson } from '../../utils/download';
 
 const OWNER = 'burnin';

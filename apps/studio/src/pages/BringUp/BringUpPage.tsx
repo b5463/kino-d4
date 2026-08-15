@@ -18,7 +18,7 @@ import {
   totalChecks,
 } from '../../developer/bringup';
 import type { ChecklistItem, WiringRow } from '../../developer/bringup';
-import { CAM_IDS } from '../../protocol/types';
+import { CAM_IDS } from '@kino/kdp';
 import { downloadJson } from '../../utils/download';
 
 type TestId = NonNullable<ChecklistItem['test']>;

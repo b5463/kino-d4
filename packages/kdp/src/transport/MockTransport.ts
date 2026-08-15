@@ -1,5 +1,16 @@
 import type { Transport } from './Transport';
-import type { MockKinoDevice } from '../mock/MockKinoDevice';
+
+/**
+ * The whole surface MockTransport needs from an in-process device. Declared
+ * structurally instead of importing the concrete mock so this package stays
+ * free of any app dependency — the mock device lives outside KDP.
+ */
+export interface MockDeviceLike {
+  bootDelayMs(): number;
+  attach(sink: (data: Uint8Array) => void, onForceClose: () => void): void;
+  detach(): void;
+  receive(data: Uint8Array): void;
+}
 
 /**
  * Byte transport wired to the in-browser demo device. Deliberately hostile
@@ -10,14 +21,14 @@ import type { MockKinoDevice } from '../mock/MockKinoDevice';
 export class MockTransport implements Transport {
   readonly kind = 'mock' as const;
 
-  private readonly device: MockKinoDevice;
+  private readonly device: MockDeviceLike;
   private dataCb: ((data: Uint8Array) => void) | null = null;
   private closeCb: ((reason?: string) => void) | null = null;
   private opened = false;
   private queue: Uint8Array[] = [];
   private draining = false;
 
-  constructor(device: MockKinoDevice) {
+  constructor(device: MockDeviceLike) {
     this.device = device;
   }
 

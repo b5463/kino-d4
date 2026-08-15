@@ -4,8 +4,8 @@
 // In Node (unit tests) canvas is unavailable — deterministic pseudo-JPEG
 // bytes keep the transfer protocol fully testable.
 
-import type { CamId, CaptureInfo, CaptureSummary, CaptureFile } from '../protocol/types';
-import { CAM_IDS } from '../protocol/types';
+import type { CamId, CaptureInfo, CaptureSummary, CaptureFile } from '@kino/kdp';
+import { CAM_IDS } from '@kino/kdp';
 import { sha256Hex } from '../firmware/hashing';
 
 const W = 800;

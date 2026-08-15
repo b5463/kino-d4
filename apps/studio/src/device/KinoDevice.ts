@@ -1,5 +1,5 @@
-import { Cmd } from '../protocol/commands';
-import type { KinoProtocolClient } from '../protocol/KinoProtocolClient';
+import { Cmd } from '@kino/kdp';
+import type { KinoProtocolClient } from '@kino/kdp';
 import type {
   CamId,
   CamCalibration,
@@ -32,9 +32,9 @@ import type {
   SoundsResponse,
   StorageStatus,
   TargetId,
-} from '../protocol/types';
-import { CONFIG_SCHEMA_VERSION } from '../protocol/types';
-import type { TimingResult } from '../protocol/timing';
+} from '@kino/kdp';
+import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
+import type { TimingResult } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
 
 /**
@@ -92,7 +92,7 @@ export class KinoDevice {
   }
 
   getRecipes() {
-    return this.client.request<RecipesResponse>(Cmd.GET_RECIPES);
+    return this.client.request<RecipesResponse<Recipe>>(Cmd.GET_RECIPES);
   }
 
   setActiveRecipe(id: string) {
@@ -187,7 +187,7 @@ export class KinoDevice {
   }
 
   getCalibration() {
-    return this.client.request<import('../protocol/types').CalibrationData>(Cmd.CAMERA_CALIBRATE, { action: 'get' });
+    return this.client.request<import('@kino/kdp').CalibrationData>(Cmd.CAMERA_CALIBRATE, { action: 'get' });
   }
 
   startCalibration() {

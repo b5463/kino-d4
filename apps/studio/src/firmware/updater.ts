@@ -4,7 +4,7 @@
 // device reports the expected version afterwards. A failure halts the
 // sequence with per-target state intact so RETRY resumes precisely there.
 
-import type { TargetId } from '../protocol/types';
+import type { TargetId } from '@kino/kdp';
 import type { FwPackage } from './manifest';
 import { getDevice, expectDeviceReboot, waitForPhase, refreshDeviceInfo } from '../app/session';
 import { setConnection, useConnectionStore } from '../state/connectionStore';

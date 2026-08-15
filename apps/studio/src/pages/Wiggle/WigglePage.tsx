@@ -6,7 +6,7 @@ import { SegField, SelectField, SliderField, ToggleField } from '../../component
 import { useDeviceStore, allRecipes } from '../../state/deviceStore';
 import { useDraft } from '../../hooks/useDraft';
 import { getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
-import type { CamId, Resolution, WiggleConfig, WiggleDirection, WiggleLoop } from '../../protocol/types';
+import type { CamId, Resolution, WiggleConfig, WiggleDirection, WiggleLoop } from '@kino/kdp';
 
 const DENOISE_LABELS = [
   { value: '0', label: 'OFF' },

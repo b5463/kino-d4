@@ -1,9 +1,9 @@
 // Custom sounds: WAV encoding, chunked upload/read through the real protocol
 // stack, device-side limits, and the shutter-sound fallback on delete.
 import { afterEach, describe, expect, it } from 'vitest';
-import { KinoProtocolClient } from '../src/protocol/KinoProtocolClient';
+import { KinoProtocolClient } from '@kino/kdp';
 import { KinoDevice } from '../src/device/KinoDevice';
-import { MockTransport } from '../src/transport/MockTransport';
+import { MockTransport } from '@kino/kdp';
 import { MockKinoDevice } from '../src/mock/MockKinoDevice';
 import { uploadSound, readSound, clearSoundCache } from '../src/device/sounds';
 import { encodeWav, soundIdFromName, SOUND_SAMPLE_RATE } from '../src/utils/soundFx';

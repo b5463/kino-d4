@@ -3,26 +3,26 @@
 // survives device reboots during firmware updates. React components never
 // touch a transport directly — they call into this module.
 
-import { KinoProtocolClient, KinoTimeoutError, KinoUnsupportedError } from '../protocol/KinoProtocolClient';
-import { Evt, PROTOCOL_VERSION } from '../protocol/commands';
+import { KinoProtocolClient, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
+import { Evt, PROTOCOL_VERSION } from '@kino/kdp';
 import type {
   CalibrationEvent,
   CaptureEvent,
   LogEntry,
   PhaseResult,
   SelfTestEvent,
-} from '../protocol/types';
+} from '@kino/kdp';
 import { KinoDevice } from '../device/KinoDevice';
 import { clearSoundCache } from '../device/sounds';
-import type { Transport, TransportKind } from '../transport/Transport';
-import { MockTransport } from '../transport/MockTransport';
-import { SerialTransport, webSerialSupported } from '../transport/SerialTransport';
+import type { Transport, TransportKind } from '@kino/kdp';
+import { MockTransport } from '@kino/kdp';
+import { SerialTransport, webSerialSupported } from '@kino/kdp';
 import { MockKinoDevice } from '../mock/MockKinoDevice';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import { clearDeviceState, setDeviceState, useDeviceStore } from '../state/deviceStore';
 import { resetDrafts } from '../state/draftStore';
 import { claimDevice, releaseDevice, resetDeviceBusy } from '../state/deviceBusy';
-import { CONFIG_SCHEMA_VERSION } from '../protocol/types';
+import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
 import { appendLog } from '../state/logStore';
 import { recordCamera } from '../state/knownCameras';
 

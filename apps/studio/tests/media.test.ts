@@ -1,9 +1,9 @@
 // Media transfer over the full protocol stack: list, info, chunked read
 // with checksum verification — the same path the gallery uses.
 import { afterEach, describe, expect, it } from 'vitest';
-import { KinoProtocolClient } from '../src/protocol/KinoProtocolClient';
+import { KinoProtocolClient } from '@kino/kdp';
 import { KinoDevice } from '../src/device/KinoDevice';
-import { MockTransport } from '../src/transport/MockTransport';
+import { MockTransport } from '@kino/kdp';
 import { MockKinoDevice } from '../src/mock/MockKinoDevice';
 import { downloadCaptureFile, TransferHandle } from '../src/device/media';
 import { sha256Hex } from '../src/firmware/hashing';

@@ -3,7 +3,7 @@
 // clip does not re-pull it over UART.
 
 import type { KinoDevice } from './KinoDevice';
-import type { SoundBeginRequest, SoundInfo } from '../protocol/types';
+import type { SoundBeginRequest, SoundInfo } from '@kino/kdp';
 
 const CHUNK = 8192;
 

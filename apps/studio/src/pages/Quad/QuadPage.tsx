@@ -7,8 +7,8 @@ import { SegField, SelectField, SliderField, TextField, ToggleField } from '../.
 import { useDeviceStore, allRecipes } from '../../state/deviceStore';
 import { useDraft } from '../../hooks/useDraft';
 import { getDevice, refreshConfig } from '../../app/session';
-import type { CamId, GainStrategy, QuadConfig, SlotColorMode, SlotFlash } from '../../protocol/types';
-import { CAM_IDS } from '../../protocol/types';
+import type { CamId, GainStrategy, QuadConfig, SlotColorMode, SlotFlash } from '@kino/kdp';
+import { CAM_IDS } from '@kino/kdp';
 import { formatEv } from '../../utils/format';
 
 const PARTY_DEFAULT: QuadConfig['slots'] = {

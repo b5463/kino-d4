@@ -2,7 +2,7 @@
 // become itself again — settings, calibration, custom recipes, custom
 // sounds. Photographs are never included; they stay on the SD card.
 
-import type { CalibrationData, DeviceInfo, KinoConfig } from '../protocol/types';
+import type { CalibrationData, DeviceInfo, KinoConfig } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
 import { validateRecipe } from '../recipes/recipeTypes';
 

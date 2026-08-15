@@ -1,7 +1,7 @@
 // Cameras this browser has talked to, keyed by serial. Local only.
 
 import { create } from 'zustand';
-import type { DeviceInfo } from '../protocol/types';
+import type { DeviceInfo } from '@kino/kdp';
 
 export interface KnownCamera {
   serial: string;

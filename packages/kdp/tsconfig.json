@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // This code was extracted from Studio, which predates the shared base;
+    // adopting noUncheckedIndexedAccess here is a separate pass over the
+    // frame decoder and its tests. Packages written fresh get it from the base.
+    "noUncheckedIndexedAccess": false,
+
+    // The transports speak Web Serial and the browser stream types.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src", "tests"]
+}

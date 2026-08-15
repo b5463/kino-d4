@@ -19,10 +19,10 @@ import {
   putBenchResult,
   useBenchResult,
 } from '../../state/benchResults';
-import { gradeSkew, usColumn } from '../../protocol/timing';
-import type { CamTiming } from '../../protocol/timing';
-import { CAM_IDS } from '../../protocol/types';
-import type { CamId } from '../../protocol/types';
+import { gradeSkew, usColumn } from '@kino/kdp';
+import type { CamTiming } from '@kino/kdp';
+import { CAM_IDS } from '@kino/kdp';
+import type { CamId } from '@kino/kdp';
 import { downloadJson } from '../../utils/download';
 
 const OWNER = 'timing';

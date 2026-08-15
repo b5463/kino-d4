@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildBackup, validateBackup, bytesToBase64, base64ToBytes, BACKUP_SCHEMA } from '../src/device/backup';
 import type { BackupSound } from '../src/device/backup';
 import { FACTORY_RECIPES } from '../src/recipes/factoryRecipes';
-import type { DeviceInfo, KinoConfig, CalibrationData } from '../src/protocol/types';
-import { NEUTRAL_CAL } from '../src/protocol/types';
+import type { DeviceInfo, KinoConfig, CalibrationData } from '@kino/kdp';
+import { NEUTRAL_CAL } from '@kino/kdp';
 import { encodeWav, SOUND_SAMPLE_RATE } from '../src/utils/soundFx';
 
 const info: DeviceInfo = {

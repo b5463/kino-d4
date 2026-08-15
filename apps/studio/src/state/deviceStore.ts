@@ -10,7 +10,7 @@ import type {
   RuntimeStats,
   SoundInfo,
   StorageStatus,
-} from '../protocol/types';
+} from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
 
 // Everything in this store is device-reported truth, refreshed by the

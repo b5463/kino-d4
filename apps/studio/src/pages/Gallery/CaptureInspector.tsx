@@ -6,7 +6,7 @@ import { useDeviceStore, recipeName } from '../../state/deviceStore';
 import { useModal } from '../../hooks/useModal';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { downloadCaptureSet, TransferHandle, TransferCancelled } from '../../device/media';
-import type { CaptureInfo, CaptureSummary } from '../../protocol/types';
+import type { CaptureInfo, CaptureSummary } from '@kino/kdp';
 import { buildZip } from '../../utils/zip';
 import { encodeGif } from '../../utils/gif';
 import type { GifFrame } from '../../utils/gif';
@@ -14,7 +14,7 @@ import { mp4Supported, encodeWiggleMp4 } from '../../utils/mp4';
 import { AlignEditor } from './AlignEditor';
 import { MatchPanel } from './MatchPanel';
 import { buildAlignedFrames, hasAnyOffset } from '../../utils/wiggleRender';
-import { CAM_IDS } from '../../protocol/types';
+import { CAM_IDS } from '@kino/kdp';
 const SEQ_BOUNCE = [0, 1, 2, 3, 2, 1];
 
 function saveBlob(name: string, blob: Blob) {

@@ -19,7 +19,7 @@ import {
   putBenchResult,
   useBenchResult,
 } from '../../state/benchResults';
-import type { LinkBenchResult } from '../../protocol/types';
+import type { LinkBenchResult } from '@kino/kdp';
 import { downloadJson } from '../../utils/download';
 
 const LADDER = [921600, 1500000, 2000000, 3000000];

@@ -3,7 +3,7 @@
 // them without hardware, plays uploaded clips, and converts user audio files
 // to the device storage format (16 kHz mono 16-bit WAV, max 2 s).
 
-import type { BuiltinShutterSound } from '../protocol/types';
+import type { BuiltinShutterSound } from '@kino/kdp';
 
 export const SOUND_SAMPLE_RATE = 16000;
 export const MAX_SOUND_MS = 2000;

@@ -413,9 +413,12 @@ export interface LinkBenchResult {
   concurrent: boolean;
 }
 
-export interface RecipesResponse {
-  factory: import('../recipes/recipeTypes').Recipe[];
-  custom: import('../recipes/recipeTypes').Recipe[];
+// The envelope is the wire contract; the recipe document itself is defined by
+// the app (Studio's recipeTypes today), so it stays a parameter rather than a
+// dependency back into an app.
+export interface RecipesResponse<R = unknown> {
+  factory: R[];
+  custom: R[];
 }
 
 // ---- Sounds ----
