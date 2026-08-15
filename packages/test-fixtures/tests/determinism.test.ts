@@ -1,6 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MockKinoDevice } from '../src/MockKinoDevice';
-import { encodeFrame, encodeJson, Cmd, FrameFlags, PROTOCOL_VERSION } from '@kino/kdp';
+import {
+  encodeFrame,
+  encodeJson,
+  Cmd,
+  FrameFlags,
+  PROTOCOL_VERSION,
+  CAM_IDS,
+  NEUTRAL_CAL,
+  KinoProtocolClient,
+  MockTransport,
+} from '@kino/kdp';
 
 // No @types/node in this package — compare bytes directly instead of via
 // Buffer, which would only be a type (not a runtime) problem but still fails
@@ -41,6 +51,41 @@ describe('seeded MockKinoDevice', () => {
       expect(bytesEqual(a, c)).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  // Regression: handleCalibrate's order-save/flash-save/apply branches used to
+  // stamp orderVerifiedAt/calibratedAt/capturedAt with `new Date().toISOString()`
+  // directly, bypassing the injected clock — the one corner of the device that
+  // stayed on the wall clock even under a seed. A recording made against a
+  // fixed `now` must replay with these fields identical, not wall-clock drift.
+  it('routes calibration *At timestamps through the injected now()', async () => {
+    const fixedNow = 1_755_244_800_000;
+    const dev = new MockKinoDevice({ seed: 7, now: () => fixedNow });
+    const transport = new MockTransport(dev);
+    await transport.open();
+    const client = new KinoProtocolClient(transport);
+    try {
+      await client.request(Cmd.CAMERA_CALIBRATE, {
+        action: 'order-save',
+        order: ['cam2', 'cam1', 'cam4', 'cam3'],
+      });
+      await client.request(Cmd.CAMERA_CALIBRATE, {
+        action: 'flash-save',
+        flash: { level: 'medium', distance: '1-2' },
+      });
+      await client.request(Cmd.CAMERA_CALIBRATE, {
+        action: 'apply',
+        offsets: Object.fromEntries(CAM_IDS.map((id) => [id, { ...NEUTRAL_CAL }])),
+      });
+      const calibration = dev.getCalibration();
+      const expectedIso = new Date(fixedNow).toISOString();
+      expect(calibration.orderVerifiedAt).toBe(expectedIso);
+      expect(calibration.flash.calibratedAt).toBe(expectedIso);
+      expect(calibration.capturedAt).toBe(expectedIso);
+    } finally {
+      client.dispose();
+      await transport.close();
     }
   });
 });

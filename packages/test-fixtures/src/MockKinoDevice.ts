@@ -331,6 +331,11 @@ export class MockKinoDevice implements MockDeviceLike {
     return arr[Math.floor(this.rng() * arr.length)];
   }
 
+  /** ISO timestamp fields (calibration's *At markers) route through this.now() too. */
+  private nowIso(): string {
+    return new Date(this.now()).toISOString();
+  }
+
   private freshCams(fw: string): Record<CamId, CamModel> {
     const cam = (): CamModel => ({
       fw,
@@ -1717,7 +1722,7 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       }
       this.calibration.order = req.order;
-      this.calibration.orderVerifiedAt = new Date().toISOString();
+      this.calibration.orderVerifiedAt = this.nowIso();
       this.log('P4', `camera order saved: ${req.order.map((c) => c.slice(-1)).join('-')}`);
       this.respond(frame, { ok: true });
       return;
@@ -1747,14 +1752,14 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
     if (req.action === 'flash-save' && req.flash) {
-      this.calibration.flash = { ...req.flash, calibratedAt: new Date().toISOString() };
+      this.calibration.flash = { ...req.flash, calibratedAt: this.nowIso() };
       this.log('P4', `flash calibration saved: ${req.flash.level.toUpperCase()}`);
       this.respond(frame, { ok: true });
       return;
     }
     if (req.action === 'apply' && req.offsets) {
       this.calibration.cams = req.offsets;
-      this.calibration.capturedAt = new Date().toISOString();
+      this.calibration.capturedAt = this.nowIso();
       this.calibration.saved = true;
       this.log('P4', 'calibration written to NVS');
       this.respond(frame, { ok: true });
