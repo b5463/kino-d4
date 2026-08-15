@@ -146,6 +146,14 @@ const UPLOAD_TICK_MS = 1200;
  */
 const SLOW_RESPONSE_MS: [number, number] = [1400, 2400];
 
+/**
+ * How long the coalescing scenario holds outbound frames before flushing them
+ * as one write. Comfortably wider than the 8–26 ms dispatch latency, so two
+ * commands issued together reliably come back in a single read — the point of
+ * the scenario is that grouping, not the delay.
+ */
+const COALESCE_WINDOW_MS = 40;
+
 /** One demo clip so the simulator shows the custom-sound flow populated. */
 function demoSounds(): Map<string, { info: SoundInfo; data: Uint8Array }> {
   const durationMs = 320;
@@ -602,7 +610,7 @@ export class MockKinoDevice implements MockDeviceLike {
     if (this.scenarios.coalescedFrames) {
       this.coalesceBuffer.push(bytes);
       if (!this.coalesceTimer) {
-        this.coalesceTimer = setTimeout(() => this.flushCoalesced(), 12);
+        this.coalesceTimer = setTimeout(() => this.flushCoalesced(), COALESCE_WINDOW_MS);
       }
       return;
     }
@@ -663,6 +671,12 @@ export class MockKinoDevice implements MockDeviceLike {
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    // Same teardown as detach(): the device state survives, but nothing
+    // scheduled by this connection may outlive it.
+    if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
+    this.coalesceTimer = null;
+    this.coalesceBuffer = [];
+    this.stopUploadDrain();
     this.sink = null;
     this.forceCloseCb = null;
     closeCb?.();
@@ -722,6 +736,17 @@ export class MockKinoDevice implements MockDeviceLike {
     Cmd.SOUND_END,
     Cmd.SOUND_READ,
     Cmd.SOUND_DELETE,
+  ];
+
+  /**
+   * The Network/Roll group plus the bench job. Unlike the commands above,
+   * these have no legacy check further down, so the gate here is the only
+   * thing enforcing them — and it has to use exactly the condition
+   * GET_CAPABILITIES reports for `network`/`rollUpload`/`syncBench`. A device
+   * that advertises no network support and then answers NETWORK_LIST is a
+   * worse mock than one that has no network support at all.
+   */
+  private static readonly NETWORK_ROLL_COMMANDS: number[] = [
     Cmd.NETWORK_LIST,
     Cmd.NETWORK_SET,
     Cmd.NETWORK_DELETE,
@@ -735,13 +760,20 @@ export class MockKinoDevice implements MockDeviceLike {
     SYNC_BENCH,
   ];
 
+  /** Single source of truth for both the capability report and the dispatcher. */
+  private supportsNetworkRoll(): boolean {
+    return !this.scenarios.legacyFirmware && !this.scenarios.unsupportedCommands;
+  }
+
   private dispatch(frame: Frame) {
     const cmd = frame.type as Cmd;
 
-    if (
-      this.scenarios.unsupportedCommands &&
-      MockKinoDevice.OPTIONAL_COMMANDS.includes(frame.type)
-    ) {
+    const gated =
+      (this.scenarios.unsupportedCommands &&
+        MockKinoDevice.OPTIONAL_COMMANDS.includes(frame.type)) ||
+      (!this.supportsNetworkRoll() &&
+        MockKinoDevice.NETWORK_ROLL_COMMANDS.includes(frame.type));
+    if (gated) {
       this.respondError(
         frame,
         'UNSUPPORTED_COMMAND',
@@ -814,11 +846,11 @@ export class MockKinoDevice implements MockDeviceLike {
             xiaoProxyUpdate: !legacy,
             linkBench: !legacy,
             customSounds: !legacy,
-            // 04 §7 Network/Roll. `unsupportedCommands` models a build that
-            // NACKs them, so the advertised capability has to track it.
-            rollUpload: !legacy && !this.scenarios.unsupportedCommands,
-            network: !legacy && !this.scenarios.unsupportedCommands,
-            syncBench: !legacy && !this.scenarios.unsupportedCommands,
+            // 04 §7 Network/Roll. Same predicate the dispatcher gates on, so
+            // what the device claims and what it answers cannot drift apart.
+            rollUpload: this.supportsNetworkRoll(),
+            network: this.supportsNetworkRoll(),
+            syncBench: this.supportsNetworkRoll(),
           },
           limits: {
             maxUartBaud: 3_000_000,
@@ -917,7 +949,7 @@ export class MockKinoDevice implements MockDeviceLike {
         const { recipe } = decodeJson<{ recipe: unknown }>(frame.payload);
         const check = validateDeviceRecipe(recipe);
         if (!check.ok) {
-          this.respondError(frame, 'BAD_RECIPE', check.error);
+          this.respondError(frame, 'INVALID_ARGUMENT', check.error);
           return;
         }
         if (FACTORY_RECIPES.some((r) => r.id === check.recipe.id)) {

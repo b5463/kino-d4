@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateRecipe } from '../src/recipes/recipeTypes';
-import { FACTORY_RECIPES } from '@kino/test-fixtures';
+import { FACTORY_RECIPES, RECIPE_PARITY_CASES, validateDeviceRecipe } from '@kino/test-fixtures';
 
 describe('recipe validation', () => {
   it('accepts every factory recipe', () => {
@@ -36,5 +36,29 @@ describe('recipe validation', () => {
     const bad = JSON.parse(JSON.stringify(FACTORY_RECIPES[0]));
     bad.look.contrast = 'high';
     expect(validateRecipe(bad).ok).toBe(false);
+  });
+});
+
+// Studio validates a look before uploading it; the camera validates it again
+// before writing it to the card. Those are two implementations of one rule,
+// and only this file can see both — the fixtures package must not import the
+// app. If they ever disagree, Studio ships a look the device then refuses (or
+// worse, blocks one the device would have taken).
+describe('device/host validator parity', () => {
+  it('agrees with the device validator on every parity fixture', () => {
+    for (const c of RECIPE_PARITY_CASES) {
+      const host = validateRecipe(c.document);
+      const device = validateDeviceRecipe(c.document);
+      expect(host.ok, `${c.name}: Studio`).toBe(c.valid);
+      expect(device.ok, `${c.name}: device`).toBe(c.valid);
+    }
+  });
+
+  it('agrees on the whole factory look library', () => {
+    for (const recipe of FACTORY_RECIPES) {
+      const document = JSON.parse(JSON.stringify(recipe));
+      expect(validateRecipe(document).ok, recipe.id).toBe(true);
+      expect(validateDeviceRecipe(document).ok, recipe.id).toBe(true);
+    }
   });
 });

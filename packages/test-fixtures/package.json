@@ -6,6 +6,6 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": { "test": "vitest run", "lint": "tsc --noEmit" },
-  "dependencies": { "@kino/kdp": "*", "@kino/schemas": "*" },
+  "dependencies": { "@kino/kdp": "*" },
   "devDependencies": { "typescript": "~5.8.3", "vitest": "^3.1.3" }
 }

@@ -20,6 +20,8 @@ export { FACTORY_RECIPES } from './factoryRecipes';
 export {
   RECIPE_SCHEMA,
   validateDeviceRecipe,
+  sampleRecipe,
+  RECIPE_PARITY_CASES,
   type DeviceRecipe,
   type DeviceRecipeCapture,
   type DeviceRecipeLook,

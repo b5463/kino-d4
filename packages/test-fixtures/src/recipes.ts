@@ -4,9 +4,10 @@
 // than trusting whatever Studio validated on the host.
 //
 // Studio keeps the authoring-side type and validator in
-// `apps/studio/src/recipes/recipeTypes.ts`; the two are structurally
-// identical and `apps/studio/tests/recipes.test.ts` runs Studio's validator
-// over FACTORY_RECIPES to keep them from drifting.
+// `apps/studio/src/recipes/recipeTypes.ts`. The two are structurally identical
+// and must stay behaviorally identical: `apps/studio/tests/recipes.test.ts`
+// runs BOTH validators over `RECIPE_PARITY_CASES` and over FACTORY_RECIPES,
+// which is the only place either copy can be checked against the other.
 
 export const RECIPE_SCHEMA = 1;
 
@@ -46,17 +47,6 @@ export interface DeviceRecipe {
   advanced?: DeviceRecipeAdvanced;
 }
 
-const LOOK_KEYS: (keyof DeviceRecipeLook)[] = [
-  'contrast',
-  'saturation',
-  'temperature',
-  'tint',
-  'blackPoint',
-  'highlightCompression',
-  'grain',
-  'vignette',
-];
-
 const CAPTURE_NUMERIC: (keyof DeviceRecipeCapture)[] = [
   'jpegQuality',
   'exposureBias',
@@ -67,8 +57,15 @@ const CAPTURE_NUMERIC: (keyof DeviceRecipeCapture)[] = [
 
 /**
  * What the camera checks before writing an uploaded look to the SD card.
- * Returns the NACK reason (04 §6/§18 style) or null when the document is
- * storable.
+ *
+ * Deliberately kept in lockstep with Studio's `validateRecipe`
+ * (`apps/studio/src/recipes/recipeTypes.ts`), including the parts that look
+ * lax: the look block is checked key-by-key over the keys that are *present*,
+ * so a document missing `look.grain` is stored and the firmware defaults it.
+ * Rejecting it here would mean Studio accepts a look file the camera then
+ * refuses — the mock is the firmware reference, so parity with the shipping
+ * client beats being stricter on our own. `RECIPE_PARITY_CASES` below pins
+ * this, and `apps/studio/tests/recipes.test.ts` runs both validators over it.
  */
 export function validateDeviceRecipe(
   value: unknown,
@@ -100,7 +97,8 @@ export function validateDeviceRecipe(
   for (const key of CAPTURE_NUMERIC) {
     if (!Number.isFinite(capture[key])) return { ok: false, error: `capture.${key} must be a number` };
   }
-  for (const key of LOOK_KEYS) {
+  // Present keys only — see the note above on parity with Studio.
+  for (const key of Object.keys(look) as (keyof DeviceRecipeLook)[]) {
     if (!Number.isFinite(look[key])) return { ok: false, error: `look.${key} must be a number` };
   }
   if (r.advanced?.rgbMatrix && r.advanced.rgbMatrix.length !== 9) {
@@ -108,3 +106,96 @@ export function validateDeviceRecipe(
   }
   return { ok: true, recipe: r as DeviceRecipe };
 }
+
+/** A minimal but valid look document, as a base for building test cases. */
+export function sampleRecipe(id = 'test-look'): DeviceRecipe {
+  return {
+    schema: RECIPE_SCHEMA,
+    id,
+    name: 'Test Look',
+    capture: {
+      resolution: '1600x1200',
+      jpegQuality: 86,
+      exposureBias: 0,
+      gainLimit: 16,
+      denoise: 1,
+      sharpness: 1,
+    },
+    look: {
+      contrast: 1.05,
+      saturation: 1.1,
+      temperature: 120,
+      tint: -1,
+      blackPoint: 3,
+      highlightCompression: 0.06,
+      grain: 0.14,
+      vignette: 0.04,
+    },
+  };
+}
+
+/**
+ * Documents whose accept/reject outcome BOTH validators must agree on. The
+ * device validator lives here and Studio's lives in the app, so nothing can
+ * import both except a Studio-side test — `apps/studio/tests/recipes.test.ts`
+ * runs this table through both and asserts they match `valid`. That is what
+ * keeps the two copies from drifting; without it the duplication is a bug
+ * waiting to happen rather than a documented trade-off.
+ */
+export const RECIPE_PARITY_CASES: { name: string; document: unknown; valid: boolean }[] = [
+  { name: 'a complete look', document: sampleRecipe(), valid: true },
+  {
+    name: 'a look missing an optional look key (firmware defaults it)',
+    document: (() => {
+      const { grain: _omitted, ...look } = sampleRecipe().look;
+      return { ...sampleRecipe('missing-grain'), look };
+    })(),
+    valid: true,
+  },
+  {
+    name: 'a look with extra unknown look keys',
+    document: { ...sampleRecipe('extra-keys'), look: { ...sampleRecipe().look, bloom: 0.2 } },
+    valid: true,
+  },
+  { name: 'a non-object', document: 'not a look', valid: false },
+  { name: 'a null', document: null, valid: false },
+  { name: 'the wrong schema version', document: { ...sampleRecipe('old'), schema: 99 }, valid: false },
+  { name: 'an id with capitals and punctuation', document: { ...sampleRecipe(), id: 'Party Neg!' }, valid: false },
+  { name: 'an empty name', document: { ...sampleRecipe('no-name'), name: '   ' }, valid: false },
+  {
+    name: 'a missing look block',
+    document: (() => {
+      const { look: _omitted, ...rest } = sampleRecipe('no-look');
+      return rest;
+    })(),
+    valid: false,
+  },
+  {
+    name: 'a missing capture block',
+    document: (() => {
+      const { capture: _omitted, ...rest } = sampleRecipe('no-capture');
+      return rest;
+    })(),
+    valid: false,
+  },
+  {
+    name: 'an unsupported resolution',
+    document: { ...sampleRecipe('bad-res'), capture: { ...sampleRecipe().capture, resolution: '640x480' } },
+    valid: false,
+  },
+  {
+    name: 'a non-numeric capture value',
+    document: { ...sampleRecipe('bad-cap'), capture: { ...sampleRecipe().capture, jpegQuality: 'high' } },
+    valid: false,
+  },
+  {
+    name: 'a non-numeric look value',
+    document: { ...sampleRecipe('bad-look'), look: { ...sampleRecipe().look, contrast: 'punchy' } },
+    valid: false,
+  },
+  {
+    name: 'a short rgbMatrix',
+    document: { ...sampleRecipe('bad-matrix'), advanced: { rgbMatrix: [1, 0, 0] } },
+    valid: false,
+  },
+];

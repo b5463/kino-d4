@@ -2,11 +2,28 @@
 // this file asserts the registry names all twelve and that the behaviors added
 // for them actually happen on the wire, not just in a flag.
 import { afterEach, describe, expect, it } from 'vitest';
-import { Cmd, KinoProtocolClient, MockTransport } from '@kino/kdp';
-import type { JobProgress } from '@kino/kdp';
-import { MockKinoDevice, scenarios, SPEC_SCENARIO_KEYS, SYNC_BENCH } from '../src/index';
+import {
+  Cmd,
+  FrameDecoder,
+  FrameFlags,
+  KinoProtocolClient,
+  MockTransport,
+  PROTOCOL_VERSION,
+  encodeFrame,
+  encodeJson,
+} from '@kino/kdp';
+import type { Frame, JobProgress } from '@kino/kdp';
+import {
+  MockKinoDevice,
+  RECIPE_PARITY_CASES,
+  sampleRecipe,
+  scenarios,
+  SPEC_SCENARIO_KEYS,
+  SYNC_BENCH,
+} from '../src/index';
 
 let open: { transport: MockTransport; client: KinoProtocolClient }[] = [];
+let tapped: MockKinoDevice[] = [];
 
 async function connect(mock: MockKinoDevice) {
   const transport = new MockTransport(mock);
@@ -22,7 +39,78 @@ afterEach(async () => {
     await transport.close();
   }
   open = [];
+  for (const mock of tapped) mock.detach();
+  tapped = [];
 });
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Attach straight to the device and record every write it makes.
+ *
+ * These scenarios are about *delivery boundaries*, and MockTransport already
+ * re-chunks every outbound buffer into random 7–160 byte fragments — so a test
+ * that goes through it cannot tell the scenario from the baseline. Attaching
+ * directly is the only place the device's own grouping is observable, and it
+ * uses nothing but the public MockDeviceLike surface.
+ */
+function tap(mock: MockKinoDevice): Uint8Array[] {
+  const writes: Uint8Array[] = [];
+  mock.attach(
+    (bytes) => writes.push(bytes.slice()),
+    () => {},
+  );
+  tapped.push(mock);
+  return writes;
+}
+
+function requestFrame(cmd: Cmd, seq: number, payload: unknown = {}): Uint8Array {
+  return encodeFrame({
+    version: PROTOCOL_VERSION,
+    type: cmd,
+    flags: FrameFlags.NONE,
+    seq,
+    payload: encodeJson(payload),
+  });
+}
+
+function concat(chunks: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(chunks.reduce((a, c) => a + c.length, 0));
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
+/** Every frame the device wrote, in order, reassembled across write boundaries. */
+function decodeAll(writes: Uint8Array[]): Frame[] {
+  return new FrameDecoder().push(concat(writes));
+}
+
+/** The exact bytes the device put on the wire for a response frame. */
+function responseBytes(writes: Uint8Array[], seq: number): Uint8Array {
+  const frame = decodeAll(writes).find((f) => f.seq === seq && f.flags & FrameFlags.RESPONSE);
+  if (!frame) throw new Error(`no response for seq ${seq} in ${writes.length} write(s)`);
+  return encodeFrame(frame); // encodeFrame is deterministic — same bytes it sent
+}
+
+function containsRun(hay: Uint8Array, needle: Uint8Array): boolean {
+  if (needle.length > hay.length) return false;
+  outer: for (let i = 0; i <= hay.length - needle.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (hay[i + j] !== needle[j]) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Did any single write carry all of these frames? */
+function inOneWrite(writes: Uint8Array[], ...frames: Uint8Array[]): boolean {
+  return writes.some((w) => frames.every((f) => containsRun(w, f)));
+}
 
 describe('04 §19 scenario coverage', () => {
   it('names every mock requirement in the registry', () => {
@@ -291,35 +379,206 @@ describe('unsupported commands', () => {
 });
 
 describe('stream shaping', () => {
-  it('survives split frames', async () => {
+  it('splitFrames writes one frame across several writes; baseline writes it whole', async () => {
+    // Baseline first, so the assertion below is a difference and not a guess.
+    const plain = new MockKinoDevice();
+    const plainWrites = tap(plain);
+    plain.receive(requestFrame(Cmd.GET_DEVICE_INFO, 11));
+    await sleep(150);
+    const plainResponse = responseBytes(plainWrites, 11);
+    expect(inOneWrite(plainWrites, plainResponse)).toBe(true);
+
     const mock = new MockKinoDevice();
-    const client = await connect(mock);
+    const writes = tap(mock);
     mock.setScenario('splitFrames', true);
-    const info = await client.request<{ product: string }>(Cmd.GET_DEVICE_INFO);
-    expect(info.product).toBe('KINO');
+    mock.receive(requestFrame(Cmd.GET_DEVICE_INFO, 12));
+    await sleep(150);
+
+    const response = responseBytes(writes, 12);
+    // The frame is intact once reassembled...
+    expect(response.length).toBeGreaterThan(20);
+    // ...but no single write carries it — that is the whole scenario.
+    expect(inOneWrite(writes, response)).toBe(false);
+    expect(writes.length).toBeGreaterThan(1);
+    expect(Math.max(...writes.map((w) => w.length))).toBeLessThan(response.length);
   });
 
-  it('survives coalesced frames', async () => {
+  it('coalescedFrames puts two responses in one write; baseline keeps them apart', async () => {
+    const plain = new MockKinoDevice();
+    const plainWrites = tap(plain);
+    plain.receive(requestFrame(Cmd.GET_DEVICE_INFO, 21));
+    plain.receive(requestFrame(Cmd.GET_MODES, 22));
+    await sleep(200);
+    expect(
+      inOneWrite(plainWrites, responseBytes(plainWrites, 21), responseBytes(plainWrites, 22)),
+    ).toBe(false);
+
     const mock = new MockKinoDevice();
-    const client = await connect(mock);
+    const writes = tap(mock);
     mock.setScenario('coalescedFrames', true);
-    const [a, b, c] = await Promise.all([
-      client.request<{ product: string }>(Cmd.GET_DEVICE_INFO),
-      client.request<{ present: boolean }>(Cmd.GET_STORAGE_STATUS),
-      client.request<{ modes: string[] }>(Cmd.GET_MODES),
-    ]);
-    expect(a.product).toBe('KINO');
-    expect(b.present).toBe(true);
-    expect(c.modes).toContain('wiggle');
+    mock.receive(requestFrame(Cmd.GET_DEVICE_INFO, 23));
+    mock.receive(requestFrame(Cmd.GET_MODES, 24));
+    await sleep(200);
+
+    const first = responseBytes(writes, 23);
+    const second = responseBytes(writes, 24);
+    expect(inOneWrite(writes, first, second)).toBe(true);
   });
 
-  it('resyncs past a boot banner', async () => {
+  it('bootSpew emits unframed banner bytes the decoder must resync past', async () => {
+    const plain = new MockKinoDevice();
+    const plainWrites = tap(plain);
+    await sleep(30);
+    expect(plainWrites).toHaveLength(0); // a quiet device says nothing on attach
+
     const mock = new MockKinoDevice();
     mock.setScenario('bootSpew', true);
+    const writes = tap(mock);
+    await sleep(30);
+
+    expect(writes.length).toBeGreaterThan(0);
+    const banner = new TextDecoder().decode(concat(writes));
+    expect(banner).toContain('rst:0x1');
+    expect(decodeAll(writes)).toHaveLength(0); // not a frame — pure noise
+
+    // And the client still gets through it.
     const client = await connect(mock);
     const info = await client.request<{ product: string }>(Cmd.GET_DEVICE_INFO);
     expect(info.product).toBe('KINO');
   });
+
+  it('badCrc corrupts exactly one response; baseline never fails a CRC', async () => {
+    const clean = await connect(new MockKinoDevice());
+    await clean.request(Cmd.GET_POWER_STATUS);
+    await clean.request(Cmd.GET_POWER_STATUS);
+    expect(clean.stats.crcFailures).toBe(0);
+
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    mock.setScenario('badCrc', true);
+    await expect(client.request(Cmd.GET_POWER_STATUS)).rejects.toThrow(/timed out/i);
+    expect(client.stats.crcFailures).toBeGreaterThanOrEqual(1);
+
+    // One-shot: it disarms itself and the link is usable again.
+    expect(mock.scenarios.badCrc).toBe(false);
+    const after = client.stats.crcFailures;
+    const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
+    expect(power.batteryV).toBeGreaterThan(3);
+    expect(client.stats.crcFailures).toBe(after);
+  }, 15000);
+
+  it('delayedResponses answers near the timeout instead of promptly', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+
+    const quickStart = Date.now();
+    await client.request(Cmd.GET_MODES);
+    const quick = Date.now() - quickStart;
+    expect(quick).toBeLessThan(500);
+
+    mock.setScenario('delayedResponses', true);
+    const slowStart = Date.now();
+    await client.request(Cmd.GET_MODES);
+    const slow = Date.now() - slowStart;
+
+    // Scenario latency is 1400–2400 ms; 1200 leaves room for timer slop while
+    // staying far above anything the baseline could produce.
+    expect(slow).toBeGreaterThanOrEqual(1200);
+    expect(slow).toBeGreaterThan(quick * 4);
+  }, 15000);
+});
+
+describe('legacy firmware answers what it advertises', () => {
+  it('NACKs the network/roll group it reports as unsupported', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    mock.setScenario('legacyFirmware', true);
+
+    const caps = await client.request<{
+      capabilities: { network: boolean; rollUpload: boolean; syncBench: boolean; wiggle: boolean };
+    }>(Cmd.GET_CAPABILITIES);
+    expect(caps.capabilities.network).toBe(false);
+    expect(caps.capabilities.rollUpload).toBe(false);
+    expect(caps.capabilities.syncBench).toBe(false);
+    expect(caps.capabilities.wiggle).toBe(true);
+
+    // 04 §6: the claim and the answer have to agree.
+    for (const cmd of [Cmd.NETWORK_LIST, Cmd.ROLL_STATUS, Cmd.UPLOAD_QUEUE_STATUS]) {
+      await expect(client.request(cmd)).rejects.toMatchObject({ name: 'KinoUnsupportedError' });
+    }
+    await expect(client.startJob(SYNC_BENCH as Cmd, { triggers: 5 })).rejects.toMatchObject({
+      name: 'KinoUnsupportedError',
+    });
+  }, 15000);
+
+  it('answers the group again once the legacy flag clears', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    mock.setScenario('legacyFirmware', true);
+    await expect(client.request(Cmd.NETWORK_LIST)).rejects.toMatchObject({
+      name: 'KinoUnsupportedError',
+    });
+
+    mock.setScenario('legacyFirmware', false);
+    const caps = await client.request<{ capabilities: { network: boolean } }>(Cmd.GET_CAPABILITIES);
+    expect(caps.capabilities.network).toBe(true);
+    const list = await client.request<{ networks: unknown[] }>(Cmd.NETWORK_LIST);
+    expect(list.networks.length).toBeGreaterThan(0);
+  });
+});
+
+describe('UPLOAD_RECIPE', () => {
+  it('stores a valid look and reads it back', async () => {
+    const client = await connect(new MockKinoDevice());
+    const recipe = { ...sampleRecipe('my-party'), name: 'My Party' };
+    const res = await client.request<{ ok: boolean }>(Cmd.UPLOAD_RECIPE, { recipe });
+    expect(res.ok).toBe(true);
+
+    const looks = await client.request<{ custom: { id: string; name: string; factory: boolean }[] }>(
+      Cmd.GET_RECIPES,
+    );
+    const stored = looks.custom.find((r) => r.id === 'my-party');
+    expect(stored).toBeDefined();
+    expect(stored!.name).toBe('My Party');
+    expect(stored!.factory).toBe(false); // the device owns this flag, not the host
+  });
+
+  it('NACKs an invalid look with INVALID_ARGUMENT', async () => {
+    const client = await connect(new MockKinoDevice());
+    await expect(
+      client.request(Cmd.UPLOAD_RECIPE, { recipe: { ...sampleRecipe(), id: 'Party Neg!' } }),
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+
+    const looks = await client.request<{ custom: unknown[] }>(Cmd.GET_RECIPES);
+    expect(looks.custom).toHaveLength(0); // rejected means not stored
+  });
+
+  it('refuses to overwrite a factory id', async () => {
+    const client = await connect(new MockKinoDevice());
+    await expect(
+      client.request(Cmd.UPLOAD_RECIPE, { recipe: sampleRecipe('party-neg') }),
+    ).rejects.toThrow(/factory/i);
+  });
+
+  it('accepts a look missing an optional look key, as Studio does', async () => {
+    const client = await connect(new MockKinoDevice());
+    const { grain: _omitted, ...look } = sampleRecipe().look;
+    const partial = { ...sampleRecipe('missing-grain'), look };
+    const res = await client.request<{ ok: boolean }>(Cmd.UPLOAD_RECIPE, { recipe: partial });
+    expect(res.ok).toBe(true);
+  });
+
+  it('gives every parity fixture the outcome the table declares', async () => {
+    const client = await connect(new MockKinoDevice());
+    for (const c of RECIPE_PARITY_CASES) {
+      const send = client.request(Cmd.UPLOAD_RECIPE, { recipe: c.document });
+      if (c.valid) {
+        await expect(send, c.name).resolves.toMatchObject({ ok: true });
+      } else {
+        await expect(send, c.name).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+      }
+    }
+  }, 20000);
 });
 
 describe('large gallery', () => {
