@@ -5,6 +5,7 @@ import { Led } from '../../components/Led';
 import type { LedState } from '../../components/Led';
 import { Icon } from '../../components/Icon';
 import { useDeviceStore, recipeName } from '../../state/deviceStore';
+import { SkewVerdict } from '../Calibration/SkewBench';
 import { getDevice, onSelfTestEvent } from '../../app/session';
 import { onUi } from '../../state/uiBus';
 import type { CameraInfo, SelfTestEvent } from '@kino/kdp';
@@ -165,6 +166,14 @@ export function OverviewPage() {
               </div>
             ))}
           </dl>
+        </Panel>
+
+        {/* The one number on this page that says whether the four frames are
+            a wigglegram or four separate photographs. It is measured on the
+            Skew Bench, so it is quoted here with its metric and its age, and
+            the tile opens the bench rather than repeating it. */}
+        <Panel title="SENSOR SYNC">
+          <SkewVerdict />
         </Panel>
       </div>
 

@@ -1044,3 +1044,99 @@
     height: 66px;
   }
 }
+
+/* ---- skew bench (02 §10) ---- */
+
+/* Section tabs inside a page. Same seg control as everywhere else; a tablist
+   marks selection with aria-selected, which the shared rule below covers. */
+.pagetabs {
+  margin: 0 0 10px;
+}
+
+.skew-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--gap);
+  margin: 8px 0 6px;
+}
+
+.skew-metric {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: #fff;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.skew-metric--ok { border-color: #a8cfa4; background: #f4fbf3; }
+.skew-metric--warn { border-color: #ddc98d; background: #fdf9ec; }
+.skew-metric--err { border-color: #d9a6a6; background: #fdf2f2; }
+
+/* Offsets are read as a column, so they are monospace, right-aligned and
+   tabular — the point of the table is to spot the outlier row. */
+.skew-rows {
+  margin: 2px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.skew-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+.skew-row dt { color: var(--text-mut); }
+.skew-row dd { margin: 0; }
+
+.skew-row--spread {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.skew-band {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.skew-band--ok { color: var(--green-dark); }
+.skew-band--warn { color: var(--orange-dark); }
+.skew-band--err { color: var(--red-dark); }
+
+.skew-lamp {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.skew-line {
+  display: block;
+  margin: 0;
+}
+
+.skew-line--worst { color: var(--orange-dark); }
+
+/* A metric the device could not measure. Stated, never rendered as a zero. */
+.skew-none {
+  margin: 2px 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--orange-dark);
+}
+
+.skew-verdict {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}

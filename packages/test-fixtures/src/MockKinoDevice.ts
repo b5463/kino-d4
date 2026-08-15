@@ -26,7 +26,6 @@ import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
 import type { ScenarioFlags } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
-import { SYNC_BENCH } from './commands';
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 const randInt = (lo: number, hi: number) => Math.round(rand(lo, hi));
@@ -757,7 +756,7 @@ export class MockKinoDevice implements MockDeviceLike {
     Cmd.ROLL_LEAVE,
     Cmd.UPLOAD_QUEUE_STATUS,
     Cmd.UPLOAD_QUEUE_RETRY,
-    SYNC_BENCH,
+    Cmd.SYNC_BENCH,
   ];
 
   /** Single source of truth for both the capability report and the dispatcher. */
@@ -779,11 +778,6 @@ export class MockKinoDevice implements MockDeviceLike {
         'UNSUPPORTED_COMMAND',
         `Command ${Cmd[cmd] ?? '0x' + frame.type.toString(16)} not implemented in firmware ${this.p4Fw}`,
       );
-      return;
-    }
-
-    if (frame.type === SYNC_BENCH) {
-      this.handleSyncBench(frame);
       return;
     }
 
@@ -1013,6 +1007,9 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.SELF_TEST:
         this.handleSelfTest(frame);
+        return;
+      case Cmd.SYNC_BENCH:
+        this.handleSyncBench(frame);
         return;
       case Cmd.GET_RUNTIME_STATS:
         this.respond(frame, {
@@ -1372,7 +1369,7 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
     const jobId = `job_${++this.jobCounter}`;
-    this.jobs.set(jobId, { id: jobId, cmd: SYNC_BENCH, step: 0, steps: triggers });
+    this.jobs.set(jobId, { id: jobId, cmd: Cmd.SYNC_BENCH, step: 0, steps: triggers });
     this.respond(frame, { jobId, accepted: true });
     this.log('P4', `sync bench started — ${triggers} triggers`);
 

@@ -4,15 +4,30 @@ import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { OrderPanel, SpacingPanel, FlashPanel } from './procedures';
+import { SkewBench } from './SkewBench';
 import { useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { invalidateBench } from '../../state/benchResults';
+import { useNavRequest } from '../../state/navRequest';
 import { getDevice, onCalibrationEvent, refreshCalibration } from '../../app/session';
 import type { CamCalibration, CamId, CalibrationEvent } from '@kino/kdp';
 import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
 import { formatSigned } from '../../utils/format';
 
 type Phase = 'idle' | 'capturing' | 'analyzing' | 'review' | 'error';
+
+/**
+ * Two jobs on one page. Calibration corrects what the sensors *see*; the Skew
+ * Bench measures *when* they saw it. Neither number belongs in the other's
+ * table, and both are long link-claiming runs, so they get a tab each rather
+ * than a single scroll that can have two things running at the bottom of it.
+ */
+type Tab = 'calibration' | 'skew';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'calibration', label: 'CALIBRATION' },
+  { id: 'skew', label: 'SKEW BENCH' },
+];
 
 const OWNER = 'calibration';
 const LABEL = 'CALIBRATION';
@@ -161,6 +176,7 @@ function CalReviewTable({
 
 export function CalibrationPage() {
   const calibration = useDeviceStore((s) => s.calibration);
+  const [tab, setTab] = useState<Tab>('calibration');
   const [phase, setPhase] = useState<Phase>('idle');
   const [progressMsg, setProgressMsg] = useState('');
   const [proposed, setProposed] = useState<Record<CamId, CamCalibration> | null>(null);
@@ -168,6 +184,14 @@ export function CalibrationPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const blockedBy = useBlockedBy(OWNER);
+
+  // A link from another section (Overview's sync verdict) opens the tab it
+  // was talking about, not the one this page happened to be left on.
+  const navRequest = useNavRequest((s) => s.request);
+  useEffect(() => {
+    if (navRequest?.page !== 'calibration') return;
+    if (TABS.some((t) => t.id === navRequest.tab)) setTab(navRequest.tab as Tab);
+  }, [navRequest]);
 
   useEffect(() => {
     return onCalibrationEvent((e: CalibrationEvent) => {
@@ -251,88 +275,113 @@ export function CalibrationPage() {
           <Icon name="calibration" />
           Calibration
         </h1>
-        <span className="microlabel">
-          {calibration?.capturedAt ? `LAST RUN ${new Date(calibration.capturedAt).toLocaleDateString()}` : 'NEVER CALIBRATED'}
-        </span>
+        {tab === 'calibration' ? (
+          <span className="microlabel">
+            {calibration?.capturedAt ? `LAST RUN ${new Date(calibration.capturedAt).toLocaleDateString()}` : 'NEVER CALIBRATED'}
+          </span>
+        ) : null}
       </div>
 
-      <p className="notice">
-        Measures brightness, color and alignment differences between the four sensors and stores
-        per-camera correction offsets. CAM2 is the reference. Corrections are bounded.
-      </p>
+      {/* Same seg group the Gallery filters use — one stop per button, state
+          on `aria-pressed`. A `role="tablist"` would owe the sections below
+          matching `tabpanel` roles and arrow-key movement it does not have. */}
+      <span className="seg pagetabs" role="group" aria-label="Calibration section">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className="seg-opt"
+            aria-pressed={t.id === tab}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </span>
 
-      <div className="panel-grid">
-        <Panel title="PROCEDURE">
-          <ol className="calsteps">
-            <li>Place a neutral target (white card, gray wall) in front of all four lenses</li>
-            <li>Light it evenly — no hard shadows across the lens row</li>
-            <li>Start calibration and hold the camera still</li>
-            <li>Review the measured offsets, then save or discard</li>
-          </ol>
-          <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-            <Button
-              variant="primary"
-              busy={running}
-              disabled={!running && blockedBy !== null}
-              title={blockedBy ? `${blockedBy} is running` : undefined}
-              onClick={() => void start()}
-            >
-              START CALIBRATION
-            </Button>
-            <Button
-              variant="danger"
-              disabled={running || busy || blockedBy !== null}
-              title={blockedBy ? `${blockedBy} is running` : undefined}
-              onClick={() => setResetOpen(true)}
-            >
-              RESET CALIBRATION
-            </Button>
+      {tab === 'skew' ? <SkewBench /> : null}
+
+      {tab === 'calibration' ? (
+        <>
+          <p className="notice">
+            Measures brightness, color and alignment differences between the four sensors and stores
+            per-camera correction offsets. CAM2 is the reference. Corrections are bounded.
+          </p>
+
+          <div className="panel-grid">
+            <Panel title="PROCEDURE">
+              <ol className="calsteps">
+                <li>Place a neutral target (white card, gray wall) in front of all four lenses</li>
+                <li>Light it evenly — no hard shadows across the lens row</li>
+                <li>Start calibration and hold the camera still</li>
+                <li>Review the measured offsets, then save or discard</li>
+              </ol>
+              <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+                <Button
+                  variant="primary"
+                  busy={running}
+                  disabled={!running && blockedBy !== null}
+                  title={blockedBy ? `${blockedBy} is running` : undefined}
+                  onClick={() => void start()}
+                >
+                  START CALIBRATION
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={running || busy || blockedBy !== null}
+                  title={blockedBy ? `${blockedBy} is running` : undefined}
+                  onClick={() => setResetOpen(true)}
+                >
+                  RESET CALIBRATION
+                </Button>
+              </div>
+              <p className="dim mono" style={{ marginTop: 12, minHeight: 18 }} role="status">
+                {running ? progressMsg : blockedBy ? `${blockedBy} is running.` : ''}
+              </p>
+              {error ? <p className="notice notice--err" style={{ marginTop: 12, marginBottom: 0 }}>{error}</p> : null}
+            </Panel>
+
+            <Panel title="STORED ON KINO">
+              {calibration ? (
+                <CalTable cams={calibration.cams} reference={calibration.reference} />
+              ) : (
+                <p className="faint">No calibration data reported.</p>
+              )}
+            </Panel>
           </div>
-          <p className="dim mono" style={{ marginTop: 12, minHeight: 18 }} role="status">
-            {running ? progressMsg : blockedBy ? `${blockedBy} is running.` : ''}
-          </p>
-          {error ? <p className="notice notice--err" style={{ marginTop: 12, marginBottom: 0 }}>{error}</p> : null}
-        </Panel>
 
-        <Panel title="STORED ON KINO">
-          {calibration ? (
-            <CalTable cams={calibration.cams} reference={calibration.reference} />
-          ) : (
-            <p className="faint">No calibration data reported.</p>
-          )}
-        </Panel>
-      </div>
+          {phase === 'review' && proposed ? (
+            <Panel
+              title="MEASURED OFFSETS — REVIEW"
+              actions={
+                <>
+                  <Button variant="ghost" disabled={busy} onClick={() => { setPhase('idle'); setProposed(null); }}>
+                    DISCARD
+                  </Button>
+                  <Button variant="primary" busy={busy} onClick={() => void accept()}>
+                    SAVE TO KINO
+                  </Button>
+                </>
+              }
+            >
+              <CalReviewTable
+                stored={calibration?.cams ?? null}
+                proposed={proposed}
+                reference={calibration?.reference ?? 'cam2'}
+              />
+              <p className="dim" style={{ marginTop: 10 }}>
+                Corrections relative to CAM2. Nothing is written to the camera until you save.
+              </p>
+            </Panel>
+          ) : null}
 
-      {phase === 'review' && proposed ? (
-        <Panel
-          title="MEASURED OFFSETS — REVIEW"
-          actions={
-            <>
-              <Button variant="ghost" disabled={busy} onClick={() => { setPhase('idle'); setProposed(null); }}>
-                DISCARD
-              </Button>
-              <Button variant="primary" busy={busy} onClick={() => void accept()}>
-                SAVE TO KINO
-              </Button>
-            </>
-          }
-        >
-          <CalReviewTable
-            stored={calibration?.cams ?? null}
-            proposed={proposed}
-            reference={calibration?.reference ?? 'cam2'}
-          />
-          <p className="dim" style={{ marginTop: 10 }}>
-            Corrections relative to CAM2. Nothing is written to the camera until you save.
-          </p>
-        </Panel>
+          <div className="panel-grid">
+            <OrderPanel />
+            <SpacingPanel />
+          </div>
+          <FlashPanel />
+        </>
       ) : null}
-
-      <div className="panel-grid">
-        <OrderPanel />
-        <SpacingPanel />
-      </div>
-      <FlashPanel />
 
       <ConfirmDialog
         open={resetOpen}

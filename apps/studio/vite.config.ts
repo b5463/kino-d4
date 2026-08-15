@@ -12,6 +12,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    // .tsx as well: a component that renders a measurement is tested by
+    // rendering it (react-dom/server — no DOM, no extra dependency).
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
   },
 });

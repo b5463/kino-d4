@@ -53,6 +53,11 @@ export enum Cmd {
   /** Per-channel UART stress test at the current or a candidate baud. */
   LINK_BENCH = 0x44,
   SET_LINK_BAUD = 0x45,
+  /**
+   * Skew Bench: fire N triggers and report per-camera timing for each. An
+   * async job (04 §15) — hundreds of triggers outlive any request deadline.
+   */
+  SYNC_BENCH = 0x46,
 
   // Maintenance
   ENTER_MAINTENANCE = 0x50,
