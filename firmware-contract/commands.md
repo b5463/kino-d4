@@ -359,7 +359,7 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `GET_RUNTIME_STATS` | `0x43` | → `{}` ← **typed** `RuntimeStats` |
 | `LINK_BENCH` | `0x44` | → `{ "baud": 2000000, "bytes": 262144 }` ← **typed** `LinkBenchResult`. Timeout 20 s |
 | `SET_LINK_BAUD` | `0x45` | → `{ "baud": 1500000 }` ← **inline** `{ "ok": true, "baud": 1500000 }`. Timeout 6 s |
-| `SYNC_BENCH` | `0x46` | **Reserved — pending enum promotion.** See below |
+| `SYNC_BENCH` | `0x46` | → `{ "triggers": 20 }` ← **mock** `{ "jobId": "job_1", "accepted": true }`, then `JOB_*` events. See below |
 
 `LogEntry` = `{ "t": 1755301234567, "src": "P4", "msg": "…" }`, `src` ∈
 `P4 | C1 | C2 | C3 | C4 | PWR | SD | PROTO`. Also pushed live as `LOG` events.
@@ -386,11 +386,10 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 
 `clean` is true only when every channel finished with zero errors.
 
-#### `SYNC_BENCH` — 0x46, reserved
+#### `SYNC_BENCH` — 0x46
 
-**Not in the `Cmd` enum yet.** Defined in `packages/test-fixtures/src/commands.ts` as `0x46` pending
-promotion into `commands.ts` (Task 10/11). The value is normative; do not renumber.
-See [README D4](README.md#d4--sync_bench-is-reserved-at-0x46-not-yet-in-the-cmd-enum).
+`Cmd.SYNC_BENCH` in `packages/kdp/src/protocol/commands.ts`. The value is normative; do not renumber.
+See [README D4](README.md#d4--sync_bench-numeric-value).
 
 An async job — a hundred triggers outlives any request deadline. Request/response are **mock**:
 

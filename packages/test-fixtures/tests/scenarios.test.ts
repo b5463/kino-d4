@@ -19,7 +19,6 @@ import {
   sampleRecipe,
   scenarios,
   SPEC_SCENARIO_KEYS,
-  SYNC_BENCH,
 } from '../src/index';
 
 let open: { transport: MockTransport; client: KinoProtocolClient }[] = [];
@@ -328,7 +327,7 @@ describe('session restart', () => {
 describe('SYNC_BENCH job', () => {
   it('accepts a job, streams progress and completes with per-camera samples', async () => {
     const client = await connect(new MockKinoDevice());
-    const job = await client.startJob(SYNC_BENCH as Cmd, { triggers: 20 });
+    const job = await client.startJob(Cmd.SYNC_BENCH, { triggers: 20 });
     expect(job.jobId).toMatch(/^job_/);
 
     const seen: JobProgress[] = [];
@@ -354,7 +353,7 @@ describe('SYNC_BENCH job', () => {
     const mock = new MockKinoDevice();
     const client = await connect(mock);
     mock.setScenario('offlineCameraNode', true);
-    await expect(client.startJob(SYNC_BENCH as Cmd, { triggers: 5 })).rejects.toMatchObject({
+    await expect(client.startJob(Cmd.SYNC_BENCH, { triggers: 5 })).rejects.toMatchObject({
       code: 'CAMERA_OFFLINE',
     });
   });
@@ -506,7 +505,7 @@ describe('legacy firmware answers what it advertises', () => {
     for (const cmd of [Cmd.NETWORK_LIST, Cmd.ROLL_STATUS, Cmd.UPLOAD_QUEUE_STATUS]) {
       await expect(client.request(cmd)).rejects.toMatchObject({ name: 'KinoUnsupportedError' });
     }
-    await expect(client.startJob(SYNC_BENCH as Cmd, { triggers: 5 })).rejects.toMatchObject({
+    await expect(client.startJob(Cmd.SYNC_BENCH, { triggers: 5 })).rejects.toMatchObject({
       name: 'KinoUnsupportedError',
     });
   }, 15000);

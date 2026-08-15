@@ -14,6 +14,7 @@ import { useConnectionStore } from '../state/connectionStore';
 import { useDeviceStore } from '../state/deviceStore';
 import { usePrefs, setDensity, setDeveloperMode } from '../state/prefs';
 import { emitUi } from '../state/uiBus';
+import { useNavRequest } from '../state/navRequest';
 import { blockedBy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
 import {
@@ -72,6 +73,13 @@ export function App() {
   const dirtyDrafts = useDraftStore((s) => s.dirty);
   const workRef = useRef<HTMLElement>(null);
   const syncRef = useRef<() => void>(() => {});
+
+  // A readout in one section linking to the section that measured it. The
+  // target page reads the `tab` out of the same request.
+  const navRequest = useNavRequest((s) => s.request);
+  useEffect(() => {
+    if (navRequest) setPage(navRequest.page);
+  }, [navRequest]);
 
   useEffect(() => {
     localStorage.setItem(PAGE_KEY, page);

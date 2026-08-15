@@ -22,9 +22,20 @@ import { useConnectionStore } from './connectionStore';
  * text, and keeps its numbers so the run can still be exported.
  */
 
-export type BenchOwner = 'timing' | 'phase' | 'link' | 'burnin' | 'conformance';
+export type BenchOwner = 'timing' | 'phase' | 'link' | 'burnin' | 'conformance' | 'skew';
 
-export const BENCH_OWNERS: BenchOwner[] = ['timing', 'phase', 'link', 'burnin', 'conformance'];
+export const BENCH_OWNERS: BenchOwner[] = [
+  'timing',
+  'phase',
+  'link',
+  'burnin',
+  'conformance',
+  // The Skew Bench, Calibration's product surface. It is here rather than in
+  // its own store for the reason the rest are: Overview prints its verdict,
+  // and a verdict that survives a page swap has to say when it was measured
+  // and whether anything since invalidated it.
+  'skew',
+];
 
 export interface BenchEntry<T = unknown> {
   result: T;
