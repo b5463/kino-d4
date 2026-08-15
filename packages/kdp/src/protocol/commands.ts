@@ -75,6 +75,19 @@ export enum Cmd {
   MEDIA_READ = 0x73,
   MEDIA_DELETE = 0x74,
   MEDIA_FAVORITE = 0x75,
+
+  // Network / Roll (04 §7). Deliberately above the event range so a command
+  // id and an event id can never collide in a protocol trace.
+  NETWORK_LIST = 0xa0,
+  NETWORK_SET = 0xa1,
+  NETWORK_DELETE = 0xa2,
+  NETWORK_STATUS = 0xa3,
+  ROLL_STATUS = 0xa4,
+  ROLL_CREATE = 0xa5,
+  ROLL_JOIN = 0xa6,
+  ROLL_LEAVE = 0xa7,
+  UPLOAD_QUEUE_STATUS = 0xa8,
+  UPLOAD_QUEUE_RETRY = 0xa9,
 }
 
 // Unsolicited frames pushed by the device (FrameFlags.EVENT set).
@@ -88,6 +101,12 @@ export enum Evt {
   CAPTURE = 0x85,
   /** Sensor re-phasing progress. */
   PHASE = 0x86,
+
+  // Async job model (04 §15). These carry no request sequence ID (04 §16) —
+  // the jobId in the payload is the only thing tying them to a caller.
+  JOB_PROGRESS = 0x87,
+  JOB_COMPLETE = 0x88,
+  JOB_FAILED = 0x89,
 }
 
 export enum FrameFlags {

@@ -2,7 +2,17 @@ import type { Transport } from '../transport/Transport';
 import { Cmd, Evt, FrameFlags, PROTOCOL_VERSION } from './commands';
 import { FrameDecoder, encodeFrame, encodeJson, decodeJson } from './packet';
 import type { Frame } from './packet';
-import type { ProtocolError } from './types';
+import type {
+  HelloRequest,
+  HelloResponse,
+  JobCompleteEvent,
+  JobFailedEvent,
+  JobFailure,
+  JobProgress,
+  JobResult,
+  JobStartResponse,
+  ProtocolError,
+} from './types';
 
 export class KinoCommandError extends Error {
   readonly code: string;
@@ -26,6 +36,91 @@ export class KinoTimeoutError extends Error {
     super(`No response to ${Cmd[cmd] ?? cmd} — command timed out`);
     this.name = 'KinoTimeoutError';
   }
+}
+
+export type HandshakeFailure = 'timeout' | 'nonce' | 'protocol';
+
+/** HELLO did not produce a usable session (04 §4). */
+export class KinoHandshakeError extends Error {
+  readonly reason: HandshakeFailure;
+  readonly attempts: number;
+  constructor(reason: HandshakeFailure, message: string, attempts: number) {
+    super(message);
+    this.name = 'KinoHandshakeError';
+    this.reason = reason;
+    this.attempts = attempts;
+  }
+}
+
+/** A job the device accepted and then failed (04 §15 JOB_FAILED). */
+export class KinoJobError extends Error {
+  readonly code: string;
+  readonly jobId: string;
+  /** The device's error object exactly as it arrived (04 §18). */
+  readonly deviceError: JobFailure;
+  constructor(jobId: string, deviceError: JobFailure) {
+    super(deviceError.message || `Job ${jobId} failed`);
+    this.name = 'KinoJobError';
+    this.jobId = jobId;
+    this.code = deviceError.code || 'JOB_FAILED';
+    this.deviceError = deviceError;
+  }
+}
+
+export interface HelloOptions {
+  /** 04 §4: retry up to 3 times. */
+  attempts?: number;
+  timeoutMs?: number;
+  retryDelayMs?: number;
+  /** Oldest protocol this client can still speak. */
+  protocolMin?: number;
+  /** Newest protocol this client can speak. */
+  protocolMax?: number;
+  /** Reported to the device so its logs name the peer. */
+  clientVersion?: string;
+  /**
+   * Session ID carried over from the previous connection. Studio builds a
+   * fresh client per connection, so without this a reboot during a reconnect
+   * would read as a clean first session and never raise sessionChanged.
+   */
+  knownSessionId?: string | null;
+  /** Injection point for tests; production uses a random nonce per attempt. */
+  nonce?: () => number;
+}
+
+/** The device answered HELLO with a different boot/session ID (04 §17). */
+export interface SessionChange {
+  previous: string;
+  current: string;
+  deviceId?: string;
+}
+
+/**
+ * A running device job. `progress` is single-consumer: it completes when
+ * JOB_COMPLETE or JOB_FAILED arrives, and `result` settles at the same moment.
+ */
+export interface JobHandle<TResult = JobResult> {
+  jobId: string;
+  progress: AsyncIterable<JobProgress>;
+  result: Promise<TResult>;
+}
+
+type JobOutcome =
+  | { kind: 'complete'; result: JobResult }
+  | { kind: 'failed'; error: JobFailure };
+
+interface JobRecord {
+  queue: JobProgress[];
+  waiters: ((r: IteratorResult<JobProgress>) => void)[];
+  finished: boolean;
+  resolve: (value: JobResult) => void;
+  reject: (err: Error) => void;
+}
+
+/** Job events that arrived before their caller registered the jobId. */
+interface OrphanEvents {
+  progress: JobProgress[];
+  outcome: JobOutcome | null;
 }
 
 interface Pending {
@@ -56,6 +151,18 @@ export interface FrameTraceEntry {
 
 const TRACE_MAX = 200;
 const DEFAULT_TIMEOUT_MS = 3000;
+const HELLO_ATTEMPTS = 3;
+const HELLO_TIMEOUT_MS = 500;
+const HELLO_RETRY_MS = 150;
+/**
+ * Cap on jobIds whose events arrived before anyone claimed them. A device that
+ * streams events for jobs this client never started must not grow the map
+ * without bound; the oldest entry is dropped.
+ */
+const ORPHAN_JOBS_MAX = 32;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const randomNonce = () => Math.floor(Math.random() * 0xffffffff);
 
 /**
  * Request/response + event layer over a byte transport. One instance per
@@ -67,6 +174,11 @@ export class KinoProtocolClient {
   private readonly decoder = new FrameDecoder();
   private readonly pending = new Map<number, Pending>();
   private eventHandlers = new Map<Evt, Set<(payload: unknown) => void>>();
+  private sessionHandlers = new Set<(change: SessionChange) => void>();
+  private readonly jobs = new Map<string, JobRecord>();
+  private readonly orphanJobs = new Map<string, OrphanEvents>();
+  private session: string | null = null;
+  private protocol: number | null = null;
   private seq = 1;
   private closed = false;
 
@@ -90,10 +202,126 @@ export class KinoProtocolClient {
   constructor(transport: Transport) {
     this.transport = transport;
     transport.onData((data) => this.handleData(data));
+    // Job events go through the normal event fan-out, so an app can still
+    // subscribe to them directly for a raw protocol view.
+    this.onEvent<JobProgress>(Evt.JOB_PROGRESS, (p) => {
+      if (p && typeof p.jobId === 'string') this.deliverProgress(p);
+    });
+    this.onEvent<JobCompleteEvent>(Evt.JOB_COMPLETE, (e) => {
+      if (e && typeof e.jobId === 'string') {
+        this.settleJob(e.jobId, { kind: 'complete', result: e.result ?? {} });
+      }
+    });
+    this.onEvent<JobFailedEvent>(Evt.JOB_FAILED, (e) => {
+      if (e && typeof e.jobId === 'string') {
+        this.settleJob(e.jobId, {
+          kind: 'failed',
+          error: e.error ?? { code: 'JOB_FAILED', message: `Job ${e.jobId} failed` },
+        });
+      }
+    });
   }
 
   get transportKind() {
     return this.transport.kind;
+  }
+
+  /** Boot/session ID of the connected device (04 §17), null before HELLO. */
+  get sessionId(): string | null {
+    return this.session;
+  }
+
+  /** Protocol selected by the device during HELLO, null before HELLO. */
+  get negotiatedProtocol(): number | null {
+    return this.protocol;
+  }
+
+  /** Fires when HELLO reports a different boot/session ID than last seen. */
+  onSessionChanged(handler: (change: SessionChange) => void): () => void {
+    this.sessionHandlers.add(handler);
+    return () => this.sessionHandlers.delete(handler);
+  }
+
+  /**
+   * Handshake (04 §4). Offers a protocol range, a fresh nonce per attempt and
+   * the client version; the device answers with the protocol it selected, the
+   * nonce echo and its boot/session ID.
+   *
+   * Silence and a mismatched nonce are both retried — an ESP32 that is still
+   * printing its boot banner, and a stale reply left in the serial buffer, are
+   * the two ways a first HELLO normally fails, and both clear on the next try.
+   * A protocol outside the offered range is final: retrying cannot change it.
+   */
+  async hello(options: HelloOptions = {}): Promise<HelloResponse> {
+    const attempts = options.attempts ?? HELLO_ATTEMPTS;
+    const timeoutMs = options.timeoutMs ?? HELLO_TIMEOUT_MS;
+    const retryDelayMs = options.retryDelayMs ?? HELLO_RETRY_MS;
+    const protocolMin = options.protocolMin ?? PROTOCOL_VERSION;
+    const protocolMax = options.protocolMax ?? PROTOCOL_VERSION;
+    const nextNonce = options.nonce ?? randomNonce;
+    if (options.knownSessionId !== undefined) this.session = options.knownSessionId;
+
+    let reason: HandshakeFailure = 'timeout';
+    let detail = 'device stayed silent';
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const nonce = nextNonce();
+      const request: HelloRequest = {
+        protocolMin,
+        protocolMax,
+        nonce,
+        client: options.clientVersion ?? null,
+      };
+
+      let res: HelloResponse;
+      try {
+        res = await this.request<HelloResponse>(Cmd.HELLO, request, timeoutMs);
+      } catch (err) {
+        if (!(err instanceof KinoTimeoutError)) throw err;
+        reason = 'timeout';
+        detail = 'device stayed silent';
+        if (attempt < attempts) await sleep(retryDelayMs);
+        continue;
+      }
+
+      // Nonce echo. Firmware that omits it is tolerated; firmware that echoes
+      // the wrong one is answering an older request, so the reply proves
+      // nothing about the device being alive right now.
+      if (res.nonce !== undefined && res.nonce !== nonce) {
+        reason = 'nonce';
+        detail = `reply echoed nonce ${res.nonce}, expected ${nonce}`;
+        if (attempt < attempts) await sleep(retryDelayMs);
+        continue;
+      }
+
+      if (typeof res.protocol !== 'number' || res.protocol < protocolMin || res.protocol > protocolMax) {
+        throw new KinoHandshakeError(
+          'protocol',
+          `Device selected protocol ${res.protocol}; this client speaks ${protocolMin}..${protocolMax}`,
+          attempt,
+        );
+      }
+
+      this.protocol = res.protocol;
+      this.noteSession(res);
+      return res;
+    }
+
+    throw new KinoHandshakeError(
+      reason,
+      `No usable HELLO reply after ${attempts} attempts — ${detail}`,
+      attempts,
+    );
+  }
+
+  private noteSession(res: HelloResponse) {
+    if (res.sessionId === undefined || res.sessionId === null) return; // pre-§17 firmware
+    const current = String(res.sessionId);
+    const previous = this.session;
+    this.session = current;
+    if (previous === null || previous === current) return;
+    const change: SessionChange = { previous, current, deviceId: res.deviceId };
+    for (const handler of this.sessionHandlers) handler(change);
   }
 
   onEvent<T = unknown>(evt: Evt, handler: (payload: T) => void): () => void {
@@ -110,6 +338,116 @@ export class KinoProtocolClient {
   async request<TRes>(cmd: Cmd, payload?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<TRes> {
     const raw = await this.requestRaw(cmd, encodeJson(payload), FrameFlags.NONE, timeoutMs);
     return decodeJson<TRes>(raw);
+  }
+
+  /**
+   * Start a long-running device job (04 §15) — calibration, firmware, stress
+   * tests, storage checks, exports. The command answers { jobId, accepted }
+   * immediately; everything after that arrives as JOB_* events routed by jobId.
+   */
+  async startJob<TResult = JobResult>(
+    cmd: Cmd,
+    payload?: unknown,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  ): Promise<JobHandle<TResult>> {
+    const started = await this.request<JobStartResponse>(cmd, payload, timeoutMs);
+    if (!started || typeof started.jobId !== 'string' || started.accepted === false) {
+      throw new KinoCommandError(
+        'JOB_NOT_ACCEPTED',
+        `${Cmd[cmd] ?? cmd} did not start a job`,
+      );
+    }
+    return this.registerJob<TResult>(started.jobId);
+  }
+
+  private registerJob<TResult>(jobId: string): JobHandle<TResult> {
+    let resolve!: (value: JobResult) => void;
+    let reject!: (err: Error) => void;
+    const result = new Promise<JobResult>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    // A caller may watch progress and never await the result. Keeping the
+    // rejection handled here is what stops that from killing the process.
+    void result.catch(() => {});
+
+    const record: JobRecord = { queue: [], waiters: [], finished: false, resolve, reject };
+    this.jobs.set(jobId, record);
+
+    // Events routinely beat this registration: the device can pack the reply
+    // and the first progress event into one read, and the reply only resumes
+    // this function a microtask later.
+    const orphan = this.orphanJobs.get(jobId);
+    if (orphan) {
+      this.orphanJobs.delete(jobId);
+      for (const p of orphan.progress) this.deliverProgress(p);
+      if (orphan.outcome) this.settleJob(jobId, orphan.outcome);
+    }
+
+    return {
+      jobId,
+      progress: this.progressIterable(record),
+      result: result as Promise<TResult>,
+    };
+  }
+
+  private progressIterable(record: JobRecord): AsyncIterable<JobProgress> {
+    return {
+      [Symbol.asyncIterator]: () => ({
+        next: (): Promise<IteratorResult<JobProgress>> => {
+          if (record.queue.length > 0) {
+            return Promise.resolve({ value: record.queue.shift()!, done: false });
+          }
+          if (record.finished) return Promise.resolve({ value: undefined, done: true });
+          return new Promise<IteratorResult<JobProgress>>((r) => record.waiters.push(r));
+        },
+        return: (): Promise<IteratorResult<JobProgress>> => {
+          // Abandoning the stream does not cancel the job; result still settles.
+          record.waiters.length = 0;
+          return Promise.resolve({ value: undefined, done: true });
+        },
+      }),
+    };
+  }
+
+  private orphanBucket(jobId: string): OrphanEvents {
+    let bucket = this.orphanJobs.get(jobId);
+    if (!bucket) {
+      if (this.orphanJobs.size >= ORPHAN_JOBS_MAX) {
+        const oldest = this.orphanJobs.keys().next().value;
+        if (oldest !== undefined) this.orphanJobs.delete(oldest);
+      }
+      bucket = { progress: [], outcome: null };
+      this.orphanJobs.set(jobId, bucket);
+    }
+    return bucket;
+  }
+
+  private deliverProgress(p: JobProgress) {
+    const record = this.jobs.get(p.jobId);
+    if (!record) {
+      this.orphanBucket(p.jobId).progress.push(p);
+      return;
+    }
+    if (record.finished) return;
+    const waiter = record.waiters.shift();
+    if (waiter) waiter({ value: p, done: false });
+    else record.queue.push(p);
+  }
+
+  private settleJob(jobId: string, outcome: JobOutcome) {
+    const record = this.jobs.get(jobId);
+    if (!record) {
+      this.orphanBucket(jobId).outcome = outcome;
+      return;
+    }
+    this.jobs.delete(jobId);
+    record.finished = true;
+    // Anything still queued is delivered by next() before it reports done.
+    for (const waiter of record.waiters) waiter({ value: undefined, done: true });
+    record.waiters.length = 0;
+    if (outcome.kind === 'complete') record.resolve(outcome.result);
+    else record.reject(new KinoJobError(jobId, outcome.error));
   }
 
   /** Send a binary command (firmware chunks) and decode the JSON response. */
@@ -206,7 +544,7 @@ export class KinoProtocolClient {
     }
   }
 
-  /** Fail all in-flight requests and stop accepting new ones. */
+  /** Fail all in-flight requests and jobs, and stop accepting new ones. */
   dispose(reason = 'Connection closed') {
     this.closed = true;
     for (const [, p] of this.pending) {
@@ -214,6 +552,16 @@ export class KinoProtocolClient {
       p.reject(new Error(reason));
     }
     this.pending.clear();
+    // A job whose device just vanished never reports again; leaving its
+    // progress iterable open would hang whoever is rendering it.
+    for (const jobId of [...this.jobs.keys()]) {
+      this.settleJob(jobId, {
+        kind: 'failed',
+        error: { code: 'DISCONNECTED', message: reason },
+      });
+    }
+    this.orphanJobs.clear();
     this.eventHandlers.clear();
+    this.sessionHandlers.clear();
   }
 }

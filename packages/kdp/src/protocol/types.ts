@@ -7,11 +7,27 @@ export type TargetId = CamId | 'p4';
 export const CAM_IDS: CamId[] = ['cam1', 'cam2', 'cam3', 'cam4'];
 export const ALL_TARGETS: TargetId[] = ['cam1', 'cam2', 'cam3', 'cam4', 'p4'];
 
+/** What Studio offers the device (04 §4): protocol range, nonce, version. */
+export interface HelloRequest {
+  protocolMin: number;
+  protocolMax: number;
+  nonce: number;
+  client: string | null;
+}
+
 export interface HelloResponse {
   product: string;
+  /** The protocol the device selected out of the offered range. */
   protocol: number;
   /** Echo of the nonce Studio sent, proving this is a live reply. */
   nonce?: number;
+  /** Stable identity of the unit. Optional: older firmware omits it. */
+  deviceId?: string;
+  /**
+   * New value on every device boot (04 §17). A different session ID on a
+   * reconnect means the device rebooted and any cached state is stale.
+   */
+  sessionId?: string | number;
 }
 
 // ---- Capability negotiation ----
@@ -329,6 +345,46 @@ export interface FwStatusResponse {
 export interface ProtocolError {
   code: string;
   message: string;
+}
+
+// ---- Async jobs (04 §15) ----
+// Calibration, firmware, stress tests, storage checks and large exports do not
+// fit a request/response deadline. The command returns a job ID immediately and
+// the device reports through events that carry no sequence ID (04 §16), so the
+// jobId is the only routing key.
+
+export interface JobStartResponse {
+  jobId: string;
+  accepted: boolean;
+}
+
+export interface JobProgress {
+  jobId: string;
+  /** 0..1. */
+  progress: number;
+  /** Machine-readable stage, e.g. "capture" / "verify". */
+  step?: string;
+  message?: string;
+}
+
+/** Device error object as delivered by JOB_FAILED (04 §18). */
+export interface JobFailure extends ProtocolError {
+  details?: Record<string, unknown>;
+  recoverable?: boolean;
+  suggestedActions?: string[];
+}
+
+/** Shape is per-command, so the wire type stays open. */
+export type JobResult = unknown;
+
+export interface JobCompleteEvent {
+  jobId: string;
+  result?: JobResult;
+}
+
+export interface JobFailedEvent {
+  jobId: string;
+  error?: JobFailure;
 }
 
 // ---- Media ----
