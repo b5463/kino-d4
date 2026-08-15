@@ -37,6 +37,18 @@ describe('skewStats', () => {
     expect(() => skewStats([])).toThrow();
   });
 
+  it('throws on a non-finite sample rather than sorting it to an arbitrary position', () => {
+    // A NaN makes the (a,b) => a-b comparator inconsistent, so sort order is
+    // arbitrary: this used to report max 120, hiding a 9 ms outlier as 'excellent'.
+    expect(() => skewStats([9000, NaN, 120])).toThrow();
+    expect(() => skewStats([100, Infinity])).toThrow();
+    expect(() => skewStats([100, -Infinity])).toThrow();
+  });
+
+  it('throws when an array hole yields an undefined sample', () => {
+    expect(() => skewStats([10, undefined as unknown as number, 30])).toThrow();
+  });
+
   it('does not mutate the caller array', () => {
     const samples = [400, 100, 300, 200];
     skewStats(samples);
@@ -69,6 +81,19 @@ describe('bandForSpreadMs', () => {
       expect(bandForSpreadMs(spreadMs)).toBe(band);
     });
   }
+
+  it('throws on a negative spread instead of reading it as excellent', () => {
+    // A spread is max - min, so it is never negative; a signed offset that
+    // reached here is a caller bug, not a 'excellent' sync result.
+    expect(() => bandForSpreadMs(-5)).toThrow();
+    expect(() => bandForSpreadMs(-0.001)).toThrow();
+  });
+
+  it('throws on a non-finite spread instead of falling through to fail', () => {
+    expect(() => bandForSpreadMs(NaN)).toThrow();
+    expect(() => bandForSpreadMs(Infinity)).toThrow();
+    expect(() => bandForSpreadMs(undefined as unknown as number)).toThrow();
+  });
 });
 
 describe('spreadUs', () => {
@@ -86,6 +111,16 @@ describe('spreadUs', () => {
 
   it('throws on empty input rather than reporting a fabricated zero spread', () => {
     expect(() => spreadUs([])).toThrow();
+  });
+
+  it('throws on a non-finite offset instead of silently dropping a camera', () => {
+    expect(() => spreadUs([0, NaN, 300])).toThrow();
+    expect(() => spreadUs([0, Infinity, 300])).toThrow();
+    expect(() => spreadUs([0, -Infinity, 300])).toThrow();
+  });
+
+  it('throws when an array hole yields an undefined offset', () => {
+    expect(() => spreadUs([0, undefined as unknown as number, 300])).toThrow();
   });
 
   it('does not mutate the caller array', () => {
