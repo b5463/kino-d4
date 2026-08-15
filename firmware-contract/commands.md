@@ -115,7 +115,8 @@ Response (**typed**, `CapabilitiesResponse`):
 }
 ```
 
-`Capabilities` in `types.ts` declares the ten flags above. The reference device additionally reports
+`Capabilities` in `types.ts` declares `cameraCount` (a count, not a flag) plus the nine boolean flags
+above. The reference device additionally reports
 `rollUpload`, `network` and `syncBench` (**mock**) gating the `0xa0`–`0xa9` group and `SYNC_BENCH`.
 Those three are not yet in the `Capabilities` interface.
 
@@ -248,7 +249,10 @@ not exposure alignment.** See [Timing](#timing).
 
 ### Modes and recipes — 0x20–0x25
 
-Spec 04§7 calls these `*_LOOK`; source calls them `*_RECIPE`. See [README D1](README.md#d1--recipe-vs-look-command-naming).
+Spec 04§7 calls these `*_LOOK`; source calls them `*_RECIPE`. Note the layer split: these wire
+commands and their `recipe*` payload fields keep the recipe name, but the **`kino.capture` document
+field is `look`** — writing `recipe` there parses clean and silently loses the reference. See
+[README D1](README.md#d1--recipe-vs-look-one-concept-two-names-split-by-layer).
 
 | Cmd | Value | Payload |
 |---|---:|---|
@@ -456,8 +460,8 @@ Gallery access through the P4 file server. Never send the whole gallery (04§9).
 
 `MediaListResponse`:
 
-```json
-{ "total": 2048, "items": [CaptureSummary], "nextCursor": 100, "hasMore": true }
+```jsonc
+{ "total": 2048, "items": [ /* CaptureSummary[] */ ], "nextCursor": 100, "hasMore": true }
 ```
 
 `nextCursor` is a **number or null**, not an opaque string — see [README D9](README.md#d9--gallery-cursor-is-a-number-not-an-opaque-string).
@@ -504,13 +508,25 @@ the shape Studio will be written against. Gated by the `network` / `rollUpload` 
 { "ssid": "kino-bench", "password": "••••", "hasPassword": true,
   "security": "wpa2", "autoJoin": true, "lastSeen": 1755301234567 }
 
-// RollView
+// QueueReport — upload queue counters. `draining` is true while the
+// device is actively working the queue on a timer.
+{ "pending": 12, "uploading": 1, "failed": 2, "uploaded": 118, "draining": true }
+
+// RollView — on a roll
 { "active": true,
   "roll": { "rollId": "roll_0001", "slug": "amber-001",
             "guestUrl": "https://kino.roll/amber-001", "name": "Friday party",
             "role": "host", "joinedAt": 1755301234567 },
   "queue": { "pending": 12, "uploading": 1, "failed": 2, "uploaded": 118, "draining": true } }
+
+// RollView — NOT on a roll. This is the state a fresh device reports,
+// so it is the first one firmware bring-up hits. `roll` is null, not omitted,
+// and `queue` is still present.
+{ "active": false, "roll": null,
+  "queue": { "pending": 0, "uploading": 0, "failed": 0, "uploaded": 118, "draining": false } }
 ```
+
+`role` ∈ `host | guest` — `ROLL_CREATE` makes the device the host, `ROLL_JOIN` makes it a guest.
 
 **Password handling is a hard rule (05§13).** The device needs a stored passphrase to join; nothing
 leaving the camera — list reply, log line, backup — may contain it. `NETWORK_LIST` reports a fixed

@@ -64,13 +64,30 @@ Rules:
 
 Recorded, not resolved. The implementation column is normative.
 
-### D1 — Recipe vs Look command naming
+### D1 — Recipe vs Look: one concept, two names, split by layer
 
-Spec 04§7 names `GET_LOOKS` / `SET_LOOK` / `UPLOAD_LOOK` / `DELETE_LOOK`. Source names them
-`GET_RECIPES` (0x22) / `SET_RECIPE` (0x23) / `UPLOAD_RECIPE` (0x24) / `DELETE_RECIPE` (0x25).
+Spec 04§7 names the commands `GET_LOOKS` / `SET_LOOK` / `UPLOAD_LOOK` / `DELETE_LOOK`. Source names
+them `GET_RECIPES` (0x22) / `SET_RECIPE` (0x23) / `UPLOAD_RECIPE` (0x24) / `DELETE_RECIPE` (0x25).
 
-Same concept, one name. **Firmware implements the `*_RECIPE` names.** The numeric values are what
-actually matter on the wire and are unambiguous either way.
+**The two names are not interchangeable — which one is correct depends on the layer:**
+
+| Layer | Name | Where |
+|---|---|---|
+| KDP wire commands | **`*_RECIPE`** | `Cmd.GET_RECIPES` … `Cmd.DELETE_RECIPE`, `commands.ts` |
+| KDP wire payload fields | **`recipe`** | `DeviceInfo.activeRecipe`, `CaptureSummary.recipeIds`, `WiggleConfig.recipeId`, `QuadSlotConfig.recipeId` — `types.ts` |
+| `kino.capture` portable document | **`look`** | `look: z.string().optional()`, `packages/schemas/src/media.ts` |
+
+Same value, two field names, and **crossing them fails silently.** `kino.capture` is a
+`.passthrough()` schema and `look` is optional, so a device that writes `"recipe": "party-neg"` into a
+capture document parses **clean** — no error, no warning. The unknown key is preserved verbatim, `look`
+is simply absent, and every consumer that reads `look` sees a capture with no look reference. This is
+a data-loss bug that validation cannot catch for you.
+
+Firmware rules:
+
+- Send `*_RECIPE` command ids and `recipe*` field names **on the wire**.
+- Write `look` — never `recipe` — in a **`kino.capture`** document.
+- The numeric command values are unambiguous either way; the document field name is not.
 
 ### D2 — `kino.device-info` vs `kino.device`
 

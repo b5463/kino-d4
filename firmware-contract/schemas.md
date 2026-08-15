@@ -193,6 +193,12 @@ with no flash hardware omits it.
 }
 ```
 
+> **The look reference is called `look` here and `recipe` on the wire.** The same value travels as
+> `DeviceInfo.activeRecipe` / `CaptureSummary.recipeIds` in KDP payloads and as `look` in this
+> document. Writing `"recipe"` into a `kino.capture` **parses clean and silently loses the reference**:
+> the schema is `.passthrough()` and `look` is optional, so the unknown key survives, `look` is absent,
+> and nothing errors. See [README D1](README.md#d1--recipe-vs-look-one-concept-two-names-split-by-layer).
+
 `captureUuid` must be a real UUID. `capturedAt` is ISO 8601 **with offset**. `frameCount` is whatever
 the device produced — 03§12 forbids a hard-coded 4-frame model. `rollId` is null or absent until the
 capture is filed into a roll. `mode` ∈ `wiggle | quad | single`; `status` ∈ `created`,

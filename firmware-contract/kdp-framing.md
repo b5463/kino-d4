@@ -150,8 +150,12 @@ emit one.
 ## Decoder requirements
 
 The decoder is a byte-stream state machine. It never assumes one read equals one frame. Firmware's
-decoder must satisfy the same four requirements (04§3), and the host-side implementation in
-`FrameDecoder` is the reference for all of them.
+decoder must satisfy the same requirements (04§3), and the host-side implementation in `FrameDecoder`
+is the reference for all of them.
+
+04§3 lists five bullets — scan magic, tolerate boot spew, tolerate split/coalesced frames, reject CRC
+failures, resync without reset. The first two are one behavior in any real implementation (scanning
+for the magic *is* how boot spew is tolerated), so they are grouped below into four sections.
 
 ### 1. Scan for magic; tolerate boot spew
 
