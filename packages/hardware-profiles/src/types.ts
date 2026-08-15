@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineSchema } from '@kino/schemas';
+import { netDef } from './nets';
 
 export const SOURCE_KINDS = ['MEASURED', 'OFFICIAL_CAD', 'OFFICIAL_SPEC', 'SELLER_SPEC', 'PROVISIONAL'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
@@ -80,6 +81,8 @@ export const hardwareProfile = defineSchema({
     components: z.array(componentDef),
     instances: z.array(instanceDef),
     power: powerProfile,
+    nets: z.array(netDef),
+    gpio: z.record(z.string().nullable()), // data-driven pin map; null = unassigned (§8)
   }),
   migrations: {},
 });

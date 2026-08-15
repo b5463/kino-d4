@@ -17,3 +17,7 @@ export {
   type PowerProfile,
   type ProvenanceTag,
 } from './types';
+
+export { resolveDimensions, type ResolvedDims } from './resolve';
+export { measuredOverride, measuredOverrides, type MeasuredOverride, type MeasuredOverrides } from './overrides';
+export { netDef, NET_CLASSES, netsFor, netsByClass, type NetClass, type NetDef } from './nets';

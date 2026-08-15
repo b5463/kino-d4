@@ -307,5 +307,62 @@
       "wifiTx": { "amps": 0.25, "tag": "ESTIMATED" }
     },
     "fuse": { "ratingA": 3, "type": "fast" }
+  },
+  "nets": [
+    { "id": "cam1-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam1", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -8], [-9.9, 6, -2], [-23.1, 9, 8], [-33, 10, 14]] },
+    { "id": "cam1-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam1", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -8], [-9.9, 5, -2], [-23.1, 8, 8], [-33, 10, 14]] },
+    { "id": "cam1-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART1_TX" }, "to": { "instance": "cam1", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -15], [-9.9, 4, -8], [-23.1, 8, 2], [-33, 10, 14]] },
+    { "id": "cam1-rx", "cls": "UART", "from": { "instance": "cam1", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART1_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-33, 10, 14], [-23.1, 8, 3], [-9.9, 4, -7], [0, 0, -15]] },
+    { "id": "cam1-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam1", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -15], [-9.9, 3, -9], [-23.1, 7, 1], [-33, 10, 14]] },
+
+    { "id": "cam2-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam2", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -8], [-3.3, 6, -2], [-7.7, 9, 8], [-11, 10, 14]] },
+    { "id": "cam2-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam2", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -8], [-3.3, 5, -2], [-7.7, 8, 8], [-11, 10, 14]] },
+    { "id": "cam2-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART2_TX" }, "to": { "instance": "cam2", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -15], [-3.3, 4, -8], [-7.7, 8, 2], [-11, 10, 14]] },
+    { "id": "cam2-rx", "cls": "UART", "from": { "instance": "cam2", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART2_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-11, 10, 14], [-7.7, 8, 3], [-3.3, 4, -7], [0, 0, -15]] },
+    { "id": "cam2-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam2", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -15], [-3.3, 3, -9], [-7.7, 7, 1], [-11, 10, 14]] },
+
+    { "id": "cam3-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam3", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -8], [3.3, 6, -2], [7.7, 9, 8], [11, 10, 14]] },
+    { "id": "cam3-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam3", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -8], [3.3, 5, -2], [7.7, 8, 8], [11, 10, 14]] },
+    { "id": "cam3-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART3_TX" }, "to": { "instance": "cam3", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -15], [3.3, 4, -8], [7.7, 8, 2], [11, 10, 14]] },
+    { "id": "cam3-rx", "cls": "UART", "from": { "instance": "cam3", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART3_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[11, 10, 14], [7.7, 8, 3], [3.3, 4, -7], [0, 0, -15]] },
+    { "id": "cam3-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam3", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -15], [3.3, 3, -9], [7.7, 7, 1], [11, 10, 14]] },
+
+    { "id": "cam4-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam4", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -8], [9.9, 6, -2], [23.1, 9, 8], [33, 10, 14]] },
+    { "id": "cam4-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam4", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -8], [9.9, 5, -2], [23.1, 8, 8], [33, 10, 14]] },
+    { "id": "cam4-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART4_TX" }, "to": { "instance": "cam4", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -15], [9.9, 4, -8], [23.1, 8, 2], [33, 10, 14]] },
+    { "id": "cam4-rx", "cls": "UART", "from": { "instance": "cam4", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART4_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[33, 10, 14], [23.1, 8, 3], [9.9, 4, -7], [0, 0, -15]] },
+    { "id": "cam4-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam4", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -15], [9.9, 3, -9], [23.1, 7, 1], [33, 10, 14]] },
+
+    { "id": "main-batt-fuse", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT+" }, "to": { "instance": "fuse", "pin": "IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[0, -8, -2], [-5, -9, -2], [-10, -8, -2]] },
+    { "id": "main-fuse-bms", "cls": "POWER", "from": { "instance": "fuse", "pin": "OUT" }, "to": { "instance": "bms", "pin": "P+" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[-10, -8, -2], [-17, -11, -5], [-25, -15, -8]] },
+    { "id": "main-bms-pm", "cls": "POWER", "from": { "instance": "bms", "pin": "P-OUT" }, "to": { "instance": "power-module", "pin": "VIN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[-25, -15, -8], [-10, -17, -8], [10, -17, -8], [25, -15, -8]] },
+    { "id": "main-pm-carrier", "cls": "POWER", "from": { "instance": "power-module", "pin": "5V_OUT" }, "to": { "instance": "carrier", "pin": "5V_IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[25, -15, -8], [15, -11, -8], [7, -7, -8], [0, -5, -8]] },
+    { "id": "main-carrier-display", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_BUS" }, "to": { "instance": "display", "pin": "5V_IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[0, -5, -8], [0, -3, -11], [0, -1, -14], [0, 0, -15]] },
+    { "id": "main-batt-gnd", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT-" }, "to": { "instance": "carrier", "pin": "GND_BUS" }, "gauge": "20AWG", "color": "black", "waypointsMm": [[0, -8, -2], [0, -6, -4], [0, -5, -6], [0, -5, -8]] },
+
+    { "id": "flash-power", "cls": "FLASH", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "flash", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -8], [8, 5, -2], [6, 17, 8], [0, 27, 15]] },
+    { "id": "flash-en", "cls": "FLASH", "from": { "instance": "display", "pin": "FLASH_EN" }, "to": { "instance": "flash", "pin": "EN" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -15], [-6, 10, -5], [-4, 20, 6], [0, 27, 15]] },
+
+    { "id": "btn-shutter", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_SHUTTER" }, "to": { "instance": "carrier", "pin": "SW1" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -15], [2, -2, -12], [1, -4, -10], [0, -5, -8]] },
+    { "id": "btn-fn", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_FN" }, "to": { "instance": "carrier", "pin": "SW2" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -15], [-2, -2, -12], [-1, -4, -10], [0, -5, -8]] }
+  ],
+  "gpio": {
+    "CAM_PWR_1": "GPIO_TBD",
+    "CAM_PWR_2": "GPIO_TBD",
+    "CAM_PWR_3": "GPIO_TBD",
+    "CAM_PWR_4": "GPIO_TBD",
+    "SYNC_OUT": "GPIO_TBD",
+    "UART1_TX": "GPIO_TBD",
+    "UART1_RX": "GPIO_TBD",
+    "UART2_TX": "GPIO_TBD",
+    "UART2_RX": "GPIO_TBD",
+    "UART3_TX": "GPIO_TBD",
+    "UART3_RX": "GPIO_TBD",
+    "UART4_TX": "GPIO_TBD",
+    "UART4_RX": "GPIO_TBD",
+    "FLASH_EN": "GPIO_TBD",
+    "BTN_SHUTTER": "GPIO_TBD",
+    "BTN_FN": "GPIO_TBD",
+    "SLIDE_MODE": null
   }
 }
