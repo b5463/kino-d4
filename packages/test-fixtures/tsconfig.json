@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The mock device was extracted from Studio, which predates the shared
+    // base; adopting noUncheckedIndexedAccess here is a separate pass over
+    // ~1500 lines of simulator. It also has to stay off while this package
+    // typechecks @kino/kdp's raw src, which carries the same deferral.
+    "noUncheckedIndexedAccess": false,
+
+    // MockMediaStore draws its synthetic party scenes on a canvas and encodes
+    // them through Blob/toBlob when a DOM is present.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  // KDP is consumed as raw TypeScript, so its Web Serial ambient declarations
+  // are not in scope here the way they are inside its own project. Without
+  // them SerialTransport's `SerialPort` is unresolved and cascades into
+  // spurious null errors.
+  "include": ["src", "tests", "../kdp/src/types/webserial.d.ts"]
+}

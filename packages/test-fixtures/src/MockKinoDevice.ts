@@ -16,19 +16,33 @@ import type {
   TargetId,
 } from '@kino/kdp';
 import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
-import type { Recipe } from '../recipes/recipeTypes';
-import { validateRecipe } from '../recipes/recipeTypes';
-import { FACTORY_RECIPES } from '../recipes/factoryRecipes';
+import type { MockDeviceLike } from '@kino/kdp';
+import type { DeviceRecipe } from './recipes';
+import { validateDeviceRecipe } from './recipes';
+import { FACTORY_RECIPES } from './factoryRecipes';
 import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
 import type { SoundInfo } from '@kino/kdp';
-import { encodeWav, SOUND_SAMPLE_RATE } from '../utils/soundFx';
+import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
 import type { ScenarioFlags } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
+import { SYNC_BENCH } from './commands';
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 const randInt = (lo: number, hi: number) => Math.round(rand(lo, hi));
 const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+
+/** mulberry32 — a job that reports numbers has to report the same ones twice. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 function defaultConfig(): KinoConfig {
   return {
@@ -117,6 +131,21 @@ interface SoundSession {
 const MAX_CUSTOM_SOUNDS = 8;
 const MAX_SOUND_KB = 128;
 
+/** Captures on the card in the demo party, and under the 04 §19 2k scenario. */
+const DEMO_GALLERY_SIZE = 22;
+const LARGE_GALLERY_SIZE = 2048;
+
+/** How often the backed-up upload queue moves one item along. */
+const UPLOAD_TICK_MS = 1200;
+
+/**
+ * A command's normal turnaround, and what `delayedResponses` stretches it to.
+ * The slow figure sits under the client's 3 s default so commands crawl rather
+ * than fail — the point of 04 §19's "delayed responses" is a device that is
+ * technically alive, which is harder on a UI than one that is plainly gone.
+ */
+const SLOW_RESPONSE_MS: [number, number] = [1400, 2400];
+
 /** One demo clip so the simulator shows the custom-sound flow populated. */
 function demoSounds(): Map<string, { info: SoundInfo; data: Uint8Array }> {
   const durationMs = 320;
@@ -142,7 +171,49 @@ interface CamModel {
   rebootUntil: number;
 }
 
-export class MockKinoDevice {
+/** Saved Wi-Fi network as the device keeps it (05 §13). */
+interface SavedNetwork {
+  ssid: string;
+  /** Never leaves the device. NETWORK_LIST reports MASKED_PASSWORD instead. */
+  password: string;
+  security: 'wpa2' | 'wpa3' | 'open';
+  autoJoin: boolean;
+  lastSeen: number | null;
+}
+
+/**
+ * What NETWORK_LIST reports in place of a stored password (05 §13). The
+ * device knows the secret; nothing that leaves the camera ever contains it.
+ */
+const MASKED_PASSWORD = '••••';
+
+interface RollState {
+  rollId: string;
+  slug: string;
+  guestUrl: string;
+  name: string;
+  role: 'host' | 'guest';
+  joinedAt: number;
+}
+
+interface UploadQueue {
+  pending: number;
+  uploading: number;
+  failed: number;
+  uploaded: number;
+}
+
+/** A running async job (04 §15). */
+interface JobState {
+  id: string;
+  cmd: number;
+  step: number;
+  steps: number;
+}
+
+const ROLL_WORDS = ['amber', 'harbor', 'meridian', 'saltbox', 'lantern', 'cobalt'];
+
+export class MockKinoDevice implements MockDeviceLike {
   readonly scenarios: ScenarioFlags = { ...DEFAULT_SCENARIOS };
 
   private sink: ((data: Uint8Array) => void) | null = null;
@@ -163,7 +234,7 @@ export class MockKinoDevice {
   private cams: Record<CamId, CamModel> = this.freshCams('0.1.0');
   private config = defaultConfig();
   private calibration = neutralCalibration();
-  private customRecipes = new Map<string, Recipe>();
+  private customRecipes = new Map<string, DeviceRecipe>();
   private customSounds = demoSounds();
   private soundSession: SoundSession | null = null;
   private soundSessionCounter = 500;
@@ -179,6 +250,31 @@ export class MockKinoDevice {
   private readonly media = new MockMediaStore();
   private configRevision = 3;
   private uartBaud = 921600;
+
+  // ---- identity (04 §4 / §17) ----
+  // deviceId is the unit. sessionId is this boot of it: a host that sees a
+  // different one on reconnect knows every cached handle it holds is stale.
+  private readonly deviceId = 'kino-000012';
+  private bootCount = 1;
+  private sessionId = 'boot-1';
+
+  // ---- network / roll (04 §7) ----
+  private networks: SavedNetwork[] = [
+    { ssid: 'kino-bench', password: 'benchwifi2026', security: 'wpa2', autoJoin: true, lastSeen: Date.now() - 40_000 },
+    { ssid: 'loft-guest', password: 'partytime', security: 'wpa2', autoJoin: false, lastSeen: null },
+  ];
+  private roll: RollState | null = null;
+  private rollCounter = 0;
+  private uploads: UploadQueue = { pending: 0, uploading: 0, failed: 0, uploaded: 118 };
+  private uploadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ---- async jobs (04 §15) ----
+  private jobs = new Map<string, JobState>();
+  private jobCounter = 0;
+
+  // ---- outbound shaping (04 §19 split / coalesced frames) ----
+  private coalesceBuffer: Uint8Array[] = [];
+  private coalesceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Each OV3660 free-runs on its own clock. Phase = where that sensor sits
   // in its frame cycle relative to CAM2. Untouched sensors start scattered
@@ -217,7 +313,13 @@ export class MockKinoDevice {
     this.sink = sink;
     this.forceCloseCb = onForceClose;
     this.decoder.reset();
+    // A real ESP32 prints its ROM banner into the same UART the protocol uses.
+    // The first thing a host reads after opening the port is that noise, and
+    // the decoder has to resync out of it before it sees a frame (04 §19).
+    if (this.scenarios.bootSpew) this.emitBootSpew();
     this.startAmbient();
+    // Resume a backlog that was left mid-drain by the previous connection.
+    if (this.scenarios.uploadBacklog) this.armUploadDrain();
   }
 
   detach() {
@@ -226,6 +328,12 @@ export class MockKinoDevice {
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
+    this.coalesceTimer = null;
+    this.coalesceBuffer = [];
+    // The queue keeps its counts, but nothing of this device may outlive the
+    // connection that opened it — a stray timer keeps a whole process up.
+    this.stopUploadDrain();
   }
 
   receive(data: Uint8Array) {
@@ -240,12 +348,91 @@ export class MockKinoDevice {
 
   setScenario<K extends keyof ScenarioFlags>(key: K, value: ScenarioFlags[K]) {
     this.scenarios[key] = value;
-    if (key === 'cam1Offline' && value) this.log('P4', 'C1 link lost — no response on camera bus');
-    if (key === 'cam1Offline' && !value) this.log('P4', 'C1 link re-established');
+    if (key === 'offlineCameraNode' && value) this.log('P4', 'C1 link lost — no response on camera bus');
+    if (key === 'offlineCameraNode' && !value) this.log('P4', 'C1 link re-established');
     if (key === 'sdMissing') this.log('SD', value ? 'card removed' : 'card inserted, mounted');
     if (key === 'lowBattery' && value) { this.batteryV = 3.42; this.log('PWR', 'battery low 3.42 V'); }
     if (key === 'lowBattery' && !value) this.batteryV = 3.96;
+    if (key === 'largeGallery2k') this.media.resize(value ? LARGE_GALLERY_SIZE : DEMO_GALLERY_SIZE);
+    if (key === 'uploadBacklog') this.setUploadBacklog(Boolean(value));
+    if (key === 'bootSpew' && value) this.emitBootSpew();
     this.scenarioCb?.();
+
+    // These two are actions, not states: arming them makes the device do
+    // something once and disarm itself, so the panel never shows a stuck ON.
+    if (key === 'disconnect' && value) {
+      this.scenarios.disconnect = false;
+      this.log('P4', 'usb host link dropped');
+      this.dropLink();
+      this.scenarioCb?.();
+    }
+    if (key === 'sessionRestart' && value) {
+      this.scenarios.sessionRestart = false;
+      this.reboot('session-restart');
+      this.scenarioCb?.();
+    }
+  }
+
+  /** Boot/session ID of the current run (04 §17). Changes on every reboot. */
+  currentSessionId(): string {
+    return this.sessionId;
+  }
+
+  // ---- upload queue (04 §7 Network/Roll) ----
+
+  private setUploadBacklog(on: boolean) {
+    this.stopUploadDrain();
+    if (!on) {
+      this.uploads = { ...this.uploads, pending: 0, uploading: 0, failed: 0 };
+      return;
+    }
+    this.uploads = { pending: 12, uploading: 1, failed: 2, uploaded: this.uploads.uploaded };
+    this.log('P4', 'upload queue backed up — 12 pending, 2 failed');
+    this.armUploadDrain();
+  }
+
+  /** Schedule the next automatic drain step, replacing any pending one. */
+  private armUploadDrain() {
+    this.stopUploadDrain();
+    if (this.uploads.pending + this.uploads.uploading === 0) return;
+    this.uploadTimer = setTimeout(() => {
+      this.uploadTimer = null;
+      this.tickUploads();
+    }, UPLOAD_TICK_MS);
+  }
+
+  private stopUploadDrain() {
+    if (this.uploadTimer) clearTimeout(this.uploadTimer);
+    this.uploadTimer = null;
+  }
+
+  /**
+   * Move the queue along by one item. The backlog scenario calls this on a
+   * timer; a test calls it directly so its assertions do not race wall clock.
+   * Either way the next automatic step is rescheduled from here, so a burst of
+   * manual ticks can never be interleaved with a timer that was already due.
+   */
+  tickUploads() {
+    const q = this.uploads;
+    const draining = this.uploadTimer !== null || this.scenarios.uploadBacklog;
+    if (q.uploading > 0) {
+      q.uploading--;
+      q.uploaded++;
+    }
+    if (q.pending > 0) {
+      q.pending--;
+      q.uploading++;
+    }
+    if (q.pending === 0 && q.uploading === 0) {
+      this.stopUploadDrain();
+      if (draining) this.log('P4', `upload queue drained — ${q.failed} failed`);
+      return;
+    }
+    if (draining) this.armUploadDrain();
+  }
+
+  uploadQueue(): UploadQueue {
+    return { ...this.uploads };
   }
 
   // ---- ambient simulation ----
@@ -290,7 +477,7 @@ export class MockKinoDevice {
       if (roll <= 0) { idx = i; break; }
     }
     const [src, msg] = options[idx];
-    if ((src === 'C1' && this.scenarios.cam1Offline) || (src === 'C2' && this.scenarios.cam2Timeout)) return;
+    if ((src === 'C1' && this.scenarios.offlineCameraNode) || (src === 'C2' && this.scenarios.cam2Timeout)) return;
     if (src === 'SD' && this.scenarios.sdMissing) return;
     this.log(src, msg);
   }
@@ -303,7 +490,7 @@ export class MockKinoDevice {
     for (const id of CAM_IDS) {
       const cam = this.cams[id];
       const src = ('C' + id.slice(-1)) as LogSource;
-      if (id === 'cam1' && this.scenarios.cam1Offline) {
+      if (id === 'cam1' && this.scenarios.offlineCameraNode) {
         this.after(delay, () => { this.log('P4', 'C1 no frame — group incomplete'); this.camTimeouts++; });
         continue;
       }
@@ -321,7 +508,7 @@ export class MockKinoDevice {
     if (!this.scenarios.sdMissing) {
       // Sequential CAM1→4 UART transfer happens before the SD commit; at
       // 921600 baud a four-frame set takes a few seconds.
-      const skipped = (this.scenarios.cam1Offline ? 1 : 0) + (this.scenarios.cam2Timeout ? 1 : 0);
+      const skipped = (this.scenarios.offlineCameraNode ? 1 : 0) + (this.scenarios.cam2Timeout ? 1 : 0);
       // Concurrent transfer on four UARTs: wall clock is the slowest
       // channel, not the sum of four sequential transfers.
       const transferMs = Math.round((380 * 1024) / ((this.uartBaud / 10) * 0.9) * 1000);
@@ -396,13 +583,89 @@ export class MockKinoDevice {
   private sendFrame(frame: Frame) {
     if (!this.sink) return;
     let bytes = encodeFrame(frame);
-    if (this.scenarios.crcErrorNext && frame.flags & FrameFlags.RESPONSE) {
+    if (this.scenarios.badCrc && frame.flags & FrameFlags.RESPONSE) {
       bytes = bytes.slice();
       bytes[bytes.length - 3] ^= 0xff; // corrupt CRC in transit
-      this.scenarios.crcErrorNext = false;
+      this.scenarios.badCrc = false;
       this.scenarioCb?.();
     }
-    this.sink(bytes);
+    this.writeOut(bytes);
+  }
+
+  /**
+   * The one place bytes leave the device. 04 §19 wants both failure modes of a
+   * byte stream visible here: one frame arriving as several reads, and several
+   * frames arriving as one. Neither changes the bytes, only their grouping —
+   * a decoder that assumes read boundaries are frame boundaries breaks on both.
+   */
+  private writeOut(bytes: Uint8Array) {
+    if (this.scenarios.coalescedFrames) {
+      this.coalesceBuffer.push(bytes);
+      if (!this.coalesceTimer) {
+        this.coalesceTimer = setTimeout(() => this.flushCoalesced(), 12);
+      }
+      return;
+    }
+    this.emit(bytes);
+  }
+
+  private flushCoalesced() {
+    this.coalesceTimer = null;
+    const chunks = this.coalesceBuffer;
+    this.coalesceBuffer = [];
+    if (chunks.length === 0) return;
+    const total = chunks.reduce((a, c) => a + c.length, 0);
+    const joined = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) {
+      joined.set(c, offset);
+      offset += c.length;
+    }
+    this.emit(joined);
+  }
+
+  private emit(bytes: Uint8Array) {
+    const sink = this.sink;
+    if (!sink) return;
+    if (!this.scenarios.splitFrames || bytes.length < 4) {
+      sink(bytes);
+      return;
+    }
+    // Two or three writes per frame, always cutting inside the payload so a
+    // header lands split across reads at least some of the time.
+    let offset = 0;
+    while (offset < bytes.length) {
+      const remaining = bytes.length - offset;
+      const n = remaining <= 3 ? remaining : randInt(1, Math.max(1, remaining - 1));
+      sink(bytes.subarray(offset, offset + n));
+      offset += n;
+    }
+  }
+
+  /** ESP32 ROM/bootloader chatter on the same UART — unframed, must resync. */
+  private emitBootSpew() {
+    const sink = this.sink;
+    if (!sink) return;
+    const banner =
+      'rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)\r\n' +
+      'configsip: 0, SPIWP:0xee\r\n' +
+      'mode:DIO, clock div:2\r\n' +
+      'load:0x3fff0030,len:4832\r\n' +
+      'entry 0x400805e4\r\n' +
+      'I (312) cpu_start: Pro cpu up.\r\n' +
+      'I (418) kino: protocol v1 ready\r\n';
+    sink(new TextEncoder().encode(banner));
+  }
+
+  /** Yank the link without a reboot — no reply, no close frame, just gone. */
+  private dropLink() {
+    const closeCb = this.forceCloseCb;
+    this.stopAmbient();
+    for (const t of this.timers) clearTimeout(t);
+    this.timers = [];
+    this.sink = null;
+    this.forceCloseCb = null;
+    closeCb?.();
   }
 
   private handleFrame(frame: Frame) {
@@ -410,13 +673,17 @@ export class MockKinoDevice {
       this.respondError(frame, 'BAD_VERSION', `Protocol ${frame.version} not supported`);
       return;
     }
-    const latency = frame.type === Cmd.FW_CHUNK ? randInt(4, 10) : randInt(8, 26);
+    const latency = this.scenarios.delayedResponses
+      ? randInt(SLOW_RESPONSE_MS[0], SLOW_RESPONSE_MS[1])
+      : frame.type === Cmd.FW_CHUNK
+        ? randInt(4, 10)
+        : randInt(8, 26);
     this.after(latency, () => this.dispatch(frame));
   }
 
   private cameraInfo(id: CamId): CameraInfo {
     const cam = this.cams[id];
-    const offline = id === 'cam1' && this.scenarios.cam1Offline;
+    const offline = id === 'cam1' && this.scenarios.offlineCameraNode;
     const timeout = id === 'cam2' && this.scenarios.cam2Timeout;
     const rebooting = cam.rebootUntil > Date.now();
     return {
@@ -439,12 +706,93 @@ export class MockKinoDevice {
     };
   }
 
+  /**
+   * Commands a firmware build may not have. 04 §6: never silence, always a
+   * NACK with a reason, so Studio says "not supported" instead of waiting out
+   * a timeout. `unsupportedCommands` turns the whole optional surface off at
+   * once; `legacyFirmware` is the narrower pre-timing build.
+   */
+  private static readonly OPTIONAL_COMMANDS: number[] = [
+    Cmd.CAMERA_PHASE,
+    Cmd.LINK_BENCH,
+    Cmd.SET_LINK_BAUD,
+    Cmd.GET_SOUNDS,
+    Cmd.SOUND_BEGIN,
+    Cmd.SOUND_CHUNK,
+    Cmd.SOUND_END,
+    Cmd.SOUND_READ,
+    Cmd.SOUND_DELETE,
+    Cmd.NETWORK_LIST,
+    Cmd.NETWORK_SET,
+    Cmd.NETWORK_DELETE,
+    Cmd.NETWORK_STATUS,
+    Cmd.ROLL_STATUS,
+    Cmd.ROLL_CREATE,
+    Cmd.ROLL_JOIN,
+    Cmd.ROLL_LEAVE,
+    Cmd.UPLOAD_QUEUE_STATUS,
+    Cmd.UPLOAD_QUEUE_RETRY,
+    SYNC_BENCH,
+  ];
+
   private dispatch(frame: Frame) {
     const cmd = frame.type as Cmd;
+
+    if (
+      this.scenarios.unsupportedCommands &&
+      MockKinoDevice.OPTIONAL_COMMANDS.includes(frame.type)
+    ) {
+      this.respondError(
+        frame,
+        'UNSUPPORTED_COMMAND',
+        `Command ${Cmd[cmd] ?? '0x' + frame.type.toString(16)} not implemented in firmware ${this.p4Fw}`,
+      );
+      return;
+    }
+
+    if (frame.type === SYNC_BENCH) {
+      this.handleSyncBench(frame);
+      return;
+    }
+
     switch (cmd) {
       case Cmd.HELLO: {
         const req = decodeJson<{ nonce?: number }>(frame.payload);
-        this.respond(frame, { product: 'KINO', protocol: PROTOCOL_VERSION, nonce: req.nonce });
+        // 04 §4: selected protocol, nonce echo, device ID, boot/session ID.
+        this.respond(frame, {
+          product: 'KINO',
+          protocol: PROTOCOL_VERSION,
+          nonce: req.nonce,
+          deviceId: this.deviceId,
+          sessionId: this.sessionId,
+        });
+        return;
+      }
+      case Cmd.NETWORK_LIST:
+      case Cmd.NETWORK_SET:
+      case Cmd.NETWORK_DELETE:
+      case Cmd.NETWORK_STATUS:
+        this.handleNetwork(frame, cmd);
+        return;
+      case Cmd.ROLL_STATUS:
+      case Cmd.ROLL_CREATE:
+      case Cmd.ROLL_JOIN:
+      case Cmd.ROLL_LEAVE:
+        this.handleRoll(frame, cmd);
+        return;
+      case Cmd.UPLOAD_QUEUE_STATUS:
+        this.respond(frame, this.uploadQueueReport());
+        return;
+      case Cmd.UPLOAD_QUEUE_RETRY: {
+        const retried = this.uploads.failed;
+        this.uploads.pending += retried;
+        this.uploads.failed = 0;
+        if (retried > 0) {
+          this.log('P4', `upload retry — ${retried} item(s) requeued`);
+          // A queue that had already drained is asleep; requeued work wakes it.
+          if (this.scenarios.uploadBacklog) this.armUploadDrain();
+        }
+        this.respond(frame, { ok: true, retried, queue: this.uploadQueueReport() });
         return;
       }
       case Cmd.GET_CAPABILITIES: {
@@ -466,6 +814,11 @@ export class MockKinoDevice {
             xiaoProxyUpdate: !legacy,
             linkBench: !legacy,
             customSounds: !legacy,
+            // 04 §7 Network/Roll. `unsupportedCommands` models a build that
+            // NACKs them, so the advertised capability has to track it.
+            rollUpload: !legacy && !this.scenarios.unsupportedCommands,
+            network: !legacy && !this.scenarios.unsupportedCommands,
+            syncBench: !legacy && !this.scenarios.unsupportedCommands,
           },
           limits: {
             maxUartBaud: 3_000_000,
@@ -562,7 +915,7 @@ export class MockKinoDevice {
       }
       case Cmd.UPLOAD_RECIPE: {
         const { recipe } = decodeJson<{ recipe: unknown }>(frame.payload);
-        const check = validateRecipe(recipe);
+        const check = validateDeviceRecipe(recipe);
         if (!check.ok) {
           this.respondError(frame, 'BAD_RECIPE', check.error);
           return;
@@ -605,7 +958,7 @@ export class MockKinoDevice {
       }
       case Cmd.CAMERA_TEST: {
         const { cam } = decodeJson<{ cam: CamId }>(frame.payload);
-        if ((cam === 'cam1' && this.scenarios.cam1Offline) || (cam === 'cam2' && this.scenarios.cam2Timeout)) {
+        if ((cam === 'cam1' && this.scenarios.offlineCameraNode) || (cam === 'cam2' && this.scenarios.cam2Timeout)) {
           this.after(400, () => this.respondError(frame, 'CAM_UNREACHABLE', `${cam.toUpperCase()} did not answer test capture`));
           return;
         }
@@ -717,7 +1070,7 @@ export class MockKinoDevice {
       case Cmd.CAMERA_PREVIEW: {
         const { cam } = decodeJson<{ cam?: CamId }>(frame.payload);
         const camId = cam ?? this.config.shoot.viewfinder;
-        if (camId === 'cam1' && this.scenarios.cam1Offline) {
+        if (camId === 'cam1' && this.scenarios.offlineCameraNode) {
           this.respondError(frame, 'CAM_UNREACHABLE', 'CAM1 is offline');
           return;
         }
@@ -729,7 +1082,7 @@ export class MockKinoDevice {
       case Cmd.CAMERA_CAPTURE: {
         const req = decodeJson<{ action?: string }>(frame.payload);
         if (req.action === 'timing-test') {
-          if (this.scenarios.cam1Offline || this.scenarios.cam2Timeout) {
+          if (this.scenarios.offlineCameraNode || this.scenarios.cam2Timeout) {
             this.respondError(frame, 'CAM_UNREACHABLE', 'All four cameras are required for a timing test');
             return;
           }
@@ -775,6 +1128,279 @@ export class MockKinoDevice {
           `Command ${Cmd[cmd] ?? '0x' + (cmd as number).toString(16)} not implemented in firmware ${this.p4Fw}`,
         );
     }
+  }
+
+  // ---- network / roll (04 §7) ----
+
+  /**
+   * 05 §13: a saved password is write-only. The camera needs it to join, and
+   * nothing that leaves the camera — list reply, log line, backup — ever
+   * contains it. The device reports whether one is stored, never what it is.
+   */
+  private networkView(n: SavedNetwork) {
+    return {
+      ssid: n.ssid,
+      password: MASKED_PASSWORD,
+      hasPassword: n.password.length > 0,
+      security: n.security,
+      autoJoin: n.autoJoin,
+      lastSeen: n.lastSeen,
+    };
+  }
+
+  private handleNetwork(frame: Frame, cmd: Cmd) {
+    switch (cmd) {
+      case Cmd.NETWORK_LIST:
+        this.respond(frame, { networks: this.networks.map((n) => this.networkView(n)) });
+        return;
+      case Cmd.NETWORK_SET: {
+        const req = decodeJson<{
+          ssid?: string;
+          password?: string;
+          security?: SavedNetwork['security'];
+          autoJoin?: boolean;
+        }>(frame.payload);
+        const ssid = typeof req.ssid === 'string' ? req.ssid.trim() : '';
+        if (!ssid || ssid.length > 32) {
+          this.respondError(frame, 'INVALID_ARGUMENT', 'SSID must be 1-32 characters');
+          return;
+        }
+        const security = req.security ?? 'wpa2';
+        const password = typeof req.password === 'string' ? req.password : '';
+        if (security !== 'open' && password.length < 8) {
+          this.respondError(frame, 'INVALID_ARGUMENT', 'WPA passphrase must be at least 8 characters');
+          return;
+        }
+        const existing = this.networks.find((n) => n.ssid === ssid);
+        if (existing) {
+          // An update that omits the password keeps the stored one — the host
+          // never had it to send back.
+          if (password.length > 0) existing.password = password;
+          existing.security = security;
+          existing.autoJoin = req.autoJoin ?? existing.autoJoin;
+        } else {
+          this.networks.push({
+            ssid,
+            password,
+            security,
+            autoJoin: req.autoJoin ?? true,
+            lastSeen: null,
+          });
+        }
+        // Deliberately no password in the log line.
+        this.log('P4', `wifi network saved: ${ssid}`);
+        this.respond(frame, { ok: true, networks: this.networks.map((n) => this.networkView(n)) });
+        return;
+      }
+      case Cmd.NETWORK_DELETE: {
+        const { ssid } = decodeJson<{ ssid: string }>(frame.payload);
+        const before = this.networks.length;
+        this.networks = this.networks.filter((n) => n.ssid !== ssid);
+        if (this.networks.length === before) {
+          this.respondError(frame, 'INVALID_ARGUMENT', `No saved network ${ssid}`);
+          return;
+        }
+        this.log('P4', `wifi network removed: ${ssid}`);
+        this.respond(frame, { ok: true, networks: this.networks.map((n) => this.networkView(n)) });
+        return;
+      }
+      case Cmd.NETWORK_STATUS: {
+        const active = this.networks.find((n) => n.autoJoin) ?? null;
+        this.respond(
+          frame,
+          active
+            ? {
+                state: 'connected',
+                ssid: active.ssid,
+                ip: '192.168.1.74',
+                rssi: randInt(-68, -42),
+                since: this.bootedAt,
+                internet: true,
+              }
+            : { state: 'disconnected', ssid: null, ip: null, rssi: null, since: null, internet: false },
+        );
+        return;
+      }
+      default:
+        this.respondError(frame, 'UNSUPPORTED_COMMAND', 'Unhandled network command');
+    }
+  }
+
+  private rollView() {
+    if (!this.roll) return { active: false, roll: null, queue: this.uploadQueueReport() };
+    return {
+      active: true,
+      roll: {
+        rollId: this.roll.rollId,
+        slug: this.roll.slug,
+        guestUrl: this.roll.guestUrl,
+        name: this.roll.name,
+        role: this.roll.role,
+        joinedAt: this.roll.joinedAt,
+      },
+      queue: this.uploadQueueReport(),
+    };
+  }
+
+  private handleRoll(frame: Frame, cmd: Cmd) {
+    switch (cmd) {
+      case Cmd.ROLL_STATUS:
+        this.respond(frame, this.rollView());
+        return;
+      case Cmd.ROLL_CREATE: {
+        if (this.roll) {
+          this.respondError(frame, 'INVALID_STATE', `Already on roll ${this.roll.slug}`);
+          return;
+        }
+        const req = decodeJson<{ name?: string }>(frame.payload);
+        this.rollCounter++;
+        const word = ROLL_WORDS[(this.rollCounter - 1) % ROLL_WORDS.length];
+        const slug = `${word}-${String(this.rollCounter).padStart(3, '0')}`;
+        this.roll = {
+          rollId: `roll_${String(this.rollCounter).padStart(4, '0')}`,
+          slug,
+          guestUrl: `https://kino.roll/${slug}`,
+          name: (req.name ?? 'Untitled roll').slice(0, 60),
+          role: 'host',
+          joinedAt: Date.now(),
+        };
+        this.log('P4', `roll created: ${slug}`);
+        this.respond(frame, {
+          rollId: this.roll.rollId,
+          slug: this.roll.slug,
+          guestUrl: this.roll.guestUrl,
+          name: this.roll.name,
+          role: this.roll.role,
+        });
+        return;
+      }
+      case Cmd.ROLL_JOIN: {
+        const req = decodeJson<{ slug?: string; code?: string }>(frame.payload);
+        const slug = (req.slug ?? req.code ?? '').trim().toLowerCase();
+        if (!/^[a-z0-9][a-z0-9-]{2,47}$/.test(slug)) {
+          this.respondError(frame, 'INVALID_ARGUMENT', 'Roll code must be a slug like amber-001');
+          return;
+        }
+        if (this.roll) {
+          this.respondError(frame, 'INVALID_STATE', `Already on roll ${this.roll.slug}`);
+          return;
+        }
+        this.rollCounter++;
+        this.roll = {
+          rollId: `roll_${slug}`,
+          slug,
+          guestUrl: `https://kino.roll/${slug}`,
+          name: slug,
+          role: 'guest',
+          joinedAt: Date.now(),
+        };
+        this.log('P4', `joined roll: ${slug}`);
+        this.respond(frame, this.rollView());
+        return;
+      }
+      case Cmd.ROLL_LEAVE: {
+        if (!this.roll) {
+          this.respondError(frame, 'INVALID_STATE', 'Not on a roll');
+          return;
+        }
+        this.log('P4', `left roll: ${this.roll.slug}`);
+        this.roll = null;
+        this.respond(frame, { ok: true, ...this.rollView() });
+        return;
+      }
+      default:
+        this.respondError(frame, 'UNSUPPORTED_COMMAND', 'Unhandled roll command');
+    }
+  }
+
+  private uploadQueueReport() {
+    const q = this.uploads;
+    return {
+      pending: q.pending,
+      uploading: q.uploading,
+      failed: q.failed,
+      uploaded: q.uploaded,
+      draining: this.uploadTimer !== null,
+    };
+  }
+
+  // ---- async jobs (04 §15) ----
+
+  /**
+   * SYNC_BENCH: fire N triggers and report per-camera timing for each. Runs
+   * through the job model because a hundred triggers outlives any request
+   * deadline. Deterministic per trigger index so the stats module downstream
+   * has a stable fixture to test against.
+   */
+  private handleSyncBench(frame: Frame) {
+    const req = decodeJson<{ triggers?: number }>(frame.payload);
+    const triggers = Math.min(Math.max(1, Math.floor(req.triggers ?? 20)), 200);
+    if (this.scenarios.offlineCameraNode || this.scenarios.cam2Timeout) {
+      this.respondError(frame, 'CAMERA_OFFLINE', 'All four cameras are required for a sync bench');
+      return;
+    }
+    const jobId = `job_${++this.jobCounter}`;
+    this.jobs.set(jobId, { id: jobId, cmd: SYNC_BENCH, step: 0, steps: triggers });
+    this.respond(frame, { jobId, accepted: true });
+    this.log('P4', `sync bench started — ${triggers} triggers`);
+
+    const samples: { trigger: number; cams: { cam: CamId; gpioUs: number; vsyncPhaseUs: number; exposureUs: number }[] }[] = [];
+    // Seeded from the job number so a rerun in the same session differs, but a
+    // single run is reproducible from its first sample onward.
+    const rnd = seeded(0x5e1f ^ this.jobCounter);
+    const batch = Math.max(1, Math.round(triggers / 10));
+    let t = 120;
+
+    for (let i = 0; i < triggers; i++) {
+      const index = i;
+      this.after(t, () => {
+        const job = this.jobs.get(jobId);
+        if (!job) return; // cancelled by a reboot or a dropped link
+        const jitter = this.phaseAligned ? 90 : 400;
+        const cams = CAM_IDS.map((cam, c) => {
+          const phase = Math.max(0, this.camPhaseUs[cam] + (rnd() * 2 - 1) * jitter);
+          return {
+            cam,
+            gpioUs: Math.round(30 + c * 8 + rnd() * 60),
+            vsyncPhaseUs: Math.round(phase),
+            exposureUs: Math.round(phase - this.camPhaseUs.cam2 + rnd() * 900),
+          };
+        });
+        samples.push({ trigger: index, cams });
+        job.step = index + 1;
+        if ((index + 1) % batch === 0 || index + 1 === triggers) {
+          this.sendEvent(Evt.JOB_PROGRESS, {
+            jobId,
+            progress: (index + 1) / triggers,
+            step: 'trigger',
+            message: `${index + 1}/${triggers} triggers`,
+          });
+        }
+      });
+      t += 18;
+    }
+
+    this.after(t + 60, () => {
+      if (!this.jobs.delete(jobId)) return;
+      const spread = (values: number[]) => Math.round(Math.max(...values) - Math.min(...values));
+      const perTrigger = samples.map((s) => ({
+        trigger: s.trigger,
+        gpioSpreadUs: spread(s.cams.map((c) => c.gpioUs)),
+        vsyncSpreadUs: spread(s.cams.map((c) => c.vsyncPhaseUs)),
+        exposureSpreadUs: spread(s.cams.map((c) => c.exposureUs)),
+      }));
+      this.log('P4', `sync bench done — ${samples.length} samples`);
+      this.sendEvent(Evt.JOB_COMPLETE, {
+        jobId,
+        result: {
+          triggers: samples.length,
+          frameIntervalUs: this.frameIntervalUs,
+          aligned: this.phaseAligned,
+          samples,
+          perTrigger,
+        },
+      });
+    });
   }
 
   // ---- media (P4 file server) ----
@@ -1038,7 +1664,7 @@ export class MockKinoDevice {
       return;
     }
     if (req.action === 'flash-test') {
-      if (this.scenarios.cam1Offline || this.scenarios.cam2Timeout) {
+      if (this.scenarios.offlineCameraNode || this.scenarios.cam2Timeout) {
         this.respondError(frame, 'CAM_UNREACHABLE', 'All four cameras are required for a flash test');
         return;
       }
@@ -1075,7 +1701,7 @@ export class MockKinoDevice {
       return;
     }
     // start
-    if (this.scenarios.cam1Offline) {
+    if (this.scenarios.offlineCameraNode) {
       this.respondError(frame, 'CAM_UNREACHABLE', 'CAM1 is offline — all four cameras are required');
       return;
     }
@@ -1135,7 +1761,7 @@ export class MockKinoDevice {
       ...CAM_IDS.map((id) => ({
         name: `${id.toUpperCase()} capture`,
         run: (): SelfTestCheck => {
-          if (id === 'cam1' && this.scenarios.cam1Offline) return { name: 'CAM1 capture', status: 'fail', detail: 'no response on camera bus' };
+          if (id === 'cam1' && this.scenarios.offlineCameraNode) return { name: 'CAM1 capture', status: 'fail', detail: 'no response on camera bus' };
           if (id === 'cam2' && this.scenarios.cam2Timeout) return { name: 'CAM2 capture', status: 'fail', detail: 'frame timeout after 900 ms' };
           return { name: `${id.toUpperCase()} capture`, status: 'pass', detail: `OV3660, jpeg ${randInt(300, 560)} KB` };
         },
@@ -1294,11 +1920,11 @@ export class MockKinoDevice {
       this.respondError(frame, 'BAD_SIZE', 'Image size out of range');
       return;
     }
-    if (req.target === 'cam1' && this.scenarios.cam1Offline) {
+    if (req.target === 'cam1' && this.scenarios.offlineCameraNode) {
       this.respondError(frame, 'CAM_UNREACHABLE', 'CAM1 is offline');
       return;
     }
-    const failAt = req.target === 'cam3' && this.scenarios.fwFailCam3 ? Math.floor(req.size * 0.6) : null;
+    const failAt = req.target === 'cam3' && this.scenarios.failedUpdate ? Math.floor(req.size * 0.6) : null;
     this.fwSession = {
       id: ++this.fwSessionCounter,
       target: req.target,
@@ -1333,7 +1959,7 @@ export class MockKinoDevice {
       this.fwStates[s.target] = { state: 'error', error: 'flash write failed' };
       if (s.target !== 'p4') this.cams[s.target].updating = false;
       this.fwSession = null;
-      this.scenarios.fwFailCam3 = false; // one-shot — a retry will succeed
+      this.scenarios.failedUpdate = false; // one-shot — a retry will succeed
       this.scenarioCb?.();
       this.respondError(frame, 'FLASH_WRITE', `${s.target.toUpperCase()} flash write failed at ${Math.round((offset / s.size) * 100)}%`);
       return;
@@ -1386,6 +2012,16 @@ export class MockKinoDevice {
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    // 04 §17: every boot gets a new session ID, so a host that reconnects can
+    // tell a rebooted device from the one it was already talking to. Anything
+    // scoped to the old boot — running jobs, upload progress — died with it.
+    this.bootCount++;
+    this.sessionId = `boot-${this.bootCount}`;
+    this.jobs.clear();
+    if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
+    this.coalesceTimer = null;
+    this.coalesceBuffer = [];
+    this.stopUploadDrain();
     this.resetReason = reason;
     this.bootedAt = Date.now() + 2500;
     this.bootBlockedUntil = Date.now() + 2500;

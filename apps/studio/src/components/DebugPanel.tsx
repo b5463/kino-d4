@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SCENARIO_LIST } from '../mock/scenarios';
+import { SCENARIO_LIST } from '@kino/test-fixtures';
 import { getDemoDevice } from '../app/session';
 
 // Simulator-only fault injection. Rendered exclusively when the session is

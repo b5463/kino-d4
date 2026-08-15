@@ -6,7 +6,13 @@
 
 import type { CamId, CaptureInfo, CaptureSummary, CaptureFile } from '@kino/kdp';
 import { CAM_IDS } from '@kino/kdp';
-import { sha256Hex } from '../firmware/hashing';
+
+/** The device reports a SHA-256 per gallery file so the host can verify a read. */
+async function sha256Hex(data: Uint8Array): Promise<string> {
+  const copy = new Uint8Array(data); // detach from any larger backing buffer
+  const digest = await crypto.subtle.digest('SHA-256', copy);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 const W = 800;
 const H = 600;
@@ -49,18 +55,43 @@ interface StoredCapture {
   gpioSkewUs: number;
 }
 
+/** Captures the demo party left on the card. */
+const DEMO_CAPTURES = 22;
+
 export class MockMediaStore {
   private captures: StoredCapture[] | null = null;
   private fileCache = new Map<string, Uint8Array>();
   private thumbCache = new Map<string, Uint8Array>();
+  private count = DEMO_CAPTURES;
+
+  /**
+   * Resize the simulated card. 04 §19 asks for a 2,000+ entry gallery, which
+   * is what pagination and the virtualized grid actually have to survive.
+   * Media stays lazy — nothing is rendered until it is read.
+   */
+  resize(count: number) {
+    const next = Math.max(0, Math.floor(count));
+    if (next === this.count) return;
+    this.count = next;
+    this.captures = null; // includes any live captures taken since the last resize
+    this.fileCache.clear();
+    this.thumbCache.clear();
+  }
+
+  /** Captures the card currently holds, before any live shooting. */
+  get size(): number {
+    return this.count;
+  }
 
   private ensure(): StoredCapture[] {
     if (this.captures) return this.captures;
     const rnd = mulberry32(0xd4c4);
     const list: StoredCapture[] = [];
     const wiggleRecipes = ['party-neg', 'party-neg', 'superia', 'vivid', 'mono', 'warm-2007', 'disposable', 'chrome'];
-    let ts = Date.now() - 1000 * 60 * 60 * 38; // a party two nights ago
-    for (let i = 0; i < 22; i++) {
+    // A 2,000-shot card spans more than one night; step back proportionally
+    // so timestamps stay ordered and plausible instead of piling up.
+    let ts = Date.now() - 1000 * 60 * 60 * 38 - this.count * 8 * 60 * 1000;
+    for (let i = 0; i < this.count; i++) {
       const isQuad = rnd() < 0.3;
       // /DCIM folder naming: WG000041, QD000041
       const n = String(40 + i).padStart(6, '0');

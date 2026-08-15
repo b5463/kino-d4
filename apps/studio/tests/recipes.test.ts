@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateRecipe } from '../src/recipes/recipeTypes';
-import { FACTORY_RECIPES } from '../src/recipes/factoryRecipes';
+import { FACTORY_RECIPES } from '@kino/test-fixtures';
 
 describe('recipe validation', () => {
   it('accepts every factory recipe', () => {

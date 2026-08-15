@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { KinoProtocolClient } from '@kino/kdp';
 import { KinoDevice } from '../src/device/KinoDevice';
 import { MockTransport } from '@kino/kdp';
-import { MockKinoDevice } from '../src/mock/MockKinoDevice';
+import { MockKinoDevice } from '@kino/test-fixtures';
 import { downloadCaptureFile, TransferHandle } from '../src/device/media';
 import { sha256Hex } from '../src/firmware/hashing';
 

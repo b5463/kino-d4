@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { KinoProtocolClient } from '@kino/kdp';
 import { KinoDevice } from '../src/device/KinoDevice';
 import { MockTransport } from '@kino/kdp';
-import { MockKinoDevice } from '../src/mock/MockKinoDevice';
+import { MockKinoDevice } from '@kino/test-fixtures';
 import { uploadSound, readSound, clearSoundCache } from '../src/device/sounds';
 import { encodeWav, soundIdFromName, SOUND_SAMPLE_RATE } from '../src/utils/soundFx';
 

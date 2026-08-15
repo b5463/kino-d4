@@ -17,7 +17,7 @@ import { clearSoundCache } from '../device/sounds';
 import type { Transport, TransportKind } from '@kino/kdp';
 import { MockTransport } from '@kino/kdp';
 import { SerialTransport, webSerialSupported } from '@kino/kdp';
-import { MockKinoDevice } from '../mock/MockKinoDevice';
+import { MockKinoDevice } from '@kino/test-fixtures';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import { clearDeviceState, setDeviceState, useDeviceStore } from '../state/deviceStore';
 import { resetDrafts } from '../state/draftStore';

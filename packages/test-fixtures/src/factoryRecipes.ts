@@ -1,10 +1,10 @@
-import type { Recipe } from './recipeTypes';
-import { RECIPE_SCHEMA } from './recipeTypes';
+import type { DeviceRecipe } from './recipes';
+import { RECIPE_SCHEMA } from './recipes';
 
 // Factory looks. These ship on the camera and are never overwritten in
 // place — editing one in KINO Studio produces a custom copy.
 
-export const FACTORY_RECIPES: Recipe[] = [
+export const FACTORY_RECIPES: DeviceRecipe[] = [
   {
     schema: RECIPE_SCHEMA,
     id: 'party-neg',
@@ -282,6 +282,6 @@ export const FACTORY_RECIPES: Recipe[] = [
   },
 ];
 
-export function factoryRecipeById(id: string): Recipe | undefined {
+export function factoryRecipeById(id: string): DeviceRecipe | undefined {
   return FACTORY_RECIPES.find((r) => r.id === id);
 }

@@ -1,0 +1,11 @@
+{
+  "name": "@kino/test-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": { "test": "vitest run", "lint": "tsc --noEmit" },
+  "dependencies": { "@kino/kdp": "*", "@kino/schemas": "*" },
+  "devDependencies": { "typescript": "~5.8.3", "vitest": "^3.1.3" }
+}
