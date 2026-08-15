@@ -1,0 +1,71 @@
+# KINO local development services.
+#
+#   docker compose -f infra/docker-compose.dev.yml up -d      start
+#   docker compose -f infra/docker-compose.dev.yml down        stop, KEEP data
+#   docker compose -f infra/docker-compose.dev.yml down -v     stop, WIPE data
+#
+# The explicit project name keeps every container/volume/network created here
+# namespaced as `kino-dev-*`, so nothing else on the host is ever ambiguous.
+#
+# Host port mapping (container-internal ports stay standard):
+#   postgres  localhost:5435 -> 5432   (5432/5433 are native PostgreSQL
+#                                       clusters on the dev host, 5434 belongs
+#                                       to another project)
+#   redis     localhost:6380 -> 6379   (another project owns a 0.0.0.0:6379
+#                                       mapping on an exited container; taking
+#                                       6379 would stop it binding on restart)
+#   minio     localhost:9000 -> 9000   S3 API
+#   minio     localhost:9001 -> 9001   web console
+name: kino-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kino
+      POSTGRES_PASSWORD: kino
+      POSTGRES_DB: kino
+    ports: ['5435:5432']
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kino -d kino']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6380:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: kino
+      MINIO_ROOT_PASSWORD: kino-secret
+    ports: ['9000:9000', '9001:9001']
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: creates the two buckets, then exits 0. `mc mb -p` is idempotent,
+  # so re-running `up` on an existing stack is a no-op.
+  createbucket:
+    image: minio/mc
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 kino kino-secret &&
+      mc mb -p local/kino-media && mc mb -p local/kino-firmware && exit 0"
+
+volumes:
+  pgdata: {}
+  miniodata: {}
