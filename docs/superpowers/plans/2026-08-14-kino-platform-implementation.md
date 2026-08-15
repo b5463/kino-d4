@@ -439,7 +439,7 @@ git add packages/schemas && git commit -m "feat(schemas): versioned schema envel
   - `CAPTURE_STATUSES`: `['created','preview-ready','originals-uploading','complete','processing','ready','partial','failed']` (05§8)
 - Consumes: Task 4's `defineSchema`.
 
-- [ ] **Step 1: Write the failing test** — one `it` per schema, each parsing the exact example JSON from the spec (01§2 capabilities, 02§28 config, 05§19 device/roll/capture/asset/manifest), plus one migration fixture per schema proving `migrations` is wired (v1 documents currently migrate to themselves; the fixture asserts `parseVersioned` accepts version 1). Include the timing rule: `capture.timing` fields each `number | null`, and a `timingUnavailableReason` optional string — assert a capture with `effectiveExposureSkewUs: null` parses (04§13: null + reason, never fabricate).
+- [x] **Step 1: Write the failing test** — one `it` per schema, each parsing the exact example JSON from the spec (01§2 capabilities, 02§28 config, 05§19 device/roll/capture/asset/manifest), plus one migration fixture per schema proving `migrations` is wired (v1 documents currently migrate to themselves; the fixture asserts `parseVersioned` accepts version 1). Include the timing rule: `capture.timing` fields each `number | null`, and a `timingUnavailableReason` optional string — assert a capture with `effectiveExposureSkewUs: null` parses (04§13: null + reason, never fabricate).
 
 ```ts
 // packages/schemas/tests/schemas.test.ts — representative cases; write all schemas the same way
@@ -478,12 +478,12 @@ it('parses the firmware manifest example (04§12)', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm run test -w @kino/schemas`
 Expected: FAIL — exports missing.
 
-- [ ] **Step 3: Implement the schemas**
+- [x] **Step 3: Implement the schemas**
 
 Key shape decisions (implement exactly):
 
@@ -530,11 +530,11 @@ export type Capture = z.infer<typeof capture.shape>;
 
 `deviceCapabilities.shape` uses `.passthrough()` at every level and `features: z.record(z.boolean()).catchall(z.unknown())`-style tolerance so unknown future fields never fail parsing (07§14). `firmwareManifest` validates `sha256: z.string().regex(/^[0-9a-f]{64}$/)`, `targets: z.record(z.object({ file: z.string(), sha256, version: z.string().optional() }))`, `updateOrder: z.array(z.string()).optional()` (manifest may override order, 02§21).
 
-- [ ] **Step 4: Run tests, verify PASS**
+- [x] **Step 4: Run tests, verify PASS**
 
 Run: `npm run test -w @kino/schemas`
 
-- [ ] **Step 5: Wire Studio to the shared package (replace duplicated local types where they exist in `apps/studio/src/types/`), run Studio tests, commit**
+- [x] **Step 5: Wire Studio to the shared package (replace duplicated local types where they exist in `apps/studio/src/types/`), run Studio tests, commit**
 
 Run: `npm run test -w @kino/studio`
 Expected: PASS (Studio keeps its own view-model types; only the portable `kino.*` document shapes move to `@kino/schemas`).
