@@ -22,7 +22,7 @@ Container-internal ports are standard; only the host side is shifted.
 | Service | Host | Container | Notes |
 | --- | --- | --- | --- |
 | postgres | `5435` | `5432` | 5432 and 5433 are native PostgreSQL clusters on the dev host, 5434 belongs to another project |
-| redis | `6379` | `6379` | |
+| redis | `6380` | `6379` | another project owns a `6379` mapping; claiming it would stop their container binding |
 | minio (S3 API) | `9000` | `9000` | |
 | minio (console) | `9001` | `9001` | login `kino` / `kino-secret` |
 
@@ -44,12 +44,39 @@ project `kino-dev`, so it never collides with other stacks on the machine.
 
 ## Configuration
 
-`src/config.ts` validates the environment with zod. Every key has a dev default
-matching the compose file, so no `.env` is needed locally. See
-`infra/.env.example` for the full list and copy it to `.env` to override.
+`src/config.ts` validates the environment with zod:
 
 `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`,
 `S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `LOG_LEVEL`.
+
+Every key has a dev default matching the compose file, so **no `.env` is needed
+locally**. Two ways to override, highest precedence first:
+
+**1. Inline, for a one-off.**
+
+```bash
+# bash
+DATABASE_URL=postgres://kino:kino@localhost:5999/kino npm run test -w @kino/api
+```
+
+```powershell
+# PowerShell — no inline env-var prefix, so set it first
+$env:DATABASE_URL = 'postgres://kino:kino@localhost:5999/kino'
+npm run test -w @kino/api
+Remove-Item Env:\DATABASE_URL
+```
+
+**2. `infra/.env`, for a persistent local setup.**
+
+```bash
+cp infra/.env.example infra/.env    # then edit
+```
+
+`infra/.env` is gitignored. The test suite loads it via
+`apps/api/tests/setup-env.ts`, which uses Node's built-in env-file parser — no
+dotenv dependency. Precedence follows `node --env-file`: a variable already in
+the environment wins over the file, so option 1 still overrides option 2, and CI
+(which sets everything explicitly and has no `.env`) is unaffected.
 
 ## Scripts
 

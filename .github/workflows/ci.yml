@@ -49,27 +49,32 @@ jobs:
           MINIO_ROOT_PASSWORD: kino-secret
           MINIO_DEFAULT_BUCKETS: kino-media,kino-firmware
         ports: ['9000:9000', '9001:9001']
-        options: >-
-          --health-cmd "curl -sf http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 30
+        # Deliberately no `options:` health check. curl is not guaranteed to
+        # exist inside this image, and a health-cmd that cannot run aborts
+        # container initialisation (~150 s) before any step executes — which
+        # would kill the job without ever reaching the wait step below. That
+        # runner-side step is the single readiness gate.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      # Belt and braces over the service health check: the bucket has to exist
-      # before HeadBucket, and a slow MinIO boot should not flake the suite.
-      - name: Wait for MinIO
+      # The readiness gate for MinIO. Probes the bucket rather than
+      # /minio/health/live, because healthz calls HeadBucket and
+      # MINIO_DEFAULT_BUCKETS is created asynchronously after MinIO reports
+      # live — liveness alone would still race. Anonymous GET of an existing
+      # bucket answers 403 (listing denied) or 200; a missing one answers 404.
+      - name: Wait for MinIO bucket
         run: |
           for _ in $(seq 1 60); do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "minio ready"; exit 0
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9000/kino-media || true)
+            if [ "$code" = "403" ] || [ "$code" = "200" ]; then
+              echo "minio ready, bucket kino-media exists (HTTP $code)"; exit 0
             fi
             sleep 2
           done
-          echo "minio did not become ready in time" >&2; exit 1
+          echo "minio bucket kino-media did not become ready in time (last HTTP $code)" >&2
+          exit 1
       - run: npm run test -w @kino/api
         env:
           # Inside the Actions service network the standard ports are free.

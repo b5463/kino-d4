@@ -12,7 +12,8 @@ const absoluteUrl = z
 export const configSchema = z.object({
   // Host port 5435 -> container 5432; see infra/docker-compose.dev.yml.
   DATABASE_URL: absoluteUrl.default('postgres://kino:kino@localhost:5435/kino'),
-  REDIS_URL: absoluteUrl.default('redis://localhost:6379'),
+  // Host port 6380, not 6379: another project owns a 6379 mapping.
+  REDIS_URL: absoluteUrl.default('redis://localhost:6380'),
   S3_ENDPOINT: absoluteUrl.default('http://localhost:9000'),
   S3_BUCKET: z.string().min(1).default('kino-media'),
   S3_ACCESS_KEY: z.string().min(1).default('kino'),

@@ -11,7 +11,9 @@
 #   postgres  localhost:5435 -> 5432   (5432/5433 are native PostgreSQL
 #                                       clusters on the dev host, 5434 belongs
 #                                       to another project)
-#   redis     localhost:6379 -> 6379
+#   redis     localhost:6380 -> 6379   (another project owns a 0.0.0.0:6379
+#                                       mapping on an exited container; taking
+#                                       6379 would stop it binding on restart)
 #   minio     localhost:9000 -> 9000   S3 API
 #   minio     localhost:9001 -> 9001   web console
 name: kino-dev
@@ -33,7 +35,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports: ['6379:6379']
+    ports: ['6380:6379']
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
