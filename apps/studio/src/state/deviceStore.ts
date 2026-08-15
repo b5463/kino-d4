@@ -80,3 +80,16 @@ export function supports(state: DeviceState, name: keyof Capabilities): boolean 
   const value = state.capabilities[name];
   return typeof value === 'boolean' ? value : true;
 }
+
+/**
+ * Roll upload gate (02 §27). `rollUpload` arrived with the Network/Roll
+ * command group, after the `Capabilities` interface in `@kino/kdp` was
+ * settled, so the flag is read off the object the device actually reported
+ * rather than off the typed shape. Same unknown-means-present rule as
+ * `supports`: a firmware too old to advertise anything still gets the page,
+ * and the commands themselves NACK if it cannot serve them.
+ */
+export function supportsRollUpload(state: DeviceState): boolean {
+  const flag = (state.capabilities as Record<string, unknown> | null)?.rollUpload;
+  return typeof flag === 'boolean' ? flag : true;
+}

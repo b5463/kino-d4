@@ -3,7 +3,7 @@ import type { IconName } from './Icon';
 import { Led } from './Led';
 import type { LedState } from './Led';
 import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
-import { useDeviceStore } from '../state/deviceStore';
+import { supportsRollUpload, useDeviceStore } from '../state/deviceStore';
 import { usePrefs } from '../state/prefs';
 import { dirtySections, useDraftStore } from '../state/draftStore';
 
@@ -15,12 +15,20 @@ export type PageId =
   | 'looks'
   | 'calibration'
   | 'gallery'
+  | 'roll'
   | 'device'
   | 'updates'
   | 'developer'
   | 'bringup';
 
-const NAV: { id: PageId; label: string; icon: IconName }[] = [
+export interface NavItem {
+  id: PageId;
+  label: string;
+  icon: IconName;
+}
+
+/** 02 §3 order. Roll sits between Gallery and Device. */
+const NAV: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: 'overview' },
   { id: 'shoot', label: 'Shoot', icon: 'shoot' },
   { id: 'wiggle', label: 'Wiggle', icon: 'wiggle' },
@@ -28,9 +36,31 @@ const NAV: { id: PageId; label: string; icon: IconName }[] = [
   { id: 'looks', label: 'Looks', icon: 'looks' },
   { id: 'calibration', label: 'Calibration', icon: 'calibration' },
   { id: 'gallery', label: 'Gallery', icon: 'gallery' },
+  { id: 'roll', label: 'Roll', icon: 'roll' },
   { id: 'device', label: 'Device', icon: 'device' },
   { id: 'updates', label: 'Updates', icon: 'updates' },
 ];
+
+/**
+ * The nav registry. A section the connected camera cannot serve is not listed
+ * at all (02 §27) — a Roll entry that only ever answers UNSUPPORTED_COMMAND is
+ * worse than no entry. Developer sections are a preference, not a capability.
+ */
+export function navItems({
+  developerMode,
+  rollUpload,
+}: {
+  developerMode: boolean;
+  rollUpload: boolean;
+}): NavItem[] {
+  const items = rollUpload ? NAV : NAV.filter((item) => item.id !== 'roll');
+  if (!developerMode) return items;
+  return [
+    ...items,
+    { id: 'developer', label: 'Developer', icon: 'developer' },
+    { id: 'bringup', label: 'Bring-Up', icon: 'usb' },
+  ];
+}
 
 /** Section titles, shared with the page head and the route announcement. */
 export const PAGE_LABEL: Record<PageId, string> = {
@@ -41,6 +71,7 @@ export const PAGE_LABEL: Record<PageId, string> = {
   looks: 'Looks',
   calibration: 'Calibration',
   gallery: 'Gallery',
+  roll: 'Roll',
   device: 'Device',
   updates: 'Updates',
   developer: 'Developer',
@@ -61,6 +92,7 @@ export function Sidebar({
   const transportKind = useConnectionStore((s) => s.transportKind);
   const serial = useDeviceStore((s) => s.info?.serial);
   const developerMode = usePrefs((s) => s.developerMode);
+  const rollUpload = useDeviceStore(supportsRollUpload);
   const dirty = useDraftStore((s) => s.dirty);
   const unsaved = dirtySections(dirty);
 
@@ -71,13 +103,7 @@ export function Sidebar({
     : phase === 'error' ? 'err'
     : 'off';
 
-  const items = developerMode
-    ? [
-        ...NAV,
-        { id: 'developer' as PageId, label: 'Developer', icon: 'developer' as IconName },
-        { id: 'bringup' as PageId, label: 'Bring-Up', icon: 'usb' as IconName },
-      ]
-    : NAV;
+  const items = navItems({ developerMode, rollUpload });
 
   return (
     <aside className="sidebar">
