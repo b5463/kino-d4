@@ -590,11 +590,11 @@ git add -A && git commit -m "refactor: extract @kino/kdp (protocol + transports)
   - New command constants (04§7): `NETWORK_LIST, NETWORK_SET, NETWORK_DELETE, NETWORK_STATUS, ROLL_STATUS, ROLL_CREATE, ROLL_JOIN, ROLL_LEAVE, UPLOAD_QUEUE_STATUS, UPLOAD_QUEUE_RETRY, GET_POWER_STATUS, GET_STORAGE_STATUS` (add whichever of these are missing — check `commands.ts` first).
 - Consumes: existing packet codec.
 
-- [ ] **Step 1: Write the decoder acceptance test** — one case per 07§13 requirement. Audit `packet.test.ts` first; only add the missing cases. Required coverage: split frame across reads; multiple frames in one read; bad CRC rejected then resync; leading boot text; random bytes; wrong protocol version; disconnect/reconnect; new session ID detected (client surfaces `sessionChanged` event when HELLO returns a different boot/session ID). HELLO coverage: retry (up to 3), nonce echo verified, timeout, protocol negotiation.
+- [x] **Step 1: Write the decoder acceptance test** — one case per 07§13 requirement. Audit `packet.test.ts` first; only add the missing cases. Required coverage: split frame across reads; multiple frames in one read; bad CRC rejected then resync; leading boot text; random bytes; wrong protocol version; disconnect/reconnect; new session ID detected (client surfaces `sessionChanged` event when HELLO returns a different boot/session ID). HELLO coverage: retry (up to 3), nonce echo verified, timeout, protocol negotiation.
 
-- [ ] **Step 2: Run, confirm which cases fail** (existing code may already pass several — that's fine; keep the tests as the acceptance record).
+- [x] **Step 2: Run, confirm which cases fail** (existing code may already pass several — that's fine; keep the tests as the acceptance record).
 
-- [ ] **Step 3: Write the failing job-model test**
+- [x] **Step 3: Write the failing job-model test**
 
 ```ts
 // packages/kdp/tests/jobs.test.ts
@@ -616,9 +616,9 @@ it('startJob yields progress then resolves result', async () => {
 it('JOB_FAILED rejects result with the device error object', async () => { /* same harness, emit JOB_FAILED */ });
 ```
 
-- [ ] **Step 4: Implement `startJob` + event routing** — async events carry no request sequence ID (04§16); route by `jobId`. Progress iterable completes when COMPLETE/FAILED arrives.
+- [x] **Step 4: Implement `startJob` + event routing** — async events carry no request sequence ID (04§16); route by `jobId`. Progress iterable completes when COMPLETE/FAILED arrives.
 
-- [ ] **Step 5: Run all kdp tests, commit**
+- [x] **Step 5: Run all kdp tests, commit**
 
 ```bash
 git add packages/kdp && git commit -m "feat(kdp): decoder acceptance suite + async job model + network/roll commands"
