@@ -269,10 +269,10 @@
     }
   ],
   "instances": [
-    { "id": "cam1", "component": "camera-node", "positionMm": [-33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
-    { "id": "cam2", "component": "camera-node", "positionMm": [-11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
-    { "id": "cam3", "component": "camera-node", "positionMm": [11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
-    { "id": "cam4", "component": "camera-node", "positionMm": [33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
+    { "id": "cam1", "component": "camera-node", "positionMm": [-33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
+    { "id": "cam2", "component": "camera-node", "positionMm": [-11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
+    { "id": "cam3", "component": "camera-node", "positionMm": [11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
+    { "id": "cam4", "component": "camera-node", "positionMm": [33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
     { "id": "flash", "component": "flash-led", "positionMm": [0, 27, 15], "rotationDeg": [0, 0, 0], "explodeOrder": 8 },
     { "id": "display", "component": "main-display", "positionMm": [0, 0, -15], "rotationDeg": [0, 180, 90], "explodeOrder": 4 },
     { "id": "battery", "component": "battery", "positionMm": [0, -8, -2], "rotationDeg": [0, 0, 90], "group": "power", "explodeOrder": 1 },

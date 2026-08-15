@@ -25,6 +25,12 @@ describe('kino.hardware-profile d4-v1', () => {
     expect(D4_V1.cameraPitchMm).toBe(22);
     expect(D4_V1.cameraPitchRangeMm).toEqual([20, 24]);
   });
+  it('camera nodes explode as one group, not colliding with the rear-anchored pieces (§8)', () => {
+    const orders = ['cam1', 'cam2', 'cam3', 'cam4'].map(
+      (id) => D4_V1.instances.find((i) => i.id === id)!.explodeOrder,
+    );
+    expect(orders).toEqual([6, 6, 6, 6]);
+  });
   it('battery power limits match seller data (§7.4)', () => {
     const b = D4_V1.power.battery;
     expect(b.safeContinuousA).toBe(3);
