@@ -59,21 +59,52 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      # The readiness gate for MinIO. Probes the bucket rather than
-      # /minio/health/live, because healthz calls HeadBucket and
-      # MINIO_DEFAULT_BUCKETS is created asynchronously after MinIO reports
-      # live — liveness alone would still race. Anonymous GET of an existing
-      # bucket answers 403 (listing denied) or 200; a missing one answers 404.
-      - name: Wait for MinIO bucket
+      # The readiness gate for MinIO, and a real existence check for the bucket.
+      #
+      # `s3api head-bucket` signs with the root credentials and exits non-zero
+      # unless the bucket exists AND is reachable with them — the same HeadBucket
+      # call /api/healthz makes. An HTTP probe cannot substitute: MinIO evaluates
+      # policy before existence, so an anonymous GET answers 403 for a MISSING
+      # bucket exactly as it does for an existing one (measured against the dev
+      # stack: both return 403). Such a probe is a liveness check wearing a
+      # bucket-check label.
+      #
+      # This matters because bitnami/minio creates MINIO_DEFAULT_BUCKETS
+      # asynchronously, after the server starts accepting connections. Without
+      # a real check, a bucket that never appears surfaces much later as an
+      # unexplained 503 from the health test.
+      #
+      # The AWS CLI is preinstalled on ubuntu-latest runners.
+      - name: Wait for MinIO bucket kino-media
+        env:
+          AWS_ACCESS_KEY_ID: kino
+          AWS_SECRET_ACCESS_KEY: kino-secret
+          # The runner has no ~/.aws/config, so the region must come from the
+          # environment. MinIO ignores it, but SigV4 needs one to sign.
+          AWS_DEFAULT_REGION: us-east-1
+          # The loop below is the only retry layer. Without this the CLI would
+          # retry internally as well, multiplying the per-call timeouts.
+          AWS_MAX_ATTEMPTS: '1'
         run: |
+          # MinIO serves path-style. Pin it instead of relying on the CLI's
+          # `auto` heuristic, which may rewrite the request to the virtual-host
+          # name kino-media.localhost — a name the runner cannot resolve.
+          aws configure set default.s3.addressing_style path
+          probe() {
+            aws --endpoint-url http://localhost:9000 \
+                --cli-connect-timeout 2 --cli-read-timeout 5 \
+                s3api head-bucket --bucket kino-media
+          }
+          # 60 iterations of (<=7 s probe + 2 s sleep) — ~9 min worst case.
           for _ in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9000/kino-media || true)
-            if [ "$code" = "403" ] || [ "$code" = "200" ]; then
-              echo "minio ready, bucket kino-media exists (HTTP $code)"; exit 0
+            if probe >/dev/null 2>&1; then
+              echo "head-bucket succeeded: kino-media exists and is readable"
+              exit 0
             fi
             sleep 2
           done
-          echo "minio bucket kino-media did not become ready in time (last HTTP $code)" >&2
+          echo "kino-media unavailable after 60 attempts; last head-bucket error:" >&2
+          probe || true
           exit 1
       - run: npm run test -w @kino/api
         env:
