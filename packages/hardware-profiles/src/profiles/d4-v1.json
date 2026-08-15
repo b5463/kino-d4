@@ -1,0 +1,311 @@
+{
+  "schema": "kino.hardware-profile",
+  "version": 1,
+  "profile": "d4-v1",
+  "name": "KINO D4 V1",
+  "units": "mm",
+  "body": { "sizeMm": [126, 80, 36], "confidence": "PROVISIONAL" },
+  "cameraPitchMm": 22,
+  "cameraPitchRangeMm": [20, 24],
+  "components": [
+    {
+      "id": "main-display",
+      "name": "Guition ESP32-P4 4.3in display",
+      "model": "JC4880P443C-I-W",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [
+        {
+          "kind": "OFFICIAL_SPEC",
+          "sizeMm": [117.01, 69.41, null],
+          "ref": "https://www.guition.com/esp32p4-display-module/esp32p4-display",
+          "note": "manufacturer module envelope"
+        },
+        {
+          "kind": "OFFICIAL_SPEC",
+          "sizeMm": [114.4, 66.8, null],
+          "ref": "public manual (see SOURCES.md)",
+          "note": "conflicting public-manual board envelope; MEASURE TO LOCK (§6)"
+        }
+      ],
+      "specs": {
+        "display": "4.3in IPS capacitive",
+        "resolution": "480x800",
+        "mcu": ["ESP32-P4", "ESP32-C6"],
+        "psramMB": 32,
+        "flashMB": 16,
+        "voltageV": 5,
+        "publicApproxCurrentA": 0.32
+      },
+      "keepouts": [
+        { "id": "usb-c-1", "label": "USB-C port 1", "sizeMm": [9, 8, 4], "offsetMm": [-40, -30, 35], "kind": "connector" },
+        { "id": "usb-c-2", "label": "USB-C port 2", "sizeMm": [9, 8, 4], "offsetMm": [-25, -30, 35], "kind": "connector" },
+        { "id": "tf-slot", "label": "TF/microSD slot", "sizeMm": [15, 2, 3], "offsetMm": [40, -30, 35], "kind": "insertion" },
+        { "id": "speaker-connector", "label": "Speaker connector", "sizeMm": [6, 4, 3], "offsetMm": [50, 20, 35], "kind": "connector" },
+        { "id": "battery-connector", "label": "Battery connector", "sizeMm": [8, 4, 4], "offsetMm": [50, 10, 35], "kind": "connector" },
+        { "id": "camera-connector", "label": "Camera connector", "sizeMm": [10, 4, 4], "offsetMm": [50, 0, 35], "kind": "connector" },
+        { "id": "header-2x13", "label": "2x13 header", "sizeMm": [33, 3, 9], "offsetMm": [0, -30, 35], "kind": "connector" }
+      ]
+    },
+    {
+      "id": "camera-node",
+      "name": "Seeed Studio XIAO ESP32-S3 Sense",
+      "qty": 4,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_SPEC",
+          "sizeMm": [21.0, 17.8, 15.0],
+          "ref": "https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/"
+        }
+      ],
+      "specs": {
+        "mcu": "ESP32-S3",
+        "clockMHz": 240,
+        "psramMB": 8,
+        "flashMB": 8,
+        "sensor": "OV3660",
+        "resolution": [2048, 1536],
+        "horizontalFovDeg": null,
+        "verticalFovDeg": null,
+        "fovConfidence": "MEASURE_REQUIRED"
+      },
+      "keepouts": [
+        { "id": "service-usb", "label": "Service USB-C access", "sizeMm": [10, 8, 10], "offsetMm": [0, 0, 8], "kind": "service" }
+      ]
+    },
+    {
+      "id": "battery",
+      "name": "505573 LiPo",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [73.0, 55.0, 5.0],
+          "note": "PROVISIONAL_SIZE_CODE_MEASURE_ACTUAL — nominal size-code proxy, actual pouch folds/lead exit must be measured"
+        }
+      ],
+      "specs": {
+        "cells": "1S",
+        "nominalVoltageV": 3.7,
+        "capacitymAh": 3000,
+        "energyWh": 11.1,
+        "wire": "24AWG power + 26-28AWG NTC",
+        "connector": "PH2.0-3P"
+      },
+      "keepouts": [
+        { "id": "cushion-clearance", "label": "Foam cushion / pouch expansion allowance", "sizeMm": [75, 57, 7], "offsetMm": [0, 0, 0], "kind": "clearance" }
+      ]
+    },
+    {
+      "id": "fuse",
+      "name": "F3A fast axial fuse",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [null, null, null] }],
+      "specs": { "ratingA": 3.0, "type": "fast" }
+    },
+    {
+      "id": "bms",
+      "name": "1S 10A protection board",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
+    },
+    {
+      "id": "power-module",
+      "name": "SW6106 bidirectional power module",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [28.0, 28.0, 11.36],
+          "ref": "https://files.waveshare.com/wiki/common/SW6106%20Datasheet.pdf",
+          "note": "SELLER_SPEC_PROVISIONAL — exact purchased carrier; SW6106 carrier PCBs vary by supplier, MEASURE_REQUIRED before lock (§7.7)"
+        }
+      ],
+      "specs": { "controller": "SW6106", "powerClassW": 18, "systemRailV": 5 }
+    },
+    {
+      "id": "camera-switch",
+      "name": "AO4407/AO4407A high-side switch assembly",
+      "qty": 4,
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "PCB_LAYOUT_DEPENDENT" }],
+      "specs": { "parts": ["AO4407/AO4407A", "SOP8-DIP8 adapter", "2N3904", "4.7k", "100k", "100k", "1N5819"] }
+    },
+    {
+      "id": "flash-led",
+      "name": "3W CRI90 natural white LED star",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }],
+      "specs": { "forwardVoltageV": "3.0-3.6", "initialDriveA": 0.35 }
+    },
+    {
+      "id": "flash-heatsink",
+      "name": "Copper pin-fin heatsink",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [20.0, 20.0, 7.0] }],
+      "keepouts": [
+        { "id": "diffuser-spacing", "label": "Diffuser air gap", "sizeMm": [20, 20, 2], "offsetMm": [0, 0, 4], "kind": "clearance" }
+      ]
+    },
+    {
+      "id": "flash-thermal-pad",
+      "name": "Thermal pad",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [20.0, 20.0, 0.5], "note": "CUT_TO_FIT" }]
+    },
+    {
+      "id": "flash-diffuser",
+      "name": "Opal acrylic diffuser",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, 1.0], "note": "CUT_TO_FIT" }]
+    },
+    {
+      "id": "speaker",
+      "name": "8ohm 2W speaker",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [35.0, 25.0, null], "note": "SELLER_SPEC_MEASURE_THICKNESS — thickness unmeasured" }],
+      "specs": { "impedanceOhm": 8, "powerW": 2, "connector": "1.25mm 2-pin" },
+      "keepouts": [
+        { "id": "speaker-opening", "label": "Acoustic opening", "sizeMm": [30, 20, 2], "offsetMm": [0, 0, 1], "kind": "clearance" }
+      ]
+    },
+    {
+      "id": "micro-sd",
+      "name": "SanDisk Ultra microSD",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [15.0, 11.0, 1.0], "note": "standard" }],
+      "specs": { "capacityGB": 32 },
+      "keepouts": [
+        { "id": "ejection-path", "label": "Card ejection travel", "sizeMm": [20, 11, 3], "offsetMm": [10, 0, 0], "kind": "ejection" }
+      ]
+    },
+    {
+      "id": "p4-ribbon",
+      "name": "26-pin 2x13 IDC ribbon",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [100.0, null, null], "note": "length only; pitch captured in specs" }],
+      "specs": { "lengthMm": 100.0, "pitchMm": 2.54, "pins": "2x13" }
+    },
+    {
+      "id": "camera-harness",
+      "name": "PH2.0 4P camera harness",
+      "qty": 4,
+      "meshTier": "C",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [100.0, null, null], "note": "length only" }],
+      "specs": { "nets": ["5V", "GND", "UART_TX", "UART_RX"] }
+    },
+    {
+      "id": "sync-wire",
+      "name": "28AWG sync wire",
+      "qty": 4,
+      "meshTier": "C",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [null, null, null] }]
+    },
+    {
+      "id": "main-power-wire",
+      "name": "20AWG silicone wire",
+      "qty": "as-needed",
+      "meshTier": "C",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [null, null, null], "note": "KNOWN_WIRE_GAUGE — as-routed" }],
+      "specs": { "nets": ["BAT+", "BAT-", "5V", "GND"] }
+    },
+    {
+      "id": "bulk-cap",
+      "name": "1000uF 10V low-ESR capacitor",
+      "qty": "as-needed",
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED — design-dependent" }]
+    },
+    {
+      "id": "bypass-cap",
+      "name": "100nF 50V ceramic",
+      "qty": "as-needed",
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "PACKAGE_MEASURE_REQUIRED — design-dependent" }]
+    },
+    {
+      "id": "tact-switch",
+      "name": "6x6x4.3mm tactile switch",
+      "qty": "as-needed",
+      "meshTier": "B",
+      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [6.0, 6.0, 4.3] }],
+      "keepouts": [
+        { "id": "button-travel", "label": "Button travel", "sizeMm": [6, 6, 2], "offsetMm": [0, 0, 3], "kind": "travel" }
+      ]
+    },
+    {
+      "id": "slide-switch",
+      "name": "MSK-22D14 SPDT slide switch",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
+    },
+    {
+      "id": "perfboard",
+      "name": "DKAWS/Perma-Proto style carrier",
+      "qty": 1,
+      "meshTier": "C",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
+    },
+    {
+      "id": "enclosure",
+      "name": "KINO D4 enclosure envelope",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [126.0, 80.0, 36.0], "note": "PROVISIONAL" }],
+      "specs": { "construction": ["black PETG skeleton", "2-3mm clear acrylic panels", "M2 heat-set inserts"] }
+    }
+  ],
+  "instances": [
+    { "id": "cam1", "component": "camera-node", "positionMm": [-33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
+    { "id": "cam2", "component": "camera-node", "positionMm": [-11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
+    { "id": "cam3", "component": "camera-node", "positionMm": [11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
+    { "id": "cam4", "component": "camera-node", "positionMm": [33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar" },
+    { "id": "flash", "component": "flash-led", "positionMm": [0, 27, 15], "rotationDeg": [0, 0, 0], "explodeOrder": 8 },
+    { "id": "display", "component": "main-display", "positionMm": [0, 0, -15], "rotationDeg": [0, 180, 90], "explodeOrder": 4 },
+    { "id": "battery", "component": "battery", "positionMm": [0, -8, -2], "rotationDeg": [0, 0, 90], "group": "power", "explodeOrder": 1 },
+    { "id": "carrier", "component": "perfboard", "positionMm": [0, -5, -8], "rotationDeg": [0, 0, 0], "explodeOrder": 5 },
+    { "id": "power-module", "component": "power-module", "positionMm": [25, -15, -8], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
+    { "id": "bms", "component": "bms", "positionMm": [-25, -15, -8], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
+    { "id": "fuse", "component": "fuse", "positionMm": [-10, -8, -2], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
+    { "id": "speaker", "component": "speaker", "positionMm": [0, -35, 5], "rotationDeg": [0, 0, 0], "explodeOrder": 3 },
+    { "id": "bulk-cap", "component": "bulk-cap", "positionMm": [10, -5, -8], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 5 },
+    { "id": "front-acrylic", "component": "enclosure", "positionMm": [0, 0, 18], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 9, "explodeDirMm": [0, 0, 1] },
+    { "id": "rear-acrylic", "component": "enclosure", "positionMm": [0, 0, -18], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0, "explodeDirMm": [0, 0, -1] },
+    { "id": "skeleton", "component": "enclosure", "positionMm": [0, 0, 0], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0 }
+  ],
+  "power": {
+    "battery": {
+      "nominalV": 3.7,
+      "capacitymAh": 3000,
+      "internalOhm": { "value": 0.08, "tag": "ESTIMATED" },
+      "safeContinuousA": 3,
+      "shortPulseMaxA": 6,
+      "chargePreferredA": 0.6,
+      "chargeMaxA": 1.5
+    },
+    "boost": { "efficiency": { "value": 0.85, "tag": "ESTIMATED" } },
+    "loads": {
+      "p4Display": { "amps": 0.32, "tag": "MANUFACTURER" },
+      "camIdle": { "amps": 0.14, "tag": "MANUFACTURER", "note": "Seeed example workload" },
+      "camActive": { "amps": 0.347, "tag": "MANUFACTURER", "note": "Seeed example workload" },
+      "flash350": { "amps": 0.35, "tag": "ESTIMATED", "note": "default" },
+      "flash500": { "amps": 0.5, "tag": "ESTIMATED", "note": "experimental" },
+      "flash650": { "amps": 0.65, "tag": "ESTIMATED", "note": "controlled testing profile only" },
+      "wifiTx": { "amps": 0.25, "tag": "ESTIMATED" }
+    },
+    "fuse": { "ratingA": 3, "type": "fast" }
+  }
+}
