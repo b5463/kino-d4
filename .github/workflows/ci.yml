@@ -11,5 +11,72 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run lint
-      - run: npm run test
+      # service-free suites; add new workspaces here
+      - run: npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
       - run: npm run build
+
+  api-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kino
+          POSTGRES_PASSWORD: kino
+          POSTGRES_DB: kino
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U kino -d kino"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # GitHub `services:` cannot pass a container command, and minio/minio
+      # needs `server /data`. bitnami/minio starts the server by default and
+      # creates MINIO_DEFAULT_BUCKETS on boot, replacing the compose file's
+      # `createbucket` sidecar.
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: kino
+          MINIO_ROOT_PASSWORD: kino-secret
+          MINIO_DEFAULT_BUCKETS: kino-media,kino-firmware
+        ports: ['9000:9000', '9001:9001']
+        options: >-
+          --health-cmd "curl -sf http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      # Belt and braces over the service health check: the bucket has to exist
+      # before HeadBucket, and a slow MinIO boot should not flake the suite.
+      - name: Wait for MinIO
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:9000/minio/health/live; then
+              echo "minio ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "minio did not become ready in time" >&2; exit 1
+      - run: npm run test -w @kino/api
+        env:
+          # Inside the Actions service network the standard ports are free.
+          DATABASE_URL: postgres://kino:kino@localhost:5432/kino
+          REDIS_URL: redis://localhost:6379
+          S3_ENDPOINT: http://localhost:9000
+          S3_BUCKET: kino-media
+          S3_ACCESS_KEY: kino
+          S3_SECRET_KEY: kino-secret
+          PUBLIC_BASE_URL: https://kino.acronym.sk
