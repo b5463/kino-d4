@@ -28,10 +28,6 @@ import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 import { SYNC_BENCH } from './commands';
 
-const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
-const randInt = (lo: number, hi: number) => Math.round(rand(lo, hi));
-const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
-
 /** mulberry32 — a job that reports numbers has to report the same ones twice. */
 function seeded(seed: number): () => number {
   let a = seed >>> 0;
@@ -224,6 +220,12 @@ const ROLL_WORDS = ['amber', 'harbor', 'meridian', 'saltbox', 'lantern', 'cobalt
 export class MockKinoDevice implements MockDeviceLike {
   readonly scenarios: ScenarioFlags = { ...DEFAULT_SCENARIOS };
 
+  // Every random draw and every timestamp inside this class goes through
+  // these two. Unseeded, they are Math.random/Date.now — same as before this
+  // class took constructor options. Seeded, replay is byte-for-byte (§21).
+  private readonly rng: () => number;
+  private readonly now: () => number;
+
   private sink: ((data: Uint8Array) => void) | null = null;
   private forceCloseCb: (() => void) | null = null;
   private scenarioCb: (() => void) | null = null;
@@ -232,14 +234,16 @@ export class MockKinoDevice implements MockDeviceLike {
   private logTimer: ReturnType<typeof setTimeout> | null = null;
   private captureTimer: ReturnType<typeof setTimeout> | null = null;
 
-  private bootedAt = Date.now();
+  // Set in the constructor, after this.now is available (see below).
+  private bootedAt: number;
   private bootBlockedUntil = 0;
   private resetReason = 'power-on';
   private maintenance = false;
   private batteryV = 4.02;
   private sdFreeMB = 27431;
   private p4Fw = '0.1.0';
-  private cams: Record<CamId, CamModel> = this.freshCams('0.1.0');
+  // Set in the constructor: freshCams() draws from this.now()/this.randInt().
+  private cams: Record<CamId, CamModel>;
   private config = defaultConfig();
   private calibration = neutralCalibration();
   private customRecipes = new Map<string, DeviceRecipe>();
@@ -267,10 +271,8 @@ export class MockKinoDevice implements MockDeviceLike {
   private sessionId = 'boot-1';
 
   // ---- network / roll (04 §7) ----
-  private networks: SavedNetwork[] = [
-    { ssid: 'kino-bench', password: 'benchwifi2026', security: 'wpa2', autoJoin: true, lastSeen: Date.now() - 40_000 },
-    { ssid: 'loft-guest', password: 'partytime', security: 'wpa2', autoJoin: false, lastSeen: null },
-  ];
+  // Set in the constructor: lastSeen draws from this.now().
+  private networks: SavedNetwork[];
   private roll: RollState | null = null;
   private rollCounter = 0;
   private uploads: UploadQueue = { pending: 0, uploading: 0, failed: 0, uploaded: 118 };
@@ -297,14 +299,46 @@ export class MockKinoDevice implements MockDeviceLike {
   };
   private phaseAligned = false;
 
+  /**
+   * Unseeded (no opts, the default): behavior is exactly what it was before
+   * this constructor existed — Math.random()/Date.now() throughout.
+   * Seeded: one mulberry32 stream (module `seeded()`) drives every random
+   * draw, and every timestamp comes from `now` instead of the wall clock, so
+   * the same seed + the same inbound bytes reproduce the same outbound bytes.
+   */
+  constructor(opts?: { seed?: number; now?: () => number }) {
+    this.rng = opts?.seed !== undefined ? seeded(opts.seed) : Math.random;
+    this.now = opts?.now ?? Date.now;
+    // These used to be field initializers, but they draw from this.now()/
+    // this.randInt() and so must run after the two lines above.
+    this.bootedAt = this.now();
+    this.cams = this.freshCams('0.1.0');
+    this.networks = [
+      { ssid: 'kino-bench', password: 'benchwifi2026', security: 'wpa2', autoJoin: true, lastSeen: this.now() - 40_000 },
+      { ssid: 'loft-guest', password: 'partytime', security: 'wpa2', autoJoin: false, lastSeen: null },
+    ];
+  }
+
+  private rand(lo: number, hi: number): number {
+    return lo + this.rng() * (hi - lo);
+  }
+
+  private randInt(lo: number, hi: number): number {
+    return Math.round(this.rand(lo, hi));
+  }
+
+  private pick<T>(arr: T[]): T {
+    return arr[Math.floor(this.rng() * arr.length)];
+  }
+
   private freshCams(fw: string): Record<CamId, CamModel> {
     const cam = (): CamModel => ({
       fw,
-      lastCaptureAt: Date.now() - randInt(40_000, 300_000),
-      jpegKB: randInt(320, 520),
-      durationMs: randInt(140, 260),
-      gpioSkewUs: randInt(80, 400),
-      uartErrors: randInt(0, 2),
+      lastCaptureAt: this.now() - this.randInt(40_000, 300_000),
+      jpegKB: this.randInt(320, 520),
+      durationMs: this.randInt(140, 260),
+      gpioSkewUs: this.randInt(80, 400),
+      uartErrors: this.randInt(0, 2),
       updating: false,
       rebootUntil: 0,
     });
@@ -314,7 +348,7 @@ export class MockKinoDevice implements MockDeviceLike {
   // ---- transport binding ----
 
   bootDelayMs(): number {
-    return Math.max(0, this.bootBlockedUntil - Date.now());
+    return Math.max(0, this.bootBlockedUntil - this.now());
   }
 
   attach(sink: (data: Uint8Array) => void, onForceClose: () => void) {
@@ -448,13 +482,13 @@ export class MockKinoDevice implements MockDeviceLike {
   private startAmbient() {
     const tickLog = () => {
       this.emitAmbientLog();
-      this.logTimer = setTimeout(tickLog, randInt(900, 2600));
+      this.logTimer = setTimeout(tickLog, this.randInt(900, 2600));
     };
     this.logTimer = setTimeout(tickLog, 600);
 
     const tickCapture = () => {
       this.simulateCapture();
-      this.captureTimer = setTimeout(tickCapture, randInt(9000, 22000));
+      this.captureTimer = setTimeout(tickCapture, this.randInt(9000, 22000));
     };
     this.captureTimer = setTimeout(tickCapture, 5000);
   }
@@ -467,18 +501,18 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   private emitAmbientLog() {
-    this.batteryV = Math.max(3.3, this.batteryV - rand(0.0001, 0.0005));
-    const camSrc = pick(['C1', 'C2', 'C3', 'C4'] as LogSource[]);
+    this.batteryV = Math.max(3.3, this.batteryV - this.rand(0.0001, 0.0005));
+    const camSrc = this.pick(['C1', 'C2', 'C3', 'C4'] as LogSource[]);
     const options: [LogSource, string][] = [
-      ['P4', pick(['touch: mode dial', 'ui idle', 'preview stream 12 fps', 'wiggle armed', 'heap ok'])],
-      [camSrc, pick(['AE converged in 3 frames', `exposure locked 1/60 gain ${randInt(4, 16)}`, 'awb warm bias applied', `frame sync ok, skew ${randInt(60, 420)} us`])],
+      ['P4', this.pick(['touch: mode dial', 'ui idle', 'preview stream 12 fps', 'wiggle armed', 'heap ok'])],
+      [camSrc, this.pick(['AE converged in 3 frames', `exposure locked 1/60 gain ${this.randInt(4, 16)}`, 'awb warm bias applied', `frame sync ok, skew ${this.randInt(60, 420)} us`])],
       ['PWR', `battery ${this.batteryV.toFixed(2)} V`],
-      ['SD', pick([`free ${(this.sdFreeMB / 1024).toFixed(1)} GB`, `write burst ${rand(3.2, 4.4).toFixed(1)} MB/s`])],
-      ['PROTO', pick(['usb host poll ok', 'trigger bus idle'])],
+      ['SD', this.pick([`free ${(this.sdFreeMB / 1024).toFixed(1)} GB`, `write burst ${this.rand(3.2, 4.4).toFixed(1)} MB/s`])],
+      ['PROTO', this.pick(['usb host poll ok', 'trigger bus idle'])],
     ];
     const weights = [4, 5, 1, 1, 1];
     let total = weights.reduce((a, b) => a + b, 0);
-    let roll = Math.random() * total;
+    let roll = this.rng() * total;
     let idx = 0;
     for (let i = 0; i < weights.length; i++) {
       roll -= weights[i];
@@ -506,12 +540,12 @@ export class MockKinoDevice implements MockDeviceLike {
         this.after(delay + 900, () => { this.log('P4', 'C2 frame timeout after 900 ms'); this.camTimeouts++; cam.uartErrors++; });
         continue;
       }
-      cam.jpegKB = randInt(300, 560);
-      cam.durationMs = randInt(130, 280);
-      cam.gpioSkewUs = randInt(60, 450);
-      cam.lastCaptureAt = Date.now();
+      cam.jpegKB = this.randInt(300, 560);
+      cam.durationMs = this.randInt(130, 280);
+      cam.gpioSkewUs = this.randInt(60, 450);
+      cam.lastCaptureAt = this.now();
       this.after(delay, () => this.log(src, `jpeg ${cam.jpegKB} KB in ${cam.durationMs} ms`));
-      delay += randInt(15, 45);
+      delay += this.randInt(15, 45);
     }
     if (!this.scenarios.sdMissing) {
       // Sequential CAM1→4 UART transfer happens before the SD commit; at
@@ -546,7 +580,7 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   private log(src: LogSource, msg: string) {
-    const entry: LogEntry = { t: Date.now(), src, msg };
+    const entry: LogEntry = { t: this.now(), src, msg };
     this.logBuffer.push(entry);
     if (this.logBuffer.length > 400) this.logBuffer.splice(0, this.logBuffer.length - 400);
     this.sendEvent(Evt.LOG, entry);
@@ -644,7 +678,7 @@ export class MockKinoDevice implements MockDeviceLike {
     let offset = 0;
     while (offset < bytes.length) {
       const remaining = bytes.length - offset;
-      const n = remaining <= 3 ? remaining : randInt(1, Math.max(1, remaining - 1));
+      const n = remaining <= 3 ? remaining : this.randInt(1, Math.max(1, remaining - 1));
       sink(bytes.subarray(offset, offset + n));
       offset += n;
     }
@@ -688,10 +722,10 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
     const latency = this.scenarios.delayedResponses
-      ? randInt(SLOW_RESPONSE_MS[0], SLOW_RESPONSE_MS[1])
+      ? this.randInt(SLOW_RESPONSE_MS[0], SLOW_RESPONSE_MS[1])
       : frame.type === Cmd.FW_CHUNK
-        ? randInt(4, 10)
-        : randInt(8, 26);
+        ? this.randInt(4, 10)
+        : this.randInt(8, 26);
     this.after(latency, () => this.dispatch(frame));
   }
 
@@ -699,7 +733,7 @@ export class MockKinoDevice implements MockDeviceLike {
     const cam = this.cams[id];
     const offline = id === 'cam1' && this.scenarios.offlineCameraNode;
     const timeout = id === 'cam2' && this.scenarios.cam2Timeout;
-    const rebooting = cam.rebootUntil > Date.now();
+    const rebooting = cam.rebootUntil > this.now();
     return {
       id,
       online: !offline && !rebooting,
@@ -707,12 +741,12 @@ export class MockKinoDevice implements MockDeviceLike {
       sensorDetected: !offline && !rebooting,
       firmware: cam.fw,
       state: offline ? 'offline' : rebooting ? 'rebooting' : cam.updating ? 'updating' : timeout ? 'timeout' : 'ready',
-      latencyMs: offline ? 0 : timeout ? 900 : Math.round(rand(2, 9) * 10) / 10,
+      latencyMs: offline ? 0 : timeout ? 900 : Math.round(this.rand(2, 9) * 10) / 10,
       uartErrors: cam.uartErrors,
       lastCapture: offline
         ? null
         : {
-            ageS: Math.round((Date.now() - cam.lastCaptureAt) / 1000),
+            ageS: Math.round((this.now() - cam.lastCaptureAt) / 1000),
             jpegKB: cam.jpegKB,
             durationMs: cam.durationMs,
             gpioSkewUs: cam.gpioSkewUs,
@@ -995,9 +1029,9 @@ export class MockKinoDevice implements MockDeviceLike {
           return;
         }
         this.after(350, () => {
-          const kb = randInt(300, 560);
+          const kb = this.randInt(300, 560);
           this.log(('C' + cam.slice(-1)) as LogSource, `test capture ok — jpeg ${kb} KB`);
-          this.respond(frame, { ok: true, jpegKB: kb, durationMs: randInt(140, 260) });
+          this.respond(frame, { ok: true, jpegKB: kb, durationMs: this.randInt(140, 260) });
         });
         return;
       }
@@ -1016,11 +1050,11 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.GET_RUNTIME_STATS:
         this.respond(frame, {
-          uptimeS: Math.round((Date.now() - this.bootedAt) / 1000),
+          uptimeS: Math.round((this.now() - this.bootedAt) / 1000),
           resetReason: this.resetReason,
-          freeHeapKB: randInt(148, 176),
-          freePsramKB: randInt(11800, 14200),
-          tempC: { p4: Math.round(rand(38, 46)), cams: CAM_IDS.map(() => Math.round(rand(34, 44))) },
+          freeHeapKB: this.randInt(148, 176),
+          freePsramKB: this.randInt(11800, 14200),
+          tempC: { p4: Math.round(this.rand(38, 46)), cams: CAM_IDS.map(() => Math.round(this.rand(34, 44))) },
           protocol: {
             droppedPackets: this.decoder.stats.resyncs,
             crcFailures: this.decoder.stats.crcFailures,
@@ -1106,7 +1140,7 @@ export class MockKinoDevice implements MockDeviceLike {
           this.respondError(frame, 'CAM_UNREACHABLE', 'CAM1 is offline');
           return;
         }
-        void renderPreviewFrame(Number(camId.slice(-1)) - 1, Date.now() - this.bootedAt)
+        void renderPreviewFrame(Number(camId.slice(-1)) - 1, this.now() - this.bootedAt)
           .then((bytes) => this.respondBytes(frame, bytes))
           .catch((err) => this.respondError(frame, 'PREVIEW_FAILED', err instanceof Error ? err.message : String(err)));
         return;
@@ -1119,7 +1153,7 @@ export class MockKinoDevice implements MockDeviceLike {
             return;
           }
           this.after(650, () => {
-            this.batteryV = Math.max(3.3, this.batteryV - rand(0.002, 0.006)); // flash pulse
+            this.batteryV = Math.max(3.3, this.batteryV - this.rand(0.002, 0.006)); // flash pulse
             this.respond(frame, this.measureTiming());
           });
           return;
@@ -1245,7 +1279,7 @@ export class MockKinoDevice implements MockDeviceLike {
                 state: 'connected',
                 ssid: active.ssid,
                 ip: '192.168.1.74',
-                rssi: randInt(-68, -42),
+                rssi: this.randInt(-68, -42),
                 since: this.bootedAt,
                 internet: true,
               }
@@ -1294,7 +1328,7 @@ export class MockKinoDevice implements MockDeviceLike {
           guestUrl: `https://kino.roll/${slug}`,
           name: (req.name ?? 'Untitled roll').slice(0, 60),
           role: 'host',
-          joinedAt: Date.now(),
+          joinedAt: this.now(),
         };
         this.log('P4', `roll created: ${slug}`);
         this.respond(frame, {
@@ -1324,7 +1358,7 @@ export class MockKinoDevice implements MockDeviceLike {
           guestUrl: `https://kino.roll/${slug}`,
           name: slug,
           role: 'guest',
-          joinedAt: Date.now(),
+          joinedAt: this.now(),
         };
         this.log('P4', `joined roll: ${slug}`);
         this.respond(frame, this.rollView());
@@ -1513,14 +1547,14 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private measureTiming() {
     // GPIO distribution: wire + ISR entry. Small and mostly irrelevant.
-    const gpio = CAM_IDS.map((_id, i) => Math.round(rand(30, 90) + i * rand(3, 12)));
+    const gpio = CAM_IDS.map((_id, i) => Math.round(this.rand(30, 90) + i * this.rand(3, 12)));
     const gpioMin = Math.min(...gpio);
 
     // VSYNC phase: how long each sensor waits for its next frame start.
     // This is what decides which frame the sensor actually hands over.
     const jitter = this.phaseAligned ? 90 : 400;
     const phases = CAM_IDS.map((id) =>
-      Math.max(0, this.camPhaseUs[id] + rand(-jitter, jitter)),
+      Math.max(0, this.camPhaseUs[id] + this.rand(-jitter, jitter)),
     );
     const phaseRef = phases[1]; // CAM2 reference
 
@@ -1528,7 +1562,7 @@ export class MockKinoDevice implements MockDeviceLike {
       const vsyncPhaseUs = Math.round(phases[i]);
       // Effective exposure = trigger arrival + wait for frame start +
       // rolling-shutter row offset for the subject band.
-      const rolling = rand(0, 900);
+      const rolling = this.rand(0, 900);
       return {
         cam: camId,
         gpioUs: Math.round(gpio[i] - gpioMin),
@@ -1591,13 +1625,13 @@ export class MockKinoDevice implements MockDeviceLike {
         this.log(('C' + cam.slice(-1)) as LogSource, 'sensor restart with phase offset');
         this.sendEvent(Evt.PHASE, { step: 'rephase', cam });
       });
-      t += randInt(300, 500);
+      t += this.randInt(300, 500);
     }
     this.after(t + 300, () => {
       for (const cam of CAM_IDS) {
         if (cam === 'cam2') continue;
         // Each pass removes most of the remaining error but never all of it.
-        this.camPhaseUs[cam] = this.camPhaseUs[cam] * rand(0.06, 0.16) + rand(-120, 120);
+        this.camPhaseUs[cam] = this.camPhaseUs[cam] * this.rand(0.06, 0.16) + this.rand(-120, 120);
       }
       const snapshot = this.phaseSnapshot(false);
       this.phaseAligned = snapshot.spreadUs < 1200;
@@ -1627,10 +1661,10 @@ export class MockKinoDevice implements MockDeviceLike {
       const channels = CAM_IDS.map((cam, i) => {
         // CAM4 sits at the end of the longest run in the V1 harness.
         const penalty = i === 3 ? 2.2 : i === 0 ? 1.3 : 1;
-        const crcErrors = Math.round(bytes * errorRate * penalty * rand(0.6, 1.4));
-        const framingErrors = crcErrors > 0 ? Math.round(crcErrors * rand(0.1, 0.5)) : 0;
+        const crcErrors = Math.round(bytes * errorRate * penalty * this.rand(0.6, 1.4));
+        const framingErrors = crcErrors > 0 ? Math.round(crcErrors * this.rand(0.1, 0.5)) : 0;
         // Payload throughput after 8N1 framing and protocol overhead.
-        const kbytesPerSec = Math.round(((baud / 10) * rand(0.86, 0.93)) / 1024);
+        const kbytesPerSec = Math.round(((baud / 10) * this.rand(0.86, 0.93)) / 1024);
         return { cam, bytes, kbytesPerSec, crcErrors, framingErrors };
       });
       const clean = channels.every((c) => c.crcErrors === 0 && c.framingErrors === 0);
@@ -1704,7 +1738,7 @@ export class MockKinoDevice implements MockDeviceLike {
       this.after(900, () => {
         const level = req.flash?.level ?? this.calibration.flash.level;
         const base = level === 'low' ? 1.4 : level === 'medium' ? 3.1 : 6.2;
-        const clip = () => Math.round((base + rand(-0.8, 1.2)) * 10) / 10;
+        const clip = () => Math.round((base + this.rand(-0.8, 1.2)) * 10) / 10;
         const results = CAM_IDS.map((cam) => ({ cam, clippedPct: Math.max(0.2, clip()) }));
         const avg = results.reduce((a, r) => a + r.clippedPct, 0) / 4;
         const suggested = avg > 5 ? 'low' : avg > 2.5 ? 'medium' : 'high';
@@ -1748,16 +1782,16 @@ export class MockKinoDevice implements MockDeviceLike {
         this.log(('C' + id.slice(-1)) as LogSource, 'calibration frame captured');
         this.sendEvent(Evt.CALIBRATION, { step: 'capture', cam: id });
       });
-      t += randInt(500, 800);
+      t += this.randInt(500, 800);
     }
     this.after(t + 200, () => this.sendEvent(Evt.CALIBRATION, { step: 'analyze', message: 'comparing against CAM2' }));
     this.after(t + 1600, () => {
-      const jitter = (scale: number) => Math.round(rand(-scale, scale) * 1000) / 1000;
+      const jitter = (scale: number) => Math.round(this.rand(-scale, scale) * 1000) / 1000;
       const offsets: Record<CamId, CamCalibration> = {
-        cam1: { ev: jitter(0.25), r: 1 + jitter(0.04), g: 1 + jitter(0.02), b: 1 + jitter(0.05), x: randInt(-6, 6), y: randInt(-4, 4), rot: jitter(0.4) },
+        cam1: { ev: jitter(0.25), r: 1 + jitter(0.04), g: 1 + jitter(0.02), b: 1 + jitter(0.05), x: this.randInt(-6, 6), y: this.randInt(-4, 4), rot: jitter(0.4) },
         cam2: { ...NEUTRAL_CAL },
-        cam3: { ev: jitter(0.25), r: 1 + jitter(0.04), g: 1 + jitter(0.02), b: 1 + jitter(0.05), x: randInt(-6, 6), y: randInt(-4, 4), rot: jitter(0.4) },
-        cam4: { ev: jitter(0.3), r: 1 + jitter(0.05), g: 1 + jitter(0.02), b: 1 + jitter(0.06), x: randInt(-8, 8), y: randInt(-5, 5), rot: jitter(0.5) },
+        cam3: { ev: jitter(0.25), r: 1 + jitter(0.04), g: 1 + jitter(0.02), b: 1 + jitter(0.05), x: this.randInt(-6, 6), y: this.randInt(-4, 4), rot: jitter(0.4) },
+        cam4: { ev: jitter(0.3), r: 1 + jitter(0.05), g: 1 + jitter(0.02), b: 1 + jitter(0.06), x: this.randInt(-8, 8), y: this.randInt(-5, 5), rot: jitter(0.5) },
       };
       this.log('P4', 'calibration analysis complete');
       this.sendEvent(Evt.CALIBRATION, { step: 'result', offsets });
@@ -1773,8 +1807,8 @@ export class MockKinoDevice implements MockDeviceLike {
   private handleSelfTest(frame: Frame) {
     this.respond(frame, { started: true });
     const checks: { name: string; run: () => SelfTestCheck }[] = [
-      { name: 'P4 heap', run: () => ({ name: 'P4 heap', status: 'pass', detail: `${randInt(148, 176)} KB free` }) },
-      { name: 'PSRAM', run: () => ({ name: 'PSRAM', status: 'pass', detail: `${randInt(11, 14)} MB free` }) },
+      { name: 'P4 heap', run: () => ({ name: 'P4 heap', status: 'pass', detail: `${this.randInt(148, 176)} KB free` }) },
+      { name: 'PSRAM', run: () => ({ name: 'PSRAM', status: 'pass', detail: `${this.randInt(11, 14)} MB free` }) },
       { name: 'Touch panel', run: () => ({ name: 'Touch panel', status: 'pass', detail: 'controller responds' }) },
       {
         name: 'SD card',
@@ -1795,7 +1829,7 @@ export class MockKinoDevice implements MockDeviceLike {
         run: (): SelfTestCheck => {
           if (id === 'cam1' && this.scenarios.offlineCameraNode) return { name: 'CAM1 capture', status: 'fail', detail: 'no response on camera bus' };
           if (id === 'cam2' && this.scenarios.cam2Timeout) return { name: 'CAM2 capture', status: 'fail', detail: 'frame timeout after 900 ms' };
-          return { name: `${id.toUpperCase()} capture`, status: 'pass', detail: `OV3660, jpeg ${randInt(300, 560)} KB` };
+          return { name: `${id.toUpperCase()} capture`, status: 'pass', detail: `OV3660, jpeg ${this.randInt(300, 560)} KB` };
         },
       })),
     ];
@@ -1808,7 +1842,7 @@ export class MockKinoDevice implements MockDeviceLike {
         results.push(result);
         this.sendEvent(Evt.SELF_TEST, { index: i, total: checks.length, name: result.name, status: result.status, detail: result.detail });
       });
-      t += randInt(280, 420);
+      t += this.randInt(280, 420);
     });
     this.after(t + 300, () => {
       const failed = results.filter((r) => r.status === 'fail').length;
@@ -2029,7 +2063,7 @@ export class MockKinoDevice implements MockDeviceLike {
       this.after(2400, () => {
         this.fwStates[target] = { state: 'rebooting' };
         this.cams[target].updating = false;
-        this.cams[target].rebootUntil = Date.now() + 1800;
+        this.cams[target].rebootUntil = this.now() + 1800;
         this.log(('C' + target.slice(-1)) as LogSource, 'rebooting into new firmware');
       });
       this.after(4300, () => {
@@ -2055,8 +2089,8 @@ export class MockKinoDevice implements MockDeviceLike {
     this.coalesceBuffer = [];
     this.stopUploadDrain();
     this.resetReason = reason;
-    this.bootedAt = Date.now() + 2500;
-    this.bootBlockedUntil = Date.now() + 2500;
+    this.bootedAt = this.now() + 2500;
+    this.bootBlockedUntil = this.now() + 2500;
     this.maintenance = false;
     this.fwStates.p4 = { state: 'idle' };
     for (const id of CAM_IDS) this.fwStates[id] = { state: 'idle' };
