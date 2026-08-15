@@ -715,15 +715,15 @@ export function spreadUs(offsets: number[]): number;                // max - min
 - Consumes: Task 10 stats; `KinoProtocolClient.startJob('SYNC_BENCH', { triggers: N })` from Task 7; `CAMERA_GET_TIMING` for single reads.
 - Produces: the 02§10 display — three separate sections (GPIO distribution / VSYNC phase / effective exposure), each with per-camera offsets, spread, band label, and mean/median/p95/max over the run. Run sizes: 25 (quick) / 250 (bench, default — "hundreds of triggers" per 07§18) / 1000 (soak). When the device reports a metric as null, the section renders "NOT MEASURABLE — <reason from device>" — never a fabricated number, never a collapsed single score.
 
-- [ ] **Step 1: Write failing component/store test** — feed a fake job stream of trigger samples; assert: three metric sections render independently; exposure section with `unavailableReason: 'no exposure telemetry in this firmware'` shows the reason text and no numbers; band label "GOOD TARGET" shown for a 1.2 ms VSYNC spread (the 02§10 example data).
+- [x] **Step 1: Write failing component/store test** — feed a fake job stream of trigger samples; assert: three metric sections render independently; exposure section with `unavailableReason: 'no exposure telemetry in this firmware'` shows the reason text and no numbers; band label "GOOD TARGET" shown for a 1.2 ms VSYNC spread (the 02§10 example data).
 
-- [ ] **Step 2: Run to verify FAIL.**
+- [x] **Step 2: Run to verify FAIL.**
 
-- [ ] **Step 3: Implement.** Layout per design system: compact table per metric (rows CAM1..CAMn from capabilities), monospace numbers as `+0.61ms`, spread row, band lamp (`● / ▲ / ×`), distribution line (`mean 0.42 · median 0.39 · p95 0.88 · max 1.20 ms`). Progress via job progress events with cancel (`FW_ABORT`-style job cancel is not in the protocol — cancel = stop consuming + device timeout is acceptable for V1; note in UI as "Stopping after current trigger…").
+- [x] **Step 3: Implement.** Layout per design system: compact table per metric (rows CAM1..CAMn from capabilities), monospace numbers as `+0.61ms`, spread row, band lamp (`● / ▲ / ×`), distribution line (`mean 0.42 · median 0.39 · p95 0.88 · max 1.20 ms`). Progress via job progress events with cancel (`FW_ABORT`-style job cancel is not in the protocol — cancel = stop consuming + device timeout is acceptable for V1; note in UI as "Stopping after current trigger…").
 
-- [ ] **Step 4: Run tests + `npm run dev`, run a bench against mock scenario, verify all three sections + null path (mock `sessionRestart` scenario has vsync telemetry; add a mock capability flag `vsyncTelemetry:false` variant to see the null path).**
+- [x] **Step 4: Run tests + `npm run dev`, run a bench against mock scenario, verify all three sections + null path (mock `sessionRestart` scenario has vsync telemetry; add a mock capability flag `vsyncTelemetry:false` variant to see the null path).**
 
-- [ ] **Step 5: Commit** — `feat(studio): first-class Skew Bench with three-metric display`
+- [x] **Step 5: Commit** — `feat(studio): first-class Skew Bench with three-metric display`
 
 ### Task 12: Studio Roll page (device side, against mock)
 
