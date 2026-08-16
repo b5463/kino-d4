@@ -752,15 +752,15 @@ export interface RollServerClient {
 export class StubRollServerClient implements RollServerClient { /* rejects with 'SERVER_NOT_CONFIGURED' */ }
 ```
 
-- [ ] **Step 1: Write failing tests** — (a) Wi-Fi form submits `NETWORK_SET {ssid, password}` over KDP and the password value never appears in the log store or in any outbound `RollServerClient` call (assert by spying — this is the 05§13 guarantee); (b) saved networks list renders from `NETWORK_LIST` with masked passwords; (c) "Start a Roll" calls `ROLL_CREATE` on the device after server create succeeds, and renders guest QR for `guestUrl`; (d) upload queue renders `UPLOAD_QUEUE_STATUS` counts and "Retry failed" sends `UPLOAD_QUEUE_RETRY`; (e) with `rollUpload:false` capability, nav has no Roll entry.
+- [x] **Step 1: Write failing tests** — (a) Wi-Fi form submits `NETWORK_SET {ssid, password}` over KDP and the password value never appears in the log store or in any outbound `RollServerClient` call (assert by spying — this is the 05§13 guarantee); (b) saved networks list renders from `NETWORK_LIST` with masked passwords; (c) "Start a Roll" calls `ROLL_CREATE` on the device after server create succeeds, and renders guest QR for `guestUrl`; (d) upload queue renders `UPLOAD_QUEUE_STATUS` counts and "Retry failed" sends `UPLOAD_QUEUE_RETRY`; (e) with `rollUpload:false` capability, nav has no Roll entry.
 
-- [ ] **Step 2: Run to verify FAIL.**
+- [x] **Step 2: Run to verify FAIL.**
 
-- [ ] **Step 3: Implement.** Panels top-to-bottom: Server (URL field default locked domain, [Test Server]), Network (list + add form + status lamp `● WIFI CONNECTED`), Roll (current `ROLL_STATUS`; Start a Roll / Join a Roll / Leave Roll; guest QR via `qrcode` `toCanvas`; "Open host dashboard" external link), Upload queue (`3 PENDING · 1 FAILED`, retry button). Copy uses Roll terminology (01§10). Offline note pinned at bottom: "KINO shoots without Wi-Fi. Uploads resume when the Roll server is reachable."
+- [x] **Step 3: Implement.** Panels top-to-bottom: Server (URL field default locked domain, [Test Server]), Network (list + add form + status lamp `● WIFI CONNECTED`), Roll (current `ROLL_STATUS`; Start a Roll / Join a Roll / Leave Roll; guest QR via `qrcode` `toCanvas`; "Open host dashboard" external link), Upload queue (`3 PENDING · 1 FAILED`, retry button). Copy uses Roll terminology (01§10). Offline note pinned at bottom: "KINO shoots without Wi-Fi. Uploads resume when the Roll server is reachable."
 
-- [ ] **Step 4: Run tests + manual pass against mock (create Roll, see QR, watch mock backlog drain).**
+- [x] **Step 4: Run tests + manual pass against mock (create Roll, see QR, watch mock backlog drain).**
 
-- [ ] **Step 5: Commit** — `feat(studio): Roll page — Wi-Fi provisioning, roll lifecycle, upload queue, guest QR`
+- [x] **Step 5: Commit** — `feat(studio): Roll page — Wi-Fi provisioning, roll lifecycle, upload queue, guest QR`
 
 ### Task 13: Gallery "Push to Roll" + Studio spec-audit sweep
 
