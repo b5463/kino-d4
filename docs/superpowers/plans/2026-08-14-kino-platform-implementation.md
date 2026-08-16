@@ -973,13 +973,13 @@ export const processingEvents = pgTable('processing_events', {
 
 No media blobs anywhere (05§5). Guest identity is a cookie ID only — no accounts table for guests. Host auth is per-roll `hostTokenHash` for V1 (05§12 "secure account/session **or equivalent host token**"); an accounts table is deliberately deferred until multi-roll host management is real (YAGNI).
 
-- [ ] **Step 1: Write failing test** — migration applies to a clean DB; inserting a duplicate `(rollId, captureUuid)` violates the unique index; inserting an asset with duplicate `(captureId, role, frameIndex)` fails.
+- [x] **Step 1: Write failing test** — migration applies to a clean DB; inserting a duplicate `(rollId, captureUuid)` violates the unique index; inserting an asset with duplicate `(captureId, role, frameIndex)` fails.
 
-- [ ] **Step 2: Generate + apply migration.** Run: `npx drizzle-kit generate && npx drizzle-kit migrate` (config points at `DATABASE_URL`).
+- [x] **Step 2: Generate + apply migration.** Run: `npx drizzle-kit generate && npx drizzle-kit migrate` (config points at `DATABASE_URL`).
 
-- [ ] **Step 3: Run test → PASS.**
+- [x] **Step 3: Run test → PASS.**
 
-- [ ] **Step 4: Commit** — `feat(api): postgres schema 0001 — devices, rolls, captures, assets, uploads, firmware, audit`
+- [x] **Step 4: Commit** — `feat(api): postgres schema 0001 — devices, rolls, captures, assets, uploads, firmware, audit`
 
 ### Task 16: Auth — device tokens, host tokens, guest PIN session
 
