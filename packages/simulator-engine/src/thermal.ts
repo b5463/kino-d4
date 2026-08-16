@@ -11,12 +11,22 @@ export type ThermalZone = 'battery' | 'sw6106' | 'led' | 'heatsink' | 'batteryCo
 const LEVELS: ThermalState[] = ['COOL', 'WARM', 'HOT', 'CRITICAL'];
 const ZONES: ThermalZone[] = ['battery', 'sw6106', 'led', 'heatsink', 'batteryConnector'];
 
-// thermalStep is stateless beyond `prev` — there's no hidden per-zone
-// accumulator — so "one qualitative step per call" is scaled by how many
-// nominal sample periods `dtMs` actually spans. At TwinSimulator's 2 Hz
-// power sampling (500 ms/tick) that's one step per tick; a much larger
+// thermalStep is stateless beyond `prev` (a discrete ThermalState per zone
+// has no room for a fractional-progress accumulator, and the brief's given
+// signature doesn't carry one either), so a step only registers once a full
+// MS_PER_STEP has actually elapsed *in this one call*. At TwinSimulator's
+// 2 Hz power sampling (500 ms/tick) that's one step per tick; a much larger
 // dtMs (e.g. a fast-forwarded replay) advances proportionally more steps in
-// the one call instead of losing progress between ticks.
+// the one call. task-7 review finding #3: this used to floor a *minimum* of
+// one step regardless of dtMs, so a consumer calling this once per animation
+// frame (~16 ms) would race COOL -> CRITICAL in 3 calls — dozens of times
+// faster than intended, silently. There's no cross-call accumulator here, so
+// a sub-period dtMs now correctly contributes zero steps rather than a
+// forced one; a caller that wants this to actually respond at a cadence
+// faster than MS_PER_STEP needs to accumulate its own elapsed time and only
+// call once enough of it has passed (the same way TwinSimulator does at
+// 2 Hz), since there's nowhere in this discrete-state contract to bank a
+// partial step between calls.
 const MS_PER_STEP = 500;
 
 /** Where a zone's temperature is heading given the current power sample and activity — not where it already is. */
@@ -76,7 +86,7 @@ export function thermalStep(
   activity: ActivityState,
   dtMs: number,
 ): Record<ThermalZone, ThermalState> {
-  const steps = Math.max(1, Math.floor(dtMs / MS_PER_STEP));
+  const steps = Math.floor(dtMs / MS_PER_STEP);
   const next = {} as Record<ThermalZone, ThermalState>;
 
   for (const zone of ZONES) {

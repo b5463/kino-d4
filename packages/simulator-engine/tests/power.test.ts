@@ -16,6 +16,7 @@ describe('computePower', () => {
     const sample = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.idle);
 
     expect(sample.busA).toBeCloseTo(0.32, 6);
+    expect(sample.tags.busA).toBe('MANUFACTURER');
     expect(sample.tags.batteryA).toBe('MANUFACTURER');
     expect(sample.tags.boostLossW).toBe('MANUFACTURER');
     expect(sample.tags.busV).toBe('MANUFACTURER');
@@ -76,6 +77,43 @@ describe('computePower', () => {
     expect(sample.fuse).toBe('blown');
   });
 
+  it('a blown fuse stays blown even after current drops back to normal (a fast-blow fuse does not self-heal)', () => {
+    const heavyLoads: PowerProfile['loads'] = {
+      ...POWER.loads,
+      camActive: { amps: 1.0, tag: 'ESTIMATED' },
+    };
+    const heavyActivity: ActivityState = {
+      p4On: true,
+      camsOn: ['cam1', 'cam2', 'cam3', 'cam4'],
+      camsCapturing: ['cam1', 'cam2', 'cam3', 'cam4'],
+      uartActive: [],
+      flashA: 0.65,
+      wifiUploading: true,
+      chargingA: 0,
+    };
+
+    // Tick 1: the heavy load blows the fuse.
+    const blown = computePower(POWER, heavyLoads, heavyActivity, {
+      overAsinceMs: null,
+      nowMs: 0,
+      fuseBlown: false,
+    });
+    expect(blown.fuse).toBe('blown');
+
+    // Tick 2: load drops all the way back to idle, but the caller (matching
+    // TwinSimulator's own bookkeeping) reports the fuse was already blown.
+    // A regression here would be computePower re-deriving 'ok' purely from
+    // this tick's (harmless) current, which is exactly the self-heal bug
+    // task-7 review finding #1 flagged.
+    const stillBlown = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.idle, {
+      overAsinceMs: null,
+      nowMs: 60_000,
+      fuseBlown: true,
+    });
+    expect(stillBlown.batteryA).toBeLessThan(POWER.battery.safeContinuousA);
+    expect(stillBlown.fuse).toBe('blown');
+  });
+
   it('charging at 0.8 A is above the preferred rate but not over max', () => {
     const sample = computePower(POWER, POWER.loads, { ...ACTIVITY_PRESETS.idle, chargingA: 0.8 });
     expect(sample.warnings).toContain('CHARGE_ABOVE_PREFERRED');
@@ -119,5 +157,31 @@ describe('thermalStep', () => {
       state = thermalStep(state, idleSample, ACTIVITY_PRESETS.idle, 500);
     }
     expect(state.battery).toBe('COOL');
+  });
+
+  it('a sub-period dtMs (< 500 ms) does not force a step — no silent speed-up toward a hot target', () => {
+    // task-7 review finding #3: thermalStep used to floor a *minimum* of one
+    // step regardless of dtMs, so a caller invoking this once per animation
+    // frame (~16 ms) would race COOL -> CRITICAL in 3 calls. A single call
+    // with dtMs well under MS_PER_STEP (500 ms) must leave the state exactly
+    // as it was handed in.
+    const sample = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.worstOverlap, {
+      overAsinceMs: 0,
+      nowMs: 10_001,
+    });
+    expect(sample.fuse).toBe('warm'); // confirms this sample does target a hotter state
+
+    const oneFrame = thermalStep(allCool, sample, ACTIVITY_PRESETS.worstOverlap, 16);
+    expect(oneFrame).toEqual(allCool);
+
+    // Repeated sub-period calls don't quietly rush past a whole step either
+    // — see thermal.ts's MS_PER_STEP comment for the documented trade-off
+    // (no cross-call accumulator: a caller polling faster than MS_PER_STEP
+    // needs to accumulate its own elapsed time before calling).
+    let state = allCool;
+    for (let i = 0; i < 20; i++) {
+      state = thermalStep(state, sample, ACTIVITY_PRESETS.worstOverlap, 16);
+    }
+    expect(state).toEqual(allCool);
   });
 });

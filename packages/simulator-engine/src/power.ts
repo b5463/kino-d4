@@ -37,7 +37,11 @@ export interface PowerSample {
   boostLossW: number;
   fuse: 'ok' | 'warm' | 'blown';
   warnings: PowerWarning[];
-  tags: Record<'batteryA' | 'busV' | 'boostLossW' | 'batteryV', ProvenanceTag>; // every number tagged (§15)
+  // §15: every power number is tagged — busA included (task-7 review finding
+  // #2: the brief's own interface text listed only 4 of the 5 fields here;
+  // ruled against, since §15's "every power number is tagged" is unqualified
+  // and binding over that omission).
+  tags: Record<'batteryA' | 'busA' | 'busV' | 'boostLossW' | 'batteryV', ProvenanceTag>;
 }
 
 // §15: the carrier regulates a 5 V rail off the boost converter (net names
@@ -122,7 +126,13 @@ export function computePower(
   profile: PowerProfile,
   loads: PowerProfile['loads'],
   activity: ActivityState,
-  prev?: { overAsinceMs: number | null; nowMs: number },
+  // §21/task-7 review finding #1: `fuseBlown` extends the brief's literal
+  // `prev` shape (which had no latch slot — ruled a plan defect, since a
+  // safety indicator that self-heals every tick is a real correctness bug,
+  // not a stylistic one). The caller (TwinSimulator) threads its own
+  // previously-observed fuse state back in here; computePower still only
+  // *evaluates* state, it never mutates or persists anything itself.
+  prev?: { overAsinceMs: number | null; nowMs: number; fuseBlown?: boolean },
 ): PowerSample {
   const { busA, tags: loadTags } = activeLoads(loads, activity);
   const busW = BUS_NOMINAL_V * busA;
@@ -159,8 +169,16 @@ export function computePower(
     warnings.push(overDurationMs > SUSTAINED_MS ? 'SUSTAINED_OVER_3A' : 'TRANSIENT_3_6A');
   }
 
+  // §7.5/task-7 review finding #1: the D4 profile's fuse is a fast-blow type
+  // (`profile.fuse.type === 'fast'`, and the schema only ever allows that
+  // literal — there's no resettable PTC/polyfuse option to model a cooldown
+  // against), so a blown fuse is destroyed, not thermally reversible. Once
+  // latched, it stays 'blown' for the rest of this power-on session — only
+  // a power cycle (TwinSimulator.powerOff() -> powerOn()) clears the latch.
+  // 'warm' is not latched: it's a live thermal-duress reading, not damage,
+  // so it's fine for it to relax back down as the dwell timer resets.
   let fuse: PowerSample['fuse'] = 'ok';
-  if (overShortPulse) fuse = 'blown';
+  if (prev?.fuseBlown || overShortPulse) fuse = 'blown';
   else if (overSafeContinuous && overDurationMs > FUSE_WARM_MS) fuse = 'warm';
 
   // Charging is the opposite direction through the same battery — its own
@@ -188,6 +206,7 @@ export function computePower(
     warnings,
     tags: {
       // Grounded in whichever active loads are least-confidently sourced.
+      busA: tag,
       batteryA: tag,
       boostLossW: tag,
       // The regulated rail is a manufacturer spec (SW6106 boost target)

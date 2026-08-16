@@ -77,6 +77,11 @@ export class TwinSimulator {
   // pure — it only evaluates this, it never updates it — so tracking it
   // across samples is this class's job.
   private overAsinceMs: number | null = null;
+  // Latches once computePower reports the fuse blown (task-7 review finding
+  // #1 — a fast-blow fuse doesn't self-heal, so once true this stays true
+  // for the rest of this power-on session regardless of what current does
+  // afterward). Cleared only on a power cycle, in stopPowerSampling().
+  private fuseBlown = false;
 
   constructor(opts?: { seed?: number; profile?: HardwareProfile; now?: () => number }) {
     this.seed = opts?.seed ?? DEFAULT_SEED;
@@ -182,26 +187,30 @@ export class TwinSimulator {
     if (this.powerTimer !== null) clearInterval(this.powerTimer);
     this.powerTimer = null;
     this.overAsinceMs = null;
+    // A power cycle is the only thing that clears a blown fuse (replacing
+    // it, in the real hardware this models) — see the `fuseBlown` field.
+    this.fuseBlown = false;
   }
 
   /** §15/§7: one computePower call against the Twin's current activity, emitted as a 'power' SimEvent. */
   private samplePower(): void {
     const activity = this.deriveActivity();
     const nowMs = this.now();
-    const sample = computePower(
-      this.profile.power,
-      this.profile.power.loads,
-      activity,
-      this.overAsinceMs !== null ? { overAsinceMs: this.overAsinceMs, nowMs } : undefined,
-    );
+    const sample = computePower(this.profile.power, this.profile.power.loads, activity, {
+      overAsinceMs: this.overAsinceMs,
+      nowMs,
+      fuseBlown: this.fuseBlown,
+    });
 
-    // computePower only evaluates the over-3A dwell timer; advancing it for
-    // the next sample is this class's job (see the `overAsinceMs` field).
+    // computePower only evaluates the over-3A dwell timer and the fuse
+    // latch; advancing both for the next sample is this class's job (see
+    // the `overAsinceMs`/`fuseBlown` fields).
     if (sample.batteryA > this.profile.power.battery.safeContinuousA) {
       if (this.overAsinceMs === null) this.overAsinceMs = nowMs;
     } else {
       this.overAsinceMs = null;
     }
+    if (sample.fuse === 'blown') this.fuseBlown = true;
 
     this.emit({ t: 'power', sample });
   }
