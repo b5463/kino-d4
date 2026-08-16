@@ -31,6 +31,8 @@ import { UploadQueuePanel } from '../src/pages/Roll/UploadQueuePanel';
 import { navItems } from '../src/components/Sidebar';
 import { setDeviceState, clearDeviceState, supportsRollUpload, useDeviceStore } from '../src/state/deviceStore';
 import { appendLog, clearLogs, useLogStore } from '../src/state/logStore';
+import { putRollLinks, resetRollLinks, rollLinksFor } from '../src/state/rollLinks';
+import type { RollLinkView } from '../src/state/rollLinks';
 
 /** A passphrase distinctive enough that a substring search cannot miss it. */
 const SECRET = 'ZzTopSecret-9917';
@@ -157,6 +159,33 @@ describe('(a) Wi-Fi provisioning keeps the passphrase on the camera (05 §13)', 
     expect(html).not.toContain(SECRET);
   });
 
+  /**
+   * The form advertises "leave empty to keep the passphrase already stored on
+   * the camera" for a known SSID. Studio can only honour that by omitting the
+   * field — it never had the secret to send back — so the round trip has to
+   * succeed without one.
+   */
+  it('edits a known network without retyping the passphrase', async () => {
+    const { device, sent } = await connectMock();
+    const before = (await device.networkList()).networks.find((n) => n.ssid === 'kino-bench');
+    expect(before?.hasPassword).toBe(true);
+
+    const networks = await submitNetwork(device, {
+      ssid: 'kino-bench',
+      password: '',
+      security: 'wpa2',
+      autoJoin: false,
+    });
+
+    // Nothing that could be mistaken for a passphrase went out.
+    const setCall = sent.find((c) => c.cmd === Cmd.NETWORK_SET);
+    expect(setCall?.payload).not.toHaveProperty('password');
+
+    const after = networks.find((n) => n.ssid === 'kino-bench');
+    expect(after?.hasPassword).toBe(true);
+    expect(after?.autoJoin).toBe(false);
+  });
+
   it('uses a password input so the passphrase is never shown or autofilled into view', () => {
     const html = renderToStaticMarkup(
       createElement(NetworkPanel, { networks: [], status: null, busy: false, error: null, onSave: async () => {}, onForget: async () => {} }),
@@ -231,6 +260,7 @@ describe('(c) Start a Roll — server first, then the device', () => {
         view,
         guestUrl: started.guestUrl,
         hostUrl: started.hostUrl,
+        origin: 'server' as const,
         busy: false,
         error: null,
         onStart: async () => {},
@@ -239,7 +269,7 @@ describe('(c) Start a Roll — server first, then the device', () => {
       }),
     );
     expect(html).toContain('Leave Roll');
-    expect(html).toContain('Open host dashboard');
+    expect(html).toContain('OPEN HOST DASHBOARD');
     expect(html).toContain(started.hostUrl!);
     expect(html).toContain('<canvas');
   });
@@ -254,6 +284,7 @@ describe('(c) Start a Roll — server first, then the device', () => {
         view,
         guestUrl: null,
         hostUrl: null,
+        origin: 'unknown' as const,
         busy: false,
         error: null,
         onStart: async () => {},
@@ -287,7 +318,100 @@ describe('(c) Start a Roll — server first, then the device', () => {
 
     expect(started.guestUrl).toMatch(/^https:\/\/kino\.roll\//);
     expect(started.hostUrl).toBeNull();
+    expect(started.deviceOnly).toBe(true);
     expect((await device.rollStatus()).active).toBe(true);
+  });
+});
+
+/**
+ * The panel is unmounted by any sidebar click. Everything the camera reports
+ * survives that on its own; the host dashboard address does not, because the
+ * camera never had it. These are the assertions that a page swap does not turn
+ * a published Roll into a "camera only" one.
+ */
+describe('published Roll links survive an unmount', () => {
+  afterEach(() => resetRollLinks());
+
+  /** What RollPage does on mount: derive the links from ROLL_STATUS alone. */
+  const remount = async (device: KinoDevice) => rollLinksFor(await device.rollStatus());
+
+  const renderPanel = (view: Awaited<ReturnType<KinoDevice['rollStatus']>>, links: RollLinkView) =>
+    renderToStaticMarkup(
+      createElement(RollPanel, {
+        view,
+        guestUrl: links.guestUrl,
+        hostUrl: links.hostUrl,
+        origin: links.origin,
+        busy: false,
+        error: null,
+        onStart: async () => {},
+        onJoin: async () => {},
+        onLeave: async () => {},
+      }),
+    );
+
+  it('still offers the host dashboard after the page was left and reopened', async () => {
+    const { device } = await connectMock();
+    const started = await startRoll(device, recordingServer([]), {
+      title: 'Friday party',
+      downloadsEnabled: true,
+    });
+    // What RollPage stores once the create returns.
+    putRollLinks(started.deviceRollId, {
+      guestUrl: started.guestUrl,
+      hostUrl: started.hostUrl,
+      origin: 'server',
+    });
+
+    // ---- unmount: every piece of component state is gone ----
+
+    const links = await remount(device);
+    expect(links.origin).toBe('server');
+    expect(links.hostUrl).toBe('https://kino.acronym.sk/host/roll_srv_0001');
+    expect(links.guestUrl).toBe('https://kino.acronym.sk/r/7F3K9Q');
+
+    const html = renderPanel(await device.rollStatus(), links);
+    expect(html).toContain('OPEN HOST DASHBOARD');
+    expect(html).not.toContain('camera only');
+  });
+
+  it('keeps calling a device-only Roll device-only after a remount', async () => {
+    const { device } = await connectMock();
+    const started = await startRoll(
+      device,
+      new StubRollServerClient(),
+      { title: 'Friday party', downloadsEnabled: true },
+      { allowDeviceOnly: true },
+    );
+    putRollLinks(started.deviceRollId, {
+      guestUrl: started.guestUrl,
+      hostUrl: null,
+      origin: 'device-only',
+    });
+
+    const links = await remount(device);
+    expect(links.origin).toBe('device-only');
+
+    const html = renderPanel(await device.rollStatus(), links);
+    expect(html).toContain('No host dashboard — this Roll exists on the camera only.');
+  });
+
+  it('claims nothing about a Roll this session did not create', async () => {
+    const { device } = await connectMock();
+    // A Roll joined here, or created before Studio was reloaded: the camera is
+    // on it, and this session has no idea whether a server published it.
+    await device.rollJoin('amber-001');
+
+    const links = await remount(device);
+    expect(links.origin).toBe('unknown');
+    expect(links.hostUrl).toBeNull();
+    // The camera's own guest URL is real, so the QR is still shown.
+    expect(links.guestUrl).toBe('https://kino.roll/amber-001');
+
+    const html = renderPanel(await device.rollStatus(), links);
+    expect(html).toContain('Host link not available in this session.');
+    expect(html).not.toContain('camera only');
+    expect(html).toContain('<canvas');
   });
 });
 
@@ -305,7 +429,7 @@ describe('(d) upload queue', () => {
     );
     expect(html).toContain('12 PENDING');
     expect(html).toContain('2 FAILED');
-    expect(html).toContain('Retry failed');
+    expect(html).toContain('RETRY FAILED');
 
     const retried = await device.uploadQueueRetry();
     expect(sent.some((c) => c.cmd === Cmd.UPLOAD_QUEUE_RETRY)).toBe(true);

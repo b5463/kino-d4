@@ -1196,14 +1196,18 @@ export class MockKinoDevice implements MockDeviceLike {
         }
         const security = req.security ?? 'wpa2';
         const password = typeof req.password === 'string' ? req.password : '';
-        if (security !== 'open' && password.length < 8) {
+        const existing = this.networks.find((n) => n.ssid === ssid);
+        // Editing a known network without sending a passphrase is the normal
+        // case, not a malformed request: NETWORK_LIST only ever handed the host
+        // a mask, so it has nothing to send back. The length rule therefore
+        // applies to a passphrase actually being set — checking it first made
+        // the keep-what-is-stored path below unreachable.
+        const keepsStored = existing !== undefined && password.length === 0 && existing.password.length > 0;
+        if (security !== 'open' && !keepsStored && password.length < 8) {
           this.respondError(frame, 'INVALID_ARGUMENT', 'WPA passphrase must be at least 8 characters');
           return;
         }
-        const existing = this.networks.find((n) => n.ssid === ssid);
         if (existing) {
-          // An update that omits the password keeps the stored one — the host
-          // never had it to send back.
           if (password.length > 0) existing.password = password;
           existing.security = security;
           existing.autoJoin = req.autoJoin ?? existing.autoJoin;

@@ -37,11 +37,20 @@ export interface StartRollOptions {
 }
 
 export interface StartedRoll {
+  /** Id on the Roll server, or the camera's own when nothing published it. */
   rollId: string;
+  /**
+   * The id the camera reports in ROLL_STATUS. Session-level knowledge about
+   * this Roll has to be filed under this one — it is the only id both sides
+   * share, since ROLL_CREATE carries nothing but a name.
+   */
+  deviceRollId: string;
   slug: string;
   guestUrl: string;
   /** Null when the roll only exists on the camera (demo/device-only path). */
   hostUrl: string | null;
+  /** True when no Roll server published this Roll. */
+  deviceOnly: boolean;
 }
 
 /**
@@ -77,6 +86,20 @@ export async function startRoll(
   const created = await device.rollCreate(opts.title);
 
   return published
-    ? { rollId: published.rollId, slug: published.slug, guestUrl: published.guestUrl, hostUrl: published.hostUrl }
-    : { rollId: created.rollId, slug: created.slug, guestUrl: created.guestUrl, hostUrl: null };
+    ? {
+        rollId: published.rollId,
+        deviceRollId: created.rollId,
+        slug: published.slug,
+        guestUrl: published.guestUrl,
+        hostUrl: published.hostUrl,
+        deviceOnly: false,
+      }
+    : {
+        rollId: created.rollId,
+        deviceRollId: created.rollId,
+        slug: created.slug,
+        guestUrl: created.guestUrl,
+        hostUrl: null,
+        deviceOnly: true,
+      };
 }

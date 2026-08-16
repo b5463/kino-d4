@@ -5,6 +5,7 @@ import { Led } from '../../components/Led';
 import { FieldRow, ToggleField } from '../../components/fields';
 import type { RollView } from '../../roll/rollTypes';
 import type { StartRollOptions } from '../../roll/rollOps';
+import type { RollLinkOrigin } from '../../state/rollLinks';
 
 /**
  * Roll lifecycle (02 §17, terminology per 01 §10). The camera is the source of
@@ -157,6 +158,7 @@ export function RollPanel({
   view,
   guestUrl,
   hostUrl,
+  origin,
   busy,
   error,
   onStart,
@@ -168,6 +170,8 @@ export function RollPanel({
   guestUrl: string | null;
   /** Host dashboard, only when a Roll server created the Roll. */
   hostUrl: string | null;
+  /** Whether the absence of a host dashboard is a fact or just unknown here. */
+  origin: RollLinkOrigin;
   busy: boolean;
   error: string | null;
   onStart: (opts: StartRollOptions) => Promise<void>;
@@ -205,12 +209,16 @@ export function RollPanel({
           <div className="panel-actions">
             {hostUrl ? (
               <a className="btn" href={hostUrl} target="_blank" rel="noreferrer noopener">
-                Open host dashboard
+                OPEN HOST DASHBOARD
               </a>
-            ) : (
+            ) : origin === 'device-only' ? (
               <span className="field-hint">
                 No host dashboard — this Roll exists on the camera only.
               </span>
+            ) : (
+              // The camera is on a Roll this Studio session did not create. It
+              // may well be published; claiming otherwise would be a guess.
+              <span className="field-hint">Host link not available in this session.</span>
             )}
             <Button variant="danger" busy={busy} onClick={() => void onLeave()}>
               Leave Roll

@@ -63,7 +63,7 @@ export function ServerPanel({
 
       <div className="panel-actions">
         <Button busy={busy} onClick={() => void onTest()}>
-          Test server
+          TEST SERVER
         </Button>
       </div>
     </Panel>

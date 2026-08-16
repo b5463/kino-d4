@@ -104,7 +104,7 @@ export function NetworkPanel({
                 {n.autoJoin ? ' · AUTO-JOIN' : ''}
               </span>
               <Button size="sm" disabled={busy} onClick={() => void onForget(n.ssid)}>
-                Forget
+                FORGET
               </Button>
             </li>
           ))}
@@ -172,7 +172,7 @@ export function NetworkPanel({
 
         <div className="panel-actions">
           <Button type="submit" variant="primary" busy={busy} disabled={!canSave}>
-            Save network
+            SAVE NETWORK
           </Button>
         </div>
       </form>

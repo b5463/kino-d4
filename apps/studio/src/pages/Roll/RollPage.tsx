@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Unsupported } from '../../components/Unsupported';
 import { getDevice, isDemo } from '../../app/session';
 import { supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
+import { putRollLinks, rollLinksFor, useRollLinks } from '../../state/rollLinks';
 import {
   DEFAULT_ROLL_SERVER_URL,
   StubRollServerClient,
@@ -56,10 +57,10 @@ export function RollPage() {
   /** A failed read of the whole page, which is a link problem, not a form one. */
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // The server's URLs for the roll this Studio session started. The camera
-  // does not carry the host dashboard address, so it lives here.
-  const [publishedGuestUrl, setPublishedGuestUrl] = useState<string | null>(null);
-  const [hostUrl, setHostUrl] = useState<string | null>(null);
+  // Public URLs live in a store that outlives this component: the camera never
+  // reports a host dashboard, so page state lost it on the first page swap and
+  // the panel then denied a Roll that was published fine.
+  const linkMap = useRollLinks((s) => s.byRollId);
 
   const refresh = useCallback(async () => {
     const dev = getDevice();
@@ -76,11 +77,6 @@ export function RollPage() {
       setRollView(view);
       setQueue(q);
       setLoadError(null);
-      // A roll the camera left elsewhere takes its dashboard link with it.
-      if (!view.active) {
-        setPublishedGuestUrl(null);
-        setHostUrl(null);
-      }
     } catch (err) {
       setLoadError(message(err));
     }
@@ -168,25 +164,28 @@ export function RollPage() {
    */
   const allowDeviceOnly = isDemo() && server instanceof StubRollServerClient;
 
+  const links = rollLinksFor(rollView, linkMap);
+
   const start = (opts: StartRollOptions) =>
     withDevice(setRollBusy, setRollError, async (dev) => {
       const started = await startRoll(dev, server, opts, { allowDeviceOnly });
-      setPublishedGuestUrl(started.guestUrl);
-      setHostUrl(started.hostUrl);
+      putRollLinks(started.deviceRollId, {
+        guestUrl: started.guestUrl,
+        hostUrl: started.hostUrl,
+        origin: started.deviceOnly ? 'device-only' : 'server',
+      });
     });
 
+  // A joined Roll was created by someone else, so this session knows no host
+  // dashboard for it — and does not pretend one cannot exist.
   const join = (slug: string) =>
     withDevice(setRollBusy, setRollError, async (dev) => {
       setRollView(await dev.rollJoin(slug));
-      setPublishedGuestUrl(null);
-      setHostUrl(null);
     });
 
   const leave = () =>
     withDevice(setRollBusy, setRollError, async (dev) => {
       await dev.rollLeave();
-      setPublishedGuestUrl(null);
-      setHostUrl(null);
     });
 
   const retryUploads = () =>
@@ -229,8 +228,9 @@ export function RollPage() {
 
       <RollPanel
         view={rollView}
-        guestUrl={publishedGuestUrl}
-        hostUrl={hostUrl}
+        guestUrl={links.guestUrl}
+        hostUrl={links.hostUrl}
+        origin={links.origin}
         busy={rollBusy}
         error={rollError}
         onStart={start}

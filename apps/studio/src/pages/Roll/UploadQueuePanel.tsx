@@ -57,7 +57,7 @@ export function UploadQueuePanel({
           </dl>
           <div className="panel-actions">
             <Button busy={busy} disabled={queue.failed === 0} onClick={() => void onRetry()}>
-              Retry failed
+              RETRY FAILED
             </Button>
           </div>
         </>
