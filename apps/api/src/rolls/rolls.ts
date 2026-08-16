@@ -7,6 +7,7 @@ import { newToken } from '../auth/tokens';
 import { hashPin } from '../auth/pins';
 import { newId } from '../ids';
 import { auditEvents, rolls } from '../db/schema';
+import type { RollCaptureCounts } from '../uploads/uploads';
 import { newSlug } from './slug';
 
 /**
@@ -319,10 +320,20 @@ export interface HostRollView {
   guestUrl: string;
   createdAt: Date;
   closedAt: Date | null;
-  counts: { captures: number; pending: number; hidden: number };
+  counts: RollCaptureCounts;
 }
 
-export function hostRollView(config: ApiConfig, roll: PublicRollRow): HostRollView {
+/**
+ * `counts` is passed in rather than queried here so this stays a pure
+ * projection: the two call sites in `host-rolls.ts` both already have a database
+ * handle, and a view function that silently issues a query is the kind of thing
+ * that turns one dashboard render into N of them later.
+ */
+export function hostRollView(
+  config: ApiConfig,
+  roll: PublicRollRow,
+  counts: RollCaptureCounts,
+): HostRollView {
   return {
     rollId: roll.id,
     slug: roll.slug,
@@ -335,13 +346,8 @@ export function hostRollView(config: ApiConfig, roll: PublicRollRow): HostRollVi
     guestUrl: guestUrlFor(config, roll.slug),
     createdAt: roll.createdAt,
     closedAt: roll.closedAt,
-    /**
-     * Honest zeros, not a lie: the `captures` table exists but nothing writes to
-     * it until Task 18 adds the upload pipeline, so there is genuinely nothing
-     * to count. Task 18 replaces this literal with the real aggregate — the
-     * shape is here so the host web can be built against it in the meantime.
-     */
-    counts: { captures: 0, pending: 0, hidden: 0 },
+    // Real since Task 18: `rollCaptureCounts` reads the `captures` table.
+    counts,
   };
 }
 
@@ -353,13 +359,17 @@ export interface GuestRollView {
   createdAt: Date;
 }
 
-export function guestRollView(roll: PublicRollRow): GuestRollView {
+/**
+ * `photoCount` counts the captures a guest can actually see — visible and not in
+ * the trash grace period — so it can be lower than the host's `captures`, which
+ * includes hidden ones. Deliberately not the roll's id, slug or privacy: a guest
+ * needs none of them to render the header.
+ */
+export function guestRollView(roll: PublicRollRow, photoCount: number): GuestRollView {
   return {
     title: roll.title,
     status: roll.status,
-    // As above: zero until Task 18. Deliberately not the roll's id, slug or
-    // privacy — a guest needs none of them to render the header.
-    photoCount: 0,
+    photoCount,
     createdAt: roll.createdAt,
   };
 }
