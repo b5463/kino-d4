@@ -209,8 +209,10 @@ is bound, so tests drive it in-process via `app.inject()`. Fastify boots the
 registered plugins lazily on the first request, which is why it is synchronous.
 
 Plugins decorate the instance with `app.db` (drizzle over postgres-js),
-`app.redis` (ioredis) and `app.s3` (AWS SDK v3 pointed at MinIO), and each
-registers an `onClose` hook, so `app.close()` releases every connection.
+`app.redis` (ioredis), `app.s3` (AWS SDK v3 pointed at MinIO) and
+`app.rollEvents` (the shared roll event subscriber), and each registers an
+`onClose` hook, so `app.close()` releases every connection — including any open
+SSE stream, which by definition would never end on its own.
 
 `GET /api/healthz` pings all three concurrently (`select 1`, `PING`,
 `HeadBucket`) with a 5 s per-probe timeout, and answers
@@ -330,6 +332,7 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
 | `GET /api/rolls/:slug` | guest | `{title, status, photoCount, createdAt}` |
+| `GET /api/rolls/:slug/events` | guest | SSE; see [Live events](#live-events-03-7-05-10) |
 
 `POST /api/host/rolls` is unauthenticated for the same reason device
 registration is: V1 has no accounts (05 §12), so the call *mints* the
@@ -596,13 +599,8 @@ genuinely incomplete, which is the one thing `partial` exists to prevent. While
 the jobs are still running the answer is `processing` — a failed asset may yet
 be retried, so the outcome is not decided.
 
-### Two stubs, marked as such
+### One stub, marked as such
 
-- `src/events/publish.ts` — `RollEvent` and the channel name are Task 19's
-  shape; the body is a single `PUBLISH`, and Task 19 adds the stream `XADD` that
-  makes `Last-Event-ID` replay work. Callers wrap it: a dead event bus must not
-  turn a committed upload into a 500, and the PWA re-fetches the capture anyway
-  (05 §10).
 - `enqueueProcessingJobs` in `src/uploads/uploads.ts` — writes the
   `processing_events` `queued` rows and returns the payloads a real queue would
   have been handed. Task 22 adds `await enqueue(name, payload)` inside the loop;
@@ -639,6 +637,124 @@ be retried, so the outcome is not decided.
   (the row lock above). The pool is 10, so ten simultaneous completions saturate
   it. Correct, and cheap at party scale; it is the figure to look at first if
   this ever needs to serve many rigs at once.
+
+## Live events (03 §7, 05 §10)
+
+`GET /api/rolls/:slug/events` — Server-Sent Events, under the same
+`guestRollAccess` rules and the same `X-Robots-Tag` as the rest of the guest URL
+space. New captures appear without a refresh.
+
+| File | Holds |
+| --- | --- |
+| `src/events/publish.ts` | the event union, the keys, `publishRollEvent`, `readRollHistory` |
+| `src/events/bus.ts` | the one shared subscriber connection and its refcounts |
+| `src/events/feed.ts` | one guest's replay-then-live join |
+| `src/events/viewers.ts` | the per-roll live viewer count |
+| `src/routes/guest-events.ts` | the SSE response itself |
+
+### Publishing
+
+Every event goes to two Redis keys, in this order:
+
+```text
+XADD    roll:<id>:stream  MAXLEN ~ 500    the durable, replayable log
+PUBLISH roll:<id>:events                  the live fan-out
+```
+
+XADD first, because a publish that dies half-way has at least *recorded* the
+event and every subscriber finds it on their next reconnect; PUBLISH first would
+deliver to whoever happened to be connected and hide it from everyone else
+forever. The channel payload is `{"id":"<entry id>","event":{…}}` — the
+subscriber has to label each frame with the id a reconnect sends back, and the
+stream entry id is the only id both halves agree on.
+
+Payloads carry **ids only** (`{type, captureId?, role?}`); the PWA re-fetches the
+capture (05 §10). Everything read back off either key is parsed against the
+event union before it can reach a guest.
+
+`MAXLEN ~ 500` bounds replay depth per roll, not retention: a guest away for
+more than 500 events gets a truncated replay, which costs at most a stale tile
+until the next event.
+
+### The wire
+
+```text
+retry: 3000
+
+id: 1786903764873-0
+event: capture.created
+data: {"type":"capture.created","captureId":"cap_…"}
+
+: heartbeat
+```
+
+Events are **named**, matching 03 §7's list, so a client uses
+`addEventListener('capture.created', …)` — `onmessage` alone will see nothing.
+The payload repeats `type` so one handler can serve every name. The heartbeat
+comment every 25 s keeps proxies from reaping an idle stream.
+
+The reply is a `PassThrough` stream, not `reply.hijack()` + `reply.raw.write()`:
+hijacking skips `onSend`, which is where `robotsPlugin` lives, and a route that
+can forget the privacy header is exactly what that plugin exists to prevent.
+
+### Reconnect, and the gap between replay and live
+
+On reconnect the browser sends `Last-Event-ID`. The feed **subscribes first**,
+buffers, then reads history with an exclusive `XRANGE (<id>`, then drains the
+buffer. Both orderings have a window, and this is the recoverable one:
+
+- snapshot then subscribe — an event published in between is **lost**, and no
+  later mechanism recovers it, because the client's `Last-Event-ID` has already
+  moved past it.
+- subscribe then snapshot — an event published in between arrives **twice**.
+
+Duplicates are detectable, losses are not. The detector is a watermark: stream
+ids only increase, so anything not greater than the last id delivered has
+already been delivered. It starts at the client's own `Last-Event-ID`, which
+also makes the replay exclusive of the event it already has.
+
+A malformed `Last-Event-ID` is a `400 INVALID_LAST_EVENT_ID`; a browser can only
+send back an id this route issued.
+
+### One subscriber connection per process
+
+ioredis puts a connection into subscribe mode when it subscribes, after which it
+refuses ordinary commands — so `app.redis` cannot be used, and the obvious
+alternative (`duplicate()` per SSE request) is 50 viewers × rolls × instances
+idle connections, re-established on every mobile screen lock. Instead
+`RollEventBus` owns exactly one duplicated connection, subscribes per channel
+with a reference count, and unsubscribes when the last guest on a roll leaves.
+Per-channel rather than `PSUBSCRIBE roll:*:events`, so Redis does the filtering
+it already has the index for.
+
+The cost is shared fate: if that connection drops, every live guest is affected.
+Recovery already exists and is tested — ioredis reconnects and re-subscribes,
+and anything missed in the gap is replayed from the stream by `Last-Event-ID`.
+
+### Counting guests
+
+`roll:<id>:viewers` is a sorted set scored by heartbeat timestamp, not a set
+with a key TTL. A TTL belongs to the key, so one connection that died without a
+FIN — a phone that left the building — would be counted for as long as any other
+guest kept refreshing the key. Per-member scores expire per member:
+`countRollViewers` prunes anything older than 60 s (two missed heartbeats) on
+read and returns `ZCARD`. Resolution is the heartbeat: a clean disconnect is
+removed at once, a vanished one within 60 s.
+
+### Known gaps
+
+- `roll.opened` / `roll.closed` are in the union but nothing publishes them yet.
+  The host status PATCH is where they belong, and a guest currently learns a
+  roll closed by re-fetching it.
+- `processing.completed` likewise: it is the worker's event (Task 22).
+- `countRollViewers` is not yet surfaced anywhere — the host dashboard's
+  "Guests" number (03 §10) is the consumer this exists for.
+- Streams and viewer sets are keyed by roll id and expire only on their own
+  terms: a deleted roll leaves its `roll:<id>:stream` behind until Redis evicts
+  it. Deletion is not implemented yet; when it is, it should `DEL` both keys.
+- A client that stops reading is dropped once 64 KB has queued for it, rather
+  than being buffered indefinitely. That is safe *because* of `Last-Event-ID`:
+  it reconnects and replays.
 
 ## Logging
 

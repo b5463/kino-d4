@@ -19,7 +19,7 @@ import {
   sessionKeyFor,
   type AssetState,
 } from '../src/uploads/uploads';
-import { rollEventChannel } from '../src/events/publish';
+import { rollEventChannel, rollStreamKey } from '../src/events/publish';
 import * as schema from '../src/db/schema';
 
 /**
@@ -304,6 +304,12 @@ afterAll(async () => {
     await app.db.delete(auditEvents).where(inArray(auditEvents.rollId, createdRollIds));
     await app.db.delete(rollDevices).where(inArray(rollDevices.rollId, createdRollIds));
     await app.db.delete(rolls).where(inArray(rolls.id, createdRollIds));
+
+    // These routes publish roll events, and a published event is durable now
+    // (Task 19's XADD). Without this, every run of this suite would leave a
+    // `roll:<id>:stream` behind in the dev Redis for a roll that no longer
+    // exists.
+    await app.redis.del(...createdRollIds.map((id) => rollStreamKey(id)));
   }
   if (migrated) {
     await app.db.delete(schema.devices).where(inArray(schema.devices.serial, SERIALS));

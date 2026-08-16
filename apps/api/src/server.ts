@@ -11,6 +11,7 @@ import { loadConfig, type ApiConfig } from './config';
 import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
+import { eventsPlugin } from './plugins/events';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
 import { robotsPlugin } from './rolls/robots';
@@ -19,6 +20,7 @@ import { deviceRollRoutes } from './routes/device-rolls';
 import { deviceCaptureRoutes } from './routes/device-captures';
 import { hostRollRoutes } from './routes/host-rolls';
 import { guestRollRoutes } from './routes/guest-rolls';
+import { guestEventRoutes } from './routes/guest-events';
 import { diagnosticRoutes } from './routes/diagnostics';
 
 declare module 'fastify' {
@@ -78,6 +80,8 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.decorate('config', config);
   app.register(dbPlugin, { config });
   app.register(redisPlugin, { config });
+  // The roll event subscriber; duplicates the client above, so it comes after.
+  app.register(eventsPlugin);
   app.register(s3Plugin, { config });
   // Signed cookies for the guest PIN session (05 §12/§13).
   app.register(cookie, { secret: config.COOKIE_SECRET });
@@ -106,6 +110,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.register(deviceCaptureRoutes);
   app.register(hostRollRoutes);
   app.register(guestRollRoutes);
+  app.register(guestEventRoutes);
 
   /**
    * Auth probe routes, test builds only. `NODE_ENV` has no default and an unset
