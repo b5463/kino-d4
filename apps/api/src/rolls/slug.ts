@@ -7,11 +7,24 @@ import { randomFillSync } from 'node:crypto';
  * (`regenerate-slug`) without rewriting a single row that references the roll.
  *
  * Six characters from a 31-character alphabet is ~887 million values, ~29.7
- * bits. That is *not* a cryptographic secret and must never be treated as one:
- * it is a link that is impractical to stumble on, backed by the PIN gate
- * (03 §9) when a roll actually needs a lock. The size is the spec's own example
- * format (`7F3K9Q`) and is deliberately short because it gets read off one
- * phone screen and typed into another.
+ * bits. The size is the spec's own example format (`7F3K9Q`) and is
+ * deliberately short because it gets read off one phone screen and typed into
+ * another.
+ *
+ * ## Be honest about what this is now load-bearing for
+ *
+ * It is tempting to write "the slug is not a secret, just a link that is
+ * impractical to stumble on". That was true when a slug only bought a guest a
+ * read. It stopped being true at `POST /api/device/rolls/join`, which turns a
+ * slug into a `roll_devices` row — permanent write scope on the roll, with no
+ * PIN gate (correct per 03 §9: the PIN protects the guest gallery, not device
+ * assignment) and no host approval.
+ *
+ * So ~29.7 bits is currently the sole credential guarding device write access,
+ * and nothing meters the route that checks it. That is a real gap, not a
+ * theoretical one — see the rate-limiting priority list in the README, where
+ * `join` is item 1. Widening the slug is the wrong fix (it is a
+ * read-off-a-screen human string); metering `join` is the right one.
  *
  * The alphabet omits `0`/`O` and `1`/`I`/`L` for exactly that reason. Every
  * excluded character is one a guest would otherwise mistype, and a mistyped
@@ -23,6 +36,25 @@ export const SLUG_LENGTH = 6;
 
 /** The same alphabet as a pattern, for validating a slug that arrives in a request. */
 export const SLUG_PATTERN = /^[23456789A-HJKMNP-Z]{6}$/;
+
+/**
+ * Canonicalises a slug arriving from the outside world.
+ *
+ * The alphabet is upper case, so a slug is *stored* upper case — but a guest
+ * types what is on the screen, and phone keyboards, autocorrect and
+ * copy-paste-with-whitespace all produce something else. Matching the raw path
+ * parameter would 404 a guest holding a perfectly valid slug, on the product's
+ * primary entry path.
+ *
+ * This must be applied at **every** site that resolves a slug to a roll —
+ * `guestRollAccess`, the PIN exchange, and the device join route. Normalising
+ * at some of them and not others is worse than normalising at none: a roll that
+ * is readable at `kino.example/r/abc234` but cannot be unlocked there is a dead
+ * end with no error message that explains it.
+ */
+export function normalizeSlug(slug: string): string {
+  return slug.trim().toUpperCase();
+}
 
 /**
  * The largest multiple of the alphabet size that fits in a byte (8 × 31 = 248).

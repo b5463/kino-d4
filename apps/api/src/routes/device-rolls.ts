@@ -3,7 +3,7 @@ import { and, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { deviceOf } from '../auth/plugins';
 import { createRoll } from '../rolls/rolls';
-import { SLUG_PATTERN } from '../rolls/slug';
+import { SLUG_PATTERN, normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
 
@@ -38,12 +38,17 @@ const createBody = z
   .strict();
 
 /**
- * Slugs are validated before they reach the database. Not for safety — drizzle
- * parameterises — but so a typo answers 404 from a regex instead of a table
- * scan, and so the slug alphabet has exactly one definition.
+ * Slugs are normalised, then validated before they reach the database. Not for
+ * safety — drizzle parameterises — but so a typo answers 400 from a regex
+ * instead of a table scan, and so the slug alphabet has exactly one definition.
+ *
+ * `normalizeSlug` is the same function the two guest-side resolution sites in
+ * `auth/plugins.ts` use. A slug is hand-typed here more often than anywhere
+ * else (it is read off another camera's screen), so the three sites agreeing on
+ * case is the difference between "join failed" and "join worked".
  */
 const joinBody = z
-  .object({ slug: z.string().trim().toUpperCase().regex(SLUG_PATTERN) })
+  .object({ slug: z.string().transform(normalizeSlug).pipe(z.string().regex(SLUG_PATTERN)) })
   .strict();
 
 /** Which statuses a device is offered as "current". Closed rolls take no uploads. */
@@ -70,6 +75,23 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
    * *scope*, and whether a capture may actually be uploaded is decided once, at
    * upload time, by `assertRollAcceptsUploads`. Duplicating that decision here
    * would give two places for it to disagree.
+   *
+   * ## This is the system's sharpest unmetered edge — read before extending it
+   *
+   * The reply distinguishes 404 from 200, so this route is a slug oracle. What
+   * makes it *the* one to fix first is that a hit is not information, it is
+   * access: the 200 has already written the `roll_devices` row. There is no
+   * second step left to defend.
+   *
+   * And the entry cost is zero — `POST /api/studio/devices/register` is
+   * unauthenticated, so a device token is free. Slug + free token = write scope
+   * on somebody else's roll, at whatever rate the network allows.
+   *
+   * Nothing here is wrong per the spec (03 §9 puts no PIN on device
+   * assignment), and the fix is not a check in this handler — it is rate
+   * limiting, Task 36, item 1 of the priority list in the README. Anything
+   * added here that makes a hit cheaper or more distinguishable makes that
+   * worse.
    */
   app.post('/api/device/rolls/join', { preHandler: app.requireDevice }, async (request, reply) => {
     const parsed = joinBody.safeParse(request.body);

@@ -277,6 +277,11 @@ authentication on the endpoint: **rate limiting plus either a registration
 secret or first-write-wins serial claiming**, tracked as a Task 36 handoff.
 Until then, treat this as the weakest link in the device trust chain.
 
+Since Task 17 it is also a *step*, not just an endpoint: the free device token
+it hands out is what makes `POST /api/device/rolls/join` a practical slug
+enumerator. See "Rate limiting — the Task 36 handoff, in priority order" below
+for the full chain.
+
 ### Guest PIN session
 
 `POST /api/rolls/:slug/pin` `{pin}` verifies against `rolls.pin_hash` and sets
@@ -323,23 +328,82 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 registration is: V1 has no accounts (05 §12), so the call *mints* the
 credential rather than checking one. It is a spam/storage surface, not a
 data-exposure one — the roll it creates is reachable only through the token in
-its own response — and it is the second of the two routes that most need Task
-36's rate limiting.
+its own response.
 
 ### Slug
 
 Six characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (`src/rolls/slug.ts`),
 drawn with rejection sampling from `crypto.randomFillSync` so no character is
 more likely than another. `0`/`O` and `1`/`I`/`L` are excluded because a slug
-gets read off one phone screen and typed into another. ~887M values, ~29.7 bits:
-**not a secret**, a link that is impractical to stumble on — the PIN gate is
-what locks a roll that needs locking. Uniqueness is the `rolls_slug_unique`
-constraint's job; the caller retries on collision (pre-checking with a SELECT
-would still race).
+gets read off one phone screen and typed into another. ~887M values, ~29.7 bits.
+Uniqueness is the `rolls_slug_unique` constraint's job; the caller retries on
+collision (pre-checking with a SELECT would still race).
+
+Every site that resolves a slug — `guestRollAccess`, the PIN exchange, and
+`POST /api/device/rolls/join` — runs it through `normalizeSlug()`
+(`trim().toUpperCase()`) first. All three, deliberately: a roll that is readable
+at `…/r/abc234` but cannot be *unlocked* at that casing would be a dead end with
+no error message that explains it.
 
 The slug is separate from `rolls.id` (05 §14), which is what lets
 `regenerate-slug` rotate a leaked link without touching a single row that
 references the roll.
+
+#### What the slug actually is, post-Task-17
+
+Earlier drafts of this file called the slug "not a secret, a link that is
+impractical to stumble on". That was true when only guests could use one. It is
+**not true any more**, and the difference matters:
+
+> Since Task 17, the slug is the **sole credential for device write scope**.
+> `POST /api/device/rolls/join` takes a slug and grants the calling device a
+> `roll_devices` row — permanent operate/upload scope on that roll. There is no
+> PIN gate on join (correct per 03 §9 — the PIN protects the *guest gallery*,
+> not device assignment) and no host approval step. Anyone holding a slug and
+> any device token can put a camera into that roll.
+
+~29.7 bits is a reasonable size for a link that is merely *read*. It is a thin
+credential for one that grants **write** access, and until Task 36 meters the
+join route, nothing bounds how fast that space can be walked. The slug is doing
+authorization work its entropy was not chosen for.
+
+### Rate limiting — the Task 36 handoff, in priority order
+
+Nothing in V1 is rate limited. These are the routes that need it, worst first.
+The ordering is by *what a successful guess wins*, not by how exposed the route
+looks.
+
+**1. `POST /api/device/rolls/join` — enumeration that converts directly into
+write scope.** The full chain is what makes this first: `POST
+/api/studio/devices/register` is unauthenticated, so an attacker mints a valid
+device token for free, then walks the slug space against `join`. The route
+distinguishes 404 (no such roll) from 200 (joined) with no metering, so it is an
+oracle — and unlike every other oracle here, a **hit is not information, it is
+access**: the 200 already wrote the `roll_devices` row. There is no second step
+to defend. Needs per-token and per-IP limits on the join route, and a lockout
+after a run of 404s, since sustained misses are the enumeration signature.
+
+**2. `POST /api/studio/devices/register` — identity takeover.** Documented in
+full above: an unauthenticated POST with an existing serial rotates that
+device's token, bricking the hardware and handing over every roll it had. It is
+second only because it is a prerequisite for (1) rather than a hit in itself —
+though it is also the cheaper fix, and fixing it (registration secret or
+first-write-wins serial claiming) removes the free device token that (1)
+depends on.
+
+**3. `POST /api/rolls/:slug/pin` — online PIN guessing.** A 4-digit PIN is 10 000
+candidates. scrypt makes each attempt cost ~30 ms server-side, which is a
+throttle on the attacker *and* on us; it is not a limit. `pins.ts` is already
+explicit that the real defence is rate limiting, and it belongs here.
+
+**4. `GET /api/rolls/:slug` — existence oracle.** Inherited, not introduced by
+Task 17: 404 versus 200/401 confirms a slug exists. Last because a hit yields
+only *read* access to one roll (and only past the PIN gate, if there is one) —
+it does not compound. Worth metering for the same enumeration signature as (1),
+at a looser threshold.
+
+Note that (1) and (4) walk the *same* keyspace. Metering the guest read while
+leaving `join` open would move an attacker to the route that grants more.
 
 ### States (03 §22)
 

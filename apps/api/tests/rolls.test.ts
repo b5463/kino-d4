@@ -939,6 +939,91 @@ describe('GET /api/rolls/:slug (guest, 03 §9)', () => {
   });
 });
 
+/**
+ * A slug is stored upper case because the alphabet is upper case, but a guest
+ * types what is on the screen — and phone keyboards, autocorrect and
+ * copy-paste-with-whitespace all produce something else. Every site that
+ * resolves a slug must agree, or a guest ends up on a roll that is readable but
+ * not unlockable.
+ */
+describe('slug normalization at every resolution site', () => {
+  it('resolves a lowercase slug on the guest read', async () => {
+    const created = await createAsHost({ title: 'Lowercase link' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/rolls/${created.slug.toLowerCase()}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ title: 'Lowercase link' });
+  });
+
+  /**
+   * The half that must not be forgotten. A guest who reaches the roll in
+   * lowercase then hits the PIN gate has to be able to unlock it at that same
+   * casing — otherwise the PIN prompt is a dead end with no error explaining it.
+   */
+  it('resolves a lowercase slug on the PIN exchange, and the cookie then works', async () => {
+    const created = await createAsHost({ title: 'Lowercase PIN', pin: '4821' });
+    const lower = created.slug.toLowerCase();
+
+    const locked = await app.inject({ method: 'GET', url: `/api/rolls/${lower}` });
+    expect(locked.statusCode).toBe(401);
+    expect(locked.json()).toMatchObject({ code: 'PIN_REQUIRED' });
+
+    const unlock = await app.inject({
+      method: 'POST',
+      url: `/api/rolls/${lower}/pin`,
+      payload: { pin: '4821' },
+    });
+    expect(unlock.statusCode).toBe(200);
+
+    // The cookie is keyed on the roll id, not the slug, so it must open the
+    // roll at either casing.
+    const cookie = unlock.cookies.find((c) => c.name === `kino_pin_${created.rollId}`);
+    expect(cookie).toBeDefined();
+    const asHeader = { cookie: `${cookie?.name}=${cookie?.value}` };
+
+    for (const slug of [lower, created.slug]) {
+      const read = await app.inject({
+        method: 'GET',
+        url: `/api/rolls/${slug}`,
+        headers: asHeader,
+      });
+      expect(read.statusCode).toBe(200);
+    }
+  });
+
+  it('resolves a lowercase and whitespace-padded slug on device join', async () => {
+    const created = await createAsDevice({ title: 'Lowercase join' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/device/rolls/join',
+      headers: bearer(deviceB.deviceToken),
+      payload: { slug: `  ${created.slug.toLowerCase()}  ` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ rollId: created.rollId });
+  });
+
+  it('still rejects a slug that is not in the alphabet at all', async () => {
+    // Normalising must not become "accept anything": `0`, `O`, `1`, `I` and `L`
+    // are excluded from the alphabet and uppercasing does not rescue them.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/device/rolls/join',
+      headers: bearer(deviceB.deviceToken),
+      payload: { slug: 'oi01lz' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'INVALID_BODY' });
+  });
+});
+
 describe('X-Robots-Tag on the guest URL space (03 §9)', () => {
   const robots = 'noindex, nofollow';
 

@@ -8,6 +8,7 @@ import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastif
 import '@fastify/cookie';
 import { bearerToken, hashToken, timingSafeHexEqual, tokenScope } from './tokens';
 import { verifyPin } from './pins';
+import { normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls, devices } from '../db/schema';
 
 /**
@@ -107,6 +108,19 @@ function paramOf(request: FastifyRequest, name: string): string | null {
   if (typeof params !== 'object' || params === null) return null;
   const value = (params as Record<string, unknown>)[name];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * The `:slug` path parameter, canonicalised.
+ *
+ * Both slug-resolving preHandlers below go through this one function rather
+ * than calling `paramOf(request, 'slug')` themselves, so the guest read and the
+ * PIN exchange cannot drift apart on case. A roll that is readable at one
+ * casing but not unlockable at it would be a dead end for the guest.
+ */
+function slugParam(request: FastifyRequest): string | null {
+  const raw = paramOf(request, 'slug');
+  return raw === null ? null : normalizeSlug(raw);
 }
 
 /** Reports only the offending field NAMES, never the submitted values. */
@@ -320,7 +334,7 @@ export const authPlugin = fp(
     }
 
     app.decorate('guestRollAccess', async (request, reply) => {
-      const slug = paramOf(request, 'slug');
+      const slug = slugParam(request);
       if (slug === null) {
         return fail(reply, 400, 'SLUG_REQUIRED', 'missing :slug path parameter');
       }
@@ -356,7 +370,7 @@ export const authPlugin = fp(
         return fail(reply, 400, 'INVALID_BODY', `invalid or missing: ${issuePaths(parsed.error)}`);
       }
 
-      const slug = paramOf(request, 'slug');
+      const slug = slugParam(request);
       if (slug === null) {
         return fail(reply, 400, 'SLUG_REQUIRED', 'missing :slug path parameter');
       }
