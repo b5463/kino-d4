@@ -14,6 +14,7 @@ export {
   type ScenarioFlags,
   type ScenarioKey,
   type ScenarioDescriptor,
+  type CamFault,
 } from './scenarios';
 
 export { FACTORY_RECIPES } from './factoryRecipes';
