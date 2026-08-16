@@ -13,13 +13,20 @@ import { base64ToBytes } from './recorder';
 import type { SimSessionDoc, SimSessionEvent } from './recorder';
 
 /**
- * How long `done` waits after the last scheduled entry before resolving.
- * Large enough to comfortably clear a normal command's 8-26 ms dispatch
- * latency (MockKinoDevice.handleFrame); small enough to stay well under
- * `startAmbient`'s 600 ms first log tick, so a short scripted session's
- * replay never picks up an ambient log/capture event the original recording
- * never saw. (A session that itself runs past 600 ms, or arms
- * `delayedResponses`, would need a wider margin — out of scope here.)
+ * How long `done` waits, past the recorded session's own last event, before
+ * resolving. Large enough to comfortably clear a normal command's 8-26 ms
+ * dispatch latency (MockKinoDevice.handleFrame); this is a trailing margin
+ * on top of the FULL recorded session length (every event's `atMs`, not
+ * just the last delivered input) — see `lastAtMs` below. Getting this wrong
+ * (anchoring only to the last 'in'/'fault' entry) was task-8 review finding
+ * #1: an operator who leaves the recorder running past the last command
+ * (e.g. long enough to capture an ambient log tick) would have replay's
+ * `done` resolve, and `verifyReplay` detach the fresh device, before that
+ * trailing activity had a chance to reproduce — a false divergence on an
+ * ordinary recording, not an exotic one. (A session that arms
+ * `delayedResponses`, whose 1.4-2.4 s replies can exceed even this against
+ * the recorded event that triggered them, would need a wider margin —
+ * out of scope here.)
  */
 const TRAILING_MARGIN_MS = 200;
 
@@ -58,7 +65,15 @@ export function replaySession(
 
   if (opts?.onEvent) sim.onEvent(opts.onEvent);
 
-  let lastAtMs = 0;
+  // The FULL recorded session length — every event's `atMs`, including
+  // 'out'/'sim' entries that are never delivered as inputs — not just the
+  // last 'in'/'fault' entry. Idle time the original recording captured after
+  // its last command (an ambient log tick, say) is still part of what a
+  // faithful replay has to leave room for; anchoring this to inputs alone
+  // cuts the session short before that trailing activity can reproduce
+  // (task-8 review finding #1).
+  const lastAtMs = doc.events.reduce((max, e) => Math.max(max, e.atMs), 0);
+
   const done = new Promise<void>((resolve) => {
     const deliver = (entry: Extract<SimSessionEvent, { kind: 'in' } | { kind: 'fault' }>) => {
       if (entry.kind === 'in') {
@@ -72,7 +87,6 @@ export function replaySession(
 
     for (const entry of doc.events) {
       if (entry.kind !== 'in' && entry.kind !== 'fault') continue; // 'out'/'sim' are never inputs — see the file header
-      lastAtMs = Math.max(lastAtMs, entry.atMs);
       setTimeout(() => deliver(entry), entry.atMs / speed);
     }
     setTimeout(resolve, lastAtMs / speed + TRAILING_MARGIN_MS);

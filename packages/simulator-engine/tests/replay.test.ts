@@ -2,8 +2,10 @@
 // records a short scripted exchange (HELLO, GET_CAMERA_INFO, a per-camera
 // fault injection, CAMERA_STATUS), then proves the recording is a faithful,
 // byte-for-byte replayable artifact: verifyReplay reconstructs the same
-// outbound bytes from a fresh, identically-seeded device, and a single
-// tampered recorded byte is caught as a divergence.
+// outbound bytes from a fresh, identically-seeded device, a single tampered
+// recorded byte is caught as a divergence, and idle time an operator leaves
+// after the last command (long enough to capture an ambient log tick) still
+// replays cleanly rather than reporting a false divergence.
 import { describe, expect, it, vi } from 'vitest';
 import { Cmd, FrameFlags, PROTOCOL_VERSION, encodeFrame, encodeJson } from '@kino/kdp';
 import { parseVersioned } from '@kino/schemas';
@@ -120,6 +122,44 @@ describe('SimRecorder', () => {
     vi.useFakeTimers();
     try {
       const doc = await recordScriptedSession();
+
+      const result = await runVerify(doc);
+      expect(result.ok).toBe(true);
+      expect(result.firstDivergenceAtMs).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('idle time after the last input still replays byte-for-byte, including a captured ambient log tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const sim = new TwinSimulator({ seed: 11 });
+      const recorder = new SimRecorder(sim);
+      sim.device.attach(
+        (bytes) => recorder.noteOut(bytes),
+        () => {},
+      );
+      recorder.start();
+
+      sendIn(sim, recorder, 1, Cmd.HELLO, { nonce: 1 });
+      // Well past startAmbient's 600 ms first log tick, with no further
+      // input after it — the exact "operator leaves the recorder running"
+      // pattern task-8 review finding #1 flagged: idle time after the last
+      // command is an ordinary recording, not an exotic one.
+      await vi.advanceTimersByTimeAsync(900);
+
+      const doc = recorder.stop();
+      sim.device.detach();
+      sim.dispose();
+
+      // Confirms this recording actually captured trailing activity after
+      // the last input — otherwise this test wouldn't exercise the bug at
+      // all (a `lastAtMs` computed from inputs alone would look identical
+      // to one computed from every event whenever nothing follows the last
+      // input).
+      const ambientTickCaptured = doc.events.some((e) => e.kind === 'out' && e.atMs >= 600);
+      expect(ambientTickCaptured).toBe(true);
 
       const result = await runVerify(doc);
       expect(result.ok).toBe(true);
