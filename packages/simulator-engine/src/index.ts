@@ -19,3 +19,11 @@ export {
 } from './power';
 export { thermalStep, type ThermalState, type ThermalZone, type ThermalStepResult } from './thermal';
 export { flashBandRisk, type FlashRisk } from './flashRisk';
+export {
+  SimRecorder,
+  simSessionDoc,
+  base64ToBytes,
+  type SimSessionDoc,
+  type SimSessionEvent,
+} from './recorder';
+export { replaySession, verifyReplay } from './replay';
