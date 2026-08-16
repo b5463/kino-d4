@@ -5,7 +5,8 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server';
 import { loadConfig } from '../src/config';
 import { hashToken, newToken } from '../src/auth/tokens';
-import { hashPin } from '../src/auth/pins';
+import { hashPin, verifyPin } from '../src/auth/pins';
+import { DEV_COOKIE_SECRET } from '../src/config';
 import * as schema from '../src/db/schema';
 
 /**
@@ -189,11 +190,38 @@ describe('token primitives', () => {
 });
 
 describe('PIN hashing', () => {
-  it('verifies the right PIN and rejects the wrong one', async () => {
+  it('accepts the right PIN', async () => {
+    await expect(verifyPin(PIN, await hashPin(PIN))).resolves.toBe(true);
+  });
+
+  it('rejects the wrong PIN', async () => {
+    const stored = await hashPin(PIN);
+
+    await expect(verifyPin(ROTATED_PIN, stored)).resolves.toBe(false);
+    await expect(verifyPin('', stored)).resolves.toBe(false);
+    // A prefix of the right PIN must not pass.
+    await expect(verifyPin(PIN.slice(0, -1), stored)).resolves.toBe(false);
+  });
+
+  /**
+   * The documented invariant in pins.ts: a roll marked `privacy: 'pin'` with no
+   * `pin_hash` is a misconfiguration, and the safe reading of a missing lock is
+   * "locked", not "open". If this ever returned true, every PIN roll whose hash
+   * failed to write would silently become public.
+   */
+  it('treats a missing stored hash as locked, not open', async () => {
+    await expect(verifyPin(PIN, null)).resolves.toBe(false);
+    await expect(verifyPin('', null)).resolves.toBe(false);
+    // Unparseable stored values are equally closed.
+    await expect(verifyPin(PIN, 'not-a-scrypt-hash')).resolves.toBe(false);
+    await expect(verifyPin(PIN, 'scrypt$16384$8$1$onlyfiveparts')).resolves.toBe(false);
+  });
+
+  it('salts, so the same PIN hashes differently every time', async () => {
     const stored = await hashPin(PIN);
 
     expect(stored).not.toContain(PIN);
-    await expect(hashPin(PIN)).resolves.not.toBe(stored); // salted
+    await expect(hashPin(PIN)).resolves.not.toBe(stored);
   });
 });
 
@@ -364,6 +392,24 @@ describe('host tokens (05 §12)', () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it('never exposes credential hashes in host roll context', async () => {
+    // requireHost is where `hostTokenHash` is actually read, so it is the most
+    // likely place for it to get re-attached to the request by accident.
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${ROLL_OPEN}/context`,
+      headers: bearer(hostTokenOpen.token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<Record<string, unknown>>();
+
+    expect(Object.keys(body)).not.toContain('hostTokenHash');
+    expect(Object.keys(body)).not.toContain('pinHash');
+    expect(body).toMatchObject({ id: ROLL_OPEN });
+    expect(JSON.stringify(body)).not.toContain(hostTokenOpen.hash);
+  });
 });
 
 describe('token scopes do not cross (07 §25)', () => {
@@ -405,6 +451,72 @@ describe('token scopes do not cross (07 §25)', () => {
       await probe.close().catch(() => {});
     }
   });
+});
+
+describe('fail-closed hardening', () => {
+  const REAL_SECRET = 'a-real-production-cookie-secret-value';
+
+  /**
+   * The check asks "is this provably development?", not "is this production?".
+   * Keying it the other way would fail OPEN on the most likely deployment
+   * mistake there is — forgetting to set NODE_ENV at all.
+   */
+  it('refuses the published dev cookie secret unless NODE_ENV is development or test', () => {
+    // Unset NODE_ENV: the mistake that must not be the safe one.
+    expect(() => loadConfig({})).toThrow(/COOKIE_SECRET/);
+    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(/COOKIE_SECRET/);
+    // An unrecognised environment is refused too, not waved through.
+    expect(() => loadConfig({ NODE_ENV: 'staging' })).toThrow(/COOKIE_SECRET/);
+  });
+
+  it('allows the dev default only in development and test', () => {
+    expect(loadConfig({ NODE_ENV: 'development' }).COOKIE_SECRET).toBe(DEV_COOKIE_SECRET);
+    expect(loadConfig({ NODE_ENV: 'test' }).COOKIE_SECRET).toBe(DEV_COOKIE_SECRET);
+  });
+
+  it('accepts any environment once a real secret is supplied', () => {
+    const config = loadConfig({ NODE_ENV: 'production', COOKIE_SECRET: REAL_SECRET });
+    expect(config.COOKIE_SECRET).toBe(REAL_SECRET);
+  });
+
+  it('names the offending variable without printing any secret value', () => {
+    // 05 §13: config errors report names, never values.
+    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
+      expect.objectContaining({
+        message: expect.not.stringContaining(DEV_COOKIE_SECRET) as unknown as string,
+      }),
+    );
+  });
+
+  it('registers the diagnostic routes only when NODE_ENV is test', async () => {
+    const probe = buildServer(
+      loadConfig({
+        ...process.env,
+        NODE_ENV: 'production',
+        COOKIE_SECRET: REAL_SECRET,
+        LOG_LEVEL: 'silent',
+      }),
+    );
+
+    try {
+      await probe.ready();
+
+      for (const url of ['/api/device/ping', `/api/rolls/${slugOf(ROLL_OPEN)}/ping`]) {
+        const res = await probe.inject({ method: 'GET', url });
+        expect(res.statusCode).toBe(404);
+      }
+
+      // The gate is selective, not a kill switch: real routes still answer.
+      const register = await probe.inject({
+        method: 'POST',
+        url: '/api/studio/devices/register',
+        payload: {},
+      });
+      expect(register.statusCode).toBe(400);
+    } finally {
+      await probe.close().catch(() => {});
+    }
+  }, 30_000);
 });
 
 describe('guest access and the PIN session (03 §18)', () => {
@@ -479,6 +591,27 @@ describe('guest access and the PIN session (03 §18)', () => {
 
     expect(res.statusCode).toBe(401);
     expect(res.json()).toMatchObject({ code: 'PIN_REQUIRED' });
+  });
+
+  /**
+   * `request.roll` is what a handler reaches for, and `return rollOf(request)`
+   * is the obvious one-liner. If the credential hashes rode along in that
+   * object, that line would hand a guest the roll's host token hash and PIN
+   * hash. The `/context` probes return the context object verbatim so this is
+   * asserted rather than assumed.
+   */
+  it('never exposes credential hashes in guest roll context', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/rolls/${slugOf(ROLL_OPEN)}/context` });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<Record<string, unknown>>();
+
+    expect(Object.keys(body)).not.toContain('hostTokenHash');
+    expect(Object.keys(body)).not.toContain('pinHash');
+    // Guards the premise: a probe that returned {} would pass the two above.
+    expect(body).toMatchObject({ id: ROLL_OPEN, slug: slugOf(ROLL_OPEN), privacy: 'unlisted' });
+    // And no value anywhere in the payload is a stored hash.
+    expect(JSON.stringify(body)).not.toContain(hostTokenOpen.hash);
   });
 
   it('invalidates an issued cookie when the roll PIN changes', async () => {

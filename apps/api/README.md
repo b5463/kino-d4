@@ -62,12 +62,24 @@ Every key has a dev default matching the compose file, so **no `.env` is needed
 locally**. Two of them are not about the compose stack:
 
 - `COOKIE_SECRET` signs the guest PIN session cookie. Its default is a published
-  placeholder, so config loading **fails** if it is still in place when
-  `NODE_ENV=production` — generate a real one with `openssl rand -base64 48`.
+  placeholder, and config loading **fails** unless `NODE_ENV` is explicitly
+  `development` or `test`. Note the direction: the check asks "is this provably
+  development?", not "is this production?" — so an unset, misspelled or
+  unfamiliar `NODE_ENV` refuses to boot on the default rather than accepting it.
+  Forgetting to set `NODE_ENV` is the likeliest deployment mistake there is, and
+  it must not be the one that silently enables a forgeable cookie. Generate a
+  real secret with `openssl rand -base64 48`.
 - `NODE_ENV` is a free-form string, not an enum, because the value is set by
-  tooling outside this project (vitest sets `test`). Only the exact value `test`
-  registers the diagnostic auth routes, and only `production` tightens the
-  `COOKIE_SECRET` check; the unset default, `development`, does neither.
+  tooling outside this project (vitest sets `test`). It has **no default** on
+  purpose: "unset" has to stay distinguishable from "explicitly development" for
+  the rule above. Only the exact value `test` registers the diagnostic auth
+  routes.
+
+`drizzle-kit` deliberately does *not* call `loadConfig()` — a schema migration
+has no business needing a cookie secret, so `drizzle.config.ts` parses only
+`DATABASE_URL`, reusing that field's own schema so the dev default still has one
+definition. That is what keeps `npm run db:migrate` working with `NODE_ENV`
+unset.
 
 Two ways to override, highest precedence first:
 
@@ -230,17 +242,38 @@ A device reaches a roll it created (`rolls.created_by_device_id`) or joined
 Task 17 should insert the `roll_devices` row when a device creates or joins a
 roll.
 
-### Device registration
+### `request.roll` never carries a credential hash
+
+`request.roll` is typed `PublicRollRow` — every `rolls` column *except*
+`host_token_hash` and `pin_hash`. The preHandlers that need a hash read it into
+a local, compare it, and drop it; it never reaches the request.
+
+This is deliberate defence against the obvious one-liner. A future handler
+writing `return rollOf(request)` would otherwise serve a guest the roll's host
+token hash and PIN hash. Two diagnostic routes (`/context`) do exactly that
+careless thing, and their tests assert no hash comes back — so reattaching one
+fails the suite instead of shipping.
+
+### Device registration — read this before exposing it
 
 `POST /api/studio/devices/register` `{serial, product, hardwareRevision, name?}`
-→ `{deviceId, deviceToken}`, `200`.
+→ `{deviceId, deviceToken}`, `200`. Unauthenticated, and re-registering an
+existing serial **rotates** that device's token.
 
-It is deliberately unauthenticated, and **re-registering a serial rotates its
-token**. In V1 the trust anchor is physical possession: there are no accounts to
-bind a device to, and whoever can call this with a valid serial could register a
-fresh one anyway — so refusing to rotate would protect nothing while locking out
-real devices after a factory reset. This is the first route to put behind
-accounts when they exist.
+**This is a device-takeover primitive, stated plainly.** One unauthenticated
+POST with an existing serial returns a working token for that `deviceId` —
+granting every roll the device created or joined — and simultaneously bricks the
+real device, which cannot notice or re-enrol on its own. The response echoes the
+`deviceId`, so an attacker can tell a hit from a new registration. Serials are
+printed on the outside of the hardware and sequential (`KD4-00001`): the space
+is walkable by counting, not searching.
+
+Rotation itself is not the flaw and removing it would not fix this — an attacker
+can equally pre-claim serials that do not exist yet, and blocking
+re-registration would only brick real devices after a factory reset. The fix is
+authentication on the endpoint: **rate limiting plus either a registration
+secret or first-write-wins serial claiming**, tracked as a Task 36 handoff.
+Until then, treat this as the weakest link in the device trust chain.
 
 ### Guest PIN session
 
@@ -250,11 +283,23 @@ the roll's *current* `pin_hash`, so changing a roll's PIN invalidates every
 session issued under the old one. The cookie carries no secret; its
 unforgeability comes from the `COOKIE_SECRET` signature.
 
+The cookie uses `secure: 'auto'`, so @fastify/cookie sets `Secure` from the
+actual request protocol — https in production, plain http on localhost in dev
+and test — with no environment string to get wrong.
+
+> **Deployment caveat.** `'auto'` reads `request.protocol`, which behind a
+> TLS-terminating reverse proxy reports `http` unless Fastify's `trustProxy` is
+> enabled. In that topology the `Secure` flag would be silently dropped.
+> Enabling `trustProxy` is a server-level decision (it makes
+> `X-Forwarded-Proto` authoritative, which is only safe behind a trusted proxy),
+> so it is not set here — it belongs with the deployment work.
+
 ### Diagnostic routes
 
 `/api/device/ping`, `/api/device/rolls/:rollId/ping`,
-`/api/host/rolls/:rollId/ping` and `/api/rolls/:slug/ping` exist only to test the
-four mechanisms above before Task 17+ add real routes. `buildServer` registers
+`/api/host/rolls/:rollId/ping`, `/api/rolls/:slug/ping` and the two `/context`
+probes exist only to test the mechanisms above before Task 17+ add real routes.
+`buildServer` registers
 them **only when `NODE_ENV === 'test'`** — a plain `if` around `app.register`,
 which is the only conditional-registration idiom Fastify has, and which is
 fail-closed because `NODE_ENV` defaults to `development`.

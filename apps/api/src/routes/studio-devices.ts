@@ -7,23 +7,39 @@ import { devices } from '../db/schema';
 /**
  * Studio/account API — device registration (05 §4).
  *
- * This route is deliberately unauthenticated. In V1 the trust anchor is
- * **physical possession**: whoever holds the KINO can read its serial off the
- * back and is sitting in front of Studio with it plugged in over USB. There are
- * no accounts to bind a device to (05 §12), so there is nothing stronger to
- * check against, and inventing a shared registration secret would only move the
- * problem into a string shipped inside Studio.
+ * This route is unauthenticated, and re-registering an existing serial ROTATES
+ * that device's token. Both are V1 decisions taken deliberately: there are no
+ * accounts to bind a device to (05 §12), and rotation is how a real device
+ * recovers after a factory reset or a lost token.
  *
- * The consequence is that **re-registering an existing serial rotates the
- * token** — the row keeps its id, its `token_hash` is replaced, and the previous
- * token stops authenticating immediately. That is the intended behaviour, not a
- * loophole: it is how a device recovers after a factory reset or a lost token,
- * and it follows directly from possession being the anchor. Anyone who can
- * already reach this endpoint with a valid serial could equally register a
- * fresh one, so refusing to rotate would protect nothing while leaving real
- * devices permanently locked out.
+ * ## The risk this accepts — state it plainly
  *
- * When accounts arrive, this is the first route to put behind them.
+ * Anyone who can reach this endpoint and supply an **existing** serial takes
+ * over that device. Concretely, one unauthenticated POST:
+ *
+ * - returns a working `kdt_` token for the existing `deviceId`, granting the
+ *   caller every roll that device created or joined (`roll_devices`);
+ * - **bricks the real device** — its token stops authenticating at once, and
+ *   the hardware has no way to notice or re-enrol on its own;
+ * - is self-verifying for an attacker: the response echoes the `deviceId`, so a
+ *   hit on an existing serial is instantly distinguishable from a new
+ *   registration.
+ *
+ * And serials are neither secret nor unguessable. They are printed on the
+ * outside of the device and sequential (`KD4-00001`), so the whole space is
+ * walkable — this is enumeration against a counter, not a search.
+ *
+ * That is a takeover, not merely a rotation. What it is NOT is a reason to
+ * refuse rotation on its own: an attacker who can reach this endpoint can also
+ * register serials that do not exist yet, pre-claiming the fleet. Blocking
+ * re-registration alone would leave real devices bricked after a reset while
+ * closing none of that off. The fix is authentication on the endpoint, not a
+ * conditional on the write — and that fix is Task 36's, tracked in the task 16
+ * report's handoff section (rate limiting AND either a registration secret or
+ * first-write-wins serial claiming).
+ *
+ * Until then this endpoint is the weakest link in the device trust chain, and
+ * it should be treated as such in any deployment that is reachable publicly.
  */
 const registerBody = z.object({
   serial: z.string().min(1).max(64),

@@ -46,4 +46,21 @@ export const diagnosticRoutes: FastifyPluginAsync = async (app) => {
     const roll = rollOf(request);
     return { scope: 'guest', rollId: roll.id, slug: roll.slug, privacy: roll.privacy };
   });
+
+  /**
+   * These two deliberately do the careless thing — return the roll context
+   * object verbatim — because that is the leak vector `PublicRollRow` exists to
+   * close. Their tests assert no credential hash comes back, so if a future
+   * change puts `hostTokenHash` or `pinHash` back on `request.roll`, the suite
+   * fails here rather than in production.
+   */
+  app.get('/api/rolls/:slug/context', { preHandler: app.guestRollAccess }, async (request) =>
+    rollOf(request),
+  );
+
+  app.get(
+    '/api/host/rolls/:rollId/context',
+    { preHandler: app.requireHost('rollId') },
+    async (request) => rollOf(request),
+  );
 };

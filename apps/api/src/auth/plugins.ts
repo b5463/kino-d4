@@ -38,7 +38,41 @@ export interface DeviceIdentity {
   serial: string;
 }
 
-export type RollRow = typeof rolls.$inferSelect;
+/**
+ * A roll as it may appear in request context: every column **except** the two
+ * credential hashes.
+ *
+ * `request.roll` is read by route handlers, and the obvious thing for a handler
+ * to do is `return rollOf(request)`. If that object carried `hostTokenHash` or
+ * `pinHash`, one such line in any future task would serve a credential hash to
+ * a guest. Rather than rely on every handler remembering to strip them, the
+ * hashes never enter the request in the first place — they are read into a
+ * local, compared, and dropped inside the preHandler that needs them.
+ *
+ * This applies to host and device context too, not just guest: neither has any
+ * use for a hash once authentication has already happened.
+ */
+export type PublicRollRow = Omit<typeof rolls.$inferSelect, 'hostTokenHash' | 'pinHash'>;
+
+/**
+ * The column list backing `PublicRollRow`.
+ *
+ * Adding a column to `rolls` without adding it here is a **compile error** at
+ * every `request.roll = ...` assignment (the selected row stops satisfying
+ * `PublicRollRow`), so the projection cannot silently drift out of date.
+ */
+const publicRollColumns = {
+  id: rolls.id,
+  slug: rolls.slug,
+  title: rolls.title,
+  status: rolls.status,
+  privacy: rolls.privacy,
+  downloadsEnabled: rolls.downloadsEnabled,
+  reactionsEnabled: rolls.reactionsEnabled,
+  createdByDeviceId: rolls.createdByDeviceId,
+  createdAt: rolls.createdAt,
+  closedAt: rolls.closedAt,
+};
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -54,7 +88,7 @@ declare module 'fastify' {
 
   interface FastifyRequest {
     device: DeviceIdentity | null;
-    roll: RollRow | null;
+    roll: PublicRollRow | null;
   }
 }
 
@@ -108,8 +142,8 @@ const pinCookieName = (rollId: string): string => `kino_pin_${rollId}`;
  * this is a truncated digest of it. The cookie's unforgeability comes from
  * @fastify/cookie's signature, not from this value.
  */
-function pinFingerprint(roll: Pick<RollRow, 'id' | 'pinHash'>): string {
-  return createHash('sha256').update(`${roll.id}:${roll.pinHash ?? ''}`).digest('hex').slice(0, 32);
+function pinFingerprint(rollId: string, pinHash: string | null): string {
+  return createHash('sha256').update(`${rollId}:${pinHash ?? ''}`).digest('hex').slice(0, 32);
 }
 
 /** Thirty days: a roll outlives its event, and re-typing the PIN each visit is hostile. */
@@ -198,7 +232,7 @@ export const authPlugin = fp(
         }
 
         const [row] = await app.db
-          .select({ roll: rolls, joinedBy: rollDevices.deviceId })
+          .select({ ...publicRollColumns, joinedBy: rollDevices.deviceId })
           .from(rolls)
           .leftJoin(
             rollDevices,
@@ -211,14 +245,15 @@ export const authPlugin = fp(
           return fail(reply, 404, 'ROLL_NOT_FOUND', 'no such roll');
         }
 
+        const { joinedBy, ...roll } = row;
+
         // "Operate on assigned/open Rolls" (03 §17): the device either created
         // the roll or has a `roll_devices` join row. Nothing else counts.
-        const created = row.roll.createdByDeviceId === device.id;
-        if (!created && row.joinedBy === null) {
+        if (roll.createdByDeviceId !== device.id && joinedBy === null) {
           return fail(reply, 403, 'DEVICE_NOT_IN_ROLL', 'this device is not part of that roll');
         }
 
-        request.roll = row.roll;
+        request.roll = roll;
         return undefined;
       }),
     );
@@ -242,14 +277,21 @@ export const authPlugin = fp(
           return fail(reply, 400, 'ROLL_ID_REQUIRED', `missing :${rollIdParam} path parameter`);
         }
 
-        const [roll] = await app.db.select().from(rolls).where(eq(rolls.id, rollId)).limit(1);
+        const [row] = await app.db
+          .select({ ...publicRollColumns, hostTokenHash: rolls.hostTokenHash })
+          .from(rolls)
+          .where(eq(rolls.id, rollId))
+          .limit(1);
         // Distinguishing "no such roll" from "not your roll" is safe here: a
         // roll id is 128 random bits, so there is no id space to enumerate.
-        if (roll === undefined) {
+        if (row === undefined) {
           return fail(reply, 404, 'ROLL_NOT_FOUND', 'no such roll');
         }
 
-        if (!timingSafeHexEqual(hashToken(token), roll.hostTokenHash)) {
+        // Destructured out here and never re-attached: the hash is needed for
+        // this comparison and for nothing downstream.
+        const { hostTokenHash, ...roll } = row;
+        if (!timingSafeHexEqual(hashToken(token), hostTokenHash)) {
           return fail(reply, 403, 'INVALID_HOST_TOKEN', 'that host token does not open this roll');
         }
 
@@ -258,14 +300,18 @@ export const authPlugin = fp(
       }),
     );
 
-    function pinCookieAccepted(request: FastifyRequest, roll: RollRow): boolean {
-      const raw = request.cookies[pinCookieName(roll.id)];
+    function pinCookieAccepted(
+      request: FastifyRequest,
+      rollId: string,
+      pinHash: string | null,
+    ): boolean {
+      const raw = request.cookies[pinCookieName(rollId)];
       if (raw === undefined) return false;
 
       const unsigned = request.unsignCookie(raw);
       if (!unsigned.valid || unsigned.value === null) return false;
 
-      return timingSafeHexEqual(unsigned.value, pinFingerprint(roll));
+      return timingSafeHexEqual(unsigned.value, pinFingerprint(rollId, pinHash));
     }
 
     app.decorate('guestRollAccess', async (request, reply) => {
@@ -274,12 +320,19 @@ export const authPlugin = fp(
         return fail(reply, 400, 'SLUG_REQUIRED', 'missing :slug path parameter');
       }
 
-      const [roll] = await app.db.select().from(rolls).where(eq(rolls.slug, slug)).limit(1);
-      if (roll === undefined) {
+      const [row] = await app.db
+        .select({ ...publicRollColumns, pinHash: rolls.pinHash })
+        .from(rolls)
+        .where(eq(rolls.slug, slug))
+        .limit(1);
+      if (row === undefined) {
         return fail(reply, 404, 'ROLL_NOT_FOUND', 'no roll with that slug');
       }
 
-      if (roll.privacy === 'pin' && !pinCookieAccepted(request, roll)) {
+      // `pinHash` stays local. What lands on the request is the projection
+      // without it, so a handler returning `rollOf(request)` cannot leak it.
+      const { pinHash, ...roll } = row;
+      if (roll.privacy === 'pin' && !pinCookieAccepted(request, roll.id, pinHash)) {
         return fail(reply, 401, 'PIN_REQUIRED', 'this roll is PIN protected');
       }
 
@@ -303,29 +356,38 @@ export const authPlugin = fp(
         return fail(reply, 400, 'SLUG_REQUIRED', 'missing :slug path parameter');
       }
 
-      const [roll] = await app.db.select().from(rolls).where(eq(rolls.slug, slug)).limit(1);
-      if (roll === undefined) {
+      const [row] = await app.db
+        .select({ id: rolls.id, privacy: rolls.privacy, pinHash: rolls.pinHash })
+        .from(rolls)
+        .where(eq(rolls.slug, slug))
+        .limit(1);
+      if (row === undefined) {
         return fail(reply, 404, 'ROLL_NOT_FOUND', 'no roll with that slug');
       }
-      if (roll.privacy !== 'pin') {
+      if (row.privacy !== 'pin') {
         return fail(reply, 400, 'ROLL_HAS_NO_PIN', 'this roll is not PIN protected');
       }
 
       // The submitted PIN is never logged and never echoed: Task 14's request
       // serializer is an allow-list that excludes bodies, and this reply says
       // only whether it matched.
-      if (!(await verifyPin(parsed.data.pin, roll.pinHash))) {
+      if (!(await verifyPin(parsed.data.pin, row.pinHash))) {
         return fail(reply, 401, 'INVALID_PIN', 'that PIN does not open this roll');
       }
 
-      reply.setCookie(pinCookieName(roll.id), pinFingerprint(roll), {
+      reply.setCookie(pinCookieName(row.id), pinFingerprint(row.id, row.pinHash), {
         signed: true,
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
-        // 05 §13 wants secure cookies; dev and test are plain http on
-        // localhost, where a Secure cookie would never be sent back.
-        secure: app.config.NODE_ENV === 'production',
+        // 05 §13 wants secure cookies. `'auto'` sets Secure from the actual
+        // request protocol, so production https gets it and http://localhost
+        // still works in dev and test — no environment string to get wrong.
+        //
+        // Caveat for deployment: behind a TLS-terminating proxy Fastify sees
+        // http unless `trustProxy` is enabled, which would silently drop the
+        // Secure flag. Enabling it is a server-level decision; see the README.
+        secure: 'auto',
         maxAge: PIN_COOKIE_MAX_AGE_SECONDS,
       });
 
@@ -342,7 +404,7 @@ export function deviceOf(request: FastifyRequest): DeviceIdentity {
 }
 
 /** Narrows `request.roll` after any preHandler that resolves one. */
-export function rollOf(request: FastifyRequest): RollRow {
+export function rollOf(request: FastifyRequest): PublicRollRow {
   if (request.roll === null) throw new Error('route is missing a roll-resolving preHandler');
   return request.roll;
 }

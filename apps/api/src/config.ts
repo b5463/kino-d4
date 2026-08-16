@@ -12,9 +12,20 @@ const absoluteUrl = z
 /**
  * The committed dev value for `COOKIE_SECRET`. It is published in
  * `infra/.env.example` and in this file, so it is not a secret and must never
- * reach production — `configSchema` refuses to load if it does.
+ * reach anything but a developer's own machine — see `DEV_ENVIRONMENTS`.
  */
 export const DEV_COOKIE_SECRET = 'kino-dev-cookie-secret-do-not-use-in-production';
+
+/**
+ * The only `NODE_ENV` values that may run on the published dev cookie secret.
+ *
+ * Membership is opt-IN, which is the whole point: an unset or unrecognised
+ * `NODE_ENV` is refused rather than waved through. Keying the check on
+ * `NODE_ENV === 'production'` instead would fail *open* — the single most
+ * likely deployment mistake is forgetting to set NODE_ENV at all, and that
+ * mistake must not be the one that silently enables a forgeable cookie.
+ */
+const DEV_ENVIRONMENTS = new Set(['development', 'test']);
 
 export const configSchema = z.object({
   // Host port 5435 -> container 5432; see infra/docker-compose.dev.yml.
@@ -32,28 +43,38 @@ export const configSchema = z.object({
   // cookie carries no secret, only a value a guest must not be able to forge.
   COOKIE_SECRET: z.string().min(16).default(DEV_COOKIE_SECRET),
   /**
-   * Deliberately a permissive string, not an enum: NODE_ENV is set by tooling
-   * outside this project (vitest sets `test`), and an unrecognised value must
-   * not stop the server from starting. Only the exact value `test` unlocks the
-   * diagnostic auth routes, and only `production` tightens the checks below —
-   * so the unset default, `development`, is the safe middle.
+   * A permissive string, not an enum: NODE_ENV is set by tooling outside this
+   * project (vitest sets `test`), and an unrecognised value must not stop the
+   * server booting. Deliberately has **no default** — "unset" has to stay
+   * distinguishable from "explicitly development", because the cookie-secret
+   * check below treats the two differently.
+   *
+   * Only the exact value `test` unlocks the diagnostic auth routes.
    */
-  NODE_ENV: z.string().min(1).default('development'),
+  NODE_ENV: z.string().min(1).optional(),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
 });
 
 /**
- * Production must not run on the committed dev cookie secret. Anyone with a
- * checkout could otherwise forge a PIN session cookie for any roll.
+ * The published dev cookie secret is allowed **only** in a known development
+ * environment. Anyone with a checkout could otherwise forge a PIN session
+ * cookie for any roll.
+ *
+ * Note the direction of the test: it does not ask "is this production?", it
+ * asks "is this provably development?". An unset, misspelled or unfamiliar
+ * NODE_ENV therefore refuses to boot on the default secret instead of quietly
+ * accepting it.
  */
 const validatedConfigSchema = configSchema.superRefine((config, ctx) => {
-  if (config.NODE_ENV === 'production' && config.COOKIE_SECRET === DEV_COOKIE_SECRET) {
+  const isDevEnvironment = config.NODE_ENV !== undefined && DEV_ENVIRONMENTS.has(config.NODE_ENV);
+  if (!isDevEnvironment && config.COOKIE_SECRET === DEV_COOKIE_SECRET) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['COOKIE_SECRET'],
-      message: 'is the published dev default and must be set to a real secret when NODE_ENV=production',
+      message:
+        'is the published dev default; set a real secret, or set NODE_ENV to development or test',
     });
   }
 });
