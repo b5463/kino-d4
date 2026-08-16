@@ -1069,9 +1069,9 @@ GET  /api/device/captures/:captureId/status         → {status, assets: [{role,
 - Capture status transitions (05§8): `created` → (thumb or wiggle-preview asset ready) `preview-ready` → (any original uploading) `originals-uploading` → (all declared assets ready) `complete` → (jobs queued) `processing` → (derivatives done) `ready`; `partial` when some originals failed and retries exhausted; `failed` on total loss. Implement as a pure function `nextCaptureStatus(assets: AssetRow[], jobsDone: boolean): CaptureStatus` — unit-tested exhaustively.
 - On capture create and each asset completion: `publishRollEvent(redis, rollId, event)` (defined in Task 19; stub it here, Task 19 replaces the stub).
 
-- [ ] **Step 1: Write failing tests** — full happy path (create capture → init thumb → 1 part → complete → capture status `preview-ready`); duplicate capture POST returns same id, no second row; duplicate `assets/init` after completion → `alreadyComplete`; part re-send after simulated network drop succeeds; checksum mismatch → 422 + session failed + asset stays `pending`; upload to closed roll → `ROLL_CLOSED`; object key for frame 2 is exactly `rolls/<id>/captures/<id>/original/cam-02.jpg`; worker-style write to an existing original key throws.
+- [x] **Step 1: Write failing tests** — full happy path (create capture → init thumb → 1 part → complete → capture status `preview-ready`); duplicate capture POST returns same id, no second row; duplicate `assets/init` after completion → `alreadyComplete`; part re-send after simulated network drop succeeds; checksum mismatch → 422 + session failed + asset stays `pending`; upload to closed roll → `ROLL_CLOSED`; object key for frame 2 is exactly `rolls/<id>/captures/<id>/original/cam-02.jpg`; worker-style write to an existing original key throws.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): idempotent captures + resumable S3 uploads with checksum verification`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): idempotent captures + resumable S3 uploads with checksum verification`
 
 ### Task 19: SSE live events
 
