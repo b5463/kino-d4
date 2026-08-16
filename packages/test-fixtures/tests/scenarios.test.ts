@@ -280,6 +280,48 @@ describe('network commands', () => {
     expect(del.networks.map((n) => n.ssid)).not.toContain('loft-guest');
   });
 
+  /**
+   * The contract path (firmware-contract "Network / Roll / upload queue"): a
+   * host that edits a saved network cannot resend the passphrase, because
+   * NETWORK_LIST never gave it one. Omitting the field has to mean "keep what
+   * is stored" — not "set an empty passphrase", and not a length rejection.
+   */
+  it('keeps the stored passphrase when NETWORK_SET omits it for a known SSID', async () => {
+    const client = await connect(new MockKinoDevice());
+    const set = await client.request<{
+      ok: boolean;
+      networks: { ssid: string; hasPassword: boolean; autoJoin: boolean }[];
+    }>(Cmd.NETWORK_SET, { ssid: 'kino-bench', security: 'wpa2', autoJoin: false });
+
+    expect(set.ok).toBe(true);
+    const saved = set.networks.find((n) => n.ssid === 'kino-bench');
+    // hasPassword is the device's own report of whether a secret is stored, so
+    // a wiped passphrase would show up here as false.
+    expect(saved?.hasPassword).toBe(true);
+    // The rest of the edit did land — this is not a no-op that happens to pass.
+    expect(saved?.autoJoin).toBe(false);
+  });
+
+  it('still demands a passphrase for a new network, and rejects a short new one', async () => {
+    const client = await connect(new MockKinoDevice());
+    // Unknown SSID with no passphrase: there is nothing stored to keep.
+    await expect(
+      client.request(Cmd.NETWORK_SET, { ssid: 'studio-ap', security: 'wpa2' }),
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+
+    // Known SSID, but a passphrase was actually typed and it is too short.
+    await expect(
+      client.request(Cmd.NETWORK_SET, { ssid: 'kino-bench', password: 'short' }),
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+
+    // An open network needs no passphrase at all.
+    const open = await client.request<{ ok: boolean }>(Cmd.NETWORK_SET, {
+      ssid: 'cafe-free',
+      security: 'open',
+    });
+    expect(open.ok).toBe(true);
+  });
+
   it('NETWORK_STATUS reports a plausible connection', async () => {
     const client = await connect(new MockKinoDevice());
     const status = await client.request<{ state: string; ssid: string | null; rssi: number | null }>(

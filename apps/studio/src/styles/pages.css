@@ -1140,3 +1140,115 @@
   justify-items: start;
   gap: 6px;
 }
+
+/* ---- Roll page (02 §17) ---- */
+
+/* Section heads inside a panel: the same technical caption as .panel-title,
+   one level down, so a panel can hold two lists without a second panel. */
+.roll-subhead {
+  margin: 12px 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mut);
+}
+
+.roll-subhead:first-child { margin-top: 0; }
+
+.roll-empty {
+  margin: 0 0 var(--gap);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+.roll-sep {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.netlist {
+  margin: 0 0 var(--gap);
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-mid);
+  background: var(--well);
+}
+
+.netrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6ch minmax(0, 14ch) auto;
+  align-items: center;
+  gap: var(--gap);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.netrow:last-child { border-bottom: 0; }
+
+.netrow-ssid {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.netrow-pass {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+
+.netrow-meta {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-mut);
+}
+
+/* Guest QR: white quiet zone regardless of the panel behind it, because a
+   code on a tinted ground does not scan reliably. */
+.rollqr {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: var(--gap) 0;
+  padding: var(--pad);
+  border: 1px solid var(--border-mid);
+  background: #fff;
+  width: max-content;
+  max-width: 100%;
+}
+
+.rollqr canvas {
+  display: block;
+  width: 176px;
+  height: 176px;
+  image-rendering: pixelated;
+}
+
+.rollqr-url {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.queueline {
+  margin: 0 0 var(--gap);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Pinned to the bottom of the section: the camera works without any of this. */
+.roll-offline {
+  margin: var(--gap) 0 0;
+  padding-top: var(--gap);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}

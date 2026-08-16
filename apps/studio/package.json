@@ -12,16 +12,18 @@
     "lint": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@kino/kdp": "*",
-    "@kino/test-fixtures": "*",
     "@fontsource/ibm-plex-mono": "^5.2.5",
     "@fontsource/ibm-plex-sans": "^5.2.5",
+    "@kino/kdp": "*",
+    "@kino/test-fixtures": "*",
     "mp4-muxer": "^5.2.2",
+    "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",

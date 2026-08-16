@@ -10,6 +10,7 @@ export type IconName =
   | 'looks'
   | 'calibration'
   | 'gallery'
+  | 'roll'
   | 'device'
   | 'updates'
   | 'developer'
@@ -125,6 +126,20 @@ const ICONS: Record<IconName, Px[]> = {
     [4, 4, 2, 2, YELLOW],
     [4, 12, 11, 3, OUTLINE],
     [5, 13, 9, 1, STEEL],
+  ],
+  // Photos leaving the camera: a stack of frames with an upload arrow.
+  roll: [
+    [1, 5, 10, 9, OUTLINE],
+    [2, 6, 8, 7, '#7ec3e8'],
+    [2, 6, 8, 2, '#c8e8f8'],
+    [3, 10, 3, 3, GREEN],
+    [6, 9, 4, 4, '#3f8c36'],
+    [2, 3, 10, 1, OUTLINE],
+    [3, 1, 10, 1, OUTLINE],
+    [12, 3, 2, 6, OUTLINE],
+    [10, 5, 2, 2, OUTLINE],
+    [14, 5, 2, 2, OUTLINE],
+    [12, 3, 2, 1, ORANGE],
   ],
   device: [
     [2, 1, 12, 14, OUTLINE],
