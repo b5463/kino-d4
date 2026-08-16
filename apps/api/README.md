@@ -1,8 +1,9 @@
 # @kino/api
 
 Fastify server behind `https://kino.acronym.sk/api/...`. Currently config, the
-postgres/redis/S3 plugins, `GET /api/healthz`, the database schema, and the
-device/host/guest authentication described below.
+postgres/redis/S3 plugins, `GET /api/healthz`, the database schema, the
+device/host/guest authentication described below, roll lifecycle, and the
+capture + resumable upload pipeline.
 
 ## Test precondition — start the dev services
 
@@ -118,12 +119,18 @@ table and column names. PostgreSQL stores metadata only — no media blobs
 `roll_devices` (migration 0003) is the device↔roll join: a device may operate a
 roll it created or joined, and no other (03 §17, 07 §25).
 
-Two indexes are load-bearing contracts, not optimisations:
+Three indexes are load-bearing contracts, not optimisations:
 
 | Index | On | Why |
 | --- | --- | --- |
 | `captures_roll_uuid` | `(roll_id, capture_uuid)` | idempotency anchor — a retried upload of the same device-generated capture UUID cannot create a second row (05 §9) |
 | `assets_capture_role_frame` | `(capture_id, role, frame_index)`, **NULLS NOT DISTINCT** | same, one level down: one asset per role per frame |
+| `processing_events_capture_job_queued` | `(capture_id, job)` **WHERE `status = 'queued'`** | one enqueue per job per capture, while leaving the rest of that job's lifecycle log free to grow (migration 0004) |
+
+Note what `captures_roll_uuid` does *not* say: a capture UUID is unique **per
+roll**, not globally. Anything keyed on the uuid alone across the whole table —
+`upload_sessions.idempotency_key` was, briefly — will collide between rolls. See
+"Idempotency is an index, never a pre-check" below.
 
 `NULLS NOT DISTINCT` on the second one is load-bearing, not a flourish.
 `frame_index` is NULL for every derived role — `thumb`, `wiggle-webp`,
@@ -319,7 +326,7 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `POST /api/device/rolls/join` `{slug}` | device | writes `roll_devices`; idempotent |
 | `GET /api/device/rolls/current` | device | assigned rolls with `status = live` |
 | `POST /api/host/rolls` | **none** | host web creation; mints a new host token |
-| `GET /api/host/rolls/:rollId` | host | dashboard view, `counts` are zero until Task 18 |
+| `GET /api/host/rolls/:rollId` | host | dashboard view with real capture `counts` |
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
 | `GET /api/rolls/:slug` | guest | `{title, status, photoCount, createdAt}` |
@@ -405,6 +412,12 @@ at a looser threshold.
 Note that (1) and (4) walk the *same* keyspace. Metering the guest read while
 leaving `join` open would move an attacker to the route that grants more.
 
+Plus `POST /api/host/rolls` — an abuse/resource surface rather than a guessing
+one. It is unnumbered because it is not in the same competition: nothing is
+being *guessed*, so there is no keyspace and no oracle. It still needs a limit,
+because unauthenticated roll creation is free storage and free rows for anyone
+who can reach the endpoint.
+
 ### States (03 §22)
 
 `live ↔ closed → archived`, archived terminal; re-sending the current status is
@@ -414,9 +427,9 @@ a no-op, anything else is `400 INVALID_STATE`. Archiving requires closing first
 Closing stops **uploads**, not reading: `GET /api/rolls/:slug` still answers 200
 for a closed roll. The upload half of that rule is
 `assertRollAcceptsUploads(roll)` in `src/rolls/rolls.ts`, which throws
-`RollClosedError` (`409 ROLL_CLOSED`) — Task 18's upload routes call it. It is
-an allow-list over `status`, so a status added later refuses uploads by default
-instead of accepting them because nobody extended a deny-list.
+`RollClosedError` (`409 ROLL_CLOSED`); the capture and asset-init routes call
+it. It is an allow-list over `status`, so a status added later refuses uploads
+by default instead of accepting them because nobody extended a deny-list.
 
 `PATCH {pin}` always re-hashes, even for an unchanged PIN. That is deliberate:
 the guest cookie is a fingerprint of the stored hash, so a fresh salt logs out
@@ -436,6 +449,196 @@ per-route header — a privacy control must cover the route somebody adds next
 year, not just the ones that were remembered. Keying on the request path rather
 than the matched route also covers 404s for mistyped slugs, and `onSend` catches
 error replies, so the PIN gate's 401 carries it too.
+
+## Captures and uploads
+
+The camera's side of the platform (03 §16). Everything is device-scoped and
+lives under `/api/device/`.
+
+| File | Holds |
+| --- | --- |
+| `src/routes/device-captures.ts` | the six routes — parse, authorise, answer |
+| `src/uploads/objectKeys.ts` | every key the platform writes, plus the immutability guard |
+| `src/uploads/uploads.ts` | the pure rules: capture states, idempotency keys, role/MIME, counts |
+| `src/uploads/sessions.ts` | the S3 choreography: asset rows, multipart lifecycle, verification |
+
+| Route | Body | Answers |
+| --- | --- | --- |
+| `POST /api/device/rolls/:rollId/captures` | a `kino.capture` document | `201 {captureId}`, or `200 {captureId}` replaying a known `captureUuid` |
+| `POST /api/device/captures/:captureId/assets/init` | `{role, frameIndex?, mime, bytes, sha256}` | `{uploadId, partSize, alreadyComplete}` |
+| `PUT /api/device/uploads/:uploadId/parts/:partNo` | raw `application/octet-stream`, ≤ `partSize` | `{received: true, partNo}` |
+| `POST /api/device/uploads/:uploadId/complete` | — | `{assetId, status:'ready'}` or `422 CHECKSUM_MISMATCH` |
+| `POST /api/device/captures/:captureId/complete` | — | `{captureId, status}`; queues processing jobs |
+| `GET /api/device/captures/:captureId/status` | — | `{status, assets:[{role, frameIndex, status}]}` |
+
+The capture body is parsed with `parseVersioned(capture, body)` from
+`@kino/schemas`, not an ad-hoc zod object: the document is device-authored, so
+an older firmware gets migrated and a newer one gets a clear refusal. Path and
+token beat document: `rollId` comes from the URL, `deviceId` from the
+credential, `status` from the server's own state machine. A document field is a
+claim, never a capability.
+
+### Idempotency is an index, never a pre-check (05 §9)
+
+Both retry-safe writes are `INSERT ... ON CONFLICT DO NOTHING` followed by a
+read-back — `captures_roll_uuid` for the capture, `assets_capture_role_frame`
+for the asset. A `SELECT` first would let two concurrent retries both find
+nothing and both insert; the index makes the loser's `INSERT` wait for the
+winner to commit and then return no row, so the read-back sees the winner.
+`tests/uploads.test.ts` fires two identical capture POSTs concurrently and
+asserts one row, one id, and a 201/200 split.
+
+The upload session's key is unique, so a device that restarts an upload
+**reuses** that row rather than adding a second one. One session per asset is
+what keeps "which upload is this asset's?" answerable at all.
+
+That key is `<captureId>:<captureUuid>:<role>:<frameIndex>` in the column, not
+the bare 05 §9 string, and the prefix is load-bearing. `captureUuid` is camera-
+generated and anchored **per roll** (`captures_roll_uuid` is
+`(roll_id, capture_uuid)`), so the same uuid may legitimately appear in two
+rolls — while `upload_sessions.idempotency_key` is unique across the whole
+table. Keyed on the device's string alone, capture B's `init` would find, reset
+and steal capture A's session: A loses its parts and its expected digest, and B
+is left pointing at A's asset and can never upload that role at all. The
+device-facing semantics of 05 §9 are unchanged — the substring after the first
+colon is exactly `idempotencyKeyFor(...)`.
+
+Belt and braces, because this one is a data-loss bug rather than a nuisance: the
+lookup is *also* pinned to the asset (`AND asset_id = ...`) so it can never
+adopt a stranger's row, and a unique violation on the insert answers
+`409 UPLOAD_IN_PROGRESS` — with the key capture-scoped, that can only mean a
+concurrent `init` for this same asset, and the caller's retry finds the winner's
+session and resumes it.
+
+### Every session is a multipart upload
+
+D4 assets are ≤ ~2 MB and `partSize` is 5 MiB, so in practice every upload is a
+single part and a plain `PutObject` would work. It is multipart anyway, always,
+because a `PutObject` fast path would need somewhere to hold part 1 until it
+learned whether a part 2 was coming — a second code path that fails differently
+from the one used on a bad connection, which is the path that must not be the
+less-tested one. S3 allows a single-part multipart upload (the 5 MiB floor
+exempts the last part), the schema already carries `s3_upload_id` and part
+etags, and the wire contract is identical either way: the device never learns
+which it got.
+
+### Completion re-reads the object
+
+`complete` finishes the multipart upload, then **streams the stored object back
+through sha256** and compares it to what the device declared at init. Trusting
+the bytes on the way in would miss a truncated part, a part that landed twice,
+and storage that accepted something other than what was sent. On a mismatch the
+object is deleted (it was never accepted), the session is marked `failed`, the
+asset stays `pending`, and the device gets `422 CHECKSUM_MISMATCH` and starts
+again from init.
+
+### Object keys (05 §6) and the immutability guard (01 §7)
+
+`src/uploads/objectKeys.ts` is the only place keys are built:
+
+```text
+rolls/<rollId>/captures/<captureId>/original/cam-<NN>.jpg   originalKey
+rolls/<rollId>/captures/<captureId>/derived/<name>          derivedKey
+rolls/<rollId>/derived/<name>                               rollDerivedKey
+```
+
+Camera numbers are 1-based and zero-padded to two digits, matching the
+`CAM1..CAMn` labelling on the hardware. `.jpg` is fixed by the spec, which is
+why `original-frame` uploads must declare `image/jpeg` — a key that says one
+thing while the bytes say another is a trap for everything downstream. Derived
+names are `<role>.<ext>` with the extension from an allow-list of stored MIME
+types, so no client string ever reaches a key verbatim.
+
+`assertNotOriginalOverwrite(key, storedSha256, incomingSha256)` is the guard,
+called at init *and* on the write path in `complete`. Anything under `derived/`
+passes — re-rendering a thumbnail is the normal case. Under `original/` there
+are exactly two ways through: the caller declares a digest and nothing is stored
+yet, or the declared digest *equals* what is stored (a retried upload of
+identical bytes, which is not an overwrite). A caller that cannot name the
+digest of its own payload is refused outright — which is the shape of every
+worker write path (Task 22's `putDerived` has nowhere to put one), so "workers
+may only write under `derived/`" falls out of the same check instead of needing
+a second one that could disagree with it.
+
+**The `complete`-side guard runs under a row lock**, and that is not a
+precaution. The guard reads the asset's stored digest and then a write happens;
+between those two moments a concurrent complete can flip the asset to `ready`
+with different content, so a guard evaluated on a snapshot would be answering
+about a state that no longer exists. `finishUpload` opens a transaction, reads
+the asset `FOR UPDATE`, re-reads the session, and holds that lock across the
+guard **and** the write — the second completer blocks, then re-reads and sees
+the digest it now has to match. The lock spans the S3 round trip, which is the
+deliberate cost: it is one asset row, contended only by another attempt to write
+the same object, which is exactly what must not run in parallel.
+
+### Capture states (05 §8)
+
+```text
+created → preview-ready → originals-uploading → complete → processing → ready
+                                                   ↘ partial     ↘ failed
+```
+
+`nextCaptureStatus(assets, jobsDone, jobsQueued = jobsDone)` is a pure function
+of the asset rows plus the job phase, and `recomputeCaptureStatus` re-derives
+the stored column from the tables rather than transitioning it — a cache that is
+rebuilt cannot drift from what it caches. Job state comes from
+`processing_events`, which is what stops a worker's own `pending` asset row from
+walking a `processing` capture backwards into `originals-uploading`.
+
+`complete` deliberately requires at least one *original* frame to be in: a
+capture whose only asset is a thumbnail is a preview that arrived first (03 §4's
+upload priority), not a finished capture.
+
+`partial` stays reachable after the queue has run: jobs finishing on a capture
+that permanently lost an original yields `partial`, not `ready`. Reporting
+`ready` there would drop it out of the host's Pending count while it is
+genuinely incomplete, which is the one thing `partial` exists to prevent. While
+the jobs are still running the answer is `processing` — a failed asset may yet
+be retried, so the outcome is not decided.
+
+### Two stubs, marked as such
+
+- `src/events/publish.ts` — `RollEvent` and the channel name are Task 19's
+  shape; the body is a single `PUBLISH`, and Task 19 adds the stream `XADD` that
+  makes `Last-Event-ID` replay work. Callers wrap it: a dead event bus must not
+  turn a committed upload into a 500, and the PWA re-fetches the capture anyway
+  (05 §10).
+- `enqueueProcessingJobs` in `src/uploads/uploads.ts` — writes the
+  `processing_events` `queued` rows and returns the payloads a real queue would
+  have been handed. Task 22 adds `await enqueue(name, payload)` inside the loop;
+  the job names, the `jobKey` format and the fan-out rule (skip a role the device
+  already uploaded — 03 §4) are already Task 22's.
+
+  It inserts and lets an index decide, like everything else here: migration
+  `0004` adds `processing_events_capture_job_queued`, a **partial** unique index
+  on `(capture_id, job) WHERE status = 'queued'`. The `WHERE` is the whole point
+  — this table is an event *log*, and Task 22 records a job's progress as
+  `queued` → `running` → `done`/`failed`, so a blanket unique on
+  `(capture_id, job)` would make the second row of any job's own lifecycle
+  impossible. Restricting it to the enqueue keeps the log open while making the
+  one thing that must not duplicate impossible to duplicate.
+
+### Known gaps
+
+- An abandoned session leaves an incomplete multipart upload in MinIO until
+  something aborts it. `init` aborts the previous one when it restarts a
+  session, but a device that simply stops leaves it behind; a bucket lifecycle
+  rule is the real answer.
+- Two concurrent `init` calls for the same asset both create a multipart upload;
+  the loser now answers `409 UPLOAD_IN_PROGRESS` and aborts the upload it had
+  just created, so the database stays single-session — but a failed abort still
+  leaves bytes behind, same as above.
+- Re-initialising a *derived* asset with a different MIME type moves it to a new
+  key and orphans the object at the old one. Rare, and deleting a still-good
+  object on the strength of an upload that has not happened yet would be the
+  worse trade — but it is a gap, not a design.
+- Closing a roll stops *new* uploads. A session opened while the roll was live
+  is allowed to finish, because stranding half-transferred bytes is not what
+  closing a roll is for.
+- `complete` holds a database connection for the length of its S3 round trip
+  (the row lock above). The pool is 10, so ten simultaneous completions saturate
+  it. Correct, and cheap at party scale; it is the figure to look at first if
+  this ever needs to serve many rigs at once.
 
 ## Logging
 

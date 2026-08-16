@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   text,
@@ -212,13 +213,35 @@ export const auditEvents = pgTable('audit_events', {
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const processingEvents = pgTable('processing_events', {
-  id: text('id').primaryKey(),
-  captureId: text('capture_id')
-    .notNull()
-    .references(() => captures.id),
-  job: text('job').notNull(), // 'render-wiggle-webp', ...
-  status: text('status').notNull(), // queued|running|done|failed
-  error: text('error'),
-  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const processingEvents = pgTable(
+  'processing_events',
+  {
+    id: text('id').primaryKey(),
+    captureId: text('capture_id')
+      .notNull()
+      .references(() => captures.id),
+    job: text('job').notNull(), // 'render-wiggle-webp', ...
+    status: text('status').notNull(), // queued|running|done|failed
+    error: text('error'),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /**
+     * A **partial** unique index, and the `where` is the whole point.
+     *
+     * This table is an event *log*: Task 22 records a job's progress as
+     * `queued` → `running` → `done`/`failed`, so a plain unique on
+     * `(capture_id, job)` would make the second row of any job's own lifecycle
+     * impossible. Restricting it to `status = 'queued'` keeps the log open while
+     * making the one thing that must not duplicate — the enqueue itself —
+     * impossible to duplicate.
+     *
+     * It is what lets `enqueueProcessingJobs` insert and let the index decide
+     * rather than SELECT-then-insert, which two concurrent capture-completes
+     * would both walk straight through.
+     */
+    uniqueIndex('processing_events_capture_job_queued')
+      .on(t.captureId, t.job)
+      .where(sql`${t.status} = 'queued'`),
+  ],
+);

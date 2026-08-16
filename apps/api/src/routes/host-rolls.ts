@@ -14,6 +14,7 @@ import {
   statusAuditAction,
   type AuditEntry,
 } from '../rolls/rolls';
+import { rollCaptureCounts } from '../uploads/uploads';
 import { auditEvents, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
 
@@ -82,11 +83,10 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send(created);
   });
 
-  app.get(
-    '/api/host/rolls/:rollId',
-    { preHandler: app.requireHost('rollId') },
-    async (request) => hostRollView(app.config, rollOf(request)),
-  );
+  app.get('/api/host/rolls/:rollId', { preHandler: app.requireHost('rollId') }, async (request) => {
+    const roll = rollOf(request);
+    return hostRollView(app.config, roll, await rollCaptureCounts(app.db, roll.id));
+  });
 
   app.patch(
     '/api/host/rolls/:rollId',
@@ -159,7 +159,7 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const updated = await applyPatch(app, roll, patch, audit);
-      return hostRollView(app.config, updated);
+      return hostRollView(app.config, updated, await rollCaptureCounts(app.db, updated.id));
     },
   );
 

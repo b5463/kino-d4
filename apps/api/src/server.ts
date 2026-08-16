@@ -16,6 +16,7 @@ import { authPlugin } from './auth/plugins';
 import { robotsPlugin } from './rolls/robots';
 import { studioDeviceRoutes } from './routes/studio-devices';
 import { deviceRollRoutes } from './routes/device-rolls';
+import { deviceCaptureRoutes } from './routes/device-captures';
 import { hostRollRoutes } from './routes/host-rolls';
 import { guestRollRoutes } from './routes/guest-rolls';
 import { diagnosticRoutes } from './routes/diagnostics';
@@ -102,6 +103,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.register(authPlugin);
   app.register(studioDeviceRoutes);
   app.register(deviceRollRoutes);
+  app.register(deviceCaptureRoutes);
   app.register(hostRollRoutes);
   app.register(guestRollRoutes);
 

@@ -22,6 +22,13 @@
       "when": 1786867262897,
       "tag": "0003_roll_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786888209113,
+      "tag": "0004_processing_events_queued_unique",
+      "breakpoints": true
     }
   ]
 }

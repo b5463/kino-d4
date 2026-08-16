@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "processing_events_capture_job_queued" ON "processing_events" USING btree ("capture_id","job") WHERE "processing_events"."status" = 'queued';

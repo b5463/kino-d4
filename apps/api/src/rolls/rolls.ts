@@ -7,6 +7,8 @@ import { newToken } from '../auth/tokens';
 import { hashPin } from '../auth/pins';
 import { newId } from '../ids';
 import { auditEvents, rolls } from '../db/schema';
+import { isUniqueViolation } from '../db/errors';
+import type { RollCaptureCounts } from '../uploads/uploads';
 import { newSlug } from './slug';
 
 /**
@@ -155,30 +157,19 @@ export function auditRows(entries: readonly AuditEntry[]): (typeof auditEvents.$
 
 /* ------------------------------------------------------------------ slugs -- */
 
-/** PostgreSQL `unique_violation`, and the constraint that backs `rolls.slug`. */
-const UNIQUE_VIOLATION = '23505';
+/** The constraint that backs `rolls.slug`. */
 const SLUG_CONSTRAINT = 'rolls_slug_unique';
 
 /**
- * Whether a failed write was a slug collision specifically.
+ * Whether a failed write was a slug collision **specifically**.
  *
- * It walks the `cause` chain because drizzle wraps driver errors in some
- * versions and not others, and a matcher that only checked the outermost error
- * would silently stop retrying after an upgrade — turning a 1-in-a-million
- * collision into a 500. `rolls.test.ts` provokes a real violation rather than a
- * fabricated one, so this stays honest about the shape the driver actually
- * throws.
+ * Naming the constraint is the load-bearing half: a device-serial clash is a
+ * caller error to report, not something to retry with a new slug. The
+ * cause-chain walk lives in `db/errors.ts` now that the upload pipeline needs
+ * the same test.
  */
 export function isSlugCollision(err: unknown): boolean {
-  let cursor: unknown = err;
-  for (let depth = 0; depth < 4 && typeof cursor === 'object' && cursor !== null; depth += 1) {
-    const candidate = cursor as { code?: unknown; constraint_name?: unknown; cause?: unknown };
-    if (candidate.code === UNIQUE_VIOLATION && candidate.constraint_name === SLUG_CONSTRAINT) {
-      return true;
-    }
-    cursor = candidate.cause;
-  }
-  return false;
+  return isUniqueViolation(err, SLUG_CONSTRAINT);
 }
 
 /**
@@ -319,10 +310,20 @@ export interface HostRollView {
   guestUrl: string;
   createdAt: Date;
   closedAt: Date | null;
-  counts: { captures: number; pending: number; hidden: number };
+  counts: RollCaptureCounts;
 }
 
-export function hostRollView(config: ApiConfig, roll: PublicRollRow): HostRollView {
+/**
+ * `counts` is passed in rather than queried here so this stays a pure
+ * projection: the two call sites in `host-rolls.ts` both already have a database
+ * handle, and a view function that silently issues a query is the kind of thing
+ * that turns one dashboard render into N of them later.
+ */
+export function hostRollView(
+  config: ApiConfig,
+  roll: PublicRollRow,
+  counts: RollCaptureCounts,
+): HostRollView {
   return {
     rollId: roll.id,
     slug: roll.slug,
@@ -335,13 +336,8 @@ export function hostRollView(config: ApiConfig, roll: PublicRollRow): HostRollVi
     guestUrl: guestUrlFor(config, roll.slug),
     createdAt: roll.createdAt,
     closedAt: roll.closedAt,
-    /**
-     * Honest zeros, not a lie: the `captures` table exists but nothing writes to
-     * it until Task 18 adds the upload pipeline, so there is genuinely nothing
-     * to count. Task 18 replaces this literal with the real aggregate — the
-     * shape is here so the host web can be built against it in the meantime.
-     */
-    counts: { captures: 0, pending: 0, hidden: 0 },
+    // Real since Task 18: `rollCaptureCounts` reads the `captures` table.
+    counts,
   };
 }
 
@@ -353,13 +349,17 @@ export interface GuestRollView {
   createdAt: Date;
 }
 
-export function guestRollView(roll: PublicRollRow): GuestRollView {
+/**
+ * `photoCount` counts the captures a guest can actually see — visible and not in
+ * the trash grace period — so it can be lower than the host's `captures`, which
+ * includes hidden ones. Deliberately not the roll's id, slug or privacy: a guest
+ * needs none of them to render the header.
+ */
+export function guestRollView(roll: PublicRollRow, photoCount: number): GuestRollView {
   return {
     title: roll.title,
     status: roll.status,
-    // As above: zero until Task 18. Deliberately not the roll's id, slug or
-    // privacy — a guest needs none of them to render the header.
-    photoCount: 0,
+    photoCount,
     createdAt: roll.createdAt,
   };
 }
