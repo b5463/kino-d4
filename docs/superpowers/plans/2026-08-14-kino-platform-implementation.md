@@ -153,7 +153,7 @@ git add -A
 git commit -m "chore: baseline KINO Studio v0.9.0 + dev spec pack"
 ```
 
-Note: `KINO_PROJECT_RECOVERY_PACK.zip` in the root is a binary recovery artifact — commit it or move it out of the repo per the user's preference; ask before deleting.
+Note: `KINO_PROJECT_RECOVERY_PACK.zip` is a binary recovery artifact. The documentation cleanup retained it at `archive/KINO_PROJECT_RECOVERY_PACK.zip`; do not delete it without the owner's approval.
 
 ### Task 2: Convert to npm workspaces and move Studio to `apps/studio`
 
@@ -1490,4 +1490,3 @@ Roll production acceptance (03§30) is satisfied by: no-login guest flow (Tasks 
 - **Firmware:** This plan covers the platform software. D4 firmware (P4 + XIAO camera nodes) implements against `firmware-contract/` (Task 9) and is planned separately — the mock (Task 8) is its behavioral reference.
 - **Commit discipline:** every task ends in a commit; never batch multiple tasks into one commit.
 - **When a task's test framework choice conflicts with what exists** (e.g. Studio already has vitest patterns), follow the existing pattern — this plan's snippets show intent, the codebase shows house style.
-
