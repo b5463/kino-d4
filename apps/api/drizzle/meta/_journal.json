@@ -15,6 +15,13 @@
       "when": 1786828975249,
       "tag": "0002_asset_role_frame_nulls_not_distinct",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786867262897,
+      "tag": "0003_roll_devices",
+      "breakpoints": true
     }
   ]
 }
