@@ -779,15 +779,15 @@ export class StubRollServerClient implements RollServerClient { /* rejects with 
   - 07§14 capability acceptance: unknown future capability fields tolerated (schema already passthrough — add UI test), version-mismatch banner rendered when device protocol outside supported range.
   - 07§16 gallery scale: virtualization test at 0 / 60 / 2,000 / 10,000 metadata rows — assert render count stays bounded (existing virtualization; add the 10k fixture case using `largeGallery2k` scenario generator parameterized).
 
-- [ ] **Step 1: Write failing tests for push-to-roll + each missing audit item** (only the ones the audit finds missing get implementation steps — the audit doc records "already present" for the rest).
+- [x] **Step 1: Write failing tests for push-to-roll + each missing audit item** (only the ones the audit finds missing get implementation steps — the audit doc records "already present" for the rest).
 
-- [ ] **Step 2: Run to verify FAIL.**
+- [x] **Step 2: Run to verify FAIL.**
 
-- [ ] **Step 3: Implement the gaps.**
+- [x] **Step 3: Implement the gaps.**
 
-- [ ] **Step 4: Run full Studio suite.** Run: `npm run test -w @kino/studio`
+- [x] **Step 4: Run full Studio suite.** Run: `npm run test -w @kino/studio`
 
-- [ ] **Step 5: Commit** — `feat(studio): push-to-roll + 02/07 spec audit closure` (include `docs/studio-spec-audit.md`)
+- [x] **Step 5: Commit** — `feat(studio): push-to-roll + 02/07 spec audit closure` (include `docs/studio-spec-audit.md`)
 
 ---
 
