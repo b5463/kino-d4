@@ -10,7 +10,8 @@
     <a href="#try-studio">Try Studio</a> ·
     <a href="docs/HARDWARE.md">Hardware</a> ·
     <a href="firmware-contract/README.md">Firmware contract</a> ·
-    <a href="docs/DEVELOPMENT.md">Build notes</a>
+    <a href="docs/DEVELOPMENT.md">Build notes</a> ·
+    <a href="docs/VERSIONING.md">Versions</a>
   </p>
 </div>
 
@@ -18,7 +19,7 @@ KINO D4 is a handmade four-lens camera built for house parties. Press the shutte
 
 Direct flash. 4:3 frames. Originals saved first. No cloud anywhere near the shutter.
 
-![KINO Studio running the included D4 demo device](docs/assets/kino-studio-demo.png)
+![KINO Studio running the included D4 demo device](docs/assets/product/studio-connected.png)
 
 <p align="center"><sub>The actual Studio overview, connected to the simulator that ships in this repository.</sub></p>
 
@@ -118,6 +119,7 @@ A trigger spread under 100 µs can still hide 10 to 30 ms between real exposures
 | [`packages/schemas`](packages/schemas) | Versioned `kino.*` documents shared across processes |
 | [`packages/test-fixtures`](packages/test-fixtures) | Reference camera, recipes, media, and injected failures |
 | [`firmware-contract`](firmware-contract) | The contract camera firmware must implement |
+| [`hardware`](hardware) | BOM, wiring, assembly, acceptance tests, and future CAD or PCB source |
 | [`kino_dev_spec_pack`](kino_dev_spec_pack) | Permanent Studio and Roll product specifications |
 | [`kino_twin_spec`](kino_twin_spec) | The 3D twin and virtual-device specification |
 
@@ -128,7 +130,21 @@ This project has history, and some old planning material is still useful. It is 
 - [Hardware reference](docs/HARDWARE.md): parts, dimensions, power, wiring, and what still needs measuring
 - [Architecture](docs/ARCHITECTURE.md): process boundaries, state ownership, uploads, and package relationships
 - [Development](docs/DEVELOPMENT.md): setup, services, migrations, tests, and protocol changes
+- [Troubleshooting](docs/TROUBLESHOOTING.md): browser, USB, protocol, power, sync, media, recovery, and API failures
 - [Firmware contract](firmware-contract/README.md): the handoff extracted from working protocol source
+- [Hardware build package](hardware/README.md): BOM, wiring, assembly order, and acceptance sheet
+- [Contributing](CONTRIBUTING.md): required contracts, tests, measurements, and pull request rules
+- [Roadmap](ROADMAP.md): current work and the deliberately unfinished edges
+- [Releasing](docs/RELEASING.md): independent versions, compatibility review, artifacts, and publishing
+- [Versioning](docs/VERSIONING.md): software, protocol, schema, database, and hardware revision rules
+- [Security](SECURITY.md): private reporting and the high-risk surfaces
 - [Brand assets](docs/assets/brand/README.md): the four split D4 marks and where each belongs
+- [Product media](docs/assets/product/README.md): real and simulated asset rules plus the physical shot list
 
 The short version: tested protocol source beats old prose, unknown hardware measurements stay unknown, originals are immutable, and firmware changes are finished only when the contract and tests move with them.
+
+## License
+
+KINO software and general documentation use the [MIT License](LICENSES/MIT.txt). Physical design source uses [CERN-OHL-S-2.0](LICENSES/CERN-OHL-S-2.0.txt), which keeps distributed hardware modifications open. Logos, wordmarks, product media, and the unaudited recovery archive remain reserved.
+
+[`LICENSE`](LICENSE) explains the boundary, [`REUSE.toml`](REUSE.toml) records it for SPDX tooling, and [`TRADEMARKS.md`](TRADEMARKS.md) keeps compatible forks distinct from official KINO releases.

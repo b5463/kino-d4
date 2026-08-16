@@ -1,0 +1,53 @@
+name: Feature proposal
+description: Propose a focused product, protocol, hardware, or developer change.
+title: "proposal: "
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - KINO Studio
+        - KINO Device Protocol
+        - KINO Roll
+        - KINO Twin
+        - D4 hardware
+        - Firmware contract
+        - Developer workflow
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete job or failure. Do not start with the proposed interface.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Explain the smallest change that solves the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: Cover protocol, schema, firmware, database, enclosure, and older-client effects where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or alternatives
+      description: Add measurements, traces, mockups, or simpler approaches already tried.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This proposal keeps originals immutable and the shutter path local.
+          required: true
+        - label: Simulated behavior and uncertain hardware values are labelled.
+          required: true

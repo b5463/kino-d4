@@ -8,8 +8,16 @@ Start with the question you need answered. The repository contains working contr
 |---|---|
 | What is KINO? | [Project README](../README.md) |
 | What hardware is in D4 V1? | [Hardware reference](HARDWARE.md) |
+| How do I wire, assemble, and accept a physical unit? | [Hardware build package](../hardware/README.md) |
 | How do the applications and packages fit together? | [Architecture](ARCHITECTURE.md) |
 | How do I install, run, test, or change it? | [Development guide](DEVELOPMENT.md) |
+| Something failed. Where do I start? | [Troubleshooting](TROUBLESHOOTING.md) |
+| How should I contribute a change? | [Contributing](../CONTRIBUTING.md) |
+| What is being built next? | [Roadmap](../ROADMAP.md) |
+| How is a version released? | [Release guide](RELEASING.md) |
+| Which version changes when? | [Versioning](VERSIONING.md) |
+| Which license applies to a path? | [Root license map](../LICENSE) and [`REUSE.toml`](../REUSE.toml) |
+| How do I report a vulnerability? | [Security policy](../SECURITY.md) |
 | What must camera firmware implement? | [Firmware contract](../firmware-contract/README.md) |
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |
@@ -38,6 +46,15 @@ When two documents disagree, use this order:
 - `docs/HARDWARE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/RELEASING.md`
+- `docs/VERSIONING.md`
+- `CONTRIBUTING.md`
+- `ROADMAP.md`
+- `CHANGELOG.md`
+- `SECURITY.md`
+- `hardware/*`
+- `LICENSE`, `LICENSES/*`, `REUSE.toml`, and `TRADEMARKS.md`
 - `firmware-contract/*`
 - `apps/api/README.md`
 

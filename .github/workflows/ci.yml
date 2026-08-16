@@ -10,6 +10,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - run: npm run version:check
+      - run: npm run license:check
       - run: npm run lint
       # service-free suites; add new workspaces here
       - run: npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures

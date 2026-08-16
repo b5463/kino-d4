@@ -1,0 +1,71 @@
+name: Hardware problem
+description: Report a D4 power, camera, sync, flash, storage, or mechanical fault.
+title: "hardware: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Disconnect power before moving a harness. Do not post photographs of a damaged or exposed battery if handling it would add risk.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Fault area
+      options:
+        - Power or battery
+        - Main controller or display
+        - Camera node or UART
+        - Shared sync or exposure timing
+        - Flash or thermal path
+        - microSD or storage
+        - Controls or sound
+        - Enclosure or camera bar
+    validations:
+      required: true
+  - type: input
+    id: unit
+    attributes:
+      label: Unit and hardware revision
+      placeholder: Redact the serial if this issue is public; D4 V1
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Symptom
+      description: State when it happens and which parts remain working.
+    validations:
+      required: true
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Include supply, 5 V rail, current, temperature, or timing values with units and instrument.
+    validations:
+      required: true
+  - type: textarea
+    id: isolation
+    attributes:
+      label: Isolation steps
+      description: Record channel swaps, flash-disabled tests, one-camera tests, or bench-supply tests.
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware and Studio version
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Photographs, traces, or test sheet
+      description: Remove serials, network names, and private media. Attach the relevant hardware acceptance rows.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I powered down before moving wiring or connectors.
+          required: true
+        - label: I kept unresolved measurements and GPIO assignments labelled as unresolved.
+          required: true

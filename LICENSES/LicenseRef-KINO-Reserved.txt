@@ -1,0 +1,12 @@
+KINO reserved material
+
+Copyright (c) 2026 KINO contributors. All rights reserved.
+
+No permission is granted under this notice to copy, modify, distribute,
+sublicense, sell, or create derivative works from files identified as
+LicenseRef-KINO-Reserved, except where applicable law permits the use without
+permission.
+
+This reservation applies only to files carrying or mapped to this identifier.
+It does not alter rights granted under MIT or CERN-OHL-S-2.0 for other files in
+the repository.

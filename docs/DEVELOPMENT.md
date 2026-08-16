@@ -38,6 +38,8 @@ These workspaces do not need Docker:
 
 ```bash
 npm run lint
+npm run version:check
+npm run license:check
 npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
 npm run build
 ```
@@ -107,6 +109,22 @@ npm run db:migrate -w @kino/api
 ```
 
 Do not rename existing migration numbers. Their journal indices already carry the repository's numbering choice.
+
+## Version and license checks
+
+[`versions.json`](../versions.json) records package, protocol, portable-schema, database, and hardware versions. The checker reads the owning source and fails on drift:
+
+```bash
+npm run version:check
+```
+
+Licenses are path-scoped through [`REUSE.toml`](../REUSE.toml). Software packages declare MIT. Physical hardware source declares CERN-OHL-S-2.0. Reserved visual assets stay outside both grants.
+
+```bash
+npm run license:check
+```
+
+Do not edit a license text, move a file across license boundaries, or change a public version without updating the corresponding manifest and policy document.
 
 ## Generated knowledge graph
 

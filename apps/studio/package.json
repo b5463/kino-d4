@@ -2,6 +2,7 @@
   "name": "@kino/studio",
   "private": true,
   "version": "0.9.0",
+  "license": "MIT",
   "description": "KINO Studio - local browser-based programmer and configuration utility for the KINO four-lens camera",
   "type": "module",
   "scripts": {

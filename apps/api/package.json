@@ -2,6 +2,7 @@
   "name": "@kino/api",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "src/server.ts",
   "types": "src/server.ts",
