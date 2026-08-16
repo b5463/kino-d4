@@ -3,7 +3,7 @@
 // survives device reboots during firmware updates. React components never
 // touch a transport directly — they call into this module.
 
-import { KinoProtocolClient, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
+import { KinoHandshakeError, KinoProtocolClient, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
 import { Evt, PROTOCOL_VERSION } from '@kino/kdp';
 import type {
   CalibrationEvent,
@@ -11,6 +11,7 @@ import type {
   LogEntry,
   PhaseResult,
   SelfTestEvent,
+  SessionChange,
 } from '@kino/kdp';
 import { KinoDevice } from '../device/KinoDevice';
 import { clearSoundCache } from '../device/sounds';
@@ -19,12 +20,16 @@ import { MockTransport } from '@kino/kdp';
 import { SerialTransport, webSerialSupported } from '@kino/kdp';
 import { MockKinoDevice } from '@kino/test-fixtures';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
+import type { ConnectionFault } from '../state/connectionStore';
 import { clearDeviceState, setDeviceState, useDeviceStore } from '../state/deviceStore';
 import { resetDrafts } from '../state/draftStore';
 import { claimDevice, releaseDevice, resetDeviceBusy } from '../state/deviceBusy';
 import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
 import { appendLog } from '../state/logStore';
 import { recordCamera } from '../state/knownCameras';
+
+/** Reported in HELLO so the device's own log names the peer (04 §4). */
+const CLIENT_NAME = 'kino-studio';
 
 type BusEvent = 'calibration' | 'selftest' | 'capture' | 'phase';
 
@@ -67,6 +72,17 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let expectRebootUntil = 0;
 let generation = 0;
 let reconnecting = false;
+/**
+ * Boot/session ID of the last camera this Studio spoke to. Studio builds a
+ * fresh protocol client per connection, so the client cannot notice a reboot
+ * on its own — it has to be handed what the previous one saw (04 §17).
+ *
+ * `lastDeviceId` is what keeps that from lying: two boot IDs only mean a
+ * restart if they came from the same unit. Both are cleared whenever Studio
+ * lets go of a camera deliberately.
+ */
+let lastSessionId: string | null = null;
+let lastDeviceId: string | null = null;
 
 export function getDevice(): KinoDevice | null {
   return device;
@@ -112,7 +128,11 @@ export async function connectDemo(): Promise<void> {
 
 export async function connectSerial(): Promise<void> {
   if (!webSerialSupported()) {
-    setConnection({ phase: 'error', error: 'This browser has no Web Serial support. Use desktop Chrome or Edge.' });
+    setConnection({
+      phase: 'error',
+      fault: null,
+      error: 'This browser has no Web Serial support. Use desktop Chrome or Edge.',
+    });
     return;
   }
   setConnection({ phase: 'requesting-port', error: null });
@@ -136,8 +156,8 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
   // banner — intermediate phases would flash the connect screen instead.
   setConnection(
     reconnecting
-      ? { transportKind: kind, error: null }
-      : { phase: 'connecting', transportKind: kind, error: null },
+      ? { transportKind: kind, error: null, fault: null }
+      : { phase: 'connecting', transportKind: kind, error: null, fault: null },
   );
 
   const t = factory();
@@ -146,7 +166,13 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
     await t.open();
   } catch (err) {
     if (!reconnecting) {
-      setConnection({ phase: 'error', error: `Could not open ${kind === 'serial' ? 'serial port' : 'demo device'}: ${message(err)}` });
+      // The port is the hardware as far as Studio can see it: nothing else
+      // can be diagnosed until it opens.
+      setConnection({
+        phase: 'error',
+        fault: 'hardware',
+        error: `Could not open ${kind === 'serial' ? 'serial port' : 'demo device'}: ${message(err)}`,
+      });
     }
     return;
   }
@@ -159,56 +185,90 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
 
   if (!reconnecting) setConnection({ phase: 'handshaking' });
   try {
-    await handshake(device);
+    await handshake(c);
     await populateAll();
   } catch (err) {
     await teardown(false);
     if (!reconnecting) {
-      setConnection({ phase: 'error', error: `Handshake failed: ${message(err)}` });
+      setConnection({ phase: 'error', fault: handshakeFault(err), error: `Handshake failed: ${message(err)}` });
     }
     return;
   }
 
-  setConnection({ phase: 'connected' });
+  setConnection({ phase: 'connected', fault: null });
   startPolling();
 }
 
 /**
  * An ESP32 spews ROM boot text before firmware runs, so the first bytes on
  * the wire are usually garbage. The frame decoder resynchronizes on the
- * magic, and HELLO is retried a few times with a nonce so a stale buffered
- * reply can never be mistaken for a live one.
+ * magic, and HELLO is retried with a fresh nonce per attempt so a stale
+ * buffered reply can never be mistaken for a live one.
+ *
+ * All of that lives in the protocol client (04 §4/§17), and Studio used to
+ * run its own copy of the retry loop, which never compared boot IDs at all.
+ *
+ * Scope of what this detects, exactly: **a reboot across a reconnect**. HELLO
+ * runs here and nowhere else, so a camera that restarts on a port that never
+ * drops is still invisible — the 4 s poller swallows its own errors and never
+ * re-handshakes. Closing that needs a periodic or error-triggered re-HELLO and
+ * is recorded as a follow-up in `docs/studio-spec-audit.md`, not done here.
  */
-async function handshake(device: KinoDevice): Promise<void> {
-  const attempts = 3;
-  let lastError: Error | null = null;
-  for (let i = 1; i <= attempts; i++) {
-    const nonce = Math.floor(Math.random() * 0xffffffff);
-    try {
-      const hello = await device.hello(nonce, 500);
-      if (hello.product !== 'KINO') {
-        throw new Error(`Device answered as "${hello.product}" — not a KINO`);
-      }
-      if (hello.nonce !== undefined && hello.nonce !== nonce) {
-        throw new Error('Handshake reply did not match the request — stale serial buffer');
-      }
-      if (hello.protocol !== PROTOCOL_VERSION) {
-        throw new Error(
-          `Protocol ${hello.protocol} is not supported by this version of KINO Studio (needs ${PROTOCOL_VERSION})`,
-        );
-      }
-      return;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      // Only retry silence; a wrong product or protocol is final.
-      if (!(err instanceof KinoTimeoutError)) throw lastError;
-      if (i < attempts) await sleep(150);
-    }
+async function handshake(c: KinoProtocolClient): Promise<void> {
+  const hello = await c.hello({
+    protocolMin: PROTOCOL_VERSION,
+    protocolMax: PROTOCOL_VERSION,
+    clientVersion: CLIENT_NAME,
+    // A fresh client per connection would otherwise read every reconnect as
+    // a first session and never raise sessionChanged.
+    knownSessionId: lastSessionId,
+  });
+  if (hello.product !== 'KINO') {
+    throw new Error(`Device answered as "${hello.product}" — not a KINO`);
   }
-  throw new Error(`No HELLO reply after ${attempts} attempts: ${lastError?.message ?? 'silent'}`);
+  lastSessionId = c.sessionId;
+  lastDeviceId = hello.deviceId ?? null;
+}
+
+/**
+ * Two different boot IDs are only a restart if the same unit produced them.
+ * Unplug camera A and plug in camera B and the IDs differ for the ordinary
+ * reason — telling the user their camera "restarted" would be a lie, and the
+ * state that belonged to A is dropped by the serial check in `populateAll`
+ * regardless. Firmware that predates device IDs (04 §17) reports none, and is
+ * given the benefit of the doubt.
+ */
+export function isSameCamera(previousDeviceId: string | null, change: SessionChange): boolean {
+  if (previousDeviceId === null || change.deviceId === undefined) return true;
+  return change.deviceId === previousDeviceId;
+}
+
+/**
+ * A protocol the device selected outside our range is the one handshake
+ * failure the user can act on differently: it needs a different build, not a
+ * different cable. 02 §6 gives it its own connection-strip state.
+ */
+function handshakeFault(err: unknown): ConnectionFault | null {
+  return err instanceof KinoHandshakeError && err.reason === 'protocol' ? 'protocol-mismatch' : null;
 }
 
 function wireEvents(c: KinoProtocolClient) {
+  // 04 §17: a new boot ID means the camera restarted under us. Anything this
+  // session cached about it — drafts edited against the old run, a bench
+  // claim, cached sounds — belongs to a device that no longer exists. The
+  // client has already failed every in-flight job by the time this fires.
+  c.onSessionChanged((change) => {
+    // A different unit answering is not a restart — see `isSameCamera`.
+    if (!isSameCamera(lastDeviceId, change)) return;
+    appendLog({
+      t: Date.now(),
+      src: 'P4',
+      msg: `camera restarted (session ${change.previous} → ${change.current}) — cached state dropped`,
+    });
+    clearSoundCache();
+    resetDrafts();
+    resetDeviceBusy();
+  });
   c.onEvent<LogEntry>(Evt.LOG, (entry) => appendLog(entry));
   c.onEvent<CalibrationEvent>(Evt.CALIBRATION, (e) => {
     for (const cb of busHandlers.calibration) (cb as (p: CalibrationEvent) => void)(e);
@@ -386,9 +446,12 @@ function handleTransportClose(gen: number, factory: () => Transport, reason?: st
   clearDeviceState();
   const phase = useConnectionStore.getState().phase;
   if (phase === 'connected' || phase === 'maintenance' || phase === 'updating') {
-    setConnection({ phase: 'error', error: reason ?? 'KINO disconnected unexpectedly' });
+    // A live session whose link went away without anyone asking: the cable,
+    // the port or the board. 02 §6 calls that a hardware error, not a plain
+    // disconnect — the user did not do this.
+    setConnection({ phase: 'error', fault: 'hardware', error: reason ?? 'KINO disconnected unexpectedly' });
   } else {
-    setConnection({ phase: 'disconnected' });
+    setConnection({ phase: 'disconnected', fault: null });
   }
 }
 
@@ -414,13 +477,20 @@ async function reconnectLoop(factory: () => Transport) {
   }
   expectRebootUntil = 0;
   clearDeviceState();
-  setConnection({ phase: 'error', error: 'KINO did not come back after reboot. Check the cable and reconnect.' });
+  // The board was told to reboot and never answered again. That is the 02 §22
+  // recovery situation, and 02 §6 gives it its own strip state rather than
+  // filing it under ERROR with everything else.
+  setConnection({
+    phase: 'recovery',
+    fault: null,
+    error: 'KINO did not come back after reboot. Check the cable and reconnect.',
+  });
 }
 
 export async function disconnect(): Promise<void> {
   expectRebootUntil = 0;
   await teardown(true);
-  setConnection({ phase: 'disconnected', transportKind: null, error: null });
+  setConnection({ phase: 'disconnected', transportKind: null, error: null, fault: null });
 }
 
 async function teardown(clearState: boolean) {
@@ -444,6 +514,12 @@ async function teardown(clearState: boolean) {
     // Drafts and any bench claim belong to the camera that just left.
     resetDrafts();
     resetDeviceBusy();
+    // So does its boot ID. Studio let go of that camera deliberately and has
+    // just dropped everything the ID would have protected, so carrying it into
+    // the next connection can only produce a false "camera restarted" — loudly
+    // and wrongly, if the next thing plugged in is a different unit.
+    lastSessionId = null;
+    lastDeviceId = null;
   }
 }
 

@@ -43,6 +43,13 @@ export interface ScenarioFlags {
   sdMissing: boolean;
   /** Report an early firmware: no VSYNC telemetry, phase cal or link bench. */
   legacyFirmware: boolean;
+  /**
+   * Answer HELLO with a protocol the host does not speak (02 §6 "Protocol
+   * mismatch", 07 §14 "clearly show version mismatch"). The framing stays at
+   * the current version — this is a firmware that is too new, not a corrupt
+   * stream.
+   */
+  protocolMismatch: boolean;
 }
 
 export type ScenarioKey = keyof ScenarioFlags;
@@ -85,6 +92,7 @@ export const scenarios = {
   lowBattery: descriptor('lowBattery', 'LOW BATTERY', false, 'the pack reports 3.42 V'),
   sdMissing: descriptor('sdMissing', 'SD MISSING', false, 'no card is mounted'),
   legacyFirmware: descriptor('legacyFirmware', 'LEGACY FIRMWARE 0.1.0', false, 'pre-timing firmware without the optional features'),
+  protocolMismatch: descriptor('protocolMismatch', 'PROTOCOL MISMATCH', false, 'HELLO selects a protocol this Studio does not speak'),
 } satisfies Record<ScenarioKey, ScenarioDescriptor>;
 
 /** The twelve 04 §19 mock requirements, in spec order. */

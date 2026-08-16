@@ -1,4 +1,5 @@
 import { Button } from './Button';
+import { ConnectionNotice } from './ConnectionNotice';
 import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
 import { connectDemo, connectSerial } from '../app/session';
 import { useKnownCameras } from '../state/knownCameras';
@@ -8,6 +9,7 @@ import { APP_VERSION } from '../app/App';
 export function ConnectHome() {
   const phase = useConnectionStore((s) => s.phase);
   const error = useConnectionStore((s) => s.error);
+  const fault = useConnectionStore((s) => s.fault);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const known = useKnownCameras((s) => s.cameras);
 
@@ -37,8 +39,12 @@ export function ConnectHome() {
         </div>
 
         <div className="connect-status" role="status">
-          {busy ? PHASE_LABEL[phase] : error ?? ''}
+          {/* A fault gets the banner below instead — repeating its one-line
+              summary here would say it twice and explain it once. */}
+          {busy ? PHASE_LABEL[phase] : fault || phase === 'recovery' ? '' : error ?? ''}
         </div>
+
+        <ConnectionNotice phase={phase} fault={fault} error={error} />
 
         {!serialSupported ? (
           <p className="connect-note">

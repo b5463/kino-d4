@@ -98,7 +98,9 @@ Firmware rules:
 
 ### D3 — Network / Roll / upload-queue numeric values
 
-Spec 04§7 lists these ten commands by name only and assigns no values. This repo allocated them:
+Spec 04§7 lists ten of these commands by name only and assigns no values. This repo allocated them,
+plus `UPLOAD_ENQUEUE`, which 04§7 does not list at all — 02§16 requires a "push to Roll" gallery
+action and no command existed to carry it, so it took the next free slot in the same block:
 
 | Command | Value |
 |---|---|
@@ -112,6 +114,7 @@ Spec 04§7 lists these ten commands by name only and assigns no values. This rep
 | `ROLL_LEAVE` | `0xa7` |
 | `UPLOAD_QUEUE_STATUS` | `0xa8` |
 | `UPLOAD_QUEUE_RETRY` | `0xa9` |
+| `UPLOAD_ENQUEUE` | `0xaa` |
 
 **These values are normative.** They sit deliberately above the `0x80`–`0x89` event range so a
 command id and an event id can never collide in a protocol trace.

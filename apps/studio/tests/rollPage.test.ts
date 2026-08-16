@@ -28,6 +28,8 @@ import { startRoll, submitNetwork } from '../src/roll/rollOps';
 import { NetworkPanel } from '../src/pages/Roll/NetworkPanel';
 import { RollPanel, GuestQr } from '../src/pages/Roll/RollPanel';
 import { UploadQueuePanel } from '../src/pages/Roll/UploadQueuePanel';
+import { PushToRoll } from '../src/pages/Gallery/PushToRoll';
+import type { RollView } from '../src/roll/rollTypes';
 import { navItems } from '../src/components/Sidebar';
 import { setDeviceState, clearDeviceState, supportsRollUpload, useDeviceStore } from '../src/state/deviceStore';
 import { appendLog, clearLogs, useLogStore } from '../src/state/logStore';
@@ -462,6 +464,121 @@ describe('(d) upload queue', () => {
       }),
     );
     expect(html).toContain('NOTHING QUEUED');
+  });
+});
+
+/**
+ * Push to Roll (02 §16). The action only exists when there is somewhere for
+ * the capture to go: an active Roll on a camera whose firmware advertises
+ * `rollUpload`. Everything else is a button that enqueues into nothing.
+ */
+describe('(f) push to Roll', () => {
+  /**
+   * Exactly what CaptureInspector passes: the capability off the device store
+   * and ROLL_STATUS as the gallery last read it.
+   */
+  const renderPush = (roll: RollView | null, rollUpload = supportsRollUpload(useDeviceStore.getState())) =>
+    renderToStaticMarkup(
+      createElement(PushToRoll, { captureId: 'CAP_0042', rollUpload, roll, onPush: async () => {} }),
+    );
+
+  const withCaps = async (mock?: MockKinoDevice) => {
+    const ctx = await connectMock(mock);
+    const caps = await ctx.device.getCapabilities();
+    setDeviceState({ capabilities: caps.capabilities });
+    return ctx;
+  };
+
+  /** A Roll the camera is on — the only state that unlocks the action. */
+  const ACTIVE_ROLL: RollView = {
+    active: true,
+    roll: {
+      rollId: 'roll_0001',
+      slug: 'amber-001',
+      guestUrl: 'https://kino.roll/amber-001',
+      name: 'Friday party',
+      role: 'host',
+      joinedAt: 1755301234567,
+    },
+    queue: { pending: 0, uploading: 0, failed: 0, uploaded: 0, draining: false },
+  };
+
+  it('is not offered while the camera is not on a Roll', async () => {
+    const { device } = await withCaps();
+    const view = await device.rollStatus();
+    expect(view.active).toBe(false);
+    expect(renderPush(view)).toBe('');
+    // Nor before ROLL_STATUS has been read at all.
+    expect(renderPush(null)).toBe('');
+  });
+
+  it('is not offered on firmware that cannot upload, Roll or no Roll', async () => {
+    const mock = new MockKinoDevice();
+    mock.setScenario('legacyFirmware', true);
+    await withCaps(mock);
+    expect(supportsRollUpload(useDeviceStore.getState())).toBe(false);
+
+    // A camera that cannot upload cannot be on a Roll either, so this is the
+    // synthetic worst case: capability off, view claiming a Roll.
+    expect(renderPush(ACTIVE_ROLL)).toBe('');
+  });
+
+  it('offers PUSH TO ROLL once the camera is on one, naming the Roll', async () => {
+    const { device } = await withCaps();
+    await startRoll(device, recordingServer([]), { title: 'Friday party', downloadsEnabled: true });
+    const view = await device.rollStatus();
+    expect(view.active).toBe(true);
+    expect(supportsRollUpload(useDeviceStore.getState())).toBe(true);
+
+    const html = renderPush(view);
+    expect(html).toContain('PUSH TO ROLL');
+    expect(html).toContain('Friday party');
+  });
+
+  it('sends UPLOAD_ENQUEUE and the Roll page prints the longer queue', async () => {
+    const { device, sent } = await withCaps();
+    await startRoll(device, recordingServer([]), { title: 'Friday party', downloadsEnabled: true });
+
+    const before = await device.uploadQueueStatus();
+    expect(before.pending).toBe(0);
+
+    const list = await device.mediaList({ limit: 1 });
+    const capture = list.items[0];
+    const res = await device.uploadEnqueue(capture.id);
+
+    const enqueued = sent.filter((c) => c.cmd === Cmd.UPLOAD_ENQUEUE);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0].payload).toEqual({ captureId: capture.id });
+    expect(res.queue.pending).toBe(before.pending + 1);
+
+    const queue = await device.uploadQueueStatus();
+    expect(queue.pending).toBe(before.pending + 1);
+
+    const html = renderToStaticMarkup(
+      createElement(UploadQueuePanel, { queue, busy: false, error: null, onRetry: async () => {} }),
+    );
+    expect(html).toContain('1 PENDING');
+    expect(html).not.toContain('NOTHING QUEUED');
+  });
+
+  it('NACKs UPLOAD_ENQUEUE when the camera is not on a Roll', async () => {
+    const { device } = await withCaps();
+    expect((await device.rollStatus()).active).toBe(false);
+    await expect(device.uploadEnqueue('CAP_0001')).rejects.toThrow(/not on a roll/i);
+    expect((await device.uploadQueueStatus()).pending).toBe(0);
+  });
+
+  it('NACKs UPLOAD_ENQUEUE on firmware without rollUpload', async () => {
+    const mock = new MockKinoDevice();
+    mock.setScenario('legacyFirmware', true);
+    const { device } = await connectMock(mock);
+    await expect(device.uploadEnqueue('CAP_0001')).rejects.toThrow(/not implemented/i);
+  });
+
+  it('NACKs a blank capture id rather than queueing nothing', async () => {
+    const { device } = await withCaps();
+    await startRoll(device, recordingServer([]), { title: 'Friday party', downloadsEnabled: true });
+    await expect(device.uploadEnqueue('')).rejects.toThrow(/capture/i);
   });
 });
 

@@ -1,7 +1,6 @@
 import { Icon } from './Icon';
-import { Led } from './Led';
-import type { LedState } from './Led';
-import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
+import { ConnectionStrip } from './ConnectionStrip';
+import { canOpenDemo, useConnectionStore } from '../state/connectionStore';
 import { useDeviceStore } from '../state/deviceStore';
 import { connectSerial, connectDemo, disconnect, getDevice } from '../app/session';
 import type { PageId } from './Sidebar';
@@ -22,20 +21,13 @@ export function Toolbar({
   syncBusy?: boolean;
 }) {
   const phase = useConnectionStore((s) => s.phase);
+  const fault = useConnectionStore((s) => s.fault);
   const transportKind = useConnectionStore((s) => s.transportKind);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const serial = useDeviceStore((s) => s.info?.serial);
 
   const connected = phase === 'connected' || phase === 'maintenance';
   const busyPhase = phase === 'updating' || phase === 'reconnecting';
-
-  const ledState: LedState = connected
-    ? 'ok'
-    : busyPhase
-      ? 'busy'
-      : phase === 'error'
-        ? 'err'
-        : 'off';
 
   // ARIA's toolbar pattern expects the arrows to move between commands, not
   // Tab. Both work here: Tab still reaches every enabled button.
@@ -114,7 +106,7 @@ export function Toolbar({
       <button
         type="button"
         className="tool-btn"
-        disabled={phase !== 'disconnected' && phase !== 'error'}
+        disabled={!canOpenDemo(phase)}
         onClick={() => void connectDemo()}
         title="Open the simulated demo camera"
       >
@@ -124,9 +116,12 @@ export function Toolbar({
 
       <span className="tool-device">
         {/* The lamp used to carry `updating` / `reconnecting` by colour alone
-            here, while every other Led in the app is required to carry text. */}
-        <Led state={ledState} label={connected ? '' : PHASE_LABEL[phase]} />
-        {serial ? `${serial}${transportKind === 'mock' ? ' · DEMO DEVICE' : ' · USB'}` : PHASE_LABEL[phase]}
+            here, while every other Led in the app is required to carry text —
+            and then it carried its own private mapping, which said ERROR while
+            the status bar 40 px below said PROTOCOL MISMATCH. One mapping now,
+            shared with the other two strips. */}
+        <ConnectionStrip phase={phase} fault={fault} silentWhenConnected />
+        {serial ? `${serial}${transportKind === 'mock' ? ' · DEMO DEVICE' : ' · USB'}` : null}
       </span>
     </div>
   );

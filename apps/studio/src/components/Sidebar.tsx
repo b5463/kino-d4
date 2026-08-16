@@ -1,8 +1,7 @@
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
-import { Led } from './Led';
-import type { LedState } from './Led';
-import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
+import { ConnectionStrip } from './ConnectionStrip';
+import { useConnectionStore } from '../state/connectionStore';
 import { supportsRollUpload, useDeviceStore } from '../state/deviceStore';
 import { usePrefs } from '../state/prefs';
 import { dirtySections, useDraftStore } from '../state/draftStore';
@@ -89,19 +88,13 @@ export function Sidebar({
   locked?: string | null;
 }) {
   const phase = useConnectionStore((s) => s.phase);
+  const fault = useConnectionStore((s) => s.fault);
   const transportKind = useConnectionStore((s) => s.transportKind);
   const serial = useDeviceStore((s) => s.info?.serial);
   const developerMode = usePrefs((s) => s.developerMode);
   const rollUpload = useDeviceStore(supportsRollUpload);
   const dirty = useDraftStore((s) => s.dirty);
   const unsaved = dirtySections(dirty);
-
-  const ledState: LedState =
-    phase === 'connected' ? 'ok'
-    : phase === 'maintenance' || phase === 'updating' ? 'warn'
-    : phase === 'reconnecting' ? 'busy'
-    : phase === 'error' ? 'err'
-    : 'off';
 
   const items = navItems({ developerMode, rollUpload });
 
@@ -129,7 +122,7 @@ export function Sidebar({
         ))}
       </nav>
       <div className="conn-footer">
-        <Led state={ledState} label={PHASE_LABEL[phase]} />
+        <ConnectionStrip phase={phase} fault={fault} />
         {serial ? (
           <span className="microlabel">
             {serial}

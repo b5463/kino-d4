@@ -93,6 +93,12 @@ export enum Cmd {
   ROLL_LEAVE = 0xa7,
   UPLOAD_QUEUE_STATUS = 0xa8,
   UPLOAD_QUEUE_RETRY = 0xa9,
+  /**
+   * Queue one capture already on the SD card for upload to the active Roll
+   * (02 §16 "push to Roll"). Only meaningful while the device is on a Roll —
+   * there is nowhere else for the bytes to go.
+   */
+  UPLOAD_ENQUEUE = 0xaa,
 }
 
 // Unsolicited frames pushed by the device (FrameFlags.EVENT set).
