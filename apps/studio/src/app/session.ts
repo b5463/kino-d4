@@ -17,6 +17,7 @@ import { clearSoundCache } from '../device/sounds';
 import type { Transport, TransportKind } from '@kino/kdp';
 import { MockTransport } from '@kino/kdp';
 import { SerialTransport, webSerialSupported } from '@kino/kdp';
+import { BroadcastTransport } from '@kino/kdp';
 import { MockKinoDevice } from '@kino/test-fixtures';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import { clearDeviceState, setDeviceState, useDeviceStore } from '../state/deviceStore';
@@ -128,6 +129,22 @@ export async function connectSerial(): Promise<void> {
   await connectWith(() => new SerialTransport(port), 'serial');
 }
 
+/**
+ * KINO Twin §10 option 2: a Twin running in another same-origin tab, reached
+ * over BroadcastTransport. Same connect/handshake/populate path as serial and
+ * demo — the twin is just another transport kind, not a special case.
+ */
+export async function connectTwin(): Promise<void> {
+  await connectWith(() => new BroadcastTransport(), 'twin');
+}
+
+/** What each transport kind is called in a "could not open" error. */
+const OPEN_TARGET_LABEL: Record<TransportKind, string> = {
+  serial: 'serial port',
+  mock: 'demo device',
+  twin: 'KINO Twin',
+};
+
 async function connectWith(factory: () => Transport, kind: TransportKind): Promise<void> {
   await teardown(false);
   lastKind = kind;
@@ -146,7 +163,7 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
     await t.open();
   } catch (err) {
     if (!reconnecting) {
-      setConnection({ phase: 'error', error: `Could not open ${kind === 'serial' ? 'serial port' : 'demo device'}: ${message(err)}` });
+      setConnection({ phase: 'error', error: `Could not open ${OPEN_TARGET_LABEL[kind]}: ${message(err)}` });
     }
     return;
   }
@@ -284,7 +301,7 @@ async function populateAll() {
     calibration,
     stats,
   });
-  recordCamera(info, lastKind === 'mock');
+  recordCamera(info, lastKind !== 'serial');
 }
 
 /**

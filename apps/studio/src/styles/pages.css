@@ -70,6 +70,18 @@
   gap: 10px;
 }
 
+.connect-twin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.connect-twin-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
 .connect-status {
   margin-top: 14px;
   min-height: 18px;
