@@ -42,6 +42,7 @@ import type {
   NetworkStatus,
   RollCreateResponse,
   RollView,
+  UploadEnqueueResponse,
   UploadQueueReport,
   UploadQueueRetryResponse,
 } from '../roll/rollTypes';
@@ -367,5 +368,14 @@ export class KinoDevice {
 
   uploadQueueRetry() {
     return this.client.request<UploadQueueRetryResponse>(Cmd.UPLOAD_QUEUE_RETRY);
+  }
+
+  /**
+   * Push one capture already on the card into the active Roll's upload queue
+   * (02 §16). The camera decides when it actually goes out — this only says
+   * that it should.
+   */
+  uploadEnqueue(captureId: string) {
+    return this.client.request<UploadEnqueueResponse>(Cmd.UPLOAD_ENQUEUE, { captureId }, 8000);
   }
 }

@@ -63,6 +63,13 @@ export interface UploadQueueRetryResponse {
   queue: UploadQueueReport;
 }
 
+/** `UPLOAD_ENQUEUE` — "push to Roll" for one capture already on the card. */
+export interface UploadEnqueueResponse {
+  ok: boolean;
+  captureId: string;
+  queue: UploadQueueReport;
+}
+
 export interface RollInfo {
   rollId: string;
   slug: string;

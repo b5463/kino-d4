@@ -1,0 +1,375 @@
+// Spec-audit sweep (Task 13) — the 02/07 checklist items that had no test.
+//
+// Each `describe` below is one row of `docs/studio-spec-audit.md`. Rows the
+// audit found ALREADY PRESENT are cited there by file:line and are not
+// re-tested here; what is left is the behaviour this task had to build, so
+// every test in this file is the evidence column for a gap that was closed.
+//
+// Environment is node (see vitest.config.ts), so anything rendered goes
+// through `react-dom/server` and every component under test takes its data as
+// props — the same rule the Roll panels follow.
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { KinoProtocolClient, MockTransport } from '@kino/kdp';
+import type { CaptureSummary } from '@kino/kdp';
+import { MockKinoDevice } from '@kino/test-fixtures';
+
+import { KinoDevice } from '../src/device/KinoDevice';
+import { parseCubeLut, DEVICE_LUT_SIZE } from '../src/recipes/cubeLut';
+import {
+  PHASE_LABEL,
+  connectionStrip,
+  connectionNotice,
+  setConnection,
+  useConnectionStore,
+} from '../src/state/connectionStore';
+import { connectDemo, disconnect, getDemoDevice } from '../src/app/session';
+import { clearLogs, useLogStore } from '../src/state/logStore';
+import type { ConnectionFault, ConnectionPhase } from '../src/state/connectionStore';
+import { ConnectionNotice } from '../src/components/ConnectionNotice';
+import { ConnectionStrip } from '../src/components/ConnectionStrip';
+import {
+  GALLERY_LIST_CAP,
+  GALLERY_PAGE_SIZE,
+  galleryPageSlice,
+  galleryView,
+} from '../src/pages/Gallery/galleryPaging';
+import { clearDeviceState, setDeviceState, supports, useDeviceStore } from '../src/state/deviceStore';
+import { navItems } from '../src/components/Sidebar';
+import type { Capabilities } from '@kino/kdp';
+
+let transport: MockTransport | null = null;
+
+async function connectMock(mock = new MockKinoDevice()) {
+  transport = new MockTransport(mock);
+  await transport.open();
+  return { mock, device: new KinoDevice(new KinoProtocolClient(transport)) };
+}
+
+afterEach(async () => {
+  await transport?.close();
+  transport = null;
+  clearDeviceState();
+  setConnection({ phase: 'disconnected', fault: null, error: null, transportKind: null });
+});
+
+// ---------------------------------------------------------------------------
+// 02 §14 — LUT support: `.cube` import, 17×17×17 device LUT
+// ---------------------------------------------------------------------------
+
+/**
+ * A real `.cube` file, generated rather than pasted: at 17³ the data block is
+ * 4,913 lines, and the point of the fixture is the size, not the numbers. The
+ * ramp is the identity transform, so a parse can be checked entry by entry.
+ */
+function syntheticCube(size: number, title = 'KINO Bench Ramp'): string {
+  const lines = [`TITLE "${title}"`, `LUT_3D_SIZE ${size}`, 'DOMAIN_MIN 0.0 0.0 0.0', 'DOMAIN_MAX 1.0 1.0 1.0', ''];
+  const last = size - 1;
+  for (let b = 0; b < size; b++) {
+    for (let g = 0; g < size; g++) {
+      for (let r = 0; r < size; r++) {
+        lines.push(`${(r / last).toFixed(6)} ${(g / last).toFixed(6)} ${(b / last).toFixed(6)}`);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+describe('02 §14 — .cube LUT import', () => {
+  it('parses a 17×17×17 cube into a Float32Array of RGB triplets', () => {
+    const lut = parseCubeLut(syntheticCube(DEVICE_LUT_SIZE));
+
+    expect(lut.title).toBe('KINO Bench Ramp');
+    expect(lut.size).toBe(17);
+    expect(lut.data).toBeInstanceOf(Float32Array);
+    expect(lut.data.length).toBe(17 * 17 * 17 * 3);
+
+    // Red runs fastest — entry 0 is black, entry 1 is one red step.
+    expect([lut.data[0], lut.data[1], lut.data[2]]).toEqual([0, 0, 0]);
+    expect(lut.data[3]).toBeCloseTo(1 / 16, 5);
+    // And the last entry is white.
+    const end = lut.data.length - 3;
+    expect(lut.data[end]).toBeCloseTo(1, 5);
+    expect(lut.data[end + 2]).toBeCloseTo(1, 5);
+  });
+
+  it('takes a cube with comments, blank lines and CRLF endings', () => {
+    const body = syntheticCube(DEVICE_LUT_SIZE)
+      .split('\n')
+      .flatMap((line, i) => (i === 0 ? ['# exported by some grading app', '', line] : [line]))
+      .join('\r\n');
+    expect(parseCubeLut(body).data.length).toBe(17 * 17 * 17 * 3);
+  });
+
+  it('rejects a cube that is not 17×17×17 and says what KINO wants', () => {
+    expect(() => parseCubeLut(syntheticCube(33))).toThrow(/33×33×33/);
+    expect(() => parseCubeLut(syntheticCube(33))).toThrow(/17×17×17/);
+  });
+
+  it('rejects a 1D LUT rather than reading its rows as a cube', () => {
+    const text = ['TITLE "curve"', 'LUT_1D_SIZE 32', '0.0 0.0 0.0', '1.0 1.0 1.0'].join('\n');
+    expect(() => parseCubeLut(text)).toThrow(/1D/);
+  });
+
+  it('rejects a file with no LUT_3D_SIZE at all', () => {
+    expect(() => parseCubeLut('0.0 0.0 0.0\n1.0 1.0 1.0\n')).toThrow(/LUT_3D_SIZE/);
+  });
+
+  it('rejects a truncated data block and states both counts', () => {
+    const full = syntheticCube(DEVICE_LUT_SIZE).split('\n');
+    const short = full.slice(0, full.length - 10).join('\n');
+    expect(() => parseCubeLut(short)).toThrow(/4913/);
+    expect(() => parseCubeLut(short)).toThrow(/4903/);
+  });
+
+  it('rejects a row that is not three numbers', () => {
+    const rows = syntheticCube(DEVICE_LUT_SIZE).split('\n');
+    rows[8] = '0.5 not-a-number 0.5';
+    expect(() => parseCubeLut(rows.join('\n'))).toThrow(/Line 9/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 02 §6 — the connection strip covers all nine states
+// ---------------------------------------------------------------------------
+
+/** The nine states 02 §6 names, in spec order, with what Studio must print. */
+const NINE_STATES: [string, ConnectionPhase, ConnectionFault | null, string][] = [
+  ['Connected', 'connected', null, 'KINO CONNECTED'],
+  ['Connecting', 'connecting', null, 'CONNECTING…'],
+  ['Reconnecting', 'reconnecting', null, 'RECONNECTING…'],
+  ['Maintenance', 'maintenance', null, 'MAINTENANCE'],
+  ['Updating', 'updating', null, 'UPDATING'],
+  ['Recovery', 'recovery', null, 'RECOVERY NEEDED'],
+  ['Disconnected', 'disconnected', null, 'DISCONNECTED'],
+  ['Protocol mismatch', 'error', 'protocol-mismatch', 'PROTOCOL MISMATCH'],
+  ['Hardware error', 'error', 'hardware', 'HARDWARE ERROR'],
+];
+
+describe('02 §6 — connection strip states', () => {
+  it.each(NINE_STATES)('names the %s state', (_spec, phase, fault, label) => {
+    expect(connectionStrip(phase, fault).label).toBe(label);
+  });
+
+  /**
+   * `ConnectionStrip` is the lamp both strips render — the sidebar footer
+   * (Sidebar.tsx) and the bottom status bar (StatusBar.tsx) — so covering it
+   * covers both. It takes props: zustand hands `renderToStaticMarkup` its
+   * *initial* state, so a store-driven component cannot be driven from here.
+   */
+  it.each(NINE_STATES)('renders the %s state as lamp + words', (_spec, phase, fault, label) => {
+    const html = renderToStaticMarkup(createElement(ConnectionStrip, { phase, fault }));
+    expect(html).toContain(label);
+    // State is never colour alone: the lamp always ships with its words.
+    expect(html).toContain('led-label');
+    expect(html).toContain(`led--${connectionStrip(phase, fault).led}`);
+  });
+
+  it('gives a fault its own lamp rather than a bare ERROR', () => {
+    expect(connectionStrip('error', 'protocol-mismatch').led).toBe('err');
+    expect(connectionStrip('error', 'hardware').led).toBe('err');
+    expect(connectionStrip('error', null).label).toBe(PHASE_LABEL.error);
+    expect(connectionStrip('recovery', null).led).toBe('err');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 07 §14 — capability acceptance
+// ---------------------------------------------------------------------------
+
+describe('07 §14 — capability acceptance', () => {
+  /**
+   * A future camera will advertise flags this build has never heard of. The
+   * gate reads flags by name, so unknown ones must be inert — not a parse
+   * failure, not a nav item, not a crash.
+   */
+  it('tolerates unknown capability fields from a newer camera', async () => {
+    const { device } = await connectMock();
+    const caps = await device.getCapabilities();
+    const fromTheFuture = {
+      ...caps.capabilities,
+      depthSensor: true,
+      lensCount: 6,
+      colorScience: { profile: 'kino-2' },
+      rawCapture: ['dng', 'raw12'],
+    } as unknown as Capabilities;
+
+    setDeviceState({ capabilities: fromTheFuture });
+    const state = useDeviceStore.getState();
+
+    // Known flags still read correctly next to the unknown ones.
+    expect(supports(state, 'customSounds')).toBe(true);
+    expect(supports(state, 'linkBench')).toBe(true);
+    // An unknown flag is neither trusted nor fatal — it simply is not a gate.
+    expect(() => navItems({ developerMode: false, rollUpload: true })).not.toThrow();
+    expect(navItems({ developerMode: false, rollUpload: true }).map((i) => i.id)).toContain('roll');
+    // The unknown fields survive the round trip into the store rather than
+    // being stripped or throwing, and the gate reads them by its ordinary
+    // rule — boolean if the device sent one, "assume present" otherwise.
+    expect((state.capabilities as unknown as Record<string, unknown>).lensCount).toBe(6);
+    expect(supports(state, 'depthSensor' as never)).toBe(true);
+    expect(supports(state, 'colorScience' as never)).toBe(true);
+  });
+
+  it('renders a version-mismatch banner when the camera speaks another protocol', () => {
+    const detail = 'Device selected protocol 4; this client speaks 1..1';
+    const notice = connectionNotice('error', 'protocol-mismatch', detail);
+    expect(notice).not.toBeNull();
+
+    const html = renderToStaticMarkup(
+      createElement(ConnectionNotice, { phase: 'error' as const, fault: 'protocol-mismatch' as const, error: detail }),
+    );
+    expect(html).toContain('PROTOCOL MISMATCH');
+    expect(html).toContain(detail);
+    // 02 §31: say what to do, not just that something broke.
+    expect(html.toLowerCase()).toContain('update');
+  });
+
+  it('points a camera that never came back at the recovery procedure', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConnectionNotice, {
+        phase: 'recovery' as const,
+        fault: null,
+        error: 'KINO did not come back after reboot. Check the cable and reconnect.',
+      }),
+    );
+    expect(html).toContain('RECOVERY NEEDED');
+    expect(html).toContain('Updates');
+  });
+
+  it('says nothing at all in the states that are not faults', () => {
+    expect(connectionNotice('connected', null, null)).toBeNull();
+    expect(connectionNotice('disconnected', null, null)).toBeNull();
+    expect(
+      renderToStaticMarkup(
+        createElement(ConnectionNotice, { phase: 'connected' as const, fault: null, error: null }),
+      ),
+    ).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 02 §5 / §32 — the live handshake (carried ledger item from Task 7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Studio's connect sequence used to run its own HELLO loop, which meant it
+ * never compared the device's boot/session ID across a reconnect: a camera
+ * that rebooted looked like the same one, and drafts edited against the old
+ * run stayed live. The loop now runs in `@kino/kdp`, which owns the retry,
+ * nonce and session machinery — this is the end-to-end proof of the last part.
+ */
+describe('02 §5/§32 — session-change detection on the live path', () => {
+  afterEach(async () => {
+    await disconnect();
+    clearLogs();
+  });
+
+  it('notices the camera rebooted under it and drops what it had cached', async () => {
+    clearLogs();
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+
+    const demo = getDemoDevice();
+    expect(demo).not.toBeNull();
+    const before = demo!.currentSessionId();
+
+    // The camera restarts on its own. Nothing asked it to, so the link drop
+    // is a fault, not an expected reboot (02 §6 "Hardware error").
+    demo!.setScenario('sessionRestart', true);
+    await vi.waitFor(() => expect(useConnectionStore.getState().phase).toBe('error'), {
+      timeout: 10000,
+    });
+    expect(useConnectionStore.getState().fault).toBe('hardware');
+
+    // Reconnecting to the same camera: same port, same everything except the
+    // boot ID, which is the only thing that says the state is stale.
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+    const after = demo!.currentSessionId();
+    expect(after).not.toBe(before);
+
+    const said = useLogStore
+      .getState()
+      .entries.filter((e) => e.msg.includes('camera restarted'));
+    expect(said).toHaveLength(1);
+    expect(said[0].msg).toContain(before);
+    expect(said[0].msg).toContain(after);
+  }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// 07 §16 — gallery scale: 0 / 60 / 2,000 / 10,000 metadata rows
+// ---------------------------------------------------------------------------
+
+/**
+ * `GalleryPage.load()`, verbatim: page the index through the cursor until the
+ * card is covered or the listing cap is hit. The cap is the reason a 10,000
+ * row card does not become 100 round trips before the first tile appears.
+ */
+async function readCard(device: KinoDevice): Promise<CaptureSummary[]> {
+  const all: CaptureSummary[] = [];
+  let cursor: number | null = 0;
+  let pages = 0;
+  while (cursor !== null) {
+    const chunk = await device.mediaList({ cursor, limit: 100 });
+    // No response is ever unbounded, whatever the caller asked for.
+    expect(chunk.items.length).toBeLessThanOrEqual(100);
+    all.push(...chunk.items);
+    cursor = chunk.hasMore ? chunk.nextCursor : null;
+    if (all.length >= GALLERY_LIST_CAP) break;
+    if (++pages > 200) throw new Error('cursor pagination did not terminate');
+  }
+  return all;
+}
+
+describe('07 §16 — gallery scale', () => {
+  for (const rows of [0, 60, 2000, 10000]) {
+    it(`keeps the rendered page bounded at ${rows} metadata rows`, async () => {
+      const mock = new MockKinoDevice();
+      mock.setGallerySize(rows);
+      const { device } = await connectMock(mock);
+
+      // The card really holds this many rows, whatever gets listed below.
+      expect((await device.mediaList({ cursor: 0, limit: 1 })).total).toBe(rows);
+
+      const all = await readCard(device);
+      // Under the cap the whole card is listed; over it, the listing stops.
+      // Either way the demo camera keeps shooting while you page, so the walk
+      // can legitimately come back with a row or two more than it started at.
+      if (rows < GALLERY_LIST_CAP) expect(all.length).toBeGreaterThanOrEqual(rows);
+      expect(all.length).toBeLessThan(GALLERY_LIST_CAP + 100);
+
+      const visible = galleryView(all, 'all', 'newest');
+      expect(visible).toHaveLength(all.length);
+
+      const pageCount = Math.max(1, Math.ceil(visible.length / GALLERY_PAGE_SIZE));
+      // First, middle and last page: the grid never maps over more than one
+      // page of cards no matter how big the card is.
+      for (const page of [0, Math.floor(pageCount / 2), pageCount - 1]) {
+        expect(galleryPageSlice(visible, page).length).toBeLessThanOrEqual(GALLERY_PAGE_SIZE);
+      }
+      expect(galleryPageSlice(visible, 0)).toHaveLength(Math.min(all.length, GALLERY_PAGE_SIZE));
+      // A page index past the end is clamped, not an empty grid with a
+      // "SHOWING 24001–24024" line under it.
+      expect(galleryPageSlice(visible, 9999).length).toBeLessThanOrEqual(GALLERY_PAGE_SIZE);
+    }, 120000);
+  }
+
+  it('filters and sorts what was listed without widening the page', async () => {
+    const mock = new MockKinoDevice();
+    mock.setGallerySize(2000);
+    const { device } = await connectMock(mock);
+    const all = await readCard(device);
+
+    const favorites = galleryView(all, 'favorites', 'oldest');
+    expect(favorites.every((c) => c.favorite)).toBe(true);
+    expect(galleryPageSlice(favorites, 0).length).toBeLessThanOrEqual(GALLERY_PAGE_SIZE);
+
+    const wiggles = galleryView(all, 'wiggle', 'newest');
+    expect(wiggles.every((c) => c.kind === 'wiggle')).toBe(true);
+    if (wiggles.length > 1) expect(wiggles[0].ts).toBeGreaterThanOrEqual(wiggles[1].ts);
+  }, 180000);
+});

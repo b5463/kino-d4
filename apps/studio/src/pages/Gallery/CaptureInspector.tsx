@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { getDevice } from '../../app/session';
-import { useDeviceStore, recipeName } from '../../state/deviceStore';
+import { useDeviceStore, recipeName, supportsRollUpload } from '../../state/deviceStore';
 import { useModal } from '../../hooks/useModal';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { downloadCaptureSet, TransferHandle, TransferCancelled } from '../../device/media';
@@ -11,8 +11,10 @@ import { buildZip } from '../../utils/zip';
 import { encodeGif } from '../../utils/gif';
 import type { GifFrame } from '../../utils/gif';
 import { mp4Supported, encodeWiggleMp4 } from '../../utils/mp4';
+import type { RollView } from '../../roll/rollTypes';
 import { AlignEditor } from './AlignEditor';
 import { MatchPanel } from './MatchPanel';
+import { PushToRoll } from './PushToRoll';
 import { buildAlignedFrames, hasAnyOffset } from '../../utils/wiggleRender';
 import { CAM_IDS } from '@kino/kdp';
 const SEQ_BOUNCE = [0, 1, 2, 3, 2, 1];
@@ -28,10 +30,13 @@ function saveBlob(name: string, blob: Blob) {
 
 export function CaptureInspector({
   summary,
+  roll,
   onClose,
   onChanged,
 }: {
   summary: CaptureSummary;
+  /** ROLL_STATUS as the gallery last read it; `null` means no Roll to push to. */
+  roll: RollView | null;
   onClose: () => void;
   onChanged: (change: 'favorite' | 'deleted') => void;
 }) {
@@ -299,6 +304,14 @@ export function CaptureInspector({
     }
   };
 
+  /** UPLOAD_ENQUEUE. Failure surfaces on the button, not in this dialog's
+      error line — the capture itself is fine either way. */
+  const pushToRoll = async (captureId: string) => {
+    const dev = getDevice();
+    if (!dev) throw new Error('KINO is not connected.');
+    await dev.uploadEnqueue(captureId);
+  };
+
   const toggleFavorite = async () => {
     const dev = getDevice();
     if (!dev) return;
@@ -523,6 +536,15 @@ export function CaptureInspector({
                       </>
                     ) : null}
                   </span>
+                  {/* Sending the capture somewhere is not an export either —
+                      it leaves the camera on the camera's schedule. Renders
+                      nothing unless there is an active Roll to push to. */}
+                  <PushToRoll
+                    captureId={summary.id}
+                    rollUpload={supportsRollUpload(deviceState)}
+                    roll={roll}
+                    onPush={pushToRoll}
+                  />
                   {/* DELETE is not an export. Own trailing group, ruled off. */}
                   <span
                     style={{
