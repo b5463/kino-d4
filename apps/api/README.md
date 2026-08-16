@@ -713,6 +713,16 @@ ids only increase, so anything not greater than the last id delivered has
 already been delivered. It starts at the client's own `Last-Event-ID`, which
 also makes the replay exclusive of the event it already has.
 
+The watermark is **disarmed once the drain finishes**, and that is deliberate.
+`XADD` and `PUBLISH` are two round trips, so two API instances publishing to one
+roll can reach the channel in the opposite order to the one the stream assigned.
+A watermark left armed for the life of the connection would discard the older id
+forever — and nothing would recover it, because the guest's socket is healthy and
+no replay is coming, so a tile would simply never appear. That is the same
+loss-versus-duplicate trade, decided the same way: while catching up the gate
+prevents a real duplicate, and afterwards a reordered publish costs at most one,
+which the PWA's re-fetch absorbs.
+
 A malformed `Last-Event-ID` is a `400 INVALID_LAST_EVENT_ID`; a browser can only
 send back an id this route issued.
 
@@ -727,9 +737,21 @@ with a reference count, and unsubscribes when the last guest on a roll leaves.
 Per-channel rather than `PSUBSCRIBE roll:*:events`, so Redis does the filtering
 it already has the index for.
 
-The cost is shared fate: if that connection drops, every live guest is affected.
-Recovery already exists and is tested — ioredis reconnects and re-subscribes,
-and anything missed in the gap is replayed from the stream by `Last-Event-ID`.
+The cost is shared fate: if that connection drops, every live guest is affected
+— and *silently*, which is the part that matters. ioredis reconnects and
+re-subscribes on its own, but events published during the blip were only ever on
+the channel, and the guest's SSE socket stayed healthy throughout, so their
+EventSource never reconnects, never sends `Last-Event-ID`, and never replays.
+Left alone, those events are gone for the rest of the party.
+
+So the loss is announced, not assumed away. `RollEventBus.onConnectionLost`
+fires on the subscriber socket's `close`/`end`, and `guest-events.ts` responds by
+**ending every open SSE response**. That turns a silent server-side fault into
+the one failure the client already knows how to recover from: the browser
+reconnects after 3 s with `Last-Event-ID` and replays the gap out of the stream.
+Tested by killing the subscriber connection server-side (`CLIENT KILL TYPE
+pubsub`) and asserting the streams end and the reconnect receives the event
+published while this process was deaf.
 
 ### Counting guests
 

@@ -112,8 +112,33 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
    */
   const openConnections = new Set<() => void>();
 
-  app.addHook('onClose', async () => {
+  const endAll = (): void => {
     for (const close of [...openConnections]) close();
+  };
+
+  /**
+   * If the shared subscriber's connection drops, this process stops seeing
+   * events while every guest's own socket stays perfectly healthy — so nothing
+   * on their side would ever notice, and their `Last-Event-ID` recovery would
+   * never fire. Ending their responses is what makes it fire: the browser
+   * reconnects after `retry` (3 s) and replays the gap from the stream, which
+   * is the path the reconnect tests already cover.
+   *
+   * Ending a stream is a cheap, self-correcting response to an ambiguous
+   * signal. Guessing that the blip was short enough not to matter is not.
+   */
+  const stopWatchingConnection = app.rollEvents.onConnectionLost(() => {
+    if (openConnections.size === 0) return;
+    app.log.warn(
+      { streams: openConnections.size },
+      'roll event subscriber connection lost; ending SSE streams so clients reconnect and replay',
+    );
+    endAll();
+  });
+
+  app.addHook('onClose', async () => {
+    stopWatchingConnection();
+    endAll();
   });
 
   app.get('/api/rolls/:slug/events', { preHandler: app.guestRollAccess }, async (request, reply) => {

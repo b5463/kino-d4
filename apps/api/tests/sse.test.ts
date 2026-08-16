@@ -10,6 +10,7 @@ import {
   readRollHistory,
   rollEventChannel,
   rollStreamKey,
+  type RollEvent,
   type RollEventDelivery,
 } from '../src/events/publish';
 import { openRollEventFeed } from '../src/events/feed';
@@ -101,6 +102,8 @@ class SseClient {
   readonly frames: SseFrame[] = [];
   readonly comments: string[] = [];
   retry: number | null = null;
+  /** True once the *server* ended the response; an abort does not set it. */
+  ended = false;
 
   private buffer = '';
   private readonly wakers: (() => void)[] = [];
@@ -141,6 +144,11 @@ class SseClient {
     return this.comments;
   }
 
+  /** Resolves once the server ends the response, as it does on subscriber loss. */
+  async awaitEnd(timeoutMs = 5_000): Promise<void> {
+    await this.until(() => this.ended, 'the server to end the stream', timeoutMs);
+  }
+
   private async until(ready: () => boolean, what: string, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (!ready()) {
@@ -161,13 +169,21 @@ class SseClient {
     try {
       for (;;) {
         const { done, value } = await reader.read();
-        if (done) return;
+        if (done) {
+          this.ended = true;
+          this.wake();
+          return;
+        }
         this.buffer += decoder.decode(value, { stream: true });
         this.drain();
       }
     } catch {
       // An aborted fetch lands here; that is a deliberate client disconnect.
     }
+  }
+
+  private wake(): void {
+    for (const wake of this.wakers.splice(0)) wake();
   }
 
   private drain(): void {
@@ -202,7 +218,7 @@ class SseClient {
 
     if (data.length > 0) this.frames.push({ id, name, data: data.join('\n') });
 
-    for (const wake of this.wakers.splice(0)) wake();
+    this.wake();
   }
 }
 
@@ -287,6 +303,11 @@ async function postCapture(rollId: string): Promise<string> {
   });
   expect(res.statusCode).toBe(201);
   return res.json<{ captureId: string }>().captureId;
+}
+
+/** Announces an event on the channel only, under an id of the test's choosing. */
+async function announceRaw(rollId: string, id: string, event: RollEvent): Promise<void> {
+  await app.redis.publish(rollEventChannel(rollId), JSON.stringify({ id, event }));
 }
 
 /** Live subscribers Redis itself reports on a roll's channel. */
@@ -494,6 +515,41 @@ describe('roll event feed', () => {
     }
   });
 
+  it('keeps delivering after the drain when publishes arrive out of stream order', async () => {
+    const rollId = syntheticRollId('reorder');
+    const delivered: RollEventDelivery[] = [];
+
+    const close = await openRollEventFeed({
+      bus: app.rollEvents,
+      rollId,
+      lastEventId: null,
+      readHistory: async () => [],
+      deliver: (entry) => delivered.push(entry),
+    });
+
+    try {
+      // `publishRollEvent` does XADD then PUBLISH — two round trips, not one
+      // atomic step — so two API instances publishing to the same roll can
+      // reach the channel in the opposite order to the one the stream assigned.
+      // That is announced here directly: newer id first, older id second.
+      await announceRaw(rollId, '2000-0', { type: 'capture.created', captureId: 'cap_new' });
+      await eventually(() => delivered.length >= 1, 'the newer event');
+
+      await announceRaw(rollId, '1000-0', { type: 'capture.created', captureId: 'cap_old' });
+      await eventually(() => delivered.length >= 2, 'the older, reordered event');
+
+      // Both arrive. A watermark left armed for the life of the connection
+      // would discard the second one forever — and nothing would recover it,
+      // because the guest's socket is healthy and no replay is coming. After
+      // the client is caught up, a late old id costs at most a duplicate.
+      expect(delivered.map((entry) => entry.id)).toEqual(['2000-0', '1000-0']);
+      await sleep(150);
+      expect(delivered).toHaveLength(2);
+    } finally {
+      await close();
+    }
+  });
+
   it('shares one subscriber connection between feeds and releases it on the last close', async () => {
     const rollId = syntheticRollId('refcount');
     const before = app.rollEvents.activeChannels;
@@ -694,6 +750,41 @@ describe('GET /api/rolls/:slug/events (03 §7)', () => {
     await eventually(() => client.retry !== null, 'the unlocked stream to open');
     client.close();
   });
+
+  it('ends open streams when the shared subscriber connection drops', async () => {
+    const roll = await createRoll();
+    const client = await openStream(`/api/rolls/${roll.slug}/events`);
+    await eventually(() => client.retry !== null, 'the stream to open');
+
+    const captureId = await postCapture(roll.rollId);
+    const [first] = await client.awaitFrames(1);
+    const lastEventId = first?.id ?? '';
+    expect(lastEventId).not.toBe('');
+
+    // Kill the subscriber's connection from the server side — what a Redis
+    // restart or a failover looks like from in here. The guest's own socket is
+    // untouched, so nothing on their side would ever notice that this process
+    // had gone deaf.
+    const killed = Number(await app.redis.call('CLIENT', 'KILL', 'TYPE', 'pubsub'));
+    expect(killed).toBeGreaterThanOrEqual(1);
+
+    // Ending the response is what makes the browser's own recovery fire.
+    await client.awaitEnd();
+
+    // Published while this process could not hear the channel: only the stream
+    // has it now.
+    await publishRollEvent(app.redis, roll.rollId, { type: 'capture.updated', captureId });
+
+    // Which is exactly what a reconnect with Last-Event-ID replays.
+    const resumed = await openStream(`/api/rolls/${roll.slug}/events`, {
+      'last-event-id': lastEventId,
+    });
+    const [gap] = await resumed.awaitFrames(1, 10_000);
+    expect(gap?.name).toBe('capture.updated');
+    expect(payloadOf(gap!)).toEqual({ type: 'capture.updated', captureId });
+
+    resumed.close();
+  }, 30_000);
 
   it('does not leave a subscription behind for a HEAD request', async () => {
     const roll = await createRoll();

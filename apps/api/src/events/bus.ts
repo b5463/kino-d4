@@ -30,11 +30,22 @@ import { parseRollEventMessage, rollEventChannel, type RollEventDelivery } from 
  * filtering to JavaScript. Per-channel keeps that work in Redis, where the
  * channel name already is the index.
  *
- * The cost of sharing is that one connection's failure affects every live
- * guest. That is the right trade here because the recovery already exists and
- * is tested: ioredis reconnects and re-subscribes, and any event missed in the
- * gap is replayed from the stream by `Last-Event-ID` on the client's own
- * reconnect.
+ * ## The cost of sharing, and what actually recovers from it
+ *
+ * One connection's failure affects every live guest — and the failure is
+ * *silent* from the guest's side, which is the part that matters. ioredis
+ * reconnects and re-subscribes on its own, but events published during the blip
+ * were only ever on the channel, and nothing on the guest's end noticed:
+ * their SSE socket is perfectly healthy, so their EventSource never reconnects,
+ * never sends `Last-Event-ID`, and never replays. Those events are gone for the
+ * rest of the party.
+ *
+ * So the loss is announced rather than assumed away. `onConnectionLost` fires
+ * when the subscriber's socket closes, and `guest-events.ts` responds by
+ * **ending every open SSE response**. That converts a silent server-side fault
+ * into the one failure the client already knows how to recover from: the
+ * browser reconnects after `retry` (3 s) with `Last-Event-ID`, and the gap is
+ * replayed out of the stream — the path the reconnect tests already cover.
  */
 export type RollEventListener = (delivery: RollEventDelivery) => void;
 
@@ -51,6 +62,8 @@ export class RollEventBus {
    */
   private pending: Promise<unknown> = Promise.resolve();
   private closed = false;
+  /** Notified when the subscriber's socket drops; see the header. */
+  private readonly connectionLostListeners = new Set<() => void>();
 
   constructor(
     private readonly subscriber: Redis,
@@ -59,6 +72,14 @@ export class RollEventBus {
     this.subscriber.on('message', (channel: string, message: string) => {
       this.dispatch(channel, message);
     });
+
+    // 'close' covers the drop that ioredis will reconnect from; 'end' the one
+    // it has given up on. Both mean the same thing to a live guest — events may
+    // have been published that this process never saw — so both are announced.
+    // Duplicate announcements are harmless: ending a stream is idempotent.
+    const lost = (): void => this.announceConnectionLost();
+    this.subscriber.on('close', lost);
+    this.subscriber.on('end', lost);
   }
 
   /** How many roll channels currently have at least one listener. */
@@ -96,6 +117,21 @@ export class RollEventBus {
     };
   }
 
+  /**
+   * Registers a listener for "the subscriber connection dropped, so events may
+   * have been missed"; returns its removal function.
+   *
+   * The bus deliberately does not decide what that means — it cannot know that
+   * the answer is "end the SSE responses so the browsers replay". The route
+   * owns the connections and owns that decision.
+   */
+  onConnectionLost(listener: () => void): () => void {
+    this.connectionLostListeners.add(listener);
+    return () => {
+      this.connectionLostListeners.delete(listener);
+    };
+  }
+
   /** Drops every subscription and closes the connection. */
   async close(): Promise<void> {
     if (this.closed) return;
@@ -108,6 +144,20 @@ export class RollEventBus {
     // `disconnect()` rather than `quit()`: the connection may never have been
     // opened (lazyConnect), and `quit()` rejects in that case.
     this.subscriber.disconnect();
+  }
+
+  private announceConnectionLost(): void {
+    // Not on the way out: `close()` disconnects deliberately, and the streams
+    // are already being ended by the server's own shutdown.
+    if (this.closed) return;
+
+    for (const listener of [...this.connectionLostListeners]) {
+      try {
+        listener();
+      } catch (err) {
+        this.log.error({ err }, 'a roll event connection-loss listener threw');
+      }
+    }
   }
 
   private forget(channel: string, listener: RollEventListener): void {
