@@ -1007,9 +1007,9 @@ export function hashToken(token: string): string;
 - `POST /api/studio/devices/register` body `{ serial, product, hardwareRevision, name? }` → `{ deviceId, deviceToken }` (token returned exactly once; row stores hash). Re-registering an existing serial rotates the token (old one invalidated) and returns the new one — physical possession of the serial + Studio is the trust anchor for V1; note this in the route comment.
 - Scope enforcement (07§25): device token routes live under `/api/device/*` only; host routes under `/api/host/*`; a device token used on a host route is 403; devices can only touch rolls they created or joined (`roll_devices` join check — add small `rollDevices` table `(rollId, deviceId, joinedAt)` in this task's migration 0002).
 
-- [ ] **Step 1: Write failing tests** — register returns `kdt_` token; token authenticates `/api/device/ping` (test-only route); tampered token 401; device token on host route 403; host token operates only its own roll (second roll → 403); PIN flow: wrong PIN 401, right PIN sets cookie, subsequent guest reads pass.
+- [x] **Step 1: Write failing tests** — register returns `kdt_` token; token authenticates `/api/device/ping` (test-only route); tampered token 401; device token on host route 403; host token operates only its own roll (second roll → 403); PIN flow: wrong PIN 401, right PIN sets cookie, subsequent guest reads pass.
 
-- [ ] **Step 2: Run → FAIL. Step 3: Implement (scrypt for PIN hash via `node:crypto`, timing-safe compares). Step 4: Run → PASS. Step 5: Commit** — `feat(api): device/host/guest auth with scoped tokens`
+- [x] **Step 2: Run → FAIL. Step 3: Implement (scrypt for PIN hash via `node:crypto`, timing-safe compares). Step 4: Run → PASS. Step 5: Commit** — `feat(api): device/host/guest auth with scoped tokens`
 
 ### Task 17: Rolls API — create, join, host manage, guest read
 
