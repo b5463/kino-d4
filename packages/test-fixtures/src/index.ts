@@ -5,6 +5,7 @@
 
 export { MockKinoDevice } from './MockKinoDevice';
 export { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
+export { type TwinTelemetry, type TwinSnapshot } from './telemetry';
 
 export {
   scenarios,

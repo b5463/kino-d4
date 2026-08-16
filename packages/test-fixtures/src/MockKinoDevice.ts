@@ -27,6 +27,7 @@ import type { ScenarioFlags, CamFault } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 import { SYNC_BENCH } from './commands';
+import type { TwinTelemetry, TwinSnapshot } from './telemetry';
 
 /** mulberry32 — a job that reports numbers has to report the same ones twice. */
 function seeded(seed: number): () => number {
@@ -231,6 +232,10 @@ export class MockKinoDevice implements MockDeviceLike {
   private sink: ((data: Uint8Array) => void) | null = null;
   private forceCloseCb: (() => void) | null = null;
   private scenarioCb: (() => void) | null = null;
+  // KINO Twin §5/§10 telemetry tap: additive, device-side observation surface
+  // for the Twin's 3D view. Never a substitute for the raw KDP bytes above —
+  // Studio reads only those; this Set exists for the simulator's own render.
+  private readonly telemetryListeners = new Set<(e: TwinTelemetry) => void>();
   private readonly decoder = new FrameDecoder();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private logTimer: ReturnType<typeof setTimeout> | null = null;
@@ -369,6 +374,7 @@ export class MockKinoDevice implements MockDeviceLike {
   attach(sink: (data: Uint8Array) => void, onForceClose: () => void) {
     this.sink = sink;
     this.forceCloseCb = onForceClose;
+    this.emitTelemetry({ t: 'link', connected: true });
     this.decoder.reset();
     // A real ESP32 prints its ROM banner into the same UART the protocol uses.
     // The first thing a host reads after opening the port is that noise, and
@@ -382,6 +388,7 @@ export class MockKinoDevice implements MockDeviceLike {
   detach() {
     this.sink = null;
     this.forceCloseCb = null;
+    this.emitTelemetry({ t: 'link', connected: false });
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
@@ -405,6 +412,7 @@ export class MockKinoDevice implements MockDeviceLike {
 
   setScenario<K extends keyof ScenarioFlags>(key: K, value: ScenarioFlags[K]) {
     this.scenarios[key] = value;
+    this.emitTelemetry({ t: 'scenario', key, value: Boolean(value) });
     // CAM1 offline is now a per-camera fault (04 §20); this flag just
     // mirrors it so Studio's simulator panel keeps its one-button toggle.
     // setCamFault does its own logging and keeps scenarios.offlineCameraNode
@@ -448,6 +456,67 @@ export class MockKinoDevice implements MockDeviceLike {
     return this.sessionId;
   }
 
+  // ---- telemetry tap + public snapshot (KINO Twin §5 / §10) ----
+  // A second, additive channel alongside the raw KDP wire: the Twin's 3D view
+  // reads this, Studio never does (§10/§20 — no side-channel around protocol
+  // behavior). Multiple subscribers; delivery is synchronous and best-effort,
+  // so one listener throwing never blocks the others or the device itself.
+
+  onTelemetry(cb: (e: TwinTelemetry) => void): () => void {
+    this.telemetryListeners.add(cb);
+    return () => this.telemetryListeners.delete(cb);
+  }
+
+  private emitTelemetry(e: TwinTelemetry): void {
+    for (const cb of this.telemetryListeners) {
+      try {
+        cb(e);
+      } catch {
+        // best-effort: a bad subscriber must not break delivery to the rest.
+      }
+    }
+  }
+
+  /** A read-only, point-in-time view of device state for the Twin's 3D render. */
+  twinSnapshot(): TwinSnapshot {
+    const camSnapshot = (id: CamId) => {
+      const cam = this.cams[id];
+      return {
+        fw: this.camFirmware(id),
+        phaseUs: Math.round(this.effectivePhaseUs(id)),
+        uartErrors: cam.uartErrors,
+        jpegKB: cam.jpegKB,
+        durationMs: cam.durationMs,
+        gpioSkewUs: cam.gpioSkewUs,
+        fault: cam.fault,
+        updating: cam.updating,
+      };
+    };
+    // Same predicate NETWORK_STATUS answers with (handleNetwork, below).
+    const wifiActive = this.scenarios.wifiLost ? null : this.networks.find((n) => n.autoJoin) ?? null;
+    return {
+      sessionId: this.sessionId,
+      maintenance: this.maintenance,
+      batteryV: this.batteryV,
+      sdPresent: !this.scenarios.sdMissing,
+      sdFreeMB: this.scenarios.sdMissing || this.scenarios.sdFull ? 0 : this.sdFreeMB,
+      uartBaud: this.uartBaud,
+      frameIntervalUs: this.frameIntervalUs,
+      phaseAligned: this.phaseAligned,
+      p4Fw: this.p4Fw,
+      cams: {
+        cam1: camSnapshot('cam1'),
+        cam2: camSnapshot('cam2'),
+        cam3: camSnapshot('cam3'),
+        cam4: camSnapshot('cam4'),
+      },
+      roll: { joined: this.roll !== null, name: this.roll?.name ?? null },
+      uploads: { ...this.uploads },
+      wifi: wifiActive ? 'connected' : 'offline',
+      scenarios: { ...this.scenarios },
+    };
+  }
+
   // ---- per-camera faults (KINO Twin §20) ----
   // Separate from ScenarioFlags: these target one of four cameras, not the
   // whole device. offline/power-open take the camera off the bus entirely
@@ -459,6 +528,7 @@ export class MockKinoDevice implements MockDeviceLike {
     if (model.fault === fault) return;
     const wasDown = model.fault === 'offline' || model.fault === 'power-open';
     model.fault = fault;
+    this.emitTelemetry({ t: 'camFault', cam, fault });
     const label = cam.toUpperCase();
     const src = ('C' + cam.slice(-1)) as LogSource;
     if (fault === 'offline') this.log('P4', `${label} link lost — no response on camera bus`);
@@ -558,6 +628,7 @@ export class MockKinoDevice implements MockDeviceLike {
       q.pending--;
       q.uploading++;
     }
+    this.emitTelemetry({ t: 'uploads', pending: q.pending, uploading: q.uploading, failed: q.failed, uploaded: q.uploaded });
     if (q.pending === 0 && q.uploading === 0) {
       this.stopUploadDrain();
       if (draining) this.log('P4', `upload queue drained — ${q.failed} failed`);
@@ -619,6 +690,7 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   private simulateCapture() {
+    const captureId = this.captureCounter;
     const n = String(this.captureCounter++).padStart(4, '0');
     const mode = this.config.mode;
     // KINO Twin §20 flashUnavailable: the capture proceeds — nothing about
@@ -626,6 +698,8 @@ export class MockKinoDevice implements MockDeviceLike {
     // but a missing flash still isn't a reason to fail the shot — only the
     // flash itself is skipped, and it says so in the log.
     const flashFires = this.config.wiggle.flash && !this.scenarios.flashUnavailable;
+    // KINO Twin §5 telemetry tap: nothing per-cam is known yet at trigger time.
+    this.emitTelemetry({ t: 'capture', phase: 'begin', id: captureId, cams: {} });
     this.log('P4', `${mode} capture ${n} triggered${flashFires ? ' — flash' : ''}`);
     if (this.config.wiggle.flash && !flashFires) this.log('P4', 'flash unavailable — capture without flash');
     // KINO Twin §20 batterySag: the transient dip GET_POWER_STATUS reports
@@ -687,6 +761,13 @@ export class MockKinoDevice implements MockDeviceLike {
       const capId = this.media.addLiveCapture(number, kind, recipeIds, flashFires);
       this.log('SD', `${capId} committed`);
       this.sendEvent(Evt.CAPTURE, { id: capId, kind });
+      this.emitTelemetry({ t: 'sd', activity: 'write' });
+      const camsReport: Partial<Record<CamId, { jpegKB: number; durationMs: number }>> = {};
+      for (const camId of CAM_IDS) {
+        if (this.camDown(camId) || (camId === 'cam2' && this.scenarios.cam2Timeout)) continue;
+        camsReport[camId] = { jpegKB: this.cams[camId].jpegKB, durationMs: this.cams[camId].durationMs };
+      }
+      this.emitTelemetry({ t: 'capture', phase: 'committed', id: captureId, cams: camsReport });
     });
   }
 
@@ -699,6 +780,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.logBuffer.push(entry);
     if (this.logBuffer.length > 400) this.logBuffer.splice(0, this.logBuffer.length - 400);
     this.sendEvent(Evt.LOG, entry);
+    this.emitTelemetry({ t: 'log', entry });
   }
 
   // ---- frame plumbing ----
@@ -828,6 +910,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.stopUploadDrain();
     this.sink = null;
     this.forceCloseCb = null;
+    this.emitTelemetry({ t: 'link', connected: false });
     closeCb?.();
   }
 
@@ -1294,9 +1377,11 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.FW_ABORT:
         if (this.fwSession) {
-          this.fwStates[this.fwSession.target] = { state: 'idle' };
-          if (this.fwSession.target !== 'p4') this.cams[this.fwSession.target].updating = false;
+          const target = this.fwSession.target;
+          this.fwStates[target] = { state: 'idle' };
+          if (target !== 'p4') this.cams[target].updating = false;
           this.fwSession = null;
+          this.emitTelemetry({ t: 'fw', target, state: 'idle' });
         }
         this.respond(frame, { ok: true });
         return;
@@ -1351,8 +1436,13 @@ export class MockKinoDevice implements MockDeviceLike {
           this.respondError(frame, 'SD_FULL', 'SD card full — 0 MB free');
           return;
         }
-        if (this.scenarios.batterySag) this.batterySagUntil = this.now() + 700;
+        // KINO Twin §5: a host-triggered capture runs the same pipeline as
+        // the ambient loop (batterySag included), so capture telemetry and
+        // the eventual media commit fire whether the shot came from
+        // Studio's shutter or the demo's own idle loop. The wire response
+        // stays the documented mock `{ ok: true }` either way.
         this.respond(frame, { ok: true });
+        this.simulateCapture();
         return;
       }
       case Cmd.CAMERA_PHASE:
@@ -1694,20 +1784,27 @@ export class MockKinoDevice implements MockDeviceLike {
             nextCursor: next < all.length ? next : null,
             hasMore: next < all.length,
           });
+          this.emitTelemetry({ t: 'sd', activity: 'read' });
           return;
         }
         case Cmd.MEDIA_INFO: {
           const { id } = decodeJson<{ id: string }>(frame.payload);
           const info = await this.media.info(id);
           if (!info) this.respondError(frame, 'NOT_FOUND', `No capture ${id}`);
-          else this.respond(frame, info);
+          else {
+            this.respond(frame, info);
+            this.emitTelemetry({ t: 'sd', activity: 'read' });
+          }
           return;
         }
         case Cmd.MEDIA_THUMB: {
           const { id } = decodeJson<{ id: string }>(frame.payload);
           const bytes = await this.media.thumb(id);
           if (!bytes) this.respondError(frame, 'NOT_FOUND', `No capture ${id}`);
-          else this.respondBytes(frame, bytes);
+          else {
+            this.respondBytes(frame, bytes);
+            this.emitTelemetry({ t: 'sd', activity: 'read' });
+          }
           return;
         }
         case Cmd.MEDIA_READ: {
@@ -1720,6 +1817,7 @@ export class MockKinoDevice implements MockDeviceLike {
           const offset = Math.max(0, req.offset | 0);
           const length = Math.min(Math.max(1, req.length | 0), 8192);
           this.respondBytes(frame, bytes.subarray(offset, Math.min(offset + length, bytes.length)));
+          this.emitTelemetry({ t: 'sd', activity: 'read' });
           return;
         }
         case Cmd.MEDIA_DELETE: {
@@ -1728,13 +1826,17 @@ export class MockKinoDevice implements MockDeviceLike {
           else {
             this.log('SD', `${id} deleted`);
             this.respond(frame, { ok: true });
+            this.emitTelemetry({ t: 'sd', activity: 'write' });
           }
           return;
         }
         case Cmd.MEDIA_FAVORITE: {
           const { id, favorite } = decodeJson<{ id: string; favorite: boolean }>(frame.payload);
           if (!this.media.setFavorite(id, favorite)) this.respondError(frame, 'NOT_FOUND', `No capture ${id}`);
-          else this.respond(frame, { ok: true });
+          else {
+            this.respond(frame, { ok: true });
+            this.emitTelemetry({ t: 'sd', activity: 'write' });
+          }
           return;
         }
         default:
@@ -2224,6 +2326,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.fwStates[req.target] = { state: 'receiving' };
     if (req.target !== 'p4') this.cams[req.target].updating = true;
     this.log('P4', `fw begin ${req.target} — ${req.version}, ${Math.round(req.size / 1024)} KB`);
+    this.emitTelemetry({ t: 'fw', target: req.target, state: 'receiving', pct: 0 });
     this.respond(frame, { sessionId: this.fwSession.id, chunkSize: 8192 });
   }
 
@@ -2242,16 +2345,19 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
     if (s.failAt !== null && offset + dataLen >= s.failAt) {
+      const pct = Math.round((offset / s.size) * 100);
       this.log('P4', `${s.target} flash write failed at 0x${offset.toString(16)}`);
       this.fwStates[s.target] = { state: 'error', error: 'flash write failed' };
       if (s.target !== 'p4') this.cams[s.target].updating = false;
       this.fwSession = null;
       this.scenarios.failedUpdate = false; // one-shot — a retry will succeed
       this.scenarioCb?.();
-      this.respondError(frame, 'FLASH_WRITE', `${s.target.toUpperCase()} flash write failed at ${Math.round((offset / s.size) * 100)}%`);
+      this.emitTelemetry({ t: 'fw', target: s.target, state: 'error', pct });
+      this.respondError(frame, 'FLASH_WRITE', `${s.target.toUpperCase()} flash write failed at ${pct}%`);
       return;
     }
     s.received = offset + dataLen;
+    this.emitTelemetry({ t: 'fw', target: s.target, state: 'receiving', pct: Math.round((s.received / s.size) * 100) });
     this.respond(frame, { ok: true, received: s.received });
   }
 
@@ -2268,28 +2374,40 @@ export class MockKinoDevice implements MockDeviceLike {
     this.fwSession = null;
     const target = s.target;
     this.fwStates[target] = { state: 'verifying' };
+    this.emitTelemetry({ t: 'fw', target, state: 'verifying' });
     this.respond(frame, { ok: true, verified: true });
     this.log('P4', `${target} image received — verifying sha256`);
 
     if (target === 'p4') {
-      this.after(900, () => { this.fwStates.p4 = { state: 'applying' }; this.log('P4', 'writing p4 ota partition'); });
+      this.after(900, () => {
+        this.fwStates.p4 = { state: 'applying' };
+        this.emitTelemetry({ t: 'fw', target, state: 'applying' });
+        this.log('P4', 'writing p4 ota partition');
+      });
       this.after(2200, () => {
         this.p4Fw = s.version;
         this.fwStates.p4 = { state: 'rebooting' };
+        this.emitTelemetry({ t: 'fw', target, state: 'rebooting' });
         this.log('P4', 'update applied — rebooting');
       });
       this.after(2800, () => this.reboot('ota-update'));
     } else {
-      this.after(900, () => { this.fwStates[target] = { state: 'applying' }; this.log('P4', `${target} flashing app partition`); });
+      this.after(900, () => {
+        this.fwStates[target] = { state: 'applying' };
+        this.emitTelemetry({ t: 'fw', target, state: 'applying' });
+        this.log('P4', `${target} flashing app partition`);
+      });
       this.after(2400, () => {
         this.fwStates[target] = { state: 'rebooting' };
         this.cams[target].updating = false;
         this.cams[target].rebootUntil = this.now() + 1800;
+        this.emitTelemetry({ t: 'fw', target, state: 'rebooting' });
         this.log(('C' + target.slice(-1)) as LogSource, 'rebooting into new firmware');
       });
       this.after(4300, () => {
         this.cams[target].fw = s.version;
         this.fwStates[target] = { state: 'ready' };
+        this.emitTelemetry({ t: 'fw', target, state: 'ready' });
         this.log(('C' + target.slice(-1)) as LogSource, `OV3660 ready — fw ${s.version}`);
       });
     }
@@ -2304,6 +2422,7 @@ export class MockKinoDevice implements MockDeviceLike {
     // scoped to the old boot — running jobs, upload progress — died with it.
     this.bootCount++;
     this.sessionId = `boot-${this.bootCount}`;
+    this.emitTelemetry({ t: 'reboot', sessionId: this.sessionId, reason });
     this.jobs.clear();
     if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
     this.coalesceTimer = null;
