@@ -1035,9 +1035,9 @@ GET   /api/rolls/:slug                                                   → gue
 - `slug.ts`: `newSlug(): string` — 6 chars from alphabet `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (no 0/O/1/I/L), `crypto.getRandomValues`, retry on unique collision. Internal ID separate from slug (05§14).
 - Closed roll: uploads rejected with `ROLL_CLOSED`; guest gallery remains readable (03§22).
 
-- [ ] **Step 1: Write failing tests** — create → slug matches `/^[23456789A-HJKMNP-Z]{6}$/`; guest GET works with no auth; PIN-protected roll returns 401 PIN_REQUIRED before PIN cookie; PATCH close then device upload attempt → `ROLL_CLOSED`; regenerate-slug invalidates the old slug (old → 404); every guest response carries the `X-Robots-Tag` header; audit_events row written for close/rename/regenerate.
+- [x] **Step 1: Write failing tests** — create → slug matches `/^[23456789A-HJKMNP-Z]{6}$/`; guest GET works with no auth; PIN-protected roll returns 401 PIN_REQUIRED before PIN cookie; PATCH close then device upload attempt → `ROLL_CLOSED`; regenerate-slug invalidates the old slug (old → 404); every guest response carries the `X-Robots-Tag` header; audit_events row written for close/rename/regenerate.
 
-- [ ] **Step 2–5: Run FAIL → implement → run PASS → commit** — `feat(api): roll lifecycle — device create/join, host manage, guest read`
+- [x] **Step 2–5: Run FAIL → implement → run PASS → commit** — `feat(api): roll lifecycle — device create/join, host manage, guest read`
 
 ### Task 18: Captures + resumable upload pipeline
 
