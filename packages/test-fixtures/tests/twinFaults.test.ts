@@ -268,6 +268,35 @@ describe('storage + power faults (KINO Twin §20)', () => {
   });
 });
 
+describe('flash faults (KINO Twin §20)', () => {
+  it('flashOverload reports a driver fault and thermal flag instead of clip percentages', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    mock.setScenario('flashOverload', true);
+
+    const res = await client.request<{ results: unknown[]; suggested: string; fault?: boolean; thermal?: string }>(
+      Cmd.CAMERA_CALIBRATE,
+      { action: 'flash-test', flash: { level: 'medium', distance: '1-2' } },
+    );
+    expect(res.fault).toBe(true);
+    expect(res.thermal).toBe('hot');
+    expect(res.results).toHaveLength(0);
+  }, 5000);
+
+  it('without flashOverload, the flash test reports per-camera clip percentages and no fault flag', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+
+    const res = await client.request<{ results: { cam: string; clippedPct: number }[]; suggested: string; fault?: boolean }>(
+      Cmd.CAMERA_CALIBRATE,
+      { action: 'flash-test', flash: { level: 'medium', distance: '1-2' } },
+    );
+    expect(res.fault).toBeUndefined();
+    expect(res.results).toHaveLength(4);
+    expect(res.results.every((r) => typeof r.clippedPct === 'number')).toBe(true);
+  }, 5000);
+});
+
 describe('node firmware + phase faults (KINO Twin §20)', () => {
   it('nodeFwMismatch: CAM4 reports 0.0.9 and GET_CAPABILITIES notes the mismatch', async () => {
     const mock = new MockKinoDevice();

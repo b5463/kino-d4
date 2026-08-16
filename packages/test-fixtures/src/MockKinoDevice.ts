@@ -844,7 +844,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.after(latency, () => this.dispatch(frame));
   }
 
-  private cameraInfo(id: CamId): Omit<CameraInfo, 'sensor'> & { sensor: string | null } {
+  private cameraInfo(id: CamId): CameraInfo {
     const cam = this.cams[id];
     const offline = this.busUnreachable(id);
     const sensorMissing = cam.fault === 'sensor-missing';

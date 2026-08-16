@@ -98,7 +98,8 @@ export type CameraState =
 export interface CameraInfo {
   id: CamId;
   online: boolean;
-  sensor: string;
+  /** Null when `sensorDetected` is false (04 §20 sensor-missing) — the module still answers the bus, but has nothing to report. */
+  sensor: string | null;
   sensorDetected: boolean;
   firmware: string;
   state: CameraState;
