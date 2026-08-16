@@ -142,10 +142,12 @@ useDeviceStore.subscribe((s) => {
 });
 
 // A dropped link is not proof the device changed, so the numbers stay — but
-// they describe a session that ended.
+// they describe a session that ended. `recovery` is the clearest case of all:
+// the board was told to reboot and never answered again, so whatever it is
+// doing now, it is not the run these numbers came from.
 useConnectionStore.subscribe((s, prev) => {
   if (s.phase === prev.phase) return;
-  if (s.phase === 'disconnected' || s.phase === 'error') {
+  if (s.phase === 'disconnected' || s.phase === 'error' || s.phase === 'recovery') {
     invalidateBench(BENCH_OWNERS, 'the link dropped after this run');
   }
 });

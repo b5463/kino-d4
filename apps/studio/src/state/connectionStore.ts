@@ -83,6 +83,15 @@ export function connectionStrip(
 }
 
 /**
+ * Whether OPEN DEMO DEVICE can be taken. There is no live session to disturb
+ * in exactly three states, and `recovery` is one of them: a board that never
+ * came back is the state a user is most likely to want the simulator from.
+ */
+export function canOpenDemo(phase: ConnectionPhase): boolean {
+  return phase === 'disconnected' || phase === 'error' || phase === 'recovery';
+}
+
+/**
  * The explanation that goes with a fault (02 §31: say what to do, not just
  * that something broke). `null` for every state that is not a fault — an
  * empty banner is worse than no banner.

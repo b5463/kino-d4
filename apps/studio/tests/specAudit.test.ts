@@ -20,13 +20,15 @@ import { KinoDevice } from '../src/device/KinoDevice';
 import { parseCubeLut, DEVICE_LUT_SIZE } from '../src/recipes/cubeLut';
 import {
   PHASE_LABEL,
+  canOpenDemo,
   connectionStrip,
   connectionNotice,
   setConnection,
   useConnectionStore,
 } from '../src/state/connectionStore';
-import { connectDemo, disconnect, getDemoDevice } from '../src/app/session';
+import { connectDemo, disconnect, getDemoDevice, getDevice, isSameCamera } from '../src/app/session';
 import { clearLogs, useLogStore } from '../src/state/logStore';
+import { getBenchResult, putBenchResult, resetBenchResults } from '../src/state/benchResults';
 import type { ConnectionFault, ConnectionPhase } from '../src/state/connectionStore';
 import { ConnectionNotice } from '../src/components/ConnectionNotice';
 import { ConnectionStrip } from '../src/components/ConnectionStrip';
@@ -173,6 +175,83 @@ describe('02 §6 — connection strip states', () => {
     expect(connectionStrip('error', null).label).toBe(PHASE_LABEL.error);
     expect(connectionStrip('recovery', null).led).toBe('err');
   });
+
+  /**
+   * The toolbar's device cell is the third strip, and it had its own private
+   * lamp mapping: on a protocol mismatch the status bar said PROTOCOL MISMATCH
+   * while the toolbar 40 px above said ERROR, and in recovery its lamp was off
+   * while the other two were red. It renders the shared component now, with
+   * the label dropped in the connected state only — the serial sits beside it
+   * there and would say the same thing twice.
+   */
+  it.each(NINE_STATES)('names the %s state in the toolbar cell too', (_spec, phase, fault, label) => {
+    const html = renderToStaticMarkup(
+      createElement(ConnectionStrip, { phase, fault, silentWhenConnected: true }),
+    );
+    expect(html).toContain(`led--${connectionStrip(phase, fault).led}`);
+    if (phase === 'connected') {
+      expect(html).not.toContain(label);
+    } else {
+      expect(html).toContain(label);
+    }
+  });
+
+  it('drops the toolbar wording only where the serial repeats it', () => {
+    // The one state where the serial beside the lamp already says it.
+    expect(
+      renderToStaticMarkup(
+        createElement(ConnectionStrip, { phase: 'connected' as const, fault: null, silentWhenConnected: true }),
+      ),
+    ).not.toContain('KINO CONNECTED');
+    // Maintenance was an unlabelled amber lamp in the toolbar before this.
+    expect(
+      renderToStaticMarkup(
+        createElement(ConnectionStrip, { phase: 'maintenance' as const, fault: null, silentWhenConnected: true }),
+      ),
+    ).toContain('MAINTENANCE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 02 §6 — the `recovery` phase, swept through its consumers
+// ---------------------------------------------------------------------------
+
+describe('02 §6 — recovery phase consumers', () => {
+  /**
+   * A failed reboot used to land in `error`, where DEMO was offered. Adding a
+   * phase silently took that away — from the one state where a user is most
+   * likely to want the simulator.
+   */
+  it('still offers the demo device in recovery', () => {
+    expect(canOpenDemo('recovery')).toBe(true);
+    expect(canOpenDemo('disconnected')).toBe(true);
+    expect(canOpenDemo('error')).toBe(true);
+    for (const phase of ['connected', 'maintenance', 'updating', 'reconnecting', 'handshaking', 'connecting', 'requesting-port'] as const) {
+      expect(canOpenDemo(phase), `${phase} has a live session`).toBe(false);
+    }
+  });
+
+  it('marks bench results stale when the board never came back', () => {
+    resetBenchResults();
+    setConnection({ phase: 'connected', fault: null });
+    putBenchResult('timing', { spreadUs: 1730 });
+    expect(getBenchResult('timing')?.staleReason).toBeNull();
+
+    setConnection({ phase: 'recovery', fault: null });
+    expect(getBenchResult('timing')?.staleReason).toBe('the link dropped after this run');
+    resetBenchResults();
+  });
+
+  it('still marks them stale on the states that already did', () => {
+    for (const phase of ['disconnected', 'error'] as const) {
+      resetBenchResults();
+      setConnection({ phase: 'connected', fault: null });
+      putBenchResult('timing', { spreadUs: 1730 });
+      setConnection({ phase, fault: null });
+      expect(getBenchResult('timing')?.staleReason).not.toBeNull();
+    }
+    resetBenchResults();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -297,6 +376,99 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
     expect(said).toHaveLength(1);
     expect(said[0].msg).toContain(before);
     expect(said[0].msg).toContain(after);
+  }, 60000);
+
+  /**
+   * The other half: a boot ID that changed while Studio was not attached is
+   * not news. The user disconnected deliberately, which already dropped every
+   * draft, sound and bench claim — and whatever is plugged in next may not
+   * even be the same camera.
+   */
+  it('says nothing about a restart after a deliberate disconnect', async () => {
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+    const before = getDemoDevice()!.currentSessionId();
+
+    await disconnect();
+    expect(useConnectionStore.getState().phase).toBe('disconnected');
+    clearLogs();
+
+    // Whatever gets connected next boots fresh — a different unit, or the same
+    // one power-cycled on the bench. Either way this is a first session.
+    getDemoDevice()!.setScenario('sessionRestart', true);
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+    expect(getDemoDevice()!.currentSessionId()).not.toBe(before);
+
+    expect(useLogStore.getState().entries.filter((e) => e.msg.includes('camera restarted'))).toHaveLength(0);
+  }, 60000);
+
+  /**
+   * And the identity guard itself. A true two-unit swap cannot be driven
+   * through `connectDemo()` — it owns a single simulator instance — so the
+   * predicate the handler consults is asserted directly.
+   */
+  it('does not call a different unit a restart', () => {
+    const swap = { previous: 'boot-1', current: 'boot-3', deviceId: 'kino-000099' };
+    expect(isSameCamera('kino-000012', swap)).toBe(false);
+    expect(isSameCamera('kino-000012', { ...swap, deviceId: 'kino-000012' })).toBe(true);
+    // Firmware that predates device IDs, and a first connection, both get the
+    // benefit of the doubt rather than a silent drop.
+    expect(isSameCamera('kino-000012', { previous: 'boot-1', current: 'boot-2' })).toBe(true);
+    expect(isSameCamera(null, swap)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 07 §14 — the version-mismatch trigger, end to end
+// ---------------------------------------------------------------------------
+
+describe('07 §14 — protocol mismatch on the live path', () => {
+  afterEach(async () => {
+    getDemoDevice()?.setScenario('protocolMismatch', false);
+    await disconnect();
+    clearLogs();
+  });
+
+  it('refuses the session and raises the mismatch fault, not a bare error', async () => {
+    // Connect once to get hold of the simulator, then give it firmware that
+    // speaks a protocol this build does not.
+    await connectDemo();
+    await disconnect();
+    getDemoDevice()!.setScenario('protocolMismatch', true);
+
+    await connectDemo();
+
+    const state = useConnectionStore.getState();
+    expect(state.phase).toBe('error');
+    expect(state.fault).toBe('protocol-mismatch');
+    // The message carries both numbers, which is what the banner prints.
+    expect(state.error).toContain('protocol 4');
+    expect(state.error).toContain('1..1');
+
+    // The strip names it, and the banner explains it.
+    expect(connectionStrip(state.phase, state.fault).label).toBe('PROTOCOL MISMATCH');
+    const html = renderToStaticMarkup(
+      createElement(ConnectionNotice, { phase: state.phase, fault: state.fault, error: state.error }),
+    );
+    expect(html).toContain('PROTOCOL MISMATCH');
+    expect(html).toContain('protocol 4');
+
+    // And nothing was left connected behind the error.
+    expect(getDevice()).toBeNull();
+  }, 60000);
+
+  it('connects normally again once the scenario is off', async () => {
+    await connectDemo();
+    await disconnect();
+    getDemoDevice()!.setScenario('protocolMismatch', true);
+    await connectDemo();
+    expect(useConnectionStore.getState().fault).toBe('protocol-mismatch');
+
+    getDemoDevice()!.setScenario('protocolMismatch', false);
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+    expect(useConnectionStore.getState().fault).toBeNull();
   }, 60000);
 });
 

@@ -795,9 +795,14 @@ export class MockKinoDevice implements MockDeviceLike {
       case Cmd.HELLO: {
         const req = decodeJson<{ nonce?: number }>(frame.payload);
         // 04 §4: selected protocol, nonce echo, device ID, boot/session ID.
+        //
+        // A device that selects a protocol outside the offered range is the
+        // one handshake failure a retry cannot fix, and the host has to say so
+        // rather than time out. The framing version is untouched — this is
+        // firmware from the future, not a corrupt stream.
         this.respond(frame, {
           product: 'KINO',
-          protocol: PROTOCOL_VERSION,
+          protocol: this.scenarios.protocolMismatch ? PROTOCOL_VERSION + 3 : PROTOCOL_VERSION,
           nonce: req.nonce,
           deviceId: this.deviceId,
           sessionId: this.sessionId,

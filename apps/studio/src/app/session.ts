@@ -11,6 +11,7 @@ import type {
   LogEntry,
   PhaseResult,
   SelfTestEvent,
+  SessionChange,
 } from '@kino/kdp';
 import { KinoDevice } from '../device/KinoDevice';
 import { clearSoundCache } from '../device/sounds';
@@ -75,8 +76,13 @@ let reconnecting = false;
  * Boot/session ID of the last camera this Studio spoke to. Studio builds a
  * fresh protocol client per connection, so the client cannot notice a reboot
  * on its own — it has to be handed what the previous one saw (04 §17).
+ *
+ * `lastDeviceId` is what keeps that from lying: two boot IDs only mean a
+ * restart if they came from the same unit. Both are cleared whenever Studio
+ * lets go of a camera deliberately.
  */
 let lastSessionId: string | null = null;
+let lastDeviceId: string | null = null;
 
 export function getDevice(): KinoDevice | null {
   return device;
@@ -199,12 +205,14 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
  * magic, and HELLO is retried with a fresh nonce per attempt so a stale
  * buffered reply can never be mistaken for a live one.
  *
- * All of that lives in the protocol client (04 §4/§17), including the
- * boot/session ID comparison that tells a reconnect from a reboot. Studio
- * used to run its own copy of the retry loop, which meant a rebooted camera
- * on a port that never dropped looked like the same session. The only thing
- * left here is the product check: KDP frames say nothing about which product
- * is speaking them.
+ * All of that lives in the protocol client (04 §4/§17), and Studio used to
+ * run its own copy of the retry loop, which never compared boot IDs at all.
+ *
+ * Scope of what this detects, exactly: **a reboot across a reconnect**. HELLO
+ * runs here and nowhere else, so a camera that restarts on a port that never
+ * drops is still invisible — the 4 s poller swallows its own errors and never
+ * re-handshakes. Closing that needs a periodic or error-triggered re-HELLO and
+ * is recorded as a follow-up in `docs/studio-spec-audit.md`, not done here.
  */
 async function handshake(c: KinoProtocolClient): Promise<void> {
   const hello = await c.hello({
@@ -219,6 +227,20 @@ async function handshake(c: KinoProtocolClient): Promise<void> {
     throw new Error(`Device answered as "${hello.product}" — not a KINO`);
   }
   lastSessionId = c.sessionId;
+  lastDeviceId = hello.deviceId ?? null;
+}
+
+/**
+ * Two different boot IDs are only a restart if the same unit produced them.
+ * Unplug camera A and plug in camera B and the IDs differ for the ordinary
+ * reason — telling the user their camera "restarted" would be a lie, and the
+ * state that belonged to A is dropped by the serial check in `populateAll`
+ * regardless. Firmware that predates device IDs (04 §17) reports none, and is
+ * given the benefit of the doubt.
+ */
+export function isSameCamera(previousDeviceId: string | null, change: SessionChange): boolean {
+  if (previousDeviceId === null || change.deviceId === undefined) return true;
+  return change.deviceId === previousDeviceId;
 }
 
 /**
@@ -236,6 +258,8 @@ function wireEvents(c: KinoProtocolClient) {
   // claim, cached sounds — belongs to a device that no longer exists. The
   // client has already failed every in-flight job by the time this fires.
   c.onSessionChanged((change) => {
+    // A different unit answering is not a restart — see `isSameCamera`.
+    if (!isSameCamera(lastDeviceId, change)) return;
     appendLog({
       t: Date.now(),
       src: 'P4',
@@ -490,6 +514,12 @@ async function teardown(clearState: boolean) {
     // Drafts and any bench claim belong to the camera that just left.
     resetDrafts();
     resetDeviceBusy();
+    // So does its boot ID. Studio let go of that camera deliberately and has
+    // just dropped everything the ID would have protected, so carrying it into
+    // the next connection can only produce a false "camera restarted" — loudly
+    // and wrongly, if the next thing plugged in is a different unit.
+    lastSessionId = null;
+    lastDeviceId = null;
   }
 }
 
