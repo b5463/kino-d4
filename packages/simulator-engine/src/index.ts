@@ -17,5 +17,5 @@ export {
   type PowerWarning,
   type PowerSample,
 } from './power';
-export { thermalStep, type ThermalState, type ThermalZone } from './thermal';
+export { thermalStep, type ThermalState, type ThermalZone, type ThermalStepResult } from './thermal';
 export { flashBandRisk, type FlashRisk } from './flashRisk';

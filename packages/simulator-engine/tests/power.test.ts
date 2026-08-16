@@ -142,29 +142,54 @@ describe('thermalStep', () => {
     });
     expect(sample.fuse).toBe('warm');
 
-    let state = allCool;
+    let zones = allCool;
+    let carryMs = 0;
     for (let i = 0; i < 5; i++) {
-      state = thermalStep(state, sample, ACTIVITY_PRESETS.worstOverlap, 500);
+      ({ zones, carryMs } = thermalStep(zones, sample, ACTIVITY_PRESETS.worstOverlap, 500, carryMs));
     }
-    expect(state.battery).toBe('HOT');
+    expect(zones.battery).toBe('HOT');
   });
 
   it('drifts back toward COOL once the load stops', () => {
-    let state: Record<ThermalZone, ThermalState> = { ...allCool, battery: 'HOT' };
+    let zones: Record<ThermalZone, ThermalState> = { ...allCool, battery: 'HOT' };
+    let carryMs = 0;
     const idleSample = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.idle);
 
     for (let i = 0; i < 5; i++) {
-      state = thermalStep(state, idleSample, ACTIVITY_PRESETS.idle, 500);
+      ({ zones, carryMs } = thermalStep(zones, idleSample, ACTIVITY_PRESETS.idle, 500, carryMs));
     }
-    expect(state.battery).toBe('COOL');
+    expect(zones.battery).toBe('COOL');
+  });
+
+  it('a single large dtMs still advances multiple steps in one call', () => {
+    // A load heavy enough to target CRITICAL for the battery zone (same
+    // fixture as computePower's own >6A test) — COOL -> CRITICAL is 3
+    // ordinal steps, and a single 2,000 ms call (4 nominal 500 ms periods)
+    // comfortably covers that in one shot.
+    const heavyLoads: PowerProfile['loads'] = { ...POWER.loads, camActive: { amps: 1.0, tag: 'ESTIMATED' } };
+    const heavyActivity: ActivityState = {
+      p4On: true,
+      camsOn: ['cam1', 'cam2', 'cam3', 'cam4'],
+      camsCapturing: ['cam1', 'cam2', 'cam3', 'cam4'],
+      uartActive: [],
+      flashA: 0.65,
+      wifiUploading: true,
+      chargingA: 0,
+    };
+    const sample = computePower(POWER, heavyLoads, heavyActivity);
+    expect(sample.warnings).toContain('CRITICAL_OVER_6A');
+
+    const { zones, carryMs } = thermalStep(allCool, sample, heavyActivity, 2_000);
+    expect(zones.battery).toBe('CRITICAL');
+    expect(carryMs).toBe(0); // 2,000 ms is an exact multiple of the 500 ms period
   });
 
   it('a sub-period dtMs (< 500 ms) does not force a step — no silent speed-up toward a hot target', () => {
-    // task-7 review finding #3: thermalStep used to floor a *minimum* of one
-    // step regardless of dtMs, so a caller invoking this once per animation
-    // frame (~16 ms) would race COOL -> CRITICAL in 3 calls. A single call
-    // with dtMs well under MS_PER_STEP (500 ms) must leave the state exactly
-    // as it was handed in.
+    // task-7 review finding #3, round 1: thermalStep used to floor a
+    // *minimum* of one step regardless of dtMs, so a caller invoking this
+    // once per animation frame (~16 ms) would race COOL -> CRITICAL in 3
+    // calls. A single call with dtMs well under MS_PER_STEP (500 ms) must
+    // leave the state exactly as it was handed in.
     const sample = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.worstOverlap, {
       overAsinceMs: 0,
       nowMs: 10_001,
@@ -172,16 +197,35 @@ describe('thermalStep', () => {
     expect(sample.fuse).toBe('warm'); // confirms this sample does target a hotter state
 
     const oneFrame = thermalStep(allCool, sample, ACTIVITY_PRESETS.worstOverlap, 16);
-    expect(oneFrame).toEqual(allCool);
+    expect(oneFrame.zones).toEqual(allCool);
+    expect(oneFrame.carryMs).toBe(16);
+  });
 
-    // Repeated sub-period calls don't quietly rush past a whole step either
-    // — see thermal.ts's MS_PER_STEP comment for the documented trade-off
-    // (no cross-call accumulator: a caller polling faster than MS_PER_STEP
-    // needs to accumulate its own elapsed time before calling).
-    let state = allCool;
-    for (let i = 0; i < 20; i++) {
-      state = thermalStep(state, sample, ACTIVITY_PRESETS.worstOverlap, 16);
+  it('~31 repeated 16 ms calls do not yet step, but the 32nd (crossing 500 ms) does — proportional, not forced, not stuck', () => {
+    // task-7 review finding #3, round 2: a bare floor(dtMs/MS_PER_STEP) with
+    // no carry swapped the "always forces a step" bug for "never steps under
+    // a sub-period cadence, no matter how many times it's called" — the
+    // fuse-warm sample never moved the battery zone even after 20x 16 ms
+    // calls (320 ms of simulated real time). With `carryMs` threaded back in,
+    // 31 calls (496 ms cumulative) must still be a no-op, and the very next
+    // one (512 ms cumulative — the first time the running total clears the
+    // 500 ms period) must register exactly one step.
+    const sample = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.worstOverlap, {
+      overAsinceMs: 0,
+      nowMs: 10_001,
+    });
+    expect(sample.fuse).toBe('warm');
+
+    let zones = allCool;
+    let carryMs = 0;
+    for (let i = 0; i < 31; i++) {
+      ({ zones, carryMs } = thermalStep(zones, sample, ACTIVITY_PRESETS.worstOverlap, 16, carryMs));
     }
-    expect(state).toEqual(allCool);
+    expect(zones.battery).toBe('COOL'); // 496 ms elapsed — still under one period
+    expect(carryMs).toBe(496);
+
+    ({ zones, carryMs } = thermalStep(zones, sample, ACTIVITY_PRESETS.worstOverlap, 16, carryMs));
+    expect(zones.battery).toBe('WARM'); // 512 ms elapsed — one step in, one 12 ms carried forward
+    expect(carryMs).toBe(12);
   });
 });
