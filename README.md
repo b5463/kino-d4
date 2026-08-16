@@ -7,6 +7,12 @@
   <h3>Four cameras. One button. One moving photograph.</h3>
 
   <p>
+    <a href="https://github.com/b5463/kino-d4/actions/workflows/ci.yml"><img src="https://github.com/b5463/kino-d4/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="LICENSES/MIT.txt"><img src="https://img.shields.io/badge/software-MIT-2ea44f" alt="Software: MIT"></a>
+    <a href="LICENSES/CERN-OHL-S-2.0.txt"><img src="https://img.shields.io/badge/hardware-CERN--OHL--S--2.0-6f42c1" alt="Hardware: CERN-OHL-S-2.0"></a>
+  </p>
+
+  <p>
     <a href="#try-studio">Try Studio</a> ·
     <a href="docs/HARDWARE.md">Hardware</a> ·
     <a href="firmware-contract/README.md">Firmware contract</a> ·
