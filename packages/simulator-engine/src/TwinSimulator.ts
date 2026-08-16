@@ -49,10 +49,15 @@ export class TwinSimulator {
   private readonly captureTimers: ReturnType<typeof setTimeout>[] = [];
   private readonly unsubscribeTelemetry: () => void;
 
-  constructor(opts?: { seed?: number; profile?: HardwareProfile }) {
+  constructor(opts?: { seed?: number; profile?: HardwareProfile; now?: () => number }) {
     this.seed = opts?.seed ?? DEFAULT_SEED;
     this.profile = opts?.profile ?? D4_V1;
-    this.device = new MockKinoDevice({ seed: this.seed });
+    // §21: passed straight through, undefined-transparent — an omitted `now`
+    // leaves MockKinoDevice on its own default (real Date.now). Task 8's
+    // replay needs a controllable clock through the engine to byte-compare
+    // regenerated outbound bytes against recorded ones; TwinSimulator itself
+    // never reads or derives from this value.
+    this.device = new MockKinoDevice({ seed: this.seed, now: opts?.now });
     this.device.setIdentity(DEFAULT_IDENTITY);
 
     this.unsubscribeTelemetry = this.device.onTelemetry((telemetry) => {
@@ -142,6 +147,12 @@ export class TwinSimulator {
       const snap = this.device.twinSnapshot();
       const cams: Partial<Record<CamId, { jpegKB: number; durationMs: number }>> = {};
       for (const cam of CAM_IDS) {
+        // Match MockKinoDevice's own committed-report exclusions
+        // (simulateCapture, §18/§20): a bus-down fault is already covered by
+        // choreographCapture's own filter (snap.cams[cam].fault), but
+        // cam2Timeout skips cam2 for this round without touching its fault
+        // field — that has to be checked here, from the device-wide scenario.
+        if (cam === 'cam2' && snap.scenarios.cam2Timeout) continue;
         cams[cam] = { jpegKB: snap.cams[cam].jpegKB, durationMs: snap.cams[cam].durationMs };
       }
       const timeline = choreographCapture(snap, cams);
