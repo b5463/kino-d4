@@ -6,11 +6,15 @@ import Fastify, {
 } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { HeadBucketCommand } from '@aws-sdk/client-s3';
+import cookie from '@fastify/cookie';
 import { loadConfig, type ApiConfig } from './config';
 import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
 import { s3Plugin } from './plugins/s3';
+import { authPlugin } from './auth/plugins';
+import { studioDeviceRoutes } from './routes/studio-devices';
+import { diagnosticRoutes } from './routes/diagnostics';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -70,6 +74,27 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.register(dbPlugin, { config });
   app.register(redisPlugin, { config });
   app.register(s3Plugin, { config });
+  // Signed cookies for the guest PIN session (05 §12/§13).
+  app.register(cookie, { secret: config.COOKIE_SECRET });
+
+  /**
+   * Order matters below this line. `authPlugin` installs an `onRoute` hook that
+   * enforces the 07 §25 URL-space split, and `onRoute` only observes routes
+   * added after it — so every route plugin belongs *after* this line.
+   *
+   * Note the asymmetry: `app.register(...)` is deferred until boot, but a bare
+   * `app.get(...)` on this instance (like `/api/healthz` below) is added
+   * immediately, before any plugin runs, and is therefore invisible to the
+   * hook. Authenticated routes go in a plugin, never inline here.
+   */
+  app.register(authPlugin);
+  app.register(studioDeviceRoutes);
+
+  /**
+   * Auth probe routes, test builds only. `NODE_ENV` defaults to `development`,
+   * so this is fail-closed: a deployment that never sets it does not get them.
+   */
+  if (config.NODE_ENV === 'test') app.register(diagnosticRoutes);
 
   app.get('/api/healthz', async (request, reply) => {
     const [db, redis, storage] = await Promise.all([

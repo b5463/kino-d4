@@ -106,6 +106,15 @@ jobs:
           echo "kino-media unavailable after 60 attempts; last head-bucket error:" >&2
           probe || true
           exit 1
+      # The route tests hit real tables through `app.db`, so the CI database
+      # must carry the committed migrations before they run. (`db.test.ts`
+      # migrates its own throwaway `kino_test` database and is unaffected —
+      # this step is for every other suite.) The postgres service has a
+      # health check, so it is ready by the time this executes.
+      - name: Apply database migrations
+        run: npm run db:migrate -w @kino/api
+        env:
+          DATABASE_URL: postgres://kino:kino@localhost:5432/kino
       - run: npm run test -w @kino/api
         env:
           # Inside the Actions service network the standard ports are free.

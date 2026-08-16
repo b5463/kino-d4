@@ -25,6 +25,9 @@ describe('GET /api/healthz', () => {
   it('reports 503 when nothing is reachable', async () => {
     const unreachable = buildServer(
       loadConfig({
+        // `process.env` carries NODE_ENV=test through, without which the
+        // config refuses to load on the published dev cookie secret.
+        ...process.env,
         DATABASE_URL: 'postgres://kino:kino@127.0.0.1:1/kino',
         REDIS_URL: 'redis://127.0.0.1:1',
         S3_ENDPOINT: 'http://127.0.0.1:1',

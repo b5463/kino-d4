@@ -40,6 +40,9 @@ describe('log redaction (05 §13)', () => {
       REDIS_URL: 'redis://:s3cr3t-redis@localhost:6380',
       S3_ACCESS_KEY: 's3cr3t-access',
       S3_SECRET_KEY: 's3cr3t-s3',
+      // Also the reason this call needs no NODE_ENV: supplying a real cookie
+      // secret satisfies the fail-closed check in config.ts.
+      COOKIE_SECRET: 's3cr3t-cookie-signing-key',
     });
 
     const output = captureLogs((log) => {
@@ -48,7 +51,13 @@ describe('log redaction (05 §13)', () => {
       log.info({ app: { config } }, 'config two deep');
     });
 
-    for (const secret of ['s3cr3t-pg', 's3cr3t-redis', 's3cr3t-access', 's3cr3t-s3']) {
+    for (const secret of [
+      's3cr3t-pg',
+      's3cr3t-redis',
+      's3cr3t-access',
+      's3cr3t-s3',
+      's3cr3t-cookie-signing-key',
+    ]) {
       expect(output).not.toContain(secret);
     }
     // Non-secret config still comes through, so this is not a blanket blackout.

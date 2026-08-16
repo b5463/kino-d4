@@ -1,19 +1,27 @@
 # @kino/api
 
 Fastify server behind `https://kino.acronym.sk/api/...`. Currently config, the
-postgres/redis/S3 plugins, `GET /api/healthz`, and the database schema.
+postgres/redis/S3 plugins, `GET /api/healthz`, the database schema, and the
+device/host/guest authentication described below.
 
 ## Test precondition — start the dev services
 
-The health and database tests talk to real services. Start them first:
+The health and database tests talk to real services, and the auth tests read and
+write real tables. Start the stack and migrate it first:
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d
+npm run db:migrate -w @kino/api
 npm run test -w @kino/api
 ```
 
 Without the stack running, `GET /api/healthz` answers `503` with the failing
-dependency flagged `false`, and the first test fails.
+dependency flagged `false`, and the first test fails. Without the migrations,
+`tests/auth.test.ts` stops in `beforeAll` and names the command above rather
+than failing 25 times over on "relation does not exist".
+
+The auth suite namespaces every row it writes with a per-run id and deletes them
+again afterwards, so it can share the dev `kino` database with your own data.
 
 ## Port mappings
 
@@ -47,10 +55,33 @@ project `kino-dev`, so it never collides with other stacks on the machine.
 `src/config.ts` validates the environment with zod:
 
 `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`,
-`S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `LOG_LEVEL`.
+`S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `COOKIE_SECRET`, `NODE_ENV`,
+`LOG_LEVEL`.
 
 Every key has a dev default matching the compose file, so **no `.env` is needed
-locally**. Two ways to override, highest precedence first:
+locally**. Two of them are not about the compose stack:
+
+- `COOKIE_SECRET` signs the guest PIN session cookie. Its default is a published
+  placeholder, and config loading **fails** unless `NODE_ENV` is explicitly
+  `development` or `test`. Note the direction: the check asks "is this provably
+  development?", not "is this production?" — so an unset, misspelled or
+  unfamiliar `NODE_ENV` refuses to boot on the default rather than accepting it.
+  Forgetting to set `NODE_ENV` is the likeliest deployment mistake there is, and
+  it must not be the one that silently enables a forgeable cookie. Generate a
+  real secret with `openssl rand -base64 48`.
+- `NODE_ENV` is a free-form string, not an enum, because the value is set by
+  tooling outside this project (vitest sets `test`). It has **no default** on
+  purpose: "unset" has to stay distinguishable from "explicitly development" for
+  the rule above. Only the exact value `test` registers the diagnostic auth
+  routes.
+
+`drizzle-kit` deliberately does *not* call `loadConfig()` — a schema migration
+has no business needing a cookie secret, so `drizzle.config.ts` parses only
+`DATABASE_URL`, reusing that field's own schema so the dev default still has one
+definition. That is what keeps `npm run db:migrate` working with `NODE_ENV`
+unset.
+
+Two ways to override, highest precedence first:
 
 **1. Inline, for a one-off.**
 
@@ -84,6 +115,9 @@ the environment wins over the file, so option 1 still overrides option 2, and CI
 table and column names. PostgreSQL stores metadata only — no media blobs
 (05 §5); bytes live in object storage and `assets.object_key` is the only link.
 
+`roll_devices` (migration 0003) is the device↔roll join: a device may operate a
+roll it created or joined, and no other (03 §17, 07 §25).
+
 Two indexes are load-bearing contracts, not optimisations:
 
 | Index | On | Why |
@@ -108,8 +142,14 @@ drizzle-kit runs outside the server, as a CLI, from this directory:
 ```bash
 cd apps/api
 npx drizzle-kit generate --name <what-changed>   # writes drizzle/NNNN_<name>.sql
-npx drizzle-kit migrate                          # applies pending files
+npm run db:migrate -w @kino/api                  # applies pending files
 ```
+
+`db:migrate` is a plain alias for `drizzle-kit migrate`. It exists as a script
+because CI runs it too: the `api-test` job applies the migrations to its service
+database after the services come up and before the tests, since every suite
+other than `db.test.ts` talks to the configured database rather than making its
+own.
 
 `drizzle.config.ts` takes the target database from `loadConfig().DATABASE_URL`,
 so it honours the same precedence as everything else — shell environment first,
@@ -147,6 +187,7 @@ previous run left behind. `kino_test` is dropped again afterwards, and the
 | --- | --- |
 | `npm run test -w @kino/api` | vitest, needs the compose stack |
 | `npm run lint -w @kino/api` | `tsc --noEmit` |
+| `npm run db:migrate -w @kino/api` | `drizzle-kit migrate` against `DATABASE_URL` |
 
 There is deliberately no `build` script. The server is TypeScript run directly
 on Node 22 — nothing bundles it, so a build step would only produce artifacts
@@ -167,6 +208,101 @@ registers an `onClose` hook, so `app.close()` releases every connection.
 `GET /api/healthz` pings all three concurrently (`select 1`, `PING`,
 `HeadBucket`) with a 5 s per-probe timeout, and answers
 `{ ok, db, redis, storage }` — `200` when all are reachable, `503` otherwise.
+
+## Authentication
+
+Three scopes (05 §12). `src/auth/tokens.ts` mints credentials, `src/auth/pins.ts`
+hashes PINs, `src/auth/plugins.ts` turns both into Fastify preHandlers.
+
+| Scope | Credential | preHandler | Sets |
+| --- | --- | --- | --- |
+| device | `Authorization: Bearer kdt_...` | `requireDevice`, `requireDeviceRoll(param)` | `request.device` |
+| host | `Authorization: Bearer hrt_...` | `requireHost(param)` | `request.roll` |
+| guest | anonymous + signed PIN cookie | `guestRollAccess` | `request.roll` |
+
+A token is `<prefix>_<base64url of 32 random bytes>`; only its sha256 hash is
+stored, so a database dump contains no usable credential and the plaintext
+exists exactly once — in the response that issues it. Tokens use a bare digest
+rather than a slow KDF on purpose: the secret is 256 bits of CSPRNG output, so
+there is nothing to brute-force. PINs are the opposite case and get salted
+scrypt, with the honest caveat that a 4-digit PIN is only ever as safe as the
+rate limiting in front of it (Task 36).
+
+### Scope separation (07 §25)
+
+A token of the wrong scope answers **403**, not 401 — the credential is real,
+the permission is not. On top of that, device routes must live under
+`/api/device/` and host routes under `/api/host/`, and an `onRoute` hook
+**refuses to boot** a server that breaks the rule. That is why `authPlugin` is
+registered before every route plugin in `buildServer`: `onRoute` only observes
+routes registered after it.
+
+A device reaches a roll it created (`rolls.created_by_device_id`) or joined
+(`roll_devices`) and no other — 07 §25's "must not enumerate unrelated Rolls".
+Task 17 should insert the `roll_devices` row when a device creates or joins a
+roll.
+
+### `request.roll` never carries a credential hash
+
+`request.roll` is typed `PublicRollRow` — every `rolls` column *except*
+`host_token_hash` and `pin_hash`. The preHandlers that need a hash read it into
+a local, compare it, and drop it; it never reaches the request.
+
+This is deliberate defence against the obvious one-liner. A future handler
+writing `return rollOf(request)` would otherwise serve a guest the roll's host
+token hash and PIN hash. Two diagnostic routes (`/context`) do exactly that
+careless thing, and their tests assert no hash comes back — so reattaching one
+fails the suite instead of shipping.
+
+### Device registration — read this before exposing it
+
+`POST /api/studio/devices/register` `{serial, product, hardwareRevision, name?}`
+→ `{deviceId, deviceToken}`, `200`. Unauthenticated, and re-registering an
+existing serial **rotates** that device's token.
+
+**This is a device-takeover primitive, stated plainly.** One unauthenticated
+POST with an existing serial returns a working token for that `deviceId` —
+granting every roll the device created or joined — and simultaneously bricks the
+real device, which cannot notice or re-enrol on its own. The response echoes the
+`deviceId`, so an attacker can tell a hit from a new registration. Serials are
+printed on the outside of the hardware and sequential (`KD4-00001`): the space
+is walkable by counting, not searching.
+
+Rotation itself is not the flaw and removing it would not fix this — an attacker
+can equally pre-claim serials that do not exist yet, and blocking
+re-registration would only brick real devices after a factory reset. The fix is
+authentication on the endpoint: **rate limiting plus either a registration
+secret or first-write-wins serial claiming**, tracked as a Task 36 handoff.
+Until then, treat this as the weakest link in the device trust chain.
+
+### Guest PIN session
+
+`POST /api/rolls/:slug/pin` `{pin}` verifies against `rolls.pin_hash` and sets
+the signed, httpOnly cookie `kino_pin_<rollId>`. Its value is a fingerprint of
+the roll's *current* `pin_hash`, so changing a roll's PIN invalidates every
+session issued under the old one. The cookie carries no secret; its
+unforgeability comes from the `COOKIE_SECRET` signature.
+
+The cookie uses `secure: 'auto'`, so @fastify/cookie sets `Secure` from the
+actual request protocol — https in production, plain http on localhost in dev
+and test — with no environment string to get wrong.
+
+> **Deployment caveat.** `'auto'` reads `request.protocol`, which behind a
+> TLS-terminating reverse proxy reports `http` unless Fastify's `trustProxy` is
+> enabled. In that topology the `Secure` flag would be silently dropped.
+> Enabling `trustProxy` is a server-level decision (it makes
+> `X-Forwarded-Proto` authoritative, which is only safe behind a trusted proxy),
+> so it is not set here — it belongs with the deployment work.
+
+### Diagnostic routes
+
+`/api/device/ping`, `/api/device/rolls/:rollId/ping`,
+`/api/host/rolls/:rollId/ping`, `/api/rolls/:slug/ping` and the two `/context`
+probes exist only to test the mechanisms above before Task 17+ add real routes.
+`buildServer` registers
+them **only when `NODE_ENV === 'test'`** — a plain `if` around `app.register`,
+which is the only conditional-registration idiom Fastify has, and which is
+fail-closed because `NODE_ENV` defaults to `development`.
 
 ## Logging
 

@@ -19,8 +19,11 @@ export interface LoggedReply {
  *
  * `S3_SECRET_KEY` and friends are listed by their exact names on purpose:
  * fast-redact matches whole key names, so the generic `secret` rule does NOT
- * cover `S3_SECRET_KEY`. `DATABASE_URL`/`REDIS_URL` are censored wholesale
- * because they carry an inline password that no key-name rule can reach.
+ * cover `S3_SECRET_KEY` — nor `COOKIE_SECRET`. `DATABASE_URL`/`REDIS_URL` are
+ * censored wholesale because they carry an inline password that no key-name
+ * rule can reach.
+ *
+ * Every new secret-bearing config key has to be added here by its exact name.
  */
 const SECRET_KEYS = [
   'password',
@@ -29,6 +32,7 @@ const SECRET_KEYS = [
   'token',
   'S3_SECRET_KEY',
   'S3_ACCESS_KEY',
+  'COOKIE_SECRET',
   'DATABASE_URL',
   'REDIS_URL',
 ];

@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   unique,
   index,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 import type { Capture, FirmwareManifest } from '@kino/schemas';
 
@@ -50,6 +51,30 @@ export const rolls = pgTable('rolls', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp('closed_at', { withTimezone: true }),
 });
+
+/**
+ * Which devices may operate which rolls (03 §17, 07 §25).
+ *
+ * A device reaches a roll it *created* through `rolls.created_by_device_id`;
+ * this table is the other half — rolls it *joined*. Without it a device token
+ * would be a key to every roll in the database, which is exactly what 07 §25
+ * rules out ("Device token must not ... enumerate unrelated Rolls").
+ *
+ * The composite primary key makes joining twice a no-op rather than a duplicate.
+ */
+export const rollDevices = pgTable(
+  'roll_devices',
+  {
+    rollId: text('roll_id')
+      .notNull()
+      .references(() => rolls.id),
+    deviceId: text('device_id')
+      .notNull()
+      .references(() => devices.id),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.rollId, t.deviceId] })],
+);
 
 export const captures = pgTable(
   'captures',
