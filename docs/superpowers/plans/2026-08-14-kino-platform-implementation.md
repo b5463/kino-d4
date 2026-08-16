@@ -1095,9 +1095,9 @@ export async function publishRollEvent(redis: Redis, rollId: string, event: Roll
 - `GET /api/rolls/:slug/events` (guest auth rules apply): SSE with `retry: 3000`, event id = Redis stream entry id, replay from `Last-Event-ID` header via XRANGE, then live via subscribe; `: heartbeat` comment every 25 s; connection count per roll tracked in Redis (`SCARD` of connection set with TTL refresh) — this feeds the host dashboard "Guests" number (03§10).
 - Event payloads carry IDs only; the PWA re-fetches the capture (05§10 flow).
 
-- [ ] **Step 1: Write failing tests** — client receives `capture.created` after a publish; reconnect with `Last-Event-ID` replays the missed event exactly once; hidden capture emits `capture.hidden`.
+- [x] **Step 1: Write failing tests** — client receives `capture.created` after a publish; reconnect with `Last-Event-ID` replays the missed event exactly once; hidden capture emits `capture.hidden`.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): SSE roll events with Last-Event-ID replay`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): SSE roll events with Last-Event-ID replay`
 
 ### Task 20: Guest feed + asset delivery
 
