@@ -27,3 +27,4 @@ export {
   type SimSessionEvent,
 } from './recorder';
 export { replaySession, verifyReplay } from './replay';
+export { TwinDeviceServer } from './TwinDeviceServer';

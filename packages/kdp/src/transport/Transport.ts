@@ -2,7 +2,7 @@
 // that separation is what lets the mock device and real hardware share the
 // entire protocol stack above this line.
 
-export type TransportKind = 'serial' | 'mock';
+export type TransportKind = 'serial' | 'mock' | 'twin';
 
 export interface Transport {
   readonly kind: TransportKind;

@@ -12,3 +12,4 @@ export * from './protocol/KinoProtocolClient';
 export * from './transport/Transport';
 export * from './transport/SerialTransport';
 export * from './transport/MockTransport';
+export * from './transport/BroadcastTransport';
