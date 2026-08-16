@@ -5,6 +5,7 @@
 // reads the KDP bytes the device writes to its sink (§10/§20).
 import type { CamId } from '@kino/kdp';
 import type { TwinTelemetry } from '@kino/test-fixtures';
+import type { PowerSample } from './power';
 
 export const BOOT_STAGES = [
   'POWER_OFF',
@@ -34,5 +35,5 @@ export type SimEvent =
   | { t: 'cam-stage'; cam: CamId; stage: CaptureStage }
   | { t: 'sync-pulse' }
   | { t: 'uart'; cam: CamId; active: boolean; bytesPerSec: number }
-  | { t: 'device'; telemetry: TwinTelemetry }; // forwarded, see TwinSimulator
-// Task 7 extends this union with { t: 'power'; sample: PowerSample }.
+  | { t: 'device'; telemetry: TwinTelemetry } // forwarded, see TwinSimulator
+  | { t: 'power'; sample: PowerSample }; // §7/§15, 2 Hz — see TwinSimulator.samplePower

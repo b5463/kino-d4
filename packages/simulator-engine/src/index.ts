@@ -10,3 +10,12 @@ export {
   type CaptureStage,
   type SimEvent,
 } from './events';
+export {
+  computePower,
+  ACTIVITY_PRESETS,
+  type ActivityState,
+  type PowerWarning,
+  type PowerSample,
+} from './power';
+export { thermalStep, type ThermalState, type ThermalZone } from './thermal';
+export { flashBandRisk, type FlashRisk } from './flashRisk';
