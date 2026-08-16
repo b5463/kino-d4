@@ -60,8 +60,13 @@ export type PublicRollRow = Omit<typeof rolls.$inferSelect, 'hostTokenHash' | 'p
  * Adding a column to `rolls` without adding it here is a **compile error** at
  * every `request.roll = ...` assignment (the selected row stops satisfying
  * `PublicRollRow`), so the projection cannot silently drift out of date.
+ *
+ * Exported so route modules can `.returning(publicRollColumns)` from an UPDATE
+ * instead of writing a second projection: two copies would mean two places for
+ * a credential hash to creep back in, and only one of them has that compile
+ * error watching it.
  */
-const publicRollColumns = {
+export const publicRollColumns = {
   id: rolls.id,
   slug: rolls.slug,
   title: rolls.title,

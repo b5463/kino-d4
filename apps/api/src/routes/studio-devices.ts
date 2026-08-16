@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { newToken } from '../auth/tokens';
 import { newId } from '../ids';
 import { devices } from '../db/schema';
+import { fail, invalidBody } from './errors';
 
 /**
  * Studio/account API — device registration (05 §4).
@@ -51,13 +52,8 @@ const registerBody = z.object({
 export const studioDeviceRoutes: FastifyPluginAsync = async (app) => {
   app.post('/api/studio/devices/register', async (request, reply) => {
     const parsed = registerBody.safeParse(request.body);
-    if (!parsed.success) {
-      // Names the offending fields, never their values.
-      const fields = parsed.error.issues
-        .map((issue) => issue.path.join('.') || '(root)')
-        .join(', ');
-      return reply.code(400).send({ code: 'INVALID_BODY', message: `invalid or missing: ${fields}` });
-    }
+    // Names the offending fields, never their values.
+    if (!parsed.success) return invalidBody(reply, parsed.error);
 
     const { serial, product, hardwareRevision, name } = parsed.data;
     const { token, hash } = newToken('kdt');
@@ -82,7 +78,7 @@ export const studioDeviceRoutes: FastifyPluginAsync = async (app) => {
 
     if (row === undefined) {
       // Unreachable: the upsert always writes a row. Guards the non-null read.
-      return reply.code(500).send({ code: 'REGISTRATION_FAILED', message: 'device was not stored' });
+      return fail(reply, 500, 'REGISTRATION_FAILED', 'device was not stored');
     }
 
     // 200, not 201: the same call both creates and rotates, and a rotation

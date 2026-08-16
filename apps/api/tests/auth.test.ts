@@ -501,7 +501,18 @@ describe('fail-closed hardening', () => {
     try {
       await probe.ready();
 
-      for (const url of ['/api/device/ping', `/api/rolls/${slugOf(ROLL_OPEN)}/ping`]) {
+      // Every diagnostic route, the two `/context` probes included — those are
+      // the ones that return the roll context verbatim, so they are the most
+      // valuable to a prober and the least acceptable to leave registered.
+      const gated = [
+        '/api/device/ping',
+        `/api/device/rolls/${ROLL_OPEN}/ping`,
+        `/api/host/rolls/${ROLL_OPEN}/ping`,
+        `/api/rolls/${slugOf(ROLL_OPEN)}/ping`,
+        `/api/rolls/${slugOf(ROLL_OPEN)}/context`,
+        `/api/host/rolls/${ROLL_OPEN}/context`,
+      ];
+      for (const url of gated) {
         const res = await probe.inject({ method: 'GET', url });
         expect(res.statusCode).toBe(404);
       }

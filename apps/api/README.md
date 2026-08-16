@@ -239,8 +239,10 @@ routes registered after it.
 
 A device reaches a roll it created (`rolls.created_by_device_id`) or joined
 (`roll_devices`) and no other — 07 §25's "must not enumerate unrelated Rolls".
-Task 17 should insert the `roll_devices` row when a device creates or joins a
-roll.
+`POST /api/device/rolls/join` writes the `roll_devices` row. Creating a roll
+writes **no** such row: the creator is already recorded in
+`rolls.created_by_device_id`, and both routes that care read the two with the
+same `OR`.
 
 ### `request.roll` never carries a credential hash
 
@@ -298,11 +300,78 @@ and test — with no environment string to get wrong.
 
 `/api/device/ping`, `/api/device/rolls/:rollId/ping`,
 `/api/host/rolls/:rollId/ping`, `/api/rolls/:slug/ping` and the two `/context`
-probes exist only to test the mechanisms above before Task 17+ add real routes.
-`buildServer` registers
+probes exist only to test the mechanisms above in isolation from the real
+routes. `buildServer` registers
 them **only when `NODE_ENV === 'test'`** — a plain `if` around `app.register`,
 which is the only conditional-registration idiom Fastify has, and which is
-fail-closed because `NODE_ENV` defaults to `development`.
+fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
+
+## Rolls
+
+| Route | Auth | Notes |
+| --- | --- | --- |
+| `POST /api/device/rolls` | device | → `{rollId, slug, guestUrl, hostUrl, hostToken}`, `201` |
+| `POST /api/device/rolls/join` `{slug}` | device | writes `roll_devices`; idempotent |
+| `GET /api/device/rolls/current` | device | assigned rolls with `status = live` |
+| `POST /api/host/rolls` | **none** | host web creation; mints a new host token |
+| `GET /api/host/rolls/:rollId` | host | dashboard view, `counts` are zero until Task 18 |
+| `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
+| `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
+| `GET /api/rolls/:slug` | guest | `{title, status, photoCount, createdAt}` |
+
+`POST /api/host/rolls` is unauthenticated for the same reason device
+registration is: V1 has no accounts (05 §12), so the call *mints* the
+credential rather than checking one. It is a spam/storage surface, not a
+data-exposure one — the roll it creates is reachable only through the token in
+its own response — and it is the second of the two routes that most need Task
+36's rate limiting.
+
+### Slug
+
+Six characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (`src/rolls/slug.ts`),
+drawn with rejection sampling from `crypto.randomFillSync` so no character is
+more likely than another. `0`/`O` and `1`/`I`/`L` are excluded because a slug
+gets read off one phone screen and typed into another. ~887M values, ~29.7 bits:
+**not a secret**, a link that is impractical to stumble on — the PIN gate is
+what locks a roll that needs locking. Uniqueness is the `rolls_slug_unique`
+constraint's job; the caller retries on collision (pre-checking with a SELECT
+would still race).
+
+The slug is separate from `rolls.id` (05 §14), which is what lets
+`regenerate-slug` rotate a leaked link without touching a single row that
+references the roll.
+
+### States (03 §22)
+
+`live ↔ closed → archived`, archived terminal; re-sending the current status is
+a no-op, anything else is `400 INVALID_STATE`. Archiving requires closing first
+— "closed" is where the host actually decides no more photos are coming.
+
+Closing stops **uploads**, not reading: `GET /api/rolls/:slug` still answers 200
+for a closed roll. The upload half of that rule is
+`assertRollAcceptsUploads(roll)` in `src/rolls/rolls.ts`, which throws
+`RollClosedError` (`409 ROLL_CLOSED`) — Task 18's upload routes call it. It is
+an allow-list over `status`, so a status added later refuses uploads by default
+instead of accepting them because nobody extended a deny-list.
+
+`PATCH {pin}` always re-hashes, even for an unchanged PIN. That is deliberate:
+the guest cookie is a fingerprint of the stored hash, so a fresh salt logs out
+every session issued under the old PIN — what a host rotating a leaked PIN is
+asking for. `{pin: null}` clears it and returns the roll to `unlisted`.
+
+Close, reopen, archive, rename, PIN change and slug regeneration each write an
+`audit_events` row with `actor = 'host'`. The `target` column holds the value
+the change **destroyed** (the old title, the old slug) — never the new one,
+which is already in the roll row, and never a PIN.
+
+### `X-Robots-Tag`
+
+`src/rolls/robots.ts` sets `noindex, nofollow` on every response whose path is
+under `/api/rolls/` (03 §9), as a root-context `onSend` hook rather than a
+per-route header — a privacy control must cover the route somebody adds next
+year, not just the ones that were remembered. Keying on the request path rather
+than the matched route also covers 404s for mistyped slugs, and `onSend` catches
+error replies, so the PIN gate's 401 carries it too.
 
 ## Logging
 

@@ -5,10 +5,10 @@ import { deviceOf, rollOf } from '../auth/plugins';
  * Auth probes — one per scope, and nothing else.
  *
  * These exist so the authentication built in Task 16 can be tested on its own,
- * before Task 17+ add the real device, host and guest routes. They are
+ * independently of the real device, host and guest routes that use it. They are
  * registered **only when `NODE_ENV === 'test'`** (see `buildServer`), which is
- * fail-closed: `NODE_ENV` defaults to `development`, so a deployment that
- * forgets to set it still does not expose them.
+ * fail-closed: `NODE_ENV` has no default, and an unset value is not `'test'`,
+ * so a deployment that forgets to set it still does not expose them.
  *
  * Fastify has no conditional-registration primitive, so a plain `if` around
  * `app.register` is the idiom — and it keeps the gate visible in one place in

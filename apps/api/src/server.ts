@@ -13,7 +13,11 @@ import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
+import { robotsPlugin } from './rolls/robots';
 import { studioDeviceRoutes } from './routes/studio-devices';
+import { deviceRollRoutes } from './routes/device-rolls';
+import { hostRollRoutes } from './routes/host-rolls';
+import { guestRollRoutes } from './routes/guest-rolls';
 import { diagnosticRoutes } from './routes/diagnostics';
 
 declare module 'fastify' {
@@ -86,13 +90,25 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
    * `app.get(...)` on this instance (like `/api/healthz` below) is added
    * immediately, before any plugin runs, and is therefore invisible to the
    * hook. Authenticated routes go in a plugin, never inline here.
+   *
+   * `robotsPlugin` is the exception to that ordering rule and is listed first
+   * only for readability. Its `onSend` is a plain hook on this root context, and
+   * Fastify resolves a context's hooks once the context has finished loading —
+   * so it covers every route here regardless of registration order, including
+   * `POST /api/rolls/:slug/pin` inside `authPlugin` (03 §9). Verified, not
+   * assumed: `rolls.test.ts` asserts the header on that route specifically.
    */
+  app.register(robotsPlugin);
   app.register(authPlugin);
   app.register(studioDeviceRoutes);
+  app.register(deviceRollRoutes);
+  app.register(hostRollRoutes);
+  app.register(guestRollRoutes);
 
   /**
-   * Auth probe routes, test builds only. `NODE_ENV` defaults to `development`,
-   * so this is fail-closed: a deployment that never sets it does not get them.
+   * Auth probe routes, test builds only. `NODE_ENV` has no default and an unset
+   * value is not `'test'`, so this is fail-closed: a deployment that never sets
+   * it does not get them.
    */
   if (config.NODE_ENV === 'test') app.register(diagnosticRoutes);
 
