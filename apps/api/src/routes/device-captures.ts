@@ -10,10 +10,10 @@ import {
   PART_SIZE,
   assetObjectKey,
   enqueueProcessingJobs,
-  idempotencyKeyFor,
   nextCaptureStatus,
   plannedJobs,
   recomputeCaptureStatus,
+  sessionKeyFor,
 } from '../uploads/uploads';
 import { finishUpload, openSession, recordPart, upsertAsset } from '../uploads/sessions';
 import { publishRollEvent, type RollEvent } from '../events/publish';
@@ -367,11 +367,18 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       // content would change must be refused, not quietly reported complete.
       assertNotOriginalOverwrite(key, asset.status === 'ready' ? asset.sha256 : null, sha256);
 
-      const idempotencyKey = idempotencyKeyFor(ctx.capture.captureUuid, role, frameIndex);
+      // Scoped by capture id, because `captureUuid` is only unique *per roll*
+      // (`captures_roll_uuid`) while `upload_sessions.idempotency_key` is unique
+      // across the table. Both halves matter: the stored key carries the capture
+      // id so two rolls sharing a uuid get two rows, and the lookup is pinned to
+      // this asset so it can never adopt somebody else's session.
+      const sessionKey = sessionKeyFor(ctx.capture.id, ctx.capture.captureUuid, role, frameIndex);
       const [existing] = await app.db
         .select()
         .from(uploadSessions)
-        .where(eq(uploadSessions.idempotencyKey, idempotencyKey))
+        .where(
+          and(eq(uploadSessions.idempotencyKey, sessionKey), eq(uploadSessions.assetId, asset.id)),
+        )
         .limit(1);
 
       if (existing !== undefined && asset.status === 'ready' && asset.sha256 === sha256) {
@@ -390,15 +397,26 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
         return reply.send({ uploadId: existing.id, partSize: PART_SIZE, alreadyComplete: false });
       }
 
-      const uploadId = await openSession(app, {
+      const opened = await openSession(app, {
         existing,
         asset,
         key,
         mime,
         bytes,
         sha256,
-        idempotencyKey,
+        sessionKey,
       });
+      if (opened.status === 'conflict') {
+        // Another `init` for this same asset won the race. Retrying finds its
+        // session and resumes it — adopting whatever row exists instead would be
+        // how one upload silently resets another.
+        return fail(
+          reply,
+          409,
+          'UPLOAD_IN_PROGRESS',
+          'another init for this asset is in flight; retry',
+        );
+      }
 
       // The asset row is reset to `pending` and re-pointed: a restart may carry
       // a different mime, and therefore a different key.
@@ -409,7 +427,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
 
       await recomputeCaptureStatus(app.db, ctx.capture.id);
 
-      return reply.send({ uploadId, partSize: PART_SIZE, alreadyComplete: false });
+      return reply.send({ uploadId: opened.uploadId, partSize: PART_SIZE, alreadyComplete: false });
     },
   );
 
@@ -455,25 +473,24 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       if (ctx === null) return reply;
       const { session, asset, capture, roll } = ctx;
 
-      if (session.status === 'complete') {
-        // The device missed the answer. Saying so again is cheaper and safer
-        // than re-completing a multipart upload that no longer exists.
+      /**
+       * Everything that decides — the session's state, the immutability guard
+       * and the write — happens inside `finishUpload`, under a `FOR UPDATE` lock
+       * on the asset row. The rows resolved above are a *snapshot*: a concurrent
+       * complete can flip the asset to `ready` with different content between
+       * this handler reading them and the bytes landing, so a guard evaluated
+       * out here would be answering about a state that no longer exists (01 §7).
+       */
+      const outcome = await finishUpload(app, session.id, asset.id);
+
+      if (outcome.status === 'already-complete') {
+        // The device missed the answer, or lost the race to a concurrent
+        // complete. Either way the asset is on the server.
         return reply.send({ assetId: asset.id, status: 'ready' });
       }
-      if (session.status !== 'open' || session.s3UploadId === null) {
-        return fail(reply, 409, 'UPLOAD_NOT_OPEN', `this upload is ${session.status}; init again`);
+      if (outcome.status === 'not-open') {
+        return fail(reply, 409, 'UPLOAD_NOT_OPEN', `this upload is ${outcome.was}; init again`);
       }
-
-      // The write path itself consults the immutability guard, not just init:
-      // init's answer was true when it was given, and this is the call that
-      // actually puts bytes at the key (01 §7).
-      assertNotOriginalOverwrite(
-        asset.objectKey,
-        asset.status === 'ready' ? asset.sha256 : null,
-        session.sha256Expected,
-      );
-
-      const outcome = await finishUpload(app, session, asset);
       if (outcome.status === 'no-parts') {
         return fail(reply, 400, 'NO_PARTS', 'send at least one part before completing');
       }

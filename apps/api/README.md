@@ -119,12 +119,18 @@ table and column names. PostgreSQL stores metadata only — no media blobs
 `roll_devices` (migration 0003) is the device↔roll join: a device may operate a
 roll it created or joined, and no other (03 §17, 07 §25).
 
-Two indexes are load-bearing contracts, not optimisations:
+Three indexes are load-bearing contracts, not optimisations:
 
 | Index | On | Why |
 | --- | --- | --- |
 | `captures_roll_uuid` | `(roll_id, capture_uuid)` | idempotency anchor — a retried upload of the same device-generated capture UUID cannot create a second row (05 §9) |
 | `assets_capture_role_frame` | `(capture_id, role, frame_index)`, **NULLS NOT DISTINCT** | same, one level down: one asset per role per frame |
+| `processing_events_capture_job_queued` | `(capture_id, job)` **WHERE `status = 'queued'`** | one enqueue per job per capture, while leaving the rest of that job's lifecycle log free to grow (migration 0004) |
+
+Note what `captures_roll_uuid` does *not* say: a capture UUID is unique **per
+roll**, not globally. Anything keyed on the uuid alone across the whole table —
+`upload_sessions.idempotency_key` was, briefly — will collide between rolls. See
+"Idempotency is an index, never a pre-check" below.
 
 `NULLS NOT DISTINCT` on the second one is load-bearing, not a flourish.
 `frame_index` is NULL for every derived role — `thumb`, `wiggle-webp`,
@@ -482,10 +488,27 @@ winner to commit and then return no row, so the read-back sees the winner.
 `tests/uploads.test.ts` fires two identical capture POSTs concurrently and
 asserts one row, one id, and a 201/200 split.
 
-`upload_sessions.idempotency_key` is `<captureUuid>:<role>:<frameIndex>` and is
-unique, so a device that restarts an upload **reuses** that row rather than
-adding a second one. One session per asset is what keeps "which upload is this
-asset's?" answerable at all.
+The upload session's key is unique, so a device that restarts an upload
+**reuses** that row rather than adding a second one. One session per asset is
+what keeps "which upload is this asset's?" answerable at all.
+
+That key is `<captureId>:<captureUuid>:<role>:<frameIndex>` in the column, not
+the bare 05 §9 string, and the prefix is load-bearing. `captureUuid` is camera-
+generated and anchored **per roll** (`captures_roll_uuid` is
+`(roll_id, capture_uuid)`), so the same uuid may legitimately appear in two
+rolls — while `upload_sessions.idempotency_key` is unique across the whole
+table. Keyed on the device's string alone, capture B's `init` would find, reset
+and steal capture A's session: A loses its parts and its expected digest, and B
+is left pointing at A's asset and can never upload that role at all. The
+device-facing semantics of 05 §9 are unchanged — the substring after the first
+colon is exactly `idempotencyKeyFor(...)`.
+
+Belt and braces, because this one is a data-loss bug rather than a nuisance: the
+lookup is *also* pinned to the asset (`AND asset_id = ...`) so it can never
+adopt a stranger's row, and a unique violation on the insert answers
+`409 UPLOAD_IN_PROGRESS` — with the key capture-scoped, that can only mean a
+concurrent `init` for this same asset, and the caller's retry finds the winner's
+session and resumes it.
 
 ### Every session is a multipart upload
 
@@ -537,6 +560,17 @@ worker write path (Task 22's `putDerived` has nowhere to put one), so "workers
 may only write under `derived/`" falls out of the same check instead of needing
 a second one that could disagree with it.
 
+**The `complete`-side guard runs under a row lock**, and that is not a
+precaution. The guard reads the asset's stored digest and then a write happens;
+between those two moments a concurrent complete can flip the asset to `ready`
+with different content, so a guard evaluated on a snapshot would be answering
+about a state that no longer exists. `finishUpload` opens a transaction, reads
+the asset `FOR UPDATE`, re-reads the session, and holds that lock across the
+guard **and** the write — the second completer blocks, then re-reads and sees
+the digest it now has to match. The lock spans the S3 round trip, which is the
+deliberate cost: it is one asset row, contended only by another attempt to write
+the same object, which is exactly what must not run in parallel.
+
 ### Capture states (05 §8)
 
 ```text
@@ -555,6 +589,13 @@ walking a `processing` capture backwards into `originals-uploading`.
 capture whose only asset is a thumbnail is a preview that arrived first (03 §4's
 upload priority), not a finished capture.
 
+`partial` stays reachable after the queue has run: jobs finishing on a capture
+that permanently lost an original yields `partial`, not `ready`. Reporting
+`ready` there would drop it out of the host's Pending count while it is
+genuinely incomplete, which is the one thing `partial` exists to prevent. While
+the jobs are still running the answer is `processing` — a failed asset may yet
+be retried, so the outcome is not decided.
+
 ### Two stubs, marked as such
 
 - `src/events/publish.ts` — `RollEvent` and the channel name are Task 19's
@@ -568,15 +609,25 @@ upload priority), not a finished capture.
   the job names, the `jobKey` format and the fan-out rule (skip a role the device
   already uploaded — 03 §4) are already Task 22's.
 
+  It inserts and lets an index decide, like everything else here: migration
+  `0004` adds `processing_events_capture_job_queued`, a **partial** unique index
+  on `(capture_id, job) WHERE status = 'queued'`. The `WHERE` is the whole point
+  — this table is an event *log*, and Task 22 records a job's progress as
+  `queued` → `running` → `done`/`failed`, so a blanket unique on
+  `(capture_id, job)` would make the second row of any job's own lifecycle
+  impossible. Restricting it to the enqueue keeps the log open while making the
+  one thing that must not duplicate impossible to duplicate.
+
 ### Known gaps
 
 - An abandoned session leaves an incomplete multipart upload in MinIO until
   something aborts it. `init` aborts the previous one when it restarts a
   session, but a device that simply stops leaves it behind; a bucket lifecycle
   rule is the real answer.
-- Two concurrent `init` calls for the same asset can each create a multipart
-  upload, of which only the last is recorded. Harmless (the loser is orphaned
-  bytes, same as above) but worth knowing before this route gets a retry storm.
+- Two concurrent `init` calls for the same asset both create a multipart upload;
+  the loser now answers `409 UPLOAD_IN_PROGRESS` and aborts the upload it had
+  just created, so the database stays single-session — but a failed abort still
+  leaves bytes behind, same as above.
 - Re-initialising a *derived* asset with a different MIME type moves it to a new
   key and orphans the object at the old one. Rare, and deleting a still-good
   object on the strength of an upload that has not happened yet would be the
@@ -584,6 +635,10 @@ upload priority), not a finished capture.
 - Closing a roll stops *new* uploads. A session opened while the roll was live
   is allowed to finish, because stranding half-transferred bytes is not what
   closing a roll is for.
+- `complete` holds a database connection for the length of its S3 round trip
+  (the row lock above). The pool is 10, so ten simultaneous completions saturate
+  it. Correct, and cheap at party scale; it is the figure to look at first if
+  this ever needs to serve many rigs at once.
 
 ## Logging
 

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
@@ -16,6 +16,7 @@ import {
   PART_SIZE,
   idempotencyKeyFor,
   nextCaptureStatus,
+  sessionKeyFor,
   type AssetState,
 } from '../src/uploads/uploads';
 import { rollEventChannel } from '../src/events/publish';
@@ -444,6 +445,18 @@ describe('nextCaptureStatus (05 §8)', () => {
     );
   });
 
+  it('still reaches partial after the queue has run', () => {
+    // A capture that permanently lost an original must not report `ready` just
+    // because the jobs finished — that would drop it out of the host's Pending
+    // count while it is genuinely incomplete, which is what `partial` is for.
+    const lost = [thumb('ready'), frame('ready'), frame('failed')];
+    // While the queue is still working the outcome is not decided yet.
+    expect(nextCaptureStatus(lost, false, true)).toBe('processing');
+    expect(nextCaptureStatus(lost, true)).toBe('partial');
+    // And an intact capture still finishes `ready`.
+    expect(nextCaptureStatus([thumb('ready'), frame('ready')], true)).toBe('ready');
+  });
+
   it('is failed only on total loss', () => {
     expect(nextCaptureStatus([thumb('failed'), frame('failed')], false)).toBe('failed');
   });
@@ -461,6 +474,20 @@ describe('idempotency keys (05 §9)', () => {
     // Derived roles have no frame; the trailing field is empty rather than a
     // word that could collide with a real index.
     expect(idempotencyKeyFor('u-1', 'thumb', null)).toBe('u-1:thumb:');
+  });
+
+  it('scopes the stored session key by capture, because a uuid is only roll-unique', () => {
+    // `captures_roll_uuid` anchors on (roll_id, capture_uuid), so the same uuid
+    // may legitimately exist in two rolls — while
+    // `upload_sessions.idempotency_key` is unique across the whole table.
+    expect(sessionKeyFor('cap_A', 'u-1', 'thumb', null)).toBe('cap_A:u-1:thumb:');
+    expect(sessionKeyFor('cap_B', 'u-1', 'thumb', null)).toBe('cap_B:u-1:thumb:');
+    expect(sessionKeyFor('cap_A', 'u-1', 'thumb', null)).not.toBe(
+      sessionKeyFor('cap_B', 'u-1', 'thumb', null),
+    );
+    // The device-facing 05 §9 semantics survive intact as the suffix.
+    const suffix = idempotencyKeyFor('u-1', 'thumb', null);
+    expect(sessionKeyFor('cap_A', 'u-1', 'thumb', null).endsWith(suffix)).toBe(true);
   });
 });
 
@@ -817,6 +844,121 @@ describe('the upload round trip (03 §16, 05 §8)', () => {
     expect(res.statusCode).toBe(413);
   }, 30_000);
 
+  it('keeps two rolls that share a captureUuid on separate sessions', async () => {
+    // `captures_roll_uuid` anchors idempotency on (roll_id, capture_uuid), so
+    // the same camera-generated uuid legitimately appears in two rolls. The
+    // upload session key is unique across the whole table, so if it were the
+    // device's key alone, roll B's init would find, reset and steal roll A's
+    // session — deleting its parts and overwriting its expected digest.
+    const rollA = await createRoll();
+    const rollB = await createRoll();
+    const shared = randomUUID();
+
+    const a = await postCapture(rollA.rollId, captureDoc({ captureUuid: shared }));
+    const b = await postCapture(rollB.rollId, captureDoc({ captureUuid: shared }));
+    expect(a.statusCode).toBe(201);
+    expect(b.statusCode).toBe(201);
+    const captureA = a.json<{ captureId: string }>().captureId;
+    const captureB = b.json<{ captureId: string }>().captureId;
+    expect(captureA).not.toBe(captureB);
+
+    const bytesA = randomBytes(1_200);
+    const bytesB = randomBytes(1_400);
+
+    // Interleaved on purpose: B's init happens while A's session is open, which
+    // is exactly the moment a shared key would clobber it.
+    const initA = await initAsset(captureA, {
+      role: 'thumb',
+      mime: 'image/webp',
+      bytes: bytesA.length,
+      sha256: sha256Hex(bytesA),
+    });
+    const initB = await initAsset(captureB, {
+      role: 'thumb',
+      mime: 'image/webp',
+      bytes: bytesB.length,
+      sha256: sha256Hex(bytesB),
+    });
+    expect(initA.statusCode).toBe(200);
+    expect(initB.statusCode).toBe(200);
+
+    const uploadA = initA.json<InitResponse>().uploadId;
+    const uploadB = initB.json<InitResponse>().uploadId;
+    expect(uploadA).not.toBe(uploadB);
+
+    // A is still intact and can finish.
+    expect((await putPart(uploadA, 1, bytesA)).statusCode).toBe(200);
+    expect((await completeUpload(uploadA)).statusCode).toBe(200);
+    expect((await putPart(uploadB, 1, bytesB)).statusCode).toBe(200);
+    expect((await completeUpload(uploadB)).statusCode).toBe(200);
+
+    for (const [captureId, body] of [
+      [captureA, bytesA],
+      [captureB, bytesB],
+    ] as const) {
+      const [asset] = await app.db
+        .select()
+        .from(schema.assets)
+        .where(eq(schema.assets.captureId, captureId));
+      expect(asset?.status).toBe('ready');
+      expect(asset?.sha256).toBe(sha256Hex(body));
+      expect(await objectBytes(asset?.objectKey ?? '')).toEqual(body);
+    }
+  }, 30_000);
+
+  it('serialises two completes of the same upload behind a row lock', async () => {
+    // The immutability guard reads the asset's digest and then a write happens.
+    // Without `SELECT ... FOR UPDATE` spanning both, a concurrent complete can
+    // flip the asset between those moments — and both callers would run
+    // CompleteMultipartUpload against the same upload id.
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+
+    const body = randomBytes(3_000);
+    const init = await initAsset(captureId, {
+      role: 'original-frame',
+      frameIndex: 1,
+      mime: 'image/jpeg',
+      bytes: body.length,
+      sha256: sha256Hex(body),
+    });
+    const { uploadId } = init.json<InitResponse>();
+    expect((await putPart(uploadId, 1, body)).statusCode).toBe(200);
+
+    const [first, second] = await Promise.all([completeUpload(uploadId), completeUpload(uploadId)]);
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(first.json<{ assetId: string }>().assetId).toBe(
+      second.json<{ assetId: string }>().assetId,
+    );
+
+    const [asset] = await app.db
+      .select()
+      .from(schema.assets)
+      .where(eq(schema.assets.captureId, captureId));
+    expect(asset?.status).toBe('ready');
+    expect(asset?.sha256).toBe(sha256Hex(body));
+    expect(await objectBytes(asset?.objectKey ?? '')).toEqual(body);
+
+    const [session] = await app.db
+      .select()
+      .from(schema.uploadSessions)
+      .where(eq(schema.uploadSessions.id, uploadId));
+    expect(session?.status).toBe('complete');
+  }, 30_000);
+
+  it('takes a real row lock, not an advisory comment', () => {
+    // Honest evidence for the mechanism the test above relies on: the same
+    // builder `finishUpload` uses emits a genuine `FOR UPDATE`.
+    const shape = app.db
+      .select()
+      .from(schema.assets)
+      .where(eq(schema.assets.id, 'asset_x'))
+      .for('update')
+      .toSQL();
+    expect(shape.sql.toLowerCase()).toContain('for update');
+  });
+
   it('refuses another device on the same upload', async () => {
     const roll = await createRoll();
     const { captureId } = await newCapture(roll.rollId);
@@ -884,6 +1026,90 @@ describe('POST /api/device/captures/:captureId/complete', () => {
       .from(schema.processingEvents)
       .where(eq(schema.processingEvents.captureId, captureId));
     expect(again).toHaveLength(events.length);
+  }, 60_000);
+
+  it('queues each job once even when two completes race', async () => {
+    // The enqueue used to SELECT-then-insert, which is precisely the pre-check
+    // pattern the rest of this pipeline refuses: two concurrent completes both
+    // find nothing and both insert. The partial unique index
+    // `processing_events_capture_job_queued` is what actually decides now.
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+    await uploadAsset(captureId, 'original-frame', randomBytes(512), {
+      frameIndex: 1,
+      mime: 'image/jpeg',
+    });
+
+    const complete = async (): Promise<LightMyRequestResponse> =>
+      app.inject({
+        method: 'POST',
+        url: `/api/device/captures/${captureId}/complete`,
+        headers: bearer(deviceA.deviceToken),
+      });
+
+    const [first, second] = await Promise.all([complete(), complete()]);
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+
+    const events = await app.db
+      .select()
+      .from(schema.processingEvents)
+      .where(eq(schema.processingEvents.captureId, captureId));
+    expect(events.length).toBeGreaterThan(0);
+
+    // One `queued` row per job, no matter how many callers asked: distinct job
+    // names and total rows agree only if nothing was inserted twice.
+    const jobs = events.map((row) => row.job);
+    expect(new Set(jobs).size).toBe(jobs.length);
+    expect(new Set(events.map((row) => row.status))).toEqual(new Set(['queued']));
+  }, 60_000);
+
+  it('leaves room for the later lifecycle rows of the same job', async () => {
+    // The index is PARTIAL — unique only over `status = 'queued'` — because this
+    // table is an event log: Task 22 records queued → running → done for the
+    // same job. A blanket unique on (capture_id, job) would make the second row
+    // of that lifecycle impossible.
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+    await uploadAsset(captureId, 'original-frame', randomBytes(512), {
+      frameIndex: 1,
+      mime: 'image/jpeg',
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/device/captures/${captureId}/complete`,
+          headers: bearer(deviceA.deviceToken),
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const [queued] = await app.db
+      .select()
+      .from(schema.processingEvents)
+      .where(eq(schema.processingEvents.captureId, captureId));
+    expect(queued?.status).toBe('queued');
+
+    // A worker writing progress for the same job must not hit the index.
+    await app.db.insert(schema.processingEvents).values([
+      { id: `pev_run_${RUN}`, captureId, job: queued?.job ?? '', status: 'running' },
+      { id: `pev_done_${RUN}`, captureId, job: queued?.job ?? '', status: 'done' },
+    ]);
+
+    const lifecycle = await app.db
+      .select()
+      .from(schema.processingEvents)
+      .where(
+        and(
+          eq(schema.processingEvents.captureId, captureId),
+          eq(schema.processingEvents.job, queued?.job ?? ''),
+        ),
+      );
+    expect(new Set(lifecycle.map((row) => row.status))).toEqual(
+      new Set(['queued', 'running', 'done']),
+    );
   }, 60_000);
 });
 

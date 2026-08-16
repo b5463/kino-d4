@@ -7,6 +7,7 @@ import { newToken } from '../auth/tokens';
 import { hashPin } from '../auth/pins';
 import { newId } from '../ids';
 import { auditEvents, rolls } from '../db/schema';
+import { isUniqueViolation } from '../db/errors';
 import type { RollCaptureCounts } from '../uploads/uploads';
 import { newSlug } from './slug';
 
@@ -156,30 +157,19 @@ export function auditRows(entries: readonly AuditEntry[]): (typeof auditEvents.$
 
 /* ------------------------------------------------------------------ slugs -- */
 
-/** PostgreSQL `unique_violation`, and the constraint that backs `rolls.slug`. */
-const UNIQUE_VIOLATION = '23505';
+/** The constraint that backs `rolls.slug`. */
 const SLUG_CONSTRAINT = 'rolls_slug_unique';
 
 /**
- * Whether a failed write was a slug collision specifically.
+ * Whether a failed write was a slug collision **specifically**.
  *
- * It walks the `cause` chain because drizzle wraps driver errors in some
- * versions and not others, and a matcher that only checked the outermost error
- * would silently stop retrying after an upgrade — turning a 1-in-a-million
- * collision into a 500. `rolls.test.ts` provokes a real violation rather than a
- * fabricated one, so this stays honest about the shape the driver actually
- * throws.
+ * Naming the constraint is the load-bearing half: a device-serial clash is a
+ * caller error to report, not something to retry with a new slug. The
+ * cause-chain walk lives in `db/errors.ts` now that the upload pipeline needs
+ * the same test.
  */
 export function isSlugCollision(err: unknown): boolean {
-  let cursor: unknown = err;
-  for (let depth = 0; depth < 4 && typeof cursor === 'object' && cursor !== null; depth += 1) {
-    const candidate = cursor as { code?: unknown; constraint_name?: unknown; cause?: unknown };
-    if (candidate.code === UNIQUE_VIOLATION && candidate.constraint_name === SLUG_CONSTRAINT) {
-      return true;
-    }
-    cursor = candidate.cause;
-  }
-  return false;
+  return isUniqueViolation(err, SLUG_CONSTRAINT);
 }
 
 /**
