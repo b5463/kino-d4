@@ -1,0 +1,111 @@
+/* KINO Twin shell styles — dark blunt engineering chrome around the 3D
+   viewport. IBM Plex from the system font fallback stack only: no font
+   package dependency yet (Studio's @fontsource pattern can follow later if
+   the fallback stack isn't good enough). */
+
+:root {
+  --twin-bg: #14161a;
+  --twin-panel: #1b1e24;
+  --twin-line: #2b2f37;
+  --twin-text: #d8dee6;
+  --twin-text-mut: #838d99;
+  --twin-off: #5a626d;
+  --twin-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --twin-mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--twin-bg);
+  color: var(--twin-text);
+  font-family: var(--twin-sans);
+  font-size: 13px;
+}
+
+.twin-app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.twin-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--twin-panel);
+  border-bottom: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.twin-header-sep {
+  color: var(--twin-line);
+}
+
+.twin-header-item--last {
+  margin-left: auto;
+  color: var(--twin-text-mut);
+}
+
+.twin-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--twin-off);
+}
+
+.twin-body {
+  display: grid;
+  grid-template-columns: 220px 1fr 220px;
+  min-height: 0;
+}
+
+.twin-panel {
+  background: var(--twin-panel);
+  border-right: 1px solid var(--twin-line);
+}
+
+.twin-panel--right {
+  border-right: none;
+  border-left: 1px solid var(--twin-line);
+}
+
+.twin-viewport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0c0d10;
+  color: var(--twin-text-mut);
+  font-family: var(--twin-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.twin-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 26px;
+  padding: 0 12px;
+  background: var(--twin-panel);
+  border-top: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 11px;
+  color: var(--twin-text-mut);
+}
