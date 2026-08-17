@@ -1117,14 +1117,14 @@ GET /api/assets/:assetId/content
     → 302 to a presigned S3 GET URL (60 s expiry)  — after checking: roll visible to requester,
       capture visible, and (role==='original-frame' || role==='kino-still') ⇒ roll.downloadsEnabled
       for download-disposition requests; thumbs/previews are always viewable when the roll is viewable.
-      Cache-Control: private, max-age=300 on the redirect.
+      Cache-Control: private, max-age=55 on the redirect (RULING: cache lifetime must stay strictly below the 60 s signature lifetime; max-age=300 would serve dead URLs).
 ```
 
 - Object key never appears in guest responses; asset access is always via `assetId` + authorization check (05§6 "object key is not authorization").
 
-- [ ] **Step 1: Write failing tests** — pagination walks 120 captures in 3 pages with no overlap/no gaps; hidden captures absent from guest feed but present in host view; downloads disabled ⇒ original-frame content 403 while thumb still 302s; PIN roll without cookie ⇒ 401.
+- [x] **Step 1: Write failing tests** — pagination walks 120 captures in 3 pages with no overlap/no gaps; hidden captures absent from guest feed but present in host view; downloads disabled ⇒ original-frame content 403 while thumb still 302s; PIN roll without cookie ⇒ 401.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): guest feed pagination + authorized asset delivery`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): guest feed pagination + authorized asset delivery`
 
 ### Task 21: Host moderation + export job
 
