@@ -16,6 +16,7 @@
     <a href="#try-studio">Try Studio</a> ·
     <a href="docs/HARDWARE.md">Hardware</a> ·
     <a href="firmware-contract/README.md">Firmware contract</a> ·
+    <a href="https://github.com/users/b5463/projects/3">Project</a> ·
     <a href="docs/DEVELOPMENT.md">Build notes</a> ·
     <a href="docs/VERSIONING.md">Versions</a>
   </p>

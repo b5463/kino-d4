@@ -1,6 +1,7 @@
 name: Hardware problem
 description: Report a D4 power, camera, sync, flash, storage, or mechanical fault.
 title: "hardware: "
+labels: ["area: hardware"]
 body:
   - type: markdown
     attributes:

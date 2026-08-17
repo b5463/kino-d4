@@ -1,6 +1,7 @@
 name: Software bug
 description: Report a repeatable Studio, KDP, schema, API, or test failure.
 title: "bug: "
+labels: ["bug"]
 body:
   - type: markdown
     attributes:

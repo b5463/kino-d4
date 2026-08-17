@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "updated": "2026-08-17",
   "software": [
-    { "name": "kino-workspace", "version": "0.1.0", "package": "package.json", "tagPrefix": "kino-v" },
+    { "name": "kino-workspace", "version": "0.1.1", "package": "package.json", "tagPrefix": "kino-v" },
     { "name": "kino-studio", "version": "0.9.0", "package": "apps/studio/package.json", "tagPrefix": "kino-studio-v" },
     { "name": "kino-api", "version": "0.1.0", "package": "apps/api/package.json", "tagPrefix": "kino-api-v" },
     { "name": "kino-kdp", "version": "0.1.0", "package": "packages/kdp/package.json", "tagPrefix": "kino-kdp-v" },

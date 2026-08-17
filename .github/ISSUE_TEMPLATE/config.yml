@@ -1,1 +1,5 @@
 blank_issues_enabled: false
+contact_links:
+  - name: KINO D4 project
+    url: https://github.com/users/b5463/projects/3
+    about: Check planned and active work before filing a duplicate.

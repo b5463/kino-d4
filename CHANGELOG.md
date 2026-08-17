@@ -16,6 +16,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Path-scoped MIT software and CERN-OHL-S-2.0 hardware licensing with SPDX/REUSE metadata and reserved brand assets.
 - Machine-readable software, protocol, schema, database, and hardware version control enforced by CI.
 - D4 physical revision records, artifact versions, and numbered engineering change notices.
+- Public KINO D4 project board with roadmap-backed issues, target views, and a repository helper for status updates.
 
 ### Known incomplete work
 

@@ -1,7 +1,7 @@
 {
   "name": "kino",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "SEE LICENSE IN LICENSE",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
@@ -9,7 +9,8 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "version:check": "node scripts/check-versions.mjs",
-    "license:check": "node scripts/check-licenses.mjs"
+    "license:check": "node scripts/check-licenses.mjs",
+    "project": "node scripts/kino-project.mjs"
   },
   "engines": { "node": ">=22" }
 }

@@ -14,6 +14,7 @@ Start with the question you need answered. The repository contains working contr
 | Something failed. Where do I start? | [Troubleshooting](TROUBLESHOOTING.md) |
 | How should I contribute a change? | [Contributing](../CONTRIBUTING.md) |
 | What is being built next? | [Roadmap](../ROADMAP.md) |
+| What is actively planned or in progress? | [GitHub Project workflow](PROJECT.md) |
 | How is a version released? | [Release guide](RELEASING.md) |
 | Which version changes when? | [Versioning](VERSIONING.md) |
 | Which license applies to a path? | [Root license map](../LICENSE) and [`REUSE.toml`](../REUSE.toml) |
@@ -46,6 +47,7 @@ When two documents disagree, use this order:
 - `docs/HARDWARE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT.md`
+- `docs/PROJECT.md`
 - `docs/TROUBLESHOOTING.md`
 - `docs/RELEASING.md`
 - `docs/VERSIONING.md`

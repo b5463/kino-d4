@@ -1,6 +1,7 @@
 name: Feature proposal
 description: Propose a focused product, protocol, hardware, or developer change.
 title: "proposal: "
+labels: ["enhancement"]
 body:
   - type: dropdown
     id: area

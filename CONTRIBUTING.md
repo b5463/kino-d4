@@ -38,6 +38,20 @@ npm run test -w @kino/api
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for ports, environment variables, and safe teardown.
 
+## Use the project board
+
+[KINO D4 project #3](https://github.com/users/b5463/projects/3) is the execution queue. [`ROADMAP.md`](ROADMAP.md) records direction; the board records work that is ready to plan, build, test, or validate.
+
+Before starting, read the issue, check its target and acceptance checks, assign it, and move it to `In Progress`. Link the pull request to the issue. After the checks and documentation are complete, close the issue and move the project item to `Done`.
+
+```bash
+npm run project -- list
+npm run project -- start 3
+npm run project -- done 3
+```
+
+See [`docs/PROJECT.md`](docs/PROJECT.md) for fields, views, priorities, and adding new issues.
+
 ## Keep changes narrow
 
 One pull request should have one job. Protocol work may require coordinated edits across several packages, but an unrelated UI cleanup belongs elsewhere. Leave user changes in the worktree alone.
