@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { D4_V1 } from '@kino/hardware-profiles';
-import type { InstanceDef } from '@kino/hardware-profiles';
-import { camBarX, explodedPosition, instanceTransforms } from '../src/scene/transforms';
+import type { HardwareProfile, InstanceDef } from '@kino/hardware-profiles';
+import { camBarX, cameraBarExplodeOffsetMm, explodedPosition, instanceTransforms } from '../src/scene/transforms';
 
 function fixtureInstance(overrides: Partial<InstanceDef> & Pick<InstanceDef, 'positionMm'>): InstanceDef {
   return {
@@ -13,6 +13,28 @@ function fixtureInstance(overrides: Partial<InstanceDef> & Pick<InstanceDef, 'po
     explodeDirMm: [0, 0, 1],
     ...overrides,
   };
+}
+
+/**
+ * `instanceTransforms`/`cameraBarExplodeOffsetMm` only ever read
+ * `profile.instances` — a full `HardwareProfile` fixture would be mostly
+ * dead weight for these tests, so this deliberately builds a partial one.
+ */
+function fixtureProfile(instances: InstanceDef[]): HardwareProfile {
+  return { instances } as unknown as HardwareProfile;
+}
+
+/** A camera-bar row that agrees on explodeOrder/explodeDirMm, like the real D4_V1 profile. */
+function agreeingCamBar(): InstanceDef[] {
+  return [-33, -11, 11, 33].map((x, i) =>
+    fixtureInstance({
+      id: `cam${i + 1}`,
+      positionMm: [x, 10, 14],
+      group: 'camera-bar',
+      explodeOrder: 6,
+      explodeDirMm: [0, 0, 1],
+    }),
+  );
 }
 
 describe('camBarX', () => {
@@ -89,8 +111,66 @@ describe('instanceTransforms — D4_V1', () => {
     });
 
     // Same offset on every camera — pitch alone controls X, so the shared
-    // rigid-group offset shows up entirely on Y/Z here.
+    // rigid-group offset shows up entirely on Y/Z here. This is guaranteed by
+    // construction (instanceTransforms sources it from cameraBarExplodeOffsetMm
+    // exactly once — see below), not merely because D4_V1's four cam entries
+    // happen to carry matching explodeOrder/explodeDirMm.
     for (const offset of offsets) expect(offset).toEqual(offsets[0]);
     expect(offsets[0]).not.toEqual([0, 0, 0]);
+  });
+});
+
+describe('cameraBarExplodeOffsetMm', () => {
+  it("derives D4_V1's one shared camera-bar explode offset (order 6, dir +Z)", () => {
+    expect(cameraBarExplodeOffsetMm(D4_V1, 0)).toEqual([0, 0, 0]);
+    expect(cameraBarExplodeOffsetMm(D4_V1, 1)).toEqual([0, 0, 72]); // 6 * 1 * 12
+    expect(cameraBarExplodeOffsetMm(D4_V1, 0.5)).toEqual([0, 0, 36]); // 6 * 0.5 * 12
+  });
+
+  it('returns zero offset for a profile with no camera-bar group', () => {
+    const profile = fixtureProfile([fixtureInstance({ id: 'solo', positionMm: [0, 0, 0], group: 'body' })]);
+    expect(cameraBarExplodeOffsetMm(profile, 1)).toEqual([0, 0, 0]);
+  });
+
+  it('throws when camera-bar members disagree on explodeOrder — rigidity must not depend on data agreeing by luck (§5)', () => {
+    const camBar = agreeingCamBar();
+    camBar[2] = fixtureInstance({ ...camBar[2]!, explodeOrder: 3 }); // cam3 diverges
+    const profile = fixtureProfile(camBar);
+
+    expect(() => cameraBarExplodeOffsetMm(profile, 1)).toThrow(/camera-bar rigidity violated/i);
+  });
+
+  it('throws when camera-bar members disagree on explodeDirMm', () => {
+    const camBar = agreeingCamBar();
+    camBar[2] = fixtureInstance({ ...camBar[2]!, explodeDirMm: [1, 0, 0] }); // cam3 diverges
+    const profile = fixtureProfile(camBar);
+
+    expect(() => cameraBarExplodeOffsetMm(profile, 1)).toThrow(/camera-bar rigidity violated/i);
+  });
+});
+
+describe('instanceTransforms — camera-bar rigidity is structural, not data-coincidental', () => {
+  it('a divergent camera-bar member fails loudly instead of silently flying the bar apart', () => {
+    const camBar = agreeingCamBar();
+    camBar[2] = fixtureInstance({ ...camBar[2]!, explodeOrder: 3 }); // cam3 diverges
+    const profile = fixtureProfile(camBar);
+
+    expect(() => instanceTransforms(profile, 22, 1)).toThrow(/camera-bar rigidity violated/i);
+  });
+
+  it('a synthetic camera-bar that agrees still moves as one unit, independent of D4_V1', () => {
+    const profile = fixtureProfile(agreeingCamBar());
+    const base = instanceTransforms(profile, 22, 0);
+    const exploded = instanceTransforms(profile, 22, 1);
+
+    const offsets = ['cam1', 'cam2', 'cam3', 'cam4'].map((id) => {
+      const b = base.get(id);
+      const e = exploded.get(id);
+      if (!b || !e) throw new Error(`fixture missing transform for "${id}"`);
+      return [e.positionMm[0] - b.positionMm[0], e.positionMm[1] - b.positionMm[1], e.positionMm[2] - b.positionMm[2]];
+    });
+
+    for (const offset of offsets) expect(offset).toEqual(offsets[0]);
+    expect(offsets[0]).toEqual([0, 0, 72]); // order 6 * explode 1 * 12mm, all on +Z
   });
 });
