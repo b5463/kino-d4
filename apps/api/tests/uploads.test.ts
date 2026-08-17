@@ -13,12 +13,15 @@ import {
   rollDerivedKey,
 } from '../src/uploads/objectKeys';
 import {
+  JOB_NAMES,
   PART_SIZE,
   idempotencyKeyFor,
+  jobKeyFor,
   nextCaptureStatus,
   sessionKeyFor,
   type AssetState,
 } from '../src/uploads/uploads';
+import { createProcessingQueue, jobKeyToJobId } from '../src/queue/producer';
 import { rollEventChannel, rollStreamKey } from '../src/events/publish';
 import * as schema from '../src/db/schema';
 
@@ -298,6 +301,22 @@ afterAll(async () => {
         .where(inArray(schema.processingEvents.captureId, captureIds));
       await app.db.delete(schema.assets).where(inArray(schema.assets.captureId, captureIds));
       await app.db.delete(schema.captures).where(inArray(schema.captures.id, captureIds));
+
+      // Capture-complete queues real BullMQ jobs and no worker runs here, so
+      // they would sit in the dev Redis for captures that no longer exist.
+      // Removed by id rather than by obliterating the queue: `kino-jobs` is the
+      // real prefix, and a test suite must not be able to delete work it did
+      // not create.
+      const queue = createProcessingQueue(config);
+      try {
+        for (const captureId of captureIds) {
+          for (const job of JOB_NAMES) {
+            await queue.remove(jobKeyToJobId(jobKeyFor(captureId, job)));
+          }
+        }
+      } finally {
+        await queue.close();
+      }
     }
 
     const { auditEvents, rollDevices, rolls } = schema;
@@ -1161,4 +1180,132 @@ describe('roll counts, now that captures exist (03 §10)', () => {
     // Guests never see a hidden capture, so it is not in their count either.
     expect(guest.json<{ photoCount: number }>().photoCount).toBe(2);
   }, 30_000);
+});
+
+/**
+ * `processing_events` is an append-only log (Task 22): a worker adds a
+ * `running`/`done`/`failed` row, it never updates the `queued` one — that row
+ * has to survive, because the partial unique index over it is what makes a
+ * re-queue a no-op.
+ *
+ * So "are the jobs finished?" cannot be `every(row.status === 'done')`: the
+ * queued row is still sitting there and would make that answer `false` forever.
+ * The question is only ever about each job's LATEST row.
+ */
+describe('capture status reads the latest processing event per job (Task 22)', () => {
+  const eventId = (): string => `pev_t22_${randomBytes(8).toString('hex')}`;
+
+  async function completeCapture(captureId: string): Promise<string> {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/device/captures/${captureId}/complete`,
+      headers: bearer(deviceA.deviceToken),
+    });
+    expect(res.statusCode).toBe(200);
+    return res.json<{ status: string }>().status;
+  }
+
+  /** A capture with one original on the server and its jobs queued. */
+  async function queuedCapture(): Promise<{ captureId: string; jobs: string[] }> {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+    await uploadAsset(captureId, 'original-frame', randomBytes(512), {
+      frameIndex: 1,
+      mime: 'image/jpeg',
+    });
+    expect(await completeCapture(captureId)).toBe('processing');
+
+    const queued = await app.db
+      .select({ job: schema.processingEvents.job })
+      .from(schema.processingEvents)
+      .where(eq(schema.processingEvents.captureId, captureId));
+    expect(queued.length).toBeGreaterThan(1);
+    return { captureId, jobs: queued.map((row) => row.job) };
+  }
+
+  it('hands every newly queued job to BullMQ under its jobKey', async () => {
+    const { captureId, jobs } = await queuedCapture();
+
+    // The rows say what was queued; this says the queue was actually told. The
+    // two are separate steps and only one of them was here before Task 22.
+    const queue = createProcessingQueue(config);
+    try {
+      for (const job of jobs) {
+        const jobKey = jobKeyFor(captureId, job as (typeof JOB_NAMES)[number]);
+        const submitted = await queue.getJob(jobKeyToJobId(jobKey));
+        expect(submitted?.name).toBe(job);
+        expect(submitted?.data.captureId).toBe(captureId);
+        expect(submitted?.data.jobKey).toBe(jobKey);
+        expect(submitted?.opts.attempts).toBe(5);
+      }
+    } finally {
+      await queue.close();
+    }
+  }, 60_000);
+
+  it('is ready once every job’s latest row is done, queued and failed rows included', async () => {
+    const { captureId, jobs } = await queuedCapture();
+
+    // Explicit, ascending timestamps: the read is "latest per job", so the
+    // fixture has to say which row is latest rather than hope two inserts land
+    // in different microseconds.
+    const base = Date.now();
+    const rows: (typeof schema.processingEvents.$inferInsert)[] = [];
+    jobs.forEach((job, index) => {
+      const at = (step: number): Date => new Date(base + index * 10 + step);
+      // The first job needed a retry. Its failed row stays in the log, and the
+      // capture is still finished — what decides is the LAST row, not any row.
+      if (index === 0) {
+        rows.push({ id: eventId(), captureId, job, status: 'running', at: at(1) });
+        rows.push({ id: eventId(), captureId, job, status: 'failed', at: at(2), error: 'once' });
+      }
+      rows.push({ id: eventId(), captureId, job, status: 'running', at: at(3) });
+      rows.push({ id: eventId(), captureId, job, status: 'done', at: at(4) });
+    });
+    await app.db.insert(schema.processingEvents).values(rows);
+
+    // Complete is idempotent and re-queues nothing (the queued rows are still
+    // there), so it is just a recompute here.
+    expect(await completeCapture(captureId)).toBe('ready');
+  }, 60_000);
+
+  it('stays processing while one job has only reached running', async () => {
+    const { captureId, jobs } = await queuedCapture();
+
+    const base = Date.now();
+    const rows: (typeof schema.processingEvents.$inferInsert)[] = [];
+    jobs.forEach((job, index) => {
+      const at = (step: number): Date => new Date(base + index * 10 + step);
+      rows.push({ id: eventId(), captureId, job, status: 'running', at: at(1) });
+      // Every job but the last one finished; the queue is still working.
+      if (index < jobs.length - 1) {
+        rows.push({ id: eventId(), captureId, job, status: 'done', at: at(2) });
+      }
+    });
+    await app.db.insert(schema.processingEvents).values(rows);
+
+    expect(await completeCapture(captureId)).toBe('processing');
+  }, 60_000);
+
+  it('stays processing while a job’s latest row is a failure', async () => {
+    const { captureId, jobs } = await queuedCapture();
+
+    const base = Date.now();
+    const rows: (typeof schema.processingEvents.$inferInsert)[] = [];
+    jobs.forEach((job, index) => {
+      const at = (step: number): Date => new Date(base + index * 10 + step);
+      rows.push({ id: eventId(), captureId, job, status: 'running', at: at(1) });
+      rows.push(
+        index === 0
+          ? { id: eventId(), captureId, job, status: 'failed', at: at(2), error: 'boom' }
+          : { id: eventId(), captureId, job, status: 'done', at: at(2) },
+      );
+    });
+    await app.db.insert(schema.processingEvents).values(rows);
+
+    // A job that ended in failure has not produced its asset, so the capture is
+    // not `ready`. It is not `partial` either — that is decided by the asset
+    // rows, and this one's original is on the server.
+    expect(await completeCapture(captureId)).toBe('processing');
+  }, 60_000);
 });

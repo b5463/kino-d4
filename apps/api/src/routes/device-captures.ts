@@ -14,7 +14,13 @@ import {
   plannedJobs,
   recomputeCaptureStatus,
   sessionKeyFor,
+  type QueuedJob,
 } from '../uploads/uploads';
+import {
+  createProcessingQueue,
+  submitJob,
+  type ProcessingQueue,
+} from '../queue/producer';
 import { finishUpload, openSession, recordPart, upsertAsset } from '../uploads/sessions';
 import { publishRollEvent, type RollEvent } from '../events/publish';
 import { newId } from '../ids';
@@ -211,6 +217,47 @@ async function assetStates(
 
 export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
   /**
+   * The producer connection, opened on the first capture-complete and closed
+   * with the server.
+   *
+   * Lazy on purpose: most of this API never queues anything, and a `new Queue`
+   * opens a Redis connection the moment it is constructed. Building the server
+   * — which every test suite does — should not cost a connection to a service
+   * that suite may not even need.
+   */
+  let queue: ProcessingQueue | null = null;
+  const processingQueue = (): ProcessingQueue => {
+    queue ??= createProcessingQueue(app.config);
+    return queue;
+  };
+  app.addHook('onClose', async () => {
+    if (queue !== null) await queue.close();
+  });
+
+  /**
+   * Hands newly queued work to the worker pool.
+   *
+   * Failures are logged, not returned, for the same reason `announce` swallows
+   * a dead event bus: the `queued` rows are already committed, and a 500 here
+   * would tell a camera its capture did not complete when it did. What it costs
+   * is real and worth naming — a job whose row exists but whose BullMQ entry was
+   * never added will not be retried by a later complete, because the row is what
+   * makes the second call a no-op. Reconciling that (re-submitting `queued` rows
+   * with no live job) needs a sweeper, and a sweeper is not this task.
+   */
+  async function submit(jobs: readonly QueuedJob[]): Promise<void> {
+    if (jobs.length === 0) return;
+    const target = processingQueue();
+    for (const job of jobs) {
+      try {
+        await submitJob(target, job.name, job.payload);
+      } catch (err) {
+        app.log.error({ err, jobKey: job.payload.jobKey }, 'processing job was not queued');
+      }
+    }
+  }
+
+  /**
    * Part bodies are raw bytes, not JSON.
    *
    * Buffered rather than piped straight into S3: `UploadPart` needs a known
@@ -321,7 +368,17 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
         states.filter((asset) => asset.status === 'ready').map((asset) => asset.role),
       );
 
-      await enqueueProcessingJobs(app.db, ctx.capture.id, plannedJobs(ctx.capture.mode, uploaded));
+      // Rows first, queue second. The row is what makes a retried complete a
+      // no-op, so it has to be committed before anything can act on the job —
+      // and only the rows this call actually inserted are submitted, because
+      // the others are already somewhere in the queue.
+      const queued = await enqueueProcessingJobs(
+        app.db,
+        ctx.capture.id,
+        plannedJobs(ctx.capture.mode, uploaded),
+      );
+      await submit(queued);
+
       const status = await recomputeCaptureStatus(app.db, ctx.capture.id);
 
       await announce(app, ctx.roll.id, { type: 'capture.updated', captureId: ctx.capture.id });

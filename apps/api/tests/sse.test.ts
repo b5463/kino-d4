@@ -16,6 +16,8 @@ import {
 import { openRollEventFeed } from '../src/events/feed';
 import { VIEWER_STALE_MS, countRollViewers, rollViewersKey } from '../src/events/viewers';
 import { SSE_RETRY_MS, guestEventRoutes } from '../src/routes/guest-events';
+import { JOB_NAMES, jobKeyFor } from '../src/uploads/uploads';
+import { createProcessingQueue, jobKeyToJobId } from '../src/queue/producer';
 import * as schema from '../src/db/schema';
 
 /**
@@ -362,6 +364,22 @@ afterAll(async () => {
       await app.db
         .delete(schema.processingEvents)
         .where(inArray(schema.processingEvents.captureId, captureIds));
+
+      // `complete` also hands those jobs to BullMQ (Task 22), and no worker runs
+      // in this suite — so without this they would wait in the dev Redis forever
+      // for a capture that has just been deleted. Removed by id, not by
+      // obliterating the queue: `kino-jobs` is the real prefix and a test must
+      // not be able to delete work it did not create.
+      const queue = createProcessingQueue(config);
+      try {
+        for (const captureId of captureIds) {
+          for (const job of JOB_NAMES) {
+            await queue.remove(jobKeyToJobId(jobKeyFor(captureId, job)));
+          }
+        }
+      } finally {
+        await queue.close();
+      }
     }
 
     await app.db

@@ -127,3 +127,15 @@ jobs:
           S3_ACCESS_KEY: kino
           S3_SECRET_KEY: kino-secret
           PUBLIC_BASE_URL: https://kino.acronym.sk
+      # The worker's suite needs the same three services and the same migrated
+      # database, so it runs in this job rather than the service-free one. After
+      # the API's, not before: these two write to the same tables, and a failure
+      # here should be readable as the worker's own.
+      - run: npm run test -w @kino/worker
+        env:
+          DATABASE_URL: postgres://kino:kino@localhost:5432/kino
+          REDIS_URL: redis://localhost:6379
+          S3_ENDPOINT: http://localhost:9000
+          S3_BUCKET: kino-media
+          S3_ACCESS_KEY: kino
+          S3_SECRET_KEY: kino-secret
