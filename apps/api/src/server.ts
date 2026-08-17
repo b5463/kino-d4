@@ -20,7 +20,9 @@ import { deviceRollRoutes } from './routes/device-rolls';
 import { deviceCaptureRoutes } from './routes/device-captures';
 import { hostRollRoutes } from './routes/host-rolls';
 import { guestRollRoutes } from './routes/guest-rolls';
+import { guestCaptureRoutes } from './routes/guest-captures';
 import { guestEventRoutes } from './routes/guest-events';
+import { assetRoutes } from './routes/assets';
 import { diagnosticRoutes } from './routes/diagnostics';
 
 declare module 'fastify' {
@@ -110,7 +112,9 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.register(deviceCaptureRoutes);
   app.register(hostRollRoutes);
   app.register(guestRollRoutes);
+  app.register(guestCaptureRoutes);
   app.register(guestEventRoutes);
+  app.register(assetRoutes);
 
   /**
    * Auth probe routes, test builds only. `NODE_ENV` has no default and an unset

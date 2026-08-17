@@ -25,15 +25,22 @@ import fp from 'fastify-plugin';
  * has loaded, so registration order between the two plugins does not matter;
  * `rolls.test.ts` asserts the header on that route rather than trusting it.
  */
-const GUEST_URL_PREFIX = '/api/rolls';
+/**
+ * `/api/assets` is on the list for the same reason `/api/rolls` is, and is the
+ * reason this is a list rather than a constant: Task 20's asset route serves
+ * guest media from outside the slug space, and a crawler that reached a
+ * redirect to a photo would be exactly the leak the header exists to stop.
+ */
+const GUEST_URL_PREFIXES = ['/api/rolls', '/api/assets'] as const;
 
 export const robotsPlugin = fp(
   async (app) => {
     app.addHook('onSend', async (request, reply) => {
       const path = request.url.split('?')[0] ?? '';
-      if (path === GUEST_URL_PREFIX || path.startsWith(`${GUEST_URL_PREFIX}/`)) {
-        reply.header('x-robots-tag', 'noindex, nofollow');
-      }
+      const guest = GUEST_URL_PREFIXES.some(
+        (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+      );
+      if (guest) reply.header('x-robots-tag', 'noindex, nofollow');
     });
   },
   { name: 'kino-robots' },

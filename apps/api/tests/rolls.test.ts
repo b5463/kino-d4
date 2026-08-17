@@ -903,7 +903,7 @@ describe('GET /api/rolls/:slug (guest, 03 §9)', () => {
     expect(typeof body['createdAt']).toBe('string');
   });
 
-  it('tells a guest nothing beyond the four documented fields', async () => {
+  it('tells a guest nothing beyond the documented fields', async () => {
     const created = await createAsHost({ title: 'Minimal', pin: '4821' });
 
     const unlock = await app.inject({
@@ -922,6 +922,8 @@ describe('GET /api/rolls/:slug (guest, 03 §9)', () => {
     expect(res.statusCode).toBe(200);
     expect(Object.keys(res.json<Record<string, unknown>>()).sort()).toEqual([
       'createdAt',
+      // Task 20: the PWA needs it to decide whether to draw the download control.
+      'downloadsEnabled',
       'photoCount',
       'status',
       'title',
