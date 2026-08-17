@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
-import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { CAPTURE_STATUSES } from '@kino/schemas';
 import type { KinoDatabase } from '../plugins/db';
@@ -121,12 +121,66 @@ function previewOrCreated(assets: readonly AssetState[]): CaptureStatus {
 }
 
 /**
+ * Where each of a capture's jobs has got to — one row per job, the newest.
+ *
+ * `processing_events` is an **append-only log** (Task 22): a worker adds
+ * `running`, then `done` or `failed`, and it never touches the `queued` row the
+ * enqueue wrote. It cannot: the partial unique index over `status = 'queued'` is
+ * what makes a second capture-complete a no-op, and clearing that row would
+ * re-arm the enqueue.
+ *
+ * So the log has to be read as a log. "Have the jobs finished?" asked of *all*
+ * the rows is `every(status === 'done')` over a set that still contains the
+ * queued row — an answer that is `false` for every capture forever, which would
+ * strand every capture in `processing`. Asked of each job's latest row, it is
+ * the question that was meant.
+ *
+ * `DISTINCT ON` with the job first in the `ORDER BY` is PostgreSQL's one-pass
+ * form of that: pick the first row per job, having ordered the rows so the
+ * newest comes first. The tiebreaks after `at` matter because a worker can write
+ * two rows inside one transaction, where `now()` is identical for both:
+ * lifecycle order decides first (a `done` beats the `running` it followed), and
+ * the id is a last resort so the read is total rather than arbitrary.
+ */
+async function latestJobStatuses(
+  db: KinoDatabase,
+  captureId: string,
+): Promise<{ job: string; status: string }[]> {
+  const lifecycleRank = sql`case ${processingEvents.status}
+      when 'queued' then 0
+      when 'running' then 1
+      when 'failed' then 2
+      when 'done' then 3
+      else -1
+    end`;
+
+  return db
+    .selectDistinctOn([processingEvents.job], {
+      job: processingEvents.job,
+      status: processingEvents.status,
+    })
+    .from(processingEvents)
+    .where(eq(processingEvents.captureId, captureId))
+    .orderBy(
+      processingEvents.job,
+      desc(processingEvents.at),
+      desc(lifecycleRank),
+      desc(processingEvents.id),
+    );
+}
+
+/**
  * Re-derives a capture's status from what is actually in the tables and stores
  * it. A recompute, not a transition: the status column is a cache of the asset
  * rows, so rebuilding it can never disagree with them.
  *
  * Job state comes from `processing_events`, which is what makes `processing`
  * survive a later recompute triggered by a worker's own asset row.
+ *
+ * A job whose latest row is `failed` counts as neither queued-and-finished nor
+ * done, so the capture stays `processing` — honest while BullMQ still has
+ * retries left, and deliberately not `partial`: what `partial` describes is a
+ * lost *asset*, and that is the asset rows' answer to give.
  */
 export async function recomputeCaptureStatus(
   db: KinoDatabase,
@@ -137,10 +191,7 @@ export async function recomputeCaptureStatus(
       columns: { role: true, status: true },
       where: (asset, { eq: is }) => is(asset.captureId, captureId),
     }),
-    db
-      .select({ status: processingEvents.status })
-      .from(processingEvents)
-      .where(eq(processingEvents.captureId, captureId)),
+    latestJobStatuses(db, captureId),
   ]);
 
   const jobsQueued = jobRows.length > 0;
@@ -298,20 +349,26 @@ export async function digestStoredObject(
 /* ------------------------------------------------------- processing jobs -- */
 
 /**
- * Task 22's job names, verbatim, so the enqueue call site does not have to
- * change when the real queue arrives.
+ * The job names, verbatim from `apps/worker/src/jobs/types.ts`.
+ *
+ * An array rather than a bare union so the set can be *iterated* — a producer
+ * that wants to address every job of a capture (removing them, counting them)
+ * needs the names at runtime, not only at compile time.
  */
-export type JobName =
-  | 'generate-thumbnail'
-  | 'generate-gallery-still'
-  | 'render-wiggle-webp'
-  | 'render-wiggle-mp4'
-  | 'render-contact-sheet'
-  | 'extract-metadata'
-  | 'generate-recap'
-  | 'ai-enhance'
-  | 'export-roll'
-  | 'purge-trash';
+export const JOB_NAMES = [
+  'generate-thumbnail',
+  'generate-gallery-still',
+  'render-wiggle-webp',
+  'render-wiggle-mp4',
+  'render-contact-sheet',
+  'extract-metadata',
+  'generate-recap',
+  'ai-enhance',
+  'export-roll',
+  'purge-trash',
+] as const;
+
+export type JobName = (typeof JOB_NAMES)[number];
 
 export interface JobPayload {
   captureId?: string;
@@ -341,30 +398,40 @@ export function plannedJobs(mode: string, uploadedRoles: ReadonlySet<string>): J
   return jobs;
 }
 
+/** A job this call newly queued, ready to be handed to BullMQ. */
+export interface QueuedJob {
+  name: JobName;
+  payload: JobPayload;
+}
+
 /**
- * **Stub — Task 22 replaces the body, not the signature.**
+ * Writes the `queued` rows and says which of them are *this* call's to submit.
  *
- * Writes the `queued` row that `recomputeCaptureStatus` reads to decide
- * `processing`, and returns the payloads a real queue would have been handed.
- * Task 22 adds `await enqueue(name, payload)` inside the loop and nothing else
- * about this call site changes.
+ * Two layers, deliberately, and in this order:
  *
- * Re-queueing is a no-op here, as it will be under BullMQ: the partial unique
- * index `processing_events_capture_job_queued` allows one `queued` row per
- * `(capture, job)`, so calling capture-complete twice — or twice at once —
- * cannot double the work.
+ * 1. **The row is the dedupe.** The partial unique index
+ *    `processing_events_capture_job_queued` allows one `queued` row per
+ *    `(capture, job)`, so calling capture-complete twice — or twice at once —
+ *    cannot double the work. Insert-and-let-the-index-decide, **not**
+ *    SELECT-then-insert: a pre-check is exactly what the rest of this pipeline
+ *    refuses to do, because two concurrent completes would both find nothing and
+ *    both insert. `RETURNING` is then the honest answer to "what did this call
+ *    actually queue?" — the rows the index let through, and no others.
+ * 2. **The jobKey is the second dedupe.** BullMQ keeps one job per `jobId`, so
+ *    even a caller that submitted the same key twice would add one job. The two
+ *    layers agree rather than overlap: the row is durable and survives Redis,
+ *    the jobId is what stops a duplicate reaching a handler.
  *
- * Insert-and-let-the-index-decide, **not** SELECT-then-insert. A pre-check is
- * exactly what the rest of this pipeline refuses to do, and for the same
- * reason: two concurrent capture-completes would both find nothing and both
- * insert. `RETURNING` is then the honest answer to "what did *this* call
- * actually queue?" — the rows the index let through, and no others.
+ * Submitting is the caller's job (`src/routes/device-captures.ts`), not this
+ * function's: what happens when the queue is unreachable — fail the device's
+ * request, or log and carry on — is a decision for the route that knows the row
+ * is already committed.
  */
 export async function enqueueProcessingJobs(
   db: KinoDatabase,
   captureId: string,
   jobs: readonly JobName[],
-): Promise<JobPayload[]> {
+): Promise<QueuedJob[]> {
   if (jobs.length === 0) return [];
 
   const inserted = await db
@@ -386,7 +453,10 @@ export async function enqueueProcessingJobs(
   const queued = new Set(inserted.map((row) => row.job));
   return jobs
     .filter((job) => queued.has(job))
-    .map((job) => ({ captureId, jobKey: jobKeyFor(captureId, job) }));
+    .map((job) => ({
+      name: job,
+      payload: { captureId, jobKey: jobKeyFor(captureId, job) },
+    }));
 }
 
 /* ----------------------------------------------------------------- counts -- */
