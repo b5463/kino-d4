@@ -33,33 +33,84 @@ import { assets, captures, rolls } from '../db/schema';
  * the URL carries a signature over the key, the method, the expiry and the
  * response headers, so possession of the key alone opens nothing. No **API**
  * response body ever contains a key.
+ *
+ * ## Recorded decision: the redirect discloses the internal rollId
+ *
+ * Keys are `rolls/<rollId>/captures/<captureId>/...`, so the `Location` header
+ * hands a guest the two internal ids that every *body* on the guest surface
+ * deliberately withholds — `GET /api/rolls/:slug` returns no id at all, and the
+ * feed names captures but never their roll.
+ *
+ * Accepted for V1, deliberately rather than by accident, because the ids buy
+ * nothing on their own: the bucket is private, so the only way to use a key is
+ * with a signature this service issues after authorizing the request, and the
+ * host routes that take a `rollId` all require a bearer token
+ * (`requireHost` / `requireDeviceRoll`). A roll id is 128 random bits, so it is
+ * not a handle to anything enumerable either.
+ *
+ * That reasoning rests on two conditions, and it must be revisited if **either**
+ * changes: the bucket stays private, and it is not fronted by a CDN or any other
+ * cache that could serve an object by key without a signature. Should either
+ * stop holding, the fix is to stop redirecting — proxy the bytes, or sign keys
+ * that carry an opaque id instead of the roll prefix.
  */
 
 /** How long a signed URL lives. Long enough to fetch, short enough to be useless if shared. */
 export const ASSET_URL_TTL_SECONDS = 60;
 
 /**
- * The redirect itself is cacheable, privately and briefly, so a gallery
- * re-rendering does not re-authorize every tile.
+ * How long the *redirect* may be cached, privately, so a gallery re-rendering
+ * does not re-authorize every tile.
  *
- * Note the tension, which is deliberate and worth stating: this outlives
- * `ASSET_URL_TTL_SECONDS`, so a client replaying a cached redirect after 60 s
- * follows an expired signature and gets a 403 from storage. Browsers follow a
- * 302 immediately, so in practice the window closes long before it matters —
- * but any client that stores redirects must re-request rather than replay.
+ * **Invariant: cache lifetime must stay strictly below signature lifetime.**
+ *
+ * This is not a style preference. Browsers and service workers do cache a 302
+ * that carries an explicit `Cache-Control`, so a value above
+ * `ASSET_URL_TTL_SECONDS` means an `<img>` re-requested inside the cache window
+ * replays the stored `Location`, follows an expired signature, and renders a
+ * broken tile — for as long as the excess lasts, with nothing on the client able
+ * to tell why. Task 28's PWA caches exactly this route, so the failure would be
+ * routine rather than theoretical. Five seconds of headroom covers the clock
+ * skew between signing here and validating at storage.
  */
-export const ASSET_CACHE_CONTROL = 'private, max-age=300';
+export const ASSET_CACHE_MAX_AGE_SECONDS = 55;
+
+export const ASSET_CACHE_CONTROL = `private, max-age=${ASSET_CACHE_MAX_AGE_SECONDS}`;
+
+// Enforced at module load, so a future edit to either number fails the whole
+// test suite rather than quietly shipping dead URLs.
+if (ASSET_CACHE_MAX_AGE_SECONDS >= ASSET_URL_TTL_SECONDS) {
+  throw new Error(
+    `asset cache lifetime (${ASSET_CACHE_MAX_AGE_SECONDS}s) must stay below the signed URL's ` +
+      `own lifetime (${ASSET_URL_TTL_SECONDS}s), or a cached redirect outlives its signature`,
+  );
+}
 
 /**
- * The two roles the host's download switch governs (03 §25, "guest: according to
- * host permission"): the untouched camera frame and the processed still. They
- * are the artefacts a guest would *keep*.
+ * The roles the host's download switch does **not** govern — and therefore, by
+ * omission, every role it does (03 §25, "guest: according to host permission").
  *
- * Thumbnails and wiggle previews are not on this list and never gate: they are
- * how the gallery renders at all, and a roll whose downloads are off is still a
- * roll the guest was invited to look at.
+ * The polarity is the point. An allow-list of gated roles is fail-OPEN: five
+ * roles are already declared in `ASSET_ROLES` that no worker produces yet
+ * (`wiggle-mp4`, `gif`, `contact-sheet`, `enhanced-still`, `enhanced-wiggle`),
+ * and the day one of them appears it would be downloadable from a roll whose
+ * host had switched downloads off — because nobody remembered to extend a list.
+ * Naming the exceptions instead means a new role is gated by default and has to
+ * be *argued* onto this list.
+ *
+ * Same reasoning as `UPLOADABLE_STATUSES` in `rolls/rolls.ts`: the safe reading
+ * of an unfamiliar value is "refuse", not "allow because it is not on the
+ * deny-list".
+ *
+ * These two are how the gallery renders at all — a roll whose downloads are off
+ * is still a roll the guest was invited to look at.
  */
-const DOWNLOAD_GATED_ROLES: ReadonlySet<string> = new Set(['original-frame', 'kino-still']);
+const NEVER_GATED_ROLES: ReadonlySet<string> = new Set(['thumb', 'wiggle-preview']);
+
+/** Whether the host's download switch governs this role at all. */
+function downloadGated(role: string): boolean {
+  return !NEVER_GATED_ROLES.has(role);
+}
 
 /**
  * Roles whose *only* meaning is a download, so they default to an attachment
@@ -170,7 +221,7 @@ export async function deliverAsset(
   }
 
   const attachment = download || ALWAYS_ATTACHMENT_ROLES.has(asset.role);
-  if (attachment && DOWNLOAD_GATED_ROLES.has(asset.role) && !asset.downloadsEnabled) {
+  if (attachment && downloadGated(asset.role) && !asset.downloadsEnabled) {
     return refuse(403, 'DOWNLOADS_DISABLED', 'the host has turned downloads off for this roll');
   }
 

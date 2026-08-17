@@ -8,7 +8,11 @@ import { loadConfig, type ApiConfig } from '../src/config';
 import { newId } from '../src/ids';
 import { derivedKey, originalKey } from '../src/uploads/objectKeys';
 import { FEED_LIMIT_DEFAULT, FEED_LIMIT_MAX } from '../src/captures/feed';
-import { ASSET_URL_TTL_SECONDS } from '../src/captures/delivery';
+import {
+  ASSET_CACHE_CONTROL,
+  ASSET_CACHE_MAX_AGE_SECONDS,
+  ASSET_URL_TTL_SECONDS,
+} from '../src/captures/delivery';
 import * as schema from '../src/db/schema';
 
 /**
@@ -621,8 +625,25 @@ describe('GET /api/assets/:assetId/content', () => {
     // A signature is what authorizes the fetch — the key alone must not (05 §6).
     expect(location.searchParams.get('response-content-disposition')).toBe('inline');
 
-    expect(res.headers['cache-control']).toBe('private, max-age=300');
+    expect(res.headers['cache-control']).toBe('private, max-age=55');
     expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+  });
+
+  /**
+   * Browsers and service workers DO cache a 302 that carries an explicit
+   * `Cache-Control`, so a cache lifetime at or above the signature's lifetime
+   * means a re-requested `<img>` replays the stored Location, follows an expired
+   * signature and renders a broken tile until the cache entry ages out. Task
+   * 28's PWA caches this exact route.
+   *
+   * Asserted on the constants, not just the header, so editing *either* number
+   * the wrong way fails here rather than in production.
+   */
+  it('never caches a redirect for longer than its signature is valid', () => {
+    expect(ASSET_CACHE_MAX_AGE_SECONDS).toBeLessThan(ASSET_URL_TTL_SECONDS);
+    expect(ASSET_CACHE_CONTROL).toBe(`private, max-age=${ASSET_CACHE_MAX_AGE_SECONDS}`);
+    // `private` matters as much as the age: the URL is signed for one requester.
+    expect(ASSET_CACHE_CONTROL.startsWith('private,')).toBe(true);
   });
 
   it('signs a URL that storage actually honours', async () => {
@@ -699,9 +720,13 @@ describe('downloads by host permission (03 §25)', () => {
     await insertCaptures(roll.rollId, [{ id: captureId }]);
     const ids = await insertAssets(roll.rollId, captureId, [
       { role: 'thumb' },
+      { role: 'wiggle-preview' },
       { role: 'wiggle-webp' },
       { role: 'kino-still', mime: 'image/jpeg' },
       { role: 'original-frame', frameIndex: 1, mime: 'image/jpeg' },
+      // A role no worker produces yet. It is exactly the case an allow-list of
+      // gated roles would have served for free.
+      { role: 'wiggle-mp4', mime: 'video/mp4' },
     ]);
     return { roll, ids };
   }
@@ -737,14 +762,38 @@ describe('downloads by host permission (03 §25)', () => {
     expect(download.json()).toMatchObject({ code: 'DOWNLOADS_DISABLED' });
   });
 
-  it('never gates a thumb, even asked for as an attachment', async () => {
+  it('never gates a thumb or a wiggle preview, even asked for as an attachment', async () => {
     const { ids } = await rollWithAssets(false);
 
-    const res = await content(ids['thumb'] ?? '', '?download=1');
-    expect(res.statusCode).toBe(302);
-    expect(
-      new URL(res.headers['location'] as string).searchParams.get('response-content-disposition'),
-    ).toMatch(/^attachment; filename=/);
+    for (const role of ['thumb', 'wiggle-preview']) {
+      const res = await content(ids[role] ?? '', '?download=1');
+      expect(res.statusCode).toBe(302);
+      expect(
+        new URL(res.headers['location'] as string).searchParams.get('response-content-disposition'),
+      ).toMatch(/^attachment; filename=/);
+    }
+  });
+
+  /**
+   * The gate is an exception list, not an allow-list, and this is the test that
+   * says so. `wiggle-mp4`, `gif`, `contact-sheet`, `enhanced-still` and
+   * `enhanced-wiggle` are all declared in `ASSET_ROLES` with no worker producing
+   * them yet; under a list of *gated* roles every one of them would have been
+   * downloadable from a roll with downloads switched off, the moment it first
+   * appeared, with nothing failing to say so.
+   */
+  it('gates a role that no worker produces yet, rather than serving it', async () => {
+    const off = await rollWithAssets(false);
+
+    const refused = await content(off.ids['wiggle-mp4'] ?? '', '?download=1');
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toMatchObject({ code: 'DOWNLOADS_DISABLED' });
+
+    // Still viewable inline: gating a download is not hiding the capture.
+    expect((await content(off.ids['wiggle-mp4'] ?? '')).statusCode).toBe(302);
+    // And gated only by the switch, not by the role — the host can turn it on.
+    const on = await rollWithAssets(true);
+    expect((await content(on.ids['wiggle-mp4'] ?? '', '?download=1')).statusCode).toBe(302);
   });
 
   it('serves originals as attachments once the host allows downloads', async () => {
