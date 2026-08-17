@@ -88,13 +88,88 @@ body {
 
 .twin-viewport {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  min-height: 0;
   background: #0c0d10;
   color: var(--twin-text-mut);
   font-family: var(--twin-mono);
   font-size: 12px;
   letter-spacing: 0.04em;
+}
+
+.twin-viewport-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+.twin-viewport-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.twin-viewport-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 6px 10px;
+  background: var(--twin-panel);
+  border-bottom: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 11px;
+}
+
+.twin-viewport-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.twin-viewport-label {
+  color: var(--twin-text-mut);
+  margin-right: 2px;
+  letter-spacing: 0.04em;
+}
+
+.twin-viewport-value {
+  color: var(--twin-text-mut);
+  min-width: 2.5em;
+}
+
+.twin-btn {
+  padding: 3px 8px;
+  background: #22262e;
+  color: var(--twin-text);
+  border: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.twin-btn:hover {
+  background: #2b303a;
+}
+
+.twin-btn--active {
+  background: var(--twin-text);
+  color: var(--twin-bg);
+  border-color: var(--twin-text);
+}
+
+.twin-slider {
+  width: 100px;
+}
+
+.twin-numeric {
+  width: 4.5em;
+  background: #22262e;
+  color: var(--twin-text);
+  border: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 11px;
+  padding: 2px 4px;
 }
 
 .twin-statusbar {

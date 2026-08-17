@@ -202,11 +202,25 @@ export function buildAcrylicPanel(sizeMm: [number, number, number], name: string
  * Swaps every mesh in `root` to the material variant matching `mode`.
  * `hidden` toggles the root's own `visible` flag instead of touching
  * materials — cheaper, and it hides any un-cached children too.
+ *
+ * It also disables raycasting on every descendant while hidden. three.js's
+ * `Raycaster` does not consult `Object3D.visible` at all, so a hidden
+ * instance's meshes would otherwise still register hits — swallowing clicks
+ * that should fall through to whatever (or nothing) is actually behind
+ * them, and starving R3F's `onPointerMissed` of the empty hit list it needs
+ * to fire. Toggling view modes (INTERNALS/SHELL/wireframe visibility, this
+ * task) makes that reachable, so it is fixed here rather than deferred.
  */
 export function applyVisualMode(root: THREE.Object3D, mode: VisualMode): void {
   const mats = palette();
 
   root.traverse((obj) => {
+    if (mode === 'hidden') {
+      obj.raycast = () => {}; // no-op override: this object registers no raycast hits while hidden
+    } else {
+      delete (obj as { raycast?: unknown }).raycast; // restore the prototype's normal raycast
+    }
+
     if (!(obj instanceof THREE.Mesh)) return;
     const variants = obj.userData.materialVariants as MaterialVariants | undefined;
     if (!variants) return;
@@ -225,7 +239,7 @@ export function applyVisualMode(root: THREE.Object3D, mode: VisualMode): void {
         obj.material = mats.selected;
         break;
       case 'hidden':
-        break; // handled below, once, on the root
+        break; // handled above
     }
   });
 

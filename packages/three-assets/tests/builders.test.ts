@@ -191,6 +191,34 @@ describe('applyVisualMode', () => {
     applyVisualMode(group, 'normal');
     expect(group.visible).toBe(true);
   });
+
+  it('disables raycasting on every descendant while hidden, so a hidden mesh cannot swallow a click', () => {
+    // Regression: THREE.Raycaster does not consult Object3D.visible, so
+    // `group.visible = false` alone still leaves a hidden instance's meshes
+    // registering hits (and starving R3F's onPointerMissed of the empty hit
+    // list it needs to fire a deselect/fall-through click).
+    const group = buildCam();
+    const body = group.getObjectByName('body') as THREE.Mesh;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(new THREE.Vector3(0, 0, -100), new THREE.Vector3(0, 0, 1));
+    expect(raycaster.intersectObject(body, false).length).toBeGreaterThan(0); // sanity: hits when normal/visible
+
+    applyVisualMode(group, 'hidden');
+    expect(raycaster.intersectObject(body, false)).toHaveLength(0);
+  });
+
+  it('restores normal raycasting once un-hidden', () => {
+    const group = buildCam();
+    const body = group.getObjectByName('body') as THREE.Mesh;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(new THREE.Vector3(0, 0, -100), new THREE.Vector3(0, 0, 1));
+
+    applyVisualMode(group, 'hidden');
+    applyVisualMode(group, 'normal');
+    expect(raycaster.intersectObject(body, false).length).toBeGreaterThan(0);
+  });
 });
 
 describe('buildAcrylicPanel', () => {
