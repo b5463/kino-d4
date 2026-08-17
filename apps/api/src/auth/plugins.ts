@@ -168,6 +168,42 @@ function pinFingerprint(rollId: string, pinHash: string | null): string {
 /** Thirty days: a roll outlives its event, and re-typing the PIN each visit is hostile. */
 const PIN_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
+function pinCookieAccepted(
+  request: FastifyRequest,
+  rollId: string,
+  pinHash: string | null,
+): boolean {
+  const raw = request.cookies[pinCookieName(rollId)];
+  if (raw === undefined) return false;
+
+  const unsigned = request.unsignCookie(raw);
+  if (!unsigned.valid || unsigned.value === null) return false;
+
+  return timingSafeHexEqual(unsigned.value, pinFingerprint(rollId, pinHash));
+}
+
+/**
+ * "May this anonymous request read this roll?" — the whole guest rule, as one
+ * function, keyed on the roll **row** rather than on a slug.
+ *
+ * `guestRollAccess` below is the slug-shaped front door and calls this. Task
+ * 20's `GET /api/assets/:assetId/content` has no slug to key on — it derives the
+ * roll from the asset — and calls the same function rather than growing a second
+ * copy of the cookie name, the fingerprint derivation or the `privacy === 'pin'`
+ * test. Two copies of an access rule is how one of them ends up a version
+ * behind.
+ *
+ * The caller passes `pinHash` explicitly, from a local it drops immediately, so
+ * this can never be handed something that carries the hash onward.
+ */
+export function guestMayReadRoll(
+  request: FastifyRequest,
+  roll: { id: string; privacy: string },
+  pinHash: string | null,
+): boolean {
+  return roll.privacy !== 'pin' || pinCookieAccepted(request, roll.id, pinHash);
+}
+
 export const authPlugin = fp(
   async (app) => {
     // Declared up front so every request object has the same shape; Fastify
@@ -319,20 +355,6 @@ export const authPlugin = fp(
       }),
     );
 
-    function pinCookieAccepted(
-      request: FastifyRequest,
-      rollId: string,
-      pinHash: string | null,
-    ): boolean {
-      const raw = request.cookies[pinCookieName(rollId)];
-      if (raw === undefined) return false;
-
-      const unsigned = request.unsignCookie(raw);
-      if (!unsigned.valid || unsigned.value === null) return false;
-
-      return timingSafeHexEqual(unsigned.value, pinFingerprint(rollId, pinHash));
-    }
-
     app.decorate('guestRollAccess', async (request, reply) => {
       const slug = slugParam(request);
       if (slug === null) {
@@ -351,7 +373,7 @@ export const authPlugin = fp(
       // `pinHash` stays local. What lands on the request is the projection
       // without it, so a handler returning `rollOf(request)` cannot leak it.
       const { pinHash, ...roll } = row;
-      if (roll.privacy === 'pin' && !pinCookieAccepted(request, roll.id, pinHash)) {
+      if (!guestMayReadRoll(request, roll, pinHash)) {
         return fail(reply, 401, 'PIN_REQUIRED', 'this roll is PIN protected');
       }
 

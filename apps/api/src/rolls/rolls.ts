@@ -346,6 +346,7 @@ export interface GuestRollView {
   title: string;
   status: string;
   photoCount: number;
+  downloadsEnabled: boolean;
   createdAt: Date;
 }
 
@@ -354,12 +355,19 @@ export interface GuestRollView {
  * the trash grace period — so it can be lower than the host's `captures`, which
  * includes hidden ones. Deliberately not the roll's id, slug or privacy: a guest
  * needs none of them to render the header.
+ *
+ * `downloadsEnabled` is here because the PWA has to decide whether to draw the
+ * download control at all (03 §25). Without it the app would have to render the
+ * button and discover the answer from a 403 — which is a worse experience and a
+ * needless round trip. It tells a guest nothing it could not learn by pressing
+ * the button; the enforcement is on the asset route either way.
  */
 export function guestRollView(roll: PublicRollRow, photoCount: number): GuestRollView {
   return {
     title: roll.title,
     status: roll.status,
     photoCount,
+    downloadsEnabled: roll.downloadsEnabled,
     createdAt: roll.createdAt,
   };
 }

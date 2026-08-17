@@ -1,0 +1,330 @@
+import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import type { KinoDatabase } from '../plugins/db';
+import { assets, captures } from '../db/schema';
+
+/**
+ * The guest feed's reader: what a capture looks like to a guest, and how the
+ * gallery is walked (03 §6, 06 §11 "newest first").
+ *
+ * Kept out of the route file because two of the three rules here are the kind
+ * that must have exactly one definition — what "visible" means (03 §11) and
+ * what a cursor is — and both are read by more than one route.
+ */
+
+/* ---------------------------------------------------------------- limits -- */
+
+export const FEED_LIMIT_DEFAULT = 50;
+export const FEED_LIMIT_MIN = 1;
+export const FEED_LIMIT_MAX = 100;
+
+/** A rejected query parameter, in the shape the routes answer with. */
+export interface QueryRejection {
+  code: string;
+  message: string;
+}
+
+export type Parsed<T> = { ok: true; value: T } | { ok: false; error: QueryRejection };
+
+/**
+ * `limit` is **clamped**, not rejected, when it is out of range: a client that
+ * asks for 500 wants "as many as you will give me", and answering 100 is the
+ * honest reply. A limit that is not a number at all is a different thing — a
+ * typo that would silently become 50 and leave the caller wondering why its
+ * page size is ignored — so that one is refused.
+ */
+export function parseLimit(raw: unknown): Parsed<number> {
+  if (raw === undefined) return { ok: true, value: FEED_LIMIT_DEFAULT };
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return { ok: false, error: { code: 'INVALID_LIMIT', message: 'limit must be an integer' } };
+  }
+
+  const value = Number(raw);
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    return { ok: false, error: { code: 'INVALID_LIMIT', message: 'limit must be an integer' } };
+  }
+  return { ok: true, value: Math.min(Math.max(value, FEED_LIMIT_MIN), FEED_LIMIT_MAX) };
+}
+
+/* ---------------------------------------------------------------- cursor -- */
+
+/**
+ * The keyset the feed pages on: `(createdAt, id)`, newest first.
+ *
+ * `id` is not decoration. Captures arrive in bursts from four cameras and
+ * regularly share a `createdAt` to the microsecond; a cursor on the timestamp
+ * alone either repeats the whole tied group on the next page or skips the rest
+ * of it. The tiebreaker makes the ordering total, which is the property keyset
+ * pagination actually depends on.
+ *
+ * OFFSET is deliberately absent. It re-counts the rows it skips on every page —
+ * so the last page of a long roll costs the most — and it shifts under
+ * concurrent inserts, which for this feed is the normal case rather than an
+ * edge one: photos are being uploaded while guests scroll.
+ */
+export interface FeedCursor {
+  /**
+   * `created_at::text` **as PostgreSQL rendered it**, not a JavaScript `Date`.
+   *
+   * This is the load-bearing detail. `timestamptz` keeps microseconds; a
+   * `Date` keeps milliseconds. Round-tripping the cursor through a `Date` would
+   * truncate it, and every row sharing that millisecond but not the microsecond
+   * would fall on the wrong side of the comparison and vanish from the feed —
+   * silently, and only for rows the server timestamped itself.
+   */
+  at: string;
+  id: string;
+}
+
+/**
+ * `2026-08-14 20:00:00.123456+00` — PostgreSQL's own rendering of a
+ * `timestamptz`, with an optional fractional part and a required offset.
+ *
+ * The value is bound as a parameter, so this is not injection defence; it is
+ * what makes a mangled cursor a 400 instead of a 500 from the driver rejecting
+ * the cast.
+ */
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2}){0,2}$/;
+
+/** Row ids are `<prefix>_<base64url>` (see `ids.ts`). */
+const CURSOR_ID = /^[a-z]+_[A-Za-z0-9_-]{1,64}$/;
+
+const CURSOR_SEPARATOR = '|';
+
+/**
+ * Opaque to clients, and **internal**: the encoding below is not part of any
+ * contract and may change without notice. Nothing is signed, because nothing
+ * needs to be — a cursor grants no access, it only names a position inside a
+ * feed the caller has already been authorized to read. Forging one can produce
+ * a different page of the same roll and nothing else.
+ */
+export function encodeCursor(cursor: FeedCursor): string {
+  return Buffer.from(`${cursor.at}${CURSOR_SEPARATOR}${cursor.id}`, 'utf8').toString('base64url');
+}
+
+export function decodeCursor(raw: unknown): Parsed<FeedCursor | null> {
+  if (raw === undefined) return { ok: true, value: null };
+
+  const reject: Parsed<FeedCursor | null> = {
+    ok: false,
+    error: { code: 'INVALID_CURSOR', message: 'cursor is not one this feed issued' },
+  };
+  if (typeof raw !== 'string' || raw === '') return reject;
+
+  // `Buffer.from` is lenient about base64: it drops characters it does not
+  // recognise rather than failing, so the decoded shape is what actually
+  // decides, not the decode itself.
+  const decoded = Buffer.from(raw, 'base64url').toString('utf8');
+  const separator = decoded.indexOf(CURSOR_SEPARATOR);
+  if (separator < 0) return reject;
+
+  const at = decoded.slice(0, separator);
+  const id = decoded.slice(separator + 1);
+  if (!CURSOR_TIMESTAMP.test(at) || !CURSOR_ID.test(id)) return reject;
+
+  return { ok: true, value: { at, id } };
+}
+
+/* ----------------------------------------------------------------- views -- */
+
+/** What the feed says about one asset: enough to pick a tile source, no more. */
+export interface CaptureAssetSummary {
+  role: string;
+  assetId: string;
+  width: number | null;
+  height: number | null;
+}
+
+/** The detail view adds what a download control needs to label itself. */
+export interface CaptureAssetDetail extends CaptureAssetSummary {
+  mime: string;
+  bytes: number | null;
+}
+
+export interface CaptureView {
+  captureId: string;
+  mode: string;
+  look: string | null;
+  capturedAt: Date;
+  createdAt: Date;
+  frameCount: number;
+  resolution: string;
+  status: string;
+  assets: CaptureAssetSummary[];
+}
+
+export interface CaptureDetailView extends Omit<CaptureView, 'assets'> {
+  assets: CaptureAssetDetail[];
+}
+
+export interface CaptureFeedPage {
+  items: CaptureView[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * The columns a guest is shown. `timing` is absent on purpose — the three skews
+ * are engineering telemetry for Studio and the host (04 §14), not something the
+ * gallery renders — and so is `objectKey`, which is never in a guest response at
+ * all (05 §6).
+ */
+const captureColumns = {
+  id: captures.id,
+  mode: captures.mode,
+  look: captures.look,
+  capturedAt: captures.capturedAt,
+  createdAt: captures.createdAt,
+  frameCount: captures.frameCount,
+  resolution: captures.resolution,
+  status: captures.status,
+};
+
+/**
+ * 03 §11, as one expression: hidden is immediate guest removal, and a deleted
+ * capture is in its trash grace period. Both are invisible to a guest; only the
+ * second is invisible to the host.
+ */
+function guestVisible(rollId: string): SQL | undefined {
+  return and(eq(captures.rollId, rollId), eq(captures.visible, true), isNull(captures.deletedAt));
+}
+
+/**
+ * Only `ready` assets are ever named. A pending row is a location that has no
+ * bytes at it yet, so handing a guest its id would produce a tile that 409s on
+ * every fetch until a worker finishes.
+ */
+async function readReadyAssets(
+  db: KinoDatabase,
+  captureIds: readonly string[],
+): Promise<Map<string, CaptureAssetDetail[]>> {
+  const byCapture = new Map<string, CaptureAssetDetail[]>();
+  if (captureIds.length === 0) return byCapture;
+
+  // One query for the whole page rather than one per capture: a 100-row page
+  // would otherwise be 101 round trips.
+  const rows = await db
+    .select({
+      captureId: assets.captureId,
+      assetId: assets.id,
+      role: assets.role,
+      width: assets.width,
+      height: assets.height,
+      mime: assets.mime,
+      bytes: assets.bytes,
+      frameIndex: assets.frameIndex,
+    })
+    .from(assets)
+    .where(and(inArray(assets.captureId, [...captureIds]), eq(assets.status, 'ready')))
+    // Deterministic order, so a client diffing two responses sees no churn.
+    .orderBy(assets.role, assets.frameIndex);
+
+  for (const row of rows) {
+    const list = byCapture.get(row.captureId) ?? [];
+    list.push({
+      role: row.role,
+      assetId: row.assetId,
+      width: row.width,
+      height: row.height,
+      mime: row.mime,
+      bytes: row.bytes,
+    });
+    byCapture.set(row.captureId, list);
+  }
+  return byCapture;
+}
+
+function summarise(asset: CaptureAssetDetail): CaptureAssetSummary {
+  return { role: asset.role, assetId: asset.assetId, width: asset.width, height: asset.height };
+}
+
+/**
+ * One page of a roll's gallery, newest first.
+ *
+ * `limit + 1` rows are read and the extra one is dropped: it answers `hasMore`
+ * exactly, with no second COUNT query and no lying about the last page.
+ */
+export async function readCaptureFeedPage(
+  db: KinoDatabase,
+  rollId: string,
+  limit: number,
+  cursor: FeedCursor | null,
+): Promise<CaptureFeedPage> {
+  const rows = await db
+    .select({
+      ...captureColumns,
+      // The cursor's half of the keyset, at full PostgreSQL precision.
+      cursorAt: sql<string>`${captures.createdAt}::text`,
+    })
+    .from(captures)
+    .where(
+      and(
+        guestVisible(rollId),
+        cursor === null
+          ? undefined
+          : // A row comparison, which is what makes this a single index-ordered
+            // seek rather than the `a < x OR (a = x AND b < y)` expansion.
+            sql`(${captures.createdAt}, ${captures.id}) < (${cursor.at}::timestamptz, ${cursor.id})`,
+      ),
+    )
+    .orderBy(desc(captures.createdAt), desc(captures.id))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const assetsByCapture = await readReadyAssets(
+    db,
+    page.map((row) => row.id),
+  );
+
+  const last = page.at(-1);
+  return {
+    items: page.map((row) => ({
+      captureId: row.id,
+      mode: row.mode,
+      look: row.look,
+      capturedAt: row.capturedAt,
+      createdAt: row.createdAt,
+      frameCount: row.frameCount,
+      resolution: row.resolution,
+      status: row.status,
+      assets: (assetsByCapture.get(row.id) ?? []).map(summarise),
+    })),
+    nextCursor:
+      hasMore && last !== undefined ? encodeCursor({ at: last.cursorAt, id: last.id }) : null,
+    hasMore,
+  };
+}
+
+/**
+ * One capture, or null.
+ *
+ * The roll id is part of the WHERE rather than checked afterwards, so a capture
+ * id from another roll is indistinguishable from one that does not exist. That
+ * is the point: without it this route would confirm, for any id a caller cares
+ * to try, whether it belongs to some roll somewhere.
+ */
+export async function readCaptureDetail(
+  db: KinoDatabase,
+  rollId: string,
+  captureId: string,
+): Promise<CaptureDetailView | null> {
+  const [row] = await db
+    .select(captureColumns)
+    .from(captures)
+    .where(and(guestVisible(rollId), eq(captures.id, captureId)))
+    .limit(1);
+  if (row === undefined) return null;
+
+  const assetsByCapture = await readReadyAssets(db, [row.id]);
+  return {
+    captureId: row.id,
+    mode: row.mode,
+    look: row.look,
+    capturedAt: row.capturedAt,
+    createdAt: row.createdAt,
+    frameCount: row.frameCount,
+    resolution: row.resolution,
+    status: row.status,
+    assets: assetsByCapture.get(row.id) ?? [],
+  };
+}
