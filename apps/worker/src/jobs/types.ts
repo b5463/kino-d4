@@ -83,10 +83,24 @@ export type WorkerDatabase = PostgresJsDatabase<typeof schema>;
 /**
  * Everything a handler is given, and the boundary of what it can do.
  *
- * There is no `s3.putObject` convenience and no writable key builder: the only
- * way bytes leave a handler is `putDerived`, and that function cannot address
- * anything under `original/` (01 §7). `s3` itself is here because reading is
- * unrestricted — a handler must be able to fetch the frames it works on.
+ * The intended way bytes leave a handler is `putDerived`, which cannot address
+ * anything under `original/` (01 §7). `s3` is here because reading is
+ * unrestricted — a handler must be able to fetch the frames it works on — and
+ * because it is a whole client, the immutability rule is enforced in its
+ * middleware (`guardOriginalWrites`) rather than by asking handler authors to
+ * remember it: every write command through `ctx.s3`, `putDerived` included, is
+ * refused if its key lands under `original/`.
+ *
+ * ## `ctx.db` is the same class of hole, and is not closed
+ *
+ * A handler can write any row it likes — including an `assets` row whose
+ * `object_key` points at an original, or an update that retells an existing
+ * asset's story. No middleware can distinguish a legitimate derivative row from
+ * a lie, so this one is a documented rule rather than a mechanism: **a handler
+ * inserts asset rows for what it actually produced through `putDerived`, and
+ * touches no row belonging to an `original-frame`.** If that ever needs
+ * enforcing, it belongs in the database — a trigger or a narrower grant — not
+ * in a wrapper a handler can decline to use.
  */
 export interface JobCtx {
   db: WorkerDatabase;

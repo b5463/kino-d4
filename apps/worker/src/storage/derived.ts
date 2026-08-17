@@ -1,5 +1,6 @@
 /**
- * The only object keys a worker can build.
+ * Originals are immutable (01 §7): the keys a worker can build, and the guard
+ * that makes that true of its S3 client rather than of its authors.
  *
  * ## Why this is not a copy of `apps/api/src/uploads/objectKeys.ts`
  *
@@ -23,6 +24,8 @@
  * out plainly is more honest than importing a three-argument check and passing
  * `null` twice.
  */
+
+import type { S3Client } from '@aws-sdk/client-s3';
 
 /** The prefix under which a capture's untouched camera frames live. */
 const ORIGINAL_SEGMENT = 'original';
@@ -82,4 +85,80 @@ export class OriginalWriteError extends Error {
  */
 export function assertDerivedOnly(key: string): void {
   if (isOriginalKey(key)) throw new OriginalWriteError(key);
+}
+
+/* ------------------------------------------------------------ the client -- */
+
+/**
+ * Every S3 operation that can destroy or replace an object.
+ *
+ * Reads are absent on purpose: a handler must be able to fetch the frames it
+ * works on, and reading an original is the normal case. The multipart trio is
+ * here because "upload it in parts" is a write like any other, and
+ * `DeleteObjects` because a batch delete is a delete.
+ */
+const WRITE_COMMANDS: ReadonlySet<string> = new Set([
+  'PutObjectCommand',
+  'DeleteObjectCommand',
+  'DeleteObjectsCommand',
+  'CopyObjectCommand',
+  'CreateMultipartUploadCommand',
+  'UploadPartCommand',
+  'CompleteMultipartUploadCommand',
+]);
+
+/**
+ * The keys an operation would write, out of an input whose shape depends on the
+ * command: `Key` for the single-object ones — and for `CopyObject` that is the
+ * *destination*, so copying an original into `derived/` stays legal — and
+ * `Delete.Objects[].Key` for the batch delete.
+ */
+function writtenKeys(input: unknown): string[] {
+  if (typeof input !== 'object' || input === null) return [];
+  const { Key, Delete } = input as { Key?: unknown; Delete?: unknown };
+
+  const keys: string[] = [];
+  if (typeof Key === 'string') keys.push(Key);
+
+  const objects = (Delete as { Objects?: unknown } | undefined)?.Objects;
+  if (Array.isArray(objects)) {
+    for (const entry of objects) {
+      const entryKey = (entry as { Key?: unknown }).Key;
+      if (typeof entryKey === 'string') keys.push(entryKey);
+    }
+  }
+  return keys;
+}
+
+/**
+ * Makes "a worker never writes an original" a property of the client rather
+ * than of the people who write handlers.
+ *
+ * `putDerived` cannot address an original, but `ctx.s3` is a whole S3 client and
+ * a handler needs it to *read* — which left the invariant one `PutObjectCommand`
+ * away from being broken by an author who did not know the rule. 01 §7 is not a
+ * convention, so it is enforced where every write must pass: in the client's own
+ * middleware stack, before the request is serialised.
+ *
+ * `putDerived` rides the same guard rather than bypassing it, so there is one
+ * check on one path and no way to be inside the exception.
+ *
+ * The equivalent hole in `ctx.db` is *not* closed here — see the note on
+ * `JobCtx`. A handler can still insert an asset row that points anywhere, and no
+ * middleware can tell a legitimate derivative row from a lie about an original.
+ */
+export function guardOriginalWrites(client: S3Client): void {
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      // `initialize` runs before the request is built, so the check reads the
+      // command's own input rather than trying to parse a signed HTTP request
+      // back into a key.
+      const commandName = (context as { commandName?: string }).commandName;
+      if (commandName !== undefined && WRITE_COMMANDS.has(commandName)) {
+        for (const key of writtenKeys(args.input)) assertDerivedOnly(key);
+      }
+      return next(args);
+    },
+    { step: 'initialize', name: 'kinoOriginalWriteGuard', priority: 'high' },
+  );
 }

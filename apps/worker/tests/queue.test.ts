@@ -1,7 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { asc, eq, sql } from 'drizzle-orm';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
 import { loadWorkerConfig, type WorkerConfig } from '../src/config';
 import { createJobRuntime, type JobRuntime } from '../src/context';
@@ -380,6 +384,79 @@ describe('putDerived is the only write path (01 §7)', () => {
     await expect(
       runtime.ctx.putDerived(rollId, captureId, '../original/cam-01.jpg', body, 'image/jpeg'),
     ).rejects.toThrow(/unsafe/i);
+  });
+});
+
+/**
+ * `ctx.s3` is a whole client, handed to handlers so they can read the frames
+ * they work on — which left 01 §7 one `PutObjectCommand` away from being broken
+ * by a handler author who did not know the rule. These tests are about the
+ * client itself: every call below is one a Task 23–25 handler could make.
+ */
+describe('the shared S3 client refuses to write an original (01 §7)', () => {
+  const originalKey = (captureId: string): string =>
+    `rolls/${rollId}/captures/${captureId}/original/cam-01.jpg`;
+
+  it('rejects a handler writing an original directly through ctx.s3', async () => {
+    const captureId = await newCapture();
+
+    await expect(
+      runtime.ctx.s3.send(
+        new PutObjectCommand({
+          Bucket: config.S3_BUCKET,
+          Key: originalKey(captureId),
+          Body: randomBytes(16),
+          ContentType: 'image/jpeg',
+        }),
+      ),
+    ).rejects.toThrow(/originals are immutable/i);
+  });
+
+  it('rejects deleting one, singly or in a batch', async () => {
+    const captureId = await newCapture();
+
+    await expect(
+      runtime.ctx.s3.send(
+        new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: originalKey(captureId) }),
+      ),
+    ).rejects.toThrow(/originals are immutable/i);
+
+    // The batch form carries its keys somewhere else entirely, which is exactly
+    // how a guard that only knew about `Key` would be walked around.
+    await expect(
+      runtime.ctx.s3.send(
+        new DeleteObjectsCommand({
+          Bucket: config.S3_BUCKET,
+          Delete: { Objects: [{ Key: originalKey(captureId) }] },
+        }),
+      ),
+    ).rejects.toThrow(/originals are immutable/i);
+  });
+
+  it('lets the same call through for a derived key', async () => {
+    const captureId = await newCapture();
+    const key = `rolls/${rollId}/captures/${captureId}/derived/direct.webp`;
+    const body = randomBytes(32);
+
+    await runtime.ctx.s3.send(
+      new PutObjectCommand({
+        Bucket: config.S3_BUCKET,
+        Key: key,
+        Body: body,
+        ContentType: 'image/webp',
+      }),
+    );
+    writtenKeys.push(key);
+
+    expect(await collect(await runtime.ctx.getObject(key))).toEqual(body);
+  });
+
+  it('still lets a handler read an original', async () => {
+    // Reads are untouched by the guard — a renderer that could not open the
+    // frames would have nothing to render.
+    await expect(runtime.ctx.getObject(originalKey('cap_does_not_exist'))).rejects.toThrow(
+      /NoSuchKey|not exist/i,
+    );
   });
 });
 

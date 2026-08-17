@@ -206,8 +206,12 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
       const jobName: string = job.name;
       const captureId = typeof job.data.captureId === 'string' ? job.data.captureId : null;
       // `attemptsStarted` counts from 1 the moment the job is picked up, which
-      // is exactly what a message reading "attempt 2 of 5" needs.
+      // is exactly what a message reading "attempt 2 of 5" needs. The ceiling
+      // comes off the job, not off this queue's configuration: the policy
+      // travels with the job, so a producer that set a different count would
+      // otherwise have its jobs described by a number that was never theirs.
       const attempt = job.attemptsStarted > 0 ? job.attemptsStarted : job.attemptsMade + 1;
+      const attemptLimit = job.opts.attempts ?? attempts;
 
       try {
         // A queue outlives a deploy, so both of these are reachable in
@@ -227,7 +231,12 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
           // Every attempt is logged, not just the last: "it failed three times"
           // is what the log is for, and the read that matters — latest row per
           // job — is unaffected by the extra rows.
-          await tryAppend(ctx, captureId, jobName, `attempt ${attempt}/${attempts}: ${messageOf(err)}`);
+          await tryAppend(
+            ctx,
+            captureId,
+            jobName,
+            `attempt ${attempt}/${attemptLimit}: ${messageOf(err)}`,
+          );
         }
         // Rethrown so BullMQ, not this function, decides about retrying.
         throw err;

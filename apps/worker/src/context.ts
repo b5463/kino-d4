@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import type { WorkerConfig } from './config';
 import * as schema from './db/schema';
-import { assertDerivedOnly, derivedCaptureKey } from './storage/derived';
+import { derivedCaptureKey, guardOriginalWrites } from './storage/derived';
 import type { DerivedBody, JobCtx } from './jobs/types';
 
 /**
@@ -40,6 +40,17 @@ export function createJobRuntime(config: WorkerConfig): JobRuntime {
     },
   });
 
+  /**
+   * 01 §7, enforced in the client rather than in the handlers.
+   *
+   * `ctx.s3` is handed to handlers so they can *read* the frames they work on,
+   * which means a handler is one `PutObjectCommand` away from overwriting an
+   * original. This makes that impossible instead of forbidden: every write
+   * command through this client is checked before it is sent, `putDerived`
+   * included, so there is one guard on one path and no exception to be inside.
+   */
+  guardOriginalWrites(s3);
+
   const redis = new Redis(config.REDIS_URL, {
     lazyConnect: true,
     maxRetriesPerRequest: 2,
@@ -68,9 +79,9 @@ export function createJobRuntime(config: WorkerConfig): JobRuntime {
      * The key is *built*, never accepted: a handler names a file inside its own
      * capture's `derived/` folder and cannot address anything else. Two checks
      * back that up — the segment rule in `derivedCaptureKey`, which refuses
-     * anything that could climb out of the folder, and `assertDerivedOnly`,
-     * which refuses a name that would put the word `original` back into the
-     * path from below.
+     * anything that could climb out of the folder, and the client guard above,
+     * which this call goes through like any other write and which refuses a
+     * name that would put `original` back into the path from below.
      */
     async putDerived(
       rollId: string,
@@ -80,8 +91,6 @@ export function createJobRuntime(config: WorkerConfig): JobRuntime {
       mime: string,
     ): Promise<string> {
       const key = derivedCaptureKey(rollId, captureId, name);
-      assertDerivedOnly(key);
-
       await s3.send(
         new PutObjectCommand({
           Bucket: config.S3_BUCKET,
