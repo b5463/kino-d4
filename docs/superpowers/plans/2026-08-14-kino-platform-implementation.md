@@ -1181,9 +1181,9 @@ export function registerHandler(name: JobName, fn: (p: JobPayload, ctx: JobCtx) 
 - Retry policy: 5 attempts, exponential backoff starting 10 s. A failed job writes `processing_events` status `failed` and touches nothing else — MP4 failure must not affect originals/thumbs (07§26). Each handler runs in its own try/catch; handlers never share state.
 - Enqueue fan-out on capture complete: wiggle capture → `extract-metadata`, `generate-thumbnail`*, `generate-gallery-still`*, `render-wiggle-webp`* (*skipped if the device already uploaded that role — device-uploaded previews take priority, workers fill gaps and upgrade quality, 03§4); quad/single → metadata, thumbnail, still. `render-wiggle-mp4` + `render-contact-sheet` enqueue lazily on first request (host export or guest MP4 ask) — keeps party-time queue short.
 
-- [ ] **Step 1: Write failing tests** — same jobKey enqueued twice runs once; a handler that throws marks `processing_events` failed and does not block a different job for the same capture; retry count respects max attempts. (Use a real Redis from compose; fake handlers.)
+- [x] **Step 1: Write failing tests** — same jobKey enqueued twice runs once; a handler that throws marks `processing_events` failed and does not block a different job for the same capture; retry count respects max attempts. (Use a real Redis from compose; fake handlers.)
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): bullmq scaffold with idempotent job keys + independent failure`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): bullmq scaffold with idempotent job keys + independent failure`
 
 ### Task 23: Image jobs — thumbnail, gallery still, contact sheet, metadata
 

@@ -1,27 +1,91 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-08-17",
+  "updated": "2026-08-18",
   "software": [
-    { "name": "kino-workspace", "version": "0.1.1", "package": "package.json", "tagPrefix": "kino-v" },
-    { "name": "kino-studio", "version": "0.9.0", "package": "apps/studio/package.json", "tagPrefix": "kino-studio-v" },
-    { "name": "kino-api", "version": "0.1.0", "package": "apps/api/package.json", "tagPrefix": "kino-api-v" },
-    { "name": "kino-kdp", "version": "0.1.0", "package": "packages/kdp/package.json", "tagPrefix": "kino-kdp-v" },
-    { "name": "kino-schemas", "version": "0.1.0", "package": "packages/schemas/package.json", "tagPrefix": "kino-schemas-v" },
-    { "name": "kino-test-fixtures", "version": "0.1.0", "package": "packages/test-fixtures/package.json", "tagPrefix": "kino-test-fixtures-v" }
+    {
+      "name": "kino-workspace",
+      "version": "0.1.1",
+      "package": "package.json",
+      "tagPrefix": "kino-v"
+    },
+    {
+      "name": "kino-studio",
+      "version": "0.9.0",
+      "package": "apps/studio/package.json",
+      "tagPrefix": "kino-studio-v"
+    },
+    {
+      "name": "kino-api",
+      "version": "0.1.0",
+      "package": "apps/api/package.json",
+      "tagPrefix": "kino-api-v"
+    },
+    {
+      "name": "kino-worker",
+      "version": "0.1.0",
+      "package": "apps/worker/package.json",
+      "tagPrefix": "kino-worker-v"
+    },
+    {
+      "name": "kino-kdp",
+      "version": "0.1.0",
+      "package": "packages/kdp/package.json",
+      "tagPrefix": "kino-kdp-v"
+    },
+    {
+      "name": "kino-schemas",
+      "version": "0.1.0",
+      "package": "packages/schemas/package.json",
+      "tagPrefix": "kino-schemas-v"
+    },
+    {
+      "name": "kino-test-fixtures",
+      "version": "0.1.0",
+      "package": "packages/test-fixtures/package.json",
+      "tagPrefix": "kino-test-fixtures-v"
+    }
   ],
   "protocol": {
     "kdp": 1,
     "configEnvelope": 1
   },
   "portableSchemas": [
-    { "name": "kino.device-config", "version": 1, "source": "packages/schemas/src/config.ts" },
-    { "name": "kino.device-info", "version": 1, "source": "packages/schemas/src/device.ts" },
-    { "name": "kino.device-capabilities", "version": 1, "source": "packages/schemas/src/device.ts" },
-    { "name": "kino.capture", "version": 1, "source": "packages/schemas/src/media.ts" },
-    { "name": "kino.asset", "version": 1, "source": "packages/schemas/src/media.ts" },
-    { "name": "kino.roll", "version": 1, "source": "packages/schemas/src/media.ts" },
-    { "name": "kino.firmware-manifest", "version": 1, "source": "packages/schemas/src/firmware.ts" }
+    {
+      "name": "kino.device-config",
+      "version": 1,
+      "source": "packages/schemas/src/config.ts"
+    },
+    {
+      "name": "kino.device-info",
+      "version": 1,
+      "source": "packages/schemas/src/device.ts"
+    },
+    {
+      "name": "kino.device-capabilities",
+      "version": 1,
+      "source": "packages/schemas/src/device.ts"
+    },
+    {
+      "name": "kino.capture",
+      "version": 1,
+      "source": "packages/schemas/src/media.ts"
+    },
+    {
+      "name": "kino.asset",
+      "version": 1,
+      "source": "packages/schemas/src/media.ts"
+    },
+    {
+      "name": "kino.roll",
+      "version": 1,
+      "source": "packages/schemas/src/media.ts"
+    },
+    {
+      "name": "kino.firmware-manifest",
+      "version": 1,
+      "source": "packages/schemas/src/firmware.ts"
+    }
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
