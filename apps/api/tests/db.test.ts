@@ -146,6 +146,7 @@ describe('migrations', () => {
       'audit_events',
       'captures',
       'devices',
+      'export_jobs',
       'firmware_releases',
       'processing_events',
       'reactions',

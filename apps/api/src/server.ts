@@ -19,6 +19,8 @@ import { studioDeviceRoutes } from './routes/studio-devices';
 import { deviceRollRoutes } from './routes/device-rolls';
 import { deviceCaptureRoutes } from './routes/device-captures';
 import { hostRollRoutes } from './routes/host-rolls';
+import { hostCaptureRoutes } from './routes/host-captures';
+import { hostExportRoutes } from './routes/host-export';
 import { guestRollRoutes } from './routes/guest-rolls';
 import { guestCaptureRoutes } from './routes/guest-captures';
 import { guestEventRoutes } from './routes/guest-events';
@@ -111,6 +113,8 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.register(deviceRollRoutes);
   app.register(deviceCaptureRoutes);
   app.register(hostRollRoutes);
+  app.register(hostCaptureRoutes);
+  app.register(hostExportRoutes);
   app.register(guestRollRoutes);
   app.register(guestCaptureRoutes);
   app.register(guestEventRoutes);

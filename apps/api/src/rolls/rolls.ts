@@ -119,17 +119,27 @@ export type AuditAction =
   | 'roll.pin-cleared'
   | 'roll.downloads-enabled'
   | 'roll.downloads-disabled'
-  | 'roll.slug-regenerated';
+  | 'roll.slug-regenerated'
+  | 'roll.exported'
+  | 'capture.hidden'
+  | 'capture.unhidden'
+  | 'capture.deleted';
 
 export interface AuditEntry {
   rollId: string;
   actor: string;
   action: AuditAction;
   /**
-   * Deliberately the value the change **destroyed** — the old title, the old
-   * slug — never the new one. The new value is already in the roll row; the old
-   * one exists nowhere else once the update lands, so recording it is the only
-   * thing the audit trail adds. Never a PIN, in either direction.
+   * For a change to a roll **field**, deliberately the value the change
+   * **destroyed** — the old title, the old slug — never the new one. The new
+   * value is already in the roll row; the old one exists nowhere else once the
+   * update lands, so recording it is the only thing the audit trail adds. Never
+   * a PIN, in either direction.
+   *
+   * For an action **on a subordinate row** — the `capture.*` moderation actions,
+   * `roll.exported` — it is instead the id of the row the action applied to.
+   * There is no destroyed value to record there, and an entry that did not name
+   * its capture would say only that *something* was hidden.
    */
   target?: string | null;
 }
@@ -311,18 +321,29 @@ export interface HostRollView {
   createdAt: Date;
   closedAt: Date | null;
   counts: RollCaptureCounts;
+  /**
+   * Guests watching right now — the fourth number on the dashboard (03 §10).
+   *
+   * It lives beside `counts` rather than inside it because it comes from
+   * somewhere else entirely: `counts` are rows in PostgreSQL, this is a Redis
+   * sorted set of live SSE connections, and it is the only figure here that can
+   * go *down* on its own.
+   */
+  guests: number;
 }
 
 /**
- * `counts` is passed in rather than queried here so this stays a pure
- * projection: the two call sites in `host-rolls.ts` both already have a database
- * handle, and a view function that silently issues a query is the kind of thing
- * that turns one dashboard render into N of them later.
+ * `counts` and `guests` are passed in rather than queried here so this stays a
+ * pure projection: the two call sites in `host-rolls.ts` both already have a
+ * database handle and a Redis client, and a view function that silently issues a
+ * query is the kind of thing that turns one dashboard render into N of them
+ * later.
  */
 export function hostRollView(
   config: ApiConfig,
   roll: PublicRollRow,
   counts: RollCaptureCounts,
+  guests: number,
 ): HostRollView {
   return {
     rollId: roll.id,
@@ -338,6 +359,8 @@ export function hostRollView(
     closedAt: roll.closedAt,
     // Real since Task 18: `rollCaptureCounts` reads the `captures` table.
     counts,
+    // Real since Task 21: `countRollViewers` reads the roll's viewer set.
+    guests,
   };
 }
 

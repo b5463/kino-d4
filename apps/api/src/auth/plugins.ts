@@ -9,7 +9,7 @@ import '@fastify/cookie';
 import { bearerToken, hashToken, timingSafeHexEqual, tokenScope } from './tokens';
 import { verifyPin } from './pins';
 import { normalizeSlug } from '../rolls/slug';
-import { rollDevices, rolls, devices } from '../db/schema';
+import { captures, rollDevices, rolls, devices } from '../db/schema';
 
 /**
  * The three authentication scopes of 05 §12, as Fastify preHandlers.
@@ -56,6 +56,23 @@ export interface DeviceIdentity {
 export type PublicRollRow = Omit<typeof rolls.$inferSelect, 'hostTokenHash' | 'pinHash'>;
 
 /**
+ * A capture as the host moderation routes see it: its identity and its two
+ * moderation flags, and nothing else.
+ *
+ * Deliberately not the whole row. `requireHostCapture` has to read the capture
+ * anyway to find out which roll it belongs to, so handing the route the columns
+ * it moderates saves a second query — but widening this to the full capture would
+ * make the preHandler a general-purpose loader and put the mode, timing and
+ * status of every capture on a request that has no use for them.
+ */
+export interface HostCapture {
+  id: string;
+  rollId: string;
+  visible: boolean;
+  deletedAt: Date | null;
+}
+
+/**
  * The column list backing `PublicRollRow`.
  *
  * Adding a column to `rolls` without adding it here is a **compile error** at
@@ -88,6 +105,11 @@ declare module 'fastify' {
     requireDeviceRoll(rollIdParam: string): preHandlerHookHandler;
     /** Requires the host token of the roll named by `rollIdParam`. */
     requireHost(rollIdParam: string): preHandlerHookHandler;
+    /**
+     * Requires the host token of the roll that **owns the capture** named by
+     * `captureIdParam`. Sets `request.capture` as well as `request.roll`.
+     */
+    requireHostCapture(captureIdParam: string): preHandlerHookHandler;
     /** Resolves `:slug` to a roll, enforcing the PIN gate when there is one. */
     guestRollAccess: preHandlerHookHandler;
   }
@@ -95,6 +117,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     device: DeviceIdentity | null;
     roll: PublicRollRow | null;
+    capture: HostCapture | null;
   }
 }
 
@@ -126,6 +149,50 @@ function slugParam(request: FastifyRequest): string | null {
 /** Reports only the offending field NAMES, never the submitted values. */
 function issuePaths(error: z.ZodError): string {
   return error.issues.map((issue) => issue.path.join('.') || '(root)').join(', ');
+}
+
+/* ------------------------------------------------------------ host tokens -- */
+
+/**
+ * The credential half of host authentication: is there a host token at all, and
+ * is it the right kind of token?
+ *
+ * Split out because `requireHost` and `requireHostCapture` differ only in how
+ * they find the roll — one reads it from a path parameter, the other derives it
+ * from a capture. Everything about the token is identical, and a second copy of
+ * it would be a second place for the 401/403 distinction (07 §25) to be got
+ * wrong. Returns null once it has already answered the request.
+ */
+function hostBearer(request: FastifyRequest, reply: FastifyReply): string | null {
+  const token = bearerToken(request.headers.authorization);
+  if (token === null) {
+    fail(reply, 401, 'HOST_TOKEN_REQUIRED', 'expected Authorization: Bearer hrt_...');
+    return null;
+  }
+
+  const scope = tokenScope(token);
+  if (scope !== 'hrt') {
+    // A real credential for the wrong scope is a permission failure; anything
+    // else is simply not a credential.
+    if (scope === 'kdt') {
+      fail(reply, 403, 'WRONG_TOKEN_SCOPE', 'a device token cannot act as host');
+    } else {
+      fail(reply, 401, 'INVALID_HOST_TOKEN', 'not a host token');
+    }
+    return null;
+  }
+  return token;
+}
+
+/**
+ * The one comparison that grants host access, in one place.
+ *
+ * Constant-time: the indexed lookup that found the row only selected a
+ * candidate, and the equality that actually decides must not run through the
+ * database's own byte comparison.
+ */
+function hostTokenOpens(token: string, hostTokenHash: string): boolean {
+  return timingSafeHexEqual(hashToken(token), hostTokenHash);
 }
 
 /** The two scopes that own a slice of the URL space; guest routes own none. */
@@ -315,17 +382,10 @@ export const authPlugin = fp(
 
     app.decorate('requireHost', (rollIdParam: string): preHandlerHookHandler =>
       scoped('host', async (request, reply) => {
-        const token = bearerToken(request.headers.authorization);
-        if (token === null) {
-          return fail(reply, 401, 'HOST_TOKEN_REQUIRED', 'expected Authorization: Bearer hrt_...');
-        }
-
-        const scope = tokenScope(token);
-        if (scope !== 'hrt') {
-          return scope === 'kdt'
-            ? fail(reply, 403, 'WRONG_TOKEN_SCOPE', 'a device token cannot act as host')
-            : fail(reply, 401, 'INVALID_HOST_TOKEN', 'not a host token');
-        }
+        const token = hostBearer(request, reply);
+        // The reply is already sent; returning it is how a Fastify preHandler
+        // says "stop here" without a second send.
+        if (token === null) return reply;
 
         const rollId = paramOf(request, rollIdParam);
         if (rollId === null) {
@@ -346,11 +406,81 @@ export const authPlugin = fp(
         // Destructured out here and never re-attached: the hash is needed for
         // this comparison and for nothing downstream.
         const { hostTokenHash, ...roll } = row;
-        if (!timingSafeHexEqual(hashToken(token), hostTokenHash)) {
+        if (!hostTokenOpens(token, hostTokenHash)) {
           return fail(reply, 403, 'INVALID_HOST_TOKEN', 'that host token does not open this roll');
         }
 
         request.roll = roll;
+        return undefined;
+      }),
+    );
+
+    /**
+     * Host auth for the moderation routes of 03 §11, which are addressed by
+     * **captureId** rather than by rollId.
+     *
+     * `requireHost` cannot express this: it keys the token comparison on a roll
+     * id path parameter, and these routes have none. A host token for roll A must
+     * not moderate a capture in roll B, so the roll is *derived* from the capture
+     * and the comparison is made against **that** roll's hash — the same shape of
+     * problem `deliverAsset` solves for guests by deriving the roll from the
+     * asset.
+     *
+     * Nothing about the token is re-implemented: `hostBearer` and
+     * `hostTokenOpens` above are the same two functions `requireHost` uses, so
+     * there is one definition of what a host credential is and one comparison
+     * that grants access.
+     *
+     * The order of answers is deliberate. An unknown capture is 404 **before**
+     * the token is compared, which is safe for the same reason the roll lookup
+     * above is: a capture id is 128 random bits, so there is no id space to
+     * enumerate. A capture that exists under a roll this token does not open is
+     * 403, which tells the caller nothing it did not already know — it named the
+     * capture.
+     */
+    app.decorate('requireHostCapture', (captureIdParam: string): preHandlerHookHandler =>
+      scoped('host', async (request, reply) => {
+        const token = hostBearer(request, reply);
+        // The reply is already sent; returning it is how a Fastify preHandler
+        // says "stop here" without a second send.
+        if (token === null) return reply;
+
+        const captureId = paramOf(request, captureIdParam);
+        if (captureId === null) {
+          return fail(
+            reply,
+            400,
+            'CAPTURE_ID_REQUIRED',
+            `missing :${captureIdParam} path parameter`,
+          );
+        }
+
+        // One query for both rows. The capture's roll is the only roll that can
+        // authorize this request, so the join is not an optimisation — it is what
+        // makes "whose hash do I compare against" unambiguous.
+        const [row] = await app.db
+          .select({
+            captureId: captures.id,
+            visible: captures.visible,
+            deletedAt: captures.deletedAt,
+            ...publicRollColumns,
+            hostTokenHash: rolls.hostTokenHash,
+          })
+          .from(captures)
+          .innerJoin(rolls, eq(rolls.id, captures.rollId))
+          .where(eq(captures.id, captureId))
+          .limit(1);
+        if (row === undefined) {
+          return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'no such capture');
+        }
+
+        const { captureId: id, visible, deletedAt, hostTokenHash, ...roll } = row;
+        if (!hostTokenOpens(token, hostTokenHash)) {
+          return fail(reply, 403, 'INVALID_HOST_TOKEN', 'that host token does not open this roll');
+        }
+
+        request.roll = roll;
+        request.capture = { id, rollId: roll.id, visible, deletedAt };
         return undefined;
       }),
     );
@@ -448,4 +578,12 @@ export function deviceOf(request: FastifyRequest): DeviceIdentity {
 export function rollOf(request: FastifyRequest): PublicRollRow {
   if (request.roll === null) throw new Error('route is missing a roll-resolving preHandler');
   return request.roll;
+}
+
+/** Narrows `request.capture` after `requireHostCapture`. */
+export function captureOf(request: FastifyRequest): HostCapture {
+  if (request.capture === null) {
+    throw new Error('route is missing the requireHostCapture preHandler');
+  }
+  return request.capture;
 }

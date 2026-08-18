@@ -226,7 +226,7 @@ hashes PINs, `src/auth/plugins.ts` turns both into Fastify preHandlers.
 | Scope | Credential | preHandler | Sets |
 | --- | --- | --- | --- |
 | device | `Authorization: Bearer kdt_...` | `requireDevice`, `requireDeviceRoll(param)` | `request.device` |
-| host | `Authorization: Bearer hrt_...` | `requireHost(param)` | `request.roll` |
+| host | `Authorization: Bearer hrt_...` | `requireHost(param)`, `requireHostCapture(param)` | `request.roll`, `request.capture` |
 | guest | anonymous + signed PIN cookie | `guestRollAccess` | `request.roll` |
 
 A token is `<prefix>_<base64url of 32 random bytes>`; only its sha256 hash is
@@ -252,6 +252,22 @@ A device reaches a roll it created (`rolls.created_by_device_id`) or joined
 writes **no** such row: the creator is already recorded in
 `rolls.created_by_device_id`, and both routes that care read the two with the
 same `OR`.
+
+### Host auth on a route with no `:rollId`
+
+The moderation routes are addressed by `captureId`, so `requireHost(param)` —
+which keys its comparison on a roll id path parameter — cannot express them.
+`requireHostCapture(param)` joins `captures` to `rolls`, compares the presented
+token against **the capture's own roll**, and sets `request.capture` alongside
+`request.roll`. A host token for roll A therefore cannot moderate a capture in
+roll B: the hash it is compared against is the one belonging to the capture, not
+one the caller named.
+
+Both preHandlers share `hostBearer` (presence and scope) and `hostTokenOpens`
+(the constant-time comparison), so there is one definition of what a host
+credential is. Order of answers: an unknown capture is **404 before** the token
+is compared — safe because a capture id is 128 random bits — and a capture under
+a roll the token does not open is **403**.
 
 ### `request.roll` never carries a credential hash
 
@@ -328,7 +344,7 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `POST /api/device/rolls/join` `{slug}` | device | writes `roll_devices`; idempotent |
 | `GET /api/device/rolls/current` | device | assigned rolls with `status = live` |
 | `POST /api/host/rolls` | **none** | host web creation; mints a new host token |
-| `GET /api/host/rolls/:rollId` | host | dashboard view with real capture `counts` |
+| `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts` and live `guests` |
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
 | `GET /api/rolls/:slug` | guest | `{title, status, photoCount, createdAt}` |
@@ -763,20 +779,134 @@ guest kept refreshing the key. Per-member scores expire per member:
 read and returns `ZCARD`. Resolution is the heartbeat: a clean disconnect is
 removed at once, a vanished one within 60 s.
 
+`GET /api/host/rolls/:rollId` is the consumer — the dashboard's `guests` field
+(03 §10). It runs concurrently with the capture counts, and a Redis failure
+reports **0** rather than failing the dashboard: the viewer set is maintained
+only by live SSE connections, which need the same Redis, so an unreachable Redis
+means there is nobody to count. The outage itself shows up in `/api/healthz`.
+
 ### Known gaps
 
 - `roll.opened` / `roll.closed` are in the union but nothing publishes them yet.
   The host status PATCH is where they belong, and a guest currently learns a
   roll closed by re-fetching it.
 - `processing.completed` likewise: it is the worker's event (Task 22).
-- `countRollViewers` is not yet surfaced anywhere — the host dashboard's
-  "Guests" number (03 §10) is the consumer this exists for.
 - Streams and viewer sets are keyed by roll id and expire only on their own
   terms: a deleted roll leaves its `roll:<id>:stream` behind until Redis evicts
   it. Deletion is not implemented yet; when it is, it should `DEL` both keys.
 - A client that stops reading is dropped once 64 KB has queued for it, rather
   than being buffered indefinitely. That is safe *because* of `Last-Event-ID`:
   it reconnects and replays.
+
+## Host moderation and export (03 §11, §25)
+
+| Route | Auth | Notes |
+| --- | --- | --- |
+| `POST /api/host/captures/:captureId/hide` | host (capture) | `visible = false`; `capture.hidden` |
+| `POST /api/host/captures/:captureId/unhide` | host (capture) | `visible = true`; `capture.updated` |
+| `DELETE /api/host/captures/:captureId` | host (capture) | `deleted_at = now()`; `capture.deleted` |
+| `POST /api/host/rolls/:rollId/export` | host | `202 {jobId}`, `Location:` the poll route |
+| `GET /api/host/rolls/:rollId/export/:jobId` | host | `{status, url?}` |
+
+All five write an `audit_events` row with actor `host` and actions
+`capture.hidden` / `capture.unhidden` / `capture.deleted` / `roll.exported`. For
+these, `target` is the id of the row the action applied to, not a destroyed value
+— an entry that did not name its capture would record only that *something* was
+hidden.
+
+Moderation works on a **closed or archived** roll. Closing stops uploads (03
+§22); it does not stop a host taking down a photo somebody complained about
+afterwards, which is when most complaints arrive.
+
+### Hide versus delete
+
+`hide` sets `visible = false` and retains everything. `delete` sets `deleted_at`
+and retains everything for `TRASH_GRACE_DAYS` = **7**; Task 25's purge job is
+what finally removes the bytes, and it reads that constant from
+`src/captures/moderation.ts` rather than re-declaring 7.
+
+Both are invisible to a guest the moment the row is committed — `guestVisible` in
+`captures/feed.ts` reads the same two columns, so the feed and the detail route
+change within the same request cycle, with no cache to invalidate. A trashed
+capture also leaves the host's dashboard counts, which read "what is not in the
+bin"; a hidden one stays in `captures` and appears in `hidden`.
+
+`delete` deliberately does **not** also clear `visible`. The two flags mean
+different things, and a restore (Task 25) has to put the capture back exactly as
+the host had it. Re-deleting keeps the **original** `deleted_at`, so a client
+retrying on a timeout cannot postpone the purge.
+
+Every verb is a no-op the second time — no duplicate audit row, no duplicate
+event. Hiding an already-hidden capture is an ordinary retry, and an event for it
+would tell every connected guest to re-fetch something that did not move. A
+failed publish does not fail the request: the row is committed, so the capture is
+already gone for anyone loading the page, and refusing the host's moderation
+because Redis blinked would be the worse trade.
+
+There is no bulk endpoint, no reason field, no reviewer queue and no restore
+route — 03 §29, "do not overbuild moderation for V1".
+
+### Export state lives in `export_jobs`, not `processing_events`
+
+`processing_events.capture_id` is NOT NULL and its dedupe index is keyed on
+`(capture_id, job)`. A roll export belongs to no capture, so it cannot have a row
+there without either loosening that column — making every capture-scoped consumer
+handle a null it can never see — or inventing a placeholder capture. So a roll
+export gets its own table, and the keys state the difference: one answers "how is
+this capture's pipeline doing", the other "where is the host's ZIP".
+
+The row **is** the jobId. Its primary key names the row, names the BullMQ job
+(`exportJobKey(jobId)` = `<jobId>:export-roll`), and names the object
+(`exportObjectKey` = `rolls/<rollId>/derived/exports/<jobId>.zip`), so a host
+holding one id can be answered with no lookup table between the three. The key is
+**derived, never stored**: a stored key and a computed key are two answers to one
+question, and the day they disagree the ZIP is unreachable with nothing to say
+why.
+
+`export_jobs_roll_live` is a partial unique index on `roll_id` where status is
+`queued` or `running` — one live export per roll, enforced by the database rather
+than the route. A full export is the heaviest job in the platform, and the host
+UI's natural failure mode is a button pressed three times because nothing
+visibly happened; without the index that is three full exports. `claimExportJob`
+inserts and lets the index decide (a SELECT-then-insert would let two taps both
+find nothing and both insert), then reads back the job already in flight and
+returns *its* id.
+
+Unlike the upload pipeline, a failed `queue.add` **fails the request**. A missing
+thumbnail regenerates on the next capture; a missing export never happens, so a
+`202 {jobId}` for a job nobody will pick up would be a lie. The route therefore
+submits on *every* call, not only on a fresh claim: the jobId is derived from the
+row, so re-submitting a job that still exists is a no-op inside BullMQ, and
+re-submitting one that does not is how the retry recovers the `queued` row a
+failed add left behind. Submitting only fresh claims would leave that row unqueued
+forever.
+
+### The link is signed only when the ZIP is there
+
+`GET …/export/:jobId` answers `{status}` alone until status is `done` **and** a
+`HeadObject` confirms the object. Signing a missing object hands the host a link
+that 404s from storage with nothing to explain it, while the status field claims
+the file exists; one HEAD to make that claim true is the right trade, and the
+"done but no object" case is logged at error level.
+
+Expiry is 24 h — far longer than the 60 s on an asset URL, because the two links
+are different things: an asset URL is fetched immediately by an `<img>` the
+server just authorized, an export URL is handed to a human to click when
+convenient. The job id is part of the `WHERE`, so a job belonging to another roll
+is indistinguishable from one that never existed (`404 EXPORT_JOB_NOT_FOUND`).
+
+Neither route consults `downloadsEnabled`: that flag governs what **guests** may
+download, and a host who turned it off has not locked themselves out of their own
+photos.
+
+### Known gaps
+
+- The handler that builds the ZIP is Task 25's. Nothing moves a row off `queued`
+  yet, so `status` is `queued` until that lands.
+- The purge job is Task 25's too. Trashed captures accumulate; nothing reads
+  `TRASH_GRACE_DAYS` yet except the `purgeAfter` field in the reply.
+- No restore route, so a trashed capture can currently only be un-trashed by
+  hand. Restore is on Task 25's side of the line.
 
 ## Logging
 

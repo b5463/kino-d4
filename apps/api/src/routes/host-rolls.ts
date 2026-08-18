@@ -13,8 +13,10 @@ import {
   regenerateSlug,
   statusAuditAction,
   type AuditEntry,
+  type HostRollView,
 } from '../rolls/rolls';
 import { rollCaptureCounts } from '../uploads/uploads';
+import { countRollViewers } from '../events/viewers';
 import { auditEvents, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
 
@@ -85,7 +87,7 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/host/rolls/:rollId', { preHandler: app.requireHost('rollId') }, async (request) => {
     const roll = rollOf(request);
-    return hostRollView(app.config, roll, await rollCaptureCounts(app.db, roll.id));
+    return dashboard(app, roll);
   });
 
   app.patch(
@@ -159,7 +161,7 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const updated = await applyPatch(app, roll, patch, audit);
-      return hostRollView(app.config, updated, await rollCaptureCounts(app.db, updated.id));
+      return dashboard(app, updated);
     },
   );
 
@@ -177,6 +179,34 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 };
+
+/**
+ * The dashboard payload: the roll, its capture counts and its live guest count.
+ *
+ * One function for both routes so the GET and the PATCH cannot answer with
+ * different shapes — a host UI that re-renders from a PATCH response would
+ * otherwise lose whichever number the PATCH forgot.
+ *
+ * The two reads run concurrently: they hit different servers and neither depends
+ * on the other, so serialising them would make every dashboard render cost the
+ * sum of two round trips instead of the larger one.
+ *
+ * A Redis failure reports **0 guests** rather than failing the dashboard, and
+ * that is an honest degradation rather than a convenient one: the viewer set is
+ * maintained only by live SSE connections, which need the same Redis, so if it
+ * is unreachable there are no guests connected to count. `/api/healthz` is where
+ * the outage itself is visible.
+ */
+async function dashboard(app: FastifyInstance, roll: PublicRollRow): Promise<HostRollView> {
+  const [counts, guests] = await Promise.all([
+    rollCaptureCounts(app.db, roll.id),
+    countRollViewers(app.redis, roll.id).catch((err: unknown) => {
+      app.log.warn({ err, rollId: roll.id }, 'guest count unavailable; reporting zero');
+      return 0;
+    }),
+  ]);
+  return hostRollView(app.config, roll, counts, guests);
+}
 
 /**
  * Writes the update and its audit rows together, or neither.

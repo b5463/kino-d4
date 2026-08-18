@@ -245,3 +245,54 @@ export const processingEvents = pgTable(
       .where(sql`${t.status} = 'queued'`),
   ],
 );
+
+/**
+ * Roll-scoped export jobs (03 §25) — the state behind `{status, url?}`.
+ *
+ * ## Why this is not `processing_events`
+ *
+ * `processing_events.capture_id` is NOT NULL and its dedupe index is keyed on
+ * `(capture_id, job)`. A roll export belongs to no capture, so it cannot have a
+ * row there without either loosening that column — which would make every
+ * capture-scoped consumer of the table handle a null it can never encounter —
+ * or inventing a placeholder capture, which is worse. The two tables answer
+ * different questions and the keys say so: one is "how is this capture's
+ * pipeline doing", this one is "where is the host's ZIP".
+ *
+ * The row **is** the jobId the host polls. There is no separate handle: the
+ * primary key names the row, names the BullMQ job (through
+ * `exportJobKey`), and names the object (`exports/<id>.zip`), so a host holding
+ * one id can be answered without a lookup table between the three.
+ */
+export const exportJobs = pgTable(
+  'export_jobs',
+  {
+    id: text('id').primaryKey(), // 'exp_' + nanoid — the jobId the host polls
+    rollId: text('roll_id')
+      .notNull()
+      .references(() => rolls.id),
+    status: text('status').notNull().default('queued'), // queued|running|done|failed
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    /**
+     * One live export per roll, enforced by the database rather than by the
+     * route.
+     *
+     * A roll export is the heaviest job in the platform — every original frame
+     * of every capture, zipped — and the host UI's natural failure mode is a
+     * button pressed three times because nothing visibly happened. Without this
+     * index that is three full exports. With it, the second press is refused by
+     * the index and the route hands back the id of the export already running.
+     *
+     * Partial, on `queued` **and** `running`: a job that has started is still in
+     * flight, and finishing one must leave the roll free to export again — a
+     * host who adds photos after closing the roll needs a second ZIP.
+     */
+    uniqueIndex('export_jobs_roll_live')
+      .on(t.rollId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+  ],
+);
