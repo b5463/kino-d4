@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { D4_V1, resolveDimensions } from '@kino/hardware-profiles';
-import { formatDims, connectedInstanceIds, formatNetLine } from '../src/panels/Inspector';
+import type { ComponentDef } from '@kino/hardware-profiles';
+import { formatDims, connectedInstanceIds, formatNetLine, fovLabel } from '../src/panels/Inspector';
 import { confidenceLabel, conflictSourceLines, formatSizeMm } from '../src/panels/ConfidenceBadge';
 import { groupedInstances } from '../src/panels/ComponentTree';
 
@@ -8,6 +9,22 @@ function component(id: string) {
   const c = D4_V1.components.find((cd) => cd.id === id);
   if (!c) throw new Error(`fixture missing component "${id}"`);
   return c;
+}
+
+/**
+ * A minimal `ComponentDef` fixture — only `specs` varies between tests
+ * below, everything else is filler `fovLabel` never reads.
+ */
+function fixtureComponent(specs: Record<string, unknown> | undefined): ComponentDef {
+  return {
+    id: 'fixture',
+    name: 'Fixture component',
+    qty: 1,
+    meshTier: 'A',
+    sources: [{ kind: 'OFFICIAL_SPEC', sizeMm: [1, 1, 1] }],
+    keepouts: [],
+    specs,
+  };
 }
 
 describe('formatDims', () => {
@@ -126,5 +143,35 @@ describe('groupedInstances', () => {
     const partial = { instances: D4_V1.instances.filter((i) => i.group === 'body') } as typeof D4_V1;
     const groups = groupedInstances(partial);
     expect(groups.map((g) => g.label)).toEqual(['BODY']);
+  });
+});
+
+describe('fovLabel — never a hard-coded OV3660 FOV (§7.3, §9)', () => {
+  it('shows MEASURE REQUIRED for the real camera-node specs (both axes null, fovConfidence MEASURE_REQUIRED)', () => {
+    const camera = component('camera-node');
+    expect(camera.specs?.['horizontalFovDeg']).toBeNull();
+    expect(camera.specs?.['verticalFovDeg']).toBeNull();
+    expect(fovLabel(camera)).toBe('MEASURE REQUIRED');
+  });
+
+  it('formats a real numeric measurement when both axes are known', () => {
+    const measured = fixtureComponent({ horizontalFovDeg: 68.5, verticalFovDeg: 51.2, fovConfidence: 'MEASURED' });
+    expect(fovLabel(measured)).toBe('68.5° × 51.2°');
+  });
+
+  it('never prints a partial or invented number when only one axis is populated', () => {
+    const oneAxis = fixtureComponent({ horizontalFovDeg: 68.5, verticalFovDeg: null, fovConfidence: 'PROVISIONAL' });
+    const label = fovLabel(oneAxis);
+    expect(label).not.toMatch(/68\.5/);
+    expect(label).not.toMatch(/^\d/);
+  });
+
+  it('falls back to MEASURE REQUIRED when FOV fields exist but the confidence tag is missing/unrecognized', () => {
+    const noConfidence = fixtureComponent({ horizontalFovDeg: null, verticalFovDeg: null });
+    expect(fovLabel(noConfidence)).toBe('UNKNOWN');
+  });
+
+  it('returns null (no FOV row at all) for a component with no FOV fields, e.g. the battery', () => {
+    expect(fovLabel(component('battery'))).toBeNull();
   });
 });

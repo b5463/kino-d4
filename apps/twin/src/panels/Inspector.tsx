@@ -50,7 +50,7 @@ function formatVec3([x, y, z]: readonly [number, number, number]): string {
  * `null` when the component carries no FOV fields at all (i.e. it isn't a
  * camera/lens component).
  */
-function fovLabel(component: ComponentDef): string | null {
+export function fovLabel(component: ComponentDef): string | null {
   const specs = component.specs;
   if (!specs) return null;
   const h = specs['horizontalFovDeg'];
@@ -136,11 +136,11 @@ export function Inspector() {
       <section className="twin-inspector-section">
         <div className="twin-inspector-row">
           <span className="twin-inspector-label">POSITION</span>
-          <span className="twin-inspector-value">{transform ? formatVec3(transform.positionMm) : '—'} mm</span>
+          <span className="twin-inspector-value">{transform ? `${formatVec3(transform.positionMm)} mm` : '—'}</span>
         </div>
         <div className="twin-inspector-row">
           <span className="twin-inspector-label">ROTATION</span>
-          <span className="twin-inspector-value">{transform ? formatVec3(transform.rotationDeg) : '—'} deg</span>
+          <span className="twin-inspector-value">{transform ? `${formatVec3(transform.rotationDeg)} deg` : '—'}</span>
         </div>
       </section>
 
