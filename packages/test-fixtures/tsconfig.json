@@ -15,5 +15,5 @@
   // are not in scope here the way they are inside its own project. Without
   // them SerialTransport's `SerialPort` is unresolved and cascades into
   // spurious null errors.
-  "include": ["src", "tests", "../kdp/src/types/webserial.d.ts"]
+  "include": ["src", "tests", "scripts", "../kdp/src/types/webserial.d.ts"]
 }

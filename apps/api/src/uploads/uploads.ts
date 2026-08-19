@@ -87,20 +87,23 @@ function inFlight(asset: AssetState): boolean {
  * reads as. Only a caller that has *just* queued jobs and is waiting for them
  * passes the third argument.
  *
- * `jobsLost` is how many of the capture's jobs were permanently given up on. It
- * defaults to none, so every existing two- and three-argument call means what it
- * always did.
- *
  * Job state is checked before the upload ladder on purpose. Once workers are
  * running they create their own asset rows in `pending`, and a ladder consulted
  * first would read those as "uploading again" and walk a `processing` capture
  * backwards.
+ *
+ * `jobsLost` is the fourth argument because a *job* can be permanently lost
+ * without any *asset* being lost. A derivative that never rendered has no failed
+ * asset row — it has no row at all — so the asset ladder alone would call that
+ * capture `ready`, which is the one thing it is not: the platform owes it a
+ * thumbnail it is never going to produce. It defaults to false so every caller
+ * that has queued nothing keeps reading as it did.
  */
 export function nextCaptureStatus(
   assets: readonly AssetState[],
   jobsDone: boolean,
   jobsQueued: boolean = jobsDone,
-  jobsLost: number = 0,
+  jobsLost: boolean = false,
 ): CaptureStatus {
   if (assets.length === 0) return 'created';
 
@@ -113,15 +116,12 @@ export function nextCaptureStatus(
     // While the queue is still working, the outcome is not decided yet — a
     // failed asset may still be retried, so `processing` is the honest answer.
     if (!jobsDone) return 'processing';
-    // Once it has finished, a capture that permanently lost an asset is
-    // `partial`, not `ready` (05 §8). Reporting `ready` here would drop it out
-    // of the host's Pending count while it is genuinely incomplete, which is
-    // the one thing "partial" exists to prevent.
-    // `jobsLost` is the same argument in the job domain: a job the queue gave up
-    // on leaves a derivative that will never exist, so the capture is incomplete
-    // even though every asset row that does exist is fine. Counting it here is
-    // what stops an exhausted retry chain reporting `ready`.
-    return failed.length > 0 || jobsLost > 0 ? 'partial' : 'ready';
+    // Once it has finished, a capture that permanently lost an asset — or a
+    // derivative a job was supposed to produce and never did — is `partial`, not
+    // `ready` (05 §8). Reporting `ready` here would drop it out of the host's
+    // Pending count while it is genuinely incomplete, which is the one thing
+    // "partial" exists to prevent.
+    return failed.length > 0 || jobsLost ? 'partial' : 'ready';
   }
 
   const pending = assets.filter(inFlight);
@@ -169,26 +169,20 @@ function previewOrCreated(assets: readonly AssetState[]): CaptureStatus {
  * two rows inside one transaction, where `now()` is identical for both:
  * lifecycle order decides first (a `done` beats the `running` it followed), and
  * the id is a last resort so the read is total rather than arbitrary.
- */
-/**
- * A job's latest row says the queue gave up on it: the attempts were exhausted
- * and no worker will run it again (Task 22's terminal-failure policy, which also
- * retires the job's `queued` row to `superseded` so the enqueue is not re-armed).
  *
- * The name lives here rather than in the worker because this is the only place
- * that has to *interpret* it, and 05 §11 keeps the two sides from importing each
- * other. It is one string in one direction: the worker writes it, the API reads
- * it.
+ * The rank knows Task 23's two statuses as well. `abandoned` outranks
+ * everything, because a job with no attempts left is over whatever else was
+ * written in the same instant; `superseded` — the retired `queued` row, see
+ * `markJobAbandoned` in the worker — ranks below `queued` so that it can never
+ * be mistaken for a live enqueue.
  */
-const JOB_ABANDONED = 'abandoned';
-
 async function latestJobStatuses(
   db: KinoDatabase,
   captureId: string,
 ): Promise<{ job: string; status: string }[]> {
   const lifecycleRank = sql`case ${processingEvents.status}
-      when 'queued' then 0
-      when 'superseded' then 1
+      when 'superseded' then 0
+      when 'queued' then 1
       when 'running' then 2
       when 'failed' then 3
       when 'done' then 4
@@ -220,9 +214,15 @@ async function latestJobStatuses(
  * survive a later recompute triggered by a worker's own asset row.
  *
  * A job whose latest row is `failed` counts as neither queued-and-finished nor
- * done, so the capture stays `processing` — honest while BullMQ still has
- * retries left, and deliberately not `partial`: what `partial` describes is a
- * lost *asset*, and that is the asset rows' answer to give.
+ * done, so the capture stays `processing` — honest, because BullMQ still has
+ * retries left and a `failed` row is one attempt, not a verdict.
+ *
+ * An `abandoned` row *is* the verdict: the worker writes it when the attempts run
+ * out (see `markJobAbandoned`). Those jobs count as finished — otherwise the
+ * capture sits in `processing` for the rest of time, which is board issue #8 —
+ * and they count as lost, which is what turns the answer into `partial` rather
+ * than `ready`. `partial` is right even when every asset row is intact: the
+ * platform owes this capture a derivative it is never going to produce.
  */
 export async function recomputeCaptureStatus(
   db: KinoDatabase,
@@ -237,13 +237,10 @@ export async function recomputeCaptureStatus(
   ]);
 
   const jobsQueued = jobRows.length > 0;
-  const jobsLost = jobRows.filter((job) => job.status === JOB_ABANDONED).length;
-  // An abandoned job counts as finished: nothing is going to move it again, so
-  // waiting on it would strand the capture in `processing` forever. It is
-  // finished *badly*, which `jobsLost` is what carries.
+  // Settled either way: `done` succeeded, `abandoned` will not be tried again.
   const jobsDone =
-    jobsQueued &&
-    jobRows.every((job) => job.status === 'done' || job.status === JOB_ABANDONED);
+    jobsQueued && jobRows.every((job) => job.status === 'done' || job.status === 'abandoned');
+  const jobsLost = jobRows.some((job) => job.status === 'abandoned');
   const status = nextCaptureStatus(assetRows, jobsDone, jobsQueued, jobsLost);
 
   await db.update(captures).set({ status }).where(eq(captures.id, captureId));
@@ -618,7 +615,6 @@ export interface RollCaptureCounts {
   pending: number;
   hidden: number;
 }
-
 
 /**
  * One query, three counts. `deleted_at` is respected everywhere: a deleted

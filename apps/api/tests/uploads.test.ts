@@ -18,6 +18,7 @@ import {
   idempotencyKeyFor,
   jobKeyFor,
   nextCaptureStatus,
+  recomputeCaptureStatus,
   sessionKeyFor,
   type AssetState,
 } from '../src/uploads/uploads';
@@ -484,6 +485,23 @@ describe('nextCaptureStatus (05 §8)', () => {
 
   it('is failed only on total loss', () => {
     expect(nextCaptureStatus([thumb('failed'), frame('failed')], false)).toBe('failed');
+  });
+
+  it('is partial when a job was permanently lost, even with every asset intact', () => {
+    // A derivative that never rendered leaves no failed asset row — it leaves no
+    // row at all — so without `jobsLost` this reads as a finished capture. It is
+    // not one: the platform owes it a thumbnail nobody is going to produce.
+    const intact = [thumb('ready'), frame('ready')];
+    expect(nextCaptureStatus(intact, true, true, true)).toBe('partial');
+    // And a capture that lost nothing still finishes `ready`.
+    expect(nextCaptureStatus(intact, true, true, false)).toBe('ready');
+  });
+
+  it('is still processing while a lost job has siblings that have not finished', () => {
+    // One job abandoned does not settle the capture: the others may yet produce
+    // what they were queued for.
+    const intact = [thumb('ready'), frame('ready')];
+    expect(nextCaptureStatus(intact, false, true, true)).toBe('processing');
   });
 
   it('treats the two-argument form as "jobs done implies jobs queued"', () => {
@@ -1135,6 +1153,134 @@ describe('POST /api/device/captures/:captureId/complete', () => {
     expect(new Set(lifecycle.map((row) => row.status))).toEqual(
       new Set(['queued', 'running', 'done']),
     );
+  }, 60_000);
+});
+
+/**
+ * Board issue #8: a job that runs out of attempts used to strand its capture.
+ *
+ * The worker's terminal-failure write is replayed here rather than driven through
+ * a real worker — that end of the contract is tested in
+ * `apps/worker/tests/imageJobs.test.ts`, and what this suite owns is the
+ * *reader*: given the rows a worker leaves behind, does the capture reach an
+ * answer it can stay on?
+ */
+describe('a permanently failed job settles the capture (#8)', () => {
+  async function complete(captureId: string): Promise<void> {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/device/captures/${captureId}/complete`,
+      headers: bearer(deviceA.deviceToken),
+    });
+    expect(res.statusCode).toBe(200);
+  }
+
+  /** Exactly what `markJobAbandoned` writes: append the verdict, retire the lock. */
+  async function abandon(captureId: string, job: string, tag: string): Promise<void> {
+    await app.db.insert(schema.processingEvents).values([
+      { id: `pev_run_${tag}`, captureId, job, status: 'running' },
+      { id: `pev_fail_${tag}`, captureId, job, status: 'failed', error: 'attempt 5/5: boom' },
+      { id: `pev_gone_${tag}`, captureId, job, status: 'abandoned', error: 'abandoned after 5/5' },
+    ]);
+    await app.db
+      .update(schema.processingEvents)
+      .set({ status: 'superseded' })
+      .where(
+        and(
+          eq(schema.processingEvents.captureId, captureId),
+          eq(schema.processingEvents.job, job),
+          eq(schema.processingEvents.status, 'queued'),
+        ),
+      );
+  }
+
+  async function queuedJobs(captureId: string): Promise<string[]> {
+    const rows = await app.db
+      .select({ job: schema.processingEvents.job })
+      .from(schema.processingEvents)
+      .where(
+        and(
+          eq(schema.processingEvents.captureId, captureId),
+          eq(schema.processingEvents.status, 'queued'),
+        ),
+      );
+    return rows.map((row) => row.job).sort();
+  }
+
+  it('lands on partial instead of sitting in processing forever', async () => {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+    await uploadAsset(captureId, 'thumb', randomBytes(700));
+    await uploadAsset(captureId, 'original-frame', randomBytes(600), {
+      frameIndex: 1,
+      mime: 'image/jpeg',
+    });
+
+    await complete(captureId);
+    expect((await captureStatus(captureId)).status).toBe('processing');
+
+    const jobs = await queuedJobs(captureId);
+    expect(jobs.length).toBeGreaterThan(1);
+
+    // The first job dies for good; the rest succeed. While any of them is still
+    // outstanding the honest answer is `processing`.
+    const [dead, ...rest] = jobs;
+    await abandon(captureId, dead ?? '', `${RUN}_dead`);
+    expect(await recomputeCaptureStatus(app.db, captureId)).toBe('processing');
+
+    for (const [index, job] of rest.entries()) {
+      await app.db.insert(schema.processingEvents).values([
+        { id: `pev_ok_run_${RUN}_${index}`, captureId, job, status: 'running' },
+        { id: `pev_ok_done_${RUN}_${index}`, captureId, job, status: 'done' },
+      ]);
+    }
+
+    // Every job has now finished one way or the other. The capture is not
+    // `ready` — it is missing a derivative nobody will ever produce — and it is
+    // not `processing` either, because nothing is going to change.
+    expect(await recomputeCaptureStatus(app.db, captureId)).toBe('partial');
+    expect((await captureStatus(captureId)).status).toBe('partial');
+
+    // And `partial` is settled, so the host's Pending count has let it go.
+    expect(await recomputeCaptureStatus(app.db, captureId)).toBe('partial');
+  }, 60_000);
+
+  it('frees the enqueue block so a later complete can re-queue the work', async () => {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+    await uploadAsset(captureId, 'original-frame', randomBytes(512), {
+      frameIndex: 1,
+      mime: 'image/jpeg',
+    });
+
+    await complete(captureId);
+    const [dead] = await queuedJobs(captureId);
+    await abandon(captureId, dead ?? '', `${RUN}_requeue`);
+
+    // The partial unique index covers `status = 'queued'` only, so retiring that
+    // row to `superseded` is what lets the insert through the second time.
+    expect(await queuedJobs(captureId)).not.toContain(dead);
+    await complete(captureId);
+    expect(await queuedJobs(captureId)).toContain(dead);
+
+    // The log is intact: every row a worker wrote is still there, the retired
+    // enqueue included.
+    const statuses = await app.db
+      .select({ status: schema.processingEvents.status })
+      .from(schema.processingEvents)
+      .where(
+        and(
+          eq(schema.processingEvents.captureId, captureId),
+          eq(schema.processingEvents.job, dead ?? ''),
+        ),
+      );
+    expect(statuses.map((row) => row.status).sort()).toEqual([
+      'abandoned',
+      'failed',
+      'queued',
+      'running',
+      'superseded',
+    ]);
   }, 60_000);
 });
 

@@ -244,8 +244,10 @@ describe('independence: one failure touches nothing else (07 §26)', () => {
 
     const rows = await eventsFor(captureId);
     // The MP4/webp render died; the thumbnail is untouched by it, which is the
-    // whole of 07 §26 in one assertion.
-    expect(statusesOf(rows, 'render-wiggle-webp')).toEqual(['running', 'failed']);
+    // whole of 07 §26 in one assertion. `abandoned` closes the render out — this
+    // queue is configured for a single attempt, so the first failure is also the
+    // last (Task 23's terminal-failure policy).
+    expect(statusesOf(rows, 'render-wiggle-webp')).toEqual(['running', 'failed', 'abandoned']);
     expect(statusesOf(rows, 'generate-thumbnail')).toEqual(['running', 'done']);
     expect(thumbnails).toBe(1);
   });
@@ -260,7 +262,11 @@ describe('independence: one failure touches nothing else (07 §26)', () => {
     await waitFor('the unhandled job to be recorded', async () =>
       statusesOf(await eventsFor(captureId), 'ai-enhance').includes('failed'),
     );
-    expect(statusesOf(await eventsFor(captureId), 'ai-enhance')).toEqual(['failed']);
+    // No `running` row: the name was rejected before a handler could be looked
+    // up. `abandoned` follows because a job with no handler has nothing to retry
+    // into — a redeploy that adds one re-queues the work, which is exactly what
+    // the released enqueue block is for.
+    expect(statusesOf(await eventsFor(captureId), 'ai-enhance')).toEqual(['failed', 'abandoned']);
   });
 });
 
@@ -286,7 +292,8 @@ describe('retry policy', () => {
     await sleep(300);
 
     expect(calls).toBe(3);
-    // Every attempt is logged, so the log says how many times it was tried.
+    // Every attempt is logged, so the log says how many times it was tried, and
+    // the last one is followed by the row that says there will not be a fourth.
     expect(statusesOf(await eventsFor(captureId), 'extract-metadata')).toEqual([
       'running',
       'failed',
@@ -294,6 +301,7 @@ describe('retry policy', () => {
       'failed',
       'running',
       'failed',
+      'abandoned',
     ]);
   });
 

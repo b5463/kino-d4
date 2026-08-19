@@ -93,9 +93,20 @@ export function assertDerivedOnly(key: string): void {
  * Every S3 operation that can destroy or replace an object.
  *
  * Reads are absent on purpose: a handler must be able to fetch the frames it
- * works on, and reading an original is the normal case. The multipart trio is
- * here because "upload it in parts" is a write like any other, and
- * `DeleteObjects` because a batch delete is a delete.
+ * works on, and reading an original is the normal case. The multipart commands
+ * are here because "upload it in parts" is a write like any other,
+ * `DeleteObjects` because a batch delete is a delete, and `UploadPartCopy`
+ * because a part whose bytes come from another object is still a part of a new
+ * object at the destination key.
+ *
+ * The three metadata mutators are the ones a guard is most likely to be missing,
+ * and the ones that make its promise false while looking harmless. None of them
+ * changes an object's bytes; every one of them changes what the object *is*.
+ * `PutObjectTagging` rewrites the tags a lifecycle rule may act on, so it can get
+ * an original deleted without ever addressing its bytes. `PutObjectAcl` can make
+ * a private original world-readable. `PutObjectRetention` can pin an object
+ * against deletion — or, with governance bypass, unpin one. "Originals are
+ * immutable" (01 §7) has to mean the object, not only its body.
  */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   'PutObjectCommand',
@@ -104,7 +115,13 @@ const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   'CopyObjectCommand',
   'CreateMultipartUploadCommand',
   'UploadPartCommand',
+  'UploadPartCopyCommand',
   'CompleteMultipartUploadCommand',
+  'PutObjectTaggingCommand',
+  'DeleteObjectTaggingCommand',
+  'PutObjectAclCommand',
+  'PutObjectRetentionCommand',
+  'PutObjectLegalHoldCommand',
 ]);
 
 /**

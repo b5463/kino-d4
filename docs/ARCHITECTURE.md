@@ -101,6 +101,7 @@ One subscriber connection serves all Roll guests in an API process. If that conn
 apps/
   api/                 Fastify API, migrations, auth, uploads, SSE
   studio/              React device workbench
+  worker/              BullMQ media workers, derivative jobs
 packages/
   kdp/                 protocol implementation
   schemas/             portable document schemas
@@ -115,6 +116,6 @@ archive/               retained recovery material
 
 ## Current implementation line
 
-The main branch contains Studio, the API foundation, shared contracts, local infrastructure, and broad tests. The public Roll client and production Twin application are not present on this branch. Their specifications are detailed enough to guide implementation, but documentation must not describe them as shipped applications.
+The main branch contains Studio, the API foundation, media workers, shared contracts, local infrastructure, and broad tests. Derivative jobs run, but nothing recomputes a capture's stored status when a job finishes, so a fully processed capture still reads `processing`. The public Roll client and production Twin application are not present on this branch. Their specifications are detailed enough to guide implementation, but documentation must not describe them as shipped applications.
 
 For exact protocol authority, start at [the firmware contract](../firmware-contract/README.md). For the hardware boundary, read [the hardware reference](HARDWARE.md).
