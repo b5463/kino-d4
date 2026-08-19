@@ -12,6 +12,7 @@ import {
   enqueueProcessingJobs,
   nextCaptureStatus,
   plannedJobs,
+  convergeCaptureStatus,
   recomputeCaptureStatus,
   sessionKeyFor,
   type QueuedJob,
@@ -393,8 +394,14 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       const ctx = await requireCapture(app, request, reply);
       if (ctx === null) return reply;
 
-      const states = await assetStates(app, ctx.capture.id);
-      return reply.send({ status: ctx.capture.status, assets: states });
+      // The stored column is a cache that nothing refreshes once the derivative
+      // jobs start running, so this read refreshes it. Settled captures are
+      // reported straight from the row and cost nothing extra.
+      const [status, states] = await Promise.all([
+        convergeCaptureStatus(app.db, ctx.capture.id, ctx.capture.status),
+        assetStates(app, ctx.capture.id),
+      ]);
+      return reply.send({ status, assets: states });
     },
   );
 

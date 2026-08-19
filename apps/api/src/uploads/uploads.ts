@@ -32,6 +32,25 @@ export const MAX_PART_NUMBER = 10_000;
 
 export type CaptureStatus = (typeof CAPTURE_STATUSES)[number];
 
+/**
+ * The end of the 05 §8 ladder: a capture whose media has stopped moving, one way
+ * or the other. Nothing recomputes out of one of these, which is what makes them
+ * safe to trust from the stored column and to count as not-pending.
+ *
+ * One definition, read by three things that must agree: the dashboard's Pending
+ * filter, `isSettledCaptureStatus`, and the read-time convergence that skips
+ * these rows. A second list would let a capture be pending in the count and
+ * settled to the recompute at the same time.
+ */
+export const SETTLED_CAPTURE_STATUSES = ['ready', 'partial', 'failed'] as const;
+
+const SETTLED: ReadonlySet<string> = new Set<string>(SETTLED_CAPTURE_STATUSES);
+
+/** True once the stored status can no longer change on its own. */
+export function isSettledCaptureStatus(status: string): boolean {
+  return SETTLED.has(status);
+}
+
 /** The two columns of an asset row this state machine reads, and no others. */
 export interface AssetState {
   role: string;
@@ -68,6 +87,10 @@ function inFlight(asset: AssetState): boolean {
  * reads as. Only a caller that has *just* queued jobs and is waiting for them
  * passes the third argument.
  *
+ * `jobsLost` is how many of the capture's jobs were permanently given up on. It
+ * defaults to none, so every existing two- and three-argument call means what it
+ * always did.
+ *
  * Job state is checked before the upload ladder on purpose. Once workers are
  * running they create their own asset rows in `pending`, and a ladder consulted
  * first would read those as "uploading again" and walk a `processing` capture
@@ -77,6 +100,7 @@ export function nextCaptureStatus(
   assets: readonly AssetState[],
   jobsDone: boolean,
   jobsQueued: boolean = jobsDone,
+  jobsLost: number = 0,
 ): CaptureStatus {
   if (assets.length === 0) return 'created';
 
@@ -93,7 +117,11 @@ export function nextCaptureStatus(
     // `partial`, not `ready` (05 §8). Reporting `ready` here would drop it out
     // of the host's Pending count while it is genuinely incomplete, which is
     // the one thing "partial" exists to prevent.
-    return failed.length > 0 ? 'partial' : 'ready';
+    // `jobsLost` is the same argument in the job domain: a job the queue gave up
+    // on leaves a derivative that will never exist, so the capture is incomplete
+    // even though every asset row that does exist is fine. Counting it here is
+    // what stops an exhausted retry chain reporting `ready`.
+    return failed.length > 0 || jobsLost > 0 ? 'partial' : 'ready';
   }
 
   const pending = assets.filter(inFlight);
@@ -142,15 +170,29 @@ function previewOrCreated(assets: readonly AssetState[]): CaptureStatus {
  * lifecycle order decides first (a `done` beats the `running` it followed), and
  * the id is a last resort so the read is total rather than arbitrary.
  */
+/**
+ * A job's latest row says the queue gave up on it: the attempts were exhausted
+ * and no worker will run it again (Task 22's terminal-failure policy, which also
+ * retires the job's `queued` row to `superseded` so the enqueue is not re-armed).
+ *
+ * The name lives here rather than in the worker because this is the only place
+ * that has to *interpret* it, and 05 §11 keeps the two sides from importing each
+ * other. It is one string in one direction: the worker writes it, the API reads
+ * it.
+ */
+const JOB_ABANDONED = 'abandoned';
+
 async function latestJobStatuses(
   db: KinoDatabase,
   captureId: string,
 ): Promise<{ job: string; status: string }[]> {
   const lifecycleRank = sql`case ${processingEvents.status}
       when 'queued' then 0
-      when 'running' then 1
-      when 'failed' then 2
-      when 'done' then 3
+      when 'superseded' then 1
+      when 'running' then 2
+      when 'failed' then 3
+      when 'done' then 4
+      when 'abandoned' then 5
       else -1
     end`;
 
@@ -195,11 +237,120 @@ export async function recomputeCaptureStatus(
   ]);
 
   const jobsQueued = jobRows.length > 0;
-  const jobsDone = jobsQueued && jobRows.every((job) => job.status === 'done');
-  const status = nextCaptureStatus(assetRows, jobsDone, jobsQueued);
+  const jobsLost = jobRows.filter((job) => job.status === JOB_ABANDONED).length;
+  // An abandoned job counts as finished: nothing is going to move it again, so
+  // waiting on it would strand the capture in `processing` forever. It is
+  // finished *badly*, which `jobsLost` is what carries.
+  const jobsDone =
+    jobsQueued &&
+    jobRows.every((job) => job.status === 'done' || job.status === JOB_ABANDONED);
+  const status = nextCaptureStatus(assetRows, jobsDone, jobsQueued, jobsLost);
 
   await db.update(captures).set({ status }).where(eq(captures.id, captureId));
   return status;
+}
+
+/* --------------------------------------------------- convergence on read -- */
+
+/**
+ * The status a reader should report for a capture, recomputing it first if it
+ * has not settled yet.
+ *
+ * ### Why a read has to do this
+ *
+ * `recomputeCaptureStatus` is the API's only writer of `captures.status`, and it
+ * is called from the three device endpoints: capture-complete, asset-init and
+ * asset-complete. Capture-complete runs *before* the derivative jobs execute, so
+ * the status it stores is `processing` — and nothing at all runs after a job
+ * finishes. The worker cannot call this module (05 §11 keeps the API out of the
+ * worker, and a second copy of the ladder in the worker would drift from this
+ * one), so without convergence here a fully processed capture keeps a stored
+ * `processing` forever, and 03 §10's Pending number never reaches zero.
+ *
+ * So the *read* closes the loop. The stored column stays a cache of the rows,
+ * this stays the only place that derives it, and a reader that would otherwise
+ * hand out a stale cache refreshes it instead.
+ *
+ * ### Why no event is published when a read changes the status
+ *
+ * There is nothing new to tell anyone. The worker already publishes
+ * `processing.completed` per role as each job lands, and 05 §10 has the PWA
+ * refetching the capture on that event — that refetch *is* the read that
+ * converges the status, so the client learns the new value in the response it
+ * asked for. An extra `capture.updated` here would be a second notification for
+ * one change, and the read that answered it would arrive after the client
+ * already had the answer. Do not add one.
+ *
+ * ### Why only non-terminal captures
+ *
+ * A settled status (`ready`, `partial`, `failed`) is the end of the ladder: no
+ * later row can move it, so recomputing it can only cost two queries and a write
+ * to reach the value already stored. Skipping them is what keeps a page of a
+ * finished roll exactly as cheap as it was before this existed, and bounds the
+ * extra work by the number of *unsettled* captures on the page.
+ */
+export async function convergeCaptureStatus(
+  db: KinoDatabase,
+  captureId: string,
+  storedStatus: string,
+): Promise<string> {
+  if (isSettledCaptureStatus(storedStatus)) return storedStatus;
+  return recomputeCaptureStatus(db, captureId);
+}
+
+/** A row a page reader has already selected: enough to decide and to report. */
+export interface CaptureStatusRow {
+  id: string;
+  status: string;
+}
+
+/**
+ * `convergeCaptureStatus` for a page, as a lookup of the ids that changed hands.
+ *
+ * Only the unsettled rows are visited, and they are visited concurrently: they
+ * are independent single-capture recomputes, so serialising them would make a
+ * page cost the sum of its captures' round trips instead of the longest one. The
+ * fan-out is bounded by the page's own unsettled subset, which the feed's `limit`
+ * already caps at `FEED_LIMIT_MAX`.
+ *
+ * Returns only the recomputed ids. A caller keeps its own row's status for
+ * everything absent from the map, which is how the settled rows stay untouched
+ * rather than being re-derived into the same value.
+ */
+export async function convergeCaptureStatuses(
+  db: KinoDatabase,
+  rows: readonly CaptureStatusRow[],
+): Promise<Map<string, string>> {
+  const unsettled = rows.filter((row) => !isSettledCaptureStatus(row.status));
+  const converged = await Promise.all(
+    unsettled.map(async (row) => [row.id, await recomputeCaptureStatus(db, row.id)] as const),
+  );
+  return new Map(converged);
+}
+
+/**
+ * Converges every unsettled capture of a roll, so a count taken straight
+ * afterwards is counting current values.
+ *
+ * The roll's unsettled captures *are* its Pending set (03 §10), so this is not
+ * extra work bolted onto the dashboard — it is the work the number requires. A
+ * roll whose captures have all settled reads one cheap index scan and writes
+ * nothing.
+ *
+ * Deleted captures are skipped because no count includes them.
+ */
+async function convergeRoll(db: KinoDatabase, rollId: string): Promise<void> {
+  const unsettled = await db
+    .select({ id: captures.id, status: captures.status })
+    .from(captures)
+    .where(
+      and(
+        eq(captures.rollId, rollId),
+        isNull(captures.deletedAt),
+        notInArray(captures.status, [...SETTLED_CAPTURE_STATUSES]),
+      ),
+    );
+  await convergeCaptureStatuses(db, unsettled);
 }
 
 /* ---------------------------------------------------------- idempotency -- */
@@ -468,12 +619,6 @@ export interface RollCaptureCounts {
   hidden: number;
 }
 
-/**
- * A capture whose media has stopped moving, one way or the other. Everything
- * else is what the dashboard calls "Pending" — still uploading, or queued
- * behind a worker.
- */
-const SETTLED_STATUSES = ['ready', 'partial', 'failed'];
 
 /**
  * One query, three counts. `deleted_at` is respected everywhere: a deleted
@@ -486,10 +631,15 @@ export async function rollCaptureCounts(
   db: KinoDatabase,
   rollId: string,
 ): Promise<RollCaptureCounts> {
+  // The Pending number is a claim about the present, so the rows it counts have
+  // to be brought up to date before they are counted. Without this the dashboard
+  // reports every processed capture as still pending, forever.
+  await convergeRoll(db, rollId);
+
   const [row] = await db
     .select({
       captures: sql<string>`count(*)`,
-      pending: sql<string>`count(*) filter (where ${notInArray(captures.status, SETTLED_STATUSES)})`,
+      pending: sql<string>`count(*) filter (where ${notInArray(captures.status, [...SETTLED_CAPTURE_STATUSES])})`,
       hidden: sql<string>`count(*) filter (where not ${captures.visible})`,
     })
     .from(captures)

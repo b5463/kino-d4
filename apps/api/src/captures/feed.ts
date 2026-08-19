@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { KinoDatabase } from '../plugins/db';
 import { purgeAfter } from './moderation';
+import { convergeCaptureStatus, convergeCaptureStatuses } from '../uploads/uploads';
 import { assets, captures } from '../db/schema';
 
 /**
@@ -345,8 +346,14 @@ async function readPage(
   };
 }
 
-/** The fields both audiences get. Never `visible` or `deletedAt`. */
-function sharedFields(row: CaptureRow): Omit<CaptureView, 'assets'> {
+/**
+ * The fields both audiences get. Never `visible` or `deletedAt`.
+ *
+ * `status` is taken from `converged` when the page's convergence pass moved it,
+ * and from the row otherwise. Both feeds go through here, so neither can forget
+ * to report the fresh value.
+ */
+function sharedFields(row: CaptureRow, converged: Map<string, string>): Omit<CaptureView, 'assets'> {
   return {
     captureId: row.id,
     mode: row.mode,
@@ -355,7 +362,7 @@ function sharedFields(row: CaptureRow): Omit<CaptureView, 'assets'> {
     createdAt: row.createdAt,
     frameCount: row.frameCount,
     resolution: row.resolution,
-    status: row.status,
+    status: converged.get(row.id) ?? row.status,
   };
 }
 
@@ -367,6 +374,10 @@ export async function readCaptureFeedPage(
   cursor: FeedCursor | null,
 ): Promise<CaptureFeedPage<CaptureView>> {
   const { rows, nextCursor, hasMore } = await readPage(db, rollId, limit, cursor, 'guest');
+  // Convergence before the asset read, not after: a recompute can only be
+  // triggered by asset and job rows that already exist, so reading the assets
+  // second means the tiles and the status describe the same moment.
+  const converged = await convergeCaptureStatuses(db, rows);
   const assetsByCapture = await readReadyAssets(
     db,
     rows.map((row) => row.id),
@@ -374,7 +385,7 @@ export async function readCaptureFeedPage(
 
   return {
     items: rows.map((row) => ({
-      ...sharedFields(row),
+      ...sharedFields(row, converged),
       assets: (assetsByCapture.get(row.id) ?? []).map(summarise),
     })),
     nextCursor,
@@ -398,6 +409,7 @@ export async function readHostCaptureFeedPage(
   cursor: FeedCursor | null,
 ): Promise<CaptureFeedPage<HostCaptureView>> {
   const { rows, nextCursor, hasMore } = await readPage(db, rollId, limit, cursor, 'host');
+  const converged = await convergeCaptureStatuses(db, rows);
   const assetsByCapture = await readReadyAssets(
     db,
     rows.map((row) => row.id),
@@ -405,7 +417,7 @@ export async function readHostCaptureFeedPage(
 
   return {
     items: rows.map((row) => ({
-      ...sharedFields(row),
+      ...sharedFields(row, converged),
       assets: (assetsByCapture.get(row.id) ?? []).map(summarise),
       visible: row.visible,
       deletedAt: row.deletedAt,
@@ -436,6 +448,7 @@ export async function readCaptureDetail(
     .limit(1);
   if (row === undefined) return null;
 
+  const status = await convergeCaptureStatus(db, row.id, row.status);
   const assetsByCapture = await readReadyAssets(db, [row.id]);
   return {
     captureId: row.id,
@@ -445,7 +458,7 @@ export async function readCaptureDetail(
     createdAt: row.createdAt,
     frameCount: row.frameCount,
     resolution: row.resolution,
-    status: row.status,
+    status,
     assets: assetsByCapture.get(row.id) ?? [],
   };
 }
