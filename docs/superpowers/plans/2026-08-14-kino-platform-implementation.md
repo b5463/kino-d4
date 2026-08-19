@@ -1200,9 +1200,9 @@ export function registerHandler(name: JobName, fn: (p: JobPayload, ctx: JobCtx) 
   - `extract-metadata`: exif via `exifr` from frame 1 + capture row → JSON `derived/metadata.json`, role `metadata`.
 - Every job: insert/update the asset row (status `ready`, sha256, bytes, dimensions), `publishRollEvent(..., { type: 'processing.completed', captureId, role })`.
 
-- [ ] **Step 1: Write failing tests** — thumbnail output is WebP, width 480, asset row ready, event published; contact sheet width = n*320 + (n-1)*8; running thumbnail twice produces one asset row (upsert by unique index).
+- [x] **Step 1: Write failing tests** — thumbnail output is WebP, width 480, asset row ready, event published; contact sheet width = n*320 + (n-1)*8; running thumbnail twice produces one asset row (upsert by unique index).
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): thumbnail, gallery still, contact sheet, metadata jobs`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): thumbnail, gallery still, contact sheet, metadata jobs`
 
 ### Task 24: Wiggle renders — animated WebP + MP4
 
