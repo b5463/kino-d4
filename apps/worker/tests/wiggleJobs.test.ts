@@ -15,7 +15,7 @@ import { createJobRuntime, type JobRuntime } from '../src/context';
 import { assets } from '../src/db/schema';
 import { IMAGE_HANDLERS } from '../src/jobs';
 import { renderWiggleWebp } from '../src/jobs/wiggleWebp';
-import { renderWiggleMp4 } from '../src/jobs/wiggleMp4';
+import { renderWiggleMp4, resolveFfmpegPath } from '../src/jobs/wiggleMp4';
 import { MissingCaptureError } from '../src/jobs/capture';
 import { evenPixels, WIGGLE_MP4_LOOPS, WIGGLE_WIDTH } from '../src/jobs/wiggle';
 import { rollStreamKey } from '../src/events/publish';
@@ -220,13 +220,24 @@ interface Probe {
   formats: string;
 }
 
+/**
+ * The ffprobe to run: `FFPROBE_PATH` if the operator set one, else the
+ * `ffprobe-static` build. Same precedence as the worker's own `FFMPEG_PATH`, so a
+ * machine with system ffmpeg tools needs neither download.
+ */
+function probeBinary(): string {
+  const configured = process.env['FFPROBE_PATH'];
+  if (typeof configured === 'string' && configured.trim() !== '') return configured.trim();
+  return ffprobeStatic.path;
+}
+
 /** What ffprobe says the MP4 actually is. */
 async function probeMp4(body: Buffer): Promise<Probe> {
   const dir = await mkdtemp(join(tmpdir(), `kino-probe-${RUN}-`));
   const path = join(dir, 'wiggle.mp4');
   try {
     await writeFile(path, body);
-    const { stdout } = await execa(ffprobeStatic.path, [
+    const { stdout } = await execa(probeBinary(), [
       '-v',
       'error',
       '-select_streams',
@@ -507,5 +518,31 @@ describe('handler registration', () => {
   it('binds both render job names', () => {
     expect(IMAGE_HANDLERS['render-wiggle-webp']).toBe(renderWiggleWebp);
     expect(IMAGE_HANDLERS['render-wiggle-mp4']).toBe(renderWiggleMp4);
+  });
+});
+
+describe('resolveFfmpegPath', () => {
+  it('prefers FFMPEG_PATH over the bundled build', async () => {
+    await expect(resolveFfmpegPath({ FFMPEG_PATH: '/usr/bin/ffmpeg' })).resolves.toBe(
+      '/usr/bin/ffmpeg',
+    );
+    await expect(resolveFfmpegPath({ FFMPEG_PATH: '  /opt/ffmpeg  ' })).resolves.toBe(
+      '/opt/ffmpeg',
+    );
+  });
+
+  it('falls back to the bundled build when the variable is unset or blank', async () => {
+    for (const env of [{}, { FFMPEG_PATH: '' }, { FFMPEG_PATH: '   ' }]) {
+      const resolved = await resolveFfmpegPath(env);
+      expect(resolved.length).toBeGreaterThan(0);
+      expect(resolved).toMatch(/ffmpeg/);
+    }
+  });
+
+  it('is the path the renders actually ran with', async () => {
+    // The suite above encoded a real MP4, so whatever this resolves to is
+    // executable — assert that rather than restating the resolution rules.
+    const { stdout } = await execa(await resolveFfmpegPath(), ['-hide_banner', '-version']);
+    expect(stdout).toMatch(/^ffmpeg version/);
   });
 });

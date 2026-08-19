@@ -20,10 +20,12 @@ import { renderWiggleMp4 } from './wiggleMp4';
  * Task 25 owns them, and until then a job with one of those names fails with "no
  * handler registered", which is the honest answer.
  *
- * The two wiggle renders are registered here even though nothing enqueues them
- * yet: they are produced on first request rather than for every capture (see
- * `wiggleMp4.ts`), and a worker that could not run a job the request path is
- * about to queue would be the wrong half to ship second.
+ * The two wiggle renders are not queued alike. `plannedJobs` in the API
+ * (`apps/api/src/uploads/uploads.ts`) already pushes `render-wiggle-webp` for
+ * every `wiggle` capture at capture-complete, so registering it here is the half
+ * that was missing: from this commit on, every wiggle capture gets an animated
+ * WebP. `render-wiggle-mp4` is absent from that list and stays lazy — nothing
+ * enqueues it yet, and it is produced on first request (see `wiggleMp4.ts`).
  */
 export const IMAGE_HANDLERS: Readonly<Partial<Record<JobName, JobHandler>>> = {
   'generate-thumbnail': generateThumbnail,

@@ -2,7 +2,6 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execa } from 'execa';
-import ffmpegPath from 'ffmpeg-static';
 import { loadCapture, requireCaptureId } from './capture';
 import { publishDerived } from './derive';
 import { joinPages, loadWiggleFrames, WIGGLE_MP4_CRF, WIGGLE_MP4_LOOPS } from './wiggle';
@@ -41,15 +40,62 @@ import type { JobCtx, JobPayload } from './types';
  * browser start playing before the whole file has arrived — and it is also why the
  * output goes to a temp file rather than a pipe: faststart rewrites the container
  * after the last frame is written, so it needs an output it can seek.
+ *
+ * ## Where the binary comes from
+ *
+ * `FFMPEG_PATH` if the operator set it; `ffmpeg-static` otherwise. See
+ * `resolveFfmpegPath`.
  */
+/** The variable an operator points at their own ffmpeg. */
+const FFMPEG_PATH_VAR = 'FFMPEG_PATH';
+
+/**
+ * The ffmpeg binary to run: `FFMPEG_PATH` when the operator set it, the bundled
+ * `ffmpeg-static` build otherwise.
+ *
+ * Two reasons the environment wins, and neither is style.
+ *
+ * 1. **`-c:v libx264` is mandated (03 §15) and libx264 is GPL.** A deployment that
+ *    distributes this worker has a licence obligation over that binary, and it is
+ *    the operator's to discharge — with a build they chose and can account for.
+ *    Baking `ffmpeg-static`'s prebuilt download in as the only option would make
+ *    this repository's dependency graph the thing that ships the GPL component.
+ *    (The obligation itself is tracked as board issue #22, not solved here.)
+ * 2. **`ffmpeg-static` downloads its binary in a postinstall script.** As a hard
+ *    requirement, that turns a restricted-egress `npm ci` into a failed install
+ *    for all seven workspaces over a dependency six of them never use. So the
+ *    import is *dynamic*: with `FFMPEG_PATH` set, this function never loads the
+ *    module at all, and `npm ci --ignore-scripts` is enough to run the worker.
+ *
+ * `ffmpeg-static` stays in `dependencies` so a developer with no ffmpeg on their
+ * machine still gets working renders from a plain `npm install`.
+ *
+ * The path is not validated here beyond being non-blank: a wrong path fails on
+ * the first `execa` call with ffmpeg's own error, which says more than a
+ * stat-based guess would.
+ */
+export async function resolveFfmpegPath(env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const configured = env[FFMPEG_PATH_VAR];
+  // A blank value counts as unset, the same rule `loadWorkerConfig` uses, so an
+  // empty line in a .env file falls back instead of exec'ing "".
+  if (typeof configured === 'string' && configured.trim() !== '') return configured.trim();
+
+  const { default: bundled } = await import('ffmpeg-static');
+  if (bundled === null) {
+    throw new Error(
+      `ffmpeg-static has no binary for this platform: set ${FFMPEG_PATH_VAR} to an ` +
+        'ffmpeg built with libx264',
+    );
+  }
+  return bundled;
+}
+
 export async function renderWiggleMp4(payload: JobPayload, ctx: JobCtx): Promise<void> {
   const captureId = requireCaptureId(payload);
   const capture = await loadCapture(ctx.db, captureId);
   const wiggle = await loadWiggleFrames(ctx, capture);
 
-  if (ffmpegPath === null) {
-    throw new Error('ffmpeg-static did not resolve a binary for this platform');
-  }
+  const ffmpegPath = await resolveFfmpegPath();
 
   const dir = await mkdtemp(join(tmpdir(), `kino-wiggle-${captureId}-`));
   const outputPath = join(dir, 'wiggle.mp4');

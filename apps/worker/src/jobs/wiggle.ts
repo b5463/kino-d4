@@ -17,8 +17,15 @@ import type { JobCtx } from './types';
  * live player cannot disagree (03 §13).
  */
 
-/** 960 px wide — the size a wiggle is watched at, and even, which libx264 needs. */
-export const WIGGLE_WIDTH = 960;
+/**
+ * 960 px wide — the size a wiggle is watched at.
+ *
+ * Through `evenPixels` rather than written as a bare `960`, even though 960 is
+ * already even: libx264 with `yuv420p` refuses an odd *width* exactly as it
+ * refuses an odd height, and a future retune to 961 would then fail at encode
+ * time for every capture rather than being quietly corrected here.
+ */
+export const WIGGLE_WIDTH = evenPixels(960);
 
 /** q75 for the animated WebP: six frames of one scene, so the bytes multiply. */
 export const WIGGLE_WEBP_QUALITY = 75;
