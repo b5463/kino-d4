@@ -6,7 +6,17 @@
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "scripts": { "test": "vitest run", "lint": "tsc --noEmit" },
-  "dependencies": { "@kino/kdp": "*" },
-  "devDependencies": { "typescript": "~5.8.3", "vitest": "^3.1.3" }
+  "scripts": {
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "fixtures:media": "node scripts/generate-media.ts"
+  },
+  "dependencies": {
+    "@kino/kdp": "*"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.5",
+    "typescript": "~5.8.3",
+    "vitest": "^3.1.3"
+  }
 }

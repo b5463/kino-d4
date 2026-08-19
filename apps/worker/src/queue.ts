@@ -1,5 +1,12 @@
-import { Queue, Worker, type Job, type JobsOptions, type RedisOptions } from 'bullmq';
-import { appendProcessingEvent } from './jobs/events';
+import {
+  Queue,
+  UnrecoverableError,
+  Worker,
+  type Job,
+  type JobsOptions,
+  type RedisOptions,
+} from 'bullmq';
+import { appendProcessingEvent, markJobAbandoned } from './jobs/events';
 import { isJobName, type JobCtx, type JobHandler, type JobName, type JobPayload } from './jobs/types';
 
 /**
@@ -18,6 +25,13 @@ import { isJobName, type JobCtx, type JobHandler, type JobName, type JobPayload 
  *   `apps/api/src/queue/producer.ts` mirrors these two numbers and is pinned to
  *   them by a contract test — a producer that disagreed would silently ship a
  *   different retry policy than the one documented here.
+ * - **Terminal.** A job that runs out of attempts is *finished*, and says so:
+ *   `markJobAbandoned` appends an `abandoned` row and retires the `queued` row
+ *   the API wrote. Without that, an exhausted job left its enqueue lock in place
+ *   — so no later capture-complete could ever re-queue it — and left the capture
+ *   in `processing` forever, because its latest row said `failed` and a `failed`
+ *   row is indistinguishable from "attempt 2 of 5". See the long note on
+ *   `markJobAbandoned` for why the mechanism is a supersede rather than a delete.
  * - **Independent.** Every job runs inside its own try/catch with its own
  *   `processing_events` rows. A handler that throws marks *its* job failed and
  *   touches nothing else, so a dead MP4 render cannot cost a capture its
@@ -153,6 +167,19 @@ export interface JobQueue {
   obliterate(): Promise<void>;
 }
 
+/**
+ * Whether BullMQ is done with this job.
+ *
+ * Two ways to be finished: the attempts ran out, or the handler said not to try
+ * again. `UnrecoverableError` is BullMQ's own signal for the second — a handler
+ * that throws it skips the remaining attempts — so a terminal check that only
+ * counted attempts would leave exactly those jobs blocking their own re-enqueue,
+ * which is the failure this is here to prevent.
+ */
+function isTerminal(err: unknown, attempt: number, attemptLimit: number): boolean {
+  return err instanceof UnrecoverableError || attempt >= attemptLimit;
+}
+
 function messageOf(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
   return text.length > MAX_ERROR_CHARS ? `${text.slice(0, MAX_ERROR_CHARS - 1)}…` : text;
@@ -188,16 +215,15 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
    * `running`/`done` are not wrapped — a database that cannot record progress
    * is a genuine job failure.
    */
-  async function tryAppend(
-    ctx: JobCtx,
-    captureId: string,
-    job: string,
-    error: string,
-  ): Promise<void> {
+  async function tryLog(what: string, write: () => Promise<void>): Promise<void> {
     try {
-      await appendProcessingEvent(ctx.db, captureId, job, 'failed', error);
+      await write();
     } catch (err) {
-      onError(err instanceof Error ? err : new Error(String(err)));
+      onError(
+        new Error(`could not record ${what}: ${messageOf(err)}`, {
+          cause: err instanceof Error ? err : undefined,
+        }),
+      );
     }
   }
 
@@ -231,12 +257,30 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
           // Every attempt is logged, not just the last: "it failed three times"
           // is what the log is for, and the read that matters — latest row per
           // job — is unaffected by the extra rows.
-          await tryAppend(
-            ctx,
-            captureId,
-            jobName,
-            `attempt ${attempt}/${attemptLimit}: ${messageOf(err)}`,
+          await tryLog('a failed attempt', () =>
+            appendProcessingEvent(
+              ctx.db,
+              captureId,
+              jobName,
+              'failed',
+              `attempt ${attempt}/${attemptLimit}: ${messageOf(err)}`,
+            ),
           );
+
+          // This was the last attempt, so the job is over. Both writes are
+          // tolerated failures for the same reason the one above is: the job's
+          // own error is what somebody needs to see, and losing this row to a
+          // database blip must not replace it.
+          if (isTerminal(err, attempt, attemptLimit)) {
+            await tryLog('a terminal failure', () =>
+              markJobAbandoned(
+                ctx.db,
+                captureId,
+                jobName,
+                `abandoned after ${attempt}/${attemptLimit} attempts: ${messageOf(err)}`,
+              ),
+            );
+          }
         }
         // Rethrown so BullMQ, not this function, decides about retrying.
         throw err;
