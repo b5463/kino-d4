@@ -6,6 +6,7 @@ import { buildServer } from '../src/server';
 import { loadConfig, type ApiConfig } from '../src/config';
 import { newId } from '../src/ids';
 import { derivedKey, originalKey } from '../src/uploads/objectKeys';
+import { CONVERGE_CONCURRENCY } from '../src/uploads/uploads';
 import * as schema from '../src/db/schema';
 
 /**
@@ -90,6 +91,8 @@ interface CaptureFixture {
   assets?: readonly AssetFixture[];
   events?: readonly EventFixture[];
   visible?: boolean;
+  /** Set to `BLOCK_LOOK` to make this capture's own UPDATE raise. */
+  look?: string;
 }
 
 const EPOCH = new Date('2026-08-01T12:00:00.000Z');
@@ -108,6 +111,7 @@ async function seedCapture(rollId: string, fixture: CaptureFixture): Promise<str
     resolution: '1600x1200',
     status: fixture.status,
     visible: fixture.visible ?? true,
+    look: fixture.look ?? null,
   });
 
   const assetFixtures = fixture.assets ?? [];
@@ -244,6 +248,16 @@ async function hostListStatuses(roll: CreatedRollResponse): Promise<Map<string, 
   return new Map(page.items.map((item) => [item.captureId, item.status]));
 }
 
+/** The raw reply, for the cases that assert the request survives at all. */
+async function deviceStatusReply(captureId: string): Promise<{ code: number; status: string }> {
+  const res = await app.inject({
+    method: 'GET',
+    url: `/api/device/captures/${captureId}/status`,
+    headers: bearer(device.deviceToken),
+  });
+  return { code: res.statusCode, status: res.json<{ status: string }>().status };
+}
+
 interface Counts {
   captures: number;
   pending: number;
@@ -258,6 +272,12 @@ async function dashboardCounts(roll: CreatedRollResponse): Promise<Counts> {
   });
   expect(res.statusCode).toBe(200);
   return res.json<{ counts: Counts }>().counts;
+}
+
+/** The guest feed's raw reply, so a test can assert it is not a 500. */
+async function guestFeedReply(slug: string): Promise<{ code: number; items: FeedItem[] }> {
+  const res = await app.inject({ method: 'GET', url: `/api/rolls/${slug}/captures` });
+  return { code: res.statusCode, items: res.json<{ items: FeedItem[] }>().items };
 }
 
 /* ----------------------------------------------------------------- setup -- */
@@ -482,6 +502,99 @@ describe('settled captures are not recomputed', () => {
     const feed = await guestFeedStatuses(roll.slug);
     expect(feed.get(settled)).toBe('ready');
     expect(await storedStatus(settled)).toBe('ready');
+    expect((await dashboardCounts(roll)).pending).toBe(0);
+  });
+});
+
+describe('a recompute that fails does not fail the read', () => {
+  /**
+   * The failure is forced in the database, not mocked: a `BEFORE UPDATE` trigger
+   * on `captures` raises for any row carrying `look = 'block-converge'`. That is
+   * the real failure mode this guards against — a lock timeout, a transient pool
+   * error, a read-only connection — arriving through the real code path, rather
+   * than a stubbed module that proves only that the stub was called.
+   */
+  const BLOCK_LOOK = 'block-converge';
+
+  let roll: CreatedRollResponse;
+  let blocked: string;
+  let healthy: string;
+
+  beforeAll(async () => {
+    await app.db.execute(sql`
+      create or replace function kino_t21b_block() returns trigger language plpgsql as $$
+      begin
+        if new.look = 'block-converge' then
+          raise exception 'forced converge failure for %', new.id;
+        end if;
+        return new;
+      end;
+      $$
+    `);
+    await app.db.execute(sql`
+      create trigger kino_t21b_block before update on captures
+        for each row execute function kino_t21b_block()
+    `);
+
+    roll = await createRoll(`Converge failure ${RUN}`);
+    blocked = await seedCapture(roll.rollId, { ...processedCapture(), look: BLOCK_LOOK });
+    healthy = await seedCapture(roll.rollId, processedCapture());
+  });
+
+  afterAll(async () => {
+    await app.db.execute(sql`drop trigger if exists kino_t21b_block on captures`);
+    await app.db.execute(sql`drop function if exists kino_t21b_block()`);
+  });
+
+  it('serves the guest feed with a stale status for the row that failed', async () => {
+    const page = await guestFeedReply(roll.slug);
+    expect(page.code).toBe(200);
+
+    const byId = new Map(page.items.map((item) => [item.captureId, item.status]));
+    // Stale rather than wrong: the value the column already held.
+    expect(byId.get(blocked)).toBe('processing');
+    // And the failure is contained — its neighbour on the same page converged.
+    expect(byId.get(healthy)).toBe('ready');
+
+    expect(await storedStatus(blocked)).toBe('processing');
+    expect(await storedStatus(healthy)).toBe('ready');
+  });
+
+  it('serves the device status route and the guest detail rather than a 500', async () => {
+    const reply = await deviceStatusReply(blocked);
+    expect(reply.code).toBe(200);
+    expect(reply.status).toBe('processing');
+
+    expect(await guestDetailStatus(roll.slug, blocked)).toBe('processing');
+  });
+
+  it('still renders the dashboard counts', async () => {
+    const counts = await dashboardCounts(roll);
+    expect(counts.captures).toBe(2);
+    // The blocked capture stays pending, which is honest: it is the one number
+    // nobody could refresh.
+    expect(counts.pending).toBe(1);
+  });
+});
+
+describe('the bounded fan-out converges every row', () => {
+  /**
+   * More unsettled captures on one page than `CONVERGE_CONCURRENCY` allows in
+   * flight, so the bounded map has to come back for the rest. An off-by-one in the
+   * cursor would leave the tail on `processing`.
+   */
+  it('converges a page larger than the concurrency cap', async () => {
+    expect(CONVERGE_CONCURRENCY).toBeLessThan(7);
+
+    const roll = await createRoll(`Bounded ${RUN}`);
+    const ids: string[] = [];
+    for (let n = 0; n < 7; n += 1) {
+      ids.push(await seedCapture(roll.rollId, processedCapture()));
+    }
+
+    const feed = await guestFeedStatuses(roll.slug);
+    for (const id of ids) expect(feed.get(id)).toBe('ready');
+    for (const id of ids) expect(await storedStatus(id)).toBe('ready');
     expect((await dashboardCounts(roll)).pending).toBe(0);
   });
 });

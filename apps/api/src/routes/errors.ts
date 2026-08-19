@@ -1,5 +1,6 @@
-import type { FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { z } from 'zod';
+import type { ConvergeFailureLog } from '../uploads/uploads';
 
 /**
  * The `{code, message}` error body every route answers with, mirroring the
@@ -25,4 +26,22 @@ export function fail(
 export function invalidBody(reply: FastifyReply, error: z.ZodError): FastifyReply {
   const fields = error.issues.map((issue) => issue.path.join('.') || '(root)').join(', ');
   return fail(reply, 400, 'INVALID_BODY', `invalid or missing: ${fields}`);
+}
+
+/**
+ * What a read does when it cannot refresh a capture's status: log it and report
+ * the stored value anyway.
+ *
+ * Here rather than in `uploads.ts` because it is the *route* that owns the
+ * decision to degrade instead of fail, and only the route has a logger. Here
+ * rather than four copies in four route files because a degradation that is
+ * described differently in each of them is a degradation nobody can grep for.
+ *
+ * `warn`, not `error`: the response is correct, only stale, and the next read
+ * retries. An `error` level would page somebody for a lock timeout.
+ */
+export function convergeWarning(app: FastifyInstance): ConvergeFailureLog {
+  return (err, captureId) => {
+    app.log.warn({ err, captureId }, 'capture status not converged; reporting the stored value');
+  };
 }

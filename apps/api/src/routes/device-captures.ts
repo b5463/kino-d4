@@ -26,7 +26,7 @@ import { finishUpload, openSession, recordPart, upsertAsset } from '../uploads/s
 import { publishRollEvent, type RollEvent } from '../events/publish';
 import { newId } from '../ids';
 import { assets, captures, rollDevices, rolls, uploadSessions } from '../db/schema';
-import { fail, invalidBody } from './errors';
+import { convergeWarning, fail, invalidBody } from './errors';
 
 /**
  * The upload API (03 §16) — everything a camera does after the shutter.
@@ -398,7 +398,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       // jobs start running, so this read refreshes it. Settled captures are
       // reported straight from the row and cost nothing extra.
       const [status, states] = await Promise.all([
-        convergeCaptureStatus(app.db, ctx.capture.id, ctx.capture.status),
+        convergeCaptureStatus(app.db, ctx.capture.id, ctx.capture.status, convergeWarning(app)),
         assetStates(app, ctx.capture.id),
       ]);
       return reply.send({ status, assets: states });

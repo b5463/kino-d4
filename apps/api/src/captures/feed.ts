@@ -1,7 +1,11 @@
 import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { KinoDatabase } from '../plugins/db';
 import { purgeAfter } from './moderation';
-import { convergeCaptureStatus, convergeCaptureStatuses } from '../uploads/uploads';
+import {
+  convergeCaptureStatus,
+  convergeCaptureStatuses,
+  type ConvergeFailureLog,
+} from '../uploads/uploads';
 import { assets, captures } from '../db/schema';
 
 /**
@@ -372,12 +376,13 @@ export async function readCaptureFeedPage(
   rollId: string,
   limit: number,
   cursor: FeedCursor | null,
+  onConvergeFailure?: ConvergeFailureLog,
 ): Promise<CaptureFeedPage<CaptureView>> {
   const { rows, nextCursor, hasMore } = await readPage(db, rollId, limit, cursor, 'guest');
   // Convergence before the asset read, not after: a recompute can only be
   // triggered by asset and job rows that already exist, so reading the assets
   // second means the tiles and the status describe the same moment.
-  const converged = await convergeCaptureStatuses(db, rows);
+  const converged = await convergeCaptureStatuses(db, rows, onConvergeFailure);
   const assetsByCapture = await readReadyAssets(
     db,
     rows.map((row) => row.id),
@@ -407,9 +412,10 @@ export async function readHostCaptureFeedPage(
   rollId: string,
   limit: number,
   cursor: FeedCursor | null,
+  onConvergeFailure?: ConvergeFailureLog,
 ): Promise<CaptureFeedPage<HostCaptureView>> {
   const { rows, nextCursor, hasMore } = await readPage(db, rollId, limit, cursor, 'host');
-  const converged = await convergeCaptureStatuses(db, rows);
+  const converged = await convergeCaptureStatuses(db, rows, onConvergeFailure);
   const assetsByCapture = await readReadyAssets(
     db,
     rows.map((row) => row.id),
@@ -440,6 +446,7 @@ export async function readCaptureDetail(
   db: KinoDatabase,
   rollId: string,
   captureId: string,
+  onConvergeFailure?: ConvergeFailureLog,
 ): Promise<CaptureDetailView | null> {
   const [row] = await db
     .select(captureColumns)
@@ -448,7 +455,7 @@ export async function readCaptureDetail(
     .limit(1);
   if (row === undefined) return null;
 
-  const status = await convergeCaptureStatus(db, row.id, row.status);
+  const status = await convergeCaptureStatus(db, row.id, row.status, onConvergeFailure);
   const assetsByCapture = await readReadyAssets(db, [row.id]);
   return {
     captureId: row.id,

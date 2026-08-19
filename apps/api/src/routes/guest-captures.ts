@@ -6,7 +6,7 @@ import {
   readCaptureDetail,
   readCaptureFeedPage,
 } from '../captures/feed';
-import { fail } from './errors';
+import { convergeWarning, fail } from './errors';
 
 /**
  * The guest's gallery (03 §6, 06 §11).
@@ -44,7 +44,13 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
     // driver reject the timestamp cast would make it look like a server fault.
     if (!cursor.ok) return fail(reply, 400, cursor.error.code, cursor.error.message);
 
-    return readCaptureFeedPage(app.db, rollOf(request).id, limit.value, cursor.value);
+    return readCaptureFeedPage(
+      app.db,
+      rollOf(request).id,
+      limit.value,
+      cursor.value,
+      convergeWarning(app),
+    );
   });
 
   app.get(
@@ -55,6 +61,7 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
         app.db,
         rollOf(request).id,
         paramOf(request, 'captureId'),
+        convergeWarning(app),
       );
 
       // Hidden, deleted, belonging to another roll, or never real — one answer

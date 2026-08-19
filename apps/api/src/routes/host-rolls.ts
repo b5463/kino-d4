@@ -18,7 +18,7 @@ import {
 import { rollCaptureCounts } from '../uploads/uploads';
 import { countRollViewers } from '../events/viewers';
 import { auditEvents, rolls } from '../db/schema';
-import { fail, invalidBody } from './errors';
+import { convergeWarning, fail, invalidBody } from './errors';
 
 /**
  * The host dashboard's API (03 §10).
@@ -199,7 +199,7 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
  */
 async function dashboard(app: FastifyInstance, roll: PublicRollRow): Promise<HostRollView> {
   const [counts, guests] = await Promise.all([
-    rollCaptureCounts(app.db, roll.id),
+    rollCaptureCounts(app.db, roll.id, convergeWarning(app)),
     countRollViewers(app.redis, roll.id).catch((err: unknown) => {
       app.log.warn({ err, rollId: roll.id }, 'guest count unavailable; reporting zero');
       return 0;

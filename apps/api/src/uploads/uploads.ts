@@ -250,6 +250,84 @@ export async function recomputeCaptureStatus(
 /* --------------------------------------------------- convergence on read -- */
 
 /**
+ * How a converge failure is reported. The route passes `app.log.warn`; the
+ * default swallows, because the *reader* has already decided the request
+ * survives either way and a module with no logger of its own should not invent
+ * one.
+ */
+export type ConvergeFailureLog = (err: unknown, captureId: string) => void;
+
+const NO_LOG: ConvergeFailureLog = () => {};
+
+/**
+ * How many recomputes may be in flight at once.
+ *
+ * Three, because of the pool. `dbPlugin` opens `postgres(..., { max: 10 })`, and
+ * one `recomputeCaptureStatus` peaks at **two** pooled connections - its asset
+ * read and its job read run under one `Promise.all` - before taking one more for
+ * the `UPDATE`. Three in flight is therefore at most six of the ten, leaving four
+ * for the device uploads and guest requests sharing that pool.
+ *
+ * Unbounded was the alternative, and it is a latency cliff exactly when it hurts:
+ * a live 500-capture roll would have one dashboard render queue ~1500 statements
+ * ahead of a camera trying to finish an upload. Capping trades a slower dashboard
+ * for a pool that still answers everything else, which is the right way round.
+ */
+export const CONVERGE_CONCURRENCY = 3;
+
+/**
+ * `items.map` with at most `limit` promises alive, and no dependency to get it.
+ *
+ * A shared cursor rather than fixed chunks: a chunk runs at the speed of its
+ * slowest member and leaves workers idle at every boundary, whereas a worker that
+ * takes the next index the moment it is free keeps all `limit` of them busy.
+ */
+async function mapBounded<In, Out>(
+  items: readonly In[],
+  limit: number,
+  run: (item: In) => Promise<Out>,
+): Promise<Out[]> {
+  const out: Out[] = new Array<Out>(items.length);
+  let cursor = 0;
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      const item = items[index];
+      if (item === undefined) return;
+      out[index] = await run(item);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/**
+ * One capture's recompute, with the stored status as the answer if it fails.
+ *
+ * This is what lets a read write at all without becoming able to fail. Before
+ * convergence existed the feed was a pure read that could not 500 on a lock
+ * timeout, a transient pool error or a read-only connection; keeping that
+ * property means a rejected recompute degrades to the value already stored, which
+ * is stale rather than wrong. A stale tile beats a broken gallery, and the next
+ * read tries again.
+ */
+async function convergeRow(
+  db: KinoDatabase,
+  row: CaptureStatusRow,
+  log: ConvergeFailureLog,
+): Promise<string> {
+  try {
+    return await recomputeCaptureStatus(db, row.id);
+  } catch (err) {
+    log(err, row.id);
+    return row.status;
+  }
+}
+
+/**
  * The status a reader should report for a capture, recomputing it first if it
  * has not settled yet.
  *
@@ -285,14 +363,21 @@ export async function recomputeCaptureStatus(
  * to reach the value already stored. Skipping them is what keeps a page of a
  * finished roll exactly as cheap as it was before this existed, and bounds the
  * extra work by the number of *unsettled* captures on the page.
+ *
+ * The corollary is a trap for a future caller: a job enqueued *lazily* against an
+ * already-terminal capture (`render-wiggle-mp4` and `render-contact-sheet`, which
+ * `plannedJobs` leaves out for Task 22 to queue on first request) will never be
+ * picked up by a read, because reads skip terminal rows. Whoever adds such a site
+ * must call `recomputeCaptureStatus` itself when that job settles.
  */
 export async function convergeCaptureStatus(
   db: KinoDatabase,
   captureId: string,
   storedStatus: string,
+  log: ConvergeFailureLog = NO_LOG,
 ): Promise<string> {
   if (isSettledCaptureStatus(storedStatus)) return storedStatus;
-  return recomputeCaptureStatus(db, captureId);
+  return convergeRow(db, { id: captureId, status: storedStatus }, log);
 }
 
 /** A row a page reader has already selected: enough to decide and to report. */
@@ -304,23 +389,26 @@ export interface CaptureStatusRow {
 /**
  * `convergeCaptureStatus` for a page, as a lookup of the ids that changed hands.
  *
- * Only the unsettled rows are visited, and they are visited concurrently: they
- * are independent single-capture recomputes, so serialising them would make a
- * page cost the sum of its captures' round trips instead of the longest one. The
- * fan-out is bounded by the page's own unsettled subset, which the feed's `limit`
- * already caps at `FEED_LIMIT_MAX`.
+ * Only the unsettled rows are visited, and `CONVERGE_CONCURRENCY` of them at a
+ * time: they are independent single-capture recomputes, so serialising them would
+ * make a page cost the sum of its captures' round trips, while an unbounded
+ * fan-out would hand the whole connection pool to one page.
  *
- * Returns only the recomputed ids. A caller keeps its own row's status for
+ * Returns only the ids it visited. A caller keeps its own row's status for
  * everything absent from the map, which is how the settled rows stay untouched
- * rather than being re-derived into the same value.
+ * rather than being re-derived into the same value. A row whose recompute failed
+ * is present, mapped to the status it already had.
  */
 export async function convergeCaptureStatuses(
   db: KinoDatabase,
   rows: readonly CaptureStatusRow[],
+  log: ConvergeFailureLog = NO_LOG,
 ): Promise<Map<string, string>> {
   const unsettled = rows.filter((row) => !isSettledCaptureStatus(row.status));
-  const converged = await Promise.all(
-    unsettled.map(async (row) => [row.id, await recomputeCaptureStatus(db, row.id)] as const),
+  const converged = await mapBounded(
+    unsettled,
+    CONVERGE_CONCURRENCY,
+    async (row) => [row.id, await convergeRow(db, row, log)] as const,
   );
   return new Map(converged);
 }
@@ -335,8 +423,21 @@ export async function convergeCaptureStatuses(
  * nothing.
  *
  * Deleted captures are skipped because no count includes them.
+ *
+ * Bounded by `CONVERGE_CONCURRENCY` like the page form, and for a sharper reason:
+ * a roll is not a page, so this set has no `limit` above it. A 500-capture roll
+ * mid-party would otherwise queue every one of them at once.
+ *
+ * Failures are absorbed per capture. The dashboard's job is to render three
+ * numbers, and numbers computed from rows one of which could not be refreshed are
+ * worth more than a 500 - the Pending count is one capture behind until the next
+ * render.
  */
-async function convergeRoll(db: KinoDatabase, rollId: string): Promise<void> {
+async function convergeRoll(
+  db: KinoDatabase,
+  rollId: string,
+  log: ConvergeFailureLog,
+): Promise<void> {
   const unsettled = await db
     .select({ id: captures.id, status: captures.status })
     .from(captures)
@@ -347,7 +448,7 @@ async function convergeRoll(db: KinoDatabase, rollId: string): Promise<void> {
         notInArray(captures.status, [...SETTLED_CAPTURE_STATUSES]),
       ),
     );
-  await convergeCaptureStatuses(db, unsettled);
+  await convergeCaptureStatuses(db, unsettled, log);
 }
 
 /* ---------------------------------------------------------- idempotency -- */
@@ -626,11 +727,12 @@ export interface RollCaptureCounts {
 export async function rollCaptureCounts(
   db: KinoDatabase,
   rollId: string,
+  log: ConvergeFailureLog = NO_LOG,
 ): Promise<RollCaptureCounts> {
   // The Pending number is a claim about the present, so the rows it counts have
   // to be brought up to date before they are counted. Without this the dashboard
   // reports every processed capture as still pending, forever.
-  await convergeRoll(db, rollId);
+  await convergeRoll(db, rollId, log);
 
   const [row] = await db
     .select({

@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastif
 // way round — it is addressed by rollId and uses `requireHost`.
 import { captureOf, rollOf } from '../auth/plugins';
 import { decodeCursor, parseLimit, readHostCaptureFeedPage } from '../captures/feed';
-import { fail } from './errors';
+import { convergeWarning, fail } from './errors';
 import {
   moderationView,
   setCaptureVisible,
@@ -81,7 +81,13 @@ export const hostCaptureRoutes: FastifyPluginAsync = async (app) => {
       // reject the timestamp cast would make it look like a server fault.
       if (!cursor.ok) return fail(reply, 400, cursor.error.code, cursor.error.message);
 
-      return readHostCaptureFeedPage(app.db, rollOf(request).id, limit.value, cursor.value);
+      return readHostCaptureFeedPage(
+        app.db,
+        rollOf(request).id,
+        limit.value,
+        cursor.value,
+        convergeWarning(app),
+      );
     },
   );
 
