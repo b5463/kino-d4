@@ -1226,9 +1226,9 @@ export function wiggleSequence(frameCount: number, loop: LoopMode, direction: 'l
   - `render-wiggle-webp`: frames resized to 960 px wide, animated WebP at capture's fps (default 10), loop forever, q75 → `derived/wiggle.webp`, role `wiggle-webp`. Use sharp's animated webp (`sharp(pages).webp({ ... })` via joined buffer with `pageHeight`) — if sharp's animation limits bite, fall back to `webpmux` via execa; decide in implementation, test only asserts: valid animated WebP (`VP8X` + `ANIM` chunk present), ≥ sequence length frames.
   - `render-wiggle-mp4`: ffmpeg (`ffmpeg-static` + execa): loop the bounce sequence 4×, `-r <fps>`, `-c:v libx264 -pix_fmt yuv420p -crf 23 -movflags +faststart`, 960 px wide → `derived/wiggle.mp4`, role `wiggle-mp4`.
 
-- [ ] **Step 1: Write failing sequence tests** — the three loop modes for 4 frames; rtl reverses; frameCount 2 bounce → `[0,1]`... actually `[0,1]` (bounce interior of 2 frames has no middle) — assert `[0,1]`; frameCount 5 bounce → `[0,1,2,3,4,3,2,1]`.
+- [x] **Step 1: Write failing sequence tests** — the three loop modes for 4 frames; rtl reverses; frameCount 2 bounce → `[0,1]`... actually `[0,1]` (bounce interior of 2 frames has no middle) — assert `[0,1]`; frameCount 5 bounce → `[0,1,2,3,4,3,2,1]`.
 
-- [ ] **Step 2–5: FAIL → implement sequence, then jobs → PASS → commit** — `feat(worker,media): wiggle sequence math + animated WebP/MP4 renders`
+- [x] **Step 2–5: FAIL → implement sequence, then jobs → PASS → commit** — `feat(worker,media): wiggle sequence math + animated WebP/MP4 renders`
 
 ### Task 25: Recap + AI-enhance stubs, purge job
 
