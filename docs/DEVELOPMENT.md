@@ -7,6 +7,8 @@
 - Chrome, Edge, or another Chromium browser for physical Web Serial work
 - Docker with Compose for API integration tests
 - A KINO D4 or the mock device for device flows
+- ffmpeg built with libx264, for worker MP4 renders. Optional: `ffmpeg-static` is
+  the fallback. See [Worker renders](#worker-renders).
 
 Install the workspace exactly from the lockfile:
 
@@ -80,6 +82,32 @@ Adding `-v` deletes the local PostgreSQL and MinIO volumes. Use it only for an i
 Copy `infra/.env.example` to `infra/.env` only when the defaults need to change. Existing process variables take precedence.
 
 `COOKIE_SECRET` has a published local default. Configuration accepts that value only when `NODE_ENV` is exactly `development` or `test`. Production must set a real secret and an explicit environment.
+
+## Worker renders
+
+`render-wiggle-mp4` shells out to ffmpeg with `-c:v libx264`. The worker resolves
+the binary from the environment first and falls back to the bundled build:
+
+| Variable | Used by | Fallback |
+|---|---|---|
+| `FFMPEG_PATH` | `@kino/worker` renders | `ffmpeg-static` |
+| `FFPROBE_PATH` | `@kino/worker` tests only | `ffprobe-static` |
+
+Set neither and a plain `npm install` gives working renders with no setup, which
+is the local default. Set both when the machine already has ffmpeg tools, or when
+the deployment needs a build it chose itself — libx264 is GPL, so an operator who
+distributes the worker carries that obligation over the binary they ship.
+
+`ffmpeg-static` and `ffprobe-static` download their binaries in a postinstall
+script. On a host with no egress to those downloads, set the two variables and
+install with:
+
+```bash
+npm ci --ignore-scripts
+```
+
+Both variables are read at render time, so a blank value falls back to the bundled
+build rather than failing.
 
 ## Protocol changes
 
