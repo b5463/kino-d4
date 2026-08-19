@@ -1143,9 +1143,9 @@ POST /api/host/rolls/:rollId/export          → {jobId}   — enqueues 'export-
 GET  /api/host/rolls/:rollId/export/:jobId   → {status, url?}
 ```
 
-- [ ] **Step 1: Write failing tests** — hide removes from guest feed within the same request cycle + SSE event observed; delete → guest 404, host still sees it in trash until purge; export job row created with status queued.
+- [x] **Step 1: Write failing tests** — hide removes from guest feed within the same request cycle + SSE event observed; delete → guest 404, host still sees it in trash until purge; export job row created with status queued.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): host moderation with trash grace + export jobs`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): host moderation with trash grace + export jobs`
 
 ---
 
