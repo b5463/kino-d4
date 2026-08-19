@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { ASSET_ROLES } from '@kino/schemas';
 import { assets } from '../db/schema';
 import { newId } from '../ids';
 import { publishRollEvent } from '../events/publish';
@@ -35,11 +36,21 @@ import type { DerivedBody, JobCtx } from './types';
  * `original-frame`, because the role is supplied by the handler and the object
  * key is built by `putDerived`, which cannot name an original (01 §7).
  */
+/**
+ * The 05 §19 asset roles, from the package that defines them.
+ *
+ * Not `string`: the role is what the PWA fetches by, and a typo in one would
+ * produce a stored object nothing ever asks for — an asset row that looks
+ * perfectly healthy and is invisible. `@kino/schemas` already owns the list, so
+ * a role this platform does not have now fails to compile.
+ */
+export type AssetRole = (typeof ASSET_ROLES)[number];
+
 export interface DerivedArtifact {
   /** The file name inside the capture's `derived/` folder. */
   name: string;
   /** The 05 §19 asset role this artifact fills. */
-  role: string;
+  role: AssetRole;
   mime: string;
   body: DerivedBody;
   /** Pixel dimensions, or null for something that has none — a JSON document. */

@@ -1,6 +1,5 @@
 import sharp from 'sharp';
 import { GALLERY_STILL_QUALITY, GALLERY_STILL_WIDTH } from '../images/sizes';
-import { derivedCaptureKey } from '../storage/derived';
 import {
   loadAssets,
   loadCapture,
@@ -9,12 +8,11 @@ import {
   requireCaptureId,
   STILL_ROLE,
   stillSource,
+  WORKER_STILL_NAME,
+  workerStillKey,
 } from './capture';
 import { publishDerived } from './derive';
 import type { JobCtx, JobPayload } from './types';
-
-/** The file this job writes, and therefore the key that is its own output. */
-const STILL_NAME = 'still.webp';
 
 /**
  * `generate-gallery-still` — the image behind a tile, one tap in.
@@ -48,20 +46,13 @@ export async function generateGalleryStill(payload: JobPayload, ctx: JobCtx): Pr
   const assetRows = await loadAssets(ctx.db, captureId);
 
   const existing = readyAsset(assetRows, STILL_ROLE);
-  const ownKey = derivedCaptureKey(capture.rollId, capture.id, STILL_NAME);
-  if (existing !== null && existing.objectKey !== ownKey) return;
+  if (existing !== null && existing.objectKey !== workerStillKey(capture)) return;
 
-  /**
-   * Its own previous output is excluded from the source rule, not just from the
-   * skip. `stillSource` prefers a `kino-still` over any frame, so a re-run that
-   * left its own row in would re-encode a WebP it already encoded — generation
-   * loss on every retry, and a still that drifts further from the frame each
-   * time. A retry goes back to the frames.
-   */
-  const source = stillSource(
-    capture,
-    assetRows.filter((row) => row.objectKey !== ownKey),
-  );
+  // Its own previous output is excluded from the source rule too, so a retry
+  // re-encodes the frame rather than the WebP it wrote last time. That exclusion
+  // is `stillSource`'s, not this function's — see the note there; every consumer
+  // of the rule needs it, so it is not a filter each caller remembers to apply.
+  const source = stillSource(capture, assetRows);
   const body = await readObject(ctx, source.key);
 
   const { data, info } = await sharp(body)
@@ -71,7 +62,7 @@ export async function generateGalleryStill(payload: JobPayload, ctx: JobCtx): Pr
     .toBuffer({ resolveWithObject: true });
 
   await publishDerived(ctx, capture, {
-    name: STILL_NAME,
+    name: WORKER_STILL_NAME,
     role: STILL_ROLE,
     mime: 'image/webp',
     body: data,

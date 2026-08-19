@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { UnrecoverableError } from 'bullmq';
 import sharp from 'sharp';
 import { loadWorkerConfig, type WorkerConfig } from '../src/config';
 import { createJobRuntime, type JobRuntime } from '../src/context';
@@ -19,7 +20,12 @@ import {
   renderContactSheet,
 } from '../src/jobs/contactSheet';
 import { extractMetadata } from '../src/jobs/metadata';
-import { GALLERY_STILL_WIDTH, THUMBNAIL_WIDTH } from '../src/images/sizes';
+import { MissingCaptureError } from '../src/jobs/capture';
+import {
+  GALLERY_STILL_WIDTH,
+  THUMBNAIL_QUALITY,
+  THUMBNAIL_WIDTH,
+} from '../src/images/sizes';
 import { rollStreamKey } from '../src/events/publish';
 
 /**
@@ -446,6 +452,70 @@ describe('generate-thumbnail', () => {
     expect(await markerFrameIndex(await objectBytes(row?.objectKey ?? ''))).toBe(4);
   });
 
+  it('ignores the gallery job own output and reads the frame (order independence)', async () => {
+    /**
+     * Both jobs are queued by the same capture-complete, so BullMQ decides which
+     * runs first. `generate-gallery-still` writes role `kino-still` at
+     * `derived/still.webp`; if the thumbnail counted that as an uploaded still,
+     * it would re-encode a 1280 px WebP q82 down to 480 px q70 — WebP→WebP
+     * generation loss — and its bytes would depend on who won the race. Jobs that
+     * are idempotent (03 §19) cannot have order-dependent output.
+     *
+     * The discriminator is the *bytes*: a thumbnail derived from the frame and one
+     * derived from the still are both 480 px WebP of camera 2, so nothing about
+     * their dimensions or their marker pixel tells them apart.
+     */
+    const captureId = await newCapture();
+
+    // The adversarial order: the still exists before the thumbnail runs.
+    await generateGalleryStill(
+      { captureId, jobKey: `${captureId}:generate-gallery-still` },
+      runtime.ctx,
+    );
+    const [still] = await assetsWithRole(captureId, 'kino-still');
+    expect(still?.objectKey).toBe(`rolls/${rollId}/captures/${captureId}/derived/still.webp`);
+    if (still !== undefined) writtenKeys.push(still.objectKey);
+
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+    const [thumb] = await assetsWithRole(captureId, 'thumb');
+    if (thumb !== undefined) writtenKeys.push(thumb.objectKey);
+    const produced = await objectBytes(thumb?.objectKey ?? '');
+
+    // What a thumbnail of the original middle frame is, encoded exactly as the
+    // handler encodes it. Frame 2 of 4 = index 1 in the fixture array.
+    const fromFrame = await sharp(frames[1])
+      .rotate()
+      .resize({ width: THUMBNAIL_WIDTH })
+      .webp({ quality: THUMBNAIL_QUALITY })
+      .toBuffer();
+
+    expect(sha256Hex(produced)).toBe(sha256Hex(fromFrame));
+    expect(thumb?.sha256).toBe(sha256Hex(fromFrame));
+  });
+
+  it('reads the frame even when the worker own still shows another camera', async () => {
+    // The same rule stated so it cannot pass by coincidence: a still at the
+    // gallery job's own key, holding camera 4, must not become the thumbnail's
+    // source. If it did, the marker would read 4 instead of 2.
+    const captureId = await newCapture();
+    const other = frames[3];
+    if (other === undefined) throw new Error('missing fixture');
+
+    await seedAsset(captureId, {
+      role: 'kino-still',
+      mime: 'image/webp',
+      key: `rolls/${rollId}/captures/${captureId}/derived/still.webp`,
+      body: await sharp(other).resize({ width: GALLERY_STILL_WIDTH }).webp().toBuffer(),
+      width: GALLERY_STILL_WIDTH,
+      height: 960,
+    });
+
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+    const [thumb] = await assetsWithRole(captureId, 'thumb');
+    if (thumb !== undefined) writtenKeys.push(thumb.objectKey);
+    expect(await markerFrameIndex(await objectBytes(thumb?.objectKey ?? ''))).toBe(2);
+  });
+
   it('produces one asset row however many times it runs (05 §9)', async () => {
     const captureId = await newCapture();
     const payload = { captureId, jobKey: `${captureId}:generate-thumbnail` };
@@ -794,6 +864,28 @@ describe('registered on the queue', () => {
       if (row.objectKey.includes('/derived/')) writtenKeys.push(row.objectKey);
     }
     expect((await publishedRoles(captureId)).sort()).toEqual(['metadata', 'thumb']);
+  });
+});
+
+/**
+ * A capture deleted between capture-complete and the job running is a normal
+ * race. Burning five attempts on it — ten seconds, then twenty, then forty —
+ * buys nothing, so the error says so in the only way BullMQ acts on.
+ */
+describe('a job pointed at a capture that is gone gives up at once', () => {
+  it('throws an unrecoverable error rather than one BullMQ will retry', async () => {
+    const missing = `cap_t23_${RUN}_absent`;
+
+    const thrown = await generateThumbnail(
+      { captureId: missing, jobKey: `${missing}:generate-thumbnail` },
+      runtime.ctx,
+    ).catch((err: unknown) => err);
+
+    expect(thrown).toBeInstanceOf(MissingCaptureError);
+    // The property that actually stops the retries: anything else here and the
+    // comment on MissingCaptureError would be a claim the code does not honour.
+    expect(thrown).toBeInstanceOf(UnrecoverableError);
+    expect((thrown as MissingCaptureError).code).toBe('CAPTURE_NOT_FOUND');
   });
 });
 

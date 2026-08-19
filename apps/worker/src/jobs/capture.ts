@@ -1,5 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
+import { UnrecoverableError } from 'bullmq';
 import { assets, captures } from '../db/schema';
+import { derivedCaptureKey } from '../storage/derived';
 import type { JobCtx, JobPayload, WorkerDatabase } from './types';
 
 /**
@@ -47,13 +49,35 @@ export const ORIGINAL_ROLE = 'original-frame';
 export const STILL_ROLE = 'kino-still';
 
 /**
+ * The file `generate-gallery-still` writes, and therefore the one `kino-still`
+ * in the system that a worker produced rather than received.
+ *
+ * It lives here rather than in `galleryStill.ts` because *every* consumer of the
+ * source rule has to be able to recognise it — see `stillSource`.
+ */
+export const WORKER_STILL_NAME = 'still.webp';
+
+/** The key `generate-gallery-still` writes its own output to, for this capture. */
+export function workerStillKey(capture: CaptureRow): string {
+  return derivedCaptureKey(capture.rollId, capture.id, WORKER_STILL_NAME);
+}
+
+/**
  * A job pointed at a capture that is not there.
  *
- * Distinguished from any other failure because it is the one that must not be
- * retried five times: a capture deleted between capture-complete and the job
- * running is a normal race, not a broken renderer.
+ * Extends BullMQ's `UnrecoverableError`, which is what actually makes the
+ * "do not retry this" claim true rather than merely stated: BullMQ skips the
+ * remaining attempts when a processor throws one, and the queue's own terminal
+ * check treats it as final and releases the job's enqueue lock. A capture
+ * deleted between capture-complete and the job running is a normal race, not a
+ * broken renderer, and re-reading a row that will never come back four more
+ * times — over ten seconds, then twenty, then forty — buys nothing.
+ *
+ * The dependency is the right way round: `UnrecoverableError` is BullMQ's
+ * contract for exactly this, and declaring it at the throw site is clearer than
+ * a string code the queue has to know to look for.
  */
-export class MissingCaptureError extends Error {
+export class MissingCaptureError extends UnrecoverableError {
   readonly code = 'CAPTURE_NOT_FOUND';
 
   constructor(captureId: string) {
@@ -145,6 +169,18 @@ export interface StillSource {
  *    takes priority and workers exist to fill gaps, not to redo work that has
  *    already arrived. The device also had the whole scene in front of it and may
  *    have picked or blended a better frame than any single camera's.
+ *
+ *    **The worker's own still is not one of those.** `generate-gallery-still`
+ *    writes role `kino-still` at `derived/still.webp`, and both it and
+ *    `generate-thumbnail` are queued by the same capture-complete. If that row
+ *    counted as "uploaded", then whichever job BullMQ happened to run second
+ *    would derive from the other's output: a thumbnail re-encoding a 1280 px
+ *    WebP q82 down to 480 px q70 is WebP→WebP generation loss, and — worse — its
+ *    bytes and therefore its sha256 would depend on which job won the race.
+ *    Idempotent jobs (03 §19) cannot have order-dependent output. So the
+ *    exclusion lives *here*, in the rule, rather than at each call site: it is
+ *    one hazard, and a fourth caller (Task 24's renders) inherits the fix instead
+ *    of having to remember it.
  * 2. **Otherwise the frame at `floor(frameCount / 2)`.** Frame indices are
  *    1-based (`cam-01.jpg`), so four cameras give frame 2 — the centre-ish
  *    viewpoint, which on the V1 rig is also the metering camera. Deriving it
@@ -157,8 +193,11 @@ export interface StillSource {
  *    index, so the choice is deterministic.
  */
 export function stillSource(capture: CaptureRow, rows: readonly AssetRow[]): StillSource {
-  const uploaded = readyAsset(rows, STILL_ROLE);
-  if (uploaded !== null) return { key: uploaded.objectKey, frameIndex: null };
+  const ownKey = workerStillKey(capture);
+  const uploaded = rows.find(
+    (row) => row.role === STILL_ROLE && row.status === 'ready' && row.objectKey !== ownKey,
+  );
+  if (uploaded !== undefined) return { key: uploaded.objectKey, frameIndex: null };
 
   const frames = originalFrames(rows);
   if (frames.length === 0) {
