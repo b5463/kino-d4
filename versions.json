@@ -28,6 +28,12 @@
       "tagPrefix": "kino-worker-v"
     },
     {
+      "name": "kino-roll-web",
+      "version": "0.1.0",
+      "package": "apps/roll-web/package.json",
+      "tagPrefix": "kino-roll-web-v"
+    },
+    {
       "name": "kino-kdp",
       "version": "0.1.0",
       "package": "packages/kdp/package.json",
