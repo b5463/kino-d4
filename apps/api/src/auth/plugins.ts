@@ -277,6 +277,7 @@ export const authPlugin = fp(
     // deoptimises requests that grow new properties per-request.
     app.decorateRequest('device', null);
     app.decorateRequest('roll', null);
+    app.decorateRequest('capture', null);
 
     /**
      * 07 §25, checked at boot rather than trusted to reviewers.
@@ -460,11 +461,15 @@ export const authPlugin = fp(
         // makes "whose hash do I compare against" unambiguous.
         const [row] = await app.db
           .select({
-            captureId: captures.id,
-            visible: captures.visible,
-            deletedAt: captures.deletedAt,
+            // The roll spread goes FIRST and every capture column is prefixed.
+            // Both, deliberately: a `rolls.visible` or `rolls.deleted_at` added
+            // to `publicRollColumns` later would otherwise silently override the
+            // capture's own flags and hand this route the wrong row's state.
             ...publicRollColumns,
             hostTokenHash: rolls.hostTokenHash,
+            captureId: captures.id,
+            captureVisible: captures.visible,
+            captureDeletedAt: captures.deletedAt,
           })
           .from(captures)
           .innerJoin(rolls, eq(rolls.id, captures.rollId))
@@ -474,7 +479,13 @@ export const authPlugin = fp(
           return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'no such capture');
         }
 
-        const { captureId: id, visible, deletedAt, hostTokenHash, ...roll } = row;
+        const {
+          captureId: id,
+          captureVisible: visible,
+          captureDeletedAt: deletedAt,
+          hostTokenHash,
+          ...roll
+        } = row;
         if (!hostTokenOpens(token, hostTokenHash)) {
           return fail(reply, 403, 'INVALID_HOST_TOKEN', 'that host token does not open this roll');
         }

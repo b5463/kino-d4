@@ -9,7 +9,11 @@ import { newId } from '../src/ids';
 import { derivedKey } from '../src/uploads/objectKeys';
 import { readRollHistory } from '../src/events/publish';
 import { touchRollViewer, VIEWER_STALE_MS } from '../src/events/viewers';
-import { TRASH_GRACE_DAYS } from '../src/captures/moderation';
+import {
+  TRASH_GRACE_DAYS,
+  setCaptureVisible,
+  trashCapture,
+} from '../src/captures/moderation';
 import {
   EXPORT_JOB_NAME,
   EXPORT_URL_TTL_SECONDS,
@@ -115,6 +119,33 @@ async function feedIds(slug: string): Promise<string[]> {
   const res = await app.inject({ method: 'GET', url: `/api/rolls/${slug}/captures` });
   expect(res.statusCode).toBe(200);
   return res.json<FeedPage>().items.map((item) => item.captureId);
+}
+
+interface HostCaptureItem {
+  captureId: string;
+  visible: boolean;
+  deletedAt: string | null;
+  purgeAfter: string | null;
+}
+
+interface HostFeedPage {
+  items: HostCaptureItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+async function hostList(
+  rollId: string,
+  hostToken: string,
+  query = '',
+): Promise<HostFeedPage> {
+  const res = await app.inject({
+    method: 'GET',
+    url: `/api/host/rolls/${rollId}/captures${query}`,
+    headers: bearer(hostToken),
+  });
+  expect(res.statusCode).toBe(200);
+  return res.json<HostFeedPage>();
 }
 
 async function auditActions(rollId: string): Promise<string[]> {
@@ -304,6 +335,29 @@ describe('POST /api/host/captures/:captureId/hide (03 §11)', () => {
     expect(await publishedEvents(roll.rollId)).toEqual(['capture.hidden']);
   });
 
+  it('writes one audit row and one event when two hides race', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+
+    const results = await Promise.all(
+      [1, 2].map(async () =>
+        app.inject({
+          method: 'POST',
+          url: `/api/host/captures/${captureId}/hide`,
+          headers: bearer(roll.hostToken),
+        }),
+      ),
+    );
+    for (const res of results) {
+      expect(res.statusCode).toBe(200);
+      // Both report the state that actually holds, whichever of them wrote it.
+      expect(res.json()).toMatchObject({ visible: false });
+    }
+
+    expect(await auditActions(roll.rollId)).toEqual(['capture.hidden']);
+    expect(await publishedEvents(roll.rollId)).toEqual(['capture.hidden']);
+  });
+
   it('unhide restores the capture to the feed and announces capture.updated', async () => {
     const roll = await createRoll();
     const captureId = await insertCapture(roll.rollId, { visible: false });
@@ -394,6 +448,36 @@ describe('DELETE /api/host/captures/:captureId (03 §11)', () => {
     expect(await auditActions(roll.rollId)).toEqual(['capture.deleted']);
   });
 
+  it('keeps one deletedAt when two deletes race, with one audit row and one event', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+
+    // Both requests read the same pre-delete snapshot in their preHandler, which
+    // is what a client retrying on a timeout produces. A guard that compared the
+    // snapshot in JavaScript would let both through.
+    const [a, b] = await Promise.all([
+      app.inject({
+        method: 'DELETE',
+        url: `/api/host/captures/${captureId}`,
+        headers: bearer(roll.hostToken),
+      }),
+      app.inject({
+        method: 'DELETE',
+        url: `/api/host/captures/${captureId}`,
+        headers: bearer(roll.hostToken),
+      }),
+    ]);
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+
+    // Same timestamp on both replies: the second write never happened.
+    expect(a.json<{ deletedAt: string }>().deletedAt).toBe(
+      b.json<{ deletedAt: string }>().deletedAt,
+    );
+    expect(await auditActions(roll.rollId)).toEqual(['capture.deleted']);
+    expect(await publishedEvents(roll.rollId)).toEqual(['capture.deleted']);
+  });
+
   it('404s an unknown capture id rather than revealing whether it exists elsewhere', async () => {
     const roll = await createRoll();
     const res = await app.inject({
@@ -403,6 +487,60 @@ describe('DELETE /api/host/captures/:captureId (03 §11)', () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json<{ code: string }>().code).toBe('CAPTURE_NOT_FOUND');
+  });
+});
+
+/* ------------------------------------------------- stale-snapshot guards -- */
+
+describe('moderation guards are in the WHERE, not in the read snapshot', () => {
+  /**
+   * The two route-level race tests above interleave whatever the event loop
+   * happens to interleave, so they can pass by luck. These call the writers
+   * directly with a snapshot that is *deliberately* out of date — which is exactly
+   * what the second of two concurrent requests holds — and are therefore
+   * deterministic.
+   */
+  it('does not re-hide a capture from a snapshot that says it is visible', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+
+    const first = await setCaptureVisible(
+      app.db,
+      { id: captureId, rollId: roll.rollId, visible: true, deletedAt: null },
+      false,
+    );
+    expect(first.changed).toBe(true);
+
+    // Same snapshot again: `visible: true` is now a lie, and only the UPDATE's own
+    // predicate can notice.
+    const second = await setCaptureVisible(
+      app.db,
+      { id: captureId, rollId: roll.rollId, visible: true, deletedAt: null },
+      false,
+    );
+    expect(second.changed).toBe(false);
+    // And it reports the state that actually holds, read back rather than echoed.
+    expect(second.capture.visible).toBe(false);
+
+    expect(await auditActions(roll.rollId)).toEqual(['capture.hidden']);
+  });
+
+  it('does not overwrite deletedAt from a snapshot that says it is not deleted', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    const stale = { id: captureId, rollId: roll.rollId, visible: true, deletedAt: null };
+
+    const first = await trashCapture(app.db, stale);
+    expect(first.changed).toBe(true);
+    const original = first.capture.deletedAt;
+    expect(original).not.toBeNull();
+
+    const second = await trashCapture(app.db, stale);
+    expect(second.changed).toBe(false);
+    // The original timestamp survives: a retry cannot postpone the purge.
+    expect(second.capture.deletedAt?.getTime()).toBe(original?.getTime());
+
+    expect(await auditActions(roll.rollId)).toEqual(['capture.deleted']);
   });
 });
 
@@ -452,6 +590,122 @@ describe("a host token only opens its own roll's captures (07 §25)", () => {
     });
     expect(res.statusCode).toBe(403);
     expect(res.json<{ code: string }>().code).toBe('WRONG_TOKEN_SCOPE');
+  });
+});
+
+/* ------------------------------------------------------------- host list -- */
+
+describe('GET /api/host/rolls/:rollId/captures (03 §10, §11)', () => {
+  it('shows hidden and trashed captures the guest feed has dropped', async () => {
+    const roll = await createRoll();
+    const plain = await insertCapture(roll.rollId);
+    const hidden = await insertCapture(roll.rollId, { visible: false });
+    const trashed = await insertCapture(roll.rollId, { deletedAt: new Date() });
+
+    // The guest sees one of the three.
+    expect(await feedIds(roll.slug)).toEqual([plain]);
+
+    const page = await hostList(roll.rollId, roll.hostToken);
+    const byId = new Map(page.items.map((item) => [item.captureId, item]));
+    expect([...byId.keys()].sort()).toEqual([plain, hidden, trashed].sort());
+    expect(page.hasMore).toBe(false);
+    expect(page.nextCursor).toBeNull();
+
+    // Each state is distinguishable from the others, which is the whole point.
+    expect(byId.get(plain)).toMatchObject({ visible: true, deletedAt: null, purgeAfter: null });
+    expect(byId.get(hidden)).toMatchObject({ visible: false, deletedAt: null, purgeAfter: null });
+
+    const bin = byId.get(trashed);
+    expect(bin?.deletedAt).not.toBeNull();
+    const graceMs = TRASH_GRACE_DAYS * 24 * 60 * 60 * 1000;
+    expect(Date.parse(bin?.purgeAfter ?? '') - Date.parse(bin?.deletedAt ?? '')).toBe(graceMs);
+  });
+
+  it('round-trips hide → list → unhide using only ids the API returned', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+
+    // Step 1: the host hides a capture it found in its own list.
+    const before = await hostList(roll.rollId, roll.hostToken);
+    const target = before.items[0]?.captureId;
+    expect(target).toBe(captureId);
+
+    const hide = await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${target ?? ''}/hide`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(hide.statusCode).toBe(200);
+    expect(await feedIds(roll.slug)).toEqual([]);
+
+    // Step 2: the hidden capture is still findable, flagged as hidden. This is
+    // the step that was impossible before the listing existed.
+    const during = await hostList(roll.rollId, roll.hostToken);
+    const stillThere = during.items.find((item) => item.visible === false);
+    expect(stillThere?.captureId).toBe(captureId);
+
+    // Step 3: unhide it by the id the list handed back.
+    const unhide = await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${stillThere?.captureId ?? ''}/unhide`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(unhide.statusCode).toBe(200);
+
+    expect(await feedIds(roll.slug)).toEqual([captureId]);
+    expect((await hostList(roll.rollId, roll.hostToken)).items[0]).toMatchObject({
+      captureId,
+      visible: true,
+    });
+  });
+
+  it('pages on the same keyset as the guest feed and rejects the same bad input', async () => {
+    const roll = await createRoll();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      // Distinct createdAt so the expected order is unambiguous.
+      ids.push(await insertCapture(roll.rollId, { visible: i % 2 === 0 }));
+    }
+
+    const first = await hostList(roll.rollId, roll.hostToken, '?limit=2');
+    expect(first.items).toHaveLength(2);
+    expect(first.hasMore).toBe(true);
+
+    const walked = [...first.items.map((item) => item.captureId)];
+    let cursor = first.nextCursor;
+    while (cursor !== null) {
+      const page = await hostList(
+        roll.rollId,
+        roll.hostToken,
+        `?limit=2&cursor=${encodeURIComponent(cursor)}`,
+      );
+      walked.push(...page.items.map((item) => item.captureId));
+      cursor = page.nextCursor;
+      expect(walked.length).toBeLessThanOrEqual(5);
+    }
+    // Newest first, every capture once, hidden ones included.
+    expect(walked).toEqual([...ids].reverse());
+
+    const bad = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/captures?cursor=not-a-cursor`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json<{ code: string }>().code).toBe('INVALID_CURSOR');
+  });
+
+  it("403s a host token from another roll", async () => {
+    const mine = await createRoll('List mine');
+    const other = await createRoll('List other');
+    await insertCapture(mine.rollId);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${mine.rollId}/captures`,
+      headers: bearer(other.hostToken),
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
 

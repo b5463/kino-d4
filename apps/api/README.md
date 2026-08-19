@@ -802,13 +802,14 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 
 | Route | Auth | Notes |
 | --- | --- | --- |
+| `GET /api/host/rolls/:rollId/captures` | host | every capture incl. hidden and trashed |
 | `POST /api/host/captures/:captureId/hide` | host (capture) | `visible = false`; `capture.hidden` |
 | `POST /api/host/captures/:captureId/unhide` | host (capture) | `visible = true`; `capture.updated` |
 | `DELETE /api/host/captures/:captureId` | host (capture) | `deleted_at = now()`; `capture.deleted` |
 | `POST /api/host/rolls/:rollId/export` | host | `202 {jobId}`, `Location:` the poll route |
 | `GET /api/host/rolls/:rollId/export/:jobId` | host | `{status, url?}` |
 
-All five write an `audit_events` row with actor `host` and actions
+The four write routes each write an `audit_events` row with actor `host` and actions
 `capture.hidden` / `capture.unhidden` / `capture.deleted` / `roll.exported`. For
 these, `target` is the id of the row the action applied to, not a destroyed value
 — an entry that did not name its capture would record only that *something* was
@@ -817,6 +818,32 @@ hidden.
 Moderation works on a **closed or archived** roll. Closing stops uploads (03
 §22); it does not stop a host taking down a photo somebody complained about
 afterwards, which is when most complaints arrive.
+
+### The host's own capture list
+
+`GET /api/host/rolls/:rollId/captures` returns **every** capture of the roll —
+hidden and trashed included — each item carrying `visible`, `deletedAt` and the
+derived `purgeAfter` on top of the guest fields.
+
+It is not a convenience. 03 §11 says a hidden capture is "retained for host", and
+every other capture-listing route is guest-gated behind
+`visible = true AND deleted_at IS NULL`. Without this route a hidden capture's id
+appears nowhere on the API surface: the host watches `counts.hidden` go up and has
+no way to name the capture it counted, so `POST /unhide` is unreachable in
+practice. Retention that cannot be observed is not retention.
+
+A **dedicated route** rather than a `captures` array on the dashboard response,
+for two reasons: a roll holds hundreds of captures, so an embedded array would
+make every dashboard render read the whole roll with no pagination story to grow
+into; and the dashboard is the request that gets polled for its counts, so it is
+the one that must stay cheap.
+
+It reuses the guest feed's reader through a `FeedAudience` flag — `visibleTo()` is
+the only thing that differs — so both feeds share one keyset, one cursor encoding,
+one `limit + 1` trick and one asset join. Duplicating them would let the host's
+list drift out of step with the guest's, which is precisely the comparison a host
+makes when deciding whether a photo is really hidden. `limit` and `cursor` behave
+identically to the guest feed, down to the 400 codes.
 
 ### Hide versus delete
 
@@ -838,7 +865,18 @@ retrying on a timeout cannot postpone the purge.
 
 Every verb is a no-op the second time — no duplicate audit row, no duplicate
 event. Hiding an already-hidden capture is an ordinary retry, and an event for it
-would tell every connected guest to re-fetch something that did not move. A
+would tell every connected guest to re-fetch something that did not move.
+
+**The test that decides is the WHERE clause** (`ne(visible)` / `isNull(deleted_at)`),
+not a comparison against the preHandler's read. That read is a snapshot one round
+trip old, so two concurrent requests both see the old state and both pass a guard
+based on it — duplicate audit row, duplicate event, and for delete a `deleted_at`
+overwritten with the later timestamp, which silently postpones the purge. It is
+not a rare interleaving either: a client timeout does not cancel the in-flight
+request, so the retry races the original by construction. With the predicate in
+the statement, PostgreSQL's row lock decides and "no row came back" is the honest
+definition of "somebody else already did this"; the reply then re-reads the row
+rather than echoing the stale snapshot. A
 failed publish does not fail the request: the row is committed, so the capture is
 already gone for anyone loading the page, and refusing the host's moderation
 because Redis blinked would be the worse trade.
@@ -906,7 +944,8 @@ photos.
 - The purge job is Task 25's too. Trashed captures accumulate; nothing reads
   `TRASH_GRACE_DAYS` yet except the `purgeAfter` field in the reply.
 - No restore route, so a trashed capture can currently only be un-trashed by
-  hand. Restore is on Task 25's side of the line.
+  hand — the host list shows it and its purge deadline, but there is no verb to
+  bring it back. Restore is on Task 25's side of the line.
 
 ## Logging
 

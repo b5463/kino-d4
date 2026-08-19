@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import type { KinoDatabase } from '../plugins/db';
 import type { HostCapture } from '../auth/plugins';
 import { auditRows } from '../rolls/rolls';
@@ -72,6 +72,16 @@ const moderationColumns = {
  * tap, two host tabs open — and answering 200 while writing a second audit row
  * would make the trail record something that did not happen. The same reasoning
  * as `applyPatch` in `host-rolls.ts`.
+ *
+ * **The test that decides is the WHERE clause, not a comparison in JavaScript.**
+ * The preHandler's read is a snapshot taken one round trip earlier, so two
+ * concurrent requests both see the old state and both pass any guard based on it
+ * — duplicate audit row, duplicate event, and for delete a `deleted_at`
+ * overwritten with the later timestamp. That is not a rare interleaving: a client
+ * timeout does not cancel the in-flight request, so the retry races the original
+ * by construction. Making the predicate part of the UPDATE lets PostgreSQL's row
+ * lock decide, and "no row came back" is then the honest definition of "somebody
+ * else already did this".
  */
 export interface ModerationResult {
   capture: HostCapture;
@@ -79,31 +89,51 @@ export interface ModerationResult {
 }
 
 /**
+ * The capture's state as the database currently has it.
+ *
+ * Read only on the no-op path, where the snapshot the preHandler carries may be a
+ * round trip out of date — the whole point of losing that race is that somebody
+ * else's write is the one to report. Falls back to the snapshot if the row is
+ * gone, which nothing in V1 can do (purge is Task 25's and hard-deletes captures
+ * only after the grace period).
+ */
+async function currentState(db: KinoDatabase, capture: HostCapture): Promise<HostCapture> {
+  const [row] = await db
+    .select(moderationColumns)
+    .from(captures)
+    .where(eq(captures.id, capture.id))
+    .limit(1);
+  return row ?? capture;
+}
+
+/**
  * Sets `visible`, with the audit row in the same transaction.
  *
- * The `rollId` is in the WHERE alongside the capture id even though the
- * preHandler has already established the pair. It costs nothing and it means no
- * future refactor of the auth layer can turn this into an update of a capture in
- * a roll the caller does not hold.
+ * `ne(visible)` in the WHERE is the concurrency guard described above. `rollId` is
+ * there too, even though the preHandler established the pair: it costs nothing and
+ * means no future refactor of the auth layer can turn this into an update of a
+ * capture in a roll the caller does not hold.
  */
 export async function setCaptureVisible(
   db: KinoDatabase,
   capture: HostCapture,
   visible: boolean,
 ): Promise<ModerationResult> {
-  if (capture.visible === visible) return { capture, changed: false };
-
   const updated = await db.transaction(async (tx) => {
     const [row] = await tx
       .update(captures)
       .set({ visible })
-      .where(and(eq(captures.id, capture.id), eq(captures.rollId, capture.rollId)))
+      .where(
+        and(
+          eq(captures.id, capture.id),
+          eq(captures.rollId, capture.rollId),
+          ne(captures.visible, visible),
+        ),
+      )
       .returning(moderationColumns);
-    if (row === undefined) {
-      // The preHandler read this row moments ago, so it cannot have vanished
-      // without something being very wrong. Rolling back is the honest answer.
-      throw new Error(`capture ${capture.id} disappeared during moderation`);
-    }
+    // Already in the requested state, by this request or by one that beat it.
+    // No audit row and no event, and the transaction commits having done nothing.
+    if (row === undefined) return null;
 
     await tx.insert(auditEvents).values(
       auditRows([
@@ -120,6 +150,7 @@ export async function setCaptureVisible(
     return row;
   });
 
+  if (updated === null) return { capture: await currentState(db, capture), changed: false };
   return { capture: updated, changed: true };
 }
 
@@ -131,25 +162,28 @@ export async function setCaptureVisible(
  * had it — collapsing delete into "hide and mark" would silently unhide anything
  * that was hidden before it was deleted.
  *
- * Already-trashed is a no-op that keeps the **original** `deleted_at`: re-deleting
- * must not quietly extend the grace period, or a client that retries on a timeout
- * would postpone the purge every time.
+ * `isNull(deleted_at)` in the WHERE keeps the **original** timestamp: re-deleting
+ * must not quietly extend the grace period, and the guard has to be in the
+ * statement rather than in a pre-check because the client that retries on a
+ * timeout is racing its own first attempt.
  */
 export async function trashCapture(
   db: KinoDatabase,
   capture: HostCapture,
 ): Promise<ModerationResult> {
-  if (capture.deletedAt !== null) return { capture, changed: false };
-
   const updated = await db.transaction(async (tx) => {
     const [row] = await tx
       .update(captures)
       .set({ deletedAt: new Date() })
-      .where(and(eq(captures.id, capture.id), eq(captures.rollId, capture.rollId)))
+      .where(
+        and(
+          eq(captures.id, capture.id),
+          eq(captures.rollId, capture.rollId),
+          isNull(captures.deletedAt),
+        ),
+      )
       .returning(moderationColumns);
-    if (row === undefined) {
-      throw new Error(`capture ${capture.id} disappeared during moderation`);
-    }
+    if (row === undefined) return null;
 
     await tx.insert(auditEvents).values(
       auditRows([
@@ -164,5 +198,6 @@ export async function trashCapture(
     return row;
   });
 
+  if (updated === null) return { capture: await currentState(db, capture), changed: false };
   return { capture: updated, changed: true };
 }

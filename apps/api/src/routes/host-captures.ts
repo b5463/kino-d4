@@ -1,7 +1,10 @@
-import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
-// `captureOf` and not `rollOf`: the capture carries the id of the roll the token
-// was actually compared against, so the handlers never need to read the roll.
-import { captureOf } from '../auth/plugins';
+import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
+// The moderation verbs use `captureOf`, not `rollOf`: the capture carries the id
+// of the roll the token was actually compared against. The listing is the other
+// way round — it is addressed by rollId and uses `requireHost`.
+import { captureOf, rollOf } from '../auth/plugins';
+import { decodeCursor, parseLimit, readHostCaptureFeedPage } from '../captures/feed';
+import { fail } from './errors';
 import {
   moderationView,
   setCaptureVisible,
@@ -12,9 +15,9 @@ import {
 import { publishRollEvent, type RollEvent } from '../events/publish';
 
 /**
- * Host moderation (03 §11): hide, unhide, delete.
+ * Host moderation (03 §11): the host's own capture list, hide, unhide, delete.
  *
- * Three routes, and every one of them is addressed by **captureId** — which is
+ * Three of the four routes are addressed by **captureId** — which is
  * why they sit here and not in `host-rolls.ts`. `requireHost` keys its token
  * comparison on a roll id path parameter and these have none, so they use
  * `requireHostCapture`, which derives the roll from the capture and compares
@@ -30,12 +33,58 @@ import { publishRollEvent, type RollEvent } from '../events/publish';
  * it emphatically does not stop a host taking down a photo somebody complained
  * about afterwards, which is when most complaints arrive.
  *
+ * The fourth route is the listing, and it is not optional decoration: 03 §11
+ * says a hidden capture is "retained for host", and every capture-listing route
+ * before this one was guest-gated behind `visible = true AND deleted_at IS NULL`.
+ * So a hidden capture's id existed nowhere on the API surface and `POST /unhide`
+ * was unreachable in practice — the host could see `counts.hidden` go up and had
+ * no way to name the capture it counted.
+ *
+ * It is a **dedicated route** rather than a `captures` array on the dashboard
+ * response, for two reasons. A roll holds hundreds of captures, so an embedded
+ * array would make every dashboard render read the whole roll and would have no
+ * pagination story to grow into; and the dashboard is polled for its counts,
+ * which is exactly the request that must stay cheap. The listing reuses the guest
+ * feed's reader through an audience flag, so both share one keyset, one cursor
+ * encoding and one asset join.
+ *
  * 03 §29 — "do not overbuild moderation for V1" — is why there is no bulk
  * endpoint, no reason field, no reviewer queue and no restore route (Task 25 owns
- * restore). Three verbs and an audit row.
+ * restore). Three verbs, a list, and an audit row.
  */
 
+function queryOf(request: FastifyRequest): Record<string, unknown> {
+  const query: unknown = request.query;
+  return typeof query === 'object' && query !== null ? (query as Record<string, unknown>) : {};
+}
+
 export const hostCaptureRoutes: FastifyPluginAsync = async (app) => {
+  /**
+   * The host's list: every capture of the roll, hidden and trashed included, each
+   * carrying `visible`, `deletedAt` and `purgeAfter` so the two are
+   * distinguishable from a visible one and from each other.
+   *
+   * Same `limit` and `cursor` contract as `GET /api/rolls/:slug/captures`, down to
+   * the same 400 codes, because it is the same reader.
+   */
+  app.get(
+    '/api/host/rolls/:rollId/captures',
+    { preHandler: app.requireHost('rollId') },
+    async (request, reply) => {
+      const query = queryOf(request);
+
+      const limit = parseLimit(query['limit']);
+      if (!limit.ok) return fail(reply, 400, limit.error.code, limit.error.message);
+
+      const cursor = decodeCursor(query['cursor']);
+      // 400, not 500: a mangled cursor is a client mistake, and letting the driver
+      // reject the timestamp cast would make it look like a server fault.
+      if (!cursor.ok) return fail(reply, 400, cursor.error.code, cursor.error.message);
+
+      return readHostCaptureFeedPage(app.db, rollOf(request).id, limit.value, cursor.value);
+    },
+  );
+
   app.post(
     '/api/host/captures/:captureId/hide',
     { preHandler: app.requireHostCapture('captureId') },
