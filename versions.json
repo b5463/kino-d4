@@ -1,7 +1,7 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-08-18",
+  "updated": "2026-08-19",
   "software": [
     {
       "name": "kino-workspace",
@@ -32,6 +32,12 @@
       "version": "0.1.0",
       "package": "packages/kdp/package.json",
       "tagPrefix": "kino-kdp-v"
+    },
+    {
+      "name": "kino-media",
+      "version": "0.1.0",
+      "package": "packages/media/package.json",
+      "tagPrefix": "kino-media-v"
     },
     {
       "name": "kino-schemas",

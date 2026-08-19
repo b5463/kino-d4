@@ -13,11 +13,12 @@ import { configureQueue } from './queue';
  * affect originals" is much easier to hold when the thing that can fail is not
  * inside the process that holds the upload.
  *
- * Task 23 registered the image handlers. Every other job name — the wiggle
- * renders, the recap, the exports — still has no handler, and still fails
- * loudly with a `processing_events` row saying so. That is the correct
- * behaviour: the alternative, reporting work done that nobody did, would leave
- * captures claiming derivatives that do not exist.
+ * Tasks 23 and 24 registered the image handlers and the two wiggle renders.
+ * Every other job name — the recap, the AI enhancement, the exports, the trash
+ * purge — still has no handler, and still fails loudly with a
+ * `processing_events` row saying so. That is the correct behaviour: the
+ * alternative, reporting work done that nobody did, would leave captures
+ * claiming derivatives that do not exist.
  */
 async function main(): Promise<void> {
   const config = loadWorkerConfig();
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
   /*
    * Each handler is an independent function of (payload, ctx) — no shared state,
    * no ordering between them, and `ctx.putDerived` as its only write path.
-   * Tasks 24 and 25 add their names to `IMAGE_HANDLERS`' siblings here.
+   * Task 25 adds its names to `IMAGE_HANDLERS`' siblings here.
    */
   registerImageHandlers(queue);
 
