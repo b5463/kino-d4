@@ -1272,7 +1272,7 @@ export interface RollApi {
 - PWA: `vite-plugin-pwa` with cached app shell, network-first API, cache-first assets; installable manifest (name "KINO Roll", theme per design baseline); install NEVER prompted automatically (03§5).
 - HTML head on `/r/*`: `<meta name="robots" content="noindex, nofollow">` (03§9).
 
-- [ ] **Steps 1–5: failing client test (PIN flow, cursor passthrough) → implement → PASS → commit** — `feat(roll-web): scaffold, typed API client, PWA shell`
+- [x] **Steps 1–5: failing client test (PIN flow, cursor passthrough) → implement → PASS → commit** — `feat(roll-web): scaffold, typed API client, PWA shell`
 
 ### Task 27: WigglePlayer component
 

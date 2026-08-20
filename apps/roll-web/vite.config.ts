@@ -19,7 +19,14 @@ import { VitePWA } from 'vite-plugin-pwa';
  *     `event.prompt()` on its own.
  */
 export default defineConfig({
-  base: './',
+  // NOT './': this app is served at fixed, deep, absolute routes
+  // (`/r/:slug`, `/r/:slug/c/:captureId`, `/host`) by one host — it is the
+  // opposite of Studio's static-bundle-from-anywhere deployment, which is
+  // what `base: './'` is for. A relative base makes every asset path resolve
+  // against the *route's* directory instead of the site root, so anything
+  // one level deep 404s. Confirmed by building both ways and diffing
+  // `dist/index.html`.
+  base: '/',
   plugins: [
     react(),
     VitePWA({
@@ -35,19 +42,39 @@ export default defineConfig({
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '.',
-        icons: [],
+        // A typographic app tile, not a new logo. `sizes: any` is valid for the
+        // vector source and lets one approved asset cover every launcher size;
+        // its wide safe area also makes the same file suitable for maskable
+        // launchers. Task 34 may restyle the tile through shared tokens, but
+        // Task 26's manifest is installable now rather than knowingly incomplete.
+        icons: [
+          {
+            src: '/icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            // Everything under /api/ EXCEPT asset bytes: roll/capture reads,
-            // the PIN exchange. Never the SSE stream — an event source is not
-            // a fetch this plugin should intercept at all.
+            // Everything under /api/ EXCEPT asset bytes and the SSE stream:
+            // roll/capture reads, the PIN exchange. The `/events` exclusion
+            // is load-bearing, not defensive — `GET /api/rolls/:slug/events`
+            // otherwise matches all three clauses below it and the Workbox
+            // SW fetch handler DOES see EventSource requests. Caching a
+            // `text/event-stream` body that by design never ends means an
+            // unbounded, ever-growing Cache Storage entry for the whole
+            // visit, and a stale one played back offline would feed a
+            // *different*, sourceless EventSource before the real
+            // reconnect. Never intercept it at all.
             urlPattern: ({ url, request }) =>
               url.pathname.startsWith('/api/') &&
               !url.pathname.startsWith('/api/assets/') &&
+              !url.pathname.endsWith('/events') &&
               request.method === 'GET',
             handler: 'NetworkFirst',
             options: {
@@ -60,13 +87,39 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'kino-roll-assets',
-              expiration: { maxEntries: 500 },
+              expiration: {
+                maxEntries: 500,
+                // A host can hide or delete a capture (03§11: "immediate
+                // guest removal"), and cache-first alone would keep serving
+                // it from any device that already opened it, forever. This
+                // bound is a backstop, not the real fix — Tasks 28/29 own
+                // the real one: evict the specific asset ids from
+                // `kino-roll-assets` on `capture.hidden` / `capture.deleted`
+                // (delivered over `rollApi.events()`) rather than waiting on
+                // this to expire.
+                maxAgeSeconds: 60 * 60 * 24,
+              },
             },
           },
         ],
       },
     }),
   ],
+  server: {
+    proxy: {
+      // Without this, `npm run dev` serves the SPA on Vite's own port with
+      // no API behind it, and every `RollApi` call — which defaults to
+      // same-origin — 404s on Vite's HTML fallback instead of reaching
+      // `apps/api`. Tasks 27-31 all hit this on their first `npm run dev`.
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        // The SSE stream is a long-lived response; without this Vite's dev
+        // proxy can time it out like an ordinary slow request.
+        ws: false,
+      },
+    },
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

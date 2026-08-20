@@ -3,11 +3,24 @@ import { ApiError, createRollApi, NotImplementedError, PinRequiredError } from '
 
 /** A minimal `Response`-shaped stub, built only from what the client reads. */
 function jsonResponse(status: number, body: unknown): Response {
+  const text = JSON.stringify(body);
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: 'stub',
     json: () => Promise.resolve(body),
+    text: () => Promise.resolve(text),
+  } as unknown as Response;
+}
+
+/** A 2xx with no body at all — `res.text()` resolves to `''`. */
+function emptyResponse(status: number): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'stub',
+    json: () => Promise.reject(new Error('no body to parse')),
+    text: () => Promise.resolve(''),
   } as unknown as Response;
 }
 
@@ -118,6 +131,36 @@ describe('createRollApi', () => {
       await expect(failure).rejects.toBeInstanceOf(ApiError);
       await expect(failure).rejects.not.toBeInstanceOf(PinRequiredError);
     });
+
+    // `guestRollAccess` gates every guest read, not just `GET /api/rolls/:slug`
+    // — a PIN rotated mid-visit has to surface the same way everywhere, or
+    // Task 30's `instanceof PinRequiredError` routing only catches it on the
+    // very first load.
+    it('listCaptures throws PinRequiredError on a 401 PIN_REQUIRED', async () => {
+      const api = createRollApi();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(401, { code: 'PIN_REQUIRED', message: 'this roll is PIN protected' }),
+      );
+
+      await expect(api.listCaptures('abc123')).rejects.toBeInstanceOf(PinRequiredError);
+    });
+
+    it('getCapture throws PinRequiredError on a 401 PIN_REQUIRED', async () => {
+      const api = createRollApi();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(401, { code: 'PIN_REQUIRED', message: 'this roll is PIN protected' }),
+      );
+
+      await expect(api.getCapture('abc123', 'cap_01')).rejects.toBeInstanceOf(PinRequiredError);
+    });
+  });
+
+  describe('requestJson body handling', () => {
+    it('treats a 2xx with an empty body as success rather than a JSON parse failure', async () => {
+      const api = createRollApi();
+      fetchMock.mockResolvedValueOnce(emptyResponse(204));
+      await expect(api.submitPin('abc123', '4242')).resolves.toBeUndefined();
+    });
   });
 
   describe('cursor passthrough', () => {
@@ -154,6 +197,20 @@ describe('createRollApi', () => {
     it('returns the API content path, not a presigned URL', () => {
       const api = createRollApi();
       expect(api.assetUrl('ast_01HXYZ')).toBe('/api/assets/ast_01HXYZ/content');
+    });
+
+    it('appends ?download=1 when asked for an attachment', () => {
+      const api = createRollApi();
+      expect(api.assetUrl('ast_01HXYZ', { download: true })).toBe(
+        '/api/assets/ast_01HXYZ/content?download=1',
+      );
+    });
+
+    it('omits the query string when download is explicitly false', () => {
+      const api = createRollApi();
+      expect(api.assetUrl('ast_01HXYZ', { download: false })).toBe(
+        '/api/assets/ast_01HXYZ/content',
+      );
     });
 
     it('never calls fetch — the browser follows the redirect itself', () => {
@@ -239,6 +296,31 @@ describe('createRollApi', () => {
 
       const third = api.events('abc123') as unknown as FakeEventSource;
       expect(third.url).not.toContain('lastEventId=');
+    });
+
+    it('does NOT clear a stored id on a hard close that happened after the connection opened', () => {
+      const api = createRollApi();
+      const first = api.events('abc123') as unknown as FakeEventSource;
+      first.dispatch(
+        'capture.created',
+        Object.assign(new Event('capture.created'), { lastEventId: 'still-good-42' }),
+      );
+
+      const second = api.events('abc123') as unknown as FakeEventSource;
+      expect(second.url).toContain('lastEventId=still-good-42');
+
+      // Unlike a rejected `INVALID_LAST_EVENT_ID`, this connection reaches
+      // OPEN first — an hour of live traffic, say — and only THEN hard-closes
+      // (the host rotated the PIN, the roll got deleted, a 502 mid-deploy).
+      // That says nothing about whether `still-good-42` was ever bad, and
+      // must not be treated as if it did.
+      second.readyState = FakeEventSource.OPEN;
+      second.dispatch('open', new Event('open'));
+      second.readyState = FakeEventSource.CLOSED;
+      second.dispatch('error', new Event('error'));
+
+      const third = api.events('abc123') as unknown as FakeEventSource;
+      expect(third.url).toContain('lastEventId=still-good-42');
     });
 
     it('does not clear the stored id when the close was not tied to a resume attempt', () => {

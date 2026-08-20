@@ -14,7 +14,12 @@
       the page itself.
     -->
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="manifest" href="manifest.webmanifest" />
+    <!--
+      No manual manifest <link> here: `vite-plugin-pwa` injects its own,
+      absolute (`/manifest.webmanifest`), at build time. A second, relative
+      copy written by hand would just be dead weight in dev (no manifest
+      exists at that path yet) and a duplicate tag once built.
+    -->
     <title>KINO Roll</title>
   </head>
   <body>

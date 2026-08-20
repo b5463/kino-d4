@@ -129,7 +129,14 @@ export interface RollApi {
   submitPin(slug: string, pin: string): Promise<void>;
   listCaptures(slug: string, cursor?: string): Promise<CaptureFeedPage>;
   getCapture(slug: string, id: string): Promise<CaptureDetail>;
-  assetUrl(assetId: string): string;
+  /**
+   * `options.download` appends `?download=1` (`wantsDownload` in
+   * `captures/delivery.ts`), which asks the API for `Content-Disposition:
+   * attachment` instead of the default inline response. An optional second
+   * parameter, so the pinned single-argument signature Tasks 27-29 were
+   * already written against keeps working unchanged.
+   */
+  assetUrl(assetId: string, options?: { download?: boolean }): string;
   react(slug: string, captureId: string): Promise<void>;
   events(slug: string, lastEventId?: string): EventSource;
 }
@@ -166,13 +173,42 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl}${path}`;
 }
 
-async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
+/**
+ * The one place a 401 becomes a `PinRequiredError`.
+ *
+ * `listCaptures`, `getCapture` and `getRoll` all sit behind the same
+ * `guestRollAccess` preHandler and all answer `PIN_REQUIRED` once a host
+ * rotates the roll's PIN mid-visit — the cookie every earlier request relied
+ * on stops working immediately, not at the next page load. Checking here
+ * once, rather than in each caller, is what makes that true everywhere Task
+ * 30's PIN gate needs to catch it, not just on the roll's first load.
+ *
+ * `slug` is optional because `submitPin`'s own 401 (`INVALID_PIN`) is a
+ * different failure — a wrong PIN, not a missing one — and never reaches
+ * this branch regardless.
+ */
+async function requestJson<T>(input: string, init?: RequestInit, slug?: string): Promise<T> {
   const res = await fetch(input, { ...init, credentials: 'include' });
+
+  if (res.status === 401) {
+    const body = await readErrorBody(res);
+    if (errorCode(body) === 'PIN_REQUIRED') {
+      throw new PinRequiredError(slug ?? '', errorMessage(body, 'this roll is PIN protected'));
+    }
+    throw new ApiError(401, errorCode(body), errorMessage(body, 'unauthorized'));
+  }
+
   if (!res.ok) {
     const body = await readErrorBody(res);
     throw new ApiError(res.status, errorCode(body), errorMessage(body, res.statusText));
   }
-  return (await res.json()) as T;
+
+  // A 2xx with an empty body (e.g. a bare 204, or a stub in a test) is not a
+  // JSON parse failure — `res.json()` on an empty string throws, which would
+  // otherwise turn "nothing to report" into a confusing SyntaxError.
+  const text = await res.text();
+  if (text === '') return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 /**
@@ -193,24 +229,11 @@ export function createRollApi(baseUrl = ''): RollApi {
 
   return {
     async getRoll(slug) {
-      const res = await fetch(joinUrl(baseUrl, `/api/rolls/${encodeURIComponent(slug)}`), {
-        credentials: 'include',
-      });
-
-      if (res.status === 401) {
-        const body = await readErrorBody(res);
-        if (errorCode(body) === 'PIN_REQUIRED') {
-          throw new PinRequiredError(slug, errorMessage(body, 'this roll is PIN protected'));
-        }
-        throw new ApiError(401, errorCode(body), errorMessage(body, 'unauthorized'));
-      }
-
-      if (!res.ok) {
-        const body = await readErrorBody(res);
-        throw new ApiError(res.status, errorCode(body), errorMessage(body, res.statusText));
-      }
-
-      return (await res.json()) as RollView;
+      return requestJson<RollView>(
+        joinUrl(baseUrl, `/api/rolls/${encodeURIComponent(slug)}`),
+        undefined,
+        slug,
+      );
     },
 
     async submitPin(slug, pin) {
@@ -228,6 +251,10 @@ export function createRollApi(baseUrl = ''): RollApi {
       // for why: its encoding is an internal detail this client has no
       // business depending on.
       if (cursor !== undefined) params.set('cursor', cursor);
+      // `limit` is not exposed yet — the brief's `RollApi` shape names only
+      // `(slug, cursor?)`, and the API defaults to `FEED_LIMIT_DEFAULT` (50)
+      // on its own. A future task can add an optional third parameter if a
+      // page size other than the default turns out to be needed.
       const qs = params.toString();
 
       const data = await requestJson<{
@@ -239,6 +266,8 @@ export function createRollApi(baseUrl = ''): RollApi {
           baseUrl,
           `/api/rolls/${encodeURIComponent(slug)}/captures${qs === '' ? '' : `?${qs}`}`,
         ),
+        undefined,
+        slug,
       );
 
       return {
@@ -254,15 +283,18 @@ export function createRollApi(baseUrl = ''): RollApi {
           baseUrl,
           `/api/rolls/${encodeURIComponent(slug)}/captures/${encodeURIComponent(id)}`,
         ),
+        undefined,
+        slug,
       );
     },
 
-    assetUrl(assetId) {
+    assetUrl(assetId, options) {
       // The API path, not a presigned URL: the browser follows the 302 from
       // `GET /api/assets/:id/content` itself. Fetching and blobbing this would
       // throw the presign's short expiry and its cache-control away for
       // nothing.
-      return joinUrl(baseUrl, `/api/assets/${encodeURIComponent(assetId)}/content`);
+      const path = `/api/assets/${encodeURIComponent(assetId)}/content`;
+      return joinUrl(baseUrl, options?.download === true ? `${path}?download=1` : path);
     },
 
     async react() {
@@ -298,6 +330,22 @@ export function createRollApi(baseUrl = ''): RollApi {
 
       const source = new EventSource(url.toString(), { withCredentials: true });
 
+      // Whether this connection ever reached OPEN. A genuine
+      // `INVALID_LAST_EVENT_ID` (400) is answered before a single frame is
+      // written, so a rejected resume never opens at all — it goes straight
+      // to a hard close. Everything else that can hard-close an already-open
+      // stream (the host rotates the PIN, the roll gets deleted, a 502
+      // during a deploy) says nothing about whether the stored id itself was
+      // bad, and must not be treated as if it did: `resumeFrom` alone is
+      // "this connection started from a stored id", not "this connection
+      // died BECAUSE of it" — conflating the two would delete a current,
+      // valid id on every unrelated disconnect and silently lose the
+      // replay for the gap that follows.
+      let opened = false;
+      source.addEventListener('open', () => {
+        opened = true;
+      });
+
       // The events are NAMED (`event: capture.created`, ...); `onmessage`
       // never fires for a named event, so tracking the latest id delivered —
       // for the next reload's resume — has to go through `addEventListener`
@@ -311,14 +359,12 @@ export function createRollApi(baseUrl = ''): RollApi {
       }
 
       source.addEventListener('error', () => {
-        // Any hard close (no browser-scheduled retry) right after this
-        // connection asked to resume from a stored id is what
-        // `INVALID_LAST_EVENT_ID` (400) looks like from here — native
-        // EventSource never surfaces the status code itself, and a stored id
-        // the server now rejects would otherwise wedge every future
-        // reconnect on the same 400. Clearing it lets the next attempt fall
-        // back to live.
-        if (resumeFrom !== undefined && source.readyState === EventSource.CLOSED) {
+        // Only a resume attempt (`resumeFrom` set) that hard-closed WITHOUT
+        // ever opening looks like `INVALID_LAST_EVENT_ID` from here — native
+        // EventSource never surfaces the status code itself. Clearing the
+        // stored id in that one case lets the next attempt fall back to
+        // live instead of wedging on the same rejected id forever.
+        if (resumeFrom !== undefined && !opened && source.readyState === EventSource.CLOSED) {
           lastEventIds.delete(slug);
         }
       });
