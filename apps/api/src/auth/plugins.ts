@@ -10,6 +10,7 @@ import { bearerToken, hashToken, timingSafeHexEqual, tokenScope } from './tokens
 import { verifyPin } from './pins';
 import { normalizeSlug } from '../rolls/slug';
 import { captures, rollDevices, rolls, devices } from '../db/schema';
+import { pinAttemptRateLimit } from '../plugins/rateLimits';
 
 /**
  * The three authentication scopes of 05 §12, as Fastify preHandlers.
@@ -551,7 +552,7 @@ export const authPlugin = fp(
      * Guests are anonymous (03 §18) — this grants access to one roll and
      * establishes no identity.
      */
-    app.post('/api/rolls/:slug/pin', async (request, reply) => {
+    app.post('/api/rolls/:slug/pin', { config: pinAttemptRateLimit }, async (request, reply) => {
       const parsed = pinBody.safeParse(request.body);
       if (!parsed.success) {
         return fail(reply, 400, 'INVALID_BODY', `invalid or missing: ${issuePaths(parsed.error)}`);

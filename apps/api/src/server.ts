@@ -11,6 +11,7 @@ import { loadConfig, type ApiConfig } from './config';
 import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
+import { rateLimitsPlugin } from './plugins/rateLimits';
 import { eventsPlugin } from './plugins/events';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
@@ -79,6 +80,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
     // `reqId` (its default label).
     genReqId: () => randomUUID(),
     requestIdHeader: 'x-request-id',
+    trustProxy: config.TRUST_PROXY,
   };
 
   const app = Fastify(options);
@@ -86,6 +88,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.decorate('config', config);
   app.register(dbPlugin, { config });
   app.register(redisPlugin, { config });
+  app.register(rateLimitsPlugin);
   // The roll event subscriber; duplicates the client above, so it comes after.
   app.register(eventsPlugin);
   app.register(s3Plugin, { config });

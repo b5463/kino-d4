@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 import { rollOf } from '../auth/plugins';
 import {
   decodeCursor,
@@ -39,7 +40,7 @@ function paramOf(request: FastifyRequest, name: string): string {
 }
 
 export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/rolls/:slug/captures', { preHandler: app.guestRollAccess }, async (request, reply) => {
+  app.get('/api/rolls/:slug/captures', { config: guestReadRateLimit, preHandler: app.guestRollAccess }, async (request, reply) => {
     const query = queryOf(request);
 
     const limit = parseLimit(query['limit']);
@@ -83,7 +84,7 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.post(
     '/api/rolls/:slug/captures/:captureId/react',
-    { preHandler: app.guestRollAccess },
+    { config: guestReadRateLimit, preHandler: app.guestRollAccess },
     async (request, reply) => {
       const roll = rollOf(request);
       if (!roll.reactionsEnabled) {

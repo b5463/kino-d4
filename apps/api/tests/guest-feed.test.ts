@@ -31,6 +31,7 @@ const RUN = randomBytes(4).toString('hex');
 
 const config: ApiConfig = loadConfig();
 const app: FastifyInstance = buildServer(config);
+const proxyApp: FastifyInstance = buildServer({ ...config, OBJECT_DELIVERY: 'proxy' });
 
 const REQUIRED_TABLES = ['captures', 'assets', 'rolls'];
 
@@ -239,6 +240,7 @@ async function assertMigrated(): Promise<void> {
 
 beforeAll(async () => {
   await app.ready();
+  await proxyApp.ready();
   await assertMigrated();
 
   const res = await app.inject({
@@ -280,6 +282,7 @@ afterAll(async () => {
   if (migrated) {
     await app.db.delete(schema.devices).where(eq(schema.devices.serial, SERIAL));
   }
+  await proxyApp.close();
   await app.close();
 }, 60_000);
 
@@ -736,6 +739,25 @@ describe('GET /api/assets/:assetId/content', () => {
     const fetched = await fetch(res.headers['location'] as string);
     expect(fetched.status).toBe(200);
     expect(Buffer.from(await fetched.arrayBuffer()).equals(body)).toBe(true);
+  }, 30_000);
+
+  it('streams authorized bytes through the API when production storage is private', async () => {
+    const roll = await createRoll({ title: `Proxy round trip ${RUN}` });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+    const ids = await insertAssets(roll.rollId, captureId, [{ role: 'thumb' }]);
+    const body = randomBytes(64);
+    await storeBytes(ids['thumb'] ?? '', body);
+
+    const response = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/assets/${ids['thumb'] ?? ''}/content`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['location']).toBeUndefined();
+    expect(response.headers['content-type']).toContain('image/webp');
+    expect(response.headers['content-disposition']).toBe('inline');
+    expect(response.rawPayload.equals(body)).toBe(true);
   }, 30_000);
 
   it('404s an unknown asset, an unready asset, and a deleted capture’s assets', async () => {

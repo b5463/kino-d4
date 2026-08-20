@@ -4,6 +4,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { firmwareManifest } from '@kino/schemas';
 import { firmwareReleases } from '../db/schema';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 import { fail } from './errors';
 
 const FIRMWARE_URL_TTL_SECONDS = 15 * 60;
@@ -19,7 +20,7 @@ function safeFile(file: string): boolean {
 }
 
 export const firmwareRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/firmware/releases', async (request, reply) => {
+  app.get('/api/firmware/releases', { config: guestReadRateLimit }, async (request, reply) => {
     const query = queryOf(request);
     const hardware = typeof query['hardware'] === 'string' ? query['hardware'] : '';
     const channel = typeof query['channel'] === 'string' ? query['channel'] : 'stable';
@@ -76,7 +77,10 @@ export const firmwareRoutes: FastifyPluginAsync = async (app) => {
     return { items };
   });
 
-  app.get('/api/firmware/releases/:release/manifest', async (request, reply) => {
+  app.get(
+    '/api/firmware/releases/:release/manifest',
+    { config: guestReadRateLimit },
+    async (request, reply) => {
     const params = request.params as { release?: string };
     const query = queryOf(request);
     const channel = typeof query['channel'] === 'string' ? query['channel'] : 'stable';
@@ -107,15 +111,69 @@ export const firmwareRoutes: FastifyPluginAsync = async (app) => {
       if (!safeFile(image.file)) {
         return fail(reply, 500, 'INVALID_FIRMWARE_FILE', 'stored firmware file path is invalid');
       }
-      downloads[target] = await getSignedUrl(
-        app.s3,
+      if (app.config.OBJECT_DELIVERY === 'proxy') {
+        const base = app.config.PUBLIC_BASE_URL.replace(/\/$/, '');
+        downloads[target] =
+          `${base}/api/firmware/releases/${encodeURIComponent(parsed.data.release)}` +
+          `/files/${encodeURIComponent(target)}?channel=${encodeURIComponent(row.channel)}`;
+      } else {
+        downloads[target] = await getSignedUrl(
+          app.s3,
+          new GetObjectCommand({
+            Bucket: app.config.S3_FIRMWARE_BUCKET,
+            Key: `firmware/${row.channel}/${parsed.data.release}/${image.file}`,
+          }),
+          { expiresIn: FIRMWARE_URL_TTL_SECONDS },
+        );
+      }
+    }
+    return { manifest: parsed.data, downloads };
+    },
+  );
+
+  app.get(
+    '/api/firmware/releases/:release/files/:target',
+    { config: guestReadRateLimit },
+    async (request, reply) => {
+      const params = request.params as { release?: string; target?: string };
+      const query = queryOf(request);
+      const channel = typeof query['channel'] === 'string' ? query['channel'] : 'stable';
+      const [row] = await app.db
+        .select({ manifest: firmwareReleases.manifest, channel: firmwareReleases.channel })
+        .from(firmwareReleases)
+        .where(
+          and(
+            eq(firmwareReleases.release, params.release ?? ''),
+            eq(firmwareReleases.channel, channel),
+          ),
+        )
+        .limit(1);
+      if (row === undefined) {
+        return fail(reply, 404, 'FIRMWARE_RELEASE_NOT_FOUND', 'no such firmware release');
+      }
+
+      const parsed = firmwareManifest.shape.safeParse(row.manifest);
+      if (!parsed.success || parsed.data.channel !== row.channel || !safeFile(parsed.data.release)) {
+        request.log.error({ release: params.release }, 'stored firmware manifest is invalid');
+        return fail(reply, 500, 'INVALID_FIRMWARE_MANIFEST', 'stored firmware manifest is invalid');
+      }
+      const image = parsed.data.targets[params.target ?? ''];
+      if (image === undefined || !safeFile(image.file)) {
+        return fail(reply, 404, 'FIRMWARE_TARGET_NOT_FOUND', 'no such firmware target');
+      }
+
+      const object = await app.s3.send(
         new GetObjectCommand({
           Bucket: app.config.S3_FIRMWARE_BUCKET,
           Key: `firmware/${row.channel}/${parsed.data.release}/${image.file}`,
         }),
-        { expiresIn: FIRMWARE_URL_TTL_SECONDS },
       );
-    }
-    return { manifest: parsed.data, downloads };
-  });
+      reply.header('cache-control', 'private, max-age=300');
+      reply.header('content-type', object.ContentType ?? 'application/octet-stream');
+      reply.header('content-disposition', `attachment; filename="${image.file}"`);
+      if (object.ContentLength !== undefined) reply.header('content-length', object.ContentLength);
+      if (object.ETag !== undefined) reply.header('etag', object.ETag);
+      return reply.send(object.Body);
+    },
+  );
 };

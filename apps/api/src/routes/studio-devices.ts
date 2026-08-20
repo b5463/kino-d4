@@ -4,43 +4,19 @@ import { newToken } from '../auth/tokens';
 import { newId } from '../ids';
 import { devices } from '../db/schema';
 import { fail, invalidBody } from './errors';
+import { registrationRateLimit } from '../plugins/rateLimits';
 
 /**
  * Studio/account API — device registration (05 §4).
  *
- * This route is unauthenticated, and re-registering an existing serial ROTATES
- * that device's token. Both are V1 decisions taken deliberately: there are no
- * accounts to bind a device to (05 §12), and rotation is how a real device
- * recovers after a factory reset or a lost token.
+ * There are no accounts to bind a device to (05 §12), so initial registration
+ * is intentionally unauthenticated. It is rate-limited in every environment.
  *
- * ## The risk this accepts — state it plainly
- *
- * Anyone who can reach this endpoint and supply an **existing** serial takes
- * over that device. Concretely, one unauthenticated POST:
- *
- * - returns a working `kdt_` token for the existing `deviceId`, granting the
- *   caller every roll that device created or joined (`roll_devices`);
- * - **bricks the real device** — its token stops authenticating at once, and
- *   the hardware has no way to notice or re-enrol on its own;
- * - is self-verifying for an attacker: the response echoes the `deviceId`, so a
- *   hit on an existing serial is instantly distinguishable from a new
- *   registration.
- *
- * And serials are neither secret nor unguessable. They are printed on the
- * outside of the device and sequential (`KD4-00001`), so the whole space is
- * walkable — this is enumeration against a counter, not a search.
- *
- * That is a takeover, not merely a rotation. What it is NOT is a reason to
- * refuse rotation on its own: an attacker who can reach this endpoint can also
- * register serials that do not exist yet, pre-claiming the fleet. Blocking
- * re-registration alone would leave real devices bricked after a reset while
- * closing none of that off. The fix is authentication on the endpoint, not a
- * conditional on the write — and that fix is Task 36's, tracked in the task 16
- * report's handoff section (rate limiting AND either a registration secret or
- * first-write-wins serial claiming).
- *
- * Until then this endpoint is the weakest link in the device trust chain, and
- * it should be treated as such in any deployment that is reachable publicly.
+ * Development/test use `rotate`, which keeps factory-reset work on a bench
+ * convenient. Production fails closed to `first-write-wins`: an existing
+ * printed serial returns 409 and its token hash is untouched, so this endpoint
+ * cannot take over or brick a deployed device. Recovery is the explicit,
+ * operator-controlled maintenance procedure in `infra/README.md`.
  */
 const registerBody = z.object({
   serial: z.string().min(1).max(64),
@@ -50,7 +26,7 @@ const registerBody = z.object({
 });
 
 export const studioDeviceRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/api/studio/devices/register', async (request, reply) => {
+  app.post('/api/studio/devices/register', { config: registrationRateLimit }, async (request, reply) => {
     const parsed = registerBody.safeParse(request.body);
     // Names the offending fields, never their values.
     if (!parsed.success) return invalidBody(reply, parsed.error);
@@ -58,7 +34,7 @@ export const studioDeviceRoutes: FastifyPluginAsync = async (app) => {
     const { serial, product, hardwareRevision, name } = parsed.data;
     const { token, hash } = newToken('kdt');
 
-    const [row] = await app.db
+    const insert = app.db
       .insert(devices)
       .values({
         id: newId('dev'),
@@ -68,16 +44,31 @@ export const studioDeviceRoutes: FastifyPluginAsync = async (app) => {
         name: name ?? null,
         tokenHash: hash,
       })
-      .onConflictDoUpdate({
-        target: devices.serial,
-        // `name` is only overwritten when the caller sent one, so re-registering
-        // to rotate a token does not silently erase a name set earlier.
-        set: { tokenHash: hash, product, hardwareRevision, ...(name === undefined ? {} : { name }) },
-      })
-      .returning({ id: devices.id });
+    const [row] = await (app.config.DEVICE_REGISTRATION_MODE === 'first-write-wins'
+      ? insert.onConflictDoNothing({ target: devices.serial }).returning({ id: devices.id })
+      : insert
+          .onConflictDoUpdate({
+            target: devices.serial,
+            // `name` is only overwritten when the caller sent one, so re-registering
+            // to rotate a token does not silently erase a name set earlier.
+            set: {
+              tokenHash: hash,
+              product,
+              hardwareRevision,
+              ...(name === undefined ? {} : { name }),
+            },
+          })
+          .returning({ id: devices.id }));
 
     if (row === undefined) {
-      // Unreachable: the upsert always writes a row. Guards the non-null read.
+      if (app.config.DEVICE_REGISTRATION_MODE === 'first-write-wins') {
+        return fail(
+          reply,
+          409,
+          'DEVICE_ALREADY_REGISTERED',
+          'this device is already registered; use the recovery procedure',
+        );
+      }
       return fail(reply, 500, 'REGISTRATION_FAILED', 'device was not stored');
     }
 

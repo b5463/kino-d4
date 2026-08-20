@@ -136,10 +136,18 @@ export interface AssetDeliveryDeps {
   db: KinoDatabase;
   s3: S3Client;
   bucket: string;
+  mode: 'presigned' | 'proxy';
 }
 
 export type AssetDelivery =
-  | { ok: true; url: string }
+  | { ok: true; delivery: 'redirect'; url: string }
+  | {
+      ok: true;
+      delivery: 'proxy';
+      objectKey: string;
+      mime: string;
+      disposition: string;
+    }
   | { ok: false; status: number; code: string; message: string };
 
 function refuse(status: number, code: string, message: string): AssetDelivery {
@@ -225,6 +233,20 @@ export async function deliverAsset(
     return refuse(403, 'DOWNLOADS_DISABLED', 'the host has turned downloads off for this roll');
   }
 
+  const disposition = attachment
+    ? dispositionFor(asset.role, asset.frameIndex, asset.objectKey)
+    : 'inline';
+
+  if (deps.mode === 'proxy') {
+    return {
+      ok: true,
+      delivery: 'proxy',
+      objectKey: asset.objectKey,
+      mime: asset.mime,
+      disposition,
+    };
+  }
+
   const url = await getSignedUrl(
     deps.s3,
     new GetObjectCommand({
@@ -232,13 +254,11 @@ export async function deliverAsset(
       Key: asset.objectKey,
       // Signed in, so a guest cannot flip a viewed asset into a downloaded one
       // by editing the URL: changing either value invalidates the signature.
-      ResponseContentDisposition: attachment
-        ? dispositionFor(asset.role, asset.frameIndex, asset.objectKey)
-        : 'inline',
+      ResponseContentDisposition: disposition,
       ResponseContentType: asset.mime,
     }),
     { expiresIn: ASSET_URL_TTL_SECONDS },
   );
 
-  return { ok: true, url };
+  return { ok: true, delivery: 'redirect', url };
 }

@@ -10,6 +10,11 @@ import { firmwareReleases } from '../src/db/schema';
 const RUN = randomBytes(4).toString('hex');
 const IDS = [`fw_${RUN}_stable`, `fw_${RUN}_beta`, `fw_${RUN}_other`, `fw_${RUN}_unsafe`];
 const app: FastifyInstance = buildServer(loadConfig());
+const proxyApp: FastifyInstance = buildServer({
+  ...loadConfig(),
+  OBJECT_DELIVERY: 'proxy',
+  PUBLIC_BASE_URL: 'https://firmware.example.test',
+});
 
 function manifest(
   release: string,
@@ -35,6 +40,7 @@ function manifest(
 
 beforeAll(async () => {
   await app.ready();
+  await proxyApp.ready();
   const rows = [
     { id: IDS[0]!, doc: manifest(`1.0.${RUN.slice(0, 2)}`, 'stable', ['v1']) },
     { id: IDS[1]!, doc: manifest(`1.0.${RUN.slice(0, 2)}`, 'beta', ['v1']) },
@@ -58,6 +64,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.db.delete(firmwareReleases).where(inArray(firmwareReleases.id, IDS));
+  await proxyApp.close();
   await app.close();
 }, 60_000);
 
@@ -116,6 +123,20 @@ describe('firmware catalog API', () => {
     });
     expect(beta.statusCode).toBe(200);
     expect(beta.json<{ manifest: FirmwareManifest }>().manifest.channel).toBe('beta');
+  });
+
+  it('keeps private production storage behind an API download URL', async () => {
+    const release = `1.0.${RUN.slice(0, 2)}`;
+    const response = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/firmware/releases/${release}/manifest?channel=stable`,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ downloads: Record<string, string> }>();
+    expect(body.downloads.main).toBe(
+      `https://firmware.example.test/api/firmware/releases/${release}/files/main?channel=stable`,
+    );
+    expect(body.downloads.main).not.toContain(proxyApp.config.S3_ENDPOINT);
   });
 
   it('refuses an unsafe object path stored in a manifest', async () => {

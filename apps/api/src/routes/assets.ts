@@ -1,6 +1,8 @@
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { ASSET_CACHE_CONTROL, deliverAsset, wantsDownload } from '../captures/delivery';
 import { fail } from './errors';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 
 /**
  * `GET /api/assets/:assetId/content` — the only way bytes leave the platform.
@@ -23,9 +25,14 @@ function paramOf(request: FastifyRequest, name: string): string {
 }
 
 export const assetRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/assets/:assetId/content', async (request, reply) => {
+  app.get('/api/assets/:assetId/content', { config: guestReadRateLimit }, async (request, reply) => {
     const delivered = await deliverAsset(
-      { db: app.db, s3: app.s3, bucket: app.config.S3_BUCKET },
+      {
+        db: app.db,
+        s3: app.s3,
+        bucket: app.config.S3_BUCKET,
+        mode: app.config.OBJECT_DELIVERY,
+      },
       request,
       paramOf(request, 'assetId'),
       wantsDownload(request.query),
@@ -33,9 +40,20 @@ export const assetRoutes: FastifyPluginAsync = async (app) => {
 
     if (!delivered.ok) return fail(reply, delivered.status, delivered.code, delivered.message);
 
-    // `private` keeps it out of shared caches — the URL is signed for one
-    // requester and one minute. See ASSET_CACHE_CONTROL for the max-age note.
+    // `private` keeps both responses out of shared caches. For redirects its
+    // lifetime also remains below the one-minute signature lifetime.
     reply.header('cache-control', ASSET_CACHE_CONTROL);
+    if (delivered.delivery === 'proxy') {
+      const object = await app.s3.send(
+        new GetObjectCommand({ Bucket: app.config.S3_BUCKET, Key: delivered.objectKey }),
+      );
+      reply.header('content-type', delivered.mime);
+      reply.header('content-disposition', delivered.disposition);
+      if (object.ContentLength !== undefined) reply.header('content-length', object.ContentLength);
+      if (object.ETag !== undefined) reply.header('etag', object.ETag);
+      return reply.send(object.Body);
+    }
+
     // 302, not 307: this is a plain GET redirect and every client follows it.
     return reply.redirect(delivered.url, 302);
   });

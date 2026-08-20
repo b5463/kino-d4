@@ -30,6 +30,8 @@ KINO has no published release yet. Changes intended for the first release collec
 - Large Studio galleries can extend their index in bounded 5,000-row windows without eagerly loading every thumbnail.
 - Twin now has a top-level recovery screen and stricter assembly/runtime invariants, with replay, power, flash-risk, wiring, and scene-store edge coverage.
 - KINO Twin optical overlays show per-camera axes and frusta, neighboring and four-camera overlap, adjustable subject proxies, and live pitch/distance readouts; unmeasured D4 optics remain explicitly marked `MEASURE REQUIRED`, while candidate lens angles are labelled design scenarios.
+- Production and isolated staging stacks now run behind Caddy with automatic TLS, unbuffered live events, private PostgreSQL/Redis/MinIO services, gated migrations, and API-streamed private media.
+- Redis-backed request budgets now protect device uploads, guest reads, PIN attempts, device registration, device Roll joining, and anonymous Roll creation.
 
 ### Fixed
 
@@ -37,6 +39,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Repeated Twin power-off calls no longer emit duplicate shutdown activity, and scenario toggles notify observers once.
 - Studio and Twin production bundles are split into measured chunks instead of shipping a single oversized application bundle.
 - Updated `sharp` to 0.35.3 in image-producing workspaces to remove the current high-severity libvips advisory.
+- Production device registration is now first-write-wins, preventing a known serial from rotating and stealing an already deployed device credential; repeated unknown Roll join codes trigger an hour-long per-device lockout.
 
 ### Known incomplete work
 

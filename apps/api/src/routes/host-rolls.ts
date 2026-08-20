@@ -19,6 +19,7 @@ import { rollCaptureCounts } from '../uploads/uploads';
 import { countRollViewers } from '../events/viewers';
 import { auditEvents, devices, rolls } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
+import { hostCreateRateLimit } from '../plugins/rateLimits';
 
 /**
  * The host dashboard's API (03 §10).
@@ -77,10 +78,10 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
    * That means anyone who can reach this endpoint can create rolls, which is a
    * spam/storage-exhaustion surface and not a data-exposure one: a roll created
    * this way is reachable only through the host token in the response, which
-   * the caller already holds. Rate limiting is Task 36's, and this route is one
-   * of the two that need it most (the other is device registration).
+   * the caller already holds. Task 36 bounds the surface at 60 creations per
+   * minute per source IP in shared Redis.
    */
-  app.post('/api/host/rolls', async (request, reply) => {
+  app.post('/api/host/rolls', { config: hostCreateRateLimit }, async (request, reply) => {
     const parsed = createBody.safeParse(request.body);
     if (!parsed.success) return invalidBody(reply, parsed.error);
 

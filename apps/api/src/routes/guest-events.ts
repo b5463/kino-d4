@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 import { rollOf } from '../auth/plugins';
 import { isStreamId, readRollHistory, type RollEventDelivery } from '../events/publish';
 import { openRollEventFeed } from '../events/feed';
@@ -141,7 +142,7 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
     endAll();
   });
 
-  app.get('/api/rolls/:slug/events', { preHandler: app.guestRollAccess }, async (request, reply) => {
+  app.get('/api/rolls/:slug/events', { config: guestReadRateLimit, preHandler: app.guestRollAccess }, async (request, reply) => {
     const roll = rollOf(request);
 
     const lastEventId = requestedLastEventId(request);

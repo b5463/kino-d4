@@ -1436,10 +1436,10 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 - **Files:** Create `infra/docker-compose.prod.yml`, `infra/Caddyfile`, `infra/.env.prod.example`
 - Containers per 05§2: `kino-proxy` (Caddy — automatic TLS), `kino-web` (static: studio at `/studio`, roll-web at `/` + `/r/*` + `/host`), `kino-api`, `kino-worker`, `kino-postgres`, `kino-redis`, `kino-object-storage` (MinIO, not publicly exposed — presigned URLs proxied via Caddy path or MinIO on subdomain; decide at implementation, default: internal-only MinIO + API-streamed assets fallback if presign hosting is awkward behind one domain).
 - Caddyfile routes: `/api/*` → api:3000 (SSE: `flush_interval -1`), `/studio*` → studio static, everything else → roll-web static with SPA fallback; global header `X-Robots-Tag: noindex, nofollow` on `/r/*` and `/host*`.
-- [ ] Environments: `local` (compose.dev), `staging` (separate DB/bucket/credentials, subdomain or alt port), `production` (07§11).
-- [ ] Rate limits (05§13): `@fastify/rate-limit` — device upload routes 60/min/token, guest reads 300/min/IP, PIN attempts 5/min/IP.
+- [x] Environments: `local` (compose.dev), `staging` (separate DB/bucket/credentials, subdomain or alt port), `production` (07§11).
+- [x] Rate limits (05§13): `@fastify/rate-limit` — device upload routes 60/min/token, guest reads 300/min/IP, PIN attempts 5/min/IP. Deferred exposure hardening also completed: registration 10/min/IP + production first-write-wins, device join 30/min/IP + 10-miss/hour device lockout, anonymous Roll creation 60/min/IP.
 - [ ] Smoke: deploy to staging, run a full happy path (register device via Studio → create Roll → test-uploader pushes a capture → guest sees it live → host closes Roll).
-- [ ] Commit — `feat(infra): production compose + caddy for kino.acronym.sk`
+- [x] Commit — `feat(infra): production compose + caddy for kino.acronym.sk`
 
 ### Task 37: Test uploader CLI (Phase 2 requirement, 07§4)
 - **Files:** Create `infra/scripts/test-uploader.ts`
