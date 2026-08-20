@@ -1365,7 +1365,7 @@ export function WigglePlayer(props: {
 - Implements Task 12's `RollServerClient` against Task 16/17 endpoints. Registration flow: Studio reads serial/product/revision from device truth → `POST /api/studio/devices/register` → writes `{ deviceId, deviceToken, serverUrl }` to the camera via KDP `SET_CONFIG` patch (config section `roll.credentials`) → device token never persisted in Studio storage (only pass-through; 03§17). "Start a Roll" now: server create → device `ROLL_JOIN` with rollId + upload scope → QR + host link shown; host link offered as "Open host dashboard" (deep link with host token).
 - Acceptance guard (07§5): all USB device operations still work with no backend reachable — test: with `StubRollServerClient` failing, every other Studio page functions (mock-connect smoke test).
 
-- [ ] **Steps 1–5: failing tests (registration writes credential to device not localStorage; offline backend doesn't break Shoot/Gallery) → implement → PASS → commit** — `feat(studio): live Roll server client + device registration`
+- [x] **Steps 1–5: failing tests (registration writes credential to device not localStorage; offline backend doesn't break Shoot/Gallery) → implement → PASS → commit** — `feat(studio): live Roll server client + device registration`
 
 ### Task 33: Firmware catalog integration
 

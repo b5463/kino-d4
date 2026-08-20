@@ -13,6 +13,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Roll API foundation with authentication, roll lifecycle, resumable uploads, object storage, and live events.
 - Installable Roll guest PWA with a virtualized live feed, mode-aware capture detail, sharing, download controls, and anonymous reactions.
 - Private Roll host dashboard with QR sharing, live moderation, Roll settings, guest counts, and durable ZIP export polling.
+- Studio can register a connected KINO with the Roll server, pass its write-only device credential to the camera, and assign server-created Rolls without making offline camera work depend on the backend.
 - Background processing for capture derivatives, playable roll recaps, durable ZIP exports, and recoverable seven-day trash retention.
 - Maintained hardware, architecture, development, firmware-contract, troubleshooting, contribution, security, and release documentation.
 - Split light and dark KINO D4 brand marks plus a real Studio demo capture.

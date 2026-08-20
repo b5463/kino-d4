@@ -7,7 +7,7 @@
 
 import type { KinoDevice } from '../device/KinoDevice';
 import { isServerNotConfigured } from './RollServerClient';
-import type { RollServerClient } from './RollServerClient';
+import { acceptsDeviceCredential, type RollServerClient } from './RollServerClient';
 import type { NetworkSetRequest, NetworkView } from './rollTypes';
 
 /**
@@ -53,6 +53,32 @@ export interface StartedRoll {
   deviceOnly: boolean;
 }
 
+/** Register and pass the one-time credential straight through to device-owned storage. */
+export async function registerRollDevice(
+  device: KinoDevice,
+  server: RollServerClient,
+  identity: { serial: string; product: string; hardwareRevision: string },
+): Promise<{ deviceId: string }> {
+  const registered = await server.registerDevice(
+    identity.serial,
+    identity.product,
+    identity.hardwareRevision,
+  );
+  if (acceptsDeviceCredential(server)) {
+    server.useDeviceCredential(registered.deviceId, registered.deviceToken);
+  }
+  await device.applyConfig({
+    roll: {
+      credentials: {
+        deviceId: registered.deviceId,
+        deviceToken: registered.deviceToken,
+        serverUrl: server.baseUrl,
+      },
+    },
+  });
+  return { deviceId: registered.deviceId };
+}
+
 /**
  * Start a Roll: server first, device second.
  *
@@ -83,7 +109,18 @@ export async function startRoll(
     if (!(allowDeviceOnly && isServerNotConfigured(err))) throw err;
   }
 
-  const created = await device.rollCreate(opts.title);
+  const created = published === null
+    ? await device.rollCreate(opts.title)
+    : (await device.rollJoin({
+        slug: published.slug,
+        rollId: published.rollId,
+        guestUrl: published.guestUrl,
+        name: opts.title,
+        role: 'host',
+        uploadScope: 'upload',
+      })).roll;
+
+  if (created === null) throw new Error('KINO did not accept the published Roll assignment.');
 
   return published
     ? {

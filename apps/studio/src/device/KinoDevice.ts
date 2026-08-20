@@ -41,6 +41,7 @@ import type {
   NetworkSetRequest,
   NetworkStatus,
   RollCreateResponse,
+  PublishedRollJoinRequest,
   RollView,
   UploadEnqueueResponse,
   UploadQueueReport,
@@ -354,8 +355,8 @@ export class KinoDevice {
     return this.client.request<RollCreateResponse>(Cmd.ROLL_CREATE, { name }, 8000);
   }
 
-  rollJoin(slug: string) {
-    return this.client.request<RollView>(Cmd.ROLL_JOIN, { slug }, 8000);
+  rollJoin(join: string | PublishedRollJoinRequest) {
+    return this.client.request<RollView>(Cmd.ROLL_JOIN, typeof join === 'string' ? { slug: join } : join, 8000);
   }
 
   rollLeave() {

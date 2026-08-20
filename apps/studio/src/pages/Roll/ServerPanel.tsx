@@ -22,12 +22,16 @@ export function ServerPanel({
   result,
   onUrlChange,
   onTest,
+  registration,
+  onRegister,
 }: {
   url: string;
   busy: boolean;
   result: ServerTestResult | null;
   onUrlChange: (url: string) => void;
   onTest: () => Promise<void>;
+  registration: string | null;
+  onRegister: () => Promise<void>;
 }) {
   const urlId = useId();
   const lamp =
@@ -61,9 +65,14 @@ export function ServerPanel({
         </p>
       ) : null}
 
+      {registration ? <p className="notice notice--ok">{registration}</p> : null}
+
       <div className="panel-actions">
         <Button busy={busy} onClick={() => void onTest()}>
           TEST SERVER
+        </Button>
+        <Button variant="primary" busy={busy} disabled={result?.ok !== true} onClick={() => void onRegister()}>
+          REGISTER KINO
         </Button>
       </div>
     </Panel>

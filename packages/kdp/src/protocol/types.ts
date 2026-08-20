@@ -206,6 +206,16 @@ export interface KinoConfig {
   quad: QuadConfig;
   shoot: ShootConfig;
   body: BodyConfig;
+  /** Roll credentials live on the camera, never in Studio persistence. */
+  roll?: {
+    credentials?: {
+      deviceId: string;
+      /** Write-only on SET_CONFIG; omitted from GET_CONFIG and backups. */
+      deviceToken?: string;
+      hasDeviceToken?: boolean;
+      serverUrl: string;
+    };
+  };
 }
 
 export const CONFIG_SCHEMA_VERSION = 1;
