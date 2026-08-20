@@ -9,6 +9,17 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/zustand/')) return 'react';
+          if (id.includes('/qrcode/')) return 'qrcode';
+          if (id.includes('/zod/')) return 'schemas';
+          return 'vendor';
+        },
+      },
+    },
   },
   test: {
     environment: 'node',

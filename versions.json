@@ -1,7 +1,7 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-08-19",
+  "updated": "2026-08-20",
   "software": [
     {
       "name": "kino-workspace",
@@ -14,6 +14,12 @@
       "version": "0.9.0",
       "package": "apps/studio/package.json",
       "tagPrefix": "kino-studio-v"
+    },
+    {
+      "name": "kino-twin",
+      "version": "0.1.0",
+      "package": "apps/twin/package.json",
+      "tagPrefix": "kino-twin-v"
     },
     {
       "name": "kino-api",
@@ -46,16 +52,34 @@
       "tagPrefix": "kino-media-v"
     },
     {
+      "name": "kino-hardware-profiles",
+      "version": "0.1.0",
+      "package": "packages/hardware-profiles/package.json",
+      "tagPrefix": "kino-hardware-profiles-v"
+    },
+    {
       "name": "kino-schemas",
       "version": "0.1.0",
       "package": "packages/schemas/package.json",
       "tagPrefix": "kino-schemas-v"
     },
     {
+      "name": "kino-simulator-engine",
+      "version": "0.1.0",
+      "package": "packages/simulator-engine/package.json",
+      "tagPrefix": "kino-simulator-engine-v"
+    },
+    {
       "name": "kino-test-fixtures",
       "version": "0.1.0",
       "package": "packages/test-fixtures/package.json",
       "tagPrefix": "kino-test-fixtures-v"
+    },
+    {
+      "name": "kino-three-assets",
+      "version": "0.1.0",
+      "package": "packages/three-assets/package.json",
+      "tagPrefix": "kino-three-assets-v"
     }
   ],
   "protocol": {
@@ -97,6 +121,21 @@
       "name": "kino.firmware-manifest",
       "version": 1,
       "source": "packages/schemas/src/firmware.ts"
+    },
+    {
+      "name": "kino.hardware-profile",
+      "version": 1,
+      "source": "packages/hardware-profiles/src/types.ts"
+    },
+    {
+      "name": "kino.measured-overrides",
+      "version": 1,
+      "source": "packages/hardware-profiles/src/overrides.ts"
+    },
+    {
+      "name": "kino.sim-session",
+      "version": 1,
+      "source": "packages/simulator-engine/src/recorder.ts"
     }
   ],
   "database": {

@@ -53,10 +53,27 @@ interface StoredCapture {
   summary: CaptureSummary;
   flash: boolean;
   gpioSkewUs: number;
+  /** 04 §17 corrupt-JPEG fixture: MEDIA_READ returns truncated garbage. */
+  corrupt?: boolean;
+  /** 04 §17 incomplete/missing-frame fixtures: this camera index never landed. */
+  missingFrameIdx?: number;
 }
 
 /** Captures the demo party left on the card. */
 const DEMO_CAPTURES = 22;
+
+/**
+ * 04 §17 fixtures occupy the final slots of a non-empty generated gallery,
+ * so `resize(n)` still means exactly n captures while normal demo galleries
+ * keep something for Studio's error paths to exercise. Ids sit
+ * well outside the generated WGNNNNNN/QDNNNNNN range so they can never
+ * collide with a live or generated capture.
+ */
+const FIXTURE_CAPTURES: { id: string; corrupt?: boolean; missingFrameIdx?: number }[] = [
+  { id: 'WG999901', corrupt: true },
+  { id: 'WG999902', missingFrameIdx: 3 }, // incomplete: trailing frame never arrived
+  { id: 'WG999903', missingFrameIdx: 1 }, // missing frame: a mid-sequence gap
+];
 
 export class MockMediaStore {
   private captures: StoredCapture[] | null = null;
@@ -88,23 +105,35 @@ export class MockMediaStore {
     const rnd = mulberry32(0xd4c4);
     const list: StoredCapture[] = [];
     const wiggleRecipes = ['party-neg', 'party-neg', 'superia', 'vivid', 'mono', 'warm-2007', 'disposable', 'chrome'];
+    // 04 §17: the first two wiggle shots the loop produces carry an explicit
+    // lighting-condition look tag, standing in for "dark party" and "direct
+    // flash" fixtures. Picked by kind rather than index so a quad slot (whose
+    // recipeIds must stay a 4-entry per-camera list) never gets overwritten.
+    const lookTags = ['dark-party', 'direct-flash'];
+    let lookTagsAssigned = 0;
     // A 2,000-shot card spans more than one night; step back proportionally
     // so timestamps stay ordered and plausible instead of piling up.
-    let ts = Date.now() - 1000 * 60 * 60 * 38 - this.count * 8 * 60 * 1000;
-    for (let i = 0; i < this.count; i++) {
+    const partyStart = Date.now() - 1000 * 60 * 60 * 38 - this.count * 8 * 60 * 1000;
+    let ts = partyStart;
+    const fixtureCount = Math.min(FIXTURE_CAPTURES.length, this.count);
+    const generatedCount = this.count - fixtureCount;
+    for (let i = 0; i < generatedCount; i++) {
       const isQuad = rnd() < 0.3;
       // /DCIM folder naming: WG000041, QD000041
       const n = String(40 + i).padStart(6, '0');
       const id = isQuad ? `QD${n}` : `WG${n}`;
       ts += Math.floor(rnd() * 14 + 2) * 60 * 1000;
+      const lookTag = !isQuad && lookTagsAssigned < lookTags.length ? lookTags[lookTagsAssigned++] : null;
       list.push({
         summary: {
           id,
           kind: isQuad ? 'quad' : 'wiggle',
           ts,
-          recipeIds: isQuad
-            ? ['party-neg', 'motion', 'raw-digi', 'mono']
-            : [wiggleRecipes[Math.floor(rnd() * wiggleRecipes.length)]],
+          recipeIds: lookTag
+            ? [lookTag]
+            : isQuad
+              ? ['party-neg', 'motion', 'raw-digi', 'mono']
+              : [wiggleRecipes[Math.floor(rnd() * wiggleRecipes.length)]],
           favorite: rnd() < 0.18,
           resolution: '1600x1200',
           totalKB: 0, // filled lazily after first encode
@@ -113,6 +142,27 @@ export class MockMediaStore {
         gpioSkewUs: Math.floor(rnd() * 380 + 60),
       });
     }
+    // 04 §17 fault fixtures. Timestamped before the party even started so
+    // they always sort to the end of the gallery — pagination and "the first
+    // capture" tests against the normal party set stay unaffected by their
+    // presence, regardless of gallery size.
+    FIXTURE_CAPTURES.slice(0, fixtureCount).forEach((f, i) => {
+      list.push({
+        summary: {
+          id: f.id,
+          kind: 'wiggle',
+          ts: partyStart - 1000 * 60 * 60 - i * 60_000,
+          recipeIds: ['party-neg'],
+          favorite: false,
+          resolution: '1600x1200',
+          totalKB: 0,
+        },
+        flash: true,
+        gpioSkewUs: 120,
+        corrupt: f.corrupt,
+        missingFrameIdx: f.missingFrameIdx,
+      });
+    });
     this.captures = list;
     return list;
   }
@@ -169,13 +219,16 @@ export class MockMediaStore {
     return true;
   }
 
-  async info(id: string): Promise<CaptureInfo | null> {
+  async info(id: string): Promise<(CaptureInfo & { corrupt?: boolean }) | null> {
     const c = this.ensure().find((x) => x.summary.id === id);
     if (!c) return null;
     const files: CaptureFile[] = [];
     for (let cam = 0; cam < 4; cam++) {
+      // 04 §17 incomplete/missing-frame fixtures: a frame that never landed
+      // is skipped rather than failing the whole capture — MEDIA_INFO still
+      // answers, just with fewer than four files.
       const bytes = await this.fileBytesByIndex(id, cam);
-      if (!bytes) return null;
+      if (!bytes) continue;
       files.push({ name: `C${cam + 1}_RAW.JPG`, sizeBytes: bytes.length, sha256: await sha256Hex(bytes) });
     }
     c.summary.totalKB = Math.round(files.reduce((a, f) => a + f.sizeBytes, 0) / 1024);
@@ -183,6 +236,7 @@ export class MockMediaStore {
     return {
       ...c.summary,
       files,
+      corrupt: c.corrupt === true,
       meta: {
         flash: c.flash,
         batteryV: Math.round((3.55 + rnd() * 0.5) * 100) / 100,
@@ -210,7 +264,8 @@ export class MockMediaStore {
     if (cached) return cached;
     const c = this.ensure().find((x) => x.summary.id === id);
     if (!c) return null;
-    const bytes = await synthesizeFrame(c, camIdx);
+    if (c.missingFrameIdx === camIdx) return null; // 04 §17: this frame never arrived
+    const bytes = c.corrupt ? corruptJpegBytes(`${id}/${camIdx}`) : await synthesizeFrame(c, camIdx);
     this.fileCache.set(key, bytes);
     return bytes;
   }
@@ -461,5 +516,20 @@ function fakeJpegBytes(seedText: string, baseSize = 24_000, spread = 40_000): Ui
   for (let i = 11; i < size - 2; i++) bytes[i] = Math.floor(rnd() * 256);
   bytes[size - 2] = 0xff;
   bytes[size - 1] = 0xd9;
+  return bytes;
+}
+
+/**
+ * 04 §17 corrupt-JPEG fixture: short, random bytes with the SOI marker
+ * deliberately wrong so a JPEG magic-byte check fails — unlike `fakeJpegBytes`,
+ * which is always a well-formed (if fake) JPEG.
+ */
+function corruptJpegBytes(seedText: string): Uint8Array {
+  const rnd = mulberry32(hashId(seedText));
+  const size = 800 + Math.floor(rnd() * 400);
+  const bytes = new Uint8Array(size);
+  for (let i = 0; i < size; i++) bytes[i] = Math.floor(rnd() * 256);
+  bytes[0] = 0x00;
+  bytes[1] = 0x00;
   return bytes;
 }

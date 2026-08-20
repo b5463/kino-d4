@@ -1,9 +1,14 @@
+import { useEffect, useState } from 'react';
+import { BroadcastTransport } from '@kino/kdp';
 import { Button } from './Button';
 import { ConnectionNotice } from './ConnectionNotice';
 import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
-import { connectDemo, connectSerial } from '../app/session';
+import { connectDemo, connectSerial, connectTwin } from '../app/session';
 import { useKnownCameras } from '../state/knownCameras';
 import { APP_VERSION } from '../app/App';
+
+/** How often ConnectHome re-checks for a Twin tab while disconnected (§10 option 2). */
+const TWIN_PROBE_INTERVAL_MS = 3000;
 
 // Disconnected home: one dominant action, honest environment facts below.
 export function ConnectHome() {
@@ -12,9 +17,30 @@ export function ConnectHome() {
   const fault = useConnectionStore((s) => s.fault);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const known = useKnownCameras((s) => s.cameras);
+  const [twinAvailable, setTwinAvailable] = useState(false);
 
   const busy = phase === 'requesting-port' || phase === 'connecting' || phase === 'handshaking';
   const offlineReady = typeof navigator !== 'undefined' && navigator.serviceWorker?.controller != null;
+
+  // A Twin tab can open or close at any time, so this re-probes on an
+  // interval rather than once — the button appears/disappears without a
+  // reload. Only runs while actually disconnected; once a connect attempt
+  // starts there is nothing new to learn until it lands back here.
+  useEffect(() => {
+    if (phase !== 'disconnected') return;
+    let cancelled = false;
+    const check = () => {
+      void BroadcastTransport.probe().then((present) => {
+        if (!cancelled) setTwinAvailable(present);
+      });
+    };
+    check();
+    const timer = setInterval(check, TWIN_PROBE_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [phase]);
 
   return (
     <div className="connect">
@@ -36,6 +62,14 @@ export function ConnectHome() {
           <Button disabled={busy} onClick={() => void connectDemo()}>
             OPEN DEMO DEVICE
           </Button>
+          {twinAvailable ? (
+            <div className="connect-twin">
+              <Button disabled={busy} onClick={() => void connectTwin()}>
+                CONNECT KINO TWIN
+              </Button>
+              <p className="connect-twin-hint">Twin tab detected on this origin</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="connect-status" role="status">
