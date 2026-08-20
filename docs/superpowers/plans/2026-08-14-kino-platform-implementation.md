@@ -1348,7 +1348,7 @@ export function WigglePlayer(props: {
 - Renders the 03§10 dashboard: title, status, device serial, capture count, guest count (SSE connections), pending uploads; actions wired to Task 17/21 endpoints: Show QR (guest URL), Close/Reopen Roll, Download All (export job → poll status → link), rename, set/remove PIN, toggle downloads, regenerate guest slug (confirmation: "Old links stop working."), per-capture hide/unhide/delete from a moderation grid (hidden captures shown dimmed with `HIDDEN` lamp).
 - Host client = separate module; host token never sent to guest endpoints.
 
-- [ ] **Steps 1–5: failing tests (token from hash stored + stripped; hide action optimistic + reconciled by SSE; export flow polls to link) → implement → PASS → commit** — `feat(roll-web): host dashboard with moderation + export`
+- [x] **Steps 1–5: failing tests (token from hash stored + stripped; hide action optimistic + reconciled by SSE; export flow polls to link) → implement → PASS → commit** — `feat(roll-web): host dashboard with moderation + export`
 
 ---
 

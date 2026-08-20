@@ -105,6 +105,8 @@ declare module 'fastify' {
     requireDeviceRoll(rollIdParam: string): preHandlerHookHandler;
     /** Requires the host token of the roll named by `rollIdParam`. */
     requireHost(rollIdParam: string): preHandlerHookHandler;
+    /** Resolves the owning roll from a host token when no roll id is known yet. */
+    requireHostToken: preHandlerHookHandler;
     /**
      * Requires the host token of the roll that **owns the capture** named by
      * `captureIdParam`. Sets `request.capture` as well as `request.roll`.
@@ -411,6 +413,28 @@ export const authPlugin = fp(
           return fail(reply, 403, 'INVALID_HOST_TOKEN', 'that host token does not open this roll');
         }
 
+        request.roll = roll;
+        return undefined;
+      }),
+    );
+
+    app.decorate(
+      'requireHostToken',
+      scoped('host', async (request, reply) => {
+        const token = hostBearer(request, reply);
+        if (token === null) return reply;
+        const presented = hashToken(token);
+
+        const [row] = await app.db
+          .select({ ...publicRollColumns, hostTokenHash: rolls.hostTokenHash })
+          .from(rolls)
+          .where(eq(rolls.hostTokenHash, presented))
+          .limit(1);
+        if (row === undefined || !timingSafeHexEqual(row.hostTokenHash, presented)) {
+          return fail(reply, 401, 'INVALID_HOST_TOKEN', 'unknown or revoked host token');
+        }
+
+        const { hostTokenHash: _credential, ...roll } = row;
         request.roll = roll;
         return undefined;
       }),

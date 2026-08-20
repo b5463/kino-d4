@@ -1,13 +1,27 @@
-/**
- * Placeholder for the host dashboard (Task 31: moderation, roll settings,
- * closing a Roll). This task only proves `/host` resolves — the host token
- * that will unlock this page is not handled yet.
- */
+import { useMemo, useState, type FormEvent } from 'react';
+import { consumeHostToken, createHostApi, storeHostToken } from '../api/hostClient';
+import { HostDashboard } from './HostDashboard';
+
 export function HostDashboardPage() {
+  const [token, setToken] = useState(() => consumeHostToken());
+  const api = useMemo(() => (token === null ? null : createHostApi(token)), [token]);
+
+  if (api !== null) return <HostDashboard api={api} />;
+
   return (
-    <main>
+    <main style={{ maxWidth: 440, margin: '10vh auto', padding: '1rem' }}>
       <h1>Host dashboard</h1>
-      <p>Not built yet (Task 31).</p>
+      <p>Open the private host link supplied when this Roll was created, or paste its host token.</p>
+      <form onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const next = String(form.get('token') ?? '');
+        if (storeHostToken(next)) setToken(next.trim());
+      }}>
+        <label htmlFor="host-token">Host token</label><br />
+        <input id="host-token" name="token" type="password" autoComplete="off" required style={{ width: '100%' }} />
+        <button type="submit">Open dashboard</button>
+      </form>
     </main>
   );
 }

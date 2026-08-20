@@ -502,6 +502,25 @@ describe('GET /api/host/rolls/:rollId', () => {
     });
   });
 
+  it('reports the creating camera serial, while web-created rolls report none', async () => {
+    const deviceRoll = await createAsDevice({ title: 'Camera dashboard' });
+    const webRoll = await createAsHost({ title: 'Web dashboard' });
+
+    const deviceResponse = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${deviceRoll.rollId}`,
+      headers: bearer(deviceRoll.hostToken),
+    });
+    expect(deviceResponse.json()).toMatchObject({ deviceSerial: SERIAL_A });
+
+    const webResponse = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${webRoll.rollId}`,
+      headers: bearer(webRoll.hostToken),
+    });
+    expect(webResponse.json()).toMatchObject({ deviceSerial: null });
+  });
+
   it('never leaks a credential hash', async () => {
     const created = await createAsHost({ title: 'Secretive', pin: '4821' });
 
@@ -545,6 +564,40 @@ describe('GET /api/host/rolls/:rollId', () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ code: 'WRONG_TOKEN_SCOPE' });
+  });
+});
+
+describe('GET /api/host/session', () => {
+  it('resolves the owning Roll from the host token alone', async () => {
+    const created = await createAsHost({ title: 'Token-owned dashboard' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/host/session',
+      headers: bearer(created.hostToken),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ rollId: created.rollId, title: 'Token-owned dashboard' });
+    expect(res.body).not.toContain(hashToken(created.hostToken));
+  });
+
+  it('rejects an unknown or wrong-scope token without revealing a Roll', async () => {
+    const unknown = await app.inject({
+      method: 'GET',
+      url: '/api/host/session',
+      headers: bearer('hrt_unknown'),
+    });
+    expect(unknown.statusCode).toBe(401);
+    expect(unknown.json()).toMatchObject({ code: 'INVALID_HOST_TOKEN' });
+
+    const device = await app.inject({
+      method: 'GET',
+      url: '/api/host/session',
+      headers: bearer(deviceA.deviceToken),
+    });
+    expect(device.statusCode).toBe(403);
+    expect(device.json()).toMatchObject({ code: 'WRONG_TOKEN_SCOPE' });
   });
 });
 

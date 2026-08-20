@@ -51,7 +51,7 @@ export const rolls = pgTable('rolls', {
   createdByDeviceId: text('created_by_device_id').references(() => devices.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp('closed_at', { withTimezone: true }),
-});
+}, (table) => [uniqueIndex('rolls_host_token_hash_unique').on(table.hostTokenHash)]);
 
 /**
  * Which devices may operate which rolls (03 §17, 07 §25).

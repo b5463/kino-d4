@@ -317,6 +317,7 @@ export interface HostRollView {
   hasPin: boolean;
   downloadsEnabled: boolean;
   reactionsEnabled: boolean;
+  deviceSerial: string | null;
   guestUrl: string;
   createdAt: Date;
   closedAt: Date | null;
@@ -344,6 +345,7 @@ export function hostRollView(
   roll: PublicRollRow,
   counts: RollCaptureCounts,
   guests: number,
+  deviceSerial: string | null,
 ): HostRollView {
   return {
     rollId: roll.id,
@@ -354,6 +356,7 @@ export function hostRollView(
     hasPin: roll.privacy === 'pin',
     downloadsEnabled: roll.downloadsEnabled,
     reactionsEnabled: roll.reactionsEnabled,
+    deviceSerial,
     guestUrl: guestUrlFor(config, roll.slug),
     createdAt: roll.createdAt,
     closedAt: roll.closedAt,
