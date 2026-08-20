@@ -14,5 +14,6 @@
     "project": "node scripts/kino-project.mjs"
   },
   "devDependencies": { "tsx": "^4.21.0" },
+  "optionalDependencies": { "@rollup/rollup-linux-x64-gnu": "4.62.4" },
   "engines": { "node": ">=22" }
 }
