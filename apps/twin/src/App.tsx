@@ -2,10 +2,12 @@ import { useRef } from 'react';
 import { D4_V1 } from '@kino/hardware-profiles';
 import { Assembly } from './scene/Assembly';
 import { Wiring } from './scene/Wiring';
+import { Optics } from './scene/Optics';
 import { TwinCanvas, type TwinCanvasHandle } from './scene/TwinCanvas';
 import { ViewportBar } from './panels/ViewportBar';
 import { ComponentTree } from './panels/ComponentTree';
 import { Inspector } from './panels/Inspector';
+import { OpticsPanel } from './panels/OpticsPanel';
 import type { ViewPoseName } from './scene/viewPoses';
 
 // KINO Twin app shell — §3 frame. The header identifies the app, the loaded
@@ -53,10 +55,12 @@ export function App() {
             <TwinCanvas ref={canvasRef}>
               <Assembly />
               <Wiring />
+              <Optics />
             </TwinCanvas>
           </div>
         </main>
         <aside className="twin-panel twin-panel--right" aria-label="Inspector">
+          <OpticsPanel />
           <Inspector />
         </aside>
       </div>

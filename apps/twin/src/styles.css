@@ -347,6 +347,83 @@ body {
   color: var(--twin-text-mut);
 }
 
+/* Optical scenarios and overlap readouts (§9, Task 16). */
+
+.twin-optics-panel {
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--twin-line);
+  letter-spacing: 0.05em;
+}
+
+.twin-field-label {
+  display: block;
+  margin: 7px 0 4px;
+  color: var(--twin-text-mut);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.twin-select {
+  width: 100%;
+  padding: 3px 4px;
+  background: #22262e;
+  color: var(--twin-text);
+  border: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 10px;
+}
+
+.twin-optics-alert {
+  padding: 4px 6px;
+  background: #3a1f22;
+  border: 1px solid #7a3038;
+  color: #e0838c;
+}
+
+.twin-numeric--wide {
+  width: 100%;
+}
+
+.twin-dimension-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 5px 8px;
+  margin-top: 7px;
+  color: var(--twin-text-mut);
+  font-size: 10px;
+}
+
+.twin-optics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  text-align: right;
+}
+
+.twin-optics-table th,
+.twin-optics-table td {
+  padding: 2px 3px;
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-optics-table th:first-child,
+.twin-optics-table td:first-child {
+  text-align: left;
+}
+
+.twin-optics-table th {
+  color: var(--twin-text-mut);
+  font-weight: 400;
+}
+
 .twin-fatal {
   display: grid;
   place-content: center;

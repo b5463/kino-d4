@@ -13,6 +13,15 @@ beforeEach(() => {
     viewMode: 'normal',
     netClasses: new Set(NET_CLASSES),
     netFocus: null,
+    optics: {
+      enabled: false,
+      fovScenarioDeg: null,
+      distancesM: [1],
+      customM: null,
+      subject: 'none',
+      subjectWmm: 450,
+      subjectHmm: 1700,
+    },
   });
 });
 
@@ -42,6 +51,29 @@ describe('sceneStore bounds and toggles', () => {
     expect(useSceneStore.getState().netClasses.size).toBe(0);
     useSceneStore.getState().setAllNetClasses(true);
     expect([...useSceneStore.getState().netClasses]).toEqual(NET_CLASSES);
+  });
+
+  it('updates optics scenarios, distances and subject dimensions without invalid values', () => {
+    useSceneStore.getState().setOpticsEnabled(true);
+    useSceneStore.getState().setFovScenario(90);
+    useSceneStore.getState().toggleOpticsDistance(2);
+    useSceneStore.getState().setCustomDistance(-4);
+    useSceneStore.getState().setSubject('group');
+    expect(useSceneStore.getState().optics).toMatchObject({ subjectWmm: 1_600, subjectHmm: 1_700 });
+    useSceneStore.getState().setSubjectSize(1_600, 1_700);
+
+    expect(useSceneStore.getState().optics).toMatchObject({
+      enabled: true,
+      fovScenarioDeg: 90,
+      distancesM: [1, 2],
+      customM: null,
+      subject: 'group',
+      subjectWmm: 1_600,
+      subjectHmm: 1_700,
+    });
+
+    useSceneStore.getState().toggleOpticsDistance(1);
+    expect(useSceneStore.getState().optics.distancesM).toEqual([2]);
   });
 });
 

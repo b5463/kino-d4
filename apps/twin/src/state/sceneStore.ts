@@ -4,6 +4,17 @@ import type { HardwareProfile, MeasuredOverride, NetClass } from '@kino/hardware
 
 /** §3 viewport modes: what the assembly currently renders as. */
 export type ViewMode = 'normal' | 'xray' | 'internals' | 'enclosure' | 'wiring';
+export type OpticsSubject = 'none' | 'person' | 'group';
+
+export interface OpticsState {
+  enabled: boolean;
+  fovScenarioDeg: number | null;
+  distancesM: number[];
+  customM: number | null;
+  subject: OpticsSubject;
+  subjectWmm: number;
+  subjectHmm: number;
+}
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
@@ -20,6 +31,7 @@ export interface SceneState {
   viewMode: ViewMode;
   netClasses: Set<NetClass>; // §8 wiring-view class toggles; absent members are hidden
   netFocus: string | null; // §8 wiring-view instance filter; null = every instance's nets
+  optics: OpticsState;
   select(id: string | null): void;
   setExplode(v: number): void;
   setPitch(mm: number): void;
@@ -28,6 +40,12 @@ export interface SceneState {
   toggleNetClass(cls: NetClass): void;
   setAllNetClasses(on: boolean): void;
   setNetFocus(id: string | null): void;
+  setOpticsEnabled(enabled: boolean): void;
+  setFovScenario(deg: number | null): void;
+  toggleOpticsDistance(distanceM: number): void;
+  setCustomDistance(distanceM: number | null): void;
+  setSubject(subject: OpticsSubject): void;
+  setSubjectSize(widthMm: number, heightMm: number): void;
 }
 
 export const useSceneStore = create<SceneState>((set) => ({
@@ -41,6 +59,15 @@ export const useSceneStore = create<SceneState>((set) => ({
   viewMode: 'normal',
   netClasses: new Set(NET_CLASSES),
   netFocus: null,
+  optics: {
+    enabled: false,
+    fovScenarioDeg: null,
+    distancesM: [1],
+    customM: null,
+    subject: 'none',
+    subjectWmm: 450,
+    subjectHmm: 1700,
+  },
 
   select(id) {
     set({ selection: id });
@@ -71,6 +98,45 @@ export const useSceneStore = create<SceneState>((set) => ({
   },
   setNetFocus(id) {
     set({ netFocus: id });
+  },
+  setOpticsEnabled(enabled) {
+    set((s) => ({ optics: { ...s.optics, enabled } }));
+  },
+  setFovScenario(deg) {
+    const fovScenarioDeg = deg !== null && Number.isFinite(deg) && deg > 0 && deg < 180 ? deg : null;
+    set((s) => ({ optics: { ...s.optics, fovScenarioDeg } }));
+  },
+  toggleOpticsDistance(distanceM) {
+    if (!Number.isFinite(distanceM) || distanceM <= 0) return;
+    set((s) => {
+      const distancesM = s.optics.distancesM.includes(distanceM)
+        ? s.optics.distancesM.filter((distance) => distance !== distanceM)
+        : [...s.optics.distancesM, distanceM].sort((a, b) => a - b);
+      return { optics: { ...s.optics, distancesM } };
+    });
+  },
+  setCustomDistance(distanceM) {
+    const customM = distanceM !== null && Number.isFinite(distanceM) && distanceM > 0 ? distanceM : null;
+    set((s) => ({ optics: { ...s.optics, customM } }));
+  },
+  setSubject(subject) {
+    set((s) => ({
+      optics: {
+        ...s.optics,
+        subject,
+        subjectWmm: subject === 'group' ? 1_600 : subject === 'person' ? 450 : s.optics.subjectWmm,
+        subjectHmm: subject === 'none' ? s.optics.subjectHmm : 1_700,
+      },
+    }));
+  },
+  setSubjectSize(widthMm, heightMm) {
+    set((s) => ({
+      optics: {
+        ...s.optics,
+        subjectWmm: Number.isFinite(widthMm) && widthMm > 0 ? widthMm : s.optics.subjectWmm,
+        subjectHmm: Number.isFinite(heightMm) && heightMm > 0 ? heightMm : s.optics.subjectHmm,
+      },
+    }));
   },
 }));
 
