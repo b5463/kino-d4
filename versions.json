@@ -140,7 +140,7 @@
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
-    "latestMigration": "0006_recap_jobs"
+    "latestMigration": "0007_slippery_falcon"
   },
   "hardware": {
     "manifest": "hardware/manifest.json",

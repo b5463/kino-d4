@@ -11,6 +11,11 @@ import { useUpdateStore, setUpdateState, TARGET_STATUS_LABEL } from '../../state
 import type { TargetProgress } from '../../state/updateStore';
 import { loadPackageFromFiles, checkCompatibility } from '../../firmware/manifest';
 import { buildDemoPackage } from '../../firmware/demoPackage';
+import {
+  downloadFirmwarePackage,
+  listFirmwareReleases,
+  type CatalogRelease,
+} from '../../firmware/catalog';
 import { startUpdate, retryTarget, abortUpdate } from '../../firmware/updater';
 import { rebootAndReconnect, factoryResetAndReconnect } from '../../app/session';
 
@@ -41,6 +46,9 @@ export function UpdatesPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirm2, setConfirm2] = useState<'reboot' | 'factory-reset' | 'recovery' | null>(null);
   const [loadingPkg, setLoadingPkg] = useState(false);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogReleases, setCatalogReleases] = useState<CatalogRelease[] | null>(null);
   const [recoveryArmed, setRecoveryArmed] = useState(false);
 
   if (!info) return null;
@@ -80,6 +88,42 @@ export function UpdatesPage() {
       halted: false,
     });
     setLoadingPkg(false);
+  };
+
+  const checkCatalog = async () => {
+    setCatalogBusy(true);
+    setCatalogError(null);
+    const result = await listFirmwareReleases(info.hardware, info.protocol);
+    setCatalogBusy(false);
+    if (!result.ok) {
+      // An online check is additive. In particular, do not clear update.pkg:
+      // a technician may already have a verified package loaded while offline.
+      setCatalogError(result.error);
+      return;
+    }
+    setCatalogReleases(result.value);
+  };
+
+  const downloadCatalogRelease = async (release: CatalogRelease) => {
+    setCatalogBusy(true);
+    setCatalogError(null);
+    setUpdateState({ pkgError: null });
+    const result = await downloadFirmwarePackage(release.release, release.channel);
+    setCatalogBusy(false);
+    if (!result.ok) {
+      // Keep any previously verified package usable if the network or a new
+      // download fails.
+      setUpdateState({ pkgError: result.error });
+      return;
+    }
+    setUpdateState({
+      pkg: result.value,
+      compat: checkCompatibility(result.value.manifest, info),
+      pkgError: null,
+      targets: [],
+      finished: false,
+      halted: false,
+    });
   };
 
   const installedRows: { label: string; version: string }[] = [
@@ -150,6 +194,44 @@ export function UpdatesPage() {
               </div>
             ))}
           </dl>
+        </Panel>
+
+        <Panel title="FIRMWARE CATALOG">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <Button busy={catalogBusy} disabled={busy} onClick={() => void checkCatalog()}>
+              CHECK ONLINE
+            </Button>
+            <span className="dim">Stable channel · {info.hardware} · protocol {info.protocol}</span>
+          </div>
+          {catalogError ? <p className="notice notice--warn">{catalogError}</p> : null}
+          {catalogReleases === null ? (
+            <p className="faint">Check the Roll server for firmware compatible with this KINO.</p>
+          ) : catalogReleases.length === 0 ? (
+            <p className="faint">No stable firmware releases are published.</p>
+          ) : (
+            <dl>
+              {catalogReleases.map((release) => (
+                <div className="datarow" key={`${release.channel}:${release.release}`} style={{ maxWidth: 'none' }}>
+                  <dt>{release.release}</dt>
+                  <dd style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <span>
+                      <Led state={release.compatible ? 'ok' : 'warn'} label={release.compatible ? 'COMPATIBLE' : 'INCOMPATIBLE'} />
+                      {release.reasons.length > 0 ? ` · ${release.reasons.join(' · ')}` : ''}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant={release.compatible ? 'primary' : 'ghost'}
+                      busy={catalogBusy}
+                      disabled={busy || !release.compatible}
+                      onClick={() => void downloadCatalogRelease(release)}
+                    >
+                      DOWNLOAD
+                    </Button>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </Panel>
 
         <Panel title="UPDATE PACKAGE">

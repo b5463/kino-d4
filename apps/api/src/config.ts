@@ -34,6 +34,7 @@ export const configSchema = z.object({
   REDIS_URL: absoluteUrl.default('redis://localhost:6380'),
   S3_ENDPOINT: absoluteUrl.default('http://localhost:9000'),
   S3_BUCKET: z.string().min(1).default('kino-media'),
+  S3_FIRMWARE_BUCKET: z.string().min(1).default('kino-firmware'),
   S3_ACCESS_KEY: z.string().min(1).default('kino'),
   S3_SECRET_KEY: z.string().min(1).default('kino-secret'),
   // MinIO ignores the region but the AWS SDK requires one to sign requests.

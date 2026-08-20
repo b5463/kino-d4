@@ -1377,7 +1377,7 @@ export function WigglePlayer(props: {
 **Interfaces:**
 - Catalog response = array of `kino.firmware-manifest` documents filtered by `compatibleHardware` + protocol range vs the connected device (07§14: incompatible releases marked, not hidden — "Requires newer Studio/protocol"). Studio downloads manifest + binaries, verifies SHA-256 locally before the existing update flow takes over (02§21 requirements already implemented).
 
-- [ ] **Steps 1–5: failing tests (hardware filter; sha mismatch rejected before flash; offline → cached package still installable) → implement → PASS → commit** — `feat: firmware catalog end-to-end`
+- [x] **Steps 1–5: failing tests (hardware filter; sha mismatch rejected before flash; offline → cached package still installable) → implement → PASS → commit** — `feat: firmware catalog end-to-end`
 
 ---
 

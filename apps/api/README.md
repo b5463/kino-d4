@@ -55,7 +55,7 @@ project `kino-dev`, so it never collides with other stacks on the machine.
 
 `src/config.ts` validates the environment with zod:
 
-`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`,
+`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_FIRMWARE_BUCKET`, `S3_ACCESS_KEY`,
 `S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `COOKIE_SECRET`, `NODE_ENV`,
 `LOG_LEVEL`.
 
@@ -195,6 +195,7 @@ previous run left behind. `kino_test` is dropped again afterwards, and the
 | `npm run test -w @kino/api` | vitest, needs the compose stack |
 | `npm run lint -w @kino/api` | `tsc --noEmit` |
 | `npm run db:migrate -w @kino/api` | `drizzle-kit migrate` against `DATABASE_URL` |
+| `npm run firmware:publish -- <package-dir>` | verify and publish an immutable firmware package |
 
 There is deliberately no `build` script. The server is TypeScript run directly
 on Node 22 — nothing bundles it, so a build step would only produce artifacts
@@ -217,6 +218,27 @@ SSE stream, which by definition would never end on its own.
 `GET /api/healthz` pings all three concurrently (`select 1`, `PING`,
 `HeadBucket`) with a 5 s per-probe timeout, and answers
 `{ ok, db, redis, storage }` — `200` when all are reachable, `503` otherwise.
+
+### Firmware catalog
+
+`GET /api/firmware/releases?hardware=<revision>&protocol=<number>&channel=stable`
+returns every release in the channel. Compatibility is annotated with an
+explicit reason rather than hiding a package that does not match the connected
+device. `GET /api/firmware/releases/:release/manifest?channel=stable` returns
+the validated `kino.firmware-manifest` plus short-lived download URLs for each
+target in the separate `S3_FIRMWARE_BUCKET`.
+
+Publishing is intentionally a CLI operation in V1. A package directory contains
+`manifest.json` and every target named by its `targets` map. The command checks
+the manifest, safe file paths, image sizes and every SHA-256 before uploading
+anything, then records the release:
+
+```bash
+npm run firmware:publish -- ./kino-firmware-1.2.3 --notes "Production D4 release"
+```
+
+An existing release/channel pair is always refused. Publish a new release number
+instead: immutable releases make rollback and incident diagnosis reliable.
 
 ## Authentication
 
