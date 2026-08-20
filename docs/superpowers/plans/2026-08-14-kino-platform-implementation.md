@@ -1311,7 +1311,7 @@ export function WigglePlayer(props: {
 - `useRollEvents(slug, handlers)` — SSE subscription: reconnect with stored last event id + exponential backoff (1 s → 30 s cap); pauses EventSource on `pagehide`/`visibilitychange` hidden, resumes + refetches head on visible (mobile sleep/wake, 07§24); on `capture.created` fetches the capture and calls `prepend`; on `capture.hidden`/`deleted` removes it; on `capture.updated`/`processing.completed` refetches that capture (thumbnail may have upgraded — "derivative appears later", 07§24).
 - Feed rendering: `@tanstack/react-virtual` vertical list of thumbnail grid rows (3-up mobile, 4-up desktop); only WigglePlayers in/near viewport animate (the player's own IntersectionObserver handles it); header per 06§11: `KINO ROLL / <title> LIVE / 47 photos · 14 Aug 2026`.
 
-- [ ] **Steps 1–5: failing hook tests (prepend dedupes by id; hidden removes; reconnect refetches head) → implement → PASS → commit** — `feat(roll-web): live virtualized guest feed`
+- [x] **Steps 1–5: failing hook tests (prepend dedupes by id; hidden removes; reconnect refetches head) → implement → PASS → commit** — `feat(roll-web): live virtualized guest feed`
 
 ### Task 29: Capture detail + downloads + share
 
