@@ -147,6 +147,21 @@ describe('cameraBarExplodeOffsetMm', () => {
 
     expect(() => cameraBarExplodeOffsetMm(profile, 1)).toThrow(/camera-bar rigidity violated/i);
   });
+
+  it('throws when camera-bar members disagree on rotation', () => {
+    const camBar = agreeingCamBar();
+    camBar[2] = fixtureInstance({ ...camBar[2]!, rotationDeg: [0, 4, 0] });
+    expect(() => cameraBarExplodeOffsetMm(fixtureProfile(camBar), 1)).toThrow(/camera-bar rigidity violated/i);
+  });
+
+  it('fails loudly if a profile adds a fifth member to the four-camera bar', () => {
+    const fifth = fixtureInstance({
+      ...agreeingCamBar()[0]!,
+      id: 'cam5',
+      positionMm: [55, 10, 14],
+    });
+    expect(() => instanceTransforms(fixtureProfile([...agreeingCamBar(), fifth]), 22, 1)).toThrow(/at most four/i);
+  });
 });
 
 describe('instanceTransforms — camera-bar rigidity is structural, not data-coincidental', () => {

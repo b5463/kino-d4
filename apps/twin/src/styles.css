@@ -346,3 +346,31 @@ body {
   font-size: 11px;
   color: var(--twin-text-mut);
 }
+
+.twin-fatal {
+  display: grid;
+  place-content: center;
+  min-height: 100vh;
+  padding: 32px;
+  background: var(--twin-bg);
+  color: var(--twin-text);
+  font-family: var(--twin-mono);
+  text-align: center;
+}
+
+.twin-fatal h1 {
+  max-width: 720px;
+  margin: 8px auto;
+  font-size: 24px;
+}
+
+.twin-fatal p {
+  max-width: 720px;
+  margin: 8px auto 18px;
+  color: var(--twin-text-mut);
+}
+
+.twin-fatal .twin-fatal-kicker {
+  margin-bottom: 0;
+  color: #e0838c;
+}

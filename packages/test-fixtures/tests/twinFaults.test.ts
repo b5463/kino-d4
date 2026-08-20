@@ -124,7 +124,7 @@ describe('per-camera faults (KINO Twin §20)', () => {
     expect(logs.entries.some((e) => e.msg.includes('no 5V rail on CAM2'))).toBe(true);
   }, 5000);
 
-  it('sensor-missing: the cam boots with sensor null; test capture NACKs', async () => {
+  it('sensor-missing: the node stays reachable while sensor-dependent commands NACK clearly', async () => {
     const mock = new MockKinoDevice();
     const client = await connect(mock);
     mock.setCamFault('cam4', 'sensor-missing');
@@ -134,6 +134,16 @@ describe('per-camera faults (KINO Twin §20)', () => {
     expect(status.sensor).toBeNull();
 
     await expect(client.request(Cmd.CAMERA_TEST, { cam: 'cam4' })).rejects.toMatchObject({ code: 'SENSOR_MISSING' });
+    await expect(client.request(Cmd.CAMERA_CALIBRATE, { action: 'start' })).rejects.toMatchObject({
+      code: 'SENSOR_MISSING',
+    });
+
+    // The camera-node MCU still answers the bus, so a firmware repair remains possible.
+    await client.request(Cmd.ENTER_MAINTENANCE, {});
+    await expect(
+      client.request(Cmd.FW_BEGIN, { target: 'cam4', size: 16, sha256: 'a'.repeat(64), version: '0.2.0' }),
+    ).resolves.toMatchObject({ chunkSize: expect.any(Number) });
+    await client.request(Cmd.FW_ABORT, {});
   }, 5000);
 
   it('no-vsync: the timing result marks vsyncMeasured false for only that cam', async () => {
@@ -186,10 +196,14 @@ describe('per-camera faults (KINO Twin §20)', () => {
 
   it("offlineCameraNode still works for CAM1 and now delegates to setCamFault", async () => {
     const mock = new MockKinoDevice();
+    const changed = vi.fn();
+    mock.onScenarioChange(changed);
     mock.setScenario('offlineCameraNode', true);
     expect(mock.camFault('cam1')).toBe('offline');
+    expect(changed).toHaveBeenCalledTimes(1);
     mock.setScenario('offlineCameraNode', false);
     expect(mock.camFault('cam1')).toBeNull();
+    expect(changed).toHaveBeenCalledTimes(2);
   });
 });
 

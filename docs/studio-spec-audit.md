@@ -96,14 +96,13 @@ than no prompt.
 free value in the Network/Roll block. Recorded in `firmware-contract/README.md` § D3 and specified in
 `firmware-contract/commands.md`.
 
-### D-4 — the gallery lists at most 5,000 rows of a larger card
+### D-4 — closed: larger galleries can be listed in bounded windows
 
-`GALLERY_LIST_CAP` (`galleryPaging.ts`) stops the mount-time cursor walk at 5,000 rows: a 10,000
-capture card is 100 `MEDIA_LIST` round trips before the first tile appears. The header states both
-numbers (`N LISTED · M ON CARD`), filters work on what was listed, and the page slice stays bounded
-either way. 07 §16 requires pagination, virtualization, lazy assets and no lockup at 10,000 rows —
-all four hold — but it is worth saying plainly that row 7,412 is not reachable from the grid today.
-A search/jump-to-date control is the real fix, and it is not in this task.
+`GALLERY_LIST_CAP` (`galleryPaging.ts`) still caps the initial cursor walk at 5,000 rows, avoiding 100
+`MEDIA_LIST` round trips before the first tile appears. When the card reports more rows, the header
+now offers `LIST 5000 MORE`; each explicit request widens the index window up to the reported total.
+The rendered page remains capped at 24 cards and thumbnails remain lazy, but row 7,412 is reachable
+without forcing every large card to pay the full index cost on mount.
 
 ## Follow-ups
 

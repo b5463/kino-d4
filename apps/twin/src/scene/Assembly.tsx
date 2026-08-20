@@ -28,7 +28,7 @@ function degToRadTuple([x, y, z]: [number, number, number]): [number, number, nu
  * group) beats everything else; then selected > highlight-on-hover > the
  * mode's own default.
  */
-function visualModeFor(params: {
+export function visualModeFor(params: {
   isShell: boolean;
   storeVisible: boolean;
   viewMode: ViewMode;

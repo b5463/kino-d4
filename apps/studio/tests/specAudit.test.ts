@@ -38,6 +38,7 @@ import {
   GALLERY_PAGE_SIZE,
   galleryPageSlice,
   galleryView,
+  nextGalleryListLimit,
 } from '../src/pages/Gallery/galleryPaging';
 import { clearDeviceState, setDeviceState, supports, useDeviceStore } from '../src/state/deviceStore';
 import { navItems } from '../src/components/Sidebar';
@@ -519,6 +520,12 @@ async function readCard(device: KinoDevice): Promise<CaptureSummary[]> {
 }
 
 describe('07 §16 — gallery scale', () => {
+  it('expands a capped listing in bounded user-requested windows until every row is reachable', () => {
+    expect(nextGalleryListLimit(5000, 10000)).toBe(10000);
+    expect(nextGalleryListLimit(5000, 7412)).toBe(7412);
+    expect(nextGalleryListLimit(7412, 7412)).toBe(7412);
+  });
+
   for (const rows of [0, 60, 2000, 10000]) {
     it(`keeps the rendered page bounded at ${rows} metadata rows`, async () => {
       const mock = new MockKinoDevice();

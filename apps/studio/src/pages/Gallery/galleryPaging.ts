@@ -20,6 +20,12 @@ export const GALLERY_PAGE_SIZE = 24;
  */
 export const GALLERY_LIST_CAP = 5000;
 
+/** Grow the user-requested index window without ever walking past card total. */
+export function nextGalleryListLimit(current: number, total: number, increment = GALLERY_LIST_CAP): number {
+  if (!Number.isFinite(current) || !Number.isFinite(total) || !Number.isFinite(increment)) return 0;
+  return Math.max(0, Math.min(total, current + Math.max(0, increment)));
+}
+
 /** The whole card, filtered and ordered — still every row, not yet a page. */
 export function galleryView(
   captures: CaptureSummary[],

@@ -43,4 +43,13 @@ describe('flashBandRisk', () => {
     expect(risk.perCamCoverage.cam4).toBe(0);
     expect(risk.banded).toBe(true);
   });
+
+  it('treats exactly 5% and 95% coverage as safe boundary values', () => {
+    const aligned: Record<CamId, number> = { cam1: 0, cam2: 0, cam3: 0, cam4: 0 };
+
+    expect(flashBandRisk(aligned, 10_000, 1_000, 0, 50).banded).toBe(false);
+    expect(flashBandRisk(aligned, 10_000, 1_000, 0, 51).banded).toBe(true);
+    expect(flashBandRisk(aligned, 10_000, 1_000, 0, 949).banded).toBe(true);
+    expect(flashBandRisk(aligned, 10_000, 1_000, 0, 950).banded).toBe(false);
+  });
 });

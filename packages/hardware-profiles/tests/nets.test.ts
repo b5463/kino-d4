@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { D4_V1 } from '../src/index';
-import { netsFor, netsByClass } from '../src/nets';
+import { netDef, netsFor, netsByClass } from '../src/nets';
 
 const CAM_IDS = ['cam1', 'cam2', 'cam3', 'cam4'];
 const VALID_INSTANCE_IDS = new Set(D4_V1.instances.map((i) => i.id));
@@ -45,6 +45,8 @@ describe('nets + gpio (§8)', () => {
       ['battery', 'fuse'],
       ['fuse', 'bms'],
       ['bms', 'power-module'],
+      ['power-module', 'carrier'],
+      ['carrier', 'display'],
     ];
     for (const [from, to] of chainPairs) {
       const net = powerNets.find(
@@ -60,6 +62,19 @@ describe('nets + gpio (§8)', () => {
   it('the flash pair and button pair exist with their documented classes', () => {
     expect(netsByClass(D4_V1, 'FLASH')).toHaveLength(2);
     expect(netsByClass(D4_V1, 'BUTTONS')).toHaveLength(2);
+  });
+
+  it('accepts a ribbon harness without weakening endpoint or waypoint validation', () => {
+    const ribbon = netDef.parse({
+      id: 'fixture-ribbon',
+      cls: 'UART',
+      from: { instance: 'display', pin: 'IDC' },
+      to: { instance: 'carrier', pin: 'IDC' },
+      gauge: 'ribbon',
+      color: 'grey',
+      waypointsMm: [[0, 0, -15], [0, -2, -12], [0, -5, -8]],
+    });
+    expect(ribbon.gauge).toBe('ribbon');
   });
 
   it('every net endpoint references a real instance', () => {

@@ -45,6 +45,21 @@ describe('TwinSimulator boot machine', () => {
     }
   });
 
+  it('powerOff() is idempotent when the simulator is already off', () => {
+    const sim = new TwinSimulator({ seed: 1 });
+    const stages: BootStage[] = [];
+    sim.onEvent((e) => {
+      if (e.t === 'boot') stages.push(e.stage);
+    });
+
+    sim.powerOff();
+    sim.powerOff();
+
+    expect(stages).toEqual([]);
+    expect(sim.bootStage()).toBe('POWER_OFF');
+    sim.dispose();
+  });
+
   it('a mid-boot powerOff() cancels the pending stage transitions', () => {
     vi.useFakeTimers();
     try {

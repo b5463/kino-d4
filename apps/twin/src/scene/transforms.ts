@@ -56,17 +56,26 @@ function sameVec3(a: readonly [number, number, number], b: readonly [number, num
  */
 export function cameraBarExplodeOffsetMm(profile: HardwareProfile, explode: number): [number, number, number] {
   const camBarInstances = profile.instances.filter((inst) => inst.group === 'camera-bar');
+  if (camBarInstances.length > 4) {
+    throw new Error(
+      `camera-bar rigidity violated (§5): expected at most four camera nodes, found ${camBarInstances.length}`,
+    );
+  }
   const [canonical, ...rest] = camBarInstances;
   if (!canonical) return [0, 0, 0]; // no camera-bar group in this profile — nothing to offset
 
   for (const inst of rest) {
-    if (inst.explodeOrder !== canonical.explodeOrder || !sameVec3(inst.explodeDirMm, canonical.explodeDirMm)) {
+    if (
+      inst.explodeOrder !== canonical.explodeOrder ||
+      !sameVec3(inst.explodeDirMm, canonical.explodeDirMm) ||
+      !sameVec3(inst.rotationDeg, canonical.rotationDeg)
+    ) {
       throw new Error(
         `camera-bar rigidity violated (§5): instance "${inst.id}" has explodeOrder=${inst.explodeOrder} ` +
           `explodeDirMm=${JSON.stringify(inst.explodeDirMm)}, but "${canonical.id}" (the group's canonical ` +
           `member) has explodeOrder=${canonical.explodeOrder} explodeDirMm=${JSON.stringify(canonical.explodeDirMm)}. ` +
           'The four camera nodes must move as one rigid camera-bar assembly — give every camera-bar instance ' +
-          'the same explodeOrder and explodeDirMm.',
+          'the same explodeOrder, explodeDirMm and rotationDeg.',
       );
     }
   }

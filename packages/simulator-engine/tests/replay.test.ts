@@ -1,6 +1,7 @@
 // KINO Twin §21: a bug report is one `.kino-sim.json` file + Replay. This
-// records a short scripted exchange (HELLO, GET_CAMERA_INFO, a per-camera
-// fault injection, CAMERA_STATUS), then proves the recording is a faithful,
+// records a short scripted exchange (HELLO, GET_CAMERA_INFO, a scenario,
+// NETWORK_STATUS, a per-camera fault injection, CAMERA_STATUS), then proves
+// the recording is a faithful,
 // byte-for-byte replayable artifact: verifyReplay reconstructs the same
 // outbound bytes from a fresh, identically-seeded device, a single tampered
 // recorded byte is caught as a divergence, and idle time an operator leaves
@@ -60,6 +61,7 @@ async function recordScriptedSession(): Promise<SimSessionDoc> {
 
   recorder.start();
   expect(recorder.recording()).toBe(true);
+  sim.powerOn();
 
   sendIn(sim, recorder, 1, Cmd.HELLO, { nonce: 1 });
   await vi.advanceTimersByTimeAsync(50);
@@ -67,8 +69,12 @@ async function recordScriptedSession(): Promise<SimSessionDoc> {
   sendIn(sim, recorder, 2, Cmd.GET_CAMERA_INFO, {});
   await vi.advanceTimersByTimeAsync(50);
 
+  sim.device.setScenario('wifiLost', true);
+  sendIn(sim, recorder, 3, Cmd.NETWORK_STATUS, {});
+  await vi.advanceTimersByTimeAsync(50);
+
   sim.device.setCamFault('cam3', 'offline');
-  sendIn(sim, recorder, 3, Cmd.CAMERA_STATUS, { cam: 'cam3' });
+  sendIn(sim, recorder, 4, Cmd.CAMERA_STATUS, { cam: 'cam3' });
   await vi.advanceTimersByTimeAsync(50);
 
   const doc = recorder.stop();
@@ -93,8 +99,15 @@ describe('SimRecorder', () => {
       const inEvents = doc.events.filter((e) => e.kind === 'in');
       const outEvents = doc.events.filter((e) => e.kind === 'out');
       const faultEvents = doc.events.filter((e) => e.kind === 'fault');
-      expect(inEvents).toHaveLength(3);
+      const simEvents = doc.events.filter((e) => e.kind === 'sim');
+      expect(inEvents).toHaveLength(4);
       expect(outEvents.length).toBeGreaterThan(0);
+      expect(simEvents.some((e) => e.kind === 'sim' && e.event.t === 'boot')).toBe(true);
+      expect(
+        faultEvents.some(
+          (e) => e.kind === 'fault' && e.op === 'scenario' && e.key === 'wifiLost' && e.value,
+        ),
+      ).toBe(true);
       expect(
         faultEvents.some(
           (e) => e.kind === 'fault' && e.op === 'camFault' && e.cam === 'cam3' && e.fault === 'offline',

@@ -17,6 +17,7 @@ import {
   galleryPageCount,
   galleryPageSlice,
   galleryView,
+  nextGalleryListLimit,
 } from './galleryPaging';
 import type { GalleryFilter as Filter, GallerySort as Sort } from './galleryPaging';
 
@@ -44,6 +45,7 @@ export function GalleryPage() {
   const [pending, setPending] = useState<CaptureSummary[]>([]);
   /** Total the camera reports for the card, independent of what is shown. */
   const [total, setTotal] = useState<number | null>(null);
+  const [indexBusy, setIndexBusy] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [thumbErrors, setThumbErrors] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<Filter>('all');
@@ -60,6 +62,7 @@ export function GalleryPage() {
   const thumbErrorsRef = useRef<Record<string, string>>({});
   const inFlight = useRef<Set<string>>(new Set());
   const capturesRef = useRef<CaptureSummary[] | null>(null);
+  const listLimitRef = useRef(GALLERY_LIST_CAP);
   capturesRef.current = captures;
 
   /**
@@ -67,10 +70,11 @@ export function GalleryPage() {
    * `merge` keeps it in place: entries still on the card are refreshed,
    * deleted ones drop out, and arrivals go to the SHOW row.
    */
-  const load = useCallback(async (mode: 'replace' | 'merge') => {
+  const load = useCallback(async (mode: 'replace' | 'merge', listLimit = listLimitRef.current) => {
     const dev = getDevice();
     if (!dev) return;
     setError(null);
+    setIndexBusy(true);
     try {
       // Paginated: the wire contract never assumes the whole card fits in
       // one response. Studio pulls pages until the card is covered.
@@ -82,7 +86,7 @@ export function GalleryPage() {
         if (reported === null) reported = chunk.total;
         all.push(...chunk.items);
         cursor = chunk.hasMore ? chunk.nextCursor : null;
-        if (all.length >= GALLERY_LIST_CAP) break;
+        if (all.length >= listLimit) break;
       }
       if (!alive.current) return;
       setTotal(reported ?? all.length);
@@ -99,6 +103,8 @@ export function GalleryPage() {
       setPending(all.filter((c) => !keptIds.has(c.id)));
     } catch (err) {
       if (alive.current) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive.current) setIndexBusy(false);
     }
   }, []);
 
@@ -217,6 +223,13 @@ export function GalleryPage() {
   };
 
   const shownCount = captures?.length ?? 0;
+  const canListMore = total !== null && shownCount < total;
+  const listMore = () => {
+    if (total === null || indexBusy) return;
+    const nextLimit = nextGalleryListLimit(listLimitRef.current, total);
+    listLimitRef.current = nextLimit;
+    void load('replace', nextLimit);
+  };
 
   return (
     <>
@@ -234,6 +247,11 @@ export function GalleryPage() {
                 ? `${shownCount} LISTED · ${total} ON CARD`
                 : `${shownCount} CAPTURES ON CARD`}
           </span>
+          {canListMore ? (
+            <Button size="sm" disabled={indexBusy} onClick={listMore}>
+              {indexBusy ? 'READING INDEX…' : `LIST ${Math.min(GALLERY_LIST_CAP, total! - shownCount)} MORE`}
+            </Button>
+          ) : null}
         </span>
       </div>
 

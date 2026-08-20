@@ -416,7 +416,10 @@ export class MockKinoDevice implements MockDeviceLike {
     // mirrors it so Studio's simulator panel keeps its one-button toggle.
     // setCamFault does its own logging and keeps scenarios.offlineCameraNode
     // in sync, including when a caller sets the fault directly.
-    if (key === 'offlineCameraNode') this.setCamFault('cam1', value ? 'offline' : null);
+    if (key === 'offlineCameraNode') {
+      this.setCamFault('cam1', value ? 'offline' : null);
+      return; // setCamFault already notifies observers after synchronizing the mirrored flag.
+    }
     if (key === 'sdMissing') this.log('SD', value ? 'card removed' : 'card inserted, mounted');
     if (key === 'lowBattery' && value) { this.batteryV = 3.42; this.log('PWR', 'battery low 3.42 V'); }
     if (key === 'lowBattery' && !value) this.batteryV = 3.96;
@@ -2138,8 +2141,12 @@ export class MockKinoDevice implements MockDeviceLike {
     }
     // start
     for (const id of CAM_IDS) {
-      if (this.camDown(id)) {
+      if (this.busUnreachable(id)) {
         this.respondError(frame, 'CAM_UNREACHABLE', `${id.toUpperCase()} is offline — all four cameras are required`);
+        return;
+      }
+      if (this.cams[id].fault === 'sensor-missing') {
+        this.respondError(frame, 'SENSOR_MISSING', `${id.toUpperCase()} sensor not detected — all four cameras are required`);
         return;
       }
     }
@@ -2361,7 +2368,7 @@ export class MockKinoDevice implements MockDeviceLike {
       this.respondError(frame, 'BAD_SIZE', 'Image size out of range');
       return;
     }
-    if (req.target !== 'p4' && this.camDown(req.target)) {
+    if (req.target !== 'p4' && this.busUnreachable(req.target)) {
       this.respondError(frame, 'CAM_UNREACHABLE', `${req.target.toUpperCase()} is offline`);
       return;
     }

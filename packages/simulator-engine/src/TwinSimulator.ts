@@ -118,6 +118,9 @@ export class TwinSimulator {
     this.clearBootTimers();
     this.clearCaptureTimers();
     this.stopPowerSampling();
+    // Idempotent controls matter once Task 18 wires this to a UI: clicking
+    // POWER OFF twice must not emit a second fake transition or link-drop.
+    if (this.stage === 'POWER_OFF') return;
     this.setStage('POWER_OFF');
     // The same public path the fault-injection panel uses for a yanked USB
     // cable — no private hook, no bypass of the device's own state machine.
