@@ -36,6 +36,16 @@ import type {
 import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
 import type { TimingResult } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
+import type {
+  NetworkListResponse,
+  NetworkSetRequest,
+  NetworkStatus,
+  RollCreateResponse,
+  RollView,
+  UploadEnqueueResponse,
+  UploadQueueReport,
+  UploadQueueRetryResponse,
+} from '../roll/rollTypes';
 
 /**
  * Typed command facade over the protocol client. Pages talk to this — never
@@ -311,5 +321,61 @@ export class KinoDevice {
 
   mediaFavorite(id: string, favorite: boolean) {
     return this.client.request(Cmd.MEDIA_FAVORITE, { id, favorite });
+  }
+
+  // ---- network / roll / upload queue (04 §7) ----
+
+  networkList() {
+    return this.client.request<NetworkListResponse>(Cmd.NETWORK_LIST);
+  }
+
+  /**
+   * The one command that carries a Wi-Fi passphrase, and the only place it is
+   * allowed to exist outside the field it was typed into (05 §13). Omitting
+   * `password` for a known SSID keeps the stored one.
+   */
+  networkSet(req: NetworkSetRequest) {
+    return this.client.request<{ ok: boolean } & NetworkListResponse>(Cmd.NETWORK_SET, req, 8000);
+  }
+
+  networkDelete(ssid: string) {
+    return this.client.request<{ ok: boolean } & NetworkListResponse>(Cmd.NETWORK_DELETE, { ssid });
+  }
+
+  networkStatus() {
+    return this.client.request<NetworkStatus>(Cmd.NETWORK_STATUS);
+  }
+
+  rollStatus() {
+    return this.client.request<RollView>(Cmd.ROLL_STATUS);
+  }
+
+  rollCreate(name: string) {
+    return this.client.request<RollCreateResponse>(Cmd.ROLL_CREATE, { name }, 8000);
+  }
+
+  rollJoin(slug: string) {
+    return this.client.request<RollView>(Cmd.ROLL_JOIN, { slug }, 8000);
+  }
+
+  rollLeave() {
+    return this.client.request<{ ok: boolean } & RollView>(Cmd.ROLL_LEAVE, undefined, 8000);
+  }
+
+  uploadQueueStatus() {
+    return this.client.request<UploadQueueReport>(Cmd.UPLOAD_QUEUE_STATUS);
+  }
+
+  uploadQueueRetry() {
+    return this.client.request<UploadQueueRetryResponse>(Cmd.UPLOAD_QUEUE_RETRY);
+  }
+
+  /**
+   * Push one capture already on the card into the active Roll's upload queue
+   * (02 §16). The camera decides when it actually goes out — this only says
+   * that it should.
+   */
+  uploadEnqueue(captureId: string) {
+    return this.client.request<UploadEnqueueResponse>(Cmd.UPLOAD_ENQUEUE, { captureId }, 8000);
   }
 }

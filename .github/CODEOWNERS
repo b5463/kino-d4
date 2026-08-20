@@ -1,0 +1,9 @@
+# Default owner until the project has maintainers for separate areas.
+* @b5463
+
+# Contracts and hardware need an explicit review from the repository owner.
+/packages/kdp/ @b5463
+/packages/schemas/ @b5463
+/firmware-contract/ @b5463
+/hardware/ @b5463
+/apps/api/drizzle/ @b5463

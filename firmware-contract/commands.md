@@ -16,7 +16,7 @@ Payload shapes are marked:
 0x10–0x13  Configuration      0x60–0x65  Firmware
 0x20–0x25  Modes / recipes    0x70–0x75  Media
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
-0x30–0x36  Camera             0xa0–0xa9  Network / Roll / upload queue
+0x30–0x36  Camera             0xa0–0xaa  Network / Roll / upload queue
 0x40–0x46  Diagnostics
 ```
 
@@ -359,7 +359,7 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `GET_RUNTIME_STATS` | `0x43` | → `{}` ← **typed** `RuntimeStats` |
 | `LINK_BENCH` | `0x44` | → `{ "baud": 2000000, "bytes": 262144 }` ← **typed** `LinkBenchResult`. Timeout 20 s |
 | `SET_LINK_BAUD` | `0x45` | → `{ "baud": 1500000 }` ← **inline** `{ "ok": true, "baud": 1500000 }`. Timeout 6 s |
-| `SYNC_BENCH` | `0x46` | **Reserved — pending enum promotion.** See below |
+| `SYNC_BENCH` | `0x46` | → `{ "triggers": 20 }` ← **mock** `{ "jobId": "job_1", "accepted": true }`, then `JOB_*` events. See below |
 
 `LogEntry` = `{ "t": 1755301234567, "src": "P4", "msg": "…" }`, `src` ∈
 `P4 | C1 | C2 | C3 | C4 | PWR | SD | PROTO`. Also pushed live as `LOG` events.
@@ -386,11 +386,10 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 
 `clean` is true only when every channel finished with zero errors.
 
-#### `SYNC_BENCH` — 0x46, reserved
+#### `SYNC_BENCH` — 0x46
 
-**Not in the `Cmd` enum yet.** Defined in `packages/test-fixtures/src/commands.ts` as `0x46` pending
-promotion into `commands.ts` (Task 10/11). The value is normative; do not renumber.
-See [README D4](README.md#d4--sync_bench-is-reserved-at-0x46-not-yet-in-the-cmd-enum).
+`Cmd.SYNC_BENCH` in `packages/kdp/src/protocol/commands.ts`. The value is normative; do not renumber.
+See [README D4](README.md#d4--sync_bench-numeric-value).
 
 An async job — a hundred triggers outlives any request deadline. Request/response are **mock**:
 
@@ -484,11 +483,12 @@ Gallery access through the P4 file server. Never send the whole gallery (04§9).
 `MEDIA_READ` `length` is clamped to 8192 by the reference device. Ranges past EOF return short, not
 an error.
 
-### Network / Roll / upload queue — 0xa0–0xa9
+### Network / Roll / upload queue — 0xa0–0xaa
 
 Values allocated by this repo — see [README D3](README.md#d3--network--roll--upload-queue-numeric-values).
-**No Studio facade calls these yet**; every shape below is **mock**, from the reference device, and is
-the shape Studio will be written against. Gated by the `network` / `rollUpload` capability flags.
+Studio's facade (`apps/studio/src/device/KinoDevice.ts`) calls all of these; the payload shapes are
+**inline** there and **mock** in the reference device — no interface exists in `types.ts` yet. Gated
+by the `network` / `rollUpload` capability flags.
 
 | Cmd | Value | Payload |
 |---|---:|---|
@@ -502,6 +502,7 @@ the shape Studio will be written against. Gated by the `network` / `rollUpload` 
 | `ROLL_LEAVE` | `0xa7` | → `{}` ← `{ "ok": true, ...RollView }` |
 | `UPLOAD_QUEUE_STATUS` | `0xa8` | → `{}` ← `QueueReport` |
 | `UPLOAD_QUEUE_RETRY` | `0xa9` | → `{}` ← `{ "ok": true, "retried": 2, "queue": QueueReport }` |
+| `UPLOAD_ENQUEUE` | `0xaa` | → `{ "captureId": "CAP_0042" }` ← `{ "ok": true, "captureId", "queue": QueueReport }` |
 
 ```jsonc
 // NetworkView — the password NEVER leaves the device
@@ -538,6 +539,14 @@ Validation in the reference device: SSID 1–32 chars, WPA passphrase ≥ 8 char
 is `INVALID_STATE`; leaving when not on one is `INVALID_STATE`.
 
 `UPLOAD_QUEUE_RETRY` moves `failed` back into `pending` and returns how many were requeued.
+
+`UPLOAD_ENQUEUE` is Studio's "push to Roll" (02§16): a capture already committed to the card is added
+to the upload queue by id, so `pending` goes up by one and the reply carries the queue that resulted.
+Reference-device rejections: `INVALID_ARGUMENT` for a missing/empty `captureId`, `INVALID_STATE`
+(`"Not on a roll"`) when the camera is not on a Roll — there is nowhere for the bytes to go —
+and `NOT_FOUND` for an id the card does not hold. Studio hides the action entirely unless
+`ROLL_STATUS` reports an active Roll **and** `rollUpload` is advertised, so a NACK here means the two
+sides disagree, not that the user pressed something they should not have.
 
 ## Events — 0x80–0x89
 

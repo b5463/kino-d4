@@ -3,17 +3,23 @@ import { Panel } from '../../components/Panel';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { useConnectionStore } from '../../state/connectionStore';
+import { supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
 import { getDevice, onCaptureEvent } from '../../app/session';
 import { getThumbUrl, dropThumb } from '../../device/media';
 import { useTetherStore, startTether, stopTether } from '../../device/tether';
 import type { CaptureSummary } from '@kino/kdp';
+import type { RollView } from '../../roll/rollTypes';
 import { CaptureInspector } from './CaptureInspector';
+import {
+  GALLERY_LIST_CAP,
+  GALLERY_PAGE_SIZE as PAGE_SIZE,
+  clampGalleryPage,
+  galleryPageCount,
+  galleryPageSlice,
+  galleryView,
+} from './galleryPaging';
+import type { GalleryFilter as Filter, GallerySort as Sort } from './galleryPaging';
 
-type Filter = 'all' | 'wiggle' | 'quad' | 'favorites';
-type Sort = 'newest' | 'oldest';
-
-/** Cards per page. One card is one tab stop, so this bounds the run. */
-const PAGE_SIZE = 24;
 /** Concurrent thumbnail reads. The P4 is a small computer. */
 const THUMB_WORKERS = 2;
 
@@ -45,6 +51,8 @@ export function GalleryPage() {
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [rollView, setRollView] = useState<RollView | null>(null);
+  const rollUpload = useDeviceStore(supportsRollUpload);
   const [thumbBusy, setThumbBusy] = useState(0);
   const [retryTick, setRetryTick] = useState(0);
   const alive = useRef(true);
@@ -74,7 +82,7 @@ export function GalleryPage() {
         if (reported === null) reported = chunk.total;
         all.push(...chunk.items);
         cursor = chunk.hasMore ? chunk.nextCursor : null;
-        if (all.length > 5000) break; // sanity stop
+        if (all.length >= GALLERY_LIST_CAP) break;
       }
       if (!alive.current) return;
       setTotal(reported ?? all.length);
@@ -105,16 +113,38 @@ export function GalleryPage() {
   // New captures committed while connected are counted, not inserted.
   useEffect(() => onCaptureEvent(() => void load('merge')), [load]);
 
+  // "Push to Roll" (02 §16) only exists while the camera is on a Roll, so the
+  // gallery has to know. Read once per visit, and again whenever the inspector
+  // opens — leaving a Roll from the Roll page must not leave a live button here.
+  useEffect(() => {
+    if (!rollUpload) {
+      setRollView(null);
+      return;
+    }
+    const dev = getDevice();
+    if (!dev) return;
+    let cancelled = false;
+    void dev
+      .rollStatus()
+      .then((view) => {
+        if (!cancelled) setRollView(view);
+      })
+      // A camera that cannot answer ROLL_STATUS simply has no Roll to push to.
+      .catch(() => {
+        if (!cancelled) setRollView(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rollUpload, openId]);
+
   const tether = useTetherStore();
 
-  const visible = (captures ?? [])
-    .filter((c) => (filter === 'all' ? true : filter === 'favorites' ? c.favorite : c.kind === filter))
-    .sort((a, b) => (sort === 'newest' ? b.ts - a.ts : a.ts - b.ts));
-
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount - 1);
+  const visible = galleryView(captures ?? [], filter, sort);
+  const pageCount = galleryPageCount(visible);
+  const current = clampGalleryPage(visible, page);
   const from = current * PAGE_SIZE;
-  const slice = visible.slice(from, from + PAGE_SIZE);
+  const slice = galleryPageSlice(visible, page);
   const pageKey = slice.map((c) => c.id).join(',');
 
   // Thumbnails are fetched for the page you are on, two at a time. Fetching
@@ -384,6 +414,7 @@ export function GalleryPage() {
       {openCapture ? (
         <CaptureInspector
           summary={openCapture}
+          roll={rollView}
           onClose={() => setOpenId(null)}
           onChanged={(change) => {
             if (change === 'deleted') {

@@ -4,16 +4,17 @@ import { MenuBar } from '../components/MenuBar';
 import type { MenuSpec } from '../components/MenuBar';
 import { Toolbar } from '../components/Toolbar';
 import { StatusBar } from '../components/StatusBar';
-import { Sidebar, PAGE_LABEL } from '../components/Sidebar';
+import { Sidebar, PAGE_LABEL, navItems } from '../components/Sidebar';
 import type { PageId } from '../components/Sidebar';
 import { ConnectHome } from '../components/ConnectHome';
 import { DebugPanel } from '../components/DebugPanel';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Led } from '../components/Led';
 import { useConnectionStore } from '../state/connectionStore';
-import { useDeviceStore } from '../state/deviceStore';
+import { supportsRollUpload, useDeviceStore } from '../state/deviceStore';
 import { usePrefs, setDensity, setDeveloperMode } from '../state/prefs';
 import { emitUi } from '../state/uiBus';
+import { useNavRequest } from '../state/navRequest';
 import { blockedBy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
 import {
@@ -31,6 +32,7 @@ import { QuadPage } from '../pages/Quad/QuadPage';
 import { LooksPage } from '../pages/Looks/LooksPage';
 import { CalibrationPage } from '../pages/Calibration/CalibrationPage';
 import { GalleryPage } from '../pages/Gallery/GalleryPage';
+import { RollPage } from '../pages/Roll/RollPage';
 import { DevicePage } from '../pages/Device/DevicePage';
 import { UpdatesPage } from '../pages/Updates/UpdatesPage';
 import { DeveloperPage } from '../pages/Developer/DeveloperPage';
@@ -47,6 +49,7 @@ const PAGES: Record<PageId, ComponentType> = {
   looks: LooksPage,
   calibration: CalibrationPage,
   gallery: GalleryPage,
+  roll: RollPage,
   device: DevicePage,
   updates: UpdatesPage,
   developer: DeveloperPage,
@@ -62,6 +65,7 @@ export function App() {
   const phase = useConnectionStore((s) => s.phase);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const hasInfo = useDeviceStore((s) => s.info !== null);
+  const rollUpload = useDeviceStore(supportsRollUpload);
   const density = usePrefs((s) => s.density);
   const developerMode = usePrefs((s) => s.developerMode);
   const [page, setPage] = useState<PageId>(loadPage);
@@ -72,6 +76,13 @@ export function App() {
   const dirtyDrafts = useDraftStore((s) => s.dirty);
   const workRef = useRef<HTMLElement>(null);
   const syncRef = useRef<() => void>(() => {});
+
+  // A readout in one section linking to the section that measured it. The
+  // target page reads the `tab` out of the same request.
+  const navRequest = useNavRequest((s) => s.request);
+  useEffect(() => {
+    if (navRequest) setPage(navRequest.page);
+  }, [navRequest]);
 
   useEffect(() => {
     localStorage.setItem(PAGE_KEY, page);
@@ -97,6 +108,12 @@ export function App() {
   useEffect(() => {
     if (!developerMode && (page === 'developer' || page === 'bringup')) setPage('overview');
   }, [developerMode, page]);
+
+  // A remembered Roll section is meaningless on a camera that cannot upload —
+  // the nav has no entry for it, so nothing could navigate back out.
+  useEffect(() => {
+    if (!rollUpload && page === 'roll') setPage('overview');
+  }, [rollUpload, page]);
 
   // Desktop-utility keys: Ctrl+S saves the open section, F5 re-reads the
   // camera. Both are no-ops unless a camera is actually attached.
@@ -183,23 +200,11 @@ export function App() {
     {
       label: 'View',
       items: [
-        ...(
-          [
-            ['Overview', 'overview'],
-            ['Shoot', 'shoot'],
-            ['Wiggle', 'wiggle'],
-            ['Quad', 'quad'],
-            ['Looks', 'looks'],
-            ['Calibration', 'calibration'],
-            ['Gallery', 'gallery'],
-            ['Device', 'device'],
-            ['Updates', 'updates'],
-          ] as [string, PageId][]
-        ).map(([label, id]) => ({
-          label,
+        ...navItems({ developerMode: false, rollUpload }).map((item) => ({
+          label: item.label,
           disabled: !inSession,
-          checked: page === id,
-          action: () => goto(id),
+          checked: page === item.id,
+          action: () => goto(item.id),
         })),
         {
           label: 'Compact Density',

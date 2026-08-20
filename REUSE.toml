@@ -1,0 +1,43 @@
+version = 1
+
+[[annotations]]
+path = [
+  "*.md",
+  "*.json",
+  "*.toml",
+  ".gitignore",
+  ".github/**",
+  "apps/**",
+  "packages/**",
+  "infra/**",
+  "firmware-contract/**",
+  "kino_dev_spec_pack/**",
+  "kino_twin_spec/**",
+  "docs/**",
+  "hardware/**",
+  "scripts/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+  "hardware/**",
+  "docs/HARDWARE.md",
+  "kino_twin_spec/component-manifest.json",
+  "kino_twin_spec/SOURCES.md",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
+SPDX-License-Identifier = "CERN-OHL-S-2.0"
+
+[[annotations]]
+path = [
+  "docs/assets/brand/**",
+  "docs/assets/product/**",
+  "archive/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
+SPDX-License-Identifier = "LicenseRef-KINO-Reserved"

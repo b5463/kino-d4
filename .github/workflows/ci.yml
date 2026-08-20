@@ -10,6 +10,132 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - run: npm run version:check
+      - run: npm run license:check
       - run: npm run lint
-      - run: npm run test
+      # service-free suites; add new workspaces here
+      - run: npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
       - run: npm run build
+
+  api-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kino
+          POSTGRES_PASSWORD: kino
+          POSTGRES_DB: kino
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U kino -d kino"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # GitHub `services:` cannot pass a container command, and minio/minio
+      # needs `server /data`. bitnami/minio starts the server by default and
+      # creates MINIO_DEFAULT_BUCKETS on boot, replacing the compose file's
+      # `createbucket` sidecar.
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: kino
+          MINIO_ROOT_PASSWORD: kino-secret
+          MINIO_DEFAULT_BUCKETS: kino-media,kino-firmware
+        ports: ['9000:9000', '9001:9001']
+        # Deliberately no `options:` health check. curl is not guaranteed to
+        # exist inside this image, and a health-cmd that cannot run aborts
+        # container initialisation (~150 s) before any step executes — which
+        # would kill the job without ever reaching the wait step below. That
+        # runner-side step is the single readiness gate.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      # The readiness gate for MinIO, and a real existence check for the bucket.
+      #
+      # `s3api head-bucket` signs with the root credentials and exits non-zero
+      # unless the bucket exists AND is reachable with them — the same HeadBucket
+      # call /api/healthz makes. An HTTP probe cannot substitute: MinIO evaluates
+      # policy before existence, so an anonymous GET answers 403 for a MISSING
+      # bucket exactly as it does for an existing one (measured against the dev
+      # stack: both return 403). Such a probe is a liveness check wearing a
+      # bucket-check label.
+      #
+      # This matters because bitnami/minio creates MINIO_DEFAULT_BUCKETS
+      # asynchronously, after the server starts accepting connections. Without
+      # a real check, a bucket that never appears surfaces much later as an
+      # unexplained 503 from the health test.
+      #
+      # The AWS CLI is preinstalled on ubuntu-latest runners.
+      - name: Wait for MinIO bucket kino-media
+        env:
+          AWS_ACCESS_KEY_ID: kino
+          AWS_SECRET_ACCESS_KEY: kino-secret
+          # The runner has no ~/.aws/config, so the region must come from the
+          # environment. MinIO ignores it, but SigV4 needs one to sign.
+          AWS_DEFAULT_REGION: us-east-1
+          # The loop below is the only retry layer. Without this the CLI would
+          # retry internally as well, multiplying the per-call timeouts.
+          AWS_MAX_ATTEMPTS: '1'
+        run: |
+          # MinIO serves path-style. Pin it instead of relying on the CLI's
+          # `auto` heuristic, which may rewrite the request to the virtual-host
+          # name kino-media.localhost — a name the runner cannot resolve.
+          aws configure set default.s3.addressing_style path
+          probe() {
+            aws --endpoint-url http://localhost:9000 \
+                --cli-connect-timeout 2 --cli-read-timeout 5 \
+                s3api head-bucket --bucket kino-media
+          }
+          # 60 iterations of (<=7 s probe + 2 s sleep) — ~9 min worst case.
+          for _ in $(seq 1 60); do
+            if probe >/dev/null 2>&1; then
+              echo "head-bucket succeeded: kino-media exists and is readable"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "kino-media unavailable after 60 attempts; last head-bucket error:" >&2
+          probe || true
+          exit 1
+      # The route tests hit real tables through `app.db`, so the CI database
+      # must carry the committed migrations before they run. (`db.test.ts`
+      # migrates its own throwaway `kino_test` database and is unaffected —
+      # this step is for every other suite.) The postgres service has a
+      # health check, so it is ready by the time this executes.
+      - name: Apply database migrations
+        run: npm run db:migrate -w @kino/api
+        env:
+          DATABASE_URL: postgres://kino:kino@localhost:5432/kino
+      - run: npm run test -w @kino/api
+        env:
+          # Inside the Actions service network the standard ports are free.
+          DATABASE_URL: postgres://kino:kino@localhost:5432/kino
+          REDIS_URL: redis://localhost:6379
+          S3_ENDPOINT: http://localhost:9000
+          S3_BUCKET: kino-media
+          S3_ACCESS_KEY: kino
+          S3_SECRET_KEY: kino-secret
+          PUBLIC_BASE_URL: https://kino.acronym.sk
+      # The worker's suite needs the same three services and the same migrated
+      # database, so it runs in this job rather than the service-free one. After
+      # the API's, not before: these two write to the same tables, and a failure
+      # here should be readable as the worker's own.
+      - run: npm run test -w @kino/worker
+        env:
+          DATABASE_URL: postgres://kino:kino@localhost:5432/kino
+          REDIS_URL: redis://localhost:6379
+          S3_ENDPOINT: http://localhost:9000
+          S3_BUCKET: kino-media
+          S3_ACCESS_KEY: kino
+          S3_SECRET_KEY: kino-secret

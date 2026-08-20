@@ -53,6 +53,11 @@ export enum Cmd {
   /** Per-channel UART stress test at the current or a candidate baud. */
   LINK_BENCH = 0x44,
   SET_LINK_BAUD = 0x45,
+  /**
+   * Skew Bench: fire N triggers and report per-camera timing for each. An
+   * async job (04 §15) — hundreds of triggers outlive any request deadline.
+   */
+  SYNC_BENCH = 0x46,
 
   // Maintenance
   ENTER_MAINTENANCE = 0x50,
@@ -88,6 +93,12 @@ export enum Cmd {
   ROLL_LEAVE = 0xa7,
   UPLOAD_QUEUE_STATUS = 0xa8,
   UPLOAD_QUEUE_RETRY = 0xa9,
+  /**
+   * Queue one capture already on the SD card for upload to the active Roll
+   * (02 §16 "push to Roll"). Only meaningful while the device is on a Roll —
+   * there is nowhere else for the bytes to go.
+   */
+  UPLOAD_ENQUEUE = 0xaa,
 }
 
 // Unsolicited frames pushed by the device (FrameFlags.EVENT set).

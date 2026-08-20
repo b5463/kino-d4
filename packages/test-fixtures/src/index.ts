@@ -31,4 +31,3 @@ export {
 } from './recipes';
 
 export { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
-export { SYNC_BENCH } from './commands';

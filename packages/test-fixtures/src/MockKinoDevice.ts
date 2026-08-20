@@ -26,7 +26,6 @@ import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
 import type { ScenarioFlags, CamFault } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
-import { SYNC_BENCH } from './commands';
 import type { TwinTelemetry, TwinSnapshot } from './telemetry';
 
 /** mulberry32 — a job that reports numbers has to report the same ones twice. */
@@ -579,6 +578,15 @@ export class MockKinoDevice implements MockDeviceLike {
     this.log('P4', `camera UART baud set to ${baud}`);
   }
 
+  /**
+   * Resize the simulated card to an arbitrary count. The `largeGallery2k`
+   * scenario is the one-click version of this; 07 §16 asks for 0 / 60 /
+   * 2,000 / 10,000 rows, which is more sizes than a boolean can carry.
+   */
+  setGallerySize(count: number) {
+    this.media.resize(count);
+  }
+
   // ---- upload queue (04 §7 Network/Roll) ----
 
   private setUploadBacklog(on: boolean) {
@@ -1025,7 +1033,8 @@ export class MockKinoDevice implements MockDeviceLike {
     Cmd.ROLL_LEAVE,
     Cmd.UPLOAD_QUEUE_STATUS,
     Cmd.UPLOAD_QUEUE_RETRY,
-    SYNC_BENCH,
+    Cmd.UPLOAD_ENQUEUE,
+    Cmd.SYNC_BENCH,
   ];
 
   /** Single source of truth for both the capability report and the dispatcher. */
@@ -1050,11 +1059,6 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
 
-    if (frame.type === SYNC_BENCH) {
-      this.handleSyncBench(frame);
-      return;
-    }
-
     switch (cmd) {
       case Cmd.HELLO: {
         // KINO Twin §12: a boot glitch that swallows the first handshake —
@@ -1067,6 +1071,11 @@ export class MockKinoDevice implements MockDeviceLike {
         }
         const req = decodeJson<{ nonce?: number }>(frame.payload);
         // 04 §4: selected protocol, nonce echo, device ID, boot/session ID.
+        //
+        // A device that selects a protocol outside the offered range is the
+        // one handshake failure a retry cannot fix, and the host has to say so
+        // rather than time out. The framing version is untouched — this is
+        // firmware from the future, not a corrupt stream.
         this.respond(frame, {
           product: 'KINO',
           protocol: this.scenarios.protocolMismatch ? 99 : PROTOCOL_VERSION,
@@ -1101,6 +1110,29 @@ export class MockKinoDevice implements MockDeviceLike {
           if (this.scenarios.uploadBacklog) this.armUploadDrain();
         }
         this.respond(frame, { ok: true, retried, queue: this.uploadQueueReport() });
+        return;
+      }
+      case Cmd.UPLOAD_ENQUEUE: {
+        const { captureId } = decodeJson<{ captureId?: string }>(frame.payload);
+        if (typeof captureId !== 'string' || captureId.length === 0) {
+          this.respondError(frame, 'INVALID_ARGUMENT', 'captureId is required');
+          return;
+        }
+        // Queueing into no Roll would silently drop the capture. The camera
+        // has to be on one before it accepts work for it.
+        if (!this.roll) {
+          this.respondError(frame, 'INVALID_STATE', 'Not on a roll');
+          return;
+        }
+        if (!this.media.list().some((c) => c.id === captureId)) {
+          this.respondError(frame, 'NOT_FOUND', `No capture ${captureId}`);
+          return;
+        }
+        this.uploads.pending++;
+        this.log('P4', `queued ${captureId} for roll ${this.roll.slug}`);
+        // A queue that had already drained is asleep; new work wakes it.
+        if (this.scenarios.uploadBacklog) this.armUploadDrain();
+        this.respond(frame, { ok: true, captureId, queue: this.uploadQueueReport() });
         return;
       }
       case Cmd.GET_CAPABILITIES: {
@@ -1316,6 +1348,9 @@ export class MockKinoDevice implements MockDeviceLike {
       case Cmd.SELF_TEST:
         this.handleSelfTest(frame);
         return;
+      case Cmd.SYNC_BENCH:
+        this.handleSyncBench(frame);
+        return;
       case Cmd.GET_RUNTIME_STATS:
         this.respond(frame, {
           uptimeS: Math.round((this.now() - this.bootedAt) / 1000),
@@ -1517,14 +1552,18 @@ export class MockKinoDevice implements MockDeviceLike {
         }
         const security = req.security ?? 'wpa2';
         const password = typeof req.password === 'string' ? req.password : '';
-        if (security !== 'open' && password.length < 8) {
+        const existing = this.networks.find((n) => n.ssid === ssid);
+        // Editing a known network without sending a passphrase is the normal
+        // case, not a malformed request: NETWORK_LIST only ever handed the host
+        // a mask, so it has nothing to send back. The length rule therefore
+        // applies to a passphrase actually being set — checking it first made
+        // the keep-what-is-stored path below unreachable.
+        const keepsStored = existing !== undefined && password.length === 0 && existing.password.length > 0;
+        if (security !== 'open' && !keepsStored && password.length < 8) {
           this.respondError(frame, 'INVALID_ARGUMENT', 'WPA passphrase must be at least 8 characters');
           return;
         }
-        const existing = this.networks.find((n) => n.ssid === ssid);
         if (existing) {
-          // An update that omits the password keeps the stored one — the host
-          // never had it to send back.
           if (password.length > 0) existing.password = password;
           existing.security = security;
           existing.autoJoin = req.autoJoin ?? existing.autoJoin;
@@ -1698,7 +1737,7 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
     const jobId = `job_${++this.jobCounter}`;
-    this.jobs.set(jobId, { id: jobId, cmd: SYNC_BENCH, step: 0, steps: triggers });
+    this.jobs.set(jobId, { id: jobId, cmd: Cmd.SYNC_BENCH, step: 0, steps: triggers });
     this.respond(frame, { jobId, accepted: true });
     this.log('P4', `sync bench started — ${triggers} triggers`);
 

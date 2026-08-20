@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786827688663,
+      "tag": "0001_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786828975249,
+      "tag": "0002_asset_role_frame_nulls_not_distinct",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786867262897,
+      "tag": "0003_roll_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786888209113,
+      "tag": "0004_processing_events_queued_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787046727061,
+      "tag": "0005_export_jobs",
+      "breakpoints": true
+    }
+  ]
+}

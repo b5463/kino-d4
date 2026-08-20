@@ -1,0 +1,52 @@
+KINO licensing
+==============
+
+Copyright (c) 2026 KINO contributors
+
+This repository contains software, open hardware source, and reserved brand
+assets. They do not share one blanket license.
+
+Software and general documentation
+----------------------------------
+
+Unless a path is listed below, repository files are licensed under the MIT
+License. The complete text is in LICENSES/MIT.txt.
+
+Open hardware source
+--------------------
+
+The following paths are licensed under the CERN Open Hardware Licence Version
+2 - Strongly Reciprocal, CERN-OHL-S-2.0:
+
+  hardware/**
+  docs/HARDWARE.md
+  kino_twin_spec/component-manifest.json
+  kino_twin_spec/SOURCES.md
+
+The complete unmodified text is in LICENSES/CERN-OHL-S-2.0.txt. This choice is
+version 2 only, not "or any later version".
+
+Reserved material
+-----------------
+
+The following paths are not distributed under MIT or CERN-OHL-S-2.0:
+
+  docs/assets/brand/**
+  docs/assets/product/**
+  archive/**
+
+Those files are marked LicenseRef-KINO-Reserved. See
+LICENSES/LicenseRef-KINO-Reserved.txt.
+
+Trademark
+---------
+
+The licenses above do not grant permission to use the KINO name, KINO D4 name,
+wordmarks, logos, or trade dress to imply endorsement or origin. See
+TRADEMARKS.md.
+
+Machine-readable scope
+----------------------
+
+REUSE.toml is the authoritative path map for automated license tooling. SPDX
+identifiers in individual files override the path map where present.

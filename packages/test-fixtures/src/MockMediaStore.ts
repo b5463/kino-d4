@@ -63,8 +63,9 @@ interface StoredCapture {
 const DEMO_CAPTURES = 22;
 
 /**
- * 04 §17 fixtures appended after every generated gallery, regardless of size,
- * so Studio's gallery/error paths always have something to exercise. Ids sit
+ * 04 §17 fixtures occupy the final slots of a non-empty generated gallery,
+ * so `resize(n)` still means exactly n captures while normal demo galleries
+ * keep something for Studio's error paths to exercise. Ids sit
  * well outside the generated WGNNNNNN/QDNNNNNN range so they can never
  * collide with a live or generated capture.
  */
@@ -114,7 +115,9 @@ export class MockMediaStore {
     // so timestamps stay ordered and plausible instead of piling up.
     const partyStart = Date.now() - 1000 * 60 * 60 * 38 - this.count * 8 * 60 * 1000;
     let ts = partyStart;
-    for (let i = 0; i < this.count; i++) {
+    const fixtureCount = Math.min(FIXTURE_CAPTURES.length, this.count);
+    const generatedCount = this.count - fixtureCount;
+    for (let i = 0; i < generatedCount; i++) {
       const isQuad = rnd() < 0.3;
       // /DCIM folder naming: WG000041, QD000041
       const n = String(40 + i).padStart(6, '0');
@@ -143,7 +146,7 @@ export class MockMediaStore {
     // they always sort to the end of the gallery — pagination and "the first
     // capture" tests against the normal party set stay unaffected by their
     // presence, regardless of gallery size.
-    FIXTURE_CAPTURES.forEach((f, i) => {
+    FIXTURE_CAPTURES.slice(0, fixtureCount).forEach((f, i) => {
       list.push({
         summary: {
           id: f.id,

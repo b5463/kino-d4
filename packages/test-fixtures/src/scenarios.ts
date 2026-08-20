@@ -48,7 +48,6 @@ export interface ScenarioFlags {
   sdMissing: boolean;
   /** Report an early firmware: no VSYNC telemetry, phase cal or link bench. */
   legacyFirmware: boolean;
-
   // ---- KINO Twin §20 fault injection ----
 
   /** Ignore the next HELLO after attach (one-shot) — 04 §12 boot glitch. */
@@ -125,7 +124,6 @@ export const scenarios = {
   lowBattery: descriptor('lowBattery', 'LOW BATTERY', false, 'the pack reports 3.42 V'),
   sdMissing: descriptor('sdMissing', 'SD MISSING', false, 'no card is mounted'),
   legacyFirmware: descriptor('legacyFirmware', 'LEGACY FIRMWARE 0.1.0', false, 'pre-timing firmware without the optional features'),
-
   dropFirstHello: descriptor('dropFirstHello', 'DROP FIRST HELLO', true, 'the next HELLO after attach goes unanswered'),
   protocolMismatch: descriptor('protocolMismatch', 'PROTOCOL MISMATCH', false, 'HELLO answers protocol 99'),
   sdFull: descriptor('sdFull', 'SD FULL', false, 'the card reports 0 MB free; captures NACK SD_FULL'),

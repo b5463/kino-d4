@@ -12,6 +12,7 @@ import { dropDraft } from '../../state/draftStore';
 import { getDevice, refreshRecipes, refreshDeviceInfo } from '../../app/session';
 import type { Recipe } from '../../recipes/recipeTypes';
 import { IDENTITY_MATRIX, validateRecipe } from '../../recipes/recipeTypes';
+import { DEVICE_LUT_SIZE, parseCubeLut } from '../../recipes/cubeLut';
 import { downloadJson } from '../../utils/download';
 import { formatEv, formatSigned } from '../../utils/format';
 import { previewBackingSize, renderLookPreview } from '../../utils/lookPreview';
@@ -140,6 +141,7 @@ export function LooksPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cubeRef = useRef<HTMLInputElement>(null);
 
   const recipes = allRecipes(state);
   const selected = recipes.find((r) => r.id === selectedId) ?? recipes[0] ?? null;
@@ -251,6 +253,31 @@ export function LooksPage() {
         setSelectedId(recipe.id);
         setNotice(`Imported ${recipe.name}`);
       });
+    });
+  };
+
+  /**
+   * `.cube` import (02 §14). The file is checked here — it has to be a 3D cube
+   * at the device grid, and a 33³ export is rejected by name rather than
+   * silently resampled. What lands in the look is the LUT's name: there is no
+   * KDP command to carry the 14,739-float grid to the card yet, so the copy
+   * says exactly that instead of implying the camera has it.
+   */
+  const importCube = (file: File) => {
+    void file.text().then((text) => {
+      let grid;
+      try {
+        grid = parseCubeLut(text);
+      } catch (err) {
+        setNotice(`LUT rejected: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      const name = grid.title ?? file.name.replace(/\.cube$/i, '');
+      patch((d) => ({ ...d, advanced: { ...d.advanced, lut: name } }));
+      setNotice(
+        `${name} read — ${DEVICE_LUT_SIZE}×${DEVICE_LUT_SIZE}×${DEVICE_LUT_SIZE}, ${grid.data.length / 3} entries. ` +
+          'The look now names this LUT; the grid itself stays on this computer until firmware exposes a LUT upload.',
+      );
     });
   };
 
@@ -547,7 +574,27 @@ export function LooksPage() {
               </div>
               <div className="field">
                 <span className="field-label">LUT</span>
-                <div className="control faint">— reserved for a future firmware release</div>
+                <div className="control" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Button size="sm" onClick={() => cubeRef.current?.click()}>
+                    IMPORT .CUBE
+                  </Button>
+                  <span className="faint">
+                    {draft.advanced?.lut
+                      ? `${draft.advanced.lut} — named only; no LUT upload command in this firmware`
+                      : `none — ${DEVICE_LUT_SIZE}×${DEVICE_LUT_SIZE}×${DEVICE_LUT_SIZE} cubes only`}
+                  </span>
+                  <input
+                    ref={cubeRef}
+                    type="file"
+                    accept=".cube"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) importCube(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
               </div>
             </Panel>
 

@@ -1,0 +1,147 @@
+{
+  "schema": "kino.version-manifest",
+  "manifestVersion": 1,
+  "updated": "2026-08-20",
+  "software": [
+    {
+      "name": "kino-workspace",
+      "version": "0.1.1",
+      "package": "package.json",
+      "tagPrefix": "kino-v"
+    },
+    {
+      "name": "kino-studio",
+      "version": "0.9.0",
+      "package": "apps/studio/package.json",
+      "tagPrefix": "kino-studio-v"
+    },
+    {
+      "name": "kino-twin",
+      "version": "0.1.0",
+      "package": "apps/twin/package.json",
+      "tagPrefix": "kino-twin-v"
+    },
+    {
+      "name": "kino-api",
+      "version": "0.1.0",
+      "package": "apps/api/package.json",
+      "tagPrefix": "kino-api-v"
+    },
+    {
+      "name": "kino-worker",
+      "version": "0.1.0",
+      "package": "apps/worker/package.json",
+      "tagPrefix": "kino-worker-v"
+    },
+    {
+      "name": "kino-kdp",
+      "version": "0.1.0",
+      "package": "packages/kdp/package.json",
+      "tagPrefix": "kino-kdp-v"
+    },
+    {
+      "name": "kino-media",
+      "version": "0.1.0",
+      "package": "packages/media/package.json",
+      "tagPrefix": "kino-media-v"
+    },
+    {
+      "name": "kino-hardware-profiles",
+      "version": "0.1.0",
+      "package": "packages/hardware-profiles/package.json",
+      "tagPrefix": "kino-hardware-profiles-v"
+    },
+    {
+      "name": "kino-schemas",
+      "version": "0.1.0",
+      "package": "packages/schemas/package.json",
+      "tagPrefix": "kino-schemas-v"
+    },
+    {
+      "name": "kino-simulator-engine",
+      "version": "0.1.0",
+      "package": "packages/simulator-engine/package.json",
+      "tagPrefix": "kino-simulator-engine-v"
+    },
+    {
+      "name": "kino-test-fixtures",
+      "version": "0.1.0",
+      "package": "packages/test-fixtures/package.json",
+      "tagPrefix": "kino-test-fixtures-v"
+    },
+    {
+      "name": "kino-three-assets",
+      "version": "0.1.0",
+      "package": "packages/three-assets/package.json",
+      "tagPrefix": "kino-three-assets-v"
+    }
+  ],
+  "protocol": {
+    "kdp": 1,
+    "configEnvelope": 1
+  },
+  "portableSchemas": [
+    {
+      "name": "kino.device-config",
+      "version": 1,
+      "source": "packages/schemas/src/config.ts"
+    },
+    {
+      "name": "kino.device-info",
+      "version": 1,
+      "source": "packages/schemas/src/device.ts"
+    },
+    {
+      "name": "kino.device-capabilities",
+      "version": 1,
+      "source": "packages/schemas/src/device.ts"
+    },
+    {
+      "name": "kino.capture",
+      "version": 1,
+      "source": "packages/schemas/src/media.ts"
+    },
+    {
+      "name": "kino.asset",
+      "version": 1,
+      "source": "packages/schemas/src/media.ts"
+    },
+    {
+      "name": "kino.roll",
+      "version": 1,
+      "source": "packages/schemas/src/media.ts"
+    },
+    {
+      "name": "kino.firmware-manifest",
+      "version": 1,
+      "source": "packages/schemas/src/firmware.ts"
+    },
+    {
+      "name": "kino.hardware-profile",
+      "version": 1,
+      "source": "packages/hardware-profiles/src/types.ts"
+    },
+    {
+      "name": "kino.measured-overrides",
+      "version": 1,
+      "source": "packages/hardware-profiles/src/overrides.ts"
+    },
+    {
+      "name": "kino.sim-session",
+      "version": 1,
+      "source": "packages/simulator-engine/src/recorder.ts"
+    }
+  ],
+  "database": {
+    "journal": "apps/api/drizzle/meta/_journal.json",
+    "latestMigration": "0005_export_jobs"
+  },
+  "hardware": {
+    "manifest": "hardware/manifest.json",
+    "product": "KINO D4",
+    "revision": "D4-V1",
+    "designVersion": "0.1.0",
+    "status": "prototype",
+    "tagPrefix": "kino-d4-hw-v"
+  }
+}

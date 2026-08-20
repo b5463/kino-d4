@@ -98,7 +98,9 @@ Firmware rules:
 
 ### D3 — Network / Roll / upload-queue numeric values
 
-Spec 04§7 lists these ten commands by name only and assigns no values. This repo allocated them:
+Spec 04§7 lists ten of these commands by name only and assigns no values. This repo allocated them,
+plus `UPLOAD_ENQUEUE`, which 04§7 does not list at all — 02§16 requires a "push to Roll" gallery
+action and no command existed to carry it, so it took the next free slot in the same block:
 
 | Command | Value |
 |---|---|
@@ -112,17 +114,18 @@ Spec 04§7 lists these ten commands by name only and assigns no values. This rep
 | `ROLL_LEAVE` | `0xa7` |
 | `UPLOAD_QUEUE_STATUS` | `0xa8` |
 | `UPLOAD_QUEUE_RETRY` | `0xa9` |
+| `UPLOAD_ENQUEUE` | `0xaa` |
 
 **These values are normative.** They sit deliberately above the `0x80`–`0x89` event range so a
 command id and an event id can never collide in a protocol trace.
 
-### D4 — `SYNC_BENCH` is reserved at 0x46, not yet in the `Cmd` enum
+### D4 — `SYNC_BENCH` numeric value
 
-`SYNC_BENCH` is in spec 04§7's Diagnostics group. It is **not** in `packages/kdp/src/protocol/commands.ts`.
-It is defined in `packages/test-fixtures/src/commands.ts` as `0x46` — the next free slot in KDP's
-diagnostics range (`0x40`–`0x45` are taken), so promoting it into `Cmd` is a move, not a renumber.
+Spec 04§7 lists `SYNC_BENCH` in the Diagnostics group and assigns no value. This repo allocated the
+next free slot in KDP's diagnostics range (`0x40`–`0x45` were taken): `Cmd.SYNC_BENCH = 0x46` in
+`packages/kdp/src/protocol/commands.ts`.
 
-**Firmware implements `SYNC_BENCH` at `0x46`.** The value is normative; the enum placement is pending.
+**`0x46` is normative.** Firmware implements `SYNC_BENCH` at `0x46`.
 
 ### D5 — Async job model additions
 
@@ -167,7 +170,6 @@ until they are added to `commands.ts`:
 | `UART_STRESS_TEST` | Named `LINK_BENCH` 0x44 |
 | `FLASH_TEST` | Replaced by `CAMERA_CALIBRATE` 0x35 with `{"action":"flash-test"}` |
 | `SPEAKER_TEST` / `BUTTON_TEST` | Absent — both are checks inside `SELF_TEST` 0x42 |
-| `SYNC_BENCH` | Reserved at `0x46`, see D4 |
 | `FW_ROLLBACK` | Absent |
 
 Source commands **not in spec 04§7** — repo additions, normative:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BroadcastTransport } from '@kino/kdp';
 import { Button } from './Button';
+import { ConnectionNotice } from './ConnectionNotice';
 import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
 import { connectDemo, connectSerial, connectTwin } from '../app/session';
 import { useKnownCameras } from '../state/knownCameras';
@@ -13,6 +14,7 @@ const TWIN_PROBE_INTERVAL_MS = 3000;
 export function ConnectHome() {
   const phase = useConnectionStore((s) => s.phase);
   const error = useConnectionStore((s) => s.error);
+  const fault = useConnectionStore((s) => s.fault);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const known = useKnownCameras((s) => s.cameras);
   const [twinAvailable, setTwinAvailable] = useState(false);
@@ -71,8 +73,12 @@ export function ConnectHome() {
         </div>
 
         <div className="connect-status" role="status">
-          {busy ? PHASE_LABEL[phase] : error ?? ''}
+          {/* A fault gets the banner below instead — repeating its one-line
+              summary here would say it twice and explain it once. */}
+          {busy ? PHASE_LABEL[phase] : fault || phase === 'recovery' ? '' : error ?? ''}
         </div>
+
+        <ConnectionNotice phase={phase} fault={fault} error={error} />
 
         {!serialSupported ? (
           <p className="connect-note">

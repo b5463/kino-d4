@@ -1,6 +1,6 @@
 import { Led } from './Led';
-import type { LedState } from './Led';
-import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
+import { ConnectionStrip } from './ConnectionStrip';
+import { useConnectionStore } from '../state/connectionStore';
 import { useDeviceStore } from '../state/deviceStore';
 import { useDeviceBusy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
@@ -11,6 +11,7 @@ import { formatMB } from '../utils/format';
 
 export function StatusBar() {
   const phase = useConnectionStore((s) => s.phase);
+  const fault = useConnectionStore((s) => s.fault);
   const cameras = useDeviceStore((s) => s.cameras);
   const power = useDeviceStore((s) => s.power);
   const storage = useDeviceStore((s) => s.storage);
@@ -18,20 +19,13 @@ export function StatusBar() {
   const dirty = useDraftStore((s) => s.dirty);
   const unsaved = [...new Set(Object.values(dirty))];
 
-  const ledState: LedState =
-    phase === 'connected' ? 'ok'
-    : phase === 'maintenance' || phase === 'updating' ? 'warn'
-    : phase === 'reconnecting' ? 'busy'
-    : phase === 'error' ? 'err'
-    : 'off';
-
   return (
     // A landmark, not a live region: the cells inside announce themselves, and
     // wrapping the whole bar in role="status" would re-read every number on
     // every 4 s poll.
     <div className="statusbar" role="region" aria-label="Camera vital signs">
       <span className="status-cell status-cell--stretch">
-        <Led state={ledState} label={PHASE_LABEL[phase]} />
+        <ConnectionStrip phase={phase} fault={fault} />
       </span>
       {/* One UART, one operation at a time — the holder is named so a
           disabled bench button is never a mystery. */}

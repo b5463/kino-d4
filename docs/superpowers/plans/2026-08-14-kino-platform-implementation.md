@@ -153,7 +153,7 @@ git add -A
 git commit -m "chore: baseline KINO Studio v0.9.0 + dev spec pack"
 ```
 
-Note: `KINO_PROJECT_RECOVERY_PACK.zip` in the root is a binary recovery artifact — commit it or move it out of the repo per the user's preference; ask before deleting.
+Note: `KINO_PROJECT_RECOVERY_PACK.zip` is a binary recovery artifact. The documentation cleanup retained it at `archive/KINO_PROJECT_RECOVERY_PACK.zip`; do not delete it without the owner's approval.
 
 ### Task 2: Convert to npm workspaces and move Studio to `apps/studio`
 
@@ -715,15 +715,15 @@ export function spreadUs(offsets: number[]): number;                // max - min
 - Consumes: Task 10 stats; `KinoProtocolClient.startJob('SYNC_BENCH', { triggers: N })` from Task 7; `CAMERA_GET_TIMING` for single reads.
 - Produces: the 02§10 display — three separate sections (GPIO distribution / VSYNC phase / effective exposure), each with per-camera offsets, spread, band label, and mean/median/p95/max over the run. Run sizes: 25 (quick) / 250 (bench, default — "hundreds of triggers" per 07§18) / 1000 (soak). When the device reports a metric as null, the section renders "NOT MEASURABLE — <reason from device>" — never a fabricated number, never a collapsed single score.
 
-- [ ] **Step 1: Write failing component/store test** — feed a fake job stream of trigger samples; assert: three metric sections render independently; exposure section with `unavailableReason: 'no exposure telemetry in this firmware'` shows the reason text and no numbers; band label "GOOD TARGET" shown for a 1.2 ms VSYNC spread (the 02§10 example data).
+- [x] **Step 1: Write failing component/store test** — feed a fake job stream of trigger samples; assert: three metric sections render independently; exposure section with `unavailableReason: 'no exposure telemetry in this firmware'` shows the reason text and no numbers; band label "GOOD TARGET" shown for a 1.2 ms VSYNC spread (the 02§10 example data).
 
-- [ ] **Step 2: Run to verify FAIL.**
+- [x] **Step 2: Run to verify FAIL.**
 
-- [ ] **Step 3: Implement.** Layout per design system: compact table per metric (rows CAM1..CAMn from capabilities), monospace numbers as `+0.61ms`, spread row, band lamp (`● / ▲ / ×`), distribution line (`mean 0.42 · median 0.39 · p95 0.88 · max 1.20 ms`). Progress via job progress events with cancel (`FW_ABORT`-style job cancel is not in the protocol — cancel = stop consuming + device timeout is acceptable for V1; note in UI as "Stopping after current trigger…").
+- [x] **Step 3: Implement.** Layout per design system: compact table per metric (rows CAM1..CAMn from capabilities), monospace numbers as `+0.61ms`, spread row, band lamp (`● / ▲ / ×`), distribution line (`mean 0.42 · median 0.39 · p95 0.88 · max 1.20 ms`). Progress via job progress events with cancel (`FW_ABORT`-style job cancel is not in the protocol — cancel = stop consuming + device timeout is acceptable for V1; note in UI as "Stopping after current trigger…").
 
-- [ ] **Step 4: Run tests + `npm run dev`, run a bench against mock scenario, verify all three sections + null path (mock `sessionRestart` scenario has vsync telemetry; add a mock capability flag `vsyncTelemetry:false` variant to see the null path).**
+- [x] **Step 4: Run tests + `npm run dev`, run a bench against mock scenario, verify all three sections + null path (mock `sessionRestart` scenario has vsync telemetry; add a mock capability flag `vsyncTelemetry:false` variant to see the null path).**
 
-- [ ] **Step 5: Commit** — `feat(studio): first-class Skew Bench with three-metric display`
+- [x] **Step 5: Commit** — `feat(studio): first-class Skew Bench with three-metric display`
 
 ### Task 12: Studio Roll page (device side, against mock)
 
@@ -752,15 +752,15 @@ export interface RollServerClient {
 export class StubRollServerClient implements RollServerClient { /* rejects with 'SERVER_NOT_CONFIGURED' */ }
 ```
 
-- [ ] **Step 1: Write failing tests** — (a) Wi-Fi form submits `NETWORK_SET {ssid, password}` over KDP and the password value never appears in the log store or in any outbound `RollServerClient` call (assert by spying — this is the 05§13 guarantee); (b) saved networks list renders from `NETWORK_LIST` with masked passwords; (c) "Start a Roll" calls `ROLL_CREATE` on the device after server create succeeds, and renders guest QR for `guestUrl`; (d) upload queue renders `UPLOAD_QUEUE_STATUS` counts and "Retry failed" sends `UPLOAD_QUEUE_RETRY`; (e) with `rollUpload:false` capability, nav has no Roll entry.
+- [x] **Step 1: Write failing tests** — (a) Wi-Fi form submits `NETWORK_SET {ssid, password}` over KDP and the password value never appears in the log store or in any outbound `RollServerClient` call (assert by spying — this is the 05§13 guarantee); (b) saved networks list renders from `NETWORK_LIST` with masked passwords; (c) "Start a Roll" calls `ROLL_CREATE` on the device after server create succeeds, and renders guest QR for `guestUrl`; (d) upload queue renders `UPLOAD_QUEUE_STATUS` counts and "Retry failed" sends `UPLOAD_QUEUE_RETRY`; (e) with `rollUpload:false` capability, nav has no Roll entry.
 
-- [ ] **Step 2: Run to verify FAIL.**
+- [x] **Step 2: Run to verify FAIL.**
 
-- [ ] **Step 3: Implement.** Panels top-to-bottom: Server (URL field default locked domain, [Test Server]), Network (list + add form + status lamp `● WIFI CONNECTED`), Roll (current `ROLL_STATUS`; Start a Roll / Join a Roll / Leave Roll; guest QR via `qrcode` `toCanvas`; "Open host dashboard" external link), Upload queue (`3 PENDING · 1 FAILED`, retry button). Copy uses Roll terminology (01§10). Offline note pinned at bottom: "KINO shoots without Wi-Fi. Uploads resume when the Roll server is reachable."
+- [x] **Step 3: Implement.** Panels top-to-bottom: Server (URL field default locked domain, [Test Server]), Network (list + add form + status lamp `● WIFI CONNECTED`), Roll (current `ROLL_STATUS`; Start a Roll / Join a Roll / Leave Roll; guest QR via `qrcode` `toCanvas`; "Open host dashboard" external link), Upload queue (`3 PENDING · 1 FAILED`, retry button). Copy uses Roll terminology (01§10). Offline note pinned at bottom: "KINO shoots without Wi-Fi. Uploads resume when the Roll server is reachable."
 
-- [ ] **Step 4: Run tests + manual pass against mock (create Roll, see QR, watch mock backlog drain).**
+- [x] **Step 4: Run tests + manual pass against mock (create Roll, see QR, watch mock backlog drain).**
 
-- [ ] **Step 5: Commit** — `feat(studio): Roll page — Wi-Fi provisioning, roll lifecycle, upload queue, guest QR`
+- [x] **Step 5: Commit** — `feat(studio): Roll page — Wi-Fi provisioning, roll lifecycle, upload queue, guest QR`
 
 ### Task 13: Gallery "Push to Roll" + Studio spec-audit sweep
 
@@ -779,15 +779,15 @@ export class StubRollServerClient implements RollServerClient { /* rejects with 
   - 07§14 capability acceptance: unknown future capability fields tolerated (schema already passthrough — add UI test), version-mismatch banner rendered when device protocol outside supported range.
   - 07§16 gallery scale: virtualization test at 0 / 60 / 2,000 / 10,000 metadata rows — assert render count stays bounded (existing virtualization; add the 10k fixture case using `largeGallery2k` scenario generator parameterized).
 
-- [ ] **Step 1: Write failing tests for push-to-roll + each missing audit item** (only the ones the audit finds missing get implementation steps — the audit doc records "already present" for the rest).
+- [x] **Step 1: Write failing tests for push-to-roll + each missing audit item** (only the ones the audit finds missing get implementation steps — the audit doc records "already present" for the rest).
 
-- [ ] **Step 2: Run to verify FAIL.**
+- [x] **Step 2: Run to verify FAIL.**
 
-- [ ] **Step 3: Implement the gaps.**
+- [x] **Step 3: Implement the gaps.**
 
-- [ ] **Step 4: Run full Studio suite.** Run: `npm run test -w @kino/studio`
+- [x] **Step 4: Run full Studio suite.** Run: `npm run test -w @kino/studio`
 
-- [ ] **Step 5: Commit** — `feat(studio): push-to-roll + 02/07 spec audit closure` (include `docs/studio-spec-audit.md`)
+- [x] **Step 5: Commit** — `feat(studio): push-to-roll + 02/07 spec audit closure` (include `docs/studio-spec-audit.md`)
 
 ---
 
@@ -805,7 +805,7 @@ export class StubRollServerClient implements RollServerClient { /* rejects with 
 - Produces: `docker compose -f infra/docker-compose.dev.yml up -d` starts postgres:16, redis:7, minio (+ bucket bootstrap). `buildServer(config): FastifyInstance` (exported for tests — tests build the server in-process, no port binding). `GET /api/healthz` → `{ ok: true, db: true, redis: true, storage: true }`. Config from env: `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET=kino-media`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `PUBLIC_BASE_URL=https://kino.acronym.sk`.
 - Deps: `fastify@^5`, `drizzle-orm`, `postgres` (driver), `ioredis`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `zod`, `@kino/schemas`; dev: `drizzle-kit`, `vitest`.
 
-- [ ] **Step 1: Write compose file**
+- [x] **Step 1: Write compose file**
 
 ```yaml
 # infra/docker-compose.dev.yml
@@ -833,13 +833,13 @@ services:
 volumes: { pgdata: {}, miniodata: {} }
 ```
 
-- [ ] **Step 2: Write failing health test** (`buildServer` + `app.inject({ url: '/api/healthz' })`, expect 200 and all three booleans true — test runs against the compose services; document `docker compose up -d` as a test precondition in `apps/api/README.md`).
+- [x] **Step 2: Write failing health test** (`buildServer` + `app.inject({ url: '/api/healthz' })`, expect 200 and all three booleans true — test runs against the compose services; document `docker compose up -d` as a test precondition in `apps/api/README.md`).
 
-- [ ] **Step 3: Implement scaffold** — `buildServer` registers db/redis/s3 plugins (fastify decorators `app.db`, `app.redis`, `app.s3`), healthz pings each (`select 1`, `PING`, `HeadBucket`). Structured logging: fastify's pino with request IDs (05§17). Never log request bodies on device routes (Wi-Fi rule is device-side, but belt-and-braces: redact `password` keys in the serializer).
+- [x] **Step 3: Implement scaffold** — `buildServer` registers db/redis/s3 plugins (fastify decorators `app.db`, `app.redis`, `app.s3`), healthz pings each (`select 1`, `PING`, `HeadBucket`). Structured logging: fastify's pino with request IDs (05§17). Never log request bodies on device routes (Wi-Fi rule is device-side, but belt-and-braces: redact `password` keys in the serializer).
 
-- [ ] **Step 4: Run** `npm run test -w @kino/api` → PASS. Add an `api-test` job to CI with `services:` postgres/redis/minio matching compose.
+- [x] **Step 4: Run** `npm run test -w @kino/api` → PASS. Add an `api-test` job to CI with `services:` postgres/redis/minio matching compose.
 
-- [ ] **Step 5: Commit** — `feat(api): fastify scaffold + dev infra compose + healthz`
+- [x] **Step 5: Commit** — `feat(api): fastify scaffold + dev infra compose + healthz`
 
 ### Task 15: Database schema (Drizzle) + migration 0001
 
@@ -973,13 +973,13 @@ export const processingEvents = pgTable('processing_events', {
 
 No media blobs anywhere (05§5). Guest identity is a cookie ID only — no accounts table for guests. Host auth is per-roll `hostTokenHash` for V1 (05§12 "secure account/session **or equivalent host token**"); an accounts table is deliberately deferred until multi-roll host management is real (YAGNI).
 
-- [ ] **Step 1: Write failing test** — migration applies to a clean DB; inserting a duplicate `(rollId, captureUuid)` violates the unique index; inserting an asset with duplicate `(captureId, role, frameIndex)` fails.
+- [x] **Step 1: Write failing test** — migration applies to a clean DB; inserting a duplicate `(rollId, captureUuid)` violates the unique index; inserting an asset with duplicate `(captureId, role, frameIndex)` fails.
 
-- [ ] **Step 2: Generate + apply migration.** Run: `npx drizzle-kit generate && npx drizzle-kit migrate` (config points at `DATABASE_URL`).
+- [x] **Step 2: Generate + apply migration.** Run: `npx drizzle-kit generate && npx drizzle-kit migrate` (config points at `DATABASE_URL`).
 
-- [ ] **Step 3: Run test → PASS.**
+- [x] **Step 3: Run test → PASS.**
 
-- [ ] **Step 4: Commit** — `feat(api): postgres schema 0001 — devices, rolls, captures, assets, uploads, firmware, audit`
+- [x] **Step 4: Commit** — `feat(api): postgres schema 0001 — devices, rolls, captures, assets, uploads, firmware, audit`
 
 ### Task 16: Auth — device tokens, host tokens, guest PIN session
 
@@ -1007,9 +1007,9 @@ export function hashToken(token: string): string;
 - `POST /api/studio/devices/register` body `{ serial, product, hardwareRevision, name? }` → `{ deviceId, deviceToken }` (token returned exactly once; row stores hash). Re-registering an existing serial rotates the token (old one invalidated) and returns the new one — physical possession of the serial + Studio is the trust anchor for V1; note this in the route comment.
 - Scope enforcement (07§25): device token routes live under `/api/device/*` only; host routes under `/api/host/*`; a device token used on a host route is 403; devices can only touch rolls they created or joined (`roll_devices` join check — add small `rollDevices` table `(rollId, deviceId, joinedAt)` in this task's migration 0002).
 
-- [ ] **Step 1: Write failing tests** — register returns `kdt_` token; token authenticates `/api/device/ping` (test-only route); tampered token 401; device token on host route 403; host token operates only its own roll (second roll → 403); PIN flow: wrong PIN 401, right PIN sets cookie, subsequent guest reads pass.
+- [x] **Step 1: Write failing tests** — register returns `kdt_` token; token authenticates `/api/device/ping` (test-only route); tampered token 401; device token on host route 403; host token operates only its own roll (second roll → 403); PIN flow: wrong PIN 401, right PIN sets cookie, subsequent guest reads pass.
 
-- [ ] **Step 2: Run → FAIL. Step 3: Implement (scrypt for PIN hash via `node:crypto`, timing-safe compares). Step 4: Run → PASS. Step 5: Commit** — `feat(api): device/host/guest auth with scoped tokens`
+- [x] **Step 2: Run → FAIL. Step 3: Implement (scrypt for PIN hash via `node:crypto`, timing-safe compares). Step 4: Run → PASS. Step 5: Commit** — `feat(api): device/host/guest auth with scoped tokens`
 
 ### Task 17: Rolls API — create, join, host manage, guest read
 
@@ -1035,9 +1035,9 @@ GET   /api/rolls/:slug                                                   → gue
 - `slug.ts`: `newSlug(): string` — 6 chars from alphabet `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (no 0/O/1/I/L), `crypto.getRandomValues`, retry on unique collision. Internal ID separate from slug (05§14).
 - Closed roll: uploads rejected with `ROLL_CLOSED`; guest gallery remains readable (03§22).
 
-- [ ] **Step 1: Write failing tests** — create → slug matches `/^[23456789A-HJKMNP-Z]{6}$/`; guest GET works with no auth; PIN-protected roll returns 401 PIN_REQUIRED before PIN cookie; PATCH close then device upload attempt → `ROLL_CLOSED`; regenerate-slug invalidates the old slug (old → 404); every guest response carries the `X-Robots-Tag` header; audit_events row written for close/rename/regenerate.
+- [x] **Step 1: Write failing tests** — create → slug matches `/^[23456789A-HJKMNP-Z]{6}$/`; guest GET works with no auth; PIN-protected roll returns 401 PIN_REQUIRED before PIN cookie; PATCH close then device upload attempt → `ROLL_CLOSED`; regenerate-slug invalidates the old slug (old → 404); every guest response carries the `X-Robots-Tag` header; audit_events row written for close/rename/regenerate.
 
-- [ ] **Step 2–5: Run FAIL → implement → run PASS → commit** — `feat(api): roll lifecycle — device create/join, host manage, guest read`
+- [x] **Step 2–5: Run FAIL → implement → run PASS → commit** — `feat(api): roll lifecycle — device create/join, host manage, guest read`
 
 ### Task 18: Captures + resumable upload pipeline
 
@@ -1069,9 +1069,9 @@ GET  /api/device/captures/:captureId/status         → {status, assets: [{role,
 - Capture status transitions (05§8): `created` → (thumb or wiggle-preview asset ready) `preview-ready` → (any original uploading) `originals-uploading` → (all declared assets ready) `complete` → (jobs queued) `processing` → (derivatives done) `ready`; `partial` when some originals failed and retries exhausted; `failed` on total loss. Implement as a pure function `nextCaptureStatus(assets: AssetRow[], jobsDone: boolean): CaptureStatus` — unit-tested exhaustively.
 - On capture create and each asset completion: `publishRollEvent(redis, rollId, event)` (defined in Task 19; stub it here, Task 19 replaces the stub).
 
-- [ ] **Step 1: Write failing tests** — full happy path (create capture → init thumb → 1 part → complete → capture status `preview-ready`); duplicate capture POST returns same id, no second row; duplicate `assets/init` after completion → `alreadyComplete`; part re-send after simulated network drop succeeds; checksum mismatch → 422 + session failed + asset stays `pending`; upload to closed roll → `ROLL_CLOSED`; object key for frame 2 is exactly `rolls/<id>/captures/<id>/original/cam-02.jpg`; worker-style write to an existing original key throws.
+- [x] **Step 1: Write failing tests** — full happy path (create capture → init thumb → 1 part → complete → capture status `preview-ready`); duplicate capture POST returns same id, no second row; duplicate `assets/init` after completion → `alreadyComplete`; part re-send after simulated network drop succeeds; checksum mismatch → 422 + session failed + asset stays `pending`; upload to closed roll → `ROLL_CLOSED`; object key for frame 2 is exactly `rolls/<id>/captures/<id>/original/cam-02.jpg`; worker-style write to an existing original key throws.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): idempotent captures + resumable S3 uploads with checksum verification`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): idempotent captures + resumable S3 uploads with checksum verification`
 
 ### Task 19: SSE live events
 
@@ -1095,9 +1095,9 @@ export async function publishRollEvent(redis: Redis, rollId: string, event: Roll
 - `GET /api/rolls/:slug/events` (guest auth rules apply): SSE with `retry: 3000`, event id = Redis stream entry id, replay from `Last-Event-ID` header via XRANGE, then live via subscribe; `: heartbeat` comment every 25 s; connection count per roll tracked in Redis (`SCARD` of connection set with TTL refresh) — this feeds the host dashboard "Guests" number (03§10).
 - Event payloads carry IDs only; the PWA re-fetches the capture (05§10 flow).
 
-- [ ] **Step 1: Write failing tests** — client receives `capture.created` after a publish; reconnect with `Last-Event-ID` replays the missed event exactly once; hidden capture emits `capture.hidden`.
+- [x] **Step 1: Write failing tests** — client receives `capture.created` after a publish; reconnect with `Last-Event-ID` replays the missed event exactly once; hidden capture emits `capture.hidden`.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): SSE roll events with Last-Event-ID replay`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): SSE roll events with Last-Event-ID replay`
 
 ### Task 20: Guest feed + asset delivery
 
@@ -1117,14 +1117,14 @@ GET /api/assets/:assetId/content
     → 302 to a presigned S3 GET URL (60 s expiry)  — after checking: roll visible to requester,
       capture visible, and (role==='original-frame' || role==='kino-still') ⇒ roll.downloadsEnabled
       for download-disposition requests; thumbs/previews are always viewable when the roll is viewable.
-      Cache-Control: private, max-age=300 on the redirect.
+      Cache-Control: private, max-age=55 on the redirect (RULING: cache lifetime must stay strictly below the 60 s signature lifetime; max-age=300 would serve dead URLs).
 ```
 
 - Object key never appears in guest responses; asset access is always via `assetId` + authorization check (05§6 "object key is not authorization").
 
-- [ ] **Step 1: Write failing tests** — pagination walks 120 captures in 3 pages with no overlap/no gaps; hidden captures absent from guest feed but present in host view; downloads disabled ⇒ original-frame content 403 while thumb still 302s; PIN roll without cookie ⇒ 401.
+- [x] **Step 1: Write failing tests** — pagination walks 120 captures in 3 pages with no overlap/no gaps; hidden captures absent from guest feed but present in host view; downloads disabled ⇒ original-frame content 403 while thumb still 302s; PIN roll without cookie ⇒ 401.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): guest feed pagination + authorized asset delivery`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): guest feed pagination + authorized asset delivery`
 
 ### Task 21: Host moderation + export job
 
@@ -1143,9 +1143,9 @@ POST /api/host/rolls/:rollId/export          → {jobId}   — enqueues 'export-
 GET  /api/host/rolls/:rollId/export/:jobId   → {status, url?}
 ```
 
-- [ ] **Step 1: Write failing tests** — hide removes from guest feed within the same request cycle + SSE event observed; delete → guest 404, host still sees it in trash until purge; export job row created with status queued.
+- [x] **Step 1: Write failing tests** — hide removes from guest feed within the same request cycle + SSE event observed; delete → guest 404, host still sees it in trash until purge; export job row created with status queued.
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): host moderation with trash grace + export jobs`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(api): host moderation with trash grace + export jobs`
 
 ---
 
@@ -1181,9 +1181,9 @@ export function registerHandler(name: JobName, fn: (p: JobPayload, ctx: JobCtx) 
 - Retry policy: 5 attempts, exponential backoff starting 10 s. A failed job writes `processing_events` status `failed` and touches nothing else — MP4 failure must not affect originals/thumbs (07§26). Each handler runs in its own try/catch; handlers never share state.
 - Enqueue fan-out on capture complete: wiggle capture → `extract-metadata`, `generate-thumbnail`*, `generate-gallery-still`*, `render-wiggle-webp`* (*skipped if the device already uploaded that role — device-uploaded previews take priority, workers fill gaps and upgrade quality, 03§4); quad/single → metadata, thumbnail, still. `render-wiggle-mp4` + `render-contact-sheet` enqueue lazily on first request (host export or guest MP4 ask) — keeps party-time queue short.
 
-- [ ] **Step 1: Write failing tests** — same jobKey enqueued twice runs once; a handler that throws marks `processing_events` failed and does not block a different job for the same capture; retry count respects max attempts. (Use a real Redis from compose; fake handlers.)
+- [x] **Step 1: Write failing tests** — same jobKey enqueued twice runs once; a handler that throws marks `processing_events` failed and does not block a different job for the same capture; retry count respects max attempts. (Use a real Redis from compose; fake handlers.)
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): bullmq scaffold with idempotent job keys + independent failure`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): bullmq scaffold with idempotent job keys + independent failure`
 
 ### Task 23: Image jobs — thumbnail, gallery still, contact sheet, metadata
 
@@ -1200,9 +1200,9 @@ export function registerHandler(name: JobName, fn: (p: JobPayload, ctx: JobCtx) 
   - `extract-metadata`: exif via `exifr` from frame 1 + capture row → JSON `derived/metadata.json`, role `metadata`.
 - Every job: insert/update the asset row (status `ready`, sha256, bytes, dimensions), `publishRollEvent(..., { type: 'processing.completed', captureId, role })`.
 
-- [ ] **Step 1: Write failing tests** — thumbnail output is WebP, width 480, asset row ready, event published; contact sheet width = n*320 + (n-1)*8; running thumbnail twice produces one asset row (upsert by unique index).
+- [x] **Step 1: Write failing tests** — thumbnail output is WebP, width 480, asset row ready, event published; contact sheet width = n*320 + (n-1)*8; running thumbnail twice produces one asset row (upsert by unique index).
 
-- [ ] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): thumbnail, gallery still, contact sheet, metadata jobs`
+- [x] **Step 2–5: FAIL → implement → PASS → commit** — `feat(worker): thumbnail, gallery still, contact sheet, metadata jobs`
 
 ### Task 24: Wiggle renders — animated WebP + MP4
 
@@ -1226,9 +1226,9 @@ export function wiggleSequence(frameCount: number, loop: LoopMode, direction: 'l
   - `render-wiggle-webp`: frames resized to 960 px wide, animated WebP at capture's fps (default 10), loop forever, q75 → `derived/wiggle.webp`, role `wiggle-webp`. Use sharp's animated webp (`sharp(pages).webp({ ... })` via joined buffer with `pageHeight`) — if sharp's animation limits bite, fall back to `webpmux` via execa; decide in implementation, test only asserts: valid animated WebP (`VP8X` + `ANIM` chunk present), ≥ sequence length frames.
   - `render-wiggle-mp4`: ffmpeg (`ffmpeg-static` + execa): loop the bounce sequence 4×, `-r <fps>`, `-c:v libx264 -pix_fmt yuv420p -crf 23 -movflags +faststart`, 960 px wide → `derived/wiggle.mp4`, role `wiggle-mp4`.
 
-- [ ] **Step 1: Write failing sequence tests** — the three loop modes for 4 frames; rtl reverses; frameCount 2 bounce → `[0,1]`... actually `[0,1]` (bounce interior of 2 frames has no middle) — assert `[0,1]`; frameCount 5 bounce → `[0,1,2,3,4,3,2,1]`.
+- [x] **Step 1: Write failing sequence tests** — the three loop modes for 4 frames; rtl reverses; frameCount 2 bounce → `[0,1]`... actually `[0,1]` (bounce interior of 2 frames has no middle) — assert `[0,1]`; frameCount 5 bounce → `[0,1,2,3,4,3,2,1]`.
 
-- [ ] **Step 2–5: FAIL → implement sequence, then jobs → PASS → commit** — `feat(worker,media): wiggle sequence math + animated WebP/MP4 renders`
+- [x] **Step 2–5: FAIL → implement sequence, then jobs → PASS → commit** — `feat(worker,media): wiggle sequence math + animated WebP/MP4 renders`
 
 ### Task 25: Recap + AI-enhance stubs, purge job
 
@@ -1490,4 +1490,3 @@ Roll production acceptance (03§30) is satisfied by: no-login guest flow (Tasks 
 - **Firmware:** This plan covers the platform software. D4 firmware (P4 + XIAO camera nodes) implements against `firmware-contract/` (Task 9) and is planned separately — the mock (Task 8) is its behavioral reference.
 - **Commit discipline:** every task ends in a commit; never batch multiple tasks into one commit.
 - **When a task's test framework choice conflicts with what exists** (e.g. Studio already has vitest patterns), follow the existing pattern — this plan's snippets show intent, the codebase shows house style.
-

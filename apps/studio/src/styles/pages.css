@@ -1056,3 +1056,211 @@
     height: 66px;
   }
 }
+
+/* ---- skew bench (02 §10) ---- */
+
+/* Section tabs inside a page. Same seg control as everywhere else; a tablist
+   marks selection with aria-selected, which the shared rule below covers. */
+.pagetabs {
+  margin: 0 0 10px;
+}
+
+.skew-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--gap);
+  margin: 8px 0 6px;
+}
+
+.skew-metric {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r);
+  background: #fff;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.skew-metric--ok { border-color: #a8cfa4; background: #f4fbf3; }
+.skew-metric--warn { border-color: #ddc98d; background: #fdf9ec; }
+.skew-metric--err { border-color: #d9a6a6; background: #fdf2f2; }
+
+/* Offsets are read as a column, so they are monospace, right-aligned and
+   tabular — the point of the table is to spot the outlier row. */
+.skew-rows {
+  margin: 2px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.skew-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+.skew-row dt { color: var(--text-mut); }
+.skew-row dd { margin: 0; }
+
+.skew-row--spread {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.skew-band {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.skew-band--ok { color: var(--green-dark); }
+.skew-band--warn { color: var(--orange-dark); }
+.skew-band--err { color: var(--red-dark); }
+
+.skew-lamp {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.skew-line {
+  display: block;
+  margin: 0;
+}
+
+.skew-line--worst { color: var(--orange-dark); }
+
+/* A metric the device could not measure. Stated, never rendered as a zero. */
+.skew-none {
+  margin: 2px 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--orange-dark);
+}
+
+.skew-verdict {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+/* ---- Roll page (02 §17) ---- */
+
+/* Section heads inside a panel: the same technical caption as .panel-title,
+   one level down, so a panel can hold two lists without a second panel. */
+.roll-subhead {
+  margin: 12px 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mut);
+}
+
+.roll-subhead:first-child { margin-top: 0; }
+
+.roll-empty {
+  margin: 0 0 var(--gap);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
+
+.roll-sep {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.netlist {
+  margin: 0 0 var(--gap);
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-mid);
+  background: var(--well);
+}
+
+.netrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6ch minmax(0, 14ch) auto;
+  align-items: center;
+  gap: var(--gap);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.netrow:last-child { border-bottom: 0; }
+
+.netrow-ssid {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.netrow-pass {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+
+.netrow-meta {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-mut);
+}
+
+/* Guest QR: white quiet zone regardless of the panel behind it, because a
+   code on a tinted ground does not scan reliably. */
+.rollqr {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: var(--gap) 0;
+  padding: var(--pad);
+  border: 1px solid var(--border-mid);
+  background: #fff;
+  width: max-content;
+  max-width: 100%;
+}
+
+.rollqr canvas {
+  display: block;
+  width: 176px;
+  height: 176px;
+  image-rendering: pixelated;
+}
+
+.rollqr-url {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.queueline {
+  margin: 0 0 var(--gap);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Pinned to the bottom of the section: the camera works without any of this. */
+.roll-offline {
+  margin: var(--gap) 0 0;
+  padding-top: var(--gap);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+}
