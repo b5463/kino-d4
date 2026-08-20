@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError, rollApi, type RollApi } from '../api/client';
+import { Button, Panel } from '@kino/design-system';
 
 export interface PinGateProps {
   slug: string;
@@ -34,27 +35,29 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
   };
 
   return (
-    <main style={{ maxWidth: 360, margin: '15vh auto', padding: '1rem' }}>
-      <div style={{ fontSize: '0.75rem', letterSpacing: '0.14em' }}>KINO ROLL</div>
-      <h1>This Roll needs a PIN</h1>
-      <form onSubmit={(event) => void submit(event)}>
-        <label htmlFor="roll-pin">PIN</label>
-        <input
-          id="roll-pin"
-          name="pin"
-          type="password"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          value={pin}
-          onChange={(event) => setPin(event.target.value)}
-          required
-          autoFocus
-        />
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Opening…' : 'Open Roll'}
-        </button>
-      </form>
-      {error === '' ? null : <p role="alert">{error}</p>}
+    <main className="roll-shell roll-shell--narrow">
+      <div className="roll-brand">KINO ROLL</div>
+      <Panel title="Private Roll">
+        <h1>This Roll needs a PIN</h1>
+        <form onSubmit={(event) => void submit(event)}>
+          <label htmlFor="roll-pin">PIN</label>
+          <input
+            id="roll-pin"
+            name="pin"
+            type="password"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={pin}
+            onChange={(event) => setPin(event.target.value)}
+            required
+            autoFocus
+          />
+          <Button variant="primary" type="submit" busy={submitting}>
+            {submitting ? 'Opening…' : 'Open Roll'}
+          </Button>
+        </form>
+        {error === '' ? null : <p className="roll-alert" role="alert">{error}</p>}
+      </Panel>
     </main>
   );
 }

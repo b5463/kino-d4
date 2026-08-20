@@ -7,6 +7,7 @@ import {
   type RollView,
 } from '../api/client';
 import { WigglePlayer } from '../components/WigglePlayer';
+import { Button, Panel, ToolbarFrame } from '@kino/design-system';
 
 export interface CaptureDetailProps {
   slug: string;
@@ -38,15 +39,15 @@ function preferredAsset(capture: CaptureDetailView): CaptureAssetDetail | undefi
 
 function metadata(capture: CaptureDetailView) {
   return (
-    <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.4rem 1rem' }}>
+    <dl className="roll-metadata">
       <dt>Captured</dt>
-      <dd style={{ margin: 0 }}>{new Date(capture.capturedAt).toLocaleString()}</dd>
+      <dd>{new Date(capture.capturedAt).toLocaleString()}</dd>
       <dt>Look</dt>
-      <dd style={{ margin: 0 }}>{capture.look ?? 'KINO standard'}</dd>
+      <dd>{capture.look ?? 'KINO standard'}</dd>
       <dt>Resolution</dt>
-      <dd style={{ margin: 0 }}>{capture.resolution}</dd>
+      <dd>{capture.resolution}</dd>
       <dt>Frames</dt>
-      <dd style={{ margin: 0 }}>{capture.frameCount}</dd>
+      <dd>{capture.frameCount}</dd>
     </dl>
   );
 }
@@ -57,7 +58,7 @@ function assetImage(asset: CaptureAssetDetail, api: RollApi, alt = '') {
       key={asset.assetId}
       src={api.assetUrl(asset.assetId)}
       alt={alt}
-      style={{ display: 'block', width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }}
+      className="roll-media"
     />
   );
 }
@@ -116,7 +117,7 @@ export function CaptureDetail({
   if (capture.mode === 'wiggle') {
     media = (
       <>
-        <div ref={heroRef} style={{ background: '#111' }}>
+        <div ref={heroRef} className="roll-stage">
           {roll.downloadsEnabled && originalUrls.length >= 2 ? (
             <WigglePlayer
               frames={originalUrls}
@@ -128,14 +129,11 @@ export function CaptureDetail({
             assetImage(still, api, 'Wiggle capture')
           )}
         </div>
-        <button type="button" onClick={() => void heroRef.current?.requestFullscreen?.()}>
+        <Button onClick={() => void heroRef.current?.requestFullscreen?.()}>
           Full screen
-        </button>
+        </Button>
         {roll.downloadsEnabled && originals.length > 0 ? (
-          <div
-            aria-label="Original frame strip"
-            style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'minmax(72px, 1fr)', gap: 6 }}
-          >
+          <div aria-label="Original frame strip" className="roll-frame-strip">
             {originals.map((asset, index) => assetImage(asset, api, `Frame ${String(index + 1)}`))}
           </div>
         ) : null}
@@ -147,12 +145,13 @@ export function CaptureDetail({
       <div
         aria-label="Quad frames"
         data-columns={columns}
-        style={{ display: 'grid', gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`, gap: 8 }}
+        className="roll-quad"
+        style={{ gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))` }}
       >
         {originals.map((asset, index) => (
-          <figure key={asset.assetId} style={{ margin: 0, minWidth: 0 }}>
+          <figure key={asset.assetId} className="roll-figure">
             {assetImage(asset, api, `Camera ${String(index + 1)} frame`)}
-            <figcaption style={{ fontSize: '0.75rem', marginTop: 3 }}>
+            <figcaption>
               CAM {String(index + 1)} · {capture.look ?? 'KINO standard'}
             </figcaption>
           </figure>
@@ -166,40 +165,37 @@ export function CaptureDetail({
   const downloadable = preferredAsset(capture) ?? originals[0];
 
   return (
-    <article style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gap: '1rem' }}>
+    <article className="roll-detail">
       {media}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+      <ToolbarFrame className="roll-actions" aria-label="Capture actions">
         {roll.downloadsEnabled && downloadable !== undefined ? (
-          <a href={api.assetUrl(downloadable.assetId, { download: true })} download>
+          <a className="roll-action" href={api.assetUrl(downloadable.assetId, { download: true })} download>
             Download
           </a>
         ) : null}
-        <button type="button" onClick={() => void share()}>
+        <Button onClick={() => void share()}>
           Share
-        </button>
+        </Button>
         {roll.reactionsEnabled ? (
-          <button
-            type="button"
+          <Button
             aria-pressed={capture.reacted}
             aria-label={capture.reacted ? 'Remove heart' : 'Add heart'}
             disabled={reacting}
             onClick={() => void react()}
           >
             {capture.reacted ? '♥' : '♡'} {capture.reactionCount}
-          </button>
+          </Button>
         ) : null}
         {sharing === '' ? null : <span role="status">{sharing}</span>}
-      </div>
+      </ToolbarFrame>
       {capture.mode === 'wiggle' && still !== undefined ? (
-        <section>
-          <h2>Processed still</h2>
+        <Panel title="Processed still">
           {assetImage(still, api, 'Processed still')}
-        </section>
+        </Panel>
       ) : null}
-      <section>
-        <h2>Capture details</h2>
+      <Panel title="Capture details">
         {metadata(capture)}
-      </section>
+      </Panel>
     </article>
   );
 }

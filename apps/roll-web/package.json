@@ -13,6 +13,7 @@
     "lint": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@kino/design-system": "*",
     "@kino/media": "*",
     "@kino/schemas": "*",
     "@tanstack/react-virtual": "^3.14.10",

@@ -14,6 +14,7 @@ import { useRollFeed } from '../hooks/useRollFeed';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
 import { RollClosed } from './RollClosed';
+import { StatusLamp } from '@kino/design-system';
 
 export interface RollFeedPageProps {
   slug: string;
@@ -80,13 +81,13 @@ function CaptureTile({
     const source = animated ?? poster;
     media =
       source === undefined ? (
-        <span aria-label="Capture processing">Processing…</span>
+        <span className="roll-processing" aria-label="Capture processing">Processing…</span>
       ) : (
         <img
           src={rollApi.assetUrl(source.assetId)}
           alt=""
           loading="lazy"
-          style={{ display: 'block', width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }}
+          className="roll-media"
         />
       );
   }
@@ -95,7 +96,7 @@ function CaptureTile({
     <a
       href={`/r/${encodeURIComponent(slug)}/c/${encodeURIComponent(capture.captureId)}`}
       aria-label={`Open capture from ${new Date(capture.capturedAt).toLocaleTimeString()}`}
-      style={{ display: 'block', color: 'inherit', textDecoration: 'none', minWidth: 0 }}
+      className="roll-tile"
     >
       {media}
     </a>
@@ -188,25 +189,32 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   if (isNoRollError(failure)) return <NoRollPage />;
 
   return (
-    <main style={{ maxWidth: 1120, margin: '0 auto', padding: '1rem' }}>
-      <header style={{ marginBottom: '1rem' }}>
-        <div style={{ fontSize: '0.75rem', letterSpacing: '0.14em' }}>KINO ROLL</div>
-        <h1 style={{ margin: '0.25rem 0', fontSize: '1.25rem' }}>
-          {roll?.title ?? slug} {roll?.status === 'live' ? 'LIVE' : (roll?.status.toUpperCase() ?? '')}
-        </h1>
-        {roll !== null ? (
-          <div>
-            {roll.photoCount} photos · {formattedDate(roll.createdAt)}
-          </div>
-        ) : null}
-        {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
+    <main className="roll-shell">
+      <header className="roll-head">
+        <div>
+          <div className="roll-brand">KINO ROLL</div>
+          <h1>{roll?.title ?? slug}</h1>
+          {roll !== null ? (
+            <div className="roll-subhead">
+              {roll.photoCount} photos · {formattedDate(roll.createdAt)}
+            </div>
+          ) : null}
+        </div>
+        <div>
+          {roll === null ? (
+            <StatusLamp state="busy" label="LOADING" />
+          ) : (
+            <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} />
+          )}
+          {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
+        </div>
       </header>
 
-      {failure !== null ? <p role="alert">{failure.message}</p> : null}
+      {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
       {feed.captures.length === 0 && feed.loading ? <p>Loading Roll…</p> : null}
       {feed.captures.length === 0 && !feed.loading && failure === null ? <p>No photos yet.</p> : null}
 
-      <div ref={scrollRef} style={{ height: '72vh', overflow: 'auto', contain: 'strict' }}>
+      <div ref={scrollRef} className="roll-feed">
         <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
           {virtualRows.map((virtualRow) => (
             <div

@@ -1,7 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import './styles/tokens.css';
+import '@kino/design-system/tokens.css';
+import '@kino/design-system/components.css';
 import './styles/base.css';
 import './styles/ui.css';
 import './styles/pages.css';

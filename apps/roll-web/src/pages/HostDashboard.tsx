@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import type { HostApi, HostCaptureView, HostRollEvent, HostRollView } from '../api/hostClient';
+import { Button, Panel, StatusLamp, ToolbarFrame } from '@kino/design-system';
 
 export interface HostDashboardProps {
   api: HostApi;
@@ -9,9 +10,9 @@ export interface HostDashboardProps {
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
-    <div style={{ border: '1px solid #bbb', padding: '0.75rem', minWidth: 110 }}>
-      <div style={{ fontSize: '0.72rem', letterSpacing: '0.12em' }}>{label}</div>
-      <strong style={{ fontSize: '1.4rem' }}>{value}</strong>
+    <div className="host-stat">
+      <div className="host-stat-label">{label}</div>
+      <strong className="host-stat-value">{value}</strong>
     </div>
   );
 }
@@ -27,7 +28,7 @@ function GuestQr({ url }: { url: string }) {
       active = false;
     };
   }, [url]);
-  return source === '' ? null : <img src={source} width={220} height={220} alt="Guest Roll QR code" />;
+  return source === '' ? null : <img className="host-qr" src={source} width={220} height={220} alt="Guest Roll QR code" />;
 }
 
 function posterOf(capture: HostCaptureView): string | null {
@@ -157,7 +158,7 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
 
   if (roll === null) {
     return (
-      <main style={{ maxWidth: 1120, margin: '0 auto', padding: '1rem' }}>
+      <main className="roll-shell">
         <h1>Host dashboard</h1>
         <p>{error ?? 'Loading Roll…'}</p>
       </main>
@@ -165,56 +166,55 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
   }
 
   return (
-    <main style={{ maxWidth: 1120, margin: '0 auto', padding: '1rem', fontFamily: 'system-ui' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+    <main className="roll-shell">
+      <header className="roll-head">
         <div>
-          <div style={{ fontSize: '0.75rem', letterSpacing: '0.14em' }}>KINO ROLL · HOST</div>
-          <h1 style={{ margin: '0.25rem 0' }}>{roll.title}</h1>
-          <div>{roll.status.toUpperCase()} · {roll.deviceSerial ?? 'WEB CREATED'}</div>
+          <div className="roll-brand">KINO ROLL · HOST</div>
+          <h1>{roll.title}</h1>
+          <div className="roll-subhead">{roll.deviceSerial ?? 'WEB CREATED'}</div>
         </div>
-        <button
-          type="button"
-          disabled={busy || roll.status === 'archived'}
-          onClick={() => void run(async () => void (await update({ status: roll.status === 'live' ? 'closed' : 'live' })))}
-        >
-          {roll.status === 'live' ? 'Close Roll' : 'Reopen Roll'}
-        </button>
+        <ToolbarFrame aria-label="Roll status controls">
+          <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} />
+          <Button
+            disabled={busy || roll.status === 'archived'}
+            onClick={() => void run(async () => void (await update({ status: roll.status === 'live' ? 'closed' : 'live' })))}
+          >
+            {roll.status === 'live' ? 'Close Roll' : 'Reopen Roll'}
+          </Button>
+        </ToolbarFrame>
       </header>
 
-      {error !== null ? <p role="alert">{error}</p> : null}
+      {error !== null ? <p className="roll-alert" role="alert">{error}</p> : null}
 
-      <section aria-label="Roll totals" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', margin: '1rem 0' }}>
+      <section aria-label="Roll totals" className="host-stats">
         <Stat label="CAPTURES" value={roll.counts.captures} />
         <Stat label="GUESTS" value={roll.guests} />
         <Stat label="PENDING" value={roll.counts.pending} />
         <Stat label="HIDDEN" value={roll.counts.hidden} />
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-        <div>
-          <h2>Guest link</h2>
+      <section className="host-settings">
+        <Panel title="Guest link">
           <GuestQr url={roll.guestUrl} />
           <p><a href={roll.guestUrl}>{roll.guestUrl}</a></p>
-          <button
-            type="button"
+          <Button
             disabled={busy}
             onClick={() => void run(async () => {
               if (!window.confirm('Regenerate guest link? Old links stop working.')) return;
               const rotated = await api.regenerateSlug(roll.rollId);
               setRoll({ ...roll, slug: rotated.slug, guestUrl: rotated.guestUrl });
             })}
-          >Regenerate guest link</button>
-        </div>
+          >Regenerate guest link</Button>
+        </Panel>
 
-        <div>
-          <h2>Roll settings</h2>
+        <Panel title="Roll settings">
           <form onSubmit={(event: FormEvent) => {
             event.preventDefault();
             void run(async () => void (await update({ title })));
           }}>
             <label htmlFor="host-title">Title</label><br />
             <input id="host-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} />
-            <button type="submit" disabled={busy || title.trim() === ''}>Rename</button>
+            <Button type="submit" disabled={busy || title.trim() === ''}>Rename</Button>
           </form>
           <p>
             <label><input type="checkbox" checked={roll.downloadsEnabled} onChange={(event) => void run(async () => void (await update({ downloadsEnabled: event.target.checked })))} /> Guest downloads</label>
@@ -228,43 +228,41 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
           }}>
             <label htmlFor="host-pin">{roll.hasPin ? 'Replace PIN' : 'Set PIN'}</label><br />
             <input id="host-pin" type="password" value={pin} minLength={4} onChange={(event) => setPin(event.target.value)} />
-            <button type="submit" disabled={busy || pin.length < 4}>Save PIN</button>
-            {roll.hasPin ? <button type="button" disabled={busy} onClick={() => void run(async () => void (await update({ pin: null })))}>Remove PIN</button> : null}
+            <Button type="submit" disabled={busy || pin.length < 4}>Save PIN</Button>
+            {roll.hasPin ? <Button disabled={busy} onClick={() => void run(async () => void (await update({ pin: null })))}>Remove PIN</Button> : null}
           </form>
-        </div>
+        </Panel>
 
-        <div>
-          <h2>Download all</h2>
-          <button type="button" disabled={busy} onClick={() => void run(startExport)}>Prepare ZIP</button>
+        <Panel title="Download all">
+          <Button disabled={busy} onClick={() => void run(startExport)}>Prepare ZIP</Button>
           {exportState !== null ? <p aria-live="polite">{exportState}</p> : null}
-          {exportUrl !== null ? <a href={exportUrl}>Download ZIP</a> : null}
-        </div>
+          {exportUrl !== null ? <a className="roll-action" href={exportUrl}>Download ZIP</a> : null}
+        </Panel>
       </section>
 
-      <section>
-        <h2>Moderation</h2>
+      <Panel title="Moderation">
         {captures.length === 0 ? <p>No captures yet.</p> : null}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+        <div className="host-captures">
           {captures.map((capture) => {
             const poster = posterOf(capture);
             const deleted = capture.deletedAt !== null;
             return (
-              <article key={capture.captureId} data-capture-id={capture.captureId} style={{ border: '1px solid #aaa', padding: '0.5rem', opacity: capture.visible && !deleted ? 1 : 0.45 }}>
-                {poster === null || !capture.visible || deleted ? <div style={{ aspectRatio: '4 / 3', background: '#ddd', display: 'grid', placeItems: 'center' }}>{deleted ? 'In trash' : capture.visible ? 'Processing' : 'Hidden'}</div> : <img src={api.assetUrl(poster)} alt="" loading="lazy" style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }} />}
-                <div><strong>{capture.mode}</strong> · {new Date(capture.capturedAt).toLocaleTimeString()}</div>
+              <article key={capture.captureId} data-capture-id={capture.captureId} data-muted={!capture.visible || deleted} className="host-capture">
+                {poster === null || !capture.visible || deleted ? <div className="host-capture-placeholder">{deleted ? 'In trash' : capture.visible ? 'Processing' : 'Hidden'}</div> : <img className="roll-media" src={api.assetUrl(poster)} alt="" loading="lazy" />}
+                <div className="host-capture-meta"><strong>{capture.mode}</strong> · {new Date(capture.capturedAt).toLocaleTimeString()}</div>
                 {!capture.visible ? <span>HIDDEN</span> : null}
                 {deleted ? <span> · TRASHED</span> : null}
                 {!deleted ? (
-                  <div>
-                    <button type="button" onClick={() => void run(() => moderate(capture.captureId, capture.visible ? 'hide' : 'unhide'))}>{capture.visible ? 'Hide' : 'Unhide'}</button>
-                    <button type="button" onClick={() => void run(() => moderate(capture.captureId, 'delete'))}>Delete</button>
-                  </div>
+                  <ToolbarFrame aria-label={`Moderate ${capture.mode} capture`}>
+                    <Button size="sm" onClick={() => void run(() => moderate(capture.captureId, capture.visible ? 'hide' : 'unhide'))}>{capture.visible ? 'Hide' : 'Unhide'}</Button>
+                    <Button size="sm" variant="danger" onClick={() => void run(() => moderate(capture.captureId, 'delete'))}>Delete</Button>
+                  </ToolbarFrame>
                 ) : null}
               </article>
             );
           })}
         </div>
-      </section>
+      </Panel>
     </main>
   );
 }

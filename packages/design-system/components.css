@@ -1,0 +1,56 @@
+.kino-button {
+  min-height: var(--ctl-h);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--r);
+  background: var(--grad-btn);
+  color: var(--text);
+  font: 700 var(--fs-sm) var(--sans);
+  padding: 0 12px;
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.kino-button:hover:not(:disabled) { border-color: var(--blue); background: var(--grad-btn-hover); }
+.kino-button:active:not(:disabled) { background: var(--grad-btn-down); }
+.kino-button--primary { color: #fff; border-color: var(--blue-dark); background: var(--grad-primary); }
+.kino-button--danger { color: var(--red-dark); }
+.kino-button--danger:hover:not(:disabled) { border-color: var(--red); }
+.kino-button--danger-solid { color: #fff; border-color: var(--red-dark); background: var(--grad-red); }
+.kino-button--ghost { border-color: transparent; background: transparent; box-shadow: none; }
+.kino-button--sm { padding: 0 9px; }
+.kino-button--lg { min-height: 34px; padding: 0 22px; font-size: 13px; }
+.kino-button-spinner { display: inline-block; width: 8px; height: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: kino-spin 0.6s linear infinite; }
+
+.kino-panel { border: 1px solid var(--border-mid); border-radius: var(--r); background: var(--panel); box-shadow: inset 0 1px 0 var(--hilite), 0 1px 2px rgb(40 60 90 / 12%); }
+.kino-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border-mid); background: var(--grad-head); }
+.kino-panel-title { margin: 0; color: var(--text); font: 700 var(--fs-sm) var(--sans); letter-spacing: 0.06em; text-transform: uppercase; }
+.kino-panel-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kino-panel-body { padding: var(--pad); }
+
+.kino-status-lamp { display: inline-flex; align-items: center; gap: 6px; color: var(--text-mut); font: 700 var(--fs-sm) var(--sans); }
+.kino-status-symbol { color: #5f6b7a; font-size: 13px; line-height: 1; }
+.kino-status-lamp--ok .kino-status-symbol { color: var(--green-dark); }
+.kino-status-lamp--warn .kino-status-symbol { color: var(--orange-dark); }
+.kino-status-lamp--err .kino-status-symbol { color: var(--red-dark); }
+.kino-status-lamp--busy .kino-status-symbol { color: var(--blue-dark); animation: kino-blink 0.9s steps(2, start) infinite; }
+
+.kino-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 8px; border: 1px solid var(--border-mid); background: var(--grad-toolbar); box-shadow: inset 0 1px 0 var(--hilite); }
+.kino-tabs { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--border-dark); }
+.kino-tab { min-height: var(--ctl-h); padding: 0 12px; border: 1px solid var(--border-mid); border-bottom: 0; border-radius: var(--r) var(--r) 0 0; background: var(--grad-btn); color: var(--text); font: 700 var(--fs-sm) var(--sans); }
+.kino-tab[aria-selected='true'] { color: #fff; border-color: var(--blue-dark); background: var(--grad-sel); }
+.kino-table { width: 100%; border-collapse: collapse; background: var(--well); color: var(--text); font: var(--fs-sm) var(--mono); }
+.kino-table th { padding: 5px 8px; text-align: left; border: 1px solid var(--border-mid); background: var(--grad-head); }
+.kino-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-light); }
+.kino-progress { display: block; height: 12px; overflow: hidden; border: 1px solid var(--border-mid); background: var(--well); }
+.kino-progress-fill { display: block; height: 100%; background: repeating-linear-gradient(to right, #5f9be6 0 6px, #4a87d8 6px 8px); }
+.kino-progress-fill--ok { background: repeating-linear-gradient(to right, #6cc75f 0 6px, #55b348 6px 8px); }
+.kino-progress-fill--warn { background: repeating-linear-gradient(to right, #f0c455 0 6px, #e0af31 6px 8px); }
+.kino-progress-fill--err { background: repeating-linear-gradient(to right, #e06d6d 0 6px, #cc4b4b 6px 8px); }
+.kino-slider { display: grid; grid-template-columns: minmax(80px, auto) minmax(120px, 1fr) minmax(52px, auto); align-items: center; gap: 8px; color: var(--text-mut); font: 700 var(--fs-sm) var(--sans); }
+.kino-slider-value { color: var(--text); font-family: var(--mono); text-align: right; }
+
+@keyframes kino-spin { to { transform: rotate(360deg); } }
+@keyframes kino-blink { to { opacity: 0.35; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .kino-button-spinner, .kino-status-lamp--busy .kino-status-symbol { animation: none; }
+}

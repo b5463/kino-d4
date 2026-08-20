@@ -15,6 +15,7 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.5",
     "@fontsource/ibm-plex-sans": "^5.2.5",
+    "@kino/design-system": "*",
     "@kino/kdp": "*",
     "@kino/schemas": "*",
     "@kino/test-fixtures": "*",

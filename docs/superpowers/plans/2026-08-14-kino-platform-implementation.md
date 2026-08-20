@@ -1418,9 +1418,9 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 
 ### Task 34: Extract `@kino/design-system`
 - **Files:** Create `packages/design-system/` — tokens (`tokens.css`: cool greys, pale blue utility fills, selected-tab blue, 1px borders/highlights per 06§5), primitives (StatusLamp `●/○/▲/×`, Toolbar, TabStrip, Panel/GroupBox, CompactTable, ClassicProgressBar, UtilitySlider), consumed by both `apps/studio` and `apps/roll-web`.
-- [ ] Move Studio's existing token CSS into the package; Studio imports it; visual regression = manual side-by-side (no pixel-diff tooling for V1).
-- [ ] Roll-web adopts the family look, simpler + more social: framed thumbnails, small glossy buttons, photo counters, compact tabs (06§10) — while staying touch-friendly and responsive (06§11).
-- [ ] Commit — `refactor: shared @kino/design-system`
+- [x] Move Studio's existing token CSS into the package; Studio imports it; visual regression = manual side-by-side (no pixel-diff tooling for V1).
+- [x] Roll-web adopts the family look, simpler + more social: framed thumbnails, small glossy buttons, photo counters, compact tabs (06§10) — while staying touch-friendly and responsive (06§11).
+- [x] Commit — `refactor: shared @kino/design-system`
 
 ### Task 35: Anti-slop + accessibility audit (06§16, 07§29)
 - [ ] Walk every Studio page and Roll view against the 06§16 reject/accept checklist; file and fix violations (giant cards, oversized headings, decorative status, etc.).

@@ -80,6 +80,12 @@
       "version": "0.1.0",
       "package": "packages/three-assets/package.json",
       "tagPrefix": "kino-three-assets-v"
+    },
+    {
+      "name": "kino-design-system",
+      "version": "0.1.0",
+      "package": "packages/design-system/package.json",
+      "tagPrefix": "kino-design-system-v"
     }
   ],
   "protocol": {

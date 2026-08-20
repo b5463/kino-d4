@@ -2,6 +2,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
+import '@kino/design-system/tokens.css';
+import '@kino/design-system/components.css';
+import './roll.css';
 
 const rootElement = document.getElementById('root');
 if (rootElement === null) throw new Error('#root element is missing from index.html');

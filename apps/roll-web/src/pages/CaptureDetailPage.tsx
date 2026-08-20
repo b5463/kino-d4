@@ -50,7 +50,7 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   if (isNoRollError(error) || isMissingCaptureError(error)) return <NoRollPage />;
 
   return (
-    <main style={{ padding: '1rem' }}>
+    <main className="roll-shell">
       <p>
         <a href={`/r/${encodeURIComponent(slug)}`}>← Back to {roll?.title ?? 'Roll'}</a>
       </p>
