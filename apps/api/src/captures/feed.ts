@@ -136,6 +136,7 @@ export function decodeCursor(raw: unknown): Parsed<FeedCursor | null> {
 export interface CaptureAssetSummary {
   role: string;
   assetId: string;
+  frameIndex: number | null;
   width: number | null;
   height: number | null;
 }
@@ -271,6 +272,7 @@ async function readReadyAssets(
     list.push({
       role: row.role,
       assetId: row.assetId,
+      frameIndex: row.frameIndex,
       width: row.width,
       height: row.height,
       mime: row.mime,
@@ -282,7 +284,13 @@ async function readReadyAssets(
 }
 
 function summarise(asset: CaptureAssetDetail): CaptureAssetSummary {
-  return { role: asset.role, assetId: asset.assetId, width: asset.width, height: asset.height };
+  return {
+    role: asset.role,
+    assetId: asset.assetId,
+    frameIndex: asset.frameIndex,
+    width: asset.width,
+    height: asset.height,
+  };
 }
 
 /** A row as both page readers select it. */

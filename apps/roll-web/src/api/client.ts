@@ -29,6 +29,7 @@ export interface RollView {
   status: string;
   photoCount: number;
   downloadsEnabled: boolean;
+  reactionsEnabled: boolean;
   createdAt: string;
 }
 
@@ -36,6 +37,7 @@ export interface RollView {
 export interface CaptureAssetSummary {
   role: AssetRole;
   assetId: string;
+  frameIndex: number | null;
   width: number | null;
   height: number | null;
 }
@@ -62,6 +64,8 @@ export interface CaptureView {
 /** `GET /api/rolls/:slug/captures/:captureId` — the assets carry `mime`/`bytes`. */
 export interface CaptureDetail extends Omit<CaptureView, 'assets'> {
   assets: CaptureAssetDetail[];
+  reactionCount: number;
+  reacted: boolean;
 }
 
 /** A page of the guest feed, exactly as `RollApi.listCaptures` promises it. */
@@ -107,19 +111,6 @@ export class PinRequiredError extends Error {
   ) {
     super(message);
     this.name = 'PinRequiredError';
-  }
-}
-
-/**
- * `react()`'s honest failure: the reactions endpoint does not exist yet (Task
- * 21 delivered moderation, not reactions). Thrown locally, with no request
- * ever sent, so the failure reads as "not implemented" rather than as a 404
- * this client mistook for something else.
- */
-export class NotImplementedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'NotImplementedError';
   }
 }
 
@@ -297,13 +288,14 @@ export function createRollApi(baseUrl = ''): RollApi {
       return joinUrl(baseUrl, options?.download === true ? `${path}?download=1` : path);
     },
 
-    async react() {
-      // No such endpoint exists yet (Task 21 shipped moderation, not
-      // reactions) — see the API gap note in the Task 26 report. Failing
-      // honestly here, with no request sent, beats hitting a 404 this client
-      // would otherwise have to pretend meant something else.
-      throw new NotImplementedError(
-        'reactions are not implemented by the API yet (POST .../react does not exist)',
+    async react(slug, captureId) {
+      await requestJson(
+        joinUrl(
+          baseUrl,
+          `/api/rolls/${encodeURIComponent(slug)}/captures/${encodeURIComponent(captureId)}/react`,
+        ),
+        { method: 'POST' },
+        slug,
       );
     },
 

@@ -11,6 +11,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Portable `kino.*` schemas with versioned migrations and unknown-field preservation.
 - Reference D4 device, media store, factory recipes, and injectable failure scenarios.
 - Roll API foundation with authentication, roll lifecycle, resumable uploads, object storage, and live events.
+- Installable Roll guest PWA with a virtualized live feed, mode-aware capture detail, sharing, download controls, and anonymous reactions.
 - Maintained hardware, architecture, development, firmware-contract, troubleshooting, contribution, security, and release documentation.
 - Split light and dark KINO D4 brand marks plus a real Studio demo capture.
 - Path-scoped MIT software and CERN-OHL-S-2.0 hardware licensing with SPDX/REUSE metadata and reserved brand assets.

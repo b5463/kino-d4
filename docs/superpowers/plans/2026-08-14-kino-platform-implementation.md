@@ -1323,7 +1323,7 @@ export function WigglePlayer(props: {
 - Consumes: `getCapture`, `WigglePlayer`, `wiggleSequence`.
 - Renders by mode (03§13–14): wiggle → hero player (full-screen toggle) + strip of the n original frames + processed still + metadata block (time, look, resolution) + Download / Share; quad → 2×2 grid (layout derives from frameCount: `ceil(sqrt(n))` columns — not hard-coded 2×2) with recipe labels under each cell; single → still + metadata. Download button hidden entirely when roll `downloadsEnabled === false`; Share uses `navigator.share` when present, else copy-link. Reactions (♡ count + toggle) only when `reactionsEnabled`.
 
-- [ ] **Steps 1–5: failing tests (downloads hidden when disabled; quad labels rendered; frameCount 6 → 3-column grid) → implement → PASS → commit** — `feat(roll-web): capture detail for wiggle/quad/single`
+- [x] **Steps 1–5: failing tests (downloads hidden when disabled; quad labels rendered; frameCount 6 → 3-column grid) → implement → PASS → commit** — `feat(roll-web): capture detail for wiggle/quad/single`
 
 ### Task 30: PIN gate + roll states
 

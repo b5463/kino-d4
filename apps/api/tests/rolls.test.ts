@@ -925,6 +925,8 @@ describe('GET /api/rolls/:slug (guest, 03 §9)', () => {
       // Task 20: the PWA needs it to decide whether to draw the download control.
       'downloadsEnabled',
       'photoCount',
+      // Task 29: same principle for an optional anonymous reaction control.
+      'reactionsEnabled',
       'status',
       'title',
     ]);

@@ -347,7 +347,10 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts` and live `guests` |
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
-| `GET /api/rolls/:slug` | guest | `{title, status, photoCount, createdAt}` |
+| `GET /api/rolls/:slug` | guest | includes photo count plus download/reaction switches |
+| `GET /api/rolls/:slug/captures` | guest | visible capture feed with ordered asset summaries |
+| `GET /api/rolls/:slug/captures/:captureId` | guest | visible detail plus anonymous reaction state |
+| `POST /api/rolls/:slug/captures/:captureId/react` | guest | toggles one signed, session-only anonymous heart |
 | `GET /api/rolls/:slug/events` | guest | SSE; see [Live events](#live-events-03-7-05-10) |
 
 `POST /api/host/rolls` is unauthenticated for the same reason device

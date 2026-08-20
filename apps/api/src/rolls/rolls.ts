@@ -370,6 +370,7 @@ export interface GuestRollView {
   status: string;
   photoCount: number;
   downloadsEnabled: boolean;
+  reactionsEnabled: boolean;
   createdAt: Date;
 }
 
@@ -391,6 +392,7 @@ export function guestRollView(roll: PublicRollRow, photoCount: number): GuestRol
     status: roll.status,
     photoCount,
     downloadsEnabled: roll.downloadsEnabled,
+    reactionsEnabled: roll.reactionsEnabled,
     createdAt: roll.createdAt,
   };
 }

@@ -224,8 +224,8 @@ describe('Roll feed hooks', () => {
     const api = apiWith();
     const moderated = capture('cap_hidden');
     moderated.assets = [
-      { role: 'thumb', assetId: 'ast_thumb', width: 480, height: 360 },
-      { role: 'wiggle-webp', assetId: 'ast_wiggle', width: 960, height: 720 },
+      { role: 'thumb', assetId: 'ast_thumb', frameIndex: null, width: 480, height: 360 },
+      { role: 'wiggle-webp', assetId: 'ast_wiggle', frameIndex: null, width: 960, height: 720 },
     ];
 
     await evictCaptureAssets(moderated, api);

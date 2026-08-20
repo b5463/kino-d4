@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, createRollApi, NotImplementedError, PinRequiredError } from '../src/api/client';
+import { ApiError, createRollApi, PinRequiredError } from '../src/api/client';
 
 /** A minimal `Response`-shaped stub, built only from what the client reads. */
 function jsonResponse(status: number, body: unknown): Response {
@@ -221,10 +221,16 @@ describe('createRollApi', () => {
   });
 
   describe('react', () => {
-    it('fails honestly: no such endpoint exists yet, and nothing is fetched', async () => {
+    it('posts the anonymous reaction toggle with cookies included', async () => {
       const api = createRollApi();
-      await expect(api.react('abc123', 'cap_01')).rejects.toBeInstanceOf(NotImplementedError);
-      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { reactionCount: 1, reacted: true }));
+
+      await api.react('abc123', 'cap_01');
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/rolls/abc123/captures/cap_01/react');
+      expect(init.method).toBe('POST');
+      expect(init.credentials).toBe('include');
     });
   });
 
