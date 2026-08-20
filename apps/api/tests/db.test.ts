@@ -150,6 +150,7 @@ describe('migrations', () => {
       'firmware_releases',
       'processing_events',
       'reactions',
+      'recap_jobs',
       'roll_devices',
       'rolls',
       'upload_parts',

@@ -16,3 +16,4 @@ export {
   type Roll,
 } from './media';
 export { firmwareManifest, type FirmwareManifest } from './firmware';
+export { TRASH_GRACE_DAYS, TRASH_GRACE_MS } from './retention';

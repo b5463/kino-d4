@@ -61,6 +61,51 @@ export function derivedCaptureKey(rollId: string, captureId: string, name: strin
   return `${folder}/${DERIVED_SEGMENT}/${assertSafeName(name)}`;
 }
 
+/**
+ * `rolls/<rollId>/derived/<name>` (05 §6) — an output that belongs to the *roll*
+ * rather than to any one capture.
+ *
+ * The roll export's ZIP and the recap's MP4 are both of these: neither is a
+ * derivative *of* a capture, and filing them under one capture's folder would
+ * make an arbitrary capture the owner of a file about all of them.
+ *
+ * Must stay identical to the API's `rollDerivedKey` — they address the same
+ * bucket, and the export route presigns what this function writes. That is what
+ * `tests/rollJobs.test.ts` pins.
+ */
+export function rollDerivedKey(rollId: string, name: string): string {
+  return `rolls/${assertSafe(rollId, 'roll id')}/${DERIVED_SEGMENT}/${assertSafeName(name)}`;
+}
+
+/**
+ * `rolls/<rollId>/derived/exports/<jobId>.zip` — the key Task 21's polling route
+ * presigns, spelled the same way here.
+ *
+ * Computed from the two ids rather than read off the row, exactly as the API
+ * computes it: a stored key and a computed key are two answers to one question,
+ * and the day they disagree the ZIP is unreachable with nothing to say why.
+ */
+export function exportObjectKey(rollId: string, jobId: string): string {
+  return rollDerivedKey(rollId, `exports/${jobId}.zip`);
+}
+
+/** `rolls/<rollId>/derived/recap/<jobId>.mp4` (03 §21). */
+export function recapObjectKey(rollId: string, jobId: string): string {
+  return rollDerivedKey(rollId, `recap/${jobId}.mp4`);
+}
+
+/**
+ * `rolls/<rollId>/captures/<captureId>/` — everything one capture owns, originals
+ * included.
+ *
+ * The one place a worker names a prefix that *contains* originals, and the only
+ * caller is the purge (03 §11). It is a prefix, not a key: nothing can be written
+ * to it, and `MediaEraser` is what decides what may be done with it.
+ */
+export function captureFolderPrefix(rollId: string, captureId: string): string {
+  return `rolls/${assertSafe(rollId, 'roll id')}/captures/${assertSafe(captureId, 'capture id')}/`;
+}
+
 /** Whether a key addresses an original camera frame rather than a derivative. */
 export function isOriginalKey(key: string): boolean {
   return key.includes(`/${ORIGINAL_SEGMENT}/`);

@@ -36,6 +36,13 @@
       "when": 1787046727061,
       "tag": "0005_export_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787177083000,
+      "tag": "0006_recap_jobs",
+      "breakpoints": true
     }
   ]
 }

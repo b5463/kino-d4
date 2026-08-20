@@ -851,9 +851,10 @@ identically to the guest feed, down to the 400 codes.
 ### Hide versus delete
 
 `hide` sets `visible = false` and retains everything. `delete` sets `deleted_at`
-and retains everything for `TRASH_GRACE_DAYS` = **7**; Task 25's purge job is
-what finally removes the bytes, and it reads that constant from
-`src/captures/moderation.ts` rather than re-declaring 7.
+and retains everything for `TRASH_GRACE_DAYS` = **7**; the daily purge job is
+what finally removes the bytes. Both API and worker import that value from
+`@kino/schemas`, so the displayed recovery deadline and enforced deadline cannot
+drift.
 
 Both are invisible to a guest the moment the row is committed — `guestVisible` in
 `captures/feed.ts` reads the same two columns, so the feed and the detail route
@@ -862,7 +863,7 @@ capture also leaves the host's dashboard counts, which read "what is not in the
 bin"; a hidden one stays in `captures` and appears in `hidden`.
 
 `delete` deliberately does **not** also clear `visible`. The two flags mean
-different things, and a restore (Task 25) has to put the capture back exactly as
+different things, and any future restore has to put the capture back exactly as
 the host had it. Re-deleting keeps the **original** `deleted_at`, so a client
 retrying on a timeout cannot postpone the purge.
 
@@ -940,15 +941,12 @@ Neither route consults `downloadsEnabled`: that flag governs what **guests** may
 download, and a host who turned it off has not locked themselves out of their own
 photos.
 
-### Known gaps
+### Known gap
 
-- The handler that builds the ZIP is Task 25's. Nothing moves a row off `queued`
-  yet, so `status` is `queued` until that lands.
-- The purge job is Task 25's too. Trashed captures accumulate; nothing reads
-  `TRASH_GRACE_DAYS` yet except the `purgeAfter` field in the reply.
-- No restore route, so a trashed capture can currently only be un-trashed by
-  hand — the host list shows it and its purge deadline, but there is no verb to
-  bring it back. Restore is on Task 25's side of the line.
+- There is no restore route in the V1 moderation surface. A trashed capture can
+  only be recovered administratively during its seven-day grace period. The V1
+  plan deliberately limits moderation to hide/unhide/delete; adding a host
+  restore action remains a product decision rather than an unfinished purge.
 
 ## Logging
 
