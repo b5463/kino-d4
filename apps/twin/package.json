@@ -1,0 +1,37 @@
+{
+  "name": "@kino/twin",
+  "private": true,
+  "version": "0.1.0",
+  "description": "KINO Twin - three.js digital twin of the KINO D4 camera platform",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@kino/kdp": "*",
+    "@kino/schemas": "*",
+    "@kino/hardware-profiles": "*",
+    "@kino/test-fixtures": "*",
+    "@kino/simulator-engine": "*",
+    "@kino/three-assets": "*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.3",
+    "three": "^0.176.0",
+    "@react-three/fiber": "^9.1.0",
+    "@react-three/drei": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/three": "^0.176.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.1.3"
+  }
+}

@@ -17,6 +17,19 @@ KINO has no published release yet. Changes intended for the first release collec
 - Machine-readable software, protocol, schema, database, and hardware version control enforced by CI.
 - D4 physical revision records, artifact versions, and numbered engineering change notices.
 - Public KINO D4 project board with roadmap-backed issues, target views, and a repository helper for status updates.
+- KINO Twin foundations: versioned D4 hardware profiles, deterministic simulation and replay, BroadcastChannel KDP transport, parametric assembly, engineering viewport controls, inspector, and wiring view.
+- Studio connection to KINO Twin through the same KDP client path used by serial hardware, including cross-tab handshake and reboot coverage.
+- Twin transport leases recover from crashed Studio tabs, and Studio detects device restarts even when the underlying link remains open.
+- Large Studio galleries can extend their index in bounded 5,000-row windows without eagerly loading every thumbnail.
+- Twin now has a top-level recovery screen and stricter assembly/runtime invariants, with replay, power, flash-risk, wiring, and scene-store edge coverage.
+- KINO Twin optical overlays show per-camera axes and frusta, neighboring and four-camera overlap, adjustable subject proxies, and live pitch/distance readouts; unmeasured D4 optics remain explicitly marked `MEASURE REQUIRED`, while candidate lens angles are labelled design scenarios.
+
+### Fixed
+
+- Sensor-missing camera nodes remain available for firmware repair while sensor-dependent calibration reports the specific fault.
+- Repeated Twin power-off calls no longer emit duplicate shutdown activity, and scenario toggles notify observers once.
+- Studio and Twin production bundles are split into measured chunks instead of shipping a single oversized application bundle.
+- Updated `sharp` to 0.35.3 in image-producing workspaces to remove the current high-severity libvips advisory.
 
 ### Known incomplete work
 
