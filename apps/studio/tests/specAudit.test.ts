@@ -166,6 +166,8 @@ describe('02 §6 — connection strip states', () => {
   it.each(NINE_STATES)('renders the %s state as lamp + words', (_spec, phase, fault, label) => {
     const html = renderToStaticMarkup(createElement(ConnectionStrip, { phase, fault }));
     expect(html).toContain(label);
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
     // State is never colour alone: the lamp always ships with its words.
     expect(html).toContain('led-label');
     expect(html).toContain(`led--${connectionStrip(phase, fault).led}`);
@@ -192,7 +194,8 @@ describe('02 §6 — connection strip states', () => {
     );
     expect(html).toContain(`led--${connectionStrip(phase, fault).led}`);
     if (phase === 'connected') {
-      expect(html).not.toContain(label);
+      expect(html).toContain(`aria-label="${label}"`);
+      expect(html).toContain('<span class="kino-status-label led-label"></span>');
     } else {
       expect(html).toContain(label);
     }
@@ -204,7 +207,7 @@ describe('02 §6 — connection strip states', () => {
       renderToStaticMarkup(
         createElement(ConnectionStrip, { phase: 'connected' as const, fault: null, silentWhenConnected: true }),
       ),
-    ).not.toContain('KINO CONNECTED');
+    ).toContain('aria-label="KINO CONNECTED"');
     // Maintenance was an unlabelled amber lamp in the toolbar before this.
     expect(
       renderToStaticMarkup(

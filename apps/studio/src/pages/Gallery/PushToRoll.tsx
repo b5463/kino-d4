@@ -59,7 +59,7 @@ export function PushToRoll({
       >
         {queued ? 'QUEUED' : 'PUSH TO ROLL'}
       </Button>
-      <span className="microlabel">
+      <span className="microlabel" role="status" aria-live="polite" aria-atomic="true">
         {error ?? (queued ? `IN THE UPLOAD QUEUE FOR ${rollName}` : rollName)}
       </span>
     </span>

@@ -227,7 +227,7 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
             });
           }}>
             <label htmlFor="host-pin">{roll.hasPin ? 'Replace PIN' : 'Set PIN'}</label><br />
-            <input id="host-pin" type="password" value={pin} minLength={4} onChange={(event) => setPin(event.target.value)} />
+            <input id="host-pin" type="password" inputMode="numeric" autoComplete="new-password" value={pin} minLength={4} onChange={(event) => setPin(event.target.value)} />
             <Button type="submit" disabled={busy || pin.length < 4}>Save PIN</Button>
             {roll.hasPin ? <Button disabled={busy} onClick={() => void run(async () => void (await update({ pin: null })))}>Remove PIN</Button> : null}
           </form>
@@ -235,7 +235,7 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
 
         <Panel title="Download all">
           <Button disabled={busy} onClick={() => void run(startExport)}>Prepare ZIP</Button>
-          {exportState !== null ? <p aria-live="polite">{exportState}</p> : null}
+          {exportState !== null ? <p role="status" aria-live="polite" aria-atomic="true">{exportState}</p> : null}
           {exportUrl !== null ? <a className="roll-action" href={exportUrl}>Download ZIP</a> : null}
         </Panel>
       </section>

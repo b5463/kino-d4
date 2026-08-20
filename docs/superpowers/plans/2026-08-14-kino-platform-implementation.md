@@ -1423,10 +1423,10 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 - [x] Commit — `refactor: shared @kino/design-system`
 
 ### Task 35: Anti-slop + accessibility audit (06§16, 07§29)
-- [ ] Walk every Studio page and Roll view against the 06§16 reject/accept checklist; file and fix violations (giant cards, oversized headings, decorative status, etc.).
-- [ ] Accessibility acceptance: keyboard reachability, visible focus, labels, contrast, reduced motion (WigglePlayer + Studio hooks already honor it), screen-reader status announcements (`aria-live` on connection strip + upload queue), **no color-only status** (lamps always pair symbol + text).
+- [x] Walk every Studio page and Roll view against the 06§16 reject/accept checklist; file and fix violations (giant cards, oversized headings, decorative status, etc.). See `docs/acceptance/ui-accessibility-audit.md`.
+- [x] Accessibility acceptance: keyboard reachability, visible focus, labels, contrast, reduced motion (WigglePlayer + Studio hooks already honor it), screen-reader status announcements (`aria-live` on connection strip + upload queue), **no color-only status** (lamps always pair symbol + text).
 - [ ] Browser matrix: Studio on current Chrome + Edge desktop; Roll on iOS Safari + Android Chrome + desktop (07§28). Record in `docs/acceptance/browser-matrix.md`.
-- [ ] Commit — `polish: design-system + a11y audit closure`
+- [x] Commit — `polish: design-system + a11y audit closure`
 
 ---
 

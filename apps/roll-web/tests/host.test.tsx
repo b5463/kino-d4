@@ -156,6 +156,7 @@ describe('host dashboard', () => {
 
     expect(startExport).toHaveBeenCalledWith('roll_1');
     expect(getExport).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
     expect(container.querySelector('a[href="https://storage.test/export.zip"]')?.textContent).toBe('Download ZIP');
   });
 });

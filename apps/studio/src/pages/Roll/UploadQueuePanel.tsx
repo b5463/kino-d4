@@ -38,13 +38,17 @@ export function UploadQueuePanel({
 
   return (
     <Panel title="UPLOAD QUEUE" actions={<Led state={lamp.state} label={lamp.label} />}>
-      {error ? <p className="notice notice--err">{error}</p> : null}
+      {error ? <p className="notice notice--err" role="alert">{error}</p> : null}
 
       {queue === null ? (
-        <p className="roll-empty">The camera has not reported an upload queue yet.</p>
+        <p className="roll-empty" role="status" aria-live="polite" aria-atomic="true">
+          The camera has not reported an upload queue yet.
+        </p>
       ) : (
         <>
-          <p className="queueline">{idle ? 'NOTHING QUEUED' : queueSummary(queue)}</p>
+          <p className="queueline" role="status" aria-live="polite" aria-atomic="true">
+            {idle ? 'NOTHING QUEUED' : queueSummary(queue)}
+          </p>
           <dl>
             <div className="datarow">
               <dt>Uploaded</dt>

@@ -433,6 +433,8 @@ describe('(d) upload queue', () => {
     expect(html).toContain('12 PENDING');
     expect(html).toContain('2 FAILED');
     expect(html).toContain('RETRY FAILED');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
 
     const retried = await device.uploadQueueRetry();
     expect(sent.some((c) => c.cmd === Cmd.UPLOAD_QUEUE_RETRY)).toBe(true);
@@ -465,6 +467,7 @@ describe('(d) upload queue', () => {
       }),
     );
     expect(html).toContain('NOTHING QUEUED');
+    expect(html).toContain('aria-atomic="true"');
   });
 });
 

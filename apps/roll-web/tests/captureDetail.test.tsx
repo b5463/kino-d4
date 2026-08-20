@@ -114,6 +114,7 @@ describe('CaptureDetail', () => {
 
     expect(writeText).toHaveBeenCalledWith(window.location.href);
     expect(container.textContent).toContain('Link copied');
+    expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
   });
 
   it('renders and reconciles reactions only when the Roll enables them', async () => {

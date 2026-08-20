@@ -202,19 +202,19 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
         </div>
         <div>
           {roll === null ? (
-            <StatusLamp state="busy" label="LOADING" />
+            <StatusLamp state="busy" label="LOADING" announce />
           ) : (
-            <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} />
+            <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} announce />
           )}
           {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
         </div>
       </header>
 
       {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
-      {feed.captures.length === 0 && feed.loading ? <p>Loading Roll…</p> : null}
-      {feed.captures.length === 0 && !feed.loading && failure === null ? <p>No photos yet.</p> : null}
+      {feed.captures.length === 0 && feed.loading ? <p role="status" aria-live="polite">Loading Roll…</p> : null}
+      {feed.captures.length === 0 && !feed.loading && failure === null ? <p role="status" aria-live="polite">No photos yet.</p> : null}
 
-      <div ref={scrollRef} className="roll-feed">
+      <div ref={scrollRef} className="roll-feed" role="region" aria-label="Roll captures" tabIndex={0}>
         <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
           {virtualRows.map((virtualRow) => (
             <div

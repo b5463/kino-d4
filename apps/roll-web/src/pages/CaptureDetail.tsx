@@ -186,7 +186,7 @@ export function CaptureDetail({
             {capture.reacted ? '♥' : '♡'} {capture.reactionCount}
           </Button>
         ) : null}
-        {sharing === '' ? null : <span role="status">{sharing}</span>}
+        {sharing === '' ? null : <span role="status" aria-live="polite" aria-atomic="true">{sharing}</span>}
       </ToolbarFrame>
       {capture.mode === 'wiggle' && still !== undefined ? (
         <Panel title="Processed still">

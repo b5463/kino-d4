@@ -65,6 +65,8 @@ describe('Roll access states', () => {
     await render(<PinGate slug="party" onUnlocked={vi.fn()} api={api(submitPin)} />);
 
     expect(container.textContent).toContain('This Roll needs a PIN');
+    expect(container.querySelector('#roll-pin')?.getAttribute('inputmode')).toBe('numeric');
+    expect(container.querySelector('#roll-pin')?.getAttribute('autocomplete')).toBe('one-time-code');
     await enterPinAndSubmit('0000');
 
     expect(submitPin).toHaveBeenCalledWith('party', '0000');

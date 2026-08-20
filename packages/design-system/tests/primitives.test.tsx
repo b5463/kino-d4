@@ -13,8 +13,18 @@ describe('shared design-system primitives', () => {
   it('keeps a busy command focusable while exposing its state', () => {
     const html = renderToStaticMarkup(<Button busy>Publishing</Button>);
     expect(html).toContain('aria-busy="true"');
-    expect(html).not.toContain('disabled');
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).not.toMatch(/\sdisabled(?:=|>)/);
     expect(html).toContain('Publishing');
+  });
+
+  it('announces meaningful state changes and preserves a compact lamp name', () => {
+    const html = renderToStaticMarkup(
+      <StatusLamp state="ok" label="" accessibleLabel="KINO connected" announce />,
+    );
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-label="KINO connected"');
   });
 
   it('clamps progress semantics to its declared range', () => {
@@ -37,5 +47,7 @@ describe('shared design-system primitives', () => {
     expect(html).toContain('role="tablist"');
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain('aria-selected="false"');
+    expect(html).toContain('data-tab-id="feed" aria-selected="true" tabindex="0"');
+    expect(html).toContain('data-tab-id="details" aria-selected="false" tabindex="-1"');
   });
 });

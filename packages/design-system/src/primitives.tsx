@@ -2,6 +2,7 @@ import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
   InputHTMLAttributes,
+  KeyboardEvent,
   ReactNode,
   Ref,
   TableHTMLAttributes,
@@ -36,7 +37,14 @@ export function Button({
       className={classes.join(' ')}
       disabled={disabled}
       aria-busy={busy || undefined}
-      onClick={busy ? undefined : onClick}
+      aria-disabled={busy || undefined}
+      onClick={(event) => {
+        if (busy) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
       {...rest}
     >
       {busy ? <span className="kino-button-spinner btn-spinner" aria-hidden="true" /> : null}
@@ -79,9 +87,27 @@ const STATUS_SYMBOL: Record<StatusLampState, string> = {
 };
 
 /** Symbol and text are both present; state never depends on colour alone. */
-export function StatusLamp({ state, label }: { state: StatusLampState; label: string }) {
+export function StatusLamp({
+  state,
+  label,
+  announce = false,
+  accessibleLabel,
+}: {
+  state: StatusLampState;
+  label: string;
+  /** Announce meaningful state transitions without making every decorative lamp a live region. */
+  announce?: boolean;
+  /** Keeps a compact visually-silent lamp named for assistive technology. */
+  accessibleLabel?: string;
+}) {
   return (
-    <span className={`kino-status-lamp kino-status-lamp--${state} led led--${state}`}>
+    <span
+      className={`kino-status-lamp kino-status-lamp--${state} led led--${state}`}
+      role={announce ? 'status' : undefined}
+      aria-live={announce ? 'polite' : undefined}
+      aria-atomic={announce || undefined}
+      aria-label={accessibleLabel}
+    >
       <span className="kino-status-symbol led-dot" aria-hidden="true">
         {STATUS_SYMBOL[state]}
       </span>
@@ -111,6 +137,24 @@ export function TabStrip({
   onChange: (id: string) => void;
   label: string;
 }) {
+  const enabled = tabs.filter((tab) => !tab.disabled);
+  const focusId = enabled.some((tab) => tab.id === active) ? active : enabled[0]?.id;
+
+  const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, direction: -1 | 1 | 'home' | 'end') => {
+    if (enabled.length === 0) return;
+    const current = enabled.findIndex((tab) => tab.id === event.currentTarget.dataset.tabId);
+    const nextIndex =
+      direction === 'home' ? 0
+      : direction === 'end' ? enabled.length - 1
+      : (Math.max(0, current) + direction + enabled.length) % enabled.length;
+    const next = enabled[nextIndex];
+    if (next === undefined) return;
+    event.preventDefault();
+    onChange(next.id);
+    const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    Array.from(buttons ?? []).find((button) => button.dataset.tabId === next.id)?.focus();
+  };
+
   return (
     <div className="kino-tabs" role="tablist" aria-label={label}>
       {tabs.map((tab) => (
@@ -119,9 +163,17 @@ export function TabStrip({
           type="button"
           role="tab"
           className="kino-tab"
+          data-tab-id={tab.id}
           aria-selected={tab.id === active}
+          tabIndex={tab.id === focusId ? 0 : -1}
           disabled={tab.disabled}
           onClick={() => onChange(tab.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowRight') moveFocus(event, 1);
+            else if (event.key === 'ArrowLeft') moveFocus(event, -1);
+            else if (event.key === 'Home') moveFocus(event, 'home');
+            else if (event.key === 'End') moveFocus(event, 'end');
+          }}
         >
           {tab.label}
         </button>
