@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { D4_V1 } from '@kino/hardware-profiles';
 import { Assembly } from './scene/Assembly';
+import { Wiring } from './scene/Wiring';
 import { TwinCanvas, type TwinCanvasHandle } from './scene/TwinCanvas';
 import { ViewportBar } from './panels/ViewportBar';
 import { ComponentTree } from './panels/ComponentTree';
@@ -51,6 +52,7 @@ export function App() {
           <div className="twin-viewport-canvas">
             <TwinCanvas ref={canvasRef}>
               <Assembly />
+              <Wiring />
             </TwinCanvas>
           </div>
         </main>

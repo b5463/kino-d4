@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { D4_V1 } from '@kino/hardware-profiles';
-import type { HardwareProfile, MeasuredOverride } from '@kino/hardware-profiles';
+import { D4_V1, NET_CLASSES } from '@kino/hardware-profiles';
+import type { HardwareProfile, MeasuredOverride, NetClass } from '@kino/hardware-profiles';
 
 /** §3 viewport modes: what the assembly currently renders as. */
 export type ViewMode = 'normal' | 'xray' | 'internals' | 'enclosure' | 'wiring';
@@ -18,11 +18,16 @@ export interface SceneState {
   pitchMm: number; // 20..24, default 22 (§5)
   visibility: Record<string, boolean>; // per instance; absent === visible
   viewMode: ViewMode;
+  netClasses: Set<NetClass>; // §8 wiring-view class toggles; absent members are hidden
+  netFocus: string | null; // §8 wiring-view instance filter; null = every instance's nets
   select(id: string | null): void;
   setExplode(v: number): void;
   setPitch(mm: number): void;
   setViewMode(m: ViewMode): void;
   toggleVisible(id: string): void;
+  toggleNetClass(cls: NetClass): void;
+  setAllNetClasses(on: boolean): void;
+  setNetFocus(id: string | null): void;
 }
 
 export const useSceneStore = create<SceneState>((set) => ({
@@ -34,6 +39,8 @@ export const useSceneStore = create<SceneState>((set) => ({
   pitchMm: D4_V1.cameraPitchMm,
   visibility: {},
   viewMode: 'normal',
+  netClasses: new Set(NET_CLASSES),
+  netFocus: null,
 
   select(id) {
     set({ selection: id });
@@ -50,6 +57,20 @@ export const useSceneStore = create<SceneState>((set) => ({
   },
   toggleVisible(id) {
     set((s) => ({ visibility: { ...s.visibility, [id]: !(s.visibility[id] ?? true) } }));
+  },
+  toggleNetClass(cls) {
+    set((s) => {
+      const next = new Set(s.netClasses);
+      if (next.has(cls)) next.delete(cls);
+      else next.add(cls);
+      return { netClasses: next };
+    });
+  },
+  setAllNetClasses(on) {
+    set({ netClasses: on ? new Set(NET_CLASSES) : new Set() });
+  },
+  setNetFocus(id) {
+    set({ netFocus: id });
   },
 }));
 

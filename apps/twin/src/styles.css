@@ -266,6 +266,34 @@ body {
   padding-left: 14px;
 }
 
+.twin-inspector-list--clickable {
+  list-style: none;
+  padding-left: 0;
+}
+
+.twin-net-row {
+  display: block;
+  width: 100%;
+  padding: 1px 4px;
+  margin: 1px 0;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--twin-text);
+  font-family: var(--twin-mono);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.twin-net-row:hover {
+  border-color: var(--twin-line);
+}
+
+.twin-net-row--active {
+  background: #262b33;
+  border-color: var(--twin-text);
+}
+
 .twin-inspector-chips {
   display: flex;
   flex-wrap: wrap;

@@ -66,13 +66,15 @@ export function fovLabel(component: ComponentDef): string | null {
 
 /**
  * Right panel (§3/§8): every static/profile field for the selected instance.
- * Two things this task deliberately does NOT do (controller rulings, not
- * ambiguity left to resolve here):
- *  - the "simulated runtime state + firmware" block is a static `SIM OFF`
- *    placeholder — Task 18 wires it to `@kino/simulator-engine`'s live sim
- *    store, which this file never imports;
- *  - net rows are plain text, not clickable — Task 15 adds `netFocus` and
- *    the wiring-highlight click behavior.
+ * One thing this task deliberately does NOT do (a controller ruling, not
+ * ambiguity left to resolve here): the "simulated runtime state + firmware"
+ * block is a static `SIM OFF` placeholder — Task 18 wires it to
+ * `@kino/simulator-engine`'s live sim store, which this file never imports.
+ *
+ * NETS rows are clickable (Task 15): clicking a row sets `sceneStore`'s
+ * `netFocus` to this instance's id, so the WIRING view's class-toggle filter
+ * narrows to only this instance's nets (§8). Clicking the already-focused
+ * instance's row again clears the focus back to "every instance".
  */
 export function Inspector() {
   const profile = useSceneStore((s) => s.profile);
@@ -80,6 +82,8 @@ export function Inspector() {
   const selection = useSceneStore((s) => s.selection);
   const pitchMm = useSceneStore((s) => s.pitchMm);
   const explode = useSceneStore((s) => s.explode);
+  const netFocus = useSceneStore((s) => s.netFocus);
+  const setNetFocus = useSceneStore((s) => s.setNetFocus);
   const [faultOpen, setFaultOpen] = useState(false);
 
   if (!selection) {
@@ -177,9 +181,19 @@ export function Inspector() {
       <section className="twin-inspector-section">
         <div className="twin-inspector-label">NETS</div>
         {nets.length > 0 ? (
-          <ul className="twin-inspector-list">
+          <ul className="twin-inspector-list twin-inspector-list--clickable">
             {nets.map((n) => (
-              <li key={n.id}>{formatNetLine(n, instance.id)}</li>
+              <li key={n.id}>
+                <button
+                  type="button"
+                  className={netFocus === instance.id ? 'twin-net-row twin-net-row--active' : 'twin-net-row'}
+                  onClick={() => setNetFocus(netFocus === instance.id ? null : instance.id)}
+                  aria-pressed={netFocus === instance.id}
+                  title="Focus the WIRING view on this instance's nets"
+                >
+                  {formatNetLine(n, instance.id)}
+                </button>
+              </li>
             ))}
           </ul>
         ) : (
