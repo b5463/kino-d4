@@ -49,12 +49,20 @@ jobs:
       # by the official image. Start it explicitly instead of depending on a
       # third-party `latest` convenience image (that tag was removed in 2026).
       - name: Start pinned MinIO
-        run: >-
-          docker run --detach --rm --name kino-ci-minio
-          -p 9000:9000 -p 9001:9001
-          -e MINIO_ROOT_USER=kino -e MINIO_ROOT_PASSWORD=kino-secret
-          minio/minio:RELEASE.2025-04-22T22-12-26Z
-          server /data --console-address :9001
+        run: |
+          generated_secret="$(openssl rand -hex 24)"
+          echo "::add-mask::$generated_secret"
+          export MINIO_ROOT_PASSWORD="$generated_secret"
+          {
+            echo "MINIO_ROOT_PASSWORD=$generated_secret"
+            echo "AWS_SECRET_ACCESS_KEY=$generated_secret"
+            echo "S3_SECRET_KEY=$generated_secret"
+          } >> "$GITHUB_ENV"
+          docker run --detach --rm --name kino-ci-minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=kino -e MINIO_ROOT_PASSWORD \
+            minio/minio:RELEASE.2025-04-22T22-12-26Z \
+            server /data --console-address :9001
       # The readiness gate for MinIO, and a real existence check for the bucket.
       #
       # `s3api head-bucket` signs with the root credentials and exits non-zero
@@ -69,7 +77,6 @@ jobs:
       - name: Wait for MinIO bucket kino-media
         env:
           AWS_ACCESS_KEY_ID: kino
-          AWS_SECRET_ACCESS_KEY: kino-secret
           # The runner has no ~/.aws/config, so the region must come from the
           # environment. MinIO ignores it, but SigV4 needs one to sign.
           AWS_DEFAULT_REGION: us-east-1
@@ -113,7 +120,6 @@ jobs:
           S3_ENDPOINT: http://localhost:9000
           S3_BUCKET: kino-media
           S3_ACCESS_KEY: kino
-          S3_SECRET_KEY: kino-secret
           PUBLIC_BASE_URL: https://kino.acronym.sk
       # The worker's suite needs the same three services and the same migrated
       # database, so it runs in this job rather than the service-free one. After
@@ -126,7 +132,6 @@ jobs:
           S3_ENDPOINT: http://localhost:9000
           S3_BUCKET: kino-media
           S3_ACCESS_KEY: kino
-          S3_SECRET_KEY: kino-secret
       - name: Stop MinIO
         if: always()
         run: docker stop kino-ci-minio || true
