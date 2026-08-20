@@ -577,6 +577,8 @@ body {
 .twin-checklist li span { color: #e0838c; }
 .twin-checklist .twin-checklist--done { color: var(--twin-text); }
 .twin-checklist .twin-checklist--done span { color: #61d095; }
+.twin-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 7px; }
+.twin-export-grid .twin-btn { min-width: 0; overflow-wrap: anywhere; }
 
 .twin-status-cell + .twin-status-cell {
   padding-left: 12px;

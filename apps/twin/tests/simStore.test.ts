@@ -87,4 +87,22 @@ describe('testCapture', () => {
     await capture;
     expect(useSimStore.getState().syncPulseAt).toBeGreaterThan(0);
   });
+
+  it('records raw KDP traffic and returns a versioned session document', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
+    useSimStore.getState().powerOn();
+    await vi.advanceTimersByTimeAsync(2_400);
+    useSimStore.getState().startRecording();
+
+    const capture = useSimStore.getState().testCapture();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await capture;
+    const doc = useSimStore.getState().stopRecording();
+
+    expect(doc).toMatchObject({ schema: 'kino.sim-session', version: 1, seed: 18, profile: 'd4-v1' });
+    expect(doc?.events.some((event) => event.kind === 'in')).toBe(true);
+    expect(doc?.events.some((event) => event.kind === 'out')).toBe(true);
+    expect(useSimStore.getState().recording).toBe(false);
+  });
 });

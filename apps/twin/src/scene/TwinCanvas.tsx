@@ -2,12 +2,14 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, type ReactNode } fr
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { screenshotPng } from '../exports/exports';
 import { useSceneStore } from '../state/sceneStore';
 import { bboxFromBodySizeMm, viewPose, type ViewPoseName } from './viewPoses';
 
 export interface TwinCanvasHandle {
   /** Imperatively drive the camera/controls to one viewport-bar pose (§3, Task 13). */
   applyView(name: ViewPoseName): void;
+  screenshot(): Promise<Blob>;
 }
 
 interface TwinCanvasProps {
@@ -17,6 +19,7 @@ interface TwinCanvasProps {
 interface CameraRigProps {
   /** Hands the rig's `applyView` closure up to the imperative handle, once mounted. */
   registerApplyView: (fn: (name: ViewPoseName) => void) => void;
+  registerScreenshot: (fn: () => Promise<Blob>) => void;
 }
 
 /**
@@ -27,8 +30,8 @@ interface CameraRigProps {
  * the controls' current position/target as `fit`'s "current direction", then
  * imperatively sets the camera position and orbit target from `viewPose`.
  */
-function CameraRig({ registerApplyView }: CameraRigProps) {
-  const { camera } = useThree();
+function CameraRig({ registerApplyView, registerScreenshot }: CameraRigProps) {
+  const { camera, gl } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const measureMode = useSceneStore((state) => state.measureMode);
 
@@ -53,6 +56,10 @@ function CameraRig({ registerApplyView }: CameraRigProps) {
     });
   }, [camera, registerApplyView]);
 
+  useEffect(() => {
+    registerScreenshot(() => screenshotPng(gl));
+  }, [gl, registerScreenshot]);
+
   return <OrbitControls ref={controlsRef} makeDefault enabled={!measureMode} />;
 }
 
@@ -67,10 +74,14 @@ function CameraRig({ registerApplyView }: CameraRigProps) {
  */
 export const TwinCanvas = forwardRef<TwinCanvasHandle, TwinCanvasProps>(function TwinCanvas({ children }, ref) {
   const applyViewRef = useRef<(name: ViewPoseName) => void>(() => {});
+  const screenshotRef = useRef<() => Promise<Blob>>(() => Promise.reject(new Error('3D canvas is not ready')));
 
   useImperativeHandle(ref, () => ({
     applyView(name) {
       applyViewRef.current(name);
+    },
+    screenshot() {
+      return screenshotRef.current();
     },
   }));
 
@@ -83,6 +94,9 @@ export const TwinCanvas = forwardRef<TwinCanvasHandle, TwinCanvasProps>(function
       <CameraRig
         registerApplyView={(fn) => {
           applyViewRef.current = fn;
+        }}
+        registerScreenshot={(fn) => {
+          screenshotRef.current = fn;
         }}
       />
       {children}

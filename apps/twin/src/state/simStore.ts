@@ -13,6 +13,7 @@ import type {
   CaptureStage,
   PowerSample,
   SimEvent,
+  SimSessionDoc,
   ThermalState,
   ThermalZone,
 } from '@kino/simulator-engine';
@@ -53,6 +54,8 @@ export interface SimState {
   powerOn(): void;
   powerOff(): void;
   testCapture(): Promise<void>;
+  startRecording(): void;
+  stopRecording(): SimSessionDoc | null;
 }
 
 export function initialSimState(): SimState {
@@ -74,6 +77,8 @@ export function initialSimState(): SimState {
     powerOn: powerOnRuntime,
     powerOff: powerOffRuntime,
     testCapture,
+    startRecording,
+    stopRecording,
   };
 }
 
@@ -240,6 +245,20 @@ export async function testCapture(): Promise<void> {
     client.dispose();
     await transport.close();
   }
+}
+
+export function startRecording(): void {
+  const active = getTwinRuntime();
+  if (!useSimStore.getState().running) throw new Error('Power on Twin before recording');
+  active.recorder.start();
+  useSimStore.setState({ recording: true });
+}
+
+export function stopRecording(): SimSessionDoc | null {
+  if (!runtime?.recorder.recording()) return null;
+  const doc = runtime.recorder.stop();
+  useSimStore.setState({ recording: false });
+  return doc;
 }
 
 export const useSimStore = create<SimState>(() => initialSimState());

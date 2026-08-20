@@ -19,19 +19,20 @@ import { PowerPanel } from './panels/PowerPanel';
 import { SyncPanel } from './panels/SyncPanel';
 import { FlashTimeline } from './panels/FlashTimeline';
 import { MeasurePanel } from './panels/MeasurePanel';
+import { RecorderPanel } from './panels/RecorderPanel';
 import type { ViewPoseName } from './scene/viewPoses';
 
 // KINO Twin app shell — §3 frame. The header identifies the app, the loaded
 // hardware profile, sim state, and the Studio link; the center pane renders
 // the assembly scene (Task 12) plus its viewport toolbar (Task 13); the left
 // panel is the component tree and the right panel the inspector (Task 14).
-// The status bar carries Task 17's assembled-pose clearance count; Task 18
-// will add live BroadcastChannel simulation state. No live sim state here
-// yet — the Inspector's runtime block remains a static SIM OFF placeholder.
+// The status bar carries assembled-pose clearance and live simulation state;
+// the right-side engineering tabs own inspection, fault, power, timing,
+// measurement, recorder, and export workflows.
 
 export function App() {
   const canvasRef = useRef<TwinCanvasHandle>(null);
-  const [rightTab, setRightTab] = useState<'inspect' | 'faults' | 'power' | 'sync' | 'flash'>('inspect');
+  const [rightTab, setRightTab] = useState<'inspect' | 'faults' | 'power' | 'sync' | 'flash' | 'record'>('inspect');
   const profile = useSceneStore((state) => state.profile);
   const overrides = useSceneStore((state) => state.overrides);
   const pitchMm = useSceneStore((state) => state.pitchMm);
@@ -63,7 +64,7 @@ export function App() {
         </main>
         <aside className="twin-panel twin-panel--right" aria-label="Inspector">
           <nav className="twin-panel-tabs" aria-label="Engineering panels">
-            {(['inspect', 'faults', 'power', 'sync', 'flash'] as const).map((tab) => (
+            {(['inspect', 'faults', 'power', 'sync', 'flash', 'record'] as const).map((tab) => (
               <button
                 type="button"
                 key={tab}
@@ -79,6 +80,7 @@ export function App() {
           {rightTab === 'power' && <PowerPanel />}
           {rightTab === 'sync' && <SyncPanel />}
           {rightTab === 'flash' && <FlashTimeline />}
+          {rightTab === 'record' && <RecorderPanel findings={findings} onScreenshot={() => canvasRef.current?.screenshot() ?? Promise.reject(new Error('3D canvas is not ready'))} />}
         </aside>
       </div>
 
