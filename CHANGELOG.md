@@ -25,6 +25,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - KINO Twin optical overlays show per-camera axes and frusta, neighboring and four-camera overlap, adjustable subject proxies, and live pitch/distance readouts; unmeasured D4 optics remain explicitly marked `MEASURE REQUIRED`, while candidate lens angles are labelled design scenarios.
 - KINO Twin can measure two picked assembly points and continuously report assembled-pose component collisions, sub-millimetre hard clearances, cable clearances, and blocked USB or microSD service keepouts.
 - KINO Twin now runs the shared KDP simulator in-tab, exposes staged power/test-capture controls, and visualizes boot, exposure, UART, SD, upload, firmware, power, thermal, and Studio connection activity.
+- KINO Twin exposes protocol-honest fault injection plus power, synchronization, and rolling-shutter flash analysis panels with explicit simulated and estimated provenance.
 
 ### Fixed
 

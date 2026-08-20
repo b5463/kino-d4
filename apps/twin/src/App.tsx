@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Assembly } from './scene/Assembly';
 import { Wiring } from './scene/Wiring';
 import { Optics } from './scene/Optics';
@@ -14,6 +14,10 @@ import { collisionReport } from './collision/collide';
 import { useSceneStore } from './state/sceneStore';
 import { Header } from './panels/Header';
 import { StatusBar } from './panels/StatusBar';
+import { FaultPanel } from './panels/FaultPanel';
+import { PowerPanel } from './panels/PowerPanel';
+import { SyncPanel } from './panels/SyncPanel';
+import { FlashTimeline } from './panels/FlashTimeline';
 import type { ViewPoseName } from './scene/viewPoses';
 
 // KINO Twin app shell — §3 frame. The header identifies the app, the loaded
@@ -26,6 +30,7 @@ import type { ViewPoseName } from './scene/viewPoses';
 
 export function App() {
   const canvasRef = useRef<TwinCanvasHandle>(null);
+  const [rightTab, setRightTab] = useState<'inspect' | 'faults' | 'power' | 'sync' | 'flash'>('inspect');
   const profile = useSceneStore((state) => state.profile);
   const overrides = useSceneStore((state) => state.overrides);
   const pitchMm = useSceneStore((state) => state.pitchMm);
@@ -56,9 +61,23 @@ export function App() {
           </div>
         </main>
         <aside className="twin-panel twin-panel--right" aria-label="Inspector">
-          <OpticsPanel />
-          <ClearancePanel findings={findings} />
-          <Inspector />
+          <nav className="twin-panel-tabs" aria-label="Engineering panels">
+            {(['inspect', 'faults', 'power', 'sync', 'flash'] as const).map((tab) => (
+              <button
+                type="button"
+                key={tab}
+                className={rightTab === tab ? 'twin-panel-tab twin-panel-tab--active' : 'twin-panel-tab'}
+                onClick={() => setRightTab(tab)}
+              >
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </nav>
+          {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><Inspector /></>}
+          {rightTab === 'faults' && <FaultPanel />}
+          {rightTab === 'power' && <PowerPanel />}
+          {rightTab === 'sync' && <SyncPanel />}
+          {rightTab === 'flash' && <FlashTimeline />}
         </aside>
       </div>
 
