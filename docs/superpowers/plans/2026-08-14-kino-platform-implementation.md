@@ -1296,9 +1296,9 @@ export function WigglePlayer(props: {
 
 - Behavior (03§13, §23; 06§14–15): preloads frames via `Image`; steps through `wiggleSequence` on a `requestAnimationFrame` clock at `fps`; renders current frame in an `<img>` (swap `src` from preloaded cache — no canvas needed for V1); pauses when offscreen (IntersectionObserver, threshold 0.25) and when `document.hidden`; `prefers-reduced-motion: reduce` → renders poster with a manual ▶ button (motion is opt-in); tap toggles play/pause; the animated wiggle is the hero — no UI animation competing with it.
 
-- [ ] **Step 1: Write failing tests** (vitest + jsdom, fake rAF timer): advances exactly `fps` frames per simulated second in bounce order; unmount cancels rAF; reduced-motion media query mocked → no autoplay, poster + button rendered.
+- [x] **Step 1: Write failing tests** (vitest + jsdom, fake rAF timer): advances exactly `fps` frames per simulated second in bounce order; unmount cancels rAF; reduced-motion media query mocked → no autoplay, poster + button rendered.
 
-- [ ] **Steps 2–5: FAIL → implement → PASS → commit** — `feat(roll-web): WigglePlayer with visibility + reduced-motion handling`
+- [x] **Steps 2–5: FAIL → implement → PASS → commit** — `feat(roll-web): WigglePlayer with visibility + reduced-motion handling`
 
 ### Task 28: Guest feed — virtualized, live
 
