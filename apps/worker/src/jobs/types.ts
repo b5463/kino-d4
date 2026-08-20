@@ -122,6 +122,37 @@ export interface JobCtx {
     body: DerivedBody,
     mime: string,
   ): Promise<string>;
+  /**
+   * Writes a roll-scoped derivative — `rolls/<rollId>/derived/<name>` — **from a
+   * file on disk**, and returns the key it landed on.
+   *
+   * Separate from `putDerived` rather than an optional `captureId`, because the two
+   * produce different keys and a caller that passed the wrong one would get a file
+   * nothing looks for. Task 25's recap and roll export are the only outputs that
+   * belong to a roll instead of a capture; both go through here, and both ride the
+   * same `guardOriginalWrites` middleware, which is what stops a `name` of
+   * `../captures/x/original/cam-01.jpg` from being anything but a refusal.
+   *
+   * A path rather than a `DerivedBody`, and this is the one place that difference
+   * matters. `putDerived` takes bytes because every capture derivative is at most a
+   * few megabytes; a roll export is *every original frame of every capture*, so a
+   * 300-capture party is gigabytes and Node's Buffer ceiling (~2 GiB) is a real
+   * one. Both callers already have their artifact on disk — ffmpeg needs a seekable
+   * output for `+faststart`, and the ZIP is written incrementally — so streaming it
+   * up from there costs nothing and removes the ceiling. The size is `stat`ed
+   * rather than counted, which is also what gives S3 the `ContentLength` the
+   * comment on `DerivedBody` says a stream cannot provide.
+   */
+  putRollDerivedFile(rollId: string, name: string, path: string, mime: string): Promise<string>;
+  /**
+   * The stored object's size, or `null` when there is no object at the key.
+   *
+   * A HEAD, exposed because "is the file actually there" is a question two jobs
+   * have to answer before they claim to be finished — the export before it moves
+   * its row to `done`, and the recap before it does the same. A read, so the guard
+   * has nothing to say about it.
+   */
+  statObject(key: string): Promise<number | null>;
 }
 
 export type JobHandler = (payload: JobPayload, ctx: JobCtx) => Promise<void>;

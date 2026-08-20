@@ -296,3 +296,55 @@ export const exportJobs = pgTable(
       .where(sql`${t.status} in ('queued', 'running')`),
   ],
 );
+
+/**
+ * Roll-scoped recap renders (03 §21) — the state behind a host's "make me a
+ * recap", and the row whose id names the MP4.
+ *
+ * ## Why this is not `export_jobs`
+ *
+ * The two look alike — a roll id, a status, one live job per roll — and reusing
+ * `export_jobs` with a `kind` column was the first thing tried. It cannot be made
+ * honest:
+ *
+ * 1. **`export_jobs_roll_live` is keyed on `roll_id` alone.** A recap sharing that
+ *    table would mean a host who is exporting cannot also be rendering a recap,
+ *    and the second request would be refused by an index whose stated rule is
+ *    "one live *export* per roll". They are unrelated units of work over the same
+ *    roll; nothing about either says the other must wait.
+ * 2. **`readExportJob(rollId, jobId)` would find a recap row.** `GET
+ *    /api/host/rolls/:rollId/export/:jobId` then presigns `exports/<jobId>.zip` —
+ *    a key a recap never writes — so a recap id polled against the export route
+ *    would answer `{status:'done'}` with no url, forever, with nothing to explain
+ *    why. Filtering by kind inside that reader would fix the symptom by adding a
+ *    discriminator every existing caller has to remember.
+ *
+ * A separate table needs neither: a recap id is not an export id, so the export
+ * route cannot see one, and the live-job rule is per kind because the tables are.
+ *
+ * The row **is** the jobId, exactly as `export_jobs`' is: the primary key names
+ * the row, the BullMQ job, and the object (`recap/<id>.mp4`).
+ */
+export const recapJobs = pgTable(
+  'recap_jobs',
+  {
+    id: text('id').primaryKey(), // 'rcp_' + nanoid — names the row, the job and the MP4
+    rollId: text('roll_id')
+      .notNull()
+      .references(() => rolls.id),
+    status: text('status').notNull().default('queued'), // queued|running|done|failed
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    /**
+     * One live recap per roll, for the same reason `export_jobs` has one: the
+     * render is minutes of ffmpeg over every capture in the roll, and a host
+     * pressing the button three times must not spend three of them.
+     */
+    uniqueIndex('recap_jobs_roll_live')
+      .on(t.rollId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+  ],
+);

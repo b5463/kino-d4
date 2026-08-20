@@ -95,7 +95,7 @@
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
-    "latestMigration": "0005_export_jobs"
+    "latestMigration": "0006_recap_jobs"
   },
   "hardware": {
     "manifest": "hardware/manifest.json",

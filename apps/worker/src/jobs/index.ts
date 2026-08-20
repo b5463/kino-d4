@@ -5,6 +5,9 @@ import { renderContactSheet } from './contactSheet';
 import { extractMetadata } from './metadata';
 import { renderWiggleWebp } from './wiggleWebp';
 import { renderWiggleMp4 } from './wiggleMp4';
+import { generateRecap } from './recap';
+import { aiEnhanceHandler } from './aiEnhance';
+import { exportRoll } from './exportRoll';
 
 /**
  * The image handlers, and the one place that binds a job name to a function.
@@ -16,9 +19,8 @@ import { renderWiggleMp4 } from './wiggleMp4';
  * production. Here, a name added to `IMAGE_HANDLERS` without a function does not
  * type.
  *
- * `generate-recap`, `ai-enhance`, `export-roll` and `purge-trash` are absent:
- * Task 25 owns them, and until then a job with one of those names fails with "no
- * handler registered", which is the honest answer.
+ * Roll-scoped Task 25 work is kept in `ROLL_HANDLERS`; `purge-trash` is bound in
+ * `main.ts` because it additionally receives the narrowly scoped eraser.
  *
  * The two wiggle renders are not queued alike. `plannedJobs` in the API
  * (`apps/api/src/uploads/uploads.ts`) already pushes `render-wiggle-webp` for
@@ -36,6 +38,13 @@ export const IMAGE_HANDLERS: Readonly<Partial<Record<JobName, JobHandler>>> = {
   'render-wiggle-mp4': renderWiggleMp4,
 };
 
+/** Roll-scoped and optional handlers delivered by Task 25. */
+export const ROLL_HANDLERS: Readonly<Partial<Record<JobName, JobHandler>>> = {
+  'generate-recap': generateRecap,
+  'ai-enhance': aiEnhanceHandler,
+  'export-roll': exportRoll,
+};
+
 /** Just enough of a queue to register on, so this does not depend on the whole one. */
 export interface HandlerRegistry {
   registerHandler(name: JobName, fn: JobHandler): void;
@@ -48,9 +57,19 @@ export function registerImageHandlers(registry: HandlerRegistry): void {
   }
 }
 
+export function registerRollHandlers(registry: HandlerRegistry): void {
+  for (const [name, handler] of Object.entries(ROLL_HANDLERS)) {
+    if (handler === undefined) continue;
+    registry.registerHandler(name as JobName, handler);
+  }
+}
+
 export { generateThumbnail } from './thumbnail';
 export { generateGalleryStill } from './galleryStill';
 export { renderContactSheet } from './contactSheet';
 export { extractMetadata } from './metadata';
 export { renderWiggleWebp } from './wiggleWebp';
 export { renderWiggleMp4 } from './wiggleMp4';
+export { generateRecap } from './recap';
+export { aiEnhance, aiEnhanceHandler } from './aiEnhance';
+export { exportRoll } from './exportRoll';

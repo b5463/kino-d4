@@ -1,4 +1,5 @@
 import { and, eq, isNull, ne } from 'drizzle-orm';
+import { TRASH_GRACE_DAYS, TRASH_GRACE_MS } from '@kino/schemas';
 import type { KinoDatabase } from '../plugins/db';
 import type { HostCapture } from '../auth/plugins';
 import { auditRows } from '../rolls/rolls';
@@ -17,8 +18,8 @@ import { auditEvents, captures } from '../db/schema';
  *
  * Both live here rather than in the route file because "what a guest may see" has
  * exactly one definition (`guestVisible` in `feed.ts` reads the same two columns)
- * and the grace period has exactly one owner. Task 25's purge job imports
- * `TRASH_GRACE_DAYS` from here rather than re-declaring 7.
+ * and the grace period has exactly one owner in `@kino/schemas`, shared with the
+ * purge worker rather than re-declared on either side.
  */
 
 /**
@@ -29,9 +30,7 @@ import { auditEvents, captures } from '../db/schema';
  * that the photo was fine. Anything short enough to expire overnight would make
  * the trash decorative.
  */
-export const TRASH_GRACE_DAYS = 7;
-
-export const TRASH_GRACE_MS = TRASH_GRACE_DAYS * 24 * 60 * 60 * 1000;
+export { TRASH_GRACE_DAYS, TRASH_GRACE_MS };
 
 /** When a trashed capture becomes the purge job's to destroy. */
 export function purgeAfter(deletedAt: Date): Date {
