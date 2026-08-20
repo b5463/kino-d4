@@ -11,6 +11,7 @@
     "version:check": "node scripts/check-versions.mjs",
     "license:check": "node scripts/check-licenses.mjs",
     "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
+    "test:uploader": "tsx infra/scripts/test-uploader.ts",
     "project": "node scripts/kino-project.mjs"
   },
   "devDependencies": { "tsx": "^4.21.0" },

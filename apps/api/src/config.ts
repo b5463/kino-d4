@@ -32,6 +32,9 @@ export const configSchema = z.object({
   DATABASE_URL: absoluteUrl.default('postgres://kino:kino@localhost:5435/kino'),
   // Host port 6380, not 6379: another project owns a 6379 mapping.
   REDIS_URL: absoluteUrl.default('redis://localhost:6380'),
+  // Shared with the worker. Tests may isolate a real producer/consumer pair
+  // without letting that worker consume another suite's jobs.
+  JOB_QUEUE_PREFIX: z.string().min(1).default('kino-jobs'),
   S3_ENDPOINT: absoluteUrl.default('http://localhost:9000'),
   S3_BUCKET: z.string().min(1).default('kino-media'),
   S3_FIRMWARE_BUCKET: z.string().min(1).default('kino-firmware'),

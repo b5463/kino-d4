@@ -11,6 +11,7 @@
 export interface WorkerConfig {
   DATABASE_URL: string;
   REDIS_URL: string;
+  JOB_QUEUE_PREFIX: string;
   S3_ENDPOINT: string;
   S3_BUCKET: string;
   S3_ACCESS_KEY: string;
@@ -22,6 +23,7 @@ export interface WorkerConfig {
 const DEFAULTS: WorkerConfig = {
   DATABASE_URL: 'postgres://kino:kino@localhost:5435/kino',
   REDIS_URL: 'redis://localhost:6380',
+  JOB_QUEUE_PREFIX: 'kino-jobs',
   S3_ENDPOINT: 'http://localhost:9000',
   S3_BUCKET: 'kino-media',
   S3_ACCESS_KEY: 'kino',

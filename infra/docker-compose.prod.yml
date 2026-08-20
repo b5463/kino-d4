@@ -5,6 +5,7 @@ x-runtime-environment: &runtime-environment
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in the selected environment file}
   REDIS_URL: ${REDIS_URL:?set REDIS_URL in the selected environment file}
+  JOB_QUEUE_PREFIX: ${JOB_QUEUE_PREFIX:-kino-jobs}
   S3_ENDPOINT: http://object-storage:9000
   S3_BUCKET: ${S3_BUCKET:-kino-media}
   S3_FIRMWARE_BUCKET: ${S3_FIRMWARE_BUCKET:-kino-firmware}

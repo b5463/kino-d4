@@ -1438,13 +1438,13 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 - Caddyfile routes: `/api/*` → api:3000 (SSE: `flush_interval -1`), `/studio*` → studio static, everything else → roll-web static with SPA fallback; global header `X-Robots-Tag: noindex, nofollow` on `/r/*` and `/host*`.
 - [x] Environments: `local` (compose.dev), `staging` (separate DB/bucket/credentials, subdomain or alt port), `production` (07§11).
 - [x] Rate limits (05§13): `@fastify/rate-limit` — device upload routes 60/min/token, guest reads 300/min/IP, PIN attempts 5/min/IP. Deferred exposure hardening also completed: registration 10/min/IP + production first-write-wins, device join 30/min/IP + 10-miss/hour device lockout, anonymous Roll creation 60/min/IP.
-- [ ] Smoke: deploy to staging, run a full happy path (register device via Studio → create Roll → test-uploader pushes a capture → guest sees it live → host closes Roll).
+- [x] Smoke: production-shaped local staging stack passed register device → create Roll → test-uploader capture → worker derivatives → guest feed → host close. Public DNS/TLS deployment remains an operator action.
 - [x] Commit — `feat(infra): production compose + caddy for kino.acronym.sk`
 
 ### Task 37: Test uploader CLI (Phase 2 requirement, 07§4)
 - **Files:** Create `infra/scripts/test-uploader.ts`
 - A CLI that impersonates a camera against the real API: registers (or reuses) a device, creates/joins a Roll, uploads fixture captures (from `packages/test-fixtures/media/`) through the full resumable pipeline with configurable failure injection (`--drop-part 3`, `--dup-retry`, `--slow 200ms`). This is how Roll gets exercised before camera firmware exists, and stays as the load-test tool (dozens of viewers × hundreds of captures, 03§24).
-- [ ] Steps: failing integration test (uploader against local compose produces a `ready` capture with all assets) → implement → PASS → commit — `feat(infra): camera-simulating test uploader`
+- [x] Steps: failing integration test (uploader against local compose produces a `ready` capture with all assets) → implement → PASS → commit — `feat(infra): camera-simulating test uploader`
 
 ### Task 38: Backups + restore drill + observability
 - **Files:** Create `infra/scripts/backup.sh`, `infra/scripts/restore-drill.sh`, `docs/runbooks/restore.md`

@@ -46,6 +46,8 @@ Production also defaults to `DEVICE_REGISTRATION_MODE=first-write-wins`. Re-subm
 
 The migration container must finish successfully before the API and worker start. A failed migration leaves the application stopped instead of booting against a partial schema.
 
+`JOB_QUEUE_PREFIX` must have the same value in the API and worker. Compose supplies it through their shared environment; changing it on only one process writes jobs to a queue no worker consumes.
+
 ## Verification
 
 Validate interpolation without starting services:
@@ -55,6 +57,36 @@ docker compose --env-file infra/.env.prod.example -f infra/docker-compose.prod.y
 ```
 
 After startup, verify `https://<host>/api/healthz`, `/`, and `/studio/`. The complete upload-to-gallery staging exercise is automated by the Task 37 test uploader.
+
+### Camera-simulating uploader
+
+The uploader exercises the same HTTP contract as a camera, including multipart resume semantics and the real background worker. It never prints device or host credentials.
+
+For a fresh disposable device and Roll:
+
+```sh
+npm run test:uploader -- --base-url https://staging.kino.acronym.sk --serial KD4-STAGING-0001 --drop-part 3 --dup-retry --slow 200ms --close
+```
+
+`--drop-part 3` treats the third successful part response as lost and sends that numbered part again. `--dup-retry` replays capture creation, upload completion, completed asset initialization, and capture completion. The command succeeds only after every capture is `ready`, appears in the guest feed, and—when `--close` is set—the Roll is closed.
+
+For an already registered device, keep its bearer token out of shell history and process listings:
+
+```sh
+export KINO_DEVICE_ID=dev_example
+export KINO_DEVICE_TOKEN=kdt_example
+npm run test:uploader -- --base-url https://staging.kino.acronym.sk --join ABC123
+```
+
+Load mode uses the same upload path and can add concurrent, fully paginated guest readers. Start below the production budgets and increase deliberately while watching queue depth and error rate:
+
+```sh
+npm run test:uploader -- --base-url https://staging.kino.acronym.sk --serial KD4-LOAD-0001 --captures 4 --viewers 24 --viewer-polls 2
+```
+
+The default mutation budget is 60 requests per minute per device token; one four-frame capture uses about 14 mutations. For a hundreds-of-captures endurance run, pace one camera with `--slow 1s` or run multiple physically distinct test-device credentials. Do not weaken the production budget merely to make a benchmark finish sooner.
+
+Run `npm run test:uploader -- --help` for fixture, timeout, and pacing options. Production registration is first-write-wins, so reuse `KINO_DEVICE_ID` and `KINO_DEVICE_TOKEN` after the initial physically controlled registration instead of attempting to register the serial again.
 
 ## Media licensing
 

@@ -23,7 +23,10 @@ async function main(): Promise<void> {
   const config = loadWorkerConfig();
   const runtime = createJobRuntime(config);
   const eraser = createEraser(config);
-  const queue = configureQueue({ connection: { url: config.REDIS_URL } });
+  const queue = configureQueue({
+    connection: { url: config.REDIS_URL },
+    prefix: config.JOB_QUEUE_PREFIX,
+  });
 
   /*
    * Each handler is an independent function of (payload, ctx) — no shared state,
