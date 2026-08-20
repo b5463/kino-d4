@@ -40,27 +40,29 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-      # GitHub `services:` cannot pass a container command, and minio/minio
-      # needs `server /data`. bitnami/minio starts the server by default and
-      # creates MINIO_DEFAULT_BUCKETS on boot, replacing the compose file's
-      # `createbucket` sidecar.
-      minio:
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: kino
-          MINIO_ROOT_PASSWORD: kino-secret
-          MINIO_DEFAULT_BUCKETS: kino-media,kino-firmware
-        ports: ['9000:9000', '9001:9001']
-        # Deliberately no `options:` health check. curl is not guaranteed to
-        # exist inside this image, and a health-cmd that cannot run aborts
-        # container initialisation (~150 s) before any step executes — which
-        # would kill the job without ever reaching the wait step below. That
-        # runner-side step is the single readiness gate.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      # GitHub `services:` cannot supply the `server /data` command required
+      # by the official image. Start it explicitly instead of depending on a
+      # third-party `latest` convenience image (that tag was removed in 2026).
+      - name: Start pinned MinIO
+        run: |
+          generated_secret="$(openssl rand -hex 24)"
+          echo "::add-mask::$generated_secret"
+          export MINIO_ROOT_PASSWORD="$generated_secret"
+          {
+            echo "MINIO_ROOT_PASSWORD=$generated_secret"
+            echo "AWS_SECRET_ACCESS_KEY=$generated_secret"
+            echo "S3_SECRET_KEY=$generated_secret"
+          } >> "$GITHUB_ENV"
+          docker run --detach --rm --name kino-ci-minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=kino -e MINIO_ROOT_PASSWORD \
+            minio/minio:RELEASE.2025-04-22T22-12-26Z \
+            server /data --console-address :9001
       # The readiness gate for MinIO, and a real existence check for the bucket.
       #
       # `s3api head-bucket` signs with the root credentials and exits non-zero
@@ -71,16 +73,10 @@ jobs:
       # stack: both return 403). Such a probe is a liveness check wearing a
       # bucket-check label.
       #
-      # This matters because bitnami/minio creates MINIO_DEFAULT_BUCKETS
-      # asynchronously, after the server starts accepting connections. Without
-      # a real check, a bucket that never appears surfaces much later as an
-      # unexplained 503 from the health test.
-      #
       # The AWS CLI is preinstalled on ubuntu-latest runners.
       - name: Wait for MinIO bucket kino-media
         env:
           AWS_ACCESS_KEY_ID: kino
-          AWS_SECRET_ACCESS_KEY: kino-secret
           # The runner has no ~/.aws/config, so the region must come from the
           # environment. MinIO ignores it, but SigV4 needs one to sign.
           AWS_DEFAULT_REGION: us-east-1
@@ -92,22 +88,21 @@ jobs:
           # `auto` heuristic, which may rewrite the request to the virtual-host
           # name kino-media.localhost — a name the runner cannot resolve.
           aws configure set default.s3.addressing_style path
-          probe() {
+          ready() {
             aws --endpoint-url http://localhost:9000 \
                 --cli-connect-timeout 2 --cli-read-timeout 5 \
-                s3api head-bucket --bucket kino-media
+                s3api list-buckets
           }
           # 60 iterations of (<=7 s probe + 2 s sleep) — ~9 min worst case.
           for _ in $(seq 1 60); do
-            if probe >/dev/null 2>&1; then
-              echo "head-bucket succeeded: kino-media exists and is readable"
-              exit 0
-            fi
+            ready >/dev/null 2>&1 && break
             sleep 2
           done
-          echo "kino-media unavailable after 60 attempts; last head-bucket error:" >&2
-          probe || true
-          exit 1
+          ready >/dev/null
+          aws --endpoint-url http://localhost:9000 s3api create-bucket --bucket kino-media
+          aws --endpoint-url http://localhost:9000 s3api create-bucket --bucket kino-firmware
+          aws --endpoint-url http://localhost:9000 s3api head-bucket --bucket kino-media
+          echo "head-bucket succeeded: kino-media exists and is readable"
       # The route tests hit real tables through `app.db`, so the CI database
       # must carry the committed migrations before they run. (`db.test.ts`
       # migrates its own throwaway `kino_test` database and is unaffected —
@@ -125,7 +120,6 @@ jobs:
           S3_ENDPOINT: http://localhost:9000
           S3_BUCKET: kino-media
           S3_ACCESS_KEY: kino
-          S3_SECRET_KEY: kino-secret
           PUBLIC_BASE_URL: https://kino.acronym.sk
       # The worker's suite needs the same three services and the same migrated
       # database, so it runs in this job rather than the service-free one. After
@@ -138,4 +132,6 @@ jobs:
           S3_ENDPOINT: http://localhost:9000
           S3_BUCKET: kino-media
           S3_ACCESS_KEY: kino
-          S3_SECRET_KEY: kino-secret
+      - name: Stop MinIO
+        if: always()
+        run: docker stop kino-ci-minio || true

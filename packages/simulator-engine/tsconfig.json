@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // @kino/test-fixtures and @kino/kdp ship raw .ts as their main/types entry
+    // (no build step), so `tsc --noEmit` here recompiles their source too,
+    // under *this* package's compilerOptions. Both of them turn this off for
+    // the same reason (see their own tsconfigs); mirroring it here is the
+    // only way to typecheck cleanly against their raw src.
+    "noUncheckedIndexedAccess": false,
+
+    // No @types/node in this monorepo; setTimeout/clearTimeout/queueMicrotask
+    // come from the DOM lib instead, same as @kino/kdp and @kino/test-fixtures.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  // KDP is consumed as raw TypeScript (via @kino/test-fixtures), so its Web
+  // Serial ambient declarations are not in scope here the way they are
+  // inside its own project — without them SerialTransport's `SerialPort` is
+  // unresolved and cascades into spurious null errors (same include as
+  // @kino/test-fixtures).
+  "include": ["src", "tests", "../kdp/src/types/webserial.d.ts"]
+}

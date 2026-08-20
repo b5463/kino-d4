@@ -5,6 +5,7 @@
 
 export { MockKinoDevice } from './MockKinoDevice';
 export { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
+export { type TwinTelemetry, type TwinSnapshot } from './telemetry';
 
 export {
   scenarios,
@@ -14,6 +15,7 @@ export {
   type ScenarioFlags,
   type ScenarioKey,
   type ScenarioDescriptor,
+  type CamFault,
 } from './scenarios';
 
 export { FACTORY_RECIPES } from './factoryRecipes';

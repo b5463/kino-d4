@@ -2,8 +2,13 @@
 // these; the mock device reads them when composing responses.
 //
 // The first twelve are the mock requirements of 04 §19 and carry the spec's
-// own names. The rest predate that list and stay because Studio's simulator
-// panel and its degradation paths are built on them.
+// own names. The next block predates that list and stays because Studio's
+// simulator panel and its degradation paths are built on them. The final
+// block is the KINO Twin spec's §20 fault-injection list — device-wide
+// conditions (link/handshake/roll/storage/power). Per-camera faults
+// (offline, power-open, sensor-missing, no-vsync, slow-uart, crc-noise) are
+// a separate mechanism — see `CamFault` below — because they target one of
+// four cameras rather than the whole device.
 
 export interface ScenarioFlags {
   // ---- 04 §19 ----
@@ -43,14 +48,41 @@ export interface ScenarioFlags {
   sdMissing: boolean;
   /** Report an early firmware: no VSYNC telemetry, phase cal or link bench. */
   legacyFirmware: boolean;
-  /**
-   * Answer HELLO with a protocol the host does not speak (02 §6 "Protocol
-   * mismatch", 07 §14 "clearly show version mismatch"). The framing stays at
-   * the current version — this is a firmware that is too new, not a corrupt
-   * stream.
-   */
+  // ---- KINO Twin §20 fault injection ----
+
+  /** Ignore the next HELLO after attach (one-shot) — 04 §12 boot glitch. */
+  dropFirstHello: boolean;
+  /** HELLO answers protocol 99 instead of the real version — 04 §12. */
   protocolMismatch: boolean;
+  /** Storage reports 0 MB free; captures NACK SD_FULL. */
+  sdFull: boolean;
+  /** Battery reports 3.55 V and dips a further 0.25 V during a capture. */
+  batterySag: boolean;
+  /** Power status reports the fuse blown; the device force-closes like a dead rail. */
+  fuseBlown: boolean;
+  /** NETWORK_STATUS reports disconnected regardless of any saved network. */
+  wifiLost: boolean;
+  /** ROLL_STATUS reports the upload server unreachable. */
+  rollServerUnreachable: boolean;
+  /** ROLL_STATUS reports a token-expired auth state; uploads stall. */
+  rollTokenExpired: boolean;
+  /** Capture proceeds with the flash skipped, logged rather than fired. */
+  flashUnavailable: boolean;
+  /** The flash calibration test reports a driver fault and a thermal flag. */
+  flashOverload: boolean;
+  /** CAM4 reports firmware 0.0.9 and GET_CAPABILITIES notes the mismatch. */
+  nodeFwMismatch: boolean;
+  /** CAM3's VSYNC phase jumps to 31,000 µs — visible in the phase snapshot. */
+  vsyncOffsetLarge: boolean;
 }
+
+/**
+ * Faults that live on one camera rather than the whole device (KINO Twin
+ * §20). Set with `MockKinoDevice.setCamFault`, read with `.camFault`.
+ * `offline`/`power-open` take the camera off the bus entirely; the rest
+ * degrade a still-answering camera in a specific, narrow way.
+ */
+export type CamFault = 'offline' | 'power-open' | 'sensor-missing' | 'no-vsync' | 'slow-uart' | 'crc-noise';
 
 export type ScenarioKey = keyof ScenarioFlags;
 
@@ -92,7 +124,18 @@ export const scenarios = {
   lowBattery: descriptor('lowBattery', 'LOW BATTERY', false, 'the pack reports 3.42 V'),
   sdMissing: descriptor('sdMissing', 'SD MISSING', false, 'no card is mounted'),
   legacyFirmware: descriptor('legacyFirmware', 'LEGACY FIRMWARE 0.1.0', false, 'pre-timing firmware without the optional features'),
-  protocolMismatch: descriptor('protocolMismatch', 'PROTOCOL MISMATCH', false, 'HELLO selects a protocol this Studio does not speak'),
+  dropFirstHello: descriptor('dropFirstHello', 'DROP FIRST HELLO', true, 'the next HELLO after attach goes unanswered'),
+  protocolMismatch: descriptor('protocolMismatch', 'PROTOCOL MISMATCH', false, 'HELLO answers protocol 99'),
+  sdFull: descriptor('sdFull', 'SD FULL', false, 'the card reports 0 MB free; captures NACK SD_FULL'),
+  batterySag: descriptor('batterySag', 'BATTERY SAG', false, 'the pack reports 3.55 V and dips further under load'),
+  fuseBlown: descriptor('fuseBlown', 'FUSE BLOWN', false, 'power status reports the fuse blown; the link drops like a dead rail'),
+  wifiLost: descriptor('wifiLost', 'WIFI LOST', false, 'NETWORK_STATUS reports disconnected'),
+  rollServerUnreachable: descriptor('rollServerUnreachable', 'ROLL SERVER UNREACHABLE', false, 'ROLL_STATUS reports the upload server unreachable'),
+  rollTokenExpired: descriptor('rollTokenExpired', 'ROLL TOKEN EXPIRED', false, 'ROLL_STATUS reports a token-expired auth state; uploads stall'),
+  flashUnavailable: descriptor('flashUnavailable', 'FLASH UNAVAILABLE', false, 'capture proceeds with the flash skipped'),
+  flashOverload: descriptor('flashOverload', 'FLASH OVERLOAD', false, 'the flash test reports a driver fault and a thermal flag'),
+  nodeFwMismatch: descriptor('nodeFwMismatch', 'NODE FW MISMATCH', false, 'CAM4 reports firmware 0.0.9, capabilities note the mismatch'),
+  vsyncOffsetLarge: descriptor('vsyncOffsetLarge', 'VSYNC OFFSET LARGE', false, "CAM3's VSYNC phase jumps to 31,000 us"),
 } satisfies Record<ScenarioKey, ScenarioDescriptor>;
 
 /** The twelve 04 §19 mock requirements, in spec order. */
