@@ -1,3 +1,16 @@
+import { useEffect, useState } from 'react';
+import {
+  isMissingCaptureError,
+  isNoRollError,
+  PinRequiredError,
+  rollApi,
+  type CaptureDetail as CaptureDetailView,
+  type RollView,
+} from '../api/client';
+import { CaptureDetail } from './CaptureDetail';
+import { NoRollPage } from './NotFoundPage';
+import { PinGate } from './PinGate';
+
 export interface CaptureDetailPageProps {
   slug: string;
   captureId: string;
@@ -7,6 +20,7 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   const [capture, setCapture] = useState<CaptureDetailView | null>(null);
   const [roll, setRoll] = useState<RollView | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -27,7 +41,13 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
     return () => {
       active = false;
     };
-  }, [captureId, slug]);
+  }, [attempt, captureId, slug]);
+
+  if (error instanceof PinRequiredError) {
+    return <PinGate slug={slug} onUnlocked={() => setAttempt((current) => current + 1)} />;
+  }
+
+  if (isNoRollError(error) || isMissingCaptureError(error)) return <NoRollPage />;
 
   return (
     <main style={{ padding: '1rem' }}>
@@ -42,6 +62,3 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
     </main>
   );
 }
-import { useEffect, useState } from 'react';
-import { rollApi, type CaptureDetail as CaptureDetailView, type RollView } from '../api/client';
-import { CaptureDetail } from './CaptureDetail';

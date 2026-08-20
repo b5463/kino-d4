@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { rollApi, type CaptureView, type RollView } from '../api/client';
+import {
+  isNoRollError,
+  PinRequiredError,
+  rollApi,
+  type CaptureView,
+  type RollView,
+} from '../api/client';
 import { evictCaptureAssets } from '../cache/assets';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
+import { NoRollPage } from './NotFoundPage';
+import { PinGate } from './PinGate';
+import { RollClosed } from './RollClosed';
 
 export interface RollFeedPageProps {
   slug: string;
@@ -130,13 +139,20 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     [feed],
   );
 
-  useRollEvents(slug, {
-    prepend: feed.prepend,
-    replace: feed.replace,
-    remove: removeLive,
-    refetchHead: feed.refetchHead,
-    onRollChanged: refreshRoll,
-  });
+  const failure = rollError ?? feed.error;
+
+  useRollEvents(
+    slug,
+    {
+      prepend: feed.prepend,
+      replace: feed.replace,
+      remove: removeLive,
+      refetchHead: feed.refetchHead,
+      onRollChanged: refreshRoll,
+    },
+    rollApi,
+    roll !== null && !(failure instanceof PinRequiredError) && !isNoRollError(failure),
+  );
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -158,7 +174,18 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     }
   }, [feed, lastVirtualRow, rows.length]);
 
-  const failure = rollError ?? feed.error;
+  if (failure instanceof PinRequiredError) {
+    return (
+      <PinGate
+        slug={slug}
+        onUnlocked={async () => {
+          await Promise.all([refreshRoll(), feed.refetchHead()]);
+        }}
+      />
+    );
+  }
+
+  if (isNoRollError(failure)) return <NoRollPage />;
 
   return (
     <main style={{ maxWidth: 1120, margin: '0 auto', padding: '1rem' }}>
@@ -172,6 +199,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
             {roll.photoCount} photos · {formattedDate(roll.createdAt)}
           </div>
         ) : null}
+        {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
       </header>
 
       {failure !== null ? <p role="alert">{failure.message}</p> : null}

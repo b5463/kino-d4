@@ -41,6 +41,7 @@ function roll(overrides: Partial<RollView> = {}): RollView {
     downloadsEnabled: true,
     reactionsEnabled: true,
     createdAt: '2026-08-14T19:00:00.000Z',
+    closedAt: null,
     ...overrides,
   };
 }

@@ -921,6 +921,7 @@ describe('GET /api/rolls/:slug (guest, 03 §9)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(Object.keys(res.json<Record<string, unknown>>()).sort()).toEqual([
+      'closedAt',
       'createdAt',
       // Task 20: the PWA needs it to decide whether to draw the download control.
       'downloadsEnabled',

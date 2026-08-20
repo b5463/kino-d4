@@ -1335,7 +1335,7 @@ export function WigglePlayer(props: {
 **Interfaces:**
 - `PinRequiredError` from the client routes to PinGate: compact form ("This Roll needs a PIN"), wrong PIN shows inline error, success re-enters feed. Closed roll: banner `CLOSED — <date>` at feed top, everything else readable (03§22). Trash/unknown slug → plain 404 page ("No Roll here.").
 
-- [ ] **Steps 1–5: failing tests → implement → PASS → commit** — `feat(roll-web): PIN gate + closed/404 states`
+- [x] **Steps 1–5: failing tests → implement → PASS → commit** — `feat(roll-web): PIN gate + closed/404 states`
 
 ### Task 31: Host dashboard
 

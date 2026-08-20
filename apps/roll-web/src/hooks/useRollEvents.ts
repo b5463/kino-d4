@@ -59,11 +59,13 @@ export function useRollEvents(
   slug: string,
   handlers: RollEventHandlers,
   api: RollApi = rollApi,
+  enabled = true,
 ): void {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
   useEffect(() => {
+    if (!enabled) return;
     let source: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = EVENT_RECONNECT_MIN_MS;
@@ -192,7 +194,7 @@ export function useRollEvents(
       window.removeEventListener('pagehide', pageHidden);
       window.removeEventListener('pageshow', pageShown);
     };
-  }, [api, slug]);
+  }, [api, enabled, slug]);
 }
 
 export { EVENT_TYPES };

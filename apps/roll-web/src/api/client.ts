@@ -31,6 +31,7 @@ export interface RollView {
   downloadsEnabled: boolean;
   reactionsEnabled: boolean;
   createdAt: string;
+  closedAt: string | null;
 }
 
 /** What the feed says about one asset: enough to pick a tile source, no more. */
@@ -97,6 +98,14 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+export function isNoRollError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.code === 'ROLL_NOT_FOUND';
+}
+
+export function isMissingCaptureError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.code === 'CAPTURE_NOT_FOUND';
 }
 
 /**
