@@ -568,6 +568,16 @@ body {
 .twin-svg-risk { fill: #e0838c; }
 .twin-svg-ok { fill: #61d095; }
 
+.twin-measure-panel { border-bottom: 1px solid var(--twin-line); }
+.twin-measure-textarea { min-height: 48px; resize: vertical; }
+.twin-measure-actions { display: flex; gap: 6px; margin-top: 8px; }
+.twin-btn--measure { width: 100%; margin-top: 7px; color: #f3ca52; border-color: #806d32; }
+.twin-checklist { display: grid; gap: 3px; margin: 7px 0 0; padding: 0; list-style: none; }
+.twin-checklist li { display: grid; grid-template-columns: 34px 1fr; gap: 5px; color: var(--twin-text-mut); font-size: 9px; }
+.twin-checklist li span { color: #e0838c; }
+.twin-checklist .twin-checklist--done { color: var(--twin-text); }
+.twin-checklist .twin-checklist--done span { color: #61d095; }
+
 .twin-status-cell + .twin-status-cell {
   padding-left: 12px;
   border-left: 1px solid var(--twin-line);

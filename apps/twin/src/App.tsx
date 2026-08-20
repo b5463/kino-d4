@@ -18,6 +18,7 @@ import { FaultPanel } from './panels/FaultPanel';
 import { PowerPanel } from './panels/PowerPanel';
 import { SyncPanel } from './panels/SyncPanel';
 import { FlashTimeline } from './panels/FlashTimeline';
+import { MeasurePanel } from './panels/MeasurePanel';
 import type { ViewPoseName } from './scene/viewPoses';
 
 // KINO Twin app shell — §3 frame. The header identifies the app, the loaded
@@ -73,7 +74,7 @@ export function App() {
               </button>
             ))}
           </nav>
-          {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><Inspector /></>}
+          {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
           {rightTab === 'faults' && <FaultPanel />}
           {rightTab === 'power' && <PowerPanel />}
           {rightTab === 'sync' && <SyncPanel />}
