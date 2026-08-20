@@ -347,6 +347,62 @@ body {
   color: var(--twin-text-mut);
 }
 
+/* Measurement overlay and assembled-pose collision report (§10, Task 17). */
+
+.twin-measure-label {
+  display: grid;
+  gap: 2px;
+  min-width: max-content;
+  padding: 5px 7px;
+  background: rgb(20 22 26 / 94%);
+  border: 1px solid #f3ca52;
+  color: #f3ca52;
+  font-family: var(--twin-mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.twin-measure-label span {
+  color: var(--twin-text);
+}
+
+.twin-clearance-panel {
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-clearance-empty {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--twin-text-mut);
+}
+
+.twin-clearance-list {
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.twin-clearance-row {
+  display: grid;
+  gap: 2px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--twin-line);
+  color: #e2b85a;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.twin-clearance-row > span:last-child {
+  color: var(--twin-text-mut);
+}
+
+.twin-clearance-row--critical {
+  background: #3a1f22;
+  color: #e0838c;
+}
+
 /* Optical scenarios and overlap readouts (§9, Task 16). */
 
 .twin-optics-panel {

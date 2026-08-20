@@ -23,6 +23,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Large Studio galleries can extend their index in bounded 5,000-row windows without eagerly loading every thumbnail.
 - Twin now has a top-level recovery screen and stricter assembly/runtime invariants, with replay, power, flash-risk, wiring, and scene-store edge coverage.
 - KINO Twin optical overlays show per-camera axes and frusta, neighboring and four-camera overlap, adjustable subject proxies, and live pitch/distance readouts; unmeasured D4 optics remain explicitly marked `MEASURE REQUIRED`, while candidate lens angles are labelled design scenarios.
+- KINO Twin can measure two picked assembly points and continuously report assembled-pose component collisions, sub-millimetre hard clearances, cable clearances, and blocked USB or microSD service keepouts.
 
 ### Fixed
 

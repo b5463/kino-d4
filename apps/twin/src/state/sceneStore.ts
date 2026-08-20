@@ -5,6 +5,7 @@ import type { HardwareProfile, MeasuredOverride, NetClass } from '@kino/hardware
 /** §3 viewport modes: what the assembly currently renders as. */
 export type ViewMode = 'normal' | 'xray' | 'internals' | 'enclosure' | 'wiring';
 export type OpticsSubject = 'none' | 'person' | 'group';
+export type MeasurePoint = [number, number, number];
 
 export interface OpticsState {
   enabled: boolean;
@@ -31,6 +32,8 @@ export interface SceneState {
   viewMode: ViewMode;
   netClasses: Set<NetClass>; // §8 wiring-view class toggles; absent members are hidden
   netFocus: string | null; // §8 wiring-view instance filter; null = every instance's nets
+  measureMode: boolean;
+  measurePoints: MeasurePoint[];
   optics: OpticsState;
   select(id: string | null): void;
   setExplode(v: number): void;
@@ -40,6 +43,9 @@ export interface SceneState {
   toggleNetClass(cls: NetClass): void;
   setAllNetClasses(on: boolean): void;
   setNetFocus(id: string | null): void;
+  setMeasureMode(enabled: boolean): void;
+  addMeasurePoint(point: MeasurePoint): void;
+  clearMeasurePoints(): void;
   setOpticsEnabled(enabled: boolean): void;
   setFovScenario(deg: number | null): void;
   toggleOpticsDistance(distanceM: number): void;
@@ -48,7 +54,7 @@ export interface SceneState {
   setSubjectSize(widthMm: number, heightMm: number): void;
 }
 
-export const useSceneStore = create<SceneState>((set) => ({
+export const useSceneStore = create<SceneState>((set, get) => ({
   profile: D4_V1,
   overrides: [],
   selection: null,
@@ -59,6 +65,8 @@ export const useSceneStore = create<SceneState>((set) => ({
   viewMode: 'normal',
   netClasses: new Set(NET_CLASSES),
   netFocus: null,
+  measureMode: false,
+  measurePoints: [],
   optics: {
     enabled: false,
     fovScenarioDeg: null,
@@ -98,6 +106,16 @@ export const useSceneStore = create<SceneState>((set) => ({
   },
   setNetFocus(id) {
     set({ netFocus: id });
+  },
+  setMeasureMode(enabled) {
+    set({ measureMode: enabled, measurePoints: [] });
+  },
+  addMeasurePoint(point) {
+    if (!get().measureMode || !point.every(Number.isFinite)) return;
+    set((state) => ({ measurePoints: state.measurePoints.length >= 2 ? [[...point]] : [...state.measurePoints, [...point]] }));
+  },
+  clearMeasurePoints() {
+    set({ measurePoints: [] });
   },
   setOpticsEnabled(enabled) {
     set((s) => ({ optics: { ...s.optics, enabled } }));

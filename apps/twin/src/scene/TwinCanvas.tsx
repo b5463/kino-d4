@@ -30,6 +30,7 @@ interface CameraRigProps {
 function CameraRig({ registerApplyView }: CameraRigProps) {
   const { camera } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const measureMode = useSceneStore((state) => state.measureMode);
 
   useEffect(() => {
     registerApplyView((name) => {
@@ -52,7 +53,7 @@ function CameraRig({ registerApplyView }: CameraRigProps) {
     });
   }, [camera, registerApplyView]);
 
-  return <OrbitControls ref={controlsRef} makeDefault />;
+  return <OrbitControls ref={controlsRef} makeDefault enabled={!measureMode} />;
 }
 
 /**
