@@ -70,6 +70,25 @@ body {
   background: var(--twin-off);
 }
 
+.twin-dot--ok {
+  background: #61d095;
+  box-shadow: 0 0 5px rgb(97 208 149 / 55%);
+}
+
+.twin-header-action {
+  padding: 2px 7px;
+  background: #22262e;
+  color: var(--twin-text);
+  border: 1px solid var(--twin-line);
+  font: inherit;
+  cursor: pointer;
+}
+
+.twin-header-action:disabled {
+  color: var(--twin-off);
+  cursor: default;
+}
+
 .twin-body {
   display: grid;
   grid-template-columns: 220px 1fr 220px;
@@ -345,6 +364,22 @@ body {
   font-family: var(--twin-mono);
   font-size: 11px;
   color: var(--twin-text-mut);
+}
+
+.twin-status-cell + .twin-status-cell {
+  padding-left: 12px;
+  border-left: 1px solid var(--twin-line);
+}
+
+.twin-sim-label {
+  min-width: max-content;
+  padding: 4px 6px;
+  background: rgb(20 22 26 / 94%);
+  border: 1px solid #67d9ff;
+  color: #67d9ff;
+  font-family: var(--twin-mono);
+  font-size: 10px;
+  pointer-events: none;
 }
 
 /* Measurement overlay and assembled-pose collision report (§10, Task 17). */
