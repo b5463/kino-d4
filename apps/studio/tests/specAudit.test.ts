@@ -26,8 +26,9 @@ import {
   setConnection,
   useConnectionStore,
 } from '../src/state/connectionStore';
-import { connectDemo, disconnect, getDemoDevice, getDevice, isSameCamera } from '../src/app/session';
+import { connectDemo, disconnect, getDemoDevice, getDevice, isSameCamera, recheckSession } from '../src/app/session';
 import { clearLogs, useLogStore } from '../src/state/logStore';
+import { putDraftEntry, setDraftDirty, useDraftStore } from '../src/state/draftStore';
 import { getBenchResult, putBenchResult, resetBenchResults } from '../src/state/benchResults';
 import type { ConnectionFault, ConnectionPhase } from '../src/state/connectionStore';
 import { ConnectionNotice } from '../src/components/ConnectionNotice';
@@ -378,6 +379,26 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
     expect(said[0].msg).toContain(after);
   }, 60000);
 
+  it('notices a soft restart even when the transport remains open', async () => {
+    clearLogs();
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+
+    const demo = getDemoDevice()!;
+    const before = demo.currentSessionId();
+    putDraftEntry('shoot', { draft: { jpegQuality: 72 }, base: { jpegQuality: 85 } });
+    setDraftDirty('shoot', 'Shoot');
+
+    demo.restartSessionInPlace();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+    await recheckSession();
+
+    expect(demo.currentSessionId()).not.toBe(before);
+    expect(useLogStore.getState().entries.filter((e) => e.msg.includes('camera restarted'))).toHaveLength(1);
+    expect(useDraftStore.getState().entries).toEqual({});
+    expect(useDraftStore.getState().dirty).toEqual({});
+  }, 60000);
+
   /**
    * The other half: a boot ID that changed while Studio was not attached is
    * not news. The user disconnected deliberately, which already dropped every
@@ -443,7 +464,7 @@ describe('07 §14 — protocol mismatch on the live path', () => {
     expect(state.phase).toBe('error');
     expect(state.fault).toBe('protocol-mismatch');
     // The message carries both numbers, which is what the banner prints.
-    expect(state.error).toContain('protocol 4');
+    expect(state.error).toContain('protocol 99');
     expect(state.error).toContain('1..1');
 
     // The strip names it, and the banner explains it.
@@ -452,7 +473,7 @@ describe('07 §14 — protocol mismatch on the live path', () => {
       createElement(ConnectionNotice, { phase: state.phase, fault: state.fault, error: state.error }),
     );
     expect(html).toContain('PROTOCOL MISMATCH');
-    expect(html).toContain('protocol 4');
+    expect(html).toContain('protocol 99');
 
     // And nothing was left connected behind the error.
     expect(getDevice()).toBeNull();
