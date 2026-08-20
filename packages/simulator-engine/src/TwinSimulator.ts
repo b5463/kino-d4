@@ -53,6 +53,7 @@ export class TwinSimulator {
   private readonly bootTimers: ReturnType<typeof setTimeout>[] = [];
   private readonly captureTimers: ReturnType<typeof setTimeout>[] = [];
   private readonly unsubscribeTelemetry: () => void;
+  private disposed = false;
 
   // §21: same default-transparent pattern as MockKinoDevice's own `now` —
   // an omitted clock falls back to real time, a passed one makes every
@@ -138,6 +139,8 @@ export class TwinSimulator {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.clearBootTimers();
     this.clearCaptureTimers();
     this.stopPowerSampling();
@@ -146,6 +149,7 @@ export class TwinSimulator {
   }
 
   private emit(event: SimEvent): void {
+    if (this.disposed) return;
     // Tracked here rather than re-derived from device telemetry: every
     // cam-stage transition the choreography produces passes through this
     // one method, so this is the single point that needs to know about it.
@@ -267,6 +271,10 @@ export class TwinSimulator {
    */
   private scheduleCapture(): void {
     queueMicrotask(() => {
+      // dispose() can run after device telemetry queued this work but before
+      // the microtask checkpoint. Do not create fresh, untracked timers for
+      // a simulator whose teardown already cleared its timer arrays.
+      if (this.disposed) return;
       const snap = this.device.twinSnapshot();
       const cams: Partial<Record<CamId, { jpegKB: number; durationMs: number }>> = {};
       for (const cam of CAM_IDS) {

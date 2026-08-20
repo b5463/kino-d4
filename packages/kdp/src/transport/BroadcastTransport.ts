@@ -13,7 +13,9 @@ type WireMsg =
   | { t: 'present' }
   | { t: 'connect'; client: string }
   | { t: 'accept'; client: string }
-  | { t: 'busy'; client: string }
+  | { t: 'busy'; client: string; reason: 'booting' | 'connected' }
+  | { t: 'ping'; client: string }
+  | { t: 'pong'; client: string }
   | { t: 'data'; from: 'host' | 'device'; client: string; bytes: number[] }
   | { t: 'close'; client: string; reason?: string };
 
@@ -117,7 +119,13 @@ export class BroadcastTransport implements Transport {
         channel.removeEventListener('message', onHandshake);
         if (msg.t === 'busy') {
           channel.close();
-          reject(new Error('KINO Twin is already connected to another Studio tab'));
+          reject(
+            new Error(
+              msg.reason === 'booting'
+                ? 'KINO Twin is still booting'
+                : 'KINO Twin is already connected to another Studio tab',
+            ),
+          );
           return;
         }
         this.channel = channel;
@@ -136,6 +144,10 @@ export class BroadcastTransport implements Transport {
 
   private readonly handleLive = (ev: MessageEvent): void => {
     const msg = ev.data as WireMsg;
+    if (msg?.t === 'ping' && msg.client === this.client) {
+      this.channel?.postMessage({ t: 'pong', client: msg.client } satisfies WireMsg);
+      return;
+    }
     // Same narrow-`.t`-before-reading-`.client` order as onHandshake above.
     if (!msg || (msg.t !== 'data' && msg.t !== 'close') || msg.client !== this.client) return;
     if (msg.t === 'data') {

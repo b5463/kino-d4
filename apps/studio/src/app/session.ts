@@ -70,6 +70,7 @@ let device: KinoDevice | null = null;
 let lastKind: TransportKind | null = null;
 let lastSerialPort: SerialPort | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollInFlight = false;
 let expectRebootUntil = 0;
 let generation = 0;
 let reconnecting = false;
@@ -225,11 +226,9 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
  * All of that lives in the protocol client (04 §4/§17), and Studio used to
  * run its own copy of the retry loop, which never compared boot IDs at all.
  *
- * Scope of what this detects, exactly: **a reboot across a reconnect**. HELLO
- * runs here and nowhere else, so a camera that restarts on a port that never
- * drops is still invisible — the 4 s poller swallows its own errors and never
- * re-handshakes. Closing that needs a periodic or error-triggered re-HELLO and
- * is recorded as a follow-up in `docs/studio-spec-audit.md`, not done here.
+ * The live poller also calls `recheckSession()` periodically. That covers a
+ * watchdog/soft restart where the USB CDC endpoint remains open and there is
+ * therefore no reconnect on which to run this initial handshake again.
  */
 async function handshake(c: KinoProtocolClient): Promise<void> {
   const hello = await c.hello({
@@ -243,6 +242,29 @@ async function handshake(c: KinoProtocolClient): Promise<void> {
   if (hello.product !== 'KINO') {
     throw new Error(`Device answered as "${hello.product}" — not a KINO`);
   }
+  lastSessionId = c.sessionId;
+  lastDeviceId = hello.deviceId ?? null;
+}
+
+/**
+ * Re-run HELLO on the existing link so a new boot/session ID is observable
+ * even when USB CDC never closes. The protocol client's session-change event
+ * performs the same cache invalidation used by reconnect detection.
+ */
+export async function recheckSession(): Promise<void> {
+  const c = client;
+  if (!c) return;
+  const hello = await c.hello({
+    protocolMin: PROTOCOL_VERSION,
+    protocolMax: PROTOCOL_VERSION,
+    clientVersion: CLIENT_NAME,
+    knownSessionId: lastSessionId,
+    attempts: 1,
+  });
+  if (hello.product !== 'KINO') throw new Error(`Device answered as "${hello.product}" — not a KINO`);
+  // Ignore a reply from a connection that was torn down while HELLO was in
+  // flight. Its IDs must not contaminate the next camera's handshake.
+  if (client !== c) return;
   lastSessionId = c.sessionId;
   lastDeviceId = hello.deviceId ?? null;
 }
@@ -417,11 +439,16 @@ function startPolling() {
   stopPolling();
   let tick = 0;
   pollTimer = setInterval(async () => {
-    if (!device) return;
+    if (!device || pollInFlight) return;
     const phase = useConnectionStore.getState().phase;
     if (phase !== 'connected' && phase !== 'maintenance') return;
+    pollInFlight = true;
     tick++;
     try {
+      // Every third poll (~12 s), prove that the process behind a still-open
+      // transport is the same boot we populated state from.
+      if (tick % 3 === 0) await recheckSession();
+      if (!device) return;
       const cams = await device.getCameraInfo();
       setDeviceState({ cameras: cams.cameras });
       if (tick % 2 === 0) {
@@ -434,6 +461,8 @@ function startPolling() {
     } catch {
       // A single missed poll (busy device, injected timeout) is not a
       // disconnect. The transport close handler owns real disconnects.
+    } finally {
+      pollInFlight = false;
     }
   }, 4000);
 }
@@ -441,6 +470,7 @@ function startPolling() {
 function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
+  pollInFlight = false;
 }
 
 function handleTransportClose(gen: number, factory: () => Transport, reason?: string) {

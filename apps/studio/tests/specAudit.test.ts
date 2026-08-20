@@ -26,8 +26,9 @@ import {
   setConnection,
   useConnectionStore,
 } from '../src/state/connectionStore';
-import { connectDemo, disconnect, getDemoDevice, getDevice, isSameCamera } from '../src/app/session';
+import { connectDemo, disconnect, getDemoDevice, getDevice, isSameCamera, recheckSession } from '../src/app/session';
 import { clearLogs, useLogStore } from '../src/state/logStore';
+import { putDraftEntry, setDraftDirty, useDraftStore } from '../src/state/draftStore';
 import { getBenchResult, putBenchResult, resetBenchResults } from '../src/state/benchResults';
 import type { ConnectionFault, ConnectionPhase } from '../src/state/connectionStore';
 import { ConnectionNotice } from '../src/components/ConnectionNotice';
@@ -376,6 +377,26 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
     expect(said).toHaveLength(1);
     expect(said[0].msg).toContain(before);
     expect(said[0].msg).toContain(after);
+  }, 60000);
+
+  it('notices a soft restart even when the transport remains open', async () => {
+    clearLogs();
+    await connectDemo();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+
+    const demo = getDemoDevice()!;
+    const before = demo.currentSessionId();
+    putDraftEntry('shoot', { draft: { jpegQuality: 72 }, base: { jpegQuality: 85 } });
+    setDraftDirty('shoot', 'Shoot');
+
+    demo.restartSessionInPlace();
+    expect(useConnectionStore.getState().phase).toBe('connected');
+    await recheckSession();
+
+    expect(demo.currentSessionId()).not.toBe(before);
+    expect(useLogStore.getState().entries.filter((e) => e.msg.includes('camera restarted'))).toHaveLength(1);
+    expect(useDraftStore.getState().entries).toEqual({});
+    expect(useDraftStore.getState().dirty).toEqual({});
   }, 60000);
 
   /**

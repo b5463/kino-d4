@@ -91,6 +91,42 @@ describe('BroadcastTransport + TwinDeviceServer (§10 option 2)', () => {
     await expect(second.open()).rejects.toThrow(/busy|already connected/i);
   }, 10_000);
 
+  it('reports booting separately from an occupied Studio connection', async () => {
+    const channel = uniqueChannel();
+    sim = new TwinSimulator({ seed: 31 });
+    server = new TwinDeviceServer(sim, { channelName: channel });
+    server.start();
+    sim.powerOn();
+
+    const transport = new BroadcastTransport(channel);
+    await expect(transport.open()).rejects.toThrow(/still booting/i);
+  }, 10_000);
+
+  it('releases a crashed Studio tab after its heartbeat lease expires', async () => {
+    const channel = uniqueChannel();
+    sim = await bootedSim(32);
+    server = new TwinDeviceServer(sim, {
+      channelName: channel,
+      heartbeatIntervalMs: 25,
+      clientLeaseMs: 100,
+    });
+    server.start();
+
+    const crashed = new BroadcastTransport(channel);
+    openTransports.push(crashed);
+    await crashed.open();
+
+    // Simulate a tab/process death: the browser closes its channel without
+    // running BroadcastTransport.close(), so no polite `close` message exists.
+    const liveChannel = (crashed as unknown as { channel: BroadcastChannel | null }).channel;
+    liveChannel?.close();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const replacement = new BroadcastTransport(channel);
+    openTransports.push(replacement);
+    await expect(replacement.open()).resolves.toBeUndefined();
+  }, 10_000);
+
   it('a device reboot force-closes the transport with a reboot reason (MockTransport parity)', async () => {
     const channel = uniqueChannel();
     sim = await bootedSim(4);

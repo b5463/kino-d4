@@ -78,6 +78,26 @@ describe('kino.measured-overrides schema (§23)', () => {
     expect(doc.overrides[0]?.componentId).toBe('bms');
   });
 
+  it('preserves measured holes, protrusions and wire-exit geometry', () => {
+    const doc = parseVersioned(measuredOverrides, {
+      schema: 'kino.measured-overrides',
+      version: 1,
+      overrides: [{
+        componentId: 'battery',
+        sizeMm: [60, 38, 9],
+        holesMm: [[3, 4], [57, 34]],
+        protrusionsMm: [{ label: 'lead fold', sizeMm: [8, 3, 2], offsetMm: [30, 19, 9] }],
+        wireExitMm: [60, 19, 4.5],
+        measuredAt: '2026-08-20',
+      }],
+    });
+    expect(doc.overrides[0]).toMatchObject({
+      holesMm: [[3, 4], [57, 34]],
+      protrusionsMm: [{ label: 'lead fold', sizeMm: [8, 3, 2], offsetMm: [30, 19, 9] }],
+      wireExitMm: [60, 19, 4.5],
+    });
+  });
+
   it('rejects an override missing its required measuredAt field', () => {
     const bad = {
       schema: 'kino.measured-overrides',

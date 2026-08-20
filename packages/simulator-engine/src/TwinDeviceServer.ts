@@ -20,12 +20,16 @@ type WireMsg =
   | { t: 'present' }
   | { t: 'connect'; client: string }
   | { t: 'accept'; client: string }
-  | { t: 'busy'; client: string }
+  | { t: 'busy'; client: string; reason: 'booting' | 'connected' }
+  | { t: 'ping'; client: string }
+  | { t: 'pong'; client: string }
   | { t: 'data'; from: 'host' | 'device'; client: string; bytes: number[] }
   | { t: 'close'; client: string; reason?: string };
 
 /** Matches MockTransport's hardcoded reboot-close reason — reboot parity (brief §). */
 const REBOOT_REASON = 'KINO is rebooting';
+const HEARTBEAT_INTERVAL_MS = 1000;
+const CLIENT_LEASE_MS = 4000;
 
 function toBytes(nums: number[]): Uint8Array {
   return Uint8Array.from(nums);
@@ -56,12 +60,21 @@ export class TwinDeviceServer {
   /** True only once `device.attach()` has actually run for `activeClient`. */
   private attached = false;
   private bootDelayTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private lastClientSeenAt = 0;
+  private readonly heartbeatIntervalMs: number;
+  private readonly clientLeaseMs: number;
   private readonly clientListeners = new Set<(connected: boolean) => void>();
 
-  constructor(sim: TwinSimulator, opts?: { channelName?: string; recorder?: SimRecorder }) {
+  constructor(
+    sim: TwinSimulator,
+    opts?: { channelName?: string; recorder?: SimRecorder; heartbeatIntervalMs?: number; clientLeaseMs?: number },
+  ) {
     this.sim = sim;
     this.channelName = opts?.channelName ?? TWIN_CHANNEL;
     this.recorder = opts?.recorder;
+    this.heartbeatIntervalMs = opts?.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
+    this.clientLeaseMs = opts?.clientLeaseMs ?? CLIENT_LEASE_MS;
   }
 
   start(): void {
@@ -69,12 +82,17 @@ export class TwinDeviceServer {
     const channel = new BroadcastChannel(this.channelName);
     channel.addEventListener('message', this.handleMessage);
     this.channel = channel;
+    this.heartbeatTimer = setInterval(this.checkClientLease, this.heartbeatIntervalMs);
   }
 
   stop(): void {
     if (this.bootDelayTimer) {
       clearTimeout(this.bootDelayTimer);
       this.bootDelayTimer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
     if (this.attached) this.sim.device.detach();
     this.activeClient = null;
@@ -112,10 +130,13 @@ export class TwinDeviceServer {
     } else if (msg.t === 'connect') {
       this.handleConnect(msg.client);
     } else if (msg.t === 'data') {
-      if (msg.from !== 'host' || msg.client !== this.activeClient) return;
+      if (msg.from !== 'host' || msg.client !== this.activeClient || !this.attached) return;
+      this.lastClientSeenAt = Date.now();
       const bytes = toBytes(msg.bytes);
       this.recorder?.noteIn(bytes);
       this.sim.device.receive(bytes);
+    } else if (msg.t === 'pong') {
+      if (msg.client === this.activeClient && this.attached) this.lastClientSeenAt = Date.now();
     } else if (msg.t === 'close') {
       if (msg.client !== this.activeClient) return;
       if (this.attached) this.sim.device.detach();
@@ -125,11 +146,16 @@ export class TwinDeviceServer {
   };
 
   private handleConnect(client: string): void {
-    if (this.sim.bootStage() !== 'READY' || this.activeClient !== null) {
-      this.post({ t: 'busy', client });
+    if (this.sim.bootStage() !== 'READY') {
+      this.post({ t: 'busy', client, reason: 'booting' });
+      return;
+    }
+    if (this.activeClient !== null) {
+      this.post({ t: 'busy', client, reason: 'connected' });
       return;
     }
     this.activeClient = client;
+    this.lastClientSeenAt = Date.now();
 
     const delay = this.sim.device.bootDelayMs();
     this.bootDelayTimer = setTimeout(() => {
@@ -157,6 +183,25 @@ export class TwinDeviceServer {
         },
       );
       this.setConnected(true);
+      this.lastClientSeenAt = Date.now();
     }, delay);
   }
+
+  /**
+   * BroadcastChannel has no peer-close notification when a tab crashes. A
+   * short lease keeps that stale tab from owning Twin forever: responsive
+   * Studio transports answer `ping`; silence detaches the device and frees
+   * the one-client slot for the next connection.
+   */
+  private readonly checkClientLease = (): void => {
+    const client = this.activeClient;
+    if (client === null || !this.attached) return;
+    if (Date.now() - this.lastClientSeenAt > this.clientLeaseMs) {
+      this.sim.device.detach();
+      this.activeClient = null;
+      this.setConnected(false);
+      return;
+    }
+    this.post({ t: 'ping', client });
+  };
 }

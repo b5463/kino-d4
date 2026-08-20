@@ -19,6 +19,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Public KINO D4 project board with roadmap-backed issues, target views, and a repository helper for status updates.
 - KINO Twin foundations: versioned D4 hardware profiles, deterministic simulation and replay, BroadcastChannel KDP transport, parametric assembly, engineering viewport controls, inspector, and wiring view.
 - Studio connection to KINO Twin through the same KDP client path used by serial hardware, including cross-tab handshake and reboot coverage.
+- Twin transport leases recover from crashed Studio tabs, and Studio detects device restarts even when the underlying link remains open.
 
 ### Known incomplete work
 

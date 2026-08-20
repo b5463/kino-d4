@@ -21,7 +21,7 @@ Line numbers are as of this commit.
 | Never long-timeout an unsupported command | 07 §14 | already present | `apps/studio/src/app/session.ts:273-277` (capability probe tolerates `KinoUnsupportedError`/`KinoTimeoutError`), `apps/studio/src/pages/Roll/RollPage.tsx:94-110` (`Unsupported` panel instead of a call), `apps/studio/src/components/Sidebar.tsx` `navItems({rollUpload})`. Tests: `rollPage.test.ts` → `(e) capability gating (02 §27)` |
 | Gallery scale 0 / 60 / 2,000 / 10,000 rows | 07 §16 | implemented now (test); paging already present | `apps/studio/src/pages/Gallery/galleryPaging.ts` (extracted from `GalleryPage`), `apps/studio/src/pages/Gallery/GalleryPage.tsx:81-85` (cursor pagination, 100-row responses, listing cap), `:154-185` (thumbnails fetched for the open page only, 2 at a time — lazy assets). Tests: `specAudit.test.ts` → `07 §16 — gallery scale` (5 cases, incl. 10,000 rows) |
 | HELLO retry ×3, nonce echo, boot-spew resync | 02 §5, §32 | already present — **now on the live path** | `packages/kdp/src/protocol/KinoProtocolClient.ts:154` (`HELLO_ATTEMPTS = 3`), `:270` `hello()`, `:305` nonce echo, `packages/kdp/src/protocol/packet.ts:12-14` (byte-stream decoder, resynchronizes on the magic). Tests: `packages/kdp/tests/decoder-acceptance.test.ts` → `decoder / boot text`, `HELLO / retry`, `HELLO / nonce echo`, `HELLO / protocol negotiation`. Studio reached this code only after this task — see the ledger row below |
-| Session-change detection **across a reconnect** | 02 §5, §32 (Task 7 ledger) | **implemented now** — this was a real gap | `apps/studio/src/app/session.ts` (`handshake` calls `client.hello({knownSessionId})`; `onSessionChanged` drops cached drafts, bench claim, sound cache; `isSameCamera` keeps a device swap from reading as a restart; `teardown(true)` clears both remembered IDs). Tests: `specAudit.test.ts` → `02 §5/§32 — session-change detection on the live path` (3 cases); underlying machinery `packages/kdp/tests/decoder-acceptance.test.ts` → `client / session ID` (5 cases). **Scope: see follow-up F-1** |
+| Session-change detection across reconnects and a still-open link | 02 §5, §32 (Task 7 ledger) | **implemented now** — this was a real gap | `apps/studio/src/app/session.ts` (`handshake` and periodic `recheckSession` call `client.hello({knownSessionId})`; `onSessionChanged` drops cached drafts, bench claim, sound cache; `isSameCamera` keeps a device swap from reading as a restart; `teardown(true)` clears both remembered IDs). Tests: `specAudit.test.ts` → `02 §5/§32 — session-change detection on the live path` (4 cases); underlying machinery `packages/kdp/tests/decoder-acceptance.test.ts` → `client / session ID` (5 cases). |
 
 ## What the connection-strip audit actually found
 
@@ -107,18 +107,13 @@ A search/jump-to-date control is the real fix, and it is not in this task.
 
 ## Follow-ups
 
-### F-1 — a reboot on a port that never drops is still invisible
+### F-1 — closed: detect a reboot on a port that never drops
 
-The session-change work above detects **a reboot across a reconnect**, and only that. HELLO runs in
-one place (`connectWith`), so the boot ID is only ever compared when a new transport is opened. A P4
-that resets while the USB CDC endpoint stays up — a watchdog reset, a soft restart — is not noticed:
-the 4 s poller catches its own errors by design (a single missed poll is not a disconnect) and never
-re-handshakes, so Studio keeps showing state from a run that ended.
-
-Closing it needs a re-HELLO that is not tied to opening a port — either periodic, or triggered when
-the poller sees N consecutive failures — feeding the same `client.hello({knownSessionId})` path that
-already exists. Deliberately not done in the audit sweep: it changes when the protocol is spoken, not
-just what is rendered, and it wants its own test matrix.
+Closed during Twin integration. Every third 4 s poll, Studio now re-runs a single-attempt HELLO on
+the existing protocol client. A changed boot ID feeds the same session-change handler as reconnect,
+which drops drafts, sound cache and bench ownership while leaving the live transport connected. The
+mock device exposes a watchdog-style in-place restart, and `specAudit.test.ts` proves both detection
+and cache invalidation without a transport-close event.
 
 ## Testing notes
 

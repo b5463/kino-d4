@@ -109,4 +109,26 @@ describe('TwinSimulator capture wiring', () => {
       vi.useRealTimers();
     }
   });
+
+  it('does not schedule choreography after disposal wins the microtask race', async () => {
+    vi.useFakeTimers();
+    try {
+      const sim = new TwinSimulator({ seed: 7 });
+      const events: SimEvent[] = [];
+      sim.onEvent((e) => events.push(e));
+
+      sendCapture(sim, 1);
+      // Run the device command callback synchronously. Its capture-begin
+      // telemetry queues scheduleCapture's microtask, but does not flush it.
+      vi.advanceTimersByTime(1_000);
+      sim.dispose();
+      await Promise.resolve();
+      await vi.runAllTimersAsync();
+
+      expect(camStagesOf(events)).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

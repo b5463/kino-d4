@@ -455,6 +455,19 @@ export class MockKinoDevice implements MockDeviceLike {
     return this.sessionId;
   }
 
+  /**
+   * Model a watchdog/soft restart whose USB CDC endpoint remains open. Real
+   * firmware can reboot behind the same browser SerialPort, so Studio must
+   * notice the new session via HELLO rather than a transport-close event.
+   */
+  restartSessionInPlace(reason = 'soft-restart'): void {
+    this.bootCount++;
+    this.sessionId = `boot-${this.bootCount}`;
+    this.jobs.clear();
+    this.resetReason = reason;
+    this.emitTelemetry({ t: 'reboot', sessionId: this.sessionId, reason });
+  }
+
   // ---- telemetry tap + public snapshot (KINO Twin §5 / §10) ----
   // A second, additive channel alongside the raw KDP wire: the Twin's 3D view
   // reads this, Studio never does (§10/§20 — no side-channel around protocol
