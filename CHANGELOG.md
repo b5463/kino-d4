@@ -46,6 +46,7 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Fixed
 
+- Twin typography sits on one four-step token scale with nothing below 10 px, and every panel padding lands on the even spacing grid — the tabs, chips, tables and checklists read as one instrument again.
 - The Twin display screen stays crisp when viewed through the clear rear acrylic instead of being washed out by the panel's tint.
 - Twin assembly renders the D4 correctly: the display sits landscape inside the body with its glass facing the rear, its connector keepouts hug the board face instead of floating in space, the camera-node service keepout covers rear USB-C access instead of the lens, and the enclosure skeleton is an open edge frame so internal components are visible through the clear panels.
 - Sensor-missing camera nodes remain available for firmware repair while sensor-dependent calibration reports the specific fault.

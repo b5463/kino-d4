@@ -10,6 +10,10 @@
   --twin-text: #d8dee6;
   --twin-text-mut: #838d99;
   --twin-off: #5a626d;
+  --twin-fs-xs: 10px; /* dense labels, chips, table rows */
+  --twin-fs-sm: 11px; /* panel body */
+  --twin-fs-md: 12px; /* header, viewport chrome, welcome body */
+  --twin-fs-lg: 13px; /* app base */
   --twin-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
   --twin-mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
 }
@@ -29,7 +33,7 @@ body {
   background: var(--twin-bg);
   color: var(--twin-text);
   font-family: var(--twin-sans);
-  font-size: 13px;
+  font-size: var(--twin-fs-lg);
 }
 
 .twin-app {
@@ -47,7 +51,7 @@ body {
   background: var(--twin-panel);
   border-bottom: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 12px;
+  font-size: var(--twin-fs-md);
   white-space: nowrap;
   overflow-x: auto;
 }
@@ -76,7 +80,7 @@ body {
 }
 
 .twin-header-action {
-  padding: 2px 7px;
+  padding: 2px 6px;
   background: #22262e;
   color: var(--twin-text);
   border: 1px solid var(--twin-line);
@@ -112,7 +116,7 @@ body {
   background: #0c0d10;
   color: var(--twin-text-mut);
   font-family: var(--twin-mono);
-  font-size: 12px;
+  font-size: var(--twin-fs-md);
   letter-spacing: 0.04em;
 }
 
@@ -136,7 +140,7 @@ body {
   background: var(--twin-panel);
   border-bottom: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
 }
 
 .twin-viewport-group {
@@ -157,12 +161,12 @@ body {
 }
 
 .twin-btn {
-  padding: 3px 8px;
+  padding: 4px 8px;
   background: #22262e;
   color: var(--twin-text);
   border: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
   letter-spacing: 0.03em;
   cursor: pointer;
 }
@@ -187,7 +191,7 @@ body {
   color: var(--twin-text);
   border: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
   padding: 2px 4px;
 }
 
@@ -195,7 +199,7 @@ body {
 .twin-panel--right {
   overflow-y: auto;
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
 }
 
 /* Component tree (§3, left panel) */
@@ -204,7 +208,7 @@ body {
   padding: 6px 10px 2px;
   color: var(--twin-text-mut);
   letter-spacing: 0.05em;
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-tree-row {
@@ -227,7 +231,7 @@ body {
   border: none;
   color: var(--twin-text);
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
   text-align: left;
   cursor: pointer;
   padding: 2px 0;
@@ -250,7 +254,7 @@ body {
 }
 
 .twin-inspector-name {
-  font-size: 12px;
+  font-size: var(--twin-fs-md);
 }
 
 .twin-inspector-model,
@@ -293,13 +297,13 @@ body {
 .twin-net-row {
   display: block;
   width: 100%;
-  padding: 1px 4px;
+  padding: 2px 4px;
   margin: 1px 0;
   background: none;
   border: 1px solid transparent;
   color: var(--twin-text);
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -321,7 +325,7 @@ body {
 }
 
 .twin-chip {
-  padding: 1px 6px;
+  padding: 2px 6px;
   background: #22262e;
   border: 1px solid var(--twin-line);
 }
@@ -329,7 +333,7 @@ body {
 .twin-badge {
   display: inline-block;
   margin-top: 4px;
-  padding: 1px 6px;
+  padding: 2px 6px;
   background: #22262e;
   border: 1px solid var(--twin-line);
   color: var(--twin-text-mut);
@@ -362,7 +366,7 @@ body {
   background: var(--twin-panel);
   border-top: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 11px;
+  font-size: var(--twin-fs-sm);
   color: var(--twin-text-mut);
 }
 
@@ -378,12 +382,12 @@ body {
 
 .twin-panel-tab {
   min-width: 0;
-  padding: 6px 1px;
+  padding: 6px 2px;
   background: transparent;
   color: var(--twin-text-mut);
   border: 0;
   border-right: 1px solid var(--twin-line);
-  font: 9px var(--twin-mono);
+  font: var(--twin-fs-xs) var(--twin-mono);
   cursor: pointer;
 }
 
@@ -400,7 +404,7 @@ body {
 
 .twin-panel-empty,
 .twin-panel-note {
-  padding: 9px 10px;
+  padding: 8px 10px;
   color: var(--twin-text-mut);
 }
 
@@ -428,7 +432,7 @@ body {
 .twin-fault-row {
   padding: 4px 10px;
   border-bottom: 1px solid #242830;
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-control-row + .twin-control-row,
@@ -450,7 +454,7 @@ body {
 .twin-power-grid {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 5px 8px;
+  gap: 6px 8px;
 }
 
 .twin-power-grid > span,
@@ -495,7 +499,7 @@ body {
   padding: 2px 4px;
   border: 1px solid var(--twin-line);
   color: var(--twin-text-mut);
-  font-size: 9px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-thermal--warm { color: #e2b85a; }
@@ -507,7 +511,7 @@ body {
   grid-template-columns: 1fr auto;
   gap: 2px 8px;
   margin-bottom: 8px;
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-sync-row .twin-grade {
@@ -518,9 +522,9 @@ body {
   display: grid;
   grid-template-columns: 36px 1fr 48px;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   margin: 4px 0;
-  font-size: 9px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-phase-track {
@@ -537,14 +541,14 @@ body {
 .twin-slider-row {
   display: grid;
   grid-template-columns: 1fr;
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-flash-svg {
   width: 100%;
   color: var(--twin-text-mut);
   background: #111318;
-  font: 11px var(--twin-mono);
+  font: var(--twin-fs-sm) var(--twin-mono);
 }
 
 .twin-flash-svg text {
@@ -597,13 +601,13 @@ body {
 .twin-measure-panel { border-bottom: 1px solid var(--twin-line); }
 .twin-measure-textarea { min-height: 48px; resize: vertical; }
 .twin-measure-actions { display: flex; gap: 6px; margin-top: 8px; }
-.twin-btn--measure { width: 100%; margin-top: 7px; color: #f3ca52; border-color: #806d32; }
-.twin-checklist { display: grid; gap: 3px; margin: 7px 0 0; padding: 0; list-style: none; }
-.twin-checklist li { display: grid; grid-template-columns: 34px 1fr; gap: 5px; color: var(--twin-text-mut); font-size: 9px; }
+.twin-btn--measure { width: 100%; margin-top: 8px; color: #f3ca52; border-color: #806d32; }
+.twin-checklist { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.twin-checklist li { display: grid; grid-template-columns: 34px 1fr; gap: 6px; color: var(--twin-text-mut); font-size: var(--twin-fs-xs); }
 .twin-checklist li span { color: #e0838c; }
 .twin-checklist .twin-checklist--done { color: var(--twin-text); }
 .twin-checklist .twin-checklist--done span { color: #61d095; }
-.twin-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 7px; }
+.twin-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
 .twin-export-grid .twin-btn { min-width: 0; overflow-wrap: anywhere; }
 
 .twin-status-cell + .twin-status-cell {
@@ -618,7 +622,7 @@ body {
   border: 1px solid #67d9ff;
   color: #67d9ff;
   font-family: var(--twin-mono);
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
   pointer-events: none;
 }
 
@@ -628,12 +632,12 @@ body {
   display: grid;
   gap: 2px;
   min-width: max-content;
-  padding: 5px 7px;
+  padding: 6px 8px;
   background: rgb(20 22 26 / 94%);
   border: 1px solid #f3ca52;
   color: #f3ca52;
   font-family: var(--twin-mono);
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
   pointer-events: none;
 }
 
@@ -662,10 +666,10 @@ body {
 .twin-clearance-row {
   display: grid;
   gap: 2px;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--twin-line);
   color: #e2b85a;
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
   overflow-wrap: anywhere;
 }
 
@@ -697,18 +701,18 @@ body {
   display: block;
   margin: 7px 0 4px;
   color: var(--twin-text-mut);
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
   letter-spacing: 0.04em;
 }
 
 .twin-select {
   width: 100%;
-  padding: 3px 4px;
+  padding: 2px 4px;
   background: #22262e;
   color: var(--twin-text);
   border: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-optics-alert {
@@ -726,22 +730,22 @@ body {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 5px 8px;
-  margin-top: 7px;
+  gap: 6px 8px;
+  margin-top: 8px;
   color: var(--twin-text-mut);
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
 }
 
 .twin-optics-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
+  font-size: var(--twin-fs-xs);
   text-align: right;
 }
 
 .twin-optics-table th,
 .twin-optics-table td {
-  padding: 2px 3px;
+  padding: 2px 4px;
   border-bottom: 1px solid var(--twin-line);
 }
 
@@ -861,7 +865,7 @@ body {
   background: var(--twin-panel);
   border: 1px solid var(--twin-line);
   font-family: var(--twin-mono);
-  font-size: 12px;
+  font-size: var(--twin-fs-md);
   color: var(--twin-text);
 }
 
@@ -883,7 +887,7 @@ body {
 }
 
 .twin-welcome-power {
-  font-size: 13px;
+  font-size: var(--twin-fs-lg);
   padding: 8px 22px;
   margin-bottom: 16px;
 }
@@ -918,7 +922,7 @@ body {
 
 .twin-tab-blurb {
   margin: 0;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--twin-line);
   color: var(--twin-text-mut);
   line-height: 1.45;
@@ -929,7 +933,7 @@ body {
 }
 
 .twin-tree-head {
-  padding: 9px 10px 7px;
+  padding: 8px 10px 6px;
   border-bottom: 1px solid var(--twin-line);
 }
 
