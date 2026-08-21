@@ -83,10 +83,10 @@ describe('drawDeviceUi', () => {
 
   it('a firmware update takes over the screen with progress and a power warning', () => {
     const { ctx, texts } = fakeCtx();
-    drawDeviceUi(ctx, state({ fw: { cam3: { state: 'writing', pct: 62 } } }));
+    drawDeviceUi(ctx, state({ fw: { cam3: { state: 'receiving', pct: 62 } } }));
     expect(texts()).toContain('FIRMWARE UPDATE');
     expect(texts()).toContain('DO NOT POWER OFF');
-    expect(texts()).toContain('CAM3  WRITING 62%');
+    expect(texts()).toContain('CAM3  RECEIVING 62%');
     expect(texts()).not.toContain('CAM2 PREVIEW · SIMULATED');
   });
 
