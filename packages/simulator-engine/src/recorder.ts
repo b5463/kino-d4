@@ -43,6 +43,10 @@ const CAM_FAULT_VALUES = [
   'no-vsync',
   'slow-uart',
   'crc-noise',
+  'af-fail',
+  'vcm-stuck',
+  'af-timeout',
+  'af-hunt',
 ] as const satisfies readonly CamFault[];
 
 const inEvent = z.object({ atMs: z.number(), kind: z.literal('in'), b64: z.string() }).passthrough();

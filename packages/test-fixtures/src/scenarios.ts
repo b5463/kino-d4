@@ -75,6 +75,19 @@ export interface ScenarioFlags {
   /** CAM3's VSYNC phase jumps to 31,000 µs — visible in the phase snapshot. */
   vsyncOffsetLarge: boolean;
 
+  // ---- power system (audit #57) ----
+
+  /** A USB charger is attached, feeding the pack at the seller-preferred
+   * 0.6 A. GET_POWER_STATUS reports charging; the Twin power model draws it. */
+  chargerConnected: boolean;
+  /** SW6106 light-load auto-shutdown (one-shot): the 5 V rail dies and the
+   * link drops. Threshold/timing are NEEDS_HARDWARE_VALIDATION — this
+   * injects the outcome, not the trigger condition. */
+  sw6106Shutdown: boolean;
+  /** One camera browns out during the next capture (one-shot): its channel
+   * power-cycles and the group comes back incomplete. */
+  cameraPowerTransient: boolean;
+
   // ---- transport hostility (audit #58) ----
 
   /** The next response frame is written twice (one-shot) — a retransmitted
@@ -97,7 +110,18 @@ export interface ScenarioFlags {
  * `offline`/`power-open` take the camera off the bus entirely; the rest
  * degrade a still-answering camera in a specific, narrow way.
  */
-export type CamFault = 'offline' | 'power-open' | 'sensor-missing' | 'no-vsync' | 'slow-uart' | 'crc-noise';
+export type CamFault =
+  | 'offline'
+  | 'power-open'
+  | 'sensor-missing'
+  | 'no-vsync'
+  | 'slow-uart'
+  | 'crc-noise'
+  // Autofocus faults (audit #55) — meaningful only on an AF sensor profile.
+  | 'af-fail' // every AF sweep ends failed
+  | 'vcm-stuck' // the lens never moves; AF fails, manual set NACKs
+  | 'af-timeout' // the sweep hangs, then reports failed
+  | 'af-hunt'; // AF oscillates before (eventually) locking
 
 export type ScenarioKey = keyof ScenarioFlags;
 
@@ -151,6 +175,10 @@ export const scenarios = {
   flashOverload: descriptor('flashOverload', 'FLASH OVERLOAD', false, 'the flash test reports a driver fault and a thermal flag'),
   nodeFwMismatch: descriptor('nodeFwMismatch', 'NODE FW MISMATCH', false, 'CAM4 reports firmware 0.0.9, capabilities note the mismatch'),
   vsyncOffsetLarge: descriptor('vsyncOffsetLarge', 'VSYNC OFFSET LARGE', false, "CAM3's VSYNC phase jumps to 31,000 us"),
+
+  chargerConnected: descriptor('chargerConnected', 'CHARGER CONNECTED', false, 'a USB charger feeds the pack at 0.6 A'),
+  sw6106Shutdown: descriptor('sw6106Shutdown', 'SW6106 SHUTDOWN', true, 'the boost converter shuts the 5 V rail down; the link dies'),
+  cameraPowerTransient: descriptor('cameraPowerTransient', 'CAM POWER TRANSIENT (NEXT)', true, 'one camera browns out during the next capture'),
 
   duplicateFrame: descriptor('duplicateFrame', 'DUPLICATE FRAME (NEXT)', true, 'the next response is written twice'),
   droppedByte: descriptor('droppedByte', 'DROPPED BYTE (NEXT)', true, 'one byte vanishes from the next response'),

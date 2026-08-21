@@ -16,7 +16,7 @@ Payload shapes are marked:
 0x10–0x13  Configuration      0x60–0x65  Firmware
 0x20–0x25  Modes / recipes    0x70–0x75  Media
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
-0x30–0x36  Camera             0xa0–0xaa  Network / Roll / upload queue
+0x30–0x37  Camera             0xa0–0xaa  Network / Roll / upload queue
 0x40–0x46  Diagnostics
 ```
 
@@ -103,7 +103,8 @@ Response (**typed**, `CapabilitiesResponse`):
     "cameraCount": 4,
     "wiggle": true, "quad": true, "gallery": true, "flashControl": true,
     "vsyncTelemetry": true, "phaseCalibration": true,
-    "xiaoProxyUpdate": true, "linkBench": true, "customSounds": true
+    "xiaoProxyUpdate": true, "linkBench": true, "customSounds": true,
+    "autofocus": false, "focusLock": false, "manualFocus": false
   },
   "limits": {
     "maxUartBaud": 3000000,
@@ -292,7 +293,7 @@ gets `BAD_SESSION`; a chunk past the announced size gets `BAD_OFFSET` **and abor
 (`click`, `cheap-digi`, `tiny-beep`, `mechanical`, `silent`) cannot be overwritten — `BAD_ID`.
 Deleting the currently selected shutter sound must fall back to a builtin and bump `configRevision`.
 
-### Camera — 0x30–0x36
+### Camera — 0x30–0x37
 
 | Cmd | Value | Payload |
 |---|---:|---|
@@ -303,6 +304,7 @@ Deleting the currently selected shutter sound must fall back to a builtin and bu
 | `CAMERA_PREVIEW` | `0x34` | → `{ "cam": "cam2" }` or `{}` for the configured viewfinder ← **BINARY** one JPEG frame. Timeout 4 s |
 | `CAMERA_CALIBRATE` | `0x35` | Action-dispatched, see below |
 | `CAMERA_PHASE` | `0x36` | Action-dispatched, see below. Gated by `phaseCalibration` |
+| `CAMERA_FOCUS` | `0x37` | Action-dispatched: `trigger` (AF sweep on every AF camera, replies with per-cam focus results), `lock` `{ locked }`, `set` `{ cam, position 0–255 }` (gated by `manualFocus`; `VCM_STUCK` when the lens cannot move), `mode` `{ mode: party-auto \| party-fixed \| manual }`, `store-fixed` (persists the current locked positions as the PARTY FIXED calibration; `NOT_LOCKED` when nothing holds a lock). Gated by `autofocus` — OV3660 firmware NACKs `UNSUPPORTED_COMMAND`. Continuous per-camera AF is deliberately not part of the contract. |
 
 **`CAMERA_CAPTURE` (0x33)** — `{ "action": "timing-test" }` runs one synchronized capture and returns
 **typed** `TimingResult` (see [Timing](#timing)). Any other payload answers **mock** `{ "ok": true }`.

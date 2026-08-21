@@ -10,6 +10,7 @@ import { TimingBench } from './TimingBench';
 import type { TimingStats } from './TimingBench';
 import { PhasePanel } from './PhasePanel';
 import { LinkBenchPanel } from './LinkBenchPanel';
+import { FlashTimingPanel } from './FlashTimingPanel';
 import { useDeviceStore } from '../../state/deviceStore';
 import { useConnectionStore } from '../../state/connectionStore';
 import { useLogStore } from '../../state/logStore';
@@ -183,6 +184,7 @@ export function DeveloperPage() {
 
       <PhasePanel />
       <TimingBench />
+      <FlashTimingPanel />
       <LinkBenchPanel />
       <BurnInPanel />
 

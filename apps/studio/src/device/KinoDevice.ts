@@ -34,7 +34,7 @@ import type {
   TargetId,
 } from '@kino/kdp';
 import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
-import type { TimingResult } from '@kino/kdp';
+import type { CameraFocus, FocusMode, TimingResult } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
 import type {
   NetworkListResponse,
@@ -215,6 +215,28 @@ export class KinoDevice {
 
   calibrationBlink(cam: CamId) {
     return this.client.request(Cmd.CAMERA_CALIBRATE, { action: 'order-blink', cam });
+  }
+
+  // ---- focus (audit #55, capability `autofocus`) ----
+
+  focusTrigger() {
+    return this.client.request<{ cams: Record<string, CameraFocus> }>(Cmd.CAMERA_FOCUS, { action: 'trigger' }, 5_000);
+  }
+
+  focusLock(locked: boolean) {
+    return this.client.request<{ ok: boolean; locked: boolean }>(Cmd.CAMERA_FOCUS, { action: 'lock', locked });
+  }
+
+  focusSet(cam: CamId, position: number) {
+    return this.client.request<{ ok: boolean; position: number }>(Cmd.CAMERA_FOCUS, { action: 'set', cam, position });
+  }
+
+  focusMode(mode: FocusMode) {
+    return this.client.request<{ ok: boolean; mode: FocusMode }>(Cmd.CAMERA_FOCUS, { action: 'mode', mode });
+  }
+
+  focusStoreFixed() {
+    return this.client.request<{ ok: boolean; stored: CamId[] }>(Cmd.CAMERA_FOCUS, { action: 'store-fixed' });
   }
 
   saveCameraOrder(order: [CamId, CamId, CamId, CamId]) {

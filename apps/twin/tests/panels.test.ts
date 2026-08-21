@@ -26,6 +26,8 @@ function snapshot(): TwinSnapshot {
           gpioSkewUs: index * 100,
           fault: null,
           updating: false,
+    exposureUs: 16_667,
+    focus: null,
         },
       ]),
     ) as TwinSnapshot['cams'],

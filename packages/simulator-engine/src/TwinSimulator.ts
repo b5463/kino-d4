@@ -205,10 +205,17 @@ export class TwinSimulator {
   private samplePower(): void {
     const activity = this.deriveActivity();
     const nowMs = this.now();
+    // audit #57: one battery truth. The device's own (slowly draining)
+    // battery voltage seeds the engine's state of charge through the same
+    // linear map GET_POWER_STATUS uses, so the protocol answer and this
+    // sample can never tell two different stories about the pack.
+    const batteryV = this.device.twinSnapshot().batteryV;
+    const soc = Math.min(1, Math.max(0, (batteryV - 3.3) / (4.2 - 3.3)));
     const sample = computePower(this.profile.power, this.profile.power.loads, activity, {
       overAsinceMs: this.overAsinceMs,
       nowMs,
       fuseBlown: this.fuseBlown,
+      soc,
     });
 
     // computePower only evaluates the over-3A dwell timer and the fuse
@@ -262,7 +269,9 @@ export class TwinSimulator {
       uartActive,
       flashA,
       wifiUploading: snap.uploads.uploading > 0,
-      chargingA: 0,
+      // audit #57: the charger is a device state now — the scenario models a
+      // USB charger attached at the seller-preferred 0.6 A.
+      chargingA: snap.scenarios.chargerConnected ? 0.6 : 0,
     };
   }
 

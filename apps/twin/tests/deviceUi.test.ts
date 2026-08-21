@@ -15,7 +15,10 @@ function fakeCtx(): { ctx: Ctx2d; texts: () => string[] } {
 }
 
 function snapshot(overrides: Partial<TwinSnapshot> = {}): TwinSnapshot {
-  const cam = { fw: '1.2.0', phaseUs: 0, uartErrors: 0, jpegKB: 400, durationMs: 0, gpioSkewUs: 3, fault: null, updating: false };
+  const cam = {
+    fw: '1.2.0', phaseUs: 0, uartErrors: 0, jpegKB: 400, durationMs: 0, gpioSkewUs: 3,
+    fault: null, updating: false, exposureUs: 16_667, focus: null,
+  };
   return {
     sessionId: 's1', maintenance: false,
     batteryV: 3.98, sdPresent: true, sdFreeMB: 28_000,

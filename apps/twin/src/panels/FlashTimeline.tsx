@@ -17,9 +17,12 @@ export function FlashTimeline() {
   if (!snapshot) return <p className="twin-panel-empty">POWER ON for flash timing.</p>;
 
   const phases = Object.fromEntries(CAM_IDS.map((cam) => [cam, snapshot.cams[cam].phaseUs])) as Record<(typeof CAM_IDS)[number], number>;
-  const readoutUs = snapshot.frameIntervalUs;
+  // audit #56: each camera's own exposure window, not the whole frame — the
+  // window a flash pulse must cover is the time the sensor integrates, and
+  // it is SIMULATED until real sensor timing is measured.
+  const exposures = Object.fromEntries(CAM_IDS.map((cam) => [cam, snapshot.cams[cam].exposureUs])) as Record<(typeof CAM_IDS)[number], number>;
   const frameUs = snapshot.frameIntervalUs;
-  const risk = flashBandRisk(phases, frameUs, readoutUs, delayMs * 1_000, durationMs * 1_000);
+  const risk = flashBandRisk(phases, frameUs, exposures, delayMs * 1_000, durationMs * 1_000);
   const x = (us: number) => LEFT + ((us % frameUs) / frameUs) * PLOT_W;
 
   return (
@@ -34,10 +37,11 @@ export function FlashTimeline() {
           {CAM_IDS.map((cam, index) => {
             const y = index * LANE_H;
             const phaseX = x(snapshot.cams[cam].phaseUs);
-            // The readout window is a wheel: it wraps at the end of the frame
-            // interval. Draw the tail segment, then the wrapped head.
-            const tailW = LEFT + PLOT_W - phaseX;
-            const headW = PLOT_W - tailW;
+            // The exposure window is a wheel: it wraps at the end of the
+            // frame interval. Draw the tail segment, then the wrapped head.
+            const windowW = Math.min(PLOT_W, (exposures[cam] / frameUs) * PLOT_W);
+            const tailW = Math.min(windowW, LEFT + PLOT_W - phaseX);
+            const headW = windowW - tailW;
             return (
               <g key={cam}>
                 <text x={2} y={y + 21}>{cam.toUpperCase()}</text>
@@ -70,7 +74,9 @@ export function FlashTimeline() {
           })}
         </ul>
       </div>
-      <p className="twin-panel-note">READOUT {readoutUs} µs · ESTIMATED · yellow = flash pulse, blue tick = VSYNC</p>
+      <p className="twin-panel-note">
+        EXPOSURE ~{Math.round(exposures.cam1 / 100) / 10} ms · SIMULATED · yellow = flash pulse, grey = exposure window, blue tick = VSYNC
+      </p>
     </section>
   );
 }

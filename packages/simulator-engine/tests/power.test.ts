@@ -126,6 +126,41 @@ describe('computePower', () => {
   });
 });
 
+describe('computePower — audit #57 additions', () => {
+  it('the 5 V bus droops gently past 3 A instead of holding a cliff to 6 A', () => {
+    const idle = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.idle);
+    expect(idle.busV).toBe(5);
+
+    const heavy = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.worstOverlap);
+    expect(heavy.batteryA).toBeGreaterThan(POWER.battery.safeContinuousA);
+    expect(heavy.busV).toBeLessThan(5);
+    expect(heavy.busV).toBeGreaterThan(4.7); // droop, not collapse
+    expect(heavy.warnings).not.toContain('BUS_SAG');
+  });
+
+  it('flags demand past the converter class (SW6106 18 W) as its own warning', () => {
+    // Overdrive a real activity-mapped load: 3.7 A on the 5 V bus = 18.5 W,
+    // past the 18 W class. On this pack (3.7 V nominal through an 0.85 boost)
+    // 18 W bus and 6 A battery are nearly the same wall, so the class warning
+    // legitimately co-occurs with the battery-side critical — the assertion
+    // is that the converter's own limit is named, not buried in the other.
+    const loads: PowerProfile['loads'] = { ...POWER.loads, p4Display: { amps: 3.7, tag: 'ESTIMATED' } };
+    const sample = computePower(POWER, loads, ACTIVITY_PRESETS.idle, { overAsinceMs: null, nowMs: 0, soc: 1 });
+    expect(sample.busA).toBeCloseTo(3.7, 6);
+    expect(sample.warnings).toContain('OVER_CONVERTER_CLASS');
+  });
+
+  it('threads a live state of charge: a drained pack reads lower than the fixed 80%', () => {
+    const at80 = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.idle);
+    const drained = computePower(POWER, POWER.loads, ACTIVITY_PRESETS.idle, {
+      overAsinceMs: null,
+      nowMs: 0,
+      soc: 0.15,
+    });
+    expect(drained.batteryV).toBeLessThan(at80.batteryV);
+  });
+});
+
 describe('thermalStep', () => {
   const allCool: Record<ThermalZone, ThermalState> = {
     battery: 'COOL',

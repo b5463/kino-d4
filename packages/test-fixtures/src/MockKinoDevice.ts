@@ -7,8 +7,10 @@ import { FrameDecoder, encodeFrame, encodeJson, decodeJson } from '@kino/kdp';
 import type { Frame } from '@kino/kdp';
 import type {
   CamId,
+  CameraFocus,
   CameraInfo,
   CamCalibration,
+  FocusMode,
   KinoConfig,
   LogEntry,
   LogSource,
@@ -181,6 +183,13 @@ interface CamModel {
   rebootUntil: number;
   /** KINO Twin §20 per-camera fault, independent of the device-wide ScenarioFlags. */
   fault: CamFault | null;
+  /** Capability-driven sensor identity (audit #55): behavior keys off this,
+   * never off a global assumption. OV3660 has no focus surface at all. */
+  sensorProfile: 'OV3660' | 'OV5640_AF';
+  /** Null on OV3660 — no lens to drive, nothing to report. */
+  focus: CameraFocus | null;
+  /** SIMULATED exposure window (audit #56) until real sensor timing exists. */
+  exposureUs: number;
 }
 
 /** Saved Wi-Fi network as the device keeps it (05 §13). */
@@ -373,8 +382,36 @@ export class MockKinoDevice implements MockDeviceLike {
       updating: false,
       rebootUntil: 0,
       fault: null,
+      sensorProfile: 'OV3660',
+      focus: null,
+      exposureUs: 16_667 + this.randInt(-400, 400),
     });
     return { cam1: cam(), cam2: cam(), cam3: cam(), cam4: cam() };
+  }
+
+  /**
+   * Swap one camera node's sensor profile (audit #55). OV5640_AF grows a
+   * focus surface; OV3660 has none. The device-level autofocus capability is
+   * derived, never assumed — one AF module on the bench is enough to light
+   * the surface for that camera only.
+   */
+  setSensorProfile(id: CamId, profile: 'OV3660' | 'OV5640_AF'): void {
+    const cam = this.cams[id];
+    cam.sensorProfile = profile;
+    cam.focus =
+      profile === 'OV5640_AF'
+        ? { mode: this.config.wiggle.focusMode ?? 'party-auto', state: 'idle', vcmPosition: null, estimatedDistanceM: null, locked: false }
+        : null;
+    this.log('P4', `${id.toUpperCase()} sensor profile: ${profile}`);
+    this.scenarioCb?.();
+  }
+
+  private hasAutofocus(): boolean {
+    return CAM_IDS.some((id) => this.cams[id].sensorProfile === 'OV5640_AF');
+  }
+
+  private afCams(): CamId[] {
+    return CAM_IDS.filter((id) => this.cams[id].sensorProfile === 'OV5640_AF' && !this.busUnreachable(id));
   }
 
   // ---- transport binding ----
@@ -464,6 +501,16 @@ export class MockKinoDevice implements MockDeviceLike {
       this.dropLink();
       this.scenarioCb?.();
     }
+    // SW6106 light-load auto-shutdown: same dead-rail outcome as the fuse,
+    // but a one-shot event rather than persisted damage — the converter
+    // restarts on the next power cycle. Threshold and timing are
+    // NEEDS_HARDWARE_VALIDATION; only the outcome is injectable.
+    if (key === 'sw6106Shutdown' && value) {
+      this.scenarios.sw6106Shutdown = false;
+      this.log('PWR', 'SW6106 light-load shutdown — 5V rail off');
+      this.dropLink();
+      this.scenarioCb?.();
+    }
   }
 
   /** Boot/session ID of the current run (04 §17). Changes on every reboot. */
@@ -518,6 +565,8 @@ export class MockKinoDevice implements MockDeviceLike {
         gpioSkewUs: cam.gpioSkewUs,
         fault: cam.fault,
         updating: cam.updating,
+        exposureUs: cam.exposureUs,
+        focus: cam.focus ? { ...cam.focus } : null,
       };
     };
     // Same predicate NETWORK_STATUS answers with (handleNetwork, below).
@@ -732,7 +781,177 @@ export class MockKinoDevice implements MockDeviceLike {
     this.log(src, msg);
   }
 
+  /**
+   * CAMERA_FOCUS (audit #55). Requires the autofocus capability — firmware
+   * without an AF sensor NACKs UNSUPPORTED_COMMAND, exactly like any other
+   * capability-gated group. Per-cam AF faults shape every outcome.
+   */
+  private handleCameraFocus(frame: Frame) {
+    if (!this.hasAutofocus()) {
+      this.respondError(frame, 'UNSUPPORTED_COMMAND', 'No autofocus camera is fitted');
+      return;
+    }
+    const req = decodeJson<{ action: string; cam?: CamId; position?: number; locked?: boolean; mode?: FocusMode }>(
+      frame.payload,
+    );
+
+    if (req.action === 'trigger') {
+      const cams = this.afCams();
+      if (cams.length === 0) {
+        this.respondError(frame, 'CAM_UNREACHABLE', 'No reachable autofocus camera');
+        return;
+      }
+      let pending = cams.length;
+      for (const id of cams) {
+        const cam = this.cams[id];
+        const focus = cam.focus!;
+        focus.state = 'searching';
+        focus.locked = false;
+        this.emitTelemetry({ t: 'af', cam: id, state: 'searching' });
+        const settle = () => {
+          if (--pending === 0) {
+            this.respond(frame, {
+              cams: Object.fromEntries(cams.map((c) => [c, { ...this.cams[c].focus! }])),
+            });
+          }
+        };
+        const fault = cam.fault;
+        if (fault === 'af-timeout') {
+          this.after(900, () => {
+            focus.state = 'failed';
+            this.log(('C' + id.slice(-1)) as LogSource, 'AF timeout — no lock');
+            this.emitTelemetry({ t: 'af', cam: id, state: 'failed' });
+            settle();
+          });
+        } else if (fault === 'af-fail' || fault === 'vcm-stuck') {
+          this.after(this.randInt(250, 400), () => {
+            focus.state = 'failed';
+            this.log(('C' + id.slice(-1)) as LogSource, fault === 'vcm-stuck' ? 'VCM stuck — lens did not move' : 'AF failed to converge');
+            this.emitTelemetry({ t: 'af', cam: id, state: 'failed' });
+            settle();
+          });
+        } else if (fault === 'af-hunt') {
+          // Oscillate twice, then lock — the party-light hunting pattern.
+          this.after(250, () => this.emitTelemetry({ t: 'af', cam: id, state: 'locked' }));
+          this.after(450, () => this.emitTelemetry({ t: 'af', cam: id, state: 'searching' }));
+          this.after(800, () => {
+            focus.state = 'locked';
+            focus.locked = true;
+            focus.vcmPosition = this.randInt(120, 240);
+            focus.estimatedDistanceM = Math.round(this.rand(0.8, 3.0) * 10) / 10;
+            this.log(('C' + id.slice(-1)) as LogSource, 'AF locked after hunting');
+            this.emitTelemetry({ t: 'af', cam: id, state: 'locked' });
+            settle();
+          });
+        } else {
+          this.after(this.randInt(250, 450), () => {
+            focus.state = 'locked';
+            focus.locked = true;
+            focus.vcmPosition = this.randInt(120, 240);
+            focus.estimatedDistanceM = Math.round(this.rand(0.8, 3.0) * 10) / 10;
+            this.emitTelemetry({ t: 'af', cam: id, state: 'locked' });
+            settle();
+          });
+        }
+      }
+      return;
+    }
+
+    if (req.action === 'lock') {
+      for (const id of this.afCams()) {
+        const focus = this.cams[id].focus!;
+        focus.locked = req.locked !== false;
+        if (!focus.locked && focus.state === 'locked') focus.state = 'idle';
+      }
+      this.respond(frame, { ok: true, locked: req.locked !== false });
+      return;
+    }
+
+    if (req.action === 'set') {
+      const id = req.cam;
+      if (!id || !CAM_IDS.includes(id)) {
+        this.respondError(frame, 'INVALID_ARGUMENT', 'set requires a cam');
+        return;
+      }
+      const cam = this.cams[id];
+      if (cam.sensorProfile !== 'OV5640_AF' || !cam.focus) {
+        this.respondError(frame, 'UNSUPPORTED_COMMAND', `${id.toUpperCase()} has no focus drive`);
+        return;
+      }
+      if (cam.fault === 'vcm-stuck') {
+        this.respondError(frame, 'VCM_STUCK', `${id.toUpperCase()} lens does not move`);
+        return;
+      }
+      const position = Math.max(0, Math.min(255, Math.round(Number(req.position) || 0)));
+      cam.focus.mode = 'manual';
+      cam.focus.state = 'locked';
+      cam.focus.locked = true;
+      cam.focus.vcmPosition = position;
+      cam.focus.estimatedDistanceM = null; // a set position is a position, not a measured distance
+      this.emitTelemetry({ t: 'af', cam: id, state: 'locked' });
+      this.respond(frame, { ok: true, cam: id, position });
+      return;
+    }
+
+    if (req.action === 'mode') {
+      const mode = req.mode;
+      if (mode !== 'party-auto' && mode !== 'party-fixed' && mode !== 'manual') {
+        this.respondError(frame, 'INVALID_ARGUMENT', 'mode must be party-auto | party-fixed | manual');
+        return;
+      }
+      this.config.wiggle.focusMode = mode;
+      for (const id of this.afCams()) {
+        const cam = this.cams[id];
+        cam.focus!.mode = mode;
+        if (mode === 'party-fixed') {
+          const stored = this.calibration.cams[id]?.focusPosition;
+          if (typeof stored === 'number') {
+            cam.focus!.state = 'locked';
+            cam.focus!.locked = true;
+            cam.focus!.vcmPosition = stored;
+          } else {
+            cam.focus!.state = 'idle'; // nothing stored yet — store-fixed first
+            cam.focus!.locked = false;
+          }
+        }
+      }
+      this.configRevision++;
+      this.respond(frame, { ok: true, mode });
+      return;
+    }
+
+    if (req.action === 'store-fixed') {
+      const stored: CamId[] = [];
+      for (const id of this.afCams()) {
+        const focus = this.cams[id].focus!;
+        if (focus.state === 'locked' && focus.vcmPosition !== null) {
+          this.calibration.cams[id].focusPosition = focus.vcmPosition;
+          stored.push(id);
+        }
+      }
+      if (stored.length === 0) {
+        this.respondError(frame, 'NOT_LOCKED', 'No camera holds a locked focus to store');
+        return;
+      }
+      this.log('P4', `PARTY FIXED positions stored for ${stored.map((c) => c.toUpperCase()).join(' ')}`);
+      this.respond(frame, { ok: true, stored });
+      return;
+    }
+
+    this.respondError(frame, 'INVALID_ARGUMENT', `Unknown focus action "${String(req.action)}"`);
+  }
+
   private simulateCapture() {
+    // audit #57 cameraPowerTransient: one channel browns out as the group
+    // draws capture current — the camera power-cycles mid-shot and the set
+    // comes back incomplete, exactly the §18 partial-group behavior.
+    if (this.scenarios.cameraPowerTransient) {
+      this.scenarios.cameraPowerTransient = false;
+      const victim = this.pick([...CAM_IDS]);
+      this.cams[victim].rebootUntil = this.now() + 1500;
+      this.log('PWR', `${victim.toUpperCase()} channel brownout during capture — power-cycling`);
+      this.scenarioCb?.();
+    }
     const captureId = this.captureCounter;
     const n = String(this.captureCounter++).padStart(4, '0');
     const mode = this.config.mode;
@@ -749,6 +968,31 @@ export class MockKinoDevice implements MockDeviceLike {
     // right after a capture draws current.
     if (this.scenarios.batterySag) this.batterySagUntil = this.now() + 700;
     let delay = 60;
+    // PARTY AUTO (audit #55): focus → lock → arm → capture. The group waits
+    // for one AF pass; a camera whose AF fails still shoots (soft frame beats
+    // no frame at a party), it just reports failed. PARTY FIXED and MANUAL
+    // add no delay — the lens is already where it was told to be.
+    if (this.hasAutofocus() && (this.config.wiggle.focusMode ?? 'party-auto') === 'party-auto') {
+      for (const id of this.afCams()) {
+        const focus = this.cams[id].focus!;
+        focus.state = 'searching';
+        focus.locked = false;
+        this.emitTelemetry({ t: 'af', cam: id, state: 'searching' });
+        const failing = focus && ['af-fail', 'vcm-stuck', 'af-timeout'].includes(this.cams[id].fault ?? '');
+        this.after(300, () => {
+          if (failing) {
+            focus.state = 'failed';
+          } else {
+            focus.state = 'locked';
+            focus.locked = true;
+            focus.vcmPosition = this.randInt(120, 240);
+            focus.estimatedDistanceM = Math.round(this.rand(0.8, 3.0) * 10) / 10;
+          }
+          this.emitTelemetry({ t: 'af', cam: id, state: focus.state });
+        });
+      }
+      delay += 350;
+    }
     let skipped = 0;
     for (const id of CAM_IDS) {
       const cam = this.cams[id];
@@ -1009,8 +1253,9 @@ export class MockKinoDevice implements MockDeviceLike {
     return {
       id,
       online: !offline && !rebooting,
-      sensor: sensorMissing ? null : 'OV3660',
+      sensor: sensorMissing ? null : cam.sensorProfile === 'OV5640_AF' ? 'OV5640' : 'OV3660',
       sensorDetected: !offline && !rebooting && !sensorMissing,
+      ...(cam.focus ? { focus: { ...cam.focus } } : {}),
       firmware: this.camFirmware(id),
       state: offline
         ? 'offline'
@@ -1215,6 +1460,11 @@ export class MockKinoDevice implements MockDeviceLike {
           xiaoProxyUpdate: !legacy,
           linkBench: !legacy,
           customSounds: !legacy,
+          // OV5640_AF capability group (audit #55): derived from the actual
+          // per-camera sensor profiles, never assumed from a model name.
+          autofocus: !legacy && this.hasAutofocus(),
+          focusLock: !legacy && this.hasAutofocus(),
+          manualFocus: !legacy && this.hasAutofocus(),
           // 04 §7 Network/Roll. Same predicate the dispatcher gates on, so
           // what the device claims and what it answers cannot drift apart.
           rollUpload: this.supportsNetworkRoll(),
@@ -1265,11 +1515,13 @@ export class MockKinoDevice implements MockDeviceLike {
         // further 0.25 V for a moment right after a capture draws current.
         else if (this.scenarios.batterySag) v = this.now() < this.batterySagUntil ? 3.3 : 3.55;
         const pct = Math.max(0, Math.min(100, Math.round(((v - 3.3) / (4.2 - 3.3)) * 100)));
+        const charging = this.scenarios.chargerConnected;
         this.respond(frame, {
           batteryV: Math.round(v * 100) / 100,
           batteryPct: pct,
-          state: 'battery',
-          charging: false,
+          state: charging ? 'usb' : 'battery',
+          charging,
+          chargingA: charging ? 0.6 : 0,
           fuse: this.scenarios.fuseBlown ? 'blown' : 'ok',
         });
         return;
@@ -1536,6 +1788,10 @@ export class MockKinoDevice implements MockDeviceLike {
         void renderPreviewFrame(Number(camId.slice(-1)) - 1, this.now() - this.bootedAt)
           .then((bytes) => this.respondBytes(frame, bytes))
           .catch((err) => this.respondError(frame, 'PREVIEW_FAILED', err instanceof Error ? err.message : String(err)));
+        return;
+      }
+      case Cmd.CAMERA_FOCUS: {
+        this.handleCameraFocus(frame);
         return;
       }
       case Cmd.CAMERA_CAPTURE: {
