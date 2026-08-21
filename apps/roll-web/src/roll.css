@@ -1,50 +1,57 @@
 /* Roll web — guest-facing theme.
    Studio keeps the silver-blue utility chrome; a guest opening a QR link is
-   looking at photos, so this app runs dark and quiet: the photos carry the
-   page, the chrome recedes. Loaded after tokens.css + components.css, this
-   file re-skins the shared kino-* primitives by redefining the tokens they
-   read — behavior, markup and ARIA stay identical.
+   at a party looking at photos. This app runs like a darkroom: warm
+   near-black, one amber safelight accent, photos edge to edge. The roll's
+   date line is set like the orange date-burn on a film print — that is the
+   one decorated element; everything else stays quiet. Loaded after
+   tokens.css + components.css, this file re-skins the shared kino-*
+   primitives by redefining the tokens they read — behavior, markup and
+   ARIA stay identical.
 
    Contrast (WCAG AA) measured on the real backgrounds:
-   --text     #ecf1f6 on #101418 canvas ≈ 15.6:1
-   --text-mut #a6b2bf on #181d23 panel  ≈ 7.5:1
-   --link     #8ab8f8 on #101418        ≈ 8.6:1
-   white on --grad-primary flat #2f70c9 ≈ 4.9:1 (documented in tokens.css) */
+   --text     #f2ede8 on #131110 canvas ≈ 16.2:1
+   --text-mut #b3a99f on #1c1917 panel  ≈ 8.1:1
+   --accent   #f0a13c on #131110        ≈ 8.9:1
+   #1a1206 text on #f0a13c primary fill ≈ 8.3:1 */
 
 :root {
-  --canvas: #101418;
-  --panel: #181d23;
-  --panel-inset: #12161b;
-  --well: #1d242b;
+  --canvas: #131110;
+  --panel: #1c1917;
+  --panel-inset: #171412;
+  --well: #211d1a;
   --well-dark: #000000;
 
-  --border-dark: #39434e;
-  --border-mid: #232b33;
-  --border-light: #1c2229;
-  --line: #232b33;
+  --border-dark: #453e38;
+  --border-mid: #2a2523;
+  --border-light: #211d1a;
+  --line: #2a2523;
   --hilite: rgb(255 255 255 / 4%);
 
-  --text: #ecf1f6;
-  --text-mut: #a6b2bf;
-  --text-faint: #8b98a6;
-  --text-on-dark: #b9c4d1;
+  --text: #f2ede8;
+  --text-mut: #b3a99f;
+  --text-faint: #948a80;
+  --text-on-dark: #cbc2b8;
 
-  --blue: #4f8fe6;
-  --blue-dark: #3a7bd0;
-  --link: #8ab8f8;
-  --green-dark: #58c05c;
-  --orange-dark: #f0a659;
+  /* The safelight: one amber accent for live state, links, hearts. */
+  --accent: #f0a13c;
+  --accent-dim: #c47f27;
+
+  --blue: var(--accent);
+  --blue-dark: var(--accent-dim);
+  --link: var(--accent);
+  --green-dark: var(--accent); /* LIVE lamp burns amber; symbol + label, never colour alone */
+  --orange-dark: var(--accent);
   --red-dark: #f08a8a;
 
-  --focus: #8ab8f8;
+  --focus: var(--accent);
   --focus-ring: 0 0 0 1px var(--canvas);
 
   /* Flat fills where Studio uses glossy gradients. */
-  --grad-btn: #232b33;
-  --grad-btn-hover: #2b343e;
-  --grad-btn-down: #1c2229;
-  --grad-primary: #2f70c9;
-  --grad-primary-hover: #3a7bd0;
+  --grad-btn: #262120;
+  --grad-btn-hover: #2f2927;
+  --grad-btn-down: #1c1917;
+  --grad-primary: var(--accent);
+  --grad-primary-hover: #f5b45e;
   --grad-red: #b93232;
   --grad-head: transparent;
   --grad-toolbar: transparent;
@@ -95,8 +102,11 @@ a { color: var(--link); text-underline-offset: 2px; }
 }
 
 .kino-button--sm { min-height: 36px; padding: 0 12px; font-size: 13px; }
-.kino-button--primary { border-color: transparent; }
+/* Amber fill carries dark text, not the white components.css assumes. */
+.kino-button--primary { border-color: transparent; color: #1a1206; font-weight: 700; }
 .kino-button--danger-solid { border-color: transparent; }
+/* A pressed toggle (the heart) glows amber. */
+.kino-button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent-dim); }
 
 .kino-button:hover:not(:disabled),
 button:hover:not(:disabled),
@@ -146,7 +156,7 @@ h2 { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: v
 /* The feed page owns the viewport: header stays put, only photos scroll. */
 .roll-shell--feed { display: flex; flex-direction: column; height: 100dvh; padding-bottom: 0; }
 
-.roll-brand { color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: 0.22em; }
+.roll-brand { color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: 0.28em; }
 
 .roll-head {
   display: flex;
@@ -156,7 +166,18 @@ h2 { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: v
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
-.roll-subhead { color: var(--text-mut); font-size: 13px; }
+.roll-head h1 { font-size: clamp(28px, 7vw, 40px); font-weight: 800; letter-spacing: -0.02em; }
+
+/* The date-burn: photo count and date set like the amber datestamp film
+   labs printed onto the frame. This is the page's one decorated element. */
+.roll-subhead {
+  margin-top: 4px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 .roll-alert {
   padding: 10px 12px;
@@ -169,12 +190,12 @@ h2 { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: v
   display: inline-block;
   margin-top: 6px;
   padding: 4px 10px;
-  border: 1px solid #6e5526;
+  border: 1px solid var(--accent-dim);
   border-radius: 999px;
-  background: #2a2210;
-  color: #eecb84;
+  color: var(--accent);
+  font-family: var(--mono);
   font-size: 12px;
-  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 /* ---- guest feed: edge-to-edge photo grid, no frame around it ---- */
