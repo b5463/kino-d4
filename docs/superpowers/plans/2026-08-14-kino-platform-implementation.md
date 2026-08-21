@@ -1241,7 +1241,7 @@ export function wiggleSequence(frameCount: number, loop: LoopMode, direction: 'l
 - `ai-enhance` (03§20): implement the job registration + interface only; handler returns `{ skipped: 'AI_ENHANCE_NOT_CONFIGURED' }` and writes no assets. The interface commits to the rules: input = original frames; output roles `enhanced-still`/`enhanced-wiggle`; never replaces originals; wiggle-safe ops list documented in the handler comment (mild denoise, JPEG cleanup, restrained deblur, 1.5–2× upscale, preserve grain; no face reconstruction).
 - `purge-trash`: repeatable job (daily): hard-delete captures where `deletedAt < now() - 7 days` — delete asset objects, then rows, audit event per purge.
 
-- [ ] **Steps 1–5: failing test (recap produces playable MP4 with ≥ captureCount segments — probe with ffprobe; purge removes objects + rows; ai-enhance no-ops cleanly) → implement → PASS → commit** — `feat(worker): recap render, purge, ai-enhance stub`
+- [x] **Steps 1–5: failing test (recap produces playable MP4 with ≥ captureCount segments — probe with ffprobe; purge removes objects + rows; ai-enhance no-ops cleanly) → implement → PASS → commit** — `feat(worker): recap render, purge, ai-enhance stub`
 
 ---
 

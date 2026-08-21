@@ -57,8 +57,19 @@ export const STILL_ROLE = 'kino-still';
  */
 export const WORKER_STILL_NAME = 'still.webp';
 
+/**
+ * The columns the source-frame rule actually reads.
+ *
+ * Narrower than `CaptureRow` because Task 25's roll-scoped jobs select a
+ * different, smaller set of columns — a recap reads dozens of captures and has no
+ * use for each one's timing document — and they need the same rule. A structural
+ * type is what lets both callers pass what they have without either widening its
+ * query or the rule inventing a second version of itself.
+ */
+export type CaptureIdentity = Pick<CaptureRow, 'id' | 'rollId' | 'frameCount'>;
+
 /** The key `generate-gallery-still` writes its own output to, for this capture. */
-export function workerStillKey(capture: CaptureRow): string {
+export function workerStillKey(capture: CaptureIdentity): string {
   return derivedCaptureKey(capture.rollId, capture.id, WORKER_STILL_NAME);
 }
 
@@ -192,7 +203,7 @@ export interface StillSource {
  *    the tile blank forever over one lost upload. Ties break towards the lower
  *    index, so the choice is deterministic.
  */
-export function stillSource(capture: CaptureRow, rows: readonly AssetRow[]): StillSource {
+export function stillSource(capture: CaptureIdentity, rows: readonly AssetRow[]): StillSource {
   const ownKey = workerStillKey(capture);
   const uploaded = rows.find(
     (row) => row.role === STILL_ROLE && row.status === 'ready' && row.objectKey !== ownKey,

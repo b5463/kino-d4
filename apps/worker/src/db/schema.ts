@@ -117,3 +117,97 @@ export const assets = pgTable(
     unique('assets_capture_role_frame').on(t.captureId, t.role, t.frameIndex).nullsNotDistinct(),
   ],
 );
+
+/* ------------------------------------------------- the roll-scoped tables -- */
+
+/**
+ * The roll, as the recap reads it. **Read-only from here**: a worker never
+ * changes a roll's title, status or privacy — those are the host's, set through
+ * the API.
+ *
+ * Only the two columns the recap's title card needs (03 §21) plus the id, so this
+ * mirror stays as small as the thing it is for.
+ */
+export const rolls = pgTable('rolls', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+/**
+ * The audit trail (05 §5). A worker appends and never reads: `purge-trash` is the
+ * one job in the platform that destroys media, and 03 §11's "delete is
+ * destructive" is only accountable if each destruction leaves a record.
+ *
+ * `roll_id` is nullable in the API's schema and stays that way here; a purge
+ * always has one, because it purges a capture that belonged to a roll.
+ */
+export const auditEvents = pgTable('audit_events', {
+  id: text('id').primaryKey(),
+  rollId: text('roll_id'),
+  actor: text('actor').notNull(), // 'system' for anything a worker did
+  action: text('action').notNull(),
+  target: text('target'),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Guest hearts (03 §18). Present for exactly one reason: `reactions.capture_id`
+ * references `captures.id`, so a purge that did not clear them could not delete
+ * the capture row. Never written here.
+ */
+export const reactions = pgTable('reactions', {
+  id: text('id').primaryKey(),
+  captureId: text('capture_id').notNull(),
+  guestId: text('guest_id').notNull(),
+  kind: text('kind').notNull(),
+});
+
+/**
+ * The export job rows (03 §25). Task 21's API claims them `queued`; this
+ * workspace is what moves them off it — `running`, then `done` once the ZIP is
+ * durable, or `failed`.
+ *
+ * Mirrored rather than imported, for the reason at the top of this file, and
+ * checked the same way: `tests/rollJobs.test.ts` drives these rows against the
+ * real migrated database.
+ */
+export const exportJobs = pgTable(
+  'export_jobs',
+  {
+    id: text('id').primaryKey(),
+    rollId: text('roll_id').notNull(),
+    status: text('status').notNull(),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    /**
+     * One live export per roll. Declared so drizzle's picture matches the
+     * database's; the API's `claimExportJob` is what relies on it, and this
+     * workspace is what *frees* it by moving a row to `done` or `failed`.
+     */
+    uniqueIndex('export_jobs_roll_live')
+      .on(t.rollId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+  ],
+);
+
+/** The recap job rows (03 §21) — the same contract as `exportJobs`, own table. */
+export const recapJobs = pgTable(
+  'recap_jobs',
+  {
+    id: text('id').primaryKey(),
+    rollId: text('roll_id').notNull(),
+    status: text('status').notNull(),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('recap_jobs_roll_live')
+      .on(t.rollId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+  ],
+);

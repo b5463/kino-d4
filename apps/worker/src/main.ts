@@ -1,7 +1,9 @@
 import { loadWorkerConfig } from './config';
 import { createJobRuntime } from './context';
-import { registerImageHandlers } from './jobs';
-import { configureQueue } from './queue';
+import { registerImageHandlers, registerRollHandlers } from './jobs';
+import { createEraser } from './storage/eraser';
+import { purgeTrash, PURGE_CRON } from './jobs/purgeTrash';
+import { configureQueue, jobOptionsFor } from './queue';
 
 /**
  * The worker process.
@@ -13,24 +15,36 @@ import { configureQueue } from './queue';
  * affect originals" is much easier to hold when the thing that can fail is not
  * inside the process that holds the upload.
  *
- * Tasks 23 and 24 registered the image handlers and the two wiggle renders.
- * Every other job name — the recap, the AI enhancement, the exports, the trash
- * purge — still has no handler, and still fails loudly with a
- * `processing_events` row saying so. That is the correct behaviour: the
- * alternative, reporting work done that nobody did, would leave captures
- * claiming derivatives that do not exist.
+ * Tasks 23–25 register the capture derivatives, recap, optional enhancement,
+ * roll export, and retention purge. A name outside those registries still fails
+ * loudly rather than reporting work done that nobody did.
  */
 async function main(): Promise<void> {
   const config = loadWorkerConfig();
   const runtime = createJobRuntime(config);
+  const eraser = createEraser(config);
   const queue = configureQueue({ connection: { url: config.REDIS_URL } });
 
   /*
    * Each handler is an independent function of (payload, ctx) — no shared state,
    * no ordering between them, and `ctx.putDerived` as its only write path.
-   * Task 25 adds its names to `IMAGE_HANDLERS`' siblings here.
+   * Roll-scoped handlers have a separate registry because their payloads and
+   * state do not belong to a single capture.
    */
   registerImageHandlers(queue);
+  registerRollHandlers(queue);
+  queue.registerHandler('purge-trash', purgeTrash(eraser));
+
+  const { jobId: _jobId, ...purgeOptions } = jobOptionsFor('system:purge-trash');
+  await queue.queue.upsertJobScheduler(
+    'purge-trash',
+    { pattern: PURGE_CRON },
+    {
+      name: 'purge-trash',
+      data: { jobKey: 'system:purge-trash' },
+      opts: purgeOptions,
+    },
+  );
 
   const worker = queue.start(runtime.ctx);
   console.log(`[worker] consuming ${queue.name}`);
@@ -47,6 +61,7 @@ async function main(): Promise<void> {
       .close()
       .then(() => queue.close())
       .then(() => runtime.close())
+      .then(() => eraser.close())
       .then(() => process.exit(0))
       .catch((err: unknown) => {
         console.error('[worker] shutdown failed', err);

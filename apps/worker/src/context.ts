@@ -1,11 +1,18 @@
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { Redis } from 'ioredis';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import type { WorkerConfig } from './config';
 import * as schema from './db/schema';
-import { derivedCaptureKey, guardOriginalWrites } from './storage/derived';
+import { derivedCaptureKey, guardOriginalWrites, rollDerivedKey } from './storage/derived';
 import type { DerivedBody, JobCtx } from './jobs/types';
 
 /**
@@ -100,6 +107,51 @@ export function createJobRuntime(config: WorkerConfig): JobRuntime {
         }),
       );
       return key;
+    },
+
+    /**
+     * The same contract as `putDerived`, one level up: a name inside the *roll's*
+     * `derived/` folder (05 §6), streamed from a file.
+     *
+     * The key is built here too, and for the same reason — the caller supplies a
+     * name, never a key — so a recap or an export cannot address a capture's
+     * originals however its name is spelled. `rollDerivedKey`'s segment rule and
+     * the client guard are both still in the path.
+     *
+     * `ContentLength` is `stat`ed before the stream opens. Without it the SDK has
+     * to buffer the whole body to learn the length, which for a gigabyte export is
+     * the exact failure streaming was for.
+     */
+    async putRollDerivedFile(
+      rollId: string,
+      name: string,
+      path: string,
+      mime: string,
+    ): Promise<string> {
+      const key = rollDerivedKey(rollId, name);
+      const { size } = await stat(path);
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: config.S3_BUCKET,
+          Key: key,
+          Body: createReadStream(path),
+          ContentLength: size,
+          ContentType: mime,
+        }),
+      );
+      return key;
+    },
+
+    async statObject(key: string): Promise<number | null> {
+      try {
+        const head = await s3.send(new HeadObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+        return head.ContentLength ?? 0;
+      } catch {
+        // 404 and 403-on-missing both mean "nothing is stored here", and telling
+        // them apart would not change the answer. Same reading as the API's
+        // `exportObjectExists`.
+        return null;
+      }
     },
   };
 
