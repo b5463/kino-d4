@@ -42,13 +42,27 @@ export function fallbackBoxMm(sizeMm: [number | null, number | null, number | nu
  * no frame-section dimension yet. */
 const SKELETON_BEAM_MM = 4;
 
+/** Clear acrylic panel thickness (§7 construction note: "2-3mm clear acrylic
+ * panels"). Shared with the app's panel builder so the skeleton inset below
+ * can never drift from the rendered panel. */
+export const ENCLOSURE_PANEL_THICKNESS_MM = 3;
+
+/** Gap between the skeleton frame and each panel/envelope face. Without it
+ * the frame's outer faces are exactly coplanar with the panels and z-fight. */
+const SKELETON_REVEAL_MM = 1;
+
 /**
- * Twelve edge beams merged into one geometry, spanning exactly `size`.
+ * Twelve edge beams merged into one geometry. The frame is inset from the
+ * component envelope: the panels form the envelope's front/rear faces, so the
+ * frame spans the space between them minus a reveal, and sits one reveal
+ * inside the panel outline on X/Y — no face it owns is coplanar with a panel.
  * The X beams run full length; Y/Z beams are shortened by one beam width per
  * end so the corners are owned by a single beam instead of z-fighting.
  */
-function skeletonFrameGeometry(size: [number, number, number], beamMm: number): THREE.BufferGeometry {
-  const [sx, sy, sz] = size;
+function skeletonFrameGeometry(envelope: [number, number, number], beamMm: number): THREE.BufferGeometry {
+  const sx = envelope[0] - 2 * SKELETON_REVEAL_MM;
+  const sy = envelope[1] - 2 * SKELETON_REVEAL_MM;
+  const sz = envelope[2] - 2 * (ENCLOSURE_PANEL_THICKNESS_MM + SKELETON_REVEAL_MM);
   const hx = (sx - beamMm) / 2;
   const hy = (sy - beamMm) / 2;
   const hz = (sz - beamMm) / 2;
@@ -218,8 +232,9 @@ export function buildComponentObject(c: ComponentDef, o: BuildOpts): THREE.Group
   // The skeleton is an open edge frame, not a solid block: rendering the
   // full 126×80×36 envelope as one opaque box would hide every internal
   // component in the normal view, which is the opposite of a clear-panel
-  // build. Its bounding box still spans the whole envelope, so collision
-  // AABBs and fit-to-view are unchanged.
+  // build. The frame is inset from the envelope (see skeletonFrameGeometry)
+  // so none of its faces z-fight with the acrylic panels; scene fit still
+  // spans the envelope because the panels themselves reach it.
   if (c.id === 'enclosure') {
     const frame = new THREE.Mesh(skeletonFrameGeometry(sizeMm, SKELETON_BEAM_MM), pickBodyMaterial(c, mats));
     frame.name = 'skeleton';

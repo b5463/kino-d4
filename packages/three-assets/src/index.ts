@@ -5,6 +5,7 @@ export {
   buildAcrylicPanel,
   applyVisualMode,
   fallbackBoxMm,
+  ENCLOSURE_PANEL_THICKNESS_MM,
   type BuildOpts,
   type VisualMode,
 } from './builders';
