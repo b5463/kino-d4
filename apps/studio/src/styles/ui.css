@@ -1248,6 +1248,9 @@ input[type='number'].slider-entry {
 .notice--ok { border-color: #a8cfa4; background: #f2fbf1; }
 .notice--warn { border-color: #ddc98d; background: #fdf9ec; }
 
+/* Roll page footnote under the panels. */
+.roll-offline { color: var(--text-mut); font-size: var(--fs-sm); }
+
 /* ---- apply bar ---- */
 
 .applybar {

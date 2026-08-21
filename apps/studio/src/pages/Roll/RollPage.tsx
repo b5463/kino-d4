@@ -242,25 +242,8 @@ export function RollPage() {
 
       {loadError ? <p className="notice notice--err">Could not read Roll state from KINO: {loadError}</p> : null}
 
-      <ServerPanel
-        url={serverUrl}
-        busy={serverBusy}
-        result={serverResult}
-        onUrlChange={setServerUrl}
-        onTest={testServer}
-        registration={registration}
-        onRegister={registerServer}
-      />
-
-      <NetworkPanel
-        networks={networks}
-        status={netStatus}
-        busy={netBusy}
-        error={netError}
-        onSave={saveNetwork}
-        onForget={forgetNetwork}
-      />
-
+      {/* Daily use first: the Roll itself and its upload queue. One-time
+          setup (server, network) sits below, side by side where it fits. */}
       <RollPanel
         view={rollView}
         guestUrl={links.guestUrl}
@@ -274,6 +257,27 @@ export function RollPage() {
       />
 
       <UploadQueuePanel queue={queue} busy={queueBusy} error={queueError} onRetry={retryUploads} />
+
+      <div className="panel-grid">
+        <ServerPanel
+          url={serverUrl}
+          busy={serverBusy}
+          result={serverResult}
+          onUrlChange={setServerUrl}
+          onTest={testServer}
+          registration={registration}
+          onRegister={registerServer}
+        />
+
+        <NetworkPanel
+          networks={networks}
+          status={netStatus}
+          busy={netBusy}
+          error={netError}
+          onSave={saveNetwork}
+          onForget={forgetNetwork}
+        />
+      </div>
 
       <p className="roll-offline">
         KINO shoots without Wi-Fi. Uploads resume when the Roll server is reachable.
