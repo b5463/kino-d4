@@ -59,6 +59,34 @@ npm run build
 
 The API also needs PostgreSQL, Redis, and S3-compatible storage. Its local stack and ports are documented in [the development guide](docs/DEVELOPMENT.md#api-stack).
 
+## The three tools
+
+Every screen below is a capture of the running application against the included simulator. No hardware was attached.
+
+### KINO Studio
+
+The workbench behind one USB cable: all four sensors, power, storage, recipes, calibration, firmware, logs, and recovery. Shown at the top of this page connected to the demo device.
+
+### KINO Twin
+
+A working 3D copy of the D4. It speaks the same KDP as real hardware: power it on, fire the shutter, watch the display, click any part for its dimensions and clearances. Measurement findings gate the enclosure lock.
+
+![KINO Twin with the simulated D4 powered on](docs/assets/product/twin-workbench-demo.png)
+
+<p align="center"><sub>KINO Twin, simulator powered on. Everything shown is simulated and labelled as such.</sub></p>
+
+### KINO Roll
+
+The shared album after the party. The camera uploads over Wi-Fi; guests open a link, watch photos arrive live, view the four frames behind each one, favourite and download. The client is a PWA that works on a phone at the event.
+
+![KINO Roll guest gallery with demo captures](docs/assets/product/roll-feed-demo.png)
+
+<p align="center"><sub>The guest gallery with demo captures from the test uploader.</sub></p>
+
+![KINO Roll photo page with demo captures](docs/assets/product/roll-photo-demo.png)
+
+<p align="center"><sub>One photo: the D4 frame strip switches the preview; KINO PROCESS shows the processed still. Demo captures.</sub></p>
+
 ## What comes out of the camera
 
 ### WIGGLE
