@@ -38,13 +38,13 @@
         "publicApproxCurrentA": 0.32
       },
       "keepouts": [
-        { "id": "usb-c-1", "label": "USB-C port 1", "sizeMm": [9, 8, 4], "offsetMm": [-40, -30, 35], "kind": "connector" },
-        { "id": "usb-c-2", "label": "USB-C port 2", "sizeMm": [9, 8, 4], "offsetMm": [-25, -30, 35], "kind": "connector" },
-        { "id": "tf-slot", "label": "TF/microSD slot", "sizeMm": [15, 2, 3], "offsetMm": [40, -30, 35], "kind": "insertion" },
-        { "id": "speaker-connector", "label": "Speaker connector", "sizeMm": [6, 4, 3], "offsetMm": [50, 20, 35], "kind": "connector" },
-        { "id": "battery-connector", "label": "Battery connector", "sizeMm": [8, 4, 4], "offsetMm": [50, 10, 35], "kind": "connector" },
-        { "id": "camera-connector", "label": "Camera connector", "sizeMm": [10, 4, 4], "offsetMm": [50, 0, 35], "kind": "connector" },
-        { "id": "header-2x13", "label": "2x13 header", "sizeMm": [33, 3, 9], "offsetMm": [0, -30, 35], "kind": "connector" }
+        { "id": "usb-c-1", "label": "USB-C port 1", "sizeMm": [9, 8, 4], "offsetMm": [-40, -30, 4.5], "kind": "connector" },
+        { "id": "usb-c-2", "label": "USB-C port 2", "sizeMm": [9, 8, 4], "offsetMm": [-25, -30, 4.5], "kind": "connector" },
+        { "id": "tf-slot", "label": "TF/microSD slot", "sizeMm": [15, 2, 3], "offsetMm": [40, -30, 4], "kind": "insertion" },
+        { "id": "speaker-connector", "label": "Speaker connector", "sizeMm": [6, 4, 3], "offsetMm": [50, 20, 4], "kind": "connector" },
+        { "id": "battery-connector", "label": "Battery connector", "sizeMm": [8, 4, 4], "offsetMm": [50, 10, 4.5], "kind": "connector" },
+        { "id": "camera-connector", "label": "Camera connector", "sizeMm": [10, 4, 4], "offsetMm": [50, 0, 4.5], "kind": "connector" },
+        { "id": "header-2x13", "label": "2x13 header", "sizeMm": [33, 3, 9], "offsetMm": [0, -30, 7], "kind": "connector" }
       ]
     },
     {
@@ -71,7 +71,7 @@
         "fovConfidence": "MEASURE_REQUIRED"
       },
       "keepouts": [
-        { "id": "service-usb", "label": "Service USB-C access", "sizeMm": [10, 8, 10], "offsetMm": [0, 0, 8], "kind": "service" }
+        { "id": "service-usb", "label": "Service USB-C access", "sizeMm": [10, 8, 10], "offsetMm": [0, 0, -8], "kind": "service" }
       ]
     },
     {
@@ -274,7 +274,7 @@
     { "id": "cam3", "component": "camera-node", "positionMm": [11, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
     { "id": "cam4", "component": "camera-node", "positionMm": [33, 10, 14], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
     { "id": "flash", "component": "flash-led", "positionMm": [0, 27, 15], "rotationDeg": [0, 0, 0], "explodeOrder": 8 },
-    { "id": "display", "component": "main-display", "positionMm": [0, 0, -15], "rotationDeg": [0, 180, 90], "explodeOrder": 4 },
+    { "id": "display", "component": "main-display", "positionMm": [0, 0, -15], "rotationDeg": [0, 0, 0], "explodeOrder": 4, "explodeDirMm": [0, 0, -1] },
     { "id": "battery", "component": "battery", "positionMm": [0, -8, -2], "rotationDeg": [0, 0, 90], "group": "power", "explodeOrder": 1 },
     { "id": "carrier", "component": "perfboard", "positionMm": [0, -5, -8], "rotationDeg": [0, 0, 0], "explodeOrder": 5 },
     { "id": "power-module", "component": "power-module", "positionMm": [25, -15, -8], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },

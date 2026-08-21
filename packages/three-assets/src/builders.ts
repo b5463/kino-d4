@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ComponentDef, ResolvedDims } from '@kino/hardware-profiles';
 import { twinMaterials, XRAY_OPACITY } from './materials';
 import type { TwinMaterials } from './materials';
@@ -34,6 +35,43 @@ function palette(): TwinMaterials {
  */
 export function fallbackBoxMm(sizeMm: [number | null, number | null, number | null]): [number, number, number] {
   return [sizeMm[0] ?? 5, sizeMm[1] ?? 5, sizeMm[2] ?? 5];
+}
+
+/** Edge-beam thickness of the enclosure skeleton frame. Fixed illustrative
+ * value (Tier C, same convention as the flash fin count) — the profile has
+ * no frame-section dimension yet. */
+const SKELETON_BEAM_MM = 4;
+
+/**
+ * Twelve edge beams merged into one geometry, spanning exactly `size`.
+ * The X beams run full length; Y/Z beams are shortened by one beam width per
+ * end so the corners are owned by a single beam instead of z-fighting.
+ */
+function skeletonFrameGeometry(size: [number, number, number], beamMm: number): THREE.BufferGeometry {
+  const [sx, sy, sz] = size;
+  const hx = (sx - beamMm) / 2;
+  const hy = (sy - beamMm) / 2;
+  const hz = (sz - beamMm) / 2;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const y of [-hy, hy])
+    for (const z of [-hz, hz]) {
+      const g = new THREE.BoxGeometry(sx, beamMm, beamMm);
+      g.translate(0, y, z);
+      parts.push(g);
+    }
+  for (const x of [-hx, hx])
+    for (const z of [-hz, hz]) {
+      const g = new THREE.BoxGeometry(beamMm, sy - 2 * beamMm, beamMm);
+      g.translate(x, 0, z);
+      parts.push(g);
+    }
+  for (const x of [-hx, hx])
+    for (const y of [-hy, hy]) {
+      const g = new THREE.BoxGeometry(beamMm, beamMm, sz - 2 * beamMm);
+      g.translate(x, y, 0);
+      parts.push(g);
+    }
+  return mergeGeometries(parts);
 }
 
 function makeXrayVariant(normal: THREE.Material): THREE.Material {
@@ -177,8 +215,22 @@ export function buildComponentObject(c: ComponentDef, o: BuildOpts): THREE.Group
   // (skeleton, front-acrylic, rear-acrylic). Only the skeleton frame is
   // built here — the clear acrylic panels are built separately, by
   // `buildAcrylicPanel`, which is the "shell builder" this defers to.
-  const bodyName = c.id === 'enclosure' ? 'skeleton' : 'body';
-  addBox(group, bodyName, sizeMm, [0, 0, 0], pickBodyMaterial(c, mats));
+  // The skeleton is an open edge frame, not a solid block: rendering the
+  // full 126×80×36 envelope as one opaque box would hide every internal
+  // component in the normal view, which is the opposite of a clear-panel
+  // build. Its bounding box still spans the whole envelope, so collision
+  // AABBs and fit-to-view are unchanged.
+  if (c.id === 'enclosure') {
+    const frame = new THREE.Mesh(skeletonFrameGeometry(sizeMm, SKELETON_BEAM_MM), pickBodyMaterial(c, mats));
+    frame.name = 'skeleton';
+    frame.userData.materialVariants = {
+      normal: frame.material,
+      xray: makeXrayVariant(frame.material),
+    } satisfies MaterialVariants;
+    group.add(frame);
+  } else {
+    addBox(group, 'body', sizeMm, [0, 0, 0], pickBodyMaterial(c, mats));
+  }
 
   addKeepouts(group, c, mats);
   addComponentDetails(group, c, sizeMm, mats);

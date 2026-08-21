@@ -43,6 +43,7 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Fixed
 
+- Twin assembly renders the D4 correctly: the display sits landscape inside the body with its glass facing the rear, its connector keepouts hug the board face instead of floating in space, the camera-node service keepout covers rear USB-C access instead of the lens, and the enclosure skeleton is an open edge frame so internal components are visible through the clear panels.
 - Sensor-missing camera nodes remain available for firmware repair while sensor-dependent calibration reports the specific fault.
 - Repeated Twin power-off calls no longer emit duplicate shutdown activity, and scenario toggles notify observers once.
 - Studio and Twin production bundles are split into measured chunks instead of shipping a single oversized application bundle.
