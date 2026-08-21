@@ -3,6 +3,7 @@ import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { CalibrationTransfer } from './CalibrationTransfer';
 import { OrderPanel, SpacingPanel, FlashPanel } from './procedures';
 import { SkewBench } from './SkewBench';
 import { useDeviceStore } from '../../state/deviceStore';
@@ -310,6 +311,8 @@ export function CalibrationPage() {
             Measures brightness, color and alignment differences between the four sensors and stores
             per-camera correction offsets. CAM2 is the reference. Corrections are bounded.
           </p>
+
+          <CalibrationTransfer />
 
           <div className="panel-grid">
             <Panel title="PROCEDURE">

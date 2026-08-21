@@ -1,6 +1,8 @@
 # KINO D4 master audit — Twin + Studio vs the hardware/software specification
 
-Audit of 2026-08-21 against the owner's 50-section master specification. Method: four parallel code inspections (protocol, Twin hardware model, Studio, pipeline/Roll) with file:line evidence, then fixes on branch `master-audit` (issue #51). Companion documents in this directory carry the per-domain detail; `CHANGELOG_AUDIT.md` lists every change made.
+Audit of 2026-08-21 against the owner's 50-section master specification.
+
+> **Implementation update, same day:** the fix waves merged as PRs #65/#67/#68/#69 (see `CHANGELOG_AUDIT.md` §Implementation waves). Rows below marked PARTIAL/MISSING for capability negotiation resilience (§1/§11), autofocus (§3/§5), flash exposure windows (§8), transport hostility (§10), power gaps (§12), provenance (§22/§40), AI gating (§23–26/§31), calibration transfer (§20), firmware downgrade (§34), the 5 V health row (§36), and the pin-map consumers (§4/§9) are now implemented; what remains is recorded on issues #55/#59/#61/#62/#63 and in the validation plan. Method: four parallel code inspections (protocol, Twin hardware model, Studio, pipeline/Roll) with file:line evidence, then fixes on branch `master-audit` (issue #51). Companion documents in this directory carry the per-domain detail; `CHANGELOG_AUDIT.md` lists every change made.
 
 Status legend: PASS · PARTIAL · FAIL · MISSING · BLOCKED_BY_HARDWARE. Severity: P0 architecture/data-loss/safety · P1 before hardware integration · P2 before usable beta · P3 improvement.
 

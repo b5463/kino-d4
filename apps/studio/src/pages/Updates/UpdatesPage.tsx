@@ -9,7 +9,7 @@ import { useDeviceStore } from '../../state/deviceStore';
 import { useConnectionStore } from '../../state/connectionStore';
 import { useUpdateStore, setUpdateState, TARGET_STATUS_LABEL } from '../../state/updateStore';
 import type { TargetProgress } from '../../state/updateStore';
-import { loadPackageFromFiles, checkCompatibility } from '../../firmware/manifest';
+import { loadPackageFromFiles, checkCompatibility, isDowngrade } from '../../firmware/manifest';
 import { buildDemoPackage } from '../../firmware/demoPackage';
 import {
   downloadFirmwarePackage,
@@ -449,6 +449,13 @@ export function UpdatesPage() {
           if (pkg) void startUpdate(pkg);
         }}
       >
+        {pkg && info && isDowngrade(pkg.manifest, info) ? (
+          <p className="warn" style={{ fontWeight: 600 }}>
+            DOWNGRADE: this package ({pkg.manifest.p4.version}) is older than the installed P4 firmware (
+            {info.p4Firmware}). Newer configuration or calibration fields may not survive. Continue only for
+            recovery or bisection.
+          </p>
+        ) : null}
         <p>
           Install <strong>{pkg?.manifest.version}</strong> on CAM1–4 and the P4? Takes about two
           minutes and reboots at the end. Settings, looks and calibration are preserved.

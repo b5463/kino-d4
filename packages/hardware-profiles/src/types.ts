@@ -36,6 +36,12 @@ export const componentDef = z.object({
   sources: z.array(dimensionSource).min(1),
   specs: z.record(z.unknown()).optional(),
   keepouts: z.array(keepoutDef).default([]),
+  /** Mass in grams with its provenance tag. Optional — unweighed parts omit
+   * it rather than inventing a number (audit #63). */
+  massG: z.object({ value: z.number(), tag: z.enum(PROVENANCE_TAGS) }).optional(),
+  /** Material name (e.g. "PA12-GF35 SLS", "UTR-8100 SLA"). Free text with a
+   * tag; thermal properties arrive with real datasheet work, not here. */
+  material: z.object({ value: z.string(), tag: z.enum(PROVENANCE_TAGS) }).optional(),
 });
 export type ComponentDef = z.infer<typeof componentDef>;
 
@@ -47,6 +53,13 @@ export const instanceDef = z.object({
   group: z.enum(['camera-bar', 'body', 'power', 'shell']).default('body'),
   explodeOrder: z.number().int().default(0), // §8 exploded view: front acrylic=9 … rear acrylic=0
   explodeDirMm: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 1]),
+  /**
+   * Optical center relative to the instance origin (board center), mm.
+   * The frustum apex is position + this offset when present. Values are
+   * NEEDS_HARDWARE_VALIDATION until the bench measures real optical centers
+   * (audit #63) — defaulting to [0,0,0] keeps apex = board center explicit.
+   */
+  opticalCenterOffsetMm: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
 });
 export type InstanceDef = z.infer<typeof instanceDef>;
 

@@ -8,6 +8,7 @@ function fixtureInstance(overrides: Partial<InstanceDef> & Pick<InstanceDef, 'po
     id: 'fixture',
     component: 'enclosure',
     rotationDeg: [0, 0, 0],
+    opticalCenterOffsetMm: [0, 0, 0],
     group: 'body',
     explodeOrder: 0,
     explodeDirMm: [0, 0, 1],

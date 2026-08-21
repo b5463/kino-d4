@@ -1522,6 +1522,9 @@ export class MockKinoDevice implements MockDeviceLike {
           state: charging ? 'usb' : 'battery',
           charging,
           chargingA: charging ? 0.6 : 0,
+          // The 5 V rail as this firmware "measures" it: nominal, dipping
+          // with the battery-sag transient, dead when the fuse is blown.
+          busV: this.scenarios.fuseBlown ? 0 : this.scenarios.batterySag && this.now() < this.batterySagUntil ? 4.82 : 5.0,
           fuse: this.scenarios.fuseBlown ? 'blown' : 'ok',
         });
         return;

@@ -981,3 +981,29 @@ input[type='range'] {
 .twin-slider-row input[type='range'] {
   flex: 1 1 100%;
 }
+
+.twin-pins-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--twin-fs-xs);
+}
+
+.twin-pins-table th,
+.twin-pins-table td {
+  padding: 2px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-pins-table th {
+  color: var(--twin-text-mut);
+  letter-spacing: 0.05em;
+}
+
+.twin-pins-fn {
+  color: #61a8d0;
+}
+
+.twin-pins-reserved {
+  color: var(--twin-text-mut);
+}

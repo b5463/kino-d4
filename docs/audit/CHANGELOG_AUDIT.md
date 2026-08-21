@@ -22,3 +22,14 @@ AUDIT.md (compliance matrix + 48-question validation) · HARDWARE_CONTRACT.md ·
 ## Issues filed
 
 #55 OV5640/AF architecture · #56 exposure-window + flash bench · #57 power model unification · #58 protocol hardening + contract suite · #59 provenance + render consistency · #60 config migrations + restore identity · #61 Studio production gaps · #62 AI providers/consent/modes · #63 Twin data consumers (pins, materials, optical centers, 16340 profile).
+
+## Implementation waves (same day, after the audit merged)
+
+The owner directed "apply all fixes". Four waves, each merged after green CI:
+
+- **Wave A — PR #65** (#58, #60): idempotent-read retry with fresh sequence numbers; three-state fail-closed capability gate; client-side frame-version rejection; duplicateFrame/droppedByte/midFrameDisconnect/baudMismatch device faults; Twin transport re-chunking parity; one shared contract sequence over both transports; restore serial/hardware mismatch warning.
+- **Wave B — PR #67** (#55, #56, #57): CAMERA_FOCUS behind autofocus capabilities with PARTY AUTO/FIXED/MANUAL, per-cam focus state, four AF faults, Studio FOCUS panel, Twin display AF states; per-camera SIMULATED exposure windows with flashBandRisk in the protocol package and a Studio FLASH TIMING bench; one battery truth (engine SoC follows the device), charger scenario, SW6106 shutdown and capture-brownout faults, 5 V droop curve, 18 W class warning.
+- **Wave C — PR #68** (#59, #62): captures.provenance (passthrough remainder + device identity at shutter press), assets.producer/produced_at from the derive choke point (migration 0008); EnhanceProvider contract and resolveAiDecision gate — OFF default, external refused without consent.
+- **Wave D — PR #69** (#61, #63 subset): calibration report export / offsets-only import; firmware downgrade guard; PowerStatus busV/chargingA/fuse with an honest 5 V rail row; per-cam temperature on camera cards; Twin PINS tab consuming header/gpio/DVP data; massG/material and opticalCenterOffsetMm schema fields.
+
+Remaining scope is recorded on the issues themselves: #59 (worker render consistency — blocked on firmware sending calibration in capture meta), #61 (photo import, armed state, Wi-Fi/Roll health rows, SD write bench — the last in flight as #66), #62 (first provider implementation + per-roll modes), #63 (16340 alternate profile, thermal properties), #55 (real AF once OV5640 modules are benched).

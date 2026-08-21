@@ -15,6 +15,7 @@ import { useSceneStore } from './state/sceneStore';
 import { Header } from './panels/Header';
 import { StatusBar } from './panels/StatusBar';
 import { DisplayPanel } from './panels/DisplayPanel';
+import { PinsPanel } from './panels/PinsPanel';
 import { DisplayScreen } from './scene/DisplayScreen';
 import { WelcomeOverlay } from './panels/WelcomeOverlay';
 import { useSimStore } from './state/simStore';
@@ -41,12 +42,13 @@ function SimOffNotice() {
   return <p className="twin-panel-note twin-simoff-note">Simulator is off. POWER ON in the header fills these panels with live data.</p>;
 }
 
-type RightTab = 'inspect' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
+type RightTab = 'inspect' | 'pins' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
 
 /** Plain tab names with one blunt line each — the label a beginner reads,
  * the id the code keeps (persisted layouts and tests stay stable). */
 const RIGHT_TABS: { id: RightTab; label: string; blurb: string }[] = [
   { id: 'inspect', label: 'PARTS', blurb: 'Every component: dimensions, clearances, measured overrides.' },
+  { id: 'pins', label: 'PINS', blurb: 'Header and camera-bus pin maps — provisional until the bench locks them.' },
   { id: 'display', label: 'SCREEN', blurb: "The camera's own display, live, plus the shutter." },
   { id: 'faults', label: 'FAULTS', blurb: 'Break things on purpose and watch the device cope.' },
   { id: 'power', label: 'POWER', blurb: 'Battery, rails, current draw, thermal state.' },
@@ -106,6 +108,7 @@ export function App() {
           <p className="twin-tab-blurb">{RIGHT_TABS.find((tab) => tab.id === rightTab)?.blurb}</p>
           <SimOffNotice />
           {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
+          {rightTab === 'pins' && <PinsPanel />}
           {rightTab === 'display' && <DisplayPanel />}
           {rightTab === 'faults' && <FaultPanel />}
           {rightTab === 'power' && <PowerPanel />}

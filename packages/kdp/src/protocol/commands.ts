@@ -67,6 +67,22 @@ export enum Cmd {
    */
   SYNC_BENCH = 0x46,
 
+  // Milestone 1B bench diagnostics (issue #66). Gated by the
+  // `benchDiagnostics` capability; firmware without it NACKs
+  // UNSUPPORTED_COMMAND.
+  /** Non-destructive SD write/read-back/verify; reports the failing phase. */
+  STORAGE_SELF_TEST = 0x47,
+  /** Per-camera UART link counters (frames, bytes, CRC errors, timeouts). */
+  CAMERA_LINK_STATS = 0x48,
+  CAMERA_LINK_STATS_RESET = 0x49,
+  /**
+   * Repeated single-camera capture loop. An async job (04 §15): N captures
+   * outlive any request deadline; result is a SoakTestSummary.
+   */
+  CAMERA_SOAK_TEST = 0x4a,
+  /** Runtime hardware-validation registry: what this unit has bench-proven. */
+  GET_HW_VALIDATION = 0x4b,
+
   // Maintenance
   ENTER_MAINTENANCE = 0x50,
   EXIT_MAINTENANCE = 0x51,
