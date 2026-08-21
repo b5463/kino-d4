@@ -544,7 +544,33 @@ body {
   width: 100%;
   color: var(--twin-text-mut);
   background: #111318;
-  font: 8px var(--twin-mono);
+  font: 11px var(--twin-mono);
+}
+
+.twin-flash-svg text {
+  fill: var(--twin-text);
+}
+
+.twin-flash-risklist {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twin-flash-risk {
+  display: grid;
+  grid-template-columns: 3.2em 1fr auto;
+  gap: 6px;
+  padding: 2px 0;
+  color: #61d095;
+}
+
+.twin-flash-risk--banded {
+  color: #e0838c;
+}
+
+.twin-flash-risk span:first-child {
+  color: var(--twin-text);
 }
 
 .twin-flash-svg line {
@@ -936,4 +962,18 @@ body {
 .twin-tree-visibility:focus-visible {
   outline: 2px solid #61a8d0;
   outline-offset: 1px;
+}
+
+/* One slider look everywhere — native control, tinted to the chrome. */
+input[type='range'] {
+  accent-color: #61a8d0;
+  height: 18px;
+}
+
+.twin-slider-row {
+  flex-wrap: wrap;
+}
+
+.twin-slider-row input[type='range'] {
+  flex: 1 1 100%;
 }
