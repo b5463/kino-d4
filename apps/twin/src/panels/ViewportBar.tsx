@@ -46,6 +46,8 @@ export function ViewportBar({ onView }: ViewportBarProps) {
   const netClasses = useSceneStore((s) => s.netClasses);
   const toggleNetClass = useSceneStore((s) => s.toggleNetClass);
   const setAllNetClasses = useSceneStore((s) => s.setAllNetClasses);
+  const measureMode = useSceneStore((s) => s.measureMode);
+  const setMeasureMode = useSceneStore((s) => s.setMeasureMode);
   const allNetClassesOn = NET_CLASSES.every((cls) => netClasses.has(cls));
 
   return (
@@ -86,6 +88,17 @@ export function ViewportBar({ onView }: ViewportBarProps) {
             {label}
           </button>
         ))}
+      </div>
+
+      <div className="twin-viewport-group">
+        <button
+          type="button"
+          className={measureMode ? 'twin-btn twin-btn--active' : 'twin-btn'}
+          aria-pressed={measureMode}
+          onClick={() => setMeasureMode(!measureMode)}
+        >
+          MEASURE
+        </button>
       </div>
 
       {viewMode === 'wiring' && (

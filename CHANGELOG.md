@@ -34,6 +34,11 @@ KINO has no published release yet. Changes intended for the first release collec
 - Redis-backed request budgets now protect device uploads, guest reads, PIN attempts, device registration, device Roll joining, and anonymous Roll creation.
 - A camera-simulating uploader now verifies resumable fixture uploads, lost-ack and duplicate retries, background derivatives, guest visibility, host closure, and controlled concurrent load before physical cameras are available.
 - Production operations now include atomic off-host database/object backups, bounded daily/weekly retention, an isolated digest-verifying restore drill, authenticated Prometheus application metrics, rotating JSON logs, and private MinIO/node-exporter signals.
+- KINO Twin can measure two picked assembly points and continuously report assembled-pose component collisions, sub-millimetre hard clearances, cable clearances, and blocked USB or microSD service keepouts.
+- KINO Twin now runs the shared KDP simulator in-tab, exposes staged power/test-capture controls, and visualizes boot, exposure, UART, SD, upload, firmware, power, thermal, and Studio connection activity.
+- KINO Twin exposes protocol-honest fault injection plus power, synchronization, and rolling-shutter flash analysis panels with explicit simulated and estimated provenance.
+- KINO Twin stores versioned as-measured component overrides separately from canonical profiles and provides an enclosure-lock measurement checklist that refreshes geometry and collision findings immediately.
+- KINO Twin records and verifies raw-KDP simulation sessions, exports versioned layouts and engineering reports, captures viewport PNGs, and ships a same-origin Studio/Twin preview harness with a 17-point acceptance runbook.
 
 ### Fixed
 

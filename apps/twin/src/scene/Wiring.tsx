@@ -1,20 +1,48 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { CAM_IDS } from '@kino/kdp';
+import type { CamId } from '@kino/kdp';
 import { twinMaterials } from '@kino/three-assets';
 import { useSceneStore } from '../state/sceneStore';
+import { useSimStore } from '../state/simStore';
 import { instanceTransforms } from './transforms';
 import { RIBBON_SIZE_MM, visibleNets, wireCurve } from './wireGeometry';
 
 const ENDPOINT_MARKER_RADIUS_MM = 1.4;
 
 /** One net's tube: `TubeGeometry` traced along `wireCurve`'s sampled points, colored by convention (§8). */
-function WireTube({ points, radiusMm, material }: { points: [number, number, number][]; radiusMm: number; material: THREE.Material }) {
+function WireTube({
+  points,
+  radiusMm,
+  material,
+  active,
+  pulseAt,
+}: {
+  points: [number, number, number][];
+  radiusMm: number;
+  material: THREE.Material;
+  active: boolean;
+  pulseAt: number;
+}) {
   const geometry = useMemo(() => {
     const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
     return new THREE.TubeGeometry(curve, Math.max(points.length - 1, 1), radiusMm, 8, false);
   }, [points, radiusMm]);
+  const liveMaterial = useMemo(() => material.clone(), [material]);
+  useEffect(() => () => liveMaterial.dispose(), [liveMaterial]);
+  useFrame(() => {
+    if (!(liveMaterial instanceof THREE.MeshStandardMaterial)) return;
+    const pulsing = pulseAt > 0 && Date.now() - pulseAt < 180;
+    liveMaterial.emissive.copy(liveMaterial.color);
+    liveMaterial.emissiveIntensity = pulsing ? 1.8 : active ? 0.75 : 0;
+  });
 
-  return <mesh geometry={geometry} material={material} raycast={() => {}} />;
+  return <mesh geometry={geometry} material={liveMaterial} raycast={() => {}} />;
+}
+
+function camForNet(id: string): CamId | null {
+  return CAM_IDS.find((cam) => id.startsWith(`${cam}-`)) ?? null;
 }
 
 /**
@@ -83,6 +111,10 @@ export function Wiring() {
   const viewMode = useSceneStore((s) => s.viewMode);
   const netClasses = useSceneStore((s) => s.netClasses);
   const netFocus = useSceneStore((s) => s.netFocus);
+  const running = useSimStore((state) => state.running);
+  const uartActive = useSimStore((state) => state.uartActive);
+  const syncPulseAt = useSimStore((state) => state.syncPulseAt);
+  const snapshot = useSimStore((state) => state.snapshot);
 
   const transforms = useMemo(() => instanceTransforms(profile, pitchMm, explode), [profile, pitchMm, explode]);
   const mats = useMemo(() => twinMaterials(), []);
@@ -99,6 +131,14 @@ export function Wiring() {
         if (!fromT || !toT) return null; // defensive: profile data should always resolve both
 
         const material = mats.wireByColor[net.color];
+        const cam = camForNet(net.id);
+        const camPowered =
+          cam !== null &&
+          running &&
+          snapshot?.cams[cam].fault !== 'offline' &&
+          snapshot?.cams[cam].fault !== 'power-open';
+        const active = (net.cls === 'POWER' && camPowered) || (net.cls === 'UART' && cam !== null && uartActive[cam]);
+        const pulseAt = net.cls === 'SYNC' ? syncPulseAt : 0;
 
         if (net.gauge === 'ribbon') {
           return (
@@ -112,7 +152,7 @@ export function Wiring() {
 
         return (
           <group key={net.id}>
-            <WireTube points={points} radiusMm={radiusMm} material={material} />
+            <WireTube points={points} radiusMm={radiusMm} material={material} active={active} pulseAt={pulseAt} />
             <mesh position={fromT.positionMm} raycast={() => {}}>
               <sphereGeometry args={[ENDPOINT_MARKER_RADIUS_MM, 12, 12]} />
               <primitive object={material} attach="material" />

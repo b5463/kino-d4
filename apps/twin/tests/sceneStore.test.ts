@@ -13,6 +13,8 @@ beforeEach(() => {
     viewMode: 'normal',
     netClasses: new Set(NET_CLASSES),
     netFocus: null,
+    measureMode: false,
+    measurePoints: [],
     optics: {
       enabled: false,
       fovScenarioDeg: null,
@@ -74,6 +76,25 @@ describe('sceneStore bounds and toggles', () => {
 
     useSceneStore.getState().toggleOpticsDistance(1);
     expect(useSceneStore.getState().optics.distancesM).toEqual([2]);
+  });
+
+  it('collects two measurement points, restarts on the third, and clears when disabled', () => {
+    useSceneStore.getState().addMeasurePoint([99, 99, 99]);
+    expect(useSceneStore.getState().measurePoints).toEqual([]);
+
+    useSceneStore.getState().setMeasureMode(true);
+    useSceneStore.getState().addMeasurePoint([1, 2, 3]);
+    useSceneStore.getState().addMeasurePoint([4, 6, 8]);
+    expect(useSceneStore.getState().measurePoints).toEqual([
+      [1, 2, 3],
+      [4, 6, 8],
+    ]);
+
+    useSceneStore.getState().addMeasurePoint([9, 10, 11]);
+    expect(useSceneStore.getState().measurePoints).toEqual([[9, 10, 11]]);
+
+    useSceneStore.getState().setMeasureMode(false);
+    expect(useSceneStore.getState()).toMatchObject({ measureMode: false, measurePoints: [] });
   });
 });
 
