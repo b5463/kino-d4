@@ -44,6 +44,14 @@ export enum Cmd {
   CAMERA_CALIBRATE = 0x35,
   /** VSYNC phase measurement and re-phasing. */
   CAMERA_PHASE = 0x36,
+  /**
+   * Focus control (audit #55) — requires the `autofocus` capability; firmware
+   * without it NACKs UNSUPPORTED_COMMAND. Actions: trigger (AF sweep on every
+   * AF camera), lock/unlock, set (manual VCM position, `manualFocus`),
+   * mode (party-auto | party-fixed | manual), store-fixed (persist the
+   * current locked positions as the PARTY FIXED calibration).
+   */
+  CAMERA_FOCUS = 0x37,
 
   // Diagnostics
   GET_LOGS = 0x40,

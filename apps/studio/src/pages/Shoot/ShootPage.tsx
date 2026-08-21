@@ -4,7 +4,8 @@ import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SelectField, SliderField } from '../../components/fields';
-import { useDeviceStore } from '../../state/deviceStore';
+import { useDeviceStore, supports } from '../../state/deviceStore';
+import { FocusPanel } from './FocusPanel';
 import { useDraft } from '../../hooks/useDraft';
 import { getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
 import type { CamId, ShootConfig, ShootMode } from '@kino/kdp';
@@ -303,6 +304,8 @@ export function ShootPage() {
           onChange={(volume) => patch((d) => ({ ...d, volume }))}
         />
       </Panel>
+
+      {supports(state, 'autofocus') ? <FocusPanel /> : null}
 
       <CustomSoundsPanel />
 

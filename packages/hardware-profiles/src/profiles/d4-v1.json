@@ -339,7 +339,7 @@
       "chargePreferredA": 0.6,
       "chargeMaxA": 1.5
     },
-    "boost": { "efficiency": { "value": 0.85, "tag": "ESTIMATED" } },
+    "boost": { "efficiency": { "value": 0.85, "tag": "ESTIMATED" }, "classW": { "value": 18, "tag": "MANUFACTURER" } },
     "loads": {
       "p4Display": { "amps": 0.32, "tag": "MANUFACTURER" },
       "camIdle": { "amps": 0.14, "tag": "MANUFACTURER", "note": "Seeed example workload" },

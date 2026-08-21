@@ -109,6 +109,6 @@ export function supports(state: DeviceState, name: keyof Capabilities): boolean 
 export function supportsRollUpload(state: DeviceState): boolean {
   if (state.capabilitiesState === 'legacy') return true;
   if (!state.capabilities) return false;
-  const flag = (state.capabilities as Record<string, unknown>).rollUpload;
+  const flag = (state.capabilities as unknown as Record<string, unknown>).rollUpload;
   return typeof flag === 'boolean' ? flag : true;
 }

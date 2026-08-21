@@ -5,7 +5,19 @@ import { SCENARIO_LIST } from '@kino/test-fixtures';
 import type { CamFault, ScenarioKey } from '@kino/test-fixtures';
 import { getTwinRuntime, useSimStore } from '../state/simStore';
 
-const CAM_FAULTS: CamFault[] = ['offline', 'power-open', 'sensor-missing', 'no-vsync', 'slow-uart', 'crc-noise'];
+const CAM_FAULTS: CamFault[] = [
+  'offline',
+  'power-open',
+  'sensor-missing',
+  'no-vsync',
+  'slow-uart',
+  'crc-noise',
+  // AF faults (audit #55) — only bite on an OV5640_AF sensor profile.
+  'af-fail',
+  'vcm-stuck',
+  'af-timeout',
+  'af-hunt',
+];
 const BAUDS = [921_600, 1_500_000, 2_000_000, 3_000_000] as const;
 
 export function FaultPanel() {

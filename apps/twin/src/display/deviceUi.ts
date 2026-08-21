@@ -77,6 +77,12 @@ function camRow(ctx: Ctx2d, state: DeviceUiState): void {
     const label = fault ? `${cam.toUpperCase()} ${fault.toUpperCase()}` : `${cam.toUpperCase()} ${stage}`;
     const color = fault ? BAD : IN_FLIGHT.includes(stage) ? WARN : stage === 'IDLE' ? DIM : OK;
     text(ctx, label, 16 + i * 196, y, 20, color);
+    // AF line (audit #55): present only on autofocus sensor profiles.
+    const focus = snap?.cams[cam].focus ?? null;
+    if (focus) {
+      const afColor = focus.state === 'locked' ? OK : focus.state === 'failed' ? BAD : focus.state === 'searching' ? WARN : DIM;
+      text(ctx, `AF ${focus.state.toUpperCase()}`, 16 + i * 196, y + 24, 16, afColor);
+    }
   });
 }
 

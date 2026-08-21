@@ -24,6 +24,8 @@ function makeSnapshot(opts?: { uartBaud?: number; faults?: Partial<Record<CamId,
     gpioSkewUs: 0,
     fault: faults[id] ?? null,
     updating: false,
+    exposureUs: 16_667,
+    focus: null,
   });
   return {
     sessionId: 'boot-1',

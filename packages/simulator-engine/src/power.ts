@@ -27,7 +27,9 @@ export type PowerWarning =
   | 'CRITICAL_OVER_6A'
   | 'CHARGE_ABOVE_PREFERRED'
   | 'CHARGE_OVER_MAX'
-  | 'BUS_SAG';
+  | 'BUS_SAG'
+  /** Bus power demand exceeds the converter's rated class (SW6106: 18 W). */
+  | 'OVER_CONVERTER_CLASS';
 
 export interface PowerSample {
   batteryV: number;
@@ -132,12 +134,16 @@ export function computePower(
   // not a stylistic one). The caller (TwinSimulator) threads its own
   // previously-observed fuse state back in here; computePower still only
   // *evaluates* state, it never mutates or persists anything itself.
-  prev?: { overAsinceMs: number | null; nowMs: number; fuseBlown?: boolean },
+  prev?: { overAsinceMs: number | null; nowMs: number; fuseBlown?: boolean; soc?: number },
 ): PowerSample {
   const { busA, tags: loadTags } = activeLoads(loads, activity);
   const busW = BUS_NOMINAL_V * busA;
 
-  const openCircuitV = profile.battery.nominalV * socCurve(START_SOC);
+  // audit #57: the caller may thread a live state of charge (TwinSimulator
+  // derives it from the device's own draining battery voltage, so the
+  // protocol answer and the engine sample track one source). Absent that,
+  // the historical fixed 80% applies.
+  const openCircuitV = profile.battery.nominalV * socCurve(prev?.soc ?? START_SOC);
   let batteryV = openCircuitV;
   let batteryA = 0;
   // Fixed-point relaxation for the mutually-dependent batteryA/batteryV
@@ -187,12 +193,18 @@ export function computePower(
   if (activity.chargingA > profile.battery.chargeMaxA) warnings.push('CHARGE_OVER_MAX');
   else if (activity.chargingA > profile.battery.chargePreferredA) warnings.push('CHARGE_ABOVE_PREFERRED');
 
-  // §7.5: the boost converter's regulation/dropout behavior isn't modeled —
-  // this is a "can't hold the rail past a short pulse" approximation, not a
-  // measured dropout curve.
+  // §7.5 / audit #57: a gentle ESTIMATED droop between the 3 A continuous
+  // limit and the 6 A collapse, instead of a binary cliff — real regulators
+  // sag before they let go. 0.05 V/A is a placeholder slope until the bench
+  // measures the SW6106 (validation plan), collapse past 6 A unchanged.
   const busSag = overShortPulse;
-  const busV = busSag ? BUS_NOMINAL_V * (profile.battery.shortPulseMaxA / batteryA) : BUS_NOMINAL_V;
+  const droopV = Math.min(0.3, Math.max(0, batteryA - profile.battery.safeContinuousA) * 0.05);
+  const busV = busSag ? BUS_NOMINAL_V * (profile.battery.shortPulseMaxA / batteryA) : BUS_NOMINAL_V - droopV;
   if (busSag) warnings.push('BUS_SAG');
+
+  // The SW6106 is an 18 W-class part; demanding more from the bus than the
+  // converter's class is its own warning even before the harness limits bite.
+  if (profile.boost.classW && busW > profile.boost.classW.value) warnings.push('OVER_CONVERTER_CLASS');
 
   const tag = worstTag(loadTags);
 

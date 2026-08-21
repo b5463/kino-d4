@@ -3,7 +3,7 @@
 // bytes MockKinoDevice writes to its sink, same as a real camera. This is a
 // second, additive channel for the simulator's own rendering, not a way for
 // Studio to bypass protocol behavior.
-import type { CamId, TargetId, LogEntry } from '@kino/kdp';
+import type { CamId, FocusState, TargetId, LogEntry } from '@kino/kdp';
 import type { ScenarioKey, CamFault } from './scenarios';
 
 export type TwinTelemetry =
@@ -16,6 +16,7 @@ export type TwinTelemetry =
   | { t: 'link'; connected: boolean }
   | { t: 'uploads'; pending: number; uploading: number; failed: number; uploaded: number }
   | { t: 'sd'; activity: 'write' | 'read' }
+  | { t: 'af'; cam: CamId; state: FocusState }
   | { t: 'log'; entry: LogEntry };
 
 export interface TwinSnapshot {
@@ -24,7 +25,13 @@ export interface TwinSnapshot {
   uartBaud: number; frameIntervalUs: number; phaseAligned: boolean;
   p4Fw: string;
   cams: Record<CamId, { fw: string; phaseUs: number; uartErrors: number; jpegKB: number;
-                        durationMs: number; gpioSkewUs: number; fault: CamFault | null; updating: boolean }>;
+                        durationMs: number; gpioSkewUs: number; fault: CamFault | null; updating: boolean;
+                        /** SIMULATED per-cam exposure window (audit #56) — the flash-overlap
+                         * model's honest input until real sensor timing is measured. */
+                        exposureUs: number;
+                        /** Present on AF sensor profiles only (audit #55). */
+                        focus: { mode: string; state: FocusState; vcmPosition: number | null;
+                                 estimatedDistanceM: number | null; locked: boolean } | null }>;
   roll: { joined: boolean; name: string | null };
   uploads: { pending: number; uploading: number; failed: number; uploaded: number };
   wifi: 'connected' | 'offline';

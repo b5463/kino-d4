@@ -7,6 +7,7 @@ export * from './protocol/packet';
 export * from './protocol/commands';
 export * from './protocol/types';
 export * from './protocol/timing';
+export * from './protocol/flash';
 export * from './protocol/KinoProtocolClient';
 
 export * from './transport/Transport';

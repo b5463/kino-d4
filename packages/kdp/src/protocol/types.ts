@@ -51,6 +51,35 @@ export interface Capabilities {
   linkBench: boolean;
   /** Custom sound clips can be stored and used as the shutter sound. */
   customSounds: boolean;
+  /**
+   * OV5640_AF capability group (audit #55). Absent on OV3660 firmware — the
+   * whole focus surface disappears with it. Never assume these from the
+   * sensor name; the firmware declares what it actually drives.
+   */
+  autofocus?: boolean;
+  /** AF can lock the lens for a capture group (Wiggle: focus → lock → arm → capture). */
+  focusLock?: boolean;
+  /** The VCM position can be set directly (MANUAL mode). */
+  manualFocus?: boolean;
+}
+
+/** Focus modes (audit #55). PARTY AUTO: AF then lock then capture. PARTY
+ * FIXED: the stored calibrated position for common party distance. MANUAL:
+ * direct lens position. Continuous per-camera AF is deliberately absent —
+ * four independently hunting lenses destroy Wiggle frame consistency. */
+export type FocusMode = 'party-auto' | 'party-fixed' | 'manual';
+
+export type FocusState = 'idle' | 'searching' | 'locked' | 'failed';
+
+export interface CameraFocus {
+  mode: FocusMode;
+  state: FocusState;
+  /** VCM step position, null until the lens has been driven. */
+  vcmPosition: number | null;
+  /** Estimated subject distance in meters; null when unknown/unmeasured. */
+  estimatedDistanceM: number | null;
+  /** Locked for the capture group. */
+  locked: boolean;
 }
 
 export interface DeviceLimits {
@@ -118,6 +147,9 @@ export interface CameraInfo {
      */
     gpioSkewUs: number;
   } | null;
+  /** Present only on autofocus sensors (capability `autofocus`); undefined
+   * on OV3660 modules — absence means "this camera has no focus to report". */
+  focus?: CameraFocus;
 }
 
 export interface PowerStatus {
@@ -152,6 +184,14 @@ export interface WiggleConfig {
   denoise: number; // 0..2
   sharpness: number; // 0..2
   saveOriginals: boolean;
+  /** Flash pulse start relative to the trigger, ms. Optional — firmware
+   * without configurable flash timing omits it (default 0). */
+  flashDelayMs?: number;
+  /** Flash pulse duration, ms (default 1.0). Whether a given delay/duration
+   * covers every camera's exposure is what the flash-timing bench measures. */
+  flashDurationMs?: number;
+  /** Focus mode for the group (only meaningful with the `autofocus` capability). */
+  focusMode?: FocusMode;
 }
 
 export type GainStrategy = 'auto' | 'low' | 'high';
@@ -240,6 +280,9 @@ export interface CamCalibration {
   x: number; // alignment offset, px
   y: number; // alignment offset, px
   rot: number; // rotational correction, degrees
+  /** PARTY FIXED focus position for this camera (VCM steps), stored by the
+   * device from a locked AF result. Absent without the autofocus capability. */
+  focusPosition?: number | null;
 }
 
 export type FlashLevel = 'low' | 'medium' | 'high';

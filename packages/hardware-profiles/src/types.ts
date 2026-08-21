@@ -60,7 +60,11 @@ export const powerProfile = z.object({
     chargePreferredA: z.number(),
     chargeMaxA: z.number(),
   }),
-  boost: z.object({ efficiency: z.object({ value: z.number(), tag: z.enum(PROVENANCE_TAGS) }) }),
+  boost: z.object({
+    efficiency: z.object({ value: z.number(), tag: z.enum(PROVENANCE_TAGS) }),
+    /** Converter power class in watts (SW6106: 18 W). Optional — older profiles predate it. */
+    classW: z.object({ value: z.number(), tag: z.enum(PROVENANCE_TAGS) }).optional(),
+  }),
   loads: z.record(z.object({ amps: z.number(), tag: z.enum(PROVENANCE_TAGS), note: z.string().optional() })),
   fuse: z.object({ ratingA: z.number(), type: z.literal('fast') }),
 });
