@@ -48,11 +48,14 @@ export function ViewportBar({ onView }: ViewportBarProps) {
   const setAllNetClasses = useSceneStore((s) => s.setAllNetClasses);
   const measureMode = useSceneStore((s) => s.measureMode);
   const setMeasureMode = useSceneStore((s) => s.setMeasureMode);
+  const showGrid = useSceneStore((s) => s.showGrid);
+  const setShowGrid = useSceneStore((s) => s.setShowGrid);
   const allNetClassesOn = NET_CLASSES.every((cls) => netClasses.has(cls));
 
   return (
     <div className="twin-viewport-bar" role="toolbar" aria-label="Viewport controls">
       <div className="twin-viewport-group">
+        <span className="twin-viewport-label">VIEW</span>
         {VIEW_BUTTONS.map(({ label, name }) => (
           <button key={name} type="button" className="twin-btn" onClick={() => onView(name)}>
             {label}
@@ -78,6 +81,7 @@ export function ViewportBar({ onView }: ViewportBarProps) {
       </div>
 
       <div className="twin-viewport-group">
+        <span className="twin-viewport-label">SHOW</span>
         {MODE_BUTTONS.map(({ label, mode }) => (
           <button
             key={mode}
@@ -98,6 +102,15 @@ export function ViewportBar({ onView }: ViewportBarProps) {
           onClick={() => setMeasureMode(!measureMode)}
         >
           MEASURE
+        </button>
+        <button
+          type="button"
+          className={showGrid ? 'twin-btn twin-btn--active' : 'twin-btn'}
+          aria-pressed={showGrid}
+          title="Reference grid under the assembly"
+          onClick={() => setShowGrid(!showGrid)}
+        >
+          GRID
         </button>
       </div>
 

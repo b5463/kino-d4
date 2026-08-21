@@ -123,6 +123,7 @@ export function Assembly() {
   const selection = useSceneStore((s) => s.selection);
   const hovered = useSceneStore((s) => s.hovered);
   const visibility = useSceneStore((s) => s.visibility);
+  const showGrid = useSceneStore((s) => s.showGrid);
 
   const transforms = useMemo(() => instanceTransforms(profile, pitchMm, explode), [profile, pitchMm, explode]);
 
@@ -143,7 +144,7 @@ export function Assembly() {
       <ambientLight intensity={0.6} />
       <directionalLight position={[200, 300, 200]} intensity={0.8} />
       <directionalLight position={[-200, 150, -150]} intensity={0.35} />
-      <gridHelper args={[300, 30]} />
+      {showGrid && <gridHelper args={[300, 30]} />}
 
       {profile.instances.map((instance) => {
         const component = componentById.get(instance.component);

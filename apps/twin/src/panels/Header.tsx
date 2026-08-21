@@ -14,44 +14,58 @@ export function Header() {
   const powerOn = useSimStore((state) => state.powerOn);
   const powerOff = useSimStore((state) => state.powerOff);
   const testCapture = useSimStore((state) => state.testCapture);
-  const [captureState, setCaptureState] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  const [captureState, setCaptureState] = useState<'idle' | 'working' | 'error'>('idle');
 
-  async function runTestCapture() {
+  async function fireShutter() {
     setCaptureState('working');
     try {
       await testCapture();
-      setCaptureState('done');
+      setCaptureState('idle');
     } catch {
       setCaptureState('error');
     }
   }
 
+  const shutterBlocked = bootStage !== 'READY' || studioConnected || captureState === 'working';
+  const shutterHint = !running
+    ? 'Power on first'
+    : bootStage !== 'READY'
+      ? 'Wait for boot to finish'
+      : studioConnected
+        ? 'Studio owns the link — capture from Studio'
+        : 'Fires a four-lens capture over KDP';
+
   return (
     <header className="twin-header">
-      <span className="twin-header-item">KINO Twin</span>
-      <span className="twin-header-sep">|</span>
-      <span className="twin-header-item">D4 V1</span>
-      <span className="twin-header-sep">|</span>
-      <span className="twin-header-item">
-        <span className={bootStage === 'READY' ? 'twin-dot twin-dot--ok' : 'twin-dot'} aria-hidden="true" />
-        {simLabel(running, bootStage)}
-        {running && bootStage !== 'READY' ? ` · ${bootStage}` : ''}
-      </span>
-      <button type="button" className="twin-header-action" onClick={running ? powerOff : powerOn}>
+      <span className="twin-header-brand">KINO TWIN</span>
+      <span className="twin-header-item twin-header-muted">D4 V1</span>
+
+      <button
+        type="button"
+        className={running ? 'twin-btn twin-header-control' : 'twin-btn twin-btn--primary twin-header-control'}
+        onClick={running ? powerOff : powerOn}
+      >
         {running ? 'POWER OFF' : 'POWER ON'}
       </button>
       <button
         type="button"
-        className="twin-header-action"
-        disabled={bootStage !== 'READY' || studioConnected || captureState === 'working'}
-        onClick={() => void runTestCapture()}
+        className="twin-btn twin-header-control"
+        disabled={shutterBlocked}
+        title={shutterHint}
+        onClick={() => void fireShutter()}
       >
-        {captureState === 'working' ? 'CAPTURING…' : captureState === 'error' ? 'CAPTURE FAILED' : 'TEST CAPTURE'}
+        {captureState === 'working' ? 'CAPTURING…' : captureState === 'error' ? 'CAPTURE FAILED — RETRY' : 'SHUTTER'}
       </button>
-      <span className="twin-header-sep">|</span>
+
+      <span className="twin-header-item">
+        <span className={bootStage === 'READY' ? 'twin-dot twin-dot--ok' : running ? 'twin-dot twin-dot--warn' : 'twin-dot'} aria-hidden="true" />
+        {simLabel(running, bootStage)}
+        {running && bootStage !== 'READY' ? ` · ${bootStage.replaceAll('_', ' ')}` : ''}
+      </span>
+
       <span className="twin-header-item twin-header-item--last">
         Studio <span className={studioConnected ? 'twin-dot twin-dot--ok' : 'twin-dot'} aria-hidden="true" />{' '}
-        {studioConnected ? 'CONNECTED' : '—'}
+        {studioConnected ? 'CONNECTED' : 'NOT CONNECTED'}
       </span>
     </header>
   );
