@@ -4,6 +4,8 @@ import type {
   CamId,
   CamCalibration,
   CameraInfo,
+  CameraLinkStats,
+  CameraTestResult,
   CapabilitiesResponse,
   CaptureInfo,
   ConfigEnvelope,
@@ -24,12 +26,14 @@ import type {
   PhaseResult,
   PowerStatus,
   RecipesResponse,
+  HwValidationReport,
   RuntimeStats,
   ShootMode,
   SoundBeginRequest,
   SoundBeginResponse,
   SoundInfo,
   SoundsResponse,
+  StorageSelfTestResult,
   StorageStatus,
   TargetId,
 } from '@kino/kdp';
@@ -153,12 +157,12 @@ export class KinoDevice {
     return this.client.request<CameraInfo>(Cmd.CAMERA_STATUS, { cam }, 2000);
   }
 
+  /** Pre-1B firmware answers only {ok, jpegKB, durationMs}; benchDiagnostics
+   * builds fill the full CameraTestResult. Read the extras as optional. */
   cameraTest(cam: CamId) {
-    return this.client.request<{ ok: boolean; jpegKB: number; durationMs: number }>(
-      Cmd.CAMERA_TEST,
-      { cam },
-      5000,
-    );
+    return this.client.request<
+      { ok: boolean; jpegKB: number; durationMs: number } & Partial<CameraTestResult>
+    >(Cmd.CAMERA_TEST, { cam }, 8000);
   }
 
   /** One viewfinder JPEG frame from the given camera (default viewfinder). */
@@ -273,6 +277,26 @@ export class KinoDevice {
 
   getRuntimeStats() {
     return this.client.request<RuntimeStats>(Cmd.GET_RUNTIME_STATS);
+  }
+
+  // ---- bench diagnostics (Milestone 1B, capability `benchDiagnostics`) ----
+
+  /** Non-destructive SD write/read-back/verify; reports the failing phase. */
+  storageSelfTest() {
+    return this.client.request<StorageSelfTestResult>(Cmd.STORAGE_SELF_TEST, undefined, 10000);
+  }
+
+  cameraLinkStats(cam: CamId) {
+    return this.client.request<CameraLinkStats>(Cmd.CAMERA_LINK_STATS, { cam });
+  }
+
+  resetCameraLinkStats(cam: CamId) {
+    return this.client.request<{ ok: boolean }>(Cmd.CAMERA_LINK_STATS_RESET, { cam });
+  }
+
+  /** Runtime hardware-validation registry: what this unit has bench-proven. */
+  getHwValidation() {
+    return this.client.request<HwValidationReport>(Cmd.GET_HW_VALIDATION);
   }
 
   enterMaintenance() {

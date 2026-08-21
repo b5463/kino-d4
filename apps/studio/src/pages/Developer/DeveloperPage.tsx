@@ -11,6 +11,7 @@ import type { TimingStats } from './TimingBench';
 import { PhasePanel } from './PhasePanel';
 import { LinkBenchPanel } from './LinkBenchPanel';
 import { FlashTimingPanel } from './FlashTimingPanel';
+import { BenchDiagnosticsPanel } from './BenchDiagnosticsPanel';
 import { useDeviceStore } from '../../state/deviceStore';
 import { useConnectionStore } from '../../state/connectionStore';
 import { useLogStore } from '../../state/logStore';
@@ -186,6 +187,7 @@ export function DeveloperPage() {
       <TimingBench />
       <FlashTimingPanel />
       <LinkBenchPanel />
+      <BenchDiagnosticsPanel />
       <BurnInPanel />
 
       <Panel title="CAMERA MATRIX">

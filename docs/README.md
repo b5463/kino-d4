@@ -20,6 +20,7 @@ Start with the question you need answered. The repository contains working contr
 | Which license applies to a path? | [Root license map](../LICENSE) and [`REUSE.toml`](../REUSE.toml) |
 | How do I report a vulnerability? | [Security policy](../SECURITY.md) |
 | What must camera firmware implement? | [Firmware contract](../firmware-contract/README.md) |
+| How is the D4 firmware built and what exists? | [Firmware tree](../firmware/README.md) and [start plan](../firmware/FIRMWARE_START_PLAN.md) |
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |
 | Which product voice and UI rules apply to Studio? | [Product register](../PRODUCT.md) |
@@ -60,6 +61,7 @@ When two documents disagree, use this order:
 - `hardware/*`
 - `LICENSE`, `LICENSES/*`, `REUSE.toml`, and `TRADEMARKS.md`
 - `firmware-contract/*`
+- `firmware/README.md`
 - `apps/api/README.md`
 
 Update these when behavior changes.

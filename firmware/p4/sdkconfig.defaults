@@ -1,0 +1,14 @@
+# Guition JC4880P443C-I-W: ESP32-P4, 16 MB flash, 32 MB PSRAM.
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+
+# Console stays on UART0 (GPIO37/38 on this board). KDP owns USB-Serial-JTAG
+# exclusively so log output can never interleave into a frame mid-session.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Capture folders are named by UUID (36 chars) — needs FAT long filenames.
+CONFIG_FATFS_LFN_HEAP=y

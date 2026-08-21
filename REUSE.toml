@@ -10,6 +10,7 @@ path = [
   "apps/**",
   "packages/**",
   "infra/**",
+  "firmware/**",
   "firmware-contract/**",
   "kino_dev_spec_pack/**",
   "kino_twin_spec/**",
