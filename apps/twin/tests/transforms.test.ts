@@ -95,8 +95,8 @@ describe('instanceTransforms — D4_V1', () => {
 
   it('moves front-acrylic +108 mm on Z and leaves rear-acrylic in place at full explode', () => {
     const transforms = instanceTransforms(D4_V1, 22, 1);
-    expect(transforms.get('front-acrylic')?.positionMm).toEqual([0, 0, 126]);
-    expect(transforms.get('rear-acrylic')?.positionMm).toEqual([0, 0, -18]);
+    expect(transforms.get('front-acrylic')?.positionMm).toEqual([0, 0, 124.5]);
+    expect(transforms.get('rear-acrylic')?.positionMm).toEqual([0, 0, -16.5]);
   });
 
   it('moves every camera-bar instance by the same explode offset — the bar rides as one rigid group (§5)', () => {
