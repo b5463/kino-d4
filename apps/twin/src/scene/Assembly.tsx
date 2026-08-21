@@ -3,7 +3,13 @@ import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import { resolveDimensions } from '@kino/hardware-profiles';
 import type { ComponentDef, InstanceDef, MeasuredOverride, ResolvedDims } from '@kino/hardware-profiles';
-import { applyVisualMode, buildAcrylicPanel, buildComponentObject, fallbackBoxMm } from '@kino/three-assets';
+import {
+  ENCLOSURE_PANEL_THICKNESS_MM,
+  applyVisualMode,
+  buildAcrylicPanel,
+  buildComponentObject,
+  fallbackBoxMm,
+} from '@kino/three-assets';
 import type { VisualMode } from '@kino/three-assets';
 import { useSceneStore, setHovered } from '../state/sceneStore';
 import type { ViewMode } from '../state/sceneStore';
@@ -11,11 +17,9 @@ import { instanceTransforms, type InstanceTransform } from './transforms';
 
 // §7 construction note on the enclosure component: "2-3mm clear acrylic
 // panels". The profile only carries the full 126x80x36 envelope as one
-// dimension claim (shared by skeleton, front-acrylic and rear-acrylic) — it
-// has no separate panel-thickness field yet, so this is a fixed
-// illustrative value (same Tier-C convention as three-assets' flash-led fin
-// count), not a profile dimension being silently overridden (§25).
-const PANEL_THICKNESS_MM = 3;
+// dimension claim; the illustrative panel thickness lives in three-assets
+// (shared with the skeleton frame's inset so the two can never drift apart).
+const PANEL_THICKNESS_MM = ENCLOSURE_PANEL_THICKNESS_MM;
 
 function degToRadTuple([x, y, z]: [number, number, number]): [number, number, number] {
   return [THREE.MathUtils.degToRad(x), THREE.MathUtils.degToRad(y), THREE.MathUtils.degToRad(z)];
