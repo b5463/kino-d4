@@ -756,3 +756,11 @@ body {
   margin-bottom: 0;
   color: #e0838c;
 }
+
+.twin-display-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--twin-line);
+  background: #0b0d0e;
+}

@@ -14,6 +14,8 @@ import { collisionReport } from './collision/collide';
 import { useSceneStore } from './state/sceneStore';
 import { Header } from './panels/Header';
 import { StatusBar } from './panels/StatusBar';
+import { DisplayPanel } from './panels/DisplayPanel';
+import { DisplayScreen } from './scene/DisplayScreen';
 import { FaultPanel } from './panels/FaultPanel';
 import { PowerPanel } from './panels/PowerPanel';
 import { SyncPanel } from './panels/SyncPanel';
@@ -32,7 +34,7 @@ import type { ViewPoseName } from './scene/viewPoses';
 
 export function App() {
   const canvasRef = useRef<TwinCanvasHandle>(null);
-  const [rightTab, setRightTab] = useState<'inspect' | 'faults' | 'power' | 'sync' | 'flash' | 'record'>('inspect');
+  const [rightTab, setRightTab] = useState<'inspect' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record'>('inspect');
   const profile = useSceneStore((state) => state.profile);
   const overrides = useSceneStore((state) => state.overrides);
   const pitchMm = useSceneStore((state) => state.pitchMm);
@@ -59,12 +61,13 @@ export function App() {
               <Optics />
               <MeasureTool />
               <Effects />
+              <DisplayScreen />
             </TwinCanvas>
           </div>
         </main>
         <aside className="twin-panel twin-panel--right" aria-label="Inspector">
           <nav className="twin-panel-tabs" aria-label="Engineering panels">
-            {(['inspect', 'faults', 'power', 'sync', 'flash', 'record'] as const).map((tab) => (
+            {(['inspect', 'display', 'faults', 'power', 'sync', 'flash', 'record'] as const).map((tab) => (
               <button
                 type="button"
                 key={tab}
@@ -76,6 +79,7 @@ export function App() {
             ))}
           </nav>
           {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
+          {rightTab === 'display' && <DisplayPanel />}
           {rightTab === 'faults' && <FaultPanel />}
           {rightTab === 'power' && <PowerPanel />}
           {rightTab === 'sync' && <SyncPanel />}

@@ -40,6 +40,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - KINO Twin exposes protocol-honest fault injection plus power, synchronization, and rolling-shutter flash analysis panels with explicit simulated and estimated provenance.
 - KINO Twin stores versioned as-measured component overrides separately from canonical profiles and provides an enclosure-lock measurement checklist that refreshes geometry and collision findings immediately.
 - KINO Twin records and verifies raw-KDP simulation sessions, exports versioned layouts and engineering reports, captures viewport PNGs, and ships a same-origin Studio/Twin preview harness with a 17-point acceptance runbook.
+- The Twin display renders the live simulated device UI — boot stages, firmware version, battery voltage, SD/Wi-Fi/roll status, capture and firmware-update progress, per-camera faults, and a SIMULATED-labelled CAM2 preview field — on the 3D glass and in a DISPLAY inspector tab whose shutter drives the same raw-KDP capture path Studio uses.
 
 ### Fixed
 
