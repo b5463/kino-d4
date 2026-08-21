@@ -190,25 +190,25 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   return (
     <main className="roll-shell roll-shell--feed">
-      <header className="roll-head">
+      <header className="roll-masthead">
+        <div className="roll-brand">KINO ROLL</div>
+        {roll === null ? (
+          <StatusLamp state="busy" label="LOADING" announce />
+        ) : (
+          <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} announce />
+        )}
+      </header>
+      <div className="roll-titlebar">
         <div>
-          <div className="roll-brand">KINO ROLL</div>
           <h1>{roll?.title ?? slug}</h1>
           {roll !== null ? (
             <div className="roll-subhead">
-              {roll.photoCount} photos · {formattedDate(roll.createdAt)}
+              {roll.photoCount} {roll.photoCount === 1 ? 'photo' : 'photos'} · {formattedDate(roll.createdAt)}
             </div>
           ) : null}
         </div>
-        <div>
-          {roll === null ? (
-            <StatusLamp state="busy" label="LOADING" announce />
-          ) : (
-            <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} announce />
-          )}
-          {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
-        </div>
-      </header>
+        {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
+      </div>
 
       {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
       {feed.captures.length === 0 && feed.loading ? <p role="status" aria-live="polite">Loading Roll…</p> : null}
@@ -229,8 +229,8 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                 transform: `translateY(${String(virtualRow.start)}px)`,
                 display: 'grid',
                 gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
-                gap: '2px',
-                paddingBottom: '2px',
+                gap: '10px',
+                paddingBottom: '10px',
               }}
             >
               {(rows[virtualRow.index] ?? []).map((capture) => (

@@ -36,9 +36,9 @@ export default defineConfig({
         name: 'KINO Roll',
         short_name: 'KINO Roll',
         description: 'Guest gallery for a KINO Roll',
-        // Matches --canvas in roll.css: the guest gallery runs dark.
-        theme_color: '#131110',
-        background_color: '#131110',
+        // Matches the silver-blue chrome the gallery masthead wears.
+        theme_color: '#ccd8e6',
+        background_color: '#f7f8fa',
         display: 'standalone',
         start_url: '.',
         // A typographic app tile, not a new logo. `sizes: any` is valid for the

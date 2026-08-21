@@ -35,7 +35,7 @@
     },
     {
       "name": "kino-roll-web",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "package": "apps/roll-web/package.json",
       "tagPrefix": "kino-roll-web-v"
     },

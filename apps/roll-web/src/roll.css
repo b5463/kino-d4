@@ -1,63 +1,17 @@
-/* Roll web — guest-facing theme.
-   Studio keeps the silver-blue utility chrome; a guest opening a QR link is
-   at a party looking at photos. This app runs like a darkroom: warm
-   near-black, one amber safelight accent, photos edge to edge. The roll's
-   date line is set like the orange date-burn on a film print — that is the
-   one decorated element; everything else stays quiet. Loaded after
-   tokens.css + components.css, this file re-skins the shared kino-*
-   primitives by redefining the tokens they read — behavior, markup and
-   ARIA stay identical.
+/* Roll web — the guest gallery as a mid-2000s photo site.
+   Same silver-blue token system as Studio (tokens.css is loaded untouched),
+   styled the way a 2005-2007 photo product wore it: chrome masthead with an
+   embossed logotype, white print mats on a cool gray tray, Trebuchet MS
+   display type, underlined blue links, a dark viewer stage with a filmstrip.
+   The feed owns the viewport — masthead and title stay put, only the tray
+   of prints scrolls.
 
-   Contrast (WCAG AA) measured on the real backgrounds:
-   --text     #f2ede8 on #131110 canvas ≈ 16.2:1
-   --text-mut #b3a99f on #1c1917 panel  ≈ 8.1:1
-   --accent   #f0a13c on #131110        ≈ 8.9:1
-   #1a1206 text on #f0a13c primary fill ≈ 8.3:1 */
+   All text sits on token surfaces whose AA ratios are measured in
+   tokens.css; nothing here introduces a new text/background pair except
+   #fff captions on --well-dark (6.9:1 documented as --text-on-dark). */
 
 :root {
-  --canvas: #131110;
-  --panel: #1c1917;
-  --panel-inset: #171412;
-  --well: #211d1a;
-  --well-dark: #000000;
-
-  --border-dark: #453e38;
-  --border-mid: #2a2523;
-  --border-light: #211d1a;
-  --line: #2a2523;
-  --hilite: rgb(255 255 255 / 4%);
-
-  --text: #f2ede8;
-  --text-mut: #b3a99f;
-  --text-faint: #948a80;
-  --text-on-dark: #cbc2b8;
-
-  /* The safelight: one amber accent for live state, links, hearts. */
-  --accent: #f0a13c;
-  --accent-dim: #c47f27;
-
-  --blue: var(--accent);
-  --blue-dark: var(--accent-dim);
-  --link: var(--accent);
-  --green-dark: var(--accent); /* LIVE lamp burns amber; symbol + label, never colour alone */
-  --orange-dark: var(--accent);
-  --red-dark: #f08a8a;
-
-  --focus: var(--accent);
-  --focus-ring: 0 0 0 1px var(--canvas);
-
-  /* Flat fills where Studio uses glossy gradients. */
-  --grad-btn: #262120;
-  --grad-btn-hover: #2f2927;
-  --grad-btn-down: #1c1917;
-  --grad-primary: var(--accent);
-  --grad-primary-hover: #f5b45e;
-  --grad-red: #b93232;
-  --grad-head: transparent;
-  --grad-toolbar: transparent;
-
-  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --r: 8px;
+  --display: 'Trebuchet MS', Tahoma, Verdana, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -68,13 +22,40 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--text);
-  font: 15px/1.5 var(--sans);
-  -webkit-font-smoothing: antialiased;
+  font: 13px/1.5 var(--sans);
 }
 
 button, input, select { font: inherit; }
 
-a { color: var(--link); text-underline-offset: 2px; }
+.kino-button { min-height: 38px; font-size: 12px; padding: 0 14px; }
+.kino-button--sm { min-height: 30px; }
+.kino-panel, .kino-panel-body { min-width: 0; }
+
+/* Plain buttons and link-buttons get the same beveled treatment as
+   kino-button so nothing on the page falls outside the period. */
+button:not(.kino-button), .roll-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--r);
+  background: var(--grad-btn);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 var(--hilite);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+button:hover:not(:disabled), .roll-action:hover { border-color: var(--blue); background: var(--grad-btn-hover); }
+button:active:not(:disabled), .roll-action:active { background: var(--grad-btn-down); }
+button:disabled { color: var(--text-mut); cursor: not-allowed; }
+
+/* Period link: always blue, underline arrives on hover. */
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
 :focus-visible {
   outline: 2px solid var(--focus);
@@ -82,123 +63,88 @@ a { color: var(--link); text-underline-offset: 2px; }
   box-shadow: var(--focus-ring);
 }
 
-/* ---- shared kino-* primitives, quieted ---- */
-
-.kino-button, button:not(.kino-button), .roll-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 18px;
-  border: 1px solid var(--border-dark);
-  border-radius: 10px;
-  background: var(--grad-btn);
-  color: var(--text);
-  box-shadow: none;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.kino-button--sm { min-height: 36px; padding: 0 12px; font-size: 13px; }
-/* Amber fill carries dark text, not the white components.css assumes. */
-.kino-button--primary { border-color: transparent; color: #1a1206; font-weight: 700; }
-.kino-button--danger-solid { border-color: transparent; }
-/* A pressed toggle (the heart) glows amber. */
-.kino-button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent-dim); }
-
-.kino-button:hover:not(:disabled),
-button:hover:not(:disabled),
-.roll-action:hover { border-color: var(--blue); }
-
-button:disabled { color: var(--text-faint); cursor: not-allowed; }
-
-.kino-panel {
-  min-width: 0;
-  border: 1px solid var(--border-mid);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: none;
-}
-.kino-panel-head { border-bottom: 1px solid var(--border-mid); background: none; padding: 10px 14px; }
-.kino-panel-title { color: var(--text-mut); letter-spacing: 0.1em; }
-.kino-panel-body { min-width: 0; padding: 14px; }
-
-.kino-toolbar { border: 0; background: none; box-shadow: none; padding: 0; gap: 8px; }
-
-.kino-status-lamp { font-size: 12px; letter-spacing: 0.08em; }
-
 input[type='text'], input[type='password'], input[type='url'], input:not([type]) {
   width: 100%;
-  min-height: 44px;
-  padding: 8px 12px;
+  min-height: 38px;
+  padding: 6px 8px;
   border: 1px solid var(--border-dark);
-  border-radius: 10px;
-  background: var(--panel-inset);
+  border-radius: 2px;
+  background: var(--well);
   color: var(--text);
-  box-shadow: none;
+  box-shadow: inset 1px 1px 2px rgb(40 60 90 / 12%);
 }
 
-form { display: grid; gap: 10px; justify-items: start; }
+form { display: grid; gap: 8px; justify-items: start; }
 form input { justify-self: stretch; }
-label { color: var(--text-mut); font-size: 13px; font-weight: 600; }
+label { color: var(--text-mut); font-size: 12px; font-weight: 700; }
 
 h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 2px; font-size: clamp(20px, 4vw, 28px); line-height: 1.15; letter-spacing: -0.01em; }
-h2 { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-mut); }
+h1 { margin-bottom: 2px; font: 700 clamp(20px, 5vw, 26px)/1.2 var(--display); }
+h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
 
-/* ---- page shell ---- */
+/* ---- shell ---- */
 
-.roll-shell { width: min(100%, 1200px); margin: 0 auto; padding: 16px clamp(8px, 2vw, 24px); }
-.roll-shell--narrow { width: calc(100% - 24px); max-width: 420px; margin: 14vh auto; }
+.roll-shell { width: min(100%, 1120px); margin: 0 auto; padding: 12px; }
+.roll-shell--narrow { width: calc(100% - 20px); max-width: 420px; margin: 12vh auto; }
 
-/* The feed page owns the viewport: header stays put, only photos scroll. */
-.roll-shell--feed { display: flex; flex-direction: column; height: 100dvh; padding-bottom: 0; }
+/* Feed page: fixed masthead + title, only the print tray scrolls. */
+.roll-shell--feed {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
 
-.roll-brand { color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: 0.28em; }
+/* ---- masthead: silver-blue chrome with an embossed logotype ---- */
 
-.roll-head {
+.roll-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-mid);
+  background: var(--grad-chrome);
+  box-shadow: inset 0 1px 0 var(--hilite);
+}
+
+.roll-brand {
+  color: var(--blue-dark);
+  font: 700 italic 16px var(--display);
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 0 #fff; /* embossed into the chrome */
+}
+
+.roll-titlebar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-.roll-head h1 { font-size: clamp(28px, 7vw, 40px); font-weight: 800; letter-spacing: -0.02em; }
-
-/* The date-burn: photo count and date set like the amber datestamp film
-   labs printed onto the frame. This is the page's one decorated element. */
-.roll-subhead {
-  margin-top: 4px;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 10px 12px 9px;
+  border-bottom: 1px solid var(--border-mid);
+  background: var(--grad-head);
 }
 
-.roll-alert {
-  padding: 10px 12px;
-  border: 1px solid #6e3030;
-  border-radius: 10px;
-  background: #2a1515;
-  color: #f4b9b9;
-}
+.roll-subhead { margin-top: 1px; color: var(--text-mut); font-size: 12px; }
+
+.roll-alert { margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #d9a6a6; background: #fdf2f2; color: var(--red-dark); }
+.roll-shell > .roll-alert, .roll-shell--narrow .roll-alert { margin: 0 0 10px; }
 .roll-closed {
-  display: inline-block;
-  margin-top: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--accent-dim);
-  border-radius: 999px;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.06em;
+  padding: 4px 9px;
+  border: 1px solid var(--orange-border);
+  background: #fdf9ec;
+  color: var(--orange-dark);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
-/* ---- guest feed: edge-to-edge photo grid, no frame around it ---- */
+.roll-shell--feed > p[role='status'] { padding: 10px 12px; margin: 0; color: var(--text-mut); }
+
+/* ---- the print tray: white-matted photos on cool gray ---- */
 
 .roll-feed {
   flex: 1;
@@ -206,11 +152,24 @@ h2 { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: v
   overflow: auto;
   contain: strict;
   overscroll-behavior: contain;
-  margin: 0 calc(-1 * clamp(8px, 2vw, 24px)); /* photos run to the shell edge */
+  padding: 10px;
+  background: var(--panel);
+  /* the tray sits a step below the title chrome */
+  box-shadow: inset 0 2px 3px -2px rgb(40 60 90 / 35%);
 }
 
-.roll-tile { display: block; min-width: 0; color: inherit; text-decoration: none; }
-.roll-tile:hover .roll-media, .roll-tile:focus-visible .roll-media { opacity: 0.85; }
+.roll-tile {
+  display: block;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--border-mid);
+  background: var(--well);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgb(40 60 90 / 22%);
+}
+
+.roll-tile:hover { border-color: var(--blue); box-shadow: 0 2px 5px rgb(40 60 90 / 30%); }
 
 .roll-media { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--panel-inset); }
 .roll-processing {
@@ -219,48 +178,65 @@ h2 { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: v
   aspect-ratio: 4 / 3;
   background: var(--panel-inset);
   color: var(--text-mut);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-/* ---- capture detail: one big frame, quiet actions under it ---- */
+/* ---- capture detail: viewer stage + filmstrip, like desktop photo tools ---- */
 
-.roll-detail { width: min(100%, 900px); margin: 0 auto; display: grid; gap: 14px; }
+.roll-detail { width: min(100%, 900px); margin: 0 auto; display: grid; gap: 10px; justify-items: start; }
+.roll-detail > * { justify-self: stretch; }
 .roll-detail > .kino-button { justify-self: start; }
-.roll-stage { overflow: hidden; border-radius: 12px; background: var(--well-dark); }
-.roll-stage .roll-media, .roll-detail > .roll-media { aspect-ratio: auto; border-radius: 12px; }
-.roll-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--text-mut); }
 
-.roll-frame-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(88px, 1fr); gap: 4px; overflow-x: auto; padding-bottom: 4px; }
-.roll-frame-strip .roll-media { aspect-ratio: 4 / 3; border-radius: 6px; }
+.roll-stage {
+  padding: 8px;
+  border: 1px solid var(--border-dark);
+  background: var(--well-dark);
+  box-shadow: inset 0 0 14px rgb(0 0 0 / 30%);
+}
+.roll-stage .roll-media, .roll-detail > .roll-media { aspect-ratio: auto; }
 
-.roll-quad { display: grid; gap: 4px; }
-.roll-figure { min-width: 0; margin: 0; }
-.roll-figure .roll-media { aspect-ratio: auto; border-radius: 6px; }
-.roll-figure figcaption { margin-top: 4px; color: var(--text-faint); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+/* The filmstrip: thumbnails riding a dark strip, XP filmstrip-view style. */
+.roll-frame-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(76px, 1fr);
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px;
+  border: 1px solid var(--border-dark);
+  background: var(--well-dark);
+}
+.roll-frame-strip .roll-media { aspect-ratio: 4 / 3; border: 2px solid var(--well); }
 
-.roll-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; }
-.roll-metadata dt { color: var(--text-mut); }
-.roll-metadata dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+.roll-actions { flex-wrap: wrap; }
+
+.roll-quad { display: grid; gap: 8px; }
+.roll-figure { min-width: 0; margin: 0; padding: 4px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: 0 1px 2px rgb(40 60 90 / 14%); }
+.roll-figure figcaption { margin-top: 3px; color: var(--text-mut); font-size: 11px; font-weight: 700; }
+
+.roll-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; }
+.roll-metadata dt { color: var(--text-mut); font-size: 12px; font-weight: 700; }
+.roll-metadata dd { margin: 0; font: 12px var(--mono); }
 
 /* ---- host dashboard ---- */
 
-.host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
-.host-stat { min-width: 108px; padding: 10px 14px; border: 1px solid var(--border-mid); border-radius: 12px; background: var(--panel); }
-.host-stat-label { color: var(--text-faint); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; }
-.host-stat-value { display: block; font: 700 22px var(--mono); }
+.host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.host-stat { min-width: 110px; padding: 8px 10px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: inset 0 1px 0 var(--hilite); }
+.host-stat-label { color: var(--text-mut); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
+.host-stat-value { display: block; font: 700 20px var(--mono); }
 
 .host-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-.host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 8px; }
+.host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--border-mid); }
 
 .host-captures { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.host-capture { min-width: 0; }
-.host-capture .roll-media, .host-capture-placeholder { border-radius: 8px; }
-.host-capture[data-muted='true'] { opacity: 0.55; }
-.host-capture-placeholder { display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--panel-inset); color: var(--text-mut); font-weight: 600; }
-.host-capture-meta { padding: 6px 1px 2px; font-family: var(--mono); font-size: 11px; color: var(--text-mut); }
+.host-capture { padding: 5px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: 0 1px 2px rgb(40 60 90 / 14%); }
+.host-capture[data-muted='true'] { opacity: 0.58; }
+.host-capture-placeholder { display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--panel-inset); color: var(--text-mut); font-weight: 700; }
+.host-capture-meta { padding: 5px 1px; font: 11px var(--mono); }
 
 @media (max-width: 600px) {
-  .roll-shell { padding: 10px 8px; }
+  .roll-shell { padding: 8px; }
   .host-settings { grid-template-columns: 1fr; }
   .host-captures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
