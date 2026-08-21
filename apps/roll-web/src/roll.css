@@ -144,13 +144,22 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: 
 .roll-shell { width: min(100%, 1120px); margin: 0 auto; padding: 12px; }
 .roll-shell--narrow { width: calc(100% - 20px); max-width: 420px; margin: 12vh auto; }
 
+/* The feed is a Messenger window: rounded blue frame floating on the sky
+   wash, title bar on top, identity block, contact-group header, the photo
+   list, and the ad banner pinned to the bottom. */
 .roll-shell--feed {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  width: 100%;
-  max-width: none;
+  height: calc(100dvh - 16px);
+  width: calc(100% - 16px);
+  max-width: 760px;
+  margin: 8px auto;
   padding: 0;
+  border: 1px solid var(--msn-blue-deep);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 4px 18px rgb(20 80 159 / 30%);
 }
 
 /* ---- masthead: the glossy MSN bar, KINO logotype in white italic ---- */
@@ -178,18 +187,53 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: 
 .roll-masthead .kino-status-lamp .kino-status-symbol { color: #9fe25e; text-shadow: 0 0 4px rgb(159 226 94 / 80%); }
 .roll-masthead .kino-status-lamp--off .kino-status-symbol { color: #cfe7f8; text-shadow: none; }
 
-.roll-titlebar {
+/* Identity block: display picture, screen name, italic personal message. */
+.roll-identity {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 12px 9px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--msn-border-soft);
   background: var(--msn-grad-soft);
 }
 
-.roll-subhead { margin-top: 1px; color: var(--msn-mut); font-size: 12px; }
+.roll-dp {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  object-fit: cover;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(20 80 159 / 35%);
+  background: var(--msn-sky-deep);
+}
+
+.roll-dp--empty {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--msn-grad-btn);
+  font: 700 italic 26px var(--display);
+}
+
+.roll-identity-text { min-width: 0; flex: 1; }
+.roll-identity h1 { margin: 0; font-size: clamp(18px, 4.5vw, 22px); overflow-wrap: anywhere; }
+
+/* The "personal message": italic, muted, exactly like the era. */
+.roll-subhead { margin-top: 1px; color: var(--msn-mut); font-size: 12px; font-style: italic; }
+
+/* Contact-group header above the photo list. */
+.roll-group {
+  padding: 7px 12px 6px;
+  color: var(--msn-blue-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--msn-border-soft);
+  background: #fff;
+}
+.roll-group span[aria-hidden] { color: var(--msn-mut); font-size: 9px; margin-right: 3px; }
 
 .roll-alert { margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #d9a6a6; border-radius: 4px; background: #fdf2f2; color: var(--msn-red); }
 .roll-shell > .roll-alert, .roll-shell--narrow .roll-alert { margin: 0 0 10px; }
@@ -214,8 +258,24 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: 
   contain: strict;
   overscroll-behavior: contain;
   padding: 10px;
-  background: transparent;
+  background: var(--msn-sky);
 }
+
+/* The ad banner, pinned under the list like the era demanded. */
+.roll-banner {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  flex: none;
+  padding: 12px;
+  border-top: 1px solid var(--msn-blue-deep);
+  background: var(--msn-grad-head);
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(10 40 90 / 55%);
+}
+.roll-banner-brand { font: 700 italic 16px var(--display); letter-spacing: 0.04em; }
+.roll-banner-copy { font-size: 12px; font-weight: 700; }
 
 .roll-tile {
   display: block;

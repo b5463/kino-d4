@@ -142,6 +142,10 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   const failure = rollError ?? feed.error;
 
+  // The newest capture doubles as the Roll's display picture.
+  const newest = feed.captures[0];
+  const dp = newest === undefined ? undefined : assetOf(newest, ['thumb', 'kino-still', 'wiggle-preview']);
+
   useRollEvents(
     slug,
     {
@@ -198,8 +202,14 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
           <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} announce />
         )}
       </header>
-      <div className="roll-titlebar">
-        <div>
+      {/* Messenger identity block: display picture, screen name, personal message. */}
+      <div className="roll-identity">
+        {dp === undefined ? (
+          <span className="roll-dp roll-dp--empty" aria-hidden="true">K</span>
+        ) : (
+          <img className="roll-dp" src={rollApi.assetUrl(dp.assetId)} alt="" />
+        )}
+        <div className="roll-identity-text">
           <h1>{roll?.title ?? slug}</h1>
           {roll !== null ? (
             <div className="roll-subhead">
@@ -208,6 +218,9 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
           ) : null}
         </div>
         {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
+      </div>
+      <div className="roll-group">
+        <span aria-hidden="true">▼</span> Photos ({roll?.photoCount ?? feed.captures.length})
       </div>
 
       {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
@@ -245,6 +258,12 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
           ))}
         </div>
       </div>
+
+      {/* The Messenger ad banner, self-serving on purpose. */}
+      <aside className="roll-banner" aria-label="KINO">
+        <span className="roll-banner-brand">KINO</span>
+        <span className="roll-banner-copy">Four lenses. One press.</span>
+      </aside>
     </main>
   );
 }
