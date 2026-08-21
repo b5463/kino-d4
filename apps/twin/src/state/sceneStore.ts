@@ -36,8 +36,10 @@ export interface SceneState {
   measureMode: boolean;
   measurePoints: MeasurePoint[];
   measureComponentId: string | null;
+  showGrid: boolean; // reference grid under the assembly
   optics: OpticsState;
   select(id: string | null): void;
+  setShowGrid(on: boolean): void;
   setExplode(v: number): void;
   setPitch(mm: number): void;
   setViewMode(m: ViewMode): void;
@@ -74,6 +76,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   measureMode: false,
   measurePoints: [],
   measureComponentId: null,
+  showGrid: true,
   optics: {
     enabled: false,
     fovScenarioDeg: null,
@@ -86,6 +89,9 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   select(id) {
     set({ selection: id });
+  },
+  setShowGrid(on) {
+    set({ showGrid: on });
   },
   setExplode(v) {
     set({ explode: clamp(v, 0, 1) });

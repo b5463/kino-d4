@@ -16,6 +16,8 @@ import { Header } from './panels/Header';
 import { StatusBar } from './panels/StatusBar';
 import { DisplayPanel } from './panels/DisplayPanel';
 import { DisplayScreen } from './scene/DisplayScreen';
+import { WelcomeOverlay } from './panels/WelcomeOverlay';
+import { useSimStore } from './state/simStore';
 import { FaultPanel } from './panels/FaultPanel';
 import { PowerPanel } from './panels/PowerPanel';
 import { SyncPanel } from './panels/SyncPanel';
@@ -32,9 +34,30 @@ import type { ViewPoseName } from './scene/viewPoses';
 // the right-side engineering tabs own inspection, fault, power, timing,
 // measurement, recorder, and export workflows.
 
+/** Live panels are empty until the simulator runs — say so once, in one place. */
+function SimOffNotice() {
+  const running = useSimStore((s) => s.running);
+  if (running) return null;
+  return <p className="twin-panel-note twin-simoff-note">Simulator is off. POWER ON in the header fills these panels with live data.</p>;
+}
+
+type RightTab = 'inspect' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
+
+/** Plain tab names with one blunt line each — the label a beginner reads,
+ * the id the code keeps (persisted layouts and tests stay stable). */
+const RIGHT_TABS: { id: RightTab; label: string; blurb: string }[] = [
+  { id: 'inspect', label: 'PARTS', blurb: 'Every component: dimensions, clearances, measured overrides.' },
+  { id: 'display', label: 'SCREEN', blurb: "The camera's own display, live, plus the shutter." },
+  { id: 'faults', label: 'FAULTS', blurb: 'Break things on purpose and watch the device cope.' },
+  { id: 'power', label: 'POWER', blurb: 'Battery, rails, current draw, thermal state.' },
+  { id: 'sync', label: 'TIMING', blurb: 'Sensor phase and skew — the numbers that decide the photo.' },
+  { id: 'flash', label: 'FLASH', blurb: 'Flash pulse against the rolling-shutter readout.' },
+  { id: 'record', label: 'SESSIONS', blurb: 'Record, replay and export simulation sessions.' },
+];
+
 export function App() {
   const canvasRef = useRef<TwinCanvasHandle>(null);
-  const [rightTab, setRightTab] = useState<'inspect' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record'>('inspect');
+  const [rightTab, setRightTab] = useState<RightTab>('inspect');
   const profile = useSceneStore((state) => state.profile);
   const overrides = useSceneStore((state) => state.overrides);
   const pitchMm = useSceneStore((state) => state.pitchMm);
@@ -55,6 +78,7 @@ export function App() {
         <main className="twin-viewport" aria-label="3D viewport">
           <ViewportBar onView={handleView} />
           <div className="twin-viewport-canvas">
+            <WelcomeOverlay />
             <TwinCanvas ref={canvasRef}>
               <Assembly />
               <Wiring />
@@ -67,17 +91,20 @@ export function App() {
         </main>
         <aside className="twin-panel twin-panel--right" aria-label="Inspector">
           <nav className="twin-panel-tabs" aria-label="Engineering panels">
-            {(['inspect', 'display', 'faults', 'power', 'sync', 'flash', 'record'] as const).map((tab) => (
+            {RIGHT_TABS.map((tab) => (
               <button
                 type="button"
-                key={tab}
-                className={rightTab === tab ? 'twin-panel-tab twin-panel-tab--active' : 'twin-panel-tab'}
-                onClick={() => setRightTab(tab)}
+                key={tab.id}
+                className={rightTab === tab.id ? 'twin-panel-tab twin-panel-tab--active' : 'twin-panel-tab'}
+                aria-pressed={rightTab === tab.id}
+                onClick={() => setRightTab(tab.id)}
               >
-                {tab.toUpperCase()}
+                {tab.label}
               </button>
             ))}
           </nav>
+          <p className="twin-tab-blurb">{RIGHT_TABS.find((tab) => tab.id === rightTab)?.blurb}</p>
+          <SimOffNotice />
           {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
           {rightTab === 'display' && <DisplayPanel />}
           {rightTab === 'faults' && <FaultPanel />}

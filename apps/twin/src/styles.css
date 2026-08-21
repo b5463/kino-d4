@@ -91,7 +91,7 @@ body {
 
 .twin-body {
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
+  grid-template-columns: 236px 1fr 264px;
   min-height: 0;
 }
 
@@ -368,7 +368,7 @@ body {
 
 .twin-panel-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   position: sticky;
   top: 0;
   z-index: 2;
@@ -544,7 +544,33 @@ body {
   width: 100%;
   color: var(--twin-text-mut);
   background: #111318;
-  font: 8px var(--twin-mono);
+  font: 11px var(--twin-mono);
+}
+
+.twin-flash-svg text {
+  fill: var(--twin-text);
+}
+
+.twin-flash-risklist {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twin-flash-risk {
+  display: grid;
+  grid-template-columns: 3.2em 1fr auto;
+  gap: 6px;
+  padding: 2px 0;
+  color: #61d095;
+}
+
+.twin-flash-risk--banded {
+  color: #e0838c;
+}
+
+.twin-flash-risk span:first-child {
+  color: var(--twin-text);
 }
 
 .twin-flash-svg line {
@@ -763,4 +789,191 @@ body {
   display: block;
   border: 1px solid var(--twin-line);
   background: #0b0d0e;
+}
+
+/* --- Guided start, primary actions, tab blurbs (issue #40) --- */
+
+.twin-viewport-canvas {
+  position: relative;
+}
+
+.twin-btn--primary {
+  background: #2e6b47;
+  border-color: #3c8a5c;
+  color: #eaf6ee;
+}
+
+.twin-btn--primary:hover {
+  background: #357d53;
+}
+
+.twin-header-brand {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.twin-header-muted {
+  color: var(--twin-text-mut);
+}
+
+.twin-header-control {
+  padding: 4px 12px;
+}
+
+.twin-dot--warn {
+  background: #e8c93f;
+  box-shadow: 0 0 5px rgb(232 201 63 / 55%);
+}
+
+.twin-welcome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(12 13 16 / 62%);
+  animation: twin-welcome-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.twin-welcome--boot {
+  align-items: flex-start;
+  padding-top: 48px;
+  background: transparent;
+  pointer-events: none;
+}
+
+@keyframes twin-welcome-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twin-welcome {
+    animation: none;
+  }
+}
+
+.twin-welcome-card {
+  max-width: 420px;
+  padding: 22px 26px;
+  background: var(--twin-panel);
+  border: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 12px;
+  color: var(--twin-text);
+}
+
+.twin-welcome-card--boot {
+  padding: 14px 18px;
+  background: rgb(27 30 36 / 92%);
+}
+
+.twin-welcome-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+
+.twin-welcome-lead {
+  margin: 0 0 16px;
+  line-height: 1.5;
+  color: var(--twin-text);
+}
+
+.twin-welcome-power {
+  font-size: 13px;
+  padding: 8px 22px;
+  margin-bottom: 16px;
+}
+
+.twin-welcome-steps {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+
+.twin-welcome-note {
+  margin: 0;
+  color: var(--twin-text-mut);
+}
+
+.twin-welcome-boot-title {
+  margin: 0 0 6px;
+  letter-spacing: 0.08em;
+  color: #e8c93f;
+}
+
+.twin-welcome-bootlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 1.8;
+}
+
+.twin-welcome-bootstep--done { color: #61d095; }
+.twin-welcome-bootstep--now { color: var(--twin-text); }
+.twin-welcome-bootstep--next { color: var(--twin-text-mut); }
+
+.twin-tab-blurb {
+  margin: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--twin-line);
+  color: var(--twin-text-mut);
+  line-height: 1.45;
+}
+
+.twin-simoff-note {
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-tree-head {
+  padding: 9px 10px 7px;
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-tree-title {
+  display: block;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  margin-bottom: 3px;
+}
+
+.twin-tree-hint {
+  display: block;
+  color: var(--twin-text-mut);
+  line-height: 1.4;
+}
+
+.twin-tree-row:hover {
+  background: #21252c;
+}
+
+.twin-tree-label {
+  cursor: pointer;
+  text-align: left;
+  padding: 2px 0;
+}
+
+.twin-tree-label:focus-visible,
+.twin-btn:focus-visible,
+.twin-panel-tab:focus-visible,
+.twin-tree-visibility:focus-visible {
+  outline: 2px solid #61a8d0;
+  outline-offset: 1px;
+}
+
+/* One slider look everywhere — native control, tinted to the chrome. */
+input[type='range'] {
+  accent-color: #61a8d0;
+  height: 18px;
+}
+
+.twin-slider-row {
+  flex-wrap: wrap;
+}
+
+.twin-slider-row input[type='range'] {
+  flex: 1 1 100%;
 }
