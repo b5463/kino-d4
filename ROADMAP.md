@@ -1,6 +1,6 @@
 # KINO roadmap
 
-Updated 2026-08-17.
+Updated 2026-08-21.
 
 This file records direction. It does not promise dates. Current behavior is defined by tested source and the maintained documents linked from [`docs/README.md`](docs/README.md).
 
@@ -23,20 +23,16 @@ This file records direction. It does not promise dates. Current behavior is defi
 
 ## Next
 
-### Ship the Roll experience
+### Open Roll to the internet
 
-- Finish the public Roll client.
-- Add processing workers for thumbnails, looks, wiggles, and video derivatives.
-- Surface viewer counts and the remaining Roll lifecycle events.
-- Finish deletion and retention behavior across PostgreSQL, Redis, and object storage.
-- Test resumed uploads on weak party Wi-Fi and after device reboot.
+- Close the remaining hardening items before `kino.acronym.sk` is public.
+- Record the device-gated mobile browser acceptance rows on real phones.
+- Resolve the FFmpeg/GPL distribution decision before publishing a worker image.
 
-### Build KINO Twin
+### Feed the Twin measured reality
 
-- Model the D4 from measured component envelopes.
-- Keep provisional dimensions and simulated telemetry visibly labelled.
-- Connect the virtual device through the same KDP path as physical hardware.
-- Add wiring, power, sync, flash, and fault views that match the bench.
+- Replace canonical D4 geometry with bench-measured overrides as issue #1 produces them.
+- Complete the enclosure-lock measurement checklist against the physical build.
 
 ## Later
 
@@ -44,8 +40,8 @@ This file records direction. It does not promise dates. Current behavior is defi
 - Versioned firmware packages for the P4 and four camera nodes.
 - Firmware rollback once the device contract defines it.
 - Signed release artifacts and a documented trust path.
-- End-to-end backup and restore across configuration, recipes, sounds, calibration, and Roll links.
 - A manufacturing test fixture for assembled D4 units.
+- Twin beyond 0.1: WebSocket bridge, GLB assets from official STEP, DXF/CSV/STEP exports, Playwright acceptance automation.
 
 ## Maybe
 

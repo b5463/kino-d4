@@ -50,10 +50,9 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Known incomplete work
 
-- The public Roll client is under construction.
-- KINO Twin is under construction.
 - Physical D4 firmware and final hardware measurements are not shipped from this repository yet.
 - Firmware signing and rollback are not implemented.
+- Mobile-device browser acceptance (iOS Safari, Android Chrome) is device-gated and unrecorded.
 
 ## Changelog rules
 
