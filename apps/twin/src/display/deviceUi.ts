@@ -125,8 +125,19 @@ function captureOverlay(ctx: Ctx2d, state: DeviceUiState): void {
   text(ctx, active.map((cam) => `${cam.toUpperCase()} ${state.camStage[cam]}`).join('   '), DISPLAY_W / 2, DISPLAY_H / 2 + 14, 20, FG, 'center');
 }
 
+/** Update states that own the whole screen. Terminal states ('idle',
+ * 'ready') return to the normal UI; 'error' shows as a line there instead of
+ * a permanent takeover. */
+const ACTIVE_FW_STATES = ['receiving', 'verifying', 'applying', 'rebooting'];
+
+function fwErrorLine(ctx: Ctx2d, state: DeviceUiState): void {
+  const failed = Object.entries(state.fw).filter(([, v]) => v?.state === 'error');
+  if (failed.length === 0) return;
+  text(ctx, `FW UPDATE FAILED: ${failed.map(([target]) => target.toUpperCase()).join(' ')}`, DISPLAY_W / 2, 56, 22, BAD, 'center');
+}
+
 function fwOverlay(ctx: Ctx2d, state: DeviceUiState): boolean {
-  const updating = Object.entries(state.fw).filter(([, v]) => v && v.state !== 'done' && v.state !== 'idle');
+  const updating = Object.entries(state.fw).filter(([, v]) => v && ACTIVE_FW_STATES.includes(v.state));
   if (updating.length === 0) return false;
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, DISPLAY_W, DISPLAY_H);
@@ -161,6 +172,7 @@ export function drawDeviceUi(ctx: Ctx2d, state: DeviceUiState): void {
 
   if (state.snapshot) statusBar(ctx, state.snapshot, state.studioConnected);
   viewfinder(ctx, state);
+  fwErrorLine(ctx, state);
   camRow(ctx, state);
   captureOverlay(ctx, state);
 }

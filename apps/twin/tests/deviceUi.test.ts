@@ -90,6 +90,21 @@ describe('drawDeviceUi', () => {
     expect(texts()).not.toContain('CAM2 PREVIEW · SIMULATED');
   });
 
+  it('a completed camera update (state ready) releases the screen back to the normal UI', () => {
+    const { ctx, texts } = fakeCtx();
+    drawDeviceUi(ctx, state({ fw: { cam3: { state: 'ready' } } }));
+    expect(texts()).not.toContain('FIRMWARE UPDATE');
+    expect(texts()).toContain('CAM2 PREVIEW · SIMULATED');
+  });
+
+  it('a failed update shows a red line on the ready screen, not a permanent takeover', () => {
+    const { ctx, texts } = fakeCtx();
+    drawDeviceUi(ctx, state({ fw: { cam1: { state: 'error' } } }));
+    expect(texts()).not.toContain('FIRMWARE UPDATE');
+    expect(texts()).toContain('FW UPDATE FAILED: CAM1');
+    expect(texts()).toContain('CAM2 PREVIEW · SIMULATED');
+  });
+
   it('failed uploads surface on the ready screen', () => {
     const { ctx, texts } = fakeCtx();
     drawDeviceUi(ctx, state({ snapshot: snapshot({ uploads: { pending: 3, uploading: 1, failed: 2, uploaded: 9 } }) }));
