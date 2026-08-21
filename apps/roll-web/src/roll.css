@@ -1,17 +1,48 @@
-/* Roll web — the guest gallery as a mid-2000s photo site.
-   Same silver-blue token system as Studio (tokens.css is loaded untouched),
-   styled the way a 2005-2007 photo product wore it: chrome masthead with an
-   embossed logotype, white print mats on a cool gray tray, Trebuchet MS
-   display type, underlined blue links, a dark viewer stage with a filmstrip.
-   The feed owns the viewport — masthead and title stay put, only the tray
-   of prints scrolls.
+/* Roll web — the guest gallery as a KINO-branded MSN homage.
+   Deliberately reads as Windows Live Messenger circa 2006: glossy deep-blue
+   masthead with a white italic logotype, the green presence dot standing in
+   for "Online" (here: LIVE), a pale sky wash behind white rounded cards,
+   glossy blue buttons, and a sign-in-dialog PIN gate. The MSN palette is
+   local to this file; the shared silver-blue tokens stay untouched and the
+   kino-* primitives are re-skinned by class overrides only — markup, ARIA
+   and behavior identical.
 
-   All text sits on token surfaces whose AA ratios are measured in
-   tokens.css; nothing here introduces a new text/background pair except
-   #fff captions on --well-dark (6.9:1 documented as --text-on-dark). */
+   Contrast (WCAG AA) measured on the real backgrounds:
+   --msn-text  #1c2a3a on #ffffff cards      ≈ 13.5:1
+   --msn-mut   #51667c on #ffffff            ≈  5.6:1
+   --msn-mut   #51667c on #eaf4fc wash       ≈  5.1:1
+   --msn-link  #1258c4 on #ffffff            ≈  6.3:1
+   #ffffff on masthead's lightest stop #5aa2e0 ≈ 3.1:1 (large/bold 16px+ only)
+   #ffffff on button's lightest stop #3f8ad8   ≈ 3.7:1 at 12px bold — so
+   button labels sit on the darker half of the gloss (see --msn-grad-btn). */
 
 :root {
+  --msn-blue-deep: #14509f;
+  --msn-blue: #1f66c0;
+  --msn-blue-light: #5aa2e0;
+  --msn-sky: #eaf4fc;
+  --msn-sky-deep: #cfe7f8;
+  --msn-border: #9dbfdd;
+  --msn-border-soft: #c4dcef;
+  --msn-text: #1c2a3a;
+  --msn-mut: #51667c;
+  --msn-link: #1258c4;
+  --msn-green: #6cbf3f;      /* the Messenger presence green */
+  --msn-green-deep: #3d8a1e;
+  --msn-red: #a02525;
+
+  /* Glossy split gradients — the MSN signature. Labels always sit over the
+     darker lower half, so white text never rides the light stop. */
+  --msn-grad-head: linear-gradient(to bottom, #5aa2e0 0%, #2f7ad0 46%, #1a5cb4 52%, #14509f 100%);
+  --msn-grad-btn: linear-gradient(to bottom, #3f8ad8 0%, #2a71c6 46%, #1a5cb4 52%, #164f9c 100%);
+  --msn-grad-btn-hover: linear-gradient(to bottom, #529ae4 0%, #367ed2 46%, #2364bd 52%, #1a57a6 100%);
+  --msn-grad-soft: linear-gradient(to bottom, #ffffff 0%, #f2f8fd 46%, #e2eff9 52%, #d5e7f5 100%);
+  --msn-grad-wash: linear-gradient(to bottom, #cfe7f8, #eaf4fc 220px, #f7fbfe);
+
+  --msn-r: 6px;
   --display: 'Trebuchet MS', Tahoma, Verdana, sans-serif;
+  --msn-sans: Tahoma, 'Segoe UI', Verdana, Arial, sans-serif;
+  --msn-mono: Consolas, 'Lucida Console', 'Courier New', monospace;
 }
 
 * { box-sizing: border-box; }
@@ -20,74 +51,99 @@ html, body, #root { min-height: 100%; }
 
 body {
   margin: 0;
-  background: var(--canvas);
-  color: var(--text);
-  font: 13px/1.5 var(--sans);
+  background: #eaf4fc var(--msn-grad-wash) no-repeat fixed;
+  color: var(--msn-text);
+  font: 13px/1.5 var(--msn-sans);
 }
 
 button, input, select { font: inherit; }
 
-.kino-button { min-height: 38px; font-size: 12px; padding: 0 14px; }
-.kino-button--sm { min-height: 30px; }
-.kino-panel, .kino-panel-body { min-width: 0; }
+a { color: var(--msn-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-/* Plain buttons and link-buttons get the same beveled treatment as
-   kino-button so nothing on the page falls outside the period. */
-button:not(.kino-button), .roll-action {
+:focus-visible {
+  outline: 2px solid var(--msn-blue);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+/* ---- buttons: glossy MSN blue, white bold labels ---- */
+
+.kino-button, button:not(.kino-button), .roll-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 38px;
-  padding: 0 14px;
-  border: 1px solid var(--border-dark);
-  border-radius: var(--r);
-  background: var(--grad-btn);
-  color: var(--text);
-  box-shadow: inset 0 1px 0 var(--hilite);
+  padding: 0 16px;
+  border: 1px solid var(--msn-blue-deep);
+  border-radius: var(--msn-r);
+  background: var(--msn-grad-btn);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%);
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
 }
 
-button:hover:not(:disabled), .roll-action:hover { border-color: var(--blue); background: var(--grad-btn-hover); }
-button:active:not(:disabled), .roll-action:active { background: var(--grad-btn-down); }
-button:disabled { color: var(--text-mut); cursor: not-allowed; }
+.kino-button:hover:not(:disabled),
+button:hover:not(:disabled),
+.roll-action:hover { background: var(--msn-grad-btn-hover); text-decoration: none; }
 
-/* Period link: always blue, underline arrives on hover. */
-a { color: var(--link); text-decoration: none; }
-a:hover { text-decoration: underline; }
+.kino-button:active:not(:disabled),
+button:active:not(:disabled) { background: var(--msn-blue-deep); box-shadow: inset 0 1px 3px rgb(0 0 0 / 25%); }
 
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  box-shadow: var(--focus-ring);
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.kino-button--sm { min-height: 30px; padding: 0 10px; }
+/* "Danger" stays readable inside the MSN language: white gloss, red label. */
+.kino-button--danger { background: var(--msn-grad-soft); border-color: var(--msn-border); color: var(--msn-red); }
+.kino-button--danger-solid { border-color: #7a1c1c; background: linear-gradient(to bottom, #d05252 0%, #b93232 50%, #9c2424 100%); }
+.kino-button-spinner { border-color: currentColor; border-right-color: transparent; }
+
+/* ---- panels: white rounded cards with a soft blue title band ---- */
+
+.kino-panel {
+  min-width: 0;
+  border: 1px solid var(--msn-border);
+  border-radius: var(--msn-r);
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(20 80 159 / 14%);
+  overflow: hidden;
 }
+.kino-panel-head { border-bottom: 1px solid var(--msn-border-soft); background: var(--msn-grad-soft); padding: 7px 12px; }
+.kino-panel-title { color: var(--msn-blue-deep); font: 700 12px var(--msn-sans); letter-spacing: 0.05em; text-transform: uppercase; }
+.kino-panel-body { min-width: 0; padding: 12px; }
+
+.kino-toolbar { border: 1px solid var(--msn-border-soft); border-radius: var(--msn-r); background: var(--msn-grad-soft); padding: 6px 8px; gap: 8px; }
+
+/* Presence: symbol turns Messenger green when ok. */
+.kino-status-lamp { color: var(--msn-mut); font: 700 11px var(--msn-sans); }
+.kino-status-lamp--ok .kino-status-symbol { color: var(--msn-green); text-shadow: 0 0 3px rgb(108 191 63 / 60%); }
 
 input[type='text'], input[type='password'], input[type='url'], input:not([type]) {
   width: 100%;
   min-height: 38px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-dark);
-  border-radius: 2px;
-  background: var(--well);
-  color: var(--text);
-  box-shadow: inset 1px 1px 2px rgb(40 60 90 / 12%);
+  padding: 6px 9px;
+  border: 1px solid var(--msn-border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--msn-text);
+  box-shadow: inset 1px 1px 2px rgb(20 80 159 / 10%);
 }
 
 form { display: grid; gap: 8px; justify-items: start; }
 form input { justify-self: stretch; }
-label { color: var(--text-mut); font-size: 12px; font-weight: 700; }
+label { color: var(--msn-mut); font-size: 12px; font-weight: 700; }
 
 h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 2px; font: 700 clamp(20px, 5vw, 26px)/1.2 var(--display); }
-h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
+h1 { margin-bottom: 2px; font: 700 clamp(20px, 5vw, 26px)/1.2 var(--display); color: var(--msn-blue-deep); }
+h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--msn-blue-deep); }
 
 /* ---- shell ---- */
 
 .roll-shell { width: min(100%, 1120px); margin: 0 auto; padding: 12px; }
 .roll-shell--narrow { width: calc(100% - 20px); max-width: 420px; margin: 12vh auto; }
 
-/* Feed page: fixed masthead + title, only the print tray scrolls. */
 .roll-shell--feed {
   display: flex;
   flex-direction: column;
@@ -97,25 +153,30 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
   padding: 0;
 }
 
-/* ---- masthead: silver-blue chrome with an embossed logotype ---- */
+/* ---- masthead: the glossy MSN bar, KINO logotype in white italic ---- */
 
 .roll-masthead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--border-mid);
-  background: var(--grad-chrome);
-  box-shadow: inset 0 1px 0 var(--hilite);
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--msn-blue-deep);
+  background: var(--msn-grad-head);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 35%);
 }
 
 .roll-brand {
-  color: var(--blue-dark);
-  font: 700 italic 16px var(--display);
+  color: #fff;
+  font: 700 italic 17px var(--display);
   letter-spacing: 0.01em;
-  text-shadow: 0 1px 0 #fff; /* embossed into the chrome */
+  text-shadow: 0 1px 2px rgb(10 40 90 / 55%);
 }
+
+/* Presence in the masthead reads white-on-blue with the green dot. */
+.roll-masthead .kino-status-lamp { color: #fff; text-shadow: 0 1px 1px rgb(10 40 90 / 55%); }
+.roll-masthead .kino-status-lamp .kino-status-symbol { color: #9fe25e; text-shadow: 0 0 4px rgb(159 226 94 / 80%); }
+.roll-masthead .kino-status-lamp--off .kino-status-symbol { color: #cfe7f8; text-shadow: none; }
 
 .roll-titlebar {
   display: flex;
@@ -124,27 +185,27 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
   gap: 10px;
   flex-wrap: wrap;
   padding: 10px 12px 9px;
-  border-bottom: 1px solid var(--border-mid);
-  background: var(--grad-head);
+  border-bottom: 1px solid var(--msn-border-soft);
+  background: var(--msn-grad-soft);
 }
 
-.roll-subhead { margin-top: 1px; color: var(--text-mut); font-size: 12px; }
+.roll-subhead { margin-top: 1px; color: var(--msn-mut); font-size: 12px; }
 
-.roll-alert { margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #d9a6a6; background: #fdf2f2; color: var(--red-dark); }
+.roll-alert { margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #d9a6a6; border-radius: 4px; background: #fdf2f2; color: var(--msn-red); }
 .roll-shell > .roll-alert, .roll-shell--narrow .roll-alert { margin: 0 0 10px; }
 .roll-closed {
-  padding: 4px 9px;
-  border: 1px solid var(--orange-border);
-  background: #fdf9ec;
-  color: var(--orange-dark);
+  padding: 4px 10px;
+  border: 1px solid var(--msn-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--msn-mut);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
 }
 
-.roll-shell--feed > p[role='status'] { padding: 10px 12px; margin: 0; color: var(--text-mut); }
+.roll-shell--feed > p[role='status'] { padding: 10px 12px; margin: 0; color: var(--msn-mut); }
 
-/* ---- the print tray: white-matted photos on cool gray ---- */
+/* ---- the feed: white rounded cards floating on the sky wash ---- */
 
 .roll-feed {
   flex: 1;
@@ -153,50 +214,49 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
   contain: strict;
   overscroll-behavior: contain;
   padding: 10px;
-  background: var(--panel);
-  /* the tray sits a step below the title chrome */
-  box-shadow: inset 0 2px 3px -2px rgb(40 60 90 / 35%);
+  background: transparent;
 }
 
 .roll-tile {
   display: block;
   min-width: 0;
   padding: 5px;
-  border: 1px solid var(--border-mid);
-  background: var(--well);
+  border: 1px solid var(--msn-border);
+  border-radius: var(--msn-r);
+  background: #fff;
   color: inherit;
   text-decoration: none;
-  box-shadow: 0 1px 3px rgb(40 60 90 / 22%);
+  box-shadow: 0 1px 4px rgb(20 80 159 / 16%);
 }
 
-.roll-tile:hover { border-color: var(--blue); box-shadow: 0 2px 5px rgb(40 60 90 / 30%); }
+.roll-tile:hover { border-color: var(--msn-blue); box-shadow: 0 2px 7px rgb(20 80 159 / 28%); }
 
-.roll-media { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--panel-inset); }
+.roll-media { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 3px; background: var(--msn-sky-deep); }
 .roll-processing {
   display: grid;
   place-items: center;
   aspect-ratio: 4 / 3;
-  background: var(--panel-inset);
-  color: var(--text-mut);
+  border-radius: 3px;
+  background: var(--msn-sky-deep);
+  color: var(--msn-mut);
   font-size: 11px;
   font-weight: 700;
 }
 
-/* ---- capture detail: viewer stage + filmstrip, like desktop photo tools ---- */
+/* ---- capture detail: one big white card, glossy toolbar under it ---- */
 
-.roll-detail { width: min(100%, 900px); margin: 0 auto; display: grid; gap: 10px; justify-items: start; }
-.roll-detail > * { justify-self: stretch; }
+.roll-detail { width: min(100%, 900px); margin: 0 auto; display: grid; gap: 10px; }
 .roll-detail > .kino-button { justify-self: start; }
 
 .roll-stage {
-  padding: 8px;
-  border: 1px solid var(--border-dark);
-  background: var(--well-dark);
-  box-shadow: inset 0 0 14px rgb(0 0 0 / 30%);
+  padding: 7px;
+  border: 1px solid var(--msn-border);
+  border-radius: var(--msn-r);
+  background: #fff;
+  box-shadow: 0 1px 5px rgb(20 80 159 / 18%);
 }
 .roll-stage .roll-media, .roll-detail > .roll-media { aspect-ratio: auto; }
 
-/* The filmstrip: thumbnails riding a dark strip, XP filmstrip-view style. */
 .roll-frame-strip {
   display: grid;
   grid-auto-flow: column;
@@ -204,36 +264,37 @@ h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
   gap: 6px;
   overflow-x: auto;
   padding: 6px;
-  border: 1px solid var(--border-dark);
-  background: var(--well-dark);
+  border: 1px solid var(--msn-border-soft);
+  border-radius: var(--msn-r);
+  background: var(--msn-grad-soft);
 }
-.roll-frame-strip .roll-media { aspect-ratio: 4 / 3; border: 2px solid var(--well); }
+.roll-frame-strip .roll-media { aspect-ratio: 4 / 3; border: 1px solid var(--msn-border); background: #fff; }
 
 .roll-actions { flex-wrap: wrap; }
 
 .roll-quad { display: grid; gap: 8px; }
-.roll-figure { min-width: 0; margin: 0; padding: 4px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: 0 1px 2px rgb(40 60 90 / 14%); }
-.roll-figure figcaption { margin-top: 3px; color: var(--text-mut); font-size: 11px; font-weight: 700; }
+.roll-figure { min-width: 0; margin: 0; padding: 4px; border: 1px solid var(--msn-border); border-radius: 4px; background: #fff; }
+.roll-figure figcaption { margin-top: 3px; color: var(--msn-mut); font-size: 11px; font-weight: 700; }
 
 .roll-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; }
-.roll-metadata dt { color: var(--text-mut); font-size: 12px; font-weight: 700; }
-.roll-metadata dd { margin: 0; font: 12px var(--mono); }
+.roll-metadata dt { color: var(--msn-mut); font-size: 12px; font-weight: 700; }
+.roll-metadata dd { margin: 0; font: 12px var(--msn-mono); }
 
 /* ---- host dashboard ---- */
 
 .host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.host-stat { min-width: 110px; padding: 8px 10px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: inset 0 1px 0 var(--hilite); }
-.host-stat-label { color: var(--text-mut); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
-.host-stat-value { display: block; font: 700 20px var(--mono); }
+.host-stat { min-width: 110px; padding: 8px 12px; border: 1px solid var(--msn-border); border-radius: var(--msn-r); background: #fff; box-shadow: 0 1px 3px rgb(20 80 159 / 12%); }
+.host-stat-label { color: var(--msn-mut); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
+.host-stat-value { display: block; color: var(--msn-blue-deep); font: 700 20px var(--msn-mono); }
 
 .host-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-.host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--border-mid); }
+.host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--msn-border); border-radius: 4px; }
 
 .host-captures { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.host-capture { padding: 5px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: 0 1px 2px rgb(40 60 90 / 14%); }
+.host-capture { padding: 5px; border: 1px solid var(--msn-border); border-radius: var(--msn-r); background: #fff; box-shadow: 0 1px 3px rgb(20 80 159 / 12%); }
 .host-capture[data-muted='true'] { opacity: 0.58; }
-.host-capture-placeholder { display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--panel-inset); color: var(--text-mut); font-weight: 700; }
-.host-capture-meta { padding: 5px 1px; font: 11px var(--mono); }
+.host-capture-placeholder { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 3px; background: var(--msn-sky-deep); color: var(--msn-mut); font-weight: 700; }
+.host-capture-meta { padding: 5px 1px; font: 11px var(--msn-mono); }
 
 @media (max-width: 600px) {
   .roll-shell { padding: 8px; }

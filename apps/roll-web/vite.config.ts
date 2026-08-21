@@ -36,9 +36,9 @@ export default defineConfig({
         name: 'KINO Roll',
         short_name: 'KINO Roll',
         description: 'Guest gallery for a KINO Roll',
-        // Matches the silver-blue chrome the gallery masthead wears.
-        theme_color: '#ccd8e6',
-        background_color: '#f7f8fa',
+        // Matches the MSN-blue masthead and sky wash the gallery wears.
+        theme_color: '#1f66c0',
+        background_color: '#eaf4fc',
         display: 'standalone',
         start_url: '.',
         // A typographic app tile, not a new logo. `sizes: any` is valid for the
