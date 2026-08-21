@@ -63,5 +63,6 @@ export async function renderWiggleWebp(payload: JobPayload, ctx: JobCtx): Promis
     // `info.height` is the whole stacked image — every page — so the row would
     // claim a 4320 px-tall wiggle. One frame's height is what a client lays out.
     height: wiggle.height,
+    producer: { job: 'wiggle-webp', encoder: 'sharp/webp-anim', quality: WIGGLE_WEBP_QUALITY, fps: wiggle.fps, width: wiggle.width, frames: wiggle.order.length },
   });
 }

@@ -1,4 +1,5 @@
 import { requireCaptureId } from './capture';
+import { loadAiConfig, resolveAiDecision } from '../ai/provider';
 import type { JobCtx, JobHandler, JobPayload } from './types';
 
 /**
@@ -62,7 +63,7 @@ import type { JobCtx, JobHandler, JobPayload } from './types';
  * make the capture claim an enhancement it never got.
  */
 
-/** The marker a skipped enhancement reports. */
+/** The marker a skipped enhancement reports when no backend is configured. */
 export const AI_ENHANCE_SKIP = 'AI_ENHANCE_NOT_CONFIGURED';
 
 /**
@@ -102,11 +103,16 @@ export const FORBIDDEN_OPERATIONS = [
 ] as const;
 
 export interface AiEnhanceSkipped {
-  skipped: typeof AI_ENHANCE_SKIP;
+  skipped: string;
 }
 
 /**
- * Runs the enhancement, which today means declining to.
+ * Runs the enhancement, which today means resolving the gate (audit #62) and
+ * declining with the gate's own reason: DISABLED when AI_MODE is off (the
+ * default — nothing generative applies silently), NOT_CONFIGURED when no
+ * provider/endpoint/model is set, EXTERNAL_NOT_CONSENTED when an external
+ * provider lacks AI_ALLOW_EXTERNAL=true. No path reaches for the network —
+ * the consent gate exists before any backend does, by design.
  *
  * The capture id is still required, and the payload still validated: a job that
  * would be malformed once a backend exists is malformed now, and finding that out
@@ -114,7 +120,10 @@ export interface AiEnhanceSkipped {
  */
 export async function aiEnhance(payload: JobPayload, _ctx: JobCtx): Promise<AiEnhanceSkipped> {
   requireCaptureId(payload);
-  // Nothing is written, nothing is published, and no `assets` row is touched.
+  const decision = resolveAiDecision(loadAiConfig());
+  if (!decision.run) return { skipped: decision.reason };
+  // A configured, consented provider still has no implementation — the
+  // interface (EnhanceProvider) is the contract the first backend must fill.
   return await Promise.resolve({ skipped: AI_ENHANCE_SKIP });
 }
 

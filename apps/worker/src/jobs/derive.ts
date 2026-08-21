@@ -56,6 +56,12 @@ export interface DerivedArtifact {
   /** Pixel dimensions, or null for something that has none — a JSON document. */
   width?: number | null;
   height?: number | null;
+  /**
+   * The settings that decided these bytes (audit #59): render constants,
+   * fps/loop/quality, encoder — whatever a retune would change. Recorded on
+   * the asset row so re-rendering history stays visible in the data.
+   */
+  producer?: Record<string, unknown>;
 }
 
 export interface DerivedResult {
@@ -80,6 +86,12 @@ export async function publishDerived(
     artifact.mime,
   );
 
+  // Producer identity travels with the row (audit #59): the job's settings
+  // snapshot, stamped with when these bytes were made. A retry or re-render
+  // overwrites it — the row describes the bytes it currently promises.
+  const producer = { renderer: 'kino-worker', role: artifact.role, ...(artifact.producer ?? {}) };
+  const producedAt = new Date();
+
   await ctx.db
     .insert(assets)
     .values({
@@ -96,6 +108,8 @@ export async function publishDerived(
       sha256,
       objectKey: key,
       status: 'ready',
+      producer,
+      producedAt,
     })
     .onConflictDoUpdate({
       target: [assets.captureId, assets.role, assets.frameIndex],
@@ -107,6 +121,8 @@ export async function publishDerived(
         sha256,
         objectKey: key,
         status: 'ready',
+        producer,
+        producedAt,
       },
     });
 

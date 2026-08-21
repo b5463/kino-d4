@@ -25,9 +25,50 @@ import {
 import { finishUpload, openSession, recordPart, upsertAsset } from '../uploads/sessions';
 import { publishRollEvent, type RollEvent } from '../events/publish';
 import { newId } from '../ids';
-import { assets, captures, rollDevices, rolls, uploadSessions } from '../db/schema';
+import { assets, captures, devices, rollDevices, rolls, uploadSessions } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
+
 import { deviceUploadRateLimit } from '../plugins/rateLimits';
+
+/**
+ * Capture-time provenance (audit #59). `kino.capture` is passthrough by
+ * design — a firmware build may send exposure settings, flash state,
+ * firmware versions, a calibration version — and everything beyond the
+ * typed surface used to be silently dropped at insert. It lands here
+ * instead, alongside the device identity as it was at the shutter press
+ * (the devices row can be renamed or re-registered later; this cannot).
+ */
+const CAPTURE_TYPED_KEYS = new Set([
+  'schema',
+  'version',
+  'id',
+  'captureUuid',
+  'rollId',
+  'deviceId',
+  'mode',
+  'look',
+  'capturedAt',
+  'frameCount',
+  'resolution',
+  'timing',
+  'status',
+  'visible',
+  'assets',
+]);
+
+function captureProvenance(
+  doc: Record<string, unknown>,
+  device: { serial: string; product: string | null; hardwareRevision: string | null },
+): Record<string, unknown> {
+  const extra: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (!CAPTURE_TYPED_KEYS.has(key)) extra[key] = value;
+  }
+  return {
+    device: { serial: device.serial, product: device.product, hardware: device.hardwareRevision },
+    ...extra,
+  };
+}
 
 /**
  * The upload API (03 §16) — everything a camera does after the shutter.
@@ -321,19 +362,28 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       // concurrent retries of the same capture both reach the index, the loser's
       // INSERT blocks until the winner commits and then returns no row, and the
       // read-back sees the committed one. That is the whole race (05 §9).
+      // The request context carries only {id, serial}; provenance wants the
+      // hardware revision as it is NOW, from the devices row — one PK lookup.
+      const identity = deviceOf(request);
+      const [deviceRow] = await app.db
+        .select({ serial: devices.serial, product: devices.product, hardwareRevision: devices.hardwareRevision })
+        .from(devices)
+        .where(eq(devices.id, identity.id));
+      const device = { id: identity.id, ...(deviceRow ?? { serial: identity.serial, product: null, hardwareRevision: null }) };
       const [inserted] = await app.db
         .insert(captures)
         .values({
           id: newId('cap'),
           captureUuid: doc.captureUuid,
           rollId: roll.id,
-          deviceId: deviceOf(request).id,
+          deviceId: device.id,
           mode: doc.mode,
           look: doc.look ?? null,
           capturedAt,
           frameCount: doc.frameCount,
           resolution: doc.resolution,
           timing: doc.timing ?? null,
+          provenance: captureProvenance(doc, device),
           status: nextCaptureStatus([], false),
           visible: doc.visible,
         })
