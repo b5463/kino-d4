@@ -2,11 +2,14 @@
 
 Only real camera photographs, real captures, and captures of the running application belong here. Simulator media must say `demo` or `simulated` in its filename and caption.
 
-## Current asset
+## Current assets
 
 | File | Source | Use |
 |---|---|---|
 | `studio-connected.png` | KINO Studio connected to the included demo device | README product overview; caption as simulated hardware |
+| `twin-workbench-demo.png` | KINO Twin at 1280 × 800, simulator powered on | README tools section; caption as simulated |
+| `roll-feed-demo.png` | KINO Roll guest gallery at 1280 × 800 with test-uploader captures | README tools section; caption as demo captures |
+| `roll-photo-demo.png` | KINO Roll photo page at 1280 × 800 with test-uploader captures | README tools section; caption as demo captures |
 
 ## Physical shot list
 
