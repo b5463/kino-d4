@@ -137,6 +137,12 @@ export interface ClientStats {
   crcFailures: number;
   timeouts: number;
   resyncs: number;
+  /** Idempotent reads re-sent after a timeout (one retry each, fresh seq). */
+  readRetries: number;
+  /** CRC-valid frames dropped for carrying a frame VERSION this client does
+   * not speak. The decoder surfaces the version untouched (its documented
+   * contract); the client is the layer that decides what it accepts. */
+  versionRejects: number;
 }
 
 /** One line of the developer protocol monitor. */
@@ -151,6 +157,34 @@ export interface FrameTraceEntry {
 
 const TRACE_MAX = 200;
 const DEFAULT_TIMEOUT_MS = 3000;
+const READ_RETRY_DELAY_MS = 60;
+/**
+ * Commands that read device state without changing it. Only these retry on a
+ * timeout — a lost read costs one round trip; a doubled mutation costs
+ * correctness. HELLO has its own retry ladder and is deliberately absent.
+ */
+const RETRYABLE_READS: ReadonlySet<Cmd> = new Set([
+  Cmd.GET_DEVICE_INFO,
+  Cmd.GET_CAMERA_INFO,
+  Cmd.GET_POWER_STATUS,
+  Cmd.GET_STORAGE_STATUS,
+  Cmd.GET_CAPABILITIES,
+  Cmd.GET_CONFIG,
+  Cmd.GET_MODES,
+  Cmd.GET_RECIPES,
+  Cmd.GET_SOUNDS,
+  Cmd.CAMERA_STATUS,
+  Cmd.GET_LOGS,
+  Cmd.GET_RUNTIME_STATS,
+  Cmd.FW_QUERY,
+  Cmd.FW_STATUS,
+  Cmd.MEDIA_LIST,
+  Cmd.MEDIA_INFO,
+  Cmd.NETWORK_LIST,
+  Cmd.NETWORK_STATUS,
+  Cmd.ROLL_STATUS,
+  Cmd.UPLOAD_QUEUE_STATUS,
+]);
 const HELLO_ATTEMPTS = 3;
 const HELLO_TIMEOUT_MS = 500;
 const HELLO_RETRY_MS = 150;
@@ -204,6 +238,8 @@ export class KinoProtocolClient {
     crcFailures: 0,
     timeouts: 0,
     resyncs: 0,
+    readRetries: 0,
+    versionRejects: 0,
   };
 
   /** Bounded ring of recent frames for the developer protocol monitor. */
@@ -353,10 +389,25 @@ export class KinoProtocolClient {
     return () => set.delete(handler as (payload: unknown) => void);
   }
 
-  /** Send a JSON command and decode the JSON response. */
+  /**
+   * Send a JSON command and decode the JSON response.
+   *
+   * Idempotent reads retry once on timeout (fresh sequence number, so a late
+   * answer to the first attempt is dropped, never mistaken for the second).
+   * Everything else stays one-shot: a NACK is a definitive answer, and
+   * retrying a mutation invents at-least-once semantics the firmware
+   * contract never promised.
+   */
   async request<TRes>(cmd: Cmd, payload?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<TRes> {
-    const raw = await this.requestRaw(cmd, encodeJson(payload), FrameFlags.NONE, timeoutMs);
-    return decodeJson<TRes>(raw);
+    const body = encodeJson(payload);
+    try {
+      return decodeJson<TRes>(await this.requestRaw(cmd, body, FrameFlags.NONE, timeoutMs));
+    } catch (err) {
+      if (!(err instanceof KinoTimeoutError) || !RETRYABLE_READS.has(cmd) || this.closed) throw err;
+      this.stats.readRetries++;
+      await new Promise((r) => setTimeout(r, READ_RETRY_DELAY_MS));
+      return decodeJson<TRes>(await this.requestRaw(cmd, body, FrameFlags.NONE, timeoutMs));
+    }
   }
 
   /**
@@ -578,6 +629,12 @@ export class KinoProtocolClient {
       seq: frame.seq,
       len: frame.payload.length,
     });
+    if (frame.version !== PROTOCOL_VERSION) {
+      // A CRC-valid frame in a dialect this client does not speak. Parsing
+      // its payload by v1 rules would be a guess; drop it and count it.
+      this.stats.versionRejects++;
+      return;
+    }
     if (frame.flags & FrameFlags.EVENT) {
       this.stats.rxEvents++;
       const handlers = this.eventHandlers.get(frame.type as Evt);

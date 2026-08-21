@@ -297,6 +297,28 @@ describe('07 §14 — capability acceptance', () => {
     expect(supports(state, 'colorScience' as never)).toBe(true);
   });
 
+  /**
+   * Fail-closed gate (audit #58). Three ways to have no loaded set, three
+   * different answers: legacy firmware NACKed the command — deliberate
+   * everything-on fallback; the query timed out — a device that never
+   * answered gets nothing; nothing connected — nothing granted.
+   */
+  it('grants nothing when the capability query never answered, everything on a legacy NACK', () => {
+    setDeviceState({ capabilities: null, capabilitiesState: 'unknown' });
+    let state = useDeviceStore.getState();
+    expect(supports(state, 'flashControl')).toBe(false);
+    expect(supports(state, 'customSounds')).toBe(false);
+
+    setDeviceState({ capabilities: null, capabilitiesState: 'legacy' });
+    state = useDeviceStore.getState();
+    expect(supports(state, 'flashControl')).toBe(true);
+    expect(supports(state, 'linkBench')).toBe(true);
+
+    setDeviceState({ capabilities: null, capabilitiesState: null });
+    state = useDeviceStore.getState();
+    expect(supports(state, 'flashControl')).toBe(false);
+  });
+
   it('renders a version-mismatch banner when the camera speaks another protocol', () => {
     const detail = 'Device selected protocol 4; this client speaks 1..1';
     const notice = connectionNotice('error', 'protocol-mismatch', detail);

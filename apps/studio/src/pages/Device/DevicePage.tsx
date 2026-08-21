@@ -439,6 +439,16 @@ export function DevicePage() {
             const shown = diffs.slice(0, 12);
             return (
               <>
+                {info && pendingRestore.backup.device.serial !== info.serial ? (
+                  <p className="warn" style={{ fontWeight: 600 }}>
+                    This backup is from {pendingRestore.backup.device.serial}. The connected camera is {info.serial}
+                    {pendingRestore.backup.device.hardware !== info.hardware
+                      ? ` (hardware ${info.hardware}, backup is ${pendingRestore.backup.device.hardware})`
+                      : ''}
+                    . Per-camera calibration is measured on one physical unit — restoring it here applies another
+                    camera's corrections.
+                  </p>
+                ) : null}
                 <p>
                   Backup of <strong>{pendingRestore.backup.device.serial}</strong>,{' '}
                   {new Date(pendingRestore.backup.createdAt).toLocaleDateString()}. Writes{' '}

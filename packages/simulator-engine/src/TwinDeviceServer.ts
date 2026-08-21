@@ -170,6 +170,18 @@ export class TwinDeviceServer {
       this.sim.device.attach(
         (bytes) => {
           this.recorder?.noteOut(bytes);
+          // Hostility parity with MockTransport (audit #58): a frame never
+          // arrives as one tidy message. Split deterministically at thirds so
+          // Studio's decoder reassembles on this path too — the recorder
+          // above saw the logical bytes, so replay is unaffected.
+          if (bytes.length > 24) {
+            const a = Math.floor(bytes.length / 3);
+            const b = Math.floor((2 * bytes.length) / 3);
+            this.post({ t: 'data', from: 'device', client, bytes: toNums(bytes.subarray(0, a)) });
+            this.post({ t: 'data', from: 'device', client, bytes: toNums(bytes.subarray(a, b)) });
+            this.post({ t: 'data', from: 'device', client, bytes: toNums(bytes.subarray(b)) });
+            return;
+          }
           this.post({ t: 'data', from: 'device', client, bytes: toNums(bytes) });
         },
         () => {
