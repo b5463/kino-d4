@@ -1,7 +1,7 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-08-20",
+  "updated": "2026-08-21",
   "software": [
     {
       "name": "kino-workspace",
@@ -11,7 +11,7 @@
     },
     {
       "name": "kino-studio",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "package": "apps/studio/package.json",
       "tagPrefix": "kino-studio-v"
     },
@@ -35,7 +35,7 @@
     },
     {
       "name": "kino-roll-web",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "package": "apps/roll-web/package.json",
       "tagPrefix": "kino-roll-web-v"
     },

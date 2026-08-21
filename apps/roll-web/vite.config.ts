@@ -36,10 +36,9 @@ export default defineConfig({
         name: 'KINO Roll',
         short_name: 'KINO Roll',
         description: 'Guest gallery for a KINO Roll',
-        // Placeholder pending Task 34's design tokens — this is scaffolding,
-        // not the finished visual language.
-        theme_color: '#2f70c9',
-        background_color: '#ffffff',
+        // Matches --canvas in roll.css: the guest gallery runs dark.
+        theme_color: '#131110',
+        background_color: '#131110',
         display: 'standalone',
         start_url: '.',
         // A typographic app tile, not a new logo. `sizes: any` is valid for the

@@ -189,7 +189,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   if (isNoRollError(failure)) return <NoRollPage />;
 
   return (
-    <main className="roll-shell">
+    <main className="roll-shell roll-shell--feed">
       <header className="roll-head">
         <div>
           <div className="roll-brand">KINO ROLL</div>
@@ -229,8 +229,8 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                 transform: `translateY(${String(virtualRow.start)}px)`,
                 display: 'grid',
                 gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
-                gap: '0.5rem',
-                paddingBottom: '0.5rem',
+                gap: '2px',
+                paddingBottom: '2px',
               }}
             >
               {(rows[virtualRow.index] ?? []).map((capture) => (
