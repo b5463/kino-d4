@@ -46,7 +46,17 @@ record.
   Diagnostics panel on the Developer page (self-test, link stats, test
   capture, soak with progress + JSON export, hardware-validation table), and
   the storage panel now renders the 1B fields with "NOT REPORTED" on pre-1B
-  firmware.
+  firmware. Six bench-diagnostics cases added to the conformance suite,
+  skipping cleanly on pre-1B firmware.
+- **Runtime diagnostics on firmware**: `GET_RUNTIME_STATS` implemented with
+  real numbers only — uptime, reset reason, heap/PSRAM, die temperatures from
+  the actual P4 and S3 on-chip sensors (`tempC` widened to `number | null` in
+  the contract; offline cameras report null, never an invented figure), and
+  protocol counters from the live decoder/link/storage state. `GET_LOGS` /
+  `CLEAR_LOGS` serve a 200-entry structured ring that also pushes live `LOG`
+  events, so Studio's LogViewer works at the bench. `SELF_TEST` runs the six
+  checks this hardware actually has (P4 heap, PSRAM, SD card, SD write, CAM1
+  link, CAM1 sensor) with `SELF_TEST` events — no faked display/speaker rows.
 
 ## Build results
 
@@ -87,9 +97,6 @@ simulations for UI and contract testing, not measurements.
 - The 921600 baseline puts a 300–500 KB JPEG transfer at ~3.2–5.4 s. The
   `CAMERA_TEST` host timeout was raised to 8 s to keep the diagnostic honest;
   baud escalation is milestone 2 bench work.
-- `GET_RUNTIME_STATS` still NACKs on firmware: its typed shape demands
-  per-camera temperatures no sensor provides. P4 reset reason travels in
-  `GET_HW_VALIDATION`, node reset reason in `CAMERA_LINK_STATS`.
 - Code-string drift, recorded in the contract: mock's legacy CAMERA_TEST
   guards say `CAM_OFFLINE`/`SENSOR_MISSING` where firmware says
   `CAMERA_OFFLINE`/`SENSOR_NOT_DETECTED`.

@@ -11,6 +11,7 @@
 #include "esp_vfs_fat.h"
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
+#include "klog.h"
 #include "nvs.h"
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #include "sdmmc_cmd.h"
@@ -21,13 +22,17 @@ static const char *TAG = "storage";
 static sdmmc_card_t *s_card;
 static bool s_power_ok;
 static uint32_t s_mount_attempts;
+static uint32_t s_sd_errors;
 static char s_last_error[48];
 static const char *s_write_test = "none";
 
 static void set_error(const char *code) {
+  if (code[0] != '\0') s_sd_errors++;
   strncpy(s_last_error, code, sizeof s_last_error - 1);
   s_last_error[sizeof s_last_error - 1] = '\0';
 }
+
+uint32_t storage_sd_errors(void) { return s_sd_errors; }
 
 esp_err_t storage_init(void) {
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -68,13 +73,14 @@ esp_err_t storage_init(void) {
     // registry is NOT marked failed here — an empty slot and a wrong pin
     // look identical from software; that diagnosis is bench work.
     ESP_LOGW(TAG, "SD_MOUNT failed: %s", esp_err_to_name(err));
+    klog("SD", "mount failed: %s", esp_err_to_name(err));
     set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT" : "MOUNT_FAILED");
     s_card = NULL;
     return err;
   }
 
-  ESP_LOGI(TAG, "SD_MOUNT ok: %llu MB",
-           ((uint64_t)s_card->csd.capacity * s_card->csd.sector_size) / (1024 * 1024));
+  klog("SD", "mounted, %llu MB",
+       ((uint64_t)s_card->csd.capacity * s_card->csd.sector_size) / (1024 * 1024));
   set_error("");
   // A real mount on this unit proves the whole pin set and the LDO channel.
   char detail[32];
@@ -175,8 +181,8 @@ void storage_self_test(storage_selftest_result_t *out) {
   out->duration_ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
   s_write_test = out->ok ? "pass" : "fail";
   if (!out->ok) set_error(storage_selftest_phase_str(phase));
-  ESP_LOGI(TAG, "STORAGE_SELF_TEST %s (%s, %lu ms)", out->ok ? "pass" : "FAIL",
-           storage_selftest_phase_str(phase), (unsigned long)out->duration_ms);
+  klog("SD", "self-test %s (%s, %lu ms)", out->ok ? "pass" : "FAIL",
+       storage_selftest_phase_str(phase), (unsigned long)out->duration_ms);
 }
 
 // Persistent capture counter — ids are never reused after a reboot.

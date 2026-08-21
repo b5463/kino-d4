@@ -22,9 +22,12 @@ typedef struct {
   int chip_revision;   /* -1 unknown */
   int32_t heap_kb;     /* -1 unknown */
   int32_t psram_kb;    /* -1 unknown */
+  int32_t temp_c;      /* node die temperature; CAMLINK_TEMP_UNKNOWN when unread */
   char state[24];      /* node-reported state string, "" when never seen */
   uint32_t latency_ms; /* last successful request RTT */
 } camlink_info_t;
+
+#define CAMLINK_TEMP_UNKNOWN INT32_MIN
 
 typedef struct {
   uint32_t rx_frames;

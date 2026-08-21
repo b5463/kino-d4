@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp_server.h"
+#include "klog.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "storage.h"
@@ -33,9 +34,22 @@ static uint32_t next_boot_count(void) {
 // online. GET_CAMERA_INFO reads the cached result instead of blocking.
 static void cam_probe_task(void *arg) {
   (void)arg;
+  bool was_online = false;
   for (;;) {
     esp_err_t err = camlink_hello();
-    vTaskDelay(pdMS_TO_TICKS(err == ESP_OK ? 10000 : 2000));
+    bool online = err == ESP_OK;
+    if (online != was_online) {
+      camlink_info_t info;
+      camlink_get_info(&info);
+      if (online) {
+        klog("C1", "node online — fw %s, sensor %s, boot %s", info.firmware,
+             info.sensor_detected ? info.sensor : "none", info.reset_reason);
+      } else {
+        klog("C1", "node offline — stopped answering");
+      }
+      was_online = online;
+    }
+    vTaskDelay(pdMS_TO_TICKS(online ? 10000 : 2000));
   }
 }
 
@@ -54,6 +68,8 @@ void app_main(void) {
   snprintf(id.session_id, sizeof id.session_id, "boot-%lu",
            (unsigned long)next_boot_count());
 
+  klog_init();
+  klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
   ESP_LOGI(TAG, "P4_BOOT %s serial %s session %s transport usb-serial-jtag",
            KINO_FW_VERSION, id.serial, id.session_id);
   hwv_init();

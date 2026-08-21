@@ -706,6 +706,10 @@ proof of tight exposure on a free-running rolling shutter** (04§14).
 `vsyncMeasured: false` means firmware cannot read VSYNC — the other two figures are then estimates and
 Studio labels them as such. Report it honestly; do not fabricate a phase.
 
+The same honesty rule applies to `RuntimeStats.tempC` (Milestone 1B): `p4` and each `cams` entry
+are `number | null` — a real on-chip sensor reading or null, never an invented temperature. A build
+whose camera link is down reports that camera's temperature as null.
+
 Grading bands applied host-side to `exposureSpreadUs` (`gradeSkew` in `timing.ts`), stated here so
 firmware and bench tooling use the same vocabulary:
 

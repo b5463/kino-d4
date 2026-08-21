@@ -494,7 +494,11 @@ export interface RuntimeStats {
   resetReason: string;
   freeHeapKB: number;
   freePsramKB: number;
-  tempC: { p4: number; cams: [number, number, number, number] };
+  /** Die temperatures from the real on-chip sensors. Null = no reading
+   * available (node offline, sensor unsupported) — never a fabricated
+   * number. Milestone 1B firmware reports p4 and cam1; cam2-4 arrive with
+   * their links. */
+  tempC: { p4: number | null; cams: [number | null, number | null, number | null, number | null] };
   protocol: {
     droppedPackets: number;
     crcFailures: number;

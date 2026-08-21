@@ -60,7 +60,10 @@ diagnostics group gated by the `benchDiagnostics` capability:
 `CAMERA_TEST` (measured stages, three agreeing CRC-32 checksums, memory
 stats), `STORAGE_SELF_TEST`, `CAMERA_LINK_STATS(_RESET)`,
 `CAMERA_SOAK_TEST` (async job), `GET_HW_VALIDATION` (per-unit runtime
-registry, persisted in NVS). Everything else answers `UNSUPPORTED_COMMAND`;
+registry, persisted in NVS). `GET_RUNTIME_STATS` (real on-chip temperatures
+or null, live protocol counters), `GET_LOGS`/`CLEAR_LOGS` + `LOG` events
+(200-entry structured ring), and a six-check `SELF_TEST` with events are
+also implemented. Everything else answers `UNSUPPORTED_COMMAND`;
 every other capability flag is `false`. CAM1 is the only wired node;
 CAM2–CAM4 report `offline`. Captures land in `/KINO/CAPTURES/<uuid>/` with a
 `kino.capture` META.JSON. Nothing is bench-validated yet — see

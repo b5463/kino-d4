@@ -20,7 +20,8 @@
 
 static SemaphoreHandle_t s_lock;
 static uint32_t s_seq;
-static camlink_info_t s_info = {.chip_revision = -1, .heap_kb = -1, .psram_kb = -1};
+static camlink_info_t s_info = {
+    .chip_revision = -1, .heap_kb = -1, .psram_kb = -1, .temp_c = CAMLINK_TEMP_UNKNOWN};
 static camlink_stats_t s_stats;
 
 static uint8_t s_decode_storage[KDP_MAX_FRAME];
@@ -240,6 +241,8 @@ esp_err_t camlink_ping(uint32_t *rtt_ms) {
     if (cJSON_IsNumber(heap)) s_info.heap_kb = (int32_t)heap->valuedouble;
     const cJSON *psram = cJSON_GetObjectItem(json, "psramKB");
     if (cJSON_IsNumber(psram)) s_info.psram_kb = (int32_t)psram->valuedouble;
+    const cJSON *temp = cJSON_GetObjectItem(json, "tempC");
+    s_info.temp_c = cJSON_IsNumber(temp) ? (int32_t)temp->valuedouble : CAMLINK_TEMP_UNKNOWN;
     xSemaphoreGive(s_lock);
     cJSON_Delete(json);
   }

@@ -11,6 +11,7 @@
 
 #include "cam_link.h"
 #include "cJSON.h"
+#include "driver/temperature_sensor.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -24,6 +25,7 @@
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
+#include "klog.h"
 #include "node_link/node_link.h"
 #include "storage.h"
 #include "usb_link.h"
@@ -44,6 +46,8 @@ static SemaphoreHandle_t s_capture_lock;
 
 static uint32_t s_job_counter;
 static volatile bool s_soak_running;
+static volatile bool s_selftest_running;
+static temperature_sensor_handle_t s_tsens;
 
 // ---- small helpers ----
 
@@ -362,12 +366,9 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   r->p4_heap_after = heap_kb();
   r->p4_psram_after = psram_kb();
 
-  ESP_LOGI(TAG,
-           "CAPTURE_COMPLETE %s (%s): %lu bytes, node %lu ms, xfer %lu ms, sd %lu ms, "
-           "total %lu ms, crc %s",
-           r->capture_id, r->capture_uuid, (unsigned long)r->jpeg_bytes,
-           (unsigned long)r->t_capture_ms, (unsigned long)r->t_transfer_ms,
-           (unsigned long)r->t_sd_ms, (unsigned long)r->t_total_ms, r->crc_transfer);
+  klog("C1", "capture %s ok — %lu KB in %lu ms, crc %s verified", r->capture_id,
+       (unsigned long)(r->jpeg_bytes / 1024), (unsigned long)r->t_total_ms,
+       r->crc_transfer);
 
   if (!keep_files) {
     storage_capture_delete(r->dir);
@@ -640,6 +641,207 @@ static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
   send_json(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, json);
 }
 
+/** Live LOG events for every klog() line, contract LogEntry shape. */
+static void log_emitter(int64_t t_ms, const char *src, const char *msg) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNumberToObject(json, "t", (double)t_ms);
+  cJSON_AddStringToObject(json, "src", src);
+  cJSON_AddStringToObject(json, "msg", msg);
+  send_event(KDP_EVT_LOG, json);
+}
+
+static void handle_get_logs(uint32_t seq) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddItemToObject(json, "entries", klog_entries_json());
+  send_json(KDP_CMD_GET_LOGS, seq, json);
+}
+
+static void handle_clear_logs(uint32_t seq) {
+  klog_clear();
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(KDP_CMD_CLEAR_LOGS, seq, json);
+}
+
+static void handle_runtime_stats(uint32_t seq) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNumberToObject(json, "uptimeS", (double)(esp_timer_get_time() / 1000000));
+  cJSON_AddStringToObject(json, "resetReason", reset_reason_str());
+  cJSON_AddNumberToObject(json, "freeHeapKB", heap_kb());
+  cJSON_AddNumberToObject(json, "freePsramKB", psram_kb());
+
+  // Real die temperatures or null — never a fabricated number. CAM2-4 gain
+  // readings when their links land in milestone 2.
+  cJSON *temp = cJSON_AddObjectToObject(json, "tempC");
+  float celsius = 0;
+  if (s_tsens != NULL && temperature_sensor_get_celsius(s_tsens, &celsius) == ESP_OK) {
+    cJSON_AddNumberToObject(temp, "p4", (double)((int)(celsius + 0.5f)));
+  } else {
+    cJSON_AddNullToObject(temp, "p4");
+  }
+  camlink_info_t info;
+  camlink_get_info(&info);
+  cJSON *cams = cJSON_AddArrayToObject(temp, "cams");
+  if (info.online && info.temp_c != CAMLINK_TEMP_UNKNOWN) {
+    cJSON_AddItemToArray(cams, cJSON_CreateNumber(info.temp_c));
+  } else {
+    cJSON_AddItemToArray(cams, cJSON_CreateNull());
+  }
+  for (int i = 1; i < 4; i++) cJSON_AddItemToArray(cams, cJSON_CreateNull());
+
+  camlink_stats_t link;
+  camlink_get_stats(&link);
+  cJSON *protocol = cJSON_AddObjectToObject(json, "protocol");
+  cJSON_AddNumberToObject(protocol, "droppedPackets", s_decoder.stats.resyncs);
+  cJSON_AddNumberToObject(protocol, "crcFailures", s_decoder.stats.crc_failures);
+  cJSON_AddNumberToObject(protocol, "cameraTimeouts", link.timeouts);
+  cJSON_AddNumberToObject(protocol, "sdErrors", storage_sd_errors());
+  send_json(KDP_CMD_GET_RUNTIME_STATS, seq, json);
+}
+
+// ---- self test ----
+
+#define SELFTEST_TOTAL 6
+
+static void selftest_emit(int index, const char *name, const char *status,
+                          const char *detail, cJSON *results) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNumberToObject(json, "index", index);
+  cJSON_AddNumberToObject(json, "total", SELFTEST_TOTAL);
+  cJSON_AddStringToObject(json, "name", name);
+  cJSON_AddStringToObject(json, "status", status);
+  if (detail != NULL) cJSON_AddStringToObject(json, "detail", detail);
+  if (results != NULL) {
+    cJSON_AddBoolToObject(json, "done", true);
+    cJSON_AddItemToObject(json, "results", results);
+  }
+  send_event(KDP_EVT_SELF_TEST, json);
+}
+
+/* Only checks this hardware actually implements: six today, never a faked
+ * display/touch/speaker row. The count grows with the milestones. */
+static void selftest_task(void *arg) {
+  (void)arg;
+  static const char *NAMES[SELFTEST_TOTAL] = {"P4 heap",  "PSRAM",     "SD card",
+                                              "SD write", "CAM1 link", "CAM1 sensor"};
+  cJSON *results = cJSON_CreateArray();
+  int passed = 0;
+
+  for (int i = 0; i < SELFTEST_TOTAL; i++) {
+    selftest_emit(i, NAMES[i], "running", NULL, NULL);
+    const char *status = "fail";
+    char detail[64] = "";
+
+    switch (i) {
+      case 0: {
+        uint32_t heap = heap_kb();
+        snprintf(detail, sizeof detail, "%lu KB free", (unsigned long)heap);
+        status = heap > 32 ? "pass" : "fail";
+        break;
+      }
+      case 1: {
+        size_t total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+        if (total > 0) {
+          snprintf(detail, sizeof detail, "%u MB", (unsigned)(total / (1024 * 1024)));
+          status = "pass";
+        } else {
+          snprintf(detail, sizeof detail, "not detected");
+        }
+        break;
+      }
+      case 2: {
+        storage_status_t sd;
+        storage_get_status(&sd);
+        if (sd.present) {
+          snprintf(detail, sizeof detail, "%lu MB free",
+                   (unsigned long)(sd.free_bytes / (1024 * 1024)));
+          status = "pass";
+        } else {
+          snprintf(detail, sizeof detail, "no card");
+        }
+        break;
+      }
+      case 3: {
+        if (!storage_present()) {
+          status = "skip";
+          snprintf(detail, sizeof detail, "no card");
+        } else if (xSemaphoreTake(s_capture_lock, pdMS_TO_TICKS(100)) != pdTRUE) {
+          status = "skip";
+          snprintf(detail, sizeof detail, "capture busy");
+        } else {
+          storage_selftest_result_t st;
+          storage_self_test(&st);
+          xSemaphoreGive(s_capture_lock);
+          if (st.ok) {
+            status = "pass";
+            snprintf(detail, sizeof detail, "%lu KB verified",
+                     (unsigned long)(st.bytes_tested / 1024));
+          } else {
+            status = "fail";
+            snprintf(detail, sizeof detail, "%s",
+                     storage_selftest_phase_str(st.failed_phase));
+          }
+        }
+        break;
+      }
+      case 4: {
+        if (camlink_hello() == ESP_OK) {
+          camlink_info_t info;
+          camlink_get_info(&info);
+          snprintf(detail, sizeof detail, "answered in %lu ms",
+                   (unsigned long)info.latency_ms);
+          status = "pass";
+        } else {
+          snprintf(detail, sizeof detail, "no answer at %d baud", NL_DEFAULT_BAUD);
+        }
+        break;
+      }
+      case 5: {
+        camlink_info_t info;
+        camlink_get_info(&info);
+        if (!info.online) {
+          status = "skip";
+          snprintf(detail, sizeof detail, "link down");
+        } else if (info.sensor_detected) {
+          snprintf(detail, sizeof detail, "%s (%s)", info.sensor, info.sensor_pid);
+          status = "pass";
+        } else {
+          snprintf(detail, sizeof detail, "node answers, no sensor");
+        }
+        break;
+      }
+    }
+
+    if (strcmp(status, "pass") == 0) passed++;
+    cJSON *row = cJSON_CreateObject();
+    cJSON_AddStringToObject(row, "name", NAMES[i]);
+    cJSON_AddStringToObject(row, "status", status);
+    cJSON_AddStringToObject(row, "detail", detail);
+    cJSON_AddItemToArray(results, row);
+    selftest_emit(i, NAMES[i], status, detail, i == SELFTEST_TOTAL - 1 ? results : NULL);
+  }
+
+  klog("P4", "self-test done — %d/%d pass", passed, SELFTEST_TOTAL);
+  s_selftest_running = false;
+  vTaskDelete(NULL);
+}
+
+static void handle_self_test(uint32_t seq) {
+  if (s_selftest_running) {
+    send_nack(KDP_CMD_SELF_TEST, seq, "BUSY", "Self test already running");
+    return;
+  }
+  s_selftest_running = true;
+  if (xTaskCreate(selftest_task, "selftest", 6144, NULL, 5, NULL) != pdPASS) {
+    s_selftest_running = false;
+    send_nack(KDP_CMD_SELF_TEST, seq, "OUT_OF_MEMORY", "Could not start self-test task");
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "started", true);
+  send_json(KDP_CMD_SELF_TEST, seq, json);
+}
+
 static void handle_hw_validation(uint32_t seq) {
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "p4ResetReason", reset_reason_str());
@@ -708,7 +910,7 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
   xSemaphoreGive(s_capture_lock);
 
   if (!result.ok) {
-    ESP_LOGW(TAG, "CAPTURE_FAILED %s: %s", result.err_code, result.err_msg);
+    klog("C1", "capture FAILED — %s: %s", result.err_code, result.err_msg);
     send_nack(KDP_CMD_CAMERA_TEST, seq, result.err_code, result.err_msg);
     return;
   }
@@ -870,9 +1072,9 @@ static void soak_task(void *arg) {
   cJSON_AddItemToObject(complete, "result", result);
   send_event(KDP_EVT_JOB_COMPLETE, complete);
 
-  ESP_LOGI(TAG, "soak %s done: %lu/%lu ok, %lu failed", args->job_id,
-           (unsigned long)successful, (unsigned long)args->captures,
-           (unsigned long)failed);
+  klog("P4", "soak %s done — %lu/%lu ok, %lu failed", args->job_id,
+       (unsigned long)successful, (unsigned long)args->captures,
+       (unsigned long)failed);
 
   s_soak_running = false;
   xSemaphoreGive(s_capture_lock);
@@ -981,6 +1183,10 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CAMERA_LINK_STATS_RESET: handle_link_stats_reset(frame->seq, req); break;
     case KDP_CMD_CAMERA_SOAK_TEST: handle_soak_test(frame->seq, req); break;
     case KDP_CMD_GET_HW_VALIDATION: handle_hw_validation(frame->seq); break;
+    case KDP_CMD_GET_RUNTIME_STATS: handle_runtime_stats(frame->seq); break;
+    case KDP_CMD_GET_LOGS: handle_get_logs(frame->seq); break;
+    case KDP_CMD_CLEAR_LOGS: handle_clear_logs(frame->seq); break;
+    case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
     default: {
       // Never silently time out (contract §NACK).
@@ -1018,6 +1224,15 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
   }
   ESP_LOGI(TAG, "USB_TRANSPORT_READY: KDP on USB-Serial-JTAG, session %s",
            s_id.session_id);
+  klog_set_emitter(log_emitter);
+
+  temperature_sensor_config_t tsens_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
+  s_tsens = NULL;
+  temperature_sensor_handle_t tsens = NULL;
+  if (temperature_sensor_install(&tsens_config, &tsens) == ESP_OK &&
+      temperature_sensor_enable(tsens) == ESP_OK) {
+    s_tsens = tsens; /* otherwise GET_RUNTIME_STATS reports tempC.p4 null */
+  }
 
   kdp_decoder_init(&s_decoder, s_decode_buf, sizeof s_decode_buf);
   BaseType_t ok = xTaskCreate(server_task, "kdp_server", 8192, NULL, 9, NULL);

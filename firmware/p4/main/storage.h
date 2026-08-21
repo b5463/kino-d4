@@ -26,6 +26,9 @@ typedef struct {
 
 void storage_get_status(storage_status_t *out);
 
+/** SD errors since boot (mount failures, write failures) — GET_RUNTIME_STATS. */
+uint32_t storage_sd_errors(void);
+
 typedef enum {
   STORAGE_ST_OK = 0,
   STORAGE_ST_POWER_ENABLE_FAILED,

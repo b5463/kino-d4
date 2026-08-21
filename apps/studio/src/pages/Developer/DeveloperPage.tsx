@@ -132,10 +132,12 @@ export function DeveloperPage() {
             <div className="datarow"><dt>Free PSRAM</dt><dd>{stats ? formatMB(stats.freePsramKB / 1024) : '—'}</dd></div>
             {/* Unit in the label for both rows — these sat next to each
                 other reading "45 °C" and "41° / 37° / 38° / 44°". */}
-            <div className="datarow"><dt>P4 temp (°C)</dt><dd>{stats ? stats.tempC.p4 : '—'}</dd></div>
+            {/* Null = no sensor reading (node offline) — rendered as a dash,
+                never a made-up number. */}
+            <div className="datarow"><dt>P4 temp (°C)</dt><dd>{stats ? stats.tempC.p4 ?? '—' : '—'}</dd></div>
             <div className="datarow">
               <dt>Camera temps (°C)</dt>
-              <dd>{stats ? stats.tempC.cams.join(' / ') : '—'}</dd>
+              <dd>{stats ? stats.tempC.cams.map((t) => t ?? '—').join(' / ') : '—'}</dd>
             </div>
           </dl>
         </Panel>

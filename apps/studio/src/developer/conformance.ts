@@ -3,7 +3,8 @@
 // bar for real P4 firmware — Studio is the test harness.
 
 import type { KinoDevice } from '../device/KinoDevice';
-import { KinoCommandError, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
+import { Cmd, KinoCommandError, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
+import type { SoakTestSummary } from '@kino/kdp';
 
 export type ConformanceStatus = 'pass' | 'shape' | 'unsupported' | 'timeout' | 'error' | 'skipped';
 
@@ -27,6 +28,8 @@ function expectKeys(obj: unknown, keys: string[], label: string) {
 interface Ctx {
   captureId?: string;
   fileName?: string;
+  /** Set by the GET_CAPABILITIES case; gates the bench-diagnostics cases. */
+  bench?: boolean;
 }
 
 interface Case {
@@ -51,8 +54,9 @@ const CASES: Case[] = [
   {
     name: 'GET_CAPABILITIES',
     active: false,
-    run: async (dev) => {
+    run: async (dev, ctx) => {
       const r = await dev.getCapabilities();
+      ctx.bench = r.capabilities.benchDiagnostics === true;
       expectKeys(r, ['protocol', 'hardware', 'capabilities', 'limits', 'configSchemaVersion'], 'CAPABILITIES');
       expectKeys(r.capabilities, ['cameraCount', 'wiggle', 'quad', 'gallery'], 'CAPABILITIES.capabilities');
       expectKeys(r.limits, ['maxUartBaud', 'maxResolution', 'maxGalleryPageSize'], 'CAPABILITIES.limits');
@@ -170,6 +174,81 @@ const CASES: Case[] = [
       const r = await dev.getRuntimeStats();
       expectKeys(r, ['uptimeS', 'resetReason', 'freeHeapKB', 'protocol'], 'STATS');
       return `up ${r.uptimeS}s · ${r.resetReason}`;
+    },
+  },
+  // ---- bench diagnostics (Milestone 1B, capability `benchDiagnostics`) ----
+  {
+    name: 'GET_STORAGE_STATUS (1B fields)',
+    active: false,
+    run: async (dev, ctx) => {
+      if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const r = await dev.getStorageStatus();
+      expectKeys(r, ['mounted', 'filesystem', 'capacityBytes', 'freeBytes', 'lastError', 'mountAttempts', 'writeTestStatus'], 'STORAGE 1B');
+      return `mounted ${r.mounted} · ${r.mountAttempts} attempts · write test ${r.writeTestStatus}`;
+    },
+  },
+  {
+    name: 'CAMERA_LINK_STATS (CAM1)',
+    active: false,
+    run: async (dev, ctx) => {
+      if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const r = await dev.cameraLinkStats('cam1');
+      expectKeys(r, ['cam', 'baud', 'connected', 'rxFrames', 'txFrames', 'crcErrors', 'decoderResyncs', 'timeouts', 'duplicateFrames', 'lastSequence'], 'LINK_STATS');
+      return `${r.connected ? 'up' : 'down'} @ ${r.baud} · ${r.crcErrors} crc · ${r.timeouts} timeouts`;
+    },
+  },
+  {
+    name: 'GET_HW_VALIDATION',
+    active: false,
+    run: async (dev, ctx) => {
+      if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const r = await dev.getHwValidation();
+      expectKeys(r, ['p4ResetReason', 'items'], 'HW_VALIDATION');
+      if (!Array.isArray(r.items) || r.items.length === 0) throw new ShapeError('HW_VALIDATION: no items');
+      expectKeys(r.items[0], ['id', 'status'], 'HW_VALIDATION.items[0]');
+      const validated = r.items.filter((i) => i.status === 'validated').length;
+      return `${validated}/${r.items.length} validated · reset ${r.p4ResetReason}`;
+    },
+  },
+  {
+    name: 'STORAGE_SELF_TEST',
+    active: true,
+    run: async (dev, ctx) => {
+      if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const r = await dev.storageSelfTest();
+      expectKeys(r, ['ok', 'failedPhase', 'durationMs', 'bytesTested'], 'SELF_TEST');
+      if (r.ok && r.failedPhase !== null) throw new ShapeError('SELF_TEST: ok with a failedPhase');
+      return r.ok ? `${r.bytesTested} bytes verified in ${r.durationMs} ms` : `failed at ${r.failedPhase}`;
+    },
+  },
+  {
+    name: 'CAMERA_TEST (CAM1, 1B shape)',
+    active: true,
+    run: async (dev, ctx) => {
+      if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const r = await dev.cameraTest('cam1');
+      expectKeys(r, ['ok', 'captureUuid', 'timing', 'checksums', 'memory'], 'CAMERA_TEST 1B');
+      expectKeys(r.timing, ['requestToNodeMs', 'captureCommandToJpegReadyMs', 'jpegTransferMs', 'sdWriteMs', 'totalMs'], 'CAMERA_TEST.timing');
+      expectKeys(r.checksums, ['nodeJpegCrc32', 'transferCrc32', 'storedFileCrc32', 'match'], 'CAMERA_TEST.checksums');
+      if (!r.checksums!.match) throw new ShapeError('CAMERA_TEST: checksums disagree on a successful capture');
+      return `${r.jpegBytes} bytes · total ${r.timing!.totalMs} ms · checksums match`;
+    },
+  },
+  {
+    name: 'CAMERA_SOAK_TEST (2 captures)',
+    active: true,
+    run: async (dev, ctx) => {
+      if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const handle = await dev.client.startJob<SoakTestSummary>(Cmd.CAMERA_SOAK_TEST, {
+        cam: 'cam1',
+        captures: 2,
+        delayMs: 100,
+      });
+      for await (const p of handle.progress) void p;
+      const r = await handle.result;
+      expectKeys(r, ['attempted', 'successful', 'failed', 'heapDeltaKB', 'errors'], 'SOAK');
+      if (r.attempted !== 2) throw new ShapeError(`SOAK: attempted ${r.attempted}, requested 2`);
+      return `${r.successful}/${r.attempted} ok · heap Δ ${r.heapDeltaKB} KB`;
     },
   },
   {

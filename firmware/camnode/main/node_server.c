@@ -8,6 +8,7 @@
 #include "board_xiao_s3.h"
 #include "camera.h"
 #include "cJSON.h"
+#include "driver/temperature_sensor.h"
 #include "driver/uart.h"
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
@@ -64,6 +65,18 @@ static const char *reset_reason_str(void) {
 static uint32_t heap_kb(void) { return (uint32_t)(esp_get_free_heap_size() / 1024); }
 static uint32_t psram_kb(void) {
   return (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+}
+
+static temperature_sensor_handle_t s_tsens;
+
+/** Adds "tempC" as a real reading or null — never a fabricated number. */
+static void add_temp(cJSON *json) {
+  float celsius = 0;
+  if (s_tsens != NULL && temperature_sensor_get_celsius(s_tsens, &celsius) == ESP_OK) {
+    cJSON_AddNumberToObject(json, "tempC", (double)((int)(celsius + 0.5f)));
+  } else {
+    cJSON_AddNullToObject(json, "tempC");
+  }
 }
 
 static void send_frame(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *payload,
@@ -142,6 +155,7 @@ static void handle_status(uint32_t seq) {
   }
   cJSON_AddNumberToObject(json, "heapKB", heap_kb());
   cJSON_AddNumberToObject(json, "psramKB", psram_kb());
+  add_temp(json);
   cJSON_AddNumberToObject(json, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(json, "resyncs", s_decoder.stats.resyncs);
   send_json(NL_CMD_STATUS, seq, json);
@@ -290,6 +304,13 @@ esp_err_t node_server_start(const char *session_id) {
   ESP_ERROR_CHECK(uart_param_config(BOARD_LINK_UART_NUM, &config));
   ESP_ERROR_CHECK(uart_set_pin(BOARD_LINK_UART_NUM, BOARD_LINK_TX, BOARD_LINK_RX,
                                UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+  temperature_sensor_config_t tsens_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
+  if (temperature_sensor_install(&tsens_config, &s_tsens) == ESP_OK) {
+    if (temperature_sensor_enable(s_tsens) != ESP_OK) s_tsens = NULL;
+  } else {
+    s_tsens = NULL; /* STATUS then reports tempC null, never a guess */
+  }
 
   kdp_decoder_init(&s_decoder, s_decode_buf, sizeof s_decode_buf);
   s_state = camsensor_detected() ? NL_STATE_READY : NL_STATE_ERROR;

@@ -1,7 +1,7 @@
 idf_component_register(
   SRCS "main.c" "camera.c" "node_server.c"
   INCLUDE_DIRS "."
-  REQUIRES kdp_core node_link esp32-camera json nvs_flash esp_driver_uart esp_timer
+  REQUIRES kdp_core node_link esp32-camera json nvs_flash esp_driver_uart esp_driver_tsens esp_timer
 )
 
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" KINO_FW_VERSION)
