@@ -28,6 +28,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Studio connection to KINO Twin through the same KDP client path used by serial hardware, including cross-tab handshake and reboot coverage.
 - Twin transport leases recover from crashed Studio tabs, and Studio detects device restarts even when the underlying link remains open.
 - Large Studio galleries can extend their index in bounded 5,000-row windows without eagerly loading every thumbnail.
+- KINO D4 firmware (ESP-IDF): P4 main controller and XIAO camera-node applications with a host-tested portable KDP C core, checksummed single-camera capture to SD, bench diagnostics (storage self-test, link stats, soak job, per-unit hardware-validation registry), structured device logs, honest runtime stats, and a six-check self test — CI-built, awaiting physical bench validation.
 - Twin now has a top-level recovery screen and stricter assembly/runtime invariants, with replay, power, flash-risk, wiring, and scene-store edge coverage.
 - KINO Twin optical overlays show per-camera axes and frusta, neighboring and four-camera overlap, adjustable subject proxies, and live pitch/distance readouts; unmeasured D4 optics remain explicitly marked `MEASURE REQUIRED`, while candidate lens angles are labelled design scenarios.
 - Production and isolated staging stacks now run behind Caddy with automatic TLS, unbuffered live events, private PostgreSQL/Redis/MinIO services, gated migrations, and API-streamed private media.

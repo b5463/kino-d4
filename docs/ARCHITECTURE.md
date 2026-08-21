@@ -113,6 +113,7 @@ packages/
   hardware-profiles/   versioned D4 geometry, nets, GPIO map
   simulator-engine/    boot, capture choreography, power/thermal models, replay
   three-assets/        parametric 3D component builders
+firmware/              ESP-IDF firmware: P4 main controller, XIAO camera node, portable KDP C core
 firmware-contract/     firmware-facing contract
 infra/                 dev/staging/production compose, backup and drill scripts
 kino_dev_spec_pack/    product specifications
@@ -123,6 +124,6 @@ archive/               retained recovery material
 
 ## Current implementation line
 
-The main branch contains Studio, the full Roll backend and workers, the public Roll client, KINO Twin, shared contracts, production/staging infrastructure with tested backup and restore, and broad tests. All of it runs against the simulated device. Physical D4 firmware, measured hardware dimensions, and everything in the plan's hardware workstream are not shipped from this repository yet; hardware-gated acceptance items are marked as such where they appear.
+The main branch contains Studio, the full Roll backend and workers, the public Roll client, KINO Twin, shared contracts, production/staging infrastructure with tested backup and restore, and broad tests. All of it runs against the simulated device. The D4-V1 firmware now also lives here (`firmware/`): the P4 and camera-node applications build clean in CI and implement the Milestone 1B single-camera surface, but nothing has run on physical hardware — `firmware/HARDWARE_VALIDATION.md` records what the bench has actually proven (currently nothing), and measured hardware dimensions remain outstanding. Hardware-gated acceptance items are marked as such where they appear.
 
 For exact protocol authority, start at [the firmware contract](../firmware-contract/README.md). For the hardware boundary, read [the hardware reference](HARDWARE.md).

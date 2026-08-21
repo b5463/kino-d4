@@ -39,6 +39,10 @@ Before `1.0.0`, the hardware package is a prototype. Version `1.0.0` requires a 
 
 Every hardware design change needs a numbered ECN under `hardware/changes/`. The ECN records evidence, compatibility, affected units, and the required version bump.
 
+## Firmware
+
+The D4 firmware (`firmware/`) carries one semantic version in `firmware/VERSION`, shared by the P4 and camera-node images — the nodes run the same binary and a release ships both targets together in one `kino.firmware-manifest`. `versions.json` records it and `npm run version:check` also verifies that `KDP_PROTOCOL_VERSION` in the firmware's `protocol.h` matches the TypeScript source. Before `1.0.0` the firmware is pre-release; a release additionally requires the bench record in `firmware/HARDWARE_VALIDATION.md` to back what the images claim to support.
+
 ## Tags
 
 | Surface | Tag form | Example |
@@ -49,6 +53,7 @@ Every hardware design change needs a numbered ECN under `hardware/changes/`. The
 | KDP package | `kino-kdp-v<VERSION>` | `kino-kdp-v0.1.0` |
 | Schemas package | `kino-schemas-v<VERSION>` | `kino-schemas-v0.1.0` |
 | D4 hardware package | `kino-d4-hw-v<VERSION>` | `kino-d4-hw-v0.1.0` |
+| D4 firmware | `kino-fw-v<VERSION>` | `kino-fw-v0.1.0` |
 
 Tags are annotated and point to the commit containing the matching manifests and changelogs. A tag does not replace a GitHub release or its checksums.
 
