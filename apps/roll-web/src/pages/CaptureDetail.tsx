@@ -7,7 +7,6 @@ import {
   type RollView,
 } from '../api/client';
 import { WigglePlayer } from '../components/WigglePlayer';
-import { Button, Panel, ToolbarFrame } from '@kino/design-system';
 
 export interface CaptureDetailProps {
   slug: string;
@@ -37,28 +36,13 @@ function preferredAsset(capture: CaptureDetailView): CaptureAssetDetail | undefi
   return roles.flatMap((role) => assetsByRole(capture, role))[0];
 }
 
-function metadata(capture: CaptureDetailView) {
-  return (
-    <dl className="roll-metadata">
-      <dt>Captured</dt>
-      <dd>{new Date(capture.capturedAt).toLocaleString()}</dd>
-      <dt>Look</dt>
-      <dd>{capture.look ?? 'KINO standard'}</dd>
-      <dt>Resolution</dt>
-      <dd>{capture.resolution}</dd>
-      <dt>Frames</dt>
-      <dd>{capture.frameCount}</dd>
-    </dl>
-  );
-}
-
 function assetImage(asset: CaptureAssetDetail, api: RollApi, alt = '') {
   return (
     <img
       key={asset.assetId}
       src={api.assetUrl(asset.assetId)}
       alt={alt}
-      className="roll-media"
+      className="photo-img"
     />
   );
 }
@@ -74,6 +58,8 @@ export function CaptureDetail({
   const [capture, setCapture] = useState(initialCapture);
   const [sharing, setSharing] = useState('');
   const [reacting, setReacting] = useState(false);
+  // null = the default view (wigglegram when available); a number pins one D4 frame.
+  const [frame, setFrame] = useState<number | null>(null);
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setCapture(initialCapture), [initialCapture]);
@@ -113,43 +99,34 @@ export function CaptureDetail({
     }
   };
 
+  const pinnedFrame = frame === null ? undefined : originals[frame];
+
   let media;
-  if (capture.mode === 'wiggle') {
-    media = (
-      <>
-        <div ref={heroRef} className="roll-stage">
-          {roll.downloadsEnabled && originalUrls.length >= 2 ? (
-            <WigglePlayer
-              frames={originalUrls}
-              poster={still === undefined ? undefined : api.assetUrl(still.assetId)}
-            />
-          ) : still === undefined ? (
-            <p style={{ color: 'white', padding: '3rem', textAlign: 'center' }}>Processing…</p>
-          ) : (
-            assetImage(still, api, 'Wiggle capture')
-          )}
-        </div>
-        <Button onClick={() => void heroRef.current?.requestFullscreen?.()}>
-          Full screen
-        </Button>
-        {roll.downloadsEnabled && originals.length > 0 ? (
-          <div aria-label="Original frame strip" className="roll-frame-strip">
-            {originals.map((asset, index) => assetImage(asset, api, `Frame ${String(index + 1)}`))}
-          </div>
-        ) : null}
-      </>
-    );
+  if (pinnedFrame !== undefined) {
+    media = assetImage(pinnedFrame, api, `Frame ${String((frame ?? 0) + 1)}`);
+  } else if (capture.mode === 'wiggle') {
+    media =
+      roll.downloadsEnabled && originalUrls.length >= 2 ? (
+        <WigglePlayer
+          frames={originalUrls}
+          poster={still === undefined ? undefined : api.assetUrl(still.assetId)}
+        />
+      ) : still === undefined ? (
+        <p className="photo-processing">Processing…</p>
+      ) : (
+        assetImage(still, api, 'Wiggle capture')
+      );
   } else if (capture.mode === 'quad') {
     const columns = Math.ceil(Math.sqrt(capture.frameCount));
     media = (
       <div
         aria-label="Quad frames"
         data-columns={columns}
-        className="roll-quad"
+        className="photo-quad"
         style={{ gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))` }}
       >
         {originals.map((asset, index) => (
-          <figure key={asset.assetId} className="roll-figure">
+          <figure key={asset.assetId} className="photo-figure">
             {assetImage(asset, api, `Camera ${String(index + 1)} frame`)}
             <figcaption>
               CAM {String(index + 1)} · {capture.look ?? 'KINO standard'}
@@ -159,43 +136,98 @@ export function CaptureDetail({
       </div>
     );
   } else {
-    media = still === undefined ? <p>Processing…</p> : assetImage(still, api, 'KINO capture');
+    media = still === undefined ? <p className="photo-processing">Processing…</p> : assetImage(still, api, 'KINO capture');
   }
 
   const downloadable = preferredAsset(capture) ?? originals[0];
+  const showFrameStrip = capture.mode === 'wiggle' && roll.downloadsEnabled && originals.length > 0;
 
   return (
-    <article className="roll-detail">
-      {media}
-      <ToolbarFrame className="roll-actions" aria-label="Capture actions">
-        {roll.downloadsEnabled && downloadable !== undefined ? (
-          <a className="roll-action" href={api.assetUrl(downloadable.assetId, { download: true })} download>
-            Download
-          </a>
+    <article className="photo-page">
+      <div className="photo-main">
+        <div ref={heroRef} className="photo-frame">
+          {media}
+        </div>
+
+        {showFrameStrip ? (
+          <section className="frame-strip-section">
+            <h2 className="section-label">D4 frames</h2>
+            <div aria-label="Original frame strip" className="frame-strip">
+              {originals.map((asset, index) => (
+                <button
+                  key={asset.assetId}
+                  type="button"
+                  className="frame-thumb"
+                  aria-pressed={frame === index}
+                  aria-label={`Frame ${String(index + 1)}`}
+                  onClick={() => setFrame(frame === index ? null : index)}
+                >
+                  <img src={api.assetUrl(asset.assetId)} alt="" className="photo-img" />
+                  <span aria-hidden="true">{index + 1}</span>
+                </button>
+              ))}
+            </div>
+          </section>
         ) : null}
-        <Button onClick={() => void share()}>
-          Share
-        </Button>
-        {roll.reactionsEnabled ? (
-          <Button
-            aria-pressed={capture.reacted}
-            aria-label={capture.reacted ? 'Remove heart' : 'Add heart'}
-            disabled={reacting}
-            onClick={() => void react()}
+
+        <div className="photo-actions" aria-label="Capture actions">
+          {roll.reactionsEnabled ? (
+            <button
+              type="button"
+              className="action-link"
+              aria-pressed={capture.reacted}
+              aria-label={capture.reacted ? 'Remove heart' : 'Add heart'}
+              disabled={reacting}
+              onClick={() => void react()}
+            >
+              {capture.reacted ? '♥' : '♡'} {capture.reactionCount}
+            </button>
+          ) : null}
+          {roll.downloadsEnabled && downloadable !== undefined ? (
+            <a className="action-link" href={api.assetUrl(downloadable.assetId, { download: true })} download>
+              Download
+            </a>
+          ) : null}
+          <button type="button" className="action-link" onClick={() => void share()}>
+            Share
+          </button>
+          <button
+            type="button"
+            className="action-link"
+            onClick={() => void heroRef.current?.requestFullscreen?.()}
           >
-            {capture.reacted ? '♥' : '♡'} {capture.reactionCount}
-          </Button>
+            Full size
+          </button>
+          {sharing === '' ? null : <span role="status" aria-live="polite" aria-atomic="true">{sharing}</span>}
+        </div>
+      </div>
+
+      <aside className="photo-side">
+        {capture.mode === 'wiggle' && still !== undefined ? (
+          <section className="side-box">
+            <h2 className="section-label">
+              KINO process <span className="section-sub">Wiggle · {capture.look ?? 'KINO standard'}</span>
+            </h2>
+            {assetImage(still, api, 'Processed still')}
+          </section>
         ) : null}
-        {sharing === '' ? null : <span role="status" aria-live="polite" aria-atomic="true">{sharing}</span>}
-      </ToolbarFrame>
-      {capture.mode === 'wiggle' && still !== undefined ? (
-        <Panel title="Processed still">
-          {assetImage(still, api, 'Processed still')}
-        </Panel>
-      ) : null}
-      <Panel title="Capture details">
-        {metadata(capture)}
-      </Panel>
+
+        <section className="side-box">
+          <h2 className="section-label">Photo information</h2>
+          <dl className="info-list">
+            <dt>Captured</dt>
+            <dd>{new Date(capture.capturedAt).toLocaleString()}</dd>
+            <dt>Camera</dt>
+            <dd>KINO D4</dd>
+            <dt>Look</dt>
+            <dd>{capture.look ?? 'KINO standard'}</dd>
+            <dt>Resolution</dt>
+            <dd>{capture.resolution.replace('x', ' × ')}</dd>
+            <dt>Frames</dt>
+            <dd>{capture.frameCount}</dd>
+          </dl>
+        </section>
+      </aside>
     </article>
   );
 }

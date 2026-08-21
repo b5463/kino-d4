@@ -1,17 +1,32 @@
-/* Roll web — the guest gallery as a mid-2000s photo site.
-   Same silver-blue token system as Studio (tokens.css is loaded untouched),
-   styled the way a 2005-2007 photo product wore it: chrome masthead with an
-   embossed logotype, white print mats on a cool gray tray, Trebuchet MS
-   display type, underlined blue links, a dark viewer stage with a filmstrip.
-   The feed owns the viewport — masthead and title stay put, only the tray
-   of prints scrolls.
+/* Roll web — KINO Roll as a 2006-2008 consumer photo website.
+   A believable period site, not a desktop program and not a retro skin:
+   dark KINO blue site bar, centered content column on a pale blue-grey
+   page, white photo surfaces with 1px borders, Tahoma at 12-13px, links
+   that look like links, dense album header with a tab row, and photos
+   taking almost all the space. Interaction stays 2026: window scrolling,
+   comfortable touch targets, responsive columns.
 
-   All text sits on token surfaces whose AA ratios are measured in
-   tokens.css; nothing here introduces a new text/background pair except
-   #fff captions on --well-dark (6.9:1 documented as --text-on-dark). */
+   Contrast (WCAG AA) on the real backgrounds:
+   --k-text #26313d on #fff              ≈ 12.6:1
+   --k-mut  #5d6974 on #fff              ≈  5.6:1
+   --k-mut  #5d6974 on #e9edf2 page      ≈  4.8:1
+   --k-link #0645ad on #fff              ≈  9.3:1
+   #fff on --k-header #174e98            ≈  8.2:1
+   --k-green #2e7d1e on #fff             ≈  5.3:1 */
 
 :root {
-  --display: 'Trebuchet MS', Tahoma, Verdana, sans-serif;
+  --k-header: #174e98;
+  --k-link: #0645ad;
+  --k-bg: #e9edf2;
+  --k-border: #c6d0da;
+  --k-border-soft: #dde4ec;
+  --k-text: #26313d;
+  --k-mut: #5d6974;
+  --k-green: #2e7d1e;
+  --k-burgundy: #94314c;
+  --k-blue: #2f70c9;
+  --k-sans: Tahoma, Verdana, Arial, sans-serif;
+  --k-mono: Consolas, 'Lucida Console', 'Courier New', monospace;
 }
 
 * { box-sizing: border-box; }
@@ -20,223 +35,333 @@ html, body, #root { min-height: 100%; }
 
 body {
   margin: 0;
-  background: var(--canvas);
-  color: var(--text);
-  font: 13px/1.5 var(--sans);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: 13px/1.5 var(--k-sans);
 }
+
+#root { display: flex; flex-direction: column; min-height: 100dvh; }
+#root > main { flex: 1; }
 
 button, input, select { font: inherit; }
 
-.kino-button { min-height: 38px; font-size: 12px; padding: 0 14px; }
-.kino-button--sm { min-height: 30px; }
-.kino-panel, .kino-panel-body { min-width: 0; }
+a { color: var(--k-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-/* Plain buttons and link-buttons get the same beveled treatment as
-   kino-button so nothing on the page falls outside the period. */
-button:not(.kino-button), .roll-action {
+:focus-visible { outline: 2px solid var(--k-header); outline-offset: 1px; }
+
+h1, h2, p, dl { margin-top: 0; }
+h1 { margin-bottom: 1px; font-size: 18px; font-weight: 700; line-height: 1.25; }
+
+/* Small bordered sections get labeled like period sites: bold, tiny, quiet. */
+.section-label {
+  margin: 0 0 6px;
+  color: var(--k-mut);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.section-sub { float: right; font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+/* ---- controls: small, bordered, restrained web-2.0 ---- */
+
+.kino-button, button:not(.kino-button):not(.roll-tab):not(.action-link):not(.frame-thumb) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 0 14px;
-  border: 1px solid var(--border-dark);
-  border-radius: var(--r);
-  background: var(--grad-btn);
-  color: var(--text);
-  box-shadow: inset 0 1px 0 var(--hilite);
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 1px solid #7a94b8;
+  border-radius: 3px;
+  background: linear-gradient(to bottom, #ffffff, #e7edf5);
+  color: var(--k-text);
   font-size: 12px;
   font-weight: 700;
-  text-decoration: none;
 }
+.kino-button:hover:not(:disabled), button:hover:not(:disabled) { border-color: var(--k-blue); }
+.kino-button--primary { border-color: #123c74; background: linear-gradient(to bottom, #3b78c4, #2a5da0); color: #fff; }
+.kino-button--danger { color: var(--k-burgundy); }
+.kino-button--danger-solid { border-color: #6e1f1f; background: linear-gradient(to bottom, #b74a4a, #9c2f2f); color: #fff; }
+.kino-button--sm { min-height: 24px; padding: 1px 8px; font-size: 11px; }
+button:disabled { color: var(--k-mut); cursor: not-allowed; }
 
-button:hover:not(:disabled), .roll-action:hover { border-color: var(--blue); background: var(--grad-btn-hover); }
-button:active:not(:disabled), .roll-action:active { background: var(--grad-btn-down); }
-button:disabled { color: var(--text-mut); cursor: not-allowed; }
-
-/* Period link: always blue, underline arrives on hover. */
-a { color: var(--link); text-decoration: none; }
-a:hover { text-decoration: underline; }
-
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  box-shadow: var(--focus-ring);
+/* Phones get taller touch targets without changing the look. */
+@media (pointer: coarse) {
+  .kino-button, button:not(.roll-tab):not(.frame-thumb) { min-height: 36px; }
 }
 
 input[type='text'], input[type='password'], input[type='url'], input:not([type]) {
   width: 100%;
-  min-height: 38px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-dark);
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid #8fa2b5;
   border-radius: 2px;
-  background: var(--well);
-  color: var(--text);
-  box-shadow: inset 1px 1px 2px rgb(40 60 90 / 12%);
+  background: #fff;
+  color: var(--k-text);
 }
+@media (pointer: coarse) { input { min-height: 36px; } }
 
 form { display: grid; gap: 8px; justify-items: start; }
 form input { justify-self: stretch; }
-label { color: var(--text-mut); font-size: 12px; font-weight: 700; }
+label { color: var(--k-mut); font-size: 12px; font-weight: 700; }
 
-h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 2px; font: 700 clamp(20px, 5vw, 26px)/1.2 var(--display); }
-h2 { font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
+/* Shared design-system pieces that still appear (PIN gate, host page). */
+.kino-panel { min-width: 0; border: 1px solid var(--k-border); background: #fff; }
+.kino-panel-head { padding: 6px 10px; border-bottom: 1px solid var(--k-border-soft); background: #f2f5f9; }
+.kino-panel-title { margin: 0; color: var(--k-mut); font: 700 11px var(--k-sans); letter-spacing: 0.08em; text-transform: uppercase; }
+.kino-panel-body { min-width: 0; padding: 10px; }
+.kino-toolbar { border: 0; background: none; box-shadow: none; padding: 0; gap: 6px; }
+.kino-status-lamp { font: 700 11px var(--k-sans); color: var(--k-mut); }
+.kino-status-lamp--ok .kino-status-symbol { color: var(--k-green); }
 
-/* ---- shell ---- */
+/* ---- site chrome ---- */
 
-.roll-shell { width: min(100%, 1120px); margin: 0 auto; padding: 12px; }
-.roll-shell--narrow { width: calc(100% - 20px); max-width: 420px; margin: 12vh auto; }
+.site-width { width: min(100%, 1000px); margin: 0 auto; padding: 0 10px; }
 
-/* Feed page: fixed masthead + title, only the print tray scrolls. */
-.roll-shell--feed {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  width: 100%;
-  max-width: none;
-  padding: 0;
+.site-header { background: var(--k-header); border-bottom: 1px solid #0f3568; }
+.site-header-row { display: flex; align-items: center; justify-content: space-between; min-height: 38px; }
+.site-brand { color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+.site-header .kino-status-lamp { color: #fff; }
+.site-header .kino-status-lamp--ok .kino-status-symbol { color: #8fd96a; }
+.site-header .kino-status-lamp--off .kino-status-symbol { color: #a9c0dd; }
+
+.site-footer {
+  margin-top: 18px;
+  padding: 10px 0 14px;
+  border-top: 1px solid var(--k-border);
+  color: var(--k-mut);
+  font-size: 11px;
 }
+.site-footer strong { letter-spacing: 0.06em; }
 
-/* ---- masthead: silver-blue chrome with an embossed logotype ---- */
+.back-link { margin: 10px 0 8px; font-size: 12px; }
 
-.roll-masthead {
+.roll-alert { margin: 10px 0; padding: 6px 9px; border: 1px solid #d9a6a6; background: #fdf2f2; color: #a02525; font-size: 12px; }
+
+/* ---- album header: small square image, title, date, count ---- */
+
+.roll-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--border-mid);
-  background: var(--grad-chrome);
-  box-shadow: inset 0 1px 0 var(--hilite);
-}
-
-.roll-brand {
-  color: var(--blue-dark);
-  font: 700 italic 16px var(--display);
-  letter-spacing: 0.01em;
-  text-shadow: 0 1px 0 #fff; /* embossed into the chrome */
-}
-
-.roll-titlebar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 10px 12px 9px;
-  border-bottom: 1px solid var(--border-mid);
-  background: var(--grad-head);
-}
-
-.roll-subhead { margin-top: 1px; color: var(--text-mut); font-size: 12px; }
-
-.roll-alert { margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #d9a6a6; background: #fdf2f2; color: var(--red-dark); }
-.roll-shell > .roll-alert, .roll-shell--narrow .roll-alert { margin: 0 0 10px; }
-.roll-closed {
-  padding: 4px 9px;
-  border: 1px solid var(--orange-border);
-  background: #fdf9ec;
-  color: var(--orange-dark);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.roll-shell--feed > p[role='status'] { padding: 10px 12px; margin: 0; color: var(--text-mut); }
-
-/* ---- the print tray: white-matted photos on cool gray ---- */
-
-.roll-feed {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  contain: strict;
-  overscroll-behavior: contain;
+  margin-top: 12px;
   padding: 10px;
-  background: var(--panel);
-  /* the tray sits a step below the title chrome */
-  box-shadow: inset 0 2px 3px -2px rgb(40 60 90 / 35%);
+  border: 1px solid var(--k-border);
+  border-bottom: 0;
+  background: #fff;
 }
 
-.roll-tile {
+.roll-avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  object-fit: cover;
+  border: 1px solid var(--k-border);
+  padding: 2px;
+  background: #fff;
+}
+.roll-avatar--empty {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--k-header);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.roll-header-text { min-width: 0; }
+.roll-header-text h1 { overflow-wrap: anywhere; }
+.roll-meta { color: var(--k-mut); font-size: 12px; }
+.roll-closed { display: inline-block; margin-top: 3px; color: var(--k-mut); font-size: 11px; font-weight: 700; }
+
+/* ---- tab row ---- */
+
+.roll-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 6px 8px 0;
+  border: 1px solid var(--k-border);
+  border-bottom-color: var(--k-border);
+  background: #f2f5f9;
+  margin-bottom: 10px;
+}
+
+.roll-tab {
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 1px solid var(--k-border);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: #e2e8f0;
+  color: #3d5674;
+  font-size: 12px;
+  font-weight: 700;
+  position: relative;
+  top: 1px;
+}
+.roll-tab[aria-current='true'] { background: #fff; color: var(--k-text); }
+@media (pointer: coarse) { .roll-tab { min-height: 36px; } }
+
+.roll-info { padding: 10px; border: 1px solid var(--k-border); background: #fff; }
+
+/* ---- photo grid: the photos are the site ---- */
+
+.photo-grid { margin-top: 2px; }
+
+.photo-thumb {
   display: block;
   min-width: 0;
-  padding: 5px;
-  border: 1px solid var(--border-mid);
-  background: var(--well);
+  padding: 4px 4px 2px;
+  border: 1px solid var(--k-border);
+  background: #fff;
   color: inherit;
   text-decoration: none;
-  box-shadow: 0 1px 3px rgb(40 60 90 / 22%);
 }
+.photo-thumb:hover { border-color: var(--k-blue); text-decoration: none; }
 
-.roll-tile:hover { border-color: var(--blue); box-shadow: 0 2px 5px rgb(40 60 90 / 30%); }
+/* A live arrival: green edge that settles down, plus a NEW tag. */
+.photo-thumb[data-new] { border-color: var(--k-green); animation: photo-arrive 2.5s ease-out; }
+@keyframes photo-arrive { from { box-shadow: 0 0 0 2px rgb(46 125 30 / 45%); } to { box-shadow: none; } }
 
-.roll-media { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--panel-inset); }
-.roll-processing {
+.photo-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #dfe5ec; }
+
+.photo-thumb-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 1px 2px;
+  color: var(--k-mut);
+  font-size: 11px;
+}
+.photo-hearts { color: var(--k-burgundy); font-weight: 700; }
+.photo-new { color: var(--k-green); font-size: 10px; letter-spacing: 0.06em; }
+.photo-when { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.photo-processing {
   display: grid;
   place-items: center;
   aspect-ratio: 4 / 3;
-  background: var(--panel-inset);
-  color: var(--text-mut);
+  margin: 0;
+  background: #dfe5ec;
+  color: var(--k-mut);
   font-size: 11px;
   font-weight: 700;
 }
 
-/* ---- capture detail: viewer stage + filmstrip, like desktop photo tools ---- */
+/* ---- photo detail: photograph first, everything else compact ---- */
 
-.roll-detail { width: min(100%, 900px); margin: 0 auto; display: grid; gap: 10px; justify-items: start; }
-.roll-detail > * { justify-self: stretch; }
-.roll-detail > .kino-button { justify-self: start; }
-
-.roll-stage {
-  padding: 8px;
-  border: 1px solid var(--border-dark);
-  background: var(--well-dark);
-  box-shadow: inset 0 0 14px rgb(0 0 0 / 30%);
+.photo-page { display: grid; gap: 12px; align-items: start; }
+@media (min-width: 900px) {
+  .photo-page { grid-template-columns: minmax(0, 1fr) 280px; }
 }
-.roll-stage .roll-media, .roll-detail > .roll-media { aspect-ratio: auto; }
 
-/* The filmstrip: thumbnails riding a dark strip, XP filmstrip-view style. */
-.roll-frame-strip {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(76px, 1fr);
-  gap: 6px;
-  overflow-x: auto;
-  padding: 6px;
-  border: 1px solid var(--border-dark);
-  background: var(--well-dark);
+.photo-main { min-width: 0; display: grid; gap: 10px; }
+
+.photo-frame { padding: 5px; border: 1px solid var(--k-border); background: #fff; }
+.photo-frame .photo-img { aspect-ratio: auto; }
+
+.frame-strip-section { min-width: 0; }
+.frame-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(64px, 110px); gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+
+.frame-thumb {
+  position: relative;
+  padding: 2px;
+  border: 1px solid var(--k-border);
+  border-radius: 0;
+  background: #fff;
+  cursor: pointer;
 }
-.roll-frame-strip .roll-media { aspect-ratio: 4 / 3; border: 2px solid var(--well); }
+.frame-thumb:hover { border-color: var(--k-blue); }
+.frame-thumb[aria-pressed='true'] { border: 2px solid var(--k-blue); padding: 1px; }
+.frame-thumb .photo-img { aspect-ratio: 4 / 3; }
+.frame-thumb span {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0 4px;
+  background: rgb(23 78 152 / 85%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
 
-.roll-actions { flex-wrap: wrap; }
+/* Actions: a compact text-link row, the way photo sites did it. */
+.photo-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 7px 9px;
+  border: 1px solid var(--k-border);
+  background: #f2f5f9;
+  color: var(--k-mut);
+  font-size: 12px;
+}
 
-.roll-quad { display: grid; gap: 8px; }
-.roll-figure { min-width: 0; margin: 0; padding: 4px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: 0 1px 2px rgb(40 60 90 / 14%); }
-.roll-figure figcaption { margin-top: 3px; color: var(--text-mut); font-size: 11px; font-weight: 700; }
+.action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--k-link);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.action-link:hover:not(:disabled) { text-decoration: underline; }
+.action-link[aria-pressed='true'] { color: var(--k-burgundy); }
+.action-link:disabled { color: var(--k-mut); cursor: not-allowed; }
+a.action-link { min-height: 30px; }
+@media (pointer: coarse) { .action-link { min-height: 36px; } }
 
-.roll-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; }
-.roll-metadata dt { color: var(--text-mut); font-size: 12px; font-weight: 700; }
-.roll-metadata dd { margin: 0; font: 12px var(--mono); }
+.photo-quad { display: grid; gap: 6px; }
+.photo-figure { min-width: 0; margin: 0; }
+.photo-figure .photo-img { aspect-ratio: auto; border: 1px solid var(--k-border-soft); }
+.photo-figure figcaption { margin-top: 2px; color: var(--k-mut); font-size: 11px; font-weight: 700; }
+
+/* ---- sidebar boxes: KINO process, photo information ---- */
+
+.photo-side { min-width: 0; display: grid; gap: 10px; align-content: start; }
+.side-box { padding: 9px 10px 10px; border: 1px solid var(--k-border); background: #fff; }
+.side-box .photo-img { aspect-ratio: auto; border: 1px solid var(--k-border-soft); }
+
+.info-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+.info-list dt { color: var(--k-mut); font-size: 12px; }
+.info-list dd { margin: 0; font-size: 12px; }
+
+/* ---- PIN gate + not-found (narrow single card) ---- */
+
+.roll-shell { width: min(100%, 1000px); margin: 0 auto; padding: 12px 10px; }
+.roll-shell--narrow { width: calc(100% - 20px); max-width: 380px; margin: 12vh auto; }
+.roll-brand { margin-bottom: 6px; color: var(--k-header); font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+.roll-shell--narrow h1 { font-size: 15px; }
 
 /* ---- host dashboard ---- */
 
 .host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.host-stat { min-width: 110px; padding: 8px 10px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: inset 0 1px 0 var(--hilite); }
-.host-stat-label { color: var(--text-mut); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
-.host-stat-value { display: block; font: 700 20px var(--mono); }
+.host-stat { min-width: 105px; padding: 6px 10px; border: 1px solid var(--k-border); background: #fff; }
+.host-stat-label { color: var(--k-mut); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; }
+.host-stat-value { display: block; font: 700 18px var(--k-mono); }
 
-.host-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-.host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--border-mid); }
+.host-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--k-border); }
 
-.host-captures { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.host-capture { padding: 5px; border: 1px solid var(--border-mid); background: var(--well); box-shadow: 0 1px 2px rgb(40 60 90 / 14%); }
-.host-capture[data-muted='true'] { opacity: 0.58; }
-.host-capture-placeholder { display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--panel-inset); color: var(--text-mut); font-weight: 700; }
-.host-capture-meta { padding: 5px 1px; font: 11px var(--mono); }
+.host-captures { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.host-capture { padding: 4px; border: 1px solid var(--k-border); background: #fff; }
+.host-capture[data-muted='true'] { opacity: 0.55; }
+.host-capture .roll-media, .host-capture .photo-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #dfe5ec; }
+.host-capture-placeholder { display: grid; place-items: center; aspect-ratio: 4 / 3; background: #dfe5ec; color: var(--k-mut); font-weight: 700; }
+.host-capture-meta { padding: 4px 1px; font: 11px var(--k-mono); }
+
+/* Legacy class kept for the host page's poster images. */
+.roll-media { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #dfe5ec; }
 
 @media (max-width: 600px) {
-  .roll-shell { padding: 8px; }
+  .roll-header { padding: 8px; }
   .host-settings { grid-template-columns: 1fr; }
   .host-captures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
