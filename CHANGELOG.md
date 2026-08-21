@@ -33,6 +33,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - Production and isolated staging stacks now run behind Caddy with automatic TLS, unbuffered live events, private PostgreSQL/Redis/MinIO services, gated migrations, and API-streamed private media.
 - Redis-backed request budgets now protect device uploads, guest reads, PIN attempts, device registration, device Roll joining, and anonymous Roll creation.
 - A camera-simulating uploader now verifies resumable fixture uploads, lost-ack and duplicate retries, background derivatives, guest visibility, host closure, and controlled concurrent load before physical cameras are available.
+- Production operations now include atomic off-host database/object backups, bounded daily/weekly retention, an isolated digest-verifying restore drill, authenticated Prometheus application metrics, rotating JSON logs, and private MinIO/node-exporter signals.
 
 ### Fixed
 

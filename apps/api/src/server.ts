@@ -12,6 +12,7 @@ import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
 import { rateLimitsPlugin } from './plugins/rateLimits';
+import { metricsPlugin } from './plugins/metrics';
 import { eventsPlugin } from './plugins/events';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
@@ -92,6 +93,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   // The roll event subscriber; duplicates the client above, so it comes after.
   app.register(eventsPlugin);
   app.register(s3Plugin, { config });
+  app.register(metricsPlugin);
   // Signed cookies for the guest PIN session (05 §12/§13).
   app.register(cookie, { secret: config.COOKIE_SECRET });
 

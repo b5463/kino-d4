@@ -35,6 +35,9 @@ export const configSchema = z.object({
   // Shared with the worker. Tests may isolate a real producer/consumer pair
   // without letting that worker consume another suite's jobs.
   JOB_QUEUE_PREFIX: z.string().min(1).default('kino-jobs'),
+  // Optional in development; production Compose requires it. The route is a
+  // 404 when absent so metrics cannot be exposed accidentally.
+  METRICS_TOKEN: z.string().min(24).optional(),
   S3_ENDPOINT: absoluteUrl.default('http://localhost:9000'),
   S3_BUCKET: z.string().min(1).default('kino-media'),
   S3_FIRMWARE_BUCKET: z.string().min(1).default('kino-firmware'),

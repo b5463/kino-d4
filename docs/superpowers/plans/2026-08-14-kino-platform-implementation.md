@@ -1448,10 +1448,10 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 
 ### Task 38: Backups + restore drill + observability
 - **Files:** Create `infra/scripts/backup.sh`, `infra/scripts/restore-drill.sh`, `docs/runbooks/restore.md`
-- [ ] `backup.sh`: nightly `pg_dump -Fc` + `mc mirror` of both buckets to an off-host target; retention 14 daily + 8 weekly (05§16).
-- [ ] `restore-drill.sh`: restores dump + objects into a scratch compose stack, then runs an assertion script: every `assets.status='ready'` row's objectKey exists in restored storage and sha256 matches — captures/assets relink correctly (07§27). **The drill must actually be run**, not just written; record the run in the runbook.
-- [ ] Observability (05§17): pino structured logs shipped to a file/loki; `/api/metrics` (Prometheus format via `fastify-metrics`): request latency, error rate, upload failures, queue depth (BullMQ counts), SSE connections, active devices; MinIO + disk usage from node exporter. Alert thresholds documented, not over-tooled.
-- [ ] Commit — `feat(infra): backups with tested restore drill + metrics`
+- [x] `backup.sh`: nightly `pg_dump -Fc` + `mc mirror` of both buckets to an off-host target; retention 14 daily + 8 weekly (05§16).
+- [x] `restore-drill.sh`: restores dump + objects into a scratch compose stack, then runs an assertion script: every `assets.status='ready'` row's objectKey exists in restored storage and sha256 matches — captures/assets relink correctly (07§27). **The drill must actually be run**, not just written; record the run in the runbook. Run 2026-08-21: 3 captures, 24/24 ready assets SHA-256 verified; recorded in `docs/runbooks/restore.md`.
+- [x] Observability (05§17): pino/Caddy structured logs rotate through Docker's JSON file driver; the dependency-free `/api/metrics` Prometheus exporter covers latency, errors, upload failures, BullMQ depth, worker failures, SSE connections, active devices and object usage; private MinIO/node-exporter signals and alert thresholds are documented.
+- [x] Commit — `feat(infra): backups with tested restore drill + metrics`
 
 ---
 

@@ -1,5 +1,11 @@
 name: kino-${KINO_ENV:-production}
 
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: '5'
+
 x-runtime-environment: &runtime-environment
   NODE_ENV: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -35,6 +41,7 @@ services:
       api: { condition: service_healthy }
       web: { condition: service_healthy }
     security_opt: [no-new-privileges:true]
+    logging: *json-logging
 
   web:
     build:
@@ -70,7 +77,9 @@ services:
       dockerfile: infra/Dockerfile
       target: api
     restart: unless-stopped
-    environment: *runtime-environment
+    environment:
+      <<: *runtime-environment
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN in the selected environment file}
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -89,6 +98,7 @@ services:
       timeout: 5s
       retries: 12
     security_opt: [no-new-privileges:true]
+    logging: *json-logging
 
   worker:
     build:
@@ -104,6 +114,7 @@ services:
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
+    logging: *json-logging
 
   postgres:
     image: postgres:16-alpine
@@ -141,6 +152,9 @@ services:
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in the selected environment file}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in the selected environment file}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+      S3_BUCKET: ${S3_BUCKET:-kino-media}
+      S3_FIRMWARE_BUCKET: ${S3_FIRMWARE_BUCKET:-kino-firmware}
     volumes: [miniodata:/data]
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
@@ -148,6 +162,16 @@ services:
       timeout: 5s
       retries: 20
     security_opt: [no-new-privileges:true]
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.11.1
+    profiles: [observability]
+    command: ['--path.rootfs=/host']
+    pid: host
+    volumes: ['/:/host:ro,rslave']
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    logging: *json-logging
 
   createbucket:
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z

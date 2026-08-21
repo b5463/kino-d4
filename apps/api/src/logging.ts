@@ -35,6 +35,7 @@ const SECRET_KEYS = [
   'COOKIE_SECRET',
   'DATABASE_URL',
   'REDIS_URL',
+  'METRICS_TOKEN',
 ];
 
 /**

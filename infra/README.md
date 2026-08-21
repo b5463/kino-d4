@@ -88,6 +88,18 @@ The default mutation budget is 60 requests per minute per device token; one four
 
 Run `npm run test:uploader -- --help` for fixture, timeout, and pacing options. Production registration is first-write-wins, so reuse `KINO_DEVICE_ID` and `KINO_DEVICE_TOKEN` after the initial physically controlled registration instead of attempting to register the serial again.
 
+## Backups and observability
+
+Nightly backup, retention, isolated restoration, and ready-asset digest verification are documented in [the restore runbook](../docs/runbooks/restore.md). The backup target must be an absolute off-host mount; the scripts deliberately refuse a blank, relative, or root target.
+
+The API exposes authenticated Prometheus text at `/api/metrics` when `METRICS_TOKEN` is configured. Production requires the token. API/worker/Caddy JSON logs rotate locally, MinIO exposes metrics only on the private network, and the optional node exporter starts with:
+
+```sh
+docker compose --profile observability --env-file infra/.env.production -f infra/docker-compose.prod.yml up -d
+```
+
+Scrape topology, metric semantics, and initial alerts are in [the observability runbook](../docs/runbooks/observability.md).
+
 ## Media licensing
 
 The worker image currently includes the repository's `ffmpeg-static` dependency. Do not distribute that image publicly until the FFmpeg/GPL distribution decision tracked in GitHub issue #22 is resolved.
