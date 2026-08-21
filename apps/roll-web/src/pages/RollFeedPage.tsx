@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   isNoRollError,
   PinRequiredError,
@@ -8,6 +8,7 @@ import {
   type RollView,
 } from '../api/client';
 import { evictCaptureAssets } from '../cache/assets';
+import { SiteFooter, SiteHeader } from '../components/SiteHeader';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
@@ -20,19 +21,24 @@ export interface RollFeedPageProps {
   slug: string;
 }
 
+/** 2 columns on phones, 3 on large phones, 4 from 900px up. */
 function useColumnCount(): number {
-  const query = '(min-width: 768px)';
-  const [columns, setColumns] = useState(() =>
-    typeof window.matchMedia === 'function' && window.matchMedia(query).matches ? 4 : 3,
-  );
+  const pick = (): number => {
+    if (typeof window.matchMedia !== 'function') return 2;
+    if (window.matchMedia('(min-width: 900px)').matches) return 4;
+    if (window.matchMedia('(min-width: 520px)').matches) return 3;
+    return 2;
+  };
+  const [columns, setColumns] = useState(pick);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia(query);
-    const changed = (event: MediaQueryListEvent): void => setColumns(event.matches ? 4 : 3);
-    setColumns(media.matches ? 4 : 3);
-    media.addEventListener('change', changed);
-    return () => media.removeEventListener('change', changed);
+    const media = ['(min-width: 900px)', '(min-width: 520px)'].map((query) => window.matchMedia(query));
+    const changed = (): void => setColumns(pick());
+    for (const entry of media) entry.addEventListener('change', changed);
+    return () => {
+      for (const entry of media) entry.removeEventListener('change', changed);
+    };
   }, []);
 
   return columns;
@@ -54,14 +60,31 @@ function assetOf(capture: CaptureView, roles: readonly string[]) {
   return undefined;
 }
 
+function formattedDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(
+    new Date(value),
+  );
+}
+
+function timeAgo(value: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${String(minutes)} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${String(hours)} h ago`;
+  return formattedDate(value);
+}
+
 function CaptureTile({
   slug,
   capture,
   downloadsEnabled,
+  isNew,
 }: {
   slug: string;
   capture: CaptureView;
   downloadsEnabled: boolean;
+  isNew: boolean;
 }) {
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
   const animated = assetOf(capture, ['wiggle-webp', 'wiggle-preview']);
@@ -81,13 +104,13 @@ function CaptureTile({
     const source = animated ?? poster;
     media =
       source === undefined ? (
-        <span className="roll-processing" aria-label="Capture processing">Processing…</span>
+        <span className="photo-processing" aria-label="Capture processing">Processing…</span>
       ) : (
         <img
           src={rollApi.assetUrl(source.assetId)}
           alt=""
           loading="lazy"
-          className="roll-media"
+          className="photo-img"
         />
       );
   }
@@ -96,16 +119,17 @@ function CaptureTile({
     <a
       href={`/r/${encodeURIComponent(slug)}/c/${encodeURIComponent(capture.captureId)}`}
       aria-label={`Open capture from ${new Date(capture.capturedAt).toLocaleTimeString()}`}
-      className="roll-tile"
+      className="photo-thumb"
+      data-new={isNew || undefined}
     >
       {media}
+      {/* The feed endpoint carries no reaction counts; hearts live on the
+          detail page instead of a mocked number here. */}
+      <span className="photo-thumb-meta">
+        {isNew ? <strong className="photo-new">NEW</strong> : null}
+        <span className="photo-when">{timeAgo(capture.capturedAt)}</span>
+      </span>
     </a>
-  );
-}
-
-function formattedDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(
-    new Date(value),
   );
 }
 
@@ -114,7 +138,8 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   const feed = useRollFeed(slug);
   const [roll, setRoll] = useState<RollView | null>(null);
   const [rollError, setRollError] = useState<Error | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [tab, setTab] = useState<'photos' | 'info'>('photos');
+  const listRef = useRef<HTMLDivElement>(null);
   const columns = useColumnCount();
   const rows = useMemo(() => rowsOf(feed.captures, columns), [columns, feed.captures]);
 
@@ -142,10 +167,22 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   const failure = rollError ?? feed.error;
 
+  // Only captures that arrive through the live event stream get the NEW
+  // badge; initial pages and older pages never do. The badge stays for the
+  // session — the border highlight animates once and settles.
+  const [freshIds, setFreshIds] = useState<ReadonlySet<string>>(new Set());
+  const prependLive = useCallback(
+    (capture: CaptureView): void => {
+      feed.prepend(capture);
+      setFreshIds((previous) => new Set(previous).add(capture.captureId));
+    },
+    [feed],
+  );
+
   useRollEvents(
     slug,
     {
-      prepend: feed.prepend,
+      prepend: prependLive,
       replace: feed.replace,
       remove: removeLive,
       refetchHead: feed.refetchHead,
@@ -155,11 +192,11 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     roll !== null && !(failure instanceof PinRequiredError) && !isNoRollError(failure),
   );
 
-  const virtualizer = useVirtualizer({
+  const virtualizer = useWindowVirtualizer({
     count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 230,
-    overscan: 2,
+    estimateSize: () => 220,
+    overscan: 3,
+    scrollMargin: listRef.current?.offsetTop ?? 0,
   });
   const virtualRows = virtualizer.getVirtualItems();
   const lastVirtualRow = virtualRows[virtualRows.length - 1];
@@ -188,63 +225,108 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   if (isNoRollError(failure)) return <NoRollPage />;
 
+  const newest = feed.captures[0];
+  const dp = newest === undefined ? undefined : assetOf(newest, ['thumb', 'kino-still', 'wiggle-preview']);
+  const photoCount = roll?.photoCount ?? feed.captures.length;
+
   return (
-    <main className="roll-shell roll-shell--feed">
-      <header className="roll-masthead">
-        <div className="roll-brand">KINO ROLL</div>
-        {roll === null ? (
-          <StatusLamp state="busy" label="LOADING" announce />
-        ) : (
-          <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} announce />
-        )}
-      </header>
-      <div className="roll-titlebar">
-        <div>
-          <h1>{roll?.title ?? slug}</h1>
-          {roll !== null ? (
-            <div className="roll-subhead">
-              {roll.photoCount} {roll.photoCount === 1 ? 'photo' : 'photos'} · {formattedDate(roll.createdAt)}
-            </div>
-          ) : null}
+    <>
+      <SiteHeader
+        right={
+          roll === null ? (
+            <StatusLamp state="busy" label="LOADING" announce />
+          ) : (
+            <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} announce />
+          )
+        }
+      />
+      <main className="site-width">
+        <div className="roll-header">
+          {dp === undefined ? (
+            <span className="roll-avatar roll-avatar--empty" aria-hidden="true">K</span>
+          ) : (
+            <img className="roll-avatar" src={rollApi.assetUrl(dp.assetId)} alt="" />
+          )}
+          <div className="roll-header-text">
+            <h1>{roll?.title ?? slug}</h1>
+            {roll !== null ? (
+              <div className="roll-meta">
+                {formattedDate(roll.createdAt)} · {photoCount} {photoCount === 1 ? 'photo' : 'photos'}
+              </div>
+            ) : null}
+            {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
+          </div>
         </div>
-        {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
-      </div>
 
-      {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
-      {feed.captures.length === 0 && feed.loading ? <p role="status" aria-live="polite">Loading Roll…</p> : null}
-      {feed.captures.length === 0 && !feed.loading && failure === null ? <p role="status" aria-live="polite">No photos yet.</p> : null}
+        <nav className="roll-tabs" aria-label="Roll sections">
+          <button type="button" className="roll-tab" aria-current={tab === 'photos'} onClick={() => setTab('photos')}>
+            Photos ({photoCount})
+          </button>
+          <button type="button" className="roll-tab" aria-current={tab === 'info'} onClick={() => setTab('info')}>
+            Info
+          </button>
+        </nav>
 
-      <div ref={scrollRef} className="roll-feed" role="region" aria-label="Roll captures" tabIndex={0}>
-        <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
-          {virtualRows.map((virtualRow) => (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${String(virtualRow.start)}px)`,
-                display: 'grid',
-                gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
-                gap: '10px',
-                paddingBottom: '10px',
-              }}
-            >
-              {(rows[virtualRow.index] ?? []).map((capture) => (
-                <CaptureTile
-                  key={capture.captureId}
-                  slug={slug}
-                  capture={capture}
-                  downloadsEnabled={roll?.downloadsEnabled ?? false}
-                />
-              ))}
+        {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
+
+        {tab === 'info' && roll !== null ? (
+          <div className="roll-info">
+            <dl className="info-list">
+              <dt>Created</dt>
+              <dd>{formattedDate(roll.createdAt)}</dd>
+              <dt>Photos</dt>
+              <dd>{photoCount}</dd>
+              <dt>Status</dt>
+              <dd>{roll.status === 'live' ? 'LIVE' : roll.status}</dd>
+              <dt>Downloads</dt>
+              <dd>{roll.downloadsEnabled ? 'On' : 'Off'}</dd>
+            </dl>
+          </div>
+        ) : null}
+
+        {tab === 'photos' ? (
+          <>
+            {feed.captures.length === 0 && feed.loading ? <p role="status" aria-live="polite">Loading Roll…</p> : null}
+            {feed.captures.length === 0 && !feed.loading && failure === null ? (
+              <p role="status" aria-live="polite">No photos yet.</p>
+            ) : null}
+
+            <div ref={listRef} className="photo-grid" role="region" aria-label="Roll captures">
+              <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+                {virtualRows.map((virtualRow) => (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${String(virtualRow.start - virtualizer.options.scrollMargin)}px)`,
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
+                      gap: '8px',
+                      paddingBottom: '8px',
+                    }}
+                  >
+                    {(rows[virtualRow.index] ?? []).map((capture) => (
+                      <CaptureTile
+                        key={capture.captureId}
+                        slug={slug}
+                        capture={capture}
+                        downloadsEnabled={roll?.downloadsEnabled ?? false}
+                        isNew={freshIds.has(capture.captureId)}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
-    </main>
+          </>
+        ) : null}
+      </main>
+      <SiteFooter />
+    </>
   );
 }
