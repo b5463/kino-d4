@@ -23,6 +23,7 @@ import { FACTORY_RECIPES } from './factoryRecipes';
 import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
 import type { SoundInfo } from '@kino/kdp';
 import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
+import { sha256Hex } from './sha256';
 import type { ScenarioFlags, CamFault } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
@@ -115,6 +116,11 @@ interface FwSession {
   version: string;
   received: number;
   failAt: number | null; // byte offset at which to inject a failure
+  // The received image, assembled by offset so duplicated or re-sent chunks
+  // land idempotently. Held so FW_END can actually verify sha256 — a
+  // reference device that answers `verified: true` without hashing teaches
+  // Studio to trust theatre.
+  image: Uint8Array;
 }
 
 interface SoundSession {
@@ -2424,6 +2430,7 @@ export class MockKinoDevice implements MockDeviceLike {
       version: req.version,
       received: 0,
       failAt,
+      image: new Uint8Array(req.size),
     };
     this.fwStates[req.target] = { state: 'receiving' };
     if (req.target !== 'p4') this.cams[req.target].updating = true;
@@ -2458,6 +2465,11 @@ export class MockKinoDevice implements MockDeviceLike {
       this.respondError(frame, 'FLASH_WRITE', `${s.target.toUpperCase()} flash write failed at ${pct}%`);
       return;
     }
+    if (offset + dataLen > s.size) {
+      this.respondError(frame, 'BAD_OFFSET', `Chunk ends at ${offset + dataLen}, image is ${s.size} bytes`);
+      return;
+    }
+    s.image.set(frame.payload.subarray(8), offset);
     s.received = offset + dataLen;
     this.emitTelemetry({ t: 'fw', target: s.target, state: 'receiving', pct: Math.round((s.received / s.size) * 100) });
     this.respond(frame, { ok: true, received: s.received });
@@ -2477,8 +2489,20 @@ export class MockKinoDevice implements MockDeviceLike {
     const target = s.target;
     this.fwStates[target] = { state: 'verifying' };
     this.emitTelemetry({ t: 'fw', target, state: 'verifying' });
+    // Real verification: hash what actually arrived against the declared
+    // digest. Answering `verified: true` without hashing would let a corrupt
+    // image pass end-to-end in the reference device.
+    const actualSha = sha256Hex(s.image);
+    if (actualSha !== s.sha256.toLowerCase()) {
+      this.log('P4', `${target} sha256 mismatch — image rejected, nothing flashed`);
+      this.fwStates[target] = { state: 'error', error: 'sha256 mismatch' };
+      if (target !== 'p4') this.cams[target].updating = false;
+      this.emitTelemetry({ t: 'fw', target, state: 'error' });
+      this.respondError(frame, 'SHA256_MISMATCH', `${target.toUpperCase()} image hash does not match FW_BEGIN declaration`);
+      return;
+    }
     this.respond(frame, { ok: true, verified: true });
-    this.log('P4', `${target} image received — verifying sha256`);
+    this.log('P4', `${target} image received — sha256 verified`);
 
     if (target === 'p4') {
       this.after(900, () => {

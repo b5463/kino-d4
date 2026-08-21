@@ -24,6 +24,8 @@ Start with the question you need answered. The repository contains working contr
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |
 | Which product voice and UI rules apply to Studio? | [Product register](../PRODUCT.md) |
 | What remains out of line with the Studio specification? | [Studio spec audit](studio-spec-audit.md) |
+| How compliant is the system with the master hardware/software spec? | [Master audit](audit/AUDIT.md) and the per-domain documents in [`docs/audit/`](audit/) |
+| What must be measured on the physical D4? | [Hardware validation plan](audit/HARDWARE_VALIDATION_PLAN.md) |
 
 ## Authority order
 

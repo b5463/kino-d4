@@ -44,7 +44,13 @@ KINO has no published release yet. Changes intended for the first release collec
 - The Twin device no longer fires ambient demo captures: every capture in the 3D view was commanded by the operator or Studio. Studio's demo device keeps its lively ambient behavior.
 - The Twin display renders the live simulated device UI — boot stages, firmware version, battery voltage, SD/Wi-Fi/roll status, capture and firmware-update progress, per-camera faults, and a SIMULATED-labelled CAM2 preview field — on the 3D glass and in a DISPLAY inspector tab whose shutter drives the same raw-KDP capture path Studio uses.
 
+- Master Twin+Studio audit against the D4 hardware/software specification: compliance matrix and thirteen maintained documents under `docs/audit/`, provisional P4 header assignments and XIAO DVP pin map in the hardware profile, and OV3660/OV5640_AF sensor profiles recorded as capability-driven data.
+
 ### Fixed
+
+- The reference device actually verifies firmware images: `FW_END` hashes the received bytes against the declared sha256 and rejects a corrupted image instead of answering `verified: true` unconditionally.
+- Studio backups no longer contain the camera's Roll identity block, strip it from older backup files on restore, and now record camera firmware versions, protocol, and the config schema version.
+- A Twin session is labelled KINO TWIN in the Studio toolbar and sidebar instead of appearing as USB hardware, the Overview FLASH lamp is device-capability-driven instead of hardcoded green, and the conformance runner classifies unsupported commands correctly.
 
 - Twin typography sits on one four-step token scale with nothing below 10 px, and every panel padding lands on the even spacing grid — the tabs, chips, tables and checklists read as one instrument again.
 - The Twin display screen stays crisp when viewed through the clear rear acrylic instead of being washed out by the panel's tint.

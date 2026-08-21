@@ -87,7 +87,7 @@ export function OverviewPage() {
     }
   };
 
-  const { info, cameras, power, storage, config } = state;
+  const { info, cameras, power, storage, config, capabilities } = state;
   if (!info) return null;
 
   const issues: string[] = [];
@@ -119,7 +119,14 @@ export function OverviewPage() {
           }`,
         }
       : { name: 'BATTERY', state: 'off' as LedState, label: '—' },
-    { name: 'FLASH', state: 'ok', label: 'READY' },
+    // Device-reported only: the capability says whether this firmware exposes
+    // flash control. Nothing here measures the flash itself — RUN SELF TEST
+    // does that — so this lamp never claims READY on its own.
+    capabilities
+      ? capabilities.flashControl
+        ? { name: 'FLASH', state: 'ok' as LedState, label: 'CONTROL AVAILABLE' }
+        : { name: 'FLASH', state: 'off' as LedState, label: 'NOT AVAILABLE' }
+      : { name: 'FLASH', state: 'off' as LedState, label: '—' },
   ];
 
   return (
