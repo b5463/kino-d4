@@ -3,7 +3,7 @@
 // bar for real P4 firmware — Studio is the test harness.
 
 import type { KinoDevice } from '../device/KinoDevice';
-import { KinoCommandError, KinoTimeoutError } from '@kino/kdp';
+import { KinoCommandError, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
 
 export type ConformanceStatus = 'pass' | 'shape' | 'unsupported' | 'timeout' | 'error' | 'skipped';
 
@@ -340,7 +340,10 @@ export async function runConformance(
         results.push({ name: testCase.name, active: testCase.active, status: 'shape', detail: err.message, ms });
       } else if (err instanceof KinoTimeoutError) {
         results.push({ name: testCase.name, active: testCase.active, status: 'timeout', detail: 'no response', ms });
-      } else if (err instanceof KinoCommandError && err.code === 'UNKNOWN_CMD') {
+      } else if (err instanceof KinoUnsupportedError || (err instanceof KinoCommandError && err.code === 'UNKNOWN_CMD')) {
+        // The client raises KinoUnsupportedError for UNSUPPORTED_COMMAND;
+        // matching only the legacy UNKNOWN_CMD code reported every genuinely
+        // unsupported command as 'error' instead of 'unsupported'.
         results.push({ name: testCase.name, active: testCase.active, status: 'unsupported', detail: err.message, ms });
       } else {
         results.push({

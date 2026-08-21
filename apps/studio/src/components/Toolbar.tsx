@@ -121,7 +121,9 @@ export function Toolbar({
             the status bar 40 px below said PROTOCOL MISMATCH. One mapping now,
             shared with the other two strips. */}
         <ConnectionStrip phase={phase} fault={fault} silentWhenConnected />
-        {serial ? `${serial}${transportKind === 'mock' ? ' · DEMO DEVICE' : ' · USB'}` : null}
+        {serial
+          ? `${serial}${transportKind === 'mock' ? ' · DEMO DEVICE' : transportKind === 'twin' ? ' · KINO TWIN' : ' · USB'}`
+          : null}
       </span>
     </div>
   );

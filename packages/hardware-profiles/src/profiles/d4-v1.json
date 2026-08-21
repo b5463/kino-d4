@@ -30,6 +30,11 @@
       ],
       "specs": {
         "display": "4.3in IPS capacitive",
+        "header2x13": {
+          "note": "Physical 2x13 header, top-to-bottom, PROVISIONAL KINO assignments in gpio map; ESP_3V3/C6_* pins are reserved for the C6 and must not be repurposed",
+          "left": ["3V3", "3V3", "GND", "GPIO52", "GPIO51", "GPIO50", "GPIO49", "GPIO35", "GPIO34", "GPIO32", "GPIO28", "I2C_SDA", "I2C_SCL"],
+          "right": ["5V", "5V", "GND", "GPIO33", "GPIO31", "GPIO30", "GPIO29", "GND", "ESP_3V3", "C6_U0RXD", "C6_U0TXD", "C6_IO9", "C6_CHIP_PU"]
+        },
         "resolution": "480x800",
         "mcu": ["ESP32-P4", "ESP32-C6"],
         "psramMB": 32,
@@ -68,7 +73,45 @@
         "resolution": [2048, 1536],
         "horizontalFovDeg": null,
         "verticalFovDeg": null,
-        "fovConfidence": "MEASURE_REQUIRED"
+        "fovConfidence": "MEASURE_REQUIRED",
+        "dvpPinMap": {
+          "note": "XIAO ESP32-S3 Sense camera interface, OFFICIAL_SPEC (Seeed wiki)",
+          "XMCLK": "GPIO10",
+          "DVP_Y8": "GPIO11",
+          "DVP_Y7": "GPIO12",
+          "PCLK": "GPIO13",
+          "DVP_Y6": "GPIO14",
+          "DVP_Y2": "GPIO15",
+          "DVP_Y5": "GPIO16",
+          "DVP_Y3": "GPIO17",
+          "DVP_Y4": "GPIO18",
+          "VSYNC": "GPIO38",
+          "CAM_SCL": "GPIO39",
+          "CAM_SDA": "GPIO40",
+          "HREF": "GPIO47",
+          "DVP_Y9": "GPIO48"
+        },
+        "sensorProfiles": {
+          "note": "Capability-driven sensor identity; behavior must key off the reported sensor, never a global assumption",
+          "OV3660": {
+            "status": "current prototype sensor",
+            "resolution": [2048, 1536],
+            "interface": "DVP",
+            "autofocus": false,
+            "confidence": "OFFICIAL_SPEC"
+          },
+          "OV5640_AF": {
+            "status": "planned upgrade, PROVISIONAL until modules are on the bench",
+            "resolution": [2592, 1944],
+            "interface": "DVP 24-pin",
+            "moduleFamily": "MJY5OAF-F3M-V1 compatible",
+            "autofocus": true,
+            "vcm": true,
+            "afvddV": 2.8,
+            "lensFovTargetDeg": [69, 72],
+            "confidence": "PROVISIONAL"
+          }
+        }
       },
       "keepouts": [
         { "id": "service-usb", "label": "Service USB-C access", "sizeMm": [10, 8, 10], "offsetMm": [0, 0, -8], "kind": "service" }
@@ -347,22 +390,24 @@
     { "id": "btn-fn", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_FN" }, "to": { "instance": "carrier", "pin": "SW2" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -15], [-2, -2, -12], [-1, -4, -10], [0, -5, -8]] }
   ],
   "gpio": {
-    "CAM_PWR_1": "GPIO_TBD",
-    "CAM_PWR_2": "GPIO_TBD",
-    "CAM_PWR_3": "GPIO_TBD",
-    "CAM_PWR_4": "GPIO_TBD",
-    "SYNC_OUT": "GPIO_TBD",
-    "UART1_TX": "GPIO_TBD",
-    "UART1_RX": "GPIO_TBD",
-    "UART2_TX": "GPIO_TBD",
-    "UART2_RX": "GPIO_TBD",
-    "UART3_TX": "GPIO_TBD",
-    "UART3_RX": "GPIO_TBD",
-    "UART4_TX": "GPIO_TBD",
-    "UART4_RX": "GPIO_TBD",
-    "FLASH_EN": "GPIO_TBD",
-    "BTN_SHUTTER": "GPIO_TBD",
-    "BTN_FN": "GPIO_TBD",
-    "SLIDE_MODE": null
+    "CAM_PWR_EN": "GPIO31",
+    "CAM_PWR_1": null,
+    "CAM_PWR_2": null,
+    "CAM_PWR_3": null,
+    "CAM_PWR_4": null,
+    "SYNC_OUT": "GPIO32",
+    "UART1_TX": "GPIO52",
+    "UART1_RX": "GPIO51",
+    "UART2_TX": "GPIO50",
+    "UART2_RX": "GPIO49",
+    "UART3_TX": "GPIO34",
+    "UART3_RX": "GPIO33",
+    "UART4_TX": "GPIO30",
+    "UART4_RX": "GPIO29",
+    "FLASH_EN": "GPIO28",
+    "BTN_SHUTTER": null,
+    "BTN_FN": null,
+    "SLIDE_MODE": null,
+    "SPARE_GPIO35": null
   }
 }

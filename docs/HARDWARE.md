@@ -67,8 +67,9 @@ D4 uses four Seeed Studio XIAO ESP32-S3 Sense boards with their Sense expansion 
 | Board envelope | 21.0 × 17.8 × 15.0 mm, `OFFICIAL_SPEC` |
 | Processor | ESP32-S3, up to 240 MHz |
 | Memory | 8 MB PSRAM, 8 MB flash |
-| Sensor | OV3660 |
+| Sensor | OV3660 (current prototype) |
 | Maximum resolution | 2048 × 1536, about 3 MP |
+| Planned sensor upgrade | OV5640 with VCM autofocus, 2592 × 1944, 24-pin DVP, MJY5OAF-F3M-V1-compatible module, AFVDD 2.8 V — `PROVISIONAL` until modules are benched |
 | Shutter | Rolling, free-running |
 | Link to main controller | Full-duplex UART |
 | Sync | One separate shared trigger wire |
@@ -76,6 +77,42 @@ D4 uses four Seeed Studio XIAO ESP32-S3 Sense boards with their Sense expansion 
 The four lenses sit on one rigid camera bar. Current pitch is adjustable from 20 to 24 mm with a 22 mm default. At 22 mm, provisional lens-center positions are `-33`, `-11`, `+11`, and `+33 mm` from the body center.
 
 The field of view is still `MEASURE_REQUIRED`. OV3660 names the sensor. The lens and module determine the field of view.
+
+## P4 header and provisional pin assignments
+
+The 2×13 header, top to bottom. `PROVISIONAL` throughout: every KINO assignment below must be electrically validated on the physical board before firmware locks it (GitHub issue #2).
+
+| Left | Right | KINO assignment |
+|---|---|---|
+| 3V3 | 5V | — |
+| 3V3 | 5V | — |
+| GND | GND | — |
+| GPIO52 | GPIO33 | CAM1 TX · CAM3 RX |
+| GPIO51 | GPIO31 | CAM1 RX · CAM_PWR_EN |
+| GPIO50 | GPIO30 | CAM2 TX · CAM4 TX |
+| GPIO49 | GPIO29 | CAM2 RX · CAM4 RX |
+| GPIO35 | GND | unused (spare) |
+| GPIO34 | ESP_3V3 | CAM3 TX · reserved |
+| GPIO32 | C6_U0RXD | SYNC_TRIGGER · reserved |
+| GPIO28 | C6_U0TXD | FLASH_EN · reserved |
+| I2C_SDA | C6_IO9 | — · reserved |
+| I2C_SCL | C6_CHIP_PU | — · reserved |
+
+`ESP_3V3`, `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, and `C6_CHIP_PU` belong to the C6 and must not be repurposed. The per-camera power-switch control pins are unassigned; §Camera power switching describes the channel hardware, and whether channels hang off `CAM_PWR_EN` alone or get individual pins is `NEEDS_HARDWARE_VALIDATION`. Button and mode-slide pins are unassigned. The same map lives machine-readable in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, `header2x13`).
+
+## XIAO camera interface
+
+The XIAO ESP32-S3 Sense DVP camera pins, `OFFICIAL_SPEC` from the Seeed wiki. The planned OV5640 autofocus module (MJY5OAF-F3M-V1-compatible, 24-pin DVP) must match this interface; its AFVDD rail is 2.8 V, not 3.3 V.
+
+| Signal | Pin | Signal | Pin |
+|---|---|---|---|
+| XMCLK | GPIO10 | DVP_Y5 | GPIO16 |
+| DVP_Y8 | GPIO11 | DVP_Y3 | GPIO17 |
+| DVP_Y7 | GPIO12 | DVP_Y4 | GPIO18 |
+| PCLK | GPIO13 | VSYNC | GPIO38 |
+| DVP_Y6 | GPIO14 | CAM_SCL | GPIO39 |
+| DVP_Y2 | GPIO15 | CAM_SDA | GPIO40 |
+| HREF | GPIO47 | DVP_Y9 | GPIO48 |
 
 ## Timing and synchronization
 

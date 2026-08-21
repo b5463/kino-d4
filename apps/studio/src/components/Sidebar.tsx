@@ -126,7 +126,7 @@ export function Sidebar({
         {serial ? (
           <span className="microlabel">
             {serial}
-            {transportKind === 'mock' ? ' · DEMO' : ' · USB'}
+            {transportKind === 'mock' ? ' · DEMO' : transportKind === 'twin' ? ' · TWIN' : ' · USB'}
           </span>
         ) : null}
       </div>

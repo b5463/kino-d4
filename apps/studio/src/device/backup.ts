@@ -2,6 +2,7 @@
 // become itself again — settings, calibration, custom recipes, custom
 // sounds. Photographs are never included; they stay on the SD card.
 
+import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
 import type { CalibrationData, DeviceInfo, KinoConfig } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
 import { validateRecipe } from '../recipes/recipeTypes';
@@ -26,7 +27,12 @@ export interface KinoBackup {
     serial: string;
     hardware: string;
     p4Firmware: string;
+    /** Absent in backups made before these fields existed. */
+    cameraFirmware?: [string, string, string, string];
+    protocol?: number;
   };
+  /** CONFIG_SCHEMA_VERSION the config block was written under. Absent in older backups (schema-1 config). */
+  configSchemaVersion?: number;
   config: KinoConfig;
   calibration: CalibrationData;
   customRecipes: Recipe[];
@@ -57,6 +63,11 @@ export function buildBackup(
   customRecipes: Recipe[],
   customSounds: BackupSound[] = [],
 ): KinoBackup {
+  // Roll credentials live on the camera, never in Studio persistence
+  // (KinoConfig.roll doc) — the identifying block is stripped, not just the
+  // token. A backup is a plaintext file people mail around.
+  const cleanConfig = structuredClone(config);
+  delete cleanConfig.roll;
   return {
     schema: BACKUP_SCHEMA,
     kind: BACKUP_KIND,
@@ -66,8 +77,11 @@ export function buildBackup(
       serial: info.serial,
       hardware: info.hardware,
       p4Firmware: info.p4Firmware,
+      cameraFirmware: [...info.cameraFirmware],
+      protocol: info.protocol,
     },
-    config: structuredClone(config),
+    configSchemaVersion: CONFIG_SCHEMA_VERSION,
+    config: cleanConfig,
     calibration: structuredClone(calibration),
     customRecipes: customRecipes.map((r) => structuredClone(r)),
     customSounds: customSounds.map((s) => ({ ...s })),
@@ -146,9 +160,15 @@ export function validateBackup(json: unknown): BackupCheck {
     }
   }
 
+  // Backups written before the roll-stripping fix may still carry the
+  // camera's Roll identity; drop it on read so a restore can never post
+  // credentials fields back through SET_CONFIG.
+  const cleanConfig = structuredClone(b.config) as KinoConfig;
+  delete cleanConfig.roll;
+
   return {
     ok: true,
-    backup: { ...(b as KinoBackup), customRecipes: validRecipes, customSounds: validSounds },
+    backup: { ...(b as KinoBackup), config: cleanConfig, customRecipes: validRecipes, customSounds: validSounds },
     skippedRecipes: skipped,
     skippedSounds,
   };

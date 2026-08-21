@@ -165,3 +165,34 @@ describe('custom sounds in backups', () => {
     expect(check.skippedSounds).toEqual(['builtin id', 'not base64', 'not a wav', 'too big']);
   });
 });
+
+describe('roll credentials never reach the backup file', () => {
+  const configWithRoll: KinoConfig = {
+    ...config,
+    roll: { credentials: { deviceId: 'dev_secret', hasDeviceToken: true, serverUrl: 'https://kino.acronym.sk' } },
+  };
+
+  it('strips the whole roll block when building', () => {
+    const backup = buildBackup(info, configWithRoll, calibration, []);
+    expect(backup.config.roll).toBeUndefined();
+    expect(JSON.stringify(backup)).not.toContain('dev_secret');
+    // and the source config is untouched
+    expect(configWithRoll.roll?.credentials?.deviceId).toBe('dev_secret');
+  });
+
+  it('strips a roll block from an older backup file on read, so restore cannot post it back', () => {
+    const backup = buildBackup(info, config, calibration, []);
+    const old = JSON.parse(JSON.stringify(backup));
+    old.config.roll = { credentials: { deviceId: 'dev_old', hasDeviceToken: true, serverUrl: 'https://x' } };
+    const check = validateBackup(old);
+    expect(check.ok).toBe(true);
+    expect(check.backup?.config.roll).toBeUndefined();
+  });
+
+  it('records camera firmware, protocol and the config schema version', () => {
+    const backup = buildBackup(info, config, calibration, []);
+    expect(backup.device.cameraFirmware).toEqual(info.cameraFirmware);
+    expect(backup.device.protocol).toBe(info.protocol);
+    expect(backup.configSchemaVersion).toBe(1);
+  });
+});
