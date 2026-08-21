@@ -146,7 +146,13 @@
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
-    "latestMigration": "0007_slippery_falcon"
+    "latestMigration": "0008_capture_provenance"
+  },
+  "firmware": {
+    "version": "0.1.0",
+    "source": "firmware/VERSION",
+    "protocolHeader": "firmware/components/kdp_core/include/kdp/protocol.h",
+    "tagPrefix": "kino-fw-v"
   },
   "hardware": {
     "manifest": "hardware/manifest.json",

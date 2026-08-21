@@ -102,6 +102,31 @@ export interface CompatibilityCheck {
   problems: string[];
 }
 
+/**
+ * Dotted-numeric version comparison for downgrade detection (audit #61).
+ * Returns negative when a < b. Non-numeric segments compare as 0 — firmware
+ * versions here are plain x.y.z, and anything fancier should not silently
+ * pass a downgrade check.
+ */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((s) => parseInt(s, 10) || 0);
+  const pb = b.split('.').map((s) => parseInt(s, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/**
+ * A package older than what the P4 runs is not incompatible — recovery and
+ * bisection legitimately install older builds — but it must never install
+ * silently. The UI shows this loudly and requires the same explicit confirm.
+ */
+export function isDowngrade(manifest: FwManifest, device: DeviceInfo): boolean {
+  return compareVersions(manifest.p4.version, device.p4Firmware) < 0;
+}
+
 export function checkCompatibility(manifest: FwManifest, device: DeviceInfo): CompatibilityCheck {
   const problems: string[] = [];
   const hw = device.hardware.toLowerCase();

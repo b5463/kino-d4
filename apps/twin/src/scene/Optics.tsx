@@ -99,7 +99,15 @@ export function Optics() {
   const cameras = useMemo(
     () => profile.instances
       .filter((instance) => instance.component === 'camera-node')
-      .map((instance) => transforms.get(instance.id)?.positionMm)
+      .map((instance) => {
+        const position = transforms.get(instance.id)?.positionMm;
+        if (!position) return undefined;
+        // Frustum apex = board center + the instance's optical-center offset
+        // (audit #63). The offset defaults to zero until the bench measures
+        // real optical centers, so apex = board center stays explicit.
+        const [ox, oy, oz] = instance.opticalCenterOffsetMm;
+        return [position[0] + ox, position[1] + oy, position[2] + oz] as Point3;
+      })
       .filter((position): position is Point3 => position !== undefined)
       .sort((a, b) => a[0] - b[0]),
     [profile.instances, transforms],

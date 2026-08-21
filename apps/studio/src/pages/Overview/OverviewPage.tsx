@@ -119,6 +119,15 @@ export function OverviewPage() {
           }`,
         }
       : { name: 'BATTERY', state: 'off' as LedState, label: '—' },
+    // Device-reported only: firmware without a rail ADC omits busV and this
+    // row says so instead of inventing 5.00 (audit #61).
+    power && typeof power.busV === 'number'
+      ? {
+          name: '5V RAIL',
+          state: (power.busV < 4.6 ? 'err' : power.busV < 4.9 ? 'warn' : 'ok') as LedState,
+          label: `${power.busV.toFixed(2)} V${power.fuse === 'blown' ? ' · FUSE BLOWN' : ''}`,
+        }
+      : { name: '5V RAIL', state: 'off' as LedState, label: 'NOT REPORTED' },
     // Device-reported only: the capability says whether this firmware exposes
     // flash control. Nothing here measures the flash itself — RUN SELF TEST
     // does that — so this lamp never claims READY on its own.
@@ -198,6 +207,14 @@ export function OverviewPage() {
                   <div className="datarow"><dt>Sensor</dt><dd>{cam.sensorDetected ? cam.sensor : '—'}</dd></div>
                   <div className="datarow"><dt>Firmware</dt><dd>{cam.online ? cam.firmware : '—'}</dd></div>
                   <div className="datarow"><dt>Response</dt><dd>{cam.online ? `${cam.latencyMs.toFixed(1)} ms` : '—'}</dd></div>
+                  <div className="datarow">
+                    <dt>Temp</dt>
+                    <dd>
+                      {cam.online && state.stats
+                        ? `${state.stats.tempC.cams[Number(cam.id.slice(-1)) - 1].toFixed(0)} °C`
+                        : '—'}
+                    </dd>
+                  </div>
                   <div className="datarow"><dt>Last capture</dt><dd>{cam.lastCapture ? `${cam.lastCapture.ageS}s ago` : '—'}</dd></div>
                 </dl>
                 <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>

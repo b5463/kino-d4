@@ -61,6 +61,13 @@ export interface Capabilities {
   focusLock?: boolean;
   /** The VCM position can be set directly (MANUAL mode). */
   manualFocus?: boolean;
+  /**
+   * Milestone 1B bench diagnostics (issue #66): STORAGE_SELF_TEST,
+   * CAMERA_LINK_STATS(_RESET), CAMERA_SOAK_TEST, GET_HW_VALIDATION, and the
+   * extended CAMERA_TEST / GET_STORAGE_STATUS payloads. Optional: firmware
+   * predating 1B omits it.
+   */
+  benchDiagnostics?: boolean;
 }
 
 /** Focus modes (audit #55). PARTY AUTO: AF then lock then capture. PARTY
@@ -157,12 +164,182 @@ export interface PowerStatus {
   batteryPct: number;
   state: 'battery' | 'usb' | 'charging';
   charging: boolean;
+  /** Charge current in amps when a charger is attached (audit #57). */
+  chargingA?: number;
+  /** The 5 V rail as the firmware measures it. Optional — a firmware without
+   * a rail ADC omits it, and Studio shows '—' rather than inventing 5.00. */
+  busV?: number;
+  /** Fuse state when the firmware can sense it. */
+  fuse?: 'ok' | 'blown';
 }
 
 export interface StorageStatus {
   present: boolean;
   totalMB: number;
   freeMB: number;
+  // Milestone 1B diagnostics (benchDiagnostics capability). All optional —
+  // older firmware omits them; present/totalMB/freeMB stay the stable core.
+  mounted?: boolean;
+  /** e.g. "FAT32". Null when unknown or not mounted. */
+  filesystem?: string | null;
+  capacityBytes?: number;
+  freeBytes?: number;
+  /** Last mount/IO error as a short code or message; null when none. */
+  lastError?: string | null;
+  /** Mount attempts since boot, successful or not. */
+  mountAttempts?: number;
+  /** Result of the most recent STORAGE_SELF_TEST this boot. */
+  writeTestStatus?: 'none' | 'pass' | 'fail';
+}
+
+// ---- Milestone 1B bench diagnostics (issue #66) ----
+// Gated by the `benchDiagnostics` capability. These measure the single-camera
+// path; none of them are exposure/sync telemetry and none may be reported as
+// skew.
+
+export type StorageSelfTestPhase =
+  | 'POWER_ENABLE_FAILED'
+  | 'MOUNT_FAILED'
+  | 'WRITE_FAILED'
+  | 'READ_FAILED'
+  | 'VERIFY_FAILED'
+  | 'REMOVE_FAILED';
+
+export interface StorageSelfTestResult {
+  ok: boolean;
+  /** The exact failing phase, null on success. */
+  failedPhase: StorageSelfTestPhase | null;
+  durationMs: number;
+  bytesTested: number;
+  message?: string;
+}
+
+export interface CameraLinkStats {
+  cam: CamId;
+  baud: number;
+  connected: boolean;
+  rxFrames: number;
+  txFrames: number;
+  rxBytes: number;
+  txBytes: number;
+  crcErrors: number;
+  decoderResyncs: number;
+  timeouts: number;
+  /** Request retries performed by the P4. Zero until a retry policy exists. */
+  retries: number;
+  /** Responses whose sequence id was already answered. */
+  duplicateFrames: number;
+  lastSequence: number;
+  /** Node-reported reset reason from its last HELLO; null when never seen. */
+  lastNodeBootReason: string | null;
+  lastError: string | null;
+}
+
+/** Per-stage bench timing for one diagnostic capture. Wall-clock buckets on
+ * the P4 side — NOT exposure timing, never a skew figure. */
+export interface CaptureTiming {
+  requestToNodeMs: number;
+  captureCommandToJpegReadyMs: number;
+  jpegTransferMs: number;
+  sdWriteMs: number;
+  totalMs: number;
+}
+
+/** CRC-32 (IEEE, same polynomial as KDP framing) as 8 lowercase hex chars. */
+export interface CaptureChecksums {
+  nodeJpegCrc32: string;
+  transferCrc32: string;
+  storedFileCrc32: string;
+  /** True only when all three agree. */
+  match: boolean;
+}
+
+export interface MemoryStats {
+  p4HeapKBBefore: number;
+  p4HeapKBAfter: number;
+  p4PsramKBBefore: number;
+  p4PsramKBAfter: number;
+  /** Node-reported figures; null when the node did not report them. */
+  nodeHeapKB: number | null;
+  nodePsramKB: number | null;
+}
+
+/** CAMERA_TEST response with benchDiagnostics. `jpegKB` and `durationMs`
+ * remain for pre-1B consumers; `durationMs` equals `timing.totalMs`. */
+export interface CameraTestResult {
+  ok: boolean;
+  cam: CamId;
+  captureUuid: string;
+  captureId: string;
+  resolution: string;
+  jpegBytes: number;
+  jpegKB: number;
+  durationMs: number;
+  timing: CaptureTiming;
+  checksums: CaptureChecksums;
+  memory: MemoryStats;
+}
+
+export interface SoakTestRequest {
+  cam: CamId;
+  /** Clamped by the device; the reference clamps to 1–1000. */
+  captures: number;
+  /** Delay between captures; the reference clamps to 100–60000 ms. */
+  delayMs: number;
+  resolution?: Resolution;
+  jpegQuality?: number;
+  /** false (default): keep first and last capture, delete the rest as the
+   * run progresses; failed captures are always kept for inspection. */
+  keepAll?: boolean;
+}
+
+/** JOB_COMPLETE result of CAMERA_SOAK_TEST. Min/max/avg are null when no
+ * capture succeeded. `p4Resets` is 0 by construction — a P4 reset ends the
+ * job with a session change instead of completing it. */
+export interface SoakTestSummary {
+  cam: CamId;
+  attempted: number;
+  successful: number;
+  failed: number;
+  crcErrors: number;
+  timeouts: number;
+  nodeResets: number;
+  p4Resets: number;
+  sdErrors: number;
+  minJpegBytes: number | null;
+  maxJpegBytes: number | null;
+  avgJpegBytes: number | null;
+  minCaptureReadyMs: number | null;
+  maxCaptureReadyMs: number | null;
+  avgCaptureReadyMs: number | null;
+  minTransferMs: number | null;
+  maxTransferMs: number | null;
+  avgTransferMs: number | null;
+  minSdWriteMs: number | null;
+  maxSdWriteMs: number | null;
+  avgSdWriteMs: number | null;
+  heapDeltaKB: number;
+  psramDeltaKB: number;
+  firstCaptureUuid: string | null;
+  lastCaptureUuid: string | null;
+  /** Failure codes with occurrence counts, e.g. {code:"TRANSFER_TIMEOUT",count:2}. */
+  errors: { code: string; count: number }[];
+}
+
+export type HwValidationStatus = 'unvalidated' | 'validated' | 'failed' | 'not-applicable';
+
+/** One entry of the runtime hardware-validation registry. An item becomes
+ * `validated` only when the corresponding real event happened on this unit —
+ * compile-time configuration is never validation. */
+export interface HwValidationItem {
+  id: string;
+  status: HwValidationStatus;
+  detail?: string;
+}
+
+export interface HwValidationReport {
+  p4ResetReason: string;
+  items: HwValidationItem[];
 }
 
 export type ShootMode = 'wiggle' | 'quad';

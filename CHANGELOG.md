@@ -56,6 +56,10 @@ KINO has no published release yet. Changes intended for the first release collec
 - Capture and derivative provenance: everything a firmware build sends beyond the typed capture surface now lands in a `provenance` column with the device's serial and hardware as they were at the shutter press, and every derived asset records its producer — job, encoder, and the settings that decided the bytes — with a produced-at timestamp. Retuning a render constant is now visible in the data.
 - The AI enhancement gate exists before any AI backend: OFF by default, provider-independent interface (local / self-hosted / external), and an external provider is refused without explicit consent — the skip reason names which gate held.
 
+- Database migration 0008: additive `provenance` on captures and `producer`/`produced_at` on assets.
+- Studio closes its audit gaps: calibration exports a full per-unit report and imports per-camera offsets only (order and spacing stay physically verified), firmware downgrades warn loudly with both versions before the same explicit confirm, the health overview shows the device-reported 5 V rail or says NOT REPORTED, and per-camera temperature sits on the camera cards.
+- Twin gains a PINS tab — the first consumer of the profile's 2×13 header table, provisional GPIO assignments, and XIAO DVP map — and the hardware-profile schema carries optional mass/material metadata and per-instance optical-center offsets that the optics overlay applies (zero until the bench measures real centers).
+
 ### Fixed
 
 - The reference device actually verifies firmware images: `FW_END` hashes the received bytes against the declared sha256 and rejects a corrupted image instead of answering `verified: true` unconditionally.
