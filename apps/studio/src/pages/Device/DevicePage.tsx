@@ -224,9 +224,17 @@ export function DevicePage() {
           {storage?.present ? (
             <>
               <dl>
-                <div className="datarow"><dt>SD card</dt><dd><Led state="ok" label="MOUNTED" /></dd></div>
+                <div className="datarow"><dt>SD card</dt><dd><Led state={storage.mounted === false ? 'err' : 'ok'} label={storage.mounted === false ? 'NOT MOUNTED' : 'MOUNTED'} /></dd></div>
                 <div className="datarow"><dt>Capacity</dt><dd>{formatMB(storage.totalMB)}</dd></div>
                 <div className="datarow"><dt>Free</dt><dd>{formatMB(storage.freeMB)}</dd></div>
+                {/* 1B diagnostics — device-reported only: pre-1B firmware
+                    omits them and these rows say so instead of inventing. */}
+                <div className="datarow"><dt>Filesystem</dt><dd>{storage.filesystem === undefined ? 'NOT REPORTED' : storage.filesystem ?? '—'}</dd></div>
+                <div className="datarow"><dt>Mount attempts</dt><dd>{storage.mountAttempts ?? 'NOT REPORTED'}</dd></div>
+                <div className="datarow"><dt>Write test</dt><dd>{storage.writeTestStatus === undefined ? 'NOT REPORTED' : storage.writeTestStatus.toUpperCase()}</dd></div>
+                {storage.lastError ? (
+                  <div className="datarow"><dt>Last error</dt><dd className="warn">{storage.lastError}</dd></div>
+                ) : null}
               </dl>
               <div className="meter" style={{ marginTop: 6 }} role="img" aria-label={`Card ${sdUsedPct}% full`}>
                 <div
@@ -238,6 +246,9 @@ export function DevicePage() {
           ) : (
             <dl>
               <div className="datarow"><dt>SD card</dt><dd><Led state="err" label="NO CARD" /></dd></div>
+              {storage?.lastError ? (
+                <div className="datarow"><dt>Last error</dt><dd className="warn">{storage.lastError}</dd></div>
+              ) : null}
             </dl>
           )}
         </Panel>

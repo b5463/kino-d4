@@ -210,8 +210,8 @@ export function OverviewPage() {
                   <div className="datarow">
                     <dt>Temp</dt>
                     <dd>
-                      {cam.online && state.stats
-                        ? `${state.stats.tempC.cams[Number(cam.id.slice(-1)) - 1].toFixed(0)} °C`
+                      {cam.online && state.stats && state.stats.tempC.cams[Number(cam.id.slice(-1)) - 1] !== null
+                        ? `${state.stats.tempC.cams[Number(cam.id.slice(-1)) - 1]!.toFixed(0)} °C`
                         : '—'}
                     </dd>
                   </div>

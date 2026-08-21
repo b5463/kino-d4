@@ -17,7 +17,7 @@ Payload shapes are marked:
 0x20–0x25  Modes / recipes    0x70–0x75  Media
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
 0x30–0x37  Camera             0xa0–0xaa  Network / Roll / upload queue
-0x40–0x46  Diagnostics
+0x40–0x4b  Diagnostics
 ```
 
 The Network/Roll group sits above the event range on purpose: a command id and an event id can never
@@ -351,7 +351,7 @@ rather than calibrating against a partial set.
 `aligned` is set only once re-phasing has brought the spread inside the target. Re-phasing converges
 partially per pass — that is the real bench procedure, not a mock artifact.
 
-### Diagnostics — 0x40–0x46
+### Diagnostics — 0x40–0x4b
 
 | Cmd | Value | Payload |
 |---|---:|---|
@@ -362,6 +362,56 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `LINK_BENCH` | `0x44` | → `{ "baud": 2000000, "bytes": 262144 }` ← **typed** `LinkBenchResult`. Timeout 20 s |
 | `SET_LINK_BAUD` | `0x45` | → `{ "baud": 1500000 }` ← **inline** `{ "ok": true, "baud": 1500000 }`. Timeout 6 s |
 | `SYNC_BENCH` | `0x46` | → `{ "triggers": 20 }` ← **mock** `{ "jobId": "job_1", "accepted": true }`, then `JOB_*` events. See below |
+| `STORAGE_SELF_TEST` | `0x47` | → `{}` ← **typed** `StorageSelfTestResult`. Timeout 10 s. Gated by `benchDiagnostics` |
+| `CAMERA_LINK_STATS` | `0x48` | → `{ "cam": "cam1" }` ← **typed** `CameraLinkStats`. Gated by `benchDiagnostics` |
+| `CAMERA_LINK_STATS_RESET` | `0x49` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true }`. Counters zero; `lastSequence` survives |
+| `CAMERA_SOAK_TEST` | `0x4a` | → **typed** `SoakTestRequest` ← `JobStartResponse`, then `JOB_*`; `result` is **typed** `SoakTestSummary` |
+| `GET_HW_VALIDATION` | `0x4b` | → `{}` ← **typed** `HwValidationReport`. Gated by `benchDiagnostics` |
+
+#### Milestone 1B bench diagnostics — 0x47–0x4b
+
+Repo additions (issue #66), normative. All five are gated by one optional
+capability flag, **`benchDiagnostics`** — absent means pre-1B firmware and the
+group answers `UNSUPPORTED_COMMAND`. The flag and the dispatcher must agree.
+
+- **`STORAGE_SELF_TEST`** is non-destructive: mount → write one temp file
+  under `/KINO` → fsync → read back → CRC verify → delete. `failedPhase` names
+  the exact failing step (`POWER_ENABLE_FAILED | MOUNT_FAILED | WRITE_FAILED |
+  READ_FAILED | VERIFY_FAILED | REMOVE_FAILED`) or is null. The most recent
+  result surfaces as `writeTestStatus` in `GET_STORAGE_STATUS`.
+- **`GET_STORAGE_STATUS`** gains optional fields on a bench build: `mounted`,
+  `filesystem`, `capacityBytes`, `freeBytes`, `lastError`, `mountAttempts`,
+  `writeTestStatus`. `present`/`totalMB`/`freeMB` stay the stable core.
+- **`CAMERA_TEST`** on a bench build answers **typed** `CameraTestResult`:
+  capture UUID, per-stage wall-clock buckets (`requestToNodeMs`,
+  `captureCommandToJpegReadyMs`, `jpegTransferMs`, `sdWriteMs`, `totalMs`),
+  three CRC-32 checksums (`nodeJpegCrc32`, `transferCrc32`,
+  `storedFileCrc32` — computed by the node, over the received bytes, and from
+  a read-back of the stored file; a mismatch is a NACK, never a "successful"
+  capture), and P4/node memory stats. `ok`/`jpegKB`/`durationMs` remain for
+  pre-1B consumers. Host timeout 8 s. **None of the timing buckets is
+  exposure timing and none may ever be reported as skew.**
+- **`CAMERA_SOAK_TEST`** is an async job (04 §15): captures clamped to
+  1–1000, delay to 100–60000 ms, progress batched (~10 %). `keepAll: false`
+  (default) keeps the first and last capture and deletes the rest as the run
+  progresses. The summary's min/max/avg fields are null when nothing
+  succeeded; `heapDeltaKB`/`psramDeltaKB` trending negative fails the bench.
+- **`GET_HW_VALIDATION`** reports the runtime hardware-validation registry:
+  16 items, status `unvalidated | validated | failed | not-applicable`. An
+  item is `validated` only when the real event happened on that unit (frame
+  decoded over USB, card mounted, node HELLO answered, checksummed capture
+  stored). Firmware never auto-marks `failed` — it cannot tell a wrong pin
+  from a missing card; that diagnosis is bench work recorded in
+  `firmware/HARDWARE_VALIDATION.md`.
+
+New NACK codes introduced by the 1B firmware paths, in the reference-device
+spirit of "reuse rather than reinvent": `SENSOR_NOT_DETECTED`,
+`NODE_BOOT_TIMEOUT`, `JPEG_INVALID`, `TRANSFER_TIMEOUT`,
+`TRANSFER_CRC_MISMATCH`, `SD_NOT_MOUNTED`, `SD_WRITE_FAILED`,
+`SD_VERIFY_FAILED`, `OUT_OF_MEMORY`. Known drift: the mock's legacy
+`CAMERA_TEST` guards still answer `CAM_OFFLINE`/`SENSOR_MISSING` where
+firmware says `CAMERA_OFFLINE`/`SENSOR_NOT_DETECTED`; both sides treat codes
+as strings, so neither breaks, and the firmware names are the ones to keep.
 
 `LogEntry` = `{ "t": 1755301234567, "src": "P4", "msg": "…" }`, `src` ∈
 `P4 | C1 | C2 | C3 | C4 | PWR | SD | PROTO`. Also pushed live as `LOG` events.
@@ -655,6 +705,10 @@ proof of tight exposure on a free-running rolling shutter** (04§14).
 
 `vsyncMeasured: false` means firmware cannot read VSYNC — the other two figures are then estimates and
 Studio labels them as such. Report it honestly; do not fabricate a phase.
+
+The same honesty rule applies to `RuntimeStats.tempC` (Milestone 1B): `p4` and each `cams` entry
+are `number | null` — a real on-chip sensor reading or null, never an invented temperature. A build
+whose camera link is down reports that camera's temperature as null.
 
 Grading bands applied host-side to `exposureSpreadUs` (`gradeSkew` in `timing.ts`), stated here so
 firmware and bench tooling use the same vocabulary:

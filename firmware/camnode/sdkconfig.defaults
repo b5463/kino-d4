@@ -1,0 +1,15 @@
+# XIAO ESP32-S3 Sense: ESP32-S3, 8 MB QIO flash, 8 MB octal PSRAM.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# Console on native USB so UART pins GPIO43/44 stay free for the P4 link.
+# The ROM bootloader still prints on GPIO43 at reset — the P4-side decoder
+# tolerates that boot spew by contract.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y

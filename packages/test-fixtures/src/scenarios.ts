@@ -88,6 +88,13 @@ export interface ScenarioFlags {
    * power-cycles and the group comes back incomplete. */
   cameraPowerTransient: boolean;
 
+  // ---- Milestone 1B bench diagnostics (issue #66) ----
+
+  /** Every diagnostic capture leaks a few KB of node heap that never comes
+   * back — CAMERA_TEST memory stats and the soak summary's heapDeltaKB trend
+   * downward, which is exactly what the soak pass criteria must catch. */
+  memoryLeak: boolean;
+
   // ---- transport hostility (audit #58) ----
 
   /** The next response frame is written twice (one-shot) — a retransmitted
@@ -179,6 +186,8 @@ export const scenarios = {
   chargerConnected: descriptor('chargerConnected', 'CHARGER CONNECTED', false, 'a USB charger feeds the pack at 0.6 A'),
   sw6106Shutdown: descriptor('sw6106Shutdown', 'SW6106 SHUTDOWN', true, 'the boost converter shuts the 5 V rail down; the link dies'),
   cameraPowerTransient: descriptor('cameraPowerTransient', 'CAM POWER TRANSIENT (NEXT)', true, 'one camera browns out during the next capture'),
+
+  memoryLeak: descriptor('memoryLeak', 'MEMORY LEAK', false, 'every diagnostic capture leaks node heap that never returns'),
 
   duplicateFrame: descriptor('duplicateFrame', 'DUPLICATE FRAME (NEXT)', true, 'the next response is written twice'),
   droppedByte: descriptor('droppedByte', 'DROPPED BYTE (NEXT)', true, 'one byte vanishes from the next response'),

@@ -9,12 +9,16 @@ import type {
   CamId,
   CameraFocus,
   CameraInfo,
+  CameraLinkStats,
   CamCalibration,
   FocusMode,
+  HwValidationItem,
   KinoConfig,
   LogEntry,
   LogSource,
   SelfTestCheck,
+  StorageSelfTestPhase,
+  StorageSelfTestResult,
   TargetId,
 } from '@kino/kdp';
 import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
@@ -30,6 +34,29 @@ import type { ScenarioFlags, CamFault } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 import type { TwinTelemetry, TwinSnapshot } from './telemetry';
+
+// Per-camera UART link counters (Milestone 1B, CAMERA_LINK_STATS).
+interface LinkCounters {
+  rxFrames: number;
+  txFrames: number;
+  rxBytes: number;
+  txBytes: number;
+  crcErrors: number;
+  decoderResyncs: number;
+  timeouts: number;
+  retries: number;
+  duplicateFrames: number;
+  lastSequence: number;
+  lastError: string | null;
+}
+
+function freshLinkCounters(): LinkCounters {
+  return {
+    rxFrames: 0, txFrames: 0, rxBytes: 0, txBytes: 0, crcErrors: 0,
+    decoderResyncs: 0, timeouts: 0, retries: 0, duplicateFrames: 0,
+    lastSequence: 0, lastError: null,
+  };
+}
 
 /** mulberry32 — a job that reports numbers has to report the same ones twice. */
 function seeded(seed: number): () => number {
@@ -315,6 +342,19 @@ export class MockKinoDevice implements MockDeviceLike {
   // ---- async jobs (04 §15) ----
   private jobs = new Map<string, JobState>();
   private jobCounter = 0;
+
+  // ---- Milestone 1B bench diagnostics (issue #66) ----
+  private storageWriteTest: 'none' | 'pass' | 'fail' = 'none';
+  private storageMountAttempts = 1;
+  /** memoryLeak scenario: node heap drained per capture, never recovered. */
+  private leakKB = 0;
+  private soakRunning = false;
+  private linkStats: Record<CamId, LinkCounters> = {
+    cam1: freshLinkCounters(),
+    cam2: freshLinkCounters(),
+    cam3: freshLinkCounters(),
+    cam4: freshLinkCounters(),
+  };
 
   // ---- outbound shaping (04 §19 split / coalesced frames) ----
   private coalesceBuffer: Uint8Array[] = [];
@@ -1352,6 +1392,345 @@ export class MockKinoDevice implements MockDeviceLike {
     return !this.scenarios.legacyFirmware && !this.scenarios.unsupportedCommands;
   }
 
+  /** Milestone 1B bench diagnostics — same rule: the flag and the gate agree. */
+  private supportsBench(): boolean {
+    return !this.scenarios.legacyFirmware && !this.scenarios.unsupportedCommands;
+  }
+
+  private static readonly BENCH_COMMANDS: number[] = [
+    Cmd.STORAGE_SELF_TEST,
+    Cmd.CAMERA_LINK_STATS,
+    Cmd.CAMERA_LINK_STATS_RESET,
+    Cmd.CAMERA_SOAK_TEST,
+    Cmd.GET_HW_VALIDATION,
+  ];
+
+  // ---- Milestone 1B bench diagnostics ----
+
+  private hex8(): string {
+    return ((this.randInt(0, 0xffff) << 16) >>> 0 | this.randInt(0, 0xffff)).toString(16).padStart(8, '0');
+  }
+
+  private mockUuid(): string {
+    const h = (n: number) => Array.from({ length: n }, () => this.randInt(0, 15).toString(16)).join('');
+    return `${h(8)}-${h(4)}-4${h(3)}-${(8 + this.randInt(0, 3)).toString(16)}${h(3)}-${h(12)}`;
+  }
+
+  /** Set once a checksummed capture succeeded this session — feeds the
+   * hardware-validation registry the same way real firmware marks items. */
+  private captureProven = false;
+
+  /**
+   * One simulated diagnostic capture over the node link. Shared by
+   * CAMERA_TEST and CAMERA_SOAK_TEST so faults behave identically in both.
+   * Legacy fault codes (CAM_OFFLINE / CAM_UNREACHABLE / SENSOR_MISSING) are
+   * checked by the callers; this covers the 1B failure kinds.
+   */
+  private benchCapture(cam: CamId): {
+    ok: boolean;
+    code?: string;
+    message?: string;
+    jpegBytes?: number;
+    requestToNodeMs?: number;
+    readyMs?: number;
+    transferMs?: number;
+    sdMs?: number;
+    crc?: string;
+    nodeHeapKB?: number;
+    nodePsramKB?: number;
+  } {
+    const link = this.linkStats[cam];
+    link.lastSequence += 4;
+    link.txFrames += 3;
+    link.txBytes += 180;
+
+    if (this.busUnreachable(cam)) {
+      link.timeouts++;
+      link.lastError = 'TIMEOUT';
+      return { ok: false, code: 'CAMERA_OFFLINE', message: `${cam.toUpperCase()} did not answer` };
+    }
+    if (this.cams[cam].fault === 'sensor-missing') {
+      return { ok: false, code: 'SENSOR_NOT_DETECTED', message: `${cam.toUpperCase()} sensor not detected` };
+    }
+    if (this.scenarios.sdMissing) {
+      this.sdErrors++;
+      return { ok: false, code: 'SD_NOT_MOUNTED', message: 'No durable storage path' };
+    }
+    if (this.scenarios.sdFull) {
+      this.sdErrors++;
+      return { ok: false, code: 'SD_WRITE_FAILED', message: 'Card full' };
+    }
+
+    const jpegBytes = this.randInt(300, 560) * 1024;
+    const chunks = Math.ceil(jpegBytes / 8192);
+    if (this.cams[cam].fault === 'crc-noise') {
+      link.crcErrors += this.randInt(1, 3);
+      link.decoderResyncs += 1;
+      link.rxFrames += chunks;
+      link.rxBytes += jpegBytes;
+      link.lastError = 'TRANSFER_CRC_MISMATCH';
+      return { ok: false, code: 'TRANSFER_CRC_MISMATCH', message: 'Node and transfer checksums disagree' };
+    }
+
+    link.txFrames += chunks;
+    link.txBytes += chunks * 90;
+    link.rxFrames += chunks + 3;
+    link.rxBytes += jpegBytes + chunks * 18 + 400;
+    const slow = this.cams[cam].fault === 'slow-uart' ? 8 : 1;
+    if (this.scenarios.memoryLeak) this.leakKB += this.randInt(2, 5);
+    this.captureProven = true;
+    return {
+      ok: true,
+      jpegBytes,
+      requestToNodeMs: this.randInt(2, 6),
+      readyMs: this.randInt(140, 260),
+      transferMs: Math.round(((jpegBytes * 10 * slow) / this.uartBaud) * 1000),
+      sdMs: this.randInt(60, 180),
+      crc: this.hex8(),
+      nodeHeapKB: 96 - this.leakKB,
+      nodePsramKB: 7900 - 4 * this.leakKB,
+    };
+  }
+
+  /** Full CameraTestResult payload from one successful benchCapture. */
+  private captureResult(cam: CamId, r: ReturnType<MockKinoDevice['benchCapture']>) {
+    const totalMs = r.requestToNodeMs! + r.readyMs! + r.transferMs! + r.sdMs!;
+    const heapBase = 162 - this.leakKB;
+    return {
+      ok: true,
+      cam,
+      captureUuid: this.mockUuid(),
+      captureId: `TC_${String(++this.captureCounter).padStart(6, '0')}`,
+      resolution: '1600x1200',
+      jpegBytes: r.jpegBytes!,
+      jpegKB: Math.round(r.jpegBytes! / 1024),
+      durationMs: totalMs,
+      timing: {
+        requestToNodeMs: r.requestToNodeMs!,
+        captureCommandToJpegReadyMs: r.readyMs!,
+        jpegTransferMs: r.transferMs!,
+        sdWriteMs: r.sdMs!,
+        totalMs,
+      },
+      // The three checksums agree on a clean path — a mismatch is a NACK,
+      // never a "successful" capture with disagreeing sums.
+      checksums: { nodeJpegCrc32: r.crc!, transferCrc32: r.crc!, storedFileCrc32: r.crc!, match: true },
+      memory: {
+        p4HeapKBBefore: heapBase + this.randInt(0, 4),
+        p4HeapKBAfter: heapBase - this.randInt(0, 2),
+        p4PsramKBBefore: 12900,
+        p4PsramKBAfter: 12900 - this.randInt(0, 8),
+        nodeHeapKB: r.nodeHeapKB!,
+        nodePsramKB: r.nodePsramKB!,
+      },
+    };
+  }
+
+  private handleStorageSelfTest(frame: Frame) {
+    const missing = this.scenarios.sdMissing;
+    const full = this.scenarios.sdFull;
+    this.after(missing ? 50 : 420, () => {
+      const failedPhase: StorageSelfTestPhase | null = missing ? 'MOUNT_FAILED' : full ? 'WRITE_FAILED' : null;
+      const ok = failedPhase === null;
+      this.storageWriteTest = ok ? 'pass' : 'fail';
+      if (!ok) this.sdErrors++;
+      this.log('SD', ok ? 'self-test pass — 64 KB written, read back, verified' : `self-test FAIL — ${failedPhase}`);
+      const result: StorageSelfTestResult = {
+        ok,
+        failedPhase,
+        durationMs: ok ? 412 : 45,
+        bytesTested: ok ? 65536 : 0,
+      };
+      this.respond(frame, result);
+    });
+  }
+
+  private handleLinkStats(frame: Frame) {
+    const { cam } = decodeJson<{ cam: CamId }>(frame.payload);
+    if (!CAM_IDS.includes(cam)) {
+      this.respondError(frame, 'INVALID_ARGUMENT', 'cam must be cam1..cam4');
+      return;
+    }
+    const link = this.linkStats[cam];
+    const stats: CameraLinkStats = {
+      cam,
+      baud: this.uartBaud,
+      connected: !this.busUnreachable(cam),
+      rxFrames: link.rxFrames,
+      txFrames: link.txFrames,
+      rxBytes: link.rxBytes,
+      txBytes: link.txBytes,
+      crcErrors: link.crcErrors,
+      decoderResyncs: link.decoderResyncs,
+      timeouts: link.timeouts,
+      retries: link.retries,
+      duplicateFrames: link.duplicateFrames,
+      lastSequence: link.lastSequence,
+      lastNodeBootReason: this.busUnreachable(cam) ? null : 'power-on',
+      lastError: link.lastError,
+    };
+    this.respond(frame, stats);
+  }
+
+  private handleLinkStatsReset(frame: Frame) {
+    const { cam } = decodeJson<{ cam: CamId }>(frame.payload);
+    if (!CAM_IDS.includes(cam)) {
+      this.respondError(frame, 'INVALID_ARGUMENT', 'cam must be cam1..cam4');
+      return;
+    }
+    const keepSeq = this.linkStats[cam].lastSequence;
+    this.linkStats[cam] = freshLinkCounters();
+    this.linkStats[cam].lastSequence = keepSeq;
+    this.respond(frame, { ok: true });
+  }
+
+  private handleSoakTest(frame: Frame) {
+    const req = decodeJson<{ cam?: CamId; captures?: number; delayMs?: number; keepAll?: boolean }>(frame.payload);
+    const cam = (req.cam ?? 'cam1') as CamId;
+    if (!CAM_IDS.includes(cam)) {
+      this.respondError(frame, 'INVALID_ARGUMENT', 'cam must be cam1..cam4');
+      return;
+    }
+    if (this.busUnreachable(cam)) {
+      this.respondError(frame, 'CAMERA_OFFLINE', `${cam.toUpperCase()} did not answer`);
+      return;
+    }
+    if (this.scenarios.sdMissing) {
+      this.respondError(frame, 'SD_NOT_MOUNTED', 'No durable storage path');
+      return;
+    }
+    if (this.soakRunning) {
+      this.respondError(frame, 'BUSY', 'A soak run is already active');
+      return;
+    }
+
+    const captures = Math.min(Math.max(1, Math.floor(req.captures ?? 100)), 1000);
+    const jobId = `job_${++this.jobCounter}`;
+    this.jobs.set(jobId, { id: jobId, cmd: Cmd.CAMERA_SOAK_TEST, step: 0, steps: captures });
+    this.soakRunning = true;
+    this.respond(frame, { jobId, accepted: true });
+
+    // The simulated bench compresses the requested delay the same way the
+    // SYNC_BENCH mock compresses triggers — the summary math is what matters.
+    const tick = Math.min(Math.max(100, Math.floor(req.delayMs ?? 1000)), 200);
+    const batch = Math.max(1, Math.round(captures / 10));
+    let successful = 0;
+    let failed = 0;
+    let crcErrors = 0;
+    let timeouts = 0;
+    let sdErrorCount = 0;
+    const jpeg: number[] = [];
+    const ready: number[] = [];
+    const transfer: number[] = [];
+    const sdWrite: number[] = [];
+    const errorCounts = new Map<string, number>();
+    let firstUuid: string | null = null;
+    let lastUuid: string | null = null;
+    const leakStart = this.leakKB;
+
+    for (let i = 0; i < captures; i++) {
+      this.after(40 + i * tick, () => {
+        const job = this.jobs.get(jobId);
+        if (!job) return; // cancelled by a reboot or a dropped link
+        const r = this.benchCapture(cam);
+        if (r.ok) {
+          successful++;
+          jpeg.push(r.jpegBytes!);
+          ready.push(r.readyMs!);
+          transfer.push(r.transferMs!);
+          sdWrite.push(r.sdMs!);
+          const uuid = this.mockUuid();
+          if (firstUuid === null) firstUuid = uuid;
+          lastUuid = uuid;
+        } else {
+          failed++;
+          if (r.code === 'TRANSFER_CRC_MISMATCH') crcErrors++;
+          if (r.code === 'CAMERA_OFFLINE') timeouts++;
+          if (r.code!.startsWith('SD_')) sdErrorCount++;
+          errorCounts.set(r.code!, (errorCounts.get(r.code!) ?? 0) + 1);
+        }
+        job.step = i + 1;
+        if ((i + 1) % batch === 0 || i + 1 === captures) {
+          this.sendEvent(Evt.JOB_PROGRESS, {
+            jobId,
+            progress: (i + 1) / captures,
+            step: 'capture',
+            message: `${i + 1}/${captures} captures, ${failed} failed`,
+          });
+        }
+      });
+    }
+
+    const stat = (xs: number[]) => ({
+      min: xs.length > 0 ? Math.min(...xs) : null,
+      max: xs.length > 0 ? Math.max(...xs) : null,
+      avg: xs.length > 0 ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null,
+    });
+
+    this.after(40 + captures * tick + 60, () => {
+      if (!this.jobs.delete(jobId)) return;
+      this.soakRunning = false;
+      const j = stat(jpeg);
+      const rd = stat(ready);
+      const tr = stat(transfer);
+      const sw = stat(sdWrite);
+      const leaked = this.leakKB - leakStart;
+      this.sendEvent(Evt.JOB_COMPLETE, {
+        jobId,
+        result: {
+          cam,
+          attempted: captures,
+          successful,
+          failed,
+          crcErrors,
+          timeouts,
+          nodeResets: 0,
+          p4Resets: 0,
+          sdErrors: sdErrorCount,
+          minJpegBytes: j.min, maxJpegBytes: j.max, avgJpegBytes: j.avg,
+          minCaptureReadyMs: rd.min, maxCaptureReadyMs: rd.max, avgCaptureReadyMs: rd.avg,
+          minTransferMs: tr.min, maxTransferMs: tr.max, avgTransferMs: tr.avg,
+          minSdWriteMs: sw.min, maxSdWriteMs: sw.max, avgSdWriteMs: sw.avg,
+          heapDeltaKB: leaked > 0 ? -leaked : this.randInt(-1, 1),
+          psramDeltaKB: leaked > 0 ? -4 * leaked : this.randInt(-2, 2),
+          firstCaptureUuid: firstUuid,
+          lastCaptureUuid: lastUuid,
+          errors: Array.from(errorCounts, ([code, count]) => ({ code, count })),
+        },
+      });
+      this.log('P4', `soak ${jobId} done — ${successful}/${captures} ok, ${failed} failed`);
+    });
+  }
+
+  private handleHwValidation(frame: Frame) {
+    const sd = !this.scenarios.sdMissing;
+    const cam1 = !this.busUnreachable('cam1');
+    const sensor1 = cam1 && this.cams.cam1.fault !== 'sensor-missing';
+    const item = (id: string, ok: boolean, detail?: string): HwValidationItem =>
+      ok ? { id, status: 'validated', ...(detail ? { detail } : {}) } : { id, status: 'unvalidated' };
+    const items: HwValidationItem[] = [
+      // The host is literally talking to this device, so its Studio
+      // transport is proven by construction.
+      item('USB_SERIAL_JTAG', true, 'host frame decoded'),
+      item('SD_CLK_GPIO43', sd, 'mounted'),
+      item('SD_CMD_GPIO44', sd, 'mounted'),
+      item('SD_D0_GPIO39', sd, 'mounted'),
+      item('SD_D1_GPIO40', sd, 'mounted'),
+      item('SD_D2_GPIO41', sd, 'mounted'),
+      item('SD_D3_GPIO42', sd, 'mounted'),
+      item('SD_LDO_CH4', sd, 'mounted'),
+      item('CAM1_TX_GPIO52', cam1, 'node HELLO answered'),
+      item('CAM1_RX_GPIO51', cam1, 'node HELLO answered'),
+      item('CAM1_BAUD_921600', cam1, 'node HELLO at 921600'),
+      item('CAM1_NODE_LINK', cam1, 'node HELLO answered'),
+      item('CAM1_SENSOR_DETECT', sensor1, 'OV3660'),
+      item('CAM1_CAPTURE', this.captureProven, 'checksummed capture'),
+      item('CAM1_JPEG_TRANSFER', this.captureProven, 'transfer CRC matched'),
+      item('CAM1_SD_WRITE', this.captureProven && sd, 'stored file verified'),
+    ];
+    this.respond(frame, { p4ResetReason: this.resetReason, items });
+  }
+
   private dispatch(frame: Frame) {
     const cmd = frame.type as Cmd;
 
@@ -1359,7 +1738,8 @@ export class MockKinoDevice implements MockDeviceLike {
       (this.scenarios.unsupportedCommands &&
         MockKinoDevice.OPTIONAL_COMMANDS.includes(frame.type)) ||
       (!this.supportsNetworkRoll() &&
-        MockKinoDevice.NETWORK_ROLL_COMMANDS.includes(frame.type));
+        MockKinoDevice.NETWORK_ROLL_COMMANDS.includes(frame.type)) ||
+      (!this.supportsBench() && MockKinoDevice.BENCH_COMMANDS.includes(frame.type));
     if (gated) {
       this.respondError(
         frame,
@@ -1470,6 +1850,10 @@ export class MockKinoDevice implements MockDeviceLike {
           rollUpload: this.supportsNetworkRoll(),
           network: this.supportsNetworkRoll(),
           syncBench: this.supportsNetworkRoll(),
+          // Milestone 1B bench diagnostics — same predicate as the gate on
+          // STORAGE_SELF_TEST / CAMERA_LINK_STATS(_RESET) / CAMERA_SOAK_TEST /
+          // GET_HW_VALIDATION below.
+          benchDiagnostics: this.supportsBench(),
           // KINO Twin §11: editable to test future firmware/hardware.
           ...(this.capabilityOverrides ?? {}),
         };
@@ -1529,13 +1913,29 @@ export class MockKinoDevice implements MockDeviceLike {
         });
         return;
       }
-      case Cmd.GET_STORAGE_STATUS:
+      case Cmd.GET_STORAGE_STATUS: {
+        const present = !this.scenarios.sdMissing;
+        const freeMB = this.scenarios.sdMissing || this.scenarios.sdFull ? 0 : this.sdFreeMB;
         this.respond(frame, {
-          present: !this.scenarios.sdMissing,
+          present,
           totalMB: 30432,
-          freeMB: this.scenarios.sdMissing || this.scenarios.sdFull ? 0 : this.sdFreeMB,
+          freeMB,
+          // Milestone 1B optional fields ride only on a bench-capable build,
+          // like real pre-1B firmware would omit them.
+          ...(this.supportsBench()
+            ? {
+                mounted: present,
+                filesystem: present ? 'FAT' : null,
+                capacityBytes: 30432 * 1024 * 1024,
+                freeBytes: freeMB * 1024 * 1024,
+                lastError: present ? null : 'MOUNT_FAILED',
+                mountAttempts: this.storageMountAttempts,
+                writeTestStatus: this.storageWriteTest,
+              }
+            : {}),
         });
         return;
+      }
       case Cmd.GET_CONFIG:
         this.respond(frame, {
           schemaVersion: 1,
@@ -1670,10 +2070,22 @@ export class MockKinoDevice implements MockDeviceLike {
           this.after(400, () => this.respondError(frame, 'SENSOR_MISSING', `${cam.toUpperCase()} sensor not detected`));
           return;
         }
-        this.after(350, () => {
-          const kb = this.randInt(300, 560);
+        const r = this.benchCapture(cam);
+        const delay = 350 + (this.cams[cam].fault === 'slow-uart' ? 1200 : 0);
+        this.after(delay, () => {
+          if (!r.ok) {
+            this.log(('C' + cam.slice(-1)) as LogSource, `test capture FAILED — ${r.code}`);
+            this.respondError(frame, r.code!, r.message!);
+            return;
+          }
+          const kb = Math.round(r.jpegBytes! / 1024);
           this.log(('C' + cam.slice(-1)) as LogSource, `test capture ok — jpeg ${kb} KB`);
-          this.respond(frame, { ok: true, jpegKB: kb, durationMs: this.randInt(140, 260) });
+          if (!this.supportsBench()) {
+            // Pre-1B firmware shape.
+            this.respond(frame, { ok: true, jpegKB: kb, durationMs: r.readyMs });
+            return;
+          }
+          this.respond(frame, this.captureResult(cam, r));
         });
         return;
       }
@@ -1692,6 +2104,21 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.SYNC_BENCH:
         this.handleSyncBench(frame);
+        return;
+      case Cmd.STORAGE_SELF_TEST:
+        this.handleStorageSelfTest(frame);
+        return;
+      case Cmd.CAMERA_LINK_STATS:
+        this.handleLinkStats(frame);
+        return;
+      case Cmd.CAMERA_LINK_STATS_RESET:
+        this.handleLinkStatsReset(frame);
+        return;
+      case Cmd.CAMERA_SOAK_TEST:
+        this.handleSoakTest(frame);
+        return;
+      case Cmd.GET_HW_VALIDATION:
+        this.handleHwValidation(frame);
         return;
       case Cmd.GET_RUNTIME_STATS:
         this.respond(frame, {

@@ -56,6 +56,17 @@ for (const entry of versions.portableSchemas) {
   check(Number(match?.[1]) === entry.version, `${entry.name}: versions.json=${entry.version}, source=${match?.[1] ?? 'missing'}`);
 }
 
+const firmwareVersion = (await text(versions.firmware.source)).trim();
+check(firmwareVersion === versions.firmware.version, `firmware: versions.json=${versions.firmware.version}, ${versions.firmware.source}=${firmwareVersion}`);
+check(semver.test(versions.firmware.version), `firmware: ${versions.firmware.version} is not semantic versioning`);
+check(versions.firmware.tagPrefix.endsWith('-v'), 'firmware: tagPrefix must end in -v');
+
+// commands.ts line 2: "Keep numeric values in sync with firmware protocol.h".
+const firmwareProtocol = await text(versions.firmware.protocolHeader);
+const firmwareProtocolMatch = firmwareProtocol.match(/KDP_PROTOCOL_VERSION\s+(\d+)/);
+check(firmwareProtocolMatch !== null, 'KDP_PROTOCOL_VERSION was not found in firmware protocol.h');
+check(Number(firmwareProtocolMatch?.[1]) === versions.protocol.kdp, `firmware protocol.h: versions.json=${versions.protocol.kdp}, source=${firmwareProtocolMatch?.[1] ?? 'missing'}`);
+
 const journal = await json(versions.database.journal);
 const latestMigration = journal.entries.at(-1)?.tag;
 check(latestMigration === versions.database.latestMigration, `database: versions.json=${versions.database.latestMigration}, journal=${latestMigration ?? 'missing'}`);

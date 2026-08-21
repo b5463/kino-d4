@@ -1,0 +1,30 @@
+name: firmware
+on:
+  push:
+    branches: [main]
+    paths: ['firmware/**', '.github/workflows/firmware.yml']
+  pull_request:
+    paths: ['firmware/**', '.github/workflows/firmware.yml']
+
+jobs:
+  kdp-core-host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make -C firmware/components/kdp_core/host_tests test
+
+  idf-build:
+    strategy:
+      matrix:
+        app: [p4, camnode]
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.5.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build ${{ matrix.app }}
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd "firmware/${{ matrix.app }}"
+          idf.py build
