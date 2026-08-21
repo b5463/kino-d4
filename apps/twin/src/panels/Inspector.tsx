@@ -84,6 +84,7 @@ export function Inspector() {
   const explode = useSceneStore((s) => s.explode);
   const netFocus = useSceneStore((s) => s.netFocus);
   const setNetFocus = useSceneStore((s) => s.setNetFocus);
+  const openMeasureComponent = useSceneStore((s) => s.openMeasureComponent);
   const [faultOpen, setFaultOpen] = useState(false);
 
   if (!selection) {
@@ -126,6 +127,9 @@ export function Inspector() {
           <span className="twin-inspector-value">{formatDims(resolved)}</span>
         </div>
         <ConfidenceBadge resolved={resolved} />
+        <button type="button" className="twin-btn twin-btn--measure" onClick={() => openMeasureComponent(component.id)}>
+          MEASURE ACTUAL PART
+        </button>
       </section>
 
       {fov && (

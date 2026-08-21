@@ -10,7 +10,8 @@
     "lint": "npm run lint --workspaces --if-present",
     "version:check": "node scripts/check-versions.mjs",
     "license:check": "node scripts/check-licenses.mjs",
-    "project": "node scripts/kino-project.mjs"
+    "project": "node scripts/kino-project.mjs",
+    "preview:all": "node scripts/preview-all.mjs"
   },
   "engines": { "node": ">=22" }
 }

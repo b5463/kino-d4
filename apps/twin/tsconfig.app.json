@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // simulator-engine consumes kdp/test-fixtures as raw TypeScript sources;
+    // compile those packages under the same indexed-access setting their own
+    // projects use instead of imposing Twin's stricter app-only setting.
+    "noUncheckedIndexedAccess": false,
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
@@ -16,5 +20,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "../../packages/kdp/src/types/webserial.d.ts"]
 }
