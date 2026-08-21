@@ -94,7 +94,9 @@ export class TwinSimulator {
     // ones; Task 7's power sampler (`this.now`, above) is the first thing
     // in this class to also use it directly, for the over-3A dwell timer.
     this.now = opts?.now ?? Date.now;
-    this.device = new MockKinoDevice({ seed: this.seed, now: opts?.now });
+    // ambientCaptures off: a real idle D4 does not shoot on its own, so the
+    // Twin scene only ever animates captures someone commanded (UI or Studio).
+    this.device = new MockKinoDevice({ seed: this.seed, now: opts?.now, ambientCaptures: false });
     this.device.setIdentity(DEFAULT_IDENTITY);
 
     this.unsubscribeTelemetry = this.device.onTelemetry((telemetry) => {

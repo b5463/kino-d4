@@ -44,6 +44,10 @@ export function ComponentTree() {
 
   return (
     <div className="twin-tree" role="tree" aria-label="Component tree">
+      <div className="twin-tree-head">
+        <span className="twin-tree-title">PARTS</span>
+        <span className="twin-tree-hint">Click a part to inspect it. Untick to hide it in 3D.</span>
+      </div>
       {groups.map((group) => (
         <div key={group.label} className="twin-tree-group">
           <div className="twin-tree-group-label">{group.label}</div>

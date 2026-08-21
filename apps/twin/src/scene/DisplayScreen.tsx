@@ -77,10 +77,17 @@ export function DisplayScreen() {
   }, [explode, pitchMm, profile]);
 
   if (!position || !visible || viewMode === 'enclosure') return null;
+  // The rear acrylic is a transparent pane between the viewer and this
+  // screen; drawn after the screen it composites its milky tint on top.
+  // Opaque geometry always renders before the transparent pass, so the fix
+  // is to put the screen INTO the transparent queue (transparent + opacity 1)
+  // with a late renderOrder — it then draws after the acrylic and stays
+  // crisp. Depth testing still hides it from the front, where the opaque
+  // module body wrote depth first.
   return (
-    <mesh position={position} rotation={[0, Math.PI, 0]} raycast={() => {}}>
+    <mesh position={position} rotation={[0, Math.PI, 0]} raycast={() => {}} renderOrder={10}>
       <planeGeometry args={[ACTIVE_W_MM, ACTIVE_H_MM]} />
-      <meshBasicMaterial map={texture} toneMapped={false} />
+      <meshBasicMaterial map={texture} toneMapped={false} transparent opacity={1} />
     </mesh>
   );
 }

@@ -239,6 +239,10 @@ export class MockKinoDevice implements MockDeviceLike {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private logTimer: ReturnType<typeof setTimeout> | null = null;
   private captureTimer: ReturnType<typeof setTimeout> | null = null;
+  // Studio's demo device shoots on its own so its gallery/logs stay lively.
+  // A real idle D4 does not — the Twin builds with this off, so every capture
+  // in the 3D view was commanded by someone.
+  private readonly ambientCaptures: boolean;
 
   // Set in the constructor, after this.now is available (see below).
   private bootedAt: number;
@@ -321,9 +325,10 @@ export class MockKinoDevice implements MockDeviceLike {
    * draw, and every timestamp comes from `now` instead of the wall clock, so
    * the same seed + the same inbound bytes reproduce the same outbound bytes.
    */
-  constructor(opts?: { seed?: number; now?: () => number }) {
+  constructor(opts?: { seed?: number; now?: () => number; ambientCaptures?: boolean }) {
     this.rng = opts?.seed !== undefined ? seeded(opts.seed) : Math.random;
     this.now = opts?.now ?? Date.now;
+    this.ambientCaptures = opts?.ambientCaptures ?? true;
     // These used to be field initializers, but they draw from this.now()/
     // this.randInt() and so must run after the two lines above.
     this.bootedAt = this.now();
@@ -681,6 +686,7 @@ export class MockKinoDevice implements MockDeviceLike {
     };
     this.logTimer = setTimeout(tickLog, 600);
 
+    if (!this.ambientCaptures) return;
     const tickCapture = () => {
       this.simulateCapture();
       this.captureTimer = setTimeout(tickCapture, this.randInt(9000, 22000));

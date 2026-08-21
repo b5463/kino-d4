@@ -91,7 +91,7 @@ body {
 
 .twin-body {
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
+  grid-template-columns: 236px 1fr 264px;
   min-height: 0;
 }
 
@@ -368,7 +368,7 @@ body {
 
 .twin-panel-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   position: sticky;
   top: 0;
   z-index: 2;
@@ -900,4 +900,40 @@ body {
 
 .twin-simoff-note {
   border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-tree-head {
+  padding: 9px 10px 7px;
+  border-bottom: 1px solid var(--twin-line);
+}
+
+.twin-tree-title {
+  display: block;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  margin-bottom: 3px;
+}
+
+.twin-tree-hint {
+  display: block;
+  color: var(--twin-text-mut);
+  line-height: 1.4;
+}
+
+.twin-tree-row:hover {
+  background: #21252c;
+}
+
+.twin-tree-label {
+  cursor: pointer;
+  text-align: left;
+  padding: 2px 0;
+}
+
+.twin-tree-label:focus-visible,
+.twin-btn:focus-visible,
+.twin-panel-tab:focus-visible,
+.twin-tree-visibility:focus-visible {
+  outline: 2px solid #61a8d0;
+  outline-offset: 1px;
 }

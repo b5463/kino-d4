@@ -40,11 +40,13 @@ KINO has no published release yet. Changes intended for the first release collec
 - KINO Twin exposes protocol-honest fault injection plus power, synchronization, and rolling-shutter flash analysis panels with explicit simulated and estimated provenance.
 - KINO Twin stores versioned as-measured component overrides separately from canonical profiles and provides an enclosure-lock measurement checklist that refreshes geometry and collision findings immediately.
 - KINO Twin records and verifies raw-KDP simulation sessions, exports versioned layouts and engineering reports, captures viewport PNGs, and ships a same-origin Studio/Twin preview harness with a 17-point acceptance runbook.
-- Twin now guides a first-time user: a powered-off start card names the one action that matters, boot progress renders as a live ladder in the viewport, power and shutter are primary header actions with stated disabled reasons, right-panel tabs carry plain names with one-line descriptions, and panels say why they are empty while the simulator is off.
+- Twin now guides a first-time user: a powered-off start card names the one action that matters, boot progress renders as a live ladder in the viewport, power and shutter are primary header actions with stated disabled reasons, right-panel tabs carry plain names with one-line descriptions, panels say why they are empty while the simulator is off, the parts list explains itself, and the reference grid has a toggle.
+- The Twin device no longer fires ambient demo captures: every capture in the 3D view was commanded by the operator or Studio. Studio's demo device keeps its lively ambient behavior.
 - The Twin display renders the live simulated device UI — boot stages, firmware version, battery voltage, SD/Wi-Fi/roll status, capture and firmware-update progress, per-camera faults, and a SIMULATED-labelled CAM2 preview field — on the 3D glass and in a DISPLAY inspector tab whose shutter drives the same raw-KDP capture path Studio uses.
 
 ### Fixed
 
+- The Twin display screen stays crisp when viewed through the clear rear acrylic instead of being washed out by the panel's tint.
 - Twin assembly renders the D4 correctly: the display sits landscape inside the body with its glass facing the rear, its connector keepouts hug the board face instead of floating in space, the camera-node service keepout covers rear USB-C access instead of the lens, and the enclosure skeleton is an open edge frame so internal components are visible through the clear panels.
 - Sensor-missing camera nodes remain available for firmware repair while sensor-dependent calibration reports the specific fault.
 - Repeated Twin power-off calls no longer emit duplicate shutdown activity, and scenario toggles notify observers once.
