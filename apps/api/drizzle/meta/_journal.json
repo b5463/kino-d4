@@ -40,8 +40,15 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1787177083000,
+      "when": 1787169883832,
       "tag": "0006_recap_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787245704095,
+      "tag": "0007_slippery_falcon",
       "breakpoints": true
     }
   ]

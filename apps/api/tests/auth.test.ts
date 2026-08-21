@@ -33,7 +33,8 @@ const REQUIRED_TABLES = ['devices', 'rolls', 'roll_devices'];
 
 const SERIAL_A = `KD4-T16-${RUN}-A`;
 const SERIAL_B = `KD4-T16-${RUN}-B`;
-const SERIALS = [SERIAL_A, SERIAL_B];
+const SERIAL_PROTECTED = `KD4-T16-${RUN}-PROTECTED`;
+const SERIALS = [SERIAL_A, SERIAL_B, SERIAL_PROTECTED];
 
 const ROLL_OPEN = `roll_t16_${RUN}_open`;
 const ROLL_OTHER = `roll_t16_${RUN}_other`;
@@ -250,6 +251,40 @@ describe('POST /api/studio/devices/register', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ code: 'INVALID_BODY' });
+  });
+
+  it('prevents an existing serial from being taken over in production mode', async () => {
+    const protectedApp = buildServer({
+      ...loadConfig(),
+      DEVICE_REGISTRATION_MODE: 'first-write-wins',
+      LOG_LEVEL: 'silent',
+    });
+    try {
+      const first = await protectedApp.inject({
+        method: 'POST',
+        url: '/api/studio/devices/register',
+        payload: { serial: SERIAL_PROTECTED, product: 'KINO D4', hardwareRevision: 'v1' },
+      });
+      expect(first.statusCode).toBe(200);
+      const original = first.json<RegisterResponse>();
+
+      const takeover = await protectedApp.inject({
+        method: 'POST',
+        url: '/api/studio/devices/register',
+        payload: { serial: SERIAL_PROTECTED, product: 'KINO D4', hardwareRevision: 'v1' },
+      });
+      expect(takeover.statusCode).toBe(409);
+      expect(takeover.json()).toMatchObject({ code: 'DEVICE_ALREADY_REGISTERED' });
+
+      const stillAuthorized = await protectedApp.inject({
+        method: 'GET',
+        url: '/api/device/rolls/current',
+        headers: bearer(original.deviceToken),
+      });
+      expect(stillAuthorized.statusCode).toBe(200);
+    } finally {
+      await protectedApp.close();
+    }
   });
 });
 

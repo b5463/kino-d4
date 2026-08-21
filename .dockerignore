@@ -1,0 +1,15 @@
+.git
+.claude
+.codex
+.agents
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+graphify-out
+infra/.env
+infra/.env.*
+!.env.prod.example
+!.env.staging.example
+

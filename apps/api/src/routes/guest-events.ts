@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 import { rollOf } from '../auth/plugins';
 import { isStreamId, readRollHistory, type RollEventDelivery } from '../events/publish';
 import { openRollEventFeed } from '../events/feed';
@@ -141,7 +142,7 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
     endAll();
   });
 
-  app.get('/api/rolls/:slug/events', { preHandler: app.guestRollAccess }, async (request, reply) => {
+  app.get('/api/rolls/:slug/events', { config: guestReadRateLimit, preHandler: app.guestRollAccess }, async (request, reply) => {
     const roll = rollOf(request);
 
     const lastEventId = requestedLastEventId(request);
@@ -161,6 +162,7 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
     const connectionId = randomUUID();
     let release: (() => Promise<void>) | null = null;
     let heartbeat: NodeJS.Timeout | null = null;
+    let releaseMetric: (() => void) | null = null;
     let closed = false;
 
     const cleanup = (): void => {
@@ -180,6 +182,8 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
           app.log.warn({ err, rollId: roll.id }, 'roll event unsubscribe failed');
         });
       }
+      releaseMetric?.();
+      releaseMetric = null;
 
       void dropRollViewer(app.redis, roll.id, connectionId).catch((err: unknown) => {
         // The viewer's score stops being refreshed either way, so the count
@@ -201,6 +205,7 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
     };
 
     openConnections.add(cleanup);
+    releaseMetric = app.metrics.sseConnected();
     // Registered before the first await: a client that disconnects while the
     // subscription is still being set up must still be torn down.
     reply.raw.on('close', cleanup);

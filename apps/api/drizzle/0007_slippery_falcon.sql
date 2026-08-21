@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "rolls_host_token_hash_unique" ON "rolls" USING btree ("host_token_hash");

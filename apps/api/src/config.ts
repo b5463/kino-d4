@@ -32,13 +32,30 @@ export const configSchema = z.object({
   DATABASE_URL: absoluteUrl.default('postgres://kino:kino@localhost:5435/kino'),
   // Host port 6380, not 6379: another project owns a 6379 mapping.
   REDIS_URL: absoluteUrl.default('redis://localhost:6380'),
+  // Shared with the worker. Tests may isolate a real producer/consumer pair
+  // without letting that worker consume another suite's jobs.
+  JOB_QUEUE_PREFIX: z.string().min(1).default('kino-jobs'),
+  // Optional in development; production Compose requires it. The route is a
+  // 404 when absent so metrics cannot be exposed accidentally.
+  METRICS_TOKEN: z.string().min(24).optional(),
   S3_ENDPOINT: absoluteUrl.default('http://localhost:9000'),
   S3_BUCKET: z.string().min(1).default('kino-media'),
+  S3_FIRMWARE_BUCKET: z.string().min(1).default('kino-firmware'),
   S3_ACCESS_KEY: z.string().min(1).default('kino'),
   S3_SECRET_KEY: z.string().min(1).default('kino-secret'),
   // MinIO ignores the region but the AWS SDK requires one to sign requests.
   S3_REGION: z.string().min(1).default('us-east-1'),
   PUBLIC_BASE_URL: absoluteUrl.default('https://kino.acronym.sk'),
+  // The API is normally private behind Caddy. Only then may forwarded client
+  // addresses drive per-IP rate limits; direct development defaults closed.
+  TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  // Presigned MinIO URLs are convenient in local development. Production
+  // keeps MinIO private and streams authorized objects through the API.
+  OBJECT_DELIVERY: z.enum(['presigned', 'proxy']).default('presigned'),
+  DEVICE_REGISTRATION_MODE: z.enum(['rotate', 'first-write-wins']).default('rotate'),
   // Signs the guest PIN session cookie (05 §13). Not an encryption key: the
   // cookie carries no secret, only a value a guest must not be able to forge.
   COOKIE_SECRET: z.string().min(16).default(DEV_COOKIE_SECRET),
@@ -94,13 +111,24 @@ function withoutBlanks(env: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
-  const parsed = validatedConfigSchema.safeParse(withoutBlanks(env));
+  const present = withoutBlanks(env);
+  const parsed = validatedConfigSchema.safeParse(present);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((issue) => `  ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
     // Deliberately prints only the offending variable NAMES, never their values.
     throw new Error(`Invalid API configuration:\n${issues}`);
+  }
+  // Rotation is convenient on a developer bench, but unsafe on any reachable
+  // deployment: knowing a printed serial would rotate the real device's token.
+  // Like the cookie-secret policy, an unset or unfamiliar environment fails
+  // closed. An explicit variable can still select a recovery mode deliberately.
+  if (
+    present['DEVICE_REGISTRATION_MODE'] === undefined &&
+    (parsed.data.NODE_ENV === undefined || !DEV_ENVIRONMENTS.has(parsed.data.NODE_ENV))
+  ) {
+    return { ...parsed.data, DEVICE_REGISTRATION_MODE: 'first-write-wins' };
   }
   return parsed.data;
 }

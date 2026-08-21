@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 import { rollOf } from '../auth/plugins';
 import { guestRollView } from '../rolls/rolls';
 import { visibleCaptureCount } from '../uploads/uploads';
@@ -21,8 +22,12 @@ import { visibleCaptureCount } from '../uploads/uploads';
  * it. See `rolls/robots.ts`.
  */
 export const guestRollRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/rolls/:slug', { preHandler: app.guestRollAccess }, async (request) => {
-    const roll = rollOf(request);
-    return guestRollView(roll, await visibleCaptureCount(app.db, roll.id));
-  });
+  app.get(
+    '/api/rolls/:slug',
+    { config: guestReadRateLimit, preHandler: app.guestRollAccess },
+    async (request) => {
+      const roll = rollOf(request);
+      return guestRollView(roll, await visibleCaptureCount(app.db, roll.id));
+    },
+  );
 };

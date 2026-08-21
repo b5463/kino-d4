@@ -1272,7 +1272,7 @@ export interface RollApi {
 - PWA: `vite-plugin-pwa` with cached app shell, network-first API, cache-first assets; installable manifest (name "KINO Roll", theme per design baseline); install NEVER prompted automatically (03§5).
 - HTML head on `/r/*`: `<meta name="robots" content="noindex, nofollow">` (03§9).
 
-- [ ] **Steps 1–5: failing client test (PIN flow, cursor passthrough) → implement → PASS → commit** — `feat(roll-web): scaffold, typed API client, PWA shell`
+- [x] **Steps 1–5: failing client test (PIN flow, cursor passthrough) → implement → PASS → commit** — `feat(roll-web): scaffold, typed API client, PWA shell`
 
 ### Task 27: WigglePlayer component
 
@@ -1296,9 +1296,9 @@ export function WigglePlayer(props: {
 
 - Behavior (03§13, §23; 06§14–15): preloads frames via `Image`; steps through `wiggleSequence` on a `requestAnimationFrame` clock at `fps`; renders current frame in an `<img>` (swap `src` from preloaded cache — no canvas needed for V1); pauses when offscreen (IntersectionObserver, threshold 0.25) and when `document.hidden`; `prefers-reduced-motion: reduce` → renders poster with a manual ▶ button (motion is opt-in); tap toggles play/pause; the animated wiggle is the hero — no UI animation competing with it.
 
-- [ ] **Step 1: Write failing tests** (vitest + jsdom, fake rAF timer): advances exactly `fps` frames per simulated second in bounce order; unmount cancels rAF; reduced-motion media query mocked → no autoplay, poster + button rendered.
+- [x] **Step 1: Write failing tests** (vitest + jsdom, fake rAF timer): advances exactly `fps` frames per simulated second in bounce order; unmount cancels rAF; reduced-motion media query mocked → no autoplay, poster + button rendered.
 
-- [ ] **Steps 2–5: FAIL → implement → PASS → commit** — `feat(roll-web): WigglePlayer with visibility + reduced-motion handling`
+- [x] **Steps 2–5: FAIL → implement → PASS → commit** — `feat(roll-web): WigglePlayer with visibility + reduced-motion handling`
 
 ### Task 28: Guest feed — virtualized, live
 
@@ -1311,7 +1311,7 @@ export function WigglePlayer(props: {
 - `useRollEvents(slug, handlers)` — SSE subscription: reconnect with stored last event id + exponential backoff (1 s → 30 s cap); pauses EventSource on `pagehide`/`visibilitychange` hidden, resumes + refetches head on visible (mobile sleep/wake, 07§24); on `capture.created` fetches the capture and calls `prepend`; on `capture.hidden`/`deleted` removes it; on `capture.updated`/`processing.completed` refetches that capture (thumbnail may have upgraded — "derivative appears later", 07§24).
 - Feed rendering: `@tanstack/react-virtual` vertical list of thumbnail grid rows (3-up mobile, 4-up desktop); only WigglePlayers in/near viewport animate (the player's own IntersectionObserver handles it); header per 06§11: `KINO ROLL / <title> LIVE / 47 photos · 14 Aug 2026`.
 
-- [ ] **Steps 1–5: failing hook tests (prepend dedupes by id; hidden removes; reconnect refetches head) → implement → PASS → commit** — `feat(roll-web): live virtualized guest feed`
+- [x] **Steps 1–5: failing hook tests (prepend dedupes by id; hidden removes; reconnect refetches head) → implement → PASS → commit** — `feat(roll-web): live virtualized guest feed`
 
 ### Task 29: Capture detail + downloads + share
 
@@ -1323,7 +1323,7 @@ export function WigglePlayer(props: {
 - Consumes: `getCapture`, `WigglePlayer`, `wiggleSequence`.
 - Renders by mode (03§13–14): wiggle → hero player (full-screen toggle) + strip of the n original frames + processed still + metadata block (time, look, resolution) + Download / Share; quad → 2×2 grid (layout derives from frameCount: `ceil(sqrt(n))` columns — not hard-coded 2×2) with recipe labels under each cell; single → still + metadata. Download button hidden entirely when roll `downloadsEnabled === false`; Share uses `navigator.share` when present, else copy-link. Reactions (♡ count + toggle) only when `reactionsEnabled`.
 
-- [ ] **Steps 1–5: failing tests (downloads hidden when disabled; quad labels rendered; frameCount 6 → 3-column grid) → implement → PASS → commit** — `feat(roll-web): capture detail for wiggle/quad/single`
+- [x] **Steps 1–5: failing tests (downloads hidden when disabled; quad labels rendered; frameCount 6 → 3-column grid) → implement → PASS → commit** — `feat(roll-web): capture detail for wiggle/quad/single`
 
 ### Task 30: PIN gate + roll states
 
@@ -1335,7 +1335,7 @@ export function WigglePlayer(props: {
 **Interfaces:**
 - `PinRequiredError` from the client routes to PinGate: compact form ("This Roll needs a PIN"), wrong PIN shows inline error, success re-enters feed. Closed roll: banner `CLOSED — <date>` at feed top, everything else readable (03§22). Trash/unknown slug → plain 404 page ("No Roll here.").
 
-- [ ] **Steps 1–5: failing tests → implement → PASS → commit** — `feat(roll-web): PIN gate + closed/404 states`
+- [x] **Steps 1–5: failing tests → implement → PASS → commit** — `feat(roll-web): PIN gate + closed/404 states`
 
 ### Task 31: Host dashboard
 
@@ -1348,7 +1348,7 @@ export function WigglePlayer(props: {
 - Renders the 03§10 dashboard: title, status, device serial, capture count, guest count (SSE connections), pending uploads; actions wired to Task 17/21 endpoints: Show QR (guest URL), Close/Reopen Roll, Download All (export job → poll status → link), rename, set/remove PIN, toggle downloads, regenerate guest slug (confirmation: "Old links stop working."), per-capture hide/unhide/delete from a moderation grid (hidden captures shown dimmed with `HIDDEN` lamp).
 - Host client = separate module; host token never sent to guest endpoints.
 
-- [ ] **Steps 1–5: failing tests (token from hash stored + stripped; hide action optimistic + reconciled by SSE; export flow polls to link) → implement → PASS → commit** — `feat(roll-web): host dashboard with moderation + export`
+- [x] **Steps 1–5: failing tests (token from hash stored + stripped; hide action optimistic + reconciled by SSE; export flow polls to link) → implement → PASS → commit** — `feat(roll-web): host dashboard with moderation + export`
 
 ---
 
@@ -1365,7 +1365,7 @@ export function WigglePlayer(props: {
 - Implements Task 12's `RollServerClient` against Task 16/17 endpoints. Registration flow: Studio reads serial/product/revision from device truth → `POST /api/studio/devices/register` → writes `{ deviceId, deviceToken, serverUrl }` to the camera via KDP `SET_CONFIG` patch (config section `roll.credentials`) → device token never persisted in Studio storage (only pass-through; 03§17). "Start a Roll" now: server create → device `ROLL_JOIN` with rollId + upload scope → QR + host link shown; host link offered as "Open host dashboard" (deep link with host token).
 - Acceptance guard (07§5): all USB device operations still work with no backend reachable — test: with `StubRollServerClient` failing, every other Studio page functions (mock-connect smoke test).
 
-- [ ] **Steps 1–5: failing tests (registration writes credential to device not localStorage; offline backend doesn't break Shoot/Gallery) → implement → PASS → commit** — `feat(studio): live Roll server client + device registration`
+- [x] **Steps 1–5: failing tests (registration writes credential to device not localStorage; offline backend doesn't break Shoot/Gallery) → implement → PASS → commit** — `feat(studio): live Roll server client + device registration`
 
 ### Task 33: Firmware catalog integration
 
@@ -1377,7 +1377,7 @@ export function WigglePlayer(props: {
 **Interfaces:**
 - Catalog response = array of `kino.firmware-manifest` documents filtered by `compatibleHardware` + protocol range vs the connected device (07§14: incompatible releases marked, not hidden — "Requires newer Studio/protocol"). Studio downloads manifest + binaries, verifies SHA-256 locally before the existing update flow takes over (02§21 requirements already implemented).
 
-- [ ] **Steps 1–5: failing tests (hardware filter; sha mismatch rejected before flash; offline → cached package still installable) → implement → PASS → commit** — `feat: firmware catalog end-to-end`
+- [x] **Steps 1–5: failing tests (hardware filter; sha mismatch rejected before flash; offline → cached package still installable) → implement → PASS → commit** — `feat: firmware catalog end-to-end`
 
 ---
 
@@ -1418,15 +1418,15 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 
 ### Task 34: Extract `@kino/design-system`
 - **Files:** Create `packages/design-system/` — tokens (`tokens.css`: cool greys, pale blue utility fills, selected-tab blue, 1px borders/highlights per 06§5), primitives (StatusLamp `●/○/▲/×`, Toolbar, TabStrip, Panel/GroupBox, CompactTable, ClassicProgressBar, UtilitySlider), consumed by both `apps/studio` and `apps/roll-web`.
-- [ ] Move Studio's existing token CSS into the package; Studio imports it; visual regression = manual side-by-side (no pixel-diff tooling for V1).
-- [ ] Roll-web adopts the family look, simpler + more social: framed thumbnails, small glossy buttons, photo counters, compact tabs (06§10) — while staying touch-friendly and responsive (06§11).
-- [ ] Commit — `refactor: shared @kino/design-system`
+- [x] Move Studio's existing token CSS into the package; Studio imports it; visual regression = manual side-by-side (no pixel-diff tooling for V1).
+- [x] Roll-web adopts the family look, simpler + more social: framed thumbnails, small glossy buttons, photo counters, compact tabs (06§10) — while staying touch-friendly and responsive (06§11).
+- [x] Commit — `refactor: shared @kino/design-system`
 
 ### Task 35: Anti-slop + accessibility audit (06§16, 07§29)
-- [ ] Walk every Studio page and Roll view against the 06§16 reject/accept checklist; file and fix violations (giant cards, oversized headings, decorative status, etc.).
-- [ ] Accessibility acceptance: keyboard reachability, visible focus, labels, contrast, reduced motion (WigglePlayer + Studio hooks already honor it), screen-reader status announcements (`aria-live` on connection strip + upload queue), **no color-only status** (lamps always pair symbol + text).
+- [x] Walk every Studio page and Roll view against the 06§16 reject/accept checklist; file and fix violations (giant cards, oversized headings, decorative status, etc.). See `docs/acceptance/ui-accessibility-audit.md`.
+- [x] Accessibility acceptance: keyboard reachability, visible focus, labels, contrast, reduced motion (WigglePlayer + Studio hooks already honor it), screen-reader status announcements (`aria-live` on connection strip + upload queue), **no color-only status** (lamps always pair symbol + text).
 - [ ] Browser matrix: Studio on current Chrome + Edge desktop; Roll on iOS Safari + Android Chrome + desktop (07§28). Record in `docs/acceptance/browser-matrix.md`.
-- [ ] Commit — `polish: design-system + a11y audit closure`
+- [x] Commit — `polish: design-system + a11y audit closure`
 
 ---
 
@@ -1436,22 +1436,22 @@ Applied after WS2 + WS5 flows are stable (07§10). Studio already had an accessi
 - **Files:** Create `infra/docker-compose.prod.yml`, `infra/Caddyfile`, `infra/.env.prod.example`
 - Containers per 05§2: `kino-proxy` (Caddy — automatic TLS), `kino-web` (static: studio at `/studio`, roll-web at `/` + `/r/*` + `/host`), `kino-api`, `kino-worker`, `kino-postgres`, `kino-redis`, `kino-object-storage` (MinIO, not publicly exposed — presigned URLs proxied via Caddy path or MinIO on subdomain; decide at implementation, default: internal-only MinIO + API-streamed assets fallback if presign hosting is awkward behind one domain).
 - Caddyfile routes: `/api/*` → api:3000 (SSE: `flush_interval -1`), `/studio*` → studio static, everything else → roll-web static with SPA fallback; global header `X-Robots-Tag: noindex, nofollow` on `/r/*` and `/host*`.
-- [ ] Environments: `local` (compose.dev), `staging` (separate DB/bucket/credentials, subdomain or alt port), `production` (07§11).
-- [ ] Rate limits (05§13): `@fastify/rate-limit` — device upload routes 60/min/token, guest reads 300/min/IP, PIN attempts 5/min/IP.
-- [ ] Smoke: deploy to staging, run a full happy path (register device via Studio → create Roll → test-uploader pushes a capture → guest sees it live → host closes Roll).
-- [ ] Commit — `feat(infra): production compose + caddy for kino.acronym.sk`
+- [x] Environments: `local` (compose.dev), `staging` (separate DB/bucket/credentials, subdomain or alt port), `production` (07§11).
+- [x] Rate limits (05§13): `@fastify/rate-limit` — device upload routes 60/min/token, guest reads 300/min/IP, PIN attempts 5/min/IP. Deferred exposure hardening also completed: registration 10/min/IP + production first-write-wins, device join 30/min/IP + 10-miss/hour device lockout, anonymous Roll creation 60/min/IP.
+- [x] Smoke: production-shaped local staging stack passed register device → create Roll → test-uploader capture → worker derivatives → guest feed → host close. Public DNS/TLS deployment remains an operator action.
+- [x] Commit — `feat(infra): production compose + caddy for kino.acronym.sk`
 
 ### Task 37: Test uploader CLI (Phase 2 requirement, 07§4)
 - **Files:** Create `infra/scripts/test-uploader.ts`
 - A CLI that impersonates a camera against the real API: registers (or reuses) a device, creates/joins a Roll, uploads fixture captures (from `packages/test-fixtures/media/`) through the full resumable pipeline with configurable failure injection (`--drop-part 3`, `--dup-retry`, `--slow 200ms`). This is how Roll gets exercised before camera firmware exists, and stays as the load-test tool (dozens of viewers × hundreds of captures, 03§24).
-- [ ] Steps: failing integration test (uploader against local compose produces a `ready` capture with all assets) → implement → PASS → commit — `feat(infra): camera-simulating test uploader`
+- [x] Steps: failing integration test (uploader against local compose produces a `ready` capture with all assets) → implement → PASS → commit — `feat(infra): camera-simulating test uploader`
 
 ### Task 38: Backups + restore drill + observability
 - **Files:** Create `infra/scripts/backup.sh`, `infra/scripts/restore-drill.sh`, `docs/runbooks/restore.md`
-- [ ] `backup.sh`: nightly `pg_dump -Fc` + `mc mirror` of both buckets to an off-host target; retention 14 daily + 8 weekly (05§16).
-- [ ] `restore-drill.sh`: restores dump + objects into a scratch compose stack, then runs an assertion script: every `assets.status='ready'` row's objectKey exists in restored storage and sha256 matches — captures/assets relink correctly (07§27). **The drill must actually be run**, not just written; record the run in the runbook.
-- [ ] Observability (05§17): pino structured logs shipped to a file/loki; `/api/metrics` (Prometheus format via `fastify-metrics`): request latency, error rate, upload failures, queue depth (BullMQ counts), SSE connections, active devices; MinIO + disk usage from node exporter. Alert thresholds documented, not over-tooled.
-- [ ] Commit — `feat(infra): backups with tested restore drill + metrics`
+- [x] `backup.sh`: nightly `pg_dump -Fc` + `mc mirror` of both buckets to an off-host target; retention 14 daily + 8 weekly (05§16).
+- [x] `restore-drill.sh`: restores dump + objects into a scratch compose stack, then runs an assertion script: every `assets.status='ready'` row's objectKey exists in restored storage and sha256 matches — captures/assets relink correctly (07§27). **The drill must actually be run**, not just written; record the run in the runbook. Run 2026-08-21: 3 captures, 24/24 ready assets SHA-256 verified; recorded in `docs/runbooks/restore.md`.
+- [x] Observability (05§17): pino/Caddy structured logs rotate through Docker's JSON file driver; the dependency-free `/api/metrics` Prometheus exporter covers latency, errors, upload failures, BullMQ depth, worker failures, SSE connections, active devices and object usage; private MinIO/node-exporter signals and alert thresholds are documented.
+- [x] Commit — `feat(infra): backups with tested restore drill + metrics`
 
 ---
 

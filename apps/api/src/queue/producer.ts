@@ -67,10 +67,12 @@ export type ProcessingQueue = Queue<JobPayload, void, JobName>;
  * deliberately capped at 2 so a health probe fails fast, and one of those two
  * has to give. A separate connection lets both be right.
  */
-export function createProcessingQueue(config: Pick<ApiConfig, 'REDIS_URL'>): ProcessingQueue {
+export function createProcessingQueue(
+  config: Pick<ApiConfig, 'REDIS_URL' | 'JOB_QUEUE_PREFIX'>,
+): ProcessingQueue {
   return new Queue<JobPayload, void, JobName>(JOB_QUEUE_NAME, {
     connection: { url: config.REDIS_URL, maxRetriesPerRequest: null },
-    prefix: JOB_QUEUE_PREFIX,
+    prefix: config.JOB_QUEUE_PREFIX,
   });
 }
 

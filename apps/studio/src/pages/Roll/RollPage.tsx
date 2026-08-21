@@ -9,9 +9,10 @@ import {
   DEFAULT_ROLL_SERVER_URL,
   StubRollServerClient,
   getRollServerClient,
-  setRollServerUrl,
+  setRollServerClient,
 } from '../../roll/RollServerClient';
-import { startRoll, submitNetwork } from '../../roll/rollOps';
+import { HttpRollServerClient } from '../../roll/HttpRollServerClient';
+import { registerRollDevice, startRoll, submitNetwork } from '../../roll/rollOps';
 import type { StartRollOptions } from '../../roll/rollOps';
 import type { NetworkSetRequest, NetworkStatus, NetworkView, RollView, UploadQueueReport } from '../../roll/rollTypes';
 import { ServerPanel } from './ServerPanel';
@@ -45,6 +46,7 @@ export function RollPage() {
 
   const [serverUrl, setServerUrl] = useState(getRollServerClient().baseUrl || DEFAULT_ROLL_SERVER_URL);
   const [serverResult, setServerResult] = useState<ServerTestResult | null>(null);
+  const [registration, setRegistration] = useState<string | null>(null);
 
   const [netBusy, setNetBusy] = useState(false);
   const [rollBusy, setRollBusy] = useState(false);
@@ -145,10 +147,41 @@ export function RollPage() {
 
   const testServer = async () => {
     setServerBusy(true);
-    setRollServerUrl(serverUrl);
+    const next = new HttpRollServerClient(serverUrl);
+    setRollServerClient(next);
     try {
-      setServerResult(await getRollServerClient().testConnection());
+      const result = await next.testConnection();
+      setServerResult(result);
+      setRegistration(null);
     } catch (err) {
+      setServerResult({ ok: false, error: message(err) });
+    } finally {
+      setServerBusy(false);
+    }
+  };
+
+  const registerServer = async () => {
+    const dev = getDevice();
+    const info = state.info;
+    if (dev === null || info === null) {
+      setServerResult({ ok: false, error: 'KINO is not connected.' });
+      return;
+    }
+    setServerBusy(true);
+    try {
+      let current = getRollServerClient();
+      if (!(current instanceof HttpRollServerClient) || current.baseUrl !== serverUrl.replace(/\/+$/, '')) {
+        current = new HttpRollServerClient(serverUrl);
+        setRollServerClient(current);
+      }
+      const registered = await registerRollDevice(dev, current, {
+        serial: info.serial,
+        product: info.product,
+        hardwareRevision: info.hardware,
+      });
+      setRegistration(`KINO registered as ${registered.deviceId}. Credential saved on the camera.`);
+    } catch (err) {
+      setRegistration(null);
       setServerResult({ ok: false, error: message(err) });
     } finally {
       setServerBusy(false);
@@ -215,6 +248,8 @@ export function RollPage() {
         result={serverResult}
         onUrlChange={setServerUrl}
         onTest={testServer}
+        registration={registration}
+        onRegister={registerServer}
       />
 
       <NetworkPanel

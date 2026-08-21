@@ -17,8 +17,9 @@ import {
 } from '../rolls/rolls';
 import { rollCaptureCounts } from '../uploads/uploads';
 import { countRollViewers } from '../events/viewers';
-import { auditEvents, rolls } from '../db/schema';
+import { auditEvents, devices, rolls } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
+import { hostCreateRateLimit } from '../plugins/rateLimits';
 
 /**
  * The host dashboard's API (03 §10).
@@ -65,6 +66,10 @@ const patchBody = z
   .strict();
 
 export const hostRollRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/api/host/session', { preHandler: app.requireHostToken }, async (request) =>
+    dashboard(app, rollOf(request)),
+  );
+
   /**
    * Roll creation from the host web (03 §8). Unauthenticated by design: V1 has
    * no accounts, so there is no identity to check — the call *mints* the
@@ -73,10 +78,10 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
    * That means anyone who can reach this endpoint can create rolls, which is a
    * spam/storage-exhaustion surface and not a data-exposure one: a roll created
    * this way is reachable only through the host token in the response, which
-   * the caller already holds. Rate limiting is Task 36's, and this route is one
-   * of the two that need it most (the other is device registration).
+   * the caller already holds. Task 36 bounds the surface at 60 creations per
+   * minute per source IP in shared Redis.
    */
-  app.post('/api/host/rolls', async (request, reply) => {
+  app.post('/api/host/rolls', { config: hostCreateRateLimit }, async (request, reply) => {
     const parsed = createBody.safeParse(request.body);
     if (!parsed.success) return invalidBody(reply, parsed.error);
 
@@ -198,14 +203,22 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
  * the outage itself is visible.
  */
 async function dashboard(app: FastifyInstance, roll: PublicRollRow): Promise<HostRollView> {
-  const [counts, guests] = await Promise.all([
+  const [counts, guests, deviceSerial] = await Promise.all([
     rollCaptureCounts(app.db, roll.id, convergeWarning(app)),
     countRollViewers(app.redis, roll.id).catch((err: unknown) => {
       app.log.warn({ err, rollId: roll.id }, 'guest count unavailable; reporting zero');
       return 0;
     }),
+    roll.createdByDeviceId === null
+      ? Promise.resolve(null)
+      : app.db
+          .select({ serial: devices.serial })
+          .from(devices)
+          .where(eq(devices.id, roll.createdByDeviceId))
+          .limit(1)
+          .then(([device]) => device?.serial ?? null),
   ]);
-  return hostRollView(app.config, roll, counts, guests);
+  return hostRollView(app.config, roll, counts, guests, deviceSerial);
 }
 
 /**

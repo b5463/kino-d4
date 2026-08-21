@@ -15,7 +15,9 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.5",
     "@fontsource/ibm-plex-sans": "^5.2.5",
+    "@kino/design-system": "*",
     "@kino/kdp": "*",
+    "@kino/schemas": "*",
     "@kino/test-fixtures": "*",
     "mp4-muxer": "^5.2.2",
     "qrcode": "^1.5.4",

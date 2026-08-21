@@ -1,0 +1,19 @@
+:8080 {
+	encode zstd gzip
+
+	@studioRoot path /studio
+	redir @studioRoot /studio/ 308
+
+	handle_path /studio/* {
+		root * /srv/studio
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+

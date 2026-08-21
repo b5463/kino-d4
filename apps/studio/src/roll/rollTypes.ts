@@ -94,3 +94,13 @@ export interface RollCreateResponse {
   name: string;
   role: 'host' | 'guest';
 }
+
+/** Server-published Roll assignment written to the camera over ROLL_JOIN. */
+export interface PublishedRollJoinRequest {
+  slug: string;
+  rollId: string;
+  guestUrl: string;
+  name: string;
+  role: 'host' | 'guest';
+  uploadScope: 'upload';
+}

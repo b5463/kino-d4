@@ -10,8 +10,12 @@
     "lint": "npm run lint --workspaces --if-present",
     "version:check": "node scripts/check-versions.mjs",
     "license:check": "node scripts/check-licenses.mjs",
+    "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
+    "test:uploader": "tsx infra/scripts/test-uploader.ts",
     "project": "node scripts/kino-project.mjs",
     "preview:all": "node scripts/preview-all.mjs"
   },
+  "devDependencies": { "tsx": "^4.21.0" },
+  "optionalDependencies": { "@rollup/rollup-linux-x64-gnu": "4.62.4" },
   "engines": { "node": ">=22" }
 }

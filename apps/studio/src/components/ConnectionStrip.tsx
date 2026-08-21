@@ -25,5 +25,13 @@ export function ConnectionStrip({
   silentWhenConnected?: boolean;
 }) {
   const { label, led } = connectionStrip(phase, fault);
-  return <Led state={led} label={silentWhenConnected && phase === 'connected' ? '' : label} />;
+  const visuallySilent = silentWhenConnected && phase === 'connected';
+  return (
+    <Led
+      state={led}
+      label={visuallySilent ? '' : label}
+      accessibleLabel={visuallySilent ? label : undefined}
+      announce
+    />
+  );
 }

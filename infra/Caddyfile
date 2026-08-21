@@ -1,0 +1,19 @@
+{$KINO_SITE_ADDRESS} {
+	encode zstd gzip
+
+	@privatePages path /r/* /host /host/*
+	header @privatePages X-Robots-Tag "noindex, nofollow, noarchive"
+
+	handle /api/* {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+
+	log
+}
+

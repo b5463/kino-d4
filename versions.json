@@ -34,6 +34,12 @@
       "tagPrefix": "kino-worker-v"
     },
     {
+      "name": "kino-roll-web",
+      "version": "0.1.0",
+      "package": "apps/roll-web/package.json",
+      "tagPrefix": "kino-roll-web-v"
+    },
+    {
       "name": "kino-kdp",
       "version": "0.1.0",
       "package": "packages/kdp/package.json",
@@ -74,6 +80,12 @@
       "version": "0.1.0",
       "package": "packages/three-assets/package.json",
       "tagPrefix": "kino-three-assets-v"
+    },
+    {
+      "name": "kino-design-system",
+      "version": "0.1.0",
+      "package": "packages/design-system/package.json",
+      "tagPrefix": "kino-design-system-v"
     }
   ],
   "protocol": {
@@ -134,7 +146,7 @@
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
-    "latestMigration": "0006_recap_jobs"
+    "latestMigration": "0007_slippery_falcon"
   },
   "hardware": {
     "manifest": "hardware/manifest.json",

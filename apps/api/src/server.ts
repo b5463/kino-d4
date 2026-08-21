@@ -11,6 +11,8 @@ import { loadConfig, type ApiConfig } from './config';
 import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
+import { rateLimitsPlugin } from './plugins/rateLimits';
+import { metricsPlugin } from './plugins/metrics';
 import { eventsPlugin } from './plugins/events';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
@@ -21,11 +23,13 @@ import { deviceCaptureRoutes } from './routes/device-captures';
 import { hostRollRoutes } from './routes/host-rolls';
 import { hostCaptureRoutes } from './routes/host-captures';
 import { hostExportRoutes } from './routes/host-export';
+import { hostEventRoutes } from './routes/host-events';
 import { guestRollRoutes } from './routes/guest-rolls';
 import { guestCaptureRoutes } from './routes/guest-captures';
 import { guestEventRoutes } from './routes/guest-events';
 import { assetRoutes } from './routes/assets';
 import { diagnosticRoutes } from './routes/diagnostics';
+import { firmwareRoutes } from './routes/firmware';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -77,6 +81,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
     // `reqId` (its default label).
     genReqId: () => randomUUID(),
     requestIdHeader: 'x-request-id',
+    trustProxy: config.TRUST_PROXY,
   };
 
   const app = Fastify(options);
@@ -84,9 +89,11 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.decorate('config', config);
   app.register(dbPlugin, { config });
   app.register(redisPlugin, { config });
+  app.register(rateLimitsPlugin);
   // The roll event subscriber; duplicates the client above, so it comes after.
   app.register(eventsPlugin);
   app.register(s3Plugin, { config });
+  app.register(metricsPlugin);
   // Signed cookies for the guest PIN session (05 §12/§13).
   app.register(cookie, { secret: config.COOKIE_SECRET });
 
@@ -115,10 +122,12 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   app.register(hostRollRoutes);
   app.register(hostCaptureRoutes);
   app.register(hostExportRoutes);
+  app.register(hostEventRoutes);
   app.register(guestRollRoutes);
   app.register(guestCaptureRoutes);
   app.register(guestEventRoutes);
   app.register(assetRoutes);
+  app.register(firmwareRoutes);
 
   /**
    * Auth probe routes, test builds only. `NODE_ENV` has no default and an unset

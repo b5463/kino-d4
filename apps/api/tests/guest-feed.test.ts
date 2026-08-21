@@ -31,6 +31,7 @@ const RUN = randomBytes(4).toString('hex');
 
 const config: ApiConfig = loadConfig();
 const app: FastifyInstance = buildServer(config);
+const proxyApp: FastifyInstance = buildServer({ ...config, OBJECT_DELIVERY: 'proxy' });
 
 const REQUIRED_TABLES = ['captures', 'assets', 'rolls'];
 
@@ -158,6 +159,7 @@ async function storeBytes(assetId: string, body: Buffer): Promise<void> {
 interface AssetSummary {
   role: string;
   assetId: string;
+  frameIndex: number | null;
   width: number | null;
   height: number | null;
 }
@@ -238,6 +240,7 @@ async function assertMigrated(): Promise<void> {
 
 beforeAll(async () => {
   await app.ready();
+  await proxyApp.ready();
   await assertMigrated();
 
   const res = await app.inject({
@@ -268,6 +271,7 @@ afterAll(async () => {
     );
 
     if (captureIds.length > 0) {
+      await app.db.delete(schema.reactions).where(inArray(schema.reactions.captureId, captureIds));
       await app.db.delete(schema.assets).where(inArray(schema.assets.captureId, captureIds));
       await app.db.delete(schema.captures).where(inArray(schema.captures.id, captureIds));
     }
@@ -278,6 +282,7 @@ afterAll(async () => {
   if (migrated) {
     await app.db.delete(schema.devices).where(eq(schema.devices.serial, SERIAL));
   }
+  await proxyApp.close();
   await app.close();
 }, 60_000);
 
@@ -454,7 +459,13 @@ describe('GET /api/rolls/:slug/captures — visibility (03 §11)', () => {
     expect(roles).not.toContain('wiggle-webp');
 
     const thumb = item?.assets.find((asset) => asset.role === 'thumb');
-    expect(thumb).toEqual({ role: 'thumb', assetId: ids['thumb'], width: 480, height: 360 });
+    expect(thumb).toEqual({
+      role: 'thumb',
+      assetId: ids['thumb'],
+      frameIndex: null,
+      width: 480,
+      height: 360,
+    });
 
     // 05 §6: an object key is a location, never a handle a guest is given.
     expect(res.body).not.toContain('rolls/');
@@ -495,14 +506,22 @@ describe('GET /api/rolls/:slug/captures/:captureId', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const body = res.json<{ captureId: string; assets: { role: string }[] }>();
+    const body = res.json<{
+      captureId: string;
+      reactionCount: number;
+      reacted: boolean;
+      assets: { role: string; frameIndex: number | null }[];
+    }>();
     expect(body.captureId).toBe(captureId);
+    expect(body.reactionCount).toBe(0);
+    expect(body.reacted).toBe(false);
     expect(body.assets.map((asset) => asset.role).sort()).toEqual([
       'kino-still',
       'original-frame',
       'thumb',
     ]);
     expect(res.body).not.toContain('rolls/');
+    expect(body.assets.find((asset) => asset.role === 'original-frame')?.frameIndex).toBe(1);
   });
 
   it('404s a hidden, a deleted and a foreign roll’s capture alike', async () => {
@@ -528,6 +547,63 @@ describe('GET /api/rolls/:slug/captures/:captureId', () => {
       expect(res.statusCode).toBe(404);
       expect(res.json()).toMatchObject({ code: 'CAPTURE_NOT_FOUND' });
     }
+  });
+});
+
+describe('POST /api/rolls/:slug/captures/:captureId/react', () => {
+  it('creates an anonymous session, exposes its state, and toggles the heart off again', async () => {
+    const roll = await createRoll({ title: `Reactions ${RUN}`, reactionsEnabled: true });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/rolls/${roll.slug}/captures/${captureId}/react`,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toEqual({ reactionCount: 1, reacted: true });
+    const cookie = first.cookies.find((candidate) => candidate.name === 'kino_guest');
+    expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/api/rolls/' });
+    const headers = { cookie: `${cookie?.name ?? ''}=${cookie?.value ?? ''}` };
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/rolls/${roll.slug}/captures/${captureId}`,
+      headers,
+    });
+    expect(detail.json()).toMatchObject({ reactionCount: 1, reacted: true });
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/rolls/${roll.slug}/captures/${captureId}/react`,
+      headers,
+    });
+    expect(second.json()).toEqual({ reactionCount: 0, reacted: false });
+  });
+
+  it('enforces the Roll switch and capture visibility without creating a reaction', async () => {
+    const disabled = await createRoll({ title: `No reactions ${RUN}`, reactionsEnabled: false });
+    const captureId = newId('cap');
+    await insertCaptures(disabled.rollId, [{ id: captureId }]);
+
+    const disabledResponse = await app.inject({
+      method: 'POST',
+      url: `/api/rolls/${disabled.slug}/captures/${captureId}/react`,
+    });
+    expect(disabledResponse.statusCode).toBe(409);
+    expect(disabledResponse.json()).toMatchObject({ code: 'REACTIONS_DISABLED' });
+    expect(disabledResponse.cookies).toHaveLength(0);
+
+    const enabled = await createRoll({ title: `Hidden reaction ${RUN}`, reactionsEnabled: true });
+    const hidden = newId('cap');
+    await insertCaptures(enabled.rollId, [{ id: hidden, visible: false }]);
+    const hiddenResponse = await app.inject({
+      method: 'POST',
+      url: `/api/rolls/${enabled.slug}/captures/${hidden}/react`,
+    });
+    expect(hiddenResponse.statusCode).toBe(404);
+    expect(hiddenResponse.json()).toMatchObject({ code: 'CAPTURE_NOT_FOUND' });
+    expect(hiddenResponse.cookies).toHaveLength(0);
   });
 });
 
@@ -663,6 +739,25 @@ describe('GET /api/assets/:assetId/content', () => {
     const fetched = await fetch(res.headers['location'] as string);
     expect(fetched.status).toBe(200);
     expect(Buffer.from(await fetched.arrayBuffer()).equals(body)).toBe(true);
+  }, 30_000);
+
+  it('streams authorized bytes through the API when production storage is private', async () => {
+    const roll = await createRoll({ title: `Proxy round trip ${RUN}` });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+    const ids = await insertAssets(roll.rollId, captureId, [{ role: 'thumb' }]);
+    const body = randomBytes(64);
+    await storeBytes(ids['thumb'] ?? '', body);
+
+    const response = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/assets/${ids['thumb'] ?? ''}/content`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['location']).toBeUndefined();
+    expect(response.headers['content-type']).toContain('image/webp');
+    expect(response.headers['content-disposition']).toBe('inline');
+    expect(response.rawPayload.equals(body)).toBe(true);
   }, 30_000);
 
   it('404s an unknown asset, an unready asset, and a deleted capture’s assets', async () => {

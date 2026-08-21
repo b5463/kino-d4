@@ -858,3 +858,29 @@ describe('GET /api/rolls/:slug/events (03 §7)', () => {
     await eventually(async () => (await countRollViewers(app.redis, roll.rollId)) === 0, 'the viewer to be forgotten');
   });
 });
+
+describe('GET /api/host/rolls/:rollId/events (host dashboard)', () => {
+  it('streams a PIN Roll through host auth without counting the dashboard as a guest', async () => {
+    const roll = await createPinRoll('4821');
+    const client = await openStream(`/api/host/rolls/${roll.rollId}/events`, bearer(roll.hostToken));
+    await eventually(() => client.retry !== null, 'the host stream to open');
+
+    await publishRollEvent(app.redis, roll.rollId, { type: 'roll.closed' });
+    const [frame] = await client.awaitFrames(1);
+    expect(frame?.name).toBe('roll.closed');
+    expect(payloadOf(frame!)).toEqual({ type: 'roll.closed' });
+    expect(await countRollViewers(app.redis, roll.rollId)).toBe(0);
+
+    client.close();
+  });
+
+  it('rejects a token belonging to another Roll', async () => {
+    const mine = await createRoll();
+    const other = await createRoll();
+    const response = await fetch(`${base}/api/host/rolls/${mine.rollId}/events`, {
+      headers: bearer(other.hostToken),
+    });
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { code?: string }).code).toBe('INVALID_HOST_TOKEN');
+  });
+});

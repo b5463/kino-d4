@@ -27,6 +27,7 @@ import { publishRollEvent, type RollEvent } from '../events/publish';
 import { newId } from '../ids';
 import { assets, captures, rollDevices, rolls, uploadSessions } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
+import { deviceUploadRateLimit } from '../plugins/rateLimits';
 
 /**
  * The upload API (03 §16) — everything a camera does after the shutter.
@@ -291,7 +292,10 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post(
     '/api/device/rolls/:rollId/captures',
-    { preHandler: [app.requireDevice, app.requireDeviceRoll('rollId')] },
+    {
+      config: deviceUploadRateLimit,
+      preHandler: [app.requireDevice, app.requireDeviceRoll('rollId')],
+    },
     async (request, reply) => {
       const roll = rollOf(request);
       assertRollAcceptsUploads(roll);
@@ -359,7 +363,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.post(
     '/api/device/captures/:captureId/complete',
-    { preHandler: app.requireDevice },
+    { config: deviceUploadRateLimit, preHandler: app.requireDevice },
     async (request, reply) => {
       const ctx = await requireCapture(app, request, reply);
       if (ctx === null) return reply;
@@ -409,7 +413,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.post(
     '/api/device/captures/:captureId/assets/init',
-    { preHandler: app.requireDevice },
+    { config: deviceUploadRateLimit, preHandler: app.requireDevice },
     async (request, reply) => {
       const ctx = await requireCapture(app, request, reply);
       if (ctx === null) return reply;
@@ -497,7 +501,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.put(
     '/api/device/uploads/:uploadId/parts/:partNo',
-    { preHandler: app.requireDevice, bodyLimit: PART_SIZE },
+    { config: deviceUploadRateLimit, preHandler: app.requireDevice, bodyLimit: PART_SIZE },
     async (request, reply) => {
       const ctx = await requireUpload(app, request, reply);
       if (ctx === null) return reply;
@@ -531,7 +535,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.post(
     '/api/device/uploads/:uploadId/complete',
-    { preHandler: app.requireDevice },
+    { config: deviceUploadRateLimit, preHandler: app.requireDevice },
     async (request, reply) => {
       const ctx = await requireUpload(app, request, reply);
       if (ctx === null) return reply;

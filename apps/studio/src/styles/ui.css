@@ -516,6 +516,7 @@
   position: relative;
   border: 1px solid rgb(30 45 65 / 55%);
   background: radial-gradient(circle at 35% 30%, #cfd6dd, #79828c 70%);
+  font-size: 0;
 }
 
 .led-dot::after {

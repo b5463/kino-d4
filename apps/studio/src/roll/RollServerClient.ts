@@ -1,9 +1,8 @@
 // The Roll server seam.
 //
 // Everything else on the Roll page is device-side KDP. This is the one place
-// Studio would talk to `kino.acronym.sk`, and in V1 nothing implements it —
-// `StubRollServerClient` refuses every call so the page states plainly that no
-// server is configured instead of pretending a Roll was published.
+// Studio talks to `kino.acronym.sk`; `HttpRollServerClient` is the live
+// implementation and this module retains the explicit offline/demo stub.
 //
 // 05 §13 / 03 §27: Wi-Fi credentials are provisioned straight to the camera
 // over KDP and are never an argument to anything in this file.
@@ -29,6 +28,17 @@ export interface RollServerClient {
   }): Promise<{ rollId: string; slug: string; guestUrl: string; hostUrl: string }>;
 }
 
+/** A client that can carry the just-issued device credential in memory. */
+export interface CredentialledRollServerClient extends RollServerClient {
+  useDeviceCredential(deviceId: string, deviceToken: string): void;
+}
+
+export function acceptsDeviceCredential(
+  client: RollServerClient,
+): client is CredentialledRollServerClient {
+  return 'useDeviceCredential' in client && typeof client.useDeviceCredential === 'function';
+}
+
 export class RollServerError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {
@@ -43,8 +53,8 @@ export function isServerNotConfigured(err: unknown): boolean {
 }
 
 /**
- * The V1 client: there is no Roll server yet, and a stub that quietly
- * succeeded would be worse than none at all.
+ * Explicit offline/demo client. A stub that quietly succeeded would be worse
+ * than none at all.
  */
 export class StubRollServerClient implements RollServerClient {
   readonly baseUrl: string;
@@ -82,7 +92,7 @@ export function getRollServerClient(): RollServerClient {
   return client;
 }
 
-/** Swapped when a real client exists, or by a test that needs a live server. */
+/** Swapped after a server URL is tested, or by a test that needs a live server. */
 export function setRollServerClient(next: RollServerClient) {
   client = next;
 }

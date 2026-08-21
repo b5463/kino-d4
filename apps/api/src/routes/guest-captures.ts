@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { guestReadRateLimit } from '../plugins/rateLimits';
 import { rollOf } from '../auth/plugins';
 import {
   decodeCursor,
@@ -7,6 +8,12 @@ import {
   readCaptureFeedPage,
 } from '../captures/feed';
 import { convergeWarning, fail } from './errors';
+import {
+  ensureGuestId,
+  guestIdOf,
+  readReactionState,
+  toggleReaction,
+} from '../captures/reactions';
 
 /**
  * The guest's gallery (03 §6, 06 §11).
@@ -33,7 +40,7 @@ function paramOf(request: FastifyRequest, name: string): string {
 }
 
 export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/rolls/:slug/captures', { preHandler: app.guestRollAccess }, async (request, reply) => {
+  app.get('/api/rolls/:slug/captures', { config: guestReadRateLimit, preHandler: app.guestRollAccess }, async (request, reply) => {
     const query = queryOf(request);
 
     const limit = parseLimit(query['limit']);
@@ -68,7 +75,30 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
       // for all four. Anything else would make this route an oracle for
       // captures the caller has no business knowing about.
       if (detail === null) return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'no such capture');
-      return detail;
+      return {
+        ...detail,
+        ...(await readReactionState(app.db, detail.captureId, guestIdOf(request))),
+      };
+    },
+  );
+
+  app.post(
+    '/api/rolls/:slug/captures/:captureId/react',
+    { config: guestReadRateLimit, preHandler: app.guestRollAccess },
+    async (request, reply) => {
+      const roll = rollOf(request);
+      if (!roll.reactionsEnabled) {
+        return fail(reply, 409, 'REACTIONS_DISABLED', 'reactions are disabled for this Roll');
+      }
+
+      const state = await toggleReaction(
+        app.db,
+        roll.id,
+        paramOf(request, 'captureId'),
+        () => ensureGuestId(request, reply),
+      );
+      if (state === null) return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'no such capture');
+      return state;
     },
   );
 };

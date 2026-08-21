@@ -287,6 +287,8 @@ export class MockKinoDevice implements MockDeviceLike {
   // Set in the constructor: lastSeen draws from this.now().
   private networks: SavedNetwork[];
   private roll: RollState | null = null;
+  /** The server credential is write-only configuration and never leaves GET_CONFIG. */
+  private rollCredentials: { deviceId: string; deviceToken: string; serverUrl: string } | null = null;
   private rollCounter = 0;
   private uploads: UploadQueue = { pending: 0, uploading: 0, failed: 0, uploaded: 118 };
   private uploadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -581,6 +583,11 @@ export class MockKinoDevice implements MockDeviceLike {
    */
   setIdentity(patch: { serial?: string; hardwareRevision?: string; product?: string }): void {
     this.identity = { ...this.identity, ...patch };
+  }
+
+  /** Test-only proof that the write-only Roll credential reached device-owned storage. */
+  hasRollCredential(): boolean {
+    return this.rollCredentials !== null;
   }
 
   /** Patch merged into GET_CAPABILITIES.capabilities; null clears any override. */
@@ -1250,7 +1257,28 @@ export class MockKinoDevice implements MockDeviceLike {
           );
           return;
         }
-        this.config = deepMerge(this.config, env.config ?? {});
+        const patch = env.config ?? {};
+        const credentials = patch.roll?.credentials;
+        if (
+          credentials?.deviceToken !== undefined &&
+          credentials.deviceId !== undefined &&
+          credentials.serverUrl !== undefined
+        ) {
+          this.rollCredentials = {
+            deviceId: credentials.deviceId,
+            deviceToken: credentials.deviceToken,
+            serverUrl: credentials.serverUrl,
+          };
+          patch.roll = {
+            ...patch.roll,
+            credentials: {
+              deviceId: credentials.deviceId,
+              serverUrl: credentials.serverUrl,
+              hasDeviceToken: true,
+            },
+          };
+        }
+        this.config = deepMerge(this.config, patch);
         this.configRevision++;
         this.log('P4', `config updated from host (revision ${this.configRevision})`);
         this.respond(frame, { ok: true, configRevision: this.configRevision });
@@ -1262,6 +1290,7 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.RESET_CONFIG:
         this.config = defaultConfig();
+        this.rollCredentials = null;
         this.log('P4', 'config reset to defaults');
         this.respond(frame, { ok: true });
         return;
@@ -1688,7 +1717,15 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       }
       case Cmd.ROLL_JOIN: {
-        const req = decodeJson<{ slug?: string; code?: string }>(frame.payload);
+        const req = decodeJson<{
+          slug?: string;
+          code?: string;
+          rollId?: string;
+          guestUrl?: string;
+          name?: string;
+          role?: 'host' | 'guest';
+          uploadScope?: 'upload';
+        }>(frame.payload);
         const slug = (req.slug ?? req.code ?? '').trim().toLowerCase();
         if (!/^[a-z0-9][a-z0-9-]{2,47}$/.test(slug)) {
           this.respondError(frame, 'INVALID_ARGUMENT', 'Roll code must be a slug like amber-001');
@@ -1700,11 +1737,11 @@ export class MockKinoDevice implements MockDeviceLike {
         }
         this.rollCounter++;
         this.roll = {
-          rollId: `roll_${slug}`,
+          rollId: req.rollId ?? `roll_${slug}`,
           slug,
-          guestUrl: `https://kino.roll/${slug}`,
-          name: slug,
-          role: 'guest',
+          guestUrl: req.guestUrl ?? `https://kino.roll/${slug}`,
+          name: req.name ?? slug,
+          role: req.role ?? 'guest',
           joinedAt: this.now(),
         };
         this.log('P4', `joined roll: ${slug}`);

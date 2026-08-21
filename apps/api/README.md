@@ -55,7 +55,7 @@ project `kino-dev`, so it never collides with other stacks on the machine.
 
 `src/config.ts` validates the environment with zod:
 
-`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`,
+`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_FIRMWARE_BUCKET`, `S3_ACCESS_KEY`,
 `S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `COOKIE_SECRET`, `NODE_ENV`,
 `LOG_LEVEL`.
 
@@ -195,6 +195,7 @@ previous run left behind. `kino_test` is dropped again afterwards, and the
 | `npm run test -w @kino/api` | vitest, needs the compose stack |
 | `npm run lint -w @kino/api` | `tsc --noEmit` |
 | `npm run db:migrate -w @kino/api` | `drizzle-kit migrate` against `DATABASE_URL` |
+| `npm run firmware:publish -- <package-dir>` | verify and publish an immutable firmware package |
 
 There is deliberately no `build` script. The server is TypeScript run directly
 on Node 22 — nothing bundles it, so a build step would only produce artifacts
@@ -217,6 +218,27 @@ SSE stream, which by definition would never end on its own.
 `GET /api/healthz` pings all three concurrently (`select 1`, `PING`,
 `HeadBucket`) with a 5 s per-probe timeout, and answers
 `{ ok, db, redis, storage }` — `200` when all are reachable, `503` otherwise.
+
+### Firmware catalog
+
+`GET /api/firmware/releases?hardware=<revision>&protocol=<number>&channel=stable`
+returns every release in the channel. Compatibility is annotated with an
+explicit reason rather than hiding a package that does not match the connected
+device. `GET /api/firmware/releases/:release/manifest?channel=stable` returns
+the validated `kino.firmware-manifest` plus short-lived download URLs for each
+target in the separate `S3_FIRMWARE_BUCKET`.
+
+Publishing is intentionally a CLI operation in V1. A package directory contains
+`manifest.json` and every target named by its `targets` map. The command checks
+the manifest, safe file paths, image sizes and every SHA-256 before uploading
+anything, then records the release:
+
+```bash
+npm run firmware:publish -- ./kino-firmware-1.2.3 --notes "Production D4 release"
+```
+
+An existing release/channel pair is always refused. Publish a new release number
+instead: immutable releases make rollback and incident diagnosis reliable.
 
 ## Authentication
 
@@ -285,27 +307,21 @@ fails the suite instead of shipping.
 
 `POST /api/studio/devices/register` `{serial, product, hardwareRevision, name?}`
 → `{deviceId, deviceToken}`, `200`. Unauthenticated, and re-registering an
-existing serial **rotates** that device's token.
+existing serial follows `DEVICE_REGISTRATION_MODE`.
 
-**This is a device-takeover primitive, stated plainly.** One unauthenticated
-POST with an existing serial returns a working token for that `deviceId` —
-granting every roll the device created or joined — and simultaneously bricks the
-real device, which cannot notice or re-enrol on its own. The response echoes the
-`deviceId`, so an attacker can tell a hit from a new registration. Serials are
-printed on the outside of the hardware and sequential (`KD4-00001`): the space
-is walkable by counting, not searching.
+Task 36 made the safe behavior environment-sensitive and fail-closed:
 
-Rotation itself is not the flaw and removing it would not fix this — an attacker
-can equally pre-claim serials that do not exist yet, and blocking
-re-registration would only brick real devices after a factory reset. The fix is
-authentication on the endpoint: **rate limiting plus either a registration
-secret or first-write-wins serial claiming**, tracked as a Task 36 handoff.
-Until then, treat this as the weakest link in the device trust chain.
+- development/test default to `rotate`, preserving fast factory-reset work on a
+  private bench;
+- production and any unset/unrecognized environment default to
+  `first-write-wins`, where an existing serial returns
+  `409 DEVICE_ALREADY_REGISTERED` and its token hash is untouched; and
+- every mode is limited to 10 registration requests/minute/IP.
 
-Since Task 17 it is also a *step*, not just an endpoint: the free device token
-it hands out is what makes `POST /api/device/rolls/join` a practical slug
-enumerator. See "Rate limiting — the Task 36 handoff, in priority order" below
-for the full chain.
+This closes the previous device-takeover primitive: knowing a printed serial can
+no longer rotate the deployed device's token. The controlled physical recovery
+procedure is documented in `infra/README.md`. First-write-wins does not make
+unissued sequential serials secret, so registration remains rate-limited.
 
 ### Guest PIN session
 
@@ -319,12 +335,10 @@ The cookie uses `secure: 'auto'`, so @fastify/cookie sets `Secure` from the
 actual request protocol — https in production, plain http on localhost in dev
 and test — with no environment string to get wrong.
 
-> **Deployment caveat.** `'auto'` reads `request.protocol`, which behind a
-> TLS-terminating reverse proxy reports `http` unless Fastify's `trustProxy` is
-> enabled. In that topology the `Secure` flag would be silently dropped.
-> Enabling `trustProxy` is a server-level decision (it makes
-> `X-Forwarded-Proto` authoritative, which is only safe behind a trusted proxy),
-> so it is not set here — it belongs with the deployment work.
+The production Compose stack enables `trustProxy` because the API is reachable
+only through its private Caddy service. `X-Forwarded-Proto` therefore preserves
+the cookie's `Secure` flag after TLS termination without trusting headers from a
+publicly reachable API socket.
 
 ### Diagnostic routes
 
@@ -347,7 +361,10 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts` and live `guests` |
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
-| `GET /api/rolls/:slug` | guest | `{title, status, photoCount, createdAt}` |
+| `GET /api/rolls/:slug` | guest | includes photo count plus download/reaction switches |
+| `GET /api/rolls/:slug/captures` | guest | visible capture feed with ordered asset summaries |
+| `GET /api/rolls/:slug/captures/:captureId` | guest | visible detail plus anonymous reaction state |
+| `POST /api/rolls/:slug/captures/:captureId/react` | guest | toggles one signed, session-only anonymous heart |
 | `GET /api/rolls/:slug/events` | guest | SSE; see [Live events](#live-events-03-7-05-10) |
 
 `POST /api/host/rolls` is unauthenticated for the same reason device
@@ -388,54 +405,37 @@ impractical to stumble on". That was true when only guests could use one. It is
 > not device assignment) and no host approval step. Anyone holding a slug and
 > any device token can put a camera into that roll.
 
-~29.7 bits is a reasonable size for a link that is merely *read*. It is a thin
-credential for one that grants **write** access, and until Task 36 meters the
-join route, nothing bounds how fast that space can be walked. The slug is doing
-authorization work its entropy was not chosen for.
+~29.7 bits is a thin credential for write access, so Task 36 now meters the join
+route by IP and locks a device for an hour after ten misses. The slug still does
+authorization work its entropy was not chosen for; the controls are therefore
+part of the security boundary, not optional performance tuning.
 
-### Rate limiting — the Task 36 handoff, in priority order
+### Rate limiting and exposure hardening (Task 36)
 
-Nothing in V1 is rate limited. These are the routes that need it, worst first.
-The ordering is by *what a successful guess wins*, not by how exposed the route
-looks.
+All counters use shared Redis storage, so adding API replicas does not multiply
+an attacker's budget. Test servers alone use isolated namespaces so parallel
+suites cannot throttle one another. The controls remain ordered by what a
+successful guess wins:
 
 **1. `POST /api/device/rolls/join` — enumeration that converts directly into
-write scope.** The full chain is what makes this first: `POST
-/api/studio/devices/register` is unauthenticated, so an attacker mints a valid
-device token for free, then walks the slug space against `join`. The route
-distinguishes 404 (no such roll) from 200 (joined) with no metering, so it is an
-oracle — and unlike every other oracle here, a **hit is not information, it is
-access**: the 200 already wrote the `roll_devices` row. There is no second step
-to defend. Needs per-token and per-IP limits on the join route, and a lockout
-after a run of 404s, since sustained misses are the enumeration signature.
+write scope.** Limited to 30/minute/IP. Each authenticated device also gets a
+miss counter: ten unknown slugs lock it for one hour, while a valid join clears
+the history. This covers both source rotation and free-token rotation without
+making a single human typo punitive.
 
-**2. `POST /api/studio/devices/register` — identity takeover.** Documented in
-full above: an unauthenticated POST with an existing serial rotates that
-device's token, bricking the hardware and handing over every roll it had. It is
-second only because it is a prerequisite for (1) rather than a hit in itself —
-though it is also the cheaper fix, and fixing it (registration secret or
-first-write-wins serial claiming) removes the free device token that (1)
-depends on.
+**2. `POST /api/studio/devices/register` — identity takeover.** Limited to
+10/minute/IP, with production first-write-wins. An existing serial cannot rotate
+a deployed token; see the registration section above.
 
-**3. `POST /api/rolls/:slug/pin` — online PIN guessing.** A 4-digit PIN is 10 000
-candidates. scrypt makes each attempt cost ~30 ms server-side, which is a
-throttle on the attacker *and* on us; it is not a limit. `pins.ts` is already
-explicit that the real defence is rate limiting, and it belongs here.
+**3. `POST /api/rolls/:slug/pin` — online PIN guessing.** Limited to
+5/minute/IP. scrypt remains defence in depth, not the request budget.
 
-**4. `GET /api/rolls/:slug` — existence oracle.** Inherited, not introduced by
-Task 17: 404 versus 200/401 confirms a slug exists. Last because a hit yields
-only *read* access to one roll (and only past the PIN gate, if there is one) —
-it does not compound. Worth metering for the same enumeration signature as (1),
-at a looser threshold.
+**4. Guest reads and asset/firmware delivery.** Grouped at 300/minute/IP across
+Roll metadata, feeds, details, live events, media, and firmware. This meters the
+existence oracle and bounds anonymous read amplification.
 
-Note that (1) and (4) walk the *same* keyspace. Metering the guest read while
-leaving `join` open would move an attacker to the route that grants more.
-
-Plus `POST /api/host/rolls` — an abuse/resource surface rather than a guessing
-one. It is unnumbered because it is not in the same competition: nothing is
-being *guessed*, so there is no keyspace and no oracle. It still needs a limit,
-because unauthenticated roll creation is free storage and free rows for anyone
-who can reach the endpoint.
+Device upload mutations are grouped at 60/minute/token. Anonymous
+`POST /api/host/rolls` is limited to 60/minute/IP as a row/storage abuse surface.
 
 ### States (03 §22)
 

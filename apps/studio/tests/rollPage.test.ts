@@ -218,7 +218,7 @@ describe('(b) saved networks render from NETWORK_LIST with masked passwords', ()
 });
 
 describe('(c) Start a Roll — server first, then the device', () => {
-  it('creates the roll on the server before ROLL_CREATE reaches the camera', async () => {
+  it('creates the roll on the server before ROLL_JOIN assigns it to the camera', async () => {
     const calls: { method: string; args: unknown[] }[] = [];
     const { device, order } = await connectMock();
     const server = recordingServer(calls, order);
@@ -232,9 +232,9 @@ describe('(c) Start a Roll — server first, then the device', () => {
     // Server first: the device is only told about a roll that exists.
     expect(calls.map((c) => c.method)).toEqual(['createRoll']);
     expect(calls[0].args[0]).toMatchObject({ title: 'Friday party', pin: '4417', downloadsEnabled: true });
-    expect(order.filter((o) => o === 'server:createRoll' || o === 'ROLL_CREATE')).toEqual([
+    expect(order.filter((o) => o === 'server:createRoll' || o === 'ROLL_JOIN')).toEqual([
       'server:createRoll',
-      'ROLL_CREATE',
+      'ROLL_JOIN',
     ]);
 
     // The public URLs come from the server, which owns the slug (05 §14).
@@ -306,6 +306,7 @@ describe('(c) Start a Roll — server first, then the device', () => {
     ).rejects.toThrow(SERVER_NOT_CONFIGURED);
 
     expect(order).not.toContain('ROLL_CREATE');
+    expect(order).not.toContain('ROLL_JOIN');
     expect((await device.rollStatus()).active).toBe(false);
   });
 
@@ -432,6 +433,8 @@ describe('(d) upload queue', () => {
     expect(html).toContain('12 PENDING');
     expect(html).toContain('2 FAILED');
     expect(html).toContain('RETRY FAILED');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
 
     const retried = await device.uploadQueueRetry();
     expect(sent.some((c) => c.cmd === Cmd.UPLOAD_QUEUE_RETRY)).toBe(true);
@@ -464,6 +467,7 @@ describe('(d) upload queue', () => {
       }),
     );
     expect(html).toContain('NOTHING QUEUED');
+    expect(html).toContain('aria-atomic="true"');
   });
 });
 

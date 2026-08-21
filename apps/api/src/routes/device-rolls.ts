@@ -6,6 +6,7 @@ import { createRoll } from '../rolls/rolls';
 import { SLUG_PATTERN, normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
+import { deviceJoinRateLimit } from '../plugins/rateLimits';
 
 /**
  * Rolls as the camera sees them (03 §8, 03 §17).
@@ -76,33 +77,42 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
    * upload time, by `assertRollAcceptsUploads`. Duplicating that decision here
    * would give two places for it to disagree.
    *
-   * ## This is the system's sharpest unmetered edge — read before extending it
+   * ## Enumeration controls
    *
    * The reply distinguishes 404 from 200, so this route is a slug oracle. What
    * makes it *the* one to fix first is that a hit is not information, it is
    * access: the 200 has already written the `roll_devices` row. There is no
    * second step left to defend.
    *
-   * And the entry cost is zero — `POST /api/studio/devices/register` is
-   * unauthenticated, so a device token is free. Slug + free token = write scope
-   * on somebody else's roll, at whatever rate the network allows.
-   *
-   * Nothing here is wrong per the spec (03 §9 puts no PIN on device
-   * assignment), and the fix is not a check in this handler — it is rate
-   * limiting, Task 36, item 1 of the priority list in the README. Anything
-   * added here that makes a hit cheaper or more distinguishable makes that
-   * worse.
+   * Task 36 meters this route per source IP and keeps a second, per-device miss
+   * counter. Ten unknown codes lock that device out for an hour; a valid code
+   * clears the miss history. This leaves ordinary hand-entry forgiving while
+   * making a sustained walk of the slug space impractical.
    */
-  app.post('/api/device/rolls/join', { preHandler: app.requireDevice }, async (request, reply) => {
+  app.post('/api/device/rolls/join', { config: deviceJoinRateLimit, preHandler: app.requireDevice }, async (request, reply) => {
     const parsed = joinBody.safeParse(request.body);
     if (!parsed.success) return invalidBody(reply, parsed.error);
+
+    const missKey = `join-misses:${deviceOf(request).id}`;
+    const priorMisses = Number(await app.redis.get(missKey));
+    if (Number.isFinite(priorMisses) && priorMisses >= 10) {
+      return fail(reply, 429, 'JOIN_LOCKED', 'too many unknown Roll codes; try again later');
+    }
 
     const [roll] = await app.db
       .select({ id: rolls.id, title: rolls.title, status: rolls.status })
       .from(rolls)
       .where(eq(rolls.slug, parsed.data.slug))
       .limit(1);
-    if (roll === undefined) return fail(reply, 404, 'ROLL_NOT_FOUND', 'no roll with that slug');
+    if (roll === undefined) {
+      const misses = await app.redis.incr(missKey);
+      if (misses === 1) await app.redis.expire(missKey, 60 * 60);
+      if (misses >= 10) {
+        return fail(reply, 429, 'JOIN_LOCKED', 'too many unknown Roll codes; try again later');
+      }
+      return fail(reply, 404, 'ROLL_NOT_FOUND', 'no roll with that slug');
+    }
+    await app.redis.del(missKey);
 
     // Idempotent: the composite primary key makes a second join a no-op rather
     // than a duplicate row or a 500.
