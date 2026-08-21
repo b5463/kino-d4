@@ -497,10 +497,14 @@ describe('stream shaping', () => {
     const mock = new MockKinoDevice();
     const client = await connect(mock);
     mock.setScenario('badCrc', true);
-    await expect(client.request(Cmd.GET_POWER_STATUS)).rejects.toThrow(/timed out/i);
+    // Exactly one response is corrupted; the idempotent read retries once
+    // and succeeds, so the caller sees a result while the stats see the CRC.
+    const first = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
+    expect(first.batteryV).toBeGreaterThan(3);
     expect(client.stats.crcFailures).toBeGreaterThanOrEqual(1);
+    expect(client.stats.readRetries).toBe(1);
 
-    // One-shot: it disarms itself and the link is usable again.
+    // One-shot: it disarms itself and the link is clean again.
     expect(mock.scenarios.badCrc).toBe(false);
     const after = client.stats.crcFailures;
     const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);

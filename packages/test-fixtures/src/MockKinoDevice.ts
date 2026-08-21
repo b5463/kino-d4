@@ -871,6 +871,31 @@ export class MockKinoDevice implements MockDeviceLike {
       this.scenarios.badCrc = false;
       this.scenarioCb?.();
     }
+    if (this.scenarios.droppedByte && frame.flags & FrameFlags.RESPONSE) {
+      // One byte vanishes mid-frame: CRC fails, the decoder resyncs, the
+      // request times out — the shape of a marginal cable, not a NACK.
+      const cut = 6 + Math.floor(this.rng() * Math.max(1, bytes.length - 7));
+      const shorter = new Uint8Array(bytes.length - 1);
+      shorter.set(bytes.subarray(0, cut));
+      shorter.set(bytes.subarray(cut + 1), cut);
+      bytes = shorter;
+      this.scenarios.droppedByte = false;
+      this.scenarioCb?.();
+    }
+    if (this.scenarios.midFrameDisconnect && frame.flags & FrameFlags.RESPONSE) {
+      this.scenarios.midFrameDisconnect = false;
+      this.scenarioCb?.();
+      this.emit(bytes.subarray(0, Math.max(1, Math.floor(bytes.length / 2))));
+      this.dropLink();
+      return;
+    }
+    if (this.scenarios.duplicateFrame && frame.flags & FrameFlags.RESPONSE) {
+      // A retransmitted duplicate: same bytes twice. The client must settle
+      // the request once and drop the second copy by sequence number.
+      this.scenarios.duplicateFrame = false;
+      this.scenarioCb?.();
+      this.writeOut(bytes);
+    }
     this.writeOut(bytes);
   }
 
@@ -909,6 +934,11 @@ export class MockKinoDevice implements MockDeviceLike {
   private emit(bytes: Uint8Array) {
     const sink = this.sink;
     if (!sink) return;
+    if (this.scenarios.baudMismatch) {
+      // A mis-set serial port doesn't drop bytes, it mangles all of them —
+      // nothing frames, HELLO can't complete, until the rate is corrected.
+      bytes = bytes.map((b) => b ^ 0xa5);
+    }
     if (!this.scenarios.splitFrames || bytes.length < 4) {
       sink(bytes);
       return;

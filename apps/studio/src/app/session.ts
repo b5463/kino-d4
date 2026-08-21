@@ -331,13 +331,19 @@ async function populateAll() {
   const prevSerial = useDeviceStore.getState().info?.serial;
   if (prevSerial && prevSerial !== info.serial) resetDrafts();
 
-  // Capability negotiation: firmware that predates this command simply
-  // NACKs or times out, and Studio falls back to a conservative baseline.
+  // Capability negotiation. A NACK means firmware that predates the command
+  // (legacy: deliberate everything-on fallback); a timeout — even after the
+  // client's read retry — means the answer never arrived, and the gate stays
+  // closed rather than granting the full surface to a device that never
+  // answered (audit #58).
   let capabilities = null as Awaited<ReturnType<KinoDevice['getCapabilities']>> | null;
+  let capabilitiesState: 'loaded' | 'legacy' | 'unknown' = 'loaded';
   try {
     capabilities = await device.getCapabilities();
   } catch (err) {
-    if (!(err instanceof KinoUnsupportedError || err instanceof KinoTimeoutError)) throw err;
+    if (err instanceof KinoUnsupportedError) capabilitiesState = 'legacy';
+    else if (err instanceof KinoTimeoutError) capabilitiesState = 'unknown';
+    else throw err;
   }
 
   const [cams, power, storage, envelope, recipes, calibration, stats] = await Promise.all([
@@ -351,8 +357,10 @@ async function populateAll() {
   ]);
 
   // Sounds arrived after V1 firmware — absence is a state, not an error.
+  // Legacy firmware gets the probe (everything-on rule); an unanswered
+  // capability query does not.
   let sounds = null as Awaited<ReturnType<KinoDevice['getSounds']>> | null;
-  if (capabilities === null || capabilities.capabilities.customSounds) {
+  if (capabilitiesState === 'legacy' || capabilities?.capabilities.customSounds) {
     try {
       sounds = await device.getSounds();
     } catch (err) {
@@ -374,6 +382,7 @@ async function populateAll() {
     config: envelope.config,
     configRevision: envelope.configRevision ?? 0,
     capabilities: capabilities?.capabilities ?? null,
+    capabilitiesState,
     limits: capabilities?.limits ?? null,
     firmwareLabel: capabilities?.firmware ?? info.p4Firmware,
     factoryRecipes: recipes.factory,

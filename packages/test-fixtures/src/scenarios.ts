@@ -74,6 +74,21 @@ export interface ScenarioFlags {
   nodeFwMismatch: boolean;
   /** CAM3's VSYNC phase jumps to 31,000 µs — visible in the phase snapshot. */
   vsyncOffsetLarge: boolean;
+
+  // ---- transport hostility (audit #58) ----
+
+  /** The next response frame is written twice (one-shot) — a retransmitted
+   * duplicate the client must drop by sequence number. */
+  duplicateFrame: boolean;
+  /** One byte vanishes from the next response in transit (one-shot) — CRC
+   * fails, the decoder resyncs, the request times out. */
+  droppedByte: boolean;
+  /** The link dies halfway through writing the next response (one-shot) —
+   * the host holds an incomplete frame when onClose fires. */
+  midFrameDisconnect: boolean;
+  /** Wrong host baud: every outgoing byte is garbled until switched off.
+   * Nothing frames, HELLO cannot complete — the classic mis-set serial port. */
+  baudMismatch: boolean;
 }
 
 /**
@@ -136,6 +151,11 @@ export const scenarios = {
   flashOverload: descriptor('flashOverload', 'FLASH OVERLOAD', false, 'the flash test reports a driver fault and a thermal flag'),
   nodeFwMismatch: descriptor('nodeFwMismatch', 'NODE FW MISMATCH', false, 'CAM4 reports firmware 0.0.9, capabilities note the mismatch'),
   vsyncOffsetLarge: descriptor('vsyncOffsetLarge', 'VSYNC OFFSET LARGE', false, "CAM3's VSYNC phase jumps to 31,000 us"),
+
+  duplicateFrame: descriptor('duplicateFrame', 'DUPLICATE FRAME (NEXT)', true, 'the next response is written twice'),
+  droppedByte: descriptor('droppedByte', 'DROPPED BYTE (NEXT)', true, 'one byte vanishes from the next response'),
+  midFrameDisconnect: descriptor('midFrameDisconnect', 'MID-FRAME DISCONNECT', true, 'the link dies halfway through the next response'),
+  baudMismatch: descriptor('baudMismatch', 'BAUD MISMATCH', false, 'every outgoing byte is garbled — nothing frames'),
 } satisfies Record<ScenarioKey, ScenarioDescriptor>;
 
 /** The twelve 04 §19 mock requirements, in spec order. */

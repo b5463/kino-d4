@@ -74,13 +74,16 @@ describe('mock device over the real protocol stack', () => {
     expect(cam1?.state).toBe('offline');
   });
 
-  it('recovers after an injected CRC error (command times out, next succeeds)', async () => {
+  it('recovers after an injected CRC error (idempotent read retries transparently)', async () => {
     const { mock, client } = await connect();
     mock.setScenario('badCrc', true);
-    await expect(client.request(Cmd.GET_POWER_STATUS)).rejects.toThrow(/timed out/i);
-    expect(client.stats.crcFailures).toBeGreaterThanOrEqual(1);
+    // The corrupted response fails CRC and the first attempt times out; the
+    // read is idempotent, so the client retries once and the caller never
+    // sees the fault — only the stats do.
     const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
     expect(power.batteryV).toBeGreaterThan(3);
+    expect(client.stats.crcFailures).toBeGreaterThanOrEqual(1);
+    expect(client.stats.readRetries).toBe(1);
   }, 10000);
 
   it('requires maintenance mode before a firmware transfer', async () => {

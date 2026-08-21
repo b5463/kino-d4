@@ -46,6 +46,10 @@ KINO has no published release yet. Changes intended for the first release collec
 
 - Master Twin+Studio audit against the D4 hardware/software specification: compliance matrix and thirteen maintained documents under `docs/audit/`, provisional P4 header assignments and XIAO DVP pin map in the hardware profile, and OV3660/OV5640_AF sensor profiles recorded as capability-driven data.
 
+- Idempotent protocol reads retry once on timeout with a fresh sequence number; mutations stay one-shot. The capability gate fails closed when the capability query never answered, keeps the deliberate everything-on fallback for pre-negotiation firmware that NACKs it, and the client drops CRC-valid frames whose framing version it does not speak.
+- The reference device can now injure the transport like real hardware: duplicated response frames, a dropped byte in transit, a mid-frame link death, and a wrong-baud garble that never frames. The Twin BroadcastChannel path splits frames like the serial mock so Studio's decoder reassembles on both. One shared contract test drives the identical command sequence over the serial mock and the Twin channel.
+- Restoring a backup made on a different camera now warns with both serials before anything is written — per-camera calibration is measured on one physical unit.
+
 ### Fixed
 
 - The reference device actually verifies firmware images: `FW_END` hashes the received bytes against the declared sha256 and rejects a corrupted image instead of answering `verified: true` unconditionally.
