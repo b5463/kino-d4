@@ -565,6 +565,29 @@ describe('POST /api/device/rolls/:rollId/captures (03 §16)', () => {
     expect(row?.status).toBe('created');
   });
 
+  it('lands the passthrough remainder in provenance instead of dropping it (audit #59)', async () => {
+    const roll = await createRoll();
+    const doc = captureDoc({
+      meta: {
+        flash: true,
+        batteryV: 3.91,
+        p4Firmware: '0.9.9',
+        exposure: [{ cam: 'cam1', shutterUs: 16667, gain: 4 }],
+        calibrationVersion: 3,
+      },
+    });
+    const res = await postCapture(roll.rollId, doc);
+    expect(res.statusCode).toBe(201);
+    const captureId = res.json<{ captureId: string }>().captureId;
+
+    const [row] = await app.db.select().from(schema.captures).where(eq(schema.captures.id, captureId));
+    const provenance = row?.provenance as Record<string, unknown>;
+    // Device identity as it was at the shutter press…
+    expect(provenance.device).toMatchObject({ serial: SERIAL_A, hardware: 'v1' });
+    // …and everything the firmware sent beyond the typed surface.
+    expect(provenance.meta).toMatchObject({ flash: true, p4Firmware: '0.9.9', calibrationVersion: 3 });
+  });
+
   it('replays a repeated capture UUID onto the same row', async () => {
     const roll = await createRoll();
     const doc = captureDoc();

@@ -362,7 +362,9 @@ describe('ai-enhance', () => {
     if (captureId === undefined) throw new Error('no seeded capture');
 
     const result = await aiEnhance({ captureId, jobKey: `${captureId}:ai-enhance` }, runtime.ctx);
-    expect(result).toEqual({ skipped: AI_ENHANCE_SKIP });
+    // The gate's own reason (audit #62): with a default environment AI is
+    // OFF, which outranks "not configured" — nothing applies silently.
+    expect(result).toEqual({ skipped: 'AI_ENHANCE_DISABLED' });
   });
 
   it('writes no asset row and publishes no event', async () => {

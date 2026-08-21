@@ -152,5 +152,6 @@ export async function renderWiggleMp4(payload: JobPayload, ctx: JobCtx): Promise
     body,
     width: wiggle.width,
     height: wiggle.height,
+    producer: { job: 'wiggle-mp4', encoder: 'ffmpeg/x264', crf: WIGGLE_MP4_CRF, loops: WIGGLE_MP4_LOOPS, fps: wiggle.fps },
   });
 }

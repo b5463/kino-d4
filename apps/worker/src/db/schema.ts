@@ -104,6 +104,9 @@ export const assets = pgTable(
     sha256: text('sha256'),
     objectKey: text('object_key').notNull().unique(),
     status: text('status').notNull(),
+    /** Producer identity for derived assets (audit #59) — mirrors the API schema. */
+    producer: jsonb('producer').$type<Record<string, unknown>>(),
+    producedAt: timestamp('produced_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

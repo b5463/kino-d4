@@ -96,6 +96,15 @@ export const captures = pgTable(
     // The three skews are distinct measurements and are never conflated (04§14);
     // an unmeasured one is `null` plus `unavailableReason`, never a missing key.
     timing: jsonb('timing').$type<NonNullable<Capture['timing']>>(),
+    /**
+     * Capture-time provenance (audit #59): the device's serial/hardware as
+     * they were at the shutter press, plus every field the firmware sent
+     * beyond the typed kino.capture surface (exposure, flash, firmware
+     * versions, calibration version — the contract's `meta`). The schema is
+     * passthrough by design; this is where the passthrough remainder lands
+     * instead of being silently dropped.
+     */
+    provenance: jsonb('provenance').$type<Record<string, unknown>>(),
     status: text('status').notNull().default('created'),
     visible: boolean('visible').notNull().default(true),
     deletedAt: timestamp('deleted_at', { withTimezone: true }), // trash grace (03§11)
@@ -123,6 +132,14 @@ export const assets = pgTable(
     sha256: text('sha256'),
     objectKey: text('object_key').notNull().unique(), // rolls/<rollId>/captures/<capId>/... (05§6)
     status: text('status').notNull().default('pending'), // pending|uploading|ready|failed
+    /**
+     * Producer identity for derived assets (audit #59): which job, which
+     * renderer, which settings. Retuning a render constant is invisible in
+     * the bytes; this is where it becomes visible in the data. Null on
+     * device-uploaded originals — the capture row's provenance covers those.
+     */
+    producer: jsonb('producer').$type<Record<string, unknown>>(),
+    producedAt: timestamp('produced_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

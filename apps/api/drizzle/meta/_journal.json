@@ -50,6 +50,13 @@
       "when": 1787245704095,
       "tag": "0007_slippery_falcon",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787331845714,
+      "tag": "0008_capture_provenance",
+      "breakpoints": true
     }
   ]
 }
