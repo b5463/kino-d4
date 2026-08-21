@@ -764,3 +764,140 @@ body {
   border: 1px solid var(--twin-line);
   background: #0b0d0e;
 }
+
+/* --- Guided start, primary actions, tab blurbs (issue #40) --- */
+
+.twin-viewport-canvas {
+  position: relative;
+}
+
+.twin-btn--primary {
+  background: #2e6b47;
+  border-color: #3c8a5c;
+  color: #eaf6ee;
+}
+
+.twin-btn--primary:hover {
+  background: #357d53;
+}
+
+.twin-header-brand {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.twin-header-muted {
+  color: var(--twin-text-mut);
+}
+
+.twin-header-control {
+  padding: 4px 12px;
+}
+
+.twin-dot--warn {
+  background: #e8c93f;
+  box-shadow: 0 0 5px rgb(232 201 63 / 55%);
+}
+
+.twin-welcome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(12 13 16 / 62%);
+  animation: twin-welcome-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.twin-welcome--boot {
+  align-items: flex-start;
+  padding-top: 48px;
+  background: transparent;
+  pointer-events: none;
+}
+
+@keyframes twin-welcome-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twin-welcome {
+    animation: none;
+  }
+}
+
+.twin-welcome-card {
+  max-width: 420px;
+  padding: 22px 26px;
+  background: var(--twin-panel);
+  border: 1px solid var(--twin-line);
+  font-family: var(--twin-mono);
+  font-size: 12px;
+  color: var(--twin-text);
+}
+
+.twin-welcome-card--boot {
+  padding: 14px 18px;
+  background: rgb(27 30 36 / 92%);
+}
+
+.twin-welcome-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+
+.twin-welcome-lead {
+  margin: 0 0 16px;
+  line-height: 1.5;
+  color: var(--twin-text);
+}
+
+.twin-welcome-power {
+  font-size: 13px;
+  padding: 8px 22px;
+  margin-bottom: 16px;
+}
+
+.twin-welcome-steps {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+
+.twin-welcome-note {
+  margin: 0;
+  color: var(--twin-text-mut);
+}
+
+.twin-welcome-boot-title {
+  margin: 0 0 6px;
+  letter-spacing: 0.08em;
+  color: #e8c93f;
+}
+
+.twin-welcome-bootlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 1.8;
+}
+
+.twin-welcome-bootstep--done { color: #61d095; }
+.twin-welcome-bootstep--now { color: var(--twin-text); }
+.twin-welcome-bootstep--next { color: var(--twin-text-mut); }
+
+.twin-tab-blurb {
+  margin: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--twin-line);
+  color: var(--twin-text-mut);
+  line-height: 1.45;
+}
+
+.twin-simoff-note {
+  border-bottom: 1px solid var(--twin-line);
+}

@@ -53,6 +53,7 @@ export function ViewportBar({ onView }: ViewportBarProps) {
   return (
     <div className="twin-viewport-bar" role="toolbar" aria-label="Viewport controls">
       <div className="twin-viewport-group">
+        <span className="twin-viewport-label">VIEW</span>
         {VIEW_BUTTONS.map(({ label, name }) => (
           <button key={name} type="button" className="twin-btn" onClick={() => onView(name)}>
             {label}
@@ -78,6 +79,7 @@ export function ViewportBar({ onView }: ViewportBarProps) {
       </div>
 
       <div className="twin-viewport-group">
+        <span className="twin-viewport-label">SHOW</span>
         {MODE_BUTTONS.map(({ label, mode }) => (
           <button
             key={mode}
