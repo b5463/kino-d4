@@ -32,6 +32,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - KINO Twin optical overlays show per-camera axes and frusta, neighboring and four-camera overlap, adjustable subject proxies, and live pitch/distance readouts; unmeasured D4 optics remain explicitly marked `MEASURE REQUIRED`, while candidate lens angles are labelled design scenarios.
 - Production and isolated staging stacks now run behind Caddy with automatic TLS, unbuffered live events, private PostgreSQL/Redis/MinIO services, gated migrations, and API-streamed private media.
 - Redis-backed request budgets now protect device uploads, guest reads, PIN attempts, device registration, device Roll joining, and anonymous Roll creation.
+- API database statements and object-storage requests now time out instead of holding the shared connection pool behind a hung dependency.
 - A camera-simulating uploader now verifies resumable fixture uploads, lost-ack and duplicate retries, background derivatives, guest visibility, host closure, and controlled concurrent load before physical cameras are available.
 - Production operations now include atomic off-host database/object backups, bounded daily/weekly retention, an isolated digest-verifying restore drill, authenticated Prometheus application metrics, rotating JSON logs, and private MinIO/node-exporter signals.
 - KINO Twin can measure two picked assembly points and continuously report assembled-pose component collisions, sub-millimetre hard clearances, cable clearances, and blocked USB or microSD service keepouts.
