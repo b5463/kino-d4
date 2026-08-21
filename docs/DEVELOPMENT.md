@@ -121,7 +121,22 @@ Change a KDP behavior in this order:
 6. Update `firmware-contract/` and record any deviation from the product spec.
 7. Update Studio consumers.
 
-Do not assign a command value from an empty-looking range without checking the full enum. Do not reuse a portable document field name merely because the same concept has a similar KDP field.
+Do not assign a command value from an empty-looking range without checking the full enum. Do not reuse a portable document field name merely because the same concept has a similar KDP field. A new command id must also land in `firmware/components/kdp_core/include/kdp/protocol.h` — `npm run version:check` verifies the protocol version stays in sync.
+
+## Firmware
+
+The D4 firmware lives in `firmware/` (build, flash, and layout details in [`firmware/README.md`](../firmware/README.md)). No local ESP-IDF install is needed:
+
+```bash
+# Protocol-core host tests (plain gcc + make)
+make -C firmware/components/kdp_core/host_tests test
+
+# Device builds (canonical environment; CI runs the same image)
+docker run --rm -v "$PWD:/project" -w /project/firmware/p4      espressif/idf:v5.5.1 idf.py build
+docker run --rm -v "$PWD:/project" -w /project/firmware/camnode espressif/idf:v5.5.1 idf.py build
+```
+
+Firmware behavior implements [`firmware-contract/`](../firmware-contract/README.md); pin assumptions live only in the two board headers and stay provisional until the bench record in `firmware/HARDWARE_VALIDATION.md` proves them.
 
 ## Schema changes
 
