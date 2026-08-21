@@ -101,13 +101,20 @@ One subscriber connection serves all Roll guests in an API process. If that conn
 apps/
   api/                 Fastify API, migrations, auth, uploads, SSE
   studio/              React device workbench
-  worker/              BullMQ media workers, derivative jobs
+  worker/              BullMQ media workers: derivatives, recaps, exports, purge
+  roll-web/            public Roll guest PWA and host dashboard
+  twin/                KINO Twin 3D assembly, simulation, and measurement
 packages/
   kdp/                 protocol implementation
   schemas/             portable document schemas
   test-fixtures/       reference device and fixtures
+  design-system/       shared tokens and accessible primitives
+  media/               wiggle frame sequencing shared by web and worker
+  hardware-profiles/   versioned D4 geometry, nets, GPIO map
+  simulator-engine/    boot, capture choreography, power/thermal models, replay
+  three-assets/        parametric 3D component builders
 firmware-contract/     firmware-facing contract
-infra/                 local Postgres, Redis, MinIO
+infra/                 dev/staging/production compose, backup and drill scripts
 kino_dev_spec_pack/    product specifications
 kino_twin_spec/        digital-twin specification and source data
 docs/                  maintained guides, audits, historical plans
@@ -116,6 +123,6 @@ archive/               retained recovery material
 
 ## Current implementation line
 
-The main branch contains Studio, the API foundation, media workers, shared contracts, local infrastructure, and broad tests. Derivative jobs run, but nothing recomputes a capture's stored status when a job finishes, so a fully processed capture still reads `processing`. The public Roll client and production Twin application are not present on this branch. Their specifications are detailed enough to guide implementation, but documentation must not describe them as shipped applications.
+The main branch contains Studio, the full Roll backend and workers, the public Roll client, KINO Twin, shared contracts, production/staging infrastructure with tested backup and restore, and broad tests. All of it runs against the simulated device. Physical D4 firmware, measured hardware dimensions, and everything in the plan's hardware workstream are not shipped from this repository yet; hardware-gated acceptance items are marked as such where they appear.
 
 For exact protocol authority, start at [the firmware contract](../firmware-contract/README.md). For the hardware boundary, read [the hardware reference](HARDWARE.md).

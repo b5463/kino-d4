@@ -36,7 +36,7 @@ A five-controller camera is miserable to service with an IDE, five serial logs, 
 
 The repository contains that workbench, the wire protocol it speaks, the Roll backend used after capture, shared document schemas, and a reference camera that can fail on command.
 
-> **Honest build status:** Studio, KDP, schemas, test fixtures, and the API foundation work today. The public Roll client and KINO Twin are still under construction.
+> **Honest build status:** Studio, KDP, schemas, test fixtures, the Roll backend with workers, the public Roll client, and KINO Twin work today against the simulated device. Physical D4 firmware and measured hardware dimensions are not shipped yet; everything hardware-gated is marked as such.
 
 ## Try Studio
 
@@ -122,6 +122,9 @@ A trigger spread under 100 µs can still hide 10 to 30 ms between real exposures
 |---|---|
 | [`apps/studio`](apps/studio) | Camera setup, shooting, looks, media, firmware, recovery, diagnostics |
 | [`apps/api`](apps/api) | Rolls, authentication, uploads, object storage, live events |
+| [`apps/worker`](apps/worker) | Derivative jobs, recaps, exports, trash purge |
+| [`apps/roll-web`](apps/roll-web) | Public Roll guest PWA and private host dashboard |
+| [`apps/twin`](apps/twin) | KINO Twin: 3D assembly, simulation, measurement, engineering exports |
 | [`packages/kdp`](packages/kdp) | The KINO Device Protocol: frames, CRC, commands, transports, request lifecycle |
 | [`packages/schemas`](packages/schemas) | Versioned `kino.*` documents shared across processes |
 | [`packages/test-fixtures`](packages/test-fixtures) | Reference camera, recipes, media, and injected failures |

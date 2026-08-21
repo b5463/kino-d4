@@ -787,13 +787,11 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 
 ### Known gaps
 
-- `roll.opened` / `roll.closed` are in the union but nothing publishes them yet.
-  The host status PATCH is where they belong, and a guest currently learns a
-  roll closed by re-fetching it.
-- `processing.completed` likewise: it is the worker's event (Task 22).
-- Streams and viewer sets are keyed by roll id and expire only on their own
-  terms: a deleted roll leaves its `roll:<id>:stream` behind until Redis evicts
-  it. Deletion is not implemented yet; when it is, it should `DEL` both keys.
+- Roll deletion (trash grace + purge job) removes rows and objects but does
+  not `DEL` the roll's `roll:<id>:stream` and viewer keys. The stream is
+  bounded at `MAXLEN ~ 500` entries, so an orphaned key is small but
+  permanent. If orphaned keys ever matter, the purge job is the place to
+  `DEL` both.
 - A client that stops reading is dropped once 64 KB has queued for it, rather
   than being buffered indefinitely. That is safe *because* of `Last-Event-ID`:
   it reconnects and replays.
