@@ -32,6 +32,10 @@ export const dbPlugin = fp<DbPluginOptions>(
     const client = postgres(opts.config.DATABASE_URL, {
       max: 10,
       connect_timeout: 5,
+      // The pool holds 10 connections for every route. A statement that hangs
+      // (lock, dead storage behind a trigger, runaway query) must release its
+      // connection instead of wedging the pool.
+      connection: { statement_timeout: 15_000 },
       onnotice: () => {},
     });
 

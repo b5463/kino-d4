@@ -19,6 +19,10 @@ export const s3Plugin = fp<S3PluginOptions>(
       region: opts.config.S3_REGION,
       // MinIO serves buckets as path segments, not as virtual host subdomains.
       forcePathStyle: true,
+      // Routes like POST /uploads/:id/complete hold a pooled database
+      // connection across this storage round trip; a hung MinIO must fail the
+      // request, not wedge the API. 30 s covers a slow multipart part copy.
+      requestHandler: { connectionTimeout: 5_000, requestTimeout: 30_000 },
       credentials: {
         accessKeyId: opts.config.S3_ACCESS_KEY,
         secretAccessKey: opts.config.S3_SECRET_KEY,
