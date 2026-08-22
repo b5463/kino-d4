@@ -262,29 +262,17 @@ export function CaptureDetail({
         ) : null}
       </div>
 
+      {/* A guest came to look at the photograph, not at our vocabulary. The
+          processed still used to sit here beside the wiggle — the same
+          picture twice — and the information list carried a hardcoded
+          camera name plus look, resolution and frame count, which are our
+          words rather than theirs. SAVE PHOTO already hands over the still.
+          When it was taken is the one fact a guest actually uses. */}
       <aside className="photo-side">
-        {capture.mode === 'wiggle' && still !== undefined ? (
-          <section className="side-box">
-            <h2 className="section-label">
-              KINO process <span className="section-sub">Wiggle · {capture.look ?? 'KINO standard'}</span>
-            </h2>
-            {assetImage(still, api, 'Processed still')}
-          </section>
-        ) : null}
-
         <section className="side-box">
-          <h2 className="section-label">Photo information</h2>
           <dl className="info-list">
             <dt>Captured</dt>
             <dd>{new Date(capture.capturedAt).toLocaleString()}</dd>
-            <dt>Camera</dt>
-            <dd>KINO D4</dd>
-            <dt>Look</dt>
-            <dd>{capture.look ?? 'KINO standard'}</dd>
-            <dt>Resolution</dt>
-            <dd>{capture.resolution.replace('x', ' × ')}</dd>
-            <dt>Frames</dt>
-            <dd>{capture.frameCount}</dd>
           </dl>
         </section>
       </aside>
