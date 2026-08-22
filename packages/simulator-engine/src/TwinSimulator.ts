@@ -127,6 +127,9 @@ export class TwinSimulator {
     // The same public path the fault-injection panel uses for a yanked USB
     // cable — no private hook, no bypass of the device's own state machine.
     this.device.setScenario('disconnect', true);
+    // No rails, no SD commit: a capture mid-exposure dies with the power.
+    // (A link drop alone leaves it running — issue #75.)
+    this.device.cancelInFlightCaptures();
   }
 
   bootStage(): BootStage {

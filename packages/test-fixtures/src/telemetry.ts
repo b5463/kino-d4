@@ -8,7 +8,10 @@ import type { ScenarioKey, CamFault } from './scenarios';
 
 export type TwinTelemetry =
   | { t: 'capture'; phase: 'begin' | 'committed'; id: number;
-      cams: Partial<Record<CamId, { jpegKB: number; durationMs: number }>> }
+      cams: Partial<Record<CamId, { jpegKB: number; durationMs: number }>>;
+      /** Present on 'committed' only: the /DCIM capture id (e.g. WG000123)
+       * and its kind, so a listener can read the stored files back. */
+      capId?: string; kind?: 'wiggle' | 'quad' }
   | { t: 'fw'; target: TargetId; state: string; pct?: number }
   | { t: 'reboot'; sessionId: string; reason: string }
   | { t: 'scenario'; key: ScenarioKey; value: boolean }

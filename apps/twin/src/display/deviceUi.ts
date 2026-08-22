@@ -40,6 +40,15 @@ export interface DeviceUiState {
   /** Live CAM1 render from the virtual sensor (issue #72); null keeps the
    * synthetic framing marks. Always a SIMULATED image and labeled so. */
   preview?: CanvasImageSource | null;
+  /** Roll development bridge (issue #75): the association the Twin holds on
+   * behalf of the future upload firmware. QR is the real guest URL. */
+  rollBridge?: {
+    slug: string;
+    qr?: CanvasImageSource | null;
+    queued: number;
+    failed: number;
+    uploaded: number;
+  } | null;
 }
 
 const BG = '#0b0d0e';
@@ -145,6 +154,36 @@ function viewfinder(ctx: Ctx2d, state: DeviceUiState): void {
     const line = `UPLOADS ${uploads.uploading} UP · ${uploads.pending} QUEUED${uploads.failed ? ` · ${uploads.failed} FAILED` : ''}`;
     text(ctx, line, 52, top + 64, 20, uploads.failed ? BAD : FG);
   }
+  rollBridgeTile(ctx, state, top, bottom);
+}
+
+/** JOIN THIS ROLL tile (issue #75): the QR on the virtual screen opens the
+ * actual development Roll — the same QR the physical D4 will show once the
+ * Roll-upload firmware milestone lands. */
+function rollBridgeTile(ctx: Ctx2d, state: DeviceUiState, top: number, bottom: number): void {
+  const bridge = state.rollBridge;
+  if (!bridge) return;
+  const size = 148;
+  const pad = 10;
+  const x = DISPLAY_W - 52 - size - pad * 2;
+  const y = bottom - size - pad * 2 - 36;
+  if (bridge.qr && ctx.drawImage) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x, y, size + pad * 2, size + pad * 2);
+    ctx.drawImage(bridge.qr, x + pad, y + pad, size, size);
+    text(ctx, 'JOIN THIS ROLL', x + pad + size / 2, y + size + pad * 2 + 6, 18, FG, 'center');
+  } else {
+    text(ctx, `ROLL ${bridge.slug}`, DISPLAY_W - 52, top + 36, 20, FG, 'right');
+  }
+  const queueLine =
+    bridge.failed > 0
+      ? `${bridge.failed} UPLOAD RETRYING`
+      : bridge.queued > 0
+        ? `${bridge.queued} QUEUED`
+        : bridge.uploaded > 0
+          ? `${bridge.uploaded} ON ROLL`
+          : null;
+  if (queueLine) text(ctx, queueLine, x + pad + size / 2, y - 24, 16, bridge.failed ? WARN : DIM, 'center');
 }
 
 function captureOverlay(ctx: Ctx2d, state: DeviceUiState): void {

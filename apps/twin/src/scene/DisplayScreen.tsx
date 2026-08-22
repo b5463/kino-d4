@@ -8,6 +8,8 @@ import { DISPLAY_H, DISPLAY_W, drawDeviceUi } from '../display/deviceUi';
 import type { DeviceUiState } from '../display/deviceUi';
 import { instanceTransforms } from './transforms';
 import { getDisplayPreview } from './displayPreview';
+import { useRollBridge } from '../roll/bridge';
+import { rollQrCanvas } from '../roll/qr';
 
 /** Active-area size of the Guition panel, matching the builder's glass inset. */
 const ACTIVE_W_MM = 93.6;
@@ -20,6 +22,7 @@ const REDRAW_MS = 150;
 
 export function readDeviceUiState(): DeviceUiState {
   const s = useSimStore.getState();
+  const bridge = useRollBridge.getState();
   return {
     running: s.running,
     bootStage: s.bootStage,
@@ -28,6 +31,15 @@ export function readDeviceUiState(): DeviceUiState {
     snapshot: s.snapshot,
     studioConnected: s.studioConnected,
     preview: getDisplayPreview(),
+    rollBridge: bridge.roll
+      ? {
+          slug: bridge.roll.slug,
+          qr: rollQrCanvas(bridge.roll.guestUrl),
+          queued: bridge.queued,
+          failed: bridge.failed,
+          uploaded: bridge.uploaded,
+        }
+      : null,
   };
 }
 

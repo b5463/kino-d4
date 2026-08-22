@@ -27,6 +27,7 @@ import { MeasurePanel } from './panels/MeasurePanel';
 import { RecorderPanel } from './panels/RecorderPanel';
 import { StagePanel } from './panels/StagePanel';
 import { FirmwarePanel } from './panels/FirmwarePanel';
+import { RollPanel } from './panels/RollPanel';
 import { Stage } from './scene/Stage';
 import { SensorRig } from './scene/SensorRig';
 import type { ViewPoseName } from './scene/viewPoses';
@@ -46,7 +47,7 @@ function SimOffNotice() {
   return <p className="twin-panel-note twin-simoff-note">Simulator is off. POWER ON in the header fills these panels with live data.</p>;
 }
 
-type RightTab = 'inspect' | 'stage' | 'firmware' | 'pins' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
+type RightTab = 'inspect' | 'stage' | 'firmware' | 'roll' | 'pins' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
 
 /** Plain tab names with one blunt line each — the label a beginner reads,
  * the id the code keeps (persisted layouts and tests stay stable). */
@@ -54,6 +55,7 @@ const RIGHT_TABS: { id: RightTab; label: string; blurb: string }[] = [
   { id: 'inspect', label: 'PARTS', blurb: 'Every component: dimensions, clearances, measured overrides.' },
   { id: 'stage', label: 'STAGE', blurb: 'Place subjects and set lighting — what the virtual cameras photograph.' },
   { id: 'firmware', label: 'FIRMWARE', blurb: 'Which firmware generation this virtual D4 runs, per-target versions.' },
+  { id: 'roll', label: 'ROLL', blurb: 'Send virtual captures to a real KINO Roll — development bridge for the future upload firmware.' },
   { id: 'pins', label: 'PINS', blurb: 'Header and camera-bus pin maps — provisional until the bench locks them.' },
   { id: 'display', label: 'SCREEN', blurb: "The camera's own display, live, plus the shutter." },
   { id: 'faults', label: 'FAULTS', blurb: 'Break things on purpose and watch the device cope.' },
@@ -118,6 +120,7 @@ export function App() {
           {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
           {rightTab === 'stage' && <StagePanel />}
           {rightTab === 'firmware' && <FirmwarePanel />}
+          {rightTab === 'roll' && <RollPanel />}
           {rightTab === 'pins' && <PinsPanel />}
           {rightTab === 'display' && <DisplayPanel />}
           {rightTab === 'faults' && <FaultPanel />}

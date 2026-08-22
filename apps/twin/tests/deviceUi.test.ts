@@ -116,4 +116,25 @@ describe('drawDeviceUi', () => {
     drawDeviceUi(ctx, state({ snapshot: snapshot({ uploads: { pending: 3, uploading: 1, failed: 2, uploaded: 9 } }) }));
     expect(texts()).toContain('UPLOADS 1 UP · 3 QUEUED · 2 FAILED');
   });
+
+  // Roll development bridge (issue #75): the QR draws only when the context
+  // can blit and the canvas has rendered; the fallback names the Roll.
+  it('a Roll association without a rendered QR names the Roll on screen', () => {
+    const { ctx, texts } = fakeCtx();
+    drawDeviceUi(ctx, state({ rollBridge: { slug: 'AMBER-042', qr: null, queued: 2, failed: 0, uploaded: 5 } }));
+    expect(texts()).toContain('ROLL AMBER-042');
+    expect(texts()).toContain('2 QUEUED');
+    expect(texts()).not.toContain('JOIN THIS ROLL');
+  });
+
+  it('a rendered QR shows JOIN THIS ROLL and the retry state', () => {
+    const drawnImages: unknown[] = [];
+    const { ctx, texts } = fakeCtx();
+    ctx.drawImage = (image) => drawnImages.push(image);
+    const qr = {} as CanvasImageSource;
+    drawDeviceUi(ctx, state({ rollBridge: { slug: 'AMBER-042', qr, queued: 0, failed: 1, uploaded: 0 } }));
+    expect(drawnImages).toContain(qr);
+    expect(texts()).toContain('JOIN THIS ROLL');
+    expect(texts()).toContain('1 UPLOAD RETRYING');
+  });
 });

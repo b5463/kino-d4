@@ -25,6 +25,7 @@ Start with the question you need answered. The repository contains working contr
 | How does Studio build and flash firmware? | [Firmware builder](FIRMWARE_BUILDER.md) |
 | How does Twin model firmware and photograph a scene? | [Twin firmware model](TWIN_FIRMWARE_MODEL.md), [Twin virtual camera](TWIN_VIRTUAL_CAMERA.md) |
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
+| How does a camera upload to Roll, and how does Twin stand in today? | [Device contract](roll/ROLL_DEVICE_CONTRACT.md), [Twin integration](roll/ROLL_TWIN_INTEGRATION.md), and the other guides in [`docs/roll/`](roll/) |
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |
 | Which product voice and UI rules apply to Studio? | [Product register](../PRODUCT.md) |
 | What remains out of line with the Studio specification? | [Studio spec audit](studio-spec-audit.md) |
@@ -71,6 +72,7 @@ When two documents disagree, use this order:
 - `firmware-contract/*`
 - `firmware/README.md`
 - `apps/api/README.md`
+- `docs/roll/*`
 
 Update these when behavior changes.
 

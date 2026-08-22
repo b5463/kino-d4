@@ -6,6 +6,19 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
+  server: {
+    // Roll development bridge (issue #75): same-origin /api reaches the Roll
+    // API. ws:false keeps SSE passthrough intact — same setup as roll-web.
+    proxy: {
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
+    },
+  },
+  // Workspace packages are TypeScript source ("main": "src/index.ts"); if the
+  // dep optimizer prebundles them, edits in packages/* are served stale from
+  // node_modules/.vite until a --force restart. Keep them out of the cache.
+  optimizeDeps: {
+    exclude: ['@kino/kdp', '@kino/schemas', '@kino/hardware-profiles', '@kino/test-fixtures', '@kino/simulator-engine', '@kino/three-assets'],
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

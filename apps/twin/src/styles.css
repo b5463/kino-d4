@@ -1058,3 +1058,15 @@ input[type='range'] {
     grid-template-columns: 420px 1fr 520px;
   }
 }
+
+/* Roll development bridge panel (issue #75). */
+.twin-panel-note--error {
+  color: #e0838c;
+}
+.twin-roll-qr {
+  background: #fff;
+  padding: 8px;
+  width: 164px;
+  height: 164px;
+  display: block;
+}
