@@ -10,6 +10,7 @@ import {
   exportSceneLayout,
   exportWiringReport,
 } from '../exports/exports';
+import { exportEnvelopeStep, exportFrontPanelDxf, exportTransformsCsv } from '../exports/engineering';
 import { downloadBlob, downloadText } from '../exports/download';
 import { useSceneStore } from '../state/sceneStore';
 import { applySimEvent, useSimStore } from '../state/simStore';
@@ -107,6 +108,9 @@ export function RecorderPanel({ findings, onScreenshot }: RecorderPanelProps) {
           <button type="button" className="twin-btn" onClick={() => { const s = scene(); downloadText('d4-dimensions.txt', exportDimensionReport(s.profile, s.overrides)); }}>DIMENSIONS</button>
           <button type="button" className="twin-btn" onClick={() => downloadText('d4-collisions.txt', exportCollisionReport(findings))}>COLLISIONS</button>
           <button type="button" className="twin-btn" onClick={() => downloadText('d4-wiring.txt', exportWiringReport(scene().profile))}>WIRING</button>
+          <button type="button" className="twin-btn" onClick={() => { const s = scene(); downloadText('d4-front-panel.dxf', exportFrontPanelDxf(s.profile, s.overrides, s.pitchMm)); }}>FRONT PANEL DXF</button>
+          <button type="button" className="twin-btn" onClick={() => { const s = scene(); downloadText('d4-transforms.csv', exportTransformsCsv(s.profile, s.overrides, s.pitchMm)); }}>TRANSFORMS CSV</button>
+          <button type="button" className="twin-btn" onClick={() => { const s = scene(); downloadText('d4-envelope.step', exportEnvelopeStep(s.profile, s.overrides)); }}>ENVELOPE STEP</button>
           <button type="button" className="twin-btn" onClick={() => void onScreenshot().then((blob) => downloadBlob('d4-twin.png', blob)).catch(() => setStatus('SCREENSHOT FAILED'))}>SCREENSHOT</button>
         </div>
       </div>
