@@ -26,6 +26,7 @@ function snapshot(overrides: Partial<TwinSnapshot> = {}): TwinSnapshot {
     p4Fw: '1.2.0',
     firmwareProfile: 'd4-sim-full',
     simulatedFuture: true,
+    flashEnabled: true,
     cams: { cam1: { ...cam }, cam2: { ...cam }, cam3: { ...cam }, cam4: { ...cam } },
     roll: { joined: false, name: null },
     uploads: { pending: 0, uploading: 0, failed: 0, uploaded: 0 },

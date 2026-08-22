@@ -31,6 +31,8 @@ export interface TwinSnapshot {
   firmwareProfile: string;
   /** True when the profile models capabilities the shipped firmware lacks. */
   simulatedFuture: boolean;
+  /** config.wiggle.flash — whether the flash fires on capture. */
+  flashEnabled: boolean;
   cams: Record<CamId, { fw: string; phaseUs: number; uartErrors: number; jpegKB: number;
                         durationMs: number; gpioSkewUs: number; fault: CamFault | null; updating: boolean;
                         /** SIMULATED per-cam exposure window (audit #56) — the flash-overlap

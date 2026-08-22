@@ -1007,3 +1007,32 @@ input[type='range'] {
 .twin-pins-reserved {
   color: var(--twin-text-mut);
 }
+
+/* High-resolution displays (issue #72): the 10-13px token scale and the
+   236/264px side panels were authored for ~1080-1440p and shrink into
+   illegibility on a 4K monitor. Everything derives from the four type
+   tokens, so scaling them (plus the panel columns) with the viewport keeps
+   one design instead of forking styles. */
+@media (min-width: 2200px) {
+  :root {
+    --twin-fs-xs: 13px;
+    --twin-fs-sm: 14px;
+    --twin-fs-md: 16px;
+    --twin-fs-lg: 17px;
+  }
+  .twin-body {
+    grid-template-columns: 330px 1fr 410px;
+  }
+}
+
+@media (min-width: 3200px) {
+  :root {
+    --twin-fs-xs: 16px;
+    --twin-fs-sm: 18px;
+    --twin-fs-md: 20px;
+    --twin-fs-lg: 21px;
+  }
+  .twin-body {
+    grid-template-columns: 420px 1fr 520px;
+  }
+}

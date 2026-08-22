@@ -646,6 +646,7 @@ export class MockKinoDevice implements MockDeviceLike {
       p4Fw: this.p4Fw,
       firmwareProfile: this.firmwareProfileId,
       simulatedFuture: activeProfile.simulatedFuture,
+      flashEnabled: this.config.wiggle.flash,
       cams: {
         cam1: camSnapshot('cam1'),
         cam2: camSnapshot('cam2'),

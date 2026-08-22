@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSimStore } from '../state/simStore';
+import { rebootDevice, setFlashEnabled, useSimStore } from '../state/simStore';
 
 function simLabel(running: boolean, bootStage: string): string {
   if (!running) return 'SIM OFF';
@@ -11,10 +11,12 @@ export function Header() {
   const running = useSimStore((state) => state.running);
   const bootStage = useSimStore((state) => state.bootStage);
   const studioConnected = useSimStore((state) => state.studioConnected);
+  const snapshot = useSimStore((state) => state.snapshot);
   const powerOn = useSimStore((state) => state.powerOn);
   const powerOff = useSimStore((state) => state.powerOff);
   const testCapture = useSimStore((state) => state.testCapture);
   const [captureState, setCaptureState] = useState<'idle' | 'working' | 'error'>('idle');
+  const [busy, setBusy] = useState<'flash' | 'reboot' | null>(null);
 
   async function fireShutter() {
     setCaptureState('working');
@@ -26,7 +28,19 @@ export function Header() {
     }
   }
 
-  const shutterBlocked = bootStage !== 'READY' || studioConnected || captureState === 'working';
+  async function act(kind: 'flash' | 'reboot', run: () => Promise<void>) {
+    setBusy(kind);
+    try {
+      await run();
+    } catch {
+      /* the device said no (NACK) or the link is owned — state is unchanged */
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const linkBlocked = bootStage !== 'READY' || studioConnected;
+  const shutterBlocked = linkBlocked || captureState === 'working';
   const shutterHint = !running
     ? 'Power on first'
     : bootStage !== 'READY'
@@ -34,6 +48,16 @@ export function Header() {
       : studioConnected
         ? 'Studio owns the link — capture from Studio'
         : 'Fires a four-lens capture over KDP';
+
+  const flashOn = snapshot?.flashEnabled ?? false;
+  const m1bProfile = snapshot?.firmwareProfile === 'd4-m1b';
+  const flashBlocked = linkBlocked || m1bProfile || busy !== null;
+  const flashHint = m1bProfile
+    ? 'Firmware 0.1.0 has no config surface — flash control arrives with a later milestone'
+    : studioConnected
+      ? 'Studio owns the link — change flash from Studio'
+      : 'SET_CONFIG wiggle.flash over KDP';
+  const rebootHint = studioConnected ? 'Studio owns the link — reboot from Studio' : 'KDP REBOOT: answers, then restarts';
 
   return (
     <header className="twin-header">
@@ -55,6 +79,25 @@ export function Header() {
         onClick={() => void fireShutter()}
       >
         {captureState === 'working' ? 'CAPTURING…' : captureState === 'error' ? 'CAPTURE FAILED — RETRY' : 'SHUTTER'}
+      </button>
+      <button
+        type="button"
+        className={flashOn ? 'twin-btn twin-btn--active twin-header-control' : 'twin-btn twin-header-control'}
+        disabled={flashBlocked}
+        title={flashHint}
+        aria-pressed={flashOn}
+        onClick={() => void act('flash', () => setFlashEnabled(!flashOn))}
+      >
+        {busy === 'flash' ? 'FLASH…' : `FLASH ${flashOn ? 'ON' : 'OFF'}`}
+      </button>
+      <button
+        type="button"
+        className="twin-btn twin-header-control"
+        disabled={linkBlocked || busy !== null}
+        title={rebootHint}
+        onClick={() => void act('reboot', rebootDevice)}
+      >
+        {busy === 'reboot' ? 'REBOOTING…' : 'REBOOT'}
       </button>
 
       <span className="twin-header-item">
