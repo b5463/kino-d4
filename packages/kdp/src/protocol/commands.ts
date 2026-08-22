@@ -82,6 +82,13 @@ export enum Cmd {
   CAMERA_SOAK_TEST = 0x4a,
   /** Runtime hardware-validation registry: what this unit has bench-proven. */
   GET_HW_VALIDATION = 0x4b,
+  /**
+   * Sustained SD write/read throughput with per-block timing. STORAGE_SELF_TEST
+   * proves the card works; this says whether it keeps up. A four-frame burst
+   * stalls on the slowest block, so `worstBlockMs` is the number that decides
+   * the burst — the average hides it.
+   */
+  STORAGE_BENCH = 0x4c,
 
   // Maintenance
   ENTER_MAINTENANCE = 0x50,

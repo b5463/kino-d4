@@ -41,6 +41,7 @@ export const BENCH_STAGES: BenchStage[] = [
       { id: 'b3', text: 'STORAGE_SELF_TEST passes, 64 KB verified (Developer → Bench Diagnostics)' },
       { id: 'b4', text: 'Reboot and remount ×10, every mount succeeds' },
       { id: 'b5', text: 'Pre-existing card data untouched (directory listing on a PC)' },
+      { id: 'b6', text: 'STORAGE_BENCH 16 MB @ 64 KB: record write MB/s and worstBlockMs — a 4-frame burst stalls on the worst block, not the average' },
     ],
   },
   {

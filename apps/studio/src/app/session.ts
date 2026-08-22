@@ -22,7 +22,7 @@ import { BroadcastTransport, WebSocketTransport } from '@kino/kdp';
 import { MockKinoDevice } from '@kino/test-fixtures';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import type { ConnectionFault } from '../state/connectionStore';
-import { clearDeviceState, setDeviceState, useDeviceStore } from '../state/deviceStore';
+import { clearDeviceState, setDeviceState, supports, useDeviceStore } from '../state/deviceStore';
 import { resetDrafts } from '../state/draftStore';
 import { claimDevice, releaseDevice, resetDeviceBusy } from '../state/deviceBusy';
 import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
@@ -409,6 +409,9 @@ async function populateAll() {
     calibration,
     stats,
   });
+  // After the state above, not inside it: the gate reads the capabilities
+  // that call just stored.
+  await pollNetworkRoll(dev);
   recordCamera(info, lastKind !== 'serial');
 }
 
@@ -461,6 +464,33 @@ export async function refreshCalibration() {
   setDeviceState({ calibration: await device.getCalibration() });
 }
 
+/**
+ * NETWORK_STATUS / ROLL_STATUS on the slow tick.
+ *
+ * Same three states the rest of the session uses: the capability is absent
+ * (never ask, leave null), the command NACKs or times out (leave null — the
+ * row prints NOT REPORTED), or it answers (store it). The two commands are
+ * gated independently because a firmware can have the radio without the
+ * Roll service. A failure here must not abort the poll that carries camera
+ * state, so each read is tolerated on its own.
+ */
+async function pollNetworkRoll(dev: KinoDevice): Promise<void> {
+  const state = useDeviceStore.getState();
+  const tolerate = async <T>(read: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await read();
+    } catch (err) {
+      if (err instanceof KinoUnsupportedError || err instanceof KinoTimeoutError) return null;
+      throw err;
+    }
+  };
+  const [network, roll] = await Promise.all([
+    supports(state, 'network') ? tolerate(() => dev.networkStatus()) : Promise.resolve(null),
+    supports(state, 'roll') ? tolerate(() => dev.rollStatus()) : Promise.resolve(null),
+  ]);
+  setDeviceState({ network, roll });
+}
+
 function startPolling() {
   stopPolling();
   let tick = 0;
@@ -484,6 +514,11 @@ function startPolling() {
       if (tick % 3 === 0) {
         setDeviceState({ stats: await device.getRuntimeStats() });
       }
+      // Wi-Fi and Roll are the slowest-changing things Overview prints, and
+      // NETWORK_STATUS crosses to the radio — every 5th poll (~20 s) is
+      // often enough for a status lamp and rare enough not to compete with
+      // the camera poll for the link.
+      if (tick % 5 === 0) await pollNetworkRoll(device);
     } catch {
       // A single missed poll (busy device, injected timeout) is not a
       // disconnect. The transport close handler owns real disconnects.

@@ -33,6 +33,8 @@ import type {
   SoundBeginResponse,
   SoundInfo,
   SoundsResponse,
+  StorageBenchRequest,
+  StorageBenchResult,
   StorageSelfTestResult,
   StorageStatus,
   TargetId,
@@ -284,6 +286,15 @@ export class KinoDevice {
   /** Non-destructive SD write/read-back/verify; reports the failing phase. */
   storageSelfTest() {
     return this.client.request<StorageSelfTestResult>(Cmd.STORAGE_SELF_TEST, undefined, 10000);
+  }
+
+  /**
+   * Sustained SD throughput. The timeout is generous because the request is
+   * sized in megabytes and passes: a slow card writing 3×16 MB legitimately
+   * outlives every other command's deadline.
+   */
+  storageBench(req: StorageBenchRequest) {
+    return this.client.request<StorageBenchResult>(Cmd.STORAGE_BENCH, req, 120000);
   }
 
   cameraLinkStats(cam: CamId) {

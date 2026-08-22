@@ -17,6 +17,8 @@ import type {
   LogEntry,
   LogSource,
   SelfTestCheck,
+  StorageBenchRequest,
+  StorageBenchResult,
   StorageSelfTestPhase,
   StorageSelfTestResult,
   TargetId,
@@ -208,6 +210,13 @@ const SLOW_RESPONSE_MS: [number, number] = [1400, 2400];
  */
 const COALESCE_WINDOW_MS = 40;
 
+/**
+ * How long CAMERA_ARM keeps the sensors primed before they fall back to
+ * `ready`. There is no CAMERA_DISARM in the protocol — the capture and this
+ * deadline are the only two exits, so the deadline has to exist.
+ */
+const ARM_WINDOW_MS = 3000;
+
 /** One demo clip so the simulator shows the custom-sound flow populated. */
 function demoSounds(): Map<string, { info: SoundInfo; data: Uint8Array }> {
   const durationMs = 320;
@@ -231,6 +240,13 @@ interface CamModel {
   uartErrors: number;
   updating: boolean;
   rebootUntil: number;
+  /**
+   * CAMERA_ARM window. Zero means not armed. The capture clears it; so does
+   * the deadline passing, which is the whole point of having one — a camera
+   * that armed and never saw the trigger must not sit `armed` forever
+   * pretending it is about to shoot.
+   */
+  armedUntil: number;
   /** KINO Twin §20 per-camera fault, independent of the device-wide ScenarioFlags. */
   fault: CamFault | null;
   /** Capability-driven sensor identity (audit #55): behavior keys off this,
@@ -453,6 +469,7 @@ export class MockKinoDevice implements MockDeviceLike {
       uartErrors: this.randInt(0, 2),
       updating: false,
       rebootUntil: 0,
+      armedUntil: 0,
       fault: null,
       sensorProfile: 'OV3660',
       focus: null,
@@ -1088,6 +1105,9 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   private simulateCapture() {
+    // The trigger consumes the arm, whether or not anyone armed first: an
+    // unarmed capture still leaves nothing waiting behind it.
+    for (const id of CAM_IDS) this.cams[id].armedUntil = 0;
     // audit #57 cameraPowerTransient: one channel browns out as the group
     // draws capture current — the camera power-cycles mid-shot and the set
     // comes back incomplete, exactly the §18 partial-group behavior.
@@ -1458,7 +1478,9 @@ export class MockKinoDevice implements MockDeviceLike {
               ? 'timeout'
               : sensorMissing
                 ? 'error'
-                : 'ready',
+                : cam.armedUntil > this.now()
+                  ? 'armed'
+                  : 'ready',
       latencyMs: offline ? 0 : timeout ? 900 : Math.round(this.rand(2, 9) * 10) / 10,
       uartErrors: cam.uartErrors,
       lastCapture: offline
@@ -1550,6 +1572,7 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private static readonly BENCH_COMMANDS: number[] = [
     Cmd.STORAGE_SELF_TEST,
+    Cmd.STORAGE_BENCH,
     Cmd.CAMERA_LINK_STATS,
     Cmd.CAMERA_LINK_STATS_RESET,
     Cmd.CAMERA_SOAK_TEST,
@@ -1692,6 +1715,45 @@ export class MockKinoDevice implements MockDeviceLike {
         durationMs: ok ? 412 : 45,
         bytesTested: ok ? 65536 : 0,
       };
+      this.respond(frame, result);
+    });
+  }
+
+  /**
+   * STORAGE_BENCH. Numbers come off the seeded rng, never Math.random, so a
+   * seeded Twin replays the same card. The worst block is deliberately far
+   * above the mean: real SD cards stall on an internal erase, and a bench
+   * that only ever reports a tidy average never exercises the readout that
+   * matters.
+   */
+  private handleStorageBench(frame: Frame) {
+    const req = decodeJson<Partial<StorageBenchRequest>>(frame.payload);
+    const sizeMB = Math.round(req.sizeMB ?? 16);
+    const blockKB = Math.round(req.blockKB ?? 64);
+    const passes = Math.round(req.passes ?? 1);
+    if (sizeMB < 1 || sizeMB > 512 || blockKB < 4 || blockKB > 4096 || passes < 1 || passes > 16) {
+      this.respondError(frame, 'INVALID_ARGUMENT', 'sizeMB 1–512, blockKB 4–4096, passes 1–16');
+      return;
+    }
+    if (this.scenarios.sdMissing) {
+      this.respondError(frame, 'SD_ERROR', 'No card mounted');
+      return;
+    }
+    if (this.scenarios.sdFull) {
+      this.respondError(frame, 'SD_ERROR', 'Not enough free space for the requested size');
+      return;
+    }
+    const bytes = sizeMB * 1024 * 1024 * passes;
+    const writeMBs = Math.round(this.rand(7.5, 11.5) * 100) / 100;
+    const readMBs = Math.round(this.rand(15, 21) * 100) / 100;
+    const meanBlockMs = blockKB / 1024 / writeMBs * 1000;
+    const p95BlockMs = Math.round(meanBlockMs * this.rand(1.6, 2.2) * 10) / 10;
+    const worstBlockMs = Math.round(p95BlockMs * this.rand(3, 9) * 10) / 10;
+    // Wall clock the transfer would actually take, capped so a large request
+    // does not stall the fixture's fake clock for a real minute.
+    this.after(Math.min(2000, Math.round((bytes / 1024 / 1024 / writeMBs) * 20)), () => {
+      this.log('SD', `bench ${sizeMB} MB × ${passes} @ ${blockKB} KB — write ${writeMBs} MB/s, worst block ${worstBlockMs} ms`);
+      const result: StorageBenchResult = { writeMBs, readMBs, worstBlockMs, p95BlockMs, bytes };
       this.respond(frame, result);
     });
   }
@@ -2014,6 +2076,7 @@ export class MockKinoDevice implements MockDeviceLike {
           // what the device claims and what it answers cannot drift apart.
           rollUpload: this.supportsNetworkRoll(),
           network: this.supportsNetworkRoll(),
+          roll: this.supportsNetworkRoll(),
           syncBench: this.supportsNetworkRoll(),
           // Milestone 1B bench diagnostics — same predicate as the gate on
           // STORAGE_SELF_TEST / CAMERA_LINK_STATS(_RESET) / CAMERA_SOAK_TEST /
@@ -2281,6 +2344,9 @@ export class MockKinoDevice implements MockDeviceLike {
       case Cmd.STORAGE_SELF_TEST:
         this.handleStorageSelfTest(frame);
         return;
+      case Cmd.STORAGE_BENCH:
+        this.handleStorageBench(frame);
+        return;
       case Cmd.CAMERA_LINK_STATS:
         this.handleLinkStats(frame);
         return;
@@ -2464,9 +2530,15 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, { ok: true, baud });
         return;
       }
-      case Cmd.CAMERA_ARM:
-        this.respond(frame, { ok: true });
+      case Cmd.CAMERA_ARM: {
+        // Arms every camera in the group: the trigger edge is shared, so
+        // arming one and not the others is not a state the hardware has.
+        const armedUntil = this.now() + ARM_WINDOW_MS;
+        for (const id of CAM_IDS) this.cams[id].armedUntil = armedUntil;
+        this.log('P4', `cameras armed — ${ARM_WINDOW_MS} ms window`);
+        this.respond(frame, { ok: true, armWindowMs: ARM_WINDOW_MS });
         return;
+      }
       default:
         // Explicit NACK, never silence — Studio can then say "not supported"
         // instead of waiting for a timeout.

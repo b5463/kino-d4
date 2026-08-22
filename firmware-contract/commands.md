@@ -17,7 +17,7 @@ Payload shapes are marked:
 0x20–0x25  Modes / recipes    0x70–0x75  Media
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
 0x30–0x37  Camera             0xa0–0xaa  Network / Roll / upload queue
-0x40–0x4b  Diagnostics
+0x40–0x4c  Diagnostics
 ```
 
 The Network/Roll group sits above the event range on purpose: a command id and an event id can never
@@ -117,9 +117,15 @@ Response (**typed**, `CapabilitiesResponse`):
 ```
 
 `Capabilities` in `types.ts` declares `cameraCount` (a count, not a flag) plus the nine boolean flags
-above. The reference device additionally reports
-`rollUpload`, `network` and `syncBench` (**mock**) gating the `0xa0`–`0xa9` group and `SYNC_BENCH`.
-Those three are not yet in the `Capabilities` interface.
+above, and these optional ones: `autofocus`, `focusLock`, `manualFocus`, `benchDiagnostics`,
+`network` and `roll`. Optional means absent on firmware that predates the feature — and absence is
+an answer (not supported), not an unknown.
+
+`network` gates `NETWORK_LIST/SET/DELETE/STATUS`; `roll` gates the `ROLL_*` commands and the upload
+queue. The reference device additionally reports `rollUpload` and `syncBench` (**mock**), which are
+still not in the interface: `rollUpload` shipped before the interface was settled and Studio reads
+it off the reported object (`supportsRollUpload`), so typing it now would silently change that
+gate's shape.
 
 **A capability flag and the dispatcher must agree.** A device that advertises no network support and
 then answers `NETWORK_LIST` is worse than a device with no network support at all.
@@ -211,7 +217,17 @@ Default host timeout is **3000 ms** unless noted. `→` is the request payload, 
 }
 ```
 
-`state` ∈ `ready | busy | capturing | updating | rebooting | timeout | offline | error`.
+`state` ∈ `ready | armed | busy | capturing | updating | rebooting | timeout | offline | error`.
+
+**`armed`** means `CAMERA_ARM` was accepted and the sensor is primed, waiting for the shared
+trigger edge. It is deliberately not a shade of `busy`: an armed camera has nothing to do but
+wait, and one still reporting `armed` after a burst finished missed the trigger rather than ran
+slow. **There is no `CAMERA_DISARM`, and none is needed** — the only two exits are the capture
+itself and the arm window expiring (reference device: 3000 ms). A host that armed and then
+changed its mind waits the window out; adding a disarm opcode would add a third way for host and
+firmware to disagree about whether the sensors are primed, to buy back three seconds. The
+firmware clears `armed` on the trigger regardless of whether the capture succeeded.
+
 `lastCapture` is `null` when there is none. **`gpioSkewUs` is trigger-edge distribution only — it is
 not exposure alignment.** See [Timing](#timing).
 
@@ -298,7 +314,7 @@ Deleting the currently selected shutter sound must fall back to a builtin and bu
 | Cmd | Value | Payload |
 |---|---:|---|
 | `CAMERA_STATUS` | `0x30` | → `{ "cam": "cam1" }` ← **typed** `CameraInfo`. Timeout 2 s |
-| `CAMERA_ARM` | `0x31` | → `{}` ← **mock** `{ "ok": true }`. No Studio caller |
+| `CAMERA_ARM` | `0x31` | → `{}` ← **mock** `{ "ok": true, "armWindowMs": 3000 }`. Arms all four (the trigger edge is shared); every camera reports `state: "armed"` until the capture or the window expires. No Studio caller |
 | `CAMERA_TEST` | `0x32` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true, "jpegKB": 412, "durationMs": 190 }`. Timeout 8 s (raised for M1B: a real capture + UART transfer takes several seconds) |
 | `CAMERA_CAPTURE` | `0x33` | Action-dispatched, see below. Timeout 8 s |
 | `CAMERA_PREVIEW` | `0x34` | → `{ "cam": "cam2" }` or `{}` for the configured viewfinder ← **BINARY** one JPEG frame. Timeout 4 s |
@@ -351,7 +367,7 @@ rather than calibrating against a partial set.
 `aligned` is set only once re-phasing has brought the spread inside the target. Re-phasing converges
 partially per pass — that is the real bench procedure, not a mock artifact.
 
-### Diagnostics — 0x40–0x4b
+### Diagnostics — 0x40–0x4c
 
 | Cmd | Value | Payload |
 |---|---:|---|
@@ -367,6 +383,29 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `CAMERA_LINK_STATS_RESET` | `0x49` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true }`. Counters zero; `lastSequence` survives |
 | `CAMERA_SOAK_TEST` | `0x4a` | → **typed** `SoakTestRequest` ← `JobStartResponse`, then `JOB_*`; `result` is **typed** `SoakTestSummary` |
 | `GET_HW_VALIDATION` | `0x4b` | → `{}` ← **typed** `HwValidationReport`. Gated by `benchDiagnostics` |
+| `STORAGE_BENCH` | `0x4c` | → **typed** `StorageBenchRequest` ← **typed** `StorageBenchResult`. Timeout 120 s. Gated by `benchDiagnostics`. **Reserved in firmware — see below** |
+
+#### `STORAGE_BENCH` — 0x4c
+
+`{ "sizeMB": 16, "blockKB": 64, "passes": 1 }` → `{ "writeMBs": 9.4, "readMBs": 18.1,
+"worstBlockMs": 214.0, "p95BlockMs": 13.6, "bytes": 16777216 }`.
+
+Sustained throughput, not a health check — `STORAGE_SELF_TEST` already answers whether the card
+works. **`worstBlockMs` is the number that decides a four-frame burst**: the burst stalls on its
+slowest block, and an average hides exactly the internal-erase event that drops a frame. Report
+it prominently or not at all. Ranges: `sizeMB` 1–512, `blockKB` 4–4096, `passes` 1–16; anything
+outside is `INVALID_ARGUMENT`. No card or no free space is `SD_ERROR`, never a zeroed result.
+
+**Firmware status: reserved, not implemented.** The opcode is defined in
+`kdp/protocol.h` so host and firmware agree on the number, but `firmware/p4/main/kdp_server.c`
+registers no handler and `STORAGE_BENCH` is not in the M1B whitelist — the M1B profile therefore
+NACKs it `UNSUPPORTED_COMMAND` automatically. It is reserved rather than rushed because it is not
+straightforward with the existing storage helpers: `storage_self_test()` writes one 64 KB temp
+file and reports a phase, while a bench needs a sized multi-pass writer, per-block wall clocks, a
+p95 over thousands of samples on a memory-constrained P4, free-space pre-checks, and cleanup on
+abort — and it holds the capture lock long enough to need the async-job pattern rather than a
+plain request. The reference device (MockKinoDevice) implements it, so Studio's panel is
+exercised end to end; the P4 answers honestly that it cannot.
 
 #### Milestone 1B bench diagnostics — 0x47–0x4b
 

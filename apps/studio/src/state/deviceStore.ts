@@ -12,6 +12,7 @@ import type {
   StorageStatus,
 } from '@kino/kdp';
 import type { Recipe } from '../recipes/recipeTypes';
+import type { NetworkStatus, RollView } from '../roll/rollTypes';
 
 // Everything in this store is device-reported truth, refreshed by the
 // session poller or by explicit commands. Unsaved form drafts live in page
@@ -21,6 +22,15 @@ interface DeviceState {
   cameras: CameraInfo[];
   power: PowerStatus | null;
   storage: StorageStatus | null;
+  /**
+   * NETWORK_STATUS / ROLL_STATUS, polled on the slow tick beside power and
+   * storage. Null means unanswered — not offline, and not "no Roll". A
+   * connected camera with no Roll reports `{ active: false, roll: null }`;
+   * only a NACK or a timeout leaves these null, and every reader has to
+   * keep the two apart.
+   */
+  network: NetworkStatus | null;
+  roll: RollView | null;
   config: KinoConfig | null;
   factoryRecipes: Recipe[];
   customRecipes: Recipe[];
@@ -46,6 +56,8 @@ const initial: DeviceState = {
   cameras: [],
   power: null,
   storage: null,
+  network: null,
+  roll: null,
   config: null,
   factoryRecipes: [],
   customRecipes: [],

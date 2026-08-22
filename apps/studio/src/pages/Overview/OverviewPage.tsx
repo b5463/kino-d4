@@ -2,30 +2,14 @@ import { useEffect, useState } from 'react';
 import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { Led } from '../../components/Led';
-import type { LedState } from '../../components/Led';
 import { Icon } from '../../components/Icon';
-import { useDeviceStore, recipeName } from '../../state/deviceStore';
+import { useDeviceStore, recipeName, supports } from '../../state/deviceStore';
 import { SkewVerdict } from '../Calibration/SkewBench';
 import { getDevice, onSelfTestEvent } from '../../app/session';
 import { onUi } from '../../state/uiBus';
 import type { CameraInfo, SelfTestEvent } from '@kino/kdp';
-import { resolutionLabel, formatMB } from '../../utils/format';
-
-function camLed(cam: CameraInfo): { state: LedState; label: string } {
-  if (!cam.online) return { state: 'err', label: cam.state === 'rebooting' ? 'REBOOTING' : 'OFFLINE' };
-  switch (cam.state) {
-    case 'ready':
-      return { state: 'ok', label: 'READY' };
-    case 'timeout':
-      return { state: 'warn', label: 'TIMEOUT' };
-    case 'updating':
-      return { state: 'busy', label: 'UPDATING' };
-    case 'error':
-      return { state: 'err', label: 'ERROR' };
-    default:
-      return { state: 'busy', label: cam.state.toUpperCase() };
-  }
-}
+import { resolutionLabel } from '../../utils/format';
+import { camLed, supplyRows } from './healthRows';
 
 interface TestRow {
   name: string;
@@ -87,8 +71,11 @@ export function OverviewPage() {
     }
   };
 
-  const { info, cameras, power, storage, config, capabilities } = state;
+  const { info, cameras, power, storage, config, capabilities, network, roll } = state;
   if (!info) return null;
+
+  const hasNetwork = supports(state, 'network');
+  const hasRoll = supports(state, 'roll');
 
   const issues: string[] = [];
   for (const cam of cameras) {
@@ -100,43 +87,7 @@ export function OverviewPage() {
   if (power && power.batteryPct <= 15 && !power.charging) issues.push('LOW BATTERY');
   const severity = issues.some((i) => i.includes('OFFLINE') || i.includes('NO SD')) ? 'err' : issues.length > 0 ? 'warn' : 'ok';
 
-  // Per-camera state belongs to the camera strip below, and the link lamp
-  // belongs to the status bar — this panel is only what neither of them says.
-  const supply: { name: string; state: LedState; label: string }[] = [
-    storage?.present
-      ? {
-          name: 'SD CARD',
-          state: 'ok' as LedState,
-          label: `${formatMB(storage.freeMB)} FREE OF ${formatMB(storage.totalMB)}`,
-        }
-      : { name: 'SD CARD', state: 'err' as LedState, label: 'NO CARD' },
-    power
-      ? {
-          name: 'BATTERY',
-          state: (power.batteryPct <= 15 && !power.charging ? 'warn' : 'ok') as LedState,
-          label: `${power.batteryPct}% · ${power.batteryV.toFixed(2)} V${
-            power.charging ? ' · CHARGING' : power.state === 'usb' ? ' · USB POWER' : ''
-          }`,
-        }
-      : { name: 'BATTERY', state: 'off' as LedState, label: '—' },
-    // Device-reported only: firmware without a rail ADC omits busV and this
-    // row says so instead of inventing 5.00 (audit #61).
-    power && typeof power.busV === 'number'
-      ? {
-          name: '5V RAIL',
-          state: (power.busV < 4.6 ? 'err' : power.busV < 4.9 ? 'warn' : 'ok') as LedState,
-          label: `${power.busV.toFixed(2)} V${power.fuse === 'blown' ? ' · FUSE BLOWN' : ''}`,
-        }
-      : { name: '5V RAIL', state: 'off' as LedState, label: 'NOT REPORTED' },
-    // Device-reported only: the capability says whether this firmware exposes
-    // flash control. Nothing here measures the flash itself — RUN SELF TEST
-    // does that — so this lamp never claims READY on its own.
-    capabilities
-      ? capabilities.flashControl
-        ? { name: 'FLASH', state: 'ok' as LedState, label: 'CONTROL AVAILABLE' }
-        : { name: 'FLASH', state: 'off' as LedState, label: 'NOT AVAILABLE' }
-      : { name: 'FLASH', state: 'off' as LedState, label: '—' },
-  ];
+  const supply = supplyRows({ storage, power, capabilities, network, roll, hasNetwork, hasRoll });
 
   return (
     <>

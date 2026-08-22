@@ -5,6 +5,7 @@ import type {
   CameraTestResult,
   HwValidationReport,
   SoakTestSummary,
+  StorageBenchResult,
   StorageSelfTestResult,
 } from '@kino/kdp';
 import { Panel } from '../../components/Panel';
@@ -12,6 +13,8 @@ import { Button } from '../../components/Button';
 import { Unsupported } from '../../components/Unsupported';
 import { useDeviceStore } from '../../state/deviceStore';
 import { getDevice } from '../../app/session';
+import { benchStamp, putBenchResult, useBenchResult } from '../../state/benchResults';
+import type { BenchEntry } from '../../state/benchResults';
 import { downloadText } from '../../utils/download';
 
 /**
@@ -21,6 +24,26 @@ import { downloadText } from '../../utils/download';
  * never exposure or sync figures. Gated on `benchDiagnostics === true` — the
  * flag is optional, so its absence means pre-1B firmware, not "assume yes".
  */
+/**
+ * One STORAGE_BENCH result. Prop-driven so the readout can be asserted
+ * without a device or a store, and because the rule it encodes is worth
+ * pinning: **the worst block leads the line**. A four-frame burst stalls on
+ * its slowest block, so an average is the one figure that cannot tell you
+ * whether the burst drops a frame.
+ */
+export function StorageBenchReadout({ entry }: { entry: BenchEntry<StorageBenchResult> | null }) {
+  if (!entry) return null;
+  const stamp = benchStamp(entry);
+  const r = entry.result;
+  return (
+    <p className="dim" style={{ marginTop: 6 }}>
+      <strong>WORST BLOCK {r.worstBlockMs} ms</strong> · p95 {r.p95BlockMs} ms · write {r.writeMBs} MB/s ·
+      read {r.readMBs} MB/s · {r.bytes} B written
+      {stamp ? <span className={stamp.stale ? 'warn' : 'dim'}> · {stamp.text}</span> : null}
+    </p>
+  );
+}
+
 export function BenchDiagnosticsPanel() {
   const state = useDeviceStore();
   const hasBench = state.capabilities?.benchDiagnostics === true;
@@ -35,6 +58,10 @@ export function BenchDiagnosticsPanel() {
   const [soakDelayMs, setSoakDelayMs] = useState(1000);
   const [soakProgress, setSoakProgress] = useState<string | null>(null);
   const [soak, setSoak] = useState<SoakTestSummary | null>(null);
+  const [benchSizeMB, setBenchSizeMB] = useState(16);
+  const [benchBlockKB, setBenchBlockKB] = useState(64);
+  const [benchPasses, setBenchPasses] = useState(1);
+  const storageBench = useBenchResult<StorageBenchResult>('storage');
 
   async function run(label: string, action: () => Promise<void>) {
     const dev = getDevice();
@@ -171,6 +198,39 @@ export function BenchDiagnosticsPanel() {
           <p className="dim">P4 reset reason: {hw.p4ResetReason}. VALIDATED means this unit did it, not that a header file says so.</p>
         </div>
       ) : null}
+
+      {/* STORAGE BENCH is the throughput question, separate from SD SELF TEST
+          above, which only answers whether the card works at all. */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+        <span className="microlabel">STORAGE BENCH</span>
+        <label>
+          SIZE (MB){' '}
+          <input type="number" min={1} max={512} value={benchSizeMB}
+            onChange={(e) => setBenchSizeMB(Number(e.target.value))} style={{ width: 70 }} />
+        </label>
+        <label>
+          BLOCK (KB){' '}
+          <input type="number" min={4} max={4096} step={4} value={benchBlockKB}
+            onChange={(e) => setBenchBlockKB(Number(e.target.value))} style={{ width: 70 }} />
+        </label>
+        <label>
+          PASSES{' '}
+          <input type="number" min={1} max={16} value={benchPasses}
+            onChange={(e) => setBenchPasses(Number(e.target.value))} style={{ width: 60 }} />
+        </label>
+        <Button size="sm" busy={busy === 'storagebench'} onClick={() => void run('storagebench', async () => {
+          const result = await getDevice()!.storageBench({
+            sizeMB: benchSizeMB,
+            blockKB: benchBlockKB,
+            passes: benchPasses,
+          });
+          putBenchResult('storage', result);
+        })}>
+          RUN STORAGE BENCH
+        </Button>
+      </div>
+
+      <StorageBenchReadout entry={storageBench} />
 
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
         <label>
