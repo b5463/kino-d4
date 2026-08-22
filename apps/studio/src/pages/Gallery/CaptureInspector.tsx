@@ -1,41 +1,42 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { getDevice } from '../../app/session';
 import { useDeviceStore, recipeName, supportsRollUpload } from '../../state/deviceStore';
 import { useModal } from '../../hooks/useModal';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
-import { downloadCaptureSet, TransferHandle, TransferCancelled } from '../../device/media';
-import type { CaptureInfo, CaptureSummary } from '@kino/kdp';
-import { buildZip } from '../../utils/zip';
-import { encodeGif } from '../../utils/gif';
-import type { GifFrame } from '../../utils/gif';
-import { mp4Supported, encodeWiggleMp4 } from '../../utils/mp4';
+import type { InspectorSummary } from '../../device/localImport';
+import { mp4Supported } from '../../utils/mp4';
 import type { RollView } from '../../roll/rollTypes';
 import { AlignEditor } from './AlignEditor';
+import { CaptureMeta, ImportedFileMeta } from './CaptureMeta';
 import { MatchPanel } from './MatchPanel';
 import { PushToRoll } from './PushToRoll';
-import { buildAlignedFrames, captureOffsets, hasAnyOffset } from '../../utils/wiggleRender';
-const SEQ_BOUNCE = [0, 1, 2, 3, 2, 1];
-
-function saveBlob(name: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
+import { DEVICE_SOURCE, useCaptureFrames } from './useCaptureFrames';
+import type { CaptureSource } from './useCaptureFrames';
+import {
+  SEQ_BOUNCE,
+  alignedSources,
+  buildContactSheet,
+  buildGifBytes,
+  buildMp4Bytes,
+  buildZipBytes,
+  saveBlob,
+} from './captureExports';
+import { captureOffsets, hasAnyOffset } from '../../utils/wiggleRender';
 
 export function CaptureInspector({
   summary,
   roll,
+  source = DEVICE_SOURCE,
   onClose,
   onChanged,
 }: {
-  summary: CaptureSummary;
+  summary: InspectorSummary;
   /** ROLL_STATUS as the gallery last read it; `null` means no Roll to push to. */
   roll: RollView | null;
+  /** Where the frames come from. Defaults to the attached camera. */
+  source?: CaptureSource;
   onClose: () => void;
   onChanged: (change: 'favorite' | 'deleted') => void;
 }) {
@@ -43,10 +44,12 @@ export function CaptureInspector({
   const wiggleCfg = deviceState.config?.wiggle;
   const calibration = deviceState.calibration;
   const reducedMotion = useReducedMotion();
-  const [info, setInfo] = useState<CaptureInfo | null>(null);
-  const [frames, setFrames] = useState<{ name: string; data: Uint8Array; url: string }[] | null>(null);
-  const [progress, setProgress] = useState({ pct: 0, label: 'Reading capture info…' });
-  const [error, setError] = useState<string | null>(null);
+  // An imported folder is not on the card: nothing here may favourite it,
+  // delete it, push it to a Roll or write calibration off it.
+  const isLocal = source.kind === 'local';
+  const { info, frames, progress, error: loadError } = useCaptureFrames(source, summary.id);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = loadError ?? actionError;
   // Reduced motion means the capture opens on a still frame. PLAY stays
   // available — the setting suppresses autoplay, not playback.
   const [playing, setPlaying] = useState(!reducedMotion);
@@ -66,7 +69,6 @@ export function CaptureInspector({
   const camOffsets = captureOffsets(info, calibration);
   const offsetsAvailable = hasAnyOffset(camOffsets);
   const [alignedCrop, setAlignedCrop] = useState(true);
-  const handleRef = useRef(new TransferHandle());
   const stepRef = useRef(0);
   const headId = useId();
   const descId = useId();
@@ -107,95 +109,10 @@ export function CaptureInspector({
     wasAlign.current = alignMode;
   }, [alignMode]);
 
-  // Load metadata + all four originals with live progress.
-  useEffect(() => {
-    const handle = handleRef.current;
-    let cancelled = false;
-    const dev = getDevice();
-    if (!dev) return;
-    void (async () => {
-      try {
-        const capInfo = await dev.mediaInfo(summary.id);
-        if (cancelled) return;
-        setInfo(capInfo);
-        const files = await downloadCaptureSet(dev, capInfo, handle, (p) => {
-          if (cancelled) return;
-          const overall = (p.fileIndex + p.bytesDone / p.bytesTotal) / p.fileCount;
-          setProgress({
-            pct: Math.round(overall * 100),
-            label: `Downloading ${p.file} — ${Math.round((p.bytesDone / p.bytesTotal) * 100)}%`,
-          });
-        });
-        if (cancelled) return;
-        setFrames(
-          files.map((f) => ({
-            ...f,
-            url: URL.createObjectURL(new Blob([new Uint8Array(f.data)], { type: 'image/jpeg' })),
-          })),
-        );
-      } catch (err) {
-        if (!cancelled && !(err instanceof TransferCancelled)) {
-          setError(err instanceof Error ? err.message : String(err));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-      handle.cancel();
-    };
-  }, [summary.id]);
-
-  useEffect(() => {
-    return () => {
-      // Revoke object URLs on unmount.
-      setFrames((f) => {
-        f?.forEach((frame) => URL.revokeObjectURL(frame.url));
-        return f;
-      });
-    };
-  }, []);
-
   useEffect(() => {
     if (summary.kind !== 'wiggle') return;
     void mp4Supported(800, 600).then(setMp4Ok);
   }, [summary.kind]);
-
-  const loadImages = async (): Promise<HTMLImageElement[]> => {
-    if (!frames) throw new Error('Frames not loaded');
-    return Promise.all(
-      frames.map(
-        (f) =>
-          new Promise<HTMLImageElement>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('decode failed'));
-            img.src = f.url;
-          }),
-      ),
-    );
-  };
-
-  const alignedSources = async (): Promise<(HTMLImageElement | HTMLCanvasElement)[]> => {
-    const imgs = await loadImages();
-    if (alignedCrop && offsetsAvailable) {
-      const aligned = buildAlignedFrames(imgs, camOffsets);
-      if (aligned) return aligned;
-    }
-    return imgs;
-  };
-
-  const exportMp4 = async () => {
-    setExporting('mp4');
-    try {
-      const imgs = await alignedSources();
-      const bytes = await encodeWiggleMp4(imgs, fps);
-      saveBlob(`${summary.id}.mp4`, new Blob([bytes as BlobPart], { type: 'video/mp4' }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setExporting(null);
-    }
-  };
 
   // Wiggle playback: bounce through the four viewpoints at the chosen fps.
   useEffect(() => {
@@ -209,99 +126,47 @@ export function CaptureInspector({
 
   const shownFrame = selectedFrame ?? frameIdx;
 
-  const rgbaFrames = useMemo(() => {
-    return async (): Promise<{ w: number; h: number; frames: GifFrame[] } | null> => {
-      if (!frames) return null;
-      const sources = await alignedSources();
-      const srcW = sources[0] instanceof HTMLImageElement ? sources[0].naturalWidth : sources[0].width;
-      const srcH = sources[0] instanceof HTMLImageElement ? sources[0].naturalHeight : sources[0].height;
-      const w = Math.min(srcW, 640);
-      const h = Math.round((srcH / srcW) * w);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      const delay = 1000 / fps;
-      const gifFrames: GifFrame[] = SEQ_BOUNCE.map((idx) => {
-        ctx.drawImage(sources[idx], 0, 0, w, h);
-        return { rgba: ctx.getImageData(0, 0, w, h).data, delayMs: delay };
-      });
-      return { w, h, frames: gifFrames };
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frames, fps, alignedCrop, offsetsAvailable]);
-
-  const exportGif = async () => {
-    setExporting('gif');
+  const runExport = async (tag: string, run: () => Promise<void>) => {
+    setExporting(tag);
     try {
-      const data = await rgbaFrames();
-      if (!data) return;
-      const gif = encodeGif(data.w, data.h, data.frames);
-      saveBlob(`${summary.id}.gif`, new Blob([gif as BlobPart], { type: 'image/gif' }));
+      await run();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setExporting(null);
     }
   };
+
+  const sources = () => alignedSources(frames ?? [], alignedCrop && offsetsAvailable ? camOffsets : null);
+
+  const exportMp4 = () =>
+    runExport('mp4', async () => {
+      const bytes = await buildMp4Bytes(await sources(), fps);
+      saveBlob(`${summary.id}.mp4`, new Blob([bytes as BlobPart], { type: 'video/mp4' }));
+    });
+
+  const exportGif = () =>
+    runExport('gif', async () => {
+      const gif = buildGifBytes(await sources(), fps);
+      saveBlob(`${summary.id}.gif`, new Blob([gif as BlobPart], { type: 'image/gif' }));
+    });
 
   const exportZip = () => {
     if (!frames || !info) return;
-    setExporting('zip');
-    try {
-      const entries = frames.map((f, i) => ({ name: `C${i + 1}_RAW.JPG`, data: f.data }));
-      entries.push({
-        name: 'metadata.json',
-        data: new TextEncoder().encode(JSON.stringify(info, null, 2)),
-      });
-      saveBlob(`${summary.id}.zip`, new Blob([buildZip(entries) as BlobPart], { type: 'application/zip' }));
-    } finally {
-      setExporting(null);
-    }
+    void runExport('zip', async () => {
+      const zip = buildZipBytes(frames, info);
+      saveBlob(`${summary.id}.zip`, new Blob([zip as BlobPart], { type: 'application/zip' }));
+    });
   };
 
-  const exportContactSheet = async () => {
-    if (!frames) return;
-    setExporting('sheet');
-    try {
-      const imgs = await Promise.all(
-        frames.map(
-          (f) =>
-            new Promise<HTMLImageElement>((resolve) => {
-              const img = new Image();
-              img.onload = () => resolve(img);
-              img.src = f.url;
-            }),
-        ),
-      );
-      const fw = imgs[0].naturalWidth;
-      const fh = imgs[0].naturalHeight;
-      const pad = 12;
-      const canvas = document.createElement('canvas');
-      canvas.width = fw * 2 + pad * 3;
-      canvas.height = fh * 2 + pad * 3 + 26;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#f2f4f7';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      imgs.forEach((img, i) => {
-        const x = pad + (i % 2) * (fw + pad);
-        const y = pad + Math.floor(i / 2) * (fh + pad);
-        ctx.drawImage(img, x, y);
-        ctx.fillStyle = 'rgba(20,32,48,0.8)';
-        ctx.fillRect(x + 6, y + fh - 24, 52, 18);
-        ctx.fillStyle = '#fff';
-        ctx.font = '700 12px Consolas, monospace';
-        ctx.fillText(`CAM ${i + 1}`, x + 11, y + fh - 11);
-      });
-      ctx.fillStyle = '#536273';
-      ctx.font = '700 13px Consolas, monospace';
-      ctx.fillText(`${summary.id} · ${new Date(summary.ts).toLocaleString()} · KINO`, pad, canvas.height - 10);
-      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.9));
+  const exportContactSheet = () =>
+    runExport('sheet', async () => {
+      if (!frames) return;
+      // An imported folder with no META.JSON has no capture time to print.
+      const when = summary.ts === null ? '' : `${new Date(summary.ts).toLocaleString()} · `;
+      const blob = await buildContactSheet(frames, `${summary.id} · ${when}KINO`);
       if (blob) saveBlob(`${summary.id}_sheet.jpg`, blob);
-    } finally {
-      setExporting(null);
-    }
-  };
+    });
 
   /** UPLOAD_ENQUEUE. Failure surfaces on the button, not in this dialog's
       error line — the capture itself is fine either way. */
@@ -332,15 +197,20 @@ export function CaptureInspector({
       await dev.mediaDelete(summary.id);
       onChanged('deleted');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setActionError(err instanceof Error ? err.message : String(err));
     }
   };
 
-  // Looks are stored by recipe id; users know them by name.
-  const lookName = (id: string | undefined) =>
-    id ? recipeName(deviceState, id).toUpperCase() : '';
+  const lookName = (id: string | undefined) => (id ? recipeName(deviceState, id).toUpperCase() : '');
 
   const kindLabel = summary.kind === 'wiggle' ? 'WIGGLEGRAM' : 'QUAD SET';
+
+  // Where the offsets in use came from. Zeros are never shown as a measurement.
+  const offsetOrigin = info?.meta.calibration
+    ? 'OFFSETS FROM CAPTURE META'
+    : offsetsAvailable
+      ? 'OFFSETS FROM DEVICE CALIBRATION'
+      : 'OFFSETS UNMEASURED';
 
   return (
     <>
@@ -357,7 +227,7 @@ export function CaptureInspector({
             <span id={headId}>
               {alignMode
                 ? `${summary.id} — ALIGN (WRITES DEVICE CALIBRATION)`
-                : `${summary.id} — ${kindLabel}`}
+                : `${summary.id} — ${kindLabel}${isLocal ? ' — IMPORTED' : ''}`}
             </span>
             {alignMode ? (
               // One way out in align mode: the editor's own CANCEL / SAVE.
@@ -366,9 +236,11 @@ export function CaptureInspector({
               </span>
             ) : (
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                <Button size="sm" onClick={() => void toggleFavorite()}>
-                  {favorite ? '♥ FAVORITE' : '♡ FAVORITE'}
-                </Button>
+                {isLocal ? null : (
+                  <Button size="sm" onClick={() => void toggleFavorite()}>
+                    {favorite ? '♥ FAVORITE' : '♡ FAVORITE'}
+                  </Button>
+                )}
                 <Button ref={closeBtnRef} size="sm" onClick={requestClose}>
                   CLOSE
                 </Button>
@@ -379,8 +251,16 @@ export function CaptureInspector({
             <p id={descId} className="microlabel" style={{ margin: '0 0 8px' }}>
               {alignMode
                 ? 'SAVE WRITES X / Y / ROTATION TO DEVICE CALIBRATION — IT AFFECTS EVERY CAPTURE, NOT JUST THIS ONE.'
-                : `${kindLabel} · ${frames ? `${frames.length} FRAMES` : 'LOADING FRAMES'} · ESC CLOSES`}
+                : `${kindLabel} · ${frames ? `${frames.length} FRAMES` : 'LOADING FRAMES'}${
+                    isLocal ? ` · ${offsetOrigin}` : ''
+                  } · ESC CLOSES`}
             </p>
+
+            {source.kind === 'local' && source.capture.warnings.length > 0 ? (
+              <p className="notice">
+                <span className="mono">{source.capture.warnings.join(' · ')}</span>
+              </p>
+            ) : null}
 
             {error ? <p className="notice notice--err">{error}</p> : null}
 
@@ -522,44 +402,50 @@ export function CaptureInspector({
                           {alignedCrop && offsetsAvailable ? 'ALIGNED CROP' : 'FULL FRAME'}
                         </Button>
                         {/* Label and button travel together when the row wraps. */}
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-                          <span className="microlabel">CALIBRATION</span>
-                          <Button
-                            size="sm"
-                            title="Nudge camera offsets against CAM2 and write them to device calibration"
-                            onClick={() => setAlignMode(true)}
-                          >
-                            ALIGN
-                          </Button>
-                        </span>
+                        {isLocal ? null : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
+                            <span className="microlabel">CALIBRATION</span>
+                            <Button
+                              size="sm"
+                              title="Nudge camera offsets against CAM2 and write them to device calibration"
+                              onClick={() => setAlignMode(true)}
+                            >
+                              ALIGN
+                            </Button>
+                          </span>
+                        )}
                       </>
                     ) : null}
                   </span>
                   {/* Sending the capture somewhere is not an export either —
                       it leaves the camera on the camera's schedule. Renders
                       nothing unless there is an active Roll to push to. */}
-                  <PushToRoll
-                    captureId={summary.id}
-                    rollUpload={supportsRollUpload(deviceState)}
-                    roll={roll}
-                    onPush={pushToRoll}
-                  />
+                  {isLocal ? null : (
+                    <PushToRoll
+                      captureId={summary.id}
+                      rollUpload={supportsRollUpload(deviceState)}
+                      roll={roll}
+                      onPush={pushToRoll}
+                    />
+                  )}
                   {/* DELETE is not an export. Own trailing group, ruled off. */}
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      flex: 'none',
-                      marginLeft: 14,
-                      paddingLeft: 14,
-                      borderLeft: '1px solid var(--border-mid)',
-                    }}
-                  >
-                    <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)}>
-                      DELETE
-                    </Button>
-                  </span>
+                  {isLocal ? null : (
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        flex: 'none',
+                        marginLeft: 14,
+                        paddingLeft: 14,
+                        borderLeft: '1px solid var(--border-mid)',
+                      }}
+                    >
+                      <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)}>
+                        DELETE
+                      </Button>
+                    </span>
+                  )}
                 </div>
               </>
             )}
@@ -568,57 +454,9 @@ export function CaptureInspector({
               <MatchPanel frameUrls={frames.map((f) => f.url)} isWiggle={summary.kind === 'wiggle'} />
             ) : null}
 
-            {info ? (
-              <div style={{ marginTop: 10 }}>
-                <dl>
-                  <div className="datarow"><dt>Taken</dt><dd>{new Date(info.ts).toLocaleString()}</dd></div>
-                  <div className="datarow">
-                    <dt>{summary.kind === 'wiggle' ? 'Look' : 'Looks (CAM 1–4)'}</dt>
-                    <dd>{info.recipeIds.map((id) => lookName(id)).join(' · ')}</dd>
-                  </div>
-                  <div className="datarow">
-                    <dt>Resolution</dt>
-                    <dd>{info.resolution.replace('x', '×')} · {info.totalKB} KB total</dd>
-                  </div>
-                  <div className="datarow"><dt>Flash</dt><dd>{info.meta.flash ? 'FIRED' : 'OFF'}</dd></div>
-                  {info.meta.exposure.length > 0 ? (
-                    <div className="datarow" style={{ maxWidth: 'none' }}>
-                      <dt>Shutter / gain</dt>
-                      <dd>
-                        {info.meta.exposure.map((e) => (
-                          <span key={e.cam} style={{ marginRight: 14, whiteSpace: 'nowrap' }}>
-                            {e.cam.toUpperCase().replace('CAM', 'CAM ')} {e.shutter} · {e.gain}×
-                          </span>
-                        ))}
-                      </dd>
-                    </div>
-                  ) : null}
-                  {/* The number that decides a wigglegram is the effective
-                      exposure spread, and firmware does not record it per
-                      capture — only GPIO distribution reaches the card. Say
-                      that, in the place the spread would occupy, instead of
-                      leaving the µs figure below to be read as the answer. */}
-                  <div className="datarow" style={{ maxWidth: 'none' }}>
-                    <dt>Effective exposure spread</dt>
-                    <dd>
-                      <strong>—</strong>{' '}
-                      <span className="dim">
-                        not recorded per capture — measure it live on Developer › TIMING BENCH
-                      </span>
-                    </dd>
-                  </div>
-                  <div className="datarow" style={{ maxWidth: 'none' }}>
-                    <dt>GPIO trigger skew</dt>
-                    <dd className="dim">
-                      {info.meta.gpioSkewUs} µs — when the shared trigger edge reached each
-                      camera. It does not say when each sensor exposed.
-                    </dd>
-                  </div>
-                  <div className="datarow"><dt>Battery at capture</dt><dd>{info.meta.batteryV.toFixed(2)} V</dd></div>
-                  <div className="datarow"><dt>Firmware</dt><dd>P4 {info.meta.p4Firmware} · CAM {info.meta.cameraFirmware.join('/')}</dd></div>
-                </dl>
-              </div>
-            ) : null}
+            {info ? <CaptureMeta info={info} kind={summary.kind} lookName={lookName} /> : null}
+
+            {isLocal && !info && frames ? <ImportedFileMeta id={summary.id} frames={frames} /> : null}
           </div>
         </div>
       </div>

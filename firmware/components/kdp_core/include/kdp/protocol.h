@@ -62,6 +62,10 @@ typedef enum {
   KDP_CMD_CAMERA_LINK_STATS_RESET = 0x49,
   KDP_CMD_CAMERA_SOAK_TEST = 0x4a,
   KDP_CMD_GET_HW_VALIDATION = 0x4b,
+  // Reserved on M1B: the opcode exists so host and firmware agree on the
+  // number, but no handler is registered — M1B_COMMANDS is a whitelist, so
+  // the server NACKs UNSUPPORTED_COMMAND until one is.
+  KDP_CMD_STORAGE_BENCH = 0x4c,
 
   // Maintenance
   KDP_CMD_ENTER_MAINTENANCE = 0x50,

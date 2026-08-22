@@ -22,12 +22,24 @@ import { useConnectionStore } from './connectionStore';
  * text, and keeps its numbers so the run can still be exported.
  */
 
-export type BenchOwner = 'timing' | 'phase' | 'link' | 'burnin' | 'conformance' | 'skew';
+export type BenchOwner =
+  | 'timing'
+  | 'phase'
+  | 'link'
+  | 'storage'
+  | 'burnin'
+  | 'conformance'
+  | 'skew'
+  | 'power';
 
 export const BENCH_OWNERS: BenchOwner[] = [
   'timing',
   'phase',
   'link',
+  // SD throughput. Card-owned rather than link-owned, but it goes stale for
+  // the same reasons: swap the card or reboot and the numbers describe a
+  // device that is no longer there.
+  'storage',
   'burnin',
   'conformance',
   // The Skew Bench, Calibration's product surface. It is here rather than in
@@ -35,6 +47,10 @@ export const BENCH_OWNERS: BenchOwner[] = [
   // and a verdict that survives a page swap has to say when it was measured
   // and whether anything since invalidated it.
   'skew',
+  // The power-load ladder. Its rows are measured battery volts under a named
+  // activity, so a reboot or a link drop invalidates them for the same reason
+  // it invalidates the timing runs — the load that produced them is gone.
+  'power',
 ];
 
 export interface BenchEntry<T = unknown> {

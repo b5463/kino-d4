@@ -10,10 +10,12 @@ import { useTetherStore, startTether, stopTether } from '../../device/tether';
 import type { CaptureSummary } from '@kino/kdp';
 import type { RollView } from '../../roll/rollTypes';
 import { CaptureInspector } from './CaptureInspector';
+import { useLocalImport } from './LocalImportPanel';
 import {
   GALLERY_LIST_CAP,
   GALLERY_PAGE_SIZE as PAGE_SIZE,
   clampGalleryPage,
+  formatWhen,
   galleryPageCount,
   galleryPageSlice,
   galleryView,
@@ -23,11 +25,6 @@ import type { GalleryFilter as Filter, GallerySort as Sort } from './galleryPagi
 
 /** Concurrent thumbnail reads. The P4 is a small computer. */
 const THUMB_WORKERS = 2;
-
-function formatWhen(ts: number): string {
-  const d = new Date(ts);
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-}
 
 /** Enough of a failure to act on, short enough for a 190px tile. */
 function shortReason(reason: string): string {
@@ -57,6 +54,7 @@ export function GalleryPage() {
   const rollUpload = useDeviceStore(supportsRollUpload);
   const [thumbBusy, setThumbBusy] = useState(0);
   const [retryTick, setRetryTick] = useState(0);
+  const localImport = useLocalImport();
   const alive = useRef(true);
   const thumbsRef = useRef<Record<string, string>>({});
   const thumbErrorsRef = useRef<Record<string, string>>({});
@@ -192,12 +190,17 @@ export function GalleryPage() {
 
   if (phase !== 'connected' && phase !== 'maintenance') {
     return (
-      <div className="pagehead">
-        <h1>
-          <Icon name="gallery" />
-          Gallery
-        </h1>
-      </div>
+      <>
+        <div className="pagehead">
+          <h1>
+            <Icon name="gallery" />
+            Gallery
+          </h1>
+          <span className="pagehead-actions">{localImport.action}</span>
+        </div>
+        {localImport.section}
+        {localImport.inspector}
+      </>
     );
   }
 
@@ -252,8 +255,11 @@ export function GalleryPage() {
               {indexBusy ? 'READING INDEX…' : `LIST ${Math.min(GALLERY_LIST_CAP, total! - shownCount)} MORE`}
             </Button>
           ) : null}
+          {localImport.action}
         </span>
       </div>
+
+      {localImport.section}
 
       {tether.lastError ? <p className="notice notice--err">Tether: {tether.lastError}</p> : null}
       {error ? (
@@ -429,7 +435,7 @@ export function GalleryPage() {
         </>
       )}
 
-      {openCapture ? (
+      {openCapture && !localImport.open ? (
         <CaptureInspector
           summary={openCapture}
           roll={rollView}
@@ -444,6 +450,7 @@ export function GalleryPage() {
           }}
         />
       ) : null}
+      {localImport.inspector}
     </>
   );
 }

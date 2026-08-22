@@ -9,6 +9,12 @@ import type { CaptureSummary } from '@kino/kdp';
 export type GalleryFilter = 'all' | 'wiggle' | 'quad' | 'favorites';
 export type GallerySort = 'newest' | 'oldest';
 
+/** Date line under a capture card, wherever the card is rendered. */
+export function formatWhen(ts: number): string {
+  const d = new Date(ts);
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 /** Cards per page. One card is one tab stop, so this bounds the run. */
 export const GALLERY_PAGE_SIZE = 24;
 

@@ -68,6 +68,19 @@ export interface Capabilities {
    * predating 1B omits it.
    */
   benchDiagnostics?: boolean;
+  /**
+   * Network / Roll command group (KDP 0xa0–0xa9). `network` covers
+   * NETWORK_LIST/SET/DELETE/STATUS; `roll` covers ROLL_* and the upload
+   * queue. Both optional: firmware without the group omits them, and
+   * absence is an answer, not an unknown.
+   *
+   * `rollUpload` is the third flag of the group. It is deliberately NOT
+   * declared here — it shipped before this interface was settled and is
+   * still read off the reported object by `supportsRollUpload`; typing it
+   * now would silently change that gate's shape.
+   */
+  network?: boolean;
+  roll?: boolean;
 }
 
 /** Focus modes (audit #55). PARTY AUTO: AF then lock then capture. PARTY
@@ -123,6 +136,14 @@ export interface DeviceInfo {
 
 export type CameraState =
   | 'ready'
+  /**
+   * CAMERA_ARM accepted: the sensor is primed and waiting for the shared
+   * trigger edge. Not `busy` — an armed camera has nothing to do but wait,
+   * and one still armed after a burst missed the trigger rather than ran
+   * slow. Exits are the capture itself and the arm timeout; there is no
+   * CAMERA_DISARM (firmware-contract/commands.md records why).
+   */
+  | 'armed'
   | 'busy'
   | 'capturing'
   | 'updating'
@@ -212,6 +233,32 @@ export interface StorageSelfTestResult {
   durationMs: number;
   bytesTested: number;
   message?: string;
+}
+
+/**
+ * STORAGE_BENCH request. Sustained throughput, not a health check —
+ * STORAGE_SELF_TEST already answers "does the card work".
+ */
+export interface StorageBenchRequest {
+  /** Total payload written per pass. */
+  sizeMB: number;
+  /** Write unit. The burst path writes whole JPEGs; block size decides stalls. */
+  blockKB: number;
+  passes: number;
+}
+
+export interface StorageBenchResult {
+  writeMBs: number;
+  readMBs: number;
+  /**
+   * Slowest single block across every pass. This is the number that decides a
+   * four-frame burst: the burst stalls on its worst block, and an average
+   * hides exactly the event that drops a frame.
+   */
+  worstBlockMs: number;
+  p95BlockMs: number;
+  /** Bytes actually written, so the rates can be checked against the clock. */
+  bytes: number;
 }
 
 export interface CameraLinkStats {
