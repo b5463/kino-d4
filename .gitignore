@@ -15,7 +15,7 @@ firmware/*/build/
 firmware/*/sdkconfig
 firmware/*/sdkconfig.old
 firmware/*/managed_components/
-firmware/*/dependencies.lock
+# dependencies.lock is committed: it pins what a clean build fetches (issue #90)
 firmware/components/kdp_core/host_tests/test_kdp
 
 # Local AI agents and their generated state

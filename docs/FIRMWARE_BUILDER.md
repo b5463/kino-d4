@@ -7,7 +7,7 @@ no second build system.
 
 | Piece | Path | Role |
 |---|---|---|
-| Build daemon | `scripts/firmware-daemon.mjs` | Localhost HTTP service (127.0.0.1:5177) wrapping `docker run espressif/idf:v5.5.1 idf.py build` on `firmware/p4` and `firmware/camnode` — the exact commands CI runs |
+| Build daemon | `scripts/firmware-daemon.mjs` | Localhost HTTP service (127.0.0.1:5177) wrapping `docker run espressif/idf:v5.5.1 idf.py build` on `firmware/p4` and `firmware/camnode` — the same pinned image CI uses (CI enters it via `export.sh`, the daemon via the image entrypoint) |
 | Studio panel | `apps/studio/src/pages/Updates/FirmwareBuildPanel.tsx` | FIRMWARE BUILDER on the Updates page (developer mode) |
 | Daemon client | `apps/studio/src/firmware/daemonClient.ts` | Typed client + package assembly with SHA-256 re-verification |
 

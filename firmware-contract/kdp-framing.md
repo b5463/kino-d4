@@ -189,7 +189,7 @@ in the same call — never by clearing the buffer or dropping the connection:
 
 | Condition | Action |
 |---|---|
-| Bytes before magic | Discard them, count a resync |
+| Bytes before a *found* magic | Discard them, count a resync. Leading noise with no magic in the buffer yet is discarded silently — the counter increments only when a later magic proves bytes were skipped |
 | `PAYLOAD_LEN > MAX_PAYLOAD` | Skip past the magic (`start + 2`) and rescan. A garbled length field cannot stall the stream waiting for bytes that will never come |
 | CRC mismatch | Skip past the magic and rescan |
 

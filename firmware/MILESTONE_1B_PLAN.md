@@ -77,9 +77,10 @@ new commands, capability-gated. Twin: parity comes through MockKinoDevice.
 `UNVALIDATED | VALIDATED | FAILED | NOT_APPLICABLE`, persisted in NVS per unit. Compile-time
 configuration is never validation: an item flips to `VALIDATED` only when the corresponding real
 event happens on the device (a decoded host frame arrived over USB, the card mounted, the node
-answered HELLO, a checksum-verified capture landed on SD), and to `FAILED` when the operation
-fails against present hardware. `firmware/HARDWARE_VALIDATION.md` is the human bench record; the
-registry is the live per-unit evidence behind it.
+answered HELLO, a checksum-verified capture landed on SD). Firmware never marks `FAILED` on its
+own — that verdict is the bench operator's, recorded by hand (see
+`firmware/HARDWARE_VALIDATION.md`, which is the human bench record; the registry is the live
+per-unit evidence behind it).
 
 ## Expected telemetry
 

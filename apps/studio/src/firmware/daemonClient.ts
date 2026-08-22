@@ -5,7 +5,12 @@
 import type { FwManifest, FwPackage } from './manifest';
 import { sha256Hex } from './hashing';
 
-export const DEFAULT_DAEMON_URL = 'http://127.0.0.1:5177';
+/**
+ * Follows the daemon's KINO_FWD_PORT: set VITE_KINO_FWD_URL for the Studio
+ * dev server when the daemon runs on a non-default port (issue #90).
+ */
+export const DEFAULT_DAEMON_URL =
+  (import.meta.env?.VITE_KINO_FWD_URL as string | undefined) ?? 'http://127.0.0.1:5177';
 
 export type DaemonTarget = 'p4' | 'camnode';
 

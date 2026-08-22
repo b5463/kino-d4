@@ -75,9 +75,10 @@ docker run --rm -v <repo>:/project -w /project/firmware/camnode espressif/idf:v5
   commands answer `UNSUPPORTED_COMMAND` — never a silent timeout.
 - **Session id** is `boot-<NVS boot counter>`, never repeated across boots. Capture ids use a
   persistent NVS counter and a real UUIDv4 in `captureUuid`, never reused after reboot.
-- **SD layout follows the reference device**, not the kickoff sketch: `/DCIM/<FOLDER>/C1.JPG` plus
-  `META.JSON` per capture (`MockMediaStore` uses `WG000041`-style folders). M1 test captures use
-  `TC<NNNNNN>` folders with `mode: "single"` documents.
+- **SD layout** (superseded during implementation — issue #90): the shipped M1B firmware writes
+  `/KINO/CAPTURES/<uuid>/C1.JPG` plus `META.JSON` per capture (`firmware/p4/main/storage.c`),
+  with `mode: "single"` documents. The `/DCIM/<FOLDER>` reference-device layout arrives with the
+  gallery milestone.
 - **Idempotent reads.** The host retries the 20 `RETRYABLE_READS` commands once with a fresh
   sequence id — every implemented read handler must tolerate arriving twice.
 - **Unspecified contract items, M1 decisions** (firmware-contract README §Unspecified): HELLO is
@@ -103,7 +104,7 @@ Both are Milestone 1 gates and CI jobs.
 
 On the Guition board alone, no XIAO attached:
 
-1. Flash `p4-app.bin`, connect Studio over USB.
+1. Flash `kino-p4.bin` (the artifact `firmware/p4` actually builds), connect Studio over USB.
 2. HELLO answers inside the 3×500 ms retry budget with echoed nonce and a fresh `boot-N` session id.
 3. `GET_CAPABILITIES` reports the honest M1 surface; an unimplemented command (e.g. `GET_RECIPES`)
    NACKs `UNSUPPORTED_COMMAND`.

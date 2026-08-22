@@ -1,3 +1,7 @@
 dependencies:
+  # v5.5.1 is the one canonical build environment (docs/FIRMWARE_BUILDER.md);
+  # the floor here only documents the true source requirement.
   idf: ">=5.3"
-  espressif/esp32-camera: "^2.1.0"
+  # Pinned, with dependencies.lock committed: "^2.1.0" resolved to whatever
+  # the registry served that day, so two clean builds could differ (issue #90).
+  espressif/esp32-camera: "==2.1.7"
