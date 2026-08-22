@@ -1,9 +1,11 @@
-// Fault injection switches for the demo device. The debug panel toggles
-// these; the mock device reads them when composing responses.
+// Fault injection switches for the reference device. KINO Twin's FAULTS
+// panel and the test suites toggle these; the mock device reads them when
+// composing responses. Studio had its own debug panel for them until its
+// demo device was removed (issue #110) — Twin owns that surface now.
 //
 // The first twelve are the mock requirements of 04 §19 and carry the spec's
 // own names. The next block predates that list and stays because Studio's
-// simulator panel and its degradation paths are built on them. The final
+// degradation paths are built on them. The final
 // block is the KINO Twin spec's §20 fault-injection list — device-wide
 // conditions (link/handshake/roll/storage/power). Per-camera faults
 // (offline, power-open, sensor-missing, no-vsync, slow-uart, crc-noise) are

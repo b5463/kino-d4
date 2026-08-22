@@ -83,11 +83,13 @@ export function connectionStrip(
 }
 
 /**
- * Whether OPEN DEMO DEVICE can be taken. There is no live session to disturb
- * in exactly three states, and `recovery` is one of them: a board that never
- * came back is the state a user is most likely to want the simulator from.
+ * Whether a new connection can be started. There is no live session to
+ * disturb in exactly three states, and `recovery` is one of them: a board
+ * that never came back is the state a user is most likely to want a
+ * simulated camera from. This also gates the Twin discovery probe, so it is
+ * about the phase, not about any one connect button.
  */
-export function canOpenDemo(phase: ConnectionPhase): boolean {
+export function canStartConnection(phase: ConnectionPhase): boolean {
   return phase === 'disconnected' || phase === 'error' || phase === 'recovery';
 }
 

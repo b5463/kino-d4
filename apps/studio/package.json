@@ -21,7 +21,6 @@
     "@kino/media": "*",
     "@kino/schemas": "*",
     "@kino/simulator-engine": "*",
-    "@kino/test-fixtures": "*",
     "mp4-muxer": "^5.2.2",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
@@ -29,6 +28,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@kino/test-fixtures": "*",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

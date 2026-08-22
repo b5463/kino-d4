@@ -35,7 +35,7 @@ body:
       description: Give the shortest repeatable sequence.
       placeholder: |
         1. Start Studio at commit...
-        2. Open the demo device...
+        2. Connect KINO Twin...
         3. Select...
     validations:
       required: true
@@ -56,7 +56,7 @@ body:
   - type: dropdown
     id: demo
     attributes:
-      label: Does the demo device reproduce it?
+      label: Does KINO Twin reproduce it?
       options:
         - "Yes"
         - "No"

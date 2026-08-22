@@ -16,10 +16,8 @@ import type {
 import { KinoDevice } from '../device/KinoDevice';
 import { clearSoundCache } from '../device/sounds';
 import type { Transport, TransportKind } from '@kino/kdp';
-import { MockTransport } from '@kino/kdp';
 import { SerialTransport, webSerialSupported } from '@kino/kdp';
 import { BroadcastTransport, WebSocketTransport } from '@kino/kdp';
-import { MockKinoDevice } from '@kino/test-fixtures';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import type { ConnectionFault } from '../state/connectionStore';
 import { clearDeviceState, setDeviceState, supports, useDeviceStore } from '../state/deviceStore';
@@ -63,7 +61,6 @@ export function onPhaseEvent(cb: (e: PhaseEvent) => void): () => void {
   return () => busHandlers.phase.delete(cb as (payload: never) => void);
 }
 
-let demoDevice: MockKinoDevice | null = null;
 let transport: Transport | null = null;
 let client: KinoProtocolClient | null = null;
 let device: KinoDevice | null = null;
@@ -90,12 +87,14 @@ export function getDevice(): KinoDevice | null {
   return device;
 }
 
-export function getDemoDevice(): MockKinoDevice | null {
-  return demoDevice;
-}
-
-export function isDemo(): boolean {
-  return lastKind === 'mock';
+/**
+ * True for any transport that is not a real camera on a wire. Studio has no
+ * simulator of its own any more — KINO Twin is it — but a simulated session
+ * still differs from hardware in ways the UI must respect: there is no Roll
+ * server behind it, and the device mints its own guest URL.
+ */
+export function isSimulated(): boolean {
+  return lastKind !== null && lastKind !== 'serial';
 }
 
 /** Firmware updater calls this right before a P4 reboot is expected. */
@@ -123,9 +122,14 @@ export function waitForPhase(phase: string, timeoutMs: number): Promise<void> {
   });
 }
 
-export async function connectDemo(): Promise<void> {
-  if (!demoDevice) demoDevice = new MockKinoDevice();
-  await connectWith(() => new MockTransport(demoDevice!), 'mock');
+/**
+ * Open a session on a transport this module does not know how to build.
+ * Studio's own entry points are `connectSerial` and `connectTwin`; this is
+ * the seam the test suites drive a `MockTransport` through, so the reference
+ * simulator stays out of the shipped bundle.
+ */
+export async function connectTransport(factory: () => Transport, kind: TransportKind): Promise<void> {
+  await connectWith(factory, kind);
 }
 
 export async function connectSerial(): Promise<void> {
@@ -154,8 +158,8 @@ export async function connectSerial(): Promise<void> {
  * KINO Twin §10 option 2: a Twin in another same-origin tab over
  * BroadcastTransport — or, given a relay URL (issue #29), a Twin in another
  * browser/container/machine over WebSocketTransport. Same
- * connect/handshake/populate path as serial and demo either way; the twin is
- * just another transport kind, not a special case.
+ * connect/handshake/populate path as serial either way; the twin is just
+ * another transport kind, not a special case.
  */
 export async function connectTwin(wsUrl?: string): Promise<void> {
   await connectWith(() => (wsUrl ? new WebSocketTransport(wsUrl) : new BroadcastTransport()), 'twin');
@@ -164,7 +168,8 @@ export async function connectTwin(wsUrl?: string): Promise<void> {
 /** What each transport kind is called in a "could not open" error. */
 const OPEN_TARGET_LABEL: Record<TransportKind, string> = {
   serial: 'serial port',
-  mock: 'demo device',
+  // Reachable only from the test suites; Studio itself never opens one.
+  mock: 'simulated device',
   twin: 'KINO Twin',
 };
 
@@ -352,7 +357,7 @@ async function populateAll() {
   // power, config, recipes and calibration NACK UNSUPPORTED_COMMAND. Each
   // read degrades to "absent" on its own instead of failing the whole
   // connection — Studio must work against the firmware that exists, not
-  // only against the finished demo device.
+  // only against the finished simulator.
   const dev = device;
   const tolerate = async <T>(read: () => Promise<T>): Promise<T | null> => {
     try {
@@ -570,7 +575,7 @@ async function reconnectLoop(factory: () => Transport) {
       await sleep(1500);
       if (Date.now() > expectRebootUntil + 20000) break;
       try {
-        await connectWith(factory, lastKind ?? 'mock');
+        await connectWith(factory, lastKind ?? 'serial');
         if (useConnectionStore.getState().phase === 'connected') {
           expectRebootUntil = 0;
           return;

@@ -112,7 +112,7 @@ A firmware release should also contain a manifest, target identifiers, size, SHA
 The build daemon emits one single-target manifest per build (`firmware/<app>/build/kino-<app>-manifest.json`); assemble the publishable package by copying both `.bin` files into a directory and merging the two manifests' `targets` maps into one `manifest.json`. Connection settings come from the same environment variables as the API (`DATABASE_URL`, `S3_*`).
 
 - Install the published Studio bundle in a clean browser profile.
-- Exercise the demo device and one physical camera if hardware support is claimed.
+- Exercise KINO Twin and one physical camera if hardware support is claimed.
 - Verify the API health route and a complete upload against the target environment.
 - Confirm links, downloads, checksums, and release notes from a separate machine.
 - Record urgent fixes in the changelog before preparing a patch release.

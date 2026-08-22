@@ -20,13 +20,20 @@ import { KinoDevice } from '../src/device/KinoDevice';
 import { parseCubeLut, DEVICE_LUT_SIZE } from '../src/recipes/cubeLut';
 import {
   PHASE_LABEL,
-  canOpenDemo,
+  canStartConnection,
   connectionStrip,
   connectionNotice,
   setConnection,
   useConnectionStore,
 } from '../src/state/connectionStore';
-import { connectDemo, disconnect, getDemoDevice, getDevice, isSameCamera, recheckSession } from '../src/app/session';
+import {
+  connectTransport,
+  disconnect,
+  getDevice,
+  isSameCamera,
+  isSimulated,
+  recheckSession,
+} from '../src/app/session';
 import { clearLogs, useLogStore } from '../src/state/logStore';
 import { putDraftEntry, setDraftDirty, useDraftStore } from '../src/state/draftStore';
 import { getBenchResult, putBenchResult, resetBenchResults } from '../src/state/benchResults';
@@ -50,6 +57,21 @@ async function connectMock(mock = new MockKinoDevice()) {
   transport = new MockTransport(mock);
   await transport.open();
   return { mock, device: new KinoDevice(new KinoProtocolClient(transport)) };
+}
+
+/**
+ * The simulator behind the *session* tests below, as opposed to the raw
+ * client `connectMock` above. Studio no longer owns a simulator of its own
+ * (issue #110), so this file keeps the instance and drives it through the
+ * `connectTransport` seam. One instance for the whole module is deliberate:
+ * the session-restart and protocol-mismatch tests reconnect to the *same*
+ * device and assert on what carried over.
+ */
+let sessionSim: MockKinoDevice | null = null;
+
+async function connectSessionSim(): Promise<void> {
+  sessionSim ??= new MockKinoDevice();
+  await connectTransport(() => new MockTransport(sessionSim!), 'mock');
 }
 
 afterEach(async () => {
@@ -223,16 +245,17 @@ describe('02 §6 — connection strip states', () => {
 
 describe('02 §6 — recovery phase consumers', () => {
   /**
-   * A failed reboot used to land in `error`, where DEMO was offered. Adding a
-   * phase silently took that away — from the one state where a user is most
-   * likely to want the simulator.
+   * A failed reboot used to land in `error`, where a new connection was
+   * offered. Adding a phase silently took that away — from the one state
+   * where a user is most likely to want to reach for a simulated camera.
+   * This also gates Twin discovery, so losing it hides Twin entirely.
    */
-  it('still offers the demo device in recovery', () => {
-    expect(canOpenDemo('recovery')).toBe(true);
-    expect(canOpenDemo('disconnected')).toBe(true);
-    expect(canOpenDemo('error')).toBe(true);
+  it('still allows a new connection in recovery', () => {
+    expect(canStartConnection('recovery')).toBe(true);
+    expect(canStartConnection('disconnected')).toBe(true);
+    expect(canStartConnection('error')).toBe(true);
     for (const phase of ['connected', 'maintenance', 'updating', 'reconnecting', 'handshaking', 'connecting', 'requesting-port'] as const) {
-      expect(canOpenDemo(phase), `${phase} has a live session`).toBe(false);
+      expect(canStartConnection(phase), `${phase} has a live session`).toBe(false);
     }
   });
 
@@ -372,6 +395,37 @@ describe('07 §14 — capability acceptance', () => {
  * run stayed live. The loop now runs in `@kino/kdp`, which owns the retry,
  * nonce and session machinery — this is the end-to-end proof of the last part.
  */
+/**
+ * Issue #110. Removing Studio's demo device made this load-bearing: the Roll
+ * page lets a session create a Roll on the camera alone, with no Roll server,
+ * only when it is talking to a simulator — the reference device mints its own
+ * guest URL, so the whole QR flow can be shown. That gate used to ask "is
+ * this the demo transport", which was false for KINO Twin, so a Twin session
+ * silently could not start a Roll at all. It now asks "is this anything other
+ * than a camera on a wire".
+ */
+describe('#110 — the device-only Roll gate covers Twin, not just the old demo', () => {
+  afterEach(async () => {
+    await disconnect();
+  });
+
+  it('reports a Twin session as simulated', async () => {
+    await connectTransport(() => new MockTransport(new MockKinoDevice()), 'twin');
+    expect(useConnectionStore.getState().transportKind).toBe('twin');
+    expect(isSimulated()).toBe(true);
+  }, 20000);
+
+  it('does not call a serial session simulated', async () => {
+    await connectTransport(() => new MockTransport(new MockKinoDevice()), 'serial');
+    expect(isSimulated()).toBe(false);
+  }, 20000);
+
+  it('reports no session as not simulated', async () => {
+    await disconnect();
+    expect(isSimulated()).toBe(false);
+  });
+});
+
 describe('02 §5/§32 — session-change detection on the live path', () => {
   afterEach(async () => {
     await disconnect();
@@ -380,10 +434,10 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
 
   it('notices the camera rebooted under it and drops what it had cached', async () => {
     clearLogs();
-    await connectDemo();
+    await connectSessionSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
 
-    const demo = getDemoDevice();
+    const demo = sessionSim;
     expect(demo).not.toBeNull();
     const before = demo!.currentSessionId();
 
@@ -397,7 +451,7 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
 
     // Reconnecting to the same camera: same port, same everything except the
     // boot ID, which is the only thing that says the state is stale.
-    await connectDemo();
+    await connectSessionSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
     const after = demo!.currentSessionId();
     expect(after).not.toBe(before);
@@ -412,10 +466,10 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
 
   it('notices a soft restart even when the transport remains open', async () => {
     clearLogs();
-    await connectDemo();
+    await connectSessionSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
 
-    const demo = getDemoDevice()!;
+    const demo = sessionSim!;
     const before = demo.currentSessionId();
     putDraftEntry('shoot', { draft: { jpegQuality: 72 }, base: { jpegQuality: 85 } });
     setDraftDirty('shoot', 'Shoot');
@@ -437,9 +491,9 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
    * even be the same camera.
    */
   it('says nothing about a restart after a deliberate disconnect', async () => {
-    await connectDemo();
+    await connectSessionSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
-    const before = getDemoDevice()!.currentSessionId();
+    const before = sessionSim!.currentSessionId();
 
     await disconnect();
     expect(useConnectionStore.getState().phase).toBe('disconnected');
@@ -447,17 +501,17 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
 
     // Whatever gets connected next boots fresh — a different unit, or the same
     // one power-cycled on the bench. Either way this is a first session.
-    getDemoDevice()!.setScenario('sessionRestart', true);
-    await connectDemo();
+    sessionSim!.setScenario('sessionRestart', true);
+    await connectSessionSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
-    expect(getDemoDevice()!.currentSessionId()).not.toBe(before);
+    expect(sessionSim!.currentSessionId()).not.toBe(before);
 
     expect(useLogStore.getState().entries.filter((e) => e.msg.includes('camera restarted'))).toHaveLength(0);
   }, 60000);
 
   /**
    * And the identity guard itself. A true two-unit swap cannot be driven
-   * through `connectDemo()` — it owns a single simulator instance — so the
+   * through `connectSessionSim()` — one simulator instance — so the
    * predicate the handler consults is asserted directly.
    */
   it('does not call a different unit a restart', () => {
@@ -477,7 +531,7 @@ describe('02 §5/§32 — session-change detection on the live path', () => {
 
 describe('07 §14 — protocol mismatch on the live path', () => {
   afterEach(async () => {
-    getDemoDevice()?.setScenario('protocolMismatch', false);
+    sessionSim?.setScenario('protocolMismatch', false);
     await disconnect();
     clearLogs();
   });
@@ -485,11 +539,11 @@ describe('07 §14 — protocol mismatch on the live path', () => {
   it('refuses the session and raises the mismatch fault, not a bare error', async () => {
     // Connect once to get hold of the simulator, then give it firmware that
     // speaks a protocol this build does not.
-    await connectDemo();
+    await connectSessionSim();
     await disconnect();
-    getDemoDevice()!.setScenario('protocolMismatch', true);
+    sessionSim!.setScenario('protocolMismatch', true);
 
-    await connectDemo();
+    await connectSessionSim();
 
     const state = useConnectionStore.getState();
     expect(state.phase).toBe('error');
@@ -511,14 +565,14 @@ describe('07 §14 — protocol mismatch on the live path', () => {
   }, 60000);
 
   it('connects normally again once the scenario is off', async () => {
-    await connectDemo();
+    await connectSessionSim();
     await disconnect();
-    getDemoDevice()!.setScenario('protocolMismatch', true);
-    await connectDemo();
+    sessionSim!.setScenario('protocolMismatch', true);
+    await connectSessionSim();
     expect(useConnectionStore.getState().fault).toBe('protocol-mismatch');
 
-    getDemoDevice()!.setScenario('protocolMismatch', false);
-    await connectDemo();
+    sessionSim!.setScenario('protocolMismatch', false);
+    await connectSessionSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
     expect(useConnectionStore.getState().fault).toBeNull();
   }, 60000);

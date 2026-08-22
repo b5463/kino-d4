@@ -7,7 +7,6 @@ import { StatusBar } from '../components/StatusBar';
 import { Sidebar, PAGE_LABEL, navItems } from '../components/Sidebar';
 import type { PageId } from '../components/Sidebar';
 import { ConnectHome } from '../components/ConnectHome';
-import { DebugPanel } from '../components/DebugPanel';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Led } from '../components/Led';
 import { Button } from '../components/Button';
@@ -18,14 +17,7 @@ import { emitUi } from '../state/uiBus';
 import { useNavRequest } from '../state/navRequest';
 import { blockedBy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
-import {
-  connectSerial,
-  connectDemo,
-  disconnect,
-  isDemo,
-  rebootAndReconnect,
-  refreshAll,
-} from './session';
+import { connectSerial, disconnect, rebootAndReconnect, refreshAll } from './session';
 import { OverviewPage } from '../pages/Overview/OverviewPage';
 import { ShootPage } from '../pages/Shoot/ShootPage';
 import { WigglePage } from '../pages/Wiggle/WigglePage';
@@ -212,7 +204,6 @@ export function App() {
       label: 'Camera',
       items: [
         { label: 'Connect Kino Camera…', disabled: inSession || !serialSupported, action: () => void connectSerial() },
-        { label: 'Open Demo Device', disabled: inSession, action: () => void connectDemo() },
         { label: 'Run Self Test', disabled: !connected, separatorAbove: true, action: runSelfTest },
         { label: 'Reboot Camera…', disabled: !connected, action: () => setRebootOpen(true) },
         { label: 'Update Firmware…', disabled: !connected, separatorAbove: true, action: () => goto('updates') },
@@ -249,11 +240,6 @@ export function App() {
           label: 'Developer Mode',
           checked: developerMode,
           action: () => setDeveloperMode(!developerMode),
-        },
-        {
-          label: 'Simulator Faults',
-          disabled: !isDemo() || !inSession,
-          action: () => emitUi('toggle-faults'),
         },
       ],
     },
@@ -323,7 +309,6 @@ export function App() {
           )}
         </main>
       </div>
-      {inSession && isDemo() ? <DebugPanel /> : null}
       <StatusBar />
 
       <ConfirmDialog

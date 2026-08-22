@@ -95,7 +95,6 @@ code,
 /* Captions sitting on a coloured header inherit that header's ink instead
    of the muted token — the muted grey measured 1.27:1 on the blue strip. */
 .dialog-head .microlabel,
-.debugpanel-head .microlabel,
 .nav-item[aria-current='page'] .microlabel {
   color: inherit;
 }

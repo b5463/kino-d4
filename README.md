@@ -26,9 +26,9 @@ KINO D4 is a handmade four-lens camera built for house parties. Press the shutte
 
 Direct flash. 4:3 frames. Originals saved first. No cloud anywhere near the shutter.
 
-![KINO Studio running the included D4 demo device](docs/assets/product/studio-connected.png)
+![KINO Studio connected to a simulated D4](docs/assets/product/studio-connected.png)
 
-<p align="center"><sub>The actual Studio overview, connected to the simulator that ships in this repository.</sub></p>
+<p align="center"><sub>The actual Studio overview, connected to KINO Twin — the simulated camera that ships in this repository.</sub></p>
 
 ## Why this repository exists
 
@@ -44,10 +44,15 @@ You need Node.js 22 or newer.
 
 ```bash
 npm ci
-npm run dev -w @kino/studio
+npm run build -w @kino/studio -w @kino/twin
+npm run preview:all
 ```
 
-Open the local address printed in the terminal, then choose **OPEN DEMO DEVICE**. The simulator exercises the full camera UI without hardware. A physical D4 needs desktop Chrome or Edge for Web Serial.
+Open <http://localhost:4400/studio/>, then open <http://localhost:4400/dev/twin/> in a second tab and press **CONNECT KINO TWIN** back in Studio. KINO Twin is the simulated camera: it speaks the same protocol as hardware, so Studio exercises its full interface without a D4 on the bench.
+
+Both apps must be served from one origin, as `preview:all` does — the bridge between them is a `BroadcastChannel`. To run them on separate dev servers instead, start `npm run twin:relay` and open Twin with `?ws=1`; Studio offers the bridge automatically in a dev build.
+
+A physical D4 needs desktop Chrome or Edge for Web Serial.
 
 Run the checks:
 
@@ -65,7 +70,7 @@ Every screen below is a capture of the running application against the included 
 
 ### KINO Studio
 
-The workbench behind one USB cable: all four sensors, power, storage, recipes, calibration, firmware, logs, and recovery. Shown at the top of this page connected to the demo device.
+The workbench behind one USB cable: all four sensors, power, storage, recipes, calibration, firmware, logs, and recovery. Shown at the top of this page connected to KINO Twin.
 
 ### KINO Twin
 
@@ -85,7 +90,7 @@ The shared album after the party. The camera uploads over Wi-Fi; guests open a l
 
 ![KINO Roll photo page with demo captures](docs/assets/product/roll-photo-demo.png)
 
-<p align="center"><sub>One photo: the D4 frame strip switches the preview; KINO PROCESS shows the processed still. Demo captures.</sub></p>
+<p align="center"><sub>One photo: the D4 frame strip switches the preview. Simulated captures.</sub></p>
 
 ## What comes out of the camera
 

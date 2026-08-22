@@ -749,68 +749,6 @@
 .logline .src--sd { color: #0b666e; }
 .logline .src--proto { color: #5f6b7a; }
 
-/* ---- simulator faults ---- */
-
-/* Docked strip above the status bar, not a floating overlay. As `position:
-   fixed` it sat on top of the workspace and `elementFromPoint` at 1024x800
-   returned the panel where two Gallery cards and CAM 2's NOTE input were —
-   a demo-only control blocking real ones. In flow it can't occlude anything. */
-.debugpanel {
-  flex: none;
-  align-self: flex-end;
-  width: 232px;
-  margin: 0 14px 4px;
-  border: 1px solid var(--border-dark);
-  border-radius: 3px;
-  background: var(--panel);
-  box-shadow: 0 -2px 8px rgb(15 30 55 / 18%);
-}
-
-.debugpanel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 9px;
-  min-height: 24px;
-  cursor: default;
-  background: var(--grad-sel);
-  color: #fff;
-  border: 0;
-  width: 100%;
-  border-radius: 2px 2px 0 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
-.debugpanel-body {
-  padding: 6px 9px 9px;
-  display: grid;
-  gap: 3px;
-}
-
-.debugtoggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: var(--ctl-h);
-  padding: 3px 4px;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  background: none;
-  cursor: default;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-mut);
-  text-align: left;
-}
-
-.debugtoggle:hover { background: #fff; border-color: var(--border-mid); }
-
-.debugtoggle .state { color: var(--text-faint); }
-.debugtoggle[aria-pressed='true'] .state { color: var(--red-dark); }
-
 /* ---- reconnect banner ---- */
 
 .reconnectbar {

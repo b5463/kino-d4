@@ -325,9 +325,10 @@ export class MockKinoDevice implements MockDeviceLike {
   private captureTimers: ReturnType<typeof setTimeout>[] = [];
   private logTimer: ReturnType<typeof setTimeout> | null = null;
   private captureTimer: ReturnType<typeof setTimeout> | null = null;
-  // Studio's demo device shoots on its own so its gallery/logs stay lively.
-  // A real idle D4 does not — the Twin builds with this off, so every capture
-  // in the 3D view was commanded by someone.
+  // On by default, so a bare fixture keeps a lively gallery and log for the
+  // suites that page through them. A real idle D4 does not shoot on its own —
+  // the Twin builds with this off, so every capture in the 3D view was
+  // commanded by someone.
   private readonly ambientCaptures: boolean;
 
   // Set in the constructor, after this.now is available (see below).
