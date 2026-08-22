@@ -4,6 +4,10 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ## Unreleased
 
+### Removed
+
+- Studio's in-tab demo device. KINO Twin is the simulator: it runs the same reference device, over the same protocol and the same connect path, and has its own fault panel — Studio was shipping a second, weaker copy of it. Gone with it are the `OPEN DEMO DEVICE` and `DEMO` buttons, both demo menu items, and Studio's simulator-faults panel. The reference `MockKinoDevice` stays as test infrastructure and no longer ships in the product: the Studio bundle drops from 457 kB to 366 kB (144 kB to 115 kB gzipped) because the simulator is no longer reachable from app code. Two consequences were fixed rather than inherited — the device-only Roll path now recognises any simulated session, so a Twin session with no Roll server keeps the QR flow instead of silently losing it, and the connect screen says how to reach a Twin when none is answering, including the relay route for the split-port dev servers where the same-origin bridge cannot work.
+
 ### Added
 
 - Studio, Twin and Roll show the KINO wordmarks instead of spelling the brand in letterspaced text: Studio in the menu bar and connect card, Twin in the header and welcome overlay, Roll in the guest header, PIN gate and both host dashboards. The brand rasters are opaque and no app surface matches their baked-in field, so each app ships a trimmed transparent derivation keyed from ink coverage; on dark chrome that reproduces the official `*-on-dark` artwork, badge knockout included, rather than inverting a raster in CSS. The shipped marks stay `LicenseRef-KINO-Reserved` and `npm run license:check` fails if the MIT grant over `apps/**` ever swallows them.
@@ -53,7 +57,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - KINO Twin stores versioned as-measured component overrides separately from canonical profiles and provides an enclosure-lock measurement checklist that refreshes geometry and collision findings immediately.
 - KINO Twin records and verifies raw-KDP simulation sessions, exports versioned layouts and engineering reports, captures viewport PNGs, and ships a same-origin Studio/Twin preview harness with a 17-point acceptance runbook.
 - Twin now guides a first-time user: a powered-off start card names the one action that matters, boot progress renders as a live ladder in the viewport, power and shutter are primary header actions with stated disabled reasons, right-panel tabs carry plain names with one-line descriptions, panels say why they are empty while the simulator is off, the parts list explains itself, and the reference grid has a toggle.
-- The Twin device no longer fires ambient demo captures: every capture in the 3D view was commanded by the operator or Studio. Studio's demo device keeps its lively ambient behavior.
+- The Twin device no longer fires ambient demo captures: every capture in the 3D view was commanded by the operator or Studio. A bare reference fixture keeps its lively ambient behavior for the test suites.
 - The Twin display renders the live simulated device UI — boot stages, firmware version, battery voltage, SD/Wi-Fi/roll status, capture and firmware-update progress, per-camera faults, and a SIMULATED-labelled CAM2 preview field — on the 3D glass and in a DISPLAY inspector tab whose shutter drives the same raw-KDP capture path Studio uses.
 
 - Master Twin+Studio audit against the D4 hardware/software specification: compliance matrix and thirteen maintained documents under `docs/audit/`, provisional P4 header assignments and XIAO DVP pin map in the hardware profile, and OV3660/OV5640_AF sensor profiles recorded as capability-driven data.

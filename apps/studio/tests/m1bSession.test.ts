@@ -1,30 +1,43 @@
 // Studio's real session path against the honest Milestone 1B firmware
 // profile (issue #80). This is the code path physical hardware exercises
 // first: connect, handshake, populateAll, capability degradation, store
-// wiring — none of which the raw-client contract tests touch. The demo
-// device is flipped to `d4-m1b` mid-session, exactly like plugging in a
-// bench camera after browsing the full-featured demo.
+// wiring — none of which the raw-client contract tests touch. The simulator
+// is flipped to `d4-m1b` mid-session, exactly like plugging in a bench
+// camera after browsing the full-featured profile.
+//
+// Studio itself has no simulator any more (issue #110) — KINO Twin is it —
+// so this file owns the reference device and drives it through the
+// `connectTransport` seam. Reusing one instance across reconnects is the
+// point: the flashed profile must survive the way it does on real hardware.
 import { afterEach, describe, expect, it } from 'vitest';
-import { connectDemo, disconnect, getDemoDevice, getDevice } from '../src/app/session';
+import { MockTransport } from '@kino/kdp';
+import { MockKinoDevice } from '@kino/test-fixtures';
+import { connectTransport, disconnect, getDevice } from '../src/app/session';
 import { supports, supportsRollUpload, useDeviceStore } from '../src/state/deviceStore';
 import { useConnectionStore } from '../src/state/connectionStore';
 import { navItems } from '../src/components/Sidebar';
 
 describe('session against M1B firmware', () => {
+  let sim: MockKinoDevice | null = null;
+  const connectSim = async () => {
+    sim ??= new MockKinoDevice();
+    await connectTransport(() => new MockTransport(sim!), 'mock');
+  };
+
   afterEach(async () => {
     await disconnect();
   });
 
   it('connects, degrades honestly, and hides the sections M1B cannot serve', async () => {
-    // First contact: the full demo profile, so stale state exists to shed.
-    await connectDemo();
+    // First contact: the full profile, so stale state exists to shed.
+    await connectSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
     expect(useDeviceStore.getState().power).not.toBeNull();
 
     // Same unit, honest firmware. The profile survives the reconnect the way
     // a flashed image survives a reboot.
-    getDemoDevice()!.setFirmwareProfile('d4-m1b');
-    await connectDemo();
+    sim!.setFirmwareProfile('d4-m1b');
+    await connectSim();
     expect(useConnectionStore.getState().phase).toBe('connected');
 
     const s = useDeviceStore.getState();

@@ -1,13 +1,12 @@
 // Tiny UI command bus so menus and toolbar can trigger page-level actions
 // (run self test, open backup picker) without prop-drilling through the app.
 
-export type UiEvent = 'self-test' | 'backup' | 'restore' | 'toggle-faults' | 'apply';
+export type UiEvent = 'self-test' | 'backup' | 'restore' | 'apply';
 
 const handlers: Record<UiEvent, Set<() => void>> = {
   'self-test': new Set(),
   'backup': new Set(),
   'restore': new Set(),
-  'toggle-faults': new Set(),
   // Ctrl+S. The apply bar of whichever section is open answers it.
   'apply': new Set(),
 };

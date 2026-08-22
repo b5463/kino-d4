@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { Unsupported } from '../../components/Unsupported';
-import { getDevice, isDemo } from '../../app/session';
+import { getDevice, isSimulated } from '../../app/session';
 import { supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
 import { putRollLinks, rollLinksFor, useRollLinks } from '../../state/rollLinks';
 import {
@@ -195,12 +195,17 @@ export function RollPage() {
 
   /**
    * With no Roll server configured, "Start a Roll" fails loudly — which is
-   * correct: there is nowhere to publish to. Against the simulator there is no
+   * correct: there is nowhere to publish to. Against a simulator there is no
    * server to configure either, and the reference device mints its own guest
-   * URL, so demo mode is allowed to create the Roll on the camera alone and
+   * URL, so a simulated session may create the Roll on the camera alone and
    * show the whole QR flow. The seam is untouched: one flag, decided here.
+   *
+   * This asks "is this a simulator" rather than "is this the old demo
+   * device": KINO Twin runs the same reference device and mints the same
+   * guest URL, and gating on the demo transport alone left Twin unable to
+   * start a Roll at all without a live Roll server.
    */
-  const allowDeviceOnly = isDemo() && server instanceof StubRollServerClient;
+  const allowDeviceOnly = isSimulated() && server instanceof StubRollServerClient;
 
   const links = rollLinksFor(rollView, linkMap);
 

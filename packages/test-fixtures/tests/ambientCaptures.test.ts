@@ -23,7 +23,7 @@ describe('ambientCaptures option', () => {
     expect(events.filter((e) => e.t === 'capture')).toEqual([]);
   });
 
-  it('default: Studio demo device keeps its ambient captures', () => {
+  it('default: a bare fixture keeps its ambient captures', () => {
     const device = new MockKinoDevice({ seed: 7, now: () => Date.now() });
     const events = attachAndCollect(device);
     vi.advanceTimersByTime(60_000);

@@ -1,6 +1,6 @@
 # Troubleshooting KINO
 
-Start with the failure you can see. Record the Studio version or commit, P4 firmware, four camera firmware versions, browser, operating system, and whether the demo device shows the same fault.
+Start with the failure you can see. Record the Studio version or commit, P4 firmware, four camera firmware versions, browser, operating system, and whether KINO Twin shows the same fault.
 
 ## Studio does not start
 
@@ -20,7 +20,7 @@ If the page is blank, check the browser console and the terminal running Vite. C
 
 Physical camera access needs desktop Chrome or Edge in a secure context. `localhost` qualifies. Firefox and Safari do not expose Web Serial.
 
-The **OPEN DEMO DEVICE** button should still work. If it does, Studio is running and the remaining fault is in browser support, permissions, USB, or the camera.
+A KINO Twin connection should still work. Serve Studio and Twin from one origin with `npm run preview:all`, open Twin at `/dev/twin/`, and press **CONNECT KINO TWIN** in Studio. If that connects, Studio is running and the remaining fault is in browser support, permissions, USB, or the camera.
 
 ## The camera is missing from the port picker
 
@@ -43,7 +43,7 @@ Collect:
 - P4 boot output;
 - Studio logs with tokens and private media removed;
 - the claimed KDP protocol range;
-- whether the demo device connects.
+- whether KINO Twin connects.
 
 If Studio says the product is not KINO, stop. Do not run firmware or destructive commands against an unidentified serial device.
 
@@ -157,6 +157,6 @@ Set a fresh production secret and an explicit environment. Do not weaken the che
 
 ## Before filing an issue
 
-Include the smallest repeatable path, logs with private data removed, exact versions, and the result from the demo device. Hardware faults should include voltage readings, the unit record from [`hardware/TESTING.md`](../hardware/TESTING.md), and clear photographs of the affected connection.
+Include the smallest repeatable path, logs with private data removed, exact versions, and the result from KINO Twin. Hardware faults should include voltage readings, the unit record from [`hardware/TESTING.md`](../hardware/TESTING.md), and clear photographs of the affected connection.
 
 Use the repository issue form that matches the fault. Security failures belong in a private advisory, as described in [`SECURITY.md`](../SECURITY.md).

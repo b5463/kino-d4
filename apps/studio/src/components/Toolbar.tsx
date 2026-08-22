@@ -1,8 +1,8 @@
 import { Icon } from './Icon';
 import { ConnectionStrip } from './ConnectionStrip';
-import { canOpenDemo, useConnectionStore } from '../state/connectionStore';
+import { useConnectionStore } from '../state/connectionStore';
 import { supports, useDeviceStore } from '../state/deviceStore';
-import { connectSerial, connectDemo, disconnect, getDevice } from '../app/session';
+import { connectSerial, disconnect, getDevice } from '../app/session';
 import type { PageId } from './Sidebar';
 
 // Icon-and-text command toolbar. Commands mirror the pages/menus; disabled
@@ -105,18 +105,6 @@ export function Toolbar({
         <Icon name="download" size={20} />
         GALLERY
       </button>
-      <span className="tool-sep" />
-      <button
-        type="button"
-        className="tool-btn"
-        disabled={!canOpenDemo(phase)}
-        onClick={() => void connectDemo()}
-        title="Open the simulated demo camera"
-      >
-        <Icon name="camera" size={20} />
-        DEMO
-      </button>
-
       <span className="tool-device">
         {/* The lamp used to carry `updating` / `reconnecting` by colour alone
             here, while every other Led in the app is required to carry text —
@@ -125,7 +113,7 @@ export function Toolbar({
             shared with the other two strips. */}
         <ConnectionStrip phase={phase} fault={fault} silentWhenConnected />
         {serial
-          ? `${serial}${transportKind === 'mock' ? ' · DEMO DEVICE' : transportKind === 'twin' ? ' · KINO TWIN' : ' · USB'}`
+          ? `${serial}${transportKind === 'twin' ? ' · KINO TWIN' : ' · USB'}`
           : null}
       </span>
     </div>

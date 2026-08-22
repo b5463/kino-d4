@@ -6,16 +6,24 @@ How Studio talks to any KINO (issue #72).
 
 ```text
 Studio page → KinoDevice facade → KinoProtocolClient → Transport
-                                            ├─ SerialTransport   (physical D4, Web Serial)
+                                            ├─ SerialTransport    (physical D4, Web Serial)
                                             ├─ BroadcastTransport (KINO Twin, same origin)
-                                            └─ MockTransport      (in-tab demo device)
+                                            └─ WebSocketTransport (KINO Twin, over the relay)
 ```
 
 There is no `if (twin)` anywhere in device operations: the connect screen
 offers `CONNECT KINO TWIN` when a Twin tab is detected on the origin, and
 everything after `connectWith()` is transport-blind. Telemetry provenance is
-carried by the transport kind (`· TWIN`, `· DEMO DEVICE`, `· USB` suffixes)
-and by per-value labels (`SIMULATED`, `MEASURED`, `NOT REPORTED`).
+carried by the transport kind (`· TWIN`, `· USB` suffixes) and by per-value
+labels (`SIMULATED`, `MEASURED`, `NOT REPORTED`).
+
+Studio has no simulator of its own. It used to ship an in-tab demo device on
+a `MockTransport`; KINO Twin replaced it (issue #110), and the reference
+`MockKinoDevice` is now test infrastructure that Twin and the suites drive,
+not something the product bundles. `MockTransport` remains a valid
+`TransportKind` and the test suites open sessions through
+`session.ts` → `connectTransport()`, which is the only seam that still
+reaches it.
 
 ## Working against current firmware
 
