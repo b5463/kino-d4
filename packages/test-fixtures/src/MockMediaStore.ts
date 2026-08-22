@@ -167,10 +167,35 @@ export class MockMediaStore {
     return list;
   }
 
-  /** Register a capture taken while connected (ambient party shooting). */
-  addLiveCapture(number: number, kind: 'wiggle' | 'quad', recipeIds: string[], flash: boolean): string {
+  /**
+   * Register a capture taken while connected (ambient party shooting).
+   *
+   * `assets` (issue #72) carries real per-camera JPEG bytes rendered by a
+   * frame source — the Twin's virtual sensors. When present they become the
+   * capture's actual files (MEDIA_READ serves them, MEDIA_THUMB serves the
+   * thumb) instead of the lazily synthesized placeholder frames. A null
+   * entry falls back to synthesis for that camera only.
+   */
+  addLiveCapture(
+    number: number,
+    kind: 'wiggle' | 'quad',
+    recipeIds: string[],
+    flash: boolean,
+    assets?: { frames?: (Uint8Array | null)[]; thumb?: Uint8Array | null },
+  ): string {
     const list = this.ensure();
     const id = `${kind === 'wiggle' ? 'WG' : 'QD'}${String(number).padStart(6, '0')}`;
+    let totalKB = 0;
+    if (assets?.frames) {
+      for (let cam = 0; cam < 4; cam++) {
+        const bytes = assets.frames[cam];
+        if (bytes && bytes.length > 0) {
+          this.fileCache.set(`${id}/${cam}`, bytes);
+          totalKB += Math.round(bytes.length / 1024);
+        }
+      }
+    }
+    if (assets?.thumb && assets.thumb.length > 0) this.thumbCache.set(id, assets.thumb);
     list.push({
       summary: {
         id,
@@ -179,7 +204,7 @@ export class MockMediaStore {
         recipeIds,
         favorite: false,
         resolution: '1600x1200',
-        totalKB: 0,
+        totalKB,
       },
       flash,
       gpioSkewUs: Math.floor(Math.random() * 380 + 60),

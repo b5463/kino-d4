@@ -34,6 +34,24 @@ import type { ScenarioFlags, CamFault } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 import type { TwinTelemetry, TwinSnapshot } from './telemetry';
+import { FIRMWARE_PROFILES, PROFILE_FOR_VERSION } from './firmwareProfiles';
+import type { FirmwareProfileId } from './firmwareProfiles';
+
+/**
+ * A virtual sensor (issue #72): supplies real JPEG bytes for previews,
+ * capture frames, and thumbnails — the Twin renders its 3D scene from each
+ * camera's optical center and feeds the result here. Null (or a thrown
+ * error) falls back to the synthesized placeholder art, so protocol tests
+ * and the Node environment stay deterministic.
+ */
+export interface MockFrameRequest {
+  cam: CamId;
+  kind: 'preview' | 'capture' | 'thumb';
+  width: number;
+  height: number;
+  phaseMs: number;
+}
+export type MockFrameSource = (req: MockFrameRequest) => Promise<Uint8Array | null> | Uint8Array | null;
 
 // Per-camera UART link counters (Milestone 1B, CAMERA_LINK_STATS).
 interface LinkCounters {
@@ -343,6 +361,10 @@ export class MockKinoDevice implements MockDeviceLike {
   private jobs = new Map<string, JobState>();
   private jobCounter = 0;
 
+  // ---- firmware profile + virtual sensor (issue #72) ----
+  private firmwareProfileId: FirmwareProfileId = 'd4-sim-full';
+  private frameSource: MockFrameSource | null = null;
+
   // ---- Milestone 1B bench diagnostics (issue #66) ----
   private storageWriteTest: 'none' | 'pass' | 'fail' = 'none';
   private storageMountAttempts = 1;
@@ -594,6 +616,7 @@ export class MockKinoDevice implements MockDeviceLike {
 
   /** A read-only, point-in-time view of device state for the Twin's 3D render. */
   twinSnapshot(): TwinSnapshot {
+    const activeProfile = FIRMWARE_PROFILES[this.firmwareProfileId];
     const camSnapshot = (id: CamId) => {
       const cam = this.cams[id];
       return {
@@ -621,6 +644,8 @@ export class MockKinoDevice implements MockDeviceLike {
       frameIntervalUs: this.frameIntervalUs,
       phaseAligned: this.phaseAligned,
       p4Fw: this.p4Fw,
+      firmwareProfile: this.firmwareProfileId,
+      simulatedFuture: activeProfile.simulatedFuture,
       cams: {
         cam1: camSnapshot('cam1'),
         cam2: camSnapshot('cam2'),
@@ -693,6 +718,38 @@ export class MockKinoDevice implements MockDeviceLike {
   /** Patch merged into GET_CAPABILITIES.capabilities; null clears any override. */
   overrideCapabilities(patch: Record<string, boolean> | null): void {
     this.capabilityOverrides = patch;
+  }
+
+  /** Plug in (or clear) the virtual sensor. See MockFrameSource. */
+  setFrameSource(source: MockFrameSource | null): void {
+    this.frameSource = source;
+  }
+
+  /**
+   * Pin the device to one firmware generation (issue #72). The dispatcher,
+   * the capability report, the reported versions, and which camera links
+   * answer all derive from the profile, so what the device claims and what
+   * it answers cannot drift apart. Switching profiles resets per-camera
+   * link faults for cameras the profile marks online.
+   *
+   * Like a flashed image, the profile survives reboots and factory reset.
+   */
+  setFirmwareProfile(id: FirmwareProfileId): void {
+    const profile = FIRMWARE_PROFILES[id];
+    this.firmwareProfileId = id;
+    this.p4Fw = profile.p4Fw;
+    CAM_IDS.forEach((camId, index) => {
+      this.cams[camId].fw = profile.camFw;
+      this.cams[camId].fault = profile.camsOnline[index] ? null : 'offline';
+    });
+    this.overrideCapabilities(profile.capabilities);
+    this.log('P4', `firmware profile: ${profile.label}`);
+    this.emitTelemetry({ t: 'profile', id });
+    this.scenarioCb?.();
+  }
+
+  getFirmwareProfile(): FirmwareProfileId {
+    return this.firmwareProfileId;
   }
 
   /** Twin-side equivalent of SET_LINK_BAUD — drives simulated transfer durations. */
@@ -1085,16 +1142,44 @@ export class MockKinoDevice implements MockDeviceLike {
         kind === 'quad'
           ? CAM_IDS.map((id) => this.config.quad.slots[id].recipeId)
           : [this.config.wiggle.recipeId];
-      const capId = this.media.addLiveCapture(number, kind, recipeIds, flashFires);
-      this.log('SD', `${capId} committed`);
-      this.sendEvent(Evt.CAPTURE, { id: capId, kind });
-      this.emitTelemetry({ t: 'sd', activity: 'write' });
-      const camsReport: Partial<Record<CamId, { jpegKB: number; durationMs: number }>> = {};
-      for (const camId of CAM_IDS) {
-        if (this.camDown(camId) || (camId === 'cam2' && this.scenarios.cam2Timeout)) continue;
-        camsReport[camId] = { jpegKB: this.cams[camId].jpegKB, durationMs: this.cams[camId].durationMs };
+      const finalize = (assets?: { frames?: (Uint8Array | null)[]; thumb?: Uint8Array | null }) => {
+        const capId = this.media.addLiveCapture(number, kind, recipeIds, flashFires, assets);
+        this.log('SD', `${capId} committed`);
+        this.sendEvent(Evt.CAPTURE, { id: capId, kind });
+        this.emitTelemetry({ t: 'sd', activity: 'write' });
+        const camsReport: Partial<Record<CamId, { jpegKB: number; durationMs: number }>> = {};
+        for (const camId of CAM_IDS) {
+          if (this.camDown(camId) || (camId === 'cam2' && this.scenarios.cam2Timeout)) continue;
+          camsReport[camId] = { jpegKB: this.cams[camId].jpegKB, durationMs: this.cams[camId].durationMs };
+        }
+        this.emitTelemetry({ t: 'capture', phase: 'committed', id: captureId, cams: camsReport });
+      };
+      const source = this.frameSource;
+      if (source) {
+        // Virtual sensors (issue #72): render the actual scene from each
+        // optical center — the capture's files ARE those renders. A failed
+        // render for one camera falls back to synthesis for that camera.
+        const phaseMs = this.now() - this.bootedAt;
+        void (async () => {
+          try {
+            const frames = await Promise.all(
+              CAM_IDS.map((camId) =>
+                Promise.resolve(
+                  source({ cam: camId, kind: 'capture', width: 800, height: 600, phaseMs }),
+                ).catch(() => null),
+              ),
+            );
+            const thumb = await Promise.resolve(
+              source({ cam: 'cam2', kind: 'thumb', width: 200, height: 150, phaseMs }),
+            ).catch(() => null);
+            finalize({ frames, thumb });
+          } catch {
+            finalize();
+          }
+        })();
+      } else {
+        finalize();
       }
-      this.emitTelemetry({ t: 'capture', phase: 'committed', id: captureId, cams: camsReport });
     });
   }
 
@@ -1734,6 +1819,20 @@ export class MockKinoDevice implements MockDeviceLike {
   private dispatch(frame: Frame) {
     const cmd = frame.type as Cmd;
 
+    // Firmware profile gate (issue #72): a profile pinned to a real firmware
+    // generation answers exactly that firmware's command surface — HELLO is
+    // always alive, everything unimplemented NACKs with the firmware version
+    // in the message, exactly like the C dispatcher's default arm.
+    const profileCommands = FIRMWARE_PROFILES[this.firmwareProfileId].implementedCommands;
+    if (profileCommands !== null && frame.type !== Cmd.HELLO && !profileCommands.includes(frame.type)) {
+      this.respondError(
+        frame,
+        'UNSUPPORTED_COMMAND',
+        `Command ${Cmd[cmd] ?? '0x' + frame.type.toString(16)} not implemented in firmware ${this.p4Fw}`,
+      );
+      return;
+    }
+
     const gated =
       (this.scenarios.unsupportedCommands &&
         MockKinoDevice.OPTIONAL_COMMANDS.includes(frame.type)) ||
@@ -1863,7 +1962,8 @@ export class MockKinoDevice implements MockDeviceLike {
           firmware: this.p4Fw,
           capabilities,
           limits: {
-            maxUartBaud: 3_000_000,
+            // M1B firmware honestly caps at its one validated baud (issue #72).
+            maxUartBaud: FIRMWARE_PROFILES[this.firmwareProfileId].maxUartBaud,
             currentUartBaud: this.uartBaud,
             maxResolution: '2048x1536',
             maxGalleryPageSize: 100,
@@ -1881,8 +1981,13 @@ export class MockKinoDevice implements MockDeviceLike {
           serial: this.identity.serial,
           protocol: PROTOCOL_VERSION,
           p4Firmware: this.p4Fw,
-          cameraFirmware: CAM_IDS.map((id) => this.camFirmware(id)),
-          sensors: ['OV3660', 'OV3660', 'OV3660', 'OV3660'],
+          // Offline nodes report empty strings, and the sensor string follows
+          // each camera's actual profile — matching the M1B firmware's
+          // handle_device_info rather than a hardcoded happy path.
+          cameraFirmware: CAM_IDS.map((id) => (this.busUnreachable(id) ? '' : this.camFirmware(id))),
+          sensors: CAM_IDS.map((id) =>
+            this.busUnreachable(id) ? '' : this.cams[id].sensorProfile === 'OV5640_AF' ? 'OV5640' : 'OV3660',
+          ),
           sdPresent: !this.scenarios.sdMissing,
           sdFreeMB: this.scenarios.sdMissing || this.scenarios.sdFull ? 0 : this.sdFreeMB,
           activeMode: this.config.mode,
@@ -2215,9 +2320,26 @@ export class MockKinoDevice implements MockDeviceLike {
           this.respondError(frame, 'CAM_OFFLINE', `${camId.toUpperCase()} is offline`);
           return;
         }
-        void renderPreviewFrame(Number(camId.slice(-1)) - 1, this.now() - this.bootedAt)
-          .then((bytes) => this.respondBytes(frame, bytes))
-          .catch((err) => this.respondError(frame, 'PREVIEW_FAILED', err instanceof Error ? err.message : String(err)));
+        const phaseMs = this.now() - this.bootedAt;
+        const source = this.frameSource;
+        void (async () => {
+          let bytes: Uint8Array | null = null;
+          if (source) {
+            // Virtual sensor first (issue #72); anything wrong falls back to
+            // the synthesized preview so the wire never goes silent.
+            try {
+              bytes = await source({ cam: camId, kind: 'preview', width: 320, height: 240, phaseMs });
+            } catch {
+              bytes = null;
+            }
+          }
+          if (bytes === null || bytes.length === 0 || bytes.length > 16_000) {
+            bytes = await renderPreviewFrame(Number(camId.slice(-1)) - 1, phaseMs);
+          }
+          this.respondBytes(frame, bytes);
+        })().catch((err) =>
+          this.respondError(frame, 'PREVIEW_FAILED', err instanceof Error ? err.message : String(err)),
+        );
         return;
       }
       case Cmd.CAMERA_FOCUS: {
@@ -3228,6 +3350,11 @@ export class MockKinoDevice implements MockDeviceLike {
       });
       this.after(2200, () => {
         this.p4Fw = s.version;
+        // Issue #72: installing an artifact whose version maps to a known
+        // firmware profile makes the device BECOME that firmware — flashing
+        // the real 0.1.0 build produces an honest Milestone 1B device.
+        const mapped = PROFILE_FOR_VERSION[s.version];
+        if (mapped && mapped !== this.firmwareProfileId) this.setFirmwareProfile(mapped);
         this.fwStates.p4 = { state: 'rebooting' };
         this.emitTelemetry({ t: 'fw', target, state: 'rebooting' });
         this.log('P4', 'update applied — rebooting');

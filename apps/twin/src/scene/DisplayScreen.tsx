@@ -7,6 +7,7 @@ import { useSimStore } from '../state/simStore';
 import { DISPLAY_H, DISPLAY_W, drawDeviceUi } from '../display/deviceUi';
 import type { DeviceUiState } from '../display/deviceUi';
 import { instanceTransforms } from './transforms';
+import { getDisplayPreview } from './displayPreview';
 
 /** Active-area size of the Guition panel, matching the builder's glass inset. */
 const ACTIVE_W_MM = 93.6;
@@ -26,6 +27,7 @@ export function readDeviceUiState(): DeviceUiState {
     fw: s.fw,
     snapshot: s.snapshot,
     studioConnected: s.studioConnected,
+    preview: getDisplayPreview(),
   };
 }
 

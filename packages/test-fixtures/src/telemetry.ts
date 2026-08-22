@@ -17,13 +17,20 @@ export type TwinTelemetry =
   | { t: 'uploads'; pending: number; uploading: number; failed: number; uploaded: number }
   | { t: 'sd'; activity: 'write' | 'read' }
   | { t: 'af'; cam: CamId; state: FocusState }
-  | { t: 'log'; entry: LogEntry };
+  | { t: 'log'; entry: LogEntry }
+  /** The device switched firmware profiles (issue #72) — set directly or by
+   * an installed OTA artifact whose version maps to a profile. */
+  | { t: 'profile'; id: string };
 
 export interface TwinSnapshot {
   sessionId: string; maintenance: boolean;
   batteryV: number; sdPresent: boolean; sdFreeMB: number;
   uartBaud: number; frameIntervalUs: number; phaseAligned: boolean;
   p4Fw: string;
+  /** Active firmware profile id (issue #72), e.g. 'd4-m1b' | 'd4-sim-full'. */
+  firmwareProfile: string;
+  /** True when the profile models capabilities the shipped firmware lacks. */
+  simulatedFuture: boolean;
   cams: Record<CamId, { fw: string; phaseUs: number; uartErrors: number; jpegKB: number;
                         durationMs: number; gpioSkewUs: number; fault: CamFault | null; updating: boolean;
                         /** SIMULATED per-cam exposure window (audit #56) — the flash-overlap

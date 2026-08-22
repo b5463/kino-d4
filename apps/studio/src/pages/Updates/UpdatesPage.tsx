@@ -18,6 +18,8 @@ import {
 } from '../../firmware/catalog';
 import { startUpdate, retryTarget, abortUpdate } from '../../firmware/updater';
 import { rebootAndReconnect, factoryResetAndReconnect } from '../../app/session';
+import { usePrefs } from '../../state/prefs';
+import { FirmwareBuildPanel } from './FirmwareBuildPanel';
 
 function statusLed(t: TargetProgress): LedState {
   switch (t.status) {
@@ -42,6 +44,7 @@ export function UpdatesPage() {
   const info = useDeviceStore((s) => s.info);
   const phase = useConnectionStore((s) => s.phase);
   const update = useUpdateStore();
+  const developerMode = usePrefs((s) => s.developerMode);
   const dirRef = useRef<HTMLInputElement>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirm2, setConfirm2] = useState<'reboot' | 'factory-reset' | 'recovery' | null>(null);
@@ -233,6 +236,8 @@ export function UpdatesPage() {
             </dl>
           )}
         </Panel>
+
+        {developerMode ? <FirmwareBuildPanel /> : null}
 
         <Panel title="UPDATE PACKAGE">
           <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>

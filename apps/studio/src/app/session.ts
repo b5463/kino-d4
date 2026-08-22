@@ -346,14 +346,29 @@ async function populateAll() {
     else throw err;
   }
 
+  // Milestone 1B firmware (issue #72) implements a narrow, honest surface:
+  // power, config, recipes and calibration NACK UNSUPPORTED_COMMAND. Each
+  // read degrades to "absent" on its own instead of failing the whole
+  // connection — Studio must work against the firmware that exists, not
+  // only against the finished demo device.
+  const dev = device;
+  const tolerate = async <T>(read: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await read();
+    } catch (err) {
+      if (err instanceof KinoUnsupportedError || err instanceof KinoTimeoutError) return null;
+      throw err;
+    }
+  };
+
   const [cams, power, storage, envelope, recipes, calibration, stats] = await Promise.all([
-    device.getCameraInfo(),
-    device.getPowerStatus(),
-    device.getStorageStatus(),
-    device.getConfig(),
-    device.getRecipes(),
-    device.getCalibration(),
-    device.getRuntimeStats(),
+    dev.getCameraInfo(),
+    tolerate(() => dev.getPowerStatus()),
+    dev.getStorageStatus(),
+    tolerate(() => dev.getConfig()),
+    tolerate(() => dev.getRecipes()),
+    tolerate(() => dev.getCalibration()),
+    tolerate(() => dev.getRuntimeStats()),
   ]);
 
   // Sounds arrived after V1 firmware — absence is a state, not an error.
@@ -368,7 +383,7 @@ async function populateAll() {
     }
   }
 
-  if (envelope.schemaVersion !== undefined && envelope.schemaVersion > CONFIG_SCHEMA_VERSION) {
+  if (envelope && envelope.schemaVersion !== undefined && envelope.schemaVersion > CONFIG_SCHEMA_VERSION) {
     throw new Error(
       `Camera config schema ${envelope.schemaVersion} is newer than this KINO Studio (${CONFIG_SCHEMA_VERSION}). Update Studio.`,
     );
@@ -379,14 +394,14 @@ async function populateAll() {
     cameras: cams.cameras,
     power,
     storage,
-    config: envelope.config,
-    configRevision: envelope.configRevision ?? 0,
+    config: envelope?.config ?? null,
+    configRevision: envelope?.configRevision ?? 0,
     capabilities: capabilities?.capabilities ?? null,
     capabilitiesState,
     limits: capabilities?.limits ?? null,
     firmwareLabel: capabilities?.firmware ?? info.p4Firmware,
-    factoryRecipes: recipes.factory,
-    customRecipes: recipes.custom,
+    factoryRecipes: recipes?.factory ?? [],
+    customRecipes: recipes?.custom ?? [],
     sounds: sounds?.custom ?? [],
     soundLimits: sounds ? { maxCustom: sounds.maxCustom, maxSoundKB: sounds.maxSoundKB } : null,
     calibration,

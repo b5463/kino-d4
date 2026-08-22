@@ -21,6 +21,9 @@ Start with the question you need answered. The repository contains working contr
 | How do I report a vulnerability? | [Security policy](../SECURITY.md) |
 | What must camera firmware implement? | [Firmware contract](../firmware-contract/README.md) |
 | How is the D4 firmware built and what exists? | [Firmware tree](../firmware/README.md) and [start plan](../firmware/FIRMWARE_START_PLAN.md) |
+| How do Studio, Twin and the firmware work as one system? | [Integration audit](audit/STUDIO_TWIN_FIRMWARE_INTEGRATION_AUDIT.md), [device integration](STUDIO_DEVICE_INTEGRATION.md), [acceptance tests](STUDIO_TWIN_ACCEPTANCE_TESTS.md) |
+| How does Studio build and flash firmware? | [Firmware builder](FIRMWARE_BUILDER.md) |
+| How does Twin model firmware and photograph a scene? | [Twin firmware model](TWIN_FIRMWARE_MODEL.md), [Twin virtual camera](TWIN_VIRTUAL_CAMERA.md) |
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |
 | Which product voice and UI rules apply to Studio? | [Product register](../PRODUCT.md) |
@@ -54,6 +57,11 @@ When two documents disagree, use this order:
 - `docs/TROUBLESHOOTING.md`
 - `docs/RELEASING.md`
 - `docs/VERSIONING.md`
+- `docs/FIRMWARE_BUILDER.md`
+- `docs/TWIN_FIRMWARE_MODEL.md`
+- `docs/TWIN_VIRTUAL_CAMERA.md`
+- `docs/STUDIO_DEVICE_INTEGRATION.md`
+- `docs/STUDIO_TWIN_ACCEPTANCE_TESTS.md`
 - `CONTRIBUTING.md`
 - `ROADMAP.md`
 - `CHANGELOG.md`
