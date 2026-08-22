@@ -343,7 +343,11 @@ describe('07 §14 — capability acceptance', () => {
       }),
     );
     expect(html).toContain('RECOVERY NEEDED');
-    expect(html).toContain('Updates');
+    // The ROM-loader procedure lives in the notice itself — the old text
+    // pointed at Updates › Advanced Recovery, which needs a session this
+    // state never has (issue #86).
+    expect(html).toContain('esptool.py');
+    expect(html).toContain('hold BOOT');
   });
 
   it('says nothing at all in the states that are not faults', () => {

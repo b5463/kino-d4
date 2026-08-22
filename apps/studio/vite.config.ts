@@ -6,6 +6,21 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
+  server: {
+    // Fixed port so docs stay true: roll-web 5173, twin 5174, studio 5175.
+    // /api proxied like the other apps, so the Roll server panel works
+    // against a local API with the default same-origin-style URL (issue #86).
+    port: 5175,
+    proxy: {
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
+    },
+  },
+  preview: {
+    port: 5175,
+    proxy: {
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
+    },
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

@@ -67,7 +67,21 @@ npm run test -w @kino/api
 
 The Compose stack creates `kino-media` and `kino-firmware`. Development defaults live in `apps/api/src/config.ts` and match `infra/.env.example`.
 
-There is no API development server script yet. `buildServer()` returns an unbound Fastify instance for tests. Do not document an `npm run dev -w @kino/api` command until a real entry point exists.
+## Run the Roll stack
+
+Each dev entry (`src/dev.ts`) loads `infra/.env` if present and defaults `NODE_ENV` to `development`; no shell environment setup is needed on a clean checkout.
+
+```bash
+docker compose -f infra/docker-compose.dev.yml up -d
+npm run db:migrate -w @kino/api
+npm run dev -w @kino/api        # Roll API on :3000 (PORT overrides)
+npm run dev -w @kino/worker     # derivatives: thumbs, wiggle webp/mp4, metadata
+npm run dev -w @kino/roll-web   # guest app on :5173, /api proxied to :3000
+npm run dev -w @kino/twin       # twin on :5174, /api proxied to :3000
+npm run dev -w @kino/studio     # studio on :5175, /api proxied to :3000
+```
+
+Built bundles: `npm run preview:all` serves `apps/studio/dist` and `apps/twin/dist` on :4400 and proxies `/api` to :3000 (`KINO_API_URL` overrides). Load and liveness tooling: `npm run party:sim` (see `docs/roll/ROLL_PARTY_LOAD_TEST.md` — mind the 60/min device rate limit) and `npm run test:uploader`. The full Twin→Roll walkthrough is `docs/roll/ROLL_TWIN_INTEGRATION.md`.
 
 Stop the services and keep data:
 
@@ -81,7 +95,7 @@ Adding `-v` deletes the local PostgreSQL and MinIO volumes. Use it only for an i
 
 Copy `infra/.env.example` to `infra/.env` only when the defaults need to change. Existing process variables take precedence.
 
-`COOKIE_SECRET` has a published local default. Configuration accepts that value only when `NODE_ENV` is exactly `development` or `test`. Production must set a real secret and an explicit environment.
+`COOKIE_SECRET` has a published local default. Configuration accepts that value only when `NODE_ENV` is exactly `development` or `test`. Production must set a real secret and an explicit environment. The `dev` scripts run `src/dev.ts`, which reads `infra/.env` and sets `NODE_ENV=development` when unset; `src/main.ts` (production) reads only real environment variables.
 
 ## Worker renders
 

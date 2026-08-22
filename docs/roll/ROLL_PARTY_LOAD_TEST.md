@@ -10,10 +10,12 @@ npm run db:migrate -w @kino/api
 npm run dev -w @kino/api &
 npm run dev -w @kino/worker &
 
-npm run party:sim -- --captures 60 --guests 20 --duration 120
+npm run party:sim -- --captures 20 --guests 20 --duration 300
 ```
 
 Flags: `--captures N`, `--guests N` (SSE sessions), `--duration S`, `--burst N` (max captures per burst), `--wait S` (per-capture retry budget), `--base-url`, `--fixtures DIR`.
+
+Mind the device rate limit: the API allows 60 upload-path requests per minute per device (`apps/api/src/plugins/rateLimits.ts`), and one 4-frame capture costs 14 metered requests (create + 4×(init, part, complete) + complete), so a single simulated camera sustains ~4 captures per minute. That is the real product constraint — a physical camera shoots at that cadence — so pick `--captures`/`--duration` under it, or expect 429 retries to dominate the run.
 
 ## Outage drill (the §25 behavior)
 
@@ -28,11 +30,13 @@ The script prints JSON: captures requested/uploaded/in-feed/duplicates, SSE even
 The Roll MVP spec targets a 2,000-capture archive and ~100 simultaneous guests. Reference runs:
 
 ```bash
-# arrival-heavy night
-npm run party:sim -- --captures 500 --guests 100 --duration 600 --burst 6
-# archive-size feed (fills one roll; then browse it in roll-web)
-npm run party:sim -- --captures 2000 --guests 10 --duration 300 --burst 8
+# arrival-heavy night — 500 captures needs ~125 min at the 4/min device budget
+npm run party:sim -- --captures 500 --guests 100 --duration 7500 --burst 3
+# archive-size feed (fills one roll; then browse it in roll-web) — ~8.5 h at real cadence
+npm run party:sim -- --captures 2000 --guests 10 --duration 30000 --burst 3
 ```
+
+Both are bounded by the per-device upload rate limit, exactly like a physical camera. For a faster archive fill, run several sim processes against separate Rolls rather than raising the limit.
 
 Record measured percentiles in the issue that motivated the run; this document carries no fabricated numbers.
 

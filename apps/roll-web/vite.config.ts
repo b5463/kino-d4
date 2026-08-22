@@ -105,6 +105,9 @@ export default defineConfig({
     }),
   ],
   server: {
+    // Fixed port so docs, PUBLIC_BASE_URL and QR base URLs stay true across
+    // restarts: roll-web 5173, twin 5174, studio 5175 (issue #86).
+    port: 5173,
     proxy: {
       // Without this, `npm run dev` serves the SPA on Vite's own port with
       // no API behind it, and every `RollApi` call — which defaults to
@@ -117,6 +120,13 @@ export default defineConfig({
         // proxy can time it out like an ordinary slow request.
         ws: false,
       },
+    },
+  },
+  preview: {
+    port: 5173,
+    // `vite preview` reads its own proxy config (issue #86).
+    proxy: {
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
     },
   },
   build: {

@@ -328,7 +328,14 @@ describe('POST /api/device/rolls/join (07 §25)', () => {
       payload: { slug: created.slug },
     });
     expect(join.statusCode).toBe(200);
-    expect(join.json()).toEqual({ rollId: created.rollId, title: 'Joinable', status: 'live' });
+    // guestUrl comes from the server so a joining device never fabricates
+    // one from its own origin (issue #86).
+    expect(join.json()).toEqual({
+      rollId: created.rollId,
+      title: 'Joinable',
+      status: 'live',
+      guestUrl: expect.stringMatching(new RegExp(`/r/${created.slug}$`)) as unknown,
+    });
 
     // The join row is the mechanism Task 16's requireDeviceRoll depends on.
     const [link] = await app.db

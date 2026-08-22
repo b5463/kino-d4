@@ -30,7 +30,8 @@ export interface UploadJob {
 interface RollAssociation {
   rollId: string;
   slug: string;
-  guestUrl: string;
+  /** Null when the server did not report one (older API on the join path). */
+  guestUrl: string | null;
   hostUrl: string | null;
   title: string;
 }
@@ -111,6 +112,11 @@ function publishQueue(patch: Partial<RollBridgeState> = {}): void {
 export function attachRollBridge(device: MockKinoDevice): void {
   detachRollBridge();
   attachedDevice = device;
+  // The panel showed API REACHABLE from the optimistic initial state until
+  // the first upload failed — prove it instead (issue #86).
+  void fetch(`${useRollBridge.getState().serverUrl}/api/healthz`, { signal: AbortSignal.timeout(4000) })
+    .then((res) => useRollBridge.setState({ online: res.ok }))
+    .catch(() => useRollBridge.setState({ online: false }));
   detachTelemetry = device.onTelemetry((e) => {
     if (e.t !== 'capture' || e.phase !== 'committed' || !e.capId) return;
     if (!useRollBridge.getState().roll) return; // not on a Roll — capture stays on SD only
@@ -219,7 +225,7 @@ export async function joinRoll(slug: string): Promise<void> {
   useRollBridge.setState({ busy: true, lastError: null });
   try {
     const credential = await ensureRegistered();
-    const joined = await api<{ rollId: string; title: string }>(
+    const joined = await api<{ rollId: string; title: string; guestUrl?: string }>(
       '/api/device/rolls/join',
       json('POST', { slug }, credential.deviceToken),
     );
@@ -227,7 +233,9 @@ export async function joinRoll(slug: string): Promise<void> {
     const roll: RollAssociation = {
       rollId: joined.rollId,
       slug: upper,
-      guestUrl: `${location.origin}/r/${upper}`,
+      // The server names the guest host; the Twin's own origin has no /r/
+      // route, so a fabricated link and QR went nowhere (issue #86).
+      guestUrl: joined.guestUrl ?? null,
       hostUrl: null,
       title: joined.title,
     };

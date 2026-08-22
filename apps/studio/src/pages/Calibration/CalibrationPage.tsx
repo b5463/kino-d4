@@ -281,26 +281,12 @@ export function CalibrationPage() {
   const running = phase === 'capturing' || phase === 'analyzing';
 
   // M1B firmware NACKs CAMERA_CALIBRATE and GET_CALIBRATION: the capability
-  // report loaded and calibration stayed absent. Every control on this page
-  // would only collect errors — say so once instead (issue #80). Legacy
-  // firmware (no capability report) keeps the benefit of the doubt.
-  if (capabilitiesState === 'loaded' && calibration === null) {
-    return (
-      <>
-        <div className="pagehead">
-          <h1>
-            <Icon name="calibration" />
-            Calibration
-          </h1>
-        </div>
-        <Unsupported
-          feature="Calibration"
-          firmware={firmwareLabel}
-          note="The camera reports no calibration store. Bench diagnostics on the Developer page work today; calibration arrives with a later firmware milestone."
-        />
-      </>
-    );
-  }
+  // report loaded and calibration stayed absent. Every calibration control
+  // would only collect errors — say so once instead (issue #80). Only the
+  // CALIBRATION tab is gated: the Skew Bench is a separate capability with
+  // its own gate, and Overview's RUN SKEW BENCH link lands here (issue #86).
+  // Legacy firmware (no capability report) keeps the benefit of the doubt.
+  const calibrationUnsupported = capabilitiesState === 'loaded' && calibration === null;
 
   return (
     <>
@@ -335,7 +321,15 @@ export function CalibrationPage() {
 
       {tab === 'skew' ? <SkewBench /> : null}
 
-      {tab === 'calibration' ? (
+      {tab === 'calibration' && calibrationUnsupported ? (
+        <Unsupported
+          feature="Calibration"
+          firmware={firmwareLabel}
+          note="The camera reports no calibration store. Bench diagnostics on the Developer page work today; calibration arrives with a later firmware milestone."
+        />
+      ) : null}
+
+      {tab === 'calibration' && !calibrationUnsupported ? (
         <>
           <p className="notice">
             Measures brightness, color and alignment differences between the four sensors and stores

@@ -7,8 +7,19 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   server: {
+    // Fixed port so docs and QR base URLs stay true across restarts:
+    // roll-web 5173, twin 5174, studio 5175 (issue #86).
+    port: 5174,
     // Roll development bridge (issue #75): same-origin /api reaches the Roll
     // API. ws:false keeps SSE passthrough intact — same setup as roll-web.
+    proxy: {
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
+    },
+  },
+  preview: {
+    port: 5174,
+    // `vite preview` reads its own proxy config — without it the built Twin
+    // loses /api and the Roll bridge 404s (issue #86).
     proxy: {
       '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
     },

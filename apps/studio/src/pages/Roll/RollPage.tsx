@@ -153,8 +153,13 @@ export function RollPage() {
       const result = await next.testConnection();
       setServerResult(result);
       setRegistration(null);
+      // A failed test must not leave the HTTP client installed: the
+      // device-only flow requires the stub, and one bad URL used to kill
+      // "Start a Roll" for the whole session (issue #86).
+      if (!result.ok) setRollServerClient(new StubRollServerClient(serverUrl));
     } catch (err) {
       setServerResult({ ok: false, error: message(err) });
+      setRollServerClient(new StubRollServerClient(serverUrl));
     } finally {
       setServerBusy(false);
     }
