@@ -18,6 +18,7 @@
     "@kino/design-system": "*",
     "@kino/hardware-profiles": "^0.1.0",
     "@kino/kdp": "*",
+    "@kino/media": "*",
     "@kino/schemas": "*",
     "@kino/test-fixtures": "*",
     "mp4-muxer": "^5.2.2",

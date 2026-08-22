@@ -115,7 +115,8 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
     body: data,
     width: info.width,
     height: info.height,
-    producer: { job: 'contact-sheet', encoder: 'sharp/jpeg', cellWidth: CONTACT_SHEET_CELL_WIDTH, quality: CONTACT_SHEET_QUALITY },
+    // `look` is identity only — the P4 baked it into the source JPEGs.
+    producer: { job: 'contact-sheet', encoder: 'sharp/jpeg', cellWidth: CONTACT_SHEET_CELL_WIDTH, quality: CONTACT_SHEET_QUALITY, look: capture.look },
   });
 }
 

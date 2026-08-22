@@ -77,6 +77,12 @@ export const captures = pgTable('captures', {
   frameCount: integer('frame_count').notNull(),
   resolution: text('resolution').notNull(),
   timing: jsonb('timing'),
+  /** Capture-time provenance (audit #59) — mirrors the API schema. Renders
+   * read `meta.calibration` out of it; a worker never writes it. */
+  provenance: jsonb('provenance'),
+  /** The host's playback choice (fps/loop/direction) — mirrors the API
+   * schema. Read by the wiggle renders; never written here. */
+  playback: jsonb('playback'),
   status: text('status').notNull(),
   visible: boolean('visible').notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

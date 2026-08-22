@@ -1,4 +1,5 @@
 import exifr from 'exifr';
+import { captureCalibration } from './calibration';
 import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId } from './capture';
 import { publishDerived } from './derive';
 import type { JobCtx, JobPayload } from './types';
@@ -51,6 +52,14 @@ export async function extractMetadata(payload: JobPayload, ctx: JobCtx): Promise
     // Verbatim from the row. The three skews are distinct measurements and are
     // never conflated or defaulted (04 §14): an absent timing block stays null.
     timing: capture.timing ?? null,
+    // Verbatim too: what the device sent beyond the typed capture surface
+    // (audit #59). Deterministic — the row does not change under a rerun.
+    provenance: capture.provenance ?? null,
+    // The alignment calibration the renders act on: provenance's
+    // `meta.calibration`, validated and clamped exactly as the wiggle jobs
+    // read it. Null means the renders ran unaligned — which is every capture
+    // until firmware stamps calibration into `kino.capture`.
+    calibration: captureCalibration(capture),
     frames: frames.map((frame) => ({
       frameIndex: frame.frameIndex,
       mime: frame.mime,

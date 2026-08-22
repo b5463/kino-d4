@@ -87,3 +87,25 @@ export async function submitJob(
 ): Promise<void> {
   await queue.add(name, payload, jobOptionsFor(payload.jobKey));
 }
+
+/**
+ * Adds one job that must run again even though it already ran.
+ *
+ * The idempotency that protects capture-complete works against a re-render:
+ * a *completed* job is retained in Redis for a day (`KEEP_COMPLETED`), and a
+ * retained job blocks its own `jobId`, so a plain `submitJob` after a playback
+ * change would be a silent no-op and the files would keep the old settings.
+ * The stale finished job is removed first; `remove` returns 0 for a job that
+ * is missing — fine, nothing to clear — or **active**, in which case the add
+ * is also a no-op and the running render keeps its lock. That last case can
+ * bake the previous settings; the row the handler reads at run time usually
+ * saves it, and a second PATCH re-queues cleanly once the job finishes.
+ */
+export async function resubmitJob(
+  queue: ProcessingQueue,
+  name: JobName,
+  payload: JobPayload,
+): Promise<void> {
+  await queue.remove(jobKeyToJobId(payload.jobKey));
+  await submitJob(queue, name, payload);
+}

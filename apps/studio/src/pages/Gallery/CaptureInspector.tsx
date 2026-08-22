@@ -15,8 +15,7 @@ import type { RollView } from '../../roll/rollTypes';
 import { AlignEditor } from './AlignEditor';
 import { MatchPanel } from './MatchPanel';
 import { PushToRoll } from './PushToRoll';
-import { buildAlignedFrames, hasAnyOffset } from '../../utils/wiggleRender';
-import { CAM_IDS } from '@kino/kdp';
+import { buildAlignedFrames, captureOffsets, hasAnyOffset } from '../../utils/wiggleRender';
 const SEQ_BOUNCE = [0, 1, 2, 3, 2, 1];
 
 function saveBlob(name: string, blob: Blob) {
@@ -61,10 +60,10 @@ export function CaptureInspector({
   const [alignDirty, setAlignDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [mp4Ok, setMp4Ok] = useState<boolean | null>(null);
-  const camOffsets = CAM_IDS.map((id) => {
-    const c = calibration?.cams[id];
-    return { x: c?.x ?? 0, y: c?.y ?? 0, rot: c?.rot ?? 0 };
-  });
+  // Offsets recorded on the capture win over live device calibration — see
+  // `captureOffsets`. `info` is null until MEDIA_INFO answers, so the first
+  // render uses live calibration and settles once the meta arrives.
+  const camOffsets = captureOffsets(info, calibration);
   const offsetsAvailable = hasAnyOffset(camOffsets);
   const [alignedCrop, setAlignedCrop] = useState(true);
   const handleRef = useRef(new TransferHandle());

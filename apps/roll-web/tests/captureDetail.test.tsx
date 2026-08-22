@@ -20,6 +20,7 @@ function capture(mode: string, frameCount: number): CaptureView {
     frameCount,
     resolution: '1600x1200',
     status: 'ready',
+    playback: null,
     reactionCount: 2,
     reacted: false,
     assets: Array.from({ length: frameCount }, (_unused, index) => ({

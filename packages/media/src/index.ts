@@ -8,3 +8,13 @@ export {
   type LoopMode,
   type WiggleDirection,
 } from './sequence';
+export {
+  SENSOR_BASE_W,
+  hasAnyOffset,
+  computeOverlapCrop,
+  alignmentPlan,
+  type CamOffset,
+  type FrameTransform,
+  type AlignmentPlan,
+} from './alignment';
+export { kdpLoopToMediaLoop, type KdpWiggleLoop } from './playback';

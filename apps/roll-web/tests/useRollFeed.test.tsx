@@ -23,6 +23,7 @@ function capture(captureId: string, status = 'ready'): CaptureView {
     frameCount: 1,
     resolution: '1600x1200',
     status,
+    playback: null,
     assets: [],
   };
 }

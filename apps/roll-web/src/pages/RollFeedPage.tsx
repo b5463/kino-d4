@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
+import { kdpLoopToMediaLoop } from '@kino/media';
 import {
   isNoRollError,
   PinRequiredError,
@@ -98,6 +99,9 @@ function CaptureTile({
     media = (
       <WigglePlayer
         frames={originals}
+        fps={capture.playback?.fps}
+        // The stored loop word is KDP's; the player speaks @kino/media's.
+        loop={kdpLoopToMediaLoop(capture.playback?.loop ?? 'bounce')}
         poster={poster === undefined ? undefined : rollApi.assetUrl(poster.assetId)}
       />
     );

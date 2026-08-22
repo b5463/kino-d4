@@ -6,6 +6,7 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Added
 
+- Render consistency and per-capture playback (audit #59): the wiggle alignment geometry moved into `@kino/media` and the worker's baked WebP/MP4 now apply capture-time calibration offsets (rotate + common overlap crop at source resolution) when the capture's provenance carries them; derived assets record `calibrationVersion`, `aligned`, `crop`, and `look` in their producer identity, and `metadata.json` echoes provenance and the applied calibration. New `captures.playback` column (migration `0009_capture_playback`) with a host `PATCH /api/host/captures/:captureId/playback` route that persists fps/loop/direction in the KDP vocabulary, re-renders the wiggle derivatives, and drives both the guest player and the baked files. A truthful capture-time `calibrationVersion` and offsets must come from the device; firmware does not record them yet.
 - KINO Studio with simulated and Web Serial device connections.
 - KINO Device Protocol framing, CRC, commands, transports, jobs, and timing vocabulary.
 - Portable `kino.*` schemas with versioned migrations and unknown-field preservation.

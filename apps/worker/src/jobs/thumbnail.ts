@@ -51,6 +51,7 @@ export async function generateThumbnail(payload: JobPayload, ctx: JobCtx): Promi
     // asked for instead of what happened is a row that can be wrong.
     width: info.width,
     height: info.height,
-    producer: { job: 'thumbnail', encoder: 'sharp/webp', targetWidth: THUMBNAIL_WIDTH, quality: THUMBNAIL_QUALITY },
+    // `look` is identity only — the P4 baked it into the source JPEG.
+    producer: { job: 'thumbnail', encoder: 'sharp/webp', targetWidth: THUMBNAIL_WIDTH, quality: THUMBNAIL_QUALITY, look: capture.look },
   });
 }
