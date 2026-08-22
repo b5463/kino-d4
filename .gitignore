@@ -7,6 +7,9 @@ dist/
 !infra/.env.prod.example
 !infra/.env.staging.example
 coverage/
+# Playwright acceptance-walk output
+test-results/
+playwright-report/
 *.local
 .DS_Store
 

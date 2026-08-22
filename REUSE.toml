@@ -17,6 +17,8 @@ path = [
   "docs/**",
   "hardware/**",
   "scripts/**",
+  "e2e/**",
+  "playwright.config.ts",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
