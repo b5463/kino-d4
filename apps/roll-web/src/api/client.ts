@@ -138,6 +138,13 @@ export interface RollApi {
    */
   assetUrl(assetId: string, options?: { download?: boolean }): string;
   react(slug: string, captureId: string): Promise<void>;
+  /**
+   * `POST .../renders` — asks the platform to produce a derivative it renders
+   * lazily (`wiggle-mp4`, the social crops). Answers 202; the finished asset
+   * arrives through the same `processing.completed` SSE path every other
+   * derivative uses.
+   */
+  requestRender(slug: string, captureId: string, role: AssetRole): Promise<void>;
   events(slug: string, lastEventId?: string): EventSource;
 }
 
@@ -295,6 +302,21 @@ export function createRollApi(baseUrl = ''): RollApi {
       // nothing.
       const path = `/api/assets/${encodeURIComponent(assetId)}/content`;
       return joinUrl(baseUrl, options?.download === true ? `${path}?download=1` : path);
+    },
+
+    async requestRender(slug, captureId, role) {
+      await requestJson(
+        joinUrl(
+          baseUrl,
+          `/api/rolls/${encodeURIComponent(slug)}/captures/${encodeURIComponent(captureId)}/renders`,
+        ),
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ role }),
+        },
+        slug,
+      );
     },
 
     async react(slug, captureId) {

@@ -20,9 +20,13 @@ import {
   renderContactSheet,
 } from '../src/jobs/contactSheet';
 import { extractMetadata } from '../src/jobs/metadata';
+import { renderSocialFormats } from '../src/jobs/socialFormats';
 import { MissingCaptureError } from '../src/jobs/capture';
 import {
   GALLERY_STILL_WIDTH,
+  SOCIAL_1X1,
+  SOCIAL_4X5,
+  SOCIAL_9X16,
   THUMBNAIL_QUALITY,
   THUMBNAIL_WIDTH,
 } from '../src/images/sizes';
@@ -585,6 +589,60 @@ describe('generate-gallery-still', () => {
     expect(rows[0]?.sha256).toBe(sha256Hex(still));
     // A skipped job announces nothing: there is no new derivative to fetch.
     expect(await publishedRoles(captureId)).toEqual([]);
+  });
+});
+
+describe('render-social-formats', () => {
+  it('writes all three crops at their exact social dimensions, as JPEG, with events', async () => {
+    const captureId = await newCapture();
+    await renderSocialFormats(
+      { captureId, jobKey: `${captureId}:render-social-formats` },
+      runtime.ctx,
+    );
+
+    for (const format of [SOCIAL_9X16, SOCIAL_4X5, SOCIAL_1X1]) {
+      const [row] = await assetsWithRole(captureId, format.role);
+      expect(row).toBeDefined();
+      expect(row?.status).toBe('ready');
+      expect(row?.mime).toBe('image/jpeg');
+      expect(row?.objectKey).toBe(
+        `rolls/${rollId}/captures/${captureId}/derived/${format.role}.jpg`,
+      );
+      if (row !== undefined) writtenKeys.push(row.objectKey);
+
+      const body = await objectBytes(row?.objectKey ?? '');
+      const meta = await sharp(body).metadata();
+      expect(meta.format).toBe('jpeg');
+      // The exact platform sizes, spelled out: story, portrait post, square.
+      expect([meta.width, meta.height]).toEqual([format.width, format.height]);
+      expect(row?.width).toBe(format.width);
+      expect(row?.height).toBe(format.height);
+      expect(row?.bytes).toBe(body.length);
+      expect(row?.sha256).toBe(sha256Hex(body));
+    }
+
+    expect(SOCIAL_9X16.width).toBe(1080);
+    expect(SOCIAL_9X16.height).toBe(1920);
+    expect(SOCIAL_4X5.height).toBe(1350);
+    expect(SOCIAL_1X1.height).toBe(1080);
+
+    expect((await publishedRoles(captureId)).sort()).toEqual(
+      ['social-1x1', 'social-4x5', 'social-9x16'].sort(),
+    );
+  });
+
+  it('produces one row per format however many times it runs', async () => {
+    const captureId = await newCapture();
+    const payload = { captureId, jobKey: `${captureId}:render-social-formats` };
+
+    await renderSocialFormats(payload, runtime.ctx);
+    await renderSocialFormats(payload, runtime.ctx);
+
+    for (const format of [SOCIAL_9X16, SOCIAL_4X5, SOCIAL_1X1]) {
+      const rows = await assetsWithRole(captureId, format.role);
+      expect(rows).toHaveLength(1);
+      if (rows[0] !== undefined) writtenKeys.push(rows[0].objectKey);
+    }
   });
 });
 

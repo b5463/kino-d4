@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   rollApi,
+  type AssetRole,
   type CaptureAssetDetail,
   type CaptureDetail as CaptureDetailView,
   type RollApi,
   type RollView,
 } from '../api/client';
 import { WigglePlayer } from '../components/WigglePlayer';
+import { setPick } from '../state/picks';
 
 export interface CaptureDetailProps {
   slug: string;
@@ -93,10 +95,51 @@ export function CaptureDetail({
     setReacting(true);
     try {
       await api.react(slug, capture.captureId);
-      setCapture(await api.getCapture(slug, capture.captureId));
+      const next = await api.getCapture(slug, capture.captureId);
+      setCapture(next);
+      // The local picks set is a cache of the server's per-guest truth.
+      setPick(slug, next.captureId, next.reacted);
     } finally {
       setReacting(false);
     }
+  };
+
+  // Lazy derivatives (wiggle MP4, social crops): request once, then wait for
+  // the capture to refresh with the finished asset over SSE.
+  const [requestedRoles, setRequestedRoles] = useState<ReadonlySet<AssetRole>>(new Set());
+  const requestRender = async (role: AssetRole): Promise<void> => {
+    setRequestedRoles((previous) => new Set(previous).add(role));
+    try {
+      await api.requestRender(slug, capture.captureId, role);
+    } catch {
+      setRequestedRoles((previous) => {
+        const next = new Set(previous);
+        next.delete(role);
+        return next;
+      });
+    }
+  };
+
+  /** A save control: download link when the asset exists, render request until then. */
+  const saveAction = (role: AssetRole, label: string): ReactElement => {
+    const asset = assetsByRole(capture, role)[0];
+    if (asset !== undefined) {
+      return (
+        <a className="action-link" href={api.assetUrl(asset.assetId, { download: true })} download>
+          {label}
+        </a>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="action-link"
+        disabled={requestedRoles.has(role)}
+        onClick={() => void requestRender(role)}
+      >
+        {requestedRoles.has(role) ? 'Rendering…' : label}
+      </button>
+    );
   };
 
   const pinnedFrame = frame === null ? undefined : originals[frame];
@@ -139,7 +182,10 @@ export function CaptureDetail({
     media = still === undefined ? <p className="photo-processing">Processing…</p> : assetImage(still, api, 'KINO capture');
   }
 
-  const downloadable = preferredAsset(capture) ?? originals[0];
+  // SAVE PHOTO is a still, never an animation or a video — a guest tapping
+  // "save photo" on a wiggle wants a picture their camera roll can show.
+  const stillRoles = ['enhanced-still', 'kino-still', 'thumb'];
+  const savablePhoto = stillRoles.flatMap((role) => assetsByRole(capture, role))[0] ?? originals[0];
   const showFrameStrip = capture.mode === 'wiggle' && roll.downloadsEnabled && originals.length > 0;
 
   return (
@@ -183,11 +229,12 @@ export function CaptureDetail({
               {capture.reacted ? '♥' : '♡'} {capture.reactionCount}
             </button>
           ) : null}
-          {roll.downloadsEnabled && downloadable !== undefined ? (
-            <a className="action-link" href={api.assetUrl(downloadable.assetId, { download: true })} download>
-              Download
+          {roll.downloadsEnabled && savablePhoto !== undefined ? (
+            <a className="action-link" href={api.assetUrl(savablePhoto.assetId, { download: true })} download>
+              Save photo
             </a>
           ) : null}
+          {roll.downloadsEnabled && capture.mode === 'wiggle' ? saveAction('wiggle-mp4', 'Save wiggle') : null}
           <button type="button" className="action-link" onClick={() => void share()}>
             Share
           </button>
@@ -200,6 +247,15 @@ export function CaptureDetail({
           </button>
           {sharing === '' ? null : <span role="status" aria-live="polite" aria-atomic="true">{sharing}</span>}
         </div>
+
+        {roll.downloadsEnabled ? (
+          <div className="photo-actions photo-formats" aria-label="Social formats">
+            <span className="format-label">Save for social</span>
+            {saveAction('social-9x16', '9:16')}
+            {saveAction('social-4x5', '4:5')}
+            {saveAction('social-1x1', '1:1')}
+          </div>
+        ) : null}
       </div>
 
       <aside className="photo-side">

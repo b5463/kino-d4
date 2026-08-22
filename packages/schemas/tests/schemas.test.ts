@@ -21,7 +21,7 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('enumerations', () => {
-  it('lists the asset roles from 05§19 in spec order', () => {
+  it('lists the asset roles from 05§19 (plus the issue #79 social crops) in spec order', () => {
     expect(ASSET_ROLES).toEqual([
       'thumb',
       'kino-still',
@@ -33,6 +33,9 @@ describe('enumerations', () => {
       'contact-sheet',
       'enhanced-still',
       'enhanced-wiggle',
+      'social-9x16',
+      'social-4x5',
+      'social-1x1',
       'metadata',
     ]);
   });

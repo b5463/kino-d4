@@ -31,6 +31,9 @@ export const ASSET_ROLES = [
   'contact-sheet',
   'enhanced-still',
   'enhanced-wiggle',
+  'social-9x16',
+  'social-4x5',
+  'social-1x1',
   'metadata',
 ] as const;
 

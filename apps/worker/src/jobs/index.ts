@@ -5,6 +5,7 @@ import { renderContactSheet } from './contactSheet';
 import { extractMetadata } from './metadata';
 import { renderWiggleWebp } from './wiggleWebp';
 import { renderWiggleMp4 } from './wiggleMp4';
+import { renderSocialFormats } from './socialFormats';
 import { generateRecap } from './recap';
 import { aiEnhanceHandler } from './aiEnhance';
 import { exportRoll } from './exportRoll';
@@ -36,6 +37,7 @@ export const IMAGE_HANDLERS: Readonly<Partial<Record<JobName, JobHandler>>> = {
   'extract-metadata': extractMetadata,
   'render-wiggle-webp': renderWiggleWebp,
   'render-wiggle-mp4': renderWiggleMp4,
+  'render-social-formats': renderSocialFormats,
 };
 
 /** Roll-scoped and optional handlers delivered by Task 25. */
@@ -70,6 +72,7 @@ export { renderContactSheet } from './contactSheet';
 export { extractMetadata } from './metadata';
 export { renderWiggleWebp } from './wiggleWebp';
 export { renderWiggleMp4 } from './wiggleMp4';
+export { renderSocialFormats } from './socialFormats';
 export { generateRecap } from './recap';
 export { aiEnhance, aiEnhanceHandler } from './aiEnhance';
 export { exportRoll } from './exportRoll';

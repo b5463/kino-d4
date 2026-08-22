@@ -9,6 +9,7 @@ import {
 } from '../api/client';
 import { CaptureDetail } from './CaptureDetail';
 import { SiteFooter, SiteHeader } from '../components/SiteHeader';
+import { useRollEvents } from '../hooks/useRollEvents';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
 import { StatusLamp } from '@kino/design-system';
@@ -44,6 +45,21 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
       active = false;
     };
   }, [attempt, captureId, slug]);
+
+  // Without this the SAVE actions' "Rendering…" would never resolve: a lazy
+  // render finishing announces itself as `processing.completed`, and the event
+  // hook's replace path re-fetches the capture — which is a full detail, since
+  // `rollApi.getCapture` is what fetched it.
+  useRollEvents(
+    slug,
+    {
+      replace: (next) => {
+        if (next.captureId === captureId) setCapture(next as CaptureDetailView);
+      },
+    },
+    rollApi,
+    roll !== null && error === null,
+  );
 
   if (error instanceof PinRequiredError) {
     return <PinGate slug={slug} onUnlocked={() => setAttempt((current) => current + 1)} />;

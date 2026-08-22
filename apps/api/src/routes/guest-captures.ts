@@ -7,6 +7,8 @@ import {
   readCaptureDetail,
   readCaptureFeedPage,
 } from '../captures/feed';
+import { createProcessingQueue, submitJob, type ProcessingQueue } from '../queue/producer';
+import { enqueueProcessingJobs, type JobName } from '../uploads/uploads';
 import { convergeWarning, fail } from './errors';
 import {
   ensureGuestId,
@@ -39,7 +41,38 @@ function paramOf(request: FastifyRequest, name: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * Which lazily rendered role maps to which job. One job produces all three
+ * social crops, so any of those roles queues the same unit of work — and the
+ * jobKey dedupe collapses repeat requests into one render.
+ */
+const RENDERABLE_ROLES: Readonly<Record<string, JobName>> = {
+  'wiggle-mp4': 'render-wiggle-mp4',
+  'social-9x16': 'render-social-formats',
+  'social-4x5': 'render-social-formats',
+  'social-1x1': 'render-social-formats',
+};
+
+function requestedRole(request: FastifyRequest): string {
+  const body: unknown = request.body;
+  if (typeof body !== 'object' || body === null) return '';
+  const role = (body as Record<string, unknown>)['role'];
+  return typeof role === 'string' ? role : '';
+}
+
 export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
+  // The producer connection, lazy for the same reason `device-captures.ts`
+  // keeps its own lazy: most guest traffic never queues anything, and building
+  // the server must not cost a Redis connection.
+  let queue: ProcessingQueue | null = null;
+  const processingQueue = (): ProcessingQueue => {
+    queue ??= createProcessingQueue(app.config);
+    return queue;
+  };
+  app.addHook('onClose', async () => {
+    if (queue !== null) await queue.close();
+  });
+
   app.get('/api/rolls/:slug/captures', { config: guestReadRateLimit, preHandler: app.guestRollAccess }, async (request, reply) => {
     const query = queryOf(request);
 
@@ -99,6 +132,59 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
       );
       if (state === null) return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'no such capture');
       return state;
+    },
+  );
+
+  /**
+   * Asks the platform to produce a lazily rendered derivative (03 §19's
+   * on-first-request jobs). 202: the render is queued, and its completion
+   * reaches the guest over the roll's SSE stream as `processing.completed`,
+   * the same path every other derivative announces on.
+   *
+   * Behind the downloads switch: these artifacts exist only to be saved, so a
+   * roll whose host turned downloads off refuses to render them at all —
+   * the same rule `captures/delivery.ts` applies at delivery time.
+   */
+  app.post(
+    '/api/rolls/:slug/captures/:captureId/renders',
+    { config: guestReadRateLimit, preHandler: app.guestRollAccess },
+    async (request, reply) => {
+      const roll = rollOf(request);
+      if (!roll.downloadsEnabled) {
+        return fail(reply, 403, 'DOWNLOADS_DISABLED', 'the host has turned downloads off for this roll');
+      }
+
+      const role = requestedRole(request);
+      const job = RENDERABLE_ROLES[role];
+      if (job === undefined) {
+        return fail(reply, 400, 'ROLE_NOT_RENDERABLE', 'role must be one of wiggle-mp4, social-9x16, social-4x5, social-1x1');
+      }
+
+      const detail = await readCaptureDetail(
+        app.db,
+        roll.id,
+        paramOf(request, 'captureId'),
+        convergeWarning(app),
+      );
+      if (detail === null) return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'no such capture');
+      // A wiggle MP4 of a single or quad capture cannot exist; refusing here
+      // beats queueing a job that can only fail.
+      if (job === 'render-wiggle-mp4' && detail.mode !== 'wiggle') {
+        return fail(reply, 409, 'NOT_A_WIGGLE', 'this capture has no wiggle to render');
+      }
+
+      const queued = await enqueueProcessingJobs(app.db, detail.captureId, [job]);
+      // Failures are logged, not returned — the `queued` row is committed, and
+      // the same trade `device-captures.ts` makes at capture-complete holds.
+      for (const item of queued) {
+        try {
+          await submitJob(processingQueue(), item.name, item.payload);
+        } catch (err) {
+          app.log.error({ err, jobKey: item.payload.jobKey }, 'render job was not queued');
+        }
+      }
+
+      return reply.code(202).send({ role, job });
     },
   );
 };

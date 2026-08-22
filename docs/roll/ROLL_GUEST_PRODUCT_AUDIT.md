@@ -4,7 +4,7 @@ State of the guest-facing product against the Roll product brief (guest-first, W
 
 ## The core test
 
-"Scan the QR at a party, is it immediately fun and useful?" — the mechanics exist: QR → live feed → capture detail → save/share, with live arrival over SSE and no account, email, or install required. What would a shared Drive folder NOT give? Today: live arrival, Wiggle playback, QR entry, hearts, host moderation, PIN privacy. Still missing from that answer: My Picks, party display mode, social-format saves.
+"Scan the QR at a party, is it immediately fun and useful?" — the mechanics exist: QR → live feed → capture detail → save/share, with live arrival over SSE and no account, email, or install required. What would a shared Drive folder NOT give? Today: live arrival, Wiggle playback, QR entry, hearts, My Picks, host moderation, PIN privacy, a TV display mode, and one-tap wiggle/social saves. Still missing from that answer: NFC entry and guest-level analytics.
 
 ## Exists
 
@@ -15,7 +15,7 @@ State of the guest-facing product against the Roll product brief (guest-first, W
 | Progressive capture states | thumb-first upload → `preview-ready`; per-derivative `processing.completed` |
 | Wiggle playback (loop, pause, frame view) | `apps/roll-web/src/components/WigglePlayer.tsx` |
 | Capability-aware assets; single frame renders as a still, no broken Wiggle UI | `mode` + ready-assets-only feed (`captures/feed.ts`) |
-| Save | Download links on capture detail (when the host enables downloads) |
+| Save | Labelled SAVE PHOTO (still-only) and SAVE WIGGLE (MP4, rendered on first request) on capture detail, behind the host's downloads switch (`CaptureDetail.tsx`, `POST .../renders`) |
 | Share | Native Web Share with clipboard fallback (`CaptureDetail.tsx`) |
 | Reactions (hearts) | `captures/reactions.ts`, anonymous session |
 | PIN-protected Rolls; unguessable slugs | `PinGate.tsx`, `auth/pins.ts`, slug generator |
@@ -26,16 +26,16 @@ State of the guest-facing product against the Roll product brief (guest-first, W
 | Load/liveness test | `npm run party:sim` (issue #75) |
 | Twin as a real capture source + camera QR | `docs/roll/ROLL_TWIN_INTEGRATION.md` (issue #75) |
 | No social network (no follows, profiles, DMs) | by omission, deliberate |
+| MY PICKS — local favorites view | Picks tab in `RollFeedPage.tsx`; `apps/roll-web/src/state/picks.ts` mirrors the guest's hearts locally, host moderation drops stale picks (issue #79) |
+| "N new" pill instead of force-prepend | `useRollFeed.buffer`/`flushPending`; a scrolled guest gets the pill, tapping it flushes to the top (issue #79) |
+| DISPLAY MODE (TV/projector) + QR overlay | `/r/:slug/display` (`RollDisplayPage.tsx`), `?qr=1` corner QR (`ScanQr.tsx`), screen wake lock (issue #79) |
+| Social-format outputs (9:16, 4:5, 1:1) | `render-social-formats` (`apps/worker/src/jobs/socialFormats.ts`), roles `social-9x16/4x5/1x1`, rendered on first request (issue #79) |
+| SAVE WIGGLE as MP4 one-tap on the capture card | SAVE WIGGLE in `CaptureDetail.tsx`; `POST /api/rolls/:slug/captures/:captureId/renders` when the MP4 does not exist yet (issue #79) |
 
 ## Gaps (follow-up candidates, kept in the GitHub project)
 
 | Brief item | State |
 |---|---|
-| MY PICKS — local favorites view | Hearts exist server-side; there is no guest-local picks screen. |
-| "N new" pill instead of force-prepend | New captures prepend into the feed immediately (`useRollFeed.prepend`); a browsing guest gets scrolled content shifted. |
-| DISPLAY MODE (TV/projector) + tasteful QR | Not implemented. |
-| Social-format outputs (9:16, 4:5, 1:1) | Only original-aspect derivatives (wiggle webp/mp4, gif, stills). |
-| SAVE WIGGLE as MP4 one-tap on the capture card | MP4 derivative exists; the guest UI exposes generic download links rather than a labelled SAVE WIGGLE action. |
 | NFC entry | Not implemented (QR/URL only). |
 | Privacy tiers PUBLIC/UNLISTED/PRIVATE | Implemented tiers are effectively UNLISTED (unguessable slug) and PIN_PROTECTED; no PUBLIC directory (deliberate) and no PRIVATE mode distinct from PIN. |
 | Guest analytics (opens, plays, time-to-visibility) | Server metrics exist (`plugins/metrics.ts`); no product-level guest analytics. Party-sim measures time-to-visibility in dev. |

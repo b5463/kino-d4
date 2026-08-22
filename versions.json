@@ -1,7 +1,7 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-08-21",
+  "updated": "2026-08-22",
   "software": [
     {
       "name": "kino-workspace",
@@ -23,19 +23,19 @@
     },
     {
       "name": "kino-api",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "package": "apps/api/package.json",
       "tagPrefix": "kino-api-v"
     },
     {
       "name": "kino-worker",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "package": "apps/worker/package.json",
       "tagPrefix": "kino-worker-v"
     },
     {
       "name": "kino-roll-web",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "package": "apps/roll-web/package.json",
       "tagPrefix": "kino-roll-web-v"
     },
@@ -59,7 +59,7 @@
     },
     {
       "name": "kino-schemas",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "package": "packages/schemas/package.json",
       "tagPrefix": "kino-schemas-v"
     },
