@@ -7,6 +7,7 @@
   "main": "src/server.ts",
   "types": "src/server.ts",
   "scripts": {
+    "dev": "tsx src/main.ts",
     "test": "vitest run",
     "lint": "tsc --noEmit",
     "db:migrate": "drizzle-kit migrate"

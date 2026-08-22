@@ -727,6 +727,44 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   /**
+   * Device-side tap (like onTelemetry, issue #75): read a committed capture's
+   * stored files for the Twin's Roll development bridge. The SD card stays
+   * the source of truth — an upload retry re-reads from here rather than
+   * holding bytes in a second queue. Studio never uses this; it reads media
+   * over KDP like a real host.
+   */
+  async readCaptureAssets(id: string): Promise<{
+    kind: 'wiggle' | 'quad';
+    ts: number;
+    frames: { cam: number; bytes: Uint8Array }[];
+    thumb: Uint8Array | null;
+  } | null> {
+    const summary = this.media.list().find((c) => c.id === id);
+    if (!summary) return null;
+    const frames: { cam: number; bytes: Uint8Array }[] = [];
+    for (let cam = 0; cam < 4; cam++) {
+      const bytes = await this.media.fileBytesByIndex(id, cam);
+      if (bytes) frames.push({ cam, bytes });
+    }
+    return { kind: summary.kind, ts: summary.ts, frames, thumb: await this.media.thumb(id) };
+  }
+
+  /**
+   * Render one frame through the registered frame source (issue #75). The
+   * Twin's development bridge uses this for the Milestone-1 single-frame
+   * ingest, where no group capture exists to commit. Null when no virtual
+   * sensor is plugged in or the render fails.
+   */
+  async renderSourceFrame(req: MockFrameRequest): Promise<Uint8Array | null> {
+    if (!this.frameSource) return null;
+    try {
+      return await this.frameSource(req);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Pin the device to one firmware generation (issue #72). The dispatcher,
    * the capability report, the reported versions, and which camera links
    * answer all derive from the profile, so what the device claims and what
@@ -1153,7 +1191,7 @@ export class MockKinoDevice implements MockDeviceLike {
           if (this.camDown(camId) || (camId === 'cam2' && this.scenarios.cam2Timeout)) continue;
           camsReport[camId] = { jpegKB: this.cams[camId].jpegKB, durationMs: this.cams[camId].durationMs };
         }
-        this.emitTelemetry({ t: 'capture', phase: 'committed', id: captureId, cams: camsReport });
+        this.emitTelemetry({ t: 'capture', phase: 'committed', id: captureId, capId, kind, cams: camsReport });
       };
       const source = this.frameSource;
       if (source) {

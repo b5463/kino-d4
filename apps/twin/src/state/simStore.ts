@@ -18,6 +18,7 @@ import type {
   ThermalZone,
 } from '@kino/simulator-engine';
 import type { TwinSnapshot } from '@kino/test-fixtures';
+import { attachRollBridge, detachRollBridge } from '../roll/bridge';
 
 const IDLE_CAM_STAGES: Record<CamId, CaptureStage> = {
   cam1: 'IDLE',
@@ -182,6 +183,9 @@ export function getTwinRuntime(): TwinRuntime {
     unsubscribeEvent: sim.onEvent(handleEvent),
     unsubscribeClient: server.onClientChange((studioConnected) => useSimStore.setState({ studioConnected })),
   };
+  // Roll development bridge (issue #75): committed captures upload to the
+  // real Roll API while a Roll is associated. Never blocks the shutter.
+  attachRollBridge(sim.device);
   return runtime;
 }
 
@@ -207,6 +211,7 @@ function powerOnRuntime(): void {
 
 function powerOffRuntime(): void {
   stopSnapshotRefresh();
+  detachRollBridge();
   if (runtime) {
     runtime.server.stop();
     runtime.sim.powerOff();

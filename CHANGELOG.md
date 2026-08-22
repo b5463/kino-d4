@@ -60,6 +60,8 @@ KINO has no published release yet. Changes intended for the first release collec
 - Database migration 0008: additive `provenance` on captures and `producer`/`produced_at` on assets.
 - Studio closes its audit gaps: calibration exports a full per-unit report and imports per-camera offsets only (order and spacing stay physically verified), firmware downgrades warn loudly with both versions before the same explicit confirm, the health overview shows the device-reported 5 V rail or says NOT REPORTED, and per-camera temperature sits on the camera cards.
 - Twin gains a PINS tab — the first consumer of the profile's 2×13 header table, provisional GPIO assignments, and XIAO DVP map — and the hardware-profile schema carries optional mass/material metadata and per-instance optical-center offsets that the optics overlay applies (zero until the bench measures real centers).
+- Twin gains a ROLL tab: a development bridge that registers as a device, creates or joins a real Roll, shows the working `JOIN THIS ROLL` QR on the virtual D4 display, and uploads committed virtual captures over the public device wire contract — thumb first, idempotent by capture UUID + asset role, with backoff retry across a server outage and an honest single-frame ingest on the current-firmware profile.
+- A party simulator (`npm run party:sim`) drives bursty capture load, concurrent SSE guest sessions, and an outage drill against a running Roll API, reporting capture-to-guest arrival percentiles and duplicate counts; `docs/roll/` documents the device upload contract for the future Wi-Fi firmware milestone, the Twin integration, the capture schema map, the realtime architecture, the acceptance walks, and the guest product audit.
 
 ### Fixed
 

@@ -6,6 +6,13 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
+  server: {
+    // Roll development bridge (issue #75): same-origin /api reaches the Roll
+    // API. ws:false keeps SSE passthrough intact — same setup as roll-web.
+    proxy: {
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, ws: false },
+    },
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

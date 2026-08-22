@@ -13,6 +13,7 @@
     "firmware:daemon": "node scripts/firmware-daemon.mjs",
     "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
     "test:uploader": "tsx infra/scripts/test-uploader.ts",
+    "party:sim": "tsx infra/scripts/party-sim.ts",
     "project": "node scripts/kino-project.mjs",
     "preview:all": "node scripts/preview-all.mjs"
   },
