@@ -594,17 +594,34 @@ async function teardown(clearState: boolean) {
   }
 }
 
-/** Reconnect after a user-requested reboot (or factory reset). */
+/**
+ * Reconnect after a user-requested reboot (or factory reset). A refused
+ * command (M1B firmware NACKs FACTORY_RESET) means no reboot is coming: the
+ * armed window must be disarmed, or the next unrelated transport close is
+ * misread as an expected reboot. The error propagates so the button that
+ * asked can say what happened — a `void` call site swallowing it is how
+ * "ERASE EVERYTHING" turned into silence (issue #80).
+ */
 export async function rebootAndReconnect(): Promise<void> {
   if (!device) return;
   expectDeviceReboot(30000);
-  await device.reboot();
+  try {
+    await device.reboot();
+  } catch (err) {
+    expectRebootUntil = 0;
+    throw err;
+  }
 }
 
 export async function factoryResetAndReconnect(): Promise<void> {
   if (!device) return;
   expectDeviceReboot(30000);
-  await device.factoryReset();
+  try {
+    await device.factoryReset();
+  } catch (err) {
+    expectRebootUntil = 0;
+    throw err;
+  }
 }
 
 function message(err: unknown): string {

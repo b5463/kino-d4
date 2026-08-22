@@ -71,6 +71,10 @@ export class SerialTransport implements Transport {
 
   async write(data: Uint8Array): Promise<void> {
     if (!this.writer) throw new Error('Serial port is not open');
+    // `write()` resolving only means the chunk was queued. Waiting for
+    // `ready` observes backpressure, so a slow port slows the caller instead
+    // of growing an unbounded queue the request timeouts know nothing about.
+    await this.writer.ready;
     await this.writer.write(data);
   }
 

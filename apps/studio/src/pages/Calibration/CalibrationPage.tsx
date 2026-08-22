@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
+import { Unsupported } from '../../components/Unsupported';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { CalibrationTransfer } from './CalibrationTransfer';
 import { OrderPanel, SpacingPanel, FlashPanel } from './procedures';
@@ -177,6 +178,8 @@ function CalReviewTable({
 
 export function CalibrationPage() {
   const calibration = useDeviceStore((s) => s.calibration);
+  const capabilitiesState = useDeviceStore((s) => s.capabilitiesState);
+  const firmwareLabel = useDeviceStore((s) => s.firmwareLabel);
   const [tab, setTab] = useState<Tab>('calibration');
   const [phase, setPhase] = useState<Phase>('idle');
   const [progressMsg, setProgressMsg] = useState('');
@@ -265,12 +268,39 @@ export function CalibrationPage() {
       await dev.resetCalibration();
       invalidateBench(['timing', 'burnin'], 'calibration was reset after this run');
       await refreshCalibration();
+    } catch (err) {
+      // The user confirmed a destructive action — a refusal must not look
+      // identical to success (issue #80).
+      setPhase('error');
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   };
 
   const running = phase === 'capturing' || phase === 'analyzing';
+
+  // M1B firmware NACKs CAMERA_CALIBRATE and GET_CALIBRATION: the capability
+  // report loaded and calibration stayed absent. Every control on this page
+  // would only collect errors — say so once instead (issue #80). Legacy
+  // firmware (no capability report) keeps the benefit of the doubt.
+  if (capabilitiesState === 'loaded' && calibration === null) {
+    return (
+      <>
+        <div className="pagehead">
+          <h1>
+            <Icon name="calibration" />
+            Calibration
+          </h1>
+        </div>
+        <Unsupported
+          feature="Calibration"
+          firmware={firmwareLabel}
+          note="The camera reports no calibration store. Bench diagnostics on the Developer page work today; calibration arrives with a later firmware milestone."
+        />
+      </>
+    );
+  }
 
   return (
     <>

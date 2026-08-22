@@ -31,6 +31,12 @@ export interface Frame {
 
 export function encodeFrame(frame: Frame): Uint8Array {
   const len = frame.payload.length;
+  // A frame past MAX_PAYLOAD is undecodable on the other end — the decoder
+  // resyncs past it — so the failure would surface as a silent timeout.
+  // Failing loud turns a protocol-invariant bug into a stack trace.
+  if (len > MAX_PAYLOAD) {
+    throw new Error(`KDP payload ${len} B exceeds MAX_PAYLOAD ${MAX_PAYLOAD}`);
+  }
   const buf = new Uint8Array(HEADER_LEN + len + CRC_LEN);
   const view = new DataView(buf.buffer);
   buf[0] = MAGIC0;

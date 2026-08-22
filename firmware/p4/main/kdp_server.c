@@ -107,10 +107,19 @@ static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *p
   xSemaphoreGive(s_tx_lock);
 }
 
+static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *message);
+
 static void send_json(uint8_t type, uint32_t seq, cJSON *json) {
   char *text = cJSON_PrintUnformatted(json);
   cJSON_Delete(json);
   if (text == NULL) return;
+  /* An oversized reply would be dropped by kdp_encode_frame — the client
+   * would see only a timeout. A NACK is the honest failure (issue #80). */
+  if (strlen(text) > KDP_MAX_PAYLOAD) {
+    cJSON_free(text);
+    send_nack(type, seq, "INTERNAL_ERROR", "Reply exceeds the frame payload cap");
+    return;
+  }
   send_raw(type, KDP_FLAG_RESPONSE, seq, (const uint8_t *)text, strlen(text));
   cJSON_free(text);
 }
@@ -652,7 +661,8 @@ static void log_emitter(int64_t t_ms, const char *src, const char *msg) {
 
 static void handle_get_logs(uint32_t seq) {
   cJSON *json = cJSON_CreateObject();
-  cJSON_AddItemToObject(json, "entries", klog_entries_json());
+  /* 64 B of headroom for the {"entries":[...]} envelope. */
+  cJSON_AddItemToObject(json, "entries", klog_entries_json(KDP_MAX_PAYLOAD - 64));
   send_json(KDP_CMD_GET_LOGS, seq, json);
 }
 

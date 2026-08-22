@@ -36,6 +36,7 @@ import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 import type { TwinTelemetry, TwinSnapshot } from './telemetry';
 import { FIRMWARE_PROFILES, PROFILE_FOR_VERSION } from './firmwareProfiles';
 import type { FirmwareProfileId } from './firmwareProfiles';
+import { fitLogEntries } from './logBudget';
 
 /**
  * A virtual sensor (issue #72): supplies real JPEG bytes for previews,
@@ -2199,7 +2200,9 @@ export class MockKinoDevice implements MockDeviceLike {
         this.handleCalibrate(frame);
         return;
       case Cmd.GET_LOGS:
-        this.respond(frame, { entries: this.logBuffer.slice(-200) });
+        // Newest-that-fit, like the firmware: 200 full-length entries
+        // serialize past MAX_PAYLOAD, and an unsendable reply is a timeout.
+        this.respond(frame, { entries: fitLogEntries(this.logBuffer, 16384 - 64) });
         return;
       case Cmd.CLEAR_LOGS:
         this.logBuffer = [];

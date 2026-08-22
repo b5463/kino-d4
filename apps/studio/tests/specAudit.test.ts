@@ -287,8 +287,9 @@ describe('07 §14 — capability acceptance', () => {
     expect(supports(state, 'customSounds')).toBe(true);
     expect(supports(state, 'linkBench')).toBe(true);
     // An unknown flag is neither trusted nor fatal — it simply is not a gate.
-    expect(() => navItems({ developerMode: false, rollUpload: true })).not.toThrow();
-    expect(navItems({ developerMode: false, rollUpload: true }).map((i) => i.id)).toContain('roll');
+    const flags = { developerMode: false, rollUpload: true, gallery: true, wiggle: true, quad: true };
+    expect(() => navItems(flags)).not.toThrow();
+    expect(navItems(flags).map((i) => i.id)).toContain('roll');
     // The unknown fields survive the round trip into the store rather than
     // being stripped or throwing, and the gate reads them by its ordinary
     // rule — boolean if the device sent one, "assume present" otherwise.
