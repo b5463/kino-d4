@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SCENARIO_LIST } from '@kino/test-fixtures';
 import { getDemoDevice } from '../app/session';
+import { onUi } from '../state/uiBus';
 
 // Simulator-only fault injection. Rendered exclusively when the session is
 // on the mock transport — with real hardware this panel does not exist.
@@ -12,6 +13,10 @@ export function DebugPanel() {
   useEffect(() => {
     device?.onScenarioChange(() => bump((n) => n + 1));
   }, [device]);
+
+  // Tools ▸ Simulator Faults toggles this panel — the menu item was firing
+  // an event nothing consumed (issue #86).
+  useEffect(() => onUi('toggle-faults', () => setOpen((o) => !o)), []);
 
   if (!device) return null;
 

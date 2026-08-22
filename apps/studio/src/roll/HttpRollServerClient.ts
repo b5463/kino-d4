@@ -28,6 +28,9 @@ export class HttpRollServerClient implements CredentialledRollServerClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/healthz`, {
         headers: { accept: 'application/json' },
+        // A host that accepts and never answers left TEST SERVER spinning
+        // until reload (issue #86).
+        signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return { ok: false, error: `Server answered ${String(response.status)}.` };
       const body = (await response.json()) as { ok?: unknown };
@@ -77,7 +80,7 @@ export class HttpRollServerClient implements CredentialledRollServerClient {
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, init);
+      response = await fetch(`${this.baseUrl}${path}`, { signal: AbortSignal.timeout(10000), ...init });
     } catch (caught) {
       throw new RollServerError(
         'SERVER_UNREACHABLE',

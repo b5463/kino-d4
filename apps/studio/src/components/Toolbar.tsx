@@ -1,7 +1,7 @@
 import { Icon } from './Icon';
 import { ConnectionStrip } from './ConnectionStrip';
 import { canOpenDemo, useConnectionStore } from '../state/connectionStore';
-import { useDeviceStore } from '../state/deviceStore';
+import { supports, useDeviceStore } from '../state/deviceStore';
 import { connectSerial, connectDemo, disconnect, getDevice } from '../app/session';
 import type { PageId } from './Sidebar';
 
@@ -25,6 +25,7 @@ export function Toolbar({
   const transportKind = useConnectionStore((s) => s.transportKind);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const serial = useDeviceStore((s) => s.info?.serial);
+  const gallery = useDeviceStore((s) => supports(s, 'gallery'));
 
   const connected = phase === 'connected' || phase === 'maintenance';
   const busyPhase = phase === 'updating' || phase === 'reconnecting';
@@ -95,9 +96,11 @@ export function Toolbar({
       <button
         type="button"
         className="tool-btn"
-        disabled={!connected}
+        // Same gate as the sidebar: firmware without a gallery would bounce
+        // the navigation right back (issue #86).
+        disabled={!connected || !gallery}
         onClick={() => onNavigate('gallery')}
-        title="Browse and download captures"
+        title={gallery ? 'Browse and download captures' : 'This firmware has no gallery'}
       >
         <Icon name="download" size={20} />
         GALLERY

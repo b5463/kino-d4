@@ -90,7 +90,11 @@ export function RollPanel() {
             <img src={qrDataUrl} className="twin-roll-qr" alt={`QR for ${bridge.roll.guestUrl}`} />
           ) : null}
           <div className="twin-control-row">
-            <a href={bridge.roll.guestUrl} target="_blank" rel="noreferrer">OPEN GUEST ROLL</a>
+            {bridge.roll.guestUrl ? (
+              <a href={bridge.roll.guestUrl} target="_blank" rel="noreferrer">OPEN GUEST ROLL</a>
+            ) : (
+              <span>NO GUEST LINK REPORTED</span>
+            )}
             {bridge.roll.hostUrl ? <a href={bridge.roll.hostUrl} target="_blank" rel="noreferrer">HOST</a> : null}
           </div>
           <div className="twin-button-grid">

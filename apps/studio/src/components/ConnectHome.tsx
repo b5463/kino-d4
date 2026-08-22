@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BroadcastTransport } from '@kino/kdp';
 import { Button } from './Button';
 import { ConnectionNotice } from './ConnectionNotice';
-import { PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
+import { canOpenDemo, PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
 import { connectDemo, connectSerial, connectTwin } from '../app/session';
 import { useKnownCameras } from '../state/knownCameras';
 import { APP_VERSION } from '../app/App';
@@ -11,7 +11,7 @@ import { APP_VERSION } from '../app/App';
 const TWIN_PROBE_INTERVAL_MS = 3000;
 
 // Disconnected home: one dominant action, honest environment facts below.
-export function ConnectHome() {
+export function ConnectHome({ onBringup }: { onBringup?: () => void }) {
   const phase = useConnectionStore((s) => s.phase);
   const error = useConnectionStore((s) => s.error);
   const fault = useConnectionStore((s) => s.fault);
@@ -24,10 +24,13 @@ export function ConnectHome() {
 
   // A Twin tab can open or close at any time, so this re-probes on an
   // interval rather than once — the button appears/disappears without a
-  // reload. Only runs while actually disconnected; once a connect attempt
-  // starts there is nothing new to learn until it lands back here.
+  // reload. Runs in every settled home-screen state, error and recovery
+  // included: a failed serial connect used to stop the probe for good, and
+  // a Twin opened afterwards was never offered again (issue #86). Once a
+  // connect attempt starts there is nothing new to learn until it lands
+  // back here.
   useEffect(() => {
-    if (phase !== 'disconnected') return;
+    if (!canOpenDemo(phase)) return;
     let cancelled = false;
     const check = () => {
       void BroadcastTransport.probe().then((present) => {
@@ -69,6 +72,11 @@ export function ConnectHome() {
               </Button>
               <p className="connect-twin-hint">Twin tab detected on this origin</p>
             </div>
+          ) : null}
+          {onBringup ? (
+            <Button variant="ghost" disabled={busy} onClick={onBringup}>
+              BRING-UP WORKSHEET (OFFLINE)
+            </Button>
           ) : null}
         </div>
 

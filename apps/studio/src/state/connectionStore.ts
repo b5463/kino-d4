@@ -104,9 +104,13 @@ export function connectionNotice(
   if (phase === 'recovery') {
     return {
       title: PHASE_LABEL.recovery,
+      // The full procedure lives right here: Updates › Advanced Recovery
+      // needs a session, and this state never has one (issue #86).
       body:
         'KINO stopped answering and did not come back. Power-cycle it and connect again. ' +
-        'If it still does not answer, the board needs the ROM-loader procedure under Updates › Advanced Recovery.',
+        'If it still does not answer, flash it over the ROM loader: unplug USB, hold BOOT, plug back in, ' +
+        'release BOOT, then run esptool.py --chip esp32p4 -b 460800 write_flash 0x10000 p4-app.bin ' +
+        '(use --chip esp32s3 for a XIAO).',
       detail: error,
     };
   }

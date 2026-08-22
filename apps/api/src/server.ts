@@ -7,6 +7,7 @@ import Fastify, {
 import { sql } from 'drizzle-orm';
 import { HeadBucketCommand } from '@aws-sdk/client-s3';
 import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
 import { loadConfig, type ApiConfig } from './config';
 import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
@@ -87,6 +88,27 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   const app = Fastify(options);
 
   app.decorate('config', config);
+  // Studio talks to the Roll server cross-origin (it is a device tool, not a
+  // page this API serves), and dev tooling runs Studio/Twin/roll-web on
+  // assorted localhost ports. Reflect localhost origins and the configured
+  // public base; everything else stays blocked (issue #86).
+  app.register(cors, {
+    origin: (origin, done) => {
+      if (!origin) return done(null, true);
+      let allowed = false;
+      try {
+        const { hostname } = new URL(origin);
+        allowed =
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          origin === new URL(config.PUBLIC_BASE_URL).origin;
+      } catch {
+        allowed = false;
+      }
+      done(null, allowed);
+    },
+    credentials: true,
+  });
   app.register(dbPlugin, { config });
   app.register(redisPlugin, { config });
   app.register(rateLimitsPlugin);

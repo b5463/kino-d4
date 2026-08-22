@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { and, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { deviceOf } from '../auth/plugins';
-import { createRoll } from '../rolls/rolls';
+import { createRoll, guestUrlFor } from '../rolls/rolls';
 import { SLUG_PATTERN, normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
@@ -122,7 +122,14 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
       .onConflictDoNothing()
       .execute();
 
-    return reply.send({ rollId: roll.id, title: roll.title, status: roll.status });
+    // guestUrl comes from the server — a joiner that invents one from its
+    // own origin points guests at the wrong host (issue #86).
+    return reply.send({
+      rollId: roll.id,
+      title: roll.title,
+      status: roll.status,
+      guestUrl: guestUrlFor(app.config, parsed.data.slug),
+    });
   });
 
   /**

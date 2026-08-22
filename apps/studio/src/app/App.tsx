@@ -10,6 +10,7 @@ import { ConnectHome } from '../components/ConnectHome';
 import { DebugPanel } from '../components/DebugPanel';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Led } from '../components/Led';
+import { Button } from '../components/Button';
 import { useConnectionStore } from '../state/connectionStore';
 import { supports, supportsRollUpload, useDeviceStore } from '../state/deviceStore';
 import { usePrefs, setDensity, setDeveloperMode } from '../state/prefs';
@@ -72,6 +73,10 @@ export function App() {
   const density = usePrefs((s) => s.density);
   const developerMode = usePrefs((s) => s.developerMode);
   const [page, setPage] = useState<PageId>(loadPage);
+  // Bring-up exists for boards that do not answer HELLO, so it must not
+  // require a session (issue #86). Entered explicitly from the connect
+  // screen in developer mode; never restored from persistence.
+  const [offlineBringup, setOfflineBringup] = useState(false);
   const [rebootOpen, setRebootOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
@@ -113,8 +118,12 @@ export function App() {
   }, [developerMode, page]);
 
   // A remembered section is meaningless on a camera that cannot serve it —
-  // the nav has no entry for it, so nothing could navigate back out.
+  // the nav has no entry for it, so nothing could navigate back out. Only
+  // while a session is live: on disconnect capabilities go null and every
+  // gate reads false, which used to rewrite the persisted section to
+  // Overview the moment the cable came out (issue #86).
   useEffect(() => {
+    if (!inSession) return;
     if (
       (!rollUpload && page === 'roll') ||
       (!gallery && page === 'gallery') ||
@@ -123,7 +132,7 @@ export function App() {
     ) {
       setPage('overview');
     }
-  }, [rollUpload, gallery, wiggle, quad, page]);
+  }, [inSession, rollUpload, gallery, wiggle, quad, page]);
 
   // Desktop-utility keys: Ctrl+S saves the open section, F5 re-reads the
   // camera. Both are no-ops unless a camera is actually attached.
@@ -212,7 +221,9 @@ export function App() {
       items: [
         ...navItems({ developerMode: false, rollUpload, gallery, wiggle, quad }).map((item) => ({
           label: item.label,
-          disabled: !inSession,
+          // Same lock the sidebar holds while firmware is being written —
+          // the menu used to bypass it (issue #86).
+          disabled: !inSession || phase === 'updating',
           checked: page === item.id,
           action: () => goto(item.id),
         })),
@@ -292,8 +303,20 @@ export function App() {
                 <Page />
               </div>
             </>
+          ) : offlineBringup && developerMode ? (
+            <div className="workspace-inner">
+              <p className="notice">
+                <span>
+                  Offline bring-up — no camera connected. Tests that need the device stay disabled.
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => setOfflineBringup(false)}>
+                  BACK TO CONNECT
+                </Button>
+              </p>
+              <BringUpPage />
+            </div>
           ) : (
-            <ConnectHome />
+            <ConnectHome onBringup={developerMode ? () => setOfflineBringup(true) : undefined} />
           )}
         </main>
       </div>

@@ -21,7 +21,7 @@ process.once('SIGINT', () => void stop('SIGINT'));
 process.once('SIGTERM', () => void stop('SIGTERM'));
 
 try {
-  await app.listen({ host: '0.0.0.0', port: 3000 });
+  await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? 3000) });
 } catch (err) {
   app.log.fatal({ err }, 'API failed to start');
   process.exitCode = 1;
