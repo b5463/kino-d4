@@ -60,7 +60,8 @@ const FFMPEG_PATH_VAR = 'FFMPEG_PATH';
  *    the operator's to discharge — with a build they chose and can account for.
  *    Baking `ffmpeg-static`'s prebuilt download in as the only option would make
  *    this repository's dependency graph the thing that ships the GPL component.
- *    (The obligation itself is tracked as board issue #22, not solved here.)
+ *    (Discharged in issue #22: the worker image uses Debian's ffmpeg and drops
+ *    the npm binaries; THIRD_PARTY_NOTICES.md carries the source offer.)
  * 2. **`ffmpeg-static` downloads its binary in a postinstall script.** As a hard
  *    requirement, that turns a restricted-egress `npm ci` into a failed install
  *    for all seven workspaces over a dependency six of them never use. So the
