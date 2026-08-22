@@ -297,6 +297,11 @@ export class MockKinoDevice implements MockDeviceLike {
   private readonly telemetryListeners = new Set<(e: TwinTelemetry) => void>();
   private readonly decoder = new FrameDecoder();
   private timers: ReturnType<typeof setTimeout>[] = [];
+  /** Timers for an in-flight capture's exposure → transfer → SD commit chain
+   * (issue #75). Deliberately NOT connection-scoped: unplugging the host
+   * cable right after CAMERA_CAPTURE acks must not lose the photograph —
+   * the commit is device-internal. Reboot and dispose still cancel them. */
+  private captureTimers: ReturnType<typeof setTimeout>[] = [];
   private logTimer: ReturnType<typeof setTimeout> | null = null;
   private captureTimer: ReturnType<typeof setTimeout> | null = null;
   // Studio's demo device shoots on its own so its gallery/logs stay lively.
@@ -1115,7 +1120,7 @@ export class MockKinoDevice implements MockDeviceLike {
         focus.locked = false;
         this.emitTelemetry({ t: 'af', cam: id, state: 'searching' });
         const failing = focus && ['af-fail', 'vcm-stuck', 'af-timeout'].includes(this.cams[id].fault ?? '');
-        this.after(300, () => {
+        this.afterCapture(300, () => {
           if (failing) {
             focus.state = 'failed';
           } else {
@@ -1135,12 +1140,12 @@ export class MockKinoDevice implements MockDeviceLike {
       const src = ('C' + id.slice(-1)) as LogSource;
       if (this.camDown(id)) {
         skipped++;
-        this.after(delay, () => { this.log('P4', `${id.toUpperCase()} no frame — group incomplete`); this.camTimeouts++; });
+        this.afterCapture(delay, () => { this.log('P4', `${id.toUpperCase()} no frame — group incomplete`); this.camTimeouts++; });
         continue;
       }
       if (id === 'cam2' && this.scenarios.cam2Timeout) {
         skipped++;
-        this.after(delay + 900, () => { this.log('P4', 'C2 frame timeout after 900 ms'); this.camTimeouts++; cam.uartErrors++; });
+        this.afterCapture(delay + 900, () => { this.log('P4', 'C2 frame timeout after 900 ms'); this.camTimeouts++; cam.uartErrors++; });
         continue;
       }
       cam.jpegKB = this.randInt(300, 560);
@@ -1153,15 +1158,15 @@ export class MockKinoDevice implements MockDeviceLike {
         // capture log line reports the retries that absorbed them.
         const retries = this.randInt(1, 3);
         cam.uartErrors += retries;
-        this.after(delay, () => this.log(src, `jpeg ${cam.jpegKB} KB in ${cam.durationMs} ms — ${retries} retries (crc noise)`));
+        this.afterCapture(delay, () => this.log(src, `jpeg ${cam.jpegKB} KB in ${cam.durationMs} ms — ${retries} retries (crc noise)`));
       } else {
-        this.after(delay, () => this.log(src, `jpeg ${cam.jpegKB} KB in ${cam.durationMs} ms`));
+        this.afterCapture(delay, () => this.log(src, `jpeg ${cam.jpegKB} KB in ${cam.durationMs} ms`));
       }
       delay += this.randInt(15, 45);
     }
     if (this.scenarios.sdMissing || this.scenarios.sdFull) {
       const reason = this.scenarios.sdMissing ? 'no card' : 'card full';
-      this.after(delay + 120, () => { this.sdErrors++; this.log('SD', `capture ${n} lost — ${reason}`); });
+      this.afterCapture(delay + 120, () => { this.sdErrors++; this.log('SD', `capture ${n} lost — ${reason}`); });
       return;
     }
     // Sequential CAM1→4 UART transfer happens before the SD commit; at
@@ -1169,7 +1174,7 @@ export class MockKinoDevice implements MockDeviceLike {
     // Concurrent transfer on four UARTs: wall clock is the slowest
     // channel, not the sum of four sequential transfers.
     const transferMs = Math.round((380 * 1024) / ((this.uartBaud / 10) * 0.9) * 1000);
-    this.after(delay + transferMs, () => {
+    this.afterCapture(delay + transferMs, () => {
       this.sdFreeMB = Math.max(0, this.sdFreeMB - 2);
       if (skipped > 0) {
         this.log('SD', `capture ${n} committed incomplete — ${4 - skipped}/4 frames`);
@@ -1224,6 +1229,23 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private after(ms: number, fn: () => void) {
     this.timers.push(setTimeout(fn, ms));
+  }
+
+  /** Like after(), but survives detach/dropLink — see captureTimers. */
+  private afterCapture(ms: number, fn: () => void) {
+    this.captureTimers.push(setTimeout(fn, ms));
+  }
+
+  private clearCaptureTimers() {
+    for (const t of this.captureTimers) clearTimeout(t);
+    this.captureTimers = [];
+  }
+
+  /** Power removed: an in-flight capture chain dies with the rails. The Twin
+   * simulator calls this on POWER OFF; a mere link drop must NOT — see
+   * captureTimers. */
+  cancelInFlightCaptures(): void {
+    this.clearCaptureTimers();
   }
 
   private log(src: LogSource, msg: string) {
@@ -3425,6 +3447,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    this.clearCaptureTimers(); // a capture mid-commit dies with the boot
     // 04 §17: every boot gets a new session ID, so a host that reconnects can
     // tell a rebooted device from the one it was already talking to. Anything
     // scoped to the old boot — running jobs, upload progress — died with it.

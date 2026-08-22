@@ -56,6 +56,48 @@ describe('telemetry tap: capture pipeline', () => {
       vi.useRealTimers();
     }
   });
+
+  // Issue #75: the Header's private KDP client closes right after the
+  // CAMERA_CAPTURE ack. Unplugging the host cable must not lose a photo the
+  // camera is already committing to SD — only power loss or a reboot may.
+  it('a capture in flight survives detach and still commits with its capId', () => {
+    vi.useFakeTimers();
+    try {
+      const dev = new MockKinoDevice({ seed: 5, now: () => 1_755_300_000_000 });
+      const events: TwinTelemetry[] = [];
+      dev.onTelemetry((e) => events.push(e));
+
+      send(dev, Cmd.CAMERA_CAPTURE, 1, {});
+      vi.advanceTimersByTime(30); // dispatch latency — the capture is now in flight
+      dev.detach(); // link gone before exposure/transfer finishes
+      vi.advanceTimersByTime(8000);
+
+      const committed = capturesOf(events).find((c) => c.phase === 'committed');
+      expect(committed).toBeDefined();
+      expect(committed!.capId).toMatch(/^(WG|QD)\d{6}$/);
+      expect(committed!.kind).toBe('wiggle');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a capture in flight dies with a power-off cancel, not a late commit', () => {
+    vi.useFakeTimers();
+    try {
+      const dev = new MockKinoDevice({ seed: 5, now: () => 1_755_300_000_000 });
+      const events: TwinTelemetry[] = [];
+      dev.onTelemetry((e) => events.push(e));
+
+      send(dev, Cmd.CAMERA_CAPTURE, 1, {});
+      vi.advanceTimersByTime(30); // dispatch latency — the capture is now in flight
+      dev.cancelInFlightCaptures();
+      vi.advanceTimersByTime(8000);
+
+      expect(capturesOf(events).find((c) => c.phase === 'committed')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('telemetry tap: camFault', () => {
