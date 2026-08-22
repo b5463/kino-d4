@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { kdpLoopToMediaLoop } from '@kino/media';
 import {
   rollApi,
   type AssetRole,
@@ -152,6 +153,9 @@ export function CaptureDetail({
       roll.downloadsEnabled && originalUrls.length >= 2 ? (
         <WigglePlayer
           frames={originalUrls}
+          fps={capture.playback?.fps}
+          // The stored loop word is KDP's; the player speaks @kino/media's.
+          loop={kdpLoopToMediaLoop(capture.playback?.loop ?? 'bounce')}
           poster={still === undefined ? undefined : api.assetUrl(still.assetId)}
         />
       ) : still === undefined ? (

@@ -6,7 +6,7 @@ import {
   convergeCaptureStatuses,
   type ConvergeFailureLog,
 } from '../uploads/uploads';
-import { assets, captures } from '../db/schema';
+import { assets, captures, type CapturePlayback } from '../db/schema';
 
 /**
  * The guest feed's reader: what a capture looks like to a guest, and how the
@@ -156,6 +156,10 @@ export interface CaptureView {
   frameCount: number;
   resolution: string;
   status: string;
+  /** The host's playback choice (fps/loop/direction, KDP vocabulary), or
+   * null for the renderer's defaults. On the guest view too: the live
+   * player must show the same wiggle the baked files play. */
+  playback: CapturePlayback | null;
   assets: CaptureAssetSummary[];
 }
 
@@ -209,6 +213,7 @@ const captureColumns = {
   frameCount: captures.frameCount,
   resolution: captures.resolution,
   status: captures.status,
+  playback: captures.playback,
 };
 
 /**
@@ -303,6 +308,7 @@ interface CaptureRow {
   frameCount: number;
   resolution: string;
   status: string;
+  playback: CapturePlayback | null;
   visible: boolean;
   deletedAt: Date | null;
   cursorAt: string;
@@ -375,6 +381,7 @@ function sharedFields(row: CaptureRow, converged: Map<string, string>): Omit<Cap
     frameCount: row.frameCount,
     resolution: row.resolution,
     status: converged.get(row.id) ?? row.status,
+    playback: row.playback ?? null,
   };
 }
 
@@ -474,6 +481,7 @@ export async function readCaptureDetail(
     frameCount: row.frameCount,
     resolution: row.resolution,
     status,
+    playback: row.playback ?? null,
     assets: assetsByCapture.get(row.id) ?? [],
   };
 }

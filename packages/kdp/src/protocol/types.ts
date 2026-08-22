@@ -651,6 +651,15 @@ export interface CaptureInfo extends CaptureSummary {
     cameraFirmware: string[];
     gpioSkewUs: number;
     exposure: { cam: CamId; shutter: string; gain: number }[];
+    /** Alignment calibration as it was at the shutter press. Optional and
+     * additive (no protocol version bump): current firmware does not record
+     * it — a consumer that finds it absent falls back to live calibration
+     * and must never invent offsets. `version` identifies the calibration
+     * state that produced these numbers. */
+    calibration?: {
+      version: string;
+      cams: Partial<Record<CamId, { x: number; y: number; rot: number }>>;
+    };
   };
 }
 

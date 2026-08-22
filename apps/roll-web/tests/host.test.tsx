@@ -149,9 +149,16 @@ describe('host dashboard', () => {
     await render(fakeApi({ startExport, getExport }));
 
     const button = [...container.querySelectorAll('button')].find((item) => item.textContent === 'Prepare ZIP');
+    // Waits for the second poll rather than racing one fixed sleep against
+    // it: the poll interval is real time, so a fixed window turns unrelated
+    // module-load cost into a failed assertion.
     await act(async () => {
       button?.click();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const deadline = Date.now() + 2000;
+      while (getExport.mock.calls.length < 2 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
     });
 
     expect(startExport).toHaveBeenCalledWith('roll_1');

@@ -532,6 +532,12 @@ Gallery access through the P4 file server. Never send the whole gallery (04§9).
 (`[{ "name": "C1.JPG", "sizeBytes", "sha256" }]`) and `meta` (`flash`, `batteryV`, `p4Firmware`,
 `cameraFirmware`, `gpioSkewUs`, `exposure[]`).
 
+`meta.calibration` is an **optional, additive** member (no protocol version bump):
+`{ "version": "cal-…", "cams": { "cam1": { "x": 0, "y": 0, "rot": 0 }, … } }` — the alignment
+calibration as it was at the shutter press, x/y in sensor pixels at the 1600-wide base, rot in
+degrees. **No firmware records it yet**; consumers that find it absent fall back to live device
+calibration and never invent offsets. Stamping it truthfully has to come from the device.
+
 `MEDIA_READ` `length` is clamped to 8192 by the reference device. Ranges past EOF return short, not
 an error.
 

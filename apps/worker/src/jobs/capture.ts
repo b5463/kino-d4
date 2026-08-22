@@ -27,6 +27,11 @@ export interface CaptureRow {
   frameCount: number;
   resolution: string;
   timing: unknown;
+  /** The device's capture-time record (audit #59): untyped passthrough, read
+   * back through `captureCalibration` before a render acts on any of it. */
+  provenance: unknown;
+  /** The host's playback choice, or null for the renderer's defaults. */
+  playback: unknown;
   status: string;
 }
 
@@ -119,6 +124,8 @@ export async function loadCapture(db: WorkerDatabase, captureId: string): Promis
       frameCount: captures.frameCount,
       resolution: captures.resolution,
       timing: captures.timing,
+      provenance: captures.provenance,
+      playback: captures.playback,
       status: captures.status,
     })
     .from(captures)

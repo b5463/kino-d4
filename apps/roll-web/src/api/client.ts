@@ -49,6 +49,15 @@ export interface CaptureAssetDetail extends CaptureAssetSummary {
   bytes: number | null;
 }
 
+/** The host's playback choice for one capture, in the KDP vocabulary. The
+ * loop word is mapped through `kdpLoopToMediaLoop` before it reaches the
+ * player — KDP's `sweep` is the player's `once`. */
+export interface CapturePlayback {
+  fps?: number;
+  loop?: 'bounce' | 'continuous' | 'sweep';
+  direction?: 'ltr' | 'rtl';
+}
+
 /** One item of `GET /api/rolls/:slug/captures` — see `captures/feed.ts#CaptureView`. */
 export interface CaptureView {
   captureId: string;
@@ -59,6 +68,8 @@ export interface CaptureView {
   frameCount: number;
   resolution: string;
   status: string;
+  /** Null means the player's defaults. */
+  playback: CapturePlayback | null;
   assets: CaptureAssetSummary[];
 }
 

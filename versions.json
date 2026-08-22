@@ -146,7 +146,7 @@
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
-    "latestMigration": "0008_capture_provenance"
+    "latestMigration": "0009_capture_playback"
   },
   "firmware": {
     "version": "0.1.0",

@@ -1,6 +1,16 @@
 import sharp from 'sharp';
-import { clampWiggleFps, wiggleSequence, type LoopMode, type WiggleDirection } from '@kino/media';
-import { loadAssets, originalFrames, readObject, type CaptureRow } from './capture';
+import {
+  alignmentPlan,
+  clampWiggleFps,
+  hasAnyOffset,
+  kdpLoopToMediaLoop,
+  wiggleSequence,
+  type CamOffset,
+  type LoopMode,
+  type WiggleDirection,
+} from '@kino/media';
+import { captureCalibration } from './calibration';
+import { loadAssets, originalFrames, readObject, type AssetRow, type CaptureRow } from './capture';
 import type { JobCtx } from './types';
 
 /**
@@ -45,16 +55,42 @@ export const WIGGLE_MP4_LOOPS = 4;
 export const WIGGLE_MP4_CRF = 23;
 
 /**
- * The loop mode and direction a render bakes in.
+ * The loop mode and direction a render bakes in when the capture carries no
+ * playback choice of its own.
  *
- * 02 §9's defaults, and for now the *only* values a render can use: nothing in
- * the platform stores per-capture playback settings yet, so a handler that read
- * them from somewhere would be reading a field it invented. When Studio's wiggle
- * page starts persisting them (02 §9) they arrive on the capture and this becomes
- * the fallback rather than the answer.
+ * 02 §9's defaults. `captures.playback` (a host's per-capture choice, PATCHed
+ * through the API) wins when present — see `wiggleLoopFor` /
+ * `wiggleDirectionFor`; these are the fallback, not the answer.
  */
 export const WIGGLE_LOOP_DEFAULT: LoopMode = 'bounce';
 export const WIGGLE_DIRECTION_DEFAULT: WiggleDirection = 'ltr';
+
+/** `captures.playback` as stored JSON: a host choice, validated by the API's
+ * PATCH route but still read defensively — the column is data, not code. */
+interface StoredPlayback {
+  fps?: unknown;
+  loop?: unknown;
+  direction?: unknown;
+}
+
+function playbackOf(capture: CaptureRow): StoredPlayback {
+  const { playback } = capture;
+  return typeof playback === 'object' && playback !== null && !Array.isArray(playback)
+    ? (playback as StoredPlayback)
+    : {};
+}
+
+/** The stored loop choice — KDP vocabulary on the row, mapped into
+ * `@kino/media`'s — or the 02 §9 default. */
+export function wiggleLoopFor(capture: CaptureRow): LoopMode {
+  const { loop } = playbackOf(capture);
+  return loop === undefined ? WIGGLE_LOOP_DEFAULT : kdpLoopToMediaLoop(loop);
+}
+
+export function wiggleDirectionFor(capture: CaptureRow): WiggleDirection {
+  const { direction } = playbackOf(capture);
+  return direction === 'rtl' ? 'rtl' : WIGGLE_DIRECTION_DEFAULT;
+}
 
 /**
  * The nearest even number of pixels at or below `value`, and never fewer than 2.
@@ -92,18 +128,25 @@ export interface WiggleFrames {
   frames: Buffer[];
   /** Indices into `frames`, in playback order (`@kino/media`). */
   order: number[];
+  /** The capture-time calibration version these frames were decoded under, or
+   * null when the capture carries none. Recorded even when `aligned` is false
+   * (an all-zero calibration is a real state, not an absent one). */
+  calibrationVersion: string | null;
+  /** Whether the per-frame rotate + overlap crop was actually applied. */
+  aligned: boolean;
+  /** The overlap crop in source pixels, when `aligned`. */
+  crop: { x: number; y: number; w: number; h: number } | null;
 }
 
 /**
- * The frame rate a render bakes in.
- *
- * 10 fps (02 §9's default) for every capture, because — like the loop mode — no
- * per-capture speed is stored yet. It goes through `clampWiggleFps` rather than
- * being written as `10` so that when a stored value does arrive, the range check
- * is already the one `@kino/media` and Studio's slider use.
+ * The frame rate a render bakes in: the capture's stored playback fps when the
+ * host set one, 02 §9's default otherwise. Through `clampWiggleFps` either
+ * way, so the range check is the one `@kino/media` and Studio's slider use —
+ * a stored value outside 5–15 is a stale client, not a broken render.
  */
-export function wiggleFpsFor(_capture: CaptureRow): number {
-  return clampWiggleFps(undefined);
+export function wiggleFpsFor(capture: CaptureRow): number {
+  const { fps } = playbackOf(capture);
+  return clampWiggleFps(typeof fps === 'number' ? fps : undefined);
 }
 
 /**
@@ -146,23 +189,65 @@ export async function loadWiggleFrames(
   const sources: Buffer[] = [];
   for (const frame of stored) sources.push(await readObject(ctx, frame.objectKey));
 
-  const height = await renderHeightOf(sources[0]);
+  const calibration = captureCalibration(capture);
+  const offsets = calibration === null ? null : offsetsFor(stored, calibration.cams);
+  const aligned = offsets !== null && hasAnyOffset(offsets);
+
+  let height: number;
+  let crop: { x: number; y: number; w: number; h: number } | null = null;
   const frames: Buffer[] = [];
-  for (const source of sources) {
-    frames.push(
-      await sharp(source)
-        // EXIF orientation first: a rig that reports a rotation and is ignored
-        // renders a sideways wiggle.
-        .rotate()
-        // `cover` with both dimensions fixed, so every frame is exactly the same
-        // size. It has to be: the frames become pages of one animation and rows
-        // of one raw video stream, and a page of a different height is not a
-        // smaller page — it is a corrupt file.
-        .resize({ width: WIGGLE_WIDTH, height, fit: 'cover' })
-        .removeAlpha()
-        .raw()
-        .toBuffer(),
-    );
+
+  if (aligned) {
+    // Calibration path: rotate each frame and cut the common overlap crop at
+    // SOURCE resolution, before the resize — the same order Studio's preview
+    // uses (@kino/media `alignmentPlan`), so the baked file and the preview
+    // are the same photograph. Doing it after the resize would quantise
+    // sub-pixel offsets into the 960 px grid and drift the two.
+    const decoded: RawFrame[] = [];
+    for (const source of sources) decoded.push(await orientedRaw(source));
+
+    const first = decoded[0];
+    if (first === undefined) throw new Error('wiggle has no first frame');
+    for (const frame of decoded) {
+      if (frame.width !== first.width || frame.height !== first.height) {
+        throw new Error(
+          `wiggle frames disagree about their size (${frame.width}x${frame.height} vs ` +
+            `${first.width}x${first.height}); cannot align`,
+        );
+      }
+    }
+
+    const plan = alignmentPlan(first.width, first.height, offsets);
+    crop = plan.crop;
+    // Height follows the *cropped* geometry, still forced even for x264.
+    height = evenPixels((WIGGLE_WIDTH * plan.crop.h) / plan.crop.w);
+
+    for (const [index, frame] of decoded.entries()) {
+      const move = plan.perFrame[index] ?? { dx: 0, dy: 0, rotDeg: 0 };
+      frames.push(await alignFrame(frame, move, plan.crop, height));
+    }
+  } else {
+    // No capture-time calibration → the path is exactly what it was before
+    // alignment existed. Offsets are never invented, and the *current* device
+    // calibration is never borrowed — it was measured for a mechanical state
+    // this capture may not have had.
+    height = await renderHeightOf(sources[0]);
+    for (const source of sources) {
+      frames.push(
+        await sharp(source)
+          // EXIF orientation first: a rig that reports a rotation and is ignored
+          // renders a sideways wiggle.
+          .rotate()
+          // `cover` with both dimensions fixed, so every frame is exactly the same
+          // size. It has to be: the frames become pages of one animation and rows
+          // of one raw video stream, and a page of a different height is not a
+          // smaller page — it is a corrupt file.
+          .resize({ width: WIGGLE_WIDTH, height, fit: 'cover' })
+          .removeAlpha()
+          .raw()
+          .toBuffer(),
+      );
+    }
   }
 
   const fps = wiggleFpsFor(capture);
@@ -174,8 +259,89 @@ export async function loadWiggleFrames(
     fps,
     delayMs: Math.round(1000 / fps),
     frames,
-    order: wiggleSequence(frames.length, WIGGLE_LOOP_DEFAULT, WIGGLE_DIRECTION_DEFAULT),
+    order: wiggleSequence(frames.length, wiggleLoopFor(capture), wiggleDirectionFor(capture)),
+    calibrationVersion: calibration?.version ?? null,
+    aligned,
+    crop,
   };
+}
+
+/**
+ * The stored frames' offsets, in stored order, from the calibration's
+ * `cam<frameIndex>` entries. A camera the calibration does not name is
+ * neutral — never backfilled from anywhere else.
+ */
+function offsetsFor(
+  stored: readonly AssetRow[],
+  cams: Record<string, { x: number; y: number; rot: number }>,
+): CamOffset[] {
+  return stored.map((frame) => {
+    const entry = cams[`cam${String(frame.frameIndex ?? 0)}`];
+    return { x: entry?.x ?? 0, y: entry?.y ?? 0, rot: entry?.rot ?? 0 };
+  });
+}
+
+/** One frame decoded to EXIF-oriented raw RGB, with its displayed size. */
+interface RawFrame {
+  data: Buffer;
+  width: number;
+  height: number;
+}
+
+async function orientedRaw(source: Buffer): Promise<RawFrame> {
+  const { data, info } = await sharp(source)
+    .rotate()
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return { data, width: info.width, height: info.height };
+}
+
+/**
+ * Executes one frame's transform: rotate about the centre, cut the overlap
+ * crop, resize to the render geometry.
+ *
+ * The geometry mirrors Studio's canvas exactly. The canvas draws the frame
+ * rotated about its own centre with that centre moved to
+ * `(w/2 + dx, h/2 + dy)`, then reads the crop rectangle in canvas
+ * coordinates. sharp's `.rotate(deg)` grows the canvas to hold the rotated
+ * frame symmetrically about the same centre, so the crop maps into the
+ * rotated image at `crop.x − dx + (w′ − w) / 2` (and likewise for y). The
+ * extract offsets are rounded to whole pixels — at most half a pixel from
+ * the preview, inside the 2 px pad `computeOverlapCrop` already reserves.
+ */
+async function alignFrame(
+  frame: RawFrame,
+  move: { dx: number; dy: number; rotDeg: number },
+  crop: { x: number; y: number; w: number; h: number },
+  renderHeight: number,
+): Promise<Buffer> {
+  let canvas = frame;
+  if (move.rotDeg !== 0) {
+    const { data, info } = await sharp(frame.data, {
+      raw: { width: frame.width, height: frame.height, channels: 3 },
+    })
+      // The corners this sweeps in are cut off by the overlap crop, whose
+      // rotation slack was computed for exactly this angle.
+      .rotate(move.rotDeg, { background: '#000000' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    canvas = { data, width: info.width, height: info.height };
+  }
+
+  return sharp(canvas.data, {
+    raw: { width: canvas.width, height: canvas.height, channels: 3 },
+  })
+    .extract({
+      left: Math.round(crop.x - move.dx + (canvas.width - frame.width) / 2),
+      top: Math.round(crop.y - move.dy + (canvas.height - frame.height) / 2),
+      width: crop.w,
+      height: crop.h,
+    })
+    .resize({ width: WIGGLE_WIDTH, height: renderHeight, fit: 'cover' })
+    .raw()
+    .toBuffer();
 }
 
 /** The pages of the animation, concatenated in playback order. */

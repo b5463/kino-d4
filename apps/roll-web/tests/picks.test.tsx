@@ -20,6 +20,7 @@ function capture(captureId: string, capturedAt = '2026-08-14T20:00:00.000Z'): Ca
     captureId,
     mode: 'single',
     look: null,
+    playback: null,
     capturedAt,
     createdAt: capturedAt,
     frameCount: 1,

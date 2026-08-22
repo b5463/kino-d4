@@ -68,6 +68,7 @@ export async function generateGalleryStill(payload: JobPayload, ctx: JobCtx): Pr
     body: data,
     width: info.width,
     height: info.height,
-    producer: { job: 'gallery-still', encoder: 'sharp/jpeg', targetWidth: GALLERY_STILL_WIDTH, quality: GALLERY_STILL_QUALITY },
+    // `look` is identity only — the P4 baked it into the source JPEG.
+    producer: { job: 'gallery-still', encoder: 'sharp/jpeg', targetWidth: GALLERY_STILL_WIDTH, quality: GALLERY_STILL_QUALITY, look: capture.look },
   });
 }

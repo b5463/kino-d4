@@ -25,6 +25,7 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.3.0",
     "@fastify/rate-limit": "^11.2.0",
+    "@kino/media": "*",
     "@kino/schemas": "*",
     "bullmq": "^6.1.2",
     "drizzle-orm": "^0.45.2",

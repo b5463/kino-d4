@@ -57,6 +57,13 @@
       "when": 1787331845714,
       "tag": "0008_capture_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787418245714,
+      "tag": "0009_capture_playback",
+      "breakpoints": true
     }
   ]
 }

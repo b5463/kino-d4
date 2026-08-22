@@ -63,6 +63,21 @@ export async function renderWiggleWebp(payload: JobPayload, ctx: JobCtx): Promis
     // `info.height` is the whole stacked image — every page — so the row would
     // claim a 4320 px-tall wiggle. One frame's height is what a client lays out.
     height: wiggle.height,
-    producer: { job: 'wiggle-webp', encoder: 'sharp/webp-anim', quality: WIGGLE_WEBP_QUALITY, fps: wiggle.fps, width: wiggle.width, frames: wiggle.order.length },
+    producer: {
+      job: 'wiggle-webp',
+      encoder: 'sharp/webp-anim',
+      quality: WIGGLE_WEBP_QUALITY,
+      fps: wiggle.fps,
+      width: wiggle.width,
+      frames: wiggle.order.length,
+      // Which calibration these bytes were baked under, and whether the
+      // alignment actually moved anything (audit #59). `crop` is in source
+      // pixels. `look` is recorded, never applied — the P4 bakes it into the
+      // JPEGs before upload; this is identity, not a promise of work done.
+      calibrationVersion: wiggle.calibrationVersion,
+      aligned: wiggle.aligned,
+      ...(wiggle.crop === null ? {} : { crop: wiggle.crop }),
+      look: capture.look,
+    },
   });
 }

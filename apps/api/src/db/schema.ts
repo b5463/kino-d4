@@ -28,6 +28,18 @@ import type { Capture, FirmwareManifest } from '@kino/schemas';
  * deliberately no accounts table: nothing in V1 spans more than one roll.
  */
 
+/**
+ * `captures.playback` — the host's per-capture playback settings. Loop and
+ * direction use the KDP vocabulary (`WiggleLoop`/`WiggleDirection`), the same
+ * words the camera's own wiggle config speaks; the worker maps loop into
+ * `@kino/media`'s vocabulary at render time.
+ */
+export interface CapturePlayback {
+  fps?: number;
+  loop?: 'bounce' | 'continuous' | 'sweep';
+  direction?: 'ltr' | 'rtl';
+}
+
 export const devices = pgTable('devices', {
   id: text('id').primaryKey(), // 'dev_' + nanoid
   serial: text('serial').notNull().unique(), // 'KD4-00001'
@@ -105,6 +117,14 @@ export const captures = pgTable(
      * instead of being silently dropped.
      */
     provenance: jsonb('provenance').$type<Record<string, unknown>>(),
+    /**
+     * The host's playback choice for this capture (audit #59): fps 5–15,
+     * loop/direction in the KDP vocabulary. Deliberately NOT inside
+     * provenance — provenance records what the device reported at the
+     * shutter press and never changes; this is a host preference that can
+     * be edited afterwards. Null means "the renderer's defaults".
+     */
+    playback: jsonb('playback').$type<CapturePlayback>(),
     status: text('status').notNull().default('created'),
     visible: boolean('visible').notNull().default(true),
     deletedAt: timestamp('deleted_at', { withTimezone: true }), // trash grace (03§11)
