@@ -70,8 +70,13 @@ export function ComponentTree() {
                   onChange={() => toggleVisible(inst.id)}
                   aria-label={`Toggle ${inst.id} visibility`}
                 />
-                <button type="button" className="twin-tree-label" onClick={() => select(inst.id)}>
-                  {component?.name ?? inst.id}
+                <button
+                  type="button"
+                  className="twin-tree-label"
+                  title={component?.name ?? inst.id}
+                  onClick={() => select(inst.id)}
+                >
+                  <span className="twin-tree-name">{component?.name ?? inst.id}</span>
                   <span className="twin-tree-id">{inst.id}</span>
                 </button>
               </div>

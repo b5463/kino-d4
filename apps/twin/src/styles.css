@@ -224,7 +224,9 @@ body {
 
 .twin-tree-label {
   flex: 1;
+  min-width: 0;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   background: none;
@@ -237,7 +239,19 @@ body {
   padding: 2px 0;
 }
 
+/* Long component names ellipsize instead of clipping; the full name is the
+   row's tooltip. The id never wraps mid-word. */
+.twin-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .twin-tree-id {
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--twin-text-mut);
 }
 
