@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { D4_V1 } from '@kino/hardware-profiles';
 import type { ComponentDef, HardwareProfile, InstanceDef, KeepoutDef, NetDef } from '@kino/hardware-profiles';
-import { collisionReport } from '../src/collision/collide';
+import { collisionReport, shellExclusions } from '../src/collision/collide';
 
 function component(id: string, sizeMm: [number, number, number], keepouts: KeepoutDef[] = []): ComponentDef {
   return {
@@ -160,6 +160,28 @@ describe('collisionReport', () => {
       expect(knownIds.has(finding.a), `${finding.kind} has unknown id ${finding.a}`).toBe(true);
       expect(knownIds.has(finding.b), `${finding.kind} has unknown id ${finding.b}`).toBe(true);
       expect(Number.isFinite(finding.distanceMm)).toBe(true);
+    }
+  });
+
+  it('excludes shell instances that only have envelope geometry (issue #82)', () => {
+    // A whole-body envelope box contains everything: evaluating it as a
+    // solid reports the entire interior as COLLISION 0.00 mm.
+    const shell: InstanceDef = { ...instance('shell-box', 'envelope', [0, 0, 0]), group: 'shell' };
+    const profile = fixture(
+      [component('envelope', [100, 100, 100]), component('part', [10, 10, 10])],
+      [shell, instance('inner', 'part', [0, 0, 0])],
+    );
+
+    expect(collisionReport(profile, [], 22)).toEqual([]);
+    expect(shellExclusions(profile)).toEqual(['shell-box']);
+  });
+
+  it('D4_V1 shell instances never appear in findings', () => {
+    const shellIds = new Set(shellExclusions(D4_V1));
+    expect(shellIds.size).toBeGreaterThan(0);
+    for (const finding of collisionReport(D4_V1, [], 22)) {
+      expect(shellIds.has(finding.a), `${finding.kind} names shell ${finding.a}`).toBe(false);
+      expect(shellIds.has(finding.b), `${finding.kind} names shell ${finding.b}`).toBe(false);
     }
   });
 });

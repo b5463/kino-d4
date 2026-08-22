@@ -2,6 +2,8 @@ import type { CollisionFinding } from '../collision/collide';
 
 interface ClearancePanelProps {
   findings: CollisionFinding[];
+  /** Instance ids skipped because they only have envelope geometry. */
+  notEvaluated?: string[];
 }
 
 function findingLabel(finding: CollisionFinding): string {
@@ -23,13 +25,18 @@ function isCritical(finding: CollisionFinding): boolean {
   return finding.kind === 'COLLISION' || finding.kind === 'USB_ACCESS_BLOCKED' || finding.kind === 'SD_EJECT_BLOCKED';
 }
 
-export function ClearancePanel({ findings }: ClearancePanelProps) {
+export function ClearancePanel({ findings, notEvaluated = [] }: ClearancePanelProps) {
   return (
     <section className="twin-clearance-panel" aria-label="Clearance findings">
       <div className="twin-panel-heading">
         <span>CLEARANCE</span>
         <span>{findings.length}</span>
       </div>
+      {notEvaluated.length > 0 ? (
+        <p className="twin-panel-note">
+          NOT EVALUATED: {notEvaluated.join(', ')} — envelope box only, no measured shell geometry yet.
+        </p>
+      ) : null}
       {findings.length === 0 ? (
         <p className="twin-clearance-empty">No assembled-pose findings.</p>
       ) : (
