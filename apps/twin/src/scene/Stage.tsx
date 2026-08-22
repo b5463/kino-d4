@@ -4,7 +4,7 @@
 // layer (photographed by the virtual cameras).
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { useStageStore, kelvinToHex, selectSubject, STAGE_FLOOR_Y_MM } from '../state/stageStore';
+import { useStageStore, kelvinToHex, selectSubject, removeSubject, STAGE_FLOOR_Y_MM } from '../state/stageStore';
 import type { StageSubject } from '../state/stageStore';
 import { buildSubject } from './subjects';
 import { SENSOR_LAYER } from './sensor';
@@ -76,6 +76,23 @@ export function Stage() {
   const lighting = useStageStore((s) => s.lighting);
   const room = useStageStore((s) => s.room);
   const ambientColor = kelvinToHex(lighting.colorK);
+
+  // Delete/Backspace removes the selected subject — the fast way to clear a
+  // scene. Ignored while a form control has focus so typing stays safe.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return;
+      const selected = useStageStore.getState().selectedId;
+      if (selected) {
+        event.preventDefault();
+        removeSubject(selected);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <group>

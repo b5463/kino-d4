@@ -86,7 +86,11 @@ export function OpticsPanel() {
       </div>
 
       <div className="twin-inspector-section">
-        <label className="twin-field-label" htmlFor="twin-subject">SUBJECT PROXY</label>
+        <label className="twin-field-label" htmlFor="twin-subject">OVERLAP PROXY (MATH ONLY)</label>
+        <p className="twin-panel-note" style={{ padding: '2px 0 6px' }}>
+          A wireframe stand-in for the FOV-overlap figures below. Photographable subjects live in the
+          STAGE tab.
+        </p>
         <select
           id="twin-subject"
           className="twin-select"

@@ -40,9 +40,10 @@ export function FirmwarePanel() {
               key={profile.id}
               className={profile.id === activeId ? 'twin-btn twin-btn--active' : 'twin-btn'}
               disabled={!running}
+              title={profile.label}
               onClick={() => setProfile(profile.id)}
             >
-              {profile.label}
+              {profile.simulatedFuture ? 'SIMULATED FUTURE' : `CURRENT ${profile.p4Fw}`}
             </button>
           ))}
         </div>

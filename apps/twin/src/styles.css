@@ -372,7 +372,8 @@ body {
 
 .twin-panel-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Ten tabs — five columns keeps two even rows instead of a ragged third. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   position: sticky;
   top: 0;
   z-index: 2;
@@ -449,6 +450,13 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
+}
+
+.twin-button-grid .twin-btn {
+  /* Long labels (profiles, subjects) wrap inside the button instead of
+     overflowing the 2-column grid. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .twin-power-grid {
