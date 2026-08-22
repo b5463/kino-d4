@@ -17,9 +17,10 @@
     "project": "node scripts/kino-project.mjs",
     "preview:all": "node scripts/preview-all.mjs",
     "dev:all": "node scripts/dev-all.mjs",
-    "twin:relay": "node scripts/twin-ws-relay.mjs"
+    "twin:relay": "node scripts/twin-ws-relay.mjs",
+    "test:acceptance": "playwright test"
   },
-  "devDependencies": { "tsx": "^4.21.0", "ws": "^8.19.0" },
+  "devDependencies": { "@playwright/test": "^1.62.1", "tsx": "^4.21.0", "ws": "^8.19.0" },
   "optionalDependencies": { "@rollup/rollup-linux-x64-gnu": "4.62.4" },
   "engines": { "node": ">=22" }
 }
