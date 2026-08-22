@@ -16,9 +16,10 @@
     "party:sim": "tsx infra/scripts/party-sim.ts",
     "project": "node scripts/kino-project.mjs",
     "preview:all": "node scripts/preview-all.mjs",
-    "dev:all": "node scripts/dev-all.mjs"
+    "dev:all": "node scripts/dev-all.mjs",
+    "twin:relay": "node scripts/twin-ws-relay.mjs"
   },
-  "devDependencies": { "tsx": "^4.21.0" },
+  "devDependencies": { "tsx": "^4.21.0", "ws": "^8.19.0" },
   "optionalDependencies": { "@rollup/rollup-linux-x64-gnu": "4.62.4" },
   "engines": { "node": ">=22" }
 }

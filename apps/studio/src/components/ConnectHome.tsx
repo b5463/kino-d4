@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BroadcastTransport } from '@kino/kdp';
+import { BroadcastTransport, WebSocketTransport } from '@kino/kdp';
 import { Button } from './Button';
 import { ConnectionNotice } from './ConnectionNotice';
 import { canOpenDemo, PHASE_LABEL, useConnectionStore } from '../state/connectionStore';
@@ -18,6 +18,11 @@ export function ConnectHome({ onWorksheet }: { onWorksheet?: (page: 'bringup' | 
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const known = useKnownCameras((s) => s.cameras);
   const [twinAvailable, setTwinAvailable] = useState(false);
+  const [twinWsAvailable, setTwinWsAvailable] = useState(false);
+  // ?twinWs=ws://host:5179 offers a Twin reached over the WebSocket relay
+  // (issue #29) — another browser, container, or machine.
+  const twinWsUrl =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('twinWs') : null;
 
   const busy = phase === 'requesting-port' || phase === 'connecting' || phase === 'handshaking';
   const offlineReady = typeof navigator !== 'undefined' && navigator.serviceWorker?.controller != null;
@@ -36,6 +41,11 @@ export function ConnectHome({ onWorksheet }: { onWorksheet?: (page: 'bringup' | 
       void BroadcastTransport.probe().then((present) => {
         if (!cancelled) setTwinAvailable(present);
       });
+      if (twinWsUrl) {
+        void WebSocketTransport.probe(twinWsUrl).then((present) => {
+          if (!cancelled) setTwinWsAvailable(present);
+        });
+      }
     };
     check();
     const timer = setInterval(check, TWIN_PROBE_INTERVAL_MS);
@@ -71,6 +81,14 @@ export function ConnectHome({ onWorksheet }: { onWorksheet?: (page: 'bringup' | 
                 CONNECT KINO TWIN
               </Button>
               <p className="connect-twin-hint">Twin tab detected on this origin</p>
+            </div>
+          ) : null}
+          {twinWsUrl && twinWsAvailable ? (
+            <div className="connect-twin">
+              <Button disabled={busy} onClick={() => void connectTwin(twinWsUrl)}>
+                CONNECT KINO TWIN (BRIDGE)
+              </Button>
+              <p className="connect-twin-hint">Twin answering over {twinWsUrl}</p>
             </div>
           ) : null}
           {onWorksheet ? (

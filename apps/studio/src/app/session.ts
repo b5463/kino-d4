@@ -18,7 +18,7 @@ import { clearSoundCache } from '../device/sounds';
 import type { Transport, TransportKind } from '@kino/kdp';
 import { MockTransport } from '@kino/kdp';
 import { SerialTransport, webSerialSupported } from '@kino/kdp';
-import { BroadcastTransport } from '@kino/kdp';
+import { BroadcastTransport, WebSocketTransport } from '@kino/kdp';
 import { MockKinoDevice } from '@kino/test-fixtures';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import type { ConnectionFault } from '../state/connectionStore';
@@ -151,12 +151,14 @@ export async function connectSerial(): Promise<void> {
 }
 
 /**
- * KINO Twin §10 option 2: a Twin running in another same-origin tab, reached
- * over BroadcastTransport. Same connect/handshake/populate path as serial and
- * demo — the twin is just another transport kind, not a special case.
+ * KINO Twin §10 option 2: a Twin in another same-origin tab over
+ * BroadcastTransport — or, given a relay URL (issue #29), a Twin in another
+ * browser/container/machine over WebSocketTransport. Same
+ * connect/handshake/populate path as serial and demo either way; the twin is
+ * just another transport kind, not a special case.
  */
-export async function connectTwin(): Promise<void> {
-  await connectWith(() => new BroadcastTransport(), 'twin');
+export async function connectTwin(wsUrl?: string): Promise<void> {
+  await connectWith(() => (wsUrl ? new WebSocketTransport(wsUrl) : new BroadcastTransport()), 'twin');
 }
 
 /** What each transport kind is called in a "could not open" error. */
