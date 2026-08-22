@@ -49,3 +49,18 @@ export const CONTACT_SHEET_QUALITY = 85;
 
 /** The colour behind the cells, which is what the gutters show. */
 export const CONTACT_SHEET_BACKGROUND = '#101010';
+
+/**
+ * The social crops (issue #79): story, portrait post, square. 1080 wide is the
+ * size every major app renders at; anything larger is recompressed on upload.
+ */
+export const SOCIAL_9X16 = { role: 'social-9x16', width: 1080, height: 1920 } as const;
+export const SOCIAL_4X5 = { role: 'social-4x5', width: 1080, height: 1350 } as const;
+export const SOCIAL_1X1 = { role: 'social-1x1', width: 1080, height: 1080 } as const;
+export const SOCIAL_FORMATS = [SOCIAL_9X16, SOCIAL_4X5, SOCIAL_1X1] as const;
+
+/**
+ * JPEG q85, the contact sheet's reasoning: a social crop exists to leave the
+ * app, and JPEG is what every upload dialog accepts without a conversation.
+ */
+export const SOCIAL_QUALITY = 85;

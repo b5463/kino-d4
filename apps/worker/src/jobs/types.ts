@@ -18,6 +18,7 @@ export const JOB_NAMES = [
   'render-wiggle-webp',
   'render-wiggle-mp4',
   'render-contact-sheet',
+  'render-social-formats',
   'extract-metadata',
   'generate-recap',
   'ai-enhance',

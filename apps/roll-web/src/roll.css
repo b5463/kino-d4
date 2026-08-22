@@ -209,6 +209,25 @@ label { color: var(--k-mut); font-size: 12px; font-weight: 700; }
 
 .photo-grid { margin-top: 2px; }
 
+/* "N new" pill: live arrivals held back while the guest is scrolled down. */
+.new-pill {
+  position: sticky;
+  top: 8px;
+  z-index: 2;
+  display: block;
+  margin: 0 auto 8px;
+  min-height: 30px;
+  padding: 4px 14px;
+  border: 1px solid #123c74;
+  border-radius: 15px;
+  background: linear-gradient(to bottom, #3b78c4, #2a5da0);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (pointer: coarse) { .new-pill { min-height: 36px; } }
+
 .photo-thumb {
   display: block;
   min-width: 0;
@@ -318,6 +337,10 @@ label { color: var(--k-mut); font-size: 12px; font-weight: 700; }
 a.action-link { min-height: 30px; }
 @media (pointer: coarse) { .action-link { min-height: 36px; } }
 
+/* Social-format saves: a second compact row under the main actions. */
+.photo-formats { gap: 4px 10px; }
+.format-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+
 .photo-quad { display: grid; gap: 6px; }
 .photo-figure { min-width: 0; margin: 0; }
 .photo-figure .photo-img { aspect-ratio: auto; border: 1px solid var(--k-border-soft); }
@@ -359,6 +382,58 @@ a.action-link { min-height: 30px; }
 
 /* Legacy class kept for the host page's poster images. */
 .roll-media { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #dfe5ec; }
+
+/* ---- display mode: black full-bleed hero for a TV or projector ---- */
+
+.display-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: #fff;
+  overflow: hidden;
+}
+.display-hero { position: absolute; inset: 0; display: grid; place-items: center; }
+.display-hero .display-img,
+.display-hero .photo-img,
+.display-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  aspect-ratio: auto;
+  background: #000;
+}
+.display-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: #9aa7b4;
+  font-size: 18px;
+  font-weight: 700;
+}
+.display-title {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  color: rgb(255 255 255 / 75%);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+}
+.display-qr {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: rgb(255 255 255 / 92%);
+  border-radius: 3px;
+}
+.display-qr-slug { color: #26313d; font: 700 11px var(--k-mono); }
 
 @media (max-width: 600px) {
   .roll-header { padding: 8px; }

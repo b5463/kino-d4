@@ -64,6 +64,7 @@ function apiWith(overrides: Partial<RollApi> = {}): RollApi {
     getCapture: vi.fn(),
     assetUrl: (id) => `/api/assets/${id}/content`,
     react: vi.fn(),
+    requestRender: vi.fn(),
     events: vi.fn(() => new FakeEventSource() as unknown as EventSource),
     ...overrides,
   };
@@ -215,6 +216,129 @@ describe('Roll feed hooks', () => {
     });
     expect(api.getCapture).toHaveBeenCalledWith('party', 'cap_new');
     expect(prepend).toHaveBeenCalledWith(created);
+  });
+
+  function feedHarness(api: RollApi): {
+    current(): RollFeedState;
+    Harness: () => null;
+  } {
+    const observed: { current: RollFeedState | null } = { current: null };
+    return {
+      current: () => {
+        if (observed.current === null) throw new Error('feed hook did not render');
+        return observed.current;
+      },
+      Harness: function Harness() {
+        observed.current = useRollFeed('party', api);
+        return null;
+      },
+    };
+  }
+
+  it('buffer holds a live arrival in pending without touching the grid', async () => {
+    const api = apiWith({
+      listCaptures: vi.fn().mockResolvedValue({ items: [capture('cap_old')], hasMore: false }),
+    });
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+
+    act(() => current().buffer(capture('cap_new')));
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_old']);
+    expect(current().pending.map((item) => item.captureId)).toEqual(['cap_new']);
+
+    // Buffering the same capture again is a no-op, not a second pill count.
+    act(() => current().buffer(capture('cap_new')));
+    expect(current().pending).toHaveLength(1);
+  });
+
+  it('buffer patches a capture that is already visible instead of pending it', async () => {
+    const api = apiWith({
+      listCaptures: vi
+        .fn()
+        .mockResolvedValue({ items: [capture('cap_1', 'processing')], hasMore: false }),
+    });
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+
+    act(() => current().buffer(capture('cap_1', 'ready')));
+    expect(current().pending).toHaveLength(0);
+    expect(current().captures[0]?.status).toBe('ready');
+  });
+
+  it('flushPending moves pending to the head and returns the flushed ids', async () => {
+    const api = apiWith({
+      listCaptures: vi.fn().mockResolvedValue({ items: [capture('cap_old')], hasMore: false }),
+    });
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+
+    act(() => {
+      current().buffer(capture('cap_b'));
+      current().buffer(capture('cap_a'));
+    });
+
+    let flushed: string[] = [];
+    act(() => {
+      flushed = current().flushPending();
+    });
+    expect(flushed.sort()).toEqual(['cap_a', 'cap_b']);
+    expect(current().pending).toHaveLength(0);
+    expect(current().captures.map((item) => item.captureId)).toContain('cap_a');
+    expect(current().captures[current().captures.length - 1]?.captureId).toBe('cap_old');
+  });
+
+  it('remove purges a moderated capture from pending too', async () => {
+    const api = apiWith();
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+
+    act(() => current().buffer(capture('cap_hidden')));
+    expect(current().pending).toHaveLength(1);
+    act(() => current().remove('cap_hidden'));
+    expect(current().pending).toHaveLength(0);
+  });
+
+  it('replace patches a buffered capture in place', async () => {
+    const api = apiWith();
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+
+    act(() => current().buffer(capture('cap_p', 'processing')));
+    act(() => current().replace(capture('cap_p', 'ready')));
+    expect(current().pending[0]?.status).toBe('ready');
+    expect(current().captures).toHaveLength(0);
+  });
+
+  it('refetchHead({buffer:true}) sends only items newer than the head to pending', async () => {
+    const first = { items: [capture('cap_2'), capture('cap_1')], hasMore: false };
+    const second = {
+      items: [capture('cap_4'), capture('cap_3'), capture('cap_2', 'ready'), capture('cap_1')],
+      hasMore: false,
+    };
+    const listCaptures = vi
+      .fn()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValue(second);
+    const api = apiWith({ listCaptures });
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_2', 'cap_1']);
+
+    await act(async () => current().refetchHead({ buffer: true }));
+
+    expect(current().pending.map((item) => item.captureId)).toEqual(['cap_4', 'cap_3']);
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_2', 'cap_1']);
+  });
+
+  it('prepend removes the capture from pending so a flush cannot duplicate it', async () => {
+    const api = apiWith();
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+
+    act(() => current().buffer(capture('cap_x')));
+    act(() => current().prepend(capture('cap_x')));
+    expect(current().pending).toHaveLength(0);
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_x']);
   });
 
   it('evicts every cached asset when live moderation removes a capture', async () => {

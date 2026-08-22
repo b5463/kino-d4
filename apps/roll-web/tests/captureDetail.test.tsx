@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptureDetail as CaptureView, RollApi, RollView } from '../src/api/client';
 import { CaptureDetail } from '../src/pages/CaptureDetail';
+import { readPicks } from '../src/state/picks';
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
@@ -54,6 +55,7 @@ function api(overrides: Partial<RollApi> = {}): RollApi {
     getCapture: vi.fn(),
     assetUrl: (id, options) => `/api/assets/${id}/content${options?.download ? '?download=1' : ''}`,
     react: vi.fn(),
+    requestRender: vi.fn(),
     events: vi.fn(),
     ...overrides,
   };
@@ -117,16 +119,111 @@ describe('CaptureDetail', () => {
     expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
   });
 
+  function findAction(label: string): HTMLElement | undefined {
+    return Array.from(container.querySelectorAll<HTMLElement>('a.action-link, button.action-link')).find(
+      (element) => element.textContent === label,
+    );
+  }
+
+  it('SAVE PHOTO downloads a still, never the animated preferred asset', async () => {
+    const view = capture('wiggle', 4);
+    view.assets = [
+      ...view.assets,
+      { role: 'wiggle-webp', assetId: 'asset_webp', frameIndex: null, mime: 'image/webp', bytes: 9, width: 960, height: 720 },
+      { role: 'kino-still', assetId: 'asset_still', frameIndex: null, mime: 'image/webp', bytes: 9, width: 1280, height: 960 },
+    ];
+    await render(view, roll());
+
+    const save = findAction('Save photo');
+    expect(save?.getAttribute('href')).toBe('/api/assets/asset_still/content?download=1');
+    expect(save?.hasAttribute('download')).toBe(true);
+  });
+
+  it('SAVE WIGGLE downloads the MP4 when it already exists', async () => {
+    const view = capture('wiggle', 4);
+    view.assets = [
+      ...view.assets,
+      { role: 'wiggle-mp4', assetId: 'asset_mp4', frameIndex: null, mime: 'video/mp4', bytes: 9, width: 960, height: 720 },
+    ];
+    await render(view, roll());
+
+    expect(findAction('Save wiggle')?.getAttribute('href')).toBe(
+      '/api/assets/asset_mp4/content?download=1',
+    );
+  });
+
+  it('SAVE WIGGLE requests a render and shows Rendering… until the asset arrives', async () => {
+    const requestRender = vi.fn().mockResolvedValue(undefined);
+    const client = api({ requestRender });
+    const view = capture('wiggle', 4);
+    await render(view, roll(), client);
+
+    const save = findAction('Save wiggle');
+    expect(save?.tagName).toBe('BUTTON');
+    await act(async () => save?.click());
+
+    expect(requestRender).toHaveBeenCalledWith('party', 'cap_1', 'wiggle-mp4');
+    expect(findAction('Rendering…')).toBeDefined();
+
+    // The SSE replace path hands the component a refreshed capture that now
+    // carries the MP4 — the pending state resolves into a download link.
+    const finished = capture('wiggle', 4);
+    finished.assets = [
+      ...finished.assets,
+      { role: 'wiggle-mp4', assetId: 'asset_mp4', frameIndex: null, mime: 'video/mp4', bytes: 9, width: 960, height: 720 },
+    ];
+    await render(finished, roll(), client);
+    expect(findAction('Save wiggle')?.getAttribute('href')).toBe(
+      '/api/assets/asset_mp4/content?download=1',
+    );
+  });
+
+  it('SAVE WIGGLE is absent on a non-wiggle capture', async () => {
+    await render(capture('single', 1), roll());
+    expect(findAction('Save wiggle')).toBeUndefined();
+  });
+
+  it('the social format row requests the shared render job per format', async () => {
+    const requestRender = vi.fn().mockResolvedValue(undefined);
+    await render(capture('single', 1), roll(), api({ requestRender }));
+
+    for (const label of ['9:16', '4:5', '1:1']) {
+      expect(findAction(label)?.tagName).toBe('BUTTON');
+    }
+    await act(async () => findAction('9:16')?.click());
+    expect(requestRender).toHaveBeenCalledWith('party', 'cap_1', 'social-9x16');
+  });
+
+  it('a social format that already exists downloads directly', async () => {
+    const view = capture('single', 1);
+    view.assets = [
+      ...view.assets,
+      { role: 'social-1x1', assetId: 'asset_sq', frameIndex: null, mime: 'image/jpeg', bytes: 9, width: 1080, height: 1080 },
+    ];
+    await render(view, roll());
+    expect(findAction('1:1')?.getAttribute('href')).toBe('/api/assets/asset_sq/content?download=1');
+  });
+
+  it('hides every save control when downloads are off', async () => {
+    await render(capture('wiggle', 4), roll({ downloadsEnabled: false }));
+    expect(findAction('Save photo')).toBeUndefined();
+    expect(findAction('Save wiggle')).toBeUndefined();
+    expect(findAction('9:16')).toBeUndefined();
+  });
+
   it('renders and reconciles reactions only when the Roll enables them', async () => {
     const updated = { ...capture('single', 1), reactionCount: 3, reacted: true };
     const react = vi.fn().mockResolvedValue(undefined);
     const getCapture = vi.fn().mockResolvedValue(updated);
     await render(capture('single', 1), roll(), api({ react, getCapture }));
 
+    localStorage.clear();
     const heart = container.querySelector('button[aria-label="Add heart"]') as HTMLButtonElement;
     await act(async () => heart.click());
     expect(react).toHaveBeenCalledWith('party', 'cap_1');
     expect(container.textContent).toContain('♥ 3');
+    // The heart mirrors the server's `reacted` into the local picks set.
+    expect(readPicks('party').has('cap_1')).toBe(true);
 
     await render(updated, roll({ reactionsEnabled: false }));
     expect(container.querySelector('button[aria-label*="heart"]')).toBeNull();

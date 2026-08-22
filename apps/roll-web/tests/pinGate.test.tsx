@@ -19,6 +19,7 @@ function api(submitPin: RollApi['submitPin']): RollApi {
     getCapture: vi.fn(),
     assetUrl: vi.fn(),
     react: vi.fn(),
+    requestRender: vi.fn(),
     events: vi.fn(),
   };
 }

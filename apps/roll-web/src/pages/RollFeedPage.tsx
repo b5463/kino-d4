@@ -12,6 +12,7 @@ import { SiteFooter, SiteHeader } from '../components/SiteHeader';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
+import { usePickedCaptures, usePicks } from '../state/picks';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
 import { RollClosed } from './RollClosed';
@@ -133,15 +134,25 @@ function CaptureTile({
   );
 }
 
+/**
+ * Below this scroll depth a live arrival goes to the "N new" pill instead of
+ * shifting the grid under the guest's thumb. Above it the head is on screen and
+ * prepending is what live means.
+ */
+const PREPEND_SCROLL_LIMIT_PX = 80;
+
 /** Virtualized, keyset-paginated and live-updating guest Roll gallery. */
 export function RollFeedPage({ slug }: RollFeedPageProps) {
   const feed = useRollFeed(slug);
   const [roll, setRoll] = useState<RollView | null>(null);
   const [rollError, setRollError] = useState<Error | null>(null);
-  const [tab, setTab] = useState<'photos' | 'info'>('photos');
+  const [tab, setTab] = useState<'photos' | 'picks' | 'info'>('photos');
   const listRef = useRef<HTMLDivElement>(null);
   const columns = useColumnCount();
-  const rows = useMemo(() => rowsOf(feed.captures, columns), [columns, feed.captures]);
+  const picks = usePicks(slug);
+  const picked = usePickedCaptures(slug, picks, feed.captures);
+  const shown = tab === 'picks' ? picked : feed.captures;
+  const rows = useMemo(() => rowsOf(shown, columns), [columns, shown]);
 
   const refreshRoll = useCallback(async (): Promise<void> => {
     try {
@@ -171,13 +182,35 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   // badge; initial pages and older pages never do. The badge stays for the
   // session — the border highlight animates once and settles.
   const [freshIds, setFreshIds] = useState<ReadonlySet<string>>(new Set());
+  const nearTop = (): boolean => window.scrollY <= PREPEND_SCROLL_LIMIT_PX;
   const prependLive = useCallback(
     (capture: CaptureView): void => {
+      if (!nearTop()) {
+        feed.buffer(capture);
+        return;
+      }
       feed.prepend(capture);
       setFreshIds((previous) => new Set(previous).add(capture.captureId));
     },
     [feed],
   );
+
+  // The reconnect/pageshow head refetch obeys the same rule as a live arrival:
+  // a scrolled guest gets the pill, not a shifted grid.
+  const refetchHeadLive = useCallback(
+    async (): Promise<void> => feed.refetchHead({ buffer: !nearTop() }),
+    [feed],
+  );
+
+  const flushPending = (): void => {
+    const flushed = feed.flushPending();
+    setFreshIds((previous) => {
+      const next = new Set(previous);
+      for (const id of flushed) next.add(id);
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   useRollEvents(
     slug,
@@ -185,7 +218,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
       prepend: prependLive,
       replace: feed.replace,
       remove: removeLive,
-      refetchHead: feed.refetchHead,
+      refetchHead: refetchHeadLive,
       onRollChanged: refreshRoll,
     },
     rollApi,
@@ -203,6 +236,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   useEffect(() => {
     if (
+      tab === 'photos' &&
       lastVirtualRow !== undefined &&
       lastVirtualRow.index >= rows.length - 2 &&
       feed.hasMore &&
@@ -210,7 +244,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     ) {
       void feed.loadMore().catch(() => {});
     }
-  }, [feed, lastVirtualRow, rows.length]);
+  }, [feed, lastVirtualRow, rows.length, tab]);
 
   if (failure instanceof PinRequiredError) {
     return (
@@ -262,6 +296,9 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
           <button type="button" className="roll-tab" aria-current={tab === 'photos'} onClick={() => setTab('photos')}>
             Photos ({photoCount})
           </button>
+          <button type="button" className="roll-tab" aria-current={tab === 'picks'} onClick={() => setTab('picks')}>
+            My picks ({picks.size})
+          </button>
           <button type="button" className="roll-tab" aria-current={tab === 'info'} onClick={() => setTab('info')}>
             Info
           </button>
@@ -280,15 +317,34 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
               <dd>{roll.status === 'live' ? 'LIVE' : roll.status}</dd>
               <dt>Downloads</dt>
               <dd>{roll.downloadsEnabled ? 'On' : 'Off'}</dd>
+              <dt>Display</dt>
+              <dd><a href={`/r/${encodeURIComponent(slug)}/display`}>DISPLAY</a></dd>
             </dl>
           </div>
         ) : null}
 
-        {tab === 'photos' ? (
+        {tab !== 'info' ? (
           <>
-            {feed.captures.length === 0 && feed.loading ? <p role="status" aria-live="polite">Loading Roll…</p> : null}
-            {feed.captures.length === 0 && !feed.loading && failure === null ? (
+            {tab === 'photos' && feed.captures.length === 0 && feed.loading ? (
+              <p role="status" aria-live="polite">Loading Roll…</p>
+            ) : null}
+            {tab === 'photos' && feed.captures.length === 0 && !feed.loading && failure === null ? (
               <p role="status" aria-live="polite">No photos yet.</p>
+            ) : null}
+            {tab === 'picks' && shown.length === 0 ? (
+              <p role="status" aria-live="polite">No picks yet. Heart a photo to keep it here.</p>
+            ) : null}
+
+            {tab === 'photos' && feed.pending.length > 0 ? (
+              <button
+                type="button"
+                className="new-pill"
+                role="status"
+                aria-live="polite"
+                onClick={flushPending}
+              >
+                {feed.pending.length} new
+              </button>
             ) : null}
 
             <div ref={listRef} className="photo-grid" role="region" aria-label="Roll captures">

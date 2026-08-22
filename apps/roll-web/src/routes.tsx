@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RollFeedPage } from './pages/RollFeedPage';
+import { RollDisplayPage } from './pages/RollDisplayPage';
 import { CaptureDetailPage } from './pages/CaptureDetailPage';
 import { HostDashboardPage } from './pages/HostDashboardPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -15,6 +16,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 
 export type Route =
   | { name: 'roll-feed'; slug: string }
+  | { name: 'roll-display'; slug: string }
   | { name: 'capture-detail'; slug: string; captureId: string }
   | { name: 'host-dashboard' }
   | { name: 'not-found'; pathname: string };
@@ -33,6 +35,10 @@ export function matchRoute(pathname: string): Route {
 
   if (parts[0] === 'r' && parts.length === 2 && parts[1] !== undefined) {
     return { name: 'roll-feed', slug: segment(parts[1]) };
+  }
+
+  if (parts[0] === 'r' && parts.length === 3 && parts[1] !== undefined && parts[2] === 'display') {
+    return { name: 'roll-display', slug: segment(parts[1]) };
   }
 
   if (
@@ -67,6 +73,8 @@ export function AppRoutes() {
   switch (route.name) {
     case 'roll-feed':
       return <RollFeedPage slug={route.slug} />;
+    case 'roll-display':
+      return <RollDisplayPage slug={route.slug} />;
     case 'capture-detail':
       return <CaptureDetailPage slug={route.slug} captureId={route.captureId} />;
     case 'host-dashboard':

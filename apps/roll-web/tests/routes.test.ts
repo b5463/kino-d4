@@ -14,6 +14,21 @@ describe('matchRoute', () => {
     });
   });
 
+  it('matches display mode', () => {
+    expect(matchRoute('/r/abc123/display')).toEqual({ name: 'roll-display', slug: 'abc123' });
+  });
+
+  it('matches display mode with a trailing slash', () => {
+    expect(matchRoute('/r/abc123/display/')).toEqual({ name: 'roll-display', slug: 'abc123' });
+  });
+
+  it('falls back to not-found for a display path with an extra segment', () => {
+    expect(matchRoute('/r/abc123/display/extra')).toEqual({
+      name: 'not-found',
+      pathname: '/r/abc123/display/extra',
+    });
+  });
+
   it('matches the host dashboard', () => {
     expect(matchRoute('/host')).toEqual({ name: 'host-dashboard' });
   });
