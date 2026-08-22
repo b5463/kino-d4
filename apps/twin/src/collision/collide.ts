@@ -90,6 +90,18 @@ function stableMm(value: number): number {
   return Number(value.toFixed(4));
 }
 
+/**
+ * Shell instances (skeleton, acrylic panels) carry only the PROVISIONAL
+ * whole-body envelope box. A solid 126×80×36 AABB contains every internal
+ * part, so evaluating it reports COLLISION 0.00 mm against the entire
+ * interior, the two panels against each other, and every keepout as blocked
+ * (issue #82) — noise, not findings. Shells are excluded until measured
+ * shell geometry (panel thickness, frame ribs) exists; the panel says so.
+ */
+export function shellExclusions(profile: HardwareProfile): string[] {
+  return profile.instances.filter((instance) => instance.group === 'shell').map((instance) => instance.id);
+}
+
 function hardBoxes(profile: HardwareProfile, overrides: MeasuredOverride[], pitchMm: number): Aabb[] {
   const components = new Map(profile.components.map((component) => [component.id, component]));
   const transforms = instanceTransforms(profile, pitchMm, 0);
@@ -97,6 +109,7 @@ function hardBoxes(profile: HardwareProfile, overrides: MeasuredOverride[], pitc
   const boxes: Aabb[] = [];
 
   for (const instance of profile.instances) {
+    if (instance.group === 'shell') continue; // see shellExclusions
     const component = components.get(instance.component);
     const transform = transforms.get(instance.id);
     if (!component || !transform) continue;

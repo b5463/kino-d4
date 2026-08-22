@@ -10,7 +10,7 @@ import { ComponentTree } from './panels/ComponentTree';
 import { Inspector } from './panels/Inspector';
 import { OpticsPanel } from './panels/OpticsPanel';
 import { ClearancePanel } from './panels/ClearancePanel';
-import { collisionReport } from './collision/collide';
+import { collisionReport, shellExclusions } from './collision/collide';
 import { useSceneStore } from './state/sceneStore';
 import { Header } from './panels/Header';
 import { StatusBar } from './panels/StatusBar';
@@ -72,6 +72,7 @@ export function App() {
   const overrides = useSceneStore((state) => state.overrides);
   const pitchMm = useSceneStore((state) => state.pitchMm);
   const findings = useMemo(() => collisionReport(profile, overrides, pitchMm), [overrides, pitchMm, profile]);
+  const shellSkipped = useMemo(() => shellExclusions(profile), [profile]);
 
   function handleView(name: ViewPoseName) {
     canvasRef.current?.applyView(name);
@@ -117,7 +118,7 @@ export function App() {
           </nav>
           <p className="twin-tab-blurb">{RIGHT_TABS.find((tab) => tab.id === rightTab)?.blurb}</p>
           <SimOffNotice />
-          {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
+          {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} notEvaluated={shellSkipped} /><MeasurePanel /><Inspector /></>}
           {rightTab === 'stage' && <StagePanel />}
           {rightTab === 'firmware' && <FirmwarePanel />}
           {rightTab === 'roll' && <RollPanel />}
