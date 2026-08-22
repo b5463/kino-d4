@@ -43,4 +43,40 @@ describe('kino.hardware-profile d4-v1', () => {
     doc.components[0].sources[0].kind = 'GUESSED';
     expect(() => parseVersioned(hardwareProfile, doc)).toThrow();
   });
+  it('records mass/material only where a source exists; unweighed parts omit them (audit #63)', () => {
+    const battery = D4_V1.components.find((c) => c.id === 'battery')!;
+    expect(battery.massG).toEqual({ value: 55, tag: 'ESTIMATED' });
+    const heatsink = D4_V1.components.find((c) => c.id === 'flash-heatsink')!;
+    expect(heatsink.material).toEqual({ value: 'copper', tag: 'SELLER' });
+    // Seeed wiki states no weight for the XIAO ESP32-S3 Sense — so no massG.
+    const cam = D4_V1.components.find((c) => c.id === 'camera-node')!;
+    expect(cam.massG).toBeUndefined();
+  });
+  it('splits the enclosure into shell + chassis on the same PROVISIONAL envelope (audit #63)', () => {
+    const shell = D4_V1.components.find((c) => c.id === 'enclosure-shell')!;
+    const chassis = D4_V1.components.find((c) => c.id === 'enclosure-chassis')!;
+    expect(D4_V1.components.some((c) => c.id === 'enclosure')).toBe(false);
+    expect(shell.sources[0]!.sizeMm).toEqual([126, 80, 36]);
+    expect(chassis.sources[0]!.sizeMm).toEqual([126, 80, 36]);
+    expect(D4_V1.instances.find((i) => i.id === 'front-acrylic')!.component).toBe('enclosure-shell');
+    expect(D4_V1.instances.find((i) => i.id === 'rear-acrylic')!.component).toBe('enclosure-shell');
+    expect(D4_V1.instances.find((i) => i.id === 'skeleton')!.component).toBe('enclosure-chassis');
+  });
+  it('ships the 16340 bench pack as alternatePower — experimental, never the default block', () => {
+    const bench = D4_V1.alternatePower['16340-bench']!;
+    expect(bench.experimental).toBe(true);
+    expect(bench.power.battery.internalOhm.tag).toBe('ESTIMATED');
+    // Top-level power stays the stock 505573 pack.
+    expect(D4_V1.power.battery.capacitymAh).toBe(3000);
+    expect(D4_V1.power.battery.internalOhm.value).toBe(0.08);
+  });
+  it('accepts a document without alternatePower (defaults to {}) but rejects experimental:false', () => {
+    const doc = JSON.parse(JSON.stringify({ ...D4_V1 }));
+    delete doc.alternatePower;
+    expect(parseVersioned(hardwareProfile, doc).alternatePower).toEqual({});
+
+    const bad = JSON.parse(JSON.stringify({ ...D4_V1 }));
+    bad.alternatePower['16340-bench'].experimental = false;
+    expect(() => parseVersioned(hardwareProfile, bad)).toThrow();
+  });
 });

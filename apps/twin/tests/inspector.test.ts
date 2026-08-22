@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { D4_V1, resolveDimensions } from '@kino/hardware-profiles';
 import type { ComponentDef } from '@kino/hardware-profiles';
-import { formatDims, connectedInstanceIds, formatNetLine, fovLabel } from '../src/panels/Inspector';
+import { formatDims, connectedInstanceIds, formatNetLine, fovLabel, massLabel, materialLabel } from '../src/panels/Inspector';
 import { confidenceLabel, conflictSourceLines, formatSizeMm } from '../src/panels/ConfidenceBadge';
 import { groupedInstances } from '../src/panels/ComponentTree';
 
@@ -143,6 +143,26 @@ describe('groupedInstances', () => {
     const partial = { instances: D4_V1.instances.filter((i) => i.group === 'body') } as typeof D4_V1;
     const groups = groupedInstances(partial);
     expect(groups.map((g) => g.label)).toEqual(['BODY']);
+  });
+});
+
+describe('materialLabel/massLabel — recorded claims only (audit #63)', () => {
+  it('renders the recorded battery mass with its ESTIMATED tag', () => {
+    expect(massLabel(component('battery'))).toEqual({ text: '55 g', tag: 'ESTIMATED' });
+  });
+
+  it('renders the recorded heatsink material with its SELLER tag', () => {
+    expect(materialLabel(component('flash-heatsink'))).toEqual({ text: 'copper', tag: 'SELLER' });
+  });
+
+  it('renders the split enclosure component materials with ESTIMATED tags', () => {
+    expect(materialLabel(component('enclosure-shell'))?.tag).toBe('ESTIMATED');
+    expect(materialLabel(component('enclosure-chassis'))?.text).toContain('PETG');
+  });
+
+  it('returns null (renders "not recorded") when the profile carries no claim — never a guess', () => {
+    expect(massLabel(component('camera-node'))).toBeNull();
+    expect(materialLabel(component('camera-node'))).toBeNull();
   });
 });
 

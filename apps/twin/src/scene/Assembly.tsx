@@ -15,7 +15,7 @@ import { useSceneStore, setHovered } from '../state/sceneStore';
 import type { ViewMode } from '../state/sceneStore';
 import { instanceTransforms, type InstanceTransform } from './transforms';
 
-// §7 construction note on the enclosure component: "2-3mm clear acrylic
+// §7 construction note on the enclosure-shell component: "2-3mm clear acrylic
 // panels". The profile only carries the full 126x80x36 envelope as one
 // dimension claim; the illustrative panel thickness lives in three-assets
 // (shared with the skeleton frame's inset so the two can never drift apart).
@@ -63,13 +63,13 @@ function InstanceNode({ instance, component, override, transform, visualMode }: 
   // life of the static D4_V1 profile.
   const resolved = useMemo<ResolvedDims>(() => resolveDimensions(component, override), [component, override]);
 
-  // The enclosure component covers three different instances: the skeleton
-  // frame (built by buildComponentObject, as any other component) and the
-  // front/rear acrylic panels, which are thin plates built separately by
+  // The enclosure is two components (audit #63): the chassis skeleton frame
+  // (built by buildComponentObject, as any other component) and the
+  // front/rear acrylic shell panels, thin plates built separately by
   // buildAcrylicPanel — never rebuilt on every explode/pitch tick, only
   // when overrides touch this component (§ three-assets builders).
   const object = useMemo(() => {
-    const isAcrylicPanel = component.id === 'enclosure' && instance.id !== 'skeleton';
+    const isAcrylicPanel = component.id === 'enclosure-shell';
     if (isAcrylicPanel) {
       const [w, h] = fallbackBoxMm(resolved.sizeMm);
       return buildAcrylicPanel([w, h, PANEL_THICKNESS_MM], instance.id);

@@ -16,10 +16,11 @@ const measuredBms: MeasuredOverride = {
 };
 
 describe('Twin engineering exports', () => {
-  it('exports all 23 current-profile BOM components and reflects a measured BMS', () => {
+  it('exports all 24 current-profile BOM components and reflects a measured BMS', () => {
     const doc = JSON.parse(exportBom(D4_V1, [measuredBms]));
     expect(doc.components).toHaveLength(D4_V1.components.length);
-    expect(doc.components).toHaveLength(23);
+    // 24 = 23 pre-split components + the enclosure shell/chassis split (audit #63).
+    expect(doc.components).toHaveLength(24);
     expect(doc.components.find((component: { id: string }) => component.id === 'bms')).toMatchObject({
       dimensionsMm: [22, 15, 3],
       confidence: 'MEASURED',

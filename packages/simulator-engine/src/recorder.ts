@@ -96,6 +96,9 @@ export const simSessionDoc = defineSchema({
       version: z.literal(1),
       seed: z.number(),
       profile: z.string(),
+      // Active alternate power pack id (audit #63). Absent = the stock pack;
+      // optional keeps old recordings valid without a migration.
+      powerProfileId: z.string().optional(),
       startedAtIso: z.string(),
       events: z.array(z.union([inEvent, outEvent, scenarioFaultEvent, camFaultEvent, simEvent])),
     })
@@ -117,6 +120,7 @@ export class SimRecorder {
   private startedAtIso = '';
   private readonly seed: number;
   private events: SimSessionEvent[] = [];
+  private powerProfileId: string | null = null;
 
   /**
    * Taps `sim.onEvent` — the one stream that already carries both
@@ -159,10 +163,11 @@ export class SimRecorder {
     this.events.push({ atMs: this.elapsedMs(), kind: 'out', b64: bytesToBase64(bytes) });
   }
 
-  start(): void {
+  start(meta?: { powerProfileId?: string | null }): void {
     this.events = [];
     this.startedAtMs = this.now();
     this.startedAtIso = new Date(this.startedAtMs).toISOString();
+    this.powerProfileId = meta?.powerProfileId ?? null;
     this.active = true;
   }
 
@@ -178,6 +183,9 @@ export class SimRecorder {
       // getter) — a future multi-profile Twin would need one to do better
       // than this.
       profile: D4_V1.profile,
+      // Recorded only when an alternate (experimental bench) pack was active
+      // — a stock-pack session doc looks exactly like it always did.
+      ...(this.powerProfileId !== null ? { powerProfileId: this.powerProfileId } : {}),
       startedAtIso: this.startedAtIso,
       events: this.events,
     };

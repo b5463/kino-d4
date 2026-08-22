@@ -35,4 +35,4 @@ Each divergence is either scheduled (issues) or gated on bench measurements (see
 
 ## Backup power
 
-The 4 × 16340 cells + 2 shields are experimental bench hardware. They are deliberately absent from the D4-V1 profile and must not appear in the production power architecture unless explicitly selected as an alternate profile.
+The 4 × 16340 cells + 2 shields are experimental bench hardware. They live in the D4-V1 profile only as `alternatePower["16340-bench"]` — a schema whose `experimental: true` literal makes a production alternate unrepresentable. The Twin never defaults to it: the POWER panel's PACK selector must pick it, a permanent EXPERIMENTAL banner shows while it is active, the live sim applies it only at POWER ON, and recorded sessions carry the pack id (`powerProfileId`) so a bench-pack session can never pass as stock. Pack geometry (cells + shields) is not modeled in the scene.

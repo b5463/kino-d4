@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { netsFor, resolveDimensions } from '@kino/hardware-profiles';
-import type { ComponentDef, HardwareProfile, NetDef, ResolvedDims } from '@kino/hardware-profiles';
+import type { ComponentDef, HardwareProfile, NetDef, ProvenanceTag, ResolvedDims } from '@kino/hardware-profiles';
 import { useSceneStore } from '../state/sceneStore';
 import { instanceTransforms } from '../scene/transforms';
 import { ConfidenceBadge, formatSizeMm } from './ConfidenceBadge';
@@ -8,6 +8,19 @@ import { ConfidenceBadge, formatSizeMm } from './ConfidenceBadge';
 /** `21.0 × 17.8 × 15.0 mm` / `? × 55.0 × 73.0 mm` — an unknown axis is `?`, never a guessed number. */
 export function formatDims(r: ResolvedDims): string {
   return `${formatSizeMm(r.sizeMm)} mm`;
+}
+
+/**
+ * MATERIAL/MASS claims straight from the profile (audit #63). A component
+ * without a recorded claim returns null and renders "not recorded" — never a
+ * plausible-looking number.
+ */
+export function massLabel(component: ComponentDef): { text: string; tag: ProvenanceTag } | null {
+  return component.massG ? { text: `${component.massG.value} g`, tag: component.massG.tag } : null;
+}
+
+export function materialLabel(component: ComponentDef): { text: string; tag: ProvenanceTag } | null {
+  return component.material ? { text: component.material.value, tag: component.material.tag } : null;
 }
 
 /**
@@ -111,6 +124,8 @@ export function Inspector() {
   const nets = netsFor(profile, instance.id);
   const connected = connectedInstanceIds(profile, instance.id);
   const fov = fovLabel(component);
+  const material = materialLabel(component);
+  const mass = massLabel(component);
   const isCam = instance.group === 'camera-bar';
 
   return (
@@ -130,6 +145,29 @@ export function Inspector() {
         <button type="button" className="twin-btn twin-btn--measure" onClick={() => openMeasureComponent(component.id)}>
           MEASURE ACTUAL PART
         </button>
+      </section>
+
+      <section className="twin-inspector-section">
+        <div className="twin-inspector-row">
+          <span className="twin-inspector-label">MATERIAL</span>
+          {material ? (
+            <span className="twin-inspector-value">
+              {material.text} <span className="twin-badge">{material.tag}</span>
+            </span>
+          ) : (
+            <span className="twin-inspector-muted">not recorded</span>
+          )}
+        </div>
+        <div className="twin-inspector-row">
+          <span className="twin-inspector-label">MASS</span>
+          {mass ? (
+            <span className="twin-inspector-value">
+              {mass.text} <span className="twin-badge">{mass.tag}</span>
+            </span>
+          ) : (
+            <span className="twin-inspector-muted">not recorded</span>
+          )}
+        </div>
       </section>
 
       {fov && (

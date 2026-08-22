@@ -44,7 +44,7 @@ Studio reaches the Twin device only through framed KDP. The telemetry tap that d
 | Fuse dwell-only; thermal zones qualitative; single boost efficiency | `ESTIMATED`, labelled |
 | `profile.gpio` and DVP pin data have no scene consumers yet (no pin/signal view) | feature gap |
 | Collision engine uses AABBs, not oriented boxes/meshes | documented ceiling |
-| No material/mass/thermal metadata on components; SLA/SLS enclosure direction not yet in data | feature gap |
+| Mass/material metadata recorded per component where a source exists (battery mass ESTIMATED, heatsink copper SELLER, enclosure split into shell/chassis with SLA UTR-8100 / SLS PA12-GF directions as ESTIMATED material claims); unsourced parts show "not recorded"; thermal properties still absent | partial — thermal gap remains |
 | No AF/VCM/focus concept anywhere | blocked on the OV5640 direction (see `CAMERA_PIPELINE.md`) |
 
 ## Rules the Twin must keep

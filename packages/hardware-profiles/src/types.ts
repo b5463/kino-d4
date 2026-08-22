@@ -83,6 +83,20 @@ export const powerProfile = z.object({
 });
 export type PowerProfile = z.infer<typeof powerProfile>;
 
+/**
+ * A selectable non-production power pack (audit #63). `experimental` is a
+ * literal `true` so a "production alternate" is unrepresentable — the only
+ * production pack is the top-level `power` block. The Twin never defaults to
+ * one of these; a client must select it by id.
+ */
+export const alternatePowerEntry = z.object({
+  label: z.string(),
+  note: z.string(),
+  experimental: z.literal(true),
+  power: powerProfile,
+});
+export type AlternatePowerEntry = z.infer<typeof alternatePowerEntry>;
+
 export const hardwareProfile = defineSchema({
   schema: 'kino.hardware-profile',
   version: 1,
@@ -98,6 +112,9 @@ export const hardwareProfile = defineSchema({
     components: z.array(componentDef),
     instances: z.array(instanceDef),
     power: powerProfile,
+    // .default({}) keeps schema version 1: older documents without the field
+    // still parse, so no migration is needed.
+    alternatePower: z.record(alternatePowerEntry).default({}),
     nets: z.array(netDef),
     gpio: z.record(z.string().nullable()), // data-driven pin map; null = unassigned (§8)
   }),

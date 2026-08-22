@@ -6,7 +6,7 @@ import { camBarX, cameraBarExplodeOffsetMm, explodedPosition, instanceTransforms
 function fixtureInstance(overrides: Partial<InstanceDef> & Pick<InstanceDef, 'positionMm'>): InstanceDef {
   return {
     id: 'fixture',
-    component: 'enclosure',
+    component: 'enclosure-chassis',
     rotationDeg: [0, 0, 0],
     opticalCenterOffsetMm: [0, 0, 0],
     group: 'body',

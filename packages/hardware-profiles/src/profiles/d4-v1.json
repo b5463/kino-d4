@@ -137,6 +137,7 @@
         "wire": "24AWG power + 26-28AWG NTC",
         "connector": "PH2.0-3P"
       },
+      "massG": { "value": 55, "tag": "ESTIMATED" },
       "keepouts": [
         { "id": "cushion-clearance", "label": "Foam cushion / pouch expansion allowance", "sizeMm": [75, 57, 7], "offsetMm": [0, 0, 0], "kind": "clearance" }
       ]
@@ -193,6 +194,7 @@
       "qty": 1,
       "meshTier": "B",
       "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [20.0, 20.0, 7.0] }],
+      "material": { "value": "copper", "tag": "SELLER" },
       "keepouts": [
         { "id": "diffuser-spacing", "label": "Diffuser air gap", "sizeMm": [20, 20, 2], "offsetMm": [0, 0, 4], "kind": "clearance" }
       ]
@@ -209,7 +211,8 @@
       "name": "Opal acrylic diffuser",
       "qty": 1,
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, 1.0], "note": "CUT_TO_FIT" }]
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, 1.0], "note": "CUT_TO_FIT" }],
+      "material": { "value": "opal acrylic", "tag": "SELLER" }
     },
     {
       "id": "speaker",
@@ -303,12 +306,22 @@
       "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
     },
     {
-      "id": "enclosure",
-      "name": "KINO D4 enclosure envelope",
+      "id": "enclosure-shell",
+      "name": "KINO D4 enclosure shell panels",
+      "qty": 2,
+      "meshTier": "B",
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [126.0, 80.0, 36.0], "note": "PROVISIONAL — shared full-enclosure envelope, panel thickness unmeasured" }],
+      "material": { "value": "2-3 mm clear acrylic today; SLA UTR-8100 candidate", "tag": "ESTIMATED" },
+      "specs": { "construction": ["2-3mm clear acrylic panels"] }
+    },
+    {
+      "id": "enclosure-chassis",
+      "name": "KINO D4 enclosure chassis",
       "qty": 1,
       "meshTier": "B",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [126.0, 80.0, 36.0], "note": "PROVISIONAL" }],
-      "specs": { "construction": ["black PETG skeleton", "2-3mm clear acrylic panels", "M2 heat-set inserts"] }
+      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [126.0, 80.0, 36.0], "note": "PROVISIONAL — shared full-enclosure envelope" }],
+      "material": { "value": "PETG skeleton today; SLS PA12-GF candidate", "tag": "ESTIMATED" },
+      "specs": { "construction": ["black PETG skeleton", "M2 heat-set inserts"] }
     }
   ],
   "instances": [
@@ -325,9 +338,9 @@
     { "id": "fuse", "component": "fuse", "positionMm": [-10, -8, -2], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
     { "id": "speaker", "component": "speaker", "positionMm": [0, -27, 5], "rotationDeg": [0, 0, 0], "explodeOrder": 3 },
     { "id": "bulk-cap", "component": "bulk-cap", "positionMm": [10, -5, -8], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 5 },
-    { "id": "front-acrylic", "component": "enclosure", "positionMm": [0, 0, 16.5], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 9, "explodeDirMm": [0, 0, 1] },
-    { "id": "rear-acrylic", "component": "enclosure", "positionMm": [0, 0, -16.5], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0, "explodeDirMm": [0, 0, -1] },
-    { "id": "skeleton", "component": "enclosure", "positionMm": [0, 0, 0], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0 }
+    { "id": "front-acrylic", "component": "enclosure-shell", "positionMm": [0, 0, 16.5], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 9, "explodeDirMm": [0, 0, 1] },
+    { "id": "rear-acrylic", "component": "enclosure-shell", "positionMm": [0, 0, -16.5], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0, "explodeDirMm": [0, 0, -1] },
+    { "id": "skeleton", "component": "enclosure-chassis", "positionMm": [0, 0, 0], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0 }
   ],
   "power": {
     "battery": {
@@ -350,6 +363,35 @@
       "wifiTx": { "amps": 0.25, "tag": "ESTIMATED" }
     },
     "fuse": { "ratingA": 3, "type": "fast" }
+  },
+  "alternatePower": {
+    "16340-bench": {
+      "label": "4 × 16340 BENCH PACK",
+      "note": "Experimental bench hardware: 4 × 16340 cells + 2 shields. This selector models the electrical block only — the pack geometry is NOT in the Twin scene. Never the default; never the D4 power architecture.",
+      "experimental": true,
+      "power": {
+        "battery": {
+          "nominalV": 3.7,
+          "capacitymAh": 3000,
+          "internalOhm": { "value": 0.05, "tag": "ESTIMATED" },
+          "safeContinuousA": 3,
+          "shortPulseMaxA": 5,
+          "chargePreferredA": 0.5,
+          "chargeMaxA": 1
+        },
+        "boost": { "efficiency": { "value": 0.85, "tag": "ESTIMATED" }, "classW": { "value": 18, "tag": "MANUFACTURER" } },
+        "loads": {
+          "p4Display": { "amps": 0.32, "tag": "MANUFACTURER" },
+          "camIdle": { "amps": 0.14, "tag": "MANUFACTURER", "note": "Seeed example workload" },
+          "camActive": { "amps": 0.347, "tag": "MANUFACTURER", "note": "Seeed example workload" },
+          "flash350": { "amps": 0.35, "tag": "ESTIMATED", "note": "default" },
+          "flash500": { "amps": 0.5, "tag": "ESTIMATED", "note": "experimental" },
+          "flash650": { "amps": 0.65, "tag": "ESTIMATED", "note": "controlled testing profile only" },
+          "wifiTx": { "amps": 0.25, "tag": "ESTIMATED" }
+        },
+        "fuse": { "ratingA": 3, "type": "fast" }
+      }
+    }
   },
   "nets": [
     { "id": "cam1-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam1", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [-9.9, 7, -2.5], [-23.1, 9, -2.5], [-33, 10, 7]] },

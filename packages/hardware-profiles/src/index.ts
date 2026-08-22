@@ -8,6 +8,7 @@ export {
   hardwareProfile,
   SOURCE_KINDS,
   PROVENANCE_TAGS,
+  type AlternatePowerEntry,
   type HardwareProfile,
   type ComponentDef,
   type DimensionSource,

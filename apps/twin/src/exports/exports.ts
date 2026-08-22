@@ -8,6 +8,9 @@ import { instanceTransforms } from '../scene/transforms';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
+// Geometry only, deliberately: sceneStore's powerProfileId (experimental
+// bench pack) is NOT serialized here — a layout file must not smuggle a
+// non-production power selection past the POWER panel's banner (audit #63).
 export const sceneLayoutDoc = defineSchema({
   schema: 'kino.twin-scene-layout',
   version: 1,

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { D4_V1, NET_CLASSES } from '@kino/hardware-profiles';
-import { useSceneStore } from '../src/state/sceneStore';
+import { selectPower, useSceneStore } from '../src/state/sceneStore';
 import { visualModeFor } from '../src/scene/Assembly';
 
 beforeEach(() => {
@@ -15,6 +15,7 @@ beforeEach(() => {
     netFocus: null,
     measureMode: false,
     measurePoints: [],
+    powerProfileId: null,
     optics: {
       enabled: false,
       fovScenarioDeg: null,
@@ -24,6 +25,26 @@ beforeEach(() => {
       subjectWmm: 450,
       subjectHmm: 1700,
     },
+  });
+});
+
+describe('selectPower — stock vs experimental alternate (audit #63)', () => {
+  it('returns the profile power block while no alternate is selected', () => {
+    expect(selectPower(useSceneStore.getState())).toBe(D4_V1.power);
+  });
+
+  it('returns the alternate power block once selected, and stock again on null', () => {
+    useSceneStore.getState().setPowerProfileId('16340-bench');
+    expect(useSceneStore.getState().powerProfileId).toBe('16340-bench');
+    expect(selectPower(useSceneStore.getState())).toBe(D4_V1.alternatePower['16340-bench']!.power);
+    useSceneStore.getState().setPowerProfileId(null);
+    expect(selectPower(useSceneStore.getState())).toBe(D4_V1.power);
+  });
+
+  it('rejects an id the profile does not declare — falls back to stock', () => {
+    useSceneStore.getState().setPowerProfileId('made-up-pack');
+    expect(useSceneStore.getState().powerProfileId).toBeNull();
+    expect(selectPower(useSceneStore.getState())).toBe(D4_V1.power);
   });
 });
 

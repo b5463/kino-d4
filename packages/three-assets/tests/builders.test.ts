@@ -132,9 +132,9 @@ describe('buildComponentObject — battery', () => {
   });
 });
 
-describe('buildComponentObject — enclosure', () => {
+describe('buildComponentObject — enclosure chassis', () => {
   it('names its main mesh "skeleton" instead of "body" (panels are built by buildAcrylicPanel)', () => {
-    const component = findComponent('enclosure');
+    const component = findComponent('enclosure-chassis');
     const resolved = resolveDimensions(component);
     // The real profile's frame instance is itself called "skeleton" (§8), so
     // the group and its main mesh legitimately share that name here — look

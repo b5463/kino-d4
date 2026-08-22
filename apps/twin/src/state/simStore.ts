@@ -19,6 +19,7 @@ import type {
 } from '@kino/simulator-engine';
 import type { TwinSnapshot } from '@kino/test-fixtures';
 import { attachRollBridge, detachRollBridge } from '../roll/bridge';
+import { selectPower, useSceneStore } from './sceneStore';
 
 const IDLE_CAM_STAGES: Record<CamId, CaptureStage> = {
   cam1: 'IDLE',
@@ -173,7 +174,16 @@ function handleEvent(event: SimEvent): void {
 
 export function getTwinRuntime(): TwinRuntime {
   if (runtime) return runtime;
-  const sim = new TwinSimulator({ seed: 18 });
+  // audit #63: the live device sim runs the pack selected in the POWER panel
+  // — one power truth for the panel model and the 2 Hz sim samples. The
+  // runtime is rebuilt on every power cycle, so a pack change while running
+  // applies at the next POWER ON (you cannot swap a pack on a live camera).
+  const scene = useSceneStore.getState();
+  const power = selectPower(scene);
+  const sim = new TwinSimulator({
+    seed: 18,
+    profile: power === scene.profile.power ? scene.profile : { ...scene.profile, power },
+  });
   const recorder = new SimRecorder(sim);
   const server = new TwinDeviceServer(sim, { recorder });
   runtime = {
@@ -282,7 +292,7 @@ export async function setFlashEnabled(on: boolean): Promise<void> {
 export function startRecording(): void {
   const active = getTwinRuntime();
   if (!useSimStore.getState().running) throw new Error('Power on Twin before recording');
-  active.recorder.start();
+  active.recorder.start({ powerProfileId: useSceneStore.getState().powerProfileId });
   useSimStore.setState({ recording: true });
 }
 
