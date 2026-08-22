@@ -85,9 +85,11 @@ export const TwinCanvas = forwardRef<TwinCanvasHandle, TwinCanvasProps>(function
     },
   }));
 
+  // Camera far covers the stage room (walls at ~4.5 m) plus zoom-out
+  // headroom — the old 5000 clipped the scene away when orbiting far back.
   return (
     <Canvas
-      camera={{ position: [180, 120, 220], near: 1, far: 5000 }}
+      camera={{ position: [180, 120, 220], near: 1, far: 30000 }}
       gl={{ preserveDrawingBuffer: true }}
       onPointerMissed={() => useSceneStore.getState().select(null)}
     >

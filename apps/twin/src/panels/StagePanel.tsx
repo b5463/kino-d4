@@ -15,6 +15,7 @@ import {
   setRoom,
   setLensFovDeg,
   loadPartyScene,
+  resetStage,
   SUBJECT_KINDS,
   LIGHTING_PRESETS,
   DISTANCE_PRESETS_M,
@@ -52,11 +53,24 @@ export function StagePanel() {
         <div className="twin-button-grid">
           <button type="button" className="twin-btn twin-btn--primary" onClick={() => addSubject(kind)}>ADD SUBJECT</button>
           <button type="button" className="twin-btn" onClick={() => loadPartyScene()}>PARTY TEST SCENE</button>
+          <button
+            type="button"
+            className="twin-btn twin-btn--fault"
+            disabled={subjects.length === 0 && !room}
+            title="Removes every subject and the room shell, resets lighting"
+            onClick={() => resetStage()}
+          >
+            CLEAR STAGE
+          </button>
         </div>
         <label className="twin-fault-row">
           <span>ROOM SHELL</span>
           <input type="checkbox" checked={room} onChange={(e) => setRoom(e.target.checked)} />
         </label>
+        <p className="twin-panel-note">
+          Frame the shot with VIEW → OPERATE in the viewport bar. A selected subject also deletes with the
+          Delete key.
+        </p>
       </div>
 
       <div className="twin-panel-section">
