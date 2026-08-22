@@ -25,6 +25,9 @@ export interface Ctx2d {
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;
   stroke(): void;
+  /** Optional — the recording test fake omits it; the viewfinder only blits
+   * a live preview when the context can. */
+  drawImage?(image: CanvasImageSource, dx: number, dy: number, dw: number, dh: number): void;
 }
 
 export interface DeviceUiState {
@@ -34,6 +37,9 @@ export interface DeviceUiState {
   fw: Partial<Record<string, { state: string; pct?: number }>>;
   snapshot: TwinSnapshot | null;
   studioConnected: boolean;
+  /** Live CAM1 render from the virtual sensor (issue #72); null keeps the
+   * synthetic framing marks. Always a SIMULATED image and labeled so. */
+  preview?: CanvasImageSource | null;
 }
 
 const BG = '#0b0d0e';
@@ -66,6 +72,12 @@ function statusBar(ctx: Ctx2d, snap: TwinSnapshot, studioConnected: boolean): vo
 /** Stages a capture passes through; STORED/READY are settled, not in-flight. */
 const IN_FLIGHT: readonly CaptureStage[] = ['ARMING', 'WAIT_SYNC', 'EXPOSING', 'JPEG_READY', 'TRANSFERRING'];
 
+/** Which camera feeds the rear-display viewfinder. Pure and exported so the
+ * SensorRig renders the same camera the display labels. */
+export function viewfinderCam(state: Pick<DeviceUiState, 'snapshot'>): CamId {
+  return state.snapshot?.firmwareProfile === 'd4-m1b' ? 'cam1' : 'cam2';
+}
+
 function camRow(ctx: Ctx2d, state: DeviceUiState): void {
   const snap = state.snapshot;
   const y = DISPLAY_H - 56;
@@ -91,25 +103,39 @@ function viewfinder(ctx: Ctx2d, state: DeviceUiState): void {
   const bottom = DISPLAY_H - 64;
   const h = bottom - top;
 
-  // Synthetic preview field: framing marks + crosshair. Deliberately not an
-  // image — there is no real sensor behind this, and the label says so.
   ctx.fillStyle = '#14181b';
   ctx.fillRect(0, top, DISPLAY_W, h);
-  ctx.strokeStyle = '#2a3238';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(40, top + 24, DISPLAY_W - 80, h - 48);
-  ctx.beginPath();
-  ctx.moveTo(DISPLAY_W / 2 - 24, top + h / 2);
-  ctx.lineTo(DISPLAY_W / 2 + 24, top + h / 2);
-  ctx.moveTo(DISPLAY_W / 2, top + h / 2 - 24);
-  ctx.lineTo(DISPLAY_W / 2, top + h / 2 + 24);
-  ctx.stroke();
 
-  const cam2Fault = state.snapshot?.cams.cam2.fault ?? null;
-  if (cam2Fault) {
-    text(ctx, `CAM2 ${cam2Fault.toUpperCase()} — NO PREVIEW`, DISPLAY_W / 2, top + h / 2 + 40, 24, BAD, 'center');
+  // The product viewfinder is CAM2; on the current-firmware profile only
+  // CAM1 has a link, so the display honestly previews what exists.
+  const previewCam = viewfinderCam(state);
+  const camFault = state.snapshot?.cams[previewCam].fault ?? null;
+  if (state.preview && ctx.drawImage && !camFault) {
+    // Live virtual-sensor render (issue #72): the rear display shows what
+    // that camera actually sees of the staged scene. Still a simulation.
+    ctx.drawImage(state.preview, 40, top + 24, DISPLAY_W - 80, h - 48);
+    ctx.strokeStyle = '#2a3238';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(40, top + 24, DISPLAY_W - 80, h - 48);
+    text(ctx, `${previewCam.toUpperCase()} PREVIEW · SIMULATED RENDER`, DISPLAY_W / 2, bottom - 30, 18, DIM, 'center');
   } else {
-    text(ctx, 'CAM2 PREVIEW · SIMULATED', DISPLAY_W / 2, top + h / 2 + 40, 24, DIM, 'center');
+    // Synthetic preview field: framing marks + crosshair. Deliberately not
+    // an image — there is no render behind this, and the label says so.
+    ctx.strokeStyle = '#2a3238';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(40, top + 24, DISPLAY_W - 80, h - 48);
+    ctx.beginPath();
+    ctx.moveTo(DISPLAY_W / 2 - 24, top + h / 2);
+    ctx.lineTo(DISPLAY_W / 2 + 24, top + h / 2);
+    ctx.moveTo(DISPLAY_W / 2, top + h / 2 - 24);
+    ctx.lineTo(DISPLAY_W / 2, top + h / 2 + 24);
+    ctx.stroke();
+
+    if (camFault) {
+      text(ctx, `${previewCam.toUpperCase()} ${camFault.toUpperCase()} — NO PREVIEW`, DISPLAY_W / 2, top + h / 2 + 40, 24, BAD, 'center');
+    } else {
+      text(ctx, `${previewCam.toUpperCase()} PREVIEW · SIMULATED`, DISPLAY_W / 2, top + h / 2 + 40, 24, DIM, 'center');
+    }
   }
 
   const roll = state.snapshot?.roll;

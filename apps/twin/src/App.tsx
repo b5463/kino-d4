@@ -25,6 +25,10 @@ import { SyncPanel } from './panels/SyncPanel';
 import { FlashTimeline } from './panels/FlashTimeline';
 import { MeasurePanel } from './panels/MeasurePanel';
 import { RecorderPanel } from './panels/RecorderPanel';
+import { StagePanel } from './panels/StagePanel';
+import { FirmwarePanel } from './panels/FirmwarePanel';
+import { Stage } from './scene/Stage';
+import { SensorRig } from './scene/SensorRig';
 import type { ViewPoseName } from './scene/viewPoses';
 
 // KINO Twin app shell — §3 frame. The header identifies the app, the loaded
@@ -42,12 +46,14 @@ function SimOffNotice() {
   return <p className="twin-panel-note twin-simoff-note">Simulator is off. POWER ON in the header fills these panels with live data.</p>;
 }
 
-type RightTab = 'inspect' | 'pins' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
+type RightTab = 'inspect' | 'stage' | 'firmware' | 'pins' | 'display' | 'faults' | 'power' | 'sync' | 'flash' | 'record';
 
 /** Plain tab names with one blunt line each — the label a beginner reads,
  * the id the code keeps (persisted layouts and tests stay stable). */
 const RIGHT_TABS: { id: RightTab; label: string; blurb: string }[] = [
   { id: 'inspect', label: 'PARTS', blurb: 'Every component: dimensions, clearances, measured overrides.' },
+  { id: 'stage', label: 'STAGE', blurb: 'Place subjects and set lighting — what the virtual cameras photograph.' },
+  { id: 'firmware', label: 'FIRMWARE', blurb: 'Which firmware generation this virtual D4 runs, per-target versions.' },
   { id: 'pins', label: 'PINS', blurb: 'Header and camera-bus pin maps — provisional until the bench locks them.' },
   { id: 'display', label: 'SCREEN', blurb: "The camera's own display, live, plus the shutter." },
   { id: 'faults', label: 'FAULTS', blurb: 'Break things on purpose and watch the device cope.' },
@@ -88,6 +94,8 @@ export function App() {
               <MeasureTool />
               <Effects />
               <DisplayScreen />
+              <Stage />
+              <SensorRig />
             </TwinCanvas>
           </div>
         </main>
@@ -108,6 +116,8 @@ export function App() {
           <p className="twin-tab-blurb">{RIGHT_TABS.find((tab) => tab.id === rightTab)?.blurb}</p>
           <SimOffNotice />
           {rightTab === 'inspect' && <><OpticsPanel /><ClearancePanel findings={findings} /><MeasurePanel /><Inspector /></>}
+          {rightTab === 'stage' && <StagePanel />}
+          {rightTab === 'firmware' && <FirmwarePanel />}
           {rightTab === 'pins' && <PinsPanel />}
           {rightTab === 'display' && <DisplayPanel />}
           {rightTab === 'faults' && <FaultPanel />}

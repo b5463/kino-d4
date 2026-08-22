@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { CamId } from '@kino/kdp';
 import type { TwinSnapshot } from '@kino/test-fixtures';
 import { drawDeviceUi } from '../src/display/deviceUi';
@@ -24,6 +24,8 @@ function snapshot(overrides: Partial<TwinSnapshot> = {}): TwinSnapshot {
     batteryV: 3.98, sdPresent: true, sdFreeMB: 28_000,
     uartBaud: 921600, frameIntervalUs: 33_333, phaseAligned: true,
     p4Fw: '1.2.0',
+    firmwareProfile: 'd4-sim-full',
+    simulatedFuture: true,
     cams: { cam1: { ...cam }, cam2: { ...cam }, cam3: { ...cam }, cam4: { ...cam } },
     roll: { joined: false, name: null },
     uploads: { pending: 0, uploading: 0, failed: 0, uploaded: 0 },

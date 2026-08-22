@@ -14,7 +14,7 @@ export interface ViewPoseResult {
   target: [number, number, number];
 }
 
-export type ViewPoseName = 'front' | 'rear' | 'top' | 'bottom' | 'left' | 'right' | 'fit' | 'lens';
+export type ViewPoseName = 'front' | 'rear' | 'top' | 'bottom' | 'left' | 'right' | 'fit' | 'lens' | 'operate';
 
 /** §3: every orthodox axis view sits this many bbox-diagonals back from its target. */
 const VIEW_DISTANCE_FACTOR = 1.8;
@@ -45,7 +45,7 @@ function bboxDiagonal(bbox: Box3Like): number {
   return Math.hypot(dx, dy, dz);
 }
 
-const AXIS_DIRECTIONS: Record<Exclude<ViewPoseName, 'fit' | 'lens'>, [number, number, number]> = {
+const AXIS_DIRECTIONS: Record<Exclude<ViewPoseName, 'fit' | 'lens' | 'operate'>, [number, number, number]> = {
   front: [0, 0, 1],
   rear: [0, 0, -1],
   top: [0, 1, 0],
@@ -88,6 +88,18 @@ export function viewPose(
     const position: [number, number, number] = [camBarX(2, pitchMm), 10, 18];
     const target: [number, number, number] = [position[0], position[1], position[2] + LENS_LOOK_AHEAD_MM];
     return { position, target };
+  }
+
+  // OPERATE (issue #72, brief §19): the photographer's position — behind and
+  // slightly above the camera, seeing the rear display on -Z and, past the
+  // body, the staged subject out on +Z.
+  if (name === 'operate') {
+    const center = bboxCenter(bboxMm);
+    const diagonal = bboxDiagonal(bboxMm);
+    return {
+      position: [center[0] + diagonal * 0.25, center[1] + diagonal * 0.55, center[2] - diagonal * 1.9],
+      target: [center[0], center[1], center[2] + diagonal * 1.2],
+    };
   }
 
   const center = bboxCenter(bboxMm);

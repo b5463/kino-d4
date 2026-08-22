@@ -4,8 +4,17 @@
 // object, so the behavior under test is the behavior shipped in the demo.
 
 export { MockKinoDevice } from './MockKinoDevice';
+export { type MockFrameRequest, type MockFrameSource } from './MockKinoDevice';
 export { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 export { type TwinTelemetry, type TwinSnapshot } from './telemetry';
+export {
+  FIRMWARE_PROFILES,
+  FIRMWARE_PROFILE_LIST,
+  M1B_COMMANDS,
+  PROFILE_FOR_VERSION,
+  type FirmwareProfile,
+  type FirmwareProfileId,
+} from './firmwareProfiles';
 
 export {
   scenarios,

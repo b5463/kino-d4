@@ -13,6 +13,7 @@ const VIEW_BUTTONS: { label: string; name: ViewPoseName }[] = [
   { label: 'RIGHT', name: 'right' },
   { label: 'FIT', name: 'fit' },
   { label: 'LENS', name: 'lens' },
+  { label: 'OPERATE', name: 'operate' },
 ];
 
 const NET_CLASS_BUTTONS: { label: string; cls: NetClass }[] = NET_CLASSES.map((cls) => ({ label: cls, cls }));

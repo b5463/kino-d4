@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { TwinSnapshot } from '@kino/test-fixtures';
 import { syncRows, tagLabel } from '../src/panels/SyncPanel';
 
@@ -14,6 +14,8 @@ function snapshot(): TwinSnapshot {
     frameIntervalUs: 33_333,
     phaseAligned: false,
     p4Fw: '0.9.0',
+    firmwareProfile: 'd4-sim-full',
+    simulatedFuture: true,
     cams: Object.fromEntries(
       Object.entries(phases).map(([cam, phaseUs], index) => [
         cam,
