@@ -50,6 +50,10 @@ export interface MockFrameRequest {
   width: number;
   height: number;
   phaseMs: number;
+  /** The flash fires during this exposure (issue #75): config.wiggle.flash
+   * held at capture time, minus the flashUnavailable fault. The frame source
+   * lights the photograph accordingly; previews never flash. */
+  flash?: boolean;
 }
 export type MockFrameSource = (req: MockFrameRequest) => Promise<Uint8Array | null> | Uint8Array | null;
 
@@ -1209,12 +1213,12 @@ export class MockKinoDevice implements MockDeviceLike {
             const frames = await Promise.all(
               CAM_IDS.map((camId) =>
                 Promise.resolve(
-                  source({ cam: camId, kind: 'capture', width: 800, height: 600, phaseMs }),
+                  source({ cam: camId, kind: 'capture', width: 800, height: 600, phaseMs, flash: flashFires }),
                 ).catch(() => null),
               ),
             );
             const thumb = await Promise.resolve(
-              source({ cam: 'cam2', kind: 'thumb', width: 200, height: 150, phaseMs }),
+              source({ cam: 'cam2', kind: 'thumb', width: 200, height: 150, phaseMs, flash: flashFires }),
             ).catch(() => null);
             finalize({ frames, thumb });
           } catch {

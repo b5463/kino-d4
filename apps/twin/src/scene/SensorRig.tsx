@@ -27,9 +27,24 @@ interface Rig {
   dispose(): void;
 }
 
+/**
+ * Flash intensity in candela-like scene units. Lights decay 1/d² in mm here,
+ * so illuminance at a subject is FLASH_CD / d²: ≈1.8 extra at 1.5 m, ≈0.4 at
+ * 3 m — a dim-party shot brightens hard up close and falls off with distance,
+ * like a real on-camera LED. Tune this once the physical flash is measured.
+ */
+const FLASH_CD = 4_000_000;
+
 function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
   const camera = new THREE.PerspectiveCamera(50, 4 / 3, 5, 30000);
   camera.layers.set(SENSOR_LAYER);
+  // The flash LED: front of the module, x=0 between the lenses. It exists
+  // only on the sensor layer, so a flash exposure brightens the PHOTOGRAPH
+  // while the 3D viewport stays unlit. Intensity 0 except during a flash
+  // render — previews and no-flash captures never see it.
+  const flash = new THREE.PointLight('#e9f1ff', 0, 0, 2);
+  flash.layers.set(SENSOR_LAYER);
+  scene.add(flash);
   const targets = new Map<string, THREE.WebGLRenderTarget>();
   const work = document.createElement('canvas');
   const workCtx = work.getContext('2d');
@@ -47,7 +62,7 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
 
   /** Renders one camera's view into the work canvas. False when the pose is
    * unavailable (profile without four camera nodes) or 2D is unsupported. */
-  function renderInto(cam: MockFrameRequest['cam'], width: number, height: number): boolean {
+  function renderInto(cam: MockFrameRequest['cam'], width: number, height: number, withFlash = false): boolean {
     if (!workCtx) return false;
     const { profile, pitchMm } = useSceneStore.getState();
     const { lensFovDeg } = useStageStore.getState();
@@ -60,6 +75,9 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
     camera.position.set(...pose.positionMm);
     camera.lookAt(pose.positionMm[0], pose.positionMm[1], pose.positionMm[2] + 1000);
 
+    flash.position.set(0, pose.positionMm[1], pose.positionMm[2] + 2);
+    flash.intensity = withFlash ? FLASH_CD : 0;
+
     const rt = target(width, height);
     const previous = gl.getRenderTarget();
     gl.setRenderTarget(rt);
@@ -67,6 +85,7 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
     const pixels = new Uint8Array(width * height * 4);
     gl.readRenderTargetPixels(rt, 0, 0, width, height, pixels);
     gl.setRenderTarget(previous);
+    flash.intensity = 0;
 
     work.width = width;
     work.height = height;
@@ -95,7 +114,7 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
 
   return {
     async renderJpeg(req) {
-      if (!renderInto(req.cam, req.width, req.height)) return null;
+      if (!renderInto(req.cam, req.width, req.height, req.flash === true)) return null;
       const quality = req.kind === 'capture' ? 0.8 : req.kind === 'thumb' ? 0.6 : 0.55;
       let bytes = await toJpeg(quality);
       // A preview must fit one KDP frame; re-encode harder if it doesn't.
@@ -111,6 +130,7 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
       markPreviewUpdated();
     },
     dispose() {
+      scene.remove(flash);
       for (const t of targets.values()) t.dispose();
       targets.clear();
     },

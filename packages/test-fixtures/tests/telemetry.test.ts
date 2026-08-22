@@ -81,6 +81,35 @@ describe('telemetry tap: capture pipeline', () => {
     }
   });
 
+  // Issue #75: the photograph must know the flash fired — the frame source
+  // lights the render from it. Previews never flash; the flashUnavailable
+  // fault suppresses it even when config asks for flash.
+  it('capture frame renders carry flash from config, and flashUnavailable forces it off', async () => {
+    vi.useFakeTimers();
+    try {
+      const dev = new MockKinoDevice({ seed: 5, now: () => 1_755_300_000_000 });
+      const requests: { kind: string; flash?: boolean }[] = [];
+      dev.setFrameSource((req) => {
+        requests.push({ kind: req.kind, flash: req.flash });
+        return null; // synthesis fallback — this test only inspects the request
+      });
+
+      send(dev, Cmd.CAMERA_CAPTURE, 1, {});
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(requests.length).toBeGreaterThan(0);
+      expect(requests.every((r) => r.flash === true)).toBe(true);
+
+      requests.length = 0;
+      dev.setScenario('flashUnavailable', true);
+      send(dev, Cmd.CAMERA_CAPTURE, 2, {});
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(requests.length).toBeGreaterThan(0);
+      expect(requests.every((r) => r.flash === false)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a capture in flight dies with a power-off cancel, not a late commit', () => {
     vi.useFakeTimers();
     try {

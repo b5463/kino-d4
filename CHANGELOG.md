@@ -65,6 +65,7 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Fixed
 
+- The Twin's flash now reaches the photograph: a flash exposure lights the virtual sensors' render from the module's front (inverse-square falloff with subject distance, sensor layer only, so the 3D viewport stays unlit), previews never flash, and the flashUnavailable fault suppresses it. Before, FLASH ON changed only the log line and metadata — a dim-party capture rendered identically dark either way.
 - A capture in flight now survives a host link drop: the reference device's exposure → transfer → SD-commit chain no longer dies when the KDP client disconnects right after the CAMERA_CAPTURE ack — only power-off or reboot cancels it, matching the physical rule that unplugging the cable must not lose the photograph.
 - The reference device actually verifies firmware images: `FW_END` hashes the received bytes against the declared sha256 and rejects a corrupted image instead of answering `verified: true` unconditionally.
 - Studio backups no longer contain the camera's Roll identity block, strip it from older backup files on restore, and now record camera firmware versions, protocol, and the config schema version.
