@@ -833,6 +833,14 @@ body {
   background: #357d53;
 }
 
+.twin-header-mark {
+  /* In em, so the mark grows with --twin-fs-md at the 2200px and 3200px
+     breakpoints instead of shrinking away on a 4K panel. */
+  height: 1.25em;
+  width: auto;
+  display: block;
+}
+
 .twin-header-brand {
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -897,9 +905,18 @@ body {
 }
 
 .twin-welcome-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin: 0 0 6px;
   font-size: 18px;
   letter-spacing: 0.08em;
+}
+
+.twin-welcome-mark {
+  height: 1.5em;
+  width: auto;
+  align-self: center;
 }
 
 .twin-welcome-lead {

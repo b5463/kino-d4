@@ -20,19 +20,13 @@
 }
 
 .connect-mark {
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: 0.42em;
-  margin-right: -0.42em;
-}
-
-.connect-sub {
-  margin-top: 2px;
-  font-size: 10px;
-  letter-spacing: 0.5em;
-  margin-right: -0.5em;
-  color: var(--text-mut);
-  font-weight: 700;
+  /* The wordmark already carries "studio", so the old letterspaced KINO +
+     STUDIO pair it replaced is gone rather than repeated under it. */
+  display: block;
+  width: 260px;
+  max-width: 70%;
+  height: auto;
+  margin: 0 auto;
 }
 
 .connect-cams {

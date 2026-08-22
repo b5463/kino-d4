@@ -29,11 +29,11 @@
   font-size: 12px;
 }
 
-.menubar-brand .studio {
-  font-weight: 400;
-  color: var(--text-mut);
-  letter-spacing: 0.14em;
-  font-size: 10px;
+.menubar-mark {
+  /* em-relative so the mark tracks the menu bar's own type scale. */
+  height: 1.15em;
+  width: auto;
+  display: block;
 }
 
 .menu-root {

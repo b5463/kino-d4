@@ -6,6 +6,7 @@ import { canOpenDemo, PHASE_LABEL, useConnectionStore } from '../state/connectio
 import { connectDemo, connectSerial, connectTwin } from '../app/session';
 import { useKnownCameras } from '../state/knownCameras';
 import { APP_VERSION } from '../app/App';
+import kinoStudio from '../assets/kino-studio.png';
 
 /** How often ConnectHome re-checks for a Twin tab while disconnected (§10 option 2). */
 const TWIN_PROBE_INTERVAL_MS = 3000;
@@ -58,8 +59,7 @@ export function ConnectHome({ onWorksheet }: { onWorksheet?: (page: 'bringup' | 
   return (
     <div className="connect">
       <div className="connect-card">
-        <div className="connect-mark">KINO</div>
-        <div className="connect-sub">STUDIO</div>
+        <img className="connect-mark" src={kinoStudio} alt="KINO Studio" />
 
         <div className="connect-cams" aria-hidden="true">
           <span className="connect-cam" />

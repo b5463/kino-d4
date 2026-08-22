@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import kinoStudio from '../assets/kino-studio.png';
 
 // Classic File/Camera/View/Tools/Help strip. Menus expose the same commands
 // as the rest of the interface — discoverability, not secret features.
@@ -134,7 +135,7 @@ export function MenuBar({ menus, version }: { menus: MenuSpec[]; version: string
     <div className="menubar" ref={rootRef}>
       <span className="menubar-brand">
         <Icon name="camera" />
-        KINO <span className="studio">STUDIO</span>
+        <img className="menubar-mark" src={kinoStudio} alt="KINO Studio" />
       </span>
       {menus.map((menu, i) => (
         <div key={menu.label} className="menu-root">

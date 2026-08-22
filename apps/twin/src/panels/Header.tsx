@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { rebootDevice, setFlashEnabled, useSimStore } from '../state/simStore';
+import kinoD4Twin from '../assets/kino-d4-twin-light.png';
 
 function simLabel(running: boolean, bootStage: string): string {
   if (!running) return 'SIM OFF';
@@ -61,7 +62,10 @@ export function Header() {
 
   return (
     <header className="twin-header">
-      <span className="twin-header-brand">KINO TWIN</span>
+      {/* Twin has its own wordmark, so the app name lives in the mark rather
+          than in a word beside it. "D4 V1" stays: that is the loaded
+          hardware profile revision, not branding. */}
+      <img className="twin-header-mark" src={kinoD4Twin} alt="KINO D4 twin" />
       <span className="twin-header-item twin-header-muted">D4 V1</span>
 
       <button

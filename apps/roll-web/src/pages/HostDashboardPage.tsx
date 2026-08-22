@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { consumeHostToken, createHostApi, storeHostToken } from '../api/hostClient';
 import { HostDashboard } from './HostDashboard';
 import { Button, Panel } from '@kino/design-system';
+import kinoRoll from '../assets/kino-roll-dark.png';
 
 export function HostDashboardPage() {
   const [token, setToken] = useState(() => consumeHostToken());
@@ -11,7 +12,7 @@ export function HostDashboardPage() {
 
   return (
     <main className="roll-shell roll-shell--narrow">
-      <div className="roll-brand">KINO ROLL · HOST</div>
+      <div className="roll-brand"><img src={kinoRoll} alt="KINO Roll" /> · HOST</div>
       <Panel title="Private dashboard">
         <h1>Host dashboard</h1>
         <p>Open the private host link supplied when this Roll was created, or paste its host token.</p>

@@ -87,7 +87,9 @@ test('Twin acceptance walk', async ({ context, page }) => {
 
   await test.step('Twin renders the D4 V1 scene without the recovery screen', async () => {
     await page.goto('/dev/twin/');
-    await expect(header).toContainText('KINO TWIN');
+    // The brand is the wordmark image now, so assert on the mark itself
+    // rather than on header text that no longer spells it out.
+    await expect(header.getByAltText('KINO D4 twin')).toBeVisible();
     await expect(header).toContainText('D4 V1');
     await expect(page.locator('.twin-fatal')).toHaveCount(0);
     await expect(page.locator('.twin-viewport-canvas canvas')).toBeVisible();
