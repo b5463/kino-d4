@@ -5,6 +5,7 @@
 
 export { MockKinoDevice } from './MockKinoDevice';
 export { type MockFrameRequest, type MockFrameSource } from './MockKinoDevice';
+export { fitLogEntries } from './logBudget';
 export { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
 export { type TwinTelemetry, type TwinSnapshot } from './telemetry';
 export {

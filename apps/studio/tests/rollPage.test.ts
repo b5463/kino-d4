@@ -596,7 +596,9 @@ describe('(e) capability gating (02 §27)', () => {
     setDeviceState({ capabilities: caps.capabilities });
     expect(supportsRollUpload(useDeviceStore.getState())).toBe(false);
 
-    const ids = navItems({ developerMode: false, rollUpload: false }).map((i) => i.id);
+    const ids = navItems({ developerMode: false, rollUpload: false, gallery: true, wiggle: true, quad: true }).map(
+      (i) => i.id,
+    );
     expect(ids).not.toContain('roll');
   });
 
@@ -606,7 +608,9 @@ describe('(e) capability gating (02 §27)', () => {
     setDeviceState({ capabilities: caps.capabilities });
     expect(supportsRollUpload(useDeviceStore.getState())).toBe(true);
 
-    const ids = navItems({ developerMode: false, rollUpload: true }).map((i) => i.id);
+    const ids = navItems({ developerMode: false, rollUpload: true, gallery: true, wiggle: true, quad: true }).map(
+      (i) => i.id,
+    );
     expect(ids).toEqual([
       'overview',
       'shoot',

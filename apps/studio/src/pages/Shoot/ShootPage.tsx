@@ -6,6 +6,7 @@ import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SelectField, SliderField } from '../../components/fields';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import { FocusPanel } from './FocusPanel';
+import { Unsupported } from '../../components/Unsupported';
 import { useDraft } from '../../hooks/useDraft';
 import { getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
 import type { CamId, ShootConfig, ShootMode } from '@kino/kdp';
@@ -121,7 +122,27 @@ export function ShootPage() {
   const [modeBusy, setModeBusy] = useState(false);
   const [playBusy, setPlayBusy] = useState(false);
 
-  if (!config || !draft) return null;
+  // M1B firmware NACKs GET_CONFIG: the capability report loaded and config
+  // stayed absent forever. A blank page reads as a rendering bug — say what
+  // is actually missing (issue #80). While state is still loading (or on
+  // legacy firmware mid-populate), stay blank as before.
+  if (!config || !draft) {
+    return state.capabilitiesState === 'loaded' && state.info ? (
+      <>
+        <div className="pagehead">
+          <h1>
+            <Icon name="shoot" />
+            Shoot
+          </h1>
+        </div>
+        <Unsupported
+          feature="Shoot"
+          firmware={state.firmwareLabel}
+          note="The camera reports no shooting configuration. Captures and bench diagnostics run from the Developer page; shooting controls arrive with a later firmware milestone."
+        />
+      </>
+    ) : null;
+  }
 
   // Preview exactly what the draft would sound like on the body: the
   // selected sound at the selected volume. Custom clips come off the device

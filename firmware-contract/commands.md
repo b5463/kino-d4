@@ -355,7 +355,7 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 
 | Cmd | Value | Payload |
 |---|---:|---|
-| `GET_LOGS` | `0x40` | → `{}` ← **inline** `{ "entries": LogEntry[] }` (reference device returns the last 200) |
+| `GET_LOGS` | `0x40` | → `{}` ← **inline** `{ "entries": LogEntry[] }`. The reply is capped to one frame: the newest entries whose serialization fits the 16384-byte payload budget, oldest-first (a full 200-entry ring exceeds the cap). Firmware and reference device apply the same rule. |
 | `CLEAR_LOGS` | `0x41` | → `{}` ← **mock** `{ "ok": true }` |
 | `SELF_TEST` | `0x42` | → `{}` ← **inline** `{ "started": true }`, then `SELF_TEST` events |
 | `GET_RUNTIME_STATS` | `0x43` | → `{}` ← **typed** `RuntimeStats` |

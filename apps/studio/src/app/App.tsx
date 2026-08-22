@@ -11,7 +11,7 @@ import { DebugPanel } from '../components/DebugPanel';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Led } from '../components/Led';
 import { useConnectionStore } from '../state/connectionStore';
-import { supportsRollUpload, useDeviceStore } from '../state/deviceStore';
+import { supports, supportsRollUpload, useDeviceStore } from '../state/deviceStore';
 import { usePrefs, setDensity, setDeveloperMode } from '../state/prefs';
 import { emitUi } from '../state/uiBus';
 import { useNavRequest } from '../state/navRequest';
@@ -66,6 +66,9 @@ export function App() {
   const serialSupported = useConnectionStore((s) => s.serialSupported);
   const hasInfo = useDeviceStore((s) => s.info !== null);
   const rollUpload = useDeviceStore(supportsRollUpload);
+  const gallery = useDeviceStore((s) => supports(s, 'gallery'));
+  const wiggle = useDeviceStore((s) => supports(s, 'wiggle'));
+  const quad = useDeviceStore((s) => supports(s, 'quad'));
   const density = usePrefs((s) => s.density);
   const developerMode = usePrefs((s) => s.developerMode);
   const [page, setPage] = useState<PageId>(loadPage);
@@ -109,11 +112,18 @@ export function App() {
     if (!developerMode && (page === 'developer' || page === 'bringup')) setPage('overview');
   }, [developerMode, page]);
 
-  // A remembered Roll section is meaningless on a camera that cannot upload —
+  // A remembered section is meaningless on a camera that cannot serve it —
   // the nav has no entry for it, so nothing could navigate back out.
   useEffect(() => {
-    if (!rollUpload && page === 'roll') setPage('overview');
-  }, [rollUpload, page]);
+    if (
+      (!rollUpload && page === 'roll') ||
+      (!gallery && page === 'gallery') ||
+      (!wiggle && page === 'wiggle') ||
+      (!quad && page === 'quad')
+    ) {
+      setPage('overview');
+    }
+  }, [rollUpload, gallery, wiggle, quad, page]);
 
   // Desktop-utility keys: Ctrl+S saves the open section, F5 re-reads the
   // camera. Both are no-ops unless a camera is actually attached.
@@ -200,7 +210,7 @@ export function App() {
     {
       label: 'View',
       items: [
-        ...navItems({ developerMode: false, rollUpload }).map((item) => ({
+        ...navItems({ developerMode: false, rollUpload, gallery, wiggle, quad }).map((item) => ({
           label: item.label,
           disabled: !inSession,
           checked: page === item.id,
@@ -298,7 +308,9 @@ export function App() {
         onCancel={() => setRebootOpen(false)}
         onConfirm={() => {
           setRebootOpen(false);
-          void rebootAndReconnect();
+          rebootAndReconnect().catch((err) =>
+            setSyncNote(`Reboot refused: ${err instanceof Error ? err.message : String(err)}`),
+          );
         }}
       >
         <p>Restart the camera now? KINO Studio reconnects automatically after boot.</p>

@@ -2,7 +2,7 @@ import { Icon } from './Icon';
 import type { IconName } from './Icon';
 import { ConnectionStrip } from './ConnectionStrip';
 import { useConnectionStore } from '../state/connectionStore';
-import { supportsRollUpload, useDeviceStore } from '../state/deviceStore';
+import { supports, supportsRollUpload, useDeviceStore } from '../state/deviceStore';
 import { usePrefs } from '../state/prefs';
 import { dirtySections, useDraftStore } from '../state/draftStore';
 
@@ -48,11 +48,22 @@ const NAV: NavItem[] = [
 export function navItems({
   developerMode,
   rollUpload,
+  gallery,
+  wiggle,
+  quad,
 }: {
   developerMode: boolean;
   rollUpload: boolean;
+  gallery: boolean;
+  wiggle: boolean;
+  quad: boolean;
 }): NavItem[] {
-  const items = rollUpload ? NAV : NAV.filter((item) => item.id !== 'roll');
+  const dropped = new Set<PageId>();
+  if (!rollUpload) dropped.add('roll');
+  if (!gallery) dropped.add('gallery');
+  if (!wiggle) dropped.add('wiggle');
+  if (!quad) dropped.add('quad');
+  const items = NAV.filter((item) => !dropped.has(item.id));
   if (!developerMode) return items;
   return [
     ...items,
@@ -93,10 +104,13 @@ export function Sidebar({
   const serial = useDeviceStore((s) => s.info?.serial);
   const developerMode = usePrefs((s) => s.developerMode);
   const rollUpload = useDeviceStore(supportsRollUpload);
+  const gallery = useDeviceStore((s) => supports(s, 'gallery'));
+  const wiggle = useDeviceStore((s) => supports(s, 'wiggle'));
+  const quad = useDeviceStore((s) => supports(s, 'quad'));
   const dirty = useDraftStore((s) => s.dirty);
   const unsaved = dirtySections(dirty);
 
-  const items = navItems({ developerMode, rollUpload });
+  const items = navItems({ developerMode, rollUpload, gallery, wiggle, quad });
 
   return (
     <aside className="sidebar">

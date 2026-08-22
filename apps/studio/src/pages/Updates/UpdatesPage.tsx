@@ -53,6 +53,7 @@ export function UpdatesPage() {
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogReleases, setCatalogReleases] = useState<CatalogRelease[] | null>(null);
   const [recoveryArmed, setRecoveryArmed] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   if (!info) return null;
 
@@ -330,6 +331,14 @@ export function UpdatesPage() {
             ) : null
           }
         >
+          {/* A sequence that died before any per-target row existed (e.g.
+              maintenance mode refused) used to fail into a store field
+              nothing rendered — the click just did nothing (issue #80). */}
+          {update.fatalError ? (
+            <p className="notice notice--err" style={{ marginBottom: 12 }}>
+              Update failed: {update.fatalError}
+            </p>
+          ) : null}
           {update.targets.length === 0 ? (
             <p className="dim">
               Updates CAM1–4 first, then the P4. One reboot at the end. Keep USB connected.
@@ -441,6 +450,9 @@ export function UpdatesPage() {
             </Button>
           </div>
         )}
+        {recoveryError ? (
+          <p className="notice notice--err" style={{ marginTop: 12, marginBottom: 0 }}>{recoveryError}</p>
+        ) : null}
       </Panel>
 
       <ConfirmDialog
@@ -475,7 +487,10 @@ export function UpdatesPage() {
         onCancel={() => setConfirm2(null)}
         onConfirm={() => {
           setConfirm2(null);
-          void rebootAndReconnect();
+          setRecoveryError(null);
+          rebootAndReconnect().catch((err) =>
+            setRecoveryError(`Reboot refused: ${err instanceof Error ? err.message : String(err)}`),
+          );
         }}
       >
         <p>Restart the camera now? KINO Studio reconnects automatically after boot.</p>
@@ -489,7 +504,10 @@ export function UpdatesPage() {
         onCancel={() => setConfirm2(null)}
         onConfirm={() => {
           setConfirm2(null);
-          void factoryResetAndReconnect();
+          setRecoveryError(null);
+          factoryResetAndReconnect().catch((err) =>
+            setRecoveryError(`Factory reset refused: ${err instanceof Error ? err.message : String(err)}`),
+          );
         }}
       >
         <p>

@@ -87,7 +87,13 @@ export function DevicePage() {
 
   const backUp = async () => {
     if (!info || !config || !state.calibration) {
-      setBackupNotice('Device state is still loading — try again in a moment.');
+      // Absence with a loaded capability report is permanent (M1B firmware
+      // NACKs GET_CONFIG/GET_CALIBRATION) — "try again" would be a lie.
+      setBackupNotice(
+        info && state.capabilitiesState === 'loaded'
+          ? 'This firmware does not expose settings or calibration to back up.'
+          : 'Device state is still loading — try again in a moment.',
+      );
       return;
     }
     // Custom sound bytes come off the device (cached after the first read).
@@ -144,6 +150,13 @@ export function DevicePage() {
   const runRestore = async () => {
     const dev = getDevice();
     if (!dev || !pendingRestore) return;
+    if (!config && state.capabilitiesState === 'loaded') {
+      // The first write would NACK and the old catch blamed a "partially
+      // restored" camera that in truth accepted nothing (issue #80).
+      setPendingRestore(null);
+      setBackupNotice('This firmware does not accept configuration writes — nothing was restored.');
+      return;
+    }
     const { backup, skipped, skippedSounds } = pendingRestore;
     setPendingRestore(null);
     setRestoreBusy(true);
