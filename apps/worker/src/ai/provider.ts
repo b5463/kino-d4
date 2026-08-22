@@ -22,6 +22,10 @@ export interface AiConfig {
    * `external`; without it an external provider is refused, never called.
    */
   allowExternal: boolean;
+  /** CUSTOM only: comma-separated wiggle-safe operations. */
+  operations: string | null;
+  /** CUSTOM only: 0..1. Unset falls back to the SUBTLE strength. */
+  strength: string | null;
 }
 
 /**
@@ -66,7 +70,11 @@ export type AiDecision =
  */
 export function resolveAiDecision(config: AiConfig): AiDecision {
   if (config.mode === 'off') return { run: false, reason: 'AI_ENHANCE_DISABLED' };
-  if (!config.provider || !config.endpoint || !config.model) {
+  if (!config.provider) return { run: false, reason: 'AI_ENHANCE_NOT_CONFIGURED' };
+  // A local provider runs in this process: it has no endpoint to reach and
+  // its identity is the model. Remote kinds still need both, because a
+  // half-configured remote is how frames go somewhere nobody chose.
+  if (config.provider !== 'local' && (!config.endpoint || !config.model)) {
     return { run: false, reason: 'AI_ENHANCE_NOT_CONFIGURED' };
   }
   if (config.provider === 'external' && !config.allowExternal) {
@@ -88,5 +96,7 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
     endpoint: env.AI_ENDPOINT || null,
     model: env.AI_MODEL || null,
     allowExternal: env.AI_ALLOW_EXTERNAL === 'true',
+    operations: env.AI_OPERATIONS || null,
+    strength: env.AI_STRENGTH || null,
   };
 }
