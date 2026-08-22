@@ -39,6 +39,12 @@ SPDX-License-Identifier = "CERN-OHL-S-2.0"
 path = [
   "docs/assets/brand/**",
   "docs/assets/product/**",
+  # The wordmarks the apps ship are trimmed, single-ink derivations of the
+  # brand rasters. Same artwork, same reserved terms — the surrounding MIT
+  # grant on apps/** must not swallow them.
+  "apps/studio/src/assets/**",
+  "apps/twin/src/assets/**",
+  "apps/roll-web/src/assets/**",
   "archive/**",
 ]
 precedence = "override"

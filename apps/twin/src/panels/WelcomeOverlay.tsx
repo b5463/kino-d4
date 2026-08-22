@@ -1,4 +1,5 @@
 import { useSimStore } from '../state/simStore';
+import kinoD4Twin from '../assets/kino-d4-twin-light.png';
 
 const BOOT_ORDER = [
   'BOOTING_P4',
@@ -32,7 +33,9 @@ export function WelcomeOverlay() {
     return (
       <div className="twin-welcome" role="region" aria-label="Getting started">
         <div className="twin-welcome-card">
-          <h1 className="twin-welcome-title">KINO TWIN</h1>
+          <h1 className="twin-welcome-title">
+            <img className="twin-welcome-mark" src={kinoD4Twin} alt="KINO D4 twin" />
+          </h1>
           <p className="twin-welcome-lead">
             A working 3D copy of the D4 camera. Same protocol, same firmware behavior, no hardware required.
           </p>

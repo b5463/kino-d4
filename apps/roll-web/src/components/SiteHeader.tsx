@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import kinoRoll from '../assets/kino-roll-light.png';
 
 /**
  * Compact dark-blue site bar, shared by the feed and detail pages. The right
@@ -9,7 +10,7 @@ export function SiteHeader({ right }: { right?: ReactNode }) {
   return (
     <header className="site-header">
       <div className="site-width site-header-row">
-        <span className="site-brand">KINO ROLL</span>
+        <img className="site-brand" src={kinoRoll} alt="KINO Roll" />
         {right ?? null}
       </div>
     </header>

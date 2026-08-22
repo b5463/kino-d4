@@ -120,7 +120,8 @@ label { color: var(--k-mut); font-size: 12px; font-weight: 700; }
 
 .site-header { background: var(--k-header); border-bottom: 1px solid #0f3568; }
 .site-header-row { display: flex; align-items: center; justify-content: space-between; min-height: 38px; }
-.site-brand { color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+/* White ink, because the site header is the dark blue --k-header band. */
+.site-brand { display: block; height: 17px; width: auto; }
 .site-header .kino-status-lamp { color: #fff; }
 .site-header .kino-status-lamp--ok .kino-status-symbol { color: #8fd96a; }
 .site-header .kino-status-lamp--off .kino-status-symbol { color: #a9c0dd; }
@@ -359,7 +360,9 @@ a.action-link { min-height: 30px; }
 
 .roll-shell { width: min(100%, 1000px); margin: 0 auto; padding: 12px 10px; }
 .roll-shell--narrow { width: calc(100% - 20px); max-width: 380px; margin: 12vh auto; }
-.roll-brand { margin-bottom: 6px; color: var(--k-header); font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+/* Dark ink here: these sit on white cards, not on the blue header band. */
+.roll-brand { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: var(--k-header); font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+.roll-brand img { height: 16px; width: auto; }
 .roll-shell--narrow h1 { font-size: 15px; }
 
 /* ---- host dashboard ---- */

@@ -55,6 +55,12 @@ for (const marker of [
   '"hardware/**"',
   '"docs/assets/brand/**"',
   '"archive/**"',
+  // The wordmarks each app ships are the reserved artwork, not MIT source.
+  // apps/** is MIT one block earlier, so losing these lines would quietly
+  // relicense the marks.
+  '"apps/studio/src/assets/**"',
+  '"apps/twin/src/assets/**"',
+  '"apps/roll-web/src/assets/**"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
 
 const rootPackage = await json('package.json');

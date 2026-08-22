@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import type { HostApi, HostCaptureView, HostRollEvent, HostRollView } from '../api/hostClient';
 import { Button, Panel, StatusLamp, ToolbarFrame } from '@kino/design-system';
+import kinoRoll from '../assets/kino-roll-dark.png';
 
 export interface HostDashboardProps {
   api: HostApi;
@@ -169,7 +170,7 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
     <main className="roll-shell">
       <header className="roll-head">
         <div>
-          <div className="roll-brand">KINO ROLL · HOST</div>
+          <div className="roll-brand"><img src={kinoRoll} alt="KINO Roll" /> · HOST</div>
           <h1>{roll.title}</h1>
           <div className="roll-subhead">{roll.deviceSerial ?? 'WEB CREATED'}</div>
         </div>

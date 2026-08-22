@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError, rollApi, type RollApi } from '../api/client';
 import { Button, Panel } from '@kino/design-system';
+import kinoRoll from '../assets/kino-roll-dark.png';
 
 export interface PinGateProps {
   slug: string;
@@ -36,7 +37,7 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
 
   return (
     <main className="roll-shell roll-shell--narrow">
-      <div className="roll-brand">KINO ROLL</div>
+      <div className="roll-brand"><img src={kinoRoll} alt="KINO Roll" /></div>
       <Panel title="Private Roll">
         <h1>This Roll needs a PIN</h1>
         <form onSubmit={(event) => void submit(event)}>
