@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">KINO Roll</title>
-  <rect width="512" height="512" rx="80" fill="#eef4fb" />
-  <rect x="24" y="24" width="464" height="464" rx="60" fill="none" stroke="#2f70c9" stroke-width="16" />
-  <text x="256" y="232" text-anchor="middle" fill="#17212b" font-family="Arial, Helvetica, sans-serif" font-size="96" font-weight="700" letter-spacing="10">KINO</text>
-  <text x="256" y="322" text-anchor="middle" fill="#2f70c9" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="700" letter-spacing="14">ROLL</text>
-</svg>

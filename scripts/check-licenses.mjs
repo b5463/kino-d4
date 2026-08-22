@@ -61,6 +61,9 @@ for (const marker of [
   '"apps/studio/src/assets/**"',
   '"apps/twin/src/assets/**"',
   '"apps/roll-web/src/assets/**"',
+  '"apps/studio/public/icon-*.png"',
+  '"apps/twin/public/icon-*.png"',
+  '"apps/roll-web/public/icon-*.png"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
 
 const rootPackage = await json('package.json');

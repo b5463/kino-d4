@@ -29,6 +29,13 @@ trimmed, transparent, single-ink derivation under `apps/<app>/src/assets/`:
 | `apps/roll-web/src/assets/kino-roll-light.png` | `kino-roll.png` | white |
 | `apps/roll-web/src/assets/kino-roll-dark.png` | `kino-roll.png` | black |
 
+The app icons are the same artwork cropped to the `D4` badge, white on the
+header blue, at `apps/<app>/public/icon-192.png` and `icon-512.png`. The
+`kino` word was tried first and rejected on measurement: at 5.8:1 it is an
+unreadable smear in a 48px launcher tile, where the badge still reads. Art
+sits inside the middle 78% of the tile so the same file serves `maskable`
+launchers, which crop to a circle or squircle.
+
 The derivation keys ink coverage from `255 - luminance` and recolours it. That
 is not the CSS inversion forbidden above: because the `*-on-dark` crops are
 exact negatives of the `*-on-light` ones, colouring the coverage white
