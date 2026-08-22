@@ -16,6 +16,7 @@
     "@fontsource/ibm-plex-mono": "^5.2.5",
     "@fontsource/ibm-plex-sans": "^5.2.5",
     "@kino/design-system": "*",
+    "@kino/hardware-profiles": "^0.1.0",
     "@kino/kdp": "*",
     "@kino/schemas": "*",
     "@kino/test-fixtures": "*",
