@@ -38,6 +38,7 @@ import { DevicePage } from '../pages/Device/DevicePage';
 import { UpdatesPage } from '../pages/Updates/UpdatesPage';
 import { DeveloperPage } from '../pages/Developer/DeveloperPage';
 import { BringUpPage } from '../pages/BringUp/BringUpPage';
+import { BenchPage } from '../pages/Bench/BenchPage';
 
 const PAGE_KEY = 'kino-studio.page';
 export const APP_VERSION = '1.0.0';
@@ -55,6 +56,7 @@ const PAGES: Record<PageId, ComponentType> = {
   updates: UpdatesPage,
   developer: DeveloperPage,
   bringup: BringUpPage,
+  bench: BenchPage,
 };
 
 function loadPage(): PageId {
@@ -76,7 +78,7 @@ export function App() {
   // Bring-up exists for boards that do not answer HELLO, so it must not
   // require a session (issue #86). Entered explicitly from the connect
   // screen in developer mode; never restored from persistence.
-  const [offlineBringup, setOfflineBringup] = useState(false);
+  const [offlineWorksheet, setOfflineWorksheet] = useState<'bringup' | 'bench' | null>(null);
   const [rebootOpen, setRebootOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
@@ -114,7 +116,7 @@ export function App() {
   const connected = phase === 'connected' || phase === 'maintenance';
 
   useEffect(() => {
-    if (!developerMode && (page === 'developer' || page === 'bringup')) setPage('overview');
+    if (!developerMode && (page === 'developer' || page === 'bringup' || page === 'bench')) setPage('overview');
   }, [developerMode, page]);
 
   // A remembered section is meaningless on a camera that cannot serve it —
@@ -303,20 +305,21 @@ export function App() {
                 <Page />
               </div>
             </>
-          ) : offlineBringup && developerMode ? (
+          ) : offlineWorksheet && developerMode ? (
             <div className="workspace-inner">
               <p className="notice">
                 <span>
-                  Offline bring-up — no camera connected. Tests that need the device stay disabled.
+                  Offline worksheet — no camera connected. Anything that needs the device stays
+                  disabled.
                 </span>
-                <Button size="sm" variant="ghost" onClick={() => setOfflineBringup(false)}>
+                <Button size="sm" variant="ghost" onClick={() => setOfflineWorksheet(null)}>
                   BACK TO CONNECT
                 </Button>
               </p>
-              <BringUpPage />
+              {offlineWorksheet === 'bringup' ? <BringUpPage /> : <BenchPage />}
             </div>
           ) : (
-            <ConnectHome onBringup={developerMode ? () => setOfflineBringup(true) : undefined} />
+            <ConnectHome onWorksheet={developerMode ? setOfflineWorksheet : undefined} />
           )}
         </main>
       </div>

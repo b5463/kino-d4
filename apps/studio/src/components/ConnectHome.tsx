@@ -11,7 +11,7 @@ import { APP_VERSION } from '../app/App';
 const TWIN_PROBE_INTERVAL_MS = 3000;
 
 // Disconnected home: one dominant action, honest environment facts below.
-export function ConnectHome({ onBringup }: { onBringup?: () => void }) {
+export function ConnectHome({ onWorksheet }: { onWorksheet?: (page: 'bringup' | 'bench') => void }) {
   const phase = useConnectionStore((s) => s.phase);
   const error = useConnectionStore((s) => s.error);
   const fault = useConnectionStore((s) => s.fault);
@@ -73,10 +73,15 @@ export function ConnectHome({ onBringup }: { onBringup?: () => void }) {
               <p className="connect-twin-hint">Twin tab detected on this origin</p>
             </div>
           ) : null}
-          {onBringup ? (
-            <Button variant="ghost" disabled={busy} onClick={onBringup}>
-              BRING-UP WORKSHEET (OFFLINE)
-            </Button>
+          {onWorksheet ? (
+            <>
+              <Button variant="ghost" disabled={busy} onClick={() => onWorksheet('bringup')}>
+                BRING-UP WORKSHEET (OFFLINE)
+              </Button>
+              <Button variant="ghost" disabled={busy} onClick={() => onWorksheet('bench')}>
+                BENCH WORKSHEET (OFFLINE)
+              </Button>
+            </>
           ) : null}
         </div>
 

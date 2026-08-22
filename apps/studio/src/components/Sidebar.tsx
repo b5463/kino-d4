@@ -18,7 +18,8 @@ export type PageId =
   | 'device'
   | 'updates'
   | 'developer'
-  | 'bringup';
+  | 'bringup'
+  | 'bench';
 
 export interface NavItem {
   id: PageId;
@@ -69,6 +70,7 @@ export function navItems({
     ...items,
     { id: 'developer', label: 'Developer', icon: 'developer' },
     { id: 'bringup', label: 'Bring-Up', icon: 'usb' },
+    { id: 'bench', label: 'Bench', icon: 'test' },
   ];
 }
 
@@ -86,6 +88,7 @@ export const PAGE_LABEL: Record<PageId, string> = {
   updates: 'Updates',
   developer: 'Developer',
   bringup: 'Bring-Up',
+  bench: 'Bench',
 };
 
 export function Sidebar({
