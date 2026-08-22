@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import { resolveDimensions } from '@kino/hardware-profiles';
@@ -6,9 +6,11 @@ import type { ComponentDef, InstanceDef, MeasuredOverride, ResolvedDims } from '
 import {
   ENCLOSURE_PANEL_THICKNESS_MM,
   applyVisualMode,
+  attachComponentMesh,
   buildAcrylicPanel,
   buildComponentObject,
   fallbackBoxMm,
+  hasComponentMesh,
 } from '@kino/three-assets';
 import type { VisualMode } from '@kino/three-assets';
 import { useSceneStore, setHovered } from '../state/sceneStore';
@@ -76,6 +78,27 @@ function InstanceNode({ instance, component, override, transform, visualMode }: 
     }
     return buildComponentObject(component, { resolved, instanceId: instance.id });
   }, [component, instance.id, resolved]);
+
+  // Read inside the async swap below so a late-arriving mesh is painted in
+  // the mode showing right now, without the swap re-running on every hover.
+  const visualModeRef = useRef(visualMode);
+  visualModeRef.current = visualMode;
+
+  // Tier A (issue #30): a registered converted CAD mesh replaces the proxy
+  // body once it loads, fitted to the resolved dimensions — clearance, the
+  // BOM and the inspector keep reading the profile's numbers. No
+  // registration, a failed load, or an unmounted node leaves the proxy.
+  useEffect(() => {
+    if (!hasComponentMesh(component.id)) return;
+    let live = true;
+    const [w, h, d] = fallbackBoxMm(resolved.sizeMm);
+    void attachComponentMesh(object, component.id, [w, h, d]).then((swapped) => {
+      if (swapped && live) applyVisualMode(object, visualModeRef.current);
+    });
+    return () => {
+      live = false;
+    };
+  }, [object, component.id, resolved]);
 
   applyVisualMode(object, visualMode);
 
