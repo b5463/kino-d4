@@ -20,7 +20,7 @@ const CHECKLIST: ReadonlyArray<Omit<ChecklistRow, 'done'>> = [
   { label: 'Speaker thickness', componentId: 'speaker' },
   { label: 'OV3660 lens protrusion', componentId: 'camera-node' },
   { label: 'Camera ribbon clearance', componentId: 'camera-node' },
-  { label: 'Final acrylic thickness', componentId: 'enclosure' },
+  { label: 'Final acrylic thickness', componentId: 'enclosure-shell' },
 ];
 
 export function measurementChecklist(overrides: MeasuredOverride[]): ChecklistRow[] {

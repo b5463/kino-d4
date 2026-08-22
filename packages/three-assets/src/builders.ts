@@ -225,9 +225,9 @@ export function buildComponentObject(c: ComponentDef, o: BuildOpts): THREE.Group
   const mats = palette();
   const sizeMm = fallbackBoxMm(o.resolved.sizeMm);
 
-  // The enclosure's own component id covers three very different instances
-  // (skeleton, front-acrylic, rear-acrylic). Only the skeleton frame is
-  // built here — the clear acrylic panels are built separately, by
+  // The enclosure is two components (audit #63): 'enclosure-chassis' (the
+  // skeleton frame instance) is built here; 'enclosure-shell' (the front and
+  // rear acrylic panel instances) is built separately, by
   // `buildAcrylicPanel`, which is the "shell builder" this defers to.
   // The skeleton is an open edge frame, not a solid block: rendering the
   // full 126×80×36 envelope as one opaque box would hide every internal
@@ -235,7 +235,7 @@ export function buildComponentObject(c: ComponentDef, o: BuildOpts): THREE.Group
   // build. The frame is inset from the envelope (see skeletonFrameGeometry)
   // so none of its faces z-fight with the acrylic panels; scene fit still
   // spans the envelope because the panels themselves reach it.
-  if (c.id === 'enclosure') {
+  if (c.id === 'enclosure-chassis') {
     const frame = new THREE.Mesh(skeletonFrameGeometry(sizeMm, SKELETON_BEAM_MM), pickBodyMaterial(c, mats));
     frame.name = 'skeleton';
     frame.userData.materialVariants = {

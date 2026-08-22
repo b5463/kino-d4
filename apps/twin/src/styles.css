@@ -1063,6 +1063,10 @@ input[type='range'] {
 .twin-panel-note--error {
   color: #e0838c;
 }
+/* Experimental bench-pack banner (audit #63). */
+.twin-panel-note--warn {
+  color: #d9a441;
+}
 .twin-roll-qr {
   background: #fff;
   padding: 8px;

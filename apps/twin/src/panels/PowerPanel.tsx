@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { D4_V1 } from '@kino/hardware-profiles';
+import type { PowerProfile } from '@kino/hardware-profiles';
 import { ACTIVITY_PRESETS, computePower } from '@kino/simulator-engine';
 import type { ActivityState, PowerSample, ThermalZone } from '@kino/simulator-engine';
 import { useSimStore } from '../state/simStore';
+import { selectPower, useSceneStore } from '../state/sceneStore';
 import { tagLabel } from './SyncPanel';
 
 type PresetKey = keyof typeof ACTIVITY_PRESETS;
@@ -12,26 +13,52 @@ const PRESET_LABELS: Record<PresetKey, string> = {
 };
 const THERMAL_ZONES: ThermalZone[] = ['battery', 'sw6106', 'led', 'heatsink', 'batteryConnector'];
 
-function modeledSample(activity: ActivityState): PowerSample {
-  return computePower(D4_V1.power, D4_V1.power.loads, activity, { overAsinceMs: null, nowMs: 0 });
+function modeledSample(power: PowerProfile, activity: ActivityState): PowerSample {
+  return computePower(power, power.loads, activity, { overAsinceMs: null, nowMs: 0 });
 }
 
 export function PowerPanel() {
   const live = useSimStore((state) => state.power);
   const thermal = useSimStore((state) => state.thermal);
+  const profile = useSceneStore((state) => state.profile);
+  const powerProfileId = useSceneStore((state) => state.powerProfileId);
+  const setPowerProfileId = useSceneStore((state) => state.setPowerProfileId);
+  const power = useSceneStore(selectPower);
+  const alternate = powerProfileId !== null ? profile.alternatePower[powerProfileId] : undefined;
   const [preset, setPreset] = useState<PresetKey | null>(null);
   const [flashA, setFlashA] = useState<0.35 | 0.5 | 0.65>(0.35);
   const [chargeA, setChargeA] = useState(0);
   const sample = useMemo(() => {
     if (!preset) return live;
-    return modeledSample({ ...ACTIVITY_PRESETS[preset], flashA, chargingA: chargeA });
-  }, [chargeA, flashA, live, preset]);
+    return modeledSample(power, { ...ACTIVITY_PRESETS[preset], flashA, chargingA: chargeA });
+  }, [chargeA, flashA, live, power, preset]);
 
-  const chargeState = chargeA > D4_V1.power.battery.chargeMaxA ? 'critical' : chargeA > D4_V1.power.battery.chargePreferredA ? 'warn' : 'ok';
+  const chargeState = chargeA > power.battery.chargeMaxA ? 'critical' : chargeA > power.battery.chargePreferredA ? 'warn' : 'ok';
 
   return (
     <section className="twin-tool-panel" aria-label="Power analysis">
       <div className="twin-panel-heading"><span>POWER</span><span>{preset ? `${PRESET_LABELS[preset]} PINNED` : 'LIVE'}</span></div>
+      <div className="twin-panel-section">
+        <label className="twin-control-row">
+          <span>PACK</span>
+          <select
+            className="twin-select"
+            value={powerProfileId ?? ''}
+            onChange={(event) => setPowerProfileId(event.target.value === '' ? null : event.target.value)}
+          >
+            <option value="">505573 LIPO (STOCK)</option>
+            {Object.entries(profile.alternatePower).map(([id, entry]) => (
+              <option key={id} value={id}>{entry.label}</option>
+            ))}
+          </select>
+        </label>
+        {alternate && (
+          <p className="twin-panel-note twin-panel-note--warn">
+            EXPERIMENTAL — BENCH PACK, NOT THE D4 POWER ARCHITECTURE. {alternate.note} The live sim runs the
+            pack selected at POWER ON; power-cycle to apply a change.
+          </p>
+        )}
+      </div>
       {sample ? (
         <div className="twin-panel-section twin-power-grid">
           <span>BATTERY</span><strong>{sample.batteryV.toFixed(2)} V <small>{tagLabel(sample.tags.batteryV)}</small></strong>
@@ -68,8 +95,8 @@ export function PowerPanel() {
           <span>CHARGE A</span>
           <input className="twin-numeric" type="number" min={0} step={0.1} value={chargeA} onChange={(event) => setChargeA(Math.max(0, Number(event.target.value)))} />
         </label>
-        {chargeState === 'warn' && <p className="twin-alert">ABOVE PREFERRED 600 mA</p>}
-        {chargeState === 'critical' && <p className="twin-alert twin-alert--critical">OVER MAX 1.5 A</p>}
+        {chargeState === 'warn' && <p className="twin-alert">ABOVE PREFERRED {Math.round(power.battery.chargePreferredA * 1_000)} mA</p>}
+        {chargeState === 'critical' && <p className="twin-alert twin-alert--critical">OVER MAX {power.battery.chargeMaxA} A</p>}
       </div>
 
       {sample && sample.warnings.length > 0 && <ul className="twin-warning-list">{sample.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { D4_V1, NET_CLASSES } from '@kino/hardware-profiles';
-import type { HardwareProfile, MeasuredOverride, NetClass } from '@kino/hardware-profiles';
+import type { HardwareProfile, MeasuredOverride, NetClass, PowerProfile } from '@kino/hardware-profiles';
 import { loadOverrides, saveOverrides } from './persist';
 
 /** §3 viewport modes: what the assembly currently renders as. */
@@ -38,7 +38,17 @@ export interface SceneState {
   measureComponentId: string | null;
   showGrid: boolean; // reference grid under the assembly
   optics: OpticsState;
+  /**
+   * Active alternate power pack id from `profile.alternatePower`, or null =
+   * the stock top-level `power` block (audit #63). Every alternate is
+   * experimental bench hardware, so this is a session knob: deliberately NOT
+   * persisted into saved scene layouts — the layout doc records geometry,
+   * and silently baking a bench pack into a layout file would let it
+   * masquerade as the D4 power architecture.
+   */
+  powerProfileId: string | null;
   select(id: string | null): void;
+  setPowerProfileId(id: string | null): void;
   setShowGrid(on: boolean): void;
   setExplode(v: number): void;
   setPitch(mm: number): void;
@@ -77,6 +87,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   measurePoints: [],
   measureComponentId: null,
   showGrid: true,
+  powerProfileId: null,
   optics: {
     enabled: false,
     fovScenarioDeg: null,
@@ -89,6 +100,10 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   select(id) {
     set({ selection: id });
+  },
+  setPowerProfileId(id) {
+    // Only ids the profile actually declares; anything else falls back to stock.
+    set({ powerProfileId: id !== null && id in get().profile.alternatePower ? id : null });
   },
   setShowGrid(on) {
     set({ showGrid: on });
@@ -190,6 +205,16 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     }));
   },
 }));
+
+/**
+ * The power block panels and the sim should run: the selected alternate's
+ * (experimental bench pack) or the profile's stock `power`. Usable both as a
+ * zustand selector and against a plain state object in tests.
+ */
+export function selectPower(state: Pick<SceneState, 'profile' | 'powerProfileId'>): PowerProfile {
+  const alternate = state.powerProfileId !== null ? state.profile.alternatePower[state.powerProfileId] : undefined;
+  return alternate ? alternate.power : state.profile.power;
+}
 
 /**
  * Hover is high-frequency pointer feedback, not a user action — it is

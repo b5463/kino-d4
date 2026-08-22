@@ -117,7 +117,7 @@ export function measurementTasks(profile: HardwareProfile = D4_V1): MeasurementT
       id: 'body',
       task: 'Body envelope and shell geometry (panel thickness, skeleton ribs)',
       current: `${profile.body.confidence} ${fmt(profile.body.sizeMm)} mm envelope`,
-      recordIn: 'd4-v1.json body + enclosure component (re-enables shell clearance checks)',
+      recordIn: 'd4-v1.json body + enclosure-shell/enclosure-chassis components (re-enables shell clearance checks)',
     });
   }
 
@@ -126,7 +126,8 @@ export function measurementTasks(profile: HardwareProfile = D4_V1): MeasurementT
     if (!source) continue;
     const unmeasured = source.kind !== 'MEASURED' && source.kind !== 'OFFICIAL_CAD';
     const incomplete = source.sizeMm.some((axis) => axis === null);
-    if (component.id === 'enclosure') continue; // covered by the body row
+    // Both enclosure components share the body envelope; covered by the body row.
+    if (component.id === 'enclosure-shell' || component.id === 'enclosure-chassis') continue;
     if (unmeasured || incomplete) {
       tasks.push({
         id: `dims-${component.id}`,

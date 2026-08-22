@@ -26,8 +26,10 @@ describe('bench worksheet', () => {
     expect(ids).toContain('gpio'); // null pin assignments exist
     expect(ids).toContain('optical-centers'); // all offsets zero
 
-    // The enclosure is represented once, by the body row.
+    // The enclosure (both split components) is represented once, by the body row.
     expect(ids).not.toContain('dims-enclosure');
+    expect(ids).not.toContain('dims-enclosure-shell');
+    expect(ids).not.toContain('dims-enclosure-chassis');
 
     // Every row says where the measured value gets recorded.
     for (const task of tasks) {
