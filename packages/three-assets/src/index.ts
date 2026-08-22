@@ -9,3 +9,13 @@ export {
   type BuildOpts,
   type VisualMode,
 } from './builders';
+
+export {
+  attachComponentMesh,
+  clearComponentMeshes,
+  fitMeshToBox,
+  glbProvider,
+  hasComponentMesh,
+  registerComponentMesh,
+  type MeshProvider,
+} from './tierA';
