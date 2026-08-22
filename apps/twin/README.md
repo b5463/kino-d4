@@ -41,5 +41,5 @@ Open the Twin with `?ws=1` (default relay on this host) or `?ws=ws://host:5179`;
 ## Deliberately deferred
 
 - Tier A GLB import of the official XIAO STEP. Convert offline through FreeCAD/Blender and drop the GLB into `@kino/three-assets`; application code must not change.
-- Front-panel DXF, transform CSV, and STEP exports. Twin 0.1 exports layout JSON and engineering text/JSON reports.
+- (shipped in #31) Front-panel DXF, transform CSV, and envelope STEP live in the RECORD tab beside the other engineering exports; the DXF lens-cutout diameter stays PROVISIONAL until a lens barrel is measured.
 - Playwright end-to-end automation. The same-origin manual script above remains the browser/WebGL acceptance gate.
