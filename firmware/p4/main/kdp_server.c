@@ -639,8 +639,14 @@ static void handle_link_stats(uint32_t seq, cJSON *req) {
 
 static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
   int index = cam_index_from_request(req);
+  if (index < 0) {
+    send_nack(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, "INVALID_ARGUMENT", "cam must be cam1..cam4");
+    return;
+  }
+  /* Same condition, same code as handle_link_stats — a valid cam id with no
+   * link driver is offline, not malformed (issue #90). */
   if (index != 0) {
-    send_nack(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, "INVALID_ARGUMENT",
+    send_nack(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, "CAMERA_OFFLINE",
               "Only cam1 has a link driver in Milestone 1B");
     return;
   }

@@ -25,27 +25,38 @@ locks them electrically.
 
 ## Build
 
-Toolchain: ESP-IDF v5.5.1. No local install needed — the Docker image is the
-canonical build environment:
+Toolchain: ESP-IDF v5.5.1. Building needs no local install — the Docker image
+is the canonical build environment (run from the repo root):
 
 ```
-docker run --rm -v <repo>:/project -w /project/firmware/p4      espressif/idf:v5.5.1 idf.py build
-docker run --rm -v <repo>:/project -w /project/firmware/camnode espressif/idf:v5.5.1 idf.py build
+docker run --rm -v "$PWD:/project" -w /project/firmware/p4      espressif/idf:v5.5.1 idf.py build
+docker run --rm -v "$PWD:/project" -w /project/firmware/camnode espressif/idf:v5.5.1 idf.py build
 ```
 
-`camnode` pulls `espressif/esp32-camera` from the component registry on first
-build (network required once; `managed_components/` is git-ignored).
+On Linux add `--user "$(id -u):$(id -g)"` or `build/` ends up root-owned.
+Studio can drive the same build through `npm run firmware:daemon`
+(docs/FIRMWARE_BUILDER.md).
 
-Flash from a machine with the board attached:
+`camnode` pulls `espressif/esp32-camera` (pinned 2.1.7, resolved versions in
+the committed `dependencies.lock`) from the component registry on first build
+(network required once; `managed_components/` is git-ignored).
+
+Flashing DOES need a local ESP-IDF (or esptool) install — the container
+cannot reach the serial port on Windows/macOS. From a machine with the board
+attached and IDF v5.5.1 installed:
 
 ```
 idf.py -p <port> flash monitor
 ```
 
+or with a standalone esptool: `esptool.py --chip esp32p4 -p <port> write_flash "@build/flash_args"` from `firmware/p4/build`.
+
 ## Protocol tests
 
+Runs on the host with make + gcc (Windows: inside WSL), from the repo root:
+
 ```
-make -C components/kdp_core/host_tests test
+make -C firmware/components/kdp_core/host_tests test
 ```
 
 Runs the framing contract fixtures (HELLO CRC `0x149bdd86`, minimum-frame CRC

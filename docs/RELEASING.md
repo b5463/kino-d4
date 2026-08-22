@@ -83,7 +83,14 @@ A firmware release should also contain a manifest, target identifiers, size, SHA
 8. Publish a GitHub release with checksums, compatibility notes, known gaps, and recovery steps.
 9. Start a fresh Unreleased section.
 
-## After release
+## Publish firmware to the Roll catalog
+
+`npm run firmware:publish -- <package-dir>` uploads a firmware release to the API's catalog (S3 + database, with an advisory lock and rollback on failure). The input directory must contain:
+
+- `manifest.json` — a `kino.firmware-manifest` naming **all** targets for the release (`targets.main`, `targets.cameraNode`), the `release` semver, a `channel`, `protocolMin`/`protocolMax`, and `compatibleHardware` using the string devices report (`V1`)
+- every image file the manifest names, with matching SHA-256
+
+The build daemon emits one single-target manifest per build (`firmware/<app>/build/kino-<app>-manifest.json`); assemble the publishable package by copying both `.bin` files into a directory and merging the two manifests' `targets` maps into one `manifest.json`. Connection settings come from the same environment variables as the API (`DATABASE_URL`, `S3_*`).
 
 - Install the published Studio bundle in a clean browser profile.
 - Exercise the demo device and one physical camera if hardware support is claimed.

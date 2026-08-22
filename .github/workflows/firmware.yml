@@ -1,10 +1,28 @@
 name: firmware
+# The contract and the normative TS protocol are firmware inputs — a
+# renumber in packages/kdp must rebuild and re-test firmware (issue #90).
 on:
   push:
     branches: [main]
-    paths: ['firmware/**', '.github/workflows/firmware.yml']
+    paths:
+      [
+        'firmware/**',
+        'firmware-contract/**',
+        'packages/kdp/**',
+        'scripts/firmware-daemon.mjs',
+        'scripts/check-versions.mjs',
+        '.github/workflows/firmware.yml',
+      ]
   pull_request:
-    paths: ['firmware/**', '.github/workflows/firmware.yml']
+    paths:
+      [
+        'firmware/**',
+        'firmware-contract/**',
+        'packages/kdp/**',
+        'scripts/firmware-daemon.mjs',
+        'scripts/check-versions.mjs',
+        '.github/workflows/firmware.yml',
+      ]
 
 jobs:
   kdp-core-host-tests:

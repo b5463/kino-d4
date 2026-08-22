@@ -16,12 +16,21 @@ import { createHash } from 'node:crypto';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.KINO_FWD_PORT ?? 5177);
 const IDF_IMAGE = 'espressif/idf:v5.5.1';
+// Which WSL distro runs the host tests on Windows. Unset = the default
+// distro; set KINO_FWD_WSL_DISTRO to pin one (issue #90).
+const WSL_DISTRO = process.env.KINO_FWD_WSL_DISTRO;
+// GET_DEVICE_INFO.hardware — the string devices actually report
+// (firmware/p4/main/kdp_server.c). versions.json's "D4-V1" is the design
+// revision label; declaring it here made every built package BLOCKED at the
+// compatibility gate (issue #90).
+const DEVICE_HARDWARE = 'V1';
 
 const TARGETS = {
   p4: { dir: 'firmware/p4', bin: 'kino-p4.bin', chip: 'esp32p4', manifestTarget: 'main' },
@@ -43,7 +52,12 @@ function run(cmd, args, opts = {}) {
     };
     child.stdout?.on('data', onData);
     child.stderr?.on('data', onData);
-    child.on('error', (err) => resolve({ code: -1, out: `${out}\n${err.message}` }));
+    child.on('error', (err) => {
+      // A missing executable must land in the build log, not vanish — it
+      // used to read as a test failure with an empty log (issue #90).
+      opts.onLine?.(`could not start ${cmd}: ${err.message}`);
+      resolve({ code: -1, out: `${out}\n${err.message}` });
+    });
     child.on('close', (code) => resolve({ code: code ?? -1, out }));
   });
 }
@@ -86,8 +100,10 @@ async function runBuild(build, skipChecks) {
   const target = TARGETS[build.target];
   try {
     if (!skipChecks) {
+      // --firmware scopes the gate to the firmware/protocol records —
+      // unrelated backend drift must not block a firmware build (issue #90).
       const versionsOk = await step(build, 'version check', async () => {
-        const r = await run(process.execPath, ['scripts/check-versions.mjs'], {
+        const r = await run(process.execPath, ['scripts/check-versions.mjs', '--firmware'], {
           onLine: (l) => pushLog(build, l),
         });
         return r.code === 0;
@@ -100,37 +116,50 @@ async function runBuild(build, skipChecks) {
         return;
       }
 
+      let testsRun = null;
       const testsOk = await step(build, 'kdp host tests', async () => {
         const makeArgs = ['-C', 'firmware/components/kdp_core/host_tests', 'test'];
         const r =
           process.platform === 'win32'
-            ? await run('wsl', ['-d', 'Ubuntu-20.04', '--', 'bash', '-c',
+            ? await run('wsl', [...(WSL_DISTRO ? ['-d', WSL_DISTRO] : []), '--', 'bash', '-c',
                 `cd '${ROOT.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (m, d) => `/mnt/${d.toLowerCase()}`)}' && make -s -C firmware/components/kdp_core/host_tests clean test`],
                 { onLine: (l) => pushLog(build, l) })
             : await run('make', makeArgs, { onLine: (l) => pushLog(build, l) });
+        testsRun = r;
         return r.code === 0;
       });
       if (!testsOk) {
         build.status = 'failed';
-        build.error = 'HOST_TESTS_FAILED — the KDP core does not pass its contract fixtures';
+        // A toolchain that never started is not a failing protocol core.
+        build.error =
+          testsRun?.code === -1
+            ? 'TOOLING_MISSING — the host-test toolchain (wsl / make / gcc) could not start; see the log'
+            : 'HOST_TESTS_FAILED — the KDP core does not pass its contract fixtures';
         return;
       }
     } else {
       pushLog(build, 'CHECKS SKIPPED by explicit developer override');
     }
 
+    let buildRun = null;
     const built = await step(build, `idf.py build (${IDF_IMAGE})`, async () => {
       const r = await run('docker', [
         'run', '--rm',
+        // On Linux the container would otherwise leave build/ root-owned.
+        ...(process.platform === 'linux' ? ['--user', `${os.userInfo().uid}:${os.userInfo().gid}`] : []),
         '-v', `${ROOT}:/project`,
         '-w', `/project/${target.dir}`,
         IDF_IMAGE, 'idf.py', 'build',
       ], { onLine: (l) => pushLog(build, l) });
+      buildRun = r;
       return r.code === 0;
     });
     if (!built) {
       build.status = 'failed';
-      build.error = 'BUILD_FAILED — see log';
+      build.error =
+        buildRun?.code === -1
+          ? 'TOOLING_MISSING — docker could not start; see the log'
+          : 'BUILD_FAILED — see log';
       return;
     }
 
@@ -153,7 +182,7 @@ async function runBuild(build, skipChecks) {
         channel: 'dev',
         protocolMin: versions.protocol.kdp,
         protocolMax: versions.protocol.kdp,
-        compatibleHardware: [versions.hardware.revision],
+        compatibleHardware: [DEVICE_HARDWARE],
         targets: {
           [target.manifestTarget]: { file: target.bin, sha256, version: firmwareVersion },
         },
@@ -187,14 +216,31 @@ async function runBuild(build, skipChecks) {
   }
 }
 
+/**
+ * Only pages served from localhost may call the daemon. `*` made any open
+ * website able to spawn Docker builds and read repo paths through the
+ * browser (issue #90); binding 127.0.0.1 does not protect against that.
+ */
+function corsOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return null;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1' ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function json(res, code, body) {
   const text = JSON.stringify(body);
-  res.writeHead(code, {
-    'content-type': 'application/json',
-    'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
-  });
+  const headers = { 'content-type': 'application/json' };
+  if (res.kinoCorsOrigin) {
+    headers['access-control-allow-origin'] = res.kinoCorsOrigin;
+    headers['access-control-allow-headers'] = 'content-type';
+    headers['access-control-allow-methods'] = 'GET,POST,OPTIONS';
+  }
+  res.writeHead(code, headers);
   res.end(text);
 }
 
@@ -204,7 +250,17 @@ function buildView(build, sinceLog = 0) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`);
+  res.kinoCorsOrigin = corsOrigin(req);
+  // DNS-rebinding guard: a remote hostname resolving to 127.0.0.1 still
+  // carries its own Host header.
+  const host = (req.headers.host ?? '').split(':')[0];
+  if (host !== '127.0.0.1' && host !== 'localhost') {
+    return json(res, 403, { error: 'daemon only answers localhost' });
+  }
   if (req.method === 'OPTIONS') return json(res, 204, {});
+  if (req.headers.origin && !res.kinoCorsOrigin) {
+    return json(res, 403, { error: 'cross-origin requests are not allowed' });
+  }
 
   try {
     if (req.method === 'GET' && url.pathname === '/api/status') {
@@ -271,11 +327,9 @@ const server = createServer(async (req, res) => {
       const binPath = path.join(ROOT, target.dir, 'build', target.bin);
       try {
         const bytes = await readFile(binPath);
-        res.writeHead(200, {
-          'content-type': 'application/octet-stream',
-          'access-control-allow-origin': '*',
-          'content-length': bytes.length,
-        });
+        const headers = { 'content-type': 'application/octet-stream', 'content-length': bytes.length };
+        if (res.kinoCorsOrigin) headers['access-control-allow-origin'] = res.kinoCorsOrigin;
+        res.writeHead(200, headers);
         return res.end(bytes);
       } catch {
         return json(res, 404, { error: `no built artifact at ${target.dir}/build/${target.bin} — build first` });

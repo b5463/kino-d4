@@ -299,7 +299,7 @@ Deleting the currently selected shutter sound must fall back to a builtin and bu
 |---|---:|---|
 | `CAMERA_STATUS` | `0x30` | → `{ "cam": "cam1" }` ← **typed** `CameraInfo`. Timeout 2 s |
 | `CAMERA_ARM` | `0x31` | → `{}` ← **mock** `{ "ok": true }`. No Studio caller |
-| `CAMERA_TEST` | `0x32` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true, "jpegKB": 412, "durationMs": 190 }`. Timeout 5 s |
+| `CAMERA_TEST` | `0x32` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true, "jpegKB": 412, "durationMs": 190 }`. Timeout 8 s (raised for M1B: a real capture + UART transfer takes several seconds) |
 | `CAMERA_CAPTURE` | `0x33` | Action-dispatched, see below. Timeout 8 s |
 | `CAMERA_PREVIEW` | `0x34` | → `{ "cam": "cam2" }` or `{}` for the configured viewfinder ← **BINARY** one JPEG frame. Timeout 4 s |
 | `CAMERA_CALIBRATE` | `0x35` | Action-dispatched, see below |

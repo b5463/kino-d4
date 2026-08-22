@@ -22,12 +22,18 @@ function escapeRegex(value) {
 }
 
 const versions = await json('versions.json');
-const lock = await json('package-lock.json');
 const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
+
+// --firmware scopes the run to the protocol/firmware records — the build
+// daemon's gate. Unrelated backend drift (package versions, migrations,
+// hardware artifacts) must not block a firmware build (issue #90).
+const firmwareOnly = process.argv.includes('--firmware');
 
 check(versions.schema === 'kino.version-manifest', 'versions.json has the wrong schema');
 check(versions.manifestVersion === 1, 'unsupported version-manifest format');
 
+if (!firmwareOnly) {
+const lock = await json('package-lock.json');
 for (const entry of versions.software) {
   const pkg = await json(entry.package);
   const lockPath = entry.package === 'package.json' ? '' : path.dirname(entry.package).replaceAll('\\', '/');
@@ -36,6 +42,7 @@ for (const entry of versions.software) {
   check(locked?.version === entry.version, `${entry.name}: versions.json=${entry.version}, package-lock=${locked?.version ?? 'missing'}`);
   check(semver.test(entry.version), `${entry.name}: ${entry.version} is not semantic versioning`);
   check(entry.tagPrefix.endsWith('-v'), `${entry.name}: tagPrefix must end in -v`);
+}
 }
 
 const commands = await text('packages/kdp/src/protocol/commands.ts');
@@ -67,6 +74,44 @@ const firmwareProtocolMatch = firmwareProtocol.match(/KDP_PROTOCOL_VERSION\s+(\d
 check(firmwareProtocolMatch !== null, 'KDP_PROTOCOL_VERSION was not found in firmware protocol.h');
 check(Number(firmwareProtocolMatch?.[1]) === versions.protocol.kdp, `firmware protocol.h: versions.json=${versions.protocol.kdp}, source=${firmwareProtocolMatch?.[1] ?? 'missing'}`);
 
+// Opcode parity: commands.ts is normative and protocol.h claims to mirror
+// it. Nothing enforced that until issue #90 — compare every name and value
+// in both directions, for commands and events.
+function enumEntries(source, name) {
+  const body = source.match(new RegExp(`export enum ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? '';
+  return new Map([...body.matchAll(/([A-Z0-9_]+)\s*=\s*(0x[0-9a-fA-F]+)/g)].map((m) => [m[1], parseInt(m[2], 16)]));
+}
+function defineEntries(source, prefix) {
+  return new Map(
+    [...source.matchAll(new RegExp(`${prefix}([A-Z0-9_]+)\\s*=\\s*(0x[0-9a-fA-F]+)`, 'g'))].map((m) => [m[1], parseInt(m[2], 16)]),
+  );
+}
+for (const [enumName, cPrefix] of [['Cmd', 'KDP_CMD_'], ['Evt', 'KDP_EVT_']]) {
+  const ts = enumEntries(commands, enumName);
+  const c = defineEntries(firmwareProtocol, cPrefix);
+  check(ts.size > 0, `no ${enumName} entries parsed from commands.ts`);
+  check(c.size > 0, `no ${cPrefix}* entries parsed from protocol.h`);
+  for (const [name, value] of ts) {
+    if (!c.has(name)) errors.push(`protocol.h is missing ${cPrefix}${name} (commands.ts ${enumName}.${name} = 0x${value.toString(16)})`);
+    else if (c.get(name) !== value) errors.push(`${cPrefix}${name} = 0x${c.get(name).toString(16)} but commands.ts says 0x${value.toString(16)}`);
+  }
+  for (const [name, value] of c) {
+    if (!ts.has(name)) errors.push(`protocol.h has ${cPrefix}${name} = 0x${value.toString(16)} with no commands.ts counterpart`);
+  }
+}
+
+// The Twin emulates "current firmware" through PROFILE_FOR_VERSION. A
+// firmware version bump without a profile mapping silently breaks that
+// emulation (issue #90).
+const profiles = await text('packages/test-fixtures/src/firmwareProfiles.ts');
+const profileMapBody = profiles.match(/PROFILE_FOR_VERSION[\s\S]*?=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+const mappedVersions = [...profileMapBody.matchAll(/'([^']+)':/g)].map((m) => m[1]);
+check(
+  mappedVersions.includes(versions.firmware.version),
+  `PROFILE_FOR_VERSION has no entry for firmware ${versions.firmware.version} (has: ${mappedVersions.join(', ') || 'none'})`,
+);
+
+if (!firmwareOnly) {
 const journal = await json(versions.database.journal);
 const latestMigration = journal.entries.at(-1)?.tag;
 check(latestMigration === versions.database.latestMigration, `database: versions.json=${versions.database.latestMigration}, journal=${latestMigration ?? 'missing'}`);
@@ -91,6 +136,7 @@ for (const [name, artifact] of Object.entries(hardware.artifacts)) {
     errors.push(`hardware artifact ${name} is missing: ${artifact.path}`);
   }
   check(Number.isInteger(artifact.revision) && artifact.revision >= 0, `hardware artifact ${name} has invalid revision ${artifact.revision}`);
+}
 }
 
 if (errors.length) {
