@@ -21,6 +21,7 @@ import {
 } from '../src/jobs/contactSheet';
 import { extractMetadata } from '../src/jobs/metadata';
 import { MissingCaptureError } from '../src/jobs/capture';
+import { aiEnhance, ENHANCED_ROLES } from '../src/jobs/aiEnhance';
 import {
   GALLERY_STILL_WIDTH,
   THUMBNAIL_QUALITY,
@@ -1020,5 +1021,81 @@ describe('a job that exhausts its attempts stops blocking its own re-enqueue', (
     // The sibling's enqueue block is exactly where it was: releasing one job's
     // lock must not release another's.
     expect(statusesOf(await eventsFor(captureId), sibling)).toEqual(['queued']);
+  });
+});
+
+describe('ai-enhance (audit #62)', () => {
+  const saved = { mode: process.env.AI_MODE, provider: process.env.AI_PROVIDER };
+
+  afterEach(() => {
+    if (saved.mode === undefined) delete process.env.AI_MODE;
+    else process.env.AI_MODE = saved.mode;
+    if (saved.provider === undefined) delete process.env.AI_PROVIDER;
+    else process.env.AI_PROVIDER = saved.provider;
+  });
+
+  it('writes nothing at all with the default OFF gate', async () => {
+    delete process.env.AI_MODE;
+    delete process.env.AI_PROVIDER;
+    const captureId = await newCapture();
+
+    const result = await aiEnhance({ captureId, jobKey: `${captureId}:ai-enhance` }, runtime.ctx);
+
+    expect(result.skipped).toBe('AI_ENHANCE_DISABLED');
+    expect(await publishedRoles(captureId)).toEqual([]);
+    const rows = await assetRows(captureId);
+    expect(rows.every((row) => !ENHANCED_ROLES.includes(row.role as (typeof ENHANCED_ROLES)[number]))).toBe(true);
+  });
+
+  it('SUBTLE on the local provider publishes both roles with full provenance', async () => {
+    process.env.AI_MODE = 'subtle';
+    process.env.AI_PROVIDER = 'local';
+    const captureId = await newCapture();
+
+    const result = await aiEnhance({ captureId, jobKey: `${captureId}:ai-enhance` }, runtime.ctx);
+    expect(result.skipped).toBe('');
+
+    const still = (await assetsWithRole(captureId, 'enhanced-still'))[0];
+    const wiggle = (await assetsWithRole(captureId, 'enhanced-wiggle'))[0];
+    expect(still).toBeDefined();
+    expect(wiggle).toBeDefined();
+    expect(still?.mime).toBe('image/webp');
+    expect(wiggle?.mime).toBe('image/webp');
+
+    // The bytes are real images of the declared size, read back out of storage.
+    const stillMeta = await sharp(await objectBytes(still!.objectKey)).metadata();
+    expect(stillMeta.format).toBe('webp');
+    const wiggleMeta = await sharp(await objectBytes(wiggle!.objectKey)).metadata();
+    expect(wiggleMeta.format).toBe('webp');
+    expect(wiggleMeta.pages).toBeGreaterThan(1);
+
+    // Provenance: which provider, which operations, at which strength.
+    const [producer] = await runtime.ctx.db
+      .select({ producer: assets.producer })
+      .from(assets)
+      .where(and(eq(assets.captureId, captureId), eq(assets.role, 'enhanced-still')));
+    const recorded = producer?.producer as Record<string, unknown> | null;
+    expect(recorded?.job).toBe('ai-enhance');
+    expect(recorded?.mode).toBe('subtle');
+    expect(recorded?.provider).toMatchObject({ kind: 'local', name: 'kino-local-sharp' });
+    expect(recorded?.sourceRole).toBe('original-frame');
+    expect(Array.isArray(recorded?.operations)).toBe(true);
+
+    // The originals and the KINO renders are untouched by the enhancement.
+    const originals = await assetsWithRole(captureId, 'original-frame');
+    expect(originals).toHaveLength(FRAME_COUNT);
+  });
+
+  it('a forbidden CUSTOM operation is refused unrecoverably, and writes nothing', async () => {
+    process.env.AI_MODE = 'custom';
+    process.env.AI_PROVIDER = 'local';
+    process.env.AI_OPERATIONS = 'mild-denoise,face-reconstruction';
+    const captureId = await newCapture();
+
+    await expect(aiEnhance({ captureId, jobKey: `${captureId}:ai-enhance` }, runtime.ctx)).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    );
+    expect(await publishedRoles(captureId)).toEqual([]);
+    delete process.env.AI_OPERATIONS;
   });
 });

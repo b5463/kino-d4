@@ -14,10 +14,15 @@ KINO's aesthetic is the cheap compact camera: flash, grain, imperfect color, rea
 
 ## Current state (audited)
 
-- `ai-enhance` worker job is a deliberate stub: it records the contract in code — enhanced roles (`enhanced-still`, `enhanced-wiggle`), wiggle-safe operation list, forbidden-operation list, "enhance the set or not at all", originals as input — and returns `AI_ENHANCE_NOT_CONFIGURED` while producing nothing.
-- **Missing:** OFF/SUBTLE/CUSTOM has no representation; there is no provider abstraction, no model/version config, no consent gate for external egress, and the stub records no provenance. The enhanced roles are already registered and download-gated despite being unproducible.
+- `ai-enhance` implements the contract it records: enhanced roles (`enhanced-still`, `enhanced-wiggle`), the wiggle-safe operation list, the forbidden-operation list, "enhance the set or not at all", originals as input.
+- OFF / SUBTLE / CUSTOM are real. `resolveAiDecision` is the single gate: OFF wins over any configuration, an unconfigured provider cannot run, and an external provider without `AI_ALLOW_EXTERNAL=true` is refused before any code could reach the network. OFF is the default, and nothing enqueues the job on its own.
+- The first backend is `kino-local-sharp` (`apps/worker/src/ai/localSharp.ts`): in-process, no model, no network, deterministic — the grain field is seeded from the capture id and one field is shared by every frame, which is what keeps four viewpoints reading as one instant. SUBTLE is a frozen preset (mild denoise, restrained deblur, grain restored, strength 0.25, no upscale); CUSTOM reads `AI_OPERATIONS`/`AI_STRENGTH` and **rejects** anything off the wiggle-safe list rather than silently filtering it.
+- Provenance rides `assets.producer`: mode, provider kind/name/version, model, the operations actually applied with their strength, source role and frame count — beside the `produced_at` every derivative already carries.
+- **Missing:** remote provider clients (`self-hosted`/`external` pass the gate and then find no implementation — that is where a client attaches), and a per-roll config surface; the gate is deployment-wide environment configuration today.
 - The deterministic KINO look (device recipes: tone, grain, vignette, LUT) is the non-AI character layer and must remain the default aesthetic; AI never substitutes for it.
 
 ## Order of work
 
-Provider-independent job interface (local/self-hosted/external behind one contract) → consent/config gating for anything external → provenance recording (`producer` on assets) → SUBTLE preset built from the permitted list → CUSTOM. Nothing ships before the consent gate and provenance exist — those two are the P1s; the enhancement itself is P2.
+Provider-independent job interface (local/self-hosted/external behind one contract) → consent/config gating for anything external → provenance recording (`producer` on assets) → SUBTLE preset built from the permitted list → CUSTOM. All five are done, and the P1s (gate, provenance) landed before any enhancement ran, as required.
+
+Remaining, in order: a per-roll mode surface (`rolls.ai_mode` plus a host control) that can only narrow the deployment's environment gate, never widen it; then a remote provider client behind the same `EnhanceProvider` interface — which must not change a single call site.

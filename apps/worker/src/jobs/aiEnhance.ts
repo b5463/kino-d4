@@ -1,6 +1,19 @@
-import { requireCaptureId } from './capture';
+import { UnrecoverableError } from 'bullmq';
+import sharp from 'sharp';
+import { wiggleSequence } from '@kino/media';
+import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId, stillSource } from './capture';
+import { publishDerived } from './derive';
+import { WIGGLE_WEBP_QUALITY, WIGGLE_WIDTH, evenPixels, wiggleFpsFor } from './wiggle';
+import { localSharpProvider } from '../ai/localSharp';
+import { AiPlanError, resolvePlan } from '../ai/presets';
 import { loadAiConfig, resolveAiDecision } from '../ai/provider';
+import type { AiConfig } from '../ai/provider';
 import type { JobCtx, JobHandler, JobPayload } from './types';
+
+import { ENHANCED_ROLES } from '../ai/operations';
+import { WIGGLE_DIRECTION_DEFAULT, WIGGLE_LOOP_DEFAULT } from './wiggle';
+
+export { ENHANCED_ROLES, FORBIDDEN_OPERATIONS, WIGGLE_SAFE_OPERATIONS } from '../ai/operations';
 
 /**
  * `ai-enhance` — the interface, and nothing behind it yet (03 §20).
@@ -66,65 +79,144 @@ import type { JobCtx, JobHandler, JobPayload } from './types';
 /** The marker a skipped enhancement reports when no backend is configured. */
 export const AI_ENHANCE_SKIP = 'AI_ENHANCE_NOT_CONFIGURED';
 
-/**
- * The two roles an enhancement may write, and the only two.
- *
- * Not from `@kino/schemas`' `ASSET_ROLES` yet — the platform has no enhanced
- * roles registered there, and adding them would put two roles into the document
- * the PWA fetches by while nothing can ever produce them. They arrive in the
- * schema package with the implementation, and this constant is what the
- * implementation has to match.
- */
-export const ENHANCED_ROLES = ['enhanced-still', 'enhanced-wiggle'] as const;
-
-/**
- * The operations an implementation may use, from 03 §20's "safer operations"
- * list. Anything not on this list needs the spec changed first.
- *
- * `preserve-grain` is on it for a reason that looks cosmetic and is not: grain is
- * high-frequency detail that a denoiser removes and an upscaler then re-invents
- * differently in every frame. Reapplying a *single* grain field across the whole
- * capture is what keeps the four viewpoints reading as one instant.
- */
-export const WIGGLE_SAFE_OPERATIONS = [
-  'mild-denoise',
-  'jpeg-cleanup',
-  'restrained-deblur',
-  'upscale-1.5x-to-2x',
-  'preserve-grain',
-] as const;
-
-/** Operations an enhancement must never perform, whatever a backend offers. */
-export const FORBIDDEN_OPERATIONS = [
-  'face-reconstruction',
-  'beauty-processing',
-  'generative-inpainting',
-  'frame-interpolation',
-] as const;
-
 export interface AiEnhanceSkipped {
   skipped: string;
+  /** Roles written when the enhancement ran; absent on a skip. */
+  roles?: readonly string[];
 }
 
 /**
- * Runs the enhancement, which today means resolving the gate (audit #62) and
- * declining with the gate's own reason: DISABLED when AI_MODE is off (the
- * default — nothing generative applies silently), NOT_CONFIGURED when no
- * provider/endpoint/model is set, EXTERNAL_NOT_CONSENTED when an external
- * provider lacks AI_ALLOW_EXTERNAL=true. No path reaches for the network —
- * the consent gate exists before any backend does, by design.
- *
- * The capture id is still required, and the payload still validated: a job that
- * would be malformed once a backend exists is malformed now, and finding that out
- * on the day the backend lands is finding it out from production.
+ * The provider behind a resolved config. `local` is implemented in-process
+ * (sharp, deterministic, no network); remote kinds still have no client —
+ * the gate lets them through, and this is where that client will attach.
  */
-export async function aiEnhance(payload: JobPayload, _ctx: JobCtx): Promise<AiEnhanceSkipped> {
-  requireCaptureId(payload);
-  const decision = resolveAiDecision(loadAiConfig());
+function providerFor(config: AiConfig, plan: ReturnType<typeof resolvePlan>) {
+  if (config.provider === 'local') return localSharpProvider(plan);
+  return null;
+}
+
+/**
+ * Runs the enhancement (audit #62).
+ *
+ * The gate decides first, and its reason is the answer: DISABLED when
+ * AI_MODE is off (the default — nothing generative applies silently),
+ * NOT_CONFIGURED when no provider is set, EXTERNAL_NOT_CONSENTED when an
+ * external provider lacks AI_ALLOW_EXTERNAL=true. Only past that does any
+ * pixel move, and with the local provider none of them leave this process.
+ *
+ * Set or nothing: both roles are published, or neither is. A capture that
+ * offered an enhanced still and no enhanced wiggle would be a wigglegram
+ * whose frames disagree about which pipeline made them.
+ */
+export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnhanceSkipped> {
+  const captureId = requireCaptureId(payload);
+  const config = loadAiConfig();
+  const decision = resolveAiDecision(config);
   if (!decision.run) return { skipped: decision.reason };
-  // A configured, consented provider still has no implementation — the
-  // interface (EnhanceProvider) is the contract the first backend must fill.
-  return await Promise.resolve({ skipped: AI_ENHANCE_SKIP });
+
+  let plan;
+  try {
+    plan = resolvePlan(decision.config);
+  } catch (error) {
+    // A refused operation list is a deployment mistake, not a transient
+    // fault: retrying it five times changes nothing.
+    if (error instanceof AiPlanError) throw new UnrecoverableError(error.message);
+    throw error;
+  }
+
+  const provider = providerFor(decision.config, plan);
+  if (!provider) return { skipped: AI_ENHANCE_SKIP };
+
+  const capture = await loadCapture(ctx.db, captureId);
+  const assets = await loadAssets(ctx.db, capture.id);
+  const stored = originalFrames(assets);
+  if (stored.length === 0) throw new Error(`capture ${capture.id} has no stored original frames yet`);
+
+  // Originals in, always — never a thumbnail, a still, or another
+  // enhancement (03 §20).
+  const sources: Buffer[] = [];
+  for (const frame of stored) sources.push(await readObject(ctx, frame.objectKey));
+
+  const result = await provider.enhance({
+    captureId: capture.id,
+    frames: sources,
+    operations: plan.operations,
+    strength: plan.strength,
+  });
+  if (result.frames.length !== sources.length) {
+    throw new Error(`provider ${provider.name} returned ${result.frames.length} of ${sources.length} frames`);
+  }
+
+  const producer = {
+    job: 'ai-enhance',
+    mode: decision.config.mode,
+    provider: { kind: provider.kind, name: provider.name, version: provider.version },
+    model: decision.config.model ?? provider.name,
+    operations: result.applied,
+    strength: plan.strength,
+    sourceRole: 'original-frame',
+    sourceFrames: stored.length,
+  };
+
+  // The still: the same reference frame the KINO still uses, so the two are
+  // the same photograph through two pipelines.
+  const still = stillSource(capture, assets);
+  const referenceIndex = Math.max(0, stored.findIndex((frame) => frame.objectKey === still.key));
+  const enhancedStill = await sharp(result.frames[referenceIndex] ?? result.frames[0])
+    .webp({ quality: WIGGLE_WEBP_QUALITY })
+    .toBuffer({ resolveWithObject: true });
+
+  await publishDerived(ctx, capture, {
+    name: 'enhanced-still.webp',
+    role: 'enhanced-still',
+    mime: 'image/webp',
+    body: enhancedStill.data,
+    width: enhancedStill.info.width,
+    height: enhancedStill.info.height,
+    producer,
+  });
+
+  // The wiggle: the enhanced frames through the same geometry and encoder
+  // the KINO wiggle uses, so the only difference between the two files is
+  // the enhancement itself.
+  if (result.frames.length >= 2) {
+    const first = await sharp(result.frames[0]).metadata();
+    const height = evenPixels(
+      Math.round((WIGGLE_WIDTH * (first.height ?? WIGGLE_WIDTH)) / (first.width ?? WIGGLE_WIDTH)),
+    );
+    const pages: Buffer[] = [];
+    for (const frame of result.frames) {
+      pages.push(
+        await sharp(frame)
+          .resize({ width: WIGGLE_WIDTH, height, fit: 'cover' })
+          .removeAlpha()
+          .raw()
+          .toBuffer(),
+      );
+    }
+    const order = wiggleSequence(pages.length, WIGGLE_LOOP_DEFAULT, WIGGLE_DIRECTION_DEFAULT);
+    const fps = wiggleFpsFor(capture);
+    const delayMs = Math.round(1000 / fps);
+    const stacked = Buffer.concat(order.map((index) => pages[index]!));
+
+    const animated = await sharp(stacked, {
+      raw: { width: WIGGLE_WIDTH, height: height * order.length, channels: 3, pageHeight: height },
+    })
+      .webp({ quality: WIGGLE_WEBP_QUALITY, loop: 0, delay: order.map(() => delayMs) })
+      .toBuffer();
+
+    await publishDerived(ctx, capture, {
+      name: 'enhanced-wiggle.webp',
+      role: 'enhanced-wiggle',
+      mime: 'image/webp',
+      body: animated,
+      width: WIGGLE_WIDTH,
+      height,
+      producer: { ...producer, encoder: 'sharp/webp-anim', quality: WIGGLE_WEBP_QUALITY, fps, frames: order.length },
+    });
+  }
+
+  return { skipped: '', roles: ENHANCED_ROLES };
 }
 
 /**
