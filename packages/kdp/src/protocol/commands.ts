@@ -96,6 +96,14 @@ export enum Cmd {
   FW_END = 0x63,
   FW_ABORT = 0x64,
   FW_STATUS = 0x65,
+  /**
+   * Reserved, not implemented: return to the previous OTA slot. The contract
+   * — slot state machine, NACK codes, and why V1 ships without it — is in
+   * docs/RELEASE_TRUST.md. The number is held here so it cannot be reused and
+   * so no UI is built against an invented shape: M1B firmware has a single
+   * application partition, so there is no previous slot to return to.
+   */
+  FW_ROLLBACK = 0x66,
 
   // Media (gallery access through the P4 file server)
   MEDIA_LIST = 0x70,

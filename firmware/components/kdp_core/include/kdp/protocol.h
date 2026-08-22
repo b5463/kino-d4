@@ -76,6 +76,10 @@ typedef enum {
   KDP_CMD_FW_END = 0x63,
   KDP_CMD_FW_ABORT = 0x64,
   KDP_CMD_FW_STATUS = 0x65,
+  // Reserved, not implemented — see docs/RELEASE_TRUST.md. One application
+  // partition means no previous slot; the number is held so the next command
+  // that needs one cannot silently take it.
+  KDP_CMD_FW_ROLLBACK = 0x66,
 
   // Media
   KDP_CMD_MEDIA_LIST = 0x70,

@@ -61,6 +61,25 @@ For every hardware change, confirm there is a numbered ECN, the design-package v
 
 ## Release artifacts
 
+`npm run release` builds the bundle from a clean checkout and is the only supported way to produce one:
+
+```bash
+npm run release                 # Studio bundle; firmware images included when already built
+npm run release -- --firmware   # refuse to finish unless both firmware images are present
+npm run release -- --out DIR    # default dist/release
+```
+
+It runs `version:check`, `license:check`, `lint` and `build` first — a release is never cut from a tree that fails its own gates — then writes `dist/release/`:
+
+- `studio/` — the production Studio bundle;
+- `firmware/kino-p4.bin`, `firmware/kino-camnode.bin` — when this tree has built them (`docker run … idf.py build`, see `firmware/README.md`);
+- `release.json` — a `kino.release` manifest: Studio version, an embedded `kino.firmware-manifest` with per-target SHA-256 and `compatibleHardware` (the string devices report, `V1`), protocol versions, hardware revision, the source commit, and the tag names from [`VERSIONING.md`](VERSIONING.md);
+- `SHA256SUMS` — every file in the bundle, manifest included. Verify with `sha256sum -c SHA256SUMS`.
+
+The manifest records `source.dirty`. A bundle built from a dirty tree is emitted but marked, because it cannot be rebuilt from the commit it names — never publish one.
+
+Signing is a separate, off-build-machine step; the trust contract, verification order, key rotation and the firmware rollback state machine are in [`RELEASE_TRUST.md`](RELEASE_TRUST.md). No signing pipeline exists yet, so do not call an artifact signed or trusted by hardware.
+
 A Studio release should contain:
 
 - the production output from `apps/studio/dist/`;
