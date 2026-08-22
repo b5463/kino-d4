@@ -41,18 +41,15 @@ export default defineConfig({
         background_color: '#e9edf2',
         display: 'standalone',
         start_url: '.',
-        // A typographic app tile, not a new logo. `sizes: any` is valid for the
-        // vector source and lets one approved asset cover every launcher size;
-        // its wide safe area also makes the same file suitable for maskable
-        // launchers. Task 34 may restyle the tile through shared tokens, but
-        // Task 26's manifest is installable now rather than knowingly incomplete.
+        // The D4 badge from the KINO wordmark, white on the header blue. The
+        // "kino" word was the other candidate and lost on measurement: at
+        // 5.8:1 it is an unreadable smear in a 48px launcher tile, while the
+        // badge stays legible down to about 32px. Art sits inside the middle
+        // 78%, so the same file serves `maskable` launchers that cut the tile
+        // to a circle or squircle.
         icons: [
-          {
-            src: '/icon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {

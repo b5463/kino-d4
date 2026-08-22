@@ -45,6 +45,10 @@ path = [
   "apps/studio/src/assets/**",
   "apps/twin/src/assets/**",
   "apps/roll-web/src/assets/**",
+  # The app icons are the D4 badge lifted out of the same wordmarks.
+  "apps/studio/public/icon-*.png",
+  "apps/twin/public/icon-*.png",
+  "apps/roll-web/public/icon-*.png",
   "archive/**",
 ]
 precedence = "override"
