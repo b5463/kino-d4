@@ -69,7 +69,13 @@ The Compose stack creates `kino-media` and `kino-firmware`. Development defaults
 
 ## Run the Roll stack
 
-Each dev entry (`src/dev.ts`) loads `infra/.env` if present and defaults `NODE_ENV` to `development`; no shell environment setup is needed on a clean checkout.
+One command starts everything in a single terminal — infra services, migration, then api, worker, roll-web, twin and studio with prefixed output:
+
+```bash
+npm run dev:all                # add --daemon for the firmware builder, --only api,twin to narrow
+```
+
+Ctrl+C stops the dev servers; the docker services stay up. The pieces individually (each dev entry `src/dev.ts` loads `infra/.env` if present and defaults `NODE_ENV` to `development`; no shell environment setup is needed on a clean checkout):
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d

@@ -27,7 +27,25 @@ docker compose --env-file infra/.env.staging -f infra/docker-compose.prod.yml up
 
 The `KINO_ENV=staging` value gives the stack its own Compose project and therefore its own volumes. The sample maps staging to ports 8080/8443 so it cannot take over production listeners on the same host.
 
-## Production
+## Windows server (deploy.ps1)
+
+`infra/deploy.ps1` wraps the production Compose stack for a Windows server running Docker with Compose v2. PowerShell 5.1 is enough.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 init    # env file + generated secrets
+# edit infra\.env.production: KINO_SITE_ADDRESS, PUBLIC_BASE_URL
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 check   # docker, placeholders, interpolation
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 up      # build, start, wait for healthy
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 update  # git pull --ff-only + up
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 status
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 logs -Service api
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 backup  # pg_dump to infra\backups\
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 down    # volumes preserved
+```
+
+`init` replaces every `change-me` placeholder with a generated secret, keeping the same token identical everywhere it appears (so `DATABASE_URL`/`REDIS_URL` stay consistent with the passwords). `-EnvName staging` targets `infra/.env.staging` instead. `backup` covers the database only; the MinIO volume follows `infra/scripts/backup.sh`.
+
+## Production (manual steps)
 
 1. Copy `infra/.env.prod.example` to `infra/.env.production`.
 2. Replace every placeholder with production-only credentials. Generate `COOKIE_SECRET` from at least 32 random bytes.

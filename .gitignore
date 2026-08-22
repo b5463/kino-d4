@@ -42,3 +42,6 @@ graphify-out/
 .github/copilot-instructions.md
 .github/instructions/
 .vscode/
+
+# Server-side database dumps from infra/deploy.ps1 backup
+infra/backups/
