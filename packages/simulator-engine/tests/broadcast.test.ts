@@ -116,10 +116,12 @@ describe('BroadcastTransport + TwinDeviceServer (§10 option 2)', () => {
     openTransports.push(crashed);
     await crashed.open();
 
-    // Simulate a tab/process death: the browser closes its channel without
-    // running BroadcastTransport.close(), so no polite `close` message exists.
-    const liveChannel = (crashed as unknown as { channel: BroadcastChannel | null }).channel;
-    liveChannel?.close();
+    // Simulate a tab/process death: the browser tears down the carrier
+    // without running BroadcastTransport.close(), so no polite `close`
+    // message exists. Reaches the private bus on purpose — a crash is
+    // exactly the thing the public API cannot express.
+    const liveBus = (crashed as unknown as { bus: { close(): void } | null }).bus;
+    liveBus?.close();
     await new Promise((resolve) => setTimeout(resolve, 180));
 
     const replacement = new BroadcastTransport(channel);

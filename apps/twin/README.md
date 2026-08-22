@@ -27,9 +27,19 @@ Open `http://localhost:4400/dev/twin/` and `http://localhost:4400/studio/` in se
 - [ ] Record, save, import, replay, and verify the exact scenario.
 - [ ] Enter a real measured override; confirm MEASURED, refreshed geometry, and refreshed collision findings without application-code edits.
 
+## WebSocket bridge (cross-machine Studio)
+
+BroadcastChannel reaches only same-origin tabs. To serve this Twin to a Studio in another browser, container, or machine (issue #29):
+
+```bash
+npm run twin:relay                       # dumb message bus on ws://127.0.0.1:5179
+# KINO_TWIN_WS_HOST=0.0.0.0 for LAN use — no auth, trusted networks only
+```
+
+Open the Twin with `?ws=1` (default relay on this host) or `?ws=ws://host:5179`; open Studio with `?twinWs=ws://host:5179` and its connect screen offers CONNECT KINO TWIN (BRIDGE). Transport only: the wire vocabulary, handshake, busy and close semantics are the same `TwinBusTransport` state machine the BroadcastChannel carrier uses, and `TwinDeviceServer` is unchanged.
+
 ## Deliberately deferred
 
-- WebSocket development bridge. BroadcastChannel is the supported same-origin path for Twin 0.1.
 - Tier A GLB import of the official XIAO STEP. Convert offline through FreeCAD/Blender and drop the GLB into `@kino/three-assets`; application code must not change.
 - Front-panel DXF, transform CSV, and STEP exports. Twin 0.1 exports layout JSON and engineering text/JSON reports.
 - Playwright end-to-end automation. The same-origin manual script above remains the browser/WebGL acceptance gate.

@@ -14,3 +14,5 @@ export * from './transport/Transport';
 export * from './transport/SerialTransport';
 export * from './transport/MockTransport';
 export * from './transport/BroadcastTransport';
+export * from './transport/WebSocketTransport';
+export * from './transport/twinWire';
