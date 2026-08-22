@@ -16,6 +16,7 @@ function snapshot(): TwinSnapshot {
     p4Fw: '0.9.0',
     firmwareProfile: 'd4-sim-full',
     simulatedFuture: true,
+    flashEnabled: true,
     cams: Object.fromEntries(
       Object.entries(phases).map(([cam, phaseUs], index) => [
         cam,

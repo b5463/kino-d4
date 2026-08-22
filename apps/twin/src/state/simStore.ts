@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CAM_IDS, Cmd, KinoProtocolClient, MockTransport } from '@kino/kdp';
+import { CAM_IDS, Cmd, CONFIG_SCHEMA_VERSION, KinoProtocolClient, MockTransport } from '@kino/kdp';
 import type { CamId, TargetId, Transport } from '@kino/kdp';
 import {
   SimRecorder,
@@ -228,11 +228,12 @@ class RecorderTransport implements Transport {
   onClose(cb: (reason?: string) => void): void { this.inner.onClose(cb); }
 }
 
-/** Issues the UI test shot through raw framed KDP against the Twin's own device. */
-export async function testCapture(): Promise<void> {
+/** Runs one short exchange over raw framed KDP against the Twin's own
+ * device — the same wire Studio uses, never a simulator side channel. */
+async function privateKdp(run: (client: KinoProtocolClient) => Promise<void>): Promise<void> {
   const active = getTwinRuntime();
   const state = useSimStore.getState();
-  if (state.bootStage !== 'READY') throw new Error('Twin must be SIM READY before a test capture');
+  if (state.bootStage !== 'READY') throw new Error('Twin must be SIM READY first');
   if (state.studioConnected) throw new Error('Disconnect Studio before using the private test client');
 
   const transport = new RecorderTransport(new MockTransport(active.sim.device), active.recorder);
@@ -240,11 +241,37 @@ export async function testCapture(): Promise<void> {
   await transport.open();
   try {
     await client.hello({ attempts: 1 });
-    await client.request(Cmd.CAMERA_CAPTURE, {});
+    await run(client);
   } finally {
     client.dispose();
-    await transport.close();
+    await transport.close().catch(() => undefined);
   }
+}
+
+/** Issues the UI test shot through raw framed KDP against the Twin's own device. */
+export async function testCapture(): Promise<void> {
+  await privateKdp(async (client) => {
+    await client.request(Cmd.CAMERA_CAPTURE, {});
+  });
+}
+
+/** Device REBOOT over KDP (issue #72): answers first, then restarts — the
+ * boot ladder and a new session follow, exactly as Studio would see. */
+export async function rebootDevice(): Promise<void> {
+  await privateKdp(async (client) => {
+    await client.request(Cmd.REBOOT);
+  });
+}
+
+/** Flash on/off is DEVICE configuration, so it travels as SET_CONFIG +
+ * SAVE_CONFIG like Studio's apply bar — never a simulator poke. NACKs on
+ * the current-firmware profile, which has no config surface yet. */
+export async function setFlashEnabled(on: boolean): Promise<void> {
+  await privateKdp(async (client) => {
+    await client.request(Cmd.SET_CONFIG, { schemaVersion: CONFIG_SCHEMA_VERSION, config: { wiggle: { flash: on } } });
+    await client.request(Cmd.SAVE_CONFIG);
+  });
+  refreshSnapshot();
 }
 
 export function startRecording(): void {
