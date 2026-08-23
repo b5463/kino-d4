@@ -20,6 +20,19 @@ export const MAGIC1 = 0x49; // 'I'
 export const HEADER_LEN = 14;
 export const CRC_LEN = 4;
 export const MAX_PAYLOAD = 16384; // fw chunks up to 8192 + header slack
+/** Highest sequence a request may carry. */
+export const MAX_SEQ = 0xffffffff;
+
+/**
+ * The sequence after `seq`. Wraps to 1, never to 0: sequence 0 is the events'
+ * sentinel, and a counter that overflowed naturally would start minting
+ * requests that look like events to anything reading the field literally. No
+ * real session runs long enough to wrap — the rule exists so host and
+ * firmware wrap the same way instead of each meeting overflow on its own.
+ */
+export function nextSeq(seq: number): number {
+  return seq >= MAX_SEQ ? 1 : seq + 1;
+}
 
 export interface Frame {
   version: number;

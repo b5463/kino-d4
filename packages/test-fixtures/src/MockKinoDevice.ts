@@ -29,7 +29,7 @@ import type { DeviceRecipe } from './recipes';
 import { validateDeviceRecipe } from './recipes';
 import { FACTORY_RECIPES } from './factoryRecipes';
 import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
-import type { SoundInfo } from '@kino/kdp';
+import type { SoundInfo, GetModesResponse, CameraArmResponse } from '@kino/kdp';
 import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
 import { sha256Hex } from './sha256';
 import type { ScenarioFlags, CamFault } from './scenarios';
@@ -2271,9 +2271,11 @@ export class MockKinoDevice implements MockDeviceLike {
         this.log('P4', 'config reset to defaults');
         this.respond(frame, { ok: true });
         return;
-      case Cmd.GET_MODES:
-        this.respond(frame, { modes: ['wiggle', 'quad'] });
+      case Cmd.GET_MODES: {
+        const modes: GetModesResponse = { modes: ['wiggle', 'quad'] };
+        this.respond(frame, modes);
         return;
+      }
       case Cmd.SET_MODE: {
         const { mode } = decodeJson<{ mode: 'wiggle' | 'quad' }>(frame.payload);
         this.config.mode = mode;
@@ -2582,7 +2584,8 @@ export class MockKinoDevice implements MockDeviceLike {
         const armedUntil = this.now() + ARM_WINDOW_MS;
         for (const id of CAM_IDS) this.cams[id].armedUntil = armedUntil;
         this.log('P4', `cameras armed — ${ARM_WINDOW_MS} ms window`);
-        this.respond(frame, { ok: true, armWindowMs: ARM_WINDOW_MS });
+        const armed: CameraArmResponse = { ok: true, armWindowMs: ARM_WINDOW_MS };
+        this.respond(frame, armed);
         return;
       }
       default:

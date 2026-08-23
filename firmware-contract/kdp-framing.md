@@ -96,6 +96,10 @@ Two hard rules the client's dispatch order imposes:
 ## Sequence IDs
 
 - The host allocates `SEQUENCE`, starting at `1` per connection and incrementing per request.
+- At `0xFFFFFFFF` the counter wraps to **`1`, never to `0`** — `nextSeq()` in `packet.ts` is the rule
+  and firmware mirrors that function. `0` is the events' sentinel below, so a counter left to
+  overflow on its own would start minting requests that read as events. Unreachable in any real
+  session; specified so both sides wrap the same way rather than meeting overflow separately.
 - A response **must** echo the request's `SEQUENCE` in the header. Routing is by sequence alone —
   the client does not check that the response `TYPE` matches the request's.
 - A response whose sequence matches no pending request is dropped silently. This is the normal fate

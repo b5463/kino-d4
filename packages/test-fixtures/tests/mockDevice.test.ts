@@ -154,4 +154,24 @@ describe('mock device over the real protocol stack', () => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(reboots).toEqual(['host-reboot']);
   }, 10000);
+  it('answers stateless reads with no HELLO first', () => {
+    // Firmware issue #5 decided HELLO is not a precondition within KDP v1:
+    // the client does not enforce ordering, the P4 dispatcher does not check,
+    // and the reference device answers anything. A device that got stricter
+    // would break a host that is entitled to skip the handshake, so this
+    // pins the laxer behavior all three already implement. HELLO stays the
+    // only way to get a sessionId; commands that need one still say
+    // NO_SESSION.
+    const mock = new MockKinoDevice({ seed: 5, ambientCaptures: false });
+    const transport = new MockTransport(mock);
+    const client = new KinoProtocolClient(transport);
+    return transport.open()
+      .then(() => client.request<DeviceInfo>(Cmd.GET_DEVICE_INFO))
+      .then((info) => {
+        expect(info.product).toBeTruthy();
+        expect(info.protocol).toBe(1);
+        client.dispose();
+        return transport.close();
+      });
+  });
 });

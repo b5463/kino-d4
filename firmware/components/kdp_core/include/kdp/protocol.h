@@ -4,6 +4,8 @@
 #ifndef KDP_PROTOCOL_H
 #define KDP_PROTOCOL_H
 
+#include <stdint.h>
+
 #define KDP_PROTOCOL_VERSION 1
 
 // Commands (host -> device request TYPE, echoed on the response).
@@ -113,8 +115,8 @@ typedef enum {
 // TS enums; the KDP_CMD_/KDP_EVT_ prefixes are the required namespacing.
 typedef enum {
   KDP_EVT_LOG = 0x80,
-  KDP_EVT_STATUS = 0x81,       // id allocated, payload unspecified — do not emit
-  KDP_EVT_FW_PROGRESS = 0x82,  // id allocated, payload unspecified — do not emit
+  KDP_EVT_STATUS = 0x81,       // reserved: no shape, no producer — must not be emitted
+  KDP_EVT_FW_PROGRESS = 0x82,  // reserved until the update path exists — must not be emitted
   KDP_EVT_CALIBRATION = 0x83,
   KDP_EVT_SELF_TEST = 0x84,
   KDP_EVT_CAPTURE = 0x85,
@@ -123,6 +125,19 @@ typedef enum {
   KDP_EVT_JOB_COMPLETE = 0x88,
   KDP_EVT_JOB_FAILED = 0x89,
 } kdp_evt_t;
+
+// Highest sequence a request may carry.
+#define KDP_MAX_SEQ 0xffffffffu
+
+/**
+ * The sequence after `seq`. Wraps to 1, never to 0: sequence 0 is the events'
+ * sentinel, so a counter left to overflow would start minting requests that
+ * read as events. Mirrors nextSeq() in packages/kdp/src/protocol/packet.ts.
+ * Unreachable in any real session — it exists so both ends wrap alike.
+ */
+static inline uint32_t kdp_next_seq(uint32_t seq) {
+  return seq >= KDP_MAX_SEQ ? 1u : seq + 1u;
+}
 
 // Frame flag bitmask.
 enum {

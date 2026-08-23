@@ -273,7 +273,7 @@ field is `look`** — writing `recipe` there parses clean and silently loses the
 
 | Cmd | Value | Payload |
 |---|---:|---|
-| `GET_MODES` | `0x20` | → `{}` ← **mock** `{ "modes": ["wiggle","quad"] }`. No Studio caller |
+| `GET_MODES` | `0x20` | → `{}` ← `GetModesResponse` `{ "modes": ["wiggle","quad"] }`. The modes this device accepts in `SET_MODE`; a one-mode device answers a one-element list rather than NACKing. Not in the 1B set — 0.1.x NACKs `UNSUPPORTED_COMMAND`. No Studio caller yet |
 | `SET_MODE` | `0x21` | → `{ "mode": "wiggle" \| "quad" }` ← **mock** `{ "ok": true }` |
 | `GET_RECIPES` | `0x22` | → `{}` ← **typed** `RecipesResponse` = `{ "factory": Recipe[], "custom": Recipe[] }` |
 | `SET_RECIPE` | `0x23` | → `{ "id": "party-neg" }` ← **mock** `{ "ok": true }` |
@@ -314,7 +314,7 @@ Deleting the currently selected shutter sound must fall back to a builtin and bu
 | Cmd | Value | Payload |
 |---|---:|---|
 | `CAMERA_STATUS` | `0x30` | → `{ "cam": "cam1" }` ← **typed** `CameraInfo`. Timeout 2 s |
-| `CAMERA_ARM` | `0x31` | → `{}` ← **mock** `{ "ok": true, "armWindowMs": 3000 }`. Arms all four (the trigger edge is shared); every camera reports `state: "armed"` until the capture or the window expires. No Studio caller |
+| `CAMERA_ARM` | `0x31` | → `{}` ← `CameraArmResponse` `{ "ok": true, "armWindowMs": 3000 }`. `armWindowMs` is required: with no CAMERA_DISARM it is the only thing telling a host when the sensors drop back to `ready`. Arms all four (the trigger edge is shared); every camera reports `state: "armed"` until the capture or the window expires. No Studio caller |
 | `CAMERA_TEST` | `0x32` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true, "jpegKB": 412, "durationMs": 190 }`. Timeout 8 s (raised for M1B: a real capture + UART transfer takes several seconds) |
 | `CAMERA_CAPTURE` | `0x33` | Action-dispatched, see below. Timeout 8 s |
 | `CAMERA_PREVIEW` | `0x34` | → `{ "cam": "cam2" }` or `{}` for the configured viewfinder ← **BINARY** one JPEG frame. Timeout 4 s |
@@ -532,7 +532,8 @@ Reference-device rules: maintenance mode is required first (`MAINT_REQUIRED`); o
 `FW_END` before all bytes arrive gets `SHORT_IMAGE`. A P4 self-update reboots the device, which
 changes the session ID and drops the link — that is expected, not a failure.
 
-`FW_PROGRESS` (`0x82`) exists as an event id but has no producer. Progress today is inferred host-side
+`FW_PROGRESS` (`0x82`) exists as an event id but is reserved and unemitted in 0.x (README §Decided).
+It has no producer. Progress today is inferred host-side
 from `FW_CHUNK` acknowledgements. See [README, unspecified item 1](README.md#unspecified--firmware-team-decision-required).
 
 ### Media — 0x70–0x75
@@ -653,8 +654,8 @@ Device→host, unsolicited, `FLAGS = EVENT (0x02)`, JSON payload. **No meaningfu
 | Evt | Value | Payload | Status |
 |---|---:|---|---|
 | `LOG` | `0x80` | **typed** `LogEntry` | Live |
-| `STATUS` | `0x81` | — | **Unspecified.** No producer, no consumer |
-| `FW_PROGRESS` | `0x82` | — | **Unspecified.** No producer, no consumer |
+| `STATUS` | `0x81` | — | **Reserved.** No producer, no consumer; a 0.x device must not emit it |
+| `FW_PROGRESS` | `0x82` | — | **Reserved.** A 0.x device must not emit it. When the update path lands it takes `FwStatusResponse`'s shape |
 | `CALIBRATION` | `0x83` | **typed** `CalibrationEvent` | Live, from `CAMERA_CALIBRATE {action:"start"}` |
 | `SELF_TEST` | `0x84` | **typed** `SelfTestEvent` | Live, from `SELF_TEST` |
 | `CAPTURE` | `0x85` | **typed** `CaptureEvent` = `{ "id": "WG_0042", "kind": "wiggle" }` | Live, on SD commit |

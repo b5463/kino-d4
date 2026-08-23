@@ -75,7 +75,8 @@ static esp_err_t request(uint8_t cmd, const char *json, uint8_t *resp, size_t re
   xSemaphoreTake(s_lock, portMAX_DELAY);
 
   memset(&s_pending, 0, sizeof s_pending);
-  s_pending.seq = ++s_seq;
+  s_seq = kdp_next_seq(s_seq);
+  s_pending.seq = s_seq;
   s_pending.dst = resp;
   s_pending.dst_cap = resp_cap;
   s_stats.last_sequence = s_seq;
