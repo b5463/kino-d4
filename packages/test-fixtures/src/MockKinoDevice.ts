@@ -195,6 +195,37 @@ const LARGE_GALLERY_SIZE = 2048;
 const UPLOAD_TICK_MS = 1200;
 
 /**
+ * A virtual sensor gets this long to hand back a frame before the device
+ * gives up on it and answers from synthesis instead.
+ *
+ * The frame source is a callback into a renderer the device does not own —
+ * in KINO Twin it is a WebGL readback on the browser's main thread. A
+ * rejection was already handled, but a render that simply never settles was
+ * not: CAMERA_PREVIEW awaited it before responding, so one stuck render left
+ * the request unanswered, the client's slot occupied, and every command
+ * behind it timing out. Adding subjects to the Twin stage makes renders slow
+ * enough to overlap, which is when that showed up.
+ */
+const FRAME_SOURCE_TIMEOUT_MS = 1500;
+
+/**
+ * Resolves to null when `produce` throws, rejects, or takes longer than
+ * `ms`, so awaiting a frame source can never hang a request. It takes a
+ * thunk rather than a promise because a source is free to throw
+ * synchronously, and that has to fall back to synthesis too.
+ */
+function within<T>(produce: () => Promise<T> | T, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  const attempt = (async () => produce())().catch(() => null);
+  return Promise.race([attempt, guard]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
+/**
  * A command's normal turnaround, and what `delayedResponses` stretches it to.
  * The slow figure sits under the client's 3 s default so commands crawl rather
  * than fail — the point of 04 §19's "delayed responses" is a device that is
@@ -785,11 +816,8 @@ export class MockKinoDevice implements MockDeviceLike {
    */
   async renderSourceFrame(req: MockFrameRequest): Promise<Uint8Array | null> {
     if (!this.frameSource) return null;
-    try {
-      return await this.frameSource(req);
-    } catch {
-      return null;
-    }
+    const source = this.frameSource;
+    return within(() => source(req), FRAME_SOURCE_TIMEOUT_MS);
   }
 
   /**
@@ -1232,16 +1260,20 @@ export class MockKinoDevice implements MockDeviceLike {
         const phaseMs = this.now() - this.bootedAt;
         void (async () => {
           try {
+            // Bounded for the same reason as the preview: one camera whose
+            // render never returns must not stop the capture committing.
             const frames = await Promise.all(
               CAM_IDS.map((camId) =>
-                Promise.resolve(
-                  source({ cam: camId, kind: 'capture', width: 800, height: 600, phaseMs, flash: flashFires }),
-                ).catch(() => null),
+                within(
+                  () => source({ cam: camId, kind: 'capture', width: 800, height: 600, phaseMs, flash: flashFires }),
+                  FRAME_SOURCE_TIMEOUT_MS,
+                ),
               ),
             );
-            const thumb = await Promise.resolve(
-              source({ cam: 'cam2', kind: 'thumb', width: 200, height: 150, phaseMs, flash: flashFires }),
-            ).catch(() => null);
+            const thumb = await within(
+              () => source({ cam: 'cam2', kind: 'thumb', width: 200, height: 150, phaseMs, flash: flashFires }),
+              FRAME_SOURCE_TIMEOUT_MS,
+            );
             finalize({ frames, thumb });
           } catch {
             finalize();
@@ -2460,13 +2492,13 @@ export class MockKinoDevice implements MockDeviceLike {
         void (async () => {
           let bytes: Uint8Array | null = null;
           if (source) {
-            // Virtual sensor first (issue #72); anything wrong falls back to
-            // the synthesized preview so the wire never goes silent.
-            try {
-              bytes = await source({ cam: camId, kind: 'preview', width: 320, height: 240, phaseMs });
-            } catch {
-              bytes = null;
-            }
+            // Virtual sensor first (issue #72); a rejection *or a render that
+            // never returns* falls back to the synthesized preview, so the
+            // wire never goes silent and nothing queues behind this request.
+            bytes = await within(
+              () => source({ cam: camId, kind: 'preview', width: 320, height: 240, phaseMs }),
+              FRAME_SOURCE_TIMEOUT_MS,
+            );
           }
           if (bytes === null || bytes.length === 0 || bytes.length > 16_000) {
             bytes = await renderPreviewFrame(Number(camId.slice(-1)) - 1, phaseMs);
