@@ -4,6 +4,16 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ## Unreleased
 
+### Changed
+
+- The guest Roll is rebuilt as a small camera-companion image browser instead of a photo website: near-black ground, photographs running to both screen edges one per row on a phone, clock marks grouping the stream by minute in place of a relative timestamp under every tile, a `4F` mark on a four-frame capture, and a header of four short rows — the KINO ROLL mark, the roll id, a frame count and `ROLL / PICKS / INFO`. Chrome above the first photograph drops from 355 px to about 100 px, and the LIVE lamp is gone. The photo page is back link, image, contiguous four-frame strip, camera-style metadata and one SAVE opening a plain list for original, wiggle and the three social crops — replacing two competing save boxes. Type is BIZ UDPGothic and BIZ UDGothic, Latin subsets only, 80 kB total; the Japanese subsets are 1.3 MB each and are deliberately not shipped. The host dashboard keeps its light treatment.
+
+### Fixed
+
+- Wiggle playback and the D4 frame strip no longer depend on `downloadsEnabled`. A host turning saving off used to freeze every photograph in the Roll and hide the four frames behind it; that flag now gates only what leaves the phone.
+- Guest touch targets meet 44 px, including the back link on the photo page, which was a 167×14 px hit area and the only way back. The photo page has an `h1` naming the photograph — its only heading had been `h2 "D4 frames"`.
+- Roll's shared control styling no longer out-specifies the surface it lands on. `button:not(.kino-button):not(.roll-tab):not(.action-link):not(.frame-thumb)` scored (0,4,1) and silently forced 30 px controls and a light gradient onto anything new; bare-button styling is now scoped to the host surface, with `.kino-button` still covering the design-system button everywhere.
+
 ### Removed
 
 - Studio's in-tab demo device. KINO Twin is the simulator: it runs the same reference device, over the same protocol and the same connect path, and has its own fault panel — Studio was shipping a second, weaker copy of it. Gone with it are the `OPEN DEMO DEVICE` and `DEMO` buttons, both demo menu items, and Studio's simulator-faults panel. The reference `MockKinoDevice` stays as test infrastructure and no longer ships in the product: the Studio bundle drops from 457 kB to 366 kB (144 kB to 115 kB gzipped) because the simulator is no longer reachable from app code. Two consequences were fixed rather than inherited — the device-only Roll path now recognises any simulated session, so a Twin session with no Roll server keeps the QR flow instead of silently losing it, and the connect screen says how to reach a Twin when none is answering, including the relay route for the split-port dev servers where the same-origin bridge cannot work.

@@ -8,11 +8,10 @@ import {
   type RollView,
 } from '../api/client';
 import { CaptureDetail } from './CaptureDetail';
-import { SiteFooter, SiteHeader } from '../components/SiteHeader';
+import { SiteFooter } from '../components/SiteHeader';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
-import { StatusLamp } from '@kino/design-system';
 
 export interface CaptureDetailPageProps {
   slug: string;
@@ -69,23 +68,17 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
 
   return (
     <>
-      <SiteHeader
-        right={
-          roll === null ? null : (
-            <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} />
-          )
-        }
-      />
-      <main className="site-width">
-        <p className="back-link">
-          <a href={`/r/${encodeURIComponent(slug)}`}>← {roll?.title ?? 'Roll'}</a>
-        </p>
+      <div className="k-app">
+        <a className="k-bar" href={`/r/${encodeURIComponent(slug)}`}>
+          <span>&lt; ROLL</span>
+          <b>{roll?.title ?? slug}</b>
+        </a>
         {error !== null ? <p className="roll-alert" role="alert">{error.message}</p> : null}
-        {capture === null || roll === null ? (error === null ? <p>Loading capture…</p> : null) : null}
+        {capture === null || roll === null ? (error === null ? <p className="k-note">READING…</p> : null) : null}
         {capture !== null && roll !== null ? (
           <CaptureDetail slug={slug} capture={capture} roll={roll} />
         ) : null}
-      </main>
+      </div>
       <SiteFooter />
     </>
   );

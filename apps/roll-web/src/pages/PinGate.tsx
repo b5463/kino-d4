@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError, rollApi, type RollApi } from '../api/client';
-import { Button, Panel } from '@kino/design-system';
-import kinoRoll from '../assets/kino-roll-dark.png';
+import kinoRoll from '../assets/kino-roll-light.png';
 
 export interface PinGateProps {
   slug: string;
@@ -35,30 +34,31 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
     }
   };
 
+  // The gate is a guest surface, so it wears the guest chrome rather than a
+  // light design-system panel dropped on a near-black page.
   return (
-    <main className="roll-shell roll-shell--narrow">
-      <div className="roll-brand"><img src={kinoRoll} alt="KINO Roll" /></div>
-      <Panel title="Private Roll">
-        <h1>This Roll needs a PIN</h1>
-        <form onSubmit={(event) => void submit(event)}>
-          <label htmlFor="roll-pin">PIN</label>
-          <input
-            id="roll-pin"
-            name="pin"
-            type="password"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
-            required
-            autoFocus
-          />
-          <Button variant="primary" type="submit" busy={submitting}>
-            {submitting ? 'Opening…' : 'Open Roll'}
-          </Button>
-        </form>
-        {error === '' ? null : <p className="roll-alert" role="alert">{error}</p>}
-      </Panel>
+    <main className="k-gate">
+      <img className="k-mark" src={kinoRoll} alt="KINO Roll" />
+      <p className="k-gate-note">PRIVATE ROLL</p>
+      <h1>This Roll needs a PIN</h1>
+      <form onSubmit={(event) => void submit(event)}>
+        <label htmlFor="roll-pin">PIN</label>
+        <input
+          id="roll-pin"
+          name="pin"
+          type="password"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={pin}
+          onChange={(event) => setPin(event.target.value)}
+          required
+          autoFocus
+        />
+        <button type="submit" className="k-save" disabled={submitting}>
+          {submitting ? 'OPENING…' : 'OPEN ROLL'}
+        </button>
+      </form>
+      {error === '' ? null : <p className="roll-alert" role="alert">{error}</p>}
     </main>
   );
 }

@@ -39,6 +39,22 @@ function preferredAsset(capture: CaptureDetailView): CaptureAssetDetail | undefi
   return roles.flatMap((role) => assetsByRole(capture, role))[0];
 }
 
+/** `21:40` and `2026.08.22 21:40` — the way the camera writes a time. */
+function two(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+export function clockOf(value: string): string {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '' : `${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+export function stampOf(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getFullYear())}.${two(d.getMonth() + 1)}.${two(d.getDate())} ${clockOf(value)}`;
+}
+
 function assetImage(asset: CaptureAssetDetail, api: RollApi, alt = '') {
   return (
     <img
@@ -61,6 +77,7 @@ export function CaptureDetail({
   const [capture, setCapture] = useState(initialCapture);
   const [sharing, setSharing] = useState('');
   const [reacting, setReacting] = useState(false);
+  const [saving, setSaving] = useState(false);
   // null = the default view (wigglegram when available); a number pins one D4 frame.
   const [frame, setFrame] = useState<number | null>(null);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -121,13 +138,14 @@ export function CaptureDetail({
     }
   };
 
-  /** A save control: download link when the asset exists, render request until then. */
-  const saveAction = (role: AssetRole, label: string): ReactElement => {
+  /** A save row: download link when the asset exists, render request until then. */
+  const saveAction = (role: AssetRole, label: string, hint: string): ReactElement => {
     const asset = assetsByRole(capture, role)[0];
     if (asset !== undefined) {
       return (
         <a className="action-link" href={api.assetUrl(asset.assetId, { download: true })} download>
           {label}
+          <span>{hint}</span>
         </a>
       );
     }
@@ -138,7 +156,8 @@ export function CaptureDetail({
         disabled={requestedRoles.has(role)}
         onClick={() => void requestRender(role)}
       >
-        {requestedRoles.has(role) ? 'Rendering…' : label}
+        {label}
+        <span>{requestedRoles.has(role) ? 'RENDERING…' : hint}</span>
       </button>
     );
   };
@@ -149,8 +168,10 @@ export function CaptureDetail({
   if (pinnedFrame !== undefined) {
     media = assetImage(pinnedFrame, api, `Frame ${String((frame ?? 0) + 1)}`);
   } else if (capture.mode === 'wiggle') {
+    // Playback is not a download: a host turning saves off must not freeze
+    // the photograph or hide the frames it was built from.
     media =
-      roll.downloadsEnabled && originalUrls.length >= 2 ? (
+      originalUrls.length >= 2 ? (
         <WigglePlayer
           frames={originalUrls}
           fps={capture.playback?.fps}
@@ -190,92 +211,125 @@ export function CaptureDetail({
   // "save photo" on a wiggle wants a picture their camera roll can show.
   const stillRoles = ['enhanced-still', 'kino-still', 'thumb'];
   const savablePhoto = stillRoles.flatMap((role) => assetsByRole(capture, role))[0] ?? originals[0];
-  const showFrameStrip = capture.mode === 'wiggle' && roll.downloadsEnabled && originals.length > 0;
+  const showFrameStrip = capture.mode === 'wiggle' && originals.length > 0;
+
+  // ORIGINAL is the already-rendered still, so it is a plain link rather than
+  // a render request; the rest may still need building on first ask.
+  const derived: [AssetRole, string, string][] = [
+    ...(capture.mode === 'wiggle' ? ([['wiggle-mp4', 'WIGGLE', 'MP4']] as [AssetRole, string, string][]) : []),
+    ['social-9x16', '9:16', 'STORY'],
+    ['social-4x5', '4:5', 'POST'],
+    ['social-1x1', '1:1', 'SQUARE'],
+  ];
 
   return (
     <article className="photo-page">
-      <div className="photo-main">
-        <div ref={heroRef} className="photo-frame">
-          {media}
-        </div>
+      <h1 className="k-sr">{`${roll.title} — frame from ${clockOf(capture.capturedAt)}`}</h1>
 
-        {showFrameStrip ? (
-          <section className="frame-strip-section">
-            <h2 className="section-label">D4 frames</h2>
-            <div aria-label="Original frame strip" className="frame-strip">
-              {originals.map((asset, index) => (
-                <button
-                  key={asset.assetId}
-                  type="button"
-                  className="frame-thumb"
-                  aria-pressed={frame === index}
-                  aria-label={`Frame ${String(index + 1)}`}
-                  onClick={() => setFrame(frame === index ? null : index)}
-                >
-                  <img src={api.assetUrl(asset.assetId)} alt="" className="photo-img" />
-                  <span aria-hidden="true">{index + 1}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <div className="photo-actions" aria-label="Capture actions">
-          {roll.reactionsEnabled ? (
-            <button
-              type="button"
-              className="action-link"
-              aria-pressed={capture.reacted}
-              aria-label={capture.reacted ? 'Remove heart' : 'Add heart'}
-              disabled={reacting}
-              onClick={() => void react()}
-            >
-              {capture.reacted ? '♥' : '♡'} {capture.reactionCount}
-            </button>
-          ) : null}
-          {roll.downloadsEnabled && savablePhoto !== undefined ? (
-            <a className="action-link" href={api.assetUrl(savablePhoto.assetId, { download: true })} download>
-              Save photo
-            </a>
-          ) : null}
-          {roll.downloadsEnabled && capture.mode === 'wiggle' ? saveAction('wiggle-mp4', 'Save wiggle') : null}
-          <button type="button" className="action-link" onClick={() => void share()}>
-            Share
-          </button>
-          <button
-            type="button"
-            className="action-link"
-            onClick={() => void heroRef.current?.requestFullscreen?.()}
-          >
-            Full size
-          </button>
-          {sharing === '' ? null : <span role="status" aria-live="polite" aria-atomic="true">{sharing}</span>}
-        </div>
-
-        {roll.downloadsEnabled ? (
-          <div className="photo-actions photo-formats" aria-label="Social formats">
-            <span className="format-label">Save for social</span>
-            {saveAction('social-9x16', '9:16')}
-            {saveAction('social-4x5', '4:5')}
-            {saveAction('social-1x1', '1:1')}
-          </div>
-        ) : null}
+      <div ref={heroRef} className="k-hero">
+        {media}
       </div>
 
-      {/* A guest came to look at the photograph, not at our vocabulary. The
-          processed still used to sit here beside the wiggle — the same
-          picture twice — and the information list carried a hardcoded
-          camera name plus look, resolution and frame count, which are our
-          words rather than theirs. SAVE PHOTO already hands over the still.
-          When it was taken is the one fact a guest actually uses. */}
-      <aside className="photo-side">
-        <section className="side-box">
-          <dl className="info-list">
-            <dt>Captured</dt>
-            <dd>{new Date(capture.capturedAt).toLocaleString()}</dd>
-          </dl>
-        </section>
-      </aside>
+      {showFrameStrip ? (
+        <>
+          <h2 className="k-sr">D4 frames</h2>
+          <div aria-label="Original frame strip" className="frame-strip">
+            {originals.map((asset, index) => (
+              <button
+                key={asset.assetId}
+                type="button"
+                className="frame-thumb"
+                aria-pressed={frame === index}
+                aria-label={`Frame ${String(index + 1)}`}
+                onClick={() => setFrame(frame === index ? null : index)}
+              >
+                <img src={api.assetUrl(asset.assetId)} alt="" />
+                <span aria-hidden="true">{index + 1}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      <dl className="k-exif">
+        <dt>DATE</dt>
+        <dd>{stampOf(capture.capturedAt)}</dd>
+        <dt>MODE</dt>
+        <dd>{capture.mode.toUpperCase()}</dd>
+        <dt>FRAMES</dt>
+        <dd>{capture.frameCount >= 2 ? `1-${String(capture.frameCount)} / ${String(capture.frameCount)}F` : '1'}</dd>
+        <dt>SIZE</dt>
+        <dd>{capture.resolution}</dd>
+        {capture.look === null ? null : (
+          <>
+            <dt>LOOK</dt>
+            <dd>{capture.look.toUpperCase()}</dd>
+          </>
+        )}
+      </dl>
+
+      <div className="k-acts" aria-label="Capture actions">
+        {roll.downloadsEnabled ? (
+          <button type="button" className="k-save" onClick={() => setSaving(true)}>
+            SAVE
+          </button>
+        ) : (
+          <span className="k-save" aria-disabled="true">SAVING OFF</span>
+        )}
+        {roll.reactionsEnabled ? (
+          <button
+            type="button"
+            className="k-icon"
+            aria-pressed={capture.reacted}
+            aria-label={capture.reacted ? 'Remove heart' : 'Add heart'}
+            disabled={reacting}
+            onClick={() => void react()}
+          >
+            {/* The glyph is the control; an icon beside it just drew the
+                heart twice. A count is worth keeping — it is the one social
+                fact the roll carries. */}
+            <span className="k-hearts">{capture.reacted ? '♥' : '♡'} {capture.reactionCount}</span>
+          </button>
+        ) : null}
+        <button type="button" className="k-icon" aria-label="Share" onClick={() => void share()}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v13M12 3l-4 4M12 3l4 4M5 14v5h14v-5" />
+          </svg>
+        </button>
+      </div>
+      {sharing === '' ? null : <p className="k-status" role="status" aria-live="polite" aria-atomic="true">{sharing}</p>}
+
+      {/* One save action, one plain list. The crop ratios used to sit in a
+          second box competing with "Save photo"; they are formats of the same
+          decision, so they belong behind the same control. */}
+      {saving ? (
+        <div className="k-sheet" role="dialog" aria-modal="true" aria-label="Save">
+          <button type="button" className="k-veil" aria-label="Close" onClick={() => setSaving(false)} />
+          <menu>
+            <li><p className="k-sheet-h">SAVE</p></li>
+            {savablePhoto === undefined ? null : (
+              <li>
+                <a
+                  className="action-link"
+                  href={api.assetUrl(savablePhoto.assetId, { download: true })}
+                  download
+                >
+                  ORIGINAL
+                  <span>{capture.resolution}</span>
+                </a>
+              </li>
+            )}
+            {derived.map(([role, label, hint]) => (
+              <li key={role}>{saveAction(role, label, hint)}</li>
+            ))}
+            <li>
+              <button type="button" className="action-link k-cancel" onClick={() => setSaving(false)}>
+                CANCEL
+              </button>
+            </li>
+          </menu>
+        </div>
+      ) : null}
     </article>
   );
 }

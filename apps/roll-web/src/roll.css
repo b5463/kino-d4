@@ -65,7 +65,14 @@ h1 { margin-bottom: 1px; font-size: 18px; font-weight: 700; line-height: 1.25; }
 
 /* ---- controls: small, bordered, restrained web-2.0 ---- */
 
-.kino-button, button:not(.kino-button):not(.roll-tab):not(.action-link):not(.frame-thumb) {
+/* Scoped by surface rather than by an ever-growing :not() chain. The chain
+   reached four classes and still lost to nothing — it simply out-specified
+   every guest rule that tried to style a button, forcing 30px controls and a
+   light gradient onto the dark image browser. `.kino-button` keeps covering
+   the design-system Button wherever it appears, including the guest PIN
+   gate; bare buttons are styled this way only on the host surface. */
+.kino-button,
+body[data-surface='host'] button:not(.kino-button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -78,16 +85,18 @@ h1 { margin-bottom: 1px; font-size: 18px; font-weight: 700; line-height: 1.25; }
   font-size: 12px;
   font-weight: 700;
 }
-.kino-button:hover:not(:disabled), button:hover:not(:disabled) { border-color: var(--k-blue); }
+.kino-button:hover:not(:disabled),
+body[data-surface='host'] button:hover:not(:disabled) { border-color: var(--k-blue); }
 .kino-button--primary { border-color: #123c74; background: linear-gradient(to bottom, #3b78c4, #2a5da0); color: #fff; }
 .kino-button--danger { color: var(--k-burgundy); }
 .kino-button--danger-solid { border-color: #6e1f1f; background: linear-gradient(to bottom, #b74a4a, #9c2f2f); color: #fff; }
 .kino-button--sm { min-height: 24px; padding: 1px 8px; font-size: 11px; }
-button:disabled { color: var(--k-mut); cursor: not-allowed; }
+body[data-surface='host'] button:disabled { color: var(--k-mut); cursor: not-allowed; }
 
 /* Phones get taller touch targets without changing the look. */
 @media (pointer: coarse) {
-  .kino-button, button:not(.roll-tab):not(.frame-thumb) { min-height: 36px; }
+  .kino-button,
+  body[data-surface='host'] button:not(.kino-button) { min-height: 36px; }
 }
 
 input[type='text'], input[type='password'], input[type='url'], input:not([type]) {
@@ -114,247 +123,304 @@ label { color: var(--k-mut); font-size: 12px; font-weight: 700; }
 .kino-status-lamp { font: 700 11px var(--k-sans); color: var(--k-mut); }
 .kino-status-lamp--ok .kino-status-symbol { color: var(--k-green); }
 
-/* ---- site chrome ---- */
+/* ---- guest surfaces: the KINO image browser (issue #114) ----
 
-.site-width { width: min(100%, 1000px); margin: 0 auto; padding: 0 10px; }
+   A small camera-companion browser rather than a website: near-black ground,
+   photographs to both edges, hairlines instead of cards, and every label at
+   the size a camera would print it. The host dashboard keeps the light
+   treatment above — it is an operator surface, and `data-surface` on <body>
+   is what separates the two.
 
-.site-header { background: var(--k-header); border-bottom: 1px solid #0f3568; }
-.site-header-row { display: flex; align-items: center; justify-content: space-between; min-height: 38px; }
-/* White ink, because the site header is the dark blue --k-header band. */
-.site-brand { display: block; height: 17px; width: auto; }
-.site-header .kino-status-lamp { color: #fff; }
-.site-header .kino-status-lamp--ok .kino-status-symbol { color: #8fd96a; }
-.site-header .kino-status-lamp--off .kino-status-symbol { color: #a9c0dd; }
+   Contrast on --k-ground #0b0b0c:
+   --k-ink    #e8e8e6  ≈ 16.4:1
+   --k-dim    #8a8a86  ≈  6.2:1
+   --k-dimmer #6a6a68  ≈  4.0:1  (non-text marks and rules only)
+   --k-pick   #cf4a3e  ≈  4.6:1  */
 
-.site-footer {
-  margin-top: 18px;
-  padding: 10px 0 14px;
-  border-top: 1px solid var(--k-border);
-  color: var(--k-mut);
-  font-size: 11px;
-}
-.site-footer strong { letter-spacing: 0.06em; }
-
-.back-link { margin: 10px 0 8px; font-size: 12px; }
-
-.roll-alert { margin: 10px 0; padding: 6px 9px; border: 1px solid #d9a6a6; background: #fdf2f2; color: #a02525; font-size: 12px; }
-
-/* ---- album header: small square image, title, date, count ---- */
-
-.roll-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--k-border);
-  border-bottom: 0;
-  background: #fff;
+:root {
+  --k-ground: #0b0b0c;
+  --k-panel: #131315;
+  --k-rule: #1f1f22;
+  --k-rule-2: #2b2b30;
+  --k-ink: #e8e8e6;
+  --k-dim: #8a8a86;
+  --k-dimmer: #6a6a68;
+  --k-pick: #cf4a3e;
+  /* Latin subsets only. The Japanese subsets are 1.3 MB each and must never
+     reach a guest's phone; main.tsx imports the latin CSS deliberately. */
+  --k-ui: 'BIZ UDPGothic', Tahoma, Verdana, sans-serif;
+  --k-fx: 'BIZ UDGothic', Consolas, 'Courier New', monospace;
 }
 
-.roll-avatar {
-  width: 56px;
-  height: 56px;
-  flex: none;
-  object-fit: cover;
-  border: 1px solid var(--k-border);
-  padding: 2px;
-  background: #fff;
-}
-.roll-avatar--empty {
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: var(--k-header);
-  font-size: 24px;
-  font-weight: 700;
+body[data-surface='guest'] {
+  background: var(--k-ground);
+  color: var(--k-ink);
+  font-family: var(--k-ui);
 }
 
-.roll-header-text { min-width: 0; }
-.roll-header-text h1 { overflow-wrap: anywhere; }
-.roll-meta { color: var(--k-mut); font-size: 12px; }
-.roll-closed { display: inline-block; margin-top: 3px; color: var(--k-mut); font-size: 11px; font-weight: 700; }
+body[data-surface='guest'] a { color: var(--k-ink); }
+body[data-surface='guest'] :focus-visible { outline: 1px solid var(--k-ink); outline-offset: 1px; }
 
-/* ---- tab row ---- */
+/* Photographs run to both screen edges; only text is inset. */
+.k-app { width: 100%; }
+.k-pad { padding: 0 8px; }
 
-.roll-tabs {
-  display: flex;
-  gap: 3px;
-  padding: 6px 8px 0;
-  border: 1px solid var(--k-border);
-  border-bottom-color: var(--k-border);
-  background: #f2f5f9;
-  margin-bottom: 10px;
-}
+/* ---- header: mark, roll id, count, three words ---- */
 
-.roll-tab {
-  min-height: 30px;
-  padding: 4px 12px;
-  border: 1px solid var(--k-border);
-  border-bottom: 0;
-  border-radius: 3px 3px 0 0;
-  background: #e2e8f0;
-  color: #3d5674;
-  font-size: 12px;
-  font-weight: 700;
-  position: relative;
-  top: 1px;
-}
-.roll-tab[aria-current='true'] { background: #fff; color: var(--k-text); }
-@media (pointer: coarse) { .roll-tab { min-height: 36px; } }
+.k-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 8px 3px; }
+.k-mark { display: block; height: 13px; width: auto; }
+.k-count { font: 400 11px var(--k-fx); color: var(--k-dim); font-variant-numeric: tabular-nums; }
+.k-id { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 0 8px 4px; }
+.k-id b { font: 400 11px var(--k-fx); color: var(--k-ink); overflow-wrap: anywhere; }
 
-.roll-info { padding: 10px; border: 1px solid var(--k-border); background: #fff; }
-
-/* ---- photo grid: the photos are the site ---- */
-
-.photo-grid { margin-top: 2px; }
-
-/* "N new" pill: live arrivals held back while the guest is scrolled down. */
-.new-pill {
-  position: sticky;
-  top: 8px;
-  z-index: 2;
-  display: block;
-  margin: 0 auto 8px;
-  min-height: 30px;
-  padding: 4px 14px;
-  border: 1px solid #123c74;
-  border-radius: 15px;
-  background: linear-gradient(to bottom, #3b78c4, #2a5da0);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-@media (pointer: coarse) { .new-pill { min-height: 36px; } }
-
-.photo-thumb {
-  display: block;
-  min-width: 0;
-  padding: 4px 4px 2px;
-  border: 1px solid var(--k-border);
-  background: #fff;
-  color: inherit;
-  text-decoration: none;
-}
-.photo-thumb:hover { border-color: var(--k-blue); text-decoration: none; }
-
-/* A live arrival: green edge that settles down, plus a NEW tag. */
-.photo-thumb[data-new] { border-color: var(--k-green); animation: photo-arrive 2.5s ease-out; }
-@keyframes photo-arrive { from { box-shadow: 0 0 0 2px rgb(46 125 30 / 45%); } to { box-shadow: none; } }
-
-.photo-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #dfe5ec; }
-
-.photo-thumb-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 3px 1px 2px;
-  color: var(--k-mut);
-  font-size: 11px;
-}
-.photo-hearts { color: var(--k-burgundy); font-weight: 700; }
-.photo-new { color: var(--k-green); font-size: 10px; letter-spacing: 0.06em; }
-.photo-when { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.photo-processing {
-  display: grid;
-  place-items: center;
-  aspect-ratio: 4 / 3;
-  margin: 0;
-  background: #dfe5ec;
-  color: var(--k-mut);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-/* ---- photo detail: photograph first, everything else compact ---- */
-
-.photo-page { display: grid; gap: 12px; align-items: start; }
-@media (min-width: 900px) {
-  .photo-page { grid-template-columns: minmax(0, 1fr) 280px; }
-}
-
-.photo-main { min-width: 0; display: grid; gap: 10px; }
-
-.photo-frame { padding: 5px; border: 1px solid var(--k-border); background: #fff; }
-.photo-frame .photo-img { aspect-ratio: auto; }
-
-.frame-strip-section { min-width: 0; }
-.frame-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(64px, 110px); gap: 6px; overflow-x: auto; padding-bottom: 2px; }
-
-.frame-thumb {
-  position: relative;
-  padding: 2px;
-  border: 1px solid var(--k-border);
-  border-radius: 0;
-  background: #fff;
-  cursor: pointer;
-}
-.frame-thumb:hover { border-color: var(--k-blue); }
-.frame-thumb[aria-pressed='true'] { border: 2px solid var(--k-blue); padding: 1px; }
-.frame-thumb .photo-img { aspect-ratio: 4 / 3; }
-.frame-thumb span {
-  position: absolute;
-  left: 4px;
-  bottom: 4px;
-  padding: 0 4px;
-  background: rgb(23 78 152 / 85%);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-/* Actions: a compact text-link row, the way photo sites did it. */
-.photo-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  padding: 7px 9px;
-  border: 1px solid var(--k-border);
-  background: #f2f5f9;
-  color: var(--k-mut);
-  font-size: 12px;
-}
-
-.action-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 30px;
-  padding: 0 2px;
+.k-nav { display: flex; gap: 6px; padding: 0 2px; border-bottom: 1px solid var(--k-rule); }
+.k-nav button {
+  /* 44x44 of target around a word that only measures 22 px wide. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 6px;
   border: 0;
   background: none;
-  color: var(--k-link);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--k-dimmer);
+  font: 400 11px var(--k-fx);
   cursor: pointer;
 }
-.action-link:hover:not(:disabled) { text-decoration: underline; }
-.action-link[aria-pressed='true'] { color: var(--k-burgundy); }
-.action-link:disabled { color: var(--k-mut); cursor: not-allowed; }
-a.action-link { min-height: 30px; }
-@media (pointer: coarse) { .action-link { min-height: 36px; } }
+.k-nav button[aria-current='true'] { color: var(--k-ink); }
 
-/* Social-format saves: a second compact row under the main actions. */
-.photo-formats { gap: 4px 10px; }
-.format-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+/* ---- clock marks: camera metadata, not an editorial divider ---- */
 
-.photo-quad { display: grid; gap: 6px; }
-.photo-figure { min-width: 0; margin: 0; }
-.photo-figure .photo-img { aspect-ratio: auto; border: 1px solid var(--k-border-soft); }
-.photo-figure figcaption { margin-top: 2px; color: var(--k-mut); font-size: 11px; font-weight: 700; }
+.k-clock { display: flex; align-items: center; gap: 6px; padding: 6px 8px 4px; }
+.k-clock i { display: block; width: 1px; height: 7px; background: var(--k-rule-2); }
+.k-clock span { font: 400 10.5px var(--k-fx); color: var(--k-dim); font-variant-numeric: tabular-nums; }
 
-/* ---- sidebar boxes: KINO process, photo information ---- */
+/* ---- the stream ---- */
 
-.photo-side { min-width: 0; display: grid; gap: 10px; align-content: start; }
-.side-box { padding: 9px 10px 10px; border: 1px solid var(--k-border); background: #fff; }
-.side-box .photo-img { aspect-ratio: auto; border: 1px solid var(--k-border-soft); }
+.k-stream { margin: 0; }
+.k-shot { position: relative; display: block; width: 100%; background: #000; line-height: 0; }
+.k-shot .photo-img,
+.k-shot img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+/* WigglePlayer renders its own wrapper and button; flatten both so the frame
+   fills the tile exactly like a still does. */
+.k-shot [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
+.k-shot [data-wiggle-player] img { aspect-ratio: 4 / 3; object-fit: cover; }
 
-.info-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; }
-.info-list dt { color: var(--k-mut); font-size: 12px; }
-.info-list dd { margin: 0; font-size: 12px; }
+.k-mark-4f {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 5px;
+  background: rgb(0 0 0 / 62%);
+  color: #fff;
+  font: 400 9.5px/1 var(--k-fx);
+  pointer-events: none;
+}
+.k-quad { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+.k-quad b { display: block; width: 3px; height: 3px; background: currentcolor; }
+
+/* 20 px of ink inside a 46 px target, per WCAG 2.5.5. */
+.k-pick {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.k-pick svg { width: 20px; height: 20px; fill: none; stroke: currentcolor; stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%)); }
+.k-pick[aria-pressed='true'] { color: var(--k-pick); }
+.k-pick[aria-pressed='true'] svg { fill: currentcolor; }
+
+.k-processing { display: grid; place-items: center; aspect-ratio: 4 / 3; color: var(--k-dim); font: 400 11px var(--k-fx); }
+.k-new { position: absolute; left: 6px; top: 6px; padding: 3px 5px; background: var(--k-ink); color: var(--k-ground); font: 400 9.5px/1 var(--k-fx); }
+
+.k-note { padding: 14px 8px; color: var(--k-dim); font-size: 12px; }
+.k-end { padding: 16px 8px 26px; color: #3a3a38; font: 400 10px var(--k-fx); }
+
+/* "N new" — the one floating control, because it must reach a scrolled thumb. */
+.new-pill {
+  position: sticky;
+  top: 6px;
+  z-index: 3;
+  display: block;
+  margin: 6px auto;
+  padding: 0 14px;
+  min-height: 34px;
+  border: 1px solid var(--k-rule-2);
+  background: var(--k-ink);
+  color: var(--k-ground);
+  font: 400 11px var(--k-fx);
+  cursor: pointer;
+}
+
+.k-info { padding: 10px 8px; }
+.k-info dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 14px; margin: 0; font: 400 11px var(--k-fx); }
+.k-info dt { color: var(--k-dimmer); }
+.k-info dd { margin: 0; color: var(--k-dim); }
+.roll-alert { margin: 10px 8px; color: var(--k-pick); font-size: 12px; }
+
+/* The photo page needs an h1 for its subject — it had none, and announced
+   "D4 frames" as its only heading — but a guest came to look, not to read a
+   title over the picture. */
+.k-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- PIN gate, not-found: the same chrome, one column ---- */
+
+.k-gate { width: min(100%, 340px); margin: 14vh auto 0; padding: 0 12px; }
+.k-gate .k-mark { height: 15px; margin-bottom: 14px; }
+.k-gate-note { margin: 0 0 12px; color: var(--k-dim); font: 400 11px var(--k-fx); }
+.k-gate h1 { margin: 0 0 6px; color: var(--k-ink); font-size: 15px; }
+.k-gate p { color: var(--k-dim); font-size: 12px; }
+.k-gate label { display: block; margin-bottom: 4px; color: var(--k-dimmer); font: 400 10.5px var(--k-fx); }
+.k-gate form { display: block; }
+.k-gate input {
+  width: 100%;
+  min-height: 46px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--k-rule-2);
+  border-radius: 0;
+  background: var(--k-panel);
+  color: var(--k-ink);
+  font: 400 14px var(--k-fx);
+}
+.k-gate .k-save { width: 100%; min-height: 46px; border: 0; }
+
+/* ---- photo page ---- */
+
+.k-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--k-rule);
+  background: none;
+  color: var(--k-dim);
+  font: 400 11px var(--k-fx);
+  text-align: left;
+  cursor: pointer;
+}
+.k-bar b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-ink);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.k-bar > span { flex: none; }
+.k-icon .k-hearts { font: 400 11px var(--k-fx); }
+
+.photo-page { display: block; }
+.k-hero { background: #000; line-height: 0; }
+.k-hero img, .k-hero [data-wiggle-player] img { display: block; width: 100%; }
+.k-hero [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
+
+/* Contiguous strip: hairline gaps read as frame separations, not as cards. */
+.frame-strip { display: flex; gap: 1px; margin-top: 1px; background: var(--k-rule); }
+.frame-thumb {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: #000;
+  color: var(--k-dimmer);
+  cursor: pointer;
+  line-height: 0;
+}
+.frame-thumb img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
+.frame-thumb span { display: block; background: var(--k-ground); font: 400 9px/14px var(--k-fx); text-align: center; }
+.frame-thumb[aria-pressed='true'] span { color: var(--k-ink); }
+.frame-thumb[aria-pressed='true'] img { outline: 1px solid var(--k-ink); outline-offset: -1px; }
+
+.k-exif { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; margin: 0; padding: 10px 8px; font: 400 10.5px/1.7 var(--k-fx); }
+.k-exif dt { color: var(--k-dimmer); }
+.k-exif dd { margin: 0; color: var(--k-dim); overflow-wrap: anywhere; }
+
+.photo-quad { display: grid; gap: 1px; background: var(--k-rule); }
+.photo-figure { min-width: 0; margin: 0; background: #000; line-height: 0; }
+.photo-figure img { display: block; width: 100%; }
+.photo-figure figcaption { padding: 3px 4px; background: var(--k-ground); color: var(--k-dimmer); font: 400 9.5px/1.4 var(--k-fx); }
+
+/* Action bar: one filled SAVE, everything else quiet and 46 px tall. */
+.k-acts { display: flex; gap: 1px; margin-top: 12px; background: var(--k-rule-2); border-top: 1px solid var(--k-rule-2); }
+.k-acts > * { min-height: 46px; border: 0; font: 400 12px var(--k-fx); cursor: pointer; }
+.k-save { flex: 1; display: grid; place-items: center; background: var(--k-ink); color: var(--k-ground); text-decoration: none; }
+.k-icon { display: grid; place-items: center; width: 56px; background: var(--k-panel); color: var(--k-dim); }
+.k-icon svg { width: 18px; height: 18px; fill: none; stroke: currentcolor; stroke-width: 1.6; }
+.k-icon[aria-pressed='true'] { color: var(--k-pick); }
+.k-icon[aria-pressed='true'] svg { fill: currentcolor; }
+.k-icon .k-hearts { font: 400 10px var(--k-fx); }
+.k-status { padding: 6px 8px; color: var(--k-dim); font: 400 10.5px var(--k-fx); }
+
+/* ---- save sheet: a plain list, no radius, no shadow ---- */
+
+.k-sheet { position: fixed; inset: 0; z-index: 20; }
+.k-veil { position: absolute; inset: 0; border: 0; width: 100%; background: rgb(0 0 0 / 62%); cursor: pointer; }
+.k-sheet menu {
+  position: absolute;
+  inset: auto 0 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--k-ground);
+  border-top: 1px solid var(--k-rule-2);
+}
+.k-sheet li + li { border-top: 1px solid var(--k-rule); }
+.k-sheet-h { margin: 0; padding: 8px 10px 6px; color: var(--k-dimmer); font: 400 10.5px var(--k-fx); }
+.k-sheet .action-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--k-ink);
+  font: 400 12px var(--k-fx);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.k-sheet .action-link[disabled] { color: var(--k-dimmer); cursor: default; }
+.k-sheet .action-link span { color: var(--k-dimmer); font-size: 10.5px; }
+.k-sheet .k-cancel { color: var(--k-dim); justify-content: flex-start; }
+
+@media (min-width: 720px) {
+  /* Two up on a tablet, three on a desktop: still edge to edge, still no cards. */
+  .k-stream { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+  .k-clock { grid-column: 1 / -1; }
+  .k-bar, .k-exif, .k-acts, .k-info, .k-note { max-width: 900px; margin-inline: auto; }
+  .k-hero img { max-height: 78vh; object-fit: contain; }
+}
+
+@media (min-width: 1100px) {
+  .k-stream { grid-template-columns: 1fr 1fr 1fr; }
+}
 
 /* ---- PIN gate + not-found (narrow single card) ---- */
 
