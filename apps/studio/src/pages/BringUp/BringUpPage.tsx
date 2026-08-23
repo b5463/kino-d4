@@ -11,6 +11,7 @@ import {
   CHECKLIST,
   useBringUp,
   setCheck,
+  setValue,
   setWiringRow,
   setNotes,
   exportRecord,
@@ -19,6 +20,7 @@ import {
 } from '../../developer/bringup';
 import type { ChecklistItem, WiringRow } from '../../developer/bringup';
 import { CAM_IDS } from '@kino/kdp';
+import type { CameraLinkStats } from '@kino/kdp';
 import { downloadJson } from '../../utils/download';
 
 type TestId = NonNullable<ChecklistItem['test']>;
@@ -86,6 +88,43 @@ export function BringUpPage() {
       } else if (test === 'selftest') {
         await dev.startSelfTest();
         return; // resolved by the self-test event listener
+      } else if (test === 'snapshot') {
+        // The perishable numbers, in one file. A timeout's elapsed-against-
+        // budget and the bytes that arrived with it live in the device log
+        // ring and the link counters, and a power cycle takes both — so the
+        // rule on the bench is capture before reset, and this is the button
+        // that makes that one click instead of four pages.
+        const links: Partial<Record<string, CameraLinkStats>> = {};
+        for (const cam of CAM_IDS) {
+          try {
+            links[cam] = await dev.cameraLinkStats(cam);
+          } catch {
+            // A camera that cannot answer is itself the finding; the file
+            // records which ones did.
+          }
+        }
+        const [logs, runtime] = await Promise.all([
+          dev.getLogs().catch(() => ({ entries: [] })),
+          dev.getRuntimeStats().catch(() => null),
+        ]);
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadJson(`kino-bench-snapshot-${stamp}.json`, {
+          schema: 1,
+          kind: 'kino-bench-snapshot',
+          capturedAt: new Date().toISOString(),
+          links,
+          runtime,
+          logs: logs.entries,
+        });
+        const worst = Object.values(links).reduce(
+          (a, s) => (s && s.latencyMaxMs > a ? s.latencyMaxMs : a),
+          0,
+        );
+        const timeouts = Object.values(links).reduce((a, s) => a + (s?.timeouts ?? 0), 0);
+        setTestResults((r) => ({
+          ...r,
+          [test]: `saved · worst ${worst} ms · ${timeouts} timeouts · ${logs.entries.length} log lines`,
+        }));
       }
     } catch (err) {
       setTestResults((r) => ({ ...r, [test]: err instanceof Error ? err.message : String(err) }));
@@ -142,9 +181,17 @@ export function BringUpPage() {
         First-power checklist from the V1 hardware spec. Do not connect the LiPo or solder the
         provisional GPIO map until the relevant section passes. RUN buttons need a connected camera.
       </p>
+      <p className="notice">
+        Sections past the battery path cover the printed body, the closed-body numbers V2 is
+        designed from, the effect itself and field reliability. Where a check has a value box,
+        fill it in: most of those measurements cannot be taken again once the build is apart, and
+        the device-side ones do not survive a power cycle. EXPORT RECORD carries them with the
+        checks.
+      </p>
 
       {CHECKLIST.map((section) => (
         <Panel key={section.title} title={section.title}>
+          {section.note ? <p className="dim bringup-note">{section.note}</p> : null}
           <div className="bringup-list">
             {section.items.map((item) => (
               <div key={item.id} className="bringup-item">
@@ -156,6 +203,7 @@ export function BringUpPage() {
                   />
                   <span>{item.text}</span>
                 </label>
+                <span className="bringup-tail">
                 {item.test ? (
                   <span className="bringup-test">
                     <Button
@@ -169,6 +217,17 @@ export function BringUpPage() {
                     {testResults[item.test] ? <span className="val">{testResults[item.test]}</span> : null}
                   </span>
                 ) : null}
+                {item.record ? (
+                  <input
+                    type="text"
+                    className="input bringup-value"
+                    value={state.values[item.id] ?? ''}
+                    placeholder={item.record}
+                    aria-label={`Measured value for: ${item.text}`}
+                    onChange={(e) => setValue(item.id, e.target.value)}
+                  />
+                ) : null}
+                </span>
               </div>
             ))}
           </div>

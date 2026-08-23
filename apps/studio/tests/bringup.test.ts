@@ -3,10 +3,35 @@ import { CHECKLIST, totalChecks, importRecord, exportRecord, useBringUp } from '
 
 describe('bring-up record', () => {
   it('covers the spec checklist sections', () => {
-    expect(CHECKLIST).toHaveLength(3);
-    expect(totalChecks()).toBeGreaterThan(30);
+    // Three electrical sections from the hardware spec, then the four the
+    // usable-V1 build added: printed body, closed-body numbers, the effect,
+    // field reliability.
+    expect(CHECKLIST).toHaveLength(7);
+    expect(totalChecks()).toBeGreaterThan(60);
     const ids = CHECKLIST.flatMap((s) => s.items.map((i) => i.id));
     expect(new Set(ids).size).toBe(ids.length); // unique ids
+  });
+
+  it('runs past the electrical build to the parts a printed body added', () => {
+    const titles = CHECKLIST.map((s) => s.title);
+    expect(titles).toContain('PRINTED BODY — V1 STRUCTURE');
+    expect(titles).toContain('CLOSED-BODY POWER AND THERMAL — V2 INPUTS');
+    expect(titles).toContain('THE EFFECT ITSELF');
+  });
+
+  it('gives every measurement check somewhere to put the measurement', () => {
+    // A tick that records no number wastes the run it came from: the V2
+    // input sections are worthless as bare checkboxes.
+    const v2 = CHECKLIST.find((s) => s.title.includes('V2 INPUTS'));
+    expect(v2).toBeDefined();
+    expect(v2!.items.every((i) => typeof i.record === 'string' && i.record.length > 0)).toBe(true);
+  });
+
+  it('only wires RUN buttons to tests the page implements', () => {
+    const known = new Set(['uart-echo', 'trigger', 'captures', 'selftest', 'snapshot']);
+    for (const item of CHECKLIST.flatMap((s) => s.items)) {
+      if (item.test !== undefined) expect(known.has(item.test)).toBe(true);
+    }
   });
 
   it('flags the strapping-pin risk in the wiring record', () => {
@@ -22,12 +47,27 @@ describe('bring-up record', () => {
     expect(importRecord('nope')).toMatch(/object/i);
   });
 
-  it('round trips an exported record', () => {
-    useBringUp.setState({ checks: { a1: true }, notes: 'pin 1 marked' });
+  it('round trips an exported record, measurements included', () => {
+    useBringUp.setState({
+      checks: { a1: true },
+      values: { d2: '19.02, 18.98, 19.01' },
+      notes: 'pin 1 marked',
+    });
     const record = exportRecord();
-    useBringUp.setState({ checks: {}, notes: '' });
+    useBringUp.setState({ checks: {}, values: {}, notes: '' });
     expect(importRecord(record)).toBeNull();
     expect(useBringUp.getState().checks.a1).toBe(true);
+    expect(useBringUp.getState().values.d2).toBe('19.02, 18.98, 19.01');
     expect(useBringUp.getState().notes).toBe('pin 1 marked');
+  });
+
+  it('still imports a record written before measurements existed', () => {
+    // Values were added after the first builds were recorded. An older
+    // export simply has none, which is a fact about that build rather than
+    // a broken file — so the schema stays 1 and the field is optional.
+    useBringUp.setState({ values: { d2: 'stale' } });
+    expect(importRecord({ kind: 'kino-wiring-record', schema: 1, checks: { a1: true } })).toBeNull();
+    expect(useBringUp.getState().values).toEqual({});
+    expect(useBringUp.getState().checks.a1).toBe(true);
   });
 });

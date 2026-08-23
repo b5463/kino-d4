@@ -1,5 +1,13 @@
 // Hardware bring-up state: the spec's first-power checklists plus the
 // wiring record, persisted locally and exportable. One record per build.
+//
+// V1 is a usable camera in a printed body, not a rig on a desk, and V2 is the
+// custom board in a moulded case. So the worksheet runs past the electrical
+// build: the printed body is structure that holds the lens baseline, the
+// closed body is the only place the thermal and power numbers V2 needs can be
+// measured, and a camera someone carries has to be reliable, not merely
+// functional. Items that produce a measurement capture it — a tick that
+// records no number wastes the run it came from.
 
 import { create } from 'zustand';
 
@@ -7,11 +15,20 @@ export interface ChecklistItem {
   id: string;
   text: string;
   /** Inline Studio test available when a camera is connected. */
-  test?: 'uart-echo' | 'trigger' | 'captures' | 'selftest';
+  test?: 'uart-echo' | 'trigger' | 'captures' | 'selftest' | 'snapshot';
+  /**
+   * Unit hint for a value worth keeping. Present when the check produces a
+   * number that outlives the tick — a measured pitch, a peak current, a die
+   * temperature. These are V2's inputs and most of them cannot be taken
+   * again once the build is apart or the card is reformatted.
+   */
+  record?: string;
 }
 
 export interface ChecklistSection {
   title: string;
+  /** Why this section exists, when that is not obvious from the items. */
+  note?: string;
   items: ChecklistItem[];
 }
 
@@ -69,6 +86,72 @@ export const CHECKLIST: ChecklistSection[] = [
       { id: 'c10', text: 'First charge: camera off, 5 V ~1 A, attended' },
     ],
   },
+  {
+    title: 'PRINTED BODY — V1 STRUCTURE',
+    note:
+      'The printed body is not packaging: it holds the lens baseline, and baseline accuracy is ' +
+      'wiggle quality. PLA and PETG creep, so pitch is a measured property of the part in front ' +
+      'of you, never a number copied from CAD.',
+    items: [
+      { id: 'd1', text: 'Front plate material and print orientation recorded', record: 'material / orientation' },
+      { id: 'd2', text: 'Lens pitch measured as printed — all three gaps, not one doubled', record: 'mm, mm, mm' },
+      { id: 'd3', text: 'Measured pitch entered in Twin and the hardware manifest (#11, #1)' },
+      { id: 'd4', text: 'Plate checked for bow across the four-lens span', record: 'mm deviation' },
+      { id: 'd5', text: 'All four lens axes parallel within measurement' },
+      { id: 'd6', text: 'Camera modules seat without pre-load — no body flex reaches a sensor board' },
+      { id: 'd7', text: 'Flash chamber optically isolated inside the body — no light path into a lens' },
+      { id: 'd8', text: 'No screw, standoff or conductor can reach the pouch cell when the body is squeezed' },
+      { id: 'd9', text: 'Pitch re-measured after one full disassembly and reassembly', record: 'mm, mm, mm' },
+      { id: 'd10', text: 'Pitch re-measured after the camera has lived in a bag for a month — creep is the number V2’s frame has to beat', record: 'mm, mm, mm' },
+    ],
+  },
+  {
+    title: 'CLOSED-BODY POWER AND THERMAL — V2 INPUTS',
+    note:
+      'An open bench is the best cooling this camera will ever see and a sealed resin case is ' +
+      'the worst, so passing thermals in the open proves nothing about V2. Run every item with ' +
+      'the body closed, and record the number even when the check passes — these size the ' +
+      'custom board’s regulators, bulk capacitance and any venting the mould needs.',
+    items: [
+      { id: 'e1', text: 'Peak per-rail current during a four-flash burst', record: 'A peak / ms' },
+      { id: 'e2', text: '5 V rail sag at the worst burst; brownout margin stated', record: 'V min' },
+      { id: 'e3', text: 'P4 die temperature after 20 back-to-back captures, body closed', record: '°C' },
+      { id: 'e4', text: 'Camera die temperatures on the same run', record: '°C ×4' },
+      { id: 'e5', text: 'Same run with the body open — the delta is what the enclosure costs', record: '°C delta' },
+      { id: 'e6', text: 'Battery runtime to first brownout, captures counted', record: 'captures / min' },
+      { id: 'e7', text: 'Case surface temperature during an attended full charge, body closed', record: '°C' },
+      { id: 'e8', text: 'Real JPEG size range across a mixed roll — sizes PSRAM and transfer budgets', record: 'KB min–max' },
+      { id: 'e9', text: 'Worst-case node-link latency after a full session', test: 'snapshot', record: 'ms' },
+    ],
+  },
+  {
+    title: 'THE EFFECT ITSELF',
+    note:
+      'The one test no simulator can stand in for, and the only one that can invalidate the ' +
+      'product rather than the build. Run it before committing to a mould.',
+    items: [
+      { id: 'f1', text: 'Inter-frame skew measured on a moving subject, not a static scene', test: 'trigger', record: 'ms spread' },
+      { id: 'f2', text: 'Wiggle reviewed on a phone at the size guests see it, not on a monitor' },
+      { id: 'f3', text: 'Verdict recorded: is the parallax the effect, or is the skew the effect?', record: 'verdict' },
+      { id: 'f4', text: 'Skew re-checked at the shortest usable subject distance, where parallax is largest', record: 'ms spread' },
+      { id: 'f5', text: 'A roll shot at a real event, reviewed by someone who did not build it' },
+    ],
+  },
+  {
+    title: 'FIELD RELIABILITY — “USABLE” IS A RELIABILITY CLAIM',
+    note:
+      'A hang on the bench costs a reset. A hang at capture #40 during an event loses the roll ' +
+      'and the evening, and nobody reruns the party.',
+    items: [
+      { id: 'g1', text: '200 captures without a reset; failures counted, not just noticed', record: 'fails / 200' },
+      { id: 'g2', text: 'Card survives power loss mid-write and still mounts', test: 'selftest' },
+      { id: 'g3', text: 'A node that stops answering recovers without a full power cycle' },
+      { id: 'g4', text: 'A full card mid-roll produces a message, not a hang' },
+      { id: 'g5', text: 'Low battery during a flash burst behaves as defined, and the definition is written down' },
+      { id: 'g6', text: 'Device numbers captured after every failure, before power-cycling', test: 'snapshot' },
+      { id: 'g7', text: 'Shutter reachable and the camera pointable without looking at it' },
+    ],
+  },
 ];
 
 export interface WiringRow {
@@ -96,6 +179,8 @@ const DEFAULT_WIRING: WiringRow[] = [
 
 export interface BringUpState {
   checks: Record<string, boolean>;
+  /** Measured values by item id, for checks that carry a `record` hint. */
+  values: Record<string, string>;
   wiring: WiringRow[];
   notes: string;
 }
@@ -109,6 +194,7 @@ function load(): BringUpState {
       const parsed = JSON.parse(raw) as Partial<BringUpState>;
       return {
         checks: parsed.checks ?? {},
+        values: parsed.values ?? {},
         wiring: Array.isArray(parsed.wiring) && parsed.wiring.length > 0 ? parsed.wiring : DEFAULT_WIRING,
         notes: parsed.notes ?? '',
       };
@@ -116,7 +202,7 @@ function load(): BringUpState {
   } catch {
     // Fresh build.
   }
-  return { checks: {}, wiring: structuredClone(DEFAULT_WIRING), notes: '' };
+  return { checks: {}, values: {}, wiring: structuredClone(DEFAULT_WIRING), notes: '' };
 }
 
 export const useBringUp = create<BringUpState>(() => load());
@@ -131,6 +217,11 @@ function persist() {
 
 export function setCheck(id: string, done: boolean) {
   useBringUp.setState((s) => ({ checks: { ...s.checks, [id]: done } }));
+  persist();
+}
+
+export function setValue(id: string, value: string) {
+  useBringUp.setState((s) => ({ values: { ...s.values, [id]: value } }));
   persist();
 }
 
@@ -162,6 +253,9 @@ export function importRecord(json: unknown): string | null {
   if (r.schema !== 1) return `Unsupported schema ${String(r.schema)}`;
   useBringUp.setState({
     checks: r.checks ?? {},
+    // Added after the first records were written; an older export simply has
+    // no measurements, which is a fact about that build, not a bad file.
+    values: r.values ?? {},
     wiring: Array.isArray(r.wiring) && r.wiring.length > 0 ? (r.wiring as WiringRow[]) : structuredClone(DEFAULT_WIRING),
     notes: r.notes ?? '',
   });
