@@ -7,7 +7,7 @@
 // itself. Studio still exercises its own facade over this mock in its suite.
 import { afterEach, describe, expect, it } from 'vitest';
 import { Cmd, KinoProtocolClient, MockTransport } from '@kino/kdp';
-import type { CameraInfo, DeviceInfo, KinoConfig } from '@kino/kdp';
+import type { CameraInfo, CameraLinkStats, DeviceInfo, KinoConfig } from '@kino/kdp';
 import { MockKinoDevice } from '../src/index';
 
 let transport: MockTransport | null = null;
@@ -174,4 +174,29 @@ describe('mock device over the real protocol stack', () => {
         return transport.close();
       });
   });
+  it('reports a worst-case link latency that survives until a reset', async () => {
+    // The bench sizes its timeout budgets off the tail, not the last sample,
+    // so latencyMaxMs is a high-water mark: it only ever climbs, and only
+    // CAMERA_LINK_STATS_RESET clears it.
+    const mock = new MockKinoDevice({ seed: 11, ambientCaptures: false });
+    const transport = new MockTransport(mock);
+    const client = new KinoProtocolClient(transport);
+    await transport.open();
+    await client.hello({ attempts: 1 });
+
+    const read = () => client.request<CameraLinkStats>(Cmd.CAMERA_LINK_STATS, { cam: 'cam1' });
+    expect((await read()).latencyMaxMs).toBe(0);
+
+    await client.request(Cmd.CAMERA_TEST, { cam: 'cam1' });
+    const after = await read();
+    expect(after.latencyMaxMs).toBeGreaterThan(0);
+    // A second look must not report a fresh sample in its place.
+    expect((await read()).latencyMaxMs).toBe(after.latencyMaxMs);
+
+    await client.request(Cmd.CAMERA_LINK_STATS_RESET, { cam: 'cam1' });
+    expect((await read()).latencyMaxMs).toBe(0);
+
+    client.dispose();
+    await transport.close();
+  }, 15000);
 });

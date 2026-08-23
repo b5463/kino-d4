@@ -40,6 +40,13 @@ typedef struct {
   uint32_t retries; /* zero until a retry policy exists */
   uint32_t duplicates;
   uint32_t last_sequence;
+  /**
+   * Worst successful request RTT since the last reset. The bench needs the
+   * tail, not the latest sample: `latency_ms` is whatever the most recent
+   * request happened to cost, which on a link that stalls once in fifty
+   * requests reads as healthy every time you look at it.
+   */
+  uint32_t latency_max_ms;
   char last_error[32]; /* "" when none */
 } camlink_stats_t;
 

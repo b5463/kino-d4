@@ -277,6 +277,12 @@ export interface CameraLinkStats {
   /** Responses whose sequence id was already answered. */
   duplicateFrames: number;
   lastSequence: number;
+  /**
+   * Worst successful request RTT since the last counter reset, in ms. The
+   * bench needs the tail and not the latest sample: a link that stalls once
+   * in fifty requests reads as healthy every time you look at the last one.
+   */
+  latencyMaxMs: number;
   /** Node-reported reset reason from its last HELLO; null when never seen. */
   lastNodeBootReason: string | null;
   lastError: string | null;

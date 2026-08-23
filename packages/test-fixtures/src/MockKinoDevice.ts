@@ -72,6 +72,7 @@ interface LinkCounters {
   retries: number;
   duplicateFrames: number;
   lastSequence: number;
+  latencyMaxMs: number;
   lastError: string | null;
 }
 
@@ -79,7 +80,7 @@ function freshLinkCounters(): LinkCounters {
   return {
     rxFrames: 0, txFrames: 0, rxBytes: 0, txBytes: 0, crcErrors: 0,
     decoderResyncs: 0, timeouts: 0, retries: 0, duplicateFrames: 0,
-    lastSequence: 0, lastError: null,
+    lastSequence: 0, latencyMaxMs: 0, lastError: null,
   };
 }
 
@@ -1663,6 +1664,10 @@ export class MockKinoDevice implements MockDeviceLike {
     link.lastSequence += 4;
     link.txFrames += 3;
     link.txBytes += 180;
+    // A capture is the most expensive round trip the link makes, so it is
+    // the one that sets the high-water mark. Seeded, like every other
+    // number this device reports.
+    link.latencyMaxMs = Math.max(link.latencyMaxMs, this.randInt(4, 14));
 
     if (this.busUnreachable(cam)) {
       link.timeouts++;
@@ -1825,6 +1830,7 @@ export class MockKinoDevice implements MockDeviceLike {
       retries: link.retries,
       duplicateFrames: link.duplicateFrames,
       lastSequence: link.lastSequence,
+      latencyMaxMs: link.latencyMaxMs,
       lastNodeBootReason: this.busUnreachable(cam) ? null : 'power-on',
       lastError: link.lastError,
     };

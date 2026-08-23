@@ -85,6 +85,30 @@ Studio or any KDP serial client, a multimeter.
 
 ## Recording
 
+**A failed stage is data — pull it before you retry.** Failures on the capture
+path carry their measurement in the message, and the numbers are gone once you
+power-cycle:
+
+- `GET_LOGS` after any failure. A node-link timeout logs
+  `TIMEOUT cmd 0x62 seq 41 8003/8000ms 131072B 0f 0d 0c` — elapsed against the
+  budget, then the bytes, frames, duplicates and CRC errors that arrived during
+  that one request. Bytes still arriving at the budget means the timeout is too
+  short, not that the link is dead; zero bytes with zero CRC errors means
+  nothing came back at all; duplicates mean the node answered a request the P4
+  had already given up on.
+- `CAMERA_LINK_STATS` before and after each stage, for `latencyMaxMs`. The
+  worst round trip is the number that sizes `DEFAULT_TIMEOUT_MS` and
+  `CAPTURE_TIMEOUT_MS`; the last one tells you nothing.
+- The NACK message itself. `TRANSFER_TIMEOUT` now reads
+  `Chunk read failed at 131072/524288 B (25%) after 3004 ms`, and
+  `OUT_OF_MEMORY` reads `JPEG staging wants 524288 B, free 96 KB psram /
+  142 KB heap`. Copy them verbatim into the issue — a paraphrase loses the
+  number that mattered.
+
+Every timeout budget in `cam_link.c` was chosen before any hardware existed.
+Treat the first run's numbers as the ones that replace them, and record the
+measurement even when the stage passes.
+
 After each stage update `HARDWARE_VALIDATION.md` from the device's
 `GET_HW_VALIDATION` verdicts. When every table row is VALIDATED and the soak
 target is met, Milestone 1B passes (`MILESTONE_1B_PLAN.md` §Pass/fail) and

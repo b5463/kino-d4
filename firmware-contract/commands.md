@@ -380,7 +380,7 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `SYNC_BENCH` | `0x46` | → `{ "triggers": 20 }` ← **mock** `{ "jobId": "job_1", "accepted": true }`, then `JOB_*` events. See below |
 | `STORAGE_SELF_TEST` | `0x47` | → `{}` ← **typed** `StorageSelfTestResult`. Timeout 10 s. Gated by `benchDiagnostics` |
 | `CAMERA_LINK_STATS` | `0x48` | → `{ "cam": "cam1" }` ← **typed** `CameraLinkStats`. Gated by `benchDiagnostics` |
-| `CAMERA_LINK_STATS_RESET` | `0x49` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true }`. Counters zero; `lastSequence` survives |
+| `CAMERA_LINK_STATS_RESET` | `0x49` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true }`. Counters zero, `latencyMaxMs` included; `lastSequence` survives |
 | `CAMERA_SOAK_TEST` | `0x4a` | → **typed** `SoakTestRequest` ← `JobStartResponse`, then `JOB_*`; `result` is **typed** `SoakTestSummary` |
 | `GET_HW_VALIDATION` | `0x4b` | → `{}` ← **typed** `HwValidationReport`. Gated by `benchDiagnostics` |
 | `STORAGE_BENCH` | `0x4c` | → **typed** `StorageBenchRequest` ← **typed** `StorageBenchResult`. Timeout 120 s. Gated by `benchDiagnostics`. **Reserved in firmware — see below** |
