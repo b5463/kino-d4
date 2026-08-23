@@ -48,6 +48,21 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
   const targets = new Map<string, THREE.WebGLRenderTarget>();
   const work = document.createElement('canvas');
   const workCtx = work.getContext('2d');
+  /**
+   * One work canvas serves every render, and `toBlob` finishes encoding it
+   * asynchronously — so two renders in flight at once resize and repaint the
+   * canvas the other one is still encoding. Nothing enforced order: the
+   * 300 ms preview timer and a capture's four renders simply overlapped once
+   * a populated stage made each render slow enough. Renders are queued
+   * instead, so the canvas has exactly one owner at a time.
+   */
+  let queue: Promise<unknown> = Promise.resolve();
+  function serial<T>(job: () => Promise<T>): Promise<T> {
+    const next = queue.then(job, job);
+    // Keep the chain alive whatever this job does; callers see the real result.
+    queue = next.then(() => undefined, () => undefined);
+    return next;
+  }
 
   function target(width: number, height: number): THREE.WebGLRenderTarget {
     const key = `${width}x${height}`;
@@ -99,6 +114,8 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
     return true;
   }
 
+  let busy = false;
+
   function toJpeg(quality: number): Promise<Uint8Array | null> {
     return new Promise((resolve) => {
       work.toBlob(
@@ -113,21 +130,31 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
   }
 
   return {
-    async renderJpeg(req) {
-      if (!renderInto(req.cam, req.width, req.height, req.flash === true)) return null;
-      const quality = req.kind === 'capture' ? 0.8 : req.kind === 'thumb' ? 0.6 : 0.55;
-      let bytes = await toJpeg(quality);
-      // A preview must fit one KDP frame; re-encode harder if it doesn't.
-      if (req.kind === 'preview' && bytes && bytes.length > 15000) bytes = await toJpeg(0.35);
-      return bytes;
+    renderJpeg(req) {
+      return serial(async () => {
+        if (!renderInto(req.cam, req.width, req.height, req.flash === true)) return null;
+        const quality = req.kind === 'capture' ? 0.8 : req.kind === 'thumb' ? 0.6 : 0.55;
+        let bytes = await toJpeg(quality);
+        // A preview must fit one KDP frame; re-encode harder if it doesn't.
+        if (req.kind === 'preview' && bytes && bytes.length > 15000) bytes = await toJpeg(0.35);
+        return bytes;
+      });
     },
     renderPreviewToDisplay() {
-      const snapshot = useSimStore.getState().snapshot;
-      const cam = viewfinderCam({ snapshot });
-      if (!renderInto(cam, PREVIEW_W, PREVIEW_H)) return;
-      const preview = previewCanvas(PREVIEW_W, PREVIEW_H);
-      preview.getContext('2d')?.drawImage(work, 0, 0);
-      markPreviewUpdated();
+      // The rear display is cosmetic: if a capture is mid-render, skip this
+      // tick rather than queue behind it and pile up.
+      if (busy) return;
+      busy = true;
+      void serial(async () => {
+        const snapshot = useSimStore.getState().snapshot;
+        const cam = viewfinderCam({ snapshot });
+        if (!renderInto(cam, PREVIEW_W, PREVIEW_H)) return;
+        const preview = previewCanvas(PREVIEW_W, PREVIEW_H);
+        preview.getContext('2d')?.drawImage(work, 0, 0);
+        markPreviewUpdated();
+      }).finally(() => {
+        busy = false;
+      });
     },
     dispose() {
       scene.remove(flash);

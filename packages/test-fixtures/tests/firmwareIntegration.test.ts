@@ -154,6 +154,41 @@ describe('virtual sensor frame source', () => {
     expect(Array.from(preview)).toEqual(Array.from(tinyJpeg(0x11)));
   }, 20000);
 
+  it('answers the wire when a render never returns, and keeps serving after', async () => {
+    // Regression: CAMERA_PREVIEW awaited the frame source with no bound, so
+    // a render that never settled left the request unanswered. On a single
+    // link every later command then times out — which is what "no response
+    // to CAMERA_CALIBRATE" looked like from Studio once a populated Twin
+    // stage made renders slow enough to overlap.
+    const mock = new MockKinoDevice({ seed: 9, ambientCaptures: false });
+    // A holder, because TS narrows a callback-assigned `let` back to null.
+    const hung: { release?: () => void } = {};
+    let calls = 0;
+    mock.setFrameSource(() => {
+      calls += 1;
+      // The first render hangs forever; later ones behave.
+      if (calls === 1) {
+        return new Promise<Uint8Array | null>((resolve) => {
+          hung.release = () => resolve(null);
+        });
+      }
+      return Promise.resolve(tinyJpeg(0x42));
+    });
+    const client = await connect(mock);
+
+    const preview = await client.requestBytes(Cmd.CAMERA_PREVIEW, { cam: 'cam1' }, 8000);
+    expect(preview[0]).toBe(0xff);
+    expect(preview[1]).toBe(0xd8);
+
+    // The link is still usable — the hung render did not wedge the device.
+    const info = await client.request<DeviceInfo>(Cmd.GET_DEVICE_INFO, {}, 4000);
+    expect(info.serial).toBeTruthy();
+    const second = await client.requestBytes(Cmd.CAMERA_PREVIEW, { cam: 'cam1' }, 8000);
+    expect(Array.from(second)).toEqual(Array.from(tinyJpeg(0x42)));
+
+    hung.release?.();
+  }, 30000);
+
   it('falls back to synthesis when the source fails', async () => {
     const mock = new MockKinoDevice({ seed: 6, ambientCaptures: false });
     mock.setFrameSource(() => {
