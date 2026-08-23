@@ -130,4 +130,28 @@ describe('mock device over the real protocol stack', () => {
     });
     expect(retry.sessionId).toBeGreaterThan(begin.sessionId);
   }, 10000);
+  it('reboots even when the client hangs up as soon as it has the ack', async () => {
+    // KINO Twin's own REBOOT button opens a private link, sends REBOOT and
+    // closes the moment it is answered. `detach()` clears every `after()`
+    // timer, so the reboot the host had just asked for was un-scheduled by
+    // the host hanging up, and the button did nothing at all. Studio never
+    // saw it: it keeps the link open and waits for the device to drop it.
+    const mock = new MockKinoDevice({ seed: 21, ambientCaptures: false });
+    const reboots: string[] = [];
+    mock.onTelemetry((event) => {
+      if (event.t === 'reboot') reboots.push(event.reason);
+    });
+
+    const transport = new MockTransport(mock);
+    const client = new KinoProtocolClient(transport);
+    await transport.open();
+    await client.hello({ attempts: 1 });
+    await client.request(Cmd.REBOOT);
+    // Exactly what the Twin does next.
+    client.dispose();
+    await transport.close();
+
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(reboots).toEqual(['host-reboot']);
+  }, 10000);
 });

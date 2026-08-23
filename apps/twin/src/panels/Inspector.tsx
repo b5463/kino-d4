@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { netsFor, resolveDimensions } from '@kino/hardware-profiles';
 import type { ComponentDef, HardwareProfile, NetDef, ProvenanceTag, ResolvedDims } from '@kino/hardware-profiles';
+import { useSimStore } from '../state/simStore';
 import { useSceneStore } from '../state/sceneStore';
 import { instanceTransforms } from '../scene/transforms';
 import { ConfidenceBadge, formatSizeMm } from './ConfidenceBadge';
@@ -79,10 +80,10 @@ export function fovLabel(component: ComponentDef): string | null {
 
 /**
  * Right panel (§3/§8): every static/profile field for the selected instance.
- * One thing this task deliberately does NOT do (a controller ruling, not
- * ambiguity left to resolve here): the "simulated runtime state + firmware"
- * block is a static `SIM OFF` placeholder — Task 18 wires it to
- * `@kino/simulator-engine`'s live sim store, which this file never imports.
+ * RUNTIME reads the live simulator: it printed a hardcoded `SIM OFF` even
+ * with the simulator running, which is a readout that cannot be believed.
+ * For a camera instance it reports that camera's own stage and firmware;
+ * for anything else it reports the device's boot stage.
  *
  * NETS rows are clickable (Task 15): clicking a row sets `sceneStore`'s
  * `netFocus` to this instance's id, so the WIRING view's class-toggle filter
@@ -93,6 +94,10 @@ export function Inspector() {
   const profile = useSceneStore((s) => s.profile);
   const overrides = useSceneStore((s) => s.overrides);
   const selection = useSceneStore((s) => s.selection);
+  const simRunning = useSimStore((s) => s.running);
+  const simBootStage = useSimStore((s) => s.bootStage);
+  const simCamStage = useSimStore((s) => s.camStage);
+  const simFw = useSimStore((s) => s.fw);
   const pitchMm = useSceneStore((s) => s.pitchMm);
   const explode = useSceneStore((s) => s.explode);
   const netFocus = useSceneStore((s) => s.netFocus);
@@ -105,6 +110,15 @@ export function Inspector() {
   }
 
   const instance = profile.instances.find((i) => i.id === selection);
+  // A camera instance reports its own stage; everything else reports the
+  // device it lives in. Either way this is the simulator's actual state.
+  const camKey = /^cam[1-4]$/.test(selection) ? (selection as 'cam1' | 'cam2' | 'cam3' | 'cam4') : null;
+  const fwState = camKey === null ? undefined : simFw[camKey]?.state;
+  const runtime = !simRunning
+    ? 'SIM OFF'
+    : camKey !== null
+      ? `${simCamStage[camKey]}${fwState === undefined ? '' : ` · FW ${fwState}`}`
+      : simBootStage;
   if (!instance) {
     return <div className="twin-inspector twin-inspector--empty">Instance "{selection}" not found in profile.</div>;
   }
@@ -245,7 +259,7 @@ export function Inspector() {
 
       <section className="twin-inspector-section">
         <div className="twin-inspector-label">RUNTIME</div>
-        <div className="twin-inspector-muted">SIM OFF</div>
+        <div className={runtime === 'SIM OFF' ? 'twin-inspector-muted' : 'twin-inspector-value'}>{runtime}</div>
       </section>
 
       <section className="twin-inspector-section">
