@@ -1294,6 +1294,19 @@ export class MockKinoDevice implements MockDeviceLike {
     this.captureTimers.push(setTimeout(fn, ms));
   }
 
+  /**
+   * A restart the host asked for, scheduled so that hanging up cannot cancel
+   * it. REBOOT and FACTORY_RESET answer first and act a moment later, and
+   * `detach()` clears every `after()` timer — so a client that closes the
+   * link as soon as it has its ack used to un-schedule the very thing it
+   * asked for. Studio never saw it because Studio keeps the link open and
+   * waits for the device to drop it; KINO Twin's own REBOOT button closes
+   * immediately, so the button did nothing at all.
+   */
+  private afterLifecycle(ms: number, fn: () => void) {
+    this.captureTimers.push(setTimeout(fn, ms));
+  }
+
   private clearCaptureTimers() {
     for (const t of this.captureTimers) clearTimeout(t);
     this.captureTimers = [];
@@ -2422,7 +2435,7 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.REBOOT:
         this.respond(frame, { ok: true });
-        this.after(300, () => this.reboot('host-reboot'));
+        this.afterLifecycle(300, () => this.reboot('host-reboot'));
         return;
       case Cmd.FACTORY_RESET:
         this.config = defaultConfig();
@@ -2432,7 +2445,7 @@ export class MockKinoDevice implements MockDeviceLike {
         this.calibration = neutralCalibration();
         this.log('P4', 'factory reset — config, recipes, sounds, calibration cleared');
         this.respond(frame, { ok: true });
-        this.after(400, () => this.reboot('factory-reset'));
+        this.afterLifecycle(400, () => this.reboot('factory-reset'));
         return;
       case Cmd.FW_QUERY: {
         const targets: Record<string, { version: string; state: string }> = {

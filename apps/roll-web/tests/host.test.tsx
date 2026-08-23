@@ -12,6 +12,7 @@ import {
   type HostRollView,
 } from '../src/api/hostClient';
 import { HostDashboard } from '../src/pages/HostDashboard';
+import { HostDashboardPage } from '../src/pages/HostDashboardPage';
 
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qr') } }));
 
@@ -165,5 +166,36 @@ describe('host dashboard', () => {
     expect(getExport).toHaveBeenCalledTimes(2);
     expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
     expect(container.querySelector('a[href="https://storage.test/export.zip"]')?.textContent).toBe('Download ZIP');
+  });
+});
+
+describe('host token gate', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('says why a rejected token was rejected instead of doing nothing', async () => {
+    // The button used to appear to work: a token the client refused left the
+    // page exactly as it was, with no message and no navigation.
+    await act(async () => root.render(<HostDashboardPage />));
+
+    const input = container.querySelector<HTMLInputElement>('#host-token');
+    const form = container.querySelector('form');
+    input!.value = '   ';
+    await act(async () => form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain('host token');
   });
 });
