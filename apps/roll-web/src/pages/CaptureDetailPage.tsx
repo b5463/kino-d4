@@ -8,7 +8,7 @@ import {
   type RollView,
 } from '../api/client';
 import { CaptureDetail, clockOf } from './CaptureDetail';
-import { rollLabel, SiteFooter } from '../components/SiteHeader';
+import { rollLabel } from '../components/SiteHeader';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
@@ -84,7 +84,6 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
           <CaptureDetail slug={slug} capture={capture} roll={roll} />
         ) : null}
       </div>
-      <SiteFooter />
     </>
   );
 }

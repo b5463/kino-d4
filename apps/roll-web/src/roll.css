@@ -389,7 +389,16 @@ body[data-surface='guest'] .n,
 
 .k-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-.photo-page { display: flex; flex-direction: column; min-height: 100dvh; }
+/* Photograph, its frames, its facts, then the actions docked at the bottom.
+   A 4:3 photograph on a tall phone cannot fill the screen without cropping,
+   so there is always slack: it belongs in one piece below the facts, not
+   split into bands around the picture. The hero used to be flex:1 and
+   absorbed all of it, letterboxing a 293px photograph inside a 641px box. */
+/* The back bar is a sibling of .photo-page, not inside it, so the viewport
+   height belongs on the wrapper — put it on the page and the layout runs
+   exactly one bar-height past the bottom of the screen. */
+body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-direction: column; min-height: 100dvh; }
+.photo-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .k-bar {
   display: flex;
   align-items: center;
@@ -406,7 +415,7 @@ body[data-surface='guest'] .n,
 .k-bar .k-who { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .k-bar .k-count { font-size: 12.5px; }
 
-.k-hero { flex: 1; min-height: 0; background: #000; line-height: 0; display: flex; align-items: center; justify-content: center; }
+.k-hero { flex: none; background: #000; line-height: 0; }
 .k-hero > img, .k-hero > div { width: 100%; }
 .k-hero img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
 .k-hero [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
