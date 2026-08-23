@@ -4,6 +4,17 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ## Unreleased
 
+### Changed
+
+- The guest Roll is rebuilt as the album that belongs with the camera. Chrome is a moulded warm-grey plate — the ABS of a camera accessory, edged by two 1 px inset lines rather than a gradient — and the photography runs full-bleed on black between the plates, one capture per row on a phone. The frame counter sits in a dark window let into the plate the way it does on a camera's top deck, the three destinations are chunky keys in a routed well where the selected one reads as pressed in, and clock marks group the stream by minute instead of stamping a relative time under every tile. The four-frame mark is the wiggle's playhead: one bar per camera, and the lit bar is the frame on screen, so it says a capture has four frames, shows which one you are seeing, and is the indicator when motion is off. The photo page is back, photograph, contiguous four-frame strip, camera metadata, and one Save. Type is BIZ UDPGothic with tabular figures — 56 kB of Latin subsets; the Japanese subset is 1.3 MB and is deliberately not shipped. The host dashboard keeps its light treatment, separated by `data-surface` on `<body>`.
+- Saving hands the file to the system share sheet where the browser supports it, so a photograph reaches Photos instead of Files: a plain download link does not reach the camera roll on iOS. Downloads remain the fallback, and the sheet now names what each row is for — original, wiggle as MP4, and the three crops — with sharing a link alongside them.
+
+### Fixed
+
+- Wiggle playback and the D4 frame strip no longer depend on `downloadsEnabled`. A host turning saving off used to freeze every photograph in the Roll and hide the four frames behind it; that flag now gates only what leaves the phone.
+- Guest touch targets meet 44 px, including the back link on the photo page, which was a 167×14 px hit area and the only way back. The photo page has an `h1` naming the photograph — its only heading had been `h2 "D4 frames"`.
+- Roll's shared control styling no longer out-specifies the surface it lands on. `button:not(.kino-button):not(.roll-tab):not(.action-link):not(.frame-thumb)` scored (0,4,1) and silently forced 30 px controls and a light gradient onto anything new; bare-button styling is now scoped to the host surface, with `.kino-button` still covering the design-system button everywhere.
+
 ### Removed
 
 - Studio's in-tab demo device. KINO Twin is the simulator: it runs the same reference device, over the same protocol and the same connect path, and has its own fault panel — Studio was shipping a second, weaker copy of it. Gone with it are the `OPEN DEMO DEVICE` and `DEMO` buttons, both demo menu items, and Studio's simulator-faults panel. The reference `MockKinoDevice` stays as test infrastructure and no longer ships in the product: the Studio bundle drops from 457 kB to 366 kB (144 kB to 115 kB gzipped) because the simulator is no longer reachable from app code. Two consequences were fixed rather than inherited — the device-only Roll path now recognises any simulated session, so a Twin session with no Roll server keeps the QR flow instead of silently losing it, and the connect screen says how to reach a Twin when none is answering, including the relay route for the split-port dev servers where the same-origin bridge cannot work.

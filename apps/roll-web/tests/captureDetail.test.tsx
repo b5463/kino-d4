@@ -110,9 +110,9 @@ describe('CaptureDetail', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     await render(capture('single', 1), roll());
 
-    const share = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Share',
-    );
+    // Sharing lives in the save sheet now — one place for getting a capture out.
+    await openSaveSheet();
+    const share = container.querySelector<HTMLButtonElement>('button[aria-label="Share"]');
     await act(async () => share?.click());
 
     expect(writeText).toHaveBeenCalledWith(window.location.href);
@@ -120,9 +120,29 @@ describe('CaptureDetail', () => {
     expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
   });
 
+  /**
+   * Save controls live behind one SAVE button now (issue #114), so a test
+   * that wants one has to open the sheet first. Each row is `LABEL` plus a
+   * quiet hint (`1600x1200`, `MP4`, `STORY`), hence the prefix match.
+   */
+  async function openSaveSheet(): Promise<void> {
+    if (container.querySelector('.k-sheet') !== null) return;
+    const save = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Save',
+    );
+    await act(async () => save?.click());
+  }
+
+  /** Re-rendering rebuilds the page with the sheet shut, so reopen it. */
+  async function reopenSaveSheet(): Promise<void> {
+    const veil = container.querySelector<HTMLButtonElement>('.k-veil');
+    if (veil) await act(async () => veil.click());
+    await openSaveSheet();
+  }
+
   function findAction(label: string): HTMLElement | undefined {
     return Array.from(container.querySelectorAll<HTMLElement>('a.action-link, button.action-link')).find(
-      (element) => element.textContent === label,
+      (element) => (element.textContent ?? '').startsWith(label),
     );
   }
 
@@ -134,8 +154,9 @@ describe('CaptureDetail', () => {
       { role: 'kino-still', assetId: 'asset_still', frameIndex: null, mime: 'image/webp', bytes: 9, width: 1280, height: 960 },
     ];
     await render(view, roll());
+    await openSaveSheet();
 
-    const save = findAction('Save photo');
+    const save = findAction('Original');
     expect(save?.getAttribute('href')).toBe('/api/assets/asset_still/content?download=1');
     expect(save?.hasAttribute('download')).toBe(true);
   });
@@ -147,8 +168,9 @@ describe('CaptureDetail', () => {
       { role: 'wiggle-mp4', assetId: 'asset_mp4', frameIndex: null, mime: 'video/mp4', bytes: 9, width: 960, height: 720 },
     ];
     await render(view, roll());
+    await openSaveSheet();
 
-    expect(findAction('Save wiggle')?.getAttribute('href')).toBe(
+    expect(findAction('Wiggle')?.getAttribute('href')).toBe(
       '/api/assets/asset_mp4/content?download=1',
     );
   });
@@ -158,13 +180,14 @@ describe('CaptureDetail', () => {
     const client = api({ requestRender });
     const view = capture('wiggle', 4);
     await render(view, roll(), client);
+    await openSaveSheet();
 
-    const save = findAction('Save wiggle');
+    const save = findAction('Wiggle');
     expect(save?.tagName).toBe('BUTTON');
     await act(async () => save?.click());
 
     expect(requestRender).toHaveBeenCalledWith('party', 'cap_1', 'wiggle-mp4');
-    expect(findAction('Rendering…')).toBeDefined();
+    expect(findAction('Wiggle')?.textContent).toContain('Preparing…');
 
     // The SSE replace path hands the component a refreshed capture that now
     // carries the MP4 — the pending state resolves into a download link.
@@ -174,24 +197,27 @@ describe('CaptureDetail', () => {
       { role: 'wiggle-mp4', assetId: 'asset_mp4', frameIndex: null, mime: 'video/mp4', bytes: 9, width: 960, height: 720 },
     ];
     await render(finished, roll(), client);
-    expect(findAction('Save wiggle')?.getAttribute('href')).toBe(
+    await reopenSaveSheet();
+    expect(findAction('Wiggle')?.getAttribute('href')).toBe(
       '/api/assets/asset_mp4/content?download=1',
     );
   });
 
   it('SAVE WIGGLE is absent on a non-wiggle capture', async () => {
     await render(capture('single', 1), roll());
-    expect(findAction('Save wiggle')).toBeUndefined();
+    await openSaveSheet();
+    expect(findAction('Wiggle')).toBeUndefined();
   });
 
   it('the social format row requests the shared render job per format', async () => {
     const requestRender = vi.fn().mockResolvedValue(undefined);
     await render(capture('single', 1), roll(), api({ requestRender }));
+    await openSaveSheet();
 
-    for (const label of ['9:16', '4:5', '1:1']) {
+    for (const label of ['Story', 'Post', 'Square']) {
       expect(findAction(label)?.tagName).toBe('BUTTON');
     }
-    await act(async () => findAction('9:16')?.click());
+    await act(async () => findAction('Story')?.click());
     expect(requestRender).toHaveBeenCalledWith('party', 'cap_1', 'social-9x16');
   });
 
@@ -202,14 +228,41 @@ describe('CaptureDetail', () => {
       { role: 'social-1x1', assetId: 'asset_sq', frameIndex: null, mime: 'image/jpeg', bytes: 9, width: 1080, height: 1080 },
     ];
     await render(view, roll());
-    expect(findAction('1:1')?.getAttribute('href')).toBe('/api/assets/asset_sq/content?download=1');
+    await openSaveSheet();
+    expect(findAction('Square')?.getAttribute('href')).toBe('/api/assets/asset_sq/content?download=1');
   });
 
   it('hides every save control when downloads are off', async () => {
     await render(capture('wiggle', 4), roll({ downloadsEnabled: false }));
-    expect(findAction('Save photo')).toBeUndefined();
-    expect(findAction('Save wiggle')).toBeUndefined();
-    expect(findAction('9:16')).toBeUndefined();
+    // No SAVE button at all, so the sheet cannot be reached.
+    await openSaveSheet();
+    expect(findAction('Original')).toBeUndefined();
+    expect(findAction('WIGGLE')).toBeUndefined();
+    expect(findAction('Story')).toBeUndefined();
+  });
+
+  it('keeps the photograph moving and its frames listed when saving is off', async () => {
+    // Regression for issue #114: playback and the frame strip were gated on
+    // `downloadsEnabled`, so a host turning saves off silently froze every
+    // photograph and hid the four frames it was built from. A save permission
+    // decides what leaves the phone, never what the guest can look at.
+    await render(capture('wiggle', 4), roll({ downloadsEnabled: false }));
+
+    expect(container.querySelector('[data-wiggle-player]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Original frame strip"]')).not.toBeNull();
+    expect(container.querySelectorAll('.frame-thumb')).toHaveLength(4);
+  });
+
+  it('names the photograph with an h1 and keeps every control at 44 px', async () => {
+    // The page used to have no h1 at all — its only heading was "D4 frames".
+    await render(capture('wiggle', 4), roll());
+
+    const h1 = container.querySelector('h1');
+    expect(h1?.textContent).toContain('Friday party');
+
+    for (const el of container.querySelectorAll<HTMLElement>('.k-acts > button, .k-bar')) {
+      expect(el.className).not.toContain('action-link');
+    }
   });
 
   it('renders and reconciles reactions only when the Roll enables them', async () => {

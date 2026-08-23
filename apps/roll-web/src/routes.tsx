@@ -67,8 +67,20 @@ function useLocationPathname(): string {
   return pathname;
 }
 
+/** Guest routes are the dark image browser; `/host` stays the light operator page. */
+function surfaceOf(name: Route['name']): 'guest' | 'host' {
+  return name === 'host-dashboard' ? 'host' : 'guest';
+}
+
 export function AppRoutes() {
   const route = matchRoute(useLocationPathname());
+  const surface = surfaceOf(route.name);
+
+  // One attribute on <body> switches the whole palette, so guest and host
+  // styles never have to out-specify each other.
+  useEffect(() => {
+    document.body.dataset.surface = surface;
+  }, [surface]);
 
   switch (route.name) {
     case 'roll-feed':

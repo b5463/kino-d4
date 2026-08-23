@@ -5,7 +5,7 @@ export interface NotFoundPageProps {
 /** Anything outside `/r/:slug`, `/r/:slug/c/:captureId` and `/host`. */
 export function NotFoundPage({ pathname }: NotFoundPageProps) {
   return (
-    <main className="roll-shell roll-shell--narrow">
+    <main className="k-gate">
       <h1>Not found</h1>
       <p>No route matches {pathname}.</p>
     </main>
@@ -15,7 +15,7 @@ export function NotFoundPage({ pathname }: NotFoundPageProps) {
 /** A valid Roll route whose secret slug or capture is no longer available. */
 export function NoRollPage() {
   return (
-    <main className="roll-shell roll-shell--narrow">
+    <main className="k-gate">
       <h1>No Roll here.</h1>
       <p>This link may be old, or the Roll may have been removed.</p>
     </main>
