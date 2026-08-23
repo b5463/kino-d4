@@ -390,6 +390,25 @@ export interface HwValidationReport {
 }
 
 export type ShootMode = 'wiggle' | 'quad';
+
+/**
+ * GET_MODES (0x20). The modes this device will accept in SET_MODE, so a host
+ * does not have to assume the whole `ShootMode` union is available. Firmware
+ * that ships one mode answers a one-element list rather than NACKing.
+ */
+export interface GetModesResponse {
+  modes: ShootMode[];
+}
+
+/**
+ * CAMERA_ARM (0x31). `armWindowMs` is how long the sensors stay primed before
+ * they fall back to `ready`. The host needs the number: there is no
+ * CAMERA_DISARM, so the window and the capture are the only two exits.
+ */
+export interface CameraArmResponse {
+  ok: boolean;
+  armWindowMs: number;
+}
 export type Resolution = '1600x1200' | '2048x1536';
 
 /** Playback loop. Bounce never jumps CAM4 → CAM1; continuous does, on purpose. */

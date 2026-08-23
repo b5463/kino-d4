@@ -275,6 +275,17 @@ static int test_tiny_buffer_never_stalls(void) {
   return 0;
 }
 
+// Sequence 0 is the events' sentinel, so the request counter wraps to 1.
+// The host does the same thing in packet.ts; this is the half that has to
+// agree with it.
+static int test_sequence_wrap(void) {
+  CHECK(kdp_next_seq(0) == 1);
+  CHECK(kdp_next_seq(1) == 2);
+  CHECK(kdp_next_seq(KDP_MAX_SEQ - 1) == KDP_MAX_SEQ);
+  CHECK(kdp_next_seq(KDP_MAX_SEQ) == 1);
+  return 0;
+}
+
 int main(void) {
   if (test_crc_fixtures()) return 1;
   if (test_streaming_crc()) return 1;
@@ -287,6 +298,7 @@ int main(void) {
   if (test_split_mid_second_frame()) return 1;
   if (test_empty_payload_frame()) return 1;
   if (test_tiny_buffer_never_stalls()) return 1;
+  if (test_sequence_wrap()) return 1;
   printf("kdp_core host tests: %d checks passed\n", checks);
   return 0;
 }

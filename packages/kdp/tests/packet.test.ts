@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FrameDecoder, encodeFrame, encodeJson, decodeJson } from '../src/protocol/packet';
+import { FrameDecoder, MAX_SEQ, encodeFrame, encodeJson, decodeJson, nextSeq } from '../src/protocol/packet';
 import type { Frame } from '../src/protocol/packet';
 
 function frame(seq: number, payload: Uint8Array = new Uint8Array(0)): Frame {
@@ -70,5 +70,22 @@ describe('frame encode/decode roundtrip', () => {
     const frames = decoder.push(encodeFrame({ version: 1, type: 0x62, flags: 0x08, seq: 3, payload }));
     expect(frames).toHaveLength(1);
     expect(frames[0].payload).toEqual(payload);
+  });
+});
+
+describe('sequence wraparound', () => {
+  it('wraps to 1, never to 0', () => {
+    // 0 is the events' sentinel. A uint32 counter left to overflow on its own
+    // would start minting requests indistinguishable from events to anything
+    // reading the field literally, which is the whole reason for the rule.
+    expect(nextSeq(1)).toBe(2);
+    expect(nextSeq(MAX_SEQ - 1)).toBe(MAX_SEQ);
+    expect(nextSeq(MAX_SEQ)).toBe(1);
+  });
+
+  it('keeps a wrapped sequence intact through the wire format', () => {
+    const decoder = new FrameDecoder();
+    const frames = decoder.push(encodeFrame(frame(MAX_SEQ)));
+    expect(frames[0].seq).toBe(MAX_SEQ);
   });
 });

@@ -189,23 +189,56 @@ Source commands **not in spec 04§7** — repo additions, normative:
 `cursor?: number` and `limit?: number` with no `filters`. **Source is normative.** The reference
 device caps `limit` at 100 and reports `total` and `hasMore` alongside.
 
-## Unspecified — firmware team decision required
+## Decided — was "firmware team decision required"
 
-These are genuinely undefined. Do not infer a behavior from this document; decide and then amend
-`commands.ts` / `types.ts` so the decision becomes source.
+Issue #5 closed the six open questions this section used to list. They were open because physical
+firmware cannot guess them, and a bench is a bad place to discover a design question. Each decision
+below is now source: `commands.ts`, `types.ts`, `packet.ts` and the reference device implement it,
+and a test pins it.
 
-1. **`STATUS` (0x81) and `FW_PROGRESS` (0x82) event payloads.** Both ids exist in the `Evt` enum.
-   Neither has a producer or a consumer anywhere in the repo. Shape is undefined.
-2. **Sequence-ID wraparound.** The client increments a counter from 1 per connection and truncates to
-   uint32 on encode. Behavior at wrap is untested and unspecified. In practice no session runs long
-   enough to reach it.
-3. **Whether HELLO is mandatory before other commands.** The client does not enforce ordering and the
-   reference device answers any command without a prior HELLO. Firmware may be stricter; if it is,
-   the rejection code is unspecified.
-4. **Binary media resume.** 04§10 asks for per-chunk CRC and a completion hash. `MEDIA_READ` is a
-   plain `{id, file, offset, length}` pull with no chunk sequencing beyond the frame CRC. Resume
-   semantics beyond "ask for a different offset" are unspecified.
-5. **`GET_MODES` (0x20) and `CAMERA_ARM` (0x31) payloads.** Only the reference mock defines them
-   (`{"modes":["wiggle","quad"]}` and `{"ok":true}`). No Studio code path calls either.
-6. **Whether a device may emit `JOB_PROGRESS` for a job the host never started.** The client buffers
-   such events under a bounded orphan map, so it is survivable, but it is not sanctioned.
+Three of the six are ratifications rather than inventions. Where the client, the reference device
+and the P4 dispatcher already agreed on a behavior, the decision is to keep that behavior and forbid
+firmware from being stricter — changing it would break a host that is entitled to the old one.
+
+1. **`STATUS` (0x81) and `FW_PROGRESS` (0x82) — reserved, not emitted.** Neither has a producer or a
+   consumer, and neither is on the 1B path: firmware update is gated behind `xiaoProxyUpdate`, which
+   0.1.x reports `false`. A 0.x device **must not** emit either id. The shape stays undefined on
+   purpose — defining it now would be guessing at a payload for a feature whose flow does not exist,
+   and a wrong guess is worse than a gap. When the update path lands, `FW_PROGRESS` takes the shape
+   `FwStatusResponse` already has, and that is the moment to write it down. The host drops unknown
+   events, so a stray one is survivable but out of contract.
+2. **Sequence-ID wraparound — wrap to 1, never to 0.** `nextSeq()` in `packet.ts` is the rule, and
+   firmware mirrors that one function. Sequence 0 is the events' sentinel; a uint32 counter left to
+   overflow naturally would start minting requests that look like events to anything reading the
+   field literally. No session runs long enough to reach it, which is exactly why both sides have to
+   agree in advance instead of meeting the overflow separately.
+3. **HELLO is not mandatory — and firmware must not make it so.** The client does not enforce
+   ordering, the reference device answers any command without one, and `kdp_server.c` dispatches
+   without checking. Three implementations already agree; a stricter firmware would reject hosts that
+   are within contract. HELLO stays the only way to obtain a `sessionId`, and commands that need
+   session state (sound upload, firmware sessions) keep answering `NO_SESSION` — that is a
+   per-command precondition, not a connection-wide one. Because there is no such thing as a rejected
+   pre-HELLO command, no rejection code is needed.
+4. **Binary media resume — offset restart is the whole mechanism.** 04§10 asked for per-chunk CRC and
+   a completion hash. The per-chunk CRC is the frame CRC, which already covers every byte of every
+   chunk and is checked before the payload is handed up. There is no completion hash in v1: `MEDIA_INFO`
+   carries the size, a short read is visible without one, and hashing a 4 MB JPEG on the P4 costs
+   more than it proves. Resume is "ask for a different offset", and firmware must serve any valid
+   offset into a file it listed.
+5. **`GET_MODES` (0x20) and `CAMERA_ARM` (0x31) — the reference payloads are now the spec.**
+   `GetModesResponse` = `{ modes: ShootMode[] }` and `CameraArmResponse` = `{ ok, armWindowMs }` live
+   in `types.ts`, and the reference device is typed against them. `armWindowMs` is not optional: with
+   no CAMERA_DISARM, the window is the only thing that tells a host when the sensors fall back to
+   `ready`. Neither command is in the 1B set, so 0.1.x NACKs both `UNSUPPORTED_COMMAND` — the payload
+   is decided for the firmware that implements them, not smuggled into this one.
+6. **`JOB_PROGRESS` for a job this session never started — sanctioned, but only after a reconnect.**
+   A host that reconnects mid-job legitimately receives progress for a job it did not start, so the
+   client's bounded orphan map is contract, not tolerance. What a device must not do is invent jobs:
+   every `jobId` it reports has to correspond to work some host asked for. Unbounded orphan traffic
+   is a firmware bug, and the host's bound is what keeps it from being a host bug too.
+
+**Compatibility.** None of the six bumps `PROTOCOL_VERSION`. Four are documentation of behavior that
+already shipped, one adds response types for commands no 0.1.x device answers, and the wrap rule is
+unreachable in any real session. KDP stays at **1** for all of 0.x, and `versions.json` keeps
+`protocol.kdp: 1`. New behavior goes behind a capability flag; the version byte changes only when the
+framing or an existing payload's meaning does.

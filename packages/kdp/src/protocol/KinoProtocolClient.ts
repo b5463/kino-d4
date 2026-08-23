@@ -1,6 +1,6 @@
 import type { Transport } from '../transport/Transport';
 import { Cmd, Evt, FrameFlags, PROTOCOL_VERSION } from './commands';
-import { FrameDecoder, encodeFrame, encodeJson, decodeJson } from './packet';
+import { FrameDecoder, encodeFrame, nextSeq, encodeJson, decodeJson } from './packet';
 import type { Frame } from './packet';
 import type {
   HelloRequest,
@@ -585,7 +585,8 @@ export class KinoProtocolClient {
     if (this.closed) {
       return Promise.reject(new Error('Connection closed'));
     }
-    const seq = this.seq++;
+    const seq = this.seq;
+    this.seq = nextSeq(seq);
     const frame = encodeFrame({
       version: PROTOCOL_VERSION,
       type: cmd,
