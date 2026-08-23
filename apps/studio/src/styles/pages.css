@@ -882,6 +882,29 @@
 
 .bringup-item:last-child { border-bottom: 0; }
 
+/* Checks that produce a number carry it here. Right-aligned so a column of
+   measurements reads as a column, and outside the label so the completed-item
+   styling does not dim a value that is still being read. */
+.bringup-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.bringup-value {
+  width: 132px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bringup-note {
+  margin: 0 0 10px;
+  max-width: 74ch;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
 .bringup-item label {
   display: flex;
   align-items: flex-start;
