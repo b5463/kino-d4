@@ -394,9 +394,13 @@ body[data-surface='guest'] .n,
    so there is always slack: it belongs in one piece below the facts, not
    split into bands around the picture. The hero used to be flex:1 and
    absorbed all of it, letterboxing a 293px photograph inside a 641px box. */
-/* The back bar is a sibling of .photo-page, not inside it, so the viewport
-   height belongs on the wrapper — put it on the page and the layout runs
-   exactly one bar-height past the bottom of the screen. */
+/* A 4:3 photograph cannot fill a 19.5:9 screen without cropping it, so there
+   is always leftover height and the only real question is where it goes.
+   Under the content it strands the action plate mid-screen; above the plate
+   it reads as a hole. Around the photograph it reads as a photo viewer, so
+   the hero takes it and the picture sits centred in the room it has. The
+   viewport height lives on the wrapper because the back bar is a sibling of
+   .photo-page, not a child of it. */
 body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-direction: column; min-height: 100dvh; }
 .photo-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .k-bar {
@@ -415,9 +419,10 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .k-bar .k-who { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .k-bar .k-count { font-size: 12.5px; }
 
-.k-hero { flex: none; background: #000; line-height: 0; }
+.k-hero { flex: 1; min-height: 0; background: #000; line-height: 0; display: flex; align-items: center; }
+.k-hero > * { width: 100%; }
 .k-hero > img, .k-hero > div { width: 100%; }
-.k-hero img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
+.k-hero img { display: block; width: 100%; max-height: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
 .k-hero [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
 
 /* Contiguous: hairlines read as frame separations, not four cards. */
@@ -449,7 +454,6 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 
 /* Action keys on the plate: Save is the dark one, Pick is a switch beside it. */
 .k-acts {
-  margin-top: auto;
   flex: none;
   display: flex;
   gap: 2px;
