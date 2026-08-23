@@ -5,6 +5,7 @@
 // carry sequence 0 and are batched (~10%), never per unit of work.
 #include "kdp_server.h"
 
+#include <stdarg.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -154,7 +155,7 @@ static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *
 typedef struct {
   bool ok;
   const char *err_code; /* one of the §14 codes when !ok */
-  char err_msg[64];
+  char err_msg[96];
   char capture_uuid[40];
   char capture_id[16];
   char dir[64];
@@ -221,6 +222,22 @@ static void fail(capture_result_t *r, const char *code, const char *msg) {
   r->ok = false;
   r->err_code = code;
   strncpy(r->err_msg, msg, sizeof r->err_msg - 1);
+  r->err_msg[sizeof r->err_msg - 1] = '\0';
+}
+
+/**
+ * fail() with the numbers in it. A bench failure that reports only what went
+ * wrong costs another run to find out how far it got; these carry the
+ * measurement with them so the first run is also the diagnostic one. The
+ * code stays a fixed contract string — only the human message varies.
+ */
+static void failf(capture_result_t *r, const char *code, const char *fmt, ...) {
+  r->ok = false;
+  r->err_code = code;
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(r->err_msg, sizeof r->err_msg, fmt, args);
+  va_end(args);
 }
 
 /* Caller must hold s_capture_lock. */
@@ -250,7 +267,11 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   // Link health probe — the request-to-node bucket.
   uint32_t rtt = 0;
   if (camlink_ping(&rtt) != ESP_OK) {
-    fail(r, "NODE_BOOT_TIMEOUT", "Node stopped answering");
+    camlink_stats_t s;
+    camlink_get_stats(&s);
+    failf(r, "NODE_BOOT_TIMEOUT", "Node stopped answering: %lu timeouts, %lu crc, last %s",
+          (unsigned long)s.timeouts, (unsigned long)s.crc_errors,
+          s.last_error[0] != '\0' ? s.last_error : "-");
     return;
   }
   r->t_request_to_node_ms = rtt;
@@ -260,7 +281,8 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   camlink_capture_result_t cap;
   esp_err_t err = camlink_capture(CAPTURE_RESOLUTION, jpeg_quality, &cap);
   if (err == ESP_ERR_TIMEOUT) {
-    fail(r, "TRANSFER_TIMEOUT", "Capture command timed out");
+    failf(r, "TRANSFER_TIMEOUT", "Capture command timed out after %lu ms",
+          (unsigned long)elapsed_ms(t_cap));
     return;
   }
   if (err != ESP_OK) {
@@ -274,7 +296,8 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   r->node_psram_kb = cap.psram_kb;
   if (cap.size < 4) {
     camlink_release(cap.frame_id);
-    fail(r, "JPEG_INVALID", "Node reported an implausible JPEG size");
+    failf(r, "JPEG_INVALID", "Node reported an implausible JPEG size: %lu B",
+          (unsigned long)cap.size);
     return;
   }
 
@@ -283,7 +306,10 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   if (jpeg == NULL) jpeg = malloc(cap.size);
   if (jpeg == NULL) {
     camlink_release(cap.frame_id);
-    fail(r, "OUT_OF_MEMORY", "No buffer for JPEG staging");
+    /* How short we were is the whole point: a 40 KB miss is a tuning
+     * problem and a 400 KB miss is a design one. */
+    failf(r, "OUT_OF_MEMORY", "JPEG staging wants %lu B, free %lu KB psram / %lu KB heap",
+          (unsigned long)cap.size, (unsigned long)psram_kb(), (unsigned long)heap_kb());
     return;
   }
 
@@ -296,9 +322,15 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
     size_t got = 0;
     esp_err_t rerr = camlink_read(cap.frame_id, offset, jpeg + offset, want, &got);
     if (rerr != ESP_OK || got == 0) {
+      /* Where it died is the measurement. Failing at the first chunk is a
+       * link fault; failing at 80% is a throughput or timeout budget the
+       * bench can retune. */
+      failf(r, "TRANSFER_TIMEOUT", "Chunk read failed at %lu/%lu B (%lu%%) after %lu ms",
+            (unsigned long)offset, (unsigned long)cap.size,
+            (unsigned long)(cap.size == 0 ? 0 : (uint64_t)offset * 100 / cap.size),
+            (unsigned long)elapsed_ms(t_xfer));
       free(jpeg);
       camlink_release(cap.frame_id);
-      fail(r, "TRANSFER_TIMEOUT", "Chunk read failed mid-transfer");
       return;
     }
     crc_state = kdp_crc32_update(crc_state, jpeg + offset, got);
@@ -311,7 +343,8 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
            (unsigned long)kdp_crc32_final(crc_state));
   if (r->crc_node[0] != '\0' && strcmp(r->crc_node, r->crc_transfer) != 0) {
     free(jpeg);
-    fail(r, "TRANSFER_CRC_MISMATCH", "Node and transfer checksums disagree");
+    failf(r, "TRANSFER_CRC_MISMATCH", "Checksums disagree over %lu B: node %s, transfer %s",
+          (unsigned long)cap.size, r->crc_node, r->crc_transfer);
     return;
   }
   // JPEG sanity: SOI marker.
@@ -627,6 +660,7 @@ static void handle_link_stats(uint32_t seq, cJSON *req) {
   cJSON_AddNumberToObject(json, "retries", stats.retries);
   cJSON_AddNumberToObject(json, "duplicateFrames", stats.duplicates);
   cJSON_AddNumberToObject(json, "lastSequence", stats.last_sequence);
+  cJSON_AddNumberToObject(json, "latencyMaxMs", stats.latency_max_ms);
   if (info.reset_reason[0] != '\0') {
     cJSON_AddStringToObject(json, "lastNodeBootReason", info.reset_reason);
   } else {

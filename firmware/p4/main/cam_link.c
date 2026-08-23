@@ -12,6 +12,7 @@
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
+#include "klog.h"
 #include "node_link/node_link.h"
 
 #define LINK_RX_BUF (2 * (NL_CHUNK_MAX + 64))
@@ -90,6 +91,14 @@ static esp_err_t request(uint8_t cmd, const char *json, uint8_t *resp, size_t re
     return ESP_ERR_INVALID_ARG;
   }
 
+  /* Counter snapshot so a timeout can report what arrived during THIS
+   * request. Without it a stalled 400 KB transfer and a dead cable produce
+   * the same log line, and the first bench run cannot tell them apart. */
+  const uint32_t rx_bytes_before = s_stats.rx_bytes;
+  const uint32_t rx_frames_before = s_stats.rx_frames;
+  const uint32_t dups_before = s_stats.duplicates;
+  const uint32_t crc_before = s_stats.crc_errors + s_decoder.stats.crc_failures;
+
   int64_t start = esp_timer_get_time();
   uart_flush_input(BOARD_CAM1_UART_NUM);
   kdp_decoder_reset(&s_decoder);
@@ -110,14 +119,28 @@ static esp_err_t request(uint8_t cmd, const char *json, uint8_t *resp, size_t re
 
   esp_err_t result;
   if (!s_pending.got) {
+    /* A timeout that prints only "TIMEOUT" wastes the run it happened on.
+     * Silence, a partial transfer and a reply to a request we already gave
+     * up on all need different fixes, and these four counters separate
+     * them. The budget is here too because it is a guess made before any
+     * hardware existed: the interesting case is elapsed at the budget with
+     * bytes still arriving. */
+    uint32_t ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
     s_stats.timeouts++;
     set_last_error("TIMEOUT");
+    klog("C1", "TIMEOUT cmd 0x%02x seq %lu %lu/%lums %luB %luf %lud %luc", cmd,
+         (unsigned long)s_pending.seq, (unsigned long)ms, (unsigned long)timeout_ms,
+         (unsigned long)(s_stats.rx_bytes - rx_bytes_before),
+         (unsigned long)(s_stats.rx_frames - rx_frames_before),
+         (unsigned long)(s_stats.duplicates - dups_before),
+         (unsigned long)(s_stats.crc_errors + s_decoder.stats.crc_failures - crc_before));
     result = ESP_ERR_TIMEOUT;
   } else if (s_pending.nack) {
     set_last_error(s_pending.err_code[0] != '\0' ? s_pending.err_code : "NACK");
     result = ESP_ERR_INVALID_RESPONSE;
   } else {
     s_info.latency_ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
+    if (s_info.latency_ms > s_stats.latency_max_ms) s_stats.latency_max_ms = s_info.latency_ms;
     result = ESP_OK;
   }
   s_stats.crc_errors += s_decoder.stats.crc_failures;
