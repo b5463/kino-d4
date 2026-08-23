@@ -211,6 +211,10 @@ export function WigglePlayer({
       ref={containerRef}
       data-wiggle-player=""
       data-playing={shouldAnimate ? 'true' : 'false'}
+      /* Which camera's frame is on screen right now. The feed's four-bar mark
+         reads this to light the matching bar, so the indicator is the
+         playhead rather than a second thing that has to be kept in step. */
+      data-frame={currentFrameIndex}
       style={{ position: 'relative', width: '100%' }}
     >
       <button

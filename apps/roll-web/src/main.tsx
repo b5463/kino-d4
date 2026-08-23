@@ -4,12 +4,13 @@ import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import '@kino/design-system/tokens.css';
 import '@kino/design-system/components.css';
-// Latin subsets only, and deliberately so: the Japanese subsets of these
-// faces are 1.3 MB each, and a guest opens this on a phone at a party.
-// Together these three files are ~80 kB and the whole guest UI is Latin.
+// Latin subsets only, and deliberately so: the Japanese subset of this face
+// is 1.3 MB, and a guest opens this on a phone at a party. Two files, ~56 kB,
+// and the whole guest interface is Latin. Numbers use the same face with
+// tabular figures rather than the fixed-width sibling, which gave punctuation
+// a full cell and set 23.08.26 as "23. 08. 26".
 import '@fontsource/biz-udpgothic/latin-400.css';
 import '@fontsource/biz-udpgothic/latin-700.css';
-import '@fontsource/biz-udgothic/latin-400.css';
 import './roll.css';
 
 const rootElement = document.getElementById('root');

@@ -9,7 +9,7 @@ import {
   type RollView,
 } from '../api/client';
 import { evictCaptureAssets } from '../cache/assets';
-import { frameCount, GuestBar, rollId, SiteFooter } from '../components/SiteHeader';
+import { GuestBar, rollLabel, shortDate, SiteFooter } from '../components/SiteHeader';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
@@ -53,12 +53,6 @@ function assetOf(capture: CaptureView, roles: readonly string[]) {
   return undefined;
 }
 
-function formattedDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
-}
-
 /** `21:40` — the clock mark a group of captures is filed under. */
 export function clockMark(value: string): string {
   const d = new Date(value);
@@ -67,21 +61,32 @@ export function clockMark(value: string): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}`;
 }
 
-const HEART = (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M12 20s-7-4.5-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7-2.5c0 5-7 9.5-7 9.5z" />
-  </svg>
-);
+/**
+ * One bar per camera. The lit bar is the frame on screen — the player puts
+ * its index on `data-frame` and the stylesheet lights the matching bar, so
+ * the mark is the wiggle's playhead rather than a badge kept in step by
+ * hand. A single-frame capture collapses to one wide bar.
+ */
+function FrameMark({ frames }: { frames: number }) {
+  if (frames < 2) return <span className="k-frames k-frames--solo" aria-hidden="true"><b /></span>;
+  return (
+    <span className="k-frames" aria-hidden="true">
+      <b /><b /><b /><b />
+    </span>
+  );
+}
 
 function CaptureTile({
   slug,
   capture,
+  index,
   isNew,
   picked,
   onPick,
 }: {
   slug: string;
   capture: CaptureView;
+  index: string;
   isNew: boolean;
   picked: boolean;
   onPick: (captureId: string) => void;
@@ -110,7 +115,7 @@ function CaptureTile({
     const source = animated ?? poster;
     media =
       source === undefined ? (
-        <span className="k-processing" aria-label="Capture processing">PROCESSING</span>
+        <span className="k-processing" aria-label="Capture processing">Processing…</span>
       ) : (
         <img src={rollApi.assetUrl(source.assetId)} alt="" loading="lazy" className="photo-img" />
       );
@@ -121,27 +126,28 @@ function CaptureTile({
       <a
         className="k-open"
         href={`/r/${encodeURIComponent(slug)}/c/${encodeURIComponent(capture.captureId)}`}
-        aria-label={`Open capture from ${clockMark(capture.capturedAt)}`}
+        aria-label={`Open capture ${index} from ${clockMark(capture.capturedAt)}`}
       >
         {media}
       </a>
-      {isNew ? <span className="k-new">NEW</span> : null}
-      {/* Four frames is the whole product; the mark says so without a word. */}
-      {capture.frameCount >= 2 ? (
-        <span className="k-mark-4f">
-          <span className="k-quad" aria-hidden="true"><b /><b /><b /><b /></span>
-          {capture.frameCount}F
+      {isNew ? <span className="k-new">New</span> : null}
+      <div className="k-overlay">
+        <span className="k-idx">
+          <FrameMark frames={capture.frameCount} />
+          <span className="k-no">{index}</span>
+          {/* Motion off: the range is spelled out, since the bars cannot move. */}
+          {capture.frameCount >= 2 && !movable ? <span className="k-still">1-{capture.frameCount}</span> : null}
         </span>
-      ) : null}
-      <button
-        type="button"
-        className="k-pick"
-        aria-pressed={picked}
-        aria-label={picked ? 'Remove from my picks' : 'Add to my picks'}
-        onClick={() => onPick(capture.captureId)}
-      >
-        {HEART}
-      </button>
+        <button
+          type="button"
+          className="k-pick"
+          aria-pressed={picked}
+          aria-label={picked ? `Remove pick ${index}` : `Pick ${index}`}
+          onClick={() => onPick(capture.captureId)}
+        >
+          {picked ? '\u2665' : '\u2661'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -198,6 +204,36 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   const columns = useColumnCount();
   const picks = usePicks(slug);
   const picked = usePickedCaptures(slug, picks, feed.captures);
+  /**
+   * A capture's number is its place in the roll, counted from the oldest, so
+   * `003` means the same thing to two guests looking at the same photograph.
+   * The feed arrives newest first, hence the subtraction.
+   */
+  const indexOf = useCallback(
+    (captureId: string): string => {
+      const at = feed.captures.findIndex((c) => c.captureId === captureId);
+      const total = Math.max(feed.captures.length, roll?.photoCount ?? 0);
+      const nth = at < 0 ? 0 : total - at;
+      return String(nth).padStart(3, '0');
+    },
+    [feed.captures, roll?.photoCount],
+  );
+
+  // The plate gives way going down the roll and returns on the first upward
+  // move, so the photographs get the screen without navigation ever being
+  // more than one gesture away.
+  const [barHidden, setBarHidden] = useState(false);
+  useEffect(() => {
+    let previous = window.scrollY;
+    const onScroll = (): void => {
+      const y = window.scrollY;
+      setBarHidden(y > 120 && y > previous);
+      previous = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   // Picking is immediate and local: no request, no toast, no confirmation.
   const onPickToggle = useCallback((captureId: string): void => {
     togglePick(slug, captureId);
@@ -315,27 +351,25 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   return (
     <>
       <div className="k-app">
-        <GuestBar right={<span className="k-count">{frameCount(photoCount)}</span>} />
-        <div className="k-id">
-          <b>{rollId(roll?.title ?? slug, roll?.createdAt)}</b>
-        </div>
-
-        <nav className="k-nav" aria-label="Roll sections">
-          <button type="button" aria-current={tab === 'photos'} onClick={() => setTab('photos')}>
-            ROLL
-          </button>
-          <button
-            type="button"
-            aria-current={tab === 'picks'}
-            aria-label={`My picks, ${String(picks.size)}`}
-            onClick={() => setTab('picks')}
-          >
-            PICKS
-          </button>
-          <button type="button" aria-current={tab === 'info'} onClick={() => setTab('info')}>
-            INFO
-          </button>
-        </nav>
+        <GuestBar name={rollLabel(roll?.title, slug)} count={photoCount} hidden={barHidden}>
+          <nav className="k-nav" aria-label="Roll sections">
+            <button type="button" aria-current={tab === 'photos'} onClick={() => setTab('photos')}>
+              Roll
+            </button>
+            <button
+              type="button"
+              aria-current={tab === 'picks'}
+              aria-label={`My picks, ${String(picks.size)}`}
+              onClick={() => setTab('picks')}
+            >
+              Picks
+              {picks.size > 0 ? <span className="k-cnt">{String(picks.size).padStart(2, '0')}</span> : null}
+            </button>
+            <button type="button" aria-current={tab === 'info'} onClick={() => setTab('info')}>
+              Info
+            </button>
+          </nav>
+        </GuestBar>
 
         {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
 
@@ -344,18 +378,20 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
         {tab === 'info' && roll !== null ? (
           <div className="k-info">
             <dl>
-              <dt>ROLL</dt>
-              <dd>{roll.title}</dd>
-              <dt>CREATED</dt>
-              <dd>{formattedDate(roll.createdAt)}</dd>
-              <dt>FRAMES</dt>
-              <dd>{frameCount(photoCount)}</dd>
-              <dt>STATUS</dt>
-              <dd>{roll.status.toUpperCase()}</dd>
-              <dt>SAVING</dt>
-              <dd>{roll.downloadsEnabled ? 'ON' : 'OFF'}</dd>
-              <dt>DISPLAY</dt>
-              <dd><a href={`/r/${encodeURIComponent(slug)}/display`}>OPEN</a></dd>
+              <dt>Roll</dt>
+              <dd><b>{roll.title}</b></dd>
+              <dt>Date</dt>
+              <dd>{shortDate(roll.createdAt)}</dd>
+              <dt>Frames</dt>
+              <dd>
+                <b>{photoCount}</b> {photoCount === 1 ? 'capture' : 'captures'}
+              </dd>
+              <dt>Camera</dt>
+              <dd><b>KINO D4</b> · four lenses</dd>
+              <dt>Saving</dt>
+              <dd>{roll.downloadsEnabled ? 'On — you can keep these photographs' : 'Off for this roll'}</dd>
+              <dt>Display</dt>
+              <dd><a href={`/r/${encodeURIComponent(slug)}/display`}>Open this roll on a screen</a></dd>
             </dl>
           </div>
         ) : null}
@@ -363,15 +399,21 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
         {tab !== 'info' ? (
           <>
             {tab === 'photos' && feed.captures.length === 0 && feed.loading ? (
-              <p className="k-note" role="status" aria-live="polite">READING ROLL…</p>
+              <p className="k-note" role="status" aria-live="polite">Reading roll…</p>
             ) : null}
             {tab === 'photos' && feed.captures.length === 0 && !feed.loading && failure === null ? (
-              <p className="k-note" role="status" aria-live="polite">No photos yet.</p>
+              <div className="k-note" role="status" aria-live="polite">
+                <span className="k-blank" aria-hidden="true"><b /><b /><b /><b /></span>
+                <b>No photographs yet</b>
+                They appear here as the camera sends them. You can leave this page open.
+              </div>
             ) : null}
             {tab === 'picks' && shown.length === 0 ? (
-              <p className="k-note" role="status" aria-live="polite">
-                No picks yet. Tap the heart on a photo to keep it here.
-              </p>
+              <div className="k-note" role="status" aria-live="polite">
+                <span className="k-blank" aria-hidden="true"><b /><b /><b /><b /></span>
+                <b>Nothing picked</b>
+                Tap the heart on a photograph to keep it here. Picks stay on this phone.
+              </div>
             ) : null}
 
             {tab === 'photos' && feed.pending.length > 0 ? (
@@ -382,7 +424,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                 aria-live="polite"
                 onClick={flushPending}
               >
-                {feed.pending.length} NEW
+                {feed.pending.length} new
               </button>
             ) : null}
 
@@ -407,6 +449,10 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                         <div className="k-clock">
                           <i aria-hidden="true" />
                           <span>{item.label}</span>
+                          {/* The date belongs on the first mark of the roll, where it
+                              is the answer to "when was this"; repeating it on every
+                              group would be the timestamp-under-every-tile again. */}
+                          {virtualRow.index === 0 ? <span className="k-day">{shortDate(roll?.createdAt)}</span> : null}
                         </div>
                       ) : (
                         <div
@@ -422,6 +468,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                               key={capture.captureId}
                               slug={slug}
                               capture={capture}
+                              index={indexOf(capture.captureId)}
                               isNew={freshIds.has(capture.captureId)}
                               picked={picks.has(capture.captureId)}
                               onPick={onPickToggle}

@@ -110,6 +110,8 @@ describe('CaptureDetail', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     await render(capture('single', 1), roll());
 
+    // Sharing lives in the save sheet now — one place for getting a capture out.
+    await openSaveSheet();
     const share = container.querySelector<HTMLButtonElement>('button[aria-label="Share"]');
     await act(async () => share?.click());
 
@@ -126,9 +128,16 @@ describe('CaptureDetail', () => {
   async function openSaveSheet(): Promise<void> {
     if (container.querySelector('.k-sheet') !== null) return;
     const save = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent === 'SAVE',
+      (button) => button.textContent === 'Save',
     );
     await act(async () => save?.click());
+  }
+
+  /** Re-rendering rebuilds the page with the sheet shut, so reopen it. */
+  async function reopenSaveSheet(): Promise<void> {
+    const veil = container.querySelector<HTMLButtonElement>('.k-veil');
+    if (veil) await act(async () => veil.click());
+    await openSaveSheet();
   }
 
   function findAction(label: string): HTMLElement | undefined {
@@ -147,7 +156,7 @@ describe('CaptureDetail', () => {
     await render(view, roll());
     await openSaveSheet();
 
-    const save = findAction('ORIGINAL');
+    const save = findAction('Original');
     expect(save?.getAttribute('href')).toBe('/api/assets/asset_still/content?download=1');
     expect(save?.hasAttribute('download')).toBe(true);
   });
@@ -161,7 +170,7 @@ describe('CaptureDetail', () => {
     await render(view, roll());
     await openSaveSheet();
 
-    expect(findAction('WIGGLE')?.getAttribute('href')).toBe(
+    expect(findAction('Wiggle')?.getAttribute('href')).toBe(
       '/api/assets/asset_mp4/content?download=1',
     );
   });
@@ -173,12 +182,12 @@ describe('CaptureDetail', () => {
     await render(view, roll(), client);
     await openSaveSheet();
 
-    const save = findAction('WIGGLE');
+    const save = findAction('Wiggle');
     expect(save?.tagName).toBe('BUTTON');
     await act(async () => save?.click());
 
     expect(requestRender).toHaveBeenCalledWith('party', 'cap_1', 'wiggle-mp4');
-    expect(findAction('WIGGLE')?.textContent).toContain('RENDERING…');
+    expect(findAction('Wiggle')?.textContent).toContain('Preparing…');
 
     // The SSE replace path hands the component a refreshed capture that now
     // carries the MP4 — the pending state resolves into a download link.
@@ -188,8 +197,8 @@ describe('CaptureDetail', () => {
       { role: 'wiggle-mp4', assetId: 'asset_mp4', frameIndex: null, mime: 'video/mp4', bytes: 9, width: 960, height: 720 },
     ];
     await render(finished, roll(), client);
-    await openSaveSheet();
-    expect(findAction('WIGGLE')?.getAttribute('href')).toBe(
+    await reopenSaveSheet();
+    expect(findAction('Wiggle')?.getAttribute('href')).toBe(
       '/api/assets/asset_mp4/content?download=1',
     );
   });
@@ -197,7 +206,7 @@ describe('CaptureDetail', () => {
   it('SAVE WIGGLE is absent on a non-wiggle capture', async () => {
     await render(capture('single', 1), roll());
     await openSaveSheet();
-    expect(findAction('WIGGLE')).toBeUndefined();
+    expect(findAction('Wiggle')).toBeUndefined();
   });
 
   it('the social format row requests the shared render job per format', async () => {
@@ -205,10 +214,10 @@ describe('CaptureDetail', () => {
     await render(capture('single', 1), roll(), api({ requestRender }));
     await openSaveSheet();
 
-    for (const label of ['9:16', '4:5', '1:1']) {
+    for (const label of ['Story', 'Post', 'Square']) {
       expect(findAction(label)?.tagName).toBe('BUTTON');
     }
-    await act(async () => findAction('9:16')?.click());
+    await act(async () => findAction('Story')?.click());
     expect(requestRender).toHaveBeenCalledWith('party', 'cap_1', 'social-9x16');
   });
 
@@ -220,16 +229,16 @@ describe('CaptureDetail', () => {
     ];
     await render(view, roll());
     await openSaveSheet();
-    expect(findAction('1:1')?.getAttribute('href')).toBe('/api/assets/asset_sq/content?download=1');
+    expect(findAction('Square')?.getAttribute('href')).toBe('/api/assets/asset_sq/content?download=1');
   });
 
   it('hides every save control when downloads are off', async () => {
     await render(capture('wiggle', 4), roll({ downloadsEnabled: false }));
     // No SAVE button at all, so the sheet cannot be reached.
     await openSaveSheet();
-    expect(findAction('ORIGINAL')).toBeUndefined();
+    expect(findAction('Original')).toBeUndefined();
     expect(findAction('WIGGLE')).toBeUndefined();
-    expect(findAction('9:16')).toBeUndefined();
+    expect(findAction('Story')).toBeUndefined();
   });
 
   it('keeps the photograph moving and its frames listed when saving is off', async () => {

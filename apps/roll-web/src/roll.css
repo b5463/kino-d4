@@ -123,33 +123,43 @@ label { color: var(--k-mut); font-size: 12px; font-weight: 700; }
 .kino-status-lamp { font: 700 11px var(--k-sans); color: var(--k-mut); }
 .kino-status-lamp--ok .kino-status-symbol { color: var(--k-green); }
 
-/* ---- guest surfaces: the KINO image browser (issue #114) ----
+/* ---- guest surfaces: the KINO album (issue #114) ----
 
-   A small camera-companion browser rather than a website: near-black ground,
-   photographs to both edges, hairlines instead of cards, and every label at
-   the size a camera would print it. The host dashboard keeps the light
-   treatment above — it is an operator surface, and `data-surface` on <body>
-   is what separates the two.
+   The chrome is a moulded part and the photography runs on black between.
+   Warm light grey because camera accessories were ABS in exactly this range,
+   never screen-white; its edges are two 1px inset lines, a highlight above
+   and a shade below, which is how a moulded surface catches light. No
+   gradients, no bevels, no skeuomorphic texture.
 
-   Contrast on --k-ground #0b0b0c:
-   --k-ink    #e8e8e6  ≈ 16.4:1
-   --k-dim    #8a8a86  ≈  6.2:1
-   --k-dimmer #6a6a68  ≈  4.0:1  (non-text marks and rules only)
-   --k-pick   #cf4a3e  ≈  4.6:1  */
+   One typeface doing both jobs: BIZ UDPGothic, Morisawa's universal-design
+   gothic, with tabular figures for anything the camera writes. Its
+   fixed-width sibling was tried and dropped — it gives punctuation a full
+   cell, so 23.08.26 set as "23. 08. 26" with the periods adrift.
+
+   Contrast:
+   --k-ink   #efece6 on --k-ground #0b0b0c  ≈ 16.6:1
+   --k-dim   #a5a29b on #0b0b0c             ≈  8.2:1
+   --k-p-ink #1c1c1e on --k-plate #dedbd4   ≈ 14.1:1
+   --k-legend#5d5a53 on #dedbd4             ≈  5.2:1
+   --k-pick  #e4573d on #0b0b0c             ≈  4.9:1  */
 
 :root {
   --k-ground: #0b0b0c;
-  --k-panel: #131315;
-  --k-rule: #1f1f22;
-  --k-rule-2: #2b2b30;
-  --k-ink: #e8e8e6;
-  --k-dim: #8a8a86;
-  --k-dimmer: #6a6a68;
-  --k-pick: #cf4a3e;
-  /* Latin subsets only. The Japanese subsets are 1.3 MB each and must never
-     reach a guest's phone; main.tsx imports the latin CSS deliberately. */
-  --k-ui: 'BIZ UDPGothic', Tahoma, Verdana, sans-serif;
-  --k-fx: 'BIZ UDGothic', Consolas, 'Courier New', monospace;
+  --k-ink: #efece6;
+  --k-dim: #a5a29b;
+  --k-faint: #726f69;
+  --k-hair: #232326;
+
+  --k-plate: #dedbd4;
+  --k-plate-hi: #f2efe9;
+  --k-plate-lo: #bdbab2;
+  --k-p-ink: #1c1c1e;
+  --k-legend: #5d5a53;
+  --k-window: #17171a;
+  --k-w-ink: #e9e6df;
+
+  --k-pick: #e4573d;
+  --k-ui: 'BIZ UDPGothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
 }
 
 body[data-surface='guest'] {
@@ -157,267 +167,390 @@ body[data-surface='guest'] {
   color: var(--k-ink);
   font-family: var(--k-ui);
 }
-
 body[data-surface='guest'] a { color: var(--k-ink); }
-body[data-surface='guest'] :focus-visible { outline: 1px solid var(--k-ink); outline-offset: 1px; }
+/* Anything sitting on the plate takes the plate's ink. Without this the
+   guest anchor rule above wins on specificity and paints links off-white on
+   a light surface, which is invisible. */
+body[data-surface='guest'] .k-top a,
+body[data-surface='guest'] .k-bar a,
+body[data-surface='guest'] .k-info a,
+body[data-surface='guest'] .k-tray a { color: var(--k-p-ink); }
+body[data-surface='guest'] :focus-visible { outline: 2px solid var(--k-ink); outline-offset: 1px; }
+body[data-surface='guest'] .n,
+.k-num { font-variant-numeric: tabular-nums; }
 
-/* Photographs run to both screen edges; only text is inset. */
+/* ---- header: a plate carrying the mark, the roll and a counter window ---- */
+
 .k-app { width: 100%; }
-.k-pad { padding: 0 8px; }
 
-/* ---- header: mark, roll id, count, three words ---- */
-
-.k-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 8px 3px; }
-.k-mark { display: block; height: 13px; width: auto; }
-.k-count { font: 400 11px var(--k-fx); color: var(--k-dim); font-variant-numeric: tabular-nums; }
-.k-id { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 0 8px 4px; }
-.k-id b { font: 400 11px var(--k-fx); color: var(--k-ink); overflow-wrap: anywhere; }
-
-.k-nav { display: flex; gap: 6px; padding: 0 2px; border-bottom: 1px solid var(--k-rule); }
-.k-nav button {
-  /* 44x44 of target around a word that only measures 22 px wide. */
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 6px;
-  border: 0;
-  background: none;
-  color: var(--k-dimmer);
-  font: 400 11px var(--k-fx);
-  cursor: pointer;
+.k-top {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo), 0 1px 0 #000;
+  padding-top: env(safe-area-inset-top);
+  transition: transform 0.22s ease;
 }
-.k-nav button[aria-current='true'] { color: var(--k-ink); }
+/* Retracts on the way down and returns on the first upward move. Sticky
+   rather than in flow, so the space it gives up scrolls away with the
+   content instead of leaving a hole at the top. */
+.k-top[data-hidden='true'] { transform: translateY(-100%); }
+@media (prefers-reduced-motion: reduce) {
+  .k-top { transition: none; }
+}
 
-/* ---- clock marks: camera metadata, not an editorial divider ---- */
+.k-top-row { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px 0 12px; }
+.k-mark { display: block; height: 13px; width: auto; flex: none; }
+.k-sep { width: 1px; height: 13px; background: var(--k-plate-lo); flex: none; }
+.k-roll-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--k-p-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The frame counter sits in a window let into the plate — the small dark
+   panel on a camera's top deck. Recessed by two inset lines, never lit. */
+.k-count {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 7px 4px;
+  background: var(--k-window);
+  color: var(--k-w-ink);
+  font-size: 13px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 75%), 0 1px 0 var(--k-plate-hi);
+}
+.k-count em { font-style: normal; font-size: 8.5px; color: #8d8a83; }
 
-.k-clock { display: flex; align-items: center; gap: 6px; padding: 6px 8px 4px; }
-.k-clock i { display: block; width: 1px; height: 7px; background: var(--k-rule-2); }
-.k-clock span { font: 400 10.5px var(--k-fx); color: var(--k-dim); font-variant-numeric: tabular-nums; }
+/* Three keys set into a routed well. Deliberately unequal: Roll is the one
+   pressed most, so it is wider. Selected reads as pressed in. */
+.k-nav { display: flex; gap: 2px; margin: 0 10px 9px; padding: 2px; background: var(--k-plate-lo); box-shadow: inset 0 1px 2px rgb(0 0 0 / 28%); }
+.k-nav button {
+  flex: 1;
+  min-height: 46px;
+  padding: 0 8px;
+  border: 0;
+  background: var(--k-plate);
+  color: var(--k-legend);
+  font: 400 13px var(--k-ui);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
+  transition: background 0.06s, color 0.06s;
+}
+.k-nav button:first-child { flex: 1.35; }
+.k-nav button[aria-current='true'] { background: var(--k-window); color: var(--k-w-ink); box-shadow: inset 0 1px 3px rgb(0 0 0 / 60%); }
+.k-nav button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 34%); }
+.k-nav .k-cnt { font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.85; }
 
-/* ---- the stream ---- */
+/* ---- clock marks: what the retracting header uncovers ---- */
+
+.k-clock {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px 5px;
+  line-height: 1;
+  background: linear-gradient(var(--k-ground) 72%, rgb(11 11 12 / 0%));
+}
+.k-clock i { width: 1px; height: 8px; background: #33333a; display: block; flex: none; }
+.k-clock span { font-size: 11px; line-height: 1; color: var(--k-dim); font-variant-numeric: tabular-nums; }
+.k-clock .k-day { margin-left: auto; color: var(--k-faint); }
+
+/* ---- the stream: photographs to both edges, nothing framing them ---- */
 
 .k-stream { margin: 0; }
 .k-shot { position: relative; display: block; width: 100%; background: #000; line-height: 0; }
+.k-open { display: block; width: 100%; border: 0; padding: 0; background: none; line-height: 0; cursor: pointer; }
 .k-shot .photo-img,
 .k-shot img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
-/* WigglePlayer renders its own wrapper and button; flatten both so the frame
-   fills the tile exactly like a still does. */
 .k-shot [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
-.k-shot [data-wiggle-player] img { aspect-ratio: 4 / 3; object-fit: cover; }
-
-.k-mark-4f {
+/* A scrim only under the overlay row; the rest of the photograph is untouched. */
+.k-shot::after {
+  content: '';
   position: absolute;
-  left: 6px;
-  bottom: 6px;
+  inset: auto 0 0;
+  height: 66px;
+  pointer-events: none;
+  background: linear-gradient(rgb(0 0 0 / 0%), rgb(0 0 0 / 50%));
+}
+.k-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 5px;
-  background: rgb(0 0 0 / 62%);
-  color: #fff;
-  font: 400 9.5px/1 var(--k-fx);
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 4px 0 10px;
   pointer-events: none;
 }
-.k-quad { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
-.k-quad b { display: block; width: 3px; height: 3px; background: currentcolor; }
+.k-overlay > * { pointer-events: auto; }
+.k-idx { display: flex; align-items: center; gap: 7px; height: 44px; color: #fff; }
+.k-no { font-size: 11px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgb(0 0 0 / 80%); }
 
-/* 20 px of ink inside a 46 px target, per WCAG 2.5.5. */
+/* THE MARK: one bar per camera, and the filled bar is the frame on screen —
+   so while a wiggle plays this is its playhead rather than a badge that has
+   to be kept in step. A single-frame capture collapses to one wide bar. */
+.k-frames { display: flex; gap: 2px; align-items: flex-end; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%)); }
+.k-frames b { display: block; width: 3px; height: 9px; background: rgb(255 255 255 / 34%); }
+.k-frames--solo b { width: 9px; background: rgb(255 255 255 / 55%); }
+.k-shot .k-frames b:first-child { background: #fff; }
+.k-shot:has([data-frame='1']) .k-frames b:first-child,
+.k-shot:has([data-frame='2']) .k-frames b:first-child,
+.k-shot:has([data-frame='3']) .k-frames b:first-child { background: rgb(255 255 255 / 34%); }
+.k-shot:has([data-frame='1']) .k-frames b:nth-child(2),
+.k-shot:has([data-frame='2']) .k-frames b:nth-child(3),
+.k-shot:has([data-frame='3']) .k-frames b:nth-child(4) { background: #fff; }
+/* Motion off: every bar outlined, the first lit, and the range spelled out. */
+.k-still { font-size: 10px; color: rgb(255 255 255 / 85%); text-shadow: 0 1px 3px rgb(0 0 0 / 80%); font-variant-numeric: tabular-nums; }
+
+/* 18px of heart inside a 48px target. */
 .k-pick {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   border: 0;
   background: none;
-  color: #fff;
   cursor: pointer;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
+  transition: transform 0.12s;
 }
-.k-pick svg { width: 20px; height: 20px; fill: none; stroke: currentcolor; stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%)); }
 .k-pick[aria-pressed='true'] { color: var(--k-pick); }
-.k-pick[aria-pressed='true'] svg { fill: currentcolor; }
+.k-pick:active { transform: scale(0.88); }
+@media (prefers-reduced-motion: reduce) {
+  .k-pick { transition: none; }
+}
 
-.k-processing { display: grid; place-items: center; aspect-ratio: 4 / 3; color: var(--k-dim); font: 400 11px var(--k-fx); }
-.k-new { position: absolute; left: 6px; top: 6px; padding: 3px 5px; background: var(--k-ink); color: var(--k-ground); font: 400 9.5px/1 var(--k-fx); }
+.k-processing { display: grid; place-items: center; aspect-ratio: 4 / 3; color: var(--k-dim); font-size: 12px; }
+.k-new { position: absolute; left: 6px; top: 6px; z-index: 2; padding: 3px 6px; background: var(--k-ink); color: var(--k-ground); font-size: 10px; line-height: 1; }
+.k-note { padding: 44px 22px; text-align: center; color: var(--k-dim); font-size: 13.5px; }
+.k-note b { display: block; margin-bottom: 5px; color: var(--k-ink); font-weight: 700; font-size: 14.5px; }
+.k-blank { display: flex; gap: 3px; justify-content: center; margin-bottom: 15px; }
+.k-blank b { width: 9px; height: 26px; background: #2b2b30; display: block; }
+.k-end { padding: 18px 12px 34px; color: #3a3a38; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.roll-alert { margin: 10px 12px; color: var(--k-pick); font-size: 12.5px; }
 
-.k-note { padding: 14px 8px; color: var(--k-dim); font-size: 12px; }
-.k-end { padding: 16px 8px 26px; color: #3a3a38; font: 400 10px var(--k-fx); }
-
-/* "N new" — the one floating control, because it must reach a scrolled thumb. */
+/* The one floating control, because it has to reach a scrolled thumb. */
 .new-pill {
   position: sticky;
-  top: 6px;
-  z-index: 3;
+  top: 8px;
+  z-index: 5;
   display: block;
-  margin: 6px auto;
-  padding: 0 14px;
-  min-height: 34px;
-  border: 1px solid var(--k-rule-2);
-  background: var(--k-ink);
-  color: var(--k-ground);
-  font: 400 11px var(--k-fx);
+  margin: 8px auto;
+  min-height: 38px;
+  padding: 0 15px;
+  border: 0;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  font: 400 12.5px var(--k-ui);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo), 0 2px 6px rgb(0 0 0 / 55%);
 }
+.new-pill:active { transform: translateY(1px); }
 
-.k-info { padding: 10px 8px; }
-.k-info dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 14px; margin: 0; font: 400 11px var(--k-fx); }
-.k-info dt { color: var(--k-dimmer); }
-.k-info dd { margin: 0; color: var(--k-dim); }
-.roll-alert { margin: 10px 8px; color: var(--k-pick); font-size: 12px; }
+/* ---- info: the spec label on the underside of a device ---- */
 
-/* The photo page needs an h1 for its subject — it had none, and announced
-   "D4 frames" as its only heading — but a guest came to look, not to read a
-   title over the picture. */
-.k-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+.k-info { padding: 10px; }
+.k-info dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+  font-size: 13.5px;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
 }
-
-/* ---- PIN gate, not-found: the same chrome, one column ---- */
-
-.k-gate { width: min(100%, 340px); margin: 14vh auto 0; padding: 0 12px; }
-.k-gate .k-mark { height: 15px; margin-bottom: 14px; }
-.k-gate-note { margin: 0 0 12px; color: var(--k-dim); font: 400 11px var(--k-fx); }
-.k-gate h1 { margin: 0 0 6px; color: var(--k-ink); font-size: 15px; }
-.k-gate p { color: var(--k-dim); font-size: 12px; }
-.k-gate label { display: block; margin-bottom: 4px; color: var(--k-dimmer); font: 400 10.5px var(--k-fx); }
-.k-gate form { display: block; }
-.k-gate input {
-  width: 100%;
-  min-height: 46px;
-  margin-bottom: 10px;
-  padding: 0 10px;
-  border: 1px solid var(--k-rule-2);
-  border-radius: 0;
-  background: var(--k-panel);
-  color: var(--k-ink);
-  font: 400 14px var(--k-fx);
-}
-.k-gate .k-save { width: 100%; min-height: 46px; border: 0; }
+.k-info dt { padding: 11px 0 11px 12px; color: var(--k-legend); font-size: 11px; align-self: start; box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%); }
+.k-info dd { margin: 0; padding: 10px 12px 11px 14px; color: var(--k-legend); box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%); }
+.k-info dt:first-of-type, .k-info dd:first-of-type { box-shadow: none; }
+.k-info dd b { color: var(--k-p-ink); font-weight: 400; }
 
 /* ---- photo page ---- */
 
+.k-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.photo-page { display: flex; flex-direction: column; min-height: 100dvh; }
 .k-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 8px;
-  border: 0;
-  border-bottom: 1px solid var(--k-rule);
-  background: none;
-  color: var(--k-dim);
-  font: 400 11px var(--k-fx);
-  text-align: left;
-  cursor: pointer;
+  flex: none;
+  height: 50px;
+  padding: 0 10px 0 0;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo), 0 1px 0 #000;
 }
-.k-bar b {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--k-ink);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.k-bar > span { flex: none; }
-.k-icon .k-hearts { font: 400 11px var(--k-fx); }
+.k-back { width: 50px; height: 50px; border: 0; background: none; color: var(--k-p-ink); font-size: 20px; cursor: pointer; flex: none; text-decoration: none; display: grid; place-items: center; }
+.k-back:active { background: var(--k-plate-lo); }
+.k-bar .k-who { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-bar .k-count { font-size: 12.5px; }
 
-.photo-page { display: block; }
-.k-hero { background: #000; line-height: 0; }
-.k-hero img, .k-hero [data-wiggle-player] img { display: block; width: 100%; }
+.k-hero { flex: 1; min-height: 0; background: #000; line-height: 0; display: flex; align-items: center; justify-content: center; }
+.k-hero > img, .k-hero > div { width: 100%; }
+.k-hero img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
 .k-hero [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
 
-/* Contiguous strip: hairline gaps read as frame separations, not as cards. */
-.frame-strip { display: flex; gap: 1px; margin-top: 1px; background: var(--k-rule); }
-.frame-thumb {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: #000;
-  color: var(--k-dimmer);
-  cursor: pointer;
-  line-height: 0;
-}
-.frame-thumb img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
-.frame-thumb span { display: block; background: var(--k-ground); font: 400 9px/14px var(--k-fx); text-align: center; }
-.frame-thumb[aria-pressed='true'] span { color: var(--k-ink); }
-.frame-thumb[aria-pressed='true'] img { outline: 1px solid var(--k-ink); outline-offset: -1px; }
+/* Contiguous: hairlines read as frame separations, not four cards. */
+.frame-strip { display: flex; gap: 1px; background: var(--k-hair); flex: none; }
+.frame-thumb { flex: 1; min-width: 0; min-height: 64px; padding: 0; border: 0; background: #000; cursor: pointer; position: relative; line-height: 0; }
+.frame-thumb img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; opacity: 0.55; transition: opacity 0.12s; }
+.frame-thumb span { position: absolute; left: 4px; top: 4px; font-size: 9.5px; color: rgb(255 255 255 / 75%); text-shadow: 0 1px 2px rgb(0 0 0 / 90%); line-height: 1; font-variant-numeric: tabular-nums; }
+/* Pinned is a border; playing is only brightness, so the two never collide. */
+.frame-thumb[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--k-ink); }
+.frame-thumb[aria-pressed='true'] img { opacity: 1; }
+/* While the wiggle plays, the frame on screen brightens in the strip: the
+   player publishes its index and the strip reads it, so the two can never
+   drift. `aria-pressed` stays reserved for a frame the guest pinned. */
+.photo-page:has(.k-hero [data-frame='0']) .frame-thumb:nth-child(1) img,
+.photo-page:has(.k-hero [data-frame='1']) .frame-thumb:nth-child(2) img,
+.photo-page:has(.k-hero [data-frame='2']) .frame-thumb:nth-child(3) img,
+.photo-page:has(.k-hero [data-frame='3']) .frame-thumb:nth-child(4) img { opacity: 1; }
+.frame-thumb[aria-pressed='true'] span { color: #fff; }
 
-.k-exif { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; margin: 0; padding: 10px 8px; font: 400 10.5px/1.7 var(--k-fx); }
-.k-exif dt { color: var(--k-dimmer); }
-.k-exif dd { margin: 0; color: var(--k-dim); overflow-wrap: anywhere; }
+.k-exif { display: flex; flex-wrap: wrap; gap: 5px 14px; margin: 0; padding: 11px 12px; font-size: 11px; color: var(--k-dim); font-variant-numeric: tabular-nums; }
+.k-exif div { display: flex; gap: 5px; }
+.k-exif dt { color: var(--k-faint); }
+.k-exif dd { margin: 0; }
 
-.photo-quad { display: grid; gap: 1px; background: var(--k-rule); }
+.photo-quad { display: grid; gap: 1px; background: var(--k-hair); }
 .photo-figure { min-width: 0; margin: 0; background: #000; line-height: 0; }
 .photo-figure img { display: block; width: 100%; }
-.photo-figure figcaption { padding: 3px 4px; background: var(--k-ground); color: var(--k-dimmer); font: 400 9.5px/1.4 var(--k-fx); }
+.photo-figure figcaption { padding: 4px 5px; background: var(--k-ground); color: var(--k-faint); font-size: 10px; line-height: 1.4; }
 
-/* Action bar: one filled SAVE, everything else quiet and 46 px tall. */
-.k-acts { display: flex; gap: 1px; margin-top: 12px; background: var(--k-rule-2); border-top: 1px solid var(--k-rule-2); }
-.k-acts > * { min-height: 46px; border: 0; font: 400 12px var(--k-fx); cursor: pointer; }
-.k-save { flex: 1; display: grid; place-items: center; background: var(--k-ink); color: var(--k-ground); text-decoration: none; }
-.k-icon { display: grid; place-items: center; width: 56px; background: var(--k-panel); color: var(--k-dim); }
-.k-icon svg { width: 18px; height: 18px; fill: none; stroke: currentcolor; stroke-width: 1.6; }
+/* Action keys on the plate: Save is the dark one, Pick is a switch beside it. */
+.k-acts {
+  margin-top: auto;
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  background: var(--k-plate);
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), 0 -1px 0 #000;
+}
+.k-acts > * {
+  min-height: 52px;
+  border: 0;
+  font: 400 14.5px var(--k-ui);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
+}
+.k-acts button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 40%); }
+.k-save { flex: 1; background: var(--k-window); color: var(--k-w-ink); box-shadow: inset 0 1px 0 #3a3a3f, inset 0 -1px 0 #000; }
+.k-save:active { background: #0e0e11; box-shadow: inset 0 2px 4px rgb(0 0 0 / 80%); }
+.k-save[aria-disabled='true'] { color: #74716b; cursor: default; }
+.k-icon { width: 118px; background: var(--k-plate); color: var(--k-p-ink); font-variant-numeric: tabular-nums; }
 .k-icon[aria-pressed='true'] { color: var(--k-pick); }
-.k-icon[aria-pressed='true'] svg { fill: currentcolor; }
-.k-icon .k-hearts { font: 400 10px var(--k-fx); }
-.k-status { padding: 6px 8px; color: var(--k-dim); font: 400 10.5px var(--k-fx); }
+.k-status { padding: 7px 12px; color: var(--k-dim); font-size: 11.5px; }
 
-/* ---- save sheet: a plain list, no radius, no shadow ---- */
+/* ---- save sheet: the same plate, a moulded grip, printed legends ---- */
 
 .k-sheet { position: fixed; inset: 0; z-index: 20; }
-.k-veil { position: absolute; inset: 0; border: 0; width: 100%; background: rgb(0 0 0 / 62%); cursor: pointer; }
-.k-sheet menu {
+.k-veil { position: absolute; inset: 0; width: 100%; border: 0; padding: 0; background: rgb(0 0 0 / 60%); cursor: pointer; }
+.k-tray {
   position: absolute;
   inset: auto 0 0;
   margin: 0;
-  padding: 0;
+  padding: 0 0 env(safe-area-inset-bottom);
   list-style: none;
-  background: var(--k-ground);
-  border-top: 1px solid var(--k-rule-2);
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), 0 -1px 0 #000;
+  animation: k-rise 0.24s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.k-sheet li + li { border-top: 1px solid var(--k-rule); }
-.k-sheet-h { margin: 0; padding: 8px 10px 6px; color: var(--k-dimmer); font: 400 10.5px var(--k-fx); }
+@keyframes k-rise { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .k-tray { animation: none; }
+}
+.k-grip { width: 38px; height: 4px; margin: 8px auto 2px; background: var(--k-plate-lo); border-radius: 2px; box-shadow: inset 0 1px 1px rgb(0 0 0 / 30%); }
+.k-tray-head { margin: 0; padding: 4px 14px 9px; color: var(--k-legend); font-size: 11px; font-weight: 400; }
+.k-tray li { box-shadow: inset 0 1px 0 var(--k-plate-hi); border-top: 1px solid var(--k-plate-lo); }
 .k-sheet .action-link {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
-  min-height: 46px;
-  padding: 0 10px;
+  min-height: 54px;
+  padding: 0 14px;
   border: 0;
   background: none;
-  color: var(--k-ink);
-  font: 400 12px var(--k-fx);
+  color: var(--k-p-ink);
+  font: 400 14.5px var(--k-ui);
   text-align: left;
   text-decoration: none;
   cursor: pointer;
 }
-.k-sheet .action-link[disabled] { color: var(--k-dimmer); cursor: default; }
-.k-sheet .action-link span { color: var(--k-dimmer); font-size: 10.5px; }
-.k-sheet .k-cancel { color: var(--k-dim); justify-content: flex-start; }
+.k-sheet .action-link:active { background: var(--k-plate-lo); box-shadow: inset 0 2px 3px rgb(0 0 0 / 22%); }
+.k-sheet .action-link[disabled] { color: #8b8880; cursor: default; }
+.k-sheet .k-hint { margin-left: auto; color: var(--k-legend); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* The leading mark IS the aspect ratio, so it is drawn at the ratio. */
+.k-lead { width: 30px; flex: none; display: flex; gap: 2px; align-items: center; justify-content: center; color: var(--k-legend); }
+.k-lead i { border: 1.5px solid currentcolor; display: block; }
+.k-lead b { width: 3px; height: 14px; background: currentcolor; display: block; }
+.k-cancel { justify-content: center; color: var(--k-legend); background: var(--k-plate-lo); }
+
+/* ---- PIN gate, not found: the same plate, one column ---- */
+
+.k-gate { width: min(100%, 340px); margin: 12vh auto 0; padding: 0 12px; }
+.k-gate .k-mark { height: 15px; margin-bottom: 14px; filter: invert(1); }
+.k-gate-note { margin: 0 0 10px; color: var(--k-dim); font-size: 11.5px; }
+.k-gate h1 { margin: 0 0 8px; color: var(--k-ink); font-size: 16px; }
+.k-gate p { color: var(--k-dim); font-size: 13px; }
+.k-gate label { display: block; margin-bottom: 5px; color: var(--k-faint); font-size: 11px; }
+.k-gate input {
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--k-window);
+  color: var(--k-w-ink);
+  font: 400 15px var(--k-ui);
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 70%);
+}
+.k-gate button {
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  font: 400 14.5px var(--k-ui);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
+}
+.k-gate button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 35%); }
 
 @media (min-width: 720px) {
-  /* Two up on a tablet, three on a desktop: still edge to edge, still no cards. */
   .k-stream { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
   .k-clock { grid-column: 1 / -1; }
   .k-bar, .k-exif, .k-acts, .k-info, .k-note { max-width: 900px; margin-inline: auto; }
-  .k-hero img { max-height: 78vh; object-fit: contain; }
 }
-
 @media (min-width: 1100px) {
   .k-stream { grid-template-columns: 1fr 1fr 1fr; }
 }

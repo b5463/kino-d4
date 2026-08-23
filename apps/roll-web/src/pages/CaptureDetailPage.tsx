@@ -7,8 +7,8 @@ import {
   type CaptureDetail as CaptureDetailView,
   type RollView,
 } from '../api/client';
-import { CaptureDetail } from './CaptureDetail';
-import { SiteFooter } from '../components/SiteHeader';
+import { CaptureDetail, clockOf } from './CaptureDetail';
+import { rollLabel, SiteFooter } from '../components/SiteHeader';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
@@ -69,10 +69,15 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   return (
     <>
       <div className="k-app">
-        <a className="k-bar" href={`/r/${encodeURIComponent(slug)}`}>
-          <span>&lt; ROLL</span>
-          <b>{roll?.title ?? slug}</b>
-        </a>
+        <div className="k-bar">
+          <a className="k-back" href={`/r/${encodeURIComponent(slug)}`} aria-label="Back to the roll">
+            <span aria-hidden="true">&#8249;</span>
+          </a>
+          <span className="k-who">{rollLabel(roll?.title, slug)}</span>
+          {/* The window carries when this frame was taken — the one fact that
+              is about this photograph rather than about the roll. */}
+          {capture === null ? null : <span className="k-count">{clockOf(capture.capturedAt)}</span>}
+        </div>
         {error !== null ? <p className="roll-alert" role="alert">{error.message}</p> : null}
         {capture === null || roll === null ? (error === null ? <p className="k-note">READING…</p> : null) : null}
         {capture !== null && roll !== null ? (
