@@ -24,6 +24,15 @@ CONFIG_TUSB_PRODUCT="KINO D4 camera preview"
 # on the S3 re-encodes anything.
 CONFIG_FORMAT_MJPEG_CAM1=y
 
+# Isochronous, the component default. Bulk was tried to lift the measured
+# 9.2 fps and the board would not boot with it: the fault LED reported a
+# failed camera init or UVC buffer allocation, which is what bulk's larger
+# USB buffers cost on top of an 8 MB-PSRAM part already holding two VGA frame
+# buffers. 9.2 fps is enough to judge a module; a board that does not boot
+# is not. If frame rate ever matters more, bulk needs the buffer budget
+# worked out first rather than flipped on.
+CONFIG_UVC_MODE_ISOC_CAM1=y
+
 # VGA at 15 fps, not the component's 720p default. The S3's USB is full speed
 # (12 Mbit/s), and a starved 720p stream stutters in a way that looks like a
 # bad module. VGA is more than enough to judge focus, cast and framing, and

@@ -16,10 +16,13 @@
 // The LED is therefore the only feedback you get without a UART adapter, so it
 // carries the boot verdict.
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "board_xiao_s3.h"
 #include "driver/gpio.h"
+#include "driver/usb_serial_jtag.h"
 #include "esp_camera.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -27,6 +30,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "usb_device_uvc.h"
+
+/* The XIAO's BOOT button. Held at startup it selects console mode below. */
+#define BOOT_BUTTON_GPIO 0
 
 static const char *TAG = "uvc-preview";
 
@@ -80,6 +86,9 @@ static void led_fault_forever(void) {
   for (;;) led_blink(1, 200);
 }
 
+/* Defined below, next to the reasoning for each value it sets. */
+static void tune_sensor(sensor_t *s);
+
 static framesize_t framesize_for(int width, int height) {
   if (width <= 320) return FRAMESIZE_QVGA;
   if (width <= 480) return FRAMESIZE_HVGA;
@@ -105,6 +114,10 @@ static esp_err_t on_stream_start(uvc_format_t format, int width, int height, int
     ESP_LOGE(TAG, "sensor refused %dx%d", width, height);
     return ESP_FAIL;
   }
+  /* A framesize change rewrites the sensor's window, so the tuning goes on
+   * after it and not once at boot — otherwise the first stream looks right
+   * and every resolution change after it looks untuned. */
+  tune_sensor(sensor);
 
   s_frames = 0;
   s_empty = 0;
@@ -174,6 +187,9 @@ static esp_err_t camera_start(void) {
       .pin_vsync = BOARD_CAM_VSYNC,
       .pin_href = BOARD_CAM_HREF,
       .pin_pclk = BOARD_CAM_PCLK,
+      /* Back to the board header, which now carries the measured 16 MHz and
+       * the reason for it. This tool is what measured it; it should not then
+       * disagree with the product about the value. */
       .xclk_freq_hz = BOARD_CAM_XCLK_HZ,
       .ledc_timer = LEDC_TIMER_0,
       .ledc_channel = LEDC_CHANNEL_0,
@@ -181,6 +197,12 @@ static esp_err_t camera_start(void) {
       /* The host resets this in on_stream_start; this is only what the sensor
        * boots into, so reading a PID costs no PSRAM it does not need. */
       .frame_size = FRAMESIZE_VGA,
+      /* 12, measured. Dropping to 10 for a nicer-looking preview put a
+       * 4-pixel green band at x=496 — exactly a 16-pixel JPEG MCU boundary,
+       * which is corrupt compressed data rather than anything optical. The
+       * band was absent on every quality-12 frame and present on every
+       * quality-10 one, so the extra bytes are not free on this sensor. A
+       * bench tool that invents artifacts cannot be used to judge modules. */
       .jpeg_quality = 12,
       /* Two buffers, newest served: a preview that lags is worse than one
        * that skips, because lag looks like the module is slow. */
@@ -189,6 +211,108 @@ static esp_err_t camera_start(void) {
       .grab_mode = CAMERA_GRAB_LATEST,
   };
   return esp_camera_init(&config);
+}
+
+/**
+ * Apply one sensor setting, tolerating both ways it can be unavailable.
+ *
+ * The driver fills in only the setters a sensor model actually implements, so
+ * the rest are NULL function pointers — `set_denoise` is not an OV3660
+ * feature, for one. Calling one unguarded panics before TinyUSB ever claims
+ * the USB PHY, which presents as a board that enumerates as a serial port and
+ * never appears as a camera at all. A setting that is missing or refused is
+ * information about the part in front of you; it is not a reason to take the
+ * whole tool down.
+ */
+#define TUNE(setter, ...)                                                 \
+  do {                                                                    \
+    if (s->setter == NULL) {                                              \
+      ESP_LOGW(TAG, "sensor has no %s", #setter);                         \
+    } else if (s->setter(s, __VA_ARGS__) != 0) {                          \
+      ESP_LOGW(TAG, "sensor rejected %s", #setter);                       \
+    }                                                                     \
+  } while (0)
+
+/**
+ * Explicit image tuning. Without this the sensor runs on whatever the driver
+ * left in its registers, which on an OV3660 produces exactly the picture that
+ * makes a good module look faulty: flat, washed-out colour and visible
+ * speckle in the shadows.
+ *
+ * Every value is set rather than assumed. A bench tool whose image depends on
+ * driver defaults cannot be used to compare two modules, because the
+ * comparison would include the defaults.
+ */
+static void tune_sensor(sensor_t *s) {
+  /* Colour. All figures from the same lit white wall, 40 frames each:
+   *
+   *   untuned driver defaults      G +1.9%   artifact  0/40
+   *   tuned, awb_gain on           G +6.6%   artifact  0/40   0/40
+   *   tuned, awb_gain off          G +8.9%   artifact 30/40
+   *
+   * awb_gain is not what casts this sensor green — turning it off made the
+   * cast worse and coincided with the artifact returning. It stays on. The
+   * cast arrived with the tuning as a whole, and the untuned near-neutral
+   * baseline says the sensor's own balance is fine, so the suspect is the
+   * saturation lift below amplifying a small bias into a visible one. */
+  TUNE(set_whitebal, 1);
+  TUNE(set_awb_gain, 1);
+  TUNE(set_wb_mode, 0); /* auto, not one of the presets */
+
+  /* Exposure. aec2 is the DSP-assisted metering; without it a scene with a
+   * bright window and a dim room meters for neither. */
+  TUNE(set_exposure_ctrl, 1);
+  TUNE(set_aec2, 1);
+  /* Aim a little bright. An indoor scene metered neutral comes out muddy on
+   * a sensor this small, and a preview that is too dark to judge is useless
+   * even if it is technically correctly exposed. */
+  TUNE(set_ae_level, 1);
+
+  /* Gain, generously capped. 4x was measured on our own module and was
+   * wrong: AEC compensated for the missing gain by lengthening exposure,
+   * which cost both brightness and frame rate — 9.3 fps against a
+   * configured 15, and a picture too dark to judge. 16x costs noise, and
+   * noise you can see through beats darkness you cannot. */
+  TUNE(set_gain_ctrl, 1);
+  TUNE(set_gainceiling, GAINCEILING_16X);
+
+  /* Corrections. bpc/wpc map out dead and hot pixels — those are the single
+   * pixels that read as static. raw_gma is the gamma curve and the main
+   * reason an untuned frame looks washed out. lenc corrects the lens
+   * falloff, which on these small modules darkens the corners. */
+  TUNE(set_bpc, 1);
+  TUNE(set_wpc, 1);
+  TUNE(set_raw_gma, 1);
+  TUNE(set_lenc, 1);
+  /* No set_dcw. It changes the downsize/crop path and was enabled for no
+   * reason beyond "the vendor example does it" — which is not a reason, and
+   * it was one of two suspects for the MCU-boundary artifact above. */
+
+  /* Modest lifts, measured against our own modules rather than copied from
+   * the vendor example — which lowers saturation for a differently mounted
+   * board. Sharpening stays at 0 on purpose: it amplifies exactly the noise
+   * the gain ceiling is there to hold down. denoise is an OV5640 feature and
+   * is expected to be absent here; the guard reports it and moves on. */
+  /* brightness +1 and saturation -2 are Espressif's own OV3660 values from
+   * the CameraWebServer example, whose comment is that these sensors ship
+   * "a bit saturated". I had the sign backwards: +1, then 0, while the part
+   * is known to need pulling DOWN. Measured cast ran G +6.6% to +12.0%
+   * against an untuned baseline of +1.9%, which is what over-saturated
+   * chroma on a slight bias looks like.
+   *
+   * No vflip, unlike that example: it flips because of how the sensor sits
+   * on an AI-Thinker board, and on the XIAO Sense the frame already arrives
+   * upright. Copying it would put the preview upside down. */
+  TUNE(set_brightness, 1);
+  TUNE(set_contrast, 1);
+  TUNE(set_saturation, -2);
+  TUNE(set_sharpness, 0);
+  TUNE(set_denoise, 1);
+
+  /* No vflip/hmirror. The vendor OV3660 example flips because of how the
+   * sensor sits on an AI-Thinker board; on the XIAO Sense the frame already
+   * arrives the right way up, and flipping it here would make the preview
+   * disagree with what camnode captures. */
 }
 
 /* Whatever this board is, on the record, before anything else happens. */
@@ -210,8 +334,101 @@ static void log_sensor_identity(void) {
   }
 }
 
+/* ---------------------------------------------------------------- console mode
+ *
+ * Everything above is invisible in normal operation: TinyUSB owns the one USB
+ * PHY, so there is no serial port on the cable you plugged in, and the
+ * console is on UART0 pins nobody has an adapter on. A whole debugging
+ * session was spent inferring firmware behaviour from rendered video frames
+ * because of that, which is a bad way to work.
+ *
+ * Hold BOOT at startup and this runs instead: no UVC, the USB-Serial-JTAG
+ * peripheral kept for itself, ESP_LOG redirected onto it, and a loop that
+ * reports what each captured frame actually is. It answers the questions the
+ * host cannot: which sensor setters this model implements, what the JPEG
+ * sizes are, and whether frames arrive already malformed — SOI/EOI markers
+ * checked on the device, before USB has touched anything.
+ */
+
+static int jtag_vprintf(const char *fmt, va_list args) {
+  char line[256];
+  int n = vsnprintf(line, sizeof line, fmt, args);
+  if (n > 0) usb_serial_jtag_write_bytes(line, n > (int)sizeof line ? (int)sizeof line : n, portMAX_DELAY);
+  return n;
+}
+
+static bool boot_button_held(void) {
+  gpio_config_t cfg = {
+      .pin_bit_mask = 1ULL << BOOT_BUTTON_GPIO,
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&cfg);
+  /* Active low, and settle first: the pull-up needs a moment after config. */
+  vTaskDelay(pdMS_TO_TICKS(20));
+  return gpio_get_level(BOOT_BUTTON_GPIO) == 0;
+}
+
+static void console_mode(void) {
+  usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+  usb_serial_jtag_driver_install(&cfg);
+  esp_log_set_vprintf(jtag_vprintf);
+  vTaskDelay(pdMS_TO_TICKS(1500)); /* let the host open the port */
+
+  ESP_LOGI(TAG, "==== KINO uvc-preview %s CONSOLE MODE ====", KINO_FW_VERSION);
+  ESP_LOGI(TAG, "no UVC this boot; sensor diagnostics only");
+
+  if (camera_start() != ESP_OK) {
+    ESP_LOGE(TAG, "camera init FAILED — nothing further is meaningful");
+    led_fault_forever();
+  }
+  log_sensor_identity();
+
+  sensor_t *s = esp_camera_sensor_get();
+  ESP_LOGI(TAG, "-- applying tuning, unsupported setters reported below --");
+  if (s != NULL) tune_sensor(s);
+  ESP_LOGI(TAG, "-- tuning done --");
+
+  ESP_LOGI(TAG, "capturing frames; SOI/EOI are checked here, before USB");
+  uint32_t n = 0, bad = 0, minb = UINT32_MAX, maxb = 0;
+  for (;;) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb == NULL) {
+      ESP_LOGW(TAG, "frame %lu: NULL frame buffer", (unsigned long)++n);
+      continue;
+    }
+    n++;
+    if (fb->len < minb) minb = fb->len;
+    if (fb->len > maxb) maxb = fb->len;
+    /* A JPEG the sensor handed over must start FFD8 and end FFD9. Anything
+     * else is already broken on the device, which rules USB out entirely. */
+    bool soi = fb->len > 3 && fb->buf[0] == 0xFF && fb->buf[1] == 0xD8;
+    bool eoi = fb->len > 3 && fb->buf[fb->len - 2] == 0xFF && fb->buf[fb->len - 1] == 0xD9;
+    if (!soi || !eoi) {
+      bad++;
+      ESP_LOGE(TAG, "frame %lu: MALFORMED len %u soi=%d eoi=%d  (tail %02x %02x)",
+               (unsigned long)n, (unsigned)fb->len, soi, eoi,
+               fb->buf[fb->len - 2], fb->buf[fb->len - 1]);
+    }
+    if (n % 15 == 0) {
+      ESP_LOGI(TAG, "%lu frames, %lu malformed, jpeg %u-%u B, heap %u, psram %u",
+               (unsigned long)n, (unsigned long)bad, (unsigned)minb, (unsigned)maxb,
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    }
+    esp_camera_fb_return(fb);
+    vTaskDelay(pdMS_TO_TICKS(60));
+  }
+}
+
 void app_main(void) {
   led_init();
+
+  if (boot_button_held()) {
+    console_mode(); /* never returns */
+  }
 
   esp_err_t err = camera_start();
   if (err != ESP_OK) {
@@ -221,6 +438,16 @@ void app_main(void) {
   }
   log_sensor_identity();
 
+  /**
+   * Internal RAM, deliberately, and not PSRAM.
+   *
+   * Putting this in PSRAM to save internal memory looked free and was not:
+   * the artifact rate went from 0 frames in 80 to 40 frames in 40, appearing
+   * as green bands at fixed columns. USB DMA streams straight out of this
+   * buffer, and out of PSRAM it reads corrupt. Measured, not theorised — and
+   * the reason a bench tool needs an artifact count rather than an opinion,
+   * because by eye this was "the line is back sometimes".
+   */
   uint8_t *uvc_buffer = heap_caps_malloc(UVC_BUFFER_SIZE, MALLOC_CAP_DEFAULT);
   if (uvc_buffer == NULL) {
     ESP_LOGE(TAG, "no %d B for the UVC transfer buffer (free %u internal, %u psram)",
@@ -244,6 +471,14 @@ void app_main(void) {
   /* Three slow blinks: sensor answered, USB device up, waiting for a host to
    * open the stream. Distinguishable at a glance from the fault blink. */
   led_blink(3, 600);
+
+  /* Tuning goes AFTER the USB device is up, deliberately. Anything that
+   * misbehaves while writing sensor registers — a missing setter, an SCCB
+   * write that stalls — would otherwise take the board off the bus entirely,
+   * and a board that does not enumerate cannot be diagnosed. Enumerate
+   * first, then tune; on_stream_start tunes again per stream anyway. */
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor != NULL) tune_sensor(sensor);
   ESP_LOGI(TAG, "kino uvc-preview %s ready — open the camera in any viewer",
            KINO_FW_VERSION);
 }
