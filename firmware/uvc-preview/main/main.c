@@ -31,19 +31,26 @@
 #include "freertos/task.h"
 #include "usb_device_uvc.h"
 
-/* The XIAO's BOOT button. Held at startup it selects console mode below. */
+/* The XIAO's BOOT button. Pressed during the window after boot it selects
+ * console mode below. Held DURING power-up it does something else entirely:
+ * GPIO0 low at reset is the ROM's own download-mode strap. */
 #define BOOT_BUTTON_GPIO 0
 
 static const char *TAG = "uvc-preview";
 
 /**
- * One JPEG frame has to fit here whole. A VGA frame at quality 12 runs
- * 20-40 KB and an HD frame can pass 100 KB, so this is sized for the largest
- * resolution the descriptors offer rather than the default one — a frame that
- * does not fit is dropped by the driver, which on a bench reads as "this
- * module is bad".
+ * One JPEG frame has to fit here whole, and a frame that does not fit is
+ * dropped by the driver — which on a bench reads as "this module is bad".
+ *
+ * Measured rather than guessed: VGA at quality 12 produces 7.7-30.4 KB over
+ * 210 frames in console mode. The first figure here was 160 KB, five times
+ * what the default mode needs, and internal RAM is the budget that matters:
+ * USB DMA streams out of this buffer so it cannot live in PSRAM, and bulk
+ * transfer mode failed to boot for want of internal memory. 96 KB still
+ * covers a host requesting one of the larger descriptor sizes while handing
+ * that budget 64 KB back.
  */
-#define UVC_BUFFER_SIZE (160 * 1024)
+#define UVC_BUFFER_SIZE (96 * 1024)
 
 /* Seeed wires the user LED active-low. */
 #define LED_ON 0
@@ -217,8 +224,11 @@ static esp_err_t camera_start(void) {
  * Apply one sensor setting, tolerating both ways it can be unavailable.
  *
  * The driver fills in only the setters a sensor model actually implements, so
- * the rest are NULL function pointers — `set_denoise` is not an OV3660
- * feature, for one. Calling one unguarded panics before TinyUSB ever claims
+ * the rest are NULL function pointers. Console mode reports that the OV3660
+ * in front of us implements every setter this file uses, denoise included —
+ * an earlier note here guessed otherwise and was wrong — but the guards stay:
+ * they cost nothing and they are correct for models that do lack one.
+ * Calling a missing setter panics before TinyUSB ever claims
  * the USB PHY, which presents as a board that enumerates as a serial port and
  * never appears as a camera at all. A setting that is missing or refused is
  * information about the part in front of you; it is not a reason to take the
@@ -291,8 +301,13 @@ static void tune_sensor(sensor_t *s) {
   /* Modest lifts, measured against our own modules rather than copied from
    * the vendor example — which lowers saturation for a differently mounted
    * board. Sharpening stays at 0 on purpose: it amplifies exactly the noise
-   * the gain ceiling is there to hold down. denoise is an OV5640 feature and
-   * is expected to be absent here; the guard reports it and moves on. */
+   * the gain ceiling is there to hold down.
+   *
+   * Console mode reports that this sensor implements every setter below,
+   * denoise included — an earlier note here guessed it was OV5640-only and
+   * was wrong. The null guards stay: they cost nothing, they are correct for
+   * sensor models that do lack a setter, and a missing one panics before USB
+   * comes up, which is indistinguishable from a dead module. */
   /* brightness +1 and saturation -2 are Espressif's own OV3660 values from
    * the CameraWebServer example, whose comment is that these sensors ship
    * "a bit saturated". I had the sign backwards: +1, then 0, while the part
@@ -357,7 +372,19 @@ static int jtag_vprintf(const char *fmt, va_list args) {
   return n;
 }
 
-static bool boot_button_held(void) {
+/**
+ * Wait a moment for BOOT to be pressed, and take that as "console mode".
+ *
+ * It cannot be a single read at startup, which is what this was first: BOOT is
+ * GPIO0, so holding it while the board powers up puts the ROM into download
+ * mode and this app never runs at all. The button is only ours once the ROM
+ * has handed over, which means watching a window rather than sampling an
+ * instant.
+ *
+ * The LED is lit for the whole window, so the sequence is one you can perform
+ * by eye: plug in, and press BOOT while the light is on.
+ */
+static bool boot_button_pressed_during_window(void) {
   gpio_config_t cfg = {
       .pin_bit_mask = 1ULL << BOOT_BUTTON_GPIO,
       .mode = GPIO_MODE_INPUT,
@@ -366,9 +393,19 @@ static bool boot_button_held(void) {
       .intr_type = GPIO_INTR_DISABLE,
   };
   gpio_config(&cfg);
-  /* Active low, and settle first: the pull-up needs a moment after config. */
-  vTaskDelay(pdMS_TO_TICKS(20));
-  return gpio_get_level(BOOT_BUTTON_GPIO) == 0;
+  vTaskDelay(pdMS_TO_TICKS(20)); /* the pull-up needs a moment to settle */
+
+  gpio_set_level(BOARD_LED, LED_ON);
+  const int window_ms = 3000;
+  for (int waited = 0; waited < window_ms; waited += 25) {
+    if (gpio_get_level(BOOT_BUTTON_GPIO) == 0) {
+      gpio_set_level(BOARD_LED, LED_OFF);
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(25));
+  }
+  gpio_set_level(BOARD_LED, LED_OFF);
+  return false;
 }
 
 static void console_mode(void) {
@@ -426,7 +463,8 @@ static void console_mode(void) {
 void app_main(void) {
   led_init();
 
-  if (boot_button_held()) {
+  /* Three seconds with the LED on: press BOOT now for console mode. */
+  if (boot_button_pressed_during_window()) {
     console_mode(); /* never returns */
   }
 
