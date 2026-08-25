@@ -17,10 +17,13 @@ procedure [`BENCH_M1B.md`](BENCH_M1B.md), and the bench record
 | `components/node_link/` | P4↔XIAO command namespace on the same framing |
 | `p4/` | ESP-IDF app, target `esp32p4` — Guition JC4880P443C-I-W |
 | `camnode/` | ESP-IDF app, target `esp32s3` — XIAO ESP32-S3 Sense |
+| `uvc-preview/` | Bench tool, target `esp32s3` — makes one XIAO a USB webcam so a camera module can be judged before any harness exists. Never ships in a camera |
 | `VERSION` | The firmware version, checked by `npm run version:check` |
 
 Pin maps live in exactly two files: `p4/main/board_d4v1.h` and
-`camnode/main/board_xiao_s3.h`. Assignments are PROVISIONAL until issue #2
+`camnode/main/board_xiao_s3.h`. `uvc-preview` includes the latter rather than
+declaring pins of its own — a bench tool that disagreed with the product
+firmware about a GPIO would be worse than no bench tool. Assignments are PROVISIONAL until issue #2
 locks them electrically.
 
 ## Build
@@ -31,6 +34,10 @@ is the canonical build environment (run from the repo root):
 ```
 docker run --rm -v "$PWD:/project" -w /project/firmware/p4      espressif/idf:v5.5.1 idf.py build
 docker run --rm -v "$PWD:/project" -w /project/firmware/camnode espressif/idf:v5.5.1 idf.py build
+
+# Bench tool, same container (see uvc-preview/README.md before flashing it: the
+# USB-C port becomes a webcam, so reflashing needs BOOT + RESET).
+docker run --rm -v "$PWD:/project" -w /project/firmware/uvc-preview espressif/idf:v5.5.1 idf.py build
 ```
 
 On Linux add `--user "$(id -u):$(id -g)"` or `build/` ends up root-owned.

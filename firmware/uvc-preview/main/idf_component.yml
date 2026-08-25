@@ -1,0 +1,6 @@
+dependencies:
+  idf: ">=5.3"
+  # Same pin as camnode: two clean builds of a bench tool have to agree, or
+  # a board that "failed on the bench" cannot be told from a build that moved.
+  espressif/esp32-camera: "==2.1.7"
+  espressif/usb_device_uvc: "^1.1.0"

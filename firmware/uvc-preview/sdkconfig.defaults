@@ -1,0 +1,34 @@
+# XIAO ESP32-S3 Sense: ESP32-S3, 8 MB QIO flash, 8 MB octal PSRAM.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# TinyUSB owns the one USB PHY while this app is running, so the console
+# CANNOT be USB-Serial-JTAG: the port is a webcam, not a serial device.
+# Logs go to UART0 on GPIO43/44 instead, where a USB-serial adapter can read
+# them. This is also why reflashing needs the BOOT button (README).
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# --- UVC device ---
+# Named so four boards on one hub are told apart in the host's camera list.
+CONFIG_TUSB_MANUFACTURER="KINO"
+CONFIG_TUSB_PRODUCT="KINO D4 camera preview"
+
+# MJPEG straight from the sensor: the OV3660 already produces JPEG, so nothing
+# on the S3 re-encodes anything.
+CONFIG_FORMAT_MJPEG_CAM1=y
+
+# VGA at 15 fps, not the component's 720p default. The S3's USB is full speed
+# (12 Mbit/s), and a starved 720p stream stutters in a way that looks like a
+# bad module. VGA is more than enough to judge focus, cast and framing, and
+# CONFIG_UVC_CAM1_MULTI_FRAMESIZE leaves the larger sizes in the descriptor
+# for a host that wants to ask.
+CONFIG_FRAMESIZE_VGA=y
+CONFIG_UVC_CAM1_FRAMERATE=15
+CONFIG_UVC_CAM1_MULTI_FRAMESIZE=y

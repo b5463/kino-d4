@@ -34,6 +34,27 @@ export interface ChecklistSection {
 
 export const CHECKLIST: ChecklistSection[] = [
   {
+    title: 'CAMERA MODULE INCOMING CHECK — ONE BOARD AT A TIME',
+    note:
+      'Runs per module, before any harness exists, with the board on its own USB-C cable and ' +
+      'firmware/uvc-preview flashed — it makes the board a plain USB webcam, so any camera app ' +
+      'is the viewer. Four modules that each work are not four modules that match: field of view ' +
+      'and colour have to agree across the set, or the wiggle inherits the difference. Label each ' +
+      'physical module now; which one becomes CAM1..CAM4 is the harness’s decision, but which ' +
+      'module is which has to survive the trip.',
+    items: [
+      { id: 'm1', text: 'Module count received, and each one labelled physically', record: 'count' },
+      { id: 'm2', text: 'Sensor PID reported per module — all OV3660 (0x3660), no substitutions', record: 'pid ×n' },
+      { id: 'm3', text: 'Live picture from every module in a host camera app' },
+      { id: 'm4', text: 'Colour cast noted per module — a whole-frame pink or green is a register set, not a dead sensor', record: 'per module' },
+      { id: 'm5', text: 'Focus judged at ~1 m and close up; a module soft everywhere stays soft in the camera', record: 'per module' },
+      { id: 'm6', text: 'Field of view agrees across all four — one tighter or wider is a different lens', record: 'agree / differs' },
+      { id: 'm7', text: 'Lens capped: frame is black, not speckled. White wall: no blotches' },
+      { id: 'm8', text: 'Stream rate and empty-frame count per module from the close-of-stream log', record: 'fps / empty' },
+      { id: 'm9', text: 'Spare or rejected modules set aside and marked, not left in the pile' },
+    ],
+  },
+  {
     title: 'BEFORE ANY POWER',
     items: [
       { id: 'a1', text: 'LiPo inspected — no dents, swelling, puncture, damaged seams' },
