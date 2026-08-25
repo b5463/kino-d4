@@ -155,6 +155,10 @@ make -C firmware/components/kdp_core/host_tests test
 # "$PWD" works in bash and PowerShell 7; Windows PowerShell 5.1: use ${PWD}.
 docker run --rm -v "$PWD:/project" -w /project/firmware/p4      espressif/idf:v5.5.1 idf.py build
 docker run --rm -v "$PWD:/project" -w /project/firmware/camnode espressif/idf:v5.5.1 idf.py build
+
+# Bench tool: makes one XIAO a USB webcam so a camera module can be checked
+# before any harness exists (firmware/uvc-preview/README.md).
+docker run --rm -v "$PWD:/project" -w /project/firmware/uvc-preview espressif/idf:v5.5.1 idf.py build
 ```
 
 Studio's FIRMWARE BUILDER drives the same steps through `npm run firmware:daemon` (see [`docs/FIRMWARE_BUILDER.md`](FIRMWARE_BUILDER.md)); the daemon's port is `KINO_FWD_PORT`, mirrored to Studio with `VITE_KINO_FWD_URL`, and on Windows `KINO_FWD_WSL_DISTRO` pins which WSL distro runs the host tests.

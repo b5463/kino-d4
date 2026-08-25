@@ -6,14 +6,16 @@ describe('bring-up record', () => {
     // Three electrical sections from the hardware spec, then the four the
     // usable-V1 build added: printed body, closed-body numbers, the effect,
     // field reliability.
-    expect(CHECKLIST).toHaveLength(7);
-    expect(totalChecks()).toBeGreaterThan(60);
+    expect(CHECKLIST).toHaveLength(8);
+    expect(totalChecks()).toBeGreaterThan(70);
     const ids = CHECKLIST.flatMap((s) => s.items.map((i) => i.id));
     expect(new Set(ids).size).toBe(ids.length); // unique ids
   });
 
   it('runs past the electrical build to the parts a printed body added', () => {
     const titles = CHECKLIST.map((s) => s.title);
+    // The modules arrive before the harness, so their check comes first.
+    expect(titles[0]).toContain('CAMERA MODULE INCOMING CHECK');
     expect(titles).toContain('PRINTED BODY — V1 STRUCTURE');
     expect(titles).toContain('CLOSED-BODY POWER AND THERMAL — V2 INPUTS');
     expect(titles).toContain('THE EFFECT ITSELF');

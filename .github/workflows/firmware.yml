@@ -34,7 +34,7 @@ jobs:
   idf-build:
     strategy:
       matrix:
-        app: [p4, camnode]
+        app: [p4, camnode, uvc-preview]
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:v5.5.1
