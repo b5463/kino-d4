@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KINO module preview</title>
+<style>
+  :root {
+    --ground: #0b0b0c; --ink: #efece6; --dim: #a5a29b; --faint: #726f69;
+    --plate: #dedbd4; --p-ink: #1c1c1e; --window: #17171a; --pick: #e4573d;
+    --ui: 'BIZ UDPGothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--ui); display: flex; flex-direction: column;
+    min-height: 100vh;
+  }
+  header {
+    background: var(--plate); color: var(--p-ink);
+    border-bottom: 1px solid rgb(0 0 0 / 22%);
+    box-shadow: inset 0 1px 0 #f2efe9, inset 0 -1px 0 #bdbab2;
+    padding: 10px 14px; display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 13px; letter-spacing: .06em; margin: 0; text-transform: uppercase; }
+  select, button {
+    font: inherit; font-size: 12px; min-height: 32px; padding: 4px 10px;
+    background: #f2efe9; color: var(--p-ink);
+    border: 1px solid rgb(0 0 0 / 28%); border-radius: 2px; cursor: pointer;
+  }
+  button:active { background: #cfccc4; box-shadow: inset 0 1px 2px rgb(0 0 0 / 28%); }
+  .win {
+    margin-left: auto; background: var(--window); color: #e9e6df;
+    border-radius: 2px; padding: 5px 9px; font-size: 12px;
+    font-variant-numeric: tabular-nums; letter-spacing: .04em;
+    box-shadow: inset 0 1px 3px rgb(0 0 0 / 60%);
+  }
+  main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  video { max-width: 100%; max-height: 100%; display: block; }
+  footer { padding: 8px 14px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .err { color: var(--pick); padding: 20px; max-width: 60ch; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KINO module preview</h1>
+  <select id="dev" aria-label="Camera"></select>
+  <select id="res" aria-label="Resolution">
+    <option value="640x480" selected>640 × 480</option>
+    <option value="800x600">800 × 600</option>
+    <option value="1280x720">1280 × 720</option>
+    <option value="320x240">320 × 240</option>
+  </select>
+  <button id="grab">Save frame</button>
+  <button id="measure">Measure</button>
+  <span class="win" id="stat">—</span>
+</header>
+<!-- No `autoplay`: the element starting itself races the explicit play() below
+     and the racing call rejects with AbortError. One of them has to own it. -->
+<main>
+  <video id="v" playsinline muted></video>
+  <p class="err" id="err" hidden></p>
+</main>
+<footer id="foot">Pick the module, watch for colour cast and focus. Cap the lens: the frame should be black, not speckled.</footer>
+
+<script>
+const v = document.getElementById('v');
+const errBox = document.getElementById('err');
+const devSel = document.getElementById('dev');
+const resSel = document.getElementById('res');
+const stat = document.getElementById('stat');
+const foot = document.getElementById('foot');
+let stream = null;
+let frames = 0;
+
+// Virtual cameras that enumerate whether or not they have a source behind
+// them. One of these is usually device[0], and picking it fails with
+// NotReadableError that reads exactly like a broken module.
+const VIRTUAL = /ivcam|droidcam|obs|virtual|snap|nvidia|xsplit/i;
+
+async function listDevices(selected) {
+  const all = await navigator.mediaDevices.enumerateDevices();
+  const cams = all.filter((d) => d.kind === 'videoinput');
+  devSel.innerHTML = '';
+  for (const c of cams) {
+    const o = document.createElement('option');
+    o.value = c.deviceId;
+    o.textContent = c.label || 'camera';
+    devSel.appendChild(o);
+  }
+  if (selected && cams.some((c) => c.deviceId === selected)) devSel.value = selected;
+  return cams;
+}
+
+/** Devices worth trying, best first: the module, then anything real. */
+function ranked(all) {
+  // A blank deviceId is a pre-permission placeholder. Asking for it exactly
+  // is what produces OverconstrainedError.
+  const cams = all.filter((c) => c.deviceId && c.label);
+  const module = cams.filter((c) => /uvc|kino|303a/i.test(c.label));
+  const real = cams.filter((c) => !VIRTUAL.test(c.label) && !module.includes(c));
+  const rest = cams.filter((c) => !module.includes(c) && !real.includes(c));
+  return [...module, ...real, ...rest];
+}
+
+/** State worth seeing in a screenshot when something does not work. */
+async function diagnostics() {
+  let perm = 'unknown';
+  try { perm = (await navigator.permissions.query({ name: 'camera' })).state; } catch { /* Firefox */ }
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+  return 'permission: ' + perm + ' — ' + cams.length + ' video input(s): ' +
+    (cams.map((c) => (c.label || '(label hidden)')).join(', ') || 'none');
+}
+
+/**
+ * Show the error without destroying the video element. Replacing main's
+ * innerHTML removed the <video> the next attempt needs, so one failure made
+ * every later attempt fail differently and for the wrong reason.
+ */
+function fail(html) {
+  // Release the device on the way out. A failed attempt that keeps its tracks
+  // open holds the UVC device against every later attempt and against every
+  // other tab — which is how one AbortError turns into NotReadableError
+  // everywhere, including in tools that were working a minute ago.
+  release();
+  errBox.innerHTML = html;
+  errBox.hidden = false;
+  v.hidden = true;
+  diagnostics().then((d) => { foot.textContent = d; });
+}
+
+function release() {
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  v.srcObject = null;
+}
+
+// Closing or reloading the tab has to hand the device back too, or the next
+// load fights the previous one.
+addEventListener('pagehide', release);
+
+function clearFail() {
+  errBox.hidden = true;
+  errBox.textContent = '';
+  v.hidden = false;
+}
+
+/**
+ * play() rejects with AbortError when something else already started or
+ * interrupted playback — with a live MediaStream that is usually harmless, so
+ * check whether it is actually running before believing the error.
+ */
+async function playSafely() {
+  try {
+    await v.play();
+  } catch (err) {
+    if (err.name !== 'AbortError') throw err;
+    await new Promise((r) => setTimeout(r, 300));
+    if (v.paused) await v.play(); // still stuck: let the real error out
+  }
+}
+
+/**
+ * Size as `ideal`, never exact. A UVC device that cannot do the asked-for
+ * mode should downgrade, not throw OverconstrainedError — the point is to see
+ * the module, not to win an argument about pixels.
+ */
+async function open(deviceId, w, h) {
+  const video = { width: { ideal: w }, height: { ideal: h } };
+  if (deviceId) video.deviceId = { exact: deviceId };
+  return navigator.mediaDevices.getUserMedia({ video });
+}
+
+async function attach(s, cam) {
+  stream = s;
+  clearFail();
+  v.srcObject = s;
+  await playSafely();
+  const label = cam?.label || s.getVideoTracks()[0]?.label || 'camera';
+  await listDevices(cam?.deviceId);
+  foot.textContent = 'Using ' + label +
+    ' — watch for colour cast and focus. Cap the lens: the frame should be black, not speckled.';
+  frames = 0;
+  count();
+}
+
+async function start(explicit) {
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  const [w, h] = resSel.value.split('x').map(Number);
+  const tried = [];
+
+  // An explicit pick from the dropdown is honoured exactly, and nothing else
+  // is attempted — if it fails, that is the answer about that device.
+  if (explicit) {
+    try {
+      const cams = await listDevices();
+      await attach(await open(explicit, w, h), cams.find((c) => c.deviceId === explicit));
+      return;
+    } catch (err) {
+      fail('That camera would not open: ' + err.name + '.<br><br>' + advice());
+      return;
+    }
+  }
+
+  // Ask with NO constraints at all first. This is the request most likely to
+  // succeed, it triggers the permission prompt, and only after it is granted
+  // do device labels stop being empty strings — which is why matching a label
+  // before this point cannot work, and why an exact deviceId taken from a
+  // pre-permission enumerate is an empty string that overconstrains.
+  let first;
+  try {
+    first = await navigator.mediaDevices.getUserMedia({ video: true });
+  } catch (err) {
+    if (err.name === 'NotAllowedError') {
+      fail('Camera permission was denied or dismissed.<br><br>Click the camera icon in the ' +
+        'address bar, allow it for 127.0.0.1, then reload. Nothing here works without it.');
+    } else {
+      fail('No camera would open at all: ' + err.name + '.<br><br>' + advice());
+    }
+    return;
+  }
+
+  const cams = await listDevices();
+  const modules = cams.filter((c) => c.deviceId && /uvc|kino|303a/i.test(c.label));
+  const have = first.getVideoTracks()[0];
+
+  // The bare request may already have landed on the module, in which case
+  // leave it alone rather than closing and reopening the same device.
+  if (have && /uvc|kino|303a/i.test(have.label)) {
+    try {
+      await attach(first, cams.find((c) => c.label === have.label));
+      return;
+    } catch (err) {
+      fail('Opened the module but could not play it: ' + err.name + '.<br><br>' + advice());
+      return;
+    }
+  }
+
+  // Otherwise the bare request handed back some other camera. Let it go and
+  // ask for a module explicitly.
+  first.getTracks().forEach((t) => t.stop());
+
+  for (const cam of modules) {
+    try {
+      await attach(await open(cam.deviceId, w, h), cam);
+      return;
+    } catch (err) {
+      tried.push(cam.label + ' → ' + err.name);
+    }
+  }
+
+  // Never silently show a different camera. This is a bench tool: a picture
+  // from iVCam that looks like a module preview is worse than no picture,
+  // because it is a verdict about hardware that was never inspected.
+  if (modules.length) {
+    fail('The module enumerated but would not open.<br><br>' + tried.join('<br>') +
+      '<br><br>' + advice() + '<br><br>Close any other tab or app holding it and reload.');
+  } else {
+    fail('No KINO module found among the cameras.<br><br>Only these are present, and none is a ' +
+      'UVC CAM device:<br>' + cams.map((c) => c.label || '(label hidden)').join('<br>') +
+      '<br><br>Is the board plugged in and running uvc-preview? A board in download mode is a ' +
+      'serial port, not a camera.');
+  }
+}
+
+function advice() {
+  return 'NotReadableError almost always means the device is already open in another app — ' +
+    'Windows Camera, Teams or OBS and this page cannot both hold a UVC device. ' +
+    'A virtual camera with nothing behind it (iVCam, DroidCam) fails the same way, ' +
+    'which is why those are tried last.';
+}
+
+function count() {
+  const t0 = performance.now();
+  let n = 0;
+  const tick = () => {
+    n++; frames++;
+    const dt = performance.now() - t0;
+    if (dt >= 1000) {
+      const fps = (n / (dt / 1000)).toFixed(1);
+      stat.textContent = v.videoWidth + '×' + v.videoHeight + '  ' + fps + ' fps';
+      return count();
+    }
+    v.requestVideoFrameCallback(tick);
+  };
+  v.requestVideoFrameCallback(tick);
+}
+
+document.getElementById('grab').addEventListener('click', () => {
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  const g = c.getContext('2d');
+  g.drawImage(v, 0, 0);
+  const px = g.getImageData(0, 0, c.width, c.height).data;
+  let r = 0, gg = 0, b = 0;
+  for (let i = 0; i < px.length; i += 4) { r += px[i]; gg += px[i + 1]; b += px[i + 2]; }
+  const n = px.length / 4;
+  foot.textContent = 'mean R ' + (r / n).toFixed(1) + '  G ' + (gg / n).toFixed(1) +
+    '  B ' + (b / n).toFixed(1) + ' — a large R or G lead over a grey subject is a cast, not a colour.';
+  c.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'module-frame.png';
+    a.click();
+  }, 'image/png');
+});
+
+// An explicit pick is honoured exactly; a resolution change keeps the device.
+/**
+ * Burst measurement on the live stream. It runs here rather than in a
+ * separate script because two processes cannot hold one UVC device — a
+ * measurement tool that fights the viewer for the camera measures nothing.
+ *
+ * Fill the frame with something known-neutral (a grey shirt, a white wall)
+ * and hold still: the neutral error is only a white-balance figure against a
+ * neutral subject, and the noise figure is only noise if the scene is still.
+ */
+document.getElementById('measure').addEventListener('click', async () => {
+  if (!stream || v.paused) { foot.textContent = 'No live stream to measure.'; return; }
+  const btn = document.getElementById('measure');
+  btn.disabled = true;
+  foot.textContent = 'measuring 40 frames — hold still…';
+
+  const w = v.videoWidth, h = v.videoHeight;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+
+  // Worst column, scored against its own neighbourhood so a green subject
+  // does not register but one corrupt column does.
+  const worstColumn = (d) => {
+    const gm = new Float64Array(w);
+    for (let x = 0; x < w; x++) {
+      let r = 0, gg = 0, b = 0;
+      for (let y = 0; y < h; y++) { const i = (y * w + x) * 4; r += d[i]; gg += d[i + 1]; b += d[i + 2]; }
+      gm[x] = (gg - (r + b) / 2) / h;
+    }
+    let best = { x: -1, excess: 0 };
+    for (let x = 0; x < w; x++) {
+      let sum = 0, n = 0;
+      for (let i = Math.max(0, x - 6); i <= Math.min(w - 1, x + 6); i++) {
+        if (Math.abs(i - x) < 3) continue;
+        sum += gm[i]; n++;
+      }
+      const excess = gm[x] - sum / n;
+      if (excess > best.excess) best = { x, excess };
+    }
+    return best;
+  };
+
+  const P = 96, x0 = (w - P) >> 1, y0 = (h - P) >> 1;
+  let prev = null, noise = 0, noiseN = 0, rs = 0, gs = 0, bs = 0, shots = 0;
+  const hits = [];
+  const t0 = performance.now();
+
+  await new Promise((done) => {
+    const tick = () => {
+      g.drawImage(v, 0, 0);
+      const full = g.getImageData(0, 0, w, h).data;
+      let r = 0, gg = 0, b = 0;
+      for (let i = 0; i < full.length; i += 4) { r += full[i]; gg += full[i + 1]; b += full[i + 2]; }
+      const n = full.length / 4;
+      rs += r / n; gs += gg / n; bs += b / n; shots++;
+
+      const wc = worstColumn(full);
+      if (wc.excess > 2) hits.push(wc.x);
+
+      const patch = g.getImageData(x0, y0, P, P).data;
+      if (prev) {
+        let d = 0;
+        for (let i = 0; i < patch.length; i += 4) d += Math.abs(patch[i + 1] - prev[i + 1]);
+        noise += d / (patch.length / 4); noiseN++;
+      }
+      prev = patch;
+
+      if (shots < 40) v.requestVideoFrameCallback(tick); else done();
+    };
+    v.requestVideoFrameCallback(tick);
+  });
+
+  const secs = (performance.now() - t0) / 1000;
+  const R = rs / shots, G = gs / shots, B = bs / shots;
+  const mean = (R + G + B) / 3;
+  const pct = (x) => ((x - mean) / mean * 100).toFixed(1).padStart(5) + '%';
+  const cols = [...new Set(hits)].sort((a, b2) => a - b2);
+
+  foot.textContent =
+    `${w}×${h}  ${(shots / secs).toFixed(1)} fps` +
+    `  |  levels R ${R.toFixed(1)} G ${G.toFixed(1)} B ${B.toFixed(1)}` +
+    `  |  neutral error R${pct(R)} G${pct(G)} B${pct(B)}` +
+    `  |  artifact ${hits.length}/${shots} frames` + (cols.length ? ' at x=' + cols.join(',') : '') +
+    `  |  temporal noise ${(noise / Math.max(1, noiseN)).toFixed(2)}`;
+  btn.disabled = false;
+});
+
+devSel.addEventListener('change', () => start(devSel.value));
+resSel.addEventListener('change', () => start(devSel.value));
+navigator.mediaDevices.addEventListener('devicechange', async () => {
+  // A board flashed or unplugged mid-session: re-rank rather than sit on a
+  // deviceId that no longer exists.
+  await listDevices(devSel.value);
+  if (!stream || !stream.active) start();
+});
+
+start();
+</script>
+</body>
+</html>

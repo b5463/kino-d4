@@ -20,7 +20,25 @@
 #define BOARD_CAM_VSYNC 38
 #define BOARD_CAM_HREF 47
 #define BOARD_CAM_PCLK 13
-#define BOARD_CAM_XCLK_HZ 20000000
+/**
+ * 16 MHz, measured — not the 20 MHz the Seeed material uses.
+ *
+ * At 20 MHz this sensor corrupts JPEG frames: 77 of 160 frames (48%) carried
+ * a chroma-damaged band in a fixed ~12-pixel zone around x=498, which is JPEG
+ * MCU column 31. At 16 MHz the same measurement over 200 frames gave 1 (0.5%).
+ * Corrupted JPEGs at xclk 20 MHz are a known esp32-camera problem
+ * (espressif/esp32-camera#244) and community guidance is to avoid multiples of
+ * 10 MHz on this part.
+ *
+ * The cost is capture throughput, which the product barely spends: camnode
+ * takes single stills, so a slower pixel clock costs a little latency per
+ * capture, not frame rate. A corrupt still costs the photograph.
+ *
+ * The 0.5% residue is the upstream issue, not this constant. Next lever if it
+ * matters is the OV3660 PCLK register fix in espressif/esp32-camera#220.
+ * Measured with firmware/uvc-preview; method in its README.
+ */
+#define BOARD_CAM_XCLK_HZ 16000000
 
 // --- P4 link (PROVISIONAL) ---
 // UART1 on the module's D6/D7 pads. These are also UART0's default pads, so
