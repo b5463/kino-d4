@@ -24,14 +24,28 @@ CONFIG_TUSB_PRODUCT="KINO D4 camera preview"
 # on the S3 re-encodes anything.
 CONFIG_FORMAT_MJPEG_CAM1=y
 
-# Isochronous, the component default. Bulk was tried to lift the measured
-# 9.2 fps and the board would not boot with it: the fault LED reported a
-# failed camera init or UVC buffer allocation, which is what bulk's larger
-# USB buffers cost on top of an 8 MB-PSRAM part already holding two VGA frame
-# buffers. 9.2 fps is enough to judge a module; a board that does not boot
-# is not. If frame rate ever matters more, bulk needs the buffer budget
-# worked out first rather than flipped on.
-CONFIG_UVC_MODE_ISOC_CAM1=y
+# Bulk, on a second attempt with the buffer budget actually worked out.
+#
+# The first attempt would not boot: the fault LED reported a failed camera
+# init or UVC buffer allocation, and the transfer buffer was 160 KB of
+# internal RAM on a guess. Console mode then measured real JPEGs at
+# 7.7-30.4 KB, so that buffer is now 96 KB and 64 KB of internal RAM has gone
+# back to the USB stack.
+#
+# It did not lift the frame rate: 6.1 fps against isochronous's 6.0. So the
+# transfer mode is not the bottleneck either, and neither is the sensor —
+# console mode sustains at least 16 fps, capturing 15 frames per 920 ms
+# against a 60 ms-per-frame loop delay. Both obvious levers are now tested
+# and 6 fps is what this component delivers on this part. That is enough to
+# judge focus, colour and framing, which is the job; chasing it further means
+# profiling inside the UVC component, which this tool does not justify.
+#
+# Bulk is kept even so, and this is a judgement rather than a measurement:
+# frame rate and artifact count came out equal, and bulk transfers retry lost
+# packets where isochronous cannot. Our one remaining defect class is corrupt
+# frame data, so the mode with retransmission is the better default even
+# though nothing measured says so today.
+CONFIG_UVC_MODE_BULK_CAM1=y
 
 # VGA at 15 fps, not the component's 720p default. The S3's USB is full speed
 # (12 Mbit/s), and a starved 720p stream stutters in a way that looks like a
