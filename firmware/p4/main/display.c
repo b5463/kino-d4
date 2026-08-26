@@ -22,6 +22,8 @@ static bool s_ready;
 
 bool display_ready(void) { return s_ready; }
 
+esp_lcd_panel_handle_t display_panel(void) { return s_ready ? s_panel : NULL; }
+
 /**
  * Panel-specific ST7701 initialisation for the Guition JC4880P443.
  *

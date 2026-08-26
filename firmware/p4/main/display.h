@@ -11,6 +11,7 @@
 #include <stdbool.h>
 
 #include "esp_err.h"
+#include "esp_lcd_types.h"
 
 /** Panel geometry, native orientation. The panel is portrait; the product is
  *  held landscape, so content will be rotated later — first light does not
@@ -27,6 +28,14 @@ esp_err_t display_init(void);
 
 /** True once the panel is initialised and drawable. */
 bool display_ready(void);
+
+/**
+ * The panel handle, for code that draws its own frames. NULL until
+ * display_init() succeeds. Exposed rather than wrapped: a UI that renders
+ * whole frames wants one draw call, not a drawing API invented on top of
+ * one.
+ */
+esp_lcd_panel_handle_t display_panel(void);
 
 /**
  * Five full-width colour bands, top to bottom in the panel's own

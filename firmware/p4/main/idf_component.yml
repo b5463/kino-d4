@@ -5,3 +5,5 @@ dependencies:
   # drives a panel have to agree, or a display that "went black on the bench"
   # cannot be told from a build that moved underneath it.
   espressif/esp_lcd_st7701: "^1.1.0"
+  # GT911 capacitive touch, on an I2C bus shared with the ES8311 codec.
+  espressif/esp_lcd_touch_gt911: "^1.1.0"

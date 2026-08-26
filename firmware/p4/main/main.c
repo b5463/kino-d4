@@ -5,6 +5,8 @@
 
 #include "cam_link.h"
 #include "display.h"
+#include "touch.h"
+#include "ui.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
@@ -98,6 +100,18 @@ void app_main(void) {
              esp_err_to_name(lcd_err));
   } else {
     display_test_pattern();
+    /* Touch only after the panel is drawable: a touch report is only
+     * meaningful once there is something on screen to have touched. */
+    esp_err_t tp_err = touch_init();
+    if (tp_err != ESP_OK) {
+      ESP_LOGE(TAG, "touch unavailable: %s - the panel and KDP are unaffected",
+               esp_err_to_name(tp_err));
+    }
+    /* The UI replaces the test pattern once both are up. It runs without
+     * touch too - a screen that shows the camera's state is worth having
+     * even if nothing can be pressed. */
+    esp_err_t ui_err = ui_start();
+    if (ui_err != ESP_OK) ESP_LOGE(TAG, "ui unavailable: %s", esp_err_to_name(ui_err));
   }
 
   ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s, display %s", KINO_FW_VERSION,
