@@ -22,6 +22,104 @@ static bool s_ready;
 
 bool display_ready(void) { return s_ready; }
 
+/**
+ * Panel-specific ST7701 initialisation for the Guition JC4880P443.
+ *
+ * The component's own default sequence is a genuine ST7701 table but it is
+ * tuned for a different panel, and on this one it produces a lit backlight
+ * over a black screen — exactly what the board's field notes predicted. The
+ * differences are not cosmetic: 0xC0 is 0x63,0x00 here against 0x2c,0x00 in
+ * the default, 0xC1 is 0x0D,0x02 against 0x10,0x0C, and the 0xB0/0xB1 gamma
+ * tables share no values at all.
+ *
+ * Ported from ESPHome's `mipi_dsi` model for this exact board
+ * (esphome/components/mipi_dsi/models/guition.py, "JC4880P443"), which
+ * independently agrees with our field notes on every other parameter —
+ * 480x800, 34 MHz, 500 Mbps over 2 lanes, H 12/42/42, V 2/8/166, RGB order,
+ * reset on GPIO5. That agreement is the reason to trust the table: two
+ * unrelated sources describing the same panel the same way.
+ *
+ * The 0xFF 0x77 0x01 ... writes are ST7701 command2 bank selects; the
+ * register meanings differ per bank, which is why the same register number
+ * appears several times with different payloads.
+ */
+static const st7701_lcd_init_cmd_t JC4880P443_INIT[] = {
+    {0xFF, (uint8_t[]){0x77, 0x01, 0x00, 0x00, 0x13}, 5, 0},
+    {0xEF, (uint8_t[]){0x08}, 1, 0},
+    {0xFF, (uint8_t[]){0x77, 0x01, 0x00, 0x00, 0x10}, 5, 0},
+    {0xC0, (uint8_t[]){0x63, 0x00}, 2, 0},
+    {0xC1, (uint8_t[]){0x0D, 0x02}, 2, 0},
+    {0xC2, (uint8_t[]){0x10, 0x08}, 2, 0},
+    {0xCC, (uint8_t[]){0x10}, 1, 0},
+    {0xB0,
+     (uint8_t[]){0x80, 0x09, 0x53, 0x0C, 0xD0, 0x07, 0x0C, 0x09, 0x09, 0x28, 0x06, 0xD4, 0x13,
+                 0x69, 0x2B, 0x71},
+     16, 0},
+    {0xB1,
+     (uint8_t[]){0x80, 0x94, 0x5A, 0x10, 0xD3, 0x06, 0x0A, 0x08, 0x08, 0x25, 0x03, 0xD3, 0x12,
+                 0x66, 0x6A, 0x0D},
+     16, 0},
+    {0xFF, (uint8_t[]){0x77, 0x01, 0x00, 0x00, 0x11}, 5, 0},
+    {0xB0, (uint8_t[]){0x5D}, 1, 0},
+    {0xB1, (uint8_t[]){0x58}, 1, 0},
+    {0xB2, (uint8_t[]){0x87}, 1, 0},
+    {0xB3, (uint8_t[]){0x80}, 1, 0},
+    {0xB5, (uint8_t[]){0x4E}, 1, 0},
+    {0xB7, (uint8_t[]){0x85}, 1, 0},
+    {0xB8, (uint8_t[]){0x21}, 1, 0},
+    {0xB9, (uint8_t[]){0x10, 0x1F}, 2, 0},
+    {0xBB, (uint8_t[]){0x03}, 1, 0},
+    {0xBC, (uint8_t[]){0x00}, 1, 0},
+    {0xC1, (uint8_t[]){0x78}, 1, 0},
+    {0xC2, (uint8_t[]){0x78}, 1, 0},
+    {0xD0, (uint8_t[]){0x88}, 1, 0},
+    {0xE0, (uint8_t[]){0x00, 0x3A, 0x02}, 3, 0},
+    {0xE1,
+     (uint8_t[]){0x04, 0xA0, 0x00, 0xA0, 0x05, 0xA0, 0x00, 0xA0, 0x00, 0x40, 0x40},
+     11, 0},
+    {0xE2,
+     (uint8_t[]){0x30, 0x00, 0x40, 0x40, 0x32, 0xA0, 0x00, 0xA0, 0x00, 0xA0, 0x00, 0xA0, 0x00},
+     13, 0},
+    {0xE3, (uint8_t[]){0x00, 0x00, 0x33, 0x33}, 4, 0},
+    {0xE4, (uint8_t[]){0x44, 0x44}, 2, 0},
+    {0xE5,
+     (uint8_t[]){0x09, 0x2E, 0xA0, 0xA0, 0x0B, 0x30, 0xA0, 0xA0, 0x05, 0x2A, 0xA0, 0xA0, 0x07,
+                 0x2C, 0xA0, 0xA0},
+     16, 0},
+    {0xE6, (uint8_t[]){0x00, 0x00, 0x33, 0x33}, 4, 0},
+    {0xE7, (uint8_t[]){0x44, 0x44}, 2, 0},
+    {0xE8,
+     (uint8_t[]){0x08, 0x2D, 0xA0, 0xA0, 0x0A, 0x2F, 0xA0, 0xA0, 0x04, 0x29, 0xA0, 0xA0, 0x06,
+                 0x2B, 0xA0, 0xA0},
+     16, 0},
+    {0xEB, (uint8_t[]){0x00, 0x00, 0x4E, 0x4E, 0x00, 0x00, 0x00}, 7, 0},
+    {0xEC, (uint8_t[]){0x08, 0x01}, 2, 0},
+    {0xED,
+     (uint8_t[]){0xB0, 0x2B, 0x98, 0xA4, 0x56, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xF7, 0x65, 0x4A,
+                 0x89, 0xB2, 0x0B},
+     16, 0},
+    {0xEF, (uint8_t[]){0x08, 0x08, 0x08, 0x45, 0x3F, 0x54}, 6, 0},
+    /* Leave command2 and return to the standard command set. */
+    {0xFF, (uint8_t[]){0x77, 0x01, 0x00, 0x00, 0x00}, 5, 0},
+    /**
+     * Sleep out, then display on — and these belong to the table, not to the
+     * driver.
+     *
+     * The component does NOT issue them from panel_init(): they sit at the
+     * end of its own `vendor_specific_init_default`, so supplying a custom
+     * table replaces them. Without these the panel initialises correctly,
+     * reports no error, draws without complaint, and shows nothing at all,
+     * because it is still asleep with its output off. The symptom is a lit
+     * backlight over a black screen, which is indistinguishable from a wrong
+     * init table or bad DSI timings — and cost several flashes to find.
+     *
+     * The delays are the panel's, not decoration: 120 ms after sleep out
+     * before it will accept display on.
+     */
+    {0x11, (uint8_t[]){0x00}, 0, 120}, /* SLPOUT */
+    {0x29, (uint8_t[]){0x00}, 0, 20},  /* DISPON */
+};
+
 /* The panel's own reset line, held per the panel's timing requirement. */
 static void panel_reset_pulse(void) {
   gpio_config_t cfg = {
@@ -119,16 +217,9 @@ esp_err_t display_init(void) {
       .flags.use_dma2d = true,
   };
 
-  /* init_cmds NULL takes the component's own ST7701 sequence. The field
-   * notes for this board report the stock component giving a black screen
-   * and a hand-written table being needed, so this may not be the end of the
-   * story — but it is one build against a maintained sequence rather than
-   * 150 lines of register pokes copied from a panel that might not be ours.
-   * If the screen stays dark, a board-specific table goes here and the
-   * reason is recorded next to it. */
   st7701_vendor_config_t vendor_cfg = {
-      .init_cmds = NULL,
-      .init_cmds_size = 0,
+      .init_cmds = JC4880P443_INIT,
+      .init_cmds_size = sizeof(JC4880P443_INIT) / sizeof(JC4880P443_INIT[0]),
       .mipi_config = {.dsi_bus = bus, .dpi_config = &dpi_cfg},
       .flags = {.use_mipi_interface = 1},
   };
@@ -163,8 +254,6 @@ esp_err_t display_init(void) {
 esp_err_t display_test_pattern(void) {
   if (!s_ready) return ESP_ERR_INVALID_STATE;
 
-  /* RGB565, five bands down the panel's long axis. One row is built and
-   * repeated so this needs a row, not a framebuffer. */
   static const uint16_t BANDS[5] = {
       0xF800, /* red   */
       0x07E0, /* green */
@@ -172,26 +261,41 @@ esp_err_t display_test_pattern(void) {
       0xFFFF, /* white */
       0x0000, /* black */
   };
-  const int band_rows = DISPLAY_V_RES / 5;
-  uint16_t *row = heap_caps_malloc(DISPLAY_H_RES * sizeof(uint16_t), MALLOC_CAP_DMA);
-  if (row == NULL) {
-    ESP_LOGE(TAG, "no room for a %d-pixel row buffer", DISPLAY_H_RES);
+
+  /**
+   * One whole-frame draw, not a row at a time.
+   *
+   * Drawing row by row failed at row 3 with ESP_ERR_INVALID_STATE and
+   * "previous draw operation is not finished": on a DPI panel this call is
+   * asynchronous, so 800 of them in a loop simply overrun the one in flight.
+   * A single call cannot collide with itself, and it is less code than
+   * waiting on each one would be.
+   */
+  const size_t px_count = (size_t)DISPLAY_H_RES * DISPLAY_V_RES;
+  uint16_t *frame = heap_caps_malloc(px_count * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  if (frame == NULL) {
+    ESP_LOGE(TAG, "no room for a %ux%u frame", DISPLAY_H_RES, DISPLAY_V_RES);
     return ESP_ERR_NO_MEM;
   }
 
-  for (int b = 0; b < 5; b++) {
-    for (int x = 0; x < DISPLAY_H_RES; x++) row[x] = BANDS[b];
-    const int y_end = (b == 4) ? DISPLAY_V_RES : (b + 1) * band_rows;
-    for (int y = b * band_rows; y < y_end; y++) {
-      esp_err_t e = esp_lcd_panel_draw_bitmap(s_panel, 0, y, DISPLAY_H_RES, y + 1, row);
-      if (e != ESP_OK) {
-        ESP_LOGE(TAG, "draw failed at row %d: %s", y, esp_err_to_name(e));
-        free(row);
-        return e;
-      }
-    }
+  const int band_rows = DISPLAY_V_RES / 5;
+  for (int y = 0; y < DISPLAY_V_RES; y++) {
+    int band = y / band_rows;
+    if (band > 4) band = 4; /* the last band absorbs the rounding */
+    uint16_t colour = BANDS[band];
+    uint16_t *row = frame + (size_t)y * DISPLAY_H_RES;
+    for (int x = 0; x < DISPLAY_H_RES; x++) row[x] = colour;
   }
-  free(row);
-  ESP_LOGI(TAG, "test pattern drawn: red, green, blue, white, black top to bottom");
-  return ESP_OK;
+
+  esp_err_t err =
+      esp_lcd_panel_draw_bitmap(s_panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, frame);
+  if (err != ESP_OK) ESP_LOGE(TAG, "draw failed: %s", esp_err_to_name(err));
+  else ESP_LOGI(TAG, "test pattern drawn: red, green, blue, white, black top to bottom");
+
+  /* The draw is asynchronous, so the buffer has to outlive the call. Give it
+   * long enough to be scanned into the panel's own framebuffer before
+   * releasing it, rather than freeing memory the DMA is still reading. */
+  vTaskDelay(pdMS_TO_TICKS(200));
+  free(frame);
+  return err;
 }
