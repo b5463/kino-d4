@@ -26,7 +26,36 @@ capture path can move. Everything about the link, the pin map and the baud
 stays `UNVALIDATED` — nothing tonight exercised them, and a row that changes
 on anything less than the operation itself makes this file worthless.
 
-Module 1, MAC `7C:4F:AD:20:87:8C` (ESP32-S3 QFN56 rev v0.2, 8 MB octal PSRAM,
+### P4 host board, 2026-08-26
+
+Guition JC4880P443C-I-W, MAC `80:F1:B2:D1:21:BC`, serial `KD4-D121BC`,
+firmware 0.1.0. USB only — no camera harness, no battery. Eight rows moved,
+auto-marked by the firmware from real events and read back over
+`GET_HW_VALIDATION`.
+
+| Observation | Value |
+|---|---|
+| Chip | ESP32-P4 rev v1.3, 360 MHz, 16 MB Boya flash |
+| PSRAM | 32 MB AP Memory, 256 Mbit, X16, memory test **OK**, 32722 KB free at idle |
+| SD card | mounted 29820 MB, FAT, 4-bit high-speed, on-chip LDO ch4 |
+| `STORAGE_SELF_TEST` | **ok**, 65536 bytes, 125 ms, no failed phase |
+| KDP | all 17 M1B commands answered over USB-Serial-JTAG |
+| Capabilities | every flag `false` except `benchDiagnostics` — matches the `d4-m1b` profile exactly |
+| P4 die temperature | 27 °C at idle |
+| Reset reason | `usb` |
+| CAM1 with nothing attached | `txFrames 3, rxBytes 0, timeouts 3, lastError TIMEOUT` |
+
+The camera rows stay `UNVALIDATED` in the device's own registry, correctly: no
+node has ever answered this P4. Note that `CAM1_SENSOR_DETECT` and
+`CAM1_CAPTURE` are `VALIDATED` in the table below on the strength of the
+standalone module bench, which is a different unit and a different path. The
+device registry and this file are both right in their own frame — the P4 has
+not seen a sensor, and a sensor has been seen.
+
+Not established: anything about the camera UARTs, the node link, or the
+harness. Nothing tonight connected a camera to this board.
+
+### Camera module 1, MAC `7C:4F:AD:20:87:8C` (ESP32-S3 QFN56 rev v0.2, 8 MB octal PSRAM,
 8 MB GD flash):
 
 | Observation | Value |
@@ -45,14 +74,14 @@ catches truncation only.
 
 | Item | Assumption source | Status |
 |---|---|---|
-| `USB_SERIAL_JTAG` | Guition field notes: FS USB port is USB-Serial-JTAG | UNVALIDATED |
-| `SD_CLK_GPIO43` | Guition field notes | UNVALIDATED |
-| `SD_CMD_GPIO44` | Guition field notes | UNVALIDATED |
-| `SD_D0_GPIO39` | Guition field notes | UNVALIDATED |
-| `SD_D1_GPIO40` | Guition field notes | UNVALIDATED |
-| `SD_D2_GPIO41` | Guition field notes | UNVALIDATED |
-| `SD_D3_GPIO42` | Guition field notes | UNVALIDATED |
-| `SD_LDO_CH4` | Guition field notes: on-chip LDO channel 4, 3.3 V | UNVALIDATED |
+| `USB_SERIAL_JTAG` | Observed 2026-08-26: host frame decoded over USB-Serial-JTAG | VALIDATED |
+| `SD_CLK_GPIO43` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
+| `SD_CMD_GPIO44` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
+| `SD_D0_GPIO39` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
+| `SD_D1_GPIO40` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
+| `SD_D2_GPIO41` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
+| `SD_D3_GPIO42` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
+| `SD_LDO_CH4` | Observed 2026-08-26: card powered and mounted 29820 MB | VALIDATED |
 | `CAM1_TX_GPIO52` | Provisional header map (d4-v1.json, issue #2) | UNVALIDATED |
 | `CAM1_RX_GPIO51` | Provisional header map (d4-v1.json, issue #2) | UNVALIDATED |
 | `CAM1_BAUD_921600` | M1B baseline; escalation is milestone 2 bench work | UNVALIDATED |
