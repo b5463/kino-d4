@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "cam_link.h"
+#include "display.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
@@ -85,6 +86,21 @@ void app_main(void) {
   }
   xTaskCreate(cam_probe_task, "cam_probe", 4096, NULL, 5, NULL);
 
-  ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s", KINO_FW_VERSION,
-           id.serial, id.session_id, storage_present() ? "mounted" : "absent");
+  /* The panel comes up last, deliberately, and its failure is never fatal.
+   * It is the newest and least proven peripheral on this board, and KDP over
+   * USB is the only way to diagnose or recover the device — so a display
+   * that cannot start must leave a camera that can still be talked to. The
+   * same ordering the camera bench tool learned: bring up the thing that
+   * lets you look at the problem before the thing that might be one. */
+  esp_err_t lcd_err = display_init();
+  if (lcd_err != ESP_OK) {
+    ESP_LOGE(TAG, "display unavailable: %s — KDP and storage are unaffected",
+             esp_err_to_name(lcd_err));
+  } else {
+    display_test_pattern();
+  }
+
+  ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s, display %s", KINO_FW_VERSION,
+           id.serial, id.session_id, storage_present() ? "mounted" : "absent",
+           display_ready() ? "up" : "down");
 }

@@ -1,0 +1,7 @@
+dependencies:
+  idf: ">=5.3"
+  # ST7701 over MIPI-DSI. Pinned with dependencies.lock committed, for the
+  # same reason camnode pins esp32-camera: two clean builds of firmware that
+  # drives a panel have to agree, or a display that "went black on the bench"
+  # cannot be told from a build that moved underneath it.
+  espressif/esp_lcd_st7701: "^1.1.0"

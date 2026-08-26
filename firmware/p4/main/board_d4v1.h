@@ -32,4 +32,21 @@
 // Card power comes from the P4 on-chip LDO, channel 4 (3.3 V).
 #define BOARD_SD_LDO_CHANNEL 4
 
+// --- On-board 4.3in panel, ST7701S over MIPI-DSI (Guition JC4880P443C-I-W) ---
+// From the board field notes, the same source whose SD map above was
+// validated on our unit on 2026-08-26. PROVISIONAL until the panel lights.
+#define BOARD_LCD_RESET 5
+#define BOARD_LCD_BACKLIGHT 23 /* active high, plain GPIO - not LEDC */
+// DSI-PHY supply. Channel 3, deliberately not the card's channel 4: an
+// on-chip LDO collision would present as a card that stops mounting when the
+// screen comes up.
+#define BOARD_LCD_DSI_LDO_CHANNEL 3
+#define BOARD_LCD_DSI_LDO_MV 2500
+// GT911 capacitive touch, sharing an I2C bus with the ES8311 codec. Unused
+// until touch is actually driven - declared so the pins have one owner.
+#define BOARD_TOUCH_I2C_SDA 7
+#define BOARD_TOUCH_I2C_SCL 8
+#define BOARD_TOUCH_RESET 3
+#define BOARD_TOUCH_I2C_ADDR 0x5d
+
 #endif
