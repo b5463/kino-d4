@@ -125,6 +125,20 @@ void app_main(void) {
            KINO_FW_VERSION, id.serial, id.session_id);
   hwv_init();
   storage_init(); /* mount failure is a reported state, not a boot failure */
+
+  /* Clean up captures that never got their META.JSON.
+   *
+   * META.JSON is written last, so a folder without one is an interrupted
+   * commit - a reboot, a brownout, or a card pulled between the last frame
+   * and the metadata. It can never become a valid capture and nothing will
+   * ever explain the JPEGs inside it. Here, at boot, is the only moment
+   * nothing else is writing to the card.
+   *
+   * Bounded and conservative: only UUID-shaped directories, only the six
+   * filenames a capture can hold, and an orphan containing anything else is
+   * preserved rather than forced. See storage_sweep_orphans. */
+  storage_sweep_t sweep;
+  storage_sweep_orphans(&sweep);
   ESP_ERROR_CHECK(camlink_init());
 
   /* Capture before the KDP server, because CAMERA_CAPTURE is dispatched the
@@ -215,16 +229,30 @@ void app_main(void) {
      * even if nothing can be pressed. */
     esp_err_t ui_err = ui_start();
     if (ui_err != ESP_OK) ESP_LOGE(TAG, "ui unavailable: %s", esp_err_to_name(ui_err));
+  }
 
-    /* Power management last, and only with a panel: its whole job is turning
-     * the backlight off, which is meaningless without one. */
-    /* Physical controls, after the UI has registered what a press does. */
-    esp_err_t btn_err = buttons_init();
-    if (btn_err != ESP_OK) ESP_LOGE(TAG, "buttons unavailable: %s", esp_err_to_name(btn_err));
+  /*
+   * Controls and power come up whether or not the panel did.
+   *
+   * These used to sit inside the display-success branch above, on the
+   * reasoning that power management's job is turning a backlight off and a
+   * backlight needs a panel. That reasoning covered half of what power.c
+   * does and none of what buttons.c does. The other half drops CAM_PWR_EN,
+   * which is what stops four idle camera nodes draining the cell, and the
+   * buttons are the physical shutter.
+   *
+   * So a panel that failed to initialise took the shutter and the battery
+   * protection with it - the two things that matter most on a camera whose
+   * screen is dead, in a bag, on a battery. Both are independent of the
+   * panel and both now start unconditionally; power.c checks display_ready()
+   * before touching the backlight rather than assuming one exists.
+   */
+  esp_err_t btn_err = buttons_init();
+  if (btn_err != ESP_OK) ESP_LOGE(TAG, "buttons unavailable: %s", esp_err_to_name(btn_err));
 
-    esp_err_t pw_err = power_init();
-    if (pw_err != ESP_OK) ESP_LOGE(TAG, "power management unavailable: %s",
-                                   esp_err_to_name(pw_err));
+  esp_err_t pw_err = power_init();
+  if (pw_err != ESP_OK) {
+    ESP_LOGE(TAG, "power management unavailable: %s", esp_err_to_name(pw_err));
   }
 
   ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s, display %s", KINO_FW_VERSION,

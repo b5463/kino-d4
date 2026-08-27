@@ -28,6 +28,23 @@ bool power_wake_gesture(void) { return s_wake_gesture; }
 void power_end_wake_gesture(void) { s_wake_gesture = false; }
 
 /**
+ * Drive the backlight, with or without a working panel.
+ *
+ * power_init() no longer waits for display_init() to succeed, so this can run
+ * on a unit whose panel never came up. That is safe and deliberate:
+ * display_backlight() configures and sets BOARD_LCD_BACKLIGHT and touches
+ * neither the panel handle nor s_ready, so it is a GPIO write that does not
+ * care whether anything is drawable.
+ *
+ * Gating this on display_ready() would be actively wrong rather than merely
+ * cautious: on a panel-failed unit it would leave the backlight latched on
+ * for the life of the battery, which is the opposite of what a power manager
+ * is for. The stage is still tracked and reported either way, so the failure
+ * is visible in GET_POWER_STATUS instead of being silently absorbed.
+ */
+static void backlight(bool on) { display_backlight(on); }
+
+/**
  * Report activity, and wake here rather than leaving it to the housekeeping
  * task.
  *
@@ -41,7 +58,7 @@ void power_activity(void) {
   s_last_activity = esp_timer_get_time();
   s_activity_seq++;
   if (was_off) {
-    display_backlight(true);
+    backlight(true);
     s_stage = POWER_AWAKE;
     s_wake_gesture = true;
     ESP_LOGI(TAG, "woke");
@@ -127,8 +144,8 @@ static void power_task(void *arg) {
        * silently does nothing. The stage is still tracked and reported, so
        * Studio can show where the timeout has got to, and it is one line to
        * make it real if the backlight ever gets a transistor. */
-      if (want == POWER_ASLEEP) display_backlight(false);
-      else if (s_stage == POWER_ASLEEP) display_backlight(true);
+      if (want == POWER_ASLEEP) backlight(false);
+      else if (s_stage == POWER_ASLEEP) backlight(true);
       s_stage = want;
       ESP_LOGI(TAG, "stage %s after %lus idle",
                want == POWER_AWAKE ? "awake" : want == POWER_DIM ? "dim" : "asleep",
