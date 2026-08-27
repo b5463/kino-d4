@@ -118,6 +118,20 @@ static const char *TAG = "ui";
 
 #define RADIUS 3
 
+/* The filtered artwork, kept between repaints.
+ *
+ * The composite filter is horizontal-only, and the menu ground is neutral
+ * #C0C0C0 where I and Q are zero. So filtering "icon composited on grey" as
+ * a block gives bit-for-bit the same pixels as filtering that region of the
+ * whole screen - there is nothing either side of it that could bleed in.
+ * Which means it can be done once and kept, instead of on every press.
+ *
+ * Measured: 78 ms per repaint before, and a tap repaints twice. */
+#define MT_W (ICON_BOX + 20)
+#define MT_H (ICON_BOX + 12)
+static uint16_t *s_mcache[6];
+static bool s_mcached;
+
 /* Detail screens. */
 #define HEAD_H 62
 #define BACK_W 84
@@ -472,53 +486,148 @@ static void chevron(int x, int cy, uint16_t ink) {
 /* The glass                                                           */
 /* ------------------------------------------------------------------ */
 
-/* Scanline depth and aperture-grille depth. Both deliberately restrained:
- * this runs over type and chrome as well as artwork, and past about 0.18 the
- * scanlines start eating 18 px text. */
-#define CRT_SCAN 32   /* out of 256 */
-#define CRT_MASK 22   /* out of 256 */
-#define CRT_PITCH 3   /* device rows per scan line, and stripe period */
+/**
+ * Composite video, not a shadow mask.
+ *
+ * The first version of this drew scanlines and RGB phosphor stripes, which
+ * are artefacts of an RGB monitor and the wrong ones entirely. What made a
+ * period screen look the way it did - and what artists of the era actually
+ * composed against - is the bandwidth split in the composite/RF signal
+ * itself:
+ *
+ *   luma    Y     ~4.5 MHz    edges stay sharp
+ *   chroma  I, Q  ~0.5 MHz    colour smears sideways, about 9x wider
+ *
+ * That asymmetry is the whole effect. A dithered checkerboard of two colours
+ * has a large CHROMA delta and a small LUMA delta, so the colours average
+ * into a third colour that is not in the palette while the shape stays
+ * crisp. A black keyline against a light face has a large LUMA delta, so it
+ * survives untouched. Artists used exactly this: luma deltas for detail,
+ * chroma deltas for blending.
+ *
+ * Which is why it belongs on these icons in particular. Windows 98 shell
+ * artwork is full of hand-placed two-colour dither, drawn for 256-colour
+ * displays. Run it through a real chroma bandwidth limit and that dither
+ * does what it was always meant to do: resolve into shading.
+ *
+ * Implemented as a horizontal-only separable filter in YIQ, per row, in
+ * integer arithmetic. Vertical is deliberately untouched - composite
+ * band-limits along the scan line, not across lines.
+ */
+
+/* One active line is about 52.6 us. Mapping the 800 px canvas onto it, the
+ * smallest feature each band can carry is:
+ *
+ *   luma    1 / (2 * 4.5 MHz) = 111 ns  ->  ~1.7 px
+ *   chroma  1 / (2 * 0.5 MHz) = 1.0 us  ->  ~15.2 px
+ *
+ * So chroma is CARRIED at one sample per eight pixels and interpolated back
+ * up, which is what an encoder does rather than a trick to go faster - the
+ * information is not in the signal to begin with. Averaging eight pixels
+ * into one sample is itself a box filter of the right width; a [1 2 1] pass
+ * over those samples rounds the roll-off off into a triangle about 24 px
+ * wide at full resolution.
+ *
+ * The first version filtered chroma at full resolution with two nine-tap box
+ * passes and a divide per tap. It measured 293 ms for one screen, which on a
+ * menu that repaints when a tile is pressed is half a second of lag on every
+ * touch. Same output, none of the divides. */
+/* Chroma carried at one sample per four pixels. Averaging four is a box of
+ * 4, and the [1 2 1] over those samples convolves it into a triangle about
+ * 12 px wide - the right order for a 15 px chroma feature. Eight was tried
+ * first and bleeds visibly too far: a navy plate smeared twenty pixels into
+ * the grey, which is a fault, not a period effect. */
+#define CH_SUB 4
+#define CH_N (UI_W / CH_SUB)
+
+static int16_t s_cy[UI_W];
+/* Two guard samples each side so the interpolation and the [1 2 1] never
+ * index off the end, and the edge value simply repeats. */
+static int16_t s_ci[CH_N + 4], s_cq[CH_N + 4];
+static int16_t s_ci2[CH_N + 4], s_cq2[CH_N + 4];
 
 /**
- * Put the whole screen behind a CRT.
+ * Band-limit one rectangle of the canvas the way a composite encoder does.
  *
- * This used to be baked into each icon, which was the wrong place twice over.
- * A cathode ray tube filters everything in front of it - so treating only the
- * artwork left the icons looking processed against crisp modern type, which
- * is exactly the tell it was meant to remove. And a per-icon pass cannot
- * produce a continuous scanline across a whole screen, because each sprite
- * starts its own phase wherever it happens to sit.
+ * Only the parts of a screen that carry colour need this: on a neutral grey
+ * ground I and Q are zero and luma is flat, so the filter is arithmetically
+ * the identity and running it there is work for nothing.
  *
- * One pass over 384000 pixels, integer only: a row gain from a three-entry
- * table and a per-column stripe gain, both premultiplied by the compensation
- * for the light they remove. Measured at 27 ms on the P4, which is fine for a
- * screen that repaints on a press rather than on a clock.
+ * Built at -O2 against the project's -Og. This is the only function in the
+ * firmware that touches every pixel of a region on a user action, and -Og
+ * costs it a factor of three - the difference between a menu that answers a
+ * press and one that thinks about it first. The rest of the build stays
+ * debuggable, which is what -Og is for.
  */
-static void crt_pass(void) {
-  /* Average loss is SCAN/PITCH from the dark row and 2*MASK/3 from the mask;
-   * the gain puts both back so the screen does not simply get darker. */
-  const int gain = (256 * 256 * 3) /
-                   ((3 * 256 - CRT_SCAN) * (256 - 2 * CRT_MASK / 3) / 256);
+__attribute__((optimize("O2"))) static void crt_rect(int rx, int ry, int rw, int rh) {
+  if (rx < 0) { rw += rx; rx = 0; }
+  if (ry < 0) { rh += ry; ry = 0; }
+  if (rx + rw > UI_W) rw = UI_W - rx;
+  if (ry + rh > UI_H) rh = UI_H - ry;
+  if (rw <= 0 || rh <= 0) return;
 
-  for (int y = 0; y < UI_H; y++) {
-    /* One row in three is the gap between scan lines. */
-    const int scan = (y % CRT_PITCH) == (CRT_PITCH - 1) ? 256 - CRT_SCAN : 256;
-    uint16_t *row = s_cv + (size_t)y * UI_W;
-    for (int x = 0; x < UI_W; x++) {
+  const int cn = (rw + CH_SUB - 1) / CH_SUB;
+
+  for (int y = ry; y < ry + rh; y++) {
+    uint16_t *row = s_cv + (size_t)y * UI_W + rx;
+
+    /* Luma at full resolution, chroma accumulated in blocks of eight. */
+    int rs = 0, gs = 0, bs = 0, k = 0;
+    for (int x = 0; x < rw; x++) {
       const uint16_t p = row[x];
-      int r = ((p >> 11) & 0x1F) << 3;
-      int g = ((p >> 5) & 0x3F) << 2;
-      int b = (p & 0x1F) << 3;
-      const int stripe = x % 3;
-      const int mr = stripe == 0 ? 256 : 256 - CRT_MASK;
-      const int mg = stripe == 1 ? 256 : 256 - CRT_MASK;
-      const int mb = stripe == 2 ? 256 : 256 - CRT_MASK;
-      r = (((r * scan) >> 8) * mr >> 8) * gain >> 8;
-      g = (((g * scan) >> 8) * mg >> 8) * gain >> 8;
-      b = (((b * scan) >> 8) * mb >> 8) * gain >> 8;
-      if (r > 255) r = 255;
-      if (g > 255) g = 255;
-      if (b > 255) b = 255;
+      const int r = ((p >> 11) & 0x1F) << 3;
+      const int g = ((p >> 5) & 0x3F) << 2;
+      const int b = (p & 0x1F) << 3;
+      s_cy[x] = (int16_t)((306 * r + 601 * g + 117 * b) >> 10);
+      rs += r;
+      gs += g;
+      bs += b;
+      if ((x & (CH_SUB - 1)) == CH_SUB - 1 || x == rw - 1) {
+        /* >>10 rather than >>8: four samples summed, and I and Q are kept
+         * at 4x so the low-pass has something left below the shift. */
+        s_ci[k + 2] = (int16_t)((610 * rs - 281 * gs - 329 * bs) >> 10);
+        s_cq[k + 2] = (int16_t)((216 * rs - 535 * gs + 319 * bs) >> 10);
+        rs = gs = bs = 0;
+        k++;
+      }
+    }
+    /* Luma at 4.5 MHz: about 1.7 px, which is a [1 2 1] and nothing more.
+     * Leaving it out entirely was wrong - a one-pixel dither has a luma
+     * component as well as a chroma one, and without this the checkerboard
+     * stays visible as texture even after its colour has blended away. */
+    int prev = s_cy[0];
+    for (int x = 0; x < rw - 1; x++) {
+      const int cur = s_cy[x];
+      s_cy[x] = (int16_t)((prev + 2 * cur + s_cy[x + 1]) >> 2);
+      prev = cur;
+    }
+
+    /* Repeat the edges into the guards. */
+    s_ci[0] = s_ci[1] = s_ci[2];
+    s_cq[0] = s_cq[1] = s_cq[2];
+    s_ci[cn + 2] = s_ci[cn + 3] = s_ci[cn + 1];
+    s_cq[cn + 2] = s_cq[cn + 3] = s_cq[cn + 1];
+
+    for (int i = 1; i <= cn + 2; i++) {
+      s_ci2[i] = (int16_t)((s_ci[i - 1] + 2 * s_ci[i] + s_ci[i + 1]) >> 2);
+      s_cq2[i] = (int16_t)((s_cq[i - 1] + 2 * s_cq[i] + s_cq[i + 1]) >> 2);
+    }
+
+    /* Back to RGB, interpolating chroma between block centres. A block
+     * covers four pixels, so its centre sits at 1.5 - close enough to 2
+     * that the half-pixel is not worth a second term. */
+    for (int x = 0; x < rw; x++) {
+      const int c = (x >> 2) + 2;
+      const int f = x & 3;
+      const int ii = (s_ci2[c] * (4 - f) + s_ci2[c + 1] * f) >> 2;
+      const int qq = (s_cq2[c] * (4 - f) + s_cq2[c + 1] * f) >> 2;
+      const int yy = s_cy[x];
+      int r = yy + ((979 * ii + 636 * qq) >> 12);
+      int g = yy + ((-278 * ii - 662 * qq) >> 12);
+      int b = yy + ((-1133 * ii + 1744 * qq) >> 12);
+      if (r < 0) r = 0; else if (r > 255) r = 255;
+      if (g < 0) g = 0; else if (g > 255) g = 255;
+      if (b < 0) b = 0; else if (b > 255) b = 255;
       row[x] = RGB(r, g, b);
     }
   }
@@ -804,7 +913,17 @@ static void draw_menu(void) {
     const int icx = tx + M_TILE_W / 2;
     const int icy = top + ICON_BOX / 2;
 
-    icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + (down ? 1 : 0));
+    const int bx = icx - MT_W / 2, by2 = icy - MT_H / 2 + (down ? 1 : 0);
+    if (s_mcached && s_mcache[i] != NULL) {
+      for (int r = 0; r < MT_H; r++) {
+        const int gy = by2 + r;
+        if (gy < 0 || gy >= UI_H) continue;
+        memcpy(s_cv + (size_t)gy * UI_W + bx, s_mcache[i] + (size_t)r * MT_W,
+               (size_t)MT_W * sizeof(uint16_t));
+      }
+    } else {
+      icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + (down ? 1 : 0));
+    }
 
     /* Desktop-icon selection: the LABEL gets the navy plate and white text,
      * and a dotted focus rectangle goes round the pair. The icon itself is
@@ -829,8 +948,59 @@ static void draw_menu(void) {
     }
   }
 
-  /* The glass goes over everything, last. */
-  crt_pass();
+  /* ---- the glass ---- */
+
+  /* The artwork, filtered once and kept. On the first pass the icons were
+   * blitted raw above, so this filters them in place and takes a copy. */
+  if (!s_mcached) {
+    const int64_t t0 = esp_timer_get_time();
+    bool all = true;
+    for (int i = 0; i < 6; i++) {
+      int tx, ty;
+      tile_rect(i, &tx, &ty);
+      const int top = ty + (M_TILE_H - M_STACK) / 2;
+      const int icx = tx + M_TILE_W / 2;
+      const int bx = icx - MT_W / 2, by2 = top + ICON_BOX / 2 - MT_H / 2;
+      crt_rect(bx, by2, MT_W, MT_H);
+
+      if (s_mcache[i] == NULL) {
+        s_mcache[i] = heap_caps_malloc((size_t)MT_W * MT_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+      }
+      if (s_mcache[i] == NULL) {
+        all = false;
+        continue;
+      }
+      for (int r = 0; r < MT_H; r++) {
+        memcpy(s_mcache[i] + (size_t)r * MT_W, s_cv + (size_t)(by2 + r) * UI_W + bx,
+               (size_t)MT_W * sizeof(uint16_t));
+      }
+    }
+    s_mcached = all;
+    ESP_LOGI(TAG, "composite: six tiles filtered in %lu ms, cached %s",
+             (unsigned long)((esp_timer_get_time() - t0) / 1000), all ? "yes" : "no");
+  }
+
+  /* The labels, every repaint. Only the selected one carries chroma - the
+   * rest are black on neutral grey, where I and Q are zero - but the LUMA
+   * limit is not the identity on any of them: it is what softens a hard type
+   * edge, and filtering only the selected label would leave the other five
+   * visibly crisper than it. Cheap enough at six rows of 32. */
+  static bool warm_timed;
+  const int64_t tl = warm_timed ? 0 : esp_timer_get_time();
+  for (int i = 0; i < 6; i++) {
+    int tx, ty;
+    tile_rect(i, &tx, &ty);
+    const int top = ty + (M_TILE_H - M_STACK) / 2;
+    crt_rect(tx, top + ICON_BOX + 6, M_TILE_W, M_LABEL_H + 8);
+  }
+  if (s_mcached && !warm_timed) {
+    warm_timed = true;
+    /* What every repaint after the first actually costs, which is what a
+     * press pays. Reported once so the number is measured rather than
+     * derived from the cold one. */
+    ESP_LOGI(TAG, "composite: labels only in %lu ms",
+             (unsigned long)((esp_timer_get_time() - tl) / 1000));
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1863,6 +2033,9 @@ static void icons_task(void *arg) {
   if (icons_build() != ESP_OK) ESP_LOGW(TAG, "icons unavailable - the menu will be empty");
   else ESP_LOGI(TAG, "icons ready in %lu ms",
                 (unsigned long)((esp_timer_get_time() - t0) / 1000));
+  /* Hand the registry a last reading while this stack still exists. Without
+   * it the registry keeps querying a freed TCB for the life of the device. */
+  taskmon_task_done("icons");
   vTaskDelete(NULL);
 }
 
