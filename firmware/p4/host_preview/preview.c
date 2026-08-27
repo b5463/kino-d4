@@ -53,6 +53,16 @@ void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (ms) *ms = 0;
 }
 
+/* ui.c registers its tasks so GET_RUNTIME_STATS can report their stack
+ * headroom. There are no tasks here - ui.c's are never created - so this
+ * records nothing. It exists because the alternative is that adding one
+ * taskmon_register() line anywhere in ui.c silently breaks the preview
+ * build, which is how it arrived. */
+void taskmon_register(const char *name, void *handle) {
+  (void)name;
+  (void)handle;
+}
+
 esp_err_t audio_init(void) { return ESP_OK; }
 bool audio_ready(void) { return false; }
 void audio_shutter(void) {}
