@@ -55,15 +55,32 @@ static void backlight(bool on) { display_backlight(on); }
  * the screen come back on the same 15 ms poll that felt the finger.
  */
 void power_activity(void) {
-  const bool was_off = s_stage != POWER_AWAKE;
+  const power_stage_t was = s_stage;
   s_last_activity = esp_timer_get_time();
   s_activity_seq++;
-  if (was_off) {
-    backlight(true);
-    s_stage = POWER_AWAKE;
+  if (was == POWER_AWAKE) return;
+
+  backlight(true);
+  s_stage = POWER_AWAKE;
+
+  /* Only a screen that was actually DARK swallows the press that woke it.
+   *
+   * This used to fire for DIM as well, on the reasonable-sounding grounds
+   * that DIM is "not awake". On this board it is: the backlight is a plain
+   * GPIO with no PWM, so dim and awake are the same pixels and the same
+   * brightness - the stage is tracked and reported, and changes nothing you
+   * can see. A person looking at a dim screen is looking at a perfectly
+   * readable one, and throwing away their press is not protecting them from
+   * anything. It is just losing input.
+   *
+   * The symptom was thirty seconds of autoDimS turning the next tap into
+   * nothing, on a screen that was lit the whole time - which reads exactly
+   * like a camera that has stopped responding, and is why this looked like a
+   * sleep bug when sleep had nothing to do with it. */
+  if (was == POWER_ASLEEP) {
     s_wake_gesture = true;
-    ESP_LOGI(TAG, "woke");
-    klog("P4", "woke from %s", "sleep");
+    ESP_LOGI(TAG, "woke from sleep");
+    klog("P4", "woke from sleep");
   }
 }
 
