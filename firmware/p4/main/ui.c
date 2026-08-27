@@ -156,26 +156,21 @@ static bool s_mcached;
  * that were going to be empty anyway. Putting them in strips above and below
  * instead costs 27 px of pane height each, which is 49% of the picture area,
  * to fill margins that stay dark either way. */
-/* SHOOT: four previews, and as little else as the screen can get away with.
+/* SHOOT: the four streams, edge to edge, and one way out.
  *
- * Back top left, power top right, flash underneath. No shutter: the D4 has a
- * physical one, and a camera whose shutter is a picture of a shutter is a
- * camera you have to look at to use.
+ * Four panes of exactly a quarter of the screen. No gap, no keyline, no
+ * margin, no markings - a viewfinder is for looking through, and every line
+ * drawn on it is a line between you and the room.
  *
- * Four 4:3 panes in a 2x2 make a 4:3 block on a 5:3 panel, so a column is
- * left over whichever way it is arranged. Two thin strips top and bottom
- * spend that on nothing and cost the panes 27 px of height each; putting the
- * three markings in the side margins instead keeps the block as tall as the
- * screen allows, which is what the previews are for. */
-#define SH_MARGIN 6
-#define SH_GAP 6
-#define SH_PANE_H ((UI_H - 2 * SH_MARGIN - SH_GAP) / 2)            /* 231 */
-#define SH_PANE_W (SH_PANE_H * 4 / 3)                              /* 308 */
-#define SH_BLOCK_W (2 * SH_PANE_W + SH_GAP)                        /* 622 */
-#define SH_X0 ((UI_W - SH_BLOCK_W) / 2)                            /* 89 */
-#define SH_Y0 SH_MARGIN
-#define SH_COL_R (SH_X0 + SH_BLOCK_W)                              /* 711 */
-#define SH_COL_W (UI_W - SH_COL_R)                                 /* 89 */
+ * 400x240 is 5:3 and the sensors are 4:3, so each stream is scaled to fill
+ * the width and cropped 24 rows top and bottom - a tenth off each edge. The
+ * alternatives were both worse: letterboxing puts a black border round every
+ * frame, and stretching to fit makes every face 25% wide. Cropping loses the
+ * least and is what a camera does when it changes aspect anyway. */
+#define SH_PANE_W (UI_W / 2)                                       /* 400 */
+#define SH_PANE_H (UI_H / 2)                                       /* 240 */
+/* Rows dropped from each end of the source to make 4:3 into 5:3. */
+#define SH_CROP ((VF_H - (VF_W * SH_PANE_H / SH_PANE_W)) / 2)      /* 24 */
 
 /* The single-photograph view decodes at this size rather than scaling the
  * gallery thumbnail: thumb_load takes any target, so there is no reason to
@@ -245,6 +240,17 @@ typedef enum { DLG_NONE = 0, DLG_SHUTDOWN, DLG_RESTART, DLG_DELETE, DLG_FORMAT }
 static uint16_t *s_cv;
 static screen_t s_screen = SCR_MENU;
 static int s_focus[SCR_COUNT];
+/* Whether focus is worth DRAWING.
+ *
+ * Focus is what a d-pad moves. On a device whose only input is a finger,
+ * nothing is focused - you touch the thing you want - and painting a
+ * selection on a tile nobody chose is just a highlight that appears on boot
+ * and then follows you around. It stays tracked, because the shutter and FN
+ * pins will one day have four friends, and it starts being drawn the moment
+ * a physical key is actually used. */
+static bool s_focus_shown;
+
+static bool foc(screen_t sc, int i) { return s_focus_shown && s_focus[sc] == i; }
 static int s_pressed = -1;      /* held item index, -1 for none */
 static dialog_t s_dialog = DLG_NONE;
 static int s_dlg_focus;          /* 0 = safe action, 1 = the other one */
@@ -743,6 +749,9 @@ static void toast(const char *s) {
 /* ------------------------------------------------------------------ */
 
 static const char *const FLASH_ORDER[3] = {"auto", "on", "off"};
+/* The segments read AUTO / ON / OFF left to right, which is the same order
+ * the cycle uses, so one table serves both. */
+#define FLASH_ORDER_BY_INDEX FLASH_ORDER
 
 static int flash_index(void) {
   const char *v = config_str("shoot.flashMode", "auto");
@@ -1029,7 +1038,56 @@ static void tile_rect(int i, int *x, int *y) {
  * a pale plate and its label goes into a cobalt chip, which is how a selected
  * desktop icon read in 1998 and keeps the artwork the loudest thing on screen.
  */
+/**
+ * Fill the artwork cache, once, from a screen with nothing on it but icons.
+ *
+ * This has to happen before any selection is drawn. It did not, and the
+ * consequence was the dotted focus rectangle being captured INTO the cached
+ * tile and then blitted back on every repaint for the rest of the session -
+ * an outline round SHOOT that survived leaving the menu, coming back, and
+ * choosing something else. A cache of a screen is only safe if the screen it
+ * caches has no state in it.
+ */
+static void menu_prime(void) {
+  if (s_mcached) return;
+
+  fill(0, 0, UI_W, UI_H, W_FACE);
+  for (int i = 0; i < 6; i++) {
+    int tx, ty;
+    tile_rect(i, &tx, &ty);
+    const int top = ty + (M_TILE_H - M_STACK) / 2;
+    icons_blit_centred(s_cv, UI_W, UI_H, i, tx + M_TILE_W / 2, top + ICON_BOX / 2);
+  }
+
+  const int64_t t0 = esp_timer_get_time();
+  bool all = true;
+  for (int i = 0; i < 6; i++) {
+    int tx, ty;
+    tile_rect(i, &tx, &ty);
+    const int top = ty + (M_TILE_H - M_STACK) / 2;
+    const int icx = tx + M_TILE_W / 2;
+    const int bx = icx - MT_W / 2, by = top + ICON_BOX / 2 - MT_H / 2;
+    crt_rect(bx, by, MT_W, MT_H);
+
+    if (s_mcache[i] == NULL) {
+      s_mcache[i] = heap_caps_malloc((size_t)MT_W * MT_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    }
+    if (s_mcache[i] == NULL) {
+      all = false;
+      continue;
+    }
+    for (int r = 0; r < MT_H; r++) {
+      memcpy(s_mcache[i] + (size_t)r * MT_W, s_cv + (size_t)(by + r) * UI_W + bx,
+             (size_t)MT_W * sizeof(uint16_t));
+    }
+  }
+  s_mcached = all;
+  ESP_LOGI(TAG, "composite: six tiles filtered in %lu ms, cached %s",
+           (unsigned long)((esp_timer_get_time() - t0) / 1000), all ? "yes" : "no");
+}
+
 static void draw_menu(void) {
+  menu_prime();
   /* The 1998 3D face, not a near-white canvas. It is the colour every window
    * in that era sat on, it makes the saturated icons pop instead of glowing,
    * and on a panel used in a dark room it is far kinder than white. */
@@ -1040,7 +1098,7 @@ static void draw_menu(void) {
   for (int i = 0; i < 6; i++) {
     int tx, ty;
     tile_rect(i, &tx, &ty);
-    const bool sel = (s_focus[SCR_MENU] == i);
+    const bool sel = (foc(SCR_MENU, i));
     const bool down = (s_pressed == i);
 
     const int top = ty + (M_TILE_H - M_STACK) / 2;
@@ -1053,7 +1111,7 @@ static void draw_menu(void) {
     const int lift = down ? 1 : (sel ? -2 : 0);
 
     const int bx = icx - MT_W / 2, by2 = icy - MT_H / 2 + lift;
-    if (s_mcached && s_mcache[i] != NULL) {
+    if (s_mcache[i] != NULL) {
       for (int r = 0; r < MT_H; r++) {
         const int gy = by2 + r;
         if (gy < 0 || gy >= UI_H) continue;
@@ -1061,6 +1119,7 @@ static void draw_menu(void) {
                (size_t)MT_W * sizeof(uint16_t));
       }
     } else {
+      /* No room for the cache. Slower and unfiltered, but still a menu. */
       icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + lift);
     }
 
@@ -1108,36 +1167,6 @@ static void draw_menu(void) {
 
   /* ---- the glass ---- */
 
-  /* The artwork, filtered once and kept. On the first pass the icons were
-   * blitted raw above, so this filters them in place and takes a copy. */
-  if (!s_mcached) {
-    const int64_t t0 = esp_timer_get_time();
-    bool all = true;
-    for (int i = 0; i < 6; i++) {
-      int tx, ty;
-      tile_rect(i, &tx, &ty);
-      const int top = ty + (M_TILE_H - M_STACK) / 2;
-      const int icx = tx + M_TILE_W / 2;
-      const int bx = icx - MT_W / 2, by2 = top + ICON_BOX / 2 - MT_H / 2;
-      crt_rect(bx, by2, MT_W, MT_H);
-
-      if (s_mcache[i] == NULL) {
-        s_mcache[i] = heap_caps_malloc((size_t)MT_W * MT_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-      }
-      if (s_mcache[i] == NULL) {
-        all = false;
-        continue;
-      }
-      for (int r = 0; r < MT_H; r++) {
-        memcpy(s_mcache[i] + (size_t)r * MT_W, s_cv + (size_t)(by2 + r) * UI_W + bx,
-               (size_t)MT_W * sizeof(uint16_t));
-      }
-    }
-    s_mcached = all;
-    ESP_LOGI(TAG, "composite: six tiles filtered in %lu ms, cached %s",
-             (unsigned long)((esp_timer_get_time() - t0) / 1000), all ? "yes" : "no");
-  }
-
   /* The labels, every repaint. Only the selected one carries chroma - the
    * rest are black on neutral grey, where I and Q are zero - but the LUMA
    * limit is not the identity on any of them: it is what softens a hard type
@@ -1165,34 +1194,34 @@ static void draw_menu(void) {
 /* Viewfinder                                                          */
 /* ------------------------------------------------------------------ */
 
-/* Two things you can touch on this screen, and no more. */
+/* One thing you can touch on this screen. */
 #define SH_IT_BACK 0
-#define SH_IT_FLASH 1
 
 static void sh_pane_rect(int cam, int *x, int *y) {
-  *x = SH_X0 + (cam % 2) * (SH_PANE_W + SH_GAP);
-  *y = SH_Y0 + (cam / 2) * (SH_PANE_H + SH_GAP);
+  *x = (cam % 2) * SH_PANE_W;
+  *y = (cam / 2) * SH_PANE_H;
 }
 
+/* Scaled to fill and cropped, rather than fitted and bordered. */
 static void sh_blit(const uint16_t *tile, int px, int py) {
+  const int span = VF_H - 2 * SH_CROP;
   for (int y = 0; y < SH_PANE_H; y++) {
-    const uint16_t *src = tile + (size_t)(y * VF_H / SH_PANE_H) * VF_W;
+    const int sy = SH_CROP + y * span / SH_PANE_H;
+    const uint16_t *src = tile + (size_t)sy * VF_W;
     uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
     for (int x = 0; x < SH_PANE_W; x++) dst[x] = src[x * VF_W / SH_PANE_W];
   }
 }
 
 /**
- * SHOOT: the picture, and the two markings that belong beside it.
+ * SHOOT: four streams and a way back.
  *
- * Everything that was competing with the photograph is gone - the frame
- * rates, the card capacity, the link diagnostics, the mode readout and the
- * on-screen shutter. What is left is the way out, where the power is coming
- * from, and the one control anybody changes while shooting.
+ * Everything else moved to LOOK - the mode, the flash, the look itself -
+ * because they are all decisions about the photograph rather than parts of
+ * seeing it, and none of them needs to be on screen while you are framing.
+ * What is left is the room.
  */
 static void draw_shoot(void) {
-  fill(0, 0, UI_W, UI_H, D_GROUND);
-
   static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
   for (int i = 0; i < 4; i++) {
     int px, py;
@@ -1204,59 +1233,36 @@ static void draw_shoot(void) {
 
     if (tile != NULL) {
       sh_blit(tile, px, py);
-    } else {
-      fill(px, py, SH_PANE_W, SH_PANE_H, D_PANE);
-      /* Which of the several reasons it is, rather than a black rectangle
-       * that could mean any of them. */
-      const char *why = st.state == VF_ERROR     ? "NO PICTURE"
-                        : st.state == VF_STALLED ? "NO RECENT FRAME"
-                                                 : "NO CAMERA";
-      text_mid(&UI_FONT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 14, why, D_DIM);
-      text_mid(&UI_FONT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 6, NAMES[i],
-               RGB(0x4a, 0x52, 0x5e));
+      continue;
     }
-    /* Sunken, so each preview reads as a window let into the body. */
-    bevel(px - 2, py - 2, SH_PANE_W + 4, SH_PANE_H + 4, true);
+
+    /* No pixels. Say which of the several reasons it is - a black quarter
+     * could mean any of them - and say it quietly, because this is the one
+     * state where the screen has nothing better to show. */
+    fill(px, py, SH_PANE_W, SH_PANE_H, D_GROUND);
+    const char *why = st.state == VF_ERROR     ? "NO PICTURE"
+                      : st.state == VF_STALLED ? "NO RECENT FRAME"
+                                               : "NO CAMERA";
+    text_mid(&UI_FONT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 14, why,
+             RGB(0x4a, 0x52, 0x5e));
+    text_mid(&UI_FONT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 6, NAMES[i],
+             RGB(0x32, 0x38, 0x42));
   }
 
-  /* Back, top left. Small and subordinate: it is the way out, not a feature. */
-  const uint16_t bink = (s_pressed == SH_IT_BACK) ? C_YELLOW
-                        : (s_focus[SCR_SHOOT] == SH_IT_BACK ? C_INV : D_TEXT);
-  chevron(12, 22, bink);
-  text(&UI_FONT_S, 28, 13, "MENU", bink);
-
-  /* The power source, top right. No percentage: this body has no sense
-   * divider, so a number would be invented. */
-  const int bi = W98_BATTERY_IDX;
-  const int be = icons_edge(bi);
-  icons_blit(s_cv, UI_W, UI_H, bi, SH_COL_R + (SH_COL_W - be) / 2, 12);
-  text_mid(&UI_FONT_S, SH_COL_R + SH_COL_W / 2, 12 + be + 4, usb_attached() ? "USB" : "BATT",
-           D_DIM);
-
-  /* Flash. One press advances it, and the order never reorders by recency:
-   * overshooting costs two more presses, which is faster than reading a
-   * menu. It burns yellow for a moment when it changes - long enough to
-   * catch from the corner of your eye while looking at the picture. */
-  const int fi = flash_index();
-  static const char *const FLASH_WORD[3] = {"AUTO", "ON", "OFF"};
-  const bool spark = flash_sparking();
-  const int fw = SH_COL_W - 10, fh = 62;
-  const int fx = SH_COL_R + 5, fy = UI_H - SH_MARGIN - fh;
-
-  uint16_t face, bolt_ink, word_ink;
-  if (fi == 1 || spark) {
-    face = C_YELLOW;
-    bolt_ink = word_ink = RGB(0x2a, 0x22, 0x05);
-  } else {
-    face = (s_pressed == SH_IT_FLASH) ? RGB(0x3a, 0x42, 0x4c) : RGB(0x24, 0x2a, 0x32);
-    bolt_ink = fi == 2 ? RGB(0x4a, 0x52, 0x5e) : C_YELLOW;
-    word_ink = fi == 2 ? D_DIM : D_TEXT;
+  /* The only marking. A scrim under it, because it has to stay readable over
+   * whatever the room happens to be doing. */
+  const bool down = s_pressed == SH_IT_BACK;
+  for (int y = 0; y < 34; y++) {
+    uint16_t *row = s_cv + (size_t)y * UI_W;
+    const int k = 190 - y * 5;
+    for (int x = 0; x < 92; x++) {
+      const int fade = k - x * 2;
+      if (fade > 0) row[x] = mix(row[x], RGB(0x00, 0x00, 0x00), fade);
+    }
   }
-  fill(fx, fy, fw, fh, face);
-  outline(fx, fy, fw, fh, fi == 1 || spark ? RGB(0x9a, 0x76, 0x10) : D_EDGE);
-  bolt(fx + fw / 2 - 8, fy + 8, 2, bolt_ink);
-  text_mid(&UI_FONT_S, fx + fw / 2, fy + fh - 22, FLASH_WORD[fi], word_ink);
-  if (s_focus[SCR_SHOOT] == SH_IT_FLASH) focus_rect(fx - 3, fy - 3, fw + 6, fh + 6);
+  const uint16_t ink = down ? C_YELLOW : RGB(0xe6, 0xea, 0xf0);
+  chevron(12, 17, ink);
+  text(&UI_FONT_S, 28, 8, "MENU", ink);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1281,39 +1287,65 @@ static void look_set_mono(bool mono) {
   }
 }
 
+/* Three decisions about the photograph, in one place.
+ *
+ * Mode and flash used to live on the viewfinder, which put two pickers in
+ * front of the thing they are meant to be describing. They are not part of
+ * seeing the room, they are part of deciding what to do with it - the same
+ * kind of decision as the look - so they are here, and the viewfinder is
+ * only the room. */
+#define LK_Y0 (BODY_Y + 16)
+#define LK_ROW 84
+#define LK_SEG_H 46
+#define LK_SEG_X 24
+#define LK_SEG_W (UI_W - 2 * LK_SEG_X)
+
+/* Item ranges: mode 0..1, flash 2..4, look 5..6. */
+#define LK_IT_FLASH 2
+#define LK_IT_LOOK 5
+
 static void draw_look(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_LOOK);
 
-  const bool mono = look_is_mono();
-  static const char *const NAMES[2] = {"COLOUR", "B&W"};
-  const int y = BODY_Y + 40, h = 76, w = 300;
-  const int xs[2] = {UI_W / 2 - w - 10, UI_W / 2 + 10};
+  static const char *const MODE_NAMES[2] = {"WIGGLE", "QUAD"};
+  static const char *const FLASH_NAMES[3] = {"AUTO", "ON", "OFF"};
+  static const char *const LOOK_NAMES[2] = {"COLOUR", "B&W"};
 
-  for (int i = 0; i < 2; i++) {
-    const bool on = (i == 1) == mono;
-    button(xs[i], y, w, h, on || s_pressed == i);
-    if (on) fill(xs[i] + 2, y + 2, w - 4, h - 4, W_LIGHT);
-    const int d = (on || s_pressed == i) ? 1 : 0;
-    text_mid(&UI_FONT_M, xs[i] + w / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, NAMES[i], W_TEXT);
-    if (s_focus[SCR_LOOK] == i) focus_rect(xs[i] + 4, y + 4, w - 8, h - 8);
-  }
+  const int p0 = s_pressed;
 
-  /* Named looks are recipes, and recipes arrive from Studio. With none
-   * loaded, saying so beats an empty list. */
-  text(&UI_FONT_S, 40, y + h + 46, "LOADED LOOKS", W_TEXT);
-  fill(40, y + h + 70, UI_W - 80, 1, W_SHADOW);
-  fill(40, y + h + 71, UI_W - 80, 1, W_HILITE);
-  const char *rid = config_str("wiggle.recipeId", "");
-  if (rid[0] == '\0') {
-    text(&UI_FONT_M, 40, y + h + 88, "None yet", W_TEXT);
-    text(&UI_FONT_S, 40, y + h + 118, "Add looks from Studio over USB-C.", W_GRAYTEXT);
-  } else {
-    text(&UI_FONT_M, 40, y + h + 88, rid, W_TEXT);
-  }
+  text(&UI_FONT_S, LK_SEG_X, LK_Y0, "MODE", W_TEXT);
+  draw_segments(LK_SEG_X, LK_Y0 + 22, LK_SEG_W, LK_SEG_H, MODE_NAMES, 2, mode_is_quad() ? 1 : 0,
+                (p0 >= 0 && p0 < 2) ? p0 : -1,
+                (foc(SCR_LOOK, 0) ? 0 : (foc(SCR_LOOK, 1) ? 1 : -1)));
 
-  text_mid(&UI_FONT_S, UI_W / 2, UI_H - 34,
-           "Looks are applied when you import. The camera preview does not change.", W_GRAYTEXT);
+  text(&UI_FONT_S, LK_SEG_X, LK_Y0 + LK_ROW, "FLASH", W_TEXT);
+  draw_segments(LK_SEG_X, LK_Y0 + LK_ROW + 22, LK_SEG_W, LK_SEG_H, FLASH_NAMES, 3, flash_index(),
+                (p0 >= LK_IT_FLASH && p0 < LK_IT_FLASH + 3) ? p0 - LK_IT_FLASH : -1,
+                (s_focus_shown && s_focus[SCR_LOOK] >= LK_IT_FLASH &&
+                 s_focus[SCR_LOOK] < LK_IT_FLASH + 3)
+                    ? s_focus[SCR_LOOK] - LK_IT_FLASH
+                    : -1);
+
+  text(&UI_FONT_S, LK_SEG_X, LK_Y0 + 2 * LK_ROW, "LOOK", W_TEXT);
+  draw_segments(LK_SEG_X, LK_Y0 + 2 * LK_ROW + 22, LK_SEG_W, LK_SEG_H, LOOK_NAMES, 2,
+                look_is_mono() ? 1 : 0,
+                (p0 >= LK_IT_LOOK && p0 < LK_IT_LOOK + 2) ? p0 - LK_IT_LOOK : -1,
+                (s_focus_shown && s_focus[SCR_LOOK] >= LK_IT_LOOK &&
+                 s_focus[SCR_LOOK] < LK_IT_LOOK + 2)
+                    ? s_focus[SCR_LOOK] - LK_IT_LOOK
+                    : -1);
+
+  /* Both modes fire all four cameras and write identical files; the
+   * difference is entirely in how the host presents them. Someone who
+   * expects different pictures and gets the same ones assumes the camera is
+   * broken. And the camera does no grading at all, so a look that never
+   * changes the preview would read as a setting that does nothing. */
+  const int ny = LK_Y0 + 3 * LK_ROW + 4;
+  text(&UI_FONT_S, LK_SEG_X, ny, "Both modes capture four frames. The difference is playback.",
+       W_GRAYTEXT);
+  text(&UI_FONT_S, LK_SEG_X, ny + 22,
+       "Looks are applied when you import. The preview does not change.", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1367,11 +1399,11 @@ static void draw_gallery(void) {
     if (slots[i].state == TILE_EMPTY) continue;
     int x, y;
     gal_origin(i, &x, &y);
-    const bool foc = s_focus[SCR_GALLERY] == i;
+    const bool selected = foc(SCR_GALLERY, i);
 
     /* Every photograph sits in a sunken well; the focused one gets the navy
      * plate a selected thumbnail had. */
-    fill(x - 3, y - 3, G_TILE_W + 6, G_TILE_H + 6, foc ? W_SEL : W_FACE);
+    fill(x - 3, y - 3, G_TILE_W + 6, G_TILE_H + 6, selected ? W_SEL : W_FACE);
     bevel(x - 2, y - 2, G_TILE_W + 4, G_TILE_H + 4, true);
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
@@ -1408,8 +1440,8 @@ static void draw_gallery(void) {
     button(UI_W - 24 - bw, by, bw, bh, nd);
     text_mid(&UI_FONT_S, UI_W - 24 - bw / 2 + nd, by + (bh - UI_FONT_S.line_h) / 2 + nd, "NEXT",
              W_TEXT);
-    if (s_focus[SCR_GALLERY] == G_IT_PREV) focus_rect(28, by + 4, bw - 8, bh - 8);
-    if (s_focus[SCR_GALLERY] == G_IT_NEXT) focus_rect(UI_W - 20 - bw, by + 4, bw - 8, bh - 8);
+    if (foc(SCR_GALLERY, G_IT_PREV)) focus_rect(28, by + 4, bw - 8, bh - 8);
+    if (foc(SCR_GALLERY, G_IT_NEXT)) focus_rect(UI_W - 20 - bw, by + 4, bw - 8, bh - 8);
   }
   if (gallery_loading())
     text(&UI_FONT_S, 24, fy + (G_FOOT - UI_FONT_S.line_h) / 2, "READING CARD", W_GRAYTEXT);
@@ -1681,7 +1713,7 @@ static void draw_settings(void) {
   draw_header(SCR_SETTINGS);
   draw_list_frame(5);
   for (int i = 0; i < 5; i++)
-    draw_row(LIST_Y + i * ROW_H, s_focus[SCR_SETTINGS] == i, true, SET_ROWS[i], NULL, true, C_MUTED);
+    draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), true, SET_ROWS[i], NULL, true, C_MUTED);
 }
 
 /* --- Display ------------------------------------------------------ */
@@ -1736,9 +1768,9 @@ static void draw_sound(void) {
   const bool ui = config_bool("body.sounds.ui", true);
 
   draw_list_frame(2);
-  draw_row(LIST_Y, s_focus[SCR_SOUND] == 0, true, "Shutter sound", NULL, false, C_MUTED);
+  draw_row(LIST_Y, foc(SCR_SOUND, 0), true, "Shutter sound", NULL, false, C_MUTED);
   draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + (ROW_H - 26) / 2, shut, false);
-  draw_row(LIST_Y + ROW_H, s_focus[SCR_SOUND] == 1, true, "Button sound", NULL, false, C_MUTED);
+  draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, 1), true, "Button sound", NULL, false, C_MUTED);
   draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + ROW_H + (ROW_H - 26) / 2, ui, false);
 
   const int y = LIST_Y + 2 * ROW_H + 26;
@@ -1860,7 +1892,7 @@ static void draw_storage(void) {
   draw_row(LIST_Y, false, true, "Card", sd.mounted ? capb : "None", false, C_MUTED);
   draw_row(LIST_Y + ROW_H, false, true, "Free space", sd.mounted ? freeb : "-", false, C_MUTED);
   draw_row(LIST_Y + 2 * ROW_H, false, true, "Photos", cnt, false, C_MUTED);
-  draw_row(LIST_Y + 3 * ROW_H, s_focus[SCR_STORAGE] == 0, sd.mounted, "Format card", NULL, true,
+  draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, 0), sd.mounted, "Format card", NULL, true,
            C_MUTED);
 }
 
@@ -1885,10 +1917,10 @@ static void draw_power(void) {
   /* Shut down is drawn disabled: power.c controls the backlight and the
    * camera bank and has no power-off at all, and there is no soft latch in
    * the pin map for one. Restart is real. */
-  draw_row(BODY_Y, s_focus[SCR_POWER] == 0, false, "Shut down", "Hold the power slide", false,
+  draw_row(BODY_Y, foc(SCR_POWER, 0), false, "Shut down", "Hold the power slide", false,
            C_FAINT);
-  draw_row(BODY_Y + ROW_H, s_focus[SCR_POWER] == 1, true, "Restart", NULL, true, C_MUTED);
-  draw_row(BODY_Y + 2 * ROW_H, s_focus[SCR_POWER] == 2, true, "Cancel", NULL, false, C_MUTED);
+  draw_row(BODY_Y + ROW_H, foc(SCR_POWER, 1), true, "Restart", NULL, true, C_MUTED);
+  draw_row(BODY_Y + 2 * ROW_H, foc(SCR_POWER, 2), true, "Cancel", NULL, false, C_MUTED);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2037,11 +2069,11 @@ static void draw_capture_banner(void) {
       break;
   }
 
-  /* Stops short of the flash marking on the shoot screen. Everywhere else it
-   * runs the full width, because nothing else has anything down there worth
-   * protecting. */
+  /* Full width everywhere now. There is nothing in the bottom of the shoot
+   * screen to protect - it is all picture, and a report about the photograph
+   * is allowed to sit over the photograph for a moment. */
   const int h = 40, y = UI_H - h;
-  const int w = s_screen == SCR_SHOOT ? SH_COL_R - 6 : UI_W;
+  const int w = UI_W;
   fill(0, y, w, h, RGB(0x12, 0x16, 0x1c));
   fill(0, y, w, 1, accent);
   fill(0, y + 1, 5, h - 1, accent);
@@ -2110,8 +2142,8 @@ static void go_back(void) {
 static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
-    case SCR_SHOOT: return 2;
-    case SCR_LOOK: return 2;
+    case SCR_SHOOT: return 1;
+    case SCR_LOOK: return 7;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
     case SCR_PHOTO: return 1; /* Send to Roll is not fitted, so not focusable */
     case SCR_SETTINGS: return 5;
@@ -2156,10 +2188,9 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_SHOOT:
-      /* The whole of each empty margin is the target, not just the marking
-       * painted in it: 89 px is already narrower than a thumb. */
-      if (x < SH_X0 && y < 80) return SH_IT_BACK;
-      if (x >= SH_COL_R && y >= UI_H - 110) return SH_IT_FLASH;
+      /* Generous, because it is the only target on the screen and it sits
+       * over live video where a small one would be hard to find. */
+      if (x < 150 && y < 70) return SH_IT_BACK;
       return -1;
 
     case SCR_PHOTO: {
@@ -2178,9 +2209,16 @@ static int hit_test(int x, int y) {
 
   switch (s_screen) {
     case SCR_LOOK: {
-      const int y0 = BODY_Y + 40, h = 76, w = 300;
-      if (in(x, y, UI_W / 2 - w - 10, y0, w, h)) return 0;
-      if (in(x, y, UI_W / 2 + 10, y0, w, h)) return 1;
+      static const int COUNT[3] = {2, 3, 2};
+      static const int BASE[3] = {0, LK_IT_FLASH, LK_IT_LOOK};
+      for (int r = 0; r < 3; r++) {
+        const int ry = LK_Y0 + r * LK_ROW + 22;
+        if (y < ry || y >= ry + LK_SEG_H) continue;
+        const int cw = LK_SEG_W / COUNT[r];
+        for (int i = 0; i < COUNT[r]; i++) {
+          if (in(x, y, LK_SEG_X + i * cw, ry, cw, LK_SEG_H)) return BASE[r] + i;
+        }
+      }
       return -1;
     }
     case SCR_GALLERY: {
@@ -2296,12 +2334,19 @@ static void activate(int item) {
 
     case SCR_SHOOT:
       if (item == SH_IT_BACK) { go_back(); return; }
-      if (item == SH_IT_FLASH) { flash_cycle(); break; }
       break;
 
     case SCR_LOOK:
-      look_set_mono(item == 1);
-      toast(item == 1 ? "Look: B&W" : "Look: Colour");
+      if (item < LK_IT_FLASH) {
+        cfg_set_str("mode", item == 1 ? "quad" : "wiggle");
+        toast(item == 1 ? "QUAD" : "WIGGLE");
+      } else if (item < LK_IT_LOOK) {
+        cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
+        s_flash_spark_us = esp_timer_get_time();
+      } else {
+        look_set_mono(item == LK_IT_LOOK + 1);
+        toast(item == LK_IT_LOOK + 1 ? "B&W" : "COLOUR");
+      }
       break;
 
     case SCR_GALLERY:
