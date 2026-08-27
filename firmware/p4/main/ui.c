@@ -663,13 +663,57 @@ static void draw_gallery(void) {
   }
 }
 
+/**
+ * Rolls, and what this build can honestly say about them.
+ *
+ * Starting a roll from the camera needs a network, and this body has none:
+ * the ESP32-C6 co-processor that carries the radio is not brought up, so
+ * there is no SDIO link to it, no Wi-Fi, and nothing that could reach the
+ * Roll API. `NETWORK_*` and `ROLL_*` are in the protocol and unimplemented
+ * here, and `GET_CAPABILITIES` says so.
+ *
+ * A screen offering CREATE ROLL over that would be a button that cannot work
+ * - the same failure as a shutter that logged instead of capturing. What the
+ * camera can truthfully offer today is the folder every capture already goes
+ * into, and the count of them waiting to be collected.
+ */
+static void draw_roll(void) {
+  const int body = HEAD_H + 40;
+  storage_status_t st;
+  storage_get_status(&st);
+
+  char buf[48];
+  if (!st.mounted) {
+    row(body, "CARD", st.present ? "PRESENT, NOT MOUNTED" : "NO CARD", C_BAD);
+    if (st.last_error) row(body + 46, "ERROR", st.last_error, C_BAD);
+  } else {
+    snprintf(buf, sizeof buf, "%d", gallery_total());
+    row(body, "CAPTURES", buf, C_INK);
+    row(body + 46, "FOLDER", "/KINO/CAPTURES", C_INK);
+    human_bytes(buf, sizeof buf, st.free_bytes);
+    /* Free space, not capacity: how many more photographs fit is the question
+     * someone standing at a party is actually asking. */
+    row(body + 92, "FREE", buf, C_INK);
+    snprintf(buf, sizeof buf, "%s  write %s", st.filesystem ? st.filesystem : "-",
+             st.write_test ? st.write_test : "untested");
+    row(body + 138, "CARD", buf, C_INK);
+  }
+  row(body + 184, "NETWORK", "NONE", C_BAD);
+  row(body + 230, "UPLOAD", "OVER USB, FROM STUDIO", C_INK);
+
+  text(&UI_FONT_S, MARGIN + 12, UI_H - MARGIN - 46,
+       "Starting a roll on the camera needs the C6 radio, which this build does not",
+       C_MUTED);
+  text(&UI_FONT_S, MARGIN + 12, UI_H - MARGIN - 24,
+       "bring up. Connect Studio over USB-C and create the roll there.", C_MUTED);
+}
+
 static void draw_detail(screen_t s) {
   fill(0, 0, UI_W, UI_H, C_CANVAS);
   draw_header(s);
 
   const int body = HEAD_H + 40;
   char buf[48];
-  storage_status_t st;
 
   switch (s) {
     case SCREEN_MODE:
@@ -694,21 +738,7 @@ static void draw_detail(screen_t s) {
       break;
 
     case SCREEN_ROLL:
-      storage_get_status(&st);
-      row(body, "CARD", st.present ? (st.mounted ? "MOUNTED" : "PRESENT") : "NO CARD",
-          st.mounted ? C_OK : C_BAD);
-      if (st.mounted) {
-        human_bytes(buf, sizeof buf, st.capacity_bytes);
-        row(body + 52, "CAPACITY", buf, C_INK);
-        human_bytes(buf, sizeof buf, st.free_bytes);
-        row(body + 104, "FREE", buf, C_INK);
-        row(body + 156, "FORMAT", st.filesystem ? st.filesystem : "-", C_INK);
-        row(body + 208, "WRITE TEST", st.write_test ? st.write_test : "none", C_INK);
-      } else if (st.last_error) {
-        row(body + 52, "ERROR", st.last_error, C_BAD);
-      }
-      text(&UI_FONT_S, MARGIN + 12, UI_H - MARGIN - 24,
-           "A roll is one capture folder: four frames and their metadata.", C_MUTED);
+      draw_roll();
       break;
 
     case SCREEN_SETTINGS: {
