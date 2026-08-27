@@ -28,12 +28,14 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "hardware_validation.h"
+#include "kdp_net.h"
 #include "kdp/crc32.h"
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
 #include "klog.h"
 #include "meta.h"
+#include "net_link.h"
 #include "node_link/node_link.h"
 #include "power.h"
 #include "storage.h"
@@ -135,6 +137,24 @@ static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *
   send_raw(type, KDP_FLAG_RESPONSE | KDP_FLAG_ERROR, seq, (const uint8_t *)text,
            strlen(text));
   cJSON_free(text);
+}
+
+/**
+ * Send one kdp_net.c reply: the body on success, a NACK with its code and
+ * message otherwise.
+ *
+ * The point of the split is that the refusals stay specific. A command that
+ * needs the radio answers `NETWORK_UNAVAILABLE` naming the actual radio state
+ * rather than falling through to the dispatch default's
+ * `UNSUPPORTED_COMMAND` — "this firmware cannot do that" and "this body has
+ * no route to its radio" send someone to different places.
+ */
+static void send_net(uint8_t type, uint32_t seq, kdp_net_reply_t reply) {
+  if (reply.ok) {
+    send_json(type, seq, reply.json); /* takes ownership */
+    return;
+  }
+  send_nack(type, seq, reply.code, reply.message);
 }
 
 // ---- capture core ----
@@ -530,6 +550,40 @@ static void handle_capabilities(uint32_t seq) {
   cJSON_AddBoolToObject(caps, "powerManagement", true);
   cJSON_AddBoolToObject(caps, "powerTelemetry", false);
 
+  /*
+   * Networking and Roll. Four flags rather than two, for the same reason
+   * `flashControl` and `flashHardware` are two: "the firmware can" and "the
+   * hardware is reachable" are different questions, and one boolean answering
+   * both is what produced the old `NETWORK: NOT FITTED` display.
+   *
+   *   radioFitted  — an ESP32-C6 is on the Guition carrier. It is.
+   *   radioRouted  — this firmware has a transport to it. It does NOT: no
+   *                  P4-side pin is recorded for this board anywhere in the
+   *                  tree (firmware/C6_HARDWARE_MAP.md).
+   *
+   * `network` and `roll` stay FALSE, and that is deliberate even though the
+   * whole 0xa0..0xaa surface now has handlers. Studio's supports() gate is
+   * fail-closed: setting these true makes Studio render the Roll and Network
+   * pages and issue commands that must then refuse, so the user gets a broken
+   * panel instead of an absent one. Issue #133 states the rule directly —
+   * these gain the flags "only once each command answers for real", and
+   * ROLL_CREATE cannot, because it is an HTTP POST to a server this body has
+   * no route to.
+   *
+   * What the handlers being present buys in the meantime is not this flag: it
+   * is that a host asking gets a specific NETWORK_UNAVAILABLE naming the radio
+   * state, instead of an UNSUPPORTED_COMMAND that cannot distinguish an
+   * unimplemented command from an unrouted chip.
+   */
+  cJSON_AddBoolToObject(caps, "radioFitted", true);
+  cJSON_AddBoolToObject(caps, "radioRouted", false);
+  cJSON_AddBoolToObject(caps, "network", false);
+  cJSON_AddBoolToObject(caps, "roll", false);
+  /* Not in Studio's Capabilities interface, but it is the flag
+   * supportsRollUpload() reads off the raw object, and it gates the Roll page.
+   * False until a capture has actually reached a Roll from this body. */
+  cJSON_AddBoolToObject(caps, "rollUpload", false);
+
   cJSON *limits = cJSON_AddObjectToObject(json, "limits");
   cJSON_AddNumberToObject(limits, "maxUartBaud", NL_DEFAULT_BAUD);
   cJSON_AddNumberToObject(limits, "currentUartBaud", NL_DEFAULT_BAUD);
@@ -650,6 +704,62 @@ static cJSON *config_envelope(void) {
     cJSON_AddItemToObject(json, "config", copy);
   }
   return json;
+}
+
+/**
+ * What every image on this body is running.
+ *
+ * Read-only, and deliberately the ONLY part of the `FW_*` group that is
+ * implemented: `FW_BEGIN`/`CHUNK`/`END`/`ABORT`/`STATUS`/`ROLLBACK` still fail
+ * closed, because there is one `factory` partition and no OTA slots (M8). A
+ * query is not an update path, and `GET_CAPABILITIES` advertises no update
+ * capability, so a host cannot mistake this for one.
+ *
+ * It exists now because the D4 gained a sixth image. Issue #133 requires the
+ * C6 slave version to be reportable alongside the P4 and the nodes: a C6
+ * running a stale hosted image is a second thing that can be out of date in
+ * the field, and a version model that cannot name it cannot diagnose it.
+ *
+ * An empty `version` means "could not read one", never version zero — a node
+ * that has never answered, or a C6 with no transport to it. `state` describes
+ * an update in progress, so an unreachable target is `idle`: nothing failed,
+ * nothing was attempted. Reporting `error` there would send someone to
+ * re-flash a chip that is merely unwired.
+ */
+static void handle_fw_query(uint32_t seq) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON *targets = cJSON_AddObjectToObject(json, "targets");
+
+  cJSON *p4 = cJSON_AddObjectToObject(targets, "p4");
+  cJSON_AddStringToObject(p4, "version", KINO_FW_VERSION);
+  cJSON_AddStringToObject(p4, "state", "idle");
+
+  for (int cam = 1; cam <= 4; cam++) {
+    camlink_info_t info;
+    camlink_get_info_ch(cam, &info);
+    char key[8];
+    snprintf(key, sizeof key, "cam%d", cam);
+    cJSON *t = cJSON_AddObjectToObject(targets, key);
+    /* A node that has never answered reports "", not a guess. No camera node
+     * has ever been connected to a P4 (HARDWARE_VALIDATION.md), so this is
+     * the ordinary case rather than the exceptional one. */
+    cJSON_AddStringToObject(t, "version", info.online ? info.firmware : "");
+    cJSON_AddStringToObject(t, "state", "idle");
+  }
+
+  net_status_t net;
+  net_link_status(&net, esp_timer_get_time() / 1000);
+  cJSON *c6 = cJSON_AddObjectToObject(targets, "c6");
+  cJSON_AddStringToObject(c6, "version", net.c6_version);
+  cJSON_AddStringToObject(c6, "state", "idle");
+  /* Additive, and the field that makes the empty version above readable: the
+   * chip is fitted and this firmware has no route to it, which is neither
+   * "absent" nor "broken". Without this a host sees an empty version and
+   * cannot tell which. */
+  cJSON_AddBoolToObject(c6, "fitted", net.radio_fitted);
+  cJSON_AddBoolToObject(c6, "reachable", net.radio_routed);
+
+  send_json(KDP_CMD_FW_QUERY, seq, json);
 }
 
 static void handle_get_config(uint32_t seq) {
@@ -2066,6 +2176,31 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CLEAR_LOGS: handle_clear_logs(frame->seq); break;
     case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
+    /* Read-only. The rest of the FW_* group stays failed-closed — see the
+     * handler's comment for why a query is not an update path. */
+    case KDP_CMD_FW_QUERY: handle_fw_query(frame->seq); break;
+
+    /* Network / Roll / upload queue. kdp_net.c builds the reply and this
+     * sends it — see kdp_net.h for which of these answer for real on a body
+     * with no radio route and which refuse with a reason. */
+    case KDP_CMD_NETWORK_LIST: send_net(frame->type, frame->seq, kdp_net_list()); break;
+    case KDP_CMD_NETWORK_SET: send_net(frame->type, frame->seq, kdp_net_set(req)); break;
+    case KDP_CMD_NETWORK_DELETE: send_net(frame->type, frame->seq, kdp_net_delete(req)); break;
+    case KDP_CMD_NETWORK_STATUS: send_net(frame->type, frame->seq, kdp_net_status()); break;
+    case KDP_CMD_ROLL_STATUS: send_net(frame->type, frame->seq, kdp_net_roll_status()); break;
+    case KDP_CMD_ROLL_CREATE: send_net(frame->type, frame->seq, kdp_net_roll_create(req)); break;
+    case KDP_CMD_ROLL_JOIN: send_net(frame->type, frame->seq, kdp_net_roll_join(req)); break;
+    case KDP_CMD_ROLL_LEAVE: send_net(frame->type, frame->seq, kdp_net_roll_leave()); break;
+    case KDP_CMD_UPLOAD_QUEUE_STATUS:
+      send_net(frame->type, frame->seq, kdp_net_upload_status());
+      break;
+    case KDP_CMD_UPLOAD_QUEUE_RETRY:
+      send_net(frame->type, frame->seq, kdp_net_upload_retry());
+      break;
+    case KDP_CMD_UPLOAD_ENQUEUE:
+      send_net(frame->type, frame->seq, kdp_net_upload_enqueue(req));
+      break;
+
     default: {
       // Never silently time out (contract §NACK).
       char message[64];

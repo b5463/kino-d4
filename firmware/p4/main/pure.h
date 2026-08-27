@@ -181,4 +181,45 @@ pure_clock_action_t pure_clock_restore_action(bool have_saved, int64_t saved_ms,
  */
 void pure_format_iso8601(int64_t epoch_ms, int offset_min, char *out, size_t cap);
 
+/* ------------------------------------------------------------------ */
+/* Wi-Fi credentials                                                  */
+/* ------------------------------------------------------------------ */
+
+/** 802.11 caps an SSID at 32 octets. */
+#define PURE_SSID_MAX 32
+/** WPA-PSK's own floor. Shorter is not a weak passphrase, it is not a
+ * passphrase — wpa_supplicant will refuse it. */
+#define PURE_WPA_PASSPHRASE_MIN 8
+/** WPA-PSK's ceiling for the ASCII form. */
+#define PURE_WPA_PASSPHRASE_MAX 63
+
+/**
+ * True when `ssid` is a usable SSID: 1..32 octets, no control characters.
+ *
+ * Control characters are rejected rather than sanitised. An SSID is compared
+ * byte-for-byte against scan results and used as an NVS key suffix; silently
+ * rewriting one produces a saved network that can never match the AP it was
+ * saved for. Anything else — including invalid UTF-8 and emoji — is accepted,
+ * because APs really are named that and the camera's job is to join them, not
+ * to have opinions.
+ */
+bool pure_wifi_ssid_valid(const char *ssid);
+
+/**
+ * Whether a `NETWORK_SET` may be accepted, given what the host sent and what
+ * is already stored.
+ *
+ * `keeps_stored` is the case that matters and the one an obvious
+ * implementation gets wrong. `NETWORK_LIST` only ever hands the host a mask,
+ * never the passphrase, so a host editing a saved network's `autoJoin` has
+ * nothing to send back in `password`. An empty passphrase against a network
+ * that already has one therefore means "keep it", not "set it to empty" —
+ * and checking the length rule before that case makes the keep path
+ * unreachable. The reference device has the same ordering, deliberately
+ * (packages/test-fixtures/src/MockKinoDevice.ts, NETWORK_SET).
+ *
+ * `open` networks take no passphrase at all.
+ */
+bool pure_wifi_passphrase_ok(const char *passphrase, bool is_open, bool keeps_stored);
+
 #endif

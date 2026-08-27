@@ -9,10 +9,16 @@ MAIN := ../main
 CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN)
 LDFLAGS := -lm
 
-SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c
+# qr.c is compiled for real, not stubbed: it has no ESP-IDF dependency, and a
+# stub would defeat the point — the QR on the ROLL screen has never been on a
+# panel, so these renders are the only place its pitch and quiet zone can be
+# looked at.
+SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
         $(MAIN)/ui_font.h $(MAIN)/ui_labels.h $(MAIN)/logo_kino_d4.h \
-        $(MAIN)/icons_w98.h $(MAIN)/meta.h
+        $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
+        $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
+        $(MAIN)/roll_queue.h
 
 # Every source and header is listed, including the ones that are #included
 # rather than compiled: a missing prerequisite here means make silently

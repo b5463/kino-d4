@@ -2,14 +2,29 @@
 # firmware/components/kdp_core/host_tests: plain compiler, no framework.
 #
 #   make -C firmware/p4/host_tests test        # pure logic, no dependencies
+#   make -C firmware/p4/host_tests test-queue  # Roll upload queue, no deps
 #   make -C firmware/p4/host_tests test-meta   # JSON mappings, needs cJSON
-#   make -C firmware/p4/host_tests test-all    # both
+#   make -C firmware/p4/host_tests test-net    # C6 state model + credentials
+#   make -C firmware/p4/host_tests test-qr     # QR encoder vs. reference data
+#   make -C firmware/p4/host_tests test-all    # all five
 #
-# Two targets because they have different dependencies, not because the second
-# is optional:
+# Several targets because they have different dependencies, not because the
+# later ones are optional:
 #
 #   test       pure.c has no ESP-IDF dependency at all - that is why it exists
 #              as its own translation unit. Runs anywhere a C compiler does.
+#
+#   test-queue roll_queue.c is the Roll upload queue's state machine, held to
+#              the same no-ESP-IDF rule for the same reason. It is currently
+#              the ONLY proof any of the queue behaves: the C6 transport is
+#              not routed on this carrier (firmware/C6_HARDWARE_MAP.md), so no
+#              upload has ever run on hardware.
+#
+#   test-qr    qr.c has no ESP-IDF dependency either, and this is the only
+#              place its correctness is established: a QR with one wrong module
+#              looks right on the panel and scans on nothing. The references it
+#              compares against come from the `qrcode` npm package, so the test
+#              is not the encoder agreeing with itself.
 #
 #   test-meta  meta.c needs cJSON. Rather than vendor a copy that could drift
 #              from the one the firmware links, this compiles against ESP-IDF's
@@ -32,6 +47,11 @@ IDF_PATH ?= /opt/esp/idf
 CJSON_DIR ?= $(IDF_PATH)/components/json/cJSON
 
 PURE_SRC = $(MAIN)/pure.c test_pure.c
+QUEUE_SRC = $(MAIN)/roll_queue.c test_roll_queue.c
+# net_link.c reaches esp_err.h and nothing else from ESP-IDF - shim/ has it,
+# the same one meta.c needs. Time is injected, so there is no esp_timer here.
+NET_SRC = $(MAIN)/net_link.c $(MAIN)/pure.c test_net_link.c
+QR_SRC = $(MAIN)/qr.c test_qr.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
 META_SRC = $(MAIN)/meta.c test_meta.c $(CJSON_DIR)/cJSON.c
@@ -42,14 +62,32 @@ test_pure: $(PURE_SRC) $(MAIN)/pure.h
 test_meta: $(META_SRC) $(MAIN)/meta.h $(MAIN)/capture.h
 	$(CC) $(CFLAGS) -I$(MAIN) -I$(SHIM) -I$(CJSON_DIR) $(META_SRC) -o $@ -lm
 
-.PHONY: test test-meta test-all clean
+test_roll_queue: $(QUEUE_SRC) $(MAIN)/roll_queue.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(QUEUE_SRC) -o $@
+
+test_net_link: $(NET_SRC) $(MAIN)/net_link.h $(MAIN)/pure.h
+	$(CC) $(CFLAGS) -I$(MAIN) -I$(SHIM) $(NET_SRC) -o $@
+
+test_qr: $(QR_SRC) $(MAIN)/qr.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(QR_SRC) -o $@
+
+.PHONY: test test-queue test-net test-qr test-meta test-all clean
 test: test_pure
 	./test_pure
+
+test-queue: test_roll_queue
+	./test_roll_queue
+
+test-net: test_net_link
+	./test_net_link
+
+test-qr: test_qr
+	./test_qr
 
 test-meta: test_meta
 	./test_meta
 
-test-all: test test-meta
+test-all: test test-queue test-net test-qr test-meta
 
 clean:
-	rm -f test_pure test_meta
+	rm -f test_pure test_roll_queue test_net_link test_qr test_meta

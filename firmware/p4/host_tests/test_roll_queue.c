@@ -1,0 +1,587 @@
+/*
+ * Host tests for firmware/p4/main/roll_queue.c — the Roll upload queue's
+ * state machine, resume decisions, retry policy and redaction.
+ *
+ *   make -C firmware/p4/host_tests test-queue    # no dependencies
+ *
+ * These exercise the REAL production functions. Nothing here reimplements a
+ * rule: a test that duplicated the state machine would agree with a wrong
+ * state machine.
+ *
+ * Every test below names a way a photograph could be lost or duplicated,
+ * because that is the only thing this module is for. The camera has no radio
+ * routed yet (firmware/C6_HARDWARE_MAP.md), so this file is the ONLY thing
+ * that currently proves any of it — which is exactly why it is worth having.
+ */
+#include <stdio.h>
+#include <string.h>
+
+#include "roll_queue.h"
+
+static int checks = 0;
+static int failures = 0;
+
+#define CHECK(cond, ...)                          \
+  do {                                            \
+    checks++;                                     \
+    if (!(cond)) {                                \
+      failures++;                                 \
+      printf("FAIL %s:%d: ", __FILE__, __LINE__); \
+      printf(__VA_ARGS__);                        \
+      printf("\n");                               \
+    }                                             \
+  } while (0)
+
+static const char *UUID_A = "6f1c6f2a-9b3d-4c1e-8a77-0f2b5d4e1a90";
+
+/* Drive one job to completion the way the upload task would, returning the
+ * number of network steps it took. Every step is written back, so this is
+ * also the shape a reboot would see between any two calls. */
+static int drive_to_complete(rq_job_t *job, int64_t now_ms) {
+  int steps = 0;
+  for (int guard = 0; guard < 64; guard++) {
+    rq_step_t step = rq_next_step(job, now_ms);
+    if (step.kind == RQ_STEP_NOTHING) break;
+    if (step.kind == RQ_STEP_WAIT_BACKOFF) break;
+    if (step.kind == RQ_STEP_REGISTER) {
+      strncpy(job->capture_id, "cap_srv_0001", sizeof job->capture_id - 1);
+    }
+    rq_apply(job, step, RQ_DISP_OK, NULL);
+    steps++;
+  }
+  return steps;
+}
+
+/* ---- backoff ---------------------------------------------------------- */
+
+static void test_backoff(void) {
+  /* The contract's "1 s -> 30 s cap". attempts includes the failure that
+   * just happened, so the first retry waits one second, not zero. */
+  CHECK(rq_backoff_ms(0) == 0, "no failures means no wait, got %u", rq_backoff_ms(0));
+  CHECK(rq_backoff_ms(1) == 1000, "first retry 1 s, got %u", rq_backoff_ms(1));
+  CHECK(rq_backoff_ms(2) == 2000, "second retry 2 s, got %u", rq_backoff_ms(2));
+  CHECK(rq_backoff_ms(3) == 4000, "third retry 4 s, got %u", rq_backoff_ms(3));
+  CHECK(rq_backoff_ms(4) == 8000, "fourth retry 8 s, got %u", rq_backoff_ms(4));
+  CHECK(rq_backoff_ms(5) == 16000, "fifth retry 16 s, got %u", rq_backoff_ms(5));
+  CHECK(rq_backoff_ms(6) == RQ_BACKOFF_CAP_MS, "sixth retry caps, got %u", rq_backoff_ms(6));
+
+  /* Monotonic and capped for every value, including the ones that would
+   * shift a 32-bit word off its end. A backoff that wrapped to zero would
+   * turn a bounded retry into a tight loop against the API. */
+  for (uint32_t a = 1; a < 200; a++) {
+    uint32_t ms = rq_backoff_ms(a);
+    CHECK(ms >= 1000 && ms <= RQ_BACKOFF_CAP_MS, "attempt %u produced %u ms", a, ms);
+  }
+  CHECK(rq_backoff_ms(4000000000u) == RQ_BACKOFF_CAP_MS, "huge attempt count still caps");
+}
+
+/* ---- response classification ------------------------------------------ */
+
+static void test_classify(void) {
+  /* No response at all: the bytes were never judged, so it is always
+   * transient. This is the C6 link dropping mid-request. */
+  CHECK(rq_classify_status(0) == RQ_DISP_RETRY, "no response retries");
+  CHECK(rq_classify_status(-1) == RQ_DISP_RETRY, "negative status retries");
+
+  /* Both success codes the contract names for capture create: 201 created
+   * and 200 replay. Treating the replay as anything but success is how a
+   * retry loop turns into a duplicate. */
+  CHECK(rq_classify_status(200) == RQ_DISP_OK, "200 ok");
+  CHECK(rq_classify_status(201) == RQ_DISP_OK, "201 ok");
+  CHECK(rq_classify_status(204) == RQ_DISP_OK, "204 ok");
+
+  /* Credentials/association: halt, not park. These fail every job
+   * identically, so parking them one at a time walks the whole queue into
+   * FAILED for something the user can fix. */
+  CHECK(rq_classify_status(401) == RQ_DISP_HALT, "401 halts the queue");
+  CHECK(rq_classify_status(403) == RQ_DISP_HALT, "403 halts the queue");
+
+  /* Transient, per the contract's error table. */
+  CHECK(rq_classify_status(409) == RQ_DISP_RETRY, "409 UPLOAD_IN_PROGRESS retries init");
+  CHECK(rq_classify_status(429) == RQ_DISP_RETRY, "429 honours backoff");
+  CHECK(rq_classify_status(500) == RQ_DISP_RETRY, "500 retries");
+  CHECK(rq_classify_status(502) == RQ_DISP_RETRY, "502 retries");
+  CHECK(rq_classify_status(503) == RQ_DISP_RETRY, "503 retries");
+
+  /* 422 is the reconciled case: re-read the card rather than re-send the
+   * same bytes, and rather than parking a recoverable photograph. */
+  CHECK(rq_classify_status(422) == RQ_DISP_REREAD, "422 re-reads from SD");
+
+  /* Permanent: repeating produces the same answer. */
+  CHECK(rq_classify_status(400) == RQ_DISP_PARK, "400 parks");
+  CHECK(rq_classify_status(404) == RQ_DISP_PARK, "404 parks");
+  CHECK(rq_classify_status(413) == RQ_DISP_PARK, "413 parks");
+  CHECK(rq_classify_status(418) == RQ_DISP_PARK, "unknown 4xx parks rather than looping");
+}
+
+/* ---- the happy path --------------------------------------------------- */
+
+static void test_order_is_thumb_first(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 4, true);
+
+  /* Register first — there is no capture id to upload against yet. */
+  rq_step_t s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_REGISTER, "first step registers, got %d", s.kind);
+
+  strncpy(job.capture_id, "cap_srv_0001", sizeof job.capture_id - 1);
+  rq_apply(&job, s, RQ_DISP_OK, NULL);
+
+  /* Thumb before any original. This is the whole point of the ordering:
+   * a guest sees a tile before four full JPEGs travel. */
+  s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_THUMB, "thumb precedes originals, got %d", s.kind);
+  rq_apply(&job, s, RQ_DISP_OK, NULL);
+  CHECK(job.state == RQ_THUMB_READY, "thumb done means THUMB_READY, got %s",
+        rq_state_name(job.state));
+
+  /* Then frames, in contiguous 1..N order, as the contract requires. */
+  for (int expect = 1; expect <= 4; expect++) {
+    s = rq_next_step(&job, 0);
+    CHECK(s.kind == RQ_STEP_UPLOAD_FRAME, "frame step %d, got %d", expect, s.kind);
+    CHECK(s.frame_index == expect, "frames ascend contiguously: wanted %d got %d", expect,
+          s.frame_index);
+    rq_apply(&job, s, RQ_DISP_OK, NULL);
+  }
+
+  s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_COMPLETE_CAPTURE, "completes after the last frame, got %d", s.kind);
+  rq_apply(&job, s, RQ_DISP_OK, NULL);
+
+  CHECK(job.state == RQ_COMPLETE, "settles COMPLETE, got %s", rq_state_name(job.state));
+  CHECK(rq_job_settled(&job), "COMPLETE is settled");
+  CHECK(rq_next_step(&job, 0).kind == RQ_STEP_NOTHING, "a complete job asks for nothing more");
+}
+
+static void test_capture_without_thumb_skips_it(void) {
+  /* thumb.c may not have produced a THUMB.JPG. The job must not wait for a
+   * file that does not exist, and must not claim one it never sent. */
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 2, false);
+  strncpy(job.capture_id, "cap_srv_0002", sizeof job.capture_id - 1);
+
+  rq_step_t s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_FRAME, "no thumb means straight to frames, got %d", s.kind);
+  CHECK(s.frame_index == 1, "starts at frame 1");
+  CHECK(!job.thumb_done, "a thumb that was never sent is never marked done");
+}
+
+static void test_partial_capture_uploads_only_what_exists(void) {
+  /* Two cameras failed. The capture is still worth having, and the server
+   * decides `partial` from what arrives — the camera must not fabricate the
+   * missing frames to make the count look right. */
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 2, true);
+  strncpy(job.capture_id, "cap_srv_0003", sizeof job.capture_id - 1);
+
+  int seen = 0;
+  for (int guard = 0; guard < 16; guard++) {
+    rq_step_t s = rq_next_step(&job, 0);
+    if (s.kind == RQ_STEP_COMPLETE_CAPTURE) break;
+    if (s.kind == RQ_STEP_UPLOAD_FRAME) seen++;
+    rq_apply(&job, s, RQ_DISP_OK, NULL);
+  }
+  CHECK(seen == 2, "a 2-frame capture uploads exactly 2 frames, saw %d", seen);
+}
+
+/* ---- reboot and resume ------------------------------------------------ */
+
+static void test_resume_after_reboot_repeats_nothing(void) {
+  /* The defining test. Power cut between frame 2 and frame 3: the record on
+   * the card is all the next boot has. It must resume at frame 3 — not
+   * restart at frame 1 (wasted bandwidth, and a re-PUT of bytes the server
+   * already holds) and not skip to complete (a lost photograph). */
+  rq_job_t before;
+  rq_job_init(&before, UUID_A, "roll_0001", 4, true);
+  strncpy(before.capture_id, "cap_srv_0004", sizeof before.capture_id - 1);
+  before.thumb_done = true;
+  before.frame_done[0] = true;
+  before.frame_done[1] = true;
+  before.state = RQ_ORIGINALS_UPLOADING;
+
+  /* What survives is exactly the struct, because that is what UPLOAD.JSON
+   * holds. Copy it to make the "nothing else carried over" claim literal. */
+  rq_job_t after = before;
+
+  rq_step_t s = rq_next_step(&after, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_FRAME, "resumes into a frame upload, got %d", s.kind);
+  CHECK(s.frame_index == 3, "resumes at frame 3, got %d", s.frame_index);
+
+  /* And the capture id is reused, so the re-POST is a replay and not a
+   * second capture. */
+  CHECK(strcmp(after.capture_id, "cap_srv_0004") == 0, "capture id survives the reboot");
+
+  int steps = drive_to_complete(&after, 0);
+  CHECK(steps == 3, "frames 3, 4 and the complete call remain: 3 steps, got %d", steps);
+  CHECK(after.state == RQ_COMPLETE, "finishes, got %s", rq_state_name(after.state));
+}
+
+static void test_reboot_before_registering_is_safe(void) {
+  /* Power cut before the capture document was ever POSTed. The next boot has
+   * no capture id, so it registers — and because the server keys on
+   * captureUuid, a registration that actually DID land server-side before
+   * the response was lost replays to the same capture. */
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 4, true);
+  job.state = RQ_REGISTERING; /* mid-flight when the power went */
+
+  rq_step_t s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_REGISTER, "re-registers rather than guessing an id, got %d", s.kind);
+  CHECK(job.capture_id[0] == '\0', "no id was invented");
+}
+
+static void test_state_disagreeing_with_flags_cannot_strand_a_photograph(void) {
+  /* A record written by a build whose state field advanced before its flags
+   * did. rq_next_step() reads the flags, not the state, so the photograph
+   * still finishes. A state-driven machine would have skipped the frames. */
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 3, false);
+  strncpy(job.capture_id, "cap_srv_0005", sizeof job.capture_id - 1);
+  job.state = RQ_VERIFYING; /* claims it is done uploading; the flags say no */
+
+  rq_step_t s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_FRAME, "flags win over state, got %d", s.kind);
+  CHECK(s.frame_index == 1, "starts where the flags say, got %d", s.frame_index);
+}
+
+/* ---- failure handling ------------------------------------------------- */
+
+static void test_transient_failure_backs_off_then_resumes(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, false);
+  strncpy(job.capture_id, "cap_srv_0006", sizeof job.capture_id - 1);
+
+  rq_step_t s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_FRAME, "frame first");
+
+  rq_apply(&job, s, RQ_DISP_RETRY, "connection lost");
+  CHECK(job.state == RQ_RETRY_WAIT, "transient failure waits, got %s", rq_state_name(job.state));
+  CHECK(job.attempts == 1, "one attempt recorded, got %u", job.attempts);
+
+  /* The job holds its place: the frame is still pending, not lost. */
+  job.next_attempt_ms = 1000;
+  CHECK(!rq_retry_due(&job, 500), "not due before the deadline");
+  CHECK(rq_next_step(&job, 500).kind == RQ_STEP_WAIT_BACKOFF, "waits while backing off");
+  CHECK(rq_retry_due(&job, 1000), "due at the deadline");
+
+  rq_step_t again = rq_next_step(&job, 1000);
+  CHECK(again.kind == RQ_STEP_UPLOAD_FRAME, "resumes the same step, got %d", again.kind);
+  CHECK(again.frame_index == 1, "the same frame, not the next one");
+
+  /* A success clears the backoff, so a later unrelated failure starts from
+   * 1 s again instead of inheriting this one's delay. */
+  rq_apply(&job, again, RQ_DISP_OK, NULL);
+  CHECK(job.attempts == 0, "success resets the attempt count, got %u", job.attempts);
+  CHECK(job.last_error[0] == '\0', "success clears the error text");
+}
+
+static void test_retry_is_bounded(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, false);
+  strncpy(job.capture_id, "cap_srv_0007", sizeof job.capture_id - 1);
+
+  for (uint32_t i = 0; i < RQ_MAX_ATTEMPTS; i++) {
+    rq_step_t s = rq_next_step(&job, 0);
+    if (s.kind == RQ_STEP_WAIT_BACKOFF) {
+      job.next_attempt_ms = 0;
+      s = rq_next_step(&job, 0);
+    }
+    rq_apply(&job, s, RQ_DISP_RETRY, "server unreachable");
+  }
+  CHECK(job.state == RQ_FAILED, "bounded retry parks eventually, got %s",
+        rq_state_name(job.state));
+  CHECK(rq_job_settled(&job), "FAILED is settled — the API is not hammered forever");
+}
+
+static void test_checksum_mismatch_rereads_then_parks(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, false);
+  strncpy(job.capture_id, "cap_srv_0008", sizeof job.capture_id - 1);
+  rq_step_t s = rq_next_step(&job, 0);
+
+  rq_apply(&job, s, RQ_DISP_REREAD, "CHECKSUM_MISMATCH");
+  CHECK(job.state == RQ_RETRY_WAIT, "first mismatch re-reads, got %s", rq_state_name(job.state));
+  CHECK(job.reread_attempts == 1, "counted, got %u", job.reread_attempts);
+  /* A checksum mismatch is not a network fault and must not contribute to
+   * the network backoff — otherwise a bad file slows down every later
+   * upload for this job. */
+  CHECK(job.attempts == 0, "re-read does not touch the network attempt count, got %u",
+        job.attempts);
+  CHECK(rq_retry_due(&job, 0), "re-reads immediately; there is nothing to wait for");
+
+  rq_apply(&job, s, RQ_DISP_REREAD, "CHECKSUM_MISMATCH");
+  CHECK(job.state == RQ_RETRY_WAIT, "second mismatch still re-reads");
+
+  rq_apply(&job, s, RQ_DISP_REREAD, "CHECKSUM_MISMATCH");
+  CHECK(job.state == RQ_FAILED, "a genuinely corrupt file parks, got %s",
+        rq_state_name(job.state));
+}
+
+static void test_park_and_halt_differ(void) {
+  rq_job_t parked;
+  rq_job_init(&parked, UUID_A, "roll_0001", 1, false);
+  strncpy(parked.capture_id, "cap_srv_0009", sizeof parked.capture_id - 1);
+  rq_step_t s = rq_next_step(&parked, 0);
+  rq_apply(&parked, s, RQ_DISP_PARK, "INVALID_CAPTURE");
+  CHECK(parked.state == RQ_FAILED, "park settles the job, got %s", rq_state_name(parked.state));
+
+  /* HALT is about the device, not the job. The job must stay resumable so
+   * that fixing the token drains the queue instead of losing it. */
+  rq_job_t halted;
+  rq_job_init(&halted, UUID_A, "roll_0001", 2, false);
+  strncpy(halted.capture_id, "cap_srv_0010", sizeof halted.capture_id - 1);
+  s = rq_next_step(&halted, 0);
+  rq_apply(&halted, s, RQ_DISP_HALT, "INVALID_DEVICE_TOKEN");
+  CHECK(!rq_job_settled(&halted), "a halted job is NOT settled — it resumes once fixed");
+  CHECK(halted.state == RQ_ORIGINALS_UPLOADING, "records where it stopped, got %s",
+        rq_state_name(halted.state));
+  CHECK(rq_next_step(&halted, 0).kind == RQ_STEP_UPLOAD_FRAME, "still has work to do");
+  CHECK(halted.frame_done[0] == false, "and lost no progress");
+}
+
+static void test_settled_jobs_ignore_further_outcomes(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, false);
+  strncpy(job.capture_id, "cap_srv_0011", sizeof job.capture_id - 1);
+  drive_to_complete(&job, 0);
+  CHECK(job.state == RQ_COMPLETE, "complete first");
+
+  rq_step_t s = {RQ_STEP_UPLOAD_FRAME, 1};
+  CHECK(!rq_apply(&job, s, RQ_DISP_RETRY, "late failure"), "a settled job absorbs nothing");
+  CHECK(job.state == RQ_COMPLETE, "and stays COMPLETE, got %s", rq_state_name(job.state));
+}
+
+/* ---- reconciliation --------------------------------------------------- */
+
+static void test_reconcile(void) {
+  rq_job_t complete;
+  rq_job_init(&complete, UUID_A, "roll_0001", 4, true);
+  complete.state = RQ_COMPLETE;
+
+  rq_job_t pending;
+  rq_job_init(&pending, UUID_A, "roll_0001", 4, true);
+  pending.state = RQ_ORIGINALS_UPLOADING;
+
+  rq_job_t failed;
+  rq_job_init(&failed, UUID_A, "roll_0001", 4, true);
+  failed.state = RQ_FAILED;
+
+  /* No META.JSON: an interrupted commit, not a capture. storage.c's sweep
+   * owns it. Adopting it would upload a photograph the camera never
+   * claimed to have taken. */
+  CHECK(rq_reconcile_action(false, false, false, NULL) == RQ_REC_IGNORE,
+        "an uncommitted folder is not the queue's business");
+  CHECK(rq_reconcile_action(false, true, true, &pending) == RQ_REC_IGNORE,
+        "still ignored even with a job file");
+
+  /* Committed, never queued — the ordinary offline case. */
+  CHECK(rq_reconcile_action(true, false, false, NULL) == RQ_REC_ENQUEUE,
+        "a committed capture with no job gets queued");
+
+  CHECK(rq_reconcile_action(true, true, true, &complete) == RQ_REC_IGNORE,
+        "a COMPLETE job is left alone — this is what prevents a re-upload");
+  CHECK(rq_reconcile_action(true, true, true, &pending) == RQ_REC_RESUME,
+        "an unfinished job resumes");
+  CHECK(rq_reconcile_action(true, true, true, &failed) == RQ_REC_RESUME,
+        "a parked job is still surfaced, so the user can see and retry it");
+
+  /* A corrupt or future-format record must not silently strand the
+   * photograph. Rebuilding costs one redundant registration, which the
+   * server's captureUuid idempotency absorbs. */
+  CHECK(rq_reconcile_action(true, true, false, NULL) == RQ_REC_REPAIR,
+        "an unreadable record is repaired, never ignored");
+  CHECK(rq_reconcile_action(true, true, false, &pending) == RQ_REC_REPAIR,
+        "invalid wins over a stale struct");
+}
+
+/* ---- redaction -------------------------------------------------------- */
+
+static void test_redaction(void) {
+  char out[RQ_ERROR_LEN];
+
+  /* The device token. This is the one that matters: error text reaches KDP
+   * responses, GET_LOGS and a crash dump, all of which outlive the device. */
+  rq_redact(out, sizeof out,
+            "POST /api/device/rolls failed: kdt_AbCdEf0123456789_-xyzQRS thrown");
+  CHECK(strstr(out, "kdt_") == NULL, "no kdt_ token survives: %s", out);
+  CHECK(strstr(out, "AbCdEf0123456789") == NULL, "nor its body: %s", out);
+  CHECK(strstr(out, "[redacted]") != NULL, "and it says so: %s", out);
+  CHECK(strstr(out, "POST /api/device/rolls failed") != NULL, "the useful part survives: %s", out);
+
+  rq_redact(out, sizeof out, "authorization: Bearer kdt_secretsecret");
+  CHECK(strstr(out, "kdt_secretsecret") == NULL, "header form redacted: %s", out);
+  CHECK(strstr(out, "secretsecret") == NULL, "no residue: %s", out);
+
+  rq_redact(out, sizeof out, "Bearer kdt_aaaabbbbcccc");
+  CHECK(strstr(out, "aaaabbbbcccc") == NULL, "bare bearer redacted: %s", out);
+
+  /* Wi-Fi passphrases arrive by the same accident. */
+  rq_redact(out, sizeof out, "join failed password=hunter2hunter2 ssid=Home");
+  CHECK(strstr(out, "hunter2hunter2") == NULL, "passphrase redacted: %s", out);
+  CHECK(strstr(out, "ssid=Home") != NULL, "the SSID is not a secret: %s", out);
+
+  rq_redact(out, sizeof out, "token=abc123 passphrase=letmein12");
+  CHECK(strstr(out, "abc123") == NULL, "token= redacted: %s", out);
+  CHECK(strstr(out, "letmein12") == NULL, "passphrase= redacted: %s", out);
+
+  /* Case must not be an escape hatch. */
+  rq_redact(out, sizeof out, "AUTHORIZATION: BEARER kdt_UPPERCASE123");
+  CHECK(strstr(out, "UPPERCASE123") == NULL, "case-insensitive: %s", out);
+
+  /* Ordinary text is untouched, and the result is always terminated. */
+  rq_redact(out, sizeof out, "DHCP timed out after 12000 ms");
+  CHECK(strcmp(out, "DHCP timed out after 12000 ms") == 0, "clean text unchanged: %s", out);
+
+  rq_redact(out, sizeof out, NULL);
+  CHECK(out[0] == '\0', "NULL input yields an empty string");
+
+  /* A token longer than the buffer must still not leak a prefix of itself
+   * through truncation. */
+  char tiny[12];
+  rq_redact(tiny, sizeof tiny, "kdt_abcdefghijklmnopqrstuvwxyz");
+  CHECK(strstr(tiny, "abcdef") == NULL, "truncation does not leak: %s", tiny);
+  CHECK(strlen(tiny) < sizeof tiny, "and stays terminated");
+
+  /* Degenerate buffers must not be written past. */
+  char one[1];
+  rq_redact(one, sizeof one, "kdt_secret");
+  CHECK(one[0] == '\0', "a 1-byte buffer gets an empty string");
+}
+
+/* ---- naming ----------------------------------------------------------- */
+
+static void test_state_names(void) {
+  /* Every state has a name, because these strings are what the ROLL screen
+   * and UPLOAD_QUEUE_STATUS show. An "UNKNOWN" on the display is a defect. */
+  const rq_state_t all[] = {RQ_QUEUED,   RQ_REGISTERING,        RQ_THUMB_UPLOADING,
+                            RQ_THUMB_READY, RQ_ORIGINALS_UPLOADING, RQ_VERIFYING,
+                            RQ_COMPLETE, RQ_RETRY_WAIT,         RQ_FAILED};
+  for (size_t i = 0; i < sizeof all / sizeof all[0]; i++) {
+    const char *name = rq_state_name(all[i]);
+    CHECK(name != NULL && name[0] != '\0', "state %d has a name", (int)all[i]);
+    CHECK(strcmp(name, "UNKNOWN") != 0, "state %d is not UNKNOWN", (int)all[i]);
+  }
+}
+
+static void test_init_clamps(void) {
+  rq_job_t job;
+
+  /* A frame count past the array bound must clamp rather than let
+   * first_pending_frame() walk off the end. */
+  rq_job_init(&job, UUID_A, "roll_0001", 999, true);
+  CHECK(job.frame_count == RQ_MAX_FRAMES, "frame count clamps to %d, got %d", RQ_MAX_FRAMES,
+        job.frame_count);
+
+  rq_job_init(&job, UUID_A, "roll_0001", -3, false);
+  CHECK(job.frame_count == 0, "negative frame count clamps to 0, got %d", job.frame_count);
+
+  /* A capture with no frames still completes rather than parking: the
+   * server decides whether zero frames is partial or failed. */
+  strncpy(job.capture_id, "cap_srv_0012", sizeof job.capture_id - 1);
+  CHECK(rq_next_step(&job, 0).kind == RQ_STEP_COMPLETE_CAPTURE,
+        "a frameless capture is completed, not parked");
+
+  /* An over-long UUID must be truncated, not overflow the field. */
+  rq_job_init(&job, "0123456789012345678901234567890123456789012345678901234567890123456789",
+              "roll_0001", 1, false);
+  CHECK(strlen(job.uuid) == RQ_UUID_LEN - 1, "uuid truncated to fit, got %zu", strlen(job.uuid));
+
+  rq_job_init(&job, NULL, NULL, 1, false);
+  CHECK(job.uuid[0] == '\0', "NULL uuid is empty, not a crash");
+  CHECK(job.roll_id[0] == '\0', "NULL roll id is empty");
+}
+
+/* ---- the acceptance scenario ------------------------------------------ */
+
+static void test_fifty_offline_captures_reach_roll_exactly_once(void) {
+  /* ROLL_DEVICE_CONTRACT.md's hard acceptance test, in the form this module
+   * can answer: 50 captures queued with no network, a reboot in the middle,
+   * then a drain. Every capture must complete exactly once.
+   *
+   * "Exactly once" is checked by counting register steps: the server keys on
+   * captureUuid, so one register per capture is the property that makes the
+   * upload idempotent end to end. */
+  enum { N = 50 };
+  rq_job_t jobs[N];
+  int registers[N];
+  memset(registers, 0, sizeof registers);
+
+  for (int i = 0; i < N; i++) {
+    char uuid[RQ_UUID_LEN];
+    snprintf(uuid, sizeof uuid, "6f1c6f2a-9b3d-4c1e-8a77-%012d", i);
+    rq_job_init(&jobs[i], uuid, "roll_0001", 4, true);
+  }
+
+  /* Offline: every step fails transiently. Nothing is lost, nothing is
+   * sent, and the shutter was never involved. */
+  for (int i = 0; i < N; i++) {
+    rq_step_t s = rq_next_step(&jobs[i], 0);
+    CHECK(s.kind == RQ_STEP_REGISTER, "job %d wants to register", i);
+    rq_apply(&jobs[i], s, RQ_DISP_RETRY, "network unavailable");
+    CHECK(!rq_job_settled(&jobs[i]), "job %d survives being offline", i);
+  }
+
+  /* Reboot: only the records survive. Simulate that literally by copying
+   * the structs, which is all UPLOAD.JSON holds. */
+  rq_job_t after_reboot[N];
+  memcpy(after_reboot, jobs, sizeof jobs);
+
+  /* Network returns. Drain. */
+  int completed = 0;
+  for (int i = 0; i < N; i++) {
+    rq_job_t *job = &after_reboot[i];
+    job->next_attempt_ms = 0;
+    for (int guard = 0; guard < 64 && !rq_job_settled(job); guard++) {
+      rq_step_t s = rq_next_step(job, 1000);
+      if (s.kind == RQ_STEP_NOTHING) break;
+      if (s.kind == RQ_STEP_WAIT_BACKOFF) {
+        job->next_attempt_ms = 0;
+        continue;
+      }
+      if (s.kind == RQ_STEP_REGISTER) {
+        registers[i]++;
+        snprintf(job->capture_id, sizeof job->capture_id, "cap_srv_%04d", i);
+      }
+      rq_apply(job, s, RQ_DISP_OK, NULL);
+    }
+    if (after_reboot[i].state == RQ_COMPLETE) completed++;
+  }
+
+  CHECK(completed == N, "all %d offline captures reach Roll, got %d", N, completed);
+  for (int i = 0; i < N; i++) {
+    CHECK(registers[i] == 1, "capture %d registered exactly once, not %d times", i,
+          registers[i]);
+    CHECK(after_reboot[i].thumb_done, "capture %d uploaded its thumb", i);
+    for (int f = 0; f < 4; f++) {
+      CHECK(after_reboot[i].frame_done[f], "capture %d frame %d landed", i, f + 1);
+    }
+  }
+}
+
+int main(void) {
+  test_backoff();
+  test_classify();
+  test_order_is_thumb_first();
+  test_capture_without_thumb_skips_it();
+  test_partial_capture_uploads_only_what_exists();
+  test_resume_after_reboot_repeats_nothing();
+  test_reboot_before_registering_is_safe();
+  test_state_disagreeing_with_flags_cannot_strand_a_photograph();
+  test_transient_failure_backs_off_then_resumes();
+  test_retry_is_bounded();
+  test_checksum_mismatch_rereads_then_parks();
+  test_park_and_halt_differ();
+  test_settled_jobs_ignore_further_outcomes();
+  test_reconcile();
+  test_redaction();
+  test_state_names();
+  test_init_clamps();
+  test_fifty_offline_captures_reach_roll_exactly_once();
+
+  if (failures > 0) {
+    printf("p4 roll-queue tests: %d/%d checks FAILED\n", failures, checks);
+    return 1;
+  }
+  printf("p4 roll-queue tests: %d checks passed\n", checks);
+  return 0;
+}

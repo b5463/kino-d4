@@ -41,7 +41,7 @@
     },
     {
       "name": "kino-kdp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "package": "packages/kdp/package.json",
       "tagPrefix": "kino-kdp-v"
     },
@@ -149,7 +149,7 @@
     "latestMigration": "0009_capture_playback"
   },
   "firmware": {
-    "version": "0.3.0",
+    "version": "0.4.0",
     "source": "firmware/VERSION",
     "protocolHeader": "firmware/components/kdp_core/include/kdp/protocol.h",
     "tagPrefix": "kino-fw-v"

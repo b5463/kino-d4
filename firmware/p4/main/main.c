@@ -22,11 +22,16 @@
 #include "hardware_validation.h"
 #include "kdp_server.h"
 #include "klog.h"
+#include "esp_timer.h"
+#include "net_link.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "power.h"
+#include "roll_state.h"
 #include "storage.h"
 #include "taskmon.h"
+#include "upload_queue.h"
+#include "wifi_creds.h"
 
 static const char *TAG = "kino_p4";
 
@@ -36,6 +41,28 @@ static const char *TAG = "kino_p4";
 static void gallery_on_capture(const capture_report_t *r) {
   (void)r;
   gallery_refresh();
+}
+
+/*
+ * A capture landed, so queue it for the active Roll.
+ *
+ * Runs on the capture task, immediately after the commit. It writes one small
+ * file and returns — it must not touch the network and must not block, because
+ * the next thing this task does is accept another shutter press.
+ *
+ * `r->stored` rather than `r->online` or a fixed 4: the frames that actually
+ * reached the card are the frames there are to upload, and a partial capture
+ * must not claim four. A capture that stored nothing is not queued at all —
+ * there is nothing to send, and a job that could only fail would show up as
+ * an error the user cannot act on.
+ *
+ * The return value is deliberately ignored. A failed enqueue costs an upload,
+ * never a photograph: the capture is committed on the card either way, and
+ * boot-time reconciliation finds anything this missed.
+ */
+static void queue_on_capture(const capture_report_t *r) {
+  if (r == NULL || !r->ok || r->stored <= 0) return;
+  (void)upload_queue_enqueue(r->uuid, r->stored, r->thumbnail_ms > 0);
 }
 
 static uint32_t next_boot_count(void) {
@@ -265,6 +292,58 @@ void app_main(void) {
   if (pw_err != ESP_OK) {
     ESP_LOGE(TAG, "power management unavailable: %s", esp_err_to_name(pw_err));
   }
+
+  /*
+   * Networking last, and every line of it is allowed to fail.
+   *
+   * The camera is already usable by the time this runs: the card is mounted,
+   * the capture pipeline is up, the shutter works and the UI is drawing. That
+   * ordering is the product requirement, not a preference — a camera that
+   * waited on a radio to become a camera would be broken by an absent access
+   * point, and on this body it would never finish, because there is no
+   * transport to the C6 at all (firmware/C6_HARDWARE_MAP.md).
+   *
+   * So none of these four is checked with ESP_ERROR_CHECK, none blocks, and
+   * none gates anything above it. The worst case is a camera that takes
+   * photographs and cannot upload them, which is exactly what this body does
+   * today and is a working camera.
+   */
+  net_link_init(esp_timer_get_time() / 1000);
+
+  esp_err_t wc_err = wifi_creds_init();
+  if (wc_err != ESP_OK) {
+    ESP_LOGW(TAG, "saved networks unavailable: %s - the camera cannot remember Wi-Fi",
+             esp_err_to_name(wc_err));
+  }
+
+  esp_err_t rs_err = roll_state_init();
+  if (rs_err != ESP_OK) {
+    ESP_LOGW(TAG, "roll membership unreadable: %s - the camera has forgotten its roll",
+             esp_err_to_name(rs_err));
+  }
+
+  /* Reconciles the card against the queue and starts the worker. This is the
+   * half of the durability guarantee that runs at boot: a capture committed
+   * while the last power cut happened, or taken with no network months ago,
+   * is found here and queued. It must come after storage_init() and after
+   * roll_state_init(), because it needs the card and the Roll it belongs to. */
+  esp_err_t uq_err = upload_queue_start();
+  if (uq_err != ESP_OK) {
+    ESP_LOGW(TAG, "upload queue unavailable: %s - captures stay on the card",
+             esp_err_to_name(uq_err));
+  }
+
+  /*
+   * Queue every new capture.
+   *
+   * A listener rather than a call inside capture.c, for the same reason the
+   * gallery is one: the capture path should not know what else wants to hear
+   * about a photograph. It runs ON THE CAPTURE TASK, so it does one small
+   * file write and returns — see upload_queue_enqueue(). It cannot fail the
+   * capture, and if it fails, reconciliation finds the capture at the next
+   * boot, which is why that path is worth having.
+   */
+  capture_on_done(queue_on_capture);
 
   ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s, display %s", KINO_FW_VERSION,
            id.serial, id.session_id, storage_present() ? "mounted" : "absent",

@@ -8,6 +8,10 @@
 #include "board_d4v1.h"
 #include "cJSON.h"
 #include "clock.h"
+/* Only for upload_queue_pause_for_capture() in the task loop. The capture path
+ * does not otherwise know that uploads exist — enqueue arrives through
+ * capture_on_done(), the same way the gallery does. */
+#include "upload_queue.h"
 #include "config_store.h"
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
@@ -660,7 +664,25 @@ static void capture_task(void *arg) {
   for (;;) {
     char source[16];
     if (xQueueReceive(s_requests, source, portMAX_DELAY) != pdTRUE) continue;
+
+    /*
+     * Hold the Roll upload worker off for the whole capture.
+     *
+     * Not a courtesy. The FAT volume is mounted with max_files = 4, and this
+     * capture is about to hold a frame handle plus a second handle to read
+     * the file back for its CRC check — an upload reader opening a fifth
+     * fails outright. It would also be pulling a 300 KB JPEG off the same
+     * SDMMC bus the four concurrent frame writes depend on, and the frame
+     * spread is the one number this pipeline exists to keep small.
+     *
+     * Set and cleared in the same iteration with nothing between them that
+     * can continue or return, so the worker cannot be left paused by a
+     * capture that failed. Photography wins; an upload that lands a few
+     * seconds later costs nothing.
+     */
+    upload_queue_pause_for_capture(true);
     capture_fire(source, NULL);
+    upload_queue_pause_for_capture(false);
   }
 }
 

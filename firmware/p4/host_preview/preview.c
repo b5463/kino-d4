@@ -29,11 +29,16 @@
 #include "gfx.h"
 #include "icons.h"
 #include "config_store.h"
+#include "net_link.h"
 #include "power.h"
-#include "viewfinder.h"
+#include "qr.h"
+#include "roll_state.h"
 #include "storage.h"
 #include "touch.h"
 #include "ui.h"
+#include "upload_queue.h"
+#include "viewfinder.h"
+#include "wifi_creds.h"
 
 /* ---- stand-ins for the parts of the camera a preview has no use for ---- */
 
@@ -263,6 +268,97 @@ void storage_get_status(storage_status_t *out) {
   out->write_test = "pass";
 }
 
+/* ---- networking and Roll ----------------------------------------------
+ *
+ * Stubbed like every other subsystem here, but with one difference worth
+ * naming: these fakes are the ONLY way the RADIO and ROLL screens can be
+ * looked at. The C6 has no transport on this carrier
+ * (firmware/C6_HARDWARE_MAP.md), so no board can render an online state, and
+ * no board has ever rendered a Roll. The PPMs this produces are the review.
+ *
+ * `g_net_state` and the Roll fields are drivers, set by the shot list below,
+ * so each state gets its own picture instead of one screen standing in for
+ * four. Invented numbers are fine here and only here: this is a picture of the
+ * UI, never a report about the hardware.
+ */
+static net_state_t g_net_state = NET_C6_NOT_ROUTED;
+static net_reason_t g_net_reason = NET_REASON_TRANSPORT_UNKNOWN;
+static bool g_net_routed = false;
+static size_t g_saved_networks = 0;
+
+void net_link_init(int64_t now_ms) { (void)now_ms; }
+
+void net_link_status(net_status_t *out, int64_t now_ms) {
+  (void)now_ms;
+  if (out == NULL) return;
+  memset(out, 0, sizeof *out);
+  out->state = g_net_state;
+  out->reason = g_net_reason;
+  out->radio_fitted = true;
+  out->radio_routed = g_net_routed;
+  if (g_net_state == NET_IP_READY) {
+    snprintf(out->ssid, sizeof out->ssid, "KINO-PARTY");
+    snprintf(out->ip, sizeof out->ip, "192.168.1.74");
+    out->rssi = -57;
+    out->channel = 6;
+    snprintf(out->c6_version, sizeof out->c6_version, "0.4.0");
+  }
+  if (g_net_state == NET_C6_NOT_ROUTED) {
+    snprintf(out->detail, sizeof out->detail,
+             "no P4-C6 transport routing recorded; see firmware/C6_HARDWARE_MAP.md");
+  }
+}
+
+bool net_link_can_upload(const net_status_t *status) {
+  return status != NULL && status->state == NET_IP_READY;
+}
+bool net_link_scan_start(int64_t now_ms) { (void)now_ms; return false; }
+size_t net_link_scan_results(net_scan_entry_t *out, size_t cap) {
+  (void)out; (void)cap; return 0;
+}
+bool net_link_connect(const char *ssid, int64_t now_ms) {
+  (void)ssid; (void)now_ms; return false;
+}
+bool net_link_disconnect(int64_t now_ms) { (void)now_ms; return false; }
+
+esp_err_t wifi_creds_init(void) { return ESP_OK; }
+size_t wifi_creds_count(void) { return g_saved_networks; }
+size_t wifi_creds_list(wifi_cred_view_t *out, size_t cap) { (void)out; (void)cap; return 0; }
+bool wifi_creds_has_password(const char *ssid) { (void)ssid; return false; }
+
+/* The Roll the ROLL screen shows. `g_roll_active` off is the no-roll state. */
+static bool g_roll_active = false;
+static roll_state_t g_roll;
+
+esp_err_t roll_state_init(void) { return ESP_OK; }
+bool roll_state_active(void) { return g_roll_active; }
+bool roll_state_get(roll_state_t *out) {
+  if (out == NULL) return g_roll_active;
+  if (!g_roll_active) {
+    memset(out, 0, sizeof *out);
+    return false;
+  }
+  *out = g_roll;
+  return true;
+}
+const char *roll_role_name(roll_role_t role) {
+  return role == ROLL_ROLE_HOST ? "host" : "guest";
+}
+bool roll_state_has_credential(void) { return g_roll_active; }
+
+static upload_queue_report_t g_queue;
+
+esp_err_t upload_queue_start(void) { return ESP_OK; }
+esp_err_t upload_queue_enqueue(const char *uuid, int frames, bool thumb) {
+  (void)uuid; (void)frames; (void)thumb; return ESP_OK;
+}
+void upload_queue_status(upload_queue_report_t *out) {
+  if (out != NULL) *out = g_queue;
+}
+int upload_queue_retry_all(void) { return 0; }
+void upload_queue_pause_for_capture(bool capturing) { (void)capturing; }
+bool upload_queue_paused(void) { return false; }
+
 #include "ui.c"
 
 /* ---- output ---- */
@@ -387,13 +483,81 @@ int main(int argc, char **argv) {
   SHOT(SCR_GALLERY, "gallery_empty");
   g_fake_total = 14;
 
+  /* ---- Roll: all four states, because they are what the screen is for ----
+   *
+   * These are the only pictures of the Roll screen that exist. No board has
+   * ever had a Roll assigned, and the QR in particular has never been on a
+   * panel — so `roll_active` is where the symbol, its quiet zone and its
+   * pitch get reviewed at all. */
   SHOT(SCR_ROLL, "roll");
+
+  g_roll_active = true;
+  snprintf(g_roll.roll_id, sizeof g_roll.roll_id, "rol_8Fk2QmZ1pTx9vB3nLr4wYs");
+  snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+  snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+  snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+  g_roll.role = ROLL_ROLE_HOST;
+  g_roll.joined_at_ms = 1787000000000LL;
+
+  /* Online and idle: everything that was taken has landed. */
+  g_net_state = NET_IP_READY;
+  g_net_routed = true;
+  memset(&g_queue, 0, sizeof g_queue);
+  g_queue.uploaded = 12;
+  SHOT(SCR_ROLL, "roll_active");
+
+  /* Online and working: one in flight, three behind it. */
+  g_queue.uploading = 1;
+  g_queue.pending = 3;
+  g_queue.draining = true;
+  SHOT(SCR_ROLL, "roll_uploading");
+
+  /* The state this body is actually in: a real Roll, a real backlog, and no
+   * radio link to drain it through. */
+  g_net_state = NET_C6_NOT_ROUTED;
+  g_net_routed = false;
+  memset(&g_queue, 0, sizeof g_queue);
+  g_queue.pending = 8;
+  SHOT(SCR_ROLL, "roll_offline");
+
+  /* Stopped on a credential fault, which is not the same as failed. */
+  memset(&g_queue, 0, sizeof g_queue);
+  g_queue.halted = true;
+  g_queue.pending = 8;
+  snprintf(g_queue.last_error, sizeof g_queue.last_error, "INVALID_DEVICE_TOKEN");
+  SHOT(SCR_ROLL, "roll_paused");
+
+  /* A guest URL too long to encode: the code is shown as text instead of a
+   * QR-shaped block no phone can read. */
+  memset(&g_queue, 0, sizeof g_queue);
+  memset(g_roll.guest_url, 'x', sizeof g_roll.guest_url - 1);
+  g_roll.guest_url[sizeof g_roll.guest_url - 1] = '\0';
+  SHOT(SCR_ROLL, "roll_qr_failed");
+
+  g_roll_active = false;
+  memset(&g_queue, 0, sizeof g_queue);
 
   /* ---- settings and its children ---- */
   SHOT(SCR_SETTINGS, "settings");
   SHOT(SCR_DISPLAY, "settings_display");
   SHOT(SCR_SOUND, "settings_sound");
+
+  /* Connection in the three states that matter. The first is this body:
+   * the radio is fitted and there is no route to it, which is exactly the
+   * distinction the old "Not fitted" screen destroyed. */
+  g_saved_networks = 2;
   SHOT(SCR_CONNECTION, "settings_connection");
+
+  g_net_state = NET_WIFI_IDLE;
+  g_net_routed = true;
+  SHOT(SCR_CONNECTION, "settings_connection_disconnected");
+
+  g_net_state = NET_IP_READY;
+  SHOT(SCR_CONNECTION, "settings_connection_online");
+
+  g_net_state = NET_C6_NOT_ROUTED;
+  g_net_routed = false;
+  g_saved_networks = 0;
   SHOT(SCR_STORAGE, "settings_storage");
   SHOT(SCR_ABOUT, "settings_about");
 

@@ -1,6 +1,7 @@
 #include "pure.h"
 
 #include <stdio.h>
+#include <string.h>
 
 /* ------------------------------------------------------------------ */
 /* Capture                                                             */
@@ -186,4 +187,41 @@ void pure_format_iso8601(int64_t epoch_ms, int offset_min, char *out, size_t cap
   const int abs_off = off < 0 ? -off : off;
   snprintf(out, cap, "%04d-%02u-%02uT%02u:%02u:%02u%c%02d:%02d", year, month, day, hh, mm, ss,
            off < 0 ? '-' : '+', abs_off / 60, abs_off % 60);
+}
+
+/* ------------------------------------------------------------------ */
+/* Wi-Fi credentials                                                  */
+/* ------------------------------------------------------------------ */
+
+bool pure_wifi_ssid_valid(const char *ssid) {
+  if (ssid == NULL) return false;
+  size_t n = strlen(ssid);
+  if (n == 0 || n > PURE_SSID_MAX) return false;
+  for (size_t i = 0; i < n; i++) {
+    const unsigned char c = (unsigned char)ssid[i];
+    /* Reject C0 controls and DEL. Everything above 0x7f is left alone: an AP
+     * named in UTF-8 is an AP the camera has to be able to join, and this
+     * value is also an NVS key suffix, so rewriting it would save a network
+     * that can never match the scan result it came from. */
+    if (c < 0x20 || c == 0x7f) return false;
+  }
+  return true;
+}
+
+bool pure_wifi_passphrase_ok(const char *passphrase, bool is_open, bool keeps_stored) {
+  const size_t n = passphrase == NULL ? 0 : strlen(passphrase);
+
+  if (is_open) {
+    /* An open network takes no passphrase. Accepting one and then not using
+     * it would store a secret the radio never presents, which is worse than
+     * refusing: it reads on the display as a protected network. */
+    return n == 0;
+  }
+
+  /* The keep-what-is-stored case, checked BEFORE the length rule. Reversing
+   * these two makes editing a saved network's autoJoin impossible, because
+   * the host has only ever been given the mask. */
+  if (n == 0) return keeps_stored;
+
+  return n >= PURE_WPA_PASSPHRASE_MIN && n <= PURE_WPA_PASSPHRASE_MAX;
 }
