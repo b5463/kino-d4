@@ -1478,6 +1478,10 @@ static void handle_runtime_stats(uint32_t seq) {
        * measurement rather than reporting a plausible zero. */
       cJSON_AddNullToObject(t, "minFreeBytes");
     }
+    /* Present only when true: a one-shot task that has finished, whose number
+     * is its last reading rather than a live one. Emitting it for every row
+     * would put a false on sixteen long-lived tasks to describe one. */
+    if (rows[i].exited) cJSON_AddBoolToObject(t, "exited", true);
     cJSON_AddItemToArray(tasks, t);
   }
   cJSON_AddNumberToObject(json, "tasksUnmeasured", taskmon_unmeasured());

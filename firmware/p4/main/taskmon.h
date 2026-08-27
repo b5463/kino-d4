@@ -61,6 +61,22 @@
  */
 void taskmon_register(const char *name, TaskHandle_t handle);
 
+/**
+ * Take a registered task's last reading and stop tracking its handle.
+ *
+ * A task that ends with `vTaskDelete(NULL)` leaves the registry holding a
+ * handle to a freed TCB, and `uxTaskGetStackHighWaterMark()` on that handle is
+ * a use-after-free: it reported `icons` at 0 free bytes on the first P4 bring-up,
+ * which reads as a task that all but overflowed. The number was freed memory.
+ *
+ * So a self-deleting task calls this immediately BEFORE `vTaskDelete(NULL)`,
+ * while its own stack is still valid. The reading is frozen and reported
+ * afterwards as a finished measurement rather than dropped — what the icon
+ * builder peaked at is worth keeping — and `exited` marks it so nobody reads a
+ * boot-time number as live telemetry.
+ */
+void taskmon_task_done(const char *name);
+
 /** One row of the report. */
 typedef struct {
   const char *name;
@@ -70,6 +86,9 @@ typedef struct {
   /** False when the task registered without a handle, so the row exists and
    * says it has no measurement rather than reporting a plausible zero. */
   bool measured;
+  /** The task has finished and deleted itself; `min_free_bytes` is its final
+   * reading, taken before it went, and will not change again. */
+  bool exited;
 } taskmon_row_t;
 
 /** Fills `rows` (up to `cap`) and returns how many were written. */
