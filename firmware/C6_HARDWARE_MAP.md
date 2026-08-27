@@ -114,6 +114,34 @@ dedicated SD pads, which is the strongest possible confirmation of that half of
 the map and independent evidence that this carrier follows the reference
 pinout.
 
+**E6 — the header map was found to be wrong, and this survived it.** While this
+reconciliation was being written, the 2×13 header was checked against the
+physical board's silkscreen and most of it did not match: the eight camera UART
+pins this repository recorded (`GPIO52`/`51`/`50`/`49`/`34`/`33`/`30`/`29`) are
+**not brought out anywhere**, so CAM1 had been opening UART1 on pins that route
+to nothing. That is the most expensive possible way to be told a pin map is
+fiction, and it is a standing caution about every `PROVISIONAL` row in this
+tree.
+
+Two things about it matter here:
+
+- **The `C6_*` block matched.** Rows 10–13 of the right column are
+  `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU` on the silkscreen, exactly as
+  recorded. So the part of the repo's map that describes the C6 is the part that
+  survived checking.
+- **None of GPIO14–19 or GPIO54 is a header pin**, and they should not be: the
+  transport is an internal trace between the two dies on the module, not
+  something brought out to a connector. Checked mechanically — the C6 bus
+  overlaps neither the SD bus nor any of the nine header GPIOs the silkscreen
+  actually exposes (`1, 2, 4, 20, 32, 33, 45, 46, 47`), and `board_d4v1.h` has
+  no GPIO assigned twice.
+
+This is corroboration, not proof. It says the header error does not reach these
+pins and that the C6-facing half of the old map was accurate. It does not
+measure GPIO14–19, and E2's source is still documentation rather than a probe —
+which, given what happened to the camera UARTs, is exactly why the radio is a
+build-time opt-in that is off by default.
+
 ## The two buses are separate
 
 ```

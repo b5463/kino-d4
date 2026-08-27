@@ -9,17 +9,67 @@
 #ifndef BOARD_D4V1_H
 #define BOARD_D4V1_H
 
-// --- Camera node UARTs (PROVISIONAL, 2x13 header) ---
+// --- The 2x13 header, as photographed on the physical board ---
+//
+// The map this file and d4-v1.json carried was WRONG. Rows 1-3 and the C6
+// block matched; almost nothing else did, and not one of the eight camera UART
+// pins existed. Silkscreen of JC-ESP32P4-M3-DEV, top to bottom:
+//
+//     row   left            right
+//      1    3V3             5V
+//      2    3V3             5V
+//      3    GND             GND
+//      4    GPIO1           NC
+//      5    GPIO2           GPIO47
+//      6    GPIO3           GPIO46
+//      7    GPIO4           GPIO45
+//      8    GPIO5           GND
+//      9    GPIO20          3V3
+//     10    GPIO32          C6_U0RXD
+//     11    GPIO33          C6_U0TXD
+//     12    ES I2C_SDA      C6_IO9
+//     13    ES I2C_SCL      C6_CHIP_PU
+//
+// GPIO52/51/50/49/35/34/31/30/29/28 are not brought out anywhere. CAM1 was
+// opening UART1 on GPIO52/51, which route to nothing: the link would have
+// failed at the first checkpoint looking exactly like a wiring or ground
+// fault, which is the most expensive way to be told a pin map is fiction.
+//
+// Of the eleven header GPIOs, two are already spoken for by peripherals that
+// are validated on hardware — GPIO3 is TOUCH_RESET and GPIO5 is LCD_RESET —
+// leaving nine: 1, 2, 4, 20, 32, 33, 45, 46, 47.
+//
+// --- CAM1 (real header pins, row 4 and row 5 of the left column) ---
 #define BOARD_CAM1_UART_NUM 1
-#define BOARD_CAM1_TX 52
-#define BOARD_CAM1_RX 51
+#define BOARD_CAM1_TX 1
+#define BOARD_CAM1_RX 2
 // The other three nodes. The P4 has five high-power UARTs and UART0 is the
 // console, so each camera gets a port of its own — which is what lets four
 // transfers overlap instead of queueing behind one another. A viewfinder
 // sharing one UART between four cameras runs at a quarter of the rate.
 //
-// PROVISIONAL, like the rest of the header: these are the assignments
-// docs/HARDWARE.md records, and no jumper has proved them yet.
+// !! CAM2-4 BELOW STILL POINT AT PINS THAT DO NOT EXIST ON THIS HEADER !!
+//
+// Left alone deliberately rather than guessed at, because reassigning them is
+// an M2 decision with a real constraint behind it. Nine header GPIOs are free
+// and the design wants eleven:
+//
+//     4 cameras x 2 (TX/RX)   8
+//     SYNC_OUT                1
+//     CAM_PWR_EN              1
+//     FLASH_EN                1
+//                            --
+//                            11   against 9 available
+//
+// So the four-camera body does not fit this carrier as drawn, and something
+// has to give: FLASH_EN has no hardware behind it yet, the ES I2C pins could
+// carry an I/O expander for the slow control lines, or the header is not the
+// only way off this board. That is a bring-up finding for M2 to settle with
+// the schematic in hand, not something to invent here.
+//
+// Harmless meanwhile: these GPIO numbers are valid on the chip and simply
+// route nowhere on this carrier, so the three channels time out exactly as
+// they would with no node fitted. M1 uses CAM1 only.
 // Physical controls. docs/HARDWARE.md: "Button and mode-slide pins are
 // unassigned." They stay unassigned here rather than being guessed: a
 // floating input read as a button fires the shutter by itself in a bag,
