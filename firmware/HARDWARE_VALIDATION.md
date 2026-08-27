@@ -17,7 +17,13 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-27, firmware 0.3.0
+## Status — updated 2026-08-27, firmware 0.4.0
+
+0.4.0 added the network, Roll and upload-queue surface. It earned **no rows**:
+the ESP32-C6 has no recorded transport route from the P4, so nothing in it has
+been exercised on hardware. The rows it owes are listed in
+[`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) so they exist before the bench run
+rather than after it. The live bench session below is 0.3.0's and is unaffected.
 
 **Nothing below was inferred from code.** A row moves on an observed event on a
 physical unit, and the firmware auto-marks only `UNVALIDATED → VALIDATED`. The
@@ -121,8 +127,12 @@ subsystem.
 | Physical shutter / Fn button | **UNVALIDATED** — pins deliberately `BOARD_BTN_NONE`; no switch fitted |
 | Battery voltage / percentage / low-battery shutdown | **NOT APPLICABLE on this board** — no sense divider reaches the P4 (deviation D10). Needs a hardware revision |
 | Backlight brightness / dim stage | **NOT APPLICABLE** — plain GPIO, not PWM (deviation D11) |
-| Wi-Fi / BLE / ESP32-C6 | **NOT IMPLEMENTED** — no SDIO bring-up, no slave image |
-| Networking / KINO Roll from the camera | **NOT IMPLEMENTED** — issue #133 |
+| ESP32-C6 transport (P4 → C6) | **BLOCKED, NOT ATTEMPTED** — the carrier's routing is recorded nowhere in this repo and no P4 pin is driven toward the C6. The only C6-facing header nets on record are `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU`, none with a P4-side GPIO number, and no SDIO or SPI pin at all. Evidence: [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md). A guessed bus in the C6's strap region risks a board that stops booting, which is worse than no radio |
+| Wi-Fi association / DHCP / DNS / TLS | **NOT VALIDATED — never attempted.** No radio has been exercised on this hardware. The state model, credential store and `NETWORK_*` surface are CODE DONE and host-tested; nothing above them has run |
+| C6 slave image | **CODE DONE, UNVALIDATED** — `firmware/c6` builds and two clean builds of one commit match, but it has never been flashed to a C6 and no version has been read back. The C6's SDIO slave pins are fixed in silicon, so the image is correct independently of the unknown carrier routing |
+| Networking / KINO Roll from the camera | **CODE DONE except the transport, UNVALIDATED.** Durable SD queue, boot reconciliation, retry/backoff, idempotency, roll membership and the `ROLL_*`/`UPLOAD_*` surface are implemented and host-tested. The HTTP client is a seam. **No capture has ever reached a Roll from this body.** Issue #133 |
+| Roll assigned from Studio over USB | **CODE DONE, UNVALIDATED** — `ROLL_JOIN` accepts a Studio-resolved assignment, persists it across reboot, and the ROLL screen renders its join QR. Needs no radio. Never run on a board |
+| On-device QR (Roll join code) | **CODE DONE, UNVALIDATED on a panel.** The encoder is verified module-for-module against `qrcode@1.5.4` over 713 strings, and the render is verified in `host_preview`. **No phone has scanned one off the display** — pitch, backlight and viewing angle are unproven |
 | OTA / `FW_*` / firmware update over KDP | **NOT IMPLEMENTED** — single `factory` partition, no OTA slots |
 | Light/deep sleep | **NOT IMPLEMENTED** — backlight and camera bank only |
 | Thermal response | **NOT IMPLEMENTED** — die temperature readable, nothing acts on it |
