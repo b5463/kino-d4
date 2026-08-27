@@ -275,6 +275,26 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
 export const FIRMWARE_PROFILE_LIST: FirmwareProfile[] = Object.values(FIRMWARE_PROFILES);
 
 /**
+ * Look up a profile by an id that is only known to be a string.
+ *
+ * `FIRMWARE_PROFILES` is a `Record<FirmwareProfileId, …>`, and the id callers
+ * actually hold comes off the wire — `snapshot.firmwareProfile` is a plain
+ * `string`, because a device may report a profile this build has never heard
+ * of. Indexing the record with that directly is a `TS7053`, and three Twin
+ * call sites did it: `deviceUi.ts`, `Header.tsx` and `RollPanel.tsx`. It broke
+ * `tsc -b` and therefore the `npm run build` step in CI.
+ *
+ * A cast at each site would have silenced it and kept the real hazard, which is
+ * that the lookup can genuinely miss. This returns `undefined` instead, which
+ * is what every one of those callers was already coded for — each used `?.` or
+ * a truthiness check on the result.
+ */
+export function profileById(id: string | null | undefined): FirmwareProfile | undefined {
+  if (!id) return undefined;
+  return (FIRMWARE_PROFILES as Record<string, FirmwareProfile | undefined>)[id];
+}
+
+/**
  * Installed-artifact version → profile. Flashing the real repository build
  * (firmware/VERSION) onto the Twin makes it behave like that firmware —
  * including losing the FW_* surface itself, exactly as the physical M1B

@@ -1,4 +1,4 @@
-import { FIRMWARE_PROFILES } from '@kino/test-fixtures';
+import { profileById } from '@kino/test-fixtures';
 import { useState } from 'react';
 import { rebootDevice, setFlashEnabled, useSimStore } from '../state/simStore';
 import kinoD4Twin from '../assets/kino-d4-twin-light.png';
@@ -59,7 +59,7 @@ export function Header() {
    * still absent for an unrelated reason: no firmware drives the LED yet.
    * Asking the capability keeps the button and its explanation true as each
    * of those changes independently. */
-  const profileCaps = snapshot ? FIRMWARE_PROFILES[snapshot.firmwareProfile]?.capabilities : undefined;
+  const profileCaps = profileById(snapshot?.firmwareProfile)?.capabilities;
   const flashUnsupported = profileCaps ? profileCaps.flashControl !== true : false;
   const flashBlocked = linkBlocked || flashUnsupported || busy !== null;
   const flashHint = flashUnsupported

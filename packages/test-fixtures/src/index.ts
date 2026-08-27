@@ -11,6 +11,7 @@ export { type TwinTelemetry, type TwinSnapshot } from './telemetry';
 export {
   FIRMWARE_PROFILES,
   FIRMWARE_PROFILE_LIST,
+  profileById,
   M1B_COMMANDS,
   PROFILE_FOR_VERSION,
   type FirmwareProfile,

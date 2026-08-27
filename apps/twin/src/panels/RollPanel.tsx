@@ -3,7 +3,7 @@
 // stand-in for that future firmware task, over the real Roll API and the
 // real device wire contract. Nothing here changes what the virtual device
 // claims over KDP: rollUpload stays false on the current-firmware profile.
-import { FIRMWARE_PROFILES } from '@kino/test-fixtures';
+import { profileById } from '@kino/test-fixtures';
 import { useEffect, useState } from 'react';
 import { useSimStore } from '../state/simStore';
 import {
@@ -56,9 +56,7 @@ export function RollPanel() {
   /* "Only one camera is wired", asked directly rather than by naming a
    * profile - which stopped being the same question the moment a second real
    * firmware profile existed. */
-  const singleCam = snapshot
-    ? FIRMWARE_PROFILES[snapshot.firmwareProfile]?.camsOnline[1] === false
-    : false;
+  const singleCam = profileById(snapshot?.firmwareProfile)?.camsOnline[1] === false;
   const ready = running && bootStage === 'READY';
 
   return (

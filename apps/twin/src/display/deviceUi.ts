@@ -2,7 +2,7 @@ import type { CamId } from '@kino/kdp';
 import { CAM_IDS } from '@kino/kdp';
 import type { BootStage, CaptureStage } from '@kino/simulator-engine';
 import type { TwinSnapshot } from '@kino/test-fixtures';
-import { FIRMWARE_PROFILES } from '@kino/test-fixtures';
+import { profileById } from '@kino/test-fixtures';
 
 /** Native panel resolution of the Guition 4.3in display, landscape. */
 export const DISPLAY_W = 800;
@@ -92,8 +92,7 @@ const IN_FLIGHT: readonly CaptureStage[] = ['ARMING', 'WAIT_SYNC', 'EXPOSING', '
  * one jumpered node has to preview the node it has.
  */
 export function viewfinderCam(state: Pick<DeviceUiState, 'snapshot'>): CamId {
-  const id = state.snapshot?.firmwareProfile;
-  const profile = id ? FIRMWARE_PROFILES[id] : undefined;
+  const profile = profileById(state.snapshot?.firmwareProfile);
   if (profile && !profile.camsOnline[1]) return 'cam1';
   return 'cam2';
 }

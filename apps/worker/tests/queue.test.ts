@@ -237,7 +237,13 @@ describe('independence: one failure touches nothing else (07 §26)', () => {
     await waitFor('both jobs to settle', async () => {
       const rows = await eventsFor(captureId);
       return (
-        statusesOf(rows, 'render-wiggle-webp').includes('failed') &&
+        // `abandoned`, not `failed`. The terminal-failure path writes
+        // `abandoned` *after* `failed`, and the assertion below requires it —
+        // so gating on `failed` let the assertion run one row early and the
+        // test failed intermittently under load with
+        // ['running','failed'] !== ['running','failed','abandoned'].
+        // Wait for the last row the assertion needs, not the first.
+        statusesOf(rows, 'render-wiggle-webp').includes('abandoned') &&
         statusesOf(rows, 'generate-thumbnail').includes('done')
       );
     });

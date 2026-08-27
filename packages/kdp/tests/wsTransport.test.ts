@@ -17,11 +17,18 @@ afterEach(async () => {
   cleanups = [];
 });
 
-let nextPort = 5920 + Math.floor(Math.random() * 40);
-
+/*
+ * Port 0: the OS picks a free one and the relay reports what it bound.
+ *
+ * This used to pick from a fixed 5920-5959 window with no bind retry, so a
+ * lingering socket from a previous run in the same window produced
+ * `EADDRINUSE` on 127.0.0.1:5939 — which surfaced as an unrelated 5 s test
+ * timeout rather than as a port collision. Asking for 0 cannot collide.
+ */
 async function relay() {
-  const r = createTwinRelay({ port: ++nextPort });
+  const r = createTwinRelay({ port: 0 });
   later(() => r.close());
+  await r.ready;
   return `ws://127.0.0.1:${r.port}`;
 }
 
@@ -106,9 +113,11 @@ describe('WebSocketTransport', () => {
   });
 
   it('relay death surfaces as a transport close — the carrier-only failure', async () => {
-    const port = ++nextPort;
-    const r = createTwinRelay({ port });
-    const url = `ws://127.0.0.1:${port}`;
+    // Its own relay rather than relay(), because this test kills the relay
+    // itself and must not have the afterEach hook close it a second time.
+    const r = createTwinRelay({ port: 0 });
+    await r.ready;
+    const url = `ws://127.0.0.1:${r.port}`;
     await fakeTwin(url).opened;
 
     const transport = new WebSocketTransport(url);

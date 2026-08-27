@@ -27,7 +27,25 @@ export function createTwinRelay({ port = Number(process.env.KINO_TWIN_WS_PORT ??
   });
   return {
     host,
-    port,
+    /*
+     * The port actually bound, not the one asked for.
+     *
+     * These differ whenever `port: 0` is passed, which is how a caller asks the
+     * OS for a free one. Reporting the request instead made port 0 useless, so
+     * tests picked from a fixed random window with no retry and collided with
+     * anything already holding that port - an EADDRINUSE that surfaces as an
+     * unrelated timeout. Await `ready` before reading this: the address only
+     * exists once the socket is listening.
+     */
+    get port() {
+      const addr = server.address();
+      return addr && typeof addr === 'object' ? addr.port : port;
+    },
+    /** Resolves once the socket is listening, or rejects if the bind fails. */
+    ready: new Promise((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    }),
     close: () =>
       new Promise((resolve) => {
         // ws waits for every client to hang up before close() resolves; a
