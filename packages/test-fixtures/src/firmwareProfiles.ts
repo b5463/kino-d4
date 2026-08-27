@@ -9,7 +9,12 @@
 // capability report derive from the same profile, so they cannot drift.
 import { Cmd } from '@kino/kdp';
 
-export type FirmwareProfileId = 'd4-m1b' | 'd4-body-0-2' | 'd4-capture-0-3' | 'd4-sim-full';
+export type FirmwareProfileId =
+  | 'd4-m1b'
+  | 'd4-body-0-2'
+  | 'd4-capture-0-3'
+  | 'd4-roll-0-4'
+  | 'd4-sim-full';
 
 export interface FirmwareProfile {
   id: FirmwareProfileId;
@@ -142,6 +147,66 @@ const CAPTURE_0_3_CAPABILITIES: Record<string, boolean> = {
   vsyncTelemetry: false,
 };
 
+export const ROLL_0_4_COMMANDS: readonly number[] = [
+  ...CAPTURE_0_3_COMMANDS,
+  /**
+   * The whole network/Roll/upload surface answers, and most of it answers for
+   * real — credentials persist, a Studio-resolved Roll is stored and shown as
+   * a QR, and captures are queued durably on the card.
+   *
+   * Two of them refuse on this body rather than being absent, and the
+   * distinction matters to a host: `ROLL_CREATE` and the slug-only form of
+   * `ROLL_JOIN` are HTTP calls to the Roll API, and the P4 has no route to
+   * its radio. They answer `NETWORK_UNAVAILABLE` naming the radio state,
+   * which a host can act on, instead of `UNSUPPORTED_COMMAND`, which cannot
+   * tell an unimplemented command from an unrouted chip.
+   */
+  Cmd.NETWORK_LIST,
+  Cmd.NETWORK_SET,
+  Cmd.NETWORK_DELETE,
+  Cmd.NETWORK_STATUS,
+  Cmd.ROLL_STATUS,
+  Cmd.ROLL_CREATE,
+  Cmd.ROLL_JOIN,
+  Cmd.ROLL_LEAVE,
+  Cmd.UPLOAD_QUEUE_STATUS,
+  Cmd.UPLOAD_QUEUE_RETRY,
+  Cmd.UPLOAD_ENQUEUE,
+  /** Read-only version reporting for all six images, including the C6's.
+   * The rest of the FW_* group stays absent: one `factory` partition, no OTA
+   * slots, and a query is not an update path. */
+  Cmd.FW_QUERY,
+];
+
+const ROLL_0_4_CAPABILITIES: Record<string, boolean> = {
+  ...CAPTURE_0_3_CAPABILITIES,
+  /**
+   * The ESP32-C6 is on the Guition carrier. Reported separately from whether
+   * the firmware can reach it, the same way `flashControl` is reported
+   * separately from `flashHardware`: one boolean answering both is what
+   * produced the old "NETWORK: NOT FITTED" display, which sent people looking
+   * for a component that was already soldered on.
+   */
+  radioFitted: true,
+  /**
+   * False, and this is the gate. No P4-side transport pin for the C6 is
+   * recorded anywhere in the repository — the only C6-facing header nets are a
+   * UART pair, a strap and an enable, none mapped to a GPIO number. See
+   * firmware/C6_HARDWARE_MAP.md.
+   */
+  radioRouted: false,
+  /**
+   * Still false with every command implemented, and deliberately so. Studio's
+   * supports() gate is fail-closed, so setting these true makes it render the
+   * Network and Roll pages and issue commands that must then refuse — a broken
+   * panel instead of an absent one. They flip when the commands answer for
+   * real, which needs the transport, not more firmware.
+   */
+  network: false,
+  roll: false,
+  rollUpload: false,
+};
+
 export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   'd4-m1b': {
     id: 'd4-m1b',
@@ -182,6 +247,18 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
     maxUartBaud: 921600,
     implementedCommands: CAPTURE_0_3_COMMANDS,
   },
+  'd4-roll-0-4': {
+    id: 'd4-roll-0-4',
+    label: 'CURRENT FIRMWARE 0.4.0 — network and Roll commands, no radio route',
+    simulatedFuture: false,
+    p4Fw: '0.4.0',
+    camFw: '0.1.0',
+    /* Unchanged from 0.3.0: the bench harness still has one node on it. */
+    camsOnline: [true, false, false, false],
+    capabilities: ROLL_0_4_CAPABILITIES,
+    implementedCommands: ROLL_0_4_COMMANDS,
+    maxUartBaud: 921600,
+  },
   'd4-sim-full': {
     id: 'd4-sim-full',
     label: 'SIMULATED FUTURE — full demo device',
@@ -207,4 +284,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.1.0': 'd4-m1b',
   '0.2.0': 'd4-body-0-2',
   '0.3.0': 'd4-capture-0-3',
+  '0.4.0': 'd4-roll-0-4',
 };

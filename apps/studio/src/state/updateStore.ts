@@ -43,6 +43,10 @@ export const TARGET_LABELS: Record<TargetId, string> = {
   cam2: 'CAM2',
   cam3: 'CAM3',
   cam4: 'CAM4',
+  /** The radio coprocessor on the Guition carrier. Labelled by what it is
+   * rather than by its part number, because a user reading an update sequence
+   * needs to know which thing on the body is being written. */
+  c6: 'C6 RADIO',
 };
 
 export function freshTargets(order: TargetId[]): TargetProgress[] {

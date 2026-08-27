@@ -292,6 +292,43 @@ So the timestamp always travels with its source. `HELLO` gained two optional add
 Firmware refuses a host time outside 2020–2100, which is what a seconds-for-milliseconds mix-up
 looks like, and only persists a time it was actually given.
 
+### D15 — `TargetId` gained `c6`, and `FW_QUERY` is implemented without the rest of `FW_*`
+
+Two changes, one cause: the D4 carries a sixth firmware image and the version model could not name
+it.
+
+`TargetId` was `CamId | 'p4'` — five images. The Guition carrier's ESP32-C6 runs a hosted-slave
+image of its own, which is a second thing that can be stale in the field, and issue #133 requires it
+to be reportable "alongside the P4 and nodes". So `TargetId` is now `CamId | 'p4' | 'c6'` and
+`ALL_TARGETS` has six members. Purely additive: nothing reads a specific target by position, and
+`ALL_TARGETS` had no consumers outside its own declaration.
+
+`FW_QUERY (0x60)` is now implemented. Every other command in the group —
+`FW_BEGIN`/`CHUNK`/`END`/`ABORT`/`STATUS`/`ROLLBACK` — still returns `UNSUPPORTED_COMMAND`, because
+the partition table is a single `factory` slot with no OTA pair (M8). That split is deliberate: a
+query is not an update path, `GET_CAPABILITIES` advertises no update capability, and version
+discovery is useful long before an update mechanism exists.
+
+Two conventions this establishes for the response:
+
+- An empty `version` means the device could not read one — a node that has never answered, or a C6
+  with no transport. It is **not** version zero and must not be rendered as one.
+- `state` describes an update in progress, so an unreachable target is `idle` rather than `error`:
+  nothing failed and nothing was attempted. `error` there would send someone to re-flash a chip that
+  is merely unwired.
+
+The `c6` target carries two additive booleans, `fitted` and `reachable`, for the same reason
+`flashControl` and `flashHardware` are two flags. Without them a host sees an empty version and
+cannot tell an absent chip from an unrouted one — which on the D4 V1 is exactly the distinction that
+matters, since the chip is fitted and no P4-side transport pin for it is recorded anywhere
+(`firmware/C6_HARDWARE_MAP.md`).
+
+Known divergence: the reference device (`packages/test-fixtures/src/MockKinoDevice.ts`) reports five
+targets, not six. It simulates no C6, so reporting one would be an invented version. Studio's
+`FW_QUERY` conformance check asserts only that the five it knows are *present*, so both devices
+pass; a host must therefore treat a missing `c6` key as "this body has no radio", not as a protocol
+error.
+
 ## Decided — was "firmware team decision required"
 
 Issue #5 closed the six open questions this section used to list. They were open because physical

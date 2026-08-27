@@ -2,10 +2,22 @@
 // device reports or accepts — UI-only state does not belong in this file.
 
 export type CamId = 'cam1' | 'cam2' | 'cam3' | 'cam4';
-export type TargetId = CamId | 'p4';
+/**
+ * Everything on the body that carries its own firmware image.
+ *
+ * `c6` is the radio coprocessor on the Guition carrier. It was added because
+ * the D4 has a sixth image and `FW_QUERY` could not name it: a C6 running an
+ * out-of-date hosted-slave image is a second thing that can be stale in the
+ * field, and a version model that cannot report it cannot diagnose it.
+ *
+ * Additive. `ALL_TARGETS` gains a member; nothing that reads a specific target
+ * changes. A device that has no C6, or has one it cannot reach, reports the
+ * target with an empty `version` — see FwQueryResponse.
+ */
+export type TargetId = CamId | 'p4' | 'c6';
 
 export const CAM_IDS: CamId[] = ['cam1', 'cam2', 'cam3', 'cam4'];
-export const ALL_TARGETS: TargetId[] = ['cam1', 'cam2', 'cam3', 'cam4', 'p4'];
+export const ALL_TARGETS: TargetId[] = ['cam1', 'cam2', 'cam3', 'cam4', 'p4', 'c6'];
 
 /** What Studio offers the device (04 §4): protocol range, nonce, version. */
 export interface HelloRequest {
@@ -660,6 +672,15 @@ export type FwTargetState =
   | 'ready'
   | 'error';
 
+/**
+ * What each image on the body is running.
+ *
+ * An empty `version` means the device could not read one — a camera node that
+ * has never answered, or a C6 the host has no transport to. It does NOT mean
+ * version zero, and a consumer must not render it as one. `state` describes an
+ * update in progress, so a target that is merely unreachable is `idle` with an
+ * empty version rather than `error`: nothing has failed, nothing was tried.
+ */
 export interface FwQueryResponse {
   targets: Record<TargetId, { version: string; state: FwTargetState }>;
 }

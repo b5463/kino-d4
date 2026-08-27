@@ -26,6 +26,18 @@ import type {
 import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
 import type { MockDeviceLike } from '@kino/kdp';
 import type { DeviceRecipe } from './recipes';
+
+/**
+ * True when a firmware target is one of the camera nodes.
+ *
+ * Replaces the `target !== 'p4'` test that used to mean the same thing. It
+ * stopped meaning it when TargetId gained `c6`: the radio coprocessor is not
+ * the P4 and is not a camera either, and `this.cams[target]` for it is a
+ * lookup into an object that has no such key.
+ */
+function isCamTarget(target: TargetId): target is CamId {
+  return target !== 'p4' && target !== 'c6';
+}
 import { validateDeviceRecipe } from './recipes';
 import { FACTORY_RECIPES } from './factoryRecipes';
 import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
@@ -384,6 +396,10 @@ export class MockKinoDevice implements MockDeviceLike {
   private fwSessionCounter = 100;
   private fwStates: Record<TargetId, { state: string; error?: string }> = {
     cam1: { state: 'idle' }, cam2: { state: 'idle' }, cam3: { state: 'idle' }, cam4: { state: 'idle' }, p4: { state: 'idle' },
+    // `c6` exists because TargetId has six members now (the D4 carries a radio
+    // coprocessor image). This device simulates no C6, so the state is idle
+    // forever and FW_BEGIN refuses it — see handleFwBegin.
+    c6: { state: 'idle' },
   };
   private camTimeouts = 0;
   private sdErrors = 0;
@@ -2481,6 +2497,11 @@ export class MockKinoDevice implements MockDeviceLike {
           p4: { version: this.p4Fw, state: this.fwStates.p4.state },
         };
         for (const id of CAM_IDS) targets[id] = { version: this.camFirmware(id), state: this.fwStates[id].state };
+        // Six targets, because TargetId has six. An EMPTY version means "could
+        // not read one" and never version zero — this device simulates no C6,
+        // so there is nothing to read. `idle` rather than `error`: nothing
+        // failed and nothing was attempted.
+        targets.c6 = { version: '', state: this.fwStates.c6.state };
         this.respond(frame, { targets });
         return;
       }
@@ -2497,7 +2518,7 @@ export class MockKinoDevice implements MockDeviceLike {
         if (this.fwSession) {
           const target = this.fwSession.target;
           this.fwStates[target] = { state: 'idle' };
-          if (target !== 'p4') this.cams[target].updating = false;
+          if (isCamTarget(target)) this.cams[target].updating = false;
           this.fwSession = null;
           this.emitTelemetry({ t: 'fw', target, state: 'idle' });
         }
@@ -2509,7 +2530,7 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, {
           target,
           state: st.state,
-          version: target === 'p4' ? this.p4Fw : this.camFirmware(target),
+          version: target === 'p4' ? this.p4Fw : isCamTarget(target) ? this.camFirmware(target) : '',
           ...(st.error ? { error: st.error } : {}),
         });
         return;
@@ -3479,7 +3500,15 @@ export class MockKinoDevice implements MockDeviceLike {
       this.respondError(frame, 'BAD_SIZE', 'Image size out of range');
       return;
     }
-    if (req.target !== 'p4' && this.busUnreachable(req.target)) {
+    if (req.target === 'c6') {
+      // Honest refusal rather than a simulated flash. This device has no radio
+      // coprocessor, so there is no image to replace and no version to report
+      // afterwards; pretending otherwise would let a host believe it had
+      // updated a chip that does not exist.
+      this.respondError(frame, 'CAM_UNREACHABLE', 'This device has no C6 radio coprocessor');
+      return;
+    }
+    if (isCamTarget(req.target) && this.busUnreachable(req.target)) {
       this.respondError(frame, 'CAM_UNREACHABLE', `${req.target.toUpperCase()} is offline`);
       return;
     }
@@ -3495,7 +3524,7 @@ export class MockKinoDevice implements MockDeviceLike {
       image: new Uint8Array(req.size),
     };
     this.fwStates[req.target] = { state: 'receiving' };
-    if (req.target !== 'p4') this.cams[req.target].updating = true;
+    if (isCamTarget(req.target)) this.cams[req.target].updating = true;
     this.log('P4', `fw begin ${req.target} — ${req.version}, ${Math.round(req.size / 1024)} KB`);
     this.emitTelemetry({ t: 'fw', target: req.target, state: 'receiving', pct: 0 });
     this.respond(frame, { sessionId: this.fwSession.id, chunkSize: 8192 });
@@ -3519,7 +3548,7 @@ export class MockKinoDevice implements MockDeviceLike {
       const pct = Math.round((offset / s.size) * 100);
       this.log('P4', `${s.target} flash write failed at 0x${offset.toString(16)}`);
       this.fwStates[s.target] = { state: 'error', error: 'flash write failed' };
-      if (s.target !== 'p4') this.cams[s.target].updating = false;
+      if (isCamTarget(s.target)) this.cams[s.target].updating = false;
       this.fwSession = null;
       this.scenarios.failedUpdate = false; // one-shot — a retry will succeed
       this.scenarioCb?.();
@@ -3558,7 +3587,7 @@ export class MockKinoDevice implements MockDeviceLike {
     if (actualSha !== s.sha256.toLowerCase()) {
       this.log('P4', `${target} sha256 mismatch — image rejected, nothing flashed`);
       this.fwStates[target] = { state: 'error', error: 'sha256 mismatch' };
-      if (target !== 'p4') this.cams[target].updating = false;
+      if (isCamTarget(target)) this.cams[target].updating = false;
       this.emitTelemetry({ t: 'fw', target, state: 'error' });
       this.respondError(frame, 'SHA256_MISMATCH', `${target.toUpperCase()} image hash does not match FW_BEGIN declaration`);
       return;
@@ -3584,7 +3613,7 @@ export class MockKinoDevice implements MockDeviceLike {
         this.log('P4', 'update applied — rebooting');
       });
       this.after(2800, () => this.reboot('ota-update'));
-    } else {
+    } else if (isCamTarget(target)) {
       this.after(900, () => {
         this.fwStates[target] = { state: 'applying' };
         this.emitTelemetry({ t: 'fw', target, state: 'applying' });
