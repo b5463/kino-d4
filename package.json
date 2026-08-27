@@ -23,7 +23,7 @@
     "test:acceptance": "playwright test",
     "release": "node scripts/release.mjs"
   },
-  "devDependencies": { "@playwright/test": "^1.62.1", "tsx": "^4.21.0", "ws": "^8.19.0" },
+  "devDependencies": { "@playwright/test": "^1.62.1", "serialport": "^13.0.0", "tsx": "^4.21.0", "ws": "^8.19.0" },
   "optionalDependencies": { "@rollup/rollup-linux-x64-gnu": "4.62.4" },
   "engines": { "node": ">=22" }
 }
