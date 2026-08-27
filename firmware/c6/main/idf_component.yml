@@ -1,7 +1,15 @@
 dependencies:
-  # v5.5.1 is the one canonical build environment (docs/FIRMWARE_BUILDER.md);
-  # the floor here only documents the true source requirement.
-  idf: ">=5.3"
-  # No managed components. espressif/esp_hosted is the transport this image
-  # will eventually carry, and it is deliberately absent: see the "Why no
-  # esp_hosted yet" section of README.md for the measured reason.
+  # v5.5.1 is the one canonical build environment (docs/FIRMWARE_BUILDER.md).
+  # The floor is 5.5, not 5.3: esp_hosted 3.0.6 declares `idf: ">=5.5"` itself.
+  idf: ">=5.5"
+  # Espressif's official ESP-Hosted coprocessor firmware. This component IS the
+  # image; main/ only starts NVS and prints one identifying line.
+  #
+  # PINNED EXACTLY, not "~3.0.6". The coprocessor and the P4 host negotiate an
+  # RPC wire version, and firmware/C6_HARDWARE_MAP.md already records that a
+  # version mismatch on this board presents as a transport failure — the
+  # hardest kind to diagnose here, because the P4 side is unproven too. A patch
+  # bump that moves a Kconfig default or the wire must arrive as a deliberate
+  # commit that bumps the host at the same time, not as a side effect of
+  # someone regenerating dependencies.lock. Bump both projects together.
+  espressif/esp_hosted: "3.0.6"

@@ -1,26 +1,90 @@
-# ESP32-C6 radio coprocessor on the Guition JC4880P443C-I-W carrier.
+# ESP32-C6 ESP-Hosted coprocessor, Guition JC4880P443C-I-W carrier.
+#
+# This is Espressif's coprocessor firmware, not a KINO Wi-Fi app. Almost every
+# line below is taken from the reference the component ships for exactly this
+# board shape — an SDIO radio sharing one SDMMC controller with an SD card:
+#
+#   espressif/esp_hosted 3.0.6
+#     examples/mcu_hosted_sdio_sdmmc_combined/cp/sdkconfig.defaults
+#     examples/mcu_hosted_sdio_sdmmc_combined/cp/sdkconfig.defaults.esp32c6
+#
+# Deviating from that reference without a measured reason is how a working
+# transport turns into a debugging project, so the comments below say which
+# lines are Espressif's and which are ours.
 CONFIG_IDF_TARGET="esp32c6"
 
-# Flash size is left at the IDF default (2 MB). The C6 module's part number
-# is not recorded anywhere in this repo — docs/HARDWARE.md:47 says only
-# "ESP32-P4 + ESP32-C6" — and a flash size larger than the die actually has
-# produces an image that flashes and then fails to boot. 2 MB is the smallest
-# C6 configuration, so it is the one that cannot be wrong. Raise it once the
-# module is identified.
+# --- Role: coprocessor, driven by an MCU host over RPC v2 (Espressif) --------
+# CP_FOR_MCU, not CP_FOR_LINUX: the host is the P4. RPC_V2 is the current wire
+# and the P4 host must be built from this same component version — see the
+# version-compatibility section of README.md, which is where a mismatch shows
+# up as a transport failure rather than a Wi-Fi failure.
+CONFIG_ESP_HOSTED=y
+CONFIG_ESP_HOSTED_CP=y
+CONFIG_ESP_HOSTED_CP_FOR_MCU=y
+CONFIG_ESP_HOSTED_CP_RPC_V2=y
+CONFIG_ESP_HOSTED_CP_FEAT_WIFI=y
 
-# Console on UART0. This is the only way this image can be observed: the four
-# C6 header pins are U0RXD, U0TXD, IO9 and CHIP_PU (firmware/C6_HARDWARE_MAP.md),
-# and whether the C6's USB pads reach anything on this carrier is not recorded.
-# The identity line in main.c goes out here or nowhere.
+# SDIO, stated rather than inherited. The component already defaults to SDIO on
+# any target with SOC_SDIO_SLAVE_SUPPORTED, which the C6 has, but this is the
+# one choice the whole carrier routing depends on (P4 GPIO14-19 to C6 GPIO18-23,
+# firmware/C6_HARDWARE_MAP.md) and it should not move because an upstream
+# default moved.
+CONFIG_EH_TRANSPORT_CP_SDIO=y
+
+# --- Flash size and partitions (Espressif's layout) -------------------------
+#
+#   !! THE C6 MODULE'S FLASH SIZE IS NOT ESTABLISHED. See README.md. !!
+#
+# 4 MB with Espressif's dual-OTA table is what the reference selects for the
+# C6, and the coprocessor image does not fit the 2 MB variant's 960 KB slots
+# (measured — see README.md). So this is a requirement of the official image,
+# not a preference. If the module turns out to carry less than 4 MB, the fix is
+# a different image, not a smaller table.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_eh_cp_ota_4m.csv"
+
+# --- What this image does not carry -----------------------------------------
+# BT off. The D4 has no Bluetooth feature, and the controller costs flash and
+# RAM in an image that has to fit an OTA slot. Turning it on later is a
+# deliberate change with a size consequence, not a default.
+CONFIG_BT_ENABLED=n
+# WPA2-Enterprise off, same reason: no D4 feature asks for it.
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+
+# --- Radio and OS (Espressif) -----------------------------------------------
+# PHY calibration data lives in NVS; without this every boot re-calibrates.
+CONFIG_ESP_WIFI_NVS_ENABLED=y
+CONFIG_FREERTOS_HZ=1000
+# Buffer pool for the transport, so a frame does not hit the heap per packet.
+CONFIG_ESP_CACHE_MALLOC=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+
+# Wi-Fi buffer counts and AMPDU windows, verbatim from the reference's C6 file.
+# These are throughput numbers Espressif chose for a C6 coprocessor; nothing
+# here has been measured on a D4, and they are recorded as inherited rather
+# than reasoned.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=20
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=64
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=64
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
+CONFIG_ESP_WIFI_TX_BA_WIN=32
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=y
+CONFIG_ESP_WIFI_RX_BA_WIN=32
+CONFIG_ESP_WIFI_RX_IRAM_OPT=y
+CONFIG_ESP_WIFI_IRAM_OPT=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# --- KINO additions ---------------------------------------------------------
+# Console on UART0. This is the only way this image can be observed: the C6
+# pins that reach the 2x13 header are U0RXD, U0TXD, IO9 and CHIP_PU
+# (firmware/C6_HARDWARE_MAP.md), and whether the C6's USB-Serial-JTAG pads
+# reach anything on this carrier is not recorded. The C6 default is
+# USB-Serial-JTAG, which on this board may be a console into empty air.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 
-# 1.5 MB app partition. The hosted slave this image grows into carries the
-# Wi-Fi and BLE controller stacks plus protobuf RPC, which does not fit the
-# 1 MB default, and changing the partition layout later invalidates every
-# flashed unit.
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
-
 # Two clean builds of one commit must produce the same .bin, so a hash in a
-# bench record identifies the source. See firmware/p4/sdkconfig.defaults for
-# the measurement.
+# bench record identifies the source it came from. Left unset, ESP-IDF stamps
+# the build clock into esp_app_desc and the hash moves with the clock.
+# See firmware/p4/sdkconfig.defaults for the measurement.
 CONFIG_APP_REPRODUCIBLE_BUILD=y

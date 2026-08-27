@@ -1,7 +1,8 @@
 idf_component_register(
-  SRCS "main.c" "radio.c" "transport.c"
+  SRCS "main.c"
   INCLUDE_DIRS "."
-  REQUIRES esp_wifi nvs_flash esp_event esp_timer
+  REQUIRES esp_hosted
+  PRIV_REQUIRES nvs_flash esp_event
 )
 
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" KINO_FW_VERSION)

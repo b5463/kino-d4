@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2021-2025 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
+#
+# Vendored verbatim from espressif/esp_hosted 3.0.6 (ESP Component Registry),
+# examples/mcu_hosted_sdio_sdmmc_combined/cp/partitions_eh_cp_ota_4m.csv.
+# Copied rather than referenced because CONFIG_PARTITION_TABLE_CUSTOM_FILENAME
+# resolves against the project directory, and managed_components/ is generated,
+# not committed. Do not edit: the offsets are the coprocessor OTA contract, and
+# changing them invalidates every already-flashed unit.
+#
+# ESP-Hosted shared partition table — 4 MB flash, dual OTA (1.75 MB per slot)
+# Name,     Type, SubType, Offset,   Size
+nvs,        data, nvs,     0x9000,   0x4000
+otadata,    data, ota,     0xd000,   0x2000
+phy_init,   data, phy,     0xf000,   0x1000
+ota_0,      app,  ota_0,   0x10000,  0x1C0000
+ota_1,      app,  ota_1,   0x1D0000, 0x1C0000

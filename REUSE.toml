@@ -65,3 +65,16 @@ path = ["firmware/p4/main/icons_w98.h"]
 precedence = "override"
 SPDX-FileCopyrightText = "Microsoft Corporation"
 SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"
+
+# The C6 coprocessor partition table is Espressif's, vendored verbatim from
+# espressif/esp_hosted 3.0.6 (examples/mcu_hosted_sdio_sdmmc_combined/cp/).
+# It is copied rather than referenced because IDF resolves
+# CONFIG_PARTITION_TABLE_CUSTOM_FILENAME against the project directory and
+# managed_components/ is generated, not committed. firmware/** is declared MIT
+# four blocks up, which would relabel Espressif's file as ours; this override
+# says whose it is. The annotation records ownership; it grants nothing.
+[[annotations]]
+path = ["firmware/c6/partitions_eh_cp_ota_4m.csv"]
+precedence = "override"
+SPDX-FileCopyrightText = "2021-2025 Espressif Systems (Shanghai) CO LTD"
+SPDX-License-Identifier = "Apache-2.0"

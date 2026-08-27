@@ -30,6 +30,27 @@ command line (aggregation, not linking), so `apps/worker` itself remains MIT
 
 Issue #22 records the analysis.
 
+## ESP-Hosted coprocessor partition table (Espressif, Apache-2.0)
+
+`firmware/c6/partitions_eh_cp_ota_4m.csv` is Espressif's, copied verbatim from
+`espressif/esp_hosted` 3.0.6 (ESP Component Registry),
+`examples/mcu_hosted_sdio_sdmmc_combined/cp/partitions_eh_cp_ota_4m.csv`.
+
+It is copied rather than referenced because IDF resolves
+`CONFIG_PARTITION_TABLE_CUSTOM_FILENAME` against the project directory, and
+`managed_components/` is generated rather than committed — so a build from a
+clean checkout would not find it.
+
+Apache-2.0, whose text is in `LICENSES/Apache-2.0.txt`. The file keeps its
+upstream SPDX header, and `REUSE.toml` overrides the blanket MIT declaration
+covering `firmware/**` so that Espressif's file is not relabelled as ours. The
+offsets in it are the coprocessor's OTA contract; it is not edited.
+
+The ESP-Hosted component itself is a build-time dependency resolved into
+`managed_components/`, not redistributed source, and is pinned to an exact
+version in `firmware/c6/main/idf_component.yml` with its resolved hash in
+`firmware/c6/dependencies.lock`.
+
 ## Windows 98 icon artwork (Microsoft, no licence held)
 
 `firmware/p4/main/icons_w98.h` contains seven icons from the Microsoft Windows

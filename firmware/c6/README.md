@@ -1,176 +1,226 @@
-# `kino-c6` — ESP32-C6 radio coprocessor image
+# firmware/c6 — ESP32-C6 ESP-Hosted coprocessor
 
-The second image the KINO D4 needs to build, flash and version. The P4 runs the
-camera; this chip is meant to be its radio and nothing else — no capture, no
-Roll, no KDP, no product logic. Anything above the host link belongs to
-`firmware/p4/`.
+The radio image for the ESP32-C6 on the Guition `JC4880P443C-I-W`
+(module `JC-ESP32P4-M3-C6`). It is Espressif's official ESP-Hosted
+**coprocessor** firmware, built for `esp32c6` with the SDIO transport. The P4
+is the host: it owns the IP stack and drives this chip's Wi-Fi over RPC.
 
-**This image has never run on a D4.** The P4 has no established route to the C6
-(`firmware/C6_HARDWARE_MAP.md`), so it cannot be exercised on the bench yet, and
-none of the `C6_*` rows in `firmware/HARDWARE_VALIDATION.md` have been earned.
-It builds, it is reproducible, and it is versioned. That is the whole claim.
+This project is a thin shell around one pinned component. `main/` starts NVS
+and the default event loop and prints one identifying line; everything else —
+the radio, the RPC server, the SDIO slave — is
+`espressif/esp_hosted`, selected by the `CONFIG_ESP_HOSTED_CP_*` options in
+`sdkconfig.defaults`. There is no KINO networking code here and there must not
+be: capture, Roll and KDP are the P4's, and a coprocessor that also holds
+product logic gives the camera a second place to disagree with itself.
 
-## What it does today
+**Nothing in this directory has been flashed or run on hardware.** Read
+`firmware/C6_HARDWARE_MAP.md` and the two gates below before writing C6 flash.
 
-At boot, on UART0:
+## GATE 1 — the C6 module's flash size is not established
 
-1. Initialises NVS, so the Wi-Fi PHY calibration is not redone every boot.
-2. Starts Wi-Fi in station mode and runs one all-channel scan.
-3. Reports the host link state, which is `not-routed`.
-4. Prints one banner line with a fixed prefix and stable keys:
+> `sdkconfig.defaults` sets `CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y`.
+> **The C6 module's actual flash size is UNKNOWN** (`firmware/C6_HARDWARE_MAP.md`,
+> "What is still unknown"). An image built for more flash than the die carries
+> **flashes successfully and then fails to boot**, and `ota_1` at offset
+> `0x1D0000` is past the end of a 2 MB part. Confirm the module's flash size
+> against the actual board — `esptool.py flash_id` over the recovery path in
+> GATE 2 — **before the first write**.
 
-```
-KINO-C6 fw=0.3.0 role=radio-coprocessor mac=aa:bb:cc:dd:ee:ff radio=up aps=7 link=not-routed
-```
+4 MB is not a preference. It is what the reference selects for the C6, and the
+coprocessor image does not fit the 2 MB alternative:
 
-`fw=` is `KINO_FW_VERSION`, read from `firmware/VERSION` by
-`main/CMakeLists.txt` — the same file the P4 and the four camera nodes read, so
-one repo version describes the whole camera. This is the string the P4's KDP
-`FW_QUERY` (0x60) will surface for the C6 once the link exists. `FW_QUERY` is
-not implemented on the P4 side yet.
-
-There is no association, no DHCP and no IP stack. `esp_netif` and `lwip` are
-deliberately absent: a coprocessor with its own TCP/IP stack gives the camera
-two stacks on one link, which shows up as duplicated ARP under load. Espressif's
-hosted slave excludes both for the same reason.
-
-## Build
-
-No local ESP-IDF. One canonical environment, IDF v5.5.1, the same version pinned
-in `.github/workflows/firmware.yml` and `scripts/firmware-daemon.mjs`:
-
-```
-docker run --rm -v "C:\path\to\kino d4:/project" -w /project/firmware/c6 espressif/idf:v5.5.1 idf.py set-target esp32c6 build
-```
-
-Output is `build/kino-c6.bin`.
-
-`CONFIG_APP_REPRODUCIBLE_BUILD=y`, so two clean builds of one commit produce
-byte-identical output — measured, not assumed. Note what "one commit" means
-here: `esp_app_desc.version` carries `git describe --always --tags --dirty`, so
-the `.bin` changes when HEAD moves even if nothing under `firmware/c6/` changed.
-That is source identity, not build-clock noise, and it is the property a bench
-record wants. Delete `build/` **and** `sdkconfig` between the two builds, or the
-comparison proves nothing.
-
-## C6 SDIO slave pinout
-
-Fixed in silicon. The C6's SDIO *slave* peripheral is not routable through the
-GPIO matrix — it is wired to IOMUX pads — so unlike everything in
-`firmware/p4/main/board_d4v1.h`, these numbers are not provisional and need no
-schematic. They are the reason this image can be written while the P4-side host
-cannot.
-
-| C6 signal | C6 pin |
+| | |
 |---|---|
-| `CLK` | `GPIO19` |
-| `CMD` | `GPIO18` |
-| `DAT0` | `GPIO20` |
-| `DAT1` | `GPIO21` |
-| `DAT2` | `GPIO22` |
-| `DAT3` | `GPIO23` |
+| `build/kino-c6.bin` | 1 105 872 bytes (1080 KB) |
+| `partitions_eh_cp_ota_4m.csv` slot | `0x1C0000` = 1 835 008 bytes (1792 KB) — fits, 39% headroom |
+| `partitions_eh_cp_ota_2m.csv` slot | `0xF0000` = 983 040 bytes (960 KB) — **does not fit**, over by 122 KB |
 
-Source: ESP32-C6 Technical Reference Manual, SDIO slave chapter. Mirrored in
-`main/board_c6.h`. `main/transport.c` configures none of them — see below.
+So if the module turns out to carry less than 4 MB, the answer is a different
+image (drop features, drop dual OTA), not a smaller partition table. Do not
+"fix" this by editing the CSV: those offsets are the coprocessor OTA contract
+and changing them invalidates every already-flashed unit.
 
-## The P4-side routing is unresolved
+## GATE 2 — prove recovery before the first flash write
 
-`firmware/C6_HARDWARE_MAP.md` is the record. In short: the carrier
-(Guition `JC4880P443C-I-W`) exposes five C6 header nets — `ESP_3V3`,
-`C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU` — and no P4 GPIO number is known
-for any of them. No SDIO or SPI transport pin is known at all, and it is not
-established that the carrier routes SDIO rather than SPI, or either.
+The C6 has no USB path this repo can rely on. Its console and download pins
+reach the carrier's 2×13 header as `C6_U0RXD`, `C6_U0TXD`, `C6_IO9` and
+`C6_CHIP_PU` (`packages/hardware-profiles/src/profiles/d4-v1.json`,
+`docs/HARDWARE.md`), so flashing is an **external USB-serial adapter**
+operation:
 
-So `main/transport.c` drives nothing. It logs the C6-side pads and returns
-`ESP_ERR_NOT_SUPPORTED`. Clocking an unrouted bus on `GPIO19`–`GPIO23` is not a
-missing feature, it is a board that stops booting predictably; the header
-neighbours of the C6 pins are lines the P4 firmware already drives.
-
-## Why no `esp_hosted` yet
-
-The intended architecture is Espressif's supported path: `esp_hosted` slave on
-the C6, `esp_wifi_remote` + `esp_hosted` host on the P4. No custom radio
-protocol. That is not what this image contains, and the reason is not the
-registry being unreachable — it was reachable, and `espressif/esp_hosted`
-resolves for `esp32c6`.
-
-`espressif/esp_hosted` (latest 0.0.10) ships the slave under `slave/` as a
-**standalone IDF project** — its own `CMakeLists.txt` with
-`project(network_adapter)`, its own `main/Kconfig.projbuild`, its own partition
-tables. It is not a component you can compose into another app. Adding it to
-this project as a managed dependency and registering its sources as `main` fails
-at configure time on two counts, both measured on IDF v5.5.1 / esp32c6:
-
-- **Kconfig collision.** The component's own root `Kconfig` (the host driver)
-  and `slave/main/Kconfig.projbuild` define the same symbols —
-  `ESP_HOST_INTERFACE`, `ESP_SPI_HOST_INTERFACE`, `ESP_SDIO_HOST_INTERFACE`,
-  `SPI_CONTROLLER`, `ESP_PKT_STATS` and dozens more, including whole `choice`
-  blocks. kconfiglib reports every one as "defined in multiple locations".
-- **A hard CMake error.** On a target with native Wi-Fi — which a slave chip is,
-  by definition — the component's root `CMakeLists.txt` takes its
-  `CONFIG_SOC_WIFI_SUPPORTED` branch, registers with no sources, and so becomes
-  an INTERFACE library. Its `idf_component_optional_requires(PRIVATE sdmmc)` at
-  line 64 then fails: "INTERFACE library can only be used with the INTERFACE
-  keyword of target_link_libraries". This fires as soon as
-  `CONFIG_ESP_SDIO_HOST_INTERFACE` is set, which the slave's Kconfig defaults to
-  `y` on the C6.
-
-The remaining route to a real hosted slave is to vendor Espressif's Apache-2.0
-sources into this repo, which needs a `REUSE.toml` entry and a licence decision
-outside this directory. Not done here.
-
-What is here instead is a seam. `main/transport.h` is the one place the slave
-transport replaces, and it carries the ordered steps. Nothing else in this image
-changes when it is closed.
-
-## Flashing
-
-Unresolved in practice, and worth stating plainly because it gates bench work
-even after the schematic arrives.
-
-The four C6 header nets `C6_U0RXD`, `C6_U0TXD`, `C6_IO9` and `C6_CHIP_PU` are
-exactly the set needed to flash and console a C6 from an external USB-serial
-adapter:
-
-| Header net | C6 pin | External adapter |
+| Header net | C6 pin | Adapter |
 |---|---|---|
 | `C6_U0RXD` | `U0RXD` | adapter TX |
 | `C6_U0TXD` | `U0TXD` | adapter RX |
-| `C6_IO9` | `GPIO9` | hold low at reset for download mode |
-| `C6_CHIP_PU` | `CHIP_PU` | reset / enable — **polarity and pull unrecorded** |
+| `C6_IO9` | `GPIO9` | pull LOW at reset to enter download mode |
+| `C6_CHIP_PU` | `CHIP_PU` | LOW = held off, HIGH = running |
+| `ESP_3V3` | supply | ground reference only — do not back-feed |
 
-Ground is common. Hold `C6_IO9` low, pulse `C6_CHIP_PU`, release `C6_IO9`, then:
+Sequence, and the order matters:
+
+1. Wire the adapter. **Do not write anything yet.**
+2. Read what is already there: `esptool.py --port <adapter> flash_id`, then
+   `read_flash` the factory image to a file and keep it. This board is publicly
+   reported to ship C6 firmware older than current hosts expect, and that
+   factory image is the only copy of it that will ever exist. Losing it removes
+   the ability to compare a working link against a broken one.
+3. `flash_id` also answers GATE 1.
+4. Prove the recovery path *works*, not just that it reads: erase and re-flash
+   the factory image you just saved, and confirm the module still boots. A
+   recovery path that has never been exercised is not a recovery path.
+5. Only then write this image.
+
+Whether the P4 can drive those four pins — the proxy that would make this a
+one-cable operation — needs P4-side GPIO numbers for them, which the repo does
+not record.
+
+## GATE 3 — the version-compatibility gate
+
+A version mismatch between host and coprocessor **presents as a transport
+problem, not a Wi-Fi problem**: no handshake, no link, no scan, and nothing on
+either console that says "versions". Expect to be misled by it.
+
+Three separate versions are in play. Keep them straight:
+
+| Version | Where it lives | What it gates |
+|---|---|---|
+| ESP-Hosted component | `dependencies.lock`, pinned `3.0.6` | the RPC wire and the SDIO framing |
+| C6 factory image | on the module now, **unread** | whether the board works before we touch it |
+| KINO repo version | `firmware/VERSION`, in the console banner | which commit built this image |
+
+Rules:
+
+- **The host and this coprocessor must be built from the same
+  `espressif/esp_hosted` version.** `main/idf_component.yml` pins `"3.0.6"`
+  exactly — not `"~3.0.6"` — so a patch release cannot move one side under a
+  regenerated lock file. When the version is bumped, bump the P4 host in the
+  same commit and reflash both.
+- The console banner reports the KINO version, not the protocol version. The
+  coprocessor reports its own firmware and RPC version to the host over RPC,
+  from inside the component. Do not use the banner to judge compatibility.
+- Do not flash over the factory image before reading it (GATE 2 step 2). A
+  factory image that answers a version handshake is information.
+
+## Pins
+
+### C6 side — fixed in silicon
+
+The SDIO **slave** pads are not routable through the C6's GPIO matrix. The
+component states this itself: in
+`coprocessor/eh_cp_transport/Kconfig.cp.sdio` each pin is declared
+`range N N if IDF_TARGET_ESP32C6` with the help text *"Value cannot be
+configured. Displayed for reference."* Confirmed in the generated `sdkconfig`
+of this project:
+
+| Signal | C6 GPIO |
+|---|---|
+| `CLK` | 19 |
+| `CMD` | 18 |
+| `D0` | 20 |
+| `D1` | 21 |
+| `D2` | 22 |
+| `D3` | 23 |
+
+`GPIO9` is the download strap (GATE 2). No firmware here drives it.
+
+### P4 side — from the hardware map
+
+Carrier routing, per `firmware/C6_HARDWARE_MAP.md` (identified, **not
+bench-proven**):
+
+| Signal | P4 GPIO | C6 GPIO |
+|---|---|---|
+| `D0` | 14 | 20 |
+| `D1` | 15 | 21 |
+| `D2` | 16 | 22 |
+| `D3` | 17 | 23 |
+| `CLK` | 18 | 19 |
+| `CMD` | 19 | 18 |
+| `EN` | 54 | `CHIP_PU` |
+
+`CLK` and `CMD` cross over — P4 `GPIO18` (clock) meets C6 `GPIO19`, P4 `GPIO19`
+(command) meets C6 `GPIO18`. The two chips number these functions in opposite
+order; it is not a transcription error.
+
+The P4 host must put the radio on **SDMMC slot 1** (GPIO matrix) and the microSD
+card on **slot 0** (IOMUX pads 39-44). One controller, two slots, shared clock
+tree and DMA. See the slot-allocation section of the hardware map.
+
+This project does not configure any P4 pin and cannot get the P4 side wrong.
+`CONFIG_EH_TRANSPORT_CP_SDIO_GPIO_RESET` is left at `-1`, meaning the
+coprocessor is reset through its own `EN`/`CHIP_PU` line rather than a spare
+GPIO — which is what P4 `GPIO54` drives. `CHIP_PU` polarity on this carrier is
+**unconfirmed**; see "GPIO54 semantics" in the hardware map before driving it.
+
+## Build
+
+```bash
+docker run --rm -v "$PWD:/project" -w /project/firmware/c6 \
+  espressif/idf:v5.5.1 idf.py build
+```
+
+`espressif/idf:v5.5.1` is the one canonical environment
+(`docs/FIRMWARE_BUILDER.md`), and `esp_hosted` 3.0.6 requires IDF ≥ 5.5. Output
+is `build/kino-c6.bin`. CI builds this project in the `idf-build` matrix and
+builds it twice in the `reproducible` job
+(`.github/workflows/firmware.yml`); no workflow change was needed for this
+rewrite.
+
+On Windows, build inside the container's own filesystem rather than the bind
+mount — object files go missing under parallel ninja on a Windows mount, which
+is a host filesystem problem and not a build one.
+
+`CONFIG_APP_REPRODUCIBLE_BUILD=y`: two clean builds of one commit produce the
+same `.bin`, so a hash in a bench record identifies the source that made it.
+Measured on this tree (`rm -rf build sdkconfig` between builds):
 
 ```
-python -m esptool --chip esp32c6 -p PORT -b 460800 write_flash 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/kino-c6.bin
+bytes:  1105872
+sha256: 5d98256bc901dfd0f9d788a0c4e8d779e49286366a61619b35a6010dfbe0abb8
 ```
 
-Two things this cannot tell you. The P4 GPIO numbers behind those four nets are
-unknown, so the P4 cannot act as a flashing proxy and no proxy is implemented —
-building one against guessed pins has the same failure mode as the transport
-itself. And `C6_CHIP_PU` polarity is unmeasured, so the reset sequence above is
-the usual arrangement for an ESP32, not this board's confirmed one.
+## Configuration worth knowing
 
-Flash size is left at the IDF default of 2 MB. The C6 module's part number is
-not recorded anywhere in this repo (`docs/HARDWARE.md:47` says only
-"ESP32-P4 + ESP32-C6"), and a configured flash size larger than the die actually
-has produces an image that flashes and then fails to boot. 2 MB is the smallest
-C6 configuration, so it is the one that cannot be wrong. Raise it once the
-module is identified.
+Defaults inherited from the component that will matter at the bench:
 
-## Layout
+| Symbol | Value | Note |
+|---|---|---|
+| `EH_TRANSPORT_CP_SDIO_MODE_SW_AGGR` | `y` | software frame aggregation. Needs a host that negotiates it — an `esp_hosted` 3.x host does; an old factory image may not. |
+| `EH_TRANSPORT_CP_SDIO_PSEND_PSAMPLE` | `y` | slave timing. **First thing to try** if the link enumerates but transfers corrupt: the component offers three other edge combinations. |
+| `EH_TRANSPORT_CP_SDIO_HIGH_SPEED` | `y` | actual speed is whatever the P4's SDMMC controller negotiates. |
+| `EH_TRANSPORT_CP_SDIO_CHECKSUM` | `n` | upstream default. The coprocessor advertises its choice and the host mirrors it, so this is the single control point. |
+| `BT_ENABLED` | `n` | no D4 Bluetooth feature; the controller costs flash in an image that must fit an OTA slot. |
+
+## Files
 
 ```
-CMakeLists.txt        project(kino-c6); no EXTRA_COMPONENT_DIRS, on purpose
-sdkconfig.defaults    every non-default line carries its reason
-dependencies.lock     pins what a clean build fetches (issue #90)
-main/main.c           app_main: NVS, radio, host link, banner
-main/identity.h       version and banner format, read from firmware/VERSION
-main/board_c6.h       SDIO slave pads, fixed in silicon
-main/radio.c/.h       Wi-Fi station init and one scan
-main/transport.c/.h   THE SEAM — host link, not routed
+CMakeLists.txt                  project, no EXTRA_COMPONENT_DIRS
+sdkconfig.defaults              role, transport, flash size, partitions
+partitions_eh_cp_ota_4m.csv     Espressif's, Apache-2.0, vendored verbatim
+dependencies.lock               pins esp_hosted 3.0.6 by content hash
+main/idf_component.yml          the exact-version pin and why
+main/CMakeLists.txt             reads firmware/VERSION into the banner
+main/main.c                     NVS, event loop, one console line
+main/identity.h                 banner keys
 ```
 
-`build/`, `sdkconfig` and `managed_components/` are ignored by the repo root
-`.gitignore` via its `firmware/*/` rules, the same as `p4/` and `camnode/`.
-Neither of those carries a `.gitignore` of its own, and neither does this one.
+`radio.c/h`, `transport.c/h` and `board_c6.h` were deleted in the rewrite. The
+first four were a bespoke Wi-Fi STA app and a hand-rolled host-link seam, both
+superseded by the component; keeping them alongside ESP-Hosted would be a
+second networking path. `board_c6.h` held the six SDIO pin numbers that the
+component now declares and enforces itself — the table above is the record, and
+a duplicate set of `#define`s nothing includes is only somewhere to drift.
+
+## Reference
+
+The authoritative model for this project is, inside the resolved component:
+
+```
+esp_hosted/examples/mcu_hosted_sdio_sdmmc_combined/cp/
+```
+
+An SDIO coprocessor sharing one SDMMC controller with an SD card — the D4's
+exact case. Its README states the allocation in the same terms the hardware map
+does, and its host half scans Wi-Fi before *and* after filesystem I/O
+specifically to prove the radio survives card init. That is the coexistence
+check to run at the bench.
