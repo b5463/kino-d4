@@ -54,3 +54,5 @@ infra/backups/
 firmware/p4/host_preview/preview
 firmware/p4/host_preview/preview.exe
 firmware/p4/host_preview/*.ppm
+firmware/p4/host_tests/test_pure
+firmware/p4/host_tests/test_pure.exe
