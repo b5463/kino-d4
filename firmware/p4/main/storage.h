@@ -51,6 +51,98 @@ typedef struct {
 void storage_self_test(storage_selftest_result_t *out);
 const char *storage_selftest_phase_str(storage_selftest_phase_t phase);
 
+/* ------------------------------------------------------------------ */
+/* Throughput benchmark (KDP STORAGE_BENCH, 0x4c)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Where a benchmark run stopped.
+ *
+ * Deliberately a superset of storage_selftest_phase_t's vocabulary rather than
+ * a parallel error architecture: the two share the same phases where they do
+ * the same work, and the extra rows are phases the self-test does not have
+ * (flush, fsync, close and cleanup are collapsed into WRITE/REMOVE there).
+ * A failing phase is the whole diagnostic value of this command — "slow" and
+ * "did not finish" are different problems.
+ */
+typedef enum {
+  STORAGE_BENCH_OK = 0,
+  STORAGE_BENCH_NOT_MOUNTED,
+  STORAGE_BENCH_BAD_REQUEST,
+  STORAGE_BENCH_OUT_OF_MEMORY,
+  STORAGE_BENCH_OPEN_FAILED,
+  STORAGE_BENCH_WRITE_FAILED,
+  STORAGE_BENCH_FLUSH_FAILED,
+  STORAGE_BENCH_FSYNC_FAILED,
+  STORAGE_BENCH_CLOSE_FAILED,
+  STORAGE_BENCH_READ_FAILED,
+  STORAGE_BENCH_CRC_MISMATCH,
+  STORAGE_BENCH_SHORT_READ,
+  /* The data verified but the temp file could not be removed. Reported rather
+   * than swallowed: a benchmark that silently leaves a megabyte behind on
+   * every run is a benchmark that fills the card it is measuring. */
+  STORAGE_BENCH_CLEANUP_FAILED,
+} storage_bench_phase_t;
+
+const char *storage_bench_phase_str(storage_bench_phase_t phase);
+
+/** One measured pass at one size. */
+typedef struct {
+  uint32_t bytes;
+  uint32_t write_ms;
+  uint32_t read_ms;
+  uint32_t write_bytes_per_sec;
+  uint32_t read_bytes_per_sec;
+  uint32_t crc_written;
+  uint32_t crc_read;
+  bool crc_match;
+  /* Per-chunk write latency, measured with esp_timer around each fwrite.
+   * worst_us is the number that decides a four-frame burst: the burst stalls
+   * on its single worst block, and a mean hides exactly the event that drops
+   * a frame. */
+  uint32_t chunk_bytes;
+  uint32_t chunks;
+  uint32_t worst_write_chunk_us;
+  uint32_t best_write_chunk_us;
+  uint32_t mean_write_chunk_us;
+  uint32_t p95_write_chunk_us;
+} storage_bench_pass_t;
+
+typedef struct {
+  bool ok;
+  storage_bench_phase_t failed_phase;
+  uint32_t passes;
+  /* The sustained run, which is what the contract's writeMBs/readMBs and
+   * worstBlockMs/p95BlockMs report. */
+  storage_bench_pass_t sustained;
+  /* A 64 KiB run alongside it, the same size STORAGE_SELF_TEST uses, so the
+   * two commands are directly comparable on the same card. A card that passes
+   * the self-test and collapses at a megabyte is a card we want to know about
+   * before a four-frame burst finds out. */
+  storage_bench_pass_t small;
+  bool cleanup_ok;
+  uint32_t total_ms;
+} storage_bench_result_t;
+
+/**
+ * Measure sustained write/read throughput and per-block write latency.
+ *
+ * Non-destructive and bounded. Writes one temp file under /KINO with an
+ * unmistakably temporary name, verifies it by CRC-32 read-back, and removes
+ * it. Existing card data is never touched and no capture directory is
+ * involved — a benchmark that wrote into /KINO/CAPTURES would be
+ * indistinguishable from a capture to every reader of the card.
+ *
+ * `size_kb` and `block_kb` are clamped to a sane bounded range so a host
+ * cannot ask the device to fill the card or to allocate an absurd buffer.
+ * Chunked I/O throughout: the largest allocation is one block, not one file.
+ *
+ * Throughput is never reported as a success unless the read-back CRC matched.
+ * A fast wrong answer is worse than a slow right one.
+ */
+void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
+                   storage_bench_result_t *out);
+
 /** Frames a capture folder can hold: one per camera. */
 #define STORAGE_CAPTURE_FRAMES 4
 
