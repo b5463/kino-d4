@@ -3,10 +3,18 @@
 // background work arrives with the capture coordinator in milestone 2.
 #include <stdio.h>
 
+#include "audio.h"
+#include "buttons.h"
 #include "cam_link.h"
+#include "capture.h"
+#include "gallery.h"
+#include "thumb.h"
+#include "clock.h"
+#include "config_store.h"
 #include "display.h"
 #include "touch.h"
 #include "ui.h"
+#include "viewfinder.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
@@ -16,9 +24,18 @@
 #include "klog.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "power.h"
 #include "storage.h"
 
 static const char *TAG = "kino_p4";
+
+/* A capture just landed, so the card has something new on it. Rescanning here
+ * rather than on a timer means the picture is already decoded by the time
+ * anyone opens the gallery to look for it. */
+static void gallery_on_capture(const capture_report_t *r) {
+  (void)r;
+  gallery_refresh();
+}
 
 static uint32_t next_boot_count(void) {
   nvs_handle_t nvs;
@@ -35,24 +52,47 @@ static uint32_t next_boot_count(void) {
 
 // Keep CAM1 identity fresh: probe every 2 s while offline, every 10 s while
 // online. GET_CAMERA_INFO reads the cached result instead of blocking.
+/**
+ * Keep every camera's online state current, not just CAM1's.
+ *
+ * This used to greet CAM1 alone, which was right when one node was all the
+ * harness had. It stopped being right the moment a capture asked which
+ * cameras to fire: a channel that has never been greeted reports offline, so
+ * a body with four nodes wired would have taken a one-frame photograph and
+ * called three cameras missing. The viewfinder happens to exercise all four,
+ * but only while its screen is showing, which is not a state the shutter can
+ * depend on.
+ *
+ * Channels are greeted in turn rather than at once. Four HELLOs on four UARTs
+ * would be faster and would also mean four timeouts landing together every
+ * two seconds on a bench unit with one node fitted.
+ */
 static void cam_probe_task(void *arg) {
   (void)arg;
-  bool was_online = false;
+  bool was_online[CAMLINK_CAMS] = {false};
   for (;;) {
-    esp_err_t err = camlink_hello();
-    bool online = err == ESP_OK;
-    if (online != was_online) {
-      camlink_info_t info;
-      camlink_get_info(&info);
+    int online_count = 0;
+    for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
+      const bool online = camlink_hello_ch(cam) == ESP_OK;
+      if (online) online_count++;
+      if (online == was_online[cam]) continue;
+
+      char tag[4];
+      snprintf(tag, sizeof tag, "C%d", cam + 1);
       if (online) {
-        klog("C1", "node online — fw %s, sensor %s, boot %s", info.firmware,
+        camlink_info_t info;
+        camlink_get_info_ch(cam, &info);
+        klog(tag, "node online — fw %s, sensor %s, boot %s", info.firmware,
              info.sensor_detected ? info.sensor : "none", info.reset_reason);
       } else {
-        klog("C1", "node offline — stopped answering");
+        klog(tag, "node offline — stopped answering");
       }
-      was_online = online;
+      was_online[cam] = online;
     }
-    vTaskDelay(pdMS_TO_TICKS(online ? 10000 : 2000));
+    /* Slow down once anything has answered. A body that is up needs its
+     * cameras confirmed occasionally; an empty bench harness needs a retry
+     * often enough that plugging a node in feels immediate. */
+    vTaskDelay(pdMS_TO_TICKS(online_count > 0 ? 10000 : 2000));
   }
 }
 
@@ -63,6 +103,10 @@ void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
   }
 
+  /* Settings load before any subsystem reads one. Power management, the UI
+   * and the KDP config commands all sit on top of this. */
+  config_init();
+
   kdp_identity_t id;
   uint8_t mac[6] = {0};
   esp_efuse_mac_get_default(mac);
@@ -71,6 +115,10 @@ void app_main(void) {
   snprintf(id.session_id, sizeof id.session_id, "boot-%lu",
            (unsigned long)next_boot_count());
 
+  /* The clock before anything that timestamps: config_init is settings only,
+   * but the first capture can happen the moment KDP is up. */
+  clock_init();
+
   klog_init();
   klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
   ESP_LOGI(TAG, "P4_BOOT %s serial %s session %s transport usb-serial-jtag",
@@ -78,6 +126,25 @@ void app_main(void) {
   hwv_init();
   storage_init(); /* mount failure is a reported state, not a boot failure */
   ESP_ERROR_CHECK(camlink_init());
+
+  /* Capture before the KDP server, because CAMERA_CAPTURE is dispatched the
+   * instant the server is listening and a NACK saying "not ready" on the
+   * first frame after boot would be this firmware's own fault. */
+  /* Thumbnails are optional: a camera whose JPEG codec will not start still
+   * takes and stores photographs, and every reader treats a missing
+   * THUMB.JPG as absent rather than as damage. */
+  esp_err_t th_err = thumb_init();
+  if (th_err != ESP_OK) {
+    ESP_LOGW(TAG, "thumbnails unavailable: %s - captures are unaffected",
+             esp_err_to_name(th_err));
+  }
+
+  esp_err_t cap_err = capture_init(id.device_id);
+  if (cap_err != ESP_OK) {
+    ESP_LOGE(TAG, "capture unavailable: %s - the camera cannot take pictures",
+             esp_err_to_name(cap_err));
+  }
+
   esp_err_t kdp_err = kdp_server_start(&id);
   if (kdp_err != ESP_OK) {
     // No silent boot hang: the device keeps running, the console says why
@@ -100,6 +167,28 @@ void app_main(void) {
              esp_err_to_name(lcd_err));
   } else {
     display_test_pattern();
+    /* Audio BEFORE touch, and the order is load-bearing.
+     *
+     * The ES8311 shares one I2C bus with the GT911, and the touch driver
+     * starts a task that polls it every 20 ms. Bringing the codec up behind
+     * that failed every transaction with a NACK at 0x18, while a bus scan on
+     * a quiet bus saw 0x18 answer perfectly well. The codec gets the bus
+     * while it is still calm; the touch poll can contend with nothing
+     * afterwards.
+     *
+     * A camera with no sound is still a camera, so failure is reported and
+     * ignored rather than gating the screen. */
+    esp_err_t au_err = audio_init();
+    if (au_err != ESP_OK) ESP_LOGE(TAG, "audio unavailable: %s", esp_err_to_name(au_err));
+
+#if KINO_AUDIO_CALIBRATE
+    /* Bench only. Plays a dozen sounds into the mic and prints the measured
+     * levels, which is how the shutter and tick levels were chosen instead of
+     * guessed at. Set KINO_AUDIO_CALIBRATE to 0 in audio.h for normal builds -
+     * it adds several seconds to boot and is loud. */
+    audio_calibrate();
+#endif
+
     /* Touch only after the panel is drawable: a touch report is only
      * meaningful once there is something on screen to have touched. */
     esp_err_t tp_err = touch_init();
@@ -107,11 +196,35 @@ void app_main(void) {
       ESP_LOGE(TAG, "touch unavailable: %s - the panel and KDP are unaffected",
                esp_err_to_name(tp_err));
     }
+
+    /* The gallery after the card and the codec, before the UI can show it.
+     * Its own failure costs the gallery screen and nothing else. */
+    esp_err_t gal_err = gallery_init();
+    if (gal_err != ESP_OK) ESP_LOGE(TAG, "gallery unavailable: %s", esp_err_to_name(gal_err));
+    else capture_on_done(gallery_on_capture);
+
+    /* The viewfinder before the UI: the first screen the UI draws is the
+     * viewfinder, and a pane that reports NO LINK because the module has not
+     * started yet is indistinguishable from one that reports it because the
+     * harness is unplugged. */
+    esp_err_t vf_err = viewfinder_init();
+    if (vf_err != ESP_OK) ESP_LOGE(TAG, "viewfinder unavailable: %s", esp_err_to_name(vf_err));
+
     /* The UI replaces the test pattern once both are up. It runs without
      * touch too - a screen that shows the camera's state is worth having
      * even if nothing can be pressed. */
     esp_err_t ui_err = ui_start();
     if (ui_err != ESP_OK) ESP_LOGE(TAG, "ui unavailable: %s", esp_err_to_name(ui_err));
+
+    /* Power management last, and only with a panel: its whole job is turning
+     * the backlight off, which is meaningless without one. */
+    /* Physical controls, after the UI has registered what a press does. */
+    esp_err_t btn_err = buttons_init();
+    if (btn_err != ESP_OK) ESP_LOGE(TAG, "buttons unavailable: %s", esp_err_to_name(btn_err));
+
+    esp_err_t pw_err = power_init();
+    if (pw_err != ESP_OK) ESP_LOGE(TAG, "power management unavailable: %s",
+                                   esp_err_to_name(pw_err));
   }
 
   ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s, display %s", KINO_FW_VERSION,

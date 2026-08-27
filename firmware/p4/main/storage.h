@@ -51,16 +51,42 @@ typedef struct {
 void storage_self_test(storage_selftest_result_t *out);
 const char *storage_selftest_phase_str(storage_selftest_phase_t phase);
 
+/** Frames a capture folder can hold: one per camera. */
+#define STORAGE_CAPTURE_FRAMES 4
+
 typedef struct {
-  char id[16];   /* "TC_000042" — NVS sequence, never reused across boots */
+  char id[16];   /* "CAP_000042" — NVS sequence, never reused across boots */
   char dir[64];  /* "/sdcard/KINO/CAPTURES/<uuid>" */
-  FILE *jpg;
+  FILE *jpg;     /* the frame currently open for writing, NULL between frames */
+  int open_cam;  /* which camera that frame belongs to, -1 when none is open */
+  uint8_t written; /* bitmask of cameras whose frame reached the card */
 } storage_capture_t;
 
-/** Opens <dir>/C1.JPG for writing under the capture's UUID folder. */
+/**
+ * Create the capture folder and claim an id.
+ *
+ * `id_prefix` separates what a folder is for at a glance on the card: "CAP"
+ * for a picture someone took, "TC" for a bench capture from CAMERA_TEST or a
+ * soak run. They share the sequence, so the number is still unique and still
+ * monotonic across the whole card.
+ *
+ * No file is opened; a capture may hold up to STORAGE_CAPTURE_FRAMES frames
+ * and does not know yet which cameras will answer.
+ */
+esp_err_t storage_capture_open(storage_capture_t *c, const char *capture_uuid,
+                               const char *id_prefix);
+/** Opens <dir>/C<cam+1>.JPG. One frame is open at a time. */
+esp_err_t storage_capture_frame_begin(storage_capture_t *c, int cam);
+/** Flushes and closes the open frame. The bytes are on the card once this
+ * returns ESP_OK; the capture is not committed until META.JSON is written. */
+esp_err_t storage_capture_frame_end(storage_capture_t *c);
+
+/** open() + frame_begin(cam 0) with the "TC" prefix - the single-camera bench
+ * path, unchanged. */
 esp_err_t storage_capture_begin(storage_capture_t *c, const char *capture_uuid);
 esp_err_t storage_capture_append(storage_capture_t *c, const uint8_t *data, size_t len);
-/** Flushes C1.JPG and writes META.JSON. The capture exists once this returns. */
+/** Closes any open frame and writes META.JSON. The capture exists once this
+ * returns: META.JSON is what makes a folder of JPEGs a capture. */
 esp_err_t storage_capture_commit(storage_capture_t *c, const char *meta_json);
 void storage_capture_abort(storage_capture_t *c);
 

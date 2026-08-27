@@ -402,6 +402,12 @@ export class MockKinoDevice implements MockDeviceLike {
   private readonly deviceId = 'kino-000012';
   private bootCount = 1;
   private sessionId = 'boot-1';
+
+  /* What this device's clock is worth. `unset` until a host sends its wall
+   * clock on HELLO, which is the only way a body with no RTC ever learns the
+   * date. A reboot puts it back to `persisted`, matching firmware: the stored
+   * time survives, its accuracy does not. */
+  private clockSource: 'host' | 'persisted' | 'unset' = 'unset';
   // KINO Twin §11/§13 identity override, DEVICE_INFO only — HELLO always
   // answers product 'KINO' (apps/studio session.ts rejects anything else).
   private identity = { serial: 'KINO000012', hardwareRevision: 'V1', product: 'KINO' };
@@ -648,6 +654,7 @@ export class MockKinoDevice implements MockDeviceLike {
   restartSessionInPlace(reason = 'soft-restart'): void {
     this.bootCount++;
     this.sessionId = `boot-${this.bootCount}`;
+    if (this.clockSource === 'host') this.clockSource = 'persisted';
     this.jobs.clear();
     this.resetReason = reason;
     this.emitTelemetry({ t: 'reboot', sessionId: this.sessionId, reason });
@@ -2038,7 +2045,20 @@ export class MockKinoDevice implements MockDeviceLike {
           this.scenarioCb?.();
           return;
         }
-        const req = decodeJson<{ nonce?: number }>(frame.payload);
+        const req = decodeJson<{ nonce?: number; hostEpochMs?: number; hostUtcOffsetMin?: number }>(
+          frame.payload,
+        );
+        /* Take the host's clock the same way firmware does, including the
+         * same sanity bound. A device with no RTC has no other source, and a
+         * host sending seconds where milliseconds were meant would otherwise
+         * date every capture to 1970 and persist it. */
+        if (
+          typeof req.hostEpochMs === 'number' &&
+          req.hostEpochMs >= 1577836800000 &&
+          req.hostEpochMs <= 4102444800000
+        ) {
+          this.clockSource = 'host';
+        }
         // 04 §4: selected protocol, nonce echo, device ID, boot/session ID.
         //
         // A device that selects a protocol outside the offered range is the
@@ -2051,6 +2071,7 @@ export class MockKinoDevice implements MockDeviceLike {
           nonce: req.nonce,
           deviceId: this.deviceId,
           sessionId: this.sessionId,
+          clockSource: this.clockSource,
         });
         return;
       }
@@ -2935,11 +2956,19 @@ export class MockKinoDevice implements MockDeviceLike {
           return;
         }
         case Cmd.MEDIA_THUMB: {
-          const { id } = decodeJson<{ id: string }>(frame.payload);
-          const bytes = await this.media.thumb(id);
-          if (!bytes) this.respondError(frame, 'NOT_FOUND', `No capture ${id}`);
+          /* Paged exactly like MEDIA_READ. A thumbnail is small but not
+           * bounded: a noisy 320x240 frame can encode past MAX_PAYLOAD, and a
+           * reply that silently did not fit would reach the client as a
+           * truncated JPEG rather than as an error. Omitting offset and
+           * length still asks for the first page, so a caller that knows its
+           * thumbnails are small needs no extra round trip. */
+          const req = decodeJson<{ id: string; offset?: number; length?: number }>(frame.payload);
+          const bytes = await this.media.thumb(req.id);
+          if (!bytes) this.respondError(frame, 'NOT_FOUND', `No capture ${req.id}`);
           else {
-            this.respondBytes(frame, bytes);
+            const offset = Math.max(0, req.offset ?? 0);
+            const length = Math.min(Math.max(1, req.length ?? 8192), 8192);
+            this.respondBytes(frame, bytes.subarray(offset, Math.min(offset + length, bytes.length)));
             this.emitTelemetry({ t: 'sd', activity: 'read' });
           }
           return;

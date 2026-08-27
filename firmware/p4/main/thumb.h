@@ -1,0 +1,68 @@
+/**
+ * THUMB.JPG: the small picture a gallery can actually show.
+ *
+ * A capture folder holds up to four UXGA frames of 200-400 KB each. Drawing a
+ * grid of those means decoding 1.9 megapixels per tile, and shipping one to a
+ * host over USB to fill a 96-pixel square wastes about 99% of the transfer.
+ * So every capture writes one 320x240 thumbnail beside its frames.
+ *
+ * It is made once, at capture time, from the frame already in memory — never
+ * on demand from the card. Doing it per request would put a full decode on
+ * the path of every gallery scroll, and doing it lazily would make the first
+ * scroll after a shoot the slowest one.
+ *
+ * The whole path is hardware: the JPEG codec decodes, the PPA scales, the
+ * codec encodes again. On this part that is single-digit milliseconds against
+ * roughly a second in software, which is the difference between a shutter
+ * that feels immediate and one that does not.
+ */
+#ifndef KINO_THUMB_H
+#define KINO_THUMB_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "esp_err.h"
+
+/*
+ * The box a thumbnail fits inside, not the size it comes out.
+ *
+ * The PPA scales in sixteenths, so a 1600-wide frame reduces by 3/16 and not
+ * by the 0.2 that would land on exactly 320 - it comes out 300x225. Rounding
+ * up instead would overflow the box, and resampling afterwards to hit a round
+ * number would spend a second of CPU to make a 320-pixel picture out of a
+ * 300-pixel one. Readers take the size from the JPEG, which is where a JPEG's
+ * size has always come from.
+ */
+#define THUMB_MAX_W 320
+#define THUMB_MAX_H 240
+
+/** Starts the codec engines. Failure is not fatal to a capture: a camera that
+ * cannot make thumbnails still takes photographs, and every reader treats a
+ * missing THUMB.JPG as absent rather than broken. */
+esp_err_t thumb_init(void);
+bool thumb_ready(void);
+
+/**
+ * Decode `jpeg`, scale it to fit THUMB_MAX_W x THUMB_MAX_H and write `path`.
+ *
+ * `jpeg` is the full-size frame as it came off the node — the same buffer
+ * that is about to be written to the card, so no file is read back.
+ */
+esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path);
+
+/**
+ * Decode a stored JPEG into an RGB565 tile, scaled to fit and centred.
+ *
+ * The on-device gallery draws through this. `tile` must hold tile_w * tile_h
+ * pixels; the parts the picture does not cover are filled with `pad` so a
+ * 4:3 frame in a squarer tile has a deliberate border rather than whatever
+ * was in the buffer before.
+ *
+ * Reads THUMB.JPG happily, and a full-size frame just as happily - a capture
+ * from firmware that had no thumbnails is slower to show, not unshowable.
+ */
+esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad);
+
+#endif

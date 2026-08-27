@@ -36,6 +36,17 @@ typedef enum {
   HWV_CAM1_CAPTURE,
   HWV_CAM1_JPEG_TRANSFER,
   HWV_CAM1_SD_WRITE,
+  /* The body: everything the camera is made of besides the camera. Each of
+   * these flips on the same terms as the rest - the real event, on this
+   * unit. A panel that initialised is not a panel that lit; a codec that
+   * answered on I2C is not an amplifier that drove a speaker. */
+  HWV_DSI_PANEL_ST7701,
+  HWV_BACKLIGHT_GPIO23,
+  HWV_I2C_SHARED_BUS,
+  HWV_TOUCH_GT911,
+  HWV_AUDIO_ES8311,
+  HWV_AUDIO_AMP_GPIO11,
+  HWV_CAM_PWR_EN_GPIO31,
   HWV_COUNT,
 } hwv_item_t;
 

@@ -1,3 +1,4 @@
+import { FIRMWARE_PROFILES } from '@kino/test-fixtures';
 import { useState } from 'react';
 import { rebootDevice, setFlashEnabled, useSimStore } from '../state/simStore';
 import kinoD4Twin from '../assets/kino-d4-twin-light.png';
@@ -51,10 +52,18 @@ export function Header() {
         : 'Fires a four-lens capture over KDP';
 
   const flashOn = snapshot?.flashEnabled ?? false;
-  const m1bProfile = snapshot?.firmwareProfile === 'd4-m1b';
-  const flashBlocked = linkBlocked || m1bProfile || busy !== null;
-  const flashHint = m1bProfile
-    ? 'Firmware 0.1.0 has no config surface — flash control arrives with a later milestone'
+  /* Gated on the capability, not on the profile's name.
+   *
+   * This used to test `firmwareProfile === 'd4-m1b'` and say "0.1.0 has no
+   * config surface". 0.2.0 has one — SET_CONFIG works — and flash control is
+   * still absent for an unrelated reason: no firmware drives the LED yet.
+   * Asking the capability keeps the button and its explanation true as each
+   * of those changes independently. */
+  const profileCaps = snapshot ? FIRMWARE_PROFILES[snapshot.firmwareProfile]?.capabilities : undefined;
+  const flashUnsupported = profileCaps ? profileCaps.flashControl !== true : false;
+  const flashBlocked = linkBlocked || flashUnsupported || busy !== null;
+  const flashHint = flashUnsupported
+    ? 'This firmware advertises no flashControl capability — the LED has no driver yet'
     : studioConnected
       ? 'Studio owns the link — change flash from Studio'
       : 'SET_CONFIG wiggle.flash over KDP';

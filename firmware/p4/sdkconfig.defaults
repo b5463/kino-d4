@@ -23,6 +23,13 @@ CONFIG_SPIRAM_SPEED_80M=y
 # with a continuous, unforgiving read rate.
 CONFIG_CACHE_L2_CACHE_256KB=y
 
+# The board's flash is a Boya part. Without this the generic driver is used,
+# which works but cannot do chip-specific operations correctly - and this is
+# the same flash whose block-protection bits silently swallowed three writes
+# during bring-up, so it is worth the driver actually knowing what it is
+# talking to.
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
+
 # Console stays on UART0 (GPIO37/38 on this board). KDP owns USB-Serial-JTAG
 # exclusively so log output can never interleave into a frame mid-session.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y

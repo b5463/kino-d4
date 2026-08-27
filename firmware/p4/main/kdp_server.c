@@ -11,6 +11,12 @@
 #include <time.h>
 
 #include "cam_link.h"
+#include "capture.h"
+#include "clock.h"
+#include <dirent.h>
+#include <sys/stat.h>
+
+#include "config_store.h"
 #include "cJSON.h"
 #include "driver/temperature_sensor.h"
 #include "esp_heap_caps.h"
@@ -28,6 +34,7 @@
 #include "kdp/protocol.h"
 #include "klog.h"
 #include "node_link/node_link.h"
+#include "power.h"
 #include "storage.h"
 #include "usb_link.h"
 
@@ -73,24 +80,6 @@ static const char *reset_reason_str(void) {
 static uint32_t heap_kb(void) { return (uint32_t)(esp_get_free_heap_size() / 1024); }
 static uint32_t psram_kb(void) {
   return (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
-}
-
-static void iso8601_utc(char *out, size_t cap) {
-  time_t now = time(NULL);
-  struct tm tm_utc;
-  gmtime_r(&now, &tm_utc);
-  strftime(out, cap, "%Y-%m-%dT%H:%M:%S+00:00", &tm_utc);
-}
-
-static void uuid4(char *out, size_t cap) {
-  uint8_t b[16];
-  esp_fill_random(b, sizeof b);
-  b[6] = (b[6] & 0x0F) | 0x40;
-  b[8] = (b[8] & 0x3F) | 0x80;
-  snprintf(out, cap,
-           "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-           b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11],
-           b[12], b[13], b[14], b[15]);
 }
 
 static uint32_t elapsed_ms(int64_t since_us) {
@@ -188,9 +177,10 @@ static char *build_meta_json(const capture_result_t *r, const char *node_fw) {
   cJSON_AddStringToObject(json, "deviceId", s_id.device_id);
   cJSON_AddStringToObject(json, "mode", "single");
   char stamp[40];
-  iso8601_utc(stamp, sizeof stamp);
+  clock_iso8601(stamp, sizeof stamp);
   cJSON_AddStringToObject(json, "capturedAt", stamp);
-  cJSON_AddBoolToObject(json, "clockUnset", true);
+  cJSON_AddNumberToObject(json, "capturedAtMs", (double)clock_now_ms());
+  cJSON_AddStringToObject(json, "clockSource", clock_source_str());
   cJSON_AddNumberToObject(json, "frameCount", 1);
   cJSON_AddStringToObject(json, "resolution", CAPTURE_RESOLUTION);
   cJSON_AddStringToObject(json, "status", "ready");
@@ -357,7 +347,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   hwv_mark_validated(HWV_CAM1_JPEG_TRANSFER, "transfer CRC matched node CRC");
 
   // SD write.
-  uuid4(r->capture_uuid, sizeof r->capture_uuid);
+  capture_uuid4(r->capture_uuid, sizeof r->capture_uuid);
   int64_t t_sd = esp_timer_get_time();
   storage_capture_t capture;
   if (storage_capture_begin(&capture, r->capture_uuid) != ESP_OK) {
@@ -432,6 +422,20 @@ static void handle_hello(uint32_t seq, cJSON *req) {
     return;
   }
 
+  /* Take the host's clock if it offered one.
+   *
+   * The D4 has no RTC and no network, so this is the only way it ever learns
+   * the date. HELLO is the right carrier because it is the first thing every
+   * host sends and the only one guaranteed to arrive before a capture can.
+   * Both fields are optional and additive: a host that omits them gets the
+   * same reply it always did, and the camera keeps saying its timestamps are
+   * unset rather than pretending otherwise. */
+  const cJSON *host_ms = cJSON_GetObjectItem(req, "hostEpochMs");
+  if (cJSON_IsNumber(host_ms)) {
+    const cJSON *off = cJSON_GetObjectItem(req, "hostUtcOffsetMin");
+    clock_set((int64_t)host_ms->valuedouble, cJSON_IsNumber(off) ? off->valueint : 0);
+  }
+
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "product", "KINO");
   cJSON_AddNumberToObject(json, "protocol", KDP_PROTOCOL_VERSION);
@@ -439,6 +443,9 @@ static void handle_hello(uint32_t seq, cJSON *req) {
   if (cJSON_IsNumber(nonce)) cJSON_AddNumberToObject(json, "nonce", nonce->valuedouble);
   cJSON_AddStringToObject(json, "deviceId", s_id.device_id);
   cJSON_AddStringToObject(json, "sessionId", s_id.session_id);
+  /* So a host can see whether its clock was taken, and whether this camera
+   * needs one at all. */
+  cJSON_AddStringToObject(json, "clockSource", clock_source_str());
   send_json(KDP_CMD_HELLO, seq, json);
 }
 
@@ -452,13 +459,38 @@ static void handle_capabilities(uint32_t seq) {
   // Milestone 1B surface this build actually implements.
   cJSON *caps = cJSON_AddObjectToObject(json, "capabilities");
   cJSON_AddNumberToObject(caps, "cameraCount", 4);
-  const char *flags[] = {"wiggle", "quad",           "gallery",     "flashControl",
-                         "vsyncTelemetry", "phaseCalibration", "xiaoProxyUpdate",
+  const char *flags[] = {"vsyncTelemetry", "phaseCalibration", "xiaoProxyUpdate",
                          "linkBench",      "customSounds"};
   for (size_t i = 0; i < sizeof flags / sizeof flags[0]; i++) {
     cJSON_AddBoolToObject(caps, flags[i], false);
   }
   cJSON_AddBoolToObject(caps, "benchDiagnostics", true);
+  /* Settings round-trip and persist as of this build. */
+  cJSON_AddBoolToObject(caps, "configStore", true);
+  /* Listing, inspecting, deleting and favouriting work. MEDIA_READ and
+   * MEDIA_THUMB do not exist yet, so `gallery` stays false: a client that
+   * needs pixels cannot get them. */
+  cJSON_AddBoolToObject(caps, "mediaIndex", true);
+  /* MEDIA_READ and MEDIA_THUMB return bytes now, so a client can actually
+   * get pixels off the camera. */
+  cJSON_AddBoolToObject(caps, "gallery", true);
+  /* One shutter press captures every online camera into one folder. Both
+   * modes use the same four sensors and differ in how the frames are
+   * presented, which is a decision the host makes about a capture it already
+   * has - so both are true together or not at all. */
+  cJSON_AddBoolToObject(caps, "wiggle", true);
+  cJSON_AddBoolToObject(caps, "quad", true);
+  /* GPIO28 is driven for the duration of the exposure window. What it drives
+   * is a bench LED until the flash board exists, which is a hardware fact
+   * rather than a firmware one - the command works either way. */
+  cJSON_AddBoolToObject(caps, "flashControl", true);
+  /* Idle dim/sleep and camera-bank power-down are implemented; battery
+   * telemetry is not, and cannot be until the hardware carries a sense
+   * divider or a gauge. Two flags, because a client that wants to show a
+   * battery and a client that wants to set a sleep timeout are asking
+   * different questions. */
+  cJSON_AddBoolToObject(caps, "powerManagement", true);
+  cJSON_AddBoolToObject(caps, "powerTelemetry", false);
 
   cJSON *limits = cJSON_AddObjectToObject(json, "limits");
   cJSON_AddNumberToObject(limits, "maxUartBaud", NL_DEFAULT_BAUD);
@@ -493,7 +525,7 @@ static void handle_device_info(uint32_t seq) {
 
   cJSON_AddBoolToObject(json, "sdPresent", sd.present);
   cJSON_AddNumberToObject(json, "sdFreeMB", (double)(sd.free_bytes / (1024 * 1024)));
-  cJSON_AddStringToObject(json, "activeMode", "wiggle");
+  cJSON_AddStringToObject(json, "activeMode", config_str("mode", "wiggle"));
   cJSON_AddStringToObject(json, "activeRecipe", "");
   send_json(KDP_CMD_GET_DEVICE_INFO, seq, json);
 }
@@ -515,6 +547,546 @@ static void handle_storage_status(uint32_t seq) {
   cJSON_AddNumberToObject(json, "mountAttempts", sd.mount_attempts);
   cJSON_AddStringToObject(json, "writeTestStatus", sd.write_test);
   send_json(KDP_CMD_GET_STORAGE_STATUS, seq, json);
+}
+
+/**
+ * Power status.
+ *
+ * The contract's required fields are batteryV and batteryPct, and this build
+ * cannot measure either: there is no sense divider to the P4 and no fuel
+ * gauge on the SW6106 carrier, so nothing in the camera knows the cell's
+ * voltage. They are reported as null rather than as 0, because 0 is a number
+ * a client will draw as a flat battery - a wrong reading is worse than an
+ * absent one. `powerTelemetry` in GET_CAPABILITIES is false so a client can
+ * know before it asks. The deviation is recorded in
+ * firmware-contract/README.md.
+ *
+ * What IS knowable is reported: whether a host is talking to us, and where
+ * the idle timeouts have got to.
+ */
+static void handle_power_status(uint32_t seq) {
+  power_state_t p;
+  power_get(&p);
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNullToObject(json, "batteryV");
+  cJSON_AddNullToObject(json, "batteryPct");
+  cJSON_AddBoolToObject(json, "batteryMeasured", false);
+  /* No way to tell a charging cell from a discharging one either, so the
+   * state reports the only distinction the board supports. */
+  cJSON_AddStringToObject(json, "state", p.usb_attached ? "usb" : "battery");
+  cJSON_AddBoolToObject(json, "charging", false);
+
+  /* Beyond the contract, and useful: this is the half of power management
+   * that does work. */
+  cJSON_AddStringToObject(json, "displayStage",
+                          p.stage == POWER_AWAKE  ? "awake"
+                          : p.stage == POWER_DIM ? "dim"
+                                                 : "asleep");
+  cJSON_AddNumberToObject(json, "idleSeconds", p.idle_s);
+  cJSON_AddBoolToObject(json, "displayOn", p.display_on);
+  cJSON_AddBoolToObject(json, "cameraBankPowered", p.cam_bank_on);
+  send_json(KDP_CMD_GET_POWER_STATUS, seq, json);
+}
+
+/* The envelope, minus anything that is write-only. */
+static cJSON *config_envelope(void) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNumberToObject(json, "schemaVersion", 1);
+  cJSON_AddStringToObject(json, "device", s_id.device_id);
+  cJSON_AddNumberToObject(json, "configRevision", config_revision());
+
+  cJSON *copy = cJSON_Duplicate(config_get(), true);
+  if (copy != NULL) {
+    /* deviceToken is write-only by contract: it may be set, never read back,
+     * and never lands in a Studio backup. What is safe to report is whether
+     * one exists. */
+    cJSON *roll = cJSON_GetObjectItem(copy, "roll");
+    cJSON *creds = roll ? cJSON_GetObjectItem(roll, "credentials") : NULL;
+    if (creds != NULL) {
+      const cJSON *tok = cJSON_GetObjectItem(creds, "deviceToken");
+      const bool has = cJSON_IsString(tok) && tok->valuestring && tok->valuestring[0];
+      cJSON_DeleteItemFromObject(creds, "deviceToken");
+      cJSON_AddBoolToObject(creds, "hasDeviceToken", has);
+    }
+    cJSON_AddItemToObject(json, "config", copy);
+  }
+  return json;
+}
+
+static void handle_get_config(uint32_t seq) {
+  send_json(KDP_CMD_GET_CONFIG, seq, config_envelope());
+}
+
+/**
+ * Merge a patch into the live config.
+ *
+ * A merge, not a replace: Studio sends the branch it changed, and replacing
+ * would make writing one field clear every other. Not persisted here -
+ * SAVE_CONFIG does that, which is what lets a client try a setting and walk
+ * away without it surviving a power cycle.
+ */
+static void handle_set_config(uint32_t seq, const cJSON *req) {
+  const cJSON *patch = cJSON_GetObjectItem(req, "config");
+  if (!cJSON_IsObject(patch)) patch = req; /* a bare config object is fine too */
+  if (!cJSON_IsObject(patch)) {
+    send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST", "Expected a config object");
+    return;
+  }
+  if (config_merge(patch) != ESP_OK) {
+    send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST", "Config could not be merged");
+    return;
+  }
+  klog("P4", "config set rev %lu", (unsigned long)config_revision());
+  send_json(KDP_CMD_SET_CONFIG, seq, config_envelope());
+}
+
+static void handle_save_config(uint32_t seq) {
+  if (config_save() != ESP_OK) {
+    send_nack(KDP_CMD_SAVE_CONFIG, seq, "STORAGE_ERROR", "NVS write failed");
+    return;
+  }
+  send_json(KDP_CMD_SAVE_CONFIG, seq, config_envelope());
+}
+
+static void handle_reset_config(uint32_t seq) {
+  if (config_reset() != ESP_OK) {
+    send_nack(KDP_CMD_RESET_CONFIG, seq, "STORAGE_ERROR", "NVS write failed");
+    return;
+  }
+  send_json(KDP_CMD_RESET_CONFIG, seq, config_envelope());
+}
+
+/**
+ * The shooting modes this body knows about, and which is selected.
+ *
+ * `available` is false for both, and that is not a placeholder: the capture
+ * pipeline does not exist in this build, so neither mode can actually be
+ * shot. Selecting one is still meaningful - it is stored, it survives a
+ * reboot, and it is what the camera will do the moment capture lands - so
+ * the command answers rather than refusing.
+ */
+static void handle_get_modes(uint32_t seq) {
+  static const struct {
+    const char *id;
+    const char *name;
+  } MODES[] = {{"wiggle", "Wiggle"}, {"quad", "Quad"}};
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddStringToObject(json, "active", config_str("mode", "wiggle"));
+  cJSON *arr = cJSON_AddArrayToObject(json, "modes");
+  for (size_t i = 0; i < sizeof MODES / sizeof MODES[0]; i++) {
+    cJSON *m = cJSON_CreateObject();
+    cJSON_AddStringToObject(m, "id", MODES[i].id);
+    cJSON_AddStringToObject(m, "name", MODES[i].name);
+    cJSON_AddBoolToObject(m, "available", false);
+    cJSON_AddStringToObject(m, "unavailableReason", "No capture pipeline in this build");
+    cJSON_AddItemToArray(arr, m);
+  }
+  send_json(KDP_CMD_GET_MODES, seq, json);
+}
+
+static void handle_set_mode(uint32_t seq, const cJSON *req) {
+  const cJSON *mode = cJSON_GetObjectItem(req, "mode");
+  if (!cJSON_IsString(mode) || mode->valuestring == NULL) {
+    send_nack(KDP_CMD_SET_MODE, seq, "BAD_REQUEST", "Expected {\"mode\":\"wiggle\"|\"quad\"}");
+    return;
+  }
+  if (strcmp(mode->valuestring, "wiggle") != 0 && strcmp(mode->valuestring, "quad") != 0) {
+    send_nack(KDP_CMD_SET_MODE, seq, "BAD_REQUEST", "Unknown mode");
+    return;
+  }
+  cJSON *patch = cJSON_CreateObject();
+  cJSON_AddStringToObject(patch, "mode", mode->valuestring);
+  const esp_err_t err = config_merge(patch);
+  cJSON_Delete(patch);
+  if (err != ESP_OK) {
+    send_nack(KDP_CMD_SET_MODE, seq, "BAD_REQUEST", "Mode could not be stored");
+    return;
+  }
+  klog("P4", "mode %s", mode->valuestring);
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddStringToObject(json, "active", config_str("mode", "wiggle"));
+  cJSON_AddNumberToObject(json, "configRevision", config_revision());
+  send_json(KDP_CMD_SET_MODE, seq, json);
+}
+
+/* ------------------------------------------------------------------ */
+/* Media                                                               */
+/*                                                                     */
+/* Captures live at /sdcard/KINO/CAPTURES/<uuid>/ with C1.JPG and       */
+/* META.JSON inside, which storage.c already writes. The card is the    */
+/* only index there is - no database is kept, deliberately: a card      */
+/* pulled and edited on a laptop is a normal thing to do to a camera,   */
+/* and an index would then be a lie that survives reboots.              */
+/* ------------------------------------------------------------------ */
+
+#define CAPTURES_DIR "/sdcard/KINO/CAPTURES"
+#define MEDIA_MAX_LIST 512
+
+/* Directory names, sorted, so paging is stable between calls. A capture id
+ * sorts lexicographically the same way it sorts by time because the sequence
+ * is zero-padded, so this is also newest-last. */
+static int media_scan(char (*names)[64], int cap) {
+  DIR *d = opendir(CAPTURES_DIR);
+  if (d == NULL) return 0;
+  int count = 0;
+  struct dirent *e;
+  while ((e = readdir(d)) != NULL && count < cap) {
+    if (e->d_name[0] == '.') continue;
+    /* Anything that will not fit is not one of ours: capture directories are
+     * UUID-shaped and well under this. Skipping is better than truncating,
+     * which would produce an id that maps to no directory. */
+    const size_t len = strlen(e->d_name);
+    if (len == 0 || len >= 64) continue;
+    memcpy(names[count], e->d_name, len + 1);
+    count++;
+  }
+  closedir(d);
+  /* Insertion sort: a card holds hundreds of captures, not millions, and this
+   * avoids dragging qsort's comparator indirection in for it. */
+  for (int i = 1; i < count; i++) {
+    char key[64];
+    memcpy(key, names[i], 64);
+    int j = i - 1;
+    /* memcpy, not snprintf: the source and destination are rows of the same
+     * array, and snprintf is not defined for overlapping objects. */
+    while (j >= 0 && strcmp(names[j], key) > 0) {
+      memcpy(names[j + 1], names[j], 64);
+      j--;
+    }
+    memcpy(names[j + 1], key, 64);
+  }
+  return count;
+}
+
+/* Read <dir>/META.JSON. Returns NULL when absent or unparseable - a capture
+ * whose metadata is gone is still listed, just with less to say about it. */
+static cJSON *media_meta(const char *id) {
+  char path[160];
+  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, id);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) return NULL;
+  char buf[1024];
+  const size_t got = fread(buf, 1, sizeof buf - 1, f);
+  fclose(f);
+  buf[got] = '\0';
+  return cJSON_Parse(buf);
+}
+
+static long media_file_size(const char *id, const char *name) {
+  char path[160];
+  snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, id, name);
+  struct stat st;
+  if (stat(path, &st) != 0) return -1;
+  return (long)st.st_size;
+}
+
+/* One CaptureSummary. Fields the metadata does not carry are reported as the
+ * contract's own neutral values rather than guessed at. */
+static cJSON *media_summary(const char *id) {
+  cJSON *meta = media_meta(id);
+  cJSON *item = cJSON_CreateObject();
+  cJSON_AddStringToObject(item, "id", id);
+
+  /* `mode` and `capturedAtMs`, not `kind` and `ts`.
+   *
+   * This read `kind` and `ts`, which META.JSON has never contained - it is a
+   * kino.capture document and always was. Every listing therefore reported
+   * every capture as a wiggle taken at the epoch, from fallbacks that looked
+   * like deliberate defaults. The wire names stay as the contract has them;
+   * only the keys read from the file change. */
+  const cJSON *kind = meta ? cJSON_GetObjectItem(meta, "mode") : NULL;
+  cJSON_AddStringToObject(item, "kind",
+                          (cJSON_IsString(kind) && kind->valuestring) ? kind->valuestring
+                                                                     : "wiggle");
+  const cJSON *ts = meta ? cJSON_GetObjectItem(meta, "capturedAtMs") : NULL;
+  cJSON_AddNumberToObject(item, "ts", cJSON_IsNumber(ts) ? ts->valuedouble : 0);
+
+  cJSON *recipes = cJSON_AddArrayToObject(item, "recipeIds");
+  const cJSON *src = meta ? cJSON_GetObjectItem(meta, "recipeIds") : NULL;
+  if (cJSON_IsArray(src)) {
+    const cJSON *r = NULL;
+    cJSON_ArrayForEach(r, src) {
+      if (cJSON_IsString(r)) cJSON_AddItemToArray(recipes, cJSON_CreateString(r->valuestring));
+    }
+  }
+
+  const cJSON *fav = meta ? cJSON_GetObjectItem(meta, "favorite") : NULL;
+  cJSON_AddBoolToObject(item, "favorite", cJSON_IsTrue(fav));
+  const cJSON *res = meta ? cJSON_GetObjectItem(meta, "resolution") : NULL;
+  cJSON_AddStringToObject(item, "resolution",
+                          (cJSON_IsString(res) && res->valuestring) ? res->valuestring
+                                                                    : "1600x1200");
+
+  long total = 0;
+  static const char *FILES[4] = {"C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG"};
+  for (int i = 0; i < 4; i++) {
+    const long sz = media_file_size(id, FILES[i]);
+    if (sz > 0) total += sz;
+  }
+  cJSON_AddNumberToObject(item, "totalKB", (double)(total / 1024));
+
+  if (meta) cJSON_Delete(meta);
+  return item;
+}
+
+/*
+ * Which files inside a capture folder a host may ask for.
+ *
+ * An allow-list, not a sanitiser. The id is already checked for slashes, but
+ * the file name is attacker-chosen too and "..\\" or a device name on a FAT
+ * volume would walk out of the folder just as effectively. Naming the six
+ * files a capture can contain costs nothing and cannot be got wrong later.
+ */
+static bool media_file_allowed(const char *name) {
+  static const char *ALLOWED[] = {"C1.JPG", "C2.JPG",    "C3.JPG",
+                                  "C4.JPG", "THUMB.JPG", "META.JSON"};
+  for (size_t i = 0; i < sizeof ALLOWED / sizeof ALLOWED[0]; i++) {
+    if (strcmp(name, ALLOWED[i]) == 0) return true;
+  }
+  return false;
+}
+
+/* One response carries at most this much file. KDP_MAX_PAYLOAD is 16 KB and
+ * the frame's own header and CRC have to fit alongside it. */
+#define MEDIA_READ_MAX 8192
+
+/**
+ * Stream bytes out of one file in a capture.
+ *
+ * The reply is raw file bytes with KDP_FLAG_BINARY set - no JSON envelope,
+ * because a 300 KB JPEG through base64 would cost a third again in transfer
+ * for nothing. The caller asked for an offset and a length, so it already
+ * knows what it is looking at; a short reply means end of file. Errors come
+ * back as JSON with the ERROR flag, so the two are never ambiguous.
+ */
+static void handle_media_read(uint32_t seq, const cJSON *req) {
+  const cJSON *jid = cJSON_GetObjectItem(req, "id");
+  const cJSON *jfile = cJSON_GetObjectItem(req, "file");
+  if (!cJSON_IsString(jid) || jid->valuestring == NULL ||
+      strchr(jid->valuestring, '/') != NULL || strstr(jid->valuestring, "..") != NULL) {
+    send_nack(KDP_CMD_MEDIA_READ, seq, "BAD_REQUEST", "Expected a capture id");
+    return;
+  }
+  const char *file = (cJSON_IsString(jfile) && jfile->valuestring) ? jfile->valuestring : "C1.JPG";
+  if (!media_file_allowed(file)) {
+    send_nack(KDP_CMD_MEDIA_READ, seq, "BAD_REQUEST", "Not a file a capture contains");
+    return;
+  }
+
+  const cJSON *joff = cJSON_GetObjectItem(req, "offset");
+  const cJSON *jlen = cJSON_GetObjectItem(req, "length");
+  long offset = cJSON_IsNumber(joff) ? (long)joff->valuedouble : 0;
+  long length = cJSON_IsNumber(jlen) ? (long)jlen->valuedouble : MEDIA_READ_MAX;
+  if (offset < 0) offset = 0;
+  if (length < 1) length = 1;
+  if (length > MEDIA_READ_MAX) length = MEDIA_READ_MAX;
+
+  char path[200];
+  snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, jid->valuestring, file);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) {
+    send_nack(KDP_CMD_MEDIA_READ, seq, "NOT_FOUND", "No such capture file");
+    return;
+  }
+  if (fseek(f, offset, SEEK_SET) != 0) {
+    fclose(f);
+    send_nack(KDP_CMD_MEDIA_READ, seq, "BAD_REQUEST", "Offset is past the end of the file");
+    return;
+  }
+  uint8_t *buf = malloc((size_t)length);
+  if (buf == NULL) {
+    fclose(f);
+    send_nack(KDP_CMD_MEDIA_READ, seq, "BUSY", "Out of memory");
+    return;
+  }
+  const size_t got = fread(buf, 1, (size_t)length, f);
+  fclose(f);
+  /* A zero-length reply is the honest answer for a read that starts exactly
+   * at the end of the file, and is how a client knows it has everything. */
+  send_raw(KDP_CMD_MEDIA_READ, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, buf, got);
+  free(buf);
+}
+
+/* THUMB.JPG is written at capture time, so this is a read with a fixed name
+ * rather than a decode-and-scale on demand. A capture taken by firmware older
+ * than this one has no thumbnail and says so instead of inventing one. */
+static void handle_media_thumb(uint32_t seq, const cJSON *req) {
+  const cJSON *jid = cJSON_GetObjectItem(req, "id");
+  if (!cJSON_IsString(jid) || jid->valuestring == NULL ||
+      strchr(jid->valuestring, '/') != NULL || strstr(jid->valuestring, "..") != NULL) {
+    send_nack(KDP_CMD_MEDIA_THUMB, seq, "BAD_REQUEST", "Expected a capture id");
+    return;
+  }
+  char path[200];
+  snprintf(path, sizeof path, "%s/%s/THUMB.JPG", CAPTURES_DIR, jid->valuestring);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) {
+    send_nack(KDP_CMD_MEDIA_THUMB, seq, "NOT_FOUND",
+              "This capture has no thumbnail; read C1.JPG instead");
+    return;
+  }
+  const cJSON *joff = cJSON_GetObjectItem(req, "offset");
+  const cJSON *jlen = cJSON_GetObjectItem(req, "length");
+  long offset = cJSON_IsNumber(joff) ? (long)joff->valuedouble : 0;
+  long length = cJSON_IsNumber(jlen) ? (long)jlen->valuedouble : MEDIA_READ_MAX;
+  if (offset < 0) offset = 0;
+  if (length < 1) length = 1;
+  if (length > MEDIA_READ_MAX) length = MEDIA_READ_MAX;
+  if (fseek(f, offset, SEEK_SET) != 0) {
+    fclose(f);
+    send_nack(KDP_CMD_MEDIA_THUMB, seq, "BAD_REQUEST", "Offset is past the end of the file");
+    return;
+  }
+  uint8_t *buf = malloc((size_t)length);
+  if (buf == NULL) {
+    fclose(f);
+    send_nack(KDP_CMD_MEDIA_THUMB, seq, "BUSY", "Out of memory");
+    return;
+  }
+  const size_t got = fread(buf, 1, (size_t)length, f);
+  fclose(f);
+  send_raw(KDP_CMD_MEDIA_THUMB, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, buf, got);
+  free(buf);
+}
+
+static void handle_media_list(uint32_t seq, const cJSON *req) {
+  storage_status_t sd;
+  storage_get_status(&sd);
+  if (!sd.mounted) {
+    send_nack(KDP_CMD_MEDIA_LIST, seq, "NO_CARD", "No card mounted");
+    return;
+  }
+
+  const cJSON *jc = cJSON_GetObjectItem(req, "cursor");
+  const cJSON *jl = cJSON_GetObjectItem(req, "limit");
+  int cursor = cJSON_IsNumber(jc) ? (int)jc->valuedouble : 0;
+  int limit = cJSON_IsNumber(jl) ? (int)jl->valuedouble : 50;
+  if (cursor < 0) cursor = 0;
+  if (limit < 1) limit = 1;
+  if (limit > 100) limit = 100; /* maxGalleryPageSize in GET_CAPABILITIES */
+
+  char (*names)[64] = calloc(MEDIA_MAX_LIST, 64);
+  if (names == NULL) {
+    send_nack(KDP_CMD_MEDIA_LIST, seq, "BUSY", "Out of memory");
+    return;
+  }
+  const int total = media_scan(names, MEDIA_MAX_LIST);
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNumberToObject(json, "total", total);
+  cJSON *items = cJSON_AddArrayToObject(json, "items");
+  int sent = 0;
+  for (int i = cursor; i < total && sent < limit; i++, sent++) {
+    cJSON_AddItemToArray(items, media_summary(names[i]));
+  }
+  const int next = cursor + sent;
+  if (next < total) cJSON_AddNumberToObject(json, "nextCursor", next);
+  else cJSON_AddNullToObject(json, "nextCursor");
+  cJSON_AddBoolToObject(json, "hasMore", next < total);
+  free(names);
+  send_json(KDP_CMD_MEDIA_LIST, seq, json);
+}
+
+static void handle_media_info(uint32_t seq, const cJSON *req) {
+  const cJSON *jid = cJSON_GetObjectItem(req, "id");
+  if (!cJSON_IsString(jid) || jid->valuestring == NULL || strchr(jid->valuestring, '/') != NULL) {
+    /* A slash would let a caller walk out of the captures directory. */
+    send_nack(KDP_CMD_MEDIA_INFO, seq, "BAD_REQUEST", "Expected a capture id");
+    return;
+  }
+  const char *id = jid->valuestring;
+
+  char dir[160];
+  snprintf(dir, sizeof dir, "%s/%s", CAPTURES_DIR, id);
+  struct stat st;
+  if (stat(dir, &st) != 0) {
+    send_nack(KDP_CMD_MEDIA_INFO, seq, "NOT_FOUND", "No such capture");
+    return;
+  }
+
+  cJSON *json = media_summary(id);
+  cJSON *files = cJSON_AddArrayToObject(json, "files");
+  static const char *FILES[4] = {"C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG"};
+  for (int i = 0; i < 4; i++) {
+    const long sz = media_file_size(id, FILES[i]);
+    if (sz < 0) continue;
+    cJSON *f = cJSON_CreateObject();
+    cJSON_AddStringToObject(f, "name", FILES[i]);
+    cJSON_AddNumberToObject(f, "sizeBytes", (double)sz);
+    /* sha256 is in the contract and is not computed here: hashing four
+     * multi-megabyte JPEGs on request would block the link for seconds. The
+     * field is omitted rather than filled with a wrong or empty digest. */
+    cJSON_AddItemToArray(files, f);
+  }
+  cJSON *meta = media_meta(id);
+  if (meta) cJSON_AddItemToObject(json, "meta", meta);
+  send_json(KDP_CMD_MEDIA_INFO, seq, json);
+}
+
+static void handle_media_delete(uint32_t seq, const cJSON *req) {
+  const cJSON *jid = cJSON_GetObjectItem(req, "id");
+  if (!cJSON_IsString(jid) || jid->valuestring == NULL || strchr(jid->valuestring, '/') != NULL) {
+    send_nack(KDP_CMD_MEDIA_DELETE, seq, "BAD_REQUEST", "Expected a capture id");
+    return;
+  }
+  char dir[160];
+  snprintf(dir, sizeof dir, "%s/%s", CAPTURES_DIR, jid->valuestring);
+  struct stat st;
+  if (stat(dir, &st) != 0) {
+    send_nack(KDP_CMD_MEDIA_DELETE, seq, "NOT_FOUND", "No such capture");
+    return;
+  }
+  storage_capture_delete(dir);
+  klog("P4", "media delete %s", jid->valuestring);
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddStringToObject(json, "id", jid->valuestring);
+  cJSON_AddBoolToObject(json, "deleted", true);
+  send_json(KDP_CMD_MEDIA_DELETE, seq, json);
+}
+
+/* Favourite is a flag inside META.JSON, so it travels with the capture when
+ * the card is moved - which is the whole point of keeping no index. */
+static void handle_media_favorite(uint32_t seq, const cJSON *req) {
+  const cJSON *jid = cJSON_GetObjectItem(req, "id");
+  const cJSON *jfav = cJSON_GetObjectItem(req, "favorite");
+  if (!cJSON_IsString(jid) || jid->valuestring == NULL || strchr(jid->valuestring, '/') != NULL ||
+      !cJSON_IsBool(jfav)) {
+    send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "BAD_REQUEST", "Expected {id, favorite}");
+    return;
+  }
+  const char *id = jid->valuestring;
+  cJSON *meta = media_meta(id);
+  if (meta == NULL) {
+    send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "NOT_FOUND", "No metadata for that capture");
+    return;
+  }
+  cJSON_DeleteItemFromObject(meta, "favorite");
+  cJSON_AddBoolToObject(meta, "favorite", cJSON_IsTrue(jfav));
+
+  char path[160];
+  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, id);
+  char *text = cJSON_PrintUnformatted(meta);
+  cJSON_Delete(meta);
+  if (text == NULL) {
+    send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "STORAGE_ERROR", "Out of memory");
+    return;
+  }
+  FILE *f = fopen(path, "wb");
+  if (f == NULL) {
+    cJSON_free(text);
+    send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "STORAGE_ERROR", "Could not rewrite META.JSON");
+    return;
+  }
+  fwrite(text, 1, strlen(text), f);
+  fclose(f);
+  cJSON_free(text);
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddStringToObject(json, "id", id);
+  cJSON_AddBoolToObject(json, "favorite", cJSON_IsTrue(jfav));
+  send_json(KDP_CMD_MEDIA_FAVORITE, seq, json);
 }
 
 static void handle_storage_self_test(uint32_t seq) {
@@ -941,6 +1513,79 @@ static void capture_result_json(const capture_result_t *r, cJSON *json) {
   else cJSON_AddNullToObject(mem, "nodePsramKB");
 }
 
+/**
+ * Take the picture the product exists to take.
+ *
+ * This blocks the dispatcher for as long as the slowest link needs, the same
+ * way CAMERA_TEST does, because there is nothing useful to answer in the
+ * meantime and an async job would mean a second protocol for the one command
+ * every host issues.
+ *
+ * A capture the shutter started is already running when this arrives; saying
+ * BUSY is right, because the alternative is two photographs of a moment
+ * someone asked to photograph once.
+ */
+static void handle_camera_capture(uint32_t seq, cJSON *req) {
+  /* CAMERA_CAPTURE carries an action. `timing-test` asks for the three skews
+   * in one synchronized capture, and this body cannot measure any of them:
+   * the nodes expose when their command arrives rather than on the trigger
+   * edge, and their rolling shutters free-run. Taking a photograph and
+   * returning made-up microseconds would be far worse than saying no - the
+   * numbers would be filed as evidence. `vsyncTelemetry: false` says the same
+   * thing in GET_CAPABILITIES; this is what happens if a client asks anyway. */
+  const cJSON *action = cJSON_GetObjectItem(req, "action");
+  if (cJSON_IsString(action) && action->valuestring != NULL &&
+      strcmp(action->valuestring, "timing-test") == 0) {
+    send_nack(KDP_CMD_CAMERA_CAPTURE, seq, "UNSUPPORTED_COMMAND",
+              "No exposure timing on this body: nodes fire on command arrival, not the "
+              "trigger edge, and the shutters free-run");
+    return;
+  }
+
+  capture_report_t r;
+  const esp_err_t err = capture_fire("host", &r);
+  if (err == ESP_ERR_INVALID_STATE) {
+    send_nack(KDP_CMD_CAMERA_CAPTURE, seq, "BUSY", "A capture is already running");
+    return;
+  }
+  if (!r.ok) {
+    send_nack(KDP_CMD_CAMERA_CAPTURE, seq, r.err_code, r.err_msg);
+    return;
+  }
+
+  cJSON *json = cJSON_CreateObject();
+  /* `ok` first, because that is the whole reply as far as the established
+   * contract is concerned; everything after it is additive. Unlike the
+   * reference mock this answers when the frames are on the card rather than
+   * when the capture starts - a host-triggered shot that acks before it is
+   * stored has told the host something it does not yet know. EVT_CAPTURE
+   * still fires, for the hosts that only listen. */
+  cJSON_AddBoolToObject(json, "ok", true);
+  capture_meta_json(&r, json);
+  cJSON_AddStringToObject(json, "dir", r.dir);
+  cJSON_AddNumberToObject(json, "bytes", r.bytes);
+  cJSON_AddNumberToObject(json, "totalMs", r.total_ms);
+  cJSON_AddNumberToObject(json, "camerasOnline", r.online);
+  send_json(KDP_CMD_CAMERA_CAPTURE, seq, json);
+}
+
+/** EVT_CAPTURE, so a host attached while someone pressed the shutter learns
+ * about the picture without polling MEDIA_LIST for one. */
+static void on_capture_done(const capture_report_t *r) {
+  if (r == NULL || !r->ok) return;
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddStringToObject(json, "id", r->id);
+  cJSON_AddStringToObject(json, "kind", r->mode);
+  /* Beyond CaptureEvent and additive: a host that only knows the two
+   * contract fields ignores these, and one that reads them can show a
+   * partial capture as partial instead of discovering it on download. */
+  cJSON_AddStringToObject(json, "captureUuid", r->uuid);
+  cJSON_AddStringToObject(json, "status", r->status);
+  cJSON_AddNumberToObject(json, "frameCount", r->stored);
+  cJSON_AddStringToObject(json, "triggeredBy", r->source);
+  send_event(KDP_EVT_CAPTURE, json);
+}
+
 static void handle_camera_test(uint32_t seq, cJSON *req) {
   int index = cam_index_from_request(req);
   if (index < 0) {
@@ -1225,6 +1870,20 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_GET_DEVICE_INFO: handle_device_info(frame->seq); break;
     case KDP_CMD_GET_CAPABILITIES: handle_capabilities(frame->seq); break;
     case KDP_CMD_GET_STORAGE_STATUS: handle_storage_status(frame->seq); break;
+    case KDP_CMD_GET_POWER_STATUS: handle_power_status(frame->seq); break;
+    case KDP_CMD_GET_MODES: handle_get_modes(frame->seq); break;
+    case KDP_CMD_CAMERA_CAPTURE: handle_camera_capture(frame->seq, req); break;
+    case KDP_CMD_MEDIA_LIST: handle_media_list(frame->seq, req); break;
+    case KDP_CMD_MEDIA_READ: handle_media_read(frame->seq, req); break;
+    case KDP_CMD_MEDIA_THUMB: handle_media_thumb(frame->seq, req); break;
+    case KDP_CMD_MEDIA_INFO: handle_media_info(frame->seq, req); break;
+    case KDP_CMD_MEDIA_DELETE: handle_media_delete(frame->seq, req); break;
+    case KDP_CMD_MEDIA_FAVORITE: handle_media_favorite(frame->seq, req); break;
+    case KDP_CMD_SET_MODE: handle_set_mode(frame->seq, req); break;
+    case KDP_CMD_GET_CONFIG: handle_get_config(frame->seq); break;
+    case KDP_CMD_SET_CONFIG: handle_set_config(frame->seq, req); break;
+    case KDP_CMD_SAVE_CONFIG: handle_save_config(frame->seq); break;
+    case KDP_CMD_RESET_CONFIG: handle_reset_config(frame->seq); break;
     case KDP_CMD_GET_CAMERA_INFO: handle_camera_info(frame->seq); break;
     case KDP_CMD_CAMERA_STATUS: handle_camera_status(frame->seq, req); break;
     case KDP_CMD_CAMERA_TEST: handle_camera_test(frame->seq, req); break;
@@ -1261,6 +1920,11 @@ static void server_task(void *arg) {
 }
 
 esp_err_t kdp_server_start(const kdp_identity_t *identity) {
+  /* Registered before the transport starts: a capture cannot be reported to
+   * a host that is not listening yet, but a hook installed late would miss
+   * one taken in the gap. */
+  capture_on_done(on_capture_done);
+
   s_id = *identity;
   s_tx_lock = xSemaphoreCreateMutex();
   s_capture_lock = xSemaphoreCreateMutex();

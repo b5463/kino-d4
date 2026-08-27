@@ -199,11 +199,14 @@ static uint32_t next_capture_number(void) {
   return count;
 }
 
-esp_err_t storage_capture_begin(storage_capture_t *c, const char *capture_uuid) {
+esp_err_t storage_capture_open(storage_capture_t *c, const char *capture_uuid,
+                               const char *id_prefix) {
   if (s_card == NULL) return ESP_ERR_NOT_FOUND;
   memset(c, 0, sizeof *c);
+  c->open_cam = -1;
 
-  snprintf(c->id, sizeof c->id, "TC_%06lu", (unsigned long)next_capture_number());
+  snprintf(c->id, sizeof c->id, "%s_%06lu", id_prefix != NULL ? id_prefix : "CAP",
+           (unsigned long)next_capture_number());
   snprintf(c->dir, sizeof c->dir, "%s/KINO/CAPTURES/%s", MOUNT, capture_uuid);
 
   mkdir(MOUNT "/KINO", 0775);
@@ -213,12 +216,44 @@ esp_err_t storage_capture_begin(storage_capture_t *c, const char *capture_uuid) 
     set_error("SD_WRITE_FAILED");
     return ESP_FAIL;
   }
+  return ESP_OK;
+}
+
+esp_err_t storage_capture_frame_begin(storage_capture_t *c, int cam) {
+  if (cam < 0 || cam >= STORAGE_CAPTURE_FRAMES) return ESP_ERR_INVALID_ARG;
+  if (c->jpg != NULL) return ESP_ERR_INVALID_STATE;
 
   char path[80];
-  snprintf(path, sizeof path, "%s/C1.JPG", c->dir);
+  snprintf(path, sizeof path, "%s/C%d.JPG", c->dir, cam + 1);
   c->jpg = fopen(path, "wb");
-  if (c->jpg == NULL) set_error("SD_WRITE_FAILED");
-  return c->jpg != NULL ? ESP_OK : ESP_FAIL;
+  if (c->jpg == NULL) {
+    set_error("SD_WRITE_FAILED");
+    return ESP_FAIL;
+  }
+  c->open_cam = cam;
+  return ESP_OK;
+}
+
+esp_err_t storage_capture_frame_end(storage_capture_t *c) {
+  if (c->jpg == NULL) return ESP_ERR_INVALID_STATE;
+  int failed = fflush(c->jpg) != 0;
+  failed |= fsync(fileno(c->jpg)) != 0;
+  failed |= fclose(c->jpg) != 0;
+  c->jpg = NULL;
+  if (failed) {
+    set_error("SD_WRITE_FAILED");
+    c->open_cam = -1;
+    return ESP_FAIL;
+  }
+  if (c->open_cam >= 0) c->written |= (uint8_t)(1u << c->open_cam);
+  c->open_cam = -1;
+  return ESP_OK;
+}
+
+esp_err_t storage_capture_begin(storage_capture_t *c, const char *capture_uuid) {
+  esp_err_t err = storage_capture_open(c, capture_uuid, "TC");
+  if (err != ESP_OK) return err;
+  return storage_capture_frame_begin(c, 0);
 }
 
 esp_err_t storage_capture_append(storage_capture_t *c, const uint8_t *data, size_t len) {
@@ -227,22 +262,18 @@ esp_err_t storage_capture_append(storage_capture_t *c, const uint8_t *data, size
 }
 
 esp_err_t storage_capture_commit(storage_capture_t *c, const char *meta_json) {
-  if (c->jpg == NULL) return ESP_ERR_INVALID_STATE;
-  int failed = fflush(c->jpg) != 0;
-  failed |= fsync(fileno(c->jpg)) != 0;
-  failed |= fclose(c->jpg) != 0;
-  c->jpg = NULL;
-  if (failed) {
-    set_error("SD_WRITE_FAILED");
-    return ESP_FAIL;
-  }
+  /* A multi-frame capture has already closed its frames one at a time; the
+   * single-frame bench path still has one open here. Both arrive with the
+   * bytes on the card, so committing is only ever about META.JSON. */
+  if (c->jpg != NULL && storage_capture_frame_end(c) != ESP_OK) return ESP_FAIL;
+  if (c->written == 0) return ESP_ERR_INVALID_STATE;
 
   char path[80];
   snprintf(path, sizeof path, "%s/META.JSON", c->dir);
   FILE *meta = fopen(path, "wb");
   if (meta == NULL) return ESP_FAIL;
   size_t len = strlen(meta_json);
-  failed = fwrite(meta_json, 1, len, meta) != len;
+  int failed = fwrite(meta_json, 1, len, meta) != len;
   failed |= fflush(meta) != 0;
   failed |= fsync(fileno(meta)) != 0;
   failed |= fclose(meta) != 0;
@@ -255,10 +286,9 @@ void storage_capture_abort(storage_capture_t *c) {
     fclose(c->jpg);
     c->jpg = NULL;
   }
-  char path[80];
-  snprintf(path, sizeof path, "%s/C1.JPG", c->dir);
-  unlink(path);
-  rmdir(c->dir);
+  c->open_cam = -1;
+  c->written = 0;
+  storage_capture_delete(c->dir);
 }
 
 esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_bytes) {
@@ -282,9 +312,14 @@ esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_
 
 void storage_capture_delete(const char *dir) {
   char path[80];
-  snprintf(path, sizeof path, "%s/C1.JPG", dir);
-  unlink(path);
+  for (int cam = 0; cam < STORAGE_CAPTURE_FRAMES; cam++) {
+    snprintf(path, sizeof path, "%s/C%d.JPG", dir, cam + 1);
+    unlink(path);
+  }
   snprintf(path, sizeof path, "%s/META.JSON", dir);
   unlink(path);
+  /* rmdir only removes an empty directory, so anything unexpected left in the
+   * folder keeps the folder - deleting a capture must never take a file this
+   * function did not put there. */
   rmdir(dir);
 }

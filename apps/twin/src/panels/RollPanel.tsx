@@ -3,6 +3,7 @@
 // stand-in for that future firmware task, over the real Roll API and the
 // real device wire contract. Nothing here changes what the virtual device
 // claims over KDP: rollUpload stays false on the current-firmware profile.
+import { FIRMWARE_PROFILES } from '@kino/test-fixtures';
 import { useEffect, useState } from 'react';
 import { useSimStore } from '../state/simStore';
 import {
@@ -52,7 +53,12 @@ export function RollPanel() {
     }
   }
 
-  const m1b = snapshot?.firmwareProfile === 'd4-m1b';
+  /* "Only one camera is wired", asked directly rather than by naming a
+   * profile - which stopped being the same question the moment a second real
+   * firmware profile existed. */
+  const singleCam = snapshot
+    ? FIRMWARE_PROFILES[snapshot.firmwareProfile]?.camsOnline[1] === false
+    : false;
   const ready = running && bootStage === 'READY';
 
   return (
@@ -104,7 +110,7 @@ export function RollPanel() {
               className="twin-btn"
               disabled={!ready}
               title={
-                m1b
+                singleCam
                   ? 'Milestone 1 path: one CAM1 frame, uploaded as a single still — no fake Wiggle'
                   : 'One CAM1 frame uploaded as a single still (group captures upload automatically)'
               }
@@ -114,7 +120,7 @@ export function RollPanel() {
             </button>
           </div>
           <p className="twin-panel-note">
-            {m1b
+            {singleCam
               ? 'Current firmware: single-camera development ingest only. Group captures need the SIMULATED FUTURE profile.'
               : 'SHUTTER captures upload automatically: thumb first, then all four frames, then complete.'}
           </p>

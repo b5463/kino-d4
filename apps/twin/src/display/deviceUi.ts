@@ -2,6 +2,7 @@ import type { CamId } from '@kino/kdp';
 import { CAM_IDS } from '@kino/kdp';
 import type { BootStage, CaptureStage } from '@kino/simulator-engine';
 import type { TwinSnapshot } from '@kino/test-fixtures';
+import { FIRMWARE_PROFILES } from '@kino/test-fixtures';
 
 /** Native panel resolution of the Guition 4.3in display, landscape. */
 export const DISPLAY_W = 800;
@@ -81,10 +82,20 @@ function statusBar(ctx: Ctx2d, snap: TwinSnapshot, studioConnected: boolean): vo
 /** Stages a capture passes through; STORED/READY are settled, not in-flight. */
 const IN_FLIGHT: readonly CaptureStage[] = ['ARMING', 'WAIT_SYNC', 'EXPOSING', 'JPEG_READY', 'TRANSFERRING'];
 
-/** Which camera feeds the rear-display viewfinder. Pure and exported so the
- * SensorRig renders the same camera the display labels. */
+/**
+ * Which camera feeds the rear-display viewfinder. Pure and exported so the
+ * SensorRig renders the same camera the display labels.
+ *
+ * The product viewfinder is CAM2. Asked as "is this profile d4-m1b", this
+ * broke the moment a second real firmware profile existed — the question was
+ * never which profile it is, but whether CAM2 has a link at all. A body with
+ * one jumpered node has to preview the node it has.
+ */
 export function viewfinderCam(state: Pick<DeviceUiState, 'snapshot'>): CamId {
-  return state.snapshot?.firmwareProfile === 'd4-m1b' ? 'cam1' : 'cam2';
+  const id = state.snapshot?.firmwareProfile;
+  const profile = id ? FIRMWARE_PROFILES[id] : undefined;
+  if (profile && !profile.camsOnline[1]) return 'cam1';
+  return 'cam2';
 }
 
 function camRow(ctx: Ctx2d, state: DeviceUiState): void {

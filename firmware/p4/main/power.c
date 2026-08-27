@@ -1,0 +1,167 @@
+#include "power.h"
+
+#include "board_d4v1.h"
+#include "config_store.h"
+#include "display.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "hardware_validation.h"
+#include "klog.h"
+#include "usb_link.h"
+
+static const char *TAG = "power";
+
+static volatile int64_t s_last_activity;
+/* Bumped on every activity. power_task samples it before deciding and checks
+ * it again before acting - see the note in power_task. */
+static volatile uint32_t s_activity_seq;
+static power_stage_t s_stage = POWER_AWAKE;
+static bool s_cam_bank = true;
+static bool s_ready;
+
+static volatile bool s_wake_gesture;
+
+bool power_wake_gesture(void) { return s_wake_gesture; }
+void power_end_wake_gesture(void) { s_wake_gesture = false; }
+
+/**
+ * Report activity, and wake here rather than leaving it to the housekeeping
+ * task.
+ *
+ * Resetting the idle clock and letting power_task notice on its next 500 ms
+ * pass made waking take up to half a second and put the decision in a
+ * different task from the one that saw the touch. Doing it on the spot makes
+ * the screen come back on the same 15 ms poll that felt the finger.
+ */
+void power_activity(void) {
+  const bool was_off = s_stage != POWER_AWAKE;
+  s_last_activity = esp_timer_get_time();
+  s_activity_seq++;
+  if (was_off) {
+    display_backlight(true);
+    s_stage = POWER_AWAKE;
+    s_wake_gesture = true;
+    ESP_LOGI(TAG, "woke");
+    klog("P4", "woke from %s", "sleep");
+  }
+}
+
+void power_wake(void) { power_activity(); }
+
+void power_get(power_state_t *out) {
+  if (out == NULL) return;
+  const int64_t idle_us = esp_timer_get_time() - s_last_activity;
+  out->stage = s_stage;
+  out->idle_s = (uint32_t)(idle_us / 1000000);
+  out->display_on = s_stage != POWER_ASLEEP;
+  out->cam_bank_on = s_cam_bank;
+  /* The only rail fact this board can establish: whether a USB host has
+   * enumerated us. It does not distinguish USB power from battery power -
+   * the SW6106 feeds the same 5 V rail either way - so it is reported as
+   * "a host is attached", not as "running on USB". */
+  out->usb_attached = usb_link_connected();
+}
+
+/* The camera bank's power switch. Held on until camIdleTimeoutS elapses,
+ * which is what makes four idle XIAOs stop costing the battery anything.
+ *
+ * NEEDS_HARDWARE_VALIDATION per docs/HARDWARE.md: whether every channel hangs
+ * off this one pin or each gets its own is not settled, so this switches the
+ * one line the header names and claims nothing more. */
+static void cam_bank(bool on) {
+  if (s_cam_bank == on) return;
+  gpio_set_level(BOARD_CAM_PWR_EN, on ? 1 : 0);
+  s_cam_bank = on;
+  /* The pin was actually driven, both ways, on this unit. Whether the
+   * AO4407 channels downstream follow it is still a scope job - see the
+   * per-camera switching row in the validation plan. */
+  hwv_mark_validated(HWV_CAM_PWR_EN_GPIO31, "driven for the camera bank");
+  ESP_LOGI(TAG, "camera bank %s", on ? "on" : "off");
+  klog("P4", "cam bank %s", on ? "on" : "off");
+}
+
+static void power_task(void *arg) {
+  (void)arg;
+  for (;;) {
+    /* Read the thresholds every pass rather than caching them: Studio can
+     * change them at any moment over SET_CONFIG, and a cached copy would mean
+     * a setting that only takes effect after a reboot. */
+    const int dim_s = config_int("body.autoDimS", 30);
+    const int sleep_s = config_int("body.sleepS", 120);
+    const int cam_s = config_int("body.camIdleTimeoutS", 300);
+
+    /* Sample the activity counter before deciding anything.
+     *
+     * Deciding and acting are not one operation, and a touch can land between
+     * them. It did: this task would sample a long idle, decide ASLEEP, be
+     * preempted by the touch task turning the backlight on and setting the
+     * stage to AWAKE, then resume, see that its decision disagreed with the
+     * stage, and turn the backlight straight back off. The screen lit up and
+     * died again in the same gesture - which is what "touch after sleep does
+     * not work" looks like from the outside.
+     *
+     * If anything happened while we were thinking, this pass is stale: drop it
+     * and decide again with the new idle time. */
+    const uint32_t seq_before = s_activity_seq;
+    const uint32_t idle = (uint32_t)((esp_timer_get_time() - s_last_activity) / 1000000);
+
+    power_stage_t want = POWER_AWAKE;
+    if (sleep_s > 0 && idle >= (uint32_t)sleep_s) want = POWER_ASLEEP;
+    else if (dim_s > 0 && idle >= (uint32_t)dim_s) want = POWER_DIM;
+
+    if (s_activity_seq != seq_before) {
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    if (want != s_stage) {
+      /* Dim and awake look the same on this board.
+       *
+       * The backlight is a plain GPIO, not an LEDC channel - display.c is
+       * explicit that driving it as PWM is how you get a dark panel that
+       * looks like a dead one. So `brightness` and the dim stage have no
+       * hardware to act on, and pretending otherwise would be a setting that
+       * silently does nothing. The stage is still tracked and reported, so
+       * Studio can show where the timeout has got to, and it is one line to
+       * make it real if the backlight ever gets a transistor. */
+      if (want == POWER_ASLEEP) display_backlight(false);
+      else if (s_stage == POWER_ASLEEP) display_backlight(true);
+      s_stage = want;
+      ESP_LOGI(TAG, "stage %s after %lus idle",
+               want == POWER_AWAKE ? "awake" : want == POWER_DIM ? "dim" : "asleep",
+               (unsigned long)idle);
+    }
+
+    if (cam_s > 0) cam_bank(idle < (uint32_t)cam_s);
+    else cam_bank(true);
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+  }
+}
+
+esp_err_t power_init(void) {
+  if (s_ready) return ESP_OK;
+
+  gpio_config_t cfg = {
+      .pin_bit_mask = 1ULL << BOARD_CAM_PWR_EN,
+      .mode = GPIO_MODE_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&cfg);
+  gpio_set_level(BOARD_CAM_PWR_EN, 1);
+  s_cam_bank = true;
+
+  power_activity();
+  s_ready = true;
+  ESP_LOGI(TAG, "POWER_READY dim %ds, sleep %ds, cam idle %ds, cam power GPIO%d",
+           config_int("body.autoDimS", 30), config_int("body.sleepS", 120),
+           config_int("body.camIdleTimeoutS", 300), BOARD_CAM_PWR_EN);
+  klog("P4", "power up");
+  xTaskCreate(power_task, "power", 3072, NULL, 2, NULL);
+  return ESP_OK;
+}

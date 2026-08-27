@@ -7,11 +7,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <stdbool.h>
+
 #include "esp_err.h"
 
 esp_err_t usb_link_init(void);
 /** Blocking read with timeout; returns bytes read (0 on timeout). */
 int usb_link_read(uint8_t *buf, size_t cap, uint32_t timeout_ms);
+
+/**
+ * True when a host has sent us something recently.
+ *
+ * Deliberately "a host is talking to us" rather than "we are on USB power":
+ * the SW6106 feeds the same 5 V rail from the battery or from the socket, and
+ * the P4 cannot tell those apart. Claiming to know would be inventing a fact
+ * about the power path.
+ */
+bool usb_link_connected(void);
 void usb_link_write(const uint8_t *data, size_t len);
 
 #endif

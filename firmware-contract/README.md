@@ -189,6 +189,109 @@ Source commands **not in spec 04§7** — repo additions, normative:
 `cursor?: number` and `limit?: number` with no `filters`. **Source is normative.** The reference
 device caps `limit` at 100 and reports `total` and `hasMore` alongside.
 
+### D10 — `PowerStatus.batteryV` / `batteryPct` are null on D4 V1: there is nothing to measure
+
+`PowerStatus` in `types.ts` types `batteryV: number` and `batteryPct: number` as required, and makes
+`busV`, `chargingA` and `fuse` optional with the note that a firmware without a rail ADC omits them
+so *"Studio shows '—' rather than inventing 5.00"*.
+
+**D4 V1 cannot measure the cell either.** The 505573 LiPo reaches the board through a protection
+board and an SW6106 charger/boost carrier, and neither the pack nor the carrier routes a sense
+divider or a fuel-gauge bus to the P4 — `docs/HARDWARE.md` §Battery and power describes the path and
+no GPIO in the 2×13 header carries battery telemetry. Nothing in the camera knows the voltage.
+
+The P4 firmware therefore sends **`null`** for both, not `0`:
+
+| Field | 0.1.x value | Why |
+|---|---|---|
+| `batteryV` | `null` | `0` is a number a client draws as a flat battery. A wrong reading is worse than an absent one. |
+| `batteryPct` | `null` | Same. |
+| `batteryMeasured` | `false` | Added field, so a client need not infer intent from a null. |
+| `state` | `"usb"` \| `"battery"` | Derived from whether a host is talking to us, **not** from the power path — the SW6106 feeds the same 5 V rail either way. |
+| `charging` | `false` | Not sensable. Never reported true on this hardware. |
+
+Clients must check `capabilities.powerTelemetry` before reading either field; 0.1.x reports it
+`false`. `capabilities.powerManagement` is separately `true`, because the *other* half — `autoDimS`,
+`sleepS` and `camIdleTimeoutS` from `BodyConfig` — is implemented and does work. Two flags, because
+a client that wants to draw a battery and a client that wants to set a sleep timeout are asking
+different questions.
+
+This is a hardware gap, not a protocol one. It closes when the V2 carrier routes a divider or a
+gauge; the field types do not need to change.
+
+### D11 — `BodyConfig.brightness` and the dim stage have no hardware on D4 V1
+
+`BodyConfig.brightness` is `1..10` and `autoDimS` implies a dimmed state between awake and asleep.
+The Guition carrier drives the panel backlight from a plain GPIO, not a PWM channel, so the only
+achievable states are lit and dark.
+
+0.1.x therefore honours `sleepS` (backlight off) and `camIdleTimeoutS` (camera bank off via
+`CAM_PWR_EN`) exactly, tracks and reports the `dim` stage in `GET_POWER_STATUS.displayStage` so a
+client can show where the timeout has got to, and **ignores `brightness`**. The setting is stored and
+returned unchanged rather than silently rewritten, so it is ready the moment the pin gets a
+transistor.
+
+### D12 — `jpegQuality` is a percentage on the wire and the inverse on the sensor
+
+`jpegQuality` is documented `// 60..95` in `types.ts` and `recipeTypes.ts`, and Studio's sliders
+present it that way: higher is better. `esp32-camera`'s `set_quality()` takes **5..63, where lower is
+better**, and the camera node clamps to that range.
+
+Nothing converted between them. A value of 85 sent down the node link arrived as a request for
+quality 63 — the *worst* JPEG the sensor can produce — and 95 did the same. Both numbers are inside
+the other scale's range, so neither end could detect it; the only symptom was that asking for better
+quality made the picture worse.
+
+0.3.0 converts in one place, `capture_quality_to_sensor()`, mapping 60..95 onto 20..5. The wire
+contract is unchanged: the percentage is what Studio sends and what the settings envelope stores.
+
+### D13 — the shared trigger wire is driven, and coordinates nothing yet
+
+`GPIO32` (`BOARD_SYNC_OUT`) is pulsed for 200 µs at the start of every capture, and the pulse is
+timed and logged. **The camera nodes do not arm on that edge.** They expose when their
+`NL_CMD_CAPTURE` arrives over their own UART, exactly as they did before the wire was driven.
+
+The pulse exists so the trace is proven and the node-side arm becomes a node change alone. Until it
+does, the four frames of a capture are separated by however long it takes to wake four workers and
+put four commands on four UARTs. `kino.capture.timing` reports that figure as `dispatchSpreadUs`,
+under its own name, and reports all three of `gpioTriggerSkewUs`, `vsyncPhaseSkewUs` and
+`effectiveExposureSkewUs` as `null` with an `unavailableReason`.
+
+Dispatch spread is not exposure skew and must never be presented as it: the sensors free-run with a
+rolling shutter, so when a command arrived says nothing certain about when light was integrated (04
+§14). `CAMERA_CAPTURE` with `action: "timing-test"` is refused with `UNSUPPORTED_COMMAND` rather than
+answered, and `GET_CAPABILITIES` reports `vsyncTelemetry: false`.
+
+`GPIO32` and `GPIO28` are their own nets — `SYNC_OUT` and `FLASH_EN` in
+`packages/hardware-profiles/src/profiles/d4-v1.json`. They sit beside `C6_U0RXD` and `C6_U0TXD` on
+the 2×13 header, which is adjacency in the pinout table and not a shared signal; the C6 pins stay
+reserved and undriven.
+
+What `FLASH_EN` drives is a bench LED until the flash board exists. The pin is asserted before the
+trigger and released as soon as every node reports its capture finished, bounded at 900 ms — because
+without exposure sync a flash has to cover a window rather than an instant, and at 350–500 mA the
+difference is worth bounding.
+
+### D14 — `capturedAt` is required, and the body has no clock
+
+`kino.capture` requires `capturedAt`, an ISO 8601 timestamp. The D4 V1 has no RTC, no battery-backed
+clock, and no network. A body that has never been told the time cannot produce a true timestamp, and
+a *plausible* false one is worse than an obviously false one: it survives import, sorts into the
+wrong place in someone's roll, and is never questioned.
+
+So the timestamp always travels with its source. `HELLO` gained two optional additive request fields,
+`hostEpochMs` and `hostUtcOffsetMin`, and answers with `clockSource`; `META.JSON` and
+`CAMERA_CAPTURE` carry the same field:
+
+| `clockSource` | What the timestamp is worth |
+| --- | --- |
+| `host` | A host set it this session. Trust it. |
+| `persisted` | Restored across a power cycle as a lower bound. The shot happened at or after this. |
+| `unset` | Never told. The reading is uptime since the epoch and is visibly not a date. |
+
+Firmware refuses a host time outside 2020–2100, which is what a seconds-for-milliseconds mix-up
+looks like, and only persists a time it was actually given.
+
 ## Decided — was "firmware team decision required"
 
 Issue #5 closed the six open questions this section used to list. They were open because physical

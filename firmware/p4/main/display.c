@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "hardware_validation.h"
 #include "klog.h"
 
 static const char *TAG = "display";
@@ -141,7 +142,7 @@ static void panel_reset_pulse(void) {
 /* Backlight is a plain GPIO on this board, not an LEDC channel. Driving it
  * as PWM would be a quiet way to get a dark panel that looks like a dead
  * one. Brightness control, if it is ever wanted, needs a hardware answer. */
-static void backlight(bool on) {
+void display_backlight(bool on) {
   gpio_config_t cfg = {
       .pin_bit_mask = 1ULL << BOARD_LCD_BACKLIGHT,
       .mode = GPIO_MODE_OUTPUT,
@@ -205,7 +206,13 @@ esp_err_t display_init(void) {
       .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
       .dpi_clock_freq_mhz = 34,
       .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
-      .num_fbs = 1,
+      /* Two, so a frame can be composed while the panel is still scanning the
+       * previous one. The driver recognises its own buffers in
+       * draw_bitmap and switches the scan source instead of copying, which
+       * turns presenting a frame into a cache write-back and a pointer swap.
+       * With one buffer every frame is a 768 KB copy into memory the display
+       * is reading at the same time. */
+      .num_fbs = 2,
       .video_timing = {
           .h_size = DISPLAY_H_RES,
           .v_size = DISPLAY_V_RES,
@@ -245,8 +252,13 @@ esp_err_t display_init(void) {
     return err;
   }
 
-  backlight(true);
+  display_backlight(true);
   s_ready = true;
+  /* The panel accepted its init sequence over DBI and the DPI stream is
+   * running. Whether anything is visible is a human judgement and stays out
+   * of the registry; that the ST7701 answered is not. */
+  hwv_mark_validated(HWV_DSI_PANEL_ST7701, "init table accepted, DPI running");
+  hwv_mark_validated(HWV_BACKLIGHT_GPIO23, "driven high at panel init");
   ESP_LOGI(TAG, "LCD_READY %dx%d st7701 mipi-dsi 2 lanes 500 Mbps, backlight on GPIO%d",
            DISPLAY_H_RES, DISPLAY_V_RES, BOARD_LCD_BACKLIGHT);
   klog("P4", "display up %dx%d", DISPLAY_H_RES, DISPLAY_V_RES);

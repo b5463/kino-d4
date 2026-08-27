@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "nvs.h"
 
 static const char *TAG = "hwv";
@@ -13,6 +15,8 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "SD_D1_GPIO40",    "SD_D2_GPIO41",   "SD_D3_GPIO42",    "SD_LDO_CH4",
     "CAM1_TX_GPIO52",  "CAM1_RX_GPIO51", "CAM1_BAUD_921600", "CAM1_NODE_LINK",
     "CAM1_SENSOR_DETECT", "CAM1_CAPTURE", "CAM1_JPEG_TRANSFER", "CAM1_SD_WRITE",
+    "DSI_PANEL_ST7701", "BACKLIGHT_GPIO23", "I2C_SHARED_BUS", "TOUCH_GT911",
+    "AUDIO_ES8311",     "AUDIO_AMP_GPIO11", "CAM_PWR_EN_GPIO31",
 };
 
 static uint8_t s_status[HWV_COUNT];
@@ -46,6 +50,23 @@ void hwv_init(void) {
 
 void hwv_mark_validated(hwv_item_t item, const char *detail) {
   if (item >= HWV_COUNT || s_status[item] == HWV_VALIDATED) return;
+  /* Marked from eight modules and as many tasks - display bring-up, the touch
+   * poll, the audio path, power, the node link. Two of them transitioning at
+   * once would interleave an NVS handle and two writes to the same detail
+   * string. The early return above means the lock is only ever taken on the
+   * one transition per item, never on the steady-state re-marking. */
+  static SemaphoreHandle_t lock;
+  if (lock == NULL) {
+    static portMUX_TYPE init_mux = portMUX_INITIALIZER_UNLOCKED;
+    portENTER_CRITICAL(&init_mux);
+    if (lock == NULL) lock = xSemaphoreCreateMutex();
+    portEXIT_CRITICAL(&init_mux);
+  }
+  if (lock) xSemaphoreTake(lock, portMAX_DELAY);
+  if (s_status[item] == HWV_VALIDATED) {
+    if (lock) xSemaphoreGive(lock);
+    return;
+  }
   s_status[item] = HWV_VALIDATED;
   strncpy(s_detail[item], detail != NULL ? detail : "", sizeof s_detail[item] - 1);
   ESP_LOGI(TAG, "VALIDATED %s: %s", ITEM_IDS[item], s_detail[item]);
@@ -62,6 +83,7 @@ void hwv_mark_validated(hwv_item_t item, const char *detail) {
     nvs_commit(nvs);
     nvs_close(nvs);
   }
+  if (lock) xSemaphoreGive(lock);
 }
 
 hwv_status_t hwv_status(hwv_item_t item) {

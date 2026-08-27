@@ -49,4 +49,12 @@ esp_lcd_panel_handle_t display_panel(void);
  */
 esp_err_t display_test_pattern(void);
 
+/**
+ * Backlight on or off.
+ *
+ * On this board it is a plain GPIO, so this is the only brightness control
+ * there is - see the note in display.c about why it is not driven as PWM.
+ */
+void display_backlight(bool on);
+
 #endif

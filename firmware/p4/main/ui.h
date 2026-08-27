@@ -20,6 +20,13 @@
 #define UI_W 800
 #define UI_H 480
 
+/* Bench only: send the composed screens back over the console as base64 so
+ * they can be decoded into pictures. 0 for normal builds - it costs several
+ * seconds of boot and floods the log. */
+#ifndef KINO_UI_FRAME_DUMP
+#define KINO_UI_FRAME_DUMP 0
+#endif
+
 /** Start the UI. Requires display_init(); touch is optional. */
 esp_err_t ui_start(void);
 
