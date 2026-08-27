@@ -13,3 +13,8 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Two clean builds of one commit must produce the same .bin, so a hash in a
+# bench record identifies the source. See firmware/p4/sdkconfig.defaults for
+# the measurement.
+CONFIG_APP_REPRODUCIBLE_BUILD=y

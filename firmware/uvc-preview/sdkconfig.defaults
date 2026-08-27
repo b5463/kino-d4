@@ -15,6 +15,11 @@ CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
+# Two clean builds of one commit must produce the same .bin, so a hash in a
+# bench record identifies the source. See firmware/p4/sdkconfig.defaults for
+# the measurement.
+CONFIG_APP_REPRODUCIBLE_BUILD=y
+
 # --- UVC device ---
 # Named so four boards on one hub are told apart in the host's camera list.
 CONFIG_TUSB_MANUFACTURER="KINO"

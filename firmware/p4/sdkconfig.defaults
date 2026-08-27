@@ -38,3 +38,13 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
 # Capture folders are named by UUID (36 chars) — needs FAT long filenames.
 CONFIG_FATFS_LFN_HEAP=y
+
+# Bench records name the image by hash. Left unset, ESP-IDF stamps the build
+# clock into esp_app_desc, and the ELF SHA-256 beside it changes with it, so
+# two clean builds of the same commit produce different .bin files — measured:
+# 67 bytes differ, being three clock digits and the two SHA-256 fields. A hash
+# written in HARDWARE_VALIDATION.md would then be impossible to trace back to
+# the source that produced it, which is the one thing that record is for.
+# Nothing in this firmware reads esp_app_get_description(), so the timestamp
+# is not being given up to anything.
+CONFIG_APP_REPRODUCIBLE_BUILD=y
