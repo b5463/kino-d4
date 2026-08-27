@@ -1,16 +1,19 @@
 // The home screen's six objects, as sprites.
 //
-// Two kinds, deliberately mixed. Where the object IS the product - the camera
-// with its four lenses at their real 22 mm pitch - it is a rendered 3D model,
-// because the geometry is the thing being shown and inventing it would be a
-// lie. Where the object is a symbol - a bolt, a gear, a stack of prints -
-// it is drawn: a Windows XP era icon has bold outlines, a saturated gradient
-// and a gloss streak, and a shaded solid of the same shape reads flatter and
-// duller than the drawing does. Personality beats simulation for a symbol.
+// They are the Windows XP (Luna) desktop icons, baked into icons_xp.h at the
+// 48 px grid they were drawn on and expanded here. Five of the six they
+// replaced were polygons this file drew by hand in the same style; a drawn
+// imitation of an icon set is worse than the icon set, and the camera's whole
+// visual argument is that it belongs to that desktop.
 //
-// Both kinds are rendered at three times size and boxed down, so the sprites
-// carry real coverage rather than a hard 1-bit edge. That anti-aliasing is
-// what stops either kind looking like a screenshot of a 1998 3D demo.
+// The expansion is not a resize. A 48 px icon scaled cleanly to 168 px on a
+// 480x800 panel reads far sharper than it ever did on the ~96 DPI CRT it was
+// drawn for, and lands on the screen looking like clip art. So the source
+// pixels stay square with a soft edge, and the scanlines, aperture-grille
+// triads and bloom of that monitor go on top. See icons.c for the numbers.
+//
+// No contact shadow is added. XP icons carry their own drop shadow in their
+// alpha, and a second one underneath put two light sources on one tile.
 #ifndef P4_ICONS_H
 #define P4_ICONS_H
 
@@ -19,9 +22,11 @@
 
 #include "esp_err.h"
 
+/* 3.5 source pixels per side. Not an integer multiple, deliberately - see
+ * SCALE in icons.c. */
 #define ICON_PX 168
 
-/** Build all six sprites. Requires mesh3d_init() for the rendered ones. */
+/** Expand all six sprites. No longer needs mesh3d(); the set is all raster. */
 esp_err_t icons_build(void);
 
 /** True once the sprites exist. */
@@ -29,8 +34,8 @@ bool icons_ready(void);
 
 /**
  * Composite one icon at (x, y) into a landscape RGB565 canvas, over whatever
- * is already there: its contact shadow first, then the object itself,
- * blended by coverage so the edges are smooth on any background.
+ * is already there, blended by coverage so the edges are smooth on any
+ * background.
  */
 void icons_blit(uint16_t *canvas, int cw, int chh, int i, int x, int y);
 

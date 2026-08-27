@@ -54,3 +54,14 @@ path = [
 precedence = "override"
 SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
 SPDX-License-Identifier = "LicenseRef-KINO-Reserved"
+
+# The P4 home-screen icons are the Windows XP set, baked at 48 px by
+# scripts/bake-xp-icons.mjs. firmware/** is declared MIT three blocks up, which
+# would relabel Microsoft's artwork as ours to give away. It is not, and this
+# override says so. The annotation records the ownership; it grants nothing.
+# See LICENSES/LicenseRef-Microsoft-Proprietary.txt and THIRD_PARTY_NOTICES.md.
+[[annotations]]
+path = ["firmware/p4/main/icons_xp.h"]
+precedence = "override"
+SPDX-FileCopyrightText = "Microsoft Corporation"
+SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"

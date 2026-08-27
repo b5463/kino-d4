@@ -1319,7 +1319,7 @@ esp_err_t ui_start(void) {
   /* The 3D viewport is smaller than the screen, so the depth buffer is sized
    * to it rather than to the frame. */
   err = mesh3d_init(320, 300);
-  if (err != ESP_OK) ESP_LOGW(TAG, "3D unavailable: %s - icons will be missing",
+  if (err != ESP_OK) ESP_LOGW(TAG, "3D unavailable: %s - the viewfinder loses its body",
                               esp_err_to_name(err));
 
   /* The physical shutter runs the same path as the on-screen key. */
@@ -1330,12 +1330,18 @@ esp_err_t ui_start(void) {
 
   /* The icon builder starts AFTER the UI, and the order is the whole point.
    *
-   * Supersampling six icons costs the best part of a second. Started first it
-   * simply ran to completion before the splash existed - it outranks the task
-   * calling ui_start(), so "on its own task" bought nothing at all. Created
-   * second, the UI task is already animating and blocking on frame timing,
-   * and the builder fills exactly those gaps. The splash needs no icons, so
-   * the cost disappears into animation that was going to run anyway. */
-  if (err == ESP_OK) xTaskCreate(icons_task, "icons", 4096, NULL, 3, NULL);
+   * Expanding six icons is tens of milliseconds rather than the best part of
+   * a second it cost while they were supersampled polygons, but the ordering
+   * still matters: started first it simply ran to completion before the
+   * splash existed, because it outranks the task calling ui_start() and "on
+   * its own task" bought nothing at all. Created second, the UI task is
+   * already animating and blocking on frame timing, and the builder fills
+   * exactly those gaps.
+   *
+   * Not gated on mesh3d. It used to be, because one of the six icons was a
+   * render of the camera mesh; all six are raster now, and leaving the gate
+   * in place would have let a 3D failure - which costs the viewfinder its
+   * body and nothing else - take the whole home screen down with it. */
+  xTaskCreate(icons_task, "icons", 4096, NULL, 3, NULL);
   return ESP_OK;
 }
