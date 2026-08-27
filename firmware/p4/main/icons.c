@@ -48,6 +48,16 @@ static const char *TAG = "icons";
  * back the whole set comes out a stop under the rest of the screen. */
 #define GAIN (1.0f / ((1.0f - SCAN * 0.5f) * (1.0f - MASK * 2.0f / 3.0f)))
 
+/* Everything below the setup runs in Q8: a weight of 256 is 1.0. The first
+ * version did the same arithmetic in floats, per pixel, against two 84 KB
+ * PSRAM planes, and measured 1669 ms for six icons on the bench - slower than
+ * the polygon drawing it replaced. Integer maths and precomputed tables took
+ * it to 918 ms; streaming it a row at a time, so the working set is 5 KB of
+ * internal RAM instead of 168 KB of PSRAM, took it to 575 ms. The output is
+ * bit-identical between the last two. */
+#define Q 8
+#define ONE (1 << Q)
+
 static uint16_t *s_rgb[XP_ICON_COUNT];
 static uint8_t *s_alpha[XP_ICON_COUNT];
 static bool s_ready;
@@ -63,137 +73,222 @@ static uint16_t mix565(uint16_t a, uint16_t b, int k) {
   return (uint16_t)((r << 11) | (g << 5) | bl);
 }
 
-static inline int clamp255(float v) { return v < 0.0f ? 0 : v > 255.0f ? 255 : (int)(v + 0.5f); }
+static inline int clamp255(int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+
+/* ------------------------------------------------------------------ */
+/* Tables. Built once; the same for every icon and for both axes.      */
+/* ------------------------------------------------------------------ */
 
 /**
- * Map a device coordinate to a source coordinate and a blend weight.
+ * One output coordinate's two source samples and the weight between them.
  *
  * Plain bilinear across a 3.5x expansion is a smear; nearest-neighbour is a
  * staircase. This is the middle: the weight is pinned at 0 or 1 across the
  * body of a source pixel and only moves within SOFT device pixels of the
  * boundary, so the pixel stays square and its edge stays soft.
+ *
+ * The mapping depends only on the coordinate, so it is 168 entries computed
+ * once rather than two transcendental-free but still float-heavy evaluations
+ * per pixel per icon - which was 28224 of them, six times over.
  */
-static inline void tap(int out, int *i0, int *i1, float *w) {
-  const float u = ((float)out + 0.5f) / SCALE - 0.5f;
-  int i = (int)floorf(u);
-  float f = u - (float)i;
+typedef struct {
+  uint8_t i0, i1; /* source columns (or rows) either side */
+  uint16_t w;     /* Q8 weight towards i1 */
+} tap_t;
 
-  /* Compress the fraction about its midpoint so the transition occupies SOFT
-   * device pixels rather than a whole source pixel. */
-  f = (f - 0.5f) * (SCALE / SOFT) + 0.5f;
-  f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
-  f = f * f * (3.0f - 2.0f * f); /* smoothstep: a phosphor edge, not a wedge */
+static tap_t s_tap[ICON_PX];
+static uint16_t s_scan[ICON_PX]; /* Q8 scanline gain, per device row */
+/* Q8 gain for a channel that owns this device column's phosphor stripe, and
+ * for one that does not. Two numbers, not three: which channel is lit varies,
+ * how much it is lit by does not. */
+static uint16_t s_lit_on, s_lit_off;
+static bool s_tables;
 
-  if (i < 0) i = 0;
-  int j = i + 1;
-  if (i > XP_ICON_N - 1) i = XP_ICON_N - 1;
-  if (j > XP_ICON_N - 1) j = XP_ICON_N - 1;
-  *i0 = i;
-  *i1 = j;
-  *w = f;
+static void build_tables(void) {
+  if (s_tables) return;
+
+  for (int o = 0; o < ICON_PX; o++) {
+    const float u = ((float)o + 0.5f) / SCALE - 0.5f;
+    int i = (int)floorf(u);
+    float f = u - (float)i;
+
+    /* Compress the fraction about its midpoint so the transition occupies
+     * SOFT device pixels rather than a whole source pixel. */
+    f = (f - 0.5f) * (SCALE / SOFT) + 0.5f;
+    f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+    f = f * f * (3.0f - 2.0f * f); /* smoothstep: a phosphor edge, not a wedge */
+
+    if (i < 0) i = 0;
+    int j = i + 1;
+    if (i > XP_ICON_N - 1) i = XP_ICON_N - 1;
+    if (j > XP_ICON_N - 1) j = XP_ICON_N - 1;
+    s_tap[o].i0 = (uint8_t)i;
+    s_tap[o].i1 = (uint8_t)j;
+    s_tap[o].w = (uint16_t)(f * (float)ONE + 0.5f);
+
+    /* Where this device row falls within its source row. 0 and 1 are the
+     * gaps between scan lines, 0.5 is the centre of the beam. */
+    const float ph = ((float)o + 0.5f) / SCALE;
+    const float beam = 0.5f - 0.5f * cosf(6.2831853f * (ph - floorf(ph)));
+    s_scan[o] = (uint16_t)(((1.0f - SCAN) + SCAN * beam) * (float)ONE + 0.5f);
+  }
+
+  s_lit_on = (uint16_t)(GAIN * (float)ONE + 0.5f);
+  s_lit_off = (uint16_t)(GAIN * (1.0f - MASK) * (float)ONE + 0.5f);
+  s_tables = true;
+}
+
+/* ------------------------------------------------------------------ */
+
+/* The blur kernel, and the ring depth that follows from it: an output row
+ * reads two rows either side of itself, so five rows have to be in hand. */
+static const int KW[2 * BLOOM_R + 1] = {1, 4, 6, 4, 1};
+#define KSUM 16
+#define RING (2 * BLOOM_R + 1)
+#define ROWB (ICON_PX * 3)
+
+/** One row of scratch, kept RING deep. See expand(). */
+typedef struct {
+  uint8_t base[RING][ROWB]; /* straight resampled colour */
+  uint8_t blur[RING][ROWB]; /* premultiplied, blurred along x */
+} rows_t;
+
+/** Resample one device row of colour into base, and its coverage into alpha. */
+static void row_resample(const xp_icon_t *ic, int y, uint8_t *brow, uint8_t *arow) {
+  const tap_t ty = s_tap[y];
+  const int r0 = ty.i0 * XP_ICON_N, r1 = ty.i1 * XP_ICON_N;
+  const int wy = ty.w, iy = ONE - ty.w;
+
+  for (int x = 0; x < ICON_PX; x++) {
+    const tap_t tx = s_tap[x];
+    const int wx = tx.w, ix = ONE - tx.w;
+
+    /* Q8 x Q8 back down to Q8, so the products below stay inside 32 bits:
+     * 255 (colour) * 255 (alpha) * 256 (weight) * 4 taps is 66M. */
+    const int p[4] = {r0 + tx.i0, r0 + tx.i1, r1 + tx.i0, r1 + tx.i1};
+    const int k[4] = {(ix * iy) >> Q, (wx * iy) >> Q, (ix * wy) >> Q, (wx * wy) >> Q};
+
+    int r = 0, g = 0, b = 0, a = 0;
+    for (int t = 0; t < 4; t++) {
+      const int av = ic->alpha[p[t]] * k[t];
+      if (!av) continue;
+      const uint16_t c = ic->rgb[p[t]];
+      /* Weighting colour by alpha as well as by the tap keeps the transparent
+       * side of an edge - which carries whatever colour the exporter left
+       * behind it - out of the visible rim. */
+      r += (((c >> 11) & 0x1F) << 3) * av;
+      g += (((c >> 5) & 0x3F) << 2) * av;
+      b += ((c & 0x1F) << 3) * av;
+      a += av;
+    }
+
+    arow[x] = (uint8_t)clamp255(a >> Q);
+    if (a > 0) {
+      brow[x * 3 + 0] = (uint8_t)clamp255(r / a);
+      brow[x * 3 + 1] = (uint8_t)clamp255(g / a);
+      brow[x * 3 + 2] = (uint8_t)clamp255(b / a);
+    } else {
+      brow[x * 3 + 0] = brow[x * 3 + 1] = brow[x * 3 + 2] = 0;
+    }
+  }
+}
+
+/**
+ * Premultiply one row by its coverage and blur it along x.
+ *
+ * Premultiplied, so the bloom fades out at the sprite's edge instead of
+ * dragging a black box in from beyond it. Premultiplied once per pixel rather
+ * than once per tap: five taps times three channels was fifteen
+ * multiply-shifts a pixel to produce five copies of the same five numbers.
+ */
+static void row_blur_x(const uint8_t *brow, const uint8_t *arow, uint8_t *out) {
+  uint8_t pre[ROWB];
+  for (int x = 0; x < ICON_PX; x++) {
+    const int a = arow[x];
+    pre[x * 3 + 0] = (uint8_t)((brow[x * 3 + 0] * a + 128) >> 8);
+    pre[x * 3 + 1] = (uint8_t)((brow[x * 3 + 1] * a + 128) >> 8);
+    pre[x * 3 + 2] = (uint8_t)((brow[x * 3 + 2] * a + 128) >> 8);
+  }
+  for (int x = 0; x < ICON_PX; x++) {
+    int acc[3] = {0, 0, 0};
+    for (int d = -BLOOM_R; d <= BLOOM_R; d++) {
+      int sx = x + d;
+      if (sx < 0) sx = 0;
+      if (sx > ICON_PX - 1) sx = ICON_PX - 1;
+      const int w = KW[d + BLOOM_R];
+      acc[0] += pre[sx * 3 + 0] * w;
+      acc[1] += pre[sx * 3 + 1] * w;
+      acc[2] += pre[sx * 3 + 2] * w;
+    }
+    out[x * 3 + 0] = (uint8_t)(acc[0] / KSUM);
+    out[x * 3 + 1] = (uint8_t)(acc[1] / KSUM);
+    out[x * 3 + 2] = (uint8_t)(acc[2] / KSUM);
+  }
 }
 
 /**
  * Expand one 48 px icon to ICON_PX with the artefacts of the display it was
  * drawn for.
  *
- * base and tmp are ICON_PX * ICON_PX * 3 byte scratch buffers, reused across
- * the set: base holds the straight resampled colour, tmp one axis of the
- * bloom blur. Both are the caller's, because six of each would be 1 MB of
- * PSRAM held for the length of one function.
+ * Streamed a row at a time. The obvious shape is three full-frame passes -
+ * resample, blur x, blur y and shade - which needs two 84 KB scratch planes;
+ * they do not fit in internal RAM during boot, so they land in PSRAM, and
+ * the blur reads each of them five times per output pixel. That access
+ * pattern, not the arithmetic, was most of the original 1669 ms.
+ *
+ * Nothing here needs a whole frame. An output row reads its own resampled
+ * colour and five rows of the x-blurred buffer, so five rows of each is the
+ * entire working set: 5 KB, small enough to be internal RAM whatever else is
+ * going on, and hot in cache for the whole run.
  */
-static void expand(int idx, const xp_icon_t *ic, uint8_t *base, uint8_t *tmp) {
+static void expand(int idx, const xp_icon_t *ic, rows_t *w) {
+  const int bloom_q = (int)(BLOOM * (float)ONE + 0.5f);
   uint8_t *al = s_alpha[idx];
 
-  /* ---- resample, colour weighted by alpha ---------------------------- */
-  for (int y = 0; y < ICON_PX; y++) {
-    int y0, y1;
-    float wy;
-    tap(y, &y0, &y1, &wy);
-    for (int x = 0; x < ICON_PX; x++) {
-      int x0, x1;
-      float wx;
-      tap(x, &x0, &x1, &wx);
-
-      const int p[4] = {y0 * XP_ICON_N + x0, y0 * XP_ICON_N + x1, y1 * XP_ICON_N + x0,
-                        y1 * XP_ICON_N + x1};
-      const float k[4] = {(1.0f - wx) * (1.0f - wy), wx * (1.0f - wy), (1.0f - wx) * wy, wx * wy};
-
-      float r = 0, g = 0, b = 0, a = 0;
-      for (int t = 0; t < 4; t++) {
-        const float av = (float)ic->alpha[p[t]] * k[t];
-        const uint16_t c = ic->rgb[p[t]];
-        /* Weighting colour by alpha as well as by the tap keeps the
-         * transparent side of an edge - which carries whatever colour the
-         * exporter left behind it - out of the visible rim. */
-        r += (float)(((c >> 11) & 0x1F) << 3) * av;
-        g += (float)(((c >> 5) & 0x3F) << 2) * av;
-        b += (float)((c & 0x1F) << 3) * av;
-        a += av;
-      }
-
-      const size_t o = ((size_t)y * ICON_PX + x);
-      al[o] = (uint8_t)clamp255(a);
-      if (a > 0.5f) {
-        base[o * 3 + 0] = (uint8_t)clamp255(r / a);
-        base[o * 3 + 1] = (uint8_t)clamp255(g / a);
-        base[o * 3 + 2] = (uint8_t)clamp255(b / a);
-      } else {
-        base[o * 3 + 0] = base[o * 3 + 1] = base[o * 3 + 2] = 0;
-      }
+  /* Produced rows run BLOOM_R ahead of emitted ones, so that by the time row
+   * y is shaded, rows y-2..y+2 exist. */
+  for (int r = 0; r < ICON_PX + BLOOM_R; r++) {
+    if (r < ICON_PX) {
+      uint8_t *brow = w->base[r % RING];
+      row_resample(ic, r, brow, al + (size_t)r * ICON_PX);
+      row_blur_x(brow, al + (size_t)r * ICON_PX, w->blur[r % RING]);
     }
-  }
 
-  /* ---- bloom, horizontal half ---------------------------------------- */
-  /* Blurred premultiplied by alpha, so the glow fades out at the sprite's
-   * edge instead of dragging a black box in from beyond it. */
-  static const int KW[2 * BLOOM_R + 1] = {1, 4, 6, 4, 1};
-  const int KSUM = 16;
-  for (int y = 0; y < ICON_PX; y++) {
-    for (int x = 0; x < ICON_PX; x++) {
-      int acc[3] = {0, 0, 0};
-      for (int d = -BLOOM_R; d <= BLOOM_R; d++) {
-        int sx = x + d;
-        if (sx < 0) sx = 0;
-        if (sx > ICON_PX - 1) sx = ICON_PX - 1;
-        const size_t s = (size_t)y * ICON_PX + sx;
-        const int w = KW[d + BLOOM_R];
-        const int a = s_alpha[idx][s];
-        for (int c = 0; c < 3; c++) acc[c] += base[s * 3 + c] * a / 255 * w;
-      }
-      const size_t o = (size_t)y * ICON_PX + x;
-      for (int c = 0; c < 3; c++) tmp[o * 3 + c] = (uint8_t)(acc[c] / KSUM);
+    const int y = r - BLOOM_R;
+    if (y < 0) continue;
+
+    /* The five rows this one blurs over, clamped at the edges and resolved
+     * once instead of inside the pixel loop. Every one of them is still in
+     * the ring: the furthest look-back is BLOOM_R, and the ring is deeper. */
+    const uint8_t *src[RING];
+    for (int d = -BLOOM_R; d <= BLOOM_R; d++) {
+      int sy = y + d;
+      if (sy < 0) sy = 0;
+      if (sy > ICON_PX - 1) sy = ICON_PX - 1;
+      src[d + BLOOM_R] = w->blur[sy % RING];
     }
-  }
 
-  /* ---- vertical half, and the display itself ------------------------- */
-  for (int y = 0; y < ICON_PX; y++) {
-    /* Where this device row falls within its source row. 0 and 1 are the
-     * gaps between scan lines, 0.5 is the centre of the beam. */
-    const float ph = ((float)y + 0.5f) / SCALE;
-    const float beam = 0.5f - 0.5f * cosf(6.2831853f * (ph - floorf(ph)));
-    const float scan = (1.0f - SCAN) + SCAN * beam;
-
+    const int scan = s_scan[y];
+    const uint8_t *brow = w->base[y % RING];
     uint16_t *out = s_rgb[idx] + (size_t)y * ICON_PX;
+
     for (int x = 0; x < ICON_PX; x++) {
       int bl[3] = {0, 0, 0};
-      for (int d = -BLOOM_R; d <= BLOOM_R; d++) {
-        int sy = y + d;
-        if (sy < 0) sy = 0;
-        if (sy > ICON_PX - 1) sy = ICON_PX - 1;
-        const size_t s = (size_t)sy * ICON_PX + x;
-        const int w = KW[d + BLOOM_R];
-        for (int c = 0; c < 3; c++) bl[c] += tmp[s * 3 + c] * w;
+      for (int t = 0; t < RING; t++) {
+        const uint8_t *p = src[t] + x * 3;
+        const int k = KW[t];
+        bl[0] += p[0] * k;
+        bl[1] += p[1] * k;
+        bl[2] += p[2] * k;
       }
 
       /* One phosphor stripe per device pixel, repeating R, G, B. */
       const int stripe = x % 3;
-      const size_t o = (size_t)y * ICON_PX + x;
       int v[3];
       for (int c = 0; c < 3; c++) {
-        const float m = (c == stripe) ? 1.0f : (1.0f - MASK);
-        const float lit = (float)base[o * 3 + c] * scan * m * GAIN;
-        v[c] = clamp255(lit + BLOOM * (float)(bl[c] / KSUM));
+        const int g = (c == stripe) ? s_lit_on : s_lit_off;
+        const int lit = (((brow[x * 3 + c] * scan) >> Q) * g) >> Q;
+        v[c] = clamp255(lit + (((bl[c] / KSUM) * bloom_q) >> Q));
       }
       out[x] = RGB(v[0], v[1], v[2]);
     }
@@ -202,14 +297,17 @@ static void expand(int idx, const xp_icon_t *ic, uint8_t *base, uint8_t *tmp) {
 
 esp_err_t icons_build(void) {
   if (s_ready) return ESP_OK;
+  build_tables();
 
   const size_t plane = (size_t)ICON_PX * ICON_PX;
-  uint8_t *base = heap_caps_malloc(plane * 3, MALLOC_CAP_SPIRAM);
-  uint8_t *tmp = heap_caps_malloc(plane * 3, MALLOC_CAP_SPIRAM);
-  if (base == NULL || tmp == NULL) {
-    free(base);
-    free(tmp);
-    ESP_LOGE(TAG, "no room for the %dx%d expansion buffers", ICON_PX, ICON_PX);
+
+  /* Internal RAM, explicitly. The whole point of streaming by rows is that
+   * the working set is 5 KB rather than 168 KB, which is small enough to ask
+   * for internal during boot and get it. Too big for the 4 KB icon task's
+   * stack, hence the heap. */
+  rows_t *work = heap_caps_malloc(sizeof(rows_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (work == NULL) {
+    ESP_LOGE(TAG, "no room for %u bytes of row scratch", (unsigned)sizeof(rows_t));
     return ESP_ERR_NO_MEM;
   }
 
@@ -217,16 +315,14 @@ esp_err_t icons_build(void) {
     s_rgb[i] = heap_caps_malloc(plane * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     s_alpha[i] = heap_caps_calloc(1, plane, MALLOC_CAP_SPIRAM);
     if (s_rgb[i] == NULL || s_alpha[i] == NULL) {
-      free(base);
-      free(tmp);
+      free(work);
       ESP_LOGE(TAG, "no room for icon sprites");
       return ESP_ERR_NO_MEM;
     }
-    expand(i, &XP_ICONS[i], base, tmp);
+    expand(i, &XP_ICONS[i], work);
   }
 
-  free(base);
-  free(tmp);
+  free(work);
   s_ready = true;
   ESP_LOGI(TAG, "%d XP icons expanded from %d px to %d px", XP_ICON_COUNT, XP_ICON_N, ICON_PX);
   return ESP_OK;

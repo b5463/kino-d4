@@ -1330,13 +1330,13 @@ esp_err_t ui_start(void) {
 
   /* The icon builder starts AFTER the UI, and the order is the whole point.
    *
-   * Expanding six icons is tens of milliseconds rather than the best part of
-   * a second it cost while they were supersampled polygons, but the ordering
-   * still matters: started first it simply ran to completion before the
-   * splash existed, because it outranks the task calling ui_start() and "on
-   * its own task" bought nothing at all. Created second, the UI task is
-   * already animating and blocking on frame timing, and the builder fills
-   * exactly those gaps.
+   * Expanding six icons measures 575 ms on the bench, so this is still most
+   * of a second that has to go somewhere. Started first it simply ran to
+   * completion before the splash existed, because it outranks the task
+   * calling ui_start() and "on its own task" bought nothing at all. Created
+   * second, the UI task is already animating and blocking on frame timing,
+   * and the builder fills exactly those gaps: the icons are ready at t=2984
+   * ms against a boot dissolve at t=4974, so nothing waits on them.
    *
    * Not gated on mesh3d. It used to be, because one of the six icons was a
    * render of the camera mesh; all six are raster now, and leaving the gate
