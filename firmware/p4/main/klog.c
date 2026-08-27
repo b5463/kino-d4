@@ -3,8 +3,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
 
+#include "clock.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -29,11 +29,13 @@ void klog_init(void) { s_lock = xSemaphoreCreateMutex(); }
 
 void klog_set_emitter(klog_emit_fn fn) { s_emit = fn; }
 
-static int64_t now_ms(void) {
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
+/* One wall clock, owned by clock.c. This used to call gettimeofday() directly,
+ * which was the same reading only by accident and stopped being the same the
+ * moment a host set the time: clock_set() moved KINO's epoch and left the
+ * system clock alone, so `t` kept counting from power-on while capturedAt
+ * reported 2026. Going through clock_now_ms() means there is one definition of
+ * what time it is and `t` cannot drift away from it again. */
+static int64_t now_ms(void) { return clock_now_ms(); }
 
 int64_t klog_now_us(void) { return esp_timer_get_time(); }
 

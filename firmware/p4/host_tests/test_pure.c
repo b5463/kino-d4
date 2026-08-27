@@ -341,6 +341,99 @@ static void test_iso8601(void) {
   CHECK(guard[0] == 'A' && guard[1] == 'B', "zero cap must not write");
 }
 
+/* ------------------------------------------------------------------ */
+/* clock_init()'s choice between a persisted time and the system clock.
+ *
+ * KINO's wall time is the ESP-IDF system clock now, so this decision writes
+ * into the clock that FAT timestamps and every capturedAt read. Two instants,
+ * both real: EARLY is a snapshot NVS could hold, LATE is what an RTC that kept
+ * running would read. */
+#define EARLY 1787788800000LL /* 2026-08-27T00:00:00Z */
+#define LATE 1787875200000LL  /* 2026-08-28T00:00:00Z, a day later */
+
+static void test_clock_restore(void) {
+  /* Cold boot, nothing stored, system clock at the epoch: the honest answer is
+   * that we do not know what time it is. */
+  CHECK(pure_clock_restore_action(false, 0, 0) == PURE_CLOCK_UNSET,
+        "no saved time and an epoch system clock -> UNSET");
+
+  /* Stored time, cold system clock. This is the persisted-boot case: push it
+   * into the system clock so the next capture is dated after the last one. */
+  CHECK(pure_clock_restore_action(true, EARLY, 0) == PURE_CLOCK_RESTORE_SAVED,
+        "saved time and a cold system clock -> RESTORE_SAVED");
+
+  /* The regression that matters. The RTC kept running across a soft reset and
+   * already reads a day later than the NVS snapshot. Restoring would move the
+   * clock BACKWARDS and date the next capture before one already on the card. */
+  CHECK(pure_clock_restore_action(true, EARLY, LATE) == PURE_CLOCK_KEEP_SYSTEM,
+        "system clock newer than saved -> KEEP_SYSTEM, never backwards");
+
+  /* The other way round: NVS holds the later time, so it wins. */
+  CHECK(pure_clock_restore_action(true, LATE, EARLY) == PURE_CLOCK_RESTORE_SAVED,
+        "saved newer than system clock -> RESTORE_SAVED");
+
+  /* Equal is keep: a settimeofday() that changes nothing is not worth doing. */
+  CHECK(pure_clock_restore_action(true, EARLY, EARLY) == PURE_CLOCK_KEEP_SYSTEM,
+        "equal times -> KEEP_SYSTEM");
+
+  /* No stored value but the RTC held a real date: that IS carried-over time,
+   * and reporting `unset` while dating captures 2026 would be the lie the
+   * other way round. */
+  CHECK(pure_clock_restore_action(false, 0, LATE) == PURE_CLOCK_KEEP_SYSTEM,
+        "no saved time but a plausible system clock -> KEEP_SYSTEM");
+
+  /* Implausible stored values are not times. This is the shape of the value
+   * this board actually had in NVS during bring-up - uptime-since-power-on,
+   * about nine minutes past 1970 - and adopting one now would write 1970 into
+   * FAT and into capturedAt. */
+  CHECK(pure_clock_restore_action(true, 526536LL, 0) == PURE_CLOCK_UNSET,
+        "uptime-shaped stored value -> UNSET, not adopted");
+  CHECK(pure_clock_restore_action(true, -1LL, 0) == PURE_CLOCK_UNSET,
+        "negative stored value -> UNSET");
+  CHECK(pure_clock_restore_action(true, PURE_EPOCH_MS_MAX + 1, 0) == PURE_CLOCK_UNSET,
+        "stored value past 2100 -> UNSET");
+
+  /* ...and an implausible stored value must not stop a good system clock from
+   * being used. */
+  CHECK(pure_clock_restore_action(true, 526536LL, LATE) == PURE_CLOCK_KEEP_SYSTEM,
+        "junk saved value with a good system clock -> KEEP_SYSTEM");
+
+  /* Inclusive bounds, both ends. */
+  CHECK(pure_clock_restore_action(true, PURE_EPOCH_MS_MIN, 0) == PURE_CLOCK_RESTORE_SAVED,
+        "2020-01-01 exactly is a usable time");
+  CHECK(pure_clock_restore_action(true, PURE_EPOCH_MS_MAX, 0) == PURE_CLOCK_RESTORE_SAVED,
+        "2100-01-01 exactly is a usable time");
+}
+
+/* The wall clock may jump; the monotonic clock may not. klog stamps both, and
+ * durations are computed from `us` alone for exactly this reason.
+ *
+ * This is the model, asserted so a future change that derives `us` from the
+ * wall clock fails here. The real proof is on hardware, where the same
+ * sequence is observed across a live HELLO correction. */
+static void test_clock_monotonic_across_correction(void) {
+  /* An unset clock counting from boot, then a host correction to 2026, then
+   * normal running. `us` is esp_timer and never restarts. */
+  const int64_t wall[] = {415, 480, EARLY, EARLY + 60, EARLY + 120};
+  const int64_t mono[] = {49502, 114000, 178000, 240000, 302000};
+  const int n = (int)(sizeof mono / sizeof mono[0]);
+
+  for (int i = 1; i < n; i++) {
+    CHECK(mono[i] > mono[i - 1], "us must increase at %d: %lld -> %lld", i,
+          (long long)mono[i - 1], (long long)mono[i]);
+  }
+
+  /* The wall clock does jump, hugely, and that is allowed. */
+  CHECK(wall[2] - wall[1] > 1000000000LL, "the correction is a real jump");
+
+  /* A duration measured across the correction must be unaffected by it. The
+   * wall-clock difference across the same two entries is nonsense; the
+   * monotonic one is 64 ms. */
+  CHECK(mono[2] - mono[1] == 64000, "duration across a correction comes from us");
+  CHECK(wall[2] - wall[1] != (mono[2] - mono[1]) / 1000,
+        "the wall clock cannot be used for that duration");
+}
+
 int main(void) {
   test_quality();
   test_resolution();
@@ -350,6 +443,8 @@ int main(void) {
   test_epoch_bounds();
   test_utc_offset();
   test_iso8601();
+  test_clock_restore();
+  test_clock_monotonic_across_correction();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

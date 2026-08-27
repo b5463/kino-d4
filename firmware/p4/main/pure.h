@@ -138,6 +138,35 @@ bool pure_epoch_plausible(int64_t epoch_ms);
  * device writes "+00:00" rather than guessing a timezone. */
 int pure_clamp_utc_offset_min(int offset_min);
 
+/** What clock_init() should do with the time it found. */
+typedef enum {
+  /** Neither source is usable. Captures are dated from boot until a host says
+   * otherwise, and `clockSource` says `unset` so nothing downstream trusts it. */
+  PURE_CLOCK_UNSET = 0,
+  /** The system clock already holds the better time — leave it alone. */
+  PURE_CLOCK_KEEP_SYSTEM,
+  /** Push the persisted value into the system clock. */
+  PURE_CLOCK_RESTORE_SAVED,
+} pure_clock_action_t;
+
+/**
+ * Decide between a persisted time and whatever the system clock already reads.
+ *
+ * Split out here because it is the part worth testing and the only part with no
+ * ESP-IDF in it. Two rules, and the second is the one that costs a bench cycle
+ * if it is missing:
+ *
+ *   - A value outside 2020..2100 is not a time. It is a unit mix-up or a stale
+ *     key, and adopting one now writes it into the *system* clock, where FAT
+ *     timestamps and every capturedAt read it.
+ *   - The system clock must never be moved backwards by a persisted value that
+ *     is older than what it already reads. The RTC keeps running across a soft
+ *     reset, so after a host has set the time, the system clock is the fresher
+ *     of the two and NVS holds a snapshot from before the reboot.
+ */
+pure_clock_action_t pure_clock_restore_action(bool have_saved, int64_t saved_ms,
+                                             int64_t system_now_ms);
+
 /**
  * Format an instant as ISO 8601 with an explicit offset, e.g.
  * "2026-08-27T14:02:11+02:00".

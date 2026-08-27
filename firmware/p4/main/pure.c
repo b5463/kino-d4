@@ -116,6 +116,21 @@ int pure_clamp_utc_offset_min(int offset_min) {
   return offset_min;
 }
 
+pure_clock_action_t pure_clock_restore_action(bool have_saved, int64_t saved_ms,
+                                             int64_t system_now_ms) {
+  const bool saved_ok = have_saved && pure_epoch_plausible(saved_ms);
+  const bool system_ok = pure_epoch_plausible(system_now_ms);
+
+  if (saved_ok && system_ok) {
+    /* Both are real times, so take the later one. Equal counts as keep: there
+     * is nothing to gain from a settimeofday() that changes nothing. */
+    return saved_ms > system_now_ms ? PURE_CLOCK_RESTORE_SAVED : PURE_CLOCK_KEEP_SYSTEM;
+  }
+  if (saved_ok) return PURE_CLOCK_RESTORE_SAVED;
+  if (system_ok) return PURE_CLOCK_KEEP_SYSTEM;
+  return PURE_CLOCK_UNSET;
+}
+
 /*
  * Days-from-civil / civil-from-days, after Howard Hinnant's public-domain
  * chrono algorithms. Used instead of gmtime_r so the device and the host test
