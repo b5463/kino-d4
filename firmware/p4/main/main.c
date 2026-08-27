@@ -169,7 +169,15 @@ void app_main(void) {
     ESP_LOGI(TAG, "KDP_READY session %s", id.session_id);
   }
   TaskHandle_t probe = NULL;
-  xTaskCreate(cam_probe_task, "cam_probe", 4096, NULL, 5, &probe);
+  /* 8192, not 4096. Measured on the first P4 bring-up (firmware 0.3.0, no
+   * nodes fitted): cam_probe sat at 356 free bytes of 4096 — steady across
+   * six GET_RUNTIME_STATS calls — while doing nothing but timing out on four
+   * channels. The online branch is the expensive one: it puts a
+   * camlink_info_t (~128 B) on this stack, fills it through
+   * camlink_get_info_ch(), then formats a klog line through varargs. That
+   * path first runs the instant CAM1 answers, so the overflow would land on
+   * the node-greeting checkpoint and read as a link or node fault. */
+  xTaskCreate(cam_probe_task, "cam_probe", 8192, NULL, 5, &probe);
   taskmon_register("cam_probe", probe);
 
   /* The panel comes up last, deliberately, and its failure is never fatal.
