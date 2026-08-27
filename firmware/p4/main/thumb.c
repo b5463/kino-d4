@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "pure.h"
 
 static const char *TAG = "thumb";
 
@@ -100,12 +101,7 @@ static bool ensure(uint8_t **buf, size_t *cap, size_t want, bool for_encode, boo
  * reduction rather than a division by zero.
  */
 static int scale_sixteenths(uint32_t w, uint32_t h) {
-  const uint32_t by_w = (THUMB_MAX_W * 16) / (w ? w : 1);
-  const uint32_t by_h = (THUMB_MAX_H * 16) / (h ? h : 1);
-  uint32_t n = by_w < by_h ? by_w : by_h;
-  if (n < 1) n = 1;
-  if (n > 16) n = 16;
-  return (int)n;
+  return pure_scale_sixteenths(w, h, THUMB_MAX_W, THUMB_MAX_H);
 }
 
 /** Read a whole file into a codec-aligned buffer. */
@@ -175,11 +171,8 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
 
   /* Same sixteenths rule as thumb_write, against the tile rather than the
    * thumbnail box. */
-  const uint32_t by_w = ((uint32_t)tile_w * 16) / info.width;
-  const uint32_t by_h = ((uint32_t)tile_h * 16) / info.height;
-  uint32_t n16 = by_w < by_h ? by_w : by_h;
-  if (n16 < 1) n16 = 1;
-  if (n16 > 16) n16 = 16;
+  const uint32_t n16 =
+      (uint32_t)pure_scale_sixteenths(info.width, info.height, (uint32_t)tile_w, (uint32_t)tile_h);
   const uint32_t out_w = (info.width * n16) / 16;
   const uint32_t out_h = (info.height * n16) / 16;
   if (out_w < 4 || out_h < 4 || out_w > (uint32_t)tile_w || out_h > (uint32_t)tile_h) goto out;

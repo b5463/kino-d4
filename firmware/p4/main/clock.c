@@ -8,6 +8,7 @@
 #include "esp_timer.h"
 #include "klog.h"
 #include "nvs.h"
+#include "pure.h"
 
 static const char *TAG = "clock";
 static const char *NVS_NS = "clock";
@@ -52,11 +53,11 @@ void clock_set(int64_t epoch_ms, int utc_offset_min) {
    * existed and 2100 is comfortably after it matters; anything outside is a
    * unit mix-up (seconds sent as milliseconds is the classic) and taking it
    * would date every later capture wrongly and persist that across boots. */
-  if (epoch_ms < 1577836800000LL || epoch_ms > 4102444800000LL) {
+  if (!pure_epoch_plausible(epoch_ms)) {
     ESP_LOGW(TAG, "rejecting host time %lld ms — outside 2020..2100", (long long)epoch_ms);
     return;
   }
-  if (utc_offset_min < -840 || utc_offset_min > 840) utc_offset_min = 0;
+  utc_offset_min = pure_clamp_utc_offset_min(utc_offset_min);
 
   const int64_t before = clock_now_ms();
   s_base_ms = epoch_ms - uptime_ms();
@@ -87,16 +88,7 @@ const char *clock_source_str(void) {
 }
 
 void clock_iso8601(char *out, size_t cap) {
-  if (out == NULL || cap == 0) return;
-  const int64_t local_ms = clock_now_ms() + (int64_t)s_offset_min * 60000;
-  time_t secs = (time_t)(local_ms / 1000);
-  struct tm tm;
-  gmtime_r(&secs, &tm); /* already shifted, so this formats local wall time */
-
-  const int off = s_offset_min;
-  snprintf(out, cap, "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d", tm.tm_year + 1900,
-           tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
-           off < 0 ? '-' : '+', (off < 0 ? -off : off) / 60, (off < 0 ? -off : off) % 60);
+  pure_format_iso8601(clock_now_ms(), s_offset_min, out, cap);
 }
 
 void clock_persist(void) {
