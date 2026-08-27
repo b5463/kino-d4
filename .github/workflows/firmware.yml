@@ -33,7 +33,8 @@ jobs:
       - run: make -C firmware/components/kdp_core/host_tests test
       # The P4's own arithmetic and string logic (firmware/p4/main/pure.c).
       # Both defects this firmware has shipped were in functions of this shape
-      # and neither needed hardware to catch.
+      # and neither needed hardware to catch. No dependencies, so it runs here
+      # rather than in the IDF container.
       - run: make -C firmware/p4/host_tests test
 
   host-preview:
@@ -78,6 +79,16 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd "firmware/${{ matrix.app }}"
           idf.py build
+
+      # META.JSON generation, the META -> CaptureSummary mapping and config
+      # migration. Compiled against ESP-IDF's OWN cJSON rather than a vendored
+      # copy, so the mapping is tested against the same parser the device
+      # links - which is why this runs here and not in the host-tests job.
+      # Two of the three mappings have already shipped a defect.
+      - name: P4 JSON mapping tests
+        if: matrix.app == 'p4'
+        shell: bash
+        run: make -C firmware/p4/host_tests test-meta
 
       # ---- firmware size guard (P4 only) ----
       #
