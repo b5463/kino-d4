@@ -25,8 +25,13 @@
 #include "logo_kino_d4.h"
 #include "meta.h"
 #include "mesh3d.h"
+#include "net_link.h"
 #include "power.h"
+#include "qr.h"
+#include "roll_state.h"
 #include "storage.h"
+#include "upload_queue.h"
+#include "wifi_creds.h"
 #include "thumb.h"
 #include "touch.h"
 #include "viewfinder.h"
@@ -473,6 +478,46 @@ static void bolt(int x, int y, int scale, uint16_t c) {
     fill(x + SPAN[r][0] * scale, y + r * scale, SPAN[r][1] * scale, scale, c);
 }
 
+/* ------------------------------------------------------------------ */
+/* The four-frame mark                                                 */
+/*                                                                     */
+/* The product's own glyph, and the one piece of the interface that is  */
+/* neither Windows nor generic. Four cells, one per camera, in the      */
+/* order the lenses sit on the bar.                                     */
+/*                                                                     */
+/* It appears wherever four frames are the subject: filling one by one  */
+/* at boot, as the progress of a capture, and beside a capture in the   */
+/* gallery. Always the same four cells, always left to right, so it     */
+/* reads as one mark rather than four decorations.                      */
+/* ------------------------------------------------------------------ */
+
+typedef enum {
+  FM_OFF = 0,  /* an empty cell - a frame not yet taken */
+  FM_ON,       /* a frame in hand */
+  FM_SPARK,    /* the moment it lands. KINO yellow, and only ever a moment */
+  FM_LOST,     /* a camera that did not answer */
+} fm_cell_t;
+
+#define FM_GAP 6
+
+/** Four cells of `cell` px, left to right, with `st[4]` their states. */
+static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
+  for (int i = 0; i < 4; i++) {
+    const int cx = x + i * (cell + FM_GAP);
+    uint16_t fill_c;
+    switch (st[i]) {
+      case FM_ON: fill_c = C_BLUE; break;
+      case FM_SPARK: fill_c = C_YELLOW; break;
+      case FM_LOST: fill_c = dark ? RGB(0x5a, 0x1e, 0x1e) : RGB(0xc8, 0x3a, 0x3a); break;
+      default: fill_c = dark ? RGB(0x24, 0x2a, 0x32) : W_LIGHT; break;
+    }
+    fill(cx, y, cell, cell, fill_c);
+    /* A one-pixel keyline, so an empty cell is still a cell rather than a
+     * hole in the background. */
+    outline(cx, y, cell, cell, dark ? RGB(0x60, 0x6a, 0x78) : W_SHADOW);
+  }
+}
+
 /* A left-pointing chevron, drawn rather than set as a glyph: the font is ASCII
  * 32..126 and carries no such character. */
 static void chevron(int x, int cy, uint16_t ink) {
@@ -700,9 +745,20 @@ static int flash_index(void) {
   return 0;
 }
 
+/* When the flash last changed. The bolt and the word burn yellow for a
+ * quarter of a second afterwards - long enough to see it happen from the
+ * corner of your eye while you are looking at the picture, short enough not
+ * to be an animation. */
+static int64_t s_flash_spark_us;
+
 static void flash_cycle(void) {
   const int next = (flash_index() + 1) % 3;
   cfg_set_str("shoot.flashMode", FLASH_ORDER[next]);
+  s_flash_spark_us = esp_timer_get_time();
+}
+
+static bool flash_sparking(void) {
+  return s_flash_spark_us != 0 && esp_timer_get_time() - s_flash_spark_us < 250000;
 }
 
 static bool mode_is_quad(void) { return strcmp(config_str("mode", "wiggle"), "quad") == 0; }
@@ -711,64 +767,137 @@ static bool mode_is_quad(void) { return strcmp(config_str("mode", "wiggle"), "qu
 /* Boot splash                                                         */
 /* ------------------------------------------------------------------ */
 
-static void aperture(int cx, int cy, float radius, float rot, int sides, uint16_t colour) {
-  if (radius <= 0.5f) return;
-  float vx[12], vy[12];
-  if (sides > 12) sides = 12;
-  for (int i = 0; i < sides; i++) {
-    const float a = rot + (float)i * 6.2831853f / (float)sides;
-    vx[i] = cx + radius * __builtin_cosf(a);
-    vy[i] = cy + radius * __builtin_sinf(a);
-  }
-  int y0 = UI_H, y1 = -1;
-  for (int i = 0; i < sides; i++) {
-    if ((int)vy[i] < y0) y0 = (int)vy[i];
-    if ((int)vy[i] > y1) y1 = (int)vy[i];
-  }
-  if (y0 < 0) y0 = 0;
-  if (y1 >= UI_H) y1 = UI_H - 1;
+#define SPL_BLACK RGB(0x08, 0x09, 0x0b)
 
-  for (int y = y0; y <= y1; y++) {
-    float xmin = 1e9f, xmax = -1e9f;
-    const float fy = (float)y + 0.5f;
-    for (int i = 0; i < sides; i++) {
-      const int j = (i + 1) % sides;
-      const float ay = vy[i], by = vy[j];
-      if ((fy < ay && fy < by) || (fy > ay && fy > by)) continue;
-      if (ay == by) continue;
-      const float t = (fy - ay) / (by - ay);
-      const float x = vx[i] + t * (vx[j] - vx[i]);
-      if (x < xmin) xmin = x;
-      if (x > xmax) xmax = x;
-    }
-    if (xmax < xmin) continue;
-    fill((int)xmin, y, (int)(xmax - xmin) + 1, 1, colour);
-  }
+/**
+ * One frame of the boot screen.
+ *
+ * `lit` is how many cells of the four-frame mark have come up. `dim` draws
+ * the whole thing on a darker ground, which is how the flicker is done - a
+ * second pass over 384000 pixels to knock the brightness down would cost
+ * more than the frame it is trying to spoil.
+ */
+static void splash_frame(int lit, bool dim) {
+  const uint16_t ground = dim ? RGB(0x6e, 0x6e, 0x6e) : W_FACE;
+  const uint16_t ink = dim ? RGB(0x44, 0x44, 0x44) : W_TEXT;
+  fill(0, 0, UI_W, UI_H, ground);
+
+  const int lx = (UI_W - KINO_D4_LOGO_W) / 2;
+  const int ly = (UI_H - KINO_D4_LOGO_H) / 2 - 26;
+  draw_bits(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly, 1, ink);
+
+  /* The mark, filling one cell per camera. This is the first thing the
+   * camera ever shows about itself: four frames, in the order the lenses sit
+   * on the bar. */
+  const int cell = 16;
+  const int mw = 4 * cell + 3 * FM_GAP;
+  fm_cell_t st[4];
+  for (int i = 0; i < 4; i++) st[i] = i < lit ? (i == lit - 1 ? FM_SPARK : FM_ON) : FM_OFF;
+  if (!dim) four_mark((UI_W - mw) / 2, ly + KINO_D4_LOGO_H + 28, cell, st, false);
 }
 
-static void splash(void) {
-  const int lx = (UI_W - KINO_D4_LOGO_W) / 2;
-  const int ly = (UI_H - KINO_D4_LOGO_H) / 2;
-  const int OPEN_MS = 620, HOLD_MS = 320;
-  const float rmax = 1.06f * __builtin_sqrtf((float)(UI_W * UI_W + UI_H * UI_H)) * 0.5f;
+/** Black out everything outside a horizontal band centred on the screen. */
+static void band_mask(int band_h) {
+  if (band_h >= UI_H) return;
+  const int y0 = (UI_H - band_h) / 2;
+  fill(0, 0, UI_W, y0, SPL_BLACK);
+  fill(0, y0 + band_h, UI_W, UI_H - y0 - band_h, SPL_BLACK);
+}
 
+/**
+ * Boot: a tube coming on.
+ *
+ * The old sequence was a camera iris opening onto the wordmark - a good idea
+ * that reads as modern, because an iris is a smooth continuous shape and
+ * nothing on a cathode ray tube ever did anything smoothly. What a CRT
+ * actually does is strike a bright line across the middle, bloom outward,
+ * overshoot, and settle - and the whole event is over in under a second.
+ *
+ * Then the mark fills, one cell at a time, and the camera has introduced
+ * itself before it has shown a single menu.
+ */
+static void splash(void) {
+  const int OPEN_MS = 260, HOLD_MS = 300, CELL_MS = 120;
+
+  fill(0, 0, UI_W, UI_H, SPL_BLACK);
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(90));
+
+  /* Strike: a hard bright line, one frame, before anything else exists. */
+  fill(0, UI_H / 2 - 2, UI_W, 5, RGB(0xff, 0xff, 0xff));
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(40));
+
+  /* Bloom outward. Eased so it leaves the line quickly and arrives slowly,
+   * which is what the phosphor does. */
   const int64_t t0 = esp_timer_get_time();
   for (;;) {
     const int64_t el = (esp_timer_get_time() - t0) / 1000;
     if (el >= OPEN_MS) break;
     const float t = (float)el / (float)OPEN_MS;
     const float e = 1.0f - (1.0f - t) * (1.0f - t);
-    fill(0, 0, UI_W, UI_H, RGB(0x0b, 0x0d, 0x10));
-    aperture(UI_W / 2, UI_H / 2, e * rmax, e * 0.5f, 6, W_FACE);
-    draw_bits_clipped(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly,
-                      C_INK);
+    splash_frame(0, false);
+    band_mask(6 + (int)(e * (float)(UI_H - 6)));
     gfx_present();
   }
 
-  fill(0, 0, UI_W, UI_H, W_FACE);
-  draw_bits(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly, 1, C_INK);
+  /* Overshoot and settle: two frames dim, one bright, which at 60 Hz is a
+   * flicker rather than an animation. */
+  splash_frame(0, true);
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(45));
+  splash_frame(0, false);
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(70));
+  splash_frame(0, true);
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(30));
+
+  /* Four cells, one per camera. */
+  for (int i = 1; i <= 4; i++) {
+    splash_frame(i, false);
+    gfx_present();
+    vTaskDelay(pdMS_TO_TICKS(CELL_MS));
+  }
+
+  splash_frame(4, false);
   gfx_present();
   vTaskDelay(pdMS_TO_TICKS(HOLD_MS));
+}
+
+/**
+ * Power off: the tube collapsing.
+ *
+ * The inverse of the boot, and the same physics: the picture is squeezed
+ * into a line, the line holds for a moment because the phosphor is still
+ * lit, then it shrinks to a point and goes. Drawn over whatever is already
+ * on the canvas, so it is the screen you were looking at that collapses
+ * rather than a black frame pretending to.
+ */
+static void crt_collapse(void) {
+  for (int f = 1; f <= 10; f++) {
+    band_mask(UI_H - (UI_H - 5) * f / 10);
+    gfx_present();
+    vTaskDelay(pdMS_TO_TICKS(22));
+  }
+
+  fill(0, 0, UI_W, UI_H, SPL_BLACK);
+  fill(0, UI_H / 2 - 2, UI_W, 5, RGB(0xff, 0xff, 0xff));
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(160));
+
+  /* The line pulls in to a point. */
+  for (int f = 1; f <= 6; f++) {
+    const int w = UI_W - (UI_W - 8) * f / 6;
+    fill(0, 0, UI_W, UI_H, SPL_BLACK);
+    fill((UI_W - w) / 2, UI_H / 2 - 2, w, 5, RGB(0xff, 0xff, 0xff));
+    gfx_present();
+    vTaskDelay(pdMS_TO_TICKS(26));
+  }
+
+  fill(0, 0, UI_W, UI_H, SPL_BLACK);
+  gfx_present();
+  vTaskDelay(pdMS_TO_TICKS(120));
 }
 
 /* ------------------------------------------------------------------ */
@@ -913,7 +1042,12 @@ static void draw_menu(void) {
     const int icx = tx + M_TILE_W / 2;
     const int icy = top + ICON_BOX / 2;
 
-    const int bx = icx - MT_W / 2, by2 = icy - MT_H / 2 + (down ? 1 : 0);
+    /* Focus lifts the object two pixels off the ground and a press puts it
+     * back down. Not a hover animation - a bitmap sprite becoming powered,
+     * which is the 1998 way of saying "this one". */
+    const int lift = down ? 1 : (sel ? -2 : 0);
+
+    const int bx = icx - MT_W / 2, by2 = icy - MT_H / 2 + lift;
     if (s_mcached && s_mcache[i] != NULL) {
       for (int r = 0; r < MT_H; r++) {
         const int gy = by2 + r;
@@ -922,7 +1056,7 @@ static void draw_menu(void) {
                (size_t)MT_W * sizeof(uint16_t));
       }
     } else {
-      icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + (down ? 1 : 0));
+      icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + lift);
     }
 
     /* Desktop-icon selection: the LABEL gets the navy plate and white text,
@@ -936,6 +1070,10 @@ static void draw_menu(void) {
 
     if (sel || down) {
       fill(px, ly, pw, M_LABEL_H, W_SEL);
+      /* The spark. Cobalt is the structure; a two-pixel rule of KINO yellow
+       * under the selected word is the only warm thing on the screen, and it
+       * is what stops the selection reading as a plain system highlight. */
+      fill(px, ly + M_LABEL_H - 2, pw, 2, C_YELLOW);
       text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
            W_SELTEXT);
     } else {
@@ -946,6 +1084,21 @@ static void draw_menu(void) {
       focus_rect(icx - ICON_BOX / 2 - 6, top - 6, ICON_BOX + 12,
                  ICON_BOX + 16 + M_LABEL_H + 12);
     }
+  }
+
+  /* The badge. Silkscreen on a moulding, not a title bar: no rule under it,
+   * no chrome around it, sitting in the margin the tiles do not use. */
+  text(&UI_FONT_S, 14, UI_H - 22, "kino D4", W_SHADOW);
+
+  /* What a glance is actually for. There is no battery gauge on this body,
+   * so this says where the power is coming from and nothing about how much
+   * is left - a percentage here would be invented. */
+  {
+    const int bi = W98_BATTERY_IDX;
+    const int be = icons_edge(bi);
+    icons_blit(s_cv, UI_W, UI_H, bi, UI_W - 14 - be, UI_H - 12 - be);
+    text_right(&UI_FONT_S, UI_W - 18 - be, UI_H - 22, usb_attached() ? "USB" : "BATTERY",
+               W_SHADOW);
   }
 
   /* ---- the glass ---- */
@@ -1116,9 +1269,12 @@ static void draw_shoot(void) {
   const int fi = flash_index();
   static const char *const FLASH_WORD[3] = {"AUTO", "ON", "OFF"};
   const int fy = by + 104;
+  const bool spark = flash_sparking();
   sh_button(fy, 50, "FLASH", FLASH_WORD[fi], s_pressed == SH_IT_FLASH,
-            s_focus[SCR_SHOOT] == SH_IT_FLASH, fi == 1);
-  bolt(x + w - 26, fy + 10, 2, fi == 1 ? RGB(0x5a, 0x48, 0x08) : (fi == 2 ? W_SHADOW : W_TEXT));
+            s_focus[SCR_SHOOT] == SH_IT_FLASH, fi == 1 || spark);
+  bolt(x + w - 26, fy + 10, 2,
+       spark ? RGB(0x8a, 0x6a, 0x00)
+             : (fi == 1 ? RGB(0x5a, 0x48, 0x08) : (fi == 2 ? W_SHADOW : W_TEXT)));
 
   /* The shutter. Deliberately the largest object on the screen. */
   const int sy = UI_H - SH_MARGIN - 96;
@@ -1264,11 +1420,13 @@ static void draw_gallery(void) {
 
     /* One short caption. No filename, no size, no path: the picture is the
      * content and the rest is file management. */
-    char cap[32];
-    if (slots[i].partial) snprintf(cap, sizeof cap, "%d of 4", slots[i].frames);
-    else snprintf(cap, sizeof cap, "%s", slots[i].mode);
-    text(&UI_FONT_S, x + 2, y + G_TILE_H + 5, cap,
-         slots[i].partial ? RGB(0x90, 0x00, 0x00) : W_TEXT);
+    /* The mark instead of a sentence: four cells, lit for the frames that
+     * are actually in the folder. A full capture reads as four filled cells
+     * at a glance and a partial one is obvious without counting. */
+    fm_cell_t st[4];
+    for (int k = 0; k < 4; k++) st[k] = k < slots[i].frames ? FM_ON : FM_LOST;
+    four_mark(x + 2, y + G_TILE_H + 7, 8, st, false);
+    text_right(&UI_FONT_S, x + G_TILE_W - 2, y + G_TILE_H + 5, slots[i].mode, W_TEXT);
   }
 
   /* Page controls, only when there is more than one page. */
@@ -1370,24 +1528,180 @@ static void draw_photo(void) {
 /* Roll                                                                */
 /* ------------------------------------------------------------------ */
 
-/* Only about Roll. The card statistics the old screen carried moved to
- * Settings > Storage, where they belong. */
+/*
+ * Draw a QR centred at `cx`, scaled to the largest whole module pitch that
+ * fits `box` pixels, with the 4-module quiet zone the spec requires.
+ *
+ * The quiet zone is not optional and not decoration: without it a phone
+ * cannot find the symbol's edges against the surrounding UI, and the failure
+ * looks like a camera whose screen "does not scan" rather than a missing
+ * margin. Drawn as an explicit white block for the same reason.
+ */
+#define QR_QUIET 4
+
+static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
+  const int total = qr->size + 2 * QR_QUIET;
+  const int pitch = box / total;
+  if (pitch < 1) return 0; /* no room — the caller shows the code as text */
+
+  const int side = total * pitch;
+  const int x0 = cx - side / 2;
+
+  /* White ground for the symbol and its quiet zone together. W_WINDOW is
+   * 0xffffff and W_TEXT is 0x000000, so the symbol gets full contrast rather
+   * than the 0xc0 face grey — a QR drawn on the face ground scans poorly. */
+  fill(x0, top, side, side, W_WINDOW);
+
+  const int m0 = x0 + QR_QUIET * pitch;
+  const int n0 = top + QR_QUIET * pitch;
+  for (int y = 0; y < qr->size; y++) {
+    for (int x = 0; x < qr->size; x++) {
+      if (qr_module(qr, x, y)) {
+        fill(m0 + x * pitch, n0 + y * pitch, pitch, pitch, W_TEXT);
+      }
+    }
+  }
+  return side;
+}
+
+/*
+ * Only about Roll. The card statistics the old screen carried moved to
+ * Settings > Storage, where they belong.
+ *
+ * Four states, and the difference between them is what a user needs:
+ *
+ *   no roll   — nothing to show, and how to get one
+ *   active    — the QR a guest scans, plus what is waiting
+ *   offline   — the same, but honest that nothing is moving
+ *   paused    — something is wrong and retrying will not fix it
+ *
+ * The old screen said "NOT CONNECTED / This body has no radio fitted", which
+ * was wrong on both counts: the radio IS fitted, and a Roll assigned from
+ * Studio works over USB with no radio at all.
+ */
 static void draw_roll(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_ROLL);
 
-  const int cy = BODY_Y + 60;
-  text_mid(&UI_FONT_M, UI_W / 2, cy, "NOT CONNECTED", W_TEXT);
-  text_mid(&UI_FONT_S, UI_W / 2, cy + 40, "This body has no radio fitted.", W_TEXT);
-  text_mid(&UI_FONT_S, UI_W / 2, cy + 66, "Connect Studio over USB-C to make a roll", W_TEXT);
-  text_mid(&UI_FONT_S, UI_W / 2, cy + 88, "and upload from there.", W_TEXT);
+  roll_state_t roll;
+  const bool active = roll_state_get(&roll);
 
-  const int n = gallery_total();
-  if (n > 0) {
-    char line[48];
-    snprintf(line, sizeof line, "%d photo%s waiting on the card", n, n == 1 ? "" : "s");
-    text_mid(&UI_FONT_S, UI_W / 2, cy + 134, line, W_GRAYTEXT);
+  upload_queue_report_t q;
+  upload_queue_status(&q);
+
+  net_status_t net;
+  net_link_status(&net, esp_timer_get_time() / 1000);
+  const bool online = net_link_can_upload(&net);
+
+  if (!active) {
+    /* No Roll. Say how to get one rather than only that there isn't one — and
+     * do not offer a CREATE button, because ROLL_CREATE is an HTTP POST this
+     * body cannot make. A control that cannot work is the same defect as a
+     * shutter that logs instead of capturing. */
+    const int cy = BODY_Y + 54;
+    text_mid(&UI_FONT_M, UI_W / 2, cy, "NO ACTIVE ROLL", W_TEXT);
+    text_mid(&UI_FONT_S, UI_W / 2, cy + 44, "Make a roll in Studio over USB-C.", W_TEXT);
+    text_mid(&UI_FONT_S, UI_W / 2, cy + 70, "It appears here with a code to scan.", W_TEXT);
+
+    const int n = gallery_total();
+    if (n > 0) {
+      char line[56];
+      snprintf(line, sizeof line, "%d photo%s on the card", n, n == 1 ? "" : "s");
+      text_mid(&UI_FONT_S, UI_W / 2, cy + 116, line, W_GRAYTEXT);
+    }
+    return;
   }
+
+  /* The Roll's name, or its code when it has no name. */
+  const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
+  text_mid(&UI_FONT_M, UI_W / 2, BODY_Y + 14, title, W_TEXT);
+
+  /*
+   * The QR. This is the point of the screen: a guest scans the camera and is
+   * on the Roll, with no laptop involved.
+   *
+   * Encoded once per Roll and cached, not once per repaint. Two reasons, and
+   * the second is the one that matters: the screen repaints every 90 ms while
+   * anything is busy, and qr_encode() puts about 1.4 KB of bitfields and
+   * codeword buffers on the caller's stack — which here is the UI task's. Nine
+   * mask evaluations of a 57x57 grid on every frame would also be pure waste
+   * for a symbol that changes only when the Roll does.
+   *
+   * The cache is keyed on the URL, so a ROLL_LEAVE followed by a new
+   * assignment re-encodes and a repaint never does.
+   */
+  static qr_t s_qr;
+  static char s_qr_url[ROLL_GUEST_URL_LEN];
+  static bool s_qr_ok;
+  if (strcmp(s_qr_url, roll.guest_url) != 0) {
+    snprintf(s_qr_url, sizeof s_qr_url, "%s", roll.guest_url);
+    s_qr_ok = roll.guest_url[0] != '\0' && qr_encode(roll.guest_url, &s_qr);
+    if (!s_qr_ok) {
+      klog("P4", "roll guest url did not encode as a QR (%u chars)",
+           (unsigned)strlen(roll.guest_url));
+    }
+  }
+
+  int qr_bottom = BODY_Y + 52;
+  if (s_qr_ok) {
+    const int side = draw_qr_centred(&s_qr, UI_W / 2, qr_bottom, 240);
+    if (side > 0) {
+      qr_bottom += side + 10;
+      text_mid(&UI_FONT_S, UI_W / 2, qr_bottom, "SCAN TO JOIN", W_GRAYTEXT);
+      qr_bottom += 26;
+    }
+  } else {
+    /* The URL did not encode, so show the code itself. A guest can still
+     * type it, which is worth more than a QR-shaped block no phone reads. */
+    text_mid(&UI_FONT_M, UI_W / 2, qr_bottom + 20, roll.slug, W_TEXT);
+    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 56, "Enter this code to join", W_GRAYTEXT);
+    qr_bottom += 90;
+  }
+
+  /* Counts. `pending` is what has not reached the Roll yet, and it is the
+   * number a host actually wants at a party. */
+  char photos[40];
+  const int total = gallery_total();
+  snprintf(photos, sizeof photos, "%d photo%s", total, total == 1 ? "" : "s");
+  text_mid(&UI_FONT_S, UI_W / 2, qr_bottom, photos, W_TEXT);
+
+  char waiting[48];
+  if (q.halted) {
+    /* Distinct from failed: the jobs are fine, the credential or the
+     * association is not, and retrying the queue is the wrong instinct. */
+    snprintf(waiting, sizeof waiting, "UPLOAD PAUSED");
+    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 24, waiting, W_TEXT);
+    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 48,
+             q.last_error[0] != '\0' ? q.last_error : "Check the roll in Studio", W_GRAYTEXT);
+    return;
+  }
+
+  if (q.uploading > 0) {
+    snprintf(waiting, sizeof waiting, "%d uploading", q.uploading);
+  } else if (q.pending > 0) {
+    snprintf(waiting, sizeof waiting, "%d waiting", q.pending);
+  } else if (q.uploaded > 0) {
+    snprintf(waiting, sizeof waiting, "%d uploaded", q.uploaded);
+  } else {
+    waiting[0] = '\0';
+  }
+  if (waiting[0] != '\0') {
+    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 24, waiting, W_TEXT);
+  }
+
+  /* One word for whether anything is actually moving. "OFFLINE" with photos
+   * waiting is a complete and honest description of this body today. */
+  const char *link;
+  if (online) {
+    link = "ONLINE";
+  } else if (!net.radio_routed) {
+    /* Not "offline": there is no radio route to be offline from. The
+     * Connection screen carries the detail. */
+    link = "NO RADIO LINK";
+  } else {
+    link = "OFFLINE";
+  }
+  text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 48, link, W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1474,16 +1788,95 @@ static void draw_sound(void) {
 
 /* --- Connection --------------------------------------------------- */
 
+/*
+ * The radio's real state, not "Not fitted".
+ *
+ * "Not fitted" was wrong twice over: the ESP32-C6 IS on the Guition module,
+ * and what is missing is the P4's route to it, which is a wiring question
+ * rather than an absent part. A user reading "Not fitted" goes looking for a
+ * component to add. So the screen reports the two facts separately — the chip
+ * is there, and the firmware cannot reach it — the same way the capabilities
+ * split `flashControl` from `flashHardware`.
+ *
+ * Every value comes from net_link, so this screen becomes correct on its own
+ * once the transport lands. Nothing here is hard-coded to the V1 state.
+ */
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_CONNECTION);
-  draw_list_frame(3);
-  draw_row(LIST_Y, false, false, "Wi-Fi", "Not fitted", false, C_FAINT);
-  draw_row(LIST_Y + ROW_H, false, false, "Auto upload", "Not fitted", false, C_FAINT);
-  draw_row(LIST_Y + 2 * ROW_H, false, true, "USB", usb_attached() ? "Connected" : "Not connected",
-           false, C_MUTED);
-  text(&UI_FONT_S, 24, LIST_Y + 3 * ROW_H + 28,
-       "The radio is not brought up on this body. Photos leave over USB-C.", W_GRAYTEXT);
+
+  net_status_t net;
+  net_link_status(&net, esp_timer_get_time() / 1000);
+
+  /* Radio: is the part there at all. */
+  const char *radio = net.radio_fitted ? "ESP32-C6" : "None";
+
+  /* Link: can this firmware reach it. The distinction the old screen lost. */
+  const char *link;
+  switch (net.state) {
+    case NET_C6_NOT_ROUTED: link = "Not routed"; break;
+    case NET_C6_ABSENT: link = "No response"; break;
+    case NET_C6_BOOTING: link = "Starting"; break;
+    case NET_C6_LINK_READY: link = "Ready"; break;
+    case NET_ERROR: link = "Error"; break;
+    default: link = "Ready"; break; /* anything past LINK_READY implies it */
+  }
+
+  /* Wi-Fi: the SSID and signal when there is one, and otherwise a state a
+   * user can act on. Association without an address says "Getting address"
+   * rather than "Connected" — claiming connected there is how a camera
+   * insists it is online while nothing resolves. */
+  char wifi[40];
+  switch (net.state) {
+    case NET_IP_READY:
+      snprintf(wifi, sizeof wifi, "%s  %d dBm", net.ssid, net.rssi);
+      break;
+    case NET_WIFI_ASSOCIATED:
+    case NET_IP_WAIT:
+      snprintf(wifi, sizeof wifi, "Getting address");
+      break;
+    case NET_WIFI_CONNECTING:
+      snprintf(wifi, sizeof wifi, "Connecting");
+      break;
+    case NET_WIFI_SCANNING:
+      snprintf(wifi, sizeof wifi, "Scanning");
+      break;
+    case NET_WIFI_IDLE:
+      snprintf(wifi, sizeof wifi, "Disconnected");
+      break;
+    default:
+      /* No radio route: the honest word is unavailable, not disconnected.
+       * "Disconnected" implies a connection is available to make. */
+      snprintf(wifi, sizeof wifi, "Unavailable");
+      break;
+  }
+
+  char saved[16];
+  snprintf(saved, sizeof saved, "%u", (unsigned)wifi_creds_count());
+
+  draw_list_frame(5);
+  draw_row(LIST_Y, false, net.radio_fitted, "Radio", radio, false, C_MUTED);
+  draw_row(LIST_Y + ROW_H, false, net.radio_routed, "Link", link, false, C_MUTED);
+  draw_row(LIST_Y + 2 * ROW_H, false, net.radio_routed, "Wi-Fi", wifi, false, C_MUTED);
+  draw_row(LIST_Y + 3 * ROW_H, false, true, "Saved networks", saved, false, C_MUTED);
+  draw_row(LIST_Y + 4 * ROW_H, false, true, "USB",
+           usb_attached() ? "Connected" : "Not connected", false, C_MUTED);
+
+  /* One line, and it has to say which of the two things is wrong. There is no
+   * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
+   * with no physical keys is worse than the USB path, and building a bad one
+   * to claim independence from Studio would be the wrong trade. */
+  const int y = LIST_Y + 5 * ROW_H + 26;
+  if (!net.radio_fitted) {
+    text(&UI_FONT_S, 24, y, "No radio on this body. Photos leave over USB-C.", W_GRAYTEXT);
+  } else if (!net.radio_routed) {
+    text(&UI_FONT_S, 24, y, "The C6 radio is fitted, but this firmware has no", W_GRAYTEXT);
+    text(&UI_FONT_S, 24, y + 20, "route to it. Photos leave over USB-C.", W_GRAYTEXT);
+  } else if (net.state != NET_IP_READY) {
+    text(&UI_FONT_S, 24, y, "Set up Wi-Fi in Studio over USB-C.", W_GRAYTEXT);
+  } else {
+    text(&UI_FONT_S, 24, y, "Captures upload to the active roll.", W_GRAYTEXT);
+  }
 }
 
 /* --- Storage ------------------------------------------------------ */
@@ -1629,6 +2022,18 @@ static void draw_dialog(void) {
  * next photograph immediately, and a full review application after every
  * press is what stops that.
  */
+/**
+ * The capture, told with the four-frame mark.
+ *
+ * The cells are driven by the capture's real stages rather than by a timer:
+ * one lights when the shutter fires, two when the frames are coming back,
+ * three while they are going to the card, and all four spark yellow when
+ * they are on it. It is honest progress and it happens to have exactly four
+ * steps, which is the whole reason the mark works here.
+ *
+ * The wording is the camera's, not an operating system's: 4/4 SAVED, and a
+ * count rather than an apology when a camera missed.
+ */
 static void draw_capture_banner(void) {
   const capture_stage_t cs = capture_stage();
   if (cs == CAPTURE_IDLE) return;
@@ -1636,22 +2041,34 @@ static void draw_capture_banner(void) {
   capture_report_t r;
   capture_last(&r);
 
+  fm_cell_t st[4] = {FM_OFF, FM_OFF, FM_OFF, FM_OFF};
   char line[64];
   uint16_t accent = C_BLUE;
   switch (cs) {
-    case CAPTURE_TRIGGERING: snprintf(line, sizeof line, "TAKING PHOTO"); break;
-    case CAPTURE_READING: snprintf(line, sizeof line, "READING FRAMES"); break;
-    case CAPTURE_WRITING: snprintf(line, sizeof line, "SAVING"); break;
+    case CAPTURE_TRIGGERING:
+      st[0] = FM_ON;
+      snprintf(line, sizeof line, "SHOOTING");
+      break;
+    case CAPTURE_READING:
+      st[0] = st[1] = FM_ON;
+      snprintf(line, sizeof line, "READING");
+      break;
+    case CAPTURE_WRITING:
+      st[0] = st[1] = st[2] = FM_ON;
+      snprintf(line, sizeof line, "SAVING");
+      break;
     default:
       if (!r.ok) {
-        snprintf(line, sizeof line, "%s", r.err_code[0] ? r.err_code : "PHOTO FAILED");
+        for (int i = 0; i < 4; i++) st[i] = FM_LOST;
+        snprintf(line, sizeof line, "%s", r.err_code[0] ? r.err_code : "NO PHOTO");
         accent = C_BAD;
-      } else if (r.stored == r.online) {
-        snprintf(line, sizeof line, "SAVED - %d frames", r.stored);
-        accent = C_OK;
       } else {
-        snprintf(line, sizeof line, "%d/%d SAVED - a camera missed", r.stored, r.online);
-        accent = C_BAD;
+        /* One cell per camera that actually delivered, and the rest marked
+         * lost. A partial capture says which, because "3/4" with three lit
+         * cells is a fact and "SAVED" alone is not. */
+        for (int i = 0; i < 4; i++) st[i] = i < r.stored ? FM_SPARK : FM_LOST;
+        snprintf(line, sizeof line, "%d/%d SAVED", r.stored, r.online);
+        accent = r.stored == r.online ? C_OK : C_BAD;
       }
       break;
   }
@@ -1665,7 +2082,11 @@ static void draw_capture_banner(void) {
   fill(0, y, w, h, RGB(0x12, 0x16, 0x1c));
   fill(0, y, w, 1, accent);
   fill(0, y + 1, 5, h - 1, accent);
-  text(&UI_FONT_S, 18, y + (h - UI_FONT_S.line_h) / 2, line, RGB(0xe4, 0xe9, 0xee));
+
+  const int cell = 12;
+  four_mark(18, y + (h - cell) / 2, cell, st, true);
+  text(&UI_FONT_S, 18 + 4 * (cell + FM_GAP) + 10, y + (h - UI_FONT_S.line_h) / 2, line,
+       RGB(0xe4, 0xe9, 0xee));
 }
 
 static void draw_toast(void) {
@@ -1862,11 +2283,13 @@ static void dialog_commit(void) {
   s_dialog = DLG_NONE;
   switch (d) {
     case DLG_RESTART:
-      toast("Restarting");
-      draw_screen();
-      gfx_present();
       config_save();
-      vTaskDelay(pdMS_TO_TICKS(600));
+      /* The camera's own words, on the way out. Two of them. */
+      fill(0, 0, UI_W, UI_H, W_FACE);
+      text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - UI_FONT_M.line_h / 2, "GOOD NIGHT", W_TEXT);
+      gfx_present();
+      vTaskDelay(pdMS_TO_TICKS(420));
+      crt_collapse();
       esp_restart();
       break;
     case DLG_DELETE: {
@@ -2056,6 +2479,7 @@ static void ui_task(void *arg) {
 
   int held = -1;
   int64_t wake_since_us = 0;
+  bool was_asleep = false;
 
   for (;;) {
     uint16_t tx = 0, ty = 0;
@@ -2066,6 +2490,26 @@ static void ui_task(void *arg) {
      * Reaching into a bag for a camera whose backlight has timed out and
      * having it fire whatever tile the thumb landed on is the worst possible
      * answer, and it is what the naive version does. */
+    /* Repaint the moment the panel comes back, before anything else.
+     *
+     * Nothing else in the loop presents a frame while the menu is idle - it
+     * has no reason to, the picture has not changed - so after a sleep the
+     * screen depends entirely on the framebuffer having survived with the
+     * backlight off. If it did not, for any reason, the camera comes back
+     * showing nothing and every press lands on a screen the user cannot
+     * read, which is indistinguishable from a device that has stopped
+     * responding. One redraw makes that impossible. */
+    power_state_t pst;
+    power_get(&pst);
+    const bool asleep_now = pst.stage == POWER_ASLEEP;
+    if (was_asleep && !asleep_now) {
+      ESP_LOGI(TAG, "woke: repainting");
+      klog("P4", "woke, repainting");
+      draw_screen();
+      gfx_present();
+    }
+    was_asleep = asleep_now;
+
     if (!down) {
       power_end_wake_gesture();
       wake_since_us = 0;
@@ -2180,7 +2624,16 @@ esp_err_t ui_start(void) {
 
   ESP_LOGI(TAG, "UI_READY %dx%d landscape via PPA, tiles %dx%d", UI_W, UI_H, M_TILE_W, M_TILE_H);
   TaskHandle_t ui_h = NULL;
-  xTaskCreate(ui_task, "ui", 6144, NULL, 4, &ui_h);
+  /* 8192, not 6144. The ROLL screen calls qr_encode(), which puts roughly
+   * 1.4 KB of bitfields and codeword buffers on this stack — two 456-byte
+   * module grids plus 562 bytes of codewords — on top of whatever the draw
+   * path already uses. That figure is CALCULATED from the sizes in qr.c, not
+   * measured on a board, so the margin is deliberate: an overflow here would
+   * land on a repaint and read as a display or touch fault rather than as a
+   * QR encoder. Confirm against GET_RUNTIME_STATS on the first bench run that
+   * opens the ROLL screen with a Roll assigned — that is what the per-task
+   * high-water figure is for. */
+  xTaskCreate(ui_task, "ui", 8192, NULL, 4, &ui_h);
   taskmon_register("ui", ui_h);
 
   /* The icon builder starts AFTER the UI. Created first it would simply run

@@ -18,6 +18,9 @@ static const char *TAG = "touch";
 static esp_lcd_touch_handle_t s_tp;
 static bool s_ready;
 static uint32_t s_count;
+/* Consecutive failed reads of the controller. Non-zero means the bus, not
+ * the absence of a finger. */
+static uint32_t s_read_fail;
 
 /* The point is published as one 32-bit word.
  *
@@ -65,9 +68,34 @@ static void touch_task(void *arg) {
 
   for (;;) {
     points = 0;
-    const bool got = esp_lcd_touch_read_data(s_tp) == ESP_OK &&
-                     esp_lcd_touch_get_coordinates(s_tp, xs, ys, strength, &points, 1) &&
-                     points > 0;
+    /* Split out from the old one-line condition so a failing bus is loud.
+     *
+     * A GT911 that has stopped answering and a finger that is not on the
+     * glass produced exactly the same thing here - `got` false, silently,
+     * forever - which is indistinguishable from a working driver nobody is
+     * touching. That is the wrong way round for the one input the camera
+     * has: a controller that has gone away should say so. */
+    const esp_err_t rerr = esp_lcd_touch_read_data(s_tp);
+    bool got = false;
+    if (rerr == ESP_OK) {
+      if (s_read_fail != 0) {
+        ESP_LOGW(TAG, "GT911 answering again after %lu failed reads",
+                 (unsigned long)s_read_fail);
+        klog("P4", "touch bus recovered after %lu failures", (unsigned long)s_read_fail);
+        s_read_fail = 0;
+      }
+      got = esp_lcd_touch_get_coordinates(s_tp, xs, ys, strength, &points, 1) && points > 0;
+    } else {
+      /* Rate limited: at 15 ms a hard failure would otherwise fill the log
+       * at 66 lines a second and push out the thing that caused it. */
+      if (s_read_fail % 200 == 0) {
+        ESP_LOGE(TAG, "GT911 read failed: %s (%lu in a row)", esp_err_to_name(rerr),
+                 (unsigned long)s_read_fail + 1);
+        klog("P4", "touch read failed: %s", esp_err_to_name(rerr));
+      }
+      s_read_fail++;
+    }
+
     if (got) {
       empty = 0;
       /* A finger on the glass is the definition of activity. Doing this on
