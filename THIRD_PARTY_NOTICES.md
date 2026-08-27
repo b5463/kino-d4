@@ -29,3 +29,30 @@ command line (aggregation, not linking), so `apps/worker` itself remains MIT
   `docs/DEVELOPMENT.md`.
 
 Issue #22 records the analysis.
+
+## Windows XP icon artwork (Microsoft, no licence held)
+
+`firmware/p4/main/icons_xp.h` contains six icons from the Microsoft Windows XP
+(Luna) user interface set, baked to a 48x48 grid by
+`scripts/bake-xp-icons.mjs` from the `softwarehistorysociety/XPIcons`
+collection at commit `3887f201`. They are the P4 home screen's six tiles:
+`DigitalCamera`, `SmartScreen`, `MyPictures`, `DialUpConnection`,
+`SettingsAlert` and `MSN`.
+
+The artwork is Microsoft's. **KINO holds no licence to redistribute it**, and
+the upstream collection is an archive rather than a grant. `REUSE.toml` maps
+the header to `LicenseRef-Microsoft-Proprietary` so that the MIT declaration
+covering `firmware/**` does not extend to it; that annotation states the
+ownership and grants nothing.
+
+Consequences, stated plainly rather than deferred:
+
+- A firmware binary built from this tree embeds the artwork. Publishing that
+  binary is redistribution.
+- Downscaling to 48 px and re-rendering it does not make it a new work. It is
+  the same icon, smaller.
+- The two ways out are a licence from Microsoft, or original artwork drawn for
+  this product in the same idiom.
+
+Issue #134 records the decision and must be resolved before a release carries
+these files.

@@ -26,6 +26,67 @@ typedef enum {
   NL_CMD_CAPTURE = 0x10,
   NL_CMD_READ = 0x11,    // -> {frameId,offset,length} <- BINARY slice (short past EOF)
   NL_CMD_RELEASE = 0x12, // -> {frameId} <- {ok}
+
+  /*
+   * ---- RESERVED, NOT IMPLEMENTED ----
+   *
+   * The arm/trigger flow. Specified here and deliberately unimplemented on
+   * both ends: firmware/SYNC_FEASIBILITY.md (verdict SMALL_DRIVER_EXTENSION)
+   * establishes that the mechanism is constructible, and the roadmap holds it
+   * for M4 so that it is built against measured skew rather than a prediction.
+   * A node that receives either of these today answers UNSUPPORTED_COMMAND,
+   * which is the correct behaviour for a reserved opcode.
+   *
+   * Reserving the numbers now costs nothing and stops two people picking the
+   * same one later.
+   */
+
+  /*
+   * NL_CMD_ARM — prepare to capture on a GPIO edge instead of on a command.
+   *
+   *   -> {resolution?, quality?, timeoutMs?}
+   *   <- {ok, armed, armReceivedUs, armedUs}
+   *
+   * The node prepares the sensor, holds its frame buffer so the driver's
+   * capture stalls (buffer availability is the gate — see the study), installs
+   * an ISR on BOARD_SYNC_IN, and reports ARMED. It must self-disarm after
+   * `timeoutMs` so a node whose trigger never arrives returns to READY rather
+   * than holding the buffer for ever.
+   */
+  NL_CMD_ARM = 0x13,
+
+  /*
+   * NL_CMD_TRIGGER_INFO — what the node observed about the last armed capture.
+   *
+   *   -> {}
+   *   <- {ok, frameId, timing:{...}}
+   *
+   * Every timing field is nullable and MUST be null rather than 0 when the
+   * node did not observe it. A fabricated timestamp here would be laundered
+   * into a skew figure and then into a product claim.
+   *
+   *   armReceivedUs    node esp_timer at ARM receipt
+   *   armedUs          node esp_timer once the sensor was held and the ISR set
+   *   syncEdgeUs       node esp_timer in the GPIO ISR  (null if never fired)
+   *   captureStartUs   node esp_timer when the buffer was released to the driver
+   *   frameStartUs     camera_fb_t.timestamp — DMA start for the returned
+   *                    frame. PUBLIC API, available today, and the one field
+   *                    that anchors a cross-node comparison: the difference
+   *                    (frameStartUs - syncEdgeUs) is comparable between nodes
+   *                    with no clock synchronisation between them.
+   *   frameCompleteUs  node esp_timer when esp_camera_fb_get() returned
+   *
+   * All values are that node's own esp_timer microseconds and share no epoch
+   * with any other node or with the P4. Only DIFFERENCES within one node are
+   * meaningful across nodes.
+   *
+   * What this is not: none of these is exposure skew. Frame start is not
+   * exposure start, and a rolling shutter integrates per row. The three
+   * kino.capture skews stay null with an unavailableReason regardless of what
+   * this reports.
+   */
+  NL_CMD_TRIGGER_INFO = 0x14,
+
   NL_CMD_REBOOT = 0x20,  // -> {} <- {ok}, then the node restarts
 } nl_cmd_t;
 
@@ -38,5 +99,8 @@ typedef enum {
 #define NL_STATE_JPEG_READY "jpeg-ready"
 #define NL_STATE_TRANSFERRING "transferring"
 #define NL_STATE_ERROR "error"
+/* RESERVED alongside NL_CMD_ARM: sensor prepared, frame buffer held, GPIO ISR
+ * installed, waiting for the trigger edge. No node reports this yet. */
+#define NL_STATE_ARMED "armed"
 
 #endif

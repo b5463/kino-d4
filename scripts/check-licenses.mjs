@@ -32,6 +32,7 @@ const required = [
   'LICENSES/MIT.txt',
   'LICENSES/CERN-OHL-S-2.0.txt',
   'LICENSES/LicenseRef-KINO-Reserved.txt',
+  'LICENSES/LicenseRef-Microsoft-Proprietary.txt',
   'REUSE.toml',
   'TRADEMARKS.md',
 ];
@@ -64,7 +65,28 @@ for (const marker of [
   '"apps/studio/public/icon-*.png"',
   '"apps/twin/public/icon-*.png"',
   '"apps/roll-web/public/icon-*.png"',
+  // The P4 home-screen icons are Microsoft's. firmware/** is MIT, so losing
+  // this override would declare that we are giving away someone else's
+  // artwork under our own grant.
+  'SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"',
+  '"firmware/p4/main/icons_xp.h"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
+
+// The icon header is generated, so it is easy to regenerate without the
+// notice and easy to delete the notice without touching the header. Both
+// halves have to be present together.
+if (await exists('firmware/p4/main/icons_xp.h')) {
+  const icons = await text('firmware/p4/main/icons_xp.h');
+  check(
+    icons.includes('SPDX-License-Identifier: LicenseRef-Microsoft-Proprietary'),
+    'firmware/p4/main/icons_xp.h has lost its SPDX header; re-run npm run icons:bake',
+  );
+  const notices = await text('THIRD_PARTY_NOTICES.md');
+  check(
+    notices.includes('icons_xp.h'),
+    'THIRD_PARTY_NOTICES.md does not mention the bundled Windows XP icon artwork',
+  );
+}
 
 const rootPackage = await json('package.json');
 const lock = await json('package-lock.json');

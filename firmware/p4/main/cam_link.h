@@ -59,7 +59,41 @@ typedef struct {
   int32_t psram_kb;
 } camlink_capture_result_t;
 
+/** CAM1..CAM4. Index 0 is CAM1 throughout. */
+#define CAMLINK_CAMS 4
+
 esp_err_t camlink_init(void);
+
+/*
+ * Per-camera entry points.
+ *
+ * Every channel has its own UART, mutex, decoder and counters, so two cameras
+ * can be mid-transfer at the same time — which is the only reason a four-up
+ * viewfinder is a viewfinder rather than a slideshow. Nothing is shared
+ * between channels except the code.
+ *
+ * The unsuffixed functions below are CAM1, kept because most of the firmware
+ * legitimately only cares about the one node the M1B harness has.
+ */
+void camlink_get_info_ch(int cam, camlink_info_t *out);
+void camlink_get_stats_ch(int cam, camlink_stats_t *out);
+void camlink_reset_stats_ch(int cam);
+esp_err_t camlink_hello_ch(int cam);
+esp_err_t camlink_ping_ch(int cam, uint32_t *rtt_ms);
+/*
+ * The per-camera capture and read take an explicit timeout, because the two
+ * callers want opposite things from a slow node. A stored capture is worth
+ * waiting seconds for - it is the photograph. A viewfinder frame is worth
+ * almost no wait at all: a pane that freezes for eight seconds is worse than
+ * a pane that admits it has nothing, and the next frame is 200 ms away
+ * regardless. The unsuffixed wrappers keep the capture-shaped budgets.
+ */
+esp_err_t camlink_capture_ch(int cam, const char *resolution, int jpeg_quality,
+                             uint32_t timeout_ms, camlink_capture_result_t *out);
+esp_err_t camlink_read_ch(int cam, uint32_t frame_id, uint32_t offset, uint8_t *buf,
+                          size_t want, uint32_t timeout_ms, size_t *got);
+esp_err_t camlink_release_ch(int cam, uint32_t frame_id);
+
 void camlink_get_info(camlink_info_t *out);
 void camlink_get_stats(camlink_stats_t *out);
 void camlink_reset_stats(void);

@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "nvs.h"
 
 static const char *TAG = "hwv";
@@ -13,7 +15,51 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "SD_D1_GPIO40",    "SD_D2_GPIO41",   "SD_D3_GPIO42",    "SD_LDO_CH4",
     "CAM1_TX_GPIO52",  "CAM1_RX_GPIO51", "CAM1_BAUD_921600", "CAM1_NODE_LINK",
     "CAM1_SENSOR_DETECT", "CAM1_CAPTURE", "CAM1_JPEG_TRANSFER", "CAM1_SD_WRITE",
+    "DSI_PANEL_ST7701", "BACKLIGHT_GPIO23", "I2C_SHARED_BUS", "TOUCH_GT911",
+    "AUDIO_ES8311",     "AUDIO_AMP_GPIO11", "CAM_PWR_EN_GPIO31",
+    /* Append-only, in lockstep with hwv_item_t - see the note there. These ids
+     * exceed NVS_KEY_NAME_MAX_SIZE, which is harmless: the primary keys are
+     * indexed ("v.%d") and only the pre-fix legacy lookup used the id, so it
+     * simply misses for these rows and falls back to UNVALIDATED. */
+    "CAM2_UART", "CAM2_NODE_LINK", "CAM2_SENSOR_DETECT", "CAM2_JPEG_TRANSFER",
+    "CAM2_SD_WRITE",
+    "CAM3_UART", "CAM3_NODE_LINK", "CAM3_SENSOR_DETECT", "CAM3_JPEG_TRANSFER",
+    "CAM3_SD_WRITE",
+    "CAM4_UART", "CAM4_NODE_LINK", "CAM4_SENSOR_DETECT", "CAM4_JPEG_TRANSFER",
+    "CAM4_SD_WRITE",
+    "SYNC_TRIGGER_GPIO32", "FLASH_EN_GPIO28", "BTN_SHUTTER",
 };
+
+/* Compile-time guard: the id table and the enum must not drift. A missing
+ * string here would read off the end of the array in hwv_item_id(). */
+_Static_assert(sizeof(ITEM_IDS) / sizeof(ITEM_IDS[0]) == HWV_COUNT,
+               "ITEM_IDS and hwv_item_t are out of step");
+
+/*
+ * Per-camera row lookup.
+ *
+ * CAM1's rows were written one at a time when one camera was all there was.
+ * Rather than renumber them - which the NVS index rule forbids - this maps a
+ * camera index onto the row that means the same thing for that camera.
+ * CAM1_TX/RX collapse onto themselves: cam 0 keeps its historical rows.
+ */
+hwv_item_t hwv_cam_item(int cam, hwv_item_t cam1_equivalent) {
+  if (cam < 0 || cam >= 4) return HWV_COUNT;
+  if (cam == 0) return cam1_equivalent;
+
+  /* cam 1..3 -> the CAM2/3/4 block, five rows each, in enum order. */
+  const int base = HWV_CAM2_UART + (cam - 1) * 5;
+  switch (cam1_equivalent) {
+    case HWV_CAM1_TX_GPIO52:
+    case HWV_CAM1_RX_GPIO51:
+    case HWV_CAM1_BAUD_921600:  return (hwv_item_t)(base + 0); /* ..._UART */
+    case HWV_CAM1_NODE_LINK:    return (hwv_item_t)(base + 1);
+    case HWV_CAM1_SENSOR_DETECT:return (hwv_item_t)(base + 2);
+    case HWV_CAM1_JPEG_TRANSFER:return (hwv_item_t)(base + 3);
+    case HWV_CAM1_SD_WRITE:     return (hwv_item_t)(base + 4);
+    default:                    return HWV_COUNT;
+  }
+}
 
 static uint8_t s_status[HWV_COUNT];
 static char s_detail[HWV_COUNT][48];
@@ -46,6 +92,23 @@ void hwv_init(void) {
 
 void hwv_mark_validated(hwv_item_t item, const char *detail) {
   if (item >= HWV_COUNT || s_status[item] == HWV_VALIDATED) return;
+  /* Marked from eight modules and as many tasks - display bring-up, the touch
+   * poll, the audio path, power, the node link. Two of them transitioning at
+   * once would interleave an NVS handle and two writes to the same detail
+   * string. The early return above means the lock is only ever taken on the
+   * one transition per item, never on the steady-state re-marking. */
+  static SemaphoreHandle_t lock;
+  if (lock == NULL) {
+    static portMUX_TYPE init_mux = portMUX_INITIALIZER_UNLOCKED;
+    portENTER_CRITICAL(&init_mux);
+    if (lock == NULL) lock = xSemaphoreCreateMutex();
+    portEXIT_CRITICAL(&init_mux);
+  }
+  if (lock) xSemaphoreTake(lock, portMAX_DELAY);
+  if (s_status[item] == HWV_VALIDATED) {
+    if (lock) xSemaphoreGive(lock);
+    return;
+  }
   s_status[item] = HWV_VALIDATED;
   strncpy(s_detail[item], detail != NULL ? detail : "", sizeof s_detail[item] - 1);
   ESP_LOGI(TAG, "VALIDATED %s: %s", ITEM_IDS[item], s_detail[item]);
@@ -62,6 +125,7 @@ void hwv_mark_validated(hwv_item_t item, const char *detail) {
     nvs_commit(nvs);
     nvs_close(nvs);
   }
+  if (lock) xSemaphoreGive(lock);
 }
 
 hwv_status_t hwv_status(hwv_item_t item) {

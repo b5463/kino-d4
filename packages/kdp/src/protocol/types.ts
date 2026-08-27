@@ -13,6 +13,19 @@ export interface HelloRequest {
   protocolMax: number;
   nonce: number;
   client: string | null;
+  /**
+   * The host's wall clock, so the device can date the pictures it takes.
+   *
+   * Optional and additive. The D4 has no RTC, no battery-backed clock and no
+   * network, so HELLO is the only moment it can learn the date — and a device
+   * that is never told keeps saying its timestamps are unset rather than
+   * inventing one. Firmware rejects anything outside 2020..2100, which is
+   * what a seconds-for-milliseconds mix-up looks like.
+   */
+  hostEpochMs?: number;
+  /** The host's offset from UTC, so the device can write local time. Omitted
+   * means the device writes +00:00 rather than guessing a timezone. */
+  hostUtcOffsetMin?: number;
 }
 
 export interface HelloResponse {
@@ -28,6 +41,15 @@ export interface HelloResponse {
    * reconnect means the device rebooted and any cached state is stale.
    */
   sessionId?: string | number;
+  /**
+   * What the device's clock is worth right now.
+   *
+   * `host` — a host set it this session. `persisted` — restored across a power
+   * cycle and drifting, so it is a lower bound rather than a reading.
+   * `unset` — the device has never been told the time and its timestamps are
+   * uptime since the epoch. Absent on firmware without a clock at all.
+   */
+  clockSource?: 'host' | 'persisted' | 'unset';
 }
 
 // ---- Capability negotiation ----
@@ -750,6 +772,99 @@ export interface MediaListResponse {
 export interface CaptureEvent {
   id: string;
   kind: CaptureKind;
+  /** Additive; absent on firmware that predates the capture pipeline. */
+  captureUuid?: string;
+  /** `complete` when every online camera stored a frame, `partial` when some
+   * did not. A host that ignores this discovers a missing frame on download
+   * instead of at the shutter. */
+  status?: 'complete' | 'partial';
+  frameCount?: number;
+  /** What fired it: `shutter`, `shutter-hold`, `button`, or `host`. */
+  triggeredBy?: string;
+}
+
+/**
+ * MEDIA_READ / MEDIA_THUMB — bytes out of one file in a capture.
+ *
+ * The reply is the raw file bytes with KDP_FLAG_BINARY set, not JSON: a
+ * 300 KB JPEG through base64 would cost a third again in transfer for
+ * nothing. The caller knows the offset and length it asked for, so a reply
+ * shorter than `length` means end of file. Errors are JSON with the ERROR
+ * flag, so the two are never ambiguous.
+ */
+export interface MediaReadRequest {
+  id: string;
+  /** `C1.JPG`..`C4.JPG`, `THUMB.JPG` or `META.JSON`. Defaults to `C1.JPG`.
+   * An allow-list on the device; anything else is BAD_REQUEST. */
+  file?: string;
+  offset?: number;
+  /** Clamped by the device to what one frame can carry (8192 bytes). */
+  length?: number;
+}
+
+/**
+ * MEDIA_THUMB reads THUMB.JPG, which the device writes at capture time.
+ *
+ * Paged the same way as MEDIA_READ, for the same reason: a thumbnail is small
+ * but not bounded, and a noisy frame can encode past MAX_PAYLOAD. Omitting
+ * `offset` and `length` asks for the first 8192 bytes, which is the whole
+ * file for any ordinary thumbnail — so the common case is still one round
+ * trip and a reply shorter than the cap still means end of file.
+ *
+ * A capture from firmware that predates thumbnails answers NOT_FOUND, and the
+ * client falls back to MEDIA_READ of a frame.
+ */
+export interface MediaThumbRequest {
+  id: string;
+  offset?: number;
+  length?: number;
+}
+
+/**
+ * CAMERA_CAPTURE — the product's own shutter, over the wire.
+ *
+ * The body of the reply is a `kino.capture` v1 document, the same one written
+ * to the card as META.JSON, plus the figures that only matter to whoever
+ * asked for the capture.
+ *
+ * `dispatchSpreadUs` (inside `timing`) is how far apart the four capture
+ * commands went out. It is NOT any of the three skews, all of which stay null
+ * with a reason: the nodes expose on command arrival rather than on a trigger
+ * edge, and a free-running rolling shutter's exposure has no fixed
+ * relationship to either.
+ */
+export interface CameraCaptureResult {
+  /** The whole reply for a client that only needs to know it worked. */
+  ok: true;
+  schema: 'kino.capture';
+  version: 1;
+  id: string;
+  captureUuid: string;
+  deviceId: string;
+  mode: string;
+  capturedAt: string;
+  clockSource: 'host' | 'persisted' | 'unset';
+  frameCount: number;
+  resolution: string;
+  status: 'complete' | 'partial';
+  timing: {
+    gpioTriggerSkewUs: null;
+    vsyncPhaseSkewUs: null;
+    effectiveExposureSkewUs: null;
+    unavailableReason: string;
+    dispatchSpreadUs: number;
+  };
+  frames: {
+    cam: CamId;
+    file: string | null;
+    bytes?: number;
+    crc32?: string;
+    error?: string;
+  }[];
+  dir: string;
+  bytes: number;
+  totalMs: number;
+  camerasOnline: number;
 }
 
 export interface PhaseMeasurement {

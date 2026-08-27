@@ -180,6 +180,23 @@ export class KinoDevice {
     return this.client.request<TimingResult>(Cmd.CAMERA_CAPTURE, { action: 'timing-test' }, 8000);
   }
 
+  /**
+   * Take a picture: every online camera, one folder on the card.
+   *
+   * Answers when the frames are stored, not when the capture starts, so the
+   * timeout has to cover four concurrent transfers over a 921600-baud link -
+   * a UXGA frame is 200-400 KB and that is seconds, not milliseconds. The
+   * device also emits EVT_CAPTURE, which is how a host learns about a shot
+   * someone took on the camera itself.
+   */
+  captureNow() {
+    return this.client.request<import('@kino/kdp').CameraCaptureResult>(
+      Cmd.CAMERA_CAPTURE,
+      {},
+      15000,
+    );
+  }
+
   /** Read current sensor frame phases without changing them. */
   measurePhase() {
     return this.client.request<PhaseResult>(Cmd.CAMERA_PHASE, { action: 'measure' }, 6000);

@@ -25,11 +25,43 @@ on:
       ]
 
 jobs:
-  kdp-core-host-tests:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Portable KDP framing: CRC-32, encoder, stream decoder.
       - run: make -C firmware/components/kdp_core/host_tests test
+      # The P4's own arithmetic and string logic (firmware/p4/main/pure.c).
+      # Both defects this firmware has shipped were in functions of this shape
+      # and neither needed hardware to catch.
+      - run: make -C firmware/p4/host_tests test
+
+  host-preview:
+    # The native UI renderer. It compiles ui.c as a translation unit, so a
+    # change that breaks the drawing code fails here rather than being found
+    # by eye on a board — which is how three visual defects were found in its
+    # first run. Previously unguarded by CI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the renderer
+        run: make -C firmware/p4/host_preview
+      - name: Render every screen
+        run: |
+          mkdir -p /tmp/preview
+          ./firmware/p4/host_preview/preview /tmp/preview
+          # A renderer that builds but draws nothing is a pass we do not want.
+          count=$(ls /tmp/preview/*.ppm 2>/dev/null | wc -l)
+          echo "rendered $count screens"
+          if [ "$count" -lt 10 ]; then
+            echo "::error::expected at least 10 rendered screens, got $count"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-screens
+          path: /tmp/preview/*.ppm
+          retention-days: 7
 
   idf-build:
     strategy:
@@ -46,3 +78,32 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd "firmware/${{ matrix.app }}"
           idf.py build
+
+      # ---- firmware size guard (P4 only) ----
+      #
+      # Detects accidental major growth, nothing more. This is NOT a size
+      # optimisation target and the current binary is not near it.
+      #
+      #   at time of writing:  ~786 KB
+      #   factory partition:   1500 KB  (CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE)
+      #   limit below:         1100 KB  (~40% headroom over current)
+      #
+      # !! REVISIT WHEN M8 REPARTITIONS !!  The roadmap replaces the single
+      # `factory` slot with two OTA slots, at which point the ceiling is the
+      # new slot size and this number is wrong. See firmware/FIRMWARE_ROADMAP.md
+      # M8 and the partition discussion there.
+      - name: Guard firmware size
+        if: matrix.app == 'p4'
+        shell: bash
+        run: |
+          LIMIT_KB=1100
+          BIN=firmware/p4/build/kino-p4.bin
+          SIZE_B=$(stat -c %s "$BIN")
+          SIZE_KB=$((SIZE_B / 1024))
+          echo "kino-p4.bin: ${SIZE_KB} KB (limit ${LIMIT_KB} KB)"
+          echo "### Firmware size: ${SIZE_KB} KB / ${LIMIT_KB} KB" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIZE_KB" -gt "$LIMIT_KB" ]; then
+            echo "::error::kino-p4.bin grew to ${SIZE_KB} KB, over the ${LIMIT_KB} KB guard."
+            echo "::error::If the growth is intended, raise LIMIT_KB in this workflow and say why."
+            exit 1
+          fi

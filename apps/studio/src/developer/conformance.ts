@@ -28,6 +28,8 @@ function expectKeys(obj: unknown, keys: string[], label: string) {
 interface Ctx {
   captureId?: string;
   fileName?: string;
+  /** Set by GET_CAPABILITIES; gates the capture cases. */
+  gallery?: boolean;
   /** Set by the GET_CAPABILITIES case; gates the bench-diagnostics cases. */
   bench?: boolean;
 }
@@ -48,7 +50,16 @@ const CASES: Case[] = [
       const r = await dev.hello(nonce, 1500);
       expectKeys(r, ['product', 'protocol'], 'HELLO');
       if (r.nonce !== undefined && r.nonce !== nonce) throw new ShapeError('HELLO: nonce not echoed');
-      return `${r.product} · protocol ${r.protocol}${r.nonce !== undefined ? ' · nonce echoed' : ' · no nonce echo'}`;
+      /* A device that reports a clock source must report one of the three we
+       * know how to interpret. `unset` is a perfectly good answer from a body
+       * that has never been told the time - what would not be is a plausible
+       * timestamp with nothing saying where it came from. */
+      const clock = r.clockSource;
+      if (clock !== undefined && !['host', 'persisted', 'unset'].includes(clock)) {
+        throw new ShapeError(`HELLO: unknown clockSource ${String(clock)}`);
+      }
+      const clockNote = clock === undefined ? 'no clock' : `clock ${clock}`;
+      return `${r.product} · protocol ${r.protocol}${r.nonce !== undefined ? ' · nonce echoed' : ' · no nonce echo'} · ${clockNote}`;
     },
   },
   {
@@ -57,6 +68,7 @@ const CASES: Case[] = [
     run: async (dev, ctx) => {
       const r = await dev.getCapabilities();
       ctx.bench = r.capabilities.benchDiagnostics === true;
+      ctx.gallery = r.capabilities.gallery === true;
       expectKeys(r, ['protocol', 'hardware', 'capabilities', 'limits', 'configSchemaVersion'], 'CAPABILITIES');
       expectKeys(r.capabilities, ['cameraCount', 'wiggle', 'quad', 'gallery'], 'CAPABILITIES.capabilities');
       expectKeys(r.limits, ['maxUartBaud', 'maxResolution', 'maxGalleryPageSize'], 'CAPABILITIES.limits');
@@ -252,6 +264,64 @@ const CASES: Case[] = [
     },
   },
   {
+    /*
+     * The shutter, over the wire. This is the product's one indispensable
+     * command and the only case here that leaves a photograph behind, which
+     * is why it is `active` - a passive conformance run must never fill
+     * someone's card.
+     */
+    name: 'CAMERA_CAPTURE',
+    active: true,
+    run: async (dev, ctx) => {
+      if (ctx.gallery !== true) return 'skipped — no capture pipeline in this firmware';
+      const r = await dev.captureNow();
+      expectKeys(r, ['ok', 'schema', 'id', 'captureUuid', 'mode', 'frameCount', 'status', 'timing'], 'CAPTURE');
+      if (r.schema !== 'kino.capture') throw new ShapeError(`CAPTURE: schema ${r.schema}`);
+      if (r.frameCount < 1) throw new ShapeError('CAPTURE: reported ok with no frames');
+      if (r.status !== 'complete' && r.status !== 'partial') {
+        throw new ShapeError(`CAPTURE: status ${r.status}`);
+      }
+      /*
+       * The three skews must be null, and this is the case worth keeping
+       * strict. A body that starts reporting a number here has either grown
+       * exposure timing hardware or started guessing, and only one of those
+       * is allowed to happen quietly. Dispatch spread is reported under its
+       * own name precisely so it can never be mistaken for one of them.
+       */
+      for (const k of ['gpioTriggerSkewUs', 'vsyncPhaseSkewUs', 'effectiveExposureSkewUs'] as const) {
+        if (r.timing[k] !== null) throw new ShapeError(`CAPTURE: ${k} is not null on a body that cannot measure it`);
+      }
+      if (!r.timing.unavailableReason) throw new ShapeError('CAPTURE: null skews with no reason given');
+      ctx.captureId = r.captureUuid;
+      return `${r.id} · ${r.frameCount} frame(s) · ${r.status} · ${r.totalMs} ms · spread ${r.timing.dispatchSpreadUs} us`;
+    },
+  },
+  {
+    /* Asking a body that cannot measure exposure for exposure numbers must
+     * be refused, not answered. A capture is the wrong outcome here too:
+     * timing-test is not a request for a photograph. */
+    name: 'CAMERA_CAPTURE timing-test refusal',
+    active: false,
+    run: async (dev, ctx) => {
+      if (ctx.gallery !== true) return 'skipped — no capture pipeline in this firmware';
+      const caps = await dev.getCapabilities();
+      if (caps.capabilities.vsyncTelemetry === true) {
+        const r = await dev.timingTest();
+        expectKeys(r, ['gpioTriggerSkewUs'], 'TIMING');
+        return 'measured — this body reports exposure timing';
+      }
+      try {
+        await dev.timingTest();
+      } catch (err) {
+        if (err instanceof KinoCommandError || err instanceof KinoUnsupportedError) {
+          return `refused — ${err.message.slice(0, 60)}`;
+        }
+        throw err;
+      }
+      throw new ShapeError('timing-test answered on a body advertising vsyncTelemetry: false');
+    },
+  },
+  {
     name: 'MEDIA_LIST',
     active: false,
     run: async (dev, ctx) => {
@@ -274,10 +344,33 @@ const CASES: Case[] = [
       if (!ctx.captureId) return 'skipped — empty card';
       const r = await dev.mediaInfo(ctx.captureId);
       expectKeys(r, ['files', 'meta'], 'MEDIA_INFO');
-      if (!Array.isArray(r.files) || r.files.length !== 4) throw new ShapeError('MEDIA_INFO: needs 4 files');
-      expectKeys(r.files[0], ['name', 'sizeBytes', 'sha256'], 'MEDIA_INFO.files[0]');
+      /*
+       * Files present, not four files.
+       *
+       * This demanded exactly four, which was true while every capture came
+       * from a body with four cameras wired. It is not true of a partial
+       * capture, which is a state the capture pipeline reports on purpose -
+       * a dead CAM3 costs you CAM3 and nothing else. Requiring four here
+       * would mark honest behaviour as a protocol failure.
+       *
+       * The stronger check is that the file count agrees with the capture's
+       * own frameCount: a capture claiming four frames with two on the card
+       * is a real defect, and this catches it where a fixed 4 could not.
+       */
+      if (!Array.isArray(r.files) || r.files.length === 0) {
+        throw new ShapeError('MEDIA_INFO: a capture with no files');
+      }
+      expectKeys(r.files[0], ['name', 'sizeBytes'], 'MEDIA_INFO.files[0]');
+      const claimed = (r as unknown as { frameCount?: number }).frameCount;
+      if (typeof claimed === 'number' && claimed !== r.files.length) {
+        throw new ShapeError(`MEDIA_INFO: claims ${claimed} frames, ${r.files.length} on the card`);
+      }
+      /* sha256 is in the contract and firmware omits it rather than filling
+       * it in wrong: hashing four multi-megabyte JPEGs on request blocks the
+       * link for seconds. Absent is reported, not failed. */
+      const digests = r.files.filter((f) => typeof f.sha256 === 'string' && f.sha256.length === 64).length;
       ctx.fileName = r.files[0].name;
-      return `${ctx.captureId} · ${r.files.length} files`;
+      return `${ctx.captureId} · ${r.files.length} file(s) · ${digests} digest(s)`;
     },
   },
   {
@@ -288,6 +381,10 @@ const CASES: Case[] = [
       const bytes = await dev.mediaThumb(ctx.captureId);
       if (bytes.length < 100) throw new ShapeError('THUMB: too small to be a JPEG');
       if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new ShapeError('THUMB: not a JPEG');
+      /* A first page is capped at 8192 bytes by both the reference device and
+       * firmware. Anything larger means a device ignoring the cap, which puts
+       * it one noisy frame away from overrunning MAX_PAYLOAD. */
+      if (bytes.length > 8192) throw new ShapeError(`THUMB: ${bytes.length} B in one page, cap is 8192`);
       return `${bytes.length} bytes`;
     },
   },
@@ -296,9 +393,22 @@ const CASES: Case[] = [
     active: false,
     run: async (dev, ctx) => {
       if (!ctx.captureId || !ctx.fileName) return 'skipped — empty card';
-      const bytes = await dev.mediaRead(ctx.captureId, ctx.fileName, 0, 256);
-      if (bytes.length === 0) throw new ShapeError('MEDIA_READ: empty chunk');
-      return `${bytes.length} bytes @ offset 0`;
+      const head = await dev.mediaRead(ctx.captureId, ctx.fileName, 0, 256);
+      if (head.length === 0) throw new ShapeError('MEDIA_READ: empty chunk');
+      /* The first two bytes of a stored frame are a JPEG SOI. Checking them
+       * separates "the device answered" from "the device sent the file",
+       * which a length alone cannot. */
+      if (ctx.fileName.endsWith('.JPG') && (head[0] !== 0xff || head[1] !== 0xd8)) {
+        throw new ShapeError('MEDIA_READ: first chunk is not a JPEG');
+      }
+      /* Offsets have to actually seek. Reading the same 16 bytes from 0 and
+       * from 128 and getting the same answer is a device ignoring `offset`,
+       * which looks perfectly healthy until a client assembles a file out of
+       * pages and gets page one repeated. */
+      const mid = await dev.mediaRead(ctx.captureId, ctx.fileName, 128, 16);
+      const same = mid.length === 16 && mid.every((b, i) => b === head[128 + i]);
+      if (mid.length === 16 && !same) throw new ShapeError('MEDIA_READ: offset returns the wrong bytes');
+      return `${head.length} B @ 0 · ${mid.length} B @ 128 · offsets agree`;
     },
   },
   {

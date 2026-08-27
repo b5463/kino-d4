@@ -30,8 +30,19 @@ esp_err_t camsensor_set_quality(int quality);
 /** "WIDTHxHEIGHT" for the sensor's maximum JPEG frame, NULL when unknown. */
 const char *camsensor_max_resolution(void);
 
-/** Switch capture frame size. Accepts "1600x1200" or "2048x1536". */
+/**
+ * Switch frame size.
+ *
+ * Capture sizes are "1600x1200" and "2048x1536" — the KDP `Resolution` type.
+ * Viewfinder sizes are "640x480", "320x240" and "160x120", which are
+ * deliberately NOT on that type: they exist only to be small enough to cross
+ * the node UART several times a second, and a capture must never be stored at
+ * one of them.
+ */
 esp_err_t camsensor_set_resolution(const char *resolution);
+
+/** True for the sizes that exist only to feed the viewfinder. */
+bool camsensor_is_preview_resolution(const char *resolution);
 
 /** Capture one JPEG frame. Caller owns the buffer until camsensor_release(). */
 camera_fb_t *camsensor_capture(uint32_t *duration_ms);

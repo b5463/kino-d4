@@ -81,14 +81,37 @@ esp_err_t camsensor_set_quality(int quality) {
   return sensor->set_quality(sensor, quality) == 0 ? ESP_OK : ESP_FAIL;
 }
 
+/**
+ * Set the sensor's frame size.
+ *
+ * The two large sizes are the KDP `Resolution` type - what a capture is
+ * stored at. The small ones are not on that type and deliberately never
+ * will be: they exist for the rear-display viewfinder, where the whole point
+ * is a frame small enough to cross a 921600-baud UART several times a second.
+ *
+ * The arithmetic is the reason they had to be added. A UXGA frame at quality
+ * 12 measures 7.7-30.4 KB on this sensor, which is 330 ms of link time for
+ * one camera and would make a four-up viewfinder a slideshow at under 1 fps.
+ * QVGA is roughly an eighth of that.
+ */
 esp_err_t camsensor_set_resolution(const char *resolution) {
   sensor_t *sensor = esp_camera_sensor_get();
   if (sensor == NULL) return ESP_ERR_INVALID_STATE;
   framesize_t size;
   if (strcmp(resolution, "1600x1200") == 0) size = FRAMESIZE_UXGA;
   else if (strcmp(resolution, "2048x1536") == 0) size = FRAMESIZE_QXGA;
+  else if (strcmp(resolution, "640x480") == 0) size = FRAMESIZE_VGA;
+  else if (strcmp(resolution, "320x240") == 0) size = FRAMESIZE_QVGA;
+  else if (strcmp(resolution, "160x120") == 0) size = FRAMESIZE_QQVGA;
   else return ESP_ERR_INVALID_ARG;
   return sensor->set_framesize(sensor, size) == 0 ? ESP_OK : ESP_FAIL;
+}
+
+/** True for the sizes that exist only to feed the viewfinder. */
+bool camsensor_is_preview_resolution(const char *resolution) {
+  return resolution != NULL &&
+         (strcmp(resolution, "640x480") == 0 || strcmp(resolution, "320x240") == 0 ||
+          strcmp(resolution, "160x120") == 0);
 }
 
 camera_fb_t *camsensor_capture(uint32_t *duration_ms) {

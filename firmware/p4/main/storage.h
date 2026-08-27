@@ -51,16 +51,134 @@ typedef struct {
 void storage_self_test(storage_selftest_result_t *out);
 const char *storage_selftest_phase_str(storage_selftest_phase_t phase);
 
+/* ------------------------------------------------------------------ */
+/* Throughput benchmark (KDP STORAGE_BENCH, 0x4c)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Where a benchmark run stopped.
+ *
+ * Deliberately a superset of storage_selftest_phase_t's vocabulary rather than
+ * a parallel error architecture: the two share the same phases where they do
+ * the same work, and the extra rows are phases the self-test does not have
+ * (flush, fsync, close and cleanup are collapsed into WRITE/REMOVE there).
+ * A failing phase is the whole diagnostic value of this command — "slow" and
+ * "did not finish" are different problems.
+ */
+typedef enum {
+  STORAGE_BENCH_OK = 0,
+  STORAGE_BENCH_NOT_MOUNTED,
+  STORAGE_BENCH_BAD_REQUEST,
+  STORAGE_BENCH_OUT_OF_MEMORY,
+  STORAGE_BENCH_OPEN_FAILED,
+  STORAGE_BENCH_WRITE_FAILED,
+  STORAGE_BENCH_FLUSH_FAILED,
+  STORAGE_BENCH_FSYNC_FAILED,
+  STORAGE_BENCH_CLOSE_FAILED,
+  STORAGE_BENCH_READ_FAILED,
+  STORAGE_BENCH_CRC_MISMATCH,
+  STORAGE_BENCH_SHORT_READ,
+  /* The data verified but the temp file could not be removed. Reported rather
+   * than swallowed: a benchmark that silently leaves a megabyte behind on
+   * every run is a benchmark that fills the card it is measuring. */
+  STORAGE_BENCH_CLEANUP_FAILED,
+} storage_bench_phase_t;
+
+const char *storage_bench_phase_str(storage_bench_phase_t phase);
+
+/** One measured pass at one size. */
 typedef struct {
-  char id[16];   /* "TC_000042" — NVS sequence, never reused across boots */
+  uint32_t bytes;
+  uint32_t write_ms;
+  uint32_t read_ms;
+  uint32_t write_bytes_per_sec;
+  uint32_t read_bytes_per_sec;
+  uint32_t crc_written;
+  uint32_t crc_read;
+  bool crc_match;
+  /* Per-chunk write latency, measured with esp_timer around each fwrite.
+   * worst_us is the number that decides a four-frame burst: the burst stalls
+   * on its single worst block, and a mean hides exactly the event that drops
+   * a frame. */
+  uint32_t chunk_bytes;
+  uint32_t chunks;
+  uint32_t worst_write_chunk_us;
+  uint32_t best_write_chunk_us;
+  uint32_t mean_write_chunk_us;
+  uint32_t p95_write_chunk_us;
+} storage_bench_pass_t;
+
+typedef struct {
+  bool ok;
+  storage_bench_phase_t failed_phase;
+  uint32_t passes;
+  /* The sustained run, which is what the contract's writeMBs/readMBs and
+   * worstBlockMs/p95BlockMs report. */
+  storage_bench_pass_t sustained;
+  /* A 64 KiB run alongside it, the same size STORAGE_SELF_TEST uses, so the
+   * two commands are directly comparable on the same card. A card that passes
+   * the self-test and collapses at a megabyte is a card we want to know about
+   * before a four-frame burst finds out. */
+  storage_bench_pass_t small;
+  bool cleanup_ok;
+  uint32_t total_ms;
+} storage_bench_result_t;
+
+/**
+ * Measure sustained write/read throughput and per-block write latency.
+ *
+ * Non-destructive and bounded. Writes one temp file under /KINO with an
+ * unmistakably temporary name, verifies it by CRC-32 read-back, and removes
+ * it. Existing card data is never touched and no capture directory is
+ * involved — a benchmark that wrote into /KINO/CAPTURES would be
+ * indistinguishable from a capture to every reader of the card.
+ *
+ * `size_kb` and `block_kb` are clamped to a sane bounded range so a host
+ * cannot ask the device to fill the card or to allocate an absurd buffer.
+ * Chunked I/O throughout: the largest allocation is one block, not one file.
+ *
+ * Throughput is never reported as a success unless the read-back CRC matched.
+ * A fast wrong answer is worse than a slow right one.
+ */
+void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
+                   storage_bench_result_t *out);
+
+/** Frames a capture folder can hold: one per camera. */
+#define STORAGE_CAPTURE_FRAMES 4
+
+typedef struct {
+  char id[16];   /* "CAP_000042" — NVS sequence, never reused across boots */
   char dir[64];  /* "/sdcard/KINO/CAPTURES/<uuid>" */
-  FILE *jpg;
+  FILE *jpg;     /* the frame currently open for writing, NULL between frames */
+  int open_cam;  /* which camera that frame belongs to, -1 when none is open */
+  uint8_t written; /* bitmask of cameras whose frame reached the card */
 } storage_capture_t;
 
-/** Opens <dir>/C1.JPG for writing under the capture's UUID folder. */
+/**
+ * Create the capture folder and claim an id.
+ *
+ * `id_prefix` separates what a folder is for at a glance on the card: "CAP"
+ * for a picture someone took, "TC" for a bench capture from CAMERA_TEST or a
+ * soak run. They share the sequence, so the number is still unique and still
+ * monotonic across the whole card.
+ *
+ * No file is opened; a capture may hold up to STORAGE_CAPTURE_FRAMES frames
+ * and does not know yet which cameras will answer.
+ */
+esp_err_t storage_capture_open(storage_capture_t *c, const char *capture_uuid,
+                               const char *id_prefix);
+/** Opens <dir>/C<cam+1>.JPG. One frame is open at a time. */
+esp_err_t storage_capture_frame_begin(storage_capture_t *c, int cam);
+/** Flushes and closes the open frame. The bytes are on the card once this
+ * returns ESP_OK; the capture is not committed until META.JSON is written. */
+esp_err_t storage_capture_frame_end(storage_capture_t *c);
+
+/** open() + frame_begin(cam 0) with the "TC" prefix - the single-camera bench
+ * path, unchanged. */
 esp_err_t storage_capture_begin(storage_capture_t *c, const char *capture_uuid);
 esp_err_t storage_capture_append(storage_capture_t *c, const uint8_t *data, size_t len);
-/** Flushes C1.JPG and writes META.JSON. The capture exists once this returns. */
+/** Closes any open frame and writes META.JSON. The capture exists once this
+ * returns: META.JSON is what makes a folder of JPEGs a capture. */
 esp_err_t storage_capture_commit(storage_capture_t *c, const char *meta_json);
 void storage_capture_abort(storage_capture_t *c);
 
@@ -70,5 +188,85 @@ esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_
 /** Removes a committed capture folder (C1.JPG + META.JSON + dir). Used by the
  * soak test's keepAll=false cleanup — never called on user captures. */
 void storage_capture_delete(const char *dir);
+
+/* ------------------------------------------------------------------ */
+/* Pre-capture space reservation                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A conservative upper bound on what one capture will occupy.
+ *
+ * This is a BOUND, not an estimate, and the distinction is the whole point: an
+ * estimate that is usually right still lets a capture start that cannot
+ * finish, and a capture that dies at frame three has already written frames
+ * one and two. Refusing early costs a photograph nobody could have had;
+ * refusing late costs a corrupt folder and a confused user.
+ *
+ * JPEG size is scene-dependent and unbounded in principle, so the bound is
+ * struck at 0.5 bytes per pixel per frame. Observed VGA q12 frames on the
+ * bench were 7.7-30.4 KB, which is 0.025-0.1 bpp; UXGA at the best quality
+ * this firmware ever requests should stay far under 0.5. It is deliberately
+ * several times the expected size, because the reserve only ever matters on a
+ * nearly-full card and being generous there costs nothing on a 32 GB one.
+ *
+ * Pure arithmetic, no filesystem access - host-tested.
+ */
+uint64_t storage_capture_reserve_bytes(int frames, uint32_t width, uint32_t height);
+
+/**
+ * True when the card can be trusted to hold `frames` frames at w x h.
+ *
+ * `need` and `avail` are filled in whenever they are non-NULL, including on
+ * the false path, so the caller can say how short it was rather than only
+ * that it was short.
+ */
+bool storage_capture_space_ok(int frames, uint32_t width, uint32_t height, uint64_t *need,
+                              uint64_t *avail);
+
+/* ------------------------------------------------------------------ */
+/* Interrupted-capture recovery                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * True when `name` is unmistakably a KINO capture directory name.
+ *
+ * Capture folders are named by RFC 4122 v4 UUID: 36 characters, lowercase hex,
+ * dashes at 8/13/18/23. The sweep below deletes things, so the test for "is
+ * this ours" is a shape match on the whole string rather than anything looser.
+ * A folder someone dropped on the card by hand will not match, and that is the
+ * intent.
+ *
+ * Pure, host-tested.
+ */
+bool storage_is_capture_dirname(const char *name);
+
+/** What one boot sweep did. */
+typedef struct {
+  int scanned;   /* directories that looked like captures */
+  int complete;  /* had META.JSON - left alone */
+  int removed;   /* orphans containing only expected files, deleted */
+  int preserved; /* orphans holding something unexpected, kept for inspection */
+} storage_sweep_t;
+
+/**
+ * Remove capture folders that never got their META.JSON.
+ *
+ * META.JSON is written last, so a folder without one is an interrupted commit
+ * - a reboot, a brownout, or a pulled card between the last frame and the
+ * metadata. It can never become a valid capture, and nothing will ever explain
+ * the JPEGs inside it.
+ *
+ * Conservative on every axis that matters:
+ *   - only directories whose names pass storage_is_capture_dirname()
+ *   - only ever unlinks the six filenames a capture can contain
+ *   - the directory itself goes via rmdir(), which refuses a non-empty
+ *     directory, so an orphan holding anything unexpected is PRESERVED and
+ *     counted rather than forced
+ *   - bounded work per boot, so a pathological card cannot stall the boot or
+ *     turn one mistake into a mass deletion
+ *
+ * Every action is logged. Valid captures are never touched.
+ */
+void storage_sweep_orphans(storage_sweep_t *out);
 
 #endif

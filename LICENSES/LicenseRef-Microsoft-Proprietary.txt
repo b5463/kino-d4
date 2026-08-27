@@ -1,0 +1,20 @@
+Microsoft proprietary material
+
+The files mapped to this identifier contain artwork from the Microsoft Windows
+XP user interface icon set. Copyright Microsoft Corporation. All rights
+reserved.
+
+No permission is granted here, by Microsoft or by anyone else, to copy,
+modify, distribute, sublicense, sell, or create derivative works from this
+material. KINO holds no licence to it. This identifier exists so that the
+repository states what the material is and who owns it, instead of letting a
+blanket MIT grant on the surrounding directory imply a permission that does
+not exist.
+
+Files carrying this identifier are a redistribution question that has to be
+answered before a build containing them is published. See
+THIRD_PARTY_NOTICES.md.
+
+This notice applies only to files carrying or mapped to this identifier. It
+does not alter rights granted under MIT or CERN-OHL-S-2.0 for other files in
+the repository.

@@ -3,6 +3,32 @@ CONFIG_IDF_TARGET="esp32p4"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_HEX=y
+# 80 MHz. Left unset this defaults to 20 MHz, and the panel then reports
+# "can't fetch data from external memory fast enough, underrun happens"
+# forever, because a DPI panel streams its framebuffer out of PSRAM
+# continuously rather than on demand.
+#
+# The requirement is arithmetic, not taste. A frame is 576 x 976 clocks
+# including blanking, so at 34 MHz that is ~60 Hz, and 480x800 at 16 bpp is
+# 768 KB — about 46 MB/s sustained, forever, while the screen is on. Hex
+# PSRAM moves 2 bytes per clock: 40 MB/s at 20 MHz, which is just under what
+# the panel needs, and 160 MB/s at 80 MHz, which is comfortably over.
+#
+# Not 200 MHz: that option depends on IDF_EXPERIMENTAL_FEATURES and was
+# silently dropped when set. Product firmware should not need an
+# experimental flag to hold a picture on the screen, and 80 MHz already has
+# three times the headroom required.
+CONFIG_SPIRAM_SPEED_80M=y
+# More cache for the same reason: the framebuffer is the one workload here
+# with a continuous, unforgiving read rate.
+CONFIG_CACHE_L2_CACHE_256KB=y
+
+# The board's flash is a Boya part. Without this the generic driver is used,
+# which works but cannot do chip-specific operations correctly - and this is
+# the same flash whose block-protection bits silently swallowed three writes
+# during bring-up, so it is worth the driver actually knowing what it is
+# talking to.
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 
 # Console stays on UART0 (GPIO37/38 on this board). KDP owns USB-Serial-JTAG
 # exclusively so log output can never interleave into a frame mid-session.
