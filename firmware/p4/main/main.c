@@ -26,6 +26,7 @@
 #include "nvs_flash.h"
 #include "power.h"
 #include "storage.h"
+#include "taskmon.h"
 
 static const char *TAG = "kino_p4";
 
@@ -167,7 +168,9 @@ void app_main(void) {
   } else {
     ESP_LOGI(TAG, "KDP_READY session %s", id.session_id);
   }
-  xTaskCreate(cam_probe_task, "cam_probe", 4096, NULL, 5, NULL);
+  TaskHandle_t probe = NULL;
+  xTaskCreate(cam_probe_task, "cam_probe", 4096, NULL, 5, &probe);
+  taskmon_register("cam_probe", probe);
 
   /* The panel comes up last, deliberately, and its failure is never fatal.
    * It is the newest and least proven peripheral on this board, and KDP over

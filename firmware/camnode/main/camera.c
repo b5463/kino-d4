@@ -114,11 +114,22 @@ bool camsensor_is_preview_resolution(const char *resolution) {
           strcmp(resolution, "160x120") == 0);
 }
 
-camera_fb_t *camsensor_capture(uint32_t *duration_ms) {
-  int64_t start = esp_timer_get_time();
+camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing) {
+  const int64_t start = esp_timer_get_time();
   camera_fb_t *fb = esp_camera_fb_get();
-  if (duration_ms != NULL) {
-    *duration_ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
+  const int64_t end = esp_timer_get_time();
+  if (duration_ms != NULL) *duration_ms = (uint32_t)((end - start) / 1000);
+  if (timing != NULL) {
+    timing->duration_ms = (uint32_t)((end - start) / 1000);
+    timing->fb_get_start_us = start;
+    timing->fb_get_end_us = end;
+    timing->fb_get_us = end - start;
+    /* fb->timestamp is a struct timeval the driver fills at DMA arm. Folded
+     * to microseconds here so the wire carries one number in the node's own
+     * esp_timer domain - the same domain fb_get_start_us is in, which is what
+     * makes the two comparable. */
+    timing->frame_start_us =
+        fb != NULL ? (int64_t)fb->timestamp.tv_sec * 1000000 + fb->timestamp.tv_usec : 0;
   }
   return fb;
 }

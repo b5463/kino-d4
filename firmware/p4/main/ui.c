@@ -18,6 +18,7 @@
 #include "freertos/task.h"
 #include "gfx.h"
 #include "klog.h"
+#include "taskmon.h"
 #include "icons.h"
 #include "logo_kino_d4.h"
 #include "mesh3d.h"
@@ -1326,7 +1327,9 @@ esp_err_t ui_start(void) {
   buttons_on_press(on_button);
 
   ESP_LOGI(TAG, "UI_READY %dx%d landscape via PPA, tiles %dx%d", UI_W, UI_H, TILE_W, TILE_H);
-  xTaskCreate(ui_task, "ui", 6144, NULL, 4, NULL);
+  TaskHandle_t ui_h = NULL;
+  xTaskCreate(ui_task, "ui", 6144, NULL, 4, &ui_h);
+  taskmon_register("ui", ui_h);
 
   /* The icon builder starts AFTER the UI, and the order is the whole point.
    *
@@ -1342,6 +1345,8 @@ esp_err_t ui_start(void) {
    * render of the camera mesh; all six are raster now, and leaving the gate
    * in place would have let a 3D failure - which costs the viewfinder its
    * body and nothing else - take the whole home screen down with it. */
-  xTaskCreate(icons_task, "icons", 4096, NULL, 3, NULL);
+  TaskHandle_t ic_h = NULL;
+  xTaskCreate(icons_task, "icons", 4096, NULL, 3, &ic_h);
+  taskmon_register("icons", ic_h);
   return ESP_OK;
 }

@@ -54,6 +54,21 @@ typedef struct {
   uint32_t crc;        /* CRC-32 read back from the stored file */
   bool crc_match;      /* stored file agrees with the node's own CRC */
   char err[48];        /* "" when ok; a reason a person can act on when not */
+
+  /* When the command actually went out, on the P4's monotonic clock. fire_us
+   * above is the same instant expressed relative to the trigger; this is the
+   * absolute stamp, so a log line and a frame can be lined up. */
+  int64_t dispatch_us;
+
+  /*
+   * Node-side timing, in the NODE's own esp_timer domain - no epoch shared
+   * with the P4 or with the other nodes. Zero means the node did not report
+   * it. Copied straight from camlink_capture_result_t; see cam_link.h for why
+   * these exist and what they are not.
+   */
+  int64_t node_fb_get_us;      /* time the node spent inside esp_camera_fb_get() */
+  int64_t node_frame_start_us; /* node esp_timer at this frame's DMA arm */
+  int64_t node_frame_age_us;   /* command arrival minus frame start; >0 = stale */
 } capture_frame_t;
 
 /** What became of the press. */
@@ -79,7 +94,24 @@ typedef struct {
   int stored;             /* frames that reached the card intact */
   uint32_t bytes;
   uint32_t total_ms;
-  uint32_t spread_us;     /* dispatch spread, not exposure skew — see above */
+  /*
+   * How far apart the four capture COMMANDS went out, on the P4's clock.
+   *
+   * A scheduler and UART-queueing metric. It is NOT exposure skew, not
+   * synchronization, and not comparable with anything a sensor did: the nodes
+   * expose when their command arrives rather than on the trigger edge, and
+   * their rolling shutters free-run. firmware/SYNC_FEASIBILITY.md establishes
+   * that exposure timing has to be measured separately and photographically.
+   * The name stays one that cannot be mistaken for skew.
+   */
+  uint32_t spread_us;
+
+  /* Phase timings for first-day diagnosis. Milliseconds unless named _us.
+   * request_us is on the P4's monotonic clock and anchors the rest. */
+  int64_t request_us;      /* capture request accepted */
+  uint32_t probe_ms;       /* deciding which cameras are online */
+  uint32_t thumbnail_ms;   /* decode + scale + encode + write THUMB.JPG */
+  uint32_t meta_commit_ms; /* build META.JSON and fsync the capture */
   capture_frame_t cam[CAPTURE_CAMS];
   char err_code[24];      /* §14 code when !ok */
   char err_msg[96];

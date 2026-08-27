@@ -432,6 +432,14 @@ esp_err_t camlink_capture_ch(int cam, const char *resolution, int jpeg_quality,
   }
   memset(out, 0, sizeof *out);
   out->frame_id = (uint32_t)id->valuedouble;
+  /* Optional: a node built before these fields existed simply omits them and
+   * they stay zero, which reads as "not reported" rather than as a real zero. */
+  const cJSON *fb_us = cJSON_GetObjectItem(json, "fbGetUs");
+  if (cJSON_IsNumber(fb_us)) out->fb_get_us = (int64_t)fb_us->valuedouble;
+  const cJSON *fstart = cJSON_GetObjectItem(json, "frameStartUs");
+  if (cJSON_IsNumber(fstart)) out->frame_start_us = (int64_t)fstart->valuedouble;
+  const cJSON *fage = cJSON_GetObjectItem(json, "frameAgeUs");
+  if (cJSON_IsNumber(fage)) out->frame_age_us = (int64_t)fage->valuedouble;
   out->size = (uint32_t)size->valuedouble;
   const cJSON *dur = cJSON_GetObjectItem(json, "durationMs");
   out->duration_ms = cJSON_IsNumber(dur) ? (uint32_t)dur->valuedouble : 0;

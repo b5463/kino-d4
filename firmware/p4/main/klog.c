@@ -6,6 +6,7 @@
 #include <sys/time.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -13,7 +14,8 @@
 #define KLOG_MSG_MAX 96
 
 typedef struct {
-  int64_t t_ms;
+  int64_t t_ms; /* epoch ms - wall clock, may jump when a host sets the time */
+  int64_t t_us; /* monotonic us since boot - ordering and deltas */
   char src[6];
   char msg[KLOG_MSG_MAX];
 } klog_entry_t;
@@ -33,6 +35,8 @@ static int64_t now_ms(void) {
   return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+int64_t klog_now_us(void) { return esp_timer_get_time(); }
+
 void klog(const char *src, const char *fmt, ...) {
   char msg[KLOG_MSG_MAX];
   va_list args;
@@ -40,13 +44,18 @@ void klog(const char *src, const char *fmt, ...) {
   vsnprintf(msg, sizeof msg, fmt, args);
   va_end(args);
 
-  int64_t t = now_ms();
+  /* Both clocks sampled here, before the ESP_LOGI: the console write is a
+   * serial transaction and stamping after it would attribute its latency to
+   * the event being logged. */
+  const int64_t t = now_ms();
+  const int64_t t_us = esp_timer_get_time();
   ESP_LOGI("kino", "[%s] %s", src, msg);
 
   if (s_lock != NULL) {
     xSemaphoreTake(s_lock, portMAX_DELAY);
     klog_entry_t *slot = &s_ring[s_count % KLOG_CAPACITY];
     slot->t_ms = t;
+    slot->t_us = t_us;
     strncpy(slot->src, src, sizeof slot->src - 1);
     slot->src[sizeof slot->src - 1] = '\0';
     strncpy(slot->msg, msg, sizeof slot->msg - 1);
@@ -56,7 +65,7 @@ void klog(const char *src, const char *fmt, ...) {
   }
 
   klog_emit_fn emit = s_emit;
-  if (emit != NULL) emit(t, src, msg);
+  if (emit != NULL) emit(t, t_us, src, msg);
 }
 
 void klog_clear(void) {
@@ -85,9 +94,15 @@ static size_t json_string_len(const char *s) {
 /* Serialized cost of one entry including its separating comma:
  * {"t":<digits>,"src":"<src>","msg":"<msg>"} = 24 fixed chars + fields. */
 static size_t entry_json_cost(const klog_entry_t *entry) {
-  char t_buf[24];
-  int t_len = snprintf(t_buf, sizeof t_buf, "%lld", (long long)entry->t_ms);
-  return 25 + (size_t)t_len + json_string_len(entry->src) + json_string_len(entry->msg);
+  char buf[24];
+  const int t_len = snprintf(buf, sizeof buf, "%lld", (long long)entry->t_ms);
+  const int us_len = snprintf(buf, sizeof buf, "%lld", (long long)entry->t_us);
+  /* {"t":N,"us":N,"src":"S","msg":"M"} plus the separating comma. Exact, not
+   * approximate: this decides how many real log lines survive the 16 KB
+   * payload cap, and an underestimate produces a reply the client cannot
+   * decode. */
+  return 32 + (size_t)t_len + (size_t)us_len + json_string_len(entry->src) +
+         json_string_len(entry->msg);
 }
 
 cJSON *klog_entries_json(size_t budget) {
@@ -110,6 +125,7 @@ cJSON *klog_entries_json(size_t budget) {
     const klog_entry_t *entry = &s_ring[(start + i) % KLOG_CAPACITY];
     cJSON *item = cJSON_CreateObject();
     cJSON_AddNumberToObject(item, "t", (double)entry->t_ms);
+    cJSON_AddNumberToObject(item, "us", (double)entry->t_us);
     cJSON_AddStringToObject(item, "src", entry->src);
     cJSON_AddStringToObject(item, "msg", entry->msg);
     cJSON_AddItemToArray(entries, item);

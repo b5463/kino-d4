@@ -6,6 +6,7 @@
 #include "driver/i2c_master.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_log.h"
+#include "taskmon.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "klog.h"
@@ -137,6 +138,8 @@ esp_err_t touch_init(void) {
   ESP_LOGI(TAG, "TOUCH_READY gt911 at 0x%02x, polled, %dx%d native", BOARD_TOUCH_I2C_ADDR,
            DISPLAY_H_RES, DISPLAY_V_RES);
   klog("P4", "touch up gt911");
-  xTaskCreate(touch_task, "touch", 4096, NULL, 4, NULL);
+  TaskHandle_t h = NULL;
+  xTaskCreate(touch_task, "touch", 4096, NULL, 4, &h);
+  taskmon_register("touch", h);
   return ESP_OK;
 }

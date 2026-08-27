@@ -23,10 +23,12 @@
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
 #include "klog.h"
+#include "meta.h"
 #include "node_link/node_link.h"
 #include "power.h"
 #include "pure.h"
 #include "storage.h"
+#include "taskmon.h"
 #include "thumb.h"
 
 static const char *TAG = "capture";
@@ -112,6 +114,12 @@ bool capture_parse_resolution(const char *s, uint32_t *width, uint32_t *height) 
 }
 
 static uint32_t ms_since(int64_t t0) { return (uint32_t)((esp_timer_get_time() - t0) / 1000); }
+
+/** "C1".."C4" - the contract LogSource for a per-camera log line. */
+static const char *cam_tag(int cam) {
+  static const char *TAGS[CAPTURE_CAMS] = {"C1", "C2", "C3", "C4"};
+  return (cam >= 0 && cam < CAPTURE_CAMS) ? TAGS[cam] : "P4";
+}
 
 static void fail(capture_report_t *r, const char *code, const char *msg) {
   r->ok = false;
@@ -232,7 +240,9 @@ static void do_frame(worker_t *w) {
   const int cam = w->cam;
   capture_frame_t *f = &s_active->cam[cam];
 
-  f->fire_us = (int32_t)(esp_timer_get_time() - s_trigger_us);
+  const int64_t dispatch_us = esp_timer_get_time();
+  f->dispatch_us = dispatch_us;
+  f->fire_us = (int32_t)(dispatch_us - s_trigger_us);
   camlink_capture_result_t cap;
   esp_err_t err = camlink_capture_ch(cam, s_resolution, s_sensor_quality,
                                      NODE_CAPTURE_TIMEOUT_MS, &cap);
@@ -254,6 +264,27 @@ static void do_frame(worker_t *w) {
     return;
   }
   f->node_ms = cap.duration_ms;
+  /* The node's own view, for the stale-frame check. Node esp_timer domain:
+   * comparable only against other figures from the SAME node. */
+  f->node_fb_get_us = cap.fb_get_us;
+  f->node_frame_start_us = cap.frame_start_us;
+  f->node_frame_age_us = cap.frame_age_us;
+
+  /*
+   * The stale-frame signature, flagged the moment it appears rather than left
+   * for someone to notice in a table. firmware/SYNC_FEASIBILITY.md predicts
+   * that with fb_count=1 a capture after a release returns an ALREADY QUEUED
+   * frame instantly - a photograph of the moment after the previous readout.
+   *
+   * Threshold: a genuinely fresh frame costs roughly one frame period, derived
+   * at ~112 ms for UXGA. 20 ms is comfortably below any real capture and
+   * comfortably above scheduling noise. Logged, never corrected here: M1
+   * confirms the behaviour on hardware before the lifecycle is touched.
+   */
+  if (cap.fb_get_us > 0 && cap.fb_get_us < 20000) {
+    klog(cam_tag(cam), "STALE? fb_get %lld us, frame %lld us before command",
+         (long long)cap.fb_get_us, (long long)cap.frame_age_us);
+  }
 
   w->jpeg = heap_caps_malloc(cap.size, MALLOC_CAP_SPIRAM);
   if (w->jpeg == NULL) {
@@ -311,7 +342,10 @@ static void do_frame(worker_t *w) {
   if (f->ok && cam == s_thumb_cam && thumb_ready()) {
     char path[96];
     snprintf(path, sizeof path, "%s/THUMB.JPG", s_store->dir);
-    if (thumb_write(w->jpeg, cap.size, path) != ESP_OK) {
+    const int64_t th0 = esp_timer_get_time();
+    const esp_err_t th = thumb_write(w->jpeg, cap.size, path);
+    if (s_active != NULL) s_active->thumbnail_ms = ms_since(th0);
+    if (th != ESP_OK) {
       /* Not a capture failure. The frames are on the card and readable; a
        * gallery without a thumbnail is slower, not wrong. */
       ESP_LOGW(TAG, "no thumbnail for %s", s_store->id);
@@ -344,71 +378,7 @@ static void worker_task(void *arg) {
 /* ---------------------------------------------------------------- */
 
 void capture_meta_json(const capture_report_t *r, void *cjson_object) {
-  cJSON *m = cjson_object;
-  if (r == NULL || m == NULL) return;
-
-  cJSON_AddStringToObject(m, "schema", "kino.capture");
-  cJSON_AddNumberToObject(m, "version", 1);
-  cJSON_AddStringToObject(m, "id", r->id);
-  cJSON_AddStringToObject(m, "captureUuid", r->uuid);
-  cJSON_AddNullToObject(m, "rollId");
-  cJSON_AddStringToObject(m, "deviceId", s_device_id);
-  cJSON_AddStringToObject(m, "mode", r->mode);
-  cJSON_AddStringToObject(m, "capturedAt", r->captured_at);
-  /* The same instant as an epoch, because MEDIA_LIST reports `ts` in epoch
-   * milliseconds and parsing ISO 8601 on the device to answer a listing would
-   * be work done thousands of times to undo work done once. */
-  cJSON_AddNumberToObject(m, "capturedAtMs", (double)r->captured_at_ms);
-  cJSON_AddNumberToObject(m, "frameCount", r->stored);
-  cJSON_AddStringToObject(m, "resolution", r->resolution);
-  cJSON_AddStringToObject(m, "status", r->status);
-  cJSON_AddBoolToObject(m, "visible", true);
-
-  /* Beyond the schema, and deliberately: a consumer that ignores these still
-   * gets a valid kino.capture, and one that reads them knows what the
-   * timestamp is worth. */
-  cJSON_AddStringToObject(m, "clockSource", r->clock_source);
-  cJSON_AddStringToObject(m, "triggeredBy", r->source);
-
-  /* The three skews stay null. See the header: a GPIO edge the nodes ignore
-   * measures nothing about exposure, and dispatch spread is not exposure
-   * skew. `dispatchSpreadUs` is reported under its own name so the number is
-   * available without being mistaken for one of the three. */
-  cJSON *t = cJSON_AddObjectToObject(m, "timing");
-  cJSON_AddNullToObject(t, "gpioTriggerSkewUs");
-  cJSON_AddNullToObject(t, "vsyncPhaseSkewUs");
-  cJSON_AddNullToObject(t, "effectiveExposureSkewUs");
-  cJSON_AddStringToObject(t, "unavailableReason",
-                          "Nodes capture on command arrival, not on the trigger edge; "
-                          "rolling shutters free-run, so exposure alignment is unmeasured");
-  cJSON_AddNumberToObject(t, "dispatchSpreadUs", r->spread_us);
-
-  cJSON *frames = cJSON_AddArrayToObject(m, "frames");
-  for (int i = 0; i < CAPTURE_CAMS; i++) {
-    const capture_frame_t *f = &r->cam[i];
-    if (!f->attempted) continue;
-    cJSON *e = cJSON_CreateObject();
-    char cam[8];
-    snprintf(cam, sizeof cam, "cam%d", i + 1);
-    cJSON_AddStringToObject(e, "cam", cam);
-    if (f->ok) {
-      char file[12];
-      snprintf(file, sizeof file, "C%d.JPG", i + 1);
-      cJSON_AddStringToObject(e, "file", file);
-      cJSON_AddNumberToObject(e, "bytes", f->bytes);
-      char hex[12];
-      snprintf(hex, sizeof hex, "%08lx", (unsigned long)f->crc);
-      cJSON_AddStringToObject(e, "crc32", hex);
-      cJSON_AddNumberToObject(e, "nodeMs", f->node_ms);
-      cJSON_AddNumberToObject(e, "transferMs", f->transfer_ms);
-      cJSON_AddNumberToObject(e, "writeMs", f->write_ms);
-      cJSON_AddNumberToObject(e, "fireOffsetUs", f->fire_us);
-    } else {
-      cJSON_AddNullToObject(e, "file");
-      cJSON_AddStringToObject(e, "error", f->err);
-    }
-    cJSON_AddItemToArray(frames, e);
-  }
+  meta_build_capture(r, s_device_id, cjson_object);
 }
 
 /* ---------------------------------------------------------------- */
@@ -443,6 +413,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   const int64_t t_start = esp_timer_get_time();
   capture_report_t r;
   memset(&r, 0, sizeof r);
+  r.request_us = t_start;
   snprintf(r.source, sizeof r.source, "%s", source != NULL ? source : "unknown");
   r.status = "failed";
   r.clock_source = clock_source_str();
@@ -483,6 +454,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   /* Which cameras are worth asking. A camera that has never answered gets no
    * command: waiting four seconds for each of three empty sockets would make
    * a one-camera bench unit feel broken. */
+  const int64_t probe0 = esp_timer_get_time();
   for (int i = 0; i < CAPTURE_CAMS; i++) {
     camlink_info_t info;
     camlink_get_info_ch(i, &info);
@@ -494,6 +466,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
       snprintf(r.cam[i].err, sizeof r.cam[i].err, "no link");
     }
   }
+  r.probe_ms = ms_since(probe0);
   if (ask == 0) {
     fail(&r, "CAMERA_OFFLINE", "No camera answered");
     goto finish;
@@ -572,6 +545,12 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   if (flash) gpio_set_level(BOARD_FLASH_EN, 1);
   s_trigger_us = esp_timer_get_time();
   trigger_pulse();
+  /* Major transitions are logged with the ring's microsecond stamp so bring-up
+   * can order them against the per-camera lines below. Deliberately a handful
+   * per capture, not per chunk: a log that perturbs the timing it measures is
+   * worse than none. */
+  klog("P4", "trigger +%lld us, %d cam(s), flash %s",
+       (long long)(s_trigger_us - r.request_us), r.online, flash ? "on" : "off");
   for (int i = 0; i < CAPTURE_CAMS; i++) {
     if (ask & (1u << i)) xSemaphoreGive(s_worker[i].go);
   }
@@ -587,6 +566,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   s_stage = CAPTURE_READING;
   xEventGroupWaitBits(s_done, ask, pdFALSE, pdTRUE, portMAX_DELAY);
   s_stage = CAPTURE_WRITING;
+  klog("P4", "all frames in at +%lld us", (long long)(esp_timer_get_time() - r.request_us));
 
   for (int i = 0; i < CAPTURE_CAMS; i++) {
     if ((ask & (1u << i)) == 0) continue;
@@ -632,7 +612,9 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     fail(&r, "OUT_OF_MEMORY", "Could not build META.JSON");
     goto finish;
   }
+  const int64_t meta0 = esp_timer_get_time();
   committed = storage_capture_commit(&store, text);
+  r.meta_commit_ms = ms_since(meta0);
   cJSON_free(text);
   if (committed != ESP_OK) {
     /* The frames are on the card but nothing describes them. A folder of
@@ -740,15 +722,18 @@ esp_err_t capture_init(const char *device_id) {
     snprintf(name, sizeof name, "cap%d", i + 1);
     /* 4 KB: the deepest thing on this stack is cJSON-free chunk shuffling and
      * a 96-byte snprintf. The frame itself lives in PSRAM. */
-    if (xTaskCreate(worker_task, name, 4096, &s_worker[i], 5, NULL) != pdPASS) {
+    TaskHandle_t wh = NULL;
+    if (xTaskCreate(worker_task, name, 4096, &s_worker[i], 5, &wh) != pdPASS) {
       return ESP_ERR_NO_MEM;
     }
+    taskmon_register(name, wh);
   }
   /* 6 KB: this one builds META.JSON, which is the largest allocation-heavy
    * thing in the module. */
   if (xTaskCreate(capture_task, "capture", 6144, NULL, 5, &s_task) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
+  taskmon_register("capture", s_task);
 
   gpio_setup();
   ESP_LOGI(TAG, "ready — %d workers, trigger on GPIO%d, flash on GPIO%d", CAPTURE_CAMS,

@@ -185,7 +185,9 @@ static void handle_capture(uint32_t seq, cJSON *req) {
 
   s_state = NL_STATE_EXPOSING;
   uint32_t duration_ms = 0;
-  camera_fb_t *fb = camsensor_capture(&duration_ms);
+  camsensor_timing_t timing;
+  const int64_t cmd_us = esp_timer_get_time();
+  camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
   if (fb == NULL) {
     s_state = NL_STATE_ERROR;
     send_nack(NL_CMD_CAPTURE, seq, "HARDWARE_ERROR", "Capture failed");
@@ -205,6 +207,21 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   cJSON_AddNumberToObject(json, "frameId", s_frame_id);
   cJSON_AddNumberToObject(json, "size", (double)fb->len);
   cJSON_AddNumberToObject(json, "durationMs", duration_ms);
+  /* Stale-frame diagnostics. All microseconds in THIS node's esp_timer domain,
+   * which shares no epoch with the P4 or with any other node - only
+   * differences within one node are meaningful. See camsensor_timing_t.
+   *
+   * `frameStartUs` is the driver's DMA-arm timestamp for the returned frame.
+   * It is NOT exposure time and must never be reported as one. */
+  cJSON_AddNumberToObject(json, "cmdUs", (double)cmd_us);
+  cJSON_AddNumberToObject(json, "fbGetStartUs", (double)timing.fb_get_start_us);
+  cJSON_AddNumberToObject(json, "fbGetEndUs", (double)timing.fb_get_end_us);
+  cJSON_AddNumberToObject(json, "fbGetUs", (double)timing.fb_get_us);
+  cJSON_AddNumberToObject(json, "frameStartUs", (double)timing.frame_start_us);
+  /* frame_start - cmd: negative means the frame's DMA began BEFORE this
+   * command arrived, which is the stale-frame signature stated directly
+   * rather than left for a reader to subtract. */
+  cJSON_AddNumberToObject(json, "frameAgeUs", (double)(cmd_us - timing.frame_start_us));
   cJSON_AddStringToObject(json, "crc32", crc_hex);
   cJSON_AddNumberToObject(json, "heapKB", heap_kb());
   cJSON_AddNumberToObject(json, "psramKB", psram_kb());

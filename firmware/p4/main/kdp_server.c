@@ -33,9 +33,11 @@
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
 #include "klog.h"
+#include "meta.h"
 #include "node_link/node_link.h"
 #include "power.h"
 #include "storage.h"
+#include "taskmon.h"
 #include "usb_link.h"
 
 static const char *TAG = "kdp_server";
@@ -464,6 +466,10 @@ static void handle_capabilities(uint32_t seq) {
   for (size_t i = 0; i < sizeof flags / sizeof flags[0]; i++) {
     cJSON_AddBoolToObject(caps, flags[i], false);
   }
+  /* benchDiagnostics gates the Milestone 1B group: STORAGE_SELF_TEST,
+   * CAMERA_LINK_STATS(_RESET), CAMERA_SOAK_TEST, GET_HW_VALIDATION and
+   * STORAGE_BENCH. All six now have handlers - STORAGE_BENCH was the one that
+   * did not, and a host trusting this flag got a NACK for it. */
   cJSON_AddBoolToObject(caps, "benchDiagnostics", true);
   /* Settings round-trip and persist as of this build. */
   cJSON_AddBoolToObject(caps, "configStore", true);
@@ -474,16 +480,48 @@ static void handle_capabilities(uint32_t seq) {
   /* MEDIA_READ and MEDIA_THUMB return bytes now, so a client can actually
    * get pixels off the camera. */
   cJSON_AddBoolToObject(caps, "gallery", true);
-  /* One shutter press captures every online camera into one folder. Both
-   * modes use the same four sensors and differ in how the frames are
-   * presented, which is a decision the host makes about a capture it already
-   * has - so both are true together or not at all. */
+  /*
+   * One shutter press captures every online camera into one folder. Both modes
+   * use the same four sensors and differ in how a host presents frames it
+   * already has, so both are true together or not at all.
+   *
+   * THESE MEAN "the device supports this capture mode", NOT "the mode has been
+   * hardware-validated", and the distinction is unresolved in the contract
+   * rather than in this firmware.
+   *
+   * The roadmap (Gate C) suggested gating them behind measured exposure skew,
+   * on the reasoning that a host reading `wiggle: true` may reasonably expect
+   * usable wigglegrams and this body has never been shown to produce one.
+   * That was checked against Studio and rejected: App.tsx and Sidebar.tsx gate
+   * NAVIGATION on supports('wiggle'), so reporting false would remove the
+   * Wiggle page and make working, configurable settings unreachable — a worse
+   * lie than the one it was meant to fix, and a functional regression for a
+   * mode the firmware genuinely implements.
+   *
+   * So they stay true and the ambiguity is recorded here and in
+   * firmware-contract/README.md rather than papered over with an invented
+   * flag. What a consumer must NOT infer from them is synchronization:
+   * `vsyncTelemetry` is false, all three kino.capture skews are null with a
+   * reason, and CAMERA_CAPTURE refuses `action: "timing-test"`. Those three
+   * are the honest signal and they are unambiguous.
+   */
   cJSON_AddBoolToObject(caps, "wiggle", true);
   cJSON_AddBoolToObject(caps, "quad", true);
-  /* GPIO28 is driven for the duration of the exposure window. What it drives
-   * is a bench LED until the flash board exists, which is a hardware fact
-   * rather than a firmware one - the command works either way. */
+  /* The control path: GPIO28 is driven across the exposure window, the mode is
+   * configurable, and the pulse is bounded and released on every path. True
+   * because the command works. */
   cJSON_AddBoolToObject(caps, "flashControl", true);
+  /*
+   * ...and what it drives. Additive and optional, because `flashControl` alone
+   * cannot distinguish "the firmware can fire a flash" from "there is a flash
+   * to fire", and today only the first is true: GPIO28 reaches a bench LED at
+   * most. A host that shows a flash control because flashControl is true would
+   * otherwise be promising the user light that does not exist.
+   *
+   * Flips to true when flash hardware is fitted AND validated (M5, Gate D) -
+   * never because a driver was written.
+   */
+  cJSON_AddBoolToObject(caps, "flashHardware", false);
   /* Idle dim/sleep and camera-bank power-down are implemented; battery
    * telemetry is not, and cannot be until the hardware carries a sense
    * divider or a gauge. Two flags, because a client that wants to show a
@@ -789,35 +827,11 @@ static cJSON *media_summary(const char *id) {
   cJSON *item = cJSON_CreateObject();
   cJSON_AddStringToObject(item, "id", id);
 
-  /* `mode` and `capturedAtMs`, not `kind` and `ts`.
-   *
-   * This read `kind` and `ts`, which META.JSON has never contained - it is a
-   * kino.capture document and always was. Every listing therefore reported
-   * every capture as a wiggle taken at the epoch, from fallbacks that looked
-   * like deliberate defaults. The wire names stay as the contract has them;
-   * only the keys read from the file change. */
-  const cJSON *kind = meta ? cJSON_GetObjectItem(meta, "mode") : NULL;
-  cJSON_AddStringToObject(item, "kind",
-                          (cJSON_IsString(kind) && kind->valuestring) ? kind->valuestring
-                                                                     : "wiggle");
-  const cJSON *ts = meta ? cJSON_GetObjectItem(meta, "capturedAtMs") : NULL;
-  cJSON_AddNumberToObject(item, "ts", cJSON_IsNumber(ts) ? ts->valuedouble : 0);
-
-  cJSON *recipes = cJSON_AddArrayToObject(item, "recipeIds");
-  const cJSON *src = meta ? cJSON_GetObjectItem(meta, "recipeIds") : NULL;
-  if (cJSON_IsArray(src)) {
-    const cJSON *r = NULL;
-    cJSON_ArrayForEach(r, src) {
-      if (cJSON_IsString(r)) cJSON_AddItemToArray(recipes, cJSON_CreateString(r->valuestring));
-    }
-  }
-
-  const cJSON *fav = meta ? cJSON_GetObjectItem(meta, "favorite") : NULL;
-  cJSON_AddBoolToObject(item, "favorite", cJSON_IsTrue(fav));
-  const cJSON *res = meta ? cJSON_GetObjectItem(meta, "resolution") : NULL;
-  cJSON_AddStringToObject(item, "resolution",
-                          (cJSON_IsString(res) && res->valuestring) ? res->valuestring
-                                                                    : "1600x1200");
+  /* The META.JSON -> CaptureSummary mapping lives in meta.c so it can be
+   * host-tested. This read keys the document never contained and reported
+   * every capture as a wiggle at the epoch; the tests in
+   * firmware/p4/host_tests now pin it. */
+  meta_capture_summary(meta, item);
 
   long total = 0;
   static const char *FILES[4] = {"C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG"};
@@ -1089,6 +1103,116 @@ static void handle_media_favorite(uint32_t seq, const cJSON *req) {
   send_json(KDP_CMD_MEDIA_FAVORITE, seq, json);
 }
 
+/** One measured pass, as additive detail alongside the contract fields. */
+static void bench_pass_json(cJSON *dst, const storage_bench_pass_t *p) {
+  cJSON_AddNumberToObject(dst, "bytes", p->bytes);
+  cJSON_AddNumberToObject(dst, "writeMs", p->write_ms);
+  cJSON_AddNumberToObject(dst, "readMs", p->read_ms);
+  cJSON_AddNumberToObject(dst, "writeBytesPerSec", p->write_bytes_per_sec);
+  cJSON_AddNumberToObject(dst, "readBytesPerSec", p->read_bytes_per_sec);
+  /* CRCs as hex strings, the same convention the capture path uses for
+   * checksums, so a mismatch can be compared by eye against a capture. */
+  char hex[12];
+  snprintf(hex, sizeof hex, "%08lx", (unsigned long)p->crc_written);
+  cJSON_AddStringToObject(dst, "crc32Written", hex);
+  snprintf(hex, sizeof hex, "%08lx", (unsigned long)p->crc_read);
+  cJSON_AddStringToObject(dst, "crc32Read", hex);
+  cJSON_AddBoolToObject(dst, "crcMatch", p->crc_match);
+  cJSON_AddNumberToObject(dst, "chunkBytes", p->chunk_bytes);
+  cJSON_AddNumberToObject(dst, "chunks", p->chunks);
+  cJSON_AddNumberToObject(dst, "worstWriteChunkUs", p->worst_write_chunk_us);
+  cJSON_AddNumberToObject(dst, "bestWriteChunkUs", p->best_write_chunk_us);
+  cJSON_AddNumberToObject(dst, "meanWriteChunkUs", p->mean_write_chunk_us);
+  cJSON_AddNumberToObject(dst, "p95WriteChunkUs", p->p95_write_chunk_us);
+}
+
+/**
+ * STORAGE_BENCH (0x4c) — sustained throughput and per-block write latency.
+ *
+ * `benchDiagnostics` has advertised this command since Milestone 1B while the
+ * dispatcher had no handler for it, so a host that trusted the flag got a
+ * NACK. That is the one state the contract forbids: advertised-but-unsupported.
+ *
+ * The response carries the five fields StorageBenchResult requires
+ * (writeMBs, readMBs, worstBlockMs, p95BlockMs, bytes) from the sustained run,
+ * plus additive optional detail. No required field changed shape or unit.
+ */
+static void handle_storage_bench(uint32_t seq, const cJSON *req) {
+  /* Shares the capture lock with CAMERA_TEST and the soak run: a megabyte of
+   * card traffic during a capture would corrupt both measurements. */
+  if (xSemaphoreTake(s_capture_lock, 0) != pdTRUE) {
+    send_nack(KDP_CMD_STORAGE_BENCH, seq, "BUSY", "A capture or soak run is active");
+    return;
+  }
+
+  /* StorageBenchRequest: sizeMB, blockKB, passes. sizeMB is the contract's
+   * unit; sizeKB is accepted additionally so a caller can ask for the 64 KiB
+   * size STORAGE_SELF_TEST uses, which a whole number of megabytes cannot
+   * express. Absent means the defaults storage_bench() documents. */
+  const cJSON *jsize_mb = cJSON_GetObjectItem(req, "sizeMB");
+  const cJSON *jsize_kb = cJSON_GetObjectItem(req, "sizeKB");
+  const cJSON *jblock = cJSON_GetObjectItem(req, "blockKB");
+  const cJSON *jpasses = cJSON_GetObjectItem(req, "passes");
+
+  uint32_t size_kb = 0;
+  if (cJSON_IsNumber(jsize_kb) && jsize_kb->valuedouble > 0) {
+    size_kb = (uint32_t)jsize_kb->valuedouble;
+  } else if (cJSON_IsNumber(jsize_mb) && jsize_mb->valuedouble > 0) {
+    size_kb = (uint32_t)(jsize_mb->valuedouble * 1024.0);
+  }
+  const uint32_t block_kb = cJSON_IsNumber(jblock) ? (uint32_t)jblock->valuedouble : 0;
+  const uint32_t passes = cJSON_IsNumber(jpasses) ? (uint32_t)jpasses->valuedouble : 0;
+
+  storage_bench_result_t r;
+  storage_bench(size_kb, block_kb, passes, &r);
+  xSemaphoreGive(s_capture_lock);
+
+  if (!r.ok) {
+    /* The failing phase is the diagnostic. "Slow" and "did not finish" are
+     * different problems and a bare BENCH_FAILED conflates them. */
+    char msg[96];
+    snprintf(msg, sizeof msg, "Benchmark stopped at %s after %lu ms",
+             storage_bench_phase_str(r.failed_phase), (unsigned long)r.total_ms);
+    send_nack(KDP_CMD_STORAGE_BENCH, seq, storage_bench_phase_str(r.failed_phase), msg);
+    return;
+  }
+
+  /* A verified round trip on this card, at a megabyte rather than 64 KB. */
+  hwv_mark_validated(HWV_SD_LDO_CH4, "bench read-back CRC verified");
+
+  cJSON *json = cJSON_CreateObject();
+
+  /* ---- StorageBenchResult, exactly as typed ---- */
+  const storage_bench_pass_t *s = &r.sustained;
+  /* MB/s as the contract names it. Computed from bytes and milliseconds rather
+   * than from the bytes-per-sec figure, so the two cannot drift. */
+  const double write_mbs =
+      s->write_ms > 0 ? ((double)s->bytes / 1048576.0) / ((double)s->write_ms / 1000.0) : 0.0;
+  const double read_mbs =
+      s->read_ms > 0 ? ((double)s->bytes / 1048576.0) / ((double)s->read_ms / 1000.0) : 0.0;
+  cJSON_AddNumberToObject(json, "writeMBs", write_mbs);
+  cJSON_AddNumberToObject(json, "readMBs", read_mbs);
+  /* worstBlockMs / p95BlockMs are milliseconds per the contract, measured in
+   * microseconds and converted here. Sub-millisecond blocks therefore report
+   * as fractional rather than as zero — a card whose worst block is 400 us
+   * should not read as 0. */
+  cJSON_AddNumberToObject(json, "worstBlockMs", (double)s->worst_write_chunk_us / 1000.0);
+  cJSON_AddNumberToObject(json, "p95BlockMs", (double)s->p95_write_chunk_us / 1000.0);
+  cJSON_AddNumberToObject(json, "bytes", s->bytes);
+
+  /* ---- additive, optional ---- */
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddNullToObject(json, "failedPhase");
+  cJSON_AddNumberToObject(json, "passes", r.passes);
+  cJSON_AddNumberToObject(json, "totalMs", r.total_ms);
+  cJSON_AddBoolToObject(json, "cleanupOk", r.cleanup_ok);
+  bench_pass_json(cJSON_AddObjectToObject(json, "sustained"), &r.sustained);
+  /* The 64 KiB run, directly comparable with STORAGE_SELF_TEST on this card. */
+  bench_pass_json(cJSON_AddObjectToObject(json, "small"), &r.small);
+
+  send_json(KDP_CMD_STORAGE_BENCH, seq, json);
+}
+
 static void handle_storage_self_test(uint32_t seq) {
   if (xSemaphoreTake(s_capture_lock, 0) != pdTRUE) {
     send_nack(KDP_CMD_STORAGE_SELF_TEST, seq, "BUSY", "A capture or soak run is active");
@@ -1263,9 +1387,13 @@ static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
 }
 
 /** Live LOG events for every klog() line, contract LogEntry shape. */
-static void log_emitter(int64_t t_ms, const char *src, const char *msg) {
+static void log_emitter(int64_t t_ms, int64_t t_us, const char *src, const char *msg) {
   cJSON *json = cJSON_CreateObject();
+  /* `t` keeps its contract meaning: epoch milliseconds, wall clock. `us` is
+   * additive — monotonic microseconds since boot, for ordering events that
+   * land inside the same millisecond. See klog.h on why there are two. */
   cJSON_AddNumberToObject(json, "t", (double)t_ms);
+  cJSON_AddNumberToObject(json, "us", (double)t_us);
   cJSON_AddStringToObject(json, "src", src);
   cJSON_AddStringToObject(json, "msg", msg);
   send_event(KDP_EVT_LOG, json);
@@ -1318,6 +1446,42 @@ static void handle_runtime_stats(uint32_t seq) {
   cJSON_AddNumberToObject(protocol, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(protocol, "cameraTimeouts", link.timeouts);
   cJSON_AddNumberToObject(protocol, "sdErrors", storage_sd_errors());
+
+  /*
+   * Per-task stack headroom, additive and optional.
+   *
+   * Thirteen long-lived tasks carry hand-chosen stack sizes that have never
+   * been measured, and the 500-capture soak in M1 is exactly the workload that
+   * would find one of them short. Cheap to expose now; expensive to discover
+   * as a stack-overflow panic mid-soak.
+   *
+   * `minFreeBytes` is BYTES on this target and the unit is derived, not
+   * assumed: uxTaskGetStackHighWaterMark() divides its byte count by
+   * sizeof(StackType_t), and the ESP-IDF RISC-V port defines
+   * portSTACK_TYPE as uint8_t, so that division is by one. FreeRTOS's own
+   * header says "words" - true on ports where StackType_t is wider. See
+   * taskmon.h.
+   *
+   * It is the MINIMUM FREE space the task has ever had, not the amount used.
+   * Small is bad.
+   */
+  taskmon_row_t rows[TASKMON_MAX];
+  const int rows_n = taskmon_snapshot(rows, TASKMON_MAX);
+  cJSON *tasks = cJSON_AddArrayToObject(json, "tasks");
+  for (int i = 0; i < rows_n; i++) {
+    cJSON *t = cJSON_CreateObject();
+    cJSON_AddStringToObject(t, "name", rows[i].name);
+    if (rows[i].measured) {
+      cJSON_AddNumberToObject(t, "minFreeBytes", rows[i].min_free_bytes);
+    } else {
+      /* Registered but no handle retained: the row exists and says it has no
+       * measurement rather than reporting a plausible zero. */
+      cJSON_AddNullToObject(t, "minFreeBytes");
+    }
+    cJSON_AddItemToArray(tasks, t);
+  }
+  cJSON_AddNumberToObject(json, "tasksUnmeasured", taskmon_unmeasured());
+
   send_json(KDP_CMD_GET_RUNTIME_STATS, seq, json);
 }
 
@@ -1888,6 +2052,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CAMERA_STATUS: handle_camera_status(frame->seq, req); break;
     case KDP_CMD_CAMERA_TEST: handle_camera_test(frame->seq, req); break;
     case KDP_CMD_STORAGE_SELF_TEST: handle_storage_self_test(frame->seq); break;
+    case KDP_CMD_STORAGE_BENCH: handle_storage_bench(frame->seq, req); break;
     case KDP_CMD_CAMERA_LINK_STATS: handle_link_stats(frame->seq, req); break;
     case KDP_CMD_CAMERA_LINK_STATS_RESET: handle_link_stats_reset(frame->seq, req); break;
     case KDP_CMD_CAMERA_SOAK_TEST: handle_soak_test(frame->seq, req); break;
@@ -1949,6 +2114,8 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
   }
 
   kdp_decoder_init(&s_decoder, s_decode_buf, sizeof s_decode_buf);
-  BaseType_t ok = xTaskCreate(server_task, "kdp_server", 8192, NULL, 9, NULL);
+  TaskHandle_t srv = NULL;
+  BaseType_t ok = xTaskCreate(server_task, "kdp_server", 8192, NULL, 9, &srv);
+  taskmon_register("kdp_server", srv);
   return ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }

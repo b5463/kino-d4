@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "hardware_validation.h"
 #include "klog.h"
+#include "taskmon.h"
 #include "usb_link.h"
 
 static const char *TAG = "power";
@@ -179,6 +180,8 @@ esp_err_t power_init(void) {
            config_int("body.autoDimS", 30), config_int("body.sleepS", 120),
            config_int("body.camIdleTimeoutS", 300), BOARD_CAM_PWR_EN);
   klog("P4", "power up");
-  xTaskCreate(power_task, "power", 3072, NULL, 2, NULL);
+  TaskHandle_t h = NULL;
+  xTaskCreate(power_task, "power", 3072, NULL, 2, &h);
+  taskmon_register("power", h);
   return ESP_OK;
 }

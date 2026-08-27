@@ -607,6 +607,23 @@ export interface LogEntry {
   t: number; // epoch ms
   src: LogSource;
   msg: string;
+  /**
+   * Monotonic microseconds since the device booted (`esp_timer_get_time()`).
+   *
+   * Additive and optional; older firmware omits it. `t` keeps its meaning
+   * unchanged — epoch milliseconds from the device's wall clock, which is
+   * 1970-era until a host sets it and can jump when one does.
+   *
+   * Use `t` to say WHEN. Use `us` to say in WHAT ORDER, and how far apart:
+   * during camera bring-up a UART command going out, a node answering and a
+   * worker being released can all fall inside one millisecond, and at
+   * millisecond resolution the log claims they were simultaneous.
+   *
+   * No epoch is shared with anything — not with `t`, not with another device,
+   * not across a reboot. Only differences within one device's run mean
+   * anything.
+   */
+  us?: number;
 }
 
 export interface SelfTestCheck {

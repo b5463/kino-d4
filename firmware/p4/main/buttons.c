@@ -3,6 +3,7 @@
 #include "board_d4v1.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "taskmon.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -126,6 +127,8 @@ esp_err_t buttons_init(void) {
       ESP_LOGI(TAG, "%s on GPIO%d, active low, %d ms debounce", s_btn[i].name, s_btn[i].pin,
                DEBOUNCE_MS);
   }
-  xTaskCreate(buttons_task, "buttons", 3072, NULL, 5, NULL);
+  TaskHandle_t h = NULL;
+  xTaskCreate(buttons_task, "buttons", 3072, NULL, 5, &h);
+  taskmon_register("buttons", h);
   return ESP_OK;
 }

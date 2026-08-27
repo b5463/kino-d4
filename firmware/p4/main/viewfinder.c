@@ -6,6 +6,7 @@
 #include "driver/jpeg_decode.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "taskmon.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -221,7 +222,9 @@ esp_err_t viewfinder_init(void) {
   for (int i = 0; i < 4; i++) {
     char name[12];
     snprintf(name, sizeof name, "vf_cam%d", i + 1);
-    xTaskCreate(camera_task, name, 4096, (void *)(intptr_t)i, 3, NULL);
+    TaskHandle_t vh = NULL;
+    xTaskCreate(camera_task, name, 4096, (void *)(intptr_t)i, 3, &vh);
+    taskmon_register(name, vh);
   }
   return ESP_OK;
 }

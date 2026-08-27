@@ -11,6 +11,7 @@
 #include "esp_codec_dev_defaults.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "taskmon.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -195,7 +196,9 @@ esp_err_t audio_init(void) {
     ESP_LOGE(TAG, "no room for the sound queue");
     return ESP_ERR_NO_MEM;
   }
-  xTaskCreate(audio_task, "audio", 4096, NULL, 3, NULL);
+  TaskHandle_t h = NULL;
+  xTaskCreate(audio_task, "audio", 4096, NULL, 3, &h);
+  taskmon_register("audio", h);
 
   ESP_LOGI(TAG, "AUDIO_READY es8311 at 0x%02x, %d Hz, vol %d (%.1f dB), amp GPIO%d, mic DIN%d",
            BOARD_ES8311_ADDR_7BIT, SAMPLE_RATE, AUDIO_VOLUME, -50.0 + AUDIO_VOLUME / 2.0,

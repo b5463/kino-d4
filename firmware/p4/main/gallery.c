@@ -12,6 +12,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "storage.h"
+#include "taskmon.h"
 #include "thumb.h"
 
 static const char *TAG = "gallery";
@@ -245,6 +246,7 @@ esp_err_t gallery_init(void) {
   if (xTaskCreate(gallery_task, "gallery", 4096, NULL, 4, &s_task) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
+  taskmon_register("gallery", s_task);
   ESP_LOGI(TAG, "ready — %dx%d tiles, %d per page", GALLERY_TILE_W, GALLERY_TILE_H,
            GALLERY_PAGE);
   return ESP_OK;

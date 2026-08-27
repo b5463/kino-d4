@@ -57,6 +57,28 @@ typedef struct {
   char crc32[12];       /* node-computed JPEG CRC-32, 8 hex chars */
   int32_t heap_kb;      /* node memory after capture, -1 unknown */
   int32_t psram_kb;
+  /*
+   * Node-side timing, in the NODE's esp_timer domain. No epoch is shared with
+   * the P4 or with any other node, so only differences within one node mean
+   * anything. Zero when the node did not report the field - firmware older
+   * than these additions omits them.
+   *
+   * These exist for the stale-frame question in
+   * firmware/SYNC_FEASIBILITY.md. With fb_count=1 the driver captures one
+   * frame after a release and then stalls, so a later capture can return that
+   * already-queued frame instantly: a photograph of the moment after the
+   * PREVIOUS readout rather than of the shutter.
+   *
+   * Signature: fb_get_us near zero and frame_age_us large and positive.
+   *
+   * frame_start_us is the driver's DMA-arm timestamp (camera_fb_t.timestamp).
+   * It is FRAME START. It is not exposure start, not exposure centre, and must
+   * never be reported as exposure timing - a rolling shutter integrates per
+   * row and this firmware cannot observe that at all.
+   */
+  int64_t fb_get_us;      /* wall time the node spent inside esp_camera_fb_get() */
+  int64_t frame_start_us; /* node esp_timer when this frame's DMA began */
+  int64_t frame_age_us;   /* command arrival minus frame start; >0 means stale */
 } camlink_capture_result_t;
 
 /** CAM1..CAM4. Index 0 is CAM1 throughout. */

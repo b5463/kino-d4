@@ -44,8 +44,34 @@ esp_err_t camsensor_set_resolution(const char *resolution);
 /** True for the sizes that exist only to feed the viewfinder. */
 bool camsensor_is_preview_resolution(const char *resolution);
 
-/** Capture one JPEG frame. Caller owns the buffer until camsensor_release(). */
-camera_fb_t *camsensor_capture(uint32_t *duration_ms);
+/**
+ * What one esp_camera_fb_get() call did, in the node's own esp_timer domain.
+ *
+ * This exists for the stale-frame question firmware/SYNC_FEASIBILITY.md
+ * raises. With fb_count=1 the driver captures one frame after the buffer is
+ * released and then stalls, so a later fb_get() can return that already-queued
+ * frame immediately - a photograph of the moment after the PREVIOUS readout
+ * rather than of the shutter.
+ *
+ * The signature is `fb_get_us` near zero with `frame_start_us` far behind the
+ * request. Both are recorded here so M1 can see it on the first session
+ * instead of inferring it.
+ */
+typedef struct {
+  uint32_t duration_ms;   /* wall time inside esp_camera_fb_get() */
+  int64_t fb_get_start_us;/* node esp_timer before the call */
+  int64_t fb_get_end_us;  /* node esp_timer after it returned */
+  int64_t fb_get_us;      /* end - start, microseconds */
+  /* camera_fb_t.timestamp: "Timestamp since boot of the first DMA buffer of
+   * the frame", written by cam_start_frame() when DMA is armed. This is FRAME
+   * START, not exposure start and not exposure centre - a rolling shutter
+   * integrates per row. Named for what the driver documents. */
+  int64_t frame_start_us;
+} camsensor_timing_t;
+
+/** Capture one JPEG frame. Caller owns the buffer until camsensor_release().
+ * `timing` may be NULL. */
+camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing);
 void camsensor_release(camera_fb_t *fb);
 
 #endif

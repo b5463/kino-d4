@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "klog.h"
+#include "meta.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -130,96 +131,44 @@ static void build_default_envelope(const char *device) {
  * rather than merged element-wise, because there is no key to match elements
  * on and a half-merged array is worse than either outcome.
  */
-static void merge_into(cJSON *dst, const cJSON *patch) {
-  const cJSON *item = NULL;
-  cJSON_ArrayForEach(item, patch) {
-    if (item->string == NULL) continue;
-    cJSON *existing = cJSON_GetObjectItem(dst, item->string);
-    if (cJSON_IsObject(item) && cJSON_IsObject(existing)) {
-      merge_into(existing, item);
-      continue;
-    }
-    cJSON *copy = cJSON_Duplicate(item, true);
-    if (copy == NULL) continue;
-    if (existing != NULL) cJSON_ReplaceItemInObject(dst, item->string, copy);
-    else cJSON_AddItemToObject(dst, item->string, copy);
-  }
-}
+static void merge_into(cJSON *dst, const cJSON *patch) { meta_merge_into(dst, patch); }
 
 /* ------------------------------------------------------------------ */
 /* Migration                                                           */
 /* ------------------------------------------------------------------ */
 
 /**
- * Backfill anything the stored envelope is missing.
+ * Bring a stored envelope up to CONFIG_SCHEMA_VERSION.
  *
- * A stored config is whatever the firmware that wrote it knew about. A newer
- * firmware adds settings, and without this a loaded envelope would be missing
- * them entirely — every reader would fall through to its own inline fallback,
- * which works right up until two readers disagree about what the fallback is.
- * Filling from default_config() gives one answer in one place.
- *
- * Direction matters: defaults are the destination and the stored values are
- * the patch, so a setting the user has changed always wins over its default.
- * The reverse would silently reset the camera on every upgrade.
- */
-static void backfill_defaults(void) {
-  cJSON *defaults = default_config();
-  if (defaults == NULL) return;
-  merge_into(defaults, s_config); /* stored values override defaults */
-  cJSON_ReplaceItemInObject(s_root, "config", defaults);
-  s_config = defaults;
-}
-
-/**
- * Bring a stored envelope up to CONFIG_SCHEMA_VERSION, one step at a time.
- *
- * There is nothing to migrate yet — v1 is the only schema that has ever
- * existed, so v1 -> v1 is identity and this function currently only
- * backfills. That is the point of adding it now rather than later: the moment
- * a second version exists there will be units in the field holding the first,
- * and the machinery to move them has to predate them.
- *
- * Sequential by design. A v1 -> v3 jump written as one function is a function
- * nobody can test against a v2 unit; v1 -> v2 -> v3 is two steps that can each
- * be tested alone.
- *
- * Returns true when the envelope is usable afterwards. An envelope from a
- * FUTURE version is not migrated downward and not discarded: it is left alone
- * and reported, because a newer firmware's settings are more likely to be
- * recoverable by reflashing forward than by being overwritten with defaults.
+ * The decision and the backfill live in meta.c so they can be host-tested
+ * against real cJSON; this is the part that needs the module's own state.
  */
 static bool migrate_envelope(void) {
-  const cJSON *ver = cJSON_GetObjectItem(s_root, "schemaVersion");
-  /* Absent means pre-versioning. Treat it as v1 rather than as corrupt: the
-   * only firmware that ever wrote an unversioned envelope wrote a v1 one. */
-  int from = cJSON_IsNumber(ver) ? (int)ver->valuedouble : 1;
-  if (from < 1) from = 1;
+  cJSON *defaults = default_config();
+  if (defaults == NULL) return false;
 
-  if (from > CONFIG_SCHEMA_VERSION) {
-    ESP_LOGW(TAG, "stored config is schema v%d, firmware understands v%d — "
-                  "keeping it as-is rather than downgrading",
-             from, CONFIG_SCHEMA_VERSION);
-    klog("P4", "config from newer firmware (v%d) kept unmigrated", from);
-    return true;
+  const meta_migrate_result_t res =
+      meta_migrate_config(s_root, defaults, CONFIG_SCHEMA_VERSION);
+  switch (res) {
+    case META_MIGRATE_OK:
+      /* meta_migrate_config took ownership of `defaults` and it is now the
+       * envelope's `config`. */
+      s_config = cJSON_GetObjectItem(s_root, "config");
+      return s_config != NULL;
+
+    case META_MIGRATE_FROM_FUTURE:
+      cJSON_Delete(defaults);
+      ESP_LOGW(TAG, "stored config is newer than schema v%d - keeping it as-is "
+                    "rather than downgrading", CONFIG_SCHEMA_VERSION);
+      klog("P4", "config from newer firmware kept unmigrated");
+      return true;
+
+    default:
+      cJSON_Delete(defaults);
+      ESP_LOGE(TAG, "no migration path to schema v%d; using defaults",
+               CONFIG_SCHEMA_VERSION);
+      return false;
   }
-
-  while (from < CONFIG_SCHEMA_VERSION) {
-    switch (from) {
-      /* case 1: migrate_v1_to_v2(); break;   <- the shape future steps take */
-      default:
-        ESP_LOGE(TAG, "no migration from schema v%d; using defaults", from);
-        return false;
-    }
-    from++;
-  }
-
-  backfill_defaults();
-
-  cJSON *v = cJSON_GetObjectItem(s_root, "schemaVersion");
-  if (cJSON_IsNumber(v)) cJSON_SetNumberValue(v, (double)CONFIG_SCHEMA_VERSION);
-  else cJSON_AddNumberToObject(s_root, "schemaVersion", CONFIG_SCHEMA_VERSION);
-  return true;
 }
 
 esp_err_t config_merge(const cJSON *patch) {
