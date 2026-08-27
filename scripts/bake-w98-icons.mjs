@@ -4,13 +4,17 @@
 //   npm run icons:bake            fetch, verify, regenerate
 //   npm run icons:check           regenerate into memory and diff; fail on drift
 //
-// The icons are Windows 98 shell icons from the trapd00r archive, pinned to a
-// commit and checked by digest. They are stored at their NATIVE size - 48x48
-// or 32x32 - with the integer factor that takes each one up to the tile. The
-// device scales by nearest neighbour (icons.c), because these are pixel art:
-// a resampler that interpolates turns a hand-placed dither into mush, and the
-// whole reason for using the originals rather than redrawing them is that the
-// original pixels are the character.
+// Period shell icons from two pinned archives, each file checked by digest.
+// They are stored at their NATIVE size - 48x48 or 32x32 - with the integer
+// factor that takes each one up to the tile. The device scales by nearest
+// neighbour (icons.c), because these are pixel art: a resampler that
+// interpolates turns a hand-placed dither into mush, and the whole reason
+// for using the originals rather than redrawing them is that the original
+// pixels ARE the character.
+//
+// Two container formats, because the archives differ: Windows .ico holding a
+// DIB, and palette PNG. Both decoders are here rather than pulled in as a
+// dependency - the whole bake is 400 lines and has no node_modules.
 //
 // The artwork is Microsoft's. See THIRD_PARTY_NOTICES.md; the REUSE
 // annotation on the generated header records that and grants nothing.
@@ -19,6 +23,7 @@
 // SPDX-License-Identifier: MIT
 
 import { createHash } from 'node:crypto';
+import { inflateSync } from 'node:zlib';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -27,8 +32,22 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'firmware/p4/main/icons_w98.h');
 const CACHE = join(ROOT, 'node_modules/.cache/w98-icons');
 
-const REPO = 'trapd00r/win95-winxp_icons';
-const COMMIT = '728a866ad59a54fd4082dbe000e1e62e50bd90e9';
+/* Sources, pinned. @main would let an upstream edit rewrite an icon under
+ * the build without anything failing. */
+const SRC = {
+  w98: {
+    repo: 'trapd00r/win95-winxp_icons',
+    commit: '728a866ad59a54fd4082dbe000e1e62e50bd90e9',
+    dir: 'icons',
+    ext: 'ico',
+  },
+  vintage: {
+    repo: 'alexh/vintage-icons',
+    commit: 'cff2143b10cb1a1ab4062355ad0dde21b7a6fab3',
+    dir: 'static/icons',
+    ext: 'png',
+  },
+};
 
 /* The tile art box. 48 x 3 and 32 x 4 both land at or under this, so every
  * icon is an exact integer multiple of its source and nothing is resampled. */
@@ -37,39 +56,39 @@ const BOX = 144;
 /* Menu order is the SCREEN_* order in ui.c. `sym` also names the C arrays. */
 const ICONS = [
   {
-    sym: 'MODE', file: 'w98_multimedia',
-    sha256: '50f070465334795c28d5c2d10c00da648ecdbf214e338b55d7afc9ad0938e208',
-    why: 'Film reels and a slide. Says "several frames", and does not collide with ROLL the way a second camera body would.',
+    sym: 'SHOOT', src: 'w98', file: 'w98_camera3',
+    sha256: '3dca6cce8231ba22f0ad470929664b10926742adf72346c66563bc19073924f0',
+    why: 'A compact camera, front on. SHOOT holds the previews and the modes, so the tile is the camera itself.',
   },
   {
-    sym: 'LOOK', file: 'w98_color_profile',
+    sym: 'LOOK', src: 'w98', file: 'w98_color_profile',
     sha256: '3a53d39c6c3adf43c8dba27c74038d8de2c65770a39c9c53a9f9a8c1eaa2374b',
     why: 'An RGB triangle on a colour-profile document. LOOK is colour rendering, not painting.',
   },
   {
-    sym: 'GALLERY', file: 'w98_directory_pictures',
+    sym: 'GALLERY', src: 'w98', file: 'w98_directory_pictures',
     sha256: '7efaaacab469e830748ab3654ff058884bd04f62b8af5ba0e984d47a23e2446c',
     why: 'A folder of photographs: pictures already on the device.',
   },
   {
-    sym: 'ROLL', file: 'w98_camera3_network',
-    sha256: 'fa1483751ea4190e04c40290b83f38264c432da79474ac7ca38bb5eb0ccb14b9',
-    why: 'The camera wired to a network. Photographs leaving, against GALLERY\'s photographs sitting still.',
+    sym: 'ROLL', src: 'vintage', file: 'msn3_4',
+    sha256: '4d39e306de0ee3696259362864dced18347b3d65c838a2e5e2d0afc72c496748',
+    why: 'The Messenger butterfly. Not a shell icon and not 1998, but a roll IS the party talking to each other, and nothing in the shell set says that.',
   },
   {
-    sym: 'SETTINGS', file: 'w98_settings_gear',
+    sym: 'SETTINGS', src: 'w98', file: 'w98_settings_gear',
     sha256: 'a02e15ab3032c1817d35efdcd570661a82ec91f7fffb565ada620415c6ee98c7',
     why: 'A control panel and gears. Deliberately the boring one.',
   },
   {
-    sym: 'POWER', file: 'w98_shut_down_normal',
+    sym: 'POWER', src: 'w98', file: 'w98_shut_down_normal',
     sha256: '6debe66dd595b248af66726f713ca08cadcb1856e8038a16fcfc1b016b2e5f2e',
     why: 'The Windows shutdown monitor. Ambiguous alone on a camera; the POWER label under it resolves that.',
   },
   {
-    sym: 'BATTERY', file: 'w98_battery',
+    sym: 'BATTERY', src: 'w98', file: 'w98_battery',
     sha256: '402492d36632c2be5db9a27605adaf74e04ee4cf7921eb4c4973e69af69eb68d',
-    why: 'Viewfinder status only, drawn at 1:1 rather than scaled to the tile box.',
+    why: 'Status glyph only, drawn at 1:1 rather than scaled to the tile box.',
   },
 ];
 
@@ -164,17 +183,143 @@ function decodeIco(buf) {
   return { w, h, rgba };
 }
 
+/* ------------------------------------------------------------------ */
+/* PNG                                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Decode a non-interlaced 8-bit PNG - palette, truecolour, or truecolour
+ * with alpha - to RGBA bytes.
+ *
+ * Palette support is not optional here: the Messenger butterfly is colour
+ * type 3 with a tRNS chunk, and a decoder that only handled RGBA would have
+ * rejected it. Narrow by design otherwise - the inputs are pinned files
+ * whose digests are checked before this runs, so an unexpected format is a
+ * bad download and should stop the bake rather than be coped with.
+ */
+function decodePng(buf) {
+  const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (!buf.subarray(0, 8).equals(SIG)) throw new Error('not a PNG');
+
+  let w = 0, h = 0, depth = 0, colour = 0;
+  const idat = [];
+  let plte = null;
+  let trns = null;
+
+  for (let p = 8; p + 8 <= buf.length;) {
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString('ascii', p + 4, p + 8);
+    const data = buf.subarray(p + 8, p + 8 + len);
+    if (type === 'IHDR') {
+      w = data.readUInt32BE(0);
+      h = data.readUInt32BE(4);
+      depth = data[8];
+      colour = data[9];
+      if (data[12] !== 0) throw new Error('interlaced PNG is not supported');
+      if (colour !== 2 && colour !== 3 && colour !== 6) {
+        throw new Error(`PNG colour type ${colour} is not supported`);
+      }
+      /* Truecolour is 8-bit here; palettes are commonly packed to 1, 2 or 4
+       * bits per pixel, which is how the Messenger butterfly is stored. */
+      if (colour === 3 ? ![1, 2, 4, 8].includes(depth) : depth !== 8) {
+        throw new Error(`PNG bit depth ${depth} with colour type ${colour} is not supported`);
+      }
+    } else if (type === 'PLTE') {
+      plte = Buffer.from(data);
+    } else if (type === 'tRNS') {
+      trns = Buffer.from(data);
+    } else if (type === 'IDAT') {
+      idat.push(data);
+    } else if (type === 'IEND') {
+      break;
+    }
+    p += 12 + len;
+  }
+  if (!w || !h) throw new Error('PNG has no IHDR');
+  if (colour === 3 && plte === null) throw new Error('palette PNG has no PLTE');
+
+  /* Filtering works on whole bytes: the "bpp" a filter steps back by is the
+   * byte width of a pixel, floored to 1 for anything packed below 8 bits. */
+  const chan = colour === 6 ? 4 : colour === 2 ? 3 : 1;
+  const bpp = Math.max(1, Math.ceil((chan * depth) / 8));
+  const stride = Math.ceil((w * chan * depth) / 8);
+  const raw = inflateSync(Buffer.concat(idat));
+  const out = Buffer.alloc(h * stride);
+
+  for (let y = 0; y < h; y++) {
+    const filter = raw[y * (stride + 1)];
+    const line = raw.subarray(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride);
+    const cur = out.subarray(y * stride, y * stride + stride);
+    const prev = y ? out.subarray((y - 1) * stride, (y - 1) * stride + stride) : null;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? cur[x - bpp] : 0;
+      const b = prev ? prev[x] : 0;
+      const c = prev && x >= bpp ? prev[x - bpp] : 0;
+      let v = line[x];
+      switch (filter) {
+        case 0: break;
+        case 1: v += a; break;
+        case 2: v += b; break;
+        case 3: v += (a + b) >> 1; break;
+        case 4: {
+          const pp = a + b - c;
+          const pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c);
+          v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+          break;
+        }
+        default: throw new Error(`bad PNG filter ${filter} on row ${y}`);
+      }
+      cur[x] = v & 0xff;
+    }
+  }
+
+  const rgba = Buffer.alloc(w * h * 4);
+  const mask = (1 << depth) - 1;
+  const per = 8 / depth; /* palette entries packed into one byte */
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      if (colour === 3) {
+        let idx;
+        if (depth === 8) {
+          idx = out[y * stride + x];
+        } else {
+          const byte = out[y * stride + Math.floor(x / per)];
+          const shift = 8 - depth * ((x % per) + 1);
+          idx = (byte >> shift) & mask;
+        }
+        rgba[o] = plte[idx * 3];
+        rgba[o + 1] = plte[idx * 3 + 1];
+        rgba[o + 2] = plte[idx * 3 + 2];
+        /* tRNS for a palette image is one alpha byte per entry; entries past
+         * its end are opaque. */
+        rgba[o + 3] = trns && idx < trns.length ? trns[idx] : 255;
+      } else {
+        const q = y * stride + x * chan;
+        rgba[o] = out[q];
+        rgba[o + 1] = out[q + 1];
+        rgba[o + 2] = out[q + 2];
+        rgba[o + 3] = colour === 6 ? out[q + 3] : 255;
+      }
+    }
+  }
+  return { w, h, rgba };
+}
+
 const to565 = (r, g, b) => ((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3);
 
 /* ------------------------------------------------------------------ */
 
 async function fetchIcon(icon) {
-  const cached = join(CACHE, `${COMMIT}-${icon.file}.ico`);
+  const src = SRC[icon.src];
+  if (src === undefined) throw new Error(`${icon.file}: unknown source "${icon.src}"`);
+  const name = `${icon.file}.${src.ext}`;
+  const cached = join(CACHE, `${src.commit.slice(0, 12)}-${name}`);
   let buf;
   try {
     buf = readFileSync(cached);
   } catch {
-    const url = `https://cdn.jsdelivr.net/gh/${REPO}@${COMMIT}/icons/${icon.file}.ico`;
+    const url = `https://cdn.jsdelivr.net/gh/${src.repo}@${src.commit}/${src.dir}/${name}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${icon.file}: HTTP ${res.status} from ${url}`);
     buf = Buffer.from(await res.arrayBuffer());
@@ -202,8 +347,9 @@ function emit(baked) {
   L.push('// by nearest neighbour, so the original pixels survive - these are pixel');
   L.push('// art, and an interpolating resampler destroys the thing worth keeping.');
   L.push('//');
-  L.push(`// Source: https://github.com/${REPO}`);
-  L.push(`// Commit: ${COMMIT}`);
+  for (const [key, s] of Object.entries(SRC)) {
+    L.push(`// Source (${key}): https://github.com/${s.repo} @ ${s.commit}`);
+  }
   L.push('//');
   L.push('// The artwork is Microsoft\'s and is not covered by this repository\'s MIT');
   L.push('// grant. See THIRD_PARTY_NOTICES.md.');
@@ -267,7 +413,8 @@ async function main() {
   const check = process.argv.includes('--check');
   const baked = [];
   for (const icon of ICONS) {
-    const { w, h, rgba } = decodeIco(await fetchIcon(icon));
+    const raw = await fetchIcon(icon);
+    const { w, h, rgba } = SRC[icon.src].ext === 'ico' ? decodeIco(raw) : decodePng(raw);
     if (w !== h) throw new Error(`${icon.file}: ${w}x${h} is not square`);
     /* The battery is a status glyph, not a tile, so it stays at 1:1. */
     const scale = icon.sym === 'BATTERY' ? 1 : Math.floor(BOX / w);
@@ -275,7 +422,10 @@ async function main() {
     const alpha = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) {
       rgb[i] = to565(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
-      alpha[i] = rgba[i * 4 + 3];
+      /* Coverage is treated as on or off: the ICO mask is one bit anyway, and
+       * a PNG's soft edge blended against a light menu and a dark viewfinder
+       * needs a matte this pipeline does not carry. 128 is the midpoint. */
+      alpha[i] = rgba[i * 4 + 3] >= 128 ? 255 : 0;
     }
     const opaque = alpha.reduce((a, v) => a + (v ? 1 : 0), 0);
     baked.push({ ...icon, n: w, scale, rgb, alpha, bits: 'best' });

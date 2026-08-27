@@ -145,9 +145,32 @@ static void power_task(void *arg) {
        * silently does nothing. The stage is still tracked and reported, so
        * Studio can show where the timeout has got to, and it is one line to
        * make it real if the backlight ever gets a transistor. */
-      if (want == POWER_ASLEEP) backlight(false);
-      else if (s_stage == POWER_ASLEEP) backlight(true);
-      s_stage = want;
+      if (want == POWER_ASLEEP) {
+        backlight(false);
+        s_stage = POWER_ASLEEP;
+        /* The check above closed the gap between SAMPLING and DECIDING. This
+         * closes the one between deciding and ACTING, which is the gap a
+         * finger actually lands in: power_activity() runs on the touch task,
+         * turns the backlight on and sets AWAKE, and then this task - already
+         * committed to sleeping - put it straight back to sleep. The screen
+         * lit and died inside one gesture, and the press that did it was
+         * swallowed as a wake gesture, so the camera looked deaf.
+         *
+         * Undoing it here rather than waiting for the next pass matters: the
+         * next pass is 500 ms away, which is long enough to feel like the
+         * touch was ignored rather than delayed. */
+        if (s_activity_seq != seq_before) {
+          backlight(true);
+          s_stage = POWER_AWAKE;
+          ESP_LOGI(TAG, "sleep raced a touch and was undone in the same pass");
+          klog("P4", "sleep raced a touch, stayed awake");
+          vTaskDelay(pdMS_TO_TICKS(100));
+          continue;
+        }
+      } else {
+        if (s_stage == POWER_ASLEEP) backlight(true);
+        s_stage = want;
+      }
       ESP_LOGI(TAG, "stage %s after %lus idle",
                want == POWER_AWAKE ? "awake" : want == POWER_DIM ? "dim" : "asleep",
                (unsigned long)idle);

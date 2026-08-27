@@ -7,11 +7,11 @@
 // dither into flat mush and throws away the reason for using the originals
 // instead of redrawing them.
 //
-// A light display emulation goes on top - scanlines at the source-row pitch,
-// a faint aperture-grille triad, a small bloom. Much lighter than the pass
-// the XP set used, because that one was compensating for a smooth upscale;
-// here the pixels are already hard and the treatment only has to keep them
-// from looking like a PNG pasted on a modern panel.
+// Nothing else happens to them. The display emulation lives on the screen
+// (ui.c, crt_pass) rather than in each sprite: a CRT filters everything in
+// front of it, so running the pass over the whole menu puts the type, the
+// chrome and the artwork behind the same glass instead of leaving the icons
+// as the only treated thing on a clean screen.
 #ifndef P4_ICONS_H
 #define P4_ICONS_H
 

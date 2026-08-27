@@ -22,7 +22,7 @@ const out = process.argv[2] ?? 'firmware/p4/main/ui_labels.h';
  * engine large enough for these, so each is a baked bitmap; adding a screen
  * means adding a word here and re-running this. */
 const LABELS = [
-  'MODE', 'LOOK', 'GALLERY', 'ROLL', 'SETTINGS', 'POWER',
+  'LOOK', 'GALLERY', 'ROLL', 'SETTINGS', 'POWER',
   'PHOTO', 'DISPLAY', 'SOUND', 'CONNECTION', 'STORAGE', 'ABOUT',
 ];
 

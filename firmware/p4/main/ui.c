@@ -70,7 +70,30 @@ static const char *TAG = "ui";
 #define C_OK C_GREEN
 #define C_BAD C_RED
 
-/* Dark chrome, for the viewfinder and the photograph views. */
+/* ------------------------------------------------------------------ */
+/* Windows 98 system colours                                           */
+/*                                                                     */
+/* The device chrome is the 1998 desktop, not the silver-blue of        */
+/* tokens.css. That is a deliberate divergence from the shared design   */
+/* system - Studio and Roll stay as they are - and it is the point:     */
+/* the camera is the object from the alternate 2001, and the software   */
+/* that drives it is modern. These are the real system colours, not an  */
+/* interpretation of them.                                             */
+/* ------------------------------------------------------------------ */
+#define W_FACE RGB(0xc0, 0xc0, 0xc0)    /* 3D face - the ground for everything */
+#define W_HILITE RGB(0xff, 0xff, 0xff)  /* 3D highlight - outer top/left */
+#define W_LIGHT RGB(0xdf, 0xdf, 0xdf)   /* 3D light - inner top/left */
+#define W_SHADOW RGB(0x80, 0x80, 0x80)  /* 3D shadow - inner bottom/right */
+#define W_DKSHAD RGB(0x0a, 0x0a, 0x0a)  /* 3D dark shadow - outer bottom/right */
+#define W_WINDOW RGB(0xff, 0xff, 0xff)  /* window/list ground */
+#define W_TEXT RGB(0x00, 0x00, 0x00)
+#define W_GRAYTEXT RGB(0x80, 0x80, 0x80)
+#define W_SEL RGB(0x00, 0x00, 0x80)     /* selection navy */
+#define W_SELTEXT RGB(0xff, 0xff, 0xff)
+#define W_TITLE_L RGB(0x00, 0x00, 0x80) /* active title bar, left stop */
+#define W_TITLE_R RGB(0x10, 0x84, 0xd0) /* active title bar, right stop */
+
+/* Dark chrome, for the shoot and photograph views. */
 #define D_GROUND RGB(0x14, 0x18, 0x1e)
 #define D_PANE RGB(0x22, 0x26, 0x2c)
 #define D_EDGE RGB(0x3a, 0x42, 0x4c)
@@ -100,6 +123,11 @@ static const char *TAG = "ui";
 #define BACK_W 84
 #define ROW_H 52
 #define BODY_Y (HEAD_H + 1)
+/* The list well: inset from the window frame, the way a listbox sits inside
+ * a dialog rather than bleeding to the edges. */
+#define LIST_X 16
+#define LIST_W (UI_W - 2 * LIST_X)
+#define LIST_Y (BODY_Y + 12)
 
 /* Viewfinder.
  *
@@ -109,15 +137,21 @@ static const char *TAG = "ui";
  * that were going to be empty anyway. Putting them in strips above and below
  * instead costs 27 px of pane height each, which is 49% of the picture area,
  * to fill margins that stay dark either way. */
-#define VF_MARGIN 6
-#define VF_GAP 6
-#define VF_PANE_H ((UI_H - 2 * VF_MARGIN - VF_GAP) / 2)            /* 231 */
-#define VF_PANE_W (VF_PANE_H * 4 / 3)                              /* 308 */
-#define VF_BLOCK_W (2 * VF_PANE_W + VF_GAP)                        /* 622 */
-#define VF_X0 ((UI_W - VF_BLOCK_W) / 2)                            /* 89 */
-#define VF_Y0 VF_MARGIN
-#define VF_COL_R (VF_X0 + VF_BLOCK_W)                              /* 711 */
-#define VF_COL_W (UI_W - VF_COL_R)                                 /* 89 */
+/* SHOOT: four previews and the controls that belong beside them.
+ *
+ * Four 4:3 panes in a 2x2 form a 4:3 block on a 5:3 panel, so a column is
+ * left over whatever you do. It holds Back, the battery, the two controls
+ * that change the photograph - mode and flash - and the shutter. Wide enough
+ * for words, because "WIGGLE" in a 90 px column is not a control anyone can
+ * read across a room. */
+#define SH_MARGIN 5
+#define SH_GAP 5
+#define SH_COL_W 162
+#define SH_COL_X (UI_W - SH_MARGIN - SH_COL_W)                     /* 633 */
+#define SH_PANE_H ((UI_H - 2 * SH_MARGIN - SH_GAP) / 2)            /* 232 */
+#define SH_PANE_W (SH_PANE_H * 4 / 3)                              /* 309 */
+#define SH_X0 SH_MARGIN
+#define SH_Y0 SH_MARGIN
 
 /* The single-photograph view decodes at this size rather than scaling the
  * gallery thumbnail: thumb_load takes any target, so there is no reason to
@@ -131,8 +165,11 @@ static const char *TAG = "ui";
 
 typedef enum {
   SCR_MENU = 0,
-  SCR_VIEWFINDER,
-  SCR_MODE,
+  /* SHOOT is the viewfinder AND the mode picker. They were two screens and
+   * that was one too many: the mode is a property of the photograph you are
+   * about to take, so it belongs beside the picture you are framing, not
+   * behind a separate tile you have to remember to visit. */
+  SCR_SHOOT,
   SCR_LOOK,
   SCR_GALLERY,
   SCR_PHOTO,
@@ -149,13 +186,13 @@ typedef enum {
 
 /* Index into UI_LABELS, whose order is fixed by tools/mktext.mjs. */
 typedef enum {
-  T_MODE = 0, T_LOOK, T_GALLERY, T_ROLL, T_SETTINGS, T_POWER,
+  T_LOOK = 0, T_GALLERY, T_ROLL, T_SETTINGS, T_POWER,
   T_PHOTO, T_DISPLAY, T_SOUND, T_CONNECTION, T_STORAGE, T_ABOUT,
 } title_t;
 
 static const int SCREEN_TITLE[SCR_COUNT] = {
-    [SCR_MENU] = -1, [SCR_VIEWFINDER] = -1,
-    [SCR_MODE] = T_MODE, [SCR_LOOK] = T_LOOK, [SCR_GALLERY] = T_GALLERY,
+    [SCR_MENU] = -1, [SCR_SHOOT] = -1,
+    [SCR_LOOK] = T_LOOK, [SCR_GALLERY] = T_GALLERY,
     [SCR_PHOTO] = T_PHOTO, [SCR_ROLL] = T_ROLL, [SCR_SETTINGS] = T_SETTINGS,
     [SCR_DISPLAY] = T_DISPLAY, [SCR_SOUND] = T_SOUND, [SCR_CONNECTION] = T_CONNECTION,
     [SCR_STORAGE] = T_STORAGE, [SCR_ABOUT] = T_ABOUT, [SCR_POWER] = T_POWER,
@@ -163,8 +200,8 @@ static const int SCREEN_TITLE[SCR_COUNT] = {
 
 /* Where Back goes. One level, always, and never to a remembered screen. */
 static const screen_t SCREEN_PARENT[SCR_COUNT] = {
-    [SCR_MENU] = SCR_MENU, [SCR_VIEWFINDER] = SCR_MENU,
-    [SCR_MODE] = SCR_MENU, [SCR_LOOK] = SCR_MENU, [SCR_GALLERY] = SCR_MENU,
+    [SCR_MENU] = SCR_MENU, [SCR_SHOOT] = SCR_MENU,
+    [SCR_LOOK] = SCR_MENU, [SCR_GALLERY] = SCR_MENU,
     [SCR_PHOTO] = SCR_GALLERY, [SCR_ROLL] = SCR_MENU, [SCR_SETTINGS] = SCR_MENU,
     [SCR_DISPLAY] = SCR_SETTINGS, [SCR_SOUND] = SCR_SETTINGS,
     [SCR_CONNECTION] = SCR_SETTINGS, [SCR_STORAGE] = SCR_SETTINGS,
@@ -173,10 +210,10 @@ static const screen_t SCREEN_PARENT[SCR_COUNT] = {
 
 /* The six menu tiles, in grid order, and where each one goes. */
 static const screen_t MENU_DEST[6] = {
-    SCR_MODE, SCR_LOOK, SCR_GALLERY, SCR_ROLL, SCR_SETTINGS, SCR_POWER,
+    SCR_SHOOT, SCR_LOOK, SCR_GALLERY, SCR_ROLL, SCR_SETTINGS, SCR_POWER,
 };
 static const char *const MENU_LABEL[6] = {
-    "MODE", "LOOK", "GALLERY", "ROLL", "SETTINGS", "POWER",
+    "SHOOT", "LOOK", "GALLERY", "ROLL", "SETTINGS", "POWER",
 };
 
 typedef enum { DLG_NONE = 0, DLG_SHUTDOWN, DLG_RESTART, DLG_DELETE, DLG_FORMAT } dialog_t;
@@ -275,6 +312,55 @@ static void fill_stops4(int x, int y, int w, int h, uint16_t c0, uint16_t c45, u
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Windows 98 chrome                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The two-pixel 3D edge, raised or sunken.
+ *
+ * Raised: white outside and #DFDFDF inside on the top and left, near-black
+ * outside and #808080 inside on the bottom and right. Sunken swaps them.
+ * Four colours, two pixels, no gradient anywhere - that is the entire
+ * language, and it is why a 1998 control reads as a physical thing while a
+ * single-pixel outline reads as a diagram.
+ */
+static void bevel(int x, int y, int w, int h, bool sunken) {
+  const uint16_t o_tl = sunken ? W_SHADOW : W_HILITE;
+  const uint16_t o_br = sunken ? W_HILITE : W_DKSHAD;
+  const uint16_t i_tl = sunken ? W_DKSHAD : W_LIGHT;
+  const uint16_t i_br = sunken ? W_LIGHT : W_SHADOW;
+  fill(x, y, w, 1, o_tl);
+  fill(x, y, 1, h, o_tl);
+  fill(x, y + h - 1, w, 1, o_br);
+  fill(x + w - 1, y, 1, h, o_br);
+  fill(x + 1, y + 1, w - 2, 1, i_tl);
+  fill(x + 1, y + 1, 1, h - 2, i_tl);
+  fill(x + 1, y + h - 2, w - 2, 1, i_br);
+  fill(x + w - 2, y + 1, 1, h - 2, i_br);
+}
+
+/** A push button: face fill, raised edge, and the whole face pushed in when
+ * held. The label shifts a pixel down and right with it, which is most of
+ * what makes a press feel mechanical. */
+static void button(int x, int y, int w, int h, bool down) {
+  fill(x, y, w, h, W_FACE);
+  bevel(x, y, w, h, down);
+}
+
+/** The dotted focus rectangle. A real one, on the odd pixels, because the
+ * alternating dots are what say "keyboard focus" rather than "selected". */
+static void focus_rect(int x, int y, int w, int h) {
+  for (int i = 0; i < w; i += 2) {
+    px_set(x + i, y, W_TEXT);
+    px_set(x + i, y + h - 1, W_TEXT);
+  }
+  for (int i = 0; i < h; i += 2) {
+    px_set(x, y + i, W_TEXT);
+    px_set(x + w - 1, y + i, W_TEXT);
+  }
+}
+
 static void control(int x, int y, int w, int h, bool primary, bool down) {
   if (primary) {
     if (down)
@@ -321,7 +407,7 @@ static void draw_bits_clipped(const uint8_t *bits, int w, int h, int stride, int
       if (!(src[col >> 3] & (0x80 >> (col & 7)))) continue;
       const int gx = x + col;
       if ((unsigned)gx >= UI_W) continue;
-      if (s_cv[(size_t)gy * UI_W + gx] != C_CANVAS) continue;
+      if (s_cv[(size_t)gy * UI_W + gx] != W_FACE) continue;
       s_cv[(size_t)gy * UI_W + gx] = ink;
     }
   }
@@ -379,6 +465,62 @@ static void chevron(int x, int cy, uint16_t ink) {
   for (int i = 0; i <= 12; i++) {
     fill(x + i, cy - i - 2, 3, 3, ink);
     fill(x + i, cy + i - 2, 3, 3, ink);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The glass                                                           */
+/* ------------------------------------------------------------------ */
+
+/* Scanline depth and aperture-grille depth. Both deliberately restrained:
+ * this runs over type and chrome as well as artwork, and past about 0.18 the
+ * scanlines start eating 18 px text. */
+#define CRT_SCAN 32   /* out of 256 */
+#define CRT_MASK 22   /* out of 256 */
+#define CRT_PITCH 3   /* device rows per scan line, and stripe period */
+
+/**
+ * Put the whole screen behind a CRT.
+ *
+ * This used to be baked into each icon, which was the wrong place twice over.
+ * A cathode ray tube filters everything in front of it - so treating only the
+ * artwork left the icons looking processed against crisp modern type, which
+ * is exactly the tell it was meant to remove. And a per-icon pass cannot
+ * produce a continuous scanline across a whole screen, because each sprite
+ * starts its own phase wherever it happens to sit.
+ *
+ * One pass over 384000 pixels, integer only: a row gain from a three-entry
+ * table and a per-column stripe gain, both premultiplied by the compensation
+ * for the light they remove. Measured at 27 ms on the P4, which is fine for a
+ * screen that repaints on a press rather than on a clock.
+ */
+static void crt_pass(void) {
+  /* Average loss is SCAN/PITCH from the dark row and 2*MASK/3 from the mask;
+   * the gain puts both back so the screen does not simply get darker. */
+  const int gain = (256 * 256 * 3) /
+                   ((3 * 256 - CRT_SCAN) * (256 - 2 * CRT_MASK / 3) / 256);
+
+  for (int y = 0; y < UI_H; y++) {
+    /* One row in three is the gap between scan lines. */
+    const int scan = (y % CRT_PITCH) == (CRT_PITCH - 1) ? 256 - CRT_SCAN : 256;
+    uint16_t *row = s_cv + (size_t)y * UI_W;
+    for (int x = 0; x < UI_W; x++) {
+      const uint16_t p = row[x];
+      int r = ((p >> 11) & 0x1F) << 3;
+      int g = ((p >> 5) & 0x3F) << 2;
+      int b = (p & 0x1F) << 3;
+      const int stripe = x % 3;
+      const int mr = stripe == 0 ? 256 : 256 - CRT_MASK;
+      const int mg = stripe == 1 ? 256 : 256 - CRT_MASK;
+      const int mb = stripe == 2 ? 256 : 256 - CRT_MASK;
+      r = (((r * scan) >> 8) * mr >> 8) * gain >> 8;
+      g = (((g * scan) >> 8) * mg >> 8) * gain >> 8;
+      b = (((b * scan) >> 8) * mb >> 8) * gain >> 8;
+      if (r > 255) r = 255;
+      if (g > 255) g = 255;
+      if (b > 255) b = 255;
+      row[x] = RGB(r, g, b);
+    }
   }
 }
 
@@ -508,13 +650,13 @@ static void splash(void) {
     const float t = (float)el / (float)OPEN_MS;
     const float e = 1.0f - (1.0f - t) * (1.0f - t);
     fill(0, 0, UI_W, UI_H, RGB(0x0b, 0x0d, 0x10));
-    aperture(UI_W / 2, UI_H / 2, e * rmax, e * 0.5f, 6, C_CANVAS);
+    aperture(UI_W / 2, UI_H / 2, e * rmax, e * 0.5f, 6, W_FACE);
     draw_bits_clipped(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly,
                       C_INK);
     gfx_present();
   }
 
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_bits(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly, 1, C_INK);
   gfx_present();
   vTaskDelay(pdMS_TO_TICKS(HOLD_MS));
@@ -525,14 +667,27 @@ static void splash(void) {
 /* ------------------------------------------------------------------ */
 
 static void draw_header(screen_t s) {
-  fill_grad(0, 0, UI_W, HEAD_H, RGB(0xf4, 0xf8, 0xfc), RGB(0xdf, 0xe7, 0xf1));
-  fill(0, HEAD_H, UI_W, 1, C_BORDER_MID);
-  const uint16_t ink = (s_pressed == IT_BACK) ? C_BLUE : C_INK;
-  chevron(26, HEAD_H / 2, ink);
+  /* A real title bar: the two-stop blue, white bold-ish caption, and a
+   * raised close-box on the left carrying the chevron. The bar sits inside
+   * the window frame, so the whole screen reads as one window rather than a
+   * page with a strip on top. */
+  fill(0, 0, UI_W, HEAD_H, W_FACE);
+  bevel(0, 0, UI_W, UI_H, false);
+
+  const int bx = 4, by = 4, bw = UI_W - 8, bh = HEAD_H - 8;
+  for (int i = 0; i < bw; i++) {
+    fill(bx + i, by, 1, bh, mix(W_TITLE_L, W_TITLE_R, i * 256 / bw));
+  }
+
+  const bool down = s_pressed == IT_BACK;
+  const int cw = bh - 8, cy = by + 4;
+  button(bx + 4, cy, cw, cw, down);
+  chevron(bx + 4 + cw / 2 - 6 + (down ? 1 : 0), cy + cw / 2 + (down ? 1 : 0), W_TEXT);
+
   const int t = SCREEN_TITLE[s];
   if (t >= 0 && t < UI_LABEL_COUNT) {
     const ui_label_t *l = &UI_LABELS[t];
-    draw_bits(l->bits, l->w, l->h, l->stride, BACK_W, (HEAD_H - l->h) / 2, 1, C_INK);
+    draw_bits(l->bits, l->w, l->h, l->stride, bx + cw + 14, by + (bh - l->h) / 2, 1, W_SELTEXT);
   }
 }
 
@@ -540,36 +695,50 @@ static void draw_header(screen_t s) {
  * which a row that acts in place must never have. */
 static void draw_row(int y, bool focused, bool enabled, const char *title, const char *value,
                      bool arrow, uint16_t value_ink) {
-  if (focused) fill_grad(0, y, UI_W, ROW_H, C_SEL_TOP, C_SEL_BOT);
-  fill(0, y + ROW_H - 1, UI_W, 1, focused ? C_BLUE_DARK : C_LINE);
+  (void)value_ink;
+  /* A list row on a white well with a navy selection: the 1998 listbox,
+   * which is also the clearest thing to read in a dark room. */
+  fill(LIST_X, y, LIST_W, ROW_H, focused ? W_SEL : W_WINDOW);
 
-  const uint16_t ti = focused ? C_INV : (enabled ? C_INK : C_FAINT);
-  const uint16_t vi = focused ? RGB(0xdc, 0xe9, 0xfb) : (enabled ? value_ink : C_FAINT);
-  text(&UI_FONT_M, 24, y + (ROW_H - UI_FONT_M.line_h) / 2, title, ti);
+  const uint16_t ti = focused ? W_SELTEXT : (enabled ? W_TEXT : W_GRAYTEXT);
+  const uint16_t vi = focused ? W_SELTEXT : (enabled ? RGB(0x40, 0x40, 0x40) : W_GRAYTEXT);
+  text(&UI_FONT_M, LIST_X + 14, y + (ROW_H - UI_FONT_M.line_h) / 2, title, ti);
 
-  int right = UI_W - 24;
+  int right = LIST_X + LIST_W - 14;
   if (arrow) {
     const int cy = y + ROW_H / 2;
-    for (int i = 0; i < 7; i++) fill(right - 8 + i, cy - 6 + i, 2, 2, ti);
-    for (int i = 0; i < 7; i++) fill(right - 8 + i, cy + 6 - i, 2, 2, ti);
-    right -= 22;
+    for (int i = 0; i < 6; i++) {
+      fill(right - 8 + i, cy - 5 + i, 2, 2, ti);
+      fill(right - 8 + i, cy + 5 - i, 2, 2, ti);
+    }
+    right -= 20;
   }
   if (value) text_right(&UI_FONT_M, right, y + (ROW_H - UI_FONT_M.line_h) / 2, value, vi);
+}
+
+/* The window a list sits in: face ground, sunken white well. */
+static void draw_list_frame(int rows) {
+  fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
+  const int h = rows * ROW_H + 4;
+  fill(LIST_X - 2, LIST_Y - 2, LIST_W + 4, h, W_WINDOW);
+  bevel(LIST_X - 2, LIST_Y - 2, LIST_W + 4, h, true);
 }
 
 /* An on/off pill, the era's answer to a toggle: a recessed well with the live
  * state written in it, not a sliding lozenge. */
 static void draw_toggle(int x, int y, bool on, bool focused) {
-  const int w = 62, h = 28;
+  /* A checkbox, not a pill. 1998 had no sliding lozenge, and a tick in a
+   * sunken box is unambiguous at a glance in a way a slider is not. */
+  const int box = 26;
+  fill(x, y, box, box, W_WINDOW);
+  bevel(x, y, box, box, true);
   if (on) {
-    control(x, y, w, h, true, false);
-    text_mid(&UI_FONT_S, x + w / 2, y + (h - UI_FONT_S.line_h) / 2, "ON", C_INV);
-  } else {
-    fill(x, y, w, h, C_PANEL_IN);
-    outline(x, y, w, h, C_BORDER_DARK);
-    text_mid(&UI_FONT_S, x + w / 2, y + (h - UI_FONT_S.line_h) / 2, "OFF", C_MUTED);
+    /* A hand-set tick: three rising pixels then five falling, the shape the
+     * system font's checkmark actually had. */
+    for (int i = 0; i < 3; i++) fill(x + 6 + i, y + 12 + i, 2, 3, W_TEXT);
+    for (int i = 0; i < 5; i++) fill(x + 9 + i, y + 15 - i, 2, 3, W_TEXT);
   }
-  if (focused) outline(x - 2, y - 2, w + 4, h + 4, C_INV);
+  if (focused) focus_rect(x - 3, y - 3, box + 6, box + 6);
 }
 
 /* A segmented selector: every option visible, the live one filled. */
@@ -577,12 +746,16 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
                           int selected, int pressed_idx, int focus_idx) {
   const int cw = w / count;
   for (int i = 0; i < count; i++) {
-    const int cx = x + i * cw;
+    const int bx = x + i * cw;
     const bool on = i == selected;
-    control(cx, y, cw, h, on, pressed_idx == i);
-    text_mid(&UI_FONT_M, cx + cw / 2, y + (h - UI_FONT_M.line_h) / 2, names[i],
-             on ? C_INV : C_INK);
-    if (focus_idx == i) outline(cx - 2, y - 2, cw + 4, h + 4, C_BLUE);
+    /* The live option is drawn pushed in and stays pushed in - a radio
+     * button as a toggled button, which is how a 1998 toolbar showed state. */
+    button(bx, y, cw - 2, h, on || pressed_idx == i);
+    if (on) fill(bx + 2, y + 2, cw - 6, h - 4, W_LIGHT);
+    const int d = (on || pressed_idx == i) ? 1 : 0;
+    text_mid(&UI_FONT_M, bx + (cw - 2) / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, names[i],
+             W_TEXT);
+    if (focus_idx == i) focus_rect(bx + 4, y + 4, cw - 10, h - 8);
   }
 }
 
@@ -614,7 +787,12 @@ static void tile_rect(int i, int *x, int *y) {
  * desktop icon read in 1998 and keeps the artwork the loudest thing on screen.
  */
 static void draw_menu(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  /* The 1998 3D face, not a near-white canvas. It is the colour every window
+   * in that era sat on, it makes the saturated icons pop instead of glowing,
+   * and on a panel used in a dark room it is far kinder than white. */
+  fill(0, 0, UI_W, UI_H, W_FACE);
+  /* The screen is one window. */
+  bevel(0, 0, UI_W, UI_H, false);
 
   for (int i = 0; i < 6; i++) {
     int tx, ty;
@@ -626,185 +804,169 @@ static void draw_menu(void) {
     const int icx = tx + M_TILE_W / 2;
     const int icy = top + ICON_BOX / 2;
 
-    if (sel || down) {
-      fill_round_grad(tx + 4, ty + 4, M_TILE_W - 8, M_TILE_H - 8, RADIUS,
-                      down ? C_PANEL_IN : C_BLUE_WASH, down ? C_PANEL : C_BLUE_WASH);
-      outline(tx + 4, ty + 4, M_TILE_W - 8, M_TILE_H - 8, C_BLUE);
-    }
-
     icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + (down ? 1 : 0));
 
+    /* Desktop-icon selection: the LABEL gets the navy plate and white text,
+     * and a dotted focus rectangle goes round the pair. The icon itself is
+     * left alone - no plate behind it, no tint over it - so the artwork
+     * stays the loudest thing on the screen, which is the whole reason for
+     * using these icons at all. */
     const int lw = text_w(&UI_FONT_M, MENU_LABEL[i]);
     const int ly = top + ICON_BOX + 10;
-    if (sel) {
-      fill_round_grad(icx - lw / 2 - 10, ly - 3, lw + 20, M_LABEL_H + 4, 2, C_SEL_TOP, C_SEL_BOT);
-      text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i], C_INV);
+    const int px = icx - lw / 2 - 6, pw = lw + 12;
+
+    if (sel || down) {
+      fill(px, ly, pw, M_LABEL_H, W_SEL);
+      text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
+           W_SELTEXT);
     } else {
-      text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i], C_INK);
+      text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
+           W_TEXT);
+    }
+    if (sel) {
+      focus_rect(icx - ICON_BOX / 2 - 6, top - 6, ICON_BOX + 12,
+                 ICON_BOX + 16 + M_LABEL_H + 12);
     }
   }
+
+  /* The glass goes over everything, last. */
+  crt_pass();
 }
 
 /* ------------------------------------------------------------------ */
 /* Viewfinder                                                          */
 /* ------------------------------------------------------------------ */
 
-/* Items: 0 back, 1 flash. The shutter is not on this screen - it is a key on
- * the body, and a camera whose shutter is a picture of a shutter is a camera
- * you have to look at to use. */
-#define VF_IT_BACK 0
-#define VF_IT_FLASH 1
+/* Items on SHOOT, top to bottom in the control column. */
+#define SH_IT_BACK 0
+#define SH_IT_MODE 1
+#define SH_IT_FLASH 2
+#define SH_IT_SHUTTER 3
 
-static void vf_pane_rect(int cam, int *x, int *y) {
-  *x = VF_X0 + (cam % 2) * (VF_PANE_W + VF_GAP);
-  *y = VF_Y0 + (cam / 2) * (VF_PANE_H + VF_GAP);
+static void sh_pane_rect(int cam, int *x, int *y) {
+  *x = SH_X0 + (cam % 2) * (SH_PANE_W + SH_GAP);
+  *y = SH_Y0 + (cam / 2) * (SH_PANE_H + SH_GAP);
 }
 
-static void vf_blit(const uint16_t *tile, int px, int py) {
-  for (int y = 0; y < VF_PANE_H; y++) {
-    const uint16_t *src = tile + (size_t)(y * VF_H / VF_PANE_H) * VF_W;
+static void sh_blit(const uint16_t *tile, int px, int py) {
+  for (int y = 0; y < SH_PANE_H; y++) {
+    const uint16_t *src = tile + (size_t)(y * VF_H / SH_PANE_H) * VF_W;
     uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
-    for (int x = 0; x < VF_PANE_W; x++) dst[x] = src[x * VF_W / VF_PANE_W];
+    for (int x = 0; x < SH_PANE_W; x++) dst[x] = src[x * VF_W / SH_PANE_W];
   }
 }
 
+/* A control in the SHOOT column: a raised face, a caption above the value.
+ * The caption is what lets one 46 px button carry both what it controls and
+ * what it is set to, which is the only way mode and flash both fit. */
+static void sh_button(int y, int h, const char *cap, const char *val, bool down, bool focused,
+                      bool warm) {
+  const int x = SH_COL_X, w = SH_COL_W;
+  button(x, y, w, h, down);
+  if (warm && !down) {
+    fill(x + 2, y + 2, w - 4, h - 4, C_YELLOW);
+  }
+  const int d = down ? 1 : 0;
+  if (cap) {
+    text(&UI_FONT_S, x + 8 + d, y + 6 + d, cap, warm && !down ? RGB(0x5a, 0x48, 0x08) : W_SHADOW);
+    text(&UI_FONT_M, x + 8 + d, y + h - 8 - UI_FONT_M.line_h + d, val, W_TEXT);
+  } else {
+    text_mid(&UI_FONT_M, x + w / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, val, W_TEXT);
+  }
+  if (focused) focus_rect(x + 4, y + 4, w - 8, h - 8);
+}
+
 /**
- * Four previews, Back, Flash, Battery. Nothing else.
+ * SHOOT: four previews, and the four things you do while looking at them.
  *
- * Everything the previous viewfinder carried - frame rates, card capacity,
- * link diagnostics, a mode readout, an on-screen shutter - was engineering
- * information competing with the photograph. What is left is the two things
- * you change while shooting and the one thing you need to know.
+ * The previous split put the previews on one screen and the mode on another,
+ * which meant deciding how the camera would combine four frames without
+ * being able to see the four frames. Mode is a property of the photograph
+ * you are about to take.
+ *
+ * The shutter is on screen because on this body it has to be: the physical
+ * shutter pins are unassigned, so without this control the camera cannot
+ * take a photograph at all.
  */
-static void draw_viewfinder(void) {
+static void draw_shoot(void) {
   fill(0, 0, UI_W, UI_H, D_GROUND);
 
   static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
   for (int i = 0; i < 4; i++) {
     int px, py;
-    vf_pane_rect(i, &px, &py);
+    sh_pane_rect(i, &px, &py);
 
     const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(i) : NULL;
     vf_status_t st = {0};
     if (viewfinder_ready()) viewfinder_status(i, &st);
 
     if (tile != NULL) {
-      vf_blit(tile, px, py);
+      sh_blit(tile, px, py);
     } else {
-      fill(px, py, VF_PANE_W, VF_PANE_H, D_PANE);
+      fill(px, py, SH_PANE_W, SH_PANE_H, D_PANE);
       /* Which of the several reasons it is, rather than a black rectangle
        * that could mean any of them. */
       const char *why = st.state == VF_ERROR     ? "NO PICTURE"
                         : st.state == VF_STALLED ? "NO RECENT FRAME"
                                                  : "NO CAMERA";
-      text_mid(&UI_FONT_S, px + VF_PANE_W / 2, py + VF_PANE_H / 2 - 14, why, D_DIM);
-      text_mid(&UI_FONT_S, px + VF_PANE_W / 2, py + VF_PANE_H / 2 + 6, NAMES[i],
+      text_mid(&UI_FONT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 14, why, D_DIM);
+      text_mid(&UI_FONT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 6, NAMES[i],
                RGB(0x4a, 0x52, 0x5e));
     }
-    outline(px, py, VF_PANE_W, VF_PANE_H, D_EDGE);
+    /* Sunken, so each preview reads as a window let into the body. */
+    bevel(px - 2, py - 2, SH_PANE_W + 4, SH_PANE_H + 4, true);
   }
 
-  /* Back, top left, in the column the 4:3 block leaves empty. Small and
-   * subordinate: it is the way out, not a feature. */
-  const uint16_t bink = (s_pressed == VF_IT_BACK) ? C_BLUE
-                        : (s_focus[SCR_VIEWFINDER] == VF_IT_BACK ? C_INV : D_TEXT);
-  chevron(10, 22, bink);
-  text(&UI_FONT_S, 26, 13, "BACK", bink);
+  /* ---- the control column ---- */
+  const int x = SH_COL_X, w = SH_COL_W;
 
-  /* Battery, top right. The w98 cell at 1:1, and no percentage: this body has
-   * no sense divider, so a number would be invented. */
+  /* Back. A real button, because on this screen it is the only way out. */
+  const bool bdown = s_pressed == SH_IT_BACK;
+  button(x, SH_MARGIN, w, 34, bdown);
+  chevron(x + 12 + (bdown ? 1 : 0), SH_MARGIN + 17 + (bdown ? 1 : 0), W_TEXT);
+  text(&UI_FONT_S, x + 32 + (bdown ? 1 : 0), SH_MARGIN + 8 + (bdown ? 1 : 0), "MENU", W_TEXT);
+  if (s_focus[SCR_SHOOT] == SH_IT_BACK) focus_rect(x + 3, SH_MARGIN + 3, w - 6, 28);
+
+  /* Battery: the w98 cell at 1:1, in a sunken well like a camera's own
+   * status window. No percentage - this body has no sense divider, so a
+   * number would be invented. */
+  const int by = SH_MARGIN + 40;
+  fill(x, by, w, 40, W_FACE);
+  bevel(x, by, w, 40, true);
   const int bi = W98_BATTERY_IDX;
   const int be = icons_edge(bi);
-  icons_blit(s_cv, UI_W, UI_H, bi, VF_COL_R + (VF_COL_W - be) / 2, 10);
-  text_mid(&UI_FONT_S, VF_COL_R + VF_COL_W / 2, 10 + be + 4, usb_attached() ? "USB" : "BATT",
-           D_DIM);
+  icons_blit(s_cv, UI_W, UI_H, bi, x + 8, by + (40 - be) / 2);
+  text(&UI_FONT_S, x + 8 + be + 8, by + (40 - UI_FONT_S.line_h) / 2,
+       usb_attached() ? "USB" : "BATTERY", W_TEXT);
 
-  /* Flash, bottom of the same column. One press advances it, and the order
-   * never reorders by recency: overshooting costs two more presses, which is
-   * faster than reading a menu. */
+  /* Mode and flash, the two things that change the photograph. */
+  sh_button(by + 48, 50, "MODE", mode_is_quad() ? "QUAD" : "WIGGLE",
+            s_pressed == SH_IT_MODE, s_focus[SCR_SHOOT] == SH_IT_MODE, false);
+
   const int fi = flash_index();
   static const char *const FLASH_WORD[3] = {"AUTO", "ON", "OFF"};
-  const int fw = VF_COL_W - 12, fh = 74;
-  const int fx = VF_COL_R + 6, fy = UI_H - VF_MARGIN - fh;
-  const bool fdown = (s_pressed == VF_IT_FLASH);
+  const int fy = by + 104;
+  sh_button(fy, 50, "FLASH", FLASH_WORD[fi], s_pressed == SH_IT_FLASH,
+            s_focus[SCR_SHOOT] == SH_IT_FLASH, fi == 1);
+  bolt(x + w - 26, fy + 10, 2, fi == 1 ? RGB(0x5a, 0x48, 0x08) : (fi == 2 ? W_SHADOW : W_TEXT));
 
-  uint16_t bolt_ink = D_TEXT, word_ink = D_TEXT;
-  if (fi == 1) {
-    fill_round_grad(fx, fy, fw, fh, 3, C_YELLOW, RGB(0xd9, 0xa8, 0x22));
-    outline(fx, fy, fw, fh, RGB(0x9a, 0x76, 0x10));
-    bolt_ink = word_ink = RGB(0x2a, 0x22, 0x05);
-  } else {
-    fill_round_grad(fx, fy, fw, fh, 3, fdown ? RGB(0x3a, 0x42, 0x4c) : RGB(0x28, 0x2e, 0x37),
-                    RGB(0x1a, 0x1f, 0x26));
-    outline(fx, fy, fw, fh, D_EDGE);
-    if (fi == 2) { bolt_ink = RGB(0x4a, 0x52, 0x5e); word_ink = D_DIM; }
-    else { bolt_ink = C_YELLOW; }
-  }
-  bolt(fx + fw / 2 - 8, fy + 10, 2, bolt_ink);
-  text_mid(&UI_FONT_S, fx + fw / 2, fy + fh - 24, FLASH_WORD[fi], word_ink);
-  if (s_focus[SCR_VIEWFINDER] == VF_IT_FLASH) outline(fx - 2, fy - 2, fw + 4, fh + 4, C_BLUE);
-}
-
-/* ------------------------------------------------------------------ */
-/* Mode                                                                */
-/* ------------------------------------------------------------------ */
-
-/* Two modes, because two is what the firmware has. SET_MODE accepts wiggle
- * and quad and NACKs anything else; the BURST and SINGLE the old screen
- * offered were never implemented anywhere. */
-static void draw_mode(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
-  draw_header(SCR_MODE);
-
-  const bool quad = mode_is_quad();
-  const int cw = 348, ch = 232, cy = BODY_Y + 34;
-  const int cx[2] = {(UI_W / 2 - cw) - 12, UI_W / 2 + 12};
-
-  for (int i = 0; i < 2; i++) {
-    const bool on = (i == 1) == quad;
-    const bool foc = s_focus[SCR_MODE] == i;
-    const bool down = s_pressed == i;
-
-    if (on) {
-      fill_round_grad(cx[i], cy, cw, ch, RADIUS, C_BLUE_WASH, RGB(0xc9, 0xdd, 0xf7));
-      outline(cx[i], cy, cw, ch, C_BLUE);
-    } else {
-      fill_round_grad(cx[i], cy, cw, ch, RADIUS, C_HILITE, C_PANEL);
-      outline(cx[i], cy, cw, ch, C_BORDER_MID);
+  /* The shutter. Deliberately the largest object on the screen. */
+  const int sy = UI_H - SH_MARGIN - 96;
+  const bool sdown = s_pressed == SH_IT_SHUTTER;
+  button(x, sy, w, 96, sdown);
+  const int cx = x + w / 2 + (sdown ? 1 : 0), cy = sy + 40 + (sdown ? 1 : 0);
+  /* A shutter release: a red disc in a ring, which is what the button on a
+   * camera looks like and needs no word. The word is there anyway. */
+  for (int r = 26; r >= 0; r--) {
+    const uint16_t c = r > 22 ? W_SHADOW : (r > 19 ? W_HILITE : RGB(0xc8, 0x28, 0x28));
+    for (int dy = -r; dy <= r; dy++) {
+      const int half = (int)__builtin_sqrtf((float)(r * r - dy * dy));
+      fill(cx - half, cy + dy, 2 * half + 1, 1, c);
     }
-    if (down) outline(cx[i] + 1, cy + 1, cw - 2, ch - 2, C_BLUE);
-    if (foc) outline(cx[i] - 3, cy - 3, cw + 6, ch + 6, C_BLUE);
-
-    /* A diagram of what the four frames become, which says more than a
-     * paragraph would at this size. */
-    const int dx = cx[i] + 30, dy = cy + 34;
-    if (i == 0) {
-      /* Wiggle: four frames stacked along a motion axis. */
-      for (int f = 0; f < 4; f++) {
-        const int ox = dx + f * 16, oy = dy + f * 6;
-        fill(ox, oy, 76, 58, f == 3 ? C_BLUE : C_PANEL_IN);
-        outline(ox, oy, 76, 58, C_BORDER_DARK);
-      }
-    } else {
-      /* Quad: a two-by-two contact sheet. */
-      for (int f = 0; f < 4; f++) {
-        const int ox = dx + (f % 2) * 62, oy = dy + (f / 2) * 46;
-        fill(ox, oy, 56, 40, C_BLUE);
-        outline(ox, oy, 56, 40, C_BORDER_DARK);
-      }
-    }
-
-    text(&UI_FONT_M, cx[i] + 30, cy + 140, i == 0 ? "WIGGLE" : "QUAD", C_INK);
-    text(&UI_FONT_S, cx[i] + 30, cy + 170,
-         i == 0 ? "Four frames, played as a loop." : "Four frames, side by side.", C_MUTED);
-    if (on) text(&UI_FONT_S, cx[i] + 30, cy + 194, "IN USE", C_BLUE_DARK);
+    if (r == 23 || r == 20) continue;
   }
-
-  /* Both modes fire all four cameras and write identical files; the
-   * difference is entirely in how the host presents them. Someone who expects
-   * different pictures and gets the same ones assumes the camera is broken. */
-  text_mid(&UI_FONT_S, UI_W / 2, UI_H - 34,
-           "Both capture four frames. The difference is how they play back.", C_FAINT);
+  text_mid(&UI_FONT_M, cx, sy + 96 - 8 - UI_FONT_M.line_h + (sdown ? 1 : 0), "SHOOT", W_TEXT);
+  if (s_focus[SCR_SHOOT] == SH_IT_SHUTTER) focus_rect(x + 4, sy + 4, w - 8, 88);
 }
 
 /* ------------------------------------------------------------------ */
@@ -830,7 +992,7 @@ static void look_set_mono(bool mono) {
 }
 
 static void draw_look(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_LOOK);
 
   const bool mono = look_is_mono();
@@ -840,26 +1002,28 @@ static void draw_look(void) {
 
   for (int i = 0; i < 2; i++) {
     const bool on = (i == 1) == mono;
-    control(xs[i], y, w, h, on, s_pressed == i);
-    text_mid(&UI_FONT_M, xs[i] + w / 2, y + (h - UI_FONT_M.line_h) / 2, NAMES[i],
-             on ? C_INV : C_INK);
-    if (s_focus[SCR_LOOK] == i) outline(xs[i] - 3, y - 3, w + 6, h + 6, C_BLUE);
+    button(xs[i], y, w, h, on || s_pressed == i);
+    if (on) fill(xs[i] + 2, y + 2, w - 4, h - 4, W_LIGHT);
+    const int d = (on || s_pressed == i) ? 1 : 0;
+    text_mid(&UI_FONT_M, xs[i] + w / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, NAMES[i], W_TEXT);
+    if (s_focus[SCR_LOOK] == i) focus_rect(xs[i] + 4, y + 4, w - 8, h - 8);
   }
 
   /* Named looks are recipes, and recipes arrive from Studio. With none
    * loaded, saying so beats an empty list. */
-  text(&UI_FONT_S, 40, y + h + 46, "LOADED LOOKS", C_FAINT);
-  fill(40, y + h + 70, UI_W - 80, 1, C_LINE);
+  text(&UI_FONT_S, 40, y + h + 46, "LOADED LOOKS", W_TEXT);
+  fill(40, y + h + 70, UI_W - 80, 1, W_SHADOW);
+  fill(40, y + h + 71, UI_W - 80, 1, W_HILITE);
   const char *rid = config_str("wiggle.recipeId", "");
   if (rid[0] == '\0') {
-    text(&UI_FONT_M, 40, y + h + 88, "None yet", C_MUTED);
-    text(&UI_FONT_S, 40, y + h + 118, "Add looks from Studio over USB-C.", C_FAINT);
+    text(&UI_FONT_M, 40, y + h + 88, "None yet", W_TEXT);
+    text(&UI_FONT_S, 40, y + h + 118, "Add looks from Studio over USB-C.", W_GRAYTEXT);
   } else {
-    text(&UI_FONT_M, 40, y + h + 88, rid, C_INK);
+    text(&UI_FONT_M, 40, y + h + 88, rid, W_TEXT);
   }
 
   text_mid(&UI_FONT_S, UI_W / 2, UI_H - 34,
-           "Looks are applied when you import. The camera preview does not change.", C_FAINT);
+           "Looks are applied when you import. The camera preview does not change.", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -892,7 +1056,7 @@ static void gal_blit(const uint16_t *px, int x, int y) {
 }
 
 static void draw_gallery(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_GALLERY);
 
   storage_status_t sd;
@@ -903,8 +1067,8 @@ static void draw_gallery(void) {
     const char *h1 = sd.mounted ? "NO PHOTOS YET" : "NO CARD";
     const char *h2 = sd.mounted ? "Press the shutter to take one."
                                 : "Insert a microSD card to store photos.";
-    text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - 26, h1, C_INK);
-    text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, h2, C_MUTED);
+    text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - 26, h1, W_TEXT);
+    text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, h2, W_GRAYTEXT);
     return;
   }
 
@@ -915,7 +1079,10 @@ static void draw_gallery(void) {
     gal_origin(i, &x, &y);
     const bool foc = s_focus[SCR_GALLERY] == i;
 
-    fill(x - 2, y - 2, G_TILE_W + 4, G_TILE_H + 4, foc ? C_BLUE : C_BORDER_MID);
+    /* Every photograph sits in a sunken well; the focused one gets the navy
+     * plate a selected thumbnail had. */
+    fill(x - 3, y - 3, G_TILE_W + 6, G_TILE_H + 6, foc ? W_SEL : W_FACE);
+    bevel(x - 2, y - 2, G_TILE_W + 4, G_TILE_H + 4, true);
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
     } else {
@@ -923,14 +1090,15 @@ static void draw_gallery(void) {
       text_mid(&UI_FONT_S, x + G_TILE_W / 2, y + G_TILE_H / 2 - 9,
                slots[i].state == TILE_PENDING ? "LOADING" : "NO IMAGE", D_DIM);
     }
-    if (s_pressed == i) outline(x, y, G_TILE_W, G_TILE_H, C_INV);
+    if (s_pressed == i) focus_rect(x, y, G_TILE_W, G_TILE_H);
 
     /* One short caption. No filename, no size, no path: the picture is the
      * content and the rest is file management. */
     char cap[32];
     if (slots[i].partial) snprintf(cap, sizeof cap, "%d of 4", slots[i].frames);
     else snprintf(cap, sizeof cap, "%s", slots[i].mode);
-    text(&UI_FONT_S, x + 2, y + G_TILE_H + 5, cap, slots[i].partial ? C_RED : C_MUTED);
+    text(&UI_FONT_S, x + 2, y + G_TILE_H + 5, cap,
+         slots[i].partial ? RGB(0x90, 0x00, 0x00) : W_TEXT);
   }
 
   /* Page controls, only when there is more than one page. */
@@ -939,18 +1107,20 @@ static void draw_gallery(void) {
   if (pages > 1) {
     char pg[32];
     snprintf(pg, sizeof pg, "%d of %d", gallery_page() + 1, pages);
-    text_mid(&UI_FONT_S, UI_W / 2, fy + (G_FOOT - UI_FONT_S.line_h) / 2, pg, C_MUTED);
+    text_mid(&UI_FONT_S, UI_W / 2, fy + (G_FOOT - UI_FONT_S.line_h) / 2, pg, W_TEXT);
 
-    const int bw = 74, bh = 32, by = fy + (G_FOOT - bh) / 2;
-    control(24, by, bw, bh, false, s_pressed == G_IT_PREV);
-    text_mid(&UI_FONT_S, 24 + bw / 2, by + (bh - UI_FONT_S.line_h) / 2, "PREV", C_INK);
-    control(UI_W - 24 - bw, by, bw, bh, false, s_pressed == G_IT_NEXT);
-    text_mid(&UI_FONT_S, UI_W - 24 - bw / 2, by + (bh - UI_FONT_S.line_h) / 2, "NEXT", C_INK);
-    if (s_focus[SCR_GALLERY] == G_IT_PREV) outline(22, by - 2, bw + 4, bh + 4, C_BLUE);
-    if (s_focus[SCR_GALLERY] == G_IT_NEXT) outline(UI_W - 26 - bw, by - 2, bw + 4, bh + 4, C_BLUE);
+    const int bw = 78, bh = 32, by = fy + (G_FOOT - bh) / 2;
+    const int pd = s_pressed == G_IT_PREV ? 1 : 0, nd = s_pressed == G_IT_NEXT ? 1 : 0;
+    button(24, by, bw, bh, pd);
+    text_mid(&UI_FONT_S, 24 + bw / 2 + pd, by + (bh - UI_FONT_S.line_h) / 2 + pd, "PREV", W_TEXT);
+    button(UI_W - 24 - bw, by, bw, bh, nd);
+    text_mid(&UI_FONT_S, UI_W - 24 - bw / 2 + nd, by + (bh - UI_FONT_S.line_h) / 2 + nd, "NEXT",
+             W_TEXT);
+    if (s_focus[SCR_GALLERY] == G_IT_PREV) focus_rect(28, by + 4, bw - 8, bh - 8);
+    if (s_focus[SCR_GALLERY] == G_IT_NEXT) focus_rect(UI_W - 20 - bw, by + 4, bw - 8, bh - 8);
   }
   if (gallery_loading())
-    text(&UI_FONT_S, 24, fy + (G_FOOT - UI_FONT_S.line_h) / 2, "READING CARD", C_FAINT);
+    text(&UI_FONT_S, 24, fy + (G_FOOT - UI_FONT_S.line_h) / 2, "READING CARD", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1014,17 +1184,16 @@ static void draw_photo(void) {
 
   const int bh = 34, by = UI_H - bh - 12;
   const int bw = 150;
-  control(px, by, bw, bh, false, s_pressed == P_IT_DELETE);
-  text_mid(&UI_FONT_S, px + bw / 2, by + (bh - UI_FONT_S.line_h) / 2, "DELETE", C_INK);
-  if (s_focus[SCR_PHOTO] == P_IT_DELETE) outline(px - 2, by - 2, bw + 4, bh + 4, C_BLUE);
+  const int dd = s_pressed == P_IT_DELETE ? 1 : 0;
+  button(px, by, bw, bh, dd);
+  text_mid(&UI_FONT_S, px + bw / 2 + dd, by + (bh - UI_FONT_S.line_h) / 2 + dd, "DELETE", W_TEXT);
+  if (s_focus[SCR_PHOTO] == P_IT_DELETE) focus_rect(px + 4, by + 4, bw - 8, bh - 8);
 
   /* No radio on this body, so Roll cannot take it. Dimmed with the reason
    * rather than hidden - a control that vanishes teaches nothing. */
   const int rx = px + PH_W - bw;
-  fill(rx, by, bw, bh, RGB(0x24, 0x2a, 0x32));
-  outline(rx, by, bw, bh, D_EDGE);
-  text_mid(&UI_FONT_S, rx + bw / 2, by + (bh - UI_FONT_S.line_h) / 2, "SEND TO ROLL",
-           RGB(0x54, 0x5d, 0x6a));
+  button(rx, by, bw, bh, false);
+  text_mid(&UI_FONT_S, rx + bw / 2, by + (bh - UI_FONT_S.line_h) / 2, "SEND TO ROLL", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1034,20 +1203,20 @@ static void draw_photo(void) {
 /* Only about Roll. The card statistics the old screen carried moved to
  * Settings > Storage, where they belong. */
 static void draw_roll(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_ROLL);
 
   const int cy = BODY_Y + 60;
-  text_mid(&UI_FONT_M, UI_W / 2, cy, "NOT CONNECTED", C_INK);
-  text_mid(&UI_FONT_S, UI_W / 2, cy + 40, "This body has no radio fitted.", C_MUTED);
-  text_mid(&UI_FONT_S, UI_W / 2, cy + 66, "Connect Studio over USB-C to make a roll", C_MUTED);
-  text_mid(&UI_FONT_S, UI_W / 2, cy + 88, "and upload from there.", C_MUTED);
+  text_mid(&UI_FONT_M, UI_W / 2, cy, "NOT CONNECTED", W_TEXT);
+  text_mid(&UI_FONT_S, UI_W / 2, cy + 40, "This body has no radio fitted.", W_TEXT);
+  text_mid(&UI_FONT_S, UI_W / 2, cy + 66, "Connect Studio over USB-C to make a roll", W_TEXT);
+  text_mid(&UI_FONT_S, UI_W / 2, cy + 88, "and upload from there.", W_TEXT);
 
   const int n = gallery_total();
   if (n > 0) {
     char line[48];
     snprintf(line, sizeof line, "%d photo%s waiting on the card", n, n == 1 ? "" : "s");
-    text_mid(&UI_FONT_S, UI_W / 2, cy + 134, line, C_FAINT);
+    text_mid(&UI_FONT_S, UI_W / 2, cy + 134, line, W_GRAYTEXT);
   }
 }
 
@@ -1060,10 +1229,11 @@ static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_CONNECTION, SCR
                                      SCR_ABOUT};
 
 static void draw_settings(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_SETTINGS);
+  draw_list_frame(5);
   for (int i = 0; i < 5; i++)
-    draw_row(BODY_Y + i * ROW_H, s_focus[SCR_SETTINGS] == i, true, SET_ROWS[i], NULL, true, C_MUTED);
+    draw_row(LIST_Y + i * ROW_H, s_focus[SCR_SETTINGS] == i, true, SET_ROWS[i], NULL, true, C_MUTED);
 }
 
 /* --- Display ------------------------------------------------------ */
@@ -1083,17 +1253,17 @@ static int nearest_idx(int v, const int *opts) {
 }
 
 static void draw_display(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_DISPLAY);
 
   const int y0 = BODY_Y + 18;
-  text(&UI_FONT_S, 24, y0, "DIM AFTER", C_FAINT);
+  text(&UI_FONT_S, 24, y0, "DIM AFTER", W_TEXT);
   draw_segments(24, y0 + 24, UI_W - 48, 44, SECS_15, 3,
                 nearest_idx(config_int("body.autoDimS", 30), DIM_S),
                 s_pressed >= 0 && s_pressed < 3 ? s_pressed : -1,
                 s_focus[SCR_DISPLAY] < 3 ? s_focus[SCR_DISPLAY] : -1);
 
-  text(&UI_FONT_S, 24, y0 + 92, "SLEEP AFTER", C_FAINT);
+  text(&UI_FONT_S, 24, y0 + 92, "SLEEP AFTER", W_TEXT);
   draw_segments(24, y0 + 116, UI_W - 48, 44, SECS_60, 3,
                 nearest_idx(config_int("body.sleepS", 120), SLEEP_S),
                 s_pressed >= 3 && s_pressed < 6 ? s_pressed - 3 : -1,
@@ -1101,27 +1271,30 @@ static void draw_display(void) {
                     ? s_focus[SCR_DISPLAY] - 3 : -1);
 
   /* The backlight is a plain GPIO, on or off. A brightness control here would
-   * be a slider that moves and changes nothing. */
-  draw_row(y0 + 186, false, false, "Brightness", "Not adjustable", false, C_FAINT);
-  text(&UI_FONT_S, 24, y0 + 246, "The backlight on this body is on or off.", C_FAINT);
+   * be a slider that moves and changes nothing, so it is greyed-out text on
+   * the dialog face - which is exactly how 1998 said "this does not apply". */
+  text(&UI_FONT_S, 24, y0 + 190, "BRIGHTNESS", W_GRAYTEXT);
+  text(&UI_FONT_M, 24, y0 + 214, "Not adjustable", W_GRAYTEXT);
+  text(&UI_FONT_S, 24, y0 + 246, "The backlight on this body is on or off.", W_GRAYTEXT);
 }
 
 /* --- Sound -------------------------------------------------------- */
 
 static void draw_sound(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_SOUND);
 
   const bool shut = config_bool("body.sounds.save", true);
   const bool ui = config_bool("body.sounds.ui", true);
 
-  draw_row(BODY_Y, s_focus[SCR_SOUND] == 0, true, "Shutter sound", NULL, false, C_MUTED);
-  draw_toggle(UI_W - 24 - 62, BODY_Y + (ROW_H - 28) / 2, shut, false);
-  draw_row(BODY_Y + ROW_H, s_focus[SCR_SOUND] == 1, true, "Button sound", NULL, false, C_MUTED);
-  draw_toggle(UI_W - 24 - 62, BODY_Y + ROW_H + (ROW_H - 28) / 2, ui, false);
+  draw_list_frame(2);
+  draw_row(LIST_Y, s_focus[SCR_SOUND] == 0, true, "Shutter sound", NULL, false, C_MUTED);
+  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + (ROW_H - 26) / 2, shut, false);
+  draw_row(LIST_Y + ROW_H, s_focus[SCR_SOUND] == 1, true, "Button sound", NULL, false, C_MUTED);
+  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + ROW_H + (ROW_H - 26) / 2, ui, false);
 
-  const int y = BODY_Y + 2 * ROW_H + 26;
-  text(&UI_FONT_S, 24, y, "VOLUME", C_FAINT);
+  const int y = LIST_Y + 2 * ROW_H + 26;
+  text(&UI_FONT_S, 24, y, "VOLUME", W_TEXT);
   static const char *const VOL[3] = {"LOW", "MEDIUM", "HIGH"};
   static const int VOLV[3] = {3, 6, 9};
   draw_segments(24, y + 24, UI_W - 48, 44, VOL, 3, nearest_idx(config_int("shoot.volume", 6), VOLV),
@@ -1132,20 +1305,21 @@ static void draw_sound(void) {
 /* --- Connection --------------------------------------------------- */
 
 static void draw_connection(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_CONNECTION);
-  draw_row(BODY_Y, false, false, "Wi-Fi", "Not fitted", false, C_FAINT);
-  draw_row(BODY_Y + ROW_H, false, false, "Auto upload", "Not fitted", false, C_FAINT);
-  draw_row(BODY_Y + 2 * ROW_H, false, true, "USB", usb_attached() ? "Connected" : "Not connected",
-           false, usb_attached() ? C_GREEN : C_MUTED);
-  text(&UI_FONT_S, 24, BODY_Y + 3 * ROW_H + 28,
-       "The radio is not brought up on this body. Photos leave over USB-C.", C_FAINT);
+  draw_list_frame(3);
+  draw_row(LIST_Y, false, false, "Wi-Fi", "Not fitted", false, C_FAINT);
+  draw_row(LIST_Y + ROW_H, false, false, "Auto upload", "Not fitted", false, C_FAINT);
+  draw_row(LIST_Y + 2 * ROW_H, false, true, "USB", usb_attached() ? "Connected" : "Not connected",
+           false, C_MUTED);
+  text(&UI_FONT_S, 24, LIST_Y + 3 * ROW_H + 28,
+       "The radio is not brought up on this body. Photos leave over USB-C.", W_GRAYTEXT);
 }
 
 /* --- Storage ------------------------------------------------------ */
 
 static void draw_storage(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_STORAGE);
 
   storage_status_t sd;
@@ -1155,22 +1329,23 @@ static void draw_storage(void) {
   human_bytes(capb, sizeof capb, sd.capacity_bytes);
   snprintf(cnt, sizeof cnt, "%d", gallery_total());
 
-  draw_row(BODY_Y, false, true, "Card", sd.mounted ? capb : "None", false,
-           sd.mounted ? C_MUTED : C_RED);
-  draw_row(BODY_Y + ROW_H, false, true, "Free space", sd.mounted ? freeb : "-", false, C_MUTED);
-  draw_row(BODY_Y + 2 * ROW_H, false, true, "Photos", cnt, false, C_MUTED);
-  draw_row(BODY_Y + 3 * ROW_H, s_focus[SCR_STORAGE] == 0, sd.mounted, "Format card", NULL, true,
+  draw_list_frame(4);
+  draw_row(LIST_Y, false, true, "Card", sd.mounted ? capb : "None", false, C_MUTED);
+  draw_row(LIST_Y + ROW_H, false, true, "Free space", sd.mounted ? freeb : "-", false, C_MUTED);
+  draw_row(LIST_Y + 2 * ROW_H, false, true, "Photos", cnt, false, C_MUTED);
+  draw_row(LIST_Y + 3 * ROW_H, s_focus[SCR_STORAGE] == 0, sd.mounted, "Format card", NULL, true,
            C_MUTED);
 }
 
 /* --- About -------------------------------------------------------- */
 
 static void draw_about(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_ABOUT);
-  draw_row(BODY_Y, false, true, "KINO D4", "", false, C_MUTED);
-  draw_row(BODY_Y + ROW_H, false, true, "Firmware", KINO_FW_VERSION, false, C_MUTED);
-  draw_row(BODY_Y + 2 * ROW_H, false, true, "Device", config_str("device", "-"), false, C_MUTED);
+  draw_list_frame(3);
+  draw_row(LIST_Y, false, true, "KINO D4", "", false, C_MUTED);
+  draw_row(LIST_Y + ROW_H, false, true, "Firmware", KINO_FW_VERSION, false, C_MUTED);
+  draw_row(LIST_Y + 2 * ROW_H, false, true, "Device", config_str("device", "-"), false, C_MUTED);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1178,7 +1353,7 @@ static void draw_about(void) {
 /* ------------------------------------------------------------------ */
 
 static void draw_power(void) {
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
+  fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_POWER);
   /* Shut down is drawn disabled: power.c controls the backlight and the
    * camera bank and has no power-off at all, and there is no soft latch in
@@ -1230,7 +1405,7 @@ static void dialog_spec(dlg_spec_t *d) {
 static void draw_dialog(void) {
   /* Scrim over whatever is behind, so the decision is the only live thing.
    * Heavy enough that the screen underneath reads as unavailable rather than
-   * as merely tinted - a half-lit list still invites a press. */
+   * merely tinted - a half-lit list still invites a press. */
   for (int y = 0; y < UI_H; y++) {
     uint16_t *row = s_cv + (size_t)y * UI_W;
     for (int x = 0; x < UI_W; x++) row[x] = mix(row[x], RGB(0x10, 0x16, 0x1e), 190);
@@ -1240,37 +1415,37 @@ static void draw_dialog(void) {
   dialog_spec(&d);
   const int h = d.sub ? 196 : 168;
 
-  fill(DLG_X, DLG_Y, DLG_W, h, C_CANVAS);
-  outline(DLG_X, DLG_Y, DLG_W, h, C_BORDER_DARK);
-  if (d.destructive)
-    fill_stops4(DLG_X + 1, DLG_Y + 1, DLG_W - 2, 36, RGB(0xc8, 0x3a, 0x3a), RGB(0xb9, 0x32, 0x32),
-                RGB(0xa0, 0x25, 0x25), RGB(0x8f, 0x1f, 0x1f));
-  else
-    fill_stops4(DLG_X + 1, DLG_Y + 1, DLG_W - 2, 36, RGB(0x35, 0x76, 0xcc), RGB(0x2f, 0x70, 0xc9),
-                RGB(0x26, 0x61, 0x9f), RGB(0x1d, 0x4c, 0x94));
-  text(&UI_FONT_S, DLG_X + 14, DLG_Y + 1 + (36 - UI_FONT_S.line_h) / 2, d.title, C_INV);
+  /* A dialog window: raised face, a title bar in the same blue as a screen
+   * header, and buttons on the baseline. No minimise, no maximise, no drag -
+   * this is a camera, not a window manager. */
+  fill(DLG_X, DLG_Y, DLG_W, h, W_FACE);
+  bevel(DLG_X, DLG_Y, DLG_W, h, false);
 
-  text(&UI_FONT_M, DLG_X + 22, DLG_Y + 60, d.body, C_INK);
-  if (d.sub) text(&UI_FONT_S, DLG_X + 22, DLG_Y + 94, d.sub, C_MUTED);
-
-  const int by = DLG_Y + h - DLG_BTN_H - 18;
-  const int bx2 = DLG_X + DLG_W - 18 - DLG_BTN_W;
-  const int bx1 = bx2 - 10 - DLG_BTN_W;
-
-  control(bx1, by, DLG_BTN_W, DLG_BTN_H, false, s_pressed == 0);
-  text_mid(&UI_FONT_M, bx1 + DLG_BTN_W / 2, by + (DLG_BTN_H - UI_FONT_M.line_h) / 2, "CANCEL",
-           C_INK);
-  if (s_dlg_focus == 0) outline(bx1 - 3, by - 3, DLG_BTN_W + 6, DLG_BTN_H + 6, C_BLUE);
-
-  if (d.destructive) {
-    fill_stops4(bx2, by, DLG_BTN_W, DLG_BTN_H, RGB(0xc8, 0x3a, 0x3a), RGB(0xb9, 0x32, 0x32),
-                RGB(0xa0, 0x25, 0x25), RGB(0x8f, 0x1f, 0x1f));
-    outline(bx2, by, DLG_BTN_W, DLG_BTN_H, RGB(0x8f, 0x1f, 0x1f));
-  } else {
-    control(bx2, by, DLG_BTN_W, DLG_BTN_H, true, s_pressed == 1);
+  const int bx = DLG_X + 4, by = DLG_Y + 4, bw = DLG_W - 8, bh = 30;
+  for (int i = 0; i < bw; i++) {
+    fill(bx + i, by, 1, bh,
+         mix(d.destructive ? RGB(0x80, 0x00, 0x00) : W_TITLE_L,
+             d.destructive ? RGB(0xd0, 0x40, 0x10) : W_TITLE_R, i * 256 / bw));
   }
-  text_mid(&UI_FONT_M, bx2 + DLG_BTN_W / 2, by + (DLG_BTN_H - UI_FONT_M.line_h) / 2, d.go, C_INV);
-  if (s_dlg_focus == 1) outline(bx2 - 3, by - 3, DLG_BTN_W + 6, DLG_BTN_H + 6, C_INV);
+  text(&UI_FONT_S, bx + 8, by + (bh - UI_FONT_S.line_h) / 2, d.title, W_SELTEXT);
+
+  text(&UI_FONT_M, DLG_X + 20, DLG_Y + 56, d.body, W_TEXT);
+  if (d.sub) text(&UI_FONT_S, DLG_X + 20, DLG_Y + 90, d.sub, RGB(0x40, 0x40, 0x40));
+
+  const int fy = DLG_Y + h - DLG_BTN_H - 16;
+  const int b2 = DLG_X + DLG_W - 16 - DLG_BTN_W;
+  const int b1 = b2 - 10 - DLG_BTN_W;
+
+  button(b1, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 0);
+  text_mid(&UI_FONT_M, b1 + DLG_BTN_W / 2 + (s_pressed == 0 ? 1 : 0),
+           fy + (DLG_BTN_H - UI_FONT_M.line_h) / 2 + (s_pressed == 0 ? 1 : 0), "CANCEL", W_TEXT);
+  if (s_dlg_focus == 0) focus_rect(b1 + 4, fy + 4, DLG_BTN_W - 8, DLG_BTN_H - 8);
+
+  button(b2, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 1);
+  text_mid(&UI_FONT_M, b2 + DLG_BTN_W / 2 + (s_pressed == 1 ? 1 : 0),
+           fy + (DLG_BTN_H - UI_FONT_M.line_h) / 2 + (s_pressed == 1 ? 1 : 0), d.go,
+           d.destructive ? RGB(0x90, 0x00, 0x00) : W_TEXT);
+  if (s_dlg_focus == 1) focus_rect(b2 + 4, fy + 4, DLG_BTN_W - 8, DLG_BTN_H - 8);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1311,9 +1486,14 @@ static void draw_capture_banner(void) {
       break;
   }
 
+  /* Stops short of the shoot screen's control column, because the shutter
+   * lives there and covering the shutter with a report about the shutter is
+   * the one place this strip must not reach. Every other screen has nothing
+   * to protect down there, so it runs the full width. */
   const int h = 40, y = UI_H - h;
-  fill(0, y, UI_W, h, RGB(0x12, 0x16, 0x1c));
-  fill(0, y, UI_W, 1, accent);
+  const int w = s_screen == SCR_SHOOT ? SH_COL_X - 6 : UI_W;
+  fill(0, y, w, h, RGB(0x12, 0x16, 0x1c));
+  fill(0, y, w, 1, accent);
   fill(0, y + 1, 5, h - 1, accent);
   text(&UI_FONT_S, 18, y + (h - UI_FONT_S.line_h) / 2, line, RGB(0xe4, 0xe9, 0xee));
 }
@@ -1331,8 +1511,7 @@ static void draw_toast(void) {
 static void draw_screen(void) {
   switch (s_screen) {
     case SCR_MENU: draw_menu(); break;
-    case SCR_VIEWFINDER: draw_viewfinder(); break;
-    case SCR_MODE: draw_mode(); break;
+    case SCR_SHOOT: draw_shoot(); break;
     case SCR_LOOK: draw_look(); break;
     case SCR_GALLERY: draw_gallery(); break;
     case SCR_PHOTO: draw_photo(); break;
@@ -1355,6 +1534,8 @@ static void draw_screen(void) {
 /* Navigation                                                          */
 /* ------------------------------------------------------------------ */
 
+static void fire_shutter(bool long_press);
+
 static void go(screen_t s, int dissolve_ms) {
   if (s == SCR_GALLERY) gallery_refresh();
   if (s_screen == SCR_PHOTO && s != SCR_PHOTO) photo_release();
@@ -1375,8 +1556,7 @@ static void go_back(void) {
 static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
-    case SCR_VIEWFINDER: return 2;
-    case SCR_MODE: return 2;
+    case SCR_SHOOT: return 4;
     case SCR_LOOK: return 2;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
     case SCR_PHOTO: return 1; /* Send to Roll is not fitted, so not focusable */
@@ -1421,12 +1601,18 @@ static int hit_test(int x, int y) {
       }
       return -1;
 
-    case SCR_VIEWFINDER:
-      /* The whole of each empty column end is the target, not just the
-       * painted control: 89 px is already narrower than a thumb. */
-      if (in(x, y, 0, 0, VF_X0, 64)) return VF_IT_BACK;
-      if (in(x, y, VF_COL_R, UI_H - 96, VF_COL_W, 96)) return VF_IT_FLASH;
+    case SCR_SHOOT: {
+      /* Every target spans the full column width, including the gaps between
+       * the painted controls: nothing else is over there to hit by mistake,
+       * and a thumb is wider than the gap. */
+      if (x < SH_COL_X) return -1;
+      const int by = SH_MARGIN + 40;
+      if (y < by) return SH_IT_BACK;
+      if (y >= by + 48 && y < by + 104) return SH_IT_MODE;
+      if (y >= by + 104 && y < by + 162) return SH_IT_FLASH;
+      if (y >= UI_H - SH_MARGIN - 104) return SH_IT_SHUTTER;
       return -1;
+    }
 
     case SCR_PHOTO: {
       if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
@@ -1443,12 +1629,6 @@ static int hit_test(int x, int y) {
   if (y < HEAD_H) return IT_BACK;
 
   switch (s_screen) {
-    case SCR_MODE: {
-      const int cw = 348, ch = 232, cy = BODY_Y + 34;
-      if (in(x, y, UI_W / 2 - cw - 12, cy, cw, ch)) return 0;
-      if (in(x, y, UI_W / 2 + 12, cy, cw, ch)) return 1;
-      return -1;
-    }
     case SCR_LOOK: {
       const int y0 = BODY_Y + 40, h = 76, w = 300;
       if (in(x, y, UI_W / 2 - w - 10, y0, w, h)) return 0;
@@ -1471,7 +1651,7 @@ static int hit_test(int x, int y) {
     }
     case SCR_SETTINGS:
       for (int i = 0; i < 5; i++)
-        if (in(x, y, 0, BODY_Y + i * ROW_H, UI_W, ROW_H)) return i;
+        if (in(x, y, LIST_X, LIST_Y + i * ROW_H, LIST_W, ROW_H)) return i;
       return -1;
 
     case SCR_DISPLAY: {
@@ -1483,20 +1663,20 @@ static int hit_test(int x, int y) {
       return -1;
     }
     case SCR_SOUND: {
-      if (in(x, y, 0, BODY_Y, UI_W, ROW_H)) return 0;
-      if (in(x, y, 0, BODY_Y + ROW_H, UI_W, ROW_H)) return 1;
-      const int y0 = BODY_Y + 2 * ROW_H + 26, sw = (UI_W - 48) / 3;
+      if (in(x, y, LIST_X, LIST_Y, LIST_W, ROW_H)) return 0;
+      if (in(x, y, LIST_X, LIST_Y + ROW_H, LIST_W, ROW_H)) return 1;
+      const int y0 = LIST_Y + 2 * ROW_H + 26, sw = (UI_W - 48) / 3;
       for (int i = 0; i < 3; i++)
         if (in(x, y, 24 + i * sw, y0 + 24, sw, 44)) return 2 + i;
       return -1;
     }
     case SCR_STORAGE:
-      if (in(x, y, 0, BODY_Y + 3 * ROW_H, UI_W, ROW_H)) return 0;
+      if (in(x, y, LIST_X, LIST_Y + 3 * ROW_H, LIST_W, ROW_H)) return 0;
       return -1;
 
     case SCR_POWER:
       for (int i = 0; i < 3; i++)
-        if (in(x, y, 0, BODY_Y + i * ROW_H, UI_W, ROW_H)) return i;
+        if (in(x, y, LIST_X, LIST_Y + i * ROW_H, LIST_W, ROW_H)) return i;
       return -1;
 
     default: return -1;
@@ -1564,18 +1744,16 @@ static void activate(int item) {
       }
       return;
 
-    case SCR_VIEWFINDER:
-      if (item == VF_IT_BACK) go_back();
-      else if (item == VF_IT_FLASH) {
-        flash_cycle();
-        draw_screen();
-        gfx_present();
+    case SCR_SHOOT:
+      if (item == SH_IT_BACK) { go_back(); return; }
+      if (item == SH_IT_SHUTTER) { fire_shutter(false); break; }
+      if (item == SH_IT_MODE) {
+        const bool quad = mode_is_quad();
+        cfg_set_str("mode", quad ? "wiggle" : "quad");
+        toast(quad ? "Mode: Wiggle" : "Mode: Quad");
+        break;
       }
-      return;
-
-    case SCR_MODE:
-      cfg_set_str("mode", item == 1 ? "quad" : "wiggle");
-      toast(item == 1 ? "Mode: Quad" : "Mode: Wiggle");
+      if (item == SH_IT_FLASH) { flash_cycle(); break; }
       break;
 
     case SCR_LOOK:
@@ -1667,8 +1845,8 @@ static void on_button(button_id_t id, bool long_press) {
     return;
   }
   if (id != BTN_SHUTTER) return;
-  if (s_screen != SCR_VIEWFINDER) {
-    go(SCR_VIEWFINDER, 160);
+  if (s_screen != SCR_SHOOT) {
+    go(SCR_SHOOT, 160);
     gfx_present();
     return;
   }
@@ -1704,6 +1882,7 @@ static void ui_task(void *arg) {
            (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
 
   int held = -1;
+  int64_t wake_since_us = 0;
 
   for (;;) {
     uint16_t tx = 0, ty = 0;
@@ -1714,10 +1893,29 @@ static void ui_task(void *arg) {
      * Reaching into a bag for a camera whose backlight has timed out and
      * having it fire whatever tile the thumb landed on is the worst possible
      * answer, and it is what the naive version does. */
-    if (!down) power_end_wake_gesture();
+    if (!down) {
+      power_end_wake_gesture();
+      wake_since_us = 0;
+    }
     if (power_wake_gesture()) {
-      vTaskDelay(pdMS_TO_TICKS(20));
-      continue;
+      /* Swallow the press that woke the screen - but only for as long as a
+       * press can plausibly last.
+       *
+       * The flag is cleared by the finger lifting, which is normally the
+       * next thing that happens. If anything stops that being seen - a
+       * dropped read on the bus the codec shares, or a stage that got put
+       * back to sleep underneath the wake - the UI would go permanently
+       * deaf, which is the worst failure this screen has. A ceiling costs
+       * nothing and makes that impossible. */
+      const int64_t now = esp_timer_get_time();
+      if (wake_since_us == 0) wake_since_us = now;
+      if (now - wake_since_us < 1200000) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        continue;
+      }
+      power_end_wake_gesture();
+      wake_since_us = 0;
+      klog("P4", "wake gesture outlived a press - releasing the UI");
     }
 
     if (down) {
@@ -1755,7 +1953,7 @@ static void ui_task(void *arg) {
     /* The nodes are only asked for frames while the viewfinder is up. Left
      * running behind a menu it would be four sensors and four UARTs burning
      * battery to fill a buffer nobody reads. */
-    viewfinder_run(s_screen == SCR_VIEWFINDER);
+    viewfinder_run(s_screen == SCR_SHOOT);
 
     const capture_stage_t cstage = capture_stage();
     if (cstage == CAPTURE_DONE) {
@@ -1776,14 +1974,14 @@ static void ui_task(void *arg) {
      * out all change the screen without anyone touching anything. */
     const bool busy = cstage != CAPTURE_IDLE ||
                       (s_screen == SCR_GALLERY && gallery_loading()) || s_toast[0] != '\0';
-    if (held == -1 && s_screen != SCR_VIEWFINDER && busy) {
+    if (held == -1 && s_screen != SCR_SHOOT && busy) {
       draw_screen();
       gfx_present();
       vTaskDelay(pdMS_TO_TICKS(90));
       continue;
     }
 
-    if (s_screen == SCR_VIEWFINDER && held == -1) {
+    if (s_screen == SCR_SHOOT && held == -1) {
       draw_screen();
       gfx_present();
       /* Paced against the link, not the panel: new frames arrive a few times

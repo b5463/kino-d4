@@ -337,16 +337,19 @@ int main(int argc, char **argv) {
   }
   shot("iconsheet");
 
-  /* ---- viewfinder, and its flash states ---- */
-  SHOT(SCR_VIEWFINDER, "viewfinder");
+  /* ---- shoot: previews, mode, flash and the shutter on one screen ---- */
+  s_focus[SCR_SHOOT] = 3; /* the shutter, where focus lands on entry */
+  SHOT(SCR_SHOOT, "shoot");
   g_flash_mode = "on";
-  SHOT(SCR_VIEWFINDER, "viewfinder_flash_on");
+  SHOT(SCR_SHOOT, "shoot_flash_on");
   g_flash_mode = "off";
-  SHOT(SCR_VIEWFINDER, "viewfinder_flash_off");
+  g_mode = "quad";
+  SHOT(SCR_SHOOT, "shoot_quad_flash_off");
   g_flash_mode = "auto";
+  g_mode = "wiggle";
 
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
-  s_screen = SCR_VIEWFINDER;
+  s_screen = SCR_SHOOT;
   g_stage = CAPTURE_READING;
   draw_screen();
   shot("capture_running");
@@ -372,12 +375,7 @@ int main(int argc, char **argv) {
   shot("capture_failed");
   g_stage = CAPTURE_IDLE;
 
-  /* ---- the four destinations ---- */
-  SHOT(SCR_MODE, "mode_wiggle");
-  g_mode = "quad";
-  SHOT(SCR_MODE, "mode_quad");
-  g_mode = "wiggle";
-
+  /* ---- the destinations ---- */
   SHOT(SCR_LOOK, "look_colour");
   g_mono = true;
   SHOT(SCR_LOOK, "look_bw");
