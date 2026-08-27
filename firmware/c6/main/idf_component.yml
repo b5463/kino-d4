@@ -1,0 +1,7 @@
+dependencies:
+  # v5.5.1 is the one canonical build environment (docs/FIRMWARE_BUILDER.md);
+  # the floor here only documents the true source requirement.
+  idf: ">=5.3"
+  # No managed components. espressif/esp_hosted is the transport this image
+  # will eventually carry, and it is deliberately absent: see the "Why no
+  # esp_hosted yet" section of README.md for the measured reason.

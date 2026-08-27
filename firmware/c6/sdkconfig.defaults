@@ -1,0 +1,26 @@
+# ESP32-C6 radio coprocessor on the Guition JC4880P443C-I-W carrier.
+CONFIG_IDF_TARGET="esp32c6"
+
+# Flash size is left at the IDF default (2 MB). The C6 module's part number
+# is not recorded anywhere in this repo — docs/HARDWARE.md:47 says only
+# "ESP32-P4 + ESP32-C6" — and a flash size larger than the die actually has
+# produces an image that flashes and then fails to boot. 2 MB is the smallest
+# C6 configuration, so it is the one that cannot be wrong. Raise it once the
+# module is identified.
+
+# Console on UART0. This is the only way this image can be observed: the four
+# C6 header pins are U0RXD, U0TXD, IO9 and CHIP_PU (firmware/C6_HARDWARE_MAP.md),
+# and whether the C6's USB pads reach anything on this carrier is not recorded.
+# The identity line in main.c goes out here or nowhere.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+
+# 1.5 MB app partition. The hosted slave this image grows into carries the
+# Wi-Fi and BLE controller stacks plus protobuf RPC, which does not fit the
+# 1 MB default, and changing the partition layout later invalidates every
+# flashed unit.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Two clean builds of one commit must produce the same .bin, so a hash in a
+# bench record identifies the source. See firmware/p4/sdkconfig.defaults for
+# the measurement.
+CONFIG_APP_REPRODUCIBLE_BUILD=y
