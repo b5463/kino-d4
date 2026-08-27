@@ -30,14 +30,15 @@ command line (aggregation, not linking), so `apps/worker` itself remains MIT
 
 Issue #22 records the analysis.
 
-## Windows XP icon artwork (Microsoft, no licence held)
+## Windows 98 icon artwork (Microsoft, no licence held)
 
-`firmware/p4/main/icons_xp.h` contains six icons from the Microsoft Windows XP
-(Luna) user interface set, baked to a 48x48 grid by
-`scripts/bake-xp-icons.mjs` from the `softwarehistorysociety/XPIcons`
-collection at commit `3887f201`. They are the P4 home screen's six tiles:
-`DigitalCamera`, `SmartScreen`, `MyPictures`, `DialUpConnection`,
-`SettingsAlert` and `MSN`.
+`firmware/p4/main/icons_w98.h` contains seven icons from the Microsoft Windows
+98 shell, baked at their native 48x48 or 32x32 by `scripts/bake-w98-icons.mjs`
+from the `trapd00r/win95-winxp_icons` collection at commit `728a866a`, each
+verified by SHA-256. They are the six menu tiles - `w98_multimedia`,
+`w98_color_profile`, `w98_directory_pictures`, `w98_camera3_network`,
+`w98_settings_gear` and `w98_shut_down_normal` - plus the viewfinder battery,
+`w98_battery`.
 
 The artwork is Microsoft's. **KINO holds no licence to redistribute it**, and
 the upstream collection is an archive rather than a grant. `REUSE.toml` maps
@@ -49,8 +50,9 @@ Consequences, stated plainly rather than deferred:
 
 - A firmware binary built from this tree embeds the artwork. Publishing that
   binary is redistribution.
-- Downscaling to 48 px and re-rendering it does not make it a new work. It is
-  the same icon, smaller.
+- The icons are stored at their original size and scaled by an integer factor
+  at runtime, so what ships is a faithful reproduction rather than a
+  derivation. That makes the position clearer, not weaker.
 - The two ways out are a licence from Microsoft, or original artwork drawn for
   this product in the same idiom.
 

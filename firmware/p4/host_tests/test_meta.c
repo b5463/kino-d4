@@ -401,6 +401,65 @@ static void test_summary_recipes(void) {
 /* meta_merge_into                                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * meta_patch_path: how every control on the device writes its setting.
+ *
+ * The regression these guard is specific. The first version of the nesting
+ * dropped the FIRST path segment, so "body.sounds.ui" built
+ * {"sounds":{"ui":...}} - which merges into the config root without error and
+ * writes a key nothing reads. The screen would have looked correct, the
+ * toggle would have moved, and the setting would have done nothing.
+ */
+static void test_patch_path(void) {
+  /* One segment: the whole patch is the leaf under its own key. */
+  cJSON *p1 = meta_patch_path("mode", cJSON_CreateString("quad"));
+  CHECK(p1 != NULL, "single-segment path builds");
+  CHECK(str_of(p1, "mode") != NULL && strcmp(str_of(p1, "mode"), "quad") == 0,
+        "single segment lands at the root -> %s", str_of(p1, "mode") ? str_of(p1, "mode") : "(null)");
+  cJSON_Delete(p1);
+
+  /* Three segments, and the first one is the one that used to vanish. */
+  cJSON *p3 = meta_patch_path("body.sounds.ui", cJSON_CreateBool(false));
+  CHECK(p3 != NULL, "three-segment path builds");
+  const cJSON *body = cJSON_GetObjectItem(p3, "body");
+  CHECK(cJSON_IsObject(body), "first segment 'body' is present");
+  const cJSON *sounds = cJSON_GetObjectItem(body, "sounds");
+  CHECK(cJSON_IsObject(sounds), "middle segment 'sounds' is present");
+  const cJSON *ui = cJSON_GetObjectItem(sounds, "ui");
+  CHECK(cJSON_IsBool(ui) && !cJSON_IsTrue(ui), "leaf value at the bottom");
+  CHECK(cJSON_GetObjectItem(p3, "sounds") == NULL,
+        "the leaf is NOT hoisted to the root - the bug this test exists for");
+  cJSON_Delete(p3);
+
+  /* A four-segment path, which is what the LOOK screen writes per slot. */
+  cJSON *p4 = meta_patch_path("quad.slots.cam3.colorMode", cJSON_CreateString("mono"));
+  const cJSON *slot = cJSON_GetObjectItem(
+      cJSON_GetObjectItem(cJSON_GetObjectItem(p4, "quad"), "slots"), "cam3");
+  CHECK(slot != NULL && str_of(slot, "colorMode") != NULL &&
+            strcmp(str_of(slot, "colorMode"), "mono") == 0,
+        "four segments nest in order");
+  cJSON_Delete(p4);
+
+  /* Merging a patch must leave every sibling alone - that is the whole point
+   * of patching rather than replacing the object. */
+  cJSON *cfg = cJSON_Parse("{\"body\":{\"sounds\":{\"ui\":true,\"save\":true},\"sleepS\":120}}");
+  cJSON *patch = meta_patch_path("body.sounds.ui", cJSON_CreateBool(false));
+  meta_merge_into(cfg, patch);
+  const cJSON *cb = cJSON_GetObjectItem(cfg, "body");
+  const cJSON *cs = cJSON_GetObjectItem(cb, "sounds");
+  CHECK(!cJSON_IsTrue(cJSON_GetObjectItem(cs, "ui")), "target setting changed");
+  CHECK(cJSON_IsTrue(cJSON_GetObjectItem(cs, "save")), "sibling setting untouched");
+  CHECK(num_of(cb, "sleepS") == 120, "unrelated branch untouched -> %g", num_of(cb, "sleepS"));
+  cJSON_Delete(cfg);
+  cJSON_Delete(patch);
+
+  /* Degenerate paths return NULL rather than an empty object, so a caller
+   * cannot merge "nothing" and believe it wrote something. */
+  CHECK(meta_patch_path("", cJSON_CreateBool(true)) == NULL, "empty path refused");
+  CHECK(meta_patch_path("...", cJSON_CreateBool(true)) == NULL, "separators-only path refused");
+  CHECK(meta_patch_path("a.b", NULL) == NULL, "null leaf refused");
+}
+
 static void test_merge(void) {
   /* Deep merge: nested objects recurse, scalars replace. */
   cJSON *dst = cJSON_Parse("{\"a\":1,\"n\":{\"x\":1,\"y\":2},\"keep\":\"me\"}");
@@ -559,6 +618,7 @@ int main(void) {
   test_summary_degrades();
   test_summary_recipes();
 
+  test_patch_path();
   test_merge();
 
   test_migrate_current();

@@ -68,6 +68,23 @@ void meta_capture_summary(const void *meta, void *out);
  */
 void meta_merge_into(void *dst, const void *patch);
 
+/**
+ * Wrap `leaf` in the nested objects named by a dotted path.
+ *
+ * `"body.sounds.ui"` with a `true` leaf returns
+ * `{"body":{"sounds":{"ui":true}}}` — the shape `config_merge` deep-merges, so
+ * every other setting under `body` survives untouched. Returns a new cJSON
+ * object the caller owns, or NULL on allocation failure or an empty path (in
+ * which case `leaf` is deleted, so no caller has to unwind a partial build).
+ *
+ * This is how every control on the device writes its setting. It lives here
+ * rather than in ui.c because the first version dropped the FIRST path
+ * segment — `"body.sounds.ui"` built `{"sounds":{"ui":...}}` — which merges
+ * perfectly happily into the config root and silently writes a setting nobody
+ * reads. Nothing about the screen would have looked wrong.
+ */
+void *meta_patch_path(const char *dotted, void *leaf);
+
 /** What a migration attempt concluded. */
 typedef enum {
   META_MIGRATE_OK = 0,       /* at target version, defaults backfilled */

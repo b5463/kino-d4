@@ -69,22 +69,22 @@ for (const marker of [
   // this override would declare that we are giving away someone else's
   // artwork under our own grant.
   'SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"',
-  '"firmware/p4/main/icons_xp.h"',
+  '"firmware/p4/main/icons_w98.h"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
 
 // The icon header is generated, so it is easy to regenerate without the
 // notice and easy to delete the notice without touching the header. Both
 // halves have to be present together.
-if (await exists('firmware/p4/main/icons_xp.h')) {
-  const icons = await text('firmware/p4/main/icons_xp.h');
+if (await exists('firmware/p4/main/icons_w98.h')) {
+  const icons = await text('firmware/p4/main/icons_w98.h');
   check(
     icons.includes('SPDX-License-Identifier: LicenseRef-Microsoft-Proprietary'),
-    'firmware/p4/main/icons_xp.h has lost its SPDX header; re-run npm run icons:bake',
+    'firmware/p4/main/icons_w98.h has lost its SPDX header; re-run npm run icons:bake',
   );
   const notices = await text('THIRD_PARTY_NOTICES.md');
   check(
-    notices.includes('icons_xp.h'),
-    'THIRD_PARTY_NOTICES.md does not mention the bundled Windows XP icon artwork',
+    notices.includes('icons_w98.h'),
+    'THIRD_PARTY_NOTICES.md does not mention the bundled Windows 98 icon artwork',
   );
 }
 

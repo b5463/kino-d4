@@ -40,7 +40,7 @@ path = [
   "docs/assets/brand/**",
   "docs/assets/product/**",
   # The wordmarks the apps ship are trimmed, single-ink derivations of the
-  # brand rasters. Same artwork, same reserved terms — the surrounding MIT
+  # brand rasters. Same artwork, same reserved terms â€” the surrounding MIT
   # grant on apps/** must not swallow them.
   "apps/studio/src/assets/**",
   "apps/twin/src/assets/**",
@@ -55,13 +55,13 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
 SPDX-License-Identifier = "LicenseRef-KINO-Reserved"
 
-# The P4 home-screen icons are the Windows XP set, baked at 48 px by
-# scripts/bake-xp-icons.mjs. firmware/** is declared MIT three blocks up, which
+# The D4 menu icons are Windows 98 shell icons, baked at native size by
+# scripts/bake-w98-icons.mjs. firmware/** is declared MIT three blocks up, which
 # would relabel Microsoft's artwork as ours to give away. It is not, and this
 # override says so. The annotation records the ownership; it grants nothing.
 # See LICENSES/LicenseRef-Microsoft-Proprietary.txt and THIRD_PARTY_NOTICES.md.
 [[annotations]]
-path = ["firmware/p4/main/icons_xp.h"]
+path = ["firmware/p4/main/icons_w98.h"]
 precedence = "override"
 SPDX-FileCopyrightText = "Microsoft Corporation"
 SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"

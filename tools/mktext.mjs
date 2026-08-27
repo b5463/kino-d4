@@ -18,7 +18,13 @@ const repo = 'c:/Users/AlexanderMoravcik/Desktop/kino d4';
 const out = process.argv[2] ?? 'firmware/p4/main/ui_labels.h';
 
 /* The six on-camera destinations. Order is grid order: top row then bottom. */
-const LABELS = ['SHOOT', 'FLASH', 'GALLERY', 'ROLL', 'SETTINGS', 'STATUS'];
+/* Screen titles, in the order of `title_t` in ui.c. The device has no font
+ * engine large enough for these, so each is a baked bitmap; adding a screen
+ * means adding a word here and re-running this. */
+const LABELS = [
+  'MODE', 'LOOK', 'GALLERY', 'ROLL', 'SETTINGS', 'POWER',
+  'PHOTO', 'DISPLAY', 'SOUND', 'CONNECTION', 'STORAGE', 'ABOUT',
+];
 
 // Tahoma, because that is what the design system says: tokens.css sets
 // --sans to Tahoma, Verdana, 'Segoe UI', Arial and describes the language as

@@ -90,10 +90,51 @@ bool config_bool(const char *path, bool fallback) {
   (void)path;
   return fallback;
 }
+/* Driven from main() so one run can photograph a setting in each of its
+ * states. The device reads these back through config_str after writing them;
+ * here main() sets them directly, which is the same thing from the drawing
+ * code's point of view. */
+static const char *g_mode = "wiggle";
+static const char *g_flash_mode = "auto";
+static bool g_mono = false;
+
 const char *config_str(const char *path, const char *fallback) {
-  if (strcmp(path, "mode") == 0) return "wiggle";
+  if (strcmp(path, "mode") == 0) return g_mode;
+  if (strcmp(path, "shoot.flashMode") == 0) return g_flash_mode;
+  if (strncmp(path, "quad.slots.", 11) == 0 && strstr(path, "colorMode"))
+    return g_mono ? "mono" : "recipe";
+  if (strcmp(path, "device") == 0) return "KD4-D121BC";
   return fallback;
 }
+
+/* Writes land nowhere: the preview is a renderer, and a screenshot run that
+ * mutated a config file would be a surprising side effect of looking. The
+ * cJSON stubs exist so ui.c's real write path compiles; main() drives the
+ * globals above directly, so none of this is reached. */
+esp_err_t config_merge(const cJSON *patch) { (void)patch; return ESP_OK; }
+esp_err_t config_save(void) { return ESP_OK; }
+
+/* meta.c is not linked here - it needs the real cJSON, which lives in
+ * ESP-IDF. Stubbed rather than left to the linker's dead-code elimination:
+ * it resolved only because nothing in main() reaches the write path, so the
+ * first screenshot that exercised a setting would have broken the build. */
+void *meta_patch_path(const char *dotted, void *leaf);
+void *meta_patch_path(const char *dotted, void *leaf) {
+  (void)dotted;
+  return leaf;
+}
+
+static struct cJSON { int unused; } g_json_stub;
+cJSON *cJSON_CreateObject(void) { return &g_json_stub; }
+cJSON *cJSON_CreateString(const char *s) { (void)s; return &g_json_stub; }
+cJSON *cJSON_CreateNumber(double v) { (void)v; return &g_json_stub; }
+cJSON *cJSON_CreateBool(bool v) { (void)v; return &g_json_stub; }
+void cJSON_AddItemToObject(cJSON *obj, const char *key, cJSON *item) {
+  (void)obj; (void)key; (void)item;
+}
+void cJSON_Delete(cJSON *item) { (void)item; }
+
+void esp_restart(void) { fprintf(stderr, "esp_restart() in a preview - ignored\n"); }
 
 /* No nodes on a workstation: the preview shows the honest "no link" state,
  * which is exactly what the bench shows until the harness is jumpered. */
@@ -181,6 +222,14 @@ void klog(const char *src, const char *fmt, ...) {
   (void)fmt;
 }
 
+/* No card on a workstation, so every decode fails and the photograph view
+ * renders its own "no image" state - which is a state worth photographing. */
+esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad) {
+  (void)path; (void)tile; (void)tile_w; (void)tile_h; (void)pad;
+  return ESP_FAIL;
+}
+void storage_capture_delete(const char *dir) { (void)dir; }
+
 void power_activity(void) {}
 void power_wake(void) {}
 void power_get(power_state_t *out) {
@@ -251,44 +300,56 @@ int main(int argc, char **argv) {
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   s_cv = g_canvas;
 
-  if (mesh3d_init(320, 300) != ESP_OK) {
-    fprintf(stderr, "mesh3d_init failed\n");
-    return 1;
-  }
   if (icons_build() != ESP_OK) {
     fprintf(stderr, "icons_build failed\n");
     return 1;
   }
 
-  s_screen = SCREEN_VIEWFINDER;
-  s_pressed = -1;
-  draw_screen();
-  shot("viewfinder");
+  /* One helper, so every state below is "set the state, draw, name it" and
+   * the list reads as the screen inventory it is meant to be. */
+#define SHOT(scr, name)      \
+  do {                       \
+    s_screen = (scr);        \
+    draw_screen();           \
+    shot(name);              \
+  } while (0)
 
-  s_screen = SCREEN_HOME;
+  fake_gallery();
+
+  /* ---- the menu, which is the home screen ---- */
   s_pressed = -1;
-  draw_home();
-  shot("home");
+  s_focus[SCR_MENU] = 0;
+  SHOT(SCR_MENU, "menu");
+
+  s_focus[SCR_MENU] = 4;
+  SHOT(SCR_MENU, "menu_settings_focus");
 
   s_pressed = 4;
-  draw_home();
-  shot("home_pressed");
+  SHOT(SCR_MENU, "menu_pressed");
   s_pressed = -1;
+  s_focus[SCR_MENU] = 0;
 
-  /* Every icon on one sheet, at the size it is actually drawn, so the set
-   * can be judged against itself rather than one at a time. */
+  /* Every icon on one sheet, at the size it is actually drawn, so the set can
+   * be judged against itself rather than one at a time. */
   fill(0, 0, UI_W, UI_H, C_CANVAS);
-  for (int i = 0; i < 6; i++) {
-    icons_blit(s_cv, UI_W, UI_H, i, 20 + i * (ICON_PX - 40), (UI_H - ICON_PX) / 2);
+  for (int i = 0; i < W98_COUNT; i++) {
+    icons_blit_centred(s_cv, UI_W, UI_H, i, 84 + i * 106, UI_H / 2);
   }
   shot("iconsheet");
 
-  /* The three states of the shutter banner, over the viewfinder it will
-   * most often cover. */
-  s_screen = SCREEN_VIEWFINDER;
+  /* ---- viewfinder, and its flash states ---- */
+  SHOT(SCR_VIEWFINDER, "viewfinder");
+  g_flash_mode = "on";
+  SHOT(SCR_VIEWFINDER, "viewfinder_flash_on");
+  g_flash_mode = "off";
+  SHOT(SCR_VIEWFINDER, "viewfinder_flash_off");
+  g_flash_mode = "auto";
+
+  /* ---- capture feedback, over the viewfinder it will most often cover ---- */
+  s_screen = SCR_VIEWFINDER;
   g_stage = CAPTURE_READING;
   draw_screen();
-  shot("shot_running");
+  shot("capture_running");
 
   g_stage = CAPTURE_DONE;
   memset(&g_report, 0, sizeof g_report);
@@ -299,36 +360,75 @@ int main(int argc, char **argv) {
   g_report.bytes = 1043 * 1024;
   g_report.total_ms = 3120;
   draw_screen();
-  shot("shot_done");
+  shot("capture_saved");
 
-  g_report.stored = 2;
+  g_report.stored = 3;
   draw_screen();
-  shot("shot_partial");
+  shot("capture_partial");
 
   g_report.ok = false;
-  snprintf(g_report.err_code, sizeof g_report.err_code, "SD_NOT_MOUNTED");
+  snprintf(g_report.err_code, sizeof g_report.err_code, "CARD FULL");
   draw_screen();
-  shot("shot_failed");
+  shot("capture_failed");
   g_stage = CAPTURE_IDLE;
 
-  fake_gallery();
-  s_screen = SCREEN_GALLERY;
-  draw_detail(SCREEN_GALLERY);
-  shot("gallery");
+  /* ---- the four destinations ---- */
+  SHOT(SCR_MODE, "mode_wiggle");
+  g_mode = "quad";
+  SHOT(SCR_MODE, "mode_quad");
+  g_mode = "wiggle";
 
-  /* And the empty state, which is what a new camera shows. */
+  SHOT(SCR_LOOK, "look_colour");
+  g_mono = true;
+  SHOT(SCR_LOOK, "look_bw");
+  g_mono = false;
+
+  s_focus[SCR_GALLERY] = 0;
+  SHOT(SCR_GALLERY, "gallery");
   g_fake_total = 0;
-  draw_detail(SCREEN_GALLERY);
-  shot("gallery_empty");
+  SHOT(SCR_GALLERY, "gallery_empty");
   g_fake_total = 14;
 
-  for (int s = SCREEN_MODE; s <= SCREEN_STATUS; s++) {
-    s_screen = (screen_t)s;
-    draw_detail((screen_t)s);
-    char name[32];
-    snprintf(name, sizeof name, "screen_%d", s);
-    shot(name);
+  SHOT(SCR_ROLL, "roll");
+
+  /* ---- settings and its children ---- */
+  SHOT(SCR_SETTINGS, "settings");
+  SHOT(SCR_DISPLAY, "settings_display");
+  SHOT(SCR_SOUND, "settings_sound");
+  SHOT(SCR_CONNECTION, "settings_connection");
+  SHOT(SCR_STORAGE, "settings_storage");
+  SHOT(SCR_ABOUT, "settings_about");
+
+  /* ---- power, and both confirmations ---- */
+  SHOT(SCR_POWER, "power");
+  s_screen = SCR_POWER;
+  s_dialog = DLG_RESTART;
+  s_dlg_focus = 0;
+  draw_screen();
+  shot("power_restart_confirm");
+  s_dialog = DLG_NONE;
+
+  /* ---- a single photograph, and the delete confirmation over it ---- */
+  {
+    const gallery_item_t *slots = gallery_slots();
+    photo_open(&slots[0]);
+    /* The preview has no card, so the decode fails and the view renders its
+     * own empty state - which is itself a state worth having a picture of. */
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
+    SHOT(SCR_PHOTO, "photo");
+    s_dialog = DLG_DELETE;
+    s_dlg_focus = 0;
+    draw_screen();
+    shot("photo_delete_confirm");
+    s_dialog = DLG_NONE;
+    photo_release();
   }
+
+  /* ---- a toast, which every screen can raise ---- */
+  s_screen = SCR_MENU;
+  toast("Mode: Quad");
+  draw_screen();
+  shot("toast");
 
   return 0;
 }

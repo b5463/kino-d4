@@ -147,6 +147,68 @@ void meta_capture_summary(const void *meta_in, void *out_in) {
 /* Config envelope: deep merge and migration                           */
 /* ------------------------------------------------------------------ */
 
+void *meta_patch_path(const char *dotted, void *leaf_in) {
+  cJSON *leaf = (cJSON *)leaf_in;
+  if (leaf == NULL) return NULL;
+  if (dotted == NULL || dotted[0] == '\0') {
+    cJSON_Delete(leaf);
+    return NULL;
+  }
+
+  /* Split by hand rather than with strtok_r: this file is compiled by the
+   * host tests as strict C99, where strtok_r is not declared, and reaching
+   * for a feature-test macro to get one function is worse than a pointer
+   * walk. It also leaves `dotted` const, which strtok would not. */
+  char buf[96];
+  snprintf(buf, sizeof buf, "%s", dotted);
+
+  size_t n = strlen(buf);
+  while (n > 0 && buf[n - 1] == '.') buf[--n] = '\0';
+  const char *p = buf;
+  while (*p == '.') p++;
+  if (*p == '\0') {
+    cJSON_Delete(leaf);
+    return NULL;
+  }
+
+  cJSON *root = cJSON_CreateObject();
+  if (root == NULL) {
+    cJSON_Delete(leaf);
+    return NULL;
+  }
+
+  cJSON *cur = root;
+  for (;;) {
+    const char *dot = strchr(p, '.');
+    const size_t len = dot ? (size_t)(dot - p) : strlen(p);
+    char key[48];
+    if (len == 0 || len >= sizeof key) {
+      cJSON_Delete(root);
+      cJSON_Delete(leaf);
+      return NULL;
+    }
+    memcpy(key, p, len);
+    key[len] = '\0';
+
+    if (dot == NULL) {
+      cJSON_AddItemToObject(cur, key, leaf);
+      return root;
+    }
+
+    cJSON *obj = cJSON_CreateObject();
+    if (obj == NULL) {
+      cJSON_Delete(root);
+      cJSON_Delete(leaf);
+      return NULL;
+    }
+    cJSON_AddItemToObject(cur, key, obj);
+    cur = obj;
+
+    p = dot + 1;
+    while (*p == '.') p++; /* collapse a run of separators */
+  }
+}
+
 void meta_merge_into(void *dst_in, const void *patch_in) {
   cJSON *dst = dst_in;
   const cJSON *patch = patch_in;
