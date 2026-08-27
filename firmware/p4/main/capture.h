@@ -155,4 +155,17 @@ void capture_on_done(capture_done_cb_t cb);
 /** RFC 4122 v4, from the hardware RNG. */
 void capture_uuid4(char *out, size_t cap);
 
+/**
+ * Parse a "WIDTHxHEIGHT" resolution string.
+ *
+ * Returns false and leaves the outputs untouched on anything it does not fully
+ * understand — trailing junk, a missing dimension, a zero, or a value larger
+ * than this firmware advertises. Callers use the failure to fall back to a
+ * conservative bound rather than to a zero, because a zero would size a
+ * space reservation to nothing.
+ *
+ * Pure, host-tested.
+ */
+bool capture_parse_resolution(const char *s, uint32_t *width, uint32_t *height);
+
 #endif

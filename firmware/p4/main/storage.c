@@ -1,5 +1,6 @@
 #include "storage.h"
 
+#include <dirent.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -12,6 +13,7 @@
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
 #include "klog.h"
+#include "pure.h"
 #include "nvs.h"
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #include "sdmmc_cmd.h"
@@ -308,6 +310,106 @@ esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_
   *out_crc = kdp_crc32_final(state);
   if (out_bytes != NULL) *out_bytes = total;
   return ESP_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pre-capture space reservation                                       */
+/* ------------------------------------------------------------------ */
+
+
+uint64_t storage_capture_reserve_bytes(int frames, uint32_t width, uint32_t height) {
+  return pure_capture_reserve_bytes(frames, width, height);
+}
+bool storage_capture_space_ok(int frames, uint32_t width, uint32_t height, uint64_t *need,
+                              uint64_t *avail) {
+  const uint64_t want = storage_capture_reserve_bytes(frames, width, height);
+  if (need != NULL) *need = want;
+
+  uint64_t total = 0, free_bytes = 0;
+  if (s_card == NULL || esp_vfs_fat_info(MOUNT, &total, &free_bytes) != ESP_OK) {
+    if (avail != NULL) *avail = 0;
+    return false;
+  }
+  if (avail != NULL) *avail = free_bytes;
+  return free_bytes >= want;
+}
+
+/* ------------------------------------------------------------------ */
+/* Interrupted-capture recovery                                        */
+/* ------------------------------------------------------------------ */
+
+bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirname(name); }
+/* Bounded so one bad card cannot stall a boot or escalate into a mass
+ * deletion. A card with more orphans than this has a bigger problem than the
+ * sweep can fix, and the remainder is reported rather than removed. */
+#define SWEEP_MAX_DIRS 512
+#define SWEEP_MAX_REMOVALS 32
+
+void storage_sweep_orphans(storage_sweep_t *out) {
+  storage_sweep_t s = {0};
+  if (out != NULL) *out = s;
+  if (s_card == NULL) return;
+
+  DIR *d = opendir(MOUNT "/KINO/CAPTURES");
+  if (d == NULL) return; /* no captures directory yet is not a fault */
+
+  int looked_at = 0;
+  struct dirent *e;
+  while ((e = readdir(d)) != NULL && looked_at < SWEEP_MAX_DIRS) {
+    if (e->d_name[0] == '.') continue;
+    if (!storage_is_capture_dirname(e->d_name)) continue;
+    looked_at++;
+    s.scanned++;
+
+    /* Copy into a bounded buffer before building paths. storage_is_capture_dirname
+     * has already proved this is exactly 36 characters, but d_name is declared
+     * as up to NAME_MAX and the compiler reasons from the declaration - so the
+     * bound has to be visible in the types, not just true. */
+    char name[37];
+    memcpy(name, e->d_name, 36);
+    name[36] = '\0';
+
+    char dir[64];
+    snprintf(dir, sizeof dir, "%s/KINO/CAPTURES/%s", MOUNT, name);
+
+    char meta[80];
+    snprintf(meta, sizeof meta, "%s/KINO/CAPTURES/%s/META.JSON", MOUNT, name);
+    struct stat st;
+    if (stat(meta, &st) == 0) {
+      s.complete++;
+      continue; /* a real capture; never touched */
+    }
+
+    if (s.removed >= SWEEP_MAX_REMOVALS) {
+      s.preserved++;
+      continue;
+    }
+
+    /* storage_capture_delete unlinks only the six names a capture can hold and
+     * then rmdir()s, which fails on a directory holding anything else. So this
+     * either takes an orphan that is entirely ours, or leaves it intact. */
+    storage_capture_delete(dir);
+    if (stat(dir, &st) == 0) {
+      s.preserved++;
+      ESP_LOGW(TAG, "orphan %s holds unexpected files; kept for inspection", name);
+      klog("SD", "orphan capture kept (unexpected contents): %.8s", name);
+    } else {
+      s.removed++;
+      ESP_LOGI(TAG, "removed interrupted capture %s", name);
+      klog("SD", "removed interrupted capture %.8s", name);
+    }
+  }
+  closedir(d);
+
+  if (s.scanned > 0) {
+    ESP_LOGI(TAG, "capture sweep: %d scanned, %d complete, %d removed, %d preserved", s.scanned,
+             s.complete, s.removed, s.preserved);
+  }
+  if (s.removed > 0 || s.preserved > 0) {
+    klog("SD", "capture sweep: %d removed, %d preserved of %d", s.removed, s.preserved,
+         s.scanned);
+  }
+  if (out != NULL) *out = s;
 }
 
 void storage_capture_delete(const char *dir) {

@@ -25,6 +25,7 @@
 #include "klog.h"
 #include "node_link/node_link.h"
 #include "power.h"
+#include "pure.h"
 #include "storage.h"
 #include "thumb.h"
 
@@ -104,17 +105,10 @@ void capture_uuid4(char *out, size_t cap) {
            b[13], b[14], b[15]);
 }
 
-int capture_quality_to_sensor(int percent) {
-  /* 60..95 maps onto 20..5. Both ends are deliberate: 5 is the best the
-   * driver accepts, and quality below 20 on this sensor produces visible
-   * blocking on skin, which is the one subject this camera exists for. */
-  if (percent <= 0) return 0; /* "not specified" — let the node keep its own */
-  if (percent < 1) percent = 1;
-  if (percent > 100) percent = 100;
-  const int q = 20 - ((percent - 60) * 15) / 35;
-  if (q < 5) return 5;
-  if (q > 40) return 40;
-  return q;
+int capture_quality_to_sensor(int percent) { return pure_quality_to_sensor(percent); }
+
+bool capture_parse_resolution(const char *s, uint32_t *width, uint32_t *height) {
+  return pure_parse_resolution(s, width, height);
 }
 
 static uint32_t ms_since(int64_t t0) { return (uint32_t)((esp_timer_get_time() - t0) / 1000); }
@@ -327,9 +321,12 @@ static void do_frame(worker_t *w) {
   free(w->jpeg);
   w->jpeg = NULL;
 
-  if (f->ok && cam == 0) {
-    hwv_mark_validated(HWV_CAM1_CAPTURE, "capture stored and verified from the card");
-    hwv_mark_validated(HWV_CAM1_SD_WRITE, "read-back CRC matched the node's");
+  if (f->ok) {
+    /* Per channel, not CAM1 only: the four-camera bring-up has to be able to
+     * say which cameras have actually written a verified frame to the card. */
+    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_JPEG_TRANSFER), "transfer CRC matched the node's");
+    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_SD_WRITE), "read-back CRC matched the node's");
+    if (cam == 0) hwv_mark_validated(HWV_CAM1_CAPTURE, "capture stored and verified from the card");
   }
 }
 
@@ -500,6 +497,36 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   if (ask == 0) {
     fail(&r, "CAMERA_OFFLINE", "No camera answered");
     goto finish;
+  }
+
+  /*
+   * Check the card has room BEFORE creating anything.
+   *
+   * The order is the point. Creating the folder first and discovering the
+   * shortfall at frame three leaves two frames and no metadata on the card -
+   * exactly the orphan the boot sweep then has to clean up. Refusing here
+   * costs a photograph that was never possible and leaves the card untouched.
+   *
+   * The reserve is a conservative bound, not an estimate (see
+   * storage_capture_reserve_bytes). On a 32 GB card it never fires; on a card
+   * with 2 MB left it always does, which is the whole intent.
+   */
+  {
+    uint32_t rw = 0, rh = 0;
+    if (!capture_parse_resolution(r.resolution, &rw, &rh)) {
+      /* Unparseable resolution reserves for the largest frame this firmware
+       * advertises rather than for nothing. */
+      rw = 0;
+      rh = 0;
+    }
+    uint64_t need = 0, avail = 0;
+    if (!storage_capture_space_ok(r.online, rw, rh, &need, &avail)) {
+      char msg[96];
+      snprintf(msg, sizeof msg, "Needs %lu KB, %lu KB free",
+               (unsigned long)(need / 1024), (unsigned long)(avail / 1024));
+      fail(&r, "SD_FULL", msg);
+      goto finish;
+    }
   }
 
   capture_uuid4(r.uuid, sizeof r.uuid);

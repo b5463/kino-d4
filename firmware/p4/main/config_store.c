@@ -146,6 +146,82 @@ static void merge_into(cJSON *dst, const cJSON *patch) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Migration                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Backfill anything the stored envelope is missing.
+ *
+ * A stored config is whatever the firmware that wrote it knew about. A newer
+ * firmware adds settings, and without this a loaded envelope would be missing
+ * them entirely — every reader would fall through to its own inline fallback,
+ * which works right up until two readers disagree about what the fallback is.
+ * Filling from default_config() gives one answer in one place.
+ *
+ * Direction matters: defaults are the destination and the stored values are
+ * the patch, so a setting the user has changed always wins over its default.
+ * The reverse would silently reset the camera on every upgrade.
+ */
+static void backfill_defaults(void) {
+  cJSON *defaults = default_config();
+  if (defaults == NULL) return;
+  merge_into(defaults, s_config); /* stored values override defaults */
+  cJSON_ReplaceItemInObject(s_root, "config", defaults);
+  s_config = defaults;
+}
+
+/**
+ * Bring a stored envelope up to CONFIG_SCHEMA_VERSION, one step at a time.
+ *
+ * There is nothing to migrate yet — v1 is the only schema that has ever
+ * existed, so v1 -> v1 is identity and this function currently only
+ * backfills. That is the point of adding it now rather than later: the moment
+ * a second version exists there will be units in the field holding the first,
+ * and the machinery to move them has to predate them.
+ *
+ * Sequential by design. A v1 -> v3 jump written as one function is a function
+ * nobody can test against a v2 unit; v1 -> v2 -> v3 is two steps that can each
+ * be tested alone.
+ *
+ * Returns true when the envelope is usable afterwards. An envelope from a
+ * FUTURE version is not migrated downward and not discarded: it is left alone
+ * and reported, because a newer firmware's settings are more likely to be
+ * recoverable by reflashing forward than by being overwritten with defaults.
+ */
+static bool migrate_envelope(void) {
+  const cJSON *ver = cJSON_GetObjectItem(s_root, "schemaVersion");
+  /* Absent means pre-versioning. Treat it as v1 rather than as corrupt: the
+   * only firmware that ever wrote an unversioned envelope wrote a v1 one. */
+  int from = cJSON_IsNumber(ver) ? (int)ver->valuedouble : 1;
+  if (from < 1) from = 1;
+
+  if (from > CONFIG_SCHEMA_VERSION) {
+    ESP_LOGW(TAG, "stored config is schema v%d, firmware understands v%d — "
+                  "keeping it as-is rather than downgrading",
+             from, CONFIG_SCHEMA_VERSION);
+    klog("P4", "config from newer firmware (v%d) kept unmigrated", from);
+    return true;
+  }
+
+  while (from < CONFIG_SCHEMA_VERSION) {
+    switch (from) {
+      /* case 1: migrate_v1_to_v2(); break;   <- the shape future steps take */
+      default:
+        ESP_LOGE(TAG, "no migration from schema v%d; using defaults", from);
+        return false;
+    }
+    from++;
+  }
+
+  backfill_defaults();
+
+  cJSON *v = cJSON_GetObjectItem(s_root, "schemaVersion");
+  if (cJSON_IsNumber(v)) cJSON_SetNumberValue(v, (double)CONFIG_SCHEMA_VERSION);
+  else cJSON_AddNumberToObject(s_root, "schemaVersion", CONFIG_SCHEMA_VERSION);
+  return true;
+}
+
 esp_err_t config_merge(const cJSON *patch) {
   if (patch == NULL || !cJSON_IsObject(patch)) return ESP_ERR_INVALID_ARG;
   lock();
@@ -231,7 +307,20 @@ esp_err_t config_init(void) {
           s_config = cfg;
           const cJSON *rev = cJSON_GetObjectItem(s_root, "configRevision");
           s_revision = cJSON_IsNumber(rev) ? (uint32_t)rev->valuedouble : 0;
-          ESP_LOGI(TAG, "loaded revision %lu from NVS", (unsigned long)s_revision);
+
+          /* Migrate before anything reads a setting. A partially-migrated
+           * envelope handed to the power task or the audio task is worse than
+           * defaults, so a failed migration discards and starts clean rather
+           * than serving half an envelope. */
+          if (migrate_envelope()) {
+            ESP_LOGI(TAG, "loaded revision %lu from NVS, schema v%d",
+                     (unsigned long)s_revision, CONFIG_SCHEMA_VERSION);
+          } else {
+            cJSON_Delete(s_root);
+            s_root = NULL;
+            s_config = NULL;
+            s_revision = 0;
+          }
         } else {
           /* Stored but unreadable. Defaults are better than refusing to boot,
            * and saying so is better than silently starting fresh. */

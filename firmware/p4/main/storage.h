@@ -97,4 +97,84 @@ esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_
  * soak test's keepAll=false cleanup — never called on user captures. */
 void storage_capture_delete(const char *dir);
 
+/* ------------------------------------------------------------------ */
+/* Pre-capture space reservation                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A conservative upper bound on what one capture will occupy.
+ *
+ * This is a BOUND, not an estimate, and the distinction is the whole point: an
+ * estimate that is usually right still lets a capture start that cannot
+ * finish, and a capture that dies at frame three has already written frames
+ * one and two. Refusing early costs a photograph nobody could have had;
+ * refusing late costs a corrupt folder and a confused user.
+ *
+ * JPEG size is scene-dependent and unbounded in principle, so the bound is
+ * struck at 0.5 bytes per pixel per frame. Observed VGA q12 frames on the
+ * bench were 7.7-30.4 KB, which is 0.025-0.1 bpp; UXGA at the best quality
+ * this firmware ever requests should stay far under 0.5. It is deliberately
+ * several times the expected size, because the reserve only ever matters on a
+ * nearly-full card and being generous there costs nothing on a 32 GB one.
+ *
+ * Pure arithmetic, no filesystem access - host-tested.
+ */
+uint64_t storage_capture_reserve_bytes(int frames, uint32_t width, uint32_t height);
+
+/**
+ * True when the card can be trusted to hold `frames` frames at w x h.
+ *
+ * `need` and `avail` are filled in whenever they are non-NULL, including on
+ * the false path, so the caller can say how short it was rather than only
+ * that it was short.
+ */
+bool storage_capture_space_ok(int frames, uint32_t width, uint32_t height, uint64_t *need,
+                              uint64_t *avail);
+
+/* ------------------------------------------------------------------ */
+/* Interrupted-capture recovery                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * True when `name` is unmistakably a KINO capture directory name.
+ *
+ * Capture folders are named by RFC 4122 v4 UUID: 36 characters, lowercase hex,
+ * dashes at 8/13/18/23. The sweep below deletes things, so the test for "is
+ * this ours" is a shape match on the whole string rather than anything looser.
+ * A folder someone dropped on the card by hand will not match, and that is the
+ * intent.
+ *
+ * Pure, host-tested.
+ */
+bool storage_is_capture_dirname(const char *name);
+
+/** What one boot sweep did. */
+typedef struct {
+  int scanned;   /* directories that looked like captures */
+  int complete;  /* had META.JSON - left alone */
+  int removed;   /* orphans containing only expected files, deleted */
+  int preserved; /* orphans holding something unexpected, kept for inspection */
+} storage_sweep_t;
+
+/**
+ * Remove capture folders that never got their META.JSON.
+ *
+ * META.JSON is written last, so a folder without one is an interrupted commit
+ * - a reboot, a brownout, or a pulled card between the last frame and the
+ * metadata. It can never become a valid capture, and nothing will ever explain
+ * the JPEGs inside it.
+ *
+ * Conservative on every axis that matters:
+ *   - only directories whose names pass storage_is_capture_dirname()
+ *   - only ever unlinks the six filenames a capture can contain
+ *   - the directory itself goes via rmdir(), which refuses a non-empty
+ *     directory, so an orphan holding anything unexpected is PRESERVED and
+ *     counted rather than forced
+ *   - bounded work per boot, so a pathological card cannot stall the boot or
+ *     turn one mistake into a mass deletion
+ *
+ * Every action is logged. Valid captures are never touched.
+ */
+void storage_sweep_orphans(storage_sweep_t *out);
+
 #endif
