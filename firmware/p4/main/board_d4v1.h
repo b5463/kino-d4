@@ -44,7 +44,19 @@
 #define BOARD_FLASH_EN 28
 #define BOARD_CAM_PWR_EN 31
 
-// --- TF/microSD, SDMMC 4-bit (field notes; MEASURE before lock) ---
+// --- TF/microSD, SDMMC slot 0, 4-bit ---
+//
+// These six are not a choice. They are the ESP32-P4's slot-0 IOMUX pads,
+// verbatim from soc/esp32p4/include/soc/sdmmc_pins.h, and the board wires the
+// card to them — which is why the map was right and why a real 29820 MB
+// 4-bit mount validated it on 2026-08-26.
+//
+// SLOT 0, explicitly. `SDMMC_HOST_DEFAULT()` selects slot 1, and slot 1 is the
+// slot ESP-Hosted needs for the C6 radio. Slot 0 is also simply correct for a
+// card on these pins: slot 1 has no IOMUX path at all ("SLOT1 doesn't go
+// through IOMUX"), so leaving the card there pushed its dedicated pads through
+// the GPIO matrix for nothing. See firmware/C6_HARDWARE_MAP.md.
+#define BOARD_SD_SLOT 0
 #define BOARD_SD_CLK 43
 #define BOARD_SD_CMD 44
 #define BOARD_SD_D0 39
@@ -53,6 +65,43 @@
 #define BOARD_SD_D3 42
 // Card power comes from the P4 on-chip LDO, channel 4 (3.3 V).
 #define BOARD_SD_LDO_CHANNEL 4
+
+// --- ESP32-C6 hosted radio, SDMMC slot 1, 4-bit (PROVISIONAL, issue #2) ---
+//
+// PROVISIONAL: identified from Guition documentation for this carrier and
+// corroborated pin-for-pin by Espressif's own ESP-Hosted defaults for a P4
+// host with a C6 coprocessor (esp_hosted 3.0.6,
+// host/mcu/eh_host_mcu_transport/Kconfig.host.sdio, where min == max for each
+// pin). Nothing here has been driven. firmware/C6_HARDWARE_MAP.md carries the
+// full evidence chain and what is still unknown.
+//
+// Slot 1, because slot 0 is the card's and slot 1 is the matrix-routable one.
+// One SDMMC controller serves both slots — separate pins are not separate
+// driver resources, and that distinction is the whole of the arbitration.
+#define BOARD_C6_SLOT 1
+#define BOARD_C6_D0 14
+#define BOARD_C6_D1 15
+#define BOARD_C6_D2 16
+#define BOARD_C6_D3 17
+#define BOARD_C6_CLK 18
+#define BOARD_C6_CMD 19
+
+// The C6's CHIP_PU, reached from the P4. An ENABLE, not a reset request:
+//
+//   LOW  -> C6 held off
+//   HIGH -> C6 released and running
+//
+// Named `EN` rather than `RESET` on purpose. On an active-low enable a macro
+// called C6_RESET_HIGH() asserts the opposite of what it reads like, and this
+// is the one signal where being wrong leaves a board that will not boot.
+//
+// POLARITY UNCONFIRMED on this carrier. ESP-Hosted defaults to active-low
+// ("pull LOW to assert reset, HIGH to run") and carries an explicit active-high
+// override for boards whose EN is buffered through an inverting transistor.
+// We do not know which this is. BOARD_C6_EN_ACTIVE_LOW is that decision, in
+// one place, so the bench can flip it.
+#define BOARD_C6_EN 54
+#define BOARD_C6_EN_ACTIVE_LOW 1
 
 // --- On-board 4.3in panel, ST7701S over MIPI-DSI (Guition JC4880P443C-I-W) ---
 // From the board field notes, the same source whose SD map above was

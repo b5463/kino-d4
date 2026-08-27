@@ -10,6 +10,9 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
 #include "klog.h"
@@ -36,9 +39,161 @@ static void set_error(const char *code) {
 
 uint32_t storage_sd_errors(void) { return s_sd_errors; }
 
+/* ------------------------------------------------------------------ */
+/* Card access coordination                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * One card, one SDMMC controller, one FAT mount with a fixed descriptor
+ * budget. Before this, capture.c held a file-static mutex nothing else could
+ * see and the upload worker coordinated through a boolean — which is a hint,
+ * not exclusion. A reader that opened a handle between the check and the
+ * capture could still take the last descriptor and make a frame fail to open.
+ *
+ * A plain mutex would be first-come-first-served, so a capture arriving during
+ * a 300 KB upload read would wait for it. That is the wrong way round on a
+ * camera, and it is why `storage_yield_requested()` exists: the low-priority
+ * holder polls it and lets go early. Cooperative rather than preemptive,
+ * because there is no safe way to take a file handle away from a task
+ * mid-read — but the holder checks between chunks, so the wait is bounded by
+ * one chunk instead of one whole file.
+ */
+static SemaphoreHandle_t s_card_lock;
+/* Tasks waiting, per priority. Read without the mutex by
+ * storage_yield_requested(), so a critical section rather than a lock: the
+ * yield check runs inside a read loop and must be cheap. */
+static portMUX_TYPE s_wait_mux = portMUX_INITIALIZER_UNLOCKED;
+static uint16_t s_waiting[3];
+static int s_holder = -1;
+/* Which task holds it. Needed because one helper (upload_store_save, via
+ * upload_queue_enqueue) is called both from inside a capture's own acquire and
+ * from the KDP task holding nothing — see storage_acquire_unless_held(). */
+static TaskHandle_t s_holder_task;
+static uint32_t s_yield_requests;
+static uint32_t s_acquire_timeouts;
+
+bool storage_acquire(storage_user_t user, int timeout_ms) {
+  if (s_card_lock == NULL) return false; /* before storage_init() */
+  if ((int)user < 0 || (int)user > STORAGE_USER_UPLOAD) return false;
+
+  portENTER_CRITICAL(&s_wait_mux);
+  s_waiting[user]++;
+  portEXIT_CRITICAL(&s_wait_mux);
+
+  const TickType_t wait =
+      timeout_ms == STORAGE_WAIT_FOREVER ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+  const bool got = xSemaphoreTake(s_card_lock, wait) == pdTRUE;
+
+  portENTER_CRITICAL(&s_wait_mux);
+  s_waiting[user]--;
+  if (got) {
+    s_holder = (int)user;
+    s_holder_task = xTaskGetCurrentTaskHandle();
+  }
+  portEXIT_CRITICAL(&s_wait_mux);
+
+  if (!got) s_acquire_timeouts++;
+  return got;
+}
+
+void storage_release(storage_user_t user) {
+  if (s_card_lock == NULL) return;
+  portENTER_CRITICAL(&s_wait_mux);
+  if (s_holder == (int)user) {
+    s_holder = -1;
+    s_holder_task = NULL;
+  }
+  portEXIT_CRITICAL(&s_wait_mux);
+  xSemaphoreGive(s_card_lock);
+}
+
+bool storage_held_by_this_task(void) {
+  if (s_card_lock == NULL) return false;
+  const TaskHandle_t me = xTaskGetCurrentTaskHandle();
+  portENTER_CRITICAL(&s_wait_mux);
+  const bool mine = s_holder_task != NULL && s_holder_task == me;
+  portEXIT_CRITICAL(&s_wait_mux);
+  return mine;
+}
+
+bool storage_acquire_unless_held(storage_user_t user, int timeout_ms, bool *took) {
+  if (took != NULL) *took = false;
+  if (storage_held_by_this_task()) {
+    /* Already ours, at whatever priority we took it. Do not acquire again: the
+     * mutex is not recursive and this task would block on itself forever. */
+    return true;
+  }
+  const bool got = storage_acquire(user, timeout_ms);
+  if (took != NULL) *took = got;
+  return got;
+}
+
+void storage_release_if_taken(storage_user_t user, bool took) {
+  if (took) storage_release(user);
+}
+
+bool storage_yield_requested(storage_user_t user) {
+  bool wanted = false;
+  portENTER_CRITICAL(&s_wait_mux);
+  /* Lower enum value is higher priority. Anyone above us waiting means let
+   * go — this is the only thing that stops a capture queueing behind a
+   * background file read. */
+  for (int u = 0; u < (int)user; u++) {
+    if (s_waiting[u] > 0) {
+      wanted = true;
+      break;
+    }
+  }
+  portEXIT_CRITICAL(&s_wait_mux);
+  if (wanted) s_yield_requests++;
+  return wanted;
+}
+
+bool storage_capture_active(void) {
+  portENTER_CRITICAL(&s_wait_mux);
+  const bool active = s_holder == (int)STORAGE_USER_CAPTURE ||
+                      s_waiting[STORAGE_USER_CAPTURE] > 0;
+  portEXIT_CRITICAL(&s_wait_mux);
+  return active;
+}
+
+void storage_lock_stats(uint32_t *yields, uint32_t *timeouts) {
+  if (yields != NULL) *yields = s_yield_requests;
+  if (timeouts != NULL) *timeouts = s_acquire_timeouts;
+}
+
 esp_err_t storage_init(void) {
+  /* Before the mount, so nothing can reach the card without a lock to take.
+   * Idempotent: storage_init() is called once, but a retry must not leak a
+   * second mutex and split the exclusion in half. */
+  if (s_card_lock == NULL) {
+    s_card_lock = xSemaphoreCreateMutex();
+    if (s_card_lock == NULL) {
+      ESP_LOGE(TAG, "no memory for the card lock");
+      return ESP_ERR_NO_MEM;
+    }
+  }
+
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
   host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+  /*
+   * Slot 0, explicitly, and this line is load-bearing twice over.
+   *
+   * `SDMMC_HOST_DEFAULT()` sets `.slot = SDMMC_HOST_SLOT_1`. Nothing assigned
+   * it here, so the card has been on slot 1 — which is the slot ESP-Hosted
+   * needs for the C6 radio, and the two share one SDMMC controller. Separate
+   * pins are not separate driver resources; that is the actual constraint and
+   * the reason the coexistence question was never a pin question.
+   *
+   * Slot 0 is also just correct for a card on these pins. GPIO39-44 are the
+   * P4's slot-0 IOMUX pads (soc/esp32p4/.../sdmmc_pins.h) and slot 1 has no
+   * IOMUX path at all, so the old configuration routed the card's own
+   * dedicated pads through the GPIO matrix to reach the wrong slot.
+   *
+   * The card mounted either way, which is exactly why this was worth finding
+   * before the radio arrived rather than after. See C6_HARDWARE_MAP.md.
+   */
+  host.slot = BOARD_SD_SLOT;
 
   sd_pwr_ctrl_ldo_config_t ldo_config = {.ldo_chan_id = BOARD_SD_LDO_CHANNEL};
   sd_pwr_ctrl_handle_t pwr_ctrl = NULL;
@@ -64,7 +219,7 @@ esp_err_t storage_init(void) {
 
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
       .format_if_mount_failed = false,
-      .max_files = 4,
+      .max_files = STORAGE_MAX_OPEN_FILES,
       .allocation_unit_size = 16 * 1024,
   };
 

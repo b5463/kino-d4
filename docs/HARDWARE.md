@@ -100,6 +100,33 @@ The 2×13 header, top to bottom. `PROVISIONAL` throughout: every KINO assignment
 
 `ESP_3V3`, `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, and `C6_CHIP_PU` belong to the C6 and must not be repurposed. The per-camera power-switch control pins are unassigned; §Camera power switching describes the channel hardware, and whether channels hang off `CAM_PWR_EN` alone or get individual pins is `NEEDS_HARDWARE_VALIDATION`. Button and mode-slide pins are unassigned. The same map lives machine-readable in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, `header2x13`).
 
+The four `C6_*` pins on that header are the C6's **console and programming** path, not its data transport. They are how a C6 gets flashed and recovered; the transport is a separate SDIO bus that does not appear on the header at all. See below.
+
+## The two SDMMC buses
+
+The P4 has one SDMMC controller with two slots (`SOC_SDMMC_NUM_SLOTS 2`). Both are in use, and they carry different things:
+
+```text
+SD CARD BUS        GPIO39  GPIO40  GPIO41  GPIO42  GPIO43  GPIO44
+                   D0      D1      D2      D3      CLK     CMD
+                   -> SDMMC slot 0, IOMUX-fixed pads, 4-bit
+
+C6 RADIO BUS       GPIO14  GPIO15  GPIO16  GPIO17  GPIO18  GPIO19   + GPIO54
+                   D0      D1      D2      D3      CLK     CMD        EN
+                   -> SDMMC slot 1, GPIO-matrix routed, 4-bit
+```
+
+No pin is shared, and the slot allocation matters as much as the pins: slot 0's pads are fixed in silicon to exactly the six the card uses (`soc/esp32p4/include/soc/sdmmc_pins.h`), and slot 1 has no IOMUX path at all, which is why the radio takes the matrix-routed slot. Espressif ship this exact arrangement as `esp_hosted`'s `mcu_hosted_sdio_sdmmc_combined` example.
+
+| Group | Status |
+|---|---|
+| SD card, GPIO39–44 | **VALIDATED** — 29820 MB mounted 4-bit on our unit, 2026-08-26. These are the chip's dedicated SD pads, so the map is confirmed by the silicon as well as by the mount |
+| C6 radio, GPIO14–19 + GPIO54 | `PROVISIONAL` — identified from Guition documentation for this carrier and corroborated pin-for-pin by Espressif's own ESP-Hosted defaults for a P4 host with a C6 coprocessor. **No pin has been driven.** Polarity of `GPIO54` (the C6's `CHIP_PU` enable) is unconfirmed |
+
+`GPIO54` is an **enable**, not a reset request: LOW holds the C6 off, HIGH releases it. Firmware names it `BOARD_C6_EN` for that reason.
+
+Transport: ESP-Hosted with `esp_wifi_remote` over 4-bit SDIO. Full evidence chain, what is still unknown, and the bring-up order: [`firmware/C6_HARDWARE_MAP.md`](../firmware/C6_HARDWARE_MAP.md) and [`firmware/C6_BRINGUP.md`](../firmware/C6_BRINGUP.md).
+
 ## XIAO camera interface
 
 The XIAO ESP32-S3 Sense DVP camera pins, `OFFICIAL_SPEC` from the Seeed wiki. The planned OV5640 autofocus module (MJY5OAF-F3M-V1-compatible, 24-pin DVP) must match this interface; its AFVDD rail is 2.8 V, not 3.3 V.
