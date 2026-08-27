@@ -3,9 +3,10 @@
  * the worker that drains them.
  *
  * roll_queue.h holds the decisions (what to do next, when to retry, what a
- * response means). This module holds the state: reading and writing
- * `UPLOAD.JSON`, reconciling against the card at boot, and running the worker.
- * The split exists so the decisions are host-testable without an SD card.
+ * response means). upload_store.h holds `UPLOAD.JSON` — the bytes on the card
+ * and whether they can be trusted. This module holds the rest: reconciling
+ * against the card at boot, and running the worker. Both splits exist so the
+ * parts that can be wrong are host-testable without an SD card.
  *
  * ## The card is the truth
  *
@@ -31,17 +32,23 @@
  *
  * ## Reading the card while a capture writes it
  *
- * This is a real hazard and it is worth naming. `capture.c` serialises its own
- * writes with a file-static semaphore, and the FAT volume is mounted with
- * `max_files = 4` — a capture already holds a frame handle plus a read-back
- * handle for its CRC check. An upload worker opening a fifth handle fails, and
- * one reading the card during a four-camera transfer competes for the same
- * SDMMC bus that the capture's timing budget depends on.
+ * This is a real hazard and it is worth naming. One card, one SDMMC
+ * controller, one descriptor budget (`STORAGE_MAX_OPEN_FILES`). A worker
+ * reading the card during a four-camera transfer competes for the bus the
+ * capture's timing budget depends on, and for the handles the capture needs.
  *
- * So the worker yields to photography rather than sharing with it: it holds
- * off entirely while a capture is in flight (`upload_queue_pause_for_capture`)
- * and takes the storage lock for each read. Photography always wins; an
- * upload that arrives a few seconds later costs nothing.
+ * The exclusion is storage.h's priority lock, not a flag in this module. The
+ * worker takes `STORAGE_USER_UPLOAD` with a short timeout for every card
+ * access and does nothing at all when refused; inside any loop that touches
+ * the card more than once it polls `storage_yield_requested()` and lets go
+ * early. An abandoned read costs nothing, because every step re-reads from the
+ * card anyway. When the C6 transport lands, the asset read loop has the same
+ * obligation.
+ *
+ * There is deliberately no pause boolean any more. A boolean the worker polled
+ * was a hint, not exclusion: a reader that opened a handle between the check
+ * and the capture still took a descriptor. `storage_capture_active()` answers
+ * the same question from the lock's own state, so the two cannot disagree.
  */
 #ifndef P4_UPLOAD_QUEUE_H
 #define P4_UPLOAD_QUEUE_H
@@ -122,17 +129,5 @@ void upload_queue_status(upload_queue_report_t *out);
  * fixed the credential or the association.
  */
 int upload_queue_retry_all(void);
-
-/**
- * Tell the worker a capture is starting or has finished.
- *
- * `capture.c` calls this around the capture path so the worker stops touching
- * the card while four cameras are transferring. See the header comment: the
- * FD budget and the SDMMC bus are both shared, and photography wins.
- */
-void upload_queue_pause_for_capture(bool capturing);
-
-/** True when the worker is holding off because a capture is in flight. */
-bool upload_queue_paused(void);
 
 #endif /* P4_UPLOAD_QUEUE_H */

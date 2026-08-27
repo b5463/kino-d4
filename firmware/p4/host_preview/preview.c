@@ -356,8 +356,6 @@ void upload_queue_status(upload_queue_report_t *out) {
   if (out != NULL) *out = g_queue;
 }
 int upload_queue_retry_all(void) { return 0; }
-void upload_queue_pause_for_capture(bool capturing) { (void)capturing; }
-bool upload_queue_paused(void) { return false; }
 
 #include "ui.c"
 

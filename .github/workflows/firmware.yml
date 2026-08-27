@@ -113,6 +113,15 @@ jobs:
         shell: bash
         run: make -C firmware/p4/host_tests test-meta
 
+      # The UPLOAD.JSON record: round-trip, a corrupted record, a future format
+      # version. Here rather than in the host-tests job for the same reason as
+      # above - it needs the container's cJSON, because a record read back
+      # through a different parser than the device uses proves nothing.
+      - name: P4 upload record tests
+        if: matrix.app == 'p4'
+        shell: bash
+        run: make -C firmware/p4/host_tests test-store
+
       # ---- firmware size guard (P4 only) ----
       #
       # Detects accidental major growth, nothing more. This is NOT a size

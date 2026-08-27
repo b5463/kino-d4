@@ -6,7 +6,8 @@
 #   make -C firmware/p4/host_tests test-meta   # JSON mappings, needs cJSON
 #   make -C firmware/p4/host_tests test-net    # C6 state model + credentials
 #   make -C firmware/p4/host_tests test-qr     # QR encoder vs. reference data
-#   make -C firmware/p4/host_tests test-all    # all five
+#   make -C firmware/p4/host_tests test-store  # UPLOAD.JSON record, needs cJSON
+#   make -C firmware/p4/host_tests test-all    # all six
 #
 # Several targets because they have different dependencies, not because the
 # later ones are optional:
@@ -25,6 +26,13 @@
 #              looks right on the panel and scans on nothing. The references it
 #              compares against come from the `qrcode` npm package, so the test
 #              is not the encoder agreeing with itself.
+#
+#   test-store upload_store.c is the UPLOAD.JSON record - the on-card half of
+#              the upload queue, and the only half that touches a parser. Same
+#              cJSON rule as test-meta below, for the same reason: a record
+#              read back through a different parser than the device uses would
+#              leave exactly the gap this test exists to close. A record
+#              believed when it should not be uploads a frame twice.
 #
 #   test-meta  meta.c needs cJSON. Rather than vendor a copy that could drift
 #              from the one the firmware links, this compiles against ESP-IDF's
@@ -55,12 +63,20 @@ QR_SRC = $(MAIN)/qr.c test_qr.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
 META_SRC = $(MAIN)/meta.c test_meta.c $(CJSON_DIR)/cJSON.c
+# upload_store.c reaches nothing from ESP-IDF except cJSON - no FreeRTOS, no
+# storage.h, no clock. That is the whole point of the split; see upload_store.h.
+STORE_SRC = $(MAIN)/upload_store.c $(MAIN)/roll_queue.c test_upload_store.c             $(CJSON_DIR)/cJSON.c
 
 test_pure: $(PURE_SRC) $(MAIN)/pure.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(PURE_SRC) -o $@
 
 test_meta: $(META_SRC) $(MAIN)/meta.h $(MAIN)/capture.h
 	$(CC) $(CFLAGS) -I$(MAIN) -I$(SHIM) -I$(CJSON_DIR) $(META_SRC) -o $@ -lm
+
+# fsync()/fileno() are POSIX, not C99, and -std=c99 hides them. The firmware
+# gets them from ESP-IDF's default gnu dialect; here they have to be asked for.
+test_upload_store: $(STORE_SRC) $(MAIN)/upload_store.h $(MAIN)/roll_queue.h
+	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -I$(MAIN) -I$(CJSON_DIR) $(STORE_SRC) -o $@ -lm
 
 test_roll_queue: $(QUEUE_SRC) $(MAIN)/roll_queue.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(QUEUE_SRC) -o $@
@@ -71,7 +87,7 @@ test_net_link: $(NET_SRC) $(MAIN)/net_link.h $(MAIN)/pure.h
 test_qr: $(QR_SRC) $(MAIN)/qr.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(QR_SRC) -o $@
 
-.PHONY: test test-queue test-net test-qr test-meta test-all clean
+.PHONY: test test-queue test-net test-qr test-meta test-store test-all clean
 test: test_pure
 	./test_pure
 
@@ -87,7 +103,10 @@ test-qr: test_qr
 test-meta: test_meta
 	./test_meta
 
-test-all: test test-queue test-net test-qr test-meta
+test-store: test_upload_store
+	./test_upload_store
+
+test-all: test test-queue test-net test-qr test-meta test-store
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_qr test_meta
+	rm -f test_pure test_roll_queue test_net_link test_qr test_meta test_upload_store

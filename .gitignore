@@ -58,6 +58,8 @@ firmware/p4/host_tests/test_pure
 firmware/p4/host_tests/test_pure.exe
 firmware/p4/host_tests/test_meta
 firmware/p4/host_tests/test_meta.exe
+firmware/p4/host_tests/test_upload_store
+firmware/p4/host_tests/test_upload_store.exe
 firmware/p4/host_tests/test_qr
 firmware/p4/host_tests/test_qr.exe
 firmware/p4/host_tests/test_roll_queue
