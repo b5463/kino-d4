@@ -156,21 +156,26 @@ static bool s_mcached;
  * that were going to be empty anyway. Putting them in strips above and below
  * instead costs 27 px of pane height each, which is 49% of the picture area,
  * to fill margins that stay dark either way. */
-/* SHOOT: four previews and the controls that belong beside them.
+/* SHOOT: four previews, and as little else as the screen can get away with.
  *
- * Four 4:3 panes in a 2x2 form a 4:3 block on a 5:3 panel, so a column is
- * left over whatever you do. It holds Back, the battery, the two controls
- * that change the photograph - mode and flash - and the shutter. Wide enough
- * for words, because "WIGGLE" in a 90 px column is not a control anyone can
- * read across a room. */
-#define SH_MARGIN 5
-#define SH_GAP 5
-#define SH_COL_W 162
-#define SH_COL_X (UI_W - SH_MARGIN - SH_COL_W)                     /* 633 */
-#define SH_PANE_H ((UI_H - 2 * SH_MARGIN - SH_GAP) / 2)            /* 232 */
-#define SH_PANE_W (SH_PANE_H * 4 / 3)                              /* 309 */
-#define SH_X0 SH_MARGIN
+ * Back top left, power top right, flash underneath. No shutter: the D4 has a
+ * physical one, and a camera whose shutter is a picture of a shutter is a
+ * camera you have to look at to use.
+ *
+ * Four 4:3 panes in a 2x2 make a 4:3 block on a 5:3 panel, so a column is
+ * left over whichever way it is arranged. Two thin strips top and bottom
+ * spend that on nothing and cost the panes 27 px of height each; putting the
+ * three markings in the side margins instead keeps the block as tall as the
+ * screen allows, which is what the previews are for. */
+#define SH_MARGIN 6
+#define SH_GAP 6
+#define SH_PANE_H ((UI_H - 2 * SH_MARGIN - SH_GAP) / 2)            /* 231 */
+#define SH_PANE_W (SH_PANE_H * 4 / 3)                              /* 308 */
+#define SH_BLOCK_W (2 * SH_PANE_W + SH_GAP)                        /* 622 */
+#define SH_X0 ((UI_W - SH_BLOCK_W) / 2)                            /* 89 */
 #define SH_Y0 SH_MARGIN
+#define SH_COL_R (SH_X0 + SH_BLOCK_W)                              /* 711 */
+#define SH_COL_W (UI_W - SH_COL_R)                                 /* 89 */
 
 /* The single-photograph view decodes at this size rather than scaling the
  * gallery thumbnail: thumb_load takes any target, so there is no reason to
@@ -1160,11 +1165,9 @@ static void draw_menu(void) {
 /* Viewfinder                                                          */
 /* ------------------------------------------------------------------ */
 
-/* Items on SHOOT, top to bottom in the control column. */
+/* Two things you can touch on this screen, and no more. */
 #define SH_IT_BACK 0
-#define SH_IT_MODE 1
-#define SH_IT_FLASH 2
-#define SH_IT_SHUTTER 3
+#define SH_IT_FLASH 1
 
 static void sh_pane_rect(int cam, int *x, int *y) {
   *x = SH_X0 + (cam % 2) * (SH_PANE_W + SH_GAP);
@@ -1179,37 +1182,13 @@ static void sh_blit(const uint16_t *tile, int px, int py) {
   }
 }
 
-/* A control in the SHOOT column: a raised face, a caption above the value.
- * The caption is what lets one 46 px button carry both what it controls and
- * what it is set to, which is the only way mode and flash both fit. */
-static void sh_button(int y, int h, const char *cap, const char *val, bool down, bool focused,
-                      bool warm) {
-  const int x = SH_COL_X, w = SH_COL_W;
-  button(x, y, w, h, down);
-  if (warm && !down) {
-    fill(x + 2, y + 2, w - 4, h - 4, C_YELLOW);
-  }
-  const int d = down ? 1 : 0;
-  if (cap) {
-    text(&UI_FONT_S, x + 8 + d, y + 6 + d, cap, warm && !down ? RGB(0x5a, 0x48, 0x08) : W_SHADOW);
-    text(&UI_FONT_M, x + 8 + d, y + h - 8 - UI_FONT_M.line_h + d, val, W_TEXT);
-  } else {
-    text_mid(&UI_FONT_M, x + w / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, val, W_TEXT);
-  }
-  if (focused) focus_rect(x + 4, y + 4, w - 8, h - 8);
-}
-
 /**
- * SHOOT: four previews, and the four things you do while looking at them.
+ * SHOOT: the picture, and the two markings that belong beside it.
  *
- * The previous split put the previews on one screen and the mode on another,
- * which meant deciding how the camera would combine four frames without
- * being able to see the four frames. Mode is a property of the photograph
- * you are about to take.
- *
- * The shutter is on screen because on this body it has to be: the physical
- * shutter pins are unassigned, so without this control the camera cannot
- * take a photograph at all.
+ * Everything that was competing with the photograph is gone - the frame
+ * rates, the card capacity, the link diagnostics, the mode readout and the
+ * on-screen shutter. What is left is the way out, where the power is coming
+ * from, and the one control anybody changes while shooting.
  */
 static void draw_shoot(void) {
   fill(0, 0, UI_W, UI_H, D_GROUND);
@@ -1240,59 +1219,44 @@ static void draw_shoot(void) {
     bevel(px - 2, py - 2, SH_PANE_W + 4, SH_PANE_H + 4, true);
   }
 
-  /* ---- the control column ---- */
-  const int x = SH_COL_X, w = SH_COL_W;
+  /* Back, top left. Small and subordinate: it is the way out, not a feature. */
+  const uint16_t bink = (s_pressed == SH_IT_BACK) ? C_YELLOW
+                        : (s_focus[SCR_SHOOT] == SH_IT_BACK ? C_INV : D_TEXT);
+  chevron(12, 22, bink);
+  text(&UI_FONT_S, 28, 13, "MENU", bink);
 
-  /* Back. A real button, because on this screen it is the only way out. */
-  const bool bdown = s_pressed == SH_IT_BACK;
-  button(x, SH_MARGIN, w, 34, bdown);
-  chevron(x + 12 + (bdown ? 1 : 0), SH_MARGIN + 17 + (bdown ? 1 : 0), W_TEXT);
-  text(&UI_FONT_S, x + 32 + (bdown ? 1 : 0), SH_MARGIN + 8 + (bdown ? 1 : 0), "MENU", W_TEXT);
-  if (s_focus[SCR_SHOOT] == SH_IT_BACK) focus_rect(x + 3, SH_MARGIN + 3, w - 6, 28);
-
-  /* Battery: the w98 cell at 1:1, in a sunken well like a camera's own
-   * status window. No percentage - this body has no sense divider, so a
-   * number would be invented. */
-  const int by = SH_MARGIN + 40;
-  fill(x, by, w, 40, W_FACE);
-  bevel(x, by, w, 40, true);
+  /* The power source, top right. No percentage: this body has no sense
+   * divider, so a number would be invented. */
   const int bi = W98_BATTERY_IDX;
   const int be = icons_edge(bi);
-  icons_blit(s_cv, UI_W, UI_H, bi, x + 8, by + (40 - be) / 2);
-  text(&UI_FONT_S, x + 8 + be + 8, by + (40 - UI_FONT_S.line_h) / 2,
-       usb_attached() ? "USB" : "BATTERY", W_TEXT);
+  icons_blit(s_cv, UI_W, UI_H, bi, SH_COL_R + (SH_COL_W - be) / 2, 12);
+  text_mid(&UI_FONT_S, SH_COL_R + SH_COL_W / 2, 12 + be + 4, usb_attached() ? "USB" : "BATT",
+           D_DIM);
 
-  /* Mode and flash, the two things that change the photograph. */
-  sh_button(by + 48, 50, "MODE", mode_is_quad() ? "QUAD" : "WIGGLE",
-            s_pressed == SH_IT_MODE, s_focus[SCR_SHOOT] == SH_IT_MODE, false);
-
+  /* Flash. One press advances it, and the order never reorders by recency:
+   * overshooting costs two more presses, which is faster than reading a
+   * menu. It burns yellow for a moment when it changes - long enough to
+   * catch from the corner of your eye while looking at the picture. */
   const int fi = flash_index();
   static const char *const FLASH_WORD[3] = {"AUTO", "ON", "OFF"};
-  const int fy = by + 104;
   const bool spark = flash_sparking();
-  sh_button(fy, 50, "FLASH", FLASH_WORD[fi], s_pressed == SH_IT_FLASH,
-            s_focus[SCR_SHOOT] == SH_IT_FLASH, fi == 1 || spark);
-  bolt(x + w - 26, fy + 10, 2,
-       spark ? RGB(0x8a, 0x6a, 0x00)
-             : (fi == 1 ? RGB(0x5a, 0x48, 0x08) : (fi == 2 ? W_SHADOW : W_TEXT)));
+  const int fw = SH_COL_W - 10, fh = 62;
+  const int fx = SH_COL_R + 5, fy = UI_H - SH_MARGIN - fh;
 
-  /* The shutter. Deliberately the largest object on the screen. */
-  const int sy = UI_H - SH_MARGIN - 96;
-  const bool sdown = s_pressed == SH_IT_SHUTTER;
-  button(x, sy, w, 96, sdown);
-  const int cx = x + w / 2 + (sdown ? 1 : 0), cy = sy + 40 + (sdown ? 1 : 0);
-  /* A shutter release: a red disc in a ring, which is what the button on a
-   * camera looks like and needs no word. The word is there anyway. */
-  for (int r = 26; r >= 0; r--) {
-    const uint16_t c = r > 22 ? W_SHADOW : (r > 19 ? W_HILITE : RGB(0xc8, 0x28, 0x28));
-    for (int dy = -r; dy <= r; dy++) {
-      const int half = (int)__builtin_sqrtf((float)(r * r - dy * dy));
-      fill(cx - half, cy + dy, 2 * half + 1, 1, c);
-    }
-    if (r == 23 || r == 20) continue;
+  uint16_t face, bolt_ink, word_ink;
+  if (fi == 1 || spark) {
+    face = C_YELLOW;
+    bolt_ink = word_ink = RGB(0x2a, 0x22, 0x05);
+  } else {
+    face = (s_pressed == SH_IT_FLASH) ? RGB(0x3a, 0x42, 0x4c) : RGB(0x24, 0x2a, 0x32);
+    bolt_ink = fi == 2 ? RGB(0x4a, 0x52, 0x5e) : C_YELLOW;
+    word_ink = fi == 2 ? D_DIM : D_TEXT;
   }
-  text_mid(&UI_FONT_M, cx, sy + 96 - 8 - UI_FONT_M.line_h + (sdown ? 1 : 0), "SHOOT", W_TEXT);
-  if (s_focus[SCR_SHOOT] == SH_IT_SHUTTER) focus_rect(x + 4, sy + 4, w - 8, 88);
+  fill(fx, fy, fw, fh, face);
+  outline(fx, fy, fw, fh, fi == 1 || spark ? RGB(0x9a, 0x76, 0x10) : D_EDGE);
+  bolt(fx + fw / 2 - 8, fy + 8, 2, bolt_ink);
+  text_mid(&UI_FONT_S, fx + fw / 2, fy + fh - 22, FLASH_WORD[fi], word_ink);
+  if (s_focus[SCR_SHOOT] == SH_IT_FLASH) focus_rect(fx - 3, fy - 3, fw + 6, fh + 6);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1542,14 +1506,14 @@ static void draw_photo(void) {
 static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
   const int total = qr->size + 2 * QR_QUIET;
   const int pitch = box / total;
-  if (pitch < 1) return 0; /* no room — the caller shows the code as text */
+  if (pitch < 1) return 0; /* no room Ã¢â‚¬â€ the caller shows the code as text */
 
   const int side = total * pitch;
   const int x0 = cx - side / 2;
 
   /* White ground for the symbol and its quiet zone together. W_WINDOW is
    * 0xffffff and W_TEXT is 0x000000, so the symbol gets full contrast rather
-   * than the 0xc0 face grey — a QR drawn on the face ground scans poorly. */
+   * than the 0xc0 face grey Ã¢â‚¬â€ a QR drawn on the face ground scans poorly. */
   fill(x0, top, side, side, W_WINDOW);
 
   const int m0 = x0 + QR_QUIET * pitch;
@@ -1570,10 +1534,10 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
  *
  * Four states, and the difference between them is what a user needs:
  *
- *   no roll   — nothing to show, and how to get one
- *   active    — the QR a guest scans, plus what is waiting
- *   offline   — the same, but honest that nothing is moving
- *   paused    — something is wrong and retrying will not fix it
+ *   no roll   Ã¢â‚¬â€ nothing to show, and how to get one
+ *   active    Ã¢â‚¬â€ the QR a guest scans, plus what is waiting
+ *   offline   Ã¢â‚¬â€ the same, but honest that nothing is moving
+ *   paused    Ã¢â‚¬â€ something is wrong and retrying will not fix it
  *
  * The old screen said "NOT CONNECTED / This body has no radio fitted", which
  * was wrong on both counts: the radio IS fitted, and a Roll assigned from
@@ -1594,7 +1558,7 @@ static void draw_roll(void) {
   const bool online = net_link_can_upload(&net);
 
   if (!active) {
-    /* No Roll. Say how to get one rather than only that there isn't one — and
+    /* No Roll. Say how to get one rather than only that there isn't one Ã¢â‚¬â€ and
      * do not offer a CREATE button, because ROLL_CREATE is an HTTP POST this
      * body cannot make. A control that cannot work is the same defect as a
      * shutter that logs instead of capturing. */
@@ -1623,7 +1587,7 @@ static void draw_roll(void) {
    * Encoded once per Roll and cached, not once per repaint. Two reasons, and
    * the second is the one that matters: the screen repaints every 90 ms while
    * anything is busy, and qr_encode() puts about 1.4 KB of bitfields and
-   * codeword buffers on the caller's stack — which here is the UI task's. Nine
+   * codeword buffers on the caller's stack Ã¢â‚¬â€ which here is the UI task's. Nine
    * mask evaluations of a 57x57 grid on every frame would also be pure waste
    * for a symbol that changes only when the Roll does.
    *
@@ -1794,8 +1758,8 @@ static void draw_sound(void) {
  * "Not fitted" was wrong twice over: the ESP32-C6 IS on the Guition module,
  * and what is missing is the P4's route to it, which is a wiring question
  * rather than an absent part. A user reading "Not fitted" goes looking for a
- * component to add. So the screen reports the two facts separately — the chip
- * is there, and the firmware cannot reach it — the same way the capabilities
+ * component to add. So the screen reports the two facts separately Ã¢â‚¬â€ the chip
+ * is there, and the firmware cannot reach it Ã¢â‚¬â€ the same way the capabilities
  * split `flashControl` from `flashHardware`.
  *
  * Every value comes from net_link, so this screen becomes correct on its own
@@ -1824,7 +1788,7 @@ static void draw_connection(void) {
 
   /* Wi-Fi: the SSID and signal when there is one, and otherwise a state a
    * user can act on. Association without an address says "Getting address"
-   * rather than "Connected" — claiming connected there is how a camera
+   * rather than "Connected" Ã¢â‚¬â€ claiming connected there is how a camera
    * insists it is online while nothing resolves. */
   char wifi[40];
   switch (net.state) {
@@ -2073,12 +2037,11 @@ static void draw_capture_banner(void) {
       break;
   }
 
-  /* Stops short of the shoot screen's control column, because the shutter
-   * lives there and covering the shutter with a report about the shutter is
-   * the one place this strip must not reach. Every other screen has nothing
-   * to protect down there, so it runs the full width. */
+  /* Stops short of the flash marking on the shoot screen. Everywhere else it
+   * runs the full width, because nothing else has anything down there worth
+   * protecting. */
   const int h = 40, y = UI_H - h;
-  const int w = s_screen == SCR_SHOOT ? SH_COL_X - 6 : UI_W;
+  const int w = s_screen == SCR_SHOOT ? SH_COL_R - 6 : UI_W;
   fill(0, y, w, h, RGB(0x12, 0x16, 0x1c));
   fill(0, y, w, 1, accent);
   fill(0, y + 1, 5, h - 1, accent);
@@ -2147,7 +2110,7 @@ static void go_back(void) {
 static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
-    case SCR_SHOOT: return 4;
+    case SCR_SHOOT: return 2;
     case SCR_LOOK: return 2;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
     case SCR_PHOTO: return 1; /* Send to Roll is not fitted, so not focusable */
@@ -2192,18 +2155,12 @@ static int hit_test(int x, int y) {
       }
       return -1;
 
-    case SCR_SHOOT: {
-      /* Every target spans the full column width, including the gaps between
-       * the painted controls: nothing else is over there to hit by mistake,
-       * and a thumb is wider than the gap. */
-      if (x < SH_COL_X) return -1;
-      const int by = SH_MARGIN + 40;
-      if (y < by) return SH_IT_BACK;
-      if (y >= by + 48 && y < by + 104) return SH_IT_MODE;
-      if (y >= by + 104 && y < by + 162) return SH_IT_FLASH;
-      if (y >= UI_H - SH_MARGIN - 104) return SH_IT_SHUTTER;
+    case SCR_SHOOT:
+      /* The whole of each empty margin is the target, not just the marking
+       * painted in it: 89 px is already narrower than a thumb. */
+      if (x < SH_X0 && y < 80) return SH_IT_BACK;
+      if (x >= SH_COL_R && y >= UI_H - 110) return SH_IT_FLASH;
       return -1;
-    }
 
     case SCR_PHOTO: {
       if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
@@ -2339,13 +2296,6 @@ static void activate(int item) {
 
     case SCR_SHOOT:
       if (item == SH_IT_BACK) { go_back(); return; }
-      if (item == SH_IT_SHUTTER) { fire_shutter(false); break; }
-      if (item == SH_IT_MODE) {
-        const bool quad = mode_is_quad();
-        cfg_set_str("mode", quad ? "wiggle" : "quad");
-        toast(quad ? "Mode: Wiggle" : "Mode: Quad");
-        break;
-      }
       if (item == SH_IT_FLASH) { flash_cycle(); break; }
       break;
 
@@ -2625,13 +2575,13 @@ esp_err_t ui_start(void) {
   ESP_LOGI(TAG, "UI_READY %dx%d landscape via PPA, tiles %dx%d", UI_W, UI_H, M_TILE_W, M_TILE_H);
   TaskHandle_t ui_h = NULL;
   /* 8192, not 6144. The ROLL screen calls qr_encode(), which puts roughly
-   * 1.4 KB of bitfields and codeword buffers on this stack — two 456-byte
-   * module grids plus 562 bytes of codewords — on top of whatever the draw
+   * 1.4 KB of bitfields and codeword buffers on this stack Ã¢â‚¬â€ two 456-byte
+   * module grids plus 562 bytes of codewords Ã¢â‚¬â€ on top of whatever the draw
    * path already uses. That figure is CALCULATED from the sizes in qr.c, not
    * measured on a board, so the margin is deliberate: an overflow here would
    * land on a repaint and read as a display or touch fault rather than as a
    * QR encoder. Confirm against GET_RUNTIME_STATS on the first bench run that
-   * opens the ROLL screen with a Roll assigned — that is what the per-task
+   * opens the ROLL screen with a Roll assigned Ã¢â‚¬â€ that is what the per-task
    * high-water figure is for. */
   xTaskCreate(ui_task, "ui", 8192, NULL, 4, &ui_h);
   taskmon_register("ui", ui_h);

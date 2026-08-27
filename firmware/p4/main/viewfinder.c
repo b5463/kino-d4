@@ -223,7 +223,24 @@ esp_err_t viewfinder_init(void) {
     char name[12];
     snprintf(name, sizeof name, "vf_cam%d", i + 1);
     TaskHandle_t vh = NULL;
-    xTaskCreate(camera_task, name, 4096, (void *)(intptr_t)i, 3, &vh);
+    /* 8 KB, not 4.
+     *
+     * At 4096 this overflowed and reset the board, reliably, within seconds
+     * of the shoot screen appearing - reported as "going to shoot restarts
+     * it". None of the big buffers are on this stack, which is what made it
+     * look safe: cam_link keeps its decode storage and its transmit buffer
+     * in the per-channel struct. What is on the stack is the call chain -
+     * camlink_capture_ch's 768-byte response frame, the 512-byte read
+     * buffer under it, the JPEG decoder's own frame - and then a log line on
+     * top, because ESP_LOG formats through vsnprintf and a timeout on an
+     * unwired camera is exactly when it fires. vf_cam3 went over while
+     * reporting that CAM3 was not answering.
+     *
+     * Sized with margin rather than trimmed to fit, and registered below so
+     * GET_RUNTIME_STATS reports the real high-water mark - the next change
+     * to this number should come from that measurement, not from another
+     * guess. */
+    xTaskCreate(camera_task, name, 8192, (void *)(intptr_t)i, 3, &vh);
     taskmon_register(name, vh);
   }
   return ESP_OK;
