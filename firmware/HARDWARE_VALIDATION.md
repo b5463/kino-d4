@@ -53,6 +53,51 @@ and it sat two minor versions behind the firmware.
 | UI on the panel | 8 screens render on hardware; boot dissolve measured at 26 frames in 452 ms (≈57 fps) via the PPA | 0.2.0/0.3.0 | **VALIDATED** |
 | Icon expansion | 575 ms for six icons, streamed; icons ready at t=2984 ms against a boot dissolve at t=4974 | commit `5768d3c` | **VALIDATED** |
 
+### First live P4 bench session, 2026-08-27
+
+The first session in which a host talked KDP to a physical P4 and got answers.
+Board: ESP32-P4 rev v1.3, 40 MHz crystal, MAC `80:F1:B2:D1:21:BC`, reporting
+serial `KD4-D121BC`. Transport: USB-Serial-JTAG on COM8. Firmware 0.3.0 at
+commits `b35592e` (instruments) and `42d04da` (clock). Images flashed app-only
+at `0x10000`, esptool hash-verified:
+
+| Image | Bytes | sha256 (first 32) |
+|---|---|---|
+| `kino-p4.bin` (instruments) | 790,176 | `b8063f6e4bb7402acd4df5c56ad22922` |
+| `kino-p4.bin` (clock) | 790,432 | `5ed37b7dfabd0e3d91bc6b8fcca6a920` |
+
+Both hashes reproduced across separate clean builds in separate container runs,
+which is what `CONFIG_APP_REPRODUCIBLE_BUILD` was turned on for.
+
+| Subsystem | Evidence | Status |
+|---|---|---|
+| KDP over USB-Serial-JTAG, host to P4 | `GET_DEVICE_INFO` answered in 2.9 ms, decoder clean (0 CRC failures, 0 resyncs). All nine §7 commands answered | **VALIDATED** |
+| SD card, sustained read/write with CRC | `STORAGE_BENCH`: 64 KiB and 1 MiB passes, `crc32Written == crc32Read` on both, `cleanupOk: true`, and free bytes returned byte-identical to the pre-bench baseline so `BENCH.TMP` was really removed. 0.589 MB/s write, 1.348 MB/s read, worst block 128.833 ms, p95 57.532 ms | **VALIDATED** |
+| SD card, short write/verify | `STORAGE_SELF_TEST` pass, 65,536 B in 148 ms | **VALIDATED** |
+| Task stack telemetry | `GET_RUNTIME_STATS` reports 17 tasks, `tasksUnmeasured: 0`. Was reporting a freed TCB as a measurement; see the two fixes below | **VALIDATED after fix** |
+| Wall clock, host sync | `HELLO` with `hostEpochMs` moved `clockSource` `unset` → `host`, and the correction's own log entry carried `t=1787856462636` — within 1 ms of the epoch sent. Before the fix that same entry read `t=526536` | **VALIDATED** |
+| Wall clock, survives a soft reset | After `REBOOT`: `clockSource` `persisted`, first log entry of the new boot already stamped 2026-08-27T18:48:32Z, wall time advanced 29.6 s rather than moving backwards | **VALIDATED** |
+| Monotonic clock independence | `us` strictly increasing across all 15 entries spanning a 56-year wall-clock jump (+22.7 s forward across the jump itself), and restarted at 80,089 µs on the next boot while `t` stayed epoch | **VALIDATED** |
+
+Two defects were found by these instruments and fixed in the same session:
+
+- `GET_RUNTIME_STATS` called `uxTaskGetStackHighWaterMark()` on the icon
+  builder's freed TCB, reading 0, then 1460, then 1380 across three calls —
+  drifting freed heap, and 0 reads as a task that nearly overflowed. Now 2292,
+  identical across four calls over 35 s, flagged `exited`. Commit `baecc8e`.
+- `cam_probe` had 356 free bytes of 4096 while merely timing out on four empty
+  channels. The branch taken when a node *answers* is the expensive one, so the
+  overflow would have landed on the node-greeting checkpoint and read as a link
+  fault. 8192 now, measuring 4452 free. Commit `b35592e`.
+
+Not proven in this session, and not to be inferred from the above:
+
+| Item | Why not |
+|---|---|
+| FAT file timestamps | The source-level linkage IS verified: ESP-IDF's `get_fattime()` (`components/fatfs/diskio/diskio.c`) reads `time(NULL)`, which is the clock `settimeofday()` now sets. But no file survives on the card for its mtime to be read back — `STORAGE_BENCH` and `STORAGE_SELF_TEST` both clean up. **The mtime check belongs to the first persistent real capture.** Note FAT records UTC (TZ unset) and clamps to 1980 on an unset clock |
+| Persisted-clock restore from NVS | The reboot test cannot isolate it. On a *soft* reset both NVS and the still-running RTC hold the time and the policy deliberately takes the later one, which is the RTC. Proving the NVS path needs a full power cycle, which clears the RTC and leaves NVS intact — a physical unplug. `pure_clock_restore_action()` covers it in host tests |
+| Anything on the camera link | No node has been connected. All CAM, SYNC, `FLASH_EN` and shutter rows remain `UNVALIDATED` |
+
 ### Not validated, and not inferable from code
 
 Every one of these has firmware written for it and no hardware evidence
