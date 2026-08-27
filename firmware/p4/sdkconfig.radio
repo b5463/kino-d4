@@ -1,0 +1,150 @@
+# KINO D4 radio variant — ESP-Hosted host for the on-board ESP32-C6.
+#
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.radio" build
+#
+# OFF BY DEFAULT, and this file is the whole of the opt-in. The reason is in
+# firmware/p4/main/net_hosted.h and firmware/C6_HARDWARE_MAP.md: enabling
+# ESP-Hosted drives GPIO14-19 and GPIO54 toward the C6, the Guition carrier's
+# routing is corroborated but not bench-proven, and GPIO54's polarity is
+# unconfirmed. A default build with this on would drive unproven pins on every
+# power-up of every unit.
+#
+# Nothing in this file has been run on hardware.
+
+# ── Role ────────────────────────────────────────────────────────────
+CONFIG_ESP_HOSTED=y
+CONFIG_ESP_HOSTED_HOST=y
+CONFIG_ESP_HOSTED_HOST_TYPE_MCU=y
+CONFIG_ESP_HOSTED_CP_TARGET_ESP32C6=y
+
+# No board preset. The presets pin GPIO ranges for Espressif's own carriers;
+# ours is a Guition module whose pins live in board_d4v1.h, and net_hosted.c
+# hands them over at runtime through esp_hosted_sdio_set_config().
+CONFIG_ESP_HOSTED_P4_DEV_BOARD_NONE=y
+
+# ── No constructor. This is a safety control, not a preference. ──────
+#
+# Espressif's own P4 host config leaves this at y, which installs an
+# __attribute__((constructor)) that calls esp_hosted_init() BEFORE app_main().
+# On this board that would drive six unproven SDIO pins and an unconfirmed
+# enable line before a single line of KINO firmware had run — including before
+# the display, the card and the capture pipeline exist, so a fault would look
+# like a dead camera rather than a dead radio.
+#
+# With it off, net_hosted_start() decides when a pin moves, after the UI is
+# already usable. It is also what allows the runtime pin configuration above:
+# with the constructor on, the shadow config is locked and every setter returns
+# ESP_TRANSPORT_ERR_ALREADY_SET.
+CONFIG_ESP_HOSTED_AUTO_CALL_INIT_BEFORE_APP_MAIN=n
+
+# ── Transport: SDIO, slot 1, 4-bit ──────────────────────────────────
+#
+# Slot 1 because slot 0 is the microSD card's and slot 1 is the matrix-routable
+# one. One SDMMC controller serves both slots; net_hosted.c has a
+# _Static_assert that the two never name the same slot, because a collision
+# presents as a card that stops mounting when the radio comes up.
+CONFIG_ESP_HOSTED_HOST_TRANSPORT_BUS_SDIO=y
+CONFIG_ESP_HOSTED_SDIO_SLOT_1=y
+CONFIG_ESP_HOSTED_HOST_SDIO_BUS_WIDTH_4=y
+
+# The pin numbers here are the same as board_d4v1.h's and are overwritten at
+# runtime from it. They are set anyway so a build that somehow reached
+# esp_hosted_init() without our configuration step would still use the right
+# pins rather than Espressif's generic P4 defaults.
+CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D0=14
+CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D1=15
+CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D2=16
+CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D3=17
+CONFIG_ESP_HOSTED_HOST_SDIO_PIN_CLK=18
+CONFIG_ESP_HOSTED_HOST_SDIO_PIN_CMD=19
+
+# GPIO54 is the C6's CHIP_PU. ACTIVE LOW is ESP-Hosted's own default and the
+# ESP-module convention (pull LOW to hold reset, HIGH to run), and it is
+# UNCONFIRMED on this carrier — the component carries an active-high override
+# because boards with a transistor-buffered EN invert it.
+#
+# If the bench proves it is inverted, BOTH this and BOARD_C6_EN_ACTIVE_LOW in
+# board_d4v1.h have to change. net_hosted.c has a _Static_assert that fails the
+# build if only one of them does.
+CONFIG_ESP_HOSTED_HOST_RESET_GPIO=54
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW=y
+
+# 40 MHz is the component default. Left at the default deliberately: the clock
+# is the first thing to lower if enumeration is marginal, and starting below
+# the reference figure would hide a signal-integrity problem rather than find
+# it.
+CONFIG_ESP_HOSTED_HOST_SDIO_CLK_KHZ=40000
+
+# ── Co-processor connection ─────────────────────────────────────────
+CONFIG_ESP_HOSTED_HOST_CP_RESET_STRATEGY_ALWAYS=y
+CONFIG_ESP_HOSTED_HOST_CP_RESET_SETTLE_MS=1500
+CONFIG_ESP_HOSTED_HOST_CP_BRINGUP_TIMEOUT_MS=5000
+CONFIG_ESP_HOSTED_HOST_CP_BRINGUP_ON_TIMEOUT_NONE=y
+
+# NOT the component's default (y).
+#
+# With it on, a runtime transport failure calls esp_restart(). On a camera that
+# means the P4 reboots itself — losing the frame in flight, the open capture
+# folder and the session — because Wi-Fi hiccuped. Networking is additive here:
+# a dead radio may cost uploads and must never cost a photograph.
+#
+# The ESP_HOSTED_EVENT_TRANSPORT_FAILURE event is emitted either way, so the
+# failure is still reported; net_hosted.c turns it into
+# NET_REASON_C6_LINK_LOST and the camera stays usable.
+CONFIG_ESP_HOSTED_HOST_TRANSPORT_RESTART_ON_FAILURE=n
+
+# Protects the coprocessor from burst overload. Left on: a four-frame upload is
+# exactly the burst it is for.
+CONFIG_ESP_HOSTED_HOST_TO_ESP_WIFI_DATA_THROTTLE=y
+
+# ── Task priority — an open Gate F risk, recorded not resolved ───────
+#
+# The component's default is 22, which is what Espressif's example ships. On
+# this camera 22 outranks the KDP server (9), the capture coordinator and its
+# workers (5), the UI (4) and the upload worker (2) — so the SDIO RX worker
+# preempts the capture pipeline.
+#
+# The knob's range is 1..25, so it CAN be lowered, and it is deliberately NOT
+# lowered here. Below 5 the RX worker can be starved by a four-camera transfer;
+# the coprocessor keeps pushing, its queue overflows, and the result is a
+# transport fault during a capture — which is the failure this priority exists
+# to prevent, traded for the one it causes. Which way that trade actually falls
+# is a measurement, and no board has been powered.
+#
+# So it ships at the reference value with the hazard written down, and Gate F
+# measures capture timing and camera-node CRC rates with the radio idle,
+# associated and uploading. See firmware/C6_BRINGUP.md step 8.
+CONFIG_ESP_HOSTED_HOST_DEFLT_TASK_PRIORITY=22
+CONFIG_ESP_HOSTED_HOST_DEFLT_TASK_STACK_BYTES=4096
+# 32 MB of PSRAM and a display that already lives in it. Hosted's own worker
+# stacks go there too rather than competing for internal RAM with the JPEG
+# codec and the camera-link buffers.
+CONFIG_ESP_HOSTED_DFLT_TASK_FROM_SPIRAM=y
+
+# ── Wi-Fi Remote ────────────────────────────────────────────────────
+CONFIG_ESP_WIFI_REMOTE_ENABLED=y
+CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+# wifi_creds.c owns which networks this camera remembers, in its own NVS
+# namespace, and a second store would be a second answer to that question.
+CONFIG_WIFI_RMT_NVS_ENABLED=n
+
+# ── TLS ─────────────────────────────────────────────────────────────
+# The certificate bundle, and no way to turn verification off. roll_http.c
+# attaches it to every request; the two problems that tempt people into
+# disabling verification are answered in roll_http.h.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+
+# The common subset, not the full one, and this is a size decision with a
+# measurement behind it: FULL (200 roots) built to 1434 KB against a 1500 KB
+# factory partition — 4% free, which is not a margin. CMN carries the roots
+# behind the overwhelming majority of public certificates, and this device
+# talks to one API host.
+#
+# If that host's chain is not in CMN the symptom is a clean TLS handshake
+# failure on every request, which is diagnosable in one bench cycle. Add the
+# specific root rather than switching to FULL: 66 KB of headroom on a
+# single-slot partition table is worth more than 160 unused certificates. See
+# firmware/FIRMWARE_ROADMAP.md M8 for the repartition that changes this
+# arithmetic.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y

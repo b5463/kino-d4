@@ -434,6 +434,74 @@ static void test_clock_monotonic_across_correction(void) {
         "the wall clock cannot be used for that duration");
 }
 
+/* ---- clock source priority (SNTP arrives) ----------------------------- */
+
+/*
+ * The rule the radio milestone adds: four sources, host > network > persisted
+ * > unset, and only a BETTER source may move the clock backwards. Written as
+ * a test rather than a comment because the failure it prevents is silent — an
+ * SNTP sync overwriting a time a bench operator set by hand, or a capture
+ * dated before the one taken before it.
+ */
+static void test_clock_adopt(void) {
+  const int64_t t2026 = 1787000000000LL; /* somewhere in 2026 */
+  const int64_t later = t2026 + 60000;
+  const int64_t earlier = t2026 - 60000;
+
+  /* Nonsense is refused whatever offers it. Seconds sent as milliseconds is
+   * the classic, and it lands in 1970. */
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_UNSET, 0, PURE_CLOCK_RANK_NETWORK,
+                                1787000000LL) == PURE_CLOCK_REJECT_IMPLAUSIBLE,
+        "seconds offered as milliseconds is not a time");
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_UNSET, 0, PURE_CLOCK_RANK_HOST, 0) ==
+            PURE_CLOCK_REJECT_IMPLAUSIBLE,
+        "zero is not a time even from a host");
+
+  /* The first sync on a camera that has never been told the time. */
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_UNSET, 500, PURE_CLOCK_RANK_NETWORK,
+                                t2026) == PURE_CLOCK_ADOPT,
+        "SNTP replaces uptime-since-1970");
+
+  /* SNTP outranks a persisted lower bound, in both directions: persisted can
+   * be ahead of the truth if a previous session was set wrongly. */
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_PERSISTED, t2026, PURE_CLOCK_RANK_NETWORK,
+                                later) == PURE_CLOCK_ADOPT,
+        "SNTP beats persisted going forward");
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_PERSISTED, t2026, PURE_CLOCK_RANK_NETWORK,
+                                earlier) == PURE_CLOCK_ADOPT,
+        "SNTP beats persisted going backward — that is a correction");
+
+  /* The one this rule exists for: a bench operator has just set the clock and
+   * the network must not quietly move it. */
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_HOST, t2026, PURE_CLOCK_RANK_NETWORK,
+                                later) == PURE_CLOCK_REJECT_RANK,
+        "SNTP does not overwrite a host-set clock");
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_NETWORK, t2026, PURE_CLOCK_RANK_PERSISTED,
+                                later) == PURE_CLOCK_REJECT_RANK,
+        "a persisted value does not overwrite a network time");
+
+  /* Same rank never goes backwards. A resync 60 s earlier is a wrong server
+   * or a wrong reading, and adopting it reorders captures. */
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_NETWORK, t2026, PURE_CLOCK_RANK_NETWORK,
+                                earlier) == PURE_CLOCK_REJECT_BACKWARDS,
+        "a second sync may not move the clock back");
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_NETWORK, t2026, PURE_CLOCK_RANK_NETWORK,
+                                later) == PURE_CLOCK_ADOPT,
+        "a second sync may move it forward");
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_NETWORK, t2026, PURE_CLOCK_RANK_NETWORK,
+                                t2026) == PURE_CLOCK_ADOPT,
+        "no change is not a backwards step");
+
+  /* A host correcting itself, which is what SET_TIME has always done and the
+   * only way to fix a clock that is wrong the other way. */
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_HOST, t2026, PURE_CLOCK_RANK_HOST,
+                                earlier) == PURE_CLOCK_ADOPT,
+        "a host may correct its own time downward");
+  CHECK(pure_clock_adopt_action(PURE_CLOCK_RANK_PERSISTED, t2026, PURE_CLOCK_RANK_PERSISTED,
+                                earlier) == PURE_CLOCK_REJECT_BACKWARDS,
+        "an automatic source at the same rank may not");
+}
+
 int main(void) {
   test_quality();
   test_resolution();
@@ -445,6 +513,7 @@ int main(void) {
   test_iso8601();
   test_clock_restore();
   test_clock_monotonic_across_correction();
+  test_clock_adopt();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

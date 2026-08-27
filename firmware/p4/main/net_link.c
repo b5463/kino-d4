@@ -1,10 +1,15 @@
 /*
- * The P4's view of the ESP32-C6 radio. See net_link.h for why this reports
- * NOT ROUTED on the D4 V1 carrier and where the transport lands.
+ * The P4's view of the ESP32-C6 radio. See net_link.h for the state
+ * vocabulary, why NOT ROUTED exists, and where the radio actually lives.
  *
  * Reaches only esp_err.h from ESP-IDF, so the host tests exercise this state
  * machine rather than a copy of it. Time is injected; there is no esp_timer
  * here. Same discipline as roll_queue.c.
+ *
+ * There is deliberately no esp_wifi call, no esp_hosted call and no #ifdef on
+ * the radio build anywhere below. net_hosted.c registers a driver and reports
+ * facts in; with nothing registered this module answers NOT ROUTED. That is
+ * the whole of the build-time gate as far as this file is concerned.
  */
 #include "net_link.h"
 
@@ -16,35 +21,48 @@
  * radio flips one line rather than every caller. */
 #define BOARD_C6_FITTED true
 
-/*
- * Whether this firmware knows how to reach it.
- *
- * FALSE until firmware/C6_HARDWARE_MAP.md's table has P4-side GPIO numbers in
- * it. The gate is not a preference — the repo records no transport pin for
- * this carrier, and driving a guessed SDIO bus into the C6's strap region can
- * leave the board unable to boot. See C6_BRINGUP.md step 5 for what turns
- * this on: a BOARD_C6_* pin block and a transport implementation.
- *
- * Everything above this line is already written against the full state set,
- * so flipping it is the last step of bring-up rather than the first.
- */
-#define BOARD_C6_ROUTED false
-
 /* All runtime state. Static because there is exactly one radio. */
 static struct {
+  const net_link_driver_t *driver;
   net_state_t state;
   net_reason_t reason;
   char ssid[NET_SSID_LEN];
+  char bssid[NET_BSSID_LEN];
   char ip[NET_IP_LEN];
   int rssi;
   int channel;
   int64_t entered_ms;
-  char c6_version[24];
+  bool c6_present;
+  bool sdio_link_up;
+  char c6_version[NET_VERSION_LEN];
+  char host_version[NET_VERSION_LEN];
+  char protocol_version[NET_VERSION_LEN];
   uint32_t transport_errors;
+  uint32_t c6_resets;
   uint32_t reconnects;
+  uint64_t rx_bytes;
+  uint64_t tx_bytes;
   char detail[NET_DETAIL_LEN];
+  net_scan_entry_t scan[NET_SCAN_MAX];
+  size_t scan_count;
   bool initialised;
 } s_net;
+
+/* True when a radio implementation has registered itself. This replaced a
+ * compile-time BOARD_C6_ROUTED constant: the gate is now which sources the
+ * build links, and this file must not know which build it is in. */
+static bool routed(void) { return s_net.driver != NULL; }
+
+static void copy_str(char *dst, size_t cap, const char *src) {
+  if (cap == 0) return;
+  if (src == NULL) {
+    dst[0] = '\0';
+    return;
+  }
+  size_t i = 0;
+  for (; i + 1 < cap && src[i] != '\0'; i++) dst[i] = src[i];
+  dst[i] = '\0';
+}
 
 /* Move to `state`, stamping the time so `since_ms` means something. Reason is
  * set separately: a reason outlives the state that caused it, so a later
@@ -59,10 +77,7 @@ static void enter(net_state_t state, int64_t now_ms) {
 static void fail(net_state_t state, net_reason_t reason, const char *detail, int64_t now_ms) {
   enter(state, now_ms);
   s_net.reason = reason;
-  if (detail != NULL) {
-    strncpy(s_net.detail, detail, sizeof s_net.detail - 1);
-    s_net.detail[sizeof s_net.detail - 1] = '\0';
-  }
+  if (detail != NULL) copy_str(s_net.detail, sizeof s_net.detail, detail);
 }
 
 void net_link_init(int64_t now_ms) {
@@ -78,31 +93,13 @@ void net_link_init(int64_t now_ms) {
     return;
   }
 
-  if (!BOARD_C6_ROUTED) {
-    /* The honest answer for D4 V1. Note what this does NOT do: it does not
-     * reset the C6, drive a strap, or open an SDIO host. There is no pin to
-     * drive, and guessing one is how a camera stops booting. */
-    fail(NET_C6_NOT_ROUTED, NET_REASON_TRANSPORT_UNKNOWN,
-         "no P4-C6 transport routing recorded; see firmware/C6_HARDWARE_MAP.md", now_ms);
-    return;
-  }
-
-  /* ---- Transport bring-up lands here. ----------------------------------
-   *
-   * The sequence, from C6_BRINGUP.md:
-   *
-   *   assert C6 reset  ->  NET_C6_BOOTING
-   *   release, open the transport, handshake
-   *   version exchange ->  NET_C6_LINK_READY   (fill s_net.c6_version)
-   *   esp_wifi_remote init ->  NET_RADIO_READY
-   *   then NET_WIFI_IDLE and the ordinary Wi-Fi path.
-   *
-   * Every failure below maps onto a reason that already exists above, so the
-   * UI and NETWORK_STATUS need no change when this fills in. Nothing here may
-   * block: net_link_init() runs after the UI is usable, and a radio that
-   * cannot come up must cost the camera nothing.
-   */
-  enter(NET_C6_BOOTING, now_ms);
+  /* No driver yet. In the default build none ever registers, and this is the
+   * final answer: no pin is driven, no SDIO host is opened, and the reason
+   * points at the evidence rather than shrugging. In the radio build
+   * net_hosted_start() registers in the same boot step, so the window in
+   * which this is reported is not observable from KDP. */
+  fail(NET_C6_NOT_ROUTED, NET_REASON_TRANSPORT_UNKNOWN,
+       "no P4-C6 transport in this build; see firmware/C6_HARDWARE_MAP.md", now_ms);
 }
 
 void net_link_status(net_status_t *out, int64_t now_ms) {
@@ -110,27 +107,34 @@ void net_link_status(net_status_t *out, int64_t now_ms) {
   memset(out, 0, sizeof *out);
 
   out->radio_fitted = BOARD_C6_FITTED;
-  out->radio_routed = BOARD_C6_ROUTED;
+  out->radio_routed = routed();
 
   if (!s_net.initialised) {
     /* Asked before net_link_init(). Say so rather than implying a probe has
      * happened and found nothing — during boot the UI can render this. */
-    out->state = BOARD_C6_ROUTED ? NET_C6_BOOTING : NET_C6_NOT_ROUTED;
-    out->reason = BOARD_C6_ROUTED ? NET_REASON_NONE : NET_REASON_TRANSPORT_UNKNOWN;
+    out->state = NET_C6_NOT_ROUTED;
+    out->reason = NET_REASON_TRANSPORT_UNKNOWN;
     return;
   }
 
   out->state = s_net.state;
   out->reason = s_net.reason;
+  out->c6_present = s_net.c6_present;
+  out->sdio_link_up = s_net.sdio_link_up;
   out->rssi = s_net.rssi;
   out->channel = s_net.channel;
   out->transport_errors = s_net.transport_errors;
+  out->c6_resets = s_net.c6_resets;
   out->reconnects = s_net.reconnects;
+  out->transport_rx_bytes = s_net.rx_bytes;
+  out->transport_tx_bytes = s_net.tx_bytes;
   out->since_ms = now_ms > s_net.entered_ms ? now_ms - s_net.entered_ms : 0;
 
   memcpy(out->ssid, s_net.ssid, sizeof out->ssid);
   memcpy(out->ip, s_net.ip, sizeof out->ip);
   memcpy(out->c6_version, s_net.c6_version, sizeof out->c6_version);
+  memcpy(out->host_version, s_net.host_version, sizeof out->host_version);
+  memcpy(out->protocol_version, s_net.protocol_version, sizeof out->protocol_version);
   memcpy(out->detail, s_net.detail, sizeof out->detail);
 }
 
@@ -140,14 +144,22 @@ bool net_link_can_upload(const net_status_t *status) {
   return status != NULL && status->state == NET_IP_READY;
 }
 
+/* ------------------------------------------------------------------ */
+/* Operations                                                         */
+/* ------------------------------------------------------------------ */
+
 bool net_link_scan_start(int64_t now_ms) {
-  if (!BOARD_C6_ROUTED) {
+  if (!routed()) {
     fail(NET_C6_NOT_ROUTED, NET_REASON_TRANSPORT_UNKNOWN,
-         "cannot scan: no P4-C6 transport routing recorded", now_ms);
+         "cannot scan: no P4-C6 transport in this build", now_ms);
     return false;
   }
   if (s_net.state < NET_RADIO_READY) {
     fail(s_net.state, NET_REASON_RADIO_FAILURE, "cannot scan: radio not ready", now_ms);
+    return false;
+  }
+  if (s_net.driver->scan_start == NULL || !s_net.driver->scan_start()) {
+    fail(s_net.state, NET_REASON_RADIO_FAILURE, "the radio refused the scan", now_ms);
     return false;
   }
   enter(NET_WIFI_SCANNING, now_ms);
@@ -155,22 +167,24 @@ bool net_link_scan_start(int64_t now_ms) {
 }
 
 size_t net_link_scan_results(net_scan_entry_t *out, size_t cap) {
-  /* Nothing has ever scanned on this board. Zero is the true answer, and
-   * callers are required to treat it as an answer rather than an error. */
-  (void)out;
-  (void)cap;
-  return 0;
+  /* Zero is a real answer from a radio in a shielded room as well as from a
+   * build with no radio, and callers are required to treat it as an answer
+   * rather than an error. */
+  if (out == NULL) return 0;
+  size_t n = s_net.scan_count < cap ? s_net.scan_count : cap;
+  for (size_t i = 0; i < n; i++) out[i] = s_net.scan[i];
+  return n;
 }
 
 bool net_link_connect(const char *ssid, int64_t now_ms) {
   if (ssid == NULL || ssid[0] == '\0') return false;
 
-  if (!BOARD_C6_ROUTED) {
+  if (!routed()) {
     /* Deliberately does not record the SSID as "connecting to". A status that
      * named a network it never attempted would read as a failed join rather
      * than an absent transport. */
     fail(NET_C6_NOT_ROUTED, NET_REASON_TRANSPORT_UNKNOWN,
-         "cannot join: no P4-C6 transport routing recorded", now_ms);
+         "cannot join: no P4-C6 transport in this build", now_ms);
     return false;
   }
   if (s_net.state < NET_RADIO_READY) {
@@ -178,26 +192,118 @@ bool net_link_connect(const char *ssid, int64_t now_ms) {
     return false;
   }
 
-  strncpy(s_net.ssid, ssid, sizeof s_net.ssid - 1);
-  s_net.ssid[sizeof s_net.ssid - 1] = '\0';
+  /* The passphrase is NOT fetched here. net_hosted.c reads it from wifi_creds
+   * at the moment of use, so it never appears in this file's frame nor in a
+   * caller's. */
+  if (s_net.driver->connect == NULL || !s_net.driver->connect(ssid)) {
+    fail(s_net.state, NET_REASON_RADIO_FAILURE, "the radio refused the join", now_ms);
+    return false;
+  }
+
+  copy_str(s_net.ssid, sizeof s_net.ssid, ssid);
   s_net.reason = NET_REASON_NONE;
   s_net.detail[0] = '\0';
   enter(NET_WIFI_CONNECTING, now_ms);
-
-  /* The passphrase is fetched from wifi_creds at the moment of use, inside
-   * the transport layer, so it never appears in this file's frame and never
-   * in a caller's. */
   return true;
 }
 
 bool net_link_disconnect(int64_t now_ms) {
-  if (!BOARD_C6_ROUTED) return false;
+  if (!routed()) return false;
+  if (s_net.driver->disconnect != NULL) (void)s_net.driver->disconnect();
   s_net.ip[0] = '\0';
   s_net.rssi = 0;
   s_net.channel = 0;
   enter(NET_WIFI_IDLE, now_ms);
   return true;
 }
+
+/* ------------------------------------------------------------------ */
+/* The radio seam                                                     */
+/* ------------------------------------------------------------------ */
+
+void net_link_set_driver(const net_link_driver_t *driver, int64_t now_ms) {
+  s_net.driver = driver;
+  if (driver == NULL) {
+    fail(NET_C6_NOT_ROUTED, NET_REASON_TRANSPORT_UNKNOWN, "the radio driver withdrew",
+         now_ms);
+    return;
+  }
+  /* From here the firmware HAS a transport, so NOT_ROUTED would be false.
+   * BOOTING is the honest state before a pin has settled. */
+  s_net.reason = NET_REASON_NONE;
+  s_net.detail[0] = '\0';
+  enter(NET_C6_BOOTING, now_ms);
+}
+
+void net_link_report_state(net_state_t state, net_reason_t reason, const char *detail,
+                           int64_t now_ms) {
+  enter(state, now_ms);
+  s_net.reason = reason;
+  if (detail != NULL) copy_str(s_net.detail, sizeof s_net.detail, detail);
+  if (state >= NET_C6_LINK_READY) s_net.c6_present = true;
+  if (state < NET_WIFI_ASSOCIATED) {
+    /* Nothing above association may be claimed once the radio has dropped
+     * back below it. A stale address in NETWORK_STATUS is how a queue ends up
+     * retrying against a network it is no longer on. */
+    s_net.ip[0] = '\0';
+    s_net.rssi = 0;
+    s_net.channel = 0;
+  }
+}
+
+void net_link_report_versions(const char *host_version, const char *c6_version,
+                              const char *protocol_version) {
+  if (host_version != NULL) {
+    copy_str(s_net.host_version, sizeof s_net.host_version, host_version);
+  }
+  if (c6_version != NULL) copy_str(s_net.c6_version, sizeof s_net.c6_version, c6_version);
+  if (protocol_version != NULL) {
+    copy_str(s_net.protocol_version, sizeof s_net.protocol_version, protocol_version);
+  }
+  /* Something answered a version exchange, so the chip is there whatever the
+   * compatibility decision turns out to be. */
+  if (c6_version != NULL && c6_version[0] != '\0') s_net.c6_present = true;
+}
+
+void net_link_report_scan(const net_scan_entry_t *entries, size_t count) {
+  if (entries == NULL) count = 0;
+  if (count > NET_SCAN_MAX) count = NET_SCAN_MAX;
+  for (size_t i = 0; i < count; i++) s_net.scan[i] = entries[i];
+  s_net.scan_count = count;
+}
+
+void net_link_report_association(const char *ssid, const char *bssid, int rssi, int channel) {
+  if (ssid != NULL && ssid[0] != '\0') copy_str(s_net.ssid, sizeof s_net.ssid, ssid);
+  if (bssid != NULL) copy_str(s_net.bssid, sizeof s_net.bssid, bssid);
+  s_net.rssi = rssi;
+  s_net.channel = channel;
+}
+
+void net_link_report_ip(const char *ip, int64_t now_ms) {
+  if (ip == NULL || ip[0] == '\0') {
+    s_net.ip[0] = '\0';
+    return;
+  }
+  copy_str(s_net.ip, sizeof s_net.ip, ip);
+  s_net.reason = NET_REASON_NONE;
+  s_net.detail[0] = '\0';
+  enter(NET_IP_READY, now_ms);
+}
+
+void net_link_report_transport(uint64_t rx_bytes, uint64_t tx_bytes, uint32_t errors,
+                               bool link_up) {
+  s_net.rx_bytes = rx_bytes;
+  s_net.tx_bytes = tx_bytes;
+  s_net.transport_errors = errors;
+  s_net.sdio_link_up = link_up;
+}
+
+void net_link_report_reset(void) {
+  s_net.c6_resets++;
+  s_net.sdio_link_up = false;
+}
+
+void net_link_report_reconnect(void) { s_net.reconnects++; }
 
 /* ------------------------------------------------------------------ */
 /* Naming                                                             */
@@ -235,6 +341,7 @@ const char *net_reason_name(net_reason_t reason) {
     case NET_REASON_DHCP_TIMEOUT: return "DHCP_TIMEOUT";
     case NET_REASON_DNS_FAILURE: return "DNS_FAILURE";
     case NET_REASON_NO_CREDENTIALS: return "NO_CREDENTIALS";
+    case NET_REASON_CLOCK_UNTRUSTED: return "CLOCK_UNTRUSTED";
   }
   return "UNKNOWN";
 }

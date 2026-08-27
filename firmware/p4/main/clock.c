@@ -36,6 +36,18 @@ static const char *NVS_NS = "clock";
 static int s_offset_min;
 static clock_source_t s_source = CLOCK_UNSET;
 
+/* The comparison key pure.c uses, which is deliberately not this enum: pure.c
+ * has no ESP-IDF and no clock.h, and the numbers there are a policy ordering
+ * rather than a stored value. */
+static int rank_of(clock_source_t source) {
+  switch (source) {
+    case CLOCK_HOST: return PURE_CLOCK_RANK_HOST;
+    case CLOCK_NETWORK: return PURE_CLOCK_RANK_NETWORK;
+    case CLOCK_PERSISTED: return PURE_CLOCK_RANK_PERSISTED;
+    default: return PURE_CLOCK_RANK_UNSET;
+  }
+}
+
 static int64_t wall_now_ms(void) {
   struct timeval tv;
   gettimeofday(&tv, NULL);
@@ -132,6 +144,46 @@ void clock_set(int64_t epoch_ms, int utc_offset_min) {
   }
 }
 
+bool clock_set_network(int64_t epoch_ms) {
+  const int64_t before = clock_now_ms();
+  const pure_clock_adopt_t action =
+      pure_clock_adopt_action(rank_of(s_source), before, PURE_CLOCK_RANK_NETWORK, epoch_ms);
+  if (action != PURE_CLOCK_ADOPT) {
+    /* Logged at info, not warning: refusing an SNTP answer because a bench
+     * operator set the clock five minutes ago is the system working. */
+    ESP_LOGI(TAG, "keeping %s time; SNTP offered %lld ms (%d)", clock_source_str(),
+             (long long)epoch_ms, (int)action);
+    return false;
+  }
+
+  wall_set_ms(epoch_ms);
+  const bool was_unset = s_source == CLOCK_UNSET;
+  s_source = CLOCK_NETWORK;
+
+  /* Same reason as clock_set(): a trustworthy time survives the reboot rather
+   * than waiting for a capture to persist it, and that is what makes the
+   * never-move-backwards rule in clock_init() mean anything. */
+  clock_persist();
+
+  char iso[40];
+  clock_iso8601(iso, sizeof iso);
+  if (was_unset) {
+    klog("P4", "clock set to %s by SNTP", iso);
+  } else {
+    klog("P4", "clock set to %s by SNTP (moved %+lld s)", iso,
+         (long long)((epoch_ms - before) / 1000));
+  }
+  return true;
+}
+
+bool clock_trustworthy_for_tls(void) {
+  /* PERSISTED is deliberately not enough. It is a lower bound that drifts by
+   * however long the camera was switched off, so a certificate checked
+   * against it can fail for a reason that has nothing to do with the
+   * certificate. */
+  return s_source == CLOCK_HOST || s_source == CLOCK_NETWORK;
+}
+
 int64_t clock_now_ms(void) { return wall_now_ms(); }
 
 clock_source_t clock_source(void) { return s_source; }
@@ -139,6 +191,7 @@ clock_source_t clock_source(void) { return s_source; }
 const char *clock_source_str(void) {
   switch (s_source) {
     case CLOCK_HOST: return "host";
+    case CLOCK_NETWORK: return "network";
     case CLOCK_PERSISTED: return "persisted";
     default: return "unset";
   }

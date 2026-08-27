@@ -48,3 +48,22 @@ CONFIG_FATFS_LFN_HEAP=y
 # Nothing in this firmware reads esp_app_get_description(), so the timestamp
 # is not being given up to anything.
 CONFIG_APP_REPRODUCIBLE_BUILD=y
+
+# ── The radio is OFF, explicitly ────────────────────────────────────
+#
+# espressif/esp_hosted and espressif/esp_wifi_remote are managed dependencies
+# (main/idf_component.yml) so the radio variant needs no manifest edit and CI
+# cannot let it rot. Both default their own Kconfig to ENABLED, so the default
+# camera firmware has to say no out loud.
+#
+# This is a safety control. With ESP_HOSTED on, the component installs a
+# constructor that calls esp_hosted_init() before app_main() and drives
+# GPIO14-19 and GPIO54 toward the C6 on every boot. The Guition carrier's
+# routing is corroborated pin-for-pin against Espressif's own P4 host defaults
+# but has never been measured, and GPIO54's polarity is unconfirmed. See
+# firmware/C6_HARDWARE_MAP.md and firmware/p4/main/net_hosted.h.
+#
+# The opt-in is firmware/p4/sdkconfig.radio; C6_BRINGUP.md step 4 is the
+# command.
+CONFIG_ESP_HOSTED=n
+CONFIG_ESP_WIFI_REMOTE_ENABLED=n

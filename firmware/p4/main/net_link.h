@@ -2,25 +2,25 @@
  * The P4's view of the ESP32-C6 radio: link state, radio state, and why the
  * last thing that failed, failed.
  *
- * ## Why this module reports NOT ROUTED
+ * ## Why this module can report NOT ROUTED
  *
- * The C6 is fitted to the Guition JC4880P443C-I-W carrier. The P4 has no
- * route to it that this repository can name: the only C6-facing header pins
- * on record are `C6_U0RXD`, `C6_U0TXD`, `C6_IO9` and `C6_CHIP_PU`, and none of
- * them has a P4-side GPIO number anywhere in the tree. No SDIO or SPI
- * transport pin is recorded at all. `firmware/C6_HARDWARE_MAP.md` holds the
- * evidence and the four places the repo already says a schematic is required.
+ * The C6 is fitted to the Guition JC4880P443C-I-W carrier and its routing is
+ * now recorded — SDMMC slot 1 on GPIO14-19 with EN on GPIO54, evidence chain
+ * in `firmware/C6_HARDWARE_MAP.md`, pins in `board_d4v1.h`. Nothing has been
+ * driven: the routing is corroborated, not bench-proven, and GPIO54's
+ * polarity is unconfirmed.
  *
- * So this firmware does not drive a transport. A guessed SDIO bus in that pin
- * region contends with lines `capture.c` already drives and with the C6's own
- * boot straps; the failure mode is not "no Wi-Fi", it is a board that stops
- * booting predictably. That is a worse outcome than no radio.
+ * So the radio is a BUILD-TIME OPT-IN and the default build has no transport
+ * at all. Enabling ESP-Hosted drives GPIO14-19 and GPIO54 on every boot, and
+ * shipping that on unproven routing would drive unproven pins on every
+ * power-up of every unit. `firmware/p4/sdkconfig.radio` is the opt-in;
+ * `C6_BRINGUP.md` step 4 is the command.
  *
- * What this module therefore is: the seam, the state vocabulary, and the
- * honest answer. `net_link_status()` reports `NET_C6_NOT_ROUTED` with reason
- * `NET_REASON_TRANSPORT_UNKNOWN`, every caller above it is already written
- * against the full state set, and closing the gate is adding a pin block plus
- * a transport — not a redesign. `C6_BRINGUP.md` is the procedure.
+ * This module holds the state vocabulary either way. It does not know which
+ * build it is in: `net_link_set_driver()` is what makes the difference, and
+ * with no driver registered `net_link_status()` reports `NET_C6_NOT_ROUTED`
+ * with reason `NET_REASON_TRANSPORT_UNKNOWN`. Every caller above it is
+ * already written against the full state set.
  *
  * ## Why a state enum and not a boolean
  *
@@ -36,6 +36,15 @@
  * free of `esp_timer` — it reaches only `esp_err.h` — so the host tests
  * exercise the real state machine rather than a copy of it. Same discipline
  * as roll_queue.c, for the same reason.
+ *
+ * ## Where the radio actually lives
+ *
+ * `net_hosted.c` owns esp_hosted and esp_wifi_remote and exists only in the
+ * radio build. It pushes facts DOWN here through `net_link_report_*()` and
+ * receives commands UP through the `net_link_driver_t` it registers. That is
+ * why this file still reaches nothing but `esp_err.h`: an `esp_wifi_scan_start()`
+ * in here would take the whole state machine out of the host tests, and the
+ * state machine is the part that has to be right before a board exists.
  */
 #ifndef P4_NET_LINK_H
 #define P4_NET_LINK_H
@@ -52,6 +61,14 @@
 #define NET_BSSID_LEN 18
 /** Longest detail string kept for diagnostics. Never holds a secret. */
 #define NET_DETAIL_LEN 96
+/** Scan results held at once. A party flat has a dozen APs; more than this
+ * and the list on a 480x800 panel is unreadable anyway. Bounded because the
+ * radio decides how many it found and this side has to survive the answer. */
+#define NET_SCAN_MAX 20
+/** Longest version string kept for the host, the coprocessor and the RPC
+ * protocol. `esp_hosted_app_desc_t.version` is 32 bytes; a semver plus a
+ * terminator fits in far less and the field is a diagnostic, not a parse. */
+#define NET_VERSION_LEN 24
 
 /**
  * Where the radio subsystem is. Ordered from "no hardware conversation at
@@ -100,6 +117,9 @@ typedef enum {
   NET_REASON_DHCP_TIMEOUT,
   NET_REASON_DNS_FAILURE,
   NET_REASON_NO_CREDENTIALS, /* nothing saved to try */
+  /* Appended after NO_CREDENTIALS on purpose: the host test walks the range
+   * up to NO_CREDENTIALS, so appending leaves that suite untouched. */
+  NET_REASON_CLOCK_UNTRUSTED, /* no trustworthy wall time, so no TLS */
 } net_reason_t;
 
 /** Security of a scanned or saved network. Matches `WifiSecurity` in
@@ -130,21 +150,40 @@ typedef struct {
    * reachable" instead of "absent", the way `flashControl` is reported
    * separately from `flashHardware`. */
   bool radio_fitted;
-  /** True when this firmware has a transport it can attempt. False on D4 V1.
+  /** True when this firmware has a transport it can attempt: a radio driver
+   * has registered itself. False in the default build, which links none.
    * The pair (fitted, routed) is the distinction a boolean would lose. */
   bool radio_routed;
+  /** True once the coprocessor has answered on the transport. Distinct from
+   * `radio_routed`: routed says we can try, present says something replied. */
+  bool c6_present;
+  /** True while the SDIO link is up. Goes false on a transport failure before
+   * the state machine has finished deciding what that means. */
+  bool sdio_link_up;
   char ssid[NET_SSID_LEN];
   char ip[NET_IP_LEN];
   int rssi;    /* dBm; 0 when not associated */
   int channel; /* 0 when not associated */
   /** Milliseconds the current state has held, or 0 if never entered. */
   int64_t since_ms;
-  /** Slave image version, empty until a link handshake has happened. */
-  char c6_version[24];
+  /** Coprocessor image version, empty until a version exchange has happened. */
+  char c6_version[NET_VERSION_LEN];
+  /** ESP-Hosted version this host links. A build-time fact, reported beside
+   * the coprocessor's so a mismatch is readable without a second command. */
+  char host_version[NET_VERSION_LEN];
+  /** RPC/protocol version the two agreed on, empty until they have. */
+  char protocol_version[NET_VERSION_LEN];
   /** Transport framing errors since boot. 0 while NOT_ROUTED. */
   uint32_t transport_errors;
+  /** Times the C6 has been held in reset and released since boot. */
+  uint32_t c6_resets;
   /** Times the link has been re-established since boot. */
   uint32_t reconnects;
+  /** Bytes over the transport since boot, both directions. Gate F wants a
+   * number for "the radio was actually doing something" during a capture,
+   * and "associated" is not that number. */
+  uint64_t transport_rx_bytes;
+  uint64_t transport_tx_bytes;
   /** Redacted. Never holds a passphrase or a token — see rq_redact(). */
   char detail[NET_DETAIL_LEN];
 } net_status_t;
@@ -243,5 +282,82 @@ const char *net_security_name(net_security_t security);
 /** Parse a wire security name. Unknown text is WPA2, the safe assumption:
  * treating an unknown network as open would attempt an unencrypted join. */
 net_security_t net_security_parse(const char *name);
+
+
+/* ------------------------------------------------------------------ */
+/* The radio seam                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a radio implementation offers this module.
+ *
+ * Registered by `net_hosted.c`, which exists only in the radio build. A NULL
+ * registration — or none at all — is what makes `radio_routed` false and the
+ * state `NET_C6_NOT_ROUTED`, so the default build needs no `#ifdef` here and
+ * the host tests exercise the real state machine either way.
+ *
+ * Every member returns false on refusal and is expected to be asynchronous:
+ * the answer arrives later through `net_link_report_*()`. Nothing on this
+ * interface may block a caller, because `NETWORK_LIST` runs on the KDP task.
+ */
+typedef struct {
+  bool (*scan_start)(void);
+  bool (*connect)(const char *ssid);
+  bool (*disconnect)(void);
+} net_link_driver_t;
+
+/**
+ * Register (or, with NULL, withdraw) the radio driver.
+ *
+ * Registering clears `NET_REASON_TRANSPORT_UNKNOWN` and moves the state to
+ * `NET_C6_BOOTING`: from this point the firmware has a transport to try, and
+ * saying NOT_ROUTED would be false. Call it before driving a pin, so a status
+ * read during bring-up cannot claim there is no route while one is opening.
+ */
+void net_link_set_driver(const net_link_driver_t *driver, int64_t now_ms);
+
+/* ------------------------------------------------------------------ */
+/* Reporting — called from the radio task, never from a caller above  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Record a state transition and, when it failed, why.
+ *
+ * `detail` may be NULL to leave the previous detail alone. It must already be
+ * safe to display: this module does not redact, and a passphrase or a bearer
+ * token in here reaches `NETWORK_STATUS`, `GET_LOGS` and a crash dump.
+ */
+void net_link_report_state(net_state_t state, net_reason_t reason, const char *detail,
+                           int64_t now_ms);
+
+/** The three versions the link handshake produces. Any may be NULL to leave
+ * that field as it was. Recorded before the compatibility decision is taken,
+ * so a refused link still says what it refused. */
+void net_link_report_versions(const char *host_version, const char *c6_version,
+                              const char *protocol_version);
+
+/** Replace the scan list. `count` above NET_SCAN_MAX is truncated, not
+ * refused: a truncated list is usable and an empty one is not. */
+void net_link_report_scan(const net_scan_entry_t *entries, size_t count);
+
+/** Association facts. Called on the association event, before an address
+ * exists — which is why it does not touch the state. */
+void net_link_report_association(const char *ssid, const char *bssid, int rssi, int channel);
+
+/** An address. Moves the state to `NET_IP_READY`, which is the only state
+ * `net_link_can_upload()` accepts. Pass NULL or "" to clear it. */
+void net_link_report_ip(const char *ip, int64_t now_ms);
+
+/** Transport counters and link state, for `NETWORK_STATUS` and Gate F. */
+void net_link_report_transport(uint64_t rx_bytes, uint64_t tx_bytes, uint32_t errors,
+                               bool link_up);
+
+/** The C6 was held in reset and released. Counted separately from
+ * `reconnects`: a reset is something this firmware did, a reconnect is
+ * something the link did. */
+void net_link_report_reset(void);
+
+/** The link came back after having been lost. Bumps `reconnects`. */
+void net_link_report_reconnect(void);
 
 #endif /* P4_NET_LINK_H */

@@ -12,11 +12,26 @@
  * base is this boot: the reading is 1970 plus uptime, which no consumer can
  * mistake for a real date. `persisted` is the last time the camera was told,
  * carried across a power cycle as a lower bound — the shot happened at or
- * after this. `host` is a time Studio set this session.
+ * after this. `host` is a time Studio set this session. `network` is an SNTP
+ * answer, which the camera can only have in a build with the radio.
+ *
+ * ## Priority
+ *
+ * host > network > persisted > unset. A better source may correct the clock in
+ * either direction; an automatic source at the same rank may only move it
+ * forward. `pure_clock_adopt_action()` is that rule, host-tested, and the
+ * reason it is not written twice.
+ *
+ * The network source exists for one job beyond metadata: TLS. A certificate
+ * cannot be validated against a clock that is wrong by years, and disabling
+ * verification to get past that is not an option — so
+ * `clock_trustworthy_for_tls()` gates the HTTP client and the queue reports
+ * the refusal instead of looping.
  */
 #ifndef KINO_CLOCK_H
 #define KINO_CLOCK_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -25,6 +40,7 @@
 typedef enum {
   CLOCK_UNSET = 0,  /* epoch base is boot; the reading is uptime, not a date */
   CLOCK_PERSISTED,  /* restored across a power cycle; a lower bound that drifts */
+  CLOCK_NETWORK,    /* an SNTP server answered this session */
   CLOCK_HOST,       /* an attached host set it this session */
 } clock_source_t;
 
@@ -40,6 +56,28 @@ esp_err_t clock_init(void);
  * "+00:00" — honest rather than a guessed timezone.
  */
 void clock_set(int64_t epoch_ms, int utc_offset_min);
+
+/**
+ * Adopt a time from SNTP.
+ *
+ * Subject to the priority rule above, so this cannot overwrite a host-set
+ * clock and cannot move an already-network clock backwards. Returns true when
+ * the time was taken, which is also the moment TLS becomes permissible.
+ *
+ * `utc_offset_min` is not a parameter: SNTP carries UTC and no timezone, and
+ * inventing one here would print a local time the camera has no basis for.
+ * Whatever offset the host or NVS supplied is kept.
+ */
+bool clock_set_network(int64_t epoch_ms);
+
+/**
+ * True when the wall clock is worth validating a certificate against.
+ *
+ * Only `host` and `network` qualify. `persisted` is a lower bound that drifts
+ * with however long the camera sat in a bag, and a certificate checked against
+ * it fails or — worse — passes for the wrong reason.
+ */
+bool clock_trustworthy_for_tls(void);
 
 /** Milliseconds since the Unix epoch under the current belief. */
 int64_t clock_now_ms(void);

@@ -132,6 +132,26 @@ pure_clock_action_t pure_clock_restore_action(bool have_saved, int64_t saved_ms,
   return PURE_CLOCK_UNSET;
 }
 
+pure_clock_adopt_t pure_clock_adopt_action(int current_rank, int64_t current_ms,
+                                           int incoming_rank, int64_t incoming_ms) {
+  if (!pure_epoch_plausible(incoming_ms)) return PURE_CLOCK_REJECT_IMPLAUSIBLE;
+  if (incoming_rank < current_rank) return PURE_CLOCK_REJECT_RANK;
+  if (incoming_rank > current_rank) {
+    /* A better source is allowed to move the clock backwards. Refusing here
+     * would leave a unit that once had a wrong time permanently unable to be
+     * corrected, which is worse than one backwards step. */
+    return PURE_CLOCK_ADOPT;
+  }
+  if (incoming_rank == PURE_CLOCK_RANK_HOST) {
+    /* A host at the same rank is a person typing a time in, which is what
+     * SET_TIME has always been and what the bench uses to fix a clock that is
+     * wrong the other way. The backwards guard is for automatic sources. */
+    return PURE_CLOCK_ADOPT;
+  }
+  if (incoming_ms < current_ms) return PURE_CLOCK_REJECT_BACKWARDS;
+  return PURE_CLOCK_ADOPT;
+}
+
 /*
  * Days-from-civil / civil-from-days, after Howard Hinnant's public-domain
  * chrono algorithms. Used instead of gmtime_r so the device and the host test

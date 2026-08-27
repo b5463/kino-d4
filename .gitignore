@@ -66,3 +66,5 @@ firmware/p4/host_tests/test_roll_queue
 firmware/p4/host_tests/test_roll_queue.exe
 firmware/p4/host_tests/test_net_link
 firmware/p4/host_tests/test_net_link.exe
+firmware/p4/host_tests/test_net_report
+firmware/p4/host_tests/test_net_report.exe

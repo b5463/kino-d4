@@ -11,18 +11,24 @@ hardware task and everything after it is blocked on it.
 | Stage | State |
 |---|---|
 | C6 slave image builds reproducibly | see [`c6/README.md`](c6/README.md) |
-| P4 transport routing known | **BLOCKED** — no pins recorded for this carrier |
-| P4 transport driver | not written — blocked on the above |
-| Network state model | CODE DONE, host-tested |
+| P4 transport routing known | identified, corroborated, **not bench-proven** — [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) |
+| P4 transport driver | CODE DONE, UNVALIDATED — `net_hosted.c`, build-time opt-in, OFF by default |
+| Version gate | CODE DONE, UNVALIDATED — a mismatch stops before Wi-Fi |
+| Network state model | CODE DONE, host-tested (127 + 75 checks) |
+| Wi-Fi scan / associate / DHCP | CODE DONE, UNVALIDATED — `net_wifi.c` |
+| SNTP as a clock source | CODE DONE, host-tested policy — `net_time.c`, `pure_clock_adopt_action()` |
 | Wi-Fi credential store | CODE DONE |
 | `NETWORK_*` KDP commands | CODE DONE — answer honestly, refuse what needs a radio |
-| `ROLL_*` KDP commands | CODE DONE — the Studio-assigned path works without a radio |
+| `ROLL_*` KDP commands | CODE DONE — `ROLL_CREATE` and slug-only `ROLL_JOIN` now reach the API in the radio build |
 | Durable upload queue | CODE DONE, host-tested |
-| Roll HTTP client | seam only — blocked on the transport |
-| Any of it on hardware | **NOTHING. No radio has ever been exercised.** |
+| Roll HTTP client | CODE DONE, UNVALIDATED — `roll_http.c`, `roll_api.c` |
+| Radio variant in CI | CODE DONE — `p4-radio` job, its own 1440 KB guard |
+| Any of it on hardware | **NOTHING. No radio has ever been exercised. No pin has been driven toward the C6.** |
 
-Nothing in this file has been run on a board. The last row is the one that
-matters, and it stays that way until step 6.
+Nothing in this file has been run on a board. Every "CODE DONE" above means
+the code exists and compiles; the last row is the one that matters, and it
+stays that way until a bench session moves the registry rows in
+`C6_HARDWARE_MAP.md`.
 
 ## Why the order is this order
 
@@ -200,12 +206,12 @@ CRC error rates measured with the radio idle, associated, and uploading, and
 are restricted to idle or charging.
 
 The mechanism is already in place and needs measuring, not designing: the
-upload worker runs below the UI and the capture workers, and
-`upload_queue_pause_for_capture()` holds it off entirely while a capture is in
-flight. That is not only about CPU — the FAT volume is mounted with
-`max_files = 4`, and a capture already holds a frame handle plus a read-back
-handle for its CRC check, so an upload reader competing for a handle and for
-the SDMMC bus is a real hazard rather than a theoretical one.
+upload worker runs below the UI and the capture workers, and it takes
+`storage_acquire(STORAGE_USER_UPLOAD, ...)` for every card access, so a capture
+holding the card at `STORAGE_USER_CAPTURE` shuts it out. That is not only about
+CPU — the mount has one descriptor budget (`STORAGE_MAX_OPEN_FILES`) and one
+SDMMC bus, so an upload reader competing for a handle and for the bus is a real
+hazard rather than a theoretical one.
 
 Measure, do not assume. Photography wins; an upload that lands a few seconds
 later costs nothing.

@@ -329,6 +329,24 @@ targets, not six. It simulates no C6, so reporting one would be an invented vers
 pass; a host must therefore treat a missing `c6` key as "this body has no radio", not as a protocol
 error.
 
+### D16 — `clockSource` gains `network` in the radio build only
+
+`types.ts` types `clockSource` as `'host' | 'persisted' | 'unset'` in both `HelloResponse` and
+`DeviceInfo`, and `apps/studio/src/developer/conformance.ts` throws `ShapeError` on anything else.
+
+The radio build adds a fourth value, `network`, because SNTP is a real and distinct source: it is
+better than a value carried across a power cycle and worse than a time a bench operator typed in, and
+`clock.c` needs the distinction to decide whether a certificate may be validated against the clock at
+all. Collapsing it into `host` would claim a person set the time; collapsing it into `persisted` would
+claim it drifts.
+
+**Status: firmware-side deviation, not yet reconciled.** `packages/kdp/src/protocol/types.ts` is
+normative and has not been widened, so a radio-build device fails Studio's conformance check on this
+field. The default build never emits it. Reconciling means widening the union in `types.ts`,
+`MockKinoDevice.ts` and `conformance.ts` in one commit; that is a `packages/**` change and belongs
+with the milestone that ships the radio, not with the firmware that can be built with it.
+
+
 ## Decided — was "firmware team decision required"
 
 Issue #5 closed the six open questions this section used to list. They were open because physical

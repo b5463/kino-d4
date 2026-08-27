@@ -168,6 +168,57 @@ pure_clock_action_t pure_clock_restore_action(bool have_saved, int64_t saved_ms,
                                              int64_t system_now_ms);
 
 /**
+ * How much a time source is worth, as a number this file can compare without
+ * including clock.h.
+ *
+ * There are four sources and the order is the whole policy:
+ * a host at the bench beats the network, the network beats a value carried
+ * across a power cycle, and anything beats uptime-since-1970.
+ *
+ * The numbers are a comparison key, not a stored value — nothing writes them
+ * to NVS — so they may be renumbered. clock.c maps its enum onto them.
+ */
+#define PURE_CLOCK_RANK_UNSET 0
+#define PURE_CLOCK_RANK_PERSISTED 1
+#define PURE_CLOCK_RANK_NETWORK 2
+#define PURE_CLOCK_RANK_HOST 3
+
+/** What clock.c should do with a time some source has just offered. */
+typedef enum {
+  /** Take it. */
+  PURE_CLOCK_ADOPT = 0,
+  /** Outside 2020..2100, so it is not a time at all. */
+  PURE_CLOCK_REJECT_IMPLAUSIBLE,
+  /** A better-sourced time already holds. An SNTP answer must not quietly
+   * overwrite a wall clock a bench operator has just set by hand. */
+  PURE_CLOCK_REJECT_RANK,
+  /** Same rank or lower, and taking it would move the clock backwards. */
+  PURE_CLOCK_REJECT_BACKWARDS,
+} pure_clock_adopt_t;
+
+/**
+ * Decide whether to adopt `incoming_ms` from a source of `incoming_rank` when
+ * the clock currently reads `current_ms` from a source of `current_rank`.
+ *
+ * Two rules, and they are not the same rule:
+ *
+ *   - A HIGHER-ranked source may move the clock in either direction. That is
+ *     what a correction is, and it is what clock_set() has always done for a
+ *     host: a persisted time that is wrong by a year has to be fixable.
+ *   - An EQUAL-ranked AUTOMATIC source may never move the clock backwards. A
+ *     second SNTP sync reading 200 ms earlier is noise, and adopting it would
+ *     let one capture be dated before an earlier one — the property the
+ *     gallery actually depends on. A host at the same rank is exempt: that is
+ *     a person typing a time in, and it is how a clock that is wrong the
+ *     other way gets fixed.
+ *
+ * Same discipline as pure_clock_restore_action(), which is the boot-time case
+ * of the second rule; this is the running case and covers all four sources.
+ */
+pure_clock_adopt_t pure_clock_adopt_action(int current_rank, int64_t current_ms,
+                                           int incoming_rank, int64_t incoming_ms);
+
+/**
  * Format an instant as ISO 8601 with an explicit offset, e.g.
  * "2026-08-27T14:02:11+02:00".
  *

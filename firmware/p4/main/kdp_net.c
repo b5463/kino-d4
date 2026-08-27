@@ -21,6 +21,7 @@
 #include "klog.h"
 #include "net_link.h"
 #include "pure.h"
+#include "roll_api.h"
 #include "roll_queue.h"
 #include "roll_state.h"
 #include "storage.h"
@@ -76,12 +77,22 @@ static kdp_net_reply_t err_reply(const char *code, const char *fmt, ...) {
  * costs a bench cycle to diagnose.
  */
 static kdp_net_reply_t no_network(const char *what) {
+  /* roll_api answers first when it has something more specific to say. Once
+   * the radio is up, "radio routed, IP_READY, NONE" is a useless refusal — the
+   * obstacle is then the clock, or the missing API base URL, and those are the
+   * two a bench operator can actually act on. */
+  char why[RQ_ERROR_LEN];
+  if (!roll_api_ready(why, sizeof why)) {
+    return err_reply("NETWORK_UNAVAILABLE", "%s needs the network: %s", what, why);
+  }
+
   net_status_t net;
   net_link_status(&net, now_ms());
   return err_reply("NETWORK_UNAVAILABLE", "%s needs the network: radio %s, %s (%s)", what,
                    net.radio_routed ? "routed" : "NOT routed", net_state_name(net.state),
                    net_reason_name(net.reason));
 }
+
 
 /* Read a trimmed string field, or NULL. */
 static const char *str_field(const cJSON *req, const char *key) {
@@ -356,18 +367,70 @@ kdp_net_reply_t kdp_net_roll_status(void) {
   return ok_reply(o);
 }
 
+/**
+ * Store what the server said and answer with the resulting RollView.
+ *
+ * Shared by ROLL_CREATE and the slug-only ROLL_JOIN because the two differ
+ * only in which endpoint produced the assignment and which role it gives this
+ * camera. Validation is roll_state_assign()'s, deliberately: a server reply
+ * gets exactly the same shape checks as one Studio hands over, so a malformed
+ * guestUrl cannot reach the QR code by arriving over the radio instead.
+ */
+static kdp_net_reply_t adopt_assoc(const roll_api_assoc_t *assoc, roll_role_t role) {
+  const esp_err_t err = roll_state_assign(assoc->roll_id, assoc->slug, assoc->guest_url,
+                                          assoc->name, role, clock_now_ms());
+  if (err == ESP_ERR_INVALID_ARG) {
+    return err_reply("INVALID_ARGUMENT", "The roll the server returned is not usable");
+  }
+  if (err != ESP_OK) return err_reply("STORAGE_ERROR", "Could not store the roll");
+
+  klog("P4", "roll %s: %s", role == ROLL_ROLE_HOST ? "created" : "joined", assoc->slug);
+  return ok_reply(roll_view());
+}
+
+/** Turn a failed API call into the reply a host can act on. The HTTP status is
+ * what distinguishes "wrong code" from "server down", and inventing one code
+ * for both is how a guest at a party retypes a correct slug ten times. */
+static kdp_net_reply_t assoc_failed(const roll_api_assoc_t *assoc, const char *what) {
+  if (assoc->status == 0) return no_network(what);
+  if (assoc->status == 401 || assoc->status == 403) {
+    return err_reply("UNAUTHORIZED", "The camera's device credential was refused (%d)",
+                     assoc->status);
+  }
+  if (assoc->status == 404) return err_reply("NOT_FOUND", "No such roll");
+  if (assoc->status == 429) {
+    /* The API locks joining after ten wrong slugs. Saying so beats a generic
+     * failure that invites the eleventh. */
+    return err_reply("RATE_LIMITED", "Too many attempts; joining is locked for a while");
+  }
+  return err_reply("SERVER_ERROR", "%s failed: %d %s", what, assoc->status, assoc->detail);
+}
+
 kdp_net_reply_t kdp_net_roll_create(const cJSON *req) {
-  (void)req;
   if (roll_state_active()) {
     roll_state_t roll;
     roll_state_get(&roll);
     return err_reply("INVALID_STATE", "Already on roll %s", roll.slug);
   }
-  /* Creating a Roll is `POST /api/device/rolls`, and there is no route to the
-   * API. Refusing with the radio's actual reason is the honest answer;
-   * inventing a rollId the server has never heard of would produce a QR code
-   * that sends a guest at a party to a 404. */
-  return no_network("ROLL_CREATE");
+
+  char why[RQ_ERROR_LEN];
+  if (!roll_api_ready(why, sizeof why)) {
+    /* No route to `POST /api/device/rolls`. Refusing with the actual obstacle
+     * is the honest answer; inventing a rollId the server has never heard of
+     * would produce a QR code that sends a guest at a party to a 404. */
+    return no_network("ROLL_CREATE");
+  }
+
+  const char *title = str_field(req, "title");
+  if (title == NULL) title = str_field(req, "name");
+
+  /* Blocks the KDP task for as long as the API takes. Accepted: this is a
+   * deliberate user action with a spinner in front of it, and the alternative
+   * is a job model for one call. The capture path is untouched — it never
+   * waits on the KDP task. */
+  roll_api_assoc_t assoc;
+  if (!roll_api_create(title, &assoc)) return assoc_failed(&assoc, "ROLL_CREATE");
+  return adopt_assoc(&assoc, ROLL_ROLE_HOST);
 }
 
 kdp_net_reply_t kdp_net_roll_join(const cJSON *req) {
@@ -399,7 +462,16 @@ kdp_net_reply_t kdp_net_roll_join(const cJSON *req) {
   }
 
   if (roll_id == NULL || guest_url == NULL) {
-    return no_network("Resolving a roll code");
+    /* A bare {slug}: the camera has to resolve it itself through
+     * `POST /api/device/rolls/join`, which is the call that turns a slug into a
+     * rollId and a guestUrl. Studio hands the resolved form over when it has
+     * internet; this is the path for when it does not. */
+    char why[RQ_ERROR_LEN];
+    if (!roll_api_ready(why, sizeof why)) return no_network("Resolving a roll code");
+
+    roll_api_assoc_t assoc;
+    if (!roll_api_join(slug, &assoc)) return assoc_failed(&assoc, "ROLL_JOIN");
+    return adopt_assoc(&assoc, ROLL_ROLE_GUEST);
   }
 
   roll_role_t role = ROLL_ROLE_GUEST;

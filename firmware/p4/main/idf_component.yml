@@ -1,5 +1,19 @@
-﻿dependencies:
+dependencies:
   idf: ">=5.3"
   espressif/esp_lcd_st7701: "^1.1.0"
   espressif/esp_lcd_touch_gt911: "^1.1.0"
   espressif/esp_codec_dev: "^1.3.0"
+  # The C6 radio. Pinned exactly rather than with a caret: this pair is what
+  # resolves on IDF 5.5.1 for esp32p4, and an unpinned minor bump changes both
+  # the SDIO transport and the reproducible-build hash without a diff to review.
+  #
+  # Present in EVERY build and enabled in none by default —
+  # sdkconfig.defaults sets CONFIG_ESP_HOSTED=n and
+  # CONFIG_ESP_WIFI_REMOTE_ENABLED=n. Declaring them here is what keeps the
+  # radio variant buildable in CI; the Kconfig switch is what keeps the pins
+  # untouched.
+  espressif/esp_hosted: "==3.0.6"
+  espressif/esp_wifi_remote:
+    version: "==1.6.4"
+    rules:
+      - if: "target in [esp32p4]"

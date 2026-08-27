@@ -19,6 +19,7 @@
 #include "freertos/task.h"
 #include "klog.h"
 #include "net_link.h"
+#include "roll_api.h"
 #include "roll_state.h"
 #include "storage.h"
 #include "taskmon.h"
@@ -58,15 +59,7 @@ static bool current_roll(char *roll_id, size_t cap) {
 /* The HTTP seam                                                      */
 /* ------------------------------------------------------------------ */
 
-/** One network step's outcome, in the vocabulary rq_classify_status() reads.
- * `status` 0 means the request never got a response at all. */
-typedef struct {
-  int status;
-  char capture_id[RQ_CAPTURE_ID_LEN]; /* RQ_STEP_REGISTER only */
-  char detail[RQ_ERROR_LEN];          /* already redacted */
-} roll_http_result_t;
-
-typedef void (*roll_http_fn)(const rq_job_t *job, rq_step_t step, roll_http_result_t *out);
+typedef void (*roll_http_fn)(const rq_job_t *job, rq_step_t step, roll_step_result_t *out);
 
 /**
  * What fills this in: docs/roll/ROLL_DEVICE_CONTRACT.md "Upload procedure",
@@ -77,21 +70,16 @@ typedef void (*roll_http_fn)(const rq_job_t *job, rq_step_t step, roll_http_resu
  *   RQ_STEP_UPLOAD_FRAME      assets/init role "original-frame", frameIndex
  *   RQ_STEP_COMPLETE_CAPTURE  POST /api/device/captures/{captureId}/complete
  *
- * A function pointer rather than an #ifdef because the P4 has no route to the
- * C6 (firmware/C6_HARDWARE_MAP.md). esp_http_client + esp-tls + mbedtls would
- * add roughly 300 KB against a 1100 KB CI size guard to reach a radio that
- * cannot be reached. Step ordering, persistence and retry are all written here;
- * only the bytes on the wire are missing.
+ * `roll_api.c` implements it, and implements it TWICE: with the HTTP client in
+ * the radio build, and as "no radio in this build" otherwise. So the queue, its
+ * persistence and its retry policy run identically either way, which is what
+ * makes the host tests worth having when no radio has ever been exercised.
+ *
+ * Still a function pointer rather than a direct call: it is the one place a
+ * test or a bench tool can substitute a transport without touching the step
+ * ordering above it.
  */
-static void http_no_transport(const rq_job_t *job, rq_step_t step, roll_http_result_t *out) {
-  (void)job;
-  (void)step;
-  out->status = 0; /* no response; rq_classify_status() calls that transient */
-  out->capture_id[0] = '\0';
-  rq_redact(out->detail, sizeof out->detail, "no transport to the C6");
-}
-
-static roll_http_fn s_http = http_no_transport;
+static roll_http_fn s_http = roll_api_step;
 
 /* ------------------------------------------------------------------ */
 /* State                                                              */
@@ -278,7 +266,7 @@ static bool run_one_step(void) {
   snapshot = s_jobs[idx];
   unlock();
 
-  roll_http_result_t res = {0};
+  roll_step_result_t res = {0};
   s_http(&snapshot, step, &res);
   rq_disposition_t disp = rq_classify_status(res.status);
 

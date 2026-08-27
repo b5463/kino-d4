@@ -5,9 +5,10 @@
 #   make -C firmware/p4/host_tests test-queue  # Roll upload queue, no deps
 #   make -C firmware/p4/host_tests test-meta   # JSON mappings, needs cJSON
 #   make -C firmware/p4/host_tests test-net    # C6 state model + credentials
+#   make -C firmware/p4/host_tests test-report # the radio seam net_hosted uses
 #   make -C firmware/p4/host_tests test-qr     # QR encoder vs. reference data
 #   make -C firmware/p4/host_tests test-store  # UPLOAD.JSON record, needs cJSON
-#   make -C firmware/p4/host_tests test-all    # all six
+#   make -C firmware/p4/host_tests test-all    # all seven
 #
 # Several targets because they have different dependencies, not because the
 # later ones are optional:
@@ -59,6 +60,11 @@ QUEUE_SRC = $(MAIN)/roll_queue.c test_roll_queue.c
 # net_link.c reaches esp_err.h and nothing else from ESP-IDF - shim/ has it,
 # the same one meta.c needs. Time is injected, so there is no esp_timer here.
 NET_SRC = $(MAIN)/net_link.c $(MAIN)/pure.c test_net_link.c
+# The same net_link.c with a stub radio driver registered, which is the state
+# machine the radio build runs. Separate from NET_SRC because test_net_link.c
+# asserts what the camera reports with NO radio in the build, and that suite has
+# to keep asserting exactly that, unchanged - it is what ships.
+REPORT_SRC = $(MAIN)/net_link.c test_net_report.c
 QR_SRC = $(MAIN)/qr.c test_qr.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
@@ -84,10 +90,13 @@ test_roll_queue: $(QUEUE_SRC) $(MAIN)/roll_queue.h
 test_net_link: $(NET_SRC) $(MAIN)/net_link.h $(MAIN)/pure.h
 	$(CC) $(CFLAGS) -I$(MAIN) -I$(SHIM) $(NET_SRC) -o $@
 
+test_net_report: $(REPORT_SRC) $(MAIN)/net_link.h
+	$(CC) $(CFLAGS) -I$(MAIN) -I$(SHIM) $(REPORT_SRC) -o $@
+
 test_qr: $(QR_SRC) $(MAIN)/qr.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(QR_SRC) -o $@
 
-.PHONY: test test-queue test-net test-qr test-meta test-store test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-all clean
 test: test_pure
 	./test_pure
 
@@ -96,6 +105,9 @@ test-queue: test_roll_queue
 
 test-net: test_net_link
 	./test_net_link
+
+test-report: test_net_report
+	./test_net_report
 
 test-qr: test_qr
 	./test_qr
@@ -106,7 +118,7 @@ test-meta: test_meta
 test-store: test_upload_store
 	./test_upload_store
 
-test-all: test test-queue test-net test-qr test-meta test-store
+test-all: test test-queue test-net test-report test-qr test-meta test-store
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_qr test_meta test_upload_store
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store

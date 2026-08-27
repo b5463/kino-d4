@@ -23,6 +23,7 @@
 #include "kdp_server.h"
 #include "klog.h"
 #include "esp_timer.h"
+#include "net_hosted.h"
 #include "net_link.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -320,6 +321,20 @@ void app_main(void) {
   if (rs_err != ESP_OK) {
     ESP_LOGW(TAG, "roll membership unreadable: %s - the camera has forgotten its roll",
              esp_err_to_name(rs_err));
+  }
+
+  /* The radio, in the build that has one. In the default build this is an
+   * inline `return ESP_ERR_NOT_SUPPORTED` and no pin is driven — the reason is
+   * in net_hosted.h and it is a safety property, not an omission.
+   *
+   * Last, and after the UI and the capture pipeline are already usable, which
+   * is the whole point of the ordering above: bring-up drives GPIO54 and opens
+   * an SDIO host, and a camera whose radio wedges must still take a
+   * photograph. */
+  esp_err_t nh_err = net_hosted_start();
+  if (nh_err != ESP_OK && nh_err != ESP_ERR_NOT_SUPPORTED) {
+    ESP_LOGW(TAG, "radio host would not start: %s - NETWORK_STATUS says why",
+             esp_err_to_name(nh_err));
   }
 
   /* Reconciles the card against the queue and starts the worker. This is the
