@@ -17,7 +17,74 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-25, firmware 0.1.0
+## Status — updated 2026-08-27, firmware 0.3.0
+
+**Nothing below was inferred from code.** A row moves on an observed event on a
+physical unit, and the firmware auto-marks only `UNVALIDATED → VALIDATED`. The
+registry grew from 23 to 41 items in 0.3.0 (CAM2–4, sync trigger, `FLASH_EN`,
+shutter) so the four-camera bring-up has somewhere to record its answers; all
+18 new rows are `UNVALIDATED` and will stay so until the harness exists.
+
+### The one thing to read first
+
+**No camera node has ever been connected to a P4.** Everything in the camera
+column below is either standalone-module evidence or unvalidated. The entire
+capture pipeline — four-camera coordination, CRC verification, card write,
+thumbnails, gallery, `EVT_CAPTURE`, `MEDIA_READ` — is `CODE DONE` and has never
+photographed anything.
+
+### Firmware 0.2.0 / 0.3.0 evidence, recorded late
+
+The 0.1.0 sections below were written at the time. The display and touch runs
+were recorded only in commit messages and are transcribed here now; that gap
+was itself a process failure, since this file is the declared source of truth
+and it sat two minor versions behind the firmware.
+
+| Subsystem | Evidence | Source | Status |
+|---|---|---|---|
+| ST7701S panel over MIPI-DSI | *"First light… five colour bands on the screen, confirmed on hardware"* — after three faults each hiding the next: PSRAM at 20 MHz (DPI underrun), 800 async draw calls, and a panel-specific init table | commit `b8dff7a` | **VALIDATED** |
+| Backlight GPIO23 | Driven with the panel; plain GPIO, not LEDC | commit `b8dff7a` | **VALIDATED** |
+| GT911 touch | *"GT911 touch and a first on-screen UI, both verified on hardware"* | commit `8b4ddf3` | **VALIDATED** |
+| Shared I²C bus | Scan reported 0x14, 0x18, 0x5d; codec must be brought up before the touch poll or every transaction NACKs | commit `8b4ddf3` | **VALIDATED** |
+| ES8311 codec + NS4150 amp | Answered at 0x18; amp enable GPIO11 drives a speaker. Shutter/tick levels chosen from measured output | 0.2.0 audio work | **VALIDATED** |
+| MSM381 microphone | reg 0x44 `ADCDAT_SEL` = 5 is a digital DAC loopback, not the mic; a volume sweep produced bit-identical output. Analog front end unconfigured | 0.2.0 audio work | **FAILED — not usable** |
+| `CAM_PWR_EN` GPIO31 | Pin driven both ways for the camera bank. Whether the AO4407 channels downstream follow it is still a scope job | 0.2.0 power work | **VALIDATED (pin only)** |
+| Config persistence | A setting survived a real power cycle over the live link | 0.2.0 | **VALIDATED** |
+| UI on the panel | 8 screens render on hardware; boot dissolve measured at 26 frames in 452 ms (≈57 fps) via the PPA | 0.2.0/0.3.0 | **VALIDATED** |
+| Icon expansion | 575 ms for six icons, streamed; icons ready at t=2984 ms against a boot dissolve at t=4974 | commit `5768d3c` | **VALIDATED** |
+
+### Not validated, and not inferable from code
+
+Every one of these has firmware written for it and no hardware evidence
+whatsoever. Listed explicitly so nobody reads working code as a working
+subsystem.
+
+| Item | State |
+|---|---|
+| CAM1 UART through the P4 (`TX 52` / `RX 51`) | **UNVALIDATED** — pin map PROVISIONAL, issue #2 |
+| CAM1 baud 921600 over the harness | **UNVALIDATED** |
+| CAM1 node link (`node_link` over KDP framing) | **UNVALIDATED** |
+| CAM1 sensor detected *through the P4* | **UNVALIDATED** — the standalone run below is a different unit and a different path |
+| CAM1 JPEG transfer over the link | **UNVALIDATED** |
+| CAM1 SD write of a transferred frame | **UNVALIDATED** |
+| CAM2 / CAM3 / CAM4 — every row | **UNVALIDATED** — no harness has ever existed |
+| Four-camera concurrent capture | **UNVALIDATED** — Gate B |
+| Exposure synchronization / inter-camera skew | **UNVALIDATED and UNMEASURED** — Gate C. Frame period derived at ~112 ms from driver source; no hardware confirmation |
+| Stale-frame lifecycle | **PREDICTED FROM SOURCE, UNCONFIRMED** — see the M1 runbook's Phase 15 gate |
+| `SYNC_TRIGGER` GPIO32 | **UNVALIDATED** — driven by `capture.c`; no node reads the edge, so nothing has seen it |
+| `FLASH_EN` GPIO28 / flash hardware | **UNVALIDATED** — no flash board exists; `flashHardware: false` |
+| Physical shutter / Fn button | **UNVALIDATED** — pins deliberately `BOARD_BTN_NONE`; no switch fitted |
+| Battery voltage / percentage / low-battery shutdown | **NOT APPLICABLE on this board** — no sense divider reaches the P4 (deviation D10). Needs a hardware revision |
+| Backlight brightness / dim stage | **NOT APPLICABLE** — plain GPIO, not PWM (deviation D11) |
+| Wi-Fi / BLE / ESP32-C6 | **NOT IMPLEMENTED** — no SDIO bring-up, no slave image |
+| Networking / KINO Roll from the camera | **NOT IMPLEMENTED** — issue #133 |
+| OTA / `FW_*` / firmware update over KDP | **NOT IMPLEMENTED** — single `factory` partition, no OTA slots |
+| Light/deep sleep | **NOT IMPLEMENTED** — backlight and camera bank only |
+| Thermal response | **NOT IMPLEMENTED** — die temperature readable, nothing acts on it |
+| `STORAGE_BENCH` throughput on a real card | **CODE DONE, UNVALIDATED** — implemented in 0.3.0, never run on hardware |
+| Per-task stack high-water figures | **CODE DONE, UNVALIDATED** — exposed in `GET_RUNTIME_STATS`, never read from a board |
+
+## Status — 2026-08-25, firmware 0.1.0
 
 The first physical hardware has been run: one XIAO ESP32-S3 Sense camera
 module, standalone over USB-C with `firmware/uvc-preview`. **No P4 and no

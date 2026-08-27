@@ -1353,10 +1353,72 @@ PHASE 14 — Studio MEDIA_*                                 ◄ CHECKPOINT 12b
 47. MEDIA_THUMB: first page ≤8192 bytes, starts FF D8.
 48. Studio's conformance suite: run it, record pass/shape/unsupported per case.
 
-PHASE 15 — soak
-49. CAMERA_SOAK_TEST cam1, 500 captures, keepAll=false.
-50. RECORD: successful/attempted, heapDeltaKB, per-error tally, node resets.
-51. Transcribe every marked row into HARDWARE_VALIDATION.md with date,
+PHASE 15 — STALE-FRAME CHECK          ◄◄ GATE. DO THIS BEFORE ANY SKEW WORK ►►
+
+    firmware/SYNC_FEASIBILITY.md predicts, from driver source, that with
+    fb_count=1 a capture after a release returns an ALREADY QUEUED frame
+    immediately: a photograph of the moment just after the PREVIOUS readout
+    rather than of the shutter. The first capture after a release is fresh;
+    every subsequent one may not be.
+
+    This is capture CORRECTNESS, not synchronization - a single-camera KINO
+    would photograph the wrong instant too - and a skew number measured across
+    stale frames is meaningless. So it is checked before M2, not during it.
+
+    The firmware already reports everything needed. No code change, no extra
+    tooling.
+
+49. Point the camera at a clock, a running stopwatch, or anything whose
+    appearance changes second to second.
+50. CAMERA_TEST cam1. RECORD from the response and from the capture's
+    META.JSON frames[0]:
+        durationMs / nodeFbGetUs      time the node spent in fb_get()
+        nodeFrameStartUs              node esp_timer at that frame's DMA arm
+        nodeFrameAgeUs                command arrival minus frame start
+51. WAIT a known interval - 10 s is plenty and makes a stale frame obvious.
+52. CAMERA_TEST cam1 again. RECORD the same three fields.
+53. Repeat steps 51-52 at least five times, varying the wait (2 s, 10 s, 30 s).
+54. Also watch GET_LOGS for lines the firmware raises by itself:
+        C1 STALE? fb_get <n> us, frame <n> us before command
+    capture.c emits that whenever fb_get returns in under 20 ms, which no
+    genuinely fresh UXGA frame can do (the derived frame period is ~112 ms).
+
+    ── EXPECTED IF THE DEFECT IS REAL ──
+        capture 1:      durationMs ~= one frame period (~110 ms or more)
+        captures 2..N:  durationMs ~= 0, nodeFbGetUs a few hundred us
+                        nodeFrameAgeUs grows with the wait interval
+                        the photographed clock reads EARLIER than the shutter
+                        by roughly the wait
+        and the STALE? log line appears on captures 2..N
+
+    ── EXPECTED IF IT IS NOT ──
+        every capture:  durationMs ~= one frame period
+                        nodeFrameAgeUs small and roughly constant
+                        the photographed clock matches the shutter instant
+
+55. DECIDE, and write the answer into HARDWARE_VALIDATION.md either way:
+
+    CONFIRMED  ->  **STOP. Do not proceed to M2 skew measurement.**
+                   Implement the stale-buffer correction first: discard one
+                   frame before the real fetch (specified in
+                   SYNC_FEASIBILITY.md, "Pre-designed fix"), re-run this
+                   phase, and only then continue. Measuring skew across stale
+                   frames would produce a number that means nothing and a
+                   Gate C decision built on it.
+
+    NOT CONFIRMED -> document the ACTUAL observed lifecycle in
+                   HARDWARE_VALIDATION.md, including the fb_get durations and
+                   frame ages that show it, and correct
+                   SYNC_FEASIBILITY.md's prediction. A source-derived
+                   prediction that hardware refutes is a finding worth
+                   recording, not something to quietly drop.
+
+PHASE 16 — soak
+56. CAMERA_SOAK_TEST cam1, 500 captures, keepAll=false.
+57. RECORD: successful/attempted, heapDeltaKB, per-error tally, node resets.
+58. GET_RUNTIME_STATS: check `tasks[].minFreeBytes` for every task after the
+    soak. Anything under ~25% of its configured stack wants raising before M3.
+59. Transcribe every marked row into HARDWARE_VALIDATION.md with date,
     firmware version, wiring revision.
 
 ── EXIT ──
