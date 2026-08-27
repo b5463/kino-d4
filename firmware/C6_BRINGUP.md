@@ -38,47 +38,46 @@ cost a photograph. So the transport comes up asynchronously, after the UI and
 the capture pipeline are already usable, and every stage below fails into a
 reported state rather than a retry loop or a reset.
 
-## 1. Establish the routing — HARDWARE, BLOCKING
+## 1. Establish the routing — DONE ON PAPER, NOT ON A BOARD
 
-Get the `JC4880P443C-I-W` schematic from Guition, or buzz the module out by
-hand. Determine:
+The mapping is in [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) with its evidence
+chain: SDMMC slot 1 on `GPIO14`-`GPIO19`, `EN` on `GPIO54`, identified from
+Guition documentation (E2) and corroborated pin-for-pin by Espressif's own
+ESP-Hosted defaults for a P4 host with a C6 coprocessor (E3, E4), where min
+equals max for every pin.
 
-- whether the P4↔C6 transport is SDIO or SPI, and its bus width;
-- every P4-side GPIO on that bus;
-- the P4 GPIOs behind `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU`;
-- `C6_CHIP_PU`'s polarity, pull and required sequencing;
-- which SDMMC slot the SD card occupies, and whether one remains.
+What is still open, and it is what step 5 is for:
 
-Three outcomes are open, and they are not equivalent — see
-`C6_HARDWARE_MAP.md`, "The transport is not even known to be SDIO". If the
-carrier routes only those four header pins, there is no transport and this is
-a hardware finding, not a firmware task.
+- `GPIO54`'s polarity on this carrier. ESP-Hosted defaults to active-low and
+  carries an explicit active-high override because boards with a
+  transistor-buffered `EN` invert it. Ours is unmeasured.
+- the P4 GPIOs behind `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`. Until those are known,
+  C6 flashing is an external-adapter operation.
+- the C6 SDIO IO power rail, and whether it needs an LDO channel of its own.
 
-Record the answers in `C6_HARDWARE_MAP.md`'s table with the schematic sheet or
-the continuity measurement named in the evidence column. **Do not proceed on a
-community field note.** The SD map came from one and was still re-measured on
-our own unit before its rows moved.
+Buzz the module out or get the schematic before the first bench run. The SD map
+came from a community field note and was still re-measured on our own unit
+before its rows moved.
 
-## 2. Add the pin block
+## 2. Add the pin block — DONE
 
-In `firmware/p4/main/board_d4v1.h`, beside the SD block:
+`firmware/p4/main/board_d4v1.h` carries `BOARD_C6_SLOT`, `BOARD_C6_D0`-`D3`,
+`BOARD_C6_CLK`, `BOARD_C6_CMD`, `BOARD_C6_EN` and `BOARD_C6_EN_ACTIVE_LOW`.
+Every P4 pin assignment lives in that file and nowhere else, which is what
+makes a pin change reviewable — `net_hosted.c` hands them to ESP-Hosted at
+runtime rather than duplicating them in `sdkconfig.radio`.
 
-```c
-// --- ESP32-C6 hosted radio (PROVISIONAL until validated, issue #2) ---
-#define BOARD_C6_EN      /* ... */
-#define BOARD_C6_BOOT    /* ... */
-#define BOARD_C6_CLK     /* ... */
-#define BOARD_C6_CMD     /* ... */
-#define BOARD_C6_D0      /* ... */
-// D1..D3 if 4-bit
-#define BOARD_C6_SLOT    /* SDMMC slot, and it must not be the card's */
-```
+Two `_Static_assert`s in `net_hosted.c` hold the invariants a comment cannot:
 
-Every P4 pin assignment lives in that file and nowhere else — that rule is
-what makes a pin change reviewable. Add one `HWV_C6_*` row per pin to
-`hardware_validation.h`, appending only: the enum ordinal is the NVS key, so
-inserting in the middle silently relabels every stored verdict on every unit
-already in the field. The warning block in that header says so.
+- `BOARD_C6_SLOT != BOARD_SD_SLOT`. One SDMMC controller serves both slots, and
+  a collision presents as a card that stops mounting when the radio comes up.
+- `BOARD_C6_EN_ACTIVE_LOW` equals `CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW`.
+  Two places name that polarity and the bench will flip it; flipping only one
+  of them must not compile.
+
+Still owed: one `HWV_C6_*` row per pin in `hardware_validation.h`, appended
+only — the enum ordinal is the NVS key, so inserting in the middle silently
+relabels every stored verdict on every unit already in the field.
 
 ## 3. Flash the slave image
 
@@ -91,51 +90,168 @@ drive them — the flashing proxy that would make this a one-cable operation —
 depends on the same GPIO numbers step 1 produces. Until then it is an external
 USB-serial adapter on the header.
 
-## 4. Turn on the host
+## 4. Turn on the host — DONE, and OFF BY DEFAULT
 
-In `firmware/p4/main/net_link.c`, set:
-
-```c
-#define BOARD_C6_ROUTED true
-```
-
-That constant is the gate, and it is the last switch rather than the first
-because everything above it is already written against the full state set.
-Then fill the marked block in `net_link_init()`:
+### The command
 
 ```
-assert C6 reset       -> NET_C6_BOOTING
-release, open the transport, handshake
-version exchange      -> NET_C6_LINK_READY   (fill s_net.c6_version)
-esp_wifi_remote init  -> NET_RADIO_READY
-                      -> NET_WIFI_IDLE
+cd firmware/p4
+rm -f dependencies.lock
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.radio" \
+       -DKINO_ROLL_API_BASE=https://<the API host> \
+       build
 ```
 
-Every failure below already has a reason enumerator, so
-`NETWORK_STATUS`, the RADIO screen and Studio need no change:
+`rm -f dependencies.lock` matters: a lock the component manager considers up to
+date makes it download nothing, and the build then fails in confusing ways.
+Delete `build/` too when switching between the two variants — the sdkconfig is
+cached there.
+
+`KINO_ROLL_API_BASE` has no default. This repository records no public KINO API
+hostname, and a plausible wrong one compiled into a binary is worse than a
+refusal that says the address is missing; without it every Roll call refuses
+with exactly that. `KINO_SNTP_SERVER` overrides `pool.ntp.org` the same way,
+for a bench with no route to the public pool.
+
+### Why it is an opt-in and not a `#define`
+
+Espressif's own P4 host configuration sets
+`CONFIG_ESP_HOSTED_AUTO_CALL_INIT_BEFORE_APP_MAIN=y`, which installs an
+`__attribute__((constructor))` that calls `esp_hosted_init()` **before**
+`app_main()`. With `CONFIG_ESP_HOSTED_HOST_CP_RESET_STRATEGY_ALWAYS=y` beside
+it, enabling the component drives `GPIO14`-`GPIO19` and `GPIO54` on every boot,
+before a single line of KINO firmware runs — before the display, the card and
+the capture pipeline exist, so a fault would present as a dead camera rather
+than a dead radio.
+
+The routing is corroborated and unmeasured, and `GPIO54`'s polarity is
+unconfirmed. Shipping that on by default would drive unproven pins on every
+power-up of every unit.
+
+So:
+
+| | default build | `sdkconfig.radio` |
+|---|---|---|
+| `CONFIG_ESP_HOSTED` | `n`, explicitly in `sdkconfig.defaults` | `y` |
+| radio sources | not compiled | `net_hosted.c`, `net_wifi.c`, `net_time.c`, `roll_http.c` |
+| `net_link` reports | `NET_C6_NOT_ROUTED` | the real state |
+| pins driven | none | GPIO14-19, GPIO54 |
+| `kino-p4.bin` | 800 KB | 1384 KB |
+
+`sdkconfig.radio` also sets `AUTO_CALL_INIT_BEFORE_APP_MAIN=n`, so even in the
+radio build nothing is driven until `net_hosted_start()` says so — which
+`main.c` calls last, after the UI and the capture pipeline are already usable.
+That is also what allows the runtime pin configuration: with the constructor on,
+ESP-Hosted's shadow config is locked and every setter returns
+`ESP_TRANSPORT_ERR_ALREADY_SET`.
+
+The two halves are cross-checked in `main/CMakeLists.txt`. Naming the fragment
+without `CONFIG_ESP_HOSTED=y`, or setting `CONFIG_ESP_HOSTED=y` without the
+fragment, is a `FATAL_ERROR` — the second case is the dangerous one, because it
+would drive the C6 pins with no driver compiled behind them.
+
+Note on CMake: the switch is read from `SDKCONFIG_DEFAULTS`, not from
+`CONFIG_ESP_HOSTED`. ESP-IDF processes a component's `CMakeLists.txt` twice —
+once to expand `REQUIRES`, once to build — and `CONFIG_*` is not populated in
+the first pass. Measured: `if(CONFIG_ESP_HOSTED)` around
+`list(APPEND kino_reqs ...)` compiled the radio sources with none of their
+include directories and failed on `esp_crt_bundle.h: No such file or directory`
+while every other component resolved fine.
+
+### What the sequence does
+
+`net_hosted.c`:
+
+```
+hold GPIO54 at the reset level         -> NET_C6_BOOTING   (counts a reset)
+release it, settle
+hand ESP-Hosted our pins, esp_hosted_init()
+    -> SDIO enumerates on slot 1
+version exchange (a GATE, see below)   -> NET_C6_LINK_READY
+esp_netif + esp_wifi_init + STA start  -> NET_RADIO_READY
+                                       -> NET_WIFI_IDLE
+auto-join the stored network, if there is one
+```
+
+Failures map onto reasons that already existed, so `NETWORK_STATUS`, the RADIO
+screen and Studio need no change:
 
 | Failure | Reason |
 |---|---|
-| C6 does not answer the handshake | `NET_REASON_C6_NO_RESPONSE` |
-| slave reports an incompatible version | `NET_REASON_C6_BAD_FIRMWARE` |
-| link drops after coming up | `NET_REASON_C6_LINK_LOST` |
-| `esp_wifi_remote` init fails | `NET_REASON_RADIO_FAILURE` |
+| SDIO does not enumerate | `NET_REASON_C6_NO_RESPONSE`, state `C6_ABSENT` |
+| the version RPC times out | `NET_REASON_C6_NO_RESPONSE` |
+| the coprocessor version is incompatible | `NET_REASON_C6_BAD_FIRMWARE` |
+| the link drops after coming up | `NET_REASON_C6_LINK_LOST` |
+| `esp_wifi_init` fails | `NET_REASON_RADIO_FAILURE` |
+| wrong passphrase | `NET_REASON_AUTH_FAILED`, and it does **not** retry |
+| no address | `NET_REASON_DHCP_TIMEOUT` |
+| no trustworthy clock, so no TLS | `NET_REASON_CLOCK_UNTRUSTED` (new enumerator) |
 
-Components to add to `firmware/p4/main/CMakeLists.txt`: `esp_wifi_remote`,
-`esp_hosted`, `esp_netif`, `esp_event`, and for step 7 `esp_http_client`,
-`esp-tls`, `mbedtls`.
+A wrong passphrase deliberately does not retry: the access point counts the
+attempts and a camera that hammers it gets blacklisted, which then looks like a
+hardware fault. Everything else lets the driver's own retry do the work rather
+than stacking a second loop on top.
 
-**Budget for the size guard.** `.github/workflows/firmware.yml` fails the
-build above `LIMIT_KB=1100`. The binary is well under that today; a Wi-Fi
-stack plus mbedTLS plus an HTTP client will plausibly exceed the headroom.
-Raise the limit in that workflow *and say why* in the same commit — the
-workflow's own failure message asks for exactly that. Note the partition table
-is still the stock single-app-large `factory` at 1500 KB; repartitioning is
-M8, and the guard has a marker pointing at it.
+### The version exchange is a gate, not a warning
 
-Reasons this stack was NOT added ahead of step 1: it cannot work without the
-pins, and linking ~300 KB of radio and TLS to prove a `#define` is false costs
-the size gate for nothing.
+`esp_hosted_get_coprocessor_fwversion()` first, before Wi-Fi is touched at all.
+The rule: MAJOR must match exactly; a coprocessor MINOR below the host's is
+refused; above is accepted and logged. On refusal the sequence stops at
+`NET_REASON_C6_BAD_FIRMWARE` and never enters Wi-Fi.
+
+This matters here specifically. This carrier is publicly reported to ship a C6
+factory image older than current hosts expect, and an incompatible coprocessor
+does not announce itself as one — RPCs time out, the transport looks flaky, and
+the whole thing gets diagnosed as bad Wi-Fi or bad soldering. The host version,
+the coprocessor version and the RPC protocol version are all recorded *before*
+the decision, so a refused link still says what it refused. `NETWORK_STATUS`
+reports all three, plus C6 present, SDIO link state, reset count, reconnects and
+transport bytes.
+
+The RPC protocol version is not separately queryable in esp_hosted 3.0.6: the
+host's RPC layer is compile-time (`rpc_v2`, msg_id dispatch) and there is no
+"tell me your protocol version" call outside the version RPC itself. So the
+protocol check *is* that call succeeding, and a coprocessor that cannot answer
+it maps to `C6_NO_RESPONSE` rather than to a version number nobody has.
+`protocol_version` is reported as `rpc-v2`, which is what this host speaks, and
+not as something the coprocessor confirmed.
+
+Read the factory image before flashing over it. `FW_QUERY` and the log line
+`c6: coprocessor image <name> <version>` are that reading, and a version is
+information whether or not it is compatible.
+
+### Pinned versions, and the size that comes with them
+
+`espressif/esp_hosted 3.0.6` and `espressif/esp_wifi_remote 1.6.4`, pinned with
+`==` in `main/idf_component.yml`. Both are declared in EVERY build and enabled
+in none by default — declaring them is what keeps the radio variant buildable in
+CI, and the Kconfig switch is what keeps the pins untouched.
+
+`esp_wifi_remote` is **not** a valid CMake `REQUIRES` name; requiring it fails
+with "Failed to resolve component". It is a managed dependency and it *provides*
+`esp_wifi` for targets with no radio of their own, so `esp_wifi` is what goes in
+`REQUIRES`. Espressif's own combined example does the same thing. Including
+IDF's `esp_wifi.h` without esp_wifi_remote actually in the build gives
+`CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM undeclared`, which is the symptom of
+getting this wrong.
+
+Measured on this commit, both builds in the espressif/idf:v5.5.1 container:
+
+| Build | `kino-p4.bin` | Factory partition free |
+|---|---|---|
+| default | 819 744 B (800 KB) | 47% |
+| radio | 1 417 264 B (1384 KB) | 8% |
+
+The radio stack costs **584 KB**. The CI guards are 1100 KB for the default
+build and 1440 KB for the radio one, and the second is a ceiling with 56 KB of
+slack rather than headroom. Two consequences worth stating rather than
+discovering:
+
+- the CMN certificate bundle is load-bearing. `DEFAULT_FULL` measured 1434 KB,
+  4% of the partition free. If the API host's root is not in CMN, add that root
+  — do not switch to FULL.
+- **this variant does not fit a two-slot OTA partition table.** M8's repartition
+  has to size its slots for this binary, not for the default one.
 
 ## 5. Prove the radio, in this order
 
@@ -166,55 +282,193 @@ tests assert it.
 - power the AP on → reconnects with no intervention
 - repeat several times → no leak, no wedge
 
-## 6. Clock, before TLS can be trusted
+## 6. Clock, before TLS can be trusted — DONE
 
-The D4 has no RTC. `clock.c` carries three sources — host-set, persisted,
-unset — and `capturedAt` travels with a `clockSource` saying which. A
-certificate cannot be validated against a clock that is wrong by years, and
-disabling verification to get past that is not an option.
+The D4 has no RTC. `clock.c` now carries four sources and `capturedAt` travels
+with a `clockSource` saying which:
 
-Add SNTP once there is an address, and integrate it as a *source* rather than
-an override: SNTP outranks `persisted` and `unset`, and must not silently
-replace a host-set time that a bench operator has just supplied. Do not let
-TLS depend on it before the first sync completes; report the failure as
-`NET_REASON_DNS_FAILURE`/TLS rather than looping.
+| Source | Rank | What it is |
+|---|---|---|
+| `host` | 3 | a host set it this session |
+| `network` | 2 | an SNTP answer this session |
+| `persisted` | 1 | carried across a power cycle; a lower bound that drifts |
+| `unset` | 0 | the reading is 1970 plus uptime, and no consumer can mistake it |
 
-## 7. Fill the HTTP seam
+Two rules, in `pure_clock_adopt_action()` and host-tested:
 
-`upload_queue.c` has the step order written out — register, thumb, frames
-1..N, complete — with the transport behind a function-pointer seam that
-returns "no transport" today. `docs/roll/ROLL_DEVICE_CONTRACT.md` is the
-normative procedure, and `apps/twin/src/roll/bridge.ts` is a working
-implementation of the same contract to read against.
+- a HIGHER-ranked source may move the clock in either direction. That is what a
+  correction is, and it is what `clock_set()` has always done for a host: a
+  persisted time that is wrong by a year has to be fixable.
+- an EQUAL-ranked AUTOMATIC source may never move it backwards. A second SNTP
+  sync reading 200 ms earlier is noise, and adopting it would let one capture be
+  dated before an earlier one. A host at the same rank is exempt — that is a
+  person typing a time in.
 
-Two things to keep while filling it in:
+`net_time.c` makes the refusals unreachable rather than handling them, and the
+reason is worth knowing: lwIP's SNTP calls `settimeofday()` itself and invokes
+the callback afterwards, so a refused answer would have to be undone, and
+`clock.c` holds no second copy of the time to undo it with — there is exactly
+one wall clock on this device, deliberately. So SNTP is not started at all while
+the clock is already `host`, and it is stopped after the first success. What is
+left is exactly the case the policy adopts: `unset` or `persisted` becoming
+`network`.
 
-- **Persist before every network operation.** The write-back after
-  `rq_apply()` is what stops a reboot re-uploading a frame that already
-  landed. `roll_queue.h` explains why progress is a set of completion flags
-  and not a byte offset.
-- **Do not re-classify responses locally.** `rq_classify_status()` owns the
-  drop/retry/re-read/halt decision and is host-tested against the contract's
-  own table, including the 422 case where the contract's two sections have to
-  be reconciled.
+The camera needs to learn what year it is, not to correct drift over an evening.
+A single sync per session is that, and it is also the only shape in which a
+network time cannot move the clock backwards.
+
+**TLS waits on it.** `clock_trustworthy_for_tls()` accepts `host` and `network`
+only. `persisted` is refused because it is a lower bound that drifts with
+however long the camera sat in a bag, and a certificate checked against it can
+fail for a reason that has nothing to do with the certificate. The queue reports
+`NET_REASON_CLOCK_UNTRUSTED` and stops, with the state left at `IP_READY`
+because the network really is up — saying otherwise would send someone to look
+at the router.
+
+**Contract deviation, recorded not resolved.** `clockSource` is typed
+`'host' | 'persisted' | 'unset'` in `packages/kdp/src/protocol/types.ts`, and
+`apps/studio/src/developer/conformance.ts` throws on anything else. A
+radio-build device emitting `network` fails that check. See
+`firmware-contract/README.md` D16; widening the union is a `packages/**` change
+and belongs with the milestone that ships the radio.
+
+## 7. Fill the HTTP seam — DONE
+
+`roll_http.c` is the wire, `roll_api.c` is the procedure, and neither re-decides
+anything the queue already owns. `upload_queue.c`'s function-pointer seam now
+points at `roll_api_step()`, which is implemented twice — with the HTTP client
+in the radio build, and as "no radio in this build" otherwise — so the queue,
+its persistence and its retry policy run identically either way. That is what
+keeps the host tests worth having when no radio has been exercised.
+
+Every step of `docs/roll/ROLL_DEVICE_CONTRACT.md` is implemented:
+
+| Step | Call |
+|---|---|
+| register once | `POST /api/studio/devices/register` |
+| create a Roll | `POST /api/device/rolls` |
+| join a Roll | `POST /api/device/rolls/join` |
+| the capture | `POST /api/device/rolls/{rollId}/captures` |
+| each asset | `assets/init` -> part `PUT`s -> `uploads/{id}/complete` |
+| finish | `POST /api/device/captures/{id}/complete` |
+
+What was kept, and why each one is easy to get wrong:
+
+- **Certificate verification, always.** `esp_crt_bundle_attach` on every
+  request, and there is no flag in `roll_http.c` to turn it off. The two
+  problems that tempt people into disabling it — a wrong clock and a private CA
+  — have their own answers, in step 6 and in the bundle respectively.
+- **The token stays in one frame.** `roll_state_apply_credential_to()` hands it
+  to the callback that builds the `Authorization` header and nothing else; the
+  header buffer is wiped before that returns. Every error string that leaves
+  goes through `rq_redact()`, including the API's own `{code, message}` body,
+  which is the most likely place a URL with a token in it would be echoed back.
+- **No local re-classification.** `rq_classify_status()` owns drop/retry/
+  re-read/halt, including the 422 case where the contract's two sections have to
+  be reconciled. `roll_api.c` reports the status verbatim. A missing credential
+  is reported as 401 rather than 0, so the queue halts rather than retrying
+  forever: no credential and a dead credential need the same action from the
+  user, and neither is transient.
+- **Persist before the next network operation.** Unchanged — that is
+  `upload_queue.c`'s write-back after `rq_apply()`, and it is what stops a
+  reboot re-uploading a frame that already landed.
+- **The card is the truth.** The registered document is META.JSON as written at
+  commit time, with exactly three fields patched: `rollId` (null at commit
+  time), `deviceId` (empty on a camera that had not registered) and
+  `frameCount` (from the files that will actually be uploaded). `mode` is forced
+  to `single` for a one-frame capture, because Roll renders Wiggle controls from
+  that field.
+- **Photography wins the card.** Every read takes
+  `storage_acquire(STORAGE_USER_UPLOAD, 200 ms)` and polls
+  `storage_yield_requested()` between 16 KiB chunks — in the hash as well as in
+  the part `PUT`. When a capture wants the card, the part is abandoned
+  mid-stream and the request returns status 0, which the queue treats as
+  transient. That is correct rather than merely acceptable: the contract's part
+  re-`PUT` is idempotent, an abandoned upload costs nothing, and a dropped frame
+  costs a photograph.
+
+`ROLL_CREATE` and slug-only `ROLL_JOIN` no longer return `NETWORK_UNAVAILABLE`
+once the radio is up. Both block the KDP task for as long as the API takes,
+which is accepted: they are deliberate user actions with a spinner in front of
+them, the alternative is a job model for one call, and the capture path never
+waits on the KDP task. A failure is mapped to a code a host can act on — 404 is
+`NOT_FOUND`, 429 says joining is locked for a while (the API locks it after ten
+wrong slugs, and a generic failure invites the eleventh), 401/403 is
+`UNAUTHORIZED`, and no response at all falls back to the radio's own reason.
+
+**Not implemented:** `GET /api/device/rolls/current` and the optional
+`GET .../status` poll. Neither is needed to upload: membership is cached in NVS
+and the queue drives transitions by uploading.
+
+**Untestable on a host, and therefore unproven:** everything in this step. There
+is no server double in this repository that the firmware could be pointed at,
+`apps/twin`'s bridge is the browser's implementation of the same contract rather
+than a mock for this one, and `KINO_ROLL_API_BASE` has no default. The first
+real evidence will be a bench run against a live API.
 
 ## 8. Gate F — coexistence
 
 The exit criterion, from `FIRMWARE_ROADMAP.md`: capture timing and camera-node
 CRC error rates measured with the radio idle, associated, and uploading, and
-**unchanged within noise** against the radio-off baseline. Otherwise uploads
-are restricted to idle or charging.
+**unchanged within noise** against the radio-off baseline. Otherwise uploads are
+restricted to idle or charging.
 
-The mechanism is already in place and needs measuring, not designing: the
-upload worker runs below the UI and the capture workers, and it takes
-`storage_acquire(STORAGE_USER_UPLOAD, ...)` for every card access, so a capture
-holding the card at `STORAGE_USER_CAPTURE` shuts it out. That is not only about
-CPU — the mount has one descriptor budget (`STORAGE_MAX_OPEN_FILES`) and one
-SDMMC bus, so an upload reader competing for a handle and for the bus is a real
-hazard rather than a theoretical one.
+Most of the mechanism is in place and needs measuring, not designing: the upload
+worker runs at priority 2, below the UI (4) and the capture workers (5), and it
+takes `storage_acquire(STORAGE_USER_UPLOAD, ...)` for every card access, so a
+capture holding the card at `STORAGE_USER_CAPTURE` shuts it out. That is not
+only about CPU — the mount has one descriptor budget
+(`STORAGE_MAX_OPEN_FILES`) and one SDMMC bus.
 
-Measure, do not assume. Photography wins; an upload that lands a few seconds
-later costs nothing.
+### The open risk: ESP-Hosted's RX worker runs at priority 22
+
+`CONFIG_ESP_HOSTED_HOST_DEFLT_TASK_PRIORITY` defaults to 22 and that is what
+Espressif's own example ships. On this camera 22 outranks everything:
+
+| Task | Priority |
+|---|---|
+| ESP-Hosted SDIO RX worker | **22** |
+| KDP server | 9 |
+| capture coordinator and workers | 5 |
+| UI | 4 |
+| C6 supervisor (`c6link`) | 3 |
+| upload worker | 2 |
+
+**It can be lowered — the Kconfig range is 1..25 — and it deliberately is not.**
+Below 5 the RX worker can be starved by a four-camera transfer; the coprocessor
+keeps pushing, its queue overflows, and the result is a transport fault during a
+capture. That trades the hazard this priority causes for the one it prevents,
+and which way the trade actually falls is a measurement. No board has been
+powered, so there is no measurement, and guessing in either direction would be
+worse than saying so.
+
+So it ships at the reference value with the hazard recorded, and Gate F is what
+resolves it. What to measure, in order:
+
+1. baseline: capture timing spread and camera-node CRC error rates with the
+   radio build flashed but the C6 held in reset;
+2. the same with the link up and Wi-Fi idle;
+3. the same associated and with a lease;
+4. the same while a four-frame capture uploads.
+
+If step 4 shows capture timing degrading, the levers are, in order of
+preference: lower `CONFIG_ESP_HOSTED_HOST_DEFLT_TASK_PRIORITY` toward 6 and
+re-measure both hazards; raise the capture workers above it; or restrict uploads
+to idle and charging, which is the roadmap's own fallback.
+
+One thing is already decided rather than measured:
+`CONFIG_ESP_HOSTED_HOST_TRANSPORT_RESTART_ON_FAILURE` is **n**, against the
+component's default of y. With it on, a runtime transport failure calls
+`esp_restart()` — the P4 reboots itself, losing the frame in flight, the open
+capture folder and the session, because Wi-Fi hiccuped. Networking is additive
+on this body: a dead radio may cost uploads and must never cost a photograph.
+The `TRANSPORT_FAILURE` event is emitted either way, so the failure is still
+reported.
+
+The second half of coexistence is the one Espressif's combined example tests for
+us: it scans Wi-Fi before *and* after filesystem I/O specifically to prove the
+radio survives card init. Run that check — a scan, mount the card, a scan — as
+`SD_C6_COEXIST` before trusting any of the numbers above.
 
 ## 9. Only then, the capability flags
 
