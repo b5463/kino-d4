@@ -8,10 +8,10 @@
 #include "board_d4v1.h"
 #include "cJSON.h"
 #include "clock.h"
-/* Only for upload_queue_pause_for_capture() in the task loop. The capture path
- * does not otherwise know that uploads exist — enqueue arrives through
- * capture_on_done(), the same way the gallery does. */
-#include "upload_queue.h"
+/* storage.h already carries the card-access lock this path takes, so the
+ * capture path no longer needs to know that uploads exist at all — the
+ * coordination is with the *card*, not with a particular consumer of it.
+ * Enqueue still arrives through capture_on_done(), the way the gallery does. */
 #include "config_store.h"
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
@@ -666,23 +666,35 @@ static void capture_task(void *arg) {
     if (xQueueReceive(s_requests, source, portMAX_DELAY) != pdTRUE) continue;
 
     /*
-     * Hold the Roll upload worker off for the whole capture.
+     * Take the card for the whole capture, at capture priority.
      *
-     * Not a courtesy. The FAT volume is mounted with max_files = 4, and this
-     * capture is about to hold a frame handle plus a second handle to read
-     * the file back for its CRC check — an upload reader opening a fifth
-     * fails outright. It would also be pulling a 300 KB JPEG off the same
-     * SDMMC bus the four concurrent frame writes depend on, and the frame
-     * spread is the one number this pipeline exists to keep small.
+     * This replaced a boolean the upload worker polled. A boolean is a hint,
+     * not exclusion: a reader that opened a handle between the check and the
+     * capture still took a descriptor. The descriptor budget turns out to be
+     * comfortable — the audit on STORAGE_MAX_OPEN_FILES found no path in this
+     * firmware holds two handles at once, this one included: the frame is
+     * closed before its CRC read-back opens it. So the reason to hold the card
+     * is not the handle count.
      *
-     * Set and cleared in the same iteration with nothing between them that
-     * can continue or return, so the worker cannot be left paused by a
-     * capture that failed. Photography wins; an upload that lands a few
+     * It is the bus and the timing. Anything else reading the card is pulling
+     * bytes off the same SDMMC controller these four concurrent frame writes
+     * depend on, and the spread between frames is the one number this pipeline
+     * exists to keep small.
+     *
+     * STORAGE_WAIT_FOREVER, deliberately. A capture is never refused the
+     * card; the lower-priority holder sees storage_yield_requested() go true
+     * and lets go between chunks, so the wait is bounded by one chunk rather
+     * than one whole file. Photography wins; an upload that lands a few
      * seconds later costs nothing.
+     *
+     * Taken and released in the same iteration with nothing between that can
+     * continue or return, so a failed capture cannot leave the card locked.
+     * A NULL lock means storage_init() never ran, and then there is no card
+     * to protect — the capture will fail on its own for the right reason.
      */
-    upload_queue_pause_for_capture(true);
+    const bool held = storage_acquire(STORAGE_USER_CAPTURE, STORAGE_WAIT_FOREVER);
     capture_fire(source, NULL);
-    upload_queue_pause_for_capture(false);
+    if (held) storage_release(STORAGE_USER_CAPTURE);
   }
 }
 

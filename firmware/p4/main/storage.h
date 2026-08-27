@@ -269,4 +269,170 @@ typedef struct {
  */
 void storage_sweep_orphans(storage_sweep_t *out);
 
+/* ------------------------------------------------------------------ */
+/* Card access coordination                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Who wants the card, and how badly.
+ *
+ * Priority is the whole point of this module: the camera has one card, one
+ * SDMMC controller, and a FAT mount with `max_files = 4`. Before this existed
+ * `capture.c` held a file-static mutex that only it could see, and the upload
+ * worker coordinated with it through a boolean — which is not exclusion, it is
+ * a hint. A reader that opened a handle between the check and the capture could
+ * still take the fourth descriptor and make a capture fail to open its frame.
+ */
+typedef enum {
+  /** A capture writing frames or committing metadata. Outranks everything and
+   * is never made to wait behind background work. */
+  STORAGE_USER_CAPTURE = 0,
+  /** The camera UI reading a thumbnail or a gallery tile. A person is looking
+   * at the screen, so it beats uploading but yields to a capture. */
+  STORAGE_USER_UI,
+  /** The Roll upload worker, and boot reconciliation. Lowest: an upload that
+   * lands a few seconds later costs nothing, a dropped frame costs a
+   * photograph. */
+  STORAGE_USER_UPLOAD,
+} storage_user_t;
+
+/**
+ * Handles the mount can have open at once. Mirrors the `max_files` passed to
+ * esp_vfs_fat_sdmmc_mount(); exported so callers can reason about the budget
+ * instead of discovering it.
+ *
+ * ## What the code actually opens (audited 2026-08-27)
+ *
+ * Every path in this firmware opens one file, closes it, then opens the next.
+ * Not one of them holds two at a time:
+ *
+ *   capture frame write     1  storage_capture_frame_begin/_end
+ *   capture CRC read-back   1  storage_file_crc32, AFTER frame_end has closed
+ *   thumbnail write         1  thumb.c; the source JPEG is already in RAM
+ *   META.JSON commit        1  storage_capture_commit
+ *   UPLOAD.JSON write       1  upload_store_save; temp handle closed before the
+ *                              rename
+ *   reconciliation          1  upload_store_load, plus one DIR (see below)
+ *   gallery tile decode     1  thumb_load -> slurp
+ *   STORAGE_BENCH           1  the write handle is closed before the read one
+ *   STORAGE_SELF_TEST       1  same shape
+ *
+ * `opendir()` does NOT spend a descriptor: esp_vfs_fat's vfs_fat_opendir()
+ * ff_memalloc()s its own vfs_fat_dir_t (vfs_fat.c:894), separate from the
+ * `files[]` array `max_files` sizes.
+ *
+ * Concurrency is what sets the number, and only four tasks touch the card:
+ * capture (1 handle, holds STORAGE_USER_CAPTURE), the upload worker (1, holds
+ * STORAGE_USER_UPLOAD, so it cannot overlap capture), the UI reading a gallery
+ * tile (1), and the KDP server running a bench or self-test (1). The last two
+ * do not take this lock yet, so the worst case is three: the lock holder plus a
+ * tile decode plus a bench.
+ *
+ * Three against eight. Eight is sufficient with 2.6x headroom — not tight, and
+ * not free. The old value of 4 was also sufficient, and the reason once given
+ * for it being close ("a capture holds a frame handle plus a read-back handle")
+ * does not hold: storage_capture_frame_end() closes the frame before
+ * storage_file_crc32() opens it.
+ *
+ * ## What each descriptor costs
+ *
+ * esp_vfs_fat_register_cfg() allocates `sizeof(vfs_fat_ctx_t) + max_files *
+ * sizeof(FIL)` plus a parallel `max_files * sizeof(uint32_t)` flags array
+ * (vfs_fat.c:202 and :208). FIL is dominated by `BYTE buf[FF_MAX_SS]` (ff.h:225,
+ * present because CONFIG_FATFS_PER_FILE_CACHE=y), and FF_MAX_SS is 4096 here,
+ * not 512, because CONFIG_FATFS_SECTOR_4096=y.
+ *
+ * Measured with this project's sdkconfig, riscv32-esp-elf: sizeof(FIL) = 4136 B,
+ * plus 4 B of flags = 4140 B, or 4.04 KiB per descriptor. So 8 descriptors is
+ * 33.1 KB and the raise from 4 cost 16.6 KB. It comes out of PSRAM, not
+ * internal SRAM (CONFIG_FATFS_ALLOC_PREFER_EXTRAM=y), which is why 2.6x headroom
+ * is worth paying for and would not be at 512-byte sectors in internal RAM.
+ */
+#define STORAGE_MAX_OPEN_FILES 8
+
+/**
+ * Take the card for `user`. Blocks up to `timeout_ms`; use
+ * `STORAGE_WAIT_FOREVER` for the capture path, which must never be refused.
+ *
+ * Returns false on timeout, and a caller that gets false must do nothing to
+ * the card — not "try anyway". The upload worker passes a short timeout
+ * precisely so that a busy card makes it give up and come back rather than
+ * queue behind photography.
+ *
+ * Reentrancy: not recursive. One take, one give, on the same task.
+ *
+ * ## Why a priority lock and not a plain mutex
+ *
+ * A plain FreeRTOS mutex is first-come-first-served, so a capture arriving
+ * while a 300 KB upload read is in flight waits for it. That is the wrong way
+ * round on a camera. `storage_yield_requested()` is the other half: a
+ * long-running low-priority holder polls it and lets go early.
+ */
+bool storage_acquire(storage_user_t user, int timeout_ms);
+
+#define STORAGE_WAIT_FOREVER (-1)
+
+/** Release the card. Must be called on the task that acquired it. */
+void storage_release(storage_user_t user);
+
+/**
+ * True when THIS task already holds the card.
+ *
+ * For the one function with two callers at different depths.
+ * `upload_queue_enqueue()` writes `UPLOAD.JSON`, and it is called both from
+ * `capture.c`'s done-listener — which runs inside that capture's own
+ * `storage_acquire(STORAGE_USER_CAPTURE)` — and from `kdp_net.c` on the KDP
+ * server task, which holds nothing. The lock is not recursive, so acquiring
+ * unconditionally deadlocks the capture task against itself, and acquiring
+ * never leaves the KDP path writing the card unprotected.
+ *
+ * So the callee asks. `storage_acquire_unless_held()` below is the whole
+ * pattern; this predicate is exported for callers that need to reason about it
+ * separately, and for diagnostics.
+ *
+ * Task-scoped, not user-scoped: it answers "am I the holder", not "is anyone
+ * holding". `storage_capture_active()` answers the other question.
+ */
+bool storage_held_by_this_task(void);
+
+/**
+ * Acquire unless this task is already the holder.
+ *
+ * Sets `*took` to whether a matching `storage_release()` is owed — pass it to
+ * `storage_release_if_taken()`, or branch on it. Returns false only when the
+ * card was wanted, not held, and not obtained within `timeout_ms`.
+ *
+ * This exists so a helper can be correct under both of its callers without
+ * either of them knowing which. The alternative — a recursive mutex — would
+ * also have worked, and was rejected because it makes "who holds the card"
+ * unanswerable at a glance, which is the question every yield decision and
+ * every deadlock hunt starts from.
+ */
+bool storage_acquire_unless_held(storage_user_t user, int timeout_ms, bool *took);
+
+/** Release only if the paired `storage_acquire_unless_held()` actually took
+ * the lock. Safe with `took == false`. */
+void storage_release_if_taken(storage_user_t user, bool took);
+
+/**
+ * True when someone more important is waiting.
+ *
+ * The upload worker checks this between chunks of a file read and returns the
+ * card early when a capture wants it. Without a cooperative check the capture
+ * still waits for a whole frame read to finish, which is the multi-hundred-
+ * millisecond stall this design exists to avoid. Photography wins, and the
+ * upload resumes from the same byte because the queue re-reads from the card
+ * anyway.
+ */
+bool storage_yield_requested(storage_user_t user);
+
+/** True while a capture holds the card, or is waiting for it. Cheap; for the
+ * UI and for `upload_queue`'s idle check. */
+bool storage_capture_active(void);
+
+/** Diagnostics for `GET_RUNTIME_STATS`: how often a low-priority holder was
+ * asked to yield, and how often an acquire timed out. Both should be small;
+ * a growing timeout count means the budget or the priorities are wrong. */
+void storage_lock_stats(uint32_t *yields, uint32_t *timeouts);
+
 #endif
