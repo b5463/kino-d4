@@ -43,18 +43,23 @@ and changing them invalidates every already-flashed unit.
 ## GATE 2 — prove recovery before the first flash write
 
 The C6 has no USB path this repo can rely on. Its console and download pins
-reach the carrier's 2×13 header as `C6_U0RXD`, `C6_U0TXD`, `C6_IO9` and
-`C6_CHIP_PU` (`packages/hardware-profiles/src/profiles/d4-v1.json`,
-`docs/HARDWARE.md`), so flashing is an **external USB-serial adapter**
-operation:
+reach the carrier's `JP1` header (26-pin, 2×13, odd pins left) on the even
+pins 20, 22, 24 and 26 as `C6_U0RXD`, `C6_U0TXD`, `C6_IO9` and `C6_CHIP_PU`
+(`packages/hardware-profiles/src/profiles/d4-v1.json`, `docs/HARDWARE.md`
+§P4 header JP1), so flashing is an **external USB-serial adapter** operation:
 
-| Header net | C6 pin | Adapter |
-|---|---|---|
-| `C6_U0RXD` | `U0RXD` | adapter TX |
-| `C6_U0TXD` | `U0TXD` | adapter RX |
-| `C6_IO9` | `GPIO9` | pull LOW at reset to enter download mode |
-| `C6_CHIP_PU` | `CHIP_PU` | LOW = held off, HIGH = running |
-| `ESP_3V3` | supply | ground reference only — do not back-feed |
+| Header net | JP1 pin | C6 pin | Adapter |
+|---|---:|---|---|
+| `C6_U0RXD` | 20 | `U0RXD` | adapter TX |
+| `C6_U0TXD` | 22 | `U0TXD` | adapter RX |
+| `C6_IO9` | 24 | `GPIO9` | pull LOW at reset to enter download mode |
+| `C6_CHIP_PU` | 26 | `CHIP_PU` | LOW = held off, HIGH = running |
+| `GND` | 5, 6 or 16 | — | adapter GND |
+| `3V3` | 18 | supply | reference only — do not back-feed |
+
+These four pins are reserved for the C6. They are not KINO signals, and the
+P4↔C6 data transport does not pass through them (it is SDIO on GPIO14–19 with
+`EN` on GPIO54, internal to the module).
 
 Sequence, and the order matters:
 

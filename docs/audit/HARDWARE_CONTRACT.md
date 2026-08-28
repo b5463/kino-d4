@@ -8,9 +8,9 @@ The electrical facts firmware and software may rely on, each with its confidence
 Guition ESP32-P4 module (P4 + C6, 4.3" 480×800, 32 MB PSRAM, 16 MB flash)
   ├── UART ×4 @ 921600 (ladder to 3 Mbaud pending bench) ──► 4 × XIAO ESP32-S3 Sense
   │                                                             └── each owns ONE sensor over DVP
-  ├── SYNC_TRIGGER (GPIO32, shared edge to all four nodes)
-  ├── FLASH_EN (GPIO28, constant-current driver, 350 mA initial target)
-  ├── CAM_PWR_EN (GPIO31) → per-channel P-MOSFET switches (channel control pins unresolved)
+  ├── SYNC_OUT (GPIO20, JP1 pin 17, shared edge to all four nodes)
+  ├── FLASH_EN (no header pin in V1 — constant-current driver, 350 mA initial target, enable route pending M2)
+  ├── CAM_PWR_EN (no header pin in V1) → per-channel P-MOSFET switches (channel control pins unresolved)
   └── USB-C ◄── Studio (Web Serial)
 ```
 
@@ -18,20 +18,22 @@ The P4 never reads a camera bus. Each XIAO owns its sensor; the P4 coordinates o
 
 ## Pin assignments
 
-The full 2×13 header table and the XIAO DVP map live in `docs/HARDWARE.md` (§P4 header, §XIAO camera interface) and in the profile (`gpio`, `header2x13`, `dvpPinMap`). Summary of KINO assignments — **all `PROVISIONAL` until issue #2 closes**:
+The header is `JP1`, 26 pins, 2×13, 2.54 mm, odd pins left and even pins right. The manufacturer JP1 table, the KINO assignment drawing and the XIAO DVP map live in `docs/HARDWARE.md` (§P4 header JP1, §XIAO camera interface) and in the profile (`gpio`, `header2x13`, `dvpPinMap`). Code source of truth: `firmware/p4/main/board_d4v1.h`. Summary of KINO assignments — **all `PROVISIONAL` until issue #2 closes**; no camera has been wired yet:
 
-| Function | Pin |
-|---|---|
-| CAM1 TX/RX | GPIO52 / GPIO51 |
-| CAM2 TX/RX | GPIO50 / GPIO49 |
-| CAM3 TX/RX | GPIO34 / GPIO33 |
-| CAM4 TX/RX | GPIO30 / GPIO29 |
-| SYNC_TRIGGER | GPIO32 |
-| FLASH_EN | GPIO28 |
-| CAM_PWR_EN | GPIO31 |
-| spare | GPIO35 |
+| Function | P4 GPIO | JP1 pin | Far end |
+|---|---:|---:|---|
+| CAM1_TX / CAM1_RX | GPIO1 / GPIO2 | 7 / 9 | XIAO 1 RX GPIO44 / TX GPIO43 |
+| CAM2_TX / CAM2_RX | GPIO47 / GPIO46 | 10 / 12 | XIAO 2 RX GPIO44 / TX GPIO43 |
+| CAM3_TX / CAM3_RX | GPIO32 / GPIO33 | 19 / 21 | XIAO 3 RX GPIO44 / TX GPIO43 |
+| CAM4_TX / CAM4_RX | GPIO45 / GPIO4 | 14 / 13 | XIAO 4 RX GPIO44 / TX GPIO43 |
+| SYNC_OUT | GPIO20 | 17 | all four XIAO SYNC_IN |
+| FLASH_EN | none | none | unassigned, pending M2 |
+| CAM_PWR_EN | none | none | unassigned, pending M2 |
+| spare | none | none | none available |
 
-Reserved, never repurposed: `ESP_3V3`, `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU`. XIAO DVP interface is `OFFICIAL_SPEC` (Seeed); the OV5640 target module (MJY5OAF-F3M-V1-compatible, 24-pin) must match it, with AFVDD = **2.8 V**, never generic 3.3 V.
+JP1 exposes 11 P4 GPIOs (1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47). GPIO3 (`BOARD_TOUCH_RESET`) and GPIO5 (`BOARD_LCD_RESET`) are taken by validated peripherals. The 9 free pins carry 8 UART lines and `SYNC_OUT`. `FLASH_EN` and `CAM_PWR_EN` have no pin; the M2 candidate is an I²C GPIO expander on `ESI2C_SDA`/`ESI2C_SCL` (JP1 pins 23/25). GPIO52/51/50/49/35/34/31/30/29/28 are not on the header. The map that used them (commit `1bc8a7e`) was transcribed from an assumed third-party list, not the silkscreen; `docs/HARDWARE.md` §How the wrong map got in records it. The old `CAM_PWR_EN GPIO31 VALIDATED (pin only)` claim is void for the same reason.
+
+Reserved, never repurposed: JP1 pins 20, 22, 24, 26 (`C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU`) — the C6 console and programming path, not its transport (that is SDIO on GPIO14–19 plus `EN` GPIO54, internal to the module). XIAO DVP interface is `OFFICIAL_SPEC` (Seeed); the OV5640 target module (MJY5OAF-F3M-V1-compatible, 24-pin) must match it, with AFVDD = **2.8 V**, never generic 3.3 V.
 
 ## Sensors
 

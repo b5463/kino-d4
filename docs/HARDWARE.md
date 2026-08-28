@@ -56,7 +56,7 @@ The current main module is the Guition `JC4880P443C-I-W`.
 | Module envelope | 117.01 × 69.41 mm | `CONFLICT` |
 | Alternate board envelope | About 114.40 × 66.80 mm | `CONFLICT` |
 
-Measure the purchased board before locking the rear enclosure. Preserve access to both USB-C ports, the TF/microSD slot, speaker and battery connectors, the 2×13 header, and the UART/I2C connectors.
+Measure the purchased board before locking the rear enclosure. Preserve access to both USB-C ports, the TF/microSD slot, speaker and battery connectors, the 2×13 `JP1` header, and the UART/I2C connectors.
 
 ## Camera row
 
@@ -78,29 +78,73 @@ The four lenses sit on one rigid camera bar. Current pitch is adjustable from 20
 
 The field of view is still `MEASURE_REQUIRED`. OV3660 names the sensor. The lens and module determine the field of view.
 
-## P4 header and provisional pin assignments
+## P4 header JP1
 
-The 2×13 header, top to bottom. `PROVISIONAL` throughout: every KINO assignment below must be electrically validated on the physical board before firmware locks it (GitHub issue #2).
+The carrier's expansion header is `JP1`: 26 pins, 2×13, 2.54 mm pitch. Odd pins are the left column, even pins the right column, pin 1 at the top. This table is the manufacturer pinout for the JC-ESP32P4-M3-DEV carrier, `OFFICIAL_SPEC`, checked against the silkscreen on our unit (commit `944b68e`).
 
-| Left | Right | KINO assignment |
-|---|---|---|
-| 3V3 | 5V | — |
-| 3V3 | 5V | — |
-| GND | GND | — |
-| GPIO52 | GPIO33 | CAM1 TX · CAM3 RX |
-| GPIO51 | GPIO31 | CAM1 RX · CAM_PWR_EN |
-| GPIO50 | GPIO30 | CAM2 TX · CAM4 TX |
-| GPIO49 | GPIO29 | CAM2 RX · CAM4 RX |
-| GPIO35 | GND | unused (spare) |
-| GPIO34 | ESP_3V3 | CAM3 TX · reserved |
-| GPIO32 | C6_U0RXD | SYNC_TRIGGER · reserved |
-| GPIO28 | C6_U0TXD | FLASH_EN · reserved |
-| I2C_SDA | C6_IO9 | — · reserved |
-| I2C_SCL | C6_CHIP_PU | — · reserved |
+| Pin | Left | Right | Pin |
+|---:|---|---|---:|
+| 1 | 3V3 | 5V | 2 |
+| 3 | 3V3 | 5V | 4 |
+| 5 | GND | GND | 6 |
+| 7 | GPIO1 | NC | 8 |
+| 9 | GPIO2 | GPIO47 | 10 |
+| 11 | GPIO3 | GPIO46 | 12 |
+| 13 | GPIO4 | GPIO45 | 14 |
+| 15 | GPIO5 | GND | 16 |
+| 17 | GPIO20 | 3V3 | 18 |
+| 19 | GPIO32 | C6_U0RXD | 20 |
+| 21 | GPIO33 | C6_U0TXD | 22 |
+| 23 | ESI2C_SDA | C6_IO9 | 24 |
+| 25 | ESI2C_SCL | C6_CHIP_PU | 26 |
 
-`ESP_3V3`, `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, and `C6_CHIP_PU` belong to the C6 and must not be repurposed. The per-camera power-switch control pins are unassigned; §Camera power switching describes the channel hardware, and whether channels hang off `CAM_PWR_EN` alone or get individual pins is `NEEDS_HARDWARE_VALIDATION`. Button and mode-slide pins are unassigned. The same map lives machine-readable in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, `header2x13`).
+JP1 exposes eleven P4 GPIOs: 1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47. No other P4 GPIO reaches the header. GPIO52, 51, 50, 49, 35, 34, 31, 30, 29 and 28 are not on JP1; any document or wiring note that puts camera signals on them is wrong (see §How the wrong map got in).
 
-The four `C6_*` pins on that header are the C6's **console and programming** path, not its data transport. They are how a C6 gets flashed and recovered; the transport is a separate SDIO bus that does not appear on the header at all. See below.
+Pins 20, 22, 24 and 26 (`C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU`) are the C6's **console and programming** path, not its data transport. They are how a C6 gets flashed and recovered; the transport is a separate SDIO bus that does not appear on the header at all. See §The two SDMMC buses. Pins 23 and 25 (`ESI2C_SDA`, `ESI2C_SCL`) are the carrier's external I²C.
+
+### KINO D4 V1 assignment on JP1
+
+`PROVISIONAL` throughout: no camera has been wired to this header yet, and every row below must be validated on the physical board before firmware locks it (GitHub issue #2). Source of truth in code is `firmware/p4/main/board_d4v1.h`; the same map lives machine-readable in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, `header2x13`, and `jp1`, which carries the physical pin of every assigned signal; a vitest parses the C header and fails if the two drift).
+
+| Pin | Left | KINO use | KINO use | Right | Pin |
+|---:|---|---|---|---|---:|
+| 1 | 3V3 | — | — | 5V | 2 |
+| 3 | 3V3 | — | — | 5V | 4 |
+| 5 | GND | common GND | common GND | GND | 6 |
+| 7 | GPIO1 | `CAM1_TX` (UART1) | — | NC | 8 |
+| 9 | GPIO2 | `CAM1_RX` (UART1) | `CAM2_TX` (UART2) | GPIO47 | 10 |
+| 11 | GPIO3 | reserved: `BOARD_TOUCH_RESET` (GT911, validated) | `CAM2_RX` (UART2) | GPIO46 | 12 |
+| 13 | GPIO4 | `CAM4_RX` (UART4) | `CAM4_TX` (UART4) | GPIO45 | 14 |
+| 15 | GPIO5 | reserved: `BOARD_LCD_RESET` (ST7701S, validated) | — | GND | 16 |
+| 17 | GPIO20 | `SYNC_OUT` to all four XIAO `SYNC_IN` | — | 3V3 | 18 |
+| 19 | GPIO32 | `CAM3_TX` (UART3) | reserved: C6 console RX | C6_U0RXD | 20 |
+| 21 | GPIO33 | `CAM3_RX` (UART3) | reserved: C6 console TX | C6_U0TXD | 22 |
+| 23 | ESI2C_SDA | free I²C (M2 expander candidate) | reserved: C6 download strap | C6_IO9 | 24 |
+| 25 | ESI2C_SCL | free I²C (M2 expander candidate) | reserved: C6 enable | C6_CHIP_PU | 26 |
+
+Per signal, with the XIAO end:
+
+| Function | P4 GPIO | JP1 pin | Direction | Connected device |
+|---|---:|---:|---|---|
+| `CAM1_TX` | 1 | 7 | P4 out | XIAO 1 RX GPIO44 |
+| `CAM1_RX` | 2 | 9 | P4 in | XIAO 1 TX GPIO43 |
+| `CAM2_TX` | 47 | 10 | P4 out | XIAO 2 RX GPIO44 |
+| `CAM2_RX` | 46 | 12 | P4 in | XIAO 2 TX GPIO43 |
+| `CAM3_TX` | 32 | 19 | P4 out | XIAO 3 RX GPIO44 |
+| `CAM3_RX` | 33 | 21 | P4 in | XIAO 3 TX GPIO43 |
+| `CAM4_TX` | 45 | 14 | P4 out | XIAO 4 RX GPIO44 |
+| `CAM4_RX` | 4 | 13 | P4 in | XIAO 4 TX GPIO43 |
+| `SYNC_OUT` | 20 | 17 | P4 out | all four XIAO `SYNC_IN`, fan-out |
+| `FLASH_EN` | none | none | — | unassigned |
+| `CAM_PWR_EN` | none | none | — | unassigned |
+
+Accounting: 11 exposed GPIOs. 2 are already taken by validated peripherals (GPIO3 touch reset, GPIO5 LCD reset). 9 are free. The four UARTs take 8 and `SYNC_OUT` takes the ninth. There is no spare. `FLASH_EN` and `CAM_PWR_EN` therefore have no header pin in V1; the candidate route for M2 is an I²C GPIO expander on `ESI2C` (pins 23/25), still to be chosen. Until then the flash driver enable and the camera power bank cannot be driven from the P4. The per-camera power-switch control pins are also unassigned; §Camera power switching describes the channel hardware. Button and mode-slide pins are unassigned.
+
+None of the nine chosen GPIOs touches an occupied peripheral: SD slot 0 is GPIO39–44, the C6 SDIO slot 1 is GPIO14–19 with `EN` on GPIO54, I²S is 9–13 and 48, the internal I²C is 7/8, backlight is 23, USB is 24–27, strapping pins are 34–38. All five P4 UARTs route TX/RX through the GPIO matrix, so there is no IOMUX constraint on these choices. Baud stays 921600, UART numbers stay 1–4.
+
+### How the wrong map got in
+
+Commit `1bc8a7e` (2026-08-21) added the first header table to this file and to `d4-v1.json`. Its GPIO rows (GPIO52/51/50/49/35/34/33/32/31/30/29/28) were transcribed from an assumed third-party expansion-header list, not from the JC-ESP32P4-M3-DEV silkscreen or the manufacturer pinout. Rows 1–3 (3V3, 5V, GND) and the `C6_*` block matched the real header, so the table looked right at review and the error survived into `board_d4v1.h`, `d4-v1.json`, the validation registry and every bring-up document. CAM1 opened UART1 on two pins that route to nothing. The silkscreen was checked while the C6 routing was being reconciled (commit `944b68e`, 2026-08-27), which is when the eight camera pins were found to be absent. This revision replaces the map everywhere with the tables above. The lesson stands as written in `firmware/C6_HARDWARE_MAP.md` §E6: a `PROVISIONAL` row is a guess until the board says otherwise.
 
 ## The two SDMMC buses
 

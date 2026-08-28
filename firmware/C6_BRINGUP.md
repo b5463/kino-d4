@@ -51,8 +51,9 @@ What is still open, and it is what step 5 is for:
 - `GPIO54`'s polarity on this carrier. ESP-Hosted defaults to active-low and
   carries an explicit active-high override because boards with a
   transistor-buffered `EN` invert it. Ours is unmeasured.
-- the P4 GPIOs behind `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`. Until those are known,
-  C6 flashing is an external-adapter operation.
+- whether any P4 GPIO reaches `C6_U0RXD`, `C6_U0TXD`, `C6_IO9` (JP1 pins 20,
+  22, 24). None of the eleven P4 GPIOs on JP1 is known to, so C6 flashing is
+  an external-adapter operation.
 - the C6 SDIO IO power rail, and whether it needs an LDO channel of its own.
 
 Buzz the module out or get the schematic before the first bench run. The SD map

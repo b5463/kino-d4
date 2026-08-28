@@ -79,8 +79,10 @@ record.
 
 All 16 items **UNVALIDATED** — no physical run has happened. The USB port
 identity, the SD pin/LDO map (CLK43/CMD44/D39-42/LDO ch4), and the CAM1 UART
-pins (GPIO52/51) remain community/profile assumptions until the bench says
-otherwise.
+pins remain community/profile assumptions until the bench says otherwise.
+(This report named the CAM1 pins as GPIO52/51. That map was wrong — neither
+pin is on the JP1 header. CAM1 is now GPIO1/GPIO2, JP1 pins 7/9; see
+`docs/HARDWARE.md` §P4 header JP1. The SD map has since been validated.)
 
 ## Measured results — pending the bench
 

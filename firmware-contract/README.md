@@ -247,8 +247,8 @@ contract is unchanged: the percentage is what Studio sends and what the settings
 
 ### D13 — the shared trigger wire is driven, and coordinates nothing yet
 
-`GPIO32` (`BOARD_SYNC_OUT`) is pulsed for 200 µs at the start of every capture, and the pulse is
-timed and logged. **The camera nodes do not arm on that edge.** They expose when their
+`GPIO20` (`BOARD_SYNC_OUT`, JP1 pin 17; `GPIO32` until the header correction, when GPIO32 became
+`CAM3_TX`) is pulsed for 200 µs at the start of every capture, and the pulse is timed and logged. **The camera nodes do not arm on that edge.** They expose when their
 `NL_CMD_CAPTURE` arrives over their own UART, exactly as they did before the wire was driven.
 
 The pulse exists so the trace is proven and the node-side arm becomes a node change alone. Until it
@@ -262,15 +262,19 @@ rolling shutter, so when a command arrived says nothing certain about when light
 §14). `CAMERA_CAPTURE` with `action: "timing-test"` is refused with `UNSUPPORTED_COMMAND` rather than
 answered, and `GET_CAPABILITIES` reports `vsyncTelemetry: false`.
 
-`GPIO32` and `GPIO28` are their own nets — `SYNC_OUT` and `FLASH_EN` in
-`packages/hardware-profiles/src/profiles/d4-v1.json`. They sit beside `C6_U0RXD` and `C6_U0TXD` on
-the 2×13 header, which is adjacency in the pinout table and not a shared signal; the C6 pins stay
-reserved and undriven.
+`SYNC_OUT` is its own net (`GPIO20`, JP1 pin 17, in
+`packages/hardware-profiles/src/profiles/d4-v1.json`). The C6 pins on JP1 (20, 22, 24, 26) stay
+reserved and undriven. `FLASH_EN` has **no P4 GPIO in V1**: the JP1 header exposes eleven GPIOs,
+two are the touch and LCD resets, and the nine free ones are consumed by the four UARTs and
+`SYNC_OUT`. `BOARD_FLASH_EN` is `BOARD_GPIO_NONE` and the profile carries `FLASH_EN: null`. The
+earlier `GPIO28` assignment was to a pin that is not on the header.
 
-What `FLASH_EN` drives is a bench LED until the flash board exists. The pin is asserted before the
-trigger and released as soon as every node reports its capture finished, bounded at 900 ms — because
-without exposure sync a flash has to cover a window rather than an instant, and at 350–500 mA the
-difference is worth bounding.
+What `FLASH_EN` will drive is a bench LED until the flash board exists, through whatever route M2
+picks (an I²C GPIO expander on `ESI2C`, JP1 pins 23/25, is the candidate). The intended timing is
+unchanged: asserted before the trigger and released as soon as every node reports its capture
+finished, bounded at 900 ms — because without exposure sync a flash has to cover a window rather
+than an instant, and at 350–500 mA the difference is worth bounding. With no pin there is nothing
+to assert, and `flashHardware` stays `false`.
 
 ### D14 — `capturedAt` is required, and the body has no clock
 

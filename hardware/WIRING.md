@@ -55,15 +55,20 @@ Each channel uses an AO4407 or AO4407A P-channel MOSFET, a 100 kΩ gate pull-up,
 | `CAM_PWR_2` | `GPIO_TBD` | bench validation required |
 | `CAM_PWR_3` | `GPIO_TBD` | bench validation required |
 | `CAM_PWR_4` | `GPIO_TBD` | bench validation required |
-| `UART1_TX` / `UART1_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
-| `UART2_TX` / `UART2_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
-| `UART3_TX` / `UART3_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
-| `UART4_TX` / `UART4_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
+| `CAM1_TX` / `CAM1_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
+| `CAM2_TX` / `CAM2_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
+| `CAM3_TX` / `CAM3_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
+| `CAM4_TX` / `CAM4_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
 | `SYNC_OUT` | `GPIO_TBD` | bench validation required |
 | `FLASH_EN` | `GPIO_TBD` | bench validation required |
+| `CAM_PWR_EN` | `GPIO_TBD` | bench validation required |
 | `BTN_SHUTTER` | `GPIO_TBD` | bench validation required |
 | `BTN_FN` | `GPIO_TBD` | bench validation required |
 | `SLIDE_MODE` | `GPIO_TBD` | bench validation required |
+
+The `PROVISIONAL` candidate for each row lives in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, with the JP1 pin for each signal) and `firmware/p4/main/board_d4v1.h`. A row here moves off `GPIO_TBD` only with bench evidence.
+
+The P4's `JP1` header (26-pin, 2×13) exposes 11 P4 GPIOs. Two are already taken by the touch reset and the LCD reset, leaving 9. Four UARTs need 8 and `SYNC_OUT` needs 1, so `FLASH_EN` and `CAM_PWR_EN` have no header pin on this carrier; their route is an open M2 question.
 
 Locking this table requires a pin-capability review, continuity check, single-camera bring-up, and a four-camera load test. Update firmware, the twin profile, and this file in the same change.
 

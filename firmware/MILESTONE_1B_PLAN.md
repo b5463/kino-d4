@@ -72,7 +72,8 @@ new commands, capability-gated. Twin: parity comes through MockKinoDevice.
 ## Hardware validation registry
 
 `hardware_validation.[ch]`: fixed item table (`USB_SERIAL_JTAG`, `SD_CLK_GPIO43` … `SD_LDO_CH4`,
-`CAM1_TX_GPIO52`, `CAM1_RX_GPIO51`, `CAM1_BAUD_921600`, `CAM1_NODE_LINK`, `CAM1_SENSOR_DETECT`,
+`CAM1_TX_GPIO1`, `CAM1_RX_GPIO2` (named `CAM1_TX_GPIO52`/`CAM1_RX_GPIO51` when this plan was written;
+renamed with the JP1 header correction), `CAM1_BAUD_921600`, `CAM1_NODE_LINK`, `CAM1_SENSOR_DETECT`,
 `CAM1_CAPTURE`, `CAM1_JPEG_TRANSFER`, `CAM1_SD_WRITE`), status
 `UNVALIDATED | VALIDATED | FAILED | NOT_APPLICABLE`, persisted in NVS per unit. Compile-time
 configuration is never validation: an item flips to `VALIDATED` only when the corresponding real
@@ -95,7 +96,9 @@ exist in this milestone; they are reported as absent, never fabricated.
 
 1. USB-Serial-JTAG is reachable through a Guition USB-C port.
 2. SD: CLK 43 / CMD 44 / D0–D3 39–42, on-chip LDO channel 4.
-3. CAM1 UART pins GPIO52/51 reach the harness; 921600 clean.
+3. CAM1 UART pins reach the harness — `CAM1_TX` GPIO1 (JP1 pin 7), `CAM1_RX` GPIO2 (JP1 pin 9);
+   921600 clean. (This item originally read GPIO52/51. Those pins are not on the header; the
+   correction is in `docs/HARDWARE.md` §P4 header JP1.)
 4. XIAO link pins GPIO43/44; ROM boot spew is survivable (decoder contract says yes).
 5. Console on UART0 (GPIO37/38) does not collide with any of the above.
 

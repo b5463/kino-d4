@@ -18,7 +18,7 @@ Status legend: PASS · PARTIAL · FAIL · MISSING · BLOCKED_BY_HARDWARE. Severi
 | 6 | Geometry: pitch 20–24, optical centers, FOV lens profiles, distances | PARTIAL | P2 | Pitch live; FOV scenarios 60–120° labelled DESIGN SCENARIO; distances 0.8–3 m; optical centers = board centers → #63 + bench |
 | 7 | Trigger skew ≠ exposure skew; VSYNC/frame-phase model | PASS | — | Three metrics separate everywhere; engine simplifications flagged (TWIN_SPEC.md); 100–400 µs stays a target |
 | 8 | Flash as temporal freeze, overlap visualization | PARTIAL | P1 | Timeline + coverage exist; exposure-window model + bench → #56 |
-| 9 | P4 2×13 header, provisional assignments, reserved C6 pins | PASS (data) | — | Added this audit (profile `gpio`/`header2x13`, HARDWARE.md); electrical lock = issue #2 |
+| 9 | P4 2×13 header, provisional assignments, reserved C6 pins | PASS (data) — **later found wrong** | — | Added this audit (profile `gpio`/`header2x13`, HARDWARE.md); electrical lock = issue #2. The GPIO rows added here did not match the JP1 silkscreen (commit `944b68e`); replaced by the manufacturer table in `docs/HARDWARE.md` §P4 header JP1 |
 | 10 | Serial: per-cam state, baud ladder, hostile-link simulation | PARTIAL | P1 | States/bauds/faults strong; missing dup/dropped/mid-frame/overflow/baud-mismatch → #58 |
 | 11 | KDP: framing, capabilities, config versioning | PARTIAL | P1 | Framing/HELLO solid; migrations unexercised → #60; retries → #58 |
 | 12 | Power system limits and faults | PARTIAL | P1 | Limits match seller spec exactly; charger/SW6106/SoC/transient → #57 |

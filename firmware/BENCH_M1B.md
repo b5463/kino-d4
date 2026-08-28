@@ -47,10 +47,24 @@ Studio or any KDP serial client, a multimeter.
 
 1. Flash one XIAO with `kino-camnode.bin` over its own USB-C. Its console
    (native USB) must show the sensor detect line.
-2. Wire P4↔XIAO: GND↔GND first, then P4 GPIO52 → XIAO GPIO44 (RX), P4
-   GPIO51 ← XIAO GPIO43 (TX). No 5 V from the P4 header yet — power the XIAO
-   from its own USB for this stage.
-3. Verify with the meter: common ground, idle UART lines at 3.3 V.
+2. Wire P4↔XIAO, three wires only, on the P4's `JP1` header (26-pin, 2×13,
+   odd pins left, pin 1 top):
+
+   ```text
+   P4 CAM1_TX  GPIO1  (JP1 pin 7)    → XIAO RX GPIO44
+   P4 CAM1_RX  GPIO2  (JP1 pin 9)    ← XIAO TX GPIO43
+   common GND         (JP1 pin 5/6)  — XIAO GND
+   ```
+
+   GND first. No 5 V from the P4 header yet — the XIAO is powered from its
+   own USB-C for this stage, and P4↔XIAO are connected by GND + TX/RX and
+   nothing else. **Do not wire from the old GPIO52/GPIO51 instructions.**
+   Those pins are not on the header; a wire placed by that map lands on
+   a different signal. Pin numbers come from `board_d4v1.h`
+   (`BOARD_CAM1_TX_JP1`, `BOARD_CAM1_RX_JP1`); check them against the
+   silkscreen before the first power-up.
+3. Verify with the meter: common ground, idle UART lines at 3.3 V. Confirm
+   pin 7 and pin 9 by counting from pin 1, not by position on the ribbon.
 4. Within ~2 s the P4's probe marks CAM1 online. `GET_CAMERA_INFO` must show
    `cam1.online`, the sensor name and PID from the real SCCB read, the node
    firmware, session, and reset reason (`power-on` on a cold boot — anything

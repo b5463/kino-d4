@@ -125,16 +125,19 @@ tree.
 
 Two things about it matter here:
 
-- **The `C6_*` block matched.** Rows 10–13 of the right column are
-  `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU` on the silkscreen, exactly as
-  recorded. So the part of the repo's map that describes the C6 is the part that
-  survived checking.
+- **The `C6_*` block matched.** JP1 pins 20, 22, 24, 26 (right column, rows
+  10–13) are `C6_U0RXD`, `C6_U0TXD`, `C6_IO9`, `C6_CHIP_PU` on the silkscreen,
+  exactly as recorded. So the part of the repo's map that describes the C6 is
+  the part that survived checking.
 - **None of GPIO14–19 or GPIO54 is a header pin**, and they should not be: the
   transport is an internal trace between the two dies on the module, not
   something brought out to a connector. Checked mechanically — the C6 bus
-  overlaps neither the SD bus nor any of the nine header GPIOs the silkscreen
-  actually exposes (`1, 2, 4, 20, 32, 33, 45, 46, 47`), and `board_d4v1.h` has
-  no GPIO assigned twice.
+  overlaps neither the SD bus nor any of the eleven header GPIOs the silkscreen
+  actually exposes (`1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47`; GPIO3 and GPIO5
+  are already the touch and LCD resets, leaving nine free), and
+  `board_d4v1.h` has no GPIO assigned twice. The corrected map — CAM1–4 on
+  GPIO1/2, 47/46, 32/33, 45/4 and `SYNC_OUT` on GPIO20, each with its JP1 pin
+  — is in `docs/HARDWARE.md` §P4 header JP1.
 
 This is corroboration, not proof. It says the header error does not reach these
 pins and that the C6-facing half of the old map was accurate. It does not

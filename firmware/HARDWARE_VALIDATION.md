@@ -54,7 +54,7 @@ and it sat two minor versions behind the firmware.
 | Shared I²C bus | Scan reported 0x14, 0x18, 0x5d; codec must be brought up before the touch poll or every transaction NACKs | commit `8b4ddf3` | **VALIDATED** |
 | ES8311 codec + NS4150 amp | Answered at 0x18; amp enable GPIO11 drives a speaker. Shutter/tick levels chosen from measured output | 0.2.0 audio work | **VALIDATED** |
 | MSM381 microphone | reg 0x44 `ADCDAT_SEL` = 5 is a digital DAC loopback, not the mic; a volume sweep produced bit-identical output. Analog front end unconfigured | 0.2.0 audio work | **FAILED — not usable** |
-| `CAM_PWR_EN` GPIO31 | Pin driven both ways for the camera bank. Whether the AO4407 channels downstream follow it is still a scope job | 0.2.0 power work | **VALIDATED (pin only)** |
+| `CAM_PWR_EN` GPIO31 | Pin driven both ways for the camera bank. Whether the AO4407 channels downstream follow it is still a scope job | 0.2.0 power work | ~~VALIDATED (pin only)~~ **VOID** — GPIO31 is not a JP1 header pin (silkscreen check, commit `944b68e`). Toggling it proved the GPIO cell works and nothing about the camera bank, which was never connected. `CAM_PWR_EN` is now `BOARD_GPIO_NONE`; registry row `CAM_PWR_EN_UNASSIGNED`, UNVALIDATED |
 | Config persistence | A setting survived a real power cycle over the live link | 0.2.0 | **VALIDATED** |
 | UI on the panel | 8 screens render on hardware; boot dissolve measured at 26 frames in 452 ms (≈57 fps) via the PPA | 0.2.0/0.3.0 | **VALIDATED** |
 | Icon expansion | 575 ms for six icons, streamed; icons ready at t=2984 ms against a boot dissolve at t=4974 | commit `5768d3c` | **VALIDATED** |
@@ -112,18 +112,19 @@ subsystem.
 
 | Item | State |
 |---|---|
-| CAM1 UART through the P4 (`TX 52` / `RX 51`) | **UNVALIDATED** — pin map PROVISIONAL, issue #2 |
+| CAM1 UART through the P4 (`CAM1_TX` GPIO1, JP1 pin 7 / `CAM1_RX` GPIO2, JP1 pin 9) | **UNVALIDATED** — pin map PROVISIONAL, issue #2. The earlier GPIO52/51 pair is not on the header at all |
 | CAM1 baud 921600 over the harness | **UNVALIDATED** |
 | CAM1 node link (`node_link` over KDP framing) | **UNVALIDATED** |
 | CAM1 sensor detected *through the P4* | **UNVALIDATED** — the standalone run below is a different unit and a different path |
 | CAM1 JPEG transfer over the link | **UNVALIDATED** |
 | CAM1 SD write of a transferred frame | **UNVALIDATED** |
-| CAM2 / CAM3 / CAM4 — every row | **UNVALIDATED** — no harness has ever existed |
+| CAM2 / CAM3 / CAM4 — every row (`CAM2_TX` GPIO47 pin 10 / `CAM2_RX` GPIO46 pin 12; `CAM3_TX` GPIO32 pin 19 / `CAM3_RX` GPIO33 pin 21; `CAM4_TX` GPIO45 pin 14 / `CAM4_RX` GPIO4 pin 13) | **UNVALIDATED** — no harness has ever existed |
 | Four-camera concurrent capture | **UNVALIDATED** — Gate B |
 | Exposure synchronization / inter-camera skew | **UNVALIDATED and UNMEASURED** — Gate C. Frame period derived at ~112 ms from driver source; no hardware confirmation |
 | Stale-frame lifecycle | **PREDICTED FROM SOURCE, UNCONFIRMED** — see the M1 runbook's Phase 15 gate |
-| `SYNC_TRIGGER` GPIO32 | **UNVALIDATED** — driven by `capture.c`; no node reads the edge, so nothing has seen it |
-| `FLASH_EN` GPIO28 / flash hardware | **UNVALIDATED** — no flash board exists; `flashHardware: false` |
+| `SYNC_TRIGGER_GPIO20` (`SYNC_OUT`, JP1 pin 17) | **UNVALIDATED** — driven by `capture.c`; no node reads the edge, so nothing has seen it. Was GPIO32 before the header correction; GPIO32 is now `CAM3_TX` |
+| `FLASH_EN_UNASSIGNED` / flash hardware | **UNVALIDATED** — no header pin left on JP1 (was GPIO28, which is not on the header); no flash board exists; `flashHardware: false`. Route pending M2 |
+| `CAM_PWR_EN_UNASSIGNED` | **UNVALIDATED** — no header pin left on JP1. The old GPIO31 row above is void |
 | Physical shutter / Fn button | **UNVALIDATED** — pins deliberately `BOARD_BTN_NONE`; no switch fitted |
 | Battery voltage / percentage / low-battery shutdown | **NOT APPLICABLE on this board** — no sense divider reaches the P4 (deviation D10). Needs a hardware revision |
 | Backlight brightness / dim stage | **NOT APPLICABLE** — plain GPIO, not PWM (deviation D11) |
@@ -209,8 +210,8 @@ catches truncation only.
 | `SD_D2_GPIO41` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
 | `SD_D3_GPIO42` | Observed 2026-08-26: card mounted 29820 MB, 4-bit | VALIDATED |
 | `SD_LDO_CH4` | Observed 2026-08-26: card powered and mounted 29820 MB | VALIDATED |
-| `CAM1_TX_GPIO52` | Provisional header map (d4-v1.json, issue #2) | UNVALIDATED |
-| `CAM1_RX_GPIO51` | Provisional header map (d4-v1.json, issue #2) | UNVALIDATED |
+| `CAM1_TX_GPIO1` (JP1 pin 7) | Manufacturer JP1 pinout, silkscreen-checked; KINO assignment provisional (d4-v1.json, issue #2). Row was `CAM1_TX_GPIO52` until the header correction; GPIO52 is not on JP1 | UNVALIDATED |
+| `CAM1_RX_GPIO2` (JP1 pin 9) | Same. Row was `CAM1_RX_GPIO51`; GPIO51 is not on JP1 | UNVALIDATED |
 | `CAM1_BAUD_921600` | M1B baseline; escalation is milestone 2 bench work | UNVALIDATED |
 | `CAM1_NODE_LINK` | node_link over KDP framing | UNVALIDATED |
 | `CAM1_SENSOR_DETECT` | Observed 2026-08-25 on module 1: `PID=0x3660` at SCCB `0x3c`, standalone over USB | VALIDATED |
@@ -220,6 +221,11 @@ catches truncation only.
 
 Field-note source: <https://github.com/ultramcu/guition-jc4880p443c-i-w> —
 useful, but not our unit.
+
+Header correction, 2026-08-28: the camera-side rows were renamed when the JP1
+map was replaced (`docs/HARDWARE.md` §P4 header JP1). The rename changes no
+status — every camera row was and is `UNVALIDATED`. The only row whose status
+moved is `CAM_PWR_EN GPIO31`, from `VALIDATED (pin only)` to void, above.
 
 ## How a row changes
 

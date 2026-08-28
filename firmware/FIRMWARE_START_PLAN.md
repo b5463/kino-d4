@@ -110,7 +110,9 @@ On the Guition board alone, no XIAO attached:
    NACKs `UNSUPPORTED_COMMAND`.
 4. `GET_STORAGE_STATUS` reflects the real TF card: present/absent, real MB figures.
 
-Then attach one XIAO on the CAM1 UART (provisional GPIO52/51) and run `CAMERA_TEST {cam:"cam1"}`:
+Then attach one XIAO on the CAM1 UART — P4 `CAM1_TX` GPIO1 (JP1 pin 7) → XIAO RX GPIO44, P4
+`CAM1_RX` GPIO2 (JP1 pin 9) ← XIAO TX GPIO43, GND on JP1 pin 5/6; provisional, issue #2; the
+GPIO52/51 pair this plan first named is not on the header — and run `CAMERA_TEST {cam:"cam1"}`:
 sensor detected, JPEG captured, transferred, `C1.JPG` + `META.JSON` on the card, `CAPTURE` event
 emitted. That is Milestone 1 complete and feeds directly into issue #3's bench sequence.
 
@@ -119,7 +121,7 @@ emitted. That is Milestone 1 complete and feeds directly into issue #3's bench s
 | Risk | Impact | Handling |
 |---|---|---|
 | Guition SD/TF and USB wiring undocumented in-repo | `GET_STORAGE_STATUS` and the KDP port may need pin changes | SD pins live in `board_d4v1.h` only; storage reports `present: false` honestly on mount failure instead of failing boot. Locked by issue #2 |
-| P4 GPIO map provisional | UART/sync/flash pins may move after electrical validation | Single board header; no raw GPIO numbers elsewhere. Locked by issue #2 |
+| P4 GPIO map provisional | UART/sync/flash pins may move after electrical validation | Single board header; no raw GPIO numbers elsewhere. Locked by issue #2. This risk fired once: the first map used GPIO52/51/50/49/34/33/30/29 for the UARTs and none of them is on JP1 (`docs/HARDWARE.md` §How the wrong map got in) |
 | 921600 baud vs `CAMERA_TEST` 5 s host timeout | A 2048×1536 JPEG (~300–500 KB) needs 3.2–5.4 s to transfer | M1 captures at 1600×1200 (~2–3 s). Baud escalation (1.5/2/3 Mbaud) is bench work under `SET_LINK_BAUD`/`LINK_BENCH`, issue #3 |
 | SW6106 light-load shutdown | Bench P4 may lose power at idle | Out of M1 scope; power telemetry lands with the flash milestone. `GET_POWER_STATUS` NACKs until real sensing exists — no fabricated battery numbers |
 | OV5640 AF needs a sensor-side firmware blob | Autofocus milestone, licensing unclear | Deferred to milestone 5; sensor abstraction keys off the detected PID so OV3660 and OV5640 coexist now |

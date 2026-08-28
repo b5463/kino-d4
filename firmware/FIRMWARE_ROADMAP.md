@@ -85,8 +85,8 @@ disturbed.
 | P4 app | 744 KB of a 1500 KB single `factory` partition; ~14.4 MB flash unallocated |
 | Builds | P4 + camnode + uvc-preview via `espressif/idf:v5.5.1`, all green in CI |
 | Tests | `kdp_core` 46 host checks ✅ · Studio 280/280 ✅ · fixtures 139/139 ✅ · **zero P4 app tests** |
-| Bench-proven | P4 boot, 32 MB PSRAM, ST7701S first light, GT911 touch, SD 4-bit @29820 MB, USB/KDP (31 cmds), ES8311+amp, `CAM_PWR_EN`, one standalone OV3660 @210 JPEGs |
-| **Never proven** | **Any camera reaching the P4.** Camera UART pins UNVALIDATED. Capture pipeline has never photographed |
+| Bench-proven | P4 boot, 32 MB PSRAM, ST7701S first light, GT911 touch, SD 4-bit @29820 MB, USB/KDP (31 cmds), ES8311+amp, one standalone OV3660 @210 JPEGs. (`CAM_PWR_EN` was listed here on the strength of toggling GPIO31; GPIO31 is not a header pin, so that row is void — `HARDWARE_VALIDATION.md`) |
+| **Never proven** | **Any camera reaching the P4.** Camera UART pins UNVALIDATED — and the first map was wrong: GPIO52/51/50/49/34/33/30/29 are not on the JP1 header. Current map: `docs/HARDWARE.md` §P4 header JP1. Capture pipeline has never photographed |
 | Absent entirely | synchronization mechanism, flash hardware, networking, firmware update, battery telemetry, physical buttons |
 | Preserve as-is | KDP framing, capture UUIDs, two-stage CRC, metadata-last commit, hwv registry, async workers, PPA renderer, NVS config model |
 
@@ -688,7 +688,7 @@ a valid and desirable outcome.
 
 **Hardware required:** `2-CAM` to develop and measure; `4-CAM` to confirm.
 
-**Existing implementation:** `BOARD_SYNC_OUT 32` + `trigger_pulse()` (P4 side already done),
+**Existing implementation:** `BOARD_SYNC_OUT 20` (JP1 pin 17; was 32 before the header correction) + `trigger_pulse()` (P4 side already done),
 `BOARD_SYNC_IN 2` (defined, unread), M0.E's protocol design, M0.D's feasibility verdict.
 
 **Depends on:** M2 (Gate C FAIL or PASS-WITH-WORK), M0.D, M0.E. **Blocks:** M5 (Gate D), the wiggle
@@ -1250,21 +1250,26 @@ M10 → M11.
 
 > ⚠ Electrical items marked `[CONFIRM]` are **not established by the repository** and must be
 > confirmed against the schematic before power is applied. The repository documents the pin map only,
-> and marks it PROVISIONAL (issue #2).
+> and marks it PROVISIONAL (issue #2). The header is `JP1` (26-pin, 2×13, odd pins left, pin 1 top);
+> the manufacturer table is in `docs/HARDWARE.md` §P4 header JP1. **Do not wire from any note that
+> names GPIO52/51 — those pins are not on the header.**
 
 ```text
 PHASE 0 — before power
- 1. [CONFIRM] Common ground between P4 carrier and XIAO node.
- 2. [CONFIRM] Node supply: independently powered, or from the P4 header —
-    and if from the header, that CAM_PWR_EN gates it and the rail can carry it.
+ 1. [CONFIRM] Common ground between P4 carrier and XIAO node: JP1 pin 5 or 6.
+ 2. Node supply: the XIAO is powered from its own USB-C for this session.
+    P4 and XIAO are connected by GND + TX/RX only. (CAM_PWR_EN has no header
+    pin in V1, so nothing on the P4 can gate a node rail yet.)
  3. [CONFIRM] Logic levels: both 3.3 V, no level shifting required.
- 4. Verify TX/RX CROSSING: P4 BOARD_CAM1_TX (GPIO52) → node BOARD_LINK_RX (GPIO44);
-    P4 BOARD_CAM1_RX (GPIO51) ← node BOARD_LINK_TX (GPIO43).
-    Straight-through is the single most likely first-hour mistake.
+ 4. Verify TX/RX CROSSING:
+      P4 CAM1_TX GPIO1 (JP1 pin 7) → XIAO RX GPIO44 (BOARD_LINK_RX)
+      P4 CAM1_RX GPIO2 (JP1 pin 9) ← XIAO TX GPIO43 (BOARD_LINK_TX)
+    Straight-through is the single most likely first-hour mistake. Count
+    pins from pin 1; do not trust ribbon position.
  5. [CONFIRM] Node UART1 pads D6/D7 are not shared with its own console in a way
     that fights the link (board_xiao_s3.h warns these are UART0's default pads).
- 6. Leave SYNC_OUT (GPIO32) and FLASH_EN (GPIO28) UNCONNECTED for this session.
-    Fewer variables; neither is needed for any checkpoint below.
+ 6. Leave SYNC_OUT (GPIO20, JP1 pin 17) UNCONNECTED for this session. FLASH_EN
+    has no pin. Fewer variables; neither is needed for any checkpoint below.
  7. Photograph the harness. Wiring revision goes in HARDWARE_VALIDATION.md.
 
 PHASE 1 — node alone
@@ -1284,7 +1289,7 @@ PHASE 2 — electrical communication                        ◄ CHECKPOINT 1
 PHASE 3 — node greeting                                   ◄ CHECKPOINT 2
 14. GET_CAMERA_INFO. Expect cam1.online == true.
 15. Expect klog "C1 node online — fw <v>, sensor OV3660, boot <reason>".
-16. MARK: CAM1_TX_GPIO52, CAM1_RX_GPIO51, CAM1_BAUD_921600, CAM1_NODE_LINK.
+16. MARK: CAM1_TX_GPIO1, CAM1_RX_GPIO2, CAM1_BAUD_921600, CAM1_NODE_LINK.
 17. RECORD: node boot time, HELLO round-trip.
 
 PHASE 4 — camera status                                   ◄ CHECKPOINT 3
