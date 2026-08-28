@@ -167,7 +167,17 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
   while (!ch->pending.got) {
     int64_t elapsed_ms = (esp_timer_get_time() - start) / 1000;
     if (elapsed_ms >= timeout_ms) break;
-    int n = uart_read_bytes(ch->uart, rx, sizeof rx, pdMS_TO_TICKS(50));
+    /* Same rule as the node: uart_read_bytes waits for the LENGTH asked for,
+     * so requesting 512 made every short reply - a NACK, a status, the tail of
+     * a chunk - cost the full 50 ms. Poll what is there instead. */
+    size_t avail = 0;
+    uart_get_buffered_data_len(ch->uart, &avail);
+    if (avail == 0) {
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+    if (avail > sizeof rx) avail = sizeof rx;
+    int n = uart_read_bytes(ch->uart, rx, avail, 0);
     if (n > 0) {
       ch->stats.rx_bytes += (uint32_t)n;
       kdp_decoder_push(&ch->decoder, rx, (size_t)n, on_frame, &ch->pending);

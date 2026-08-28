@@ -13,6 +13,11 @@ static uint16_t s_pid;
 static char s_name[16];
 static char s_max_res[16];
 
+/* What the sensor is currently configured for, so a request that changes
+ * nothing costs nothing. Seeded from camsensor_init's own config below. */
+static framesize_t s_framesize;
+static int s_quality;
+
 esp_err_t camsensor_init(void) {
   camera_config_t config = {
       .pin_pwdn = -1,
@@ -55,6 +60,9 @@ esp_err_t camsensor_init(void) {
   if (info != NULL) {
     strncpy(s_name, info->name, sizeof s_name - 1);
     s_pid = sensor->id.PID;
+  /* Seed the configured-state cache from what init just applied. */
+  s_framesize = config.frame_size;
+  s_quality = config.jpeg_quality;
     s_detected = true;
     switch (info->max_size) {
       case FRAMESIZE_QSXGA: strcpy(s_max_res, "2592x1944"); break;
@@ -78,7 +86,12 @@ esp_err_t camsensor_set_quality(int quality) {
   if (sensor == NULL) return ESP_ERR_INVALID_STATE;
   if (quality < 5) quality = 5;
   if (quality > 63) quality = 63;
-  return sensor->set_quality(sensor, quality) == 0 ? ESP_OK : ESP_FAIL;
+  /* Already there: writing it again is a register transaction the viewfinder
+   * would pay on every frame for no change in the picture. */
+  if (quality == s_quality) return ESP_OK;
+  if (sensor->set_quality(sensor, quality) != 0) return ESP_FAIL;
+  s_quality = quality;
+  return ESP_OK;
 }
 
 /**
@@ -104,7 +117,18 @@ esp_err_t camsensor_set_resolution(const char *resolution) {
   else if (strcmp(resolution, "320x240") == 0) size = FRAMESIZE_QVGA;
   else if (strcmp(resolution, "160x120") == 0) size = FRAMESIZE_QQVGA;
   else return ESP_ERR_INVALID_ARG;
-  return sensor->set_framesize(sensor, size) == 0 ? ESP_OK : ESP_FAIL;
+  /*
+   * The one that matters. set_framesize rewrites a register block and the
+   * sensor resyncs, dropping frames while it settles. The viewfinder asks for
+   * 320x240 on every preview frame, so unconditionally writing this made the
+   * finder pay a mode change per frame it showed - 0.8 fps measured on the
+   * bench - and captures at UXGA/QXGA alternating with it kept the sensor
+   * switching modes continuously.
+   */
+  if (size == s_framesize) return ESP_OK;
+  if (sensor->set_framesize(sensor, size) != 0) return ESP_FAIL;
+  s_framesize = size;
+  return ESP_OK;
 }
 
 /** True for the sizes that exist only to feed the viewfinder. */

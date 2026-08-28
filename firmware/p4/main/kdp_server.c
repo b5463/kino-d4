@@ -1904,7 +1904,7 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
    * last frame before the shutter. */
   const bool vf_was = viewfinder_hold(1500);
   run_capture(-1, true, &result);
-  viewfinder_review(1200);
+  viewfinder_review(450);
   viewfinder_release(vf_was);
   xSemaphoreGive(s_capture_lock);
 

@@ -19,7 +19,18 @@ static const char *TAG = "viewfinder";
  * bytes are crossing a UART several times a second and will never be stored -
  * a viewfinder frame exists to be looked at once and thrown away. */
 #define VF_RESOLUTION "320x240"
-#define VF_QUALITY 18
+/* 30, not 18. Sensor scale, where HIGHER is more compressed.
+ *
+ * The finder is throughput-bound, not sensor-bound: a capture measured 44629 B
+ * transferred in 1389 ms, 32.1 KB/s against a 921600 baud line's 92.2 KB/s, so
+ * 68% of a frame's cost is moving it and the preview's frame rate is very
+ * nearly its file size. Compressing the preview harder is the one lever that
+ * does not touch the transfer path, which has an unresolved defect on large
+ * frames and is the wrong thing to build on today.
+ *
+ * A preview exists to judge framing and focus and is thrown away; the
+ * photograph keeps its own quality setting and is unaffected. */
+#define VF_QUALITY 30
 
 /* A QVGA JPEG at this quality measures a few KB; this is generous headroom so
  * a busy frame is never truncated into a decode failure. */
@@ -209,6 +220,7 @@ static bool pump_camera(int cam) {
 static void camera_task(void *arg) {
   const int cam = (int)(intptr_t)arg;
   bool announced = false;
+  int miss = 0; /* consecutive failures, for the backoff below */
   for (;;) {
     /*
      * Claim the slot BEFORE testing whether we may run, because the reverse
@@ -236,10 +248,20 @@ static void camera_task(void *arg) {
     }
     if (!ok) {
       announced = false;
-      /* Nothing there: back off rather than hammering a dead UART every few
-       * milliseconds for the whole time the screen is up. */
-      vTaskDelay(pdMS_TO_TICKS(500));
+      /*
+       * Back off hard on a camera that is not there, and harder the longer it
+       * stays away. An absent node costs VF_CAPTURE_TIMEOUT_MS before it fails,
+       * so at a flat 500 ms retry three empty channels churned the link and the
+       * scheduler continuously while the one fitted camera was trying to run a
+       * viewfinder - which is felt as stutter on the camera that IS there.
+       *
+       * Capped so that plugging a node in still feels immediate rather than
+       * requiring a reboot.
+       */
+      if (miss < 8) miss++;
+      vTaskDelay(pdMS_TO_TICKS(miss < 3 ? 500 : 2500));
     } else {
+      miss = 0;
       vTaskDelay(pdMS_TO_TICKS(5));
     }
   }

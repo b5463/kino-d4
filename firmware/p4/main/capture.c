@@ -710,7 +710,7 @@ finish:
   /* Hold the tiles on the shot just taken before live resumes, the way a
    * camera reviews a frame. They already carry the last frame before the
    * shutter, so this costs no decode. */
-  viewfinder_review(1200);
+  viewfinder_review(450);
   viewfinder_release(vf_was_running);
   xSemaphoreGive(s_lock);
   return r.ok ? ESP_OK : ESP_FAIL;

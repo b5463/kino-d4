@@ -300,7 +300,23 @@ static void server_task(void *arg) {
   (void)arg;
   uint8_t rx[512];
   for (;;) {
-    int n = uart_read_bytes(BOARD_LINK_UART_NUM, rx, sizeof rx, pdMS_TO_TICKS(100));
+    /*
+     * Take what has arrived rather than waiting for a full buffer.
+     *
+     * uart_read_bytes blocks until `length` bytes are read or the timeout
+     * expires, and a request is about 60 bytes against the 512 asked for
+     * here, so every single request used to cost this task the whole 100 ms
+     * before it was even seen. Three exchanges per preview frame made that
+     * 300 ms of sleep per frame on the node alone.
+     */
+    size_t avail = 0;
+    uart_get_buffered_data_len(BOARD_LINK_UART_NUM, &avail);
+    if (avail == 0) {
+      vTaskDelay(pdMS_TO_TICKS(2));
+      continue;
+    }
+    if (avail > sizeof rx) avail = sizeof rx;
+    int n = uart_read_bytes(BOARD_LINK_UART_NUM, rx, avail, 0);
     if (n > 0) kdp_decoder_push(&s_decoder, rx, (size_t)n, on_frame, NULL);
   }
 }
