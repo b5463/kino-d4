@@ -8,6 +8,8 @@
 
 #include <string.h>
 
+#include "pure.h"
+
 /* ------------------------------------------------------------------ */
 /* Policy                                                             */
 /* ------------------------------------------------------------------ */
@@ -81,10 +83,10 @@ void rq_job_init(rq_job_t *job, const char *uuid, const char *roll_id, int frame
   if (job == NULL) return;
   memset(job, 0, sizeof *job);
   if (uuid != NULL) {
-    strncpy(job->uuid, uuid, sizeof job->uuid - 1);
+    pure_strcopy(job->uuid, sizeof job->uuid, uuid);
   }
   if (roll_id != NULL) {
-    strncpy(job->roll_id, roll_id, sizeof job->roll_id - 1);
+    pure_strcopy(job->roll_id, sizeof job->roll_id, roll_id);
   }
   if (frame_count < 0) frame_count = 0;
   if (frame_count > RQ_MAX_FRAMES) frame_count = RQ_MAX_FRAMES;
@@ -154,7 +156,7 @@ static void set_error(rq_job_t *job, const char *detail) {
     job->last_error[0] = '\0';
     return;
   }
-  strncpy(job->last_error, detail, sizeof job->last_error - 1);
+  pure_strcopy(job->last_error, sizeof job->last_error, detail);
   job->last_error[sizeof job->last_error - 1] = '\0';
 }
 

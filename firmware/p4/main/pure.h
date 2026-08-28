@@ -230,6 +230,39 @@ pure_clock_adopt_t pure_clock_adopt_action(int current_rank, int64_t current_ms,
  * Self-contained civil-time arithmetic rather than gmtime_r, so the same code
  * runs on the host test and the device with no libc or timezone dependence.
  */
+/**
+ * Bounded string copy that always terminates. Returns the length of `src`, so
+ * a return >= `cap` means the result was truncated.
+ *
+ * This exists because `strlcpy` is not C99. ESP-IDF's newlib provides it, so
+ * the firmware links fine and the host tests do not: compiling a shared source
+ * with `-std=c99` on glibc gives an implicit-declaration error, which under
+ * `-Werror` stops the build. `roll_queue.c` is compiled both ways, and that is
+ * exactly what broke `test-queue` and `test-store`.
+ *
+ * `strncpy` is not the answer either, and that is why the `strlcpy` calls were
+ * introduced in the first place: it does not terminate on truncation, and at
+ * -O2 GCC proves the truncation is possible and refuses the build under
+ * `-Werror=stringop-truncation`. So the two obvious options each fail on one
+ * side of the same source file.
+ *
+ * Deliberately not a `#define strlcpy` shim or a `-D_GNU_SOURCE`: the first
+ * hides which implementation is in use, and the second buys one function by
+ * changing the dialect of every file that includes this header.
+ *
+ * NULL-safe on both sides, and `cap` of 0 writes nothing.
+ */
+static inline size_t pure_strcopy(char *dst, size_t cap, const char *src) {
+  const char *s = (src != NULL) ? src : "";
+  size_t len = 0;
+  while (s[len] != '\0') len++;
+  if (dst == NULL || cap == 0) return len;
+  const size_t n = (len < cap - 1) ? len : cap - 1;
+  for (size_t i = 0; i < n; i++) dst[i] = s[i];
+  dst[n] = '\0';
+  return len;
+}
+
 void pure_format_iso8601(int64_t epoch_ms, int offset_min, char *out, size_t cap);
 
 /* ------------------------------------------------------------------ */

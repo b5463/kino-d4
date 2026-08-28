@@ -502,6 +502,57 @@ static void test_clock_adopt(void) {
         "an automatic source at the same rank may not");
 }
 
+/*
+ * pure_strcopy: the portable bounded copy that replaced strlcpy in
+ * roll_queue.c. strlcpy is not C99, so a source compiled both by ESP-IDF's
+ * newlib and by host glibc built one way and not the other; strncpy is not a
+ * substitute because it does not terminate on truncation. The cases below are
+ * the ones that separate it from both.
+ */
+static void test_strcopy(void) {
+  char buf[8];
+
+  memset(buf, 'x', sizeof buf);
+  CHECK(pure_strcopy(buf, sizeof buf, "abc") == 3, "returns the source length");
+  CHECK(strcmp(buf, "abc") == 0, "copies a short string whole");
+
+  /* Exactly fits, with room for the terminator. */
+  memset(buf, 'x', sizeof buf);
+  CHECK(pure_strcopy(buf, sizeof buf, "1234567") == 7, "a source that exactly fits");
+  CHECK(strcmp(buf, "1234567") == 0, "and is copied whole");
+
+  /* One too long: truncated, still terminated, and the caller can tell. */
+  memset(buf, 'x', sizeof buf);
+  const size_t n = pure_strcopy(buf, sizeof buf, "12345678");
+  CHECK(n == 8, "returns the SOURCE length, not the copied length");
+  CHECK(n >= sizeof buf, "so a return >= cap is how truncation is detected");
+  CHECK(strcmp(buf, "1234567") == 0, "truncated to cap-1");
+  CHECK(buf[7] == '\0', "and terminated — the whole point over strncpy");
+
+  /* Empty source still terminates. */
+  memset(buf, 'x', sizeof buf);
+  CHECK(pure_strcopy(buf, sizeof buf, "") == 0, "empty source");
+  CHECK(buf[0] == '\0', "writes the terminator");
+
+  /* NULL source behaves as empty rather than crashing: rq_job_init() and
+   * rq_apply() both pass fields that can legitimately be absent. */
+  memset(buf, 'x', sizeof buf);
+  CHECK(pure_strcopy(buf, sizeof buf, NULL) == 0, "NULL source is empty");
+  CHECK(buf[0] == '\0', "and still terminates");
+
+  /* Degenerate destinations must not write. */
+  CHECK(pure_strcopy(NULL, 8, "abc") == 3, "NULL destination still reports the length");
+  memset(buf, 'x', sizeof buf);
+  CHECK(pure_strcopy(buf, 0, "abc") == 3, "cap 0 reports the length");
+  CHECK(buf[0] == 'x', "and writes nothing at all");
+
+  /* cap 1 is the smallest destination that can hold anything. */
+  memset(buf, 'x', sizeof buf);
+  CHECK(pure_strcopy(buf, 1, "abc") == 3, "cap 1 reports the length");
+  CHECK(buf[0] == '\0', "and holds only the terminator");
+  CHECK(buf[1] == 'x', "without touching the byte after it");
+}
+
 int main(void) {
   test_quality();
   test_resolution();
@@ -514,6 +565,7 @@ int main(void) {
   test_clock_restore();
   test_clock_monotonic_across_correction();
   test_clock_adopt();
+  test_strcopy();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);
