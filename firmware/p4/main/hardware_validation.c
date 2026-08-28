@@ -33,6 +33,7 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "SD_SLOT0", "C6_EN_GPIO54", "C6_SDIO_PINS", "C6_LINK_HANDSHAKE",
     "C6_SLAVE_VERSION", "C6_WIFI_SCAN", "C6_WIFI_ASSOCIATE", "C6_DHCP",
     "C6_DNS", "C6_SNTP", "C6_TLS", "SD_C6_COEXIST", "C6_ROLL_UPLOAD",
+    "ROLL_DEVICE_REGISTER", "ROLL_RECONNECT",
 };
 
 /* Compile-time guard: the id table and the enum must not drift. A missing
@@ -115,7 +116,7 @@ void hwv_mark_validated(hwv_item_t item, const char *detail) {
     return;
   }
   s_status[item] = HWV_VALIDATED;
-  strncpy(s_detail[item], detail != NULL ? detail : "", sizeof s_detail[item] - 1);
+  strlcpy(s_detail[item], detail != NULL ? detail : "", sizeof s_detail[item]);
   ESP_LOGI(TAG, "VALIDATED %s: %s", ITEM_IDS[item], s_detail[item]);
 
   nvs_handle_t nvs;

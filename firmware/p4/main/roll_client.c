@@ -26,6 +26,8 @@ bool roll_api_ready(char *why, size_t cap) {
 
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "hardware_validation.h"
+#include "hwv_rules.h"
 #include "klog.h"
 #include "roll_state.h"
 
@@ -122,11 +124,15 @@ bool roll_client_ensure_registered(roll_http_out_t *out) {
   /* The token is in `response` and in `reply` and in nothing else. Both are
    * wiped before this returns. */
   bool ok = false;
+  /* The id only, never the token, and only to prove the server actually issued
+   * an identity rather than returning an empty 200. */
+  char registered_id[40] = {0};
   if (reply != NULL) {
     const char *device_id = roll_client_str(reply, "deviceId");
     const char *token = roll_client_str(reply, "deviceToken");
     if (device_id != NULL && token != NULL) {
       ok = roll_state_set_credential(device_id, token) == ESP_OK;
+      if (ok) snprintf(registered_id, sizeof registered_id, "%s", device_id);
       if (!ok) rq_redact(out->detail, sizeof out->detail, "the credential would not store");
     }
     cJSON_Delete(reply);
@@ -139,7 +145,11 @@ bool roll_client_ensure_registered(roll_http_out_t *out) {
   if (ok) {
     klog("P4", "device registered as %s", serial);
     ESP_LOGI(TAG, "registered %s", serial);
+    if (hwv_rule_roll_register(out->status, registered_id)) {
+      hwv_mark_validated(HWV_ROLL_DEVICE_REGISTER, "server issued a device credential");
+    }
   }
+  memset(registered_id, 0, sizeof registered_id);
   return ok;
 }
 

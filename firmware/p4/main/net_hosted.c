@@ -26,6 +26,8 @@
 #endif
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "hardware_validation.h"
+#include "hwv_rules.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "klog.h"
@@ -248,6 +250,12 @@ static bool version_gate(void) {
   if ((uint32_t)cp.minor1 > (uint32_t)HOST_HOSTED_MINOR) {
     ESP_LOGW(TAG, "C6 image %s is newer than host %s; unknown RPCs go unused", cp_ver, host_ver);
   }
+  if (hwv_rule_slave_version(true, (uint32_t)cp.major1, (uint32_t)cp.minor1, HOST_HOSTED_MAJOR,
+                             HOST_HOSTED_MINOR)) {
+    char detail[64];
+    snprintf(detail, sizeof detail, "C6 %s serves host %s", cp_ver, host_ver);
+    hwv_mark_validated(HWV_C6_SLAVE_VERSION, detail);
+  }
   klog("C6", "link ready, C6 %s against host %s", cp_ver, host_ver);
   return true;
 }
@@ -345,6 +353,20 @@ static bool probe_transport(void) {
   } while (now_ms() < deadline);
 
   klog("C6", "SDIO after init: rx_ready=%d tx_ready=%d", rx, tx);
+
+  /* The registry rows earn themselves here and nowhere else. Marking these on
+   * esp_hosted_init()'s return value - which was the obvious place - would
+   * have recorded VALIDATED on this very board, where init returns 0 and
+   * nothing has ever answered. */
+  if (hwv_rule_sdio_link(rx)) {
+    char detail[48];
+    snprintf(detail, sizeof detail, "SDIO enumerated on slot %d", BOARD_C6_SLOT);
+    hwv_mark_validated(HWV_C6_SDIO_PINS, detail);
+  }
+  if (hwv_rule_transport_usable(rx, tx)) {
+    hwv_mark_validated(HWV_C6_LINK_HANDSHAKE, "transport usable both directions");
+  }
+
   if (!rx) {
     klog("C6", "no SDIO enumeration - nothing answered on GPIO14-19");
     return false;

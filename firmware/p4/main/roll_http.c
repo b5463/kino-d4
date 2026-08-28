@@ -16,6 +16,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "hardware_validation.h"
+#include "hwv_rules.h"
 #include "mbedtls/sha256.h"
 #include "net_hosted.h"
 #include "net_link.h"
@@ -163,6 +165,28 @@ static void finish(esp_http_client_handle_t client, const roll_http_req_t *req,
   out->status = status;
   out->body_len = (size_t)read;
   net_hosted_count_bytes((uint64_t)read, 0);
+
+  /*
+   * Two rows earn themselves on any completed exchange, whatever the caller
+   * wanted from it.
+   *
+   * DNS: the request reached a server, so the host name resolved. That is the
+   * whole claim; the resolved address is not kept anywhere by the time we get
+   * here, so the rule is fed the fact that a connection was made.
+   *
+   * TLS: the base URL is compiled in, and esp_http_client was handed
+   * esp_crt_bundle_attach with no way to switch verification off. So an
+   * https base plus a real response is a certificate-verified exchange. It is
+   * checked against the scheme rather than the status alone, because a 200
+   * over plain http proves nothing about certificates.
+   */
+  const bool over_tls = strncmp(KINO_ROLL_API_BASE, "https://", 8) == 0;
+  if (hwv_rule_dns(true, 1u)) {
+    hwv_mark_validated(HWV_C6_DNS, "API host resolved");
+  }
+  if (hwv_rule_tls(over_tls, status)) {
+    hwv_mark_validated(HWV_C6_TLS, "certificate-verified HTTPS response");
+  }
 
   if (status >= 400) {
     /* The API's own `{code, message}` is the most useful thing a user can be

@@ -3,6 +3,7 @@
 # safety property and not an omission.
 set(kino_srcs
   "main.c" "usb_link.c" "storage.c" "cam_link.c" "kdp_server.c" "hardware_validation.c"
+    "hwv_rules.c"
   "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "mesh3d.c" "icons.c" "board_i2c.c"
   "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "net_link.c" "wifi_creds.c"

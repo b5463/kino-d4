@@ -74,6 +74,9 @@ NET_SRC = $(MAIN)/net_link.c $(MAIN)/pure.c test_net_link.c
 REPORT_SRC = $(MAIN)/net_link.c test_net_report.c
 QR_SRC = $(MAIN)/qr.c test_qr.c
 PINS_SRC = test_board_pins.c
+# hwv_rules.c reaches nothing from ESP-IDF, deliberately: the conditions for
+# marking a validation row must be provable with the false states fed in.
+HWV_SRC = $(MAIN)/hwv_rules.c test_hwv_rules.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
 META_SRC = $(MAIN)/meta.c test_meta.c $(CJSON_DIR)/cJSON.c
@@ -105,10 +108,13 @@ test_qr: $(QR_SRC) $(MAIN)/qr.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(QR_SRC) -o $@
 
 # -std=c11: board_d4v1_checks.h is _Static_assert, which is C11.
+test_hwv_rules: $(HWV_SRC) $(MAIN)/hwv_rules.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(HWV_SRC) -o $@
+
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-all clean
 test: test_pure
 	./test_pure
 
@@ -133,7 +139,10 @@ test-store: test_upload_store
 test-pins: test_board_pins
 	./test_board_pins
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins
+test-hwv: test_hwv_rules
+	./test_hwv_rules
+
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules

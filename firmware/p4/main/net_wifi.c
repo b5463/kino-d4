@@ -17,6 +17,8 @@
 #include "esp_netif.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "hardware_validation.h"
+#include "hwv_rules.h"
 #include "klog.h"
 #include "net_link.h"
 #include "net_time.h"
@@ -164,7 +166,18 @@ static void publish_scan(const wifi_ap_record_t *records, uint16_t count) {
 
   net_link_report_scan(out, n);
   ESP_LOGI(TAG, "scan: %u records, %u networks", (unsigned)count, (unsigned)n);
+
+  /* A scan that completed and saw nothing is what an unconnected antenna also
+   * looks like, so the row needs a network in hand. */
+  if (hwv_rule_wifi_scan(true, n)) {
+    char detail[40];
+    snprintf(detail, sizeof detail, "%u network(s) seen", (unsigned)n);
+    hwv_mark_validated(HWV_C6_WIFI_SCAN, detail);
+  }
 }
+
+/* Set by a disconnect, read by the next GOT_IP: see HWV_ROLL_RECONNECT. */
+static bool s_was_disconnected;
 
 static void handle_scan_done(void) {
   uint16_t number = SCAN_RECORDS;
@@ -328,10 +341,16 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
        * that is the defect this whole state set exists to avoid. */
       net_link_report_state(NET_WIFI_ASSOCIATED, NET_REASON_NONE, NULL, now_ms());
       net_link_report_state(NET_IP_WAIT, NET_REASON_NONE, "waiting for DHCP", now_ms());
+      if (hwv_rule_wifi_associate(true, ssid)) {
+        hwv_mark_validated(HWV_C6_WIFI_ASSOCIATE, "associated to a named network");
+      }
       break;
     }
 
     case WIFI_EVENT_STA_DISCONNECTED: {
+      /* Recovery is a different claim from "it worked once", so the row needs
+       * a link that actually went away before one that came back. */
+      s_was_disconnected = true;
       const wifi_event_sta_disconnected_t *e = (const wifi_event_sta_disconnected_t *)data;
       const net_reason_t reason = disconnect_reason(e->reason);
       char detail[NET_DETAIL_LEN];
@@ -381,6 +400,20 @@ static void ip_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     }
 
     net_link_report_ip(ip, now_ms());
+
+    /* A lease, not an address. 169.254/16 is what the stack assigns itself
+     * when DHCP fails, and marking this row on one would record the exact
+     * failure it exists to catch as a success. */
+    const uint32_t host_ip = ((uint32_t)esp_ip4_addr1_16(&e->ip_info.ip) << 24) |
+                             ((uint32_t)esp_ip4_addr2_16(&e->ip_info.ip) << 16) |
+                             ((uint32_t)esp_ip4_addr3_16(&e->ip_info.ip) << 8) |
+                             (uint32_t)esp_ip4_addr4_16(&e->ip_info.ip);
+    if (hwv_rule_dhcp(host_ip)) {
+      hwv_mark_validated(HWV_C6_DHCP, ip);
+    }
+    if (hwv_rule_roll_reconnect(s_was_disconnected, hwv_rule_dhcp(host_ip))) {
+      hwv_mark_validated(HWV_ROLL_RECONNECT, "link dropped and recovered without a reboot");
+    }
     /* The metadata behind `lastConnectedAt`, and only worth writing when the
      * SSID came back: a blank one would stamp a network nobody can identify.
      * Trustworthy only as far as clockSource says it is. */

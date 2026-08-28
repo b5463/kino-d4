@@ -17,6 +17,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "hardware_validation.h"
+#include "hwv_rules.h"
 #include "klog.h"
 #include "net_link.h"
 #include "roll_api.h"
@@ -286,6 +288,15 @@ static bool run_one_step(void) {
     snprintf(job->capture_id, sizeof job->capture_id, "%s", res.capture_id);
   }
   bool dirty = rq_apply(job, step, disp, res.detail);
+
+  /* The end of the chain, and the only row that means the product works: the
+   * server confirmed a capture, so a photograph from this body reached a Roll.
+   * Marked on the completion step alone - a thumb that uploaded is not a
+   * capture the server has accepted. */
+  if (disp == RQ_DISP_OK && step.kind == RQ_STEP_COMPLETE_CAPTURE &&
+      hwv_rule_roll_upload(res.status, true)) {
+    hwv_mark_validated(HWV_C6_ROLL_UPLOAD, "server confirmed a capture");
+  }
   if (job->state == RQ_RETRY_WAIT) {
     /* roll_queue.c never reads a clock, so the deadline is set here. A re-read
      * runs immediately: a checksum mismatch is not a network failure and has

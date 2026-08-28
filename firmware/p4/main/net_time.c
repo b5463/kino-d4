@@ -15,6 +15,8 @@
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "esp_timer.h"
+#include "hardware_validation.h"
+#include "hwv_rules.h"
 #include "klog.h"
 #include "net_link.h"
 
@@ -65,6 +67,12 @@ static void on_sync(struct timeval *tv) {
   }
 
   s_synced = true;
+  /* Accepted by the clock policy AND plausibly a real epoch. An answer of zero
+   * would be "accepted" and is the state TLS then fails against, or worse
+   * passes against for the wrong reason. */
+  if (hwv_rule_sntp(true, offered)) {
+    hwv_mark_validated(HWV_C6_SNTP, "wall clock adopted from the network");
+  }
   esp_netif_sntp_deinit();
   s_configured = false;
   ESP_LOGI(TAG, "wall clock now from the network; SNTP stopped");

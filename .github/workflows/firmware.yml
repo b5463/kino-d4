@@ -66,6 +66,14 @@ jobs:
       # already uses. The first map put CAM1 on GPIO52/51, which route to
       # nothing; this is what stops that happening twice.
       - run: make -C firmware/p4/host_tests test-pins
+      # When a hardware-validation row may be marked. Required, not optional:
+      # the C6 rows were nearly wired to esp_hosted_init()'s return value,
+      # which returns 0 on this board with nothing on the SDIO bus. That would
+      # have recorded a validated radio transport on a camera whose radio has
+      # never enumerated, and the registry is what the project consults to
+      # answer "has this ever actually worked". Mostly negative tests: the
+      # states that look enough like success to be marked.
+      - run: make -C firmware/p4/host_tests test-hwv
 
   host-preview:
     # The native UI renderer. It compiles ui.c as a translation unit, so a

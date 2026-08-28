@@ -162,6 +162,14 @@ typedef enum {
   /* One capture reaching a Roll from this body over Wi-Fi. The end of the
    * chain, and the only row that means the product works. */
   HWV_C6_ROLL_UPLOAD,
+  /* Registration is its own row because it is the first thing that has to work
+   * against the real API and the last thing that can be faked locally: a body
+   * that cannot register has no identity to upload under, and the failure looks
+   * like an upload problem if the two share a row. */
+  HWV_ROLL_DEVICE_REGISTER,
+  /* Recovery, which is a different claim from "it worked once". Earned only by
+   * a link that actually went down and came back without a reboot. */
+  HWV_ROLL_RECONNECT,
   HWV_COUNT,
 } hwv_item_t;
 
