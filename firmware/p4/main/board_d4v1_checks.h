@@ -10,7 +10,7 @@
 #include "board_d4v1.h"
 
 // Manufacturer JP1 table, GPIO by pin number. Only the P4 GPIO positions are
-// listed; every other position is power, ground, NC, ESI2C or the C6.
+// listed; every other position is power, ground, the carrier I2C or the C6.
 #define BOARD_JP1_GPIO_AT(pin)                                                \
   ((pin) == 7    ? 52                                                         \
    : (pin) == 8  ? 33                                                         \

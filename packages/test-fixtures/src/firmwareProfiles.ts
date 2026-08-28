@@ -141,7 +141,7 @@ const CAPTURE_0_3_CAPABILITIES: Record<string, boolean> = {
   flashControl: true,
   /**
    * Still false, and this is the one worth reading twice. The body pulses
-   * SYNC_OUT (GPIO20, JP1 pin 17) on every capture and reports how far apart the four commands went
+   * SYNC_OUT (GPIO32, JP1 pin 19) on every capture and reports how far apart the four commands went
    * out, but the nodes expose on command arrival rather than on that edge,
    * and their rolling shutters free-run. All three skews in `kino.capture`
    * stay null with a reason. Dispatch spread is not exposure skew.

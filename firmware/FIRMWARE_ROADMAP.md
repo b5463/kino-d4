@@ -1262,13 +1262,13 @@ PHASE 0 — before power
     pin in V1, so nothing on the P4 can gate a node rail yet.)
  3. [CONFIRM] Logic levels: both 3.3 V, no level shifting required.
  4. Verify TX/RX CROSSING:
-      P4 CAM1_TX GPIO1 (JP1 pin 7) → XIAO RX GPIO44 (BOARD_LINK_RX)
-      P4 CAM1_RX GPIO2 (JP1 pin 9) ← XIAO TX GPIO43 (BOARD_LINK_TX)
+      P4 CAM1_TX GPIO52 (JP1 pin 7) → XIAO RX GPIO44 (BOARD_LINK_RX)
+      P4 CAM1_RX GPIO51 (JP1 pin 9) ← XIAO TX GPIO43 (BOARD_LINK_TX)
     Straight-through is the single most likely first-hour mistake. Count
     pins from pin 1; do not trust ribbon position.
  5. [CONFIRM] Node UART1 pads D6/D7 are not shared with its own console in a way
     that fights the link (board_xiao_s3.h warns these are UART0's default pads).
- 6. Leave SYNC_OUT (GPIO20, JP1 pin 17) UNCONNECTED for this session. FLASH_EN
+ 6. Leave SYNC_OUT (GPIO32, JP1 pin 19) UNCONNECTED for this session. FLASH_EN
     has no pin. Fewer variables; neither is needed for any checkpoint below.
  7. Photograph the harness. Wiring revision goes in HARDWARE_VALIDATION.md.
 

@@ -110,8 +110,9 @@ On the Guition board alone, no XIAO attached:
    NACKs `UNSUPPORTED_COMMAND`.
 4. `GET_STORAGE_STATUS` reflects the real TF card: present/absent, real MB figures.
 
-Then attach one XIAO on the CAM1 UART — P4 `CAM1_TX` GPIO1 (JP1 pin 7) → XIAO RX GPIO44, P4
-`CAM1_RX` GPIO2 (JP1 pin 9) ← XIAO TX GPIO43, GND on JP1 pin 5/6; provisional, issue #2; the
+Then attach one XIAO on the CAM1 UART — P4 `CAM1_TX` GPIO52 (JP1 pin 7) → XIAO RX GPIO44, P4
+`CAM1_RX` GPIO51 (JP1 pin 9) ← XIAO TX GPIO43, GND on JP1 pin 5/6; header positions measured
+per ECN-0002, electrically unproven per issue #2; the
 GPIO52/51 pair this plan first named is not on the header — and run `CAMERA_TEST {cam:"cam1"}`:
 sensor detected, JPEG captured, transferred, `C1.JPG` + `META.JSON` on the card, `CAPTURE` event
 emitted. That is Milestone 1 complete and feeds directly into issue #3's bench sequence.

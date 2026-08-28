@@ -262,7 +262,7 @@ rolling shutter, so when a command arrived says nothing certain about when light
 §14). `CAMERA_CAPTURE` with `action: "timing-test"` is refused with `UNSUPPORTED_COMMAND` rather than
 answered, and `GET_CAPABILITIES` reports `vsyncTelemetry: false`.
 
-`SYNC_OUT` is its own net (`GPIO20`, JP1 pin 17, in
+`SYNC_OUT` is its own net (`GPIO32`, JP1 pin 19, in
 `packages/hardware-profiles/src/profiles/d4-v1.json`). The C6 pins on JP1 (20, 22, 24, 26) stay
 reserved and undriven. `FLASH_EN` has **no P4 GPIO in V1**: the JP1 header exposes eleven GPIOs,
 two are the touch and LCD resets, and the nine free ones are consumed by the four UARTs and
@@ -270,7 +270,7 @@ two are the touch and LCD resets, and the nine free ones are consumed by the fou
 earlier `GPIO28` assignment was to a pin that is not on the header.
 
 What `FLASH_EN` will drive is a bench LED until the flash board exists, through whatever route M2
-picks (an I²C GPIO expander on `ESI2C`, JP1 pins 23/25, is the candidate). The intended timing is
+picks. (`CAM_PWR_EN` is routed on `GPIO31`, JP1 pin 10, since ECN-0002; the I²C expander an earlier revision proposed is unnecessary.) The intended timing is
 unchanged: asserted before the trigger and released as soon as every node reports its capture
 finished, bounded at 900 ms — because without exposure sync a flash has to cover a window rather
 than an instant, and at 350–500 mA the difference is worth bounding. With no pin there is nothing

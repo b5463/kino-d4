@@ -99,7 +99,7 @@ typedef enum {
   HWV_SYNC_TRIGGER_GPIO32,
   /* No pin. BOARD_FLASH_EN is BOARD_GPIO_NONE and capture.c drives nothing
    * for a flash request. Stays UNVALIDATED until M2 routes the line (I2C
-   * expander on ESI2C or otherwise) and something measurably responds. */
+   * JP1 pin 21) and something measurably responds. */
   HWV_FLASH_EN_GPIO28,
   /* Earned on the first debounced press of a real fitted switch. Cannot flip
    * while BOARD_BTN_SHUTTER is BOARD_BTN_NONE, which is the current state. */
