@@ -125,7 +125,26 @@ bool viewfinder_hold(uint32_t timeout_ms) {
 
 void viewfinder_release(bool was_running) {
   (void)was_running; /* The UI's wish was never overwritten, so nothing to put back. */
-  if (atomic_load(&s_holds) > 0) atomic_fetch_sub(&s_holds, 1);
+  /*
+   * Decrement first, then repair, because the obvious guard is a bug.
+   *
+   * "if (load() > 0) fetch_sub()" is a check and an act that are separately
+   * atomic and jointly are not: two releases that both observe 1 both
+   * decrement and leave -1. vf_may_run() tests for exactly 0, and the guard
+   * then stops any later release from bringing a negative value back up, so
+   * the finder is off until the board is rebooted - which is precisely the
+   * "preview got stuck" this replaced a self-healing design with.
+   *
+   * The old absolute assignment recovered by accident on the UI's next
+   * viewfinder_run(); nothing replaced that, so the repair is explicit and
+   * loud. An underflow means a release without a hold, which is a real bug
+   * worth seeing rather than silently absorbing.
+   */
+  const int prev = atomic_fetch_sub(&s_holds, 1);
+  if (prev <= 0) {
+    atomic_store(&s_holds, 0);
+    klog("P4", "vf release with no hold outstanding (was %d) - counter reset", prev);
+  }
 }
 
 void viewfinder_review(uint32_t ms) {
@@ -304,6 +323,9 @@ static void camera_task(void *arg) {
         vf_may_run() && esp_timer_get_time() >= s_review_until_us;
     if (!may_pump) {
       atomic_fetch_sub(&s_pumping, 1);
+      /* Being held is not the camera failing. Without this the finder came
+       * back from every capture already deep in the absent-camera backoff. */
+      miss = 0;
       /* Idle at 100 ms when stopped, 20 ms while reviewing, so live resumes
        * promptly when the review window closes. */
       vTaskDelay(pdMS_TO_TICKS(vf_may_run() ? 20 : 100));
@@ -328,7 +350,24 @@ static void camera_task(void *arg) {
        * requiring a reboot.
        */
       if (miss < 8) miss++;
-      vTaskDelay(pdMS_TO_TICKS(miss < 3 ? 500 : 2500));
+      /*
+       * Retry fast the first couple of times, slowly only once the camera
+       * looks genuinely absent.
+       *
+       * A flat 500 ms was written for a channel with nothing on it. Applied to
+       * a fitted camera it is an amplifier: about one preview read in six now
+       * loses bytes to a UART overrun, and each one cost 600 ms of read
+       * timeout plus 500 ms of this - over a second of dead screen for a
+       * single dropped frame. Measured on the bench as a rate that decayed
+       * from 4.8 fps to 0.9 and recovered, over and over, while the per-frame
+       * work stayed at 60 ms.
+       *
+       * A camera that answered moments ago is not missing, it dropped a frame.
+       * Two quick retries cost almost nothing and recover it invisibly; the
+       * long backoff still arrives for a channel that really is empty.
+       */
+      static const uint16_t backoff_ms[] = {0, 40, 120, 300, 500, 900, 1500, 2500, 2500};
+      vTaskDelay(pdMS_TO_TICKS(backoff_ms[miss]));
     } else {
       miss = 0;
       /* One tick between frames. Not a rate cap - the finder is free to run as

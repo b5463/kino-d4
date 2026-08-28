@@ -76,6 +76,27 @@ static const char *TAG = "capture";
  * and a link that misses the same range four times is genuinely broken. */
 #define CHUNK_RETRIES 3
 
+/*
+ * Total budget for one frame's transfer, and it exists for the screen.
+ *
+ * capture_fire holds the viewfinder for its whole duration - correctly, since
+ * the node has one frame and the finder would invalidate the one being read.
+ * But per-chunk retries have no collective bound: 21 chunks that each take a
+ * 4000 ms timeout and three retries is minutes, and every second of it is a
+ * frozen preview and a frozen shutter. A capture that has spent this long is
+ * not going to succeed; failing lets the finder and the UI have the machine
+ * back, which matters more than the last attempt.
+ *
+ * 25 s is chosen from measurement, not comfort. Captures that succeed at
+ * 2048x1536 take 18-35 s while roughly a fifth of chunk requests lose bytes to
+ * a UART overrun, so 15 s was tried and cut off captures that would have
+ * completed - three of three failed "over budget" that had been succeeding.
+ * This is a bound on the damage, not a fix: the preview is still held for as
+ * long as the capture runs, and the honest repair is to stop losing bytes
+ * (UART DMA), after which this budget should come down with it.
+ */
+#define XFER_BUDGET_MS 25000
+
 /* Longest the flash is allowed to stay on. It is released as soon as every
  * node reports its capture finished; this only bounds the case where one
  * never answers. At 350-500 mA the difference matters to the battery. */
@@ -99,6 +120,9 @@ typedef struct {
 } worker_t;
 
 static worker_t s_worker[CAPTURE_CAMS];
+/* Bit i set once cap(i+1) is actually running. See the mask check in
+ * capture_fire: waiting on a worker that does not exist never returns. */
+static uint32_t s_workers_ready;
 static EventGroupHandle_t s_exposed; /* bit per camera: node finished capturing */
 static EventGroupHandle_t s_done;    /* bit per camera: worker is finished */
 static SemaphoreHandle_t s_card;     /* one writer at a time on the card */
@@ -368,6 +392,17 @@ static void do_frame(worker_t *w) {
   uint32_t crc = kdp_crc32_begin();
   uint32_t offset = 0;
   while (offset < cap.size) {
+    if (ms_since(t_xfer) > XFER_BUDGET_MS) {
+      klog(cam_tag(cam), "transfer gave up at %lu of %lu B after %ums",
+           (unsigned long)offset, (unsigned long)cap.size, (unsigned)ms_since(t_xfer));
+      frame_failf(f, "transfer over budget at %lu%% of %lu B",
+                  (unsigned long)((uint64_t)offset * 100 / cap.size),
+                  (unsigned long)cap.size);
+      free(w->jpeg);
+      w->jpeg = NULL;
+      camlink_release_ch(cam, cap.frame_id);
+      return;
+    }
     size_t want = cap.size - offset;
     if (want > NL_CHUNK_MAX) want = NL_CHUNK_MAX;
     size_t got = 0;
@@ -623,6 +658,31 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     }
   }
   r.probe_ms = ms_since(probe0);
+
+  /*
+   * Never wait on a worker that was not created.
+   *
+   * `ask` is built from which cameras answered, and capture_init returns on
+   * the first task it fails to create while main.c only logs that failure and
+   * carries on. A camera in `ask` with no worker behind it means its done bit
+   * is never set, and the wait for those bits below is portMAX_DELAY - so the
+   * capture would hang forever holding the viewfinder hold, the capture lock
+   * and the card. Cheap to make impossible, and it degrades to the ordinary
+   * "no camera answered" path.
+   */
+  if ((ask & ~s_workers_ready) != 0) {
+    klog("P4", "cam mask %#x has no worker, dropping to %#x", (unsigned)ask,
+         (unsigned)(ask & s_workers_ready));
+    for (int i = 0; i < CAPTURE_CAMS; i++) {
+      if ((ask & (1u << i)) && !(s_workers_ready & (1u << i))) {
+        snprintf(r.cam[i].err, sizeof r.cam[i].err, "no worker");
+        r.cam[i].attempted = false;
+        if (r.online > 0) r.online--;
+      }
+    }
+    ask &= s_workers_ready;
+  }
+
   if (ask == 0) {
     fail(&r, "CAMERA_OFFLINE", "No camera answered");
     goto finish;
@@ -805,8 +865,12 @@ finish:
   for (int i = 0; i < s_listeners; i++) s_on_done[i](&r);
   /* Hold the tiles on the shot just taken before live resumes, the way a
    * camera reviews a frame. They already carry the last frame before the
-   * shutter, so this costs no decode. */
-  viewfinder_review(450);
+   * shutter, so this costs no decode.
+   *
+   * Only when there is something to review. A failed capture has no shot, and
+   * freezing the panes for 450 ms after each attempt made a failing capture
+   * path look like a failing screen. */
+  if (r.ok) viewfinder_review(450);
   viewfinder_release(vf_was_running);
   if (card_held) storage_release(STORAGE_USER_CAPTURE);
   capture_unlock();
@@ -903,6 +967,7 @@ esp_err_t capture_init(const char *device_id) {
       return ESP_ERR_NO_MEM;
     }
     taskmon_register(name, wh);
+    s_workers_ready |= 1u << i; /* only a task that exists can set its done bit */
   }
   /* 6 KB: this one builds META.JSON, which is the largest allocation-heavy
    * thing in the module. */
