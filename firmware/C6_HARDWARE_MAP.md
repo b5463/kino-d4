@@ -263,23 +263,34 @@ reported to ship C6 firmware older than current hosts expect. See
 | Antenna path / RF switch | **NOT RECORDED** |
 | Any of it on hardware | **NOTHING. No pin has been driven toward the C6.** |
 
-## Registry rows this owes
+## Registry rows
 
-None earned. Listed so they exist before the bench run.
+Thirteen rows are in the firmware's own registry now (`hwv_item_t`, readable
+over `GET_HW_VALIDATION`), appended rather than inserted because the enum
+ordinal is the NVS key. **None is earned.** They exist before the bench run so
+that a registry which grows during a bench session — the kind nobody trusts
+afterwards — is not what records the answers.
+
+Ordered the way `C6_BRINGUP.md` proceeds, so a run that stops halfway leaves an
+obvious high-water mark.
 
 | Row | Evidence needed | State |
 |---|---|---|
+| `SD_SLOT0` | Card mounts from slot 0, not slot 1 | **UNVALIDATED** — the only one that can flip in the default build |
+| `C6_EN_GPIO54` | Measured `CHIP_PU` behaviour *and* polarity | **UNVALIDATED** |
 | `C6_SDIO_PINS` | Enumeration succeeds on GPIO14-19, slot 1 | **UNVALIDATED** |
-| `C6_EN_GPIO54` | Measured `CHIP_PU` behaviour and polarity | **UNVALIDATED** |
-| `SD_SLOT0_IOMUX` | Card mounts on slot 0 rather than slot 1 | **UNVALIDATED** |
-| `SD_C6_COEXIST` | Scan works before and after card init, both up | **UNVALIDATED** |
-| `C6_SLAVE_IMAGE` | Coprocessor image flashed and its version read back | **UNVALIDATED** |
 | `C6_LINK_HANDSHAKE` | ESP-Hosted handshake completes | **UNVALIDATED** |
-| `C6_HOSTED_VERSION` | Host and coprocessor versions reported and compatible | **UNVALIDATED** |
+| `C6_SLAVE_VERSION` | Coprocessor version read back and compatible | **UNVALIDATED** |
 | `C6_WIFI_SCAN` | Scan returns a known AP | **UNVALIDATED** |
 | `C6_WIFI_ASSOCIATE` | WPA2 association | **UNVALIDATED** |
-| `C6_DHCP` | Lease obtained | **UNVALIDATED** |
+| `C6_DHCP` | Lease obtained — `IP_READY`, not association | **UNVALIDATED** |
 | `C6_DNS` | Name resolved | **UNVALIDATED** |
 | `C6_SNTP` | Trustworthy wall time from the network | **UNVALIDATED** |
-| `C6_TLS` | Certificate-verified HTTPS response | **UNVALIDATED** |
+| `C6_TLS` | Certificate-**verified** HTTPS response | **UNVALIDATED** |
+| `SD_C6_COEXIST` | Scan works before *and* after card I/O, both up | **UNVALIDATED** |
 | `C6_ROLL_UPLOAD` | A capture reaches a Roll from the camera | **UNVALIDATED** |
+
+`SD_SLOT0` is first because it is a regression risk rather than a new feature:
+the mount that validated GPIO39-44 was on slot 1, and moving the card to slot 0
+changed an already-validated path. Same pins, and they are the chip's own SD
+pads, so it should be a no-op — but "should" is why it has a row.

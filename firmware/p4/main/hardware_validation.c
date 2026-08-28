@@ -28,6 +28,11 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "CAM4_UART", "CAM4_NODE_LINK", "CAM4_SENSOR_DETECT", "CAM4_JPEG_TRANSFER",
     "CAM4_SD_WRITE",
     "SYNC_TRIGGER_GPIO32", "FLASH_EN_GPIO28", "BTN_SHUTTER",
+    /* ESP32-C6 radio, in bring-up order. None can flip in the default build,
+     * which links no radio. See hardware_validation.h for what earns each. */
+    "SD_SLOT0", "C6_EN_GPIO54", "C6_SDIO_PINS", "C6_LINK_HANDSHAKE",
+    "C6_SLAVE_VERSION", "C6_WIFI_SCAN", "C6_WIFI_ASSOCIATE", "C6_DHCP",
+    "C6_DNS", "C6_SNTP", "C6_TLS", "SD_C6_COEXIST", "C6_ROLL_UPLOAD",
 };
 
 /* Compile-time guard: the id table and the enum must not drift. A missing

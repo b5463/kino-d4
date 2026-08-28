@@ -89,6 +89,64 @@ typedef enum {
   /* Earned on the first debounced press of a real fitted switch. Cannot flip
    * while BOARD_BTN_SHUTTER is BOARD_BTN_NONE, which is the current state. */
   HWV_BTN_SHUTTER,
+  /*
+   * ---- ESP32-C6 radio. Appended, for the index reason above. ----
+   *
+   * The routing these rows describe is corroborated and unmeasured: identified
+   * from Guition documentation and matched pin-for-pin against Espressif's own
+   * ESP-Hosted defaults for a P4 host with a C6 coprocessor
+   * (firmware/C6_HARDWARE_MAP.md). Not one of them can flip in the default
+   * build, which links no radio at all and drives no pin toward the C6.
+   *
+   * They exist now for the same reason the CAM2-4 rows do: the bring-up needs
+   * somewhere to record its answers, and a registry that grows during a bench
+   * session is a registry nobody trusts afterwards. Ordered the way the bench
+   * has to proceed, so a run that stops halfway leaves an obvious high-water
+   * mark.
+   *
+   * The one that matters most is SD_SLOT0. The card was on SDMMC slot 1 until
+   * this work moved it to slot 0 — the slot ESP-Hosted needs — and the
+   * 2026-08-26 mount that validated GPIO39-44 was on the old slot. Same pins,
+   * and they are the chip's own SD pads, so this is expected to be a no-op.
+   * "Expected" is not "observed", and it is a change to an already-validated
+   * path, which makes it the first thing the next bench run has to check.
+   */
+  HWV_SD_SLOT0,
+  /* The transport, in the order it has to come up. C6_EN_GPIO54 is earned by a
+   * measurement of the enable line's behaviour, not by the pin being driven:
+   * its polarity is unconfirmed and ESP-Hosted ships an active-high override
+   * for boards whose EN is buffered through an inverting transistor. */
+  HWV_C6_EN_GPIO54,
+  HWV_C6_SDIO_PINS,
+  /* Earned when the hosted handshake completes AND the version comparison
+   * passes. Deliberately one row: a link that enumerates and then reports an
+   * incompatible RPC version is not a working transport, and this board is
+   * reported to ship a factory C6 image older than current hosts expect. */
+  HWV_C6_LINK_HANDSHAKE,
+  HWV_C6_SLAVE_VERSION,
+  /* The radio, above the transport. */
+  HWV_C6_WIFI_SCAN,
+  HWV_C6_WIFI_ASSOCIATE,
+  /* IP_READY, not association. Association without an address is the state
+   * that makes a device claim it is online while nothing resolves, so this row
+   * is earned by a DHCP lease and nothing less. */
+  HWV_C6_DHCP,
+  HWV_C6_DNS,
+  /* Trustworthy wall time from the network, which TLS depends on: a
+   * certificate checked against a persisted lower bound either fails or, worse,
+   * passes for the wrong reason. */
+  HWV_C6_SNTP,
+  /* A certificate-VERIFIED HTTPS response. Never earned by a request that
+   * succeeded with verification disabled, because nothing in this firmware can
+   * disable it. */
+  HWV_C6_TLS,
+  /* Both buses up at once — the coexistence check. Earned when a scan succeeds
+   * before and after card I/O with the radio associated, which is what
+   * esp_hosted's own combined SDIO/SDMMC example exists to prove. */
+  HWV_SD_C6_COEXIST,
+  /* One capture reaching a Roll from this body over Wi-Fi. The end of the
+   * chain, and the only row that means the product works. */
+  HWV_C6_ROLL_UPLOAD,
   HWV_COUNT,
 } hwv_item_t;
 

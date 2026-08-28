@@ -75,9 +75,15 @@ Two `_Static_assert`s in `net_hosted.c` hold the invariants a comment cannot:
   Two places name that polarity and the bench will flip it; flipping only one
   of them must not compile.
 
-Still owed: one `HWV_C6_*` row per pin in `hardware_validation.h`, appended
-only — the enum ordinal is the NVS key, so inserting in the middle silently
-relabels every stored verdict on every unit already in the field.
+The registry rows exist. Thirteen were appended to `hwv_item_t` — appended, not
+inserted, because the enum ordinal is the NVS key and shifting it would make a
+unit flashed across the change read its old evidence against the wrong rows.
+They are ordered the way this procedure runs, so a bench session that stops
+halfway leaves an obvious high-water mark, and a `_Static_assert` keeps the
+name table in step with the enum.
+
+Only `SD_SLOT0` can flip in the default build — the other twelve need a radio
+that no build links by default.
 
 ## 3. Flash the slave image
 

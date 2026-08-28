@@ -250,6 +250,17 @@ esp_err_t storage_init(void) {
   hwv_mark_validated(HWV_SD_D2_GPIO41, detail);
   hwv_mark_validated(HWV_SD_D3_GPIO42, detail);
   hwv_mark_validated(HWV_SD_LDO_CH4, detail);
+  /*
+   * The slot, separately from the pins.
+   *
+   * The pins above were validated on 2026-08-26 by a real mount — but on slot
+   * 1, because SDMMC_HOST_DEFAULT() selects it and nothing here overrode it.
+   * They are the same six pins and they are the chip's own SD pads, so slot 0
+   * is expected to be a no-op or an improvement. Expected is not observed, and
+   * this is a change to an already-validated path, so it gets its own row
+   * rather than riding on theirs.
+   */
+  hwv_mark_validated(HWV_SD_SLOT0, detail);
   return ESP_OK;
 }
 
