@@ -17,6 +17,13 @@
 #include "driver/gpio.h"
 #include "esp_hosted.h"
 #include "esp_hosted_transport_config.h"
+/* The transport-state query Gate C6-B rests on. Guarded because it is a
+ * component-internal header path, not part of the esp_hosted compat surface. */
+#if __has_include("eh_host_mcu_transport_state.h")
+#include "eh_host_mcu_transport_state.h"
+#else
+#error "eh_host_mcu_transport_state.h missing: esp_hosted layout changed, re-audit C6-B"
+#endif
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -264,7 +271,101 @@ static const net_link_driver_t s_driver = {
  * enough not to matter: this runs once, after the UI is already up. */
 #define EN_HOLD_MS 20
 
+/*
+ * Bench only, and compiled out unless -DKINO_C6_EN_BENCH_MS is given.
+ *
+ * EN_HOLD_MS is right for the chip and unreadable by hand: a 20 ms dip does
+ * not move a multimeter. B2 asks whether GPIO54 actually reaches the C6's
+ * CHIP_PU and in which direction, and that is answered by watching JP1 pin 26
+ * while this pin is deliberately driven. So drive it slowly, announce every
+ * edge, and repeat, so a reading can be taken more than once.
+ *
+ * Three outcomes, all of them useful:
+ *   pin 26 follows LOW then HIGH  - GPIO54 drives CHIP_PU, active-low
+ *                                   confirmed, B2's transition observed
+ *   pin 26 follows HIGH then LOW  - the net is inverted; flip
+ *                                   BOARD_C6_EN_ACTIVE_LOW before any flash
+ *   pin 26 never moves            - GPIO54 does not reach this pin, and the
+ *                                   routing is wrong however well it is
+ *                                   corroborated on paper
+ */
+#ifndef KINO_C6_EN_BENCH_MS
+#define KINO_C6_EN_BENCH_MS 0
+#endif
+
+#if KINO_C6_EN_BENCH_MS > 0
+#define EN_BENCH_CYCLES 3
+static void en_bench_cycles(void) {
+  klog("C6", "EN BENCH: %d cycles at %d ms. Meter on JP1 pin 26, GND on pin 16.",
+       EN_BENCH_CYCLES, KINO_C6_EN_BENCH_MS);
+  for (int i = 1; i <= EN_BENCH_CYCLES; i++) {
+    klog("C6", "EN BENCH %d/%d: ASSERT - driving GPIO%d %s, expect pin 26 LOW", i,
+         EN_BENCH_CYCLES, BOARD_C6_EN, BOARD_C6_EN_ACTIVE_LOW ? "LOW" : "HIGH");
+    board_c6_hold_reset();
+    vTaskDelay(pdMS_TO_TICKS(KINO_C6_EN_BENCH_MS));
+    klog("C6", "EN BENCH %d/%d: RELEASE - driving GPIO%d %s, expect pin 26 HIGH", i,
+         EN_BENCH_CYCLES, BOARD_C6_EN, BOARD_C6_EN_ACTIVE_LOW ? "HIGH" : "LOW");
+    board_c6_enable();
+    vTaskDelay(pdMS_TO_TICKS(KINO_C6_EN_BENCH_MS));
+  }
+  klog("C6", "EN BENCH: done, continuing into the real bring-up");
+}
+#endif
+
+/*
+ * What esp_hosted_init() proves, and what it does not.
+ *
+ * Read from the pinned esp_hosted 3.0.6 source rather than assumed: the SDIO
+ * card init lives in eh_host_bus_sdio.c, and on failure it logs
+ * "card init failed" and falls through without propagating an error. It is
+ * also reached from transport threads started during init, not from init's own
+ * call frame. So esp_hosted_init() == 0 establishes that the host-side vserial
+ * and RPC layers came up - nothing more. It is not evidence that a
+ * coprocessor exists.
+ *
+ * The transport state can be asked directly, and RX_ACTIVE is set from
+ * exactly one place: a successful sdmmc_card_init(), which is ESP-IDF's own
+ * SDIO enumeration and cannot succeed without a device answering CMD0/CMD5 on
+ * the bus. That makes it the honest test for Gate C6-B.
+ *
+ * ESP-IDF's console is on UART0 and unreachable while KDP owns
+ * USB-Serial-JTAG, so without this the answer is printed where no one at this
+ * bench can read it.
+ */
+static bool probe_transport(void) {
+  /* Enumeration is asynchronous: the threads that run it are started during
+   * init and reach RX_ACTIVE afterwards. Poll rather than sample once. */
+  const int64_t deadline = now_ms() + 3000;
+  int rx = 0, tx = 0;
+  do {
+    rx = eh_host_mcu_transport_state_is_rx_ready();
+    tx = eh_host_mcu_transport_state_is_tx_ready();
+    if (rx) break;
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } while (now_ms() < deadline);
+
+  klog("C6", "SDIO after init: rx_ready=%d tx_ready=%d", rx, tx);
+  if (!rx) {
+    klog("C6", "no SDIO enumeration - nothing answered on GPIO14-19");
+    return false;
+  }
+
+  /* Identity over the bus, which also answers "is it really a C6" without the
+   * UART recovery path. Best-effort: an old slave may not serve this RPC. */
+  uint32_t chip_id = 0;
+  char target[24] = {0};
+  if (esp_hosted_get_cp_info(&chip_id, target, sizeof target) == 0) {
+    klog("C6", "coprocessor id=%lu target=%s", (unsigned long)chip_id, target);
+  } else {
+    klog("C6", "bus up but get_cp_info unanswered");
+  }
+  return true;
+}
+
 static void bring_up(void) {
+#if KINO_C6_EN_BENCH_MS > 0
+  en_bench_cycles();
+#endif
   /* Hold the C6 off first, so the transport is opened against a chip in a
    * known state rather than whatever the last boot left running. ESP-Hosted's
    * own ALWAYS reset strategy releases it as part of esp_hosted_init(). */
@@ -283,14 +384,28 @@ static void bring_up(void) {
 
   if (esp_hosted_init() != 0) {
     count_error();
-    /* Nothing enumerated on the bus. On this carrier that is as likely to be
-     * the routing as the chip, which is why the detail says so rather than
-     * blaming the C6. */
+    /* The host side refused before the bus was ever driven - a bad config, no
+     * memory, the RPC layer failing to start. NOT "nothing enumerated": see
+     * probe_transport() for why init's return value says nothing about
+     * enumeration either way. */
     net_link_report_state(NET_C6_ABSENT, NET_REASON_C6_NO_RESPONSE,
-                          "no SDIO enumeration on slot 1; check GPIO14-19 and GPIO54", now_ms());
+                          "ESP-Hosted host init failed before the bus came up", now_ms());
     return;
   }
-  net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, true);
+
+  /* Whether anything actually answered on the bus, asked rather than assumed.
+   * This is Gate C6-B's real evidence and it must be read before the version
+   * RPC, because a failed version RPC on a bus that never enumerated means
+   * something completely different from the same failure on one that did. */
+  const bool bus_up = probe_transport();
+
+  net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, bus_up);
+  if (!bus_up) {
+    count_error();
+    net_link_report_state(NET_C6_ABSENT, NET_REASON_C6_NO_RESPONSE,
+                          "SDIO did not enumerate; check GPIO14-19 and GPIO54", now_ms());
+    return;
+  }
 
   if (!version_gate()) return;
   net_link_report_state(NET_C6_LINK_READY, NET_REASON_NONE, "transport up, versions agree",

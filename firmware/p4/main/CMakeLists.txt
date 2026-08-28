@@ -74,6 +74,20 @@ if(KINO_RADIO_BUILD)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE
                                KINO_SNTP_SERVER="${KINO_SNTP_SERVER}")
   endif()
+
+  # Bench only: hold the C6 enable long enough to read on a multimeter.
+  #
+  # The product asserts EN for EN_HOLD_MS (20 ms), which is correct for the
+  # chip and invisible to a meter. Setting this runs a few slow, announced
+  # assert/release cycles before the real bring-up so the CHIP_PU transition
+  # can be observed by hand. It changes no product timing: leave it unset and
+  # not one instruction of it is compiled.
+  #
+  #   idf.py -DKINO_C6_EN_BENCH_MS=3000 ... build
+  if(KINO_C6_EN_BENCH_MS)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE
+                               KINO_C6_EN_BENCH_MS=${KINO_C6_EN_BENCH_MS})
+  endif()
 elseif(CONFIG_ESP_HOSTED)
   # The other direction, and the dangerous one: ESP-Hosted enabled without the
   # fragment means the component's constructor drives GPIO14-19 and GPIO54
