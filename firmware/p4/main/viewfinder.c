@@ -48,13 +48,47 @@ static vf_status_t s_status[4];
 static int64_t s_last_frame_us[4];
 static bool s_ready;
 static volatile bool s_running;
+/* Pumps currently inside pump_camera(). viewfinder_hold() waits for zero. */
+static volatile int s_pumping;
+/* Tiles are frozen until this time; see viewfinder_review(). */
+static volatile int64_t s_review_until_us;
 
 bool viewfinder_ready(void) { return s_ready; }
 void viewfinder_run(bool on) { s_running = on; }
 
+bool viewfinder_hold(uint32_t timeout_ms) {
+  const bool was = s_running;
+  s_running = false;
+  /* Wait out any pump already talking to a node. Without this the capture
+   * races the very frame it is about to invalidate. */
+  const int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+  while (s_pumping > 0 && esp_timer_get_time() < deadline) {
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  const uint32_t waited = (uint32_t)((esp_timer_get_time() - (deadline - (int64_t)timeout_ms * 1000)) / 1000);
+  if (s_pumping > 0) {
+    klog("P4", "vf hold TIMED OUT after %lums, %d still pumping - capturing anyway",
+         (unsigned long)waited, s_pumping);
+  } else if (was) {
+    klog("P4", "vf held in %lums", (unsigned long)waited);
+  }
+  return was;
+}
+
+void viewfinder_release(bool was_running) { s_running = was_running; }
+
+void viewfinder_review(uint32_t ms) {
+  s_review_until_us = esp_timer_get_time() + (int64_t)ms * 1000;
+}
+
 const uint16_t *viewfinder_tile(int cam) {
   if (!s_ready || cam < 0 || cam > 3) return NULL;
   return s_status[cam].frames > 0 ? s_tile[cam] : NULL;
+}
+
+uint32_t viewfinder_fps_x10(int cam) {
+  if (!s_ready || cam < 0 || cam > 3) return 0;
+  return s_status[cam].fps_x10;
 }
 
 void viewfinder_status(int cam, vf_status_t *out) {
@@ -111,7 +145,22 @@ static bool pump_camera(int cam) {
 
   jpeg_decode_cfg_t cfg = {
       .output_format = JPEG_DECODE_OUT_FORMAT_RGB565,
-      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_RGB,
+        /* BGR, which in this enum means LITTLE endian, not blue-first. ESP-IDF:
+   *
+   *   "Enumeration for jpeg big/small endian output."
+   *   JPEG_DEC_RGB_ELEMENT_ORDER_BGR  "the color component in small endian"
+   *   JPEG_DEC_RGB_ELEMENT_ORDER_RGB  "the color component in big endian"
+   *
+   * The name reads like a channel swap and is a byte swap. With _RGB the
+   * decoder wrote big-endian RGB565 into a pipeline that is little-endian
+   * everywhere else - the panel is LCD_COLOR_PIXEL_FORMAT_RGB565 with
+   * LCD_RGB_ELEMENT_ORDER_RGB, the PPA is PPA_SRM_COLOR_MODE_RGB565 and
+   * every UI draw is a native uint16_t. Swapping the two bytes of an
+   * RGB565 pixel moves the green LSBs into red and the red MSBs into
+   * blue, so smooth gradients came out as hard rainbow contours over
+   * correct geometry. The stored JPEG was always fine; only the screen
+   * was wrong. */
+      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_BGR,
   };
   uint32_t out_size = 0;
   /* One engine, four producers: the decode itself is serialised even though
@@ -161,11 +210,26 @@ static void camera_task(void *arg) {
   const int cam = (int)(intptr_t)arg;
   bool announced = false;
   for (;;) {
-    if (!s_running) {
-      vTaskDelay(pdMS_TO_TICKS(100));
+    /*
+     * Claim the slot BEFORE testing whether we may run, because the reverse
+     * order is a check-then-act race and it cost a bench cycle: a task that
+     * had already passed the s_running test would pump AFTER hold() had seen
+     * s_pumping == 0 and returned, and the capture it was protecting still
+     * lost its frame. Claiming first means hold() either sees the claim and
+     * waits, or clears the flag before the claim and we back out here.
+     */
+    s_pumping++;
+    const bool may_pump =
+        s_running && esp_timer_get_time() >= s_review_until_us;
+    if (!may_pump) {
+      s_pumping--;
+      /* Idle at 100 ms when stopped, 20 ms while reviewing, so live resumes
+       * promptly when the review window closes. */
+      vTaskDelay(pdMS_TO_TICKS(s_running ? 20 : 100));
       continue;
     }
     const bool ok = pump_camera(cam);
+    s_pumping--;
     if (ok && !announced) {
       announced = true;
       klog("P4", "cam%d viewfinder live", cam + 1);

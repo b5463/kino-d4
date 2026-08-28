@@ -34,6 +34,7 @@
 #include "storage.h"
 #include "taskmon.h"
 #include "thumb.h"
+#include "viewfinder.h"
 
 static const char *TAG = "capture";
 
@@ -46,7 +47,19 @@ static const char *TAG = "capture";
  * 380-520 ms for that; four seconds is generous enough that a timeout means
  * something is wrong rather than merely slow. */
 #define NODE_CAPTURE_TIMEOUT_MS 4000
-#define CHUNK_READ_TIMEOUT_MS 1500
+/* 4000, not 1500.
+ *
+ * 1500 was sized when a frame was ~50 KB. At the sensor's ceiling - QXGA
+ * 2048x1536 at quality 95 - a frame is 72-241 KB, and the bench measured a
+ * chunk read arriving 8075 bytes of 8192 at 1528 ms: it very nearly made it,
+ * and the capture was thrown away for 28 ms. That is a budget set against the
+ * wrong frame size, not a link fault - the same run reported 0 CRC errors and
+ * 0 resyncs.
+ *
+ * One chunk is 8192 B, about 89 ms of line time at 921600 baud, so 4000 ms is
+ * roughly 45x the wire cost and still bounded: a node that has genuinely
+ * stopped answering fails a capture in seconds rather than hanging it. */
+#define CHUNK_READ_TIMEOUT_MS 4000
 
 /* Longest the flash is allowed to stay on. It is released as soon as every
  * node reports its capture finished; this only bounds the case where one
@@ -437,6 +450,26 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   if (s_lock == NULL) return ESP_ERR_INVALID_STATE;
   if (xSemaphoreTake(s_lock, 0) != pdTRUE) return ESP_ERR_INVALID_STATE;
 
+  /*
+   * Take the cameras off the viewfinder, HERE.
+   *
+   * A camera node holds exactly one frame: node_server's handle_capture
+   * releases whatever it held and bumps the frame id, so a viewfinder frame
+   * taken mid-transfer invalidates the frame being transferred and the next
+   * chunk read comes back BAD_ID.
+   *
+   * This lived in capture_task() first, which was wrong and quietly so:
+   * KDP's CAMERA_CAPTURE calls capture_fire() directly (kdp_server.c), so the
+   * host path never went near the task and never took the hold. The symptom
+   * was a product capture failing with "link died at 0%" while the bench
+   * command beside it worked. capture_fire is the one function every capture
+   * goes through, so the hold belongs at this lock and nowhere else.
+   *
+   * viewfinder_hold() also waits for a pump already in flight, which setting
+   * the run flag alone does not.
+   */
+  const bool vf_was_running = viewfinder_hold(1500);
+
   const int64_t t_start = esp_timer_get_time();
   capture_report_t r;
   memset(&r, 0, sizeof r);
@@ -674,6 +707,11 @@ finish:
   s_stage = CAPTURE_DONE;
   if (out != NULL) *out = r;
   for (int i = 0; i < s_listeners; i++) s_on_done[i](&r);
+  /* Hold the tiles on the shot just taken before live resumes, the way a
+   * camera reviews a frame. They already carry the last frame before the
+   * shutter, so this costs no decode. */
+  viewfinder_review(1200);
+  viewfinder_release(vf_was_running);
   xSemaphoreGive(s_lock);
   return r.ok ? ESP_OK : ESP_FAIL;
 }

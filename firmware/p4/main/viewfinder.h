@@ -56,6 +56,36 @@ bool viewfinder_ready(void);
 void viewfinder_run(bool on);
 
 /**
+ * Take the cameras away from the viewfinder for a capture.
+ *
+ * The node holds ONE frame: `handle_capture` releases whatever it was holding
+ * and bumps the frame id, so a viewfinder frame taken during a transfer
+ * invalidates the frame being transferred and the next chunk read comes back
+ * BAD_ID. That is not theoretical - it failed four captures out of five on the
+ * bench, at 0% and at 57%, while the link itself reported zero CRC errors.
+ *
+ * viewfinder_run(false) is not enough on its own: it stops the next pump but
+ * does not wait for one already running. This clears the flag and then waits
+ * for the in-flight pumps to finish, up to `timeout_ms`.
+ *
+ * Returns whether the viewfinder was running, to hand back to
+ * viewfinder_release(). Always pair them.
+ */
+bool viewfinder_hold(uint32_t timeout_ms);
+
+/** Give the cameras back. Pass what viewfinder_hold() returned. */
+void viewfinder_release(bool was_running);
+
+/**
+ * Freeze the tiles for `ms` after a capture, then return to live by itself.
+ *
+ * A camera reviews the shot it just took rather than snapping straight back to
+ * a live finder, and the tiles already hold the last frame before the shutter,
+ * which is the closest thing to the captured moment that costs nothing.
+ */
+void viewfinder_review(uint32_t ms);
+
+/**
  * The newest decoded frame for one camera, RGB565, VF_W x VF_H.
  *
  * Returns NULL when that camera has produced nothing - the caller draws the
@@ -64,5 +94,8 @@ void viewfinder_run(bool on);
 const uint16_t *viewfinder_tile(int cam);
 
 void viewfinder_status(int cam, vf_status_t *out);
+
+/** Smoothed frames per second times ten, 0 when the finder has never run. */
+uint32_t viewfinder_fps_x10(int cam);
 
 #endif

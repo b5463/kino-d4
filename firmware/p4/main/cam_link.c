@@ -16,7 +16,20 @@
 #include "klog.h"
 #include "node_link/node_link.h"
 
-#define LINK_RX_BUF (2 * (NL_CHUNK_MAX + 64))
+/* Four frames deep, not two.
+ *
+ * The ESP-IDF UART driver DROPS bytes when this ring overflows, and it is
+ * installed with a NULL event queue so the overflow is silent. At the
+ * sensor's ceiling - QXGA q95, a 90-240 KB frame in 8 KB chunks - the bench
+ * saw a chunk arrive 8120 bytes of the 8210 it needed and stop: raising the
+ * read timeout from 1500 ms to 4000 ms bought 45 more bytes and never
+ * completed a frame, which is what a dropped tail looks like rather than a
+ * slow one. crcErrors stayed 0 throughout because the frame never finished to
+ * be checked.
+ *
+ * Two frames of headroom is not much when the UI is compositing at the same
+ * time and the reader can be descheduled for tens of milliseconds. */
+#define LINK_RX_BUF (4 * (NL_CHUNK_MAX + 64))
 
 /*
  * Decoder storage per channel.
@@ -28,7 +41,11 @@
  * link actually permits it is half that. The header and CRC are added back
  * because a full chunk still has to fit with its framing.
  */
-#define LINK_DECODE_BUF (KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN)
+/* Plus slack. Sized exactly to one frame, a single stray byte ahead of a
+ * full-size chunk - node boot spew, the tail of a resync - leaves no room for
+ * the frame behind it to be assembled. 64 bytes costs nothing and removes a
+ * cliff that only appears at the maximum chunk size. */
+#define LINK_DECODE_BUF (KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN + 64)
 #define DEFAULT_TIMEOUT_MS 3000
 #define CAPTURE_TIMEOUT_MS 8000
 

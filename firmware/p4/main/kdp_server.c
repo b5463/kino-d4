@@ -12,6 +12,7 @@
 
 #include "cam_link.h"
 #include "capture.h"
+#include "viewfinder.h"
 #include "clock.h"
 #include <dirent.h>
 #include <sys/stat.h>
@@ -337,10 +338,20 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
       /* Where it died is the measurement. Failing at the first chunk is a
        * link fault; failing at 80% is a throughput or timeout budget the
        * bench can retune. */
-      failf(r, "TRANSFER_TIMEOUT", "Chunk read failed at %lu/%lu B (%lu%%) after %lu ms",
+      /* Say what the link said. This used to be hardcoded TRANSFER_TIMEOUT,
+       * which is a lie when the node answered BAD_ID - and it did, because a
+       * viewfinder frame had replaced the frame being transferred. An hour
+       * went into timeout budgets and signal integrity before the real NACK
+       * surfaced from CAMERA_LINK_STATS instead of from the error itself. */
+      camlink_stats_t xs;
+      camlink_get_stats(&xs);
+      const bool timed_out = strcmp(xs.last_error, "TIMEOUT") == 0;
+      failf(r, timed_out ? "TRANSFER_TIMEOUT" : "TRANSFER_FAILED",
+            "Chunk read failed at %lu/%lu B (%lu%%) after %lu ms; link reports %s",
             (unsigned long)offset, (unsigned long)cap.size,
             (unsigned long)(cap.size == 0 ? 0 : (uint64_t)offset * 100 / cap.size),
-            (unsigned long)elapsed_ms(t_xfer));
+            (unsigned long)elapsed_ms(t_xfer),
+            xs.last_error[0] != '\0' ? xs.last_error : "nothing");
       free(jpeg);
       camlink_release(cap.frame_id);
       return;
@@ -1475,6 +1486,11 @@ static void handle_link_stats(uint32_t seq, cJSON *req) {
   }
   if (stats.last_error[0] != '\0') cJSON_AddStringToObject(json, "lastError", stats.last_error);
   else cJSON_AddNullToObject(json, "lastError");
+  /* The viewfinder's own rate on this channel, tenths of a frame per second.
+   * Every preview frame is a capture, a chunked read and a release over this
+   * UART, so the finder's frame rate IS a link measurement and belongs here
+   * rather than in a UI-only counter nothing outside the device can read. */
+  cJSON_AddNumberToObject(json, "viewfinderFpsX10", viewfinder_fps_x10(index));
   send_json(KDP_CMD_CAMERA_LINK_STATS, seq, json);
 }
 
@@ -1880,7 +1896,16 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
     return;
   }
   capture_result_t result;
+  /* The node holds ONE frame and a new capture destroys it, so the
+   * viewfinder must stop taking its own before this starts: four captures
+   * in five failed with BAD_ID mid-transfer while the link reported zero
+   * CRC errors. viewfinder_review() then holds the tiles briefly, which is
+   * what a camera does with a shot just taken - and they already show the
+   * last frame before the shutter. */
+  const bool vf_was = viewfinder_hold(1500);
   run_capture(-1, true, &result);
+  viewfinder_review(1200);
+  viewfinder_release(vf_was);
   xSemaphoreGive(s_capture_lock);
 
   if (!result.ok) {
@@ -1951,6 +1976,12 @@ static void soak_task(void *arg) {
 
   uint32_t batch = args->captures / 10;
   if (batch == 0) batch = 1;
+
+  /* Held for the whole run, not per capture. A soak is hundreds of captures
+   * back to back and the node holds one frame: a viewfinder taking frames of
+   * its own between them would invalidate transfers at random and the run
+   * would measure the race instead of the link. */
+  const bool vf_was = viewfinder_hold(1500);
 
   for (uint32_t i = 0; i < args->captures; i++) {
     capture_result_t r;
@@ -2051,6 +2082,7 @@ static void soak_task(void *arg) {
        (unsigned long)failed);
 
   s_soak_running = false;
+  viewfinder_release(vf_was);
   xSemaphoreGive(s_capture_lock);
   free(args);
   vTaskDelete(NULL);
