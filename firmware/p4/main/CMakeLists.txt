@@ -7,7 +7,7 @@ set(kino_srcs
   "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "net_link.c" "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
-  "roll_api.c")
+  "roll_api.c" "roll_client.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer

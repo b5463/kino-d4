@@ -1,6 +1,13 @@
 /*
- * The Roll device API. See roll_api.h for what this module deliberately does
- * not decide, and docs/roll/ROLL_DEVICE_CONTRACT.md for the procedure.
+ * The Roll device procedures: the capture document, the three upload steps, and
+ * Roll association. See roll_api.h for what this module deliberately does not
+ * decide, and docs/roll/ROLL_DEVICE_CONTRACT.md for the procedure it follows
+ * step for step.
+ *
+ * The authenticated client underneath — request/parse plumbing and the device
+ * credential — is roll_client.c. The split is by concern: what is here changes
+ * when the contract changes, what is there changes when the transport or the
+ * credential model does.
  *
  * Nothing here has been run on hardware. No capture has ever reached a Roll
  * from a camera.
@@ -48,17 +55,11 @@ bool roll_api_join(const char *slug, roll_api_assoc_t *out) {
   return false;
 }
 
-bool roll_api_ready(char *why, size_t cap) {
-  snprintf(why, cap, "no radio in this build");
-  return false;
-}
-
 #else /* KINO_RADIO */
 
 #include "cJSON.h"
 #include "esp_log.h"
-#include "esp_mac.h"
-#include "klog.h"
+#include "roll_client.h"
 #include "roll_http.h"
 #include "storage.h"
 #include "upload_store.h"
@@ -72,123 +73,6 @@ static const char *TAG = "rollapi";
  * is only the clamp: a server that asked for 64 MiB parts would otherwise ask
  * this device to hold one. */
 #define PART_SIZE_MAX (5 * 1024 * 1024)
-
-bool roll_api_ready(char *why, size_t cap) { return roll_http_ready(why, cap); }
-
-/* ------------------------------------------------------------------ */
-/* JSON plumbing                                                      */
-/* ------------------------------------------------------------------ */
-
-/** POST or GET with a JSON body, returning the parsed reply or NULL. The
- * caller always gets a status in `out` whether or not the body parsed. */
-static cJSON *call_json(const char *method, const char *path, const char *body,
-                        roll_http_out_t *out) {
-  char response[ROLL_HTTP_MAX_RESPONSE];
-  const roll_http_req_t req = {
-      .method = method,
-      .path = path,
-      .json_body = body,
-      .authenticate = true,
-      .response = response,
-      .response_cap = sizeof response,
-  };
-  roll_http_perform(&req, out);
-  if (out->status < 200 || out->status >= 300) return NULL;
-  return cJSON_Parse(response);
-}
-
-static const char *json_str(const cJSON *o, const char *key) {
-  const cJSON *v = cJSON_GetObjectItem(o, key);
-  return (cJSON_IsString(v) && v->valuestring != NULL) ? v->valuestring : NULL;
-}
-
-static void copy_field(char *dst, size_t cap, const cJSON *o, const char *key) {
-  const char *v = json_str(o, key);
-  snprintf(dst, cap, "%s", v != NULL ? v : "");
-}
-
-/* ------------------------------------------------------------------ */
-/* Registration                                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * Register this body once and store the credential.
- *
- * The token comes back exactly once — the server keeps only its SHA-256 — so
- * the write to NVS is the whole point of this function and a failure to store
- * it is worse than a failure to obtain it.
- *
- * The serial is derived from the factory MAC, the same derivation main.c uses
- * for `kdp_identity_t.serial`. It is a fact about the chip rather than stored
- * state, which is why deriving it twice is safe; registration is
- * first-write-wins per serial, so two derivations that disagreed would show up
- * as a second device rather than a silent mismatch.
- */
-static bool ensure_registered(roll_http_out_t *out) {
-  if (roll_state_has_credential()) {
-    out->status = 200;
-    return true;
-  }
-
-  uint8_t mac[6] = {0};
-  (void)esp_efuse_mac_get_default(mac);
-  char serial[16];
-  snprintf(serial, sizeof serial, "KD4-%02X%02X%02X", mac[3], mac[4], mac[5]);
-
-  cJSON *body = cJSON_CreateObject();
-  if (body == NULL) {
-    out->status = 0;
-    rq_redact(out->detail, sizeof out->detail, "no memory to register");
-    return false;
-  }
-  cJSON_AddStringToObject(body, "serial", serial);
-  cJSON_AddStringToObject(body, "product", "KINO D4");
-  cJSON_AddStringToObject(body, "hardwareRevision", "v1");
-  cJSON_AddStringToObject(body, "name", serial);
-  char *text = cJSON_PrintUnformatted(body);
-  cJSON_Delete(body);
-  if (text == NULL) {
-    out->status = 0;
-    rq_redact(out->detail, sizeof out->detail, "no memory to register");
-    return false;
-  }
-
-  /* Not authenticated: this is the call that produces the credential. */
-  char response[ROLL_HTTP_MAX_RESPONSE];
-  const roll_http_req_t req = {
-      .method = "POST",
-      .path = "/api/studio/devices/register",
-      .json_body = text,
-      .authenticate = false,
-      .response = response,
-      .response_cap = sizeof response,
-  };
-  roll_http_perform(&req, out);
-  cJSON_free(text);
-
-  if (out->status < 200 || out->status >= 300) return false;
-
-  cJSON *reply = cJSON_Parse(response);
-  /* The token is in `response` and in `reply` and in nothing else. Both are
-   * wiped before this returns. */
-  bool ok = false;
-  if (reply != NULL) {
-    const char *device_id = json_str(reply, "deviceId");
-    const char *token = json_str(reply, "deviceToken");
-    if (device_id != NULL && token != NULL) {
-      ok = roll_state_set_credential(device_id, token) == ESP_OK;
-      if (!ok) rq_redact(out->detail, sizeof out->detail, "the credential would not store");
-    }
-    cJSON_Delete(reply);
-  }
-  memset(response, 0, sizeof response);
-
-  if (!ok && out->detail[0] == '\0') {
-    rq_redact(out->detail, sizeof out->detail, "the register reply had no credential");
-  }
-  if (ok) klog("P4", "device registered as %s", serial);
-  return ok;
-}
 
 /* ------------------------------------------------------------------ */
 /* The capture document                                               */
@@ -270,7 +154,7 @@ static char *capture_document(const rq_job_t *job) {
 static void step_register(const rq_job_t *job, roll_step_result_t *res) {
   roll_http_out_t http;
   memset(&http, 0, sizeof http);
-  if (!ensure_registered(&http)) {
+  if (!roll_client_ensure_registered(&http)) {
     res->status = http.status;
     memcpy(res->detail, http.detail, sizeof res->detail);
     return;
@@ -288,7 +172,7 @@ static void step_register(const rq_job_t *job, roll_step_result_t *res) {
 
   char path[128];
   snprintf(path, sizeof path, "/api/device/rolls/%s/captures", job->roll_id);
-  cJSON *reply = call_json("POST", path, doc, &http);
+  cJSON *reply = roll_client_call("POST", path, doc, &http);
   cJSON_free(doc);
 
   res->status = http.status;
@@ -296,7 +180,7 @@ static void step_register(const rq_job_t *job, roll_step_result_t *res) {
   if (reply != NULL) {
     /* 201 created and 200 replay both carry the same captureId for the same
      * captureUuid, which is what makes a reboot mid-upload safe. */
-    copy_field(res->capture_id, sizeof res->capture_id, reply, "captureId");
+    roll_client_copy(res->capture_id, sizeof res->capture_id, reply, "captureId");
     cJSON_Delete(reply);
   }
   if (res->capture_id[0] == '\0' && res->status >= 200 && res->status < 300) {
@@ -353,7 +237,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
   char path[160];
   snprintf(path, sizeof path, "/api/device/captures/%s/assets/init", job->capture_id);
   roll_http_out_t http;
-  cJSON *reply = call_json("POST", path, text, &http);
+  cJSON *reply = roll_client_call("POST", path, text, &http);
   cJSON_free(text);
 
   res->status = http.status;
@@ -361,7 +245,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
   if (reply == NULL) return;
 
   char upload_id[64];
-  copy_field(upload_id, sizeof upload_id, reply, "uploadId");
+  roll_client_copy(upload_id, sizeof upload_id, reply, "uploadId");
   const cJSON *jsize = cJSON_GetObjectItem(reply, "partSize");
   size_t part_size = cJSON_IsNumber(jsize) ? (size_t)jsize->valuedouble : PART_SIZE_MAX;
   const bool done = cJSON_IsTrue(cJSON_GetObjectItem(reply, "alreadyComplete"));
@@ -389,7 +273,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
   }
 
   snprintf(path, sizeof path, "/api/device/uploads/%s/complete", upload_id);
-  cJSON *fin = call_json("POST", path, NULL, &http);
+  cJSON *fin = roll_client_call("POST", path, NULL, &http);
   if (fin != NULL) cJSON_Delete(fin);
   res->status = http.status;
   memcpy(res->detail, http.detail, sizeof res->detail);
@@ -399,7 +283,7 @@ static void step_complete(const rq_job_t *job, roll_step_result_t *res) {
   char path[160];
   snprintf(path, sizeof path, "/api/device/captures/%s/complete", job->capture_id);
   roll_http_out_t http;
-  cJSON *reply = call_json("POST", path, NULL, &http);
+  cJSON *reply = roll_client_call("POST", path, NULL, &http);
   if (reply != NULL) cJSON_Delete(reply);
   res->status = http.status;
   memcpy(res->detail, http.detail, sizeof res->detail);
@@ -450,7 +334,7 @@ static bool association(const char *path, cJSON *body, const char *slug_fallback
 
   roll_http_out_t http;
   memset(&http, 0, sizeof http);
-  if (!ensure_registered(&http)) {
+  if (!roll_client_ensure_registered(&http)) {
     out->status = http.status;
     memcpy(out->detail, http.detail, sizeof out->detail);
     cJSON_Delete(body);
@@ -464,7 +348,7 @@ static bool association(const char *path, cJSON *body, const char *slug_fallback
     return false;
   }
 
-  cJSON *reply = call_json("POST", path, text, &http);
+  cJSON *reply = roll_client_call("POST", path, text, &http);
   cJSON_free(text);
   out->status = http.status;
   memcpy(out->detail, http.detail, sizeof out->detail);
@@ -475,11 +359,11 @@ static bool association(const char *path, cJSON *body, const char *slug_fallback
     return false;
   }
 
-  copy_field(out->roll_id, sizeof out->roll_id, reply, "rollId");
-  copy_field(out->slug, sizeof out->slug, reply, "slug");
-  copy_field(out->guest_url, sizeof out->guest_url, reply, "guestUrl");
-  copy_field(out->name, sizeof out->name, reply, "title");
-  if (out->name[0] == '\0') copy_field(out->name, sizeof out->name, reply, "name");
+  roll_client_copy(out->roll_id, sizeof out->roll_id, reply, "rollId");
+  roll_client_copy(out->slug, sizeof out->slug, reply, "slug");
+  roll_client_copy(out->guest_url, sizeof out->guest_url, reply, "guestUrl");
+  roll_client_copy(out->name, sizeof out->name, reply, "title");
+  if (out->name[0] == '\0') roll_client_copy(out->name, sizeof out->name, reply, "name");
   cJSON_Delete(reply);
 
   /* The join reply does not always name the slug it resolved, and the camera
