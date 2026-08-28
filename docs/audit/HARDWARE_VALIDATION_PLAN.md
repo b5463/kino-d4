@@ -6,8 +6,8 @@ Everything below is unmeasured. Twin and Studio carry these values as `PROVISION
 
 | Measurement | Method | Records to |
 |---|---|---|
-| Every JP1 assignment drives its function: CAM1 TX/RX GPIO1/2 (pins 7/9), CAM2 GPIO47/46 (pins 10/12), CAM3 GPIO32/33 (pins 19/21), CAM4 GPIO45/4 (pins 14/13), SYNC_OUT GPIO20 (pin 17) | continuity from the P4 pad to the JP1 pin, then scope on each pin under firmware control | `d4-v1.json` gpio (`PROVISIONAL` → `VERIFIED`), issue #2 |
-| FLASH_EN and CAM_PWR_EN route (no JP1 pin left; I²C expander on ESI2C pins 23/25 is the candidate) | bench the chosen expander on the ESI2C bus, confirm address and drive | M2, `docs/HARDWARE.md` §P4 header JP1 |
+| Every JP1 assignment drives its function: CAM1 TX/RX GPIO52/51 (pins 7/9), CAM2 GPIO50/49 (pins 11/13), CAM3 GPIO34/33 (pins 17/8), CAM4 GPIO30/29 (pins 12/14), SYNC_OUT GPIO32 (pin 19) | continuity from the P4 pad to the JP1 pin, then scope on each pin under firmware control. Header positions are already measured (ECN-0002); what is unproven is that each drives its intended function | `d4-v1.json` gpio (`PROVISIONAL` → `VERIFIED`), issue #2 |
+| FLASH_EN (GPIO28, pin 21) and CAM_PWR_EN (GPIO31, pin 10) drive their loads | scope each pin under firmware control, then confirm the AO4407 channel follows CAM_PWR_EN | M1 §37, `docs/HARDWARE.md` §P4 header JP1 |
 | Per-camera power switching: one shared enable vs individual channel pins | drive CAM_PWR_EN through its chosen route, probe each AO4407 channel | `docs/HARDWARE.md` §Camera power switching |
 | GPIO3 / GPIO5 stay owned by touch and LCD reset while CAM1–4 and SYNC_OUT are driven on their neighbours | touch and panel keep working under four-channel UART traffic | issue #2 |
 | C6 pins undisturbed by KINO wiring | Wi-Fi throughput during full camera load | issue #3 |

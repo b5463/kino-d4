@@ -136,7 +136,7 @@ Two things about it matter here:
   actually exposes (`1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47`; GPIO3 and GPIO5
   are already the touch and LCD resets, leaving nine free), and
   `board_d4v1.h` has no GPIO assigned twice. The corrected map — CAM1–4 on
-  GPIO1/2, 47/46, 32/33, 45/4 and `SYNC_OUT` on GPIO20, each with its JP1 pin
+  GPIO52/51, 50/49, 34/33, 30/29 and `SYNC_OUT` on GPIO32, each with its JP1 pin
   — is in `docs/HARDWARE.md` §P4 header JP1.
 
 This is corroboration, not proof. It says the header error does not reach these

@@ -362,8 +362,8 @@ esp_err_t camlink_hello_ch(int cam) {
    * somewhere to record channels 2-4, and an UNVALIDATED row is the honest
    * state for a channel nobody has jumpered rather than clutter. */
   {
-    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_TX_GPIO1), "node HELLO answered");
-    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_RX_GPIO2), "node HELLO answered");
+    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_TX_GPIO52), "node HELLO answered");
+    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_RX_GPIO51), "node HELLO answered");
     hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_BAUD_921600), "node HELLO at 921600");
     hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_NODE_LINK), "node HELLO answered");
     if (sensor_seen) hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_SENSOR_DETECT), sensor_name);

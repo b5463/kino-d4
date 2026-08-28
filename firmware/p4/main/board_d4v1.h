@@ -9,40 +9,57 @@
 #ifndef BOARD_D4V1_H
 #define BOARD_D4V1_H
 
-// --- JP1, the 2x13 2.54 mm header, from the manufacturer table ---
+// --- JP1, the 2x13 2.54 mm header, MEASURED on the board ---
 //
-// Pin numbering as on the JC-ESP32P4-M3-DEV drawing: odd pins are the LEFT
-// column, even pins the RIGHT column, pin 1 at the top.
+// Odd pins are the LEFT column, even the RIGHT, pin 1 at the top.
 //
-//     pin  left            right   pin
-//      1   3V3             5V       2
-//      3   3V3             5V       4
-//      5   GND             GND      6
-//      7   GPIO1           NC       8
-//      9   GPIO2           GPIO47  10
-//     11   GPIO3           GPIO46  12
-//     13   GPIO4           GPIO45  14
-//     15   GPIO5           GND     16
-//     17   GPIO20          3V3     18
-//     19   GPIO32          C6_U0RXD 20
-//     21   GPIO33          C6_U0TXD 22
-//     23   ESI2C_SDA       C6_IO9  24
-//     25   ESI2C_SCL       C6_CHIP_PU 26
+//     pin  left            right       pin
+//      1   3V3             5V           2
+//      3   3V3             5V           4
+//      5   GND             GND          6
+//      7   GPIO52          GPIO33       8
+//      9   GPIO51          GPIO31      10
+//     11   GPIO50          GPIO30      12
+//     13   GPIO49          GPIO29      14
+//     15   GPIO35          GND         16
+//     17   GPIO34          ESP_3V3     18
+//     19   GPIO32          C6_U0RXD    20
+//     21   GPIO28          C6_U0TXD    22
+//     23   I2C_SDA         C6_IO9      24
+//     25   I2C_SCL         C6_CHIP_PU  26
 //
-// Eleven P4 GPIOs reach the header: 1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47.
-// GPIO3 is TOUCH_RESET and GPIO5 is LCD_RESET, both validated on hardware, so
-// nine are free: 1, 2, 4, 20, 32, 33, 45, 46, 47. GPIO52/51/50/49/35/34/31/
-// 30/29/28 route nowhere on this carrier and must not appear in this file.
+// Twelve P4 GPIOs reach the header: 52, 51, 50, 49, 35, 34, 32, 28 on the
+// left and 33, 31, 30, 29 on the right. Eleven signals are wanted -- four
+// TX/RX pairs, SYNC_OUT, FLASH_EN, CAM_PWR_EN -- so GPIO35 (pin 15) is the
+// one spare. Right column pins 20/22/24/26 are the C6 programming and
+// recovery lines and stay reserved; pin 18 is the C6's own supply.
 //
-// Nine free pins, ten signals wanted: 4 x (TX, RX) = 8, SYNC_OUT = 1,
-// FLASH_EN = 1, CAM_PWR_EN = 1. The eight UART lines and SYNC_OUT take the
-// nine. FLASH_EN and CAM_PWR_EN are unassigned until M2 decides a route: an
-// I2C GPIO expander on ESI2C_SDA/SCL (JP1 pins 23/25) or another way off the
-// board. Right column pins 20/22/24/26 are the C6 programming and recovery
-// lines and stay reserved.
+// THIS TABLE IS MEASURED, NOT TRANSCRIBED. It has been wrong twice, both
+// times from copying someone's table:
+//
+//   1bc8a7e  entered from an assumed third-party expansion list
+//   944b68e  "corrected" to the JC-ESP32P4-M3-DEV pinout -- a DIFFERENT
+//            carrier that happens to use the same P4 module. That map put
+//            CAM1 on GPIO1/GPIO2, which reach nothing here, and the bench
+//            spent a session proving it: a node that never answered, then a
+//            TX-to-RX loopback on JP1 7-9 that received zero bytes.
+//
+// It was then settled electrically. The P4 drove every GPIO in turn, each
+// announcing its own index in binary, while a node watched one wire:
+//
+//   JP1 13 (7th down, left)  -> GPIO49
+//   JP1  7 (4th down, left)  -> GPIO52   (predicted before the run)
+//
+// Both agree with the manufacturer PIN DEFINITIONS drawing for the
+// JC4880P443C-I-W, which is the board we actually have. ECN-0002.
+//
+// Do not edit these numbers from a datasheet, a photo of another board, or a
+// vendor page. Measure the pin. firmware/p4/host_tests/test_board_pins.c
+// and board_d4v1_checks.h hold the table to itself; only the bench can hold
+// it to the copper.
 //
 // UART TX/RX on the P4 go through the GPIO matrix on every port; there is no
-// IOMUX restriction, so any of the nine can carry any of UART1-4.
+// IOMUX restriction, so any header GPIO can carry any of UART1-4.
 
 // Unassigned control line. Numerically equal to GPIO_NUM_NC (-1); every user
 // must skip gpio_config and gpio_set_level for a pin equal to this.
@@ -53,39 +70,54 @@
 // which is what lets four transfers overlap instead of queueing.
 // BOARD_*_JP1 is the header pin the wire lands on.
 #define BOARD_CAM1_UART_NUM 1
-#define BOARD_CAM1_TX 1
-#define BOARD_CAM1_RX 2
+#define BOARD_CAM1_TX 52
+#define BOARD_CAM1_RX 51
 #define BOARD_CAM1_TX_JP1 7
 #define BOARD_CAM1_RX_JP1 9
 
 #define BOARD_CAM2_UART_NUM 2
-#define BOARD_CAM2_TX 47
-#define BOARD_CAM2_RX 46
-#define BOARD_CAM2_TX_JP1 10
-#define BOARD_CAM2_RX_JP1 12
+#define BOARD_CAM2_TX 50
+#define BOARD_CAM2_RX 49
+#define BOARD_CAM2_TX_JP1 11
+#define BOARD_CAM2_RX_JP1 13
 
 #define BOARD_CAM3_UART_NUM 3
-#define BOARD_CAM3_TX 32
+#define BOARD_CAM3_TX 34
 #define BOARD_CAM3_RX 33
-#define BOARD_CAM3_TX_JP1 19
-#define BOARD_CAM3_RX_JP1 21
+#define BOARD_CAM3_TX_JP1 17
+#define BOARD_CAM3_RX_JP1 8
 
 #define BOARD_CAM4_UART_NUM 4
-#define BOARD_CAM4_TX 45
-#define BOARD_CAM4_RX 4
-#define BOARD_CAM4_TX_JP1 14
-#define BOARD_CAM4_RX_JP1 13
+#define BOARD_CAM4_TX 30
+#define BOARD_CAM4_RX 29
+#define BOARD_CAM4_TX_JP1 12
+#define BOARD_CAM4_RX_JP1 14
 
 // --- Control lines ---
 // SYNC_OUT fans out to all four XIAO SYNC_IN pins. Driven by capture.c;
 // the node side does not arm on it yet.
-#define BOARD_SYNC_OUT 20
-#define BOARD_SYNC_OUT_JP1 17
-// No header pin left for either. capture.c and power.c check for
-// BOARD_GPIO_NONE and skip the GPIO; the flash request still works as a
-// no-op and the camera bank is simply always powered.
-#define BOARD_FLASH_EN BOARD_GPIO_NONE
-#define BOARD_CAM_PWR_EN BOARD_GPIO_NONE
+#define BOARD_SYNC_OUT 32
+#define BOARD_SYNC_OUT_JP1 19
+// Both have a header pin on this carrier. The twelfth GPIO, GPIO35 on pin
+// 15, is the spare.
+#define BOARD_FLASH_EN 28
+#define BOARD_FLASH_EN_JP1 21
+#define BOARD_CAM_PWR_EN 31
+#define BOARD_CAM_PWR_EN_JP1 10
+// JP1 15 / GPIO35: routed to the header, assigned to nothing.
+//
+// LEAVE IT UNCONNECTED. GPIO35 is the ESP32-P4's serial-bootloader strap:
+// held LOW at reset the chip enters the ROM downloader instead of running the
+// app, and the combination GPIO36=0 with GPIO35=0 is documented as invalid.
+// It idles high on an internal pullup, so an unwired pin is safe and a pin
+// wired to ground is a board that will not boot -- which on a bench reads as
+// dead firmware, not as a wiring mistake.
+//
+// GPIO34 (CAM3_TX, pin 17) is a strapping pin too. It is safe here because it
+// is ours to DRIVE and the far end is a node's UART RX, which is high
+// impedance and cannot hold it during our reset. Do not invert that: never
+// put a camera's TX -- an input to us -- on 34 or 35.
+#define BOARD_SPARE_JP1 15
 
 // Physical controls. docs/HARDWARE.md: "Button and mode-slide pins are
 // unassigned." They stay unassigned here rather than being guessed: a

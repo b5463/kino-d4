@@ -12,24 +12,27 @@
 // Manufacturer JP1 table, GPIO by pin number. Only the P4 GPIO positions are
 // listed; every other position is power, ground, NC, ESI2C or the C6.
 #define BOARD_JP1_GPIO_AT(pin)                                                \
-  ((pin) == 7    ? 1                                                          \
-   : (pin) == 9  ? 2                                                          \
-   : (pin) == 10 ? 47                                                         \
-   : (pin) == 11 ? 3                                                          \
-   : (pin) == 12 ? 46                                                         \
-   : (pin) == 13 ? 4                                                          \
-   : (pin) == 14 ? 45                                                         \
-   : (pin) == 15 ? 5                                                          \
-   : (pin) == 17 ? 20                                                         \
+  ((pin) == 7    ? 52                                                         \
+   : (pin) == 8  ? 33                                                         \
+   : (pin) == 9  ? 51                                                         \
+   : (pin) == 10 ? 31                                                         \
+   : (pin) == 11 ? 50                                                         \
+   : (pin) == 12 ? 30                                                         \
+   : (pin) == 13 ? 49                                                         \
+   : (pin) == 14 ? 29                                                         \
+   : (pin) == 15 ? 35                                                         \
+   : (pin) == 17 ? 34                                                         \
    : (pin) == 19 ? 32                                                         \
-   : (pin) == 21 ? 33                                                         \
+   : (pin) == 21 ? 28                                                         \
                  : -1)
 
-// The nine header GPIOs a camera signal may use. GPIO3 and GPIO5 are on the
-// header but taken by touch and LCD reset.
+// The twelve header GPIOs. All are free: none of the P4's other peripherals
+// land on this connector, so unlike the previous map there is no pin that is
+// simultaneously on JP1 and owned by the panel or the touch controller.
 #define BOARD_IS_FREE_JP1_GPIO(g)                                             \
-  ((g) == 1 || (g) == 2 || (g) == 4 || (g) == 20 || (g) == 32 || (g) == 33 || \
-   (g) == 45 || (g) == 46 || (g) == 47)
+  ((g) == 52 || (g) == 51 || (g) == 50 || (g) == 49 || (g) == 35 ||           \
+   (g) == 34 || (g) == 32 || (g) == 28 || (g) == 33 || (g) == 31 ||           \
+   (g) == 30 || (g) == 29)
 
 // Everything else the P4 drives on this carrier.
 #define BOARD_IS_RESERVED_GPIO(g)                                             \
@@ -61,21 +64,28 @@ BOARD_CHECK_SIGNAL(BOARD_CAM3_RX);
 BOARD_CHECK_SIGNAL(BOARD_CAM4_TX);
 BOARD_CHECK_SIGNAL(BOARD_CAM4_RX);
 BOARD_CHECK_SIGNAL(BOARD_SYNC_OUT);
+BOARD_CHECK_SIGNAL(BOARD_FLASH_EN);
+BOARD_CHECK_SIGNAL(BOARD_CAM_PWR_EN);
 
 // Column check against the drawing: odd pins are the left column, even the
-// right. The left column carries GPIO1/2/3/4/5/20/32/33; the right carries
-// GPIO47/46/45. The JP1->GPIO table above already fixes each pair; this makes
-// the column rule explicit so a transposed table is caught by name.
+// right. The left column carries GPIO52/51/50/49/35/34/32/28; the right
+// carries GPIO33/31/30/29. The JP1->GPIO table above already fixes each pair;
+// this makes the column rule explicit so a transposed table is caught by name.
 #define BOARD_JP1_IS_LEFT(pin) (((pin) & 1) == 1)
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM1_TX_JP1), "GPIO1 is a left-column pin");
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM1_RX_JP1), "GPIO2 is a left-column pin");
-_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM2_TX_JP1), "GPIO47 is a right-column pin");
-_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM2_RX_JP1), "GPIO46 is a right-column pin");
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM3_TX_JP1), "GPIO32 is a left-column pin");
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM3_RX_JP1), "GPIO33 is a left-column pin");
-_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM4_TX_JP1), "GPIO45 is a right-column pin");
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM4_RX_JP1), "GPIO4 is a left-column pin");
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_SYNC_OUT_JP1), "GPIO20 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM1_TX_JP1), "GPIO52 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM1_RX_JP1), "GPIO51 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM2_TX_JP1), "GPIO50 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM2_RX_JP1), "GPIO49 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_CAM3_TX_JP1), "GPIO34 is a left-column pin");
+_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM3_RX_JP1), "GPIO33 is a right-column pin");
+_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM4_TX_JP1), "GPIO30 is a right-column pin");
+_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM4_RX_JP1), "GPIO29 is a right-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_SYNC_OUT_JP1), "GPIO32 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_FLASH_EN_JP1), "GPIO28 is a left-column pin");
+_Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM_PWR_EN_JP1), "GPIO31 is a right-column pin");
+
+// The spare is a real header GPIO that nothing claims.
+_Static_assert(BOARD_JP1_GPIO_AT(BOARD_SPARE_JP1) == 35, "JP1 15 carries GPIO35");
 
 // Uniqueness. Nine GPIOs, nine JP1 pins, no two the same. Written as a sum of
 // pairwise collisions so the message names the whole set, not one pair.
@@ -100,14 +110,43 @@ _Static_assert(BOARD_COLLISIONS(BOARD_CAM1_TX_JP1, BOARD_CAM1_RX_JP1, BOARD_CAM2
                                 BOARD_CAM4_TX_JP1, BOARD_CAM4_RX_JP1, BOARD_SYNC_OUT_JP1) == 0,
                "two camera/SYNC signals share a JP1 pin");
 
+// FLASH_EN and CAM_PWR_EN have real pins on this carrier, so they join the
+// uniqueness rule. Counted against the nine above and each other rather than
+// widening BOARD_COLLISIONS to eleven arguments and 55 pairs.
+#define BOARD_VS_NINE(x, a, b, c, d, e, f, g, h, i)                            \
+  (BOARD_EQ(x, a) + BOARD_EQ(x, b) + BOARD_EQ(x, c) + BOARD_EQ(x, d) +         \
+   BOARD_EQ(x, e) + BOARD_EQ(x, f) + BOARD_EQ(x, g) + BOARD_EQ(x, h) +         \
+   BOARD_EQ(x, i))
+
+#define BOARD_VS_CAM_GPIOS(x)                                                  \
+  BOARD_VS_NINE(x, BOARD_CAM1_TX, BOARD_CAM1_RX, BOARD_CAM2_TX, BOARD_CAM2_RX, \
+                BOARD_CAM3_TX, BOARD_CAM3_RX, BOARD_CAM4_TX, BOARD_CAM4_RX,    \
+                BOARD_SYNC_OUT)
+#define BOARD_VS_CAM_JP1(x)                                                    \
+  BOARD_VS_NINE(x, BOARD_CAM1_TX_JP1, BOARD_CAM1_RX_JP1, BOARD_CAM2_TX_JP1,    \
+                BOARD_CAM2_RX_JP1, BOARD_CAM3_TX_JP1, BOARD_CAM3_RX_JP1,       \
+                BOARD_CAM4_TX_JP1, BOARD_CAM4_RX_JP1, BOARD_SYNC_OUT_JP1)
+
+_Static_assert(BOARD_VS_CAM_GPIOS(BOARD_FLASH_EN) == 0, "FLASH_EN shares a GPIO");
+_Static_assert(BOARD_VS_CAM_GPIOS(BOARD_CAM_PWR_EN) == 0, "CAM_PWR_EN shares a GPIO");
+_Static_assert(BOARD_FLASH_EN != BOARD_CAM_PWR_EN, "FLASH_EN and CAM_PWR_EN share a GPIO");
+_Static_assert(BOARD_VS_CAM_JP1(BOARD_FLASH_EN_JP1) == 0, "FLASH_EN shares a JP1 pin");
+_Static_assert(BOARD_VS_CAM_JP1(BOARD_CAM_PWR_EN_JP1) == 0, "CAM_PWR_EN shares a JP1 pin");
+_Static_assert(BOARD_FLASH_EN_JP1 != BOARD_CAM_PWR_EN_JP1,
+               "FLASH_EN and CAM_PWR_EN share a JP1 pin");
+_Static_assert(BOARD_VS_CAM_JP1(BOARD_SPARE_JP1) == 0, "the spare pin is claimed");
+
 // Four ports, UART1..UART4, each once. UART0 is the console.
 _Static_assert(BOARD_CAM1_UART_NUM == 1 && BOARD_CAM2_UART_NUM == 2 &&
                    BOARD_CAM3_UART_NUM == 3 && BOARD_CAM4_UART_NUM == 4,
                "camera UART numbers must be 1..4 in camera order");
 
-// The two lines with no header pin. A number here means someone assigned a
-// pin without a route for it; the accounting in board_d4v1.h says why.
-_Static_assert(BOARD_FLASH_EN == BOARD_GPIO_NONE, "FLASH_EN has no JP1 pin");
-_Static_assert(BOARD_CAM_PWR_EN == BOARD_GPIO_NONE, "CAM_PWR_EN has no JP1 pin");
+// Every signal is routed on this carrier, so neither of these may quietly
+// revert to BOARD_GPIO_NONE: that is what the previous map forced, and code
+// in capture.c and power.c still carries the skip-if-unassigned branches it
+// grew for it. Those branches stay -- they are correct for a board without
+// the pin -- but this board has both.
+_Static_assert(BOARD_FLASH_EN != BOARD_GPIO_NONE, "FLASH_EN is routed on JP1 21");
+_Static_assert(BOARD_CAM_PWR_EN != BOARD_GPIO_NONE, "CAM_PWR_EN is routed on JP1 10");
 
 #endif

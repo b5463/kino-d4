@@ -184,7 +184,7 @@ export interface WiringRow {
 }
 
 /**
- * "GPIO1 (JP1 pin 7)" from the hardware profile, or "unassigned" when the
+ * "GPIO52 (JP1 pin 7)" from the hardware profile, or "unassigned" when the
  * gpio map holds null. The wiring record starts from the data the firmware
  * is cross-checked against, not from a hand-typed copy of it.
  */

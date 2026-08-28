@@ -2,13 +2,21 @@
 
 | Field | Value |
 |---|---|
-| Status | Accepted |
+| Status | **SUPERSEDED by [ECN-0002](ECN-0002-jp1-header-measured.md)** |
 | Author | KINO contributors |
 | Date | 2026-08-28 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.0 |
 | Design version after | 0.1.1 |
 | Affected units | No released units. One bench P4 carrier, never wired to a camera node. |
+
+> **Superseded 2026-08-28.** The pinout below is the manufacturer table for the
+> `JC-ESP32P4-M3-DEV`, which is a different carrier. Our board is the
+> `JC4880P443C-I-W`. Under this map `CAM1` sat on GPIO1/GPIO2, which reach no
+> connector here, and a TX-to-RX loopback across JP1 7-9 received zero bytes.
+> The header was then measured pin by pin; see
+> [`ECN-0002`](ECN-0002-jp1-header-measured.md). Kept unedited as the record of
+> a decision that was made and reversed.
 
 ## Problem
 

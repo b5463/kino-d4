@@ -51,14 +51,16 @@ Studio or any KDP serial client, a multimeter.
    odd pins left, pin 1 top):
 
    ```text
-   P4 CAM1_TX  GPIO1  (JP1 pin 7)    → XIAO RX GPIO44
-   P4 CAM1_RX  GPIO2  (JP1 pin 9)    ← XIAO TX GPIO43
+   P4 CAM1_TX  GPIO52 (JP1 pin 7)    → XIAO RX GPIO44 (D7)
+   P4 CAM1_RX  GPIO51 (JP1 pin 9)    ← XIAO TX GPIO43 (D6)
    common GND         (JP1 pin 5/6)  — XIAO GND
    ```
 
    GND first. No 5 V from the P4 header yet — the XIAO is powered from its
    own USB-C for this stage, and P4↔XIAO are connected by GND + TX/RX and
-   nothing else. **Do not wire from the old GPIO52/GPIO51 instructions.**
+   nothing else. JP1 pin 7 is the 4th pin down the left column, pin 9 the 5th,
+   counting the two 3V3 pins as 1 and 2 and GND as 3. Both positions are
+   measured (ECN-0002).
    Those pins are not on the header; a wire placed by that map lands on
    a different signal. Pin numbers come from `board_d4v1.h`
    (`BOARD_CAM1_TX_JP1`, `BOARD_CAM1_RX_JP1`); check them against the

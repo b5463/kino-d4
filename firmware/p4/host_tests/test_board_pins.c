@@ -13,9 +13,9 @@
  *   ./test_board_pins --dump
  *
  * Dump format, one object per line, in this order:
- *   {"signal":"CAM1_TX","gpio":1,"jp1":7}
+ *   {"signal":"CAM1_TX","gpio":52,"jp1":7}
  *   ...
- *   {"signal":"FLASH_EN","gpio":null,"jp1":null}
+ *   {"signal":"FLASH_EN","gpio":28,"jp1":21}
  */
 #include <stdio.h>
 #include <string.h>
@@ -42,7 +42,7 @@ typedef struct {
   int jp1;  /* 0 when unassigned */
 } signal_t;
 
-/* The nine routed signals, then the two without a pin. */
+/* All eleven signals, every one of them routed on this carrier. */
 static const signal_t SIGNALS[] = {
     {"CAM1_TX", BOARD_CAM1_TX, BOARD_CAM1_TX_JP1},
     {"CAM1_RX", BOARD_CAM1_RX, BOARD_CAM1_RX_JP1},
@@ -53,17 +53,17 @@ static const signal_t SIGNALS[] = {
     {"CAM4_TX", BOARD_CAM4_TX, BOARD_CAM4_TX_JP1},
     {"CAM4_RX", BOARD_CAM4_RX, BOARD_CAM4_RX_JP1},
     {"SYNC_OUT", BOARD_SYNC_OUT, BOARD_SYNC_OUT_JP1},
-    {"FLASH_EN", BOARD_FLASH_EN, 0},
-    {"CAM_PWR_EN", BOARD_CAM_PWR_EN, 0},
+    {"FLASH_EN", BOARD_FLASH_EN, BOARD_FLASH_EN_JP1},
+    {"CAM_PWR_EN", BOARD_CAM_PWR_EN, BOARD_CAM_PWR_EN_JP1},
 };
-enum { N_SIGNALS = sizeof SIGNALS / sizeof SIGNALS[0], N_ROUTED = 9 };
+enum { N_SIGNALS = sizeof SIGNALS / sizeof SIGNALS[0], N_ROUTED = 11 };
 
 /* Manufacturer JP1 table, left (odd) and right (even) columns, row 1 at the
  * top. A GPIO is written as its number; everything else as -1. Kept as data
  * here, separately from the macro in board_d4v1_checks.h, so the two
  * transcriptions of the drawing check each other. */
-static const int JP1_LEFT[13] = {-1, -1, -1, 1, 2, 3, 4, 5, 20, 32, 33, -1, -1};
-static const int JP1_RIGHT[13] = {-1, -1, -1, -1, 47, 46, 45, -1, -1, -1, -1, -1, -1};
+static const int JP1_LEFT[13] = {-1, -1, -1, 52, 51, 50, 49, 35, 34, 32, 28, -1, -1};
+static const int JP1_RIGHT[13] = {-1, -1, -1, 33, 31, 30, 29, -1, -1, -1, -1, -1, -1};
 
 static int jp1_gpio_at(int pin) {
   if (pin < 1 || pin > 26) return -1;
@@ -72,8 +72,8 @@ static int jp1_gpio_at(int pin) {
 }
 
 static int is_free_header_gpio(int g) {
-  static const int FREE[9] = {1, 2, 4, 20, 32, 33, 45, 46, 47};
-  for (int i = 0; i < 9; i++)
+  static const int FREE[12] = {52, 51, 50, 49, 35, 34, 32, 28, 33, 31, 30, 29};
+  for (int i = 0; i < 12; i++)
     if (FREE[i] == g) return 1;
   return 0;
 }
@@ -95,7 +95,7 @@ static void test_routed_signals(void) {
   for (int i = 0; i < N_ROUTED; i++) {
     const signal_t *s = &SIGNALS[i];
     CHECK(s->gpio >= 0 && s->gpio <= 54, "%s GPIO%d outside 0..54", s->signal, s->gpio);
-    CHECK(is_free_header_gpio(s->gpio), "%s GPIO%d is not one of the nine free JP1 GPIOs",
+    CHECK(is_free_header_gpio(s->gpio), "%s GPIO%d is not one of the twelve JP1 GPIOs",
           s->signal, s->gpio);
     CHECK(!is_reserved_gpio(s->gpio), "%s GPIO%d collides with SD/C6/I2C/I2S/LCD/touch",
           s->signal, s->gpio);
@@ -128,33 +128,50 @@ static void test_routed_signals(void) {
 static void test_unassigned_signals(void) {
   CHECK(BOARD_GPIO_NONE == -1, "BOARD_GPIO_NONE must equal GPIO_NUM_NC (-1), is %d",
         BOARD_GPIO_NONE);
-  CHECK(BOARD_FLASH_EN == BOARD_GPIO_NONE, "FLASH_EN has no JP1 pin, macro says %d",
-        BOARD_FLASH_EN);
-  CHECK(BOARD_CAM_PWR_EN == BOARD_GPIO_NONE, "CAM_PWR_EN has no JP1 pin, macro says %d",
-        BOARD_CAM_PWR_EN);
+  /* Both are routed on this carrier. They were BOARD_GPIO_NONE only while the
+   * header map was wrong and appeared to have no pin left for them. */
+  CHECK(BOARD_FLASH_EN != BOARD_GPIO_NONE, "FLASH_EN is routed, macro says unassigned");
+  CHECK(BOARD_CAM_PWR_EN != BOARD_GPIO_NONE, "CAM_PWR_EN is routed, macro says unassigned");
+  /* The spare is on the header and claimed by nothing. */
+  CHECK(jp1_gpio_at(BOARD_SPARE_JP1) == 35, "JP1 %d carries GPIO35, table says %d",
+        BOARD_SPARE_JP1, jp1_gpio_at(BOARD_SPARE_JP1));
+  for (int s = 0; s < N_SIGNALS; s++)
+    CHECK(SIGNALS[s].jp1 != BOARD_SPARE_JP1, "%s claims the spare pin", SIGNALS[s].signal);
 }
 
 static void test_locked_values(void) {
   /* The decision itself, so a well-formed but different map is still a
    * failure here rather than a silent divergence from the bench notes. */
-  CHECK(BOARD_CAM1_UART_NUM == 1 && BOARD_CAM1_TX == 1 && BOARD_CAM1_RX == 2, "CAM1 map");
-  CHECK(BOARD_CAM2_UART_NUM == 2 && BOARD_CAM2_TX == 47 && BOARD_CAM2_RX == 46, "CAM2 map");
-  CHECK(BOARD_CAM3_UART_NUM == 3 && BOARD_CAM3_TX == 32 && BOARD_CAM3_RX == 33, "CAM3 map");
-  CHECK(BOARD_CAM4_UART_NUM == 4 && BOARD_CAM4_TX == 45 && BOARD_CAM4_RX == 4, "CAM4 map");
-  CHECK(BOARD_SYNC_OUT == 20, "SYNC_OUT is GPIO20, macro says %d", BOARD_SYNC_OUT);
+  CHECK(BOARD_CAM1_UART_NUM == 1 && BOARD_CAM1_TX == 52 && BOARD_CAM1_RX == 51, "CAM1 map");
+  CHECK(BOARD_CAM2_UART_NUM == 2 && BOARD_CAM2_TX == 50 && BOARD_CAM2_RX == 49, "CAM2 map");
+  CHECK(BOARD_CAM3_UART_NUM == 3 && BOARD_CAM3_TX == 34 && BOARD_CAM3_RX == 33, "CAM3 map");
+  CHECK(BOARD_CAM4_UART_NUM == 4 && BOARD_CAM4_TX == 30 && BOARD_CAM4_RX == 29, "CAM4 map");
+  CHECK(BOARD_SYNC_OUT == 32, "SYNC_OUT is GPIO32, macro says %d", BOARD_SYNC_OUT);
+  CHECK(BOARD_FLASH_EN == 28, "FLASH_EN is GPIO28, macro says %d", BOARD_FLASH_EN);
+  CHECK(BOARD_CAM_PWR_EN == 31, "CAM_PWR_EN is GPIO31, macro says %d", BOARD_CAM_PWR_EN);
   CHECK(BOARD_CAM1_TX_JP1 == 7 && BOARD_CAM1_RX_JP1 == 9, "CAM1 JP1 pins");
-  CHECK(BOARD_CAM2_TX_JP1 == 10 && BOARD_CAM2_RX_JP1 == 12, "CAM2 JP1 pins");
-  CHECK(BOARD_CAM3_TX_JP1 == 19 && BOARD_CAM3_RX_JP1 == 21, "CAM3 JP1 pins");
-  CHECK(BOARD_CAM4_TX_JP1 == 14 && BOARD_CAM4_RX_JP1 == 13, "CAM4 JP1 pins");
-  CHECK(BOARD_SYNC_OUT_JP1 == 17, "SYNC_OUT JP1 pin");
+  CHECK(BOARD_CAM2_TX_JP1 == 11 && BOARD_CAM2_RX_JP1 == 13, "CAM2 JP1 pins");
+  CHECK(BOARD_CAM3_TX_JP1 == 17 && BOARD_CAM3_RX_JP1 == 8, "CAM3 JP1 pins");
+  CHECK(BOARD_CAM4_TX_JP1 == 12 && BOARD_CAM4_RX_JP1 == 14, "CAM4 JP1 pins");
+  CHECK(BOARD_SYNC_OUT_JP1 == 19, "SYNC_OUT JP1 pin");
+  CHECK(BOARD_FLASH_EN_JP1 == 21 && BOARD_CAM_PWR_EN_JP1 == 10, "control-line JP1 pins");
+
+  /* The two pins the bench measured directly, by name. These are the only
+   * numbers here that came from the copper rather than a drawing. */
+  CHECK(jp1_gpio_at(13) == 49, "MEASURED: JP1 13 is GPIO49, table says %d", jp1_gpio_at(13));
+  CHECK(jp1_gpio_at(7) == 52, "MEASURED: JP1 7 is GPIO52, table says %d", jp1_gpio_at(7));
 
   /* The two transcriptions of the manufacturer table agree. */
   for (int pin = 1; pin <= 26; pin++)
     CHECK(jp1_gpio_at(pin) == BOARD_JP1_GPIO_AT(pin), "JP1 pin %d: table says %d, macro says %d",
           pin, jp1_gpio_at(pin), BOARD_JP1_GPIO_AT(pin));
 
-  /* Nothing the old map used is on the header. */
-  static const int GONE[] = {52, 51, 50, 49, 35, 34, 31, 30, 29, 28};
+  /* Nothing the M3-DEV map used is on THIS header. GPIO1/2/4/20/45/46/47 come
+   * from the JC-ESP32P4-M3-DEV carrier, which shares the P4 module and
+   * nothing else; CAM1 sat on GPIO1/GPIO2 and a loopback across JP1 7-9
+   * returned zero bytes. GPIO3 and GPIO5 are the panel's and the touch
+   * controller's and are not on any connector either. */
+  static const int GONE[] = {1, 2, 3, 4, 5, 20, 45, 46, 47};
   for (unsigned i = 0; i < sizeof GONE / sizeof GONE[0]; i++) {
     int on_header = 0;
     for (int pin = 1; pin <= 26; pin++)

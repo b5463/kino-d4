@@ -43,11 +43,21 @@ describe('bring-up record', () => {
     expect(cam1?.provisional).toBe(`${D4_V1.gpio.CAM1_TX} (JP1 pin ${D4_V1.jp1!.pins.CAM1_TX!.pin})`);
     const cam3 = wiring.find((r) => r.func.startsWith('CAM3 TX'));
     expect(cam3?.provisional).toBe(`${D4_V1.gpio.CAM3_TX} (JP1 pin ${D4_V1.jp1!.pins.CAM3_TX!.pin})`);
-    // No strapping pin (GPIO34-38) may appear in the record any more.
-    for (const r of wiring) expect(r.provisional).not.toMatch(/GPIO3[4-8]\b/);
-    // Lines without a header pin say so instead of naming a GPIO that routes nowhere.
-    expect(wiring.find((r) => r.func === 'FLASH_EN')?.provisional).toBe('unassigned');
-    expect(wiring.find((r) => r.func === 'CAM_PWR_EN')?.provisional).toBe('unassigned');
+    // GPIO34 is a strapping pin and JP1 routes it anyway, so CAM3_TX takes it:
+    // we drive it, and a node's UART RX is high-Z and cannot hold it through
+    // our reset. GPIO35, the serial-bootloader strap, must never appear -- a
+    // signal there means a board that boots into the ROM downloader.
+    for (const r of wiring) expect(r.provisional, `${r.func} is on the bootloader strap`).not.toMatch(/GPIO35\b/);
+    for (const r of wiring) {
+      if (/GPIO34\b/.test(r.provisional ?? '')) expect(r.func).toMatch(/^CAM3 TX/);
+    }
+    // Both control lines have a header pin on this carrier.
+    expect(wiring.find((r) => r.func === 'FLASH_EN')?.provisional).toBe(
+      `${D4_V1.gpio.FLASH_EN} (JP1 pin ${D4_V1.jp1!.pins.FLASH_EN!.pin})`,
+    );
+    expect(wiring.find((r) => r.func === 'CAM_PWR_EN')?.provisional).toBe(
+      `${D4_V1.gpio.CAM_PWR_EN} (JP1 pin ${D4_V1.jp1!.pins.CAM_PWR_EN!.pin})`,
+    );
     expect(wiring.every((r) => r.status === 'unverified')).toBe(true);
   });
 

@@ -32,8 +32,8 @@ typedef enum {
    * named for GPIO52/51 until 2026-08-28; those pins are not on the header and
    * nothing ever answered on them, so no evidence was recorded against the
    * old names. Same NVS index, renamed in place. */
-  HWV_CAM1_TX_GPIO1,
-  HWV_CAM1_RX_GPIO2,
+  HWV_CAM1_TX_GPIO52,
+  HWV_CAM1_RX_GPIO51,
   HWV_CAM1_BAUD_921600,
   HWV_CAM1_NODE_LINK,
   HWV_CAM1_SENSOR_DETECT,
@@ -55,7 +55,7 @@ typedef enum {
    * earned by driving GPIO31, which routes nowhere on this carrier, so it was
    * void; power.c no longer marks it. Earned only when a real switch line
    * exists and a meter shows the bank going off. Same NVS index, renamed. */
-  HWV_CAM_PWR_EN_UNASSIGNED,
+  HWV_CAM_PWR_EN_GPIO31,
   /*
    * ---- APPEND ONLY BELOW THIS LINE ----
    *
@@ -96,11 +96,11 @@ typedef enum {
    * today; this row is earned only when a node reports having *seen* the
    * edge, which needs the node-side ISR that M0 deliberately does not
    * implement. It exists so the bring-up has somewhere to record the answer. */
-  HWV_SYNC_TRIGGER_GPIO20,
+  HWV_SYNC_TRIGGER_GPIO32,
   /* No pin. BOARD_FLASH_EN is BOARD_GPIO_NONE and capture.c drives nothing
    * for a flash request. Stays UNVALIDATED until M2 routes the line (I2C
    * expander on ESI2C or otherwise) and something measurably responds. */
-  HWV_FLASH_EN_UNASSIGNED,
+  HWV_FLASH_EN_GPIO28,
   /* Earned on the first debounced press of a real fitted switch. Cannot flip
    * while BOARD_BTN_SHUTTER is BOARD_BTN_NONE, which is the current state. */
   HWV_BTN_SHUTTER,
