@@ -59,6 +59,60 @@ and it sat two minor versions behind the firmware.
 | UI on the panel | 8 screens render on hardware; boot dissolve measured at 26 frames in 452 ms (≈57 fps) via the PPA | 0.2.0/0.3.0 | **VALIDATED** |
 | Icon expansion | 575 ms for six icons, streamed; icons ready at t=2984 ms against a boot dissolve at t=4974 | commit `5768d3c` | **VALIDATED** |
 
+### First camera on the wire, 2026-08-28
+
+A XIAO ESP32-S3 (MAC `68:EE:8F:47:0B:6C` — a different unit from the module in
+the 0.1.0 section) with an OV3660, wired to CAM1 on the measured header:
+GND on JP1 5, `CAM1_TX` GPIO52 on JP1 7 to the node's D7, `CAM1_RX` GPIO51 on
+JP1 9 from the node's D6. Both boards on their own USB; ground shared through
+the single GND wire. `SYNC_OUT`, `FLASH_EN` and `CAM_PWR_EN` unwired.
+
+| Item | Evidence | Status |
+|---|---|---|
+| `CAM1_TX_GPIO52` / `CAM1_RX_GPIO51` (JP1 7/9) | First traffic on the link: `rxBytes` 285, `crcErrors` 0, `decoderResyncs` 0, `connected: true`. The pins the per-pin scan measured are the pins a node answers on | **VALIDATED** |
+| `CAM1_BAUD_921600` | The whole session ran at 921600 with 0 CRC errors and 0 resyncs | **VALIDATED** |
+| `CAM1_NODE_LINK` | The P4 read the node's own session, firmware 0.4.1, reset reason, heap 8076 KB, PSRAM 7808 KB and chip revision across the UART | **VALIDATED** |
+| `CAM1_SENSOR_DETECT` | `sensorPid 0x3660`, `sensor: OV3660`, `state: ready`, reported through the P4 rather than from the node's own console | **VALIDATED** |
+| `CAM1_CAPTURE` | `CAMERA_TEST` repeatedly returns a frame; UXGA at quality 95 measured 108,567 B | **VALIDATED** |
+| `CAM1_JPEG_TRANSFER` | Node CRC == transfer CRC on every completed capture, 5/5 in a controlled run | **VALIDATED** |
+| `CAM1_SD_WRITE` | Stored-file CRC read back off the card == node CRC, 5/5. `MEDIA_READ` then reassembled 49,740 B host-side, SOI/EOI intact, and the image opened as a correct coherent scene | **VALIDATED** |
+
+Node standalone before wiring: `Detected OV3660 camera`, SCCB `0x3c`, 8 MB
+octal PSRAM at 80 MHz with `SPI SRAM memory test OK`, and the driver's own PLL
+report — `VCO 128 MHz, PLLCLK 128 MHz, SYSCLK 32 MHz, PCLK 8 MHz` — which is
+the arithmetic the Phase 1 audit derived from source and the driver's own
+"40MHz SYSCLK / 10MHz PCLK" comment contradicts. The silicon agrees with the
+audit.
+
+### Stale frame: CONFIRMED
+
+`SYNC_FEASIBILITY.md` predicted from source that with `fb_count=1` a capture
+after a release returns an already-queued frame instantly. It does.
+
+| Measurement | Value |
+|---|---|
+| `fb_get` on the stale path | 471–598 us (a fresh UXGA frame costs ~112 ms) |
+| Frame age before the command | 1.8 s, 3.4 s, 27.0 s, **134.0 s** |
+
+The 134-second figure is the signature: the node handed back a photograph of
+whatever was in front of the lens over two minutes before the shutter. The
+first capture after any idle period is small (3–5 KB) and ancient; the next is
+a real frame of 90–240 KB. That size pattern ran through the whole session and
+was the stale frame all along.
+
+The verdict `SYNC_FEASIBILITY.md` was waiting for is therefore
+**STALE_FRAME_CONFIRMED**, and the discard-fetch fix it specifies is now
+warranted by measurement rather than by reading the driver.
+
+### Not proven, and blocking
+
+| Item | State |
+|---|---|
+| Product capture path (`SHOOT`, `CAMERA_CAPTURE`) on large frames | **FAILS.** Isolated: UXGA q95 at 108,567 B through `kdp_server`'s loop succeeds; 109,349 B through `capture.c`'s worker fails, transfer dying at 0–9%. Same resolution, quality and size, different code path. The link reports 8,076–8,139 bytes of the 8,210 a full chunk needs, 0 frames decoded, 0 CRC errors, and a longer timeout recovers nothing — a dropped tail, not a slow one |
+| Frame ownership between viewfinder and capture | Mechanism proven (viewfinder parked: 5/5 pass; viewfinder live: 4/5 fail with BAD_ID). `viewfinder_hold()` is in place at `capture_fire` but has not been shown to take effect |
+| Thumbnail written by the product path | `thumb_write` has still never run: every capture on the card came from `CAMERA_TEST`, which does not write one. The gallery renders by falling back to `C1.JPG` |
+| `CAM2`–`CAM4`, `SYNC`, `FLASH_EN`, `CAM_PWR_EN`, shutter | No harness. Unchanged |
+
 ### First live P4 bench session, 2026-08-27
 
 The first session in which a host talked KDP to a physical P4 and got answers.

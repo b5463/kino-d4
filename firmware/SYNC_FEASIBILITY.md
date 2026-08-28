@@ -3,6 +3,22 @@
 Desk study against the pinned camera driver, performed before any synchronization mechanism is
 written. M0.D of [`FIRMWARE_ROADMAP.md`](FIRMWARE_ROADMAP.md).
 
+> **CONFIRMED ON HARDWARE, 2026-08-28. Verdict: STALE_FRAME_CONFIRMED.**
+>
+> The prediction below — that with `fb_count=1` a capture after a release
+> returns an already-queued frame instantly — was measured on the first camera
+> ever wired to a P4. `fb_get` returns in 471–598 us where a fresh UXGA frame
+> costs ~112 ms, and the frame handed back was 1.8 s, 3.4 s, 27.0 s and in one
+> case **134.0 s** older than the shutter that asked for it.
+>
+> The tell ran through the whole bring-up without being recognised: the first
+> capture after any idle period is 3–5 KB and the next is 90–240 KB. That was
+> never exposure — it was a two-minute-old frame of a dark room.
+>
+> The discard-fetch fix specified in this document is therefore warranted by
+> measurement rather than by reading the driver. It has NOT been applied.
+> Evidence: [`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md) §Stale frame.
+
 **Driver under study:** `firmware/camnode/managed_components/espressif__esp32-camera`
 (`component_hash bc9c8a6b51df777a014fa295825b3de5069bc0300c317acff20c97cf4a10ac7d`, pinned in
 `firmware/camnode/dependencies.lock`, target `esp32s3`).
