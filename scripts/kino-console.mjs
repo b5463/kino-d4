@@ -74,9 +74,12 @@ port.close();
 const want = [
   ['sensor detected', /sensor detected:\s*(\S+)\s*\(PID\s*(0x[0-9a-fA-F]+)\)/],
   ['SCCB address', /Detected camera at address=(0x[0-9a-fA-F]+)/],
-  ['PSRAM', /(\d+)\s*MB.*PSRAM|SPIRAM|psram/i],
-  ['node state', /READY|node ready|state/i],
-  ['errors', /E \(|error|panic|abort|Guru Meditation/i],
+  ['PSRAM', /Found \d+MB PSRAM device|SPI SRAM memory test \w+/],
+  ['node up', /camnode [\d.]+ up[^\r\n]*/],
+  // Anchored, and no bare "error": the temperature sensor announces
+  // "error < 1°C" on every healthy boot, which reported a fault on a node
+  // that had none.
+  ['errors', /^E \([^)]*\)[^\r\n]*|Guru Meditation[^\r\n]*|abort\(\)[^\r\n]*/m],
 ];
 console.log('\n\n--- summary ---');
 for (const [label, re] of want) {
