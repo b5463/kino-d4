@@ -9,10 +9,31 @@
 
 // Default camera-link baud. Escalation to 1.5/2/3 Mbaud is bench work driven
 // through KDP SET_LINK_BAUD/LINK_BENCH (milestone 3), not a compile default.
+/*
+ * 921600. Halving it to 460800 was tried and is not kept.
+ *
+ * The RX FIFO is 128 bytes, which is 1.39 ms of tolerance at this rate, and
+ * overruns do happen: the driver resets the FIFO on one, so the frame in
+ * flight is lost and the read times out. 460800 doubles the tolerance and did
+ * cut overruns from 4-10 per capture to 1-4, but it did not eliminate them and
+ * it doubles every transfer on all four cameras. Since a lost chunk is
+ * recovered by a retry either way, the faster line with retries beats the
+ * slower line without them.
+ */
 #define NL_DEFAULT_BAUD 921600
 
 // Largest data slice in one NL_CMD_READ response (matches the KDP firmware
 // chunk convention; well under KDP_MAX_PAYLOAD).
+/*
+ * 8192, and the size was tested rather than assumed.
+ *
+ * An overrun destroys the frame in flight, so shrinking chunks looked like it
+ * should limit the damage. It did the opposite: at 2048 a 170 KB capture takes
+ * 83 requests instead of 21 and the bench measured about one overrun per
+ * request - 30 overruns and 30 retries in a single capture, against 4 with 8 KB
+ * chunks. The hazard scales with the number of request/response turnarounds,
+ * not with the bytes carried, so fewer and larger chunks is the cheaper trade.
+ */
 #define NL_CHUNK_MAX 8192
 
 typedef enum {

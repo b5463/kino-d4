@@ -61,7 +61,8 @@ static vf_status_t s_status[4];
 static int64_t s_last_frame_us[4];
 static int64_t s_report_us[4]; /* throttles the per-frame timing line below */
 static bool s_ready;
-static volatile bool s_running;
+static volatile bool s_want_run; /* what the UI asked for */
+static atomic_int s_holds;       /* outstanding viewfinder_hold() calls */
 /* Pumps currently inside pump_camera(). viewfinder_hold() waits for zero.
  *
  * Atomic, not volatile. Four camera tasks increment and decrement this, and
@@ -77,11 +78,31 @@ static atomic_int s_pumping;
 static volatile int64_t s_review_until_us;
 
 bool viewfinder_ready(void) { return s_ready; }
-void viewfinder_run(bool on) { s_running = on; }
+/*
+ * What the UI wants, which is not the same as what the finder may do.
+ *
+ * ui_task calls this every pass with (s_screen == SCR_SHOOT), so a hold that
+ * lived in the same variable was overwritten within microseconds of being
+ * taken. That is why viewfinder_hold() never demonstrably worked: a capture
+ * parked the finder, the next UI pass restarted it, and the two then fought
+ * over the same channel and the same node frame - the capture's chunk reads
+ * interleaved with preview reads on cam1, at the finder's 600 ms timeout
+ * rather than the capture's, and the transfer died.
+ *
+ * The wish and the veto are now separate. Only a matching release lifts a
+ * hold, and viewfinder_run can be called as often as the UI likes without
+ * being able to break one.
+ */
+void viewfinder_run(bool on) { s_want_run = on; }
+
+/** The finder may pump only if the UI wants it and nothing is holding it. */
+static bool vf_may_run(void) {
+  return s_want_run && atomic_load(&s_holds) == 0;
+}
 
 bool viewfinder_hold(uint32_t timeout_ms) {
-  const bool was = s_running;
-  s_running = false;
+  const bool was = s_want_run;
+  atomic_fetch_add(&s_holds, 1);
   /* Wait out any pump already talking to a node. Without this the capture
    * races the very frame it is about to invalidate. */
   const int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
@@ -102,7 +123,10 @@ bool viewfinder_hold(uint32_t timeout_ms) {
   return was;
 }
 
-void viewfinder_release(bool was_running) { s_running = was_running; }
+void viewfinder_release(bool was_running) {
+  (void)was_running; /* The UI's wish was never overwritten, so nothing to put back. */
+  if (atomic_load(&s_holds) > 0) atomic_fetch_sub(&s_holds, 1);
+}
 
 void viewfinder_review(uint32_t ms) {
   s_review_until_us = esp_timer_get_time() + (int64_t)ms * 1000;
@@ -270,19 +294,19 @@ static void camera_task(void *arg) {
     /*
      * Claim the slot BEFORE testing whether we may run, because the reverse
      * order is a check-then-act race and it cost a bench cycle: a task that
-     * had already passed the s_running test would pump AFTER hold() had seen
+     * had already passed the may-run test would pump AFTER hold() had seen
      * s_pumping == 0 and returned, and the capture it was protecting still
      * lost its frame. Claiming first means hold() either sees the claim and
      * waits, or clears the flag before the claim and we back out here.
      */
     atomic_fetch_add(&s_pumping, 1);
     const bool may_pump =
-        s_running && esp_timer_get_time() >= s_review_until_us;
+        vf_may_run() && esp_timer_get_time() >= s_review_until_us;
     if (!may_pump) {
       atomic_fetch_sub(&s_pumping, 1);
       /* Idle at 100 ms when stopped, 20 ms while reviewing, so live resumes
        * promptly when the review window closes. */
-      vTaskDelay(pdMS_TO_TICKS(s_running ? 20 : 100));
+      vTaskDelay(pdMS_TO_TICKS(vf_may_run() ? 20 : 100));
       continue;
     }
     const bool ok = pump_camera(cam);

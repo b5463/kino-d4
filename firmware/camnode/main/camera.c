@@ -15,6 +15,9 @@ static char s_max_res[16];
 
 /* What the sensor is currently configured for, so a request that changes
  * nothing costs nothing. Seeded from camsensor_init's own config below. */
+/* One number for the queue depth, so the drain below cannot drift from it. */
+#define CAMERA_FB_COUNT 2
+
 static framesize_t s_framesize;
 static int s_quality;
 
@@ -65,7 +68,7 @@ esp_err_t camsensor_init(void) {
        * only the two most recent frames, and camsensor_discard_queued still
        * runs ahead of a real shutter.
        */
-      .fb_count = 2,
+      .fb_count = CAMERA_FB_COUNT,
       .fb_location = CAMERA_FB_IN_PSRAM,
       .grab_mode = CAMERA_GRAB_LATEST,
   };
@@ -151,6 +154,27 @@ esp_err_t camsensor_set_resolution(const char *resolution) {
   if (size == s_framesize) return ESP_OK;
   if (sensor->set_framesize(sensor, size) != 0) return ESP_FAIL;
   s_framesize = size;
+
+  /*
+   * Throw away what is queued, because it is the previous size.
+   *
+   * With fb_count=2 and GRAB_LATEST the driver keeps capturing, so at the
+   * moment the mode changes the queue still holds frames exposed at the old
+   * framesize. The next fb_get hands one of those back and it is not the
+   * picture that was asked for: a viewfinder that requested 320x240 was being
+   * given a 130 KB frame left over from a 2048x1536 capture, which is larger
+   * than VF_MAX_JPEG, so the finder rejected it and the pane read "no camera"
+   * on a camera that was working perfectly.
+   *
+   * fb_count frames, because that is how many the queue can be holding. Costs
+   * a frame period each and only on an actual mode change, which the
+   * change-only guard above already makes rare.
+   */
+  for (int i = 0; i < CAMERA_FB_COUNT; i++) {
+    camera_fb_t *stale = esp_camera_fb_get();
+    if (stale == NULL) break;
+    esp_camera_fb_return(stale);
+  }
   return ESP_OK;
 }
 

@@ -49,6 +49,10 @@ typedef struct {
   uint32_t bytes;
   uint32_t node_ms;    /* the node's own capture duration */
   uint32_t transfer_ms;
+  /* Chunks re-requested on this frame. Zero is the healthy case; a non-zero
+   * count that still produced a good CRC is the link being unreliable and the
+   * capture surviving it anyway, which is worth seeing on the bench. */
+  uint32_t chunk_retries;
   uint32_t write_ms;
   int32_t fire_us;     /* when the command went out, relative to the trigger */
   uint32_t crc;        /* CRC-32 read back from the stored file */
@@ -147,6 +151,19 @@ bool capture_request(const char *source);
 
 capture_stage_t capture_stage(void);
 bool capture_busy(void);
+
+/**
+ * The one capture lock, for the bench paths that drive a camera or the card
+ * outside capture_fire(): CAMERA_TEST, the soak job, STORAGE_SELF_TEST and
+ * STORAGE_BENCH in kdp_server. Holding it makes capture_fire() answer
+ * ESP_ERR_INVALID_STATE (BUSY to the host, ignored press on the body), and a
+ * running capture makes this return false - so a diagnostic capture can no
+ * longer replace the single frame a node is holding for a product capture.
+ *
+ * Binary semaphore semantics: may be released from a different task than the
+ * one that took it (the soak job does). `timeout_ms` 0 is a try-lock. */
+bool capture_lock(uint32_t timeout_ms);
+void capture_unlock(void);
 
 /** Clears CAPTURE_DONE back to CAPTURE_IDLE. The UI calls this when it has
  * finished showing the result, so the stage says "there is something to

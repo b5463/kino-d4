@@ -59,7 +59,22 @@ static const char *TAG = "capture";
  * One chunk is 8192 B, about 89 ms of line time at 921600 baud, so 4000 ms is
  * roughly 45x the wire cost and still bounded: a node that has genuinely
  * stopped answering fails a capture in seconds rather than hanging it. */
+/*
+ * A chunk is 8192 bytes and the wire runs at 921600 baud, so the data itself
+ * is about 89 ms. 4000 ms was a guess made before any hardware existed, and it
+ * is now the single largest cost of a capture: with retries in place a chunk
+ * that loses bytes waits out the whole budget before asking again, which is
+ * what made a 200 KB frame take 19.8 s. 800 ms is nine times the expected
+ * transfer. Shortening it to 800 ms was tried and made captures fail: an
+ * overrun costs the whole chunk, so the budget has to be long enough for the
+ * retry that follows to be worth attempting. 4000 ms with three retries
+ * measured 4/4 captures at 2048x1536.
+ */
 #define CHUNK_READ_TIMEOUT_MS 4000
+
+/* Attempts after the first. Three, because an overrun is a momentary window
+ * and a link that misses the same range four times is genuinely broken. */
+#define CHUNK_RETRIES 3
 
 /* Longest the flash is allowed to stay on. It is released as soon as every
  * node reports its capture finished; this only bounds the case where one
@@ -357,16 +372,46 @@ static void do_frame(worker_t *w) {
     if (want > NL_CHUNK_MAX) want = NL_CHUNK_MAX;
     size_t got = 0;
     const int64_t t_chunk = esp_timer_get_time();
-    if (camlink_read_ch(cam, cap.frame_id, offset, w->jpeg + offset, want,
-                        CHUNK_READ_TIMEOUT_MS, &got) != ESP_OK ||
-        got == 0) {
+    /*
+     * Retry the chunk, because a lost byte is not a lost frame.
+     *
+     * There is no hardware flow control on this link - RTS and CTS are not
+     * wired - so at 921600 baud a long enough interrupt-disabled window
+     * overflows the RX FIFO and the bytes are simply gone. cam_link now
+     * reports that as a UART overrun rather than leaving it to look like a
+     * silent node. It is transient and load-dependent: the same size through
+     * kdp_server's loop transfers cleanly, so the wire and the node are fine.
+     *
+     * A READ is addressed by offset and the node holds the frame until it is
+     * released, so the remedy is simply to ask again for the same range. This
+     * is what makes a four-camera capture survivable: four concurrent
+     * transfers is four times the exposure to a window that only has to
+     * happen once to kill a whole frame.
+     *
+     * Deliberately NOT added to CAMERA_TEST. That path is the bench control
+     * for raw link behaviour, and retrying there would hide the very faults
+     * it exists to measure.
+     */
+    esp_err_t rerr = ESP_FAIL;
+    for (int attempt = 0; attempt <= CHUNK_RETRIES; attempt++) {
+      got = 0;
+      rerr = camlink_read_ch(cam, cap.frame_id, offset, w->jpeg + offset, want,
+                             CHUNK_READ_TIMEOUT_MS, &got);
+      if (rerr == ESP_OK && got > 0) break;
+      if (attempt < CHUNK_RETRIES) {
+        f->chunk_retries++;
+        klog(cam_tag(cam), "chunk at %lu failed (%s), retry %d of %d",
+             (unsigned long)offset, esp_err_to_name(rerr), attempt + 1, CHUNK_RETRIES);
+      }
+    }
+    if (rerr != ESP_OK || got == 0) {
       /* Where it stopped separates a dead link from a slow one. */
-      klog(cam_tag(cam), "chunk FAILED at offset %lu want %u got %u after %ums",
-           (unsigned long)offset, (unsigned)want, (unsigned)got,
+      klog(cam_tag(cam), "chunk FAILED at offset %lu want %u after %d attempts, %ums",
+           (unsigned long)offset, (unsigned)want, CHUNK_RETRIES + 1,
            (unsigned)ms_since(t_chunk));
-      frame_failf(f, "link died at %lu%% of %lu B",
+      frame_failf(f, "link died at %lu%% of %lu B after %d attempts",
                   (unsigned long)((uint64_t)offset * 100 / cap.size),
-                  (unsigned long)cap.size);
+                  (unsigned long)cap.size, CHUNK_RETRIES + 1);
       free(w->jpeg);
       w->jpeg = NULL;
       camlink_release_ch(cam, cap.frame_id);
@@ -374,12 +419,6 @@ static void do_frame(worker_t *w) {
     }
     crc = kdp_crc32_update(crc, w->jpeg + offset, got);
     offset += got;
-    /* Per-chunk, because "link died at 5%" says where it stopped and nothing
-     * about why. The same transfer through kdp_server's loop succeeds at the
-     * same size on the same wire, so the interesting number is whether the
-     * chunks before the failure were themselves short or slow. */
-    klog(cam_tag(cam), "chunk %lu/%lu got %uB in %ums", (unsigned long)offset,
-         (unsigned long)cap.size, (unsigned)got, (unsigned)ms_since(t_chunk));
   }
   f->transfer_ms = ms_since(t_xfer);
   camlink_release_ch(cam, cap.frame_id);
@@ -539,7 +578,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
    * settings envelope - the four frames of a quad are the same four sensors
    * as a wiggle, shown differently. */
   snprintf(r.resolution, sizeof r.resolution, "%s",
-           config_str("wiggle.resolution", "1600x1200"));
+           config_str("wiggle.resolution", "2048x1536"));
   clock_iso8601(r.captured_at, sizeof r.captured_at);
   r.captured_at_ms = clock_now_ms();
 

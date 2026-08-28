@@ -30,6 +30,11 @@
  *
  * Two frames of headroom is not much when the UI is compositing at the same
  * time and the reader can be descheduled for tens of milliseconds. */
+/*
+ * Four chunks deep. Eight was tried and made no difference to the overrun
+ * rate, which is what rules out "the reader is being outrun" and leaves the
+ * ISR being held off as the explanation.
+ */
 #define LINK_RX_BUF (4 * (NL_CHUNK_MAX + 64))
 
 /*
