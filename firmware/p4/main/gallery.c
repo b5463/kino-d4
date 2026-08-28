@@ -236,7 +236,13 @@ esp_err_t gallery_init(void) {
   s_names = heap_caps_malloc((size_t)MAX_SCAN * 40, MALLOC_CAP_SPIRAM);
   if (s_names == NULL) return ESP_ERR_NO_MEM;
   for (int i = 0; i < GALLERY_PAGE; i++) {
-    s_pixels[i] = heap_caps_malloc((size_t)GALLERY_TILE_W * GALLERY_TILE_H * 2,
+  /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
+   * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
+   * returned ESP_ERR_INVALID_ARG, including a 1:1 one, so the gallery drew
+   * nothing for every capture ever taken. viewfinder.c allocates its own
+   * tiles this way already; this is the same rule, applied where it was
+   * missed. */
+    s_pixels[i] = heap_caps_aligned_calloc(64, 1, THUMB_TILE_BYTES(GALLERY_TILE_W, GALLERY_TILE_H),
                                    MALLOC_CAP_SPIRAM);
     if (s_pixels[i] == NULL) return ESP_ERR_NO_MEM;
   }

@@ -1469,7 +1469,13 @@ static void photo_open(const gallery_item_t *it) {
   snprintf(s_photo_mode, sizeof s_photo_mode, "%s", it->mode);
   s_photo_frames = it->frames;
 
-  s_photo = heap_caps_malloc((size_t)PH_W * PH_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
+   * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
+   * returned ESP_ERR_INVALID_ARG, including a 1:1 one, so the gallery drew
+   * nothing for every capture ever taken. viewfinder.c allocates its own
+   * tiles this way already; this is the same rule, applied where it was
+   * missed. */
+  s_photo = heap_caps_aligned_calloc(64, 1, THUMB_TILE_BYTES(PH_W, PH_H), MALLOC_CAP_SPIRAM);
   if (s_photo == NULL) return;
 
   static const char *const TRY[3] = {"C1.JPG", "THUMB.JPG", "C2.JPG"};

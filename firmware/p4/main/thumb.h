@@ -63,6 +63,22 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path);
  * Reads THUMB.JPG happily, and a full-size frame just as happily - a capture
  * from firmware that had no thumbnails is slower to show, not unshowable.
  */
+/**
+ * Bytes to allocate for a `tile_w` x `tile_h` RGB565 PPA destination.
+ *
+ * The PPA is a DMA engine and it validates BOTH the buffer pointer and the
+ * declared buffer size against the cache line, so a tile needs 64-byte
+ * alignment AND a size rounded up to 64. Getting only the pointer right is
+ * what a bench session cost: 208x156 is 64896 bytes, an exact multiple of 64,
+ * so gallery tiles worked, while 520x390 is 405600 - 6337.5 lines - and the
+ * full-screen photo kept returning ESP_ERR_INVALID_ARG with no other symptom
+ * than a blank frame.
+ *
+ * Allocate with heap_caps_aligned_calloc(64, 1, THUMB_TILE_BYTES(w, h), ...).
+ */
+#define THUMB_CACHE_LINE 64u
+#define THUMB_TILE_BYTES(w, h)   ((((size_t)(w) * (size_t)(h) * 2u) + (THUMB_CACHE_LINE - 1u)) & ~(size_t)(THUMB_CACHE_LINE - 1u))
+
 esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad);
 
 #endif

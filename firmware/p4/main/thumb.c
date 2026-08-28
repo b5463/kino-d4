@@ -7,7 +7,9 @@
 #include "driver/jpeg_decode.h"
 #include "driver/jpeg_encode.h"
 #include "driver/ppa.h"
+#include "esp_cache.h"
 #include "esp_log.h"
+#include "klog.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -158,16 +160,41 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
 
   const uint32_t pad_w = (info.width + 15) & ~15u;
   const uint32_t pad_h = (info.height + 15) & ~15u;
-  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false, false)) goto out;
+  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false, false)) {
+    klog("P4", "thumb load %s: no %lu KB decode buffer for %lux%lu", path,
+             (unsigned long)((size_t)pad_w * pad_h * 2 / 1024), (unsigned long)info.width,
+             (unsigned long)info.height);
+    goto out;
+  }
 
   jpeg_decode_cfg_t dcfg = {
       .output_format = JPEG_DECODE_OUT_FORMAT_RGB565,
-      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_RGB,
+        /* BGR, which in this enum means LITTLE endian, not blue-first. ESP-IDF:
+   *
+   *   "Enumeration for jpeg big/small endian output."
+   *   JPEG_DEC_RGB_ELEMENT_ORDER_BGR  "the color component in small endian"
+   *   JPEG_DEC_RGB_ELEMENT_ORDER_RGB  "the color component in big endian"
+   *
+   * The name reads like a channel swap and is a byte swap. With _RGB the
+   * decoder wrote big-endian RGB565 into a pipeline that is little-endian
+   * everywhere else - the panel is LCD_COLOR_PIXEL_FORMAT_RGB565 with
+   * LCD_RGB_ELEMENT_ORDER_RGB, the PPA is PPA_SRM_COLOR_MODE_RGB565 and
+   * every UI draw is a native uint16_t. Swapping the two bytes of an
+   * RGB565 pixel moves the green LSBs into red and the red MSBs into
+   * blue, so smooth gradients came out as hard rainbow contours over
+   * correct geometry. The stored JPEG was always fine; only the screen
+   * was wrong. */
+      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_BGR,
   };
   uint32_t decoded = 0;
   err = jpeg_decoder_process(s_dec, &dcfg, jpeg, (uint32_t)len, s_full, (uint32_t)s_full_cap,
                              &decoded);
-  if (err != ESP_OK) goto out;
+  if (err != ESP_OK) {
+    klog("P4", "thumb load %s: decode failed %s (%lux%lu, %lu B in, cap %lu KB)", path,
+             esp_err_to_name(err), (unsigned long)info.width, (unsigned long)info.height,
+             (unsigned long)len, (unsigned long)(s_full_cap / 1024));
+    goto out;
+  }
 
   /* Same sixteenths rule as thumb_write, against the tile rather than the
    * thumbnail box. */
@@ -175,11 +202,30 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
       (uint32_t)pure_scale_sixteenths(info.width, info.height, (uint32_t)tile_w, (uint32_t)tile_h);
   const uint32_t out_w = (info.width * n16) / 16;
   const uint32_t out_h = (info.height * n16) / 16;
-  if (out_w < 4 || out_h < 4 || out_w > (uint32_t)tile_w || out_h > (uint32_t)tile_h) goto out;
+  if (out_w < 4 || out_h < 4 || out_w > (uint32_t)tile_w || out_h > (uint32_t)tile_h) {
+    klog("P4", "thumb load %s: %lux%lu at %lu/16 gives %lux%lu, tile is %dx%d", path,
+             (unsigned long)info.width, (unsigned long)info.height, (unsigned long)n16,
+             (unsigned long)out_w, (unsigned long)out_h, tile_w, tile_h);
+    goto out;
+  }
 
   /* Pad first, then place the picture in the middle of the tile. The PPA
    * writes a rectangle, so the border has to already be there. */
   for (int i = 0; i < tile_w * tile_h; i++) tile[i] = pad;
+  /*
+   * Flush the pad before the PPA touches this buffer.
+   *
+   * The loop above is a CPU write, so it leaves dirty cache lines over the
+   * WHOLE tile. The PPA then DMA-writes the picture into the middle of it. If
+   * those dirty pad lines are evicted afterwards they land on top of the
+   * picture, and the screen shows bands of flat pad colour torn through the
+   * photograph - which is exactly what the bench saw once the alignment was
+   * fixed and the operation started succeeding.
+   *
+   * C2M: cache to memory, i.e. write back what the CPU just wrote.
+   */
+  esp_cache_msync(tile, THUMB_TILE_BYTES(tile_w, tile_h),
+                  ESP_CACHE_MSYNC_FLAG_DIR_C2M);
   const uint32_t ox = ((uint32_t)tile_w - out_w) / 2;
   const uint32_t oy = ((uint32_t)tile_h - out_h) / 2;
 
@@ -191,7 +237,7 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
              .block_h = info.height,
              .srm_cm = PPA_SRM_COLOR_MODE_RGB565},
       .out = {.buffer = tile,
-              .buffer_size = (size_t)tile_w * tile_h * 2,
+              .buffer_size = THUMB_TILE_BYTES(tile_w, tile_h),
               .pic_w = (uint32_t)tile_w,
               .pic_h = (uint32_t)tile_h,
               .block_offset_x = ox,
@@ -202,7 +248,18 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
       .scale_y = (float)n16 / 16.0f,
       .mode = PPA_TRANS_MODE_BLOCKING,
   };
-  if (ppa_do_scale_rotate_mirror(s_srm, &srm) == ESP_OK) result = ESP_OK;
+  const esp_err_t perr = ppa_do_scale_rotate_mirror(s_srm, &srm);
+  if (perr == ESP_OK) {
+    /* M2C: memory to cache, i.e. drop what the CPU thinks is here so the
+     * caller's blit reads what the DMA engine actually wrote. */
+    esp_cache_msync(tile, THUMB_TILE_BYTES(tile_w, tile_h),
+                    ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+    result = ESP_OK;
+  }
+  else
+    klog("P4", "thumb PPA fail %s %lux%lu->%lux%lu n=%lu tile %dx%d",
+         esp_err_to_name(perr), (unsigned long)pad_w, (unsigned long)pad_h,
+         (unsigned long)out_w, (unsigned long)out_h, (unsigned long)n16, tile_w, tile_h);
 
 out:
   xSemaphoreGive(s_lock);
@@ -239,7 +296,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
 
   jpeg_decode_cfg_t dcfg = {
       .output_format = JPEG_DECODE_OUT_FORMAT_RGB565,
-      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_RGB,
+      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_BGR,
   };
   uint32_t decoded = 0;
   err = jpeg_decoder_process(s_dec, &dcfg, jpeg, (uint32_t)len, s_full,
