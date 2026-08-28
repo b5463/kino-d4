@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "product": "KINO D4",
   "hardwareRevision": "D4-V1",
-  "designVersion": "0.1.0",
+  "designVersion": "0.1.1",
   "status": "prototype",
   "sourceLocation": "https://github.com/b5463/kino-d4",
   "license": "CERN-OHL-S-2.0",

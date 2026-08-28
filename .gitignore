@@ -62,6 +62,8 @@ firmware/p4/host_tests/test_upload_store
 firmware/p4/host_tests/test_upload_store.exe
 firmware/p4/host_tests/test_qr
 firmware/p4/host_tests/test_qr.exe
+firmware/p4/host_tests/test_board_pins
+firmware/p4/host_tests/test_board_pins.exe
 firmware/p4/host_tests/test_roll_queue
 firmware/p4/host_tests/test_roll_queue.exe
 firmware/p4/host_tests/test_net_link

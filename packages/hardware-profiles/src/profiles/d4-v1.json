@@ -31,9 +31,9 @@
       "specs": {
         "display": "4.3in IPS capacitive",
         "header2x13": {
-          "note": "Physical 2x13 header, top-to-bottom, PROVISIONAL KINO assignments in gpio map; ESP_3V3/C6_* pins are reserved for the C6 and must not be repurposed",
-          "left": ["3V3", "3V3", "GND", "GPIO52", "GPIO51", "GPIO50", "GPIO49", "GPIO35", "GPIO34", "GPIO32", "GPIO28", "I2C_SDA", "I2C_SCL"],
-          "right": ["5V", "5V", "GND", "GPIO33", "GPIO31", "GPIO30", "GPIO29", "GND", "ESP_3V3", "C6_U0RXD", "C6_U0TXD", "C6_IO9", "C6_CHIP_PU"]
+          "note": "JP1, 2x13, 2.54 mm, manufacturer table top-to-bottom. Odd pins = left column, even pins = right column; row i carries pins 2i+1 (left) and 2i+2 (right). Eleven P4 GPIOs are exposed: 1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47. GPIO3 (TOUCH_RESET) and GPIO5 (LCD_RESET) are taken by validated peripherals; ESI2C_* and C6_* pins are reserved and must not be repurposed. KINO assignments are in the top-level gpio and jp1 maps.",
+          "left": ["3V3", "3V3", "GND", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO20", "GPIO32", "GPIO33", "ESI2C_SDA", "ESI2C_SCL"],
+          "right": ["5V", "5V", "GND", "NC", "GPIO47", "GPIO46", "GPIO45", "GND", "3V3", "C6_U0RXD", "C6_U0TXD", "C6_IO9", "C6_CHIP_PU"]
         },
         "resolution": "480x800",
         "mcu": ["ESP32-P4", "ESP32-C6"],
@@ -396,26 +396,26 @@
   "nets": [
     { "id": "cam1-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam1", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [-9.9, 7, -2.5], [-23.1, 9, -2.5], [-33, 10, 7]] },
     { "id": "cam1-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam1", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [-9.9, 6, -2.5], [-23.1, 8, -2.5], [-33, 10, 7]] },
-    { "id": "cam1-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART1_TX" }, "to": { "instance": "cam1", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -3], [-23.1, 8, -2.5], [-33, 10, 5], [-33, 10, 7]] },
-    { "id": "cam1-rx", "cls": "UART", "from": { "instance": "cam1", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART1_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-33, 10, 7], [-33, 10, 4], [-23.1, 8, -2.5], [1, 4, -3], [0, 0, -11.5]] },
+    { "id": "cam1-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM1_TX" }, "to": { "instance": "cam1", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -3], [-23.1, 8, -2.5], [-33, 10, 5], [-33, 10, 7]] },
+    { "id": "cam1-rx", "cls": "UART", "from": { "instance": "cam1", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM1_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-33, 10, 7], [-33, 10, 4], [-23.1, 8, -2.5], [1, 4, -3], [0, 0, -11.5]] },
     { "id": "cam1-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam1", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -3], [-23.1, 7, -2.5], [-33, 9, 5], [-33, 10, 7]] },
 
     { "id": "cam2-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam2", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [-3.3, 7, -2.5], [-7.7, 9, -2.5], [-11, 10, 7]] },
     { "id": "cam2-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam2", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [-3.3, 6, -2.5], [-7.7, 8, -2.5], [-11, 10, 7]] },
-    { "id": "cam2-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART2_TX" }, "to": { "instance": "cam2", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -3], [-7.7, 8, -2.5], [-11, 10, 5], [-11, 10, 7]] },
-    { "id": "cam2-rx", "cls": "UART", "from": { "instance": "cam2", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART2_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-11, 10, 7], [-11, 10, 4], [-7.7, 8, -2.5], [1, 4, -3], [0, 0, -11.5]] },
+    { "id": "cam2-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM2_TX" }, "to": { "instance": "cam2", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -3], [-7.7, 8, -2.5], [-11, 10, 5], [-11, 10, 7]] },
+    { "id": "cam2-rx", "cls": "UART", "from": { "instance": "cam2", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM2_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-11, 10, 7], [-11, 10, 4], [-7.7, 8, -2.5], [1, 4, -3], [0, 0, -11.5]] },
     { "id": "cam2-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam2", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -3], [-7.7, 7, -2.5], [-11, 9, 5], [-11, 10, 7]] },
 
     { "id": "cam3-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam3", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [3.3, 7, -4], [7.7, 9, -3], [11, 10, 7]] },
     { "id": "cam3-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam3", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [3.3, 6, -4], [7.7, 8, -3], [11, 10, 7]] },
-    { "id": "cam3-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART3_TX" }, "to": { "instance": "cam3", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -4], [7.7, 8, -4], [11, 10, 5], [11, 10, 7]] },
-    { "id": "cam3-rx", "cls": "UART", "from": { "instance": "cam3", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART3_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[11, 10, 7], [11, 10, 4], [7.7, 8, -4], [1, 4, -4], [0, 0, -11.5]] },
+    { "id": "cam3-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM3_TX" }, "to": { "instance": "cam3", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -4], [7.7, 8, -4], [11, 10, 5], [11, 10, 7]] },
+    { "id": "cam3-rx", "cls": "UART", "from": { "instance": "cam3", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM3_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[11, 10, 7], [11, 10, 4], [7.7, 8, -4], [1, 4, -4], [0, 0, -11.5]] },
     { "id": "cam3-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam3", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -4], [7.7, 7, -4], [11, 9, 5], [11, 10, 7]] },
 
     { "id": "cam4-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam4", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [9.9, 7, -4], [23.1, 9, -3], [33, 10, 7]] },
     { "id": "cam4-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam4", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [9.9, 6, -4], [23.1, 8, -3], [33, 10, 7]] },
-    { "id": "cam4-tx", "cls": "UART", "from": { "instance": "display", "pin": "UART4_TX" }, "to": { "instance": "cam4", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -4], [23.1, 8, -4], [33, 10, 5], [33, 10, 7]] },
-    { "id": "cam4-rx", "cls": "UART", "from": { "instance": "cam4", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "UART4_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[33, 10, 7], [33, 10, 4], [23.1, 8, -4], [1, 4, -4], [0, 0, -11.5]] },
+    { "id": "cam4-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM4_TX" }, "to": { "instance": "cam4", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -4], [23.1, 8, -4], [33, 10, 5], [33, 10, 7]] },
+    { "id": "cam4-rx", "cls": "UART", "from": { "instance": "cam4", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM4_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[33, 10, 7], [33, 10, 4], [23.1, 8, -4], [1, 4, -4], [0, 0, -11.5]] },
     { "id": "cam4-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam4", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -4], [23.1, 7, -4], [33, 9, 5], [33, 10, 7]] },
 
     { "id": "main-batt-fuse", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT+" }, "to": { "instance": "fuse", "pin": "IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[-30, 0, -9.5], [-20, -4, -4], [-10, -8, -2]] },
@@ -432,24 +432,49 @@
     { "id": "btn-fn", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_FN" }, "to": { "instance": "carrier", "pin": "SW2" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [3, -4, -9], [0, -5, -4]] }
   ],
   "gpio": {
-    "CAM_PWR_EN": "GPIO31",
+    "CAM_PWR_EN": null,
     "CAM_PWR_1": null,
     "CAM_PWR_2": null,
     "CAM_PWR_3": null,
     "CAM_PWR_4": null,
-    "SYNC_OUT": "GPIO32",
-    "UART1_TX": "GPIO52",
-    "UART1_RX": "GPIO51",
-    "UART2_TX": "GPIO50",
-    "UART2_RX": "GPIO49",
-    "UART3_TX": "GPIO34",
-    "UART3_RX": "GPIO33",
-    "UART4_TX": "GPIO30",
-    "UART4_RX": "GPIO29",
-    "FLASH_EN": "GPIO28",
+    "SYNC_OUT": "GPIO20",
+    "CAM1_TX": "GPIO1",
+    "CAM1_RX": "GPIO2",
+    "CAM2_TX": "GPIO47",
+    "CAM2_RX": "GPIO46",
+    "CAM3_TX": "GPIO32",
+    "CAM3_RX": "GPIO33",
+    "CAM4_TX": "GPIO45",
+    "CAM4_RX": "GPIO4",
+    "FLASH_EN": null,
     "BTN_SHUTTER": null,
     "BTN_FN": null,
-    "SLIDE_MODE": null,
-    "SPARE_GPIO35": null
+    "SLIDE_MODE": null
+  },
+  "jp1": {
+    "header": "JP1",
+    "rows": 13,
+    "note": "Physical pin per assigned signal. Nine header GPIOs are free and the design wanted ten; FLASH_EN and CAM_PWR_EN have no JP1 pin (null in gpio) until an I2C expander on ESI2C or another route is chosen. Firmware source of truth: firmware/p4/main/board_d4v1.h BOARD_*_JP1.",
+    "pins": {
+      "CAM1_TX": { "pin": 7, "gpio": "GPIO1" },
+      "CAM1_RX": { "pin": 9, "gpio": "GPIO2" },
+      "CAM2_TX": { "pin": 10, "gpio": "GPIO47" },
+      "CAM2_RX": { "pin": 12, "gpio": "GPIO46" },
+      "CAM3_TX": { "pin": 19, "gpio": "GPIO32" },
+      "CAM3_RX": { "pin": 21, "gpio": "GPIO33" },
+      "CAM4_TX": { "pin": 14, "gpio": "GPIO45" },
+      "CAM4_RX": { "pin": 13, "gpio": "GPIO4" },
+      "SYNC_OUT": { "pin": 17, "gpio": "GPIO20" }
+    },
+    "reserved": [
+      { "pin": 11, "net": "GPIO3", "gpio": "GPIO3", "use": "TOUCH_RESET (GT911), hardware validated" },
+      { "pin": 15, "net": "GPIO5", "gpio": "GPIO5", "use": "LCD_RESET (ST7701S), hardware validated" },
+      { "pin": 23, "net": "ESI2C_SDA", "use": "ES8311/ES7210 audio codec I2C" },
+      { "pin": 25, "net": "ESI2C_SCL", "use": "ES8311/ES7210 audio codec I2C" },
+      { "pin": 20, "net": "C6_U0RXD", "use": "C6 programming/recovery" },
+      { "pin": 22, "net": "C6_U0TXD", "use": "C6 programming/recovery" },
+      { "pin": 24, "net": "C6_IO9", "use": "C6 boot strap" },
+      { "pin": 26, "net": "C6_CHIP_PU", "use": "C6 reset" }
+    ]
   }
 }

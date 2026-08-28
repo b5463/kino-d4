@@ -1047,6 +1047,12 @@ input[type='range'] {
   color: var(--twin-text-mut);
 }
 
+.twin-pins-num {
+  color: var(--twin-text-mut);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* High-resolution displays (issue #72): the 10-13px token scale and the
    236/264px side panels were authored for ~1080-1440p and shrink into
    illegibility on a 4K monitor. Everything derives from the four type

@@ -1,75 +1,92 @@
 // KINO D4 V1 pin map for the Guition JC4880P443C-I-W (ESP32-P4 + ESP32-C6).
 // Every P4 pin assignment lives in this file — no raw GPIO numbers elsewhere.
+// packages/hardware-profiles/src/profiles/d4-v1.json mirrors this file, not
+// the other way round; host_tests/test_board_pins.c --dump is the cross-check.
 //
-// PROVISIONAL: the camera/sync/flash assignments mirror the header map in
-// packages/hardware-profiles/src/profiles/d4-v1.json and are locked only by
-// electrical validation (issue #2). The SD block comes from the community
-// field notes for this board (github.com/ultramcu/guition-jc4880p443c-i-w)
-// and is likewise unverified on our unit.
+// The camera/sync assignments below are header-correct (the pins exist and
+// are free) and electrically UNVALIDATED until a node answers on each one
+// (issue #2). The SD block was validated by a real 4-bit mount on 2026-08-26.
 #ifndef BOARD_D4V1_H
 #define BOARD_D4V1_H
 
-// --- The 2x13 header, as photographed on the physical board ---
+// --- JP1, the 2x13 2.54 mm header, from the manufacturer table ---
 //
-// The map this file and d4-v1.json carried was WRONG. Rows 1-3 and the C6
-// block matched; almost nothing else did, and not one of the eight camera UART
-// pins existed. Silkscreen of JC-ESP32P4-M3-DEV, top to bottom:
+// Pin numbering as on the JC-ESP32P4-M3-DEV drawing: odd pins are the LEFT
+// column, even pins the RIGHT column, pin 1 at the top.
 //
-//     row   left            right
-//      1    3V3             5V
-//      2    3V3             5V
-//      3    GND             GND
-//      4    GPIO1           NC
-//      5    GPIO2           GPIO47
-//      6    GPIO3           GPIO46
-//      7    GPIO4           GPIO45
-//      8    GPIO5           GND
-//      9    GPIO20          3V3
-//     10    GPIO32          C6_U0RXD
-//     11    GPIO33          C6_U0TXD
-//     12    ES I2C_SDA      C6_IO9
-//     13    ES I2C_SCL      C6_CHIP_PU
+//     pin  left            right   pin
+//      1   3V3             5V       2
+//      3   3V3             5V       4
+//      5   GND             GND      6
+//      7   GPIO1           NC       8
+//      9   GPIO2           GPIO47  10
+//     11   GPIO3           GPIO46  12
+//     13   GPIO4           GPIO45  14
+//     15   GPIO5           GND     16
+//     17   GPIO20          3V3     18
+//     19   GPIO32          C6_U0RXD 20
+//     21   GPIO33          C6_U0TXD 22
+//     23   ESI2C_SDA       C6_IO9  24
+//     25   ESI2C_SCL       C6_CHIP_PU 26
 //
-// GPIO52/51/50/49/35/34/31/30/29/28 are not brought out anywhere. CAM1 was
-// opening UART1 on GPIO52/51, which route to nothing: the link would have
-// failed at the first checkpoint looking exactly like a wiring or ground
-// fault, which is the most expensive way to be told a pin map is fiction.
+// Eleven P4 GPIOs reach the header: 1, 2, 3, 4, 5, 20, 32, 33, 45, 46, 47.
+// GPIO3 is TOUCH_RESET and GPIO5 is LCD_RESET, both validated on hardware, so
+// nine are free: 1, 2, 4, 20, 32, 33, 45, 46, 47. GPIO52/51/50/49/35/34/31/
+// 30/29/28 route nowhere on this carrier and must not appear in this file.
 //
-// Of the eleven header GPIOs, two are already spoken for by peripherals that
-// are validated on hardware — GPIO3 is TOUCH_RESET and GPIO5 is LCD_RESET —
-// leaving nine: 1, 2, 4, 20, 32, 33, 45, 46, 47.
+// Nine free pins, ten signals wanted: 4 x (TX, RX) = 8, SYNC_OUT = 1,
+// FLASH_EN = 1, CAM_PWR_EN = 1. The eight UART lines and SYNC_OUT take the
+// nine. FLASH_EN and CAM_PWR_EN are unassigned until M2 decides a route: an
+// I2C GPIO expander on ESI2C_SDA/SCL (JP1 pins 23/25) or another way off the
+// board. Right column pins 20/22/24/26 are the C6 programming and recovery
+// lines and stay reserved.
 //
-// --- CAM1 (real header pins, row 4 and row 5 of the left column) ---
+// UART TX/RX on the P4 go through the GPIO matrix on every port; there is no
+// IOMUX restriction, so any of the nine can carry any of UART1-4.
+
+// Unassigned control line. Numerically equal to GPIO_NUM_NC (-1); every user
+// must skip gpio_config and gpio_set_level for a pin equal to this.
+#define BOARD_GPIO_NONE (-1)
+
+// --- Camera nodes, one UART each ---
+// UART0 is the console, so the four remaining ports carry the four cameras,
+// which is what lets four transfers overlap instead of queueing.
+// BOARD_*_JP1 is the header pin the wire lands on.
 #define BOARD_CAM1_UART_NUM 1
 #define BOARD_CAM1_TX 1
 #define BOARD_CAM1_RX 2
-// The other three nodes. The P4 has five high-power UARTs and UART0 is the
-// console, so each camera gets a port of its own — which is what lets four
-// transfers overlap instead of queueing behind one another. A viewfinder
-// sharing one UART between four cameras runs at a quarter of the rate.
-//
-// !! CAM2-4 BELOW STILL POINT AT PINS THAT DO NOT EXIST ON THIS HEADER !!
-//
-// Left alone deliberately rather than guessed at, because reassigning them is
-// an M2 decision with a real constraint behind it. Nine header GPIOs are free
-// and the design wants eleven:
-//
-//     4 cameras x 2 (TX/RX)   8
-//     SYNC_OUT                1
-//     CAM_PWR_EN              1
-//     FLASH_EN                1
-//                            --
-//                            11   against 9 available
-//
-// So the four-camera body does not fit this carrier as drawn, and something
-// has to give: FLASH_EN has no hardware behind it yet, the ES I2C pins could
-// carry an I/O expander for the slow control lines, or the header is not the
-// only way off this board. That is a bring-up finding for M2 to settle with
-// the schematic in hand, not something to invent here.
-//
-// Harmless meanwhile: these GPIO numbers are valid on the chip and simply
-// route nowhere on this carrier, so the three channels time out exactly as
-// they would with no node fitted. M1 uses CAM1 only.
+#define BOARD_CAM1_TX_JP1 7
+#define BOARD_CAM1_RX_JP1 9
+
+#define BOARD_CAM2_UART_NUM 2
+#define BOARD_CAM2_TX 47
+#define BOARD_CAM2_RX 46
+#define BOARD_CAM2_TX_JP1 10
+#define BOARD_CAM2_RX_JP1 12
+
+#define BOARD_CAM3_UART_NUM 3
+#define BOARD_CAM3_TX 32
+#define BOARD_CAM3_RX 33
+#define BOARD_CAM3_TX_JP1 19
+#define BOARD_CAM3_RX_JP1 21
+
+#define BOARD_CAM4_UART_NUM 4
+#define BOARD_CAM4_TX 45
+#define BOARD_CAM4_RX 4
+#define BOARD_CAM4_TX_JP1 14
+#define BOARD_CAM4_RX_JP1 13
+
+// --- Control lines ---
+// SYNC_OUT fans out to all four XIAO SYNC_IN pins. Driven by capture.c;
+// the node side does not arm on it yet.
+#define BOARD_SYNC_OUT 20
+#define BOARD_SYNC_OUT_JP1 17
+// No header pin left for either. capture.c and power.c check for
+// BOARD_GPIO_NONE and skip the GPIO; the flash request still works as a
+// no-op and the camera bank is simply always powered.
+#define BOARD_FLASH_EN BOARD_GPIO_NONE
+#define BOARD_CAM_PWR_EN BOARD_GPIO_NONE
+
 // Physical controls. docs/HARDWARE.md: "Button and mode-slide pins are
 // unassigned." They stay unassigned here rather than being guessed: a
 // floating input read as a button fires the shutter by itself in a bag,
@@ -78,21 +95,6 @@
 #define BOARD_BTN_NONE (-1)
 #define BOARD_BTN_SHUTTER BOARD_BTN_NONE
 #define BOARD_BTN_FN BOARD_BTN_NONE
-
-#define BOARD_CAM2_UART_NUM 2
-#define BOARD_CAM2_TX 50
-#define BOARD_CAM2_RX 49
-#define BOARD_CAM3_UART_NUM 3
-#define BOARD_CAM3_TX 34
-#define BOARD_CAM3_RX 33
-#define BOARD_CAM4_UART_NUM 4
-#define BOARD_CAM4_TX 30
-#define BOARD_CAM4_RX 29
-
-// --- Control lines (PROVISIONAL, unused in Milestone 1) ---
-#define BOARD_SYNC_OUT 32
-#define BOARD_FLASH_EN 28
-#define BOARD_CAM_PWR_EN 31
 
 // --- TF/microSD, SDMMC slot 0, 4-bit ---
 //

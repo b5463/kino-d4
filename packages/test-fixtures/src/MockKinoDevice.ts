@@ -2007,8 +2007,9 @@ export class MockKinoDevice implements MockDeviceLike {
       item('SD_D2_GPIO41', sd, 'mounted'),
       item('SD_D3_GPIO42', sd, 'mounted'),
       item('SD_LDO_CH4', sd, 'mounted'),
-      item('CAM1_TX_GPIO52', cam1, 'node HELLO answered'),
-      item('CAM1_RX_GPIO51', cam1, 'node HELLO answered'),
+      // JP1 pins 7 and 9; board_d4v1.h BOARD_CAM1_TX / BOARD_CAM1_RX.
+      item('CAM1_TX_GPIO1', cam1, 'node HELLO answered'),
+      item('CAM1_RX_GPIO2', cam1, 'node HELLO answered'),
       item('CAM1_BAUD_921600', cam1, 'node HELLO at 921600'),
       item('CAM1_NODE_LINK', cam1, 'node HELLO answered'),
       item('CAM1_SENSOR_DETECT', sensor1, 'OV3660'),

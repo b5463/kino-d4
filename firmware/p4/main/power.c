@@ -103,18 +103,21 @@ void power_get(power_state_t *out) {
 /* The camera bank's power switch. Held on until camIdleTimeoutS elapses,
  * which is what makes four idle XIAOs stop costing the battery anything.
  *
- * NEEDS_HARDWARE_VALIDATION per docs/HARDWARE.md: whether every channel hangs
- * off this one pin or each gets its own is not settled, so this switches the
- * one line the header names and claims nothing more. */
+ * BOARD_CAM_PWR_EN is BOARD_GPIO_NONE on the D4 V1 carrier: JP1 has no pin
+ * left for it (board_d4v1.h). The idle logic still runs and logs the
+ * decision; no GPIO is touched and the bank stays powered. Whether every
+ * channel hangs off one line or each gets its own is an M2 question. */
+static bool s_cam_pwr_ready;
+
 static void cam_bank(bool on) {
   if (s_cam_bank == on) return;
-  gpio_set_level(BOARD_CAM_PWR_EN, on ? 1 : 0);
   s_cam_bank = on;
-  /* The pin was actually driven, both ways, on this unit. Whether the
-   * AO4407 channels downstream follow it is still a scope job - see the
-   * per-camera switching row in the validation plan. */
-  hwv_mark_validated(HWV_CAM_PWR_EN_GPIO31, "driven for the camera bank");
-  ESP_LOGI(TAG, "camera bank %s", on ? "on" : "off");
+  if (s_cam_pwr_ready) {
+    gpio_set_level((gpio_num_t)BOARD_CAM_PWR_EN, on ? 1 : 0);
+    /* Driving the pin proves nothing about the AO4407 channels downstream;
+     * that row is earned on the bench with a meter, not here. */
+  }
+  ESP_LOGI(TAG, "camera bank %s%s", on ? "on" : "off", s_cam_pwr_ready ? "" : " (no CAM_PWR_EN pin)");
   klog("P4", "cam bank %s", on ? "on" : "off");
 }
 
@@ -203,22 +206,34 @@ static void power_task(void *arg) {
 esp_err_t power_init(void) {
   if (s_ready) return ESP_OK;
 
-  gpio_config_t cfg = {
-      .pin_bit_mask = 1ULL << BOARD_CAM_PWR_EN,
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-  };
-  gpio_config(&cfg);
-  gpio_set_level(BOARD_CAM_PWR_EN, 1);
+  /* Through a variable, not the macro: `1ULL << -1` as a constant expression
+   * is a compile error even inside a branch that never runs. */
+  const int pwr_pin = BOARD_CAM_PWR_EN;
+  if (pwr_pin != BOARD_GPIO_NONE) {
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << pwr_pin,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    if (gpio_config(&cfg) == ESP_OK) {
+      gpio_set_level((gpio_num_t)pwr_pin, 1);
+      s_cam_pwr_ready = true;
+    } else {
+      ESP_LOGE(TAG, "cannot drive CAM_PWR_EN GPIO%d", pwr_pin);
+    }
+  } else {
+    ESP_LOGW(TAG, "CAM_PWR_EN unassigned: no JP1 pin, camera bank stays powered");
+  }
   s_cam_bank = true;
 
   power_activity();
   s_ready = true;
-  ESP_LOGI(TAG, "POWER_READY dim %ds, sleep %ds, cam idle %ds, cam power GPIO%d",
+  ESP_LOGI(TAG, "POWER_READY dim %ds, sleep %ds, cam idle %ds, cam power %s",
            config_int("body.autoDimS", 30), config_int("body.sleepS", 120),
-           config_int("body.camIdleTimeoutS", 300), BOARD_CAM_PWR_EN);
+           config_int("body.camIdleTimeoutS", 300),
+           s_cam_pwr_ready ? "pin driven" : "unassigned");
   klog("P4", "power up");
   TaskHandle_t h = NULL;
   xTaskCreate(power_task, "power", 3072, NULL, 2, &h);

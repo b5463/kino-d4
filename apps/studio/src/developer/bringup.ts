@@ -10,6 +10,7 @@
 // records no number wastes the run it came from.
 
 import { create } from 'zustand';
+import { D4_V1 } from '@kino/hardware-profiles';
 
 export interface ChecklistItem {
   id: string;
@@ -182,20 +183,38 @@ export interface WiringRow {
   status: 'unverified' | 'confirmed' | 'moved';
 }
 
+/**
+ * "GPIO1 (JP1 pin 7)" from the hardware profile, or "unassigned" when the
+ * gpio map holds null. The wiring record starts from the data the firmware
+ * is cross-checked against, not from a hand-typed copy of it.
+ */
+function provisionalPin(fn: string): string {
+  const slot = D4_V1.jp1?.pins[fn];
+  if (slot) return `${slot.gpio} (JP1 pin ${slot.pin})`;
+  return D4_V1.gpio[fn] ?? 'unassigned';
+}
+
+const row = (func: string, fn: string): WiringRow => ({
+  func,
+  provisional: provisionalPin(fn),
+  measured: '',
+  status: 'unverified',
+});
+
 const DEFAULT_WIRING: WiringRow[] = [
-  { func: 'CAM1 TX → XIAO1 RX', provisional: 'GPIO52', measured: '', status: 'unverified' },
-  { func: 'CAM1 RX ← XIAO1 TX', provisional: 'GPIO51', measured: '', status: 'unverified' },
-  { func: 'CAM2 TX → XIAO2 RX', provisional: 'GPIO50', measured: '', status: 'unverified' },
-  { func: 'CAM2 RX ← XIAO2 TX', provisional: 'GPIO49', measured: '', status: 'unverified' },
-  { func: 'CAM3 TX → XIAO3 RX', provisional: 'GPIO34 (strapping!)', measured: '', status: 'unverified' },
-  { func: 'CAM3 RX ← XIAO3 TX', provisional: 'GPIO33', measured: '', status: 'unverified' },
-  { func: 'CAM4 TX → XIAO4 RX', provisional: 'GPIO30', measured: '', status: 'unverified' },
-  { func: 'CAM4 RX ← XIAO4 TX', provisional: 'GPIO29', measured: '', status: 'unverified' },
-  { func: 'SYNC_TRIGGER', provisional: 'GPIO32', measured: '', status: 'unverified' },
-  { func: 'CAM_PWR_EN', provisional: 'GPIO31', measured: '', status: 'unverified' },
-  { func: 'FLASH_EN', provisional: 'GPIO28', measured: '', status: 'unverified' },
-  { func: 'Shutter button', provisional: 'unassigned', measured: '', status: 'unverified' },
-  { func: 'Function button', provisional: 'unassigned', measured: '', status: 'unverified' },
+  row('CAM1 TX → XIAO1 RX', 'CAM1_TX'),
+  row('CAM1 RX ← XIAO1 TX', 'CAM1_RX'),
+  row('CAM2 TX → XIAO2 RX', 'CAM2_TX'),
+  row('CAM2 RX ← XIAO2 TX', 'CAM2_RX'),
+  row('CAM3 TX → XIAO3 RX', 'CAM3_TX'),
+  row('CAM3 RX ← XIAO3 TX', 'CAM3_RX'),
+  row('CAM4 TX → XIAO4 RX', 'CAM4_TX'),
+  row('CAM4 RX ← XIAO4 TX', 'CAM4_RX'),
+  row('SYNC_TRIGGER', 'SYNC_OUT'),
+  row('CAM_PWR_EN', 'CAM_PWR_EN'),
+  row('FLASH_EN', 'FLASH_EN'),
+  row('Shutter button', 'BTN_SHUTTER'),
+  row('Function button', 'BTN_FN'),
 ];
 
 export interface BringUpState {

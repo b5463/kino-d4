@@ -13,10 +13,10 @@ static const char *TAG = "hwv";
 static const char *ITEM_IDS[HWV_COUNT] = {
     "USB_SERIAL_JTAG", "SD_CLK_GPIO43",  "SD_CMD_GPIO44",   "SD_D0_GPIO39",
     "SD_D1_GPIO40",    "SD_D2_GPIO41",   "SD_D3_GPIO42",    "SD_LDO_CH4",
-    "CAM1_TX_GPIO52",  "CAM1_RX_GPIO51", "CAM1_BAUD_921600", "CAM1_NODE_LINK",
+    "CAM1_TX_GPIO1",   "CAM1_RX_GPIO2",  "CAM1_BAUD_921600", "CAM1_NODE_LINK",
     "CAM1_SENSOR_DETECT", "CAM1_CAPTURE", "CAM1_JPEG_TRANSFER", "CAM1_SD_WRITE",
     "DSI_PANEL_ST7701", "BACKLIGHT_GPIO23", "I2C_SHARED_BUS", "TOUCH_GT911",
-    "AUDIO_ES8311",     "AUDIO_AMP_GPIO11", "CAM_PWR_EN_GPIO31",
+    "AUDIO_ES8311",     "AUDIO_AMP_GPIO11", "CAM_PWR_EN_UNASSIGNED",
     /* Append-only, in lockstep with hwv_item_t - see the note there. These ids
      * exceed NVS_KEY_NAME_MAX_SIZE, which is harmless: the primary keys are
      * indexed ("v.%d") and only the pre-fix legacy lookup used the id, so it
@@ -27,7 +27,7 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "CAM3_SD_WRITE",
     "CAM4_UART", "CAM4_NODE_LINK", "CAM4_SENSOR_DETECT", "CAM4_JPEG_TRANSFER",
     "CAM4_SD_WRITE",
-    "SYNC_TRIGGER_GPIO32", "FLASH_EN_GPIO28", "BTN_SHUTTER",
+    "SYNC_TRIGGER_GPIO20", "FLASH_EN_UNASSIGNED", "BTN_SHUTTER",
     /* ESP32-C6 radio, in bring-up order. None can flip in the default build,
      * which links no radio. See hardware_validation.h for what earns each. */
     "SD_SLOT0", "C6_EN_GPIO54", "C6_SDIO_PINS", "C6_LINK_HANDSHAKE",
@@ -55,8 +55,8 @@ hwv_item_t hwv_cam_item(int cam, hwv_item_t cam1_equivalent) {
   /* cam 1..3 -> the CAM2/3/4 block, five rows each, in enum order. */
   const int base = HWV_CAM2_UART + (cam - 1) * 5;
   switch (cam1_equivalent) {
-    case HWV_CAM1_TX_GPIO52:
-    case HWV_CAM1_RX_GPIO51:
+    case HWV_CAM1_TX_GPIO1:
+    case HWV_CAM1_RX_GPIO2:
     case HWV_CAM1_BAUD_921600:  return (hwv_item_t)(base + 0); /* ..._UART */
     case HWV_CAM1_NODE_LINK:    return (hwv_item_t)(base + 1);
     case HWV_CAM1_SENSOR_DETECT:return (hwv_item_t)(base + 2);

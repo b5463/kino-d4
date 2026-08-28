@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { D4_V1 } from '@kino/hardware-profiles';
 import { CHECKLIST, totalChecks, importRecord, exportRecord, useBringUp } from '../src/developer/bringup';
 
 describe('bring-up record', () => {
@@ -36,10 +37,17 @@ describe('bring-up record', () => {
     }
   });
 
-  it('flags the strapping-pin risk in the wiring record', () => {
+  it('seeds the wiring record from the profile pin map, JP1 pin included', () => {
     const wiring = useBringUp.getState().wiring;
+    const cam1 = wiring.find((r) => r.func.startsWith('CAM1 TX'));
+    expect(cam1?.provisional).toBe(`${D4_V1.gpio.CAM1_TX} (JP1 pin ${D4_V1.jp1!.pins.CAM1_TX!.pin})`);
     const cam3 = wiring.find((r) => r.func.startsWith('CAM3 TX'));
-    expect(cam3?.provisional).toMatch(/strapping/i);
+    expect(cam3?.provisional).toBe(`${D4_V1.gpio.CAM3_TX} (JP1 pin ${D4_V1.jp1!.pins.CAM3_TX!.pin})`);
+    // No strapping pin (GPIO34-38) may appear in the record any more.
+    for (const r of wiring) expect(r.provisional).not.toMatch(/GPIO3[4-8]\b/);
+    // Lines without a header pin say so instead of naming a GPIO that routes nowhere.
+    expect(wiring.find((r) => r.func === 'FLASH_EN')?.provisional).toBe('unassigned');
+    expect(wiring.find((r) => r.func === 'CAM_PWR_EN')?.provisional).toBe('unassigned');
     expect(wiring.every((r) => r.status === 'unverified')).toBe(true);
   });
 

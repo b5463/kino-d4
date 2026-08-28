@@ -61,6 +61,11 @@ jobs:
       # nothing on the device can tell — so this is the only place that
       # failure is catchable.
       - run: make -C firmware/p4/host_tests test-qr
+      # The JP1 pin map: eight unique camera GPIOs, SYNC_OUT apart from them,
+      # every one on a header pin that exists, none on a peripheral the board
+      # already uses. The first map put CAM1 on GPIO52/51, which route to
+      # nothing; this is what stops that happening twice.
+      - run: make -C firmware/p4/host_tests test-pins
 
   host-preview:
     # The native UI renderer. It compiles ui.c as a translation unit, so a

@@ -97,6 +97,38 @@ export const alternatePowerEntry = z.object({
 });
 export type AlternatePowerEntry = z.infer<typeof alternatePowerEntry>;
 
+const gpioName = z.string().regex(/^GPIO\d{1,2}$/);
+
+/** One KINO signal on a physical header pin. `pin` is the printed pin number (1-based, odd = left column, even = right). */
+export const headerPinAssignment = z.object({
+  pin: z.number().int().min(1),
+  gpio: gpioName,
+});
+export type HeaderPinAssignment = z.infer<typeof headerPinAssignment>;
+
+/** A header pin nothing in the gpio map may claim, with the reason. `gpio` is present when the pin is a P4 GPIO. */
+export const headerReservedPin = z.object({
+  pin: z.number().int().min(1),
+  net: z.string(),
+  gpio: gpioName.optional(),
+  use: z.string(),
+});
+export type HeaderReservedPin = z.infer<typeof headerReservedPin>;
+
+/**
+ * Physical header map: which printed pin carries each assigned gpio-map
+ * signal, and which pins are off limits. Keys of `pins` are gpio-map keys.
+ * The header rows themselves live in the component's `specs.header2x13`.
+ */
+export const headerMap = z.object({
+  header: z.string(),
+  rows: z.number().int().positive(),
+  note: z.string().optional(),
+  pins: z.record(headerPinAssignment),
+  reserved: z.array(headerReservedPin),
+});
+export type HeaderMap = z.infer<typeof headerMap>;
+
 export const hardwareProfile = defineSchema({
   schema: 'kino.hardware-profile',
   version: 1,
@@ -117,6 +149,8 @@ export const hardwareProfile = defineSchema({
     alternatePower: z.record(alternatePowerEntry).default({}),
     nets: z.array(netDef),
     gpio: z.record(z.string().nullable()), // data-driven pin map; null = unassigned (§8)
+    // Optional keeps schema version 1: documents without a header map still parse.
+    jp1: headerMap.optional(),
   }),
   migrations: {},
 });

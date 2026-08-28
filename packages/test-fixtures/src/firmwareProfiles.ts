@@ -134,12 +134,14 @@ const CAPTURE_0_3_CAPABILITIES: Record<string, boolean> = {
    */
   wiggle: true,
   quad: true,
-  /** GPIO28 is driven across the exposure window. What it drives is a bench
-   * LED until the flash board exists — a hardware fact, not a firmware one. */
+  /** The FLASH_EN line is driven across the exposure window. Its pin is
+   * unassigned on D4 V1 (no JP1 pin left; BOARD_FLASH_EN is BOARD_GPIO_NONE),
+   * so what it drives is nothing until an expander or the flash board
+   * exists — a hardware fact, not a firmware one. */
   flashControl: true,
   /**
    * Still false, and this is the one worth reading twice. The body pulses
-   * GPIO32 on every capture and reports how far apart the four commands went
+   * SYNC_OUT (GPIO20, JP1 pin 17) on every capture and reports how far apart the four commands went
    * out, but the nodes expose on command arrival rather than on that edge,
    * and their rolling shutters free-run. All three skews in `kino.capture`
    * stay null with a reason. Dispatch spread is not exposure skew.
@@ -189,10 +191,12 @@ const ROLL_0_4_CAPABILITIES: Record<string, boolean> = {
    */
   radioFitted: true,
   /**
-   * False, and this is the gate. No P4-side transport pin for the C6 is
-   * recorded anywhere in the repository — the only C6-facing header nets are a
-   * UART pair, a strap and an enable, none mapped to a GPIO number. See
-   * firmware/C6_HARDWARE_MAP.md.
+   * False, and this is the gate — though no longer for the original reason.
+   * The routing IS recorded now (SDMMC slot 1, GPIO14-19, EN on GPIO54) and
+   * corroborated against Espressif's own ESP-Hosted defaults. What is missing
+   * is a measurement: nothing has driven those pins, and the radio is a
+   * build-time opt-in that is off by default because enabling it drives them
+   * before `app_main` on every boot. See firmware/C6_HARDWARE_MAP.md.
    */
   radioRouted: false,
   /**
@@ -305,4 +309,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.2.0': 'd4-body-0-2',
   '0.3.0': 'd4-capture-0-3',
   '0.4.0': 'd4-roll-0-4',
+  '0.4.1': 'd4-roll-0-4',
 };

@@ -105,21 +105,36 @@ describe('nets + gpio (§8)', () => {
       'CAM_PWR_3',
       'CAM_PWR_4',
       'SYNC_OUT',
-      'UART1_TX',
-      'UART1_RX',
-      'UART2_TX',
-      'UART2_RX',
-      'UART3_TX',
-      'UART3_RX',
-      'UART4_TX',
-      'UART4_RX',
+      'CAM1_TX',
+      'CAM1_RX',
+      'CAM2_TX',
+      'CAM2_RX',
+      'CAM3_TX',
+      'CAM3_RX',
+      'CAM4_TX',
+      'CAM4_RX',
       'FLASH_EN',
+      'CAM_PWR_EN',
       'BTN_SHUTTER',
       'BTN_FN',
       'SLIDE_MODE',
     ];
     for (const key of expectedKeys) {
       expect(Object.prototype.hasOwnProperty.call(D4_V1.gpio, key)).toBe(true);
+    }
+    // The old UARTn_* names and the phantom spare are gone for good.
+    for (const key of Object.keys(D4_V1.gpio)) {
+      expect(key).not.toMatch(/^UART[1-4]_/);
+      expect(key).not.toBe('SPARE_GPIO35');
+    }
+  });
+
+  it('every UART net ends on the display at a gpio-map key with a JP1 pin', () => {
+    for (const net of netsByClass(D4_V1, 'UART')) {
+      const end = net.from.instance === 'display' ? net.from : net.to;
+      expect(end.instance).toBe('display');
+      expect(D4_V1.gpio[end.pin], `net ${net.id}: display pin ${end.pin} is not an assigned gpio key`).toMatch(/^GPIO\d+$/);
+      expect(D4_V1.jp1?.pins[end.pin], `net ${net.id}: ${end.pin} has no JP1 pin`).toBeDefined();
     }
   });
 });

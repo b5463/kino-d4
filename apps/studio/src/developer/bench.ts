@@ -19,6 +19,17 @@ export interface BenchStage {
   items: BenchItem[];
 }
 
+/**
+ * "GPIO1 (JP1 pin 7)" for an assigned signal, read from the profile so the
+ * bench text cannot drift from the pin map it describes.
+ */
+function jp1Pin(fn: string, profile: HardwareProfile = D4_V1): string {
+  const slot = profile.jp1?.pins[fn];
+  const gpio = profile.gpio[fn];
+  if (!slot) return gpio ?? `${fn} (unassigned)`;
+  return `${slot.gpio} (JP1 pin ${slot.pin})`;
+}
+
 /** firmware/BENCH_M1B.md stages A–E, one row per numbered step. */
 export const BENCH_STAGES: BenchStage[] = [
   {
@@ -48,7 +59,7 @@ export const BENCH_STAGES: BenchStage[] = [
     title: 'C — CAM1 SAFE BRING-UP',
     items: [
       { id: 'c1', text: 'XIAO flashed over its own USB-C; node console shows the sensor detect line' },
-      { id: 'c2', text: 'Wire GND↔GND first, then P4 GPIO52→XIAO GPIO44, P4 GPIO51←XIAO GPIO43; no 5 V from the P4 header yet' },
+      { id: 'c2', text: `Wire GND↔GND first (JP1 pin 5 or 6), then P4 ${jp1Pin('CAM1_TX')}→XIAO GPIO44, P4 ${jp1Pin('CAM1_RX')}←XIAO GPIO43; no 5 V from the P4 header yet` },
       { id: 'c3', text: 'Meter: common ground, idle UART lines at 3.3 V' },
       { id: 'c4', text: 'CAM1 probes online ≤ ~2 s; GET_CAMERA_INFO shows real sensor PID, node firmware, power-on reset reason' },
       { id: 'c5', text: 'CAMERA_LINK_STATS: zero crcErrors/timeouts after a minute of idle probing' },

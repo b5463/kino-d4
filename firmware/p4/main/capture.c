@@ -137,23 +137,46 @@ static void fail(capture_report_t *r, const char *code, const char *msg) {
 /* ---------------------------------------------------------------- */
 
 static bool s_gpio_ready;
+/* True only when BOARD_FLASH_EN names a pin and that pin configured. With
+ * BOARD_FLASH_EN == BOARD_GPIO_NONE (no JP1 pin left, see board_d4v1.h) the
+ * flash request is accepted and does nothing; -1 is never handed to the
+ * GPIO driver. */
+static bool s_flash_ready;
+
+static void flash_set(int level) {
+  if (s_flash_ready) gpio_set_level((gpio_num_t)BOARD_FLASH_EN, level);
+}
 
 static void gpio_setup(void) {
   if (s_gpio_ready) return;
   gpio_config_t io = {
-      .pin_bit_mask = (1ULL << BOARD_SYNC_OUT) | (1ULL << BOARD_FLASH_EN),
+      .pin_bit_mask = 1ULL << BOARD_SYNC_OUT,
       .mode = GPIO_MODE_OUTPUT,
       .pull_up_en = GPIO_PULLUP_DISABLE,
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
       .intr_type = GPIO_INTR_DISABLE,
   };
   if (gpio_config(&io) != ESP_OK) {
-    ESP_LOGE(TAG, "cannot drive sync %d / flash %d", BOARD_SYNC_OUT, BOARD_FLASH_EN);
+    ESP_LOGE(TAG, "cannot drive sync GPIO%d", BOARD_SYNC_OUT);
     return;
   }
   gpio_set_level(BOARD_SYNC_OUT, 0);
-  gpio_set_level(BOARD_FLASH_EN, 0);
   s_gpio_ready = true;
+
+  /* Through a variable, not the macro: `1ULL << -1` as a constant expression
+   * is a compile error even inside a branch that never runs. */
+  const int flash_pin = BOARD_FLASH_EN;
+  if (flash_pin == BOARD_GPIO_NONE) {
+    ESP_LOGW(TAG, "flash unassigned: no JP1 pin for FLASH_EN, flash requests are no-ops");
+    return;
+  }
+  io.pin_bit_mask = 1ULL << flash_pin;
+  if (gpio_config(&io) != ESP_OK) {
+    ESP_LOGE(TAG, "cannot drive flash GPIO%d", flash_pin);
+    return;
+  }
+  gpio_set_level((gpio_num_t)flash_pin, 0);
+  s_flash_ready = true;
 }
 
 /** Decide whether this shot uses the flash. */
@@ -546,7 +569,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   xEventGroupClearBits(s_exposed, ALL_CAMS_MASK);
   xEventGroupClearBits(s_done, ALL_CAMS_MASK);
 
-  if (flash) gpio_set_level(BOARD_FLASH_EN, 1);
+  if (flash) flash_set(1);
   s_trigger_us = esp_timer_get_time();
   trigger_pulse();
   /* Major transitions are logged with the ring's microsecond stamp so bring-up
@@ -561,7 +584,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
 
   if (flash) {
     xEventGroupWaitBits(s_exposed, ask, pdFALSE, pdTRUE, pdMS_TO_TICKS(FLASH_MAX_MS));
-    gpio_set_level(BOARD_FLASH_EN, 0);
+    flash_set(0);
   }
 
   /* Every worker sets its bit exactly once per capture, including on every
@@ -636,7 +659,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
        (unsigned long)r.spread_us);
 
 finish:
-  if (s_gpio_ready) gpio_set_level(BOARD_FLASH_EN, 0);
+  flash_set(0);
   /* One place that undoes a half-made capture, so no failure path can leave
    * a folder of frames nothing will ever explain. */
   if (folder_open && !r.ok) storage_capture_abort(&store);
@@ -770,7 +793,12 @@ esp_err_t capture_init(const char *device_id) {
   taskmon_register("capture", s_task);
 
   gpio_setup();
-  ESP_LOGI(TAG, "ready — %d workers, trigger on GPIO%d, flash on GPIO%d", CAPTURE_CAMS,
-           BOARD_SYNC_OUT, BOARD_FLASH_EN);
+  if (s_flash_ready) {
+    ESP_LOGI(TAG, "ready — %d workers, trigger on GPIO%d, flash on GPIO%d", CAPTURE_CAMS,
+             BOARD_SYNC_OUT, BOARD_FLASH_EN);
+  } else {
+    ESP_LOGI(TAG, "ready — %d workers, trigger on GPIO%d, flash unassigned", CAPTURE_CAMS,
+             BOARD_SYNC_OUT);
+  }
   return ESP_OK;
 }

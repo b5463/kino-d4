@@ -527,15 +527,16 @@ static void handle_capabilities(uint32_t seq) {
    */
   cJSON_AddBoolToObject(caps, "wiggle", true);
   cJSON_AddBoolToObject(caps, "quad", true);
-  /* The control path: GPIO28 is driven across the exposure window, the mode is
-   * configurable, and the pulse is bounded and released on every path. True
-   * because the command works. */
+  /* The control path: the flash window is held across the exposure, the mode
+   * is configurable, and the window is bounded and released on every path.
+   * True because the command works. BOARD_FLASH_EN is BOARD_GPIO_NONE on this
+   * carrier, so the window drives no pin (capture.c). */
   cJSON_AddBoolToObject(caps, "flashControl", true);
   /*
    * ...and what it drives. Additive and optional, because `flashControl` alone
    * cannot distinguish "the firmware can fire a flash" from "there is a flash
-   * to fire", and today only the first is true: GPIO28 reaches a bench LED at
-   * most. A host that shows a flash control because flashControl is true would
+   * to fire", and today only the first is true: FLASH_EN has no JP1 pin. A
+   * host that shows a flash control because flashControl is true would
    * otherwise be promising the user light that does not exist.
    *
    * Flips to true when flash hardware is fitted AND validated (M5, Gate D) -

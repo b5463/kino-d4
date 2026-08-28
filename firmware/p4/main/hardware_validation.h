@@ -28,8 +28,12 @@ typedef enum {
   HWV_SD_D2_GPIO41,
   HWV_SD_D3_GPIO42,
   HWV_SD_LDO_CH4,
-  HWV_CAM1_TX_GPIO52,
-  HWV_CAM1_RX_GPIO51,
+  /* CAM1 on UART1: TX GPIO1 (JP1 pin 7), RX GPIO2 (JP1 pin 9). The rows were
+   * named for GPIO52/51 until 2026-08-28; those pins are not on the header and
+   * nothing ever answered on them, so no evidence was recorded against the
+   * old names. Same NVS index, renamed in place. */
+  HWV_CAM1_TX_GPIO1,
+  HWV_CAM1_RX_GPIO2,
   HWV_CAM1_BAUD_921600,
   HWV_CAM1_NODE_LINK,
   HWV_CAM1_SENSOR_DETECT,
@@ -46,7 +50,12 @@ typedef enum {
   HWV_TOUCH_GT911,
   HWV_AUDIO_ES8311,
   HWV_AUDIO_AMP_GPIO11,
-  HWV_CAM_PWR_EN_GPIO31,
+  /* No pin. BOARD_CAM_PWR_EN is BOARD_GPIO_NONE: JP1 has nine free GPIOs and
+   * the four UARTs plus SYNC take them. The row's earlier VALIDATED claim was
+   * earned by driving GPIO31, which routes nowhere on this carrier, so it was
+   * void; power.c no longer marks it. Earned only when a real switch line
+   * exists and a meter shows the bank going off. Same NVS index, renamed. */
+  HWV_CAM_PWR_EN_UNASSIGNED,
   /*
    * ---- APPEND ONLY BELOW THIS LINE ----
    *
@@ -62,6 +71,10 @@ typedef enum {
    * carries. The split is CAM1's history, not a better model: one successful
    * frame exchange proves both directions at once, and nothing can prove TX
    * alone. The asymmetry is deliberate and stays for the index reason above.
+   *
+   * Pins, from board_d4v1.h: CAM2 UART2 TX GPIO47 / RX GPIO46 (JP1 10/12),
+   * CAM3 UART3 TX GPIO32 / RX GPIO33 (JP1 19/21), CAM4 UART4 TX GPIO45 /
+   * RX GPIO4 (JP1 14/13). All three UNVALIDATED: no node has been jumpered.
    */
   HWV_CAM2_UART,
   HWV_CAM2_NODE_LINK,
@@ -78,14 +91,16 @@ typedef enum {
   HWV_CAM4_SENSOR_DETECT,
   HWV_CAM4_JPEG_TRANSFER,
   HWV_CAM4_SD_WRITE,
-  /* The shared trigger trace. Driven by capture.c today; this row is earned
-   * only when a node reports having *seen* the edge, which needs the node-side
-   * ISR that M0 deliberately does not implement. It exists so the bring-up has
-   * somewhere to record the answer. */
-  HWV_SYNC_TRIGGER_GPIO32,
-  /* GPIO28. Earned when something measurably responds to the pin - a scope
-   * trace or a lit bench LED - not when the pin is merely driven. */
-  HWV_FLASH_EN_GPIO28,
+  /* The shared trigger trace, GPIO20 on JP1 pin 17 (was GPIO32 until the
+   * 2026-08-28 pin correction; GPIO32 is now CAM3_TX). Driven by capture.c
+   * today; this row is earned only when a node reports having *seen* the
+   * edge, which needs the node-side ISR that M0 deliberately does not
+   * implement. It exists so the bring-up has somewhere to record the answer. */
+  HWV_SYNC_TRIGGER_GPIO20,
+  /* No pin. BOARD_FLASH_EN is BOARD_GPIO_NONE and capture.c drives nothing
+   * for a flash request. Stays UNVALIDATED until M2 routes the line (I2C
+   * expander on ESI2C or otherwise) and something measurably responds. */
+  HWV_FLASH_EN_UNASSIGNED,
   /* Earned on the first debounced press of a real fitted switch. Cannot flip
    * while BOARD_BTN_SHUTTER is BOARD_BTN_NONE, which is the current state. */
   HWV_BTN_SHUTTER,
