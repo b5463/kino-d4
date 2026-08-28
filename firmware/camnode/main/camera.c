@@ -42,9 +42,32 @@ esp_err_t camsensor_init(void) {
       .pixel_format = PIXFORMAT_JPEG,
       .frame_size = FRAMESIZE_UXGA, /* 1600x1200 default, see start plan */
       .jpeg_quality = 12,
-      .fb_count = 1,
+      /*
+       * Two buffers and GRAB_LATEST, which is what esp32-camera documents for
+       * streaming and what the viewfinder measurement demanded.
+       *
+       * With fb_count=1 and GRAB_WHEN_EMPTY the driver fills the one buffer
+       * after each return and then stalls until the next fb_get. The P4's
+       * preview pump free-runs against the sensor's frame clock, so a request
+       * either caught a ready frame or waited a whole frame period, and the
+       * bench log is bimodal on exactly that: cap was 10 ms or 62-75 ms with
+       * nothing in between, making the frame interval alternate between about
+       * 40 ms and 101 ms. Constant bytes, constant transfer, 2.5x jitter -
+       * felt as stutter whenever the scene moved.
+       *
+       * With two buffers the driver captures continuously, so a request is
+       * served from a frame already in hand. esp_camera.h: GRAB_WHEN_EMPTY is
+       * "less resources but first 'fb_count' frames might be old", while
+       * GRAB_LATEST keeps "the last 'fb_count' frames" queued.
+       *
+       * This also bounds staleness for stills. HARDWARE_VALIDATION.md records
+       * a frame handed back 134 s after it was exposed; the queue now holds
+       * only the two most recent frames, and camsensor_discard_queued still
+       * runs ahead of a real shutter.
+       */
+      .fb_count = 2,
       .fb_location = CAMERA_FB_IN_PSRAM,
-      .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
+      .grab_mode = CAMERA_GRAB_LATEST,
   };
 
   esp_err_t err = esp_camera_init(&config);
@@ -160,4 +183,27 @@ camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing
 
 void camsensor_release(camera_fb_t *fb) {
   if (fb != NULL) esp_camera_fb_return(fb);
+}
+
+uint32_t camsensor_discard_queued(void) {
+  /*
+   * Drops the oldest queued frame so the shutter does not photograph the past.
+   *
+   * This was written against fb_count=1, where the driver captured one frame
+   * after each return and then stalled, handing back an image exposed up to
+   * 134 s before the command. The config is now fb_count=2 with GRAB_LATEST,
+   * which already bounds the queue to the two most recent frames, so the
+   * pathological case is gone - but a queued frame is still a frame from
+   * before the command, and dropping one here keeps the photograph causally
+   * after the shutter press rather than one frame period ahead of it.
+   *
+   * This bounds the photograph to a frame period of the command.
+   * It does not synchronise anything between cameras; that is the sync work
+   * SYNC_FEASIBILITY.md scopes. It only stops the camera photographing the
+   * past.
+   */
+  const int64_t t0 = esp_timer_get_time();
+  camera_fb_t *stale = esp_camera_fb_get();
+  if (stale != NULL) esp_camera_fb_return(stale);
+  return (uint32_t)((esp_timer_get_time() - t0) / 1000);
 }

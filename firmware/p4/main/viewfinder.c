@@ -1,5 +1,6 @@
 #include "viewfinder.h"
 
+#include <stdatomic.h>
 #include <string.h>
 
 #include "cam_link.h"
@@ -58,10 +59,20 @@ static jpeg_decoder_handle_t s_decoder;
 static SemaphoreHandle_t s_decode_lock;
 static vf_status_t s_status[4];
 static int64_t s_last_frame_us[4];
+static int64_t s_report_us[4]; /* throttles the per-frame timing line below */
 static bool s_ready;
 static volatile bool s_running;
-/* Pumps currently inside pump_camera(). viewfinder_hold() waits for zero. */
-static volatile int s_pumping;
+/* Pumps currently inside pump_camera(). viewfinder_hold() waits for zero.
+ *
+ * Atomic, not volatile. Four camera tasks increment and decrement this, and
+ * they are created unpinned on a dual-core part, so two of them can execute
+ * the load-add-store at the same instant; `volatile int` only stops the
+ * compiler caching it. A lost increment lets hold() return while a pump is
+ * still on the wire, which is the BAD_ID mid-transfer this counter exists to
+ * prevent. A lost decrement leaves it stuck above zero, so every hold waits
+ * out its full 1500 ms and then captures anyway - the same hazard plus a
+ * 1.5 s shutter lag. */
+static atomic_int s_pumping;
 /* Tiles are frozen until this time; see viewfinder_review(). */
 static volatile int64_t s_review_until_us;
 
@@ -74,16 +85,17 @@ bool viewfinder_hold(uint32_t timeout_ms) {
   /* Wait out any pump already talking to a node. Without this the capture
    * races the very frame it is about to invalidate. */
   const int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
-  while (s_pumping > 0 && esp_timer_get_time() < deadline) {
+  while (atomic_load(&s_pumping) > 0 && esp_timer_get_time() < deadline) {
     /* One tick, not 5 ms: at 100 Hz pdMS_TO_TICKS(5) is zero ticks and this
      * wait would spin at the caller's priority against the very pump task it
      * is waiting for. */
     vTaskDelay(1);
   }
   const uint32_t waited = (uint32_t)((esp_timer_get_time() - (deadline - (int64_t)timeout_ms * 1000)) / 1000);
-  if (s_pumping > 0) {
+  const int still = atomic_load(&s_pumping);
+  if (still > 0) {
     klog("P4", "vf hold TIMED OUT after %lums, %d still pumping - capturing anyway",
-         (unsigned long)waited, s_pumping);
+         (unsigned long)waited, still);
   } else if (was) {
     klog("P4", "vf held in %lums", (unsigned long)waited);
   }
@@ -129,6 +141,11 @@ void viewfinder_status(int cam, vf_status_t *out) {
  */
 static bool pump_camera(int cam) {
   camlink_capture_result_t res;
+  /* The capture request is the sensor actually taking a picture, and the first
+   * round of instrumentation left it out - which hid three quarters of the
+   * frame period. It is timed here because it is the only part of a preview
+   * frame whose cost depends on what the lens is pointed at. */
+  const int64_t cap_start_us = esp_timer_get_time();
   if (camlink_capture_ch(cam, VF_RESOLUTION, VF_QUALITY, VF_CAPTURE_TIMEOUT_MS, &res) !=
       ESP_OK) {
     s_status[cam].state = VF_NO_LINK;
@@ -140,6 +157,8 @@ static bool pump_camera(int cam) {
     return false;
   }
 
+  const int64_t cap_us = esp_timer_get_time() - cap_start_us;
+  const int64_t xfer_start_us = esp_timer_get_time();
   size_t got_total = 0;
   while (got_total < res.size) {
     size_t got = 0;
@@ -151,6 +170,7 @@ static bool pump_camera(int cam) {
     }
     got_total += got;
   }
+  const int64_t xfer_us = esp_timer_get_time() - xfer_start_us;
   camlink_release_ch(cam, res.frame_id);
 
   if (got_total != res.size) {
@@ -182,6 +202,7 @@ static bool pump_camera(int cam) {
    * the four transfers are not. That is the right way round - a QVGA decode
    * is a fraction of a millisecond in hardware, while a transfer is tens of
    * milliseconds, so the link is what the frame rate is made of. */
+  const int64_t dec_start_us = esp_timer_get_time();
   xSemaphoreTake(s_decode_lock, portMAX_DELAY);
   const esp_err_t err = jpeg_decoder_process(s_decoder, &cfg, s_jpeg[cam], got_total,
                                              (uint8_t *)s_tile[cam],
@@ -209,6 +230,26 @@ static bool pump_camera(int cam) {
   s_status[cam].frames++;
   s_status[cam].bytes = res.size;
   s_status[cam].state = VF_LIVE;
+
+  /*
+   * Where a preview frame's time actually goes, once a second per camera.
+   *
+   * A JPEG is as big as the scene is detailed, so moving in front of the lens
+   * makes every frame bigger, and at a fixed 921600 baud - 92 KB/s once the
+   * start and stop bits are paid for - a bigger frame is a slower frame. That
+   * turns scene motion into a varying frame interval, which is seen as stutter
+   * even when the average rate is fine. These three numbers say whether the
+   * wire is the reason: bytes against xfer ms is the achieved line rate, and
+   * dec ms says whether the decoder is a factor at all.
+   */
+  const int64_t dec_us = esp_timer_get_time() - dec_start_us;
+  if (now - s_report_us[cam] >= 1000000) {
+    s_report_us[cam] = now;
+    klog("P4", "cam%d vf %uB cap %ums xfer %ums dec %ums %u.%u fps", cam + 1,
+         (unsigned)res.size, (unsigned)(cap_us / 1000), (unsigned)(xfer_us / 1000),
+         (unsigned)(dec_us / 1000), (unsigned)(s_status[cam].fps_x10 / 10),
+         (unsigned)(s_status[cam].fps_x10 % 10));
+  }
   return true;
 }
 
@@ -234,18 +275,18 @@ static void camera_task(void *arg) {
      * lost its frame. Claiming first means hold() either sees the claim and
      * waits, or clears the flag before the claim and we back out here.
      */
-    s_pumping++;
+    atomic_fetch_add(&s_pumping, 1);
     const bool may_pump =
         s_running && esp_timer_get_time() >= s_review_until_us;
     if (!may_pump) {
-      s_pumping--;
+      atomic_fetch_sub(&s_pumping, 1);
       /* Idle at 100 ms when stopped, 20 ms while reviewing, so live resumes
        * promptly when the review window closes. */
       vTaskDelay(pdMS_TO_TICKS(s_running ? 20 : 100));
       continue;
     }
     const bool ok = pump_camera(cam);
-    s_pumping--;
+    atomic_fetch_sub(&s_pumping, 1);
     if (ok && !announced) {
       announced = true;
       klog("P4", "cam%d viewfinder live", cam + 1);
