@@ -84,6 +84,31 @@ the arithmetic the Phase 1 audit derived from source and the driver's own
 "40MHz SYSCLK / 10MHz PCLK" comment contradicts. The silicon agrees with the
 audit.
 
+### No camera attached at all, 2026-08-28
+
+The state every unit boots into on a bench, and the one most likely to be met
+by someone who has not wired anything yet. P4 alone on COM8, no node on any
+channel.
+
+| Check | Result |
+|---|---|
+| `CAMERA_CAPTURE` with nothing attached | NACK `CAMERA_OFFLINE` "No camera answered" in **1.7 s**, plus a `LOG` event. Refused, not hung |
+| Sanity sweep — `HELLO`, `GET_DEVICE_INFO`, `GET_CAPABILITIES`, `GET_STORAGE_STATUS`, `GET_RUNTIME_STATS`, `GET_HW_VALIDATION`, `GET_LOGS` | 7/7 OK, 1.1–9.3 ms each |
+| Framing across the session | 8 frames, **0 CRC failures, 0 resyncs** |
+| Task watchdog | None. `resetReason: power-on`, uptime 75 s, free heap 23408 KB |
+| `taskmon` | 18 tasks, `tasksUnmeasured: 0` |
+| Host clock | `clock set to 2026-08-28T22:02:46+02:00 by host (moved +88865 s)`, `t` a real epoch — the clock unification holding |
+
+Four channels each cost `DEFAULT_TIMEOUT_MS` on the probe, serialised, so a
+full probe round with nothing attached is about 12 s and repeats. It starves
+nothing since the poll was fixed, but it is a lot of link time spent proving
+absence, and it delays boot.
+
+Note for the open `xfer` jitter question: the runtime reports **eight**
+camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
+viewfinder, not the four assumed when the priority-3 round-robin was proposed
+as the cause. Whatever that contention is, there is twice as much of it.
+
 ### Viewfinder frame timing, 2026-08-28
 
 One camera on CAM1, preview at 320x240 q30, timed inside the P4's pump task and
