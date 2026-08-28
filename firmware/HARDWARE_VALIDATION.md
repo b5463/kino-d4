@@ -84,6 +84,54 @@ the arithmetic the Phase 1 audit derived from source and the driver's own
 "40MHz SYSCLK / 10MHz PCLK" comment contradicts. The silicon agrees with the
 audit.
 
+### Capture at 2048x1536, and the UART overrun that limits it, 2026-08-29
+
+One camera on CAM1, stills at the sensor's native 2048x1536 - the largest size
+the OV3660 produces without interpolation, so the largest that does not cost
+image quality. Frames measured 91-170 KB.
+
+The product capture path completes where it previously never did: **2 of 5**,
+about 20 s each, carried over lost chunks by retries. The remaining failures
+are all one fault.
+
+| Configuration tried | Overruns per capture | Result |
+|---|---|---|
+| 8 KB chunks, 921600, 4000 ms | 4-5 (good runs), ~30 (bad) | **2/5 pass** — kept |
+| 8 KB chunks, 921600, 800 ms | same | 0/4 — budget too short for a retry to be worth taking |
+| 2 KB chunks, 460800 | ~30 | 1/4 — four times the requests, four times the overruns |
+| 8 KB chunks, 460800 | 1-4 | 0/4 — fewer overruns, still fatal |
+| RX ring 33 KB -> 66 KB | unchanged | no effect |
+
+**The fault.** `UART_FIFO_OVF` on the P4's link UART. The RX FIFO is 128 bytes,
+which at 921600 baud is 1.39 ms of tolerance, and the ESP-IDF driver resets the
+FIFO when it overflows - so the entire frame in flight is lost, not corrupted.
+A whole 8210-byte chunk dies to one momentary window. The link carried 452 KB
+with **zero CRC errors** across the same session, so this is not signal
+integrity and not the cable.
+
+Two measurements pin down what it is not:
+
+- Doubling the driver's ring buffer changed nothing, which rules out the reader
+  being outrun and leaves the ISR being held off.
+- Overruns scale with the number of request/response turnarounds rather than
+  with bytes carried: quartering the chunk size quadrupled the request count
+  and took a capture from 4 overruns to 30.
+
+`CONFIG_UART_ISR_IN_IRAM=y` is set and did help - it moved the first failure
+from chunk 0 to chunk 1 - so a disabled flash cache was part of it but is not
+the whole story. Roughly a fifth of chunk requests still lose bytes.
+
+**Hardware flow control is not available.** It would end this outright, but JP1
+has twelve free GPIOs and eleven are committed (eight CAM TX/RX, `SYNC_OUT`,
+`FLASH_EN`, `CAM_PWR_EN`). The twelfth is GPIO35, a boot strapping pin that
+must stay unconnected. There is no room for four RTS/CTS pairs, so the four-
+camera rig should not be wired differently on account of this.
+
+The remaining lead is UART DMA. The ESP32-P4 has UHCI, which moves UART RX into
+a DMA descriptor chain and removes the per-byte ISR deadline that this fault is
+made of. That is the fix worth trying next; everything above only manages the
+symptom.
+
 ### No camera attached at all, 2026-08-28
 
 The state every unit boots into on a bench, and the one most likely to be met
