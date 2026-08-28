@@ -109,6 +109,48 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### microSD on SDMMC slot 0, 2026-08-28
+
+The one change 0.4.x made to an already-validated path. The 2026-08-26 mount
+that earned GPIO39-44 was on slot 1 - the slot ESP-Hosted needs - so the card
+moved to slot 0 and the row went back to `UNVALIDATED` until re-observed. This
+is that observation. P4 alone on COM8, firmware 0.4.1, unit `KD4-D121BC`.
+
+| Check | Result |
+|---|---|
+| Mount | `mounted: true`, 29 812 MB total / 29 810 MB free, FAT, **`mountAttempts: 1`** |
+| `SD_SLOT0` registry row | Auto-marked `validated`, detail "mounted 29820MB" |
+| `STORAGE_SELF_TEST` | `ok: true`, `failedPhase: null`, 65 536 B in **163 ms** |
+| `STORAGE_BENCH` 64 KiB | 0.694 MB/s write, 1.359 MB/s read, worst block 42.1 ms, `crcMatch: true` (`a6275846` written and read), `cleanupOk: true` |
+| `STORAGE_BENCH` 1 MiB | 0.623 MB/s write, 1.350 MB/s read, worst block 57.0 ms, p95 55.5 ms, `crcMatch: true` (`158987c5` written and read), `cleanupOk: true` |
+| Free-space accounting | `freeBytes` 31 258 738 688 before and after both benches - `BENCH.TMP` removed, nothing leaked |
+| `writeTestStatus` | `none` -> `pass` |
+| Framing across the session | 0 CRC failures, 0 resyncs |
+
+Against the slot-1 reference of 2026-08-26 (~0.59 MB/s write, ~1.35 MB/s read,
+worst block ~129 ms): read is unchanged, write is 5-18% faster, and the worst
+block is less than half. There is no regression to look for. The direction is
+the expected one - slot 0 reaches these pads through IOMUX rather than through
+the GPIO matrix.
+
+`SD_SLOT0` is **VALIDATED**. `SD_C6_COEXIST` is not, and cannot be until the
+radio is enabled: nothing has yet contended for the controller.
+
+### C6 first light, 2026-08-28 - stopped before the first pin
+
+Attempted after the slot-0 result above, on the same unit and session. It did
+not proceed, and no C6 pin was driven.
+
+| Gate | Result |
+|---|---|
+| B3 - microSD on slot 0 | **PASS**, above |
+| B2 - GPIO54 / `CHIP_PU` semantics | **NOT ATTEMPTED.** Requires a meter or a scope on the control net. There is no KDP command that reads a raw GPIO, so the level cannot be sampled in-band, and the only other way to learn it is to drive it - which is the thing being avoided |
+| C6-B onward | **NOT ATTEMPTED.** Enabling ESP-Hosted asserts GPIO54 and GPIO14-19 on init. Doing that before B2 is the blind toggle the procedure exists to prevent |
+
+The bench images for the next attempt are built and pinned; see
+[`C6_BRINGUP.md`](C6_BRINGUP.md). Note that `C6 module flash size` above still
+gates the first C6 write independently of B2.
+
 ### Viewfinder frame timing, 2026-08-28
 
 One camera on CAM1, preview at 320x240 q30, timed inside the P4's pump task and
@@ -256,7 +298,7 @@ subsystem.
 | P4 → C6 SDIO mapping | **IDENTIFIED AND RECONCILED, REQUIRES BENCH VALIDATION.** SDMMC slot 1 on GPIO14–19 with EN on GPIO54. Identified from Guition documentation for this carrier, then reconciled against two independent primary sources: Espressif's own ESP-Hosted defaults for a P4 host with a C6 coprocessor pin all six to exactly these numbers (`min == max`), and `ESP_HOSTED_HOST_RESET_GPIO` defaults to 54 for every P4 target. Evidence chain: [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md). **No pin has been driven.** The radio is a build-time opt-in that is off by default, because enabling ESP-Hosted drives these pins before `app_main` on every boot and the routing is corroborated rather than measured |
 | GPIO54 (`CHIP_PU`) polarity | **UNCONFIRMED.** ESP-Hosted defaults to active-low ("LOW asserts reset, HIGH runs") and ships an explicit active-high override for boards whose EN is buffered through an inverting transistor. Which this carrier is has not been measured. One constant, `BOARD_C6_EN_ACTIVE_LOW`, so the bench can flip it |
 | SD / C6 bus coexistence | **RESOLVED IN SOFTWARE, REQUIRES BENCH VALIDATION.** The two buses share no pin *and* — the part that mattered — no longer share a slot. One SDMMC controller serves both; `SDMMC_HOST_DEFAULT()` selects slot 1, so the card had been sitting on the slot ESP-Hosted needs. The card is now explicitly on slot 0, whose IOMUX pads are exactly GPIO39–44 (`soc/esp32p4/include/soc/sdmmc_pins.h`), and slot 1 has no IOMUX path at all. Espressif ship this arrangement as `esp_hosted`'s `mcu_hosted_sdio_sdmmc_combined` example. **Unproven on hardware: the card has never been mounted from slot 0**, and that is now the first thing a bench run must check |
-| SD card on slot 0 | **UNVALIDATED.** The 2026-08-26 mount that validated GPIO39–44 was on slot 1. The pins are unchanged and are the chip's dedicated SD pads, so this is expected to be a no-op or an improvement — but it is a change to a validated path and has not been re-observed |
+| SD card on slot 0 | **VALIDATED 2026-08-28**, firmware 0.4.1 on `KD4-D121BC`: mounted first attempt, self-test and both benches pass with matching CRCs and clean cleanup, and throughput is at or above the slot-1 reference. Session recorded above |
 | Wi-Fi association / DHCP / DNS / TLS | **NOT VALIDATED — never attempted.** No radio has been exercised on this hardware. The state model, credential store and `NETWORK_*` surface are CODE DONE and host-tested; nothing above them has run |
 | C6 coprocessor image | **CODE DONE, UNVALIDATED** — `firmware/c6` is Espressif's official ESP-Hosted coprocessor (component pinned to 3.0.6), 1 105 872 bytes, and two clean builds of one commit match. Never flashed; no version read back. The C6's SDIO slave pads are fixed in silicon, so the image is correct independently of the carrier |
 | C6 module flash size | **UNKNOWN, and it gates the first flash.** The coprocessor image needs the 4 MB OTA table — it is 122 KB too large for the 2 MB one, so a smaller part means a different image, not a smaller table. An oversized `FLASHSIZE` flashes and then fails to boot. `esptool flash_id` over the recovery path before the first write |

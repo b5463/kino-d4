@@ -23,12 +23,45 @@ hardware task and everything after it is blocked on it.
 | Durable upload queue | CODE DONE, host-tested |
 | Roll HTTP client | CODE DONE, UNVALIDATED — `roll_http.c`, `roll_api.c` |
 | Radio variant in CI | CODE DONE — `p4-radio` job, its own 1440 KB guard |
+| microSD on slot 0 (prerequisite) | **BENCH DONE 2026-08-28** — the slot move is proven on `KD4-D121BC`; see `HARDWARE_VALIDATION.md` |
 | Any of it on hardware | **NOTHING. No radio has ever been exercised. No pin has been driven toward the C6.** |
 
 Nothing in this file has been run on a board. Every "CODE DONE" above means
 the code exists and compiles; the last row is the one that matters, and it
 stays that way until a bench session moves the registry rows in
 `C6_HARDWARE_MAP.md`.
+
+## Bench baseline, 2026-08-28
+
+The exact images for the next attempt. Built from a clean `git archive` of the
+commit below plus the pinned `dependencies.lock`, never from a working tree,
+and each built twice from scratch to prove the hash is a property of the source
+rather than of the build directory.
+
+| Image | Bytes | SHA-256 |
+|---|---|---|
+| `kino-p4.bin` default, no radio | 822 160 | `8d168da6edff9c049b2aebeb6bfda915bfc20885ee65475a379381562afbf624` |
+| `kino-p4.bin` radio | 1 419 920 | `3b07e25e7de98933a0f7930bfe10f6c8c221ceb7f11c4148134f8249a095c49d` |
+| `kino-c6.bin` slave | 1 105 872 | `3616fe6e6e6329f7443dce0f19232bb6aded9091801db874f150a18a1baaee61` |
+
+All three are byte-identical across two clean builds. The C6 hash also matches
+the one recorded before this session, so the slave image is stable across
+environments and not merely repeatable inside one.
+
+Baseline: HEAD `3a1073e`, `espressif/idf:v5.5.1`, `esp_hosted` 3.0.6
+(`component_hash 1b1c2aa8…`), `esp_wifi_remote` 1.6.4
+(`component_hash 50d3beaf…`). The lockfile now pins the resolved artifacts
+by hash rather than only by version constraint, so a clean checkout fetches the
+same bytes.
+
+The radio image leaves 116 080 bytes (7.6%) of the 1 536 000-byte `factory`
+partition. It fits; it will not fit two OTA slots, which is an M8 input and not
+a bench blocker.
+
+**The default image is the recovery baseline.** Keep it flashable: it boots,
+mounts the card, runs KDP and answers `STORAGE_SELF_TEST` and `STORAGE_BENCH`
+with the radio absent entirely, which is what makes it possible to tell a radio
+fault from a board fault.
 
 ## Why the order is this order
 
