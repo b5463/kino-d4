@@ -309,15 +309,32 @@ static void server_task(void *arg) {
      * before it was even seen. Three exchanges per preview frame made that
      * 300 ms of sleep per frame on the node alone.
      */
-    size_t avail = 0;
-    uart_get_buffered_data_len(BOARD_LINK_UART_NUM, &avail);
-    if (avail == 0) {
-      vTaskDelay(pdMS_TO_TICKS(2));
-      continue;
+    /*
+     * Block in the UART driver for ONE byte, then take the rest with no wait.
+     *
+     * The obvious "poll what is buffered, sleep 1 ms otherwise" is a busy-wait
+     * on this build: CONFIG_FREERTOS_HZ is 100, so a tick is 10 ms and
+     * pdMS_TO_TICKS(1) rounds to ZERO ticks. vTaskDelay(0) does not block, so
+     * the loop span at task priority for the whole timeout. Three unfitted
+     * cameras spinning out a 900 ms viewfinder timeout starved IDLE0 into a
+     * task watchdog and starved the UI task that feeds the panel - felt on the
+     * bench as stutter and a flat blue flash on the one camera that IS there.
+     *
+     * Asking for 1 byte returns the instant a byte lands, so this keeps the
+     * zero-latency behaviour the poll was written for, and an idle channel
+     * genuinely sleeps instead of burning the core.
+     */
+    int n = uart_read_bytes(BOARD_LINK_UART_NUM, rx, 1, pdMS_TO_TICKS(10));
+    if (n > 0) {
+      size_t avail = 0;
+      uart_get_buffered_data_len(BOARD_LINK_UART_NUM, &avail);
+      if (avail > sizeof rx - 1) avail = sizeof rx - 1;
+      if (avail > 0) {
+        const int more = uart_read_bytes(BOARD_LINK_UART_NUM, rx + 1, avail, 0);
+        if (more > 0) n += more;
+      }
+      kdp_decoder_push(&s_decoder, rx, (size_t)n, on_frame, NULL);
     }
-    if (avail > sizeof rx) avail = sizeof rx;
-    int n = uart_read_bytes(BOARD_LINK_UART_NUM, rx, avail, 0);
-    if (n > 0) kdp_decoder_push(&s_decoder, rx, (size_t)n, on_frame, NULL);
   }
 }
 

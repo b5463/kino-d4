@@ -39,6 +39,7 @@ static const char *TAG = "viewfinder";
 /* Older than this and a pane stops claiming to be live. */
 #define VF_STALE_MS 2000
 
+
 /*
  * Viewfinder-shaped timeouts, not capture-shaped ones.
  *
@@ -74,7 +75,10 @@ bool viewfinder_hold(uint32_t timeout_ms) {
    * races the very frame it is about to invalidate. */
   const int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
   while (s_pumping > 0 && esp_timer_get_time() < deadline) {
-    vTaskDelay(pdMS_TO_TICKS(5));
+    /* One tick, not 5 ms: at 100 Hz pdMS_TO_TICKS(5) is zero ticks and this
+     * wait would spin at the caller's priority against the very pump task it
+     * is waiting for. */
+    vTaskDelay(1);
   }
   const uint32_t waited = (uint32_t)((esp_timer_get_time() - (deadline - (int64_t)timeout_ms * 1000)) / 1000);
   if (s_pumping > 0) {
@@ -262,7 +266,10 @@ static void camera_task(void *arg) {
       vTaskDelay(pdMS_TO_TICKS(miss < 3 ? 500 : 2500));
     } else {
       miss = 0;
-      vTaskDelay(pdMS_TO_TICKS(5));
+      /* One tick between frames. Not a rate cap - the finder is free to run as
+       * fast as the link allows - just a guaranteed yield, so a fast camera can
+       * never monopolise the core against the UI task that feeds the panel. */
+      vTaskDelay(1);
     }
   }
 }
