@@ -87,7 +87,23 @@ static worker_t s_worker[CAPTURE_CAMS];
 static EventGroupHandle_t s_exposed; /* bit per camera: node finished capturing */
 static EventGroupHandle_t s_done;    /* bit per camera: worker is finished */
 static SemaphoreHandle_t s_card;     /* one writer at a time on the card */
-static SemaphoreHandle_t s_lock;     /* one capture at a time */
+/*
+ * One capture pipeline at a time, for EVERY kind of capture.
+ *
+ * Product captures (shutter, button, CAMERA_CAPTURE) and the bench captures
+ * in kdp_server (CAMERA_TEST, the soak job, STORAGE_SELF_TEST, STORAGE_BENCH)
+ * used to hold two different locks that never looked at each other. A node
+ * holds exactly one frame and a new capture command replaces it, so a bench
+ * capture landing on cam1 while a product worker was mid-transfer turned the
+ * worker's next chunk read into BAD_ID. The per-channel mutex in cam_link
+ * covers one request and reply, not a capture/read/release sequence.
+ *
+ * A binary semaphore rather than a mutex, on purpose: the soak job takes this
+ * on the KDP task and gives it back from its own task when the run ends, and
+ * FreeRTOS asserts when a mutex is given by a task that does not hold it.
+ * Nothing here needs priority inheritance - holders are at priority 5 and 9
+ * and never wait on each other. */
+static SemaphoreHandle_t s_lock;
 static QueueHandle_t s_requests;
 static TaskHandle_t s_task;
 
@@ -340,10 +356,14 @@ static void do_frame(worker_t *w) {
     size_t want = cap.size - offset;
     if (want > NL_CHUNK_MAX) want = NL_CHUNK_MAX;
     size_t got = 0;
+    const int64_t t_chunk = esp_timer_get_time();
     if (camlink_read_ch(cam, cap.frame_id, offset, w->jpeg + offset, want,
                         CHUNK_READ_TIMEOUT_MS, &got) != ESP_OK ||
         got == 0) {
       /* Where it stopped separates a dead link from a slow one. */
+      klog(cam_tag(cam), "chunk FAILED at offset %lu want %u got %u after %ums",
+           (unsigned long)offset, (unsigned)want, (unsigned)got,
+           (unsigned)ms_since(t_chunk));
       frame_failf(f, "link died at %lu%% of %lu B",
                   (unsigned long)((uint64_t)offset * 100 / cap.size),
                   (unsigned long)cap.size);
@@ -354,6 +374,12 @@ static void do_frame(worker_t *w) {
     }
     crc = kdp_crc32_update(crc, w->jpeg + offset, got);
     offset += got;
+    /* Per-chunk, because "link died at 5%" says where it stopped and nothing
+     * about why. The same transfer through kdp_server's loop succeeds at the
+     * same size on the same wire, so the interesting number is whether the
+     * chunks before the failure were themselves short or slow. */
+    klog(cam_tag(cam), "chunk %lu/%lu got %uB in %ums", (unsigned long)offset,
+         (unsigned long)cap.size, (unsigned)got, (unsigned)ms_since(t_chunk));
   }
   f->transfer_ms = ms_since(t_xfer);
   camlink_release_ch(cam, cap.frame_id);
@@ -446,9 +472,40 @@ static bool cams_powered(void) {
   return true;
 }
 
+bool capture_lock(uint32_t timeout_ms) {
+  if (s_lock == NULL) return false;
+  return xSemaphoreTake(s_lock, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+}
+
+void capture_unlock(void) {
+  if (s_lock != NULL) xSemaphoreGive(s_lock);
+}
+
 esp_err_t capture_fire(const char *source, capture_report_t *out) {
-  if (s_lock == NULL) return ESP_ERR_INVALID_STATE;
-  if (xSemaphoreTake(s_lock, 0) != pdTRUE) return ESP_ERR_INVALID_STATE;
+  if (!capture_lock(0)) return ESP_ERR_INVALID_STATE;
+
+  /*
+   * Take the card for the whole capture, at capture priority, HERE.
+   *
+   * This lived in capture_task() first, wrapped around the call to this
+   * function, and the same reasoning that moved the viewfinder hold (below)
+   * applies: KDP's CAMERA_CAPTURE calls capture_fire() directly, so a
+   * host-triggered capture never held the card and shared the SDMMC bus with
+   * whatever the upload worker or a MEDIA_READ was doing. The reason to hold
+   * the card is the bus and the timing - four concurrent frame writes whose
+   * spread is the number this pipeline exists to keep small - not the handle
+   * budget, which the audit in storage.h found comfortable.
+   *
+   * STORAGE_WAIT_FOREVER, deliberately. A capture is never refused the card;
+   * the lower-priority holder sees storage_yield_requested() go true and lets
+   * go between chunks, so the wait is bounded by one chunk rather than one
+   * whole file. Released at `finish`, on this task, after the done-listeners
+   * have run - upload_queue's listener writes UPLOAD.JSON through
+   * storage_acquire_unless_held(), which is what lets it run inside this hold
+   * from either caller. A NULL lock means storage_init() never ran, and then
+   * the capture fails below on SD_NOT_MOUNTED for the right reason.
+   */
+  const bool card_held = storage_acquire(STORAGE_USER_CAPTURE, STORAGE_WAIT_FOREVER);
 
   /*
    * Take the cameras off the viewfinder, HERE.
@@ -712,7 +769,8 @@ finish:
    * shutter, so this costs no decode. */
   viewfinder_review(450);
   viewfinder_release(vf_was_running);
-  xSemaphoreGive(s_lock);
+  if (card_held) storage_release(STORAGE_USER_CAPTURE);
+  capture_unlock();
   return r.ok ? ESP_OK : ESP_FAIL;
 }
 
@@ -725,37 +783,9 @@ static void capture_task(void *arg) {
   for (;;) {
     char source[16];
     if (xQueueReceive(s_requests, source, portMAX_DELAY) != pdTRUE) continue;
-
-    /*
-     * Take the card for the whole capture, at capture priority.
-     *
-     * This replaced a boolean the upload worker polled. A boolean is a hint,
-     * not exclusion: a reader that opened a handle between the check and the
-     * capture still took a descriptor. The descriptor budget turns out to be
-     * comfortable — the audit on STORAGE_MAX_OPEN_FILES found no path in this
-     * firmware holds two handles at once, this one included: the frame is
-     * closed before its CRC read-back opens it. So the reason to hold the card
-     * is not the handle count.
-     *
-     * It is the bus and the timing. Anything else reading the card is pulling
-     * bytes off the same SDMMC controller these four concurrent frame writes
-     * depend on, and the spread between frames is the one number this pipeline
-     * exists to keep small.
-     *
-     * STORAGE_WAIT_FOREVER, deliberately. A capture is never refused the
-     * card; the lower-priority holder sees storage_yield_requested() go true
-     * and lets go between chunks, so the wait is bounded by one chunk rather
-     * than one whole file. Photography wins; an upload that lands a few
-     * seconds later costs nothing.
-     *
-     * Taken and released in the same iteration with nothing between that can
-     * continue or return, so a failed capture cannot leave the card locked.
-     * A NULL lock means storage_init() never ran, and then there is no card
-     * to protect — the capture will fail on its own for the right reason.
-     */
-    const bool held = storage_acquire(STORAGE_USER_CAPTURE, STORAGE_WAIT_FOREVER);
+    /* The card lock and the viewfinder hold both live inside capture_fire(),
+     * so the host path through kdp_server gets them too. */
     capture_fire(source, NULL);
-    if (held) storage_release(STORAGE_USER_CAPTURE);
   }
 }
 
@@ -773,9 +803,8 @@ void capture_ack(void) {
 }
 
 bool capture_busy(void) {
-  if (s_lock == NULL) return false;
-  if (xSemaphoreTake(s_lock, 0) != pdTRUE) return true;
-  xSemaphoreGive(s_lock);
+  if (!capture_lock(0)) return s_lock != NULL;
+  capture_unlock();
   return false;
 }
 
@@ -796,7 +825,8 @@ esp_err_t capture_init(const char *device_id) {
     snprintf(s_device_id, sizeof s_device_id, "%s", device_id);
   }
 
-  s_lock = xSemaphoreCreateMutex();
+  s_lock = xSemaphoreCreateBinary();
+  if (s_lock != NULL) xSemaphoreGive(s_lock); /* binary semaphores start taken */
   s_card = xSemaphoreCreateMutex();
   s_exposed = xEventGroupCreate();
   s_done = xEventGroupCreate();
@@ -815,10 +845,22 @@ esp_err_t capture_init(const char *device_id) {
     if (s_worker[i].go == NULL) return ESP_ERR_NO_MEM;
     char name[16];
     snprintf(name, sizeof name, "cap%d", i + 1);
-    /* 4 KB: the deepest thing on this stack is cJSON-free chunk shuffling and
-     * a 96-byte snprintf. The frame itself lives in PSRAM. */
+    /* 8 KB, and it is a bring-up safety value rather than a measured fit.
+     *
+     * The 4 KB it replaces carried the note that the deepest thing here was
+     * "chunk shuffling and a 96-byte snprintf". A bench read on 2026-08-28
+     * disagreed: cap1 reported 32 bytes free of 4096, while cap2-4 - which no
+     * node has ever answered on - still held ~3800. Only cap1 had walked the
+     * transfer-then-SD-write path, and that path now also carries a per-chunk
+     * klog, whose vsnprintf lands on this stack.
+     *
+     * All four, not cam1 alone: cap2-4 run the same function over the same
+     * path and are shallow only because nothing has answered on them yet.
+     *
+     * Right-size all four after M1 / Gate A, from four live channels. Do not
+     * trim this on a channel count of one. */
     TaskHandle_t wh = NULL;
-    if (xTaskCreate(worker_task, name, 4096, &s_worker[i], 5, &wh) != pdPASS) {
+    if (xTaskCreate(worker_task, name, 8192, &s_worker[i], 5, &wh) != pdPASS) {
       return ESP_ERR_NO_MEM;
     }
     taskmon_register(name, wh);

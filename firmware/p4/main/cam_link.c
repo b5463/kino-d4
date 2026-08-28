@@ -8,6 +8,7 @@
 #include "driver/uart.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "hardware_validation.h"
 #include "kdp/decoder.h"
@@ -46,6 +47,9 @@
  * the frame behind it to be assembled. 64 bytes costs nothing and removes a
  * cliff that only appears at the maximum chunk size. */
 #define LINK_DECODE_BUF (KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN + 64)
+
+/* Deep enough that a burst of events during one chunk is not itself dropped. */
+#define LINK_EVT_QUEUE_LEN 16
 #define DEFAULT_TIMEOUT_MS 3000
 #define CAPTURE_TIMEOUT_MS 8000
 
@@ -74,6 +78,8 @@ struct channel_s {
   camlink_info_t info;
   camlink_stats_t stats;
   uint8_t decode_storage[LINK_DECODE_BUF];
+  QueueHandle_t evt_q;
+  uint32_t overruns; /* UART_FIFO_OVF + UART_BUFFER_FULL seen on this channel */
   kdp_decoder_t decoder;
   uint8_t tx[512];
   pending_t pending;
@@ -95,7 +101,7 @@ static channel_t s_ch[CAMLINK_CAMS];
 static bool valid_cam(int cam) { return cam >= 0 && cam < CAMLINK_CAMS && s_ch[cam].lock != NULL; }
 
 static void set_last_error(channel_t *ch, const char *code) {
-  strncpy(ch->stats.last_error, code, sizeof ch->stats.last_error - 1);
+  strlcpy(ch->stats.last_error, code, sizeof ch->stats.last_error);
   ch->stats.last_error[sizeof ch->stats.last_error - 1] = '\0';
 }
 
@@ -117,7 +123,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
   if (p->nack) {
     cJSON *err = cJSON_ParseWithLength((const char *)p->dst, p->len);
     const cJSON *code = err != NULL ? cJSON_GetObjectItem(err, "code") : NULL;
-    if (cJSON_IsString(code)) strncpy(p->err_code, code->valuestring, sizeof p->err_code - 1);
+    if (cJSON_IsString(code)) strlcpy(p->err_code, code->valuestring, sizeof p->err_code);
     cJSON_Delete(err);
   }
   p->got = true;
@@ -182,6 +188,14 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
      * zero-latency behaviour the poll was written for, and an idle channel
      * genuinely sleeps instead of burning the core.
      */
+    uart_event_t ev;
+    while (ch->evt_q != NULL && xQueueReceive(ch->evt_q, &ev, 0) == pdTRUE) {
+      if (ev.type == UART_FIFO_OVF || ev.type == UART_BUFFER_FULL) {
+        ch->overruns++;
+        klog(ch->tag, "UART %s during cmd 0x%02x - bytes lost, not corrupted",
+             ev.type == UART_FIFO_OVF ? "FIFO OVERRUN" : "RING FULL", cmd);
+      }
+    }
     int n = uart_read_bytes(ch->uart, rx, 1, pdMS_TO_TICKS(10));
     if (n > 0) {
       /* Drain whatever else arrived with it, without waiting for more. */
@@ -222,6 +236,9 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
            (unsigned long)(ch->stats.duplicates - dups_before),
            (unsigned long)(ch->stats.crc_errors + ch->decoder.stats.crc_failures - crc_before),
            (unsigned long)ch->timeout_run);
+      if (ch->overruns > 0)
+        klog(ch->tag, "%lu UART overrun(s) on this channel so far",
+             (unsigned long)ch->overruns);
       ch->timeout_logged_us = now_us;
     }
     result = ESP_ERR_TIMEOUT;
@@ -286,7 +303,17 @@ esp_err_t camlink_init(void) {
     /* A port that will not install is a channel that stays absent, not a
      * boot failure: three unwired nodes must never stop the one that is
      * wired from working. */
-    esp_err_t err = uart_driver_install(ch->uart, LINK_RX_BUF, 0, 0, NULL, 0);
+    /*
+     * An event queue, because installing with queue size 0 discards exactly
+     * the events that explain a lost byte. UART_FIFO_OVF and UART_BUFFER_FULL
+     * are how the driver reports that data arrived and could not be kept, and
+     * without them an overrun is indistinguishable from a node that went
+     * quiet: no CRC error, no resync, just a frame that never completes.
+     * ESP_INTR_FLAG_IRAM pairs with CONFIG_UART_ISR_IN_IRAM so the handler
+     * survives a disabled flash cache.
+     */
+    esp_err_t err = uart_driver_install(ch->uart, LINK_RX_BUF, 0, LINK_EVT_QUEUE_LEN,
+                                        &ch->evt_q, ESP_INTR_FLAG_IRAM);
     if (err == ESP_OK) err = uart_param_config(ch->uart, &config);
     if (err == ESP_OK)
       err = uart_set_pin(ch->uart, ch->tx_pin, ch->rx_pin, UART_PIN_NO_CHANGE,
@@ -351,7 +378,7 @@ void camlink_reset_stats(void) { camlink_reset_stats_ch(0); }
 
 static void copy_str(char *dst, size_t cap, const cJSON *item) {
   dst[0] = '\0';
-  if (cJSON_IsString(item)) strncpy(dst, item->valuestring, cap - 1);
+  if (cJSON_IsString(item)) strlcpy(dst, item->valuestring, cap);
 }
 
 esp_err_t camlink_hello_ch(int cam) {

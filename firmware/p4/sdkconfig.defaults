@@ -36,6 +36,17 @@ CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
+# -O2, not IDF's default -Og. Every object in the P4 image was compiling at
+# debug optimisation (1005 of 1005 in compile_commands.json), including the
+# CRC loops, the JPEG staging copies and the KDP decoder that sit on the
+# capture path. The product goal is speed over heat, and -Og gives up both.
+# Bench a diagnostic build with
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.debug" build
+# which flips this one option back. An existing build/ and sdkconfig keep the
+# level they were generated with: `idf.py fullclean` (or delete sdkconfig)
+# before the first build after this change.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
 # Capture folders are named by UUID (36 chars) — needs FAT long filenames.
 CONFIG_FATFS_LFN_HEAP=y
 
@@ -67,3 +78,13 @@ CONFIG_APP_REPRODUCIBLE_BUILD=y
 # command.
 CONFIG_ESP_HOSTED=n
 CONFIG_ESP_WIFI_REMOTE_ENABLED=n
+
+# The camera link ISR must run while the flash cache is off.
+#
+# A capture writes the JPEG to the SD card and the roll queue writes NVS, and
+# both disable the cache on both cores. With the ISR in flash it cannot run
+# during those windows, the 921600-baud RX FIFO overflows, and the bytes are
+# gone - silently, because an overrun is not a CRC error. Measured as a first
+# chunk arriving 8155 bytes of 8210 and the transfer dying at 0%, on a link
+# reporting 452 KB with zero CRC errors.
+CONFIG_UART_ISR_IN_IRAM=y
