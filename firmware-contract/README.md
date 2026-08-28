@@ -351,6 +351,54 @@ field. The default build never emits it. Reconciling means widening the union in
 with the milestone that ships the radio, not with the firmware that can be built with it.
 
 
+### D17 — 27 commands in `commands.ts` are not implemented by the D4 V1 P4 build
+
+`commands.ts` declares 71 commands. The shipping P4 firmware dispatches 44 and
+answers the rest with an `UNSUPPORTED_COMMAND` NACK from the dispatcher's
+default case. That is the documented degradation path, and it is exercised: no
+unimplemented command hangs, times out, or returns a malformed frame.
+
+Audited by comparing the `Cmd` enum against the handlers in
+`firmware/p4/main/kdp_server.c`, 2026-08-28, firmware 0.4.2.
+
+| Family | Commands | Roadmap |
+|---|---|---|
+| Camera control beyond capture | `CAMERA_ARM`, `CAMERA_FOCUS`, `CAMERA_PHASE`, `CAMERA_PREVIEW`, `CAMERA_CALIBRATE` | Yes |
+| Looks / recipes | `GET_RECIPES`, `SET_RECIPE`, `UPLOAD_RECIPE`, `DELETE_RECIPE` | Yes |
+| Sounds | `GET_SOUNDS`, `SOUND_BEGIN`, `SOUND_CHUNK`, `SOUND_END`, `SOUND_READ`, `SOUND_DELETE` | Yes |
+| Firmware update | `FW_BEGIN`, `FW_CHUNK`, `FW_END`, `FW_ABORT`, `FW_STATUS`, `FW_ROLLBACK` | Yes — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) |
+| Maintenance | `ENTER_MAINTENANCE`, `EXIT_MAINTENANCE`, `FACTORY_RESET` | Yes |
+| Bench | `LINK_BENCH`, `SYNC_BENCH` | Yes |
+| Link | `SET_LINK_BAUD` | Yes |
+
+Every family above is on `firmware/FIRMWARE_ROADMAP.md`. None is an accidental
+omission, and none is a protocol disagreement — the wire contract is agreed,
+the behaviour is simply not built yet.
+
+**No capability flag covers these families.** `GET_CAPABILITIES` advertises
+`benchDiagnostics`, `configStore`, `flashControl`, `flashHardware`, `gallery`,
+`mediaIndex`, `network`, `powerManagement`, `powerTelemetry`, `quad`,
+`radioFitted`, `radioRouted`, `roll`, `rollUpload` and `wiggle`; there is no
+`recipes`, `sounds`, `firmwareUpdate`, `maintenance`, `calibration` or
+`preview` flag. A client therefore discovers these by sending and reading the
+NACK rather than by asking first, which contradicts the rule in
+[Versioning](#versioning) that new behaviour is gated behind a capability flag.
+Adding a flag per family is the fix; it is a protocol addition and belongs with
+the first of these families to be implemented, not before.
+
+`benchDiagnostics` is honest despite the two unimplemented `*_BENCH` commands:
+it gates `GET_STORAGE_STATUS`, `CAMERA_LINK_STATS`, `GET_HW_VALIDATION`,
+`STORAGE_SELF_TEST`, `CAMERA_TEST` and `CAMERA_SOAK_TEST`, all of which are
+implemented. `LINK_BENCH` and `SYNC_BENCH` are not behind it.
+
+Four cases in Studio's own conformance suite
+(`apps/studio/src/developer/conformance.ts`, 32 cases) target this set and
+cannot pass against 0.4.2: `GET_RECIPES`, `CAMERA_CALIBRATE (get)`,
+`CAMERA_PREVIEW frame`, and `FW_BEGIN gate (outside maintenance)`. The last is
+a near miss worth noting — it expects a refusal citing maintenance and gets
+`UNSUPPORTED_COMMAND`, so the gate it tests is satisfied in substance while the
+assertion still fails.
+
 ## Decided — was "firmware team decision required"
 
 Issue #5 closed the six open questions this section used to list. They were open because physical

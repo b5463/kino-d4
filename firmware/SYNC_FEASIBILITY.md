@@ -15,8 +15,26 @@ written. M0.D of [`FIRMWARE_ROADMAP.md`](FIRMWARE_ROADMAP.md).
 > capture after any idle period is 3–5 KB and the next is 90–240 KB. That was
 > never exposure — it was a two-minute-old frame of a dark room.
 >
-> The discard-fetch fix specified in this document is therefore warranted by
-> measurement rather than by reading the driver. It has NOT been applied.
+> **RESOLVED, 2026-08-28.** The node now runs `fb_count = 2` with
+> `CAMERA_GRAB_LATEST`, which is what `esp32-camera` documents for streaming:
+> the driver captures continuously and the queue holds only the two most recent
+> frames, so the arbitrarily-old frame this section describes cannot be handed
+> back. `camsensor_discard_queued()` is retained and still runs ahead of a real
+> shutter, bounding the photograph to within a frame period of the command.
+>
+> The same change was independently required by the viewfinder. With one buffer
+> the driver filled it after each return and then stalled, so the P4's preview
+> pump - which free-runs against the sensor's frame clock - either caught a
+> ready frame or waited a whole frame period. Instrumented on the bench the
+> capture request was bimodal, `cap` 10 ms or 62-75 ms with nothing between,
+> alternating the frame interval between about 40 ms and 101 ms. Two buffers
+> flattened it to 5-9 ms and took the preview from 0.0-8.8 fps to 10.2-18.2.
+>
+> The sections below are left as written. They are the desk study that
+> predicted the defect from source before any hardware existed, and the
+> prediction was correct; `fb_count = 1` throughout them describes the
+> configuration as it was, not as it is.
+>
 > Evidence: [`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md) §Stale frame.
 
 **Driver under study:** `firmware/camnode/managed_components/espressif__esp32-camera`
@@ -25,9 +43,13 @@ written. M0.D of [`FIRMWARE_ROADMAP.md`](FIRMWARE_ROADMAP.md).
 
 **Configuration under study** (`firmware/camnode/main/camera.c:16-42`):
 
+The study was performed against `fb_count = 1` / `CAMERA_GRAB_WHEN_EMPTY`. That
+is no longer what ships - see the resolution note above - and the current values
+are given in brackets.
+
 ```text
-fb_count      = 1
-grab_mode     = CAMERA_GRAB_WHEN_EMPTY
+fb_count      = 1               (now 2)
+grab_mode     = CAMERA_GRAB_WHEN_EMPTY   (now CAMERA_GRAB_LATEST)
 fb_location   = CAMERA_FB_IN_PSRAM
 pixel_format  = PIXFORMAT_JPEG
 frame_size    = FRAMESIZE_UXGA (1600x1200)
@@ -124,8 +146,8 @@ frame costs roughly one frame period; a stale frame returns in ~0 ms. **A `durat
 captures 2..N is the signature.** M0 adds the telemetry that makes this visible without inference
 (see *Recommended M2 measurement*).
 
-**Pre-designed fix, deliberately NOT applied in M0** (public API only, no driver change): before the
-real fetch, discard one frame —
+**The fix, applied in firmware 0.4.2** (public API only, no driver change): before the real fetch,
+discard one frame —
 
 ```text
 fb = esp_camera_fb_get();          /* may be stale */
@@ -134,8 +156,14 @@ fb = esp_camera_fb_get();          /* starts at the next VSYNC after this point 
 ```
 
 This bounds the frame start to `[0, one frame period]` after the command, which is the best the
-free-running sensor can offer. It costs one frame period per capture. It is left unimplemented until
-M1 confirms the defect on hardware, per the roadmap's *validate before rewriting* rule.
+free-running sensor can offer. It costs one frame period per capture. M1 confirmed the defect on
+hardware (frames 1.8 s, 3.4 s and 27.0 s old, above), so `camsensor_discard_queued()` in
+`camnode/main/camera.c` now runs inside `handle_capture` for every non-preview resolution. Preview
+sizes (`640x480`, `320x240`, `160x120`) skip it: a viewfinder frame a frame period old is what a
+viewfinder shows anyway, and paying the period per preview would halve its rate. The capture reply
+carries the cost as `discardMs`: near zero means a stale frame was waiting and was thrown away,
+near a frame period means the buffer was empty. Bench check: after this change `fbGetUs` on
+captures 2..N should read one frame period, not ~0, and `frameAgeUs` should be positive.
 
 ---
 

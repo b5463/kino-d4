@@ -84,6 +84,52 @@ the arithmetic the Phase 1 audit derived from source and the driver's own
 "40MHz SYSCLK / 10MHz PCLK" comment contradicts. The silicon agrees with the
 audit.
 
+### Viewfinder frame timing, 2026-08-28
+
+One camera on CAM1, preview at 320x240 q30, timed inside the P4's pump task and
+reported once a second per camera. Reported by the finder itself rather than
+inferred from a transfer log, because the question was where a frame's time
+goes, not how long a frame took.
+
+| Stage | `fb_count = 1` | `fb_count = 2`, `GRAB_LATEST` |
+|---|---|---|
+| `cap` — sensor capture request | **10 ms or 62–75 ms, bimodal** | **5–9 ms** |
+| `xfer` — JPEG over the UART | 26–31 ms | 28–52 ms |
+| `dec` — hardware JPEG decode | 1–3 ms | 1–2 ms |
+| frame bytes | 2232–3427 B | 2477–2973 B |
+| rate | 0.0–8.8 fps | **10.2–18.2 fps** |
+
+The bimodal `cap` is the whole finding. Frame bytes, transfer time and decode
+time were all flat while a hand moved in front of the lens, so neither JPEG
+size nor the wire nor the decoder explained a frame interval that alternated
+between about 40 ms and 101 ms. With one buffer the driver fills it after each
+return and then stalls, so a request either caught a ready frame or waited a
+whole sensor period — the pump free-runs against the sensor's frame clock, and
+which one you got was phase.
+
+Two things follow that are worth keeping:
+
+- Movement did not cause the variance, it revealed it. A 2.5x jitter in frame
+  interval is invisible on a still scene and obvious on a moving one, which is
+  why the first hypothesis — motion means detail means a bigger JPEG — was
+  wrong. The bytes column is what disproved it.
+- `xfer` is now the jitter, in steps of about 10 ms, which is one tick at
+  `CONFIG_FREERTOS_HZ=100`. The 28–32 ms cases are the link at its full
+  ~90 KB/s, so the excursions are scheduling rather than data. Four
+  `camera_task`s share priority 3 with `audio_task` and three of them are
+  pumping cameras that are not fitted. Not yet measured, and not yet changed.
+
+### Link poll busy-wait, 2026-08-28
+
+A task watchdog on `IDLE0` with `cam_probe` on CPU 0, at 6750 ms into boot.
+`pdMS_TO_TICKS(1)` is **zero ticks** at 100 Hz and `vTaskDelay(0)` does not
+block, so the "read what has arrived" poll in `cam_link` and `node_server` span
+at task priority for the whole timeout instead of sleeping. With one camera
+fitted, three absent channels span out a 900 ms viewfinder timeout on repeat,
+starving `IDLE0` and the UI task that feeds the DPI panel — seen on the bench
+as stutter and a flat blue flash. Blocking for one byte and then draining the
+rest with no wait keeps the latency and restores the sleep. Watchdog gone.
+
 ### Stale frame: CONFIRMED
 
 `SYNC_FEASIBILITY.md` predicted from source that with `fb_count=1` a capture
@@ -109,7 +155,7 @@ warranted by measurement rather than by reading the driver.
 | Item | State |
 |---|---|
 | Product capture path (`SHOOT`, `CAMERA_CAPTURE`) on large frames | **FAILS.** Isolated: UXGA q95 at 108,567 B through `kdp_server`'s loop succeeds; 109,349 B through `capture.c`'s worker fails, transfer dying at 0–9%. Same resolution, quality and size, different code path. The link reports 8,076–8,139 bytes of the 8,210 a full chunk needs, 0 frames decoded, 0 CRC errors, and a longer timeout recovers nothing — a dropped tail, not a slow one |
-| Frame ownership between viewfinder and capture | Mechanism proven (viewfinder parked: 5/5 pass; viewfinder live: 4/5 fail with BAD_ID). `viewfinder_hold()` is in place at `capture_fire` but has not been shown to take effect |
+| Frame ownership between viewfinder and capture | Mechanism proven (viewfinder parked: 5/5 pass; viewfinder live: 4/5 fail with BAD_ID). `viewfinder_hold()` is in place at `capture_fire` but has not been shown to take effect. Note that `fb_count` is now 2, so the single-frame contention this describes no longer has the same shape and the test needs re-running |
 | Thumbnail written by the product path | `thumb_write` has still never run: every capture on the card came from `CAMERA_TEST`, which does not write one. The gallery renders by falling back to `C1.JPG` |
 | `CAM2`–`CAM4`, `SYNC`, `FLASH_EN`, `CAM_PWR_EN`, shutter | No harness. Unchanged |
 
