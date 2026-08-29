@@ -136,7 +136,12 @@ static net_security_t security_of(wifi_auth_mode_t mode) {
  *     is the BSSID.
  */
 static void publish_scan(const wifi_ap_record_t *records, uint16_t count) {
-  net_scan_entry_t out[NET_SCAN_MAX];
+  /* Static, not on the stack. This runs on ESP-IDF's event task, whose stack
+   * is CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE - 2304 bytes by default - and
+   * twenty entries are ~1.3 KB before the NVS write in hwv_mark_validated()
+   * below adds its own. Scan-done events are serialised by that task, so one
+   * buffer is enough. */
+  static net_scan_entry_t out[NET_SCAN_MAX];
   size_t n = 0;
 
   for (uint16_t i = 0; i < count && n < NET_SCAN_MAX; i++) {

@@ -148,3 +148,9 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 # firmware/FIRMWARE_ROADMAP.md M8 for the repartition that changes this
 # arithmetic.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# The default event task stack is 2304 bytes. In this build it runs the Wi-Fi
+# scan-done handler, which publishes results and writes a hardware-validation
+# row to NVS, and the IP handlers, which do the same. Sized so a handler that
+# touches NVS is not one snprintf away from the guard page.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
