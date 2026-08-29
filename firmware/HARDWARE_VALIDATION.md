@@ -260,6 +260,72 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### The SDIO bus enumerates, 2026-08-29 - Gate C6-B
+
+The first time the P4 and its coprocessor have exchanged a byte. Unit
+`KD4-D121BC`, radio build 0.4.2, two independent witnesses on every boot: the
+P4's own klog via KDP on COM8, and the C6's console on JP1 pin 22 via a CH340
+on COM9, RX-only. No camera attached. Nothing was flashed to the C6.
+
+**Root cause of every previous failure: enumeration had never been attempted.**
+`esp_hosted_init()` brings up the host-side vserial and RPC layers and returns;
+the reset pulse, `sdmmc_card_init()` and the RX_ACTIVE state live in
+`ensure_slave_bus_ready()`, reached from one place in the pinned 3.0.6 source -
+`esp_hosted_connect_to_slave()`. The component's auto-init constructor calls
+both; this firmware disables that constructor (correctly - it drives GPIO14-19
+and GPIO54 before `app_main()`) and had reproduced only the first half. Fixed in
+`a2ab8ef`.
+
+| Witness | Before the fix (boot-347) | After (boot-348, reproduced boot-352) |
+|---|---|---|
+| C6 console, boots per bring-up | 4 = three bench cycles + our own reset | **5** - the fifth is `eh_sdio: Reset co-processor using GPIO[54]` |
+| IDF log (captured) | `transport_init: bus backend up`, then nothing | `Function 0 Blocksize: 512`, `Function 1 Blocksize: 512`, **`Card init success, TRANSPORT_RX_ACTIVE`**, `SDIO Host operating in STREAMING MODE`, `slave chip id: 0x0d (esp32c6)` |
+| `eh_host_mcu_transport_state_is_rx_ready()` | 0 | **1** |
+| `..._is_tx_ready()` | 0 | **1** |
+| `esp_hosted_connect_to_slave()` | never called | rc=0 in **1854 ms** (1500 ms settle + card init) |
+| C6 console, host contact | none | `host reconfig event` -> `Slave init_config received from host` -> `Host capabilities: 44` -> `slave_rpc: Received Req [0x15e]` x3, each answered `[0x25e]` |
+| Version RPC | unanswered | **answered: coprocessor 2.3.2** |
+| Registry | - | `C6_SDIO_PINS` and `C6_LINK_HANDSHAKE` auto-marked from `rx_ready && tx_ready` |
+
+Configuration as compiled, read from the generated sdkconfig and the IDF log,
+not from source comments: SDMMC slot 1, 4-bit, 40 000 kHz, CLK 18, CMD 19,
+D0-D3 14-17, reset GPIO 54 active-low, `CP_RESET_STRATEGY_ALWAYS`, settle
+1500 ms, `CP_BRINGUP_ON_TIMEOUT_NONE`, no internal LDO for slot 1.
+`sdmmc_host_init: SDMMC host already initialized, skipping init flow` is the
+card on slot 0 having taken the controller first; `sdmmc_host_init_slot(1)`
+then configures slot 1 on its own and the two coexist. Both slots are up at
+once on this unit, with the card mounted (1 attempt, 0 `sdErrors`) throughout.
+
+**Version gate: the coprocessor is refused, correctly.** esp_hosted's own
+check: `esp-hosted fw versions: host=3.0.6 coprocessor=2.3.2` ->
+`E: major version mismatch - OTA coprocessor from host`. The firmware's own
+gate reached the same verdict for the wrong reason: it compared against
+`ESP_HOSTED_VERSION_*_1` (2.12.6, an "upstream-mcu compat" macro, a different
+version space) and printed "cannot serve host 2.12.6". Corrected to the
+component's release constants (`PROJECT_VERSION_*_1`) so the two agree. The
+supervisor parks on `C6_BAD_FIRMWARE` as designed: `transportErrors: 0`, no
+reset loop.
+
+Two observations that are not radio findings, recorded so nobody mistakes
+them for one:
+
+- The UI watchdog logs `frames 41 STALLED` from ~16 s uptime on this build,
+  before `esp_hosted_init()` is called, with no camera attached. Not caused by
+  the hosted tasks - it predates them in the boot - and the `ui` task has
+  5.2 KB of stack free. Separate issue.
+- One `REBOOT` moved the session counter 348 -> 352. Not understood; watched
+  across the rest of the session and it did not move again without cause.
+
+| Row | Status | Evidence |
+|---|---|---|
+| `C6_SDIO_PINS` | **VALIDATED** | `rx_ready == 1` after `sdmmc_card_init()`, twice, two witnesses |
+| `C6_LINK_HANDSHAKE` | **VALIDATED** | `rx_ready && tx_ready`, and the slave logging the host's RPCs |
+| `C6_SLAVE_VERSION` | UNVALIDATED | RPC answered 2.3.2; refused against host 3.0.6. Stays open until a compatible coprocessor answers |
+| `C6_EN_GPIO54` | UNVALIDATED | Now corroborated three ways - the ROM reports POWERON on every cycle, esp_hosted's own pulse produces a fifth boot, and the bus enumerates after it - but the row is the meter reading on JP1 pin 26, and that has not been reported |
+
+C6-B: **PASS**. C6-C: **FAIL** - assessed for the first time, with real data on
+both sides. Nothing above the transport was attempted; Wi-Fi was not started.
+
 ### The C6 answers, 2026-08-29 - passive UART, RX only
 
 The first evidence that the coprocessor exists as anything but a footprint.
@@ -504,9 +570,9 @@ subsystem.
 | Physical shutter / Fn button | **UNVALIDATED** — pins deliberately `BOARD_BTN_NONE`; no switch fitted |
 | Battery voltage / percentage / low-battery shutdown | **NOT APPLICABLE on this board** — no sense divider reaches the P4 (deviation D10). Needs a hardware revision |
 | Backlight brightness / dim stage | **NOT APPLICABLE** — plain GPIO, not PWM (deviation D11) |
-| P4 → C6 SDIO mapping | **IDENTIFIED AND RECONCILED, REQUIRES BENCH VALIDATION.** SDMMC slot 1 on GPIO14–19 with EN on GPIO54. Identified from Guition documentation for this carrier, then reconciled against two independent primary sources: Espressif's own ESP-Hosted defaults for a P4 host with a C6 coprocessor pin all six to exactly these numbers (`min == max`), and `ESP_HOSTED_HOST_RESET_GPIO` defaults to 54 for every P4 target. Evidence chain: [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md). **No pin has been driven.** The radio is a build-time opt-in that is off by default, because enabling ESP-Hosted drives these pins before `app_main` on every boot and the routing is corroborated rather than measured |
+| P4 → C6 SDIO mapping | **VALIDATED 2026-08-29.** SDMMC slot 1 on GPIO14–19 enumerated the onboard C6 (`Card init success, TRANSPORT_RX_ACTIVE`, `rx_ready && tx_ready`), reproduced on two boots and witnessed from the C6's own console. Session recorded above. The routing was corroborated on paper first; it is now measured |
 | GPIO54 (`CHIP_PU`) polarity | **UNCONFIRMED.** ESP-Hosted defaults to active-low ("LOW asserts reset, HIGH runs") and ships an explicit active-high override for boards whose EN is buffered through an inverting transistor. Which this carrier is has not been measured. One constant, `BOARD_C6_EN_ACTIVE_LOW`, so the bench can flip it |
-| SD / C6 bus coexistence | **RESOLVED IN SOFTWARE, REQUIRES BENCH VALIDATION.** The two buses share no pin *and* — the part that mattered — no longer share a slot. One SDMMC controller serves both; `SDMMC_HOST_DEFAULT()` selects slot 1, so the card had been sitting on the slot ESP-Hosted needs. The card is now explicitly on slot 0, whose IOMUX pads are exactly GPIO39–44 (`soc/esp32p4/include/soc/sdmmc_pins.h`), and slot 1 has no IOMUX path at all. Espressif ship this arrangement as `esp_hosted`'s `mcu_hosted_sdio_sdmmc_combined` example. **Unproven on hardware: the card has never been mounted from slot 0**, and that is now the first thing a bench run must check |
+| SD / C6 bus coexistence | **VALIDATED 2026-08-29** for the static case: card mounted on slot 0 (1 attempt, 0 `sdErrors`) with the C6 enumerated on slot 1 of the same controller, both up at once. `SD_C6_COEXIST` itself stays `UNVALIDATED`: it is defined as a scan before and after card I/O with the radio associated, and no scan has run |
 | SD card on slot 0 | **VALIDATED 2026-08-28**, firmware 0.4.1 on `KD4-D121BC`: mounted first attempt, self-test and both benches pass with matching CRCs and clean cleanup, and throughput is at or above the slot-1 reference. Session recorded above |
 | Wi-Fi association / DHCP / DNS / TLS | **NOT VALIDATED — never attempted.** No radio has been exercised on this hardware. The state model, credential store and `NETWORK_*` surface are CODE DONE and host-tested; nothing above them has run |
 | C6 coprocessor image | **CODE DONE, UNVALIDATED** — `firmware/c6` is Espressif's official ESP-Hosted coprocessor (component pinned to 3.0.6), 1 105 872 bytes, and two clean builds of one commit match. Never flashed; no version read back. The C6's SDIO slave pads are fixed in silicon, so the image is correct independently of the carrier |

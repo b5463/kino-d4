@@ -12,6 +12,15 @@ transport pin. It has been superseded by an external identification of the
 carrier's mapping, which this file reconciles against primary sources below.
 No pin has been driven yet.
 
+> **Bench status, 2026-08-29:** the SDIO routing in this document is **measured**,
+> not only corroborated. Slot 1 on GPIO14–19 enumerated the onboard C6 on
+> `KD4-D121BC` (`Card init success, TRANSPORT_RX_ACTIVE`, `rx_ready && tx_ready`),
+> on two boots, with the C6's own console as a second witness. GPIO54 is
+> corroborated as the C6's `CHIP_PU` three ways (ROM reports POWERON on every
+> pulse; esp_hosted's pulse produces a boot; the bus enumerates after it) but
+> the meter reading on JP1 pin 26 that closes B2 has not been reported. Record:
+> [`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md).
+
 ## The mapping
 
 | Signal | P4 | C6 | Purpose | Evidence |

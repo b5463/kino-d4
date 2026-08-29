@@ -11,9 +11,9 @@ hardware task and everything after it is blocked on it.
 | Stage | State |
 |---|---|
 | C6 slave image builds reproducibly | see [`c6/README.md`](c6/README.md) |
-| P4 transport routing known | identified, corroborated, **not bench-proven** — [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) |
-| P4 transport driver | CODE DONE, UNVALIDATED — `net_hosted.c`, build-time opt-in, OFF by default |
-| Version gate | CODE DONE, UNVALIDATED — a mismatch stops before Wi-Fi |
+| P4 transport routing known | **BENCH DONE 2026-08-29** — slot 1 on GPIO14–19 enumerated the C6, twice, two witnesses — [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) |
+| P4 transport driver | **BENCH DONE 2026-08-29** — `net_hosted.c`; it had been calling `esp_hosted_init()` without `esp_hosted_connect_to_slave()`, so enumeration was never attempted (`a2ab8ef`). Still a build-time opt-in, OFF by default |
+| Version gate | **BENCH DONE 2026-08-29** — it fired: factory coprocessor 2.3.2 refused against host 3.0.6, `C6_BAD_FIRMWARE`, no reset loop. Compared the wrong constant at first (`ESP_HOSTED_VERSION_*_1` = 2.12.6, a compat macro); now uses `PROJECT_VERSION_*_1` like the component itself |
 | Network state model | CODE DONE, host-tested (127 + 75 checks) |
 | Wi-Fi scan / associate / DHCP | CODE DONE, UNVALIDATED — `net_wifi.c` |
 | SNTP as a clock source | CODE DONE, host-tested policy — `net_time.c`, `pure_clock_adopt_action()` |
@@ -24,7 +24,7 @@ hardware task and everything after it is blocked on it.
 | Roll HTTP client | CODE DONE, UNVALIDATED — `roll_http.c`, `roll_api.c` |
 | Radio variant in CI | CODE DONE — `p4-radio` job, its own 1440 KB guard |
 | microSD on slot 0 (prerequisite) | **BENCH DONE 2026-08-28** — the slot move is proven on `KD4-D121BC`; see `HARDWARE_VALIDATION.md` |
-| Any of it on hardware | **NOTHING. No radio has ever been exercised. No pin has been driven toward the C6.** |
+| Any of it on hardware | **The transport, yes.** Bus enumerated, both directions ready, version RPC answered. Nothing above the transport has run: the factory coprocessor is 2.3.2 and the host needs 3.x. The next decision is the coprocessor image — see step 3 — and it is a decision, not a step to take by default |
 
 Nothing in this file has been run on a board. Every "CODE DONE" above means
 the code exists and compiles; the last row is the one that matters, and it
