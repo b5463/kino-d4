@@ -94,6 +94,43 @@ static void test_the_driver_is_the_gate(void) {
         net_state_name(st.state));
 }
 
+/* ---- init is not enumeration ------------------------------------------ */
+
+/*
+ * The distinction that cost this project its first C6 bring-up. esp_hosted_init()
+ * returning 0 means the host-side library came up; it says nothing about a
+ * coprocessor, and on KD4-D121BC it returned 0 with nothing on the bus. The
+ * transport report carries the real evidence, and the state machine must not
+ * advance past BOOTING on anything less.
+ */
+static void test_library_up_is_not_slave_connected(void) {
+  net_link_init(1000);
+  net_link_set_driver(&stub, 1000);
+
+  /* Host library initialised, bus never enumerated: what a missing
+   * connect_to_slave() looks like from here. */
+  net_link_report_transport(0, 0, 0, false);
+  net_status_t st = status_now(2000);
+  CHECK(!st.sdio_link_up, "no enumeration, no link");
+  CHECK(st.state != NET_C6_LINK_READY, "and never LINK_READY, got %s",
+        net_state_name(st.state));
+
+  /* Enumerated: the bus is up. Still not LINK_READY - that needs the version
+   * gate, which is a separate report. */
+  net_link_report_transport(512, 64, 0, true);
+  st = status_now(3000);
+  CHECK(st.sdio_link_up, "an enumerated bus is a link");
+  CHECK(st.state != NET_C6_LINK_READY,
+        "but enumeration alone is not LINK_READY, got %s", net_state_name(st.state));
+
+  /* Only the explicit state report, made after the version gate passes,
+   * says LINK_READY. */
+  net_link_report_state(NET_C6_LINK_READY, NET_REASON_NONE, "versions agree", 4000);
+  st = status_now(4000);
+  CHECK(st.state == NET_C6_LINK_READY, "the gate's report is what advances, got %s",
+        net_state_name(st.state));
+}
+
 /* ---- the version gate ------------------------------------------------- */
 
 static void test_versions_survive_a_refusal(void) {
@@ -334,6 +371,7 @@ static void test_clock_reason_does_not_claim_disconnected(void) {
 
 int main(void) {
   test_the_driver_is_the_gate();
+  test_library_up_is_not_slave_connected();
   test_versions_survive_a_refusal();
   test_link_ready_is_not_connected();
   test_a_drop_clears_what_is_no_longer_true();
