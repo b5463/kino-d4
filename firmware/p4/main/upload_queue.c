@@ -409,8 +409,29 @@ esp_err_t upload_queue_start(void) {
    * in firmware/FIRMWARE_ROADMAP.md asks for capture timing and CRC error rates
    * unchanged with the radio active; the cheapest way to hold that is for this
    * task never to be the one the scheduler picks over a frame. */
+  /*
+   * 8192, not 4096.
+   *
+   * 4096 was sized before this task did any HTTP. It now runs the whole upload
+   * conversation - esp_http_client, the JSON bodies, and the SD reads that
+   * feed them - and the bench caught it the first time a real queue was
+   * offered to a reachable API:
+   *
+   *   Guru Meditation Error: Core 0 panic'ed (Stack protection fault).
+   *   Detected in task "upqueue"
+   *
+   * The panic rebooted the P4, the 32 queued jobs reloaded from the card on
+   * the next boot, and the drain panicked again - a loop that never advanced
+   * and never lost a job, which is at least the durable half working.
+   *
+   * Unlike the gallery overflow this is depth rather than an oversized frame:
+   * there is no big local to move, the space goes into esp_http_client and
+   * mbedtls below it. 8192 is what kdp_server needed for the same shape of
+   * work. The high-water mark is in GET_RUNTIME_STATS; check it rather than
+   * trusting this number.
+   */
   TaskHandle_t h = NULL;
-  if (xTaskCreate(worker_task, "upqueue", 4096, NULL, 2, &h) != pdPASS) {
+  if (xTaskCreate(worker_task, "upqueue", 8192, NULL, 2, &h) != pdPASS) {
     ESP_LOGE(TAG, "worker task create failed");
     return ESP_ERR_NO_MEM;
   }
