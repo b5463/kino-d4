@@ -82,7 +82,9 @@ typedef struct {
 } kdp_net_reply_t;
 
 /* Network. `req` may be NULL for the commands that take no arguments. */
-kdp_net_reply_t kdp_net_list(void);
+/* `{ "scan": true }` runs one bounded scan on the radio before answering and
+ * adds `available[]` to the reply. Without it the reply is unchanged. */
+kdp_net_reply_t kdp_net_list(const cJSON *req);
 kdp_net_reply_t kdp_net_set(const cJSON *req);
 kdp_net_reply_t kdp_net_delete(const cJSON *req);
 kdp_net_reply_t kdp_net_status(void);

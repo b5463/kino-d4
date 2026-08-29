@@ -18,6 +18,8 @@
 
 #include "clock.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "klog.h"
 #include "net_link.h"
 #include "pure.h"
@@ -211,10 +213,65 @@ static cJSON *roll_view(void) {
 /* NETWORK_*                                                          */
 /* ------------------------------------------------------------------ */
 
-kdp_net_reply_t kdp_net_list(void) {
+/* An active scan on the C6 takes a second or two per the esp_wifi defaults.
+ * Six seconds is far past any real scan and well inside the host's 15 s
+ * command timeout, so a radio that never reports back still gets an answer. */
+#define SCAN_WAIT_MS 6000
+#define SCAN_POLL_MS 50
+
+static cJSON *available_array(void) {
+  cJSON *arr = cJSON_CreateArray();
+  if (arr == NULL) return NULL;
+  net_scan_entry_t found[NET_SCAN_MAX];
+  const size_t n = net_link_scan_results(found, NET_SCAN_MAX);
+  for (size_t i = 0; i < n; i++) {
+    cJSON *o = cJSON_CreateObject();
+    if (o == NULL) break;
+    cJSON_AddStringToObject(o, "ssid", found[i].ssid);
+    cJSON_AddStringToObject(o, "bssid", found[i].bssid);
+    cJSON_AddNumberToObject(o, "rssi", found[i].rssi);
+    cJSON_AddNumberToObject(o, "channel", found[i].channel);
+    cJSON_AddStringToObject(o, "security", net_security_name(found[i].security));
+    cJSON_AddBoolToObject(o, "hidden", found[i].hidden);
+    cJSON_AddItemToArray(arr, o);
+  }
+  return arr;
+}
+
+kdp_net_reply_t kdp_net_list(const cJSON *req) {
+  const cJSON *scan = req != NULL ? cJSON_GetObjectItem(req, "scan") : NULL;
+  const bool want_scan = cJSON_IsTrue(scan);
+
   cJSON *o = cJSON_CreateObject();
   if (o == NULL) return err_reply("INTERNAL_ERROR", "Could not build the reply");
   cJSON_AddItemToObject(o, "networks", networks_array());
+  if (!want_scan) return ok_reply(o);
+
+  /*
+   * The scan is the first thing the radio does for a host, and nothing else on
+   * this surface triggers one - the driver's scan_start had no caller at all
+   * until the bench needed it. It runs inline: start, wait for the state to
+   * leave SCANNING (handle_scan_done publishes and returns it to IDLE), then
+   * read what was published. The wait is bounded and the reply says what
+   * happened rather than timing out at the host.
+   */
+  const int64_t t0 = now_ms();
+  if (!net_link_scan_start(t0)) {
+    net_status_t st;
+    net_link_status(&st, now_ms());
+    cJSON_Delete(o);
+    return no_network(st.detail[0] != '\0' ? st.detail : "the radio refused the scan");
+  }
+  net_status_t st;
+  do {
+    vTaskDelay(pdMS_TO_TICKS(SCAN_POLL_MS));
+    net_link_status(&st, now_ms());
+  } while (st.state == NET_WIFI_SCANNING && now_ms() - t0 < SCAN_WAIT_MS);
+
+  cJSON_AddNumberToObject(o, "scanMs", (double)(now_ms() - t0));
+  cJSON_AddBoolToObject(o, "scanComplete", st.state != NET_WIFI_SCANNING);
+  cJSON *avail = available_array();
+  if (avail != NULL) cJSON_AddItemToObject(o, "available", avail);
   return ok_reply(o);
 }
 

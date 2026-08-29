@@ -104,7 +104,7 @@ action and no command existed to carry it, so it took the next free slot in the 
 
 | Command | Value |
 |---|---|
-| `NETWORK_LIST` | `0xa0` |
+| `NETWORK_LIST` | `0xa0` | Optional request `{ "scan": true }` runs one bounded scan and adds `available[]` (`ssid`, `bssid`, `rssi`, `channel`, `security`, `hidden`), `scanMs` and `scanComplete` to the reply. Without it the reply is the saved `networks[]` only, unchanged (D16). |
 | `NETWORK_SET` | `0xa1` |
 | `NETWORK_DELETE` | `0xa2` |
 | `NETWORK_STATUS` | `0xa3` |
