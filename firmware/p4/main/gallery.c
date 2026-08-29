@@ -32,6 +32,7 @@ static SemaphoreHandle_t s_lock;
 static TaskHandle_t s_task;
 static volatile bool s_dirty;   /* the page needs decoding */
 static volatile bool s_loading;
+static volatile bool s_rescan; /* a caller asked for a fresh scan */
 
 static gallery_item_t s_slot[GALLERY_PAGE];
 static uint16_t *s_pixels[GALLERY_PAGE];
@@ -129,8 +130,17 @@ static int by_newest(const void *a, const void *b) {
  * shutter cannot fire that fast, so it does not arise.
  */
 static int scan(void) {
+  /* Arbitrated like every other reader. load_tile() takes this and the scan
+   * that precedes it did not, so the contention load_tile exists to avoid was
+   * reintroduced by the 86 META.JSON reads in front of it. Same 2 s budget: a
+   * capture holds the card and a gallery that cannot read it says so rather
+   * than fighting for it. */
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) return 0;
   DIR *d = opendir(CAPTURES_DIR);
-  if (d == NULL) return 0;
+  if (d == NULL) {
+    storage_release(STORAGE_USER_UI);
+    return 0;
+  }
   int count = 0;
   int total = 0;
   struct dirent *e;
@@ -171,6 +181,7 @@ static int scan(void) {
    * which is this return value. */
   for (int i = 0; i < count; i++) s_order[i] = (uint16_t)i;
   qsort(s_order, (size_t)count, sizeof s_order[0], by_newest);
+  storage_release(STORAGE_USER_UI);
   return count;
 }
 
@@ -243,6 +254,22 @@ static void gallery_task(void *arg) {
     s_dirty = false;
     s_loading = true;
 
+    /* The scan the callers asked for, on this task rather than theirs. */
+    if (s_rescan) {
+      s_rescan = false;
+      lock();
+      s_total = storage_present() ? scan() : 0;
+      const int pages = gallery_pages();
+      if (s_page >= pages) s_page = pages > 0 ? pages - 1 : 0;
+      for (int i = 0; i < GALLERY_PAGE; i++) {
+        /* Everything is pending until the tiles below say otherwise, so the
+         * screen never shows a stale picture under a new capture's label. */
+        memset(&s_slot[i], 0, sizeof s_slot[i]);
+        if (s_page * GALLERY_PAGE + i < s_total) s_slot[i].state = TILE_PENDING;
+      }
+      unlock();
+    }
+
     /* Take a copy of what to decode, then work outside the lock: a decode is
      * tens of milliseconds and the draw loop reads these slots every frame. */
     char want[GALLERY_PAGE][40];
@@ -297,17 +324,21 @@ void gallery_refresh(void) {
    * running the camera, so this is reachable, and scan() would memcpy into
    * NULL on the first capture folder it found. */
   if (s_lock == NULL || s_names == NULL) return;
-  lock();
-  s_total = storage_present() ? scan() : 0;
-  const int pages = gallery_pages();
-  if (s_page >= pages) s_page = pages > 0 ? pages - 1 : 0;
-  for (int i = 0; i < GALLERY_PAGE; i++) {
-    /* Everything is pending until the task says otherwise, so the screen
-     * never shows a stale picture under a new capture's label. */
-    memset(&s_slot[i], 0, sizeof s_slot[i]);
-    if (s_page * GALLERY_PAGE + i < s_total) s_slot[i].state = TILE_PENDING;
-  }
-  unlock();
+  /*
+   * Ask; do not scan here.
+   *
+   * The three callers are all on the UI task - go(), the delete dialog, the
+   * post-capture repaint - and one is on the capture task via
+   * gallery_on_capture. Scanning inline meant 86 fopen/fread/fclose calls,
+   * ~5-15 ms each, running inside a touch handler while holding s_lock:
+   * 0.4-1.3 s of frozen screen on every gallery entry, and a capture landing
+   * during one parked the capture task on the mutex.
+   *
+   * gallery.h has always promised the work happens on a task of its own. The
+   * scan is now on the right side of that promise, and gallery_loading()
+   * already covers s_dirty so the screen says READING CARD meanwhile.
+   */
+  s_rescan = true;
   s_dirty = true;
 }
 

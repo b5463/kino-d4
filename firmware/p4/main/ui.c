@@ -1408,9 +1408,15 @@ static void draw_gallery(void) {
   const int total = gallery_total();
 
   if (total == 0) {
-    const char *h1 = sd.mounted ? "NO PHOTOS YET" : "NO CARD";
-    const char *h2 = sd.mounted ? "Press the shutter to take one."
-                                : "Insert a microSD card to store photos.";
+    /* "READING CARD" while the scan is still running, because the scan now
+     * happens on the gallery task rather than inside this touch handler: the
+     * first entry arrives here with a total of zero and would otherwise say
+     * "NO PHOTOS YET" for the second it takes to count them. */
+    const bool counting = sd.mounted && gallery_loading();
+    const char *h1 = !sd.mounted ? "NO CARD" : counting ? "READING CARD" : "NO PHOTOS YET";
+    const char *h2 = !sd.mounted   ? "Insert a microSD card to store photos."
+                     : counting    ? "Looking through the captures on the card."
+                                   : "Press the shutter to take one.";
     text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - 26, h1, W_TEXT);
     text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, h2, W_GRAYTEXT);
     return;

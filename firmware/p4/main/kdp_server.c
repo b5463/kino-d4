@@ -928,17 +928,44 @@ static uint64_t capture_taken_ms(const char *dir_name) {
 static int media_scan(char (*names)[64], int cap) {
   DIR *d = opendir(CAPTURES_DIR);
   if (d == NULL) return 0;
+  /*
+   * Timestamps collected during the walk, not after it, so a full card can
+   * evict its oldest instead of dropping whatever readdir happened to hand
+   * over last. This used to stop dead at `cap`, which meant that past
+   * MEDIA_MAX_LIST captures the NEWEST could be the ones omitted - the exact
+   * failure the sort was added to fix - and `total` under-reported besides.
+   * gallery.c solved the same problem the same way.
+   */
+  uint64_t *when = calloc((size_t)cap, sizeof *when);
   int count = 0;
+  int total = 0;
   struct dirent *e;
-  while ((e = readdir(d)) != NULL && count < cap) {
+  while ((e = readdir(d)) != NULL) {
     if (e->d_name[0] == '.') continue;
     /* Anything that will not fit is not one of ours: capture directories are
      * UUID-shaped and well under this. Skipping is better than truncating,
      * which would produce an id that maps to no directory. */
     const size_t len = strlen(e->d_name);
     if (len == 0 || len >= 64) continue;
-    memcpy(names[count], e->d_name, len + 1);
-    count++;
+    total++;
+
+    if (count < cap) {
+      memcpy(names[count], e->d_name, len + 1);
+      if (when != NULL) when[count] = capture_taken_ms(e->d_name);
+      count++;
+      continue;
+    }
+    if (when == NULL) continue; /* no timestamps: keep the first `cap`, as before */
+
+    const uint64_t taken = capture_taken_ms(e->d_name);
+    int oldest = 0;
+    for (int i = 1; i < cap; i++) {
+      if (when[i] < when[oldest]) oldest = i;
+    }
+    if (taken > when[oldest]) {
+      memcpy(names[oldest], e->d_name, len + 1);
+      when[oldest] = taken;
+    }
   }
   closedir(d);
 
@@ -954,8 +981,6 @@ static int media_scan(char (*names)[64], int cap) {
    * capturedAtMs from each META.JSON, read with a bounded fread rather than a
    * full parse. Directory mtime was tried first and sorted everything equal.
    */
-  uint64_t *when = calloc((size_t)cap, sizeof *when);
-  for (int i = 0; when != NULL && i < count; i++) when[i] = capture_taken_ms(names[i]);
 
   /* Insertion sort: a card holds hundreds of captures, not millions, and this
    * avoids dragging qsort's comparator indirection in for it. Falls back to
@@ -976,6 +1001,9 @@ static int media_scan(char (*names)[64], int cap) {
     if (when != NULL) when[j + 1] = key_when;
   }
   free(when);
+  if (total > count) {
+    klog("P4", "media list: %d captures on the card, returning the newest %d", total, count);
+  }
   return count;
 }
 
