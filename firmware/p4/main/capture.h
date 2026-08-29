@@ -55,8 +55,12 @@ typedef struct {
   uint32_t chunk_retries;
   uint32_t write_ms;
   int32_t fire_us;     /* when the command went out, relative to the trigger */
-  uint32_t crc;        /* CRC-32 read back from the stored file */
-  bool crc_match;      /* stored file agrees with the node's own CRC */
+  /* CRC-32 of the bytes that crossed the link, which after a successful write
+   * and fsync is also the CRC of the file on the card. It was read back off
+   * the card until the read-back cost 40-75 ms per frame inside the shutter
+   * for a value the transfer already had; see store_frame. */
+  uint32_t crc;
+  bool crc_match;      /* the frame agrees with the node's own CRC */
   char err[48];        /* "" when ok; a reason a person can act on when not */
 
   /* When the command actually went out, on the P4's monotonic clock. fire_us

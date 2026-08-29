@@ -868,9 +868,22 @@ A person unfamiliar with the project can take, review, and delete a photograph w
 
 **Hardware required:** `NOW` for most; `P4` to validate; `4-CAM` for realistic captures.
 
-**Existing implementation — preserve.** Two-stage CRC, `fflush`+`fsync`+`fclose` with all three
-checked, metadata-last commit, `rmdir`-only delete, NVS capture sequence, card-as-only-index. **Do
-not rewrite this.** Add production concerns around it.
+**Existing implementation — preserve.** Two-stage CRC, metadata-last commit, `rmdir`-only delete,
+NVS capture sequence, card-as-only-index. **Do not rewrite this.** Add production concerns around
+it.
+
+Two amendments, both from bench measurement on 2026-08-29:
+
+- `fflush`+`fsync`+`fclose` with all three checked still holds for the metadata and single-file
+  writers — `storage_capture_commit`, `thumb.c` and `upload_store.c`. It no longer holds for the
+  per-frame JPEG close, which drops the explicit `fsync`: FatFs `f_close()` opens with `f_sync()`,
+  so the two were the same work twice, 40–120 ms of serialised card time across four frames. That
+  time is a hazard as well as a cost — SDMMC DMA out of PSRAM writes the cache back with interrupts
+  off, and a sibling camera's UART has 1.39 ms of FIFO slack and no flow control.
+- The read-back CRC after each frame is gone from the capture path. The transfer CRC is already
+  compared against the node's before the write, so re-reading the file was a second opinion on a
+  question already answered, at 160–300 ms inside the shutter and four concurrent reads against a
+  card still being written.
 
 **Depends on:** M0.F, M3.
 

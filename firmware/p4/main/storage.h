@@ -307,7 +307,6 @@ typedef enum {
  * Not one of them holds two at a time:
  *
  *   capture frame write     1  storage_capture_frame_begin/_end
- *   capture CRC read-back   1  storage_file_crc32, AFTER frame_end has closed
  *   thumbnail write         1  thumb.c; the source JPEG is already in RAM
  *   META.JSON commit        1  storage_capture_commit
  *   UPLOAD.JSON write       1  upload_store_save; temp handle closed before the
@@ -324,15 +323,16 @@ typedef enum {
  * Concurrency is what sets the number, and only four tasks touch the card:
  * capture (1 handle, holds STORAGE_USER_CAPTURE), the upload worker (1, holds
  * STORAGE_USER_UPLOAD, so it cannot overlap capture), the UI reading a gallery
- * tile (1), and the KDP server running a bench or self-test (1). The last two
- * do not take this lock yet, so the worst case is three: the lock holder plus a
- * tile decode plus a bench.
+ * tile (1, holds STORAGE_USER_UI), and the KDP server serving a MEDIA_*
+ * command (1, STORAGE_USER_UI) or running a bench or self-test (1, excluded
+ * from capture by capture_lock() rather than by this lock). The worst case is
+ * therefore two: the lock holder plus a bench.
  *
- * Three against eight. Eight is sufficient with 2.6x headroom — not tight, and
- * not free. The old value of 4 was also sufficient, and the reason once given
- * for it being close ("a capture holds a frame handle plus a read-back handle")
- * does not hold: storage_capture_frame_end() closes the frame before
- * storage_file_crc32() opens it.
+ * Two against eight, a 4x headroom — not tight, and not free. The old value of
+ * 4 was also sufficient, and the reason once given for it being close ("a
+ * capture holds a frame handle plus a read-back handle") never held: the frame
+ * was closed before the read-back opened, and since 2026-08-29 the capture
+ * path does no read-back at all.
  *
  * ## What each descriptor costs
  *

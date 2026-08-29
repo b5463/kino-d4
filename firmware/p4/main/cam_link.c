@@ -162,6 +162,7 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
   const uint32_t rx_frames_before = ch->stats.rx_frames;
   const uint32_t dups_before = ch->stats.duplicates;
   const uint32_t crc_before = ch->stats.crc_errors + ch->decoder.stats.crc_failures;
+  const uint32_t disc_before = ch->decoder.stats.discarded_bytes;
 
   int64_t start = esp_timer_get_time();
   uart_flush_input(ch->uart);
@@ -222,12 +223,27 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
        * and a reply to a request already given up on all look the same
        * without them. `run` says how many failed since the last line, so a
        * throttled channel still reports its rate. */
-      klog(ch->tag, "TIMEOUT cmd 0x%02x seq %lu %lu/%lums %luB %luf %lud %luc run %lu", cmd,
+      /*
+       * `held` and `disc` are the two numbers this line was missing.
+       *
+       * Bytes-received alone cannot tell a lost header from a lost tail, and
+       * those have different causes: discarded bytes mean the magic was
+       * missed and the decoder resynced past a frame boundary, while a large
+       * held length with nothing discarded means the header arrived and the
+       * tail did not. A whole session was spent bisecting a fault that these
+       * two would have named on the first run - it was a tail loss, from the
+       * compositor blacking out this ISR's core.
+       */
+      klog(ch->tag,
+           "TIMEOUT cmd 0x%02x seq %lu %lu/%lums %luB %luf %lud %luc held %luB disc %luB run %lu",
+           cmd,
            (unsigned long)ch->pending.seq, (unsigned long)ms, (unsigned long)timeout_ms,
            (unsigned long)(ch->stats.rx_bytes - rx_bytes_before),
            (unsigned long)(ch->stats.rx_frames - rx_frames_before),
            (unsigned long)(ch->stats.duplicates - dups_before),
            (unsigned long)(ch->stats.crc_errors + ch->decoder.stats.crc_failures - crc_before),
+           (unsigned long)ch->decoder.len,
+           (unsigned long)(ch->decoder.stats.discarded_bytes - disc_before),
            (unsigned long)ch->timeout_run);
       ch->timeout_logged_us = now_us;
     }
@@ -548,7 +564,7 @@ esp_err_t camlink_release_ch(int cam, uint32_t frame_id) {
   char req_json[48];
   snprintf(req_json, sizeof req_json, "{\"frameId\":%lu}", (unsigned long)frame_id);
   uint8_t resp[128];
-  return request(cam, NL_CMD_RELEASE, req_json, resp, sizeof resp, NULL, DEFAULT_TIMEOUT_MS);
+  return request(cam, NL_CMD_RELEASE, req_json, resp, sizeof resp - 1, NULL, DEFAULT_TIMEOUT_MS);
 }
 
 esp_err_t camlink_release(uint32_t frame_id) { return camlink_release_ch(0, frame_id); }

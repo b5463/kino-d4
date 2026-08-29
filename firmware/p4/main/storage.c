@@ -1,12 +1,14 @@
 #include "storage.h"
 
 #include <dirent.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "board_d4v1.h"
 #include "driver/sdmmc_host.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
@@ -33,7 +35,7 @@ static const char *s_write_test = "none";
 
 static void set_error(const char *code) {
   if (code[0] != '\0') s_sd_errors++;
-  strncpy(s_last_error, code, sizeof s_last_error - 1);
+  strlcpy(s_last_error, code, sizeof s_last_error);
   s_last_error[sizeof s_last_error - 1] = '\0';
 }
 
@@ -658,8 +660,23 @@ esp_err_t storage_capture_frame_begin(storage_capture_t *c, int cam) {
 
 esp_err_t storage_capture_frame_end(storage_capture_t *c) {
   if (c->jpg == NULL) return ESP_ERR_INVALID_STATE;
+  /* fflush then fclose, and deliberately no fsync between them.
+   *
+   * esp_vfs_fat's close is f_close(), and FatFs f_close() begins with
+   * f_sync(): the file's dirty sector, its directory entry, the FAT chain and
+   * the CTRL_SYNC to the card all go out there regardless. An explicit
+   * fsync() one line earlier is a second, identical f_sync — 10-30 ms of
+   * serialised card time per frame, 40-120 ms across four.
+   *
+   * That time is not just slow. SDMMC DMA out of PSRAM does its cache
+   * writeback in a critical section with interrupts off, while the other
+   * cameras are still pushing bytes into a 128-byte UART RX FIFO with no flow
+   * control — 1.39 ms of slack at 921600 baud. A card transaction that buys
+   * nothing is a chance to destroy another camera's in-flight frame.
+   *
+   * The guarantee is unchanged: when this returns ESP_OK the frame is on the
+   * card, directory entry and all, exactly as it was with the extra fsync. */
   int failed = fflush(c->jpg) != 0;
-  failed |= fsync(fileno(c->jpg)) != 0;
   failed |= fclose(c->jpg) != 0;
   c->jpg = NULL;
   if (failed) {
@@ -686,7 +703,11 @@ esp_err_t storage_capture_append(storage_capture_t *c, const uint8_t *data, size
 esp_err_t storage_capture_commit(storage_capture_t *c, const char *meta_json) {
   /* A multi-frame capture has already closed its frames one at a time; the
    * single-frame bench path still has one open here. Both arrive with the
-   * bytes on the card, so committing is only ever about META.JSON. */
+   * bytes on the card, so committing is only ever about META.JSON.
+   *
+   * Every frame was committed by its own fclose() (see frame_end), so the one
+   * fsync below is the last card sync a capture needs: after it returns
+   * ESP_OK, all four JPEGs and the metadata survive a power cut. */
   if (c->jpg != NULL && storage_capture_frame_end(c) != ESP_OK) return ESP_FAIL;
   if (c->written == 0) return ESP_ERR_INVALID_STATE;
 
@@ -714,18 +735,42 @@ void storage_capture_abort(storage_capture_t *c) {
 }
 
 esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_bytes) {
+  /* One buffer per call, not one static shared by every caller.
+   *
+   * This was `static uint8_t buf[SELFTEST_CHUNK]`, which is only safe while
+   * exactly one task is ever inside this function: with a shared buffer, a
+   * second caller's fread lands between the first's fread and its
+   * kdp_crc32_update, and the first hashes the second's bytes. That reads as
+   * an intermittent CRC mismatch on a card that kept every byte - a false
+   * alarm that discards a good file, or worse, a false pass.
+   *
+   * The capture path no longer calls this at all; the read-back was removed
+   * from the shutter on 2026-08-29. The remaining callers are the storage
+   * self-test and kdp_server's bench read-back, which do not currently run
+   * concurrently - so this is now defence against a future second caller
+   * rather than a fix for a live race.
+   *
+   * Heap rather than stack because SELFTEST_CHUNK is 4 KB and the callers do
+   * not have that to spare. PSRAM is fine: fread copies through FATFS's own
+   * sector cache and the CRC loop reads sequentially. */
+  uint8_t *buf = heap_caps_malloc(SELFTEST_CHUNK, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (buf == NULL) buf = malloc(SELFTEST_CHUNK);
+  if (buf == NULL) return ESP_ERR_NO_MEM;
   FILE *f = fopen(path, "rb");
-  if (f == NULL) return ESP_ERR_NOT_FOUND;
-  static uint8_t buf[SELFTEST_CHUNK];
+  if (f == NULL) {
+    free(buf);
+    return ESP_ERR_NOT_FOUND;
+  }
   uint32_t state = kdp_crc32_begin();
   uint32_t total = 0;
   size_t n;
-  while ((n = fread(buf, 1, sizeof buf, f)) > 0) {
+  while ((n = fread(buf, 1, SELFTEST_CHUNK, f)) > 0) {
     state = kdp_crc32_update(state, buf, n);
     total += (uint32_t)n;
   }
   int err = ferror(f);
   fclose(f);
+  free(buf);
   if (err) return ESP_FAIL;
   *out_crc = kdp_crc32_final(state);
   if (out_bytes != NULL) *out_bytes = total;

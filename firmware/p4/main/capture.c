@@ -118,6 +118,13 @@ typedef struct {
   int cam;
   SemaphoreHandle_t go;
   uint8_t *jpeg; /* PSRAM staging for this camera's frame */
+  /* Set only on the thumbnail camera, and only when its worker deliberately
+   * left `jpeg` allocated for capture_fire to hand to thumb_write. */
+  uint32_t jpeg_bytes;
+  /* The worker records that this camera earned its hardware-validation marks;
+   * capture_fire writes them once every transfer has finished. Written by one
+   * worker, read by the coordinator after the done bits, so no lock. */
+  bool hwv_pending;
 } worker_t;
 
 static worker_t s_worker[CAPTURE_CAMS];
@@ -280,9 +287,9 @@ static void frame_failf(capture_frame_t *f, const char *fmt, ...) {
   f->ok = false;
 }
 
-/** Write one staged frame to the card, then read it back and check it. */
+/** Write one staged frame to the card. */
 static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32_t size,
-                        const char *node_crc) {
+                        uint32_t transfer_crc) {
   const int64_t t0 = esp_timer_get_time();
   /* One writer at a time: the capture folder has a single open file handle,
    * and four cameras finishing together would otherwise interleave. Holding
@@ -298,8 +305,6 @@ static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32
     const esp_err_t end = storage_capture_frame_end(s_store);
     if (err == ESP_OK) err = end;
   }
-  char path[96];
-  snprintf(path, sizeof path, "%s/C%d.JPG", s_store->dir, cam + 1);
   xSemaphoreGive(s_card);
 
   if (err != ESP_OK) {
@@ -308,27 +313,27 @@ static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32
   }
   f->write_ms = ms_since(t0);
 
-  /* Read the file back. The transfer CRC only proves the bytes crossed the
-   * UART intact; this proves the card kept them, which is a different and
-   * more commonly broken thing on cheap cards. */
-  uint32_t stored_crc = 0, stored_bytes = 0;
-  if (storage_file_crc32(path, &stored_crc, &stored_bytes) != ESP_OK) {
-    frame_failf(f, "stored frame unreadable");
-    return;
-  }
-  f->crc = stored_crc;
-  if (stored_bytes != size) {
-    frame_failf(f, "card kept %lu of %lu B", (unsigned long)stored_bytes,
-                (unsigned long)size);
-    return;
-  }
-  char hex[12];
-  snprintf(hex, sizeof hex, "%08lx", (unsigned long)stored_crc);
-  f->crc_match = node_crc[0] == '\0' || strcmp(hex, node_crc) == 0;
-  if (!f->crc_match) {
-    frame_failf(f, "stored %s, node said %s", hex, node_crc);
-    return;
-  }
+  /*
+   * No read-back CRC. This used to reopen C%d.JPG and storage_file_crc32() the
+   * whole file, which cost 40-75 ms per frame - 160-300 ms across four - inside
+   * the shutter, and did it as four concurrent freads against the same card
+   * while sibling cameras were still writing to it.
+   *
+   * It proved nothing the two checks either side had not already proved: the
+   * transfer CRC was compared against the node's own CRC in do_frame before
+   * this function is reached, and storage_capture_frame_end() reports what
+   * fwrite, fflush and fclose returned - FatFs commits the file in f_close -
+   * which is what actually catches a card that dropped the write. A read-back over the same FAT driver and the same block cache that
+   * just wrote the bytes is not an independent witness of them.
+   *
+   * f->crc keeps its meaning: on a successful write the stored bytes are the
+   * transferred bytes, so it is the same 32-bit value the read-back produced.
+   * crc_match is true for the same reason it was before - do_frame returns on a
+   * transfer/node mismatch and never calls this, and a node that reported no
+   * CRC at all counted as a match then too.
+   */
+  f->crc = transfer_crc;
+  f->crc_match = true;
   f->ok = true;
 }
 
@@ -459,8 +464,9 @@ static void do_frame(worker_t *w) {
   f->transfer_ms = ms_since(t_xfer);
   camlink_release_ch(cam, cap.frame_id);
 
+  const uint32_t transfer_crc = kdp_crc32_final(crc);
   char transfer_hex[12];
-  snprintf(transfer_hex, sizeof transfer_hex, "%08lx", (unsigned long)kdp_crc32_final(crc));
+  snprintf(transfer_hex, sizeof transfer_hex, "%08lx", (unsigned long)transfer_crc);
   if (cap.crc32[0] != '\0' && strcmp(transfer_hex, cap.crc32) != 0) {
     frame_failf(f, "link corrupted the frame (%s vs %s)", transfer_hex, cap.crc32);
     free(w->jpeg);
@@ -475,34 +481,24 @@ static void do_frame(worker_t *w) {
   }
   f->bytes = cap.size;
 
-  store_frame(cam, f, w->jpeg, cap.size, cap.crc32);
+  store_frame(cam, f, w->jpeg, cap.size, transfer_crc);
 
-  /* The thumbnail comes from the frame already in memory, before it is freed.
-   * Reading it back off the card to make one would cost a second read of
-   * every capture for a picture we are holding right now. */
+  /* The thumbnail still comes from the frame already in PSRAM - reading a
+   * 72-241 KB file back off the card to make one would undo the point - but it
+   * is written by capture_fire once every transfer is done, not here. So this
+   * worker hands its staging buffer over instead of freeing it, and capture_fire
+   * frees it at `finish` on every path. Exactly one camera per capture does
+   * this: s_thumb_cam is chosen by the coordinator before any worker runs. */
   if (f->ok && cam == s_thumb_cam && thumb_ready()) {
-    char path[96];
-    snprintf(path, sizeof path, "%s/THUMB.JPG", s_store->dir);
-    const int64_t th0 = esp_timer_get_time();
-    const esp_err_t th = thumb_write(w->jpeg, cap.size, path);
-    if (s_active != NULL) s_active->thumbnail_ms = ms_since(th0);
-    if (th != ESP_OK) {
-      /* Not a capture failure. The frames are on the card and readable; a
-       * gallery without a thumbnail is slower, not wrong. */
-      ESP_LOGW(TAG, "no thumbnail for %s", s_store->id);
-    }
+    w->jpeg_bytes = cap.size;
+  } else {
+    free(w->jpeg);
+    w->jpeg = NULL;
   }
 
-  free(w->jpeg);
-  w->jpeg = NULL;
-
-  if (f->ok) {
-    /* Per channel, not CAM1 only: the four-camera bring-up has to be able to
-     * say which cameras have actually written a verified frame to the card. */
-    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_JPEG_TRANSFER), "transfer CRC matched the node's");
-    hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_SD_WRITE), "read-back CRC matched the node's");
-    if (cam == 0) hwv_mark_validated(HWV_CAM1_CAPTURE, "capture stored and verified from the card");
-  }
+  /* Not marked here. hwv_mark_validated writes NVS, and capture_fire does it
+   * after the last transfer - see the loop past the done bits. */
+  w->hwv_pending = f->ok;
 }
 
 static void worker_task(void *arg) {
@@ -526,11 +522,17 @@ void capture_meta_json(const capture_report_t *r, void *cjson_object) {
 /* the capture itself                                               */
 /* ---------------------------------------------------------------- */
 
+/* When this path last watched the camera bank come up, on the P4's monotonic
+ * clock. 0 means it has never seen the transition. */
+static int64_t s_bank_up_us;
+
 /** Make sure the cameras have power and have finished booting. */
 static bool cams_powered(void) {
   power_activity();
   power_state_t p;
   power_get(&p);
+  /* Already up before this capture was even asked for, so the nodes booted
+   * some time ago and there is nothing to settle. */
   if (p.cam_bank_on) return true;
 
   /* The bank comes back on because the activity above reset the idle timer,
@@ -541,9 +543,19 @@ static bool cams_powered(void) {
   for (int i = 0; i < 20 && !p.cam_bank_on; i++) {
     vTaskDelay(pdMS_TO_TICKS(50));
     power_get(&p);
+    if (p.cam_bank_on) s_bank_up_us = esp_timer_get_time();
   }
   if (!p.cam_bank_on) return false;
-  vTaskDelay(pdMS_TO_TICKS(CAM_BANK_SETTLE_MS));
+
+  /* Only what is left of the settle.
+   *
+   * s_bank_up_us is stamped in the poll above at the moment the rail was first
+   * seen up, so this pays the remainder of the nodes' boot time rather than a
+   * flat 900 ms on top of however long the poll already took. Stamping it here
+   * instead - which an earlier version did - makes up_ms always zero and the
+   * subtraction dead. */
+  const uint32_t up_ms = s_bank_up_us > 0 ? ms_since(s_bank_up_us) : 0;
+  if (up_ms < CAM_BANK_SETTLE_MS) vTaskDelay(pdMS_TO_TICKS(CAM_BANK_SETTLE_MS - up_ms));
   return true;
 }
 
@@ -613,8 +625,14 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   /* One resolution for every mode. `quad` has no resolution of its own in the
    * settings envelope - the four frames of a quad are the same four sensors
    * as a wiggle, shown differently. */
+  /* The fallback is 1600x1200 because that is what config_store.c seeds into a
+   * fresh settings envelope and what kdp_server.c's bench capture uses. It read
+   * 2048x1536 here, so a settings file missing wiggle.resolution shot at 1.64x
+   * the pixels of every other path - a 72-241 KB frame instead of a 50-150 KB
+   * one, on a link that costs about 89 ms per 8192-byte chunk - and nothing in
+   * the report said why the capture had got slower. */
   snprintf(r.resolution, sizeof r.resolution, "%s",
-           config_str("wiggle.resolution", "2048x1536"));
+           config_str("wiggle.resolution", "1600x1200"));
   clock_iso8601(r.captured_at, sizeof r.captured_at);
   r.captured_at_ms = clock_now_ms();
 
@@ -758,6 +776,13 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   flash = flash_wanted(r.mode);
   xEventGroupClearBits(s_exposed, ALL_CAMS_MASK);
   xEventGroupClearBits(s_done, ALL_CAMS_MASK);
+  /* All four, not just the ones in `ask`: a camera that answered last capture
+   * and is unplugged now would otherwise be marked validated again from a stale
+   * flag, and its stale jpeg_bytes would size a thumbnail. */
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    s_worker[i].hwv_pending = false;
+    s_worker[i].jpeg_bytes = 0;
+  }
 
   if (flash) flash_set(1);
   s_trigger_us = esp_timer_get_time();
@@ -784,6 +809,34 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   xEventGroupWaitBits(s_done, ask, pdFALSE, pdTRUE, portMAX_DELAY);
   s_stage = CAPTURE_WRITING;
   klog("P4", "all frames in at +%lld us", (long long)(esp_timer_get_time() - r.request_us));
+
+  /*
+   * The hardware-validation marks, here rather than in the workers.
+   *
+   * hwv_mark_validated writes NVS, and an ESP-IDF flash write runs
+   * spi_flash_disable_interrupts_caches_and_other_cpu(): every link UART
+   * interrupt on both cores is off for 0.5-0.8 ms on a page write and 30-45 ms
+   * on a sector erase. The RX FIFO is 128 bytes - 1.39 ms at 921600 baud - and
+   * RTS/CTS are not wired, so a mark fired from cam1's worker eats bytes out of
+   * cam2's in-flight chunk. Each item only ever writes once per device, but on
+   * a four-camera rig that one write lands inside a sibling's transfer. Nothing
+   * is on the wire at this point.
+   *
+   * Per channel, not CAM1 only: the four-camera bring-up has to be able to say
+   * which cameras have actually written a frame to the card.
+   */
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    if (!s_worker[i].hwv_pending) continue;
+    s_worker[i].hwv_pending = false;
+    hwv_mark_validated(hwv_cam_item(i, HWV_CAM1_JPEG_TRANSFER),
+                       "transfer CRC matched the node's");
+    /* Not "read-back CRC" any more: store_frame no longer re-reads the file,
+     * so what this item now attests is a write that fwrite, fflush and fclose
+     * all reported OK - not a read-back. Anything stronger belongs in
+     * STORAGE_SELF_TEST, which reads the card back deliberately. */
+    hwv_mark_validated(hwv_cam_item(i, HWV_CAM1_SD_WRITE), "frame written and closed clean");
+    if (i == 0) hwv_mark_validated(HWV_CAM1_CAPTURE, "capture stored, transfer CRC matched");
+  }
 
   for (int i = 0; i < CAPTURE_CAMS; i++) {
     if ((ask & (1u << i)) == 0) continue;
@@ -815,6 +868,38 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     }
     fail(&r, "CAPTURE_FAILED", why);
     goto finish;
+  }
+
+  /*
+   * THUMB.JPG, out of the transfer window.
+   *
+   * thumb_write is a full-resolution hardware JPEG decode plus a PPA scale, and
+   * the esp_cache_msync calls around those run over multi-megabyte PSRAM
+   * buffers - cache maintenance that blocks interrupts in bursts. Run inside a
+   * worker it did that while up to three siblings were mid-chunk, against 1.39
+   * ms of FIFO slack, and it also held back that worker's done bit so every
+   * other camera waited for a picture none of them needed.
+   *
+   * The buffer is the thumbnail camera's staging frame, which its worker left
+   * allocated on purpose; `finish` frees it whichever way this capture ends.
+   * Before META.JSON on purpose, so thumbnail_ms is in the document that
+   * describes the capture it belongs to.
+   */
+  if (s_thumb_cam >= 0 && s_worker[s_thumb_cam].jpeg != NULL) {
+    char thumb_path[96];
+    snprintf(thumb_path, sizeof thumb_path, "%s/THUMB.JPG", store.dir);
+    const int64_t th0 = esp_timer_get_time();
+    const esp_err_t th =
+        thumb_write(s_worker[s_thumb_cam].jpeg, s_worker[s_thumb_cam].jpeg_bytes, thumb_path);
+    r.thumbnail_ms = ms_since(th0);
+    if (th != ESP_OK) {
+      /* Not a capture failure - the frames are on the card and readable, and a
+       * gallery without a thumbnail is slower rather than wrong - but it goes
+       * in the ring, not just the console. As ESP_LOGW it was invisible to
+       * GET_LOGS, so a capture reporting a thumbnailMs with no THUMB.JPG on
+       * the card looked like a mystery instead of a reported failure. */
+      klog("P4", "no thumbnail for %s: %s", store.id, esp_err_to_name(th));
+    }
   }
 
   r.ok = true;
@@ -850,6 +935,17 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
 
 finish:
   flash_set(0);
+  /* The thumbnail camera's worker leaves its staged frame allocated for the
+   * thumb_write above; every other worker path already freed its own and left
+   * NULL. One sweep here so no goto - SD_FULL, CAPTURE_FAILED, a META.JSON
+   * that would not commit - can drop a 72-241 KB PSRAM buffer on the floor.
+   * Every worker is idle by the time any of them can hold a buffer: the only
+   * path that releases them ends at the done bits above. */
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    free(s_worker[i].jpeg);
+    s_worker[i].jpeg = NULL;
+    s_worker[i].jpeg_bytes = 0;
+  }
   /* One place that undoes a half-made capture, so no failure path can leave
    * a folder of frames nothing will ever explain. */
   if (folder_open && !r.ok) storage_capture_abort(&store);

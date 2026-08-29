@@ -52,10 +52,12 @@ static uint8_t s_tx[KDP_MAX_FRAME];
 static SemaphoreHandle_t s_tx_lock;
 static bool s_usb_seen; /* first decoded host frame marks USB validated */
 
-// One capture pipeline at a time: CAMERA_TEST, STORAGE_SELF_TEST and the
-// soak job all contend for the camera UART, the PSRAM staging buffer and
-// the SD write path. Held for a whole soak run — concurrent starts get BUSY.
-static SemaphoreHandle_t s_capture_lock;
+// One capture pipeline at a time: CAMERA_TEST, STORAGE_SELF_TEST, STORAGE_BENCH
+// and the soak job all contend for the camera UART, the PSRAM staging buffer
+// and the SD write path - and so does the product capture in capture.c. They
+// share capture_lock()/capture_unlock() (capture.h), which used to be a second
+// mutex here that capture_fire() never looked at. Held for a whole soak run;
+// concurrent starts, including a shutter press, get BUSY.
 
 static uint32_t s_job_counter;
 static volatile bool s_soak_running;
@@ -234,7 +236,7 @@ static char *build_meta_json(const capture_result_t *r, const char *node_fw) {
 static void fail(capture_result_t *r, const char *code, const char *msg) {
   r->ok = false;
   r->err_code = code;
-  strncpy(r->err_msg, msg, sizeof r->err_msg - 1);
+  strlcpy(r->err_msg, msg, sizeof r->err_msg);
   r->err_msg[sizeof r->err_msg - 1] = '\0';
 }
 
@@ -253,7 +255,7 @@ static void failf(capture_result_t *r, const char *code, const char *fmt, ...) {
   va_end(args);
 }
 
-/* Caller must hold s_capture_lock. */
+/* Caller must hold capture_lock(). */
 static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) {
   memset(r, 0, sizeof *r);
   r->node_heap_kb = -1;
@@ -304,7 +306,9 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   }
   r->t_capture_ms = elapsed_ms(t_cap);
   r->jpeg_bytes = cap.size;
-  strncpy(r->crc_node, cap.crc32, sizeof r->crc_node - 1);
+  /* snprintf, not strncpy: at -O2 GCC proves the strncpy form can leave the
+   * field unterminated and -Werror=stringop-truncation stops the build. */
+  snprintf(r->crc_node, sizeof r->crc_node, "%s", cap.crc32);
   r->node_heap_kb = cap.heap_kb;
   r->node_psram_kb = cap.psram_kb;
   if (cap.size < 4) {
@@ -388,8 +392,8 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
     fail(r, "SD_WRITE_FAILED", "Could not open the capture folder");
     return;
   }
-  strncpy(r->capture_id, capture.id, sizeof r->capture_id - 1);
-  strncpy(r->dir, capture.dir, sizeof r->dir - 1);
+  snprintf(r->capture_id, sizeof r->capture_id, "%s", capture.id);
+  snprintf(r->dir, sizeof r->dir, "%s", capture.dir);
   if (storage_capture_append(&capture, jpeg, cap.size) != ESP_OK) {
     storage_capture_abort(&capture);
     free(jpeg);
@@ -887,6 +891,36 @@ static void handle_set_mode(uint32_t seq, const cJSON *req) {
 /* Directory names, sorted, so paging is stable between calls. A capture id
  * sorts lexicographically the same way it sorts by time because the sequence
  * is zero-padded, so this is also newest-last. */
+/*
+ * When a capture was taken, straight out of its META.JSON.
+ *
+ * The obvious key is the directory mtime, and it does not work here: stat()
+ * on both the folder and its META.JSON came back with times that sorted every
+ * capture equal, so the list stayed in readdir order - which for UUID names is
+ * meaningless. capturedAtMs is written by the capture itself and is visibly
+ * correct in MEDIA_LIST output, so it is the key that actually orders.
+ *
+ * Read with a bounded fread and a strstr rather than a cJSON parse: this runs
+ * once per capture on the card just to sort them, and the page a client
+ * actually receives still gets a full parse. 512 bytes covers it - the key
+ * sits in the first hundred or so of every META.JSON this firmware writes.
+ */
+static uint64_t capture_taken_ms(const char *dir_name) {
+  char path[200];
+  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, dir_name);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) return 0;
+  char head[512];
+  const size_t got = fread(head, 1, sizeof head - 1, f);
+  fclose(f);
+  head[got] = '\0';
+  const char *k = strstr(head, "\"capturedAtMs\"");
+  if (k == NULL) return 0;
+  k = strchr(k, ':');
+  if (k == NULL) return 0;
+  return strtoull(k + 1, NULL, 10);
+}
+
 static int media_scan(char (*names)[64], int cap) {
   DIR *d = opendir(CAPTURES_DIR);
   if (d == NULL) return 0;
@@ -903,20 +937,41 @@ static int media_scan(char (*names)[64], int cap) {
     count++;
   }
   closedir(d);
+
+  /*
+   * Newest first, by directory mtime.
+   *
+   * This sorted by strcmp on the folder name, and the names are UUIDs, so the
+   * list came back alphabetical: 007f5d03, 049c0c3e, 05089a35. A client asking
+   * for the first page got the oldest pictures on the card, and a shot just
+   * taken could be a hundred entries down. Sorting by name is stable and
+   * meaningless; a gallery wants the last thing photographed at the top.
+   *
+   * capturedAtMs from each META.JSON, read with a bounded fread rather than a
+   * full parse. Directory mtime was tried first and sorted everything equal.
+   */
+  uint64_t *when = calloc((size_t)cap, sizeof *when);
+  for (int i = 0; when != NULL && i < count; i++) when[i] = capture_taken_ms(names[i]);
+
   /* Insertion sort: a card holds hundreds of captures, not millions, and this
-   * avoids dragging qsort's comparator indirection in for it. */
+   * avoids dragging qsort's comparator indirection in for it. Falls back to
+   * name order if the mtime allocation failed - a wrong order beats no list. */
   for (int i = 1; i < count; i++) {
     char key[64];
     memcpy(key, names[i], 64);
+    const uint64_t key_when = when != NULL ? when[i] : 0;
     int j = i - 1;
     /* memcpy, not snprintf: the source and destination are rows of the same
      * array, and snprintf is not defined for overlapping objects. */
-    while (j >= 0 && strcmp(names[j], key) > 0) {
+    while (j >= 0 && (when != NULL ? when[j] < key_when : strcmp(names[j], key) > 0)) {
       memcpy(names[j + 1], names[j], 64);
+      if (when != NULL) when[j + 1] = when[j];
       j--;
     }
     memcpy(names[j + 1], key, 64);
+    if (when != NULL) when[j + 1] = key_when;
   }
+  free(when);
   return count;
 }
 
@@ -1262,7 +1317,7 @@ static void bench_pass_json(cJSON *dst, const storage_bench_pass_t *p) {
 static void handle_storage_bench(uint32_t seq, const cJSON *req) {
   /* Shares the capture lock with CAMERA_TEST and the soak run: a megabyte of
    * card traffic during a capture would corrupt both measurements. */
-  if (xSemaphoreTake(s_capture_lock, 0) != pdTRUE) {
+  if (!capture_lock(0)) {
     send_nack(KDP_CMD_STORAGE_BENCH, seq, "BUSY", "A capture or soak run is active");
     return;
   }
@@ -1287,7 +1342,7 @@ static void handle_storage_bench(uint32_t seq, const cJSON *req) {
 
   storage_bench_result_t r;
   storage_bench(size_kb, block_kb, passes, &r);
-  xSemaphoreGive(s_capture_lock);
+  capture_unlock();
 
   if (!r.ok) {
     /* The failing phase is the diagnostic. "Slow" and "did not finish" are
@@ -1336,13 +1391,13 @@ static void handle_storage_bench(uint32_t seq, const cJSON *req) {
 }
 
 static void handle_storage_self_test(uint32_t seq) {
-  if (xSemaphoreTake(s_capture_lock, 0) != pdTRUE) {
+  if (!capture_lock(0)) {
     send_nack(KDP_CMD_STORAGE_SELF_TEST, seq, "BUSY", "A capture or soak run is active");
     return;
   }
   storage_selftest_result_t result;
   storage_self_test(&result);
-  xSemaphoreGive(s_capture_lock);
+  capture_unlock();
 
   if (result.ok) {
     storage_status_t sd;
@@ -1682,13 +1737,13 @@ static void selftest_task(void *arg) {
         if (!storage_present()) {
           status = "skip";
           snprintf(detail, sizeof detail, "no card");
-        } else if (xSemaphoreTake(s_capture_lock, pdMS_TO_TICKS(100)) != pdTRUE) {
+        } else if (!capture_lock(100)) {
           status = "skip";
           snprintf(detail, sizeof detail, "capture busy");
         } else {
           storage_selftest_result_t st;
           storage_self_test(&st);
-          xSemaphoreGive(s_capture_lock);
+          capture_unlock();
           if (st.ok) {
             status = "pass";
             snprintf(detail, sizeof detail, "%lu KB verified",
@@ -1891,7 +1946,7 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
     send_nack(KDP_CMD_CAMERA_TEST, seq, "CAMERA_OFFLINE", "Camera node not connected");
     return;
   }
-  if (xSemaphoreTake(s_capture_lock, 0) != pdTRUE) {
+  if (!capture_lock(0)) {
     send_nack(KDP_CMD_CAMERA_TEST, seq, "BUSY", "A capture or soak run is active");
     return;
   }
@@ -1906,7 +1961,7 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
   run_capture(-1, true, &result);
   viewfinder_review(450);
   viewfinder_release(vf_was);
-  xSemaphoreGive(s_capture_lock);
+  capture_unlock();
 
   if (!result.ok) {
     klog("C1", "capture FAILED — %s: %s", result.err_code, result.err_msg);
@@ -1972,7 +2027,7 @@ static void soak_task(void *arg) {
   camlink_info_t node0;
   camlink_get_info(&node0);
   char node_session[16];
-  strncpy(node_session, node0.session, sizeof node_session);
+  strlcpy(node_session, node0.session, sizeof node_session);
 
   uint32_t batch = args->captures / 10;
   if (batch == 0) batch = 1;
@@ -1994,13 +2049,13 @@ static void soak_task(void *arg) {
       bucket_add(&transfer, r.t_transfer_ms);
       bucket_add(&sd, r.t_sd_ms);
       if (first_uuid[0] == '\0') {
-        strncpy(first_uuid, r.capture_uuid, sizeof first_uuid);
+        strlcpy(first_uuid, r.capture_uuid, sizeof first_uuid);
       } else if (!args->keep_all) {
         // Keep first and current last; drop the previous middle capture.
         if (kept_last_dir[0] != '\0') storage_capture_delete(kept_last_dir);
-        strncpy(kept_last_dir, r.dir, sizeof kept_last_dir);
+        strlcpy(kept_last_dir, r.dir, sizeof kept_last_dir);
       }
-      strncpy(last_uuid, r.capture_uuid, sizeof last_uuid);
+      strlcpy(last_uuid, r.capture_uuid, sizeof last_uuid);
     } else {
       failed++;
       if (strcmp(r.err_code, "TRANSFER_CRC_MISMATCH") == 0) crc_errors++;
@@ -2011,7 +2066,7 @@ static void soak_task(void *arg) {
       if (strncmp(r.err_code, "SD_", 3) == 0) sd_errors++;
       for (int e = 0; e < SOAK_ERROR_KINDS; e++) {
         if (errors[e].count == 0 || strcmp(errors[e].code, r.err_code) == 0) {
-          if (errors[e].count == 0) strncpy(errors[e].code, r.err_code, sizeof errors[e].code - 1);
+          if (errors[e].count == 0) strlcpy(errors[e].code, r.err_code, sizeof errors[e].code);
           errors[e].count++;
           break;
         }
@@ -2022,7 +2077,7 @@ static void soak_task(void *arg) {
         camlink_get_info(&now);
         if (now.session[0] != '\0' && strcmp(now.session, node_session) != 0) {
           node_resets++;
-          strncpy(node_session, now.session, sizeof node_session);
+          strlcpy(node_session, now.session, sizeof node_session);
         }
       }
     }
@@ -2083,7 +2138,7 @@ static void soak_task(void *arg) {
 
   s_soak_running = false;
   viewfinder_release(vf_was);
-  xSemaphoreGive(s_capture_lock);
+  capture_unlock();
   free(args);
   vTaskDelete(NULL);
 }
@@ -2106,14 +2161,14 @@ static void handle_soak_test(uint32_t seq, cJSON *req) {
     send_nack(KDP_CMD_CAMERA_SOAK_TEST, seq, "SD_NOT_MOUNTED", "No durable storage path");
     return;
   }
-  if (xSemaphoreTake(s_capture_lock, 0) != pdTRUE) {
+  if (!capture_lock(0)) {
     send_nack(KDP_CMD_CAMERA_SOAK_TEST, seq, "BUSY", "A capture or soak run is active");
     return;
   }
 
   soak_args_t *args = calloc(1, sizeof *args);
   if (args == NULL) {
-    xSemaphoreGive(s_capture_lock);
+    capture_unlock();
     send_nack(KDP_CMD_CAMERA_SOAK_TEST, seq, "OUT_OF_MEMORY", "No memory for soak state");
     return;
   }
@@ -2138,7 +2193,7 @@ static void handle_soak_test(uint32_t seq, cJSON *req) {
   if (xTaskCreate(soak_task, "soak", 8192, args, 5, NULL) != pdPASS) {
     s_soak_running = false;
     free(args);
-    xSemaphoreGive(s_capture_lock);
+    capture_unlock();
     send_nack(KDP_CMD_CAMERA_SOAK_TEST, seq, "OUT_OF_MEMORY", "Could not start soak task");
     return;
   }
@@ -2158,6 +2213,32 @@ static void handle_reboot(uint32_t seq) {
 }
 
 // ---- dispatch ----
+
+/* How long a MEDIA_* command waits for the card before answering BUSY. A
+ * capture holds it for a few seconds; an upload chunk yields within one chunk
+ * read. Longer than the latter, shorter than a host's request timeout. */
+#define MEDIA_CARD_WAIT_MS 3000
+
+typedef void (*media_handler_t)(uint32_t seq, const cJSON *req);
+
+/**
+ * Run a MEDIA_* handler holding the card as the UI user.
+ *
+ * These six handlers opened FAT directly. Capture and upload were serialised
+ * through storage_acquire(), so the gallery reads and META.JSON rewrites a
+ * host issues were the remaining traffic that could land on the SDMMC bus
+ * while four frames were being written. Nothing corrupts - FATFS has its own
+ * lock - but the frame spread widens and a MEDIA_READ mid-capture stalls
+ * behind the writes anyway. Taking the lock says so up front: BUSY, retry.
+ */
+static void with_card(uint8_t cmd, uint32_t seq, const cJSON *req, media_handler_t fn) {
+  if (!storage_acquire(STORAGE_USER_UI, MEDIA_CARD_WAIT_MS)) {
+    send_nack(cmd, seq, "BUSY", "Card is busy with a capture");
+    return;
+  }
+  fn(seq, req);
+  storage_release(STORAGE_USER_UI);
+}
 
 static void on_frame(const kdp_frame_t *frame, void *ctx) {
   (void)ctx;
@@ -2184,12 +2265,14 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_GET_POWER_STATUS: handle_power_status(frame->seq); break;
     case KDP_CMD_GET_MODES: handle_get_modes(frame->seq); break;
     case KDP_CMD_CAMERA_CAPTURE: handle_camera_capture(frame->seq, req); break;
-    case KDP_CMD_MEDIA_LIST: handle_media_list(frame->seq, req); break;
-    case KDP_CMD_MEDIA_READ: handle_media_read(frame->seq, req); break;
-    case KDP_CMD_MEDIA_THUMB: handle_media_thumb(frame->seq, req); break;
-    case KDP_CMD_MEDIA_INFO: handle_media_info(frame->seq, req); break;
-    case KDP_CMD_MEDIA_DELETE: handle_media_delete(frame->seq, req); break;
-    case KDP_CMD_MEDIA_FAVORITE: handle_media_favorite(frame->seq, req); break;
+    case KDP_CMD_MEDIA_LIST: with_card(frame->type, frame->seq, req, handle_media_list); break;
+    case KDP_CMD_MEDIA_READ: with_card(frame->type, frame->seq, req, handle_media_read); break;
+    case KDP_CMD_MEDIA_THUMB: with_card(frame->type, frame->seq, req, handle_media_thumb); break;
+    case KDP_CMD_MEDIA_INFO: with_card(frame->type, frame->seq, req, handle_media_info); break;
+    case KDP_CMD_MEDIA_DELETE: with_card(frame->type, frame->seq, req, handle_media_delete); break;
+    case KDP_CMD_MEDIA_FAVORITE:
+      with_card(frame->type, frame->seq, req, handle_media_favorite);
+      break;
     case KDP_CMD_SET_MODE: handle_set_mode(frame->seq, req); break;
     case KDP_CMD_GET_CONFIG: handle_get_config(frame->seq); break;
     case KDP_CMD_SET_CONFIG: handle_set_config(frame->seq, req); break;
@@ -2264,8 +2347,7 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
 
   s_id = *identity;
   s_tx_lock = xSemaphoreCreateMutex();
-  s_capture_lock = xSemaphoreCreateMutex();
-  if (s_tx_lock == NULL || s_capture_lock == NULL) return ESP_ERR_NO_MEM;
+  if (s_tx_lock == NULL) return ESP_ERR_NO_MEM;
 
   esp_err_t err = usb_link_init();
   if (err != ESP_OK) {

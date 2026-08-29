@@ -43,39 +43,102 @@ static void unlock(void) { xSemaphoreGive(s_lock); }
 /* scanning                                                          */
 /* ---------------------------------------------------------------- */
 
-/**
- * Capture folder names, newest last.
+/*
+ * When a capture was taken, from its META.JSON.
  *
- * Names are UUIDs, so they do not sort by time — the order here is directory
- * order made stable by sorting, not chronological. What makes the newest
- * findable is that a capture's META.JSON carries its own id and time; the
- * page a person wants is the last one, and that is where a fresh capture
- * appears because FAT appends.
+ * stat() was tried first, on both the folder and its META.JSON, and both came
+ * back with times that sorted every capture equal - so the list stayed in
+ * readdir order, which for UUID names is meaningless. capturedAtMs is written
+ * by the capture itself and is demonstrably right.
+ *
+ * A bounded fread and a strstr, not a cJSON parse: this runs once per capture
+ * on the card purely to order them, and the six on the page a person is
+ * looking at still get a full parse in read_meta().
+ */
+static uint64_t capture_taken_ms(const char *dir_name) {
+  char path[200];
+  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, dir_name);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) return 0;
+  char head[512];
+  const size_t got = fread(head, 1, sizeof head - 1, f);
+  fclose(f);
+  head[got] = 0;
+  const char *k = strstr(head, "capturedAtMs");
+  if (k == NULL) return 0;
+  k = strchr(k, ':');
+  if (k == NULL) return 0;
+  return strtoull(k + 1, NULL, 10);
+}
+
+/** Newest first. Filled by scan(), read through s_order. */
+static uint64_t s_mtime[MAX_SCAN];
+static uint16_t s_order[MAX_SCAN];
+
+static int by_newest(const void *a, const void *b) {
+  const uint64_t ta = s_mtime[*(const uint16_t *)a];
+  const uint64_t tb = s_mtime[*(const uint16_t *)b];
+  if (ta < tb) return 1; /* descending: newest first */
+  if (ta > tb) return -1;
+  return 0;
+}
+
+/**
+ * Capture folder names, newest FIRST.
+ *
+ * Folder names are UUIDs, so readdir order is neither chronological nor
+ * stable, and the old code took whatever FAT handed back and hoped the newest
+ * landed last. On the bench it did not: the card came back ordered 007f5d03,
+ * 049c0c3e, 05089a35 - alphabetical - so the first page showed the oldest
+ * pictures and a shot just taken could be pages away.
+ *
+ * The time comes from stat() on the capture's META.JSON - one stat per
+ * capture against a JSON parse per capture, and the page a person opens still
+ * reads META for its own six. It is the file rather than the folder because
+ * stat() on the directory came back with no usable mtime through
+ * esp_vfs_fat and every capture sorted equal, which left the order exactly as
+ * wrong as before. FAT stores mtime at 2-second
+ * resolution, which cannot separate two captures in the same 2 s window - the
+ * shutter cannot fire that fast, so it does not arise.
  */
 static int scan(void) {
   DIR *d = opendir(CAPTURES_DIR);
   if (d == NULL) return 0;
   int count = 0;
+  int total = 0;
   struct dirent *e;
   while ((e = readdir(d)) != NULL) {
     if (e->d_name[0] == '.') continue;
     const size_t len = strlen(e->d_name);
     if (len == 0 || len >= 40) continue;
+    total++;
+
+    const uint64_t when = capture_taken_ms(e->d_name);
+
     if (count < MAX_SCAN) {
       memcpy(s_names[count], e->d_name, len + 1);
-    } else {
-      /* Past the cap, keep shifting so the newest survive rather than the
-       * oldest — a full card would otherwise show only history. */
-      memmove(s_names[0], s_names[1], (size_t)(MAX_SCAN - 1) * 40);
-      memcpy(s_names[MAX_SCAN - 1], e->d_name, len + 1);
+      s_mtime[count] = when;
+      count++;
+      continue;
     }
-    count++;
+    /* Past the cap, evict the oldest rather than the first seen - a full card
+     * would otherwise show only history. */
+    int oldest = 0;
+    for (int i = 1; i < MAX_SCAN; i++) {
+      if (s_mtime[i] < s_mtime[oldest]) oldest = i;
+    }
+    if (when > s_mtime[oldest]) {
+      memcpy(s_names[oldest], e->d_name, len + 1);
+      s_mtime[oldest] = when;
+    }
   }
   closedir(d);
-  if (count > MAX_SCAN) {
-    ESP_LOGW(TAG, "%d captures on the card; showing the last %d", count, MAX_SCAN);
-    count = MAX_SCAN;
+  if (total > MAX_SCAN) {
+    ESP_LOGW(TAG, "%d captures on the card; showing the newest %d", total, MAX_SCAN);
   }
+
+  for (int i = 0; i < count; i++) s_order[i] = (uint16_t)i;
+  qsort(s_order, (size_t)count, sizeof s_order[0], by_newest);
   return count;
 }
 
@@ -121,12 +184,24 @@ static void read_meta(gallery_item_t *it) {
  * whichever camera did work. */
 static bool load_tile(gallery_item_t *it, uint16_t *pixels) {
   static const char *TRY[] = {"THUMB.JPG", "C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG"};
-  char path[200];
-  for (size_t i = 0; i < sizeof TRY / sizeof TRY[0]; i++) {
-    snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, it->id, TRY[i]);
-    if (thumb_load(path, pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0x0000) == ESP_OK) return true;
+  /* Take the card as the UI user for the read. A tile decode that runs while
+   * four frames are being written shares the SDMMC bus with them and widens
+   * the spread between frames, which is the one number the capture pipeline
+   * exists to keep small. Bounded wait, and on a timeout the page is marked
+   * dirty again so the task comes back to it once the capture has let go,
+   * instead of showing a NO IMAGE tile for a picture that is on the card. */
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+    s_dirty = true;
+    return false;
   }
-  return false;
+  bool ok = false;
+  char path[200];
+  for (size_t i = 0; i < sizeof TRY / sizeof TRY[0] && !ok; i++) {
+    snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, it->id, TRY[i]);
+    ok = thumb_load(path, pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0x0000) == ESP_OK;
+  }
+  storage_release(STORAGE_USER_UI);
+  return ok;
 }
 
 static void gallery_task(void *arg) {
@@ -148,7 +223,7 @@ static void gallery_task(void *arg) {
     for (int i = 0; i < GALLERY_PAGE; i++) {
       const int idx = base + i;
       if (idx < s_total) {
-        snprintf(want[i], sizeof want[i], "%s", s_names[idx]);
+        snprintf(want[i], sizeof want[i], "%s", s_names[s_order[idx]]);
         n++;
       } else {
         want[i][0] = '\0';
@@ -166,7 +241,9 @@ static void gallery_task(void *arg) {
         unlock();
         continue;
       }
-      snprintf(it.id, sizeof it.id, "%s", want[i]);
+      /* strlcpy: at -O2 GCC bounds want[i] by the whole 2-D array and flags
+       * the snprintf as a possible 239-byte write into 40. */
+      strlcpy(it.id, want[i], sizeof it.id);
       read_meta(&it);
       const bool ok = load_tile(&it, s_pixels[i]);
       it.state = ok ? TILE_READY : TILE_NO_IMAGE;

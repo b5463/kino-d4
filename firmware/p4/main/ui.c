@@ -175,8 +175,30 @@ static bool s_mcached;
 /* The single-photograph view decodes at this size rather than scaling the
  * gallery thumbnail: thumb_load takes any target, so there is no reason to
  * show someone a 208 px thumbnail blown up to half the screen. */
-#define PH_W 520
-#define PH_H 390
+/*
+ * The photo screen, laid out so nothing lands on anything else.
+ *
+ * It used to overlap: a 390 px image at y=22 ended at 412, the caption sat at
+ * 422 and the DELETE / SEND TO ROLL row started at 434, so the caption ran
+ * into the buttons and the picture crowded them from above. 4:3 is kept - the
+ * sensor's aspect - so the frame is not distorted to make room.
+ *
+ * The arithmetic is checked below rather than trusted, because every one of
+ * these was a loose number in the draw code and the overlap was invisible
+ * until someone opened a photograph on the bench.
+ */
+#define PH_W 464
+#define PH_H 348
+#define PH_TOP 40       /* clear of the BACK chevron at y=14 */
+#define PH_BTN_H 34
+#define PH_BTN_GAP 18   /* below the buttons, to the bottom edge */
+#define PH_BTN_Y (UI_H - PH_BTN_H - PH_BTN_GAP)
+#define PH_CAP_Y (PH_TOP + PH_H + 12) /* caption, between picture and buttons */
+
+_Static_assert(PH_TOP + PH_H < PH_CAP_Y, "photo overlaps its caption");
+_Static_assert(PH_CAP_Y + 16 <= PH_BTN_Y, "caption overlaps the buttons");
+_Static_assert(PH_BTN_Y + PH_BTN_H < UI_H, "buttons fall off the bottom");
+_Static_assert(PH_W * 3 == PH_H * 4, "photo pane is not 4:3");
 
 /* ------------------------------------------------------------------ */
 /* Screens                                                             */
@@ -1492,7 +1514,7 @@ static void photo_open(const gallery_item_t *it) {
 static void draw_photo(void) {
   fill(0, 0, UI_W, UI_H, D_GROUND);
 
-  const int px = (UI_W - PH_W) / 2, py = 22;
+  const int px = (UI_W - PH_W) / 2, py = PH_TOP;
   if (s_photo_ok && s_photo) {
     for (int r = 0; r < PH_H; r++)
       memcpy(s_cv + (size_t)(py + r) * UI_W + px, s_photo + (size_t)r * PH_W,
@@ -1510,9 +1532,9 @@ static void draw_photo(void) {
 
   char info[72];
   snprintf(info, sizeof info, "%s   %s   %d frames", s_photo_label, s_photo_mode, s_photo_frames);
-  text(&UI_FONT_S, px, py + PH_H + 10, info, D_DIM);
+  text(&UI_FONT_S, px, PH_CAP_Y, info, D_DIM);
 
-  const int bh = 34, by = UI_H - bh - 12;
+  const int bh = PH_BTN_H, by = PH_BTN_Y;
   const int bw = 150;
   const int dd = s_pressed == P_IT_DELETE ? 1 : 0;
   button(px, by, bw, bh, dd);
@@ -2201,7 +2223,7 @@ static int hit_test(int x, int y) {
 
     case SCR_PHOTO: {
       if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
-      const int px = (UI_W - PH_W) / 2, bh = 34, by = UI_H - bh - 12;
+      const int px = (UI_W - PH_W) / 2, bh = PH_BTN_H, by = PH_BTN_Y;
       if (in(x, y, px, by, 150, bh)) return P_IT_DELETE;
       return -1;
     }

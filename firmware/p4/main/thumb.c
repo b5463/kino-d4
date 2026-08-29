@@ -290,7 +290,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   const uint32_t pad_w = (info.width + 15) & ~15u;
   const uint32_t pad_h = (info.height + 15) & ~15u;
   if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false, false)) {
-    ESP_LOGW(TAG, "no room to decode %lux%lu", (unsigned long)pad_w, (unsigned long)pad_h);
+    klog("P4", "thumb: no room to decode %lux%lu", (unsigned long)pad_w, (unsigned long)pad_h);
     goto done;
   }
 
@@ -302,7 +302,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   err = jpeg_decoder_process(s_dec, &dcfg, jpeg, (uint32_t)len, s_full,
                              (uint32_t)s_full_cap, &decoded);
   if (err != ESP_OK) {
-    ESP_LOGW(TAG, "decode failed: %s", esp_err_to_name(err));
+    klog("P4", "thumb: decode failed: %s", esp_err_to_name(err));
     goto done;
   }
 
@@ -342,7 +342,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   };
   err = ppa_do_scale_rotate_mirror(s_srm, &srm);
   if (err != ESP_OK) {
-    ESP_LOGW(TAG, "scale failed: %s", esp_err_to_name(err));
+    klog("P4", "thumb: scale failed: %s", esp_err_to_name(err));
     goto done;
   }
 
@@ -362,7 +362,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   err = jpeg_encoder_process(s_enc, &ecfg, s_small, (uint32_t)(out_w * out_h * 2), s_out,
                              (uint32_t)s_out_cap, &out_size);
   if (err != ESP_OK || out_size == 0) {
-    ESP_LOGW(TAG, "encode failed: %s", esp_err_to_name(err));
+    klog("P4", "thumb: encode failed: %s", esp_err_to_name(err));
     goto done;
   }
 
