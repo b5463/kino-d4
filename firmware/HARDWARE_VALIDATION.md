@@ -260,6 +260,94 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### First radio - scan, association, DHCP, time, DNS, TLS - Gates C6-D and C6-E, 2026-08-29
+
+Unit `KD4-D121BC`, coprocessor ESP-Hosted 3.0.6 (rewritten earlier today),
+P4 radio images built from clean archives: `38b1c825...` (`0ac40d2`, scan),
+`09e50840...` (`172966f`, API base `https://kino.acronym.sk`). Test AP `BRCD`,
+credential supplied by the operator and never written anywhere but the
+`NETWORK_SET` payload. No camera attached. CP2102 on COM10 witnessing the C6.
+
+**Two panics on the way, both measured and fixed.** The first
+`NETWORK_LIST { "scan": true }` rebooted the P4 (`resetReason: panic`) - twice,
+because the first fix was to the wrong stack. The console mirrored on
+USB-Serial-JTAG then said what it was: `Guru Meditation Error: Core 0 panic'ed
+(Stack protection fault). Detected in task "sys_evt"`. The scan-done handler
+runs on ESP-IDF's event task, 2304 bytes by default and never sized here, with
+a 1.3 KB result array on it and an NVS write below that. Static buffer and
+`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096` (`0ac40d2`); no panic since.
+
+**Scan** (`C6_WIFI_SCAN`): 2450 ms, six networks, all 2.4 GHz WPA2. `BRCD`
+at **-77 dBm, channel 11**, BSSID `78:8a:20:8d:32:cc`. Row auto-marked
+"6 network(s) seen". The scan had no trigger on the KDP surface before
+`2b8f058` added the optional `scan` field to `NETWORK_LIST` (D16).
+
+**Association and DHCP** (`C6_WIFI_ASSOCIATE`, `C6_DHCP`), after saving the
+credential and rebooting into auto-join:
+
+| Uptime | State | Detail |
+|---|---|---|
+| +4.2 s | `C6_BOOTING` | transport coming up |
+| +8.4 s | `WIFI_CONNECTING` | ssid `BRCD` |
+| +12.6 s | **`IP_READY`** | `10.20.80.181`, channel 11 |
+
+The C6's own radio log: `wifi:connected with BRCD, aid = 7, channel 11, BW20,
+bssid = 78:8a:20:8d:32:cc`, `security: WPA2-PSK, rssi:-80`, auth -> assoc ->
+run in ~40 ms. Reproduced on three further reboots. `NETWORK_STATUS` reports
+`state connected`, `internet true`, `savedNetworks 1`. Gateway and DNS server
+are not exposed by `NETWORK_STATUS`; recorded as not surfaced rather than
+guessed. `rssi` reads null after association - the got-IP path's
+`esp_wifi_sta_get_ap_info()` is not populating it; noted, not chased here.
+
+**Wrong passphrase, one attempt:** `WIFI_CONNECTING` -> `WIFI_IDLE /
+ASSOC_FAILED` (802.11 reasons 2, 205) -> **`AUTH_FAILED`** (802.11 reason 15,
+four-way handshake timeout). Never `IP_READY`; KDP answered throughout. With
+the wrong credential stored, and again after restoring the right one, both
+passphrases were searched for on `GET_LOGS`, `GET_CONFIG` and `NETWORK_LIST`:
+**0, 0, 0** each time. `NETWORK_LIST` shows `"password": "....."` (four
+bullets) and `hasPassword: true`.
+
+**Persistence and reconnect after a P4 reboot:** correct credential restored,
+`REBOOT`, `IP_READY 10.20.80.181` at +12.5 s with no host involvement,
+`clockSource network`. That is §21A.
+
+**Time** (`C6_SNTP`): the clock policy adopted the network time on the first
+association - `clockSource: network`, row marked "wall clock adopted from the
+network". A defect surfaced beside it: `NETWORK_STATUS` kept
+`reason: CLOCK_UNTRUSTED` after the adoption, and `roll_http_ready()` refuses
+TLS on exactly that reason, so every HTTPS request would have been held for
+the life of the boot on a clock that was fine. `on_sync()` now releases the
+hold (`172966f`); measured after: `IP_READY / NONE / "clock trusted from the
+network"`.
+
+**DNS, TLS, HTTPS** (`NETWORK_STATUS { "probe": true }`, `36623b7`, D17 - one
+unauthenticated `GET /api/healthz` through the Roll HTTP client, certificate
+bundle attached, no way to skip verification in this build):
+
+| Leg | Result |
+|---|---|
+| DNS `kino.acronym.sk` | **27 ms**, `inet` - `C6_DNS` marked "API host resolved" |
+| TLS + HTTP round trip | **557 ms**, total 584 ms. An HTTP response came back, which the client only delivers after a completed, certificate-verified handshake against the public bundle |
+| HTTP status | **404** - `GET /api/healthz -> 404` |
+
+The 404 is the server's, not the camera's: from a PC, every path on
+`kino.acronym.sk` answers 404 with `server: openresty`, which is not the
+Caddy/Fastify stack `infra/` describes - the KINO API is not deployed at that
+host today. `C6_TLS` stays **UNVALIDATED**: the rule wants a 2xx over https,
+and bending it to fit a 404 would be marking the row from the wrong evidence.
+It will earn itself on the first 2xx once the API is up.
+
+| Gate | Verdict |
+|---|---|
+| C6-D | **PASS** - scan, association, DHCP, wrong-password refusal, reboot persistence |
+| C6-E | **FAIL (server side)** - SNTP, DNS and a verified TLS session pass; the harmless 2xx cannot happen until the API is deployed at the configured host |
+
+Health across the phase: SD mounted first attempt on every boot, 0
+`sdErrors`, heap 27.0 MB, PSRAM 27.0 MB, `droppedLogEvents` 58 with no host
+draining, tightest stacks `upqueue` 1.3 KB and `kdp_server` 1.6 KB free.
+`GET_CAPABILITIES.radioRouted` reads true; `network` and `roll` stay false by
+design until Studio's fail-closed gate is revisited.
+
 ### The new coprocessor boots, the link comes up, the versions agree - Gate C6-C, 2026-08-29
 
 **First normal boot** (strap removed, one recovery pulse from the P4, CP2102 on
@@ -743,7 +831,7 @@ subsystem.
 | GPIO54 (`CHIP_PU`) polarity | **VALIDATED 2026-08-29** on the meter: pin 26 reads ~3.3 V released, ~0 V asserted, ~3.3 V released, across three announced cycles, with the C6 console reporting a `POWERON` boot on every release. Active-low, as configured. Session recorded above |
 | SD / C6 bus coexistence | **VALIDATED 2026-08-29** for the static case: card mounted on slot 0 (1 attempt, 0 `sdErrors`) with the C6 enumerated on slot 1 of the same controller, both up at once. `SD_C6_COEXIST` itself stays `UNVALIDATED`: it is defined as a scan before and after card I/O with the radio associated, and no scan has run |
 | SD card on slot 0 | **VALIDATED 2026-08-28**, firmware 0.4.1 on `KD4-D121BC`: mounted first attempt, self-test and both benches pass with matching CRCs and clean cleanup, and throughput is at or above the slot-1 reference. Session recorded above |
-| Wi-Fi association / DHCP / DNS / TLS | **NOT VALIDATED — never attempted.** No radio has been exercised on this hardware. The state model, credential store and `NETWORK_*` surface are CODE DONE and host-tested; nothing above them has run |
+| Wi-Fi association / DHCP / DNS / TLS | **VALIDATED 2026-08-29** through association, DHCP, SNTP and DNS, with a certificate-verified TLS session to the API host; the 2xx that marks `C6_TLS` waits on the API being deployed. Session recorded above |
 | C6 coprocessor image | **CODE DONE, UNVALIDATED** — `firmware/c6` is Espressif's official ESP-Hosted coprocessor (component pinned to 3.0.6), 1 105 872 bytes, and two clean builds of one commit match. Never flashed; no version read back. The C6's SDIO slave pads are fixed in silicon, so the image is correct independently of the carrier |
 | C6 module flash size | **UNKNOWN, and it gates the first flash.** The coprocessor image needs the 4 MB OTA table — it is 122 KB too large for the 2 MB one, so a smaller part means a different image, not a smaller table. An oversized `FLASHSIZE` flashes and then fails to boot. `esptool flash_id` over the recovery path before the first write |
 | ESP-Hosted version compatibility | **UNVERIFIED, and it is a gate rather than a warning.** This board is publicly reported to ship a factory C6 image older than current hosts expect, and a protocol mismatch presents as a transport fault — the failure most likely to be misdiagnosed as bad Wi-Fi, bad credentials or a Roll problem. Host, coprocessor and RPC versions must be read and compared before any Wi-Fi debugging |

@@ -15,13 +15,13 @@ hardware task and everything after it is blocked on it.
 | P4 transport driver | **BENCH DONE 2026-08-29** — `net_hosted.c`; it had been calling `esp_hosted_init()` without `esp_hosted_connect_to_slave()`, so enumeration was never attempted (`a2ab8ef`). Still a build-time opt-in, OFF by default |
 | Version gate | **BENCH DONE 2026-08-29** — refused the factory 2.3.2 (`C6_BAD_FIRMWARE`, no reset loop), then **passed the rewritten 3.0.6**: `link ready, C6 3.0.6 against host 3.0.6`, `C6_SLAVE_VERSION` validated, state `WIFI_IDLE`. Compared the wrong constant at first (`ESP_HOSTED_VERSION_*_1` = 2.12.6); now uses `PROJECT_VERSION_*_1` like the component |
 | Network state model | CODE DONE, host-tested (127 + 75 checks) |
-| Wi-Fi scan / associate / DHCP | CODE DONE, UNVALIDATED — `net_wifi.c` |
-| SNTP as a clock source | CODE DONE, host-tested policy — `net_time.c`, `pure_clock_adopt_action()` |
+| Wi-Fi scan / associate / DHCP | **BENCH DONE 2026-08-29** — six networks scanned, `BRCD` joined at -77 dBm, lease `10.20.80.181`, wrong passphrase refused with `AUTH_FAILED`, reconnect after reboot |
+| SNTP as a clock source | **BENCH DONE 2026-08-29** — `clockSource network` on first association; the stale `CLOCK_UNTRUSTED` hold that would have blocked TLS is released on adoption (`172966f`) |
 | Wi-Fi credential store | CODE DONE |
 | `NETWORK_*` KDP commands | CODE DONE — answer honestly, refuse what needs a radio |
 | `ROLL_*` KDP commands | CODE DONE — `ROLL_CREATE` and slug-only `ROLL_JOIN` now reach the API in the radio build |
 | Durable upload queue | CODE DONE, host-tested |
-| Roll HTTP client | CODE DONE, UNVALIDATED — `roll_http.c`, `roll_api.c` |
+| Roll HTTP client | **Transport BENCH DONE 2026-08-29** — DNS 27 ms, certificate-verified TLS to `kino.acronym.sk`, HTTP exchange in 557 ms via the D17 probe. The API answered 404: not deployed at that host yet |
 | Radio variant in CI | CODE DONE — `p4-radio` job, its own 1440 KB guard |
 | microSD on slot 0 (prerequisite) | **BENCH DONE 2026-08-28** — the slot move is proven on `KD4-D121BC`; see `HARDWARE_VALIDATION.md` |
 | Any of it on hardware | **Transport and version gate, yes.** The coprocessor was rewritten to the pinned 3.0.6 from a verified 4 MB backup (`HARDWARE_VALIDATION.md`), boots cleanly, enumerates, and passes the gate. The link sits in `WIFI_IDLE` waiting for a network. Scan and association are next |
