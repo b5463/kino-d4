@@ -245,3 +245,35 @@ bool pure_wifi_passphrase_ok(const char *passphrase, bool is_open, bool keeps_st
 
   return n >= PURE_WPA_PASSPHRASE_MIN && n <= PURE_WPA_PASSPHRASE_MAX;
 }
+
+bool pure_api_base_ok(const char *url) {
+  if (url == NULL) return false;
+  const char *host;
+  if (strncmp(url, "https://", 8) == 0) {
+    host = url + 8;
+  } else if (strncmp(url, "http://", 7) == 0) {
+    host = url + 7;
+  } else {
+    return false;
+  }
+  if (*host == '\0') return false;
+  size_t n = 0;
+  for (const char *c = url; *c != '\0'; c++) {
+    if (++n > PURE_API_BASE_MAX) return false;
+    if ((unsigned char)*c <= 0x20 || (unsigned char)*c >= 0x7f) return false;
+    if (*c == '@' || *c == '?' || *c == '#') return false;
+  }
+  /* Nothing after host[:port]: no path, no trailing slash. */
+  for (const char *c = host; *c != '\0'; c++) {
+    if (*c == '/') return false;
+  }
+  /* A port, if present, is digits only. */
+  const char *colon = strchr(host, ':');
+  if (colon != NULL) {
+    if (colon == host || colon[1] == '\0') return false;
+    for (const char *c = colon + 1; *c != '\0'; c++) {
+      if (*c < '0' || *c > '9') return false;
+    }
+  }
+  return true;
+}

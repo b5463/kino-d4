@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "config_store.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -21,6 +22,7 @@
 #include "mbedtls/sha256.h"
 #include "net_hosted.h"
 #include "net_link.h"
+#include "pure.h"
 #include "roll_state.h"
 #include "storage.h"
 
@@ -60,9 +62,23 @@ static const char *TAG = "rollhttp";
 /* Preconditions                                                      */
 /* ------------------------------------------------------------------ */
 
+bool roll_http_api_base(char *out, size_t cap) {
+  if (out == NULL || cap == 0) return false;
+  /* Copied out at once. The getter hands back a slot in its own small ring
+   * (48 bytes), which also bounds a stored base to 47 characters - enough for
+   * any host[:port] this camera will be pointed at. */
+  pure_strcopy(out, cap, config_str("network.apiBase", ""));
+  if (out[0] != '\0' && pure_api_base_ok(out)) return true;
+  /* A stored value that does not validate is ignored, not repaired: a
+   * half-right URL silently fixed up is a request to the wrong server. */
+  pure_strcopy(out, cap, KINO_ROLL_API_BASE);
+  return out[0] != '\0' && pure_api_base_ok(out);
+}
+
 bool roll_http_ready(char *why, size_t cap) {
-  if (KINO_ROLL_API_BASE[0] == '\0') {
-    snprintf(why, cap, "no Roll API base URL in this build");
+  char base[PURE_API_BASE_MAX + 1];
+  if (!roll_http_api_base(base, sizeof base)) {
+    snprintf(why, cap, "no Roll API base URL in this build or its config");
     return false;
   }
 
@@ -112,8 +128,13 @@ static void fail_out(roll_http_out_t *out, const char *text) {
 /** Build the client for `path`. NULL on any failure, with `out` filled. */
 static esp_http_client_handle_t open_client(const char *method, const char *path,
                                            bool authenticate, roll_http_out_t *out) {
+  char base[PURE_API_BASE_MAX + 1];
+  if (!roll_http_api_base(base, sizeof base)) {
+    fail_out(out, "no Roll API base");
+    return NULL;
+  }
   char url[256];
-  const int n = snprintf(url, sizeof url, "%s%s", KINO_ROLL_API_BASE, path);
+  const int n = snprintf(url, sizeof url, "%s%s", base, path);
   if (n < 0 || (size_t)n >= sizeof url) {
     fail_out(out, "the request URL does not fit");
     return NULL;
@@ -180,7 +201,9 @@ static void finish(esp_http_client_handle_t client, const roll_http_req_t *req,
    * checked against the scheme rather than the status alone, because a 200
    * over plain http proves nothing about certificates.
    */
-  const bool over_tls = strncmp(KINO_ROLL_API_BASE, "https://", 8) == 0;
+  char base[PURE_API_BASE_MAX + 1];
+  const bool over_tls =
+      roll_http_api_base(base, sizeof base) && strncmp(base, "https://", 8) == 0;
   if (hwv_rule_dns(true, 1u)) {
     hwv_mark_validated(HWV_C6_DNS, "API host resolved");
   }

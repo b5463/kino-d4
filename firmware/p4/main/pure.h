@@ -306,4 +306,23 @@ bool pure_wifi_ssid_valid(const char *ssid);
  */
 bool pure_wifi_passphrase_ok(const char *passphrase, bool is_open, bool keeps_stored);
 
+/** Longest API base URL the firmware will store or use. */
+#define PURE_API_BASE_MAX 96
+
+/**
+ * Whether `url` may serve as the Roll API base.
+ *
+ * Accepts `http://host[:port]` or `https://host[:port]` with a non-empty host
+ * and nothing after it: the firmware appends `/api/...` paths itself, so a
+ * trailing slash or a path here would produce `//api` or a nested path. No
+ * `@` - credentials never travel in the URL, whatever the scheme. No spaces or
+ * control characters. At most PURE_API_BASE_MAX characters.
+ *
+ * `http` is accepted here because this validates a stored development
+ * override; the compiled production default is https and never passes through
+ * a stored value. Whether an http base may be used at all is the caller's
+ * policy, not this function's.
+ */
+bool pure_api_base_ok(const char *url);
+
 #endif

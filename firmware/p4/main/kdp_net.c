@@ -369,9 +369,10 @@ kdp_net_reply_t kdp_net_delete(const cJSON *req) {
 #define KINO_ROLL_API_BASE ""
 #endif
 
-/* Host name out of "https://host[:port]/...", into `out`. */
-static bool api_host(char *out, size_t cap) {
-  const char *s = KINO_ROLL_API_BASE;
+/* Host name out of "https://host[:port]", into `out`, from the base in effect. */
+static bool api_host(char *base, size_t base_cap, char *out, size_t cap) {
+  if (!roll_http_api_base(base, base_cap)) return false;
+  const char *s = base;
   const char *p = strstr(s, "://");
   s = p != NULL ? p + 3 : s;
   size_t n = 0;
@@ -385,11 +386,13 @@ static bool api_host(char *out, size_t cap) {
 static cJSON *probe_object(void) {
   cJSON *o = cJSON_CreateObject();
   if (o == NULL) return NULL;
+  char base[PURE_API_BASE_MAX + 1];
   char host[80];
-  if (!api_host(host, sizeof host)) {
-    cJSON_AddStringToObject(o, "detail", "no API base URL in this build");
+  if (!api_host(base, sizeof base, host, sizeof host)) {
+    cJSON_AddStringToObject(o, "detail", "no API base URL in this build or its config");
     return o;
   }
+  cJSON_AddStringToObject(o, "base", base);
   cJSON_AddStringToObject(o, "host", host);
 
   char why[RQ_ERROR_LEN];
@@ -402,7 +405,9 @@ static cJSON *probe_object(void) {
   const int64_t t0 = now_ms();
   struct addrinfo hints = {.ai_socktype = SOCK_STREAM};
   struct addrinfo *res = NULL;
-  const int rc = getaddrinfo(host, "443", &hints, &res);
+  const char *colon = strchr(host, ':'); /* api_host strips the port; default by scheme */
+  (void)colon;
+  const int rc = getaddrinfo(host, strncmp(base, "https://", 8) == 0 ? "443" : "80", &hints, &res);
   const int64_t t_dns = now_ms() - t0;
   cJSON_AddNumberToObject(o, "dnsMs", (double)t_dns);
   if (rc != 0 || res == NULL) {
@@ -430,7 +435,7 @@ static cJSON *probe_object(void) {
   cJSON_AddNumberToObject(o, "httpMs", (double)t_http);
   cJSON_AddNumberToObject(o, "httpStatus", out.status);
   cJSON_AddNumberToObject(o, "totalMs", (double)(now_ms() - t0));
-  cJSON_AddBoolToObject(o, "tls", strncmp(KINO_ROLL_API_BASE, "https://", 8) == 0);
+  cJSON_AddBoolToObject(o, "tls", strncmp(base, "https://", 8) == 0);
   if (out.detail[0] != '\0') cJSON_AddStringToObject(o, "detail", out.detail);
   if (out.status >= 200 && out.status < 300 && out.body_len > 0) {
     /* The health document is small and public; keep the reply bounded. */

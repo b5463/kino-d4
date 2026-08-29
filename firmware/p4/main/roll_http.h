@@ -71,6 +71,18 @@ typedef struct {
  * not. Three separate reasons and they need separate words: no address, no
  * trustworthy clock, or no API base URL in this build.
  */
+/**
+ * The API base in effect, into `out`. The stored development override
+ * `network.apiBase` when it is set and passes pure_api_base_ok(); otherwise the
+ * compiled production default. Returns false when neither yields a base.
+ *
+ * This is the one place an `http://` base can come from, and only from the
+ * stored value: the compiled default is never anything but https. So HTTP is
+ * reachable only by an explicit, visible configuration - GET_CONFIG shows it,
+ * SET_CONFIG sets it, SAVE_CONFIG keeps it - and never by default.
+ */
+bool roll_http_api_base(char *out, size_t cap);
+
 bool roll_http_ready(char *why, size_t cap);
 
 /** Perform a request with a JSON or empty body. Blocks the calling task. */

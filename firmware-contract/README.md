@@ -108,6 +108,7 @@ action and no command existed to carry it, so it took the next free slot in the 
 | `NETWORK_SET` | `0xa1` |
 | `NETWORK_DELETE` | `0xa2` |
 | `NETWORK_STATUS` | `0xa3` | Optional request `{ "probe": true }` adds `probe`: a timed DNS lookup of the API host (`dnsMs`, `dnsOk`, `family`) and one unauthenticated `GET /api/healthz` through the Roll HTTP client (`httpMs`, `httpStatus`, `totalMs`, `tls`, `detail`) - certificate verified, trusted clock required, no registration. Without it, unchanged (D17). |
+| `SET_CONFIG` / `GET_CONFIG` | `network.apiBase` | Optional stored development override for the Roll API base, `http://host[:port]` or `https://host[:port]`, no path, no credentials. When set and valid it replaces the compiled production default (`https://kino.acronym.sk`) for every API request; `GET_CONFIG` shows it; `SAVE_CONFIG` persists it. This is the only way an `http://` base can reach the HTTP client. `C6_TLS` is never marked over http (D18). |
 | `ROLL_STATUS` | `0xa4` |
 | `ROLL_CREATE` | `0xa5` |
 | `ROLL_JOIN` | `0xa6` |

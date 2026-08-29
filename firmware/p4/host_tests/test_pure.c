@@ -553,6 +553,38 @@ static void test_strcopy(void) {
   CHECK(buf[1] == 'x', "without touching the byte after it");
 }
 
+/*
+ * pure_api_base_ok: what may be stored as the Roll API base. The stored value
+ * is the only way an http:// base can ever reach the HTTP client, so the
+ * validator is where "nothing after the host" and "never credentials" are
+ * enforced.
+ */
+static void test_api_base(void) {
+  CHECK(pure_api_base_ok("https://kino.acronym.sk"), "the production shape");
+  CHECK(pure_api_base_ok("http://10.20.99.57:3000"), "a bench override: ip and port");
+  CHECK(pure_api_base_ok("http://kino.local"), "a bare hostname");
+  CHECK(pure_api_base_ok("https://kino.acronym.sk:8443"), "https with a port");
+
+  CHECK(!pure_api_base_ok(NULL), "NULL");
+  CHECK(!pure_api_base_ok(""), "empty");
+  CHECK(!pure_api_base_ok("kino.acronym.sk"), "no scheme");
+  CHECK(!pure_api_base_ok("ftp://kino.acronym.sk"), "wrong scheme");
+  CHECK(!pure_api_base_ok("http://"), "scheme, no host");
+  CHECK(!pure_api_base_ok("https://kino.acronym.sk/"), "trailing slash would make //api");
+  CHECK(!pure_api_base_ok("https://kino.acronym.sk/api"), "a path is the firmware's business");
+  CHECK(!pure_api_base_ok("https://user:pw@kino.acronym.sk"), "credentials never in the URL");
+  CHECK(!pure_api_base_ok("http://10.20.99.57:"), "colon, no port");
+  CHECK(!pure_api_base_ok("http://10.20.99.57:30a0"), "port must be digits");
+  CHECK(!pure_api_base_ok("http://10.20.99.57:3000?x=1"), "no query");
+  CHECK(!pure_api_base_ok("http://10.20.99.57:3000#f"), "no fragment");
+  CHECK(!pure_api_base_ok("http://10.20.99.57 :3000"), "no spaces");
+  char longurl[PURE_API_BASE_MAX + 16];
+  memset(longurl, 'a', sizeof longurl - 1);
+  longurl[sizeof longurl - 1] = '\0';
+  memcpy(longurl, "https://", 8);
+  CHECK(!pure_api_base_ok(longurl), "over PURE_API_BASE_MAX");
+}
+
 int main(void) {
   test_quality();
   test_resolution();
@@ -566,6 +598,7 @@ int main(void) {
   test_clock_monotonic_across_correction();
   test_clock_adopt();
   test_strcopy();
+  test_api_base();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);
