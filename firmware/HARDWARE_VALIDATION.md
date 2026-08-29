@@ -260,6 +260,56 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### The new coprocessor boots, the link comes up, the versions agree - Gate C6-C, 2026-08-29
+
+**First normal boot** (strap removed, one recovery pulse from the P4, CP2102 on
+COM10 witnessing): one `POWERON`, `boot:0xc (SPI_FAST_FLASH_BOOT)`, ESP-IDF
+v5.5.1 second-stage bootloader, **our** partition table (`ota_0` 0x10000/1792K,
+`ota_1` 0x1d0000/1792K, `nvs`/`otadata`/`phy_init` at the factory offsets),
+app loaded from 0x10000, project **`kino-c6`** version 1, ESP-IDF v5.5.1,
+**`ESP-Hosted Firmware version :: EH-3.0.6`**, `Transport used :: SDIO only`,
+`SDIO_SLAVE: Using SDIO interface (TX_MODE=0)`, `SDIO datapath mode: SW_AGGR`,
+`host reset handler task started`, `Returned from app_main()`. No panic, no
+reset loop.
+
+**P4 restored** to the canonical clean-source radio image (`24f8b11b...`,
+`551e281`; reports 0.4.1 because that is the committed `VERSION`). Camera-first
+baseline first: SD mounted, 1 attempt, no error; KDP up; no camera attached.
+
+**C6-B, re-proven against the new slave** (boot-368, streamed klog):
+
+```
+ 1.509s  own reset: GPIO54 low-asserted 12008us, released, settled 20005us
+ 3.391s  connect_to_slave rc=0 in 1846ms
+ 3.394s  SDIO after init: rx_ready=1 tx_ready=1
+ 3.402s  coprocessor id=13 target=esp32c6
+ 3.416s  link ready, C6 3.0.6 against host 3.0.6
+         idf: eh_sdio: Card init success, TRANSPORT_RX_ACTIVE
+         idf: eh_init_evt: RPC version negotiated: V2
+         idf: eh_init_evt: esp-hosted fw versions: host=3.0.6 coprocessor=3.0.6 (match)
+         idf: eh_init_evt: SDIO SW_AGGR negotiated (e2h=15872B h2e=15872B)
+```
+
+The C6's console, independently: `Slave init_config received from host`,
+`Host capabilities: 44`, `RPC version negotiated: V2`, `Negotiation complete`.
+`esp_hosted_get_cp_info()` now answers (`id=13 target=esp32c6`); with the 2.3.2
+slave it returned empty fields.
+
+**C6-C: PASS.** The version RPC answered 3.0.6; the firmware's gate and
+esp_hosted's own check both accept it; the state machine advanced past the
+gate for the first time: `radioState WIFI_IDLE`, `reason NO_CREDENTIALS`,
+`detail "no network saved to join on its own"`, `transportErrors 0`.
+Reproduced on boots 367 and 368.
+
+| Row | Status | Evidence |
+|---|---|---|
+| `C6_SDIO_PINS` | VALIDATED | `rx_ready == 1`, again, on the new slave |
+| `C6_LINK_HANDSHAKE` | VALIDATED | `rx_ready && tx_ready` |
+| `C6_SLAVE_VERSION` | **VALIDATED** | auto-marked "C6 3.0.6 serves host 3.0.6" from the compatible RPC - the predicate's first true on hardware |
+
+Nothing above the transport has run yet: no scan, no association. The scan
+had no trigger anywhere on the KDP surface until `2b8f058`.
+
 ### The coprocessor is rewritten, 2026-08-29 - ESP-Hosted 2.3.2 -> 3.0.6
 
 Every gate in front of the write was met before it, and the write is
@@ -317,9 +367,8 @@ v5.5.1, table `partitions_eh_cp_ota_4m.csv` (`ota_0` 0x10000/1792K,
 Rollback, if ever needed: `write-flash 0x0 factory-c6-before-hosted-3.0.6.bin`
 from the ROM loader, same strap, same pulse.
 
-Not yet done at the time of this entry: the strap removed, the first normal
-boot of the new image captured, the P4 radio image restored, C6-B re-proven,
-C6-C attempted. Those follow below as they happen.
+What followed - strap removed, first boot, P4 restored, C6-B re-proven, C6-C
+passed - is the section above this one.
 
 ### GPIO54 is CHIP_PU, on the meter - Gate B2, 2026-08-29
 
