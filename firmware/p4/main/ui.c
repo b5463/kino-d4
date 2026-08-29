@@ -2480,6 +2480,7 @@ static void ui_task(void *arg) {
 
   int held = -1;
   int64_t s_ui_report_us = 0;
+  uint32_t s_ui_last_frames = 0;
   int64_t wake_since_us = 0;
   bool was_asleep = false;
 
@@ -2618,8 +2619,16 @@ static void ui_task(void *arg) {
         s_ui_report_us = ui_now_us;
         uint32_t ui_frames = 0;
         gfx_stats(&ui_frames, NULL);
-        klog("P4", "ui screen %d held %d pressed %d frames %lu", (int)s_screen, held,
-             s_pressed, (unsigned long)ui_frames);
+        /* Only when it is worth reading. A line a second forever buries real
+         * faults in the ring, and with four cameras the finder is already
+         * writing its own. Silence means the compositor is presenting and
+         * nothing is latched, which is the whole question this answers. */
+        const bool ui_stalled = ui_frames == s_ui_last_frames;
+        if (ui_stalled || held != -1 || s_pressed != -1) {
+          klog("P4", "ui screen %d held %d pressed %d frames %lu%s", (int)s_screen, held,
+               s_pressed, (unsigned long)ui_frames, ui_stalled ? " STALLED" : "");
+        }
+        s_ui_last_frames = ui_frames;
       }
     }
 

@@ -81,9 +81,17 @@ CONFIG_ESP_WIFI_REMOTE_ENABLED=n
 
 # CONFIG_UART_ISR_IN_IRAM is deliberately NOT set.
 #
-# It was set on 2026-08-29 to keep the link ISR running while the flash cache
-# is off, and it made things worse, which a bisect against d505174 showed
-# plainly: CAMERA_TEST 4/5 without it, 0/5 with it. The handler goes to IRAM
-# but the driver's ring-buffer code does not, so during a cache-disabled
-# window the ISR runs and then cannot store what it read. Bytes are dropped by
-# the very change meant to stop them being dropped.
+# Setting it on 2026-08-29 measurably broke the link. A bisect against d505174
+# gave CAMERA_TEST 4/5 without it and 0/5 with it, and reverting it gave 12/12
+# with no read timeouts at all.
+#
+# The reason first written here - that the driver's ring-buffer code stays in
+# flash - does not survive checking: CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH
+# is not set, so those functions are already in IRAM. The measurement is real
+# and the explanation was not, so this is recorded as an unexplained result
+# rather than an understood one.
+#
+# Worth re-running deliberately. It was measured while the compositor was
+# blacking out the link ISR's core with cache writebacks, which is the fault
+# that actually cost the bytes (see ui.c, ui_task pinned to CPU1); the two were
+# being measured on top of each other.

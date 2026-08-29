@@ -286,7 +286,7 @@ static bool pump_camera(int cam) {
    * dec ms says whether the decoder is a factor at all.
    */
   const int64_t dec_us = esp_timer_get_time() - dec_start_us;
-  if (now - s_report_us[cam] >= 1000000) {
+  if (now - s_report_us[cam] >= 5000000) { /* 5 s: four cameras at 1 Hz drowns the ring */
     s_report_us[cam] = now;
     klog("P4", "cam%d vf %uB cap %ums xfer %ums dec %ums %u.%u fps", cam + 1,
          (unsigned)res.size, (unsigned)(cap_us / 1000), (unsigned)(xfer_us / 1000),

@@ -84,6 +84,66 @@ the arithmetic the Phase 1 audit derived from source and the driver's own
 "40MHz SYSCLK / 10MHz PCLK" comment contradicts. The silicon agrees with the
 audit.
 
+### Capture works: the compositor was blacking out the link ISR, 2026-08-29
+
+The product capture path is **VALIDATED**. It had never completed reliably.
+
+| Configuration | Result |
+|---|---|
+| `CAMERA_CAPTURE`, 1600x1200 | **5/5**, 1.7-2.5 s, zero retries |
+| `CAMERA_CAPTURE`, 2048x1536 (sensor native) | **6/6**, 2.5-3.5 s, zero retries |
+| `CAMERA_TEST`, 1600x1200 (control) | 12/12, zero read timeouts |
+
+**The fault.** A capture lost 14-73 bytes out of nearly every chunk, with zero
+CRC errors, while `CAMERA_TEST` moved the same frame over the same wire
+perfectly. The arithmetic identified it: past a 128-byte FIFO at 921600 baud,
+losing that many bytes means interrupts were off for **1.5-2.2 ms**. Far too
+short for a flash erase, which would have cost thousands of bytes, and exactly
+the length of a cache writeback.
+
+`capture_fire` sets `s_stage`; `run_capture` never does. `ui_task` treats a
+non-idle capture stage as busy and repaints and presents every 60-90 ms for the
+whole transfer, where `CAMERA_TEST` leaves it idle presenting nothing.
+`gfx_present` does a blocking PPA rotate and a DPI handoff across two 768 KB
+PSRAM framebuffers, and the cache maintenance under it runs in a critical
+section - interrupts off on the running core. Tasks were unpinned and
+`camlink_init` runs from `app_main` on CPU0, so about half the presents landed
+on the core owning the link interrupts. The retry landed in a different phase
+on a different core and succeeded, which is why every chunk after the first
+failed exactly once.
+
+Pinning `ui_task` to CPU1 fixes it with no trade-off: preview and shutter both
+run at full rate.
+
+Two contributing faults were fixed with it. `cam_probe` greets cam0..cam3
+serially at 3000 ms each holding the channel mutex, walks the same order
+`capture_fire` does so the two could lockstep, and slipped HELLO frames -
+each opening with `uart_flush_input` - between chunk reads; it now stands down
+while a capture runs. And `camlink_get_info_ch` read a cached struct under that
+same mutex with `portMAX_DELAY`, turning "which cameras are online" into a
+multi-second wait on the shutter path.
+
+### Tried and rejected, so it is not tried again
+
+Everything below was measured, not reasoned about, and none of it is kept.
+Several were measured while the compositor fault was still present, which is
+the honest reason they looked inconclusive at the time.
+
+| Change | Result |
+|---|---|
+| `CONFIG_UART_ISR_IN_IRAM=y` | **Made it worse.** 0/5 with, 12/12 without. The stated reason in `sdkconfig.defaults` was later shown wrong; the measurement stands, the explanation does not |
+| UART driver event queue | Added to name the overrun, which it did; more ISR work is the wrong direction and it is removed |
+| Capture workers at priority 8 instead of 5 | No change. Task starvation cannot lose bytes - the RX ring is 33 KB, about 360 ms of wire. Only an ISR blackout can |
+| `NL_CHUNK_MAX` 8192 -> 2048 | Worse: overruns track request turnarounds, not bytes. 4 overruns became 30 |
+| `NL_DEFAULT_BAUD` 921600 -> 460800 | Fewer overruns, not zero, and doubles every transfer |
+| `LINK_RX_BUF` 33 KB -> 66 KB | No change. This is what ruled out the reader being outrun |
+| Node `fb_count` 2 -> 1 | No change to the link; brings back the preview beat |
+| Drain-to-silence after a timeout | Markedly worse; written for a cascade the measurements contradicted |
+| `CHUNK_READ_TIMEOUT_MS` 800 | Captures failed. Sized against a link that was already broken |
+
+Budgets after the fix, sized for the wire rather than the fault: chunk timeout
+1000 ms (eleven times a chunk's 89 ms), 2 retries, 8000 ms per frame.
+
 ### Capture at 2048x1536, and the UART overrun that limits it, 2026-08-29
 
 One camera on CAM1, stills at the sensor's native 2048x1536 - the largest size
