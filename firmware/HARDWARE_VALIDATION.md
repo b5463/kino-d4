@@ -260,6 +260,67 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### The coprocessor is rewritten, 2026-08-29 - ESP-Hosted 2.3.2 -> 3.0.6
+
+Every gate in front of the write was met before it, and the write is
+reversible from a verified backup. Unit `KD4-D121BC`. Adapter: CP2102 on
+**COM10** (`VID_10C4 PID_EA60`), TXD measured **3.25 V** idle before
+connection, wired GND / pin 20 `C6_U0RXD` <- TXD / pin 22 `C6_U0TXD` -> RXD,
+no adapter power to the board. esptool **v5.3.1**.
+
+**Getting into the ROM loader.** The P4 ran the recovery image
+(`33a2a9b6...`, `72ee96b`): one announced 500 ms GPIO54 pulse five seconds
+after boot, then inert - no SDIO pin configured, ESP-Hosted never initialised.
+The operator held JP1 pin 24 (`C6_IO9`) to pin 16 (GND); a P4 `REBOOT`
+produced the pulse; the C6 ROM answered on COM10. The same pulse re-entered the
+loader a second time later in the session when the stub lost sync, which is
+the recovery path working as designed.
+
+| Step | Result |
+|---|---|
+| Identification (`chip-id`, no reset, no write) | **ESP32-C6FH4 (QFN32), revision v0.2**, embedded 4 MB, 40 MHz crystal, BASE MAC `58:e6:c5:d3:17:fc` (the console's BT MAC `...:fe` is base+2) |
+| `flash-id` | manufacturer `0x46`, device `0x4016`, **detected 4 MB** - agrees with the boot log and the chip features |
+| Factory backup, read 1 | `read-flash 0 0x400000`, 376 s at 115200: **4 194 304 B**, SHA-256 `94fd8d9719e100634628b2af5a24ff55dfb54f6f2f0d1e321950d96c474e9181` |
+| Factory backup, read 2 | Same command after a re-pulse: **identical hash**. (921600 desynced the CP2102 stream; nothing was written, the default rate was used) |
+| Structure | bootloader magic `0xe9` at 0x0, app magic `0xe9` at 0x10000, table magic `0x50aa` at 0x8000 |
+| Factory table, decoded from flash | `nvs` 0x9000/16K · `otadata` 0xd000/8K · `phy_init` 0xf000/4K · `ota_0` 0x10000/1536K · `ota_1` 0x190000/1536K · md5 entry. Only 0x0-0x12ffff is programmed; `ota_1` is erased |
+
+The backup lives outside the repository as
+`factory-c6-before-hosted-3.0.6.bin` (and `-read2.bin`), local bench evidence
+only; the vendor image is not redistributed here.
+
+**The write.** Offsets from the build's `flasher_args.json`, nothing invented:
+
+```
+esptool --port COM10 --chip esp32c6 --before no-reset --after no-reset write-flash
+  --flash-mode dio --flash-freq 80m --flash-size 4MB
+  0x0     bootloader.bin           22 416 B  89746864...
+  0x8000  partition-table.bin       3 072 B  73e7f5c6...
+  0xd000  ota_data_initial.bin      8 192 B  7d2c7ac4...
+  0x10000 kino-c6.bin           1 105 872 B  3616fe6e6e6329f7443dce0f19232bb6aded9091801db874f150a18a1baaee61
+```
+
+Each image "Hash of data verified" by esptool; the app in 56.2 s. Then an
+independent `read-flash 0 0x120000` compared against the four sources at
+their offsets: **all four match byte for byte**, and the app region hashes to
+the full `3616fe6e...baaee61`. `nvs` (0x9000-0xd000) and `phy_init`
+(0xf000-0x10000) compare **unchanged** against the factory backup. The padding
+after our smaller bootloader inside 0x0-0x8000 differs from the factory's, as
+it must, and nothing lives there. Stale factory bytes remain beyond our app's
+end inside `ota_0`, which is normal - the image header carries its length.
+
+Source: `kino-c6.bin` from a clean archive of `551e281`, built twice,
+byte-identical, esp_hosted 3.0.6 (`component_hash 1b1c2aa8...`), ESP-IDF
+v5.5.1, table `partitions_eh_cp_ota_4m.csv` (`ota_0` 0x10000/1792K,
+`ota_1` 0x1d0000/1792K; `nvs`/`otadata`/`phy_init` at the factory offsets).
+
+Rollback, if ever needed: `write-flash 0x0 factory-c6-before-hosted-3.0.6.bin`
+from the ROM loader, same strap, same pulse.
+
+Not yet done at the time of this entry: the strap removed, the first normal
+boot of the new image captured, the P4 radio image restored, C6-B re-proven,
+C6-C attempted. Those follow below as they happen.
+
 ### GPIO54 is CHIP_PU, on the meter - Gate B2, 2026-08-29
 
 The one electrical row the radio work had left open. Operator measurement,
