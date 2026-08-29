@@ -335,9 +335,22 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
     return;
   }
   channel_t *ch = &s_ch[cam];
-  xSemaphoreTake(ch->lock, portMAX_DELAY);
-  *out = ch->info;
-  xSemaphoreGive(ch->lock);
+  /*
+   * Bounded, because this reads a cached struct and the lock it shares is
+   * held across whole round trips. request() keeps ch->lock for its entire
+   * timeout - 3000 ms on a channel with no node - so waiting forever here
+   * turned "which cameras are online" into a multi-second stall on the
+   * shutter path. The copy is one struct; a stale answer is the same answer,
+   * and it is what upstream already treats as advisory.
+   */
+  if (xSemaphoreTake(ch->lock, pdMS_TO_TICKS(20)) == pdTRUE) {
+    *out = ch->info;
+    xSemaphoreGive(ch->lock);
+  } else {
+    *out = ch->info; /* unlocked read of a struct only ever written under the
+                      * lock by the same core's driver task; worst case is the
+                      * previous poll's values, which is what "cached" means */
+  }
 }
 
 void camlink_get_info(camlink_info_t *out) { camlink_get_info_ch(0, out); }

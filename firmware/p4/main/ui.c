@@ -2658,7 +2658,29 @@ esp_err_t ui_start(void) {
    * QR encoder. Confirm against GET_RUNTIME_STATS on the first bench run that
    * opens the ROLL screen with a Roll assigned Ã¢â‚¬â€ that is what the per-task
    * high-water figure is for. */
-  xTaskCreate(ui_task, "ui", 8192, NULL, 4, &ui_h);
+  /*
+   * Pinned to CPU1, away from the link interrupts.
+   *
+   * gfx_present() does a blocking PPA rotate and a DPI handoff over two
+   * 768 KB PSRAM framebuffers, and the cache maintenance underneath runs
+   * inside a critical section - interrupts off on the running core for 1-2 ms
+   * while it writes back up to 256 KB of L2. The UART RX FIFO is 128 bytes,
+   * which at 921600 baud is 1.39 ms, so a present that lands on the core
+   * owning the link ISRs overruns the FIFO and the frame in flight is lost.
+   *
+   * That is what made captures fail while CAMERA_TEST passed over the same
+   * wire: capture_fire sets s_stage, the loop below treats a capture as
+   * "busy" and presents every 60-90 ms for the whole transfer, and
+   * CAMERA_TEST - which never touches s_stage - presents nothing at all. The
+   * arithmetic matches what the bench saw: 14-73 bytes lost past a 128-byte
+   * FIFO is a 1.5-2.2 ms window, far too short for a flash erase and exactly
+   * a cache writeback.
+   *
+   * camlink_init() runs from app_main on CPU0, so the link ISRs are there.
+   * Keeping the compositor on CPU1 lets both run at full rate instead of
+   * trading the preview against the shutter.
+   */
+  xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, 4, &ui_h, 1);
   taskmon_register("ui", ui_h);
 
   /* The icon builder starts AFTER the UI. Created first it would simply run

@@ -100,6 +100,24 @@ static void cam_probe_task(void *arg) {
   (void)arg;
   bool was_online[CAMLINK_CAMS] = {false};
   for (;;) {
+    /*
+     * Never probe while a capture owns the link.
+     *
+     * camlink_hello_ch takes the channel mutex and holds it for the whole
+     * round trip, 3000 ms on a socket with nothing in it. This task walks
+     * cam0..cam3 in the same order capture_fire does, so the two lockstep and
+     * a shutter press can wait seconds on what is otherwise a cached read.
+     *
+     * Worse, it does this DURING a transfer: between two chunk reads it slips
+     * a HELLO onto the active channel, and request() opens with
+     * uart_flush_input(). That is the per-chunk byte loss - the first chunk
+     * lands cleanly and nearly every one after it fails once and succeeds on
+     * the retry, which is exactly the pattern the bench recorded.
+     */
+    if (capture_busy()) {
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
     int online_count = 0;
     for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
       const bool online = camlink_hello_ch(cam) == ESP_OK;

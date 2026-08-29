@@ -65,16 +65,17 @@ static const char *TAG = "capture";
  * is now the single largest cost of a capture: with retries in place a chunk
  * that loses bytes waits out the whole budget before asking again, which is
  * what made a 200 KB frame take 19.8 s. 800 ms is nine times the expected
- * transfer. Shortening it to 800 ms was tried and made captures fail: an
- * overrun costs the whole chunk, so the budget has to be long enough for the
- * retry that follows to be worth attempting. 4000 ms with three retries
- * measured 4/4 captures at 2048x1536.
+ * transfer, so 1000 ms is eleven times the cost of the thing it is waiting
+ * for. 4000 ms was sized while the UI was blacking out the link ISR and every
+ * chunk needed a retry; with that fixed a chunk either arrives or is gone, and
+ * a long budget only makes a doomed frame take longer to admit it.
  */
-#define CHUNK_READ_TIMEOUT_MS 4000
+#define CHUNK_READ_TIMEOUT_MS 1000
 
-/* Attempts after the first. Three, because an overrun is a momentary window
- * and a link that misses the same range four times is genuinely broken. */
-#define CHUNK_RETRIES 3
+/* Attempts after the first. Two: measured captures now need zero, so this is
+ * for a genuine glitch, and three attempts at 1000 ms bounds a bad chunk at
+ * 3 s instead of the 16 s the old pairing allowed. */
+#define CHUNK_RETRIES 2
 
 /*
  * Total budget for one frame's transfer, and it exists for the screen.
@@ -95,7 +96,7 @@ static const char *TAG = "capture";
  * long as the capture runs, and the honest repair is to stop losing bytes
  * (UART DMA), after which this budget should come down with it.
  */
-#define XFER_BUDGET_MS 25000
+#define XFER_BUDGET_MS 8000
 
 /* Longest the flash is allowed to stay on. It is released as soon as every
  * node reports its capture finished; this only bounds the case where one
