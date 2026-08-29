@@ -89,6 +89,16 @@ if(KINO_RADIO_BUILD)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE
                                KINO_C6_EN_BENCH_MS=${KINO_C6_EN_BENCH_MS})
   endif()
+
+  # Bench only: the coprocessor-recovery image. One announced GPIO54 pulse so
+  # the operator can hold C6_IO9 low across it, then the P4 leaves the C6
+  # alone entirely - no SDIO, no ESP-Hosted, no second reset. Unset, not one
+  # instruction of it is compiled.
+  #
+  #   idf.py -DKINO_C6_RECOVERY=1 ... build
+  if(KINO_C6_RECOVERY)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_C6_RECOVERY=1)
+  endif()
 elseif(CONFIG_ESP_HOSTED)
   # The other direction, and the dangerous one: ESP-Hosted enabled without the
   # fragment means the component's constructor drives GPIO14-19 and GPIO54

@@ -320,6 +320,9 @@ static const net_link_driver_t s_driver = {
 #ifndef KINO_C6_EN_BENCH_MS
 #define KINO_C6_EN_BENCH_MS 0
 #endif
+#ifndef KINO_C6_RECOVERY
+#define KINO_C6_RECOVERY 0
+#endif
 
 #if KINO_C6_EN_BENCH_MS > 0
 #define EN_BENCH_CYCLES 3
@@ -518,6 +521,29 @@ static bool probe_transport(void) {
 }
 
 static void bring_up(void) {
+#if KINO_C6_RECOVERY
+  /*
+   * Recovery image for flashing the coprocessor over its own UART.
+   *
+   * The C6's ROM download mode needs IO9 held low across a reset. The P4
+   * owns the reset line, so this build pulses it once - slowly and announced,
+   * so the operator can hold the strap - and then does nothing else: no
+   * SDIO pin is configured, ESP-Hosted is never initialised, and GPIO54 is
+   * never touched again. A normal radio build would pulse reset a second
+   * time inside connect_to_slave() and yank the C6 out of the bootloader
+   * mid-write.
+   */
+  klog("C6", "RECOVERY: hold JP1 pin 24 (C6_IO9) LOW now; reset in 5 s");
+  vTaskDelay(pdMS_TO_TICKS(5000));
+  klog("C6", "RECOVERY: asserting GPIO54 LOW for 500 ms");
+  board_c6_hold_reset();
+  vTaskDelay(pdMS_TO_TICKS(500));
+  board_c6_enable();
+  klog("C6", "RECOVERY: released. C6 should be in ROM download mode; P4 is now inert toward it");
+  net_link_report_state(NET_C6_BOOTING, NET_REASON_NONE, "recovery image: C6 released for flashing",
+                        now_ms());
+  return;
+#endif
 #if KINO_C6_EN_BENCH_MS > 0
   en_bench_cycles();
 #endif
