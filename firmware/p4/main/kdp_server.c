@@ -905,13 +905,17 @@ static void handle_set_mode(uint32_t seq, const cJSON *req) {
  * actually receives still gets a full parse. 512 bytes covers it - the key
  * sits in the first hundred or so of every META.JSON this firmware writes.
  */
+static char s_taken_path[200];
+static char s_taken_head[512];
+
 static uint64_t capture_taken_ms(const char *dir_name) {
-  char path[200];
-  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, dir_name);
+  /* .bss, same reason as media_meta above: one command at a time on one task. */
+  char *const path = s_taken_path;
+  snprintf(path, sizeof s_taken_path, "%s/%s/META.JSON", CAPTURES_DIR, dir_name);
   FILE *f = fopen(path, "rb");
   if (f == NULL) return 0;
-  char head[512];
-  const size_t got = fread(head, 1, sizeof head - 1, f);
+  char *const head = s_taken_head;
+  const size_t got = fread(head, 1, sizeof s_taken_head - 1, f);
   fclose(f);
   head[got] = '\0';
   const char *k = strstr(head, "\"capturedAtMs\"");
@@ -977,13 +981,29 @@ static int media_scan(char (*names)[64], int cap) {
 
 /* Read <dir>/META.JSON. Returns NULL when absent or unparseable - a capture
  * whose metadata is gone is still listed, just with less to say about it. */
+/*
+ * Scratch in .bss, not on the stack.
+ *
+ * 160 + 1024 bytes of locals sat on the deepest branch this task has:
+ * handle_media_list -> media_summary -> media_meta -> cJSON_Parse, once per
+ * item for up to 100 items, with the fopen chain and cJSON's recursion on top
+ * - about 3.4 KB of the 8192 this task gets. That is the same shape as the
+ * frame that just overflowed the UI task's 8192 opening the gallery, so it is
+ * moved for the same reason, before it becomes the same bug.
+ *
+ * Safe as file statics because the KDP server dispatches one command at a
+ * time on one task, and nothing outside this file calls these.
+ */
+static char s_meta_path[160];
+static char s_meta_buf[1024];
+
 static cJSON *media_meta(const char *id) {
-  char path[160];
-  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, id);
+  char *const path = s_meta_path;
+  char *const buf = s_meta_buf;
+  snprintf(path, sizeof s_meta_path, "%s/%s/META.JSON", CAPTURES_DIR, id);
   FILE *f = fopen(path, "rb");
   if (f == NULL) return NULL;
-  char buf[1024];
-  const size_t got = fread(buf, 1, sizeof buf - 1, f);
+  const size_t got = fread(buf, 1, sizeof s_meta_buf - 1, f);
   fclose(f);
   buf[got] = '\0';
   return cJSON_Parse(buf);

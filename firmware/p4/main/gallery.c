@@ -44,6 +44,34 @@ static void unlock(void) { xSemaphoreGive(s_lock); }
 /* ---------------------------------------------------------------- */
 
 /*
+ * File scratch, deliberately not on any stack.
+ *
+ * Two owners, and they must stay two separate buffers because they run at the
+ * same time on different tasks:
+ *
+ *   s_scan_*  belongs to whoever calls gallery_refresh(), which is the UI task
+ *             (8 KB, from go() when the gallery screen opens), the capture
+ *             task (6 KB, from the capture-done callback) and the delete
+ *             dialog. gallery_refresh() holds s_lock across the whole of
+ *             scan(), and scan() is capture_taken_ms()'s only caller, so one
+ *             scan at a time is guaranteed by that mutex, not by convention.
+ *
+ *   s_tile_*  belongs to the gallery task alone. gallery_task() is the only
+ *             caller of read_meta() and load_tile(), and it calls them one
+ *             tile at a time, so nothing else can be in them.
+ *
+ * As locals these were 200 + 512 bytes per capture folder in capture_taken_ms
+ * and 200 + 1024 in read_meta, on top of the ~600 bytes the newlib/VFS/FatFs
+ * fopen chain needs below them. That overflowed the UI task's 8 KB the moment
+ * the gallery screen opened, and the canary panic rebooted the camera before
+ * a single tile drew. 1936 bytes of .bss against that is cheap.
+ */
+static char s_scan_path[200];
+static char s_scan_head[512];
+static char s_tile_path[200];
+static char s_tile_meta[1024];
+
+/*
  * When a capture was taken, from its META.JSON.
  *
  * stat() was tried first, on both the folder and its META.JSON, and both came
@@ -56,15 +84,14 @@ static void unlock(void) { xSemaphoreGive(s_lock); }
  * looking at still get a full parse in read_meta().
  */
 static uint64_t capture_taken_ms(const char *dir_name) {
-  char path[200];
-  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, dir_name);
-  FILE *f = fopen(path, "rb");
+  snprintf(s_scan_path, sizeof s_scan_path, "%s/%s/META.JSON", CAPTURES_DIR, dir_name);
+  FILE *f = fopen(s_scan_path, "rb");
   if (f == NULL) return 0;
-  char head[512];
-  const size_t got = fread(head, 1, sizeof head - 1, f);
-  fclose(f);
-  head[got] = 0;
-  const char *k = strstr(head, "capturedAtMs");
+  const size_t got = fread(s_scan_head, 1, sizeof s_scan_head - 1, f);
+  fclose(f); /* every return past here is after the close: 240 of these run
+              * back to back and max_files is 8. */
+  s_scan_head[got] = 0;
+  const char *k = strstr(s_scan_head, "capturedAtMs");
   if (k == NULL) return 0;
   k = strchr(k, ':');
   if (k == NULL) return 0;
@@ -137,6 +164,11 @@ static int scan(void) {
     ESP_LOGW(TAG, "%d captures on the card; showing the newest %d", total, MAX_SCAN);
   }
 
+  /* s_order[0..count-1] is a permutation of 0..count-1 and count never exceeds
+   * MAX_SCAN, so by_newest cannot index s_mtime past the entries filled above,
+   * whatever order qsort visits them in. Entries past count are stale from a
+   * previous scan and are never read: gallery_task() bounds idx by s_total,
+   * which is this return value. */
   for (int i = 0; i < count; i++) s_order[i] = (uint16_t)i;
   qsort(s_order, (size_t)count, sizeof s_order[0], by_newest);
   return count;
@@ -149,16 +181,14 @@ static void read_meta(gallery_item_t *it) {
   it->frames = 0;
   it->partial = false;
 
-  char path[200];
-  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, it->id);
-  FILE *f = fopen(path, "rb");
+  snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/META.JSON", CAPTURES_DIR, it->id);
+  FILE *f = fopen(s_tile_path, "rb");
   if (f == NULL) return;
-  char buf[1024];
-  const size_t got = fread(buf, 1, sizeof buf - 1, f);
+  const size_t got = fread(s_tile_meta, 1, sizeof s_tile_meta - 1, f);
   fclose(f);
-  buf[got] = '\0';
+  s_tile_meta[got] = '\0';
 
-  cJSON *m = cJSON_Parse(buf);
+  cJSON *m = cJSON_Parse(s_tile_meta);
   if (m == NULL) return;
   const cJSON *id = cJSON_GetObjectItem(m, "id");
   if (cJSON_IsString(id) && id->valuestring) {
@@ -195,10 +225,9 @@ static bool load_tile(gallery_item_t *it, uint16_t *pixels) {
     return false;
   }
   bool ok = false;
-  char path[200];
   for (size_t i = 0; i < sizeof TRY / sizeof TRY[0] && !ok; i++) {
-    snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, it->id, TRY[i]);
-    ok = thumb_load(path, pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0x0000) == ESP_OK;
+    snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/%s", CAPTURES_DIR, it->id, TRY[i]);
+    ok = thumb_load(s_tile_path, pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0x0000) == ESP_OK;
   }
   storage_release(STORAGE_USER_UI);
   return ok;
@@ -262,7 +291,12 @@ static void gallery_task(void *arg) {
 /* ---------------------------------------------------------------- */
 
 void gallery_refresh(void) {
-  if (s_lock == NULL) return;
+  /* s_names too, not just s_lock: gallery_init() creates the mutex before it
+   * allocates the name table, so a failed SPIRAM allocation leaves s_lock
+   * non-NULL and s_names NULL. main.c logs that init failure and carries on
+   * running the camera, so this is reachable, and scan() would memcpy into
+   * NULL on the first capture folder it found. */
+  if (s_lock == NULL || s_names == NULL) return;
   lock();
   s_total = storage_present() ? scan() : 0;
   const int pages = gallery_pages();
@@ -324,8 +358,9 @@ esp_err_t gallery_init(void) {
     if (s_pixels[i] == NULL) return ESP_ERR_NO_MEM;
   }
 
-  /* 4 KB: cJSON parses a 1 KB metadata file on this stack; the pictures are
-   * in PSRAM and the decode buffers belong to thumb.c. */
+  /* 4 KB: cJSON's recursive descent over a metadata object runs on this stack,
+   * but the 1 KB it parses is s_tile_meta and not a local, the pictures are in
+   * PSRAM and the decode buffers belong to thumb.c. */
   if (xTaskCreate(gallery_task, "gallery", 4096, NULL, 4, &s_task) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
