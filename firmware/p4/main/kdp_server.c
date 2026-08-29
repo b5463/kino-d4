@@ -27,6 +27,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp_net.h"
@@ -573,9 +574,13 @@ static void handle_capabilities(uint32_t seq) {
    * both is what produced the old `NETWORK: NOT FITTED` display.
    *
    *   radioFitted  — an ESP32-C6 is on the Guition carrier. It is.
-   *   radioRouted  — this firmware has a transport to it. It does NOT: no
-   *                  P4-side pin is recorded for this board anywhere in the
-   *                  tree (firmware/C6_HARDWARE_MAP.md).
+   *   radioRouted  — this firmware has a transport to it. Read from net_link,
+   *                  which is what NETWORK_STATUS reads, because the two used
+   *                  to disagree: this said false while NETWORK_STATUS said
+   *                  true on the same radio build, and Studio consumes this
+   *                  one. A registered driver is the route (net_link.h), so
+   *                  the default build answers false and the radio build
+   *                  answers true without a second constant to keep in step.
    *
    * `network` and `roll` stay FALSE, and that is deliberate even though the
    * whole 0xa0..0xaa surface now has handlers. Studio's supports() gate is
@@ -592,7 +597,11 @@ static void handle_capabilities(uint32_t seq) {
    * unimplemented command from an unrouted chip.
    */
   cJSON_AddBoolToObject(caps, "radioFitted", true);
-  cJSON_AddBoolToObject(caps, "radioRouted", false);
+  {
+    net_status_t net;
+    net_link_status(&net, esp_timer_get_time() / 1000);
+    cJSON_AddBoolToObject(caps, "radioRouted", net.radio_routed);
+  }
   cJSON_AddBoolToObject(caps, "network", false);
   cJSON_AddBoolToObject(caps, "roll", false);
   /* Not in Studio's Capabilities interface, but it is the flag
@@ -1617,16 +1626,62 @@ static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
 }
 
 /** Live LOG events for every klog() line, contract LogEntry shape. */
+/*
+ * The LOG event path, and why it has a queue in it.
+ *
+ * klog() is called from the UI task once a second, from the capture workers,
+ * from the radio supervisor - from everything. It used to hand the event
+ * straight to send_raw(), which takes the TX lock with portMAX_DELAY and then
+ * calls usb_serial_jtag_write_bytes() with portMAX_DELAY. When no host is
+ * draining USB-Serial-JTAG the TX FIFO fills and every one of those tasks
+ * stops on the wire, for as long as nobody is listening. Measured on
+ * KD4-D121BC: the UI watchdog reporting STALLED from 16 s uptime, and 17-22 s
+ * gaps between consecutive klog() calls on the radio supervisor that looked,
+ * on the coprocessor's console, like the transport pausing between RPCs.
+ *
+ * So the caller now does one non-blocking queue send and returns. A drain
+ * task at low priority owns the wire and may block there as long as it likes.
+ * When the queue is full the event is dropped and counted - the local ring in
+ * klog.c still has it, GET_LOGS still serves it, and GET_RUNTIME_STATS says
+ * how many external events went missing. Losing an event on a link nobody is
+ * reading is the correct trade; stalling the shutter is not.
+ */
+typedef struct {
+  int64_t t_ms;
+  int64_t t_us;
+  char src[6];
+  char msg[96]; /* KLOG_MSG_MAX */
+} log_evt_t;
+
+#define LOG_EVT_QUEUE_LEN 32
+static QueueHandle_t s_log_q;
+static uint32_t s_log_dropped;
+
+static void log_drain_task(void *arg) {
+  (void)arg;
+  log_evt_t e;
+  for (;;) {
+    if (xQueueReceive(s_log_q, &e, portMAX_DELAY) != pdTRUE) continue;
+    cJSON *json = cJSON_CreateObject();
+    /* `t` keeps its contract meaning: epoch milliseconds, wall clock. `us` is
+     * additive - monotonic microseconds since boot, for ordering events that
+     * land inside the same millisecond. See klog.h on why there are two. */
+    cJSON_AddNumberToObject(json, "t", (double)e.t_ms);
+    cJSON_AddNumberToObject(json, "us", (double)e.t_us);
+    cJSON_AddStringToObject(json, "src", e.src);
+    cJSON_AddStringToObject(json, "msg", e.msg);
+    send_event(KDP_EVT_LOG, json);
+  }
+}
+
 static void log_emitter(int64_t t_ms, int64_t t_us, const char *src, const char *msg) {
-  cJSON *json = cJSON_CreateObject();
-  /* `t` keeps its contract meaning: epoch milliseconds, wall clock. `us` is
-   * additive — monotonic microseconds since boot, for ordering events that
-   * land inside the same millisecond. See klog.h on why there are two. */
-  cJSON_AddNumberToObject(json, "t", (double)t_ms);
-  cJSON_AddNumberToObject(json, "us", (double)t_us);
-  cJSON_AddStringToObject(json, "src", src);
-  cJSON_AddStringToObject(json, "msg", msg);
-  send_event(KDP_EVT_LOG, json);
+  if (s_log_q == NULL) return;
+  log_evt_t e = {.t_ms = t_ms, .t_us = t_us};
+  strlcpy(e.src, src, sizeof e.src);
+  strlcpy(e.msg, msg, sizeof e.msg);
+  if (xQueueSend(s_log_q, &e, 0) != pdTRUE) {
+    s_log_dropped++;
+  }
 }
 
 static void handle_get_logs(uint32_t seq) {
@@ -1676,6 +1731,9 @@ static void handle_runtime_stats(uint32_t seq) {
   cJSON_AddNumberToObject(protocol, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(protocol, "cameraTimeouts", link.timeouts);
   cJSON_AddNumberToObject(protocol, "sdErrors", storage_sd_errors());
+  /* LOG events that had no room in the queue because no host was draining
+   * the link. Nonzero is not a fault; it is the price of the UI not stalling. */
+  cJSON_AddNumberToObject(protocol, "droppedLogEvents", s_log_dropped);
 
   /*
    * Per-task stack headroom, additive and optional.
@@ -2405,7 +2463,17 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
   }
   ESP_LOGI(TAG, "USB_TRANSPORT_READY: KDP on USB-Serial-JTAG, session %s",
            s_id.session_id);
-  klog_set_emitter(log_emitter);
+  /* The queue and its drain task exist before the emitter is registered, so
+   * no klog() call can ever find the emitter without somewhere to put the
+   * event. Priority 1: below every product task, because this is the one
+   * path that is allowed to wait on a host that is not there. */
+  s_log_q = xQueueCreate(LOG_EVT_QUEUE_LEN, sizeof(log_evt_t));
+  if (s_log_q != NULL &&
+      xTaskCreate(log_drain_task, "log_drain", 4096, NULL, 1, NULL) == pdPASS) {
+    klog_set_emitter(log_emitter);
+  } else {
+    ESP_LOGE(TAG, "log drain not started; LOG events will not be emitted");
+  }
 
   temperature_sensor_config_t tsens_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
   s_tsens = NULL;
