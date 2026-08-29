@@ -2485,7 +2485,11 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
 
   kdp_decoder_init(&s_decoder, s_decode_buf, sizeof s_decode_buf);
   TaskHandle_t srv = NULL;
-  BaseType_t ok = xTaskCreate(server_task, "kdp_server", 8192, NULL, 9, &srv);
+  /* 12 KB, from 8. ROLL_CREATE runs on this task and nests two 1 KB HTTP
+   * response buffers under cJSON parsing; measured on KD4-D121BC at 580 bytes
+   * free after one such call. A large GET_LOGS reply had already taken it to
+   * ~1.1 KB. Neither is a place to be one snprintf from the guard page. */
+  BaseType_t ok = xTaskCreate(server_task, "kdp_server", 12288, NULL, 9, &srv);
   taskmon_register("kdp_server", srv);
   return ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }

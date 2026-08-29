@@ -237,21 +237,48 @@ void roll_http_perform(const roll_http_req_t *req, roll_http_out_t *out) {
   if (client == NULL) return;
 
   const size_t body_len = req->json_body != NULL ? strlen(req->json_body) : 0;
-  if (body_len > 0) {
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, req->json_body, (int)body_len);
-  }
+  if (body_len > 0) esp_http_client_set_header(client, "Content-Type", "application/json");
 
-  const esp_err_t err = esp_http_client_perform(client);
+  /*
+   * open / write / fetch_headers, not esp_http_client_perform().
+   *
+   * perform() reads the whole response itself and, with no event handler
+   * registered to receive it, discards the body; a read_response() after it
+   * returns nothing. Measured on KD4-D121BC against the local API: every reply
+   * arrived with body_len 0, so a 200 carrying {deviceId, deviceToken} was
+   * parsed as an empty document and reported as "the register reply had no
+   * credential". The upload path (roll_http_put_file) already used this
+   * sequence, which is why it was the only one that could have worked.
+   */
+  char text[RQ_ERROR_LEN];
+  esp_err_t err = esp_http_client_open(client, (int)body_len);
   if (err != ESP_OK) {
-    char text[RQ_ERROR_LEN];
-    snprintf(text, sizeof text, "%s %s: %s", req->method, req->path, esp_err_to_name(err));
+    snprintf(text, sizeof text, "%s %s: open %s", req->method, req->path, esp_err_to_name(err));
     fail_out(out, text);
+    esp_http_client_cleanup(client);
+    return;
+  }
+  if (body_len > 0) {
+    const int wrote = esp_http_client_write(client, req->json_body, (int)body_len);
+    if (wrote != (int)body_len) {
+      snprintf(text, sizeof text, "%s %s: short write %d/%u", req->method, req->path, wrote,
+               (unsigned)body_len);
+      fail_out(out, text);
+      esp_http_client_close(client);
+      esp_http_client_cleanup(client);
+      return;
+    }
+  }
+  if (esp_http_client_fetch_headers(client) < 0) {
+    snprintf(text, sizeof text, "%s %s: no response headers", req->method, req->path);
+    fail_out(out, text);
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return;
   }
   net_hosted_count_bytes(0, (uint64_t)body_len);
   finish(client, req, out);
+  esp_http_client_close(client);
   esp_http_client_cleanup(client);
 }
 
