@@ -260,6 +260,64 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### The C6 answers, 2026-08-29 - passive UART, RX only
+
+The first evidence that the coprocessor exists as anything but a footprint.
+Entirely passive: one wire from the C6's console TX to a CH340 receive pin, and
+a ground. Nothing was transmitted, nothing was strapped, and no flash was
+touched.
+
+| | |
+|---|---|
+| P4 firmware | 0.4.2, `3e6bc1277fc9861dabeea6631c8d6cd260465b2e9d2679d1d3d40391e14a73ef` |
+| P4 session | boot-285 through boot-344 |
+| Adapter | CH340G on COM9 (`VID_1A86 PID_7523`), 115200 8N1, no flow control |
+| Wiring | JP1 pin 16 GND -> CH340 GND; JP1 pin 22 `C6_U0TXD` -> CH340 RXD. CH340 TX, VCC, `C6_IO9` and `C6_CHIP_PU` all left disconnected |
+| Captured | 15 936 bytes, four complete boots |
+
+Idle with no reset: **zero bytes in 15 s**, which is what a coprocessor that
+booted long ago looks like. The output below arrived only when the C6 was
+reset.
+
+| Field | Value |
+|---|---|
+| ROM | `ESP-ROM:esp32c6-20220919`, build Sep 19 2022 |
+| Reset reason | `rst:0x1 (POWERON)`, `boot:0xc (SPI_FAST_FLASH_BOOT)` |
+| Chip revision | v0.2, efuse block v0.3 |
+| **Flash** | **4 MB**, QIO, 80 MHz |
+| Partitions | `nvs` 0x9000, `otadata` 0xd000, `phy_init` 0xf000, **`ota_0` 0x10000 len 0x180000**, **`ota_1` 0x190000 len 0x180000** |
+| App project | `network_adapter`, version `f0a63f7-dirty` |
+| App built | Aug 26 2025 11:55:53, ESP-IDF v5.5 |
+| **Application** | **`ESP-Hosted-MCU Slave FW version :: 2.3.2`** |
+| **Transport** | **`Transport used :: SDIO only`** |
+| SDIO slave | `SDIO_SLAVE: Using SDIO interface`, `sdio_init: sending mode: SDIO_SLAVE_SEND_PACKET` |
+| BT MAC | `58:e6:c5:d3:17:fe` |
+
+Three things follow, and none of them was known before this capture.
+
+**The C6 is alive and it is already an ESP-Hosted slave.** Not a vendor AT
+image, not a Thread image, not an empty part. It brings its SDIO slave up on
+every boot. So `C6_NOT_PROVEN_ALIVE` is retired and the classification is
+`FACTORY_C6_HOSTED_BUT_SDIO_LINK_FAILING`.
+
+**GPIO54 resets it.** Four `POWERON` boots arrived, aligned with the three
+`KINO_C6_EN_BENCH_MS` assert/release cycles plus `bring_up()`'s own. A
+`CHIP_PU` held low and released is exactly a power-on reset, which is what the
+ROM reports. This is functional corroboration of the enable line and of
+active-low polarity - it is **not** the meter reading, and `C6_EN_GPIO54`
+stays `UNVALIDATED` until an operator reports the pin-26 voltages.
+
+**The slave is 2.3.2 and the host is 3.0.6.** That is the first hard evidence
+for why `C6-B` fails, and it is a major-version gap rather than a patch one.
+It does not by itself explain a failure at SDIO *enumeration*, which is an SD
+protocol handshake below anything ESP-Hosted versions, so the transport
+question is now "why does a slave that says it is listening not enumerate",
+not "is there a slave at all".
+
+`C6-B` stays **FAIL** - `rx_ready` is still 0, and a live console proves the
+CPU runs, not that the bus works. `C6-C` stays **CANNOT ASSESS**: a banner
+string is not a protocol handshake.
+
 ### microSD on SDMMC slot 0, 2026-08-28
 
 The one change 0.4.x made to an already-validated path. The 2026-08-26 mount
