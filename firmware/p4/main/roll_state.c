@@ -179,8 +179,9 @@ static void copy_field(char *dst, size_t cap, const char *src) {
     dst[0] = '\0';
     return;
   }
-  strncpy(dst, src, cap - 1);
-  dst[cap - 1] = '\0';
+  /* strlcpy, not strncpy + terminator: at -O2 GCC proves the strncpy form
+   * may truncate and -Werror=stringop-truncation stops the build. */
+  strlcpy(dst, src, cap);
 }
 
 /* ------------------------------------------------------------------ */

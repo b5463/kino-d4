@@ -59,7 +59,7 @@ static void slot_key(unsigned index, char *out, size_t cap) {
  * than errors, because a slot written by a future build must not make the
  * whole store unreadable. */
 static bool slot_read(nvs_handle_t h, unsigned index, slot_t *out) {
-  char key[8];
+  char key[12]; /* "n" + up to ten digits of %u + NUL; 8 fails -Wformat-truncation at -O2 */
   slot_key(index, key, sizeof key);
   size_t len = sizeof *out;
   if (nvs_get_blob(h, key, out, &len) != ESP_OK) return false;
@@ -76,7 +76,7 @@ static bool slot_read(nvs_handle_t h, unsigned index, slot_t *out) {
 }
 
 static esp_err_t slot_write(nvs_handle_t h, unsigned index, const slot_t *slot) {
-  char key[8];
+  char key[12]; /* "n" + up to ten digits of %u + NUL; 8 fails -Wformat-truncation at -O2 */
   slot_key(index, key, sizeof key);
   esp_err_t err = nvs_set_blob(h, key, slot, sizeof *slot);
   if (err != ESP_OK) return err;
@@ -158,7 +158,7 @@ esp_err_t wifi_creds_set(const char *ssid, const char *passphrase, net_security_
   slot.version = SLOT_VERSION;
   slot.security = (uint8_t)security;
   slot.auto_join = auto_join ? 1 : 0;
-  strncpy(slot.ssid, ssid, sizeof slot.ssid - 1);
+  strlcpy(slot.ssid, ssid, sizeof slot.ssid);
   slot.ssid[sizeof slot.ssid - 1] = '\0';
 
   if (security == NET_SEC_OPEN) {
@@ -166,7 +166,7 @@ esp_err_t wifi_creds_set(const char *ssid, const char *passphrase, net_security_
      * leaving the old secret behind would outlive the reason it was stored. */
     memset(slot.passphrase, 0, sizeof slot.passphrase);
   } else if (passphrase != NULL && passphrase[0] != '\0') {
-    strncpy(slot.passphrase, passphrase, sizeof slot.passphrase - 1);
+    strlcpy(slot.passphrase, passphrase, sizeof slot.passphrase);
     slot.passphrase[sizeof slot.passphrase - 1] = '\0';
   }
   /* else: keep whatever slot_read() loaded. */
@@ -198,7 +198,7 @@ esp_err_t wifi_creds_delete(const char *ssid) {
     return ESP_ERR_NOT_FOUND;
   }
 
-  char key[8];
+  char key[12]; /* "n" + up to ten digits of %u + NUL; 8 fails -Wformat-truncation at -O2 */
   slot_key((unsigned)found, key, sizeof key);
   /* erase_key rather than writing zeros: a zeroed blob still occupies the
    * page with the previous passphrase's ciphertext-free bytes until the page
@@ -222,7 +222,7 @@ size_t wifi_creds_list(wifi_cred_view_t *out, size_t cap) {
   for (unsigned i = 0; i < WIFI_CREDS_MAX && n < cap; i++) {
     if (!slot_read(h, i, &slot)) continue;
     memset(&out[n], 0, sizeof out[n]);
-    strncpy(out[n].ssid, slot.ssid, sizeof out[n].ssid - 1);
+    strlcpy(out[n].ssid, slot.ssid, sizeof out[n].ssid);
     /* Metadata only. The struct has nowhere to put a passphrase, which is
      * the point — a caller cannot serialise what it was never handed. */
     out[n].has_password = slot.passphrase[0] != '\0';
@@ -298,7 +298,7 @@ bool wifi_creds_auto_join_target(char *ssid_out, size_t cap) {
      * the one that worked last is the better guess than the first slot. */
     if (slot.last_connected_ms > best) {
       best = slot.last_connected_ms;
-      strncpy(ssid_out, slot.ssid, cap - 1);
+      strlcpy(ssid_out, slot.ssid, cap);
       ssid_out[cap - 1] = '\0';
       found = true;
     }
