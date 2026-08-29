@@ -10,6 +10,7 @@
 
 #ifdef KINO_RADIO
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -320,6 +321,107 @@ static void en_bench_cycles(void) {
 }
 #endif
 
+/* ------------------------------------------------------------------ */
+/* Bench: capture ESP-IDF's own log during bring-up                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The console is on UART0 and KDP owns USB-Serial-JTAG, so every ESP_LOGx the
+ * IDF and esp_hosted emit is printed where nobody at this bench can read it -
+ * including the one line that says WHY sdmmc_card_init() failed. "card init
+ * failed" is not a diagnosis; ESP_ERR_TIMEOUT waiting for CMD5 and a CRC error
+ * and an unsupported voltage are three different faults with three different
+ * fixes.
+ *
+ * So the log is diverted into a buffer for the duration of the bring-up and
+ * then replayed into klog, which GET_LOGS can read.
+ *
+ * Deliberately NOT calling klog() from inside the hook: klog() itself calls
+ * ESP_LOGI, so a hook that logged would re-enter itself forever. Nothing here
+ * logs. It appends bytes and returns, and the replay happens later, from
+ * ordinary task context, once the hook is uninstalled.
+ */
+/* 6 KB: the connect path logs the reset, every card-init retry and the
+ * sdmmc driver's own reason for each failure, and those are exactly the lines
+ * this exists to keep. */
+#define HOSTED_LOG_CAP 6144
+#define HOSTED_LOG_REPLAY_MAX 40
+static char s_hostlog[HOSTED_LOG_CAP];
+static size_t s_hostlog_len;
+static vprintf_like_t s_prev_vprintf;
+/* ESP-Hosted's transport tasks run at priority 22 and log from several tasks
+ * at once during connect. A spinlock, not a mutex: this runs inside the log
+ * call and must never block or yield. */
+static portMUX_TYPE s_hostlog_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static int hostlog_vprintf(const char *fmt, va_list args) {
+  char line[192];
+  va_list copy;
+  va_copy(copy, args);
+  const int n = vsnprintf(line, sizeof line, fmt, copy);
+  va_end(copy);
+  if (n > 0) {
+    portENTER_CRITICAL(&s_hostlog_mux);
+    if (s_hostlog_len + 1 < HOSTED_LOG_CAP) {
+      size_t take = (size_t)n;
+      const size_t room = HOSTED_LOG_CAP - s_hostlog_len - 1;
+      if (take > room) take = room;
+      memcpy(s_hostlog + s_hostlog_len, line, take);
+      s_hostlog_len += take;
+      s_hostlog[s_hostlog_len] = '\0';
+    }
+    portEXIT_CRITICAL(&s_hostlog_mux);
+  }
+  /* Still goes to the real console, so nothing is lost for anyone with a
+   * UART0 probe. The default vprintf does not log, so this cannot recurse. */
+  return s_prev_vprintf != NULL ? s_prev_vprintf(fmt, args) : n;
+}
+
+static void hostlog_begin(void) {
+  /* Installing twice would make s_prev_vprintf point at this function and
+   * the next log call would recurse without end. bring_up() runs once, but
+   * the guard costs nothing and the failure mode is a silent stack overflow. */
+  if (s_prev_vprintf != NULL) return;
+  portENTER_CRITICAL(&s_hostlog_mux);
+  s_hostlog_len = 0;
+  s_hostlog[0] = '\0';
+  portEXIT_CRITICAL(&s_hostlog_mux);
+  s_prev_vprintf = esp_log_set_vprintf(hostlog_vprintf);
+}
+
+/** Uninstall and replay. Only the lines worth a bench operator's attention. */
+static void hostlog_end(void) {
+  if (s_prev_vprintf != NULL) {
+    (void)esp_log_set_vprintf(s_prev_vprintf);
+    s_prev_vprintf = NULL;
+  }
+  char *p = s_hostlog;
+  int emitted = 0;
+  while (p != NULL && *p != '\0' && emitted < HOSTED_LOG_REPLAY_MAX) {
+    char *nl = strchr(p, '\n');
+    if (nl != NULL) *nl = '\0';
+    /* Strip the colour escapes the IDF wraps its levels in. */
+    char clean[112];
+    size_t o = 0;
+    for (const char *q = p; *q != '\0' && o + 1 < sizeof clean; q++) {
+      if (*q == 0x1b) {
+        while (*q != '\0' && *q != 'm') q++;
+        if (*q == '\0') break;
+        continue;
+      }
+      if (*q == '\r') continue;
+      clean[o++] = *q;
+    }
+    clean[o] = '\0';
+    if (o > 0) {
+      klog("C6", "idf: %s", clean);
+      emitted++;
+    }
+    p = nl != NULL ? nl + 1 : NULL;
+  }
+  if (emitted == 0) klog("C6", "idf: (no log captured during bring-up)");
+}
+
 /*
  * What esp_hosted_init() proves, and what it does not.
  *
@@ -392,19 +494,38 @@ static void bring_up(void) {
    * known state rather than whatever the last boot left running. ESP-Hosted's
    * own ALWAYS reset strategy releases it as part of esp_hosted_init(). */
   net_link_report_state(NET_C6_BOOTING, NET_REASON_NONE, "holding the C6 in reset", now_ms());
+
+  /* Timestamps taken around the sequence and reported AFTER it, not from
+   * inside: the 20 ms hold is a chip requirement, and a klog() in the middle
+   * of it would be measuring the instrument. */
+  const int64_t t_assert = esp_timer_get_time();
   board_c6_hold_reset();
   vTaskDelay(pdMS_TO_TICKS(EN_HOLD_MS));
+  const int64_t t_release = esp_timer_get_time();
   board_c6_enable();
   vTaskDelay(pdMS_TO_TICKS(EN_HOLD_MS));
+  const int64_t t_done = esp_timer_get_time();
+  klog("C6", "own reset: GPIO%d %s-asserted %lldus, released, settled %lldus", BOARD_C6_EN,
+       BOARD_C6_EN_ACTIVE_LOW ? "low" : "high", (long long)(t_release - t_assert),
+       (long long)(t_done - t_release));
+
+  /* From here to hostlog_end() the IDF's own log is captured, because this is
+   * the window in which sdmmc_card_init() says what actually went wrong. */
+  hostlog_begin();
 
   if (!configure_transport()) {
+    hostlog_end();
     count_error();
     net_link_report_state(NET_ERROR, NET_REASON_RADIO_FAILURE,
                           "ESP-Hosted refused the SDIO pin configuration", now_ms());
     return;
   }
 
-  if (esp_hosted_init() != 0) {
+  const int64_t t_init0 = esp_timer_get_time();
+  const int init_rc = esp_hosted_init();
+  const int64_t t_init1 = esp_timer_get_time();
+  if (init_rc != 0) {
+    hostlog_end();
     count_error();
     /* The host side refused before the bus was ever driven - a bad config, no
      * memory, the RPC layer failing to start. NOT "nothing enumerated": see
@@ -415,11 +536,41 @@ static void bring_up(void) {
     return;
   }
 
+  /*
+   * The half that was missing.
+   *
+   * esp_hosted_init() brings up the host-side vserial and RPC layers and
+   * returns. It does not touch the bus. The reset pulse, sdmmc_card_init()
+   * and the RX_ACTIVE state all live in ensure_slave_bus_ready(), which is
+   * reached from exactly one place in the pinned 3.0.6 source:
+   * eh_host_bus_connect_to_slave(), i.e. esp_hosted_connect_to_slave().
+   *
+   * The component's own auto-init constructor calls both -
+   * `eh_host_init(NULL) == 0 && eh_host_connect_to_slave() == 0` - and this
+   * firmware disables that constructor so no pin is driven before app_main().
+   * Correct, and then only the first half was reproduced here. Measured on
+   * KD4-D121BC: init returned 0 in 32 ms, no reset pulse ever reached the C6
+   * beyond our own, "card init failed" never appeared in the IDF log, and
+   * rx_ready stayed 0 - because enumeration had never been attempted.
+   *
+   * Blocks for up to CONFIG_ESP_HOSTED_HOST_CP_BRINGUP_TIMEOUT_MS (5000) and
+   * then returns -EIO. It does NOT reboot: CP_BRINGUP_ON_TIMEOUT_NONE is
+   * pinned in sdkconfig.radio, because the REATTEMPT and RESTART arms both end
+   * in esp_restart(), and a dead radio must never cost a photograph.
+   */
+  const int64_t t_conn0 = esp_timer_get_time();
+  const int conn_rc = esp_hosted_connect_to_slave();
+  const int64_t t_conn1 = esp_timer_get_time();
+  klog("C6", "connect_to_slave rc=%d in %lldms", conn_rc,
+       (long long)((t_conn1 - t_conn0) / 1000));
+
   /* Whether anything actually answered on the bus, asked rather than assumed.
    * This is Gate C6-B's real evidence and it must be read before the version
    * RPC, because a failed version RPC on a bus that never enumerated means
    * something completely different from the same failure on one that did. */
   const bool bus_up = probe_transport();
+  hostlog_end();
+  klog("C6", "esp_hosted_init rc=%d in %lldms", init_rc, (long long)((t_init1 - t_init0) / 1000));
 
   net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, bus_up);
   if (!bus_up) {
