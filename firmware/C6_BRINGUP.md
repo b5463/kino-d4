@@ -11,7 +11,7 @@ hardware task and everything after it is blocked on it.
 | Stage | State |
 |---|---|
 | C6 slave image builds reproducibly | see [`c6/README.md`](c6/README.md) |
-| P4 transport routing known | **BENCH DONE 2026-08-29** — slot 1 on GPIO14–19 enumerated the C6, twice, two witnesses — [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) |
+| P4 transport routing known | **BENCH DONE 2026-08-29** — slot 1 on GPIO14–19 enumerated the C6, three boots, two witnesses; GPIO54 confirmed as `CHIP_PU` on the meter (B2 PASS) — [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) |
 | P4 transport driver | **BENCH DONE 2026-08-29** — `net_hosted.c`; it had been calling `esp_hosted_init()` without `esp_hosted_connect_to_slave()`, so enumeration was never attempted (`a2ab8ef`). Still a build-time opt-in, OFF by default |
 | Version gate | **BENCH DONE 2026-08-29** — it fired: factory coprocessor 2.3.2 refused against host 3.0.6, `C6_BAD_FIRMWARE`, no reset loop. Compared the wrong constant at first (`ESP_HOSTED_VERSION_*_1` = 2.12.6, a compat macro); now uses `PROJECT_VERSION_*_1` like the component itself |
 | Network state model | CODE DONE, host-tested (127 + 75 checks) |
@@ -129,6 +129,59 @@ Flashing needs `C6_U0RXD`/`C6_U0TXD`/`C6_IO9`/`C6_CHIP_PU`. Whether the P4 can
 drive them — the flashing proxy that would make this a one-cable operation —
 depends on the same GPIO numbers step 1 produces. Until then it is an external
 USB-serial adapter on the header.
+
+## 3a. The coprocessor image, and the procedure that waits on a divider
+
+Status 2026-08-29. The factory coprocessor is ESP-Hosted 2.3.2 and the host is
+3.0.6; the transport works and the version gate refuses, so the coprocessor
+must be updated. Nothing has been written. Two gates stand in front of the
+write, one of them physical.
+
+**The image.** Built from a clean archive of `551e281`, twice, byte-identical:
+`kino-c6.bin` **1 105 872 B**,
+`3616fe6e6e6329f7443dce0f19232bb6aded9091801db874f150a18a1baaee61` - the same
+hash recorded on 2026-08-28, so it is stable across environments as well as
+repeatable. `esp_hosted` 3.0.6 (`component_hash 1b1c2aa8...`), ESP-IDF v5.5.1,
+4 MB flash, custom table `partitions_eh_cp_ota_4m.csv`:
+
+| Partition | Offset | Size | Factory equivalent |
+|---|---|---|---|
+| `nvs` | 0x9000 | 16 K | same offset |
+| `otadata` | 0xd000 | 8 K | same offset |
+| `phy_init` | 0xf000 | 4 K | same offset |
+| `ota_0` | 0x10000 | 1792 K | factory: 0x10000, 1536 K |
+| `ota_1` | 0x1d0000 | 1792 K | factory: 0x190000, 1536 K |
+
+Generated flash set (`flash_args`): bootloader at 0x0, partition table at
+0x8000, `ota_data_initial.bin` at 0xd000, `kino-c6.bin` at 0x10000. **Migration
+review:** `nvs`, `otadata` and `phy_init` keep the factory offsets, so the
+write set never touches the factory NVS or PHY calibration; only the OTA slots
+grow, and the 1.1 MB image ends well inside factory `ota_0`. The factory table
+is replaced by ours, which is intended.
+
+**Gate one - physical.** CH340G TXD idles at **4.7 V**, measured. It may not be
+connected to `C6_U0RXD` until a 1 k / 2 k divider is fitted and its midpoint is
+measured at 3.0-3.3 V with TXD idle. RX-only wiring stays as it is. No adapter
+VCC to the board, ever.
+
+**Gate two - the P4 must be inert.** A normal radio build pulses GPIO54 once
+for the operator and again inside `connect_to_slave()`, which would pull the
+C6 out of its bootloader mid-write. So the recovery image
+(`-DKINO_C6_RECOVERY=1`, built: `33a2a9b62dc989eadd9f7b2074660a65407d8a070eea4de9f926fed5db72bd0e`,
+1 172 400 B) announces, waits five seconds for the strap, pulses GPIO54 low for
+500 ms, releases, and never touches the C6 again - no SDIO pin, no ESP-Hosted.
+
+**The sequence, once both gates clear** (nothing below has been run):
+
+1. Flash the recovery image to the P4 on COM8. Wait for `RECOVERY: hold JP1 pin 24 (C6_IO9) LOW now`.
+2. Operator holds pin 24 to GND; the P4 pulses reset; `RECOVERY: released`. Release pin 24 after the ROM banner shows `boot:0x... (DOWNLOAD...)` on COM9, or after ~2 s.
+3. Identify, write nothing: `esptool --port COM9 --chip esp32c6 --before no_reset --after no_reset chip_id`. Require ESP32-C6, revision ~v0.2; record MAC.
+4. Confirm geometry: `... flash_id`. Require 4 MB. Record manufacturer and device ID.
+5. Back up everything: `... read_flash 0 0x400000 factory-c6-kd4-d121bc.bin`; SHA-256 it; keep it local, not in the repository; record size, hash, date, MAC, factory version 2.3.2.
+6. Decode the factory table from the backup (`gen_esp32part.py` on the 0x8000 region) and record it beside ours.
+7. Write per the generated `flash_args`, `--flash_size 4MB`, then `verify_flash` - or rely on esptool's write verification and read back the app region hash.
+8. Release IO9, pulse reset once more (the recovery image is still on the P4 - a P4 `REBOOT` repeats its single pulse), capture the whole COM9 boot. Require a clean boot, our partition table, `ESP-Hosted-MCU Slave FW version :: 3.0.x`, SDIO slave up.
+9. Flash the normal radio image back to the P4. Camera-first baseline first; then require rx_ready and tx_ready again, then the version RPC.
 
 ## 4. Turn on the host — DONE, and OFF BY DEFAULT
 

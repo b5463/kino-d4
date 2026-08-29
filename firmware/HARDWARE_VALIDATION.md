@@ -260,6 +260,65 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### GPIO54 is CHIP_PU, on the meter - Gate B2, 2026-08-29
+
+The one electrical row the radio work had left open. Operator measurement,
+multimeter, black probe JP1 pin 16 (GND), red probe JP1 pin 26 (`C6_CHIP_PU`),
+during the firmware's three announced 3 s assert / 3 s release cycles
+(`KINO_C6_EN_BENCH_MS=3000`, radio build 0.4.2, unit `KD4-D121BC`):
+
+| Phase | Firmware drove GPIO54 | Pin 26 measured |
+|---|---|---|
+| released (rest) | HIGH | **~3.3 V** |
+| asserted | LOW | **~0 V** |
+| released | HIGH | **~3.3 V** |
+
+Repeated across the cycles. The C6 console, captured on COM9 at the same
+time, showed a `POWERON` boot **6.00 s** after each previous one - one per
+release, exactly the cycle period - then two more 80 ms apart for the
+firmware's own 20 ms reset and ESP-Hosted's pulse.
+
+`C6_EN_GPIO54`: **VALIDATED** - by the meter, which is what the row means.
+Active-low confirmed: LOW holds the C6 off, HIGH lets it run. The firmware's
+constant `BOARD_C6_EN_ACTIVE_LOW 1` and ESP-Hosted's
+`CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW=y` are both correct as shipped.
+Recorded by hand: the firmware does not, and must not, mark this row itself.
+
+### The CH340 must not touch the C6's RX yet, 2026-08-29
+
+Measured by the operator: **CH340G TXD idle = 4.7 V** relative to CH340 GND.
+That is above the ESP32-C6's 3.3 V I/O rating, so CH340 TXD may **not** be
+connected to JP1 pin 20 (`C6_U0RXD`) directly. The RX-only wiring in use
+(pin 16 GND, pin 22 `C6_U0TXD` -> CH340 RXD) is unaffected and stays.
+
+Proposed remedy, not yet installed: a 1 kOhm / 2 kOhm divider from CH340 TXD
+to GND, midpoint to pin 20, giving ~3.13 V from 4.7 V. Before ROM-loader
+access is allowed the operator confirms, in this order: divider fitted;
+common GND; midpoint measured with TXD idle; result 3.0-3.3 V. **Midpoint:
+NOT YET MEASURED.** Never connect CH340 VCC, 5 V or 3V3 to the board.
+
+Everything that needs the C6's UART RX - ROM download mode, `chip_id`,
+`flash_id`, the factory backup, the slave write - waits on that measurement.
+The plan for when it clears is in [`C6_BRINGUP.md`](C6_BRINGUP.md) step 3.
+
+### What the LOG queue fixed, and what it did not, 2026-08-29
+
+`5850b69`: a LOG event no longer waits on a host that is not draining
+USB-Serial-JTAG; the caller enqueues and returns, a priority-1 task owns the
+wire, a full queue drops and counts. On the first boot of that image
+(boot-357) `droppedLogEvents` read 20 with no host reading - the events that
+would previously have stalled their callers.
+
+It did **not** unfreeze the UI. `ui screen 0 ... frames 41 STALLED` persists,
+from ~16 s uptime, before `esp_hosted_init()` is reached, with no camera
+attached, `ui` task 5.6 KB stack free. So the UI stall is a separate defect
+in the UI/viewfinder path and not a logging or radio finding. Left for its
+owner; recorded so it is not mistaken for either.
+
+Also measured on the same boot: `GET_CAPABILITIES.radioRouted` reads **true**
+on the radio build and agrees with `NETWORK_STATUS` for the first time
+(`5850b69`, `34a5bbc`).
+
 ### The SDIO bus enumerates, 2026-08-29 - Gate C6-B
 
 The first time the P4 and its coprocessor have exchanged a byte. Unit
@@ -321,7 +380,7 @@ them for one:
 | `C6_SDIO_PINS` | **VALIDATED** | `rx_ready == 1` after `sdmmc_card_init()`, twice, two witnesses |
 | `C6_LINK_HANDSHAKE` | **VALIDATED** | `rx_ready && tx_ready`, and the slave logging the host's RPCs |
 | `C6_SLAVE_VERSION` | UNVALIDATED | RPC answered 2.3.2; refused against host 3.0.6. Stays open until a compatible coprocessor answers |
-| `C6_EN_GPIO54` | UNVALIDATED | Now corroborated three ways - the ROM reports POWERON on every cycle, esp_hosted's own pulse produces a fifth boot, and the bus enumerates after it - but the row is the meter reading on JP1 pin 26, and that has not been reported |
+| `C6_EN_GPIO54` | **VALIDATED** (later the same day) | Meter on JP1 pin 26: ~3.3 / ~0 / ~3.3 V across the cycles. See the B2 section above |
 
 C6-B: **PASS**. C6-C: **FAIL** - assessed for the first time, with real data on
 both sides. Nothing above the transport was attempted; Wi-Fi was not started.
@@ -571,7 +630,7 @@ subsystem.
 | Battery voltage / percentage / low-battery shutdown | **NOT APPLICABLE on this board** — no sense divider reaches the P4 (deviation D10). Needs a hardware revision |
 | Backlight brightness / dim stage | **NOT APPLICABLE** — plain GPIO, not PWM (deviation D11) |
 | P4 → C6 SDIO mapping | **VALIDATED 2026-08-29.** SDMMC slot 1 on GPIO14–19 enumerated the onboard C6 (`Card init success, TRANSPORT_RX_ACTIVE`, `rx_ready && tx_ready`), reproduced on two boots and witnessed from the C6's own console. Session recorded above. The routing was corroborated on paper first; it is now measured |
-| GPIO54 (`CHIP_PU`) polarity | **UNCONFIRMED.** ESP-Hosted defaults to active-low ("LOW asserts reset, HIGH runs") and ships an explicit active-high override for boards whose EN is buffered through an inverting transistor. Which this carrier is has not been measured. One constant, `BOARD_C6_EN_ACTIVE_LOW`, so the bench can flip it |
+| GPIO54 (`CHIP_PU`) polarity | **VALIDATED 2026-08-29** on the meter: pin 26 reads ~3.3 V released, ~0 V asserted, ~3.3 V released, across three announced cycles, with the C6 console reporting a `POWERON` boot on every release. Active-low, as configured. Session recorded above |
 | SD / C6 bus coexistence | **VALIDATED 2026-08-29** for the static case: card mounted on slot 0 (1 attempt, 0 `sdErrors`) with the C6 enumerated on slot 1 of the same controller, both up at once. `SD_C6_COEXIST` itself stays `UNVALIDATED`: it is defined as a scan before and after card I/O with the radio associated, and no scan has run |
 | SD card on slot 0 | **VALIDATED 2026-08-28**, firmware 0.4.1 on `KD4-D121BC`: mounted first attempt, self-test and both benches pass with matching CRCs and clean cleanup, and throughput is at or above the slot-1 reference. Session recorded above |
 | Wi-Fi association / DHCP / DNS / TLS | **NOT VALIDATED — never attempted.** No radio has been exercised on this hardware. The state model, credential store and `NETWORK_*` surface are CODE DONE and host-tested; nothing above them has run |
