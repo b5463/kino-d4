@@ -107,7 +107,7 @@ action and no command existed to carry it, so it took the next free slot in the 
 | `NETWORK_LIST` | `0xa0` | Optional request `{ "scan": true }` runs one bounded scan and adds `available[]` (`ssid`, `bssid`, `rssi`, `channel`, `security`, `hidden`), `scanMs` and `scanComplete` to the reply. Without it the reply is the saved `networks[]` only, unchanged (D16). |
 | `NETWORK_SET` | `0xa1` |
 | `NETWORK_DELETE` | `0xa2` |
-| `NETWORK_STATUS` | `0xa3` |
+| `NETWORK_STATUS` | `0xa3` | Optional request `{ "probe": true }` adds `probe`: a timed DNS lookup of the API host (`dnsMs`, `dnsOk`, `family`) and one unauthenticated `GET /api/healthz` through the Roll HTTP client (`httpMs`, `httpStatus`, `totalMs`, `tls`, `detail`) - certificate verified, trusted clock required, no registration. Without it, unchanged (D17). |
 | `ROLL_STATUS` | `0xa4` |
 | `ROLL_CREATE` | `0xa5` |
 | `ROLL_JOIN` | `0xa6` |

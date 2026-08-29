@@ -2408,7 +2408,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_NETWORK_LIST: send_net(frame->type, frame->seq, kdp_net_list(req)); break;
     case KDP_CMD_NETWORK_SET: send_net(frame->type, frame->seq, kdp_net_set(req)); break;
     case KDP_CMD_NETWORK_DELETE: send_net(frame->type, frame->seq, kdp_net_delete(req)); break;
-    case KDP_CMD_NETWORK_STATUS: send_net(frame->type, frame->seq, kdp_net_status()); break;
+    case KDP_CMD_NETWORK_STATUS: send_net(frame->type, frame->seq, kdp_net_status(req)); break;
     case KDP_CMD_ROLL_STATUS: send_net(frame->type, frame->seq, kdp_net_roll_status()); break;
     case KDP_CMD_ROLL_CREATE: send_net(frame->type, frame->seq, kdp_net_roll_create(req)); break;
     case KDP_CMD_ROLL_JOIN: send_net(frame->type, frame->seq, kdp_net_roll_join(req)); break;

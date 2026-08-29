@@ -350,7 +350,98 @@ kdp_net_reply_t kdp_net_delete(const cJSON *req) {
   return ok_reply(o);
 }
 
-kdp_net_reply_t kdp_net_status(void) {
+/*
+ * The end-to-end probe: DNS, then a certificate-verified HTTPS exchange with
+ * the real API, without touching Roll registration.
+ *
+ * GET /api/healthz, unauthenticated, through roll_http_perform() - the same
+ * client, bundle and clock rule every Roll request will use, so a pass here is
+ * the transport Roll will inherit and a failure here is one Roll would have
+ * met on its first call. The DNS lookup is done separately first so its time
+ * and address family are known; the client then resolves again on its own,
+ * which costs a few milliseconds and keeps the two measurements independent.
+ */
+#if KINO_RADIO
+#include "lwip/netdb.h"
+#include "roll_http.h"
+
+#ifndef KINO_ROLL_API_BASE
+#define KINO_ROLL_API_BASE ""
+#endif
+
+/* Host name out of "https://host[:port]/...", into `out`. */
+static bool api_host(char *out, size_t cap) {
+  const char *s = KINO_ROLL_API_BASE;
+  const char *p = strstr(s, "://");
+  s = p != NULL ? p + 3 : s;
+  size_t n = 0;
+  while (s[n] != '\0' && s[n] != '/' && s[n] != ':' && n + 1 < cap) n++;
+  if (n == 0) return false;
+  memcpy(out, s, n);
+  out[n] = '\0';
+  return true;
+}
+
+static cJSON *probe_object(void) {
+  cJSON *o = cJSON_CreateObject();
+  if (o == NULL) return NULL;
+  char host[80];
+  if (!api_host(host, sizeof host)) {
+    cJSON_AddStringToObject(o, "detail", "no API base URL in this build");
+    return o;
+  }
+  cJSON_AddStringToObject(o, "host", host);
+
+  char why[RQ_ERROR_LEN];
+  if (!roll_http_ready(why, sizeof why)) {
+    cJSON_AddStringToObject(o, "detail", why);
+    return o;
+  }
+
+  /* DNS, timed and reported on its own. */
+  const int64_t t0 = now_ms();
+  struct addrinfo hints = {.ai_socktype = SOCK_STREAM};
+  struct addrinfo *res = NULL;
+  const int rc = getaddrinfo(host, "443", &hints, &res);
+  const int64_t t_dns = now_ms() - t0;
+  cJSON_AddNumberToObject(o, "dnsMs", (double)t_dns);
+  if (rc != 0 || res == NULL) {
+    cJSON_AddBoolToObject(o, "dnsOk", false);
+    cJSON_AddNumberToObject(o, "dnsRc", rc);
+    if (res != NULL) freeaddrinfo(res);
+    return o;
+  }
+  cJSON_AddBoolToObject(o, "dnsOk", true);
+  cJSON_AddStringToObject(o, "family", res->ai_family == AF_INET6 ? "inet6" : "inet");
+  freeaddrinfo(res);
+
+  /* Connect + TLS + request + response, through the Roll client. */
+  static char body[192];
+  const roll_http_req_t req = {.method = "GET",
+                               .path = "/api/healthz",
+                               .json_body = NULL,
+                               .authenticate = false,
+                               .response = body,
+                               .response_cap = sizeof body};
+  roll_http_out_t out;
+  const int64_t t1 = now_ms();
+  roll_http_perform(&req, &out);
+  const int64_t t_http = now_ms() - t1;
+  cJSON_AddNumberToObject(o, "httpMs", (double)t_http);
+  cJSON_AddNumberToObject(o, "httpStatus", out.status);
+  cJSON_AddNumberToObject(o, "totalMs", (double)(now_ms() - t0));
+  cJSON_AddBoolToObject(o, "tls", strncmp(KINO_ROLL_API_BASE, "https://", 8) == 0);
+  if (out.detail[0] != '\0') cJSON_AddStringToObject(o, "detail", out.detail);
+  if (out.status >= 200 && out.status < 300 && out.body_len > 0) {
+    /* The health document is small and public; keep the reply bounded. */
+    body[sizeof body - 1] = '\0';
+    cJSON_AddStringToObject(o, "body", body);
+  }
+  return o;
+}
+#endif /* KINO_RADIO */
+
+kdp_net_reply_t kdp_net_status(const cJSON *req) {
   net_status_t net;
   net_link_status(&net, now_ms());
 
@@ -417,6 +508,14 @@ kdp_net_reply_t kdp_net_status(void) {
   } else {
     cJSON_AddNullToObject(o, "detail");
   }
+#if KINO_RADIO
+  if (cJSON_IsTrue(req != NULL ? cJSON_GetObjectItem(req, "probe") : NULL)) {
+    cJSON *probe = probe_object();
+    if (probe != NULL) cJSON_AddItemToObject(o, "probe", probe);
+  }
+#else
+  (void)req;
+#endif
   return ok_reply(o);
 }
 

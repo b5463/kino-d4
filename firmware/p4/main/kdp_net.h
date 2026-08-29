@@ -87,7 +87,10 @@ typedef struct {
 kdp_net_reply_t kdp_net_list(const cJSON *req);
 kdp_net_reply_t kdp_net_set(const cJSON *req);
 kdp_net_reply_t kdp_net_delete(const cJSON *req);
-kdp_net_reply_t kdp_net_status(void);
+/* `{ "probe": true }` adds `probe`: a timed DNS lookup of the API host and one
+ * unauthenticated GET /api/healthz through the Roll HTTP client - certificate
+ * verified, trusted clock required, no registration. Without it, unchanged. */
+kdp_net_reply_t kdp_net_status(const cJSON *req);
 
 /* Roll. */
 kdp_net_reply_t kdp_net_roll_status(void);
