@@ -222,7 +222,12 @@ static cJSON *roll_view(void) {
 static cJSON *available_array(void) {
   cJSON *arr = cJSON_CreateArray();
   if (arr == NULL) return NULL;
-  net_scan_entry_t found[NET_SCAN_MAX];
+  /* Static, not on the stack: twenty entries are ~1.3 KB, and this runs on
+   * the KDP server task, which has been measured with as little as 1.1 KB to
+   * spare while building large replies. The first scan request on hardware
+   * put this array on that stack and the P4 panicked. One scan at a time is
+   * already guaranteed by the server task being the only caller. */
+  static net_scan_entry_t found[NET_SCAN_MAX];
   const size_t n = net_link_scan_results(found, NET_SCAN_MAX);
   for (size_t i = 0; i < n; i++) {
     cJSON *o = cJSON_CreateObject();
