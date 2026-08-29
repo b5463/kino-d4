@@ -58,10 +58,10 @@ void klog(const char *src, const char *fmt, ...) {
     klog_entry_t *slot = &s_ring[s_count % KLOG_CAPACITY];
     slot->t_ms = t;
     slot->t_us = t_us;
-    strncpy(slot->src, src, sizeof slot->src - 1);
-    slot->src[sizeof slot->src - 1] = '\0';
-    strncpy(slot->msg, msg, sizeof slot->msg - 1);
-    slot->msg[sizeof slot->msg - 1] = '\0';
+    /* strlcpy, not strncpy + terminator: at -O2 GCC proves the strncpy form
+     * may truncate and -Werror=stringop-truncation stops the build. */
+    strlcpy(slot->src, src, sizeof slot->src);
+    strlcpy(slot->msg, msg, sizeof slot->msg);
     s_count++;
     xSemaphoreGive(s_lock);
   }
