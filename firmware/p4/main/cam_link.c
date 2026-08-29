@@ -53,8 +53,6 @@
  * cliff that only appears at the maximum chunk size. */
 #define LINK_DECODE_BUF (KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN + 64)
 
-/* Deep enough that a burst of events during one chunk is not itself dropped. */
-#define LINK_EVT_QUEUE_LEN 16
 #define DEFAULT_TIMEOUT_MS 3000
 #define CAPTURE_TIMEOUT_MS 8000
 
@@ -83,8 +81,6 @@ struct channel_s {
   camlink_info_t info;
   camlink_stats_t stats;
   uint8_t decode_storage[LINK_DECODE_BUF];
-  QueueHandle_t evt_q;
-  uint32_t overruns; /* UART_FIFO_OVF + UART_BUFFER_FULL seen on this channel */
   kdp_decoder_t decoder;
   uint8_t tx[512];
   pending_t pending;
@@ -193,14 +189,6 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
      * zero-latency behaviour the poll was written for, and an idle channel
      * genuinely sleeps instead of burning the core.
      */
-    uart_event_t ev;
-    while (ch->evt_q != NULL && xQueueReceive(ch->evt_q, &ev, 0) == pdTRUE) {
-      if (ev.type == UART_FIFO_OVF || ev.type == UART_BUFFER_FULL) {
-        ch->overruns++;
-        klog(ch->tag, "UART %s during cmd 0x%02x - bytes lost, not corrupted",
-             ev.type == UART_FIFO_OVF ? "FIFO OVERRUN" : "RING FULL", cmd);
-      }
-    }
     int n = uart_read_bytes(ch->uart, rx, 1, pdMS_TO_TICKS(10));
     if (n > 0) {
       /* Drain whatever else arrived with it, without waiting for more. */
@@ -241,9 +229,6 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
            (unsigned long)(ch->stats.duplicates - dups_before),
            (unsigned long)(ch->stats.crc_errors + ch->decoder.stats.crc_failures - crc_before),
            (unsigned long)ch->timeout_run);
-      if (ch->overruns > 0)
-        klog(ch->tag, "%lu UART overrun(s) on this channel so far",
-             (unsigned long)ch->overruns);
       ch->timeout_logged_us = now_us;
     }
     result = ESP_ERR_TIMEOUT;
@@ -317,8 +302,10 @@ esp_err_t camlink_init(void) {
      * ESP_INTR_FLAG_IRAM pairs with CONFIG_UART_ISR_IN_IRAM so the handler
      * survives a disabled flash cache.
      */
-    esp_err_t err = uart_driver_install(ch->uart, LINK_RX_BUF, 0, LINK_EVT_QUEUE_LEN,
-                                        &ch->evt_q, ESP_INTR_FLAG_IRAM);
+    /* No event queue, and no IRAM interrupt flag. Both were tried on
+     * 2026-08-29 and both are worse - see sdkconfig.defaults for the bisect
+     * that settled the IRAM one. */
+    esp_err_t err = uart_driver_install(ch->uart, LINK_RX_BUF, 0, 0, NULL, 0);
     if (err == ESP_OK) err = uart_param_config(ch->uart, &config);
     if (err == ESP_OK)
       err = uart_set_pin(ch->uart, ch->tx_pin, ch->rx_pin, UART_PIN_NO_CHANGE,

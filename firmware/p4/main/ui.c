@@ -2479,6 +2479,7 @@ static void ui_task(void *arg) {
            (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
 
   int held = -1;
+  int64_t s_ui_report_us = 0;
   int64_t wake_since_us = 0;
   bool was_asleep = false;
 
@@ -2597,6 +2598,29 @@ static void ui_task(void *arg) {
       gfx_present();
       vTaskDelay(pdMS_TO_TICKS(90));
       continue;
+    }
+
+    /*
+     * Once a second: is the UI looping, and is it presenting?
+     *
+     * A stuck preview has three quite different causes and they are
+     * indistinguishable from the outside. The pump is known to keep running -
+     * measured at 5-6.7 fps while the screen looked frozen - so the question
+     * is what the UI is doing. If `frames` advances the compositor is running
+     * and the panel is stale; if it stops while these lines keep coming the UI
+     * is looping without presenting, and `held` says why, because a latched
+     * press skips the SHOOT repaint below; if the lines stop entirely the task
+     * is blocked or starved.
+     */
+    {
+      const int64_t ui_now_us = esp_timer_get_time();
+      if (ui_now_us - s_ui_report_us >= 1000000) {
+        s_ui_report_us = ui_now_us;
+        uint32_t ui_frames = 0;
+        gfx_stats(&ui_frames, NULL);
+        klog("P4", "ui screen %d held %d pressed %d frames %lu", (int)s_screen, held,
+             s_pressed, (unsigned long)ui_frames);
+      }
     }
 
     if (s_screen == SCR_SHOOT && held == -1) {

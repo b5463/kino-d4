@@ -962,6 +962,10 @@ esp_err_t capture_init(const char *device_id) {
      *
      * Right-size all four after M1 / Gate A, from four live channels. Do not
      * trim this on a channel count of one. */
+    /* Priority 5. Raising these to 8 was tried on 2026-08-29 on the theory
+     * that the worker was being preempted for longer than the 1.39 ms the RX
+     * FIFO tolerates, and it changed nothing - 0/5 either way - so the
+     * difference between this path and CAMERA_TEST is not scheduling. */
     TaskHandle_t wh = NULL;
     if (xTaskCreate(worker_task, name, 8192, &s_worker[i], 5, &wh) != pdPASS) {
       return ESP_ERR_NO_MEM;
