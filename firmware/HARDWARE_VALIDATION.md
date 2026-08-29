@@ -84,6 +84,49 @@ the arithmetic the Phase 1 audit derived from source and the driver's own
 "40MHz SYSCLK / 10MHz PCLK" comment contradicts. The silicon agrees with the
 audit.
 
+### THUMB.JPG is written, 2026-08-29
+
+`thumb_write` had never once succeeded in this project. It does now, at both
+capture sizes, and `MEDIA_THUMB` reads the file back off the card in ~13.7 ms.
+
+**Why it never worked.** `ppa_do_scale_rotate_mirror` checks the destination
+against the cache line and rejects both a misaligned pointer and a size that
+is not a multiple of it:
+
+    ((uint32_t)out.buffer & 63) == 0 && (out.buffer_size & 63) == 0
+
+The scale target came from `jpeg_alloc_encoder_mem(..., JPEG_ENC_ALLOC_INPUT_BUFFER)`,
+and IDF's input branch is a plain `heap_caps_calloc` - no alignment, no
+rounding, because the encoder only ever READS that buffer. The PPA writes it.
+A PSRAM block lands on 64 about one time in sixteen, so the call returned
+`ESP_ERR_INVALID_ARG` almost always. `thumb_load` had worked all along because
+its destination is a gallery tile allocated with `heap_caps_aligned_calloc(64,
+...)` and sized by `THUMB_TILE_BYTES`.
+
+This is the third time PPA alignment has cost this project a bug. The rule is
+now in one place: `ensure_ppa_dst()`.
+
+**The second fault, behind the first.** With the scale fixed, the encoder step
+ran for the first time. It is configured `JPEG_DOWN_SAMPLING_YUV420`, whose MCU
+is 16x16, and IDF neither validates nor pads the dimensions. 2048x1536 reduces
+to 256x192 and is whole; 1600x1200 reduces to 300x225 and is whole in neither
+axis.
+
+Trimming the output to a multiple of 16 alone does not work, and the bench said
+so: 2048x1536 wrote and 1600x1200 did not. The PPA also checks the SCALED
+source block against the destination picture - `(uint32_t)(scale_x *
+in.block_w) <= out.pic_w` - and a full 1600-wide block at 3/16 still scales to
+300, which no longer fits the 288 the rounding left. The source block is now
+cropped to match the trimmed output, satisfying both rules.
+
+| Capture size | reduction | thumbnail |
+|---|---|---|
+| 2048x1536 | 2/16 -> 256x192 | **written, readable** |
+| 1600x1200 | 3/16 -> 300x225, trimmed to 288x224 | **written, readable** |
+
+A `MEDIA_THUMB` immediately after a capture can time out; the device is
+finishing its gallery refresh. Re-read a moment later and it is 13.5-13.8 ms.
+
 ### Capture works: the compositor was blacking out the link ISR, 2026-08-29
 
 The product capture path is **VALIDATED**. It had never completed reliably.

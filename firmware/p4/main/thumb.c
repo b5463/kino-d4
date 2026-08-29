@@ -8,6 +8,7 @@
 #include "driver/jpeg_encode.h"
 #include "driver/ppa.h"
 #include "esp_cache.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "klog.h"
 #include "esp_timer.h"
@@ -22,6 +23,12 @@ static const char *TAG = "thumb";
  * to be able to hold. */
 #define MAX_SRC_W 2048
 #define MAX_SRC_H 1536
+
+/* Held back from the buffer size declared to the JPEG encoder — see the call.
+ * A baseline header is SOI, APP0, two DQT, four DHT, SOF0 and SOS, a little
+ * over 600 bytes, and the driver pads it with a COM marker to the next 64-byte
+ * cache line. One kilobyte covers it with room to spare. */
+#define ENC_HEADER_SLACK 1024u
 
 static jpeg_decoder_handle_t s_dec;
 static jpeg_encoder_handle_t s_enc;
@@ -70,9 +77,11 @@ esp_err_t thumb_init(void) {
 
 bool thumb_ready(void) { return s_enc != NULL && s_dec != NULL && s_srm != NULL; }
 
-/** Grow a lazily-held buffer to `want`, keeping whatever is already big
- * enough. Uses the codec allocator so cache and 2D-DMA alignment are right. */
-static bool ensure(uint8_t **buf, size_t *cap, size_t want, bool for_encode, bool input) {
+/** Grow a lazily-held codec OUTPUT buffer to `want`, keeping whatever is
+ * already big enough. Both codec allocators round an output request up to the
+ * cache line and return the pointer on one, because a 2D-DMA write has to
+ * invalidate whole lines. */
+static bool ensure(uint8_t **buf, size_t *cap, size_t want, bool for_encode) {
   if (*buf != NULL && *cap >= want) return true;
   if (*buf != NULL) {
     free(*buf);
@@ -81,9 +90,7 @@ static bool ensure(uint8_t **buf, size_t *cap, size_t want, bool for_encode, boo
   }
   size_t got = 0;
   if (for_encode) {
-    jpeg_encode_memory_alloc_cfg_t cfg = {.buffer_direction = input
-                                                                  ? JPEG_ENC_ALLOC_INPUT_BUFFER
-                                                                  : JPEG_ENC_ALLOC_OUTPUT_BUFFER};
+    jpeg_encode_memory_alloc_cfg_t cfg = {.buffer_direction = JPEG_ENC_ALLOC_OUTPUT_BUFFER};
     *buf = jpeg_alloc_encoder_mem(want, &cfg, &got);
   } else {
     jpeg_decode_memory_alloc_cfg_t cfg = {.buffer_direction = JPEG_DEC_ALLOC_OUTPUT_BUFFER};
@@ -92,6 +99,33 @@ static bool ensure(uint8_t **buf, size_t *cap, size_t want, bool for_encode, boo
   if (*buf == NULL) return false;
   *cap = got;
   return true;
+}
+
+/**
+ * Grow the PPA destination to hold `w` x `h` RGB565.
+ *
+ * This deliberately does not use jpeg_alloc_encoder_mem. That call only rounds
+ * and aligns for JPEG_ENC_ALLOC_OUTPUT_BUFFER; for an INPUT buffer it is a
+ * plain heap_caps_calloc and it reports the unrounded request back as the
+ * allocated size, because the encoder only ever READS the buffer and a 2D-DMA
+ * read needs no alignment at all.
+ *
+ * The PPA WRITES it, and ppa_do_scale_rotate_mirror checks both halves:
+ *
+ *   out.buffer & (cache_line - 1) == 0  &&  out.buffer_size & (cache_line - 1) == 0
+ *
+ * A PSRAM heap block lands on 64 bytes about one time in sixteen, so
+ * thumb_write returned ESP_ERR_INVALID_ARG on essentially every capture this
+ * firmware has ever taken. Same 64-byte rule and same macro as the gallery
+ * tiles that thumb_load has been scaling into successfully all along.
+ */
+static bool ensure_ppa_dst(uint32_t w, uint32_t h) {
+  const size_t want = THUMB_TILE_BYTES(w, h);
+  if (s_small != NULL && s_small_cap >= want) return true;
+  free(s_small);
+  s_small = heap_caps_aligned_calloc(THUMB_CACHE_LINE, 1, want, MALLOC_CAP_SPIRAM);
+  s_small_cap = (s_small != NULL) ? want : 0;
+  return s_small != NULL;
 }
 
 /**
@@ -160,7 +194,7 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
 
   const uint32_t pad_w = (info.width + 15) & ~15u;
   const uint32_t pad_h = (info.height + 15) & ~15u;
-  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false, false)) {
+  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false)) {
     klog("P4", "thumb load %s: no %lu KB decode buffer for %lux%lu", path,
              (unsigned long)((size_t)pad_w * pad_h * 2 / 1024), (unsigned long)info.width,
              (unsigned long)info.height);
@@ -289,7 +323,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
    * wrong writes past the end of the buffer, not merely a wrong picture. */
   const uint32_t pad_w = (info.width + 15) & ~15u;
   const uint32_t pad_h = (info.height + 15) & ~15u;
-  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false, false)) {
+  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false)) {
     klog("P4", "thumb: no room to decode %lux%lu", (unsigned long)pad_w, (unsigned long)pad_h);
     goto done;
   }
@@ -307,11 +341,46 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   }
 
   const int n = scale_sixteenths(info.width, info.height);
-  const uint32_t out_w = (info.width * (uint32_t)n) / 16;
-  const uint32_t out_h = (info.height * (uint32_t)n) / 16;
-  if (out_w < 8 || out_h < 8) goto done;
+  /*
+   * Trimmed to whole MCUs, because the encoder does not check and does not pad.
+   *
+   * jpeg_encoder_process is configured JPEG_DOWN_SAMPLING_YUV420, whose MCU is
+   * 16x16, and IDF passes the dimensions straight to the hardware with no
+   * validation: a picture that is not a multiple of 16 in both axes produces a
+   * data-unit count that disagrees with the configured resolution, not a clean
+   * ESP_ERR_INVALID_ARG. 2048x1536 reduces to 256x192 and is already whole,
+   * which is the only reason this has not bitten - the other configured
+   * capture size, 1600x1200, reduces to 300x225 and is whole in neither.
+   *
+   * Rounding down costs at most 15 px off each edge of a ~300 px thumbnail and
+   * keeps the scale factor exact; the PPA writes the smaller block and the
+   * encoder is handed dimensions it can actually represent.
+   */
+  const uint32_t out_w = ((info.width * (uint32_t)n) / 16) & ~15u;
+  const uint32_t out_h = ((info.height * (uint32_t)n) / 16) & ~15u;
+  if (out_w < 16 || out_h < 16) goto done;
 
-  if (!ensure(&s_small, &s_small_cap, (size_t)out_w * out_h * 2, true, true)) goto done;
+  /*
+   * Crop the SOURCE block to match the trimmed output, not just the output.
+   *
+   * The PPA checks the scaled block against the destination picture:
+   * new_block_w = (uint32_t)(scale_x * in.block_w) must be <= out.pic_w. Trim
+   * only the output and that check fails - 1600x1200 at 3/16 scales the full
+   * 1600-wide block to 300, which no longer fits the 288 the MCU rounding left,
+   * and the call comes back ESP_ERR_INVALID_ARG. Measured exactly that: the
+   * 2048x1536 thumbnail wrote and the 1600x1200 one did not.
+   *
+   * Reading a slightly smaller rectangle of the source instead keeps both
+   * rules satisfied. Integer division can leave the scaled height a pixel
+   * under out_h, which is legal - the check is <=, not == - and costs at most
+   * one row of a 224-row thumbnail.
+   */
+  uint32_t blk_w = (out_w * 16u) / (uint32_t)n;
+  uint32_t blk_h = (out_h * 16u) / (uint32_t)n;
+  if (blk_w > info.width) blk_w = info.width;
+  if (blk_h > info.height) blk_h = info.height;
+
+  if (!ensure_ppa_dst(out_w, out_h)) goto done;
 
   ppa_srm_oper_config_t srm = {
       .in =
@@ -319,8 +388,8 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
               .buffer = s_full,
               .pic_w = pad_w,
               .pic_h = pad_h,
-              .block_w = info.width,
-              .block_h = info.height,
+              .block_w = blk_w,
+              .block_h = blk_h,
               .block_offset_x = 0,
               .block_offset_y = 0,
               .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
@@ -328,7 +397,12 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
       .out =
           {
               .buffer = s_small,
-              .buffer_size = s_small_cap,
+              /* The rounded-up size, not out_w*out_h*2: the driver wants a
+               * whole number of cache lines here, and 300x225 - what a 1600
+               * wide frame reduces to - is 135000 bytes, 2109.375 lines. The
+               * picture itself stays out_w x out_h, so the encoder that reads
+               * this buffer next still sees an out_w stride. */
+              .buffer_size = THUMB_TILE_BYTES(out_w, out_h),
               .pic_w = out_w,
               .pic_h = out_h,
               .block_offset_x = 0,
@@ -349,7 +423,7 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   /* A quarter of the raw size is far more than a 300x225 JPEG needs and still
    * only 33 KB — cheap insurance against a noisy frame that compresses badly
    * and would otherwise fail at the last step. */
-  if (!ensure(&s_out, &s_out_cap, (size_t)out_w * out_h / 2, true, false)) goto done;
+  if (!ensure(&s_out, &s_out_cap, (size_t)out_w * out_h / 2 + ENC_HEADER_SLACK, true)) goto done;
 
   jpeg_encode_cfg_t ecfg = {
       .src_type = JPEG_ENCODE_IN_FORMAT_RGB565,
@@ -359,8 +433,13 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
       .height = out_h,
   };
   uint32_t out_size = 0;
+  /* s_out_cap - ENC_HEADER_SLACK, not s_out_cap. The encoder writes the header
+   * itself with the CPU and then points its output DMA at s_out + header_len,
+   * but sizes that descriptor with the whole outbuf_size it was handed - so a
+   * stream that fills the buffer runs header_len bytes past the end of the
+   * allocation. Holding the slack back keeps that overrun inside our own. */
   err = jpeg_encoder_process(s_enc, &ecfg, s_small, (uint32_t)(out_w * out_h * 2), s_out,
-                             (uint32_t)s_out_cap, &out_size);
+                             (uint32_t)(s_out_cap - ENC_HEADER_SLACK), &out_size);
   if (err != ESP_OK || out_size == 0) {
     klog("P4", "thumb: encode failed: %s", esp_err_to_name(err));
     goto done;

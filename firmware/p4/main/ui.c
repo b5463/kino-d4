@@ -1440,33 +1440,64 @@ static void draw_gallery(void) {
      * content and the rest is file management. */
     /* The mark instead of a sentence: four cells, lit for the frames that
      * are actually in the folder. A full capture reads as four filled cells
-     * at a glance and a partial one is obvious without counting. */
+     * at a glance and a partial one is obvious without counting.
+     *
+     * An empty cell is only LOST when the capture actually lost something.
+     * This used to paint every unfilled cell red, so a one-camera body showed
+     * three "camera did not answer" marks under every photograph it had ever
+     * taken correctly - damage reported where there was none. META.JSON says
+     * `partial` when frames were asked for and did not arrive; that is the
+     * only case worth colouring as a fault. */
     fm_cell_t st[4];
-    for (int k = 0; k < 4; k++) st[k] = k < slots[i].frames ? FM_ON : FM_LOST;
+    for (int k = 0; k < 4; k++) {
+      st[k] = k < slots[i].frames ? FM_ON : (slots[i].partial ? FM_LOST : FM_OFF);
+    }
     four_mark(x + 2, y + G_TILE_H + 7, 8, st, false);
     text_right(&UI_FONT_S, x + G_TILE_W - 2, y + G_TILE_H + 5, slots[i].mode, W_TEXT);
   }
 
-  /* Page controls, only when there is more than one page. */
+  /*
+   * The footer says one thing at a time, in the middle.
+   *
+   * "READING CARD" used to be drawn at x=24 - the same place as the PREV
+   * button - so while the card was being read the two sat on top of each
+   * other and the screen showed a boxed "REPRE#NG|CARD". The state and the
+   * page position are the same piece of information at different moments, so
+   * they share the one slot instead of fighting for it.
+   */
   const int pages = gallery_pages();
   const int fy = UI_H - G_FOOT;
-  if (pages > 1) {
-    char pg[32];
-    snprintf(pg, sizeof pg, "%d of %d", gallery_page() + 1, pages);
-    text_mid(&UI_FONT_S, UI_W / 2, fy + (G_FOOT - UI_FONT_S.line_h) / 2, pg, W_TEXT);
+  const int ty = fy + (G_FOOT - UI_FONT_S.line_h) / 2;
+  const bool loading = gallery_loading();
 
+  char mid[48];
+  if (loading) {
+    snprintf(mid, sizeof mid, "READING CARD");
+  } else if (pages > 1) {
+    /* Both numbers: which page you are on, and how much there is. Without the
+     * total, "3 of 8" says nothing about whether that is 18 photographs or 48. */
+    snprintf(mid, sizeof mid, "%d of %d      %d photos", gallery_page() + 1, pages, total);
+  } else {
+    snprintf(mid, sizeof mid, "%d photo%s", total, total == 1 ? "" : "s");
+  }
+  text_mid(&UI_FONT_S, UI_W / 2, ty, mid, loading ? W_GRAYTEXT : W_TEXT);
+
+  if (pages > 1) {
     const int bw = 78, bh = 32, by = fy + (G_FOOT - bh) / 2;
     const int pd = s_pressed == G_IT_PREV ? 1 : 0, nd = s_pressed == G_IT_NEXT ? 1 : 0;
+    /* Greyed at the ends rather than hidden. A control that disappears moves
+     * the other one and teaches nothing; a dead one shows you where you are. */
+    const bool has_prev = gallery_page() > 0;
+    const bool has_next = gallery_page() < pages - 1;
     button(24, by, bw, bh, pd);
-    text_mid(&UI_FONT_S, 24 + bw / 2 + pd, by + (bh - UI_FONT_S.line_h) / 2 + pd, "PREV", W_TEXT);
+    text_mid(&UI_FONT_S, 24 + bw / 2 + pd, by + (bh - UI_FONT_S.line_h) / 2 + pd, "PREV",
+             has_prev ? W_TEXT : W_GRAYTEXT);
     button(UI_W - 24 - bw, by, bw, bh, nd);
     text_mid(&UI_FONT_S, UI_W - 24 - bw / 2 + nd, by + (bh - UI_FONT_S.line_h) / 2 + nd, "NEXT",
-             W_TEXT);
+             has_next ? W_TEXT : W_GRAYTEXT);
     if (foc(SCR_GALLERY, G_IT_PREV)) focus_rect(28, by + 4, bw - 8, bh - 8);
     if (foc(SCR_GALLERY, G_IT_NEXT)) focus_rect(UI_W - 20 - bw, by + 4, bw - 8, bh - 8);
   }
-  if (gallery_loading())
-    text(&UI_FONT_S, 24, fy + (G_FOOT - UI_FONT_S.line_h) / 2, "READING CARD", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
