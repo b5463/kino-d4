@@ -191,12 +191,11 @@ const ROLL_0_4_CAPABILITIES: Record<string, boolean> = {
    */
   radioFitted: true,
   /**
-   * False, and this is the gate — though no longer for the original reason.
-   * The routing IS recorded now (SDMMC slot 1, GPIO14-19, EN on GPIO54) and
-   * corroborated against Espressif's own ESP-Hosted defaults. What is missing
-   * is a measurement: nothing has driven those pins, and the radio is a
-   * build-time opt-in that is off by default because enabling it drives them
-   * before `app_main` on every boot. See firmware/C6_HARDWARE_MAP.md.
+   * False for THIS profile, which describes the default build. The radio is a
+   * build-time opt-in, and a radio build answers true - the firmware reads
+   * the flag from the same place NETWORK_STATUS does, so the two cannot
+   * disagree again. The routing itself is measured now: slot 1 on GPIO14-19
+   * enumerated the onboard C6 on 2026-08-29 (firmware/HARDWARE_VALIDATION.md).
    */
   radioRouted: false,
   /**
@@ -310,4 +309,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.3.0': 'd4-capture-0-3',
   '0.4.0': 'd4-roll-0-4',
   '0.4.1': 'd4-roll-0-4',
+  '0.4.2': 'd4-roll-0-4',
 };
