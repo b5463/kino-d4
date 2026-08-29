@@ -202,9 +202,28 @@ static bool configure_transport(void) {
  * answer it does not speak our RPC, and that maps to C6_NO_RESPONSE rather
  * than to a version number nobody has.
  */
-#define HOST_HOSTED_MAJOR ESP_HOSTED_VERSION_MAJOR_1
-#define HOST_HOSTED_MINOR ESP_HOSTED_VERSION_MINOR_1
-#define HOST_HOSTED_PATCH ESP_HOSTED_VERSION_PATCH_1
+/*
+ * The host's RELEASE version - what esp_hosted itself compares the coprocessor
+ * against in eh_host_mcu_transport_verify_fw_compat(), and what it prints as
+ * "esp-hosted fw versions: host=3.0.6".
+ *
+ * Not ESP_HOSTED_VERSION_*_1 from esp_hosted_host_fw_ver.h. That header says
+ * so in its own first line - "Upstream-mcu compat" - and carries 2.12.6, a
+ * different version space. Measured on KD4-D121BC: the gate below compared
+ * the coprocessor's 2.3.2 against 2.12.6, refused on a minor-version rule,
+ * and printed "cannot serve host 2.12.6" while the component two lines above
+ * it in the same log said "host=3.0.6 ... major version mismatch". Right
+ * verdict, wrong constant, misleading detail. The constants below make the
+ * two agree.
+ */
+#if __has_include("eh_common_fw_version.h")
+#include "eh_common_fw_version.h"
+#define HOST_HOSTED_MAJOR PROJECT_VERSION_MAJOR_1
+#define HOST_HOSTED_MINOR PROJECT_VERSION_MINOR_1
+#define HOST_HOSTED_PATCH PROJECT_VERSION_PATCH_1
+#else
+#error "eh_common_fw_version.h missing: esp_hosted layout changed, re-audit the version gate"
+#endif
 
 static bool version_gate(void) {
   char host_ver[NET_VERSION_LEN];
@@ -413,7 +432,19 @@ static void hostlog_end(void) {
       clean[o++] = *q;
     }
     clean[o] = '\0';
-    if (o > 0) {
+    /* Every klog event is a serial transaction on the KDP link. Replaying
+     * forty of them before the version gate ran delayed the gate by 17 s on
+     * the bench and showed up on the coprocessor's console as an unexplained
+     * gap between RPCs - the instrument distorting the measurement. So only
+     * the lines that carry a verdict are replayed. */
+    static const char *const keep[] = {"eh_sdio", "sdmmc", "eh_host_port_sdio", "eh_init_evt",
+                                       "eh_mcu_transport", "eh_reconfigure", "eh_host_xport",
+                                       "E (", "W ("};
+    bool wanted = false;
+    for (size_t k = 0; k < sizeof keep / sizeof keep[0] && !wanted; k++) {
+      wanted = strstr(clean, keep[k]) != NULL;
+    }
+    if (o > 0 && wanted && strstr(clean, "kino:") == NULL) {
       klog("C6", "idf: %s", clean);
       emitted++;
     }
@@ -569,18 +600,23 @@ static void bring_up(void) {
    * RPC, because a failed version RPC on a bus that never enumerated means
    * something completely different from the same failure on one that did. */
   const bool bus_up = probe_transport();
-  hostlog_end();
   klog("C6", "esp_hosted_init rc=%d in %lldms", init_rc, (long long)((t_init1 - t_init0) / 1000));
 
   net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, bus_up);
   if (!bus_up) {
+    hostlog_end();
     count_error();
     net_link_report_state(NET_C6_ABSENT, NET_REASON_C6_NO_RESPONSE,
                           "SDIO did not enumerate; check GPIO14-19 and GPIO54", now_ms());
     return;
   }
 
-  if (!version_gate()) return;
+  const bool versions_ok = version_gate();
+  /* Replay the captured IDF log only now, with the gate's verdict already
+   * reported: the replay is slow and must not sit between the RPC and the
+   * state it produces. */
+  hostlog_end();
+  if (!versions_ok) return;
   net_link_report_state(NET_C6_LINK_READY, NET_REASON_NONE, "transport up, versions agree",
                         now_ms());
 
