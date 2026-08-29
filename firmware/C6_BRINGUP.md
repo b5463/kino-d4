@@ -19,9 +19,9 @@ hardware task and everything after it is blocked on it.
 | SNTP as a clock source | **BENCH DONE 2026-08-29** — `clockSource network` on first association; the stale `CLOCK_UNTRUSTED` hold that would have blocked TLS is released on adoption (`172966f`) |
 | Wi-Fi credential store | CODE DONE |
 | `NETWORK_*` KDP commands | CODE DONE — answer honestly, refuse what needs a radio |
-| `ROLL_*` KDP commands | CODE DONE — `ROLL_CREATE` and slug-only `ROLL_JOIN` now reach the API in the radio build |
+| `ROLL_*` KDP commands | **BENCH DONE 2026-08-29** — `ROLL_CREATE` registered the device and created roll `RRG8AZ` on the local backend; `ROLL_DEVICE_REGISTER` earned |
 | Durable upload queue | CODE DONE, host-tested |
-| Roll HTTP client | **Transport BENCH DONE 2026-08-29** — DNS 27 ms, certificate-verified TLS to `kino.acronym.sk`, HTTP exchange in 557 ms via the D17 probe. The API answered 404: not deployed at that host yet |
+| Roll HTTP client | **BENCH DONE 2026-08-29** — against the production host: DNS, verified TLS, 404 (not deployed). Against the real backend on the LAN (`network.apiBase`, D18): health 200 with body, register 200, create roll 201. It had never read a response body until `90b8d74` |
 | Radio variant in CI | CODE DONE — `p4-radio` job, its own 1440 KB guard |
 | microSD on slot 0 (prerequisite) | **BENCH DONE 2026-08-28** — the slot move is proven on `KD4-D121BC`; see `HARDWARE_VALIDATION.md` |
 | Any of it on hardware | **Transport and version gate, yes.** The coprocessor was rewritten to the pinned 3.0.6 from a verified 4 MB backup (`HARDWARE_VALIDATION.md`), boots cleanly, enumerates, and passes the gate. The link sits in `WIFI_IDLE` waiting for a network. Scan and association are next |

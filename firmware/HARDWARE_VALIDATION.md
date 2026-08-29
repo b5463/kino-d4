@@ -260,6 +260,74 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### The camera reaches a real KINO backend and registers - LAN only, 2026-08-29
+
+Not the production host: the repository's own Fastify API (`@kino/api`,
+`tsx src/dev.ts`) running on this development PC over the dev compose
+(Postgres 16, Redis 7, MinIO, `kino-dev-*`), migrations current via
+`src/migrate.ts`. Nothing public was touched: no DNS, no openresty, no Caddy,
+no port forwarding. The C6 was not flashed.
+
+**Topology.** D4 on BRCD, `10.20.80.181`. PC on Ethernet `10.20.99.57/24`,
+gateway `10.20.99.1` - **not the BRCD subnet**, and it did not need to be: the
+site router forwards between them (PC -> D4 ping 31 ms, one hop). Fastify
+listens on `0.0.0.0:3000` by default; an existing inbound Allow rule for TCP
+3000 already covered it (no rule created). Loopback `/api/healthz` 200 in
+86 ms, LAN IP 200 in 24 ms, body `{"ok":true,"db":true,"redis":true,"storage":true}`.
+
+**Pointing the camera at it** (`e030feb`, D18): a stored `network.apiBase`
+read at request time, validated by the host-tested `pure_api_base_ok()`
+(http/https, host, optional port, no path, never credentials), replacing the
+compiled production default only when set. `SET_CONFIG` -> `SAVE_CONFIG` ->
+`GET_CONFIG` shows `http://10.20.99.57:3000`; it survived a reflash of the app
+partition. This stored value is the only route an `http://` base can take
+into the client; the compiled default stays https and `C6_TLS` cannot be earned
+over http.
+
+**Two firmware defects surfaced by the first real reply, both measured:**
+
+- `roll_http_perform()` never read a body. It used `esp_http_client_perform()`
+  with no event handler, which reads and discards the response, then
+  `read_response()` on nothing. The probe's 200 carried no body; the
+  registration 200 carrying `{deviceId, deviceToken}` was refused as "the
+  register reply had no credential" while Postgres already held the device
+  row. Now open / write / fetch_headers / read, as the upload path always did
+  (`90b8d74`). After: probe 200 in 33 ms **with** the health body.
+- `kdp_server` stack: 580 bytes free after one `ROLL_CREATE` on 8 KB - two
+  nested 1 KB response buffers under cJSON. 12 KB now; 4.7-6.0 KB free
+  measured after the same call.
+
+**LOCAL_API_HTTP: PASS.** Physical D4 -> Fastify `GET /api/healthz` -> 200,
+35 ms; the API's own request log shows `remoteAddress 10.20.80.181`.
+
+**LOCAL_DEVICE_REGISTER: PASS**, through the production codepath and nothing
+else - `ROLL_CREATE` from the camera:
+
+| Step | Result |
+|---|---|
+| `POST /api/studio/devices/register` (unauthenticated) | **200 in 53 ms**, `{deviceId, deviceToken}` parsed, credential stored in `kino_rollsec` |
+| `POST /api/device/rolls` (bearer) | **201 in 174 ms** |
+| Reply to KDP | `rollId roll__Mg6PTK...`, `slug RRG8AZ`, `role host`, `active true`, `tokenStatus ok` - no token value anywhere in it |
+| `ROLL_DEVICE_REGISTER` | auto-marked "server issued a device credential" |
+| Second `ROLL_CREATE` | `INVALID_STATE "Already on roll RRG8AZ"` - the stored credential short-circuits `ensure_registered()`; no second POST |
+| Postgres `devices` | **one** row for `KD4-D121BC` (`dev_-4qo...`, KINO D4, v1) after every attempt this session |
+| Postgres `rolls` | one, `RRG8AZ` "bench-local", `live`, `created_by` that device |
+
+On the backend's own idempotency: the local `DEVICE_REGISTRATION_MODE` is
+`rotate` (the dev default; production is forced to `first-write-wins`), so a
+same-serial re-register from the PC returned 200 with a rotated token rather
+than the 409 the route documents for production. One row either way.
+
+**Health across the phase:** boot-382 held through every request (no reboot),
+`transportErrors 0`, `reconnects 0`, `sdErrors 0`, `droppedLogEvents 0` with a
+host draining, heap 27.0 MB. Passphrase and `kdt_` token searched on
+`GET_LOGS` and `GET_CONFIG` after every step: **0**.
+
+**C6-E (production HTTPS) is not redefined by this.** It stays deferred on
+server-side routing: DNS, SNTP and a certificate-verified TLS session to
+`kino.acronym.sk` are proven; the 2xx waits on the API being deployed there.
+Media upload (ROLL-B) was not attempted.
+
 ### First radio - scan, association, DHCP, time, DNS, TLS - Gates C6-D and C6-E, 2026-08-29
 
 Unit `KD4-D121BC`, coprocessor ESP-Hosted 3.0.6 (rewritten earlier today),
@@ -835,7 +903,7 @@ subsystem.
 | C6 coprocessor image | **CODE DONE, UNVALIDATED** — `firmware/c6` is Espressif's official ESP-Hosted coprocessor (component pinned to 3.0.6), 1 105 872 bytes, and two clean builds of one commit match. Never flashed; no version read back. The C6's SDIO slave pads are fixed in silicon, so the image is correct independently of the carrier |
 | C6 module flash size | **UNKNOWN, and it gates the first flash.** The coprocessor image needs the 4 MB OTA table — it is 122 KB too large for the 2 MB one, so a smaller part means a different image, not a smaller table. An oversized `FLASHSIZE` flashes and then fails to boot. `esptool flash_id` over the recovery path before the first write |
 | ESP-Hosted version compatibility | **UNVERIFIED, and it is a gate rather than a warning.** This board is publicly reported to ship a factory C6 image older than current hosts expect, and a protocol mismatch presents as a transport fault — the failure most likely to be misdiagnosed as bad Wi-Fi, bad credentials or a Roll problem. Host, coprocessor and RPC versions must be read and compared before any Wi-Fi debugging |
-| Networking / KINO Roll from the camera | **CODE DONE except the transport, UNVALIDATED.** Durable SD queue, boot reconciliation, retry/backoff, idempotency, roll membership and the `ROLL_*`/`UPLOAD_*` surface are implemented and host-tested. The HTTP client is a seam. **No capture has ever reached a Roll from this body.** Issue #133 |
+| Networking / KINO Roll from the camera | **Registration VALIDATED 2026-08-29** against the real backend on the LAN: `ROLL_CREATE` registered the device and created a roll through the production codepath (200 then 201). Upload not yet attempted - **no capture has reached a Roll from this body.** Issue #133 |
 | Roll assigned from Studio over USB | **CODE DONE, UNVALIDATED** — `ROLL_JOIN` accepts a Studio-resolved assignment, persists it across reboot, and the ROLL screen renders its join QR. Needs no radio. Never run on a board |
 | On-device QR (Roll join code) | **CODE DONE, UNVALIDATED on a panel.** The encoder is verified module-for-module against `qrcode@1.5.4` over 713 strings, and the render is verified in `host_preview`. **No phone has scanned one off the display** — pitch, backlight and viewing angle are unproven |
 | OTA / `FW_*` / firmware update over KDP | **NOT IMPLEMENTED** — single `factory` partition, no OTA slots |
