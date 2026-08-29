@@ -76,6 +76,21 @@ static void on_sync(struct timeval *tv) {
   esp_netif_sntp_deinit();
   s_configured = false;
   ESP_LOGI(TAG, "wall clock now from the network; SNTP stopped");
+
+  /* The hold is released where it was placed. net_time_start() reported
+   * IP_READY with CLOCK_UNTRUSTED so that roll_http_ready() would refuse TLS
+   * until the clock could be believed; nothing cleared it once the clock was.
+   * Measured on KD4-D121BC: clockSource "network", C6_SNTP validated, and
+   * NETWORK_STATUS still saying CLOCK_UNTRUSTED - which would have held TLS
+   * for the life of the boot. Only touched when the link is still IP_READY,
+   * so a disconnect that arrived in between keeps its own state and reason. */
+  net_status_t st;
+  net_link_status(&st, esp_timer_get_time() / 1000);
+  if (st.state == NET_IP_READY && st.reason == NET_REASON_CLOCK_UNTRUSTED) {
+    net_link_report_state(NET_IP_READY, NET_REASON_NONE, "clock trusted from the network",
+                          esp_timer_get_time() / 1000);
+    klog("P4", "TLS released: clock trusted (source %s)", clock_source_str());
+  }
 }
 
 void net_time_start(void) {
