@@ -20,10 +20,10 @@
 #include "freertos/task.h"
 #include "hardware_validation.h"
 #include "hwv_rules.h"
+#include "capture.h"
 #include "klog.h"
 #include "net_link.h"
 #include "roll_api.h"
-#include "roll_state.h"
 #include "storage.h"
 #include "taskmon.h"
 #include "upload_store.h"
@@ -64,17 +64,6 @@ static const char *TAG = "upqueue";
  */
 #define PARKED_IN_RAM_MAX 4
 
-/** The Roll this device is on. Two calls where one would do, because
- * roll_state_active() is the cheap question and roll_state_get() is the one
- * that yields the rollId a job has to carry. */
-static bool current_roll(char *roll_id, size_t cap) {
-  roll_state_t roll;
-  if (cap > 0) roll_id[0] = '\0';
-  if (!roll_state_active() || !roll_state_get(&roll)) return false;
-  if (roll.roll_id[0] == '\0') return false;
-  snprintf(roll_id, cap, "%s", roll.roll_id);
-  return true;
-}
 
 /* ------------------------------------------------------------------ */
 /* The HTTP seam                                                      */
@@ -245,8 +234,6 @@ static bool queue_scan(void) {
     return true; /* no captures directory yet is not a fault */
   }
 
-  char roll_id[RQ_CAPTURE_ID_LEN];
-  bool on_roll = current_roll(roll_id, sizeof roll_id);
 
   int looked_at = 0, added = 0, repaired = 0, parked_off = 0;
   /* True while the pass is still on course to see every directory on the card.
@@ -281,7 +268,7 @@ static bool queue_scan(void) {
 
     rq_job_t job = {0};
     const rq_reconcile_t action =
-        upload_store_inspect(uuid, on_roll ? roll_id : NULL, STORAGE_CAPTURE_FRAMES, &job);
+        upload_store_inspect(uuid, STORAGE_CAPTURE_FRAMES, &job);
     if (action == RQ_REC_IGNORE) continue;
     if (action == RQ_REC_REPAIR) {
       repaired++;
@@ -531,9 +518,12 @@ static void worker_task(void *arg) {
       klog("P4", "upload transport %s: %s", ready ? "up" : "down", net_state_name(st.state));
     }
     if (!ready || s_halted) {
-      /* NET_C6_NOT_ROUTED is this board's permanent state, so this is the path
-       * that always runs. Nothing is logged per tick on purpose: a queue that
-       * cannot run must not evict the log lines it would be reported from. */
+      /* Not eligible: no radio in this build (NOT_ROUTED), or a routed radio
+       * short of IP_READY, or the queue halted on a credential failure. The
+       * transition above is the only thing logged; nothing per tick, so a
+       * queue that cannot run does not evict the log lines it is reported
+       * from. Eligibility is net_link's IP_READY and nothing else - the same
+       * answer NETWORK_STATUS gives, from the same state. */
       xTaskNotifyWait(0, 0, &ignored, IDLE_TICKS);
       continue;
     }
@@ -554,8 +544,27 @@ static void worker_task(void *arg) {
 /* Public interface                                                   */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The shutter's own hand-off. Runs on the capture task inside that capture's
+ * storage lock (upload_queue_enqueue_for() takes the card lock only if this
+ * task does not already hold it). The Roll is the report's snapshot, taken at
+ * the shutter - not whatever is active when this runs, and not looked up
+ * again at boot. A capture off a Roll produces no job here and none later.
+ */
+static void on_capture_done(const capture_report_t *r) {
+  if (r == NULL || !r->ok || r->stored <= 0) return;
+  if (r->roll_id[0] == '\0') return;
+  const bool thumb = upload_store_has_file(r->uuid, "THUMB.JPG");
+  const esp_err_t err = upload_queue_enqueue_for(r->uuid, r->roll_id, r->stored, thumb);
+  if (err != ESP_OK) {
+    klog("P4", "upload: %s not queued (%s); reconciliation will retry at boot", r->id,
+         esp_err_to_name(err));
+  }
+}
+
 esp_err_t upload_queue_start(void) {
   if (s_task != NULL) return ESP_OK;
+  capture_on_done(on_capture_done);
   if (s_lock == NULL) s_lock = xSemaphoreCreateMutex();
   if (s_lock == NULL) return ESP_ERR_NO_MEM;
 
@@ -602,9 +611,23 @@ esp_err_t upload_queue_enqueue(const char *capture_uuid, int frame_count, bool t
   if (capture_uuid == NULL || !storage_is_capture_dirname(capture_uuid)) {
     return ESP_ERR_INVALID_ARG;
   }
-
+  /* The capture's own Roll, from its META.JSON. Not the Roll that is active
+   * now: UPLOAD_ENQUEUE is a host asking about an existing photograph, and
+   * the photograph already knows which Roll it was taken on, or that it was
+   * taken on none. */
   char roll_id[RQ_CAPTURE_ID_LEN];
-  if (!current_roll(roll_id, sizeof roll_id)) return ESP_OK; /* no Roll, no job */
+  if (!upload_store_meta_roll_id(capture_uuid, roll_id, sizeof roll_id)) {
+    return ESP_ERR_INVALID_STATE;
+  }
+  return upload_queue_enqueue_for(capture_uuid, roll_id, frame_count, thumb_present);
+}
+
+esp_err_t upload_queue_enqueue_for(const char *capture_uuid, const char *roll_id, int frame_count,
+                                   bool thumb_present) {
+  if (capture_uuid == NULL || !storage_is_capture_dirname(capture_uuid)) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (roll_id == NULL || roll_id[0] == '\0') return ESP_OK; /* no Roll, no job */
 
   rq_job_t job;
   rq_job_init(&job, capture_uuid, roll_id, frame_count, thumb_present);

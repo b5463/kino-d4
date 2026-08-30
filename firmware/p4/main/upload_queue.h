@@ -116,7 +116,18 @@ esp_err_t upload_queue_start(void);
  * go, and a job with no destination would park immediately and read as a
  * failure the user cannot act on.
  */
+/*
+ * Queue a committed capture for the Roll its META.JSON names. Returns
+ * ESP_ERR_INVALID_STATE when META names no Roll - a photograph taken off a
+ * Roll is a local photograph, and the queue does not adopt it into whichever
+ * Roll is active now.
+ */
 esp_err_t upload_queue_enqueue(const char *capture_uuid, int frame_count, bool thumb_present);
+
+/* Same, with the Roll given explicitly - the shutter's snapshot, from the
+ * capture-done listener. `roll_id` empty means no job, ESP_OK. */
+esp_err_t upload_queue_enqueue_for(const char *capture_uuid, const char *roll_id, int frame_count,
+                                   bool thumb_present);
 
 /** Current counts. Never blocks on the worker. */
 void upload_queue_status(upload_queue_report_t *out);

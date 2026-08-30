@@ -91,6 +91,12 @@ typedef struct {
   char mode[12];          /* wiggle | quad | single */
   char resolution[16];
   char captured_at[40];   /* ISO 8601; read clock_source alongside it */
+  /* The Roll this photograph was taken on, snapshotted at the shutter and
+   * carried into META.JSON and the upload record. "" when the camera was not
+   * on a Roll. This is the backend rollId ("roll_..."), the identifier every
+   * device-side API path takes; the public code (slug) is not stored here.
+   * 64 == ROLL_ID_LEN in roll_state.h; capture.c asserts they agree. */
+  char roll_id[64];
   int64_t captured_at_ms; /* the same instant, for consumers that sort */
   const char *clock_source;
   const char *status;     /* complete | partial | failed — kino.capture states */

@@ -270,24 +270,32 @@ bool rq_apply(rq_job_t *job, rq_step_t step, rq_disposition_t disp, const char *
 /* Reconciliation                                                     */
 /* ------------------------------------------------------------------ */
 
-rq_reconcile_t rq_reconcile_action(bool has_meta, bool has_job, bool job_valid,
-                                   const rq_job_t *job) {
+rq_reconcile_t rq_reconcile_action(bool has_meta, const char *meta_roll_id, bool has_job,
+                                   bool job_valid, const rq_job_t *job) {
   /* No META.JSON means the commit was interrupted and this is not yet a
    * capture. storage.c's sweep owns that folder; the queue must not adopt a
    * capture the camera never claimed to have taken. */
   if (!has_meta) return RQ_REC_IGNORE;
 
-  if (!has_job) return RQ_REC_ENQUEUE;
+  const bool on_roll = meta_roll_id != NULL && meta_roll_id[0] != '\0';
+
+  /* Never queued. Queued now only if the photograph was taken on a Roll -
+   * the Roll META names, decided at the shutter. A capture taken off any Roll
+   * is a local photograph and stays one, however active a Roll is today. */
+  if (!has_job) return on_roll ? RQ_REC_ENQUEUE : RQ_REC_IGNORE;
 
   /* Unreadable, or written by a format we do not understand. Rebuild rather
-   * than ignore: the photograph is still on the card, and the server is
-   * idempotent on captureUuid, so re-running the procedure costs one
-   * redundant registration and cannot produce a second capture. Ignoring it
-   * would strand the photograph silently, which is the failure this whole
-   * module exists to prevent. */
-  if (!job_valid || job == NULL) return RQ_REC_REPAIR;
+   * than ignore when the capture is on a Roll: the photograph is still on the
+   * card and the server is idempotent on captureUuid. Off a Roll there is
+   * nothing to rebuild toward. */
+  if (!job_valid || job == NULL) return on_roll ? RQ_REC_REPAIR : RQ_REC_RETIRE;
 
   if (job->state == RQ_COMPLETE) return RQ_REC_IGNORE;
+
+  /* The record's Roll must be the capture's Roll. Measured on the bench card:
+   * 34 records naming the current Roll beside 102 METAs naming none - every
+   * one stamped by an earlier boot, none by a shutter. */
+  if (!on_roll || strcmp(job->roll_id, meta_roll_id) != 0) return RQ_REC_RETIRE;
 
   /* FAILED is resumed, not ignored. A parked job is a job the user can see
    * and retry; leaving it out of the queue would remove the only place that

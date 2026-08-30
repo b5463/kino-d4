@@ -366,32 +366,56 @@ static void test_reconcile(void) {
   rq_job_init(&failed, UUID_A, "roll_0001", 4, true);
   failed.state = RQ_FAILED;
 
+  rq_job_t other_roll;
+  rq_job_init(&other_roll, UUID_A, "roll_0002", 4, true);
+  other_roll.state = RQ_QUEUED;
+
   /* No META.JSON: an interrupted commit, not a capture. storage.c's sweep
    * owns it. Adopting it would upload a photograph the camera never
    * claimed to have taken. */
-  CHECK(rq_reconcile_action(false, false, false, NULL) == RQ_REC_IGNORE,
+  CHECK(rq_reconcile_action(false, NULL, false, false, NULL) == RQ_REC_IGNORE,
         "an uncommitted folder is not the queue's business");
-  CHECK(rq_reconcile_action(false, true, true, &pending) == RQ_REC_IGNORE,
+  CHECK(rq_reconcile_action(false, "roll_0001", true, true, &pending) == RQ_REC_IGNORE,
         "still ignored even with a job file");
 
-  /* Committed, never queued — the ordinary offline case. */
-  CHECK(rq_reconcile_action(true, false, false, NULL) == RQ_REC_ENQUEUE,
-        "a committed capture with no job gets queued");
+  /* Committed on a Roll, never queued - the ordinary offline case. */
+  CHECK(rq_reconcile_action(true, "roll_0001", false, false, NULL) == RQ_REC_ENQUEUE,
+        "a committed capture taken on a Roll gets queued for that Roll");
 
-  CHECK(rq_reconcile_action(true, true, true, &complete) == RQ_REC_IGNORE,
-        "a COMPLETE job is left alone — this is what prevents a re-upload");
-  CHECK(rq_reconcile_action(true, true, true, &pending) == RQ_REC_RESUME,
-        "an unfinished job resumes");
-  CHECK(rq_reconcile_action(true, true, true, &failed) == RQ_REC_RESUME,
+  /* Committed off any Roll, never queued: a local photograph. This is the
+   * case the bench card had 68 of, and the old rule queued every one of them
+   * into the Roll that happened to be active at boot. */
+  CHECK(rq_reconcile_action(true, NULL, false, false, NULL) == RQ_REC_IGNORE,
+        "a capture taken on no Roll is never queued, whatever Roll is active");
+  CHECK(rq_reconcile_action(true, "", false, false, NULL) == RQ_REC_IGNORE,
+        "an empty rollId is no Roll");
+
+  CHECK(rq_reconcile_action(true, "roll_0001", true, true, &complete) == RQ_REC_IGNORE,
+        "a COMPLETE job is left alone - this is what prevents a re-upload");
+  CHECK(rq_reconcile_action(true, "roll_0001", true, true, &pending) == RQ_REC_RESUME,
+        "an unfinished job for the capture's own Roll resumes");
+  CHECK(rq_reconcile_action(true, "roll_0001", true, true, &failed) == RQ_REC_RESUME,
         "a parked job is still surfaced, so the user can see and retry it");
 
-  /* A corrupt or future-format record must not silently strand the
-   * photograph. Rebuilding costs one redundant registration, which the
+  /* The record's Roll is not the capture's Roll. Measured: 34 records naming
+   * the current Roll beside METAs naming none. Retired, never uploaded, and
+   * the record says why. */
+  CHECK(rq_reconcile_action(true, NULL, true, true, &pending) == RQ_REC_RETIRE,
+        "a job for a capture that names no Roll is retired");
+  CHECK(rq_reconcile_action(true, "roll_0001", true, true, &other_roll) == RQ_REC_RETIRE,
+        "a job naming a different Roll than the capture is retired");
+  CHECK(rq_reconcile_action(true, NULL, true, true, &complete) == RQ_REC_IGNORE,
+        "but a COMPLETE job stays complete: the server already has it");
+
+  /* A corrupt or future-format record must not silently strand a photograph
+   * that is on a Roll. Rebuilding costs one redundant registration, which the
    * server's captureUuid idempotency absorbs. */
-  CHECK(rq_reconcile_action(true, true, false, NULL) == RQ_REC_REPAIR,
-        "an unreadable record is repaired, never ignored");
-  CHECK(rq_reconcile_action(true, true, false, &pending) == RQ_REC_REPAIR,
+  CHECK(rq_reconcile_action(true, "roll_0001", true, false, NULL) == RQ_REC_REPAIR,
+        "an unreadable record on a Roll is repaired, never ignored");
+  CHECK(rq_reconcile_action(true, "roll_0001", true, false, &pending) == RQ_REC_REPAIR,
         "invalid wins over a stale struct");
+  CHECK(rq_reconcile_action(true, NULL, true, false, NULL) == RQ_REC_RETIRE,
+        "an unreadable record for a capture on no Roll has nothing to rebuild toward");
 }
 
 /* ---- redaction -------------------------------------------------------- */

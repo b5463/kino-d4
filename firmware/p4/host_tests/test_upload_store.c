@@ -218,8 +218,38 @@ static void test_refusal_means_repair(void) {
   rq_job_t out;
   const bool valid = upload_store_decode("{oops", 5, UUID, &out);
   CHECK(!valid, "unparseable record");
-  CHECK(rq_reconcile_action(true, true, valid, NULL) == RQ_REC_REPAIR,
-        "a committed capture with an unreadable record must be rebuilt, not stranded");
+  CHECK(rq_reconcile_action(true, "roll_0001", true, valid, NULL) == RQ_REC_REPAIR,
+        "a committed capture on a Roll with an unreadable record must be rebuilt, not stranded");
+}
+
+/*
+ * The Roll a META.JSON names, read the way reconciliation reads it. The
+ * documents below are the shapes the bench card actually held: every one of
+ * its 102 METAs said null.
+ */
+static void test_meta_roll_id_from_text(void) {
+  char out[64];
+  const char *on = "{\"schema\":\"kino.capture\",\"rollId\":\"roll__Mg6PTKzfodtJ7zxCjBoNA\",\"status\":\"complete\"}";
+  CHECK(upload_store_meta_roll_id_from_text(on, strlen(on), out, sizeof out), "a named Roll is found");
+  CHECK(strcmp(out, "roll__Mg6PTKzfodtJ7zxCjBoNA") == 0, "and copied verbatim");
+
+  const char *off = "{\"schema\":\"kino.capture\",\"rollId\":null,\"status\":\"complete\"}";
+  CHECK(!upload_store_meta_roll_id_from_text(off, strlen(off), out, sizeof out), "null is no Roll");
+  CHECK(out[0] == '\0', "and out is emptied");
+
+  const char *absent = "{\"schema\":\"kino.capture\",\"status\":\"complete\"}";
+  CHECK(!upload_store_meta_roll_id_from_text(absent, strlen(absent), out, sizeof out),
+        "an absent key is no Roll");
+  const char *empty = "{\"rollId\":\"\"}";
+  CHECK(!upload_store_meta_roll_id_from_text(empty, strlen(empty), out, sizeof out),
+        "an empty string is no Roll");
+  const char *bad = "{oops";
+  CHECK(!upload_store_meta_roll_id_from_text(bad, strlen(bad), out, sizeof out),
+        "unparseable is no Roll, not a crash");
+  CHECK(!upload_store_meta_roll_id_from_text(on, strlen(on), out, 8),
+        "a Roll id that does not fit is refused rather than truncated");
+  CHECK(!upload_store_meta_roll_id_from_text(NULL, 0, out, sizeof out), "NULL text");
+  CHECK(!upload_store_meta_roll_id_from_text(on, strlen(on), NULL, 0), "NULL out");
 }
 
 /* ------------------------------------------------------------------ */
@@ -256,7 +286,7 @@ static void test_future_version_is_refused(void) {
   memset(&future, 0, sizeof future);
   CHECK(!upload_store_decode(buf, strlen(buf), UUID, &future),
         "formatVersion %d must be refused", RQ_FORMAT_VERSION + 1);
-  CHECK(rq_reconcile_action(true, true, false, NULL) == RQ_REC_REPAIR,
+  CHECK(rq_reconcile_action(true, "roll_0001", true, false, NULL) == RQ_REC_REPAIR,
         "and a future record must reconcile as REPAIR");
 
   /* Far future, in case a bump ever skips a number. */
@@ -375,6 +405,7 @@ int main(void) {
   test_oversized_record();
   test_refuses_null_args();
   test_refusal_means_repair();
+  test_meta_roll_id_from_text();
 
   test_future_version_is_refused();
 

@@ -669,6 +669,43 @@ static void test_migrate_malformed(void) {
   cJSON_Delete(r2);
 }
 
+/*
+ * Roll provenance. The rollId in META.JSON is the Roll snapshotted at the
+ * shutter by capture.c, or null. Measured before the snapshot existed: every
+ * META.JSON on the bench card said null, and boot reconciliation stamped all
+ * of them with whichever Roll was current - so 34 photographs taken on no Roll
+ * were queued into one.
+ */
+static void test_meta_roll_snapshot(void) {
+  capture_report_t r = sample_report();
+  snprintf(r.roll_id, sizeof r.roll_id, "roll__Mg6PTKzfodtJ7zxCjBoNA");
+  cJSON *m = cJSON_CreateObject();
+  meta_build_capture(&r, "kino-d121bc", m);
+  const cJSON *v = cJSON_GetObjectItem(m, "rollId");
+  CHECK(cJSON_IsString(v), "on a Roll: rollId is a string");
+  CHECK(v && v->valuestring && strcmp(v->valuestring, "roll__Mg6PTKzfodtJ7zxCjBoNA") == 0,
+        "and it is the backend rollId, verbatim");
+  cJSON_Delete(m);
+
+  capture_report_t off = sample_report();
+  off.roll_id[0] = '\0';
+  m = cJSON_CreateObject();
+  meta_build_capture(&off, "kino-d121bc", m);
+  CHECK(cJSON_IsNull(cJSON_GetObjectItem(m, "rollId")), "off a Roll: rollId is null");
+  cJSON_Delete(m);
+
+  /* Roll A at the shutter, Roll B by upload time: the report is what META
+   * records, and the report does not change. */
+  capture_report_t a = sample_report();
+  snprintf(a.roll_id, sizeof a.roll_id, "roll_A");
+  m = cJSON_CreateObject();
+  meta_build_capture(&a, "kino-d121bc", m);
+  const cJSON *va = cJSON_GetObjectItem(m, "rollId");
+  CHECK(va && cJSON_IsString(va) && strcmp(va->valuestring, "roll_A") == 0,
+        "the capture stays on the Roll it was taken on");
+  cJSON_Delete(m);
+}
+
 int main(void) {
   test_meta_schema();
   test_meta_timing_honesty();
@@ -678,6 +715,7 @@ int main(void) {
   test_meta_unset_clock();
   test_meta_survives_null();
   test_meta_document_size();
+  test_meta_roll_snapshot();
 
   test_summary_reads_real_keys();
   test_summary_ignores_wrong_keys();

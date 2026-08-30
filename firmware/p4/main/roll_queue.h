@@ -225,6 +225,7 @@ typedef enum {
   RQ_REC_ENQUEUE,      /* committed, never queued — queue it now */
   RQ_REC_RESUME,       /* has a job with work left — resume it */
   RQ_REC_REPAIR,       /* record unreadable or from a newer format — rebuild */
+  RQ_REC_RETIRE,       /* the record names a Roll the capture never claimed — park it, never upload */
 } rq_reconcile_t;
 
 /**
@@ -243,8 +244,15 @@ typedef enum {
  * record and re-running the procedure costs one redundant registration and
  * cannot produce a duplicate capture.
  */
-rq_reconcile_t rq_reconcile_action(bool has_meta, bool has_job, bool job_valid,
-                                   const rq_job_t *job);
+/*
+ * `meta_roll_id` is the Roll the capture's own META.JSON names ("" or NULL when
+ * it names none). It is the only provenance the queue believes: a job that
+ * names a different Roll - or any Roll when META names none - was stamped by a
+ * later boot with whatever Roll was current, and is retired rather than
+ * uploaded into a Roll the photograph was never taken on.
+ */
+rq_reconcile_t rq_reconcile_action(bool has_meta, const char *meta_roll_id, bool has_job,
+                                   bool job_valid, const rq_job_t *job);
 
 /* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */

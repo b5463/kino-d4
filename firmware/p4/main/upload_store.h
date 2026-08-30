@@ -136,7 +136,23 @@ bool upload_store_load(const char *uuid, rq_job_t *job, bool *valid);
  *
  * Reads only. The caller logs the repair and persists the record.
  */
-rq_reconcile_t upload_store_inspect(const char *uuid, const char *roll_id, int max_frames,
+/**
+ * The Roll named by a META.JSON document. `text` need not be NUL-terminated.
+ * Returns true and copies the id when `rollId` is a non-empty string; returns
+ * false (and an empty `out`) for null, absent, or unparseable. Pure - this is
+ * what the host tests exercise.
+ */
+bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out, size_t cap);
+
+/** Same, from `<uuid>/META.JSON` on the card. */
+bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap);
+
+/*
+ * Reconcile one capture folder. The Roll comes from the capture's META.JSON,
+ * never from a parameter: the caller no longer tells this function which Roll
+ * is current, because that is exactly the information it must not use.
+ */
+rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames,
                                     rq_job_t *out);
 
 #endif /* P4_UPLOAD_STORE_H */

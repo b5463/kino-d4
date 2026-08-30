@@ -231,21 +231,71 @@ bool upload_store_load(const char *uuid, rq_job_t *job, bool *valid) {
   return true;
 }
 
-rq_reconcile_t upload_store_inspect(const char *uuid, const char *roll_id, int max_frames,
-                                    rq_job_t *out) {
+bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out, size_t cap) {
+  if (out != NULL && cap > 0) out[0] = '\0';
+  if (text == NULL || out == NULL || cap == 0) return false;
+  cJSON *doc = cJSON_ParseWithLength(text, len);
+  if (doc == NULL) return false;
+  const cJSON *v = cJSON_GetObjectItem(doc, "rollId");
+  bool ok = false;
+  if (cJSON_IsString(v) && v->valuestring != NULL && v->valuestring[0] != '\0' &&
+      strlen(v->valuestring) < cap) {
+    snprintf(out, cap, "%s", v->valuestring);
+    ok = true;
+  }
+  cJSON_Delete(doc);
+  return ok;
+}
+
+bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap) {
+  if (out != NULL && cap > 0) out[0] = '\0';
+  if (uuid == NULL || out == NULL) return false;
+  char path[96];
+  upload_store_path(uuid, "META.JSON", path, sizeof path);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) return false;
+  /* META.JSON is a few hundred bytes; the frames array is the only part that
+   * grows, and eight frames stay well inside this. */
+  static char buf[2048];
+  const size_t n = fread(buf, 1, sizeof buf, f);
+  fclose(f);
+  return upload_store_meta_roll_id_from_text(buf, n, out, cap);
+}
+
+rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames, rq_job_t *out) {
   if (uuid == NULL || out == NULL) return RQ_REC_IGNORE;
+
+  const bool has_meta = upload_store_has_file(uuid, "META.JSON");
+  char meta_roll[RQ_CAPTURE_ID_LEN] = "";
+  if (has_meta) (void)upload_store_meta_roll_id(uuid, meta_roll, sizeof meta_roll);
 
   rq_job_t loaded;
   bool valid = false;
   const bool has_job = upload_store_load(uuid, &loaded, &valid);
-  const rq_reconcile_t action = rq_reconcile_action(upload_store_has_file(uuid, "META.JSON"),
-                                                   has_job, valid, valid ? &loaded : NULL);
+  const rq_reconcile_t action =
+      rq_reconcile_action(has_meta, meta_roll, has_job, valid, valid ? &loaded : NULL);
   if (action == RQ_REC_IGNORE) return RQ_REC_IGNORE;
   if (action == RQ_REC_RESUME) {
     *out = loaded;
     return action;
   }
-  if (roll_id == NULL || roll_id[0] == '\0') return RQ_REC_IGNORE;
+  if (action == RQ_REC_RETIRE) {
+    /* Parked with the reason on the record, so GET_LOGS / the queue status
+     * can say why this photograph is not going anywhere. The photograph
+     * itself is untouched. */
+    if (valid) {
+      *out = loaded;
+    } else {
+      rq_job_init(out, uuid, "", 0, false);
+    }
+    out->state = RQ_FAILED;
+    /* Bounded with precision, not truncation: two roll ids are longer than
+     * the error field, and the first 20 characters of each identify them. */
+    snprintf(out->last_error, sizeof out->last_error,
+             "no Roll provenance: capture %.20s, record %.20s", meta_roll[0] ? meta_roll : "none",
+             valid ? loaded.roll_id : "?");
+    return action;
+  }
 
   int frames = 0;
   for (int i = 1; i <= max_frames && i <= RQ_MAX_FRAMES; i++) {
@@ -253,6 +303,6 @@ rq_reconcile_t upload_store_inspect(const char *uuid, const char *roll_id, int m
     snprintf(name, sizeof name, "C%d.JPG", i);
     if (upload_store_has_file(uuid, name)) frames = i;
   }
-  rq_job_init(out, uuid, roll_id, frames, upload_store_has_file(uuid, "THUMB.JPG"));
+  rq_job_init(out, uuid, meta_roll, frames, upload_store_has_file(uuid, "THUMB.JPG"));
   return action;
 }

@@ -131,6 +131,68 @@ static void test_library_up_is_not_slave_connected(void) {
         net_state_name(st.state));
 }
 
+/* ---- upload eligibility, the whole truth table ------------------------- */
+
+/*
+ * net_link_can_upload() is the queue's only gate and it reads the same state
+ * NETWORK_STATUS reports, so the two cannot disagree. Nothing about the API
+ * base - http or https, local or production - is an input: TLS success is an
+ * outcome of the HTTP transaction, not a condition for the queue to try.
+ */
+static void test_upload_eligibility_truth_table(void) {
+  net_status_t st;
+
+  /* No-radio build: no driver registered. */
+  net_link_init(1000);
+  st = status_now(1000);
+  CHECK(st.state == NET_C6_NOT_ROUTED, "no driver is NOT_ROUTED");
+  CHECK(!net_link_can_upload(&st), "no-radio build cannot upload");
+
+  /* Radio build, C6 absent on the bus. */
+  net_link_set_driver(&stub, 1000);
+  net_link_report_state(NET_C6_ABSENT, NET_REASON_C6_NO_RESPONSE, "nothing on SDIO", 1100);
+  st = status_now(1100);
+  CHECK(!net_link_can_upload(&st), "C6 absent cannot upload");
+
+  /* Transport up, coprocessor firmware refused. */
+  net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_BAD_FIRMWARE, "2.3.2 vs 3.0.6", 1200);
+  st = status_now(1200);
+  CHECK(!net_link_can_upload(&st), "bad firmware cannot upload");
+
+  /* Transport lost after it was up. */
+  net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_LINK_LOST, "dropped", 1300);
+  st = status_now(1300);
+  CHECK(!net_link_can_upload(&st), "transport down cannot upload");
+
+  /* Wi-Fi idle - disconnected or no credentials. */
+  net_link_report_state(NET_WIFI_IDLE, NET_REASON_NO_CREDENTIALS, NULL, 1400);
+  st = status_now(1400);
+  CHECK(!net_link_can_upload(&st), "disconnected cannot upload");
+
+  /* Associated, no lease yet. */
+  net_link_report_state(NET_WIFI_ASSOCIATED, NET_REASON_NONE, NULL, 1500);
+  net_link_report_state(NET_IP_WAIT, NET_REASON_NONE, "waiting for DHCP", 1500);
+  st = status_now(1500);
+  CHECK(!net_link_can_upload(&st), "associated without an address cannot upload");
+
+  /* A lease. This is the one state that may upload - and the same state
+   * whether the clock is trusted yet or not, and whatever the API base is. */
+  net_link_report_ip("10.20.80.181", 1600);
+  st = status_now(1600);
+  CHECK(net_link_can_upload(&st), "IP_READY may upload");
+  net_link_report_state(NET_IP_READY, NET_REASON_CLOCK_UNTRUSTED, "TLS held", 1700);
+  st = status_now(1700);
+  CHECK(net_link_can_upload(&st), "IP_READY with an untrusted clock may still try: the clock rule belongs to the HTTP client");
+  net_link_report_state(NET_IP_READY, NET_REASON_NONE, "clock trusted from the network", 1800);
+  st = status_now(1800);
+  CHECK(net_link_can_upload(&st), "and with a trusted clock");
+
+  /* Explicitly disconnected again. */
+  net_link_report_state(NET_WIFI_IDLE, NET_REASON_NONE, "disconnected", 1900);
+  st = status_now(1900);
+  CHECK(!net_link_can_upload(&st), "an explicit disconnect cannot upload");
+}
+
 /* ---- the version gate ------------------------------------------------- */
 
 static void test_versions_survive_a_refusal(void) {
@@ -428,6 +490,7 @@ static void test_a_released_hold_cannot_resurrect_an_address(void) {
 int main(void) {
   test_the_driver_is_the_gate();
   test_library_up_is_not_slave_connected();
+  test_upload_eligibility_truth_table();
   test_versions_survive_a_refusal();
   test_link_ready_is_not_connected();
   test_a_drop_clears_what_is_no_longer_true();

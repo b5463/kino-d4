@@ -17,7 +17,13 @@ void meta_build_capture(const capture_report_t *r, const char *device_id, void *
   cJSON_AddNumberToObject(m, "version", 1);
   cJSON_AddStringToObject(m, "id", r->id);
   cJSON_AddStringToObject(m, "captureUuid", r->uuid);
-  cJSON_AddNullToObject(m, "rollId");
+  /* The Roll snapshotted at the shutter (capture.c), or null when there was
+   * none. Never the Roll active at write or upload time. */
+  if (r->roll_id[0] != '\0') {
+    cJSON_AddStringToObject(m, "rollId", r->roll_id);
+  } else {
+    cJSON_AddNullToObject(m, "rollId");
+  }
   cJSON_AddStringToObject(m, "deviceId", device_id != NULL ? device_id : "");
   cJSON_AddStringToObject(m, "mode", r->mode);
   cJSON_AddStringToObject(m, "capturedAt", r->captured_at);

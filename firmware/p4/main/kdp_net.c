@@ -716,12 +716,6 @@ kdp_net_reply_t kdp_net_upload_enqueue(const cJSON *req) {
     return err_reply("INVALID_ARGUMENT", "Expected {\"captureId\":\"<capture uuid>\"}");
   }
 
-  if (!roll_state_active()) {
-    /* The contract's own words: only meaningful while the device is on a
-     * Roll, because there is nowhere else for the bytes to go. */
-    return err_reply("INVALID_STATE", "Not on a roll — there is nowhere to upload to");
-  }
-
   char meta[200];
   snprintf(meta, sizeof meta, "/sdcard/KINO/CAPTURES/%s/META.JSON", id);
   struct stat st;
@@ -735,6 +729,12 @@ kdp_net_reply_t kdp_net_upload_enqueue(const cJSON *req) {
   const int frames = capture_frames_on_card(id, &thumb);
 
   const esp_err_t err = upload_queue_enqueue(id, frames, thumb);
+  if (err == ESP_ERR_INVALID_STATE) {
+    /* The photograph's own META.JSON names no Roll. It was taken off a Roll
+     * and stays a local photograph; queuing it into the Roll active now would
+     * be the provenance defect this path used to have. */
+    return err_reply("INVALID_STATE", "Capture %s was not taken on a Roll", id);
+  }
   if (err != ESP_OK) return err_reply("STORAGE_ERROR", "Could not queue the capture");
 
   cJSON *o = cJSON_CreateObject();

@@ -31,6 +31,7 @@
 #include "node_link/node_link.h"
 #include "power.h"
 #include "pure.h"
+#include "roll_state.h"
 #include "storage.h"
 #include "taskmon.h"
 #include "thumb.h"
@@ -535,6 +536,9 @@ static void worker_task(void *arg) {
 /* META.JSON                                                        */
 /* ---------------------------------------------------------------- */
 
+_Static_assert(sizeof(((capture_report_t *)0)->roll_id) == ROLL_ID_LEN,
+               "capture_report_t.roll_id must hold a full roll id");
+
 void capture_meta_json(const capture_report_t *r, void *cjson_object) {
   meta_build_capture(r, s_device_id, cjson_object);
 }
@@ -759,6 +763,18 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   }
 
   capture_uuid4(r.uuid, sizeof r.uuid);
+  /* Roll provenance is decided here, at the shutter, and nowhere later. A
+   * photograph taken on a Roll belongs to that Roll whatever the camera
+   * joins afterwards; one taken off a Roll belongs to none, however active a
+   * Roll is when the upload queue gets to it. Measured before this line
+   * existed: every META.JSON on the bench card said rollId null, and boot
+   * reconciliation then stamped all of them with whichever Roll was current. */
+  {
+    roll_state_t roll;
+    if (roll_state_active() && roll_state_get(&roll) && roll.roll_id[0] != '\0') {
+      snprintf(r.roll_id, sizeof r.roll_id, "%s", roll.roll_id);
+    }
+  }
   if (storage_capture_open(&store, r.uuid, "CAP") != ESP_OK) {
     fail(&r, "SD_WRITE_FAILED", "Could not create the capture folder");
     goto finish;
