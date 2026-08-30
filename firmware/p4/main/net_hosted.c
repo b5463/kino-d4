@@ -22,7 +22,10 @@
  * component-internal header path, not part of the esp_hosted compat surface. */
 #if __has_include("eh_host_mcu_transport_state.h")
 #include "eh_host_bus.h"
+#include "eh_host_mcu_transport.h"
 #include "eh_host_mcu_transport_state.h"
+#include "eh_host_port_sdio.h"
+#include "eh_host_port_sdio_reg.h"
 #else
 #error "eh_host_mcu_transport_state.h missing: esp_hosted layout changed, re-audit C6-B"
 #endif
@@ -814,9 +817,26 @@ static void perform(rr_action_t act) {
        * event arrives; SDIO_WAIT and HANDSHAKE_WAIT read both flags, not this
        * return code. */
       const int64_t t0 = esp_timer_get_time();
-      const int rc = eh_host_bus_connect_to_slave();
+      int rc = eh_host_bus_connect_to_slave();
       klog("C6", "recovery: bus connect_to_slave rc=%d in %lldms", rc,
            (long long)((esp_timer_get_time() - t0) / 1000));
+      if (rc == 0) {
+        /*
+         * Open the data path. The component's read task raises this slave
+         * interrupt once, when it starts; a coprocessor that has since
+         * rebooted holds every frame - its INIT event first - until it sees
+         * it again, and the read task never repeats it. Measured (0.4.6,
+         * second image): card init succeeded on every attempt and tx_ready
+         * never followed. eh_host_port_sdio_init() is guarded and returns the
+         * one static context, so this is the same register write the read
+         * task makes: HOST_TO_SLAVE_INTR, bit ESP_OPEN_DATA_PATH.
+         */
+        void *sdio = eh_host_port_sdio_init();
+        uint8_t mask = (uint8_t)(1u << (ESP_OPEN_DATA_PATH + ESP_SDIO_CONF_OFFSET));
+        const int w = sdio != NULL ? eh_host_port_sdio_write_reg(sdio, HOST_TO_SLAVE_INTR, &mask, 1, true) : -1;
+        klog("C6", "recovery: open data path rc=%d", w);
+        if (w != 0) rc = -1;
+      }
       rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
       return;
     }
