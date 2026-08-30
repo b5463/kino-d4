@@ -17,7 +17,7 @@ Payload shapes are marked:
 0x20–0x25  Modes / recipes    0x70–0x75  Media
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
 0x30–0x37  Camera             0xa0–0xaa  Network / Roll / upload queue
-0x40–0x4c  Diagnostics
+0x40–0x4d  Diagnostics (0x4d bench-only, private)
 ```
 
 The Network/Roll group sits above the event range on purpose: a command id and an event id can never
@@ -383,6 +383,7 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `CAMERA_LINK_STATS_RESET` | `0x49` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true }`. Counters zero, `latencyMaxMs` included; `lastSequence` survives |
 | `CAMERA_SOAK_TEST` | `0x4a` | → **typed** `SoakTestRequest` ← `JobStartResponse`, then `JOB_*`; `result` is **typed** `SoakTestSummary` |
 | `GET_HW_VALIDATION` | `0x4b` | → `{}` ← **typed** `HwValidationReport`. Gated by `benchDiagnostics` |
+| `C6_RESET_BENCH` | `0x4d` | → `{}` ← `{ ok: true, target: "C6" }`. **Bench only, private.** One reset pulse to the C6 coprocessor (the P4 keeps running); exists so ROLL-C test 3 can be run. Handled only by a P4 built with `-DKINO_C6_RESET_BENCH=1`; every other build NACKs `UNSUPPORTED_COMMAND` and moves no pin. Not gated by a capability because no product client may send it |
 | `STORAGE_BENCH` | `0x4c` | → **typed** `StorageBenchRequest` ← **typed** `StorageBenchResult`. Timeout 120 s. Gated by `benchDiagnostics`. **Reserved in firmware — see below** |
 
 #### `STORAGE_BENCH` — 0x4c

@@ -68,6 +68,11 @@ typedef enum {
   // number, but no handler is registered — M1B_COMMANDS is a whitelist, so
   // the server NACKs UNSUPPORTED_COMMAND until one is.
   KDP_CMD_STORAGE_BENCH = 0x4c,
+  // Bench only, private: one reset pulse to the C6 coprocessor and nothing
+  // else (ROLL-C test 3). Handled only in a build configured with
+  // -DKINO_C6_RESET_BENCH=1 on top of the radio fragment; every other build
+  // NACKs UNSUPPORTED_COMMAND and moves no pin. Not a product command.
+  KDP_CMD_C6_RESET_BENCH = 0x4d,
 
   // Maintenance
   KDP_CMD_ENTER_MAINTENANCE = 0x50,

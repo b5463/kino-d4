@@ -11,6 +11,7 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include "bench_c6.h"
 #include "cam_link.h"
 #include "capture.h"
 #include "viewfinder.h"
@@ -39,6 +40,9 @@
 #include "klog.h"
 #include "meta.h"
 #include "net_link.h"
+#if KINO_RADIO && KINO_C6_RESET_BENCH
+#include "net_hosted.h"
+#endif
 #include "node_link/node_link.h"
 #include "power.h"
 #include "pure.h"
@@ -2458,6 +2462,32 @@ static void handle_reboot(uint32_t seq) {
   esp_restart();
 }
 
+/* Bench only: reset the C6 and nothing else. The decision is bench_c6.c,
+ * host-tested; the pulse is net_hosted.c's own. Built in only with
+ * -DKINO_C6_RESET_BENCH=1 on a radio build; otherwise the actuator is NULL
+ * and the request is refused before anything is called. */
+#if KINO_RADIO && KINO_C6_RESET_BENCH
+static void c6_bench_pulse(void) { (void)net_hosted_bench_c6_reset(); }
+#define C6_RESET_BENCH_BUILT true
+#define C6_RESET_BENCH_PULSE c6_bench_pulse
+#else
+#define C6_RESET_BENCH_BUILT false
+#define C6_RESET_BENCH_PULSE NULL
+#endif
+
+static void handle_c6_reset_bench(uint32_t seq) {
+  const bench_c6_ops_t ops = {.pulse = C6_RESET_BENCH_PULSE, .reboot = NULL};
+  if (bench_c6_reset_request(C6_RESET_BENCH_BUILT, &ops) != BENCH_C6_DONE) {
+    send_nack(KDP_CMD_C6_RESET_BENCH, seq, "UNSUPPORTED_COMMAND",
+              "C6_RESET_BENCH is bench-only and not in this build");
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddStringToObject(json, "target", "C6");
+  send_json(KDP_CMD_C6_RESET_BENCH, seq, json);
+}
+
 // ---- dispatch ----
 
 /* How long a MEDIA_* command waits for the card before answering BUSY. A
@@ -2538,6 +2568,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CLEAR_LOGS: handle_clear_logs(frame->seq); break;
     case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
+    case KDP_CMD_C6_RESET_BENCH: handle_c6_reset_bench(frame->seq); break;
     /* Read-only. The rest of the FW_* group stays failed-closed — see the
      * handler's comment for why a query is not an update path. */
     case KDP_CMD_FW_QUERY: handle_fw_query(frame->seq); break;

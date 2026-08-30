@@ -13,6 +13,9 @@
 // framing on the bench would mean a disagreement between tool and product
 // could look like a device fault, which is the one thing a bring-up
 // instrument must never do.
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SerialPort } from 'serialport';
 import {
   encodeFrame,
@@ -62,11 +65,30 @@ port.on('data', (chunk) => {
   }
 });
 
+/**
+ * A reply that does not parse is still a reply. The full bytes go to a file
+ * (KINO_RAW_DIR, else the OS temp dir) and the returned object names it, so a
+ * transcript never says "no response" for a frame that arrived. Bench
+ * 2026-08-30 lost three CAMERA_CAPTURE replies to exactly that.
+ */
 function safeJson(payload) {
   try {
     return decodeJson(payload);
-  } catch {
-    return { _raw: Buffer.from(payload).toString('hex').slice(0, 120) };
+  } catch (err) {
+    const buf = Buffer.from(payload);
+    const file = join(process.env.KINO_RAW_DIR ?? tmpdir(), `kdp-raw-${Date.now()}.bin`);
+    let saved = file;
+    try {
+      writeFileSync(file, buf);
+    } catch (e) {
+      saved = `not saved: ${e.message}`;
+    }
+    return {
+      _unparsed: err instanceof Error ? err.message : String(err),
+      _bytes: buf.length,
+      _rawHex: buf.toString('hex'),
+      _savedTo: saved,
+    };
   }
 }
 

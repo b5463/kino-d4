@@ -10,6 +10,7 @@
 #   make -C firmware/p4/host_tests test-store  # UPLOAD.JSON record, needs cJSON
 #   make -C firmware/p4/host_tests test-pins   # board_d4v1.h vs the JP1 header
 #   make -C firmware/p4/host_tests test-hwv    # hwv_rules.c, the validation predicates
+#   make -C firmware/p4/host_tests test-bench  # bench_c6.c, the bench-only C6 reset request
 #   make -C firmware/p4/host_tests test-all    # all nine
 #
 # Several targets because they have different dependencies, not because the
@@ -80,6 +81,9 @@ PINS_SRC = test_board_pins.c
 # hwv_rules.c reaches nothing from ESP-IDF, deliberately: the conditions for
 # marking a validation row must be provable with the false states fed in.
 HWV_SRC = $(MAIN)/hwv_rules.c test_hwv_rules.c
+# bench_c6.c is the bench-only C6 reset decision, no ESP-IDF: one pulse when
+# built in, nothing when not, never a P4 restart.
+BENCH_SRC = $(MAIN)/bench_c6.c test_bench_c6.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
 META_SRC = $(MAIN)/meta.c test_meta.c $(CJSON_DIR)/cJSON.c
@@ -114,10 +118,13 @@ test_qr: $(QR_SRC) $(MAIN)/qr.h
 test_hwv_rules: $(HWV_SRC) $(MAIN)/hwv_rules.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(HWV_SRC) -o $@
 
+test_bench_c6: $(BENCH_SRC) $(MAIN)/bench_c6.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(BENCH_SRC) -o $@
+
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-all clean
 test: test_pure
 	./test_pure
 
@@ -145,7 +152,10 @@ test-pins: test_board_pins
 test-hwv: test_hwv_rules
 	./test_hwv_rules
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv
+test-bench: test_bench_c6
+	./test_bench_c6
+
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6

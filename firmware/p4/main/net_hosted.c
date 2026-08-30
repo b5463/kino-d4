@@ -760,4 +760,24 @@ esp_err_t net_hosted_start(void) {
   return ESP_OK;
 }
 
+#if KINO_C6_RESET_BENCH
+bool net_hosted_bench_c6_reset(void) {
+  /* The product's own sequence and timing (bring_up), issued once on
+   * request. The link is then reported down through the same calls the
+   * supervisor would use; whether and how it comes back is the bench's
+   * question, not this function's. */
+  klog("C6", "BENCH: C6 reset pulse on GPIO%d, %d ms", BOARD_C6_EN, EN_HOLD_MS);
+  const int64_t t_assert = esp_timer_get_time();
+  board_c6_hold_reset();
+  vTaskDelay(pdMS_TO_TICKS(EN_HOLD_MS));
+  board_c6_enable();
+  const int64_t t_release = esp_timer_get_time();
+  net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, false);
+  net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_LINK_LOST, "bench: C6 reset pulse",
+                        now_ms());
+  klog("C6", "BENCH: released after %lldus; link reported down", (long long)(t_release - t_assert));
+  return true;
+}
+#endif /* KINO_C6_RESET_BENCH */
+
 #endif /* KINO_RADIO */

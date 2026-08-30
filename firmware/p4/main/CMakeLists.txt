@@ -8,7 +8,7 @@ set(kino_srcs
   "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "net_link.c" "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
-  "roll_api.c" "roll_client.c")
+  "roll_api.c" "roll_client.c" "bench_c6.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer
@@ -96,6 +96,16 @@ if(KINO_RADIO_BUILD)
   # instruction of it is compiled.
   #
   #   idf.py -DKINO_C6_RECOVERY=1 ... build
+  # Bench only: a KDP command (C6_RESET_BENCH, 0x4d) that pulses the C6 enable
+  # line once and leaves the P4 running, so the upload queue can be watched
+  # surviving a radio reboot (ROLL-C test 3). Unset, the command is refused
+  # with UNSUPPORTED_COMMAND and the pulse is not compiled.
+  #
+  #   idf.py -DKINO_C6_RESET_BENCH=1 ... build
+  if(KINO_C6_RESET_BENCH)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_C6_RESET_BENCH=1)
+  endif()
+
   if(KINO_C6_RECOVERY)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_C6_RECOVERY=1)
   endif()

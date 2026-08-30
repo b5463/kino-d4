@@ -89,6 +89,14 @@ export enum Cmd {
    * the burst — the average hides it.
    */
   STORAGE_BENCH = 0x4c,
+  /**
+   * Bench only, private. One reset pulse to the C6 coprocessor and nothing
+   * else, so the upload queue can be watched surviving a radio reboot
+   * (ROLL-C test 3). Handled only by a P4 built with
+   * `-DKINO_C6_RESET_BENCH=1`; every other firmware NACKs
+   * UNSUPPORTED_COMMAND. Studio never sends it.
+   */
+  C6_RESET_BENCH = 0x4d,
 
   // Maintenance
   ENTER_MAINTENANCE = 0x50,

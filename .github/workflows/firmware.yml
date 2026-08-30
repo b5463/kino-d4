@@ -76,6 +76,9 @@ jobs:
       # answer "has this ever actually worked". Mostly negative tests: the
       # states that look enough like success to be marked.
       - run: make -C firmware/p4/host_tests test-hwv
+      # The bench-only C6 reset request: one pulse when built in, nothing
+      # otherwise, never a P4 restart.
+      - run: make -C firmware/p4/host_tests test-bench
 
   host-preview:
     # The native UI renderer. It compiles ui.c as a translation unit, so a

@@ -63,6 +63,16 @@
  */
 esp_err_t net_hosted_start(void);
 
+/*
+ * Bench only (-DKINO_C6_RESET_BENCH=1): one reset pulse to the C6 on its
+ * enable line, with the same timing bring-up uses, then the link is reported
+ * down. The P4 is untouched. Nothing here re-establishes the transport: that
+ * is what the bench measures. Not compiled otherwise.
+ */
+#if KINO_C6_RESET_BENCH
+bool net_hosted_bench_c6_reset(void);
+#endif
+
 /** Bytes this firmware has moved through the transport, and errors observed.
  * Counted here rather than read from the bus: esp_hosted 3.0.6 exposes no
  * public byte counters, so these are the HTTP client's own totals. */
