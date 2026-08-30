@@ -1831,6 +1831,16 @@ static void handle_runtime_stats(uint32_t seq) {
                           (double)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
   cJSON_AddNumberToObject(json, "largestInternalDmaKB",
                           (double)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024));
+  /* The node scheduler (cam_sched.h): how often maintenance ran, how often it
+   * stood aside for a capture, how often a capture waited for a probe to end.
+   * Additive; the bench reads them to prove discovery keeps running. */
+  {
+    uint32_t probes_run = 0, probes_deferred = 0, capture_waits = 0;
+    capture_sched_stats(&probes_run, &probes_deferred, &capture_waits);
+    cJSON_AddNumberToObject(json, "probesRun", probes_run);
+    cJSON_AddNumberToObject(json, "probesDeferred", probes_deferred);
+    cJSON_AddNumberToObject(json, "captureProbeWaits", capture_waits);
+  }
 
   // Real die temperatures or null — never a fabricated number. CAM2-4 gain
   // readings when their links land in milestone 2.
@@ -2156,6 +2166,7 @@ static void handle_camera_capture(uint32_t seq, cJSON *req) {
    * META.JSON does not carry it. */
   cJSON *bench = cJSON_CreateObject();
   cJSON_AddNumberToObject(bench, "sdWaitMs", r.sd_wait_ms);
+  cJSON_AddNumberToObject(bench, "probeWaitMs", r.probe_wait_ms);
   cJSON_AddStringToObject(bench, "radioState", r.radio_state);
   cJSON_AddStringToObject(bench, "radioDetail", r.radio_detail);
   cJSON_AddBoolToObject(bench, "uploadActive", r.upload_active);

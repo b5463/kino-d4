@@ -137,6 +137,7 @@ typedef struct {
    * what the capture had to wait for. Not written to META.JSON (the portable
    * schema is versioned); the CAMERA_CAPTURE reply carries it as `bench`. */
   uint32_t sd_wait_ms;         /* waiting for STORAGE_USER_CAPTURE */
+  uint32_t probe_wait_ms;      /* waiting for an in-flight node probe to end (cam_sched.h) */
   uint32_t lock_yields;        /* storage_lock_stats() after the capture */
   uint32_t lock_timeouts;
   char radio_state[20];        /* net_state_name() at the shutter */
@@ -202,10 +203,32 @@ bool capture_busy(void);
  * running capture makes this return false - so a diagnostic capture can no
  * longer replace the single frame a node is holding for a product capture.
  *
+ * Holding it also tells the node scheduler (cam_sched.h) that a capture owns
+ * the cameras, so no background probe begins until it is released. The node
+ * sweep does NOT take this lock any more: maintenance is not a capture, and
+ * taking it made CAMERA_CAPTURE answer BUSY with nothing running (bench
+ * 2026-08-30, 14 of 20 idle requests). It uses capture_probe_begin() below.
+ *
  * Binary semaphore semantics: may be released from a different task than the
  * one that took it (the soak job does). `timeout_ms` 0 is a try-lock. */
 bool capture_lock(uint32_t timeout_ms);
 void capture_unlock(void);
+
+/**
+ * Background node maintenance asks for one bounded transaction on `cam`
+ * (0..CAMLINK_CAMS-1) - a HELLO into a socket that may be empty. False means
+ * deferred: a capture is admitted or running, or that channel is already
+ * being probed. Ask again later; nothing is queued. True means go: run
+ * exactly one request and call capture_probe_end() the moment it returns.
+ * The channel's own UART mutex (cam_link.c) still serialises the wire; this
+ * decides only who may START. */
+bool capture_probe_begin(int cam);
+void capture_probe_end(int cam);
+
+/** Scheduler counters since boot, for GET_RUNTIME_STATS: probes that ran,
+ * probes deferred to a capture, captures that waited for a probe boundary. */
+void capture_sched_stats(uint32_t *probes_run, uint32_t *probes_deferred,
+                         uint32_t *capture_waits);
 
 /** Clears CAPTURE_DONE back to CAPTURE_IDLE. The UI calls this when it has
  * finished showing the result, so the stage says "there is something to

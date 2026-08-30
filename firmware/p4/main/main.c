@@ -104,47 +104,43 @@ static void cam_probe_task(void *arg) {
   bool was_online[CAMLINK_CAMS] = {false};
   for (;;) {
     /*
-     * Hold the capture lock across the whole sweep, not just check it.
+     * Maintenance, one bounded transaction at a time, and never in the
+     * shutter's way.
      *
-     * camlink_hello_ch takes the channel mutex and holds it for the whole
-     * round trip, 3000 ms on a socket with nothing in it. This task walks
-     * cam0..cam3 in the same order capture_fire does, so the two lockstep and
-     * a shutter press can wait seconds on what is otherwise a cached read.
+     * Two hazards shaped this loop. A HELLO slipping between two chunk reads
+     * of a live transfer opens with uart_flush_input() and loses the chunk -
+     * the per-chunk byte loss the bench once recorded. And a HELLO into an
+     * empty socket holds that channel's mutex for its whole timeout, so a
+     * capture starting behind it waited seconds. The first answer to both was
+     * to take capture_lock() for the whole sweep, which made a CAMERA_CAPTURE
+     * arriving mid-sweep answer BUSY "A capture is already running" with no
+     * capture running (Gate F bench 2026-08-30: 14 of 20 idle requests, then
+     * 5 of 41 after the probe was shortened).
      *
-     * Worse, it does this DURING a transfer: between two chunk reads it slips
-     * a HELLO onto the active channel, and request() opens with
-     * uart_flush_input(). That is the per-chunk byte loss - the first chunk
-     * lands cleanly and nearly every one after it fails once and succeeds on
-     * the retry, which is exactly the pattern the bench recorded.
-     *
-     * capture_busy() was the guard, and it could not do this job: it is a
-     * try-lock sample, so it says whether the pipeline was busy an instant ago
-     * and nothing about the twelve seconds of HELLOs that follow. A capture
-     * starting one instruction later found the channels occupied anyway. The
-     * lock itself is the guard; the sweep now owns the pipeline for as long as
-     * it is on the wire.
-     *
-     * The cost is that a press arriving mid-sweep is refused rather than
-     * queued, which is the correct trade on the two counts that matter: it is
-     * refused in microseconds with a reason, and the sweep it waits for is a
-     * few HELLO round trips on channels that answer. Only a body with dead
-     * channels pays the full twelve seconds, and that body cannot take the
-     * photograph either way.
+     * capture_probe_begin() is the scheduler's answer (cam_sched.h): a probe
+     * may start only while no capture is admitted, so nothing lands inside a
+     * transfer; a capture admitted while one probe is on the wire waits for
+     * that transaction alone - 300 ms on an empty socket, milliseconds on a
+     * node that answers - and starts. The channel mutex in cam_link.c still
+     * keeps the wire serial. The sweep holds nothing between channels, so a
+     * shutter press lands in the gap and maintenance stands aside; a deferred
+     * sweep simply comes back.
      */
-    if (!capture_lock(0)) {
-      vTaskDelay(pdMS_TO_TICKS(100));
-      continue;
-    }
     int online_count = 0;
+    bool deferred = false;
     for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
-      /* A channel believed empty gets a short HELLO. The capture lock is held
-       * for this whole sweep, and the default 3000 ms per absent channel is
-       * what refused half the shutter presses on a one-camera body: three
-       * empty channels cost ~9 s of lock every ~19 s (Gate F bench,
-       * 2026-08-30, 14 of 20 CAMERA_CAPTURE requests BUSY at idle). A node
-       * that is present answers HELLO in a few milliseconds. */
+      if (!capture_probe_begin(cam)) {
+        deferred = true;
+        break;
+      }
+      /* A channel believed empty gets a short HELLO: the default 3000 ms per
+       * absent channel cost ~9 s of probing every ~19 s on a one-camera body.
+       * A node that is present answers in a few milliseconds; one that has
+       * stopped answering costs one 3000 ms transaction before it is marked
+       * offline, and that is the longest a capture can ever wait here. */
       const uint32_t probe_ms = was_online[cam] ? 3000u : OFFLINE_PROBE_MS;
       const bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
+      capture_probe_end(cam);
       if (online) online_count++;
       if (online == was_online[cam]) continue;
 
@@ -160,9 +156,12 @@ static void cam_probe_task(void *arg) {
       }
       was_online[cam] = online;
     }
-    /* Before the delay, not after it: a capture must not wait out a probe
-     * interval to get the pipeline back. */
-    capture_unlock();
+    if (deferred) {
+      /* A capture has the cameras. Come back when it is likely done: one
+       * capture is ~1.5 s on this body. No lock is held while waiting. */
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
+    }
     /* Slow down once anything has answered. A body that is up needs its
      * cameras confirmed occasionally; an empty bench harness needs a retry
      * often enough that plugging a node in feels immediate. */

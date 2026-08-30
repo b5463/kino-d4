@@ -1,4 +1,5 @@
 #include "capture.h"
+#include "cam_sched.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -149,6 +150,18 @@ static SemaphoreHandle_t s_card;     /* one writer at a time on the card */
  * Nothing here needs priority inheritance - holders are at priority 5 and 9
  * and never wait on each other. */
 static SemaphoreHandle_t s_lock;
+/* Who may talk to the nodes: the shutter or maintenance (cam_sched.h). The
+ * struct is touched under s_sched_lock for a few instructions; a capture
+ * admitted while a probe is on the wire waits on s_probe_clear, which the
+ * probe's end gives exactly when the last in-flight probe returns. */
+static cam_sched_t s_sched;
+static SemaphoreHandle_t s_sched_lock;
+static SemaphoreHandle_t s_probe_clear;
+/* One in-flight probe is bounded by its own request timeout: 300 ms on an
+ * absent channel, DEFAULT_TIMEOUT_MS (3000) on a present node that stopped
+ * answering. Past this the capture proceeds anyway and says so; the channel
+ * mutex still keeps the wire serial, so nothing can overlap. */
+#define PROBE_BOUNDARY_MS 3500u
 static QueueHandle_t s_requests;
 static TaskHandle_t s_task;
 
@@ -589,17 +602,93 @@ static bool cams_powered(void) {
   return true;
 }
 
+static void sched_take(void) {
+  if (s_sched_lock != NULL) xSemaphoreTake(s_sched_lock, portMAX_DELAY);
+}
+static void sched_give(void) {
+  if (s_sched_lock != NULL) xSemaphoreGive(s_sched_lock);
+}
+
 bool capture_lock(uint32_t timeout_ms) {
   if (s_lock == NULL) return false;
-  return xSemaphoreTake(s_lock, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+  if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) return false;
+  /* s_lock is the exclusion; the scheduler is told so probes stop beginning.
+   * Admission cannot fail here - s_lock guarantees no other capture is
+   * active - so the answer is not consulted. */
+  sched_take();
+  (void)cam_sched_capture_admit(&s_sched);
+  sched_give();
+  return true;
 }
 
 void capture_unlock(void) {
+  sched_take();
+  cam_sched_capture_done(&s_sched);
+  sched_give();
   if (s_lock != NULL) xSemaphoreGive(s_lock);
+}
+
+bool capture_probe_begin(int cam) {
+  if (s_sched_lock == NULL) return false;
+  sched_take();
+  const bool go = cam_sched_probe_begin(&s_sched, cam);
+  sched_give();
+  return go;
+}
+
+void capture_probe_end(int cam) {
+  if (s_sched_lock == NULL) return;
+  sched_take();
+  const bool wake = cam_sched_probe_end(&s_sched, cam);
+  sched_give();
+  if (wake && s_probe_clear != NULL) xSemaphoreGive(s_probe_clear);
+}
+
+void capture_sched_stats(uint32_t *probes_run, uint32_t *probes_deferred,
+                         uint32_t *capture_waits) {
+  sched_take();
+  if (probes_run != NULL) *probes_run = s_sched.probes_run;
+  if (probes_deferred != NULL) *probes_deferred = s_sched.probes_deferred;
+  if (capture_waits != NULL) *capture_waits = s_sched.capture_waits;
+  sched_give();
+}
+
+/* An admitted capture lets a probe already on the wire reach its boundary,
+ * and waits for nothing else: no probe can begin once capture_lock() is held.
+ * Returns how long it waited. */
+static uint32_t wait_for_probe_boundary(void) {
+  const int64_t t0 = esp_timer_get_time();
+  for (;;) {
+    sched_take();
+    const bool ready = cam_sched_capture_ready(&s_sched);
+    if (ready) cam_sched_capture_started(&s_sched);
+    sched_give();
+    if (ready) break;
+    const uint32_t waited = ms_since(t0);
+    if (waited >= PROBE_BOUNDARY_MS) {
+      klog("P4", "a node probe overran its boundary (%lu ms); capturing anyway",
+           (unsigned long)waited);
+      sched_take();
+      cam_sched_capture_started(&s_sched);
+      sched_give();
+      break;
+    }
+    /* A stale give (a probe that ended after the loop already saw ready) only
+     * costs one more pass through the check above. */
+    if (s_probe_clear != NULL) {
+      xSemaphoreTake(s_probe_clear, pdMS_TO_TICKS(PROBE_BOUNDARY_MS - waited));
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+  }
+  return ms_since(t0);
 }
 
 esp_err_t capture_fire(const char *source, capture_report_t *out) {
   if (!capture_lock(0)) return ESP_ERR_INVALID_STATE;
+  /* Admitted. Photography wins from here; a probe already on a wire gets its
+   * one bounded transaction and the capture starts the instant it returns. */
+  const uint32_t probe_wait_ms = wait_for_probe_boundary();
 
   /*
    * Take the card for the whole capture, at capture priority, HERE.
@@ -661,6 +750,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   memset(&r, 0, sizeof r);
   r.request_us = t_start;
   r.sd_wait_ms = sd_wait_ms;
+  r.probe_wait_ms = probe_wait_ms;
   snprintf(r.radio_state, sizeof r.radio_state, "%s", net_state_name(shutter_net.state));
   snprintf(r.radio_detail, sizeof r.radio_detail, "%.47s", shutter_net.detail);
   r.upload_active = shutter_q.uploading > 0;
@@ -1128,12 +1218,15 @@ esp_err_t capture_init(const char *device_id) {
 
   s_lock = xSemaphoreCreateBinary();
   if (s_lock != NULL) xSemaphoreGive(s_lock); /* binary semaphores start taken */
+  cam_sched_init(&s_sched);
+  s_sched_lock = xSemaphoreCreateMutex();
+  s_probe_clear = xSemaphoreCreateBinary(); /* starts taken: nothing to wake yet */
   s_card = xSemaphoreCreateMutex();
   s_exposed = xEventGroupCreate();
   s_done = xEventGroupCreate();
   s_requests = xQueueCreate(1, 16);
   if (s_lock == NULL || s_card == NULL || s_exposed == NULL || s_done == NULL ||
-      s_requests == NULL) {
+      s_requests == NULL || s_sched_lock == NULL || s_probe_clear == NULL) {
     return ESP_ERR_NO_MEM;
   }
   memset(&s_last, 0, sizeof s_last);
