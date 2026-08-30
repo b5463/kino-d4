@@ -132,6 +132,20 @@ typedef struct {
   capture_frame_t cam[CAPTURE_CAMS];
   char err_code[24];      /* §14 code when !ok */
   char err_msg[96];
+
+  /* Gate F bench telemetry: what else the body was doing at the shutter, and
+   * what the capture had to wait for. Not written to META.JSON (the portable
+   * schema is versioned); the CAMERA_CAPTURE reply carries it as `bench`. */
+  uint32_t sd_wait_ms;         /* waiting for STORAGE_USER_CAPTURE */
+  uint32_t lock_yields;        /* storage_lock_stats() after the capture */
+  uint32_t lock_timeouts;
+  char radio_state[20];        /* net_state_name() at the shutter */
+  char radio_detail[48];       /* net_link detail at the shutter, redacted */
+  bool upload_active;          /* the upload worker had a job in flight */
+  int upload_pending;
+  uint32_t internal_free_kb;   /* MALLOC_CAP_INTERNAL free at the shutter */
+  uint32_t largest_dma_kb;     /* largest INTERNAL|DMA block at the shutter */
+  uint32_t worker_stack_min;   /* smallest high-water mark of the workers that ran, bytes */
 } capture_report_t;
 
 /** Progress, so a UI can say something true while three seconds pass. */

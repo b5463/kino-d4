@@ -28,6 +28,7 @@
 #include "kdp/crc32.h"
 #include "klog.h"
 #include "meta.h"
+#include "net_link.h"
 #include "node_link/node_link.h"
 #include "power.h"
 #include "pure.h"
@@ -35,6 +36,7 @@
 #include "storage.h"
 #include "taskmon.h"
 #include "thumb.h"
+#include "upload_queue.h"
 #include "viewfinder.h"
 
 static const char *TAG = "capture";
@@ -119,6 +121,8 @@ typedef struct {
    * capture_fire writes them once every transfer has finished. Written by one
    * worker, read by the coordinator after the done bits, so no lock. */
   bool hwv_pending;
+  /* High-water mark of this worker's stack after its last frame, bytes. */
+  uint32_t stack_min;
 } worker_t;
 
 static worker_t s_worker[CAPTURE_CAMS];
@@ -528,6 +532,7 @@ static void worker_task(void *arg) {
   for (;;) {
     xSemaphoreTake(w->go, portMAX_DELAY);
     do_frame(w);
+    w->stack_min = (uint32_t)uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t);
     xEventGroupSetBits(s_done, 1u << w->cam);
   }
 }
@@ -617,7 +622,19 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
    * from either caller. A NULL lock means storage_init() never ran, and then
    * the capture fails below on SD_NOT_MOUNTED for the right reason.
    */
+  /* Gate F: what the body was doing when the shutter asked for the card, and
+   * how long the card took. Snapshotted before the wait so it describes the
+   * moment of the shutter, not the moment after the upload yielded. */
+  net_status_t shutter_net;
+  net_link_status(&shutter_net, esp_timer_get_time() / 1000);
+  upload_queue_report_t shutter_q;
+  upload_queue_status(&shutter_q);
+  const uint32_t shutter_internal_kb = (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+  const uint32_t shutter_dma_kb =
+      (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024);
+  const int64_t t_lock0 = esp_timer_get_time();
   const bool card_held = storage_acquire(STORAGE_USER_CAPTURE, STORAGE_WAIT_FOREVER);
+  const uint32_t sd_wait_ms = (uint32_t)((esp_timer_get_time() - t_lock0) / 1000);
 
   /*
    * Take the cameras off the viewfinder, HERE.
@@ -643,6 +660,13 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   capture_report_t r;
   memset(&r, 0, sizeof r);
   r.request_us = t_start;
+  r.sd_wait_ms = sd_wait_ms;
+  snprintf(r.radio_state, sizeof r.radio_state, "%s", net_state_name(shutter_net.state));
+  snprintf(r.radio_detail, sizeof r.radio_detail, "%.47s", shutter_net.detail);
+  r.upload_active = shutter_q.uploading > 0;
+  r.upload_pending = shutter_q.pending;
+  r.internal_free_kb = shutter_internal_kb;
+  r.largest_dma_kb = shutter_dma_kb;
   snprintf(r.source, sizeof r.source, "%s", source != NULL ? source : "unknown");
   r.status = "failed";
   r.clock_source = clock_source_str();
@@ -942,6 +966,13 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   r.ok = true;
   r.status = r.stored == r.online ? "complete" : "partial";
   r.total_ms = ms_since(t_start);
+  storage_lock_stats(&r.lock_yields, &r.lock_timeouts);
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    if (!r.cam[i].attempted || s_worker[i].stack_min == 0) continue;
+    if (r.worker_stack_min == 0 || s_worker[i].stack_min < r.worker_stack_min) {
+      r.worker_stack_min = s_worker[i].stack_min;
+    }
+  }
 
   meta = cJSON_CreateObject();
   capture_meta_json(&r, meta);

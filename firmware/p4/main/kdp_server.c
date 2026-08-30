@@ -2152,6 +2152,29 @@ static void handle_camera_capture(uint32_t seq, cJSON *req) {
   cJSON_AddNumberToObject(json, "bytes", r.bytes);
   cJSON_AddNumberToObject(json, "totalMs", r.total_ms);
   cJSON_AddNumberToObject(json, "camerasOnline", r.online);
+  /* Gate F: the shutter's view of the rest of the body. Additive, reply-only;
+   * META.JSON does not carry it. */
+  cJSON *bench = cJSON_CreateObject();
+  cJSON_AddNumberToObject(bench, "sdWaitMs", r.sd_wait_ms);
+  cJSON_AddStringToObject(bench, "radioState", r.radio_state);
+  cJSON_AddStringToObject(bench, "radioDetail", r.radio_detail);
+  cJSON_AddBoolToObject(bench, "uploadActive", r.upload_active);
+  cJSON_AddNumberToObject(bench, "uploadPending", r.upload_pending);
+  cJSON_AddNumberToObject(bench, "internalFreeKB", r.internal_free_kb);
+  cJSON_AddNumberToObject(bench, "largestDmaKB", r.largest_dma_kb);
+  cJSON_AddNumberToObject(bench, "lockYields", r.lock_yields);
+  cJSON_AddNumberToObject(bench, "lockTimeouts", r.lock_timeouts);
+  cJSON_AddNumberToObject(bench, "workerStackMin", r.worker_stack_min);
+  cJSON *retries = cJSON_CreateArray();
+  cJSON *crc_ok = cJSON_CreateArray();
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    if (!r.cam[i].attempted) continue;
+    cJSON_AddItemToArray(retries, cJSON_CreateNumber(r.cam[i].chunk_retries));
+    cJSON_AddItemToArray(crc_ok, cJSON_CreateBool(r.cam[i].crc_match));
+  }
+  cJSON_AddItemToObject(bench, "chunkRetries", retries);
+  cJSON_AddItemToObject(bench, "crcMatch", crc_ok);
+  cJSON_AddItemToObject(json, "bench", bench);
   send_json(KDP_CMD_CAMERA_CAPTURE, seq, json);
 }
 
