@@ -31,10 +31,25 @@ bool usb_link_connected(void) {
   return (esp_timer_get_time() - s_last_rx) < 5000000;
 }
 
+/*
+ * Never hand the driver more than this in one call.
+ *
+ * usb_serial_jtag_write_bytes() copies the whole request into the driver's TX
+ * ring buffer as ONE item. An item larger than the ring can never fit, so the
+ * call returns 0 without waiting and the loop below read that as "host gone"
+ * and dropped the frame. The ring is 4096 bytes (usb_link_init), which is why
+ * every reply over about 4 KB - GET_LOGS, GET_RECIPES - timed out at the host
+ * while everything smaller worked, and why the host saw no frame at all rather
+ * than a truncated one. A quarter of the ring keeps the driver draining while
+ * the next slice is queued.
+ */
+#define USB_WRITE_SLICE 1024
+
 void usb_link_write(const uint8_t *data, size_t len) {
   size_t written = 0;
   while (written < len) {
-    int n = usb_serial_jtag_write_bytes(data + written, len - written, portMAX_DELAY);
+    const size_t want = len - written < USB_WRITE_SLICE ? len - written : USB_WRITE_SLICE;
+    int n = usb_serial_jtag_write_bytes(data + written, want, portMAX_DELAY);
     if (n <= 0) return; /* host gone; the frame is lost, the link recovers */
     written += (size_t)n;
   }
@@ -52,7 +67,8 @@ int usb_link_write_timeout(const uint8_t *data, size_t len, uint32_t timeout_ms)
      * microseconds of budget into a spin. */
     TickType_t ticks = pdMS_TO_TICKS((uint32_t)(left_us / 1000));
     if (ticks == 0) ticks = 1;
-    const int n = usb_serial_jtag_write_bytes(data + written, len - written, ticks);
+    const size_t want = len - written < USB_WRITE_SLICE ? len - written : USB_WRITE_SLICE;
+    const int n = usb_serial_jtag_write_bytes(data + written, want, ticks);
     if (n <= 0) break; /* host gone or the FIFO stayed full for the whole wait */
     written += (size_t)n;
   }

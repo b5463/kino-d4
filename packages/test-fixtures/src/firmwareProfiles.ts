@@ -14,6 +14,7 @@ export type FirmwareProfileId =
   | 'd4-body-0-2'
   | 'd4-capture-0-3'
   | 'd4-roll-0-4'
+  | 'd4-looks-0-4-8'
   | 'd4-sim-full';
 
 export interface FirmwareProfile {
@@ -66,6 +67,7 @@ const M1B_CAPABILITIES: Record<string, boolean> = {
   xiaoProxyUpdate: false,
   linkBench: false,
   customSounds: false,
+  recipes: false,
   autofocus: false,
   focusLock: false,
   manualFocus: false,
@@ -210,6 +212,52 @@ const ROLL_0_4_CAPABILITIES: Record<string, boolean> = {
   rollUpload: false,
 };
 
+/**
+ * The exact KDP surface of `firmware/p4/main/kdp_server.c` at 0.4.8.
+ *
+ * The two families Studio has been speaking to a NACK since it was written:
+ * looks and sounds. Eleven factory looks are compiled into the image from
+ * `firmware/p4/main/factory_recipes.json`, custom looks live on the card
+ * under `/sdcard/KINO/RECIPES`, custom clips under `/sdcard/KINO/SOUNDS`,
+ * and both survive a power cut because an upload is written to a temporary
+ * file and renamed at the end.
+ *
+ * `SET_RECIPE` takes the optional `cam` field this firmware adds. It selects
+ * a look and writes config; the camera still does no grading, and a look is
+ * applied at import as it always has been.
+ */
+export const LOOKS_0_4_8_COMMANDS: readonly number[] = [
+  ...ROLL_0_4_COMMANDS,
+  Cmd.GET_RECIPES,
+  Cmd.SET_RECIPE,
+  Cmd.UPLOAD_RECIPE,
+  Cmd.DELETE_RECIPE,
+  Cmd.GET_SOUNDS,
+  Cmd.SOUND_BEGIN,
+  Cmd.SOUND_CHUNK,
+  Cmd.SOUND_END,
+  Cmd.SOUND_READ,
+  Cmd.SOUND_DELETE,
+];
+
+const LOOKS_0_4_8_CAPABILITIES: Record<string, boolean> = {
+  ...ROLL_0_4_CAPABILITIES,
+  /**
+   * Both flags are read off the same two functions the dispatcher gates on
+   * (`kdp_recipes_capable()`, `kdp_sounds_capable()`), so the flag and the
+   * handler cannot disagree the way D17 warned they would.
+   */
+  recipes: true,
+  customSounds: true,
+  /**
+   * Unchanged, and worth saying out loud because looks invite the assumption:
+   * `vsyncTelemetry` is still false, the network and Roll flags are still
+   * false for want of a transport, and nothing here applies a look's capture
+   * block to a sensor. Storing and selecting a look is not grading one.
+   */
+  vsyncTelemetry: false,
+};
+
 export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   'd4-m1b': {
     id: 'd4-m1b',
@@ -260,6 +308,19 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
     camsOnline: [true, false, false, false],
     capabilities: ROLL_0_4_CAPABILITIES,
     implementedCommands: ROLL_0_4_COMMANDS,
+    maxUartBaud: 921600,
+  },
+  'd4-looks-0-4-8': {
+    id: 'd4-looks-0-4-8',
+    label: 'CURRENT FIRMWARE 0.4.8 — looks and sounds on the card',
+    simulatedFuture: false,
+    p4Fw: '0.4.8',
+    camFw: '0.1.0',
+    /* Unchanged again: looks and sounds are stored on the P4 and its card,
+     * and no node was wired to add one. */
+    camsOnline: [true, false, false, false],
+    capabilities: LOOKS_0_4_8_CAPABILITIES,
+    implementedCommands: LOOKS_0_4_8_COMMANDS,
     maxUartBaud: 921600,
   },
   'd4-sim-full': {
@@ -315,4 +376,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.5': 'd4-roll-0-4',
   '0.4.6': 'd4-roll-0-4',
   '0.4.7': 'd4-roll-0-4',
+  '0.4.8': 'd4-looks-0-4-8',
 };

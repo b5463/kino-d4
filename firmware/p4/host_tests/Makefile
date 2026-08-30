@@ -140,7 +140,7 @@ test_cam_sched: $(SCHED_SRC) $(MAIN)/cam_sched.h
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-all clean
 test: test_pure
 	./test_pure
 
@@ -177,7 +177,28 @@ test-recovery: test_radio_recovery
 test-sched: test_cam_sched
 	./test_cam_sched
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav
 
 clean:
 	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched
+
+# recipe_rules.c is the look validator: cJSON only, no ESP-IDF. Same container
+# rule as test-meta, for the same reason - it must agree with the cJSON the
+# device links, because a look Studio accepts and the camera refuses is the
+# failure this test exists to prevent.
+RECIPES_SRC = $(MAIN)/recipe_rules.c test_recipe_rules.c $(CJSON_DIR)/cJSON.c
+
+test_recipe_rules: $(RECIPES_SRC) $(MAIN)/recipe_rules.h
+	$(CC) $(CFLAGS) -I$(MAIN) -I$(CJSON_DIR) $(RECIPES_SRC) -o $@
+
+test-recipes: test_recipe_rules
+	./test_recipe_rules
+
+# wav_probe.c reads a RIFF/WAVE header. Pure C, runs anywhere.
+WAV_SRC = $(MAIN)/wav_probe.c test_wav_probe.c
+
+test_wav_probe: $(WAV_SRC) $(MAIN)/wav_probe.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(WAV_SRC) -o $@
+
+test-wav: test_wav_probe
+	./test_wav_probe

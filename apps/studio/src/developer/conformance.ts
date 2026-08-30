@@ -153,6 +153,20 @@ const CASES: Case[] = [
     },
   },
   {
+    name: 'GET_SOUNDS',
+    active: false,
+    run: async (dev) => {
+      const r = await dev.getSounds();
+      expectKeys(r, ['custom', 'maxCustom', 'maxSoundKB'], 'SOUNDS');
+      if (!Array.isArray(r.custom)) throw new ShapeError('SOUNDS: custom is not an array');
+      // The limits are the reason a host can size an upload before it starts.
+      // A device reporting zero slots or zero KB would pass a key check and
+      // then refuse every SOUND_BEGIN it was sent.
+      if (!(r.maxCustom > 0) || !(r.maxSoundKB > 0)) throw new ShapeError('SOUNDS: maxCustom and maxSoundKB must be positive');
+      return `${r.custom.length}/${r.maxCustom} slots · ${r.maxSoundKB} KB max`;
+    },
+  },
+  {
     name: 'CAMERA_STATUS (CAM2)',
     active: false,
     run: async (dev) => {

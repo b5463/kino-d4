@@ -364,21 +364,21 @@ field. The default build never emits it. Reconciling means widening the union in
 with the milestone that ships the radio, not with the firmware that can be built with it.
 
 
-### D17 — 27 commands in `commands.ts` are not implemented by the D4 V1 P4 build
+### D17 — 17 commands in `commands.ts` are not implemented by the D4 V1 P4 build
 
-`commands.ts` declares 71 commands. The shipping P4 firmware dispatches 44 and
+`commands.ts` declares 71 commands. The shipping P4 firmware dispatches 54 and
 answers the rest with an `UNSUPPORTED_COMMAND` NACK from the dispatcher's
 default case. That is the documented degradation path, and it is exercised: no
 unimplemented command hangs, times out, or returns a malformed frame.
 
 Audited by comparing the `Cmd` enum against the handlers in
-`firmware/p4/main/kdp_server.c`, 2026-08-28, firmware 0.4.2.
+`firmware/p4/main/kdp_server.c`, 2026-08-30, firmware 0.4.8. The count was 27
+at 0.4.2; the looks and sounds families left the table in 0.4.8 (see
+[D18](#d18--set_recipe-takes-a-cam-and-the-two-families-that-left-d17)).
 
 | Family | Commands | Roadmap |
 |---|---|---|
 | Camera control beyond capture | `CAMERA_ARM`, `CAMERA_FOCUS`, `CAMERA_PHASE`, `CAMERA_PREVIEW`, `CAMERA_CALIBRATE` | Yes |
-| Looks / recipes | `GET_RECIPES`, `SET_RECIPE`, `UPLOAD_RECIPE`, `DELETE_RECIPE` | Yes |
-| Sounds | `GET_SOUNDS`, `SOUND_BEGIN`, `SOUND_CHUNK`, `SOUND_END`, `SOUND_READ`, `SOUND_DELETE` | Yes |
 | Firmware update | `FW_BEGIN`, `FW_CHUNK`, `FW_END`, `FW_ABORT`, `FW_STATUS`, `FW_ROLLBACK` | Yes — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) |
 | Maintenance | `ENTER_MAINTENANCE`, `EXIT_MAINTENANCE`, `FACTORY_RESET` | Yes |
 | Bench | `LINK_BENCH`, `SYNC_BENCH` | Yes |
@@ -388,29 +388,97 @@ Every family above is on `firmware/FIRMWARE_ROADMAP.md`. None is an accidental
 omission, and none is a protocol disagreement — the wire contract is agreed,
 the behaviour is simply not built yet.
 
-**No capability flag covers these families.** `GET_CAPABILITIES` advertises
-`benchDiagnostics`, `configStore`, `flashControl`, `flashHardware`, `gallery`,
-`mediaIndex`, `network`, `powerManagement`, `powerTelemetry`, `quad`,
-`radioFitted`, `radioRouted`, `roll`, `rollUpload` and `wiggle`; there is no
-`recipes`, `sounds`, `firmwareUpdate`, `maintenance`, `calibration` or
-`preview` flag. A client therefore discovers these by sending and reading the
-NACK rather than by asking first, which contradicts the rule in
+**No capability flag covers the families that are left.** `GET_CAPABILITIES`
+advertises `benchDiagnostics`, `configStore`, `customSounds`, `flashControl`,
+`flashHardware`, `gallery`, `mediaIndex`, `network`, `powerManagement`,
+`powerTelemetry`, `quad`, `radioFitted`, `radioRouted`, `recipes`, `roll`,
+`rollUpload` and `wiggle`; there is still no `firmwareUpdate`, `maintenance`,
+`calibration` or `preview` flag. A client discovers those four by sending and
+reading the NACK rather than by asking first, which contradicts the rule in
 [Versioning](#versioning) that new behaviour is gated behind a capability flag.
-Adding a flag per family is the fix; it is a protocol addition and belongs with
-the first of these families to be implemented, not before.
+
+The fix was stated here as "a flag per family, with the first family to be
+implemented" and that is what 0.4.8 did: `recipes` is new and `customSounds`
+went true, both read off the same two predicates the dispatcher gates on
+(`kdp_recipes_capable()`, `kdp_sounds_capable()`), so neither flag can claim
+what the handler will refuse. `recipes` is optional in `Capabilities` because
+firmware older than 0.4.8 omits it; an absent flag means the commands NACK,
+not that the answer is unknown. The four families still listed above take the
+same treatment when they land.
 
 `benchDiagnostics` is honest despite the two unimplemented `*_BENCH` commands:
 it gates `GET_STORAGE_STATUS`, `CAMERA_LINK_STATS`, `GET_HW_VALIDATION`,
 `STORAGE_SELF_TEST`, `CAMERA_TEST` and `CAMERA_SOAK_TEST`, all of which are
 implemented. `LINK_BENCH` and `SYNC_BENCH` are not behind it.
 
-Four cases in Studio's own conformance suite
-(`apps/studio/src/developer/conformance.ts`, 32 cases) target this set and
-cannot pass against 0.4.2: `GET_RECIPES`, `CAMERA_CALIBRATE (get)`,
-`CAMERA_PREVIEW frame`, and `FW_BEGIN gate (outside maintenance)`. The last is
-a near miss worth noting — it expects a refusal citing maintenance and gets
+Three cases in Studio's own conformance suite
+(`apps/studio/src/developer/conformance.ts`, 33 cases) target this set and
+cannot pass against 0.4.8: `CAMERA_CALIBRATE (get)`, `CAMERA_PREVIEW frame`,
+and `FW_BEGIN gate (outside maintenance)`. The last is a near miss worth
+noting — it expects a refusal citing maintenance and gets
 `UNSUPPORTED_COMMAND`, so the gate it tests is satisfied in substance while the
-assertion still fails.
+assertion still fails. `GET_RECIPES` left this list at 0.4.8 and a `GET_SOUNDS`
+case joined the suite beside it; both are read-only, so both stay
+`active: false` — the flag marks a case that changes device state, not a case
+that is switched on.
+
+### D18 — `SET_RECIPE` takes a `cam`, and the two families that left D17
+
+Firmware 0.4.8 implements the ten looks and sounds commands with the request
+and response shapes `MockKinoDevice.ts` has always answered, so nothing on the
+wire changed for a host that was already speaking to the mock. Four things are
+decided here rather than inherited.
+
+**`SET_RECIPE` gains an optional `cam`.** `SetRecipeRequest` in `types.ts` is
+`{ id, cam? }` where `cam` is `CamId | 'all'`. Absence is the original
+behaviour and not a default to be filled in: no `cam` writes
+`wiggle.recipeId`, `"cam1"`..`"cam4"` write `quad.slots.<cam>.recipeId`, and
+`"all"` writes all four slots and wiggle. The reply is
+`{ ok: true, id, cam }`, echoing `cam` as sent so a host can see which target
+was written. An unknown `id` — checked against factory and custom together —
+is `NOT_FOUND` rather than stored; a config naming a look the device does not
+have is how a slot ends up rendering as the wrong picture at import. A `cam`
+that is neither a camera nor `all` is `INVALID_ARGUMENT`. `DELETE_RECIPE` of an
+id the camera does not hold is `NOT_FOUND` and a malformed id is `BAD_REQUEST`;
+the mock answers `{ ok: true }` to any delete, and the firmware is the one to
+follow — a retry after a lost ACK sees `NOT_FOUND` and knows the first delete
+landed. Firmware older than
+0.4.8 ignores the field, so a host that needs a per-slot write on an older
+body sends `SET_CONFIG` instead.
+
+**`SOUND_END` may NACK `BAD_FORMAT`.** The mock checks length only, and length
+is not a format: it accepts any 44-byte-or-larger blob and stores it. Firmware
+parses the RIFF/WAVE header and refuses anything that is not PCM, mono,
+16-bit, 16 kHz, because the playback path has one sample rate and no
+converter, and a clip that fails there fails at a shutter press rather than at
+upload. This is a firmware code the mock does not raise; a host must handle
+it, and the mock cannot be used to prove it never happens.
+
+**The factory looks are one document with two copies, and they have to be
+equal.** `firmware/p4/main/factory_recipes.json` is compiled into the P4
+image; `packages/test-fixtures/src/factoryRecipes.ts` `FACTORY_RECIPES` is
+what Studio and every test read. Neither is normative alone.
+`packages/test-fixtures/tests/factoryRecipeParity.test.ts` compares them id by
+id — eleven entries, `factory: true` on each, deep equality, order-insensitive
+— so editing one and not the other is a red test. Without it the difference
+would show as a picture on the bench that is not the picture in the app, which
+is not a failure anything reports.
+
+**Card paths.** Custom looks are `/sdcard/KINO/RECIPES/<id>.json`, custom
+clips `/sdcard/KINO/SOUNDS/<id>.wav` with a sidecar for name and duration. An
+upload is written to a temporary file and renamed at the end, so a power cut
+mid-transfer leaves nothing half-written rather than a truncated look the
+validator would then have to reject on every boot. Limits are the mock's:
+eight custom clips, 128 KB each, 8192-byte chunks. Sound ids match
+`^snd-[a-z0-9-]{1,19}$`; look ids are whatever `validateDeviceRecipe`
+accepts (`^[a-z0-9][a-z0-9-]{0,47}$`), because the firmware validator mirrors
+that function rather than restating it.
+
+**What none of this does.** The camera stores and selects a look. It does not
+apply one: no capture block reaches a sensor register, and a look is still
+applied at import. `wiggle.recipeId` defaults to `party-neg`, which is the
+mock's default and now the firmware's.
+
 
 ## Decided — was "firmware team decision required"
 

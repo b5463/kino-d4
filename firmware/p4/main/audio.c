@@ -16,7 +16,10 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "hardware_validation.h"
+#include "kdp_sounds.h"
 #include "klog.h"
+#include "storage.h"
+#include "wav_probe.h"
 
 static const char *TAG = "audio";
 
@@ -64,6 +67,7 @@ static bool s_ready;
 typedef enum { SND_SHUTTER, SND_TICK } sound_t;
 static QueueHandle_t s_queue;
 static void audio_task(void *arg);
+static void post(sound_t which);
 
 /* The two sounds, rendered once at init and kept.
  *
@@ -82,6 +86,20 @@ static int16_t *s_shutter_pcm;
 static size_t s_shutter_bytes;
 static int16_t *s_tick_pcm;
 static size_t s_tick_bytes;
+/* The other three built-in shutter sounds the contract names
+ * (BUILTIN_SHUTTER_SOUNDS in packages/kdp/src/protocol/types.ts). "silent" is
+ * the fifth and needs no buffer. Same reasoning as the two above: rendered
+ * once at init, kept in PSRAM, never allocated on a press.
+ *
+ * All four together are about 60 KB. Rendering only the selected one would
+ * halve that and cost a card-free setting change a render on the audio task
+ * mid-press, which is the stall this whole file is arranged to avoid. */
+static int16_t *s_digi_pcm;
+static size_t s_digi_bytes;
+static int16_t *s_beep_pcm;
+static size_t s_beep_bytes;
+static int16_t *s_mech_pcm;
+static size_t s_mech_bytes;
 static void audio_render_sounds(void);
 
 bool audio_ready(void) { return s_ready; }
@@ -238,6 +256,17 @@ esp_err_t audio_init(void) {
            BOARD_ES8311_ADDR_7BIT, SAMPLE_RATE, AUDIO_VOLUME, -50.0 + AUDIO_VOLUME / 2.0,
            BOARD_AUDIO_PA_EN, BOARD_I2S_DIN);
   klog("P4", "audio up es8311");
+
+  /* body.sounds.startup, the boot chime. The tick rather than the shutter:
+   * the shutter is a photograph being taken and a camera that appears to take
+   * one every time it is switched on is a camera nobody trusts.
+   *
+   * Posted, not played - audio_init() runs on the boot task and play_click()
+   * blocks for the length of a sound. config_init() is called well before
+   * this in main.c (line 181 against 305), so the setting is loaded by now;
+   * without that ordering this would read the default rather than what
+   * someone chose. */
+  if (config_bool("body.sounds.startup", true)) post(SND_TICK);
   return ESP_OK;
 }
 
@@ -462,6 +491,58 @@ static const click_t CLICK_TICK = {.total_ms = 130,
                                    .thump_amp = 0.25f,
                                    .level = 0.60f};
 
+/* The three alternative shutter sounds, built from the same click_t fields.
+ *
+ * Each is a shape, not a measurement: nothing here has been through
+ * audio_calibrate(), and the levels are the shipping shutter's 0.24 give or
+ * take, so none of them can be louder than the sound already judged right.
+ * What they have to be is TELLABLE APART - someone picking one on the SOUND
+ * screen is choosing between four things that must not all sound like the
+ * click.
+ *
+ * The thump voice is one sine at thump_hz decaying over about 40 ms
+ * (render_click's fixed exp(-t*26)), so raising it into the audible band is
+ * how a click_t makes a tone at all. That is what the first two do; the third
+ * goes the other way and leans on the body.
+ *
+ * All three stay under 250 ms of voiced length, so a burst of presses still
+ * sounds like a camera keeping up. */
+
+/* Thin and electronic: two very short bright transients over a 1.2 kHz tone.
+ * decay 260 kills each transient inside 10 ms, which is what makes it read as
+ * a cheap digital camera rather than a mechanism. */
+static const click_t CLICK_CHEAP_DIGI = {.total_ms = 150,
+                                         .spacing_ms = 70,
+                                         .bright = 0.9f,
+                                         .decay = 260.0f,
+                                         .thump_hz = 1200.0f,
+                                         .thump_amp = 1.2f,
+                                         .level = 0.28f};
+
+/* A single short high beep. decay 500 leaves the noise transient as barely an
+ * onset, so what is left is the 1.8 kHz tone - the only one of the four with
+ * no mechanical character at all. */
+static const click_t CLICK_TINY_BEEP = {.total_ms = 120,
+                                        .spacing_ms = 0,
+                                        .bright = 0.5f,
+                                        .decay = 500.0f,
+                                        .thump_hz = 1800.0f,
+                                        .thump_amp = 2.5f,
+                                        .level = 0.26f};
+
+/* Heavier than the shipping shutter: two duller transients 90 ms apart with a
+ * 110 Hz body under them. This is the one place the thump is deliberately
+ * kept - a small speaker in a plastic body turns 110 Hz into a thud, which is
+ * exactly what someone choosing "mechanical" is asking for, and it is opt-in
+ * rather than what every shutter does. */
+static const click_t CLICK_MECHANICAL = {.total_ms = 240,
+                                         .spacing_ms = 90,
+                                         .bright = 0.35f,
+                                         .decay = 55.0f,
+                                         .thump_hz = 110.0f,
+                                         .thump_amp = 0.45f,
+                                         .level = 0.26f};
+
 /**
  * Render both sounds, once, at init.
  *
@@ -481,8 +562,219 @@ static void audio_render_sounds(void) {
     s_tick_bytes = 0;
     ESP_LOGW(TAG, "tick render failed - presses will be silent");
   }
-  ESP_LOGI(TAG, "sounds rendered once: shutter %u B, tick %u B", (unsigned)s_shutter_bytes,
-           (unsigned)s_tick_bytes);
+  /* The alternatives fail the same way and cost the same nothing: a NULL
+   * buffer here makes shutter_pcm_for() fall back to the click, which is a
+   * shutter someone did not choose rather than a camera that went quiet. */
+  if (render_click(&CLICK_CHEAP_DIGI, &s_digi_pcm, &s_digi_bytes) != ESP_OK) {
+    s_digi_pcm = NULL;
+    s_digi_bytes = 0;
+    ESP_LOGW(TAG, "cheap-digi render failed - it will fall back to the click");
+  }
+  if (render_click(&CLICK_TINY_BEEP, &s_beep_pcm, &s_beep_bytes) != ESP_OK) {
+    s_beep_pcm = NULL;
+    s_beep_bytes = 0;
+    ESP_LOGW(TAG, "tiny-beep render failed - it will fall back to the click");
+  }
+  if (render_click(&CLICK_MECHANICAL, &s_mech_pcm, &s_mech_bytes) != ESP_OK) {
+    s_mech_pcm = NULL;
+    s_mech_bytes = 0;
+    ESP_LOGW(TAG, "mechanical render failed - it will fall back to the click");
+  }
+  ESP_LOGI(TAG, "sounds rendered once: shutter %u B, tick %u B, digi %u B, beep %u B, mech %u B",
+           (unsigned)s_shutter_bytes, (unsigned)s_tick_bytes, (unsigned)s_digi_bytes,
+           (unsigned)s_beep_bytes, (unsigned)s_mech_bytes);
+}
+
+/* ------------------------------------------------------------------ */
+/* Custom clips from the card                                          */
+/*                                                                     */
+/* A custom shutter sound is a 16 kHz mono 16-bit WAV under             */
+/* /sdcard/KINO/SOUNDS, validated on upload by kdp_sounds.c. Playback   */
+/* needs interleaved stereo at the same rate, so the file is expanded    */
+/* once into PSRAM and kept - the whole point of the retained buffers    */
+/* above is that pressing the shutter allocates nothing and touches no   */
+/* card, and a clip re-read on every press would give that up.           */
+/* ------------------------------------------------------------------ */
+
+/* 128 KB is the cap kdp_sounds.c enforces on upload, so nothing on the card
+ * can be larger. Repeated here as the read's own bound rather than trusted
+ * from the other module: this reads a file, and a file can be replaced by
+ * hand on the card. */
+#define CUSTOM_MAX_BYTES (128 * 1024)
+
+/* How long a shutter press waits for the card. Deliberately short: the sound
+ * is late or missing either way, and the alternative is the audio task
+ * sitting behind a four-frame capture with a press to answer. */
+#define CUSTOM_CARD_WAIT_MS 300
+
+static char s_custom_id[KDP_SOUND_ID_MAX];
+static int16_t *s_custom_pcm;
+static size_t s_custom_bytes;
+
+/**
+ * Load `id` from the card, or answer from the cache.
+ *
+ * The cache holds one clip, keyed by id: the shutter sound is a setting, so
+ * the same clip plays until someone changes it, and a second buffer would
+ * only help a camera whose shutter sound alternates. Changing the setting
+ * frees the old buffer here, on the audio task, rather than wherever the
+ * setting was written.
+ *
+ * False means play something else. Every reason is logged once - a card that
+ * was busy, a file that is gone, a header that stopped parsing - because a
+ * shutter that quietly plays the wrong sound is the report this firmware
+ * would then get instead.
+ */
+static bool custom_pcm(const char *id, const int16_t **out, size_t *out_bytes) {
+  if (s_custom_pcm != NULL && strcmp(s_custom_id, id) == 0) {
+    *out = s_custom_pcm;
+    *out_bytes = s_custom_bytes;
+    return true;
+  }
+  /* A different id: the old clip can never be wanted again without another
+   * load, so it goes now rather than at the next successful one. */
+  free(s_custom_pcm);
+  s_custom_pcm = NULL;
+  s_custom_bytes = 0;
+  s_custom_id[0] = '\0';
+
+  char path[128];
+  if (!kdp_sounds_path(id, path, sizeof path)) {
+    ESP_LOGW(TAG, "shutter sound '%s' is not a stored clip - playing the click", id);
+    return false;
+  }
+
+  /* The card lock, not just fopen(): a capture writing four frames owns the
+   * SDMMC bus, and reading 128 KB across it widens the frame spread. */
+  if (!storage_acquire(STORAGE_USER_UI, CUSTOM_CARD_WAIT_MS)) {
+    ESP_LOGW(TAG, "card busy - '%s' not loaded, playing the click", id);
+    return false;
+  }
+  uint8_t *raw = NULL;
+  size_t raw_len = 0;
+  FILE *f = fopen(path, "rb");
+  if (f != NULL) {
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    if (size > 0 && size <= CUSTOM_MAX_BYTES) {
+      raw = heap_caps_malloc((size_t)size, MALLOC_CAP_SPIRAM);
+      if (raw != NULL) {
+        fseek(f, 0, SEEK_SET);
+        raw_len = fread(raw, 1, (size_t)size, f);
+      }
+    } else {
+      ESP_LOGW(TAG, "'%s' is %ld bytes - past the %d KB cap", id, size, CUSTOM_MAX_BYTES / 1024);
+    }
+    fclose(f);
+  }
+  storage_release(STORAGE_USER_UI);
+
+  if (raw == NULL || raw_len < WAV_HEADER_MIN) {
+    free(raw);
+    ESP_LOGW(TAG, "'%s' could not be read from the card - playing the click", id);
+    return false;
+  }
+
+  /* Probed again on the way in, not trusted from upload time. The file has
+   * been through a rename, a reboot and possibly someone's card reader since
+   * SOUND_END looked at it. */
+  wav_info_t info;
+  char why[96];
+  if (!wav_probe(raw, raw_len, &info, why, sizeof why)) {
+    free(raw);
+    ESP_LOGW(TAG, "'%s' is not playable: %s - playing the click", id, why);
+    return false;
+  }
+
+  const size_t pcm_avail = raw_len - info.data_offset;
+  const size_t pcm_bytes = info.data_bytes < pcm_avail ? info.data_bytes : pcm_avail;
+  const size_t samples = pcm_bytes / sizeof(int16_t);
+  if (samples == 0) {
+    free(raw);
+    ESP_LOGW(TAG, "'%s' has no samples - playing the click", id);
+    return false;
+  }
+
+  /* The same LEAD_MS/TAIL_MS envelope render_click() puts around a synthesised
+   * sound, for exactly the same two reasons: the NS4150 needs to be out of
+   * shutdown before the first sample, and the tail keeps the amp's switch-off
+   * out of the sound. A clip played without them loses its attack and clicks
+   * at the end. */
+  const size_t lead = (size_t)SAMPLE_RATE * LEAD_MS / 1000;
+  const size_t tail = (size_t)SAMPLE_RATE * TAIL_MS / 1000;
+  const size_t frames = lead + samples + tail;
+  const size_t bytes = frames * CHANNELS * sizeof(int16_t);
+  int16_t *buf = heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM);
+  if (buf == NULL) {
+    free(raw);
+    ESP_LOGW(TAG, "no PSRAM for '%s' - playing the click", id);
+    return false;
+  }
+  /* Mono to interleaved stereo. The I2S slot config is stereo and the codec
+   * is opened with CHANNELS, so a mono buffer handed straight over would play
+   * at half rate down one channel.
+   *
+   * No gain is applied here. shoot.volume is set on the codec in
+   * play_click() (esp_codec_dev_set_out_vol), and the ES8311 has hardware
+   * volume, so scaling the samples as well would attenuate twice and make
+   * step 10 quieter than the built-ins at the same setting. */
+  const uint8_t *src = raw + info.data_offset;
+  for (size_t i = 0; i < samples; i++) {
+    const int16_t v = (int16_t)((uint16_t)src[i * 2] | ((uint16_t)src[i * 2 + 1] << 8));
+    buf[(lead + i) * CHANNELS] = v;
+    buf[(lead + i) * CHANNELS + 1] = v;
+  }
+  free(raw);
+
+  snprintf(s_custom_id, sizeof s_custom_id, "%s", id);
+  s_custom_pcm = buf;
+  s_custom_bytes = bytes;
+  ESP_LOGI(TAG, "shutter sound '%s' loaded: %u samples, %u ms, %u B in PSRAM", id,
+           (unsigned)samples, (unsigned)info.duration_ms, (unsigned)bytes);
+  *out = buf;
+  *out_bytes = bytes;
+  return true;
+}
+
+/**
+ * Which samples this shutter press plays.
+ *
+ * Read at play time rather than cached at init, because shoot.shutterSound
+ * changes from three places - the SOUND screen, SET_CONFIG from Studio, and
+ * kdp_sounds.c resetting it when the selected clip is deleted - and none of
+ * them should have to tell audio.c. It runs on the audio task, so the
+ * config_str_copy() and the card read are off the UI's path.
+ *
+ * Returns false for "silent", which is a selection and not a failure.
+ */
+static bool shutter_pcm_for(const int16_t **out, size_t *out_bytes) {
+  char id[KDP_SOUND_ID_MAX];
+  if (config_str_copy("shoot.shutterSound", id, sizeof id) == 0) snprintf(id, sizeof id, "click");
+
+  if (strcmp(id, "silent") == 0) return false;
+
+  const int16_t *pcm = s_shutter_pcm;
+  size_t bytes = s_shutter_bytes;
+  if (strcmp(id, "click") == 0) {
+    /* the default; already selected above */
+  } else if (strcmp(id, "cheap-digi") == 0) {
+    if (s_digi_pcm != NULL) { pcm = s_digi_pcm; bytes = s_digi_bytes; }
+  } else if (strcmp(id, "tiny-beep") == 0) {
+    if (s_beep_pcm != NULL) { pcm = s_beep_pcm; bytes = s_beep_bytes; }
+  } else if (strcmp(id, "mechanical") == 0) {
+    if (s_mech_pcm != NULL) { pcm = s_mech_pcm; bytes = s_mech_bytes; }
+  } else {
+    const int16_t *custom = NULL;
+    size_t custom_bytes = 0;
+    if (custom_pcm(id, &custom, &custom_bytes)) {
+      pcm = custom;
+      bytes = custom_bytes;
+    }
+    /* custom_pcm() said why on the way out; the click below is the fallback. */
+  }
+  *out = pcm;
+  *out_bytes = bytes;
+  return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -502,8 +794,16 @@ static void audio_task(void *arg) {
   for (;;) {
     sound_t which;
     if (xQueueReceive(s_queue, &which, portMAX_DELAY) != pdTRUE) continue;
-    if (which == SND_SHUTTER) play_click(s_shutter_pcm, s_shutter_bytes);
-    else play_click(s_tick_pcm, s_tick_bytes);
+    if (which == SND_SHUTTER) {
+      /* Resolved here, on this task: shutter_pcm_for() may read the config,
+       * take the card lock and decode a WAV, and none of that may happen on
+       * whichever task pressed the button. */
+      const int16_t *pcm = NULL;
+      size_t bytes = 0;
+      if (shutter_pcm_for(&pcm, &bytes)) play_click(pcm, bytes);
+    } else {
+      play_click(s_tick_pcm, s_tick_bytes);
+    }
   }
 }
 

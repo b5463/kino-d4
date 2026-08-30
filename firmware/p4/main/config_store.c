@@ -79,7 +79,12 @@ static cJSON *default_config(void) {
   cJSON_AddNumberToObject(w, "fps", 8);
   cJSON_AddStringToObject(w, "loop", "bounce");
   cJSON_AddStringToObject(w, "direction", "ltr");
-  cJSON_AddStringToObject(w, "recipeId", "");
+  /* "party-neg", not "": the first factory look, and what MockKinoDevice and
+   * Studio both default to. An empty id showed as an unnamed look on the LOOK
+   * screen and as a blank activeRecipe in GET_DEVICE_INFO, which reads as a
+   * camera that has lost its setting rather than one that has never been
+   * configured. */
+  cJSON_AddStringToObject(w, "recipeId", "party-neg");
   cJSON_AddStringToObject(w, "previewCam", "cam2");
   cJSON_AddNumberToObject(w, "jpegQuality", 85);
   cJSON_AddNumberToObject(w, "denoise", 1);
@@ -92,7 +97,7 @@ static cJSON *default_config(void) {
   static const char *CAMS[4] = {"cam1", "cam2", "cam3", "cam4"};
   for (int i = 0; i < 4; i++) {
     cJSON *s = cJSON_AddObjectToObject(slots, CAMS[i]);
-    cJSON_AddStringToObject(s, "recipeId", "");
+    cJSON_AddStringToObject(s, "recipeId", "party-neg");
     cJSON_AddNumberToObject(s, "exposureBias", 0);
     cJSON_AddStringToObject(s, "gain", "auto");
     cJSON_AddStringToObject(s, "flash", "fire");

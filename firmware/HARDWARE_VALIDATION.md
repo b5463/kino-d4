@@ -17,7 +17,12 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-30, firmware 0.4.7
+## Status — updated 2026-08-30, firmware 0.4.8
+
+0.4.8 holds looks and custom sounds on the card and answers every recipe and
+sound command Studio sends; proving it on the bench found and fixed the
+reason no KDP reply over 4 KB had ever reached a host ("Looks and sounds on
+the card", below).
 
 0.4.7 is the first firmware with a physical shutter: GPIO28 on JP1 21, the
 pin ECN-0003 took back from the flash, validated on the bench the same day
@@ -287,6 +292,23 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### Looks and sounds on the card, and the 4 KB frame that never arrived - 0.4.8 bench, 2026-08-30
+
+Board `KD4-D121BC`, CAM1 online, C6 link up. Firmware 0.4.8 radio build,
+`kino-p4.bin` 1,486,480 B (3% of the factory partition free - issue #143),
+flashed over COM8, hash-verified. Everything below over USB-Serial-JTAG with
+`scripts/kino-bench.mjs` and the new `scripts/kino-sound-bench.mjs`.
+
+| Subsystem | Evidence | Status |
+|---|---|---|
+| `GET_CAPABILITIES` | `firmware 0.4.8`, `recipes: true`, `customSounds: true` | **VALIDATED** |
+| Looks: list, upload, select, delete | `GET_RECIPES` 4,145 B: the eleven factory looks, `custom: []`. `UPLOAD_RECIPE` of a `bench-look` document -> `{ok, id}`; listed at 4,489 B. `SET_RECIPE {id, cam: "cam2"}` -> `quad.slots.cam2.recipeId` in `GET_CONFIG`; `SET_RECIPE {id: "mono"}` -> `wiggle.recipeId`. Unknown id -> `NOT_FOUND`; `cam: "cam9"` -> `INVALID_ARGUMENT`. `DELETE_RECIPE` -> `{ok}`, a second delete -> `NOT_FOUND` | **VALIDATED** |
+| Sounds: upload, list, read back | 300 ms 880 Hz clip, 9,644 B: `SOUND_BEGIN` -> `{sessionId: 1, chunkSize: 8192}`, two `SOUND_CHUNK`s (`received` 8192 then 9644), `SOUND_END` -> `{ok, sound: {snd-tone, 9644 B, 300 ms}}`; `GET_SOUNDS` lists it; `SOUND_READ` returned 9,644 bytes. `SET_CONFIG shoot.shutterSound = snd-tone` accepted (rev 72). Whether the clip plays on a press is the operator's ear, not recorded here | **VALIDATED** (transfer); playback unrecorded |
+| Replies over 4 KB | First `GET_RECIPES` attempt: 15 s timeout, decoder saw no frame. Raw capture of the port showed only console text and LOG events - the reply never left the board. Cause: `usb_link_write()` handed the whole frame to `usb_serial_jtag_write_bytes()`, whose 4096-byte TX ring cannot take an item larger than itself; it returned 0 and the frame was dropped as "host gone". Sliced at 1024 B. After: `GET_RECIPES` 4,145 B and **`GET_LOGS` 14,150 B answer** - the first time a log dump has ever crossed this link | **FIXED and VALIDATED** |
+
+The `discardedBytes` every host session reports are `ESP_LOG` console text
+sharing the USB-Serial-JTAG port with KDP, not lost frames.
 
 ### The shutter has a pin, and it takes a picture - ECN-0003 bench, 2026-08-30
 

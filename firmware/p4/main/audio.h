@@ -17,12 +17,21 @@ esp_err_t audio_init(void);
 bool audio_ready(void);
 
 /**
- * The shutter. Synthesised rather than sampled: a mechanical click is a
- * couple of noise transients with a low thump under them, which is a few
- * lines of arithmetic against a WAV on the card that would have to be read,
- * decoded, and kept in sync with the card being present at all.
+ * The shutter, as `shoot.shutterSound` selects it.
  *
- * Blocking, and short. Called from the boot animation as the blades part.
+ * Four of the five built-ins are synthesised rather than sampled: a
+ * mechanical click is a couple of noise transients with a low thump under
+ * them, which is a few lines of arithmetic against a WAV on the card that
+ * would have to be read, decoded, and kept in sync with the card being
+ * present at all. "silent" is the fifth and plays nothing.
+ *
+ * Any other id names a custom clip uploaded over KDP (kdp_sounds.c), which
+ * IS a WAV on the card - read once into PSRAM and cached by id, so the card
+ * is touched when the setting changes and not when the shutter is pressed. A
+ * clip that cannot be read falls back to the built-in click and logs why.
+ *
+ * Non-blocking: the sound is queued and played on the audio task. Called from
+ * the boot animation as the blades part.
  */
 void audio_shutter(void);
 

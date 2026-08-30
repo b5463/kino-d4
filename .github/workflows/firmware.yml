@@ -209,11 +209,14 @@ jobs:
       # limit would mean either letting the default binary grow 600 KB
       # unnoticed or failing the radio build on arrival.
       #
-      #   measured, this commit:  1384 KB   (0x15a030)
+      #   measured, 0.4.6:        1384 KB   (0x15a030)
+      #   measured, 0.4.8:        1451 KB   (0x16aa90) - looks and sounds added ~67 KB
       #   factory partition:      1500 KB   (CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE)
-      #   limit below:            1440 KB
+      #   limit below:            1472 KB
       #
-      # 1440 KB is not headroom, it is a ceiling with 56 KB of slack. The stack
+      # 1472 KB is not headroom, it is a ceiling with 28 KB of slack, raised
+      # from 1440 when 0.4.8 landed 11 KB over it. The next feature does not
+      # fit: the repartition (issue #143) has to come first. The stack
       # is the size it is: ESP-Hosted, esp_wifi_remote, lwIP, mbedTLS and an
       # HTTP client add ~584 KB over the default build. Two consequences worth
       # stating rather than discovering:
@@ -226,7 +229,7 @@ jobs:
       - name: Guard radio firmware size
         shell: bash
         run: |
-          LIMIT_KB=1440
+          LIMIT_KB=1472
           BIN=firmware/p4/build/kino-p4.bin
           SIZE_B=$(stat -c %s "$BIN")
           SIZE_KB=$((SIZE_B / 1024))

@@ -112,8 +112,13 @@ export class KinoDevice {
     return this.client.request<RecipesResponse<Recipe>>(Cmd.GET_RECIPES);
   }
 
-  setActiveRecipe(id: string) {
-    return this.client.request(Cmd.SET_RECIPE, { id });
+  /**
+   * No `cam`: the wiggle look (every firmware). With `cam`: one QUAD slot, or
+   * 'all' for every slot and wiggle — firmware 0.4.8+, older builds ignore the
+   * field and set wiggle only (firmware-contract D18).
+   */
+  setActiveRecipe(id: string, cam?: CamId | 'all') {
+    return this.client.request(Cmd.SET_RECIPE, cam ? { id, cam } : { id });
   }
 
   uploadRecipe(recipe: Recipe) {

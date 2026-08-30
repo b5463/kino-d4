@@ -8,7 +8,8 @@ set(kino_srcs
   "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "net_link.c" "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
-  "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c")
+  "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c"
+  "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer
@@ -46,7 +47,14 @@ if(KINO_RADIO_BUILD)
                         esp_http_client esp-tls mbedtls)
 endif()
 
-idf_component_register(SRCS ${kino_srcs} INCLUDE_DIRS "." REQUIRES ${kino_reqs})
+# The eleven factory looks, compiled into the image as a NUL-terminated blob
+# (EMBED_TXTFILES, not EMBED_FILES) so kdp_recipes.c hands the symbol straight
+# to cJSON_Parse. It is a data file rather than a C table because
+# packages/test-fixtures/src/factoryRecipes.ts is the other copy and a vitest
+# deep-compares the two: a JSON document can be compared, a C initialiser
+# cannot.
+idf_component_register(SRCS ${kino_srcs} INCLUDE_DIRS "." REQUIRES ${kino_reqs}
+                       EMBED_TXTFILES "factory_recipes.json")
 
 if(KINO_RADIO_BUILD)
   # The two halves of the opt-in must agree. Failing here beats discovering it

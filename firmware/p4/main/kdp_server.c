@@ -33,6 +33,8 @@
 #include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp_net.h"
+#include "kdp_recipes.h"
+#include "kdp_sounds.h"
 #include "kdp/crc32.h"
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
@@ -227,6 +229,20 @@ static void send_net(uint8_t type, uint32_t seq, kdp_net_reply_t reply) {
     return;
   }
   send_nack(type, seq, reply.code, reply.message);
+}
+
+/* The same idea for the feature modules (kdp_module.h): JSON, raw bytes, or
+ * a NACK, decided by the module and sent here. */
+static void send_module(uint8_t type, uint32_t seq, kdp_module_reply_t reply) {
+  if (!reply.ok) {
+    send_nack(type, seq, reply.code, reply.message);
+    return;
+  }
+  if (reply.json != NULL) {
+    send_json(type, seq, reply.json); /* takes ownership */
+    return;
+  }
+  send_raw(type, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, reply.bytes, reply.bytes_len);
 }
 
 // ---- capture core ----
@@ -565,11 +581,14 @@ static void handle_capabilities(uint32_t seq) {
   // Milestone 1B surface this build actually implements.
   cJSON *caps = cJSON_AddObjectToObject(json, "capabilities");
   cJSON_AddNumberToObject(caps, "cameraCount", 4);
-  const char *flags[] = {"vsyncTelemetry", "phaseCalibration", "xiaoProxyUpdate",
-                         "linkBench",      "customSounds"};
+  const char *flags[] = {"vsyncTelemetry", "phaseCalibration", "xiaoProxyUpdate", "linkBench"};
   for (size_t i = 0; i < sizeof flags / sizeof flags[0]; i++) {
     cJSON_AddBoolToObject(caps, flags[i], false);
   }
+  /* Owned by their modules, so the flag and the handler cannot disagree:
+   * each is true exactly when the module answers its commands. */
+  cJSON_AddBoolToObject(caps, "recipes", kdp_recipes_capable());
+  cJSON_AddBoolToObject(caps, "customSounds", kdp_sounds_capable());
   /* benchDiagnostics gates the Milestone 1B group: STORAGE_SELF_TEST,
    * CAMERA_LINK_STATS(_RESET), CAMERA_SOAK_TEST, GET_HW_VALIDATION and
    * STORAGE_BENCH. All six now have handlers - STORAGE_BENCH was the one that
@@ -714,7 +733,7 @@ static void handle_device_info(uint32_t seq) {
   cJSON_AddBoolToObject(json, "sdPresent", sd.present);
   cJSON_AddNumberToObject(json, "sdFreeMB", (double)(sd.free_bytes / (1024 * 1024)));
   cJSON_AddStringToObject(json, "activeMode", config_str("mode", "wiggle"));
-  cJSON_AddStringToObject(json, "activeRecipe", "");
+  cJSON_AddStringToObject(json, "activeRecipe", config_str("wiggle.recipeId", ""));
   send_json(KDP_CMD_GET_DEVICE_INFO, seq, json);
 }
 
@@ -2602,6 +2621,21 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_MEDIA_FAVORITE:
       with_card(frame->type, frame->seq, req, handle_media_favorite);
       break;
+    case KDP_CMD_GET_RECIPES:
+    case KDP_CMD_SET_RECIPE:
+    case KDP_CMD_UPLOAD_RECIPE:
+    case KDP_CMD_DELETE_RECIPE:
+      send_module(frame->type, frame->seq, kdp_recipes_handle(frame->type, req));
+      break;
+    case KDP_CMD_GET_SOUNDS:
+    case KDP_CMD_SOUND_BEGIN:
+    case KDP_CMD_SOUND_CHUNK:
+    case KDP_CMD_SOUND_END:
+    case KDP_CMD_SOUND_READ:
+    case KDP_CMD_SOUND_DELETE:
+      send_module(frame->type, frame->seq,
+                  kdp_sounds_handle(frame->type, req, frame->payload, frame->payload_len));
+      break;
     case KDP_CMD_SET_MODE: handle_set_mode(frame->seq, req); break;
     case KDP_CMD_GET_CONFIG: handle_get_config(frame->seq); break;
     case KDP_CMD_SET_CONFIG: handle_set_config(frame->seq, req); break;
@@ -2670,6 +2704,11 @@ static void server_task(void *arg) {
 }
 
 esp_err_t kdp_server_start(const kdp_identity_t *identity) {
+  /* Feature modules first: their capability flags are read by GET_CAPABILITIES
+   * and their card directories must exist before the first request. Both log
+   * and degrade; neither can stop the server. */
+  if (kdp_recipes_init() != ESP_OK) ESP_LOGW(TAG, "looks unavailable");
+  if (kdp_sounds_init() != ESP_OK) ESP_LOGW(TAG, "custom sounds unavailable");
   /* Registered before the transport starts: a capture cannot be reported to
    * a host that is not listening yet, but a hook installed late would miss
    * one taken in the gap. */

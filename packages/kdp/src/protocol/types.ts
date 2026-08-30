@@ -86,6 +86,14 @@ export interface Capabilities {
   /** Custom sound clips can be stored and used as the shutter sound. */
   customSounds: boolean;
   /**
+   * The look/recipe family exists: `GET_RECIPES`, `SET_RECIPE`,
+   * `UPLOAD_RECIPE`, `DELETE_RECIPE`. Optional — firmware older than 0.4.8
+   * omits it, and an absent flag means the commands NACK
+   * `UNSUPPORTED_COMMAND`, not that the answer is unknown. A look is stored
+   * and selected here; nothing in this firmware applies one to a sensor.
+   */
+  recipes?: boolean;
+  /**
    * OV5640_AF capability group (audit #55). Absent on OV3660 firmware — the
    * whole focus surface disappears with it. Never assume these from the
    * sensor name; the firmware declares what it actually drives.
@@ -944,6 +952,29 @@ export interface LinkBenchResult {
 export interface RecipesResponse<R = unknown> {
   factory: R[];
   custom: R[];
+}
+
+/**
+ * `SET_RECIPE` selects a stored look. It writes config and nothing else — no
+ * sensor register moves, and the look is applied at import.
+ *
+ * `cam` is optional and its absence is the original behaviour, not a default
+ * to be filled in: no `cam` sets `wiggle.recipeId`. `"cam1"`..`"cam4"` set
+ * `quad.slots.<cam>.recipeId`; `"all"` sets all four slots and wiggle.
+ * Firmware older than 0.4.8 ignores the field, so a host that needs a
+ * per-slot write on an older body must send `SET_CONFIG` instead.
+ */
+export interface SetRecipeRequest {
+  id: string;
+  cam?: CamId | 'all';
+}
+
+/** `cam` is echoed as sent, `undefined` included, so a host can tell which
+ * target the device actually wrote. */
+export interface SetRecipeResponse {
+  ok: true;
+  id: string;
+  cam?: CamId | 'all';
 }
 
 // ---- Sounds ----

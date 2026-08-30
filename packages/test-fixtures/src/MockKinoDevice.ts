@@ -2157,6 +2157,13 @@ export class MockKinoDevice implements MockDeviceLike {
           xiaoProxyUpdate: !legacy,
           linkBench: !legacy,
           customSounds: !legacy,
+          // True, not `!legacy`, because the four recipe handlers below are
+          // unconditional: neither the legacy nor the unsupportedCommands
+          // scenario removes them, and a device that claimed otherwise while
+          // still answering would be the drift this report exists to prevent.
+          // A firmware profile that predates 0.4.8 turns the flag off through
+          // its own capability map instead.
+          recipes: true,
           // OV5640_AF capability group (audit #55): derived from the actual
           // per-camera sensor profiles, never assumed from a model name.
           autofocus: !legacy && this.hasAutofocus(),
@@ -2331,9 +2338,26 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, { factory: FACTORY_RECIPES, custom: [...this.customRecipes.values()] });
         return;
       case Cmd.SET_RECIPE: {
-        const { id } = decodeJson<{ id: string }>(frame.payload);
-        this.config.wiggle.recipeId = id;
-        this.respond(frame, { ok: true });
+        // `cam` is optional and absence is the original behaviour rather than
+        // a default: no cam writes wiggle. A look that is not on the device
+        // is refused instead of stored — a config naming a look nobody has is
+        // how a slot ends up rendering as the wrong picture at import.
+        const { id, cam } = decodeJson<{ id: string; cam?: string }>(frame.payload);
+        if (cam !== undefined && cam !== 'all' && !(CAM_IDS as readonly string[]).includes(cam)) {
+          this.respondError(frame, 'INVALID_ARGUMENT', `cam must be cam1..cam4 or all, got ${String(cam)}`);
+          return;
+        }
+        const known = FACTORY_RECIPES.some((r) => r.id === id) || this.customRecipes.has(id);
+        if (!known) {
+          this.respondError(frame, 'NOT_FOUND', `No look ${id}`);
+          return;
+        }
+        if (cam === undefined || cam === 'all') this.config.wiggle.recipeId = id;
+        if (cam === 'all') for (const c of CAM_IDS) this.config.quad.slots[c].recipeId = id;
+        else if (cam !== undefined) this.config.quad.slots[cam as CamId].recipeId = id;
+        this.configRevision++;
+        this.log('P4', `look ${id} → ${cam ?? 'wiggle'}`);
+        this.respond(frame, { ok: true, id, cam });
         return;
       }
       case Cmd.UPLOAD_RECIPE: {

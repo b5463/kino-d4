@@ -20,6 +20,8 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "gfx.h"
+#include "kdp_recipes.h"
+#include "kdp_sounds.h"
 #include "klog.h"
 #include "taskmon.h"
 #include "icons.h"
@@ -492,6 +494,17 @@ static void text_right(const ui_font_t *f, int x, int y, const char *s, uint16_t
 
 static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t ink) {
   text(f, cx - text_w(f, s) / 2, y, s, ink);
+}
+
+/* Uppercase in place, ASCII only.
+ *
+ * Look and sound names arrive as whoever authored them typed them - "Party
+ * Neg", "cheap-digi" - and every control label on this interface is
+ * uppercase. Done here rather than in the JSON so the name Studio shows and
+ * the name the camera shows are the same string. */
+static void upcase(char *s) {
+  for (; *s; s++)
+    if (*s >= 'a' && *s <= 'z') *s = (char)(*s - 'a' + 'A');
 }
 
 /**
@@ -1034,6 +1047,59 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
   }
 }
 
+/* Where an item index sits inside a band of `count` items starting at `base`,
+ * or -1 when it is outside. Every segmented row and every picker on this
+ * interface is such a band, and this is the arithmetic each of them used to
+ * write out twice - once for pressed, once for focused. */
+static int band_rel(int v, int base, int count) {
+  return (v >= base && v < base + count) ? v - base : -1;
+}
+
+/* A small solid chevron, ‹ or ›.
+ *
+ * chevron() above is the header's, 26 px and left-only. The font is ASCII
+ * 32..126 and carries neither character, so the picker buttons get their own:
+ * six 2 px steps, the same shape draw_row() puts on a row that opens a
+ * screen, so the two read as one family. */
+static void picker_arrow(int cx, int cy, bool right, uint16_t ink) {
+  for (int i = 0; i < 6; i++) {
+    const int x = right ? cx - 4 + i : cx + 3 - i;
+    fill(x, cy - 5 + i, 2, 2, ink);
+    fill(x, cy + 5 - i, 2, 2, ink);
+  }
+}
+
+/**
+ * A list too long for segments: the live value in a sunken well, a button at
+ * each end.
+ *
+ * Looks and shutter sounds are open-ended - eleven factory looks plus whatever
+ * is on the card - so they cannot be a row of segments the way MODE and FLASH
+ * are. Cycling one at a time is slow with twenty entries and it is the only
+ * control a touchscreen with no scroll list can offer honestly.
+ *
+ * `pressed` and `focus` are 0 for the left button, 1 for the right, -1 for
+ * neither.
+ */
+static void draw_picker(int x, int y, int w, int h, int btn, const char *value, bool enabled,
+                        int pressed, int focus) {
+  const uint16_t ink = enabled ? W_TEXT : W_GRAYTEXT;
+  const int nx = x + w - btn;
+
+  button(x, y, btn, h, pressed == 0);
+  picker_arrow(x + btn / 2 + (pressed == 0 ? 1 : 0), y + h / 2 + (pressed == 0 ? 1 : 0), false, ink);
+  button(nx, y, btn, h, pressed == 1);
+  picker_arrow(nx + btn / 2 + (pressed == 1 ? 1 : 0), y + h / 2 + (pressed == 1 ? 1 : 0), true, ink);
+
+  const int wx = x + btn + 6, ww = w - 2 * (btn + 6);
+  fill(wx, y, ww, h, W_WINDOW);
+  bevel(wx, y, ww, h, true);
+  text_mid(&UI_FONT_M, wx + ww / 2, y + (h - UI_FONT_M.line_h) / 2, value, ink);
+
+  if (focus == 0) focus_rect(x + 4, y + 4, btn - 8, h - 8);
+  if (focus == 1) focus_rect(nx + 4, y + 4, btn - 8, h - 8);
+}
+
 static void human_bytes(char *out, size_t n, uint64_t bytes) {
   if (bytes >= (1024ULL * 1024 * 1024))
     snprintf(out, n, "%llu.%llu GB", bytes / (1024ULL * 1024 * 1024),
@@ -1335,22 +1401,159 @@ static void look_set_mono(bool mono) {
   }
 }
 
-/* Three decisions about the photograph, in one place.
+/* Five decisions about the photograph, in one place.
  *
  * Mode and flash used to live on the viewfinder, which put two pickers in
  * front of the thing they are meant to be describing. They are not part of
  * seeing the room, they are part of deciding what to do with it - the same
  * kind of decision as the look - so they are here, and the viewfinder is
- * only the room. */
-#define LK_Y0 (BODY_Y + 16)
-#define LK_ROW 84
-#define LK_SEG_H 46
-#define LK_SEG_X 24
-#define LK_SEG_W (UI_W - 2 * LK_SEG_X)
+ * only the room.
+ *
+ * Rows are a label, a 40 px control and 8 px of air, at a 68 px pitch. The
+ * old 84 px pitch fitted three rows and there are now five, of which the
+ * fifth exists in QUAD only. */
+#define LK_X 24
+#define LK_W (UI_W - 2 * LK_X)
+#define LK_Y0 (BODY_Y + 8)
+#define LK_ROW 68
+#define LK_CTL_H 40
+#define LK_PICK_BTN 56
+#define lk_label_y(r) (LK_Y0 + (r) * LK_ROW)
+#define lk_ctl_y(r) (lk_label_y(r) + 20)
 
-/* Item ranges: mode 0..1, flash 2..4, look 5..6. */
-#define LK_IT_FLASH 2
-#define LK_IT_LOOK 5
+/* Rows in draw order: 0 MODE, 1 FLASH, 2 the look picker, 3 COLOUR/B&W,
+ * 4 TARGET (QUAD only). The two footnotes follow the last drawn row. */
+#define LK_ROW_TARGET 4
+
+/* Item ranges. The target row is last so the item indices below it are the
+ * same in both modes, which is what lets item_count() simply drop it. */
+#define LK_IT_MODE 0    /* 0..1  WIGGLE / QUAD */
+#define LK_IT_FLASH 2   /* 2..4  AUTO / ON / OFF */
+#define LK_IT_PREV 5    /* the look picker's left button */
+#define LK_IT_NEXT 6    /* and its right one */
+#define LK_IT_COLOR 7   /* 7..8  COLOUR / B&W */
+#define LK_IT_TARGET 9  /* 9..13 ALL / CAM1..CAM4, QUAD only */
+#define LK_IT_COUNT 14
+
+/* 22 is the gap between the two footnote lines, 18 is UI_FONT_S.line_h - a
+ * literal because a struct member is not a constant expression. Checked
+ * because five rows plus two lines of small type is the tightest screen on
+ * the camera, and the overflow would only show on a panel in QUAD. */
+_Static_assert(lk_label_y(5) + 4 + 22 + 18 <= UI_H,
+               "the LOOK footnotes fall off the bottom in QUAD");
+
+/* Which camera the picker writes to, in QUAD. 0 is ALL, 1..4 are cam1..cam4.
+ * Not persisted: it is a question about the next press, not a setting. */
+static int s_look_target;
+
+static const char *const LK_CAMS[4] = {"cam1", "cam2", "cam3", "cam4"};
+
+static void look_slot_path(char *out, size_t cap, int cam /* 1..4 */) {
+  snprintf(out, cap, "quad.slots.%s.recipeId", LK_CAMS[cam - 1]);
+}
+
+/**
+ * The look id the picker is showing.
+ *
+ * False means there is no single answer: QUAD with target ALL and four slots
+ * that do not agree. Saying MIXED there is the honest reading - claiming
+ * cam1's look for all four would misdescribe three cameras.
+ */
+static bool look_current_id(char *out, size_t cap) {
+  if (!mode_is_quad()) {
+    config_str_copy("wiggle.recipeId", out, cap);
+    return true;
+  }
+  char path[48];
+  if (s_look_target > 0) {
+    look_slot_path(path, sizeof path, s_look_target);
+    config_str_copy(path, out, cap);
+    return true;
+  }
+  look_slot_path(path, sizeof path, 1);
+  config_str_copy(path, out, cap);
+  for (int i = 2; i <= 4; i++) {
+    char other[KDP_RECIPE_ID_MAX];
+    look_slot_path(path, sizeof path, i);
+    config_str_copy(path, other, sizeof other);
+    if (strcmp(other, out) != 0) return false;
+  }
+  return true;
+}
+
+/* Where a chosen look lands. WIGGLE has one look; QUAD has one per camera,
+ * and ALL writes every slot AND the wiggle field so switching back to WIGGLE
+ * does not silently revert what was just chosen. */
+static void look_apply(const char *id) {
+  if (!mode_is_quad()) {
+    cfg_set_str("wiggle.recipeId", id);
+    return;
+  }
+  char path[48];
+  if (s_look_target > 0) {
+    look_slot_path(path, sizeof path, s_look_target);
+    cfg_set_str(path, id);
+    return;
+  }
+  for (int i = 1; i <= 4; i++) {
+    look_slot_path(path, sizeof path, i);
+    cfg_set_str(path, id);
+  }
+  cfg_set_str("wiggle.recipeId", id);
+}
+
+/** What the picker's well says: the look's name, uppercased. */
+static void look_display(char *out, size_t cap) {
+  char cur[KDP_RECIPE_ID_MAX];
+  if (!look_current_id(cur, sizeof cur)) {
+    snprintf(out, cap, "MIXED");
+    return;
+  }
+  for (int i = 0, n = kdp_recipes_count(); i < n; i++) {
+    char id[KDP_RECIPE_ID_MAX], name[KDP_RECIPE_NAME_MAX];
+    if (kdp_recipes_name(i, id, sizeof id, name, sizeof name) && strcmp(id, cur) == 0) {
+      snprintf(out, cap, "%s", name);
+      upcase(out);
+      return;
+    }
+  }
+  /* A look named in the config that is not on this camera - a card pulled, a
+   * look deleted in Studio. Its id, not a blank: a setting you cannot read is
+   * a setting you cannot decide to change. */
+  snprintf(out, cap, "%s", cur[0] ? cur : "NONE");
+  upcase(out);
+}
+
+static void look_step(int delta) {
+  const int n = kdp_recipes_count();
+  if (n <= 0) {
+    toast("No looks on this camera");
+    return;
+  }
+  char cur[KDP_RECIPE_ID_MAX];
+  const bool single = look_current_id(cur, sizeof cur);
+
+  int at = -1;
+  if (single) {
+    for (int i = 0; i < n; i++) {
+      char id[KDP_RECIPE_ID_MAX];
+      if (kdp_recipes_name(i, id, sizeof id, NULL, 0) && strcmp(id, cur) == 0) {
+        at = i;
+        break;
+      }
+    }
+  }
+  /* MIXED, or a look this camera does not have, enters the list at an end
+   * rather than staying put: an arrow that does nothing reads as a dead
+   * control. */
+  const int next = at < 0 ? (delta > 0 ? 0 : n - 1) : (((at + delta) % n) + n) % n;
+
+  char id[KDP_RECIPE_ID_MAX], name[KDP_RECIPE_NAME_MAX];
+  if (!kdp_recipes_name(next, id, sizeof id, name, sizeof name)) return;
+  look_apply(id);
+  upcase(name);
+  toast(name);
+}
 
 static void draw_look(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
@@ -1358,41 +1561,54 @@ static void draw_look(void) {
 
   static const char *const MODE_NAMES[2] = {"WIGGLE", "QUAD"};
   static const char *const FLASH_NAMES[3] = {"AUTO", "ON", "OFF"};
-  static const char *const LOOK_NAMES[2] = {"COLOUR", "B&W"};
+  static const char *const COLOR_NAMES[2] = {"COLOUR", "B&W"};
+  static const char *const TARGET_NAMES[5] = {"ALL", "CAM1", "CAM2", "CAM3", "CAM4"};
 
   const int p0 = s_pressed;
+  const int f0 = s_focus_shown ? s_focus[SCR_LOOK] : -1;
+  const bool quad = mode_is_quad();
 
-  text(&UI_FONT_S, LK_SEG_X, LK_Y0, "MODE", W_TEXT);
-  draw_segments(LK_SEG_X, LK_Y0 + 22, LK_SEG_W, LK_SEG_H, MODE_NAMES, 2, mode_is_quad() ? 1 : 0,
-                (p0 >= 0 && p0 < 2) ? p0 : -1,
-                (foc(SCR_LOOK, 0) ? 0 : (foc(SCR_LOOK, 1) ? 1 : -1)));
+  text(&UI_FONT_S, LK_X, lk_label_y(0), "MODE", W_TEXT);
+  draw_segments(LK_X, lk_ctl_y(0), LK_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
+                band_rel(p0, LK_IT_MODE, 2), band_rel(f0, LK_IT_MODE, 2));
 
-  text(&UI_FONT_S, LK_SEG_X, LK_Y0 + LK_ROW, "FLASH", W_TEXT);
-  draw_segments(LK_SEG_X, LK_Y0 + LK_ROW + 22, LK_SEG_W, LK_SEG_H, FLASH_NAMES, 3, flash_index(),
-                (p0 >= LK_IT_FLASH && p0 < LK_IT_FLASH + 3) ? p0 - LK_IT_FLASH : -1,
-                (s_focus_shown && s_focus[SCR_LOOK] >= LK_IT_FLASH &&
-                 s_focus[SCR_LOOK] < LK_IT_FLASH + 3)
-                    ? s_focus[SCR_LOOK] - LK_IT_FLASH
-                    : -1);
+  text(&UI_FONT_S, LK_X, lk_label_y(1), "FLASH", W_TEXT);
+  draw_segments(LK_X, lk_ctl_y(1), LK_W, LK_CTL_H, FLASH_NAMES, 3, flash_index(),
+                band_rel(p0, LK_IT_FLASH, 3), band_rel(f0, LK_IT_FLASH, 3));
 
-  text(&UI_FONT_S, LK_SEG_X, LK_Y0 + 2 * LK_ROW, "LOOK", W_TEXT);
-  draw_segments(LK_SEG_X, LK_Y0 + 2 * LK_ROW + 22, LK_SEG_W, LK_SEG_H, LOOK_NAMES, 2,
-                look_is_mono() ? 1 : 0,
-                (p0 >= LK_IT_LOOK && p0 < LK_IT_LOOK + 2) ? p0 - LK_IT_LOOK : -1,
-                (s_focus_shown && s_focus[SCR_LOOK] >= LK_IT_LOOK &&
-                 s_focus[SCR_LOOK] < LK_IT_LOOK + 2)
-                    ? s_focus[SCR_LOOK] - LK_IT_LOOK
-                    : -1);
+  /* Sized by the id, not the name: look_display() falls back to the id when
+   * the look is not on this camera, and an id may be longer than a name. */
+  char look[KDP_RECIPE_ID_MAX];
+  look_display(look, sizeof look);
+  text(&UI_FONT_S, LK_X, lk_label_y(2), "LOOK", W_TEXT);
+  draw_picker(LK_X, lk_ctl_y(2), LK_W, LK_CTL_H, LK_PICK_BTN, look, kdp_recipes_count() > 0,
+              band_rel(p0, LK_IT_PREV, 2), band_rel(f0, LK_IT_PREV, 2));
+
+  /* COLOUR and B&W are a different field from the look - SlotColorMode is
+   * 'recipe' | 'mono' in the wire contract - so they stay their own row
+   * rather than becoming two more entries in the picker. */
+  text(&UI_FONT_S, LK_X, lk_label_y(3), "COLOUR", W_TEXT);
+  draw_segments(LK_X, lk_ctl_y(3), LK_W, LK_CTL_H, COLOR_NAMES, 2, look_is_mono() ? 1 : 0,
+                band_rel(p0, LK_IT_COLOR, 2), band_rel(f0, LK_IT_COLOR, 2));
+
+  /* QUAD only, because it is the only mode with four independent slots. In
+   * WIGGLE there is one look and a target row would be a control with one
+   * legal value. */
+  if (quad) {
+    text(&UI_FONT_S, LK_X, lk_label_y(LK_ROW_TARGET), "TARGET", W_TEXT);
+    draw_segments(LK_X, lk_ctl_y(LK_ROW_TARGET), LK_W, LK_CTL_H, TARGET_NAMES, 5, s_look_target,
+                  band_rel(p0, LK_IT_TARGET, 5), band_rel(f0, LK_IT_TARGET, 5));
+  }
 
   /* Both modes fire all four cameras and write identical files; the
    * difference is entirely in how the host presents them. Someone who
    * expects different pictures and gets the same ones assumes the camera is
    * broken. And the camera does no grading at all, so a look that never
    * changes the preview would read as a setting that does nothing. */
-  const int ny = LK_Y0 + 3 * LK_ROW + 4;
-  text(&UI_FONT_S, LK_SEG_X, ny, "Both modes capture four frames. The difference is playback.",
+  const int ny = lk_label_y(quad ? 5 : LK_ROW_TARGET) + 4;
+  text(&UI_FONT_S, LK_X, ny, "Both modes capture four frames. The difference is playback.",
        W_GRAYTEXT);
-  text(&UI_FONT_S, LK_SEG_X, ny + 22,
+  text(&UI_FONT_S, LK_X, ny + 22,
        "Looks are applied when you import. The preview does not change.", W_GRAYTEXT);
 }
 
@@ -1877,6 +2093,88 @@ static void draw_display(void) {
 
 /* --- Sound -------------------------------------------------------- */
 
+/* The five sounds audio.c synthesises, then whatever clips are on the card.
+ * The ids are the wire values of shoot.shutterSound; the names are what the
+ * row shows. The two lists are separate because a built-in cannot be deleted
+ * and a clip cannot be compiled in. */
+static const char *const SND_BUILTIN_ID[5] = {"click", "cheap-digi", "tiny-beep", "mechanical",
+                                              "silent"};
+static const char *const SND_BUILTIN_NAME[5] = {"CLICK", "CHEAP DIGI", "TINY BEEP", "MECHANICAL",
+                                                "SILENT"};
+#define SND_BUILTINS 5
+
+static int snd_count(void) { return SND_BUILTINS + kdp_sounds_count(); }
+
+static bool snd_at(int index, char *id, size_t id_cap, char *name, size_t name_cap) {
+  if (index < 0) return false;
+  if (index < SND_BUILTINS) {
+    snprintf(id, id_cap, "%s", SND_BUILTIN_ID[index]);
+    snprintf(name, name_cap, "%s", SND_BUILTIN_NAME[index]);
+    return true;
+  }
+  if (!kdp_sounds_info(index - SND_BUILTINS, id, id_cap, name, name_cap)) return false;
+  upcase(name);
+  return true;
+}
+
+static void snd_display(char *out, size_t cap) {
+  char cur[KDP_SOUND_ID_MAX];
+  config_str_copy("shoot.shutterSound", cur, sizeof cur);
+  for (int i = 0, n = snd_count(); i < n; i++) {
+    char id[KDP_SOUND_ID_MAX], name[KDP_SOUND_NAME_MAX];
+    if (snd_at(i, id, sizeof id, name, sizeof name) && strcmp(id, cur) == 0) {
+      snprintf(out, cap, "%s", name);
+      return;
+    }
+  }
+  /* A clip named in the config that is no longer on the card. Its id, for the
+   * same reason the LOOK picker shows an unknown look's id. */
+  snprintf(out, cap, "%s", cur[0] ? cur : SND_BUILTIN_NAME[0]);
+  upcase(out);
+}
+
+static void snd_step(int delta) {
+  const int n = snd_count();
+  char cur[KDP_SOUND_ID_MAX];
+  config_str_copy("shoot.shutterSound", cur, sizeof cur);
+
+  int at = -1;
+  for (int i = 0; i < n; i++) {
+    char id[KDP_SOUND_ID_MAX], name[KDP_SOUND_NAME_MAX];
+    if (snd_at(i, id, sizeof id, name, sizeof name) && strcmp(id, cur) == 0) {
+      at = i;
+      break;
+    }
+  }
+  const int next = at < 0 ? (delta > 0 ? 0 : n - 1) : (((at + delta) % n) + n) % n;
+
+  char id[KDP_SOUND_ID_MAX], name[KDP_SOUND_NAME_MAX];
+  if (!snd_at(next, id, sizeof id, name, sizeof name)) return;
+  cfg_set_str("shoot.shutterSound", id);
+  /* Played, not described. Choosing a shutter sound off a list of names is
+   * choosing blind, and this is the one control on the camera whose whole
+   * subject is what it sounds like. */
+  audio_shutter();
+  toast(name);
+}
+
+/* Item ranges: the shutter-sound picker 0..1, the two toggles 2 and 3,
+ * volume 4..6. */
+#define SN_IT_PREV 0
+#define SN_IT_NEXT 1
+#define SN_IT_SHUTTER 2
+#define SN_IT_BUTTON 3
+#define SN_IT_VOL 4
+#define SN_IT_COUNT 7
+
+#define SN_BTN 36 /* the picker's ‹ › buttons, inside a 52 px row */
+
+/* The picker's two buttons and the value beside them, right-aligned in the
+ * row the same way a toggle is. */
+static int sn_next_x(void) { return LIST_X + LIST_W - 14 - SN_BTN; }
+static int sn_prev_x(void) { return sn_next_x() - 6 - SN_BTN; }
+static int sn_btn_y(void) { return LIST_Y + (ROW_H - SN_BTN) / 2; }
+
 static void draw_sound(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_SOUND);
@@ -1884,19 +2182,41 @@ static void draw_sound(void) {
   const bool shut = config_bool("body.sounds.save", true);
   const bool ui = config_bool("body.sounds.ui", true);
 
-  draw_list_frame(2);
-  draw_row(LIST_Y, foc(SCR_SOUND, 0), true, "Shutter sound", NULL, false, C_MUTED);
-  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + (ROW_H - 26) / 2, shut, false);
-  draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, 1), true, "Button sound", NULL, false, C_MUTED);
-  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + ROW_H + (ROW_H - 26) / 2, ui, false);
+  draw_list_frame(3);
 
-  const int y = LIST_Y + 2 * ROW_H + 26;
+  /* Which sound the shutter makes, above the two rows that decide whether a
+   * sound is made at all. Those two used to be titled "Shutter sound" and
+   * "Button sound", which now collides with the picker - they are renamed to
+   * what they actually do, which is switch a sound on and off. */
+  char clip[KDP_SOUND_NAME_MAX];
+  snd_display(clip, sizeof clip);
+  draw_row(LIST_Y, false, true, "Shutter sound", NULL, false, C_MUTED);
+  {
+    const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
+    text_right(&UI_FONT_M, px - 12, LIST_Y + (ROW_H - UI_FONT_M.line_h) / 2, clip, W_TEXT);
+    const int pd = s_pressed == SN_IT_PREV ? 1 : 0, nd = s_pressed == SN_IT_NEXT ? 1 : 0;
+    button(px, by, SN_BTN, SN_BTN, pd);
+    picker_arrow(px + SN_BTN / 2 + pd, by + SN_BTN / 2 + pd, false, W_TEXT);
+    button(nx, by, SN_BTN, SN_BTN, nd);
+    picker_arrow(nx + SN_BTN / 2 + nd, by + SN_BTN / 2 + nd, true, W_TEXT);
+    if (foc(SCR_SOUND, SN_IT_PREV)) focus_rect(px + 3, by + 3, SN_BTN - 6, SN_BTN - 6);
+    if (foc(SCR_SOUND, SN_IT_NEXT)) focus_rect(nx + 3, by + 3, SN_BTN - 6, SN_BTN - 6);
+  }
+
+  draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, SN_IT_SHUTTER), true, "Play shutter sound", NULL, false,
+           C_MUTED);
+  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + ROW_H + (ROW_H - 26) / 2, shut, false);
+  draw_row(LIST_Y + 2 * ROW_H, foc(SCR_SOUND, SN_IT_BUTTON), true, "Play button sound", NULL, false,
+           C_MUTED);
+  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + 2 * ROW_H + (ROW_H - 26) / 2, ui, false);
+
+  const int y = LIST_Y + 3 * ROW_H + 26;
   text(&UI_FONT_S, 24, y, "VOLUME", W_TEXT);
   static const char *const VOL[3] = {"LOW", "MEDIUM", "HIGH"};
   static const int VOLV[3] = {3, 6, 9};
   draw_segments(24, y + 24, UI_W - 48, 44, VOL, 3, nearest_idx(config_int("shoot.volume", 6), VOLV),
-                s_pressed >= 2 && s_pressed < 5 ? s_pressed - 2 : -1,
-                s_focus[SCR_SOUND] >= 2 && s_focus[SCR_SOUND] < 5 ? s_focus[SCR_SOUND] - 2 : -1);
+                band_rel(s_pressed, SN_IT_VOL, 3),
+                band_rel(s_focus_shown ? s_focus[SCR_SOUND] : -1, SN_IT_VOL, 3));
 }
 
 /* --- Connection --------------------------------------------------- */
@@ -2271,12 +2591,14 @@ static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
     case SCR_SHOOT: return 1;
-    case SCR_LOOK: return 7;
+    /* The TARGET row is the last band, so WIGGLE simply stops short of it
+     * and every index below keeps its meaning in both modes. */
+    case SCR_LOOK: return mode_is_quad() ? LK_IT_COUNT : LK_IT_TARGET;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
     case SCR_PHOTO: return 1; /* Send to Roll is not fitted, so not focusable */
     case SCR_SETTINGS: return 5;
     case SCR_DISPLAY: return 6;
-    case SCR_SOUND: return 5;
+    case SCR_SOUND: return SN_IT_COUNT;
     case SCR_STORAGE: return 1;
     case SCR_POWER: return 3;
     default: return 0;
@@ -2337,14 +2659,25 @@ static int hit_test(int x, int y) {
 
   switch (s_screen) {
     case SCR_LOOK: {
-      static const int COUNT[3] = {2, 3, 2};
-      static const int BASE[3] = {0, LK_IT_FLASH, LK_IT_LOOK};
-      for (int r = 0; r < 3; r++) {
-        const int ry = LK_Y0 + r * LK_ROW + 22;
-        if (y < ry || y >= ry + LK_SEG_H) continue;
-        const int cw = LK_SEG_W / COUNT[r];
+      /* The picker first: its two buttons sit inside row 2, which no
+       * segmented band covers, so the order costs nothing and keeps the
+       * segment loop uniform. */
+      const int pry = lk_ctl_y(2);
+      if (in(x, y, LK_X, pry, LK_PICK_BTN, LK_CTL_H)) return LK_IT_PREV;
+      if (in(x, y, LK_X + LK_W - LK_PICK_BTN, pry, LK_PICK_BTN, LK_CTL_H)) return LK_IT_NEXT;
+
+      /* Row, base item, and how many segments - the same table the drawing
+       * walks, so a row moved there moves here. */
+      static const int ROW[4] = {0, 1, 3, LK_ROW_TARGET};
+      static const int BASE[4] = {LK_IT_MODE, LK_IT_FLASH, LK_IT_COLOR, LK_IT_TARGET};
+      static const int COUNT[4] = {2, 3, 2, 5};
+      const int rows = mode_is_quad() ? 4 : 3; /* no TARGET row in WIGGLE */
+      for (int r = 0; r < rows; r++) {
+        const int ry = lk_ctl_y(ROW[r]);
+        if (y < ry || y >= ry + LK_CTL_H) continue;
+        const int cw = LK_W / COUNT[r];
         for (int i = 0; i < COUNT[r]; i++) {
-          if (in(x, y, LK_SEG_X + i * cw, ry, cw, LK_SEG_H)) return BASE[r] + i;
+          if (in(x, y, LK_X + i * cw, ry, cw, LK_CTL_H)) return BASE[r] + i;
         }
       }
       return -1;
@@ -2377,11 +2710,17 @@ static int hit_test(int x, int y) {
       return -1;
     }
     case SCR_SOUND: {
-      if (in(x, y, LIST_X, LIST_Y, LIST_W, ROW_H)) return 0;
-      if (in(x, y, LIST_X, LIST_Y + ROW_H, LIST_W, ROW_H)) return 1;
-      const int y0 = LIST_Y + 2 * ROW_H + 26, sw = (UI_W - 48) / 3;
+      /* The picker's buttons before the row they sit in, or the row would
+       * swallow them. The rest of row 0 is not a target - the row is a label
+       * and a value, and only the arrows do anything. */
+      const int by = sn_btn_y();
+      if (in(x, y, sn_prev_x(), by, SN_BTN, SN_BTN)) return SN_IT_PREV;
+      if (in(x, y, sn_next_x(), by, SN_BTN, SN_BTN)) return SN_IT_NEXT;
+      if (in(x, y, LIST_X, LIST_Y + ROW_H, LIST_W, ROW_H)) return SN_IT_SHUTTER;
+      if (in(x, y, LIST_X, LIST_Y + 2 * ROW_H, LIST_W, ROW_H)) return SN_IT_BUTTON;
+      const int y0 = LIST_Y + 3 * ROW_H + 26, sw = (UI_W - 48) / 3;
       for (int i = 0; i < 3; i++)
-        if (in(x, y, 24 + i * sw, y0 + 24, sw, 44)) return 2 + i;
+        if (in(x, y, 24 + i * sw, y0 + 24, sw, 44)) return SN_IT_VOL + i;
       return -1;
     }
     case SCR_STORAGE:
@@ -2480,12 +2819,23 @@ static void activate(int item) {
       if (item < LK_IT_FLASH) {
         cfg_set_str("mode", item == 1 ? "quad" : "wiggle");
         toast(item == 1 ? "QUAD" : "WIGGLE");
-      } else if (item < LK_IT_LOOK) {
+        /* WIGGLE has fewer items than QUAD, so a focus parked on the TARGET
+         * row has just stopped existing. Left alone it draws nowhere and the
+         * next key press acts on nothing. */
+        if (s_focus[SCR_LOOK] >= item_count(SCR_LOOK)) s_focus[SCR_LOOK] = 0;
+      } else if (item < LK_IT_PREV) {
         cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
         s_flash_spark_us = esp_timer_get_time();
-      } else {
-        look_set_mono(item == LK_IT_LOOK + 1);
-        toast(item == LK_IT_LOOK + 1 ? "B&W" : "COLOUR");
+      } else if (item <= LK_IT_NEXT) {
+        look_step(item == LK_IT_NEXT ? 1 : -1);
+      } else if (item < LK_IT_TARGET) {
+        look_set_mono(item == LK_IT_COLOR + 1);
+        toast(item == LK_IT_COLOR + 1 ? "B&W" : "COLOUR");
+      } else if (item < LK_IT_COUNT) {
+        /* Which camera the next look lands on. Nothing is written here: it
+         * changes what the picker above is describing, and pressing it must
+         * not overwrite four slots by itself. */
+        s_look_target = item - LK_IT_TARGET;
       }
       break;
 
@@ -2525,11 +2875,14 @@ static void activate(int item) {
       break;
 
     case SCR_SOUND:
-      if (item == 0) cfg_set_bool("body.sounds.save", !config_bool("body.sounds.save", true));
-      else if (item == 1) cfg_set_bool("body.sounds.ui", !config_bool("body.sounds.ui", true));
-      else if (item >= 2 && item < 5) {
+      if (item == SN_IT_PREV || item == SN_IT_NEXT) snd_step(item == SN_IT_NEXT ? 1 : -1);
+      else if (item == SN_IT_SHUTTER)
+        cfg_set_bool("body.sounds.save", !config_bool("body.sounds.save", true));
+      else if (item == SN_IT_BUTTON)
+        cfg_set_bool("body.sounds.ui", !config_bool("body.sounds.ui", true));
+      else if (item >= SN_IT_VOL && item < SN_IT_COUNT) {
         static const int VOLV[3] = {3, 6, 9};
-        cfg_set_int("shoot.volume", VOLV[item - 2]);
+        cfg_set_int("shoot.volume", VOLV[item - SN_IT_VOL]);
       }
       break;
 

@@ -102,14 +102,69 @@ bool config_bool(const char *path, bool fallback) {
 static const char *g_mode = "wiggle";
 static const char *g_flash_mode = "auto";
 static bool g_mono = false;
+static const char *g_look = "party-neg";
+static const char *g_shutter_sound = "click";
 
 const char *config_str(const char *path, const char *fallback) {
   if (strcmp(path, "mode") == 0) return g_mode;
   if (strcmp(path, "shoot.flashMode") == 0) return g_flash_mode;
+  if (strcmp(path, "shoot.shutterSound") == 0) return g_shutter_sound;
+  if (strcmp(path, "wiggle.recipeId") == 0) return g_look;
   if (strncmp(path, "quad.slots.", 11) == 0 && strstr(path, "colorMode"))
     return g_mono ? "mono" : "recipe";
+  /* All four slots answer the same look, so the LOOK screen's ALL target
+   * renders its normal state rather than MIXED. The mixed case gets its own
+   * shot below, driven by g_look. */
+  if (strncmp(path, "quad.slots.", 11) == 0 && strstr(path, "recipeId")) return g_look;
   if (strcmp(path, "device") == 0) return "KD4-D121BC";
   return fallback;
+}
+
+size_t config_str_copy(const char *path, char *out, size_t cap) {
+  const char *v = config_str(path, "");
+  snprintf(out, cap, "%s", v);
+  return strlen(v);
+}
+
+/* ---- looks and sounds -------------------------------------------------
+ *
+ * kdp_recipes.c parses an embedded JSON blob with the real cJSON and
+ * kdp_sounds.c opens the card; neither exists here. The LOOK and SOUND
+ * screens are pickers over these two lists, so the lists have to be real
+ * enough to render - the names below are the factory looks the firmware
+ * actually ships, and two invented clips, so a screenshot shows the row at
+ * the width it will really have. */
+static const struct {
+  const char *id;
+  const char *name;
+} FAKE_LOOKS[] = {
+    {"party-neg", "Party Neg"}, {"chrome", "Chrome"},         {"superia", "Superia"},
+    {"vivid", "Vivid"},         {"mono", "Mono"},             {"motion", "Motion"},
+    {"flash-digi", "Flash Digi"}, {"warm-2007", "Warm 2007"}, {"cold-flash", "Cold Flash"},
+    {"disposable", "Disposable"}, {"raw-digi", "Raw Digi"},
+};
+
+int kdp_recipes_count(void) { return (int)(sizeof FAKE_LOOKS / sizeof FAKE_LOOKS[0]); }
+
+bool kdp_recipes_name(int index, char *id, size_t id_cap, char *name, size_t name_cap) {
+  if (index < 0 || index >= kdp_recipes_count()) return false;
+  if (id && id_cap) snprintf(id, id_cap, "%s", FAKE_LOOKS[index].id);
+  if (name && name_cap) snprintf(name, name_cap, "%s", FAKE_LOOKS[index].name);
+  return true;
+}
+
+static const struct {
+  const char *id;
+  const char *name;
+} FAKE_CLIPS[] = {{"snd-air-horn", "Air horn"}, {"snd-polaroid", "Polaroid"}};
+
+int kdp_sounds_count(void) { return (int)(sizeof FAKE_CLIPS / sizeof FAKE_CLIPS[0]); }
+
+bool kdp_sounds_info(int index, char *id, size_t id_cap, char *name, size_t name_cap) {
+  if (index < 0 || index >= kdp_sounds_count()) return false;
+  if (id && id_cap) snprintf(id, id_cap, "%s", FAKE_CLIPS[index].id);
+  if (name && name_cap) snprintf(name, name_cap, "%s", FAKE_CLIPS[index].name);
+  return true;
 }
 
 /* Writes land nowhere: the preview is a renderer, and a screenshot run that
@@ -550,6 +605,19 @@ int main(int argc, char **argv) {
   SHOT(SCR_LOOK, "look_bw");
   g_mono = false;
 
+  /* The look picker on a custom-named look, and the QUAD variant with its
+   * TARGET row - the only two states the screen has that the default one does
+   * not show. QUAD is the taller of the two and the one whose footnotes come
+   * closest to the bottom edge. */
+  g_look = "flash-digi";
+  SHOT(SCR_LOOK, "look_picked");
+  g_mode = "quad";
+  s_look_target = 2; /* CAM2, so the row is not drawn on its first segment */
+  SHOT(SCR_LOOK, "look_quad_target");
+  s_look_target = 0;
+  g_mode = "wiggle";
+  g_look = "party-neg";
+
   s_focus[SCR_GALLERY] = 0;
   SHOT(SCR_GALLERY, "gallery");
   g_fake_total = 0;
@@ -614,6 +682,11 @@ int main(int argc, char **argv) {
   SHOT(SCR_SETTINGS, "settings");
   SHOT(SCR_DISPLAY, "settings_display");
   SHOT(SCR_SOUND, "settings_sound");
+  /* A custom clip in the picker: the longest name the row has to fit, and the
+   * only proof the card's clips reach the built-ins' list at all. */
+  g_shutter_sound = "snd-polaroid";
+  SHOT(SCR_SOUND, "settings_sound_custom_clip");
+  g_shutter_sound = "click";
 
   /* Connection in the three states that matter. The first is this body:
    * the radio is fitted and there is no route to it, which is exactly the
