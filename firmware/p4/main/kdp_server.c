@@ -55,8 +55,14 @@ static const char *TAG = "kdp_server";
 
 static kdp_identity_t s_id;
 static kdp_decoder_t s_decoder;
-static uint8_t s_decode_buf[KDP_MAX_FRAME];
-static uint8_t s_tx[KDP_MAX_FRAME];
+/* The two KDP frame buffers, KDP_MAX_FRAME (16 KiB) each. In PSRAM, not
+ * internal RAM: nothing here needs DMA-capable memory (the USB-Serial-JTAG
+ * driver copies into its own ring), and internal RAM is what the P4 is short
+ * of - ESP-Hosted's SDIO buffers can only live there, and a radio recovery
+ * has to find 16 KiB of it twice (net_hosted.c, the recovery reserve). Kept
+ * static until 0.4.6, which cost 32 KiB of the scarcest memory on the board. */
+static uint8_t *s_decode_buf;
+static uint8_t *s_tx;
 static SemaphoreHandle_t s_tx_lock;
 static bool s_usb_seen; /* first decoded host frame marks USB validated */
 
@@ -130,7 +136,7 @@ static long clamp_num(const cJSON *n, double lo, double hi, long dflt) {
 static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *payload,
                      uint32_t len) {
   xSemaphoreTake(s_tx_lock, portMAX_DELAY);
-  size_t total = kdp_encode_frame(s_tx, sizeof s_tx, KDP_PROTOCOL_VERSION, type, flags,
+  size_t total = kdp_encode_frame(s_tx, KDP_MAX_FRAME, KDP_PROTOCOL_VERSION, type, flags,
                                   seq, payload, len);
   if (total > 0) usb_link_write(s_tx, total);
   xSemaphoreGive(s_tx_lock);
@@ -154,7 +160,7 @@ static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *p
  */
 static bool send_raw_event(uint8_t evt, uint32_t seq, const uint8_t *payload, uint32_t len) {
   xSemaphoreTake(s_tx_lock, portMAX_DELAY);
-  const size_t total = kdp_encode_frame(s_tx, sizeof s_tx, KDP_PROTOCOL_VERSION, evt,
+  const size_t total = kdp_encode_frame(s_tx, KDP_MAX_FRAME, KDP_PROTOCOL_VERSION, evt,
                                         KDP_FLAG_EVENT, seq, payload, len);
   bool sent = false;
   if (total > 0) sent = usb_link_write_timeout(s_tx, total, EVENT_WRITE_TIMEOUT_MS) == (int)total;
@@ -2635,6 +2641,9 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
   s_id = *identity;
   s_tx_lock = xSemaphoreCreateMutex();
   if (s_tx_lock == NULL) return ESP_ERR_NO_MEM;
+  if (s_decode_buf == NULL) s_decode_buf = heap_caps_malloc(KDP_MAX_FRAME, MALLOC_CAP_SPIRAM);
+  if (s_tx == NULL) s_tx = heap_caps_malloc(KDP_MAX_FRAME, MALLOC_CAP_SPIRAM);
+  if (s_decode_buf == NULL || s_tx == NULL) return ESP_ERR_NO_MEM;
 
   esp_err_t err = usb_link_init();
   if (err != ESP_OK) {
@@ -2664,7 +2673,7 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
     s_tsens = tsens; /* otherwise GET_RUNTIME_STATS reports tempC.p4 null */
   }
 
-  kdp_decoder_init(&s_decoder, s_decode_buf, sizeof s_decode_buf);
+  kdp_decoder_init(&s_decoder, s_decode_buf, KDP_MAX_FRAME);
   TaskHandle_t srv = NULL;
   /* 12 KB, from 8. ROLL_CREATE runs on this task and nests two 1 KB HTTP
    * response buffers under cJSON parsing; measured on KD4-D121BC at 580 bytes
