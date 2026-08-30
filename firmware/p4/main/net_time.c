@@ -63,6 +63,11 @@ static void on_sync(struct timeval *tv) {
     /* Unreachable given the two guards above; kept because "unreachable" is a
      * claim about today's callers and this one is cheap. */
     ESP_LOGW(TAG, "SNTP answer refused by clock policy; clock stays %s", clock_source_str());
+    /* Refused because something outranks the network — a host that set the
+     * clock over KDP. That clock is trustworthy, so the hold has to come off
+     * here too. Skipping it is the case the audit found: a host-set clock
+     * released nothing, because the only release sat past this return. */
+    if (clock_trustworthy_for_tls()) net_link_clear_clock_hold(now_ms());
     return;
   }
 
@@ -77,20 +82,18 @@ static void on_sync(struct timeval *tv) {
   s_configured = false;
   ESP_LOGI(TAG, "wall clock now from the network; SNTP stopped");
 
-  /* The hold is released where it was placed. net_time_start() reported
-   * IP_READY with CLOCK_UNTRUSTED so that roll_http_ready() would refuse TLS
-   * until the clock could be believed; nothing cleared it once the clock was.
-   * Measured on KD4-D121BC: clockSource "network", C6_SNTP validated, and
-   * NETWORK_STATUS still saying CLOCK_UNTRUSTED - which would have held TLS
-   * for the life of the boot. Only touched when the link is still IP_READY,
-   * so a disconnect that arrived in between keeps its own state and reason. */
-  net_status_t st;
-  net_link_status(&st, esp_timer_get_time() / 1000);
-  if (st.state == NET_IP_READY && st.reason == NET_REASON_CLOCK_UNTRUSTED) {
-    net_link_report_state(NET_IP_READY, NET_REASON_NONE, "clock trusted from the network",
-                          esp_timer_get_time() / 1000);
-    klog("P4", "TLS released: clock trusted (source %s)", clock_source_str());
-  }
+  /* The hold is released where it was placed. net_time_sync_now() reported
+   * IP_READY with CLOCK_UNTRUSTED so the UI could say why TLS was not being
+   * attempted; nothing cleared it once the clock was trustworthy. Measured on
+   * KD4-D121BC: clockSource "network", C6_SNTP validated, and NETWORK_STATUS
+   * still saying CLOCK_UNTRUSTED.
+   *
+   * The test and the write happen inside net_link, under its lock. Doing it
+   * here - read the status, compare, report back - left the event task free to
+   * report a disconnect between the read and the write, and the write then put
+   * IP_READY back over it. */
+  net_link_clear_clock_hold(now_ms());
+  klog("P4", "TLS hold cleared: clock trusted (source %s)", clock_source_str());
 }
 
 void net_time_start(void) {
@@ -136,6 +139,12 @@ void net_time_sync_now(void) {
     net_link_report_state(NET_IP_READY, NET_REASON_CLOCK_UNTRUSTED,
                           "waiting for a trustworthy clock before TLS", now_ms());
     klog("P4", "TLS held: no trustworthy clock yet (source %s)", clock_source_str());
+  } else {
+    /* The clock became trustworthy some other way — a host set it over KDP,
+     * or an earlier boot's persisted time was adopted — and this is the next
+     * moment anything asks. A reason left saying CLOCK_UNTRUSTED after that
+     * sends someone looking at the clock for a fault that is elsewhere. */
+    net_link_clear_clock_hold(now_ms());
   }
 }
 

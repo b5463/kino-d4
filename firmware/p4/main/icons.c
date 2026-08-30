@@ -41,7 +41,7 @@ esp_err_t icons_build(void) {
     s_alpha[i] = heap_caps_calloc(1, (size_t)ICON_BOX * ICON_BOX, MALLOC_CAP_SPIRAM);
     if (s_rgb[i] == NULL || s_alpha[i] == NULL) {
       ESP_LOGE(TAG, "no room for icon sprites");
-      return ESP_ERR_NO_MEM;
+      goto fail;
     }
 
     for (int y = 0; y < edge; y++) {
@@ -61,6 +61,21 @@ esp_err_t icons_build(void) {
   s_ready = true;
   ESP_LOGI(TAG, "%d icons scaled to %d px max", W98_COUNT, ICON_BOX);
   return ESP_OK;
+
+  /* Give back whatever was allocated before the one that failed. Roughly
+   * 8 KB of PSRAM per icon, and the old return left every earlier sprite
+   * held for the life of the device on the one path where memory was already
+   * short - the worst possible moment to leak. s_ready stays false, so
+   * icons_blit() draws nothing and the menu shows labels only. */
+fail:
+  for (int i = 0; i < W98_COUNT; i++) {
+    free(s_rgb[i]);
+    free(s_alpha[i]);
+    s_rgb[i] = NULL;
+    s_alpha[i] = NULL;
+    s_edge[i] = 0;
+  }
+  return ESP_ERR_NO_MEM;
 }
 
 void icons_blit(uint16_t *canvas, int cw, int ch, int i, int x, int y) {

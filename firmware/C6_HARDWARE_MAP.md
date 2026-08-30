@@ -4,22 +4,26 @@ The P4 ↔ ESP32-C6 connection on the Guition `JC4880P443C-I-W`
 (module `JC-ESP32P4-M3-C6`), what is now established, and what still needs a
 board to confirm it.
 
-**Status: routing IDENTIFIED and internally CONSISTENT. Not yet bench-proven.**
+**Status: routing MEASURED on `KD4-D121BC`, 2026-08-29.**
 
 The earlier revision of this file recorded the routing as unknown and blocked
 the work. That was correct at the time — the repository contained no C6
-transport pin. It has been superseded by an external identification of the
-carrier's mapping, which this file reconciles against primary sources below.
-No pin has been driven yet.
+transport pin. It was superseded by an external identification of the carrier's
+mapping, which this file reconciles against primary sources below, and that
+identification has since been confirmed on a board.
 
-> **Bench status, 2026-08-29:** the SDIO routing in this document is **measured**,
-> not only corroborated. Slot 1 on GPIO14–19 enumerated the onboard C6 on
-> `KD4-D121BC` (`Card init success, TRANSPORT_RX_ACTIVE`, `rx_ready && tx_ready`),
-> on two boots, with the C6's own console as a second witness. GPIO54 is
-> corroborated as the C6's `CHIP_PU` three ways (ROM reports POWERON on every
-> pulse; esp_hosted's pulse produces a boot; the bus enumerates after it) but
-> the meter reading on JP1 pin 26 that closes B2 has not been reported. Record:
-> [`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md).
+> **Bench status, 2026-08-29:** the SDIO routing in this document is
+> **measured**, not only corroborated. Slot 1 on GPIO14–19 enumerated the
+> onboard C6 on `KD4-D121BC` (`Card init success, TRANSPORT_RX_ACTIVE`,
+> `rx_ready && tx_ready`), on two boots, with the C6's own console as a second
+> witness. GPIO54 is confirmed as the C6's `CHIP_PU` and its polarity is
+> settled: [`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md) records
+> `C6_EN_GPIO54` **VALIDATED** from a meter on JP1 pin 26 — ~3.3 V released,
+> ~0 V asserted, ~3.3 V released, across three announced cycles with a
+> `POWERON` boot on every release. Active-low, as configured.
+>
+> `HARDWARE_VALIDATION.md` owns bench state. Where a row in this file
+> disagrees with it, that file wins.
 
 ## The mapping
 
@@ -267,40 +271,42 @@ reported to ship C6 firmware older than current hosts expect. See
 | Item | State |
 |---|---|
 | Guition schematic in-repo | **Absent, and must stay absent** — third-party drawing. Pin facts recorded above with attribution |
-| `GPIO54` polarity on this carrier | **UNCONFIRMED** — convention assumed, override exists |
-| P4 GPIOs behind `C6_U0RXD`/`C6_U0TXD`/`C6_IO9` | **UNKNOWN** — blocks a P4-driven flashing proxy |
+| `GPIO54` polarity on this carrier | **CONFIRMED active-low 2026-08-29** on the meter — `HARDWARE_VALIDATION.md`. No override needed |
+| P4 GPIOs behind `C6_U0RXD`/`C6_U0TXD`/`C6_IO9` | **UNKNOWN** — blocks a P4-driven flashing proxy. The 2026-08-29 flash used the header pins by hand instead |
 | C6 SDIO IO power rail / LDO channel | **UNKNOWN** |
-| C6 module flash size | **UNKNOWN** — the official coprocessor image wants 4 MB |
-| Factory C6 image version | **UNREAD** |
-| Antenna path / RF switch | **NOT RECORDED** |
-| Any of it on hardware | **NOTHING. No pin has been driven toward the C6.** |
+| C6 module flash size | **4 MB, measured 2026-08-29** — ESP32-C6FH4 (QFN32) rev v0.2, `flash-id` 4 MB, a full 4 194 304 B read-back. Answered on `KD4-D121BC` only |
+| Factory C6 image version | **READ 2026-08-29** — 2.3.2, refused by the host's version gate; the coprocessor was rewritten to the pinned 3.0.6 |
+| Antenna path / RF switch | **NOT RECORDED** — association at -77 dBm works; nothing has been characterised |
+| Uploads from the camera | **NO CAPTURE HAS REACHED A ROLL FROM THIS BODY.** Registration and roll creation are done; the upload is not. Issue #133 |
 
 ## Registry rows
 
 Thirteen rows are in the firmware's own registry now (`hwv_item_t`, readable
 over `GET_HW_VALIDATION`), appended rather than inserted because the enum
-ordinal is the NVS key. **None is earned.** They exist before the bench run so
-that a registry which grows during a bench session — the kind nobody trusts
-afterwards — is not what records the answers.
+ordinal is the NVS key. They were written before the bench run so that a
+registry which grows during a bench session — the kind nobody trusts afterwards
+— is not what records the answers.
 
 Ordered the way `C6_BRINGUP.md` proceeds, so a run that stops halfway leaves an
-obvious high-water mark.
+obvious high-water mark. The states below are copied from
+[`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md), which owns them; read the
+board over `GET_HW_VALIDATION` before trusting either.
 
 | Row | Evidence needed | State |
 |---|---|---|
-| `SD_SLOT0` | Card mounts from slot 0, not slot 1 | **UNVALIDATED** — the only one that can flip in the default build |
-| `C6_EN_GPIO54` | Measured `CHIP_PU` behaviour *and* polarity | **UNVALIDATED** |
-| `C6_SDIO_PINS` | Enumeration succeeds on GPIO14-19, slot 1 | **UNVALIDATED** |
-| `C6_LINK_HANDSHAKE` | ESP-Hosted handshake completes | **UNVALIDATED** |
-| `C6_SLAVE_VERSION` | Coprocessor version read back and compatible | **UNVALIDATED** |
-| `C6_WIFI_SCAN` | Scan returns a known AP | **UNVALIDATED** |
-| `C6_WIFI_ASSOCIATE` | WPA2 association | **UNVALIDATED** |
-| `C6_DHCP` | Lease obtained — `IP_READY`, not association | **UNVALIDATED** |
-| `C6_DNS` | Name resolved | **UNVALIDATED** |
-| `C6_SNTP` | Trustworthy wall time from the network | **UNVALIDATED** |
-| `C6_TLS` | Certificate-**verified** HTTPS response | **UNVALIDATED** |
-| `SD_C6_COEXIST` | Scan works before *and* after card I/O, both up | **UNVALIDATED** |
-| `C6_ROLL_UPLOAD` | A capture reaches a Roll from the camera | **UNVALIDATED** |
+| `SD_SLOT0` | Card mounts from slot 0, not slot 1 | **VALIDATED 2026-08-28** — mounted first attempt on `KD4-D121BC` |
+| `C6_EN_GPIO54` | Measured `CHIP_PU` behaviour *and* polarity | **VALIDATED 2026-08-29** — meter on JP1 pin 26, active-low |
+| `C6_SDIO_PINS` | Enumeration succeeds on GPIO14-19, slot 1 | **VALIDATED 2026-08-29** — `rx_ready == 1`, twice, two witnesses |
+| `C6_LINK_HANDSHAKE` | ESP-Hosted handshake completes | **VALIDATED 2026-08-29** — `rx_ready && tx_ready` |
+| `C6_SLAVE_VERSION` | Coprocessor version read back and compatible | **VALIDATED 2026-08-29** — C6 3.0.6 against host 3.0.6, after the rewrite |
+| `C6_WIFI_SCAN` | Scan returns a known AP | **VALIDATED 2026-08-29** — six networks in 2450 ms |
+| `C6_WIFI_ASSOCIATE` | WPA2 association | **VALIDATED 2026-08-29** — `BRCD` at -77 dBm; a wrong passphrase refused with `AUTH_FAILED` |
+| `C6_DHCP` | Lease obtained — `IP_READY`, not association | **VALIDATED 2026-08-29** — lease `10.20.80.181` |
+| `C6_DNS` | Name resolved | **VALIDATED 2026-08-29** — API host in 27 ms |
+| `C6_SNTP` | Trustworthy wall time from the network | **VALIDATED 2026-08-29** — `clockSource network` on first association |
+| `C6_TLS` | Certificate-**verified** HTTPS response | **UNVALIDATED** — the TLS session verified and completed; the rule wants a 2xx over https and the production API is not deployed |
+| `SD_C6_COEXIST` | Scan works before *and* after card I/O, both up | **UNVALIDATED** — both are up at once, but no scan has run around card I/O, which is what the row means |
+| `C6_ROLL_UPLOAD` | A capture reaches a Roll from the camera | **UNVALIDATED** — registration and roll creation done, no capture uploaded. Issue #133 |
 
 `SD_SLOT0` is first because it is a regression risk rather than a new feature:
 the mount that validated GPIO39-44 was on slot 1, and moving the card to slot 0

@@ -396,6 +396,78 @@ static void test_reconcile(void) {
 
 /* ---- redaction -------------------------------------------------------- */
 
+/* ---- sanitising an error body ------------------------------------------ */
+
+/*
+ * An error detail is bytes off a socket. Two things it must not carry into a
+ * job's last_error, because both cost the record permanently:
+ *
+ *   control bytes  cJSON escapes each one as `\u00XX` — six characters. 95 of
+ *                  them are 570 bytes inside a record bounded at 768, so the
+ *                  record exceeds the bound and upload_store_decode() refuses
+ *                  it for the rest of its life;
+ *   invalid UTF-8  cJSON emits it verbatim, and the KDP reply carrying it is
+ *                  then a document Studio cannot parse.
+ */
+static void test_sanitise_detail(void) {
+  char out[RQ_ERROR_LEN];
+
+  /* Every control byte becomes one '?', and nothing below 0x20 survives. */
+  char controls[40];
+  for (int i = 0; i < 31; i++) controls[i] = (char)(i + 1); /* 0x01..0x1f */
+  controls[31] = (char)0x7f;
+  controls[32] = '\0';
+  rq_sanitise_detail(out, sizeof out, controls);
+  CHECK(strlen(out) == 32, "one byte out per byte in, got %u", (unsigned)strlen(out));
+  for (size_t i = 0; i < strlen(out); i++) {
+    CHECK((unsigned char)out[i] == '?', "byte %u became '?', got 0x%02x", (unsigned)i,
+          (unsigned char)out[i]);
+  }
+
+  /* A 502 answered with a binary page, which is what a proxy does. */
+  rq_sanitise_detail(out, sizeof out, "POST /x -> 502 \x1f\x8b\x08\x00gzip");
+  CHECK(strstr(out, "POST /x -> 502") != NULL, "the useful part survives: %s", out);
+  for (size_t i = 0; out[i] != '\0'; i++) {
+    CHECK((unsigned char)out[i] >= 0x20 && (unsigned char)out[i] != 0x7f,
+          "no control byte survives, found 0x%02x", (unsigned char)out[i]);
+  }
+
+  /* Valid UTF-8 passes through untouched: a network really is called that. */
+  rq_sanitise_detail(out, sizeof out, "join failed: Kaffeeh\xc3\xa4us");
+  CHECK(strcmp(out, "join failed: Kaffeeh\xc3\xa4us") == 0, "valid UTF-8 unchanged: %s", out);
+  rq_sanitise_detail(out, sizeof out, "\xe2\x82\xac \xf0\x9f\x93\xb7");
+  CHECK(strcmp(out, "\xe2\x82\xac \xf0\x9f\x93\xb7") == 0, "3- and 4-byte forms unchanged");
+
+  /* A stray continuation byte, a lead with nothing after it, an overlong form
+   * and a surrogate are each one '?'. */
+  rq_sanitise_detail(out, sizeof out, "a\x80" "b");
+  CHECK(strcmp(out, "a?b") == 0, "stray continuation byte, got %s", out);
+  rq_sanitise_detail(out, sizeof out, "a\xc3");
+  CHECK(strcmp(out, "a?") == 0, "a lead with no continuation, got %s", out);
+  rq_sanitise_detail(out, sizeof out, "a\xc0\xaf" "b");
+  CHECK(strcmp(out, "a??b") == 0, "overlong two-byte form, got %s", out);
+  rq_sanitise_detail(out, sizeof out, "a\xed\xa0\x80" "b");
+  CHECK(strcmp(out, "a???b") == 0, "a UTF-16 surrogate, got %s", out);
+  rq_sanitise_detail(out, sizeof out, "a\xf5\x80\x80\x80" "b");
+  CHECK(strcmp(out, "a????b") == 0, "past U+10FFFF, got %s", out);
+
+  /* Never longer than its input, so a caller can size one buffer for both. */
+  rq_sanitise_detail(out, sizeof out, "plain ascii, unchanged");
+  CHECK(strcmp(out, "plain ascii, unchanged") == 0, "clean text unchanged: %s", out);
+
+  /* A multi-byte sequence that would be cut in half by the end of the buffer
+   * is dropped whole. Half a sequence is the exact thing this removes. */
+  char small[6];
+  rq_sanitise_detail(small, sizeof small, "abc\xe2\x82\xac");
+  CHECK(strcmp(small, "abc") == 0, "a sequence that does not fit is dropped, got %s", small);
+  for (size_t i = 0; small[i] != '\0'; i++) {
+    CHECK((unsigned char)small[i] < 0x80, "and no lead byte is left behind");
+  }
+
+  rq_sanitise_detail(out, sizeof out, NULL);
+  CHECK(out[0] == '\0', "NULL input yields an empty string");
+}
+
 static void test_redaction(void) {
   char out[RQ_ERROR_LEN];
 
@@ -574,6 +646,7 @@ int main(void) {
   test_settled_jobs_ignore_further_outcomes();
   test_reconcile();
   test_redaction();
+  test_sanitise_detail();
   test_state_names();
   test_init_clamps();
   test_fifty_offline_captures_reach_roll_exactly_once();

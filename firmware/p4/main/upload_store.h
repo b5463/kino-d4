@@ -64,6 +64,15 @@ bool upload_store_has_file(const char *uuid, const char *name);
  * Serialize `job`. Returns a NUL-terminated string owned by cJSON — release it
  * with `cJSON_free()` — or NULL when the allocation failed.
  *
+ * The result fits within UPLOAD_STORE_MAX_BYTES whenever it can: `last_error`
+ * is shortened until it does. That is not cosmetic. cJSON escapes one control
+ * byte as six characters, so a 95-byte error text of them is 570 bytes and
+ * pushes the record past the bound — and a record past the bound is one
+ * upload_store_decode() refuses forever, so the job would be rebuilt from the
+ * card on every boot and its capture re-registered every time. The error text
+ * is the only field in the record that is a diagnostic rather than a decision,
+ * so it is the one that gives way.
+ *
  * Exposed so the host test can round-trip a job without a filesystem.
  */
 char *upload_store_encode(const rq_job_t *job);

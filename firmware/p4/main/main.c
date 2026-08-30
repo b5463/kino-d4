@@ -101,7 +101,7 @@ static void cam_probe_task(void *arg) {
   bool was_online[CAMLINK_CAMS] = {false};
   for (;;) {
     /*
-     * Never probe while a capture owns the link.
+     * Hold the capture lock across the whole sweep, not just check it.
      *
      * camlink_hello_ch takes the channel mutex and holds it for the whole
      * round trip, 3000 ms on a socket with nothing in it. This task walks
@@ -113,8 +113,22 @@ static void cam_probe_task(void *arg) {
      * uart_flush_input(). That is the per-chunk byte loss - the first chunk
      * lands cleanly and nearly every one after it fails once and succeeds on
      * the retry, which is exactly the pattern the bench recorded.
+     *
+     * capture_busy() was the guard, and it could not do this job: it is a
+     * try-lock sample, so it says whether the pipeline was busy an instant ago
+     * and nothing about the twelve seconds of HELLOs that follow. A capture
+     * starting one instruction later found the channels occupied anyway. The
+     * lock itself is the guard; the sweep now owns the pipeline for as long as
+     * it is on the wire.
+     *
+     * The cost is that a press arriving mid-sweep is refused rather than
+     * queued, which is the correct trade on the two counts that matter: it is
+     * refused in microseconds with a reason, and the sweep it waits for is a
+     * few HELLO round trips on channels that answer. Only a body with dead
+     * channels pays the full twelve seconds, and that body cannot take the
+     * photograph either way.
      */
-    if (capture_busy()) {
+    if (!capture_lock(0)) {
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -136,6 +150,9 @@ static void cam_probe_task(void *arg) {
       }
       was_online[cam] = online;
     }
+    /* Before the delay, not after it: a capture must not wait out a probe
+     * interval to get the pipeline back. */
+    capture_unlock();
     /* Slow down once anything has answered. A body that is up needs its
      * cameras confirmed occasionally; an empty bench harness needs a retry
      * often enough that plugging a node in feels immediate. */
@@ -181,12 +198,31 @@ void app_main(void) {
    * ever explain the JPEGs inside it. Here, at boot, is the only moment
    * nothing else is writing to the card.
    *
-   * Bounded and conservative: only UUID-shaped directories, only the six
-   * filenames a capture can hold, and an orphan containing anything else is
+   * Bounded and conservative: only UUID-shaped directories, only the names in
+   * STORAGE_CAPTURE_FILES, and an orphan containing anything else is
    * preserved rather than forced. See storage_sweep_orphans. */
   storage_sweep_t sweep;
   storage_sweep_orphans(&sweep);
-  ESP_ERROR_CHECK(camlink_init());
+
+  /* The camera link, and its failure is reported like every other line here.
+   *
+   * This was ESP_ERROR_CHECK, which aborts - the one abort in a boot sequence
+   * written from end to end to degrade. It also fired twenty lines BEFORE
+   * kdp_server_start(), so the failure it caught took the recovery channel with
+   * it: a body that panicked here had no KDP, no console commands and nothing
+   * to diagnose it with except the backtrace.
+   *
+   * Nothing downstream needs the link to have come up. camlink_init() reports
+   * a port that will not install per channel and carries on, and every
+   * per-channel entry point tests valid_cam() first - which is false for a
+   * channel with no mutex, including all four when this never ran. The camera
+   * then behaves exactly as it does with no nodes fitted: offline cameras, a
+   * capture that fails CAMERA_OFFLINE, and a screen that says so. */
+  esp_err_t cl_err = camlink_init();
+  if (cl_err != ESP_OK) {
+    ESP_LOGE(TAG, "camera link unavailable: %s - every camera reads offline",
+             esp_err_to_name(cl_err));
+  }
 
   /* Capture before the KDP server, because CAMERA_CAPTURE is dispatched the
    * instant the server is listening and a NACK saying "not ready" on the
@@ -223,8 +259,16 @@ void app_main(void) {
    * camlink_get_info_ch(), then formats a klog line through varargs. That
    * path first runs the instant CAM1 answers, so the overflow would land on
    * the node-greeting checkpoint and read as a link or node fault. */
-  xTaskCreate(cam_probe_task, "cam_probe", 8192, NULL, 5, &probe);
-  taskmon_register("cam_probe", probe);
+  /* Checked, like capture.c checks its own xTaskCreate calls. A task that was
+   * not created still leaves a NULL handle here, and taskmon_register() would
+   * then list a task that does not exist - so the stack report that exists to
+   * find this kind of fault would be the thing hiding it. */
+  if (xTaskCreate(cam_probe_task, "cam_probe", 8192, NULL, 5, &probe) != pdPASS) {
+    ESP_LOGE(TAG, "camera probe unavailable: %s - online state will not refresh",
+             esp_err_to_name(ESP_ERR_NO_MEM));
+  } else {
+    taskmon_register("cam_probe", probe);
+  }
 
   /* The panel comes up last, deliberately, and its failure is never fatal.
    * It is the newest and least proven peripheral on this board, and KDP over

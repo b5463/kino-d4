@@ -65,6 +65,25 @@ typedef enum { SND_SHUTTER, SND_TICK } sound_t;
 static QueueHandle_t s_queue;
 static void audio_task(void *arg);
 
+/* The two sounds, rendered once at init and kept.
+ *
+ * They were synthesised on every press: ~33 KB of internal DRAM allocated and
+ * freed, and about 2000 expf() and sinf() calls, to produce a buffer that is
+ * bit-identical each time - the noise generator is reseeded to a constant at
+ * the top of the loop precisely so that it is. Nothing about a click depends
+ * on when it is played, so it is rendered once.
+ *
+ * PSRAM, not internal. esp_codec_dev_write() hands the buffer to
+ * i2s_channel_write(), which copies it into the DMA descriptors; the pointer
+ * itself is never given to the DMA engine, so it does not have to be
+ * DMA-capable. Together the two are about 30 KB, which is worth keeping out
+ * of internal memory on a device whose framebuffers already live in PSRAM. */
+static int16_t *s_shutter_pcm;
+static size_t s_shutter_bytes;
+static int16_t *s_tick_pcm;
+static size_t s_tick_bytes;
+static void audio_render_sounds(void);
+
 bool audio_ready(void) { return s_ready; }
 
 esp_err_t audio_init(void) {
@@ -194,10 +213,25 @@ esp_err_t audio_init(void) {
   s_queue = xQueueCreate(2, sizeof(sound_t));
   if (s_queue == NULL) {
     ESP_LOGE(TAG, "no room for the sound queue");
+    s_ready = false;
     return ESP_ERR_NO_MEM;
   }
+  /* Both sounds, before the task that plays them exists. Rendering here
+   * rather than on first press also means a failure is reported at boot,
+   * next to the rest of the audio bring-up, instead of at the first tap. */
+  audio_render_sounds();
+
   TaskHandle_t h = NULL;
-  xTaskCreate(audio_task, "audio", 4096, NULL, 3, &h);
+  /* Checked. Without the task nothing ever drains the queue, so every sound
+   * is posted, accepted and silently dropped - "no sound" that looks
+   * identical to a disconnected speaker. */
+  if (xTaskCreate(audio_task, "audio", 4096, NULL, 3, &h) != pdPASS) {
+    ESP_LOGE(TAG, "no room for the audio task - the camera will be silent");
+    /* s_ready was set above; leaving it true would make audio_ready() answer
+     * for a task that does not exist. */
+    s_ready = false;
+    return ESP_ERR_NO_MEM;
+  }
   taskmon_register("audio", h);
 
   ESP_LOGI(TAG, "AUDIO_READY es8311 at 0x%02x, %d Hz, vol %d (%.1f dB), amp GPIO%d, mic DIN%d",
@@ -267,9 +301,12 @@ static esp_err_t render_click(const click_t *c, int16_t **out, size_t *out_bytes
   const size_t bytes = (size_t)frames * CHANNELS * sizeof(int16_t);
 
   /* Rendered in float first, because the peak is not known until the whole
-   * sound exists and normalising needs it. */
+   * sound exists and normalising needs it. Internal, and freed before this
+   * returns - it is scratch, not the result. */
   float *mono = heap_caps_calloc((size_t)voiced, sizeof(float), MALLOC_CAP_DEFAULT);
-  int16_t *buf = heap_caps_calloc(1, bytes, MALLOC_CAP_DEFAULT);
+  /* PSRAM: the result is kept for the life of the device, and the codec copies
+   * it rather than pointing the DMA at it. See the retained buffers above. */
+  int16_t *buf = heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM);
   if (mono == NULL || buf == NULL) {
     free(mono);
     free(buf);
@@ -325,13 +362,19 @@ static esp_err_t render_click(const click_t *c, int16_t **out, size_t *out_bytes
 }
 
 /** Open, play, close. The amp is enabled by the open and muted by the close,
- *  so it is powered for the length of one sound and no longer. */
-static void play_click(const click_t *c) {
+ *  so it is powered for the length of one sound and no longer.
+ *
+ *  Takes finished PCM rather than a click_t: the samples are rendered once at
+ *  init and this only clocks them out. */
+static void play_click(const int16_t *pcm, size_t bytes) {
   if (!s_ready) return;
-
-  int16_t *buf = NULL;
-  size_t bytes = 0;
-  if (render_click(c, &buf, &bytes) != ESP_OK) return;
+  if (pcm == NULL || bytes == 0) {
+    /* The render failed at boot and audio_render_sounds() said so there. Said
+     * again here because a play_click() that returns without a word is the
+     * exact ambiguity the open-failure branch below exists to prevent. */
+    ESP_LOGW(TAG, "no rendered samples; sound skipped");
+    return;
+  }
 
   esp_codec_dev_sample_info_t fs = {
       .sample_rate = SAMPLE_RATE,
@@ -345,7 +388,6 @@ static void play_click(const click_t *c) {
      * codec refused to start" - the exact ambiguity this firmware keeps
      * being bitten by. */
     ESP_LOGW(TAG, "codec open failed (%d); sound skipped", rc);
-    free(buf);
     return;
   }
 
@@ -362,10 +404,18 @@ static void play_click(const click_t *c) {
     /* Muted: still open and close so the amp state machine stays identical,
      * but send nothing. */
     esp_codec_dev_close(s_dev);
-    free(buf);
     return;
   }
-  int written = esp_codec_dev_write(s_dev, buf, bytes);
+  /* The const is cast off because esp_codec_dev_write takes a plain void*,
+   * and that is only safe because it leaves the buffer alone here: it applies
+   * software volume IN PLACE (esp_codec_dev.c, the dev->sw_vol branch), and
+   * sw_vol is created only when the codec has no set_vol of its own. The
+   * ES8311 has one (es8311.c sets base.set_vol), so sw_vol stays NULL and the
+   * samples go straight to i2s_channel_write, which copies them. Fit a codec
+   * without hardware volume and this buffer would be attenuated on every
+   * play until it decayed to silence - render per call again if that day
+   * comes. */
+  int written = esp_codec_dev_write(s_dev, (void *)pcm, bytes);
   if (written != 0) ESP_LOGW(TAG, "codec write returned %d", written);
   else hwv_mark_validated(HWV_AUDIO_AMP_GPIO11, "samples clocked out with the amp enabled");
 
@@ -378,7 +428,6 @@ static void play_click(const click_t *c) {
    * this covers the sound itself. */
   vTaskDelay(pdMS_TO_TICKS(TAIL_MS + 80));
   esp_codec_dev_close(s_dev);
-  free(buf);
 }
 
 /* Deliberately restrained, and the body is gone rather than merely reduced.
@@ -413,6 +462,29 @@ static const click_t CLICK_TICK = {.total_ms = 130,
                                    .thump_amp = 0.25f,
                                    .level = 0.60f};
 
+/**
+ * Render both sounds, once, at init.
+ *
+ * Never fatal - a camera with no sound is a camera - but never silent about
+ * it either. A NULL buffer here is the only reason play_click() can do
+ * nothing, so the reason is logged at the moment it happens rather than left
+ * to be guessed at from a speaker that never clicks.
+ */
+static void audio_render_sounds(void) {
+  if (render_click(&CLICK_SHUTTER, &s_shutter_pcm, &s_shutter_bytes) != ESP_OK) {
+    s_shutter_pcm = NULL;
+    s_shutter_bytes = 0;
+    ESP_LOGW(TAG, "shutter render failed - the shutter will be silent");
+  }
+  if (render_click(&CLICK_TICK, &s_tick_pcm, &s_tick_bytes) != ESP_OK) {
+    s_tick_pcm = NULL;
+    s_tick_bytes = 0;
+    ESP_LOGW(TAG, "tick render failed - presses will be silent");
+  }
+  ESP_LOGI(TAG, "sounds rendered once: shutter %u B, tick %u B", (unsigned)s_shutter_bytes,
+           (unsigned)s_tick_bytes);
+}
+
 /* ------------------------------------------------------------------ */
 /* Playback runs on its own task                                       */
 /*                                                                     */
@@ -430,7 +502,8 @@ static void audio_task(void *arg) {
   for (;;) {
     sound_t which;
     if (xQueueReceive(s_queue, &which, portMAX_DELAY) != pdTRUE) continue;
-    play_click(which == SND_SHUTTER ? &CLICK_SHUTTER : &CLICK_TICK);
+    if (which == SND_SHUTTER) play_click(s_shutter_pcm, s_shutter_bytes);
+    else play_click(s_tick_pcm, s_tick_bytes);
   }
 }
 

@@ -36,7 +36,22 @@ static const char *s_state = NL_STATE_BOOTING;
 static camera_fb_t *s_fb;
 static uint32_t s_frame_id;
 
-static uint8_t s_decode_buf[KDP_MAX_FRAME];
+/*
+ * Inbound frames only, and they are small.
+ *
+ * KDP_MAX_FRAME is 16402 bytes because the KDP payload cap is 16 KB, but the
+ * P4 never sends the node anything of that shape. The largest request on this
+ * link is READ - {"frameId":N,"offset":N,"length":N} - which cam_link.c builds
+ * in a 96-byte buffer; CAPTURE with a resolution and a quality is about 50
+ * bytes. 256 bytes of payload is four times the largest request and leaves
+ * room for a field being added without a resize. The decoder contract
+ * (decoder.h, kdp_decoder_init) is explicit that the storage may be smaller
+ * than KDP_MAX_FRAME: "a smaller buffer still runs, but any frame whose total
+ * size exceeds cap is resynced past like a corrupt length", and a resync shows
+ * up in the STATUS counters rather than running off the end of this array.
+ */
+#define LINK_DECODE_PAYLOAD_MAX 256
+static uint8_t s_decode_buf[KDP_HEADER_LEN + LINK_DECODE_PAYLOAD_MAX + KDP_CRC_LEN];
 static kdp_decoder_t s_decoder;
 
 // Reply frames: header + chunk + CRC is the largest we ever send.
@@ -184,6 +199,23 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   }
 
   s_state = NL_STATE_EXPOSING;
+  /*
+   * Photographs get a fresh frame; previews take whatever is queued.
+   *
+   * The driver keeps capturing, so it can already be holding a frame exposed
+   * right after the last release; without this a stored capture is a picture
+   * of the moment after the PREVIOUS readout (SYNC_FEASIBILITY.md, "Stale
+   * frames"; confirmed on the bench). camsensor_discard_queued only fetches
+   * when the driver says a frame is queued, so this costs the readout of one
+   * waiting frame and never a whole empty-queue wait. It is paid only on the
+   * sizes a capture is stored at: a viewfinder frame a hundred milliseconds
+   * old is what a viewfinder shows anyway, and paying a frame period per
+   * preview would halve its rate. A request that names no resolution is
+   * treated as a photograph.
+   */
+  const bool preview = cJSON_IsString(res) && res->valuestring != NULL &&
+                       camsensor_is_preview_resolution(res->valuestring);
+  const uint32_t discard_ms = preview ? 0 : camsensor_discard_queued();
   uint32_t duration_ms = 0;
   camsensor_timing_t timing;
   const int64_t cmd_us = esp_timer_get_time();
@@ -207,6 +239,11 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   cJSON_AddNumberToObject(json, "frameId", s_frame_id);
   cJSON_AddNumberToObject(json, "size", (double)fb->len);
   cJSON_AddNumberToObject(json, "durationMs", duration_ms);
+  /* What the discard-fetch above cost. Non-zero means a stale frame WAS
+   * waiting and was thrown away; zero means the queue was empty (or this was
+   * a preview, which does not discard). Either way durationMs is the returned
+   * frame's own cost. */
+  cJSON_AddNumberToObject(json, "discardMs", discard_ms);
   /* Stale-frame diagnostics. All microseconds in THIS node's esp_timer domain,
    * which shares no epoch with the P4 or with any other node - only
    * differences within one node are meaningful. See camsensor_timing_t.
@@ -243,15 +280,43 @@ static void handle_read(uint32_t seq, cJSON *req) {
   size_t off = (size_t)offset->valuedouble;
   size_t len = (size_t)length->valuedouble;
   if (len > NL_CHUNK_MAX) len = NL_CHUNK_MAX;
-  if (off >= s_fb->len) len = 0; /* past EOF reads return short, not an error */
-  else if (off + len > s_fb->len) len = s_fb->len - off;
+  /* Past EOF reads return short, not an error - that zero-length reply is how
+   * the P4 learns the transfer is done. Send the base pointer for it: s_fb->buf
+   * + off with off past the end is a pointer outside the object, which is
+   * undefined even though nothing is read through it at len 0. */
+  const uint8_t *src = s_fb->buf;
+  if (off >= s_fb->len) {
+    len = 0;
+  } else {
+    if (off + len > s_fb->len) len = s_fb->len - off;
+    src += off;
+  }
 
   s_state = NL_STATE_TRANSFERRING;
-  send_frame(NL_CMD_READ, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, s_fb->buf + off,
-             (uint32_t)len);
+  send_frame(NL_CMD_READ, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, src, (uint32_t)len);
+  /* Back to holding a frame. TRANSFERRING describes a chunk in flight, and
+   * uart_write_bytes has returned, so leaving it set made STATUS report a
+   * transfer that had finished - the last chunk of every capture left the node
+   * looking busy until the next command changed the state. */
+  s_state = NL_STATE_JPEG_READY;
 }
 
-static void handle_release(uint32_t seq) {
+static void handle_release(uint32_t seq, cJSON *req) {
+  /* RELEASE carries frameId (node_link.h) and it has to be checked, the same
+   * way handle_read checks it. A late RELEASE for frame N - a retry, or a
+   * reply the P4 had already given up waiting for - arriving after capture
+   * N+1 would otherwise free N+1, and the READ that follows answers BAD_ID on
+   * a transfer that was healthy.
+   *
+   * Compared against s_frame_id, not against s_fb: a repeat RELEASE for the
+   * frame just released names the current id with nothing held, and that is
+   * the idempotent case, not an error. A request that names no frameId at all
+   * keeps the old unconditional behaviour. */
+  const cJSON *frame_id = cJSON_GetObjectItem(req, "frameId");
+  if (cJSON_IsNumber(frame_id) && (uint32_t)frame_id->valuedouble != s_frame_id) {
+    send_nack(NL_CMD_RELEASE, seq, "BAD_ID", "No such frame held");
+    return;
+  }
   if (s_fb != NULL) {
     camsensor_release(s_fb);
     s_fb = NULL;
@@ -279,7 +344,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case NL_CMD_STATUS: handle_status(frame->seq); break;
     case NL_CMD_CAPTURE: handle_capture(frame->seq, req); break;
     case NL_CMD_READ: handle_read(frame->seq, req); break;
-    case NL_CMD_RELEASE: handle_release(frame->seq); break;
+    case NL_CMD_RELEASE: handle_release(frame->seq, req); break;
     case NL_CMD_REBOOT: {
       cJSON *json = cJSON_CreateObject();
       cJSON_AddBoolToObject(json, "ok", true);

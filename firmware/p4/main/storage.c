@@ -575,11 +575,21 @@ void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
         if (p.p95_write_chunk_us > out->sustained.p95_write_chunk_us) {
           out->sustained.p95_write_chunk_us = p.p95_write_chunk_us;
         }
-        if (p.write_bytes_per_sec < out->sustained.write_bytes_per_sec) {
+        /* Slowest wins, except that a zero cannot be beaten by anything.
+         * bench_one leaves the rate at 0 when a pass measured under a
+         * millisecond, and once a zero is in the accumulator no later pass can
+         * ever replace it - the run then reports 0 KB/s for a card that was
+         * merely fast. So a zero baseline is seeded by the first pass that
+         * measured a rate at all, and only then does the minimum apply. */
+        if (out->sustained.write_bytes_per_sec == 0 ||
+            (p.write_bytes_per_sec != 0 &&
+             p.write_bytes_per_sec < out->sustained.write_bytes_per_sec)) {
           out->sustained.write_bytes_per_sec = p.write_bytes_per_sec;
           out->sustained.write_ms = p.write_ms;
         }
-        if (p.read_bytes_per_sec < out->sustained.read_bytes_per_sec) {
+        if (out->sustained.read_bytes_per_sec == 0 ||
+            (p.read_bytes_per_sec != 0 &&
+             p.read_bytes_per_sec < out->sustained.read_bytes_per_sec)) {
           out->sustained.read_bytes_per_sec = p.read_bytes_per_sec;
           out->sustained.read_ms = p.read_ms;
         }
@@ -609,18 +619,35 @@ void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
        (unsigned long)out->sustained.worst_write_chunk_us, (unsigned long)out->total_ms);
 }
 
-// Persistent capture counter — ids are never reused after a reboot.
-static uint32_t next_capture_number(void) {
+/*
+ * Persistent capture counter — ids are never reused after a reboot.
+ *
+ * Every NVS return is checked, and the reason is the failure mode: this
+ * ignored all four of them and returned the untouched `count`, so a namespace
+ * that would not open, or a partition with no free pages, gave 0 to every
+ * capture and the whole card filled with folders called CAP_000000. Duplicate
+ * ids are not a cosmetic fault - they are what the host sorts and de-duplicates
+ * captures by.
+ *
+ * ESP_ERR_NVS_NOT_FOUND from the get is not a failure: it is the first capture
+ * on a fresh device, and the count starts at 1.
+ */
+static bool next_capture_number(uint32_t *out) {
   nvs_handle_t nvs;
   uint32_t count = 0;
-  if (nvs_open("kino", NVS_READWRITE, &nvs) == ESP_OK) {
-    nvs_get_u32(nvs, "capture", &count);
-    count++;
-    nvs_set_u32(nvs, "capture", count);
-    nvs_commit(nvs);
+  if (nvs_open("kino", NVS_READWRITE, &nvs) != ESP_OK) return false;
+  esp_err_t err = nvs_get_u32(nvs, "capture", &count);
+  if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
     nvs_close(nvs);
+    return false;
   }
-  return count;
+  count++;
+  err = nvs_set_u32(nvs, "capture", count);
+  if (err == ESP_OK) err = nvs_commit(nvs);
+  nvs_close(nvs);
+  if (err != ESP_OK) return false;
+  *out = count;
+  return true;
 }
 
 esp_err_t storage_capture_open(storage_capture_t *c, const char *capture_uuid,
@@ -629,9 +656,23 @@ esp_err_t storage_capture_open(storage_capture_t *c, const char *capture_uuid,
   memset(c, 0, sizeof *c);
   c->open_cam = -1;
 
-  snprintf(c->id, sizeof c->id, "%s_%06lu", id_prefix != NULL ? id_prefix : "CAP",
-           (unsigned long)next_capture_number());
-  snprintf(c->dir, sizeof c->dir, "%s/KINO/CAPTURES/%s", MOUNT, capture_uuid);
+  const char *prefix = id_prefix != NULL ? id_prefix : "CAP";
+  const char *uuid = capture_uuid != NULL ? capture_uuid : "000000";
+  uint32_t seq = 0;
+  if (next_capture_number(&seq)) {
+    snprintf(c->id, sizeof c->id, "%s_%06lu", prefix, (unsigned long)seq);
+  } else {
+    /* NVS would not give a number, so the id comes from the capture UUID
+     * instead: six hex digits of 122 random bits, which keeps ids unique on the
+     * card when the sequence cannot. What is lost is the ordering, and the "x"
+     * says so at a glance rather than leaving a mystery in a folder listing.
+     * Ordering is recoverable from capturedAtMs in META.JSON; a colliding id
+     * is not recoverable at all. */
+    ESP_LOGE(TAG, "capture counter unavailable in NVS; id falls back to the UUID");
+    klog("SD", "capture id from UUID: the NVS sequence is unreadable");
+    snprintf(c->id, sizeof c->id, "%s_x%.6s", prefix, uuid);
+  }
+  snprintf(c->dir, sizeof c->dir, "%s/KINO/CAPTURES/%s", MOUNT, uuid);
 
   mkdir(MOUNT "/KINO", 0775);
   mkdir(MOUNT "/KINO/CAPTURES", 0775);
@@ -647,14 +688,32 @@ esp_err_t storage_capture_frame_begin(storage_capture_t *c, int cam) {
   if (cam < 0 || cam >= STORAGE_CAPTURE_FRAMES) return ESP_ERR_INVALID_ARG;
   if (c->jpg != NULL) return ESP_ERR_INVALID_STATE;
 
-  char path[80];
-  snprintf(path, sizeof path, "%s/C%d.JPG", c->dir, cam + 1);
-  c->jpg = fopen(path, "wb");
+  /* Kept on the capture, not on this stack: the path is what a failed write
+   * needs in order to take the truncated file with it, and by then this
+   * function has long returned. */
+  snprintf(c->open_path, sizeof c->open_path, "%s/C%d.JPG", c->dir, cam + 1);
+  c->jpg = fopen(c->open_path, "wb");
   if (c->jpg == NULL) {
+    c->open_path[0] = '\0';
     set_error("SD_WRITE_FAILED");
     return ESP_FAIL;
   }
   c->open_cam = cam;
+  return ESP_OK;
+}
+
+/** Forget the frame that was open, and delete its file if there is one. */
+static void frame_discard(storage_capture_t *c) {
+  if (c->open_path[0] != '\0') unlink(c->open_path);
+  c->open_path[0] = '\0';
+  c->open_cam = -1;
+}
+
+esp_err_t storage_capture_frame_abandon(storage_capture_t *c) {
+  if (c->jpg == NULL) return ESP_ERR_INVALID_STATE;
+  fclose(c->jpg);
+  c->jpg = NULL;
+  frame_discard(c);
   return ESP_OK;
 }
 
@@ -680,12 +739,18 @@ esp_err_t storage_capture_frame_end(storage_capture_t *c) {
   failed |= fclose(c->jpg) != 0;
   c->jpg = NULL;
   if (failed) {
+    /* The file on the card is whatever fwrite managed, which is not a JPEG.
+     * It leaves with the failure: the written bit stays clear, so META.JSON
+     * will not list this frame, and a folder with an unlisted C<n>.JPG in it
+     * is exactly the orphan the delete and sweep paths then have to argue
+     * about. */
     set_error("SD_WRITE_FAILED");
-    c->open_cam = -1;
+    frame_discard(c);
     return ESP_FAIL;
   }
   if (c->open_cam >= 0) c->written |= (uint8_t)(1u << c->open_cam);
   c->open_cam = -1;
+  c->open_path[0] = '\0';
   return ESP_OK;
 }
 
@@ -729,7 +794,10 @@ void storage_capture_abort(storage_capture_t *c) {
     fclose(c->jpg);
     c->jpg = NULL;
   }
+  /* No separate name list here: the whole folder goes below, and one list of
+   * a capture's files is the only way the two paths can agree. */
   c->open_cam = -1;
+  c->open_path[0] = '\0';
   c->written = 0;
   storage_capture_delete(c->dir);
 }
@@ -850,8 +918,8 @@ void storage_sweep_orphans(storage_sweep_t *out) {
       continue;
     }
 
-    /* storage_capture_delete unlinks only the six names a capture can hold and
-     * then rmdir()s, which fails on a directory holding anything else. So this
+    /* storage_capture_delete unlinks only the names in STORAGE_CAPTURE_FILES
+     * and then rmdir()s, which fails on a directory holding anything else. So this
      * either takes an orphan that is entirely ours, or leaves it intact. */
     storage_capture_delete(dir);
     if (stat(dir, &st) == 0) {
@@ -877,14 +945,26 @@ void storage_sweep_orphans(storage_sweep_t *out) {
   if (out != NULL) *out = s;
 }
 
+/*
+ * Every file a capture directory can hold, in one place.
+ *
+ * This used to be five names built inline here - C1..C4 and META.JSON - while
+ * capture_fire() wrote THUMB.JPG on every success. So the rmdir below always
+ * refused the still-occupied directory, the delete silently did nothing, and
+ * the capture reappeared on the next gallery scan. Five names against six
+ * files is the kind of drift a list beats a loop at, which is why kdp_server's
+ * media allow-list reads this same array rather than keeping its own.
+ */
+const char *const STORAGE_CAPTURE_FILES[STORAGE_CAPTURE_FILE_COUNT] = {
+    "C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG", "META.JSON", "THUMB.JPG",
+};
+
 void storage_capture_delete(const char *dir) {
   char path[80];
-  for (int cam = 0; cam < STORAGE_CAPTURE_FRAMES; cam++) {
-    snprintf(path, sizeof path, "%s/C%d.JPG", dir, cam + 1);
+  for (int i = 0; i < STORAGE_CAPTURE_FILE_COUNT; i++) {
+    snprintf(path, sizeof path, "%s/%s", dir, STORAGE_CAPTURE_FILES[i]);
     unlink(path);
   }
-  snprintf(path, sizeof path, "%s/META.JSON", dir);
-  unlink(path);
   /* rmdir only removes an empty directory, so anything unexpected left in the
    * folder keeps the folder - deleting a capture must never take a file this
    * function did not put there. */

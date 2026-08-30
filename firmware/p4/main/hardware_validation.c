@@ -16,7 +16,16 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "CAM1_TX_GPIO52",   "CAM1_RX_GPIO51",  "CAM1_BAUD_921600", "CAM1_NODE_LINK",
     "CAM1_SENSOR_DETECT", "CAM1_CAPTURE", "CAM1_JPEG_TRANSFER", "CAM1_SD_WRITE",
     "DSI_PANEL_ST7701", "BACKLIGHT_GPIO23", "I2C_SHARED_BUS", "TOUCH_GT911",
-    "AUDIO_ES8311",     "AUDIO_AMP_GPIO11", "CAM_PWR_EN_GPIO31",
+    "AUDIO_ES8311",     "AUDIO_AMP_GPIO11",
+    /* CAM_PWR_EN_GPIO31 is one of three rows nothing in this firmware marks -
+     * the others are SYNC_TRIGGER_GPIO32 and FLASH_EN_GPIO28 below. Not
+     * because the pins are missing: after ECN-0002 all three are on JP1
+     * (GPIO31 pin 10, GPIO32 pin 19, GPIO28 pin 21) and power.c drives 31
+     * while capture.c drives 32. They are unmarked because driving an output
+     * proves the P4 end and nothing past it - the MOSFET bank, the node's
+     * SYNC_IN, the flash LEDs. Each waits on a meter or a scope on the header
+     * pin, recorded by hand in firmware/HARDWARE_VALIDATION.md. */
+    "CAM_PWR_EN_GPIO31",
     /* Append-only, in lockstep with hwv_item_t - see the note there. These ids
      * exceed NVS_KEY_NAME_MAX_SIZE, which is harmless: the primary keys are
      * indexed ("v.%d") and only the pre-fix legacy lookup used the id, so it
@@ -27,6 +36,12 @@ static const char *ITEM_IDS[HWV_COUNT] = {
     "CAM3_SD_WRITE",
     "CAM4_UART", "CAM4_NODE_LINK", "CAM4_SENSOR_DETECT", "CAM4_JPEG_TRANSFER",
     "CAM4_SD_WRITE",
+    /* SYNC_TRIGGER_GPIO32: the pin is BOARD_SYNC_OUT, JP1 19, and capture.c
+     * toggles it on every shot. Waiting on the far end - a node that says it
+     * saw the edge, or a scope on pin 19.
+     * FLASH_EN_GPIO28: BOARD_FLASH_EN, JP1 21, routed but not yet asserted by
+     * any code path, so there is nothing to measure until capture.c drives it
+     * for a flash request. */
     "SYNC_TRIGGER_GPIO32", "FLASH_EN_GPIO28", "BTN_SHUTTER",
     /* ESP32-C6 radio, in bring-up order. None can flip in the default build,
      * which links no radio. See hardware_validation.h for what earns each. */

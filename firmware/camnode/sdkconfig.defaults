@@ -14,6 +14,12 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
+# -O2, not IDF's default -Og. The node's CRC-32 over a UXGA JPEG and the
+# KDP framing on the link UART run per capture and per preview frame; see
+# firmware/p4/sdkconfig.defaults for the reasoning and the diagnostic
+# override (sdkconfig.debug). Regenerate sdkconfig after this change.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
 # Two clean builds of one commit must produce the same .bin, so a hash in a
 # bench record identifies the source. See firmware/p4/sdkconfig.defaults for
 # the measurement.

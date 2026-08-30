@@ -74,4 +74,17 @@ typedef struct {
 camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing);
 void camsensor_release(camera_fb_t *fb);
 
+/**
+ * Fetch and throw away whatever frame the driver already has queued, so the
+ * next camsensor_capture() starts a frame AFTER this call rather than
+ * returning one exposed before the command arrived.
+ *
+ * Only fetches when the driver reports a queued frame. With the queue empty it
+ * returns 0 immediately rather than blocking a whole FB_GET_TIMEOUT (4000 ms)
+ * waiting for one, which would double the worst-case cost of a capture on the
+ * node's single task. Returns the milliseconds it cost, so a caller can report
+ * what the discard, rather than the exposure, paid for. See
+ * SYNC_FEASIBILITY.md, "Stale frames". */
+uint32_t camsensor_discard_queued(void);
+
 #endif

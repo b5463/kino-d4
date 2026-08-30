@@ -17,6 +17,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "gfx.h"
 #include "klog.h"
@@ -1069,9 +1070,17 @@ static void tile_rect(int i, int *x, int *y) {
  * an outline round SHOOT that survived leaving the menu, coming back, and
  * choosing something else. A cache of a screen is only safe if the screen it
  * caches has no state in it.
+ *
+ * Nor has it any artwork in it before icons_build() finishes. ui_task waits
+ * 2 s for the sprites and then draws regardless; if the builder is still
+ * running at that point, priming here captured six tiles of bare #C0C0C0 and
+ * s_mcached latched true, so the menu stayed blank for the rest of the
+ * session even though the icons arrived a moment later. Nothing invalidates
+ * the cache, so the only fix is not to fill it from a blank blit.
  */
 static void menu_prime(void) {
   if (s_mcached) return;
+  if (!icons_ready()) return;
 
   fill(0, 0, UI_W, UI_H, W_FACE);
   for (int i = 0; i < 6; i++) {
@@ -1224,14 +1233,31 @@ static void sh_pane_rect(int cam, int *x, int *y) {
   *y = (cam / 2) * SH_PANE_H;
 }
 
-/* Scaled to fill and cropped, rather than fitted and bordered. */
-static void sh_blit(const uint16_t *tile, int px, int py) {
+/* Scaled to fill and cropped, rather than fitted and bordered.
+ *
+ * The source row and column for every destination pixel are fixed by four
+ * compile-time constants, so they are worked out once into a pair of tables
+ * instead of a multiply and a divide per pixel. Four panes of 400x240 is
+ * 384 000 pixels a frame, and the finder redraws several times a second.
+ * The tables are 1280 bytes together and the arithmetic is unchanged, so the
+ * output is the same pixels as before, one for one. */
+static uint16_t s_sh_xmap[SH_PANE_W];
+static uint16_t s_sh_ymap[SH_PANE_H];
+static bool s_sh_map_built;
+
+static void sh_build_maps(void) {
   const int span = VF_H - 2 * SH_CROP;
+  for (int y = 0; y < SH_PANE_H; y++) s_sh_ymap[y] = (uint16_t)(SH_CROP + y * span / SH_PANE_H);
+  for (int x = 0; x < SH_PANE_W; x++) s_sh_xmap[x] = (uint16_t)(x * VF_W / SH_PANE_W);
+  s_sh_map_built = true;
+}
+
+static void sh_blit(const uint16_t *tile, int px, int py) {
+  if (!s_sh_map_built) sh_build_maps();
   for (int y = 0; y < SH_PANE_H; y++) {
-    const int sy = SH_CROP + y * span / SH_PANE_H;
-    const uint16_t *src = tile + (size_t)sy * VF_W;
+    const uint16_t *src = tile + (size_t)s_sh_ymap[y] * VF_W;
     uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
-    for (int x = 0; x < SH_PANE_W; x++) dst[x] = src[x * VF_W / SH_PANE_W];
+    for (int x = 0; x < SH_PANE_W; x++) dst[x] = src[s_sh_xmap[x]];
   }
 }
 
@@ -1520,8 +1546,26 @@ static void photo_release(void) {
 
 /* Decoded at PH_W x PH_H rather than by scaling the 208 px gallery tile:
  * thumb_load takes any target size, so there is no reason to show a
- * thumbnail blown up to half the screen. */
-static void photo_open(const gallery_item_t *it) {
+ * thumbnail blown up to half the screen.
+ *
+ * Takes the card, like every other reader. This runs up to three full-res
+ * hardware JPEG decodes off the SD card and it did so without going through
+ * the arbiter at all, while gallery.c's scan and its tile loads both hold
+ * STORAGE_USER_UI for the same bus. A decode that lands mid-capture shares
+ * the SDMMC bus with four frames being written and widens the spread between
+ * them, which is the one number the capture pipeline exists to keep small.
+ * Same 2 s budget as the gallery.
+ *
+ * Returns false when the card could not be taken, so the caller can say so
+ * and stay where it is. It still returns true for a decode that found no
+ * readable file - that is the NO IMAGE state, which is a picture of the
+ * photograph screen rather than a reason not to open it. */
+static bool photo_open(const gallery_item_t *it) {
+  /* The card first, before any state names the new photograph: a refused
+   * acquire must leave the module describing whatever it described before,
+   * with nothing allocated for a picture that was never decoded. */
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) return false;
+
   photo_release();
   snprintf(s_photo_id, sizeof s_photo_id, "%s", it->id);
   snprintf(s_photo_label, sizeof s_photo_label, "%s", it->label);
@@ -1535,7 +1579,10 @@ static void photo_open(const gallery_item_t *it) {
    * tiles this way already; this is the same rule, applied where it was
    * missed. */
   s_photo = heap_caps_aligned_calloc(64, 1, THUMB_TILE_BYTES(PH_W, PH_H), MALLOC_CAP_SPIRAM);
-  if (s_photo == NULL) return;
+  if (s_photo == NULL) {
+    storage_release(STORAGE_USER_UI);
+    return true;
+  }
 
   static const char *const TRY[3] = {"C1.JPG", "THUMB.JPG", "C2.JPG"};
   for (int i = 0; i < 3; i++) {
@@ -1543,9 +1590,11 @@ static void photo_open(const gallery_item_t *it) {
     snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, it->id, TRY[i]);
     if (thumb_load(path, s_photo, PH_W, PH_H, C_WELL) == ESP_OK) {
       s_photo_ok = true;
-      return;
+      break;
     }
   }
+  storage_release(STORAGE_USER_UI);
+  return true;
 }
 
 static void draw_photo(void) {
@@ -1576,7 +1625,10 @@ static void draw_photo(void) {
   const int dd = s_pressed == P_IT_DELETE ? 1 : 0;
   button(px, by, bw, bh, dd);
   text_mid(&UI_FONT_S, px + bw / 2 + dd, by + (bh - UI_FONT_S.line_h) / 2 + dd, "DELETE", W_TEXT);
-  if (s_focus[SCR_PHOTO] == P_IT_DELETE) focus_rect(px + 4, by + 4, bw - 8, bh - 8);
+  /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
+   * zeroed, so reading it directly put a focus ring on DELETE the first time
+   * any photograph was opened, on a body whose only input is a finger. */
+  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_rect(px + 4, by + 4, bw - 8, bh - 8);
 
   /* No radio on this body, so Roll cannot take it. Dimmed with the reason
    * rather than hidden - a control that vanishes teaches nothing. */
@@ -1806,13 +1858,13 @@ static void draw_display(void) {
   draw_segments(24, y0 + 24, UI_W - 48, 44, SECS_15, 3,
                 nearest_idx(config_int("body.autoDimS", 30), DIM_S),
                 s_pressed >= 0 && s_pressed < 3 ? s_pressed : -1,
-                s_focus[SCR_DISPLAY] < 3 ? s_focus[SCR_DISPLAY] : -1);
+                s_focus_shown && s_focus[SCR_DISPLAY] < 3 ? s_focus[SCR_DISPLAY] : -1);
 
   text(&UI_FONT_S, 24, y0 + 92, "SLEEP AFTER", W_TEXT);
   draw_segments(24, y0 + 116, UI_W - 48, 44, SECS_60, 3,
                 nearest_idx(config_int("body.sleepS", 120), SLEEP_S),
                 s_pressed >= 3 && s_pressed < 6 ? s_pressed - 3 : -1,
-                s_focus[SCR_DISPLAY] >= 3 && s_focus[SCR_DISPLAY] < 6
+                s_focus_shown && s_focus[SCR_DISPLAY] >= 3 && s_focus[SCR_DISPLAY] < 6
                     ? s_focus[SCR_DISPLAY] - 3 : -1);
 
   /* The backlight is a plain GPIO, on or off. A brightness control here would
@@ -2025,6 +2077,17 @@ static void dialog_spec(dlg_spec_t *d) {
 #define DLG_Y 132
 #define DLG_BTN_W 148
 #define DLG_BTN_H 44
+/* One definition of where the two buttons are, because there were two and
+ * they disagreed: the draw used a 16 px inset and the hit test used 18, so
+ * both rects were 2 px off the pixels they belonged to and a press on the
+ * outer edge of CANCEL or the confirm landed on nothing. The gap between the
+ * pair is 10 px. `h` is the dialog height, which depends on whether the spec
+ * carries a subtitle, so the baseline has to be passed it. */
+#define DLG_BTN_INSET 16
+#define DLG_BTN_GAP 10
+#define DLG_BTN_Y(h) (DLG_Y + (h) - DLG_BTN_H - DLG_BTN_INSET)
+#define DLG_BTN_X2 (DLG_X + DLG_W - DLG_BTN_INSET - DLG_BTN_W)
+#define DLG_BTN_X1 (DLG_BTN_X2 - DLG_BTN_GAP - DLG_BTN_W)
 
 static void draw_dialog(void) {
   /* Scrim over whatever is behind, so the decision is the only live thing.
@@ -2056,9 +2119,9 @@ static void draw_dialog(void) {
   text(&UI_FONT_M, DLG_X + 20, DLG_Y + 56, d.body, W_TEXT);
   if (d.sub) text(&UI_FONT_S, DLG_X + 20, DLG_Y + 90, d.sub, RGB(0x40, 0x40, 0x40));
 
-  const int fy = DLG_Y + h - DLG_BTN_H - 16;
-  const int b2 = DLG_X + DLG_W - 16 - DLG_BTN_W;
-  const int b1 = b2 - 10 - DLG_BTN_W;
+  const int fy = DLG_BTN_Y(h);
+  const int b2 = DLG_BTN_X2;
+  const int b1 = DLG_BTN_X1;
 
   button(b1, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 0);
   text_mid(&UI_FONT_M, b1 + DLG_BTN_W / 2 + (s_pressed == 0 ? 1 : 0),
@@ -2232,9 +2295,9 @@ static int hit_dialog(int x, int y) {
   dlg_spec_t d;
   dialog_spec(&d);
   const int h = d.sub ? 196 : 168;
-  const int by = DLG_Y + h - DLG_BTN_H - 18;
-  const int bx2 = DLG_X + DLG_W - 18 - DLG_BTN_W;
-  const int bx1 = bx2 - 10 - DLG_BTN_W;
+  const int by = DLG_BTN_Y(h);
+  const int bx2 = DLG_BTN_X2;
+  const int bx1 = DLG_BTN_X1;
   if (in(x, y, bx1, by, DLG_BTN_W, DLG_BTN_H)) return 0;
   if (in(x, y, bx2, by, DLG_BTN_W, DLG_BTN_H)) return 1;
   return -1;
@@ -2344,9 +2407,10 @@ static void dialog_commit(void) {
   switch (d) {
     case DLG_RESTART:
       config_save();
-      /* The camera's own words, on the way out. Two of them. */
+      /* What the camera is doing, not a farewell. It said GOOD NIGHT and
+       * then came straight back up, which reads as a shutdown that failed. */
       fill(0, 0, UI_W, UI_H, W_FACE);
-      text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - UI_FONT_M.line_h / 2, "GOOD NIGHT", W_TEXT);
+      text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - UI_FONT_M.line_h / 2, "RESTARTING", W_TEXT);
       gfx_present();
       vTaskDelay(pdMS_TO_TICKS(420));
       crt_collapse();
@@ -2355,7 +2419,18 @@ static void dialog_commit(void) {
     case DLG_DELETE: {
       char dir[128];
       snprintf(dir, sizeof dir, "%s/%s", CAPTURES_DIR, s_photo_id);
+      /* Unlinking four JPEGs and a META.JSON is a card operation like any
+       * other and went through no arbiter at all - so a delete could land in
+       * the middle of a capture writing to the same directory tree. Same 2 s
+       * budget as the gallery; on a timeout nothing is deleted and the
+       * screen does not move, which is the only safe answer for an
+       * irreversible operation. */
+      if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+        toast("Card busy");
+        break;
+      }
       storage_capture_delete(dir);
+      storage_release(STORAGE_USER_UI);
       photo_release();
       gallery_refresh();
       toast("Deleted");
@@ -2420,7 +2495,13 @@ static void activate(int item) {
       if (item >= 0 && item < GALLERY_PAGE) {
         const gallery_item_t *slots = gallery_slots();
         if (slots[item].state == TILE_EMPTY) break;
-        photo_open(&slots[item]);
+        /* The card was busy, so nothing was decoded. Stay on the gallery and
+         * say why rather than opening an empty photograph screen that looks
+         * like a lost capture. */
+        if (!photo_open(&slots[item])) {
+          toast("Card busy");
+          break;
+        }
         s_focus[SCR_PHOTO] = P_IT_DELETE;
         go(SCR_PHOTO, 200);
         return;
@@ -2489,21 +2570,74 @@ static void fire_shutter(bool long_press) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Physical keys, handed to the UI task rather than acted on            */
+/*                                                                      */
+/* buttons.c calls the handler from its own task - priority 5, no core   */
+/* affinity. Everything a press does touches state the UI task owns: go()*/
+/* redraws s_cv, takes a gfx_snapshot() and runs a gfx_dissolve(), all of*/
+/* which the ui task is doing at the same moment on CPU1. Two writers on */
+/* one canvas and two callers into the compositor is a torn frame at     */
+/* best and a PPA transaction started from under another one at worst.   */
+/*                                                                      */
+/* It has never been seen because board_d4v1.h assigns no button pins, so*/
+/* buttons.c reads nothing and the handler is never called. But that     */
+/* header promises the opposite: "assign a real pin and the control comes*/
+/* alive with no other change". So the fault ships armed, and the first  */
+/* harness with a shutter wired to it is what fires it. A queue is the   */
+/* whole fix - the press is recorded on the buttons task and acted on by */
+/* the task that owns the screen.                                        */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+  button_id_t id;
+  bool long_press;
+} btn_event_t;
+
+/* Length 4: a finger cannot outrun the UI loop's 20 ms period by more than
+ * that, and a backlog of stale presses is worse than a dropped one. */
+static QueueHandle_t s_btn_q;
+
+/* Runs on the buttons task. Records and returns - no drawing, no capture,
+ * no config, nothing that reaches the canvas. */
+static void on_button(button_id_t id, bool long_press) {
+  if (s_btn_q == NULL) return;
+  const btn_event_t ev = {.id = id, .long_press = long_press};
+  /* Never blocks. The buttons task is above the UI in priority, so waiting
+   * here would hold the debouncer off the pins for as long as the UI is busy
+   * presenting a frame. */
+  (void)xQueueSend(s_btn_q, &ev, 0);
+}
+
 /* From the menu, the shutter opens the viewfinder rather than taking a
  * photograph of the inside of a bag. From the viewfinder it captures. That is
- * the safest camera-like reading of a single-stage button. */
-static void on_button(button_id_t id, bool long_press) {
-  if (id == BTN_FN) {
+ * the safest camera-like reading of a single-stage button.
+ *
+ * Called only from ui_task, via the queue above. */
+static void handle_button(const btn_event_t *ev) {
+  /* A physical key was used: from here on the focus ring is drawn. This is
+   * the only place that flips it, matching the contract at s_focus_shown. */
+  s_focus_shown = true;
+  if (ev->id == BTN_FN) {
     flash_cycle();
     return;
   }
-  if (id != BTN_SHUTTER) return;
+  if (ev->id != BTN_SHUTTER) return;
   if (s_screen != SCR_SHOOT) {
     go(SCR_SHOOT, 160);
     gfx_present();
     return;
   }
-  fire_shutter(long_press);
+  fire_shutter(ev->long_press);
+}
+
+/* Drained once per loop iteration, before anything reads the touch panel: a
+ * key press and a tap in the same 20 ms should resolve in the order they
+ * arrived, and the key got there first. */
+static void drain_buttons(void) {
+  if (s_btn_q == NULL) return;
+  btn_event_t ev;
+  while (xQueueReceive(s_btn_q, &ev, 0) == pdTRUE) handle_button(&ev);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2544,6 +2678,10 @@ static void ui_task(void *arg) {
   bool was_asleep = false;
 
   for (;;) {
+    /* Physical keys first: they were recorded on the buttons task and this
+     * is the task that owns the canvas and the compositor. */
+    drain_buttons();
+
     uint16_t tx = 0, ty = 0;
     int region = -1;
     const bool down = touch_ready() && touch_get(&tx, &ty);
@@ -2713,6 +2851,15 @@ esp_err_t ui_start(void) {
   }
   s_cv = gfx_canvas();
 
+  /* The queue exists before the handler is registered, or a press arriving
+   * between the two would be dropped by on_button's NULL guard. */
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  if (s_btn_q == NULL) {
+    /* Not fatal: the touch panel is the primary input and a camera with no
+     * physical keys is what this body already is. Said out loud because a
+     * silently dead shutter pin is exactly the ambiguity this fix removes. */
+    ESP_LOGE(TAG, "no room for the button queue - physical keys will do nothing");
+  }
   buttons_on_press(on_button);
 
   ESP_LOGI(TAG, "UI_READY %dx%d landscape via PPA, tiles %dx%d", UI_W, UI_H, M_TILE_W, M_TILE_H);
@@ -2748,7 +2895,13 @@ esp_err_t ui_start(void) {
    * Keeping the compositor on CPU1 lets both run at full rate instead of
    * trading the preview against the shutter.
    */
-  xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, 4, &ui_h, 1);
+  /* Checked, like capture.c does. A UI task that was never created leaves a
+   * board that boots, logs UI_READY and then shows a splash for ever - which
+   * reads as a display or touch fault rather than as an out-of-memory. */
+  if (xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, 4, &ui_h, 1) != pdPASS) {
+    ESP_LOGE(TAG, "no room for the ui task");
+    return ESP_ERR_NO_MEM;
+  }
   taskmon_register("ui", ui_h);
 
   /* The icon builder starts AFTER the UI. Created first it would simply run
@@ -2756,7 +2909,14 @@ esp_err_t ui_start(void) {
    * calling ui_start(); created second, the UI task is already animating and
    * blocking on frame timing and the builder fills exactly those gaps. */
   TaskHandle_t ic_h = NULL;
-  xTaskCreate(icons_task, "icons", 4096, NULL, 3, &ic_h);
+  /* Not fatal, and not silent either: without it icons_ready() never comes
+   * true, ui_task waits its 2 s and draws a menu of six labels with no
+   * artwork. That is a working camera, but the reason has to be in the log
+   * or it looks like the icon baker produced nothing. */
+  if (xTaskCreate(icons_task, "icons", 4096, NULL, 3, &ic_h) != pdPASS) {
+    ESP_LOGE(TAG, "no room for the icon builder - the menu will have no artwork");
+    return ESP_OK;
+  }
   taskmon_register("icons", ic_h);
   return ESP_OK;
 }

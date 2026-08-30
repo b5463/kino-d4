@@ -28,6 +28,37 @@
 #define VF_W 320
 #define VF_H 240
 
+/*
+ * Viewfinder-shaped timeouts, not capture-shaped ones.
+ *
+ * A stored capture may fairly wait eight seconds for a slow node. A pane may
+ * not: waiting that long freezes the picture someone is framing with, and the
+ * next frame is a couple of hundred milliseconds away in any case. A QVGA
+ * exposure is tens of milliseconds and its transfer about fifty, so a node
+ * that has not answered in 900 ms is not slow, it is absent.
+ *
+ * In the header because viewfinder_hold()'s timeout has to be derived from
+ * them; see VF_HOLD_MS.
+ */
+#define VF_CAPTURE_TIMEOUT_MS 900
+#define VF_READ_TIMEOUT_MS 600
+
+/*
+ * What a capture must give viewfinder_hold(), derived rather than picked.
+ *
+ * One pump is a capture plus the reads that follow it: a preview JPEG is
+ * capped at 24 KB and a chunk is 8192 B, so at most three reads, and the
+ * hardware decode runs after them. 900 + 4 x 600 = 3300 ms — the fourth read's
+ * worth of budget is what covers that decode.
+ *
+ * It was a flat 1500 ms, which is shorter than the 2.7 s a pump can spend
+ * before the decode even starts. The hold then timed out with a pump still on
+ * the wire and the capture went ahead anyway - which is the mid-transfer
+ * BAD_ID that viewfinder_hold() exists to prevent, logged as "vf hold TIMED
+ * OUT ... capturing anyway".
+ */
+#define VF_HOLD_MS (VF_CAPTURE_TIMEOUT_MS + 4 * VF_READ_TIMEOUT_MS)
+
 typedef enum {
   VF_NO_LINK = 0, /* the node never answered - unwired, unpowered, or absent */
   VF_LIVE,        /* a frame decoded within the staleness window */

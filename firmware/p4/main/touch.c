@@ -167,7 +167,15 @@ esp_err_t touch_init(void) {
            DISPLAY_H_RES, DISPLAY_V_RES);
   klog("P4", "touch up gt911");
   TaskHandle_t h = NULL;
-  xTaskCreate(touch_task, "touch", 4096, NULL, 4, &h);
+  /* Checked: the GT911 answers on I2C either way, so without this task the
+   * controller is up and nothing ever polls it - a screen that draws and
+   * cannot be pressed, reported as TOUCH_READY. s_ready is cleared so
+   * touch_ready() and the UI agree with the hardware. */
+  if (xTaskCreate(touch_task, "touch", 4096, NULL, 4, &h) != pdPASS) {
+    ESP_LOGE(TAG, "touch task would not start: no heap; the panel will not respond");
+    s_ready = false;
+    return ESP_ERR_NO_MEM;
+  }
   taskmon_register("touch", h);
   return ESP_OK;
 }

@@ -13,14 +13,28 @@ the radio, the RPC server, the SDIO slave — is
 be: capture, Roll and KDP are the P4's, and a coprocessor that also holds
 product logic gives the camera a second place to disagree with itself.
 
-**Nothing in this directory has been flashed or run on hardware.** Read
-`firmware/C6_HARDWARE_MAP.md` and the two gates below before writing C6 flash.
+**This image has been flashed and run.** `firmware/HARDWARE_VALIDATION.md`
+records the 2026-08-29 session: the factory 2.3.2 coprocessor was replaced with
+the pinned 3.0.6 from a verified 4 MB backup, the C6 boots, enumerates over
+SDIO slot 1, and the host's version gate passes (`C6_SLAVE_VERSION`
+VALIDATED). The two gates below were the gates for that first write; read them
+and `firmware/C6_HARDWARE_MAP.md` before writing C6 flash on any **other**
+board, because the flash-size answer was established on `KD4-D121BC` and on no
+other unit.
 
-## GATE 1 — the C6 module's flash size is not established
+## GATE 1 — the C6 module's flash size — ANSWERED on `KD4-D121BC`, 2026-08-29
+
+> **4 MB, measured.** `esptool chip-id` on the C6 read ESP32-C6FH4 (QFN32) rev
+> v0.2 with embedded 4 MB, `flash-id` detected 4 MB, and a full
+> `read-flash 0 0x400000` returned 4 194 304 B twice with the same SHA-256.
+> `firmware/HARDWARE_VALIDATION.md` carries the session. The gate below is the
+> reasoning that produced that check, and it still applies to every board whose
+> C6 has not been read.
 
 > `sdkconfig.defaults` sets `CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y`.
-> **The C6 module's actual flash size is UNKNOWN** (`firmware/C6_HARDWARE_MAP.md`,
-> "What is still unknown"). An image built for more flash than the die carries
+> On an unread module the actual flash size is unknown
+> (`firmware/C6_HARDWARE_MAP.md`, "What is still unknown"). An image built for
+> more flash than the die carries
 > **flashes successfully and then fails to boot**, and `ota_1` at offset
 > `0x1D0000` is past the end of a 2 MB part. Confirm the module's flash size
 > against the actual board — `esptool.py flash_id` over the recovery path in
@@ -183,6 +197,18 @@ Measured on this tree (`rm -rf build sdkconfig` between builds):
 bytes:  1105872
 sha256: 5d98256bc901dfd0f9d788a0c4e8d779e49286366a61619b35a6010dfbe0abb8
 ```
+
+**The two bench records disagree on this hash and the next build must settle
+it.** `firmware/C6_BRINGUP.md` and `firmware/HARDWARE_VALIDATION.md` both give
+`3616fe6e6e6329f7443dce0f19232bb6aded9091801db874f150a18a1baaee61` for a
+`kino-c6.bin` of the same 1 105 872 bytes — the second of those is the esptool
+verification of the image actually written to the C6 on 2026-08-29. Identical
+length with a different digest means the two were built from different sources
+or different toolchains, not that one is a typo, and neither record says which
+commit produced the number above. Do not pick one: build the pinned commit
+twice in `espressif/idf:v5.5.1`, record the hash here and in
+`HARDWARE_VALIDATION.md` with the commit beside it, and delete whichever of
+these lines the rebuild disproves.
 
 ## Configuration worth knowing
 

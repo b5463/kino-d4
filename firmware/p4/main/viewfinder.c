@@ -41,17 +41,9 @@ static const char *TAG = "viewfinder";
 #define VF_STALE_MS 2000
 
 
-/*
- * Viewfinder-shaped timeouts, not capture-shaped ones.
- *
- * A stored capture may fairly wait eight seconds for a slow node. A pane may
- * not: waiting that long freezes the picture someone is framing with, and the
- * next frame is a couple of hundred milliseconds away in any case. A QVGA
- * exposure is tens of milliseconds and its transfer about fifty, so a node
- * that has not answered in 900 ms is not slow, it is absent.
- */
-#define VF_CAPTURE_TIMEOUT_MS 900
-#define VF_READ_TIMEOUT_MS 600
+/* VF_CAPTURE_TIMEOUT_MS and VF_READ_TIMEOUT_MS moved to viewfinder.h: a
+ * capture's viewfinder_hold() timeout is arithmetic on them (VF_HOLD_MS) and
+ * has to be derived from the same numbers rather than guessed beside them. */
 
 static uint16_t *s_tile[4];
 static uint8_t *s_jpeg[4];
@@ -71,8 +63,8 @@ static atomic_int s_holds;       /* outstanding viewfinder_hold() calls */
  * compiler caching it. A lost increment lets hold() return while a pump is
  * still on the wire, which is the BAD_ID mid-transfer this counter exists to
  * prevent. A lost decrement leaves it stuck above zero, so every hold waits
- * out its full 1500 ms and then captures anyway - the same hazard plus a
- * 1.5 s shutter lag. */
+ * out its full VF_HOLD_MS and then captures anyway - the same hazard plus a
+ * 3.3 s shutter lag. */
 static atomic_int s_pumping;
 /* Tiles are frozen until this time; see viewfinder_review(). */
 static volatile int64_t s_review_until_us;

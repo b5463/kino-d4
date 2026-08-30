@@ -6,6 +6,7 @@
 #include "kdp_server.h"
 
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -40,6 +41,7 @@
 #include "net_link.h"
 #include "node_link/node_link.h"
 #include "power.h"
+#include "pure.h"
 #include "storage.h"
 #include "taskmon.h"
 #include "usb_link.h"
@@ -59,6 +61,12 @@ static bool s_usb_seen; /* first decoded host frame marks USB validated */
 // share capture_lock()/capture_unlock() (capture.h), which used to be a second
 // mutex here that capture_fire() never looked at. Held for a whole soak run;
 // concurrent starts, including a shutter press, get BUSY.
+
+/* Events this device could not put on the wire, reported by GET_RUNTIME_STATS
+ * as droppedLogEvents. Written from klog()'s caller - the UI task, the
+ * capture workers, the radio supervisor - and from the log drain task, so
+ * atomic: a plain ++ on this is a read-modify-write those tasks interleave. */
+static _Atomic uint32_t s_log_dropped;
 
 static uint32_t s_job_counter;
 static volatile bool s_soak_running;
@@ -94,8 +102,26 @@ static uint32_t elapsed_ms(int64_t since_us) {
   return (uint32_t)((esp_timer_get_time() - since_us) / 1000);
 }
 
+/**
+ * One numeric request argument, clamped to [lo, hi] before it becomes an
+ * integer. `dflt` is the answer when the field is absent or not a number.
+ *
+ * The clamp used to run after the cast - `(long)j->valuedouble`, then a range
+ * check on the long. cJSON hands back a double, and a host is free to write
+ * 1e400, which parses to infinity; casting that to long is undefined, not
+ * saturating. NaN takes the same path here as a value below lo.
+ */
+static long clamp_num(const cJSON *n, double lo, double hi, long dflt) {
+  if (!cJSON_IsNumber(n)) return dflt;
+  const double v = n->valuedouble;
+  if (!(v >= lo)) return (long)lo; /* negated so NaN lands here too */
+  if (v > hi) return (long)hi;
+  return (long)v;
+}
+
 // ---- send helpers ----
 
+/* Requests and responses: the host asked, so this waits for the wire. */
 static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *payload,
                      uint32_t len) {
   xSemaphoreTake(s_tx_lock, portMAX_DELAY);
@@ -103,6 +129,32 @@ static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *p
                                   seq, payload, len);
   if (total > 0) usb_link_write(s_tx, total);
   xSemaphoreGive(s_tx_lock);
+}
+
+/* How long an event may hold the TX lock. Long enough that a host between
+ * two reads never loses one, short enough that server_task's next response
+ * waits a quarter second rather than until a cable is plugged back in. */
+#define EVENT_WRITE_TIMEOUT_MS 250
+
+/**
+ * One event frame, with a deadline. Returns false when the host did not take
+ * all of it and the event is lost.
+ *
+ * The lock and the wire were both blocking: send_raw() takes s_tx_lock with
+ * portMAX_DELAY and usb_link_write() waits forever on a TX FIFO nobody is
+ * draining. The drain task is allowed to wait there - that is its job - but
+ * it holds s_tx_lock while it does, and server_task needs the same lock to
+ * answer the next request. One unplugged cable and a full FIFO wedged the
+ * whole server behind an event nobody was reading.
+ */
+static bool send_raw_event(uint8_t evt, uint32_t seq, const uint8_t *payload, uint32_t len) {
+  xSemaphoreTake(s_tx_lock, portMAX_DELAY);
+  const size_t total = kdp_encode_frame(s_tx, sizeof s_tx, KDP_PROTOCOL_VERSION, evt,
+                                        KDP_FLAG_EVENT, seq, payload, len);
+  bool sent = false;
+  if (total > 0) sent = usb_link_write_timeout(s_tx, total, EVENT_WRITE_TIMEOUT_MS) == (int)total;
+  xSemaphoreGive(s_tx_lock);
+  return sent;
 }
 
 static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *message);
@@ -127,7 +179,12 @@ static void send_event(uint8_t evt, cJSON *json) {
   cJSON_Delete(json);
   if (text == NULL) return;
   /* Events carry no meaningful sequence — the reference device writes 0. */
-  send_raw(evt, KDP_FLAG_EVENT, 0, (const uint8_t *)text, strlen(text));
+  if (!send_raw_event(evt, 0, (const uint8_t *)text, strlen(text))) {
+    /* Same counter and the same trade as a full log queue: the ring in
+     * klog.c still has the line, GET_LOGS still serves it, and
+     * GET_RUNTIME_STATS says how many went missing on the wire. */
+    atomic_fetch_add(&s_log_dropped, 1);
+  }
   cJSON_free(text);
 }
 
@@ -815,7 +872,16 @@ static void handle_set_config(uint32_t seq, const cJSON *req) {
 }
 
 static void handle_save_config(uint32_t seq) {
-  if (config_save() != ESP_OK) {
+  const esp_err_t err = config_save();
+  if (err == ESP_ERR_INVALID_SIZE) {
+    /* The merged document no longer fits nvs_set_str's 4000-byte ceiling
+     * (config_store.h). The merge is already live in RAM, so the host must
+     * hear that it will not survive a reboot rather than a generic failure. */
+    send_nack(KDP_CMD_SAVE_CONFIG, seq, "STORAGE_ERROR",
+              "config document exceeds the 4000-byte NVS limit; not persisted");
+    return;
+  }
+  if (err != ESP_OK) {
     send_nack(KDP_CMD_SAVE_CONFIG, seq, "STORAGE_ERROR", "NVS write failed");
     return;
   }
@@ -934,7 +1000,19 @@ static uint64_t capture_taken_ms(const char *dir_name) {
   return strtoull(k + 1, NULL, 10);
 }
 
-static int media_scan(char (*names)[64], int cap) {
+/**
+ * Fill `names` with the newest `cap` capture directories, newest first.
+ *
+ * Returns how many rows were written; `*on_card` gets how many capture
+ * directories the walk actually saw, which is the larger number past
+ * MEDIA_MAX_LIST. The caller needs both and they are not the same figure:
+ * MEDIA_LIST reports the walked count as `total` and pages over the returned
+ * rows. Returning only the row count made `total` the page bound, so a card
+ * holding 700 captures reported 512 and a client that trusted `total` stopped
+ * asking there.
+ */
+static int media_scan(char (*names)[64], int cap, int *on_card) {
+  *on_card = 0;
   DIR *d = opendir(CAPTURES_DIR);
   if (d == NULL) return 0;
   /*
@@ -942,8 +1020,8 @@ static int media_scan(char (*names)[64], int cap) {
    * evict its oldest instead of dropping whatever readdir happened to hand
    * over last. This used to stop dead at `cap`, which meant that past
    * MEDIA_MAX_LIST captures the NEWEST could be the ones omitted - the exact
-   * failure the sort was added to fix - and `total` under-reported besides.
-   * gallery.c solved the same problem the same way.
+   * failure the sort was added to fix. gallery.c solved the same problem the
+   * same way.
    */
   uint64_t *when = calloc((size_t)cap, sizeof *when);
   int count = 0;
@@ -1013,6 +1091,7 @@ static int media_scan(char (*names)[64], int cap) {
   if (total > count) {
     klog("P4", "media list: %d captures on the card, returning the newest %d", total, count);
   }
+  *on_card = total;
   return count;
 }
 
@@ -1082,23 +1161,46 @@ static cJSON *media_summary(const char *id) {
 /*
  * Which files inside a capture folder a host may ask for.
  *
- * An allow-list, not a sanitiser. The id is already checked for slashes, but
- * the file name is attacker-chosen too and "..\\" or a device name on a FAT
- * volume would walk out of the folder just as effectively. Naming the six
- * files a capture can contain costs nothing and cannot be got wrong later.
+ * An allow-list, not a sanitiser. media_id_ok() has already pinned the id to
+ * a UUID, but the file name is attacker-chosen too and "..\\" or a device
+ * name on a FAT volume would walk out of the folder just as effectively.
+ *
+ * The names are STORAGE_CAPTURE_FILES, the same array storage.c deletes a
+ * capture with. There used to be a second copy here, and a seventh file added
+ * to a capture would have been written by one list and unreachable through
+ * the other.
  */
 static bool media_file_allowed(const char *name) {
-  static const char *ALLOWED[] = {"C1.JPG", "C2.JPG",    "C3.JPG",
-                                  "C4.JPG", "THUMB.JPG", "META.JSON"};
-  for (size_t i = 0; i < sizeof ALLOWED / sizeof ALLOWED[0]; i++) {
-    if (strcmp(name, ALLOWED[i]) == 0) return true;
+  for (int i = 0; i < STORAGE_CAPTURE_FILE_COUNT; i++) {
+    if (strcmp(name, STORAGE_CAPTURE_FILES[i]) == 0) return true;
   }
   return false;
 }
 
+/*
+ * Whether a host-supplied capture id may be pasted into a path.
+ *
+ * Every MEDIA_* handler builds "/sdcard/KINO/CAPTURES/<id>/..." from this
+ * string. MEDIA_INFO, MEDIA_DELETE and MEDIA_FAVORITE only rejected '/', so
+ * {"id":".."} named the CAPTURES directory itself and MEDIA_DELETE walked it:
+ * storage_capture_delete() unlinked C1..C4.JPG and META.JSON out of the
+ * parent of every capture on the card.
+ *
+ * So all six ask the same question, and it is the strict one the orphan sweep
+ * already uses: a v4 UUID, exactly the shape storage.c writes. ".." fails it
+ * on the first character. pure.c is host-tested (test_pure.c) precisely so
+ * this check has a test that runs on every build.
+ */
+static bool media_id_ok(const char *id) { return id != NULL && pure_is_capture_dirname(id); }
+
 /* One response carries at most this much file. KDP_MAX_PAYLOAD is 16 KB and
  * the frame's own header and CRC have to fit alongside it. */
 #define MEDIA_READ_MAX 8192
+
+/* Upper bound for a read offset. fseek() takes a long, which is 32-bit here,
+ * and FAT32 caps a file at 4 GB anyway; 2^31-1 is exactly representable as a
+ * double, so clamping to it cannot round past LONG_MAX on the way back. */
+#define MEDIA_OFFSET_MAX 2147483647.0
 
 /**
  * Stream bytes out of one file in a capture.
@@ -1112,8 +1214,7 @@ static bool media_file_allowed(const char *name) {
 static void handle_media_read(uint32_t seq, const cJSON *req) {
   const cJSON *jid = cJSON_GetObjectItem(req, "id");
   const cJSON *jfile = cJSON_GetObjectItem(req, "file");
-  if (!cJSON_IsString(jid) || jid->valuestring == NULL ||
-      strchr(jid->valuestring, '/') != NULL || strstr(jid->valuestring, "..") != NULL) {
+  if (!cJSON_IsString(jid) || !media_id_ok(jid->valuestring)) {
     send_nack(KDP_CMD_MEDIA_READ, seq, "BAD_REQUEST", "Expected a capture id");
     return;
   }
@@ -1125,11 +1226,8 @@ static void handle_media_read(uint32_t seq, const cJSON *req) {
 
   const cJSON *joff = cJSON_GetObjectItem(req, "offset");
   const cJSON *jlen = cJSON_GetObjectItem(req, "length");
-  long offset = cJSON_IsNumber(joff) ? (long)joff->valuedouble : 0;
-  long length = cJSON_IsNumber(jlen) ? (long)jlen->valuedouble : MEDIA_READ_MAX;
-  if (offset < 0) offset = 0;
-  if (length < 1) length = 1;
-  if (length > MEDIA_READ_MAX) length = MEDIA_READ_MAX;
+  const long offset = clamp_num(joff, 0, MEDIA_OFFSET_MAX, 0);
+  const long length = clamp_num(jlen, 1, MEDIA_READ_MAX, MEDIA_READ_MAX);
 
   char path[200];
   snprintf(path, sizeof path, "%s/%s/%s", CAPTURES_DIR, jid->valuestring, file);
@@ -1162,8 +1260,7 @@ static void handle_media_read(uint32_t seq, const cJSON *req) {
  * than this one has no thumbnail and says so instead of inventing one. */
 static void handle_media_thumb(uint32_t seq, const cJSON *req) {
   const cJSON *jid = cJSON_GetObjectItem(req, "id");
-  if (!cJSON_IsString(jid) || jid->valuestring == NULL ||
-      strchr(jid->valuestring, '/') != NULL || strstr(jid->valuestring, "..") != NULL) {
+  if (!cJSON_IsString(jid) || !media_id_ok(jid->valuestring)) {
     send_nack(KDP_CMD_MEDIA_THUMB, seq, "BAD_REQUEST", "Expected a capture id");
     return;
   }
@@ -1177,11 +1274,8 @@ static void handle_media_thumb(uint32_t seq, const cJSON *req) {
   }
   const cJSON *joff = cJSON_GetObjectItem(req, "offset");
   const cJSON *jlen = cJSON_GetObjectItem(req, "length");
-  long offset = cJSON_IsNumber(joff) ? (long)joff->valuedouble : 0;
-  long length = cJSON_IsNumber(jlen) ? (long)jlen->valuedouble : MEDIA_READ_MAX;
-  if (offset < 0) offset = 0;
-  if (length < 1) length = 1;
-  if (length > MEDIA_READ_MAX) length = MEDIA_READ_MAX;
+  const long offset = clamp_num(joff, 0, MEDIA_OFFSET_MAX, 0);
+  const long length = clamp_num(jlen, 1, MEDIA_READ_MAX, MEDIA_READ_MAX);
   if (fseek(f, offset, SEEK_SET) != 0) {
     fclose(f);
     send_nack(KDP_CMD_MEDIA_THUMB, seq, "BAD_REQUEST", "Offset is past the end of the file");
@@ -1209,38 +1303,39 @@ static void handle_media_list(uint32_t seq, const cJSON *req) {
 
   const cJSON *jc = cJSON_GetObjectItem(req, "cursor");
   const cJSON *jl = cJSON_GetObjectItem(req, "limit");
-  int cursor = cJSON_IsNumber(jc) ? (int)jc->valuedouble : 0;
-  int limit = cJSON_IsNumber(jl) ? (int)jl->valuedouble : 50;
-  if (cursor < 0) cursor = 0;
-  if (limit < 1) limit = 1;
-  if (limit > 100) limit = 100; /* maxGalleryPageSize in GET_CAPABILITIES */
+  const int cursor = (int)clamp_num(jc, 0, MEDIA_MAX_LIST, 0);
+  /* 100 is maxGalleryPageSize in GET_CAPABILITIES. */
+  const int limit = (int)clamp_num(jl, 1, 100, 50);
 
   char (*names)[64] = calloc(MEDIA_MAX_LIST, 64);
   if (names == NULL) {
     send_nack(KDP_CMD_MEDIA_LIST, seq, "BUSY", "Out of memory");
     return;
   }
-  const int total = media_scan(names, MEDIA_MAX_LIST);
+  int on_card = 0;
+  const int listable = media_scan(names, MEDIA_MAX_LIST, &on_card);
 
   cJSON *json = cJSON_CreateObject();
-  cJSON_AddNumberToObject(json, "total", total);
+  /* `total` is what is on the card. Paging runs over the newest
+   * MEDIA_MAX_LIST of those, so hasMore and nextCursor are bounded by
+   * `listable` — pointing a cursor past it would page into nothing. */
+  cJSON_AddNumberToObject(json, "total", on_card);
   cJSON *items = cJSON_AddArrayToObject(json, "items");
   int sent = 0;
-  for (int i = cursor; i < total && sent < limit; i++, sent++) {
+  for (int i = cursor; i < listable && sent < limit; i++, sent++) {
     cJSON_AddItemToArray(items, media_summary(names[i]));
   }
   const int next = cursor + sent;
-  if (next < total) cJSON_AddNumberToObject(json, "nextCursor", next);
+  if (next < listable) cJSON_AddNumberToObject(json, "nextCursor", next);
   else cJSON_AddNullToObject(json, "nextCursor");
-  cJSON_AddBoolToObject(json, "hasMore", next < total);
+  cJSON_AddBoolToObject(json, "hasMore", next < listable);
   free(names);
   send_json(KDP_CMD_MEDIA_LIST, seq, json);
 }
 
 static void handle_media_info(uint32_t seq, const cJSON *req) {
   const cJSON *jid = cJSON_GetObjectItem(req, "id");
-  if (!cJSON_IsString(jid) || jid->valuestring == NULL || strchr(jid->valuestring, '/') != NULL) {
-    /* A slash would let a caller walk out of the captures directory. */
+  if (!cJSON_IsString(jid) || !media_id_ok(jid->valuestring)) {
     send_nack(KDP_CMD_MEDIA_INFO, seq, "BAD_REQUEST", "Expected a capture id");
     return;
   }
@@ -1275,7 +1370,7 @@ static void handle_media_info(uint32_t seq, const cJSON *req) {
 
 static void handle_media_delete(uint32_t seq, const cJSON *req) {
   const cJSON *jid = cJSON_GetObjectItem(req, "id");
-  if (!cJSON_IsString(jid) || jid->valuestring == NULL || strchr(jid->valuestring, '/') != NULL) {
+  if (!cJSON_IsString(jid) || !media_id_ok(jid->valuestring)) {
     send_nack(KDP_CMD_MEDIA_DELETE, seq, "BAD_REQUEST", "Expected a capture id");
     return;
   }
@@ -1299,8 +1394,7 @@ static void handle_media_delete(uint32_t seq, const cJSON *req) {
 static void handle_media_favorite(uint32_t seq, const cJSON *req) {
   const cJSON *jid = cJSON_GetObjectItem(req, "id");
   const cJSON *jfav = cJSON_GetObjectItem(req, "favorite");
-  if (!cJSON_IsString(jid) || jid->valuestring == NULL || strchr(jid->valuestring, '/') != NULL ||
-      !cJSON_IsBool(jfav)) {
+  if (!cJSON_IsString(jid) || !media_id_ok(jid->valuestring) || !cJSON_IsBool(jfav)) {
     send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "BAD_REQUEST", "Expected {id, favorite}");
     return;
   }
@@ -1640,11 +1734,21 @@ static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
  * on the coprocessor's console, like the transport pausing between RPCs.
  *
  * So the caller now does one non-blocking queue send and returns. A drain
- * task at low priority owns the wire and may block there as long as it likes.
- * When the queue is full the event is dropped and counted - the local ring in
- * klog.c still has it, GET_LOGS still serves it, and GET_RUNTIME_STATS says
- * how many external events went missing. Losing an event on a link nobody is
- * reading is the correct trade; stalling the shutter is not.
+ * task at low priority owns the wire. When the queue is full the event is
+ * dropped and counted - the local ring in klog.c still has it, GET_LOGS still
+ * serves it, and GET_RUNTIME_STATS says how many external events went
+ * missing. Losing an event on a link nobody is reading is the correct trade;
+ * stalling the shutter is not.
+ *
+ * The queue alone did not finish the job. The drain task took s_tx_lock and
+ * then waited on the TX FIFO with portMAX_DELAY, so it could sit there
+ * forever holding the lock server_task needs to answer a request: the tasks
+ * calling klog() were free, but the one host that WAS talking to us got no
+ * reply. The event write is therefore bounded at EVENT_WRITE_TIMEOUT_MS
+ * (send_raw_event above) and a short write drops the event into the same
+ * counter. The cost is a truncated frame on the wire, which the host decoder
+ * resyncs past on the next magic; responses keep the unbounded write, because
+ * a request that got no answer is the one failure the contract forbids.
  */
 typedef struct {
   int64_t t_ms;
@@ -1655,7 +1759,6 @@ typedef struct {
 
 #define LOG_EVT_QUEUE_LEN 32
 static QueueHandle_t s_log_q;
-static uint32_t s_log_dropped;
 
 static void log_drain_task(void *arg) {
   (void)arg;
@@ -1680,7 +1783,7 @@ static void log_emitter(int64_t t_ms, int64_t t_us, const char *src, const char 
   strlcpy(e.src, src, sizeof e.src);
   strlcpy(e.msg, msg, sizeof e.msg);
   if (xQueueSend(s_log_q, &e, 0) != pdTRUE) {
-    s_log_dropped++;
+    atomic_fetch_add(&s_log_dropped, 1);
   }
 }
 
@@ -1731,9 +1834,12 @@ static void handle_runtime_stats(uint32_t seq) {
   cJSON_AddNumberToObject(protocol, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(protocol, "cameraTimeouts", link.timeouts);
   cJSON_AddNumberToObject(protocol, "sdErrors", storage_sd_errors());
-  /* LOG events that had no room in the queue because no host was draining
-   * the link. Nonzero is not a fault; it is the price of the UI not stalling. */
-  cJSON_AddNumberToObject(protocol, "droppedLogEvents", s_log_dropped);
+  /* Events this device could not deliver: no room in the queue, or the host
+   * did not take the frame inside EVENT_WRITE_TIMEOUT_MS. Both mean nobody
+   * was draining the link. Nonzero is not a fault; it is the price of the UI
+   * and the request path not stalling behind it. */
+  cJSON_AddNumberToObject(protocol, "droppedLogEvents",
+                          (double)atomic_load(&s_log_dropped));
 
   /*
    * Per-task stack headroom, additive and optional.
@@ -2063,7 +2169,7 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
    * CRC errors. viewfinder_review() then holds the tiles briefly, which is
    * what a camera does with a shot just taken - and they already show the
    * last frame before the shutter. */
-  const bool vf_was = viewfinder_hold(1500);
+  const bool vf_was = viewfinder_hold(VF_HOLD_MS);
   run_capture(-1, true, &result);
   viewfinder_review(450);
   viewfinder_release(vf_was);
@@ -2126,6 +2232,11 @@ static void soak_task(void *arg) {
   char first_uuid[40] = "", last_uuid[40] = "";
   char kept_last_dir[64] = "";
   struct { char code[28]; uint32_t count; } errors[SOAK_ERROR_KINDS] = {0};
+  /* True once a distinct error code arrived with all SOAK_ERROR_KINDS slots
+   * already taken. The counts that are reported stay correct; this says the
+   * list is not the whole set, which is the difference between "eight kinds of
+   * failure" and "at least eight kinds of failure". */
+  bool errors_truncated = false;
 
   uint32_t heap_start = heap_kb();
   uint32_t psram_start = psram_kb();
@@ -2142,7 +2253,7 @@ static void soak_task(void *arg) {
    * back to back and the node holds one frame: a viewfinder taking frames of
    * its own between them would invalidate transfers at random and the run
    * would measure the race instead of the link. */
-  const bool vf_was = viewfinder_hold(1500);
+  const bool vf_was = viewfinder_hold(VF_HOLD_MS);
 
   for (uint32_t i = 0; i < args->captures; i++) {
     capture_result_t r;
@@ -2170,13 +2281,16 @@ static void soak_task(void *arg) {
         timeouts++;
       }
       if (strncmp(r.err_code, "SD_", 3) == 0) sd_errors++;
+      bool recorded = false;
       for (int e = 0; e < SOAK_ERROR_KINDS; e++) {
         if (errors[e].count == 0 || strcmp(errors[e].code, r.err_code) == 0) {
           if (errors[e].count == 0) strlcpy(errors[e].code, r.err_code, sizeof errors[e].code);
           errors[e].count++;
+          recorded = true;
           break;
         }
       }
+      if (!recorded) errors_truncated = true;
       // Node reset detection: did the node come back with a new session?
       if (camlink_hello() == ESP_OK) {
         camlink_info_t now;
@@ -2232,6 +2346,7 @@ static void soak_task(void *arg) {
     cJSON_AddNumberToObject(entry, "count", errors[e].count);
     cJSON_AddItemToArray(errs, entry);
   }
+  cJSON_AddBoolToObject(result, "errorsTruncated", errors_truncated);
 
   cJSON *complete = cJSON_CreateObject();
   cJSON_AddStringToObject(complete, "jobId", args->job_id);
@@ -2283,17 +2398,38 @@ static void handle_soak_test(uint32_t seq, cJSON *req) {
   const cJSON *delay = cJSON_GetObjectItem(req, "delayMs");
   const cJSON *quality = cJSON_GetObjectItem(req, "jpegQuality");
   const cJSON *keep = cJSON_GetObjectItem(req, "keepAll");
-  long want = cJSON_IsNumber(captures) ? (long)captures->valuedouble : 100;
-  if (want < 1) want = 1;
-  if (want > 1000) want = 1000;
-  args->captures = (uint32_t)want;
-  long d = cJSON_IsNumber(delay) ? (long)delay->valuedouble : 1000;
-  if (d < 100) d = 100;
-  if (d > 60000) d = 60000;
-  args->delay_ms = (uint32_t)d;
-  args->jpeg_quality = cJSON_IsNumber(quality) ? quality->valueint : -1;
+  args->captures = (uint32_t)clamp_num(captures, 1, 1000, 100);
+  args->delay_ms = (uint32_t)clamp_num(delay, 100, 60000, 1000);
+  /*
+   * jpegQuality is a 60..95 percentage on the wire and 5..63 at the sensor,
+   * inverted. This stored the wire value straight into the field run_capture()
+   * hands to camlink_capture(), so a soak asking for 95 ran the sensor at its
+   * worst setting and every byte the run measured came from a different JPEG
+   * than the product path makes. Out of range is refused rather than clamped:
+   * a soak reports numbers someone will compare against a spec, so it must run
+   * what was asked for or nothing.
+   */
+  int sensor_quality = -1; /* -1: leave the node on its configured quality */
+  if (quality != NULL && !cJSON_IsNull(quality)) {
+    const long percent = clamp_num(quality, 0, 1000, -1);
+    if (percent < 60 || percent > 95) {
+      free(args);
+      capture_unlock();
+      send_nack(KDP_CMD_CAMERA_SOAK_TEST, seq, "INVALID_ARGUMENT",
+                "jpegQuality must be 60..95");
+      return;
+    }
+    sensor_quality = capture_quality_to_sensor((int)percent);
+  }
+  args->jpeg_quality = sensor_quality;
   args->keep_all = cJSON_IsTrue(keep);
   snprintf(args->job_id, sizeof args->job_id, "job_%lu", (unsigned long)++s_job_counter);
+
+  /* soak_task owns `args` from here and free()s it when the run ends - which
+   * can be before xTaskCreate() has even returned, since it runs at priority 5
+   * on a core this task does not pin. The reply is built from this copy. */
+  char job_id[sizeof args->job_id];
+  strlcpy(job_id, args->job_id, sizeof job_id);
 
   s_soak_running = true;
   if (xTaskCreate(soak_task, "soak", 8192, args, 5, NULL) != pdPASS) {
@@ -2305,7 +2441,7 @@ static void handle_soak_test(uint32_t seq, cJSON *req) {
   }
 
   cJSON *json = cJSON_CreateObject();
-  cJSON_AddStringToObject(json, "jobId", args->job_id);
+  cJSON_AddStringToObject(json, "jobId", job_id);
   cJSON_AddBoolToObject(json, "accepted", true);
   send_json(KDP_CMD_CAMERA_SOAK_TEST, seq, json);
 }

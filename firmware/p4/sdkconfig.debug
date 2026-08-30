@@ -1,0 +1,11 @@
+# Diagnostic overlay: the production defaults with debug optimisation.
+#
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.debug" build
+#
+# -Og keeps variables and frames inspectable under a debugger and makes
+# backtraces line up with the source. It is slower and hotter than the -O2 the
+# product ships with, so timing measured on this build is not product timing.
+# Never the default: nothing else in this file may differ from
+# sdkconfig.defaults, or the two builds stop being comparable.
+CONFIG_COMPILER_OPTIMIZATION_PERF=n
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y

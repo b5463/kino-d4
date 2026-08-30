@@ -1302,7 +1302,7 @@ PHASE 2 — electrical communication                        ◄ CHECKPOINT 1
 PHASE 3 — node greeting                                   ◄ CHECKPOINT 2
 14. GET_CAMERA_INFO. Expect cam1.online == true.
 15. Expect klog "C1 node online — fw <v>, sensor OV3660, boot <reason>".
-16. MARK: CAM1_TX_GPIO1, CAM1_RX_GPIO2, CAM1_BAUD_921600, CAM1_NODE_LINK.
+16. MARK: CAM1_TX_GPIO52, CAM1_RX_GPIO51, CAM1_BAUD_921600, CAM1_NODE_LINK.
 17. RECORD: node boot time, HELLO round-trip.
 
 PHASE 4 — camera status                                   ◄ CHECKPOINT 3

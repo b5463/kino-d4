@@ -16,6 +16,7 @@
 #define P4_CONFIG_STORE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "cJSON.h"
@@ -38,7 +39,17 @@ uint32_t config_revision(void);
  */
 esp_err_t config_merge(const cJSON *patch);
 
-/** Persist the live config to NVS. */
+/**
+ * Persist the live config to NVS.
+ *
+ * ESP_ERR_INVALID_SIZE when the serialised envelope exceeds what nvs_set_str
+ * takes (4000 bytes including the NUL). It is a distinct code so the
+ * SET_CONFIG handler can NACK the write rather than reporting a generic
+ * failure: the merge has already been applied in RAM and the camera is
+ * running on it, so the caller has to say the setting will not survive a
+ * reboot. The current defaults serialise to about 1.1 KB, so reaching this
+ * means the document grew a way it was not meant to.
+ */
 esp_err_t config_save(void);
 
 /** Restore the built-in defaults and persist them. */
@@ -55,7 +66,24 @@ int config_int(const char *path, int fallback);
 /** Read one boolean by dotted path. */
 bool config_bool(const char *path, bool fallback);
 
-/** Read one string by dotted path. Returns `fallback` when absent. */
+/**
+ * Read one string by dotted path. Returns `fallback` when absent.
+ *
+ * IMMEDIATE, SINGLE-TASK USE ONLY. The result points into a four-slot buffer
+ * shared by every task in the firmware, so it is good for the printf or the
+ * comparison on the next line and no further. Anything that outlives that -
+ * a value kept across a draw, a klog, a KDP round trip, or handed to another
+ * task - uses config_str_copy() instead.
+ */
 const char *config_str(const char *path, const char *fallback);
+
+/**
+ * Read one string by dotted path into the caller's buffer.
+ *
+ * Returns the length of the stored string, so `>= cap` means the copy was
+ * truncated. Returns 0 when the path is missing or is not a string, and
+ * writes an empty string to `out` in that case. Safe to hold.
+ */
+size_t config_str_copy(const char *path, char *out, size_t cap);
 
 #endif

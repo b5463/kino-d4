@@ -141,12 +141,55 @@ void cJSON_Delete(cJSON *item) { (void)item; }
 
 void esp_restart(void) { fprintf(stderr, "esp_restart() in a preview - ignored\n"); }
 
-/* No nodes on a workstation: the preview shows the honest "no link" state,
- * which is exactly what the bench shows until the harness is jumpered. */
+/*
+ * Four preview streams, invented here and only here.
+ *
+ * There are no nodes on a workstation, and returning NULL for every tile
+ * meant SHOOT - the screen the camera spends most of its life on - was four
+ * empty panes in every screenshot ever taken. sh_blit(), the crop, the 5:3
+ * fit and the pane boundaries were all unreviewable as a result.
+ *
+ * Gradients, like fake_gallery(), so no screenshot from this tool can be
+ * mistaken for a frame off a sensor. Each camera gets a different hue ramp
+ * and a marked border row so a pane swapped left for right, or a crop taking
+ * from the wrong end, is visible at a glance rather than plausible.
+ */
+static uint16_t g_vf[4][VF_W * VF_H];
+static bool g_vf_filled;
+
+static void fake_viewfinder(void) {
+  for (int c = 0; c < 4; c++) {
+    for (int y = 0; y < VF_H; y++) {
+      for (int x = 0; x < VF_W; x++) {
+        /* The full 240 rows, including the 24 at each end that SH_CROP
+         * throws away - the point is to be able to see that it does. */
+        /* Each camera gets a different share of the red ramp. Scaled, not
+         * offset and masked: an offset wraps 31 back to 0 partway across the
+         * pane and puts a hard vertical seam in the middle of the picture,
+         * which is exactly what a torn blit would look like. */
+        const int r = (x * (31 - c * 6)) / VF_W;
+        const int g = (y * 63) / VF_H;
+        const int b = 31 - ((x + y) * 31) / (VF_W + VF_H);
+        uint16_t p = (uint16_t)(((r & 31) << 11) | ((g & 63) << 5) | (b & 31));
+        /* A one-pixel white frame round the source. Cropped top and bottom
+         * by design, so a pane that shows all four edges is a blit that is
+         * not cropping. */
+        if (x == 0 || y == 0 || x == VF_W - 1 || y == VF_H - 1) p = 0xFFFF;
+        g_vf[c][y * VF_W + x] = p;
+      }
+    }
+  }
+  g_vf_filled = true;
+}
+
 esp_err_t viewfinder_init(void) { return ESP_OK; }
 bool viewfinder_ready(void) { return true; }
 void viewfinder_run(bool on) { (void)on; }
-const uint16_t *viewfinder_tile(int cam) { (void)cam; return NULL; }
+const uint16_t *viewfinder_tile(int cam) {
+  if (cam < 0 || cam >= 4) return NULL;
+  if (!g_vf_filled) fake_viewfinder();
+  return g_vf[cam];
+}
 void viewfinder_status(int cam, vf_status_t *out) {
   (void)cam;
   if (out) { out->state = VF_NO_LINK; out->frames = 0; out->last_ms = 0; out->bytes = 0; out->fps_x10 = 0; }
@@ -234,6 +277,17 @@ esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, u
   return ESP_FAIL;
 }
 void storage_capture_delete(const char *dir) { (void)dir; }
+
+/* The card arbiter. There is no card and there are no other users, so the
+ * grant is unconditional - but the calls have to resolve, because ui.c now
+ * takes the card round the photograph decode and the delete like every other
+ * reader does. */
+bool storage_acquire(storage_user_t user, int timeout_ms) {
+  (void)user;
+  (void)timeout_ms;
+  return true;
+}
+void storage_release(storage_user_t user) { (void)user; }
 
 void power_activity(void) {}
 void power_wake(void) {}
@@ -361,10 +415,18 @@ int upload_queue_retry_all(void) { return 0; }
 
 /* ---- output ---- */
 
+/* Set by any failed write. CI counts .ppm files and requires at least ten, so
+ * a run that could not write half its screens - a full disk, a bad output
+ * path, a directory that does not exist - could still satisfy the gate with
+ * the ones that did land. A partial artifact is a failure, and this is what
+ * makes main() say so. */
+static bool g_write_failed;
+
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
   FILE *f = fopen(path, "wb");
   if (!f) {
     fprintf(stderr, "cannot write %s\n", path);
+    g_write_failed = true;
     return;
   }
   fprintf(f, "P6\n%d %d\n255\n", w, h);
@@ -375,9 +437,22 @@ static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
         (unsigned char)((((p >> 5) & 0x3F) * 255) / 63),
         (unsigned char)(((p & 0x1F) * 255) / 31),
     };
-    fwrite(rgb, 1, 3, f);
+    if (fwrite(rgb, 1, 3, f) != 3) {
+      /* A short write means a truncated PPM, which opens as a broken image
+       * rather than not opening at all - the worse of the two failures. */
+      fprintf(stderr, "short write on %s\n", path);
+      g_write_failed = true;
+      fclose(f);
+      return;
+    }
   }
-  fclose(f);
+  if (fclose(f) != 0) {
+    /* Buffered data is flushed here, so this is where a full disk usually
+     * shows up rather than at any of the fwrites above. */
+    fprintf(stderr, "cannot close %s\n", path);
+    g_write_failed = true;
+    return;
+  }
   printf("wrote %s (%dx%d)\n", path, w, h);
 }
 
@@ -590,5 +665,9 @@ int main(int argc, char **argv) {
   draw_screen();
   shot("toast");
 
+  if (g_write_failed) {
+    fprintf(stderr, "one or more screens were not written\n");
+    return 1;
+  }
   return 0;
 }

@@ -16,6 +16,22 @@ static const char *TAG = "config";
 #define NVS_KEY "config"
 #define CONFIG_SCHEMA_VERSION 1
 
+/**
+ * The largest document NVS will take, including the terminating NUL.
+ *
+ * nvs_set_str tops out at 4000 bytes on a 4096-byte page; the value is
+ * ESP-IDF's, not ours. The load guard used to accept anything under 16384,
+ * which meant a document that grew past 4000 loaded fine and then failed
+ * every single save - logged once at ESP_LOGE and otherwise invisible, so
+ * Studio showed the setting applied and the camera forgot it on the next
+ * boot. One limit, checked on both sides.
+ *
+ * The current defaults serialise to roughly 1.1 KB, so the headroom is real;
+ * a document that reaches this has grown a way it was not meant to and moving
+ * to a blob is the answer, not a bigger string.
+ */
+#define CONFIG_MAX_BYTES 4000u
+
 static cJSON *s_root;     /* the whole envelope */
 static cJSON *s_config;   /* the `config` member of it, for convenience */
 static uint32_t s_revision;
@@ -204,6 +220,19 @@ esp_err_t config_save(void) {
   unlock();
   if (text == NULL) return ESP_ERR_NO_MEM;
 
+  /* Refused here rather than by NVS, and with a size error rather than
+   * whatever nvs_set_str returns, so the SET_CONFIG handler has something it
+   * can NACK with: the write is too big is a different answer to Studio from
+   * the flash is broken. */
+  const size_t bytes = strlen(text) + 1;
+  if (bytes > CONFIG_MAX_BYTES) {
+    ESP_LOGE(TAG, "config is %u bytes, NVS takes %u; not saved", (unsigned)bytes,
+             (unsigned)CONFIG_MAX_BYTES);
+    klog("P4", "config too large to save: %u bytes", (unsigned)bytes);
+    cJSON_free(text);
+    return ESP_ERR_INVALID_SIZE;
+  }
+
   nvs_handle_t h;
   esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
   if (err == ESP_OK) {
@@ -246,7 +275,10 @@ esp_err_t config_init(void) {
   esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
   if (err == ESP_OK) {
     size_t len = 0;
-    if (nvs_get_str(h, NVS_KEY, NULL, &len) == ESP_OK && len > 2 && len < 16384) {
+    /* `len` from nvs_get_str counts the NUL, which is the same unit
+     * CONFIG_MAX_BYTES is in, so the two guards agree by construction. */
+    if (nvs_get_str(h, NVS_KEY, NULL, &len) == ESP_OK && len > 2 &&
+        len <= CONFIG_MAX_BYTES) {
       char *text = malloc(len);
       if (text != NULL && nvs_get_str(h, NVS_KEY, text, &len) == ESP_OK) {
         cJSON *parsed = cJSON_Parse(text);
@@ -345,4 +377,35 @@ const char *config_str(const char *path, const char *fallback) {
   }
   unlock();
   return v;
+}
+
+/**
+ * The same read, into the caller's own buffer.
+ *
+ * The ring above is four slots shared by every task in the firmware. Holding
+ * one across anything that blocks - a draw, a klog, a KDP round trip - means
+ * four more string reads from any other task overwrite it, and the caller
+ * then acts on a value that belongs to somewhere else. Nothing has been seen
+ * doing that, and nothing should have to reason about it: a caller that keeps
+ * the value copies it here instead.
+ *
+ * Returns the length of the source string so truncation is detectable rather
+ * than silent - a return >= cap means the copy is short. 0 when the path is
+ * missing or is not a string, which is also what an empty stored string
+ * returns; the two are the same for every setting this reads.
+ */
+size_t config_str_copy(const char *path, char *out, size_t cap) {
+  if (out == NULL || cap == 0) return 0;
+  out[0] = '\0';
+  lock();
+  const cJSON *n = resolve(path);
+  size_t len = 0;
+  if (cJSON_IsString(n) && n->valuestring) {
+    len = strlen(n->valuestring);
+    /* Copied under the lock, because the string this points at is freed by
+     * the next merge. */
+    strlcpy(out, n->valuestring, cap);
+  }
+  unlock();
+  return len;
 }

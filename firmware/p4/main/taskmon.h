@@ -45,10 +45,21 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-/* Enough for the thirteen long-lived tasks plus room for the bench-only ones
- * that come and go. Registration past this is dropped and reported rather
- * than overwriting a slot. */
-#define TASKMON_MAX 20
+/* The radio build registers twenty-one tasks in steady state, counted from
+ * the xTaskCreate sites rather than remembered:
+ *
+ *   kdp_server, cam_probe, cap1, cap2, cap3, cap4, capture, buttons, ui,
+ *   touch, gallery, audio, icons, vf_cam1, vf_cam2, vf_cam3, vf_cam4, c6link,
+ *   power, upqueue, wifi_retry (created on the first lost association)
+ *
+ * The count said "thirteen" and the ceiling was 20, so the build had already
+ * grown into it exactly: one more task and registrations start being dropped,
+ * which shows up as tasks missing from GET_RUNTIME_STATS rather than as an
+ * error anyone is looking at. 28 leaves room for the bench-only tasks that
+ * come and go. A slot is a name, a handle and two small fields, so the
+ * headroom costs tens of bytes. Registration past this is dropped and
+ * reported rather than overwriting a slot. */
+#define TASKMON_MAX 28
 
 /**
  * Record a task so its stack can be reported later.

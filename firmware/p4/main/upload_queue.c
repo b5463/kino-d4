@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -44,6 +45,24 @@ static const char *TAG = "upqueue";
  * a worker blocked across it is a task on a mutex instead of one watching its
  * own retry deadlines. A refusal costs one IDLE_TICKS, which is free. */
 #define CARD_WAIT_MS 200
+
+/*
+ * Parked jobs kept in the RAM list at once.
+ *
+ * A FAILED job needs one slot to be visible in UPLOAD_QUEUE_STATUS and
+ * revivable by UPLOAD_QUEUE_RETRY, and nothing else. It never runs a step
+ * again — rq_next_step() returns NOTHING for it — so every slot past this one
+ * is a slot a runnable capture cannot have. With UPLOAD_QUEUE_MAX at 32, a
+ * party that hit a server fault early parks 32 captures and then queues no new
+ * one at all: the photographs are still on the card, and none of them go
+ * anywhere until someone reboots the camera.
+ *
+ * Four, because the display shows a handful and the count beside them is what
+ * actually matters. A trimmed job's UPLOAD.JSON stays on the card exactly as
+ * it was, so the next reconciliation pass still finds it, still counts it, and
+ * UPLOAD_QUEUE_RETRY still revives it once a slot is free.
+ */
+#define PARKED_IN_RAM_MAX 4
 
 /** The Roll this device is on. Two calls where one would do, because
  * roll_state_active() is the cheap question and roll_state_get() is the one
@@ -98,6 +117,19 @@ static bool s_cap_hit;   /* the last scan filled the RAM list and stopped */
 static bool s_rescan;    /* a slot has freed since then — the card holds more */
 static int s_uploaded;
 static char s_last_error[RQ_ERROR_LEN];
+/* Parked captures on the card that are NOT in the RAM list, so
+ * UPLOAD_QUEUE_STATUS reports how many are parked rather than how many
+ * happened to fit. Recomputed from the card by a reconciliation pass that runs
+ * to the end, and bumped in between by every job this file trims. */
+static int s_parked_off_list;
+
+/* Insertion order for the RAM list. list_drop() fills a hole from the tail, so
+ * an array index says nothing about age — and when parked jobs have to be
+ * trimmed, the ones to keep are the ones that just failed, because those are
+ * what the user is looking at. One counter, bumped per add; only the ordering
+ * of these values is ever used. */
+static uint32_t s_added_seq[UPLOAD_QUEUE_MAX];
+static uint32_t s_next_seq;
 
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 
@@ -127,16 +159,59 @@ static bool list_add(const rq_job_t *job) {
     s_cap_hit = true;
     return false;
   }
+  s_added_seq[s_count] = ++s_next_seq;
   s_jobs[s_count++] = *job;
   return true;
 }
 
 /* Order is not significant to any decision — the worker scans for the first
- * runnable job — so the tail fills the hole. */
+ * runnable job — so the tail fills the hole. Its sequence number moves with
+ * it, because that is the only record of which job arrived first. */
 static void list_drop(int idx) {
   if (idx < 0 || idx >= s_count) return;
-  s_jobs[idx] = s_jobs[--s_count];
+  s_count--;
+  s_jobs[idx] = s_jobs[s_count];
+  s_added_seq[idx] = s_added_seq[s_count];
   memset(&s_jobs[s_count], 0, sizeof s_jobs[s_count]);
+  s_added_seq[s_count] = 0;
+}
+
+/** Parked jobs currently in the RAM list. Lock held. */
+static int count_parked(void) {
+  int n = 0;
+  for (int i = 0; i < s_count; i++) {
+    if (s_jobs[i].state == RQ_FAILED) n++;
+  }
+  return n;
+}
+
+/**
+ * Drop parked jobs from the RAM list until only PARKED_IN_RAM_MAX remain,
+ * oldest first. Returns how many were dropped. Lock held.
+ *
+ * Only the RAM list is touched: UPLOAD.JSON stays on the card saying FAILED,
+ * so nothing is lost and nothing is re-uploaded. Each one dropped is counted
+ * into s_parked_off_list so the number the UI shows stays the number of parked
+ * captures, not the number still in memory.
+ *
+ * Must not run while a step is in flight on one of them — see the call site.
+ */
+static int trim_parked(void) {
+  int dropped = 0;
+  for (int over = count_parked() - PARKED_IN_RAM_MAX; over > 0; over--) {
+    int victim = -1;
+    for (int i = 0; i < s_count; i++) {
+      if (s_jobs[i].state != RQ_FAILED || i == s_active) continue;
+      if (victim < 0 || s_added_seq[i] < s_added_seq[victim]) victim = i;
+    }
+    if (victim < 0) break;
+    ESP_LOGI(TAG, "parked %.8s dropped from the list; still on the card",
+             s_jobs[victim].uuid);
+    list_drop(victim);
+    s_parked_off_list++;
+    dropped++;
+  }
+  return dropped;
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,7 +248,11 @@ static bool queue_scan(void) {
   char roll_id[RQ_CAPTURE_ID_LEN];
   bool on_roll = current_roll(roll_id, sizeof roll_id);
 
-  int looked_at = 0, added = 0, repaired = 0;
+  int looked_at = 0, added = 0, repaired = 0, parked_off = 0;
+  /* True while the pass is still on course to see every directory on the card.
+   * Only a pass that finishes may replace s_parked_off_list: a partial walk
+   * counts a subset and would report fewer parked captures than there are. */
+  bool whole_card = true;
   struct dirent *e;
   s_cap_hit = false;
   s_rescan = false;
@@ -182,6 +261,7 @@ static bool queue_scan(void) {
      * nothing, and one entry is a stat and a 400-byte read. */
     if (storage_yield_requested(STORAGE_USER_UPLOAD)) {
       s_rescan = true;
+      whole_card = false;
       break;
     }
     if (!storage_is_capture_dirname(e->d_name)) continue;
@@ -213,14 +293,41 @@ static bool queue_scan(void) {
      * leaves the directory for the next pass. */
     if (action != RQ_REC_RESUME && !upload_store_save(&job)) continue;
 
+    if (job.state == RQ_FAILED) {
+      /* Parked, and the list already holds as many parked captures as it
+       * usefully can. Counted rather than queued: the record is on the card
+       * unchanged, so it is still here at the next pass and UPLOAD_QUEUE_RETRY
+       * still revives it — and the slot it would have taken goes to a capture
+       * that can actually be uploaded. */
+      lock();
+      const bool room_for_parked = count_parked() < PARKED_IN_RAM_MAX;
+      unlock();
+      if (!room_for_parked) {
+        parked_off++;
+        continue;
+      }
+    }
+
     lock();
     bool room = list_add(&job);
     unlock();
-    if (!room) break;
+    if (!room) {
+      whole_card = false;
+      break;
+    }
     added++;
   }
   closedir(d);
   card_give();
+
+  if (whole_card && looked_at < SCAN_MAX_DIRS) {
+    /* The card is the authority on how many captures are parked. Recomputing
+     * here rather than only accumulating keeps the number from drifting when a
+     * trimmed job is re-read and trimmed again. */
+    lock();
+    s_parked_off_list = parked_off;
+    unlock();
+  }
 
   if (looked_at > 0) {
     ESP_LOGI(TAG, "reconcile: %d dirs, %d queued, %d repaired", looked_at, added, repaired);
@@ -253,6 +360,44 @@ static bool still_ours(int idx, const char *uuid) {
   return idx >= 0 && idx < s_count && strcmp(s_jobs[idx].uuid, uuid) == 0;
 }
 
+/**
+ * Where `uuid` lives NOW, given it was at `idx` when the step started. -1 when
+ * the job has left the list entirely. Lock held.
+ *
+ * The index alone was the bug: a step that succeeded while the list was
+ * rewritten under it had its result thrown away, and for RQ_STEP_REGISTER that
+ * result is the server's capture id. Without it rq_next_step() asks for a
+ * REGISTER again, so the capture is re-registered on the next pass — harmless
+ * to the server, which is idempotent on the UUID, but the job never advances
+ * for as long as the list keeps moving. The UUID is the identity; the index is
+ * only where it was.
+ */
+static int relocate_job(int idx, const char *uuid) {
+  if (still_ours(idx, uuid)) return idx;
+  return find_job(uuid);
+}
+
+/*
+ * The queue's backoff with +-25 % of noise on it.
+ *
+ * rq_backoff_ms() stays deterministic: it is the contract's curve, it mirrors
+ * backoffMs() in apps/twin/src/roll/bridge.ts, and the host tests assert it
+ * exactly. The jitter belongs here, at the one place that already has a clock
+ * and an entropy source.
+ *
+ * Without it, four cameras that lost the same access point at the same moment
+ * retry on the same millisecond and go on doing so for as long as it is down —
+ * the AP sees four clients associating at once, every time, which is the shape
+ * that gets a burst dropped rather than served.
+ */
+static uint32_t jittered_backoff(uint32_t attempts) {
+  const uint32_t base = rq_backoff_ms(attempts);
+  if (base < 4u) return base;
+  /* The hardware RNG. This wants spread, not secrecy. */
+  const uint32_t span = base / 2u; /* the whole -25 %..+25 % window */
+  return base - base / 4u + esp_random() % (span + 1u);
+}
+
 /** Run one step for one job, then persist. Returns true when it did work. */
 static bool run_one_step(void) {
   rq_step_t step;
@@ -276,11 +421,16 @@ static bool run_one_step(void) {
   /* Apply to the live record, not the snapshot: retry_all may have cleared this
    * job's backoff while the step was in flight, and writing the snapshot back
    * would undo that. rq_apply is a pure transition either way. */
-  if (!still_ours(idx, snapshot.uuid)) {
+  idx = relocate_job(idx, snapshot.uuid);
+  if (idx < 0) {
+    /* The UUID has left the list — a COMPLETE drop or a parked trim, and
+     * neither wants this result. A job that merely MOVED is found again above
+     * and the result applied where it now lives. */
     s_active = -1;
     unlock();
     return true;
   }
+  s_active = idx;
   rq_job_t *job = &s_jobs[idx];
   if (disp == RQ_DISP_OK && step.kind == RQ_STEP_REGISTER) {
     /* rq_apply will not advance past REGISTER without this — the server's id is
@@ -302,7 +452,7 @@ static bool run_one_step(void) {
      * runs immediately: a checksum mismatch is not a network failure and has
      * nothing to wait for. */
     job->next_attempt_ms =
-        disp == RQ_DISP_REREAD ? now_ms() : now_ms() + rq_backoff_ms(job->attempts);
+        disp == RQ_DISP_REREAD ? now_ms() : now_ms() + jittered_backoff(job->attempts);
   }
   if (disp == RQ_DISP_HALT) s_halted = true;
   if (res.detail[0] != '\0') rq_redact(s_last_error, sizeof s_last_error, res.detail);
@@ -324,9 +474,10 @@ static bool run_one_step(void) {
     if (!busy) card_give();
     if (!wrote) {
       lock();
-      if (still_ours(idx, snapshot.uuid)) {
-        s_jobs[idx].state = RQ_RETRY_WAIT;
-        s_jobs[idx].next_attempt_ms = now_ms() + (busy ? CARD_WAIT_MS : RQ_BACKOFF_CAP_MS);
+      const int back_at = relocate_job(idx, snapshot.uuid);
+      if (back_at >= 0) {
+        s_jobs[back_at].state = RQ_RETRY_WAIT;
+        s_jobs[back_at].next_attempt_ms = now_ms() + (busy ? CARD_WAIT_MS : RQ_BACKOFF_CAP_MS);
       }
       unlock();
       if (busy) {
@@ -340,14 +491,21 @@ static bool run_one_step(void) {
   }
 
   lock();
-  if (still_ours(idx, snapshot.uuid) && s_jobs[idx].state == RQ_COMPLETE) {
-    list_drop(idx);
+  int at = relocate_job(idx, snapshot.uuid);
+  if (at >= 0 && s_jobs[at].state == RQ_COMPLETE) {
+    list_drop(at);
     s_uploaded++;
     /* The card held more than the RAM list could take and a slot has just
      * freed. The rescan happens when the worker next runs dry — a directory
      * scan does not belong between two network steps. */
     if (s_cap_hit) s_rescan = true;
   }
+  /* Trimmed here and not at the moment of failure, because the FAILED state
+   * has to be on the card first: a job dropped from the list before its record
+   * was written would come back from the next reconciliation pass as
+   * RETRY_WAIT and run its step again. s_active is already -1, so nothing in
+   * flight can be trimmed out from under the worker. */
+  if (trim_parked() > 0 && s_cap_hit) s_rescan = true;
   unlock();
   return true;
 }
@@ -496,6 +654,10 @@ void upload_queue_status(upload_queue_report_t *out) {
       out->pending++;
     }
   }
+  /* Parked captures the RAM list no longer holds still count. The record is on
+   * the card, UPLOAD_QUEUE_RETRY still revives them, and a display that showed
+   * four when eight are parked would be reporting the size of a buffer. */
+  out->failed += s_parked_off_list;
   out->uploading = s_active >= 0 ? 1 : 0;
   out->uploaded = s_uploaded;
   out->halted = s_halted;
@@ -523,6 +685,11 @@ int upload_queue_retry_all(void) {
   }
   s_halted = false;
   s_last_error[0] = '\0';
+  /* The parked captures this list had to drop are still on the card, and the
+   * retry the user just pressed is meant for them too. Reviving the ones in
+   * RAM frees the parked slots, so a pass over the card brings the rest back
+   * in. The worker runs it when it next comes up empty. */
+  if (s_parked_off_list > 0) s_rescan = true;
   unlock();
 
   /* Not written to the card. Backoff deadlines are monotonic milliseconds,

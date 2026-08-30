@@ -104,11 +104,11 @@ action and no command existed to carry it, so it took the next free slot in the 
 
 | Command | Value |
 |---|---|
-| `NETWORK_LIST` | `0xa0` | Optional request `{ "scan": true }` runs one bounded scan and adds `available[]` (`ssid`, `bssid`, `rssi`, `channel`, `security`, `hidden`), `scanMs` and `scanComplete` to the reply. Without it the reply is the saved `networks[]` only, unchanged (D16). |
+| `NETWORK_LIST` | `0xa0` | Optional request `{ "scan": true }` runs one bounded scan and adds `available[]` (`ssid`, `bssid`, `rssi`, `channel`, `security`, `hidden`), `scanMs` and `scanComplete` to the reply. Without it the reply is the saved `networks[]` only, unchanged. |
 | `NETWORK_SET` | `0xa1` |
 | `NETWORK_DELETE` | `0xa2` |
-| `NETWORK_STATUS` | `0xa3` | Optional request `{ "probe": true }` adds `probe`: a timed DNS lookup of the API host (`dnsMs`, `dnsOk`, `family`) and one unauthenticated `GET /api/healthz` through the Roll HTTP client (`httpMs`, `httpStatus`, `totalMs`, `tls`, `detail`) - certificate verified, trusted clock required, no registration. Without it, unchanged (D17). |
-| `SET_CONFIG` / `GET_CONFIG` | `network.apiBase` | Optional stored development override for the Roll API base, `http://host[:port]` or `https://host[:port]`, no path, no credentials. When set and valid it replaces the compiled production default (`https://kino.acronym.sk`) for every API request; `GET_CONFIG` shows it; `SAVE_CONFIG` persists it. This is the only way an `http://` base can reach the HTTP client. `C6_TLS` is never marked over http (D18). |
+| `NETWORK_STATUS` | `0xa3` | Optional request `{ "probe": true }` adds `probe`: a timed DNS lookup of the API host (`dnsMs`, `dnsOk`, `family`) and one unauthenticated `GET /api/healthz` through the Roll HTTP client (`httpMs`, `httpStatus`, `totalMs`, `tls`, `detail`) - certificate verified, trusted clock required, no registration. Without it the reply is the saved status only, unchanged. |
+| `SET_CONFIG` / `GET_CONFIG` | `network.apiBase` | Optional stored development override for the Roll API base, `http://host[:port]` or `https://host[:port]`, no path, no credentials. When set and valid it replaces the compiled production default (`https://kino.acronym.sk`) for every API request; `GET_CONFIG` shows it; `SAVE_CONFIG` persists it. This is the only way an `http://` base can reach the HTTP client. `C6_TLS` is never marked validated over an `http://` base, whatever the request succeeds at. |
 | `ROLL_STATUS` | `0xa4` |
 | `ROLL_CREATE` | `0xa5` |
 | `ROLL_JOIN` | `0xa6` |
@@ -248,8 +248,8 @@ contract is unchanged: the percentage is what Studio sends and what the settings
 
 ### D13 — the shared trigger wire is driven, and coordinates nothing yet
 
-`GPIO20` (`BOARD_SYNC_OUT`, JP1 pin 17; `GPIO32` until the header correction, when GPIO32 became
-`CAM3_TX`) is pulsed for 200 µs at the start of every capture, and the pulse is timed and logged. **The camera nodes do not arm on that edge.** They expose when their
+`GPIO32` (`BOARD_SYNC_OUT`, JP1 pin 19) is pulsed for 200 µs at the start of every capture, and the
+pulse is timed and logged. **The camera nodes do not arm on that edge.** They expose when their
 `NL_CMD_CAPTURE` arrives over their own UART, exactly as they did before the wire was driven.
 
 The pulse exists so the trace is proven and the node-side arm becomes a node change alone. Until it
@@ -265,13 +265,19 @@ answered, and `GET_CAPABILITIES` reports `vsyncTelemetry: false`.
 
 `SYNC_OUT` is its own net (`GPIO32`, JP1 pin 19, in
 `packages/hardware-profiles/src/profiles/d4-v1.json`). The C6 pins on JP1 (20, 22, 24, 26) stay
-reserved and undriven. `FLASH_EN` has **no P4 GPIO in V1**: the JP1 header exposes eleven GPIOs,
-two are the touch and LCD resets, and the nine free ones are consumed by the four UARTs and
-`SYNC_OUT`. `BOARD_FLASH_EN` is `BOARD_GPIO_NONE` and the profile carries `FLASH_EN: null`. The
-earlier `GPIO28` assignment was to a pin that is not on the header.
+reserved and undriven. `FLASH_EN` **has a P4 GPIO**: `GPIO28`, JP1 pin 21 (`BOARD_FLASH_EN` /
+`BOARD_FLASH_EN_JP1` in `firmware/p4/main/board_d4v1.h`, `FLASH_EN: "GPIO28"` in the profile).
+Twelve P4 GPIOs reach the header — 52, 51, 50, 49, 35, 34, 32, 28 on the left column and 33, 31,
+30, 29 on the right — carrying eleven signals: the four TX/RX pairs, `SYNC_OUT`, `FLASH_EN` and
+`CAM_PWR_EN`. GPIO35 on pin 15 is the one spare and must stay unconnected; it is the P4's
+serial-bootloader strap. An earlier revision of this section said `FLASH_EN` had no pin because
+`GPIO28` was believed to be off-header; the measured JP1 table shows it on pin 21.
 
-What `FLASH_EN` will drive is a bench LED until the flash board exists, through whatever route M2
-picks. (`CAM_PWR_EN` is routed on `GPIO31`, JP1 pin 10, since ECN-0002; the I²C expander an earlier revision proposed is unnecessary.) The intended timing is
+A pin is not a flash. `capture.c` configures `GPIO28` as an output and holds it low, and
+`HWV_FLASH_EN_GPIO28` in `firmware/p4/main/hardware_validation.h` is **UNVALIDATED**: no capture
+asserts the line yet, so no meter has caught an edge on it. `flashHardware` stays `false` — the pin
+exists, the flash board does not. What it will drive is a bench LED until that board exists,
+through whatever route M2 picks. (`CAM_PWR_EN` is routed on `GPIO31`, JP1 pin 10, since ECN-0002; the I²C expander an earlier revision proposed is unnecessary.) The intended timing is
 unchanged: asserted before the trigger and released as soon as every node reports its capture
 finished, bounded at 900 ms — because without exposure sync a flash has to cover a window rather
 than an instant, and at 350–500 mA the difference is worth bounding. With no pin there is nothing

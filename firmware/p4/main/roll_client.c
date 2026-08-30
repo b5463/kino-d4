@@ -51,8 +51,15 @@ cJSON *roll_client_call(const char *method, const char *path, const char *body,
       .response_cap = sizeof response,
   };
   roll_http_perform(&req, out);
-  if (out->status < 200 || out->status >= 300) return NULL;
-  return cJSON_Parse(response);
+  cJSON *doc = NULL;
+  if (out->status >= 200 && out->status < 300) doc = cJSON_Parse(response);
+  /* Wiped before returning, the way ensure_registered() wipes its copy. Every
+   * Roll endpoint is called with the device token attached and any of them can
+   * echo something back; this frame is on the upload worker's stack and the
+   * next call reuses it. cJSON_Parse() has already copied what it needs, so
+   * the document survives the wipe. */
+  memset(response, 0, sizeof response);
+  return doc;
 }
 
 const char *roll_client_str(const cJSON *o, const char *key) {

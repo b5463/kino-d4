@@ -319,6 +319,52 @@ static void test_long_strings_are_bounded(void) {
         (unsigned)strlen(out.last_error));
 }
 
+/*
+ * A full-width lastError of escape-heavy bytes must still produce a record
+ * that reads back.
+ *
+ * cJSON escapes one control byte as `\u00XX` — six characters for one — so a
+ * 95-byte lastError of them is 570 bytes on its own, and with the two ids
+ * beside it the record went past UPLOAD_STORE_MAX_BYTES. A record past the
+ * bound is one upload_store_decode() refuses, so the job could never be read
+ * again: every boot rebuilt it from the card and re-registered its capture.
+ * roll_http.c sanitises the text before it becomes an error; this is the
+ * encoder's own backstop for every other path into the field.
+ */
+static void test_escape_heavy_error_still_fits(void) {
+  rq_job_t j = sample_job();
+  /* 95 bytes, the whole field, each one six characters once escaped. */
+  memset(j.last_error, 0x01, sizeof j.last_error - 1);
+  j.last_error[sizeof j.last_error - 1] = '\0';
+  CHECK(strlen(j.last_error) == RQ_ERROR_LEN - 1, "the fixture fills the field, got %u",
+        (unsigned)strlen(j.last_error));
+
+  char *text = upload_store_encode(&j);
+  CHECK(text != NULL, "encode");
+  if (text == NULL) return;
+  const size_t n = strlen(text);
+  CHECK(n <= UPLOAD_STORE_MAX_BYTES, "encoded record fits the bound, got %u bytes",
+        (unsigned)n);
+
+  /* And it round-trips: everything that decides whether a photograph is
+   * uploaded twice is still there. The error text is the one field that gave
+   * way, because it is the only one that is a diagnostic. */
+  rq_job_t out;
+  CHECK(upload_store_decode(text, n, UUID, &out), "the record reads back");
+  CHECK(out.state == j.state, "state survives");
+  CHECK(out.frame_count == j.frame_count, "frameCount survives");
+  CHECK(out.thumb_done == j.thumb_done, "thumbDone survives");
+  CHECK(out.frame_done[0] == j.frame_done[0] && out.frame_done[1] == j.frame_done[1],
+        "per-frame progress survives");
+  CHECK(strcmp(out.capture_id, j.capture_id) == 0, "captureId survives, got %s",
+        out.capture_id);
+  CHECK(strcmp(out.roll_id, j.roll_id) == 0, "rollId survives, got %s", out.roll_id);
+  CHECK(strlen(out.last_error) < strlen(j.last_error),
+        "and the error text is what was shortened, got %u bytes",
+        (unsigned)strlen(out.last_error));
+  cJSON_free(text);
+}
+
 int main(void) {
   test_round_trip();
   test_round_trip_frame_progress();
@@ -335,6 +381,7 @@ int main(void) {
   test_clamps_frame_count();
   test_uuid_comes_from_the_directory();
   test_long_strings_are_bounded();
+  test_escape_heavy_error_still_fits();
 
   if (failures != 0) {
     printf("p4 upload store tests: %d of %d checks FAILED\n", failures, checks);

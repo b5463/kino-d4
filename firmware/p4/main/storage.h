@@ -146,11 +146,23 @@ void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
 /** Frames a capture folder can hold: one per camera. */
 #define STORAGE_CAPTURE_FRAMES 4
 
+/* Every file a capture directory can hold. Shared by the delete path and the
+ * media allow-list so the two cannot drift. */
+#define STORAGE_CAPTURE_FILE_COUNT 6
+extern const char *const STORAGE_CAPTURE_FILES[STORAGE_CAPTURE_FILE_COUNT];
+
 typedef struct {
-  char id[16];   /* "CAP_000042" — NVS sequence, never reused across boots */
+  /* "CAP_000042" from the NVS sequence, which is never reused across boots.
+   * When NVS cannot be read or written the id falls back to "CAP_x" plus the
+   * first six hex digits of the capture UUID - still unique on the card, but
+   * no longer ordered; see storage_capture_open(). */
+  char id[16];
   char dir[64];  /* "/sdcard/KINO/CAPTURES/<uuid>" */
   FILE *jpg;     /* the frame currently open for writing, NULL between frames */
   int open_cam;  /* which camera that frame belongs to, -1 when none is open */
+  /* Path of the frame `jpg` is writing, so a failed write can take the
+   * truncated file with it. Empty between frames. */
+  char open_path[80];
   uint8_t written; /* bitmask of cameras whose frame reached the card */
 } storage_capture_t;
 
@@ -170,8 +182,21 @@ esp_err_t storage_capture_open(storage_capture_t *c, const char *capture_uuid,
 /** Opens <dir>/C<cam+1>.JPG. One frame is open at a time. */
 esp_err_t storage_capture_frame_begin(storage_capture_t *c, int cam);
 /** Flushes and closes the open frame. The bytes are on the card once this
- * returns ESP_OK; the capture is not committed until META.JSON is written. */
+ * returns ESP_OK; the capture is not committed until META.JSON is written.
+ * On failure the frame's file is unlinked and its written bit stays clear —
+ * a frame that did not close clean is a truncated JPEG, and leaving one on the
+ * card gives META.JSON a frame to describe that is half a picture. */
 esp_err_t storage_capture_frame_end(storage_capture_t *c);
+
+/**
+ * Close the open frame and delete its file.
+ *
+ * For a write that failed part way: `storage_capture_append()` returning
+ * ESP_FAIL means a short fwrite, so the bytes on the card are a prefix of a
+ * JPEG. Ending the frame would close it, set the written bit and leave the
+ * stub behind. This is the other ending — no written bit, no file.
+ */
+esp_err_t storage_capture_frame_abandon(storage_capture_t *c);
 
 /** open() + frame_begin(cam 0) with the "TC" prefix - the single-camera bench
  * path, unchanged. */
@@ -185,8 +210,13 @@ void storage_capture_abort(storage_capture_t *c);
 /** CRC-32 of a stored file, streamed. */
 esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_bytes);
 
-/** Removes a committed capture folder (C1.JPG + META.JSON + dir). Used by the
- * soak test's keepAll=false cleanup — never called on user captures. */
+/** Removes a committed capture folder: every name in STORAGE_CAPTURE_FILES,
+ * then the directory itself. Used by the soak test's keepAll=false cleanup and
+ * by the boot sweep — never called on user captures.
+ *
+ * The list is the whole contract. It missed THUMB.JPG while the capture path
+ * wrote one on every success, so rmdir() refused the non-empty directory and a
+ * deleted capture came back in the gallery on the next scan. */
 void storage_capture_delete(const char *dir);
 
 /* ------------------------------------------------------------------ */
@@ -258,7 +288,7 @@ typedef struct {
  *
  * Conservative on every axis that matters:
  *   - only directories whose names pass storage_is_capture_dirname()
- *   - only ever unlinks the six filenames a capture can contain
+ *   - only ever unlinks the names in STORAGE_CAPTURE_FILES
  *   - the directory itself goes via rmdir(), which refuses a non-empty
  *     directory, so an orphan holding anything unexpected is PRESERVED and
  *     counted rather than forced

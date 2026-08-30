@@ -103,10 +103,15 @@ void power_get(power_state_t *out) {
 /* The camera bank's power switch. Held on until camIdleTimeoutS elapses,
  * which is what makes four idle XIAOs stop costing the battery anything.
  *
- * BOARD_CAM_PWR_EN is BOARD_GPIO_NONE on the D4 V1 carrier: JP1 has no pin
- * left for it (board_d4v1.h). The idle logic still runs and logs the
- * decision; no GPIO is touched and the bank stays powered. Whether every
- * channel hangs off one line or each gets its own is an M2 question. */
+ * BOARD_CAM_PWR_EN is GPIO31 on JP1 pin 10 (board_d4v1.h, ECN-0002). This
+ * comment said the line was BOARD_GPIO_NONE and that no GPIO was touched;
+ * that was true of the pin map before the header was measured, and it is not
+ * true now - the idle path below really does drop the rail on a wired unit.
+ *
+ * s_cam_pwr_ready still gates the write, because the pin is only configured
+ * if power_init()'s gpio_config succeeded, and a build whose board header
+ * leaves the line unassigned has to keep working. Whether every channel hangs
+ * off this one line or each gets its own is still an M2 question. */
 static bool s_cam_pwr_ready;
 
 static void cam_bank(bool on) {
@@ -196,6 +201,13 @@ static void power_task(void *arg) {
                (unsigned long)idle);
     }
 
+    /* This really cuts the camera rail on a wired unit - GPIO31 is routed, so
+     * four booted nodes go away here. It is safe to do so because capture.c
+     * does not assume the bank is up: cams_powered() calls power_activity(),
+     * waits up to a second for this task's next pass to bring the rail back,
+     * then pays what is left of the nodes' boot settle before the first frame
+     * (capture.c:529-559). So the cost of an idle cut is a slower first press,
+     * not a failed capture. */
     if (cam_s > 0) cam_bank(idle < (uint32_t)cam_s);
     else cam_bank(true);
 
@@ -236,7 +248,17 @@ esp_err_t power_init(void) {
            s_cam_pwr_ready ? "pin driven" : "unassigned");
   klog("P4", "power up");
   TaskHandle_t h = NULL;
-  xTaskCreate(power_task, "power", 3072, NULL, 2, &h);
+  /* Checked, because power_init() returning ESP_OK with no task behind it is
+   * a camera that never dims, never sleeps and never drops the camera rail -
+   * on a 3000 mAh cell, and with nothing in the log to say why. */
+  if (xTaskCreate(power_task, "power", 3072, NULL, 2, &h) != pdPASS) {
+    ESP_LOGE(TAG, "power task would not start: no heap; nothing will dim or sleep");
+    klog("P4", "power task failed to start");
+    /* s_ready was set above; clear it so a later retry actually retries
+     * instead of returning ESP_OK for a manager that does not exist. */
+    s_ready = false;
+    return ESP_ERR_NO_MEM;
+  }
   taskmon_register("power", h);
   return ESP_OK;
 }

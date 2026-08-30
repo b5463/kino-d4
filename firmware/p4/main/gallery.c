@@ -65,12 +65,39 @@ static void unlock(void) { xSemaphoreGive(s_lock); }
  * and 200 + 1024 in read_meta, on top of the ~600 bytes the newlib/VFS/FatFs
  * fopen chain needs below them. That overflowed the UI task's 8 KB the moment
  * the gallery screen opened, and the canary panic rebooted the camera before
- * a single tile drew. 1936 bytes of .bss against that is cheap.
+ * a single tile drew. 5008 bytes of .bss against that is cheap, and none of it
+ * is on a stack that a deeper VFS call could push over.
  */
 static char s_scan_path[200];
 static char s_scan_head[512];
 static char s_tile_path[200];
-static char s_tile_meta[1024];
+/*
+ * 4096, not 1024.
+ *
+ * A META.JSON measures ~879 B with one frame, ~1076 with two and ~1470 with
+ * four, so every capture with more than one camera in it was read as a
+ * truncated document. cJSON_Parse then returned NULL, read_meta() gave up
+ * silently, and the tile showed the first eight characters of a UUID with mode
+ * "-" and no frame count - a gallery that got less informative the more
+ * cameras were fitted. 4096 is roughly 2.8x the measured four-frame document,
+ * and the truncation is now reported rather than inferred.
+ */
+#define TILE_META_MAX 4096
+static char s_tile_meta[TILE_META_MAX];
+
+/* Whether the truncation warning has already been logged. Once per boot: a
+ * document that does not fit is a fact about the firmware, not about the
+ * capture, so the second hundred lines say nothing the first did not. */
+static bool s_meta_truncated_logged;
+
+/** The capture's own timestamp out of a META.JSON text, 0 when not found. */
+static uint64_t captured_at_ms_in(const char *json) {
+  const char *k = strstr(json, "capturedAtMs");
+  if (k == NULL) return 0;
+  k = strchr(k, ':');
+  if (k == NULL) return 0;
+  return strtoull(k + 1, NULL, 10);
+}
 
 /*
  * When a capture was taken, from its META.JSON.
@@ -89,14 +116,35 @@ static uint64_t capture_taken_ms(const char *dir_name) {
   FILE *f = fopen(s_scan_path, "rb");
   if (f == NULL) return 0;
   const size_t got = fread(s_scan_head, 1, sizeof s_scan_head - 1, f);
-  fclose(f); /* every return past here is after the close: 240 of these run
-              * back to back and max_files is 8. */
   s_scan_head[got] = 0;
-  const char *k = strstr(s_scan_head, "capturedAtMs");
-  if (k == NULL) return 0;
-  k = strchr(k, ':');
-  if (k == NULL) return 0;
-  return strtoull(k + 1, NULL, 10);
+  uint64_t when = captured_at_ms_in(s_scan_head);
+
+  /*
+   * The head is a fast path, not a limit.
+   *
+   * capturedAtMs sits in the first 512 bytes of every document this firmware
+   * writes (host-tested in test_meta.c), so the fread above almost always
+   * answers. But a document from another firmware version, or one whose key
+   * order differs, would have sorted at time 0 - and a capture at time 0 sorts
+   * last, so the newest picture on the card could land off the end of the
+   * list. Only reached when the head filled AND the key was not in it, so the
+   * cost is paid by the capture that needs it and by nothing else.
+   */
+  if (when == 0 && got == sizeof s_scan_head - 1) {
+    char *whole = heap_caps_malloc(TILE_META_MAX, MALLOC_CAP_SPIRAM);
+    if (whole != NULL) {
+      rewind(f);
+      const size_t all = fread(whole, 1, TILE_META_MAX - 1, f);
+      whole[all] = '\0';
+      when = captured_at_ms_in(whole);
+      heap_caps_free(whole);
+    }
+  }
+  /* One close, on every path: 240 of these run back to back and max_files
+   * is 8, so a leaked handle costs the eighth capture its date and the ninth
+   * its tile. */
+  fclose(f);
+  return when;
 }
 
 /** Newest first. Filled by scan(), read through s_order. */
@@ -128,6 +176,10 @@ static int by_newest(const void *a, const void *b) {
  * wrong as before. FAT stores mtime at 2-second
  * resolution, which cannot separate two captures in the same 2 s window - the
  * shutter cannot fire that fast, so it does not arise.
+ *
+ * Returns the number of names collected, or -1 when it gave the card back to a
+ * capture before finishing. -1 is not an error and not an empty card: the
+ * caller keeps the list it has and asks again.
  */
 static int scan(void) {
   /* Arbitrated like every other reader. load_tile() takes this and the scan
@@ -145,6 +197,25 @@ static int scan(void) {
   int total = 0;
   struct dirent *e;
   while ((e = readdir(d)) != NULL) {
+    /*
+     * Let go the moment photography wants the card.
+     *
+     * This walk is one META.JSON read per capture folder - up to 240 of them,
+     * 5-15 ms each - and it held STORAGE_USER_UI for all of it. A shutter press
+     * landing mid-scan waited out the whole walk, which is precisely the stall
+     * storage_yield_requested() exists to end: the lock is priority-ordered,
+     * but only for a holder that asks. Checked per entry, so the capture waits
+     * for one folder rather than for the card.
+     *
+     * The scan is abandoned, not truncated - a partial list sorted by a partial
+     * set of timestamps is a gallery in the wrong order. The caller keeps the
+     * list it already had and comes back on the next tick.
+     */
+    if (storage_yield_requested(STORAGE_USER_UI)) {
+      closedir(d);
+      storage_release(STORAGE_USER_UI);
+      return -1;
+    }
     if (e->d_name[0] == '.') continue;
     const size_t len = strlen(e->d_name);
     if (len == 0 || len >= 40) continue;
@@ -198,6 +269,14 @@ static void read_meta(gallery_item_t *it) {
   const size_t got = fread(s_tile_meta, 1, sizeof s_tile_meta - 1, f);
   fclose(f);
   s_tile_meta[got] = '\0';
+  if (got == sizeof s_tile_meta - 1 && !s_meta_truncated_logged) {
+    /* A full buffer means the document may have been cut, and a cut document
+     * fails cJSON_Parse silently below. Said once, with the size, because the
+     * fix is a bigger buffer here rather than anything about this capture. */
+    s_meta_truncated_logged = true;
+    ESP_LOGW(TAG, "META.JSON for %s filled the %d-byte buffer; the tile may be incomplete",
+             it->id, (int)sizeof s_tile_meta);
+  }
 
   cJSON *m = cJSON_Parse(s_tile_meta);
   if (m == NULL) return;
@@ -258,16 +337,28 @@ static void gallery_task(void *arg) {
     if (s_rescan) {
       s_rescan = false;
       lock();
-      s_total = storage_present() ? scan() : 0;
-      const int pages = gallery_pages();
-      if (s_page >= pages) s_page = pages > 0 ? pages - 1 : 0;
-      for (int i = 0; i < GALLERY_PAGE; i++) {
-        /* Everything is pending until the tiles below say otherwise, so the
-         * screen never shows a stale picture under a new capture's label. */
-        memset(&s_slot[i], 0, sizeof s_slot[i]);
-        if (s_page * GALLERY_PAGE + i < s_total) s_slot[i].state = TILE_PENDING;
+      const int found = storage_present() ? scan() : 0;
+      if (found >= 0) {
+        s_total = found;
+        const int pages = gallery_pages();
+        if (s_page >= pages) s_page = pages > 0 ? pages - 1 : 0;
+        for (int i = 0; i < GALLERY_PAGE; i++) {
+          /* Everything is pending until the tiles below say otherwise, so the
+           * screen never shows a stale picture under a new capture's label. */
+          memset(&s_slot[i], 0, sizeof s_slot[i]);
+          if (s_page * GALLERY_PAGE + i < s_total) s_slot[i].state = TILE_PENDING;
+        }
       }
       unlock();
+      if (found < 0) {
+        /* A capture wanted the card and the scan gave it back. Ask again next
+         * pass; the screen keeps showing the list it had and gallery_loading()
+         * stays true, so it says READING CARD rather than going empty. */
+        s_rescan = true;
+        s_dirty = true;
+        vTaskDelay(pdMS_TO_TICKS(80));
+        continue;
+      }
     }
 
     /* Take a copy of what to decode, then work outside the lock: a decode is
@@ -390,8 +481,11 @@ esp_err_t gallery_init(void) {
   }
 
   /* 4 KB: cJSON's recursive descent over a metadata object runs on this stack,
-   * but the 1 KB it parses is s_tile_meta and not a local, the pictures are in
-   * PSRAM and the decode buffers belong to thumb.c. */
+   * but the document it parses is s_tile_meta in .bss and not a local, the
+   * pictures are in PSRAM and the decode buffers belong to thumb.c. The
+   * recursion is bounded by the document's nesting - three levels in a
+   * kino.capture - not by its size, so raising that buffer to 4096 does not
+   * deepen this stack. */
   if (xTaskCreate(gallery_task, "gallery", 4096, NULL, 4, &s_task) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }

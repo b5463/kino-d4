@@ -24,6 +24,26 @@ int usb_link_read(uint8_t *buf, size_t cap, uint32_t timeout_ms);
  * about the power path.
  */
 bool usb_link_connected(void);
+
+/**
+ * Write the whole buffer, waiting as long as it takes.
+ *
+ * For request/response traffic only. USB-Serial-JTAG has a 4 KB TX FIFO and
+ * no flow control the device can see: when nothing on the host is draining
+ * the port the FIFO fills and this call parks the caller until something
+ * does. A reply the host asked for is worth that wait; an event is not.
+ */
 void usb_link_write(const uint8_t *data, size_t len);
+
+/**
+ * Write with a deadline for the whole call. Returns bytes actually written,
+ * which is less than `len` when the host stopped draining the port.
+ *
+ * A short return means a partial frame is already on the wire. That is safe
+ * for the decoder on either end - it resyncs on the next KI magic and counts
+ * the remainder as discarded - but it means the caller must treat the frame
+ * as lost rather than retry the tail.
+ */
+int usb_link_write_timeout(const uint8_t *data, size_t len, uint32_t timeout_ms);
 
 #endif

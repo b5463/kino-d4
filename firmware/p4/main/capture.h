@@ -49,9 +49,12 @@ typedef struct {
   uint32_t bytes;
   uint32_t node_ms;    /* the node's own capture duration */
   uint32_t transfer_ms;
-  /* Chunks re-requested on this frame. Zero is the healthy case; a non-zero
-   * count that still produced a good CRC is the link being unreliable and the
-   * capture surviving it anyway, which is worth seeing on the bench. */
+  /* Chunk reads that failed on this frame, counted on every failed attempt.
+   * Zero is the healthy case; a non-zero count that still produced a good CRC
+   * is the link being unreliable and the capture surviving it anyway, which is
+   * worth seeing on the bench. A frame that died counts the attempt that killed
+   * it too, so three here against CHUNK_RETRIES 2 is one chunk that was never
+   * going to arrive. */
   uint32_t chunk_retries;
   uint32_t write_ms;
   int32_t fire_us;     /* when the command went out, relative to the trigger */
@@ -154,6 +157,21 @@ esp_err_t capture_fire(const char *source, capture_report_t *out);
 bool capture_request(const char *source);
 
 capture_stage_t capture_stage(void);
+
+/**
+ * Whether a capture or a bench command holds the pipeline, RIGHT NOW.
+ *
+ * Advisory, and for display only. It is a try-lock sample: it takes the capture
+ * lock, gives it straight back, and reports what it saw - so by the time the
+ * caller reads the answer, the lock may be held by someone else or may have
+ * been let go. It is exclusion for exactly zero instructions.
+ *
+ * Never use it to protect a sequence. cam_probe_task did, and then greeted four
+ * channels for up to twelve seconds inside the window it thought it had
+ * checked - a HELLO landing between two chunk reads of a live capture, with a
+ * uart_flush_input() in front of it. Anything that needs the pipeline to itself
+ * takes capture_lock() and holds it.
+ */
 bool capture_busy(void);
 
 /**

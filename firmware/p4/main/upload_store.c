@@ -30,9 +30,8 @@ bool upload_store_has_file(const char *uuid, const char *name) {
 /* Encode                                                             */
 /* ------------------------------------------------------------------ */
 
-char *upload_store_encode(const rq_job_t *job) {
-  if (job == NULL) return NULL;
-
+/** Serialise `job` exactly as its fields stand, with no bound applied. */
+static char *encode_raw(const rq_job_t *job) {
   cJSON *j = cJSON_CreateObject();
   if (j == NULL) return NULL;
 
@@ -58,6 +57,47 @@ char *upload_store_encode(const rq_job_t *job) {
 
   char *text = cJSON_PrintUnformatted(j);
   cJSON_Delete(j);
+  return text;
+}
+
+char *upload_store_encode(const rq_job_t *job) {
+  if (job == NULL) return NULL;
+
+  char *text = encode_raw(job);
+  if (text == NULL) return NULL;
+  if (strlen(text) <= UPLOAD_STORE_MAX_BYTES) return text;
+
+  /*
+   * A record past the bound is one upload_store_decode() refuses on the way
+   * back, so the job it describes can never be read again: every boot rebuilds
+   * it from the card and every boot re-registers the capture.
+   *
+   * The field that gets a record there is lastError, and only through the
+   * encoder. It is 95 bytes, but cJSON escapes a control byte as `\u00XX` —
+   * six characters for one — so 95 control bytes are 570 bytes on their own
+   * and the ids beside them no longer fit under 768. roll_http.c sanitises the
+   * text before it becomes an error, which is where that should be stopped;
+   * this is the backstop for every other path into the field, and it is here
+   * rather than in upload_store_save() so the host test can reach it.
+   *
+   * The error text is what gets shortened because it is the only field that is
+   * a diagnostic. Per-frame progress, the ids and the state all decide whether
+   * a photograph is uploaded twice. Halved until it fits, and an empty
+   * lastError is tried before giving up.
+   */
+  rq_job_t trimmed = *job;
+  size_t keep = sizeof trimmed.last_error - 1;
+  while (strlen(text) > UPLOAD_STORE_MAX_BYTES && keep > 0) {
+    keep /= 2;
+    trimmed.last_error[keep] = '\0';
+    cJSON_free(text);
+    text = encode_raw(&trimmed);
+    if (text == NULL) return NULL;
+  }
+  /* Still over with no error text at all means the ids alone are past the
+   * bound, which is a field-width bug and not something to fix by dropping the
+   * record. Returned anyway: an unreadable record still reconciles as REPAIR,
+   * and no record at all reconciles as ENQUEUE, which is worse. */
   return text;
 }
 

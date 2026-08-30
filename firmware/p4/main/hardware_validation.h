@@ -28,10 +28,12 @@ typedef enum {
   HWV_SD_D2_GPIO41,
   HWV_SD_D3_GPIO42,
   HWV_SD_LDO_CH4,
-  /* CAM1 on UART1: TX GPIO1 (JP1 pin 7), RX GPIO2 (JP1 pin 9). The rows were
-   * named for GPIO52/51 until 2026-08-28; those pins are not on the header and
-   * nothing ever answered on them, so no evidence was recorded against the
-   * old names. Same NVS index, renamed in place. */
+  /* CAM1 on UART1: TX GPIO52 (JP1 pin 7), RX GPIO51 (JP1 pin 9), which is
+   * what board_d4v1.h holds and what the ECN-0002 walk measured - the P4 drove
+   * each GPIO in turn and JP1 pin 7 answered as GPIO52. The row names match
+   * the copper again; an intermediate revision of this comment claimed
+   * GPIO1/GPIO2 from the JC-ESP32P4-M3-DEV map, which is a different carrier
+   * and reaches nothing here. Names left alone, so the NVS indices hold. */
   HWV_CAM1_TX_GPIO52,
   HWV_CAM1_RX_GPIO51,
   HWV_CAM1_BAUD_921600,
@@ -50,11 +52,16 @@ typedef enum {
   HWV_TOUCH_GT911,
   HWV_AUDIO_ES8311,
   HWV_AUDIO_AMP_GPIO11,
-  /* No pin. BOARD_CAM_PWR_EN is BOARD_GPIO_NONE: JP1 has nine free GPIOs and
-   * the four UARTs plus SYNC take them. The row's earlier VALIDATED claim was
-   * earned by driving GPIO31, which routes nowhere on this carrier, so it was
-   * void; power.c no longer marks it. Earned only when a real switch line
-   * exists and a meter shows the bank going off. Same NVS index, renamed. */
+  /* BOARD_CAM_PWR_EN is GPIO31 on JP1 pin 10 (board_d4v1.h, ECN-0002), and
+   * power.c configures it and drives it low when camIdleTimeoutS elapses. The
+   * pin exists and is driven; an earlier version of this comment said it was
+   * BOARD_GPIO_NONE and routed nowhere, which was the pre-measurement map.
+   *
+   * Nothing marks this row, on purpose. Driving a pin is not evidence that
+   * the AO4407 channels downstream switched - a gate that never pulled, a
+   * missing jumper and a working rail all look identical from the P4. Earned
+   * when a meter on the bank's 3V3 shows it going off with the timeout and
+   * back on with a capture, and recorded by hand. */
   HWV_CAM_PWR_EN_GPIO31,
   /*
    * ---- APPEND ONLY BELOW THIS LINE ----
@@ -72,9 +79,11 @@ typedef enum {
    * frame exchange proves both directions at once, and nothing can prove TX
    * alone. The asymmetry is deliberate and stays for the index reason above.
    *
-   * Pins, from board_d4v1.h: CAM2 UART2 TX GPIO47 / RX GPIO46 (JP1 10/12),
-   * CAM3 UART3 TX GPIO32 / RX GPIO33 (JP1 19/21), CAM4 UART4 TX GPIO45 /
-   * RX GPIO4 (JP1 14/13). All three UNVALIDATED: no node has been jumpered.
+   * Pins, from board_d4v1.h after ECN-0002: CAM2 UART2 TX GPIO50 / RX GPIO49
+   * (JP1 11/13), CAM3 UART3 TX GPIO34 / RX GPIO33 (JP1 17/8), CAM4 UART4 TX
+   * GPIO30 / RX GPIO29 (JP1 12/14). This list carried the pre-measurement
+   * numbers (47/46, 32/33, 45/4) until 2026-08-30; none of those reach the
+   * header. All three rows UNVALIDATED: no node has been jumpered.
    */
   HWV_CAM2_UART,
   HWV_CAM2_NODE_LINK,
@@ -91,15 +100,25 @@ typedef enum {
   HWV_CAM4_SENSOR_DETECT,
   HWV_CAM4_JPEG_TRANSFER,
   HWV_CAM4_SD_WRITE,
-  /* The shared trigger trace, GPIO20 on JP1 pin 17 (was GPIO32 until the
-   * 2026-08-28 pin correction; GPIO32 is now CAM3_TX). Driven by capture.c
-   * today; this row is earned only when a node reports having *seen* the
-   * edge, which needs the node-side ISR that M0 deliberately does not
-   * implement. It exists so the bring-up has somewhere to record the answer. */
+  /* The shared trigger trace: BOARD_SYNC_OUT is GPIO32 on JP1 pin 19
+   * (board_d4v1.h, ECN-0002), so the row name is correct. A middle revision
+   * of this comment said GPIO20 on pin 17 and that GPIO32 had become CAM3_TX;
+   * neither is true - CAM3_TX is GPIO34 on pin 17.
+   *
+   * capture.c drives this pin, and driving it is not the claim. The row is
+   * earned when a node reports having *seen* the edge, which needs the
+   * node-side ISR that M0 deliberately does not implement, or failing that a
+   * scope on JP1 19 during a capture. It exists so the bring-up has somewhere
+   * to record the answer. */
   HWV_SYNC_TRIGGER_GPIO32,
-  /* No pin. BOARD_FLASH_EN is BOARD_GPIO_NONE and capture.c drives nothing
-   * for a flash request. Stays UNVALIDATED until M2 routes the line (I2C
-   * JP1 pin 21) and something measurably responds. */
+  /* BOARD_FLASH_EN is GPIO28 on JP1 pin 21 (board_d4v1.h, ECN-0002) - a
+   * routed pin, not BOARD_GPIO_NONE as this said before the header was
+   * measured, and pin 21 is not the I2C line it was once described as.
+   *
+   * Still UNVALIDATED for a different reason than "no pin": capture.c drives
+   * nothing for a flash request yet, so there is no edge for a meter to catch.
+   * Earned when the firmware asserts the line for a flash and the LED bank
+   * measurably fires. */
   HWV_FLASH_EN_GPIO28,
   /* Earned on the first debounced press of a real fitted switch. Cannot flip
    * while BOARD_BTN_SHUTTER is BOARD_BTN_NONE, which is the current state. */

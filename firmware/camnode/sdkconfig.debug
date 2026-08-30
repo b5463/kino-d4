@@ -1,0 +1,8 @@
+# Diagnostic overlay: the production defaults with debug optimisation.
+#
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.debug" build
+#
+# See firmware/p4/sdkconfig.debug. Nothing else in this file may differ from
+# sdkconfig.defaults.
+CONFIG_COMPILER_OPTIMIZATION_PERF=n
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y

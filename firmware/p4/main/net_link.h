@@ -37,6 +37,22 @@
  * exercise the real state machine rather than a copy of it. Same discipline
  * as roll_queue.c, for the same reason.
  *
+ * ## Locking
+ *
+ * Every function below is safe to call from any task. The module holds one
+ * mutex over its state, because the writers are four different tasks — the
+ * IDF event loop, the c6link supervisor, the SNTP callback and whichever task
+ * moved the transport bytes — and the readers are the UI while it draws, the
+ * upload worker and the KDP server. `net_link_status()` returns a consistent
+ * snapshot rather than a mixture of two moments, which is what stops an
+ * address from the network that just went away being reported beside the SSID
+ * of the one that has not arrived.
+ *
+ * The mutex is created by `net_link_init()` and by `net_link_set_driver()`,
+ * and is NULL-tolerant before that: a report during boot never faults. On the
+ * host, where this file is compiled with nothing but `shim/esp_err.h` on the
+ * include path, the lock compiles to nothing and there is one thread.
+ *
  * ## Where the radio actually lives
  *
  * `net_hosted.c` owns esp_hosted and esp_wifi_remote and exists only in the
@@ -329,6 +345,23 @@ void net_link_set_driver(const net_link_driver_t *driver, int64_t now_ms);
  */
 void net_link_report_state(net_state_t state, net_reason_t reason, const char *detail,
                            int64_t now_ms);
+
+/**
+ * Release the TLS hold `NET_REASON_CLOCK_UNTRUSTED` represents.
+ *
+ * net_time.c reports `NET_IP_READY` with that reason when the network is up
+ * but the wall clock cannot be believed, so nothing attempts a certificate
+ * check that would fail identically forever. Once the clock IS trustworthy
+ * something has to take the reason away again, and this is it.
+ *
+ * The test and the write are one operation under this module's lock, which is
+ * why it is a function here rather than a status read and a report back in the
+ * caller. Between those two the event task can report a disconnect, and a
+ * caller writing IP_READY back over it would claim an address the radio has
+ * just given up. Does nothing unless the state is still IP_READY AND the
+ * reason is still CLOCK_UNTRUSTED.
+ */
+void net_link_clear_clock_hold(int64_t now_ms);
 
 /** The three versions the link handshake produces. Any may be NULL to leave
  * that field as it was. Recorded before the compatibility decision is taken,

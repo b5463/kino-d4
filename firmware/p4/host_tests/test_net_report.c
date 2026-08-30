@@ -322,8 +322,13 @@ static void test_transport_counters(void) {
   net_link_init(0);
   net_link_set_driver(&stub, 0);
 
+  /* Zero, exactly. net_link_init() clears the struct and net_link_set_driver()
+   * only enters C6_BOOTING - registering a driver is not a reset, and counting
+   * one here would make the first reported reset unattributable. The check
+   * used to accept 0 or 1, which could not fail. */
   net_status_t st = status_now(0);
-  CHECK(st.c6_resets == 1 || st.c6_resets == 0, "resets start at zero until one happens");
+  CHECK(st.c6_resets == 0, "resets start at zero until one happens, got %u",
+        (unsigned)st.c6_resets);
 
   net_link_report_reset();
   net_link_report_reset();
@@ -369,6 +374,57 @@ static void test_clock_reason_does_not_claim_disconnected(void) {
         "which is not UNKNOWN");
 }
 
+/* ---- releasing the clock hold ------------------------------------------ */
+
+static void test_clock_hold_is_released_once(void) {
+  net_link_init(0);
+  net_link_set_driver(&stub, 0);
+  net_link_report_state(NET_RADIO_READY, NET_REASON_NONE, NULL, 0);
+  net_link_report_ip("192.168.1.42", 10);
+  net_link_report_state(NET_IP_READY, NET_REASON_CLOCK_UNTRUSTED, "waiting for a clock", 20);
+
+  net_link_clear_clock_hold(30);
+  net_status_t st = status_now(30);
+  CHECK(st.state == NET_IP_READY, "the link is still up, got %s", net_state_name(st.state));
+  CHECK(st.reason == NET_REASON_NONE, "and the hold is gone, got %s",
+        net_reason_name(st.reason));
+
+  /* Idempotent, and it does not invent a hold that was never placed. */
+  net_link_report_state(NET_IP_READY, NET_REASON_DNS_FAILURE, "the resolver gave up", 40);
+  net_link_clear_clock_hold(50);
+  CHECK(status_now(50).reason == NET_REASON_DNS_FAILURE,
+        "a reason that is not the clock is left alone, got %s",
+        net_reason_name(status_now(50).reason));
+}
+
+/*
+ * The race the audit found. SNTP used to read the status, compare, and report
+ * IP_READY back — three steps, with the event task free to run between them.
+ * A disconnect that landed in the gap was overwritten by the write, so the
+ * camera claimed an address the radio had just given up and the upload worker
+ * retried against a network it was not on.
+ */
+static void test_a_released_hold_cannot_resurrect_an_address(void) {
+  net_link_init(0);
+  net_link_set_driver(&stub, 0);
+  net_link_report_state(NET_RADIO_READY, NET_REASON_NONE, NULL, 0);
+  net_link_report_ip("192.168.1.42", 10);
+  net_link_report_state(NET_IP_READY, NET_REASON_CLOCK_UNTRUSTED, "waiting for a clock", 20);
+
+  /* The AP goes away while SNTP's answer is in flight. */
+  net_link_report_state(NET_WIFI_IDLE, NET_REASON_ASSOC_FAILED,
+                        "disconnected, 802.11 reason 8", 30);
+
+  net_link_clear_clock_hold(40);
+  net_status_t st = status_now(40);
+  CHECK(st.state == NET_WIFI_IDLE, "the disconnect stands, got %s", net_state_name(st.state));
+  CHECK(st.reason == NET_REASON_ASSOC_FAILED, "with its own reason, got %s",
+        net_reason_name(st.reason));
+  CHECK(st.ip[0] == '\0', "and no address, got '%s'", st.ip);
+  CHECK(strcmp(net_wire_state(st.state), "connected") != 0,
+        "and the wire does not say connected");
+}
+
 int main(void) {
   test_the_driver_is_the_gate();
   test_library_up_is_not_slave_connected();
@@ -379,6 +435,8 @@ int main(void) {
   test_operations_still_fail_closed();
   test_transport_counters();
   test_clock_reason_does_not_claim_disconnected();
+  test_clock_hold_is_released_once();
+  test_a_released_hold_cannot_resurrect_an_address();
 
   if (failures > 0) {
     printf("p4 net-report tests: %d/%d checks FAILED\n", failures, checks);

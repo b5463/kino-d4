@@ -335,6 +335,87 @@ static bool starts_with_ci(const char *s, const char *prefix) {
   return true;
 }
 
+/* Bytes a UTF-8 sequence starting with `c` must have in total, or 0 when `c`
+ * cannot start one. C0/C1 are overlong two-byte forms and F5..FF encode past
+ * U+10FFFF, so neither is a lead byte. */
+static int utf8_seq_len(unsigned char c) {
+  if (c >= 0xc2 && c <= 0xdf) return 2;
+  if (c >= 0xe0 && c <= 0xef) return 3;
+  if (c >= 0xf0 && c <= 0xf4) return 4;
+  return 0;
+}
+
+/* The second byte is narrower than 80..BF for four lead bytes: E0 would be an
+ * overlong three-byte form below A0, ED would encode a UTF-16 surrogate above
+ * 9F, F0 an overlong four-byte form below 90, and F4 a code point past
+ * U+10FFFF above 8F. */
+static bool utf8_second_ok(unsigned char lead, unsigned char second) {
+  if (second < 0x80 || second > 0xbf) return false;
+  if (lead == 0xe0) return second >= 0xa0;
+  if (lead == 0xed) return second <= 0x9f;
+  if (lead == 0xf0) return second >= 0x90;
+  if (lead == 0xf4) return second <= 0x8f;
+  return true;
+}
+
+char *rq_sanitise_detail(char *dst, size_t dst_size, const char *src) {
+  if (dst == NULL || dst_size == 0) return dst;
+  if (src == NULL) {
+    dst[0] = '\0';
+    return dst;
+  }
+
+  size_t out = 0;
+  size_t i = 0;
+  while (src[i] != '\0' && out + 1 < dst_size) {
+    const unsigned char c = (unsigned char)src[i];
+
+    if (c < 0x20 || c == 0x7f) {
+      /* A control byte. One '?' rather than dropping it, so a message that was
+       * nothing but control bytes still reads as something arrived. */
+      dst[out++] = '?';
+      i++;
+      continue;
+    }
+    if (c < 0x80) {
+      dst[out++] = src[i++];
+      continue;
+    }
+
+    const int len = utf8_seq_len(c);
+    int have = 1;
+    if (len > 0 && utf8_second_ok(c, (unsigned char)src[i + 1])) {
+      have = 2;
+      /* src[i + have] is at worst the terminator, which fails the range test,
+       * so this never reads past the end of the string. */
+      while (have < len) {
+        const unsigned char cc = (unsigned char)src[i + have];
+        if (cc < 0x80 || cc > 0xbf) break;
+        have++;
+      }
+    }
+    if (len == 0 || have != len) {
+      /* A stray continuation byte, a lead with too few continuations, or an
+       * overlong or out-of-range form. One '?' for the offending byte and
+       * carry on at the next: the rest of the message is still worth reading.
+       */
+      dst[out++] = '?';
+      i++;
+      continue;
+    }
+    if (out + (size_t)len + 1 > dst_size) {
+      /* The whole sequence does not fit. Stopping is the point: half a
+       * sequence at the end of the buffer is exactly the invalid UTF-8 this
+       * function exists to keep out of a cJSON string. */
+      break;
+    }
+    for (int k = 0; k < len; k++) dst[out++] = src[i++];
+  }
+
+  dst[out] = '\0';
+  return dst;
+}
+
 char *rq_redact(char *dst, size_t dst_size, const char *src) {
   if (dst == NULL || dst_size == 0) return dst;
   if (src == NULL) {

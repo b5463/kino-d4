@@ -63,8 +63,10 @@ jobs:
       - run: make -C firmware/p4/host_tests test-qr
       # The JP1 pin map: eight unique camera GPIOs, SYNC_OUT apart from them,
       # every one on a header pin that exists, none on a peripheral the board
-      # already uses. The first map put CAM1 on GPIO52/51, which route to
-      # nothing; this is what stops that happening twice.
+      # already uses. GPIO52/51 is the measured CAM1 pair; an earlier map,
+      # copied from the JC-ESP32P4-M3-DEV carrier, put CAM1 on GPIO1/GPIO2,
+      # which reach nothing here and cost a bench session. This is what stops
+      # that happening twice.
       - run: make -C firmware/p4/host_tests test-pins
       # When a hardware-validation row may be marked. Required, not optional:
       # the C6 rows were nearly wired to esp_hosted_init()'s return value,

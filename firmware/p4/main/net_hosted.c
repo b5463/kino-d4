@@ -111,21 +111,56 @@ static uint64_t s_rx_bytes;
 static uint64_t s_tx_bytes;
 static uint32_t s_errors;
 
+/*
+ * The counters are 64-bit and the P4 is a 32-bit core, so `s_rx_bytes += rx`
+ * is a load pair, an add with carry and a store pair — not one instruction and
+ * not atomic. The writers are not one task either: roll_http.c counts response
+ * and part bytes from the upload worker, count_error() runs on the c6link
+ * supervisor, and net_hosted_counters() is read from the KDP task. A read that
+ * lands between the two stores of a carry reports a number that was never
+ * true, which in GET_RUNTIME_STATS is a jump of four gigabytes.
+ *
+ * A spinlock rather than a mutex: this is four instructions with no blocking
+ * call inside it, and a mutex here would put the upload worker on a priority
+ * queue for an addition.
+ */
+static portMUX_TYPE s_counter_lock = portMUX_INITIALIZER_UNLOCKED;
+
 void net_hosted_counters(uint64_t *rx_bytes, uint64_t *tx_bytes, uint32_t *errors) {
-  if (rx_bytes != NULL) *rx_bytes = s_rx_bytes;
-  if (tx_bytes != NULL) *tx_bytes = s_tx_bytes;
-  if (errors != NULL) *errors = s_errors;
+  taskENTER_CRITICAL(&s_counter_lock);
+  const uint64_t rx = s_rx_bytes;
+  const uint64_t tx = s_tx_bytes;
+  const uint32_t errs = s_errors;
+  taskEXIT_CRITICAL(&s_counter_lock);
+
+  if (rx_bytes != NULL) *rx_bytes = rx;
+  if (tx_bytes != NULL) *tx_bytes = tx;
+  if (errors != NULL) *errors = errs;
 }
 
 void net_hosted_count_bytes(uint64_t rx, uint64_t tx) {
+  taskENTER_CRITICAL(&s_counter_lock);
   s_rx_bytes += rx;
   s_tx_bytes += tx;
-  net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, true);
+  const uint64_t now_rx = s_rx_bytes;
+  const uint64_t now_tx = s_tx_bytes;
+  const uint32_t errs = s_errors;
+  taskEXIT_CRITICAL(&s_counter_lock);
+
+  /* Outside the critical section: net_link takes a mutex, and blocking with
+   * interrupts disabled is how a capture misses its VSYNC. */
+  net_link_report_transport(now_rx, now_tx, errs, true);
 }
 
 static void count_error(void) {
+  taskENTER_CRITICAL(&s_counter_lock);
   s_errors++;
-  net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, false);
+  const uint64_t rx = s_rx_bytes;
+  const uint64_t tx = s_tx_bytes;
+  const uint32_t errs = s_errors;
+  taskEXIT_CRITICAL(&s_counter_lock);
+
+  net_link_report_transport(rx, tx, errs, false);
 }
 
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
@@ -674,9 +709,18 @@ static void supervisor_task(void *arg) {
   (void)arg;
   bring_up();
 
-  /* Recovery, which is the half that gets skipped. A link that drops is
-   * reported and re-established; the camera stays fully usable throughout,
-   * because nothing in the capture path waits on any of this. */
+  /*
+   * The watch. It REPORTS a link that has gone down; it does not bring one
+   * back. An SDIO link that drops leaves the state at C6_BOOTING with reason
+   * C6_LINK_LOST and a transport error counted, and it stays there until the
+   * unit is power-cycled.
+   *
+   * Re-establishing it means re-pulsing GPIO54 and re-enumerating the bus, on
+   * routing that has never been driven and whose enable polarity is a guess
+   * (firmware/C6_HARDWARE_MAP.md). That needs a bench and an issue of its own,
+   * not a loop written from the datasheet. The camera stays fully usable
+   * meanwhile, because nothing in the capture path waits on any of this.
+   */
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(2000));
 

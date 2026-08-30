@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "clock.h"
 #include "config_store.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
@@ -42,6 +43,25 @@ static const char *TAG = "rollhttp";
 #define KINO_ROLL_API_BASE ""
 #endif
 
+/*
+ * Whether an `http://` base may be used at all.
+ *
+ * 1 by default, so the LAN bench keeps working: there is no certificate for a
+ * laptop on a party's Wi-Fi, and the base is a value an operator sets
+ * deliberately.
+ *
+ * A PRODUCTION BUILD SETS THIS TO 0 — `-DKINO_ALLOW_HTTP_API_BASE=0`. The
+ * device token travels in an `Authorization` header on every request, so an
+ * http base puts the credential on the air in cleartext for anyone in the
+ * room; and `network.apiBase` lives in NVS, not in the image, so a bench value
+ * survives a reflash and would ship that way silently. With this at 0 an http
+ * base is refused and the reason says so, rather than being quietly upgraded
+ * to https against a server that has none.
+ */
+#ifndef KINO_ALLOW_HTTP_API_BASE
+#define KINO_ALLOW_HTTP_API_BASE 1
+#endif
+
 /** Bytes moved per card read and per socket write. 16 KiB is a compromise:
  * large enough that a 300 KB frame is twenty round trips rather than three
  * hundred, small enough that a capture waiting for the card waits one read. */
@@ -62,17 +82,66 @@ static const char *TAG = "rollhttp";
 /* Preconditions                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Whether `base`'s scheme is allowed in this build. Warns once either way, so
+ * a log from a unit says which policy it was running under.
+ */
+static bool scheme_allowed(const char *base) {
+  if (strncmp(base, "http://", 7) != 0) return true;
+#if KINO_ALLOW_HTTP_API_BASE
+  static bool warned;
+  if (!warned) {
+    warned = true;
+    ESP_LOGW(TAG,
+             "API base is http://; the device token travels in cleartext. "
+             "A production build sets KINO_ALLOW_HTTP_API_BASE=0");
+  }
+  return true;
+#else
+  static bool refused;
+  if (!refused) {
+    refused = true;
+    ESP_LOGE(TAG, "http:// API base refused: this build allows https:// only");
+  }
+  return false;
+#endif
+}
+
 bool roll_http_api_base(char *out, size_t cap) {
   if (out == NULL || cap == 0) return false;
-  /* Copied out at once. The getter hands back a slot in its own small ring
-   * (48 bytes), which also bounds a stored base to 47 characters - enough for
-   * any host[:port] this camera will be pointed at. */
-  pure_strcopy(out, cap, config_str("network.apiBase", ""));
-  if (out[0] != '\0' && pure_api_base_ok(out)) return true;
+  out[0] = '\0';
+
+  /*
+   * Copied WITH THE LENGTH CHECKED, not just copied.
+   *
+   * This used to read through config_str(), which hands back a slot in a
+   * shared 48-byte ring: a stored value longer than 47 characters came back
+   * ALREADY CUT SHORT, and a cut-short URL still validates.
+   * "https://kino.example.internal:3000" arrived as
+   * "https://kino.example.internal:30" — a legal base pointing at a port
+   * nobody configured, and the camera would have spent the party connecting to
+   * it. config_str_copy() reports the STORED length instead, so a value that
+   * does not fit is refused rather than half-believed. Refused, not truncated
+   * further: there is no shorter URL that is the right one.
+   */
+  const size_t stored_len = config_str_copy("network.apiBase", out, cap);
+  if (stored_len >= cap) {
+    static bool warned;
+    if (!warned) {
+      warned = true;
+      ESP_LOGW(TAG, "network.apiBase is %u characters and does not fit in %u; using the "
+                    "compiled default",
+               (unsigned)stored_len, (unsigned)cap);
+    }
+    out[0] = '\0';
+  } else if (out[0] != '\0' && pure_api_base_ok(out) && scheme_allowed(out)) {
+    return true;
+  }
+
   /* A stored value that does not validate is ignored, not repaired: a
    * half-right URL silently fixed up is a request to the wrong server. */
   pure_strcopy(out, cap, KINO_ROLL_API_BASE);
-  return out[0] != '\0' && pure_api_base_ok(out);
+  return out[0] != '\0' && pure_api_base_ok(out) && scheme_allowed(out);
 }
 
 bool roll_http_ready(char *why, size_t cap) {
@@ -89,10 +158,20 @@ bool roll_http_ready(char *why, size_t cap) {
     return false;
   }
 
-  /* Third and separate, because "the network is up but the camera does not
+  /*
+   * Third and separate, because "the network is up but the camera does not
    * know what year it is" is a different problem from both of the above and
-   * the fix is different too. */
-  if (st.reason == NET_REASON_CLOCK_UNTRUSTED) {
+   * the fix is different too.
+   *
+   * Asked of the clock, not of the cached network reason. The reason is a
+   * DISPLAY field: net_time.c sets it when it holds TLS and clears it when the
+   * hold comes off, and it is the wrong thing to make a decision from — a
+   * clock set by a host over KDP outranks the network, so SNTP never runs, so
+   * for a whole boot nothing was ever going to clear a reason that had already
+   * stopped being true. clock_trustworthy_for_tls() is the same question with
+   * no cache in front of it.
+   */
+  if (!clock_trustworthy_for_tls()) {
     snprintf(why, cap, "no trustworthy clock yet; TLS not attempted");
     return false;
   }
@@ -173,6 +252,23 @@ static esp_http_client_handle_t open_client(const char *method, const char *path
   return client;
 }
 
+/**
+ * True when `host` (with an optional `:port`) is four dotted decimal numbers
+ * rather than a name. Used to keep a bare-IP bench base from claiming the
+ * resolver works.
+ */
+static bool dotted_quad(const char *host) {
+  int groups = 0;
+  const char *p = host;
+  while (*p >= '0' && *p <= '9') {
+    while (*p >= '0' && *p <= '9') p++;
+    groups++;
+    if (*p != '.') break;
+    p++;
+  }
+  return groups == 4 && (*p == '\0' || *p == ':');
+}
+
 /** Read the body into `req->response`, then record what happened. */
 static void finish(esp_http_client_handle_t client, const roll_http_req_t *req,
                    roll_http_out_t *out) {
@@ -191,8 +287,11 @@ static void finish(esp_http_client_handle_t client, const roll_http_req_t *req,
    * Two rows earn themselves on any completed exchange, whatever the caller
    * wanted from it.
    *
-   * DNS: the request reached a server, so the host name resolved. That is the
-   * whole claim; the resolved address is not kept anywhere by the time we get
+   * DNS: the request reached a server, so the host NAME resolved — but only if
+   * the base carried a name. A base of `http://192.168.1.5:3000`, which is
+   * what a LAN bench is pointed at, uses no resolver at all, and marking
+   * C6_DNS on one records DNS as working on the one bench run that never
+   * exercised it. The resolved address is not kept anywhere by the time we get
    * here, so the rule is fed the fact that a connection was made.
    *
    * TLS: the base URL is compiled in, and esp_http_client was handed
@@ -202,24 +301,44 @@ static void finish(esp_http_client_handle_t client, const roll_http_req_t *req,
    * over plain http proves nothing about certificates.
    */
   char base[PURE_API_BASE_MAX + 1];
-  const bool over_tls =
-      roll_http_api_base(base, sizeof base) && strncmp(base, "https://", 8) == 0;
-  if (hwv_rule_dns(true, 1u)) {
-    hwv_mark_validated(HWV_C6_DNS, "API host resolved");
+  const bool have_base = roll_http_api_base(base, sizeof base);
+  const bool over_tls = have_base && strncmp(base, "https://", 8) == 0;
+  const char *host = base;
+  if (over_tls) {
+    host += 8;
+  } else if (have_base && strncmp(base, "http://", 7) == 0) {
+    host += 7;
+  }
+  if (have_base && !dotted_quad(host) && hwv_rule_dns(true, 1u)) {
+    hwv_mark_validated(HWV_C6_DNS, "API host name resolved");
   }
   if (hwv_rule_tls(over_tls, status)) {
     hwv_mark_validated(HWV_C6_TLS, "certificate-verified HTTPS response");
   }
 
   if (status >= 400) {
-    /* The API's own `{code, message}` is the most useful thing a user can be
+    /*
+     * The API's own `{code, message}` is the most useful thing a user can be
      * shown, and it is also the most likely place a URL with a token in it
      * would be echoed back — so it goes through rq_redact() like everything
-     * else. Truncated to the error field rather than kept whole. */
+     * else. Truncated to the error field rather than kept whole.
+     *
+     * Then sanitised, and in that order. The body is bytes off a socket: a
+     * server that answers a 502 with a gzip page, or a proxy that answers with
+     * nothing useful at all, puts control bytes in here. They travel into the
+     * job's last_error, upload_store.c writes that through cJSON, and cJSON
+     * escapes each one as six characters — 95 of them is 570 bytes of a record
+     * bounded at 768, so the record then exceeds the bound and
+     * upload_store_decode() refuses it for the rest of its life. Sanitising
+     * last, after redaction, also means a multi-byte sequence that redaction's
+     * own truncation cut in half does not survive either.
+     */
     char text[RQ_ERROR_LEN];
     snprintf(text, sizeof text, "%s %s -> %d %s", req->method, req->path, status,
              req->response != NULL ? req->response : "");
-    rq_redact(out->detail, sizeof out->detail, text);
+    char safe[RQ_ERROR_LEN];
+    rq_redact(safe, sizeof safe, text);
+    rq_sanitise_detail(out->detail, sizeof out->detail, safe);
   }
 }
 

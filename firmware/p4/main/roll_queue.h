@@ -267,4 +267,28 @@ const char *rq_state_name(rq_state_t state);
  */
 char *rq_redact(char *dst, size_t dst_size, const char *src);
 
+/**
+ * Copy `src` into `dst` with every byte that cannot appear in a JSON string
+ * made safe: control bytes (below 0x20, and 0x7f) and any byte that is not
+ * part of a valid UTF-8 sequence each become one `?`.
+ *
+ * The input is bytes off a socket. An error body from a proxy, a gzip page
+ * answered to a 502, or an SSID echoed back can all put control bytes and
+ * invalid sequences into an error detail, and that detail ends up in a job's
+ * `last_error`, which upload_store.c writes through cJSON. cJSON escapes one
+ * control byte as six characters, so 95 of them are 570 bytes inside a record
+ * bounded at UPLOAD_STORE_MAX_BYTES — the record then exceeds the bound and is
+ * refused for the rest of its life, so the job it described can never be read
+ * back. Invalid UTF-8 is the other half: cJSON emits it verbatim and the KDP
+ * reply carrying it is then a document Studio cannot parse.
+ *
+ * Never longer than its input, so a caller can sanitise in place of a copy it
+ * was making anyway. A multi-byte sequence that would be cut in half by the
+ * end of `dst` is dropped whole rather than truncated, because half a sequence
+ * is the exact thing this removes.
+ *
+ * Returns dst.
+ */
+char *rq_sanitise_detail(char *dst, size_t dst_size, const char *src);
+
 #endif /* P4_ROLL_QUEUE_H */

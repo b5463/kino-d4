@@ -128,7 +128,14 @@ esp_err_t buttons_init(void) {
                DEBOUNCE_MS);
   }
   TaskHandle_t h = NULL;
-  xTaskCreate(buttons_task, "buttons", 3072, NULL, 5, &h);
+  /* Checked: without this task the pins are configured and nothing ever polls
+   * them, so a fitted shutter button is dead and buttons_init() said it was
+   * fine. s_fitted is cleared again so buttons_fitted() reports the truth. */
+  if (xTaskCreate(buttons_task, "buttons", 3072, NULL, 5, &h) != pdPASS) {
+    ESP_LOGE(TAG, "buttons task would not start: no heap; physical controls inactive");
+    s_fitted = false;
+    return ESP_ERR_NO_MEM;
+  }
   taskmon_register("buttons", h);
   return ESP_OK;
 }

@@ -22,7 +22,10 @@
 #include "klog.h"
 #include "net_link.h"
 #include "net_time.h"
+#include "taskmon.h"
 #include "wifi_creds.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "wifi";
 
@@ -39,6 +42,100 @@ static bool s_started;
 static bool s_want_association;
 
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
+
+/* ------------------------------------------------------------------ */
+/* Reconnect backoff                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A STA_DISCONNECTED that is not an auth failure used to call
+ * esp_wifi_connect() straight back, from inside the event handler, on the
+ * strength of "let the driver's own retry do it". There is no driver retry to
+ * let: esp_wifi_connect() IS the retry, and each one is a full-band scan
+ * across every channel the C6 has. Against an access point that has been
+ * switched off — which is the case the comment describes — that is a scan
+ * every few hundred milliseconds for the rest of the party, on the transport
+ * the SD card shares a controller with, and it never settles.
+ *
+ * So: 1 s, doubling to a 30 s ceiling, back to 1 s the moment an address
+ * arrives. The same shape and the same numbers as the upload queue's backoff,
+ * because it is the same problem.
+ */
+#define RECONNECT_MIN_MS 1000u
+#define RECONNECT_MAX_MS 30000u
+
+static esp_timer_handle_t s_reconnect_timer;
+static uint32_t s_reconnect_ms = RECONNECT_MIN_MS;
+static TaskHandle_t s_retry_task;
+
+/* The join itself runs here, on a task of its own.
+ *
+ * Not on the event task: the handler has to return before the driver can
+ * deliver the next event. And not on the esp_timer task either, which is
+ * where the first version put it. On the P4, esp_wifi_connect() is not a
+ * local call — esp_hosted wraps it (-Wl,--wrap=esp_wifi_connect) into a
+ * synchronous RPC to the C6 with a 5000 ms timeout, and the AP-gone case this
+ * retry exists for is the case where that RPC is slowest. Blocking the single
+ * esp_timer dispatch task for up to 5 s stalls every other timer in the image.
+ * So the timer only wakes this task, and this task waits. 4096 bytes because
+ * the RPC path serialises protobuf on the caller's stack. */
+static void retry_task(void *arg) {
+  (void)arg;
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    /* Re-checked here, not only in the timer callback: a disconnect asked for
+     * between the wake and this line must win. */
+    if (!s_want_association) continue;
+    (void)esp_wifi_connect();
+  }
+}
+
+/* Runs on the esp_timer task. Wakes the retry task and returns; nothing here
+ * may block. */
+static void reconnect_cb(void *arg) {
+  (void)arg;
+  if (!s_want_association || s_retry_task == NULL) return;
+  xTaskNotifyGive(s_retry_task);
+}
+
+/** Arm the one-shot and double the next wait. Safe to call from the event
+ * handler: creating a task and starting an esp_timer do not block. */
+static void schedule_reconnect(void) {
+  if (s_retry_task == NULL) {
+    if (xTaskCreate(retry_task, "wifi_retry", 4096, NULL, 3, &s_retry_task) != pdPASS) {
+      s_retry_task = NULL;
+      ESP_LOGW(TAG, "no room for the reconnect task; not retrying until asked");
+      return;
+    }
+    taskmon_register("wifi_retry", s_retry_task);
+  }
+  if (s_reconnect_timer == NULL) {
+    const esp_timer_create_args_t args = {
+        .callback = reconnect_cb,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wifi_retry",
+    };
+    if (esp_timer_create(&args, &s_reconnect_timer) != ESP_OK) {
+      s_reconnect_timer = NULL;
+      ESP_LOGW(TAG, "no reconnect timer; not retrying until asked");
+      return;
+    }
+  }
+  (void)esp_timer_stop(s_reconnect_timer);
+  const uint32_t delay = s_reconnect_ms;
+  if (esp_timer_start_once(s_reconnect_timer, (uint64_t)delay * 1000) != ESP_OK) return;
+  ESP_LOGI(TAG, "reconnecting in %u ms", (unsigned)delay);
+  s_reconnect_ms = delay >= RECONNECT_MAX_MS / 2u ? RECONNECT_MAX_MS : delay * 2u;
+}
+
+/** Back to the floor, and cancel anything armed. Called when an address
+ * arrives and when the user asks for a join or a disconnect: each of those is
+ * a fresh intent and must not inherit the last failure's wait. */
+static void reset_reconnect(void) {
+  s_reconnect_ms = RECONNECT_MIN_MS;
+  if (s_reconnect_timer != NULL) (void)esp_timer_stop(s_reconnect_timer);
+}
 
 /* ------------------------------------------------------------------ */
 /* Text from the air                                                  */
@@ -282,12 +379,15 @@ bool net_wifi_connect(const char *ssid) {
     return false;
   }
   s_want_association = true;
+  /* A join the user asked for is a fresh intent and starts at the floor. */
+  reset_reconnect();
   return true;
 }
 
 bool net_wifi_disconnect(void) {
   if (!s_started) return false;
   s_want_association = false;
+  reset_reconnect();
   return esp_wifi_disconnect() == ESP_OK;
 }
 
@@ -367,14 +467,16 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
          * attempts and a camera that hammers it gets blacklisted, which then
          * looks like a hardware fault. */
         s_want_association = false;
+        reset_reconnect();
         klog("P4", "wifi auth failed; not retrying until asked");
         break;
       }
       if (s_want_association) {
-        /* The AP was switched off, or the guest walked out of range. Let the
-         * driver's own retry do it; there is nothing for this firmware to add
-         * and a second retry loop on top is how a radio never settles. */
-        (void)esp_wifi_connect();
+        /* The AP was switched off, or the guest walked out of range. Armed on
+         * a timer rather than retried here: esp_wifi_connect() is a full-band
+         * scan, and issuing one from this handler on every disconnect is a
+         * radio that never settles and an event task that is never idle. */
+        schedule_reconnect();
       }
       break;
     }
@@ -405,6 +507,11 @@ static void ip_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     }
 
     net_link_report_ip(ip, now_ms());
+
+    /* An address means the ladder has served its purpose. The next drop starts
+     * at one second again, so a single glitch is not answered with the wait
+     * that the last outage had climbed to. */
+    reset_reconnect();
 
     /* A lease, not an address. 169.254/16 is what the stack assigns itself
      * when DHCP fails, and marking this row on one would record the exact

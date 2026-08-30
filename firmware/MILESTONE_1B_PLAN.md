@@ -72,8 +72,9 @@ new commands, capability-gated. Twin: parity comes through MockKinoDevice.
 ## Hardware validation registry
 
 `hardware_validation.[ch]`: fixed item table (`USB_SERIAL_JTAG`, `SD_CLK_GPIO43` … `SD_LDO_CH4`,
-`CAM1_TX_GPIO1`, `CAM1_RX_GPIO2` (named `CAM1_TX_GPIO52`/`CAM1_RX_GPIO51` when this plan was written;
-renamed with the JP1 header correction), `CAM1_BAUD_921600`, `CAM1_NODE_LINK`, `CAM1_SENSOR_DETECT`,
+`CAM1_TX_GPIO52`, `CAM1_RX_GPIO51` (the measured JP1 7/9 pair; an intermediate revision of this plan
+had them the other way round, as `CAM1_TX_GPIO1`/`CAM1_RX_GPIO2` from a different carrier's map),
+`CAM1_BAUD_921600`, `CAM1_NODE_LINK`, `CAM1_SENSOR_DETECT`,
 `CAM1_CAPTURE`, `CAM1_JPEG_TRANSFER`, `CAM1_SD_WRITE`), status
 `UNVALIDATED | VALIDATED | FAILED | NOT_APPLICABLE`, persisted in NVS per unit. Compile-time
 configuration is never validation: an item flips to `VALIDATED` only when the corresponding real

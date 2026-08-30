@@ -15,8 +15,17 @@ static char s_max_res[16];
 
 /* What the sensor is currently configured for, so a request that changes
  * nothing costs nothing. Seeded from camsensor_init's own config below. */
-/* One number for the queue depth, so the drain below cannot drift from it. */
+/* One number for the buffer count, so the drain below cannot drift from it.
+ * Under GRAB_LATEST the driver's frame queue is CAMERA_FB_COUNT - 1 deep
+ * (cam_hal.c: frame_buffer_queue_len = frame_cnt - 1), so one buffer is always
+ * the one the DMA is filling. */
 #define CAMERA_FB_COUNT 2
+#define CAMERA_FB_QUEUE_DEPTH (CAMERA_FB_COUNT - 1)
+
+/* What the framebuffers are cut for, and what the sensor sits at until the
+ * first request changes it. The alloc size must be the larger of the two. */
+#define CAMERA_ALLOC_FRAMESIZE FRAMESIZE_QXGA
+#define CAMERA_DEFAULT_FRAMESIZE FRAMESIZE_UXGA
 
 static framesize_t s_framesize;
 static int s_quality;
@@ -43,7 +52,26 @@ esp_err_t camsensor_init(void) {
       .ledc_timer = LEDC_TIMER_0,
       .ledc_channel = LEDC_CHANNEL_0,
       .pixel_format = PIXFORMAT_JPEG,
-      .frame_size = FRAMESIZE_UXGA, /* 1600x1200 default, see start plan */
+      /*
+       * Init at the LARGEST size the node will ever be asked for, not at the
+       * default one.
+       *
+       * esp_camera_init sizes the framebuffers once, here, and never again:
+       * cam_hal.c under CONFIG_CAMERA_JPEG_MODE_FRAME_SIZE_AUTO takes
+       * width*height/5. camsensor_set_resolution only calls set_framesize,
+       * which writes sensor registers - the buffer keeps the size it was born
+       * with. Initialising at UXGA gives 1600*1200/5 = 384000 B, and a
+       * 2048x1536 JPEG that exceeds that overruns the DMA target: the driver
+       * reports FB-OVF and fb_get returns NULL, so a QXGA capture fails on a
+       * node that had been working at UXGA all session.
+       *
+       * QXGA is 2048*1536/5 = 629145 B per buffer, 1258290 B for the two, in
+       * PSRAM on the 8 MB part. The owner shoots at 2048x1536, so that is the
+       * size the buffers have to be cut for; the drop to the configured
+       * default below is a register write into buffers that are already large
+       * enough.
+       */
+      .frame_size = CAMERA_ALLOC_FRAMESIZE,
       .jpeg_quality = 12,
       /*
        * Two buffers and GRAB_LATEST, which is what esp32-camera documents for
@@ -59,14 +87,21 @@ esp_err_t camsensor_init(void) {
        * felt as stutter whenever the scene moved.
        *
        * With two buffers the driver captures continuously, so a request is
-       * served from a frame already in hand. esp_camera.h: GRAB_WHEN_EMPTY is
-       * "less resources but first 'fb_count' frames might be old", while
-       * GRAB_LATEST keeps "the last 'fb_count' frames" queued.
+       * served from a frame already in hand. esp_camera.h calls GRAB_WHEN_EMPTY
+       * "less resources but first 'fb_count' frames might be old"; GRAB_LATEST
+       * takes the newest instead.
+       *
+       * The queue is one frame deep, not two. cam_hal.c sizes
+       * frame_buffer_queue to fb_count - 1 under GRAB_LATEST, so with
+       * fb_count=2 exactly one completed frame can be waiting while the DMA
+       * fills the other buffer. While s_fb is held across readout that other
+       * buffer is the only free one, so the driver has nowhere to put a second
+       * frame and the queue cannot grow past one.
        *
        * This also bounds staleness for stills. HARDWARE_VALIDATION.md records
-       * a frame handed back 134 s after it was exposed; the queue now holds
-       * only the two most recent frames, and camsensor_discard_queued still
-       * runs ahead of a real shutter.
+       * a frame handed back 134 s after it was exposed; the queue now holds at
+       * most one frame, and camsensor_discard_queued still runs ahead of a
+       * real shutter.
        */
       .fb_count = CAMERA_FB_COUNT,
       .fb_location = CAMERA_FB_IN_PSRAM,
@@ -82,13 +117,24 @@ esp_err_t camsensor_init(void) {
   sensor_t *sensor = esp_camera_sensor_get();
   if (sensor == NULL) return ESP_FAIL;
 
+  /* Seed the configured-state cache from what init actually applied, read back
+   * off the sensor rather than copied out of the config. esp_camera_init
+   * clamps frame_size down to the sensor's own maximum, so on a part whose
+   * ceiling is below CAMERA_ALLOC_FRAMESIZE the config and the hardware
+   * disagree - and the cache is what the change-only guards in
+   * set_quality/set_resolution compare against, so a wrong seed turns a real
+   * request into a silent no-op.
+   *
+   * Outside the info!=NULL block below on purpose: it has to be seeded whether
+   * or not the PID is in the driver's table, because a zeroed s_framesize is
+   * FRAMESIZE_96X96, a size the node never asks for. */
+  s_framesize = sensor->status.framesize;
+  s_quality = sensor->status.quality;
+
   camera_sensor_info_t *info = esp_camera_sensor_get_info(&sensor->id);
   if (info != NULL) {
     strncpy(s_name, info->name, sizeof s_name - 1);
     s_pid = sensor->id.PID;
-  /* Seed the configured-state cache from what init just applied. */
-  s_framesize = config.frame_size;
-  s_quality = config.jpeg_quality;
     s_detected = true;
     switch (info->max_size) {
       case FRAMESIZE_QSXGA: strcpy(s_max_res, "2592x1944"); break;
@@ -97,6 +143,26 @@ esp_err_t camsensor_init(void) {
       default: s_max_res[0] = '\0'; break;
     }
     ESP_LOGI(TAG, "sensor detected: %s (PID 0x%04x)", s_name, sensor->id.PID);
+  } else {
+    /* The sensor answered SCCB - esp_camera_init succeeded - but its PID is
+     * not in the driver's table, so name, maximum size and the autofocus
+     * verdict are all unknown. HELLO then reports sensorDetected false on a
+     * sensor that is present, which is the honest answer and a bench fact
+     * worth a line rather than a silent branch. */
+    ESP_LOGW(TAG, "sensor PID 0x%04x not in the driver's table", sensor->id.PID);
+  }
+
+  /* Drop from the allocation size to the working default. Registers only; the
+   * buffers stay cut for whatever init allocated, which is why this is safe in
+   * this direction and would not be in the other. Guarded on the read-back
+   * size, so a sensor the driver already clamped below the default is left
+   * where it is. framesize_t is ordered smallest to largest. */
+  if (s_framesize > CAMERA_DEFAULT_FRAMESIZE) {
+    if (sensor->set_framesize(sensor, CAMERA_DEFAULT_FRAMESIZE) == 0) {
+      s_framesize = CAMERA_DEFAULT_FRAMESIZE;
+    } else {
+      ESP_LOGW(TAG, "could not set the default framesize; staying at %d", (int)s_framesize);
+    }
   }
   return ESP_OK;
 }
@@ -128,10 +194,14 @@ esp_err_t camsensor_set_quality(int quality) {
  * will be: they exist for the rear-display viewfinder, where the whole point
  * is a frame small enough to cross a 921600-baud UART several times a second.
  *
- * The arithmetic is the reason they had to be added. A UXGA frame at quality
- * 12 measures 7.7-30.4 KB on this sensor, which is 330 ms of link time for
- * one camera and would make a four-up viewfinder a slideshow at under 1 fps.
- * QVGA is roughly an eighth of that.
+ * The arithmetic is the reason they had to be added. A stored frame at
+ * 1600x1200 or 2048x1536 measures 90-240 KB on this sensor
+ * (SYNC_FEASIBILITY.md, "the next is 90-240 KB"; cam_link.c sizes the P4's RX
+ * ring against the same figure). At 921600 baud, 8N1, that is 92160 B/s of
+ * payload, so one camera costs 0.98-2.60 s of link time and a four-up
+ * viewfinder would be a slideshow at well under 1 fps. The 7.7-30.4 KB figure
+ * that used to be quoted here is uvc-preview's, and it is VGA in console mode
+ * - a different size on a different link.
  */
 esp_err_t camsensor_set_resolution(const char *resolution) {
   sensor_t *sensor = esp_camera_sensor_get();
@@ -166,11 +236,13 @@ esp_err_t camsensor_set_resolution(const char *resolution) {
    * than VF_MAX_JPEG, so the finder rejected it and the pane read "no camera"
    * on a camera that was working perfectly.
    *
-   * fb_count frames, because that is how many the queue can be holding. Costs
-   * a frame period each and only on an actual mode change, which the
-   * change-only guard above already makes rare.
+   * CAMERA_FB_QUEUE_DEPTH frames, because that is how many the queue can be
+   * holding: fb_count - 1 under GRAB_LATEST, one buffer being the DMA target.
+   * Draining fb_count would spend one extra whole frame period waiting for a
+   * frame that was never queued. Costs a frame period per fetch and only on an
+   * actual mode change, which the change-only guard above already makes rare.
    */
-  for (int i = 0; i < CAMERA_FB_COUNT; i++) {
+  for (int i = 0; i < CAMERA_FB_QUEUE_DEPTH; i++) {
     camera_fb_t *stale = esp_camera_fb_get();
     if (stale == NULL) break;
     esp_camera_fb_return(stale);
@@ -216,16 +288,26 @@ uint32_t camsensor_discard_queued(void) {
    * This was written against fb_count=1, where the driver captured one frame
    * after each return and then stalled, handing back an image exposed up to
    * 134 s before the command. The config is now fb_count=2 with GRAB_LATEST,
-   * which already bounds the queue to the two most recent frames, so the
+   * which already bounds the queue to the one most recent frame, so the
    * pathological case is gone - but a queued frame is still a frame from
-   * before the command, and dropping one here keeps the photograph causally
+   * before the command, and dropping it here keeps the photograph causally
    * after the shutter press rather than one frame period ahead of it.
+   *
+   * Ask the driver first. esp_camera_available_frames() is
+   * uxQueueMessagesWaiting on the frame queue, so it says whether a completed
+   * frame is actually sitting there. With nothing queued this used to call
+   * fb_get anyway and wait for the driver to fill a buffer: FB_GET_TIMEOUT is
+   * 4000 ms, so a discard plus the capture that follows it was two 4 s waits
+   * back to back on the node's only task - 8 s in which STATUS, HELLO and
+   * RELEASE all go unanswered, and the P4's own capture budget expires. With
+   * the gate the worst case is one fb_get, so one 4 s wait.
    *
    * This bounds the photograph to a frame period of the command.
    * It does not synchronise anything between cameras; that is the sync work
    * SYNC_FEASIBILITY.md scopes. It only stops the camera photographing the
    * past.
    */
+  if (!esp_camera_available_frames()) return 0;
   const int64_t t0 = esp_timer_get_time();
   camera_fb_t *stale = esp_camera_fb_get();
   if (stale != NULL) esp_camera_fb_return(stale);

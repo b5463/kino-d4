@@ -16,6 +16,7 @@
 // The LED is therefore the only feedback you get without a UART adapter, so it
 // carries the boot verdict.
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +27,7 @@
 #include "esp_camera.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_memory_utils.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -445,9 +447,17 @@ static void console_mode(void) {
     bool eoi = fb->len > 3 && fb->buf[fb->len - 2] == 0xFF && fb->buf[fb->len - 1] == 0xD9;
     if (!soi || !eoi) {
       bad++;
-      ESP_LOGE(TAG, "frame %lu: MALFORMED len %u soi=%d eoi=%d  (tail %02x %02x)",
-               (unsigned long)n, (unsigned)fb->len, soi, eoi,
-               fb->buf[fb->len - 2], fb->buf[fb->len - 1]);
+      /* The tail is only printable when there is one. soi/eoi above are
+       * already guarded by len > 3; this read was not, so a runt frame - the
+       * exact thing this loop exists to catch - indexed buf[-2]. */
+      if (fb->len > 3) {
+        ESP_LOGE(TAG, "frame %lu: MALFORMED len %u soi=%d eoi=%d  (tail %02x %02x)",
+                 (unsigned long)n, (unsigned)fb->len, soi, eoi,
+                 fb->buf[fb->len - 2], fb->buf[fb->len - 1]);
+      } else {
+        ESP_LOGE(TAG, "frame %lu: MALFORMED len %u soi=%d eoi=%d  (too short for a tail)",
+                 (unsigned long)n, (unsigned)fb->len, soi, eoi);
+      }
     }
     if (n % 15 == 0) {
       ESP_LOGI(TAG, "%lu frames, %lu malformed, jpeg %u-%u B, heap %u, psram %u",
@@ -485,14 +495,25 @@ void app_main(void) {
    * buffer, and out of PSRAM it reads corrupt. Measured, not theorised — and
    * the reason a bench tool needs an artifact count rather than an opinion,
    * because by eye this was "the line is back sometimes".
+   *
+   * MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA says that, rather than relying on it.
+   * MALLOC_CAP_DEFAULT is satisfied by PSRAM once
+   * CONFIG_SPIRAM_USE_MALLOC is on, so the comment above described an
+   * allocation the flags did not ask for: whether this landed in internal RAM
+   * depended on how much was free, and the 40-in-40 failure would come back
+   * silently the day something else took the internal heap first. The assert
+   * below is the second half of the same statement — if this ever does end up
+   * external, stop here rather than stream green bands at a host.
    */
-  uint8_t *uvc_buffer = heap_caps_malloc(UVC_BUFFER_SIZE, MALLOC_CAP_DEFAULT);
+  uint8_t *uvc_buffer =
+      heap_caps_malloc(UVC_BUFFER_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
   if (uvc_buffer == NULL) {
     ESP_LOGE(TAG, "no %d B for the UVC transfer buffer (free %u internal, %u psram)",
              UVC_BUFFER_SIZE, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     led_fault_forever();
   }
+  assert(!esp_ptr_external_ram(uvc_buffer));
 
   uvc_device_config_t uvc = {
       .uvc_buffer = uvc_buffer,

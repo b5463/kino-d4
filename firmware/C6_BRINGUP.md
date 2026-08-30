@@ -26,10 +26,13 @@ hardware task and everything after it is blocked on it.
 | microSD on slot 0 (prerequisite) | **BENCH DONE 2026-08-28** — the slot move is proven on `KD4-D121BC`; see `HARDWARE_VALIDATION.md` |
 | Any of it on hardware | **Transport and version gate, yes.** The coprocessor was rewritten to the pinned 3.0.6 from a verified 4 MB backup (`HARDWARE_VALIDATION.md`), boots cleanly, enumerates, and passes the gate. The link sits in `WIFI_IDLE` waiting for a network. Scan and association are next |
 
-Nothing in this file has been run on a board. Every "CODE DONE" above means
-the code exists and compiles; the last row is the one that matters, and it
-stays that way until a bench session moves the registry rows in
-`C6_HARDWARE_MAP.md`.
+Every "BENCH DONE 2026-08-29" above is a session recorded in
+[`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md), which owns the bench state
+for this repository: transport, version gate, association, DHCP, SNTP, DNS, a
+verified TLS session, and `ROLL_CREATE` against a real backend on the LAN. Every
+"CODE DONE" means only that the code exists and compiles — nothing about it has
+been observed on a board. Where a row here and `HARDWARE_VALIDATION.md` disagree,
+that file wins and this one is stale.
 
 ## Bench baseline, 2026-08-28
 
@@ -71,13 +74,19 @@ cost a photograph. So the transport comes up asynchronously, after the UI and
 the capture pipeline are already usable, and every stage below fails into a
 reported state rather than a retry loop or a reset.
 
-## 1. Establish the routing — DONE ON PAPER, NOT ON A BOARD
+## 1. Establish the routing — DONE, AND MEASURED
 
 The mapping is in [`C6_HARDWARE_MAP.md`](C6_HARDWARE_MAP.md) with its evidence
 chain: SDMMC slot 1 on `GPIO14`-`GPIO19`, `EN` on `GPIO54`, identified from
 Guition documentation (E2) and corroborated pin-for-pin by Espressif's own
 ESP-Hosted defaults for a P4 host with a C6 coprocessor (E3, E4), where min
 equals max for every pin.
+
+That was the paper argument. It has since been measured:
+`HARDWARE_VALIDATION.md` records `C6_SDIO_PINS` and `C6_LINK_HANDSHAKE`
+**VALIDATED 2026-08-29** — `sdmmc_card_init()` enumerated the C6 on slot 1 with
+`rx_ready && tx_ready`, twice, witnessed from the C6's own console — and
+`C6_EN_GPIO54` **VALIDATED 2026-08-29** on the meter.
 
 What is still open, and it is what step 5 is for:
 
@@ -132,10 +141,17 @@ USB-serial adapter on the header.
 
 ## 3a. The coprocessor image, and the procedure that waits on a divider
 
-Status 2026-08-29. The factory coprocessor is ESP-Hosted 2.3.2 and the host is
-3.0.6; the transport works and the version gate refuses, so the coprocessor
-must be updated. Nothing has been written. Two gates stand in front of the
-write, one of them physical.
+Status 2026-08-29. The factory coprocessor was ESP-Hosted 2.3.2 against a
+3.0.6 host; the transport worked and the version gate refused, so the
+coprocessor had to be updated. **It has been.** `HARDWARE_VALIDATION.md`
+records the write on `KD4-D121BC`: a verified full 4 MB factory backup read
+twice to the same SHA-256, then the four images written and esptool-verified,
+then an independent read-back of 0x0-0x120000 matching byte for byte, with
+`nvs` and `phy_init` unchanged against the backup. The C6 now boots, enumerates
+and passes the gate at 3.0.6.
+
+The two gates below stood in front of that write, one of them physical. They
+are kept because they apply again to any other board.
 
 **The image.** Built from a clean archive of `551e281`, twice, byte-identical:
 `kino-c6.bin` **1 105 872 B**,

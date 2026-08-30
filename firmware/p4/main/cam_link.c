@@ -17,7 +17,7 @@
 #include "klog.h"
 #include "node_link/node_link.h"
 
-/* Four frames deep, not two.
+/* Four chunks deep, not two.
  *
  * The ESP-IDF UART driver DROPS bytes when this ring overflows, and it is
  * installed with a NULL event queue so the overflow is silent. At the
@@ -28,12 +28,9 @@
  * slow one. crcErrors stayed 0 throughout because the frame never finished to
  * be checked.
  *
- * Two frames of headroom is not much when the UI is compositing at the same
- * time and the reader can be descheduled for tens of milliseconds. */
-/*
- * Four chunks deep. Eight was tried and made no difference to the overrun
- * rate, which is what rules out "the reader is being outrun" and leaves the
- * ISR being held off as the explanation.
+ * Eight was tried and made no difference to the overrun rate, which is what
+ * rules out "the reader is being outrun" and leaves the ISR being held off as
+ * the explanation.
  */
 #define LINK_RX_BUF (4 * (NL_CHUNK_MAX + 64))
 
@@ -46,15 +43,34 @@
  * 66 KB of .bss to hold frames that cannot arrive; sized to what the node
  * link actually permits it is half that. The header and CRC are added back
  * because a full chunk still has to fit with its framing.
+ *
+ * Plus 64 bytes of slack. Sized exactly to one frame, a single stray byte
+ * ahead of a full-size chunk - node boot spew, the tail of a resync - leaves
+ * no room for the frame behind it to be assembled. The slack costs nothing and
+ * removes a cliff that only appears at the maximum chunk size.
  */
-/* Plus slack. Sized exactly to one frame, a single stray byte ahead of a
- * full-size chunk - node boot spew, the tail of a resync - leaves no room for
- * the frame behind it to be assembled. 64 bytes costs nothing and removes a
- * cliff that only appears at the maximum chunk size. */
 #define LINK_DECODE_BUF (KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN + 64)
 
 #define DEFAULT_TIMEOUT_MS 3000
-#define CAPTURE_TIMEOUT_MS 8000
+
+/*
+ * A capture is the node's worst case plus its own work, and the budget has to
+ * cover it or the P4 gives up on a frame that was on its way.
+ *
+ * esp32-camera's FB_GET_TIMEOUT is 4000 ms, and a stored capture is two
+ * fb_gets: the stale-frame discard, then the fresh frame. The node now gates
+ * the discard on the driver reporting a queued frame, so in practice only one
+ * of them can hit the full timeout - but the budget is sized for both, 8000 ms,
+ * because the host must not give up on a node it cannot see inside.
+ *
+ * On top of that the node CRCs the whole JPEG and encodes the JSON reply
+ * before it answers: kdp_crc32 over 240 KB and a cJSON print, together a few
+ * hundred milliseconds at -O2. 12000 ms is the two fb_gets plus that margin.
+ *
+ * 8000 ms was exactly the two fb_gets with nothing left for the reply, so a
+ * node doing precisely what it was asked to do timed out here.
+ */
+#define CAPTURE_TIMEOUT_MS 12000
 
 typedef struct channel_s channel_t;
 
@@ -134,6 +150,11 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
  * ESP_ERR_INVALID_RESPONSE on a NACK, ESP_ERR_TIMEOUT on silence. */
 static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
                          size_t resp_cap, size_t *resp_len, uint32_t timeout_ms) {
+  /* Before any early return. camlink_read_ch passes the caller's `got`
+   * straight through and does not check the channel itself, so on an invalid
+   * cam or an encode failure the caller would read an uninitialised size_t and
+   * treat that many bytes of its chunk buffer as received JPEG. */
+  if (resp_len != NULL) *resp_len = 0;
   if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
   channel_t *ch = &s_ch[cam];
   xSemaphoreTake(ch->lock, portMAX_DELAY);
@@ -309,15 +330,6 @@ esp_err_t camlink_init(void) {
     /* A port that will not install is a channel that stays absent, not a
      * boot failure: three unwired nodes must never stop the one that is
      * wired from working. */
-    /*
-     * An event queue, because installing with queue size 0 discards exactly
-     * the events that explain a lost byte. UART_FIFO_OVF and UART_BUFFER_FULL
-     * are how the driver reports that data arrived and could not be kept, and
-     * without them an overrun is indistinguishable from a node that went
-     * quiet: no CRC error, no resync, just a frame that never completes.
-     * ESP_INTR_FLAG_IRAM pairs with CONFIG_UART_ISR_IN_IRAM so the handler
-     * survives a disabled flash cache.
-     */
     /* No event queue, and no IRAM interrupt flag. Both were tried on
      * 2026-08-29 and both are worse - see sdkconfig.defaults for the bisect
      * that settled the IRAM one. */

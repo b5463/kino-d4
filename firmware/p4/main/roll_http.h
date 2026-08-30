@@ -80,6 +80,18 @@ typedef struct {
  * stored value: the compiled default is never anything but https. So HTTP is
  * reachable only by an explicit, visible configuration - GET_CONFIG shows it,
  * SET_CONFIG sets it, SAVE_CONFIG keeps it - and never by default.
+ *
+ * Whether it is reachable AT ALL is `KINO_ALLOW_HTTP_API_BASE` in roll_http.c.
+ * It is 1 by default so the LAN bench works, and A PRODUCTION BUILD SETS IT TO
+ * 0: the bearer token travels in a header on every request, and `apiBase` is
+ * in NVS rather than in the image, so a bench value set once outlives the
+ * reflash that was supposed to remove it. At 0 an http base is refused, an
+ * ESP_LOGE says so, and this returns false rather than falling back to a
+ * server that has no certificate.
+ *
+ * A stored value LONGER than `cap - 1` is refused rather than used. config_str
+ * would hand back a truncated copy that still validates, and a base cut short
+ * at a port number points somewhere nobody configured.
  */
 bool roll_http_api_base(char *out, size_t cap);
 

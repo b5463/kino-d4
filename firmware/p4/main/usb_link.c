@@ -39,3 +39,22 @@ void usb_link_write(const uint8_t *data, size_t len) {
     written += (size_t)n;
   }
 }
+
+int usb_link_write_timeout(const uint8_t *data, size_t len, uint32_t timeout_ms) {
+  const int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+  size_t written = 0;
+  while (written < len) {
+    const int64_t left_us = deadline - esp_timer_get_time();
+    if (left_us <= 0) break;
+    /* The deadline is for the whole call, so each driver wait gets what is
+     * left of it. Below one tick, wait one tick rather than zero: a zero
+     * timeout returns immediately and would turn the last few hundred
+     * microseconds of budget into a spin. */
+    TickType_t ticks = pdMS_TO_TICKS((uint32_t)(left_us / 1000));
+    if (ticks == 0) ticks = 1;
+    const int n = usb_serial_jtag_write_bytes(data + written, len - written, ticks);
+    if (n <= 0) break; /* host gone or the FIFO stayed full for the whole wait */
+    written += (size_t)n;
+  }
+  return (int)written;
+}

@@ -47,28 +47,17 @@ static const char *TAG = "capture";
  * 380-520 ms for that; four seconds is generous enough that a timeout means
  * something is wrong rather than merely slow. */
 #define NODE_CAPTURE_TIMEOUT_MS 4000
-/* 4000, not 1500.
- *
- * 1500 was sized when a frame was ~50 KB. At the sensor's ceiling - QXGA
- * 2048x1536 at quality 95 - a frame is 72-241 KB, and the bench measured a
- * chunk read arriving 8075 bytes of 8192 at 1528 ms: it very nearly made it,
- * and the capture was thrown away for 28 ms. That is a budget set against the
- * wrong frame size, not a link fault - the same run reported 0 CRC errors and
- * 0 resyncs.
- *
- * One chunk is 8192 B, about 89 ms of line time at 921600 baud, so 4000 ms is
- * roughly 45x the wire cost and still bounded: a node that has genuinely
- * stopped answering fails a capture in seconds rather than hanging it. */
+
 /*
- * A chunk is 8192 bytes and the wire runs at 921600 baud, so the data itself
- * is about 89 ms. 4000 ms was a guess made before any hardware existed, and it
- * is now the single largest cost of a capture: with retries in place a chunk
- * that loses bytes waits out the whole budget before asking again, which is
- * what made a 200 KB frame take 19.8 s. 800 ms is nine times the expected
- * transfer, so 1000 ms is eleven times the cost of the thing it is waiting
- * for. 4000 ms was sized while the UI was blacking out the link ISR and every
- * chunk needed a retry; with that fixed a chunk either arrives or is gone, and
- * a long budget only makes a doomed frame take longer to admit it.
+ * One chunk is 8192 B, about 89 ms of line time at 921600 baud, so this is
+ * eleven times the cost of the thing it waits for.
+ *
+ * It was 4000 ms, sized on a bench run where a chunk read arrived 8075 bytes
+ * of 8192 at 1528 ms and roughly every chunk needed a retry. That run has been
+ * superseded: the compositor was blacking out the link ISR, and once that was
+ * fixed the losses went away with it. A chunk now either arrives or is gone,
+ * so a long budget only makes a doomed frame take longer to admit it - and the
+ * budget is spent four times over, once per camera, on every failing capture.
  */
 #define CHUNK_READ_TIMEOUT_MS 1000
 
@@ -82,19 +71,23 @@ static const char *TAG = "capture";
  *
  * capture_fire holds the viewfinder for its whole duration - correctly, since
  * the node has one frame and the finder would invalidate the one being read.
- * But per-chunk retries have no collective bound: 21 chunks that each take a
- * 4000 ms timeout and three retries is minutes, and every second of it is a
+ * But per-chunk retries have no collective bound: 30 chunks that each take a
+ * 1000 ms timeout and two retries is 90 s, and every second of it is a
  * frozen preview and a frozen shutter. A capture that has spent this long is
  * not going to succeed; failing lets the finder and the UI have the machine
  * back, which matters more than the last attempt.
  *
- * 25 s is chosen from measurement, not comfort. Captures that succeed at
- * 2048x1536 take 18-35 s while roughly a fifth of chunk requests lose bytes to
- * a UART overrun, so 15 s was tried and cut off captures that would have
- * completed - three of three failed "over budget" that had been succeeding.
- * This is a bound on the damage, not a fix: the preview is still held for as
- * long as the capture runs, and the honest repair is to stop losing bytes
- * (UART DMA), after which this budget should come down with it.
+ * 8 s is what a frame costs plus room to be unlucky. A 241 KB frame - the
+ * largest this firmware asks for, QXGA at quality 95 - is 30 chunks, about
+ * 2.7 s of line time at 921600 baud, so this is roughly 3x a full-size
+ * transfer and about 15x a 50 KB one.
+ *
+ * It was 25 s, chosen from a run where captures took 18-35 s because roughly a
+ * fifth of chunk requests lost bytes to a UART overrun; 15 s was tried then and
+ * cut off captures that would have completed. That run was superseded by the
+ * fix for the compositor blacking out the link ISR, which is what was causing
+ * the losses. The comment there said this budget should come down once the
+ * bytes stopped being lost, and it has.
  */
 #define XFER_BUDGET_MS 8000
 
@@ -300,10 +293,17 @@ static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32
   esp_err_t err = storage_capture_frame_begin(s_store, cam);
   if (err == ESP_OK) {
     err = storage_capture_append(s_store, jpeg, size);
-    /* End the frame either way: an append that failed still left a file
-     * handle open, and leaking it would block every later frame. */
-    const esp_err_t end = storage_capture_frame_end(s_store);
-    if (err == ESP_OK) err = end;
+    if (err == ESP_OK) {
+      err = storage_capture_frame_end(s_store);
+    } else {
+      /* A short fwrite, so the bytes on the card are the front of a JPEG and
+       * nothing else. This used to call frame_end() here as well - which closed
+       * the file cleanly, set the frame's written bit, and left the stub on the
+       * card. META.JSON then listed a frame that is half a picture, and every
+       * reader of the capture believed it. Abandon closes the handle, which is
+       * what the old code was right to care about, and takes the file with it. */
+      storage_capture_frame_abandon(s_store);
+    }
   }
   xSemaphoreGive(s_card);
 
@@ -387,7 +387,24 @@ static void do_frame(worker_t *w) {
          (long long)cap.fb_get_us, (long long)cap.frame_age_us);
   }
 
-  w->jpeg = heap_caps_malloc(cap.size, MALLOC_CAP_SPIRAM);
+  /*
+   * 64-byte aligned, and rounded up to a whole 64 bytes.
+   *
+   * This buffer is not only staging: the thumbnail camera's copy is handed
+   * straight to thumb_write(), which passes it to jpeg_decoder_process() as
+   * bit_stream. A plain heap_caps_malloc lands on 64 bytes about one time in
+   * sixteen in PSRAM, and thumb.c records what that cost - ESP_ERR_INVALID_ARG
+   * on essentially every capture this firmware ever took. The size is rounded
+   * for the same reason the alignment exists: the cache-line checks are on the
+   * address and the length both.
+   *
+   * Allocated this way for all four cameras rather than only the thumbnail
+   * one: which camera that is depends on a config string, and a buffer that is
+   * correct only when the setting has not changed is a defect waiting for the
+   * setting to change. Paired with heap_caps_free below and at `finish`.
+   */
+  const size_t staged = ((size_t)cap.size + 63u) & ~(size_t)63u;
+  w->jpeg = heap_caps_aligned_alloc(64, staged, MALLOC_CAP_SPIRAM);
   if (w->jpeg == NULL) {
     camlink_release_ch(cam, cap.frame_id);
     frame_failf(f, "no room to stage %lu B", (unsigned long)cap.size);
@@ -404,7 +421,7 @@ static void do_frame(worker_t *w) {
       frame_failf(f, "transfer over budget at %lu%% of %lu B",
                   (unsigned long)((uint64_t)offset * 100 / cap.size),
                   (unsigned long)cap.size);
-      free(w->jpeg);
+      heap_caps_free(w->jpeg);
       w->jpeg = NULL;
       camlink_release_ch(cam, cap.frame_id);
       return;
@@ -439,8 +456,12 @@ static void do_frame(worker_t *w) {
       rerr = camlink_read_ch(cam, cap.frame_id, offset, w->jpeg + offset, want,
                              CHUNK_READ_TIMEOUT_MS, &got);
       if (rerr == ESP_OK && got > 0) break;
+      /* Counted on every failed attempt, including the last one. It used to be
+       * incremented only when another attempt was going to follow, so the case
+       * that matters most - a chunk that failed all three ways and killed the
+       * frame - reported two failures instead of three. */
+      f->chunk_retries++;
       if (attempt < CHUNK_RETRIES) {
-        f->chunk_retries++;
         klog(cam_tag(cam), "chunk at %lu failed (%s), retry %d of %d",
              (unsigned long)offset, esp_err_to_name(rerr), attempt + 1, CHUNK_RETRIES);
       }
@@ -453,7 +474,7 @@ static void do_frame(worker_t *w) {
       frame_failf(f, "link died at %lu%% of %lu B after %d attempts",
                   (unsigned long)((uint64_t)offset * 100 / cap.size),
                   (unsigned long)cap.size, CHUNK_RETRIES + 1);
-      free(w->jpeg);
+      heap_caps_free(w->jpeg);
       w->jpeg = NULL;
       camlink_release_ch(cam, cap.frame_id);
       return;
@@ -469,13 +490,13 @@ static void do_frame(worker_t *w) {
   snprintf(transfer_hex, sizeof transfer_hex, "%08lx", (unsigned long)transfer_crc);
   if (cap.crc32[0] != '\0' && strcmp(transfer_hex, cap.crc32) != 0) {
     frame_failf(f, "link corrupted the frame (%s vs %s)", transfer_hex, cap.crc32);
-    free(w->jpeg);
+    heap_caps_free(w->jpeg);
     w->jpeg = NULL;
     return;
   }
   if (w->jpeg[0] != 0xFF || w->jpeg[1] != 0xD8) {
     frame_failf(f, "not a JPEG — no SOI marker");
-    free(w->jpeg);
+    heap_caps_free(w->jpeg);
     w->jpeg = NULL;
     return;
   }
@@ -492,7 +513,7 @@ static void do_frame(worker_t *w) {
   if (f->ok && cam == s_thumb_cam && thumb_ready()) {
     w->jpeg_bytes = cap.size;
   } else {
-    free(w->jpeg);
+    heap_caps_free(w->jpeg);
     w->jpeg = NULL;
   }
 
@@ -612,7 +633,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
    * viewfinder_hold() also waits for a pump already in flight, which setting
    * the run flag alone does not.
    */
-  const bool vf_was_running = viewfinder_hold(1500);
+  const bool vf_was_running = viewfinder_hold(VF_HOLD_MS);
 
   const int64_t t_start = esp_timer_get_time();
   capture_report_t r;
@@ -942,7 +963,7 @@ finish:
    * Every worker is idle by the time any of them can hold a buffer: the only
    * path that releases them ends at the done bits above. */
   for (int i = 0; i < CAPTURE_CAMS; i++) {
-    free(s_worker[i].jpeg);
+    heap_caps_free(s_worker[i].jpeg);
     s_worker[i].jpeg = NULL;
     s_worker[i].jpeg_bytes = 0;
   }
@@ -978,6 +999,39 @@ finish:
 /* async entry, for the shutter key and the physical button          */
 /* ---------------------------------------------------------------- */
 
+/*
+ * Publish a report for a press that never became a capture.
+ *
+ * capture_fire() answers ESP_ERR_INVALID_STATE without touching s_stage or
+ * s_last, which is right for the synchronous caller - kdp_server turns it into
+ * a BUSY NACK on the spot. On this path there is nobody to return it to: the UI
+ * queued the press, moved to its capturing screen and waits for capture_stage()
+ * to reach CAPTURE_DONE, so a dropped press left the screen waiting for a
+ * report that was never coming, until the next capture published one.
+ *
+ * capture_request() checks capture_busy() first, but that is a sample of a
+ * try-lock: a bench command or a probe sweep can take the lock in the gap
+ * between the check and this task's xQueueReceive.
+ */
+static void publish_busy(const char *source) {
+  capture_report_t r;
+  memset(&r, 0, sizeof r);
+  r.request_us = esp_timer_get_time();
+  snprintf(r.source, sizeof r.source, "%s", source != NULL ? source : "unknown");
+  snprintf(r.mode, sizeof r.mode, "%s", config_str("mode", "wiggle"));
+  r.clock_source = clock_source_str();
+  clock_iso8601(r.captured_at, sizeof r.captured_at);
+  r.captured_at_ms = clock_now_ms();
+  fail(&r, "BUSY", "The camera was already busy");
+  klog("P4", "press dropped: %s", r.err_msg);
+  s_last = r;
+  s_stage = CAPTURE_DONE;
+  /* The listeners run on this task, the same as after a real capture. Both of
+   * them - the gallery rescan and the upload enqueue - ignore a report that is
+   * not ok, so this publishes the state without inventing any work. */
+  for (int i = 0; i < s_listeners; i++) s_on_done[i](&r);
+}
+
 static void capture_task(void *arg) {
   (void)arg;
   for (;;) {
@@ -985,7 +1039,7 @@ static void capture_task(void *arg) {
     if (xQueueReceive(s_requests, source, portMAX_DELAY) != pdTRUE) continue;
     /* The card lock and the viewfinder hold both live inside capture_fire(),
      * so the host path through kdp_server gets them too. */
-    capture_fire(source, NULL);
+    if (capture_fire(source, NULL) == ESP_ERR_INVALID_STATE) publish_busy(source);
   }
 }
 

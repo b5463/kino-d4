@@ -288,7 +288,59 @@ static void test_meta_survives_null(void) {
   capture_report_t r = sample_report();
   meta_build_capture(&r, "dev", NULL); /* must not crash */
   meta_build_capture(&r, NULL, NULL);  /* must not crash */
-  CHECK(true, "NULL arguments handled");
+
+  /* A post-condition rather than CHECK(true): surviving the NULL calls means
+   * the builder still builds afterwards, not merely that the process is still
+   * running. A crash would not have reached either line. */
+  cJSON *after = cJSON_CreateObject();
+  meta_build_capture(&r, "dev", after);
+  CHECK(str_of(after, "schema") != NULL &&
+            strcmp(str_of(after, "schema"), "kino.capture") == 0,
+        "the builder still works after the NULL calls -> '%s'",
+        str_of(after, "schema") ? str_of(after, "schema") : "(absent)");
+  CHECK(cJSON_GetArraySize(cJSON_GetObjectItem(after, "frames")) == CAPTURE_CAMS,
+        "and still writes every frame -> %d",
+        cJSON_GetArraySize(cJSON_GetObjectItem(after, "frames")));
+  cJSON_Delete(after);
+}
+
+/*
+ * How big the document the gallery has to read actually is.
+ *
+ * gallery.c reads META.JSON into a fixed buffer and, for the sort, strstr's a
+ * 512-byte head of it. Both bounds were guesses and one of them was wrong: at
+ * 1024 bytes every capture with more than one frame was truncated, cJSON_Parse
+ * returned NULL, and the tile lost its label, its mode and its frame count.
+ * The sizes belong in a test rather than in a comment, because the document
+ * grows whenever a field is added to meta.c and nothing else would notice.
+ */
+static void test_meta_document_size(void) {
+  capture_report_t r = sample_report(); /* four frames, every field populated */
+  cJSON *m = cJSON_CreateObject();
+  meta_build_capture(&r, "kino-d121bc", m);
+  char *text = cJSON_PrintUnformatted(m);
+  CHECK(text != NULL, "a four-frame document serialises");
+  const size_t len = text != NULL ? strlen(text) : 0;
+
+  CHECK(len < 4096, "four frames must fit gallery.c's 4096-byte buffer -> %u B",
+        (unsigned)len);
+  /* The lower bound is the defect, kept as an assertion: a four-frame document
+   * does NOT fit 1024 bytes, which is why the old buffer failed. If this ever
+   * passes, the document shrank and the reason for 4096 needs re-reading. */
+  CHECK(len > 1024, "four frames must NOT fit the old 1024-byte buffer -> %u B",
+        (unsigned)len);
+
+  /* capture_taken_ms() strstr's the first 512 bytes for the sort key. Past
+   * that and a capture sorts at time 0, which puts the newest picture on the
+   * card at the end of the list. */
+  const char *k = text != NULL ? strstr(text, "capturedAtMs") : NULL;
+  CHECK(k != NULL, "capturedAtMs is present in the document");
+  CHECK(k != NULL && (size_t)(k - text) < 512,
+        "capturedAtMs must land in the first 512 bytes -> offset %u",
+        k != NULL ? (unsigned)(k - text) : 0u);
+
+  if (text != NULL) cJSON_free(text);
+  cJSON_Delete(m);
 }
 
 /* ------------------------------------------------------------------ */
@@ -493,8 +545,21 @@ static void test_merge(void) {
   cJSON_Delete(d3);
   cJSON_Delete(p3);
 
+  /* A NULL patch must leave the target exactly as it was. Emptying it, or
+   * dropping a branch, would look identical to a merge that "worked" at the
+   * call site - config_store writes the envelope back either way. */
+  cJSON *d4 = cJSON_Parse("{\"a\":1,\"n\":{\"x\":2},\"s\":\"keep\"}");
+  meta_merge_into(d4, NULL);
+  CHECK(num_of(d4, "a") == 1, "NULL patch leaves a scalar -> %g", num_of(d4, "a"));
+  CHECK(num_of(cJSON_GetObjectItem(d4, "n"), "x") == 2, "NULL patch leaves a nested key -> %g",
+        num_of(cJSON_GetObjectItem(d4, "n"), "x"));
+  CHECK(str_of(d4, "s") != NULL && strcmp(str_of(d4, "s"), "keep") == 0,
+        "NULL patch leaves a string -> '%s'", str_of(d4, "s") ? str_of(d4, "s") : "(absent)");
+  CHECK(cJSON_GetArraySize(d4) == 3, "NULL patch adds and removes nothing -> %d keys",
+        cJSON_GetArraySize(d4));
+  cJSON_Delete(d4);
+
   meta_merge_into(NULL, NULL); /* must not crash */
-  CHECK(true, "NULL merge handled");
 }
 
 /* ------------------------------------------------------------------ */
@@ -612,6 +677,7 @@ int main(void) {
   test_meta_not_attempted();
   test_meta_unset_clock();
   test_meta_survives_null();
+  test_meta_document_size();
 
   test_summary_reads_real_keys();
   test_summary_ignores_wrong_keys();

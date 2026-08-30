@@ -286,6 +286,136 @@ static int test_sequence_wrap(void) {
   return 0;
 }
 
+// A frame carrying exactly KDP_MAX_PAYLOAD is legal, and it fills the working
+// buffer to the byte. That is the one size where push()'s "the buffer is full,
+// drop a byte so we cannot stall" fallback sits next to a frame that is about
+// to complete, so it is pushed in three uneven chunks that each land inside a
+// different part of the frame.
+static int test_max_payload_frame(void) {
+  static uint8_t payload[KDP_MAX_PAYLOAD];
+  for (size_t i = 0; i < sizeof payload; i++) payload[i] = (uint8_t)(i & 0xff);
+
+  static uint8_t frame[KDP_MAX_FRAME];
+  size_t n = kdp_encode_frame(frame, sizeof frame, KDP_PROTOCOL_VERSION, KDP_CMD_HELLO,
+                              KDP_FLAG_RESPONSE, 9, payload, (uint32_t)sizeof payload);
+  CHECK(n == KDP_MAX_FRAME);
+
+  static uint8_t buf[KDP_MAX_FRAME];
+  kdp_decoder_t d;
+  kdp_decoder_init(&d, buf, sizeof buf);
+  reset_capture();
+
+  // 7 bytes stops short of the header, 9001 stops inside the payload, the
+  // rest completes the frame at exactly cap.
+  const size_t cuts[2] = {7, 9001};
+  size_t emitted = kdp_decoder_push(&d, frame, cuts[0], on_frame, NULL);
+  CHECK(emitted == 0);
+  emitted = kdp_decoder_push(&d, frame + cuts[0], cuts[1], on_frame, NULL);
+  CHECK(emitted == 0);
+  emitted = kdp_decoder_push(&d, frame + cuts[0] + cuts[1], n - cuts[0] - cuts[1], on_frame,
+                             NULL);
+  CHECK(emitted == 1);
+  CHECK(d.stats.frames == 1);
+  CHECK(d.stats.resyncs == 0);
+  CHECK(d.stats.discarded_bytes == 0);
+  CHECK(cap.count == 1);
+  CHECK(cap.frames[0].payload_len == KDP_MAX_PAYLOAD);
+  // Larger than the capture's own copy buffer, so this reads the frame back
+  // out of the decoder buffer, which is still in scope and untouched.
+  CHECK(memcmp(cap.frames[0].payload, payload, sizeof payload) == 0);
+  return 0;
+}
+
+// A frame that is legal on the wire but larger than THIS decoder's buffer can
+// never complete. decoder.c folds that into the corrupt-length branch
+// (`total > d->cap`), which the TypeScript decoder has no equivalent of - its
+// buffer grows. So it is only reachable from C, and only tested here.
+static int test_over_cap_frame_resyncs(void) {
+  uint8_t hello[128];
+  size_t n = make_hello_frame(hello, sizeof hello); /* 75 bytes, perfectly legal */
+  uint8_t small[32];
+  size_t m = kdp_encode_frame(small, sizeof small, KDP_PROTOCOL_VERSION,
+                              KDP_CMD_SAVE_CONFIG, KDP_FLAG_NONE, 7, NULL, 0);
+  uint8_t stream[128];
+  memcpy(stream, hello, n);
+  memcpy(stream + n, small, m);
+
+  uint8_t buf[64]; /* 75 > 64: the hello can never fit */
+  kdp_decoder_t d;
+  kdp_decoder_init(&d, buf, sizeof buf);
+  reset_capture();
+  size_t emitted = kdp_decoder_push(&d, stream, n + m, on_frame, NULL);
+
+  // The undersized-buffer frame is skipped, not waited on, and the small
+  // frame behind it still arrives.
+  CHECK(emitted == 1);
+  CHECK(cap.count == 1);
+  CHECK(cap.frames[0].type == KDP_CMD_SAVE_CONFIG);
+  CHECK(cap.frames[0].seq == 7);
+  CHECK(cap.frames[0].payload_len == 0);
+  CHECK(d.stats.resyncs >= 1);
+  CHECK(d.stats.crc_failures == 0);
+  return 0;
+}
+
+// Byte accounting on the corrupt-length path, pinned against packet.ts: a
+// declared length that cannot be honored costs exactly 2 discarded bytes (the
+// magic that is skipped past), and the junk between that magic and the next
+// one is counted separately when it is found.
+static int test_corrupt_length_discard_accounting(void) {
+  uint8_t junk[18] = {0x4b, 0x49, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  junk[10] = 0x20; /* payload length 20000 */
+  junk[11] = 0x4e;
+
+  uint8_t good[128];
+  size_t n = make_hello_frame(good, sizeof good);
+
+  uint8_t stream[256];
+  memcpy(stream, junk, sizeof junk);
+  memcpy(stream + sizeof junk, good, n);
+
+  uint8_t buf[KDP_MAX_FRAME];
+  kdp_decoder_t d;
+  kdp_decoder_init(&d, buf, sizeof buf);
+  reset_capture();
+  size_t emitted = kdp_decoder_push(&d, stream, sizeof junk + n, on_frame, NULL);
+
+  CHECK(emitted == 1);
+  // 2 for the bad-length magic, then the remaining 16 bytes of the junk header
+  // once the real magic is located at offset 18.
+  CHECK(d.stats.discarded_bytes == 18);
+  CHECK(d.stats.resyncs == 2);
+  CHECK(d.stats.frames == 1);
+  return 0;
+}
+
+// The magic is not an escape sequence and the payload is not scanned for it.
+// A JPEG chunk or a JSON string is free to contain 0x4b 0x49; the length field
+// says where the frame ends, so this is one frame, not two.
+static int test_magic_inside_payload(void) {
+  static const uint8_t body[10] = {'x', 'y', 0x4b, 0x49, 0x01, 0x01, 0x00, 0x00, 'z', 'z'};
+  uint8_t frame[64];
+  size_t n = kdp_encode_frame(frame, sizeof frame, KDP_PROTOCOL_VERSION, KDP_CMD_HELLO,
+                              KDP_FLAG_RESPONSE, 3, body, (uint32_t)sizeof body);
+  CHECK(n == KDP_HEADER_LEN + sizeof body + KDP_CRC_LEN);
+
+  uint8_t buf[KDP_MAX_FRAME];
+  kdp_decoder_t d;
+  kdp_decoder_init(&d, buf, sizeof buf);
+  reset_capture();
+  size_t emitted = kdp_decoder_push(&d, frame, n, on_frame, NULL);
+
+  CHECK(emitted == 1);
+  CHECK(d.stats.frames == 1);
+  CHECK(d.stats.resyncs == 0);
+  CHECK(d.stats.discarded_bytes == 0);
+  CHECK(cap.count == 1);
+  CHECK(cap.frames[0].payload_len == sizeof body);
+  CHECK(memcmp(cap.frames[0].payload, body, sizeof body) == 0);
+  return 0;
+}
+
 int main(void) {
   if (test_crc_fixtures()) return 1;
   if (test_streaming_crc()) return 1;
@@ -299,6 +429,10 @@ int main(void) {
   if (test_empty_payload_frame()) return 1;
   if (test_tiny_buffer_never_stalls()) return 1;
   if (test_sequence_wrap()) return 1;
+  if (test_max_payload_frame()) return 1;
+  if (test_over_cap_frame_resyncs()) return 1;
+  if (test_corrupt_length_discard_accounting()) return 1;
+  if (test_magic_inside_payload()) return 1;
   printf("kdp_core host tests: %d checks passed\n", checks);
   return 0;
 }

@@ -310,4 +310,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.0': 'd4-roll-0-4',
   '0.4.1': 'd4-roll-0-4',
   '0.4.2': 'd4-roll-0-4',
+  '0.4.3': 'd4-roll-0-4',
 };

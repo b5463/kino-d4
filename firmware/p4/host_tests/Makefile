@@ -9,7 +9,8 @@
 #   make -C firmware/p4/host_tests test-qr     # QR encoder vs. reference data
 #   make -C firmware/p4/host_tests test-store  # UPLOAD.JSON record, needs cJSON
 #   make -C firmware/p4/host_tests test-pins   # board_d4v1.h vs the JP1 header
-#   make -C firmware/p4/host_tests test-all    # all eight
+#   make -C firmware/p4/host_tests test-hwv    # hwv_rules.c, the validation predicates
+#   make -C firmware/p4/host_tests test-all    # all nine
 #
 # Several targets because they have different dependencies, not because the
 # later ones are optional:
@@ -66,6 +67,8 @@ PURE_SRC = $(MAIN)/pure.c test_pure.c
 QUEUE_SRC = $(MAIN)/roll_queue.c test_roll_queue.c
 # net_link.c reaches esp_err.h and nothing else from ESP-IDF - shim/ has it,
 # the same one meta.c needs. Time is injected, so there is no esp_timer here.
+# Its mutex is behind __has_include("freertos/FreeRTOS.h"), and shim/ has no
+# freertos/ directory on purpose: that absence is what compiles the locks out.
 NET_SRC = $(MAIN)/net_link.c $(MAIN)/pure.c test_net_link.c
 # The same net_link.c with a stub radio driver registered, which is the state
 # machine the radio build runs. Separate from NET_SRC because test_net_link.c
