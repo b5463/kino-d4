@@ -17,14 +17,16 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-30, firmware 0.4.4
+## Status — updated 2026-08-30, firmware 0.4.5
 
 0.4.4 is the first firmware whose photographs have reached a Roll on a real
 backend: capture, thumbnail-first upload, byte-identical original, worker jobs
 settled, one row per photograph - on the repository's own API over the LAN, not
 the production host. The session is recorded below ("The first photographs reach
 a Roll"). Two application defects were found and fixed on the way; both are
-measured there. The 0.4.0 paragraph that follows is history.
+measured there. 0.4.5 adds a bench-only C6 reset and with it the finding
+that a C6 reset is not recovered without a P4 reboot ("ROLL-C test 3",
+below). The 0.4.0 paragraph that follows is history.
 
 ## Status — updated 2026-08-27, firmware 0.4.0
 
@@ -268,6 +270,56 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### ROLL-C test 3: the C6 resets under a pending upload, and the link does not come back, 2026-08-30
+
+Firmware 0.4.5 (`430045d`) adds the actuator this test needed: `C6_RESET_BENCH`
+(`0x4d`, bench-only, compiled with `-DKINO_C6_RESET_BENCH=1`) pulses the C6
+enable line once with bring-up's own 20 ms timing and reports the link down.
+Image `kino-p4.bin` 1,440,768 B, SHA-256 `38865c7a…f55003`, two clean passes
+identical; 13 host checks on the decision (`bench_c6.c`); the same image with
+the flag unset answers `UNSUPPORTED_COMMAND` and moves no pin.
+
+**The pulse resets the C6 and nothing else - proven twice.** Dry run and test,
+both with the C6's own UART console (CP2102, COM10, read only) recording: a
+fresh ROM banner (`rst:0x1 (POWERON)`, `kino-c6`, `EH-3.0.6`) 1.15-1.2 s after
+the command each time, while `HELLO` kept answering `boot-416` / `boot-417`
+with continuous uptime, the card stayed mounted, CAM1 stayed `ready`, and the
+queue file stayed readable. `NETWORK_STATUS` went to `C6_BOOTING /
+C6_LINK_LOST "bench: C6 reset pulse"` within a second.
+
+**The link does not return.** Not in 90 s, not in 3 min 7 s (dry run), not
+with the API back. `net_hosted.c`'s supervisor reports a lost link and has no
+re-establishment path (its own comment says so: "re-pulsing GPIO54 and
+re-enumerating the bus … needs a bench and an issue of its own"). After a C6
+reset the radio is gone until the P4 reboots. The result of this test is a
+statement about the product, not about the bench.
+
+**The test itself.** `CAP_000190`, uuid `ddc1c63b-2fef-4d1a-82fd-15973bc92195`,
+META `rollId roll__Mg6PTKzfodtJ7zxCjBoNA`, 76,393 B, SHA-256
+`BAD694C7…16DB52`, 0 rows on the backend. API stopped; record `RETRY_WAIT`
+attempts 2, `ESP_ERR_HTTP_CONNECT` (T0 13:26:05). `C6_RESET_BENCH` 13:26:11.20
+(T1); C6 ROM boot 13:26:12.43 (T2, console); link lost reported by 13:26:17
+(NETWORK_STATUS); P4 `boot-417` before, during and after (uptime 164 -> 167 ->
+268 -> 313 s). T3 never came. API restored 13:28:24 with the link down: the
+job stayed `RETRY_WAIT`, attempts 3 - the worker gates on `IP_READY` and did
+not burn the budget - and no request reached the API. P4 `REBOOT` 13:30:01
+(the only recovery): `boot-418`, `IP_READY`, upload landed 13:30:25.68 -
+13:30:27.92 (201, thumb, original 1108 ms PUT, complete). Same UUID, one row
+on `RRG8AZ`, four assets `ready`, card = object = `assets.sha256`
+`BAD694C7…`. Smoke capture `CAP_000191` 1,887 ms, META valid, CAM1 `ready`.
+
+**Verdict: ROLL-C test 3 FAIL** (criteria 5 and 7 - link returned, automatic
+resume - are false; 1-4, 6, 8-14 hold). `LOCAL ROLL E2E` stays **NO-GO**. The
+job that closes it is the supervisor's: on `C6_LINK_LOST`, re-run bring-up
+(deinit ESP-Hosted, pulse, re-enumerate, version gate, Wi-Fi re-init from
+stored credentials) without touching the P4 - its own issue, not this one.
+
+**One older mystery closed.** The "dropped" `CAMERA_CAPTURE` replies of the
+morning were never lost: with raw replies kept, the first attempt of this test
+answered `NACK BUSY "A capture is already running"` 43 s after boot. A retry
+5 s later captured. Not fixed here; it is a real answer from the camera, and
+it is now on record.
 
 ### The first photographs reach a Roll - ROLL-A/B/C on the LAN backend, 2026-08-30
 
