@@ -123,6 +123,18 @@ export interface Capabilities {
    */
   network?: boolean;
   roll?: boolean;
+  /**
+   * `BodyConfig.brightness` moves the backlight. False on D4-V1, where the
+   * Guition carrier drives the panel backlight from a plain GPIO and the only
+   * achievable states are lit and dark (contract D11) — the setting is stored
+   * and echoed, and nothing dims.
+   *
+   * Optional, and absence is not a third answer: firmware older than 0.4.9
+   * omits the flag, and `supports()` reads a missing flag as "not a gate", so
+   * an older body leaves the slider live rather than greying it on a fact the
+   * camera never stated. Only an explicit `false` disables the control.
+   */
+  brightnessControl?: boolean;
 }
 
 /** Focus modes (audit #55). PARTY AUTO: AF then lock then capture. PARTY
@@ -519,6 +531,17 @@ export interface ShootConfig {
 }
 
 export interface BodyConfig {
+  /**
+   * User-set camera name, 0..24 characters, shown on the body's About screen.
+   * `config.device` is the serial and stays the identifier; this is the name a
+   * person gives the unit.
+   *
+   * Optional because it is not on the wire before firmware 0.4.9: a
+   * `GET_CONFIG` from an older body returns a `body` block without it, and
+   * typing it as required would make every such reply a lie. Absent and `''`
+   * mean the same thing — no name — and the default is `''`.
+   */
+  name?: string;
   brightness: number; // 1..10
   autoDimS: number;
   sleepS: number;
@@ -906,6 +929,32 @@ export interface CameraCaptureResult {
     bytes?: number;
     crc32?: string;
     error?: string;
+    /**
+     * What the sensor was actually told before this frame, echoed by the node
+     * and written to `META.JSON` (firmware 0.4.9, contract D19). These are the
+     * clamped values the node applied, not the values the P4 asked for — the
+     * node clamps to the driver's ranges and reports back what it set.
+     *
+     * Absent on firmware older than 0.4.9, and absent when nothing has ever
+     * been applied to that camera since its node booted. A frame whose
+     * `NL_CMD_SENSOR` was NACKed or timed out still carries the object when
+     * an earlier apply succeeded — the sensor really does still hold those
+     * values, and recording them beats recording nothing. A refusal never
+     * blocks the capture.
+     *
+     * Every member is optional: a node reports only the knobs it has applied,
+     * and a driver without a given setter never applies that one.
+     */
+    sensor?: {
+      /** `set_ae_level`, -2..2. The slot's `exposureBias` EV rounded. */
+      aeLevel?: number;
+      /** `set_gainceiling`, as an x-factor (2..128), not an enum ordinal. */
+      gainCeiling?: number;
+      denoise?: number;
+      sharpness?: number;
+      /** Sensor scale 5..63, lower is better — not the 60..95 wire percentage (D12). */
+      quality?: number;
+    };
   }[];
   dir: string;
   bytes: number;

@@ -38,6 +38,20 @@ void audio_shutter(void);
 /** A brief tick, for tile presses. */
 void audio_tick(void);
 
+/**
+ * Something did not work: two low 220 Hz pulses, 200 ms apart.
+ *
+ * Synthesised and rendered once at init like the shutter and the tick, and
+ * deliberately unlike either - it is a sustained low tone with no click in it,
+ * where those two are transients. A camera that reports a lost photograph with
+ * a sound anyone could mistake for a shutter has reported nothing.
+ *
+ * Gated on `body.sounds.warning` INSIDE this function, not at the call sites,
+ * because there are several of them; `shoot.volume` applies as it does to
+ * every other sound. Non-blocking: queued and played on the audio task.
+ */
+void audio_warning(void);
+
 /* Bench calibration. 1 makes the boot run audio_calibrate(); 0 for normal
  * builds. Kept as a switch rather than deleted because the levels below will
  * need re-measuring the moment the speaker, its enclosure, or the amp rail

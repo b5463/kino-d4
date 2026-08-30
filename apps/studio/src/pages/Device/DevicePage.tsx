@@ -5,7 +5,7 @@ import { Led } from '../../components/Led';
 import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApplyBar } from '../../components/ApplyBar';
-import { SegField, SelectField, SliderField, ToggleField } from '../../components/fields';
+import { SegField, SelectField, SliderField, TextField, ToggleField } from '../../components/fields';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import {
   getDevice,
@@ -209,6 +209,11 @@ export function DevicePage() {
       ? Math.round(((storage.totalMB - storage.freeMB) / storage.totalMB) * 100)
       : 0;
   const battPct = power?.batteryPct ?? 0;
+  // `supports` reads a missing flag as "not a gate", so this is false only
+  // when the camera said `brightnessControl: false` — firmware older than
+  // 0.4.9 omits the flag and keeps the slider live rather than being greyed
+  // out on a claim it never made.
+  const canDim = supports(state, 'brightnessControl');
 
   return (
     <>
@@ -231,6 +236,20 @@ export function DevicePage() {
             <div className="datarow"><dt>P4 firmware</dt><dd>{info.p4Firmware}</dd></div>
             <div className="datarow"><dt>Camera firmware</dt><dd>{info.cameraFirmware.join(' / ')}</dd></div>
           </dl>
+          {/* The name belongs next to the serial it sits beside on the body's
+              About screen, not in a settings panel three panels down. It is a
+              draft field like the rest of `body`, so it only renders once
+              GET_CONFIG has answered — firmware that has no name to give
+              shows the identity rows and nothing else. */}
+          {draft ? (
+            <TextField
+              label="CAMERA NAME"
+              value={draft.name ?? ''}
+              maxLength={24}
+              placeholder={info.serial}
+              onChange={(name) => patch((d) => ({ ...d, name }))}
+            />
+          ) : null}
         </Panel>
 
         <Panel title="STORAGE">
@@ -301,6 +320,8 @@ export function DevicePage() {
                 value={draft.brightness}
                 min={1}
                 max={10}
+                disabled={!canDim}
+                hint={canDim ? undefined : 'This camera drives its backlight from a plain on/off pin — it can only be lit or dark.'}
                 onChange={(brightness) => patch((d) => ({ ...d, brightness }))}
               />
               <SegField

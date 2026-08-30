@@ -30,6 +30,14 @@ static char s_max_res[16];
 static framesize_t s_framesize;
 static int s_quality;
 
+/* What NL_CMD_SENSOR has actually got into the sensor since this node booted.
+ * Reported by the SENSOR reply and by NL_CMD_STATUS, and it is what the P4
+ * writes into META.JSON - so nothing may be recorded here that a driver call
+ * did not accept. Cleared by camsensor_init(): after a reset the sensor is at
+ * whatever esp_camera_init() left, and the honest answer is "nothing applied"
+ * rather than a set of numbers carried over from the previous boot. */
+static camsensor_settings_t s_applied;
+
 esp_err_t camsensor_init(void) {
   camera_config_t config = {
       .pin_pwdn = -1,
@@ -131,6 +139,18 @@ esp_err_t camsensor_init(void) {
   s_framesize = sensor->status.framesize;
   s_quality = sensor->status.quality;
 
+  /* Back to driver defaults: nothing has been applied on this boot. The JPEG
+   * quality is the one exception and it is seeded from the read-back rather
+   * than from the config literal above, for the same reason s_quality is -
+   * esp_camera_init can clamp, and STATUS must report the sensor, not the
+   * request. The other four have no honest seed: ov3660's status fields for
+   * gainceiling and sharpness hold raw register contents, not the wire units
+   * this struct is in, and converting one into the other would be an invented
+   * number in a field the P4 stores in a photograph's metadata. */
+  memset(&s_applied, 0, sizeof s_applied);
+  s_applied.has_quality = true;
+  s_applied.quality = s_quality;
+
   camera_sensor_info_t *info = esp_camera_sensor_get_info(&sensor->id);
   if (info != NULL) {
     strncpy(s_name, info->name, sizeof s_name - 1);
@@ -183,7 +203,129 @@ esp_err_t camsensor_set_quality(int quality) {
   if (quality == s_quality) return ESP_OK;
   if (sensor->set_quality(sensor, quality) != 0) return ESP_FAIL;
   s_quality = quality;
+  s_applied.has_quality = true;
+  s_applied.quality = quality;
   return ESP_OK;
+}
+
+/*
+ * Clamping and unit conversion for NL_CMD_SENSOR, per ov3660.c.
+ *
+ * Every range below is read off the driver, not off a datasheet: the setters
+ * return -1 for an out-of-range value and the caller cannot tell that apart
+ * from an SCCB failure, so anything out of range is clamped here rather than
+ * refused. The one range that is NARROWER than the driver's is ae_level -
+ * ov3660 takes -5..5, node_link.h fixes the wire at -2..2 because that is the
+ * span Studio's exposureBias slider covers and a wider wire would let a
+ * request through that no user interface can produce or undo.
+ */
+#define AE_LEVEL_MIN (-2)      /* node_link.h contract; driver allows -5..5 */
+#define AE_LEVEL_MAX 2
+#define DENOISE_MIN 0          /* ov3660.c set_denoise: level < 0 || level > 8 */
+#define DENOISE_MAX 8
+#define SHARPNESS_MIN (-3)     /* ov3660.c set_sharpness: level > 3 || level < -3 */
+#define SHARPNESS_MAX 3
+
+static int clamp_int(int v, int lo, int hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+/*
+ * X-factor to gainceiling_t, snapping to the nearest legal step.
+ *
+ * sensor.h's gainceiling_t is an ordinal 0..6 for 2X..128X, so the wire's
+ * x-factor is a log2 lookup and not an arithmetic conversion. A look's
+ * `gainLimit` is an arbitrary number (the factory looks carry 12 and 16), so
+ * anything between two steps is snapped; a tie goes DOWN, to the cleaner of
+ * the two, because the alternative is silently granting a look more noise than
+ * it asked for.
+ *
+ * What this does NOT claim: on the OV3660 the driver writes the ordinal
+ * straight into the AEC gain-ceiling registers 0x3A18/0x3A19 rather than a
+ * gain value, so how much this moves the picture is a bench question. It is
+ * the only gain-ceiling API esp32-camera exposes, and `applied` reports the
+ * step that was written, so the card records what the sensor was told.
+ */
+static gainceiling_t gainceiling_from_factor(int factor, int *snapped) {
+  static const int FACTORS[] = {2, 4, 8, 16, 32, 64, 128};
+  const int n = (int)(sizeof FACTORS / sizeof FACTORS[0]);
+  int best = 0;
+  for (int i = 1; i < n; i++) {
+    const int d_best = factor > FACTORS[best] ? factor - FACTORS[best] : FACTORS[best] - factor;
+    const int d_i = factor > FACTORS[i] ? factor - FACTORS[i] : FACTORS[i] - factor;
+    if (d_i < d_best) best = i; /* strictly less: a tie keeps the lower step */
+  }
+  if (snapped != NULL) *snapped = FACTORS[best];
+  return (gainceiling_t)(GAINCEILING_2X + best);
+}
+
+esp_err_t camsensor_apply(const camsensor_settings_t *in, camsensor_settings_t *applied) {
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor == NULL) return ESP_ERR_INVALID_STATE;
+  if (in == NULL) {
+    if (applied != NULL) *applied = s_applied;
+    return ESP_OK;
+  }
+
+  /* Each knob: clamp, write, and only then record. A setter that returns
+   * non-zero leaves the previous last-applied value in place - the sensor did
+   * not move, so neither does the record the P4 puts in META.JSON. */
+  if (in->has_ae_level && sensor->set_ae_level != NULL) {
+    const int v = clamp_int(in->ae_level, AE_LEVEL_MIN, AE_LEVEL_MAX);
+    if (sensor->set_ae_level(sensor, v) == 0) {
+      s_applied.has_ae_level = true;
+      s_applied.ae_level = v;
+    } else {
+      ESP_LOGW(TAG, "sensor refused aeLevel %d", v);
+    }
+  }
+  if (in->has_gain_ceiling && sensor->set_gainceiling != NULL) {
+    int snapped = 0;
+    const gainceiling_t g = gainceiling_from_factor(in->gain_ceiling, &snapped);
+    if (sensor->set_gainceiling(sensor, g) == 0) {
+      s_applied.has_gain_ceiling = true;
+      s_applied.gain_ceiling = snapped;
+    } else {
+      ESP_LOGW(TAG, "sensor refused gainCeiling %dX", snapped);
+    }
+  }
+  if (in->has_denoise && sensor->set_denoise != NULL) {
+    const int v = clamp_int(in->denoise, DENOISE_MIN, DENOISE_MAX);
+    if (sensor->set_denoise(sensor, v) == 0) {
+      s_applied.has_denoise = true;
+      s_applied.denoise = v;
+    } else {
+      ESP_LOGW(TAG, "sensor refused denoise %d", v);
+    }
+  }
+  if (in->has_sharpness && sensor->set_sharpness != NULL) {
+    const int v = clamp_int(in->sharpness, SHARPNESS_MIN, SHARPNESS_MAX);
+    if (sensor->set_sharpness(sensor, v) == 0) {
+      s_applied.has_sharpness = true;
+      s_applied.sharpness = v;
+    } else {
+      ESP_LOGW(TAG, "sensor refused sharpness %d", v);
+    }
+  }
+  /* Through camsensor_set_quality, not the setter directly: that function owns
+   * the 5..63 clamp, the change-only guard the viewfinder depends on, and the
+   * s_quality cache the CAPTURE path compares against. Two places writing the
+   * same register with two caches is how the finder ends up paying a register
+   * transaction per frame again. */
+  if (in->has_quality) {
+    if (camsensor_set_quality(in->quality) != ESP_OK) {
+      ESP_LOGW(TAG, "sensor refused quality %d", in->quality);
+    }
+  }
+
+  if (applied != NULL) *applied = s_applied;
+  return ESP_OK;
+}
+
+void camsensor_applied(camsensor_settings_t *out) {
+  if (out != NULL) *out = s_applied;
 }
 
 /**

@@ -248,6 +248,86 @@ bool kdp_recipes_name(int index, char *id, size_t id_cap, char *name, size_t nam
 }
 
 /* ------------------------------------------------------------------ */
+/* The shutter's view: the capture block                               */
+/* ------------------------------------------------------------------ */
+
+/** One number out of a look's capture block. False leaves `*value` untouched.
+ * Absent and "present but not a number" are the same answer - leave the field
+ * alone - because neither is a setting anyone chose. */
+static bool capture_num(const cJSON *capture, const char *key, double *value) {
+  const cJSON *v = cJSON_GetObjectItem(capture, key);
+  if (!cJSON_IsNumber(v)) return false;
+  *value = v->valuedouble;
+  return true;
+}
+
+/** Pull the capture block out of an already-parsed look document. */
+static bool capture_block_from_doc(const cJSON *doc, recipe_capture_t *out) {
+  const cJSON *capture = cJSON_GetObjectItem(doc, "capture");
+  if (!cJSON_IsObject(capture)) return false;
+
+  const cJSON *res = cJSON_GetObjectItem(capture, "resolution");
+  if (cJSON_IsString(res) && res->valuestring != NULL) {
+    snprintf(out->resolution, sizeof out->resolution, "%s", res->valuestring);
+    out->has_resolution = true;
+  }
+
+  double v = 0;
+  /* exposureBias keeps its fraction - it is the only field here that has one,
+   * and rounding it to an int at this point would flatten -0.3 EV to 0 before
+   * pure_ev_to_ae_level ever saw it. The other four are integers in the
+   * document and in the sensor. */
+  out->has_exposure_bias = capture_num(capture, "exposureBias", &out->exposure_bias);
+  if ((out->has_jpeg_quality = capture_num(capture, "jpegQuality", &v))) {
+    out->jpeg_quality_percent = (int)v;
+  }
+  if ((out->has_gain_limit = capture_num(capture, "gainLimit", &v))) {
+    out->gain_limit = (int)v;
+  }
+  if ((out->has_denoise = capture_num(capture, "denoise", &v))) {
+    out->denoise = (int)v;
+  }
+  if ((out->has_sharpness = capture_num(capture, "sharpness", &v))) {
+    out->sharpness = (int)v;
+  }
+  return true;
+}
+
+bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
+  if (out == NULL) return false;
+  memset(out, 0, sizeof *out);
+  if (id == NULL || id[0] == '\0') return false;
+
+  /* Factory first, and with no card involved: s_factory is parsed once at boot
+   * and immutable, so the common case - every camera ships pointing at
+   * party-neg - costs one string walk on the shutter path. */
+  const cJSON *factory = factory_by_id(id);
+  if (factory != NULL) return capture_block_from_doc(factory, out);
+
+  /* Custom: the mirror says whether the id exists, the card holds the numbers.
+   * Both under one acquire, so the mirror cannot go stale between the check
+   * and the read.
+   *
+   * `unless_held`, because the caller that matters is capture_fire(), which
+   * already holds STORAGE_USER_CAPTURE for the whole capture on this task -
+   * acquiring again would deadlock the shutter against itself. On the KDP task
+   * nothing is held and this takes the card normally. */
+  bool took = false;
+  if (!storage_acquire_unless_held(STORAGE_USER_UI, RECIPES_CARD_WAIT_MS, &took)) return false;
+  custom_sync();
+  /* recipe_read() reuses the PSRAM buffer this file already allocates for
+   * listings; nothing here puts a document on the stack. capture_fire() runs
+   * on the capture task and a 2 KB local would be most of its margin. */
+  cJSON *doc = custom_has(id) ? recipe_read(id, NULL) : NULL;
+  storage_release_if_taken(STORAGE_USER_UI, took);
+  if (doc == NULL) return false;
+
+  const bool ok = capture_block_from_doc(doc, out);
+  cJSON_Delete(doc);
+  return ok;
+}
+
+/* ------------------------------------------------------------------ */
 /* Commands                                                            */
 /* ------------------------------------------------------------------ */
 

@@ -31,6 +31,56 @@ esp_err_t camsensor_set_quality(int quality);
 const char *camsensor_max_resolution(void);
 
 /**
+ * The capture knobs NL_CMD_SENSOR carries, one `has_` flag per field.
+ *
+ * A flag is what separates "leave this alone" from a real value, and every
+ * one of these has a meaningful zero: aeLevel 0 is the metering target the
+ * sensor boots at, denoise 0 is denoise off, sharpness 0 is neutral. Without
+ * the flags a request that only wants to change the gain ceiling would drag
+ * three other knobs to zero with it.
+ *
+ * `gain_ceiling` is an X-FACTOR (2, 4, 8, 16, 32, 64, 128), not the
+ * gainceiling_t ordinal the driver takes — the wire carries the number a
+ * person can reason about and camsensor_apply() does the conversion.
+ *
+ * `quality` is the esp32-camera scale, 5..63, LOWER is better.
+ */
+typedef struct {
+  bool has_ae_level;
+  int ae_level;      /* -2..2 */
+  bool has_gain_ceiling;
+  int gain_ceiling;  /* x-factor 2..128 */
+  bool has_denoise;
+  int denoise;       /* 0..8 */
+  bool has_sharpness;
+  int sharpness;     /* -3..3 */
+  bool has_quality;
+  int quality;       /* 5..63, lower is better */
+} camsensor_settings_t;
+
+/**
+ * Write the requested knobs into the sensor, clamped to what the detected
+ * part actually accepts (ov3660.c is the reference for every range).
+ *
+ * Only the fields `in` flags are touched. `applied`, when given, receives the
+ * node's whole last-applied set — not just this call's fields — because that
+ * is what the SENSOR reply and NL_CMD_STATUS both report, and a caller that
+ * sends one field still wants to know what the sensor is sitting at.
+ *
+ * A field the driver refuses, or that the detected sensor has no setter for,
+ * is left out of the last-applied set rather than recorded as a success. The
+ * P4 stores this in META.JSON, so claiming a value that never reached a
+ * register would put a wrong exposure in the photograph's own record.
+ *
+ * ESP_ERR_INVALID_STATE when no sensor answered the bus.
+ */
+esp_err_t camsensor_apply(const camsensor_settings_t *in, camsensor_settings_t *applied);
+
+/** The last-applied set, for NL_CMD_STATUS. All flags false until something
+ * has actually been written since boot. */
+void camsensor_applied(camsensor_settings_t *out);
+
+/**
  * Switch frame size.
  *
  * Capture sizes are "1600x1200" and "2048x1536" — the KDP `Resolution` type.

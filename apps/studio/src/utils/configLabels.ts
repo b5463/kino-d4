@@ -32,6 +32,7 @@ const FIELD_LABELS: Record<string, string> = {
   colorMode: 'Colour',
   note: 'Note',
   // body
+  name: 'Camera name',
   brightness: 'Brightness',
   autoDimS: 'Auto-dim',
   sleepS: 'Sleep',

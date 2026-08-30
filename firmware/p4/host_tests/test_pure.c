@@ -73,6 +73,104 @@ static void test_quality(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* pure_ev_to_ae_level                                                 */
+/* ------------------------------------------------------------------ */
+
+static void test_ev_to_ae_level(void) {
+  /* The slider's own steps. Studio sends -2.0..2.0 in 0.1, so these are the
+   * values that actually arrive. */
+  CHECK(pure_ev_to_ae_level(0.0) == 0, "0 EV -> %d, want 0", pure_ev_to_ae_level(0.0));
+  CHECK(pure_ev_to_ae_level(1.0) == 1, "+1 EV -> %d", pure_ev_to_ae_level(1.0));
+  CHECK(pure_ev_to_ae_level(-1.0) == -1, "-1 EV -> %d", pure_ev_to_ae_level(-1.0));
+  CHECK(pure_ev_to_ae_level(2.0) == 2, "+2 EV -> %d", pure_ev_to_ae_level(2.0));
+  CHECK(pure_ev_to_ae_level(-2.0) == -2, "-2 EV -> %d", pure_ev_to_ae_level(-2.0));
+
+  /* The bench case from the issue: -1.5 must not land on the same level as
+   * 0, or the two captures the acceptance test compares are the same
+   * photograph. Half-steps round AWAY from zero, so it is -2 and not -1. */
+  CHECK(pure_ev_to_ae_level(-1.5) == -2, "-1.5 EV -> %d, want -2 (half away from zero)",
+        pure_ev_to_ae_level(-1.5));
+  CHECK(pure_ev_to_ae_level(1.5) == 2, "+1.5 EV -> %d, want 2", pure_ev_to_ae_level(1.5));
+
+  /* Either side of the -2 boundary, which is where a clamp and a rounding
+   * error look identical if only one of them is tested. -2.049 is past the
+   * slider and clamps; -1.95 is on the slider and rounds. Both are -2, and
+   * that is the point: the clamp must not turn into a different answer than
+   * the rounding it takes over from. */
+  CHECK(pure_ev_to_ae_level(-2.049) == -2, "-2.049 EV -> %d, want -2 (clamped)",
+        pure_ev_to_ae_level(-2.049));
+  CHECK(pure_ev_to_ae_level(-1.95) == -2, "-1.95 EV -> %d, want -2 (rounded)",
+        pure_ev_to_ae_level(-1.95));
+  /* Just inside: -1.4 must stay -1, so the boundary is at the half step and
+   * not somewhere convenient. */
+  CHECK(pure_ev_to_ae_level(-1.4) == -1, "-1.4 EV -> %d, want -1", pure_ev_to_ae_level(-1.4));
+  CHECK(pure_ev_to_ae_level(1.4) == 1, "+1.4 EV -> %d, want 1", pure_ev_to_ae_level(1.4));
+
+  /* Past the wire's range in both directions. ov3660's set_ae_level REFUSES
+   * an out-of-range level instead of clamping, and a refused write leaves the
+   * previous camera's exposure in the sensor. */
+  CHECK(pure_ev_to_ae_level(2.5) == 2, "+2.5 EV -> %d, want 2 (clamped)",
+        pure_ev_to_ae_level(2.5));
+  CHECK(pure_ev_to_ae_level(-2.5) == -2, "-2.5 EV -> %d, want -2 (clamped)",
+        pure_ev_to_ae_level(-2.5));
+  /* A number a look document can carry and a cast cannot survive. */
+  CHECK(pure_ev_to_ae_level(1e300) == 2, "1e300 EV -> %d, want 2",
+        pure_ev_to_ae_level(1e300));
+  CHECK(pure_ev_to_ae_level(-1e300) == -2, "-1e300 EV -> %d, want -2",
+        pure_ev_to_ae_level(-1e300));
+
+  /* NaN is not an exposure. 0 is the sensor's own metering target, which is
+   * the only answer that is not a guess in one direction or the other.
+   * Built rather than written as NAN: math.h is not included here and the
+   * test binary links without libm. */
+  const double zero = 0.0;
+  const double nan_value = zero / zero;
+  CHECK(pure_ev_to_ae_level(nan_value) == 0, "NaN EV -> %d, want 0",
+        pure_ev_to_ae_level(nan_value));
+
+  /* Nothing anywhere on or past the slider may escape the wire's range. */
+  for (int tenths = -40; tenths <= 40; tenths++) {
+    const int level = pure_ev_to_ae_level(tenths / 10.0);
+    CHECK(level >= -2 && level <= 2, "%.1f EV -> %d, outside -2..2", tenths / 10.0, level);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* pure_gain_to_ceiling                                                */
+/* ------------------------------------------------------------------ */
+
+static void test_gain_to_ceiling(void) {
+  /* The three words a QUAD slot can carry. */
+  CHECK(pure_gain_to_ceiling("auto") == 0, "auto -> %d, want 0 (send no gainCeiling)",
+        pure_gain_to_ceiling("auto"));
+  CHECK(pure_gain_to_ceiling("low") == 4, "low -> %d, want 4X", pure_gain_to_ceiling("low"));
+  CHECK(pure_gain_to_ceiling("high") == 32, "high -> %d, want 32X",
+        pure_gain_to_ceiling("high"));
+
+  /* low must be cleaner than high, stated as the relation rather than as two
+   * constants - the numbers may be re-tuned on the bench, the ordering may
+   * not. */
+  CHECK(pure_gain_to_ceiling("low") < pure_gain_to_ceiling("high"),
+        "low must cap gain below high");
+
+  /* Both are legal steps on sensor.h's 2X..128X ladder, so the node has
+   * nothing to snap. */
+  CHECK(pure_gain_to_ceiling("low") == 4 || pure_gain_to_ceiling("low") == 8,
+        "low must land on a real gainceiling_t step");
+
+  /* Garbage, an unknown word, a case difference and NULL are all "leave the
+   * AGC alone". A slot this firmware does not understand must not become a
+   * gain setting. */
+  CHECK(pure_gain_to_ceiling(NULL) == 0, "NULL -> 0");
+  CHECK(pure_gain_to_ceiling("") == 0, "empty -> 0");
+  CHECK(pure_gain_to_ceiling("HIGH") == 0, "HIGH (wrong case) -> %d, want 0",
+        pure_gain_to_ceiling("HIGH"));
+  CHECK(pure_gain_to_ceiling("medium") == 0, "an unknown word -> 0");
+  CHECK(pure_gain_to_ceiling("32") == 0, "a number in the word field -> 0");
+  CHECK(pure_gain_to_ceiling("lowest") == 0, "a prefix of 'low' is not 'low'");
+}
+
+/* ------------------------------------------------------------------ */
 /* pure_parse_resolution                                               */
 /* ------------------------------------------------------------------ */
 
@@ -587,6 +685,8 @@ static void test_api_base(void) {
 
 int main(void) {
   test_quality();
+  test_ev_to_ae_level();
+  test_gain_to_ceiling();
   test_resolution();
   test_reserve();
   test_dirname();

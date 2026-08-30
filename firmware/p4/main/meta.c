@@ -33,6 +33,14 @@ void meta_build_capture(const capture_report_t *r, const char *device_id, void *
   cJSON_AddNumberToObject(m, "capturedAtMs", (double)r->captured_at_ms);
   cJSON_AddNumberToObject(m, "frameCount", r->stored);
   cJSON_AddStringToObject(m, "resolution", r->resolution);
+  /* The looks in force at the shutter (capture.c snapshots them like rollId).
+   * Until firmware 0.4.9 nothing filled this and MEDIA_LIST showed every
+   * photograph as recipe-less; meta_capture_summary already read the key. */
+  cJSON *recipes = cJSON_AddArrayToObject(m, "recipeIds");
+  for (int i = 0; i < r->recipe_id_count && i < 4; i++) {
+    if (r->recipe_ids[i][0] != '\0')
+      cJSON_AddItemToArray(recipes, cJSON_CreateString(r->recipe_ids[i]));
+  }
   cJSON_AddStringToObject(m, "status", r->status);
   cJSON_AddBoolToObject(m, "visible", true);
 
@@ -94,6 +102,35 @@ void meta_build_capture(const capture_report_t *r, const char *device_id, void *
     } else {
       cJSON_AddNullToObject(e, "file");
       cJSON_AddStringToObject(e, "error", f->err);
+    }
+    /*
+     * What the sensor was actually set to for this frame, from the node's
+     * NL_CMD_SENSOR reply - what it ACCEPTED, never what was asked for. The
+     * node clamps and snaps (a look's gainLimit of 12 becomes 8X), so the two
+     * differ, and a photograph whose metadata described the request rather
+     * than the sensor would be worse than one that said nothing.
+     *
+     * Written on failed frames as well as successful ones: a frame that never
+     * arrived was still exposed at these settings, and on a partial capture
+     * that is exactly what someone is trying to work out.
+     *
+     * Absent, not zeroed, when no setting has ever reached this node's sensor.
+     * Every field here has a real zero - aeLevel 0 is the sensor's own
+     * metering target, denoise 0 is denoise off - so an all-zero object would
+     * read as five deliberate settings.
+     */
+    const camlink_sensor_t *s = &f->sensor;
+    if (s->has_ae_level || s->has_gain_ceiling || s->has_denoise || s->has_sharpness ||
+        s->has_quality) {
+      cJSON *sensor = cJSON_AddObjectToObject(e, "sensor");
+      if (s->has_ae_level) cJSON_AddNumberToObject(sensor, "aeLevel", s->ae_level);
+      if (s->has_gain_ceiling) cJSON_AddNumberToObject(sensor, "gainCeiling", s->gain_ceiling);
+      if (s->has_denoise) cJSON_AddNumberToObject(sensor, "denoise", s->denoise);
+      if (s->has_sharpness) cJSON_AddNumberToObject(sensor, "sharpness", s->sharpness);
+      /* The SENSOR scale, 5..63, lower is better - not the 60..95 percentage
+       * the look and Studio carry. Named `quality` because that is what the
+       * node reported it wrote. */
+      if (s->has_quality) cJSON_AddNumberToObject(sensor, "quality", s->quality);
     }
     cJSON_AddItemToArray(frames, e);
   }

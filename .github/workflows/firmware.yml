@@ -155,19 +155,34 @@ jobs:
       # Detects accidental major growth, nothing more. This is NOT a size
       # optimisation target and the current binary is not near it.
       #
-      #   at time of writing:  ~800 KB
-      #   factory partition:   1500 KB  (CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE)
-      #   limit below:         1100 KB  (~40% headroom over current)
+      # Re-derived for firmware/p4/partitions.csv (issue #143). The ceiling is
+      # ota_0, not the old `factory` slot:
       #
-      # !! REVISIT WHEN M8 REPARTITIONS !!  The roadmap replaces the single
-      # `factory` slot with two OTA slots, at which point the ceiling is the
-      # new slot size and this number is wrong. See firmware/FIRMWARE_ROADMAP.md
-      # M8 and the partition discussion there.
+      #   ota_0 (partitions.csv):  3072 KB
+      #   measured, 0.4.9:          864 KB  (0x0d8110) - was 842 KB before
+      #                                     CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+      #                                     added ~21 KB
+      #   limit below:             1200 KB  = measured + 336 KB slack (39%),
+      #                                       39% of the slot
+      #
+      # 336 KB is slack, not headroom: this build has no pending feature that
+      # needs it. Crossing it means something grew by a third without anyone
+      # noticing, which is worth one line in a PR. There is 1872 KB of ota_0
+      # still free at the limit, so raising the number is cheap - say why.
+      #
+      # The app offset did NOT change: ota_0 starts at 0x10000, the same place
+      # the old `factory` partition did. A kino-p4.bin built from any commit
+      # before the repartition still flashes and boots at 0x10000 - this
+      # workflow keeps no binary artifacts, so that image comes from a local
+      # build of the older commit, not from CI. What did change:
+      # the build now emits a fourth image, ota_data_initial.bin at 0xa000, and
+      # a unit that gets the new partition table without it boots off whatever
+      # bytes are already at 0xa000. build/flash_args carries all four.
       - name: Guard firmware size
         if: matrix.app == 'p4'
         shell: bash
         run: |
-          LIMIT_KB=1100
+          LIMIT_KB=1200
           BIN=firmware/p4/build/kino-p4.bin
           SIZE_B=$(stat -c %s "$BIN")
           SIZE_KB=$((SIZE_B / 1024))
@@ -205,31 +220,37 @@ jobs:
 
       # ---- radio-variant size guard ----
       #
-      # Its own number, and the default P4 guard stays at 1100 KB. Sharing one
-      # limit would mean either letting the default binary grow 600 KB
+      # Its own number, and the default P4 guard stays at 1200 KB. Sharing one
+      # limit would mean either letting the default binary grow 400 KB
       # unnoticed or failing the radio build on arrival.
       #
       #   measured, 0.4.6:        1384 KB   (0x15a030)
       #   measured, 0.4.8:        1451 KB   (0x16aa90) - looks and sounds added ~67 KB
-      #   factory partition:      1500 KB   (CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE)
-      #   limit below:            1472 KB
+      #   measured, 0.4.9:        1472 KB   (0x1702b0) - coredump-to-flash added ~21 KB
+      #   ota_0 (partitions.csv): 3072 KB
+      #   limit below:            1600 KB   = measured + 128 KB slack (8.7%)
       #
-      # 1472 KB is not headroom, it is a ceiling with 28 KB of slack, raised
-      # from 1440 when 0.4.8 landed 11 KB over it. The next feature does not
-      # fit: the repartition (issue #143) has to come first. The stack
-      # is the size it is: ESP-Hosted, esp_wifi_remote, lwIP, mbedTLS and an
-      # HTTP client add ~584 KB over the default build. Two consequences worth
-      # stating rather than discovering:
+      # The repartition (issue #143) landed, so the wall moved: at the 1600 KB
+      # limit ota_0 is still 1472 KB free - the guard is a review trigger now,
+      # not a physical ceiling. 128 KB is about two features' worth at the rate
+      # this variant has been growing (67 KB for looks and sounds, 21 KB for
+      # coredump); crossing it should be a deliberate edit with a sentence
+      # attached, not a surprise on the bench.
       #
-      #   - the CMN certificate bundle is load-bearing. FULL measured 1434 KB,
-      #     which is 4% of the partition free. See sdkconfig.radio.
-      #   - this variant does NOT fit a two-slot OTA partition table. M8's
-      #     repartition has to size its slots for this binary, not for the
-      #     default one.
+      # The stack is the size it is: ESP-Hosted, esp_wifi_remote, lwIP, mbedTLS
+      # and an HTTP client add ~608 KB over the default build. Two consequences
+      # worth stating rather than discovering:
+      #
+      #   - the CMN certificate bundle is no longer load-bearing for size. FULL
+      #     measured 1434 KB against the old 1500 KB slot; against 3072 KB it
+      #     fits. It stays CMN for the trust-surface reason. See sdkconfig.radio.
+      #   - both OTA slots are sized for THIS binary, not the default one. An
+      #     OTA writes into whichever slot is not running, so the radio image is
+      #     what set 3 MB.
       - name: Guard radio firmware size
         shell: bash
         run: |
-          LIMIT_KB=1472
+          LIMIT_KB=1600
           BIN=firmware/p4/build/kino-p4.bin
           SIZE_B=$(stat -c %s "$BIN")
           SIZE_KB=$((SIZE_B / 1024))
@@ -237,8 +258,8 @@ jobs:
           echo "### Radio firmware size: ${SIZE_KB} KB / ${LIMIT_KB} KB" >> "$GITHUB_STEP_SUMMARY"
           if [ "$SIZE_KB" -gt "$LIMIT_KB" ]; then
             echo "::error::radio kino-p4.bin grew to ${SIZE_KB} KB, over the ${LIMIT_KB} KB guard."
-            echo "::error::The factory partition is 1500 KB. Growth here has to come out of"
-            echo "::error::the build, not out of the guard, until M8 repartitions."
+            echo "::error::ota_0 is 3072 KB, so this is a review trigger, not a wall."
+            echo "::error::Raise LIMIT_KB in this workflow and say what grew and why."
             exit 1
           fi
 

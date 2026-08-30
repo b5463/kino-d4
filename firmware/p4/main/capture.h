@@ -80,6 +80,22 @@ typedef struct {
   int64_t node_fb_get_us;      /* time the node spent inside esp_camera_fb_get() */
   int64_t node_frame_start_us; /* node esp_timer at this frame's DMA arm */
   int64_t node_frame_age_us;   /* command arrival minus frame start; >0 = stale */
+
+  /*
+   * What the node reported the sensor ACCEPTED, from the NL_CMD_SENSOR reply -
+   * never what was asked for.
+   *
+   * The two differ whenever the node clamps or snaps: a look's gainLimit of 12
+   * is written as 8X, an exposureBias past the slider is clamped to -2. A
+   * photograph whose META.JSON recorded the request would then describe an
+   * exposure the sensor never had, which is the one thing this field exists to
+   * prevent. All flags false means no setting has ever reached this node's
+   * sensor, and META.JSON omits the object rather than writing zeros.
+   *
+   * Carried per frame, not per capture, because the four cameras are set
+   * independently: that is the whole point of a QUAD slot.
+   */
+  camlink_sensor_t sensor;
 } capture_frame_t;
 
 /** What became of the press. */
@@ -107,6 +123,13 @@ typedef struct {
    * hands it out for as long as the camera is on. A pointer here read fine
    * for exactly as long as nothing else used that stack. */
   char source[16];
+  /* The looks this photograph was taken under, snapshotted at the shutter
+   * like roll_id: wiggle carries one (wiggle.recipeId), quad one per slot in
+   * cam order, duplicates kept so index i is cam i+1's look. "" entries are
+   * skipped at serialisation. 49 == KDP_RECIPE_ID_MAX (kdp_recipes.h);
+   * capture.c asserts they agree rather than including that header here. */
+  char recipe_ids[4][49];
+  int recipe_id_count;
   int online;             /* cameras that answered a status probe */
   int stored;             /* frames that reached the card intact */
   uint32_t bytes;

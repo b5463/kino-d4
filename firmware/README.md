@@ -66,11 +66,17 @@ idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.debug" build
 
 A `sdkconfig` generated before firmware 0.4.2 keeps `-Og` until it is
 regenerated (`idf.py fullclean`, or delete `sdkconfig`). Timing measured on a
-debug build is not product timing; say which one a bench record came from.
+debug build is not product timing; say which one a bench record came from. The
+same applies to the partition table: a `sdkconfig` generated before 0.4.9 still
+selects the old built-in single-app table, and the build will not tell you — it
+will just put the app in a `factory` partition. Delete `sdkconfig` after
+pulling the repartition.
 
 `camnode` pulls `espressif/esp32-camera` (pinned 2.1.7, resolved versions in
 the committed `dependencies.lock`) from the component registry on first build
 (network required once; `managed_components/` is git-ignored).
+
+## Flashing the P4
 
 Flashing DOES need a local ESP-IDF (or esptool) install — the container
 cannot reach the serial port on Windows/macOS. From a machine with the board
@@ -80,7 +86,88 @@ attached and IDF v5.5.1 installed:
 idf.py -p <port> flash monitor
 ```
 
-or with a standalone esptool: `esptool.py --chip esp32p4 -p <port> write_flash "@build/flash_args"` from `firmware/p4/build`.
+or with a standalone esptool: `esptool.py --chip esp32p4 -p <port> write_flash
+"@build/flash_args"` from `firmware/p4/build`.
+
+### Offsets
+
+`firmware/p4/partitions.csv` (16 MB part) puts four images on the chip:
+
+| Offset     | Image                                   |
+|------------|-----------------------------------------|
+| `0x2000`   | `bootloader/bootloader.bin`             |
+| `0x8000`   | `partition_table/partition-table.bin`   |
+| `0xa000`   | `ota_data_initial.bin`                  |
+| `0x10000`  | `kino-p4.bin`                           |
+
+Written out, from `firmware/p4/build`:
+
+```
+esptool.py --chip esp32p4 -p <port> write_flash \
+  0x2000 bootloader/bootloader.bin \
+  0x8000 partition_table/partition-table.bin \
+  0xa000 ota_data_initial.bin \
+  0x10000 kino-p4.bin
+```
+
+`0xa000` is new. The old built-in table had no `otadata`; the new one has two
+OTA slots and the bootloader reads `otadata` to pick between them.
+`ota_data_initial.bin` is 8 KB of `0xff` — "neither slot selected", which makes
+the bootloader fall through to `ota_0`. Skip it on a unit that has been flashed
+before and the bootloader reads whatever bytes were already at `0xa000` (on
+this board, old NVS) and may refuse to boot.
+
+The app offset did not change. `ota_0` starts at `0x10000`, where the old
+`factory` partition started, so a `kino-p4.bin` built before the repartition
+still flashes and boots there.
+
+### A partition table change erases NVS
+
+Not a warning about what might happen — it is what happens. The old table put
+NVS at `0x9000`; the new one puts `phy_init` and `otadata` there and NVS at
+`0x610000`. Everything the camera had stored is gone:
+
+- **config** — the whole config document (`kino` namespace), plus the boot and
+  capture counters.
+- **hwv rows** — all 60 validation items, both keys each (`hwv`).
+- **saved Wi-Fi networks** — up to 8 SSIDs and passphrases (`kino_wifi`).
+- **the Roll device credential** — the identity this unit registered with on
+  the LAN backend (`kino_roll`).
+- **the clock** — last known epoch and UTC offset (`clock`). The unit comes up
+  without a wall clock until something sets it.
+
+What brings each back:
+
+- config, sounds and recipes: Studio's backup/restore. Take the backup BEFORE
+  flashing; there is no way to read it off the unit afterwards.
+- hwv rows: re-earned, not restored. Each item is a measurement and has to be
+  taken again on the bench. Record the session in `HARDWARE_VALIDATION.md`.
+- Wi-Fi: `NETWORK_SET` per network. Passphrases are not in the Studio backup by
+  design (`main/wifi_creds.h`), so have them to hand.
+- Roll: the unit re-registers with the LAN backend on its next connection and
+  gets a new device credential. The old registration is stale on the backend
+  side; clean it up there.
+
+### Does it need a full erase?
+
+`erase_flash` is not required by ESP-IDF. Writing the four images above is the
+complete set: the new NVS region at `0x610000` was never addressed by the old
+table so it reads as erased, and `nvs_flash_init()` in `main.c` already erases
+and re-initialises on `ESP_ERR_NVS_NO_FREE_PAGES`.
+
+Do it anyway on the first unit. The old NVS occupied `0x9000`–`0xf000`, which
+is now `phy_init` and `otadata`. `ota_data_initial.bin` covers `0xa000`, but
+nothing in the four-image set writes `0x9000`, so `phy_init` would be left
+holding stale NVS bytes. That is recoverable — the PHY checks the format
+version and the MAC in its stored calibration and recalibrates on a mismatch —
+but NVS is lost either way, so the erase costs nothing that was not already
+gone and removes the question:
+
+```
+esptool.py --chip esp32p4 -p <port> erase_flash
+```
+
+then the four-image write above.
 
 ## Protocol tests
 

@@ -114,6 +114,13 @@ static cJSON *default_config(void) {
   cJSON_AddNumberToObject(sh, "displayAfterShotS", 2);
 
   cJSON *b = cJSON_AddObjectToObject(c, "body");
+  /* What someone calls this camera, 0..24 characters. Empty by default and
+   * deliberately not the serial: `device` in the envelope is already the
+   * serial, and pre-filling this with it would make every camera look named
+   * when none of them is. The About screen simply omits the row while it is
+   * empty. Length is enforced where it is written (kdp_server.c's SET_CONFIG),
+   * not here - defaults cannot violate it. */
+  cJSON_AddStringToObject(b, "name", "");
   cJSON_AddNumberToObject(b, "brightness", 10);
   cJSON_AddNumberToObject(b, "autoDimS", 30);
   cJSON_AddNumberToObject(b, "sleepS", 120);

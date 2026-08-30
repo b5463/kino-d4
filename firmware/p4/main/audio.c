@@ -64,7 +64,7 @@ static esp_codec_dev_handle_t s_dev;
 static bool s_ready;
 
 /* Playback happens on its own task; see the queue section below for why. */
-typedef enum { SND_SHUTTER, SND_TICK } sound_t;
+typedef enum { SND_SHUTTER, SND_TICK, SND_WARNING } sound_t;
 static QueueHandle_t s_queue;
 static void audio_task(void *arg);
 static void post(sound_t which);
@@ -86,6 +86,9 @@ static int16_t *s_shutter_pcm;
 static size_t s_shutter_bytes;
 static int16_t *s_tick_pcm;
 static size_t s_tick_bytes;
+/* body.sounds.warning: something did not work. Rendered once like the rest. */
+static int16_t *s_warn_pcm;
+static size_t s_warn_bytes;
 /* The other three built-in shutter sounds the contract names
  * (BUILTIN_SHUTTER_SOUNDS in packages/kdp/src/protocol/types.ts). "silent" is
  * the fifth and needs no buffer. Same reasoning as the two above: rendered
@@ -491,6 +494,34 @@ static const click_t CLICK_TICK = {.total_ms = 130,
                                    .thump_amp = 0.25f,
                                    .level = 0.60f};
 
+/*
+ * Something did not work: two low pulses, 200 ms apart.
+ *
+ * It has one job, which is to be unmistakable for the other two sounds the
+ * camera makes at the same moments. It differs from both on every axis that
+ * carries at arm's length through a small speaker:
+ *
+ *   pitch    220 Hz, an octave below the tick's 170 Hz body is not available
+ *            through this speaker, so it goes the other way and is the only
+ *            sound with a sustained low TONE rather than a transient.
+ *   texture  bright 0.15 against the shutter's 0.55 and the tick's 0.7 - the
+ *            noise is filtered down to a dull thud, so there is no click in
+ *            it at all.
+ *   length   two pulses 200 ms apart over 460 ms, against the shutter's 55 ms
+ *            spacing. Nobody hears this as one mechanism operating twice.
+ *
+ * Deliberately below the tick's 0.60 level. A warning has to be heard, not
+ * to be the loudest thing the camera does - the tick fires on every press and
+ * this fires when a photograph was lost.
+ */
+static const click_t CLICK_WARNING = {.total_ms = 460,
+                                      .spacing_ms = 200,
+                                      .bright = 0.15f,
+                                      .decay = 22.0f,
+                                      .thump_hz = 220.0f,
+                                      .thump_amp = 1.4f,
+                                      .level = 0.45f};
+
 /* The three alternative shutter sounds, built from the same click_t fields.
  *
  * Each is a shape, not a measurement: nothing here has been through
@@ -562,6 +593,11 @@ static void audio_render_sounds(void) {
     s_tick_bytes = 0;
     ESP_LOGW(TAG, "tick render failed - presses will be silent");
   }
+  if (render_click(&CLICK_WARNING, &s_warn_pcm, &s_warn_bytes) != ESP_OK) {
+    s_warn_pcm = NULL;
+    s_warn_bytes = 0;
+    ESP_LOGW(TAG, "warning render failed - failed captures will be silent");
+  }
   /* The alternatives fail the same way and cost the same nothing: a NULL
    * buffer here makes shutter_pcm_for() fall back to the click, which is a
    * shutter someone did not choose rather than a camera that went quiet. */
@@ -580,9 +616,11 @@ static void audio_render_sounds(void) {
     s_mech_bytes = 0;
     ESP_LOGW(TAG, "mechanical render failed - it will fall back to the click");
   }
-  ESP_LOGI(TAG, "sounds rendered once: shutter %u B, tick %u B, digi %u B, beep %u B, mech %u B",
-           (unsigned)s_shutter_bytes, (unsigned)s_tick_bytes, (unsigned)s_digi_bytes,
-           (unsigned)s_beep_bytes, (unsigned)s_mech_bytes);
+  ESP_LOGI(TAG,
+           "sounds rendered once: shutter %u B, tick %u B, warn %u B, digi %u B, beep %u B, "
+           "mech %u B",
+           (unsigned)s_shutter_bytes, (unsigned)s_tick_bytes, (unsigned)s_warn_bytes,
+           (unsigned)s_digi_bytes, (unsigned)s_beep_bytes, (unsigned)s_mech_bytes);
 }
 
 /* ------------------------------------------------------------------ */
@@ -801,6 +839,8 @@ static void audio_task(void *arg) {
       const int16_t *pcm = NULL;
       size_t bytes = 0;
       if (shutter_pcm_for(&pcm, &bytes)) play_click(pcm, bytes);
+    } else if (which == SND_WARNING) {
+      play_click(s_warn_pcm, s_warn_bytes);
     } else {
       play_click(s_tick_pcm, s_tick_bytes);
     }
@@ -821,6 +861,23 @@ static void post(sound_t which) {
 void audio_shutter(void) { post(SND_SHUTTER); }
 
 void audio_tick(void) { post(SND_TICK); }
+
+/*
+ * The setting is checked HERE, not at the call site, which is the opposite of
+ * how the shutter and the tick are gated in ui.c.
+ *
+ * Those two have one caller each. This one has several - a failed report, a
+ * partial report, and every refusal that ends in a toast - and a gate repeated
+ * at each of them is a gate that will eventually be forgotten at one of them,
+ * which is a camera that beeps at someone who switched the beeping off.
+ *
+ * shoot.volume needs nothing here: play_click() sets it on the codec for
+ * every sound, so this obeys it the same way the shutter does.
+ */
+void audio_warning(void) {
+  if (!config_bool("body.sounds.warning", true)) return;
+  post(SND_WARNING);
+}
 
 /* ---------------------------------------------------------------------- */
 /* Calibration: the camera listening to itself.                           */

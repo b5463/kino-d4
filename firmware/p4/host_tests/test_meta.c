@@ -67,6 +67,9 @@ static capture_report_t sample_report(void) {
   r.clock_source = "host";
   r.status = "complete";
   snprintf(r.source, sizeof r.source, "shutter");
+  snprintf(r.recipe_ids[0], sizeof r.recipe_ids[0], "party-neg");
+  snprintf(r.recipe_ids[1], sizeof r.recipe_ids[1], "mono");
+  r.recipe_id_count = 2;
   r.online = 4;
   r.stored = 4;
   r.bytes = 1043 * 1024;
@@ -90,6 +93,18 @@ static capture_report_t sample_report(void) {
     r.cam[i].node_fb_get_us = 445000 + i;
     r.cam[i].node_frame_start_us = 990000 + i;
     r.cam[i].node_frame_age_us = 1200 + i;
+    /* What the node reported it accepted. Different per camera, because the
+     * whole point of a QUAD slot is that the four sensors are set apart. */
+    r.cam[i].sensor.has_ae_level = true;
+    r.cam[i].sensor.ae_level = i - 2; /* -2, -1, 0, 1 */
+    r.cam[i].sensor.has_gain_ceiling = true;
+    r.cam[i].sensor.gain_ceiling = 4 << i;
+    r.cam[i].sensor.has_denoise = true;
+    r.cam[i].sensor.denoise = 1;
+    r.cam[i].sensor.has_sharpness = true;
+    r.cam[i].sensor.sharpness = 1;
+    r.cam[i].sensor.has_quality = true;
+    r.cam[i].sensor.quality = 10;
   }
   return r;
 }
@@ -214,6 +229,101 @@ static void test_meta_frames(void) {
   cJSON_Delete(m);
 }
 
+/*
+ * The `sensor` object: what the node reported it ACCEPTED, per frame.
+ *
+ * This is the record that makes a photograph say what its sensor was told.
+ * Two properties matter and neither is obvious from reading meta.c: the
+ * cameras must not share one object (a QUAD slot exists to set them apart),
+ * and a camera that was never set must have NO object rather than an object
+ * full of zeros - aeLevel 0 and denoise 0 are both real settings.
+ */
+static void test_meta_sensor(void) {
+  capture_report_t r = sample_report();
+  cJSON *m = cJSON_CreateObject();
+  meta_build_capture(&r, "dev", m);
+
+  const cJSON *frames = cJSON_GetObjectItem(m, "frames");
+  const cJSON *f0 = cJSON_GetArrayItem(frames, 0);
+  const cJSON *s0 = cJSON_GetObjectItem(f0, "sensor");
+  CHECK(cJSON_IsObject(s0), "frames[0].sensor must be an object");
+  CHECK(num_of(s0, "aeLevel") == -2, "frames[0].sensor.aeLevel -> %g", num_of(s0, "aeLevel"));
+  CHECK(num_of(s0, "gainCeiling") == 4, "frames[0].sensor.gainCeiling -> %g",
+        num_of(s0, "gainCeiling"));
+  CHECK(num_of(s0, "denoise") == 1, "frames[0].sensor.denoise -> %g", num_of(s0, "denoise"));
+  CHECK(num_of(s0, "sharpness") == 1, "frames[0].sensor.sharpness -> %g",
+        num_of(s0, "sharpness"));
+  /* The SENSOR scale, 5..63 where lower is better - not a 60..95 percentage.
+   * A value in 60..95 here would mean the conversion was skipped somewhere. */
+  CHECK(num_of(s0, "quality") == 10, "frames[0].sensor.quality -> %g", num_of(s0, "quality"));
+
+  /* Per camera, not per capture. */
+  const cJSON *s2 = cJSON_GetObjectItem(cJSON_GetArrayItem(frames, 2), "sensor");
+  CHECK(num_of(s2, "aeLevel") == 0, "frames[2].sensor.aeLevel -> %g", num_of(s2, "aeLevel"));
+  CHECK(num_of(s2, "gainCeiling") == 16, "frames[2].sensor.gainCeiling -> %g",
+        num_of(s2, "gainCeiling"));
+
+  /* aeLevel 0 on cam3 is a real setting and must be written, not dropped as
+   * a falsy value - the flag is what decides, never the number. */
+  CHECK(has(s2, "aeLevel"), "an applied aeLevel of 0 must still be recorded");
+
+  cJSON_Delete(m);
+}
+
+static void test_meta_sensor_omitted(void) {
+  /* A node that has never been given a setting. The object must be absent
+   * rather than zeroed: five zeros read as five deliberate settings, and this
+   * document is the only description of the photograph that leaves the card. */
+  capture_report_t r = sample_report();
+  memset(&r.cam[1].sensor, 0, sizeof r.cam[1].sensor);
+  cJSON *m = cJSON_CreateObject();
+  meta_build_capture(&r, "dev", m);
+  const cJSON *f1 = cJSON_GetArrayItem(cJSON_GetObjectItem(m, "frames"), 1);
+  CHECK(!has(f1, "sensor"), "no applied setting means no sensor object");
+  /* The siblings still have theirs - one camera being unset must not blank
+   * the rest. */
+  const cJSON *f0 = cJSON_GetArrayItem(cJSON_GetObjectItem(m, "frames"), 0);
+  CHECK(has(f0, "sensor"), "cam1 keeps its sensor object");
+  cJSON_Delete(m);
+}
+
+static void test_meta_sensor_partial_fields(void) {
+  /* Only some knobs were ever applied - a node whose driver has no denoise
+   * setter, or a P4 that has only ever sent a quality. The fields that were
+   * not applied must be absent, not zero. */
+  capture_report_t r = sample_report();
+  memset(&r.cam[0].sensor, 0, sizeof r.cam[0].sensor);
+  r.cam[0].sensor.has_quality = true;
+  r.cam[0].sensor.quality = 12;
+  cJSON *m = cJSON_CreateObject();
+  meta_build_capture(&r, "dev", m);
+  const cJSON *s0 = cJSON_GetObjectItem(cJSON_GetArrayItem(cJSON_GetObjectItem(m, "frames"), 0),
+                                        "sensor");
+  CHECK(cJSON_IsObject(s0), "a single applied field still writes the object");
+  CHECK(num_of(s0, "quality") == 12, "sensor.quality -> %g", num_of(s0, "quality"));
+  CHECK(!has(s0, "aeLevel"), "an unapplied aeLevel must be absent, not 0");
+  CHECK(!has(s0, "denoise"), "an unapplied denoise must be absent, not 0");
+  CHECK(!has(s0, "gainCeiling"), "an unapplied gainCeiling must be absent, not 0");
+  CHECK(!has(s0, "sharpness"), "an unapplied sharpness must be absent, not 0");
+  cJSON_Delete(m);
+}
+
+static void test_meta_sensor_on_failed_frame(void) {
+  /* A frame that never arrived was still exposed at these settings, and on a
+   * partial capture that is exactly what someone is trying to work out. */
+  capture_report_t r = sample_report();
+  r.stored = 3;
+  r.status = "partial";
+  r.cam[2].ok = false;
+  snprintf(r.cam[2].err, sizeof r.cam[2].err, "link died at 41%% of 260000 B");
+  cJSON *m = cJSON_CreateObject();
+  meta_build_capture(&r, "dev", m);
+  const cJSON *f2 = cJSON_GetArrayItem(cJSON_GetObjectItem(m, "frames"), 2);
+  CHECK(is_null(f2, "file"), "the frame still failed");
+  CHECK(has(f2, "sensor"), "a failed frame still records what its sensor was set to");
+  cJSON_Delete(m);
+}
+
 static void test_meta_partial(void) {
   /* A partial capture: cam3 failed. The frame must be present with a null
    * file and a reason, not omitted - a consumer that sees three entries and
@@ -313,6 +423,18 @@ static void test_meta_survives_null(void) {
  * returned NULL, and the tile lost its label, its mode and its frame count.
  * The sizes belong in a test rather than in a comment, because the document
  * grows whenever a field is added to meta.c and nothing else would notice.
+ *
+ * Where it stands today, measured rather than estimated: a four-frame document
+ * with every field populated is 1787 bytes, so 2309 bytes of the 4096 are
+ * still free.
+ *
+ * The `sensor` object is the most recent growth and it is the largest per
+ * frame so far. At its widest -
+ * `,"sensor":{"aeLevel":-2,"gainCeiling":128,"denoise":8,"sharpness":-3,"quality":63}`
+ * - it is 83 bytes, so four frames cost at most 332. That is 14 per cent of
+ * the remaining headroom for one object, which is the number to remember
+ * before the next per-frame field: about seven more of this size would reach
+ * the buffer, and gallery.c's buffer is not this file's to change.
  */
 static void test_meta_document_size(void) {
   capture_report_t r = sample_report(); /* four frames, every field populated */
@@ -710,6 +832,10 @@ int main(void) {
   test_meta_schema();
   test_meta_timing_honesty();
   test_meta_frames();
+  test_meta_sensor();
+  test_meta_sensor_omitted();
+  test_meta_sensor_partial_fields();
+  test_meta_sensor_on_failed_frame();
   test_meta_partial();
   test_meta_not_attempted();
   test_meta_unset_clock();

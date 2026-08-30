@@ -159,6 +159,31 @@ static void handle_hello(uint32_t seq) {
   send_json(NL_CMD_HELLO, seq, json);
 }
 
+/**
+ * Add `sensor` / `applied` to a reply: the fields the node has actually
+ * written, and only those.
+ *
+ * The object is omitted entirely rather than filled with zeros, because every
+ * field here has a meaningful zero - aeLevel 0 is the sensor's own metering
+ * target, denoise 0 is denoise off - so a zeroed object would read as a set of
+ * deliberate settings and end up in a photograph's META.JSON as one.
+ */
+static void add_sensor_object(cJSON *parent, const char *key) {
+  camsensor_settings_t s;
+  camsensor_applied(&s);
+  if (!s.has_ae_level && !s.has_gain_ceiling && !s.has_denoise && !s.has_sharpness &&
+      !s.has_quality) {
+    return;
+  }
+  cJSON *o = cJSON_AddObjectToObject(parent, key);
+  if (o == NULL) return;
+  if (s.has_ae_level) cJSON_AddNumberToObject(o, "aeLevel", s.ae_level);
+  if (s.has_gain_ceiling) cJSON_AddNumberToObject(o, "gainCeiling", s.gain_ceiling);
+  if (s.has_denoise) cJSON_AddNumberToObject(o, "denoise", s.denoise);
+  if (s.has_sharpness) cJSON_AddNumberToObject(o, "sharpness", s.sharpness);
+  if (s.has_quality) cJSON_AddNumberToObject(o, "quality", s.quality);
+}
+
 static void handle_status(uint32_t seq) {
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "state", s_state);
@@ -173,7 +198,62 @@ static void handle_status(uint32_t seq) {
   add_temp(json);
   cJSON_AddNumberToObject(json, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(json, "resyncs", s_decoder.stats.resyncs);
+  /* What NL_CMD_SENSOR has got into the sensor since this node booted. Absent
+   * when nothing has, which is how the P4 sees that a node reset underneath
+   * its change-only cache and re-sends. */
+  add_sensor_object(json, "sensor");
   send_json(NL_CMD_STATUS, seq, json);
+}
+
+static void handle_sensor(uint32_t seq, cJSON *req) {
+  if (!camsensor_detected()) {
+    send_nack(NL_CMD_SENSOR, seq, "HARDWARE_ERROR", "No sensor detected");
+    return;
+  }
+  /* Every field optional: an absent one leaves that knob alone. That is what
+   * lets the P4 send only what changed since its last apply, so a capture with
+   * nothing new to say costs no round trip at all. */
+  camsensor_settings_t want;
+  memset(&want, 0, sizeof want);
+  const cJSON *v;
+  v = cJSON_GetObjectItem(req, "aeLevel");
+  if (cJSON_IsNumber(v)) {
+    want.has_ae_level = true;
+    want.ae_level = v->valueint;
+  }
+  v = cJSON_GetObjectItem(req, "gainCeiling");
+  if (cJSON_IsNumber(v)) {
+    want.has_gain_ceiling = true;
+    want.gain_ceiling = v->valueint;
+  }
+  v = cJSON_GetObjectItem(req, "denoise");
+  if (cJSON_IsNumber(v)) {
+    want.has_denoise = true;
+    want.denoise = v->valueint;
+  }
+  v = cJSON_GetObjectItem(req, "sharpness");
+  if (cJSON_IsNumber(v)) {
+    want.has_sharpness = true;
+    want.sharpness = v->valueint;
+  }
+  v = cJSON_GetObjectItem(req, "quality");
+  if (cJSON_IsNumber(v)) {
+    want.has_quality = true;
+    want.quality = v->valueint;
+  }
+
+  if (camsensor_apply(&want, NULL) != ESP_OK) {
+    send_nack(NL_CMD_SENSOR, seq, "HARDWARE_ERROR", "Sensor did not answer");
+    return;
+  }
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  /* The node's whole last-applied set, after clamping and snapping - not an
+   * echo of the request. The P4 writes this into META.JSON, so a photograph
+   * says what the sensor was told rather than what someone asked for. */
+  add_sensor_object(json, "applied");
+  send_json(NL_CMD_SENSOR, seq, json);
 }
 
 static void handle_capture(uint32_t seq, cJSON *req) {
@@ -345,6 +425,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case NL_CMD_CAPTURE: handle_capture(frame->seq, req); break;
     case NL_CMD_READ: handle_read(frame->seq, req); break;
     case NL_CMD_RELEASE: handle_release(frame->seq, req); break;
+    case NL_CMD_SENSOR: handle_sensor(frame->seq, req); break;
     case NL_CMD_REBOOT: {
       cJSON *json = cJSON_CreateObject();
       cJSON_AddBoolToObject(json, "ok", true);

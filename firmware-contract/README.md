@@ -322,7 +322,13 @@ to be reportable "alongside the P4 and nodes". So `TargetId` is now `CamId | 'p4
 
 `FW_QUERY (0x60)` is now implemented. Every other command in the group —
 `FW_BEGIN`/`CHUNK`/`END`/`ABORT`/`STATUS`/`ROLLBACK` — still returns `UNSUPPORTED_COMMAND`, because
-the partition table is a single `factory` slot with no OTA pair (M8). That split is deliberate: a
+the shipped units still run the single `factory` slot. Since firmware 0.4.9
+the repository carries `firmware/p4/partitions.csv` (issue #143): two 3072 KB
+OTA slots (`ota_0` at 0x10000, where `factory` was, so older images still
+flash there), `otadata`, a 256 KB NVS and a coredump partition — flashing it
+erases NVS and is a bench decision, so a unit is on the new table only when
+its `HARDWARE_VALIDATION.md` session says so. The FW_* transfer path now has
+a real slot to land in once that flash happens. That split is deliberate: a
 query is not an update path, `GET_CAPABILITIES` advertises no update capability, and version
 discovery is useful long before an update mechanism exists.
 
@@ -478,6 +484,79 @@ that function rather than restating it.
 apply one: no capture block reaches a sensor register, and a look is still
 applied at import. `wiggle.recipeId` defaults to `party-neg`, which is the
 mock's default and now the firmware's.
+
+### D19 — `NL_CMD_SENSOR`, and the settings that finally do something
+
+Firmware 0.4.9 changes no KDP command and no KDP payload. Everything here is
+either behaviour behind a field that was already on the wire, or traffic on the
+node link, which is not KDP and is not part of the host contract. A host that
+was speaking to 0.4.8 needs no change to speak to 0.4.9; what changes is that
+seven settings it could already write stop being decoration.
+
+**`NL_CMD_SENSOR` (`0x15`) is a node-link command, not a KDP one.** Request
+`{aeLevel?, gainCeiling?, denoise?, sharpness?, quality?}` — every field
+optional, absence meaning "leave that knob alone", which is what the P4's
+change-only cache depends on — reply
+`{ok, applied:{…}}`. The node clamps each value to the driver's range and
+reports what it set, not what it was asked for; `NL_CMD_STATUS` carries the
+last applied set so a bench can read the sensor's state without taking a
+photograph. The numbering is the node link's own and has no relationship to
+the KDP command ids — `0x15` is `MEDIA_LIST` over KDP and means nothing here.
+
+**The merge order is fixed and has three steps.** Before each capture the P4
+builds one sensor request per camera: the mode's own defaults first, then the
+active look's capture block (`jpegQuality`, `exposureBias`, `gainLimit`,
+`denoise`, `sharpness`) where the look sets one, then — in QUAD only — that
+slot's `exposureBias` and `gain` from `quad.slots.camN`. The slot wins because
+it is the per-camera control and the look is the shared one; a look that sets
+nothing changes nothing rather than resetting to a default. WIGGLE has no
+slots, so the wiggle look's capture block is the last word there.
+
+**The mappings are lossy in one direction and say so.** `exposureBias` is an EV
+in `-2..+2` with one decimal; `set_ae_level()` takes an integer `-2..2`, so the
+EV is rounded to the nearest step and -1.5 EV and -1.4 EV reach the same
+sensor. `gain` is `auto` / `low` / `high`: `auto` leaves AGC untouched, `low`
+sets a gain ceiling of 4x, `high` sets 32x. Both mappings are pure C and
+host-tested; neither is applied on the P4's side of the link, so what a
+photograph got is what the node reported back.
+
+**`META.JSON` records what was applied, per frame.** Each entry in `frames[]`
+gains an optional `sensor` object — `{aeLevel, gainCeiling, denoise,
+sharpness, quality?}` — holding the node's echoed values. `quality` is on the
+sensor's own 5..63 scale, not the 60..95 wire percentage; D12 is the
+conversion and it happens before the link, not after.
+
+**A sensor failure never blocks a capture.** A NACK, a clamp the P4 did not
+expect, or a timeout on `NL_CMD_SENSOR` is logged and the trigger goes out
+anyway. The frame's `sensor` object then records the sensor's STANDING values
+— the last apply that camera accepted — because the sensor really does still
+hold them, and recording them beats recording nothing. The object is absent
+only when nothing has ever been applied to that camera since its node booted,
+or on firmware older than 0.4.9; neither means the frame is bad. The
+alternative — refusing the capture over a settings write — is the wrong trade
+in a camera.
+
+**What still does not happen.** The rest of a look — contrast, saturation,
+temperature, and the other grading fields — stays Studio's at import. No
+grading runs on the camera. `colorMode: 'mono'` is still not applied on the
+body: the slot stores it, `META.JSON` carries it, and the mono conversion
+happens at import as it always has. That is a product decision still open, not
+an oversight.
+
+**`capabilities.brightnessControl`.** Optional boolean, `false` on D4-V1 for
+the reason D11 already records: the backlight is on a plain GPIO and the only
+states are lit and dark. It exists so a host can grey the slider honestly
+instead of offering a control that writes a value nothing reads. Firmware older
+than 0.4.9 omits the flag, and a host must read absence as "unstated", not as
+"no" — Studio's `supports()` leaves the control live on a missing flag and
+disables it only on an explicit `false`.
+
+**`body.name`.** A string, 0..24 characters, default `""`, written with
+`SET_CONFIG` like every other body field and shown on the body's About screen.
+`config.device` is the serial and remains the identifier; this is the name a
+person gives the unit. It is optional in `BodyConfig` because a `GET_CONFIG`
+from a body older than 0.4.9 returns a `body` block without it; absent and `""`
+mean the same thing.
 
 
 ## Decided — was "firmware team decision required"

@@ -81,6 +81,34 @@ typedef struct {
   int64_t frame_age_us;   /* command arrival minus frame start; >0 means stale */
 } camlink_capture_result_t;
 
+/**
+ * The sensor knobs NL_CMD_SENSOR carries, in both directions.
+ *
+ * A `has_` flag per field because every one of them has a meaningful zero -
+ * aeLevel 0 is the sensor's own metering target, denoise 0 is denoise off. On
+ * the way out a cleared flag means "leave that knob alone", which is what lets
+ * capture.c send only what changed since the last apply. On the way back a
+ * cleared flag means the node has never got that knob into the sensor, so
+ * META.JSON must not claim a value for it.
+ *
+ * Units are the wire's, not the driver's: `gain_ceiling` is an x-factor
+ * (2..128) and not a gainceiling_t ordinal, and `quality` is the sensor's
+ * 5..63 scale where LOWER is better - not the 60..95 percentage Studio uses.
+ * See node_link.h.
+ */
+typedef struct {
+  bool has_ae_level;
+  int ae_level;      /* -2..2 */
+  bool has_gain_ceiling;
+  int gain_ceiling;  /* x-factor 2,4,8,16,32,64,128 */
+  bool has_denoise;
+  int denoise;       /* 0..8 */
+  bool has_sharpness;
+  int sharpness;     /* -3..3 */
+  bool has_quality;
+  int quality;       /* 5..63, lower is better */
+} camlink_sensor_t;
+
 /** CAM1..CAM4. Index 0 is CAM1 throughout. */
 #define CAMLINK_CAMS 4
 
@@ -119,6 +147,21 @@ esp_err_t camlink_ping_ch(int cam, uint32_t *rtt_ms);
  */
 esp_err_t camlink_capture_ch(int cam, const char *resolution, int jpeg_quality,
                              uint32_t timeout_ms, camlink_capture_result_t *out);
+/**
+ * Put capture settings into one node's sensor (NL_CMD_SENSOR).
+ *
+ * Only the fields `want` flags are sent, so a request that changes nothing is
+ * never made at all - that decision belongs to the caller, which knows what it
+ * sent last. `applied`, when given, receives what the node reports the sensor
+ * ACCEPTED after its own clamping and snapping, which is what belongs in
+ * META.JSON; it is the node's whole last-applied set, not an echo of `want`.
+ *
+ * ESP_ERR_INVALID_RESPONSE on a NACK (a node with no sensor answers
+ * HARDWARE_ERROR), ESP_ERR_TIMEOUT on silence. Neither is fatal to a capture:
+ * the sensor keeps the settings it had.
+ */
+esp_err_t camlink_set_sensor_ch(int cam, const camlink_sensor_t *want,
+                                camlink_sensor_t *applied, uint32_t timeout_ms);
 esp_err_t camlink_read_ch(int cam, uint32_t frame_id, uint32_t offset, uint8_t *buf,
                           size_t want, uint32_t timeout_ms, size_t *got);
 esp_err_t camlink_release_ch(int cam, uint32_t frame_id);

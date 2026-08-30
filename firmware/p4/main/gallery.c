@@ -262,6 +262,7 @@ static void read_meta(gallery_item_t *it) {
   snprintf(it->mode, sizeof it->mode, "%s", "-");
   it->frames = 0;
   it->partial = false;
+  it->favorite = false;
 
   snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/META.JSON", CAPTURES_DIR, it->id);
   FILE *f = fopen(s_tile_path, "rb");
@@ -292,6 +293,10 @@ static void read_meta(gallery_item_t *it) {
   if (cJSON_IsNumber(n)) it->frames = (int)n->valuedouble;
   const cJSON *st = cJSON_GetObjectItem(m, "status");
   it->partial = cJSON_IsString(st) && st->valuestring && strcmp(st->valuestring, "partial") == 0;
+  /* Absent on every capture written before MEDIA_FAVORITE existed, and absent
+   * is not a favourite - cJSON_IsTrue(NULL) is false, which is the answer we
+   * want without a separate presence check. */
+  it->favorite = cJSON_IsTrue(cJSON_GetObjectItem(m, "favorite"));
   cJSON_Delete(m);
 }
 

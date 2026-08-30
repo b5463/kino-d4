@@ -656,6 +656,11 @@ static void handle_capabilities(uint32_t seq) {
    * different questions. */
   cJSON_AddBoolToObject(caps, "powerManagement", true);
   cJSON_AddBoolToObject(caps, "powerTelemetry", false);
+  /* False on D4-V1 and not because the driver is missing: contract D11 - the
+   * backlight is a plain GPIO with no PWM behind it, so body.brightness has
+   * nothing to move. Studio reads this to grey its slider out instead of
+   * offering a control that does nothing. */
+  cJSON_AddBoolToObject(caps, "brightnessControl", false);
 
   /*
    * Networking and Roll. Four flags rather than two, for the same reason
@@ -894,6 +899,24 @@ static void handle_set_config(uint32_t seq, const cJSON *req) {
   if (!cJSON_IsObject(patch)) patch = req; /* a bare config object is fine too */
   if (!cJSON_IsObject(patch)) {
     send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST", "Expected a config object");
+    return;
+  }
+  /*
+   * body.name is 0..24 characters, and that limit is enforced here because
+   * this is the only place it is ever written - config_merge() takes whatever
+   * document it is handed by design.
+   *
+   * Refused rather than truncated. A camera that silently shortens the name
+   * someone just typed shows a different name from the one that was saved and
+   * gives the host nothing to explain it with; a NACK naming the limit is a
+   * thing Studio can put next to the field.
+   */
+  const cJSON *body = cJSON_GetObjectItem(patch, "body");
+  const cJSON *name = body ? cJSON_GetObjectItem(body, "name") : NULL;
+  if (name != NULL &&
+      (!cJSON_IsString(name) || name->valuestring == NULL || strlen(name->valuestring) > 24)) {
+    send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST",
+              "body.name is a string of at most 24 characters");
     return;
   }
   if (config_merge(patch) != ESP_OK) {
@@ -1426,7 +1449,51 @@ static void handle_media_delete(uint32_t seq, const cJSON *req) {
 }
 
 /* Favourite is a flag inside META.JSON, so it travels with the capture when
- * the card is moved - which is the whole point of keeping no index. */
+ * the card is moved - which is the whole point of keeping no index.
+ *
+ * The read and the rewrite live here rather than inside the command handler
+ * because the body's photograph screen sets the same flag (issue #144) and two
+ * implementations of "rewrite META.JSON with favorite flipped" is one too
+ * many. This file already owns media_meta() and the CAPTURES_DIR path, so
+ * moving them into gallery.c would have dragged that with them.
+ *
+ * BOTH REQUIRE THE CALLER TO HOLD THE CARD, storage_acquire(STORAGE_USER_UI).
+ * That is not only about the SD bus: media_meta() parses into file statics
+ * that are safe precisely because every path that touches them holds the one
+ * card mutex. The KDP side gets that from with_card(); the UI side takes it
+ * around the call.
+ */
+esp_err_t media_favorite_set(const char *id, bool fav) {
+  if (id == NULL || !media_id_ok(id)) return ESP_ERR_INVALID_ARG;
+  cJSON *meta = media_meta(id);
+  if (meta == NULL) return ESP_ERR_NOT_FOUND;
+
+  cJSON_DeleteItemFromObject(meta, "favorite");
+  cJSON_AddBoolToObject(meta, "favorite", fav);
+
+  char path[160];
+  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, id);
+  char *text = cJSON_PrintUnformatted(meta);
+  cJSON_Delete(meta);
+  if (text == NULL) return ESP_ERR_NO_MEM;
+
+  FILE *f = fopen(path, "wb");
+  if (f == NULL) {
+    cJSON_free(text);
+    return ESP_FAIL;
+  }
+  const size_t len = strlen(text);
+  const size_t wrote = fwrite(text, 1, len, f);
+  const int closed = fclose(f);
+  cJSON_free(text);
+  /* Checked, unlike the version this replaced. A short write leaves a
+   * truncated META.JSON, which is a capture whose mode, frame count and label
+   * all disappear from the gallery - a far worse outcome than a favourite that
+   * did not stick, and it used to be reported as success. */
+  if (wrote != len || closed != 0) return ESP_FAIL;
+  return ESP_OK;
+}
+
 static void handle_media_favorite(uint32_t seq, const cJSON *req) {
   const cJSON *jid = cJSON_GetObjectItem(req, "id");
   const cJSON *jfav = cJSON_GetObjectItem(req, "favorite");
@@ -1435,35 +1502,24 @@ static void handle_media_favorite(uint32_t seq, const cJSON *req) {
     return;
   }
   const char *id = jid->valuestring;
-  cJSON *meta = media_meta(id);
-  if (meta == NULL) {
+  const bool fav = cJSON_IsTrue(jfav);
+  const esp_err_t err = media_favorite_set(id, fav);
+  if (err == ESP_ERR_NOT_FOUND) {
     send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "NOT_FOUND", "No metadata for that capture");
     return;
   }
-  cJSON_DeleteItemFromObject(meta, "favorite");
-  cJSON_AddBoolToObject(meta, "favorite", cJSON_IsTrue(jfav));
-
-  char path[160];
-  snprintf(path, sizeof path, "%s/%s/META.JSON", CAPTURES_DIR, id);
-  char *text = cJSON_PrintUnformatted(meta);
-  cJSON_Delete(meta);
-  if (text == NULL) {
+  if (err == ESP_ERR_NO_MEM) {
     send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "STORAGE_ERROR", "Out of memory");
     return;
   }
-  FILE *f = fopen(path, "wb");
-  if (f == NULL) {
-    cJSON_free(text);
+  if (err != ESP_OK) {
     send_nack(KDP_CMD_MEDIA_FAVORITE, seq, "STORAGE_ERROR", "Could not rewrite META.JSON");
     return;
   }
-  fwrite(text, 1, strlen(text), f);
-  fclose(f);
-  cJSON_free(text);
 
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "id", id);
-  cJSON_AddBoolToObject(json, "favorite", cJSON_IsTrue(jfav));
+  cJSON_AddBoolToObject(json, "favorite", fav);
   send_json(KDP_CMD_MEDIA_FAVORITE, seq, json);
 }
 

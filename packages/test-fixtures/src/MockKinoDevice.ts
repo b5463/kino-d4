@@ -142,6 +142,11 @@ function defaultConfig(): KinoConfig {
       displayAfterShotS: 2,
     },
     body: {
+      // Default is the empty string, not a demo name: an unnamed camera is
+      // what a body ships as, and the About screen shows the serial until
+      // someone types one. SET_CONFIG merges body fields, so it round-trips
+      // like every other one.
+      name: '',
       brightness: 7,
       autoDimS: 20,
       sleepS: 120,
@@ -2179,6 +2184,13 @@ export class MockKinoDevice implements MockDeviceLike {
           // STORAGE_SELF_TEST / CAMERA_LINK_STATS(_RESET) / CAMERA_SOAK_TEST /
           // GET_HW_VALIDATION below.
           benchDiagnostics: this.supportsBench(),
+          // True for the demo device, which is a body whose backlight is on a
+          // PWM channel — `body.brightness` is stored and echoed and there is
+          // no panel here to darken, so nothing dims either way. It reports
+          // true so the enabled path of Studio's slider has a device to run
+          // against; D4-V1 hardware cannot dim (contract D11) and the 0.4.9
+          // firmware profile turns the flag off through its capability map.
+          brightnessControl: true,
           // KINO Twin §11: editable to test future firmware/hardware.
           ...(this.capabilityOverrides ?? {}),
         };

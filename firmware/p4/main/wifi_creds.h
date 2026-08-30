@@ -35,8 +35,10 @@
  * limitation and it is recorded here rather than implied away: the threat this
  * module addresses is accidental disclosure through the protocol, the logs and
  * the backups, which is the one that happens by itself. Physical flash
- * readout needs `CONFIG_NVS_ENCRYPTION` and a key partition, which the single
- * `factory` partition table has no room for today (M8 repartition).
+ * readout needs `CONFIG_NVS_ENCRYPTION` and a key partition. Since 0.4.9 the
+ * table (firmware/p4/partitions.csv, issue #143) leaves 9.6 MB unallocated,
+ * so there is room; turning encryption on is its own decision, because the
+ * key partition changes the flash-and-recover procedure for every unit.
  */
 #ifndef P4_WIFI_CREDS_H
 #define P4_WIFI_CREDS_H

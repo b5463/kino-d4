@@ -16,6 +16,32 @@ int pure_quality_to_sensor(int percent) {
   return q;
 }
 
+int pure_ev_to_ae_level(double ev) {
+  /* NaN first, and without math.h: isnan() would drag libm into a test binary
+   * the Makefile links without -lm, and every comparison below is false for a
+   * NaN anyway, so it would fall through the clamps to the cast. */
+  if (ev != ev) return 0;
+  /* The clamps come BEFORE the cast, which is what makes the cast safe: a
+   * look document can carry 1e300, and converting that to int is undefined
+   * behaviour, not a large number. Both bounds are inclusive because a
+   * half-step rounds away from zero - exactly -1.5 is -2. */
+  if (ev >= 1.5) return 2;
+  if (ev <= -1.5) return -2;
+  /* Round half away from zero on a value now known to be within +/-1.5, so
+   * the addition cannot leave the int range. */
+  return (int)(ev + (ev >= 0.0 ? 0.5 : -0.5));
+}
+
+int pure_gain_to_ceiling(const char *gain) {
+  if (gain == NULL) return 0;
+  if (strcmp(gain, "low") == 0) return 4;
+  if (strcmp(gain, "high") == 0) return 32;
+  /* "auto" and anything unrecognised both mean "send no gainCeiling". They
+   * are deliberately the same answer: a slot carrying a word this firmware
+   * does not know must leave the AGC alone rather than pick a number for it. */
+  return 0;
+}
+
 bool pure_parse_resolution(const char *s, uint32_t *width, uint32_t *height) {
   if (s == NULL) return false;
   const uint32_t MAX_DIM = 4096;

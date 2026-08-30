@@ -41,7 +41,22 @@ typedef enum {
   //           heapKB,psramKB,baud,sensor,sensorPid,sensorDetected,autofocus,
   //           maxResolution}
   NL_CMD_HELLO = 0x01,
-  // -> {} <- {state,frameId,frameSize?,heapKB,psramKB,crcFailures,resyncs}
+  // -> {} <- {state,frameId,frameSize?,heapKB,psramKB,tempC,crcFailures,resyncs,
+  //           sensor?}
+  /*
+   * `sensor` is the last set NL_CMD_SENSOR actually got into the sensor on
+   * this node, same field names and same units as the SENSOR reply's
+   * `applied`. Only the fields the node has applied appear — and in practice
+   * it is always present with at least `quality`, because camsensor_init
+   * seeds the read-back JPEG quality on boot. Do not read presence as "the
+   * P4 has configured this node".
+   *
+   * A bench diagnostic, not a control input: the P4 detects a node reset by
+   * comparing HELLO's boot session (cam_link.c caches it per camera and
+   * clears its change-only sensor cache on a mismatch), and nothing on the
+   * P4 parses this field. It is here so a human at a terminal can ask a node
+   * what its sensor is actually set to.
+   */
   NL_CMD_STATUS = 0x02,
   // -> {resolution?,quality?} <- {ok,frameId,size,durationMs,crc32,heapKB,psramKB}
   NL_CMD_CAPTURE = 0x10,
@@ -107,6 +122,47 @@ typedef enum {
    * this reports.
    */
   NL_CMD_TRIGGER_INFO = 0x14,
+
+  /*
+   * NL_CMD_SENSOR — put capture settings into the sensor before the shutter.
+   *
+   *   -> {aeLevel?, gainCeiling?, denoise?, sharpness?, quality?}
+   *   <- {ok:true, applied:{...}}
+   *
+   * Why it exists: a QUAD slot carries exposureBias and gain per camera and
+   * every look carries a capture block (jpegQuality, exposureBias, gainLimit,
+   * denoise, sharpness), and until this command none of it reached a sensor.
+   * The link could only ask for a resolution and a JPEG quality, so a slot set
+   * to -1.5 EV and a slot set to 0 EV produced the same photograph and the
+   * only honest thing to call the exposure controls was decorative.
+   *
+   * Request fields, all OPTIONAL — an absent field means "leave that knob as
+   * it is", which is what makes the P4's change-only cache possible:
+   *
+   *   aeLevel      -2..2, the AEC target offset. The driver takes -5..5 on the
+   *                OV3660; the link is narrower because that is the range
+   *                Studio's exposureBias slider covers.
+   *   gainCeiling  an X-FACTOR, not an enum ordinal: 2, 4, 8, 16, 32, 64 or
+   *                128. Anything else is snapped to the nearest of those by
+   *                the node, so a look's gainLimit of 12 may be sent as it is.
+   *   denoise      0..8, 0 being off.
+   *   sharpness    -3..3.
+   *   quality      the SENSOR's JPEG scale, 5..63, where LOWER is better —
+   *                not the 60..95 percentage the KDP contract and Studio use.
+   *                The P4 converts (pure_quality_to_sensor). Optional because
+   *                NL_CMD_CAPTURE also carries it.
+   *
+   * The reply's `applied` echoes what the sensor accepted AFTER clamping and
+   * snapping, field by field, and it is the only truthful record of the
+   * exposure: META.JSON stores this, never what was asked. A knob the node
+   * could not write (no such setter on the detected part, or the driver
+   * refused the value) is simply absent from `applied`.
+   *
+   * NACK HARDWARE_ERROR when no sensor answered the node's bus. A NACK or a
+   * timeout does not stop the capture: a photograph taken with the previous
+   * settings beats no photograph.
+   */
+  NL_CMD_SENSOR = 0x15,
 
   NL_CMD_REBOOT = 0x20,  // -> {} <- {ok}, then the node restarts
 } nl_cmd_t;

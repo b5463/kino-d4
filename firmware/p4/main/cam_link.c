@@ -559,6 +559,87 @@ esp_err_t camlink_capture(const char *resolution, int jpeg_quality,
   return camlink_capture_ch(0, resolution, jpeg_quality, CAPTURE_TIMEOUT_MS, out);
 }
 
+/** Read one integer field out of the node's `applied` object. */
+static void copy_applied(const cJSON *applied, const char *key, bool *has, int *value) {
+  const cJSON *v = cJSON_GetObjectItem(applied, key);
+  if (!cJSON_IsNumber(v)) return; /* absent = the node never wrote that knob */
+  *has = true;
+  *value = (int)v->valuedouble;
+}
+
+esp_err_t camlink_set_sensor_ch(int cam, const camlink_sensor_t *want,
+                                camlink_sensor_t *applied, uint32_t timeout_ms) {
+  if (!valid_cam(cam) || want == NULL) return ESP_ERR_INVALID_ARG;
+  if (applied != NULL) memset(applied, 0, sizeof *applied);
+
+  /*
+   * Built one field at a time, and only the flagged ones - an absent field is
+   * how the node is told to leave a knob alone.
+   *
+   * 160 bytes: five fields at their longest are
+   * {"aeLevel":-2,"gainCeiling":128,"denoise":8,"sharpness":-3,"quality":63}
+   * which is 72, so this is over twice the largest request that can be built.
+   * It stays well inside the node's 256-byte decode payload cap
+   * (node_server.c, LINK_DECODE_PAYLOAD_MAX).
+   */
+  char req_json[160];
+  int n = snprintf(req_json, sizeof req_json, "{");
+  const char *sep = "";
+  if (want->has_ae_level) {
+    n += snprintf(req_json + n, sizeof req_json - (size_t)n, "%s\"aeLevel\":%d", sep,
+                  want->ae_level);
+    sep = ",";
+  }
+  if (want->has_gain_ceiling) {
+    n += snprintf(req_json + n, sizeof req_json - (size_t)n, "%s\"gainCeiling\":%d", sep,
+                  want->gain_ceiling);
+    sep = ",";
+  }
+  if (want->has_denoise) {
+    n += snprintf(req_json + n, sizeof req_json - (size_t)n, "%s\"denoise\":%d", sep,
+                  want->denoise);
+    sep = ",";
+  }
+  if (want->has_sharpness) {
+    n += snprintf(req_json + n, sizeof req_json - (size_t)n, "%s\"sharpness\":%d", sep,
+                  want->sharpness);
+    sep = ",";
+  }
+  if (want->has_quality) {
+    n += snprintf(req_json + n, sizeof req_json - (size_t)n, "%s\"quality\":%d", sep,
+                  want->quality);
+    sep = ",";
+  }
+  snprintf(req_json + n, sizeof req_json - (size_t)n, "}");
+
+  uint8_t resp[256];
+  size_t len = 0;
+  esp_err_t err = request(cam, NL_CMD_SENSOR, req_json, resp, sizeof resp - 1, &len,
+                          timeout_ms);
+  if (err != ESP_OK) return err;
+
+  resp[len] = '\0';
+  cJSON *json = cJSON_Parse((const char *)resp);
+  if (json == NULL) return ESP_ERR_INVALID_RESPONSE;
+  esp_err_t result = ESP_OK;
+  if (!cJSON_IsTrue(cJSON_GetObjectItem(json, "ok"))) {
+    result = ESP_ERR_INVALID_RESPONSE;
+  } else if (applied != NULL) {
+    /* `applied` is absent when the node has never written a knob, which is a
+     * legitimate answer to a request that flagged nothing - not a bad reply. */
+    const cJSON *a = cJSON_GetObjectItem(json, "applied");
+    if (cJSON_IsObject(a)) {
+      copy_applied(a, "aeLevel", &applied->has_ae_level, &applied->ae_level);
+      copy_applied(a, "gainCeiling", &applied->has_gain_ceiling, &applied->gain_ceiling);
+      copy_applied(a, "denoise", &applied->has_denoise, &applied->denoise);
+      copy_applied(a, "sharpness", &applied->has_sharpness, &applied->sharpness);
+      copy_applied(a, "quality", &applied->has_quality, &applied->quality);
+    }
+  }
+  cJSON_Delete(json);
+  return result;
+}
+
 esp_err_t camlink_read_ch(int cam, uint32_t frame_id, uint32_t offset, uint8_t *buf,
                           size_t want, uint32_t timeout_ms, size_t *got) {
   char req_json[96];

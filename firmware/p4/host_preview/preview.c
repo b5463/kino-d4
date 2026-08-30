@@ -72,6 +72,7 @@ esp_err_t audio_init(void) { return ESP_OK; }
 bool audio_ready(void) { return false; }
 void audio_shutter(void) {}
 void audio_tick(void) {}
+void audio_warning(void) {}
 
 esp_err_t touch_init(void) { return ESP_OK; }
 bool touch_ready(void) { return false; }
@@ -84,10 +85,17 @@ uint32_t touch_count(void) { return 0; }
 
 /* Settings the preview draws against. These are the firmware's own defaults,
  * so a screenshot shows what an unconfigured camera shows. */
+/* Driven from main() so the DISPLAY screen can be photographed with the two
+ * new rows on their default segments and on the ones that only exist because
+ * of issue #144 - HOLD and NEVER, which are the two nobody has ever seen. */
+static int g_after_shot_s = 2;
+static int g_cam_idle_s = 300;
+
 int config_int(const char *path, int fallback) {
   if (strcmp(path, "body.autoDimS") == 0) return 30;
   if (strcmp(path, "body.sleepS") == 0) return 120;
-  if (strcmp(path, "body.camIdleTimeoutS") == 0) return 300;
+  if (strcmp(path, "body.camIdleTimeoutS") == 0) return g_cam_idle_s;
+  if (strcmp(path, "shoot.displayAfterShotS") == 0) return g_after_shot_s;
   if (strcmp(path, "shoot.volume") == 0) return 6;
   return fallback;
 }
@@ -104,8 +112,12 @@ static const char *g_flash_mode = "auto";
 static bool g_mono = false;
 static const char *g_look = "party-neg";
 static const char *g_shutter_sound = "click";
+/* body.name: empty is the default and the state the About screen has always
+ * shown, so both get a picture. */
+static const char *g_body_name = "";
 
 const char *config_str(const char *path, const char *fallback) {
+  if (strcmp(path, "body.name") == 0) return g_body_name;
   if (strcmp(path, "mode") == 0) return g_mode;
   if (strcmp(path, "shoot.flashMode") == 0) return g_flash_mode;
   if (strcmp(path, "shoot.shutterSound") == 0) return g_shutter_sound;
@@ -306,6 +318,10 @@ static void fake_gallery(void) {
     snprintf(g_slot[i].mode, sizeof g_slot[i].mode, "%s", MODES[i]);
     g_slot[i].frames = i == 3 ? 2 : 4;
     g_slot[i].partial = i == 3;
+    /* Two of six marked, and one of them the partial capture: the star has to
+     * be legible over a picture and next to the frame mark, not only on its
+     * own. */
+    g_slot[i].favorite = i == 1 || i == 3;
     g_slot[i].state = i == 5 ? TILE_PENDING : TILE_READY;
     g_slot[i].pixels = i == 5 ? NULL : g_tile[i];
   }
@@ -343,6 +359,20 @@ bool storage_acquire(storage_user_t user, int timeout_ms) {
   return true;
 }
 void storage_release(storage_user_t user) { (void)user; }
+
+/* The favourite flag lives in a META.JSON on a card, and there is neither. The
+ * photograph screen's own s_photo_fav is what the renders show, seeded from
+ * the fake gallery item and flipped by main() - so the button gets a picture
+ * in both states without a filesystem. */
+esp_err_t media_favorite_set(const char *id, bool fav) {
+  (void)id;
+  (void)fav;
+  return ESP_OK;
+}
+bool media_favorite_get(const char *id) {
+  (void)id;
+  return false;
+}
 
 void power_activity(void) {}
 void power_wake(void) {}
@@ -681,6 +711,15 @@ int main(int argc, char **argv) {
   /* ---- settings and its children ---- */
   SHOT(SCR_SETTINGS, "settings");
   SHOT(SCR_DISPLAY, "settings_display");
+  /* The two rows issue #144 added, on the two segments that had no way of
+   * being selected before it: HOLD and NEVER. Both are drawn pushed in, so
+   * this is also the check that a five-segment band and a three-segment band
+   * line up down the same left edge. */
+  g_after_shot_s = -1;
+  g_cam_idle_s = 0;
+  SHOT(SCR_DISPLAY, "settings_display_hold_never");
+  g_after_shot_s = 2;
+  g_cam_idle_s = 300;
   SHOT(SCR_SOUND, "settings_sound");
   /* A custom clip in the picker: the longest name the row has to fit, and the
    * only proof the card's clips reach the built-ins' list at all. */
@@ -706,6 +745,12 @@ int main(int argc, char **argv) {
   g_saved_networks = 0;
   SHOT(SCR_STORAGE, "settings_storage");
   SHOT(SCR_ABOUT, "settings_about");
+  /* With a name set: a fourth row appears above Device and the list frame
+   * grows by one. The longest name SET_CONFIG accepts, so the row is
+   * photographed at the width it will really have to hold. */
+  g_body_name = "ALEX BACK-ROOM CAMERA 02";
+  SHOT(SCR_ABOUT, "settings_about_named");
+  g_body_name = "";
 
   /* ---- power, and both confirmations ---- */
   SHOT(SCR_POWER, "power");
@@ -724,6 +769,14 @@ int main(int argc, char **argv) {
      * own empty state - which is itself a state worth having a picture of. */
     s_focus[SCR_PHOTO] = P_IT_DELETE;
     SHOT(SCR_PHOTO, "photo");
+    /* The favourite control in both states. Set directly rather than through
+     * photo_toggle_favourite(), which would take the card and raise a toast -
+     * this is a picture of the button, not of the write path. */
+    s_photo_fav = true;
+    s_focus[SCR_PHOTO] = P_IT_FAV;
+    SHOT(SCR_PHOTO, "photo_favourite");
+    s_photo_fav = false;
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
     s_dialog = DLG_DELETE;
     s_dlg_focus = 0;
     draw_screen();

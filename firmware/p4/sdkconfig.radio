@@ -135,18 +135,20 @@ CONFIG_WIFI_RMT_NVS_ENABLED=n
 # disabling verification are answered in roll_http.h.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 
-# The common subset, not the full one, and this is a size decision with a
-# measurement behind it: FULL (200 roots) built to 1434 KB against a 1500 KB
-# factory partition — 4% free, which is not a margin. CMN carries the roots
-# behind the overwhelming majority of public certificates, and this device
-# talks to one API host.
+# The common subset, not the full one. This started as a size decision with a
+# measurement behind it: FULL (200 roots) built to 1434 KB against the old
+# 1500 KB factory partition — 4% free, which is not a margin.
+#
+# That argument is gone. firmware/p4/partitions.csv (issue #143) gives this
+# image a 3072 KB OTA slot, so FULL would fit with room to spare and flash is
+# no longer the reason. The reason that survives is the smaller one: this
+# device talks to one API host, CMN already carries the roots behind the
+# overwhelming majority of public certificates, and 160 unused certificates
+# are 160 more roots trusted than the product needs.
 #
 # If that host's chain is not in CMN the symptom is a clean TLS handshake
 # failure on every request, which is diagnosable in one bench cycle. Add the
-# specific root rather than switching to FULL: 66 KB of headroom on a
-# single-slot partition table is worth more than 160 unused certificates. See
-# firmware/FIRMWARE_ROADMAP.md M8 for the repartition that changes this
-# arithmetic.
+# specific root rather than switching to FULL.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
 
 # The default event task stack is 2304 bytes. In this build it runs the Wi-Fi

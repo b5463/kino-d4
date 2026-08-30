@@ -15,6 +15,7 @@ export type FirmwareProfileId =
   | 'd4-capture-0-3'
   | 'd4-roll-0-4'
   | 'd4-looks-0-4-8'
+  | 'd4-settings-0-4-9'
   | 'd4-sim-full';
 
 export interface FirmwareProfile {
@@ -258,6 +259,32 @@ const LOOKS_0_4_8_CAPABILITIES: Record<string, boolean> = {
   vsyncTelemetry: false,
 };
 
+/**
+ * 0.4.9 adds no KDP command. Everything it changes is behaviour behind
+ * settings that were already on the wire — `previewQuality` reaches the
+ * viewfinder, `displayAfterShotS` -1 holds, the warning tone plays, the body
+ * can favourite a photograph, and per-camera exposure and gain reach the
+ * sensor over the node link's own `NL_CMD_SENSOR`, which is not KDP.
+ *
+ * It gets a profile anyway, because a profile pins capabilities as well as
+ * commands, and this firmware is the first to state one: `brightnessControl`.
+ * Mapping 0.4.9 onto `d4-looks-0-4-8` would leave a Twin flashed with it
+ * reporting no flag at all, and Studio reads a missing flag as "not a gate" —
+ * the slider would stay live on a body that cannot dim.
+ */
+const SETTINGS_0_4_9_CAPABILITIES: Record<string, boolean> = {
+  ...LOOKS_0_4_8_CAPABILITIES,
+  /**
+   * False, and it is hardware saying so: the Guition carrier drives the panel
+   * backlight from a plain GPIO, so lit and dark are the only states
+   * (firmware-contract D11). The firmware still stores and returns
+   * `body.brightness` unchanged. Earlier profiles omit the flag rather than
+   * setting it false — they describe firmware that never answered the
+   * question, and absent is not the same claim as no.
+   */
+  brightnessControl: false,
+};
+
 export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   'd4-m1b': {
     id: 'd4-m1b',
@@ -323,6 +350,23 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
     implementedCommands: LOOKS_0_4_8_COMMANDS,
     maxUartBaud: 921600,
   },
+  'd4-settings-0-4-9': {
+    id: 'd4-settings-0-4-9',
+    label: 'CURRENT FIRMWARE 0.4.9 — settings reach the hardware',
+    simulatedFuture: false,
+    p4Fw: '0.4.9',
+    /* The node image is built from the same firmware/VERSION, so a camera
+     * node on this body reports 0.4.9 too — 0.4.9 is the first release where
+     * the node has work of its own to do (NL_CMD_SENSOR). */
+    camFw: '0.4.9',
+    /* Unchanged: one node is jumpered to the bench harness. Per-camera
+     * exposure reaches the one sensor that is wired. */
+    camsOnline: [true, false, false, false],
+    capabilities: SETTINGS_0_4_9_CAPABILITIES,
+    /* Identical to 0.4.8 on purpose. Nothing here is a KDP command. */
+    implementedCommands: LOOKS_0_4_8_COMMANDS,
+    maxUartBaud: 921600,
+  },
   'd4-sim-full': {
     id: 'd4-sim-full',
     label: 'SIMULATED FUTURE — full demo device',
@@ -377,4 +421,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.6': 'd4-roll-0-4',
   '0.4.7': 'd4-roll-0-4',
   '0.4.8': 'd4-looks-0-4-8',
+  '0.4.9': 'd4-settings-0-4-9',
 };

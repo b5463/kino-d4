@@ -53,6 +53,59 @@
 int pure_quality_to_sensor(int percent);
 
 /**
+ * Exposure bias in EV to the OV3660's `ae_level`.
+ *
+ * Studio and the QUAD slots carry `exposureBias` as -2.0..2.0 in 0.1 steps.
+ * The sensor's AEC target offset is an integer, and node_link.h fixes the wire
+ * at -2..2, so this is a round-to-nearest with a clamp and nothing more.
+ *
+ * Half-steps round AWAY from zero: -1.5 EV is -2, +1.5 EV is +2. The
+ * alternative (toward zero) makes the two extremes of the slider unreachable
+ * from the half-step the UI can actually produce.
+ *
+ * The clamp is not decoration. A look document is a file on the card and an
+ * upload from Studio, so a value outside the slider's range does arrive, and
+ * ov3660's set_ae_level REFUSES anything past its own limits rather than
+ * clamping - a refused write leaves the previous exposure in place and the
+ * photograph is silently taken at the last camera's setting.
+ *
+ * A NaN returns 0: it is not an exposure, and 0 is the sensor's own metering
+ * target rather than a guess in either direction. Written as `ev != ev`
+ * because this file may not include math.h - the host test links without libm.
+ */
+int pure_ev_to_ae_level(double ev);
+
+/**
+ * A QUAD slot's `gain` word to a gain-ceiling X-FACTOR for NL_CMD_SENSOR.
+ *
+ * Three words and one non-value:
+ *
+ *   "auto" -> 0, meaning DO NOT SEND the field at all. The slot is saying
+ *             "leave the AGC where it is", which on this link is an absent
+ *             field, not a number. 0 is not a legal gainceiling_t x-factor
+ *             (the ladder starts at 2X), so it cannot be confused for one.
+ *   "low"  -> 4  (GAINCEILING_4X)
+ *   "high" -> 32 (GAINCEILING_32X)
+ *
+ * Anything else, including NULL and an empty string, is 0. A slot carrying a
+ * word this firmware does not know must not silently become a gain setting.
+ *
+ * Why 4X and 32X out of sensor.h's 2X..128X ladder. The use case is a party in
+ * a dark room, and the two words mean opposite things about what to sacrifice.
+ * "low" is the clean one: 4X caps the AEC's gain so it lengthens exposure
+ * instead of amplifying, which is the right trade on a static subject and the
+ * only way this sensor produces skin without chroma noise. 2X was rejected as
+ * the "low" step because it starves the AEC badly enough indoors that faces go
+ * to black, which is not a cleaner photograph, it is no photograph. "high" is
+ * bright-at-any-cost: 32X gets an exposure out of a room lit by one lamp and
+ * accepts the noise. 64X and 128X were left off the top for the same reason 2X
+ * was left off the bottom - past 32X the OV3660's output is grain with a face
+ * somewhere in it, and a control that produces an unusable picture at one end
+ * is a control nobody trusts at the other.
+ */
+int pure_gain_to_ceiling(const char *gain);
+
+/**
  * Parse a "WIDTHxHEIGHT" resolution string.
  *
  * Strict: the whole string must be consumed, both dimensions must be present

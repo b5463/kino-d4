@@ -47,6 +47,10 @@ typedef struct {
   char mode[12];    /* wiggle | quad | single */
   int frames;
   bool partial;     /* fewer frames than cameras that were asked */
+  /* META.JSON's `favorite`, the same flag MEDIA_FAVORITE writes. Here so a
+   * tile can be marked without a second read of the same file - read_meta()
+   * already has the parsed document in front of it. */
+  bool favorite;
   tile_state_t state;
   const uint16_t *pixels; /* GALLERY_TILE_W * GALLERY_TILE_H, valid when READY */
 } gallery_item_t;

@@ -1,0 +1,123 @@
+# KINO P4 partition table — 16 MB flash (Guition JC4880P443C-I-W).
+#
+# Replaces CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE, which gave a 24 KB NVS,
+# one 1500 KB `factory` slot and no OTA, and left ~12 MB of the part
+# unaddressed. Issue #143.
+#
+# The flash size is not assumed. sdkconfig.defaults sets
+# CONFIG_ESPTOOLPY_FLASHSIZE_16MB, the generated sdkconfig carries
+# CONFIG_ESPTOOLPY_FLASHSIZE="16MB", and build/flash_args passes
+# `--flash_size 16MB`. (The 4 MB flash-id read on the bench was the C6, not
+# this module.)
+#
+# ── What a change to this file costs ────────────────────────────────
+#
+# Writing a new table erases every byte the old table addressed at a
+# different offset. In practice that means NVS: the camera loses its config
+# document, its ~120 hwv keys, its saved Wi-Fi networks and its Roll device
+# credential, and comes up as a factory unit. There is no in-place migration.
+# Every row below carries the size, the reason for it, and what re-sizing it
+# would break. Do not adjust a size to make a build fit — that is what the CI
+# guards exist to argue about.
+#
+# ── Why the app still starts at 0x10000 ─────────────────────────────
+#
+# ota_0 is at the same offset the old `factory` partition used, so a
+# kino-p4.bin built against the OLD table still flashes and boots at 0x10000.
+# That keeps a bench recovery path open while both tables are in circulation.
+# The price is a 16 KB hole between otadata and ota_0 (0xC000..0x10000), too
+# small to hold a 256 KB NVS and not worth moving the app for. 16 KB of 16 MB.
+#
+# Ordering note: nvs and coredump sit AFTER the app slots. That is legal —
+# the table only requires ascending offsets — and it is deliberate: the whole
+# tail of the part is behind them, so the future data partition can be carved
+# out of the unallocated remainder WITHOUT moving nvs, and that later table
+# change will not wipe the device.
+#
+# Offsets: app partitions must be 64 KB aligned, data partitions 4 KB.
+# The table itself lives at 0x8000 (CONFIG_PARTITION_TABLE_OFFSET), the
+# bootloader at 0x2000; neither appears here.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+# --------------------------------------------------------------------------
+# 4 KB. RF calibration data, written once by the PHY on first boot and reused
+# after. Fixed size — the PHY blob is what it is, and 0x1000 is the size every
+# IDF table uses. Nothing to tune.
+phy_init,   data, phy,      0x9000,   0x1000,
+# 8 KB. Two 4 KB sectors, which is the size esp_ota_ops requires and the only
+# size it accepts: the OTA state machine ping-pongs between the two sectors so
+# a power cut mid-write leaves the previous selection intact. Do not resize.
+# On a virgin part this reads as erased and the bootloader falls through to
+# ota_0, which is why a plain three-image flash boots without an otadata write.
+otadata,    data, ota,      0xa000,   0x2000,
+# (0xc000..0x10000 — 16 KB unallocated, see "Why the app still starts at
+#  0x10000" above.)
+#
+# 3 MB. Sized for the radio variant, not the default one:
+#
+#   measured, radio 0.4.8:   1451 KB  (0x16aa90)
+#   measured, default 0.4.8:  842 KB  (0x0d2ba0)
+#   the radio stack costs:    ~609 KB  (ESP-Hosted, esp_wifi_remote, lwIP,
+#                                       mbedTLS, HTTP client; 1451 - 842)
+#
+# 3072 KB leaves 1621 KB free over the radio image — room for another
+# addition the size of the entire radio stack, twice over, before this is the
+# constraint again. That is the point: growing an app slot moves nvs, and
+# moving nvs wipes the unit. The slot is oversized now so it does not have to
+# be resized later. Undersizing it to reclaim flash for the data partition
+# would trade a wipe-free future for space nothing is asking for yet.
+ota_0,      app,  ota_0,    0x10000,  0x300000,
+# 3 MB. Identical to ota_0 by necessity — esp_ota_get_next_update_partition
+# writes the incoming image into whichever slot is not running, so the smaller
+# of the two is the real ceiling on an update. Keep them equal.
+ota_1,      app,  ota_1,    0x310000, 0x300000,
+# 256 KB, up from 24 KB. Five namespaces live here: kino (config document,
+# boot and capture counters), hwv, clock, kino_wifi, kino_roll.
+#
+# The 24 KB table was near full, not comfortably sized. NVS stores 126
+# 32-byte entries per 4 KB page and holds one page back for compaction, so
+# 24 KB is 5 usable pages = 630 entries. Against that:
+#
+#   config      a single string up to 4000 B = 126 entries, and a
+#               variable-length item cannot straddle a page — so config alone
+#               claims a whole page
+#   hwv         60 items x (one u8 + one 48-byte string) ~ 240 entries
+#   kino_wifi   up to 8 credential blobs (WIFI_CREDS_MAX)
+#   kino_roll   2 blobs (roll record, device credential)
+#   clock+kino  4 counters, rewritten on every save and every boot
+#
+# That is roughly two thirds of the partition occupied by a unit that has
+# earned its hwv rows, before any growth. And NVS never updates in place:
+# every rewrite of the boot counter or the clock epoch appends a fresh entry
+# and leaves the old one dead until a page can be compacted, so a nearly-full
+# NVS thrashes and eventually returns ESP_ERR_NVS_NOT_ENOUGH_SPACE on a write
+# that used to work.
+#
+# 256 KB is 63 usable pages = 7938 entries, ~19x the current occupancy. It
+# also leaves room for CONFIG_NVS_ENCRYPTION's key partition later, which the
+# old table had nowhere to put (see main/wifi_creds.h).
+#
+# One thing a bigger partition does NOT fix: the 4000-byte ceiling on
+# config's nvs_set_str is a PAGE limit, not a partition limit. SAVE_CONFIG
+# still nacks with STORAGE_ERROR on an oversized document
+# (main/kdp_server.c). That needs a chunked blob, not more flash.
+nvs,        data, nvs,      0x610000, 0x40000,
+# 64 KB. esp_core_dump is already linked into both images and, until this
+# table existed, had nowhere to write — a panic left the backtrace in the
+# UART log or nowhere at all. 64 KB is the size that holds an ELF core dump
+# of the task stacks on a P4 build; below ~48 KB the dump is truncated and
+# `espcoredump.py info_corefile` gives a partial backtrace, which is the one
+# thing this partition is for. Cost of resizing: it sits before the
+# unallocated tail, so shrinking it moves nothing, but growing it past 64 KB
+# would move the tail, not nvs — a safe direction.
+coredump,   data, coredump, 0x650000, 0x10000,
+#
+# ── 0x660000..0x1000000 — 9.625 MB unallocated, on purpose ──────────
+#
+# Not a rounding error and not spare capacity to be raided by an app slot.
+# This is reserved for a future data partition (fatfs or spiffs) for on-device
+# assets: today looks, sounds and recipes are read from the SD card, and a
+# unit with no card has none of them. Adding that partition here changes the
+# table again — but because it is carved out of the tail, and nvs and coredump
+# are already below it, the change does not move nvs and does not wipe the
+# device.

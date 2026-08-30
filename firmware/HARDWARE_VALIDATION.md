@@ -17,7 +17,15 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-30, firmware 0.4.8
+## Status — updated 2026-08-30, firmware 0.4.9
+
+0.4.9 makes the settings real: per-camera exposure, gain and look quality
+reach the sensors over `NL_CMD_SENSOR` and META records what was applied,
+including the `recipeIds` nothing had ever stamped ("The sensor obeys the
+slot", below); previewQuality, hold-after-shot, the warning tone, favourites
+on the body, `body.name` and the new DISPLAY rows all act. The custom
+partition table (#143) is in the repository and both variants build against
+it; it is deliberately on no unit yet, because flashing it erases NVS.
 
 0.4.8 holds looks and custom sounds on the card and answers every recipe and
 sound command Studio sends; proving it on the bench found and fixed the
@@ -292,6 +300,30 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### The sensor obeys the slot, and META stops lying about it - 0.4.9 bench, 2026-08-30
+
+Board `KD4-D121BC`, CAM1 online (node also 0.4.9 - one shared VERSION), C6
+link up. Radio image 1,493,984 B, SHA-256
+`ec44e8c15ff2a767c9424975a8a54f2291502e043fb903d0ef334fda0581ba62`, flashed
+over COM8 on the OLD partition table (the new one in `partitions.csv` stays
+unflashed until its NVS-erasing bench session, issue #143).
+
+| Subsystem | Evidence | Status |
+|---|---|---|
+| `NL_CMD_SENSOR` end to end | Look `bench-dark` (-2 EV, gainLimit 4, q86) then `bench-q60` (0 EV, gainLimit 16, jpegQuality 60): META `sensor` per frame reads `{aeLevel -2, gainCeiling 4, quality 9}` then `{aeLevel 0, gainCeiling 16, quality 20}`, and the file sizes move with the settings | **VALIDATED** |
+| Look quality owns the register | The reviewer-found defect - CAPTURE's own `quality` overwrote the look's an instant before the exposure - is fixed and proven: q60's sensor value 20 survived into META and the stored file | **VALIDATED** |
+| gain low → auto restores | QUAD, cam1 slot `gain: "low"` then `"auto"`: `gainCeiling` 4 on the first capture, 16 on the second - the explicit restore fired; without it the second shot kept 4x and META said otherwise | **VALIDATED** |
+| `recipeIds` in META | Stamped at the shutter for the first time: `["bench-q60"]`, `["bench-dark"]`, and per-slot in QUAD. Every photograph before 0.4.9 lists as recipe-less whatever look took it | **VALIDATED** |
+| Not measured | The two-capture mean-luma brightness check (file size moved as expected but no luma was computed); `previewQuality`'s per-step bytes/fps on the finder; the three new built-in sounds and the warning tone by ear; the LOOK/SOUND/DISPLAY screens by touch | open |
+
+**Bench trap, recorded:** on a card holding ~520 captures, the first ~60 s
+after boot are consumed by the orphan sweep, the upload reconcile and the
+gallery scan, all serialised on the card. KDP commands sent in that window
+queue in the RX ring and execute late - two whole bench chains "timed out"
+while every command in them eventually ran, including two captures. The
+camera was never wedged; the bench has to resync (one long-timeout command)
+after any reset. That backlog behaviour is worth an issue if it bites again.
 
 ### Looks and sounds on the card, and the 4 KB frame that never arrived - 0.4.8 bench, 2026-08-30
 

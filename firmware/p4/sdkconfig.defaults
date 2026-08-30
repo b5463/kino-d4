@@ -34,7 +34,35 @@ CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 # exclusively so log output can never interleave into a frame mid-session.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# ── The partition table is ours, not IDF's ──────────────────────────
+#
+# Was CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE. That built-in table gives a
+# 24 KB NVS, one 1500 KB `factory` slot and no OTA, and leaves ~12 MB of the
+# 16 MB part unaddressed. At firmware 0.4.8 the radio image measured 1451 KB
+# in that 1500 KB slot — 3% free — so the next radio feature did not fit, and
+# the CI guard had already been raised once to let looks and sounds land.
+#
+# firmware/p4/partitions.csv carries the arithmetic per row. The short
+# version: two 3 MB OTA slots (sized for the radio image plus real growth, not
+# for the default one), a 256 KB NVS, otadata, phy_init, a 64 KB coredump
+# partition, and 9.6 MB left unallocated for a future on-device data
+# partition. The app still starts at 0x10000, so an image built against the
+# old table still flashes there.
+#
+# The cost of touching that file: writing a new table erases NVS. Config, hwv
+# rows, saved Wi-Fi networks and the Roll device credential all go. Issue #143
+# and firmware/README.md have the flash sequence and what restores what.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The coredump partition is only useful if the panic handler is told to write
+# to it. Left at the IDF default (CONFIG_ESP_COREDUMP_ENABLE_TO_NONE) the
+# esp_core_dump component is linked and does nothing, which is where this
+# firmware has been: a panic on the bench left a backtrace in the UART log if
+# someone had a terminal open, and nothing at all if they did not. ELF format
+# because that is what `espcoredump.py info_corefile` reads back with symbols.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 
 # -O2, not IDF's default -Og. Every object in the P4 image was compiling at
 # debug optimisation (1005 of 1005 in compile_commands.json), including the

@@ -21,6 +21,9 @@
 #include "freertos/task.h"
 #include "gfx.h"
 #include "kdp_recipes.h"
+/* For media_favorite_set/get: the photograph screen sets the same META.JSON
+ * flag MEDIA_FAVORITE sets, through the same function. */
+#include "kdp_server.h"
 #include "kdp_sounds.h"
 #include "klog.h"
 #include "taskmon.h"
@@ -197,6 +200,14 @@ static bool s_mcached;
 #define PH_BTN_GAP 18   /* below the buttons, to the bottom edge */
 #define PH_BTN_Y (UI_H - PH_BTN_H - PH_BTN_GAP)
 #define PH_CAP_Y (PH_TOP + PH_H + 12) /* caption, between picture and buttons */
+/* Three controls now, evenly across the width of the picture. Written as
+ * arithmetic rather than three literals because draw_photo() and hit_test()
+ * both walk it, and the two used to carry different widths - 150 drawn
+ * against 150 tested only by luck. */
+#define PH_X0 ((UI_W - PH_W) / 2)
+#define PH_BTN_SP 14
+#define PH_BTN_W ((PH_W - 2 * PH_BTN_SP) / 3)
+#define PH_BTN_X(i) (PH_X0 + (i) * (PH_BTN_W + PH_BTN_SP))
 
 _Static_assert(PH_TOP + PH_H < PH_CAP_Y, "photo overlaps its caption");
 _Static_assert(PH_CAP_Y + 16 <= PH_BTN_Y, "caption overlaps the buttons");
@@ -280,6 +291,9 @@ static int s_pressed = -1;      /* held item index, -1 for none */
 static dialog_t s_dialog = DLG_NONE;
 static int s_dlg_focus;          /* 0 = safe action, 1 = the other one */
 static int64_t s_shot_seen_us;
+/* shoot.displayAfterShotS = -1: the report is up and waiting to be dismissed
+ * by a touch or a key rather than by a timer. See shot_hold_ack(). */
+static bool s_shot_hold;
 static char s_toast[48];
 static int64_t s_toast_us;
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
@@ -288,6 +302,10 @@ static char s_photo_id[40];
 static char s_photo_label[16];
 static char s_photo_mode[12];
 static int s_photo_frames;
+/* The open photograph's favourite flag. Read from META.JSON when the screen
+ * opens and kept here, not re-read on every draw: a draw runs many times a
+ * second and this would be an SD read and a JSON parse in each of them. */
+static bool s_photo_fav;
 
 /* Item index reserved for the header's Back target on every detail screen.
  * Kept out of the 0..N-1 range so a screen's own items can be plain indices. */
@@ -1635,6 +1653,38 @@ static void gal_origin(int slot, int *x, int *y) {
   *y = G_Y0 + (slot / G_COLS) * G_PITCH;
 }
 
+/* ------------------------------------------------------------------ */
+/* The favourite mark                                                  */
+/*                                                                     */
+/* A bitmap, not a scan-converted polygon. The mark has to be legible   */
+/* at 11 px in the corner of a 208 px tile, and at that size a computed */
+/* five-point star is a blob with three of its points lost to rounding. */
+/* The font is ASCII 32..126 and carries no star glyph, so this is the  */
+/* only way to draw one at all.                                        */
+/*                                                                     */
+/* One silhouette, two inks. An outline form was tried first and does   */
+/* not survive: at 11 px a hollow star is six disconnected 1 px runs and */
+/* reads as noise beside the word next to it - checked in the host       */
+/* preview, which is what that tool is for. Gold means it is a           */
+/* favourite, grey means the control would make it one, and the shape    */
+/* stays the same so the tile mark and the button are one thing.         */
+/* ------------------------------------------------------------------ */
+#define STAR_W 11
+#define STAR_H 10
+
+static const char *const STAR_ROWS[STAR_H] = {
+    ".....#.....", "....###....", "....###....", "###########", ".#########.",
+    "..#######..", "..#######..", ".###...###.", ".##.....##.", "#.........#",
+};
+
+static void star(int x, int y, uint16_t ink) {
+  for (int r = 0; r < STAR_H; r++) {
+    for (int c = 0; c < STAR_W; c++) {
+      if (STAR_ROWS[r][c] == '#') fill(x + c, y + r, 1, 1, ink);
+    }
+  }
+}
+
 static void gal_blit(const uint16_t *px, int x, int y) {
   for (int r = 0; r < G_TILE_H; r++)
     memcpy(s_cv + (size_t)(y + r) * UI_W + x, px + (size_t)r * G_TILE_W,
@@ -1683,6 +1733,19 @@ static void draw_gallery(void) {
                slots[i].state == TILE_PENDING ? "LOADING" : "NO IMAGE", D_DIM);
     }
     if (s_pressed == i) focus_rect(x, y, G_TILE_W, G_TILE_H);
+
+    /* A favourite is marked in the corner of the picture, not in the caption
+     * strip below it. The caption already carries the frame mark and the mode
+     * and is the busiest 22 px on the screen; the top-right corner of a tile
+     * is the one place that is empty on every photograph.
+     *
+     * On its own dark plate, because the mark sits over a photograph and a
+     * white star on a bright sky is not a mark. */
+    if (slots[i].favorite) {
+      const int sx = x + G_TILE_W - STAR_W - 6, sy = y + 5;
+      fill(sx - 3, sy - 3, STAR_W + 6, STAR_H + 6, RGB(0x12, 0x16, 0x1c));
+      star(sx, sy, C_YELLOW);
+    }
 
     /* One short caption. No filename, no size, no path: the picture is the
      * content and the rest is file management. */
@@ -1752,12 +1815,25 @@ static void draw_gallery(void) {
 /* One photograph                                                      */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The photograph screen's three controls, left to right as they are drawn.
+ *
+ * FAVOURITE was inserted between DELETE and SEND TO ROLL, which moved
+ * P_IT_ROLL from 1 to 2. Nothing reads P_IT_ROLL - the control is drawn dead
+ * because there is no radio on this body - but the number is kept in step with
+ * the layout so it is right on the day one is fitted.
+ *
+ * item_count(SCR_PHOTO) is 2, not 3: DELETE and FAVOURITE both do something,
+ * SEND TO ROLL does not, and a focus ring is a promise that pressing will act.
+ */
 #define P_IT_DELETE 0
-#define P_IT_ROLL 1
+#define P_IT_FAV 1
+#define P_IT_ROLL 2
 
 static void photo_release(void) {
   if (s_photo) { free(s_photo); s_photo = NULL; }
   s_photo_ok = false;
+  s_photo_fav = false;
 }
 
 /* Decoded at PH_W x PH_H rather than by scaling the 208 px gallery tile:
@@ -1787,6 +1863,11 @@ static bool photo_open(const gallery_item_t *it) {
   snprintf(s_photo_label, sizeof s_photo_label, "%s", it->label);
   snprintf(s_photo_mode, sizeof s_photo_mode, "%s", it->mode);
   s_photo_frames = it->frames;
+  /* The gallery already read META.JSON for this tile, so the flag is taken
+   * from the item rather than read off the card a second time. The screen owns
+   * its own copy from here on because the toggle below changes it and the
+   * gallery's slot is only refreshed on the next scan. */
+  s_photo_fav = it->favorite;
 
   /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
    * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
@@ -1813,10 +1894,49 @@ static bool photo_open(const gallery_item_t *it) {
   return true;
 }
 
+/*
+ * Flip the open photograph's favourite flag, on the card.
+ *
+ * The same META.JSON rewrite MEDIA_FAVORITE performs, through the same
+ * function (kdp_server.h) rather than a second copy of it here - the two would
+ * otherwise be free to disagree about the document's shape, and the host and
+ * the body would then show different flags for the same photograph.
+ *
+ * Takes the card, like photo_open() and the delete: this is a write to a
+ * directory a capture may be writing into. 2 s, and on a refusal nothing is
+ * written and the star does not move, which is the only honest answer - a UI
+ * that flips the star and loses the write is worse than one that says no.
+ */
+static void photo_toggle_favourite(void) {
+  if (s_photo_id[0] == '\0') return;
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+    toast("Card busy");
+    audio_warning();
+    return;
+  }
+  const bool want = !s_photo_fav;
+  const esp_err_t err = media_favorite_set(s_photo_id, want);
+  storage_release(STORAGE_USER_UI);
+  if (err != ESP_OK) {
+    /* NOT_FOUND is a capture with no META.JSON, which the gallery can show and
+     * this cannot mark. One message for all of them: the user's next move is
+     * the same whichever it was. */
+    toast("Could not save");
+    audio_warning();
+    return;
+  }
+  s_photo_fav = want;
+  klog("P4", "favourite %s %s", s_photo_id, want ? "on" : "off");
+  /* So the tile behind this screen carries the mark when the user goes back.
+   * The refresh is a card rescan on the gallery task, not work done here. */
+  gallery_refresh();
+  toast(want ? "Favourite" : "Not favourite");
+}
+
 static void draw_photo(void) {
   fill(0, 0, UI_W, UI_H, D_GROUND);
 
-  const int px = (UI_W - PH_W) / 2, py = PH_TOP;
+  const int px = PH_X0, py = PH_TOP;
   if (s_photo_ok && s_photo) {
     for (int r = 0; r < PH_H; r++)
       memcpy(s_cv + (size_t)(py + r) * UI_W + px, s_photo + (size_t)r * PH_W,
@@ -1836,21 +1956,38 @@ static void draw_photo(void) {
   snprintf(info, sizeof info, "%s   %s   %d frames", s_photo_label, s_photo_mode, s_photo_frames);
   text(&UI_FONT_S, px, PH_CAP_Y, info, D_DIM);
 
-  const int bh = PH_BTN_H, by = PH_BTN_Y;
-  const int bw = 150;
+  const int bh = PH_BTN_H, by = PH_BTN_Y, bw = PH_BTN_W;
+  const int ty = by + (bh - UI_FONT_S.line_h) / 2;
+
+  const int dx = PH_BTN_X(0);
   const int dd = s_pressed == P_IT_DELETE ? 1 : 0;
-  button(px, by, bw, bh, dd);
-  text_mid(&UI_FONT_S, px + bw / 2 + dd, by + (bh - UI_FONT_S.line_h) / 2 + dd, "DELETE", W_TEXT);
+  button(dx, by, bw, bh, dd);
+  text_mid(&UI_FONT_S, dx + bw / 2 + dd, ty + dd, "DELETE", W_TEXT);
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
    * zeroed, so reading it directly put a focus ring on DELETE the first time
    * any photograph was opened, on a body whose only input is a finger. */
-  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_rect(px + 4, by + 4, bw - 8, bh - 8);
+  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_rect(dx + 4, by + 4, bw - 8, bh - 8);
+
+  /* The star carries the state and the word carries the action, which is why
+   * the label does not change between them: a button reading "UNFAVOURITE" on
+   * a photograph that IS one, next to a lit star, says the same thing twice
+   * and in two different grammars. Gold star, it is a favourite; grey star, it
+   * is not. The button always toggles. It is also drawn pushed in while it is
+   * one, the same way a live segment is on every other screen here. */
+  const int fx = PH_BTN_X(1);
+  const int fd = s_pressed == P_IT_FAV ? 1 : 0;
+  const int fpush = (fd || s_photo_fav) ? 1 : 0;
+  button(fx, by, bw, bh, fd || s_photo_fav);
+  star(fx + 14 + fpush, by + (bh - STAR_H) / 2 + fpush,
+       s_photo_fav ? RGB(0xd0, 0x9c, 0x00) : W_SHADOW);
+  text_mid(&UI_FONT_S, fx + bw / 2 + 10 + fpush, ty + fpush, "FAVOURITE", W_TEXT);
+  if (foc(SCR_PHOTO, P_IT_FAV)) focus_rect(fx + 4, by + 4, bw - 8, bh - 8);
 
   /* No radio on this body, so Roll cannot take it. Dimmed with the reason
    * rather than hidden - a control that vanishes teaches nothing. */
-  const int rx = px + PH_W - bw;
+  const int rx = PH_BTN_X(2);
   button(rx, by, bw, bh, false);
-  text_mid(&UI_FONT_S, rx + bw / 2, by + (bh - UI_FONT_S.line_h) / 2, "SEND TO ROLL", W_GRAYTEXT);
+  text_mid(&UI_FONT_S, rx + bw / 2, ty, "SEND TO ROLL", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2051,10 +2188,65 @@ static void draw_settings(void) {
 
 /* --- Display ------------------------------------------------------ */
 
+/*
+ * Four bands, one table.
+ *
+ * The screen carried two and wrote its geometry and its item arithmetic out
+ * twice - once in the draw, once in the hit test, with the band boundaries as
+ * bare 3s and 6s in both. Adding two more rows that way is four more places to
+ * get an index wrong, so the rows are a table and the draw and the hit test
+ * both walk it. A row moved here moves in both.
+ *
+ * The item indices are the row bases plus the segment: 0..2 DIM, 3..5 SLEEP,
+ * 6..10 AFTER SHOT, 11..13 CAM IDLE. DSP_IT_COUNT is what item_count() returns
+ * and what the focus clamp in ui_task bounds against.
+ */
+#define DSP_ROWS 4
+#define DSP_IT_DIM 0
+#define DSP_IT_SLEEP 3
+#define DSP_IT_SHOT 6
+#define DSP_IT_IDLE 11
+#define DSP_IT_COUNT 14
+
+/* Label, band, and the pitch between rows. The brightness note sits under the
+ * fourth band, so all five have to fit BODY_Y..UI_H with room to read. */
+#define DSP_Y0 (BODY_Y + 10)
+#define DSP_PITCH 70
+#define DSP_BAND_H 40
+#define DSP_X 24
+#define DSP_W (UI_W - 2 * DSP_X)
+#define DSP_LABEL_Y(r) (DSP_Y0 + (r) * DSP_PITCH)
+#define DSP_BAND_Y(r) (DSP_LABEL_Y(r) + 22)
+
 static const int DIM_S[3] = {15, 30, 60};
 static const int SLEEP_S[3] = {60, 120, 300};
 static const char *const SECS_15[3] = {"15 s", "30 s", "60 s"};
 static const char *const SECS_60[3] = {"1 min", "2 min", "5 min"};
+
+/* shoot.displayAfterShotS, including the -1 that means HOLD - the result
+ * screen stays until it is acknowledged. Written as the contract's own values
+ * so the row and the setting cannot drift apart. */
+static const int SHOT_S[5] = {0, 1, 2, 3, -1};
+static const char *const SHOT_NAMES[5] = {"OFF", "1 S", "2 S", "3 S", "HOLD"};
+
+/* body.camIdleTimeoutS: how long before the camera bank is powered down.
+ * 0 is NEVER, which is the contract's own encoding, not a sentinel invented
+ * here - so NEVER is a value like the other two and not a missing setting. */
+static const int IDLE_S[3] = {60, 300, 0};
+static const char *const IDLE_NAMES[3] = {"1 MIN", "5 MIN", "NEVER"};
+
+static const struct {
+  const char *label;
+  const char *const *names;
+  const int *values;
+  int count;
+  int base;
+} DSP_ROW[DSP_ROWS] = {
+    {"DIM AFTER", SECS_15, DIM_S, 3, DSP_IT_DIM},
+    {"SLEEP AFTER", SECS_60, SLEEP_S, 3, DSP_IT_SLEEP},
+    {"AFTER SHOT", SHOT_NAMES, SHOT_S, 5, DSP_IT_SHOT},
+    {"CAM IDLE", IDLE_NAMES, IDLE_S, 3, DSP_IT_IDLE},
+};
 
 static int nearest_idx(int v, const int *opts) {
   int best = 0, bd = 1 << 30;
@@ -2065,30 +2257,48 @@ static int nearest_idx(int v, const int *opts) {
   return best;
 }
 
+/* Exact match, not nearest.
+ *
+ * nearest_idx() is right for a duration: 45 s stored by a host is honestly
+ * shown as the 60 s segment. It is wrong for these two, where the values are
+ * not a scale - -1 is further from 3 than 0 is, arithmetically, and 0 means
+ * NEVER rather than "the shortest timeout". A value the row does not carry
+ * lights nothing, which is what an unrecognised setting should look like. */
+static int exact_idx(int v, const int *opts, int count) {
+  for (int i = 0; i < count; i++)
+    if (opts[i] == v) return i;
+  return -1;
+}
+
+static int dsp_selected(int row) {
+  switch (row) {
+    case 0: return nearest_idx(config_int("body.autoDimS", 30), DIM_S);
+    case 1: return nearest_idx(config_int("body.sleepS", 120), SLEEP_S);
+    case 2: return exact_idx(config_int("shoot.displayAfterShotS", 2), SHOT_S, 5);
+    default: return exact_idx(config_int("body.camIdleTimeoutS", 300), IDLE_S, 3);
+  }
+}
+
 static void draw_display(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_DISPLAY);
 
-  const int y0 = BODY_Y + 18;
-  text(&UI_FONT_S, 24, y0, "DIM AFTER", W_TEXT);
-  draw_segments(24, y0 + 24, UI_W - 48, 44, SECS_15, 3,
-                nearest_idx(config_int("body.autoDimS", 30), DIM_S),
-                s_pressed >= 0 && s_pressed < 3 ? s_pressed : -1,
-                s_focus_shown && s_focus[SCR_DISPLAY] < 3 ? s_focus[SCR_DISPLAY] : -1);
-
-  text(&UI_FONT_S, 24, y0 + 92, "SLEEP AFTER", W_TEXT);
-  draw_segments(24, y0 + 116, UI_W - 48, 44, SECS_60, 3,
-                nearest_idx(config_int("body.sleepS", 120), SLEEP_S),
-                s_pressed >= 3 && s_pressed < 6 ? s_pressed - 3 : -1,
-                s_focus_shown && s_focus[SCR_DISPLAY] >= 3 && s_focus[SCR_DISPLAY] < 6
-                    ? s_focus[SCR_DISPLAY] - 3 : -1);
+  const int f0 = s_focus_shown ? s_focus[SCR_DISPLAY] : -1;
+  for (int r = 0; r < DSP_ROWS; r++) {
+    text(&UI_FONT_S, DSP_X, DSP_LABEL_Y(r), DSP_ROW[r].label, W_TEXT);
+    draw_segments(DSP_X, DSP_BAND_Y(r), DSP_W, DSP_BAND_H, DSP_ROW[r].names, DSP_ROW[r].count,
+                  dsp_selected(r), band_rel(s_pressed, DSP_ROW[r].base, DSP_ROW[r].count),
+                  band_rel(f0, DSP_ROW[r].base, DSP_ROW[r].count));
+  }
 
   /* The backlight is a plain GPIO, on or off. A brightness control here would
    * be a slider that moves and changes nothing, so it is greyed-out text on
-   * the dialog face - which is exactly how 1998 said "this does not apply". */
-  text(&UI_FONT_S, 24, y0 + 190, "BRIGHTNESS", W_GRAYTEXT);
-  text(&UI_FONT_M, 24, y0 + 214, "Not adjustable", W_GRAYTEXT);
-  text(&UI_FONT_S, 24, y0 + 246, "The backlight on this body is on or off.", W_GRAYTEXT);
+   * the dialog face - which is exactly how 1998 said "this does not apply".
+   * GET_CAPABILITIES says the same thing to Studio as brightnessControl. */
+  const int ny = DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18;
+  text(&UI_FONT_S, DSP_X, ny, "BRIGHTNESS", W_GRAYTEXT);
+  text(&UI_FONT_S, DSP_X, ny + 22, "Not adjustable - the backlight on this body is on or off.",
+       W_GRAYTEXT);
 }
 
 /* --- Sound -------------------------------------------------------- */
@@ -2338,10 +2548,31 @@ static void draw_storage(void) {
 static void draw_about(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_ABOUT);
-  draw_list_frame(3);
-  draw_row(LIST_Y, false, true, "KINO D4", "", false, C_MUTED);
-  draw_row(LIST_Y + ROW_H, false, true, "Firmware", KINO_FW_VERSION, false, C_MUTED);
-  draw_row(LIST_Y + 2 * ROW_H, false, true, "Device", config_str("device", "-"), false, C_MUTED);
+
+  /* body.name, above Device, and only when someone has set one.
+   *
+   * Copied rather than held: config_str() hands back a slot in a four-deep
+   * ring shared by every task, and the Device row below is a second read that
+   * would otherwise be free to land in the same slot. 24 characters is the
+   * limit SET_CONFIG enforces; 32 is room for it and the NUL with margin. */
+  char name[32];
+  config_str_copy("body.name", name, sizeof name);
+  const bool named = name[0] != '\0';
+
+  draw_list_frame(named ? 4 : 3);
+  int y = LIST_Y;
+  draw_row(y, false, true, "KINO D4", "", false, C_MUTED);
+  y += ROW_H;
+  draw_row(y, false, true, "Firmware", KINO_FW_VERSION, false, C_MUTED);
+  y += ROW_H;
+  if (named) {
+    draw_row(y, false, true, "Name", name, false, C_MUTED);
+    y += ROW_H;
+  }
+  /* The serial, which is what `device` is. Still shown when a name is set: the
+   * name is what a person calls the camera, the serial is what a support
+   * question needs, and neither substitutes for the other. */
+  draw_row(y, false, true, "Device", config_str("device", "-"), false, C_MUTED);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2595,9 +2826,9 @@ static int item_count(screen_t s) {
      * and every index below keeps its meaning in both modes. */
     case SCR_LOOK: return mode_is_quad() ? LK_IT_COUNT : LK_IT_TARGET;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
-    case SCR_PHOTO: return 1; /* Send to Roll is not fitted, so not focusable */
+    case SCR_PHOTO: return 2; /* Send to Roll is not fitted, so not focusable */
     case SCR_SETTINGS: return 5;
-    case SCR_DISPLAY: return 6;
+    case SCR_DISPLAY: return DSP_IT_COUNT;
     case SCR_SOUND: return SN_IT_COUNT;
     case SCR_STORAGE: return 1;
     case SCR_POWER: return 3;
@@ -2645,8 +2876,11 @@ static int hit_test(int x, int y) {
 
     case SCR_PHOTO: {
       if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
-      const int px = (UI_W - PH_W) / 2, bh = PH_BTN_H, by = PH_BTN_Y;
-      if (in(x, y, px, by, 150, bh)) return P_IT_DELETE;
+      /* The same PH_BTN_X/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
+       * not a target: it is drawn dead, and a press that lands on it should do
+       * nothing rather than raise a toast about a radio that is not there. */
+      if (in(x, y, PH_BTN_X(0), PH_BTN_Y, PH_BTN_W, PH_BTN_H)) return P_IT_DELETE;
+      if (in(x, y, PH_BTN_X(1), PH_BTN_Y, PH_BTN_W, PH_BTN_H)) return P_IT_FAV;
       return -1;
     }
 
@@ -2702,10 +2936,16 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_DISPLAY: {
-      const int y0 = BODY_Y + 18, sw = (UI_W - 48) / 3;
-      for (int i = 0; i < 3; i++) {
-        if (in(x, y, 24 + i * sw, y0 + 24, sw, 44)) return i;
-        if (in(x, y, 24 + i * sw, y0 + 116, sw, 44)) return 3 + i;
+      /* The same table the draw walks, and the same cw arithmetic
+       * draw_segments() uses, so a band with five segments is tested at five
+       * segments rather than at the three the old literal assumed. */
+      for (int r = 0; r < DSP_ROWS; r++) {
+        const int by = DSP_BAND_Y(r);
+        if (y < by || y >= by + DSP_BAND_H) continue;
+        const int cw = DSP_W / DSP_ROW[r].count;
+        for (int i = 0; i < DSP_ROW[r].count; i++) {
+          if (in(x, y, DSP_X + i * cw, by, cw, DSP_BAND_H)) return DSP_ROW[r].base + i;
+        }
       }
       return -1;
     }
@@ -2766,6 +3006,7 @@ static void dialog_commit(void) {
        * irreversible operation. */
       if (!storage_acquire(STORAGE_USER_UI, 2000)) {
         toast("Card busy");
+        audio_warning();
         break;
       }
       storage_capture_delete(dir);
@@ -2850,6 +3091,7 @@ static void activate(int item) {
          * like a lost capture. */
         if (!photo_open(&slots[item])) {
           toast("Card busy");
+          audio_warning();
           break;
         }
         s_focus[SCR_PHOTO] = P_IT_DELETE;
@@ -2862,6 +3104,8 @@ static void activate(int item) {
       if (item == P_IT_DELETE) {
         s_dialog = DLG_DELETE;
         s_dlg_focus = 0;
+      } else if (item == P_IT_FAV) {
+        photo_toggle_favourite();
       }
       break;
 
@@ -2869,10 +3113,21 @@ static void activate(int item) {
       if (item >= 0 && item < 5) { go(SET_DEST[item], 200); return; }
       break;
 
-    case SCR_DISPLAY:
-      if (item >= 0 && item < 3) cfg_set_int("body.autoDimS", DIM_S[item]);
-      else if (item >= 3 && item < 6) cfg_set_int("body.sleepS", SLEEP_S[item - 3]);
+    case SCR_DISPLAY: {
+      /* One table again, and one write. The setting each row owns is named
+       * beside the row rather than in a chain of index ranges here, so the
+       * four cannot get out of step with the four bands that were drawn. */
+      static const char *const DSP_PATH[DSP_ROWS] = {"body.autoDimS", "body.sleepS",
+                                                     "shoot.displayAfterShotS",
+                                                     "body.camIdleTimeoutS"};
+      for (int r = 0; r < DSP_ROWS; r++) {
+        const int rel = band_rel(item, DSP_ROW[r].base, DSP_ROW[r].count);
+        if (rel < 0) continue;
+        cfg_set_int(DSP_PATH[r], DSP_ROW[r].values[rel]);
+        break;
+      }
       break;
+    }
 
     case SCR_SOUND:
       if (item == SN_IT_PREV || item == SN_IT_NEXT) snd_step(item == SN_IT_NEXT ? 1 : -1);
@@ -2923,6 +3178,28 @@ static void fire_shutter(bool long_press) {
   }
 }
 
+/**
+ * Acknowledge a held capture report.
+ *
+ * shoot.displayAfterShotS = -1 means the report stays until a person dismisses
+ * it, so a touch or a key press is the acknowledgement and does nothing else -
+ * the same rule the wake gesture follows, for the same reason: the input that
+ * clears something off the screen must not also act on what was under it.
+ *
+ * Returns true when there was a held report, so the caller can swallow the
+ * press it just consumed.
+ */
+static bool shot_hold_ack(void) {
+  if (!s_shot_hold) return false;
+  s_shot_hold = false;
+  capture_ack();
+  s_shot_seen_us = 0;
+  if (s_screen == SCR_GALLERY) gallery_refresh();
+  draw_screen();
+  gfx_present();
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Physical keys, handed to the UI task rather than acted on            */
 /*                                                                      */
@@ -2971,6 +3248,10 @@ static void handle_button(const btn_event_t *ev) {
   /* A physical key was used: from here on the focus ring is drawn. This is
    * the only place that flips it, matching the contract at s_focus_shown. */
   s_focus_shown = true;
+  /* A held report is dismissed by the next key, and that key does nothing
+   * else. Before the FN and shutter branches, so a press cannot both clear the
+   * report and fire the next photograph. */
+  if (shot_hold_ack()) return;
   if (ev->id == BTN_FN) {
     flash_cycle();
     return;
@@ -3029,6 +3310,9 @@ static void ui_task(void *arg) {
   uint32_t s_ui_last_frames = 0;
   int64_t wake_since_us = 0;
   bool was_asleep = false;
+  /* True from the touch that dismissed a held report until that finger lifts,
+   * so the dismissal does not also press whatever was underneath it. */
+  bool swallow_touch = false;
 
   for (;;) {
     /* Physical keys first: they were recorded on the buttons task and this
@@ -3088,6 +3372,26 @@ static void ui_task(void *arg) {
       klog("P4", "wake gesture outlived a press - releasing the UI");
     }
 
+    /*
+     * A held report is dismissed by the touch that lands on it, wherever it
+     * lands, and that touch does nothing else.
+     *
+     * Handled at the DOWN edge and swallowed until the finger lifts, rather
+     * than at the release, because a tap on empty screen never reaches the
+     * release path at all - hit_test() returns -1, `held` stays -1, and the
+     * branch below is skipped. A report on the SHOOT screen covers nothing but
+     * picture, so "tap anywhere" is the only gesture that always works.
+     */
+    if (!down) swallow_touch = false;
+    if (down && s_shot_hold) {
+      shot_hold_ack();
+      swallow_touch = true;
+    }
+    if (swallow_touch) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+
     if (down) {
       /* Touch reports in panel space, so the same quarter turn applies in
        * reverse: touch y is the logical x. */
@@ -3127,9 +3431,34 @@ static void ui_task(void *arg) {
 
     const capture_stage_t cstage = capture_stage();
     if (cstage == CAPTURE_DONE) {
-      if (s_shot_seen_us == 0) s_shot_seen_us = esp_timer_get_time();
+      if (s_shot_seen_us == 0) {
+        /* The first pass on which the report exists, which is the only place
+         * the UI learns that a capture failed or came back short. The strip
+         * has said so since draw_capture_banner() was written; a strip in the
+         * corner of a viewfinder someone has already lowered says it to
+         * nobody. */
+        s_shot_seen_us = esp_timer_get_time();
+        capture_report_t r;
+        capture_last(&r);
+        /* A full or absent card arrives here too - it is a failed report with
+         * a STORAGE err_code, not a separate path - so this one call covers
+         * both halves of the requirement. */
+        if (!r.ok || r.stored < r.online) audio_warning();
+      }
+      /*
+       * -1 is HOLD: keep the report up until someone acknowledges it.
+       *
+       * It used to be multiplied straight into the deadline, so -1 gave a
+       * deadline one second in the PAST and the report was acknowledged on the
+       * first pass - hold behaved exactly like 0, which is the one value it
+       * is supposed to be the opposite of. 0 still means no hold at all: the
+       * comparison below is > 0 microseconds elapsed, which the next pass
+       * satisfies.
+       */
       const int hold_s = config_int("shoot.displayAfterShotS", 2);
-      if (esp_timer_get_time() - s_shot_seen_us > (int64_t)hold_s * 1000000) {
+      if (hold_s < 0) {
+        s_shot_hold = true;
+      } else if (esp_timer_get_time() - s_shot_seen_us > (int64_t)hold_s * 1000000) {
         capture_ack();
         s_shot_seen_us = 0;
         if (s_screen == SCR_GALLERY) gallery_refresh();
@@ -3138,6 +3467,7 @@ static void ui_task(void *arg) {
       }
     } else if (cstage == CAPTURE_IDLE) {
       s_shot_seen_us = 0;
+      s_shot_hold = false;
     }
 
     /* A capture in progress, a gallery still decoding, and a toast on its way

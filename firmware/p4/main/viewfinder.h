@@ -83,7 +83,11 @@ bool viewfinder_ready(void);
 
 /** Begin or end asking the nodes for frames. Off by default: a viewfinder
  *  that runs when nobody is looking is four sensors and four UARTs burning
- *  battery for a dark screen. */
+ *  battery for a dark screen.
+ *
+ *  The off->on edge re-reads shoot.previewQuality, so a change made in Studio
+ *  applies the next time the SHOOT screen comes up rather than at the next
+ *  reboot. Safe to call every UI pass; only the edge does any work. */
 void viewfinder_run(bool on);
 
 /**

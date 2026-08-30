@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "cam_link.h"
+#include "config_store.h"
 #include "driver/jpeg_decode.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -32,6 +33,33 @@ static const char *TAG = "viewfinder";
  * A preview exists to judge framing and focus and is thrown away; the
  * photograph keeps its own quality setting and is unaffected. */
 #define VF_QUALITY 30
+
+/*
+ * What shoot.previewQuality is, in the only unit the node understands.
+ *
+ * The setting was stored and never read (issue #144). These are the three
+ * values it now selects, and the trade they buy is the arithmetic already
+ * written above: at 921600 baud the line carries 92160 B/s, transfer is 68%
+ * of a preview frame's cost, and the frame rate is very nearly the reciprocal
+ * of the file size. So a frame of B bytes spends B/92160 seconds on the wire
+ * whatever the sensor did to produce it, and the whole lever this setting has
+ * is B.
+ *
+ * The resolution stays 320x240 on all three. It is not a free parameter: the
+ * tiles, the staging buffers and the pane blit are all VF_W x VF_H, and a
+ * 160x120 frame would decode into a quarter of a tile. Quality is the one
+ * knob that changes the byte count without changing anything downstream.
+ *
+ * NOT MEASURED PER STEP on the bench yet. The reference point is the one
+ * figure that has been measured - 44629 B in 1389 ms, 32.1 KB/s achieved -
+ * and the per-frame klog line below prints bytes, transfer ms and fps for
+ * every camera every 5 s, which is where the three settings get their real
+ * numbers. Expect LOW to roughly halve the bytes of NORMAL and HIGH to
+ * roughly double them; confirm against that line before quoting figures.
+ */
+#define VF_QUALITY_LOW 45
+#define VF_QUALITY_NORMAL VF_QUALITY
+#define VF_QUALITY_HIGH 18
 
 /* A QVGA JPEG at this quality measures a few KB; this is generous headroom so
  * a busy frame is never truncated into a decode failure. */
@@ -68,6 +96,31 @@ static atomic_int s_holds;       /* outstanding viewfinder_hold() calls */
 static atomic_int s_pumping;
 /* Tiles are frozen until this time; see viewfinder_review(). */
 static volatile int64_t s_review_until_us;
+/* The sensor quality the four pump tasks ask for. Read from the config, not a
+ * constant; see vf_read_quality(). */
+static volatile int s_quality = VF_QUALITY_NORMAL;
+
+/**
+ * Take shoot.previewQuality off the config.
+ *
+ * Called at init and on every off->on edge of viewfinder_run(), which is the
+ * cheapest hook there is: the UI already calls viewfinder_run() every pass
+ * with (screen == SHOOT), so the edge is exactly "the SHOOT screen just became
+ * active" and costs one config read per visit rather than one per frame.
+ * Changing the setting in Studio and going back to the finder therefore
+ * applies it without a reboot.
+ */
+static void vf_read_quality(void) {
+  char want[16];
+  config_str_copy("shoot.previewQuality", want, sizeof want);
+  int q = VF_QUALITY_NORMAL;
+  if (strcmp(want, "low") == 0) q = VF_QUALITY_LOW;
+  else if (strcmp(want, "high") == 0) q = VF_QUALITY_HIGH;
+  if (q != s_quality) {
+    klog("P4", "vf quality %d -> %d (%s)", s_quality, q, want[0] ? want : "normal");
+  }
+  s_quality = q;
+}
 
 bool viewfinder_ready(void) { return s_ready; }
 /*
@@ -85,7 +138,14 @@ bool viewfinder_ready(void) { return s_ready; }
  * hold, and viewfinder_run can be called as often as the UI likes without
  * being able to break one.
  */
-void viewfinder_run(bool on) { s_want_run = on; }
+void viewfinder_run(bool on) {
+  /* The rising edge only. This is called every UI pass, and re-reading the
+   * config on all of them would put a mutex take and a dotted-path walk in
+   * the finder's hot path for a value that can only change while the SHOOT
+   * screen is not up. */
+  if (on && !s_want_run) vf_read_quality();
+  s_want_run = on;
+}
 
 /** The finder may pump only if the UI wants it and nothing is holding it. */
 static bool vf_may_run(void) {
@@ -181,7 +241,7 @@ static bool pump_camera(int cam) {
    * frame period. It is timed here because it is the only part of a preview
    * frame whose cost depends on what the lens is pointed at. */
   const int64_t cap_start_us = esp_timer_get_time();
-  if (camlink_capture_ch(cam, VF_RESOLUTION, VF_QUALITY, VF_CAPTURE_TIMEOUT_MS, &res) !=
+  if (camlink_capture_ch(cam, VF_RESOLUTION, s_quality, VF_CAPTURE_TIMEOUT_MS, &res) !=
       ESP_OK) {
     s_status[cam].state = VF_NO_LINK;
     return false;
@@ -406,8 +466,9 @@ esp_err_t viewfinder_init(void) {
   }
 
   s_ready = true;
+  vf_read_quality();
   ESP_LOGI(TAG, "VIEWFINDER_READY %dx%d per pane, %s q%d, hardware JPEG decode", VF_W, VF_H,
-           VF_RESOLUTION, VF_QUALITY);
+           VF_RESOLUTION, s_quality);
   for (int i = 0; i < 4; i++) {
     char name[12];
     snprintf(name, sizeof name, "vf_cam%d", i + 1);

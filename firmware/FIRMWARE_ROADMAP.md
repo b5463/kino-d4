@@ -917,6 +917,13 @@ Every storage failure class has a defined, tested behaviour.
 
 ### M8 — Firmware updates and repartitioning
 
+**Status 2026-08-30:** the repartition half landed at firmware 0.4.9 —
+`firmware/p4/partitions.csv` (two 3072 KB OTA slots, 256 KB NVS, otadata,
+coredump; issue #143), both variants build against it, and the flash sequence
+is in `firmware/README.md`. Not yet flashed to a unit: the table change erases
+NVS, so it waits for a bench session. The FW_* transfer path itself is still
+unimplemented (contract D17).
+
 **Goal.** The camera can be serviced without a cable and a local IDF.
 
 **Why now.** Positioned after the camera works but **before** hardware ships. Repartitioning is

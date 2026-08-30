@@ -27,6 +27,7 @@
 #include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
+#include "kdp_recipes.h"
 #include "klog.h"
 #include "meta.h"
 #include "net_link.h"
@@ -359,6 +360,10 @@ static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32
   f->ok = true;
 }
 
+/* True when NL_CMD_SENSOR has put a JPEG quality into this camera and owns
+ * the register; defined below with the sensor cache it reads. */
+static bool sensor_owns_quality(int cam);
+
 static void do_frame(worker_t *w) {
   const int cam = w->cam;
   capture_frame_t *f = &s_active->cam[cam];
@@ -367,7 +372,16 @@ static void do_frame(worker_t *w) {
   f->dispatch_us = dispatch_us;
   f->fire_us = (int32_t)(dispatch_us - s_trigger_us);
   camlink_capture_result_t cap;
-  esp_err_t err = camlink_capture_ch(cam, s_resolution, s_sensor_quality,
+  /* NL_CMD_SENSOR is the single writer of the JPEG quality register once it
+   * has applied one to this camera: a CAPTURE that also carried `quality`
+   * overwrote the look's value with the mode default an instant before the
+   * exposure, and META then recorded the value that had just been clobbered.
+   * Passing 0 makes camlink_capture_ch omit the field entirely, and the
+   * node's handle_capture leaves the sensor alone. Before the first
+   * successful apply (or after a node reset cleared the cache) the CAPTURE
+   * command carries the mode default exactly as it always did. */
+  const int cap_quality = sensor_owns_quality(cam) ? 0 : s_sensor_quality;
+  esp_err_t err = camlink_capture_ch(cam, s_resolution, cap_quality,
                                      NODE_CAPTURE_TIMEOUT_MS, &cap);
   /* Release the flash as soon as this node is done exposing, whatever the
    * outcome — a node that failed is not going to expose again this shot. */
@@ -688,6 +702,307 @@ static uint32_t wait_for_probe_boundary(void) {
   return ms_since(t0);
 }
 
+/* ---------------------------------------------------------------- */
+/* sensor settings, applied before the trigger                      */
+/* ---------------------------------------------------------------- */
+
+/*
+ * What one NL_CMD_SENSOR round trip costs, and why the budget is what it is.
+ *
+ * The request is at most 72 bytes of JSON and the reply about 90, plus 18
+ * bytes of KDP framing each way: call it 200 bytes. At 921600 baud, 8N1, ten
+ * bits per byte, that is 92160 B/s - so the wire time is about 2.2 ms per
+ * camera, and four cameras is under 10 ms of a capture that takes seconds.
+ * The node's own work is five SCCB register blocks, sub-millisecond.
+ *
+ * 500 ms is therefore not a transfer budget, it is a "this node has stopped
+ * answering" budget - two hundred times the cost of the thing it waits for.
+ * Nothing else is on the wire at this point: the viewfinder is held and the
+ * workers have not been released. Past this the capture goes ahead with the
+ * sensor as it was, which is the whole failure policy for this command.
+ */
+#define SENSOR_APPLY_TIMEOUT_MS 500
+
+/* What was last ASKED of each node, so a capture that changes nothing sends
+ * nothing, and what the node last reported it ACCEPTED, which is what
+ * META.JSON carries. The two are kept apart on purpose: the node snaps a
+ * gainCeiling of 12 to 8X, and caching the snapped value would make the next
+ * capture ask for 12 again on a sensor already holding it. */
+static camlink_sensor_t s_sensor_sent[CAPTURE_CAMS];
+static camlink_sensor_t s_sensor_state[CAPTURE_CAMS];
+
+static bool sensor_owns_quality(int cam) {
+  return cam >= 0 && cam < CAPTURE_CAMS && s_sensor_sent[cam].has_quality;
+}
+/* The node boot session the cache above belongs to. A node that reset has a
+ * sensor back at driver defaults while the cache still says it was set, and
+ * the next capture would skip the round trip and shoot at the wrong exposure.
+ * The session id changes on every node boot (NL_CMD_HELLO), so comparing it is
+ * how a reset invalidates the cache. */
+static char s_sensor_session[CAPTURE_CAMS][sizeof(((camlink_info_t *)0)->session)];
+
+/**
+ * Read one config value as a double, reporting whether it was there at all.
+ *
+ * Two reasons this is not config_int(). It truncates - it is
+ * `(int)valuedouble` - and exposureBias is the one fractional setting in the
+ * envelope: -1.5 EV would arrive as -1 and the slider's half-steps would do
+ * nothing. And it cannot say "absent", which here is a distinct answer from
+ * zero: a slot with no exposureBias of its own must leave the look's value
+ * standing, while a slot set to exactly 0 EV must override it.
+ *
+ * There is no config_double(), so this walks the live document. config_store.h
+ * documents that pointer as borrowed; it is read here and not held.
+ */
+static bool cfg_num(const char *path, double *out) {
+  const cJSON *node = config_get();
+  if (node == NULL) return false;
+  const char *p = path;
+  while (*p != '\0') {
+    const char *dot = strchr(p, '.');
+    const size_t len = dot != NULL ? (size_t)(dot - p) : strlen(p);
+    char key[32];
+    if (len == 0 || len >= sizeof key) return false;
+    memcpy(key, p, len);
+    key[len] = '\0';
+    node = cJSON_GetObjectItem(node, key);
+    if (node == NULL) return false;
+    if (dot == NULL) break;
+    p = dot + 1;
+  }
+  if (!cJSON_IsNumber(node)) return false;
+  *out = node->valuedouble;
+  return true;
+}
+
+/** True when `want` asks for something `sent` did not already ask for. Only
+ * the flagged fields are compared: an unflagged field says nothing about the
+ * sensor, so it can neither match nor differ. */
+static bool sensor_differs(const camlink_sensor_t *want, const camlink_sensor_t *sent) {
+  if (want->has_ae_level && (!sent->has_ae_level || sent->ae_level != want->ae_level))
+    return true;
+  if (want->has_gain_ceiling &&
+      (!sent->has_gain_ceiling || sent->gain_ceiling != want->gain_ceiling))
+    return true;
+  if (want->has_denoise && (!sent->has_denoise || sent->denoise != want->denoise)) return true;
+  if (want->has_sharpness && (!sent->has_sharpness || sent->sharpness != want->sharpness))
+    return true;
+  if (want->has_quality && (!sent->has_quality || sent->quality != want->quality)) return true;
+  return false;
+}
+
+/** Strip the fields that already hold, so the request carries only the change.
+ * This is what makes the steady state - four cameras, nothing touched since
+ * the last shot - cost zero bytes on the wire. */
+static void sensor_keep_changed(camlink_sensor_t *want, const camlink_sensor_t *sent) {
+  if (want->has_ae_level && sent->has_ae_level && sent->ae_level == want->ae_level)
+    want->has_ae_level = false;
+  if (want->has_gain_ceiling && sent->has_gain_ceiling &&
+      sent->gain_ceiling == want->gain_ceiling)
+    want->has_gain_ceiling = false;
+  if (want->has_denoise && sent->has_denoise && sent->denoise == want->denoise)
+    want->has_denoise = false;
+  if (want->has_sharpness && sent->has_sharpness && sent->sharpness == want->sharpness)
+    want->has_sharpness = false;
+  if (want->has_quality && sent->has_quality && sent->quality == want->quality)
+    want->has_quality = false;
+}
+
+/**
+ * What camera `cam` should be shooting at, merged from the three sources.
+ *
+ * Later wins, and the order is the product decision:
+ *
+ *   1. the mode's own defaults - wiggle.jpegQuality, which is what every
+ *      capture has always used;
+ *   2. the active look's capture block - wiggle.recipeId in WIGGLE,
+ *      quad.slots.camN.recipeId in QUAD. A look is a deliberate choice made
+ *      after the mode default, so it beats it;
+ *   3. the QUAD slot's own exposureBias and gain, which exist for nothing else
+ *      but overriding the look on one camera. QUAD only: a wiggle has no
+ *      per-camera slots.
+ *
+ * A look's `look` block (contrast, saturation, ...) is NOT read here. There is
+ * no grading on this camera and there is not going to be; the look block is
+ * Studio's at import, and the LOOK screen says so.
+ *
+ * A look's `resolution` is also deliberately ignored, unlike its jpegQuality:
+ * one capture has one resolution (wiggle.resolution) for all four sensors,
+ * because the frames of a quad are the same four sensors as a wiggle. The
+ * asymmetry is easy to misread as an omission; it is a decision.
+ */
+static void sensor_settings_for(int cam, const char *mode, camlink_sensor_t *want) {
+  memset(want, 0, sizeof *want);
+  const bool quad = strcmp(mode, "quad") == 0;
+
+  /* 1. mode defaults. s_sensor_quality is already the sensor scale.
+   *
+   * denoise and sharpness are mode defaults too (the settings envelope
+   * carries wiggle.denoise and wiggle.sharpness), and reading them here is
+   * load-bearing beyond correctness: it means quality, denoise and sharpness
+   * are ALWAYS present in `want`, so a look that stops naming one falls back
+   * to the default instead of leaving the sensor wherever the last look put
+   * it. Only aeLevel and gainCeiling can go present-to-absent, and
+   * apply_sensor_settings() restores those two explicitly. */
+  if (s_sensor_quality > 0) {
+    want->has_quality = true;
+    want->quality = s_sensor_quality;
+  }
+  {
+    double v = 0;
+    want->has_denoise = true;
+    want->denoise = cfg_num("wiggle.denoise", &v) ? (int)v : 1;
+    want->has_sharpness = true;
+    want->sharpness = cfg_num("wiggle.sharpness", &v) ? (int)v : 1;
+  }
+
+  /* 2. the look this camera is wearing. */
+  char recipe_id[KDP_RECIPE_ID_MAX];
+  if (quad) {
+    char path[40];
+    snprintf(path, sizeof path, "quad.slots.cam%d.recipeId", cam + 1);
+    config_str_copy(path, recipe_id, sizeof recipe_id);
+  } else {
+    config_str_copy("wiggle.recipeId", recipe_id, sizeof recipe_id);
+  }
+  if (recipe_id[0] != '\0') {
+    recipe_capture_t rc;
+    if (kdp_recipes_capture_block(recipe_id, &rc)) {
+      if (rc.has_jpeg_quality) {
+        const int q = pure_quality_to_sensor(rc.jpeg_quality_percent);
+        if (q > 0) {
+          want->has_quality = true;
+          want->quality = q;
+        }
+      }
+      if (rc.has_exposure_bias) {
+        want->has_ae_level = true;
+        want->ae_level = pure_ev_to_ae_level(rc.exposure_bias);
+      }
+      if (rc.has_gain_limit) {
+        /* Sent as the look wrote it; the node snaps to a real gainceiling_t
+         * step and reports what it snapped to. */
+        want->has_gain_ceiling = true;
+        want->gain_ceiling = rc.gain_limit;
+      }
+      if (rc.has_denoise) {
+        want->has_denoise = true;
+        want->denoise = rc.denoise;
+      }
+      if (rc.has_sharpness) {
+        want->has_sharpness = true;
+        want->sharpness = rc.sharpness;
+      }
+    }
+  }
+
+  /* 3. the slot itself, QUAD only. */
+  if (quad) {
+    char path[40];
+    snprintf(path, sizeof path, "quad.slots.cam%d.exposureBias", cam + 1);
+    double ev = 0;
+    /* Only when the slot actually carries the key. A slot without one leaves
+     * the look's exposureBias standing; a slot set to exactly 0 EV overrides
+     * it, which is the difference a presence check buys over a zero. */
+    if (cfg_num(path, &ev)) {
+      want->has_ae_level = true;
+      want->ae_level = pure_ev_to_ae_level(ev);
+    }
+    snprintf(path, sizeof path, "quad.slots.cam%d.gain", cam + 1);
+    char gain[12];
+    config_str_copy(path, gain, sizeof gain);
+    if (gain[0] != '\0') {
+      const int ceiling = pure_gain_to_ceiling(gain);
+      if (ceiling > 0) {
+        want->has_gain_ceiling = true;
+        want->gain_ceiling = ceiling;
+      } else {
+        /* "auto" means leave the AGC alone, and it has to be able to override
+         * a look that named a gainLimit - otherwise a slot set to auto shoots
+         * at the look's ceiling and the control does nothing. */
+        want->has_gain_ceiling = false;
+      }
+    }
+  }
+}
+
+/**
+ * Put every online camera's settings into its sensor, before the trigger.
+ *
+ * Sends only what changed since this camera's last apply, so the ordinary case
+ * - nothing touched since the last shot - costs no wire time at all. When
+ * something did change it is one ~200-byte round trip per camera, about 2.2 ms
+ * at 921600 baud (see SENSOR_APPLY_TIMEOUT_MS).
+ *
+ * A NACK or a timeout is one klog line and the capture proceeds: the sensor
+ * keeps whatever it had, and a photograph with yesterday's exposure beats no
+ * photograph. What must NOT happen is META.JSON then claiming the new values -
+ * so the frame records s_sensor_state, which only ever holds what a node
+ * reported it accepted.
+ */
+static void apply_sensor_settings(uint32_t ask, capture_report_t *r) {
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    if ((ask & (1u << i)) == 0) continue;
+
+    /* A node that rebooted is back at driver defaults whatever the cache
+     * remembers. Comparing the boot session is how that is noticed; without
+     * it a node reset between two captures shoots the second one at the
+     * sensor's defaults while the report claims the slot's settings. */
+    camlink_info_t info;
+    camlink_get_info_ch(i, &info);
+    if (strcmp(info.session, s_sensor_session[i]) != 0) {
+      memset(&s_sensor_sent[i], 0, sizeof s_sensor_sent[i]);
+      memset(&s_sensor_state[i], 0, sizeof s_sensor_state[i]);
+      snprintf(s_sensor_session[i], sizeof s_sensor_session[i], "%s", info.session);
+    }
+
+    camlink_sensor_t want;
+    sensor_settings_for(i, r->mode, &want);
+
+    /* A field that was sent before and is wanted no more must be RESTORED,
+     * not skipped: the sensor still holds the old value, and an absent field
+     * is sensor_differs()'s "says nothing" case, so without this a slot moved
+     * from gain "low" to "auto" kept shooting at the 4x ceiling and the
+     * control did nothing from its second use onward. Only these two can go
+     * present-to-absent (see sensor_settings_for): aeLevel restores to 0 (the
+     * AEC's own target) and gainCeiling to 16 - the OV3660's working middle,
+     * chosen rather than measured, because the driver does not expose what
+     * the init table set and "auto" has to mean something concrete. */
+    if (!want.has_ae_level && s_sensor_sent[i].has_ae_level) {
+      want.has_ae_level = true;
+      want.ae_level = 0;
+    }
+    if (!want.has_gain_ceiling && s_sensor_sent[i].has_gain_ceiling) {
+      want.has_gain_ceiling = true;
+      want.gain_ceiling = 16;
+    }
+
+    if (!sensor_differs(&want, &s_sensor_sent[i])) {
+      r->cam[i].sensor = s_sensor_state[i];
+      continue;
+    }
+    const camlink_sensor_t full = want;
+    sensor_keep_changed(&want, &s_sensor_sent[i]);
+
+    camlink_sensor_t applied;
+    const esp_err_t err =
+        camlink_set_sensor_ch(i, &want, &applied, SENSOR_APPLY_TIMEOUT_MS);
+    if (err != ESP_OK) {
+      /* One line, and it names what could not be set rather than only that
+       * something could not: a capture that comes out at the wrong exposure
+       * has to be explainable from the log alone. The cache is NOT updated,
+       * so the next capture tries again. */
+      klog(cam_tag(i), "sensor settings refused (%s); shooting as-is",
+           esp_err_to_name(err));
+      r->cam[i].sensor = s_sensor_state[i];
+      continue;
+    }
+    s_sensor_sent[i] = full;
+    s_sensor_state[i] = applied;
+    r->cam[i].sensor = applied;
+  }
+}
+
 esp_err_t capture_fire(const char *source, capture_report_t *out) {
   if (!capture_lock(0)) return ESP_ERR_INVALID_STATE;
   /* Admitted. Photography wins from here; a probe already on a wire gets its
@@ -765,6 +1080,23 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   r.status = "failed";
   r.clock_source = clock_source_str();
   snprintf(r.mode, sizeof r.mode, "%s", config_str("mode", "wiggle"));
+  /* The looks in force, snapshotted now like roll_id below: MEDIA_LIST reads
+   * META's recipeIds, and until 0.4.9 nothing wrote them, so every photograph
+   * listed as recipe-less whatever look took it. Quad keeps one entry per
+   * slot in cam order, duplicates and all, so index i is cam i+1's look. */
+  _Static_assert(sizeof r.recipe_ids[0] == KDP_RECIPE_ID_MAX,
+                 "capture_report_t.recipe_ids must hold a full look id");
+  if (strcmp(r.mode, "quad") == 0) {
+    static const char *const SLOTS[4] = {"quad.slots.cam1.recipeId", "quad.slots.cam2.recipeId",
+                                         "quad.slots.cam3.recipeId", "quad.slots.cam4.recipeId"};
+    for (int i = 0; i < 4; i++) {
+      config_str_copy(SLOTS[i], r.recipe_ids[i], sizeof r.recipe_ids[i]);
+    }
+    r.recipe_id_count = 4;
+  } else {
+    config_str_copy("wiggle.recipeId", r.recipe_ids[0], sizeof r.recipe_ids[0]);
+    r.recipe_id_count = 1;
+  }
   /* One resolution for every mode. `quad` has no resolution of its own in the
    * settings envelope - the four frames of a quad are the same four sensors
    * as a wiggle, shown differently. */
@@ -927,6 +1259,19 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
       }
     }
   }
+
+  /*
+   * The sensors, before the trigger and before the flash.
+   *
+   * Here rather than inside do_frame() for two reasons. The workers run
+   * concurrently and a settings round trip inside one would sit between the
+   * trigger and that camera's capture command, widening the dispatch spread
+   * this pipeline exists to keep small - and unevenly, since only the cameras
+   * that changed would pay it. And the flash is not on yet: a node taking its
+   * 500 ms timeout here costs nothing but time, while the same wait after
+   * flash_set(1) would be 500 ms of 350-500 mA out of the battery.
+   */
+  apply_sensor_settings(ask, &r);
 
   flash = flash_wanted(r.mode);
   xEventGroupClearBits(s_exposed, ALL_CAMS_MASK);
