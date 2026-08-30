@@ -579,6 +579,43 @@ us: it scans Wi-Fi before *and* after filesystem I/O specifically to prove the
 radio survives card init. Run that check — a scan, mount the card, a scan — as
 `SD_C6_COEXIST` before trusting any of the numbers above.
 
+### Measured, 2026-08-30 - single camera, LAN backend
+
+The record with every number is `HARDWARE_VALIDATION.md`, "Gate F -
+photography wins". The shape of the answer, against the list above:
+
+1. **Radio-off baseline (C6 held in reset): not measured.** Nothing in this
+   session may hold the C6 in reset, and `C6_RESET_BENCH` gives a window of
+   seconds, not a state. The baseline used is the connected stack idle:
+   link up, associated, a lease, no upload in flight.
+2. **Idle / associated (IP_READY, queue empty):** n=19 accepted, `totalMs`
+   1297 / 1419 / 1648 / 1648 (min / median / p95 / max), per-frame UART
+   transfer 914-1195 ms, card write 34-56 ms, `sdWaitMs` 0, chunk retries 0,
+   CRC 19/19.
+3. **Uploading (a photograph in flight at the shutter, back-to-back
+   shutters, an offline backlog draining):** medians 1316-1493 ms across the
+   runs, p95 1355-1506 ms on the final image; `sdWaitMs` median 3-20 ms, max
+   55 ms; CRC 100 %.
+4. **Four-frame capture uploading: not measurable** - one camera is attached.
+   The step 4 hazard (the RX worker at 22 starving a four-camera transfer)
+   is therefore untested, not disproved. On the one channel, no capture saw a
+   transport fault and no transport fault interrupted a capture, including
+   nine captures taken through two C6 recoveries.
+
+Capture timing is unchanged within noise between idle and uploading. Card
+contention shows up exactly where it should: the capture waits at most tens of
+milliseconds for the card, the upload yields. Camera-node CRC error rate: 0 in
+112 accepted captures across the session; 6 chunk retries, each recovered by
+the link's own retry with a matching CRC, 3 of them in a burst with no upload
+traffic on the wire. Current draw per state: not measured, no meter in the
+loop. `SD_C6_COEXIST` (scan, mount, scan): not run.
+
+What the bench did find was in the upload queue, not the radio: two ways a
+refused card access was booked as a failed attempt and parked a good
+photograph. Both fixed in 0.4.6 and re-measured; see the validation record.
+The priority table above stands unchanged; none of the three levers was
+pulled.
+
 ## 9. Only then, the capability flags
 
 `GET_CAPABILITIES` gains `network` and `roll` when the matching commands

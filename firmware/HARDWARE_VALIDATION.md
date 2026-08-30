@@ -28,7 +28,15 @@ measured there. 0.4.5 added a bench-only C6 reset and with it the finding
 that a C6 reset was not recovered without a P4 reboot; 0.4.6 recovers it -
 five times in a row on the bench, and under a pending upload - and closes
 the local Roll gate: **LOCAL ROLL E2E GO** ("The radio recovers from a C6
-reset", below). The 0.4.0 paragraph that follows is history.
+reset", below). The same day, 0.4.6 was measured against Gate F on the one
+camera attached: capture timing and CRC unchanged within noise with the
+radio idle, uploading, draining a backlog and recovering, every accepted
+photograph byte-identical on the card, in the object store and in the
+database - **GATE F GO for the connected single-camera path** ("Gate F -
+photography wins", below), with the four-camera case, the radio-off
+baseline and current draw still unmeasured. Two upload-queue defects that
+parked good photographs were found and fixed on the way. The 0.4.0
+paragraph that follows is history.
 
 ## Status — updated 2026-08-27, firmware 0.4.0
 
@@ -273,6 +281,150 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### Gate F - photography wins, measured on one camera, 2026-08-30
+
+**Scope, stated first.** One camera node on the wire (CAM1, OV3660,
+1600x1200); channels 2-4 empty. Everything below is therefore *Gate F
+validated for the currently connected single-camera path*. The four-camera
+transfer that the RX-priority hazard in `C6_BRINGUP.md` §8 is about was not
+exercised. The radio-off baseline (C6 held in reset) was not measured: this
+session does not touch the C6, and `C6_RESET_BENCH` gives seconds, not a state.
+Current draw: not measured, no meter in the loop.
+
+**The criterion.** `FIRMWARE_ROADMAP.md`, Gate F: *capture timing and CRC
+error rates measured with the radio idle, associated, and uploading, and
+unchanged within noise - or upload is restricted to idle/charging.* There is
+no absolute latency budget in the repository and none was invented. Hard
+correctness (every accepted capture complete, CRC-matched, unique, on the card,
+in the queue once, one backend row, bytes identical end to end; no capture
+lost or corrupted by upload, backlog, outage, recovery or card contention) is
+separated below from measured performance.
+
+**Images, in order.** Every image a clean `git archive` of the commit with
+the working tree's `dependencies.lock` overlaid, `sdkconfig.defaults;
+sdkconfig.radio`, `KINO_ROLL_API_BASE=https://kino.acronym.sk` (overridden to
+the LAN API from config), `KINO_C6_RESET_BENCH=1`, two passes identical, P4
+only, C6 image unchanged since 08-29. Backend: the repository's own API,
+worker, Postgres and MinIO on the LAN, roll `RRG8AZ`.
+
+| Commit | What it carried | Boot | Result that moved the work |
+|---|---|---|---|
+| `549826b` | Gate F telemetry in `capture_report_t` and the `CAMERA_CAPTURE` `bench` object | boot-433 | 14 of 20 idle `CAMERA_CAPTURE` requests refused `BUSY` - the node sweep held `capture_lock` ~9 s in every ~19 s |
+| `7085bb1` | 300 ms probe for an absent channel (`OFFLINE_PROBE_MS`) | boot-434 | 1 of 20 refused at idle; baseline, contention, offline, drain measured; a good photograph parked `FAILED` (CAP_000231) |
+| `8c7a0ff` | a card refusal is a yield, not an attempt (`RQ_DISP_YIELD`) - stat, hash, PUT | boot-435 | offline + drain rerun; another good photograph parked (CAP_000253), in the one step the fix had not covered |
+| `c2df8a5` | the register step's META.JSON read yields too | boot-436 | offline, drain, contention, two recoveries, no job parked; the final numbers |
+
+Final image `kino-p4.bin` 1,449,904 B, SHA-256
+`f2414e81c3ce2eab6616bc91bcc1845da55cf0b9b549d0fe0eb7aa087a5b39fb`. Host
+suites at that commit: 2,959 checks (roll-queue 1,138).
+
+**The two defects, as found.** Both are the upload queue parking a photograph
+that was intact on the card, and neither is the radio.
+
+1. CAP_000231 (`a4a1507f…`, 96,838 B, CRC `b75b086b`), during the first drain:
+   `FAILED`, attempts 20 against a budget of 12, "the asset is not on the
+   card". `roll_http_file_size()` returned 0 both for "no such file" and for
+   "could not take the card within 200 ms", and a burst of shutters made the
+   second one true twelve times in a row; then the persist-busy path re-stepped
+   the parked job past its budget. Fixed in `8c7a0ff`: `rq_classify_step()`
+   turns a refused card into `RQ_DISP_YIELD`, no attempt, `CARD_WAIT_MS` wait;
+   a settled job stays settled.
+2. CAP_000253 (`b0e4b154…`, 81,275 B, CRC `7bc7c70e`), offline + drain on
+   `8c7a0ff`: `FAILED` in RAM with `UPLOAD.JSON` still saying `QUEUED`,
+   attempts 0, and no registration POST in the API log (19 of 20). The register
+   step read META.JSON through `read_card_file()`, whose NULL for a held card
+   was booked as "META.JSON unreadable on the card" - an attempt - and the
+   persist right after was refused by the same capture, so the 200 ms retry
+   burned an attempt every 200 ms: twelve inside two shutters, the `FAILED`
+   write refused as well. Fixed in `c2df8a5`, the same shape, one step over.
+   Boot reconciliation on `c2df8a5` picked the record up as `QUEUED` and it
+   uploaded: card SHA `56d5cba0…` == object == `assets.sha256`.
+
+**Hard correctness, final image `c2df8a5` (41 requests, 36 accepted, 5
+`BUSY`, 0 NACK / timeout / parse failure / no response).**
+
+- 36 of 36 accepted captures complete on the card; per-frame CRC matched
+  36/36; 36 unique UUIDs; `rollId` at the shutter == META.JSON == UPLOAD.JSON
+  == backend row, every one.
+- 36 of 36 have exactly one backend row and one original asset; duplicate
+  UUID rows in the whole `captures` table (286 rows): 0. Card `C1.JPG` pulled
+  and hashed for all 9 recovery captures and 7 sampled others: SOI/EOI
+  present, PIL decodes 1600x1200, SHA-256 == MinIO object == `assets.sha256`
+  on every pull. The same held for 6 sampled captures on `7085bb1`.
+- Offline (API stopped, radio up): 9 captures queued once each, `failed`
+  unchanged; on restore every one uploaded without a press. Drain: 8 shot
+  while the backlog drained, all uploaded, `failed` unchanged (35 → 35).
+- Recovery, twice (`C6_RESET_BENCH`, COM10 witness `rst:0x1 (POWERON)`):
+  captures accepted in `C6_BOOTING` ("quiescing the host-side radio state",
+  "ESP-Hosted transport init"), `WIFI_CONNECTING`, and `IP_READY`, 9 of 9
+  CRC-matched; the queue resumed by itself (`uploadActive` true at the first
+  `IP_READY` shot) and all 9 uploaded. Recovery took ≤16 s and ≤6 s from the
+  pulse to `IP_READY`; no long recovery occurred, so §10 of the brief has no
+  evidence to record. `largestDmaKB` read 31 while the reserve was freed for
+  re-init and 15-16 otherwise.
+- Session `boot-436` unchanged through all of it; no P4 reset, no watchdog.
+- Not observed: `FIFO OVERRUN`, offset-8192, `TIMEOUT cmd 0x11`. 6 chunk
+  retries in 112 accepted captures across the session, every one recovered by
+  the link's retry with a matching CRC; 3 of the 6 came in an offline burst
+  with no upload traffic. **NOT REPRODUCED**, not fixed.
+
+**Measured performance (`totalMs` from the report; min / median / p95 / max
+in ms; `sdWait` is shutter to holding the card).**
+
+| Scenario, image | n acc / req | total | sdWait med / max | UART transfer med / max | card write med / max | chunk retries | upload active at shutter |
+|---|---|---|---|---|---|---|---|
+| idle baseline, `7085bb1` | 19 / 20 | 1297 / 1419 / 1648 / 1648 | 0 / 0 | 1007 / 1195 | ~45 / 56 | 0 | 0 |
+| contention (back-to-back), `7085bb1` | 11 / 12 | 1380 / 1490 / 2557 / 2557 | 3 / 12 | - / 2079 | - | 1 | 4 |
+| offline, `7085bb1` | 10 / 10 | 1391 / 1486 / 1563 / 1563 | 0 / 0 | - | - | 0 | - |
+| drain, `7085bb1` | 10 / 10 | 1515 / 1636 / 3596 / 3596 | 12 / 55 | - / 3181 | - | 2 | 8 |
+| offline, `8c7a0ff` | 10 / 10 | 1298 / 1334 / 1913 / 1913 | 0 / 24 | 887 / 944 | 47 / 56 | 0 | 9 |
+| drain, `8c7a0ff` | 10 / 10 | 1294 / 1316 / 1355 / 1355 | 20 / 50 | 872 / 876 | 51 / 59 | 0 | 9 |
+| offline, `c2df8a5` | 9 / 10 | 1338 / 1470 / 2410 / 2410 | 11 / 23 | 981 / 1991 | 40 / 63 | 3 | 8 |
+| drain, `c2df8a5` | 8 / 10 | 1406 / 1493 / 1506 / 1506 | 3 / 15 | 1000 / 1072 | 57 / 64 | 0 | 8 |
+| contention, `c2df8a5` | 10 / 10 | 1341 / 1403 / 1495 / 1495 | 6 / 13 | 977 / 1017 | 46 / 59 | 0 | 9 |
+| recovery x2, `c2df8a5` | 9 / 11 | 1358 / 1483 / 1720 / 1720 | 13 / 20 | 991 / 1025 | 60 / 63 | 0 | 4 |
+
+The capture's time is the UART transfer of one ~85 KB JPEG at 921600 baud
+(~0.9-1.0 s) plus ~0.3 s of probe, thumbnail and commit. Uploading in
+parallel moves the median by tens of milliseconds and the card wait by at
+most 55 ms; the outliers (2.4-3.6 s) are chunk retries on the camera UART,
+each with a matching CRC, present with and without upload traffic. Unchanged
+within noise.
+
+**Resources, `boot-436`, 54 s → 767 s of uptime.** Heap 26,971 → 23,076 KB
+(the one-time gallery allocation seen on every boot, then flat); internal
+free 63 → 78 KB, internal minimum 26 KB (during the drain, with the two 16 KiB
+frame buffers of `kdp_server` already in PSRAM); largest internal DMA block
+15-16 KB, constant; task stack low-water marks constant after the first
+captures (capture 5808, cam1 worker 5312, upqueue 2440, c6link 1980,
+kdp_server 3728 B). Storage lock over the session: 26 yields requested, 344
+acquire timeouts - all on the upload side, by design (200 ms budget), and the
+reason the yield had to stop costing attempts. SD mounted throughout.
+
+**Refusals.** 21 of 133 `CAMERA_CAPTURE` requests in the session were
+`BUSY` "A capture is already running"; 14 of them on `549826b` before the
+sweep fix, 5 of 41 on the final image, none correlated with upload or radio
+state (the baseline at idle had one too). The cause is the node sweep holding
+`capture_lock` for its HELLO round (`main.c`), now ~1 s in every ~19 s on a
+one-camera body. A press landing in that window is refused in microseconds
+with a reason; it is not lost to the radio, but it is a press refused, and it
+is recorded here as an open defect outside Gate F's question.
+
+**Operator retry.** `UPLOAD_QUEUE_RETRY` revives the parked jobs held in RAM
+(`PARKED_IN_RAM_MAX` 4) and the rescan brings the next four back as parked, so
+CAP_000231 took five presses; 20 jobs revived over those presses and all 20
+uploaded - photographs parked in earlier sessions by the same defect. The
+`failed` figure read 35 after the first press although four had uploaded,
+then caught up (31, 27, 23, 18, 15). 15 stay parked, not examined.
+
+**Verdict.** Hard correctness held on every capture of the final image, and
+capture timing with the radio idle, associated, uploading, draining a backlog
+and recovering from a C6 reset is unchanged within noise. **GATE F GO - for
+the connected single-camera path.** The four-camera transfer under upload,
+the radio-off baseline and current draw remain unmeasured, and the sweep
+refusal above stays open. `LOCAL ROLL E2E GO` was not reopened: no regression
+was observed.
+
 ### The radio recovers from a C6 reset without a P4 reboot - ROLL-C test 3 PASS, 2026-08-30
 
 Firmware 0.4.6 (`6bfcacd`), bench image `kino-p4.bin` 1,448,800 B, SHA-256
@@ -377,8 +529,8 @@ mounted - and it uploaded too.
 
 **Verdict: ROLL-C test 3 PASS.** ROLL-A, ROLL-B, ROLL-C1, C2, C3 all PASS:
 **LOCAL ROLL E2E GO.** That is the local Roll durability gate and nothing
-else: C6-E production HTTPS stays deferred on server-side routing, Gate F is
-not started.
+else: C6-E production HTTPS stays deferred on server-side routing. Gate F
+followed the same day (section above).
 
 **Kept out of scope, documented:** `CAMERA_CAPTURE` answering `BUSY` shortly
 after boot and after idle; ≥4 KiB device→host KDP frames and the `GET_LOGS`
