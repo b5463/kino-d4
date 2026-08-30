@@ -254,6 +254,16 @@ typedef enum {
 rq_reconcile_t rq_reconcile_action(bool has_meta, const char *meta_roll_id, bool has_job,
                                    bool job_valid, const rq_job_t *job);
 
+/*
+ * A job read back from the card at boot. next_attempt_ms is a deadline on the
+ * boot's monotonic clock, and that clock stopped at the reset: a RETRY_WAIT
+ * job would otherwise sit until the new uptime passes a number the old boot
+ * wrote down - 27 minutes on the bench, hours after a long session. The job is
+ * due now. Attempts are kept: the history is real, only the clock is not.
+ * Jobs in any other state are untouched.
+ */
+void rq_job_boot_resume(rq_job_t *job);
+
 /* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */
 /* ------------------------------------------------------------------ */

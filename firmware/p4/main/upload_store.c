@@ -277,6 +277,8 @@ rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames, rq_job_t *
   if (action == RQ_REC_IGNORE) return RQ_REC_IGNORE;
   if (action == RQ_REC_RESUME) {
     *out = loaded;
+    /* The record's deadline was set by the boot that wrote it. */
+    rq_job_boot_resume(out);
     return action;
   }
   if (action == RQ_REC_RETIRE) {

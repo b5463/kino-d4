@@ -74,6 +74,11 @@ bool rq_retry_due(const rq_job_t *job, int64_t now_ms) {
   return now_ms >= job->next_attempt_ms;
 }
 
+void rq_job_boot_resume(rq_job_t *job) {
+  if (job == NULL) return;
+  if (job->state == RQ_RETRY_WAIT) job->next_attempt_ms = 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Job lifecycle                                                      */
 /* ------------------------------------------------------------------ */

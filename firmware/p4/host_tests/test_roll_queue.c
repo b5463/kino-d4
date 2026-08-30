@@ -216,6 +216,38 @@ static void test_resume_after_reboot_repeats_nothing(void) {
   CHECK(after.state == RQ_COMPLETE, "finishes, got %s", rq_state_name(after.state));
 }
 
+static void test_deadline_from_a_previous_boot_is_void(void) {
+  /* Bench 2026-08-30, boot-412 -> boot-413: CAP_000186 was captured with the
+   * API down, backed off to next_attempt_ms 1620904 on that boot's clock, the
+   * P4 rebooted, reconciliation resumed the job - and the worker then held it
+   * until the new uptime reached 27 minutes. The API had been back for three. */
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, true);
+  job.state = RQ_RETRY_WAIT;
+  job.attempts = 3;
+  job.next_attempt_ms = 1620904;
+  CHECK(!rq_retry_due(&job, 25000), "as written, a fresh boot at 25 s would wait");
+  rq_job_boot_resume(&job);
+  CHECK(rq_retry_due(&job, 25000), "after boot the job is due now");
+  CHECK(rq_retry_due(&job, 0), "due at uptime zero, not at some later tick");
+  CHECK(job.attempts == 3, "the attempt history survives; only the clock does not");
+  CHECK(job.state == RQ_RETRY_WAIT, "state is not the resume's business");
+
+  /* Other states carry no deadline that matters; they are left as they are. */
+  rq_job_t queued;
+  rq_job_init(&queued, UUID_A, "roll_0001", 1, true);
+  queued.next_attempt_ms = 777;
+  rq_job_boot_resume(&queued);
+  CHECK(queued.next_attempt_ms == 777 && queued.state == RQ_QUEUED, "a QUEUED job is untouched");
+  rq_job_t parked;
+  rq_job_init(&parked, UUID_A, "roll_0001", 1, true);
+  parked.state = RQ_FAILED;
+  parked.next_attempt_ms = 777;
+  rq_job_boot_resume(&parked);
+  CHECK(parked.state == RQ_FAILED && parked.next_attempt_ms == 777, "a parked job stays parked");
+  rq_job_boot_resume(NULL);
+}
+
 static void test_reboot_before_registering_is_safe(void) {
   /* Power cut before the capture document was ever POSTed. The next boot has
    * no capture id, so it registers — and because the server keys on
@@ -662,6 +694,7 @@ int main(void) {
   test_partial_capture_uploads_only_what_exists();
   test_resume_after_reboot_repeats_nothing();
   test_reboot_before_registering_is_safe();
+  test_deadline_from_a_previous_boot_is_void();
   test_state_disagreeing_with_flags_cannot_strand_a_photograph();
   test_transient_failure_backs_off_then_resumes();
   test_retry_is_bounded();
