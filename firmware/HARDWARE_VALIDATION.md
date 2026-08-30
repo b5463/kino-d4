@@ -22,6 +22,9 @@ Rules:
 0.4.7 is the first firmware with a physical shutter: GPIO28 on JP1 21, the
 pin ECN-0003 took back from the flash, validated on the bench the same day
 with two photographs taken by the button ("The shutter has a pin", below).
+0.4.7 also takes the background node sweep off the shutter's lock: 200 idle
+`CAMERA_CAPTURE` requests, 0 false BUSY, a genuine second capture still
+refused ("Shutter availability", below).
 
 0.4.4 is the first firmware whose photographs have reached a Roll on a real
 backend: capture, thumbnail-first upload, byte-identical original, worker jobs
@@ -311,6 +314,118 @@ dropped `@flash_args` expansion (pass the addresses and files explicitly), and
 the `esptool.exe` that Python 3.9 put on PATH is v4.1 and does not know the
 ESP32-P4 - use `python -m esptool`.
 
+### Shutter availability - the node sweep no longer refuses the shutter, 2026-08-30
+
+**The defect, as measured.** Gate F left one refusal standing: `CAMERA_CAPTURE`
+answered `NACK BUSY "A capture is already running"` with no capture running
+whenever it landed in the background node sweep - 14 of 20 idle requests on
+`549826b`, 1 of 20 after the 300 ms absent-channel probe (`7085bb1`), 5 of 41
+under Gate F load (`c2df8a5`). Not radio, not upload, not the parser:
+`cam_probe_task` in `main.c` took `capture_lock()` for its whole HELLO round,
+so background discovery wore the shutter's exclusion.
+
+**Why the sweep held the shutter's lock.** Two real hazards, both about
+ordering rather than exclusion. A HELLO slipping between two chunk reads of a
+live transfer opens with `uart_flush_input()` and loses the chunk (the
+per-chunk byte loss the bench once recorded). A HELLO into an empty socket
+holds that channel's mutex for its whole timeout, so a capture starting behind
+it waited seconds. `cam_link.c` already holds one mutex per channel for
+exactly one request/response, which is all the wire needs - two commands can
+never overlap on a UART. What the mutex could not say was who may START.
+
+**The fix (`48f362e`, firmware 0.4.7).** `cam_sched.[ch]` is the policy, no
+ESP-IDF, host-tested: REAL CAPTURE > BACKGROUND PROBE. A probe begins only
+when no capture is admitted (active or pending) and its channel is free;
+otherwise it is deferred, not queued, and the sweep comes back 500 ms later
+holding nothing. A capture is admitted whenever no capture is active -
+maintenance never makes it BUSY - and if one probe is on a wire at that
+instant the capture is pending until that single bounded transaction ends,
+then starts; no probe can begin in the gap. `capture_lock()`/`unlock()` bind
+`capture_active`, so the bench paths that hold the lock (CAMERA_TEST, the soak
+job, the storage benches) defer probes exactly as a capture does.
+`capture_fire()` waits on a semaphore the probe's end gives, capped at
+`PROBE_BOUNDARY_MS` 3500 with a log line if ever exceeded. Channels are four
+independent objects (CAM1-CAM4); a capture defers all four because a capture
+fires every camera; the sweep chooses to run probes one at a time so four
+empty sockets never time out together. Telemetry, additive: `CAMERA_CAPTURE`
+`bench.probeWaitMs`; `GET_RUNTIME_STATS` `probesRun`, `probesDeferred`,
+`captureProbeWaits`.
+
+**Worst-case probe occupation a shutter can meet:** one transaction on one
+channel - 300 ms on an absent channel (`OFFLINE_PROBE_MS`), a few
+milliseconds on a present node, one 3000 ms transaction when a present node
+has stopped answering. Never a sweep.
+
+**Host tests.** `test_cam_sched.c`, 1,198 checks, cases A-L of the brief: idle
+start, defer during a capture, capture wins before a probe, capture during a
+probe waits then proceeds, two probes in flight wake once, a storm of probes
+never starves the shutter, a real second capture is BUSY, a probe is not a
+capture, one transaction per channel, state returns to idle, probes happen
+between captures, CAM1-CAM4 in one object. All other suites unchanged (pins
+350 with the other session's shutter-pin rows).
+
+**Images.** `48f362e` (the scheduler alone, on 0.4.6): `kino-p4.bin`
+1,451,504 B, SHA-256 `5aeede91…46bb`, two passes identical; `boot-437`.
+Then the other session committed the shutter pin (`50c957a`, ECN-0003,
+firmware 0.4.7) and flashed its own build; the final image here is a clean
+`git archive` of `50c957a`, `kino-p4.bin` 1,451,072 B, SHA-256
+`6764882e14366e8736fa2a999eb250727a0db7781c61563c8a7db8ddcbec3a50`, two passes
+identical, bench flags as every image today, the working tree's
+`dependencies.lock` overlaid, P4 only, C6 untouched; `boot-441`, SD mounted,
+CAM1 `OV3660 ready`, `IP_READY`, queue empty, `failed` 11 parked from before.
+
+**Test A - idle availability, 100 requests each image.** One request at a
+time (the reply returns when the capture is done), gaps randomised 200-2600 ms
+so requests land at every phase of the 10 s sweep.
+
+| Image | requests | accepted | false BUSY | other | waited for a probe | max wait | sweep deferred / ran |
+|---|---|---|---|---|---|---|---|
+| `48f362e` | 100 | 99 | **0** | 1 `CAMERA_OFFLINE "No camera answered"` (#22; CAM1 ready before and after; not the sweep) | 12 | 279 ms | 75 / 176 |
+| `50c957a` | 100 | 100 | **0** | 0 | 11 | 240 ms | 51 / 167 |
+
+`totalMs` 1173 / 1345 / 1594 / 2424 (min / median / p95 / max) on the final
+image; CRC 100/100; 100 unique UUIDs; chunk retries 1 (6 on the first image,
+all recovered, CRC matched).
+
+**Test B - the probe window.** A host cannot aim at a 300 ms probe through
+a ~0.5 s bench process; the mode that polled `probesRun` saw each sweep 6-15 s
+late and hit no window (20 of 20 accepted, `probeWaitMs` 0 - reported as not
+targeting, not as evidence). The burst mode (40 back-to-back requests, 0-400
+ms gaps) landed 9 inside a probe: waits 1, 2, 117, 135, 165, 188, 204, 223,
+275 ms, none refused. With Test A that is 32 requests that met a probe on the
+wire across the session: **0 refused, longest wait 279 ms**, every one under
+the 300 ms transaction it waited for.
+
+**Test C - a genuine concurrent capture still answers BUSY.** Two
+`CAMERA_CAPTURE` frames in flight on one link do not test this: the KDP
+dispatcher is single-threaded, so the second frame is parsed after the first
+reply and simply runs next (three spacings, 300 / 800 / 1200 ms: both frames
+accepted, serialised, 0 CRC failures - no overlap, no corruption). The real
+BUSY needs the lock held by another task: `CAMERA_SOAK_TEST` (cam1, 4 captures, 2500 ms apart) runs on its own task and holds `capture_lock()` for the whole run. Four `CAMERA_CAPTURE` requests during it (+1.2, +3.9, +6.5, +9.2 s): **4 of 4 `BUSY "A capture is already running"`**; `probesDeferred` +6 while the soak held the cameras, so maintenance defers to a bench holder exactly as to a capture; the first request after the soak (+18.3 s) was accepted (CAP_000598, 1502 ms, `probeWaitMs` 0). The one real BUSY is intact.
+
+**Node discovery continues.** 90 s at idle: `probesRun` 356 → 387 (four
+probes per 10 s sweep), `cam1 ready`, `cam2-4 offline` throughout; over the
+session `probesRun` climbed on every check while `probesDeferred` climbed
+only during captures (0 → 97 → 97 at rest).
+
+**Connected regression.** After the backlog drained (uploaded 62 → 136 → 169 at rest, the rescan refilling the RAM list in batches): 5 idle captures 1395 / 1500 / 2649 ms (min / median / max; the 2649 ms one had 0 chunk retries and `sdWait` 0 - not explained by this telemetry), `sdWait` 0; 5 back-to-back with uploads in flight 1487 / 1519 / 1538 ms, `sdWait` ≤ 17 ms, `uploadActive` at 3 of 5 shutters; one `C6_RESET_BENCH` pass with captures in `C6_BOOTING` (x2), `WIFI_CONNECTING` and `IP_READY` (x2), 1336 / 1385 / 1881 ms, `IP_READY` back ~12 s after the pulse (COM10 witnessed the C6 ROM boot), the queue resumed unaided. 15 of 15: CRC matched, one backend row each, same Roll, card `C1.JPG` pulled for all 15 - JPEG decodes 1600x1200, SD == object == `assets.sha256`; duplicate rows in `captures` 0; 0 BUSY. Resources over 2138 s of `boot-441` and ~190 captures: heap 23,055-23,076 KB flat, internal free 57-77 KB, internal minimum 20 KB (Gate F saw 26 KB over a shorter run with an emptier queue list), largest DMA block 15 KB, task stacks constant (capture 5792, cam1 5312, upqueue 2368, c6link 1972, kdp 3664 B). No deadlock, no watchdog, session unbroken.
+
+**Camera UART.** No `FIFO OVERRUN`, no offset-8192 failure, no `TIMEOUT cmd
+0x11` seen. Chunk retries: 6 in 99 (first image), 1 in 100, 1 in 60, all
+recovered by the link's retry with a matching CRC. Not reproduced, not fixed.
+
+**Observed beside the question, not acted on.** (1) Under nine minutes of
+near-continuous shutter (a request every ~3 s) the upload queue completed
+nothing - every step yielded to the next capture - and drained once the
+shutter rested; the RAM list (`UPLOAD_QUEUE_MAX` 32) also filled at ~160
+captures, the rest waiting on the card for the rescan. Photography winning is
+the design; a queue that cannot finish one chain in the gaps is a Gate F
+follow-up. (2) One `CAMERA_OFFLINE "No camera answered"` in 260 requests
+(`48f362e`, #22) with CAM1 ready before and after - a node that missed one
+command, recorded for the camera-link watch.
+
+**Verdict.** Every pass criterion of the brief held: 200 idle requests with 0 false BUSY (100 on each image); 32 requests that met a probe on the wire were all admitted and waited at most 279 ms; a genuine second capture is still refused, 4 of 4; no same-UART overlap by construction (the channel mutex is untouched and the scheduler adds one-transaction-per-channel above it); discovery continued (four probes per sweep, CAM1 ready, CAM2-4 offline); CAM1 and SD healthy throughout; 15 of 15 regression captures byte-identical end to end; no new leak or deadlock. **SHUTTER AVAILABILITY GO.** Scope: the one-camera body. The same scheduler object holds CAM1-CAM4; the four-camera transfer itself, synchronisation and skew are unmeasured and not claimed.
+
 ### Gate F - photography wins, measured on one camera, 2026-08-30
 
 **Scope, stated first.** One camera node on the wire (CAM1, OV3660,
@@ -438,7 +553,8 @@ state (the baseline at idle had one too). The cause is the node sweep holding
 `capture_lock` for its HELLO round (`main.c`), now ~1 s in every ~19 s on a
 one-camera body. A press landing in that window is refused in microseconds
 with a reason; it is not lost to the radio, but it is a press refused, and it
-is recorded here as an open defect outside Gate F's question.
+was recorded here as an open defect outside Gate F's question - closed the
+same day, "Shutter availability" above.
 
 **Operator retry.** `UPLOAD_QUEUE_RETRY` revives the parked jobs held in RAM
 (`PARKED_IN_RAM_MAX` 4) and the rescan brings the next four back as parked, so
