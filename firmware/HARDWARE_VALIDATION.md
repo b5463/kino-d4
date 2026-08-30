@@ -17,16 +17,18 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-30, firmware 0.4.5
+## Status — updated 2026-08-30, firmware 0.4.6
 
 0.4.4 is the first firmware whose photographs have reached a Roll on a real
 backend: capture, thumbnail-first upload, byte-identical original, worker jobs
 settled, one row per photograph - on the repository's own API over the LAN, not
 the production host. The session is recorded below ("The first photographs reach
 a Roll"). Two application defects were found and fixed on the way; both are
-measured there. 0.4.5 adds a bench-only C6 reset and with it the finding
-that a C6 reset is not recovered without a P4 reboot ("ROLL-C test 3",
-below). The 0.4.0 paragraph that follows is history.
+measured there. 0.4.5 added a bench-only C6 reset and with it the finding
+that a C6 reset was not recovered without a P4 reboot; 0.4.6 recovers it -
+five times in a row on the bench, and under a pending upload - and closes
+the local Roll gate: **LOCAL ROLL E2E GO** ("The radio recovers from a C6
+reset", below). The 0.4.0 paragraph that follows is history.
 
 ## Status — updated 2026-08-27, firmware 0.4.0
 
@@ -270,6 +272,122 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### The radio recovers from a C6 reset without a P4 reboot - ROLL-C test 3 PASS, 2026-08-30
+
+Firmware 0.4.6 (`6bfcacd`), bench image `kino-p4.bin` 1,448,800 B, SHA-256
+`8c9016f0d64feefba753cf62abd5cb73c917d97b33285ebc59cc63e653b711f8`, two
+clean `git archive` passes identical, `sdkconfig.radio` +
+`KINO_ROLL_API_BASE=https://kino.acronym.sk` + `KINO_C6_RESET_BENCH=1`, the
+working tree's `dependencies.lock` overlaid as on every image this session.
+P4 flashed only; the C6 image is the one from 08-29. Host suites 2,634 checks
+(radio-recovery 113 new, roll-queue 813).
+
+**Root cause, as found.** Three host-side facts, each measured on its own
+image before the next one was written:
+
+1. The host stack held the state of the previous coprocessor and nothing
+   re-established it (0.4.5). With the first 0.4.6 image, tearing it down was
+   itself the problem: the remote Wi-Fi deinit RPC went into the dead slave,
+   ESP-Hosted's SDIO write thread spun on it, and `eh_host_bus_deinit()`
+   waited to join that thread - one attempt hung in teardown, one ended in a
+   watchdog panic. Quiesce first, send nothing, then deinit: safe.
+2. Re-enumerating the card in place (the component's own
+   `eh_host_bus_connect_to_slave()`) brought `rx_ready` back on every attempt
+   and never `tx_ready`: the read task opens the slave's data path once, at
+   task start, and after re-opening it by hand every frame from the rebooted
+   slave read as ~979 KB - the component's RX/TX byte counters are static to
+   its bus file and reset only in its own deinit/init, while the slave
+   restarts at zero. So the transport has to come down and up.
+3. The re-init then asserted 14 s in, every time: "SDIO SW_AGGR advertised
+   15872 B buffers, host cannot allocate; failing init (no silent degrade)".
+   IDF 5.5.1 registers the P4's PSRAM heap without `MALLOC_CAP_DMA`, so every
+   ESP-Hosted buffer is internal RAM; `GET_RUNTIME_STATS` (new fields) showed
+   53 KiB internal free with a 7 KiB largest DMA block ten seconds after
+   boot. `kdp_server`'s two 16 KiB frame buffers, static in internal RAM for
+   no reason, moved to PSRAM; and a recovery reserve of two 16 KiB internal
+   DMA blocks is taken right after bring-up (`2/2 held; largest free
+   31744 B` at boot) and freed the moment before `esp_hosted_init()`. After
+   that the transport, the version gate and the remote Wi-Fi all came back -
+   and lwip asserted `netif_add: netif already added`, because teardown had
+   told the netif "disconnected" but not "stopped". Both actions now.
+
+**Recovery, as it runs** (`radio_recovery.c`, driven by `net_hosted.c`):
+detect → quiesce → `esp_hosted_deinit` → C6 pulse → reserve freed,
+`esp_hosted_init` + `connect_to_slave` → rx_ready → rx && tx → version RPC →
+stale Wi-Fi deinit over the live transport, init/STA/start → stored
+credentials → DHCP → `recoveries` +1, `upload_queue_network_restored()`.
+Bounded waits, 2 s doubling backoff to 60 s, parked after 6 with the reason
+in `NETWORK_STATUS`, generation-guarded observations, no reboot in the action
+set (host test L/M enumerates it).
+
+**Physical test A (no upload), `boot-432`.** T0 `C6_RESET_BENCH` 15:13:00.46;
+T1 C6 ROM banner on COM10 15:13:01.65; T2 link lost 15:13:02.81; `ESP-Hosted
+transport init` +4.2 s; `WIFI_CONNECTING` +6.1 s; `IP_WAIT` +8.0 s; T7
+`IP_READY` 15:13:10.27 - **9.8 s, automatic, P4 session unchanged** (uptime
+63 → 76 s), SD mounted, CAM1 `ready`, `recoveries 1`. The next cycle on the
+raw console, the device's own clock: `recovered without a reboot in 7270 ms:
+release +530 rx +2820 tx +2820 version +2825 assoc +5270`.
+
+**Physical test B (three cycles), `boot-432` throughout, `recoveries` 3 → 5:**
+
+| Cycle | T0 | C6 ROM | link lost | IP_READY | latency | heap total / internal / largest DMA |
+|---|---|---|---|---|---|---|
+| B1 | 15:15:07.85 | 15:15:09.03 | 15:15:10.42 | 15:15:24.41 | 16.6 s | 26,984 KB / 69 KB / 16 KB |
+| B2 | 15:15:43.10 | 15:15:44.27 | 15:15:46.05 | 15:17:46.03 | 122.9 s | 26,984 / 69 / 16 |
+| B3 | 15:18:04.58 | 15:18:05.73 | 15:18:06.89 | 15:18:26.38 | 21.8 s | 26,984 / 69 / 16 |
+
+No reboot, no operator action, no credential re-entry, SD mounted and CAM1
+`ready` after each; `sdErrors 0`; `internalMinFreeKB 44` constant; heap flat
+to the kilobyte across five recoveries - no leak. B2's 122.9 s was spent in
+`esp_hosted_deinit()` itself (0.1 s, 6.7 s and 108 s on different cycles):
+the component's feature auto-deinit RPCs timing out against the slave that is
+gone, 5 s each. Bounded; the largest share of a slow recovery; not ours.
+
+**ROLL-C test 3.** `CAP_000192`, uuid `3fa8867d-2952-4493-9ad0-91300152e045`,
+Roll `roll__Mg6PTKzfodtJ7zxCjBoNA` (RRG8AZ), META `rollId` the same, 76,135 B,
+SD SHA-256 `0DB6F41317A7D683D85F659976E7081185D56D5A71CD9309993C151845F6BE71`,
+backend rows 0. API stopped; record `RETRY_WAIT` attempts 2,
+`ESP_ERR_HTTP_CONNECT`.
+
+| | time (local) | |
+|---|---|---|
+| T0 pending confirmed | 15:19:41.60 | P4 `boot-432`, uptime 471 s |
+| T1 `C6_RESET_BENCH` | 15:19:48.49 | |
+| T2 C6 ROM boot (COM10) | 15:19:49.64 | `rst:0x1 (POWERON)`, `kino-c6`, `EH-3.0.6` |
+| link lost | 15:19:51.01 | `C6_BOOTING / C6_LINK_LOST`, recovery quiescing |
+| T3/T4 SDIO rx / handshake | +2.8 s after loss (device clock, previous cycle) | `ESP-Hosted transport init` reported 15:19:58.89 |
+| T5 associated | ≈15:20:02 | `WIFI_CONNECTING` 15:20:00.78 |
+| T6 `IP_READY` | 15:20:04.52 | 16.0 s after the reset; API still down; record `RETRY_WAIT` attempts 4, same UUID |
+| T7 API listening | 15:20:45.22 | |
+| T8 automatic retry | 15:20:57.48 | 12.3 s after the API returned; `pending 1 → uploading 1` |
+| T9 `POST …/captures` | 15:20:57.48 | 201, 104 ms |
+| T10 thumb complete | 15:20:57.96 | init 200, PUT 200 (63 ms), complete 200 |
+| T11 original complete | 15:20:58.52 | init 200, PUT 200 (221 ms), complete 200 |
+| T12 `POST …/complete` | 15:20:58.62 | 200; record `COMPLETE`, `captureId cap_fqyo5rZX…` |
+
+P4 session at T0 and T12: `boot-432` (uptime 471 → 548 s). Postgres: exactly
+one row, `cap_fqyo5rZXewHm_R-l2c1jwA`, roll `roll__Mg6PTK…`/RRG8AZ. Assets:
+thumb 7,653 B, original-frame 76,135 B, metadata, kino-still, all `ready`.
+MinIO: `derived/thumb.jpg` 13:20:57Z, `original/cam-01.jpg` 13:20:58Z. SD =
+object = `assets.sha256` = `0DB6F413…F6BE71`. No duplicate row, no
+relabelling, no lost job; no request reached the API while it was down. Smoke
+capture `CAP_000193`, 79,064 B, 1,310 ms, META valid, CAM1 `ready`, SD
+mounted - and it uploaded too.
+
+**Verdict: ROLL-C test 3 PASS.** ROLL-A, ROLL-B, ROLL-C1, C2, C3 all PASS:
+**LOCAL ROLL E2E GO.** That is the local Roll durability gate and nothing
+else: C6-E production HTTPS stays deferred on server-side routing, Gate F is
+not started.
+
+**Kept out of scope, documented:** `CAMERA_CAPTURE` answering `BUSY` shortly
+after boot and after idle; ≥4 KiB device→host KDP frames and the `GET_LOGS`
+reply timing out; `serverReachable` not a probe; the `ui … STALLED` log line
+every second; the camera UART offset-8192 defect; backend `captures.status`
+never leaving `processing`; the component's 5 s-per-RPC deinit variance;
+three C6 ROM boots per recovery (bench pulse, RESET_C6, the component's own
+reset in `connect_to_slave`) - harmless, and the last two are the same
+redundancy first boot has.
 
 ### ROLL-C test 3: the C6 resets under a pending upload, and the link does not come back, 2026-08-30
 

@@ -827,16 +827,19 @@ static void perform(rr_action_t act) {
     case RR_ACT_TEARDOWN: {
       report_recovery("quiescing the host-side radio state");
       /*
-       * What is NOT done here, and why: esp_hosted_deinit(). Measured on
-       * KD4-D121BC (0.4.6, first image): with the slave gone, ESP-Hosted's SDIO
-       * write thread sits in its credit poll against a card that no longer
-       * answers, and eh_host_bus_deinit() joins that thread - one attempt
-       * hung in teardown for as long as anyone watched, the other ended in a
-       * watchdog panic. The transport is therefore never torn down; it is
-       * re-enumerated in place by eh_host_bus_connect_to_slave() in HOSTED_UP,
-       * which is the component's own path for a slave that has been reset.
-       * The remote Wi-Fi deinit RPC is deferred to WIFI_INIT, when the fresh
-       * coprocessor can answer it in milliseconds instead of a 5 s timeout.
+       * Order, found on the bench (KD4-D121BC, 2026-08-30, six images):
+       * quiesce first, sending nothing into the dead coprocessor - the first
+       * image sent the remote Wi-Fi deinit RPC here and the SDIO write thread
+       * then spun on it while eh_host_bus_deinit() waited to join it (one
+       * hang, one watchdog panic). Then esp_hosted_deinit(): the transport has
+       * to come down and up, because the component's RX/TX byte counters are
+       * reset only there and a rebooted slave restarts its own at zero (the
+       * in-place re-enumeration tried in between read every frame as ~979 KB).
+       * The stale remote stack is deinitialised at WIFI_INIT, over a transport
+       * that answers. Deinit itself took 0.1 s, 6.7 s and 108 s on the bench -
+       * the component's feature auto-deinit RPCs timing out against the slave
+       * that is gone, 5 s each; bounded, and the largest share of a slow
+       * recovery.
        */
       net_wifi_suspend();
       /* The transport has to come down and back up: the component's RX/TX

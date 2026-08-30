@@ -15,15 +15,20 @@
  * pinned components tolerate (esp_hosted 3.0.6, esp_wifi_remote 1.6.4),
  * found on the bench rather than in a document:
  *
- *   TEARDOWN      quiesce: stop wanting an association, tell the netif it
- *                 is disconnected, ignore events, mark the transport flags
- *                 inactive. Nothing is deinitialised and no RPC is sent:
- *                 esp_hosted_deinit() joins an SDIO write thread that spins
- *                 on a vanished card (measured: hang, then a watchdog panic),
- *                 and an RPC to a dead coprocessor is a 5 s timeout
+ *   TEARDOWN      quiesce first - stop wanting an association, tell the netif
+ *                 it is disconnected AND stopped, ignore events, send no RPC
+ *                 to a coprocessor that cannot answer - then
+ *                 esp_hosted_deinit(). The transport has to come down and up:
+ *                 the component's RX/TX byte counters reset only there, and a
+ *                 rebooted slave restarts its own at zero (measured: every
+ *                 frame read as ~979 KB until then). The deinit was safe once
+ *                 nothing had been sent into the dead slave first
  *   RESET_C6      the enable line, bring-up's own 20 ms
- *   HOSTED_UP     eh_host_bus_connect_to_slave(): the component's own
- *                 slave-reset-and-card-init, in place, on the open bus
+ *   HOSTED_UP     free the recovery reserve (two 16 KiB internal DMA blocks
+ *                 held since bring-up: the P4's PSRAM heap carries no
+ *                 MALLOC_CAP_DMA, and the component asserts when its 15,872 B
+ *                 SW_AGGR buffer cannot be allocated), then esp_hosted_init()
+ *                 and esp_hosted_connect_to_slave() as at first boot
  *   SDIO_WAIT     rx_ready - enumeration actually happened
  *   HANDSHAKE     rx_ready && tx_ready - usable both ways
  *   VERSION_GATE  the real version RPC over the restored transport, same
@@ -50,9 +55,9 @@
 
 typedef enum {
   RR_HEALTHY = 0,   /* nothing to recover; the link is up or never was */
-  RR_TEARDOWN,      /* quiesce host-side radio state; nothing deinitialised */
+  RR_TEARDOWN,      /* quiesce, then esp_hosted_deinit; no RPC to the dead slave */
   RR_RESET_C6,      /* one enable-line pulse */
-  RR_HOSTED_UP,     /* re-enumerate the SDIO card in place */
+  RR_HOSTED_UP,     /* reserve freed, esp_hosted_init + connect_to_slave */
   RR_SDIO_WAIT,     /* waiting for rx_ready */
   RR_HANDSHAKE_WAIT,/* rx_ready, waiting for tx_ready */
   RR_VERSION_GATE,  /* the version RPC is in flight */
