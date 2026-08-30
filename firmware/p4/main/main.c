@@ -61,6 +61,9 @@ static void gallery_on_capture(const capture_report_t *r) {
  * never a photograph: the capture is committed on the card either way, and
  * boot-time reconciliation finds anything this missed.
  */
+/** HELLO timeout for a channel that answered nothing last time. */
+#define OFFLINE_PROBE_MS 300u
+
 static void queue_on_capture(const capture_report_t *r) {
   if (r == NULL || !r->ok || r->stored <= 0) return;
   (void)upload_queue_enqueue(r->uuid, r->stored, r->thumbnail_ms > 0);
@@ -134,7 +137,14 @@ static void cam_probe_task(void *arg) {
     }
     int online_count = 0;
     for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
-      const bool online = camlink_hello_ch(cam) == ESP_OK;
+      /* A channel believed empty gets a short HELLO. The capture lock is held
+       * for this whole sweep, and the default 3000 ms per absent channel is
+       * what refused half the shutter presses on a one-camera body: three
+       * empty channels cost ~9 s of lock every ~19 s (Gate F bench,
+       * 2026-08-30, 14 of 20 CAMERA_CAPTURE requests BUSY at idle). A node
+       * that is present answers HELLO in a few milliseconds. */
+      const uint32_t probe_ms = was_online[cam] ? 3000u : OFFLINE_PROBE_MS;
+      const bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
       if (online) online_count++;
       if (online == was_online[cam]) continue;
 

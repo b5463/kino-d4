@@ -101,6 +101,13 @@ void camlink_get_info_ch(int cam, camlink_info_t *out);
 void camlink_get_stats_ch(int cam, camlink_stats_t *out);
 void camlink_reset_stats_ch(int cam);
 esp_err_t camlink_hello_ch(int cam);
+/** HELLO with a caller-chosen timeout. For a channel believed empty a few
+ * hundred milliseconds is generous - a node that is there answers in a few -
+ * and the difference is what a periodic probe would otherwise charge the
+ * shutter: with the default 3000 ms per absent channel, three empty channels
+ * held the capture lock for ~9 s of every ~19 s and half the shutter presses
+ * on a one-camera body were refused BUSY (Gate F bench, 2026-08-30). */
+esp_err_t camlink_hello_ch_timeout(int cam, uint32_t timeout_ms);
 esp_err_t camlink_ping_ch(int cam, uint32_t *rtt_ms);
 /*
  * The per-camera capture and read take an explicit timeout, because the two

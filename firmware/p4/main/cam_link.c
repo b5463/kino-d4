@@ -414,13 +414,14 @@ static void copy_str(char *dst, size_t cap, const cJSON *item) {
   if (cJSON_IsString(item)) strlcpy(dst, item->valuestring, cap);
 }
 
-esp_err_t camlink_hello_ch(int cam) {
+esp_err_t camlink_hello_ch(int cam) { return camlink_hello_ch_timeout(cam, DEFAULT_TIMEOUT_MS); }
+
+esp_err_t camlink_hello_ch_timeout(int cam, uint32_t timeout_ms) {
   if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
   channel_t *ch = &s_ch[cam];
   uint8_t resp[768];
   size_t len = 0;
-  esp_err_t err = request(cam, NL_CMD_HELLO, NULL, resp, sizeof resp - 1, &len,
-                          DEFAULT_TIMEOUT_MS);
+  esp_err_t err = request(cam, NL_CMD_HELLO, NULL, resp, sizeof resp - 1, &len, timeout_ms);
 
   xSemaphoreTake(ch->lock, portMAX_DELAY);
   if (err != ESP_OK) {
