@@ -101,6 +101,12 @@ typedef enum {
   RQ_DISP_REREAD,      /* stored bytes rejected: re-read from SD, bounded */
   RQ_DISP_PARK,        /* this job can never succeed; the queue continues */
   RQ_DISP_HALT,        /* credentials or association are wrong; stop the queue */
+  /* The step did not run: a capture held the card and the upload yielded, as
+   * it is designed to. Nothing was judged, so nothing is counted - a yield
+   * costs no attempt. Gate F bench 2026-08-30: a good photograph parked
+   * FAILED because twelve consecutive yields under a burst of shutters were
+   * booked as transient failures. Appended so no other value moves. */
+  RQ_DISP_YIELD,
 } rq_disposition_t;
 
 /**
@@ -173,6 +179,10 @@ uint32_t rq_backoff_ms(uint32_t attempts);
  * would walk the whole queue into FAILED for a fault the user can fix.
  */
 rq_disposition_t rq_classify_status(int status);
+
+/** A step result with the yield flag folded in: yielded wins over any status,
+ * because a step that never ran has no status worth reading. */
+rq_disposition_t rq_classify_step(int status, bool card_yielded);
 
 /**
  * True when a job in RETRY_WAIT is ready to run again. Split out so the

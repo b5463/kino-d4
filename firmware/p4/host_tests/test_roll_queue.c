@@ -248,6 +248,40 @@ static void test_deadline_from_a_previous_boot_is_void(void) {
   rq_job_boot_resume(NULL);
 }
 
+static void test_yield_costs_no_attempt(void) {
+  /* Gate F bench 2026-08-30: CAP_000231 parked FAILED with attempts 20 and
+   * "the asset is not on the card" while C1.JPG sat on the card intact -
+   * every stat during a burst of shutters found the card held by a capture,
+   * and each refusal was booked as a transient failure. */
+  CHECK(rq_classify_step(0, true) == RQ_DISP_YIELD, "a yield is a yield whatever the status");
+  CHECK(rq_classify_step(201, true) == RQ_DISP_YIELD, "even with a status the step did not run");
+  CHECK(rq_classify_step(0, false) == RQ_DISP_RETRY, "no yield: status 0 is the usual transient");
+  CHECK(rq_classify_step(201, false) == RQ_DISP_OK, "no yield: the status speaks");
+
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, true);
+  job.state = RQ_ORIGINALS_UPLOADING;
+  snprintf(job.capture_id, sizeof job.capture_id, "cap_x");
+  job.thumb_done = true;
+  job.attempts = 3;
+  rq_step_t s = rq_next_step(&job, 0);
+  for (int i = 0; i < 100; i++) {
+    const bool dirty = rq_apply(&job, s, RQ_DISP_YIELD, "yielded the card to a capture");
+    CHECK(!dirty, "a yield changes nothing durable");
+    CHECK(job.state == RQ_RETRY_WAIT, "waits, briefly");
+    CHECK(job.attempts == 3, "attempts untouched after %d yields, got %u", i + 1, job.attempts);
+  }
+  CHECK(job.state != RQ_FAILED, "a hundred yields never park a photograph");
+  CHECK(strcmp(job.last_error, "yielded the card to a capture") == 0, "the wait says why");
+  /* The next real outcome is judged on its own. */
+  job.state = RQ_ORIGINALS_UPLOADING;
+  rq_apply(&job, s, RQ_DISP_RETRY, "connect failed");
+  CHECK(job.attempts == 4, "a real transient still counts, got %u", job.attempts);
+  /* And a settled job ignores a yield, like everything else. */
+  job.state = RQ_FAILED;
+  CHECK(!rq_apply(&job, s, RQ_DISP_YIELD, "x"), "parked stays parked");
+}
+
 static void test_network_restored_makes_waiting_jobs_due(void) {
   /* The radio recovered from a C6 reset (ROLL-C test 3). A job that backed
    * off while the server was unreachable is due now - with its history. */
@@ -732,6 +766,7 @@ int main(void) {
   test_reboot_before_registering_is_safe();
   test_deadline_from_a_previous_boot_is_void();
   test_network_restored_makes_waiting_jobs_due();
+  test_yield_costs_no_attempt();
   test_state_disagreeing_with_flags_cannot_strand_a_photograph();
   test_transient_failure_backs_off_then_resumes();
   test_retry_is_bounded();

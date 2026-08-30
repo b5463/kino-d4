@@ -126,6 +126,14 @@ bool roll_http_sha256_file(const char *file_path, size_t offset, size_t len, cha
 
 /** Size of a file on the card, or 0. */
 size_t roll_http_file_size(const char *file_path);
+/** As above, and says whether 0 meant "could not take the card" rather than
+ * "no such file or empty". The two were one number until Gate F showed a good
+ * photograph parked as "not on the card" after a burst of shutters. */
+size_t roll_http_file_size_ex(const char *file_path, bool *card_busy);
+/** As roll_http_sha256_file, reporting a card yield (acquire refused, or a
+ * capture asked for the card mid-hash) separately from a read failure. */
+bool roll_http_sha256_file_ex(const char *file_path, size_t offset, size_t len, char *hex,
+                              size_t cap, bool *card_busy);
 
 #endif /* KINO_RADIO */
 

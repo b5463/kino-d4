@@ -402,7 +402,7 @@ static bool run_one_step(void) {
 
   roll_step_result_t res = {0};
   s_http(&snapshot, step, &res);
-  rq_disposition_t disp = rq_classify_status(res.status);
+  rq_disposition_t disp = rq_classify_step(res.status, res.card_yielded);
 
   lock();
   /* Apply to the live record, not the snapshot: retry_all may have cleared this
@@ -438,8 +438,9 @@ static bool run_one_step(void) {
     /* roll_queue.c never reads a clock, so the deadline is set here. A re-read
      * runs immediately: a checksum mismatch is not a network failure and has
      * nothing to wait for. */
-    job->next_attempt_ms =
-        disp == RQ_DISP_REREAD ? now_ms() : now_ms() + jittered_backoff(job->attempts);
+    job->next_attempt_ms = disp == RQ_DISP_REREAD ? now_ms()
+                           : disp == RQ_DISP_YIELD ? now_ms() + CARD_WAIT_MS
+                                                   : now_ms() + jittered_backoff(job->attempts);
   }
   if (disp == RQ_DISP_HALT) s_halted = true;
   if (res.detail[0] != '\0') rq_redact(s_last_error, sizeof s_last_error, res.detail);
@@ -462,7 +463,11 @@ static bool run_one_step(void) {
     if (!wrote) {
       lock();
       const int back_at = relocate_job(idx, snapshot.uuid);
-      if (back_at >= 0) {
+      /* A settled job stays settled: re-stepping a parked job because its
+       * record could not be written is how one reached 20 attempts against a
+       * budget of 12 (Gate F bench, 2026-08-30). The record catches up at the
+       * next successful write or at boot reconciliation. */
+      if (back_at >= 0 && snapshot.state != RQ_FAILED && snapshot.state != RQ_COMPLETE) {
         s_jobs[back_at].state = RQ_RETRY_WAIT;
         s_jobs[back_at].next_attempt_ms = now_ms() + (busy ? CARD_WAIT_MS : RQ_BACKOFF_CAP_MS);
       }

@@ -24,6 +24,11 @@ uint32_t rq_backoff_ms(uint32_t attempts) {
   return ms > RQ_BACKOFF_CAP_MS ? RQ_BACKOFF_CAP_MS : ms;
 }
 
+rq_disposition_t rq_classify_step(int status, bool card_yielded) {
+  if (card_yielded) return RQ_DISP_YIELD;
+  return rq_classify_status(status);
+}
+
 rq_disposition_t rq_classify_status(int status) {
   /* No response at all: DNS, TLS, connect, timeout, or the C6 link dropping
    * mid-request. Always transient — the bytes were never judged. */
@@ -239,6 +244,17 @@ bool rq_apply(rq_job_t *job, rq_step_t step, rq_disposition_t disp, const char *
         job->state = RQ_RETRY_WAIT;
       }
       return true;
+    }
+
+    case RQ_DISP_YIELD: {
+      /* Photography won the card; the upload steps aside and comes back. Not a
+       * failure of the network, the server or the file, so `attempts` is not
+       * touched - a burst of shutters must not park a photograph. The state is
+       * RETRY_WAIT only so the caller can schedule the short wait; the record
+       * on the card is not worth rewriting for it. */
+      set_error(job, detail);
+      job->state = RQ_RETRY_WAIT;
+      return false;
     }
 
     case RQ_DISP_REREAD: {

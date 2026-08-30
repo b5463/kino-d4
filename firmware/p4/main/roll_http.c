@@ -405,8 +405,14 @@ void roll_http_perform(const roll_http_req_t *req, roll_http_out_t *out) {
 /* The card                                                           */
 /* ------------------------------------------------------------------ */
 
-size_t roll_http_file_size(const char *file_path) {
-  if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) return 0;
+size_t roll_http_file_size(const char *file_path) { return roll_http_file_size_ex(file_path, NULL); }
+
+size_t roll_http_file_size_ex(const char *file_path, bool *card_busy) {
+  if (card_busy != NULL) *card_busy = false;
+  if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) {
+    if (card_busy != NULL) *card_busy = true;
+    return 0;
+  }
   size_t bytes = 0;
   FILE *f = fopen(file_path, "rb");
   if (f != NULL) {
@@ -422,8 +428,17 @@ size_t roll_http_file_size(const char *file_path) {
 
 bool roll_http_sha256_file(const char *file_path, size_t offset, size_t len, char *hex,
                            size_t cap) {
+  return roll_http_sha256_file_ex(file_path, offset, len, hex, cap, NULL);
+}
+
+bool roll_http_sha256_file_ex(const char *file_path, size_t offset, size_t len, char *hex,
+                              size_t cap, bool *card_busy) {
+  if (card_busy != NULL) *card_busy = false;
   if (cap < 65) return false;
-  if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) return false;
+  if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) {
+    if (card_busy != NULL) *card_busy = true;
+    return false;
+  }
 
   bool ok = false;
   uint8_t *buf = malloc(CHUNK_BYTES);
@@ -441,6 +456,7 @@ bool roll_http_sha256_file(const char *file_path, size_t offset, size_t len, cha
        * megabyte to be hashed, and re-hashing later is cheap. */
       if (storage_yield_requested(STORAGE_USER_UPLOAD)) {
         ok = false;
+        if (card_busy != NULL) *card_busy = true;
         break;
       }
       const size_t want = left < CHUNK_BYTES ? left : CHUNK_BYTES;

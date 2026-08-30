@@ -201,17 +201,30 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
   char file_path[200];
   upload_store_path(job->uuid, filename, file_path, sizeof file_path);
 
-  const size_t bytes = roll_http_file_size(file_path);
+  bool busy = false;
+  const size_t bytes = roll_http_file_size_ex(file_path, &busy);
   if (bytes == 0) {
     res->status = 0;
-    rq_redact(res->detail, sizeof res->detail, "the asset is not on the card");
+    if (busy) {
+      /* A capture has the card. Not a missing file and not a failure: the
+       * queue comes back in a moment and does not count this. */
+      res->card_yielded = true;
+      rq_redact(res->detail, sizeof res->detail, "yielded the card to a capture");
+    } else {
+      rq_redact(res->detail, sizeof res->detail, "the asset is not on the card");
+    }
     return;
   }
 
   char sha[65];
-  if (!roll_http_sha256_file(file_path, 0, bytes, sha, sizeof sha)) {
+  if (!roll_http_sha256_file_ex(file_path, 0, bytes, sha, sizeof sha, &busy)) {
     res->status = 0;
-    rq_redact(res->detail, sizeof res->detail, "could not hash the asset; card busy");
+    if (busy) {
+      res->card_yielded = true;
+      rq_redact(res->detail, sizeof res->detail, "yielded the card to a capture");
+    } else {
+      rq_redact(res->detail, sizeof res->detail, "could not hash the asset");
+    }
     return;
   }
 
@@ -269,6 +282,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
     roll_http_put_file(path, file_path, offset, len, &http);
     res->status = http.status;
     memcpy(res->detail, http.detail, sizeof res->detail);
+    if (http.status == 0 && strcmp(http.detail, "card busy") == 0) res->card_yielded = true;
     if (http.status < 200 || http.status >= 300) return;
   }
 

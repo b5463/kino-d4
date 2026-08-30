@@ -40,6 +40,9 @@ typedef struct {
   int status;
   char capture_id[RQ_CAPTURE_ID_LEN]; /* RQ_STEP_REGISTER only */
   char detail[RQ_ERROR_LEN];          /* already redacted */
+  /** The step did not run because a capture held the card. Costs no attempt;
+   * see RQ_DISP_YIELD. */
+  bool card_yielded;
 } roll_step_result_t;
 
 /**
