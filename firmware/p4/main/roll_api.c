@@ -79,8 +79,18 @@ static const char *TAG = "rollapi";
 /* ------------------------------------------------------------------ */
 
 /** Read a file off the card into a NUL-terminated buffer the caller frees. */
-static char *read_card_file(const char *path, size_t cap) {
-  if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) return NULL;
+/* `card_busy`, when given, says whether NULL meant "a capture holds the card"
+ * rather than "no such file or unreadable". Gate F bench 2026-08-30, second
+ * image: CAP_000253 parked with its record still saying QUEUED, attempts 0 -
+ * every META.JSON read during a burst of shutters was refused, each refusal was
+ * booked as a transient failure, and the persist that followed was refused by
+ * the same capture, so the 200 ms retry burned an attempt every 200 ms. */
+static char *read_card_file_ex(const char *path, size_t cap, bool *card_busy) {
+  if (card_busy != NULL) *card_busy = false;
+  if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) {
+    if (card_busy != NULL) *card_busy = true;
+    return NULL;
+  }
   char *buf = NULL;
   FILE *f = fopen(path, "rb");
   if (f != NULL) {
@@ -97,6 +107,10 @@ static char *read_card_file(const char *path, size_t cap) {
   }
   storage_release(STORAGE_USER_UPLOAD);
   return buf;
+}
+
+static char *read_card_file(const char *path, size_t cap) {
+  return read_card_file_ex(path, cap, NULL);
 }
 
 /**
@@ -118,10 +132,10 @@ static char *read_card_file(const char *path, size_t cap) {
  * Wiggle controls from that field and a single frame with Wiggle controls is a
  * broken page on a guest's phone.
  */
-static char *capture_document(const rq_job_t *job) {
+static char *capture_document(const rq_job_t *job, bool *card_busy) {
   char path[200];
   upload_store_path(job->uuid, "META.JSON", path, sizeof path);
-  char *text = read_card_file(path, 4096);
+  char *text = read_card_file_ex(path, 4096, card_busy);
   if (text == NULL) return NULL;
 
   cJSON *doc = cJSON_Parse(text);
@@ -160,12 +174,20 @@ static void step_register(const rq_job_t *job, roll_step_result_t *res) {
     return;
   }
 
-  char *doc = capture_document(job);
+  bool busy = false;
+  char *doc = capture_document(job, &busy);
   if (doc == NULL) {
+    res->status = 0;
+    if (busy) {
+      /* A capture has the card. The step did not run, so it is not judged:
+       * RQ_DISP_YIELD costs no attempt. */
+      res->card_yielded = true;
+      rq_redact(res->detail, sizeof res->detail, "yielded the card to a capture");
+      return;
+    }
     /* No META.JSON, or it will not parse. The photograph is still on the card
      * and this is not a network fault, so it is reported as one the queue can
      * re-read: rq_classify_status(0) keeps the job. */
-    res->status = 0;
     rq_redact(res->detail, sizeof res->detail, "META.JSON unreadable on the card");
     return;
   }

@@ -280,6 +280,22 @@ static void test_yield_costs_no_attempt(void) {
   /* And a settled job ignores a yield, like everything else. */
   job.state = RQ_FAILED;
   CHECK(!rq_apply(&job, s, RQ_DISP_YIELD, "x"), "parked stays parked");
+
+  /* The register step, the one CAP_000253 died in: a yielded META.JSON read
+   * leaves the job unregistered, unpunished and due again - never parked. */
+  rq_job_t fresh;
+  rq_job_init(&fresh, "7a2d9c11-3e4f-4b6a-9c8d-1e2f3a4b5c6d", "roll_0001", 1, true);
+  rq_step_t reg = rq_next_step(&fresh, 0);
+  CHECK(reg.kind == RQ_STEP_REGISTER, "a new job registers first");
+  for (int i = 0; i < 12; i++) {
+    CHECK(!rq_apply(&fresh, reg, RQ_DISP_YIELD, "yielded the card to a capture"),
+          "a yielded register is not durable");
+  }
+  CHECK(fresh.attempts == 0, "twelve yielded registers cost nothing, got %u", fresh.attempts);
+  CHECK(fresh.state == RQ_RETRY_WAIT, "waiting for the card, not parked");
+  CHECK(fresh.capture_id[0] == '\0', "still unregistered");
+  fresh.next_attempt_ms = 0;
+  CHECK(rq_next_step(&fresh, 1).kind == RQ_STEP_REGISTER, "and it registers next");
 }
 
 static void test_network_restored_makes_waiting_jobs_due(void) {
