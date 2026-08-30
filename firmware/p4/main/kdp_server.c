@@ -43,6 +43,7 @@
 #include "power.h"
 #include "pure.h"
 #include "storage.h"
+#include "upload_store.h"
 #include "taskmon.h"
 #include "usb_link.h"
 
@@ -1174,7 +1175,10 @@ static bool media_file_allowed(const char *name) {
   for (int i = 0; i < STORAGE_CAPTURE_FILE_COUNT; i++) {
     if (strcmp(name, STORAGE_CAPTURE_FILES[i]) == 0) return true;
   }
-  return false;
+  /* The upload record beside the capture. Readable so a bench can back up and
+   * audit the queue over KDP before touching it; it is not a capture file, so
+   * it stays out of STORAGE_CAPTURE_FILES and out of the delete path. */
+  return strcmp(name, UPLOAD_STORE_RECORD) == 0;
 }
 
 /*
