@@ -628,9 +628,14 @@ void net_wifi_suspend(void) {
    * next lease is a recovery for HWV_ROLL_RECONNECT's purposes. */
   s_was_disconnected = true;
   if (s_sta_netif != NULL) {
-    /* No STA_DISCONNECTED will ever arrive from a coprocessor that rebooted,
-     * so the netif is told by hand: DHCP client stopped, address cleared. */
+    /* No STA_DISCONNECTED and no STA_STOP will ever arrive from a coprocessor
+     * that rebooted, so the netif is told both by hand: DHCP client stopped
+     * and address cleared, then removed from lwip. The second matters:
+     * the next STA_START re-adds it, and lwip asserts on a netif added twice
+     * (measured: "netif_add ... netif already added", a panic 90 ms after the
+     * remote stack came back). */
     esp_netif_action_disconnected(s_sta_netif, WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, NULL);
+    esp_netif_action_stop(s_sta_netif, WIFI_EVENT, WIFI_EVENT_STA_STOP, NULL);
   }
   /* No RPC here: the coprocessor is gone and every request would sit out
    * ESP-Hosted's 5 s timeout while its TX path spins on a dead bus. The
