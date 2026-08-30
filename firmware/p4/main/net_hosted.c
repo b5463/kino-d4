@@ -37,6 +37,7 @@
 #include "freertos/task.h"
 #include "klog.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_hosted_event.h"
 #include "net_link.h"
 #include "net_time.h"
@@ -743,6 +744,50 @@ static void bring_up(void) {
 #define PROBE_PERIOD_MS 20000
 #define PROBE_CONFIRM_MS 1000
 
+/*
+ * The recovery reserve.
+ *
+ * ESP-Hosted's SDIO buffers are DMA-capable internal RAM: on the P4, IDF
+ * 5.5.1 registers the PSRAM heap without MALLOC_CAP_DMA, so the component's
+ * SPIRAM preference can never be satisfied and everything falls to internal
+ * memory. At first boot a 15,872 B block is there; after the camera has run
+ * for a minute it is not, and the component's INIT handler asserts on the
+ * advertised SW_AGGR buffer size ("no silent degrade") - measured on
+ * KD4-D121BC as a panic 14 s into every recovery attempt. So the blocks the
+ * re-init needs are taken here, right after bring-up while the heap still
+ * looks like first boot, and handed back the moment before esp_hosted_init()
+ * runs again: one for the probe, one for the aggregate TX buffer the bus
+ * allocates lazily on its first frame (and asserts on too).
+ */
+#define DMA_RESERVE_BLOCKS 2
+#define DMA_RESERVE_BYTES 16384
+static void *s_dma_reserve[DMA_RESERVE_BLOCKS];
+
+static void dma_reserve_take(void) {
+  int held = 0;
+  for (int i = 0; i < DMA_RESERVE_BLOCKS; i++) {
+    if (s_dma_reserve[i] == NULL) {
+      s_dma_reserve[i] = heap_caps_aligned_alloc(64, DMA_RESERVE_BYTES,
+                                                 MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    }
+    if (s_dma_reserve[i] != NULL) held++;
+  }
+  klog("C6", "recovery reserve: %d/%d x %d B internal DMA held; largest free %u B",
+       held, DMA_RESERVE_BLOCKS, DMA_RESERVE_BYTES,
+       (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+}
+
+static void dma_reserve_release(void) {
+  for (int i = 0; i < DMA_RESERVE_BLOCKS; i++) {
+    if (s_dma_reserve[i] != NULL) {
+      heap_caps_free(s_dma_reserve[i]);
+      s_dma_reserve[i] = NULL;
+    }
+  }
+  klog("C6", "recovery reserve released; largest free internal DMA block %u B",
+       (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+}
+
 static rr_t s_rr;
 static bool s_linked;                 /* bring-up or a recovery reached LINK_READY */
 static volatile bool s_loss_event;    /* transport failure event, or a bench reset */
@@ -818,6 +863,7 @@ static void perform(rr_action_t act) {
       return;
     case RR_ACT_HOSTED_UP: {
       report_recovery("ESP-Hosted transport init");
+      dma_reserve_release();
       int rc = -1;
       if (configure_transport()) {
         const int64_t t0 = esp_timer_get_time();
@@ -886,6 +932,8 @@ static void perform(rr_action_t act) {
            (long long)(s_rr.t_ip - l));
       /* Last: the queue's waiting jobs are due now, with their history. */
       upload_queue_network_restored();
+      /* And the next recovery's memory, while the heap is quiet. */
+      dma_reserve_take();
       return;
     }
     case RR_ACT_NONE:
@@ -911,6 +959,7 @@ static void supervisor_task(void *arg) {
     net_link_status(&st, now_ms());
     s_linked = st.state >= NET_C6_LINK_READY;
   }
+  if (s_linked) dma_reserve_take();
   rr_init(&s_rr);
   s_next_probe_ms = now_ms() + PROBE_PERIOD_MS;
   /* The default loop exists by now (esp_hosted_init created it). */

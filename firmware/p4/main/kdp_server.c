@@ -1815,6 +1815,16 @@ static void handle_runtime_stats(uint32_t seq) {
   cJSON_AddStringToObject(json, "resetReason", reset_reason_str());
   cJSON_AddNumberToObject(json, "freeHeapKB", heap_kb());
   cJSON_AddNumberToObject(json, "freePsramKB", psram_kb());
+  /* Internal RAM is the scarce one: ESP-Hosted's DMA buffers, the SDMMC
+   * driver and every ISR-touched buffer live there, and on the P4 the PSRAM
+   * heap carries no MALLOC_CAP_DMA. The largest DMA-capable block is what a
+   * radio recovery has to find (net_hosted.c, the recovery reserve). */
+  cJSON_AddNumberToObject(json, "internalFreeKB",
+                          (double)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+  cJSON_AddNumberToObject(json, "internalMinFreeKB",
+                          (double)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
+  cJSON_AddNumberToObject(json, "largestInternalDmaKB",
+                          (double)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024));
 
   // Real die temperatures or null — never a fabricated number. CAM2-4 gain
   // readings when their links land in milestone 2.
