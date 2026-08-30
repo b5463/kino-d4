@@ -264,6 +264,16 @@ rq_reconcile_t rq_reconcile_action(bool has_meta, const char *meta_roll_id, bool
  */
 void rq_job_boot_resume(rq_job_t *job);
 
+/*
+ * The network came back after having been down (the radio recovered from a
+ * C6 reset, or the link returned). A RETRY_WAIT deadline set while it was
+ * down was a guess about a server that could not be reached; now that it
+ * can, the job is due. Attempts are kept - this is not a fresh budget, only
+ * the end of a wait that no longer means anything. Other states untouched.
+ */
+void rq_job_network_restored(rq_job_t *job);
+
+
 /* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */
 /* ------------------------------------------------------------------ */

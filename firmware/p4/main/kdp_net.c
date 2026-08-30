@@ -506,6 +506,7 @@ kdp_net_reply_t kdp_net_status(const cJSON *req) {
   }
   cJSON_AddNumberToObject(o, "transportErrors", net.transport_errors);
   cJSON_AddNumberToObject(o, "reconnects", net.reconnects);
+  cJSON_AddNumberToObject(o, "recoveries", net.recoveries);
   cJSON_AddNumberToObject(o, "savedNetworks", (double)wifi_creds_count());
   if (net.detail[0] != '\0') {
     char safe[NET_DETAIL_LEN];

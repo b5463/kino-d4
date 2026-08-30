@@ -32,10 +32,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "klog.h"
+#include "esp_event.h"
+#include "esp_hosted_event.h"
 #include "net_link.h"
 #include "net_time.h"
 #include "net_wifi.h"
+#include "radio_recovery.h"
 #include "taskmon.h"
+#include "upload_queue.h"
+#include "wifi_creds.h"
 
 static const char *TAG = "c6";
 
@@ -200,6 +205,11 @@ static bool configure_transport(void) {
   cfg.pin_reset.pin = BOARD_C6_EN;
 
   const esp_hosted_transport_err_t err = esp_hosted_sdio_set_config(&cfg);
+  if (err == ESP_TRANSPORT_ERR_ALREADY_SET) {
+    /* Recovery path: the pins were handed over at first boot and the shadow
+     * config survived esp_hosted_deinit(). Same pins, so nothing to do. */
+    return true;
+  }
   if (err != ESP_TRANSPORT_OK) {
     ESP_LOGE(TAG, "SDIO config refused: %d", (int)err);
     return false;
@@ -260,6 +270,9 @@ static bool configure_transport(void) {
 #error "eh_common_fw_version.h missing: esp_hosted layout changed, re-audit the version gate"
 #endif
 
+/* The last version gate's verdict, in the recovery machine's vocabulary. */
+static rr_version_t s_ver_verdict = RR_VER_UNKNOWN;
+
 static bool version_gate(void) {
   char host_ver[NET_VERSION_LEN];
   snprintf(host_ver, sizeof host_ver, "%u.%u.%u", (unsigned)HOST_HOSTED_MAJOR,
@@ -267,6 +280,7 @@ static bool version_gate(void) {
 
   esp_hosted_coprocessor_fwver_t cp = {0};
   if (esp_hosted_get_coprocessor_fwversion(&cp) != 0) {
+    s_ver_verdict = RR_VER_NO_RESPONSE;
     count_error();
     net_link_report_versions(host_ver, NULL, NULL);
     net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_NO_RESPONSE,
@@ -295,6 +309,7 @@ static bool version_gate(void) {
     char detail[NET_DETAIL_LEN];
     snprintf(detail, sizeof detail, "C6 image %s cannot serve host %s; reflash the C6", cp_ver,
              host_ver);
+    s_ver_verdict = RR_VER_INCOMPATIBLE;
     net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_BAD_FIRMWARE, detail, now_ms());
     klog("C6", "version gate refused C6 %s against host %s", cp_ver, host_ver);
     /* Deliberately does NOT go on to Wi-Fi. A stale coprocessor that is
@@ -312,6 +327,7 @@ static bool version_gate(void) {
     hwv_mark_validated(HWV_C6_SLAVE_VERSION, detail);
   }
   klog("C6", "link ready, C6 %s against host %s", cp_ver, host_ver);
+  s_ver_verdict = RR_VER_OK;
   return true;
 }
 
@@ -698,48 +714,243 @@ static void bring_up(void) {
   net_wifi_auto_join();
 }
 
-/** One task, and it exits when there is nothing left to supervise.
+/* ------------------------------------------------------------------ */
+/* Recovery                                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * What the supervisor does after bring-up: notice the C6 going away, and get
+ * it back without rebooting the P4.
+ *
+ * Measured on KD4-D121BC, 2026-08-30, firmware 0.4.5: a C6 reset with the P4
+ * running left the host stack holding the state of a coprocessor that no
+ * longer existed - ESP-Hosted transport initialised against a slave that had
+ * rebooted, esp_wifi_remote believing it was associated, the netif holding
+ * an address - and nothing here re-established anything. NETWORK_STATUS said
+ * C6_BOOTING / C6_LINK_LOST for as long as anyone watched. The decision of
+ * what to do about it is radio_recovery.c, host-tested; this is the doing.
+ *
+ * Detection, while the link is believed up:
+ *   - EH_HOST_EVENT_TRANSPORT_FAILURE from ESP-Hosted's own bus code;
+ *   - net_link's sdio_link_up going false (a reset this firmware issued);
+ *   - two consecutive unanswered liveness RPCs (the version RPC, every
+ *     PROBE_PERIOD_MS; a coprocessor that reset without telling anyone).
+ */
+#define PROBE_PERIOD_MS 20000
+#define PROBE_CONFIRM_MS 1000
+
+static rr_t s_rr;
+static bool s_linked;                 /* bring-up or a recovery reached LINK_READY */
+static volatile bool s_loss_event;    /* transport failure event, or a bench reset */
+static int s_probe_failures;
+static int64_t s_next_probe_ms;
+
+static void hosted_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
+  (void)arg;
+  (void)base;
+  (void)data;
+  if (id == ESP_HOSTED_EVENT_TRANSPORT_FAILURE) s_loss_event = true;
+}
+
+static void report_recovery(const char *what) {
+  char d[NET_DETAIL_LEN];
+  snprintf(d, sizeof d, "recovery: %s", what);
+  net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_LINK_LOST, d, now_ms());
+}
+
+static void probe_liveness(int64_t now) {
+  if (now < s_next_probe_ms) return;
+  esp_hosted_coprocessor_fwver_t cp = {0};
+  if (esp_hosted_get_coprocessor_fwversion(&cp) == 0) {
+    s_probe_failures = 0;
+    s_next_probe_ms = now + PROBE_PERIOD_MS;
+    return;
+  }
+  s_probe_failures++;
+  s_next_probe_ms = now + PROBE_CONFIRM_MS;
+  klog("C6", "liveness probe unanswered (%d)", s_probe_failures);
+}
+
+/* Perform one action the machine asked for, and tell it how that went. */
+static void perform(rr_action_t act) {
+  switch (act) {
+    case RR_ACT_TEARDOWN: {
+      report_recovery("teardown of the host-side radio state");
+      /* Order matters and is the pinned components' contract: the remote
+       * Wi-Fi first (its glue removes the transport channels), then the
+       * transport. The netif is the P4's and stays. */
+      net_wifi_suspend();
+      const int rc = esp_hosted_deinit();
+      s_loss_event = false;
+      s_probe_failures = 0;
+      klog("C6", "recovery: esp_hosted_deinit rc=%d", rc);
+      rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
+      return;
+    }
+    case RR_ACT_RESET_C6:
+      report_recovery("C6 reset pulse");
+      board_c6_hold_reset();
+      vTaskDelay(pdMS_TO_TICKS(EN_HOLD_MS));
+      board_c6_enable();
+      rr_action_done(&s_rr, act, 0, now_ms());
+      return;
+    case RR_ACT_HOSTED_UP: {
+      report_recovery("ESP-Hosted transport init");
+      int rc = -1;
+      if (configure_transport()) {
+        const int64_t t0 = esp_timer_get_time();
+        rc = esp_hosted_init();
+        klog("C6", "recovery: esp_hosted_init rc=%d in %lldms", rc,
+             (long long)((esp_timer_get_time() - t0) / 1000));
+        if (rc == 0) {
+          const int64_t t1 = esp_timer_get_time();
+          const int conn = esp_hosted_connect_to_slave();
+          klog("C6", "recovery: connect_to_slave rc=%d in %lldms", conn,
+               (long long)((esp_timer_get_time() - t1) / 1000));
+          /* A connect that timed out is judged by SDIO_WAIT, which reads the
+           * transport state the same way probe_transport() does. */
+        }
+      }
+      rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
+      return;
+    }
+    case RR_ACT_VERSION_RPC: {
+      report_recovery("version gate over the restored transport");
+      s_ver_verdict = RR_VER_UNKNOWN;
+      const bool ok = version_gate();
+      rr_action_done(&s_rr, act, (int)s_ver_verdict, now_ms());
+      if (ok) {
+        net_link_report_state(NET_C6_LINK_READY, NET_REASON_NONE,
+                              "transport recovered, versions agree", now_ms());
+      }
+      return;
+    }
+    case RR_ACT_WIFI_INIT: {
+      net_wifi_resume();
+      const esp_err_t err = net_wifi_start();
+      if (err == ESP_OK) {
+        net_link_report_state(NET_RADIO_READY, NET_REASON_NONE, "radio up after recovery", now_ms());
+        net_link_report_state(NET_WIFI_IDLE, NET_REASON_NONE, NULL, now_ms());
+      } else {
+        count_error();
+        net_link_report_state(NET_ERROR, NET_REASON_RADIO_FAILURE,
+                              "the Wi-Fi stack would not initialise on the C6", now_ms());
+      }
+      rr_action_done(&s_rr, act, err == ESP_OK ? 0 : -1, now_ms());
+      return;
+    }
+    case RR_ACT_WIFI_JOIN: {
+      char ssid[NET_SSID_LEN];
+      const bool have = wifi_creds_auto_join_target(ssid, sizeof ssid);
+      net_time_start(); /* a no-op once the clock is trusted; armed otherwise */
+      if (have) net_wifi_auto_join();
+      rr_action_done(&s_rr, act, have ? 0 : -1, now_ms());
+      return;
+    }
+    case RR_ACT_RECOVERED: {
+      uint64_t rx, tx;
+      uint32_t errs;
+      net_hosted_counters(&rx, &tx, &errs);
+      net_link_report_transport(rx, tx, errs, true);
+      net_link_report_recovery();
+      s_linked = true;
+      s_probe_failures = 0;
+      s_next_probe_ms = now_ms() + PROBE_PERIOD_MS;
+      const int64_t l = s_rr.t_lost;
+      klog("C6", "recovered without a reboot in %lld ms: release +%lld rx +%lld tx +%lld version +%lld assoc +%lld ip +%lld",
+           (long long)(s_rr.t_ip - l), (long long)(s_rr.t_release - l), (long long)(s_rr.t_rx - l),
+           (long long)(s_rr.t_tx - l), (long long)(s_rr.t_version - l), (long long)(s_rr.t_assoc - l),
+           (long long)(s_rr.t_ip - l));
+      /* Last: the queue's waiting jobs are due now, with their history. */
+      upload_queue_network_restored();
+      return;
+    }
+    case RR_ACT_NONE:
+    default:
+      return;
+  }
+}
+
+/** One task, and it exits never: bring-up, then the watch, then recovery
+ * whenever the watch says the coprocessor went away.
  *
  * Priority 3: above the upload worker (2), below the UI (4) and far below the
- * capture workers (5). This task does bring-up and then watches; the SDIO RX
- * worker ESP-Hosted creates for itself is a separate task at
- * CONFIG_ESP_HOSTED_HOST_DEFLT_TASK_PRIORITY, which is a Gate F question
- * recorded in C6_BRINGUP.md rather than one this file can answer. */
+ * capture workers (5). The SDIO RX worker ESP-Hosted creates for itself is a
+ * separate task at CONFIG_ESP_HOSTED_HOST_DEFLT_TASK_PRIORITY, which is a
+ * Gate F question recorded in C6_BRINGUP.md rather than one this file can
+ * answer. */
 static void supervisor_task(void *arg) {
   (void)arg;
   bring_up();
 
-  /*
-   * The watch. It REPORTS a link that has gone down; it does not bring one
-   * back. An SDIO link that drops leaves the state at C6_BOOTING with reason
-   * C6_LINK_LOST and a transport error counted, and it stays there until the
-   * unit is power-cycled.
-   *
-   * Re-establishing it means re-pulsing GPIO54 and re-enumerating the bus, on
-   * routing that has never been driven and whose enable polarity is a guess
-   * (firmware/C6_HARDWARE_MAP.md). That needs a bench and an issue of its own,
-   * not a loop written from the datasheet. The camera stays fully usable
-   * meanwhile, because nothing in the capture path waits on any of this.
-   */
-  for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(2000));
-
+  {
     net_status_t st;
     net_link_status(&st, now_ms());
-    if (st.state == NET_C6_ABSENT || st.state == NET_ERROR ||
-        st.reason == NET_REASON_C6_BAD_FIRMWARE) {
-      /* Parked on purpose. Re-pulsing a coprocessor that answered with the
-       * wrong version, or a bus that did not enumerate, produces a reset loop
-       * and a log nobody can read — and on unproven routing a reset loop is
-       * the thing that must not ship. A power cycle or a reflash is the fix.
-       */
+    s_linked = st.state >= NET_C6_LINK_READY;
+  }
+  rr_init(&s_rr);
+  s_next_probe_ms = now_ms() + PROBE_PERIOD_MS;
+  /* The default loop exists by now (esp_hosted_init created it). */
+  (void)esp_event_handler_register(EH_HOST_EVENT, ESP_EVENT_ANY_ID, hosted_event, NULL);
+
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(rr_active(&s_rr) ? 200 : 1000));
+    const int64_t now = now_ms();
+    net_status_t st;
+    net_link_status(&st, now);
+
+    if (!rr_active(&s_rr)) {
+      if (s_rr.state == RR_PARKED) {
+        /* Gave up after RR_MAX_ATTEMPTS, said so in NETWORK_STATUS. Only a
+         * fresh, explicit event - a transport failure, a bench reset - starts
+         * another round; a link that is simply still down does not, or this
+         * would be the reset loop that must not ship. */
+        if (!s_loss_event) continue;
+        s_loss_event = false;
+        klog("C6", "link event while parked; recovering again");
+        rr_link_lost(&s_rr, now);
+        continue;
+      }
+      if (!s_linked) {
+        /* Never came up: C6_ABSENT, NET_ERROR or C6_BAD_FIRMWARE from
+         * bring-up. Parked on purpose, as before: re-pulsing a coprocessor
+         * that answered with the wrong version, or a bus that did not
+         * enumerate, produces a reset loop. A power cycle or a reflash is
+         * the fix. */
+        continue;
+      }
+      probe_liveness(now);
+      const char *why = NULL;
+      if (s_loss_event) why = "transport failure reported";
+      else if (!st.sdio_link_up) why = "SDIO link reported down";
+      else if (s_probe_failures >= 2) why = "liveness probe unanswered twice";
+      if (why == NULL) continue;
+      s_loss_event = false;
+      count_error();
+      klog("C6", "link lost (%s); recovering without a reboot", why);
+      rr_link_lost(&s_rr, now);
+      report_recovery("link lost");
       continue;
     }
-    if (st.state == NET_C6_LINK_READY || st.state >= NET_RADIO_READY) {
-      if (!st.sdio_link_up) {
+
+    const rr_obs_t obs = {
+        .rx_ready = eh_host_mcu_transport_state_is_rx_ready() != 0,
+        .tx_ready = eh_host_mcu_transport_state_is_tx_ready() != 0,
+        .associated = st.state >= NET_WIFI_ASSOCIATED,
+        .has_ip = st.state == NET_IP_READY,
+        .auth_failed = st.state == NET_WIFI_IDLE && st.reason == NET_REASON_AUTH_FAILED,
+    };
+    const rr_state_t before = s_rr.state;
+    const rr_action_t act = rr_step(&s_rr, &obs, s_rr.generation, now);
+    if (act != RR_ACT_NONE) perform(act);
+    if (s_rr.state != before) {
+      klog("C6", "recovery: %s -> %s (%s)", rr_state_name(before), rr_state_name(s_rr.state),
+           s_rr.detail);
+      if (s_rr.state == RR_PARKED) {
         count_error();
-        net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_LINK_LOST,
-                              "the SDIO link went down", now_ms());
+        net_link_report_state(NET_ERROR, NET_REASON_C6_NO_RESPONSE, s_rr.detail, now_ms());
+      } else if (s_rr.state == RR_BACKOFF) {
+        report_recovery(s_rr.detail);
       }
     }
   }
@@ -775,6 +986,7 @@ bool net_hosted_bench_c6_reset(void) {
   net_link_report_transport(s_rx_bytes, s_tx_bytes, s_errors, false);
   net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_LINK_LOST, "bench: C6 reset pulse",
                         now_ms());
+  s_loss_event = true; /* the supervisor recovers from here; see radio_recovery.h */
   klog("C6", "BENCH: released after %lldus; link reported down", (long long)(t_release - t_assert));
   return true;
 }

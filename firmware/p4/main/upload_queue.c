@@ -690,6 +690,20 @@ void upload_queue_status(upload_queue_report_t *out) {
   unlock();
 }
 
+void upload_queue_network_restored(void) {
+  int due = 0;
+  lock();
+  for (int i = 0; i < s_count; i++) {
+    if (s_jobs[i].state != RQ_RETRY_WAIT) continue;
+    rq_job_network_restored(&s_jobs[i]);
+    due++;
+  }
+  unlock();
+  if (due > 0) klog("P4", "upload: network back, %d waiting job(s) due now", due);
+  wake();
+}
+
+
 int upload_queue_retry_all(void) {
   int revived = 0;
   lock();

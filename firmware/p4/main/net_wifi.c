@@ -35,7 +35,10 @@ static const char *TAG = "wifi";
  * network. */
 #define SCAN_RECORDS 32
 
-static bool s_started;
+static bool s_started;          /* the remote Wi-Fi stack is up on the current C6 */
+static bool s_infra;            /* netif + event handlers exist; once per boot */
+static bool s_suspended;        /* the C6 is gone; events are about a radio we no longer have */
+static esp_netif_t *s_sta_netif;
 /* Set while the user (or auto-join) wants an association. Cleared by
  * net_wifi_disconnect() so a deliberate disconnect does not immediately
  * reconnect on the driver's own retry. */
@@ -429,6 +432,10 @@ static net_reason_t disconnect_reason(uint8_t code) {
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   (void)arg;
   (void)base;
+  /* Between a teardown and the next start nothing that arrives is about a
+   * coprocessor we still have. Dropping it here is the generation guard for
+   * everything this handler would otherwise write into net_link. */
+  if (s_suspended) return;
 
   switch (id) {
     case WIFI_EVENT_SCAN_DONE:
@@ -489,6 +496,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 static void ip_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   (void)arg;
   (void)base;
+  if (s_suspended) return;
 
   if (id == IP_EVENT_STA_GOT_IP) {
     const ip_event_got_ip_t *e = (const ip_event_got_ip_t *)data;
@@ -553,22 +561,31 @@ static void ip_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
 esp_err_t net_wifi_start(void) {
   if (s_started) return ESP_OK;
 
-  esp_err_t err = esp_netif_init();
-  if (err != ESP_OK) return err;
+  esp_err_t err;
+  if (!s_infra) {
+    /* Once per boot. The netif and the handlers belong to the P4 and survive
+     * the coprocessor being reset under them; only the remote stack below is
+     * re-created per C6 generation. */
+    err = esp_netif_init();
+    if (err != ESP_OK) return err;
 
-  /* The default loop may already exist: kdp_server and the camera links do
-   * not use it today, but a component that does would have created it. */
-  err = esp_event_loop_create_default();
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
+    /* The default loop may already exist: kdp_server and the camera links do
+     * not use it today, but a component that does would have created it. */
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
 
-  if (esp_netif_create_default_wifi_sta() == NULL) return ESP_FAIL;
+    s_sta_netif = esp_netif_create_default_wifi_sta();
+    if (s_sta_netif == NULL) return ESP_FAIL;
 
-  err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL,
-                                            NULL);
-  if (err != ESP_OK) return err;
-  err = esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, ip_event, NULL, NULL);
-  if (err != ESP_OK) return err;
+    err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL,
+                                              NULL);
+    if (err != ESP_OK) return err;
+    err = esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, ip_event, NULL, NULL);
+    if (err != ESP_OK) return err;
+    s_infra = true;
+  }
 
+  s_suspended = false;
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return err;
@@ -588,5 +605,32 @@ esp_err_t net_wifi_start(void) {
   s_started = true;
   return ESP_OK;
 }
+
+void net_wifi_suspend(void) {
+  /* First, so nothing that arrives from here on is believed. */
+  s_suspended = true;
+  s_want_association = false;
+  reset_reconnect();
+  /* The link did go away, whatever the radio failed to say about it; the
+   * next lease is a recovery for HWV_ROLL_RECONNECT's purposes. */
+  s_was_disconnected = true;
+  if (s_sta_netif != NULL) {
+    /* No STA_DISCONNECTED will ever arrive from a coprocessor that rebooted,
+     * so the netif is told by hand: DHCP client stopped, address cleared. */
+    esp_netif_action_disconnected(s_sta_netif, WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, NULL);
+  }
+  if (s_started) {
+    /* An RPC to a coprocessor that may not exist: bounded by ESP-Hosted's
+     * timeout. The remote glue removes its transport channels regardless of
+     * the reply, and that is what makes the next esp_wifi_init() clean. */
+    const int64_t t0 = now_ms();
+    const esp_err_t err = esp_wifi_deinit();
+    klog("P4", "wifi stack deinit for recovery: %s in %lld ms", esp_err_to_name(err),
+         (long long)(now_ms() - t0));
+  }
+  s_started = false;
+}
+
+void net_wifi_resume(void) { s_suspended = false; }
 
 #endif /* KINO_RADIO */

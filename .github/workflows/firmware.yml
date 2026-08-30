@@ -79,6 +79,9 @@ jobs:
       # The bench-only C6 reset request: one pulse when built in, nothing
       # otherwise, never a P4 restart.
       - run: make -C firmware/p4/host_tests test-bench
+      # What the P4 does when the C6 goes away under a live link: bounded,
+      # backed off, generation-guarded, never a P4 reboot.
+      - run: make -C firmware/p4/host_tests test-recovery
 
   host-preview:
     # The native UI renderer. It compiles ui.c as a translation unit, so a

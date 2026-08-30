@@ -141,4 +141,15 @@ void upload_queue_status(upload_queue_report_t *out);
  */
 int upload_queue_retry_all(void);
 
+/*
+ * The network is usable again after having been down - the radio recovered
+ * from a C6 reset without a P4 reboot. Every RETRY_WAIT job becomes due now
+ * (rq_job_network_restored: attempts kept, nothing revived that was parked)
+ * and the worker is woken, so the first retry does not wait out a backoff
+ * that was measuring a dead link. The durable record is what resumes; no
+ * job is created and none is re-enqueued.
+ */
+void upload_queue_network_restored(void);
+
+
 #endif /* P4_UPLOAD_QUEUE_H */

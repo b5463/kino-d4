@@ -248,6 +248,42 @@ static void test_deadline_from_a_previous_boot_is_void(void) {
   rq_job_boot_resume(NULL);
 }
 
+static void test_network_restored_makes_waiting_jobs_due(void) {
+  /* The radio recovered from a C6 reset (ROLL-C test 3). A job that backed
+   * off while the server was unreachable is due now - with its history. */
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 1, true);
+  job.state = RQ_RETRY_WAIT;
+  job.attempts = 3;
+  job.next_attempt_ms = 500000;
+  CHECK(!rq_retry_due(&job, 100000), "before: waiting on the old deadline");
+  rq_job_network_restored(&job);
+  CHECK(rq_retry_due(&job, 100000), "after: due now");
+  CHECK(job.attempts == 3, "attempts kept - not a fresh budget, got %u", job.attempts);
+  CHECK(job.state == RQ_RETRY_WAIT, "state unchanged");
+
+  rq_job_t queued;
+  rq_job_init(&queued, UUID_A, "roll_0001", 1, true);
+  queued.next_attempt_ms = 42;
+  rq_job_network_restored(&queued);
+  CHECK(queued.next_attempt_ms == 42 && queued.state == RQ_QUEUED, "QUEUED untouched");
+  rq_job_t done;
+  rq_job_init(&done, UUID_A, "roll_0001", 1, true);
+  done.state = RQ_COMPLETE;
+  done.next_attempt_ms = 42;
+  rq_job_network_restored(&done);
+  CHECK(done.state == RQ_COMPLETE && done.next_attempt_ms == 42, "COMPLETE untouched");
+  rq_job_t parked;
+  rq_job_init(&parked, UUID_A, "roll_0001", 1, true);
+  parked.state = RQ_FAILED;
+  parked.attempts = 12;
+  rq_job_network_restored(&parked);
+  CHECK(parked.state == RQ_FAILED && parked.attempts == 12,
+        "a parked job is not revived by the network coming back");
+  rq_job_network_restored(NULL);
+}
+
+
 static void test_reboot_before_registering_is_safe(void) {
   /* Power cut before the capture document was ever POSTed. The next boot has
    * no capture id, so it registers — and because the server keys on
@@ -695,6 +731,7 @@ int main(void) {
   test_resume_after_reboot_repeats_nothing();
   test_reboot_before_registering_is_safe();
   test_deadline_from_a_previous_boot_is_void();
+  test_network_restored_makes_waiting_jobs_due();
   test_state_disagreeing_with_flags_cannot_strand_a_photograph();
   test_transient_failure_backs_off_then_resumes();
   test_retry_is_bounded();

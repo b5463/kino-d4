@@ -195,6 +195,11 @@ typedef struct {
   uint32_t c6_resets;
   /** Times the link has been re-established since boot. */
   uint32_t reconnects;
+  /** Times the radio was recovered after the C6 went away, without a P4
+   * reboot: teardown, reset, re-enumeration, version gate, Wi-Fi, address. */
+  uint32_t recoveries;
+  /** Times the radio was recovered after the C6 went away, without a P4
+   * reboot: teardown, reset, re-enumeration, version gate, Wi-Fi, address. */
   /** Bytes over the transport since boot, both directions. Gate F wants a
    * number for "the radio was actually doing something" during a capture,
    * and "associated" is not that number. */
@@ -392,5 +397,10 @@ void net_link_report_reset(void);
 
 /** The link came back after having been lost. Bumps `reconnects`. */
 void net_link_report_reconnect(void);
+
+/** The radio was recovered end to end after the C6 went away. Bumps
+ * `recoveries`. */
+void net_link_report_recovery(void);
+
 
 #endif /* P4_NET_LINK_H */

@@ -11,6 +11,7 @@
 #   make -C firmware/p4/host_tests test-pins   # board_d4v1.h vs the JP1 header
 #   make -C firmware/p4/host_tests test-hwv    # hwv_rules.c, the validation predicates
 #   make -C firmware/p4/host_tests test-bench  # bench_c6.c, the bench-only C6 reset request
+#   make -C firmware/p4/host_tests test-recovery # radio_recovery.c, recovery after a C6 reset
 #   make -C firmware/p4/host_tests test-all    # all nine
 #
 # Several targets because they have different dependencies, not because the
@@ -84,6 +85,10 @@ HWV_SRC = $(MAIN)/hwv_rules.c test_hwv_rules.c
 # bench_c6.c is the bench-only C6 reset decision, no ESP-IDF: one pulse when
 # built in, nothing when not, never a P4 restart.
 BENCH_SRC = $(MAIN)/bench_c6.c test_bench_c6.c
+# radio_recovery.c decides what the P4 does when the C6 goes away under a live
+# link, no ESP-IDF: teardown, reset, re-enumeration, version gate, Wi-Fi,
+# address - bounded, backed off, generation-guarded, never a P4 reboot.
+RECOVERY_SRC = $(MAIN)/radio_recovery.c test_radio_recovery.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
 META_SRC = $(MAIN)/meta.c test_meta.c $(CJSON_DIR)/cJSON.c
@@ -121,10 +126,13 @@ test_hwv_rules: $(HWV_SRC) $(MAIN)/hwv_rules.h
 test_bench_c6: $(BENCH_SRC) $(MAIN)/bench_c6.h
 	$(CC) $(CFLAGS) -I$(MAIN) $(BENCH_SRC) -o $@
 
+test_radio_recovery: $(RECOVERY_SRC) $(MAIN)/radio_recovery.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(RECOVERY_SRC) -o $@
+
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-all clean
 test: test_pure
 	./test_pure
 
@@ -155,7 +163,10 @@ test-hwv: test_hwv_rules
 test-bench: test_bench_c6
 	./test_bench_c6
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench
+test-recovery: test_radio_recovery
+	./test_radio_recovery
+
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery

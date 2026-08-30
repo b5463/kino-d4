@@ -88,6 +88,7 @@ static struct {
   uint32_t transport_errors;
   uint32_t c6_resets;
   uint32_t reconnects;
+  uint32_t recoveries;
   uint64_t rx_bytes;
   uint64_t tx_bytes;
   char detail[NET_DETAIL_LEN];
@@ -184,6 +185,7 @@ void net_link_status(net_status_t *out, int64_t now_ms) {
   out->transport_errors = s_net.transport_errors;
   out->c6_resets = s_net.c6_resets;
   out->reconnects = s_net.reconnects;
+  out->recoveries = s_net.recoveries;
   out->transport_rx_bytes = s_net.rx_bytes;
   out->transport_tx_bytes = s_net.tx_bytes;
   out->since_ms = now_ms > s_net.entered_ms ? now_ms - s_net.entered_ms : 0;
@@ -455,6 +457,14 @@ void net_link_report_reconnect(void) {
   s_net.reconnects++;
   unlock();
 }
+
+void net_link_report_recovery(void) {
+  lock();
+  s_net.recoveries++;
+  s_net.sdio_link_up = true;
+  unlock();
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Naming                                                             */

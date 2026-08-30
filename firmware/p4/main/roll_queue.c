@@ -79,6 +79,11 @@ void rq_job_boot_resume(rq_job_t *job) {
   if (job->state == RQ_RETRY_WAIT) job->next_attempt_ms = 0;
 }
 
+void rq_job_network_restored(rq_job_t *job) {
+  if (job == NULL) return;
+  if (job->state == RQ_RETRY_WAIT) job->next_attempt_ms = 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Job lifecycle                                                      */
 /* ------------------------------------------------------------------ */

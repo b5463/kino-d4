@@ -29,6 +29,32 @@
  */
 esp_err_t net_wifi_start(void);
 
+/*
+ * The C6 is gone (or is about to be reset). Stops wanting an association,
+ * tells the netif it is disconnected, deinitialises the remote Wi-Fi stack
+ * (an RPC; bounded by ESP-Hosted's 5 s timeout when nothing answers, and its
+ * glue removes the transport channels whatever the reply), and ignores every
+ * Wi-Fi/IP event until net_wifi_resume(). The netif and the event handlers
+ * stay: they are the P4's, not the coprocessor's. Credentials are untouched.
+ */
+void net_wifi_suspend(void);
+
+/** Events are believed again. Call before net_wifi_start() on a recovered
+ * transport. */
+void net_wifi_resume(void);
+
+/*
+ * The C6 is gone (or is about to be reset). Stops wanting an association,
+ * tells the netif it is disconnected, deinitialises the remote Wi-Fi stack
+ * (an RPC; bounded by ESP-Hosted's 5 s timeout when nothing answers, and its
+ * glue removes the transport channels whatever the reply), and ignores every
+ * Wi-Fi/IP event until net_wifi_resume(). The netif and the event handlers
+ * stay: they are the P4's, not the coprocessor's. Credentials are untouched.
+ */
+
+/** Events are believed again. Call before net_wifi_start() on a recovered
+ * transport. */
+
 /** Begin an all-channel scan. Asynchronous: the results arrive through
  * `net_link_report_scan()` on WIFI_EVENT_SCAN_DONE. False when the radio
  * refused, which net_link turns into a reason. */
