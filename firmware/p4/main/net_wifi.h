@@ -24,36 +24,27 @@
  * Initialise netif, the default event loop, the STA interface and the Wi-Fi
  * stack on the coprocessor, then start it.
  *
- * Called once, after the version gate has passed. Returns the first error;
- * net_hosted.c maps that onto `NET_REASON_RADIO_FAILURE`.
+ * Called after the version gate has passed - once at boot, and again after
+ * every radio recovery (net_wifi_suspend() in between). The netif, the event
+ * loop and the handlers are created once; the remote stack is re-created per
+ * coprocessor generation. Returns the first error; net_hosted.c maps that onto
+ * `NET_REASON_RADIO_FAILURE`.
  */
 esp_err_t net_wifi_start(void);
 
 /*
  * The C6 is gone (or is about to be reset). Stops wanting an association,
- * tells the netif it is disconnected, deinitialises the remote Wi-Fi stack
- * (an RPC; bounded by ESP-Hosted's 5 s timeout when nothing answers, and its
- * glue removes the transport channels whatever the reply), and ignores every
- * Wi-Fi/IP event until net_wifi_resume(). The netif and the event handlers
- * stay: they are the P4's, not the coprocessor's. Credentials are untouched.
+ * tells the netif it is disconnected, and ignores every Wi-Fi/IP event until
+ * net_wifi_resume(). No RPC is sent to a coprocessor that cannot answer; the
+ * stale remote stack is deinitialised by the next net_wifi_start(), over a
+ * transport that does. The netif and the event handlers stay: they are the
+ * P4's, not the coprocessor's. Credentials are untouched.
  */
 void net_wifi_suspend(void);
 
 /** Events are believed again. Call before net_wifi_start() on a recovered
  * transport. */
 void net_wifi_resume(void);
-
-/*
- * The C6 is gone (or is about to be reset). Stops wanting an association,
- * tells the netif it is disconnected, deinitialises the remote Wi-Fi stack
- * (an RPC; bounded by ESP-Hosted's 5 s timeout when nothing answers, and its
- * glue removes the transport channels whatever the reply), and ignores every
- * Wi-Fi/IP event until net_wifi_resume(). The netif and the event handlers
- * stay: they are the P4's, not the coprocessor's. Credentials are untouched.
- */
-
-/** Events are believed again. Call before net_wifi_start() on a recovered
- * transport. */
 
 /** Begin an all-channel scan. Asynchronous: the results arrive through
  * `net_link_report_scan()` on WIFI_EVENT_SCAN_DONE. False when the radio

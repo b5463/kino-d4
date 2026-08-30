@@ -12,14 +12,18 @@
  * This file is the decision, kept free of ESP-IDF so it is host-tested. The
  * doing is net_hosted.c: it feeds observations in, gets one action out per
  * step, performs it, and reports how it went. The order is the one the
- * pinned components require (esp_hosted 3.0.6, esp_wifi_remote 1.6.4):
+ * pinned components tolerate (esp_hosted 3.0.6, esp_wifi_remote 1.6.4),
+ * found on the bench rather than in a document:
  *
- *   TEARDOWN      remote Wi-Fi deinit first (its glue removes the transport
- *                 channels that esp_hosted_deinit would otherwise leave
- *                 dangling), then esp_hosted_deinit(); netif and event
- *                 handlers stay, the netif is told it is disconnected
+ *   TEARDOWN      quiesce: stop wanting an association, tell the netif it
+ *                 is disconnected, ignore events, mark the transport flags
+ *                 inactive. Nothing is deinitialised and no RPC is sent:
+ *                 esp_hosted_deinit() joins an SDIO write thread that spins
+ *                 on a vanished card (measured: hang, then a watchdog panic),
+ *                 and an RPC to a dead coprocessor is a 5 s timeout
  *   RESET_C6      the enable line, bring-up's own 20 ms
- *   HOSTED_UP     pins, esp_hosted_init(), esp_hosted_connect_to_slave()
+ *   HOSTED_UP     eh_host_bus_connect_to_slave(): the component's own
+ *                 slave-reset-and-card-init, in place, on the open bus
  *   SDIO_WAIT     rx_ready - enumeration actually happened
  *   HANDSHAKE     rx_ready && tx_ready - usable both ways
  *   VERSION_GATE  the real version RPC over the restored transport, same
@@ -46,9 +50,9 @@
 
 typedef enum {
   RR_HEALTHY = 0,   /* nothing to recover; the link is up or never was */
-  RR_TEARDOWN,      /* remote Wi-Fi deinit, esp_hosted deinit, netif down */
+  RR_TEARDOWN,      /* quiesce host-side radio state; nothing deinitialised */
   RR_RESET_C6,      /* one enable-line pulse */
-  RR_HOSTED_UP,     /* pins, esp_hosted_init, connect_to_slave */
+  RR_HOSTED_UP,     /* re-enumerate the SDIO card in place */
   RR_SDIO_WAIT,     /* waiting for rx_ready */
   RR_HANDSHAKE_WAIT,/* rx_ready, waiting for tx_ready */
   RR_VERSION_GATE,  /* the version RPC is in flight */

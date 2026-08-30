@@ -38,6 +38,7 @@ static const char *TAG = "wifi";
 static bool s_started;          /* the remote Wi-Fi stack is up on the current C6 */
 static bool s_infra;            /* netif + event handlers exist; once per boot */
 static bool s_suspended;        /* the C6 is gone; events are about a radio we no longer have */
+static bool s_stale;            /* a remote stack was up on a C6 that has since been reset */
 static esp_netif_t *s_sta_netif;
 /* Set while the user (or auto-join) wants an association. Cleared by
  * net_wifi_disconnect() so a deliberate disconnect does not immediately
@@ -586,6 +587,18 @@ esp_err_t net_wifi_start(void) {
   }
 
   s_suspended = false;
+  if (s_stale) {
+    /* The previous coprocessor's stack, as the host remembers it. The RPC
+     * reaches a fresh coprocessor that never saw an init and answers at once
+     * with an error status; what matters is the remote glue, which removes
+     * its two transport channels regardless of that status - without this
+     * the esp_wifi_init() below would add a second pair. */
+    const int64_t t0 = now_ms();
+    const esp_err_t err = esp_wifi_deinit();
+    klog("P4", "stale wifi stack deinit: %s in %lld ms", esp_err_to_name(err),
+         (long long)(now_ms() - t0));
+    s_stale = false;
+  }
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return err;
@@ -619,15 +632,11 @@ void net_wifi_suspend(void) {
      * so the netif is told by hand: DHCP client stopped, address cleared. */
     esp_netif_action_disconnected(s_sta_netif, WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, NULL);
   }
-  if (s_started) {
-    /* An RPC to a coprocessor that may not exist: bounded by ESP-Hosted's
-     * timeout. The remote glue removes its transport channels regardless of
-     * the reply, and that is what makes the next esp_wifi_init() clean. */
-    const int64_t t0 = now_ms();
-    const esp_err_t err = esp_wifi_deinit();
-    klog("P4", "wifi stack deinit for recovery: %s in %lld ms", esp_err_to_name(err),
-         (long long)(now_ms() - t0));
-  }
+  /* No RPC here: the coprocessor is gone and every request would sit out
+   * ESP-Hosted's 5 s timeout while its TX path spins on a dead bus. The
+   * stale stack is deinitialised at the next net_wifi_start(), over a
+   * transport that answers. */
+  s_stale = s_started;
   s_started = false;
 }
 

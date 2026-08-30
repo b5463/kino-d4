@@ -198,8 +198,6 @@ typedef struct {
   /** Times the radio was recovered after the C6 went away, without a P4
    * reboot: teardown, reset, re-enumeration, version gate, Wi-Fi, address. */
   uint32_t recoveries;
-  /** Times the radio was recovered after the C6 went away, without a P4
-   * reboot: teardown, reset, re-enumeration, version gate, Wi-Fi, address. */
   /** Bytes over the transport since boot, both directions. Gate F wants a
    * number for "the radio was actually doing something" during a capture,
    * and "associated" is not that number. */

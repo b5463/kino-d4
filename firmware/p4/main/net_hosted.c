@@ -21,6 +21,7 @@
 /* The transport-state query Gate C6-B rests on. Guarded because it is a
  * component-internal header path, not part of the esp_hosted compat surface. */
 #if __has_include("eh_host_mcu_transport_state.h")
+#include "eh_host_bus.h"
 #include "eh_host_mcu_transport_state.h"
 #else
 #error "eh_host_mcu_transport_state.h missing: esp_hosted layout changed, re-audit C6-B"
@@ -775,16 +776,25 @@ static void probe_liveness(int64_t now) {
 static void perform(rr_action_t act) {
   switch (act) {
     case RR_ACT_TEARDOWN: {
-      report_recovery("teardown of the host-side radio state");
-      /* Order matters and is the pinned components' contract: the remote
-       * Wi-Fi first (its glue removes the transport channels), then the
-       * transport. The netif is the P4's and stays. */
+      report_recovery("quiescing the host-side radio state");
+      /*
+       * What is NOT done here, and why: esp_hosted_deinit(). Measured on
+       * KD4-D121BC (0.4.6, first image): with the slave gone, ESP-Hosted's SDIO
+       * write thread sits in its credit poll against a card that no longer
+       * answers, and eh_host_bus_deinit() joins that thread - one attempt
+       * hung in teardown for as long as anyone watched, the other ended in a
+       * watchdog panic. The transport is therefore never torn down; it is
+       * re-enumerated in place by eh_host_bus_connect_to_slave() in HOSTED_UP,
+       * which is the component's own path for a slave that has been reset.
+       * The remote Wi-Fi deinit RPC is deferred to WIFI_INIT, when the fresh
+       * coprocessor can answer it in milliseconds instead of a 5 s timeout.
+       */
       net_wifi_suspend();
-      const int rc = esp_hosted_deinit();
+      /* Honest flags for SDIO_WAIT: nothing is ready until the card says so. */
+      eh_host_mcu_transport_state_set(EH_HOST_MCU_TRANSPORT_INACTIVE);
       s_loss_event = false;
       s_probe_failures = 0;
-      klog("C6", "recovery: esp_hosted_deinit rc=%d", rc);
-      rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
+      rr_action_done(&s_rr, act, 0, now_ms());
       return;
     }
     case RR_ACT_RESET_C6:
@@ -795,22 +805,18 @@ static void perform(rr_action_t act) {
       rr_action_done(&s_rr, act, 0, now_ms());
       return;
     case RR_ACT_HOSTED_UP: {
-      report_recovery("ESP-Hosted transport init");
-      int rc = -1;
-      if (configure_transport()) {
-        const int64_t t0 = esp_timer_get_time();
-        rc = esp_hosted_init();
-        klog("C6", "recovery: esp_hosted_init rc=%d in %lldms", rc,
-             (long long)((esp_timer_get_time() - t0) / 1000));
-        if (rc == 0) {
-          const int64_t t1 = esp_timer_get_time();
-          const int conn = esp_hosted_connect_to_slave();
-          klog("C6", "recovery: connect_to_slave rc=%d in %lldms", conn,
-               (long long)((esp_timer_get_time() - t1) / 1000));
-          /* A connect that timed out is judged by SDIO_WAIT, which reads the
-           * transport state the same way probe_transport() does. */
-        }
-      }
+      report_recovery("SDIO re-enumeration");
+      /* The component's own slave-reset-and-card-init, on the bus that is
+       * still open: ensure_slave_bus_ready() pulses the reset pin it was
+       * handed at first boot (GPIO54, the same line RESET_C6 just used), runs
+       * sdmmc card init with its own retries and, on success, sets the
+       * transport RX_ACTIVE. TX_ACTIVE follows when the coprocessor's INIT
+       * event arrives; SDIO_WAIT and HANDSHAKE_WAIT read both flags, not this
+       * return code. */
+      const int64_t t0 = esp_timer_get_time();
+      const int rc = eh_host_bus_connect_to_slave();
+      klog("C6", "recovery: bus connect_to_slave rc=%d in %lldms", rc,
+           (long long)((esp_timer_get_time() - t0) / 1000));
       rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
       return;
     }
