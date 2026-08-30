@@ -20,7 +20,7 @@ hardware task and everything after it is blocked on it.
 | Wi-Fi credential store | CODE DONE |
 | `NETWORK_*` KDP commands | CODE DONE — answer honestly, refuse what needs a radio |
 | `ROLL_*` KDP commands | **BENCH DONE 2026-08-29** — `ROLL_CREATE` registered the device and created roll `RRG8AZ` on the local backend; `ROLL_DEVICE_REGISTER` earned |
-| Durable upload queue | CODE DONE, host-tested |
+| Durable upload queue | **BENCH DONE 2026-08-30** — a capture reaches a Roll on the LAN backend: document 201, thumbnail first, original byte-identical, one row; survives the API going away (retry landed 13.5 s after it returned) and a P4 reboot with the upload pending (5.9 s, on 0.4.4 — 0.4.3 waited on the previous boot's clock, fixed `ec22ea3`). 34 stale records on the bench card retired, none relabelled. Capture wins the card over an upload. C6-only reset not run (no actuator) |
 | Roll HTTP client | **BENCH DONE 2026-08-29** — against the production host: DNS, verified TLS, 404 (not deployed). Against the real backend on the LAN (`network.apiBase`, D18): health 200 with body, register 200, create roll 201. It had never read a response body until `90b8d74` |
 | Radio variant in CI | CODE DONE — `p4-radio` job, its own 1440 KB guard |
 | microSD on slot 0 (prerequisite) | **BENCH DONE 2026-08-28** — the slot move is proven on `KD4-D121BC`; see `HARDWARE_VALIDATION.md` |

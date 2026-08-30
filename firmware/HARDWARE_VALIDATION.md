@@ -17,6 +17,15 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
+## Status — updated 2026-08-30, firmware 0.4.4
+
+0.4.4 is the first firmware whose photographs have reached a Roll on a real
+backend: capture, thumbnail-first upload, byte-identical original, worker jobs
+settled, one row per photograph - on the repository's own API over the LAN, not
+the production host. The session is recorded below ("The first photographs reach
+a Roll"). Two application defects were found and fixed on the way; both are
+measured there. The 0.4.0 paragraph that follows is history.
+
 ## Status — updated 2026-08-27, firmware 0.4.0
 
 0.4.0 added the network, Roll and upload-queue surface. It earned **no rows**:
@@ -259,6 +268,126 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### The first photographs reach a Roll - ROLL-A/B/C on the LAN backend, 2026-08-30
+
+Same bench as the section below: D4 `KD4-D121BC` on BRCD at `10.20.80.181`,
+the repository's Fastify API on the dev PC at `10.20.99.57:3000` over the dev
+compose (Postgres, Redis, MinIO) with `@kino/worker` consuming, `network.apiBase`
+stored on the camera. Nothing public was touched; the C6 was not flashed; the
+camera UART was not changed. Roll `RRG8AZ` (`roll__Mg6PTK...`) from 08-29.
+
+**What the brief assumed, and what was true.** The brief opened on "the worker
+never becomes eligible: `can_upload` false while `IP_READY`". The board was
+running the no-radio 0.4.1 image (`C6_NOT_ROUTED`, "no P4-C6 transport in this
+build"), so `false` was the right answer. `net_link_can_upload()` is
+`state == NET_IP_READY`, the same predicate `NETWORK_STATUS` reports; it was
+not changed. A stale comment was, and a truth table over every state and
+every `IP_READY` reason is now a host test (`test_upload_eligibility_truth_table`).
+
+**The card, before anything was touched.** Backed up over KDP - `MEDIA_READ`
+was taught to return `UPLOAD.JSON` for exactly this (`f85506d`): 102 captures,
+102 META.JSON, 34 UPLOAD.JSON; the 34 records concatenated are 11,728 B,
+SHA-256 `0DE6AD6E...320C7`. Every META had `rollId: null`. Every record named
+`roll__Mg6PTK...` - 2 `QUEUED` at 0 attempts (one of them `CAP_000183`, kept
+as evidence, META untouched), 32 `RETRY_WAIT` at 5 attempts. Postgres held no
+row for any of the 102 UUIDs. Classification: 34 x "wrong or stale Roll
+context" (the record's Roll came from whatever Roll was current at a later
+boot, not from the photograph), 68 with no record (local photographs, never
+queued), 0 already uploaded, 0 partial, 0 corrupt. The "queue depth 32" the
+brief worried about was the RAM list cap, not a card limit; `UPLOAD.JSON` is
+written before the list insert, so the cap fails safe.
+
+**Defect 1 - a photograph did not know its Roll** (`9137d83`). `meta.c` wrote a
+literal `null`; nothing told the queue a capture had finished (only
+`UPLOAD_ENQUEUE`, using the current Roll); boot reconciliation stamped the
+current Roll on every committed capture without a record. Now the backend
+`rollId` is snapshotted into `capture_report_t` at the shutter, META writes it,
+a capture-done listener enqueues with it, and reconciliation compares record
+against META: a disagreement or a META with no Roll **retires** the record
+(parked `FAILED`, `last_error "no Roll provenance: capture none, record
+roll__Mg6PTK..."`). After the flash the 34 stale records were parked exactly
+that way - `pending 0, failed 34, halted false` - and no old capture was
+relabelled into `RRG8AZ`. The public slug is not stored in META; the schema's
+`rollId` is (`packages/schemas/src/media.ts`).
+
+**ROLL-B: PASS.** `CAP_000184`, uuid `3070ed45...`, META `rollId
+roll__Mg6PTKzfodtJ7zxCjBoNA`, 72,108 B, thumbnail 275 ms, total 1,734 ms.
+
+| Step (API log, `remoteAddress 10.20.80.181`) | Result |
+|---|---|
+| `POST /api/device/rolls/roll__.../captures` | **201**, 138 ms, 09:54:01.172 UTC |
+| thumb `assets/init` -> `PUT parts/1` -> `uploads/.../complete` | 200 / 200 (45 ms) / 200 at 01.638 |
+| original `assets/init` -> `PUT parts/1` -> `complete` | 200 / 200 (203 ms) / 200 at 02.198 |
+| `POST /captures/cap_pWPKmz.../complete` | **200** at 02.301; whole chain 1.13 s |
+| MinIO | `derived/thumb.jpg` written 09:54:01, `original/cam-01.jpg` 09:54:02 - thumb first, twice over |
+| Worker | `extract-metadata` done +128 ms, `generate-gallery-still` done +280 ms after complete; both in BullMQ `completed`, no `failedReason` |
+| Postgres | **one** `captures` row for the UUID, on `RRG8AZ`, `frame_count 1`; four `assets` rows `ready` |
+| Original bytes | card `C1.JPG` SHA-256 `66493736334091bfb801efd1ede524acbbd8a7d60987168c5b82e8eb13d4353b` = MinIO object = `assets.sha256`; 72,108 B; CRC32 `64bb3d9a` on all three |
+| Thumb bytes | card `THUMB.JPG` = `derived/thumb.jpg`, SHA-256 `ece80f4d...`, 7,982 B |
+
+`captures.status` stays `processing`: nothing in `apps/worker` writes `ready`,
+so that is the terminal state the current backend assigns. Noted, not a
+firmware matter.
+
+**ROLL-C.**
+
+| Test | Result |
+|---|---|
+| 1 - network loss (API stopped) | `CAP_000185` captured offline with the right `rollId`; record `RETRY_WAIT`, attempts 5 in 80 s, `lastError "... open ESP_ERR_HTTP_CONNECT"`, `halted false`. API back 12:12:32; the device's next retry landed 12:12:46 (13.5 s), chain 1.23 s, **same UUID**, one row, original byte-identical (`D7F3095D...`, 67,557 B). **PASS** |
+| 2 - P4 reboot with a pending upload, on `9137d83` | `CAP_000186` offline, record `RETRY_WAIT` attempts 3 `nextAttemptMs 1620904`; `REBOOT`; boot-413 resumed it (`pending 1`). API back 12:20:49. **The job did not move.** It fired at 12:45:47.67 - boot-413 uptime 1,620.9 s, the previous boot's deadline to the second - 25 min after the API returned. Upload then correct (same UUID, byte-identical `63077E25...`). **FAIL, defect 2 below** |
+| 2 - repeated on `ec22ea3` (0.4.4) | `CAP_000187` offline, `REBOOT`, boot-415: 25 s after boot the resumed job had made 4 attempts on the new clock. API listening 12:50:29.65; retry landed 12:50:35.56 (5.9 s); chain 1.29 s; same UUID `e0f2b8d3...`, one row, 111,095 B byte-identical (`38D1C904...`). **PASS** |
+| 3 - C6-only reset | **NOT RUN.** No KDP command resets only the C6, and this bench has no actuator on `GPIO54`/`CHIP_PU`. The supervisor's own `c6_resets` path (`net_link.c`) is untested on hardware. |
+
+**Defect 2 - a resumed job waited on the previous boot's clock** (`ec22ea3`).
+`next_attempt_ms` is a deadline on the boot's monotonic clock and the record
+keeps it across the reset. `rq_job_boot_resume()` voids it on the RESUME path
+of `upload_store_inspect()`; attempts are kept; a host test replays the bench
+sequence (roll-queue suite 799 -> 806). Also seen on boot-415: the first four
+retries after boot were refused by the clock-trust gate ("no trustworthy clock
+yet; TLS not attempted") before SNTP adopted - correct, but they consume
+attempts from the same budget of 12.
+
+**Upload against capture.** `CAP_000188` committed, then `CAP_000189` was
+taken 4.1 s later, while the first was due to upload. The API log has both
+documents registered at 12:55:23.74 and 23.99 - about 2.3 s after the second
+capture committed - then both chains complete by 12:55:26.29. The upload's
+first attempt met the shutter holding the card (`lastError "card busy"`),
+waited (`CARD_WAIT_MS` 200 ms, then the worker's 1 s idle tick) and ran after
+the second capture had committed. The second capture took 1,308 ms total
+against 2,826 ms for the first: the shutter is not slowed by a pending upload,
+and the upload yields to it.
+
+**Health on 0.4.4, boot-415, after all of it:** `transportErrors 0`,
+`reconnects 0`, `sdErrors 0`, heap 27.0 MB / PSRAM 26.9 MB free, min-free
+stack `upqueue` 2,504 B (8 KB task), `kdp_server` 6,092 B (12 KB), `c6link`
+2,112 B, `cap1` 7,708 B. `droppedLogEvents` 119 with a host draining - the
+ring is filled by a once-a-second `ui ... STALLED` line and the absent C2-C4
+nodes' `TIMEOUT cmd 0x01` every 3 s, so upload step lines roll out within a
+minute. Passphrase, `kdt_` token, `Authorization`, `deviceToken` searched on
+`GET_LOGS`, `GET_CONFIG`, `ROLL_STATUS`, `NETWORK_LIST`: **0** (NETWORK_LIST
+shows `"password": "••••"`).
+
+**Bench transport observations, not fixed here.** Device-to-host KDP frames of
+4 KiB timed out three times out of three (MEDIA_READ `length 4096`); 1, 2 and
+3 KiB pages passed every time; the `GET_LOGS` reply (up to 16 KB) never
+arrived in this session while its streamed `LOG` events did; the bench decoder
+reported `resyncs 3, discardedBytes 534` on one command. Three of about a dozen
+`CAMERA_CAPTURE` requests returned a reply the bench parser dropped and
+produced no capture; the raw text was not kept, so the cause is unknown - the
+next bench must log raw replies. `ROLL_STATUS.serverReachable` read `true`
+while the API was stopped; it is not a probe result.
+
+**Builds.** `9137d83` -> image `5744eb32...`; `ec22ea3` (0.4.4) -> `kino-p4.bin`
+1,440,144 B, SHA-256
+`38b52bee09ece6fc9b897919e5a88ebb842d3e7850f365953ab02f4797ed67a6`, two clean
+`git archive` passes byte-identical, `KINO_ROLL_API_BASE=https://kino.acronym.sk`
+compiled in and overridden on the camera by the stored `network.apiBase`.
+Host suites 2,501 checks (pure 469, roll-queue 806, net-link 127, net-report
+98, qr 300, pins 348, meta 125, store 100, hwv 53, kdp_core 75).
+
+**Still deferred, unchanged by this:** C6-E production HTTPS (server-side
+routing), Gate F coexistence measurements, ROLL-C test 3.
 
 ### The camera reaches a real KINO backend and registers - LAN only, 2026-08-29
 
