@@ -746,6 +746,7 @@ static void bring_up(void) {
 static rr_t s_rr;
 static bool s_linked;                 /* bring-up or a recovery reached LINK_READY */
 static volatile bool s_loss_event;    /* transport failure event, or a bench reset */
+static volatile bool s_bench_loss;    /* a bench reset specifically; restarts a parked machine */
 static int s_probe_failures;
 static int64_t s_next_probe_ms;
 
@@ -793,11 +794,19 @@ static void perform(rr_action_t act) {
        * coprocessor can answer it in milliseconds instead of a 5 s timeout.
        */
       net_wifi_suspend();
-      /* Honest flags for SDIO_WAIT: nothing is ready until the card says so. */
+      /* The transport has to come down and back up: the component's RX/TX
+       * byte counters (static to its bus file) are reset only there, and a
+       * rebooted slave restarts its own at zero - measured: every frame from
+       * the new coprocessor read as ~979 KB until then. No RPC has been sent
+       * to the dead slave before this point; net_wifi_suspend() sends none. */
+      const int64_t t0 = esp_timer_get_time();
+      const int rc = esp_hosted_deinit();
+      klog("C6", "recovery: esp_hosted_deinit rc=%d in %lldms", rc,
+           (long long)((esp_timer_get_time() - t0) / 1000));
       eh_host_mcu_transport_state_set(EH_HOST_MCU_TRANSPORT_INACTIVE);
       s_loss_event = false;
       s_probe_failures = 0;
-      rr_action_done(&s_rr, act, 0, now_ms());
+      rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
       return;
     }
     case RR_ACT_RESET_C6:
@@ -808,34 +817,22 @@ static void perform(rr_action_t act) {
       rr_action_done(&s_rr, act, 0, now_ms());
       return;
     case RR_ACT_HOSTED_UP: {
-      report_recovery("SDIO re-enumeration");
-      /* The component's own slave-reset-and-card-init, on the bus that is
-       * still open: ensure_slave_bus_ready() pulses the reset pin it was
-       * handed at first boot (GPIO54, the same line RESET_C6 just used), runs
-       * sdmmc card init with its own retries and, on success, sets the
-       * transport RX_ACTIVE. TX_ACTIVE follows when the coprocessor's INIT
-       * event arrives; SDIO_WAIT and HANDSHAKE_WAIT read both flags, not this
-       * return code. */
-      const int64_t t0 = esp_timer_get_time();
-      int rc = eh_host_bus_connect_to_slave();
-      klog("C6", "recovery: bus connect_to_slave rc=%d in %lldms", rc,
-           (long long)((esp_timer_get_time() - t0) / 1000));
-      if (rc == 0) {
-        /*
-         * Open the data path. The component's read task raises this slave
-         * interrupt once, when it starts; a coprocessor that has since
-         * rebooted holds every frame - its INIT event first - until it sees
-         * it again, and the read task never repeats it. Measured (0.4.6,
-         * second image): card init succeeded on every attempt and tx_ready
-         * never followed. eh_host_port_sdio_init() is guarded and returns the
-         * one static context, so this is the same register write the read
-         * task makes: HOST_TO_SLAVE_INTR, bit ESP_OPEN_DATA_PATH.
-         */
-        void *sdio = eh_host_port_sdio_init();
-        uint8_t mask = (uint8_t)(1u << (ESP_OPEN_DATA_PATH + ESP_SDIO_CONF_OFFSET));
-        const int w = sdio != NULL ? eh_host_port_sdio_write_reg(sdio, HOST_TO_SLAVE_INTR, &mask, 1, true) : -1;
-        klog("C6", "recovery: open data path rc=%d", w);
-        if (w != 0) rc = -1;
+      report_recovery("ESP-Hosted transport init");
+      int rc = -1;
+      if (configure_transport()) {
+        const int64_t t0 = esp_timer_get_time();
+        rc = esp_hosted_init();
+        klog("C6", "recovery: esp_hosted_init rc=%d in %lldms", rc,
+             (long long)((esp_timer_get_time() - t0) / 1000));
+        if (rc == 0) {
+          const int64_t t1 = esp_timer_get_time();
+          const int conn = esp_hosted_connect_to_slave();
+          klog("C6", "recovery: connect_to_slave rc=%d in %lldms", conn,
+               (long long)((esp_timer_get_time() - t1) / 1000));
+          /* A connect that timed out is judged by SDIO_WAIT, which reads the
+           * transport state the same way probe_transport() does. The fresh
+           * read task opens the data path itself. */
+        }
       }
       rr_action_done(&s_rr, act, rc == 0 ? 0 : -1, now_ms());
       return;
@@ -931,9 +928,10 @@ static void supervisor_task(void *arg) {
          * fresh, explicit event - a transport failure, a bench reset - starts
          * another round; a link that is simply still down does not, or this
          * would be the reset loop that must not ship. */
-        if (!s_loss_event) continue;
+        if (!s_bench_loss) continue;
+        s_bench_loss = false;
         s_loss_event = false;
-        klog("C6", "link event while parked; recovering again");
+        klog("C6", "bench reset while parked; recovering again");
         rr_link_lost(&s_rr, now);
         continue;
       }
@@ -1013,6 +1011,7 @@ bool net_hosted_bench_c6_reset(void) {
   net_link_report_state(NET_C6_BOOTING, NET_REASON_C6_LINK_LOST, "bench: C6 reset pulse",
                         now_ms());
   s_loss_event = true; /* the supervisor recovers from here; see radio_recovery.h */
+  s_bench_loss = true;
   klog("C6", "BENCH: released after %lldus; link reported down", (long long)(t_release - t_assert));
   return true;
 }
