@@ -5,14 +5,15 @@
 // it did — so the button path exists in its own right and never routes
 // through the UI.
 //
-// The pins are NOT assigned yet. docs/HARDWARE.md says outright that "button
-// and mode-slide pins are unassigned", and this header does not invent them:
-// every control below defaults to BOARD_BTN_NONE and is skipped at init.
-// Reading an unassigned, floating input would produce phantom presses, which
-// is a far worse failure than a button that does nothing — a camera that
-// fires by itself in a bag ruins the roll and the battery.
+// The shutter has a pin: GPIO28 on JP1 21, since ECN-0003 (2026-08-30), a
+// 6x6 mm tactile switch to ground with the P4's pull-up on. The FN key does
+// not, and this header does not invent one: an unassigned control is
+// BOARD_BTN_NONE and is skipped at init. Reading a floating input would
+// produce phantom presses, which is a far worse failure than a button that
+// does nothing — a camera that fires by itself in a bag ruins the roll and
+// the battery.
 //
-// Wiring one up is a single line in board_d4v1.h once the harness exists.
+// Wiring the next one up is a single line in board_d4v1.h once a pin exists.
 #ifndef P4_BUTTONS_H
 #define P4_BUTTONS_H
 

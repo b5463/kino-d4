@@ -149,7 +149,7 @@
     "latestMigration": "0009_capture_playback"
   },
   "firmware": {
-    "version": "0.4.6",
+    "version": "0.4.7",
     "source": "firmware/VERSION",
     "protocolHeader": "firmware/components/kdp_core/include/kdp/protocol.h",
     "tagPrefix": "kino-fw-v"
@@ -158,7 +158,7 @@
     "manifest": "hardware/manifest.json",
     "product": "KINO D4",
     "revision": "D4-V1",
-    "designVersion": "0.1.2",
+    "designVersion": "0.1.3",
     "status": "prototype",
     "tagPrefix": "kino-d4-hw-v"
   }

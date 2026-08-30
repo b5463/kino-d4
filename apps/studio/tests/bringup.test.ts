@@ -51,13 +51,16 @@ describe('bring-up record', () => {
     for (const r of wiring) {
       if (/GPIO34\b/.test(r.provisional ?? '')) expect(r.func).toMatch(/^CAM3 TX/);
     }
-    // Both control lines have a header pin on this carrier.
-    expect(wiring.find((r) => r.func === 'FLASH_EN')?.provisional).toBe(
-      `${D4_V1.gpio.FLASH_EN} (JP1 pin ${D4_V1.jp1!.pins.FLASH_EN!.pin})`,
-    );
     expect(wiring.find((r) => r.func === 'CAM_PWR_EN')?.provisional).toBe(
       `${D4_V1.gpio.CAM_PWR_EN} (JP1 pin ${D4_V1.jp1!.pins.CAM_PWR_EN!.pin})`,
     );
+    // ECN-0003: JP1 21 / GPIO28 is the shutter switch, and FLASH_EN has no P4
+    // pin at all -- the built-in flash gave way to a separate external module.
+    // The FLASH_EN row stays on the sheet reading "unassigned".
+    expect(wiring.find((r) => r.func === 'Shutter button')?.provisional).toBe(
+      `${D4_V1.gpio.BTN_SHUTTER} (JP1 pin ${D4_V1.jp1!.pins.BTN_SHUTTER!.pin})`,
+    );
+    expect(wiring.find((r) => r.func === 'FLASH_EN')?.provisional).toBe('unassigned');
     expect(wiring.every((r) => r.status === 'unverified')).toBe(true);
   });
 

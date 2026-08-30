@@ -134,10 +134,10 @@ const CAPTURE_0_3_CAPABILITIES: Record<string, boolean> = {
    */
   wiggle: true,
   quad: true,
-  /** The FLASH_EN line is driven across the exposure window. Its pin is
-   * unassigned on D4 V1 (no JP1 pin left; BOARD_FLASH_EN is BOARD_GPIO_NONE),
-   * so what it drives is nothing until an expander or the flash board
-   * exists — a hardware fact, not a firmware one. */
+  /** The flash window is held across the exposure. It drives no pin on D4 V1:
+   * GPIO28 / JP1 21 went to the shutter under ECN-0003 and the flash becomes
+   * an external module (BOARD_FLASH_EN is BOARD_GPIO_NONE) — a hardware fact,
+   * not a firmware one. */
   flashControl: true,
   /**
    * Still false, and this is the one worth reading twice. The body pulses
@@ -314,4 +314,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.4': 'd4-roll-0-4',
   '0.4.5': 'd4-roll-0-4',
   '0.4.6': 'd4-roll-0-4',
+  '0.4.7': 'd4-roll-0-4',
 };

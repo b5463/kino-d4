@@ -111,17 +111,21 @@ typedef enum {
    * scope on JP1 19 during a capture. It exists so the bring-up has somewhere
    * to record the answer. */
   HWV_SYNC_TRIGGER_GPIO32,
-  /* BOARD_FLASH_EN is GPIO28 on JP1 pin 21 (board_d4v1.h, ECN-0002) - a
-   * routed pin, not BOARD_GPIO_NONE as this said before the header was
-   * measured, and pin 21 is not the I2C line it was once described as.
+  /* Dead row, kept because this list is append-only and the NVS indices are
+   * positional. GPIO28 on JP1 21 was FLASH_EN under ECN-0002; on 2026-08-30
+   * ECN-0003 gave that pin to the shutter button and dropped the built-in
+   * flash from D4-V1 for a separate external module, which has no P4 pin in
+   * this revision. BOARD_FLASH_EN is BOARD_GPIO_NONE.
    *
-   * Still UNVALIDATED for a different reason than "no pin": capture.c drives
-   * nothing for a flash request yet, so there is no edge for a meter to catch.
-   * Earned when the firmware asserts the line for a flash and the LED bank
-   * measurably fires. */
+   * So this row can never flip on a D4-V1 body: there is no line to assert and
+   * nothing to measure. It stays UNVALIDATED as the record of an assignment
+   * that was made and then abandoned. Deleting it would shift every index
+   * below and reattribute this unit's bench evidence. The name still says
+   * GPIO28 - read it as the pin the flash once had, not the pin it has. */
   HWV_FLASH_EN_GPIO28,
-  /* Earned on the first debounced press of a real fitted switch. Cannot flip
-   * while BOARD_BTN_SHUTTER is BOARD_BTN_NONE, which is the current state. */
+  /* BOARD_BTN_SHUTTER is GPIO28 on JP1 21 since ECN-0003. Earned by buttons.c
+   * on the first debounced press: a 25 ms low on an internally pulled-up input
+   * is the tactile switch to ground and nothing else. */
   HWV_BTN_SHUTTER,
   /*
    * ---- ESP32-C6 radio. Appended, for the index reason above. ----

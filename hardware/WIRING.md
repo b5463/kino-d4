@@ -12,10 +12,9 @@ This file defines logical connections and wire classes. Final ESP32-P4 GPIO numb
   → 5 V main rail
       → ESP32-P4 display module
       → four switched camera channels
-      → constant-current flash driver
 ```
 
-Battery return, power-module return, display ground, all camera grounds, flash-driver ground, and signal ground share the system ground. Route main power in 20 AWG silicone wire. Keep high current off thin perfboard traces.
+Battery return, power-module return, display ground, all camera grounds, and signal ground share the system ground. Route main power in 20 AWG silicone wire. Keep high current off thin perfboard traces.
 
 The battery harness is rated at no more than 3 A sustained. A 10 A marking on the protection board does not raise that system limit.
 
@@ -60,15 +59,17 @@ Each channel uses an AO4407 or AO4407A P-channel MOSFET, a 100 kΩ gate pull-up,
 | `CAM3_TX` / `CAM3_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
 | `CAM4_TX` / `CAM4_RX` | `GPIO_TBD` / `GPIO_TBD` | bench validation required |
 | `SYNC_OUT` | `GPIO_TBD` | bench validation required |
-| `FLASH_EN` | `GPIO_TBD` | bench validation required |
+| `FLASH_EN` | none in D4-V1 | external module, ECN-0003 |
 | `CAM_PWR_EN` | `GPIO_TBD` | bench validation required |
-| `BTN_SHUTTER` | `GPIO_TBD` | bench validation required |
+| `BTN_SHUTTER` | `GPIO28` / JP1 21 | bench validation required |
 | `BTN_FN` | `GPIO_TBD` | bench validation required |
 | `SLIDE_MODE` | `GPIO_TBD` | bench validation required |
 
 The `PROVISIONAL` candidate for each row lives in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, with the JP1 pin for each signal) and `firmware/p4/main/board_d4v1.h`. A row here moves off `GPIO_TBD` only with bench evidence.
 
-The P4's `JP1` header (26-pin, 2×13) exposes 11 P4 GPIOs. Two are already taken by the touch reset and the LCD reset, leaving 9. Four UARTs need 8 and `SYNC_OUT` needs 1, so `FLASH_EN` and `CAM_PWR_EN` have no header pin on this carrier; their route is an open M2 question.
+The P4's `JP1` header (26-pin, 2×13) exposes twelve P4 GPIOs, measured on the board (ECN-0002). Eleven carry signals: the four UART pairs take 8, `SYNC_OUT` takes `GPIO32` on pin 19, `CAM_PWR_EN` takes `GPIO31` on pin 10, and `BTN_SHUTTER` takes `GPIO28` on pin 21 (ECN-0003). `GPIO35` on pin 15 is the twelfth and stays unconnected: it is the serial-bootloader strap. `BTN_FN`, `SLIDE_MODE` and the four `CAM_PWR_n` lines have no header pin on this carrier; their route is an open M2 question, the standing candidate being an I²C GPIO expander on pins 23/25.
+
+`BTN_SHUTTER` is wired as a 6 × 6 × 4.3 mm tactile switch between JP1 pin 21 and GND on JP1 pin 6 or pin 16. No external pull-up and no debounce capacitor: the P4's internal pull-up holds the pin high, the input is active low, and firmware debounces 25 ms. The row stays at `bench validation required` until `HWV_BTN_SHUTTER` is earned on the first debounced press; with a meter against pin 6 the pin should read 3.3 V idle and 0 V held.
 
 Locking this table requires a pin-capability review, continuity check, single-camera bring-up, and a four-camera load test. Update firmware, the twin profile, and this file in the same change.
 
@@ -78,9 +79,9 @@ The main module uses a 26-pin, 2×13, 2.54 mm female-to-female IDC ribbon about 
 
 ## Flash
 
-The flash LED is driven through an adjustable constant-current module. Begin at 350 mA. The P4 controls the driver's enable input through `FLASH_EN`; it does not source LED current.
+D4-V1 has no built-in flash. The constant-current direct-flash assembly was dropped in design package 0.1.3 (ECN-0003) when its enable pin, `GPIO28` on JP1 21, went to the shutter button. The P4 controls no flash enable line in this revision.
 
-The LED star, thermal pad, and copper heatsink form one thermal stack. Confirm electrical isolation where required by the exact LED carrier.
+A separate external flash module is intended instead. Its part, drive current, and control interface are not chosen, so nothing here specifies how it connects. Do not wire a flash enable to JP1 pin 21; that pin is an input with a pull-up on it now.
 
 ## Before power
 

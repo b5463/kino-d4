@@ -64,8 +64,8 @@ BOARD_CHECK_SIGNAL(BOARD_CAM3_RX);
 BOARD_CHECK_SIGNAL(BOARD_CAM4_TX);
 BOARD_CHECK_SIGNAL(BOARD_CAM4_RX);
 BOARD_CHECK_SIGNAL(BOARD_SYNC_OUT);
-BOARD_CHECK_SIGNAL(BOARD_FLASH_EN);
 BOARD_CHECK_SIGNAL(BOARD_CAM_PWR_EN);
+BOARD_CHECK_SIGNAL(BOARD_BTN_SHUTTER);
 
 // Column check against the drawing: odd pins are the left column, even the
 // right. The left column carries GPIO52/51/50/49/35/34/32/28; the right
@@ -81,7 +81,7 @@ _Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM3_RX_JP1), "GPIO33 is a right-column 
 _Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM4_TX_JP1), "GPIO30 is a right-column pin");
 _Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM4_RX_JP1), "GPIO29 is a right-column pin");
 _Static_assert(BOARD_JP1_IS_LEFT(BOARD_SYNC_OUT_JP1), "GPIO32 is a left-column pin");
-_Static_assert(BOARD_JP1_IS_LEFT(BOARD_FLASH_EN_JP1), "GPIO28 is a left-column pin");
+_Static_assert(BOARD_JP1_IS_LEFT(BOARD_BTN_SHUTTER_JP1), "GPIO28 is a left-column pin");
 _Static_assert(!BOARD_JP1_IS_LEFT(BOARD_CAM_PWR_EN_JP1), "GPIO31 is a right-column pin");
 
 // The spare is a real header GPIO that nothing claims.
@@ -110,9 +110,10 @@ _Static_assert(BOARD_COLLISIONS(BOARD_CAM1_TX_JP1, BOARD_CAM1_RX_JP1, BOARD_CAM2
                                 BOARD_CAM4_TX_JP1, BOARD_CAM4_RX_JP1, BOARD_SYNC_OUT_JP1) == 0,
                "two camera/SYNC signals share a JP1 pin");
 
-// FLASH_EN and CAM_PWR_EN have real pins on this carrier, so they join the
+// CAM_PWR_EN and BTN_SHUTTER have real pins on this carrier, so they join the
 // uniqueness rule. Counted against the nine above and each other rather than
-// widening BOARD_COLLISIONS to eleven arguments and 55 pairs.
+// widening BOARD_COLLISIONS to eleven arguments and 55 pairs. FLASH_EN is not
+// in this set any more: since ECN-0003 it has no pin to collide with.
 #define BOARD_VS_NINE(x, a, b, c, d, e, f, g, h, i)                            \
   (BOARD_EQ(x, a) + BOARD_EQ(x, b) + BOARD_EQ(x, c) + BOARD_EQ(x, d) +         \
    BOARD_EQ(x, e) + BOARD_EQ(x, f) + BOARD_EQ(x, g) + BOARD_EQ(x, h) +         \
@@ -127,13 +128,13 @@ _Static_assert(BOARD_COLLISIONS(BOARD_CAM1_TX_JP1, BOARD_CAM1_RX_JP1, BOARD_CAM2
                 BOARD_CAM2_RX_JP1, BOARD_CAM3_TX_JP1, BOARD_CAM3_RX_JP1,       \
                 BOARD_CAM4_TX_JP1, BOARD_CAM4_RX_JP1, BOARD_SYNC_OUT_JP1)
 
-_Static_assert(BOARD_VS_CAM_GPIOS(BOARD_FLASH_EN) == 0, "FLASH_EN shares a GPIO");
+_Static_assert(BOARD_VS_CAM_GPIOS(BOARD_BTN_SHUTTER) == 0, "BTN_SHUTTER shares a GPIO");
 _Static_assert(BOARD_VS_CAM_GPIOS(BOARD_CAM_PWR_EN) == 0, "CAM_PWR_EN shares a GPIO");
-_Static_assert(BOARD_FLASH_EN != BOARD_CAM_PWR_EN, "FLASH_EN and CAM_PWR_EN share a GPIO");
-_Static_assert(BOARD_VS_CAM_JP1(BOARD_FLASH_EN_JP1) == 0, "FLASH_EN shares a JP1 pin");
+_Static_assert(BOARD_BTN_SHUTTER != BOARD_CAM_PWR_EN, "BTN_SHUTTER and CAM_PWR_EN share a GPIO");
+_Static_assert(BOARD_VS_CAM_JP1(BOARD_BTN_SHUTTER_JP1) == 0, "BTN_SHUTTER shares a JP1 pin");
 _Static_assert(BOARD_VS_CAM_JP1(BOARD_CAM_PWR_EN_JP1) == 0, "CAM_PWR_EN shares a JP1 pin");
-_Static_assert(BOARD_FLASH_EN_JP1 != BOARD_CAM_PWR_EN_JP1,
-               "FLASH_EN and CAM_PWR_EN share a JP1 pin");
+_Static_assert(BOARD_BTN_SHUTTER_JP1 != BOARD_CAM_PWR_EN_JP1,
+               "BTN_SHUTTER and CAM_PWR_EN share a JP1 pin");
 _Static_assert(BOARD_VS_CAM_JP1(BOARD_SPARE_JP1) == 0, "the spare pin is claimed");
 
 // Four ports, UART1..UART4, each once. UART0 is the console.
@@ -141,12 +142,19 @@ _Static_assert(BOARD_CAM1_UART_NUM == 1 && BOARD_CAM2_UART_NUM == 2 &&
                    BOARD_CAM3_UART_NUM == 3 && BOARD_CAM4_UART_NUM == 4,
                "camera UART numbers must be 1..4 in camera order");
 
-// Every signal is routed on this carrier, so neither of these may quietly
-// revert to BOARD_GPIO_NONE: that is what the previous map forced, and code
-// in capture.c and power.c still carries the skip-if-unassigned branches it
-// grew for it. Those branches stay -- they are correct for a board without
-// the pin -- but this board has both.
-_Static_assert(BOARD_FLASH_EN != BOARD_GPIO_NONE, "FLASH_EN is routed on JP1 21");
+// What is routed and what is not, stated so neither can drift silently.
+//
+// FLASH_EN is the one signal D4-V1 deliberately does not route. The flash
+// became an external module on 2026-08-30 (ECN-0003) and GPIO28 went to the
+// shutter, so capture.c's skip-if-unassigned branch is the live path, not a
+// leftover. Anything that gives FLASH_EN a number again is claiming a pin
+// this board does not have.
+_Static_assert(BOARD_FLASH_EN == BOARD_GPIO_NONE, "FLASH_EN has no pin in D4-V1 since ECN-0003");
 _Static_assert(BOARD_CAM_PWR_EN != BOARD_GPIO_NONE, "CAM_PWR_EN is routed on JP1 10");
+_Static_assert(BOARD_BTN_SHUTTER != BOARD_BTN_NONE, "the shutter is on JP1 21");
+// A switch to ground holds its pin low through reset. On GPIO34..GPIO38 that
+// is a boot decision, and on 35 specifically it is the ROM downloader.
+_Static_assert(BOARD_BTN_SHUTTER != 34 && BOARD_BTN_SHUTTER != 35,
+               "a switch to ground must never sit on a strapping pin");
 
 #endif

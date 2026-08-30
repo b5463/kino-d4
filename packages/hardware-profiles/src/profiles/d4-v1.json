@@ -426,7 +426,6 @@
     { "id": "main-batt-gnd", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT-" }, "to": { "instance": "carrier", "pin": "GND_BUS" }, "gauge": "20AWG", "color": "black", "waypointsMm": [[-30, 0, -9.5], [-15, -3, -4], [0, -5, -4]] },
 
     { "id": "flash-power", "cls": "FLASH", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "flash", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [4, 10, -3], [3, 21, -2], [1, 25, 5], [0, 27, 11.5]] },
-    { "id": "flash-en", "cls": "FLASH", "from": { "instance": "display", "pin": "FLASH_EN" }, "to": { "instance": "flash", "pin": "EN" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [1, 10, -4], [2, 21, -2], [1, 25, 5], [0, 27, 11.5]] },
 
     { "id": "btn-shutter", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_SHUTTER" }, "to": { "instance": "carrier", "pin": "SW1" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [2, -3, -9], [0, -5, -4]] },
     { "id": "btn-fn", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_FN" }, "to": { "instance": "carrier", "pin": "SW2" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [3, -4, -9], [0, -5, -4]] }
@@ -446,15 +445,15 @@
     "CAM3_RX": "GPIO33",
     "CAM4_TX": "GPIO30",
     "CAM4_RX": "GPIO29",
-    "FLASH_EN": "GPIO28",
-    "BTN_SHUTTER": null,
+    "FLASH_EN": null,
+    "BTN_SHUTTER": "GPIO28",
     "BTN_FN": null,
     "SLIDE_MODE": null
   },
   "jp1": {
     "header": "JP1",
     "rows": 13,
-    "note": "Physical pin per assigned signal. Twelve header GPIOs carry eleven signals, so GPIO35 on JP1 15 is spare and must stay unconnected: it is the ESP32-P4 serial-bootloader strap. Firmware source of truth: firmware/p4/main/board_d4v1.h BOARD_*_JP1; test_board_pins.c --dump generates these values.",
+    "note": "Physical pin per assigned signal. Twelve header GPIOs carry eleven signals, so GPIO35 on JP1 15 is spare and must stay unconnected: it is the ESP32-P4 serial-bootloader strap. JP1 21 / GPIO28 was FLASH_EN under ECN-0002 and carries BTN_SHUTTER since ECN-0003 (2026-08-30), which dropped the built-in flash from D4-V1 for a separate external module with no P4 pin; the signal count is still eleven. GPIO28 is not a strapping pin (those are GPIO34-38), which is why a switch to ground is safe there and would not be on JP1 15. Firmware source of truth: firmware/p4/main/board_d4v1.h BOARD_*_JP1; test_board_pins.c --dump generates these values.",
     "pins": {
       "CAM1_TX": { "pin": 7, "gpio": "GPIO52" },
       "CAM1_RX": { "pin": 9, "gpio": "GPIO51" },
@@ -465,8 +464,8 @@
       "CAM4_TX": { "pin": 12, "gpio": "GPIO30" },
       "CAM4_RX": { "pin": 14, "gpio": "GPIO29" },
       "SYNC_OUT": { "pin": 19, "gpio": "GPIO32" },
-      "FLASH_EN": { "pin": 21, "gpio": "GPIO28" },
-      "CAM_PWR_EN": { "pin": 10, "gpio": "GPIO31" }
+      "CAM_PWR_EN": { "pin": 10, "gpio": "GPIO31" },
+      "BTN_SHUTTER": { "pin": 21, "gpio": "GPIO28" }
     },
     "reserved": [
       { "pin": 15, "net": "GPIO35", "gpio": "GPIO35", "use": "SPARE. ESP32-P4 serial-bootloader strap: held low at reset the chip enters the ROM downloader. Leave unconnected" },

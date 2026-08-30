@@ -1,6 +1,6 @@
 /*
- * Host test for firmware/p4/main/board_d4v1.h: the camera UART, SYNC, FLASH
- * and CAM_PWR pin map against the JP1 header of the Guition
+ * Host test for firmware/p4/main/board_d4v1.h: the camera UART, SYNC,
+ * CAM_PWR and shutter-button pin map against the JP1 header of the Guition
  * JC4880P443C-I-W carrier.
  *
  * board_d4v1_checks.h proves the same invariants with _Static_assert, so a
@@ -15,7 +15,7 @@
  * Dump format, one object per line, in this order:
  *   {"signal":"CAM1_TX","gpio":52,"jp1":7}
  *   ...
- *   {"signal":"FLASH_EN","gpio":28,"jp1":21}
+ *   {"signal":"BTN_SHUTTER","gpio":28,"jp1":21}
  */
 #include <stdio.h>
 #include <string.h>
@@ -42,7 +42,9 @@ typedef struct {
   int jp1;  /* 0 when unassigned */
 } signal_t;
 
-/* All eleven signals, every one of them routed on this carrier. */
+/* All eleven signals, every one of them routed on this carrier. FLASH_EN is
+ * not among them: since ECN-0003 it has no P4 pin, and test_unassigned_signals
+ * checks that rather than a JP1 position. */
 static const signal_t SIGNALS[] = {
     {"CAM1_TX", BOARD_CAM1_TX, BOARD_CAM1_TX_JP1},
     {"CAM1_RX", BOARD_CAM1_RX, BOARD_CAM1_RX_JP1},
@@ -53,7 +55,7 @@ static const signal_t SIGNALS[] = {
     {"CAM4_TX", BOARD_CAM4_TX, BOARD_CAM4_TX_JP1},
     {"CAM4_RX", BOARD_CAM4_RX, BOARD_CAM4_RX_JP1},
     {"SYNC_OUT", BOARD_SYNC_OUT, BOARD_SYNC_OUT_JP1},
-    {"FLASH_EN", BOARD_FLASH_EN, BOARD_FLASH_EN_JP1},
+    {"BTN_SHUTTER", BOARD_BTN_SHUTTER, BOARD_BTN_SHUTTER_JP1},
     {"CAM_PWR_EN", BOARD_CAM_PWR_EN, BOARD_CAM_PWR_EN_JP1},
 };
 enum { N_SIGNALS = sizeof SIGNALS / sizeof SIGNALS[0], N_ROUTED = 11 };
@@ -128,10 +130,14 @@ static void test_routed_signals(void) {
 static void test_unassigned_signals(void) {
   CHECK(BOARD_GPIO_NONE == -1, "BOARD_GPIO_NONE must equal GPIO_NUM_NC (-1), is %d",
         BOARD_GPIO_NONE);
-  /* Both are routed on this carrier. They were BOARD_GPIO_NONE only while the
-   * header map was wrong and appeared to have no pin left for them. */
-  CHECK(BOARD_FLASH_EN != BOARD_GPIO_NONE, "FLASH_EN is routed, macro says unassigned");
+  /* FLASH_EN is the one signal D4-V1 deliberately does not route. The built-in
+   * flash was dropped on 2026-08-30 (ECN-0003) for a separate external module
+   * with no P4 pin, and GPIO28 / JP1 21 went to the shutter button. A number
+   * here again would be claiming a pin this board does not have. */
+  CHECK(BOARD_FLASH_EN == BOARD_GPIO_NONE, "FLASH_EN has no pin in D4-V1, macro says %d",
+        BOARD_FLASH_EN);
   CHECK(BOARD_CAM_PWR_EN != BOARD_GPIO_NONE, "CAM_PWR_EN is routed, macro says unassigned");
+  CHECK(BOARD_BTN_SHUTTER != BOARD_BTN_NONE, "BTN_SHUTTER is fitted, macro says unassigned");
   /* The spare is on the header and claimed by nothing. */
   CHECK(jp1_gpio_at(BOARD_SPARE_JP1) == 35, "JP1 %d carries GPIO35, table says %d",
         BOARD_SPARE_JP1, jp1_gpio_at(BOARD_SPARE_JP1));
@@ -147,14 +153,20 @@ static void test_locked_values(void) {
   CHECK(BOARD_CAM3_UART_NUM == 3 && BOARD_CAM3_TX == 34 && BOARD_CAM3_RX == 33, "CAM3 map");
   CHECK(BOARD_CAM4_UART_NUM == 4 && BOARD_CAM4_TX == 30 && BOARD_CAM4_RX == 29, "CAM4 map");
   CHECK(BOARD_SYNC_OUT == 32, "SYNC_OUT is GPIO32, macro says %d", BOARD_SYNC_OUT);
-  CHECK(BOARD_FLASH_EN == 28, "FLASH_EN is GPIO28, macro says %d", BOARD_FLASH_EN);
+  CHECK(BOARD_BTN_SHUTTER == 28, "BTN_SHUTTER is GPIO28, macro says %d", BOARD_BTN_SHUTTER);
   CHECK(BOARD_CAM_PWR_EN == 31, "CAM_PWR_EN is GPIO31, macro says %d", BOARD_CAM_PWR_EN);
+  /* A tactile switch to ground holds its pin low through reset, so it may
+   * never sit on GPIO34..GPIO38. GPIO28 is not a strap; GPIO35 on JP1 15 is,
+   * which is the reason the spare stays unwired. */
+  CHECK(BOARD_BTN_SHUTTER != 34 && BOARD_BTN_SHUTTER != 35,
+        "BTN_SHUTTER GPIO%d is a strapping pin", BOARD_BTN_SHUTTER);
   CHECK(BOARD_CAM1_TX_JP1 == 7 && BOARD_CAM1_RX_JP1 == 9, "CAM1 JP1 pins");
   CHECK(BOARD_CAM2_TX_JP1 == 11 && BOARD_CAM2_RX_JP1 == 13, "CAM2 JP1 pins");
   CHECK(BOARD_CAM3_TX_JP1 == 17 && BOARD_CAM3_RX_JP1 == 8, "CAM3 JP1 pins");
   CHECK(BOARD_CAM4_TX_JP1 == 12 && BOARD_CAM4_RX_JP1 == 14, "CAM4 JP1 pins");
   CHECK(BOARD_SYNC_OUT_JP1 == 19, "SYNC_OUT JP1 pin");
-  CHECK(BOARD_FLASH_EN_JP1 == 21 && BOARD_CAM_PWR_EN_JP1 == 10, "control-line JP1 pins");
+  CHECK(BOARD_BTN_SHUTTER_JP1 == 21 && BOARD_CAM_PWR_EN_JP1 == 10,
+        "shutter and control-line JP1 pins");
 
   /* The two pins the bench measured directly, by name. These are the only
    * numbers here that came from the copper rather than a drawing. */

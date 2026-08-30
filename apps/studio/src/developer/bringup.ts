@@ -212,6 +212,11 @@ const DEFAULT_WIRING: WiringRow[] = [
   row('CAM4 RX ← XIAO4 TX', 'CAM4_RX'),
   row('SYNC_TRIGGER', 'SYNC_OUT'),
   row('CAM_PWR_EN', 'CAM_PWR_EN'),
+  // The shutter took JP1 21 / GPIO28 from FLASH_EN on 2026-08-30 (ECN-0003):
+  // the built-in flash is out of D4-V1 and its replacement is a separate
+  // external module with no P4 pin. FLASH_EN stays on the sheet and reads
+  // "unassigned" -- a row that vanishes looks like an oversight, and the
+  // wire that used to be there has to be accounted for on a rebuild.
   row('FLASH_EN', 'FLASH_EN'),
   row('Shutter button', 'BTN_SHUTTER'),
   row('Function button', 'BTN_FN'),

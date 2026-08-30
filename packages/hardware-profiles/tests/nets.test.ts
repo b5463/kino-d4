@@ -59,8 +59,12 @@ describe('nets + gpio (§8)', () => {
     }
   });
 
-  it('the flash pair and button pair exist with their documented classes', () => {
-    expect(netsByClass(D4_V1, 'FLASH')).toHaveLength(2);
+  it('the flash power net and button pair exist with their documented classes', () => {
+    // One FLASH net, not two: ECN-0003 gave FLASH_EN's pin (GPIO28, JP1 21)
+    // to the shutter, so there is no enable net from the P4 any more. The
+    // 5 V feed stays so an external module has somewhere to draw from; how it
+    // is triggered is not decided and is not invented here.
+    expect(netsByClass(D4_V1, 'FLASH')).toHaveLength(1);
     expect(netsByClass(D4_V1, 'BUTTONS')).toHaveLength(2);
   });
 

@@ -3,6 +3,7 @@
 #include "board_d4v1.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "hardware_validation.h"
 #include "taskmon.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -37,6 +38,10 @@ static button_t s_btn[BTN_COUNT] = {
 
 static button_handler_t s_handler;
 static bool s_fitted;
+/* One NVS write, not one per press. hwv_mark_validated returns early on an
+ * already-validated row, but only after taking its mutex, and this flag keeps
+ * the whole thing out of the poll loop for good after the first press. */
+static bool s_shutter_marked;
 
 bool buttons_fitted(void) { return s_fitted; }
 void buttons_on_press(button_handler_t handler) { s_handler = handler; }
@@ -72,6 +77,25 @@ static void buttons_task(void *arg) {
          * see the screen; a touch on dark glass means nothing in particular. */
         power_activity();
         klog("P4", "%s pressed", b->name);
+        /*
+         * The shutter row, earned once. A debounced low on GPIO28 that held
+         * for 25 ms is the switch on JP1 21 doing its job — the pull-up is
+         * internal, so nothing else on the board can produce that edge.
+         *
+         * Before the handler, not after, and once per device. hwv_mark_validated
+         * writes NVS, and an ESP-IDF flash write runs
+         * spi_flash_disable_interrupts_caches_and_other_cpu(): interrupts on
+         * both cores are off for 0.5-0.8 ms on a page write and 30-45 ms on a
+         * sector erase, which is long enough to eat bytes out of a camera
+         * transfer (capture.c says the same thing at its own marks). At this
+         * point the press has not reached the handler, so no capture has been
+         * requested and nothing is on the UARTs. The cost is up to ~45 ms of
+         * extra latency on the first shutter press this unit ever sees.
+         */
+        if (i == BTN_SHUTTER && !s_shutter_marked) {
+          s_shutter_marked = true;
+          hwv_mark_validated(HWV_BTN_SHUTTER, "GPIO28 pressed on JP1 21");
+        }
         if (s_handler) s_handler((button_id_t)i, false);
       } else if (!b->long_fired) {
         /* released before the long-press threshold: nothing more to do */
@@ -131,7 +155,10 @@ esp_err_t buttons_init(void) {
   /* Checked: without this task the pins are configured and nothing ever polls
    * them, so a fitted shutter button is dead and buttons_init() said it was
    * fine. s_fitted is cleared again so buttons_fitted() reports the truth. */
-  if (xTaskCreate(buttons_task, "buttons", 3072, NULL, 5, &h) != pdPASS) {
+  /* 4096, not 3072: the task now calls hwv_mark_validated on the first shutter
+   * press, which opens an NVS handle and writes a string. Every other task
+   * that marks runs on 4096 or more. */
+  if (xTaskCreate(buttons_task, "buttons", 4096, NULL, 5, &h) != pdPASS) {
     ESP_LOGE(TAG, "buttons task would not start: no heap; physical controls inactive");
     s_fitted = false;
     return ESP_ERR_NO_MEM;

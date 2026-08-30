@@ -26,7 +26,6 @@ flowchart TD
     BMS --> BOOST["SW6106 charger / boost"]
     BOOST --> RAIL["5 V main rail"]
     RAIL --> P4["ESP32-P4 display module"]
-    RAIL --> FLASH["constant-current flash driver"]
     RAIL --> SW["4-channel camera power switch bank"]
     SW --> C1["XIAO S3 + OV3660\nCAM1"]
     SW --> C2["XIAO S3 + OV3660\nCAM2"]
@@ -127,7 +126,7 @@ Electrically `UNVALIDATED` per signal until a node answers on it (GitHub issue #
 | 15 | GPIO35 | **spare — bootloader strap, leave unconnected** | — | GND | 16 |
 | 17 | GPIO34 | `CAM3_TX` (UART3), strapping pin driven as an output | reserved: C6 supply | ESP_3V3 | 18 |
 | 19 | GPIO32 | `SYNC_OUT` to all four XIAO `SYNC_IN` | reserved: C6 console RX | C6_U0RXD | 20 |
-| 21 | GPIO28 | `FLASH_EN` | reserved: C6 console TX | C6_U0TXD | 22 |
+| 21 | GPIO28 | `BTN_SHUTTER`, switch to GND on pin 6 or 16 | reserved: C6 console TX | C6_U0TXD | 22 |
 | 23 | I2C_SDA | carrier I²C | reserved: C6 download strap | C6_IO9 | 24 |
 | 25 | I2C_SCL | carrier I²C | reserved: C6 enable | C6_CHIP_PU | 26 |
 
@@ -144,11 +143,11 @@ Per signal, with the XIAO end:
 | `CAM4_TX` | 30 | 12 | P4 out | XIAO 4 RX GPIO44 |
 | `CAM4_RX` | 29 | 14 | P4 in | XIAO 4 TX GPIO43 |
 | `SYNC_OUT` | 32 | 19 | P4 out | all four XIAO `SYNC_IN`, fan-out |
-| `FLASH_EN` | 28 | 21 | P4 out | flash driver enable |
+| `BTN_SHUTTER` | 28 | 21 | P4 in, switch to GND, pull-up on | 6 × 6 × 4.3 mm tactile switch to JP1 6 or 16 |
 | `CAM_PWR_EN` | 31 | 10 | P4 out | camera bank high-side switch |
 | — | 35 | 15 | — | spare, leave unconnected |
 
-Accounting: 12 exposed GPIOs, 11 signals. The four UARTs take 8, `SYNC_OUT`, `FLASH_EN` and `CAM_PWR_EN` take 3, and `GPIO35` is the one spare. Every V1 signal has a route; nothing waits on an I²C expander. The per-camera power-switch control pins are still unassigned — §Camera power switching describes the channel hardware — as are the button and mode-slide pins.
+Accounting: 12 exposed GPIOs, 11 signals. The eleven are `CAM1_TX`/`CAM1_RX`, `CAM2_TX`/`CAM2_RX`, `CAM3_TX`/`CAM3_RX`, `CAM4_TX`/`CAM4_RX`, `SYNC_OUT`, `CAM_PWR_EN` and `BTN_SHUTTER`. `GPIO35` is the one spare. The shutter pin is assigned since ECN-0003, which took `GPIO28` from `FLASH_EN`; D4-V1 has no built-in flash and drives no flash enable line. Still unassigned, with no header pin left for them: `BTN_FN`, the mode slide, and the per-camera power-switch control pins — §Camera power switching describes that channel hardware.
 
 None of the eleven touches an occupied peripheral: SD slot 0 is GPIO39–44, the C6 SDIO slot 1 is GPIO14–19 with `EN` on GPIO54, I²S is 9–13 and 48, the internal I²C is 7/8, backlight is 23, USB is 24–27, and the console is 37/38. All five P4 UARTs route TX/RX through the GPIO matrix, so there is no IOMUX constraint on these choices. Baud stays 921600, UART numbers stay 1–4.
 
@@ -272,10 +271,11 @@ Bulk and local decoupling use 1000 µF 10 V low-ESR electrolytics and 100 nF 50 
 
 | Assembly | Current part |
 |---|---|
-| Flash emitter | 3 W CRI90 natural-white LED star, roughly 3.0 to 3.6 V forward voltage |
-| Flash drive | Adjustable constant-current driver, 350 mA initial target |
-| Flash thermal path | 20 × 20 × 7 mm copper pin-fin heatsink, 0.5 mm thermal pad |
-| Flash diffuser | 1 mm opal acrylic |
+| Flash | Not fitted in D4-V1. The constant-current direct-flash assembly below was dropped by ECN-0003; an external module will replace it and is not chosen. |
+| Flash emitter (dropped) | 3 W CRI90 natural-white LED star, roughly 3.0 to 3.6 V forward voltage |
+| Flash drive (dropped) | Adjustable constant-current driver, 350 mA initial target |
+| Flash thermal path (dropped) | 20 × 20 × 7 mm copper pin-fin heatsink, 0.5 mm thermal pad |
+| Flash diffuser (dropped) | 1 mm opal acrylic |
 | Speaker | 8 Ω, 2 W, about 25 × 35 mm face, 1.25 mm 2-pin plug |
 | Central storage | SanDisk Ultra microSD, 32 GB |
 | Buttons | 6 × 6 × 4.3 mm tactile switches |
@@ -302,7 +302,7 @@ The main controller connects to its carrier through a 26-pin, 2×13, 2.54 mm fem
 
 The provisional enclosure is 126 × 80 × 36 mm. The intended construction uses a black PETG structural skeleton with 2 to 3 mm clear acrylic outer panels, M2 heat-set inserts, and exposed screws. Acrylic acts as skin and window material. It does not carry the camera bar.
 
-The flash sits above the lens row and centers between CAM2 and CAM3. The 4.3-inch display faces out through the rear.
+The space above the lens row, centred between CAM2 and CAM3, was the flash position. D4-V1 fits nothing there; the external module has no envelope yet. The 4.3-inch display faces out through the rear.
 
 These values guide the digital twin. Physical measurement still decides the enclosure.
 

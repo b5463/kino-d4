@@ -2,6 +2,18 @@
 
 This log tracks released design-package versions inside the physical revision named in [`REVISION`](REVISION). Numbered engineering change notices carry the reason, evidence, and compatibility decision for each change.
 
+## 0.1.3 - 2026-08-30
+
+Status: prototype. No physical unit has passed the acceptance sheet.
+
+- Gave `BTN_SHUTTER` a pin: `GPIO28`, JP1 pin 21, which 0.1.2 had assigned to `FLASH_EN`. The body needs a shutter and JP1 had no other pin that is safe to switch to ground. `GPIO35` on pin 15 is the serial-bootloader strap and stays unconnected; `GPIO31` on pin 10 keeps `CAM_PWR_EN`, because that line is idle power-down for the camera bank and the only way the P4 can power-cycle a hung node. `GPIO28` is not a strapping pin - 34 to 38 are.
+- Dropped the built-in constant-current direct-flash assembly from D4-V1. A separate external flash module will be used and has no P4 pin in this revision; its interface is not chosen. `FLASH_EN` was an output that had never been asserted into a board that had never been built.
+- The switch is a 6 x 6 x 4.3 mm tactile part between JP1 21 and GND (pin 6 or pin 16), with no external resistor and no debounce capacitor: the P4's internal pull-up holds the pin high and firmware debounces 25 ms.
+- Twelve header GPIOs still carry eleven signals: the four TX/RX pairs, `SYNC_OUT` (GPIO32, pin 19), `CAM_PWR_EN` (GPIO31, pin 10) and `BTN_SHUTTER` (GPIO28, pin 21). `BTN_FN` and `SLIDE_MODE` remain unassigned.
+- `GPIO_TBD` stays in WIRING.md and `finalGpioMap` stays false: the header position is measured, but nobody has pressed the button on a board yet.
+
+Engineering change notice: [`ECN-0003`](changes/ECN-0003-shutter-on-jp1-21.md).
+
 ## 0.1.2 - 2026-08-28
 
 Status: prototype. No physical unit has passed the acceptance sheet.

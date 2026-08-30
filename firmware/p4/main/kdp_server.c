@@ -613,18 +613,21 @@ static void handle_capabilities(uint32_t seq) {
   cJSON_AddBoolToObject(caps, "quad", true);
   /* The control path: the flash window is held across the exposure, the mode
    * is configurable, and the window is bounded and released on every path.
-   * True because the command works. BOARD_FLASH_EN is BOARD_GPIO_NONE on this
-   * carrier, so the window drives no pin (capture.c). */
+   * True because the command works. BOARD_FLASH_EN is BOARD_GPIO_NONE since
+   * ECN-0003 took GPIO28 for the shutter button, so the window drives no pin
+   * (capture.c). */
   cJSON_AddBoolToObject(caps, "flashControl", true);
   /*
    * ...and what it drives. Additive and optional, because `flashControl` alone
    * cannot distinguish "the firmware can fire a flash" from "there is a flash
-   * to fire", and today only the first is true: FLASH_EN has no JP1 pin. A
-   * host that shows a flash control because flashControl is true would
-   * otherwise be promising the user light that does not exist.
+   * to fire", and today only the first is true. FLASH_EN has no P4 pin at all
+   * since ECN-0003 (2026-08-30): the built-in flash is out of D4-V1 and the
+   * replacement is a separate external module that does not exist yet. A host
+   * that shows a flash control because flashControl is true would otherwise be
+   * promising the user light that does not exist.
    *
-   * Flips to true when flash hardware is fitted AND validated (M5, Gate D) -
-   * never because a driver was written.
+   * Stays false until that module is fitted AND validated (M5, Gate D) - never
+   * because a driver was written.
    */
   cJSON_AddBoolToObject(caps, "flashHardware", false);
   /* Idle dim/sleep and camera-bank power-down are implemented; battery

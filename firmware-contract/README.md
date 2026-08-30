@@ -265,23 +265,29 @@ answered, and `GET_CAPABILITIES` reports `vsyncTelemetry: false`.
 
 `SYNC_OUT` is its own net (`GPIO32`, JP1 pin 19, in
 `packages/hardware-profiles/src/profiles/d4-v1.json`). The C6 pins on JP1 (20, 22, 24, 26) stay
-reserved and undriven. `FLASH_EN` **has a P4 GPIO**: `GPIO28`, JP1 pin 21 (`BOARD_FLASH_EN` /
-`BOARD_FLASH_EN_JP1` in `firmware/p4/main/board_d4v1.h`, `FLASH_EN: "GPIO28"` in the profile).
-Twelve P4 GPIOs reach the header — 52, 51, 50, 49, 35, 34, 32, 28 on the left column and 33, 31,
-30, 29 on the right — carrying eleven signals: the four TX/RX pairs, `SYNC_OUT`, `FLASH_EN` and
-`CAM_PWR_EN`. GPIO35 on pin 15 is the one spare and must stay unconnected; it is the P4's
-serial-bootloader strap. An earlier revision of this section said `FLASH_EN` had no pin because
-`GPIO28` was believed to be off-header; the measured JP1 table shows it on pin 21.
+reserved and undriven. `FLASH_EN` **has no P4 GPIO in D4-V1**: since ECN-0003 `GPIO28`, JP1 pin 21,
+carries `BTN_SHUTTER`, and `BOARD_FLASH_EN` in `firmware/p4/main/board_d4v1.h` is
+`BOARD_GPIO_NONE`. Twelve P4 GPIOs reach the header — 52, 51, 50, 49, 35, 34, 32, 28 on the left
+column and 33, 31, 30, 29 on the right — carrying eleven signals: the four TX/RX pairs, `SYNC_OUT`
+(`GPIO32`, pin 19), `CAM_PWR_EN` (`GPIO31`, pin 10, since ECN-0002) and `BTN_SHUTTER` (`GPIO28`,
+pin 21). GPIO35 on pin 15 is the one spare and must stay unconnected; it is the P4's
+serial-bootloader strap, which is why the button could not have it.
 
-A pin is not a flash. `capture.c` configures `GPIO28` as an output and holds it low, and
-`HWV_FLASH_EN_GPIO28` in `firmware/p4/main/hardware_validation.h` is **UNVALIDATED**: no capture
-asserts the line yet, so no meter has caught an edge on it. `flashHardware` stays `false` — the pin
-exists, the flash board does not. What it will drive is a bench LED until that board exists,
-through whatever route M2 picks. (`CAM_PWR_EN` is routed on `GPIO31`, JP1 pin 10, since ECN-0002; the I²C expander an earlier revision proposed is unnecessary.) The intended timing is
-unchanged: asserted before the trigger and released as soon as every node reports its capture
-finished, bounded at 900 ms — because without exposure sync a flash has to cover a window rather
-than an instant, and at 350–500 mA the difference is worth bounding. With no pin there is nothing
-to assert, and `flashHardware` stays `false`.
+A pin is not a flash, and this one was never anything else. `capture.c` configured `GPIO28` as an
+output and held it low; no capture ever asserted it, so no meter ever caught an edge on it, and
+`HWV_FLASH_EN_GPIO28` in `firmware/p4/main/hardware_validation.h` stayed **UNVALIDATED**. The
+registry is append-only, so that row remains — as a record that the line was assigned and never
+proven. It can no longer flip: nothing drives `GPIO28` as an output any more. The built-in
+constant-current flash assembly is dropped from D4-V1 and an external module replaces it, with no
+P4 pin in this revision and no chosen interface.
+
+`flashControl` stays `true` and `flashHardware` stays `false`. `flashControl` describes the command
+surface, which is unchanged; `flashHardware` describes a fitted flash, and there is none — now for
+the plainer reason that there is no enable line either. The intended timing is recorded and not
+implemented: asserted before the trigger and released as soon as every node reports its capture
+finished, bounded at 900 ms, because without exposure sync a flash has to cover a window rather
+than an instant, and at 350–500 mA the difference is worth bounding. Whatever the external module
+turns out to be, it inherits that requirement.
 
 ### D14 — `capturedAt` is required, and the body has no clock
 

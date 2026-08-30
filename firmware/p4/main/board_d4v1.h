@@ -30,8 +30,10 @@
 //
 // Twelve P4 GPIOs reach the header: 52, 51, 50, 49, 35, 34, 32, 28 on the
 // left and 33, 31, 30, 29 on the right. Eleven signals are wanted -- four
-// TX/RX pairs, SYNC_OUT, FLASH_EN, CAM_PWR_EN -- so GPIO35 (pin 15) is the
-// one spare. Right column pins 20/22/24/26 are the C6 programming and
+// TX/RX pairs, SYNC_OUT, CAM_PWR_EN, BTN_SHUTTER -- so GPIO35 (pin 15) is
+// still the one spare. Eleven, not twelve: FLASH_EN held GPIO28 / pin 21
+// under ECN-0002 and handed it to the shutter button on 2026-08-30
+// (ECN-0003). Right column pins 20/22/24/26 are the C6 programming and
 // recovery lines and stay reserved; pin 18 is the C6's own supply.
 //
 // THIS TABLE IS MEASURED, NOT TRANSCRIBED. It has been wrong twice, both
@@ -98,12 +100,21 @@
 // the node side does not arm on it yet.
 #define BOARD_SYNC_OUT 32
 #define BOARD_SYNC_OUT_JP1 19
-// Both have a header pin on this carrier. The twelfth GPIO, GPIO35 on pin
-// 15, is the spare.
-#define BOARD_FLASH_EN 28
-#define BOARD_FLASH_EN_JP1 21
+// CAM_PWR_EN keeps the P4 in charge of the camera bank's high-side switch.
+// It is the last control line with a header pin: GPIO28 on pin 21 belongs to
+// the shutter button now.
 #define BOARD_CAM_PWR_EN 31
 #define BOARD_CAM_PWR_EN_JP1 10
+// FLASH_EN has no P4 pin in D4-V1. The built-in flash was dropped on
+// 2026-08-30 (ECN-0003) in favour of a separate external module, and its pin
+// went to the shutter button. There is no BOARD_FLASH_EN_JP1: it would name a
+// header position nothing drives.
+//
+// This makes capture.c's BOARD_GPIO_NONE branch the LIVE path on this board,
+// not a leftover from the pre-measurement map: gpio_setup() skips the flash
+// pin, flash_set() drives nothing, and a flash request is accepted and has no
+// electrical effect.
+#define BOARD_FLASH_EN BOARD_GPIO_NONE
 // JP1 15 / GPIO35: routed to the header, assigned to nothing.
 //
 // LEAVE IT UNCONNECTED. GPIO35 is the ESP32-P4's serial-bootloader strap:
@@ -119,13 +130,25 @@
 // put a camera's TX -- an input to us -- on 34 or 35.
 #define BOARD_SPARE_JP1 15
 
-// Physical controls. docs/HARDWARE.md: "Button and mode-slide pins are
-// unassigned." They stay unassigned here rather than being guessed: a
-// floating input read as a button fires the shutter by itself in a bag,
-// which costs a roll and a battery. Assign a real pin and the control comes
-// alive with no other change.
+// Physical controls.
+//
+// The shutter is a 6x6x4.3 mm tactile switch between JP1 21 (GPIO28) and GND.
+// No resistor on the harness: buttons.c enables the internal pull-up, reads
+// active low, and debounces 25 ms with a 600 ms long-press threshold.
+//
+// A switch to ground is safe HERE and not everywhere. The ESP32-P4's
+// strapping pins are GPIO34..GPIO38; GPIO28 is not one of them, so holding it
+// low across a reset changes no boot decision. GPIO35 on JP1 15 is the
+// serial-bootloader strap, which is why the spare stays unwired -- a button
+// there would be a board that comes up in the ROM downloader.
+//
+// BTN_FN keeps no pin rather than being guessed onto one: a floating input
+// read as a button fires the shutter by itself in a bag, which costs a roll
+// and a battery. Assign a real pin and the control comes alive with no other
+// change.
 #define BOARD_BTN_NONE (-1)
-#define BOARD_BTN_SHUTTER BOARD_BTN_NONE
+#define BOARD_BTN_SHUTTER 28
+#define BOARD_BTN_SHUTTER_JP1 21
 #define BOARD_BTN_FN BOARD_BTN_NONE
 
 // --- TF/microSD, SDMMC slot 0, 4-bit ---

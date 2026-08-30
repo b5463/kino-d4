@@ -13,10 +13,15 @@ import { D4_V1 } from '../src/index';
  *
  * These tests pin the profile to that measured table and to the firmware
  * header so neither can drift alone. ECN-0002.
+ *
+ * ECN-0003 (2026-08-30) moved one signal, not the table: JP1 21 / GPIO28 was
+ * FLASH_EN and is BTN_SHUTTER now. The built-in flash is out of D4-V1 in
+ * favour of a separate external module with no P4 pin, so FLASH_EN is tested
+ * as an unrouted signal below and is not in ASSIGNED.
  */
 
 const CAM_SIGNALS = ['CAM1_TX', 'CAM1_RX', 'CAM2_TX', 'CAM2_RX', 'CAM3_TX', 'CAM3_RX', 'CAM4_TX', 'CAM4_RX'] as const;
-const ASSIGNED = [...CAM_SIGNALS, 'SYNC_OUT', 'FLASH_EN', 'CAM_PWR_EN'] as const;
+const ASSIGNED = [...CAM_SIGNALS, 'SYNC_OUT', 'CAM_PWR_EN', 'BTN_SHUTTER'] as const;
 
 /** ESP32-P4 GPIOs a KINO signal must never take on this carrier. */
 const RESERVED_GPIO: Record<number, string> = {
@@ -121,6 +126,9 @@ describe('d4-v1 JP1 pin map', () => {
       expect(n, `${signal}: GPIO${MUST_STAY_SPARE} is the bootloader strap and must stay spare`).not.toBe(MUST_STAY_SPARE);
       if (STRAPPING_OUTPUT_ONLY[n]) {
         expect(signal, `GPIO${n} is a strapping pin: only an output may take it (${STRAPPING_OUTPUT_ONLY[n]})`).toMatch(/_TX$|^SYNC_OUT$|_EN$/);
+        // A button is a switch to ground: it holds its pin low across reset,
+        // so no strapping pin may carry one however it is otherwise driven.
+        expect(signal, `GPIO${n} is a strapping pin and cannot carry a switch to ground`).not.toMatch(/^BTN_/);
       }
     }
   });
@@ -164,11 +172,18 @@ describe('d4-v1 JP1 pin map', () => {
     }
   });
 
-  it('routes FLASH_EN and CAM_PWR_EN and drops the M3-DEV phantom pins', () => {
-    // Both have a header pin here. They were null only while the map was the
-    // M3-DEV one, which appeared to leave no pin for them.
-    expect(D4_V1.gpio.FLASH_EN).toBe('GPIO28');
+  it('routes CAM_PWR_EN and BTN_SHUTTER, leaves FLASH_EN unrouted, drops the M3-DEV phantom pins', () => {
     expect(D4_V1.gpio.CAM_PWR_EN).toBe('GPIO31');
+    // JP1 21 / GPIO28, taken from FLASH_EN by ECN-0003. A 6x6x4.3 mm tactile
+    // switch to ground; GPIO28 is not one of the ESP32-P4 straps (34-38), so
+    // holding it low at reset changes no boot decision.
+    expect(D4_V1.gpio.BTN_SHUTTER).toBe('GPIO28');
+    expect(D4_V1.jp1!.pins.BTN_SHUTTER!.pin).toBe(21);
+    // FLASH_EN has no P4 pin in D4-V1: the built-in flash was dropped for a
+    // separate external module. A GPIO here again is a claim this board cannot
+    // back, and it would collide with the shutter.
+    expect(D4_V1.gpio.FLASH_EN).toBeNull();
+    expect(D4_V1.jp1!.pins.FLASH_EN).toBeUndefined();
     const claimed = new Set(Object.values(D4_V1.gpio).filter((v): v is string => v !== null));
     // GPIO1/2/4/20/45/46/47 belong to the JC-ESP32P4-M3-DEV carrier; GPIO3 and
     // GPIO5 are the touch and panel resets and reach no connector here.
@@ -189,12 +204,14 @@ describe('firmware board_d4v1.h agrees with the profile', () => {
     return m[1]!;
   }
 
-  it('keeps BOARD_GPIO_NONE available and routes both control lines', () => {
-    // The sentinel stays: capture.c and power.c still branch on it, and a
-    // future carrier may genuinely lack the pin.
+  it('routes CAM_PWR_EN and the shutter, and gives FLASH_EN no pin', () => {
+    // The sentinel stays, and on D4-V1 it is the live case for FLASH_EN rather
+    // than a branch nothing takes -- capture.c skips the pin entirely.
     expect(src).toMatch(/^[ \t]*#define[ \t]+BOARD_GPIO_NONE[ \t]+\(-1\)/m);
-    expect(define('BOARD_FLASH_EN'), 'FLASH_EN is routed on JP1 21').toBe('28');
+    expect(define('BOARD_FLASH_EN'), 'FLASH_EN has no pin since ECN-0003').toBe('BOARD_GPIO_NONE');
     expect(define('BOARD_CAM_PWR_EN'), 'CAM_PWR_EN is routed on JP1 10').toBe('31');
+    expect(define('BOARD_BTN_SHUTTER'), 'the shutter is on JP1 21').toBe('28');
+    expect(define('BOARD_BTN_SHUTTER_JP1'), 'the shutter is on JP1 21').toBe('21');
   });
 
   it('CAM1-4 TX/RX and SYNC_OUT GPIO numbers match the gpio map', () => {

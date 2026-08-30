@@ -225,9 +225,10 @@ static void fail(capture_report_t *r, const char *code, const char *msg) {
 
 static bool s_gpio_ready;
 /* True only when BOARD_FLASH_EN names a pin and that pin configured. With
- * BOARD_FLASH_EN == BOARD_GPIO_NONE (no JP1 pin left, see board_d4v1.h) the
- * flash request is accepted and does nothing; -1 is never handed to the
- * GPIO driver. */
+ * BOARD_FLASH_EN == BOARD_GPIO_NONE (the pin went to the shutter, ECN-0003,
+ * see board_d4v1.h) the flash request is accepted and does nothing; -1 is
+ * never handed to the GPIO driver. This is the live path on D4-V1, not a
+ * fallback. */
 static bool s_flash_ready;
 
 static void flash_set(int level) {
@@ -250,20 +251,23 @@ static void gpio_setup(void) {
   gpio_set_level(BOARD_SYNC_OUT, 0);
   s_gpio_ready = true;
 
-  /* Through a variable, not the macro: `1ULL << -1` as a constant expression
-   * is a compile error even inside a branch that never runs. */
-  const int flash_pin = BOARD_FLASH_EN;
-  if (flash_pin == BOARD_GPIO_NONE) {
-    ESP_LOGW(TAG, "flash unassigned: no JP1 pin for FLASH_EN, flash requests are no-ops");
-    return;
-  }
-  io.pin_bit_mask = 1ULL << flash_pin;
+  /* Decided by the preprocessor, not at runtime, because the pin number is a
+   * compile-time constant either way. On D4-V1 it is BOARD_GPIO_NONE (-1)
+   * since ECN-0003, and `1ULL << -1` is a negative shift count: an error as a
+   * constant expression and a -Wshift-count-negative warning even in a branch
+   * that provably never runs. The #if keeps that expression out of the
+   * translation unit entirely rather than dressing it up in a variable. */
+#if BOARD_FLASH_EN == BOARD_GPIO_NONE
+  ESP_LOGW(TAG, "flash unassigned: no P4 pin for FLASH_EN since ECN-0003, requests are no-ops");
+#else
+  io.pin_bit_mask = 1ULL << BOARD_FLASH_EN;
   if (gpio_config(&io) != ESP_OK) {
-    ESP_LOGE(TAG, "cannot drive flash GPIO%d", flash_pin);
+    ESP_LOGE(TAG, "cannot drive flash GPIO%d", BOARD_FLASH_EN);
     return;
   }
-  gpio_set_level((gpio_num_t)flash_pin, 0);
+  gpio_set_level((gpio_num_t)BOARD_FLASH_EN, 0);
   s_flash_ready = true;
+#endif
 }
 
 /** Decide whether this shot uses the flash. */
