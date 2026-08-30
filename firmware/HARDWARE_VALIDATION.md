@@ -17,7 +17,11 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-30, firmware 0.4.6
+## Status — updated 2026-08-30, firmware 0.4.7
+
+0.4.7 is the first firmware with a physical shutter: GPIO28 on JP1 21, the
+pin ECN-0003 took back from the flash, validated on the bench the same day
+with two photographs taken by the button ("The shutter has a pin", below).
 
 0.4.4 is the first firmware whose photographs have reached a Roll on a real
 backend: capture, thumbnail-first upload, byte-identical original, worker jobs
@@ -280,6 +284,32 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### The shutter has a pin, and it takes a picture - ECN-0003 bench, 2026-08-30
+
+Board `KD4-D121BC`, one XIAO on CAM1 (OV3660, node firmware 0.4.1), C6 link
+up. A 6 × 6 × 4.3 mm tactile switch wired between JP1 pin 21 (GPIO28) and JP1
+pin 16 (GND), nothing else in the loop. Firmware 0.4.7 radio build from commit
+`50c957a`: `kino-p4.bin` 1,450,544 B, SHA-256
+`0f54bee737dacf3c35f85871c6fda84cf2cc168cb58a518926d5082fab707777`, flashed
+over COM8 with esptool 5.3.1 at 921600, all three images hash-verified, board
+reset by RTS. Stored `network.apiBase` (`http://10.20.99.57:3000`) carried
+across, so no `KINO_ROLL_API_BASE` was compiled in.
+
+| Subsystem | Evidence | Status |
+|---|---|---|
+| `BTN_SHUTTER` GPIO28 / JP1 21 | `GET_RUNTIME_STATS` lists a `buttons` task after the flash (2104 B stack free of 4096); it does not exist when no pin is assigned. First press: `GET_HW_VALIDATION` row `BTN_SHUTTER` -> `validated`, detail `GPIO28 pressed on JP1 21`. Pull-up, active low, 25 ms debounce as coded; no external parts | **VALIDATED** |
+| Shutter fires a capture | The same press: `trigger +152214 us, 1 cam(s)`, `all frames in at +1876236 us`, `EVT_CAPTURE` `CAP_000405` `triggeredBy: "shutter"`, 1/1 frames, 81 KB, 2227 ms. A second press 25 s later: `CAP_000406`, 1865 ms. No reset (`resetReason: usb` from the flash, uptime continuous), C6 link and CAM1 unaffected | **VALIDATED** |
+| `FLASH_EN_GPIO28` | Retired by the same ECN. `capture.c` now takes the `BOARD_GPIO_NONE` branch and logs `flash unassigned: no P4 pin for FLASH_EN since ECN-0003`. The row cannot flip on this revision and is kept as history | **UNVALIDATED, final for D4-V1** |
+
+**Found on the way.** Sixteen consecutive `ui screen 3 ... frames 211 STALLED`
+lines while the gallery sat idle between the two presses. Not a stall: on every
+screen but SHOOT the UI presents only on a change, so the frame counter is
+meant to sit still there and the once-a-second report reads that as a fault.
+Issue #140. Two bench traps for the next flash from Windows: esptool 5.x
+dropped `@flash_args` expansion (pass the addresses and files explicitly), and
+the `esptool.exe` that Python 3.9 put on PATH is v4.1 and does not know the
+ESP32-P4 - use `python -m esptool`.
 
 ### Gate F - photography wins, measured on one camera, 2026-08-30
 
@@ -1341,9 +1371,10 @@ subsystem.
 | Exposure synchronization / inter-camera skew | **UNVALIDATED and UNMEASURED** — Gate C. Frame period derived at ~112 ms from driver source; no hardware confirmation |
 | Stale-frame lifecycle | **PREDICTED FROM SOURCE, UNCONFIRMED** — see the M1 runbook's Phase 15 gate |
 | `SYNC_TRIGGER_GPIO32` (`SYNC_OUT`, JP1 pin 19) | **UNVALIDATED** — driven by `capture.c`; no node reads the edge, so nothing has seen it |
-| `FLASH_EN_GPIO28` / flash hardware | **UNVALIDATED** — routed on JP1 pin 21, never driven into a load; no flash board exists; `flashHardware: false` |
-| `CAM_PWR_EN_GPIO31` | **UNVALIDATED** — no header pin left on JP1. The old GPIO31 row above is void |
-| Physical shutter / Fn button | **UNVALIDATED** — pins deliberately `BOARD_BTN_NONE`; no switch fitted |
+| `FLASH_EN_GPIO28` / flash hardware | **UNVALIDATED, and can no longer flip on D4-V1** — ECN-0003 gave GPIO28 / JP1 21 to the shutter on 2026-08-30 and dropped the built-in flash for an external module with no P4 pin. The row stays as the append-only record of the abandoned assignment; `flashHardware: false` |
+| `CAM_PWR_EN_GPIO31` | **Driven** — GPIO31 on JP1 pin 10 since ECN-0002, and `power.c` drives it; the registry marks it from that. The AO4407 channels downstream have not been fitted or metered, so "the camera bank switches" is still unproven |
+| Physical shutter | **VALIDATED 2026-08-30** — `HWV_BTN_SHUTTER` earned on the first debounced press of a 6 × 6 mm tactile switch between JP1 21 and GND, and the press took a photograph. Session recorded above ("The shutter has a pin") |
+| Fn button | **UNVALIDATED** — no header pin; `BOARD_BTN_FN` stays `BOARD_BTN_NONE`, no switch fitted |
 | Battery voltage / percentage / low-battery shutdown | **NOT APPLICABLE on this board** — no sense divider reaches the P4 (deviation D10). Needs a hardware revision |
 | Backlight brightness / dim stage | **NOT APPLICABLE** — plain GPIO, not PWM (deviation D11) |
 | P4 → C6 SDIO mapping | **VALIDATED 2026-08-29.** SDMMC slot 1 on GPIO14–19 enumerated the onboard C6 (`Card init success, TRANSPORT_RX_ACTIVE`, `rx_ready && tx_ready`), reproduced on two boots and witnessed from the C6's own console. Session recorded above. The routing was corroborated on paper first; it is now measured |

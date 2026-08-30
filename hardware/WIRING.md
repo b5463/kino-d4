@@ -61,7 +61,7 @@ Each channel uses an AO4407 or AO4407A P-channel MOSFET, a 100 kΩ gate pull-up,
 | `SYNC_OUT` | `GPIO_TBD` | bench validation required |
 | `FLASH_EN` | none in D4-V1 | external module, ECN-0003 |
 | `CAM_PWR_EN` | `GPIO_TBD` | bench validation required |
-| `BTN_SHUTTER` | `GPIO28` / JP1 21 | bench validation required |
+| `BTN_SHUTTER` | `GPIO28` / JP1 21 | validated 2026-08-30 — `HWV_BTN_SHUTTER` earned on the first press, `firmware/HARDWARE_VALIDATION.md` |
 | `BTN_FN` | `GPIO_TBD` | bench validation required |
 | `SLIDE_MODE` | `GPIO_TBD` | bench validation required |
 
@@ -69,7 +69,7 @@ The `PROVISIONAL` candidate for each row lives in `packages/hardware-profiles/sr
 
 The P4's `JP1` header (26-pin, 2×13) exposes twelve P4 GPIOs, measured on the board (ECN-0002). Eleven carry signals: the four UART pairs take 8, `SYNC_OUT` takes `GPIO32` on pin 19, `CAM_PWR_EN` takes `GPIO31` on pin 10, and `BTN_SHUTTER` takes `GPIO28` on pin 21 (ECN-0003). `GPIO35` on pin 15 is the twelfth and stays unconnected: it is the serial-bootloader strap. `BTN_FN`, `SLIDE_MODE` and the four `CAM_PWR_n` lines have no header pin on this carrier; their route is an open M2 question, the standing candidate being an I²C GPIO expander on pins 23/25.
 
-`BTN_SHUTTER` is wired as a 6 × 6 × 4.3 mm tactile switch between JP1 pin 21 and GND on JP1 pin 6 or pin 16. No external pull-up and no debounce capacitor: the P4's internal pull-up holds the pin high, the input is active low, and firmware debounces 25 ms. The row stays at `bench validation required` until `HWV_BTN_SHUTTER` is earned on the first debounced press; with a meter against pin 6 the pin should read 3.3 V idle and 0 V held.
+`BTN_SHUTTER` is wired as a 6 × 6 × 4.3 mm tactile switch between JP1 pin 21 and GND on JP1 pin 6 or pin 16. No external pull-up and no debounce capacitor: the P4's internal pull-up holds the pin high, the input is active low, and firmware debounces 25 ms. `HWV_BTN_SHUTTER` was earned on the first debounced press on 2026-08-30 (unit `KD4-D121BC`, firmware 0.4.7), and that press took a photograph; with a meter against pin 6 the pin reads 3.3 V idle and 0 V held.
 
 Locking this table requires a pin-capability review, continuity check, single-camera bring-up, and a four-camera load test. Update firmware, the twin profile, and this file in the same change.
 
