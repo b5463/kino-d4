@@ -122,6 +122,15 @@ typedef struct {
 /** Capture one JPEG frame. Caller owns the buffer until camsensor_release().
  * `timing` may be NULL. */
 camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing);
+
+/**
+ * esp_timer time of the last register write that changes how a frame is
+ * ENCODED (quality, framesize). A photograph must come from a frame armed
+ * after this instant - fb->timestamp / timing.frame_start_us is in the same
+ * domain - or its bottom may be quantised under two different tables. Zero
+ * until the first change after boot.
+ */
+int64_t camsensor_encoding_changed_us(void);
 void camsensor_release(camera_fb_t *fb);
 
 /**

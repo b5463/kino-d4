@@ -300,6 +300,28 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   camsensor_timing_t timing;
   const int64_t cmd_us = esp_timer_get_time();
   camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
+  /*
+   * A photograph must be encoded wholly under the settings that were just
+   * applied. The sensor encodes while it free-runs, so the frame in flight
+   * when NL_CMD_SENSOR rewrote quality has its bottom quantised under the
+   * wrong tables (bench CAP_000611/612: valid EOI, matching CRC, bottom 15%
+   * noise). discard_queued above cannot help - it drains what is FINISHED,
+   * and the damaged frame finishes after the drain. So: any frame armed
+   * before the last encoding change is released and the next one taken.
+   * Bounded at 3, which is one in practice (the in-flight frame); each retry
+   * costs one frame period and only follows an actual settings change, so a
+   * burst at a fixed look pays nothing. Previews skip this on purpose - one
+   * soft frame is invisible at finder rates, and blocking the finder a frame
+   * period per quality flip would halve it.
+   */
+  if (!preview) {
+    for (int retry = 0; retry < 3 && fb != NULL &&
+                        timing.frame_start_us <= camsensor_encoding_changed_us();
+         retry++) {
+      camsensor_release(fb);
+      fb = camsensor_capture(&duration_ms, &timing);
+    }
+  }
   if (fb == NULL) {
     s_state = NL_STATE_ERROR;
     send_nack(NL_CMD_CAPTURE, seq, "HARDWARE_ERROR", "Capture failed");

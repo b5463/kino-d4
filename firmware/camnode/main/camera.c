@@ -193,6 +193,27 @@ uint16_t camsensor_pid(void) { return s_detected ? s_pid : 0; }
 bool camsensor_autofocus_capable(void) { return s_detected && s_pid == OV5640_PID; }
 const char *camsensor_max_resolution(void) { return s_max_res[0] ? s_max_res : NULL; }
 
+/*
+ * When a register that shapes the JPEG ENCODING last changed, esp_timer time.
+ *
+ * The OV3660 encodes in-sensor while it free-runs, and a quality write landing
+ * mid-readout re-tables the quantiser under the frame currently being output:
+ * the top of that frame is old-quality, the bottom is garbage. Bench
+ * KD4-D121BC, 2026-08-31: three 320x240 previews (register at the finder's
+ * quality) then a UXGA capture at the look's quality 9 stored CAP_000611/612
+ * with the bottom ~15% as coloured noise - a valid EOI, a matching CRC, and a
+ * ruined photograph, because the CRC covers what the sensor emitted.
+ *
+ * The photograph path compares this against fb->timestamp (stamped at DMA
+ * arm): a frame ARMED after the write was encoded wholly under the new
+ * tables; a frame armed before it may not have been. Previews do not check -
+ * one soft preview frame is invisible at 3 fps, and the finder is the thing
+ * writing the register in the first place.
+ */
+static int64_t s_encode_changed_us;
+
+int64_t camsensor_encoding_changed_us(void) { return s_encode_changed_us; }
+
 esp_err_t camsensor_set_quality(int quality) {
   sensor_t *sensor = esp_camera_sensor_get();
   if (sensor == NULL) return ESP_ERR_INVALID_STATE;
@@ -202,6 +223,7 @@ esp_err_t camsensor_set_quality(int quality) {
    * would pay on every frame for no change in the picture. */
   if (quality == s_quality) return ESP_OK;
   if (sensor->set_quality(sensor, quality) != 0) return ESP_FAIL;
+  s_encode_changed_us = esp_timer_get_time();
   s_quality = quality;
   s_applied.has_quality = true;
   s_applied.quality = quality;
@@ -365,6 +387,7 @@ esp_err_t camsensor_set_resolution(const char *resolution) {
    */
   if (size == s_framesize) return ESP_OK;
   if (sensor->set_framesize(sensor, size) != 0) return ESP_FAIL;
+  s_encode_changed_us = esp_timer_get_time();
   s_framesize = size;
 
   /*

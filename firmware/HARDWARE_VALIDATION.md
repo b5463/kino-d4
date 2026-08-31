@@ -17,6 +17,21 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
+## Status — updated 2026-08-31, firmware 0.4.13
+
+0.4.11-0.4.13 landed in one bench day. 0.4.11 gives the gallery a persisted
+order index and DELETE ALL PHOTOS; its first session on the 527-capture card
+found three interleaving defects no host test could reach, fixed in 0.4.12
+("The quality flip", below, carries the session). The same session surfaced
+the real defect behind a "glitched, horrid" photograph: a quality register
+write landing mid-readout corrupts the bottom of the frame the sensor is
+encoding at that moment - present since the sensor path went live at 0.4.9,
+invisible until someone looked at the pixels. 0.4.13 fixes it on the node:
+a photograph is served only from a frame armed after the last encoding
+register change. Reproduced and verified end to end over KDP, no hands on
+the unit. The P4 on the bench runs 0.4.12 (no P4 code changed in 0.4.13);
+the CAM1 node runs 0.4.13.
+
 ## Status — updated 2026-08-30, firmware 0.4.9
 
 0.4.9 makes the settings real: per-camera exposure, gain and look quality
@@ -300,6 +315,51 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### The quality flip - the register write that ruined the bottom of the frame, 0.4.11-0.4.13 bench, 2026-08-31
+
+Board `KD4-D121BC`, one XIAO on CAM1 (OV3660), P4 over USB-Serial-JTAG on
+COM8, node console on COM6, 527 captures on the card. Everything below was
+driven over KDP from the bench script; nobody touched the unit except to
+report the symptom.
+
+**The report.** A photograph taken by the shutter looked "glitched on the
+bottom, quality horrid" on the photo screen. Three claims got made and two
+died on evidence: the once-per-second `ui ... STALLED` klog line is printed
+by the UI task itself when nothing repaints - it is idle noise, present on
+0.4.9, and the task was answering touches the whole time; the on-screen
+softness is the photo pane's n/16 PPA quantisation matting a 1600x1200 frame
+at 400x300 into 464x348 - a 0.4.9 consequence of settings actually reaching
+the sensor, cosmetic. The third claim survived: `MEDIA_READ` pulled
+`C1.JPG` off the card in 8 KB pages and a desktop decode showed the bottom
+~15% as coloured noise. Valid EOI, matching CRC - the CRC covers what the
+sensor emitted, and the sensor emitted a ruined frame.
+
+**The mechanism.** The OV3660 encodes JPEG in-sensor while free-running.
+Since 0.4.9 the look's quality is written to the sensor right before the
+trigger (and the finder writes its own between shots), so the quantiser is
+re-tabled under the frame mid-readout: top of that frame old-quality,
+bottom garbage. `camsensor_discard_queued` cannot help - it drains frames
+that are FINISHED, and the damaged frame finishes after the drain.
+
+**Reproduced on demand:** three `CAMERA_PREVIEW` frames (register at finder
+quality) then `CAMERA_CAPTURE` (register flips to look quality 9) -
+`CAP_000612`, bottom band corrupt in a desktop decode, twice for twice.
+
+**The fix (0.4.13, node only).** `camera.c` stamps `esp_timer` time when a
+register that shapes encoding changes (quality, framesize);
+`node_server.c`'s photograph path releases any frame armed before that
+stamp and takes the next one, bounded at 3, previews exempt. Costs one
+frame period and only after an actual settings change.
+
+**Verified:** same repro sequence, `5f2ccbab` - clean corner to corner,
+`nodeFrameAgeUs` **-283828**: the served frame was armed 284 ms AFTER the
+request began, which is the retry visibly discarding the in-flight frame.
+Node image built at d8aeeae+fix; reflashed as 0.4.13 after the version
+records landed. One flashing lesson recorded: after `esptool read-mac
+--after no-reset`, the write-flash's own reset did not start the app - the
+node stayed silent until an explicit `--before default_reset` cycle, and
+the P4 counted uartErrors against the dead link the whole time.
 
 ### The sensor obeys the slot, and META stops lying about it - 0.4.9 bench, 2026-08-30
 
