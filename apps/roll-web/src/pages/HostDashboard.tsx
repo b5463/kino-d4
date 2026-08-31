@@ -72,21 +72,90 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
     await refreshCaptures(next.rollId);
   }, [api, refreshCaptures]);
 
+  /**
+   * One capture, merged in place.
+   *
+   * The host API has no `GET /api/host/captures/:id` — the list endpoint is the
+   * only reader — so this pages the keyset feed and STOPS at the wanted id
+   * instead of walking the whole roll. Captures come back newest first, so a
+   * live change costs one page in the ordinary case, where re-listing the roll
+   * cost every page of it on every event.
+   */
+  const patchCapture = useCallback(
+    async (rollId: string, captureId: string): Promise<void> => {
+      let cursor: string | undefined;
+      do {
+        const page = await api.listCaptures(rollId, cursor);
+        const found = page.items.find((item) => item.captureId === captureId);
+        if (found !== undefined) {
+          setCaptures((items) =>
+            items.some((item) => item.captureId === captureId)
+              ? items.map((item) => (item.captureId === captureId ? found : item))
+              : // A capture this dashboard has not seen yet (created elsewhere,
+                // or unhidden into view) goes in by capture time, which is the
+                // order the list endpoint itself uses.
+                [...items, found].sort(
+                  (left, right) =>
+                    new Date(right.capturedAt).getTime() - new Date(left.capturedAt).getTime(),
+                ),
+          );
+          return;
+        }
+        cursor = page.hasMore ? page.nextCursor : undefined;
+      } while (cursor !== undefined);
+      // Not in the roll at all: a purge, or an event for another roll.
+      setCaptures((items) => items.filter((item) => item.captureId !== captureId));
+    },
+    [api],
+  );
+
   useEffect(() => {
     void refresh().catch((caught: unknown) =>
       setError(caught instanceof Error ? caught.message : String(caught)),
     );
   }, [refresh]);
 
+  /**
+   * An event says what changed; the dashboard now reads back only that.
+   *
+   * It used to re-list the whole roll — every page — on every event, so a
+   * camera shooting through a party had the host client re-downloading the
+   * entire moderation grid several times a minute.
+   *
+   * - `capture.updated` / `processing.completed`: one capture changed, and the
+   *   roll's counts did not. Patch the capture, ask for nothing else.
+   * - `capture.created` / `capture.hidden` / `capture.deleted`: the capture AND
+   *   the counts moved. Patch the capture, re-read the roll.
+   * - `roll.*`: status and counts only. No capture changed.
+   *
+   * The full re-list stays where it belongs: the initial load.
+   */
   useEffect(() => {
-    if (roll === null) return;
-    const reconcile = (_event: HostRollEvent): void => {
-      void Promise.all([api.getRoll(roll.rollId).then(setRoll), refreshCaptures(roll.rollId)]).catch(
-        () => {},
-      );
+    const rollId = roll?.rollId;
+    if (rollId === undefined) return;
+
+    const reconcile = (event: HostRollEvent): void => {
+      const refreshRoll = (): Promise<void> => api.getRoll(rollId).then(setRoll);
+      const reads: Promise<unknown>[] = [];
+      switch (event.type) {
+        case 'roll.opened':
+        case 'roll.closed':
+          reads.push(refreshRoll());
+          break;
+        // One capture changed and the totals did not.
+        case 'capture.updated':
+        case 'processing.completed':
+          reads.push(patchCapture(rollId, event.captureId));
+          break;
+        // A capture appearing, hidden or trashed moves the totals with it.
+        default:
+          reads.push(patchCapture(rollId, event.captureId), refreshRoll());
+      }
+      void Promise.all(reads).catch(() => {});
     };
-    return api.events(roll.rollId, reconcile);
-  }, [api, refreshCaptures, roll?.rollId]);
+
+    return api.events(rollId, reconcile);
+  }, [api, patchCapture, roll?.rollId]);
 
   const run = async (action: () => Promise<void>): Promise<void> => {
     setBusy(true);

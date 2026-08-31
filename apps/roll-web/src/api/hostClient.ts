@@ -183,6 +183,34 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
   };
 }
 
+/**
+ * Reconnect bounds, the same ones `hooks/useRollEvents.ts` uses for the guest
+ * stream. A fixed 3 s retry hammered a down API twenty times a minute per open
+ * dashboard and never backed off; a deploy or an API restart is exactly when
+ * that matters.
+ */
+export const HOST_EVENT_RECONNECT_MIN_MS = 1_000;
+export const HOST_EVENT_RECONNECT_MAX_MS = 30_000;
+
+/**
+ * The delay before the next attempt: exponential, capped, and jittered.
+ *
+ * The jitter is not decoration. Every host dashboard open on a roll reconnects
+ * off the same event — the API going away — so without it they all come back in
+ * the same instant, repeatedly.
+ */
+export function hostReconnectDelayMs(
+  attempt: number,
+  random: () => number = Math.random,
+): number {
+  const backoff = Math.min(
+    HOST_EVENT_RECONNECT_MIN_MS * 2 ** Math.max(0, attempt),
+    HOST_EVENT_RECONNECT_MAX_MS,
+  );
+  // Full jitter over the window: anywhere in [backoff/2, backoff).
+  return Math.round(backoff / 2 + random() * (backoff / 2));
+}
+
 async function keepEventStreamOpen(
   url: string,
   headers: HeadersInit,
@@ -190,14 +218,19 @@ async function keepEventStreamOpen(
   onEvent: (event: HostRollEvent) => void,
 ): Promise<void> {
   let lastEventId: string | undefined;
+  let attempt = 0;
   while (!signal.aborted) {
     try {
       lastEventId = await readEventStream(url, headers, signal, onEvent, lastEventId);
+      // The stream ran and then ended on its own (a server-side idle close),
+      // which is not a failure — the next attempt starts from the short delay.
+      attempt = 0;
     } catch {
       // A deploy or sleeping laptop closes the stream. The durable event id is
       // sent back on reconnect so moderation changes during the gap replay.
+      attempt += 1;
     }
-    if (!signal.aborted) await abortableDelay(3_000, signal);
+    if (!signal.aborted) await abortableDelay(hostReconnectDelayMs(attempt), signal);
   }
 }
 

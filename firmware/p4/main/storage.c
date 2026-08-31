@@ -878,6 +878,24 @@ bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirna
 #define SWEEP_MAX_DIRS 512
 #define SWEEP_MAX_REMOVALS 32
 
+/*
+ * The sweep's wall-clock budget, and why it needs one.
+ *
+ * This runs on the main task before usb_link_init(), so every millisecond it
+ * spends is a millisecond the board answers no host and shows no UI. The work
+ * is one stat() per capture directory across FatFs and SDMMC, and it was
+ * measured at boot on a card holding 520 captures: SWEEP_MAX_DIRS of them, at
+ * tens of milliseconds each on a slow card, is the recorded 60 s boot.
+ *
+ * 3 s, and the rest is left for the next boot. An orphan is not urgent - it
+ * costs a few hundred kilobytes and nothing reads it - while a camera that
+ * appears dead for a minute after power-on is the fault everyone reports. The
+ * remainder is picked up on the next boot because readdir() returns entries in
+ * directory order and the completed ones are skipped after one stat() each, so
+ * successive boots reach further in.
+ */
+#define SWEEP_BUDGET_MS 3000
+
 void storage_sweep_orphans(storage_sweep_t *out) {
   storage_sweep_t s = {0};
   if (out != NULL) *out = s;
@@ -886,11 +904,19 @@ void storage_sweep_orphans(storage_sweep_t *out) {
   DIR *d = opendir(MOUNT "/KINO/CAPTURES");
   if (d == NULL) return; /* no captures directory yet is not a fault */
 
+  const int64_t deadline = esp_timer_get_time() + (int64_t)SWEEP_BUDGET_MS * 1000;
   int looked_at = 0;
   struct dirent *e;
-  while ((e = readdir(d)) != NULL && looked_at < SWEEP_MAX_DIRS) {
+  while ((e = readdir(d)) != NULL) {
     if (e->d_name[0] == '.') continue;
     if (!storage_is_capture_dirname(e->d_name)) continue;
+    /* Both bounds counted, not just hit: a sweep that stopped early used to
+     * look exactly like a sweep that found nothing more, so the one card that
+     * needed attention was the one the log said least about. */
+    if (looked_at >= SWEEP_MAX_DIRS || esp_timer_get_time() >= deadline) {
+      s.skipped++;
+      continue;
+    }
     looked_at++;
     s.scanned++;
 
@@ -935,12 +961,21 @@ void storage_sweep_orphans(storage_sweep_t *out) {
   closedir(d);
 
   if (s.scanned > 0) {
-    ESP_LOGI(TAG, "capture sweep: %d scanned, %d complete, %d removed, %d preserved", s.scanned,
-             s.complete, s.removed, s.preserved);
+    ESP_LOGI(TAG, "capture sweep: %d scanned, %d complete, %d removed, %d preserved, %d left",
+             s.scanned, s.complete, s.removed, s.preserved, s.skipped);
   }
   if (s.removed > 0 || s.preserved > 0) {
     klog("SD", "capture sweep: %d removed, %d preserved of %d", s.removed, s.preserved,
          s.scanned);
+  }
+  if (s.skipped > 0) {
+    /* Its own line, and in the ring as well as the console: this is the state
+     * where the card holds more than one boot can look at, and it is invisible
+     * from the counts above. Nothing is wrong with the captures - the next boot
+     * carries on from here. */
+    ESP_LOGW(TAG, "capture sweep stopped early: %d directories not examined (%d ms budget, "
+                  "%d dir cap)", s.skipped, SWEEP_BUDGET_MS, SWEEP_MAX_DIRS);
+    klog("SD", "capture sweep left %d dirs for the next boot", s.skipped);
   }
   if (out != NULL) *out = s;
 }

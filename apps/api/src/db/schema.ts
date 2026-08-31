@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import {
   pgTable,
   text,
@@ -40,15 +40,33 @@ export interface CapturePlayback {
   direction?: 'ltr' | 'rtl';
 }
 
-export const devices = pgTable('devices', {
-  id: text('id').primaryKey(), // 'dev_' + nanoid
-  serial: text('serial').notNull().unique(), // 'KD4-00001'
-  product: text('product').notNull(), // 'KINO D4'
-  hardwareRevision: text('hardware_revision').notNull(),
-  name: text('name'),
-  tokenHash: text('token_hash').notNull(), // sha256 hex of device token
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const devices = pgTable(
+  'devices',
+  {
+    id: text('id').primaryKey(), // 'dev_' + nanoid
+    serial: text('serial').notNull().unique(), // 'KD4-00001'
+    product: text('product').notNull(), // 'KINO D4'
+    hardwareRevision: text('hardware_revision').notNull(),
+    name: text('name'),
+    tokenHash: text('token_hash').notNull(), // sha256 hex of device token
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /**
+     * `requireDevice` looks a token up by its hash on every device request, so
+     * this index is what keeps that a single-row probe rather than a scan of
+     * every device ever registered.
+     *
+     * **Unique**, and that is the load-bearing half. The lookup takes the first
+     * row it finds and then compares constant-time; two rows sharing a hash
+     * would make "which device is this token?" depend on the plan. Two rows can
+     * only ever mean one thing — the same 256-bit secret was issued twice, i.e.
+     * the CSPRNG failed — so refusing the write is the honest answer, and it is
+     * better to hear it at registration than to authenticate the wrong camera.
+     */
+    uniqueIndex('devices_token_hash_unique').on(t.tokenHash),
+  ],
+);
 
 export const rolls = pgTable('rolls', {
   id: text('id').primaryKey(), // 'roll_' + nanoid
@@ -60,10 +78,37 @@ export const rolls = pgTable('rolls', {
   downloadsEnabled: boolean('downloads_enabled').notNull().default(true),
   reactionsEnabled: boolean('reactions_enabled').notNull().default(true),
   hostTokenHash: text('host_token_hash').notNull(),
+  /**
+   * How many times the host has revoked the guest link (03 §10's "regenerate
+   * guest slug").
+   *
+   * Rotating the slug stops the *old link* resolving, but an asset is addressed
+   * by `assetId` and delivery derives the roll from the asset — so without this
+   * counter every id a leaked link already handed out stays readable forever,
+   * and "regenerate" would revoke the door while leaving the windows open.
+   *
+   * A guest that resolves the roll through its slug is handed a signed cookie
+   * stamped with this number (`stampRollAccess`); `deliverAsset` refuses an
+   * asset whose roll has been revoked at least once unless the request carries
+   * the current stamp. Monotonic and never reset: it is a revocation generation,
+   * not a count anybody reads.
+   */
+  accessEpoch: integer('access_epoch').notNull().default(0),
   createdByDeviceId: text('created_by_device_id').references(() => devices.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp('closed_at', { withTimezone: true }),
-}, (table) => [uniqueIndex('rolls_host_token_hash_unique').on(table.hostTokenHash)]);
+}, (table) => [
+  uniqueIndex('rolls_host_token_hash_unique').on(table.hostTokenHash),
+  /**
+   * `GET /api/device/rolls/current` asks for the live rolls this device created.
+   * Partial, because the column is null for every web-created roll — those rows
+   * can never match the predicate, so keeping them out of the index keeps it the
+   * size of the device-created set rather than of the table.
+   */
+  index('rolls_created_by_device')
+    .on(table.createdByDeviceId)
+    .where(sql`${table.createdByDeviceId} is not null`),
+]);
 
 /**
  * Which devices may operate which rolls (03 §17, 07 §25).
@@ -86,7 +131,16 @@ export const rollDevices = pgTable(
       .references(() => devices.id),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.rollId, t.deviceId] })],
+  (t) => [
+    primaryKey({ columns: [t.rollId, t.deviceId] }),
+    /**
+     * The composite primary key is ordered `(roll_id, device_id)`, which serves
+     * "is this device in this roll?" but not "which rolls has this device
+     * joined?" — the second is what `GET /api/device/rolls/current` asks, and a
+     * leading-column mismatch makes it a scan of every join row in the table.
+     */
+    index('roll_devices_device').on(t.deviceId),
+  ],
 );
 
 export const captures = pgTable(
@@ -280,6 +334,18 @@ export const processingEvents = pgTable(
     uniqueIndex('processing_events_capture_job_queued')
       .on(t.captureId, t.job)
       .where(sql`${t.status} = 'queued'`),
+    /**
+     * The read half of the same table. `latestJobStatuses` is a `DISTINCT ON
+     * (job)` over one capture's rows ordered `job, at desc`, and it runs on
+     * every unsettled capture of every feed page and every dashboard render —
+     * so this is the index that keeps convergence proportional to one capture's
+     * log instead of to the whole platform's.
+     *
+     * The column order is the query's `ORDER BY`, `at` descending included:
+     * matching it is what lets PostgreSQL walk the index once and stop at the
+     * first row per job rather than sorting the capture's whole history.
+     */
+    index('processing_events_capture_job_at').on(t.captureId, t.job, desc(t.at)),
   ],
 );
 

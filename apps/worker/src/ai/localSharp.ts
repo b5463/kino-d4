@@ -8,6 +8,7 @@
 // possible"): the grain field is seeded from the capture id, so the same
 // capture and the same plan produce the same bytes.
 import sharp from 'sharp';
+import { SHARP_INPUT } from '../images/decode';
 import type { EnhanceProvider, EnhanceRequest, EnhanceResult } from './provider';
 import type { EnhancePlan, WiggleSafeOperation } from './presets';
 
@@ -51,7 +52,7 @@ async function grainField(width: number, height: number, seed: number, opacity: 
     pixels[i * 4 + 2] = value;
     pixels[i * 4 + 3] = alpha;
   }
-  return sharp(pixels, { raw: { width, height, channels: 4 } }).png().toBuffer();
+  return sharp(pixels, { ...SHARP_INPUT, raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
 /**
@@ -66,7 +67,7 @@ async function applyPlan(
   grain: { field: Buffer; width: number; height: number } | null,
 ): Promise<Buffer> {
   const ops = new Set<WiggleSafeOperation>(plan.operations);
-  let pipeline = sharp(source).rotate();
+  let pipeline = sharp(source, SHARP_INPUT).rotate();
 
   if (ops.has('jpeg-cleanup')) pipeline = pipeline.median(1);
   if (ops.has('mild-denoise')) pipeline = pipeline.blur(0.3 + plan.strength * 0.5);
@@ -74,7 +75,7 @@ async function applyPlan(
     pipeline = pipeline.sharpen({ sigma: 0.5 + plan.strength, m1: 0, m2: 1 + plan.strength });
   }
   if (ops.has('upscale-1.5x-to-2x')) {
-    const meta = await sharp(source).metadata();
+    const meta = await sharp(source, SHARP_INPUT).metadata();
     const factor = 1.5 + plan.strength * 0.5;
     if (meta.width && meta.height) {
       pipeline = pipeline.resize({
@@ -108,7 +109,7 @@ export function localSharpProvider(plan: EnhancePlan): EnhanceProvider {
 
       let grain: { field: Buffer; width: number; height: number } | null = null;
       if (plan.operations.includes('preserve-grain')) {
-        const meta = await sharp(request.frames[0]).metadata();
+        const meta = await sharp(request.frames[0], SHARP_INPUT).metadata();
         if (meta.width && meta.height) {
           grain = {
             field: await grainField(meta.width, meta.height, seedOf(request.captureId), 0.06 + plan.strength * 0.06),

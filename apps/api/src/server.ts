@@ -88,10 +88,28 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   const app = Fastify(options);
 
   app.decorate('config', config);
-  // Studio talks to the Roll server cross-origin (it is a device tool, not a
-  // page this API serves), and dev tooling runs Studio/Twin/roll-web on
-  // assorted localhost ports. Reflect localhost origins and the configured
-  // public base; everything else stays blocked (issue #86).
+  /**
+   * Studio talks to the Roll server cross-origin (it is a device tool, not a
+   * page this API serves), and dev tooling runs Studio/Twin/roll-web on assorted
+   * localhost ports. The configured public base is always reflected; localhost
+   * is reflected **only outside production** (issue #86).
+   *
+   * The environment gate matters because this is a `credentials: true` policy:
+   * reflecting an origin here tells the browser it may send the guest's PIN and
+   * access cookies to it and read the response. A page on the operator's own
+   * machine — anything they were induced to open, a compromised dev tool, a
+   * `localhost` service bound by other software — would otherwise be able to
+   * read any roll that operator can, from a deployed API. Nothing in production
+   * legitimately calls this API from localhost, so nothing legitimate is lost.
+   *
+   * Opt-OUT, not opt-in, and deliberately the opposite polarity to the config
+   * checks: those refuse a published secret unless the environment is *provably*
+   * development, whereas this one keeps a developer's browser working unless the
+   * environment says production. Getting it wrong in either direction is a
+   * broken bench, not an open door — the cookie policy is the thing that must
+   * fail closed, and it does.
+   */
+  const reflectLocalhost = config.NODE_ENV !== 'production';
   app.register(cors, {
     origin: (origin, done) => {
       if (!origin) return done(null, true);
@@ -99,8 +117,7 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
       try {
         const { hostname } = new URL(origin);
         allowed =
-          hostname === 'localhost' ||
-          hostname === '127.0.0.1' ||
+          (reflectLocalhost && (hostname === 'localhost' || hostname === '127.0.0.1')) ||
           origin === new URL(config.PUBLIC_BASE_URL).origin;
       } catch {
         allowed = false;
@@ -111,13 +128,17 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   });
   app.register(dbPlugin, { config });
   app.register(redisPlugin, { config });
+  // Signed cookies for the guest PIN session and the roll access stamp
+  // (05 §12/§13). Registered **before** the rate limiter, and that order is
+  // load-bearing: both parse in an `onRequest` hook, hooks run in registration
+  // order, and the guest read limits key on the signed guest cookie — which is
+  // still null if the limiter's hook runs first.
+  app.register(cookie, { secret: config.COOKIE_SECRET });
   app.register(rateLimitsPlugin);
   // The roll event subscriber; duplicates the client above, so it comes after.
   app.register(eventsPlugin);
   app.register(s3Plugin, { config });
   app.register(metricsPlugin);
-  // Signed cookies for the guest PIN session (05 §12/§13).
-  app.register(cookie, { secret: config.COOKIE_SECRET });
 
   /**
    * Order matters below this line. `authPlugin` installs an `onRoute` hook that

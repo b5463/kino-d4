@@ -7,6 +7,33 @@
 import type { CamId, CaptureInfo, CaptureSummary, CaptureFile } from '@kino/kdp';
 import { CAM_IDS } from '@kino/kdp';
 
+/**
+ * Everything MEDIA_READ will serve out of a capture folder.
+ *
+ * An allow-list, not a filter: the P4 joins this name onto the capture's
+ * directory path, so anything not on the list has to be refused before it
+ * becomes a path. These are the names the firmware actually writes —
+ * `/KINO/CAPTURES/<uuid>/C1.JPG` and friends — and the same set
+ * `MediaReadRequest.file` documents. `C1_RAW.JPG` is deliberately NOT here:
+ * that suffix belongs to the ZIP Studio builds on export and never appears on
+ * the card.
+ */
+export const MEDIA_READ_FILES = [
+  'C1.JPG',
+  'C2.JPG',
+  'C3.JPG',
+  'C4.JPG',
+  'THUMB.JPG',
+  'META.JSON',
+] as const;
+
+export type MediaReadFile = (typeof MEDIA_READ_FILES)[number];
+
+/** Bytes, or the specific refusal the device would send. See `fileBytes`. */
+export type MediaFileResult =
+  | { ok: true; bytes: Uint8Array }
+  | { ok: false; code: 'BAD_REQUEST' | 'NOT_FOUND'; message: string };
+
 /** The device reports a SHA-256 per gallery file so the host can verify a read. */
 async function sha256Hex(data: Uint8Array): Promise<string> {
   const copy = new Uint8Array(data); // detach from any larger backing buffer
@@ -254,7 +281,11 @@ export class MockMediaStore {
       // answers, just with fewer than four files.
       const bytes = await this.fileBytesByIndex(id, cam);
       if (!bytes) continue;
-      files.push({ name: `C${cam + 1}_RAW.JPG`, sizeBytes: bytes.length, sha256: await sha256Hex(bytes) });
+      // `C1.JPG`, matching CaptureFile.name, the MEDIA_READ allow-list and
+      // what the firmware writes to the card. It reported `C1_RAW.JPG` here
+      // and then accepted both spellings on MEDIA_READ, so a host could round
+      // trip a name the real body will refuse.
+      files.push({ name: `C${cam + 1}.JPG`, sizeBytes: bytes.length, sha256: await sha256Hex(bytes) });
     }
     c.summary.totalKB = Math.round(files.reduce((a, f) => a + f.sizeBytes, 0) / 1024);
     const rnd = mulberry32(hashId(id) ^ 7);
@@ -277,10 +308,75 @@ export class MockMediaStore {
     };
   }
 
-  async fileBytes(id: string, name: string): Promise<Uint8Array | null> {
-    const m = /^C([1-4])(?:_RAW)?\.JPG$/i.exec(name);
-    if (!m) return null;
-    return this.fileBytesByIndex(id, Number(m[1]) - 1);
+  /**
+   * Serve one file out of a capture folder for MEDIA_READ.
+   *
+   * The result is a discriminated union rather than `Uint8Array | null`
+   * because the device has two different refusals here and a null cannot tell
+   * them apart: a name off the allow-list is `BAD_REQUEST` (the host asked for
+   * something that can never exist), a name on it that this capture does not
+   * hold is `NOT_FOUND` (a frame that never landed, a thumbnail from firmware
+   * that predates thumbnails). A mock that answered NOT_FOUND to both let a
+   * host ship a path-traversal-shaped request and read the reply as an empty
+   * gallery.
+   */
+  async fileBytes(id: string, name?: string): Promise<MediaFileResult> {
+    // `MediaReadRequest.file` is optional and defaults to the first frame.
+    const file = (name ?? 'C1.JPG').toUpperCase();
+    if (!(MEDIA_READ_FILES as readonly string[]).includes(file)) {
+      return {
+        ok: false,
+        code: 'BAD_REQUEST',
+        message: `file must be one of ${MEDIA_READ_FILES.join(', ')}`,
+      };
+    }
+    const missing = (what: string): MediaFileResult => ({
+      ok: false,
+      code: 'NOT_FOUND',
+      message: `No ${what} in ${id}`,
+    });
+
+    if (file === 'THUMB.JPG') {
+      const bytes = await this.thumb(id);
+      return bytes ? { ok: true, bytes } : missing('THUMB.JPG');
+    }
+    if (file === 'META.JSON') {
+      const bytes = await this.metaJson(id);
+      return bytes ? { ok: true, bytes } : missing('META.JSON');
+    }
+    const camIdx = Number(file.charAt(1)) - 1;
+    const bytes = await this.fileBytesByIndex(id, camIdx);
+    return bytes ? { ok: true, bytes } : missing(file);
+  }
+
+  /**
+   * The capture document the firmware writes beside the frames.
+   *
+   * Built from the same stored capture `MEDIA_INFO` answers from, so the two
+   * cannot describe different photographs. It is a plausible `kino.capture`
+   * v1 document, not a byte-identical copy of the firmware's — the mock has no
+   * capture UUID, no node firmware versions of its own, and inventing them
+   * would be a fixture pretending to be evidence.
+   */
+  private async metaJson(id: string): Promise<Uint8Array | null> {
+    const info = await this.info(id);
+    if (!info) return null;
+    const doc = {
+      schema: 'kino.capture',
+      version: 1,
+      id: info.id,
+      mode: info.kind,
+      capturedAt: new Date(info.ts).toISOString(),
+      /* The mock has never been told the host's clock, and says so rather
+       * than claiming a dated timestamp is authoritative. */
+      clockSource: 'unset',
+      frameCount: info.files.length,
+      resolution: info.resolution,
+      status: info.files.length === CAM_IDS.length ? 'complete' : 'partial',
+      files: info.files,
+      meta: info.meta,
+    };
+    return new TextEncoder().encode(JSON.stringify(doc, null, 2));
   }
 
   async fileBytesByIndex(id: string, camIdx: number): Promise<Uint8Array | null> {

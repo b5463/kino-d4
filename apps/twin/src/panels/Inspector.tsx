@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { netsFor, resolveDimensions } from '@kino/hardware-profiles';
 import type { ComponentDef, HardwareProfile, NetDef, ProvenanceTag, ResolvedDims } from '@kino/hardware-profiles';
+import type { CamFault } from '@kino/test-fixtures';
 import { useSimStore } from '../state/simStore';
 import { useSceneStore } from '../state/sceneStore';
 import { instanceTransforms } from '../scene/transforms';
 import { ConfidenceBadge, formatSizeMm } from './ConfidenceBadge';
+import { CAM_FAULTS, injectCamFault } from './FaultPanel';
 
 /** `21.0 × 17.8 × 15.0 mm` / `? × 55.0 × 73.0 mm` — an unknown axis is `?`, never a guessed number. */
 export function formatDims(r: ResolvedDims): string {
@@ -98,6 +100,7 @@ export function Inspector() {
   const simBootStage = useSimStore((s) => s.bootStage);
   const simCamStage = useSimStore((s) => s.camStage);
   const simFw = useSimStore((s) => s.fw);
+  const snapshot = useSimStore((s) => s.snapshot);
   const pitchMm = useSceneStore((s) => s.pitchMm);
   const explode = useSceneStore((s) => s.explode);
   const netFocus = useSceneStore((s) => s.netFocus);
@@ -277,13 +280,33 @@ export function Inspector() {
         )}
       </section>
 
-      {isCam && (
+      {isCam && camKey && (
         <section className="twin-inspector-section">
-          <button type="button" className="twin-btn twin-btn--fault" onClick={() => setFaultOpen((v) => !v)}>
+          <button
+            type="button"
+            className="twin-btn twin-btn--fault"
+            onClick={() => setFaultOpen((v) => !v)}
+            aria-expanded={faultOpen}
+          >
             [INJECT FAULT]
           </button>
           {faultOpen && (
-            <div className="twin-inspector-muted">Fault panel filtered to {instance.id} — not wired yet.</div>
+            <label className="twin-control-row">
+              <span>{camKey.toUpperCase()} FAULT</span>
+              <select
+                className="twin-select"
+                disabled={!simRunning}
+                value={snapshot?.cams[camKey].fault ?? ''}
+                onChange={(event) => injectCamFault(camKey, (event.target.value || null) as CamFault | null)}
+              >
+                <option value="">CLEAR</option>
+                {CAM_FAULTS.map((fault) => (
+                  <option key={fault} value={fault}>
+                    {fault.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
         </section>
       )}

@@ -31,16 +31,16 @@ npm ci
 npm run version:check
 npm run license:check
 npm run lint
-npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
+npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures -w @kino/hardware-profiles -w @kino/simulator-engine -w @kino/three-assets -w @kino/twin -w @kino/design-system -w @kino/media -w @kino/roll-web
 npm run build
 ```
 
-Run the API suite against clean services:
+Run the API and worker suites against clean services:
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d
 npm run db:migrate -w @kino/api
-npm run test -w @kino/api
+npm run test -w @kino/api -w @kino/worker
 ```
 
 ## Compatibility review

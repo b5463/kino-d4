@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { SHARP_INPUT } from '../images/decode';
 import { SOCIAL_FORMATS, SOCIAL_QUALITY } from '../images/sizes';
 import {
   loadAssets,
@@ -37,7 +38,7 @@ export async function renderSocialFormats(payload: JobPayload, ctx: JobCtx): Pro
   const body = await readObject(ctx, sourceKey);
 
   for (const format of SOCIAL_FORMATS) {
-    const { data, info } = await sharp(body)
+    const { data, info } = await sharp(body, SHARP_INPUT)
       .rotate()
       .resize({
         width: format.width,

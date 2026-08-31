@@ -51,7 +51,13 @@ export class TwinSimulator {
   private stage: BootStage = 'POWER_OFF';
   private readonly listeners = new Set<(e: SimEvent) => void>();
   private readonly bootTimers: ReturnType<typeof setTimeout>[] = [];
-  private readonly captureTimers: ReturnType<typeof setTimeout>[] = [];
+  /**
+   * Live capture-event timers only. A Set, not an array, because every
+   * capture schedules a handful of these and each one removes itself when it
+   * fires — an array only ever grew, so a long session held one dead handle
+   * per event of every capture it had ever run.
+   */
+  private readonly captureTimers = new Set<ReturnType<typeof setTimeout>>();
   private readonly unsubscribeTelemetry: () => void;
   private disposed = false;
 
@@ -305,7 +311,11 @@ export class TwinSimulator {
       }
       const timeline = choreographCapture(snap, cams);
       for (const { atMs, event } of timeline) {
-        this.captureTimers.push(setTimeout(() => this.emit(event), atMs));
+        const handle: ReturnType<typeof setTimeout> = setTimeout(() => {
+          this.captureTimers.delete(handle);
+          this.emit(event);
+        }, atMs);
+        this.captureTimers.add(handle);
       }
     });
   }
@@ -317,6 +327,6 @@ export class TwinSimulator {
 
   private clearCaptureTimers(): void {
     for (const t of this.captureTimers) clearTimeout(t);
-    this.captureTimers.length = 0;
+    this.captureTimers.clear();
   }
 }

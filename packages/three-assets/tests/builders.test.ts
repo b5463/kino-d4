@@ -101,8 +101,12 @@ describe('buildComponentObject — main-display (conflicting OFFICIAL_SPEC sourc
   });
 });
 
-describe('buildComponentObject — flash-led (MEASURE_REQUIRED proxy)', () => {
-  const component = findComponent('flash-led');
+/* This block used to build the flash LED's star/fin/diffuser proxy. ECN-0003
+ * took the flash assembly off D4 V1, so the MEASURE_REQUIRED proxy path is
+ * exercised through the BMS instead — a PROVISIONAL component with all three
+ * axes null, which is what that path is actually about. */
+describe('buildComponentObject — bms (MEASURE_REQUIRED proxy)', () => {
+  const component = findComponent('bms');
   const resolved = resolveDimensions(component);
 
   it('has no measured dims yet, so the body falls back to the 5mm placeholder', () => {
@@ -111,13 +115,23 @@ describe('buildComponentObject — flash-led (MEASURE_REQUIRED proxy)', () => {
     expect(fallbackBoxMm(resolved.sizeMm)).toEqual([5, 5, 5]);
   });
 
-  it('still emits star, five heatsink fins, and a diffuser', () => {
-    const group = buildComponentObject(component, { resolved, instanceId: 'flash' });
-    expect(group.getObjectByName('star')).toBeInstanceOf(THREE.Mesh);
-    expect(group.getObjectByName('diffuser')).toBeInstanceOf(THREE.Mesh);
+  it('builds the placeholder body at 5mm cubed, with no invented detail meshes', () => {
+    const group = buildComponentObject(component, { resolved, instanceId: 'bms' });
 
-    const fins = group.children.filter((child) => child.name.startsWith('fin-'));
-    expect(fins).toHaveLength(5);
+    const body = group.getObjectByName('body');
+    expect(body).toBeInstanceOf(THREE.Mesh);
+
+    const size = new THREE.Box3().setFromObject(body as THREE.Mesh).getSize(new THREE.Vector3());
+    expect(size.x).toBeCloseTo(5, 5);
+    expect(size.y).toBeCloseTo(5, 5);
+    expect(size.z).toBeCloseTo(5, 5);
+
+    // An unmeasured component gets the body box and its keepouts, nothing
+    // else — no detail mesh is fabricated on top of dimensions nobody has.
+    const details = group.children.filter(
+      (child) => child.name !== 'body' && !child.name.startsWith('keepout:'),
+    );
+    expect(details).toEqual([]);
   });
 });
 

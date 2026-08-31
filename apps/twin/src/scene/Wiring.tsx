@@ -8,6 +8,7 @@ import { useSceneStore } from '../state/sceneStore';
 import { useSimStore } from '../state/simStore';
 import { instanceTransforms } from './transforms';
 import { RIBBON_SIZE_MM, visibleNets, wireCurve } from './wireGeometry';
+import type { WireCurve } from './wireGeometry';
 
 const ENDPOINT_MARKER_RADIUS_MM = 1.4;
 
@@ -29,6 +30,11 @@ function WireTube({
     const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
     return new THREE.TubeGeometry(curve, Math.max(points.length - 1, 1), radiusMm, 8, false);
   }, [points, radiusMm]);
+  // R3F never frees a geometry handed in as a prop (only the ones it builds
+  // from a <tubeGeometry> element), so this node owns the disposal. Without
+  // it every re-memo — a pitch drag, an explode tick — leaks one tube's
+  // buffers per net for as long as WIRING is open.
+  useEffect(() => () => geometry.dispose(), [geometry]);
   const liveMaterial = useMemo(() => material.clone(), [material]);
   useEffect(() => () => liveMaterial.dispose(), [liveMaterial]);
   useFrame(() => {
@@ -51,7 +57,15 @@ function camForNet(id: string): CamId | null {
  * a straight box is an honest Tier-C proxy, not a curved path pretending to
  * be measured routing). One long face is tinted red as the pin-1 stripe.
  */
-function RibbonStrip({ from, to }: { from: [number, number, number]; to: [number, number, number] }) {
+function RibbonStrip({
+  from,
+  to,
+  mats,
+}: {
+  from: [number, number, number];
+  to: [number, number, number];
+  mats: ReturnType<typeof twinMaterials>;
+}) {
   const { body, stripe } = useMemo(() => {
     const start = new THREE.Vector3(...from);
     const end = new THREE.Vector3(...to);
@@ -77,7 +91,9 @@ function RibbonStrip({ from, to }: { from: [number, number, number]; to: [number
     };
   }, [from, to]);
 
-  const mats = useMemo(() => twinMaterials(), []);
+  // The palette comes from Wiring's one shared twinMaterials() — a fresh
+  // per-ribbon palette was ~15 undisposed shader programs per net-class
+  // toggle (each toggle remounts every ribbon).
 
   return (
     <>
@@ -121,6 +137,28 @@ export function Wiring() {
 
   const nets = useMemo(() => visibleNets(profile.nets, netClasses, netFocus), [profile.nets, netClasses, netFocus]);
 
+  /**
+   * One route per round net, resolved once per (nets × transforms) change
+   * rather than inside the render body. The sim re-renders this component on
+   * every UART/sync tick; routing inline handed `WireTube` a fresh `points`
+   * array each time, so its `[points]` memo never hit and the whole harness
+   * rebuilt its tube geometry several times a second.
+   *
+   * A net whose endpoint instance is gone (a profile edit dropped the
+   * instance but kept the net) is skipped here, the same way the render body
+   * below skips it — `wireCurve` throws on a missing transform, and that
+   * throw would take the app to the error boundary.
+   */
+  const routes = useMemo(() => {
+    const out = new Map<string, WireCurve>();
+    for (const net of nets) {
+      if (net.gauge === 'ribbon') continue;
+      if (!transforms.has(net.from.instance) || !transforms.has(net.to.instance)) continue;
+      out.set(net.id, wireCurve(net, transforms));
+    }
+    return out;
+  }, [nets, transforms]);
+
   if (viewMode !== 'wiring') return null;
 
   return (
@@ -128,7 +166,9 @@ export function Wiring() {
       {nets.map((net) => {
         const fromT = transforms.get(net.from.instance);
         const toT = transforms.get(net.to.instance);
-        if (!fromT || !toT) return null; // defensive: profile data should always resolve both
+        // A net can outlive its endpoint instance (a profile edit drops the
+        // instance, the net stays) — that net simply isn't drawn.
+        if (!fromT || !toT) return null;
 
         const material = mats.wireByColor[net.color];
         const cam = camForNet(net.id);
@@ -143,12 +183,14 @@ export function Wiring() {
         if (net.gauge === 'ribbon') {
           return (
             <group key={net.id}>
-              <RibbonStrip from={fromT.positionMm} to={toT.positionMm} />
+              <RibbonStrip from={fromT.positionMm} to={toT.positionMm} mats={mats} />
             </group>
           );
         }
 
-        const { points, radiusMm } = wireCurve(net, transforms);
+        const route = routes.get(net.id);
+        if (!route) return null;
+        const { points, radiusMm } = route;
 
         return (
           <group key={net.id}>

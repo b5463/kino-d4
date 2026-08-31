@@ -209,7 +209,13 @@ void app_main(void) {
    *
    * Bounded and conservative: only UUID-shaped directories, only the names in
    * STORAGE_CAPTURE_FILES, and an orphan containing anything else is
-   * preserved rather than forced. See storage_sweep_orphans. */
+   * preserved rather than forced. See storage_sweep_orphans.
+   *
+   * Time-bounded, which matters HERE rather than in storage.c: this line is
+   * ahead of kdp_server_start() and of the display, so its cost is dead time
+   * with nothing on the screen and no host able to connect. A card carrying
+   * 520 captures spent about a minute here. The sweep now stops at its budget
+   * and reports what it left for the next boot. */
   storage_sweep_t sweep;
   storage_sweep_orphans(&sweep);
 

@@ -40,9 +40,10 @@ describe('log redaction (05 §13)', () => {
       REDIS_URL: 'redis://:s3cr3t-redis@localhost:6380',
       S3_ACCESS_KEY: 's3cr3t-access',
       S3_SECRET_KEY: 's3cr3t-s3',
-      // Also the reason this call needs no NODE_ENV: supplying a real cookie
-      // secret satisfies the fail-closed check in config.ts.
+      // Also the reason this call needs no NODE_ENV: supplying real secrets
+      // satisfies the fail-closed checks in config.ts.
       COOKIE_SECRET: 's3cr3t-cookie-signing-key',
+      PROVISIONING_TOKEN: 's3cr3t-provisioning-token',
     });
 
     const output = captureLogs((log) => {
@@ -57,6 +58,9 @@ describe('log redaction (05 §13)', () => {
       's3cr3t-access',
       's3cr3t-s3',
       's3cr3t-cookie-signing-key',
+      // Mints device tokens, and the generic `token` rule does not match its
+      // key name — fast-redact matches whole names.
+      's3cr3t-provisioning-token',
     ]) {
       expect(output).not.toContain(secret);
     }
@@ -97,5 +101,44 @@ describe('log redaction (05 §13)', () => {
     expect(output).not.toContain('Bearer nope');
     expect(output).not.toContain('body');
     expect(output).toContain('"url":"/api/devices"');
+  });
+
+  /**
+   * A roll slug is not an identifier, it is the guest credential for an unlisted
+   * roll (03 §9): whoever holds one reads the gallery. An access log full of them
+   * is an access log full of live links, which is the same class of value as the
+   * `Authorization` header this serializer already refuses to print.
+   */
+  it('keeps the roll slug out of the logged URL while keeping the route', () => {
+    const output = captureLogs((log) => {
+      for (const url of [
+        '/api/rolls/7F3K9Q',
+        '/api/rolls/7F3K9Q/captures?limit=50',
+        '/api/rolls/7F3K9Q/captures/cap_abc',
+        '/api/rolls/7F3K9Q/pin',
+        '/api/rolls/7F3K9Q/events',
+      ]) {
+        log.info({ req: { id: 'r', method: 'GET', url, ip: '127.0.0.1' } }, 'incoming request');
+      }
+    });
+
+    expect(output).not.toContain('7F3K9Q');
+    // The route is what makes a log line worth having, and a capture id opens
+    // nothing on its own — both survive.
+    expect(output).toContain('/api/rolls/[REDACTED]/captures?limit=50');
+    expect(output).toContain('/api/rolls/[REDACTED]/captures/cap_abc');
+  });
+
+  it('leaves URLs outside the slug space alone', () => {
+    const output = captureLogs((log) => {
+      for (const url of ['/api/healthz', '/api/assets/asset_abc/content', '/api/host/rolls/roll_x']) {
+        log.info({ req: { id: 'r', method: 'GET', url, ip: '127.0.0.1' } }, 'incoming request');
+      }
+    });
+
+    expect(output).toContain('/api/healthz');
+    expect(output).toContain('/api/assets/asset_abc/content');
+    expect(output).toContain('/api/host/rolls/roll_x');
+    expect(output).not.toContain('[REDACTED]');
   });
 });

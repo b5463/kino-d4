@@ -19,7 +19,14 @@ function SubjectNode({ subject, selected }: { subject: StageSubject; selected: b
     object.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.geometry.dispose();
-        (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose());
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => {
+          // A subject's texture is its own CanvasTexture, built with the
+          // material and referenced by nothing else. Material.dispose() does
+          // not follow the map, so it survived every subject swap.
+          const map = (m as THREE.MeshStandardMaterial).map;
+          if (map) map.dispose();
+          m.dispose();
+        });
       }
     });
   }, [object]);

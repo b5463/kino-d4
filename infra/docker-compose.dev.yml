@@ -43,7 +43,13 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio
+    # Same release as prod and CI (infra/docker-compose.prod.yml,
+    # .github/workflows/ci.yml). MinIO has changed console and policy
+    # behaviour between releases, so an unpinned `latest` here means the
+    # local stack can differ from the one the tests and the server run
+    # against — and the difference shows up as a storage bug, not a version
+    # mismatch. Bump all three together.
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: kino
@@ -59,7 +65,8 @@ services:
   # One-shot: creates the two buckets, then exits 0. `mc mb -p` is idempotent,
   # so re-running `up` on an existing stack is a no-op.
   createbucket:
-    image: minio/mc
+    # Pinned for the same reason, to the same release prod uses.
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
     depends_on:
       minio: { condition: service_healthy }
     entrypoint: >

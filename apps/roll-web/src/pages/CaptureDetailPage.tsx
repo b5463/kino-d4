@@ -49,9 +49,15 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   // render finishing announces itself as `processing.completed`, and the event
   // hook's replace path re-fetches the capture — which is a full detail, since
   // `rollApi.getCapture` is what fetched it.
+  //
+  // `wants` is what keeps this page cheap. Every capture in the roll emits
+  // events; without the filter each one cost a full `getCapture` here, and the
+  // answer was then thrown away because the id did not match. One photograph
+  // on screen, one capture fetched.
   useRollEvents(
     slug,
     {
+      wants: (id) => id === captureId,
       replace: (next) => {
         if (next.captureId === captureId) setCapture(next as CaptureDetailView);
       },

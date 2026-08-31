@@ -1,0 +1,1 @@
+ALTER TABLE "rolls" ADD COLUMN "access_epoch" integer DEFAULT 0 NOT NULL;

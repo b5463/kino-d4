@@ -16,7 +16,9 @@ const CHECKLIST: ReadonlyArray<Omit<ChecklistRow, 'done'>> = [
   { label: 'Battery pouch + folds', componentId: 'battery' },
   { label: 'Battery lead exit', componentId: 'battery' },
   { label: 'Perfboard', componentId: 'perfboard' },
-  { label: 'LED driver', componentId: 'flash-led' },
+  /* The LED driver row is gone with the flash assembly (ECN-0003): the flash
+   * became an external module and `flash-led` is no longer a D4 V1 component,
+   * so the row pointed at nothing and could never be ticked. */
   { label: 'Speaker thickness', componentId: 'speaker' },
   { label: 'OV3660 lens protrusion', componentId: 'camera-node' },
   { label: 'Camera ribbon clearance', componentId: 'camera-node' },

@@ -6,9 +6,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <errno.h>
+
 #include "config_store.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 #include "klog.h"
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
@@ -66,6 +69,36 @@ typedef struct {
 static recipe_entry_t s_custom[RECIPES_MAX];
 static int s_custom_count;
 static bool s_custom_valid;
+
+/*
+ * Reader/writer exclusion on the mirror, the same portMUX as kdp_sounds.c uses
+ * for the identical case - and for the same reason, which is not theoretical.
+ *
+ * The writer is custom_reload(), which runs on the KDP task, on the main task
+ * at boot, and on the CAPTURE task (kdp_recipes_capture_block -> custom_sync).
+ * The readers are kdp_recipes_count() and kdp_recipes_name() on the UI task,
+ * which take no card lock and never did - so the LOOK screen was walking the
+ * array while a reload was rewriting it. A torn name is a wrong label on the
+ * picker; a count read after the reload zeroed it and before it republished is
+ * a picker that briefly says the camera has no looks.
+ *
+ * The reload cannot hold the lock: it reads and parses a file per look, and a
+ * critical section on this part disables interrupts. So it publishes ONE entry
+ * at a time under the lock and the count with it, which is exactly the
+ * guarantee kdp_sounds gives - a reader sees a possibly shorter list, never a
+ * torn one. A staging copy of the whole array would be the alternative and it
+ * is 24 x 96 bytes on a 3584-byte main task stack.
+ */
+static portMUX_TYPE s_custom_mux = portMUX_INITIALIZER_UNLOCKED;
+
+/** Publish one rebuilt entry. `slot` is the next free index. */
+static void custom_publish(int slot, const recipe_entry_t *e) {
+  if (slot < 0 || slot >= RECIPES_MAX) return;
+  portENTER_CRITICAL(&s_custom_mux);
+  s_custom[slot] = *e;
+  s_custom_count = slot + 1;
+  portEXIT_CRITICAL(&s_custom_mux);
+}
 
 /* ------------------------------------------------------------------ */
 /* Factory looks                                                       */
@@ -128,7 +161,11 @@ static cJSON *recipe_read(const char *id, size_t *bytes) {
  * answer to a half-written upload.
  */
 static void custom_reload(void) {
+  /* Published length back to zero first, under the lock. A reader during the
+   * rebuild sees a list that is growing, and every entry in it is whole. */
+  portENTER_CRITICAL(&s_custom_mux);
   s_custom_count = 0;
+  portEXIT_CRITICAL(&s_custom_mux);
   s_custom_valid = true;
 
   DIR *d = opendir(RECIPES_DIR);
@@ -153,10 +190,14 @@ static void custom_reload(void) {
        * of 1..RECIPE_NAME_MAX characters, so it is read without a fallback -
        * a fallback to `id` would be up to 48 bytes into a 41-byte field. */
       const cJSON *name = cJSON_GetObjectItem(doc, "name");
-      snprintf(s_custom[s_custom_count].id, sizeof s_custom[0].id, "%s", id);
-      snprintf(s_custom[s_custom_count].name, sizeof s_custom[0].name, "%s", name->valuestring);
-      s_custom[s_custom_count].bytes = (uint32_t)bytes;
-      s_custom_count++;
+      recipe_entry_t entry;
+      memset(&entry, 0, sizeof entry);
+      snprintf(entry.id, sizeof entry.id, "%s", id);
+      snprintf(entry.name, sizeof entry.name, "%s", name->valuestring);
+      entry.bytes = (uint32_t)bytes;
+      /* Formatted into a local, then published in one locked copy: the string
+       * work is where a reader would have caught a half-written name. */
+      custom_publish(s_custom_count, &entry);
     } else {
       ESP_LOGW(TAG, "%s.json is not a look; skipped", id);
     }
@@ -219,6 +260,10 @@ bool kdp_recipes_capable(void) { return s_factory != NULL; }
 
 int kdp_recipes_count(void) {
   if (s_factory == NULL) return 0;
+  /* One aligned int load, so no lock: what it cannot do is tear. During a
+   * reload it may read low - a picker that shows fewer custom looks for a few
+   * milliseconds - and kdp_recipes_name() re-checks the bound under the lock
+   * anyway, so a stale count here can never index past the published end. */
   return cJSON_GetArraySize(s_factory) + s_custom_count;
 }
 
@@ -240,10 +285,19 @@ bool kdp_recipes_name(int index, char *id, size_t id_cap, char *name, size_t nam
     return true;
   }
 
+  /* The custom half is the mutable one: bound and copy under the lock, format
+   * outside it. Called from the UI task while the KDP or capture task may be
+   * rebuilding the mirror. */
   const int c = index - n_factory;
-  if (c >= s_custom_count) return false;
-  if (id && id_cap) snprintf(id, id_cap, "%s", s_custom[c].id);
-  if (name && name_cap) snprintf(name, name_cap, "%s", s_custom[c].name);
+  recipe_entry_t entry;
+  memset(&entry, 0, sizeof entry);
+  portENTER_CRITICAL(&s_custom_mux);
+  const bool ok = c < s_custom_count;
+  if (ok) entry = s_custom[c];
+  portEXIT_CRITICAL(&s_custom_mux);
+  if (!ok) return false;
+  if (id && id_cap) snprintf(id, id_cap, "%s", entry.id);
+  if (name && name_cap) snprintf(name, name_cap, "%s", entry.name);
   return true;
 }
 
@@ -550,14 +604,31 @@ static kdp_module_reply_t handle_delete_recipe(const cJSON *req) {
 
   char path[160];
   recipe_path(path, sizeof path, rid);
-  const bool gone = unlink(path) != 0;
-  if (!gone) {
+  /*
+   * A failed unlink is not always a missing file, and the difference is what
+   * the host does next. NOT_FOUND tells Studio the look is gone and the list
+   * can be refreshed - which is right after ENOENT, including the retry of a
+   * delete whose ACK was lost (contract D18). Any other errno means the file
+   * is still there: a card gone read-only, a pulled card, an I/O error. Told
+   * NOT_FOUND for those, the host drops the look from its list and the
+   * document reappears at the next GET_RECIPES.
+   */
+  errno = 0;
+  const bool unlinked = unlink(path) == 0;
+  const int why = errno;
+  if (unlinked) {
     s_custom_valid = false;
     custom_sync();
   }
   storage_release_if_taken(STORAGE_USER_UI, took);
 
-  if (gone) return kdp_module_fail("NOT_FOUND", "No look with that id");
+  if (!unlinked) {
+    if (why == ENOENT) return kdp_module_fail("NOT_FOUND", "No look with that id");
+    char msg[KDP_MODULE_MSG_LEN];
+    snprintf(msg, sizeof msg, "Could not delete the look from the card: %.40s",
+             strerror(why));
+    return kdp_module_fail("STORAGE_ERROR", msg);
+  }
 
   klog("P4", "look deleted: %s", rid);
   cJSON *json = cJSON_CreateObject();

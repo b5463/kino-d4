@@ -15,6 +15,7 @@ import type {
 } from '@kino/kdp';
 import { KinoDevice } from '../device/KinoDevice';
 import { clearSoundCache } from '../device/sounds';
+import { clearThumbCache } from '../device/media';
 import type { Transport, TransportKind } from '@kino/kdp';
 import { SerialTransport, webSerialSupported } from '@kino/kdp';
 import { BroadcastTransport, WebSocketTransport } from '@kino/kdp';
@@ -82,6 +83,11 @@ let reconnecting = false;
  */
 let lastSessionId: string | null = null;
 let lastDeviceId: string | null = null;
+/**
+ * Set when the camera restarted under a link that never closed, cleared once
+ * device truth has been read again. See `drainStaleSession`.
+ */
+let staleAfterRestart = false;
 
 export function getDevice(): KinoDevice | null {
   return device;
@@ -100,6 +106,16 @@ export function isSimulated(): boolean {
 /** Firmware updater calls this right before a P4 reboot is expected. */
 export function expectDeviceReboot(windowMs = 45000) {
   expectRebootUntil = Date.now() + windowMs;
+}
+
+/**
+ * Disarm the window `expectDeviceReboot` opened, for a caller that armed it
+ * and then learned no reboot is coming (a refused command, a failed FW_END).
+ * An armed window left behind makes the next unrelated transport close look
+ * like an expected reboot and starts a reconnect loop for nothing.
+ */
+export function cancelExpectedReboot() {
+  expectRebootUntil = 0;
 }
 
 export function waitForPhase(phase: string, timeoutMs: number): Promise<void> {
@@ -212,6 +228,9 @@ async function connectWith(factory: () => Transport, kind: TransportKind): Promi
   try {
     await handshake(c);
     await populateAll();
+    // HELLO above raises sessionChanged on every reconnect to the same unit.
+    // The populate that just ran is the re-read that flag asks for.
+    staleAfterRestart = false;
   } catch (err) {
     await teardown(false);
     if (!reconnecting) {
@@ -312,8 +331,16 @@ function wireEvents(c: KinoProtocolClient) {
       msg: `camera restarted (session ${change.previous} → ${change.current}) — cached state dropped`,
     });
     clearSoundCache();
+    clearThumbCache();
     resetDrafts();
     resetDeviceBusy();
+    // Dropping the caches is only half of it. The device store still holds
+    // config, capabilities, the firmware label, looks and calibration read
+    // from a boot that no longer exists — and on an in-place restart there is
+    // no reconnect to re-read them. Mark the state stale and let the poller
+    // drain it: that is the one place a full re-read can take the exclusive
+    // claim without racing the connect sequence that also calls populateAll.
+    staleAfterRestart = true;
   });
   c.onEvent<LogEntry>(Evt.LOG, (entry) => appendLog(entry));
   c.onEvent<CalibrationEvent>(Evt.CALIBRATION, (e) => {
@@ -438,6 +465,33 @@ export async function refreshAll(): Promise<'done' | 'blocked' | 'offline'> {
   }
 }
 
+/**
+ * Re-read every device-owned value after an in-place restart, once.
+ *
+ * Fenced the same way `refreshAll` is: the exclusive claim, so the re-read
+ * does not contend on the UART with a running bench, and a device handle
+ * check, so a link torn down since the restart is not populated from.
+ * Returns true when the state is current again; a blocked claim or a failed
+ * read leaves the flag set and the next poll tries again.
+ */
+export async function drainStaleSession(): Promise<boolean> {
+  if (!staleAfterRestart) return true;
+  if (!device) return false;
+  if (!claimDevice('session-restart', 'RE-READING KINO')) return false;
+  try {
+    await populateAll();
+    staleAfterRestart = false;
+    return true;
+  } finally {
+    releaseDevice('session-restart');
+  }
+}
+
+/** True while the store still holds values from a boot that has ended. */
+export function isSessionStale(): boolean {
+  return staleAfterRestart;
+}
+
 export async function refreshDeviceInfo() {
   if (!device) return;
   setDeviceState({ info: await device.getDeviceInfo() });
@@ -510,6 +564,13 @@ function startPolling() {
       // transport is the same boot we populated state from.
       if (tick % 3 === 0) await recheckSession();
       if (!device) return;
+      // A restart noticed above (or on an earlier tick) invalidated every
+      // cached device value. Spend this tick re-reading them instead of
+      // topping up state that belongs to a dead boot.
+      if (staleAfterRestart) {
+        await drainStaleSession();
+        return;
+      }
       const cams = await device.getCameraInfo();
       setDeviceState({ cameras: cams.cameras });
       if (tick % 2 === 0) {
@@ -557,6 +618,8 @@ function handleTransportClose(gen: number, factory: () => Transport, reason?: st
   }
 
   clearDeviceState();
+  clearThumbCache();
+  staleAfterRestart = false;
   const phase = useConnectionStore.getState().phase;
   if (phase === 'connected' || phase === 'maintenance' || phase === 'updating') {
     // A live session whose link went away without anyone asking: the cable,
@@ -590,6 +653,8 @@ async function reconnectLoop(factory: () => Transport) {
   }
   expectRebootUntil = 0;
   clearDeviceState();
+  clearThumbCache();
+  staleAfterRestart = false;
   // The board was told to reboot and never answered again. That is the 02 §22
   // recovery situation, and 02 §6 gives it its own strip state rather than
   // filing it under ERROR with everything else.
@@ -624,6 +689,10 @@ async function teardown(clearState: boolean) {
   if (clearState) {
     clearDeviceState();
     clearSoundCache();
+    // Thumbnails are object URLs holding JPEG bytes off a card this session
+    // no longer has. Nothing else revoked them, and nothing else can.
+    clearThumbCache();
+    staleAfterRestart = false;
     // Drafts and any bench claim belong to the camera that just left.
     resetDrafts();
     resetDeviceBusy();

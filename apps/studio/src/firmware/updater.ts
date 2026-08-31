@@ -6,7 +6,13 @@
 
 import type { TargetId } from '@kino/kdp';
 import type { FwPackage } from './manifest';
-import { getDevice, expectDeviceReboot, waitForPhase, refreshDeviceInfo } from '../app/session';
+import {
+  getDevice,
+  expectDeviceReboot,
+  cancelExpectedReboot,
+  waitForPhase,
+  refreshDeviceInfo,
+} from '../app/session';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import {
   freshTargets,
@@ -46,12 +52,26 @@ async function updateOneTarget(pkg: FwPackage, id: TargetId): Promise<void> {
     patchTarget(id, { progress: (offset + data.length) / image.length });
   }
 
-  const end = await dev.fwEnd();
-  if (!end.ok || !end.verified) fail('Device rejected the image after transfer');
+  // FW_END is the command that makes the P4 apply the image and restart, so
+  // the reboot window has to exist before it is sent: a board that dropped
+  // USB while the reply was still in flight was read as an unexpected
+  // disconnect — hardware error, no reconnect loop, a half-flashed camera on
+  // the ERROR screen. Disarmed again if no reboot is coming after all.
+  if (isP4) expectDeviceReboot(45000);
+  let end: Awaited<ReturnType<typeof dev.fwEnd>>;
+  try {
+    end = await dev.fwEnd();
+  } catch (err) {
+    if (isP4) cancelExpectedReboot();
+    throw err;
+  }
+  if (!end.ok || !end.verified) {
+    if (isP4) cancelExpectedReboot();
+    fail('Device rejected the image after transfer');
+  }
 
   if (isP4) {
     patchTarget(id, { status: 'rebooting', progress: 1 });
-    expectDeviceReboot(45000);
     await waitForPhase('connected', 60000);
     patchTarget(id, { status: 'checking' });
     const fresh = getDevice() ?? fail('Reconnected but device handle is missing');

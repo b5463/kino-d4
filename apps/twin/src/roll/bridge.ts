@@ -187,9 +187,17 @@ async function ensureRegistered(): Promise<{ deviceId: string; deviceToken: stri
     return { deviceId: persisted.deviceId, deviceToken: persisted.deviceToken };
   }
   const serial = persisted.serial ?? `KD4-TWIN-${crypto.randomUUID().slice(0, 12)}`;
+  // Registration is gated (issue #146). The Twin bridge is a dev tool
+  // speaking to a dev API, so it carries the published dev default from
+  // apps/api/src/config.ts — a real deployment refuses that value, which is
+  // the point: this bridge cannot mint credentials against production.
   const credential = await api<{ deviceId: string; deviceToken: string }>(
     '/api/studio/devices/register',
-    json('POST', { serial, product: 'KINO D4', hardwareRevision: 'v1', name: 'KINO Twin dev bridge' }),
+    json(
+      'POST',
+      { serial, product: 'KINO D4', hardwareRevision: 'v1', name: 'KINO Twin dev bridge' },
+      'kino-dev-provisioning-token-do-not-use-in-production',
+    ),
   );
   savePersisted({ serial, ...credential });
   useRollBridge.setState({ deviceId: credential.deviceId });

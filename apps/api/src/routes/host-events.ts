@@ -4,7 +4,7 @@ import { rollOf } from '../auth/plugins';
 import { openRollEventFeed } from '../events/feed';
 import { isStreamId, readRollHistory, type RollEventDelivery } from '../events/publish';
 import { fail } from './errors';
-import { SSE_HEARTBEAT_MS, SSE_RETRY_MS } from './guest-events';
+import { boundedWrite, SSE_HEARTBEAT_MS, SSE_RETRY_MS } from './guest-events';
 
 /**
  * A bearer-authenticated copy of the Roll event stream for the host dashboard.
@@ -13,6 +13,13 @@ import { SSE_HEARTBEAT_MS, SSE_RETRY_MS } from './guest-events';
  * a guest cookie the host dashboard neither owns nor should synthesize. This
  * route resolves the same durable Redis stream through the host token, without
  * registering the dashboard as a guest viewer.
+ *
+ * Everything else about the transport is the guest route's, imported rather than
+ * restated: the retry interval, the heartbeat period, and — since it was missing
+ * here — `boundedWrite`, which caps how much unread data one connection may
+ * accumulate. A dashboard left open on a socket that has stopped draining was
+ * otherwise an unbounded buffer in this process, with no `Last-Event-ID` recovery
+ * ever firing because nothing ended the response.
  */
 export const hostEventRoutes: FastifyPluginAsync = async (app) => {
   const openConnections = new Set<() => void>();
@@ -46,6 +53,7 @@ export const hostEventRoutes: FastifyPluginAsync = async (app) => {
       let heartbeat: NodeJS.Timeout | null = null;
       let closed = false;
 
+      /** Ends this connection. Named before `write` so the cap can call it. */
       const cleanup = (): void => {
         if (closed) return;
         closed = true;
@@ -55,6 +63,14 @@ export const hostEventRoutes: FastifyPluginAsync = async (app) => {
         release = null;
         if (stop !== null) void stop().catch(() => {});
         stream.end();
+      };
+
+      const write = (chunk: string): void => {
+        if (closed) return;
+        boundedWrite(stream, chunk, () => {
+          app.log.warn({ rollId: roll.id }, 'dropping a host SSE client that stopped reading');
+          cleanup();
+        });
       };
 
       openConnections.add(cleanup);
@@ -67,7 +83,7 @@ export const hostEventRoutes: FastifyPluginAsync = async (app) => {
           rollId: roll.id,
           lastEventId,
           readHistory: (afterId) => readRollHistory(app.redis, roll.id, afterId),
-          deliver: (delivery) => stream.write(frameOf(delivery)),
+          deliver: (delivery) => write(frameOf(delivery)),
         });
         if (closed) await release();
       } catch (err) {
@@ -75,8 +91,8 @@ export const hostEventRoutes: FastifyPluginAsync = async (app) => {
         throw err;
       }
 
-      if (!closed) heartbeat = setInterval(() => stream.write(': heartbeat\n\n'), SSE_HEARTBEAT_MS);
-      stream.write(`retry: ${SSE_RETRY_MS}\n\n`);
+      if (!closed) heartbeat = setInterval(() => write(': heartbeat\n\n'), SSE_HEARTBEAT_MS);
+      write(`retry: ${SSE_RETRY_MS}\n\n`);
 
       reply.header('content-type', 'text/event-stream; charset=utf-8');
       reply.header('cache-control', 'no-cache, no-store, no-transform');

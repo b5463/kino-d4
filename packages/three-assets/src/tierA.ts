@@ -103,6 +103,27 @@ export async function attachComponentMesh(
   mesh.name = 'body';
   mesh.userData = { ...body.userData, tierA: true };
   group.remove(body);
+  disposeProxy(body);
   group.add(mesh);
   return true;
+}
+
+/**
+ * Frees the parametric body this swap just replaced. `remove()` only detaches
+ * it — the box geometry and its xray clone were built for this one mesh and
+ * nothing else can reach them once the group has let go, so without this a
+ * Tier A swap orphaned one geometry and one material per instance.
+ *
+ * The shared palette is never touched: `materialVariants.normal` (and a
+ * keepout's `xray`, which is the same object) belong to every other instance
+ * in the scene too, so only an xray variant that is genuinely a clone is
+ * disposed.
+ */
+function disposeProxy(body: THREE.Object3D): void {
+  body.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    obj.geometry.dispose();
+    const variants = obj.userData.materialVariants as { normal: THREE.Material; xray: THREE.Material } | undefined;
+    if (variants && variants.xray !== variants.normal) variants.xray.dispose();
+  });
 }

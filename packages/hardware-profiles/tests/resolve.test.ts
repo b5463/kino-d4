@@ -59,8 +59,11 @@ describe('resolveDimensions', () => {
     expect(r.measureToLock).toBe(true);
   });
 
-  it('a fully-known SELLER_SPEC source (flash-heatsink) does not demand measure-to-lock', () => {
-    const heatsink = D4_V1.components.find((c) => c.id === 'flash-heatsink')!;
+  // Was flash-heatsink, which ECN-0003 removed from the profile along with the
+  // rest of the built-in flash assembly. micro-sd is the same case: SELLER_SPEC
+  // with all three axes known.
+  it('a fully-known SELLER_SPEC source (micro-sd) does not demand measure-to-lock', () => {
+    const heatsink = D4_V1.components.find((c) => c.id === 'micro-sd')!;
     const r = resolveDimensions(heatsink);
     expect(r.confidence).toBe('SELLER_SPEC');
     expect(r.measureToLock).toBe(false);

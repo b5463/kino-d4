@@ -6,7 +6,7 @@ import { createRoll, guestUrlFor } from '../rolls/rolls';
 import { SLUG_PATTERN, normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
-import { deviceJoinRateLimit } from '../plugins/rateLimits';
+import { deviceCreateRateLimit, deviceJoinRateLimit } from '../plugins/rateLimits';
 
 /**
  * Rolls as the camera sees them (03 §8, 03 §17).
@@ -55,8 +55,26 @@ const joinBody = z
 /** Which statuses a device is offered as "current". Closed rolls take no uploads. */
 const OPEN_STATUS = 'live';
 
+/**
+ * How many rolls `/current` will name.
+ *
+ * The query was unbounded, and its result goes to a camera touchscreen that can
+ * show a handful — so the ceiling costs nothing anyone can see, and it stops a
+ * device that has joined a thousand rolls turning its own roll picker into the
+ * slowest request on the server. Newest first, so the ones that are cut are the
+ * ones nobody was going to scroll to.
+ */
+const CURRENT_ROLLS_LIMIT = 50;
+
 export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/api/device/rolls', { preHandler: app.requireDevice }, async (request, reply) => {
+  /**
+   * Ten a minute per device (`deviceCreateRateLimit`). Every other write on this
+   * surface was metered and this one was not, which made it the cheapest way to
+   * fill the `rolls` table: one device token, an unbounded loop, a row and a host
+   * token per iteration. Keyed by token rather than by address for the same
+   * reason `deviceUpload` is — four cameras on one venue uplink share an address.
+   */
+  app.post('/api/device/rolls', { config: deviceCreateRateLimit, preHandler: app.requireDevice }, async (request, reply) => {
     const parsed = createBody.safeParse(request.body);
     if (!parsed.success) return invalidBody(reply, parsed.error);
 
@@ -160,7 +178,8 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
           or(eq(rolls.createdByDeviceId, deviceId), isNotNull(rollDevices.deviceId)),
         ),
       )
-      .orderBy(desc(rolls.createdAt));
+      .orderBy(desc(rolls.createdAt))
+      .limit(CURRENT_ROLLS_LIMIT);
 
     // No slug-derived guest URL and no host token: a camera needs neither, and
     // the fewer places a host credential travels, the better.

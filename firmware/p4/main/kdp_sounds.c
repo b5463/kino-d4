@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "audio.h"
 #include "config_store.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
@@ -146,19 +147,36 @@ static bool id_ok(const char *id) {
   return true;
 }
 
+/* The index is written on the KDP task and read on the audio task
+ * (kdp_sounds_path) and the UI task (kdp_sounds_count/_info). A delete compacts
+ * the array, and a reader between two of those struct copies would see a torn
+ * id - a failed fopen and the built-in click, not a crash, but still a lie. The
+ * writes are a handful of 60-byte copies, so a critical section is the cheapest
+ * exclusion there is.
+ *
+ * It covers the readers on the other two tasks as well, which it claimed to and
+ * did not: index_find() below takes no lock, so kdp_sounds_path() on the audio
+ * task walked the array while a delete was shifting it (audit, low). The
+ * readers that run off the KDP task take it explicitly now - index_has() and
+ * kdp_sounds_info(). The unlocked walk is kept for this file's own handlers,
+ * which run on the writer task and cannot race themselves. */
+static portMUX_TYPE s_index_mux = portMUX_INITIALIZER_UNLOCKED;
+
+/* Unlocked, and correct ONLY on the KDP task - the single writer. Anything
+ * else must go through index_has(). */
 static int index_find(const char *id) {
   for (int i = 0; i < s_count; i++)
     if (strcmp(s_index[i].id, id) == 0) return i;
   return -1;
 }
 
-/* The index is written on the KDP task and read on the audio task
- * (kdp_sounds_path) and the UI task (kdp_sounds_info). A delete compacts the
- * array, and a reader between two of those struct copies would see a torn id
- * - a failed fopen and the built-in click, not a crash, but still a lie. The
- * writes are a handful of 60-byte copies, so a critical section is the
- * cheapest exclusion that also covers the readers' index check. */
-static portMUX_TYPE s_index_mux = portMUX_INITIALIZER_UNLOCKED;
+/** Does the index hold `id`? Safe from any task. */
+static bool index_has(const char *id) {
+  portENTER_CRITICAL(&s_index_mux);
+  const bool found = index_find(id) >= 0;
+  portEXIT_CRITICAL(&s_index_mux);
+  return found;
+}
 
 static void index_drop(int slot) {
   if (slot < 0 || slot >= s_count) return;
@@ -318,15 +336,25 @@ bool kdp_sounds_capable(void) { return s_ready; }
 int kdp_sounds_count(void) { return s_count; }
 
 bool kdp_sounds_info(int index, char *id, size_t id_cap, char *name, size_t name_cap) {
-  if (index < 0 || index >= s_count) return false;
-  if (id && id_cap) snprintf(id, id_cap, "%s", s_index[index].id);
-  if (name && name_cap) snprintf(name, name_cap, "%s", s_index[index].name);
+  /* The bound and the copy under one lock: a delete between them would shift
+   * the entry this index named. Copied into locals rather than snprintf'd
+   * inside the critical section - a critical section on this part disables
+   * interrupts, and formatting inside one is longer than it needs to be. */
+  sound_t row = {0};
+  portENTER_CRITICAL(&s_index_mux);
+  const bool ok = index >= 0 && index < s_count;
+  if (ok) row = s_index[index];
+  portEXIT_CRITICAL(&s_index_mux);
+  if (!ok) return false;
+  if (id && id_cap) snprintf(id, id_cap, "%s", row.id);
+  if (name && name_cap) snprintf(name, name_cap, "%s", row.name);
   return true;
 }
 
 bool kdp_sounds_path(const char *id, char *path, size_t cap) {
   if (!s_ready || id == NULL || path == NULL || cap == 0) return false;
-  if (index_find(id) < 0) return false;
+  /* The audio task, not the writer task: locked. */
+  if (!index_has(id)) return false;
   snprintf(path, cap, SOUNDS_DIR "/%s.WAV", id);
   return true;
 }
@@ -634,6 +662,11 @@ static kdp_module_reply_t handle_end(void) {
   storage_release(STORAGE_USER_UI);
 
   index_put(&stored);
+  /* The WAV under this id is a different file now. audio.c caches the expanded
+   * samples keyed on the id, which does not change on a re-upload - so without
+   * this the shutter kept playing the clip that was there before the upload
+   * until the next reboot (audit FW-2). */
+  audio_forget_custom(stored.id);
   memset(&s_session, 0, sizeof s_session);
 
   ESP_LOGI(TAG, "sound stored: %s (%u B, %u ms)", stored.name, (unsigned)stored.size_bytes,
@@ -708,6 +741,10 @@ static kdp_module_reply_t handle_delete(const cJSON *req) {
   storage_release(STORAGE_USER_UI);
 
   index_drop(slot);
+  /* The samples in PSRAM outlive the file otherwise: a delete followed by an
+   * upload of the same id, or a delete alone, would keep playing a clip that
+   * is no longer on the card. */
+  audio_forget_custom(id);
 
   /* A deleted clip cannot stay selected. audio.c would fall back to the click
    * on its own, but leaving the setting pointing at nothing means Studio and

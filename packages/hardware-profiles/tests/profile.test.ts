@@ -46,8 +46,12 @@ describe('kino.hardware-profile d4-v1', () => {
   it('records mass/material only where a source exists; unweighed parts omit them (audit #63)', () => {
     const battery = D4_V1.components.find((c) => c.id === 'battery')!;
     expect(battery.massG).toEqual({ value: 55, tag: 'ESTIMATED' });
-    const heatsink = D4_V1.components.find((c) => c.id === 'flash-heatsink')!;
-    expect(heatsink.material).toEqual({ value: 'copper', tag: 'SELLER' });
+    // Was flash-heatsink's SELLER-tagged copper; ECN-0003 removed the whole
+    // built-in flash assembly, and no part left on the body carries a
+    // seller-stated material. The point of the assertion is the tag, not the
+    // tier: a material recorded here is always attributed.
+    const shell = D4_V1.components.find((c) => c.id === 'enclosure-shell')!;
+    expect(shell.material?.tag).toBe('ESTIMATED');
     // Seeed wiki states no weight for the XIAO ESP32-S3 Sense — so no massG.
     const cam = D4_V1.components.find((c) => c.id === 'camera-node')!;
     expect(cam.massG).toBeUndefined();
@@ -78,5 +82,27 @@ describe('kino.hardware-profile d4-v1', () => {
     const bad = JSON.parse(JSON.stringify({ ...D4_V1 }));
     bad.alternatePower['16340-bench'].experimental = false;
     expect(() => parseVersioned(hardwareProfile, bad)).toThrow();
+  });
+});
+
+describe('referential integrity (audit #146, TW-2)', () => {
+  it('refuses a net whose endpoint names a dropped instance', () => {
+    const doc = JSON.parse(JSON.stringify({ ...D4_V1 }));
+    // Drop one instance but keep its nets — the exact edit that used to crash
+    // the Twin at render instead of failing at load.
+    const victim = doc.nets[0].from.instance;
+    doc.instances = doc.instances.filter((i: { id: string }) => i.id !== victim);
+    expect(() => parseVersioned(hardwareProfile, doc)).toThrow(/names instance/);
+  });
+
+  it('refuses an instance whose component is not in components[]', () => {
+    const doc = JSON.parse(JSON.stringify({ ...D4_V1 }));
+    doc.instances[0].component = 'does-not-exist';
+    // The ZodError text JSON-escapes the quotes (\"), so match around them.
+    expect(() => parseVersioned(hardwareProfile, doc)).toThrow(/names component .{1,2}does-not-exist/);
+  });
+
+  it('still accepts the shipped profile', () => {
+    expect(() => parseVersioned(hardwareProfile, JSON.parse(JSON.stringify({ ...D4_V1 })))).not.toThrow();
   });
 });

@@ -3,6 +3,11 @@ import { createServer, request as httpRequest } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 
 const port = Number(process.env.PORT ?? 4400);
+// Loopback, not every interface. This serves build output and proxies to the
+// Roll API with no authentication of its own, so on a café or conference
+// network `0.0.0.0` hands both to anyone on the subnet. Set HOST=0.0.0.0
+// deliberately to reach it from a phone or another machine.
+const host = process.env.HOST ?? '127.0.0.1';
 // Twin's Roll bridge and Studio's Roll panel call same-origin /api — in dev
 // that is the Roll API on :3000 (matches the vite proxies). Issue #86.
 const apiTarget = process.env.KINO_API_URL ?? 'http://localhost:3000';
@@ -45,7 +50,8 @@ createServer((request, response) => {
   if (!file.startsWith(root.directory) || !existsSync(file)) { response.writeHead(404).end('Build output missing. Run npm run build first.'); return; }
   response.writeHead(200, { 'Content-Type': mime[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
   createReadStream(file).pipe(response);
-}).listen(port, () => {
+}).listen(port, host, () => {
   console.log(`KINO Studio: http://localhost:${port}/studio/`);
   console.log(`KINO Twin:   http://localhost:${port}/dev/twin/`);
+  if (host !== '127.0.0.1') console.log(`bound to ${host} — reachable from other machines on this network`);
 });

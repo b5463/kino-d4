@@ -56,7 +56,10 @@ export function StatusBar() {
         <span className="status-cell">SD {storage.present ? `${formatMB(storage.freeMB)} FREE` : '— NO CARD'}</span>
       ) : null}
       {power ? (
-        <span className="status-cell">BATT {power.batteryPct}%</span>
+        // D4-V1 has no gauge: the firmware sends null (D10), permanently.
+        <span className="status-cell">
+          BATT {power.batteryPct === null ? '—' : `${power.batteryPct}%`}
+        </span>
       ) : null}
     </div>
   );

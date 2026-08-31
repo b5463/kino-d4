@@ -20,6 +20,7 @@ x-runtime-environment: &runtime-environment
   S3_REGION: ${S3_REGION:-us-east-1}
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in the selected environment file}
   COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET in the selected environment file}
+  PROVISIONING_TOKEN: ${PROVISIONING_TOKEN:?set PROVISIONING_TOKEN in the selected environment file}
   TRUST_PROXY: 'true'
   OBJECT_DELIVERY: proxy
   DEVICE_REGISTRATION_MODE: ${DEVICE_REGISTRATION_MODE:-first-write-wins}

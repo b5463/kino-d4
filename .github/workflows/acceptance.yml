@@ -1,7 +1,20 @@
 name: acceptance
 # The KINO Twin acceptance walk (apps/twin/README.md), driven by Playwright
-# against the built Studio + Twin served from one origin. Only runs when the
-# applications, the shared packages, or the harness itself change.
+# against the built Studio + Twin served from one origin.
+#
+# It runs when these paths change, and not otherwise. Nothing in this
+# repository makes it a required check — branch protection is a GitHub
+# repository setting, not a file here.
+#
+# If it ever becomes one, note that a path-filtered job reports no status when
+# it does not run, so a PR touching none of these paths would wait forever on a
+# check that never appears. The pattern is a companion job with the same name,
+# no path filter, that only echoes and passes.
+#
+# scripts/** is in the list because the walk is served by
+# scripts/preview-all.mjs: its static roots, its /api proxy and its port are
+# what the harness connects to, so a change there can break the walk without
+# touching an app.
 on:
   push:
     branches: [main]
@@ -10,6 +23,7 @@ on:
       - 'apps/studio/**'
       - 'packages/**'
       - 'e2e/**'
+      - 'scripts/**'
       - 'playwright.config.*'
       - '.github/workflows/acceptance.yml'
   pull_request:
@@ -18,6 +32,7 @@ on:
       - 'apps/studio/**'
       - 'packages/**'
       - 'e2e/**'
+      - 'scripts/**'
       - 'playwright.config.*'
       - '.github/workflows/acceptance.yml'
 jobs:

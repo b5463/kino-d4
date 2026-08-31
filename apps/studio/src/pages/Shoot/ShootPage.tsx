@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SelectField, SliderField } from '../../components/fields';
 import { useDeviceStore, supports } from '../../state/deviceStore';
+import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { FocusPanel } from './FocusPanel';
 import { Unsupported } from '../../components/Unsupported';
 import { useDraft } from '../../hooks/useDraft';
@@ -23,6 +24,14 @@ import { CustomSoundsPanel } from './CustomSoundsPanel';
 // The camera picker here is deliberately NOT the shoot.viewfinder setting:
 // looking through CAM3 to check focus should not rewrite what the body's own
 // screen shows. It starts on the body setting and stays local after that.
+//
+// The preview loop is a round trip every ~180 ms, so it is a long operation on
+// the link like any bench: it takes the same exclusive claim (04 §19 /
+// deviceBusy). Without it, four frames per second of CAMERA_PREVIEW competed
+// with a running burn-in and both reported numbers as if nothing else was on
+// the wire.
+const VIEWFINDER_OWNER = 'viewfinder';
+
 function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
   const [running, setRunning] = useState(false);
   const [cam, setCam] = useState<CamId>(defaultCam);
@@ -30,9 +39,20 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
   const [err, setErr] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const urlRef = useRef<string | null>(null);
+  const blocked = useBlockedBy(VIEWFINDER_OWNER);
+
+  // A bench started while the preview was running wins: it claimed the link,
+  // so the loop stops rather than interleaving with it.
+  useEffect(() => {
+    if (blocked && running) setRunning(false);
+  }, [blocked, running]);
 
   useEffect(() => {
     if (!running) return;
+    if (!claimDevice(VIEWFINDER_OWNER, 'VIEWFINDER')) {
+      setRunning(false);
+      return;
+    }
     let alive = true;
     let count = 0;
     let t0 = performance.now();
@@ -67,6 +87,7 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       urlRef.current = null;
       setFpsActual(0);
+      releaseDevice(VIEWFINDER_OWNER);
     };
   }, [running, cam]);
 
@@ -74,7 +95,13 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
     <Panel
       title="VIEWFINDER"
       actions={
-        <Button variant={running ? 'default' : 'primary'} size="sm" onClick={() => setRunning(!running)}>
+        <Button
+          variant={running ? 'default' : 'primary'}
+          size="sm"
+          disabled={!running && blocked !== null}
+          title={!running && blocked ? `${blocked} is using the link` : undefined}
+          onClick={() => setRunning(!running)}
+        >
           {running ? 'STOP' : 'START'}
         </Button>
       }
@@ -84,7 +111,7 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
           <img ref={imgRef} alt={`Live view from ${cam.toUpperCase()}`} style={{ maxWidth: '100%', display: 'block' }} />
         ) : (
           <span className="faint mono" style={{ alignSelf: 'center', fontSize: 11 }}>
-            VIEWFINDER STOPPED
+            {blocked ? `LINK HELD BY ${blocked.toUpperCase()}` : 'VIEWFINDER STOPPED'}
           </span>
         )}
       </div>

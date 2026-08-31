@@ -119,9 +119,30 @@ afterAll(async () => {
 
 describe('camera-simulating test uploader', () => {
   it('survives a lost part acknowledgement and duplicate retries, reaches the guest feed, and closes', async () => {
+    /**
+     * The device is registered *here*, not by the uploader.
+     *
+     * `POST /api/studio/devices/register` is gated on `PROVISIONING_TOKEN`, and
+     * `infra/scripts/test-uploader.ts` sends no such header — it takes a
+     * pre-registered credential instead, which is the path a real bench uses
+     * anyway: Studio provisions the camera, the camera uploads. Registering
+     * through `app.inject` keeps this suite testing the uploader rather than the
+     * provisioning gate, which `auth.test.ts` owns.
+     */
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/studio/devices/register',
+      headers: { authorization: `Bearer ${config.PROVISIONING_TOKEN}` },
+      payload: { serial: SERIAL, product: 'KINO D4', hardwareRevision: 'v1' },
+    });
+    expect(registered.statusCode).toBe(200);
+    const credential = registered.json<{ deviceId: string; deviceToken: string }>();
+
     result = await runTestUploader({
       baseUrl,
       serial: SERIAL,
+      deviceId: credential.deviceId,
+      deviceToken: credential.deviceToken,
       title: `Uploader acceptance ${RUN}`,
       fixtureDirectory: fileURLToPath(
         new URL('../../../packages/test-fixtures/media/frame-01.jpg', import.meta.url),

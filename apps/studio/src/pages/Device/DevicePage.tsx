@@ -160,10 +160,11 @@ export function DevicePage() {
     const { backup, skipped, skippedSounds } = pendingRestore;
     setPendingRestore(null);
     setRestoreBusy(true);
+    const soundsSupported = supports(state, 'customSounds');
+    let soundsWritten = 0;
     try {
+      // The writes. Only a failure in here can leave the camera half-restored.
       // Sounds first — the config may name a custom clip as shutter sound.
-      const soundsSupported = supports(state, 'customSounds');
-      let soundsWritten = 0;
       if (soundsSupported) {
         for (const snd of backup.customSounds) {
           const wav = base64ToBytes(snd.wavBase64);
@@ -176,23 +177,38 @@ export function DevicePage() {
       for (const recipe of backup.customRecipes) {
         await dev.uploadRecipe({ ...recipe, factory: false });
       }
-      await Promise.all([refreshConfig(), refreshCalibration(), refreshRecipes(), refreshSounds().catch(() => {}), refreshDeviceInfo()]);
-      const notes: string[] = [];
-      if (skipped.length > 0) notes.push(`Skipped ${plural(skipped.length, 'invalid look')}: ${skipped.join(', ')}.`);
-      if (skippedSounds.length > 0) notes.push(`Skipped ${plural(skippedSounds.length, 'invalid sound')}: ${skippedSounds.join(', ')}.`);
-      if (!soundsSupported && backup.customSounds.length > 0) {
-        notes.push(`${plural(backup.customSounds.length, 'sound')} not written — this firmware has no custom sounds.`);
-      }
-      setBackupNotice(
-        `Restore complete — settings, calibration, ${plural(backup.customRecipes.length, 'look')} and ${plural(soundsWritten, 'sound')} written to KINO.${notes.length ? ' ' + notes.join(' ') : ''}`,
-      );
     } catch (err) {
       setBackupNotice(
         `Restore stopped: ${err instanceof Error ? err.message : String(err)}. The KINO may be partially restored — check settings before shooting.`,
       );
-    } finally {
       setRestoreBusy(false);
+      return;
     }
+
+    // Every write was acknowledged. What follows is Studio catching up with a
+    // camera that is already restored, and a slow read-back is not a partial
+    // restore — reporting one sent people hunting for damage that was not
+    // there.
+    let readBack: string | null = null;
+    try {
+      await Promise.all([refreshConfig(), refreshCalibration(), refreshRecipes(), refreshSounds().catch(() => {}), refreshDeviceInfo()]);
+    } catch (err) {
+      readBack = err instanceof Error ? err.message : String(err);
+    }
+
+    const notes: string[] = [];
+    if (skipped.length > 0) notes.push(`Skipped ${plural(skipped.length, 'invalid look')}: ${skipped.join(', ')}.`);
+    if (skippedSounds.length > 0) notes.push(`Skipped ${plural(skippedSounds.length, 'invalid sound')}: ${skippedSounds.join(', ')}.`);
+    if (!soundsSupported && backup.customSounds.length > 0) {
+      notes.push(`${plural(backup.customSounds.length, 'sound')} not written — this firmware has no custom sounds.`);
+    }
+    if (readBack !== null) {
+      notes.push(`Reading the camera back afterwards failed: ${readBack}. Press SYNC to refresh this screen.`);
+    }
+    setBackupNotice(
+      `Restore complete — settings, calibration, ${plural(backup.customRecipes.length, 'look')} and ${plural(soundsWritten, 'sound')} written to KINO.${notes.length ? ' ' + notes.join(' ') : ''}`,
+    );
+    setRestoreBusy(false);
   };
 
   const applyBody = async () => {
@@ -208,6 +224,7 @@ export function DevicePage() {
     storage && storage.present && storage.totalMB > 0
       ? Math.round(((storage.totalMB - storage.freeMB) / storage.totalMB) * 100)
       : 0;
+  const battMeasured = power != null && power.batteryPct !== null;
   const battPct = power?.batteryPct ?? 0;
   // `supports` reads a missing flag as "not a gate", so this is false only
   // when the camera said `brightnessControl: false` — firmware older than
@@ -287,14 +304,17 @@ export function DevicePage() {
 
         <Panel title="POWER">
           <dl>
-            <div className="datarow"><dt>Battery</dt><dd>{power ? `${power.batteryV.toFixed(2)} V` : '—'}</dd></div>
-            <div className="datarow"><dt>Charge</dt><dd>{battPct}%</dd></div>
+            {/* Null is the shipped answer on D4-V1, where nothing routes a
+                sense divider or a gauge bus to the P4 (contract D10). It is
+                not a number that is coming, and it is not 0.00 V. */}
+            <div className="datarow"><dt>Battery</dt><dd>{power?.batteryV != null ? `${power.batteryV.toFixed(2)} V` : power ? 'NOT MEASURED' : '—'}</dd></div>
+            <div className="datarow"><dt>Charge</dt><dd>{battMeasured ? `${battPct}%` : 'NOT MEASURED'}</dd></div>
             <div className="datarow">
               <dt>State</dt>
               <dd>
                 {power?.charging ? (
                   <Led state="busy" label="CHARGING" />
-                ) : battPct <= 15 ? (
+                ) : battMeasured && battPct <= 15 ? (
                   <Led state="warn" label="LOW BATTERY" />
                 ) : (
                   <Led state="ok" label={power?.state.toUpperCase() ?? '—'} />
@@ -302,12 +322,15 @@ export function DevicePage() {
               </dd>
             </div>
           </dl>
-          <div className="meter" style={{ marginTop: 6 }} role="img" aria-label={`Battery ${battPct}%`}>
-            <div
-              className={`meter-fill ${battPct <= 15 ? 'meter-fill--err' : battPct <= 30 ? 'meter-fill--warn' : 'meter-fill--ok'}`}
-              style={{ width: `${battPct}%` }}
-            />
-          </div>
+          {/* No gauge, no gauge drawing: an empty-looking meter is a reading. */}
+          {battMeasured ? (
+            <div className="meter" style={{ marginTop: 6 }} role="img" aria-label={`Battery ${battPct}%`}>
+              <div
+                className={`meter-fill ${battPct <= 15 ? 'meter-fill--err' : battPct <= 30 ? 'meter-fill--warn' : 'meter-fill--ok'}`}
+                style={{ width: `${battPct}%` }}
+              />
+            </div>
+          ) : null}
         </Panel>
       </div>
 

@@ -151,6 +151,33 @@ export const hardwareProfile = defineSchema({
     gpio: z.record(z.string().nullable()), // data-driven pin map; null = unassigned (§8)
     // Optional keeps schema version 1: documents without a header map still parse.
     jp1: headerMap.optional(),
+  }).superRefine((doc, ctx) => {
+    // Referential integrity (audit #146, TW-2): a net naming a dropped
+    // instance, or an instance naming a dropped component, used to survive
+    // parsing and crash at render time in whichever Twin call site touched it
+    // first. An edited profile must fail HERE, at load, with the id named.
+    const componentIds = new Set(doc.components.map((c) => c.id));
+    const instanceIds = new Set(doc.instances.map((i) => i.id));
+    doc.instances.forEach((inst, i) => {
+      if (!componentIds.has(inst.component)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['instances', i, 'component'],
+          message: `instance "${inst.id}" names component "${inst.component}", which is not in components[]`,
+        });
+      }
+    });
+    doc.nets.forEach((net, i) => {
+      for (const end of ['from', 'to'] as const) {
+        if (!instanceIds.has(net[end].instance)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['nets', i, end, 'instance'],
+            message: `net "${net.id}" ${end} names instance "${net[end].instance}", which is not in instances[]`,
+          });
+        }
+      }
+    });
   }),
   migrations: {},
 });

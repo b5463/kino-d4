@@ -1,6 +1,17 @@
 name: firmware
 # The contract and the normative TS protocol are firmware inputs — a
 # renumber in packages/kdp must rebuild and re-test firmware (issue #90).
+#
+# Everything here runs when the paths below change, and not otherwise. Nothing
+# in this repository makes any of it a required check: branch protection lives
+# in the GitHub repository settings, not in the tree, so this file cannot state
+# what is enforced — only what runs.
+#
+# If these ever do become required checks, a path filter is the wrong shape for
+# one: a filtered job that does not run reports no status, so a PR that touches
+# nothing under `paths` waits forever on a check that will never appear. The
+# pattern is a companion job with the same name, no path filter, that only
+# echoes and passes — GitHub then always has a status to read.
 on:
   push:
     branches: [main]
@@ -40,8 +51,8 @@ jobs:
       # classification, redaction, and the 50-captures-offline acceptance
       # scenario. No radio has ever been exercised on this hardware
       # (firmware/C6_HARDWARE_MAP.md), so this is currently the ONLY evidence
-      # any of the queue behaves — which is why it is a required check and not
-      # an optional one.
+      # any of the queue behaves — which is why it runs on every change to
+      # these paths rather than by hand when someone remembers.
       - run: make -C firmware/p4/host_tests test-queue
       # The C6 link state model and the Wi-Fi credential rules. Asserts the
       # two things that are easy to get wrong and expensive to find on a
@@ -68,7 +79,8 @@ jobs:
       # which reach nothing here and cost a bench session. This is what stops
       # that happening twice.
       - run: make -C firmware/p4/host_tests test-pins
-      # When a hardware-validation row may be marked. Required, not optional:
+      # When a hardware-validation row may be marked. Runs unconditionally on a
+      # firmware change rather than on request:
       # the C6 rows were nearly wired to esp_hosted_init()'s return value,
       # which returns 0 on this board with nothing on the SDIO bus. That would
       # have recorded a validated radio transport on a camera whose radio has
@@ -82,6 +94,23 @@ jobs:
       # What the P4 does when the C6 goes away under a live link: bounded,
       # backed off, generation-guarded, never a P4 reboot.
       - run: make -C firmware/p4/host_tests test-recovery
+      # Who may talk to the camera nodes: a real capture wins, the node sweep's
+      # probe defers, and the only BUSY left is a capture already running. The
+      # bench found CAMERA_CAPTURE refused BUSY against an idle rig
+      # (2026-08-30), and this is the policy that replaced it.
+      - run: make -C firmware/p4/host_tests test-sched
+      # The RIFF/WAVE header read on bytes a host sent: truncated, stereo,
+      # 44.1 kHz, a LIST chunk before the samples, a data chunk longer than the
+      # file. Walking off the end of any of them is a remote over-read, so this
+      # is a bounds check, not a format check. No dependencies.
+      - run: make -C firmware/p4/host_tests test-wav
+      # Every suite above is listed one target per line ON PURPOSE, so a failure
+      # names what broke. The cost is that a target added to the Makefile is not
+      # run here until someone adds a line. `test-all` in
+      # firmware/p4/host_tests/Makefile is the full list — when adding a suite
+      # there, add it here (or to the idf-build job if it needs the container's
+      # cJSON) in the same commit. Two suites were un-run for several releases
+      # because that did not happen.
 
   host-preview:
     # The native UI renderer. It compiles ui.c as a translation unit, so a
@@ -149,6 +178,20 @@ jobs:
         if: matrix.app == 'p4'
         shell: bash
         run: make -C firmware/p4/host_tests test-store
+
+      # The look validator. Third copy of a validator that also exists in
+      # Studio and in the mock, so drift means Studio accepts a look the camera
+      # then refuses. Here rather than in host-tests because it parses look
+      # documents with the container's cJSON - the same parser the device links.
+      #
+      # Suites are listed one step per line here and in the host-tests job, so a
+      # failure names what broke. `test-all` in firmware/p4/host_tests/Makefile
+      # is the full list; a new target must be added to one of the two jobs in
+      # the same commit or it simply never runs.
+      - name: P4 look validator tests
+        if: matrix.app == 'p4'
+        shell: bash
+        run: make -C firmware/p4/host_tests test-recipes
 
       # ---- firmware size guard (P4 only) ----
       #
@@ -274,15 +317,29 @@ jobs:
     #
     # Deliberately a separate job: it builds twice, so it is the slowest thing
     # here and should not gate the ordinary build matrix.
+    #
+    # The radio variant is its own row, not an extra guard on the p4 row: it is
+    # the image an OTA writes into ota_0, so it is the one whose published hash
+    # a device compares against. It also carries the dependencies most likely to
+    # break the property - ESP-Hosted, esp_wifi_remote, lwIP, mbedTLS - none of
+    # which are in the default build, so a p4 row that passes says nothing about
+    # it. `variant` is the label; `app` still names the binary and directory.
     strategy:
       matrix:
-        app: [p4, c6]
+        include:
+          - { app: p4, variant: p4, build: 'idf.py build' }
+          - {
+              app: p4,
+              variant: p4-radio,
+              build: 'idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.radio" build',
+            }
+          - { app: c6, variant: c6, build: 'idf.py build' }
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:v5.5.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build ${{ matrix.app }} twice and compare
+      - name: Build ${{ matrix.variant }} twice and compare
         shell: bash
         run: |
           set -euo pipefail
@@ -290,26 +347,28 @@ jobs:
           cd "firmware/${{ matrix.app }}"
           BIN="build/kino-${{ matrix.app }}.bin"
 
-          idf.py build >/dev/null
+          ${{ matrix.build }} >/dev/null
           FIRST=$(sha256sum "$BIN" | cut -d' ' -f1)
 
           # A full clean, not `idf.py clean`: the point is to rebuild from
-          # nothing, the way a release build or another machine would.
-          rm -rf build
-          idf.py build >/dev/null
+          # nothing, the way a release build or another machine would. sdkconfig
+          # goes too, so the second pass re-derives it from the defaults files
+          # named in the build command rather than reusing the first pass's.
+          rm -rf build sdkconfig
+          ${{ matrix.build }} >/dev/null
           SECOND=$(sha256sum "$BIN" | cut -d' ' -f1)
 
           echo "first:  $FIRST"
           echo "second: $SECOND"
           {
-            echo "### ${{ matrix.app }} reproducibility"
+            echo "### ${{ matrix.variant }} reproducibility"
             echo ""
             echo "- first:  \`$FIRST\`"
             echo "- second: \`$SECOND\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$FIRST" != "$SECOND" ]; then
-            echo "::error::two clean builds of ${{ matrix.app }} produced different binaries."
+            echo "::error::two clean builds of ${{ matrix.variant }} produced different binaries."
             echo "::error::something non-deterministic reached the image — a timestamp, a path, or an unpinned dependency."
             exit 1
           fi

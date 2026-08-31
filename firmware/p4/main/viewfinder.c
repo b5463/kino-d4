@@ -99,6 +99,14 @@ static volatile int64_t s_review_until_us;
 /* The sensor quality the four pump tasks ask for. Read from the config, not a
  * constant; see vf_read_quality(). */
 static volatile int s_quality = VF_QUALITY_NORMAL;
+/* How many preview frames have written each camera's quality register.
+ *
+ * The finder passes s_quality in every NL_CMD_CAPTURE and the node's
+ * handle_capture applies it, so a preview frame is a WRITE to the same sensor
+ * register capture.c's NL_CMD_SENSOR cache believes it owns. This counter is
+ * how capture.c notices; see viewfinder_quality_writes(). Atomic because four
+ * pump tasks increment their own element while the capture task reads it. */
+static atomic_uint s_quality_writes[4];
 
 /**
  * Take shoot.previewQuality off the config.
@@ -123,6 +131,11 @@ static void vf_read_quality(void) {
 }
 
 bool viewfinder_ready(void) { return s_ready; }
+
+uint32_t viewfinder_quality_writes(int cam) {
+  if (cam < 0 || cam > 3) return 0;
+  return (uint32_t)atomic_load(&s_quality_writes[cam]);
+}
 /*
  * What the UI wants, which is not the same as what the finder may do.
  *
@@ -241,6 +254,11 @@ static bool pump_camera(int cam) {
    * frame period. It is timed here because it is the only part of a preview
    * frame whose cost depends on what the lens is pointed at. */
   const int64_t cap_start_us = esp_timer_get_time();
+  /* Counted BEFORE the call, not after a success: the node applies the quality
+   * as the first thing handle_capture does, so a request that then times out
+   * has still moved the register. Counting only successes would let exactly
+   * that frame leave a preview quality standing that no capture re-sends. */
+  atomic_fetch_add(&s_quality_writes[cam], 1u);
   if (camlink_capture_ch(cam, VF_RESOLUTION, s_quality, VF_CAPTURE_TIMEOUT_MS, &res) !=
       ESP_OK) {
     s_status[cam].state = VF_NO_LINK;

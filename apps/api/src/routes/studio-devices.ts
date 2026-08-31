@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { newToken } from '../auth/tokens';
+import { bearerToken, newToken, timingSafeSecretEqual } from '../auth/tokens';
 import { newId } from '../ids';
 import { devices } from '../db/schema';
 import { fail, invalidBody } from './errors';
@@ -9,14 +9,31 @@ import { registrationRateLimit } from '../plugins/rateLimits';
 /**
  * Studio/account API — device registration (05 §4).
  *
- * There are no accounts to bind a device to (05 §12), so initial registration
- * is intentionally unauthenticated. It is rate-limited in every environment.
+ * There are no accounts to bind a device to (05 §12), so there is no user
+ * identity to check here. What there is instead is a **provisioning secret**:
+ * this call mints a device token, which is a credential for the upload API, and
+ * an endpoint that mints credentials for anyone who can reach it is a way to
+ * fill the platform with cameras nobody built. `PROVISIONING_TOKEN` is what a
+ * factory bench presents, and it is compared constant-time.
+ *
+ * ## The assumption, stated
+ *
+ * One shared secret proves the caller is *a* provisioning station, never which
+ * one. So a leaked bench secret registers devices exactly as the bench does, and
+ * rotating it means re-flashing every station. The follow-up is a per-serial
+ * HMAC — the station signs the serial with its own key and the API verifies
+ * against a station registry — which is deliberately not here: V1 has no table
+ * to hold stations, and inventing one to hold a single row would be worse than
+ * naming the limitation.
  *
  * Development/test use `rotate`, which keeps factory-reset work on a bench
  * convenient. Production fails closed to `first-write-wins`: an existing
  * printed serial returns 409 and its token hash is untouched, so this endpoint
  * cannot take over or brick a deployed device. Recovery is the explicit,
  * operator-controlled maintenance procedure in `infra/README.md`.
+ *
+ * The rate limit stays, and it is not redundant: it bounds a caller who *has*
+ * the secret, which is the only caller that gets past the gate at all.
  */
 const registerBody = z.object({
   serial: z.string().min(1).max(64),
@@ -27,6 +44,18 @@ const registerBody = z.object({
 
 export const studioDeviceRoutes: FastifyPluginAsync = async (app) => {
   app.post('/api/studio/devices/register', { config: registrationRateLimit }, async (request, reply) => {
+    // Before the body is even parsed: an unauthorized caller learns nothing
+    // about which fields this endpoint wants.
+    const presented = bearerToken(request.headers.authorization);
+    if (presented === null || !timingSafeSecretEqual(presented, app.config.PROVISIONING_TOKEN)) {
+      return fail(
+        reply,
+        401,
+        'PROVISIONING_TOKEN_REQUIRED',
+        'expected Authorization: Bearer <provisioning token>',
+      );
+    }
+
     const parsed = registerBody.safeParse(request.body);
     // Names the offending fields, never their values.
     if (!parsed.success) return invalidBody(reply, parsed.error);

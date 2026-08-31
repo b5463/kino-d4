@@ -104,14 +104,23 @@ async function main(): Promise<void> {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
+  // Registration is gated (issue #146): the bearer is the provisioning
+  // secret, not a device token. The fallback is the published dev default
+  // from apps/api/src/config.ts, refused outside development/test.
+  const provisioningToken =
+    process.env.PROVISIONING_TOKEN ?? 'kino-dev-provisioning-token-do-not-use-in-production';
   const credential = await request<{ deviceId: string; deviceToken: string }>(
     '/api/studio/devices/register',
-    json('POST', {
-      serial: `KD4-PARTY-${randomUUID().slice(0, 12)}`,
-      product: 'KINO D4',
-      hardwareRevision: 'v1',
-      name: 'Party simulator',
-    }),
+    json(
+      'POST',
+      {
+        serial: `KD4-PARTY-${randomUUID().slice(0, 12)}`,
+        product: 'KINO D4',
+        hardwareRevision: 'v1',
+        name: 'Party simulator',
+      },
+      provisioningToken,
+    ),
   );
   const roll = await request<{ rollId: string; slug: string; guestUrl: string }>(
     '/api/device/rolls',

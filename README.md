@@ -58,11 +58,11 @@ Run the checks:
 
 ```bash
 npm run lint
-npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
+npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures -w @kino/hardware-profiles -w @kino/simulator-engine -w @kino/three-assets -w @kino/twin -w @kino/design-system -w @kino/media -w @kino/roll-web
 npm run build
 ```
 
-The API also needs PostgreSQL, Redis, and S3-compatible storage. Its local stack and ports are documented in [the development guide](docs/DEVELOPMENT.md#api-stack).
+That is every suite that runs without Docker, and the same line CI runs. The API and worker also need PostgreSQL, Redis, and S3-compatible storage. Its local stack and ports are documented in [the development guide](docs/DEVELOPMENT.md#api-stack).
 
 ## The three tools
 

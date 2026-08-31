@@ -1,12 +1,15 @@
 import { ASSET_ROLES } from '@kino/schemas';
 
 /**
- * The typed client Tasks 27-31 build the guest feed, capture detail, PIN gate
- * and host dashboard against.
+ * The typed client the guest feed, capture detail and PIN gate are built
+ * against.
  *
- * Every shape here mirrors what the API actually sends on the wire (read from
- * `apps/api/src/routes/guest-rolls.ts`, `guest-captures.ts`, `assets.ts` and
- * `captures/feed.ts` — never guessed), not the storage-side `@kino/schemas`
+ * Every shape here mirrors what the API actually sends on the wire — never
+ * guessed. The routes are `apps/api/src/routes/guest-rolls.ts` (the roll),
+ * `guest-captures.ts` (the feed, one capture, reactions, render requests) and
+ * `assets.ts` (asset content); the response shapes they return come from
+ * `apps/api/src/rolls/rolls.ts` and `apps/api/src/captures/feed.ts`, which are
+ * NOT under `routes/`. These are not the storage-side `@kino/schemas`
  * envelopes, which describe a different thing (a versioned persisted record,
  * not a guest response). The one piece of `@kino/schemas` reused here is the
  * `ASSET_ROLES` enum: an asset's `role` on the guest wire is the same string
@@ -23,7 +26,7 @@ import { ASSET_ROLES } from '@kino/schemas';
 /** An asset role, taken from the one enum the guest feed and `@kino/schemas` share. */
 export type AssetRole = (typeof ASSET_ROLES)[number];
 
-/** `GET /api/rolls/:slug` — see `rolls/rolls.ts#guestRollView`. */
+/** `GET /api/rolls/:slug` — see `apps/api/src/rolls/rolls.ts#guestRollView`. */
 export interface RollView {
   title: string;
   status: string;
@@ -58,7 +61,7 @@ export interface CapturePlayback {
   direction?: 'ltr' | 'rtl';
 }
 
-/** One item of `GET /api/rolls/:slug/captures` — see `captures/feed.ts#CaptureView`. */
+/** One item of `GET /api/rolls/:slug/captures` — see `apps/api/src/captures/feed.ts#CaptureView`. */
 export interface CaptureView {
   captureId: string;
   mode: string;
@@ -142,7 +145,7 @@ export interface RollApi {
   getCapture(slug: string, id: string): Promise<CaptureDetail>;
   /**
    * `options.download` appends `?download=1` (`wantsDownload` in
-   * `captures/delivery.ts`), which asks the API for `Content-Disposition:
+   * `apps/api/src/captures/delivery.ts`), which asks the API for `Content-Disposition:
    * attachment` instead of the default inline response. An optional second
    * parameter, so the pinned single-argument signature Tasks 27-29 were
    * already written against keeps working unchanged.
@@ -265,9 +268,9 @@ export function createRollApi(baseUrl = ''): RollApi {
     async listCaptures(slug, cursor) {
       const params = new URLSearchParams();
       // `cursor` is opaque and round-tripped exactly as received — never
-      // decoded, re-encoded, or otherwise touched. See `feed.ts#decodeCursor`
-      // for why: its encoding is an internal detail this client has no
-      // business depending on.
+      // decoded, re-encoded, or otherwise touched. See
+      // `apps/api/src/captures/feed.ts#decodeCursor` for why: its encoding is
+      // an internal detail this client has no business depending on.
       if (cursor !== undefined) params.set('cursor', cursor);
       // `limit` is not exposed yet — the brief's `RollApi` shape names only
       // `(slug, cursor?)`, and the API defaults to `FEED_LIMIT_DEFAULT` (50)

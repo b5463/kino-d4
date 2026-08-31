@@ -15,6 +15,14 @@ export const EVENT_RECONNECT_MIN_MS = 1_000;
 export const EVENT_RECONNECT_MAX_MS = 30_000;
 
 export interface RollEventHandlers {
+  /**
+   * Which captures this subscriber cares about. Returning false for an id
+   * drops the event before anything is requested for it — a single-capture
+   * page must not fetch every capture in the roll on every event, which is
+   * what happens when the filtering is done after `getCapture` has already
+   * answered. Absent means "all of them", which is what the feed wants.
+   */
+  wants?(captureId: string): boolean;
   prepend?(capture: CaptureView): void;
   replace?(capture: CaptureView): void;
   remove?(captureId: string): void;
@@ -85,7 +93,11 @@ export function useRollEvents(
       }
     };
 
+    const wanted = (captureId: string): boolean =>
+      handlersRef.current.wants?.(captureId) ?? true;
+
     const fetchCapture = (captureId: string, mode: 'prepend' | 'replace'): void => {
+      if (!wanted(captureId)) return;
       void api
         .getCapture(slug, captureId)
         .then((capture) => {
@@ -149,7 +161,7 @@ export function useRollEvents(
         source.addEventListener(type, (event) => {
           const payload = payloadOf(event);
           if (payload === null) return;
-          handlersRef.current.remove?.(payload.captureId);
+          if (wanted(payload.captureId)) handlersRef.current.remove?.(payload.captureId);
           invoke(handlersRef.current.onRollChanged);
         });
       }

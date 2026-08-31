@@ -151,8 +151,13 @@ describe('materialLabel/massLabel — recorded claims only (audit #63)', () => {
     expect(massLabel(component('battery'))).toEqual({ text: '55 g', tag: 'ESTIMATED' });
   });
 
-  it('renders the recorded heatsink material with its SELLER tag', () => {
-    expect(materialLabel(component('flash-heatsink'))).toEqual({ text: 'copper', tag: 'SELLER' });
+  /* This used to read the flash heatsink's copper/SELLER claim. ECN-0003 took
+   * the flash assembly off D4 V1, and no component left in the profile
+   * carries a SELLER material — so the tag pass-through is asserted against a
+   * fixture instead of a part that may come and go. */
+  it('passes a recorded material claim through with its own tag, whatever the tag is', () => {
+    const seller: ComponentDef = { ...fixtureComponent(undefined), material: { value: 'copper', tag: 'SELLER' } };
+    expect(materialLabel(seller)).toEqual({ text: 'copper', tag: 'SELLER' });
   });
 
   it('renders the split enclosure component materials with ESTIMATED tags', () => {

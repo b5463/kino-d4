@@ -276,6 +276,11 @@ typedef struct {
   int complete;  /* had META.JSON - left alone */
   int removed;   /* orphans containing only expected files, deleted */
   int preserved; /* orphans holding something unexpected, kept for inspection */
+  /* Capture-shaped directories the sweep never looked inside, because the time
+   * budget or the directory cap ran out. Not a fault and not damage: they are
+   * examined on the next boot. Nonzero means the card holds more captures than
+   * one boot can walk - which used to show only as a boot that took a minute. */
+  int skipped;
 } storage_sweep_t;
 
 /**
@@ -293,7 +298,11 @@ typedef struct {
  *     directory, so an orphan holding anything unexpected is PRESERVED and
  *     counted rather than forced
  *   - bounded work per boot, so a pathological card cannot stall the boot or
- *     turn one mistake into a mass deletion
+ *     turn one mistake into a mass deletion. Bounded in TIME as well as in
+ *     count (SWEEP_BUDGET_MS): this runs on the main task before the USB
+ *     transport is up, so the bound is what stops a full card from looking
+ *     like a camera that will not boot. What was not reached is counted in
+ *     `skipped` and swept on the next boot.
  *
  * Every action is logged. Valid captures are never touched.
  */

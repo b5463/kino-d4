@@ -144,7 +144,11 @@ export function RollDisplayPage({ slug }: RollDisplayPageProps) {
       .filter((asset) => asset.role === 'original-frame')
       .map((asset) => rollApi.assetUrl(asset.assetId));
 
-    if (shown.mode === 'wiggle' && (roll?.downloadsEnabled ?? false) && originals.length >= 2) {
+    // Playback is not a download, and a save permission decides what leaves a
+    // guest's phone, never what a screen at the party may show. This gate used
+    // to require `downloadsEnabled`, so a host turning saves off froze the
+    // display; the feed and the capture page were already decoupled from it.
+    if (shown.mode === 'wiggle' && originals.length >= 2) {
       media = (
         <WigglePlayer
           frames={originals}

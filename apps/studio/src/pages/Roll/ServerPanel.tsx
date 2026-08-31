@@ -24,6 +24,8 @@ export function ServerPanel({
   onTest,
   registration,
   onRegister,
+  provisioningToken,
+  onProvisioningTokenChange,
 }: {
   url: string;
   busy: boolean;
@@ -32,8 +34,11 @@ export function ServerPanel({
   onTest: () => Promise<void>;
   registration: string | null;
   onRegister: () => Promise<void>;
+  provisioningToken: string;
+  onProvisioningTokenChange: (token: string) => void;
 }) {
   const urlId = useId();
+  const tokenId = useId();
   const lamp =
     result === null ? { state: 'off' as const, label: 'SERVER UNTESTED' }
     : result.ok ? { state: 'ok' as const, label: 'SERVER REACHABLE' }
@@ -54,6 +59,23 @@ export function ServerPanel({
           spellCheck={false}
           disabled={busy}
           onChange={(e) => onUrlChange(e.target.value)}
+        />
+      </FieldRow>
+
+      <FieldRow
+        label="PROVISIONING TOKEN"
+        htmlFor={tokenId}
+        hint="Needed once, for REGISTER KINO. Ask the server operator. Not stored."
+      >
+        <input
+          id={tokenId}
+          type="password"
+          className="input"
+          value={provisioningToken}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={busy}
+          onChange={(e) => onProvisioningTokenChange(e.target.value)}
         />
       </FieldRow>
 

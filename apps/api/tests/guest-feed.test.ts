@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyInstance } from 'fastify';
+import { ASSET_ROLES } from '@kino/schemas';
 import { buildServer } from '../src/server';
 import { loadConfig, type ApiConfig } from '../src/config';
 import { newId } from '../src/ids';
@@ -12,6 +13,7 @@ import {
   ASSET_CACHE_CONTROL,
   ASSET_CACHE_MAX_AGE_SECONDS,
   ASSET_URL_TTL_SECONDS,
+  guestMaySeeRole,
 } from '../src/captures/delivery';
 import * as schema from '../src/db/schema';
 
@@ -246,6 +248,7 @@ beforeAll(async () => {
   const res = await app.inject({
     method: 'POST',
     url: '/api/studio/devices/register',
+    headers: { authorization: `Bearer ${app.config.PROVISIONING_TOKEN}` },
     payload: { serial: SERIAL, product: 'KINO D4', hardwareRevision: 'v1' },
   });
   expect(res.statusCode).toBe(200);
@@ -550,6 +553,10 @@ describe('GET /api/rolls/:slug/captures/:captureId', () => {
   });
 });
 
+/** The `kino_guest` cookies on a response — the anonymous identity, nothing else. */
+const guestCookies = (response: { cookies: { name: string }[] }): { name: string }[] =>
+  response.cookies.filter((cookie) => cookie.name === 'kino_guest');
+
 describe('POST /api/rolls/:slug/captures/:captureId/react', () => {
   it('creates an anonymous session, exposes its state, and toggles the heart off again', async () => {
     const roll = await createRoll({ title: `Reactions ${RUN}`, reactionsEnabled: true });
@@ -592,7 +599,10 @@ describe('POST /api/rolls/:slug/captures/:captureId/react', () => {
     });
     expect(disabledResponse.statusCode).toBe(409);
     expect(disabledResponse.json()).toMatchObject({ code: 'REACTIONS_DISABLED' });
-    expect(disabledResponse.cookies).toHaveLength(0);
+    // No anonymous identity was minted. Named specifically rather than asserting
+    // "no cookies at all": every guest roll read also carries the roll access
+    // stamp, which is issued by the slug gate and says nothing about a guest.
+    expect(guestCookies(disabledResponse)).toHaveLength(0);
 
     const enabled = await createRoll({ title: `Hidden reaction ${RUN}`, reactionsEnabled: true });
     const hidden = newId('cap');
@@ -603,7 +613,7 @@ describe('POST /api/rolls/:slug/captures/:captureId/react', () => {
     });
     expect(hiddenResponse.statusCode).toBe(404);
     expect(hiddenResponse.json()).toMatchObject({ code: 'CAPTURE_NOT_FOUND' });
-    expect(hiddenResponse.cookies).toHaveLength(0);
+    expect(guestCookies(hiddenResponse)).toHaveLength(0);
   });
 });
 
@@ -806,7 +816,181 @@ describe('GET /api/assets/:assetId/content', () => {
   });
 });
 
-describe('downloads by host permission (03 §25)', () => {
+/* --------------------------------------------- the guest asset surface -- */
+
+/**
+ * Every declared asset role, enumerated against the guest audience.
+ *
+ * A list of roles rather than a test per role, and asserted **exhaustively**
+ * against `ASSET_ROLES`: the bug this covers is a role nobody thought about.
+ * `metadata` was published to guests for exactly that reason, and five more
+ * roles are declared that no worker produces yet — so a role added to the schema
+ * with no decision made about it fails the first expectation here.
+ */
+describe('which asset roles a guest may see (05 \u00a76)', () => {
+  /** The engineering record. Not pixels, and not the guest's to read. */
+  const HOST_ONLY: readonly string[] = ['metadata'];
+  const GUEST_ROLES = ASSET_ROLES.filter((role) => !HOST_ONLY.includes(role));
+
+  const mimeFor = (role: string): string => {
+    if (role === 'metadata') return 'application/json';
+    if (role === 'wiggle-mp4') return 'video/mp4';
+    if (role === 'gif') return 'image/gif';
+    if (role === 'original-frame' || role === 'contact-sheet') return 'image/jpeg';
+    return 'image/webp';
+  };
+
+  it('accounts for every role in ASSET_ROLES, so a new one cannot slip through unjudged', () => {
+    for (const role of ASSET_ROLES) {
+      expect(guestMaySeeRole(role), `role ${role} has no decision`).toBe(!HOST_ONLY.includes(role));
+    }
+  });
+
+  it('names the pixel roles in the feed and omits the host-only ones', async () => {
+    const roll = await createRoll({ title: `Roles ${RUN}` });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+    const ids = await insertAssets(
+      roll.rollId,
+      captureId,
+      ASSET_ROLES.map((role) => ({
+        role,
+        mime: mimeFor(role),
+        ...(role === 'original-frame' ? { frameIndex: 1 } : {}),
+      })),
+    );
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/rolls/${roll.slug}/captures/${captureId}`,
+    });
+    expect(detail.statusCode).toBe(200);
+    const named = detail.json<{ assets: { role: string }[] }>().assets.map((a) => a.role);
+
+    expect([...named].sort()).toEqual([...GUEST_ROLES].sort());
+
+    // The page feed answers the same, from the same predicate.
+    const page = await feed(roll.slug);
+    const inFeed = (page.items[0]?.assets ?? []).map((asset) => asset.role);
+    for (const role of HOST_ONLY) expect(inFeed).not.toContain(role);
+
+    // And knowing the id of a host-only asset does not make it fetchable: 404,
+    // the same answer as an id that was never real, so the refusal itself tells
+    // a guest nothing.
+    for (const role of HOST_ONLY) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/assets/${ids[role] ?? ''}/content`,
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({ code: 'ASSET_NOT_FOUND' });
+    }
+
+    // Every guest role is deliverable, which is the other half of the contract:
+    // an id the feed names is an id that can be fetched.
+    for (const role of GUEST_ROLES) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/assets/${ids[role] ?? ''}/content`,
+      });
+      expect(res.statusCode, `role ${role} was not deliverable`).toBe(302);
+    }
+  });
+
+  /**
+   * `metadata.json` is the host's own record — GPS EXIF, the device serial, the
+   * object key of every original — so the host token has to open it. Refusing
+   * the guest is only correct if somebody can still read it.
+   */
+  it('serves a host-only role to the roll host and to nobody else', async () => {
+    const roll = await createRoll({ title: `Host metadata ${RUN}` });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+    const ids = await insertAssets(roll.rollId, captureId, [
+      { role: 'metadata', mime: 'application/json', width: null, height: null },
+    ]);
+    const url = `/api/assets/${ids['metadata'] ?? ''}/content`;
+
+    const asHost = await app.inject({ method: 'GET', url, headers: bearer(roll.hostToken) });
+    expect(asHost.statusCode).toBe(302);
+
+    // Another roll's host token is not this roll's host.
+    const other = await createRoll({ title: `Other host ${RUN}` });
+    const asOtherHost = await app.inject({
+      method: 'GET',
+      url,
+      headers: bearer(other.hostToken),
+    });
+    expect(asOtherHost.statusCode).toBe(404);
+  });
+});
+
+/* ------------------------------------------------ regenerating the link -- */
+
+/**
+ * Rotating the slug has to revoke the *assets* too, or "regenerate guest link"
+ * revokes the door and leaves the windows open: the asset route is addressed by
+ * asset id and derives the roll from the asset, so every id the leaked link
+ * already handed out would keep serving bytes.
+ */
+describe('POST /api/host/rolls/:rollId/regenerate-slug revokes asset access', () => {
+  it('403s an assetId that was readable before the slug was regenerated', async () => {
+    const roll = await createRoll({ title: `Revoked ${RUN}` });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+    const ids = await insertAssets(roll.rollId, captureId, [{ role: 'thumb' }]);
+    const assetUrl = `/api/assets/${ids['thumb'] ?? ''}/content`;
+
+    // A guest opens the roll through the link it was given, and the tile loads.
+    const opened = await app.inject({ method: 'GET', url: `/api/rolls/${roll.slug}` });
+    expect(opened.statusCode).toBe(200);
+    const stamp = opened.cookies.find((c) => c.name === `kino_roll_${roll.rollId}`);
+    expect(stamp).toMatchObject({ httpOnly: true, path: '/' });
+    const stale = { cookie: `${stamp?.name ?? ''}=${stamp?.value ?? ''}` };
+    expect((await app.inject({ method: 'GET', url: assetUrl, headers: stale })).statusCode).toBe(
+      302,
+    );
+
+    // The host regenerates the link.
+    const regenerated = await app.inject({
+      method: 'POST',
+      url: `/api/host/rolls/${roll.rollId}/regenerate-slug`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(regenerated.statusCode).toBe(200);
+    const fresh = regenerated.json<{ slug: string }>().slug;
+    expect(fresh).not.toBe(roll.slug);
+
+    // The old slug is gone, and — the point of this test — so is the asset the
+    // guest already held the id of, with the stamp it was issued under.
+    expect((await app.inject({ method: 'GET', url: `/api/rolls/${roll.slug}` })).statusCode).toBe(
+      404,
+    );
+    for (const headers of [stale, {}]) {
+      const res = await app.inject({ method: 'GET', url: assetUrl, headers });
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toMatchObject({ code: 'ACCESS_REVOKED' });
+    }
+
+    // A guest that opens the roll through the NEW link gets a fresh stamp and
+    // the same asset back: this revokes a link, it does not delete photographs.
+    const reopened = await app.inject({ method: 'GET', url: `/api/rolls/${fresh}` });
+    expect(reopened.statusCode).toBe(200);
+    const current = reopened.cookies.find((c) => c.name === `kino_roll_${roll.rollId}`);
+    const renewed = { cookie: `${current?.name ?? ''}=${current?.value ?? ''}` };
+    expect((await app.inject({ method: 'GET', url: assetUrl, headers: renewed })).statusCode).toBe(
+      302,
+    );
+
+    // The host never needed a stamp: it is the host who revoked the link.
+    expect(
+      (await app.inject({ method: 'GET', url: assetUrl, headers: bearer(roll.hostToken) }))
+        .statusCode,
+    ).toBe(302);
+  });
+});
+
+describe('downloads by host permission (03 \u00a725)', () => {
   async function rollWithAssets(
     downloadsEnabled: boolean,
   ): Promise<{ roll: CreatedRollResponse; ids: Record<string, string> }> {

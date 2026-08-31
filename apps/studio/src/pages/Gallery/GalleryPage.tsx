@@ -163,8 +163,13 @@ export function GalleryPage() {
     need.forEach((id) => inFlight.current.add(id));
     setThumbBusy((n) => n + need.length);
     const queue = [...need];
+    // Paging away used to leave both workers running: they kept pulling
+    // thumbnails for a page nobody is looking at, ahead of the page that is
+    // now on screen, and the ids they never got to stayed in `inFlight`
+    // forever so coming back re-requested nothing.
+    let cancelled = false;
     const worker = async () => {
-      while (queue.length > 0) {
+      while (!cancelled && queue.length > 0) {
         const id = queue.shift();
         if (!id) return;
         try {
@@ -185,6 +190,15 @@ export function GalleryPage() {
       }
     };
     void Promise.all(Array.from({ length: THUMB_WORKERS }, () => worker()));
+    return () => {
+      cancelled = true;
+      // Whatever is left in the queue was never started, so no `finally` will
+      // ever clear it. Release the ids so this page can be asked for again.
+      const abandoned = queue.length;
+      for (const id of queue) inFlight.current.delete(id);
+      queue.length = 0;
+      if (abandoned > 0 && alive.current) setThumbBusy((n) => Math.max(0, n - abandoned));
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey, retryTick]);
 

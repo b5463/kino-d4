@@ -7,6 +7,7 @@ import { UnrecoverableError } from 'bullmq';
 import { execa } from 'execa';
 import sharp from 'sharp';
 import { wiggleSequence } from '@kino/media';
+import { SHARP_INPUT } from '../images/decode';
 import { recapJobs } from '../db/schema';
 import { recapObjectKey } from '../storage/derived';
 import { loadAssets, originalFrames, readObject, stillSource } from './capture';
@@ -167,7 +168,7 @@ export async function renderTitleCard(
         >${escapeXml(text)}</text>
 </svg>`;
 
-  return sharp(Buffer.from(svg))
+  return sharp(Buffer.from(svg), SHARP_INPUT)
     // The rect is opaque and covers the frame, so dropping alpha composites
     // nothing away; `flatten` is still here for the degenerate case of an SVG
     // that rendered no rect at all — a transparent frame in a yuv420p stream is
@@ -186,7 +187,7 @@ interface Segment {
 
 /** Decodes one stored image to the film's exact geometry. */
 async function decodeTo(source: Buffer, width: number, height: number): Promise<Buffer> {
-  return sharp(source)
+  return sharp(source, SHARP_INPUT)
     // EXIF orientation first, or a rig that reports a rotation renders sideways.
     .rotate()
     // Both dimensions fixed with `cover`: every frame of the film is one row of
@@ -219,7 +220,7 @@ async function filmHeight(ctx: JobCtx, captures: readonly RollCaptureRow[]): Pro
       }
     }
 
-    const { width, height, orientation } = await sharp(await readObject(ctx, key)).metadata();
+    const { width, height, orientation } = await sharp(await readObject(ctx, key), SHARP_INPUT).metadata();
     if (width === undefined || height === undefined || width <= 0 || height <= 0) continue;
 
     // Orientations 5–8 are displayed a quarter turn round, which is what

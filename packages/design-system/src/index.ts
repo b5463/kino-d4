@@ -7,6 +7,7 @@ export {
   TabStrip,
   ToolbarFrame,
   UtilitySlider,
+  tabIds,
   type ButtonProps,
   type PanelProps,
   type StatusLampState,

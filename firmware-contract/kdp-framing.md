@@ -100,6 +100,10 @@ Two hard rules the client's dispatch order imposes:
   and firmware mirrors that function. `0` is the events' sentinel below, so a counter left to
   overflow on its own would start minting requests that read as events. Unreachable in any real
   session; specified so both sides wrap the same way rather than meeting overflow separately.
+- `encodeFrame()` **refuses** `SEQUENCE` 0 on anything without the `EVENT` flag, and refuses a value
+  past `0xFFFFFFFF`. Both were silent before: a request numbered 0 is delivered to the peer's event
+  path and never answered, and a larger value is truncated by the 32-bit write into a sequence the
+  caller is not waiting on. Neither produces anything but a bare timeout, so the encoder throws.
 - A response **must** echo the request's `SEQUENCE` in the header. Routing is by sequence alone —
   the client does not check that the response `TYPE` matches the request's.
 - A response whose sequence matches no pending request is dropped silently. This is the normal fate
@@ -107,7 +111,6 @@ Two hard rules the client's dispatch order imposes:
 - Events carry no meaningful sequence. The reference device writes `0`. The client ignores the field
   on event frames entirely. **Do not try to correlate an event to a request through `SEQUENCE`** —
   for jobs, the `jobId` in the payload is the only routing key (04§16).
-- Wraparound behavior is unspecified; see [README, unspecified item 2](README.md#unspecified--firmware-team-decision-required).
 
 ## Payload
 
@@ -137,6 +140,11 @@ Sent with the `BINARY` flag. Two shapes exist:
   | 8 | data | bytes |
 
   Both are answered with a **JSON** response (`{ok, received}`), not a binary one.
+
+  A payload shorter than 8 bytes is `BAD_REQUEST`. The length must be checked before the header is
+  read: the device side reads it with a `DataView`, which throws on a short buffer, and in the
+  reference mock that throw happened inside a timer callback and took the whole device down instead
+  of NACKing one frame.
 
 ### Size limits
 
@@ -194,12 +202,18 @@ in the same call — never by clearing the buffer or dropping the connection:
 | Condition | Action |
 |---|---|
 | Bytes before a *found* magic | Discard them, count a resync. Leading noise with no magic in the buffer yet is discarded silently — the counter increments only when a later magic proves bytes were skipped |
-| `PAYLOAD_LEN > MAX_PAYLOAD` | Skip past the magic (`start + 2`) and rescan. A garbled length field cannot stall the stream waiting for bytes that will never come |
-| CRC mismatch | Skip past the magic and rescan |
+| `PAYLOAD_LEN > MAX_PAYLOAD` | Skip past the magic (`start + 2`) and rescan, counting one resync and the two skipped bytes. A garbled length field cannot stall the stream waiting for bytes that will never come |
+| CRC mismatch | Same skip and rescan, counting one `crcFailure`, one resync and the two skipped bytes |
 
 `FrameDecoder` also exposes counters — `frames`, `crcFailures`, `resyncs`, `discardedBytes` — which
 Studio surfaces in the protocol monitor. Firmware should keep equivalent counters; `GET_RUNTIME_STATS`
 reports them as `protocol.droppedPackets` / `protocol.crcFailures`.
+
+**One discarded frame is one resync.** The skip and the later scan that finds the next magic past it
+are the same event seen from both ends, so only the first of the two increments the counter. A
+decoder that counted both reports twice the resyncs for the same cable, which is the difference
+between a link that looks marginal and one that looks broken. Every byte a skip or a scan drops is
+added to `discardedBytes`, the two magic bytes of a discarded frame included.
 
 ### What the decoder does *not* do
 

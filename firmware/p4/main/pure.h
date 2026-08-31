@@ -52,6 +52,44 @@
  */
 int pure_quality_to_sensor(int percent);
 
+/* The node's own clamp on the JPEG-quality register (esp32-camera
+ * set_quality(), mirrored in camnode/main/camera.c). Repeated here because the
+ * value META records has to be the value the node wrote, clamp included. */
+#define PURE_SENSOR_QUALITY_MIN 5
+#define PURE_SENSOR_QUALITY_MAX 63
+
+/**
+ * One decision for both halves of a frame's JPEG quality: what the CAPTURE
+ * command carries, and what META.JSON must record.
+ *
+ * There are two writers of the sensor's quality register and they are not the
+ * same command. NL_CMD_SENSOR writes it before the trigger from the look's
+ * value; NL_CMD_CAPTURE writes it as a side effect when the request carries a
+ * `quality` field - and so does the viewfinder, which is a capture loop
+ * (viewfinder.c). So the register at exposure is whichever of the two wrote it
+ * last, and META has to say what the frame was ENCODED at rather than what
+ * anyone asked for. Keeping the two answers in one function is the point:
+ * capture #2 was encoded at preview quality while META reported the look's,
+ * because the two lived in different places and drifted (audit FW-1).
+ *
+ *   `sensor_owns`      - NL_CMD_SENSOR has a quality standing in this camera
+ *                        and nothing has overwritten it since.
+ *   `applied_quality`  - what the node reported it accepted for that apply,
+ *                        sensor scale; 0 when there is none.
+ *   `mode_quality`     - the mode default the CAPTURE would carry, sensor
+ *                        scale, already through pure_quality_to_sensor(); 0
+ *                        means the settings envelope names no quality.
+ *
+ * `*cap_quality` 0 means OMIT the field, which is how the node is told to
+ * leave the register alone. `*record_quality` 0 means nothing is known about
+ * the register, and META must then write no `quality` at all rather than a
+ * plausible number - see the absent-not-zeroed rule in meta.c.
+ *
+ * Either out pointer may be NULL.
+ */
+void pure_frame_quality(bool sensor_owns, int applied_quality, int mode_quality,
+                        int *cap_quality, int *record_quality);
+
 /**
  * Exposure bias in EV to the OV3660's `ae_level`.
  *

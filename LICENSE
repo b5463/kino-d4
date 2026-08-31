@@ -35,8 +35,36 @@ The following paths are not distributed under MIT or CERN-OHL-S-2.0:
   docs/assets/product/**
   archive/**
 
+The wordmarks and icons the applications ship are the same artwork, trimmed
+and recoloured, so they carry the same terms. The MIT grant on apps/** does
+not reach them:
+
+  apps/studio/src/assets/**
+  apps/twin/src/assets/**
+  apps/roll-web/src/assets/**
+  apps/studio/public/icon-*.png
+  apps/twin/public/icon-*.png
+  apps/roll-web/public/icon-*.png
+
 Those files are marked LicenseRef-KINO-Reserved. See
 LICENSES/LicenseRef-KINO-Reserved.txt.
+
+Third-party files
+-----------------
+
+Two committed files are neither ours to license nor covered by the grants
+above, and REUSE.toml overrides the blanket declaration on firmware/** for
+both:
+
+  firmware/p4/main/icons_w98.h              Microsoft Windows 98 shell icons,
+                                            LicenseRef-Microsoft-Proprietary,
+                                            no licence held
+  firmware/c6/partitions_eh_cp_ota_4m.csv   Espressif Systems, Apache-2.0,
+                                            text in LICENSES/Apache-2.0.txt
+
+Those annotations record ownership. They grant nothing. THIRD_PARTY_NOTICES.md
+states what each one means for anyone distributing a build, including the
+unresolved position on the icon artwork.
 
 Trademark
 ---------

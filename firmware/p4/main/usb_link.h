@@ -25,15 +25,13 @@ int usb_link_read(uint8_t *buf, size_t cap, uint32_t timeout_ms);
  */
 bool usb_link_connected(void);
 
-/**
- * Write the whole buffer, waiting as long as it takes.
- *
- * For request/response traffic only. USB-Serial-JTAG has a 4 KB TX FIFO and
- * no flow control the device can see: when nothing on the host is draining
- * the port the FIFO fills and this call parks the caller until something
- * does. A reply the host asked for is worth that wait; an event is not.
+/*
+ * There is no unbounded write. USB-Serial-JTAG has a 4 KB TX FIFO and no flow
+ * control the device can see, so a host that opens the port and stops reading
+ * fills the FIFO and never empties it - and a caller parked in that write holds
+ * whatever lock it took with it (kdp_server.c wedged both KDP tasks that way).
+ * Responses get a long deadline, events a short one; nobody gets forever.
  */
-void usb_link_write(const uint8_t *data, size_t len);
 
 /**
  * Write with a deadline for the whole call. Returns bytes actually written,

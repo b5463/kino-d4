@@ -176,10 +176,32 @@ export function SensorRig() {
     // The runtime is recreated on every POWER ON — re-register each time.
     const device = getTwinRuntime().sim.device;
     device.setFrameSource((req) => rig.renderJpeg(req));
-    const timer = setInterval(() => {
-      if (useSimStore.getState().running) rig.renderPreviewToDisplay();
-    }, PREVIEW_INTERVAL_MS);
-    return () => clearInterval(timer);
+
+    // The rear-display preview is a full offscreen render of the whole stage
+    // plus a JPEG-grade readback — the most expensive thing on this timer.
+    // A backgrounded tab shows nobody the rear display, and the frame source
+    // above still answers a real capture on demand, so the timer stops with
+    // the tab and restarts with it. Captures never depended on it.
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer !== null) return;
+      timer = setInterval(() => {
+        if (useSimStore.getState().running) rig.renderPreviewToDisplay();
+      }, PREVIEW_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (timer === null) return;
+      clearInterval(timer);
+      timer = null;
+    };
+
+    const onVisibilityChange = () => (document.hidden ? stop() : start());
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      stop();
+    };
   }, [running, rig]);
 
   return null;

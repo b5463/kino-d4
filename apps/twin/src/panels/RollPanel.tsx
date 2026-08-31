@@ -17,6 +17,11 @@ import {
 } from '../roll/bridge';
 import { rollQrCanvas } from '../roll/qr';
 
+/** QR cache poll: 10 Hz, giving up after 5 s. The canvas normally lands on the
+ * first or second tick; past that it is not coming. */
+const QR_POLL_MS = 100;
+const QR_POLL_ATTEMPTS = 50;
+
 export function RollPanel() {
   const running = useSimStore((s) => s.running);
   const bootStage = useSimStore((s) => s.bootStage);
@@ -33,14 +38,21 @@ export function RollPanel() {
       setQrDataUrl(null);
       return;
     }
-    // The display cache renders asynchronously; poll it until the canvas lands.
+    // The display cache renders asynchronously; poll it until the canvas
+    // lands — but only for QR_POLL_ATTEMPTS ticks. An encoder that never
+    // produces a canvas (a URL it refuses, a failed import) used to leave a
+    // 10 Hz timer running for the life of the page.
+    let attempts = 0;
     const timer = setInterval(() => {
+      attempts += 1;
       const canvas = rollQrCanvas(guestUrl);
       if (canvas) {
         setQrDataUrl(canvas.toDataURL());
         clearInterval(timer);
+      } else if (attempts >= QR_POLL_ATTEMPTS) {
+        clearInterval(timer);
       }
-    }, 100);
+    }, QR_POLL_MS);
     return () => clearInterval(timer);
   }, [guestUrl]);
 

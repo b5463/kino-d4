@@ -62,6 +62,22 @@ export function timingSafeHexEqual(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
+/**
+ * Constant-time comparison of two arbitrary secret strings — the provisioning
+ * token, which is operator-chosen and therefore neither hex nor of a fixed
+ * length.
+ *
+ * Both sides are hashed first and the *digests* are compared through
+ * `timingSafeHexEqual`, so there is still exactly one comparison primitive in
+ * this file. Hashing is not decoration here: it makes both operands 64 hex
+ * characters, which is what removes the length difference the raw comparison
+ * would otherwise leak, and it is why an operator may pick any length of secret
+ * without changing what this leaks (nothing).
+ */
+export function timingSafeSecretEqual(presented: string, expected: string): boolean {
+  return timingSafeHexEqual(hashToken(presented), hashToken(expected));
+}
+
 /** Extracts the credential from `Authorization: Bearer <token>`, or null. */
 export function bearerToken(authorization: string | undefined): string | null {
   if (authorization === undefined) return null;

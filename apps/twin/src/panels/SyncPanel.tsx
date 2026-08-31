@@ -60,7 +60,12 @@ export function SyncPanel() {
         ))}
       </div>
       <div className="twin-panel-section">
-        <span className="twin-field-label">VSYNC PHASE · 33.3 MS FRAME</span>
+        {/* The frame interval is the snapshot's, not a constant: the bar widths
+            below already divide by it, so a hard-coded 33.3 ms label went wrong
+            the moment the device reported any other frame rate. */}
+        <span className="twin-field-label">
+          VSYNC PHASE · {(snapshot.frameIntervalUs / 1_000).toFixed(1)} MS FRAME
+        </span>
         {cams.map((cam) => (
           <div className="twin-phase-row" key={cam}>
             <span>{cam.toUpperCase()}</span>

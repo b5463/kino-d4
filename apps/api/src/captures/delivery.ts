@@ -2,8 +2,9 @@ import { eq } from 'drizzle-orm';
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { FastifyRequest } from 'fastify';
+import { ASSET_ROLES } from '@kino/schemas';
 import type { KinoDatabase } from '../plugins/db';
-import { guestMayReadRoll } from '../auth/plugins';
+import { guestHasRollAccess, guestMayReadRoll, hostTokenPresented } from '../auth/plugins';
 import { assets, captures, rolls } from '../db/schema';
 
 /**
@@ -125,6 +126,62 @@ function downloadGated(role: string): boolean {
  */
 const ALWAYS_ATTACHMENT_ROLES: ReadonlySet<string> = new Set(['original-frame']);
 
+/* ------------------------------------------------ what a guest may fetch -- */
+
+export type AssetRole = (typeof ASSET_ROLES)[number];
+
+/**
+ * The roles that are part of the **guest** surface — the pixels a gallery draws
+ * and the files a guest may keep.
+ *
+ * An allow-list, and here the polarity is the opposite way round from
+ * `NEVER_GATED_ROLES` above, for a reason that is worth stating because the two
+ * sit ten lines apart. That list answers "may this be *downloaded* when the host
+ * said no?", where the harm of forgetting a role is a file saved that should not
+ * have been. This one answers "may a stranger with a link *see* this at all?",
+ * and the role that made it necessary is `metadata`: `extract-metadata` writes a
+ * `metadata.json` asset carrying GPS EXIF, device serial and hardware revision,
+ * every original frame's object key, and the capture's provenance — and it
+ * arrived as an ordinary `ready` asset row, so the feed named its id to guests
+ * and delivery signed a URL for it.
+ *
+ * So the failure directions are not comparable. A new role missing from this
+ * list is invisible in the gallery until somebody adds it — a bug a tester finds
+ * in a minute. A new *non-pixel* role missing from a deny-list is published to
+ * the internet, silently, the day a worker first writes one. The typed element
+ * makes the list impossible to leave stale in the other direction too: a role
+ * renamed or removed from `ASSET_ROLES` is a compile error here.
+ *
+ * `metadata` is deliberately absent, and it is the only role absent today.
+ */
+const GUEST_VISIBLE_ROLES: ReadonlySet<AssetRole> = new Set<AssetRole>([
+  'thumb',
+  'kino-still',
+  'original-frame',
+  'wiggle-preview',
+  'wiggle-webp',
+  'wiggle-mp4',
+  'gif',
+  'contact-sheet',
+  'enhanced-still',
+  'enhanced-wiggle',
+  'social-9x16',
+  'social-4x5',
+  'social-1x1',
+]);
+
+/**
+ * Whether a role belongs on the guest surface at all.
+ *
+ * Read by `captures/feed.ts` as well as by `deliverAsset`, and that is the point
+ * of exporting it: the feed decides which asset ids a guest is *told* about and
+ * delivery decides which it may *fetch*, and those two answers disagreeing is
+ * how an id ends up published to a 403. One definition, two readers.
+ */
+export function guestMaySeeRole(role: string): boolean {
+  return GUEST_VISIBLE_ROLES.has(role as AssetRole);
+}
+
 /** `?download=1`. Accepted spellings are exact, so a stray value is not a download. */
 export function wantsDownload(query: unknown): boolean {
   if (typeof query !== 'object' || query === null) return false;
@@ -177,6 +234,11 @@ function dispositionFor(role: string, frameIndex: number | null, objectKey: stri
  * the PIN gate runs before the visibility checks, so a caller who cannot open
  * the roll at all learns only that — never whether a given capture inside it is
  * hidden, deleted or still uploading.
+ *
+ * In order: is this the host (which exempts every guest rule below), the PIN,
+ * whether the role is on the guest surface at all, whether the guest link has
+ * been revoked since this request's stamp was issued, the capture's visibility,
+ * the asset's readiness, and last the host's download switch.
  */
 export async function deliverAsset(
   deps: AssetDeliveryDeps,
@@ -196,6 +258,8 @@ export async function deliverAsset(
       rollId: rolls.id,
       privacy: rolls.privacy,
       pinHash: rolls.pinHash,
+      hostTokenHash: rolls.hostTokenHash,
+      accessEpoch: rolls.accessEpoch,
       downloadsEnabled: rolls.downloadsEnabled,
     })
     .from(assets)
@@ -208,11 +272,52 @@ export async function deliverAsset(
     return refuse(404, 'ASSET_NOT_FOUND', 'no such asset');
   }
 
-  // `pinHash` is read into this scope, compared, and never referenced again —
+  // Both hashes are read into this scope, compared, and never referenced again —
   // the same discipline `guestRollAccess` applies, for the same reason.
-  const { pinHash, ...asset } = row;
-  if (!guestMayReadRoll(request, { id: asset.rollId, privacy: asset.privacy }, pinHash)) {
+  const { pinHash, hostTokenHash, ...asset } = row;
+
+  /**
+   * Is this the roll's host? Decided first, because every gate below it is a
+   * *guest* rule and the host is subject to none of them: it is the host's own
+   * roll, the host's dashboard that fetches `metadata.json`, and the host who
+   * revoked the link in the first place.
+   */
+  const isHost = hostTokenPresented(request, hostTokenHash);
+
+  if (!isHost && !guestMayReadRoll(request, { id: asset.rollId, privacy: asset.privacy }, pinHash)) {
     return refuse(401, 'PIN_REQUIRED', 'this roll is PIN protected');
+  }
+
+  /**
+   * The engineering record of a capture, not part of what a guest was invited to
+   * look at. `metadata.json` carries GPS EXIF, the device serial and hardware
+   * revision, and every original frame's object key — so it is refused for the
+   * guest audience outright rather than gated behind the downloads switch, which
+   * is a question about *photographs*.
+   *
+   * 404, not 403: a guest that was never told this asset exists (the feed omits
+   * the role) should not learn from the refusal that it does. The host, holding
+   * the roll token, gets the file.
+   */
+  if (!isHost && !guestMaySeeRole(asset.role)) {
+    return refuse(404, 'ASSET_NOT_FOUND', 'no such asset');
+  }
+
+  /**
+   * The link this asset was reached through may have been revoked (03 §10). Only
+   * meaningful once the host has regenerated at least once — see
+   * `guestHasRollAccess`, which owns that reasoning and the gap it leaves.
+   *
+   * 403 rather than 404: the guest *did* hold a working link, so "this one has
+   * been replaced, ask the host for the new one" is both true and actionable,
+   * and it discloses nothing a stale link did not already.
+   */
+  if (!isHost && !guestHasRollAccess(request, { id: asset.rollId, accessEpoch: asset.accessEpoch })) {
+    return refuse(
+      403,
+      'ACCESS_REVOKED',
+      'this roll’s guest link was regenerated; open the roll again from its current link',
+    );
   }
 
   // 03 §11. Same answer for hidden and for deleted, and the same answer as for

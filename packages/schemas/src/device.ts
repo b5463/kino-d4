@@ -28,7 +28,17 @@ export const deviceInfo = defineSchema({
     .passthrough(),
   migrations: {},
 });
-export type DeviceInfo = z.infer<typeof deviceInfo.shape>;
+/**
+ * Named `DeviceInfoDoc`, not `DeviceInfo`.
+ *
+ * `@kino/kdp` exports a `DeviceInfo` too, and it is a different thing: the
+ * `GET_DEVICE_INFO` reply, with firmware versions, sensors and free card
+ * space. This one is the persisted `kino.device-info` document — identity
+ * only, and a `schema`/`version` pair. Two identically named types one import
+ * apart is a rename waiting to be applied to the wrong one; every consumer in
+ * the repo means the KDP type, so the document type is the one that moves.
+ */
+export type DeviceInfoDoc = z.infer<typeof deviceInfo.shape>;
 
 /**
  * `kino.device-capabilities` — what this camera can actually do (01§2, 05§19).

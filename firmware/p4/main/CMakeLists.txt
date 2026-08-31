@@ -56,6 +56,27 @@ endif()
 idf_component_register(SRCS ${kino_srcs} INCLUDE_DIRS "." REQUIRES ${kino_reqs}
                        EMBED_TXTFILES "factory_recipes.json")
 
+# The partition table must be OURS, and a stale sdkconfig is how it stops being.
+#
+# sdkconfig.defaults sets CONFIG_PARTITION_TABLE_CUSTOM=y with partitions.csv
+# (issue #143). But a project sdkconfig already on disk WINS over the defaults
+# file, so a checkout whose sdkconfig predates that change keeps building the
+# built-in SINGLE_APP_LARGE table - silently, with a normal-looking build and a
+# flash layout the firmware does not expect. This checkout was in exactly that
+# state when the audit found it.
+#
+# Same idiom and the same reason as the radio guards below: fail the configure
+# rather than ship a plausible wrong image. CONFIG_* is only populated in the
+# build pass, which is why this sits after idf_component_register - the
+# expansion pass returns inside that call and never reaches here.
+if(NOT CONFIG_PARTITION_TABLE_CUSTOM)
+  message(FATAL_ERROR
+          "CONFIG_PARTITION_TABLE_CUSTOM is not set, so this build would use "
+          "ESP-IDF's built-in table instead of firmware/p4/partitions.csv. An "
+          "sdkconfig from before issue #143 is the usual cause: delete "
+          "firmware/p4/sdkconfig and build again so sdkconfig.defaults is read.")
+endif()
+
 if(KINO_RADIO_BUILD)
   # The two halves of the opt-in must agree. Failing here beats discovering it
   # as a link error, or worse as a radio build with no radio in it.

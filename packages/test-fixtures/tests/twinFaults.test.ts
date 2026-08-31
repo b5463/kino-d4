@@ -377,8 +377,34 @@ describe('gallery fixtures (KINO Twin §17)', () => {
     const info = await client.request<{ corrupt: boolean }>(Cmd.MEDIA_INFO, { id: 'WG999901' });
     expect(info.corrupt).toBe(true);
 
-    const bytes = await client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901', file: 'C1_RAW.JPG', offset: 0, length: 16 });
+    // `C1.JPG`, the name the firmware writes and the only spelling the
+    // MEDIA_READ allow-list accepts. `C1_RAW.JPG` belongs to Studio's export
+    // ZIP and the mock used to answer to both.
+    const bytes = await client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901', file: 'C1.JPG', offset: 0, length: 16 });
     expect(bytes[0] === 0xff && bytes[1] === 0xd8).toBe(false);
+  });
+
+  it('refuses a file name off the MEDIA_READ allow-list, and defaults to C1.JPG', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    // BAD_REQUEST, not NOT_FOUND: the P4 joins this name onto a directory
+    // path, so a name that can never exist is refused before it becomes one.
+    await expect(
+      client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901', file: '../../secrets' }),
+    ).rejects.toThrow(/C1\.JPG/);
+    await expect(
+      client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901', file: 'C1_RAW.JPG' }),
+    ).rejects.toThrow(/C1\.JPG/);
+    // `file` is optional and asks for the first frame.
+    const first = await client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901' });
+    expect(first.length).toBeGreaterThan(0);
+    // META.JSON is served from the same stored capture MEDIA_INFO answers from.
+    const meta = await client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901', file: 'META.JSON' });
+    const doc = JSON.parse(new TextDecoder().decode(meta)) as { schema: string; id: string };
+    expect(doc.schema).toBe('kino.capture');
+    expect(doc.id).toBe('WG999901');
+    const thumb = await client.requestBytes(Cmd.MEDIA_READ, { id: 'WG999901', file: 'THUMB.JPG' });
+    expect(thumb.length).toBeGreaterThan(0);
   });
 
   it('the incomplete and missing-frame fixtures report fewer than four files', async () => {
@@ -390,6 +416,67 @@ describe('gallery fixtures (KINO Twin §17)', () => {
 
     const gap = await client.request<{ files: unknown[] }>(Cmd.MEDIA_INFO, { id: 'WG999903' });
     expect(gap.files).toHaveLength(3);
+  });
+
+  it('answers BAD_REQUEST to malformed frames and keeps serving (audit #CN-6)', () => {
+    vi.useFakeTimers();
+    try {
+      const out: number[] = [];
+      const dev = new MockKinoDevice({ seed: 3, now: () => 1_755_244_800_000 });
+      dev.attach((b) => out.push(...b), () => {});
+      const raw = (cmd: Cmd, seq: number, payload: Uint8Array) =>
+        dev.receive(encodeFrame({ version: PROTOCOL_VERSION, type: cmd, seq, flags: FrameFlags.NONE, payload }));
+
+      // A payload that is not JSON. `decodeJson` throws, and the throw used to
+      // escape the dispatch timer and take the device down mid-session.
+      raw(Cmd.SET_CONFIG, 1, new Uint8Array([0x7b, 0xff, 0x00, 0x7d]));
+      // A SOUND_CHUNK too short to hold its own 8-byte header: the DataView
+      // read was a RangeError from the same place.
+      raw(Cmd.SOUND_CHUNK, 2, new Uint8Array([1, 2, 3]));
+      // The proof that it survived: an ordinary request after the two bad ones.
+      raw(Cmd.GET_DEVICE_INFO, 3, encodeJson({}));
+      vi.advanceTimersByTime(3000);
+      dev.detach();
+
+      const frames = new FrameDecoder()
+        .push(Uint8Array.from(out))
+        .filter((f) => (f.flags & FrameFlags.EVENT) === 0);
+      const bySeq = new Map(frames.map((f) => [f.seq, f]));
+      for (const seq of [1, 2]) {
+        const answer = bySeq.get(seq);
+        expect(answer, `no answer to seq ${String(seq)}`).toBeDefined();
+        expect(answer!.flags & FrameFlags.ERROR).toBeTruthy();
+        expect(decodeJson<{ code: string }>(answer!.payload).code).toBe('BAD_REQUEST');
+      }
+      expect(bySeq.get(3)).toBeDefined();
+      expect(bySeq.get(3)!.flags & FrameFlags.ERROR).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('validates a sound id and bounds its name instead of truncating (audit #M1/#M6)', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    const begin = (patch: Record<string, unknown>) =>
+      client.request(Cmd.SOUND_BEGIN, { id: 'snd-air-horn', name: 'Air horn', sizeBytes: 4096, durationMs: 800, ...patch });
+
+    // The id becomes a path under /sdcard/KINO/SOUNDS, so the pattern is
+    // firmware's (contract D18) and not the mock's own idea of one.
+    await expect(begin({ id: 'airhorn' })).rejects.toThrow(/snd-/);
+    await expect(begin({ id: 'snd-Air-Horn' })).rejects.toThrow(/snd-/);
+    await expect(begin({ id: 'snd-' + 'a'.repeat(20) })).rejects.toThrow(/snd-/);
+    // A name too long is a NACK. Truncating it silently returns a clip name
+    // the host never uploaded and cannot tell from its own mistake.
+    await expect(begin({ name: 'x'.repeat(33) })).rejects.toThrow(/1 to 32/);
+
+    const ok = await client.request<{ sessionId: number }>(Cmd.SOUND_BEGIN, {
+      id: 'snd-air-horn',
+      name: 'x'.repeat(32),
+      sizeBytes: 4096,
+      durationMs: 800,
+    });
+    expect(ok.sessionId).toBeGreaterThan(0);
   });
 
   it('two demo captures carry dark-party / direct-flash look tags', async () => {

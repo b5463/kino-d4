@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   isMissingCaptureError,
   rollApi,
@@ -100,6 +100,13 @@ export function usePicks(slug: string): ReadonlySet<string> {
  * Picks already in the loaded pages are reused; the rest are fetched one by
  * one. A pick the server answers 404 for (hidden or deleted by the host) is
  * dropped from the local set — moderation wins over a stale favorite.
+ *
+ * Every id is requested exactly once. `fetched` is read through a ref and is
+ * NOT an effect dependency: as a dependency it re-ran the whole batch after
+ * every single resolution, and since the resolutions land one at a time, N
+ * picks cost N²/2 duplicate `getCapture` requests. The in-flight set is what
+ * keeps the re-runs the remaining dependencies still cause (a new `loaded`
+ * page arriving, the pick set changing) from asking twice for the same id.
  */
 export function usePickedCaptures(
   slug: string,
@@ -108,32 +115,59 @@ export function usePickedCaptures(
   api: RollApi = rollApi,
 ): CaptureView[] {
   const [fetched, setFetched] = useState<ReadonlyMap<string, CaptureView>>(new Map());
+  const fetchedRef = useRef(fetched);
+  fetchedRef.current = fetched;
+  /** Ids with a `getCapture` in the air right now, so a re-run skips them. */
+  const inFlightRef = useRef<Set<string>>(new Set());
+  /**
+   * A request already in the air belongs to the slug it was made for. It
+   * outlives an effect re-run on purpose — cancelling it on re-run and
+   * skipping it as in-flight would leave the id fetched by nobody — so the
+   * only thing that discards a late answer is a change of roll or unmount.
+   */
+  const slugRef = useRef(slug);
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
+    slugRef.current = slug;
+    inFlightRef.current = new Set();
     setFetched(new Map());
   }, [slug]);
 
   useEffect(() => {
-    let active = true;
     const known = new Set(loaded.map((capture) => capture.captureId));
-    const missing = [...picks].filter((id) => !known.has(id) && !fetched.has(id));
+    const inFlight = inFlightRef.current;
+    const missing = [...picks].filter(
+      (id) => !known.has(id) && !fetchedRef.current.has(id) && !inFlight.has(id),
+    );
     if (missing.length === 0) return;
 
     for (const captureId of missing) {
+      inFlight.add(captureId);
       void api
         .getCapture(slug, captureId)
         .then((capture) => {
-          if (!active) return;
+          if (!mountedRef.current || slugRef.current !== slug) return;
           setFetched((current) => new Map(current).set(captureId, capture));
         })
         .catch((caught: unknown) => {
-          if (active && isMissingCaptureError(caught)) setPick(slug, captureId, false);
+          if (!mountedRef.current || slugRef.current !== slug) return;
+          if (isMissingCaptureError(caught)) setPick(slug, captureId, false);
+        })
+        .finally(() => {
+          // Released either way: a resolved id is in `fetched`, a 404'd one is
+          // out of `picks`, and anything else (a dropped connection) is worth
+          // one more attempt the next time this effect runs.
+          inFlight.delete(captureId);
         });
     }
-    return () => {
-      active = false;
-    };
-  }, [api, fetched, loaded, picks, slug]);
+  }, [api, loaded, picks, slug]);
 
   const byId = new Map<string, CaptureView>();
   for (const capture of loaded) if (picks.has(capture.captureId)) byId.set(capture.captureId, capture);

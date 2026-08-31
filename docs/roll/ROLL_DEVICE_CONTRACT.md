@@ -10,7 +10,7 @@ Normative sources, in order: `apps/api/src/routes/device-captures.ts`, `device-r
 
 | Step | Call | Notes |
 |---|---|---|
-| Register once | `POST /api/studio/devices/register` `{serial, product, hardwareRevision, name?}` | Returns `{deviceId, deviceToken}`. Token is `kdt_` + 43 base64url chars. Outside development, registration is first-write-wins per serial (409 `DEVICE_ALREADY_REGISTERED`). |
+| Register once | `POST /api/studio/devices/register` `{serial, product, hardwareRevision, name?}` with `Authorization: Bearer <PROVISIONING_TOKEN>` | Returns `{deviceId, deviceToken}`. Token is `kdt_` + 43 base64url chars. Registration requires the server's provisioning secret (401 `PROVISIONING_TOKEN_REQUIRED` without it) — it is a bench/Studio step, not something a device in the field does. Studio registers the camera and writes the credential to NVS over KDP (`roll.credentials`); the camera's own register fallback only works against a dev server whose token it has been given. Outside development, registration is also first-write-wins per serial (409 `DEVICE_ALREADY_REGISTERED`). |
 | Every device call | `Authorization: Bearer kdt_...` | The server stores only the SHA-256 of the token. Persist the token in device NVS; it cannot be re-read from the server. |
 
 ## Roll association

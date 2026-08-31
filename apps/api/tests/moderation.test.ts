@@ -208,6 +208,7 @@ beforeAll(async () => {
   const res = await app.inject({
     method: 'POST',
     url: '/api/studio/devices/register',
+    headers: { authorization: `Bearer ${app.config.PROVISIONING_TOKEN}` },
     payload: { serial: SERIAL, product: 'KINO D4', hardwareRevision: 'v1' },
   });
   expect(res.statusCode).toBe(200);

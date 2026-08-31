@@ -59,7 +59,29 @@ export const SSE_HEARTBEAT_MS = 25_000;
  * it missed, which is a better outcome than the server holding an unbounded
  * buffer for a connection that is already gone.
  */
-const MAX_BUFFERED_BYTES = 64 * 1024;
+export const MAX_BUFFERED_BYTES = 64 * 1024;
+
+/**
+ * The write both SSE routes use: refuse to buffer past `MAX_BUFFERED_BYTES` and
+ * hand the connection back to its own teardown instead.
+ *
+ * Exported because `host-events.ts` wrote straight to its stream and therefore
+ * had no ceiling at all — a host dashboard left open on a socket that has stopped
+ * draining would grow a `PassThrough` in the API's heap for as long as the
+ * process lived. There is no reason for the two routes to have different answers
+ * to that, and one function is how they cannot.
+ */
+export function boundedWrite(
+  stream: { writableLength: number; write(chunk: string): unknown },
+  chunk: string,
+  onOverflow: () => void,
+): void {
+  if (stream.writableLength > MAX_BUFFERED_BYTES) {
+    onOverflow();
+    return;
+  }
+  stream.write(chunk);
+}
 
 export interface GuestEventRoutesOptions {
   /**
@@ -196,12 +218,10 @@ export const guestEventRoutes: FastifyPluginAsync<GuestEventRoutesOptions> = asy
 
     const write = (chunk: string): void => {
       if (closed) return;
-      if (stream.writableLength > MAX_BUFFERED_BYTES) {
+      boundedWrite(stream, chunk, () => {
         app.log.warn({ rollId: roll.id }, 'dropping an SSE client that stopped reading');
         cleanup();
-        return;
-      }
-      stream.write(chunk);
+      });
     };
 
     openConnections.add(cleanup);

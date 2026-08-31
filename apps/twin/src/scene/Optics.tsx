@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useSceneStore } from '../state/sceneStore';
 import { fovForCam, frustumCorners, opticsDistancesM } from '../optics/frustum';
@@ -21,6 +21,10 @@ function SegmentLines({ segments, color, opacity = 1 }: { segments: Segment[]; c
     result.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return result;
   }, [segments]);
+
+  // The geometry is a prop, not a <bufferGeometry> element, so R3F does not
+  // free it. Explode and pitch drags rebuild it continuously.
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
     <lineSegments geometry={geometry} raycast={() => {}}>
@@ -112,12 +116,34 @@ export function Optics() {
       .sort((a, b) => a[0] - b[0]),
     [profile.instances, transforms],
   );
-  const fov = fovForCam(profile, optics.fovScenarioDeg);
-  const distancesM = opticsDistancesM(optics.distancesM, optics.customM);
+  const fov = useMemo(() => fovForCam(profile, optics.fovScenarioDeg), [profile, optics.fovScenarioDeg]);
+  const distancesM = useMemo(
+    () => opticsDistancesM(optics.distancesM, optics.customM),
+    [optics.distancesM, optics.customM],
+  );
+
+  /**
+   * Axis and frustum edge lists per camera, memoised on the inputs that
+   * actually change them. Built inline in the render body these were a fresh
+   * array on every render, so `SegmentLines`' geometry memo never hit and the
+   * overlay allocated (and, before `SegmentLines` learned to dispose, leaked)
+   * eight line buffers per render — continuously, for the length of an
+   * explode or pitch drag.
+   */
+  const cameraSegments = useMemo(() => {
+    if (!('hDeg' in fov) || distancesM.length === 0) return [];
+    const maxMm = distancesM[distancesM.length - 1]! * 1_000;
+    return cameras.map((origin) => ({
+      origin,
+      axis: [[origin, [origin[0], origin[1], origin[2] + maxMm]]] as Segment[],
+      frusta: distancesM.flatMap((distanceM) =>
+        frustumSegments(origin, frustumCorners(origin, fov.hDeg, fov.vDeg, distanceM * 1_000) as Point3[]),
+      ),
+    }));
+  }, [cameras, distancesM, fov]);
 
   if (!optics.enabled || !('hDeg' in fov) || cameras.length !== 4 || distancesM.length === 0) return null;
 
-  const maxDistanceMm = distancesM[distancesM.length - 1]! * 1_000;
   const centerX = cameras.reduce((sum, camera) => sum + camera[0], 0) / cameras.length;
   const centerY = cameras.reduce((sum, camera) => sum + camera[1], 0) / cameras.length;
   const centerZ = cameras.reduce((sum, camera) => sum + camera[2], 0) / cameras.length;
@@ -125,23 +151,16 @@ export function Optics() {
 
   return (
     <group name="optics-overlay">
-      {cameras.map((origin, cameraIndex) => {
-        const axis: Segment[] = [[origin, [origin[0], origin[1], origin[2] + maxDistanceMm]]];
-        const frusta = distancesM.flatMap((distanceM) => {
-          const corners = frustumCorners(origin, fov.hDeg, fov.vDeg, distanceM * 1_000) as Point3[];
-          return frustumSegments(origin, corners);
-        });
-        return (
-          <group key={cameraIndex}>
-            <mesh position={origin} raycast={() => {}}>
-              <planeGeometry args={[8, 6]} />
-              <meshBasicMaterial color="#72d7ef" transparent opacity={0.5} side={THREE.DoubleSide} />
-            </mesh>
-            <SegmentLines segments={axis} color="#8be0f2" opacity={0.8} />
-            <SegmentLines segments={frusta} color="#4c9fb4" opacity={0.42} />
-          </group>
-        );
-      })}
+      {cameraSegments.map(({ origin, axis, frusta }, cameraIndex) => (
+        <group key={cameraIndex}>
+          <mesh position={origin} raycast={() => {}}>
+            <planeGeometry args={[8, 6]} />
+            <meshBasicMaterial color="#72d7ef" transparent opacity={0.5} side={THREE.DoubleSide} />
+          </mesh>
+          <SegmentLines segments={axis} color="#8be0f2" opacity={0.8} />
+          <SegmentLines segments={frusta} color="#4c9fb4" opacity={0.42} />
+        </group>
+      ))}
 
       {distancesM.map((distanceM) => {
         const distanceMm = distanceM * 1_000;

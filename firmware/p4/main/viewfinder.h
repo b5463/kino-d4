@@ -81,6 +81,24 @@ esp_err_t viewfinder_init(void);
 /** True once the tiles exist. */
 bool viewfinder_ready(void);
 
+/**
+ * How many times the finder has written this camera's JPEG-quality register.
+ *
+ * The finder is the SECOND writer of that register. It has no NL_CMD_SENSOR of
+ * its own: every preview frame is an NL_CMD_CAPTURE carrying `quality`, and the
+ * node applies it before it exposes. So a preview between two photographs
+ * leaves the preview's quality (30, 45 or 18) standing in the sensor while
+ * capture.c's change-only cache still believes the look's value is in there -
+ * and the second capture came out at preview quality with META reporting the
+ * look's. It never self-healed, because the cache only re-sends what changed.
+ *
+ * A count rather than a flag: capture.c compares it against what it saw at its
+ * last apply, so a write that lands between two captures is noticed exactly
+ * once and nothing has to be cleared by the reader. Monotonic, wraps at 2^32
+ * (about 3 fps for 45 years), and 0 for an out-of-range camera.
+ */
+uint32_t viewfinder_quality_writes(int cam);
+
 /** Begin or end asking the nodes for frames. Off by default: a viewfinder
  *  that runs when nobody is looking is four sensors and four UARTs burning
  *  battery for a dark screen.

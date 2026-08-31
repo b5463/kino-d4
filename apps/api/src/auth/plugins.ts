@@ -93,6 +93,9 @@ export const publicRollColumns = {
   privacy: rolls.privacy,
   downloadsEnabled: rolls.downloadsEnabled,
   reactionsEnabled: rolls.reactionsEnabled,
+  // Not a credential, and needed wherever a guest's access is decided: the
+  // stamp `stampRollAccess` writes is derived from it.
+  accessEpoch: rolls.accessEpoch,
   createdByDeviceId: rolls.createdByDeviceId,
   createdAt: rolls.createdAt,
   closedAt: rolls.closedAt,
@@ -272,6 +275,114 @@ export function guestMayReadRoll(
   pinHash: string | null,
 ): boolean {
   return roll.privacy !== 'pin' || pinCookieAccepted(request, roll.id, pinHash);
+}
+
+/* ------------------------------------------------------- the access stamp -- */
+
+/**
+ * The second cookie, and the one that makes "regenerate guest slug" mean
+ * something to an **asset**.
+ *
+ * Rotating the slug takes the old link out of service, but `GET
+ * /api/assets/:assetId/content` is addressed by asset id and derives the roll
+ * from the asset — so every id the leaked link already handed out would keep
+ * working. This cookie carries the roll's `access_epoch`; regenerating the slug
+ * bumps that number, which invalidates every stamp issued under the old link in
+ * exactly the way a new PIN invalidates every PIN cookie.
+ *
+ * Modelled on the PIN cookie on purpose — same signing, same fingerprint shape,
+ * same 30 days — because the two are the same mechanism pointed at two different
+ * facts, and one of them already works.
+ */
+const accessCookieName = (rollId: string): string => `kino_roll_${rollId}`;
+
+function accessFingerprint(rollId: string, accessEpoch: number): string {
+  return createHash('sha256')
+    .update(`${rollId}:${accessEpoch}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+/**
+ * Hands the current stamp to a guest that has just resolved the roll through
+ * its slug.
+ *
+ * Holding the current slug **is** the grant: that is the whole of guest
+ * authorization for an unlisted roll (plus the PIN where there is one), and this
+ * only writes down which generation of the link was used. Set on every guest
+ * roll read rather than only when the epoch is non-zero, so a guest who was
+ * browsing before the first revocation is holding a stale stamp afterwards
+ * rather than no stamp at all.
+ */
+export function stampRollAccess(
+  reply: FastifyReply,
+  roll: { id: string; accessEpoch: number },
+): void {
+  reply.setCookie(accessCookieName(roll.id), accessFingerprint(roll.id, roll.accessEpoch), {
+    signed: true,
+    httpOnly: true,
+    sameSite: 'lax',
+    // `/`, not `/api/rolls/`: the asset route this stamp exists for lives
+    // outside the slug space, which is the whole reason it needs a cookie.
+    path: '/',
+    secure: 'auto',
+    maxAge: PIN_COOKIE_MAX_AGE_SECONDS,
+  });
+}
+
+/**
+ * "Has this guest been let in since the link was last revoked?"
+ *
+ * ### Enforced only once a roll has actually been revoked
+ *
+ * `accessEpoch === 0` means the host has never regenerated the slug, and such a
+ * roll answers exactly as it did before this cookie existed — no stamp needed.
+ * That is not laziness, it is the only way to add the control without breaking
+ * every client that fetches an asset it was told about: a `<img src>` for a
+ * cross-site API origin sends no `SameSite=Lax` cookie at all, so requiring the
+ * stamp everywhere would blank the gallery for any deployment whose web app and
+ * API are not the same site (every dev bench, where roll-web runs on its own
+ * localhost port).
+ *
+ * The consequence is stated rather than hidden: until a host presses regenerate,
+ * a leaked asset id is still readable by anyone holding it, exactly as before.
+ * Once they do, both a stale stamp and a missing one are refused — which is the
+ * moment the host asked for. A deployment that serves the web app and the API
+ * from one site (production behind Caddy) gets a working gallery through the new
+ * link; one that does not needs the roll re-opened from a first-party page, and
+ * has no other way to carry the stamp.
+ */
+export function guestHasRollAccess(
+  request: FastifyRequest,
+  roll: { id: string; accessEpoch: number },
+): boolean {
+  if (roll.accessEpoch === 0) return true;
+
+  const raw = request.cookies[accessCookieName(roll.id)];
+  if (raw === undefined) return false;
+
+  const unsigned = request.unsignCookie(raw);
+  if (!unsigned.valid || unsigned.value === null) return false;
+
+  return timingSafeHexEqual(unsigned.value, accessFingerprint(roll.id, roll.accessEpoch));
+}
+
+/**
+ * Whether this request carries the host token of the roll whose hash is passed.
+ *
+ * A *predicate*, unlike `requireHost` — it answers nothing and sends nothing, so
+ * a route whose primary audience is a guest can ask "is this the host?" and
+ * carry on. `deliverAsset` is the caller: an asset role that is not part of the
+ * guest surface is the host's to fetch, and this is how it says so without
+ * mounting a second copy of the delivery route under `/api/host/`.
+ *
+ * Reuses the same two primitives `requireHost` grants access with, so there is
+ * still one definition of what a host credential is and one comparison.
+ */
+export function hostTokenPresented(request: FastifyRequest, hostTokenHash: string): boolean {
+  const token = bearerToken(request.headers.authorization);
+  if (token === null || tokenScope(token) !== 'hrt') return false;
+  return hostTokenOpens(token, hostTokenHash);
 }
 
 export const authPlugin = fp(
@@ -542,6 +653,11 @@ export const authPlugin = fp(
       if (!guestMayReadRoll(request, roll, pinHash)) {
         return fail(reply, 401, 'PIN_REQUIRED', 'this roll is PIN protected');
       }
+
+      // Only after the gate has said yes, and only on the slug path: presenting
+      // the current slug is the grant, and this is the receipt the asset route
+      // reads. A refusal above stamps nothing.
+      stampRollAccess(reply, roll);
 
       request.roll = roll;
       return undefined;

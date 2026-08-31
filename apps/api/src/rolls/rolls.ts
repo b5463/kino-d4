@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ApiConfig } from '../config';
 import type { KinoDatabase } from '../plugins/db';
@@ -279,14 +279,31 @@ export async function createRoll(
   };
 }
 
-/** Rotates a roll's public slug, writing the audit row in the same transaction. */
+/**
+ * Rotates a roll's public slug, writing the audit row in the same transaction.
+ *
+ * **And bumps `access_epoch` in that same statement.** A new slug alone revokes
+ * only the front door: `GET /api/assets/:assetId/content` is addressed by asset
+ * id and derives the roll from the asset, so every id the leaked link handed out
+ * would keep serving bytes from a roll the host had just taken back. The epoch is
+ * what the guest access stamp is derived from (`stampRollAccess`), so
+ * incrementing it invalidates every stamp issued under the old link at the same
+ * instant the old slug stops resolving.
+ *
+ * `access_epoch + 1` is computed **in SQL**, not read-modify-written here: two
+ * concurrent regenerations then produce two increments rather than one, and
+ * neither can be built from a value it read before the other committed.
+ */
 export async function regenerateSlug(
   db: KinoDatabase,
   roll: Pick<PublicRollRow, 'id' | 'slug'>,
 ): Promise<string> {
   return withFreshSlug(async (candidate) => {
     await db.transaction(async (tx) => {
-      await tx.update(rolls).set({ slug: candidate }).where(eq(rolls.id, roll.id));
+      await tx
+        .update(rolls)
+        .set({ slug: candidate, accessEpoch: sql`${rolls.accessEpoch} + 1` })
+        .where(eq(rolls.id, roll.id));
       // The old slug is gone from the row the moment that update lands.
       await tx
         .insert(auditEvents)

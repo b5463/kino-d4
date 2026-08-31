@@ -4,7 +4,12 @@ import type { ApiConfig } from './config';
 export interface LoggedRequest {
   id: string;
   method: string;
-  url: string;
+  /**
+   * Optional, because pino applies this serializer to anything logged under the
+   * `req` key — including a plain object from application code that names only
+   * the fields it cared about, which is a shape the redaction tests use.
+   */
+  url: string | undefined;
   ip: string;
 }
 
@@ -33,6 +38,11 @@ const SECRET_KEYS = [
   'S3_SECRET_KEY',
   'S3_ACCESS_KEY',
   'COOKIE_SECRET',
+  // Not covered by the generic `token` rule: fast-redact matches whole key
+  // names, so `PROVISIONING_TOKEN` needs its own entry exactly as
+  // `S3_SECRET_KEY` does. It mints device credentials, so a log line carrying it
+  // is a log line carrying the keys to the upload API.
+  'PROVISIONING_TOKEN',
   'DATABASE_URL',
   'REDIS_URL',
   'METRICS_TOKEN',
@@ -56,6 +66,33 @@ export const REDACTED_PATHS: string[] = [
 export const REDACTION_CENSOR = '[REDACTED]';
 
 /**
+ * The roll slug, out of the access log.
+ *
+ * A slug is 887M-space unguessable *and* it is the whole of a guest credential
+ * for an unlisted roll (03 §9): anyone holding one can read the gallery. Every
+ * request to `/api/rolls/<slug>/...` was writing it to the log at info level, so
+ * the log — shipped, aggregated, read by whoever has access to logs — became a
+ * list of live guest links. That is the same class of value as
+ * `Authorization`, which this serializer already refuses to print.
+ *
+ * Only the one segment is replaced. The path is what makes a log line worth
+ * having, so `/api/rolls/[REDACTED]/captures/cap_x?limit=50` keeps the route, the
+ * capture id and the query while dropping the credential. A capture id is not a
+ * credential — it opens nothing without the roll — so it stays.
+ *
+ * `/r/<slug>` is the *web app's* path and never reaches this API, so there is
+ * nothing to match for it here.
+ */
+export function redactSlug(url: string | undefined): string | undefined {
+  // Undefined in, undefined out. Pino invokes a serializer on whatever was
+  // logged under the key, so `log.info({ req: { headers } })` from application
+  // code reaches this with no `url` at all — and a logger that throws would take
+  // out the request it was describing.
+  if (url === undefined) return undefined;
+  return url.replace(/^\/api\/rolls\/[^/?#]+/, `/api/rolls/${REDACTION_CENSOR}`);
+}
+
+/**
  * Shared by the server and by the redaction test, so the test asserts against
  * the configuration the server actually runs rather than a copy of it.
  */
@@ -71,7 +108,7 @@ export function buildLoggerOptions(level: ApiConfig['LOG_LEVEL']) {
         return {
           id: request.id,
           method: request.method,
-          url: request.url,
+          url: redactSlug(request.url),
           remoteAddress: request.ip,
         };
       },

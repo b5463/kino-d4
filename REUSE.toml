@@ -17,6 +17,10 @@ path = [
   "docs/**",
   "hardware/**",
   "scripts/**",
+  # The generator tools next to scripts/ (tools/mkbitmap.mjs, tools/mktext.mjs).
+  # Same kind of file, same grant; they were simply never listed, which left
+  # them with no declared license at all.
+  "tools/**",
   "e2e/**",
   "playwright.config.ts",
 ]

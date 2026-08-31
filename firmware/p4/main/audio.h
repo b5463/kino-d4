@@ -35,6 +35,20 @@ bool audio_ready(void);
  */
 void audio_shutter(void);
 
+/**
+ * The file behind this clip id changed: drop it from the PSRAM cache.
+ *
+ * The cache is keyed on the id alone, and an id survives a re-upload - Studio
+ * replaces `snd-foo.WAV` and keeps the name. Without this the camera kept
+ * playing the samples it had loaded before the upload, for as long as it stayed
+ * powered, with nothing in the log to say so. Called from kdp_sounds.c on
+ * SOUND_END and SOUND_DELETE.
+ *
+ * Cheap and safe from any task: it marks the entry stale and the audio task
+ * frees and re-reads on its next press. Unknown ids are ignored.
+ */
+void audio_forget_custom(const char *id);
+
 /** A brief tick, for tile presses. */
 void audio_tick(void);
 

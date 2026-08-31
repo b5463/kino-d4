@@ -195,14 +195,21 @@ export async function runTestUploader(options: TestUploaderOptions): Promise<Tes
     }
     credential = { deviceId: options.deviceId, deviceToken: options.deviceToken };
   } else {
+    // Registration is gated (issue #146). PROVISIONING_TOKEN in the
+    // environment, falling back to the published dev default from
+    // apps/api/src/config.ts (refused outside development/test).
     credential = await request<DeviceCredential>(
       '/api/studio/devices/register',
-      json('POST', {
-        serial: options.serial ?? `KD4-UPLOADER-${randomUUID().slice(0, 12)}`,
-        product: 'KINO D4',
-        hardwareRevision: 'v1',
-        name: 'Test uploader',
-      }),
+      json(
+        'POST',
+        {
+          serial: options.serial ?? `KD4-UPLOADER-${randomUUID().slice(0, 12)}`,
+          product: 'KINO D4',
+          hardwareRevision: 'v1',
+          name: 'Test uploader',
+        },
+        process.env.PROVISIONING_TOKEN ?? 'kino-dev-provisioning-token-do-not-use-in-production',
+      ),
     );
   }
 

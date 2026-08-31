@@ -36,13 +36,13 @@ Web Serial needs a secure browser context. `localhost` qualifies. A deployed Stu
 
 ## Service-free checks
 
-These workspaces do not need Docker:
+These workspaces do not need Docker. The test line is the one `.github/workflows/ci.yml` runs in its `build-test` job; keep the two identical, and add a new workspace to both.
 
 ```bash
 npm run lint
 npm run version:check
 npm run license:check
-npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
+npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures -w @kino/hardware-profiles -w @kino/simulator-engine -w @kino/three-assets -w @kino/twin -w @kino/design-system -w @kino/media -w @kino/roll-web
 npm run build
 ```
 
@@ -50,12 +50,12 @@ Root `npm run build` uses `--if-present`. Only browser applications currently pr
 
 ## API stack
 
-Start PostgreSQL, Redis, and MinIO:
+Start PostgreSQL, Redis, and MinIO. The worker suite needs the same three services and the same migrated database, so it belongs here rather than above:
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d
 npm run db:migrate -w @kino/api
-npm run test -w @kino/api
+npm run test -w @kino/api -w @kino/worker
 ```
 
 | Service | Host port | Purpose |
@@ -87,7 +87,7 @@ npm run dev -w @kino/twin       # twin on :5174, /api proxied to :3000
 npm run dev -w @kino/studio     # studio on :5175, /api proxied to :3000
 ```
 
-Built bundles: `npm run preview:all` serves `apps/studio/dist` and `apps/twin/dist` on :4400 and proxies `/api` to :3000 (`KINO_API_URL` overrides). Load and liveness tooling: `npm run party:sim` (see `docs/roll/ROLL_PARTY_LOAD_TEST.md` — mind the 60/min device rate limit) and `npm run test:uploader`. The full Twin→Roll walkthrough is `docs/roll/ROLL_TWIN_INTEGRATION.md`.
+Built bundles: `npm run preview:all` serves `apps/studio/dist` and `apps/twin/dist` on :4400 and proxies `/api` to :3000 (`KINO_API_URL` overrides). It binds `127.0.0.1`; to open it from a phone on the same network, set `HOST=0.0.0.0` — that also exposes the proxied API, so do it on a network you trust. Load and liveness tooling: `npm run party:sim` (see `docs/roll/ROLL_PARTY_LOAD_TEST.md` — mind the 60/min device rate limit) and `npm run test:uploader`. The full Twin→Roll walkthrough is `docs/roll/ROLL_TWIN_INTEGRATION.md`.
 
 Stop the services and keep data:
 

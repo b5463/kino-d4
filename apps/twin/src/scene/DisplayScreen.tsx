@@ -64,20 +64,7 @@ export function DisplayScreen() {
     return tex;
   }, []);
 
-  useEffect(() => {
-    const ctx = (texture.image as HTMLCanvasElement).getContext('2d');
-    if (!ctx) return;
-    const redraw = () => {
-      drawDeviceUi(ctx, readDeviceUiState());
-      texture.needsUpdate = true;
-    };
-    redraw();
-    const timer = setInterval(redraw, REDRAW_MS);
-    return () => {
-      clearInterval(timer);
-      texture.dispose();
-    };
-  }, [texture]);
+  useEffect(() => () => texture.dispose(), [texture]);
 
   const position = useMemo<[number, number, number] | null>(() => {
     const transform = instanceTransforms(profile, pitchMm, explode).get('display');
@@ -89,6 +76,43 @@ export function DisplayScreen() {
     const [x, y, z] = transform.positionMm;
     return [x, y, z - depth / 2 - 0.75];
   }, [explode, pitchMm, profile]);
+
+  // Exactly the condition the early return below uses: nothing renders this
+  // texture in ENCLOSURE view, with the display hidden, or without a resolved
+  // position, so nothing should be redrawing and re-uploading it 7 times a
+  // second either. Same for a backgrounded tab — the panel is not on screen,
+  // and the browser throttles the timer unevenly rather than stopping it.
+  const shown = position !== null && visible && viewMode !== 'enclosure';
+
+  useEffect(() => {
+    if (!shown) return;
+    const ctx = (texture.image as HTMLCanvasElement).getContext('2d');
+    if (!ctx) return;
+    const redraw = () => {
+      drawDeviceUi(ctx, readDeviceUiState());
+      texture.needsUpdate = true;
+    };
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer !== null) return;
+      redraw(); // paint the current state before the first interval elapses
+      timer = setInterval(redraw, REDRAW_MS);
+    };
+    const stop = () => {
+      if (timer === null) return;
+      clearInterval(timer);
+      timer = null;
+    };
+
+    const onVisibilityChange = () => (document.hidden ? stop() : start());
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      stop();
+    };
+  }, [texture, shown]);
 
   if (!position || !visible || viewMode === 'enclosure') return null;
   // The rear acrylic is a transparent pane between the viewer and this

@@ -146,6 +146,76 @@ describe('picks hooks', () => {
     expect(observed.current?.map((item) => item.captureId)).toEqual(['cap_fetched', 'cap_loaded']);
   });
 
+  it('asks for each missing pick exactly once, however often the effect re-runs', async () => {
+    /**
+     * Regression: `fetched` was an effect dependency, so every resolution
+     * re-ran the whole batch. With the answers landing one at a time that is
+     * N²/2 duplicate `getCapture` requests — 20 picks cost ~190 extra
+     * round-trips on a phone. The in-flight set is what makes the re-runs
+     * (a new page of the feed, a changed pick set) free.
+     */
+    const ids = ['cap_a', 'cap_b', 'cap_c', 'cap_d'];
+    const resolvers: (() => void)[] = [];
+    const getCapture = vi.fn((_slug: string, captureId: string) =>
+      new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({ ...capture(captureId), reactionCount: 0, reacted: false }),
+        );
+      }),
+    );
+    const api = apiWith({ getCapture: getCapture as unknown as RollApi['getCapture'] });
+    const picks = new Set(ids);
+
+    function Harness() {
+      usePickedCaptures('party', picks, [], api);
+      return null;
+    }
+    await render(<Harness />);
+    expect(getCapture).toHaveBeenCalledTimes(ids.length);
+
+    // Resolve them one at a time: each resolution re-renders, and a re-render
+    // must not put a second request for any id on the wire.
+    for (const resolve of [...resolvers]) {
+      await act(async () => {
+        resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+
+    expect(getCapture).toHaveBeenCalledTimes(ids.length);
+    expect(getCapture.mock.calls.map(([, id]) => id).sort()).toEqual([...ids].sort());
+  });
+
+  it('does not re-request a pick when a new feed page arrives', async () => {
+    let resolveFirst: ((value: CaptureView) => void) | undefined;
+    const getCapture = vi.fn(
+      () => new Promise((resolve) => {
+        resolveFirst = resolve as (value: CaptureView) => void;
+      }),
+    );
+    const api = apiWith({ getCapture: getCapture as unknown as RollApi['getCapture'] });
+    const picks = new Set(['cap_missing']);
+
+    function Harness({ loaded }: { loaded: CaptureView[] }) {
+      usePickedCaptures('party', picks, loaded, api);
+      return null;
+    }
+    await render(<Harness loaded={[]} />);
+    expect(getCapture).toHaveBeenCalledTimes(1);
+
+    // A different `loaded` array — a page load, which is a real dependency
+    // change — while the first request is still in the air.
+    await render(<Harness loaded={[capture('cap_other')]} />);
+    expect(getCapture).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirst?.({ ...capture('cap_missing'), reactionCount: 0, reacted: false } as CaptureView);
+      await Promise.resolve();
+    });
+    expect(getCapture).toHaveBeenCalledTimes(1);
+  });
+
   it('drops a pick the server answers CAPTURE_NOT_FOUND for (host moderation wins)', async () => {
     setPick('party', 'cap_gone', true);
     const getCapture = vi

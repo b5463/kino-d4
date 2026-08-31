@@ -648,6 +648,12 @@ static void audio_render_sounds(void) {
 static char s_custom_id[KDP_SOUND_ID_MAX];
 static int16_t *s_custom_pcm;
 static size_t s_custom_bytes;
+/* Set by audio_forget_custom() when the file behind the cached id changed.
+ * The id alone is not a key: a re-upload keeps the id and replaces the WAV, so
+ * without this the old samples played until the next reboot. Written from the
+ * KDP task, read on the audio task, and it only ever forces a re-read - so a
+ * flag is the whole exclusion this needs. */
+static volatile bool s_custom_stale;
 
 /**
  * Load `id` from the card, or answer from the cache.
@@ -664,17 +670,22 @@ static size_t s_custom_bytes;
  * would then get instead.
  */
 static bool custom_pcm(const char *id, const int16_t **out, size_t *out_bytes) {
-  if (s_custom_pcm != NULL && strcmp(s_custom_id, id) == 0) {
+  if (!s_custom_stale && s_custom_pcm != NULL && strcmp(s_custom_id, id) == 0) {
     *out = s_custom_pcm;
     *out_bytes = s_custom_bytes;
     return true;
   }
-  /* A different id: the old clip can never be wanted again without another
-   * load, so it goes now rather than at the next successful one. */
+  /* A different id, or the same id whose file changed under us: the old clip
+   * can never be wanted again without another load, so it goes now rather than
+   * at the next successful one. The free is HERE, on the audio task, and not in
+   * audio_forget_custom() - these samples may be clocking out of the codec on
+   * this task, and freeing them from the KDP task would be a use-after-free at
+   * the exact moment someone re-uploads a clip during a shutter press. */
   free(s_custom_pcm);
   s_custom_pcm = NULL;
   s_custom_bytes = 0;
   s_custom_id[0] = '\0';
+  s_custom_stale = false;
 
   char path[128];
   if (!kdp_sounds_path(id, path, sizeof path)) {
@@ -772,6 +783,17 @@ static bool custom_pcm(const char *id, const int16_t **out, size_t *out_bytes) {
   *out = buf;
   *out_bytes = bytes;
   return true;
+}
+
+void audio_forget_custom(const char *id) {
+  if (id == NULL || s_custom_pcm == NULL) return;
+  /* Any forget while a load is in progress also lands here as a mismatch and
+   * is harmless: the worst case is one re-read of a file that had not been
+   * replaced. The cache holds exactly one clip, so an id that does not match
+   * is nothing to drop. */
+  if (strcmp(s_custom_id, id) != 0) return;
+  s_custom_stale = true;
+  ESP_LOGI(TAG, "cached clip '%s' dropped - it is re-read from the card on the next press", id);
 }
 
 /**

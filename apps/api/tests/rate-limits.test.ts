@@ -72,7 +72,10 @@ describe('shared production rate limits', () => {
     const registered = await app.inject({
       method: 'POST',
       url: '/api/studio/devices/register',
-      headers: { 'x-forwarded-for': ip(4) },
+      headers: {
+        'x-forwarded-for': ip(4),
+        authorization: `Bearer ${app.config.PROVISIONING_TOKEN}`,
+      },
       payload: {
         serial: `KD4-RATE-${randomBytes(4).toString('hex')}`,
         product: 'KINO D4',

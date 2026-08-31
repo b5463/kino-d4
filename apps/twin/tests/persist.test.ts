@@ -51,6 +51,7 @@ describe('measurement checklist', () => {
   it('marks only the BMS row when the BMS has an override', () => {
     const rows = measurementChecklist([bms]);
     expect(rows.filter((row) => row.done).map((row) => row.label)).toEqual(['BMS']);
-    expect(rows).toHaveLength(12);
+    // 11 since ECN-0003 dropped the flash assembly and its LED driver row.
+    expect(rows).toHaveLength(11);
   });
 });

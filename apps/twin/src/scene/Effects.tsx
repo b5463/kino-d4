@@ -64,6 +64,23 @@ export function Effects() {
     return out;
   }, [profile.nets]);
 
+  /**
+   * The UART dot path per camera, resolved once per (nets × transforms)
+   * change. Routing inline in the render body did it again on every sim tick,
+   * and — more importantly — `wireCurve` throws when an endpoint instance is
+   * missing, so a profile edit that drops an instance while keeping its net
+   * took the whole app to the error boundary. A net with an unresolvable
+   * endpoint gets no dots instead.
+   */
+  const uartPoints = useMemo(() => {
+    const out = new Map<CamId, [number, number, number][]>();
+    for (const [cam, net] of netByCam) {
+      if (!transforms.has(net.from.instance) || !transforms.has(net.to.instance)) continue;
+      out.set(cam, wireCurve(net, transforms).points);
+    }
+    return out;
+  }, [netByCam, transforms]);
+
   const wifiGeometry = useMemo(() => {
     const display = transforms.get('display')?.positionMm ?? [0, 0, 0];
     const curve = new THREE.QuadraticBezierCurve3(
@@ -111,9 +128,9 @@ export function Effects() {
       })}
 
       {CAM_IDS.map((cam) => {
-        const net = netByCam.get(cam);
-        if (!net || !uartActive[cam]) return null;
-        return <TransferDots key={`uart-${cam}`} points={wireCurve(net, transforms).points} speed={uartBytesPerSec[cam]} />;
+        const points = uartPoints.get(cam);
+        if (!points || !uartActive[cam]) return null;
+        return <TransferDots key={`uart-${cam}`} points={points} speed={uartBytesPerSec[cam]} />;
       })}
 
       {sdActive && (() => {

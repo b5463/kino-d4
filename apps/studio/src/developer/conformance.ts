@@ -69,7 +69,10 @@ const CASES: Case[] = [
       const r = await dev.getCapabilities();
       ctx.bench = r.capabilities.benchDiagnostics === true;
       ctx.gallery = r.capabilities.gallery === true;
-      expectKeys(r, ['protocol', 'hardware', 'capabilities', 'limits', 'configSchemaVersion'], 'CAPABILITIES');
+      // `firmware` is in the response contract and is what the Unsupported
+      // panels quote by name, so a device that omits it is a shape failure,
+      // not a cosmetic one.
+      expectKeys(r, ['protocol', 'hardware', 'firmware', 'capabilities', 'limits', 'configSchemaVersion'], 'CAPABILITIES');
       expectKeys(r.capabilities, ['cameraCount', 'wiggle', 'quad', 'gallery'], 'CAPABILITIES.capabilities');
       expectKeys(r.limits, ['maxUartBaud', 'maxResolution', 'maxGalleryPageSize'], 'CAPABILITIES.limits');
       if (r.capabilities.cameraCount !== 4) throw new ShapeError('CAPABILITIES: cameraCount must be 4 on V1');
@@ -107,6 +110,14 @@ const CASES: Case[] = [
     run: async (dev) => {
       const r = await dev.getPowerStatus();
       expectKeys(r, ['batteryV', 'batteryPct', 'state'], 'POWER');
+      /* Present-and-null is the answer on a body with no gauge (contract
+       * D10), so the keys are required and the numbers are not. Both must
+       * agree: a voltage with no percentage, or the reverse, is a firmware
+       * that measured half a cell. */
+      if ((r.batteryV === null) !== (r.batteryPct === null)) {
+        throw new ShapeError('POWER: batteryV and batteryPct disagree about whether the cell was measured');
+      }
+      if (r.batteryV === null) return `no gauge · ${r.state}`;
       return `${r.batteryV.toFixed(2)} V · ${r.batteryPct}%`;
     },
   },
@@ -306,23 +317,40 @@ const CASES: Case[] = [
         if (r.timing[k] !== null) throw new ShapeError(`CAPTURE: ${k} is not null on a body that cannot measure it`);
       }
       if (!r.timing.unavailableReason) throw new ShapeError('CAPTURE: null skews with no reason given');
-      ctx.captureId = r.captureUuid;
+      // The gallery id, not the capture UUID. The cases below feed this to
+      // MEDIA_INFO / MEDIA_THUMB / MEDIA_READ, which address captures by id;
+      // seeding the UUID made every one of them report "empty card" against a
+      // capture that had just been written.
+      ctx.captureId = r.id;
       return `${r.id} · ${r.frameCount} frame(s) · ${r.status} · ${r.totalMs} ms · spread ${r.timing.dispatchSpreadUs} us`;
     },
   },
   {
-    /* Asking a body that cannot measure exposure for exposure numbers must
-     * be refused, not answered. A capture is the wrong outcome here too:
-     * timing-test is not a request for a photograph. */
-    name: 'CAMERA_CAPTURE timing-test refusal',
+    /*
+     * timing-test, both ways round, in one case.
+     *
+     * A body that cannot measure exposure must refuse the request, not answer
+     * it — and a capture is the wrong outcome too: timing-test is not a
+     * request for a photograph. A body that *can* measure has to return the
+     * whole TimingResult, which is what the deleted duplicate of this case
+     * asserted unconditionally. Both assertions cannot hold on one firmware,
+     * so which one applies is decided by the capability the device reports,
+     * exactly like the bench cases above.
+     */
+    name: 'CAMERA_CAPTURE timing-test',
     active: false,
     run: async (dev, ctx) => {
       if (ctx.gallery !== true) return 'skipped — no capture pipeline in this firmware';
       const caps = await dev.getCapabilities();
       if (caps.capabilities.vsyncTelemetry === true) {
         const r = await dev.timingTest();
-        expectKeys(r, ['gpioTriggerSkewUs'], 'TIMING');
-        return 'measured — this body reports exposure timing';
+        expectKeys(r, ['cams', 'gpioSpreadUs', 'vsyncSpreadUs', 'exposureSpreadUs', 'vsyncMeasured'], 'TIMING');
+        if (!Array.isArray(r.cams) || r.cams.length !== 4) throw new ShapeError('TIMING: needs 4 cameras');
+        expectKeys(r.cams[0], ['cam', 'gpioUs', 'vsyncPhaseUs', 'exposureUs'], 'TIMING.cams[0]');
+        if (!r.vsyncMeasured) {
+          throw new ShapeError('TIMING: vsyncMeasured false on a body advertising vsyncTelemetry: true');
+        }
+        return `measured — gpio ${r.gpioSpreadUs} µs · vsync ${(r.vsyncSpreadUs / 1000).toFixed(2)} ms`;
       }
       try {
         await dev.timingTest();
@@ -453,18 +481,6 @@ const CASES: Case[] = [
       // Accepting a flash session outside maintenance is a firmware bug.
       await dev.fwAbort().catch(() => undefined);
       throw new ShapeError('FW_BEGIN accepted an update outside maintenance mode');
-    },
-  },
-  {
-    name: 'CAMERA_CAPTURE timing test',
-    active: true,
-    run: async (dev) => {
-      const r = await dev.timingTest();
-      expectKeys(r, ['cams', 'gpioSpreadUs', 'vsyncSpreadUs', 'exposureSpreadUs', 'vsyncMeasured'], 'TIMING');
-      if (!Array.isArray(r.cams) || r.cams.length !== 4) throw new ShapeError('TIMING: needs 4 cameras');
-      expectKeys(r.cams[0], ['cam', 'gpioUs', 'vsyncPhaseUs', 'exposureUs'], 'TIMING.cams[0]');
-      if (!r.vsyncMeasured) return 'firmware reports GPIO only — VSYNC telemetry unavailable';
-      return `gpio ${r.gpioSpreadUs} µs · vsync ${(r.vsyncSpreadUs / 1000).toFixed(2)} ms`;
     },
   },
   {

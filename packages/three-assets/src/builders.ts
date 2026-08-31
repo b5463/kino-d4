@@ -133,7 +133,7 @@ function addKeepouts(parent: THREE.Object3D, c: ComponentDef, mats: TwinMaterial
  */
 function pickBodyMaterial(c: ComponentDef, mats: TwinMaterials): THREE.Material {
   const pcbIds = ['main-display', 'camera-node', 'power-module', 'bms', 'camera-switch', 'perfboard'];
-  const metalIds = ['fuse', 'tact-switch', 'slide-switch', 'micro-sd', 'flash-heatsink'];
+  const metalIds = ['fuse', 'tact-switch', 'slide-switch', 'micro-sd'];
   if (pcbIds.includes(c.id)) return mats.pcb;
   if (metalIds.includes(c.id)) return mats.metal;
   return mats.plastic;
@@ -175,26 +175,10 @@ function addComponentDetails(group: THREE.Group, c: ComponentDef, sizeMm: [numbe
       break;
     }
 
-    case 'flash-led': {
-      // Star MCPCB + simplified pin-fin heatsink + opal diffuser. Fixed
-      // illustrative proportions (Tier C, §22): the LED die itself has no
-      // measured footprint yet (MEASURE_REQUIRED), so none of this reads
-      // from resolved dims — there is nothing real to read yet.
-      const starSize: [number, number, number] = [16, 16, 1.5];
-      addBox(group, 'star', starSize, [0, 0, -sz / 2 + starSize[2] / 2], mats.metal);
-
-      const finCount = 5; // fixed illustrative fin count, not derived from any profile number
-      const finSize: [number, number, number] = [16, 2, 6];
-      const finSpanMm = 14;
-      for (let i = 0; i < finCount; i++) {
-        const t = i / (finCount - 1) - 0.5;
-        addBox(group, `fin-${i}`, finSize, [0, t * finSpanMm, -sz / 2 - finSize[2] / 2], mats.copper);
-      }
-
-      const diffuserSize: [number, number, number] = [18, 18, 1];
-      addBox(group, 'diffuser', diffuserSize, [0, 0, sz / 2 + diffuserSize[2] / 2], mats.acrylicOpal);
-      break;
-    }
+    // No 'flash-led' arm: ECN-0003 took the flash assembly off D4 V1 (the
+    // flash is an external module now), so the star/fin/diffuser proxy had no
+    // component left to build. It goes back in with the component, if a
+    // profile ever carries one again.
 
     case 'battery': {
       // "Rounded box" proxy: the body box above already stands in for the

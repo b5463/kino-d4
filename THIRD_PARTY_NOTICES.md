@@ -17,9 +17,20 @@ command line (aggregation, not linking), so `apps/worker` itself remains MIT
   ship in the image under `/usr/share/doc/ffmpeg/`. Corresponding source is
   published by Debian: `apt-get source ffmpeg` against the image's release,
   or <https://snapshot.debian.org/> for the exact package version
-  (`dpkg -s ffmpeg` inside the image names it). The image deletes the
-  `ffmpeg-static`/`ffprobe-static` npm download binaries so it distributes
-  no other ffmpeg build.
+  (`dpkg -s ffmpeg` inside the image names it). The
+  `ffmpeg-static`/`ffprobe-static` npm download binaries are deleted in the
+  shared `runtime` stage, so this image distributes Debian's build and no
+  other.
+- **Published api image** (`infra/Dockerfile`, target `api`): ships no ffmpeg
+  at all. It does not invoke one, and it carries no `ffmpeg-static`.
+
+  This statement depends on where the `ffmpeg-static`/`ffprobe-static` deletion
+  sits in `infra/Dockerfile`. `npm ci` at the shared `runtime` stage downloads
+  those binaries into `node_modules/` for every target built from it, so the
+  deletion belongs to `runtime` — not to `worker` alone, which leaves the api
+  image distributing a GPL ffmpeg build it never calls. If that `rm -rf` is
+  ever moved back into a single target, this paragraph stops being true and the
+  api image becomes a GPL distribution.
 - **Development fallback** (`ffmpeg-static` npm package, MIT): its
   postinstall downloads a GPL ffmpeg build from the johnvansickle.com static
   builds (sources: <https://www.ffmpeg.org/download.html> and the build

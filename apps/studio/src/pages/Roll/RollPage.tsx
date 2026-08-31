@@ -45,6 +45,9 @@ export function RollPage() {
   const [queue, setQueue] = useState<UploadQueueReport | null>(null);
 
   const [serverUrl, setServerUrl] = useState(getRollServerClient().baseUrl || DEFAULT_ROLL_SERVER_URL);
+  // Held in memory for the one register call only — never persisted, never
+  // written to the camera (the camera gets deviceId/deviceToken, not this).
+  const [provisioningToken, setProvisioningToken] = useState('');
   const [serverResult, setServerResult] = useState<ServerTestResult | null>(null);
   const [registration, setRegistration] = useState<string | null>(null);
 
@@ -147,7 +150,7 @@ export function RollPage() {
 
   const testServer = async () => {
     setServerBusy(true);
-    const next = new HttpRollServerClient(serverUrl);
+    const next = new HttpRollServerClient(serverUrl, provisioningToken);
     setRollServerClient(next);
     try {
       const result = await next.testConnection();
@@ -174,11 +177,11 @@ export function RollPage() {
     }
     setServerBusy(true);
     try {
-      let current = getRollServerClient();
-      if (!(current instanceof HttpRollServerClient) || current.baseUrl !== serverUrl.replace(/\/+$/, '')) {
-        current = new HttpRollServerClient(serverUrl);
-        setRollServerClient(current);
-      }
+      // Rebuilt unconditionally: the register call must carry the
+      // provisioning token as typed now, and the installed client may hold an
+      // older (or no) token.
+      const current = new HttpRollServerClient(serverUrl, provisioningToken);
+      setRollServerClient(current);
       const registered = await registerRollDevice(dev, current, {
         serial: info.serial,
         product: info.product,
@@ -277,6 +280,8 @@ export function RollPage() {
           onTest={testServer}
           registration={registration}
           onRegister={registerServer}
+          provisioningToken={provisioningToken}
+          onProvisioningTokenChange={setProvisioningToken}
         />
 
         <NetworkPanel

@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { SHARP_INPUT } from '../images/decode';
 import { GALLERY_STILL_QUALITY, GALLERY_STILL_WIDTH } from '../images/sizes';
 import {
   loadAssets,
@@ -55,7 +56,7 @@ export async function generateGalleryStill(payload: JobPayload, ctx: JobCtx): Pr
   const source = stillSource(capture, assetRows);
   const body = await readObject(ctx, source.key);
 
-  const { data, info } = await sharp(body)
+  const { data, info } = await sharp(body, SHARP_INPUT)
     .rotate()
     .resize({ width: GALLERY_STILL_WIDTH })
     .webp({ quality: GALLERY_STILL_QUALITY })

@@ -145,6 +145,12 @@ function cableFindings(profile: HardwareProfile, boxes: Aabb[], pitchMm: number)
   const findings: CollisionFinding[] = [];
 
   for (const net of profile.nets) {
+    // A net can name an instance the profile no longer has (an assembly was
+    // dropped, its nets were not). `wireCurve` throws on that, and this runs
+    // during App render — the throw would take the app to the error boundary
+    // instead of losing one cable-clearance row. Skip the net; the scene
+    // views skip drawing it for the same reason.
+    if (!transforms.has(net.from.instance) || !transforms.has(net.to.instance)) continue;
     const route = wireCurve(net, transforms);
     for (const target of boxes) {
       if (target.id === net.from.instance || target.id === net.to.instance) continue;

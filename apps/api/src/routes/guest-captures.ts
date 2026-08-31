@@ -95,7 +95,10 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.get(
     '/api/rolls/:slug/captures/:captureId',
-    { preHandler: app.guestRollAccess },
+    // Metered like the rest of the guest surface. It was the one read on it
+    // without a bucket, and it is the most expensive of them per call: a detail
+    // read converges the capture's status and counts its reactions.
+    { config: guestReadRateLimit, preHandler: app.guestRollAccess },
     async (request, reply) => {
       const detail = await readCaptureDetail(
         app.db,

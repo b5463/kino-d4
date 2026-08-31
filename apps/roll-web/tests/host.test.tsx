@@ -141,6 +141,46 @@ describe('host dashboard', () => {
     await act(async () => hideResolve?.({ captureId: 'cap_1', visible: false, deletedAt: null, purgeAfter: null }));
   });
 
+  it('reads back one capture on a capture event and nothing at all on a roll event', async () => {
+    /**
+     * Regression: every event re-listed the whole roll — every page — so a
+     * camera shooting through a party had the dashboard re-downloading the
+     * entire moderation grid several times a minute. An event names what
+     * changed; the dashboard reads back that much.
+     */
+    let eventHandler: ((event: HostRollEvent) => void) | undefined;
+    const listCaptures = vi.fn().mockResolvedValue({ items: [capture], hasMore: false });
+    const getRoll = vi.fn().mockResolvedValue(roll);
+    const api = fakeApi({
+      listCaptures,
+      getRoll,
+      events: vi.fn((_rollId, handler) => {
+        eventHandler = handler;
+        return vi.fn();
+      }),
+    });
+    await render(api);
+    expect(listCaptures).toHaveBeenCalledTimes(1);
+
+    // A derivative finishing changes one capture and no counts.
+    await act(async () => {
+      eventHandler?.({ type: 'processing.completed', captureId: 'cap_1', role: 'wiggle-mp4' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listCaptures).toHaveBeenCalledTimes(2);
+    expect(getRoll).not.toHaveBeenCalled();
+
+    // The roll closing changes status and counts, and no capture.
+    await act(async () => {
+      eventHandler?.({ type: 'roll.closed' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listCaptures).toHaveBeenCalledTimes(2);
+    expect(getRoll).toHaveBeenCalledTimes(1);
+  });
+
   it('polls an export job until its download link is ready', async () => {
     const startExport = vi.fn().mockResolvedValue({ jobId: 'export_1' });
     const getExport = vi

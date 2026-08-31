@@ -73,6 +73,83 @@ static void test_quality(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* pure_frame_quality                                                  */
+/* ------------------------------------------------------------------ */
+
+static void test_frame_quality(void) {
+  int carry = -1, record = -1;
+
+  /* NL_CMD_SENSOR owns the register: the CAPTURE must carry nothing, and META
+   * records what the node accepted. Sending a quality here is the defect that
+   * overwrote a look's value an instant before the exposure. */
+  pure_frame_quality(true, 12, 20, &carry, &record);
+  CHECK(carry == 0, "sensor owns the register -> carry %d, want 0", carry);
+  CHECK(record == 12, "sensor owns the register -> record %d, want the applied 12", record);
+
+  /* Nothing standing - first capture after boot, after a node reset, or after
+   * the viewfinder wrote the register. The CAPTURE carries the mode default
+   * and that is therefore what the frame was ENCODED at, so it is what META
+   * records. Recording the standing value here is audit FW-1: capture #2 came
+   * out at preview quality with META reporting the look's. */
+  pure_frame_quality(false, 12, 20, &carry, &record);
+  CHECK(carry == 20, "sensor does not own it -> carry %d, want the mode default 20", carry);
+  CHECK(record == 20, "sensor does not own it -> record %d, want what was sent", record);
+
+  /* The invariant the two halves exist for: whatever the inputs, the recorded
+   * value describes the register at exposure. When the CAPTURE carries a
+   * quality, the recorded value IS that quality (post-clamp); when it carries
+   * nothing, the recorded value is the standing applied one. Never a third
+   * number, and never a carried value that is not recorded. */
+  for (int applied = 0; applied <= 63; applied += 7) {
+    for (int mode = 0; mode <= 63; mode += 7) {
+      for (int owns = 0; owns <= 1; owns++) {
+        pure_frame_quality(owns != 0, applied, mode, &carry, &record);
+        if (carry != 0) {
+          CHECK(record == carry, "carried q%d but recorded q%d (owns %d, applied %d)", carry,
+                record, owns, applied);
+        } else if (record != 0) {
+          CHECK(owns != 0 && record == applied,
+                "recorded q%d with nothing carried (owns %d, applied %d)", record, owns,
+                applied);
+        }
+        CHECK(record == 0 || (record >= PURE_SENSOR_QUALITY_MIN &&
+                              record <= PURE_SENSOR_QUALITY_MAX),
+              "recorded q%d outside the sensor's %d..%d", record, PURE_SENSOR_QUALITY_MIN,
+              PURE_SENSOR_QUALITY_MAX);
+      }
+    }
+  }
+
+  /* An owning cache with no applied number is not knowledge: fall through to
+   * the mode default rather than record a zero META would print. */
+  pure_frame_quality(true, 0, 20, &carry, &record);
+  CHECK(carry == 20 && record == 20, "owns but nothing applied -> carry %d record %d, want 20/20",
+        carry, record);
+
+  /* Nothing known at all: say nothing. The capture still happens; the sensor
+   * keeps whatever its driver left. */
+  pure_frame_quality(false, 0, 0, &carry, &record);
+  CHECK(carry == 0 && record == 0, "no quality anywhere -> carry %d record %d, want 0/0", carry,
+        record);
+
+  /* The node clamps what a CAPTURE carries, so the recorded value is the
+   * clamped one - META must not claim a register value the sensor refused. */
+  pure_frame_quality(false, 0, 1, &carry, &record);
+  CHECK(carry == 1 && record == PURE_SENSOR_QUALITY_MIN,
+        "below the floor -> carry %d record %d, want 1/%d", carry, record,
+        PURE_SENSOR_QUALITY_MIN);
+  pure_frame_quality(false, 0, 200, &carry, &record);
+  CHECK(record == PURE_SENSOR_QUALITY_MAX, "above the ceiling -> record %d, want %d", record,
+        PURE_SENSOR_QUALITY_MAX);
+
+  /* Both out pointers are optional - the caller that only wants one must not
+   * have to invent storage for the other. */
+  pure_frame_quality(true, 12, 20, NULL, NULL);
+  pure_frame_quality(true, 12, 20, &carry, NULL);
+  CHECK(carry == 0, "carry-only call -> %d, want 0", carry);
+}
+
+/* ------------------------------------------------------------------ */
 /* pure_ev_to_ae_level                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -685,6 +762,7 @@ static void test_api_base(void) {
 
 int main(void) {
   test_quality();
+  test_frame_quality();
   test_ev_to_ae_level();
   test_gain_to_ceiling();
   test_resolution();

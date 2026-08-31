@@ -181,40 +181,6 @@
       "specs": { "parts": ["AO4407/AO4407A", "SOP8-DIP8 adapter", "2N3904", "4.7k", "100k", "100k", "1N5819"] }
     },
     {
-      "id": "flash-led",
-      "name": "3W CRI90 natural white LED star",
-      "qty": 1,
-      "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }],
-      "specs": { "forwardVoltageV": "3.0-3.6", "initialDriveA": 0.35 }
-    },
-    {
-      "id": "flash-heatsink",
-      "name": "Copper pin-fin heatsink",
-      "qty": 1,
-      "meshTier": "B",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [20.0, 20.0, 7.0] }],
-      "material": { "value": "copper", "tag": "SELLER" },
-      "keepouts": [
-        { "id": "diffuser-spacing", "label": "Diffuser air gap", "sizeMm": [20, 20, 2], "offsetMm": [0, 0, 4], "kind": "clearance" }
-      ]
-    },
-    {
-      "id": "flash-thermal-pad",
-      "name": "Thermal pad",
-      "qty": 1,
-      "meshTier": "B",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [20.0, 20.0, 0.5], "note": "CUT_TO_FIT" }]
-    },
-    {
-      "id": "flash-diffuser",
-      "name": "Opal acrylic diffuser",
-      "qty": 1,
-      "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, 1.0], "note": "CUT_TO_FIT" }],
-      "material": { "value": "opal acrylic", "tag": "SELLER" }
-    },
-    {
       "id": "speaker",
       "name": "8ohm 2W speaker",
       "qty": 1,
@@ -329,7 +295,6 @@
     { "id": "cam2", "component": "camera-node", "positionMm": [-11, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
     { "id": "cam3", "component": "camera-node", "positionMm": [11, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
     { "id": "cam4", "component": "camera-node", "positionMm": [33, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
-    { "id": "flash", "component": "flash-led", "positionMm": [0, 27, 11.5], "rotationDeg": [0, 0, 0], "explodeOrder": 8 },
     { "id": "display", "component": "main-display", "positionMm": [0, 0, -11.5], "rotationDeg": [0, 0, 0], "explodeOrder": 4, "explodeDirMm": [0, 0, -1] },
     { "id": "battery", "component": "battery", "positionMm": [-30, 0, -9.5], "rotationDeg": [0, 0, 90], "group": "power", "explodeOrder": 1 },
     { "id": "carrier", "component": "perfboard", "positionMm": [0, -5, -4], "rotationDeg": [0, 0, 0], "explodeOrder": 5 },
@@ -424,8 +389,6 @@
     { "id": "main-pm-carrier", "cls": "POWER", "from": { "instance": "power-module", "pin": "5V_OUT" }, "to": { "instance": "carrier", "pin": "5V_IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[25, -14, 0], [15, -11, -2], [7, -7, -3], [0, -5, -4]] },
     { "id": "main-carrier-display", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_BUS" }, "to": { "instance": "display", "pin": "5V_IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[0, -5, -4], [1, -2, -9], [0, 0, -11.5]] },
     { "id": "main-batt-gnd", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT-" }, "to": { "instance": "carrier", "pin": "GND_BUS" }, "gauge": "20AWG", "color": "black", "waypointsMm": [[-30, 0, -9.5], [-15, -3, -4], [0, -5, -4]] },
-
-    { "id": "flash-power", "cls": "FLASH", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "flash", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [4, 10, -3], [3, 21, -2], [1, 25, 5], [0, 27, 11.5]] },
 
     { "id": "btn-shutter", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_SHUTTER" }, "to": { "instance": "carrier", "pin": "SW1" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [2, -3, -9], [0, -5, -4]] },
     { "id": "btn-fn", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_FN" }, "to": { "instance": "carrier", "pin": "SW2" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [3, -4, -9], [0, -5, -4]] }

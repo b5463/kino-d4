@@ -2,7 +2,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { ASSET_CACHE_CONTROL, deliverAsset, wantsDownload } from '../captures/delivery';
 import { fail } from './errors';
-import { guestReadRateLimit } from '../plugins/rateLimits';
+import { assetContentRateLimit } from '../plugins/rateLimits';
 
 /**
  * `GET /api/assets/:assetId/content` — the only way bytes leave the platform.
@@ -25,7 +25,11 @@ function paramOf(request: FastifyRequest, name: string): string {
 }
 
 export const assetRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/assets/:assetId/content', { config: guestReadRateLimit }, async (request, reply) => {
+  // Media has its own bucket, an order of magnitude above the JSON reads: one
+  // gallery screen is a handful of API calls and a tile per capture, so a shared
+  // limit let image traffic ration the reads that decide what to draw. See
+  // `RATE_LIMITS.assetContent`.
+  app.get('/api/assets/:assetId/content', { config: assetContentRateLimit }, async (request, reply) => {
     const delivered = await deliverAsset(
       {
         db: app.db,

@@ -94,7 +94,9 @@ export function CaptureDetail({
   shareUrl,
 }: CaptureDetailProps) {
   const [capture, setCapture] = useState(initialCapture);
-  const [sharing, setSharing] = useState('');
+  // One status line for everything this page reports back — a copied link, a
+  // failed share, a render the platform refused.
+  const [status, setStatus] = useState('');
   const [reacting, setReacting] = useState(false);
   const [saving, setSaving] = useState(false);
   // null = the default view (wigglegram when available); a number pins one D4 frame.
@@ -103,9 +105,15 @@ export function CaptureDetail({
 
   useEffect(() => setCapture(initialCapture), [initialCapture]);
 
-  const originals = useMemo(() => assetsByRole(capture, 'original-frame'), [capture]);
+  const originals = useMemo(() => assetsByRole(capture, 'original-frame'), [capture.assets]);
   const still = preferredAsset(capture);
-  const originalUrls = originals.map((asset) => api.assetUrl(asset.assetId));
+  // Memoized on the assets, not rebuilt every render: a fresh array is a new
+  // `frames` prop, and the player reads that as a new set of frames — it
+  // restarted the preload and dropped back to the poster on every re-render.
+  const originalUrls = useMemo(
+    () => originals.map((asset) => api.assetUrl(asset.assetId)),
+    [api, originals],
+  );
   const currentShareUrl =
     shareUrl ??
     (typeof window === 'undefined'
@@ -116,14 +124,14 @@ export function CaptureDetail({
     try {
       if (typeof navigator.share === 'function') {
         await navigator.share({ title: roll.title, url: currentShareUrl });
-        setSharing('Shared');
+        setStatus('Shared');
       } else {
         await navigator.clipboard.writeText(currentShareUrl);
-        setSharing('Link copied');
+        setStatus('Link copied');
       }
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === 'AbortError') return;
-      setSharing('Could not share');
+      setStatus('Could not share');
     }
   };
 
@@ -146,14 +154,23 @@ export function CaptureDetail({
   const [requestedRoles, setRequestedRoles] = useState<ReadonlySet<AssetRole>>(new Set());
   const requestRender = async (role: AssetRole): Promise<void> => {
     setRequestedRoles((previous) => new Set(previous).add(role));
+    setStatus('');
     try {
       await api.requestRender(slug, capture.captureId, role);
-    } catch {
+    } catch (caught) {
       setRequestedRoles((previous) => {
         const next = new Set(previous);
         next.delete(role);
         return next;
       });
+      // The row used to revert to its idle label with nothing said, so a
+      // guest saw "Preparing…" flicker back to a hint and had no idea the
+      // request had failed. Say so, in the one status line this page has.
+      setStatus(
+        caught instanceof Error
+          ? `Could not prepare that file: ${caught.message}`
+          : 'Could not prepare that file',
+      );
     }
   };
 
@@ -242,21 +259,27 @@ export function CaptureDetail({
   } else if (capture.mode === 'quad') {
     const columns = Math.ceil(Math.sqrt(capture.frameCount));
     media = (
-      <div
-        aria-label="Quad frames"
-        data-columns={columns}
-        className="photo-quad"
-        style={{ gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))` }}
-      >
-        {originals.map((asset, index) => (
-          <figure key={asset.assetId} className="photo-figure">
-            {assetImage(asset, api, `Camera ${String(index + 1)} frame`)}
-            <figcaption>
-              CAM {String(index + 1)} · {capture.look ?? 'KINO standard'}
-            </figcaption>
-          </figure>
-        ))}
-      </div>
+      <>
+        <div
+          aria-label="Quad frames"
+          data-columns={columns}
+          className="photo-quad"
+          style={{ gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))` }}
+        >
+          {originals.map((asset, index) => (
+            <figure key={asset.assetId} className="photo-figure">
+              {assetImage(asset, api, `Camera ${String(index + 1)} frame`)}
+              <figcaption>CAM {String(index + 1)}</figcaption>
+            </figure>
+          ))}
+        </div>
+        {/* One look, once. `look` is a single value for the whole capture on
+            the guest wire — there are no per-camera recipeIds there — so
+            printing it under all four frames claimed four recipes that do not
+            exist. When the wire carries per-camera recipeIds, the label moves
+            back under each frame and means something. */}
+        <p className="photo-look">{capture.look ?? 'KINO standard'}</p>
+      </>
     );
   } else {
     media = still === undefined ? <p className="photo-processing">Processing…</p> : assetImage(still, api, 'KINO capture');
@@ -352,8 +375,8 @@ export function CaptureDetail({
           </button>
         ) : null}
       </div>
-      {sharing === '' ? null : (
-        <p className="k-status" role="status" aria-live="polite" aria-atomic="true">{sharing}</p>
+      {status === '' ? null : (
+        <p className="k-status" role="status" aria-live="polite" aria-atomic="true">{status}</p>
       )}
 
       {/* One save action, one plain list. The crop ratios used to sit in a

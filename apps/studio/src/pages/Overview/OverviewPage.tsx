@@ -84,7 +84,9 @@ export function OverviewPage() {
     else if (cam.state === 'error') issues.push(`CAM ${cam.id.slice(-1)} ERROR`);
   }
   if (storage && !storage.present) issues.push('NO SD CARD');
-  if (power && power.batteryPct <= 15 && !power.charging) issues.push('LOW BATTERY');
+  // Only a measured charge can be low: a body with no gauge reports null, and
+  // reading that as 0 put LOW BATTERY on the ready bar of every D4-V1.
+  if (power && power.batteryPct !== null && power.batteryPct <= 15 && !power.charging) issues.push('LOW BATTERY');
   const severity = issues.some((i) => i.includes('OFFLINE') || i.includes('NO SD')) ? 'err' : issues.length > 0 ? 'warn' : 'ok';
 
   const supply = supplyRows({ storage, power, capabilities, network, roll, hasNetwork, hasRoll });

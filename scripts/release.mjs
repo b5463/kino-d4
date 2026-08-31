@@ -13,6 +13,9 @@
 // was dirty. A release built from a dirty tree is still emitted (the bundle
 // is useful for testing) but it says so, in the manifest and on stdout,
 // because a dirty release cannot be rebuilt from its own recorded commit.
+//
+// `--out` is destructive: the target directory is deleted before the bundle is
+// written. It is validated before anything is removed — see assertOutIsSafe.
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
@@ -63,6 +66,55 @@ async function exists(file) {
   } catch {
     return false;
   }
+}
+
+// What a bundle this script wrote looks like from the outside. `studio/` and
+// `firmware/` are the payload directories; the two files are what makes a
+// directory recognisable as a previous run rather than something of yours.
+const BUNDLE_ENTRIES = new Set(['release.json', 'SHA256SUMS', 'studio', 'firmware']);
+
+/**
+ * `--out` ends in `rm -rf`, so it is checked before anything is deleted.
+ *
+ * Two separate failures, both reachable by a plausible typo:
+ *
+ *   --out .       resolves to the repository root
+ *   --out ..      resolves above it
+ *   --out /tmp/x  or C:\… — outside the tree entirely
+ *
+ * and, having survived that, a directory that holds something other than a
+ * bundle this script wrote: `--out docs` would delete the documentation.
+ * Refusing costs one flag; the alternative is unrecoverable.
+ */
+async function assertOutIsSafe() {
+  const relative = path.relative(ROOT, OUT);
+  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(
+      `[release] refusing --out ${OUT}\n` +
+        '  the release directory must be inside the repository and must not be the repository root.\n' +
+        '  default: dist/release',
+    );
+  }
+  if (!(await exists(OUT))) return;
+  const entries = await readdir(OUT);
+  const foreign = entries.filter((entry) => !BUNDLE_ENTRIES.has(entry));
+  const isPriorBundle = entries.includes('release.json') && entries.includes('SHA256SUMS');
+  if (foreign.length > 0 || (entries.length > 0 && !isPriorBundle)) {
+    throw new Error(
+      `[release] refusing to delete ${OUT}\n` +
+        `  it is not a release bundle this script wrote: ${(foreign.length > 0 ? foreign : entries).slice(0, 8).join(', ')}\n` +
+        '  a bundle directory contains release.json and SHA256SUMS and nothing else.\n' +
+        '  delete it yourself, or point --out at a new directory.',
+    );
+  }
+}
+
+// ---- the destination, checked before the build and long before the rm below
+try {
+  await assertOutIsSafe();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
 }
 
 // ---- gates: a release must not be cut from a tree that fails its own checks

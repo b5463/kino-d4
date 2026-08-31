@@ -134,20 +134,63 @@ static long clamp_num(const cJSON *n, double lo, double hi, long dflt) {
 
 // ---- send helpers ----
 
-/* Requests and responses: the host asked, so this waits for the wire. */
-static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *payload,
-                     uint32_t len) {
-  xSemaphoreTake(s_tx_lock, portMAX_DELAY);
-  size_t total = kdp_encode_frame(s_tx, KDP_MAX_FRAME, KDP_PROTOCOL_VERSION, type, flags,
-                                  seq, payload, len);
-  if (total > 0) usb_link_write(s_tx, total);
-  xSemaphoreGive(s_tx_lock);
-}
+/*
+ * Every wait on this path is bounded, and that is the whole fix.
+ *
+ * RESPONSE_WRITE_TIMEOUT_MS is a response's budget on the wire. It used to be
+ * portMAX_DELAY: a host that opened the port and stopped reading parked the KDP
+ * task inside usb_link_write() forever, holding s_tx_lock, and the log drain
+ * task then blocked in xSemaphoreTake(portMAX_DELAY) - so the event path's
+ * 250 ms deadline, which exists precisely so nothing waits on a dead host,
+ * could not be reached. Both tasks wedged until the cable moved.
+ *
+ * 1500 ms, not 250: a response is what the host asked for and is worth waiting
+ * for. The USB-Serial-JTAG TX ring is 4096 bytes and a reply is now up to
+ * 16 KiB in 1024-byte slices, so a host reading slowly - a debugger stepping,
+ * a busy event loop - must not lose its reply to an impatient deadline. A host
+ * that has taken nothing for a second and a half is not reading.
+ *
+ * TX_LOCK_TIMEOUT_MS is the wait for the lock itself, and it is longer than one
+ * write can take so that a queued sender fails only when the holder is itself
+ * failing. A response charges either give-up to s_tx_dropped; an event's
+ * give-ups are counted once, by send_event(), in s_log_dropped.
+ */
+#define RESPONSE_WRITE_TIMEOUT_MS 1500
+#define TX_LOCK_TIMEOUT_MS 2000
 
 /* How long an event may hold the TX lock. Long enough that a host between
  * two reads never loses one, short enough that server_task's next response
  * waits a quarter second rather than until a cable is plugged back in. */
 #define EVENT_WRITE_TIMEOUT_MS 250
+
+/* RESPONSES this device could not put on the wire: the lock was held past
+ * TX_LOCK_TIMEOUT_MS, or the host did not take the whole frame in time.
+ * Responses only - an event that fails either way is send_event()'s to count,
+ * in s_log_dropped. Reported beside it (GET_RUNTIME_STATS, droppedTxFrames)
+ * because the two answer different questions and must not overlap: a dropped
+ * log event costs a line in Studio's console, a dropped response is a command
+ * the host will report as a timeout. */
+static _Atomic uint32_t s_tx_dropped;
+
+/* Requests and responses: the host asked, so this waits for the wire - but
+ * with a deadline. A short write leaves a partial frame the host's decoder
+ * resyncs past on the next KI magic (usb_link.h), which the host sees as the
+ * command timing out. That is the same outcome as before for the host, and
+ * unlike before it does not take the rest of the server with it. */
+static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *payload,
+                     uint32_t len) {
+  if (xSemaphoreTake(s_tx_lock, pdMS_TO_TICKS(TX_LOCK_TIMEOUT_MS)) != pdTRUE) {
+    atomic_fetch_add(&s_tx_dropped, 1);
+    return;
+  }
+  size_t total = kdp_encode_frame(s_tx, KDP_MAX_FRAME, KDP_PROTOCOL_VERSION, type, flags,
+                                  seq, payload, len);
+  if (total > 0 &&
+      usb_link_write_timeout(s_tx, total, RESPONSE_WRITE_TIMEOUT_MS) != (int)total) {
+    atomic_fetch_add(&s_tx_dropped, 1);
+  }
+  xSemaphoreGive(s_tx_lock);
+}
 
 /**
  * One event frame, with a deadline. Returns false when the host did not take
@@ -161,7 +204,17 @@ static void send_raw(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *p
  * whole server behind an event nobody was reading.
  */
 static bool send_raw_event(uint8_t evt, uint32_t seq, const uint8_t *payload, uint32_t len) {
-  xSemaphoreTake(s_tx_lock, portMAX_DELAY);
+  /* Bounded here too. The deadline on the write is no use while the wait for
+   * the lock is unbounded: a response ahead of this one owns the lock for up to
+   * RESPONSE_WRITE_TIMEOUT_MS, and an event that queues behind it forever is
+   * the drain task stalled again, one level up. */
+  if (xSemaphoreTake(s_tx_lock, pdMS_TO_TICKS(TX_LOCK_TIMEOUT_MS)) != pdTRUE) {
+    /* Not charged to s_tx_dropped: send_event() counts every false return in
+     * s_log_dropped, and charging both would make droppedTxFrames overlap the
+     * counter it exists to be distinguished from. s_tx_dropped is responses
+     * only. */
+    return false;
+  }
   const size_t total = kdp_encode_frame(s_tx, KDP_MAX_FRAME, KDP_PROTOCOL_VERSION, evt,
                                         KDP_FLAG_EVENT, seq, payload, len);
   bool sent = false;
@@ -1839,8 +1892,16 @@ static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
  * reply. The event write is therefore bounded at EVENT_WRITE_TIMEOUT_MS
  * (send_raw_event above) and a short write drops the event into the same
  * counter. The cost is a truncated frame on the wire, which the host decoder
- * resyncs past on the next magic; responses keep the unbounded write, because
- * a request that got no answer is the one failure the contract forbids.
+ * resyncs past on the next magic.
+ *
+ * Responses kept the unbounded write for a while longer, on the argument that a
+ * request with no answer is the one failure the contract forbids. That argument
+ * was wrong by one step: an unbounded response write holds s_tx_lock, and the
+ * drain task's 250 ms deadline is unreachable behind a lock taken with
+ * portMAX_DELAY - so one host that stopped reading stalled both tasks anyway,
+ * and the unanswered request happened regardless. Responses are now bounded at
+ * RESPONSE_WRITE_TIMEOUT_MS with the lock bounded at TX_LOCK_TIMEOUT_MS, six
+ * times the event budget, so a slow-but-real host still gets its reply.
  */
 typedef struct {
   int64_t t_ms;
@@ -1952,6 +2013,13 @@ static void handle_runtime_stats(uint32_t seq) {
    * and the request path not stalling behind it. */
   cJSON_AddNumberToObject(protocol, "droppedLogEvents",
                           (double)atomic_load(&s_log_dropped));
+  /* Frames that never reached the wire: the TX lock was held past
+   * TX_LOCK_TIMEOUT_MS, or the host did not take a whole frame inside its
+   * write deadline. Responses count here, so nonzero means a host somewhere
+   * saw a command time out - which is why it is not folded into
+   * droppedLogEvents above. */
+  cJSON_AddNumberToObject(protocol, "droppedTxFrames",
+                          (double)atomic_load(&s_tx_dropped));
 
   /*
    * Per-task stack headroom, additive and optional.

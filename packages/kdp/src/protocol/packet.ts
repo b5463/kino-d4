@@ -13,6 +13,7 @@
 // read equals one frame, resynchronizes on the magic after corruption, and
 // caps payload length so a garbled length field cannot stall the stream.
 
+import { FrameFlags } from './commands';
 import { crc32 } from './crc32';
 
 export const MAGIC0 = 0x4b; // 'K'
@@ -42,6 +43,11 @@ export interface Frame {
   payload: Uint8Array;
 }
 
+/** True for an integer that fits one header byte. */
+function isByte(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= 255;
+}
+
 export function encodeFrame(frame: Frame): Uint8Array {
   const len = frame.payload.length;
   // A frame past MAX_PAYLOAD is undecodable on the other end — the decoder
@@ -49,6 +55,32 @@ export function encodeFrame(frame: Frame): Uint8Array {
   // Failing loud turns a protocol-invariant bug into a stack trace.
   if (len > MAX_PAYLOAD) {
     throw new Error(`KDP payload ${len} B exceeds MAX_PAYLOAD ${MAX_PAYLOAD}`);
+  }
+  // Same reasoning as the length guard, applied to the rest of the header.
+  //
+  // `seq` 0 is the events' sentinel, and legal on an EVENT frame only — the
+  // reference device writes 0 there and the client ignores the field. On
+  // anything else it is a bug with no symptom: the peer dispatches the frame
+  // to its event path, no response is ever routed back, and the caller sees a
+  // bare timeout. Anything past MAX_SEQ is silently truncated by `setUint32`,
+  // so a caller that overflowed its own counter would ship a frame carrying a
+  // sequence it is not waiting on.
+  const isEvent = (frame.flags & FrameFlags.EVENT) !== 0;
+  if (!Number.isInteger(frame.seq) || frame.seq < 0 || frame.seq > MAX_SEQ) {
+    throw new Error(`KDP sequence ${frame.seq} outside 0..${MAX_SEQ}`);
+  }
+  if (frame.seq === 0 && !isEvent) {
+    throw new Error("KDP sequence 0 is the events' sentinel; a request or response must use 1..MAX_SEQ");
+  }
+  // version/type/flags each occupy one byte. `Uint8Array` assignment wraps
+  // mod 256 without complaint, so 0x101 would encode as type 0x01 — a frame
+  // the peer dispatches to the wrong handler rather than rejecting.
+  for (const [name, value] of [
+    ['version', frame.version],
+    ['type', frame.type],
+    ['flags', frame.flags],
+  ] as const) {
+    if (!isByte(value)) throw new Error(`KDP ${name} ${value} outside 0..255`);
   }
   const buf = new Uint8Array(HEADER_LEN + len + CRC_LEN);
   const view = new DataView(buf.buffer);
@@ -97,6 +129,14 @@ export class FrameDecoder {
 
     const frames: Frame[] = [];
     let offset = 0;
+    /**
+     * Set when this pass has already counted a resync for a frame it threw
+     * away — a garbled length, a failed CRC. The magic scan below counts a
+     * resync when a later magic proves bytes were skipped, which for a
+     * discarded frame is the same event seen twice: one bad frame would report
+     * two resyncs, and kdp-framing.md says one.
+     */
+    let resyncCounted = false;
 
     while (true) {
       // Scan for magic.
@@ -116,8 +156,9 @@ export class FrameDecoder {
       }
       if (start > offset) {
         this.stats.discardedBytes += start - offset;
-        this.stats.resyncs++;
+        if (!resyncCounted) this.stats.resyncs++;
       }
+      resyncCounted = false;
 
       if (this.buf.length - start < HEADER_LEN) {
         this.buf = this.buf.slice(start);
@@ -131,6 +172,7 @@ export class FrameDecoder {
         // Corrupt length — skip past this magic and rescan.
         this.stats.resyncs++;
         this.stats.discardedBytes += 2;
+        resyncCounted = true;
         offset = start + 2;
         continue;
       }
@@ -151,6 +193,12 @@ export class FrameDecoder {
       if (expected !== actual) {
         this.stats.crcFailures++;
         this.stats.resyncs++;
+        // The two magic bytes are gone from the stream as surely as they are
+        // in the over-length branch, and were not counted — a session could
+        // report crcFailures with discardedBytes still at 0, which reads as
+        // "corruption with nothing lost".
+        this.stats.discardedBytes += 2;
+        resyncCounted = true;
         offset = start + 2; // resync just past the magic
         continue;
       }

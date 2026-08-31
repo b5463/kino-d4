@@ -17,6 +17,13 @@ const absoluteUrl = z
 export const DEV_COOKIE_SECRET = 'kino-dev-cookie-secret-do-not-use-in-production';
 
 /**
+ * The committed dev value for `PROVISIONING_TOKEN`, on exactly the same footing
+ * as `DEV_COOKIE_SECRET`: published here and in `infra/.env.example`, therefore
+ * not a secret, therefore refused outside `DEV_ENVIRONMENTS`.
+ */
+export const DEV_PROVISIONING_TOKEN = 'kino-dev-provisioning-token-do-not-use-in-production';
+
+/**
  * The only `NODE_ENV` values that may run on the published dev cookie secret.
  *
  * Membership is opt-IN, which is the whole point: an unset or unrecognised
@@ -60,6 +67,20 @@ export const configSchema = z.object({
   // cookie carries no secret, only a value a guest must not be able to forge.
   COOKIE_SECRET: z.string().min(16).default(DEV_COOKIE_SECRET),
   /**
+   * The shared secret a factory bench presents to
+   * `POST /api/studio/devices/register` (05 §4). Same treatment as
+   * `COOKIE_SECRET`: a published dev default, refused outside a known dev
+   * environment by the check below, so production must supply a real one.
+   *
+   * A *shared* secret is the deliberate limit of this control. It proves the
+   * caller is a provisioning station, not which station — so it stops the open
+   * internet minting device tokens, and it does not stop a leaked bench secret
+   * from doing so. Per-serial HMAC (the station signs `serial`, the API verifies
+   * against a per-station key) is the follow-up; it needs a station registry,
+   * which V1 has nowhere to put.
+   */
+  PROVISIONING_TOKEN: z.string().min(16).default(DEV_PROVISIONING_TOKEN),
+  /**
    * A permissive string, not an enum: NODE_ENV is set by tooling outside this
    * project (vitest sets `test`), and an unrecognised value must not stop the
    * server booting. Deliberately has **no default** — "unset" has to stay
@@ -90,6 +111,16 @@ const validatedConfigSchema = configSchema.superRefine((config, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['COOKIE_SECRET'],
+      message:
+        'is the published dev default; set a real secret, or set NODE_ENV to development or test',
+    });
+  }
+  // Same direction of test, same reason: a deployment that forgot NODE_ENV must
+  // not be the one that quietly accepts a secret printed in the repository.
+  if (!isDevEnvironment && config.PROVISIONING_TOKEN === DEV_PROVISIONING_TOKEN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['PROVISIONING_TOKEN'],
       message:
         'is the published dev default; set a real secret, or set NODE_ENV to development or test',
     });

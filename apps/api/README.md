@@ -56,11 +56,11 @@ project `kino-dev`, so it never collides with other stacks on the machine.
 `src/config.ts` validates the environment with zod:
 
 `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_FIRMWARE_BUCKET`, `S3_ACCESS_KEY`,
-`S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `COOKIE_SECRET`, `NODE_ENV`,
-`LOG_LEVEL`.
+`S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `COOKIE_SECRET`,
+`PROVISIONING_TOKEN`, `NODE_ENV`, `LOG_LEVEL`.
 
 Every key has a dev default matching the compose file, so **no `.env` is needed
-locally**. Two of them are not about the compose stack:
+locally**. Three of them are not about the compose stack:
 
 - `COOKIE_SECRET` signs the guest PIN session cookie. Its default is a published
   placeholder, and config loading **fails** unless `NODE_ENV` is explicitly
@@ -70,6 +70,16 @@ locally**. Two of them are not about the compose stack:
   Forgetting to set `NODE_ENV` is the likeliest deployment mistake there is, and
   it must not be the one that silently enables a forgeable cookie. Generate a
   real secret with `openssl rand -base64 48`.
+- `PROVISIONING_TOKEN` is the shared secret a factory bench presents to
+  `POST /api/studio/devices/register`, as `Authorization: Bearer <token>`,
+  compared constant-time. Same treatment as `COOKIE_SECRET`, for the same reason:
+  the default is a published placeholder
+  (`kino-dev-provisioning-token-do-not-use-in-production`) and config loading
+  fails unless `NODE_ENV` is provably `development` or `test`. The endpoint mints
+  device tokens, so an unauthenticated one is a way for anyone who can reach the
+  API to fill the platform with cameras nobody built. A *shared* secret proves
+  the caller is a provisioning station, not which one — per-serial HMAC against a
+  station registry is the follow-up, and V1 has no table to hold stations.
 - `NODE_ENV` is a free-form string, not an enum, because the value is set by
   tooling outside this project (vitest sets `test`). It has **no default** on
   purpose: "unset" has to stay distinguishable from "explicitly development" for
@@ -306,8 +316,26 @@ fails the suite instead of shipping.
 ### Device registration — read this before exposing it
 
 `POST /api/studio/devices/register` `{serial, product, hardwareRevision, name?}`
-→ `{deviceId, deviceToken}`, `200`. Unauthenticated, and re-registering an
-existing serial follows `DEVICE_REGISTRATION_MODE`.
+→ `{deviceId, deviceToken}`, `200`. Re-registering an existing serial follows
+`DEVICE_REGISTRATION_MODE`.
+
+**Gated on `PROVISIONING_TOKEN`.** The caller sends
+`Authorization: Bearer <PROVISIONING_TOKEN>`; anything else — a missing header, a
+wrong secret, a non-bearer header — is `401 PROVISIONING_TOKEN_REQUIRED`, refused
+before the body is parsed and with the same answer either way, so the refusal
+does not tell a prober it had the right shape. The comparison is constant-time
+(`timingSafeSecretEqual`, which hashes both sides and reuses the one hex
+comparison in `auth/tokens.ts`).
+
+The endpoint mints a device token, i.e. a credential for the whole upload API, so
+leaving it open meant anyone who could reach the API could create cameras. The
+limitation is stated rather than papered over: one shared secret proves the caller
+is *a* provisioning station and never which one, so a leaked bench secret
+registers devices exactly as the bench does. Per-serial HMAC is the follow-up.
+
+Every client that registers a device therefore has to send the header —
+`apps/studio`, `apps/twin`, the P4 firmware's `roll_client.c`, and the
+`infra/scripts` benches.
 
 Task 36 made the safe behavior environment-sensitive and fail-closed:
 
@@ -316,7 +344,8 @@ Task 36 made the safe behavior environment-sensitive and fail-closed:
 - production and any unset/unrecognized environment default to
   `first-write-wins`, where an existing serial returns
   `409 DEVICE_ALREADY_REGISTERED` and its token hash is untouched; and
-- every mode is limited to 10 registration requests/minute/IP.
+- every mode is limited to 10 registration requests/minute/IP — which still
+  matters with the secret in place, because it bounds a caller that *has* it.
 
 This closes the previous device-takeover primitive: knowing a printed serial can
 no longer rotate the deployed device's token. The controlled physical recovery
@@ -430,12 +459,90 @@ a deployed token; see the registration section above.
 **3. `POST /api/rolls/:slug/pin` — online PIN guessing.** Limited to
 5/minute/IP. scrypt remains defence in depth, not the request budget.
 
-**4. Guest reads and asset/firmware delivery.** Grouped at 300/minute/IP across
-Roll metadata, feeds, details, live events, media, and firmware. This meters the
-existence oracle and bounds anonymous read amplification.
+**4. Guest reads.** 300/minute across Roll metadata, feeds, details, live events
+and firmware. This meters the existence oracle and bounds anonymous read
+amplification.
 
-Device upload mutations are grouped at 60/minute/token. Anonymous
+**5. Media delivery — its own, much larger bucket.**
+`GET /api/assets/:assetId/content` is 3000/minute. It used to share (4)'s 300,
+which had the reads that decide *what to draw* rationed by the image traffic they
+produce: one gallery screen is a handful of API calls and a tile per capture, so a
+household or a venue behind one address hit 429 on its own photographs. Large, not
+unlimited — the route signs a URL or proxies bytes after three joined rows.
+
+Both guest buckets key on the **signed guest cookie id** when the request carries
+one and fall back to the source address otherwise (`guestKey` in
+`plugins/rateLimits.ts`). The cookie is the better key where it exists: it follows
+a phone from Wi-Fi to cellular mid-gallery and stops one visitor spending a shared
+address's whole allowance. It is signed, so it cannot be invented to buy a fresh
+bucket, and the limiter never *mints* one — handing out browser state is
+`ensureGuestId`'s job, not a rate limiter's. (This is why `@fastify/cookie` is
+registered before `rateLimitsPlugin` in `buildServer`: both parse in an
+`onRequest` hook, and hooks run in registration order.)
+
+Device upload mutations are grouped at 60/minute/token, and `POST /api/device/rolls`
+joins them at 60/minute/token — keyed by credential rather than address, because
+four cameras on one venue uplink share an address but not a token. Anonymous
 `POST /api/host/rolls` is limited to 60/minute/IP as a row/storage abuse surface.
+
+`GET /api/device/rolls/current` also caps its result at 50 rolls: the query was
+unbounded and its consumer is a camera touchscreen that shows a handful.
+
+### Revoking a guest link (`access_epoch`)
+
+`POST /api/host/rolls/:rollId/regenerate-slug` rotates the slug **and** bumps
+`rolls.access_epoch` in the same statement (`access_epoch + 1`, computed in SQL so
+two concurrent regenerations produce two increments).
+
+The column exists because rotating the slug alone revokes only the front door.
+`GET /api/assets/:assetId/content` is addressed by asset id and derives the roll
+from the asset, so without it every id a leaked link had already handed out would
+keep serving bytes from a roll the host had just taken back.
+
+`guestRollAccess` — the slug gate — hands a guest a signed, httpOnly cookie
+`kino_roll_<rollId>` stamped with the current epoch, on path `/` because the asset
+route lives outside the slug space. `deliverAsset` requires the current stamp.
+Same mechanism as the PIN cookie, pointed at a different fact.
+
+**Enforced only once a roll has actually been revoked**, and the gap is stated
+rather than hidden. `access_epoch = 0` — the host has never regenerated — answers
+exactly as it did before, so a leaked asset id is still readable by whoever holds
+it. Requiring the stamp unconditionally would blank the gallery for any deployment
+whose web app and API are not the same site: a cross-site `<img src>` sends no
+`SameSite=Lax` cookie, which is every dev bench (roll-web on its own localhost
+port). Production behind Caddy is same-site and carries the stamp. Closing the
+remaining gap means either making the stamp mandatory — which needs same-site
+delivery everywhere — or putting a signed grant in the asset URL itself, which is
+a change to how `roll-web` builds those URLs.
+
+The roll host is exempt from all of it: `hostTokenPresented` short-circuits the
+guest gates, since it is the host's roll and the host who revoked the link.
+
+### Which asset roles a guest may see
+
+`GUEST_VISIBLE_ROLES` in `captures/delivery.ts` is an **allow-list** of the roles
+on the guest surface, and `guestMaySeeRole` is read by two places that must agree:
+the feed, which decides which asset ids a guest is *told* about, and
+`deliverAsset`, which decides which it may *fetch*. One predicate, so the feed
+cannot publish an id that only ever 404s.
+
+`metadata` is the only role off the list, and it is why the list exists.
+`extract-metadata` writes a `metadata.json` asset carrying GPS EXIF, the device
+serial and hardware revision, every original frame's object key and the capture's
+provenance — and it arrived as an ordinary `ready` asset row, so the feed named its
+id to guests and delivery signed a URL for it. A guest asking for one now gets
+`404 ASSET_NOT_FOUND`, the same answer as an id that was never real; the roll's
+host token fetches it.
+
+Note the polarity, which is the opposite of `NEVER_GATED_ROLES` ten lines above it
+in the same file, deliberately. That list answers "may this be *downloaded* when
+the host said no?", where forgetting a role costs a file saved that should not have
+been. This one answers "may a stranger with a link *see* this at all?", where
+forgetting a non-pixel role publishes it to the internet the day a worker first
+writes one. A guest role missing from the list is invisible in the gallery — a bug
+a tester finds in a minute. `guest-feed.test.ts` enumerates every role in
+`ASSET_ROLES` against the predicate, so a role added to the schema with no decision
+made about it fails there.
 
 ### States (03 §22)
 
@@ -551,6 +658,33 @@ object is deleted (it was never accepted), the session is marked `failed`, the
 asset stays `pending`, and the device gets `422 CHECKSUM_MISMATCH` and starts
 again from init.
 
+### Size is enforced in three places (`MAX_ASSET_BYTES`)
+
+There was no ceiling at all: `bytes` at init was merely `positive()`, and nothing
+ever compared it to what arrived — so a session could accept parts up to
+`MAX_PART_NUMBER × PART_SIZE`, roughly 48 GiB, per asset, per capture.
+
+- **init** refuses a declaration above `MAX_ASSET_BYTES` (32 MiB) with
+  `400 INVALID_BODY`. A D4 original is ~2 MB and the largest derivative anything
+  produces is a recap MP4 of a few tens of MB, so this is an order of magnitude of
+  headroom over the biggest real asset.
+- **each part** is refused with `413 UPLOAD_TOO_LARGE` if the parts already filed
+  plus this body exceed `bytes_expected`. Checked *before* the `UploadPart`, so
+  the refusal has not already paid for the bytes, and a **resent** part replaces
+  its own row rather than adding to the total — otherwise the ordinary retry this
+  pipeline exists to survive would be refused as oversized.
+- **complete** compares the stored object's length to `bytes_expected` and answers
+  `422 SIZE_MISMATCH`, with the same disposal as a checksum failure. This is the
+  case where a device declares two megabytes, stores thirty, and declares the
+  digest of what it actually sent — content that verifies at a length nothing
+  authorized.
+
+Capture provenance is capped too: the passthrough remainder of `kino.capture` is
+unvalidated client input landing verbatim in a jsonb column, so anything over
+8 KiB of JSON is dropped whole and replaced with `{extraDropped: {bytes, limit}}`.
+Dropped whole rather than trimmed key by key — a half-kept provenance block is a
+record that looks complete and is not.
+
 ### Object keys (05 §6) and the immutability guard (01 §7)
 
 `src/uploads/objectKeys.ts` is the only place keys are built:
@@ -637,7 +771,13 @@ be retried, so the outcome is not decided.
 - An abandoned session leaves an incomplete multipart upload in MinIO until
   something aborts it. `init` aborts the previous one when it restarts a
   session, but a device that simply stops leaves it behind; a bucket lifecycle
-  rule is the real answer.
+  rule is the real answer. **Deferred as audit API-13** and not built here: it is
+  bucket policy rather than application code, so it belongs with the storage
+  configuration in `infra/`.
+- A job whose `queued` row is committed but whose BullMQ entry was never added is
+  never retried, because the row is what makes a second capture-complete a no-op.
+  Reconciling that needs a sweeper over `queued` rows with no live job.
+  **Deferred as audit API-14** and not built here.
 - Two concurrent `init` calls for the same asset both create a multipart upload;
   the loser now answers `409 UPLOAD_IN_PROGRESS` and aborts the upload it had
   just created, so the database stays single-session — but a failed abort still
@@ -949,3 +1089,16 @@ pino via Fastify, structured, one `reqId` per request (05 §17) taken from an
 inbound `x-request-id` or generated as a UUID. Request bodies are never logged:
 the `req` serializer emits an explicit allow-list, and password/secret/token
 keys are censored through pino `redact` on top of that (05 §13).
+
+The **slug** is censored out of the logged URL: `/api/rolls/<slug>/captures` is
+logged as `/api/rolls/[REDACTED]/captures`. A slug is not an identifier, it is the
+guest credential for an unlisted roll (03 §9) — whoever holds one reads the
+gallery — so an access log full of them is an access log full of live links, the
+same class of value as the `Authorization` header this serializer already refuses
+to print. Only that one segment is replaced: the route, the capture id and the
+query survive, because a capture id opens nothing on its own and the path is what
+makes a log line worth keeping.
+
+`PROVISIONING_TOKEN` is listed in `SECRET_KEYS` by its exact name. fast-redact
+matches whole key names, so the generic `token` rule does not cover it — the same
+trap `S3_SECRET_KEY` documents.

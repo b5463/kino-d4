@@ -5,6 +5,7 @@ import {
   CONTACT_SHEET_GUTTER,
   CONTACT_SHEET_QUALITY,
 } from '../images/sizes';
+import { SHARP_INPUT } from '../images/decode';
 import { labelHeight, renderLabel } from '../images/labels';
 import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId } from './capture';
 import { publishDerived } from './derive';
@@ -73,7 +74,7 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
     const left = position * (CONTACT_SHEET_CELL_WIDTH + CONTACT_SHEET_GUTTER);
 
     overlays.push({
-      input: await sharp(source)
+      input: await sharp(source, SHARP_INPUT)
         .rotate()
         // `cover` rather than `contain`: cells must be exactly the same size for
         // the geometry above to be the truth, and a frame that is not 4:3 is
@@ -97,6 +98,7 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
   }
 
   const { data, info } = await sharp({
+    ...SHARP_INPUT,
     create: {
       width,
       height: cellHeight,
@@ -131,7 +133,7 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
 async function cellHeightOf(source: Buffer | undefined): Promise<number> {
   if (source === undefined) throw new Error('contact sheet has no first frame');
 
-  const { width, height, orientation } = await sharp(source).metadata();
+  const { width, height, orientation } = await sharp(source, SHARP_INPUT).metadata();
   if (width === undefined || height === undefined || width <= 0 || height <= 0) {
     throw new Error('contact sheet frame has no readable dimensions');
   }

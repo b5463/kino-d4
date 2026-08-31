@@ -6,7 +6,7 @@ import { buildServer } from '../src/server';
 import { loadConfig } from '../src/config';
 import { hashToken, newToken } from '../src/auth/tokens';
 import { hashPin, verifyPin } from '../src/auth/pins';
-import { DEV_COOKIE_SECRET } from '../src/config';
+import { DEV_COOKIE_SECRET, DEV_PROVISIONING_TOKEN } from '../src/config';
 import * as schema from '../src/db/schema';
 
 /**
@@ -59,10 +59,16 @@ interface RegisterResponse {
   deviceToken: string;
 }
 
+/** The provisioning secret the register route is gated on, off the server's own config. */
+const provisioning = (instance: FastifyInstance): Record<string, string> => ({
+  authorization: `Bearer ${instance.config.PROVISIONING_TOKEN}`,
+});
+
 async function register(body: Record<string, unknown>): Promise<RegisterResponse> {
   const res = await app.inject({
     method: 'POST',
     url: '/api/studio/devices/register',
+    headers: provisioning(app),
     payload: body,
   });
   expect(res.statusCode).toBe(200);
@@ -246,11 +252,48 @@ describe('POST /api/studio/devices/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/studio/devices/register',
+      headers: provisioning(app),
       payload: { serial: SERIAL_A },
     });
 
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ code: 'INVALID_BODY' });
+  });
+
+  /**
+   * The endpoint mints a device token, i.e. a credential for the whole upload
+   * API, so reaching it has to cost something. It costs the provisioning secret.
+   *
+   * The same 401 for a missing header and for a wrong secret, deliberately: a
+   * different answer for "no credential" and "not that credential" would tell a
+   * prober it had found the right shape and only the wrong value.
+   */
+  it('refuses a caller with no provisioning secret, and one with the wrong secret', async () => {
+    const body = { serial: `${SERIAL_A}-GATED`, product: 'KINO D4', hardwareRevision: 'v1' };
+
+    for (const headers of [
+      undefined,
+      { authorization: 'Bearer not-the-provisioning-secret' },
+      { authorization: `Bearer ${app.config.PROVISIONING_TOKEN}x` },
+      // Not a bearer at all.
+      { authorization: app.config.PROVISIONING_TOKEN },
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/studio/devices/register',
+        ...(headers === undefined ? {} : { headers }),
+        payload: body,
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toMatchObject({ code: 'PROVISIONING_TOKEN_REQUIRED' });
+    }
+
+    // Refused before the body is even parsed, so nothing was written.
+    const [row] = await app.db
+      .select({ id: schema.devices.id })
+      .from(schema.devices)
+      .where(eq(schema.devices.serial, body.serial));
+    expect(row).toBeUndefined();
   });
 
   it('prevents an existing serial from being taken over in production mode', async () => {
@@ -263,6 +306,7 @@ describe('POST /api/studio/devices/register', () => {
       const first = await protectedApp.inject({
         method: 'POST',
         url: '/api/studio/devices/register',
+        headers: provisioning(protectedApp),
         payload: { serial: SERIAL_PROTECTED, product: 'KINO D4', hardwareRevision: 'v1' },
       });
       expect(first.statusCode).toBe(200);
@@ -271,6 +315,7 @@ describe('POST /api/studio/devices/register', () => {
       const takeover = await protectedApp.inject({
         method: 'POST',
         url: '/api/studio/devices/register',
+        headers: provisioning(protectedApp),
         payload: { serial: SERIAL_PROTECTED, product: 'KINO D4', hardwareRevision: 'v1' },
       });
       expect(takeover.statusCode).toBe(409);
@@ -509,9 +554,33 @@ describe('fail-closed hardening', () => {
     expect(loadConfig({ NODE_ENV: 'test' }).COOKIE_SECRET).toBe(DEV_COOKIE_SECRET);
   });
 
-  it('accepts any environment once a real secret is supplied', () => {
-    const config = loadConfig({ NODE_ENV: 'production', COOKIE_SECRET: REAL_SECRET });
+  it('accepts any environment once real secrets are supplied', () => {
+    const config = loadConfig({
+      NODE_ENV: 'production',
+      COOKIE_SECRET: REAL_SECRET,
+      PROVISIONING_TOKEN: REAL_SECRET,
+    });
     expect(config.COOKIE_SECRET).toBe(REAL_SECRET);
+    expect(config.PROVISIONING_TOKEN).toBe(REAL_SECRET);
+  });
+
+  /**
+   * `PROVISIONING_TOKEN` gates the one endpoint that mints device credentials,
+   * so it gets the cookie secret's treatment exactly: the published default is
+   * refused unless the environment is *provably* development, which means an
+   * unset or unfamiliar NODE_ENV refuses to boot rather than accepting a secret
+   * anybody with a checkout can read.
+   */
+  it('refuses the published dev provisioning token outside development and test', () => {
+    for (const env of [{}, { NODE_ENV: 'production' }, { NODE_ENV: 'staging' }]) {
+      expect(() => loadConfig({ ...env, COOKIE_SECRET: REAL_SECRET })).toThrow(
+        /PROVISIONING_TOKEN/,
+      );
+    }
+    expect(loadConfig({ NODE_ENV: 'development' }).PROVISIONING_TOKEN).toBe(
+      DEV_PROVISIONING_TOKEN,
+    );
+    expect(loadConfig({ NODE_ENV: 'test' }).PROVISIONING_TOKEN).toBe(DEV_PROVISIONING_TOKEN);
   });
 
   it('names the offending variable without printing any secret value', () => {
@@ -529,6 +598,7 @@ describe('fail-closed hardening', () => {
         ...process.env,
         NODE_ENV: 'production',
         COOKIE_SECRET: REAL_SECRET,
+        PROVISIONING_TOKEN: REAL_SECRET,
         LOG_LEVEL: 'silent',
       }),
     );
@@ -552,13 +622,16 @@ describe('fail-closed hardening', () => {
         expect(res.statusCode).toBe(404);
       }
 
-      // The gate is selective, not a kill switch: real routes still answer.
+      // The gate is selective, not a kill switch: the real route is still
+      // mounted and answers its own refusal — 401 for a call with no
+      // provisioning secret, which is a route talking, not a route missing.
       const register = await probe.inject({
         method: 'POST',
         url: '/api/studio/devices/register',
         payload: {},
       });
-      expect(register.statusCode).toBe(400);
+      expect(register.statusCode).toBe(401);
+      expect(register.json()).toMatchObject({ code: 'PROVISIONING_TOKEN_REQUIRED' });
     } finally {
       await probe.close().catch(() => {});
     }

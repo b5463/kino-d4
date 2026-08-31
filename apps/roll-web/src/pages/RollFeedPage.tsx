@@ -76,7 +76,8 @@ function FrameMark({ frames }: { frames: number }) {
   );
 }
 
-function CaptureTile({
+/** Exported for the tile-level tests; the page is the only caller. */
+export function CaptureTile({
   slug,
   capture,
   index,
@@ -93,12 +94,26 @@ function CaptureTile({
 }) {
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
   const animated = assetOf(capture, ['wiggle-webp', 'wiggle-preview']);
-  const originals = capture.assets
-    .filter((asset) => asset.role === 'original-frame')
-    .map((asset) => rollApi.assetUrl(asset.assetId));
+  // Memoized on `capture.assets`, not rebuilt per render: a new array every
+  // scroll re-render is a new `frames` prop, and the player treats that as a
+  // new set of frames — every wigglegram on screen snapped back to its poster.
+  const originals = useMemo(
+    () =>
+      capture.assets
+        .filter((asset) => asset.role === 'original-frame')
+        .map((asset) => rollApi.assetUrl(asset.assetId)),
+    [capture.assets],
+  );
+  // The baked animation wins in the feed whenever it exists: it is one request
+  // of a few tens of kB, where the live player is four full-resolution
+  // originals per tile — four requests times every tile on screen, on party
+  // Wi-Fi. The live player is the fallback until the worker has baked one, and
+  // stays the default on the capture page, where the guest asked for that one
+  // photograph.
+  //
   // Playback is not a download. This used to require `downloadsEnabled`, so a
   // host turning saves off silently froze every photograph in the roll.
-  const movable = capture.mode === 'wiggle' && originals.length >= 2;
+  const movable = capture.mode === 'wiggle' && animated === undefined && originals.length >= 2;
 
   let media;
   if (movable) {
@@ -135,8 +150,11 @@ function CaptureTile({
         <span className="k-idx">
           <FrameMark frames={capture.frameCount} />
           <span className="k-no">{index}</span>
-          {/* Motion off: the range is spelled out, since the bars cannot move. */}
-          {capture.frameCount >= 2 && !movable ? <span className="k-still">1-{capture.frameCount}</span> : null}
+          {/* Motion off: the range is spelled out, since the bars cannot move.
+              A baked animation moves without the player, so it is not still. */}
+          {capture.frameCount >= 2 && !movable && animated === undefined ? (
+            <span className="k-still">1-{capture.frameCount}</span>
+          ) : null}
         </span>
         <button
           type="button"

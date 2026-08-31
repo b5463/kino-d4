@@ -85,7 +85,10 @@ async function driveRung(
     while (!done) {
       try {
         const status = await dev.getPowerStatus();
-        batteryV.push(status.batteryV);
+        // Device-reported only. A body with no gauge sends null (contract
+        // D10); pushing that as a number would put a 0.000 V sample into a
+        // measured curve and read as a collapsed rail.
+        if (status.batteryV !== null) batteryV.push(status.batteryV);
         if (typeof status.busV === 'number') busV.push(status.busV);
       } catch {
         // A refused power read is not this rung's result. Stop polling and

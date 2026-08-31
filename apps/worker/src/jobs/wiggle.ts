@@ -9,6 +9,7 @@ import {
   type LoopMode,
   type WiggleDirection,
 } from '@kino/media';
+import { SHARP_INPUT } from '../images/decode';
 import { captureCalibration } from './calibration';
 import { loadAssets, originalFrames, readObject, type AssetRow, type CaptureRow } from './capture';
 import type { JobCtx } from './types';
@@ -234,7 +235,7 @@ export async function loadWiggleFrames(
     height = await renderHeightOf(sources[0]);
     for (const source of sources) {
       frames.push(
-        await sharp(source)
+        await sharp(source, SHARP_INPUT)
           // EXIF orientation first: a rig that reports a rotation and is ignored
           // renders a sideways wiggle.
           .rotate()
@@ -289,7 +290,7 @@ interface RawFrame {
 }
 
 async function orientedRaw(source: Buffer): Promise<RawFrame> {
-  const { data, info } = await sharp(source)
+  const { data, info } = await sharp(source, SHARP_INPUT)
     .rotate()
     .removeAlpha()
     .raw()
@@ -319,6 +320,7 @@ async function alignFrame(
   let canvas = frame;
   if (move.rotDeg !== 0) {
     const { data, info } = await sharp(frame.data, {
+      ...SHARP_INPUT,
       raw: { width: frame.width, height: frame.height, channels: 3 },
     })
       // The corners this sweeps in are cut off by the overlap crop, whose
@@ -331,6 +333,7 @@ async function alignFrame(
   }
 
   return sharp(canvas.data, {
+    ...SHARP_INPUT,
     raw: { width: canvas.width, height: canvas.height, channels: 3 },
   })
     .extract({
@@ -365,7 +368,7 @@ export function joinPages(frames: WiggleFrames): Buffer {
 async function renderHeightOf(source: Buffer | undefined): Promise<number> {
   if (source === undefined) throw new Error('wiggle has no first frame');
 
-  const { width, height, orientation } = await sharp(source).metadata();
+  const { width, height, orientation } = await sharp(source, SHARP_INPUT).metadata();
   if (width === undefined || height === undefined || width <= 0 || height <= 0) {
     throw new Error('wiggle frame has no readable dimensions');
   }

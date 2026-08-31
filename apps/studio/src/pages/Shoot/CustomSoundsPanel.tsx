@@ -5,7 +5,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Unsupported } from '../../components/Unsupported';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import { getDevice, refreshSounds, refreshConfig } from '../../app/session';
-import { dropSound, readSound, uploadSound } from '../../device/sounds';
+import { dropSound, readSound, uploadSound, SoundUploadCancelled, SoundUploadHandle } from '../../device/sounds';
 import { playWav, prepareSoundFile, soundIdFromName, soundNameFromFile } from '../../utils/soundFx';
 import type { SoundInfo } from '@kino/kdp';
 
@@ -22,6 +22,7 @@ export function CustomSoundsPanel() {
   const [progress, setProgress] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SoundInfo | null>(null);
+  const uploadRef = useRef<SoundUploadHandle | null>(null);
 
   if (!supports(state, 'customSounds')) {
     return (
@@ -38,6 +39,8 @@ export function CustomSoundsPanel() {
     setNotice(null);
     setBusy('upload');
     setProgress(0);
+    const handle = new SoundUploadHandle();
+    uploadRef.current = handle;
     try {
       const dev = getDevice();
       if (!dev) throw new Error('Not connected');
@@ -52,12 +55,23 @@ export function CustomSoundsPanel() {
         { id: soundIdFromName(file.name), name, sizeBytes: prepared.wav.length, durationMs: prepared.durationMs },
         prepared.wav,
         (done, total) => setProgress(Math.round((done / total) * 100)),
+        handle,
       );
       await refreshSounds();
       if (prepared.trimmed) setNotice(`${name}: longer than 2.0 s, end cut off.`);
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : String(err));
+      // A cancel is not a fault. Either way the device session was dropped by
+      // `uploadSound`, so ADD SOUND works again immediately instead of being
+      // answered BUSY until the camera reboots.
+      setNotice(
+        err instanceof SoundUploadCancelled
+          ? 'Upload cancelled — nothing was stored on the KINO.'
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      );
     } finally {
+      uploadRef.current = null;
       setBusy(null);
       setProgress(0);
     }
@@ -97,9 +111,16 @@ export function CustomSoundsPanel() {
     <Panel
       title="CUSTOM SOUNDS"
       actions={
-        <Button size="sm" disabled={busy !== null || full} busy={busy === 'upload'} onClick={() => fileRef.current?.click()}>
-          {busy === 'upload' ? `UPLOADING ${progress}%` : 'ADD SOUND'}
-        </Button>
+        <>
+          {busy === 'upload' ? (
+            <Button size="sm" variant="danger" onClick={() => uploadRef.current?.cancel()}>
+              CANCEL
+            </Button>
+          ) : null}
+          <Button size="sm" disabled={busy !== null || full} busy={busy === 'upload'} onClick={() => fileRef.current?.click()}>
+            {busy === 'upload' ? `UPLOADING ${progress}%` : 'ADD SOUND'}
+          </Button>
+        </>
       }
     >
       {notice ? <p className="notice">{notice}</p> : null}

@@ -17,7 +17,7 @@ import type {
   MediaListResponse,
   StorageStatus,
 } from '@kino/kdp';
-import { MockKinoDevice, FIRMWARE_PROFILES } from '../src/index';
+import { MockKinoDevice, FIRMWARE_PROFILES, PROFILE_FOR_VERSION } from '../src/index';
 import type { MockFrameRequest } from '../src/index';
 
 let transports: MockTransport[] = [];
@@ -236,4 +236,45 @@ describe('firmware install switches the profile (§35/§36)', () => {
     await expect(client2.request(Cmd.GET_RECIPES)).rejects.toThrow(/not implemented in firmware 0\.1\.0/);
     expect(FIRMWARE_PROFILES['d4-m1b'].simulatedFuture).toBe(false);
   }, 20000);
+});
+
+/**
+ * The version→profile map is what makes flashing a real artifact change the
+ * device's behaviour, and it is a plain object keyed by strings: a released
+ * version with no entry silently leaves the Twin on whatever profile it had,
+ * which looks like the flash worked and did nothing.
+ */
+describe('PROFILE_FOR_VERSION', () => {
+  it('resolves every released firmware version to a real profile', () => {
+    const released = [
+      '0.1.0',
+      '0.2.0',
+      '0.3.0',
+      '0.4.0',
+      '0.4.1',
+      '0.4.2',
+      '0.4.3',
+      '0.4.4',
+      '0.4.5',
+      '0.4.6',
+      '0.4.7',
+      '0.4.8',
+      '0.4.9',
+    ];
+    for (const version of released) {
+      const id = PROFILE_FOR_VERSION[version];
+      expect(id, `no profile for firmware ${version}`).toBeDefined();
+      expect(FIRMWARE_PROFILES[id]).toBeDefined();
+      expect(FIRMWARE_PROFILES[id].capabilities).not.toBeNull();
+    }
+    // Each profile states all three Network/Roll flags rather than omitting
+    // one — an absent flag is indistinguishable from a newer camera's unknown
+    // key, and `roll` was missing from the 0.1.0..0.3.0 chain.
+    for (const version of released) {
+      const caps = FIRMWARE_PROFILES[PROFILE_FOR_VERSION[version]].capabilities!;
+      for (const flag of ['network', 'roll', 'rollUpload'] as const) {
+        expect(typeof caps[flag], `${version} does not state ${flag}`).toBe('boolean');
+      }
+    }
+  });
 });

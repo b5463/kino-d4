@@ -4,6 +4,8 @@
 
 import type { KinoDevice } from './KinoDevice';
 import type { CaptureInfo } from '@kino/kdp';
+import { KinoCommandError } from '@kino/kdp';
+import { useDeviceStore } from '../state/deviceStore';
 import { sha256Hex } from '../firmware/hashing';
 
 const CHUNK = 8192;
@@ -81,22 +83,103 @@ export async function downloadCaptureSet(
   return results;
 }
 
+/**
+ * Object URLs for capture thumbnails, keyed by **camera serial and capture
+ * id**.
+ *
+ * The id alone is not unique across cameras: capture ids are per-card
+ * sequences, so swapping the cable from one body to another served camera A's
+ * thumbnails on camera B's grid. The key carries the unit the bytes came from.
+ */
 const thumbCache = new Map<string, string>();
 
-/** Object URL for a capture thumbnail, cached for the session. */
+function thumbKey(id: string): string {
+  return `${useDeviceStore.getState().info?.serial ?? 'unknown'}/${id}`;
+}
+
+/** A thumbnail page. Both firmware and the reference device cap a reply here. */
+const THUMB_PAGE = 8192;
+/** A JPEG thumbnail past this is not a thumbnail; stop rather than stream. */
+const THUMB_MAX = 256 * 1024;
+/**
+ * Budget for the fallback below. A tile is 190 px wide — pulling a
+ * multi-megabyte original over a 921600 baud link to fill one is not a
+ * fallback, it is a stall, so an oversized original is reported instead.
+ */
+const THUMB_FALLBACK_MAX = 512 * 1024;
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof KinoCommandError && err.code === 'NOT_FOUND';
+}
+
+/**
+ * Read one paged byte stream to its end.
+ *
+ * A reply shorter than a full page is the last page — that is the only
+ * end-of-stream marker the read commands have. A zero-length reply ends it
+ * too, so a device that pages exactly to the boundary terminates as well.
+ */
+async function readPaged(
+  read: (offset: number) => Promise<Uint8Array>,
+  max: number,
+  what: string,
+): Promise<Uint8Array> {
+  const pages: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const page = await read(total);
+    if (page.length === 0) break;
+    pages.push(page);
+    total += page.length;
+    if (page.length < THUMB_PAGE) break;
+    if (total >= max) throw new Error(`${what} is larger than ${Math.round(max / 1024)} KB — not read`);
+  }
+  if (pages.length === 1) return pages[0];
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const page of pages) {
+    out.set(page, at);
+    at += page.length;
+  }
+  return out;
+}
+
+/**
+ * Object URL for a capture thumbnail, cached for the session.
+ *
+ * MEDIA_THUMB is paged like MEDIA_READ: the first reply is capped at 8192
+ * bytes, and a single unpaged request returned a truncated JPEG for any
+ * thumbnail larger than that. Captures written before the card carried
+ * thumbnails have none at all, and those fall back to the first original.
+ */
 export async function getThumbUrl(dev: KinoDevice, id: string): Promise<string> {
-  const cached = thumbCache.get(id);
+  const key = thumbKey(id);
+  const cached = thumbCache.get(key);
   if (cached) return cached;
-  const bytes = await dev.mediaThumb(id);
-  const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }));
-  thumbCache.set(id, url);
+  let bytes: Uint8Array;
+  try {
+    bytes = await readPaged((offset) => dev.mediaThumb(id, offset, THUMB_PAGE), THUMB_MAX, `Thumbnail for ${id}`);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    // No thumbnail stored for this capture. The first frame is the same
+    // picture at full size, which is worse but is not nothing.
+    bytes = await readPaged(
+      (offset) => dev.mediaRead(id, 'C1.JPG', offset, THUMB_PAGE),
+      THUMB_FALLBACK_MAX,
+      `No thumbnail for ${id}; C1.JPG`,
+    );
+  }
+  if (bytes.length === 0) throw new Error(`Camera returned no thumbnail bytes for ${id}`);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+  thumbCache.set(key, url);
   return url;
 }
 
 export function dropThumb(id: string) {
-  const url = thumbCache.get(id);
+  const key = thumbKey(id);
+  const url = thumbCache.get(key);
   if (url) URL.revokeObjectURL(url);
-  thumbCache.delete(id);
+  thumbCache.delete(key);
 }
 
 export function clearThumbCache() {

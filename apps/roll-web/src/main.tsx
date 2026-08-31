@@ -23,12 +23,47 @@ createRoot(rootElement).render(
 );
 
 /**
- * `registerSW` with no `onNeedRefresh`/`onOfflineReady` callbacks registers
- * the service worker and updates it silently in the background — it never
- * surfaces a prompt of its own. 03§5 requires install is never prompted
- * automatically; this app does not listen for `beforeinstallprompt` either,
- * so there is nowhere for an automatic prompt to come from. A future task can
- * add an explicit "Install" affordance that calls `event.prompt()` itself,
- * from a `beforeinstallprompt` listener it owns.
+ * The service worker installs a new build in the background, but the page
+ * already open keeps running the old one until every tab of it is gone. A roll
+ * left open on a phone all evening is exactly that tab, so a fix shipped
+ * mid-party never reached the guests who needed it.
+ *
+ * `onNeedRefresh` fires when a new build is installed and waiting. It gets one
+ * line and one button: nothing reloads under a guest's thumb until they say so.
+ * This is not an install prompt — 03§5 forbids prompting install automatically,
+ * and this app registers no `beforeinstallprompt` listener, so there is still
+ * nowhere for one to come from. A future task can add an explicit "Install"
+ * affordance that owns that listener and calls `event.prompt()` itself.
  */
-registerSW({ immediate: true });
+const updateServiceWorker = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    // Plain DOM rather than a React island: this has to work even when the bug
+    // being fixed is in the app tree the new build replaces.
+    if (document.querySelector('.k-update') !== null) return;
+
+    const bar = document.createElement('div');
+    bar.className = 'k-update';
+    bar.setAttribute('role', 'status');
+
+    const line = document.createElement('span');
+    line.textContent = 'A newer version of this page is ready.';
+
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.textContent = 'Reload';
+    reload.addEventListener('click', () => {
+      reload.disabled = true;
+      // `true` tells the waiting worker to take over and reloads the page.
+      void updateServiceWorker(true);
+    });
+
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.textContent = 'Later';
+    dismiss.addEventListener('click', () => bar.remove());
+
+    bar.append(line, reload, dismiss);
+    document.body.append(bar);
+  },
+});

@@ -56,6 +56,12 @@ export interface WireCurve {
  * linearly by position along the run, so the whole harness deforms smoothly
  * with the assembly instead of interior points staying frozen while the
  * endpoints they're routed between move away from them.
+ *
+ * Throws when either endpoint instance is absent from `transforms` — a net
+ * naming an instance the profile no longer carries is bad data, not a curve.
+ * Callers reached from render (the WIRING harness, the sim effects, the
+ * clearance report) must check both endpoints resolve before calling, so one
+ * stale net degrades to one missing wire instead of an error boundary.
  */
 export function wireCurve(net: NetDef, transforms: ReturnType<typeof instanceTransforms>): WireCurve {
   const fromT = transforms.get(net.from.instance);

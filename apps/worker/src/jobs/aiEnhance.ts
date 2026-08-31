@@ -4,6 +4,7 @@ import { wiggleSequence } from '@kino/media';
 import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId, stillSource } from './capture';
 import { publishDerived } from './derive';
 import { WIGGLE_WEBP_QUALITY, WIGGLE_WIDTH, evenPixels, wiggleFpsFor } from './wiggle';
+import { SHARP_INPUT } from '../images/decode';
 import { localSharpProvider } from '../ai/localSharp';
 import { AiPlanError, resolvePlan } from '../ai/presets';
 import { loadAiConfig, resolveAiDecision } from '../ai/provider';
@@ -162,7 +163,7 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
   // the same photograph through two pipelines.
   const still = stillSource(capture, assets);
   const referenceIndex = Math.max(0, stored.findIndex((frame) => frame.objectKey === still.key));
-  const enhancedStill = await sharp(result.frames[referenceIndex] ?? result.frames[0])
+  const enhancedStill = await sharp(result.frames[referenceIndex] ?? result.frames[0], SHARP_INPUT)
     .webp({ quality: WIGGLE_WEBP_QUALITY })
     .toBuffer({ resolveWithObject: true });
 
@@ -180,14 +181,14 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
   // the KINO wiggle uses, so the only difference between the two files is
   // the enhancement itself.
   if (result.frames.length >= 2) {
-    const first = await sharp(result.frames[0]).metadata();
+    const first = await sharp(result.frames[0], SHARP_INPUT).metadata();
     const height = evenPixels(
       Math.round((WIGGLE_WIDTH * (first.height ?? WIGGLE_WIDTH)) / (first.width ?? WIGGLE_WIDTH)),
     );
     const pages: Buffer[] = [];
     for (const frame of result.frames) {
       pages.push(
-        await sharp(frame)
+        await sharp(frame, SHARP_INPUT)
           .resize({ width: WIGGLE_WIDTH, height, fit: 'cover' })
           .removeAlpha()
           .raw()
@@ -200,6 +201,7 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
     const stacked = Buffer.concat(order.map((index) => pages[index]!));
 
     const animated = await sharp(stacked, {
+      ...SHARP_INPUT,
       raw: { width: WIGGLE_WIDTH, height: height * order.length, channels: 3, pageHeight: height },
     })
       .webp({ quality: WIGGLE_WEBP_QUALITY, loop: 0, delay: order.map(() => delayMs) })

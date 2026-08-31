@@ -387,8 +387,17 @@ export class KinoDevice {
     return this.client.request<CaptureInfo>(Cmd.MEDIA_INFO, { id }, 10000);
   }
 
-  mediaThumb(id: string) {
-    return this.client.requestBytes(Cmd.MEDIA_THUMB, { id }, 8000);
+  /**
+   * One page of a stored thumbnail. Omitting `offset`/`length` asks for the
+   * first page, which is what a caller whose thumbnails fit in 8192 bytes
+   * wants; anything larger has to be paged, or the reply arrives truncated.
+   */
+  mediaThumb(id: string, offset?: number, length?: number) {
+    return this.client.requestBytes(
+      Cmd.MEDIA_THUMB,
+      offset === undefined && length === undefined ? { id } : { id, offset: offset ?? 0, length },
+      8000,
+    );
   }
 
   mediaRead(id: string, file: string, offset: number, length: number) {

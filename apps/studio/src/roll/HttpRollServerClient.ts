@@ -13,9 +13,12 @@ export class HttpRollServerClient implements CredentialledRollServerClient {
   readonly baseUrl: string;
   private deviceId: string | null = null;
   private deviceToken: string | null = null;
+  /** Bearer for the one-time register call (issue #146); never sent elsewhere. */
+  private readonly provisioningToken: string | null;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, provisioningToken?: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.provisioningToken = provisioningToken?.trim() ? provisioningToken.trim() : null;
   }
 
   useDeviceCredential(deviceId: string, deviceToken: string): void {
@@ -51,7 +54,15 @@ export class HttpRollServerClient implements CredentialledRollServerClient {
       '/api/studio/devices/register',
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          // Registration is gated behind the server's provisioning secret.
+          // Without one the server answers 401 PROVISIONING_TOKEN_REQUIRED,
+          // which surfaces verbatim in the panel — better than guessing.
+          ...(this.provisioningToken === null
+            ? {}
+            : { authorization: `Bearer ${this.provisioningToken}` }),
+        },
         body: JSON.stringify({ serial, product, hardwareRevision }),
       },
     );

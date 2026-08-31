@@ -40,7 +40,7 @@ function isCamTarget(target: TargetId): target is CamId {
 }
 import { validateDeviceRecipe } from './recipes';
 import { FACTORY_RECIPES } from './factoryRecipes';
-import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
+import { BUILTIN_SHUTTER_SOUNDS, CONFIG_SCHEMA_VERSION, SOUND_NAME_MAX } from '@kino/kdp';
 import type { SoundInfo, GetModesResponse, CameraArmResponse } from '@kino/kdp';
 import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
 import { sha256Hex } from './sha256';
@@ -204,6 +204,13 @@ interface SoundSession {
 
 const MAX_CUSTOM_SOUNDS = 8;
 const MAX_SOUND_KB = 128;
+/**
+ * The id pattern firmware checks (contract D18). Mirrored here rather than
+ * loosened: the id becomes a path under /sdcard/KINO/SOUNDS, and a mock that
+ * accepted `../../x` or a 60-character slug let a host build an upload the
+ * bench rejects at the first byte.
+ */
+const SOUND_ID_RE = /^snd-[a-z0-9-]{1,19}$/;
 
 /** Captures on the card in the demo party, and under the 04 §19 2k scenario. */
 const DEMO_GALLERY_SIZE = 22;
@@ -1394,7 +1401,18 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private sendFrame(frame: Frame) {
     if (!this.sink) return;
-    let bytes = encodeFrame(frame);
+    let bytes: Uint8Array;
+    try {
+      bytes = encodeFrame(frame);
+    } catch {
+      // encodeFrame throws on an unencodable frame — a request that arrived
+      // with seq 0 makes every response to it unencodable too, so the
+      // dispatch error boundary would throw INSIDE its own catch and take
+      // the mock down. An unsendable frame is a dropped frame, not a dead
+      // device; the host sees the same thing real firmware would show it
+      // for garbage input: silence and a resync.
+      return;
+    }
     if (this.scenarios.badCrc && frame.flags & FrameFlags.RESPONSE) {
       bytes = bytes.slice();
       bytes[bytes.length - 3] ^= 0xff; // corrupt CRC in transit
@@ -2025,7 +2043,29 @@ export class MockKinoDevice implements MockDeviceLike {
     this.respond(frame, { p4ResetReason: this.resetReason, items });
   }
 
+  /**
+   * Error boundary around the whole command surface.
+   *
+   * `dispatch` runs inside a `setTimeout`, so a throw here has nowhere to go:
+   * it surfaces as an unhandled exception that takes the mock down mid-session
+   * and leaves every host request after it waiting on a reply that will never
+   * come. A payload that is not JSON was enough to do it — `decodeJson` throws
+   * and nearly every handler calls it first. Real firmware answers
+   * `BAD_REQUEST` to a payload it cannot parse; so does this, and a fuzzing
+   * host now gets a NACK per bad frame instead of one dead device.
+   *
+   * Handlers that continue on a promise carry their own catch (`handleMedia`
+   * is the pattern) — this boundary only covers the synchronous path.
+   */
   private dispatch(frame: Frame) {
+    try {
+      this.dispatchCommand(frame);
+    } catch (err) {
+      this.respondError(frame, 'BAD_REQUEST', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private dispatchCommand(frame: Frame) {
     const cmd = frame.type as Cmd;
 
     // Firmware profile gate (issue #72): a profile pinned to a real firmware
@@ -2281,7 +2321,7 @@ export class MockKinoDevice implements MockDeviceLike {
       }
       case Cmd.GET_CONFIG:
         this.respond(frame, {
-          schemaVersion: 1,
+          schemaVersion: CONFIG_SCHEMA_VERSION,
           device: 'kino-v1',
           configRevision: this.configRevision,
           config: this.config,
@@ -2289,11 +2329,14 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       case Cmd.SET_CONFIG: {
         const env = decodeJson<{ schemaVersion?: number; config?: Partial<KinoConfig> }>(frame.payload);
-        if (env.schemaVersion !== undefined && env.schemaVersion !== 1) {
+        /* Equality, not migration — the envelope enforces nothing else and
+         * ConfigEnvelope says so. Comparing against the exported constant
+         * means a schema bump moves one number instead of three. */
+        if (env.schemaVersion !== undefined && env.schemaVersion !== CONFIG_SCHEMA_VERSION) {
           this.respondError(
             frame,
             'SCHEMA_MISMATCH',
-            `Config schema ${env.schemaVersion} not supported by this firmware (expects 1)`,
+            `Config schema ${env.schemaVersion} not supported by this firmware (expects ${CONFIG_SCHEMA_VERSION})`,
           );
           return;
         }
@@ -3032,14 +3075,19 @@ export class MockKinoDevice implements MockDeviceLike {
           return;
         }
         case Cmd.MEDIA_READ: {
-          const req = decodeJson<{ id: string; file: string; offset: number; length: number }>(frame.payload);
-          const bytes = await this.media.fileBytes(req.id, req.file);
-          if (!bytes) {
-            this.respondError(frame, 'NOT_FOUND', `No file ${req.file} in ${req.id}`);
+          const req = decodeJson<{ id: string; file?: string; offset?: number; length?: number }>(frame.payload);
+          /* `file` is an allow-list on the device (MediaReadRequest), and the
+           * two refusals are different answers: a name that can never exist is
+           * BAD_REQUEST, a name that could but does not is NOT_FOUND. Omitting
+           * it asks for C1.JPG. */
+          const result = await this.media.fileBytes(req.id, req.file);
+          if (!result.ok) {
+            this.respondError(frame, result.code, result.message);
             return;
           }
-          const offset = Math.max(0, req.offset | 0);
-          const length = Math.min(Math.max(1, req.length | 0), 8192);
+          const bytes = result.bytes;
+          const offset = Math.max(0, (req.offset ?? 0) | 0);
+          const length = Math.min(Math.max(1, (req.length ?? 8192) | 0), 8192);
           this.respondBytes(frame, bytes.subarray(offset, Math.min(offset + length, bytes.length)));
           this.emitTelemetry({ t: 'sd', activity: 'read' });
           return;
@@ -3429,6 +3477,22 @@ export class MockKinoDevice implements MockDeviceLike {
           this.respondError(frame, 'BAD_ID', 'Builtin sound ids cannot be overwritten');
           return;
         }
+        /* The id becomes a filename under /sdcard/KINO/SOUNDS, so the pattern
+         * is checked before anything else is done with it — firmware validates
+         * it (D18) and a mock that did not let a host ship an id the bench
+         * refuses. */
+        if (typeof req.id !== 'string' || !SOUND_ID_RE.test(req.id)) {
+          this.respondError(frame, 'BAD_ID', `Sound id must match ${SOUND_ID_RE.source}`);
+          return;
+        }
+        /* Cap the name, do not trim it. A silently shortened name comes back
+         * on the next GET_SOUNDS as a clip the host did not upload, and the
+         * host cannot tell that from a name it got wrong itself. */
+        const soundName = String(req.name ?? req.id);
+        if (soundName.length === 0 || soundName.length > SOUND_NAME_MAX) {
+          this.respondError(frame, 'BAD_NAME', `Sound name must be 1 to ${SOUND_NAME_MAX} characters`);
+          return;
+        }
         if (!req.sizeBytes || req.sizeBytes < 44 || req.sizeBytes > MAX_SOUND_KB * 1024) {
           this.respondError(frame, 'BAD_SIZE', `Sound must be 44 bytes to ${MAX_SOUND_KB} KB`);
           return;
@@ -3441,7 +3505,7 @@ export class MockKinoDevice implements MockDeviceLike {
           id: ++this.soundSessionCounter,
           info: {
             id: req.id,
-            name: String(req.name ?? req.id).slice(0, 32),
+            name: soundName,
             sizeBytes: req.sizeBytes,
             durationMs: Math.max(0, Math.round(req.durationMs ?? 0)),
           },
@@ -3452,6 +3516,20 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       }
       case Cmd.SOUND_CHUNK: {
+        /* Host→device chunks carry an 8-byte header (kdp-framing.md
+         * "Binary payloads"). Checked first, before the session lookup: a
+         * frame too short to hold its own header is malformed whatever the
+         * session state, and reading it makes getUint32 throw a RangeError
+         * inside a setTimeout, where the throw took the whole mock down
+         * instead of NACKing one frame. */
+        if (frame.payload.length < 8) {
+          this.respondError(
+            frame,
+            'BAD_REQUEST',
+            `SOUND_CHUNK needs an 8-byte sessionId/offset header, got ${frame.payload.length}`,
+          );
+          return;
+        }
         const s = this.soundSession;
         if (!s) {
           this.respondError(frame, 'NO_SESSION', 'No sound upload active');

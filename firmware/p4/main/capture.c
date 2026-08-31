@@ -372,15 +372,26 @@ static void do_frame(worker_t *w) {
   f->dispatch_us = dispatch_us;
   f->fire_us = (int32_t)(dispatch_us - s_trigger_us);
   camlink_capture_result_t cap;
-  /* NL_CMD_SENSOR is the single writer of the JPEG quality register once it
-   * has applied one to this camera: a CAPTURE that also carried `quality`
-   * overwrote the look's value with the mode default an instant before the
-   * exposure, and META then recorded the value that had just been clobbered.
-   * Passing 0 makes camlink_capture_ch omit the field entirely, and the
-   * node's handle_capture leaves the sensor alone. Before the first
-   * successful apply (or after a node reset cleared the cache) the CAPTURE
-   * command carries the mode default exactly as it always did. */
-  const int cap_quality = sensor_owns_quality(cam) ? 0 : s_sensor_quality;
+  /*
+   * What this CAPTURE carries as `quality`, and what META will say it was
+   * encoded at. One decision, in pure.c, because the two must not drift.
+   *
+   * NL_CMD_SENSOR owns the register once it has applied a quality to this
+   * camera: a CAPTURE that also carried `quality` overwrote the look's value
+   * with the mode default an instant before the exposure. Passing 0 makes
+   * camlink_capture_ch omit the field entirely and the node's handle_capture
+   * leaves the sensor alone. Before the first successful apply - or after a
+   * node reset, or after the viewfinder wrote the register (see
+   * apply_sensor_settings) - the CAPTURE carries the mode default exactly as
+   * it always did, and then THAT is what the frame was encoded at, so it is
+   * what f->sensor records rather than the standing value it just replaced.
+   */
+  int cap_quality = 0, record_quality = 0;
+  pure_frame_quality(sensor_owns_quality(cam),
+                     f->sensor.has_quality ? f->sensor.quality : 0, s_sensor_quality,
+                     &cap_quality, &record_quality);
+  f->sensor.has_quality = record_quality > 0;
+  f->sensor.quality = record_quality;
   esp_err_t err = camlink_capture_ch(cam, s_resolution, cap_quality,
                                      NODE_CAPTURE_TIMEOUT_MS, &cap);
   /* Release the flash as soon as this node is done exposing, whatever the
@@ -741,6 +752,12 @@ static bool sensor_owns_quality(int cam) {
  * how a reset invalidates the cache. */
 static char s_sensor_session[CAPTURE_CAMS][sizeof(((camlink_info_t *)0)->session)];
 
+/* viewfinder_quality_writes() as it read at this camera's last apply. The
+ * finder writes the same quality register through NL_CMD_CAPTURE on every
+ * preview frame (viewfinder.h), so a change here means the cache below no
+ * longer describes the sensor and the quality has to be sent again. */
+static uint32_t s_vf_quality_writes[CAPTURE_CAMS];
+
 /**
  * Read one config value as a double, reporting whether it was there at all.
  *
@@ -938,7 +955,9 @@ static void sensor_settings_for(int cam, const char *mode, camlink_sensor_t *wan
  * keeps whatever it had, and a photograph with yesterday's exposure beats no
  * photograph. What must NOT happen is META.JSON then claiming the new values -
  * so the frame records s_sensor_state, which only ever holds what a node
- * reported it accepted.
+ * reported it accepted. The one exception is `quality`, which do_frame()
+ * overwrites when its own CAPTURE carries one: that command writes the
+ * register itself, so what it sent is what the frame was encoded at.
  */
 static void apply_sensor_settings(uint32_t ask, capture_report_t *r) {
   for (int i = 0; i < CAPTURE_CAMS; i++) {
@@ -954,6 +973,45 @@ static void apply_sensor_settings(uint32_t ask, capture_report_t *r) {
       memset(&s_sensor_sent[i], 0, sizeof s_sensor_sent[i]);
       memset(&s_sensor_state[i], 0, sizeof s_sensor_state[i]);
       snprintf(s_sensor_session[i], sizeof s_sensor_session[i], "%s", info.session);
+    }
+
+    /*
+     * The viewfinder is the other writer of the quality register, and it wrote
+     * it while this camera was framing the shot.
+     *
+     * Every preview frame is an NL_CMD_CAPTURE carrying the finder's own
+     * quality, which the node applies before it exposes - so after any preview
+     * the sensor holds 30, 45 or 18, not the look's value, while the cache
+     * below still says the look's value was sent. sensor_differs() then found
+     * nothing to send and the photograph came out at preview quality with
+     * META reporting the look's (audit FW-1, contract D19).
+     *
+     * Forgetting only the quality, not the whole cache: aeLevel, gainCeiling,
+     * denoise and sharpness are untouched by a CAPTURE, so re-sending those
+     * would put wire time in the shutter for nothing. The state is cleared too,
+     * because until this apply answers, nothing here knows what the register
+     * holds - and do_frame() records what its own CAPTURE carried.
+     *
+     * Safe to read on the normal path: viewfinder_hold() has already parked
+     * the finder and waited out any pump in flight (capture_fire), so the
+     * count cannot move between this line and the trigger. The exception is
+     * a hold TIMEOUT ("vf hold TIMED OUT ... capturing anyway"): a pump still
+     * inside camlink_capture_ch has already bumped the counter — so this
+     * apply fires and re-sends the look's quality — but that pump's own
+     * CAPTURE can land after the apply and put the preview value back. That
+     * frame is encoded at preview quality while META records the look's: the
+     * FW-1 defect, surviving only behind a node that missed VF_HOLD_MS, and
+     * flagged by the timeout log line when it does.
+     */
+    const uint32_t vf_writes = viewfinder_quality_writes(i);
+    if (vf_writes != s_vf_quality_writes[i]) {
+      s_vf_quality_writes[i] = vf_writes;
+      if (s_sensor_sent[i].has_quality) {
+        klog(cam_tag(i), "preview wrote the quality register; re-sending q%d",
+             s_sensor_sent[i].quality);
+      }
+      s_sensor_sent[i].has_quality = false;
+      s_sensor_state[i].has_quality = false;
     }
 
     camlink_sensor_t want;

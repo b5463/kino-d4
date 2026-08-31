@@ -112,7 +112,14 @@ bool roll_client_ensure_registered(roll_http_out_t *out) {
     return false;
   }
 
-  /* Not authenticated: this is the call that produces the credential. */
+  /* No device token yet: this is the call that produces the credential.
+   * Since issue #146 the server gates this endpoint behind a provisioning
+   * bearer the camera does not hold, so against a gated server this
+   * self-registration answers 401 and the job fails with that status.
+   * The supported path is Studio: it registers the device (carrying the
+   * operator's provisioning token) and writes deviceId/deviceToken into
+   * roll.credentials over KDP; with a stored credential this function
+   * never issues the register call at all. */
   char response[ROLL_HTTP_MAX_RESPONSE];
   const roll_http_req_t req = {
       .method = "POST",

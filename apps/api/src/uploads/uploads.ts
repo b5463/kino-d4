@@ -28,6 +28,26 @@ export const PART_SIZE = 5 * 1024 * 1024;
 /** S3's ceiling. A device that gets here is not uploading a D4 asset. */
 export const MAX_PART_NUMBER = 10_000;
 
+/**
+ * The largest asset the platform accepts: 32 MiB.
+ *
+ * There was no ceiling at all. `bytes` at init was `positive()` and nothing
+ * compared it to what arrived, so a device — or anything holding a device token —
+ * could send parts until the bucket was full: `MAX_PART_NUMBER × PART_SIZE` is
+ * roughly 48 GiB per asset, per capture, and the only limit on captures is the
+ * upload rate limit.
+ *
+ * 32 MiB is chosen against the real article and not against S3's arithmetic. A D4
+ * original frame is ~2 MB and the largest derivative anything produces is a
+ * recap MP4 of a few tens of MB, so this is more than an order of magnitude of
+ * headroom over the biggest real asset while still being a number a bucket can
+ * absorb per capture. It is enforced in three places, which is what makes it a
+ * limit rather than a suggestion: the declaration is refused at init, a part that
+ * would push the running total past what was declared is refused, and a stored
+ * object whose length is not what was declared fails `complete`.
+ */
+export const MAX_ASSET_BYTES = 32 * 1024 * 1024;
+
 /* --------------------------------------------------------- capture status -- */
 
 export type CaptureStatus = (typeof CAPTURE_STATUSES)[number];

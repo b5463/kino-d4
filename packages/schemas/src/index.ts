@@ -1,7 +1,12 @@
 export { defineSchema, parseVersioned, type SchemaDef } from './registry';
 export { SchemaTooNewError, MissingMigrationError } from './errors';
 
-export { deviceInfo, deviceCapabilities, type DeviceInfo, type DeviceCapabilities } from './device';
+export {
+  deviceInfo,
+  deviceCapabilities,
+  type DeviceInfoDoc,
+  type DeviceCapabilities,
+} from './device';
 export { deviceConfig, type DeviceConfig } from './config';
 export {
   capture,

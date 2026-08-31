@@ -343,6 +343,46 @@ describe('07 §14 — capability acceptance', () => {
     expect(supports(state, 'flashControl')).toBe(false);
   });
 
+  /**
+   * A loaded set that omits a KNOWN flag (audit #CN-3). This is not a
+   * hypothetical: the shipped 0.2.0 profile reports no `roll` and no
+   * `recipes`, and the gate used to read both omissions as permission, which
+   * put a live Roll page in front of a body that NACKs the whole family.
+   */
+  it('reads a known flag the device omitted as no, and an unknown one as inert', () => {
+    setDeviceState({
+      capabilities: {
+        cameraCount: 4,
+        wiggle: true,
+        quad: true,
+        gallery: true,
+        flashControl: false,
+        vsyncTelemetry: false,
+        phaseCalibration: false,
+        xiaoProxyUpdate: false,
+        linkBench: false,
+        customSounds: false,
+        // roll, rollUpload, network, recipes and benchDiagnostics: not sent.
+      },
+      capabilitiesState: 'loaded',
+    });
+    const state = useDeviceStore.getState();
+
+    expect(supports(state, 'roll')).toBe(false);
+    expect(supports(state, 'rollUpload')).toBe(false);
+    expect(supports(state, 'network')).toBe(false);
+    expect(supports(state, 'recipes')).toBe(false);
+    expect(supports(state, 'benchDiagnostics')).toBe(false);
+    // What the device did send is still respected, in both directions.
+    expect(supports(state, 'wiggle')).toBe(true);
+    expect(supports(state, 'flashControl')).toBe(false);
+    // The one true-on-absent flag: firmware older than 0.4.9 never answered
+    // the question, and greying the slider would invent a limit (D11/D19).
+    expect(supports(state, 'brightnessControl')).toBe(true);
+    // A name this build has never heard of is not a gate and does not close one.
+    expect(supports(state, 'lidar' as never)).toBe(true);
+  });
+
   it('renders a version-mismatch banner when the camera speaks another protocol', () => {
     const detail = 'Device selected protocol 4; this client speaks 1..1';
     const notice = connectionNotice('error', 'protocol-mismatch', detail);

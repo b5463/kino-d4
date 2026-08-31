@@ -5,7 +5,8 @@ import { SCENARIO_LIST } from '@kino/test-fixtures';
 import type { CamFault, ScenarioKey } from '@kino/test-fixtures';
 import { getTwinRuntime, useSimStore } from '../state/simStore';
 
-const CAM_FAULTS: CamFault[] = [
+/** Exported so the Inspector's per-camera fault control offers the same list. */
+export const CAM_FAULTS: CamFault[] = [
   'offline',
   'power-open',
   'sensor-missing',
@@ -19,6 +20,17 @@ const CAM_FAULTS: CamFault[] = [
   'af-hunt',
 ];
 const BAUDS = [921_600, 1_500_000, 2_000_000, 3_000_000] as const;
+
+/**
+ * Per-camera fault injection — the one place in the app that pokes the
+ * simulator for it, so this panel and the Inspector's own control cannot
+ * drift apart. A null fault clears. Ignored while the sim is off: there is no
+ * device to inject into.
+ */
+export function injectCamFault(cam: CamId, fault: CamFault | null): void {
+  if (!useSimStore.getState().running) return;
+  getTwinRuntime().sim.device.setCamFault(cam, fault);
+}
 
 export function FaultPanel() {
   const running = useSimStore((state) => state.running);
@@ -36,9 +48,6 @@ export function FaultPanel() {
     if (running) device().setScenario(key, value);
   }
 
-  function setCamFault(cam: CamId, fault: CamFault | null) {
-    if (running) device().setCamFault(cam, fault);
-  }
 
   return (
     <section className="twin-tool-panel" aria-label="Fault injection">
@@ -80,7 +89,7 @@ export function FaultPanel() {
               className="twin-select"
               disabled={!running}
               value={snapshot?.cams[cam].fault ?? ''}
-              onChange={(event) => setCamFault(cam, (event.target.value || null) as CamFault | null)}
+              onChange={(event) => injectCamFault(cam, (event.target.value || null) as CamFault | null)}
             >
               <option value="">CLEAR</option>
               {CAM_FAULTS.map((fault) => <option key={fault} value={fault}>{fault.toUpperCase()}</option>)}

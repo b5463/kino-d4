@@ -6,6 +6,7 @@ import { deviceOf, publicRollColumns, rollOf, type PublicRollRow } from '../auth
 import { assertRollAcceptsUploads } from '../rolls/rolls';
 import { assertNotOriginalOverwrite } from '../uploads/objectKeys';
 import {
+  MAX_ASSET_BYTES,
   MAX_PART_NUMBER,
   PART_SIZE,
   assetObjectKey,
@@ -56,6 +57,21 @@ const CAPTURE_TYPED_KEYS = new Set([
   'assets',
 ]);
 
+/**
+ * How much of the passthrough remainder is kept: 8 KiB of JSON.
+ *
+ * The remainder is *unvalidated client input* — `kino.capture` is passthrough by
+ * design, so whatever the firmware sends beyond the typed surface lands in a
+ * jsonb column verbatim. Without a ceiling, one capture-create could store as
+ * much of it as the JSON body limit allows, per capture, and every reader of that
+ * row (the metadata job, the host dashboard) pays for it afterwards.
+ *
+ * 8 KiB is generous against the real thing: the fields this exists for — exposure
+ * settings, flash state, firmware versions, a calibration block — are a few
+ * hundred bytes. Anything past that is not provenance, it is a payload.
+ */
+const MAX_PROVENANCE_BYTES = 8 * 1024;
+
 function captureProvenance(
   doc: Record<string, unknown>,
   device: { serial: string; product: string | null; hardwareRevision: string | null },
@@ -64,10 +80,28 @@ function captureProvenance(
   for (const [key, value] of Object.entries(doc)) {
     if (!CAPTURE_TYPED_KEYS.has(key)) extra[key] = value;
   }
-  return {
+
+  const identity = {
     device: { serial: device.serial, product: device.product, hardware: device.hardwareRevision },
-    ...extra,
   };
+
+  /**
+   * Measured on the serialised remainder, because bytes in the column is the
+   * thing being bounded, and dropped **whole** rather than trimmed key by key: a
+   * half-kept provenance block is a record that looks complete and is not, which
+   * is worse than a record that says plainly what it refused. The device identity
+   * is never part of the measurement — it is the server's own observation and is
+   * kept in every case.
+   */
+  const size = Buffer.byteLength(JSON.stringify(extra), 'utf8');
+  if (size > MAX_PROVENANCE_BYTES) {
+    return {
+      ...identity,
+      extraDropped: { bytes: size, limit: MAX_PROVENANCE_BYTES },
+    };
+  }
+
+  return { ...identity, ...extra };
 }
 
 /**
@@ -113,7 +147,13 @@ const initBody = z
     /** Present only for `original-frame`; `assetObjectKey` enforces that. */
     frameIndex: z.number().int().positive().optional(),
     mime: z.string().min(1).max(120),
-    bytes: z.number().int().positive(),
+    /**
+     * Bounded, not merely positive. This number is what every size check
+     * downstream is enforced against — the per-part running total and the
+     * stored-length check at complete — so an unbounded declaration would make
+     * all of them unbounded too. See `MAX_ASSET_BYTES`.
+     */
+    bytes: z.number().int().positive().max(MAX_ASSET_BYTES),
     sha256: z.string().regex(SHA256),
   })
   .strict();
@@ -287,6 +327,9 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
    * never added will not be retried by a later complete, because the row is what
    * makes the second call a no-op. Reconciling that (re-submitting `queued` rows
    * with no live job) needs a sweeper, and a sweeper is not this task.
+   *
+   * Deferred, deliberately, and recorded here so it is not rediscovered: the
+   * queued-row reconcile sweeper is audit API-14 and is not built.
    */
   async function submit(jobs: readonly QueuedJob[]): Promise<void> {
     if (jobs.length === 0) return;
@@ -578,7 +621,19 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
         return fail(reply, 413, 'PART_TOO_LARGE', `a part may not exceed ${PART_SIZE} bytes`);
       }
 
-      await recordPart(app, session, asset.objectKey, partNo, body);
+      const stored = await recordPart(app, session, asset.objectKey, partNo, body);
+      if (stored.status === 'too-large') {
+        // 413, and the same code as an oversized single part: from the device's
+        // side both mean "these bytes do not fit what you declared". The numbers
+        // are in the message because a camera that has to correct its own
+        // bookkeeping needs to know which of the two it got wrong.
+        return fail(
+          reply,
+          413,
+          'UPLOAD_TOO_LARGE',
+          `this part would bring the upload to ${stored.total} bytes; init declared ${stored.expected}`,
+        );
+      }
       return reply.send({ received: true, partNo });
     },
   );
@@ -618,6 +673,14 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
           422,
           'CHECKSUM_MISMATCH',
           'the stored object does not match the declared sha256; start again from init',
+        );
+      }
+      if (outcome.status === 'size-mismatch') {
+        return fail(
+          reply,
+          422,
+          'SIZE_MISMATCH',
+          `the stored object is ${outcome.stored} bytes; init declared ${outcome.expected}. Start again from init`,
         );
       }
 

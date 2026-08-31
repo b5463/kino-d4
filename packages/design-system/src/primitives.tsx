@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -103,7 +104,16 @@ export function StatusLamp({
   return (
     <span
       className={`kino-status-lamp kino-status-lamp--${state} led led--${state}`}
-      role={announce ? 'status' : undefined}
+      /**
+       * A bare `aria-label` on a `<span>` names nothing: the span has no role,
+       * so a screen reader is free to ignore the label and read the visible
+       * text instead — which for a compact lamp is the empty string. The lamp
+       * needs a role the moment it carries a name of its own. `status` when it
+       * announces (a live region), `img` otherwise: the lamp is a glyph
+       * standing for a state, and `img` is the role that makes a name
+       * mandatory and the contents opaque.
+       */
+      role={announce ? 'status' : accessibleLabel ? 'img' : undefined}
       aria-live={announce ? 'polite' : undefined}
       aria-atomic={announce || undefined}
       aria-label={accessibleLabel}
@@ -126,16 +136,42 @@ export interface TabItem {
   disabled?: boolean;
 }
 
+/**
+ * The two element ids that tie a tab to the panel it controls.
+ *
+ * A `role="tab"` with no `aria-controls` is a button that announces itself as
+ * a tab and cannot say what it shows; the panel is then an unlabelled region
+ * the reader has to find on its own. Both ends need the same string, so the
+ * strip and the panel derive it from one function rather than each spelling it
+ * out.
+ *
+ * `prefix` exists because tab ids are only unique within a strip — two strips
+ * on one page with a `details` tab each would otherwise mint the same DOM id
+ * twice, and a duplicate id makes `aria-controls` point at whichever came
+ * first.
+ */
+export function tabIds(tabId: string, prefix = 'kino'): { tab: string; panel: string } {
+  return { tab: `${prefix}-tab-${tabId}`, panel: `${prefix}-panel-${tabId}` };
+}
+
 export function TabStrip({
   tabs,
   active,
   onChange,
   label,
+  idPrefix = 'kino',
 }: {
   tabs: readonly TabItem[];
   active: string;
   onChange: (id: string) => void;
   label: string;
+  /**
+   * Namespace for the generated tab/panel ids. Pass the same value to
+   * `tabIds()` where the panel is rendered — the panel is expected to carry
+   * `id={tabIds(active, prefix).panel}`, `role="tabpanel"` and
+   * `aria-labelledby={tabIds(active, prefix).tab}`.
+   */
+  idPrefix?: string;
 }) {
   const enabled = tabs.filter((tab) => !tab.disabled);
   const focusId = enabled.some((tab) => tab.id === active) ? active : enabled[0]?.id;
@@ -163,11 +199,24 @@ export function TabStrip({
           type="button"
           role="tab"
           className="kino-tab"
+          id={tabIds(tab.id, idPrefix).tab}
           data-tab-id={tab.id}
           aria-selected={tab.id === active}
+          aria-controls={tabIds(tab.id, idPrefix).panel}
           tabIndex={tab.id === focusId ? 0 : -1}
-          disabled={tab.disabled}
-          onClick={() => onChange(tab.id)}
+          /**
+           * `aria-disabled`, not the `disabled` attribute. A disabled button is
+           * dropped from the accessibility tree by some readers, so a tab that
+           * exists but is unavailable — the usual reason a KINO tab is off is a
+           * capability the camera does not advertise — simply vanishes, and the
+           * user cannot tell an absent feature from a broken app. This keeps
+           * the tab announced and named, and refuses the activation instead.
+           */
+          aria-disabled={tab.disabled || undefined}
+          onClick={() => {
+            if (tab.disabled) return;
+            onChange(tab.id);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'ArrowRight') moveFocus(event, 1);
             else if (event.key === 'ArrowLeft') moveFocus(event, -1);
@@ -216,17 +265,34 @@ export function ClassicProgressBar({
   );
 }
 
+/**
+ * Range input with its own name and a live readout of its value.
+ *
+ * The readout sits outside the `<label>` on purpose. Nesting it inside made
+ * the label's accessible name the label text *plus the current value*, so the
+ * control renamed itself on every drag — a screen reader announces "Brightness
+ * 7" as the name of the slider, then 8, then 9, and the user never hears a
+ * stable name. The `<label>` names it once via `htmlFor`; the `<output>` points
+ * at the same input with `for` and reports the value separately.
+ */
 export function UtilitySlider({
   label,
   valueLabel,
   className,
+  id,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; valueLabel: ReactNode }) {
+  const generated = useId();
+  const inputId = id ?? `${generated}slider`;
   return (
-    <label className={`kino-slider${className ? ` ${className}` : ''}`}>
-      <span className="kino-slider-label">{label}</span>
-      <input type="range" {...props} />
-      <output className="kino-slider-value">{valueLabel}</output>
-    </label>
+    <div className={`kino-slider${className ? ` ${className}` : ''}`}>
+      <label className="kino-slider-label" htmlFor={inputId}>
+        {label}
+      </label>
+      <input id={inputId} type="range" {...props} />
+      <output className="kino-slider-value" htmlFor={inputId}>
+        {valueLabel}
+      </output>
+    </div>
   );
 }

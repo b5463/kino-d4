@@ -79,6 +79,27 @@ function InstanceNode({ instance, component, override, transform, visualMode }: 
     return buildComponentObject(component, { resolved, instanceId: instance.id });
   }, [component, instance.id, resolved]);
 
+  // The group above is an R3F <primitive>: R3F attaches and detaches it but
+  // never frees what the builder allocated. A measured override (or an
+  // unmount) rebuilds it, so this node disposes the one it is replacing.
+  //
+  // What is deliberately NOT disposed here: anything from three-assets'
+  // shared process palette. `materialVariants.normal`, the highlight/selected
+  // materials, and a keepout's xray variant (which IS its normal material —
+  // keepouts don't ghost) are one object shared by every instance in the
+  // scene; freeing one would blank the rest. A Tier A body (userData.tierA)
+  // belongs to whatever provider loaded it, which may cache. So: the
+  // builder's own geometry, plus the per-mesh xray clone when it really is a
+  // clone.
+  useEffect(() => () => {
+    object.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.userData.tierA === true) return;
+      o.geometry.dispose();
+      const variants = o.userData.materialVariants as { normal: THREE.Material; xray: THREE.Material } | undefined;
+      if (variants && variants.xray !== variants.normal) variants.xray.dispose();
+    });
+  }, [object]);
+
   // Read inside the async swap below so a late-arriving mesh is painted in
   // the mode showing right now, without the swap re-running on every hover.
   const visualModeRef = useRef(visualMode);

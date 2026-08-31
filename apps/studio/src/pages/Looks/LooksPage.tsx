@@ -6,7 +6,8 @@ import { Icon } from '../../components/Icon';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SliderField, TextField } from '../../components/fields';
-import { useDeviceStore, allRecipes } from '../../state/deviceStore';
+import { Unsupported } from '../../components/Unsupported';
+import { useDeviceStore, allRecipes, supports } from '../../state/deviceStore';
 import { useDraft } from '../../hooks/useDraft';
 import { dropDraft } from '../../state/draftStore';
 import { getDevice, refreshRecipes, refreshDeviceInfo } from '../../app/session';
@@ -47,6 +48,20 @@ function countChangedLeaves(a: unknown, b: unknown): number {
     n += countChangedLeaves(left[key], right[key]);
   }
   return n;
+}
+
+/**
+ * ApplyBar handler for a factory look: write the custom copy, then throw the
+ * edits away — and only ever in that order.
+ *
+ * A one-line composition with its own name because the order is the whole
+ * behaviour, and getting it wrong is silent: `discard()` running after a
+ * refused UPLOAD_RECIPE deleted the user's work and the bar reported SAVED TO
+ * KINO. Exported so that order has a test.
+ */
+export async function applyFactoryEdit(save: () => Promise<void>, discard: () => void): Promise<void> {
+  await save();
+  discard();
 }
 
 function LookPreview({ recipe }: { recipe: Recipe | null }) {
@@ -173,20 +188,31 @@ export function LooksPage() {
     await refreshRecipes();
   };
 
-  const saveAsCustom = (source: Recipe) =>
-    withDevice(async (dev) => {
-      const id = uniqueId(`${source.id.replace(/-\d+$/, '')}-custom`, takenIds);
-      const copy: Recipe = {
-        ...structuredClone(source),
-        id,
-        name: uniqueId(`${source.name} Custom`, new Set(recipes.map((r) => r.name))).slice(0, 40),
-        factory: false,
-      };
-      await dev.uploadRecipe(copy);
-      await refreshRecipes();
-      setSelectedId(id);
-      setNotice(`Saved as ${copy.name}`);
-    });
+  /**
+   * Deliberately NOT wrapped in `withDevice`.
+   *
+   * This is the ApplyBar's apply for a factory look, and the bar decides
+   * whether the edit was saved from whether this promise resolves. Swallowing
+   * the NACK into a notice resolved it anyway: the bar printed SAVED TO KINO
+   * and the caller's `discard()` threw the edits away, for an upload the
+   * camera had refused. A failure has to reach the bar.
+   */
+  const saveAsCustom = async (source: Recipe) => {
+    const dev = getDevice();
+    if (!dev) throw new Error('Not connected');
+    setNotice(null);
+    const id = uniqueId(`${source.id.replace(/-\d+$/, '')}-custom`, takenIds);
+    const copy: Recipe = {
+      ...structuredClone(source),
+      id,
+      name: uniqueId(`${source.name} Custom`, new Set(recipes.map((r) => r.name))).slice(0, 40),
+      factory: false,
+    };
+    await dev.uploadRecipe(copy);
+    await refreshRecipes();
+    setSelectedId(id);
+    setNotice(`Saved as ${copy.name}`);
+  };
 
   /**
    * Duplicates the look **as stored on KINO**, never the unsaved draft.
@@ -312,6 +338,29 @@ export function LooksPage() {
 
   const matrix = draft?.advanced?.rgbMatrix ?? IDENTITY_MATRIX;
   const changeCount = draft && selected ? countChangedLeaves(draft, selected) : 0;
+
+  // The `recipes` capability had no consumer, so a camera that answered
+  // GET_CAPABILITIES without it sat here reading "Reading looks from KINO…"
+  // forever — GET_RECIPES had already NACKed and nothing was coming. Say what
+  // is missing, in the same panel the other gated pages use. Only once the
+  // capability report has actually landed: before that, absence is loading.
+  if (state.capabilitiesState === 'loaded' && state.info && !supports(state, 'recipes')) {
+    return (
+      <>
+        <div className="pagehead">
+          <h1>
+            <Icon name="looks" />
+            Looks
+          </h1>
+        </div>
+        <Unsupported
+          feature="Looks"
+          firmware={state.firmwareLabel}
+          note="This camera stores no looks: GET_RECIPES, UPLOAD_RECIPE and DELETE_RECIPE are not implemented. Capture settings are on the Shoot page."
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -604,10 +653,9 @@ export function LooksPage() {
                 changeCount={changeCount}
                 changedFields={changedFields}
                 applyLabel="SAVE AS CUSTOM LOOK"
-                onApply={async () => {
-                  await saveAsCustom(draft);
-                  discard(); // factory source stays as-is; edits went to the copy
-                }}
+                // The factory source stays as-is; the edits went to the copy —
+                // so they are discarded here, and only if the copy was stored.
+                onApply={() => applyFactoryEdit(() => saveAsCustom(draft), discard)}
                 onDiscard={discard}
               />
             ) : (

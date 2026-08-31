@@ -90,11 +90,24 @@ describe('CaptureDetail', () => {
     expect(container.querySelector('a[download]')).toBeNull();
   });
 
-  it('renders recipe labels beneath every Quad camera frame', async () => {
+  /**
+   * The old name ("renders recipe labels beneath every Quad camera frame")
+   * described a thing the guest wire cannot support: `look` is one value for
+   * the whole capture, so the four labels were one look printed four times and
+   * called a per-camera recipe.
+   */
+  it('numbers each Quad frame by camera and prints the capture look once', async () => {
     await render(capture('quad', 4), roll());
-    expect(container.textContent).toContain('CAM 1 · CLASSIC');
-    expect(container.textContent).toContain('CAM 4 · CLASSIC');
-    expect(container.querySelectorAll('figure')).toHaveLength(4);
+    const figures = container.querySelectorAll('figure');
+    expect(figures).toHaveLength(4);
+    expect([...figures].map((figure) => figure.querySelector('figcaption')?.textContent)).toEqual([
+      'CAM 1',
+      'CAM 2',
+      'CAM 3',
+      'CAM 4',
+    ]);
+    expect(container.querySelectorAll('.photo-look')).toHaveLength(1);
+    expect(container.querySelector('.photo-look')?.textContent).toBe('CLASSIC');
   });
 
   it('derives three grid columns for a six-frame Quad instead of hard-coding two', async () => {
@@ -201,6 +214,19 @@ describe('CaptureDetail', () => {
     expect(findAction('Wiggle')?.getAttribute('href')).toBe(
       '/api/assets/asset_mp4/content?download=1',
     );
+  });
+
+  it('says so when a render request fails instead of silently reverting', async () => {
+    const requestRender = vi.fn().mockRejectedValue(new Error('the render queue is full'));
+    await render(capture('wiggle', 4), roll(), api({ requestRender }));
+    await openSaveSheet();
+
+    await act(async () => findAction('Wiggle')?.click());
+
+    // The row goes back to being pressable — nothing is preparing — and the
+    // page's status line carries the reason.
+    expect(findAction('Wiggle')?.textContent).not.toContain('Preparing…');
+    expect(container.querySelector('.k-status')?.textContent).toContain('the render queue is full');
   });
 
   it('SAVE WIGGLE is absent on a non-wiggle capture', async () => {

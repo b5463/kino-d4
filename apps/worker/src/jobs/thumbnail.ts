@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { SHARP_INPUT } from '../images/decode';
 import { THUMBNAIL_QUALITY, THUMBNAIL_WIDTH } from '../images/sizes';
 import { loadAssets, loadCapture, readObject, requireCaptureId, stillSource } from './capture';
 import { publishDerived } from './derive';
@@ -33,7 +34,7 @@ export async function generateThumbnail(payload: JobPayload, ctx: JobCtx): Promi
   const source = stillSource(capture, assetRows);
   const body = await readObject(ctx, source.key);
 
-  const { data, info } = await sharp(body)
+  const { data, info } = await sharp(body, SHARP_INPUT)
     // EXIF orientation applied before anything else: a camera that reports a
     // rotation and is ignored produces a sideways tile.
     .rotate()

@@ -14,6 +14,7 @@ import {
 } from '../src/uploads/objectKeys';
 import {
   JOB_NAMES,
+  MAX_ASSET_BYTES,
   PART_SIZE,
   idempotencyKeyFor,
   jobKeyFor,
@@ -69,6 +70,10 @@ async function register(serial: string): Promise<{ deviceId: string; deviceToken
   const res = await app.inject({
     method: 'POST',
     url: '/api/studio/devices/register',
+    // The provisioning secret this endpoint is gated on. Read off the server's
+    // own config rather than hard-coded, so a bench with a real one in
+    // `infra/.env` runs the suite unchanged.
+    headers: { authorization: `Bearer ${app.config.PROVISIONING_TOKEN}` },
     payload: { serial, product: 'KINO D4', hardwareRevision: 'v1' },
   });
   expect(res.statusCode).toBe(200);
@@ -864,6 +869,139 @@ describe('the upload round trip (03 §16, 05 §8)', () => {
     expect((await putPart(retryId, 1, promised)).statusCode).toBe(200);
     expect((await completeUpload(retryId)).statusCode).toBe(200);
     expect((await captureStatus(captureId)).status).toBe('preview-ready');
+  });
+
+  /**
+   * The size limits (audit API-6). `bytes_expected` was recorded at init and
+   * then compared to nothing: a session could accept parts up to
+   * `MAX_PART_NUMBER` — tens of gigabytes — for an asset that declared two
+   * kilobytes, and `complete` accepted whatever length had landed as long as the
+   * digest matched what was declared.
+   *
+   * Three checks, and the three are tested here because each covers a different
+   * lie: the declaration itself, the bytes as they arrive, and the object as it
+   * ends up stored.
+   */
+  it('refuses a declaration larger than the platform accepts', async () => {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+
+    const res = await initAsset(captureId, {
+      role: 'thumb',
+      mime: 'image/webp',
+      bytes: MAX_ASSET_BYTES + 1,
+      sha256: sha256Hex(Buffer.from('never sent')),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ code: string; message: string }>()).toMatchObject({ code: 'INVALID_BODY' });
+    // Names the field, not the value.
+    expect(res.json<{ message: string }>().message).toContain('bytes');
+  });
+
+  it('refuses a part that would carry the upload past what init declared', async () => {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+
+    const promised = randomBytes(1_024);
+    const init = await initAsset(captureId, {
+      role: 'thumb',
+      mime: 'image/webp',
+      bytes: promised.length,
+      sha256: sha256Hex(promised),
+    });
+    const { uploadId } = init.json<InitResponse>();
+
+    // The declared bytes fit exactly, so the first part is fine.
+    expect((await putPart(uploadId, 1, promised)).statusCode).toBe(200);
+
+    // A second part has nowhere to go: the declaration is already spent.
+    const overflow = await putPart(uploadId, 2, randomBytes(1_024));
+    expect(overflow.statusCode).toBe(413);
+    expect(overflow.json<{ code: string }>().code).toBe('UPLOAD_TOO_LARGE');
+
+    // And nothing was written for it: a refused part leaves no bookkeeping row,
+    // so the upload is still exactly the one part it was.
+    const parts = await app.db
+      .select({ partNo: schema.uploadParts.partNo })
+      .from(schema.uploadParts)
+      .where(eq(schema.uploadParts.uploadId, uploadId));
+    expect(parts.map((part) => part.partNo)).toEqual([1]);
+
+    // The honest upload still completes, so this refuses bytes rather than
+    // breaking the session.
+    expect((await completeUpload(uploadId)).statusCode).toBe(200);
+  });
+
+  /**
+   * Re-sending a part **replaces** it, so the running total must not count the
+   * row it is about to overwrite — otherwise the ordinary retry of a part whose
+   * acknowledgement was lost would be refused as too large, which is the one
+   * case this whole pipeline exists to survive.
+   */
+  it('lets a resent part replace its own bytes rather than adding to them', async () => {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+
+    const body = randomBytes(2_000);
+    const init = await initAsset(captureId, {
+      role: 'thumb',
+      mime: 'image/webp',
+      bytes: body.length,
+      sha256: sha256Hex(body),
+    });
+    const { uploadId } = init.json<InitResponse>();
+
+    expect((await putPart(uploadId, 1, body)).statusCode).toBe(200);
+    expect((await putPart(uploadId, 1, body)).statusCode).toBe(200);
+    expect((await putPart(uploadId, 1, body)).statusCode).toBe(200);
+    expect((await completeUpload(uploadId)).statusCode).toBe(200);
+  });
+
+  it('fails complete when the stored object is not the length that was declared', async () => {
+    const roll = await createRoll();
+    const { captureId } = await newCapture(roll.rollId);
+
+    // A device that under-declares and then sends more. The digest it declares
+    // is the digest of what it actually sends, so the checksum check passes and
+    // only the length is wrong — which is the case the size check exists for.
+    const sent = randomBytes(4_096);
+    const init = await initAsset(captureId, {
+      role: 'thumb',
+      mime: 'image/webp',
+      bytes: sent.length,
+      sha256: sha256Hex(sent),
+    });
+    const { uploadId } = init.json<InitResponse>();
+
+    // The part gate refuses the oversized body outright, so the mismatch has to
+    // be produced the only other way it can happen: parts that fit, and a
+    // session whose declaration is then lowered under it. Writing the row
+    // directly is the honest way to reach a state a well-behaved device cannot.
+    expect((await putPart(uploadId, 1, sent)).statusCode).toBe(200);
+    await app.db
+      .update(schema.uploadSessions)
+      .set({ bytesExpected: 1_024 })
+      .where(eq(schema.uploadSessions.id, uploadId));
+
+    const done = await completeUpload(uploadId);
+    expect(done.statusCode).toBe(422);
+    expect(done.json<{ code: string }>().code).toBe('SIZE_MISMATCH');
+
+    // Same disposal as a checksum failure: the session failed, the asset is
+    // still pending, and the bytes are gone from storage.
+    const [session] = await app.db
+      .select()
+      .from(schema.uploadSessions)
+      .where(eq(schema.uploadSessions.id, uploadId));
+    expect(session?.status).toBe('failed');
+
+    const [asset] = await app.db
+      .select()
+      .from(schema.assets)
+      .where(eq(schema.assets.captureId, captureId));
+    expect(asset?.status).toBe('pending');
+    expect(asset?.sha256).toBeNull();
   });
 
   it('refuses an upload into a closed roll', async () => {

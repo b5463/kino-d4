@@ -63,6 +63,10 @@ async function register(serial: string): Promise<{ deviceId: string; deviceToken
   const res = await app.inject({
     method: 'POST',
     url: '/api/studio/devices/register',
+    // The provisioning secret this endpoint is gated on. Read off the server's
+    // own config rather than hard-coded, so a bench with a real one in
+    // `infra/.env` runs the suite unchanged.
+    headers: { authorization: `Bearer ${app.config.PROVISIONING_TOKEN}` },
     payload: { serial, product: 'KINO D4', hardwareRevision: 'v1' },
   });
   expect(res.statusCode).toBe(200);

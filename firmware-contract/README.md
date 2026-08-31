@@ -192,9 +192,15 @@ device caps `limit` at 100 and reports `total` and `hasMore` alongside.
 
 ### D10 — `PowerStatus.batteryV` / `batteryPct` are null on D4 V1: there is nothing to measure
 
-`PowerStatus` in `types.ts` types `batteryV: number` and `batteryPct: number` as required, and makes
+`PowerStatus` in `types.ts` typed `batteryV: number` and `batteryPct: number` as required, and made
 `busV`, `chargingA` and `fuse` optional with the note that a firmware without a rail ADC omits them
 so *"Studio shows '—' rather than inventing 5.00"*.
+
+**Resolved in the type, 2026-08-31.** Both fields are now `number | null`, and `batteryMeasured` and
+`displayStage` are declared beside them. The deviation was one-sided: the firmware sent `null`, the
+type promised a `number`, and every consumer that wrote `power.batteryV.toFixed(2)` compiled clean
+and threw on a real body. A contract entry recording that the type is wrong is worth less than a
+type that is right — the note stays because the *hardware* gap it describes has not closed.
 
 **D4 V1 cannot measure the cell either.** The 505573 LiPo reaches the board through a protection
 board and an SW6106 charger/boost carrier, and neither the pack nor the carrier routes a sense
@@ -418,7 +424,8 @@ it gates `GET_STORAGE_STATUS`, `CAMERA_LINK_STATS`, `GET_HW_VALIDATION`,
 implemented. `LINK_BENCH` and `SYNC_BENCH` are not behind it.
 
 Three cases in Studio's own conformance suite
-(`apps/studio/src/developer/conformance.ts`, 33 cases) target this set and
+(`apps/studio/src/developer/conformance.ts`, 32 cases — 8 active, 24
+passive) target this set and
 cannot pass against 0.4.8: `CAMERA_CALIBRATE (get)`, `CAMERA_PREVIEW frame`,
 and `FW_BEGIN gate (outside maintenance)`. The last is a near miss worth
 noting — it expects a refusal citing maintenance and gets
@@ -445,7 +452,12 @@ was written. An unknown `id` — checked against factory and custom together —
 is `NOT_FOUND` rather than stored; a config naming a look the device does not
 have is how a slot ends up rendering as the wrong picture at import. A `cam`
 that is neither a camera nor `all` is `INVALID_ARGUMENT`. `DELETE_RECIPE` of an
-id the camera does not hold is `NOT_FOUND` and a malformed id is `BAD_REQUEST`;
+id the camera does not hold is `NOT_FOUND`. `NOT_FOUND` means the document is
+not on the card. A delete that fails for any other reason — a card gone
+read-only, a pulled card, an I/O error — is `STORAGE_ERROR` naming the errno
+(firmware **0.4.10**), because the look is still there and a host told
+`NOT_FOUND` would drop it from its list and see it return at the next
+`GET_RECIPES`. A malformed id is `BAD_REQUEST`;
 the mock answers `{ ok: true }` to any delete, and the firmware is the one to
 follow — a retry after a lost ACK sees `NOT_FOUND` and knows the first delete
 landed. Firmware older than
@@ -485,6 +497,21 @@ apply one: no capture block reaches a sensor register, and a look is still
 applied at import. `wiggle.recipeId` defaults to `party-neg`, which is the
 mock's default and now the firmware's.
 
+> **Superseded in part by [D19](#d19--nl_cmd_sensor-and-the-settings-that-finally-do-something)
+> (firmware 0.4.9).** "No capture block reaches a sensor register" was true of 0.4.8 and is not true
+> now: `NL_CMD_SENSOR` carries exposure bias, gain ceiling, denoise, sharpness and quality to the
+> node, which clamps them and reports back what it set. What survives unchanged is the rest of the
+> sentence — grading is still applied at import, and the sensor knobs a look can move are the five
+> the driver exposes, not the look's colour science.
+
+**`SOUND_BEGIN` validates the id and bounds the name.** The id must match
+`^snd-[a-z0-9-]{1,19}$` (`BAD_ID`) because it becomes a path under
+`/sdcard/KINO/SOUNDS`. The name is 1..32 characters (`SOUND_NAME_MAX` in
+`types.ts`) and a longer one is `BAD_NAME`, not a truncation: a silently
+shortened name returns on the next `GET_SOUNDS` as a clip the host did not
+upload, and the host cannot tell that from a name it got wrong itself. The
+mock enforced neither and now enforces both.
+
 ### D19 — `NL_CMD_SENSOR`, and the settings that finally do something
 
 Firmware 0.4.9 changes no KDP command and no KDP payload. Everything here is
@@ -523,14 +550,32 @@ photograph got is what the node reported back.
 **`META.JSON` records what was applied, per frame.** Each entry in `frames[]`
 gains an optional `sensor` object — `{aeLevel, gainCeiling, denoise,
 sharpness, quality?}` — holding the node's echoed values. `quality` is on the
-sensor's own 5..63 scale, not the 60..95 wire percentage; D12 is the
-conversion and it happens before the link, not after.
+sensor's own 5..63 scale, not the 60..95 wire percentage; D12 is the conversion
+and it happens before the link, not after. `quality` is the one field that
+records what the frame was ENCODED at rather than what a sensor apply echoed:
+`NL_CMD_CAPTURE` writes that register too when the request carries the field,
+and so does every viewfinder frame, so the value META carries is the value the
+register held at the exposure — the node's echo when `NL_CMD_SENSOR` still owns
+it, otherwise the quality this capture's own command sent, after the node's
+5..63 clamp.
 
 **A sensor failure never blocks a capture.** A NACK, a clamp the P4 did not
 expect, or a timeout on `NL_CMD_SENSOR` is logged and the trigger goes out
 anyway. The frame's `sensor` object then records the sensor's STANDING values
 — the last apply that camera accepted — because the sensor really does still
-hold them, and recording them beats recording nothing. The object is absent
+hold them, and recording them beats recording nothing.
+
+The exception is `quality`, and the reason is the preview. The viewfinder has no
+sensor command of its own: each preview frame is an `NL_CMD_CAPTURE` carrying
+the finder's own quality, which the node applies before it exposes. So a preview
+between two photographs leaves the preview's value standing, the P4's
+change-only cache forgets its quality for that camera and re-sends it before the
+next trigger, and if that send fails the frame records the quality its own
+CAPTURE carried instead of the look's. Firmware 0.4.9 did neither: the second
+and later captures after a preview were encoded at preview quality while META
+reported the look's, and it never self-healed. Fixed in **0.4.10**.
+
+The object is absent
 only when nothing has ever been applied to that camera since its node booted,
 or on firmware older than 0.4.9; neither means the frame is bad. The
 alternative — refusing the capture over a settings write — is the wrong trade

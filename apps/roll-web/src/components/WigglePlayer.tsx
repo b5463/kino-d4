@@ -50,7 +50,15 @@ export function WigglePlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const positionRef = useRef(0);
   const frameRequestRef = useRef<number | null>(null);
-  const sequence = useMemo(() => wiggleSequence(frames.length, loop, 'ltr'), [frames.length, loop]);
+  /**
+   * The frame list is keyed by its CONTENT, not by array identity. A parent
+   * re-render (a scroll in the virtualized feed) that rebuilds an equal array
+   * used to restart the preload and drop every player back to its poster.
+   * Asset URLs never contain a newline, so joining on one is lossless.
+   */
+  const frameKey = frames.join('\n');
+  const frameUrls = useMemo(() => frameKey.split('\n'), [frameKey]);
+  const sequence = useMemo(() => wiggleSequence(frameUrls.length, loop, 'ltr'), [frameUrls.length, loop]);
   const frameRate = clampWiggleFps(fps);
 
   const [position, setPosition] = useState(0);
@@ -72,7 +80,7 @@ export function WigglePlayer({
 
   useEffect(() => {
     let cancelled = false;
-    let remaining = frames.length;
+    let remaining = frameUrls.length;
     const preloads: HTMLImageElement[] = [];
 
     setLoaded(false);
@@ -81,7 +89,7 @@ export function WigglePlayer({
       if (!cancelled && remaining === 0) setLoaded(true);
     };
 
-    for (const url of frames) {
+    for (const url of frameUrls) {
       const image = new Image();
       image.onload = settled;
       // A broken frame must not leave the player on its poster forever. It may
@@ -99,7 +107,7 @@ export function WigglePlayer({
         image.onerror = null;
       }
     };
-  }, [frames]);
+  }, [frameUrls]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -195,7 +203,7 @@ export function WigglePlayer({
 
   const optInRequired = reducedMotion && !motionOptIn;
   const currentFrameIndex = sequence[position] ?? 0;
-  const source = !loaded || optInRequired ? (poster ?? frames[0]) : frames[currentFrameIndex];
+  const source = !loaded || optInRequired ? (poster ?? frameUrls[0]) : frameUrls[currentFrameIndex];
 
   const togglePlayback = (): void => {
     if (optInRequired) {

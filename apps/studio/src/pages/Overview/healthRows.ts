@@ -63,7 +63,11 @@ export function supplyRows(input: SupplyInput): HealthRow[] {
           label: `${formatMB(storage.freeMB)} FREE OF ${formatMB(storage.totalMB)}`,
         }
       : { name: 'SD CARD', state: 'err', label: 'NO CARD' },
-    power
+    // A null percentage and voltage is D4-V1 truth, not a missing reply: no
+    // sense divider and no gauge bus reach the P4 (contract D10). The row
+    // reports the supply it can see and says the cell is unmeasured rather
+    // than drawing 0% on a camera that is running.
+    power && power.batteryPct !== null && power.batteryV !== null
       ? {
           name: 'BATTERY',
           state: power.batteryPct <= 15 && !power.charging ? 'warn' : 'ok',
@@ -71,7 +75,13 @@ export function supplyRows(input: SupplyInput): HealthRow[] {
             power.charging ? ' · CHARGING' : power.state === 'usb' ? ' · USB POWER' : ''
           }`,
         }
-      : { name: 'BATTERY', state: 'off', label: '—' },
+      : power
+        ? {
+            name: 'BATTERY',
+            state: 'off',
+            label: `NOT MEASURED${power.charging ? ' · CHARGING' : power.state === 'usb' ? ' · USB POWER' : ''}`,
+          }
+        : { name: 'BATTERY', state: 'off', label: '—' },
     // Device-reported only: firmware without a rail ADC omits busV and this
     // row says so instead of inventing 5.00 (audit #61).
     power && typeof power.busV === 'number'

@@ -1,6 +1,6 @@
 # KINO roadmap
 
-Updated 2026-08-21.
+Updated 2026-08-31.
 
 This file records direction. It does not promise dates. Current behavior is defined by tested source and the maintained documents linked from [`docs/README.md`](docs/README.md).
 
@@ -36,12 +36,20 @@ This file records direction. It does not promise dates. Current behavior is defi
 
 ## Later
 
-- Reproducible Studio release bundles.
 - Versioned firmware packages for the P4 and four camera nodes.
 - Firmware rollback once the device contract defines it.
 - Signed release artifacts and a documented trust path.
 - A manufacturing test fixture for assembled D4 units.
-- Twin beyond 0.1: WebSocket bridge, GLB assets from official STEP, DXF/CSV/STEP exports, Playwright acceptance automation.
+- Twin beyond 0.1: GLB assets from official STEP, DXF/CSV/STEP exports.
+
+## Landed
+
+These were on the list above and are in the tree. Listed so the sections above stay a queue rather than a history.
+
+- Release bundles with a `kino.release` manifest and `SHA256SUMS` over the bytes on disk: `npm run release` (`scripts/release.mjs`). Firmware images are included when the tree has built them. Not yet signed — that is still under Later.
+- The Twin WebSocket bridge, for running Studio and Twin on separate origins: `npm run twin:relay` and `apps/twin/src/bridge/wsBridge.ts`.
+- Playwright acceptance automation of the Twin walk: `e2e/`, `npm run test:acceptance`, and the `acceptance` workflow.
+- Two clean firmware builds of one commit compared by hash in CI, for the P4, the radio variant, and the C6 (the `reproducible` job in `.github/workflows/firmware.yml`).
 
 ## Maybe
 

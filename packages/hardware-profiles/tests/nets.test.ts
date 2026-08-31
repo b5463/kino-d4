@@ -59,13 +59,18 @@ describe('nets + gpio (§8)', () => {
     }
   });
 
-  it('the flash power net and button pair exist with their documented classes', () => {
-    // One FLASH net, not two: ECN-0003 gave FLASH_EN's pin (GPIO28, JP1 21)
-    // to the shutter, so there is no enable net from the P4 any more. The
-    // 5 V feed stays so an external module has somewhere to draw from; how it
-    // is triggered is not decided and is not invented here.
-    expect(netsByClass(D4_V1, 'FLASH')).toHaveLength(1);
+  it('carries no FLASH net, and the button pair with its documented class', () => {
+    // Zero, not one. ECN-0003 dropped the built-in flash assembly from D4-V1
+    // entirely: GPIO28 / JP1 21 went to the shutter, and the flash became a
+    // separate external module with no P4 pin and no wire from this body. The
+    // profile kept a 5 V feed to a `flash` instance that no longer exists,
+    // which is a harness the builder would have wired to nothing. FLASH stays
+    // in NET_CLASSES — the vocabulary is for the day an external module gets
+    // a defined connector, not a claim that one is fitted.
+    expect(netsByClass(D4_V1, 'FLASH')).toHaveLength(0);
     expect(netsByClass(D4_V1, 'BUTTONS')).toHaveLength(2);
+    expect(D4_V1.instances.some((i) => i.id === 'flash')).toBe(false);
+    expect(D4_V1.components.some((c) => c.id.startsWith('flash-'))).toBe(false);
   });
 
   it('accepts a ribbon harness without weakening endpoint or waypoint validation', () => {

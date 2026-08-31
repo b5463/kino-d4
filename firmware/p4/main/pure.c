@@ -16,6 +16,32 @@ int pure_quality_to_sensor(int percent) {
   return q;
 }
 
+void pure_frame_quality(bool sensor_owns, int applied_quality, int mode_quality,
+                        int *cap_quality, int *record_quality) {
+  int carry = 0;   /* what NL_CMD_CAPTURE sends */
+  int record = 0;  /* what the register holds at exposure */
+
+  if (sensor_owns && applied_quality > 0) {
+    /* NL_CMD_SENSOR wrote it and still owns it: the CAPTURE must not carry a
+     * quality, or it would overwrite the look's value an instant before the
+     * exposure. What is recorded is what the node said it accepted. */
+    record = applied_quality;
+  } else if (mode_quality > 0) {
+    /* Nothing stands in the register that we know of, so the CAPTURE carries
+     * the mode default and the node writes it. Recorded after the node's own
+     * clamp, because the clamp is what lands in the sensor. */
+    carry = mode_quality;
+    record = mode_quality;
+    if (record < PURE_SENSOR_QUALITY_MIN) record = PURE_SENSOR_QUALITY_MIN;
+    if (record > PURE_SENSOR_QUALITY_MAX) record = PURE_SENSOR_QUALITY_MAX;
+  }
+  /* Both zero: no quality was ever established for this camera. Say nothing.
+   * A capture still happens - the sensor keeps whatever its driver left. */
+
+  if (cap_quality != NULL) *cap_quality = carry;
+  if (record_quality != NULL) *record_quality = record;
+}
+
 int pure_ev_to_ae_level(double ev) {
   /* NaN first, and without math.h: isnan() would drag libm into a test binary
    * the Makefile links without -lm, and every comparison below is false for a

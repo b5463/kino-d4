@@ -8,6 +8,25 @@
 // advertised, and which commands exist at all. The dispatcher and the
 // capability report derive from the same profile, so they cannot drift.
 import { Cmd } from '@kino/kdp';
+import type { Capabilities } from '@kino/kdp';
+
+/**
+ * A profile's capability patch.
+ *
+ * The `Capabilities` half so a typo in a declared flag is a compile error;
+ * `Record<string, boolean>` alongside it because a profile may also carry a
+ * flag this build's `Capabilities` has not declared yet — `syncBench` is one
+ * today. Both halves are needed: the plain record alone is what let `roll`
+ * go missing from `M1B_CAPABILITIES` without anything noticing.
+ *
+ * `cameraCount` is omitted rather than made optional. It is the only
+ * non-boolean member of `Capabilities`, so keeping it would give the
+ * intersection a `number` under a `boolean` index signature and nothing would
+ * assign — and a profile has no business setting it anyway: how many cameras
+ * a body has is the mock's own report, not a firmware generation's claim.
+ */
+export type ProfileCapabilities = Partial<Omit<Capabilities, 'cameraCount'>> &
+  Record<string, boolean>;
 
 export type FirmwareProfileId =
   | 'd4-m1b'
@@ -30,7 +49,7 @@ export interface FirmwareProfile {
   camsOnline: [boolean, boolean, boolean, boolean];
   /** Merged over GET_CAPABILITIES.capabilities (last spread wins). Null
    * restores the mock's own derived capability report. */
-  capabilities: Record<string, boolean> | null;
+  capabilities: ProfileCapabilities | null;
   maxUartBaud: number;
   /** Command ids this firmware implements; anything else answers
    * UNSUPPORTED_COMMAND. Null = the mock's full surface (demo device). */
@@ -58,7 +77,7 @@ export const M1B_COMMANDS: readonly number[] = [
   Cmd.REBOOT,
 ];
 
-const M1B_CAPABILITIES: Record<string, boolean> = {
+const M1B_CAPABILITIES: ProfileCapabilities = {
   wiggle: false,
   quad: false,
   gallery: false,
@@ -72,8 +91,16 @@ const M1B_CAPABILITIES: Record<string, boolean> = {
   autofocus: false,
   focusLock: false,
   manualFocus: false,
-  rollUpload: false,
+  /**
+   * All three of the Network/Roll group, spelled out. `roll` was missing here
+   * and inherited by every profile built on this one, so a Twin flashed with
+   * 0.1.0..0.3.0 answered a capability report with no `roll` key at all —
+   * which is the same thing a newer camera's unknown flag looks like on the
+   * wire, and Studio's gate could not tell the two apart.
+   */
   network: false,
+  roll: false,
+  rollUpload: false,
   syncBench: false,
   benchDiagnostics: true,
 };
@@ -100,7 +127,7 @@ export const BODY_0_2_COMMANDS: readonly number[] = [
   Cmd.MEDIA_FAVORITE,
 ];
 
-const BODY_0_2_CAPABILITIES: Record<string, boolean> = {
+const BODY_0_2_CAPABILITIES: ProfileCapabilities = {
   ...M1B_CAPABILITIES,
   configStore: true,
   /** Idle dim/sleep and camera-bank power-down are implemented. */
@@ -126,7 +153,7 @@ export const CAPTURE_0_3_COMMANDS: readonly number[] = [
   Cmd.MEDIA_THUMB,
 ];
 
-const CAPTURE_0_3_CAPABILITIES: Record<string, boolean> = {
+const CAPTURE_0_3_CAPABILITIES: ProfileCapabilities = {
   ...BODY_0_2_CAPABILITIES,
   /** MEDIA_READ and MEDIA_THUMB return bytes, so pixels can leave the camera. */
   gallery: true,
@@ -183,7 +210,7 @@ export const ROLL_0_4_COMMANDS: readonly number[] = [
   Cmd.FW_QUERY,
 ];
 
-const ROLL_0_4_CAPABILITIES: Record<string, boolean> = {
+const ROLL_0_4_CAPABILITIES: ProfileCapabilities = {
   ...CAPTURE_0_3_CAPABILITIES,
   /**
    * The ESP32-C6 is on the Guition carrier. Reported separately from whether
@@ -241,7 +268,7 @@ export const LOOKS_0_4_8_COMMANDS: readonly number[] = [
   Cmd.SOUND_DELETE,
 ];
 
-const LOOKS_0_4_8_CAPABILITIES: Record<string, boolean> = {
+const LOOKS_0_4_8_CAPABILITIES: ProfileCapabilities = {
   ...ROLL_0_4_CAPABILITIES,
   /**
    * Both flags are read off the same two functions the dispatcher gates on
@@ -272,7 +299,7 @@ const LOOKS_0_4_8_CAPABILITIES: Record<string, boolean> = {
  * reporting no flag at all, and Studio reads a missing flag as "not a gate" —
  * the slider would stay live on a body that cannot dim.
  */
-const SETTINGS_0_4_9_CAPABILITIES: Record<string, boolean> = {
+const SETTINGS_0_4_9_CAPABILITIES: ProfileCapabilities = {
   ...LOOKS_0_4_8_CAPABILITIES,
   /**
    * False, and it is hardware saying so: the Guition carrier drives the panel
@@ -422,4 +449,11 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.7': 'd4-roll-0-4',
   '0.4.8': 'd4-looks-0-4-8',
   '0.4.9': 'd4-settings-0-4-9',
+  // 0.4.10 adds no KDP command and no capability. Its changes are behaviour
+  // behind existing surfaces (the viewfinder no longer overwrites the look's
+  // JPEG quality, bounded TX writes, the boot sweep budget) plus the additive
+  // GET_RUNTIME_STATS protocol.droppedTxFrames field, which the profile does
+  // not model — so it maps onto the 0.4.9 profile the same way 0.4.1..0.4.7
+  // map onto d4-roll-0-4.
+  '0.4.10': 'd4-settings-0-4-9',
 };

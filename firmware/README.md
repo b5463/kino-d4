@@ -68,9 +68,10 @@ A `sdkconfig` generated before firmware 0.4.2 keeps `-Og` until it is
 regenerated (`idf.py fullclean`, or delete `sdkconfig`). Timing measured on a
 debug build is not product timing; say which one a bench record came from. The
 same applies to the partition table: a `sdkconfig` generated before 0.4.9 still
-selects the old built-in single-app table, and the build will not tell you — it
-will just put the app in a `factory` partition. Delete `sdkconfig` after
-pulling the repartition.
+selects the old built-in single-app table. Since 0.4.10 the build refuses that
+state (`CONFIG_PARTITION_TABLE_CUSTOM` guard in `p4/main/CMakeLists.txt`)
+instead of silently putting the app in a `factory` partition. Delete
+`sdkconfig` after pulling the repartition and rebuild.
 
 `camnode` pulls `espressif/esp32-camera` (pinned 2.1.7, resolved versions in
 the committed `dependencies.lock`) from the component registry on first build

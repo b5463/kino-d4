@@ -47,7 +47,11 @@ describe('media over the protocol', () => {
     const { device } = await connect();
     const list = await device.mediaList();
     const info = await device.mediaInfo(list.items[0].id);
-    const data = await downloadCaptureFile(device, info, 'C1_RAW.JPG', new TransferHandle());
+    // The name the card actually carries. This asked for `C1_RAW.JPG`, which
+    // was never in the MEDIA_READ allow-list nor on the card — the download
+    // has to use the name MEDIA_INFO reported.
+    expect(info.files[0].name).toBe('C1.JPG');
+    const data = await downloadCaptureFile(device, info, info.files[0].name, new TransferHandle());
     expect(data.length).toBe(info.files[0].sizeBytes);
     expect(await sha256Hex(data)).toBe(info.files[0].sha256);
     // JPEG magic survives the trip

@@ -24,16 +24,18 @@ npm ci
 npm run version:check
 npm run license:check
 npm run lint
-npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures
+npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures -w @kino/hardware-profiles -w @kino/simulator-engine -w @kino/three-assets -w @kino/twin -w @kino/design-system -w @kino/media -w @kino/roll-web
 npm run build
 ```
 
-API tests also need PostgreSQL, Redis, and MinIO:
+That test line is every workspace whose suite runs without Docker, and it is the same line `.github/workflows/ci.yml` runs. A new workspace goes in both.
+
+The API and worker tests need PostgreSQL, Redis, and MinIO:
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d
 npm run db:migrate -w @kino/api
-npm run test -w @kino/api
+npm run test -w @kino/api -w @kino/worker
 ```
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for ports, environment variables, and safe teardown.

@@ -6,6 +6,7 @@ import {
   convergeCaptureStatuses,
   type ConvergeFailureLog,
 } from '../uploads/uploads';
+import { guestMaySeeRole } from './delivery';
 import { assets, captures, type CapturePlayback } from '../db/schema';
 
 /**
@@ -246,10 +247,19 @@ function visibleTo(audience: FeedAudience, rollId: string): SQL | undefined {
  * Only `ready` assets are ever named. A pending row is a location that has no
  * bytes at it yet, so handing a guest its id would produce a tile that 409s on
  * every fetch until a worker finishes.
+ *
+ * The **audience** decides which roles are named at all. `status = 'ready'` was
+ * the only filter here, which meant `metadata` — the engineering record, with
+ * GPS EXIF, the device serial and every original's object key in it — was
+ * published to the guest feed the moment `extract-metadata` first ran. The role
+ * filter is `guestMaySeeRole` from `delivery.ts`, i.e. the same predicate that
+ * refuses the fetch, so an id named here is an id that can actually be fetched.
+ * The host list is unfiltered: it is the host's own record to read.
  */
 async function readReadyAssets(
   db: KinoDatabase,
   captureIds: readonly string[],
+  audience: FeedAudience,
 ): Promise<Map<string, CaptureAssetDetail[]>> {
   const byCapture = new Map<string, CaptureAssetDetail[]>();
   if (captureIds.length === 0) return byCapture;
@@ -273,6 +283,12 @@ async function readReadyAssets(
     .orderBy(assets.role, assets.frameIndex);
 
   for (const row of rows) {
+    // The audience filter, applied where the ids are handed out. A guest is
+    // never *told* about an asset it may not fetch — `deliverAsset` refuses the
+    // same roles, and the two reading one predicate is what keeps the feed from
+    // publishing an id that only ever 404s.
+    if (audience === 'guest' && !guestMaySeeRole(row.role)) continue;
+
     const list = byCapture.get(row.captureId) ?? [];
     list.push({
       role: row.role,
@@ -401,6 +417,7 @@ export async function readCaptureFeedPage(
   const assetsByCapture = await readReadyAssets(
     db,
     rows.map((row) => row.id),
+    'guest',
   );
 
   return {
@@ -434,6 +451,7 @@ export async function readHostCaptureFeedPage(
   const assetsByCapture = await readReadyAssets(
     db,
     rows.map((row) => row.id),
+    'host',
   );
 
   return {
@@ -471,7 +489,7 @@ export async function readCaptureDetail(
   if (row === undefined) return null;
 
   const status = await convergeCaptureStatus(db, row.id, row.status, onConvergeFailure);
-  const assetsByCapture = await readReadyAssets(db, [row.id]);
+  const assetsByCapture = await readReadyAssets(db, [row.id], 'guest');
   return {
     captureId: row.id,
     mode: row.mode,

@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { SHARP_INPUT } from '../images/decode';
 import { loadCapture, requireCaptureId } from './capture';
 import { publishDerived } from './derive';
 import { joinPages, loadWiggleFrames, WIGGLE_WEBP_QUALITY } from './wiggle';
@@ -36,6 +37,7 @@ export async function renderWiggleWebp(payload: JobPayload, ctx: JobCtx): Promis
   const wiggle = await loadWiggleFrames(ctx, capture);
 
   const { data, info } = await sharp(joinPages(wiggle), {
+    ...SHARP_INPUT,
     raw: {
       width: wiggle.width,
       height: wiggle.height * wiggle.order.length,

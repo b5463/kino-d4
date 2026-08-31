@@ -19,7 +19,6 @@ firmware/*/sdkconfig
 firmware/*/sdkconfig.old
 firmware/*/managed_components/
 # dependencies.lock is committed: it pins what a clean build fetches (issue #90)
-firmware/components/kdp_core/host_tests/test_kdp
 
 # Local AI agents and their generated state
 CLAUDE.md
@@ -54,20 +53,13 @@ infra/backups/
 firmware/p4/host_preview/preview
 firmware/p4/host_preview/preview.exe
 firmware/p4/host_preview/*.ppm
-firmware/p4/host_tests/test_pure
-firmware/p4/host_tests/test_pure.exe
-firmware/p4/host_tests/test_meta
-firmware/p4/host_tests/test_meta.exe
-firmware/p4/host_tests/test_upload_store
-firmware/p4/host_tests/test_upload_store.exe
-firmware/p4/host_tests/test_qr
-firmware/p4/host_tests/test_qr.exe
-firmware/p4/host_tests/test_board_pins
-firmware/p4/host_tests/test_board_pins.exe
-firmware/p4/host_tests/test_roll_queue
-firmware/p4/host_tests/test_roll_queue.exe
-firmware/p4/host_tests/test_net_link
-firmware/p4/host_tests/test_net_link.exe
-firmware/p4/host_tests/test_net_report
-firmware/p4/host_tests/test_net_report.exe
+# The host-test binaries were enumerated one target at a time, so every suite
+# added since left its executable untracked-but-visible and one `git add -A`
+# away from being committed. Six were sitting in the tree when this was
+# written. A pattern instead: the sources are test_*.c, so ignore the
+# extensionless build products and the Windows .exe, and re-include the sources.
+firmware/p4/host_tests/test_*
+!firmware/p4/host_tests/test_*.c
+firmware/components/kdp_core/host_tests/test_*
+!firmware/components/kdp_core/host_tests/test_*.c
 firmware/*/build-*/

@@ -33,7 +33,8 @@ const CELL_MAX_V = 4.2;
 interface Sample {
   shot: number;
   t: number;
-  batteryV: number;
+  /** Null on a body with no gauge (contract D10) — not a zero-volt reading. */
+  batteryV: number | null;
   skewSpreadUs: number;
   transferKBs: number;
 }
@@ -126,8 +127,10 @@ export function BurnInPanel() {
     }
   };
 
-  const sag =
-    samples.length >= 2 ? (samples[0].batteryV - samples[samples.length - 1].batteryV).toFixed(3) : null;
+  // Sag needs a first and a last reading. A body that reports no cell voltage
+  // has no sag to report either — the row prints nothing rather than 0.000.
+  const cellV = samples.map((s) => s.batteryV).filter((v): v is number => v !== null);
+  const sag = cellV.length >= 2 ? (cellV[0] - cellV[cellV.length - 1]).toFixed(3) : null;
 
   // One unit for the whole widget, from its own largest value — the same
   // contract the timing columns use.
@@ -206,15 +209,17 @@ export function BurnInPanel() {
       {samples.length > 0 ? (
         <>
           <div className="panel-grid" style={{ marginTop: 8 }}>
-            <Sparkline
-              label="BATTERY"
-              unit="V"
-              values={samples.map((s) => s.batteryV)}
-              format={(v) => v.toFixed(2)}
-              color="#48a83e"
-              yMin={CELL_MIN_V}
-              yMax={CELL_MAX_V}
-            />
+            {cellV.length > 0 ? (
+              <Sparkline
+                label="BATTERY"
+                unit="V"
+                values={cellV}
+                format={(v) => v.toFixed(2)}
+                color="#48a83e"
+                yMin={CELL_MIN_V}
+                yMax={CELL_MAX_V}
+              />
+            ) : null}
             <Sparkline
               label="EXPOSURE SPREAD"
               unit={spreadCol.unit}

@@ -175,6 +175,31 @@ describe('WigglePlayer', () => {
     expect(observer.options?.threshold).toBe(0.25);
   });
 
+  it('keeps playing when a parent re-render hands it an equal frame array', async () => {
+    // Regression: the preload effect keyed on array IDENTITY, so every scroll
+    // re-render of the virtualized feed rebuilt `frames`, restarted the
+    // preload, and snapped the wigglegram back to its poster.
+    await render(<WigglePlayer frames={FRAMES} fps={10} poster="/poster.jpg" />);
+    act(() => runFrame(0));
+    act(() => runFrame(100));
+    expect(image().getAttribute('src')).toBe(FRAMES[1]);
+
+    await render(<WigglePlayer frames={[...FRAMES]} fps={10} poster="/poster.jpg" />);
+    expect(image().getAttribute('src')).toBe(FRAMES[1]);
+    expect(callbacks.size).toBe(1);
+  });
+
+  it('does restart when the frames themselves change', async () => {
+    await render(<WigglePlayer frames={FRAMES} fps={10} poster="/poster.jpg" />);
+    act(() => runFrame(0));
+    act(() => runFrame(100));
+    expect(image().getAttribute('src')).toBe(FRAMES[1]);
+
+    const other = ['/other-0.jpg', '/other-1.jpg'];
+    await render(<WigglePlayer frames={other} fps={10} poster="/poster.jpg" />);
+    expect(image().getAttribute('src')).toBe(other[0]);
+  });
+
   it('pauses while the document is hidden', async () => {
     await render(<WigglePlayer frames={FRAMES} />);
     expect(callbacks.size).toBe(1);

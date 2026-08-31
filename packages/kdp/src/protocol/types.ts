@@ -113,26 +113,69 @@ export interface Capabilities {
   /**
    * Network / Roll command group (KDP 0xa0–0xa9). `network` covers
    * NETWORK_LIST/SET/DELETE/STATUS; `roll` covers ROLL_* and the upload
-   * queue. Both optional: firmware without the group omits them, and
-   * absence is an answer, not an unknown.
+   * queue, and `rollUpload` the queue on its own. All three optional:
+   * firmware without the group omits them, and absence is an answer, not an
+   * unknown.
    *
-   * `rollUpload` is the third flag of the group. It is deliberately NOT
-   * declared here — it shipped before this interface was settled and is
-   * still read off the reported object by `supportsRollUpload`; typing it
-   * now would silently change that gate's shape.
+   * `rollUpload` shipped before this interface was settled and was read off
+   * the untyped reported object for a while. It is declared here now because
+   * a flag the firmware advertises (D17 lists it) and the type does not is
+   * exactly how a gate ends up with two implementations that disagree.
    */
   network?: boolean;
   roll?: boolean;
+  rollUpload?: boolean;
+  // The seven flags D17 records GET_CAPABILITIES as advertising and this
+  // interface never declared. Optional for the ordinary reason — firmware
+  // that predates a flag omits it — and each follows the same rule as the
+  // rest: absent is a "no", not an "unknown". A host that reads a missing
+  // flag as permission gets a panel issuing commands the body will NACK.
+  /** The settings store answers: GET/SET/SAVE/RESET_CONFIG (D17, from 0.2.0). */
+  configStore?: boolean;
+  /**
+   * A flash emitter is fitted and reachable from the body. Reported apart from
+   * `flashControl` on purpose (D17): the firmware can hold a flash window open
+   * with no LED on the other end of it — D4-V1 since ECN-0003, where GPIO28
+   * went to the shutter and the flash became an external module.
+   */
+  flashHardware?: boolean;
+  /**
+   * The gallery index answers: MEDIA_LIST/INFO/DELETE/FAVORITE (D17). Separate
+   * from `gallery`, which is pixels — MEDIA_READ and MEDIA_THUMB. 0.2.0 could
+   * list captures it could not hand over.
+   */
+  mediaIndex?: boolean;
+  /** `autoDimS`, `sleepS` and `camIdleTimeoutS` actually cut power (D10/D17). */
+  powerManagement?: boolean;
+  /**
+   * The body can measure the cell. False on D4-V1, where no sense divider or
+   * gauge bus reaches the P4, so `PowerStatus.batteryV` and `batteryPct` are
+   * `null` (D10). Reported apart from `powerManagement` because a client
+   * drawing a battery and a client setting a sleep timeout ask different
+   * questions.
+   */
+  powerTelemetry?: boolean;
+  /**
+   * An ESP32-C6 radio coprocessor is soldered on. Reported apart from
+   * `radioRouted` for the reason D17 gives: one boolean answering both
+   * produced the old "NETWORK: NOT FITTED" display, which sent people looking
+   * for a chip that was already on the carrier.
+   */
+  radioFitted?: boolean;
+  /** The firmware has a transport to that radio. A build-time opt-in on D4-V1. */
+  radioRouted?: boolean;
   /**
    * `BodyConfig.brightness` moves the backlight. False on D4-V1, where the
    * Guition carrier drives the panel backlight from a plain GPIO and the only
    * achievable states are lit and dark (contract D11) — the setting is stored
    * and echoed, and nothing dims.
    *
-   * Optional, and absence is not a third answer: firmware older than 0.4.9
-   * omits the flag, and `supports()` reads a missing flag as "not a gate", so
-   * an older body leaves the slider live rather than greying it on a fact the
-   * camera never stated. Only an explicit `false` disables the control.
+   * The one flag in this interface that a host must read as true when absent,
+   * and the exception is deliberate: firmware older than 0.4.9 never answered
+   * the question, and greying the slider on a body that never stated it cannot
+   * dim would be inventing a limit. Only an explicit `false` disables the
+   * control. Studio's `supports()` carries this as a named default rather than
+   * as a general "missing means yes" rule — see D19.
    */
   brightnessControl?: boolean;
 }
@@ -235,8 +278,39 @@ export interface CameraInfo {
 }
 
 export interface PowerStatus {
-  batteryV: number;
-  batteryPct: number;
+  /**
+   * Cell voltage, or `null` when the body cannot measure it.
+   *
+   * `null` is not a placeholder for a number that is coming: on D4-V1 nothing
+   * routes a sense divider or a gauge bus to the P4, so the shipped firmware
+   * sends `null` for both fields and always will (contract D10). The keys were
+   * typed as required `number`, which made every reply from real firmware a
+   * lie the compiler endorsed — and `0` is a number a client draws as a flat
+   * battery. Check `batteryMeasured` (or `capabilities.powerTelemetry`) before
+   * reading either; render '—' rather than inventing a figure.
+   */
+  batteryV: number | null;
+  batteryPct: number | null;
+  /**
+   * Whether the two figures above are readings. `false` says the body has no
+   * gauge, so a client need not infer intent from a null. Optional and
+   * additive: firmware that predates the field omits it, and a null with no
+   * `batteryMeasured` beside it means the same thing.
+   */
+  batteryMeasured?: boolean;
+  /**
+   * Where the panel's idle timeouts have got to (D11): `awake` → `dim` →
+   * `asleep`, and nothing else — `handle_power_status()` maps three states and
+   * the camera bank is not one of them (`camIdleTimeoutS` shows up as the
+   * cameras going offline, not as a display stage).
+   *
+   * `dim` is tracked and reported on hardware that cannot dim: the Guition
+   * carrier drives the backlight from a plain GPIO, so the stage is real and
+   * the brightness change is not. A client shows where the timeout stands; it
+   * must not conclude the panel is dimmed. Optional — firmware without the
+   * stage machine omits it.
+   */
+  displayStage?: 'awake' | 'dim' | 'asleep';
   state: 'battery' | 'usb' | 'charging';
   charging: boolean;
   /** Charge current in amps when a charger is attached (audit #57). */
@@ -575,9 +649,19 @@ export interface KinoConfig {
 export const CONFIG_SCHEMA_VERSION = 1;
 
 /**
- * Configuration always travels inside a versioned envelope so a field
- * rename in firmware becomes a migration instead of a broken Studio.
- * configRevision increments on every accepted write.
+ * Configuration always travels inside a versioned envelope, so the day a
+ * firmware field is renamed there is somewhere to hang the migration.
+ *
+ * **What is enforced today is equality, not migration.** Both ends compare
+ * `schemaVersion` against `CONFIG_SCHEMA_VERSION` and NACK `SCHEMA_MISMATCH`
+ * on any difference; no version-to-version conversion exists in firmware, in
+ * the mock, or in Studio. The envelope earns its keep by refusing a mismatch
+ * loudly instead of half-applying a config, which is the failure it was added
+ * to prevent — but a reader should not expect an older envelope to be
+ * upgraded. When a rename does land, the migration goes in beside this type
+ * and this paragraph changes with it.
+ *
+ * `configRevision` increments on every accepted write.
  */
 export interface ConfigEnvelope {
   schemaVersion: number;
@@ -641,6 +725,25 @@ export interface RuntimeStats {
     crcFailures: number;
     cameraTimeouts: number;
     sdErrors: number;
+    /**
+     * Events this device could not deliver: no room in the queue, or the host
+     * did not take the frame inside its 250 ms event write deadline. Both mean
+     * nobody was draining the link. Nonzero is not a fault — it is the price
+     * of the UI and the request path not stalling behind a log line.
+     *
+     * Optional and additive; firmware older than 0.4.10 omits it.
+     */
+    droppedLogEvents?: number;
+    /**
+     * RESPONSES that never reached the wire — the TX lock was held past its
+     * 2 s bound, or the host did not take the whole frame inside the 1.5 s
+     * response write deadline. Responses only: a lost event is counted once,
+     * in `droppedLogEvents`, so the two never overlap. Nonzero here means a
+     * host saw a command time out.
+     *
+     * Optional and additive; firmware 0.4.10+.
+     */
+    droppedTxFrames?: number;
   };
 }
 
@@ -800,7 +903,14 @@ export interface CaptureSummary {
 }
 
 export interface CaptureFile {
-  name: string; // C1.JPG .. C4.JPG
+  /**
+   * `C1.JPG`..`C4.JPG` — the names the firmware actually writes into
+   * `/KINO/CAPTURES/<uuid>/`, and the same names `MediaReadRequest.file`
+   * allows. Not `C1_RAW.JPG`: that suffix exists only in the ZIP Studio
+   * builds on export, and the mock reporting it here was the one place the
+   * two naming schemes met and disagreed.
+   */
+  name: string;
   sizeBytes: number;
   sha256: string;
 }
@@ -952,7 +1062,17 @@ export interface CameraCaptureResult {
       gainCeiling?: number;
       denoise?: number;
       sharpness?: number;
-      /** Sensor scale 5..63, lower is better — not the 60..95 wire percentage (D12). */
+      /**
+       * Sensor scale 5..63, lower is better — not the 60..95 wire percentage
+       * (D12).
+       *
+       * The one member of this object that records what the frame was ENCODED
+       * at rather than what a sensor apply echoed: `NL_CMD_CAPTURE` writes the
+       * quality register too, and so does every viewfinder frame, so this is
+       * the value the register held at the exposure — the node's echo while
+       * `NL_CMD_SENSOR` still owns it, otherwise the quality this capture's own
+       * command sent, after the node's clamp (D19, firmware 0.4.10).
+       */
       quality?: number;
     };
   }[];
@@ -1030,8 +1150,22 @@ export interface SetRecipeResponse {
 // Custom clips are stored on the device as 16 kHz mono 16-bit WAV. Studio
 // converts whatever the user drops to that format before upload.
 
+/**
+ * Longest `SoundInfo.name` the device stores, in characters.
+ *
+ * A bound is needed because the name is written to a sidecar on the card next
+ * to the clip, and the device has to know how much room to keep. It is stated
+ * here so both ends check the same number: `SOUND_BEGIN` NACKs `BAD_NAME` for
+ * anything longer rather than truncating, because a silently shortened name
+ * comes back on the next `GET_SOUNDS` as a clip the host did not upload — and
+ * the host has no way to tell that from a name it got wrong itself.
+ */
+export const SOUND_NAME_MAX = 32;
+
+/** Ids match `^snd-[a-z0-9-]{1,19}$` (D18) — the same pattern firmware checks. */
 export interface SoundInfo {
   id: string; // snd-<slug>
+  /** 1..SOUND_NAME_MAX characters. Longer is a NACK, never a truncation. */
   name: string;
   sizeBytes: number;
   durationMs: number;
