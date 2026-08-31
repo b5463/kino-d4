@@ -104,6 +104,14 @@ jobs:
       # file. Walking off the end of any of them is a remote over-read, so this
       # is a bounds check, not a format check. No dependencies.
       - run: make -C firmware/p4/host_tests test-wav
+      # The gallery's on-card capture-order index: round trip, a file truncated
+      # by a power cut, one corrupt line skipped without losing the rest, a
+      # header count that disagrees with the lines present, and the eviction
+      # rule past the 240-capture cap. The file lives on a removable card, so
+      # the negative cases are bounds checks on names that get snprintf'd into
+      # a path and opened - and the truncation case can only be tested here,
+      # because it only happens when the device has stopped. No dependencies.
+      - run: make -C firmware/p4/host_tests test-index
       # Every suite above is listed one target per line ON PURPOSE, so a failure
       # names what broke. The cost is that a target added to the Makefile is not
       # run here until someone adds a line. `test-all` in

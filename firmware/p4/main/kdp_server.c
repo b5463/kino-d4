@@ -21,6 +21,8 @@
 
 #include "config_store.h"
 #include "cJSON.h"
+#include "gallery.h"
+#include "gallery_index.h"
 #include "driver/temperature_sensor.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -1138,6 +1140,11 @@ static int media_scan(char (*names)[64], int cap, int *on_card) {
   struct dirent *e;
   while ((e = readdir(d)) != NULL) {
     if (e->d_name[0] == '.') continue;
+    /* The gallery's order index lives in this directory, so readdir hands it
+     * back here too. Listed as a capture it would make MEDIA_LIST report one
+     * more photograph than the card holds, and MEDIA_INFO on it would answer
+     * with an empty summary. */
+    if (gidx_is_index_file(e->d_name)) continue;
     /* Anything that will not fit is not one of ours: capture directories are
      * UUID-shaped and well under this. Skipping is better than truncating,
      * which would produce an id that maps to no directory. */
@@ -1494,6 +1501,12 @@ static void handle_media_delete(uint32_t seq, const cJSON *req) {
     return;
   }
   storage_capture_delete(dir);
+  /* Told, after the delete and only after it. The gallery's order index would
+   * otherwise still name this capture, and the first evidence would be a tile
+   * that cannot find its META.JSON - which costs a full rebuild of the order.
+   * Non-blocking, so it is safe on the KDP server task; the mutation happens
+   * on the gallery task. */
+  gallery_note_removed(jid->valuestring);
   klog("P4", "media delete %s", jid->valuestring);
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "id", jid->valuestring);

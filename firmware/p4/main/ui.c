@@ -271,7 +271,14 @@ static const char *const MENU_LABEL[6] = {
     "SHOOT", "LOOK", "GALLERY", "ROLL", "SETTINGS", "POWER",
 };
 
-typedef enum { DLG_NONE = 0, DLG_SHUTDOWN, DLG_RESTART, DLG_DELETE, DLG_FORMAT } dialog_t;
+typedef enum {
+  DLG_NONE = 0,
+  DLG_SHUTDOWN,
+  DLG_RESTART,
+  DLG_DELETE,
+  DLG_DELETE_ALL,
+  DLG_FORMAT
+} dialog_t;
 
 static uint16_t *s_cv;
 static screen_t s_screen = SCR_MENU;
@@ -1705,7 +1712,15 @@ static void draw_gallery(void) {
      * first entry arrives here with a total of zero and would otherwise say
      * "NO PHOTOS YET" for the second it takes to count them. */
     const bool counting = sd.mounted && gallery_loading();
-    const char *h1 = !sd.mounted ? "NO CARD" : counting ? "READING CARD" : "NO PHOTOS YET";
+    /* The count matters most here: this is the first open on a card with no
+     * order index yet, which is the one case that still walks every capture
+     * folder. Without a number the screen says the same thing for seven
+     * seconds and reads as a hang. */
+    char h1buf[24];
+    const int walked = gallery_scan_progress();
+    if (counting && walked > 0) snprintf(h1buf, sizeof h1buf, "READING CARD %d", walked);
+    else snprintf(h1buf, sizeof h1buf, "READING CARD");
+    const char *h1 = !sd.mounted ? "NO CARD" : counting ? h1buf : "NO PHOTOS YET";
     const char *h2 = !sd.mounted   ? "Insert a microSD card to store photos."
                      : counting    ? "Looking through the captures on the card."
                                    : "Press the shutter to take one.";
@@ -1783,7 +1798,15 @@ static void draw_gallery(void) {
 
   char mid[48];
   if (loading) {
-    snprintf(mid, sizeof mid, "READING CARD");
+    /* The count while a full rebuild is walking the card, nothing while the
+     * order came out of the index - which is the honest distinction: an index
+     * hit reads no capture folders at all, so there is no number, and it is
+     * over before anyone reads the line anyway. A rebuild on a 500-capture
+     * card takes seconds and a screen that says only READING CARD for that
+     * long is indistinguishable from one that has hung. */
+    const int walked = gallery_scan_progress();
+    if (walked > 0) snprintf(mid, sizeof mid, "READING CARD %d", walked);
+    else snprintf(mid, sizeof mid, "READING CARD");
   } else if (pages > 1) {
     /* Both numbers: which page you are on, and how much there is. Without the
      * total, "3 of 8" says nothing about whether that is 18 photographs or 48. */
@@ -2524,6 +2547,14 @@ static void draw_connection(void) {
 
 /* --- Storage ------------------------------------------------------ */
 
+/* The two live rows on the storage screen, in the order they are drawn. DELETE
+ * ALL PHOTOS is above FORMAT CARD because it is the one someone actually
+ * wants: it clears the pictures and leaves the sounds, the looks, the config
+ * and the upload queue alone, where FORMAT takes everything. */
+#define ST_IT_DELETE_ALL 0
+#define ST_IT_FORMAT 1
+#define ST_IT_COUNT 2
+
 static void draw_storage(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_STORAGE);
@@ -2535,12 +2566,29 @@ static void draw_storage(void) {
   human_bytes(capb, sizeof capb, sd.capacity_bytes);
   snprintf(cnt, sizeof cnt, "%d", gallery_total());
 
-  draw_list_frame(4);
+  /* While the wipe runs, the Photos row counts down instead of the label
+   * saying nothing for the minute a card of 500 captures takes. One line, in
+   * the row that owns the number, because the alternative is a progress dialog
+   * that has to be dismissed before the camera is usable again. */
+  char busy[24] = "";
+  if (gallery_deleting()) {
+    int done = 0, total = 0;
+    gallery_delete_progress(&done, &total);
+    snprintf(busy, sizeof busy, "DELETING %d OF %d", done, total);
+  }
+  const bool wiping = busy[0] != '\0';
+
+  draw_list_frame(5);
   draw_row(LIST_Y, false, true, "Card", sd.mounted ? capb : "None", false, C_MUTED);
   draw_row(LIST_Y + ROW_H, false, true, "Free space", sd.mounted ? freeb : "-", false, C_MUTED);
-  draw_row(LIST_Y + 2 * ROW_H, false, true, "Photos", cnt, false, C_MUTED);
-  draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, 0), sd.mounted, "Format card", NULL, true,
-           C_MUTED);
+  draw_row(LIST_Y + 2 * ROW_H, false, true, "Photos", wiping ? busy : cnt, false, C_MUTED);
+  /* Both destructive rows are live only with a card mounted, and neither is
+   * live while the other is running: a FORMAT pressed into a running wipe
+   * would be two things deleting the same directory. */
+  draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, ST_IT_DELETE_ALL),
+           sd.mounted && !wiping && gallery_total() > 0, "Delete all photos", NULL, true, C_MUTED);
+  draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), sd.mounted && !wiping,
+           "Format card", NULL, true, C_MUTED);
 }
 
 /* --- About -------------------------------------------------------- */
@@ -2612,6 +2660,14 @@ static void dialog_spec(dlg_spec_t *d) {
     case DLG_DELETE:
       snprintf(sub, sizeof sub, "%d frames. This cannot be undone.", s_photo_frames);
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
+      break;
+    case DLG_DELETE_ALL:
+      snprintf(sub, sizeof sub, "%d photos. This cannot be undone.", gallery_total());
+      /* "photos", and the sub line says how many, because that is the number a
+       * person checks before pressing this. It says nothing about sounds,
+       * looks or settings on purpose: they are not touched, and listing what
+       * survives a destructive action reads as a warning about them. */
+      *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
       break;
     case DLG_FORMAT:
       snprintf(sub, sizeof sub, "All %d photos will be deleted.", gallery_total());
@@ -2830,7 +2886,7 @@ static int item_count(screen_t s) {
     case SCR_SETTINGS: return 5;
     case SCR_DISPLAY: return DSP_IT_COUNT;
     case SCR_SOUND: return SN_IT_COUNT;
-    case SCR_STORAGE: return 1;
+    case SCR_STORAGE: return ST_IT_COUNT;
     case SCR_POWER: return 3;
     default: return 0;
   }
@@ -2964,7 +3020,12 @@ static int hit_test(int x, int y) {
       return -1;
     }
     case SCR_STORAGE:
-      if (in(x, y, LIST_X, LIST_Y + 3 * ROW_H, LIST_W, ROW_H)) return 0;
+      /* Rows 0..2 are readings and take no press. The two that act are drawn
+       * at 3 and 4, so the item number is the row minus three - one place, so
+       * the draw and the hit test cannot disagree about which of two
+       * destructive rows was pressed. */
+      for (int i = 0; i < ST_IT_COUNT; i++)
+        if (in(x, y, LIST_X, LIST_Y + (3 + i) * ROW_H, LIST_W, ROW_H)) return i;
       return -1;
 
     case SCR_POWER:
@@ -3012,11 +3073,25 @@ static void dialog_commit(void) {
       storage_capture_delete(dir);
       storage_release(STORAGE_USER_UI);
       photo_release();
+      /* Told, not discovered, and before the refresh: the gallery's order
+       * index still names this capture, and the only other way it would find
+       * out is a tile failing to open its META.JSON - which costs a full walk
+       * of the card. Non-blocking; the gallery task does the work. */
+      gallery_note_removed(s_photo_id);
       gallery_refresh();
       toast("Deleted");
       go(SCR_GALLERY, 180);
       return;
     }
+    case DLG_DELETE_ALL:
+      /* Runs on the gallery task, not here. This handler is the UI task
+       * inside a touch handler: deleting 500 folders on it would freeze the
+       * screen for the whole minute it takes, and the shutter with it. The
+       * gallery task takes the card in bursts and yields per folder, so a
+       * photograph taken during the wipe still wins. */
+      gallery_delete_all();
+      toast("Deleting photos");
+      break;
     case DLG_FORMAT:
       /* Not wired: there is no format entry point in storage.c, and calling
        * a delete loop over user captures under the name "format" would be a
@@ -3142,7 +3217,22 @@ static void activate(int item) {
       break;
 
     case SCR_STORAGE:
-      if (item == 0) { s_dialog = DLG_FORMAT; s_dlg_focus = 0; }
+      /* Both go through the same confirm as FORMAT and RESTART: focus starts
+       * on CANCEL, and the go button is the destructive one. A wipe already
+       * running takes neither press - there is nothing useful a second
+       * DELETE ALL could mean. */
+      if (gallery_deleting()) break;
+      if (item == ST_IT_DELETE_ALL) {
+        if (gallery_total() <= 0) {
+          toast("No photos on the card");
+          break;
+        }
+        s_dialog = DLG_DELETE_ALL;
+        s_dlg_focus = 0;
+      } else if (item == ST_IT_FORMAT) {
+        s_dialog = DLG_FORMAT;
+        s_dlg_focus = 0;
+      }
       break;
 
     case SCR_POWER:
@@ -3472,8 +3562,12 @@ static void ui_task(void *arg) {
 
     /* A capture in progress, a gallery still decoding, and a toast on its way
      * out all change the screen without anyone touching anything. */
+    /* The wipe is the fourth: DELETE ALL PHOTOS runs on the gallery task for
+     * up to a minute on a full card, and the DELETING n OF m line on the
+     * storage screen is the only thing that says it is still going. */
     const bool busy = cstage != CAPTURE_IDLE ||
-                      (s_screen == SCR_GALLERY && gallery_loading()) || s_toast[0] != '\0';
+                      (s_screen == SCR_GALLERY && gallery_loading()) ||
+                      (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
     if (held == -1 && s_screen != SCR_SHOOT && busy) {
       draw_screen();
       gfx_present();

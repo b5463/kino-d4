@@ -6,7 +6,8 @@ set(kino_srcs
     "hwv_rules.c"
   "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "mesh3d.c" "icons.c" "board_i2c.c"
   "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
-  "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "net_link.c" "wifi_creds.c"
+  "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "gallery_index.c" "net_link.c"
+    "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
   "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c"
   "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c")

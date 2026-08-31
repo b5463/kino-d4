@@ -36,11 +36,29 @@
 
 static const char *TAG = "kino_p4";
 
-/* A capture just landed, so the card has something new on it. Rescanning here
- * rather than on a timer means the picture is already decoded by the time
- * anyone opens the gallery to look for it. */
+/*
+ * A capture just landed, so the card has one more photograph on it.
+ *
+ * Told, not discovered. This used to call gallery_refresh(), which walked the
+ * whole captures directory and read a META.JSON per folder to work out where
+ * the new picture belonged in the newest-first order - on the capture task,
+ * with the next shutter press behind it. The capture already knows both facts
+ * the order needs, so it hands them over: the folder name and the instant.
+ *
+ * `r->captured_at_ms` is the same value the capture writes into META.JSON as
+ * `capturedAtMs`, which is the field the gallery sorts on - so a told order and
+ * a rebuilt order agree by construction rather than by luck. `r->uuid` is the
+ * folder name.
+ *
+ * Only when a capture actually reached the card: a report with nothing stored
+ * has no folder to show, and gallery_note_added would name a directory that
+ * does not exist. gallery_refresh() after it, because the page on screen still
+ * has to be redrawn.
+ */
 static void gallery_on_capture(const capture_report_t *r) {
-  (void)r;
+  if (r != NULL && r->ok && r->stored > 0 && r->uuid[0] != '\0') {
+    gallery_note_added(r->uuid, (uint64_t)(r->captured_at_ms > 0 ? r->captured_at_ms : 0));
+  }
   gallery_refresh();
 }
 

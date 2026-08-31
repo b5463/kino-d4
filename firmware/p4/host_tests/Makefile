@@ -13,6 +13,7 @@
 #   make -C firmware/p4/host_tests test-bench  # bench_c6.c, the bench-only C6 reset request
 #   make -C firmware/p4/host_tests test-recovery # radio_recovery.c, recovery after a C6 reset
 #   make -C firmware/p4/host_tests test-sched  # cam_sched.c, shutter over background node probes
+#   make -C firmware/p4/host_tests test-index  # gallery_index.c, the on-card capture order
 #   make -C firmware/p4/host_tests test-all    # all of them
 #
 # Several targets because they have different dependencies, not because the
@@ -140,7 +141,7 @@ test_cam_sched: $(SCHED_SRC) $(MAIN)/cam_sched.h
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-all clean
 test: test_pure
 	./test_pure
 
@@ -177,10 +178,10 @@ test-recovery: test_radio_recovery
 test-sched: test_cam_sched
 	./test_cam_sched
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched test_recipe_rules test_wav_probe test_gallery_index
 
 # recipe_rules.c is the look validator: cJSON only, no ESP-IDF. Same container
 # rule as test-meta, for the same reason - it must agree with the cJSON the
@@ -202,3 +203,19 @@ test_wav_probe: $(WAV_SRC) $(MAIN)/wav_probe.h
 
 test-wav: test_wav_probe
 	./test_wav_probe
+
+# gallery_index.c is the on-card order index the gallery reads instead of ~500
+# META.JSON files. No ESP-IDF and no cJSON - it is a text file by design, so
+# this is a plain target and not a container one. It runs here because the file
+# lives on a removable card: every name it hands back is snprintf'd into a path
+# and opened, and a truncated or hand-edited index must be rejected rather than
+# half-believed. The power-cut case (a header count that disagrees with the
+# lines present) can only be tested here, because it only happens when the
+# device has stopped.
+INDEX_SRC = $(MAIN)/gallery_index.c test_gallery_index.c
+
+test_gallery_index: $(INDEX_SRC) $(MAIN)/gallery_index.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(INDEX_SRC) -o $@
+
+test-index: test_gallery_index
+	./test_gallery_index

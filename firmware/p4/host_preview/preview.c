@@ -335,6 +335,21 @@ int gallery_pages(void) { return 3; }
 void gallery_turn(int delta) { (void)delta; }
 const gallery_item_t *gallery_slots(void) { return g_slot; }
 bool gallery_loading(void) { return false; }
+void gallery_note_added(const char *id, uint64_t when) {
+  (void)id;
+  (void)when;
+}
+void gallery_note_removed(const char *id) { (void)id; }
+/* 0 rather than a number: the previewed screens are the steady states, and a
+ * rebuild in progress is not one of them. The READING CARD branch is rendered
+ * by gallery_loading() above, which is what the preview varies. */
+int gallery_scan_progress(void) { return 0; }
+void gallery_delete_all(void) {}
+bool gallery_deleting(void) { return false; }
+void gallery_delete_progress(int *done, int *total) {
+  if (done != NULL) *done = 0;
+  if (total != NULL) *total = 0;
+}
 
 void klog(const char *src, const char *fmt, ...) {
   (void)src;
