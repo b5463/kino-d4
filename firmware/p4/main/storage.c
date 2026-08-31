@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "board_d4v1.h"
+#include "upload_store.h"  /* UPLOAD_STORE_RECORD / _TEMP: this firmware's own files in a capture folder */
 #include "driver/sdmmc_host.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -945,8 +946,11 @@ void storage_sweep_orphans(storage_sweep_t *out) {
     }
 
     /* storage_capture_delete unlinks only the names in STORAGE_CAPTURE_FILES
-     * and then rmdir()s, which fails on a directory holding anything else. So this
-     * either takes an orphan that is entirely ours, or leaves it intact. */
+     * and STORAGE_CAPTURE_INTERNAL_FILES and then rmdir()s, which fails on a
+     * directory holding anything else. So this either takes an orphan that is
+     * entirely ours, or leaves it intact. Since 0.4.14 the upload record is in
+     * the second list, so the husks left by a delete of a queued capture are
+     * finally swept here instead of being preserved for ever. */
     storage_capture_delete(dir);
     if (stat(dir, &st) == 0) {
       s.preserved++;
@@ -994,14 +998,41 @@ const char *const STORAGE_CAPTURE_FILES[STORAGE_CAPTURE_FILE_COUNT] = {
     "C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG", "META.JSON", "THUMB.JPG",
 };
 
+/*
+ * The upload record and its temp file, the seventh and eighth things a capture
+ * folder can hold.
+ *
+ * Missing from the delete path until 0.4.14, and the failure is the one the
+ * comment above already describes happening with THUMB.JPG: a capture that had
+ * been queued for a Roll kept UPLOAD.JSON, the rmdir below refused the folder,
+ * and the husk stayed on the card for ever. Measured on the bench card
+ * (KD4-D121BC, 2026-08-31): 275 photographs deleted over KDP freed their
+ * JPEGs but left 275 folders, and MEDIA_LIST - which counts directories - went
+ * on reporting 529 captures on a card holding 254. The orphan sweep logs
+ * "orphan capture kept (unexpected contents)" for each one, which is this bug
+ * naming itself once per boot.
+ *
+ * Deleting the record with the photograph is also the right answer on its own
+ * terms: the file it would upload no longer exists, and rq_reconcile_action
+ * already ignores a folder with no META.JSON.
+ */
+const char *const STORAGE_CAPTURE_INTERNAL_FILES[STORAGE_CAPTURE_INTERNAL_FILE_COUNT] = {
+    UPLOAD_STORE_RECORD,
+    UPLOAD_STORE_TEMP,
+};
+
 void storage_capture_delete(const char *dir) {
   char path[80];
   for (int i = 0; i < STORAGE_CAPTURE_FILE_COUNT; i++) {
     snprintf(path, sizeof path, "%s/%s", dir, STORAGE_CAPTURE_FILES[i]);
     unlink(path);
   }
+  for (int i = 0; i < STORAGE_CAPTURE_INTERNAL_FILE_COUNT; i++) {
+    snprintf(path, sizeof path, "%s/%s", dir, STORAGE_CAPTURE_INTERNAL_FILES[i]);
+    unlink(path);
+  }
   /* rmdir only removes an empty directory, so anything unexpected left in the
    * folder keeps the folder - deleting a capture must never take a file this
-   * function did not put there. */
+   * firmware did not put there. */
   rmdir(dir);
 }

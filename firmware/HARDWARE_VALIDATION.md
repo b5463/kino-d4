@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-31, firmware 0.4.13
+## Status — updated 2026-08-31, firmware 0.4.14
 
 0.4.11-0.4.13 landed in one bench day. 0.4.11 gives the gallery a persisted
 order index and DELETE ALL PHOTOS; its first session on the 527-capture card
@@ -315,6 +315,48 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### Deleting a queued capture left its folder for ever, 0.4.14 bench, 2026-08-31
+
+Board `KD4-D121BC`, 529 capture directories on the card, all of them test
+shots and most of them queued to a Roll at some point. Asked to clear the
+roll, and the count refused to move.
+
+**What the wipe showed.** `MEDIA_DELETE` over KDP freed the JPEGs - card free
+space climbed to 29,750 MB - while `MEDIA_LIST` went on reporting **529**
+captures. `media_scan()` counts DIRECTORIES, and the directories were still
+there: `storage_capture_delete()` unlinks the six names in
+`STORAGE_CAPTURE_FILES` and then `rmdir()`s, and `rmdir` refuses a non-empty
+directory. `UPLOAD.JSON` - written inside the capture folder by
+`upload_store.c` for every capture queued to a Roll - was in neither list. So
+275 photographs deleted, 275 husks left, and the gallery counting them.
+
+The same file already carries the comment describing this exact failure the
+first time it happened, with `THUMB.JPG`. Second file, same trap. The boot
+orphan sweep had been naming it once per boot for weeks:
+`orphan capture kept (unexpected contents)`.
+
+**Fix (0.4.14).** A second list, `STORAGE_CAPTURE_INTERNAL_FILES`
+(`UPLOAD.JSON`, `UPLOAD.TMP`), unlinked by the delete path and deliberately
+NOT added to `STORAGE_CAPTURE_FILES` - that array is also the `MEDIA_READ`
+allow-list, and the device's upload state has no business on the wire.
+Deleting the record with the photograph is right on its own terms: the file it
+would upload is gone, and `rq_reconcile_action` already ignores a folder with
+no META.JSON.
+
+**Verified.** Flashed 0.4.14 and resumed the wipe: the count dropped for the
+first time - 529 -> 325 -> 285 -> 245 -> 59 -> **0** - 219 removed on that
+pass with 0 failures, 494 over the session. After a reboot: `MEDIA_LIST`
+total **0**, 29,812 MB free, and no `orphan capture kept` line in the boot
+log, so the husks left by the pre-fix deletes were swept too.
+
+**Two findings recorded, not fixed (#150).** While the card held more than the
+gallery's 240-entry cap, every delete owed a full walk (an older capture
+should surface, and a delete cannot invent a name it never read), so bulk
+`MEDIA_DELETE` storms `BUSY`: 50 deletes then a wall of refusals, workable
+only with backoff and 60 ms pacing. And `with_card()` answers that refusal
+with "Card is busy with a capture" for ANY acquire timeout - it sent this
+investigation looking for a capture that was never running.
 
 ### The quality flip - the register write that ruined the bottom of the frame, 0.4.11-0.4.13 bench, 2026-08-31
 

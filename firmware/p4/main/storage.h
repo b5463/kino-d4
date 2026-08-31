@@ -146,10 +146,25 @@ void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
 /** Frames a capture folder can hold: one per camera. */
 #define STORAGE_CAPTURE_FRAMES 4
 
-/* Every file a capture directory can hold. Shared by the delete path and the
- * media allow-list so the two cannot drift. */
+/* Every file of a capture a HOST may read. Shared by the delete path and the
+ * MEDIA_READ allow-list so the two cannot drift. */
 #define STORAGE_CAPTURE_FILE_COUNT 6
 extern const char *const STORAGE_CAPTURE_FILES[STORAGE_CAPTURE_FILE_COUNT];
+
+/*
+ * Files this firmware writes INSIDE a capture folder and never serves.
+ *
+ * A second list rather than six-becomes-eight, because the array above is also
+ * the MEDIA_READ allow-list: adding the upload record there would put the
+ * device's own queue state on the wire, which is a contract change nobody
+ * asked for. Deleting a capture must still take them - see
+ * storage_capture_delete().
+ *
+ * Owned by upload_store.h (UPLOAD_STORE_RECORD / UPLOAD_STORE_TEMP); named
+ * from those constants in storage.c so a rename there reaches here.
+ */
+#define STORAGE_CAPTURE_INTERNAL_FILE_COUNT 2
+extern const char *const STORAGE_CAPTURE_INTERNAL_FILES[STORAGE_CAPTURE_INTERNAL_FILE_COUNT];
 
 typedef struct {
   /* "CAP_000042" from the NVS sequence, which is never reused across boots.
@@ -210,13 +225,17 @@ void storage_capture_abort(storage_capture_t *c);
 /** CRC-32 of a stored file, streamed. */
 esp_err_t storage_file_crc32(const char *path, uint32_t *out_crc, uint32_t *out_bytes);
 
-/** Removes a committed capture folder: every name in STORAGE_CAPTURE_FILES,
- * then the directory itself. Used by the soak test's keepAll=false cleanup and
- * by the boot sweep — never called on user captures.
+/** Removes a capture folder: every name in STORAGE_CAPTURE_FILES and in
+ * STORAGE_CAPTURE_INTERNAL_FILES, then the directory itself. Used by
+ * MEDIA_DELETE, the photo screen's DELETE, DELETE ALL PHOTOS, the soak test's
+ * keepAll=false cleanup and the boot sweep.
  *
- * The list is the whole contract. It missed THUMB.JPG while the capture path
- * wrote one on every success, so rmdir() refused the non-empty directory and a
- * deleted capture came back in the gallery on the next scan. */
+ * The two lists are the whole contract, and both have now been short once:
+ * THUMB.JPG while the capture path wrote one on every success, and UPLOAD.JSON
+ * once captures could be queued for a Roll. Both times rmdir() refused the
+ * non-empty directory, and both times the symptom was a deleted capture that
+ * was still on the card. Anything a capture folder can hold belongs in one of
+ * the two lists. */
 void storage_capture_delete(const char *dir);
 
 /* ------------------------------------------------------------------ */
@@ -293,7 +312,8 @@ typedef struct {
  *
  * Conservative on every axis that matters:
  *   - only directories whose names pass storage_is_capture_dirname()
- *   - only ever unlinks the names in STORAGE_CAPTURE_FILES
+ *   - only ever unlinks the names in STORAGE_CAPTURE_FILES and
+ *     STORAGE_CAPTURE_INTERNAL_FILES
  *   - the directory itself goes via rmdir(), which refuses a non-empty
  *     directory, so an orphan holding anything unexpected is PRESERVED and
  *     counted rather than forced

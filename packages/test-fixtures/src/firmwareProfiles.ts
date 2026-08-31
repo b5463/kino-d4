@@ -467,4 +467,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.13 is node-only (#149): a photograph is served only from a frame
   // armed after the last encoding-register write. No KDP surface change.
   '0.4.13': 'd4-settings-0-4-9',
+  // 0.4.14 puts the upload record in the capture-delete list, so deleting a
+  // queued capture no longer leaves its folder behind. Card behaviour only.
+  '0.4.14': 'd4-settings-0-4-9',
 };
