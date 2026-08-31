@@ -8,9 +8,18 @@
  * with no card in the slot; custom looks are /sdcard/KINO/RECIPES/<id>.json
  * and are simply absent when the card is.
  *
- * The camera stores and reports a look. It does not apply one - there is no
- * grading anywhere in this firmware - so a look is a label on a capture that
- * the host acts on at import. The LOOK screen says so.
+ * A look has two halves and the camera acts on one of them. Since firmware
+ * 0.4.9 (contract D19) the `capture` block - exposure bias, gain ceiling,
+ * denoise, sharpness, quality - goes to each node over NL_CMD_SENSOR before the
+ * trigger, the node clamps each value and reports what it set, and META records
+ * it. The `look` block is the other half: contrast, saturation, temperature and
+ * the rest of the colour science, which the host applies at import because
+ * there is no grading anywhere in this firmware.
+ *
+ * This paragraph used to say the camera "does not apply" a look at all. That
+ * was true of 0.4.8 and became wrong at 0.4.9; the LOOK screen's caption
+ * carried the same error until issue #151 and now says the same thing this
+ * does.
  */
 #ifndef P4_KDP_RECIPES_H
 #define P4_KDP_RECIPES_H

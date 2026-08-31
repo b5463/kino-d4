@@ -777,7 +777,7 @@ static void handle_device_info(uint32_t seq) {
 
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "product", "KINO");
-  cJSON_AddStringToObject(json, "hardware", "V1");
+  cJSON_AddStringToObject(json, "hardware", KDP_HARDWARE_REV);
   cJSON_AddStringToObject(json, "serial", s_id.serial);
   cJSON_AddNumberToObject(json, "protocol", KDP_PROTOCOL_VERSION);
   cJSON_AddStringToObject(json, "p4Firmware", KINO_FW_VERSION);
@@ -2839,6 +2839,10 @@ static void server_task(void *arg) {
     if (n > 0) kdp_decoder_push(&s_decoder, rx, (size_t)n, on_frame, NULL);
   }
 }
+
+/* A read of a buffer written once, before the UI task exists. No lock: nothing
+ * ever writes s_id again, so there is no torn state to protect against. */
+const char *kdp_device_serial(void) { return s_id.serial; }
 
 esp_err_t kdp_server_start(const kdp_identity_t *identity) {
   /* Feature modules first: their capability flags are read by GET_CAPABILITIES

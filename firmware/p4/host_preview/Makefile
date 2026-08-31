@@ -6,7 +6,12 @@
 # drawing functions are reachable without adding test hooks to the firmware.
 CC ?= gcc
 MAIN := ../main
-CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN)
+# kdp_core's public headers are on the include path rather than shimmed: the
+# About screen reports KDP_PROTOCOL_VERSION, and kdp/protocol.h needs nothing
+# but stdint.h. A shim would be a second copy of a number whose whole point is
+# that there is one of it.
+KDP_CORE := ../../components/kdp_core/include
+CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_CORE)
 LDFLAGS := -lm
 
 # qr.c is compiled for real, not stubbed: it has no ESP-IDF dependency, and a
@@ -19,7 +24,7 @@ DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
         $(MAIN)/roll_queue.h $(MAIN)/gallery.h $(MAIN)/audio.h \
-        $(MAIN)/kdp_server.h
+        $(MAIN)/kdp_server.h $(MAIN)/kdp_recipes.h $(KDP_CORE)/kdp/protocol.h
 
 # Every source and header is listed, including the ones that are #included
 # rather than compiled: a missing prerequisite here means make silently

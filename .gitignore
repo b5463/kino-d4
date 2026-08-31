@@ -53,6 +53,9 @@ infra/backups/
 firmware/p4/host_preview/preview
 firmware/p4/host_preview/preview.exe
 firmware/p4/host_preview/*.ppm
+# ...and out/, which is the path the documented render command actually writes
+# to, so a render left 44 untracked PPMs one `git add -A` from being committed.
+firmware/p4/host_preview/out/
 # The host-test binaries were enumerated one target at a time, so every suite
 # added since left its executable untracked-but-visible and one `git add -A`
 # away from being committed. Six were sitting in the tree when this was

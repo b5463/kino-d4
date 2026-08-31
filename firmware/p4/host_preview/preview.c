@@ -28,6 +28,9 @@
 #include "gallery.h"
 #include "gfx.h"
 #include "icons.h"
+/* For recipe_capture_t: the LOOK screen's detail strip needs a capture block
+ * per look, and the stub below has to match the real signature exactly. */
+#include "kdp_recipes.h"
 #include "config_store.h"
 #include "net_link.h"
 #include "power.h"
@@ -69,7 +72,11 @@ void taskmon_register(const char *name, void *handle) {
 }
 
 esp_err_t audio_init(void) { return ESP_OK; }
-bool audio_ready(void) { return false; }
+/* Driven from main(): the SOUND screen now consults this, and it had returned a
+ * flat false - which would have made every screenshot of that screen the
+ * amplifier-did-not-start branch and hidden the normal one entirely. */
+static bool g_audio_ready = true;
+bool audio_ready(void) { return g_audio_ready; }
 void audio_shutter(void) {}
 void audio_tick(void) {}
 void audio_warning(void) {}
@@ -111,6 +118,8 @@ static const char *g_mode = "wiggle";
 static const char *g_flash_mode = "auto";
 static bool g_mono = false;
 static const char *g_look = "party-neg";
+/* Drives the QUAD/ALL disagreement the LOOK screen calls MIXED. */
+static bool g_mixed_slots = false;
 static const char *g_shutter_sound = "click";
 /* body.name: empty is the default and the state the About screen has always
  * shown, so both get a picture. */
@@ -127,10 +136,25 @@ const char *config_str(const char *path, const char *fallback) {
   /* All four slots answer the same look, so the LOOK screen's ALL target
    * renders its normal state rather than MIXED. The mixed case gets its own
    * shot below, driven by g_look. */
-  if (strncmp(path, "quad.slots.", 11) == 0 && strstr(path, "recipeId")) return g_look;
-  if (strcmp(path, "device") == 0) return "KD4-D121BC";
+  if (strncmp(path, "quad.slots.", 11) == 0 && strstr(path, "recipeId")) {
+    /* One slot answering something else is what makes look_current_id() give
+     * up, which is the MIXED state - and now also the detail strip's "the four
+     * cameras are on different looks" branch, which has no other way to be
+     * looked at. */
+    if (g_mixed_slots && strstr(path, "cam3") != NULL) return "mono";
+    return g_look;
+  }
+  /* `device` used to be faked here, and that fake is why the About screen's
+   * Device row looked correct in every screenshot ever taken while being blank
+   * on hardware - nothing in the firmware writes that key. Removed with the row
+   * that read it; the serial now comes from kdp_device_serial() below. */
   return fallback;
 }
+
+/* The serial GET_DEVICE_INFO answers. On a camera it is derived from the
+ * factory MAC in app_main(); there is no efuse here, so this is a fixed string
+ * in the shape that derivation produces ("KD4-" and six upper-case hex). */
+const char *kdp_device_serial(void) { return "KD4-3A2B1C"; }
 
 size_t config_str_copy(const char *path, char *out, size_t cap) {
   const char *v = config_str(path, "");
@@ -162,6 +186,48 @@ bool kdp_recipes_name(int index, char *id, size_t id_cap, char *name, size_t nam
   if (index < 0 || index >= kdp_recipes_count()) return false;
   if (id && id_cap) snprintf(id, id_cap, "%s", FAKE_LOOKS[index].id);
   if (name && name_cap) snprintf(name, name_cap, "%s", FAKE_LOOKS[index].name);
+  return true;
+}
+
+/*
+ * A capture block per look, for the LOOK screen's detail strip.
+ *
+ * kdp_recipes.c parses the embedded factory JSON with the real cJSON and reads
+ * custom looks off the card; neither exists here. These numbers are in the
+ * shape and the ranges the contract gives (D19: exposureBias -2..+2 EV, quality
+ * 60..95, gainLimit an x-factor the factory looks write as 12 or 16) so the
+ * strip is photographed at the width it will really have.
+ *
+ * `flash-digi` deliberately sets only three of the five. The NOT SET column is
+ * the one distinction on this screen that cannot be checked by arithmetic - an
+ * absent field is not a zero, and it has to be visibly different from one -
+ * so there has to be a screenshot with both kinds of column side by side.
+ */
+bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
+  if (out == NULL || id == NULL) return false;
+  memset(out, 0, sizeof *out);
+
+  /* A look with no capture block at all, so that branch gets a picture too. */
+  if (strcmp(id, "raw-digi") == 0) return false;
+
+  snprintf(out->resolution, sizeof out->resolution, "2048x1536");
+  out->has_resolution = true;
+  out->jpeg_quality_percent = 88;
+  out->has_jpeg_quality = true;
+  out->exposure_bias = -0.7;
+  out->has_exposure_bias = true;
+  out->gain_limit = 16;
+  out->has_gain_limit = true;
+  out->denoise = 2;
+  out->has_denoise = true;
+  out->sharpness = 3;
+  out->has_sharpness = true;
+
+  if (strcmp(id, "flash-digi") == 0) {
+    out->exposure_bias = 1.5;
+    out->has_gain_limit = false;
+    out->has_denoise = false;
+  }
   return true;
 }
 
@@ -412,8 +478,38 @@ void camlink_get_info(camlink_info_t *out) {
   out->latency_ms = 4;
 }
 
+/* Per-camera, for the About screen's CAMERAS column.
+ *
+ * CAM1 and CAM3 answer and CAM2 and CAM4 do not, deliberately: this body has
+ * one camera fitted today, and a screenshot in which all four rows look the
+ * same would not show whether the online and offline rows are distinguishable
+ * at a glance. CAM3 carries a different node version because nodes are
+ * reflashed one at a time, which is exactly why this is four rows. */
+void camlink_get_info_ch(int cam, camlink_info_t *out) {
+  memset(out, 0, sizeof *out);
+  if (cam != 0 && cam != 2) return;
+  out->online = true;
+  snprintf(out->sensor, sizeof out->sensor, "OV3660");
+  snprintf(out->firmware, sizeof out->firmware, cam == 0 ? "0.9.0" : "0.8.4");
+  out->temp_c = 31;
+  out->latency_ms = 4;
+}
+
+/* Driven from main() so the STORAGE screen's two states both get a picture:
+ * the new band under the list is a capacity bar when the card is mounted and
+ * the mount failure when it is not, and those are different layouts. */
+static bool g_card_mounted = true;
+
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
+  if (!g_card_mounted) {
+    out->present = true;
+    out->mounted = false;
+    out->mount_attempts = 3;
+    out->last_error = "MOUNT_FAILED";
+    out->write_test = "none";
+    return;
+  }
   out->present = true;
   out->mounted = true;
   out->filesystem = "FAT";
@@ -654,12 +750,25 @@ int main(int argc, char **argv) {
    * TARGET row - the only two states the screen has that the default one does
    * not show. QUAD is the taller of the two and the one whose footnotes come
    * closest to the bottom edge. */
+  /* A look that sets only three of the five sensor knobs, so the detail strip
+   * is photographed with NOT SET columns beside real numbers. */
   g_look = "flash-digi";
   SHOT(SCR_LOOK, "look_picked");
+  /* And a look with no capture block at all - the strip's other branch. */
+  g_look = "raw-digi";
+  SHOT(SCR_LOOK, "look_no_capture");
+  g_look = "flash-digi";
   g_mode = "quad";
   s_look_target = 2; /* CAM2, so the row is not drawn on its first segment */
   SHOT(SCR_LOOK, "look_quad_target");
+
+  /* QUAD with target ALL and one camera on a different look: the picker says
+   * MIXED and the detail strip has no single set of numbers to show. */
   s_look_target = 0;
+  g_mixed_slots = true;
+  SHOT(SCR_LOOK, "look_quad_mixed");
+  g_mixed_slots = false;
+
   g_mode = "wiggle";
   g_look = "party-neg";
 
@@ -741,6 +850,11 @@ int main(int argc, char **argv) {
   g_shutter_sound = "snd-polaroid";
   SHOT(SCR_SOUND, "settings_sound_custom_clip");
   g_shutter_sound = "click";
+  /* The body whose I2S never started. The controls are still drawn - the
+   * settings are stored either way - and the footer is what says so. */
+  g_audio_ready = false;
+  SHOT(SCR_SOUND, "settings_sound_no_audio");
+  g_audio_ready = true;
 
   /* Connection in the three states that matter. The first is this body:
    * the radio is fitted and there is no route to it, which is exactly the
@@ -759,6 +873,11 @@ int main(int argc, char **argv) {
   g_net_routed = false;
   g_saved_networks = 0;
   SHOT(SCR_STORAGE, "settings_storage");
+  /* A card the driver has tried and failed to mount, which is a different
+   * screen from an empty slot and used to show the same "None" as one. */
+  g_card_mounted = false;
+  SHOT(SCR_STORAGE, "settings_storage_unmounted");
+  g_card_mounted = true;
   SHOT(SCR_ABOUT, "settings_about");
   /* With a name set: a fourth row appears above Device and the list frame
    * grows by one. The longest name SET_CONFIG accepts, so the row is

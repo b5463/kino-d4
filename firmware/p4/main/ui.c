@@ -20,9 +20,13 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "gfx.h"
+/* For KDP_PROTOCOL_VERSION, which the About screen reports: the same constant
+ * GET_DEVICE_INFO answers as `protocol`, not a second copy of the number. */
+#include "kdp/protocol.h"
 #include "kdp_recipes.h"
-/* For media_favorite_set/get: the photograph screen sets the same META.JSON
- * flag MEDIA_FAVORITE sets, through the same function. */
+/* For media_favorite_set/get, and for kdp_device_serial() and
+ * KDP_HARDWARE_REV, which is what the About screen's Serial and Hardware rows
+ * are: the strings GET_DEVICE_INFO already answers. */
 #include "kdp_server.h"
 #include "kdp_sounds.h"
 #include "klog.h"
@@ -517,6 +521,50 @@ static void text_right(const ui_font_t *f, int x, int y, const char *s, uint16_t
   text(f, x - text_w(f, s), y, s, ink);
 }
 
+/*
+ * The same face at an integer multiple.
+ *
+ * There are two faces in the build - UI_FONT_S at 18 rows and UI_FONT_M at 24 -
+ * and neither is legible from across a room. Adding a third at 48 rows would
+ * cost about 40 KB of flash for glyphs used by two screens, so the M face is
+ * pixel-doubled instead: draw_bits() already takes a scale, it was simply never
+ * passed anything but 1. Doubled bitmap type is blocky, which on a panel
+ * imitating a 2001 device is the right kind of wrong - and it is what the ROLL
+ * screen needs, where the number of photos waiting has to be readable at the
+ * distance someone stands to hold the camera up.
+ *
+ * Integer scale only. A fractional one would need filtering, and a filtered
+ * 1-bit glyph at this size reads as a smudge.
+ */
+static void text_scaled(const ui_font_t *f, int x, int y, const char *s, int scale,
+                        uint16_t ink) {
+  if (scale < 1) scale = 1;
+  for (; *s; s++) {
+    const int i = (unsigned char)*s - f->first;
+    if (i < 0 || i >= f->count) continue;
+    const ui_glyph_t *g = &f->glyphs[i];
+    draw_bits(g->bits, g->w, f->line_h, g->stride, x, y, scale, ink);
+    x += g->adv * scale;
+  }
+}
+
+static void text_scaled_mid(const ui_font_t *f, int cx, int y, const char *s, int scale,
+                            uint16_t ink) {
+  text_scaled(f, cx - text_w(f, s) * scale / 2, y, s, scale, ink);
+}
+
+/**
+ * The largest scale at which `s` fits `w` pixels, 1 or 2.
+ *
+ * Every string these screens set at scale 2 is user data - a roll name, a look
+ * name - so none of them can be sized by eye at build time. Falling back to
+ * scale 1 keeps a long name readable and inside its column; clipping it at
+ * scale 2 would put half a word against a hard edge and look like a bug.
+ */
+static int fit_scale(const ui_font_t *f, const char *s, int w) {
+  return text_w(f, s) * 2 <= w ? 2 : 1;
+}
+
 static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t ink) {
   text(f, cx - text_w(f, s) / 2, y, s, ink);
 }
@@ -1004,29 +1052,44 @@ static void draw_header(screen_t s) {
   }
 }
 
-/* One list row. `value` may be NULL; `arrow` adds the "opens a screen" mark,
- * which a row that acts in place must never have. */
-static void draw_row(int y, bool focused, bool enabled, const char *title, const char *value,
-                     bool arrow, uint16_t value_ink) {
-  (void)value_ink;
+/* One list row at an arbitrary x, width and height. `value` may be NULL;
+ * `arrow` adds the "opens a screen" mark, which a row that acts in place must
+ * never have.
+ *
+ * Every screen but About uses one full-width column, which is why draw_row()
+ * below is still the one almost everything calls. About needs two columns to
+ * carry per-camera firmware at all, and a second copy of the row idiom is how
+ * the two would drift apart - so the idiom moved here and draw_row() became a
+ * call to it with the standard geometry. */
+static void draw_row_at(int x, int w, int y, int h, bool focused, bool enabled,
+                        const char *title, const char *value, bool arrow) {
   /* A list row on a white well with a navy selection: the 1998 listbox,
    * which is also the clearest thing to read in a dark room. */
-  fill(LIST_X, y, LIST_W, ROW_H, focused ? W_SEL : W_WINDOW);
+  fill(x, y, w, h, focused ? W_SEL : W_WINDOW);
 
   const uint16_t ti = focused ? W_SELTEXT : (enabled ? W_TEXT : W_GRAYTEXT);
   const uint16_t vi = focused ? W_SELTEXT : (enabled ? RGB(0x40, 0x40, 0x40) : W_GRAYTEXT);
-  text(&UI_FONT_M, LIST_X + 14, y + (ROW_H - UI_FONT_M.line_h) / 2, title, ti);
+  text(&UI_FONT_M, x + 14, y + (h - UI_FONT_M.line_h) / 2, title, ti);
 
-  int right = LIST_X + LIST_W - 14;
+  int right = x + w - 14;
   if (arrow) {
-    const int cy = y + ROW_H / 2;
+    const int cy = y + h / 2;
     for (int i = 0; i < 6; i++) {
       fill(right - 8 + i, cy - 5 + i, 2, 2, ti);
       fill(right - 8 + i, cy + 5 - i, 2, 2, ti);
     }
     right -= 20;
   }
-  if (value) text_right(&UI_FONT_M, right, y + (ROW_H - UI_FONT_M.line_h) / 2, value, vi);
+  if (value) text_right(&UI_FONT_M, right, y + (h - UI_FONT_M.line_h) / 2, value, vi);
+}
+
+/* The standard full-width row, which is what every screen but About draws.
+ * `value_ink` has never been read - the row picks its own inks from `focused`
+ * and `enabled` - and is kept only because eleven call sites pass it. */
+static void draw_row(int y, bool focused, bool enabled, const char *title, const char *value,
+                     bool arrow, uint16_t value_ink) {
+  (void)value_ink;
+  draw_row_at(LIST_X, LIST_W, y, ROW_H, focused, enabled, title, value, arrow);
 }
 
 /* The window a list sits in: face ground, sunken white well. */
@@ -1460,12 +1523,16 @@ static void look_set_mono(bool mono) {
 #define LK_IT_TARGET 9  /* 9..13 ALL / CAM1..CAM4, QUAD only */
 #define LK_IT_COUNT 14
 
-/* 22 is the gap between the two footnote lines, 18 is UI_FONT_S.line_h - a
- * literal because a struct member is not a constant expression. Checked
- * because five rows plus two lines of small type is the tightest screen on
- * the camera, and the overflow would only show on a panel in QUAD. */
-_Static_assert(lk_label_y(5) + 4 + 22 + 18 <= UI_H,
-               "the LOOK footnotes fall off the bottom in QUAD");
+/* The detail strip under the last control row. Its height is here rather than
+ * beside its drawing code so the assert below can see it. */
+#define LK_DET_H 52
+#define LK_DET_GAP 10
+
+/* Five rows plus the detail strip is the tightest screen on the camera, and the
+ * overflow would only show on a panel in QUAD - which is why the two lines of
+ * footnote this replaced were checked the same way. */
+_Static_assert(lk_ctl_y(LK_ROW_TARGET) + LK_CTL_H + LK_DET_GAP + LK_DET_H <= UI_H,
+               "the LOOK detail strip falls off the bottom in QUAD");
 
 /* Which camera the picker writes to, in QUAD. 0 is ALL, 1..4 are cam1..cam4.
  * Not persisted: it is a question about the next press, not a setting. */
@@ -1580,6 +1647,146 @@ static void look_step(int delta) {
   toast(name);
 }
 
+/* ---- what the selected look actually does -------------------------------
+ *
+ * The picker used to be `< PARTY NEG >` and nothing else: eleven factory looks
+ * plus up to twenty-four custom ones, cycled blind, with a caption underneath
+ * saying the choice did not reach the camera at all. Since 0.4.9 it does
+ * (contract D19), so the screen shows the five numbers that go to the sensor
+ * and where in the list you are - which is also the difference between cycling
+ * a list and choosing from one.
+ */
+#define LK_DET_COLS 5
+
+/**
+ * The look's capture block, cached on its id.
+ *
+ * Cached for a harder reason than the ROLL screen's QR is: for a CUSTOM look
+ * kdp_recipes_capture_block() takes the card (`storage_acquire_unless_held`),
+ * and a draw runs every 90 ms while anything is busy. Per frame that would put
+ * the SD arbiter in the repaint path, which is the one place a draw must never
+ * block - the capture task holds the card for the length of a capture.
+ *
+ * The cost of the cache: a look edited in Studio under the SAME id keeps
+ * showing its old numbers until the picker steps off it and back. That is the
+ * right trade. The alternative is a screen that can stall behind a shutter.
+ *
+ * `s_lk_have` distinguishes "read it, there is no capture block" from "not read
+ * yet", so a look that genuinely sets nothing is not re-read every frame.
+ */
+static bool look_capture(const char *id, recipe_capture_t *out) {
+  static char s_lk_id[KDP_RECIPE_ID_MAX];
+  static recipe_capture_t s_lk_cap;
+  static bool s_lk_have;
+
+  if (strcmp(s_lk_id, id) != 0) {
+    snprintf(s_lk_id, sizeof s_lk_id, "%s", id);
+    s_lk_have = kdp_recipes_capture_block(id, &s_lk_cap);
+  }
+  *out = s_lk_cap;
+  return s_lk_have;
+}
+
+/**
+ * One column of the detail strip: a value over its label.
+ *
+ * `set` is the look's `has_` flag, and it is not cosmetic. Every one of these
+ * fields has a real zero - denoise 0 is denoise off, sharpness 0 is neutral,
+ * 0.0 EV is the metered exposure - so a look that does not set a knob cannot be
+ * drawn as a zero without saying something false about the photograph. It says
+ * NOT SET, and NOT SET means the mode's own value stays where it was, which is
+ * exactly what an absent field means on the wire.
+ */
+static void look_detail_col(int x, int w, int y, const char *value, bool set,
+                            const char *label) {
+  if (set) {
+    text_mid(&UI_FONT_M, x + w / 2, y, value, W_TEXT);
+  } else {
+    text_mid(&UI_FONT_S, x + w / 2, y + 4, "NOT SET", W_GRAYTEXT);
+  }
+  text_mid(&UI_FONT_S, x + w / 2, y + UI_FONT_M.line_h + 4, label, W_GRAYTEXT);
+}
+
+/** The detail strip, under the last control row. */
+static void draw_look_detail(int y) {
+  fill(LK_X, y, LK_W, LK_DET_H, W_WINDOW);
+  bevel(LK_X, y, LK_W, LK_DET_H, true);
+
+  char id[KDP_RECIPE_ID_MAX];
+  if (!look_current_id(id, sizeof id)) {
+    /* QUAD, target ALL, four slots that disagree. Showing cam1's numbers for
+     * all four would misdescribe three cameras, which is the same reason
+     * look_display() says MIXED rather than guessing. */
+    text_mid(&UI_FONT_S, UI_W / 2, y + (LK_DET_H - UI_FONT_S.line_h) / 2,
+             "The four cameras are on different looks. Pick one camera to see its settings.",
+             W_GRAYTEXT);
+    return;
+  }
+
+  recipe_capture_t cap;
+  if (!look_capture(id, &cap)) {
+    text_mid(&UI_FONT_S, UI_W / 2, y + (LK_DET_H - UI_FONT_S.line_h) / 2,
+             "This look sets nothing on the sensor.", W_GRAYTEXT);
+    return;
+  }
+
+  const int cw = LK_W / LK_DET_COLS;
+  const int ty = y + 5;
+  char v[16];
+
+  /*
+   * Exposure bias in tenths of an EV, formatted by integer arithmetic.
+   *
+   * `%f` is deliberately avoided: the value is a double in the recipe struct,
+   * but printing one pulls the full formatter in, and the contract's precision
+   * is one decimal anyway (D19: an EV in -2..+2 with one decimal, which the
+   * node then rounds to an integer AE step). Tenths is the whole range.
+   */
+  const double b = cap.exposure_bias;
+  const int t10 = (int)(b * 10.0 + (b >= 0 ? 0.5 : -0.5));
+  const int mag = t10 < 0 ? -t10 : t10;
+  snprintf(v, sizeof v, "%s%d.%d EV", t10 < 0 ? "-" : "+", mag / 10, mag % 10);
+  look_detail_col(LK_X, cw, ty, v, cap.has_exposure_bias, "EXPOSURE");
+
+  snprintf(v, sizeof v, "x%d", cap.gain_limit);
+  look_detail_col(LK_X + cw, cw, ty, v, cap.has_gain_limit, "GAIN CEILING");
+
+  snprintf(v, sizeof v, "%d%%", cap.jpeg_quality_percent);
+  look_detail_col(LK_X + 2 * cw, cw, ty, v, cap.has_jpeg_quality, "QUALITY");
+
+  snprintf(v, sizeof v, "%d", cap.denoise);
+  look_detail_col(LK_X + 3 * cw, cw, ty, v, cap.has_denoise, "DENOISE");
+
+  snprintf(v, sizeof v, "%d", cap.sharpness);
+  look_detail_col(LK_X + 4 * cw, cw, ty, v, cap.has_sharpness, "SHARPNESS");
+}
+
+/**
+ * Where the selected look sits in the list, as "4 / 11".
+ *
+ * Written into `out` empty when there is no single answer - MIXED, or a look
+ * the camera does not have - because a position in a list the look is not in is
+ * a number that means nothing.
+ *
+ * Factory-or-custom is deliberately NOT shown. The boundary is
+ * kdp_recipes.c's own `cJSON_GetArraySize(s_factory)` and no accessor publishes
+ * it; hardcoding 11 here would be a second copy of an invariant that breaks
+ * silently the first time a factory look is added.
+ */
+static void look_position(char *out, size_t cap) {
+  out[0] = '\0';
+  char cur[KDP_RECIPE_ID_MAX];
+  if (!look_current_id(cur, sizeof cur)) return;
+  const int n = kdp_recipes_count();
+  for (int i = 0; i < n; i++) {
+    char id[KDP_RECIPE_ID_MAX];
+    if (kdp_recipes_name(i, id, sizeof id, NULL, 0) && strcmp(id, cur) == 0) {
+      snprintf(out, cap, "%d / %d", i + 1, n);
+      return;
+    }
+  }
+}
+
 static void draw_look(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_LOOK);
@@ -1593,7 +1800,14 @@ static void draw_look(void) {
   const int f0 = s_focus_shown ? s_focus[SCR_LOOK] : -1;
   const bool quad = mode_is_quad();
 
+  /* The label lines are 752 px wide with one short word on the left, so the
+   * notes that used to be stacked at the foot of the screen live on them
+   * instead - beside the control each one is actually about, and costing no
+   * vertical room at all. That is what freed the bottom of the screen for the
+   * detail strip. */
   text(&UI_FONT_S, LK_X, lk_label_y(0), "MODE", W_TEXT);
+  text_right(&UI_FONT_S, LK_X + LK_W, lk_label_y(0),
+             "Both modes capture four frames. The difference is playback.", W_GRAYTEXT);
   draw_segments(LK_X, lk_ctl_y(0), LK_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
                 band_rel(p0, LK_IT_MODE, 2), band_rel(f0, LK_IT_MODE, 2));
 
@@ -1606,6 +1820,12 @@ static void draw_look(void) {
   char look[KDP_RECIPE_ID_MAX];
   look_display(look, sizeof look);
   text(&UI_FONT_S, LK_X, lk_label_y(2), "LOOK", W_TEXT);
+  /* Where you are in the list. Cycling one at a time through up to 35 entries
+   * with no idea how many there are or how far round you have come is the
+   * complaint the picker earned; this is the cheapest honest answer to it. */
+  char pos[24];
+  look_position(pos, sizeof pos);
+  if (pos[0] != '\0') text_right(&UI_FONT_S, LK_X + LK_W, lk_label_y(2), pos, W_GRAYTEXT);
   draw_picker(LK_X, lk_ctl_y(2), LK_W, LK_CTL_H, LK_PICK_BTN, look, kdp_recipes_count() > 0,
               band_rel(p0, LK_IT_PREV, 2), band_rel(f0, LK_IT_PREV, 2));
 
@@ -1613,6 +1833,25 @@ static void draw_look(void) {
    * 'recipe' | 'mono' in the wire contract - so they stay their own row
    * rather than becoming two more entries in the picker. */
   text(&UI_FONT_S, LK_X, lk_label_y(3), "COLOUR", W_TEXT);
+  /*
+   * The caption that replaces "Looks are applied when you import. The preview
+   * does not change."
+   *
+   * That was true of 0.4.8 and false from 0.4.9 on. Contract D19: the look's
+   * capture block goes to each node over NL_CMD_SENSOR before the trigger -
+   * exposure bias, gain ceiling, denoise, sharpness and quality - the node
+   * clamps each one and reports what it set, and META records it. So the look
+   * does reach the camera, and a caption saying otherwise tells someone their
+   * choice is decoration.
+   *
+   * What is NOT claimed: the look's colour science. Contrast, saturation and
+   * temperature are still applied at import and there is no grading anywhere in
+   * this firmware, so "grading is still at import" stays. Nor is the PREVIEW
+   * claimed - the viewfinder stream does not carry these settings, only the
+   * capture does, which is why the wording is "at capture" and not "now".
+   */
+  text_right(&UI_FONT_S, LK_X + LK_W, lk_label_y(3),
+             "These reach the sensor at capture. Grading is still at import.", W_GRAYTEXT);
   draw_segments(LK_X, lk_ctl_y(3), LK_W, LK_CTL_H, COLOR_NAMES, 2, look_is_mono() ? 1 : 0,
                 band_rel(p0, LK_IT_COLOR, 2), band_rel(f0, LK_IT_COLOR, 2));
 
@@ -1625,16 +1864,11 @@ static void draw_look(void) {
                   band_rel(p0, LK_IT_TARGET, 5), band_rel(f0, LK_IT_TARGET, 5));
   }
 
-  /* Both modes fire all four cameras and write identical files; the
-   * difference is entirely in how the host presents them. Someone who
-   * expects different pictures and gets the same ones assumes the camera is
-   * broken. And the camera does no grading at all, so a look that never
-   * changes the preview would read as a setting that does nothing. */
-  const int ny = lk_label_y(quad ? 5 : LK_ROW_TARGET) + 4;
-  text(&UI_FONT_S, LK_X, ny, "Both modes capture four frames. The difference is playback.",
-       W_GRAYTEXT);
-  text(&UI_FONT_S, LK_X, ny + 22,
-       "Looks are applied when you import. The preview does not change.", W_GRAYTEXT);
+  /* The bottom of the screen, which used to be 90 px of bare face grey in
+   * WIGGLE and two lines of small print in QUAD. The strip follows the last
+   * control row, so it sits at two different heights in the two modes and in
+   * both cases immediately under the thing it describes. */
+  draw_look_detail(lk_ctl_y(quad ? LK_ROW_TARGET : 3) + LK_CTL_H + LK_DET_GAP);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2068,6 +2302,54 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
  * was wrong on both counts: the radio IS fitted, and a Roll assigned from
  * Studio works over USB with no radio at all.
  */
+/*
+ * Two columns, because the panel is 800 px wide and landscape.
+ *
+ * The screen used to put the title, a 225 px QR and four lines of statistics
+ * down a 220 px strip in the middle, leaving 290 px of bare face grey on each
+ * side. That is not a stylistic complaint: the QR's module pitch IS the
+ * feature. A guest scans this from wherever they happen to be standing, and
+ * pitch is what decides whether that works across a room or only at arm's
+ * length. Given the whole height the symbol goes from 225 px to 360 px a side -
+ * a 5 px module becomes an 8 px one - and the numbers that used to be 18 px
+ * grey text get the other column at a size that reads from a step back.
+ *
+ * Left column is the symbol and nothing else. Right column is what a host
+ * wants: the roll's name, the code to type when scanning fails, what is on the
+ * card, what has left it, and whether anything is moving.
+ */
+#define RL_M 16                                /* outer margin */
+#define RL_QR_COL_W 400                        /* left column */
+#define RL_TOP (BODY_Y + 12)
+/* 34 px of the column's height is the SCAN TO JOIN line under the symbol. */
+#define RL_QR_BOX (UI_H - RL_TOP - 34)
+#define RL_QR_CX (RL_M + RL_QR_COL_W / 2)
+#define RL_RX (RL_M + RL_QR_COL_W + 24)        /* right column */
+#define RL_RW (UI_W - RL_M - RL_RX)
+
+/* The symbol has to clear the panel with its caption under it. Checked rather
+ * than trusted: RL_QR_BOX is the only number here that a change to HEAD_H
+ * silently invalidates, and the failure mode is a QR running off the bottom. */
+_Static_assert(RL_TOP + RL_QR_BOX + 18 <= UI_H, "the ROLL QR falls off the bottom");
+_Static_assert(RL_RW > 300, "the ROLL right column is too narrow for its numbers");
+
+/**
+ * One statistic in the right column: a big number and a small label under it.
+ *
+ * Returns the y to carry on from. The number is pixel-doubled M and the label
+ * is S - the value is the thing being read across the room, and the label only
+ * says which value it is.
+ */
+static int roll_stat(int y, const char *value, const char *label) {
+  text_scaled(&UI_FONT_M, RL_RX, y, value, 2, W_TEXT);
+  y += UI_FONT_M.line_h * 2 + 2;
+  text(&UI_FONT_S, RL_RX, y, label, W_GRAYTEXT);
+  /* 26 rather than the 12 that first looked right on paper: two of these plus
+   * the name and the code left a 90 px hole above the status plate, which read
+   * as the column having run out of things to say rather than as spacing. */
+  return y + UI_FONT_S.line_h + 26;
+}
+
 static void draw_roll(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_ROLL);
@@ -2087,23 +2369,40 @@ static void draw_roll(void) {
      * do not offer a CREATE button, because ROLL_CREATE is an HTTP POST this
      * body cannot make. A control that cannot work is the same defect as a
      * shutter that logs instead of capturing. */
-    const int cy = BODY_Y + 54;
-    text_mid(&UI_FONT_M, UI_W / 2, cy, "NO ACTIVE ROLL", W_TEXT);
-    text_mid(&UI_FONT_S, UI_W / 2, cy + 44, "Make a roll in Studio over USB-C.", W_TEXT);
-    text_mid(&UI_FONT_S, UI_W / 2, cy + 70, "It appears here with a code to scan.", W_TEXT);
+    /* This state's whole job is telling someone how to start a roll, so it
+     * gets the panel rather than three lines in the top third. */
+    /* The heading and its two lines are one block, centred in the space above
+     * the card well rather than pinned under the header - pinned, it left a
+     * 150 px hole in the middle of the panel with the well at the foot. */
+    const int wy = UI_H - 92, wh = 76;
+    const int block_h = UI_FONT_M.line_h * 2 + 24 + 32 + UI_FONT_M.line_h;
+    const int hy = BODY_Y + (wy - BODY_Y - block_h) / 2;
+    text_scaled_mid(&UI_FONT_M, UI_W / 2, hy, "NO ACTIVE ROLL", 2, W_TEXT);
 
+    const int cy = hy + UI_FONT_M.line_h * 2 + 24;
+    text_mid(&UI_FONT_M, UI_W / 2, cy, "Make a roll in Studio over USB-C.", W_TEXT);
+    text_mid(&UI_FONT_M, UI_W / 2, cy + 32, "It appears here with a code guests scan.", W_TEXT);
+
+    /* The card line, in a well at the foot, and made to mean something. The
+     * count alone answers "how many" but not the question someone on this
+     * screen is actually asking, which is what becomes of them. Photos on the
+     * card are not stranded for want of a roll - they import over USB-C either
+     * way - and saying so is the difference between a number and an answer. */
     const int n = gallery_total();
+    fill(RL_M, wy, UI_W - 2 * RL_M, wh, W_WINDOW);
+    bevel(RL_M, wy, UI_W - 2 * RL_M, wh, true);
     if (n > 0) {
       char line[56];
       snprintf(line, sizeof line, "%d photo%s on the card", n, n == 1 ? "" : "s");
-      text_mid(&UI_FONT_S, UI_W / 2, cy + 116, line, W_GRAYTEXT);
+      text_mid(&UI_FONT_M, UI_W / 2, wy + 14, line, W_TEXT);
+      text_mid(&UI_FONT_S, UI_W / 2, wy + 44,
+               "They import over USB-C, and upload if a roll is assigned later.", W_GRAYTEXT);
+    } else {
+      text_mid(&UI_FONT_M, UI_W / 2, wy + 14, "No photos on the card", W_TEXT);
+      text_mid(&UI_FONT_S, UI_W / 2, wy + 44, "Press the shutter to take one.", W_GRAYTEXT);
     }
     return;
   }
-
-  /* The Roll's name, or its code when it has no name. */
-  const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
-  text_mid(&UI_FONT_M, UI_W / 2, BODY_Y + 14, title, W_TEXT);
 
   /*
    * The QR. This is the point of the screen: a guest scans the camera and is
@@ -2131,66 +2430,104 @@ static void draw_roll(void) {
     }
   }
 
-  int qr_bottom = BODY_Y + 52;
+  /* ---- left column: the symbol, at whatever pitch the height allows ---- */
   if (s_qr_ok) {
-    const int side = draw_qr_centred(&s_qr, UI_W / 2, qr_bottom, 240);
+    const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP, RL_QR_BOX);
     if (side > 0) {
-      qr_bottom += side + 10;
-      text_mid(&UI_FONT_S, UI_W / 2, qr_bottom, "SCAN TO JOIN", W_GRAYTEXT);
-      qr_bottom += 26;
+      text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
     }
   } else {
-    /* The URL did not encode, so show the code itself. A guest can still
-     * type it, which is worth more than a QR-shaped block no phone reads. */
-    text_mid(&UI_FONT_M, UI_W / 2, qr_bottom + 20, roll.slug, W_TEXT);
-    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 56, "Enter this code to join", W_GRAYTEXT);
-    qr_bottom += 90;
+    /* The URL did not encode, so the column shows the code itself, big. A
+     * guest can still type it, which is worth more than a QR-shaped block no
+     * phone reads - and at this size it is legible from where the QR would
+     * have been scanned from, which is the point of giving it the column. */
+    const int cy = RL_TOP + RL_QR_BOX / 2 - UI_FONT_M.line_h * 2;
+    text_scaled_mid(&UI_FONT_M, RL_QR_CX, cy, roll.slug,
+                    fit_scale(&UI_FONT_M, roll.slug, RL_QR_COL_W - 20), W_TEXT);
+    text_mid(&UI_FONT_S, RL_QR_CX, cy + UI_FONT_M.line_h * 2 + 16, "Enter this code to join",
+             W_GRAYTEXT);
+    text_mid(&UI_FONT_S, RL_QR_CX, cy + UI_FONT_M.line_h * 2 + 38,
+             "The join link is too long to encode.", W_GRAYTEXT);
   }
 
-  /* Counts. `pending` is what has not reached the Roll yet, and it is the
-   * number a host actually wants at a party. */
-  char photos[40];
-  const int total = gallery_total();
-  snprintf(photos, sizeof photos, "%d photo%s", total, total == 1 ? "" : "s");
-  text_mid(&UI_FONT_S, UI_W / 2, qr_bottom, photos, W_TEXT);
+  /* ---- right column: the roll, and what is happening to it ---- */
 
-  char waiting[48];
+  /* The Roll's name, or its code when it has no name. Sized to the column
+   * rather than assumed to fit: ROLL_NAME is host-supplied text. */
+  const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
+  int y = RL_TOP;
+  text_scaled(&UI_FONT_M, RL_RX, y, title, fit_scale(&UI_FONT_M, title, RL_RW), W_TEXT);
+  y += UI_FONT_M.line_h * 2 + 6;
+
+  /* The code, next to the QR that encodes it. A guest whose phone will not
+   * scan - a cracked lens, a camera permission refused - can type this, and
+   * until now it was only ever shown when the QR itself failed. */
+  if (s_qr_ok) {
+    /* Sized off the field, not off the six-character slugs Roll issues today:
+     * roll.slug is host data and ROLL_SLUG_LEN is what bounds it. */
+    char code[sizeof roll.slug + 8];
+    snprintf(code, sizeof code, "CODE  %s", roll.slug);
+    text(&UI_FONT_M, RL_RX, y, code, W_TEXT);
+  }
+  y += UI_FONT_M.line_h + 18;
+
+  /* Counts, as big numerals. `pending` is what has not reached the Roll yet,
+   * and it is the number a host actually wants at a party. */
+  char num[16];
+  const int total = gallery_total();
+  snprintf(num, sizeof num, "%d", total);
+  y = roll_stat(y, num, total == 1 ? "PHOTO ON THE CARD" : "PHOTOS ON THE CARD");
+
+  if (q.uploading > 0) {
+    snprintf(num, sizeof num, "%d", q.uploading);
+    y = roll_stat(y, num, "UPLOADING NOW");
+  } else if (q.pending > 0) {
+    snprintf(num, sizeof num, "%d", q.pending);
+    y = roll_stat(y, num, "WAITING TO UPLOAD");
+  } else {
+    snprintf(num, sizeof num, "%d", q.uploaded);
+    y = roll_stat(y, num, "UPLOADED TO THE ROLL");
+  }
+
+  /*
+   * The link state, in a well at the foot of the column.
+   *
+   * It was 18 px grey text under three other lines of 18 px grey text, which
+   * made the one word that says whether anything is moving the least visible
+   * thing on the screen. A plate at the bottom of the column is where a status
+   * line belongs, and the halted case gets the same plate because "paused" and
+   * "offline" are answers to the same question.
+   */
+  const int py = UI_H - 78;
+  fill(RL_RX, py, RL_RW, 62, W_WINDOW);
+  bevel(RL_RX, py, RL_RW, 62, true);
+
   if (q.halted) {
     /* Distinct from failed: the jobs are fine, the credential or the
      * association is not, and retrying the queue is the wrong instinct. */
-    snprintf(waiting, sizeof waiting, "UPLOAD PAUSED");
-    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 24, waiting, W_TEXT);
-    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 48,
-             q.last_error[0] != '\0' ? q.last_error : "Check the roll in Studio", W_GRAYTEXT);
+    text(&UI_FONT_M, RL_RX + 12, py + 8, "UPLOAD PAUSED", W_TEXT);
+    text(&UI_FONT_S, RL_RX + 12, py + 36,
+         q.last_error[0] != '\0' ? q.last_error : "Check the roll in Studio", W_GRAYTEXT);
     return;
   }
 
-  if (q.uploading > 0) {
-    snprintf(waiting, sizeof waiting, "%d uploading", q.uploading);
-  } else if (q.pending > 0) {
-    snprintf(waiting, sizeof waiting, "%d waiting", q.pending);
-  } else if (q.uploaded > 0) {
-    snprintf(waiting, sizeof waiting, "%d uploaded", q.uploaded);
-  } else {
-    waiting[0] = '\0';
-  }
-  if (waiting[0] != '\0') {
-    text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 24, waiting, W_TEXT);
-  }
-
-  /* One word for whether anything is actually moving. "OFFLINE" with photos
+  /* One phrase for whether anything is actually moving. "OFFLINE" with photos
    * waiting is a complete and honest description of this body today. */
-  const char *link;
+  const char *link, *why;
   if (online) {
     link = "ONLINE";
+    why = "Captures upload as they are taken.";
   } else if (!net.radio_routed) {
     /* Not "offline": there is no radio route to be offline from. The
      * Connection screen carries the detail. */
     link = "NO RADIO LINK";
+    why = "Photos leave over USB-C.";
   } else {
     link = "OFFLINE";
+    why = "Uploads resume when Wi-Fi returns.";
   }
-  text_mid(&UI_FONT_S, UI_W / 2, qr_bottom + 48, link, W_GRAYTEXT);
+  text(&UI_FONT_M, RL_RX + 12, py + 8, link, W_TEXT);
+  text(&UI_FONT_S, RL_RX + 12, py + 36, why, W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2338,15 +2675,28 @@ static const char *const SND_BUILTIN_NAME[5] = {"CLICK", "CHEAP DIGI", "TINY BEE
 
 static int snd_count(void) { return SND_BUILTINS + kdp_sounds_count(); }
 
+/**
+ * Clip `index` in the picker's flat order: the five built-ins, then the card's.
+ *
+ * `id` and `name` may each be NULL, which is what kdp_recipes_name() has always
+ * documented and this did not honour - it passed both straight to snprintf and
+ * then called upcase() on `name` unconditionally. A caller wanting only the id
+ * segfaulted on the first CUSTOM clip, and there was no such caller until
+ * snd_position() below, which is how the preview found it: the harness renders
+ * with two fake card clips, so the crash was immediate and total rather than
+ * latent on a card nobody had.
+ */
 static bool snd_at(int index, char *id, size_t id_cap, char *name, size_t name_cap) {
+  if (id != NULL && id_cap > 0) id[0] = '\0';
+  if (name != NULL && name_cap > 0) name[0] = '\0';
   if (index < 0) return false;
   if (index < SND_BUILTINS) {
-    snprintf(id, id_cap, "%s", SND_BUILTIN_ID[index]);
-    snprintf(name, name_cap, "%s", SND_BUILTIN_NAME[index]);
+    if (id != NULL && id_cap > 0) snprintf(id, id_cap, "%s", SND_BUILTIN_ID[index]);
+    if (name != NULL && name_cap > 0) snprintf(name, name_cap, "%s", SND_BUILTIN_NAME[index]);
     return true;
   }
   if (!kdp_sounds_info(index - SND_BUILTINS, id, id_cap, name, name_cap)) return false;
-  upcase(name);
+  if (name != NULL && name_cap > 0) upcase(name);
   return true;
 }
 
@@ -2364,6 +2714,27 @@ static void snd_display(char *out, size_t cap) {
    * same reason the LOOK picker shows an unknown look's id. */
   snprintf(out, cap, "%s", cur[0] ? cur : SND_BUILTIN_NAME[0]);
   upcase(out);
+}
+
+/**
+ * Where the selected clip sits in the list, as "3 / 7". Empty when the config
+ * names a clip the camera does not have, for the same reason look_position()
+ * is: a position in a list you are not in is a number that means nothing.
+ *
+ * The same treatment as the LOOK picker, because it is the same control with
+ * the same complaint - cycling one at a time with no idea how long the list is.
+ */
+static void snd_position(char *out, size_t cap) {
+  out[0] = '\0';
+  char cur[KDP_SOUND_ID_MAX];
+  config_str_copy("shoot.shutterSound", cur, sizeof cur);
+  for (int i = 0, n = snd_count(); i < n; i++) {
+    char id[KDP_SOUND_ID_MAX];
+    if (snd_at(i, id, sizeof id, NULL, 0) && strcmp(id, cur) == 0) {
+      snprintf(out, cap, "%d / %d", i + 1, n);
+      return;
+    }
+  }
 }
 
 static void snd_step(int delta) {
@@ -2434,6 +2805,16 @@ static void draw_sound(void) {
     picker_arrow(nx + SN_BTN / 2 + nd, by + SN_BTN / 2 + nd, true, W_TEXT);
     if (foc(SCR_SOUND, SN_IT_PREV)) focus_rect(px + 3, by + 3, SN_BTN - 6, SN_BTN - 6);
     if (foc(SCR_SOUND, SN_IT_NEXT)) focus_rect(nx + 3, by + 3, SN_BTN - 6, SN_BTN - 6);
+
+    /* The position, under the row's title rather than beside the clip name -
+     * the right half of the row is already the name and two buttons. Same
+     * "3 / 7" the LOOK picker now carries. */
+    char pos[24];
+    snd_position(pos, sizeof pos);
+    if (pos[0] != '\0') {
+      text(&UI_FONT_S, LIST_X + 14 + text_w(&UI_FONT_M, "Shutter sound") + 16,
+           LIST_Y + (ROW_H - UI_FONT_S.line_h) / 2 + 2, pos, W_GRAYTEXT);
+    }
   }
 
   draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, SN_IT_SHUTTER), true, "Play shutter sound", NULL, false,
@@ -2450,6 +2831,45 @@ static void draw_sound(void) {
   draw_segments(24, y + 24, UI_W - 48, 44, VOL, 3, nearest_idx(config_int("shoot.volume", 6), VOLV),
                 band_rel(s_pressed, SN_IT_VOL, 3),
                 band_rel(s_focus_shown ? s_focus[SCR_SOUND] : -1, SN_IT_VOL, 3));
+
+  /*
+   * The 155 px below the volume band.
+   *
+   * Two things the screen had no way to say. First, where the list the picker
+   * cycles comes from: five built-ins are compiled in and the rest are on the
+   * card, so a picker that gains three entries after a card swap is explained
+   * rather than mysterious, and a picker with none of them says the card is
+   * why. Second, and more important, whether the audio hardware came up at
+   * all - this screen offered a volume band and two toggles without ever
+   * consulting audio_ready(), so on a body whose I2S did not start it was three
+   * live-looking controls over silence.
+   *
+   * Below the volume band on purpose: the band is hit-tested at
+   * LIST_Y + 3 * ROW_H + 26 + 24 for 44 px, so everything here is clear of the
+   * only touch targets on the lower half of the screen.
+   */
+  const int ny = y + 24 + 44 + 30;
+  char line[72];
+
+  if (!audio_ready()) {
+    /* Named as hardware, not as a setting. "Muted" would read as something a
+     * user did and can undo from this screen, and it is not. */
+    text(&UI_FONT_M, 24, ny, "No audio output on this body", W_TEXT);
+    text(&UI_FONT_S, 24, ny + 30,
+         "The settings above are stored, and nothing plays until the amplifier starts.",
+         W_GRAYTEXT);
+    return;
+  }
+
+  const int custom = kdp_sounds_count();
+  if (custom > 0) {
+    snprintf(line, sizeof line, "%d built-in sounds, and %d clip%s from the card.", SND_BUILTINS,
+             custom, custom == 1 ? "" : "s");
+  } else {
+    snprintf(line, sizeof line, "%d built-in sounds. No clips on the card.", SND_BUILTINS);
+  }
+  text(&UI_FONT_S, 24, ny, line, W_GRAYTEXT);
+  text(&UI_FONT_S, 24, ny + 20, "Upload your own in Studio over USB-C.", W_GRAYTEXT);
 }
 
 /* --- Connection --------------------------------------------------- */
@@ -2492,10 +2912,13 @@ static void draw_connection(void) {
    * user can act on. Association without an address says "Getting address"
    * rather than "Connected" Ã¢â‚¬â€ claiming connected there is how a camera
    * insists it is online while nothing resolves. */
-  char wifi[40];
+  char wifi[64];
   switch (net.state) {
     case NET_IP_READY:
-      snprintf(wifi, sizeof wifi, "%s  %d dBm", net.ssid, net.rssi);
+      /* The channel goes on this row rather than getting one of its own: it is
+       * a property of the association, and net_status_t has carried it since
+       * the transport work without anything ever drawing it. */
+      snprintf(wifi, sizeof wifi, "%s  ch %d  %d dBm", net.ssid, net.channel, net.rssi);
       break;
     case NET_WIFI_ASSOCIATED:
     case NET_IP_WAIT:
@@ -2520,19 +2943,55 @@ static void draw_connection(void) {
   char saved[16];
   snprintf(saved, sizeof saved, "%u", (unsigned)wifi_creds_count());
 
-  draw_list_frame(5);
-  draw_row(LIST_Y, false, net.radio_fitted, "Radio", radio, false, C_MUTED);
-  draw_row(LIST_Y + ROW_H, false, net.radio_routed, "Link", link, false, C_MUTED);
-  draw_row(LIST_Y + 2 * ROW_H, false, net.radio_routed, "Wi-Fi", wifi, false, C_MUTED);
-  draw_row(LIST_Y + 3 * ROW_H, false, true, "Saved networks", saved, false, C_MUTED);
-  draw_row(LIST_Y + 4 * ROW_H, false, true, "USB",
-           usb_attached() ? "Connected" : "Not connected", false, C_MUTED);
+  /*
+   * Seven readings at a 46 px pitch rather than five at 52.
+   *
+   * The screen showed five rows and 85 px of face grey while net_status_t
+   * carried three facts nothing drew: the address, the channel, and the
+   * coprocessor's firmware version. The address in particular is the first
+   * thing anyone asks at a bench, and "Online" without one is the state this
+   * firmware is careful everywhere else NOT to claim.
+   *
+   * The tighter pitch is legitimate HERE and would not be on Settings or
+   * Power: this screen has no touch items at all - item_count() falls to 0 and
+   * hit_test() to -1, and only the header band goes anywhere - so no row here
+   * is a target that has to stay 52 px tall.
+   */
+  const char *addr = net.ip[0] != '\0' ? net.ip : "-";
+  /* Empty until a version exchange has happened, which on this body never
+   * happens - so a dash, not a blank. */
+  const char *c6fw = net.c6_version[0] != '\0' ? net.c6_version : "-";
+
+  const struct {
+    const char *title;
+    const char *value;
+    bool enabled;
+  } ROWS[] = {
+      {"Radio", radio, net.radio_fitted},
+      {"Radio firmware", c6fw, net.c6_version[0] != '\0'},
+      {"Link", link, net.radio_routed},
+      {"Wi-Fi", wifi, net.radio_routed},
+      {"Address", addr, net.ip[0] != '\0'},
+      {"Saved networks", saved, true},
+      {"USB", usb_attached() ? "Connected" : "Not connected", true},
+  };
+  const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
+  const int pitch = 46;
+
+  fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
+  const int lh = n * pitch + 4;
+  fill(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh, W_WINDOW);
+  bevel(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh, true);
+  for (int i = 0; i < n; i++) {
+    draw_row_at(LIST_X, LIST_W, LIST_Y + i * pitch, pitch, false, ROWS[i].enabled, ROWS[i].title,
+                ROWS[i].value, false);
+  }
 
   /* One line, and it has to say which of the two things is wrong. There is no
    * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
    * with no physical keys is worse than the USB path, and building a bad one
    * to claim independence from Studio would be the wrong trade. */
-  const int y = LIST_Y + 5 * ROW_H + 26;
+  const int y = LIST_Y + lh + 14;
   if (!net.radio_fitted) {
     text(&UI_FONT_S, 24, y, "No radio on this body. Photos leave over USB-C.", W_GRAYTEXT);
   } else if (!net.radio_routed) {
@@ -2589,38 +3048,245 @@ static void draw_storage(void) {
            sd.mounted && !wiping && gallery_total() > 0, "Delete all photos", NULL, true, C_MUTED);
   draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), sd.mounted && !wiping,
            "Format card", NULL, true, C_MUTED);
+
+  /*
+   * The 145 px under the list.
+   *
+   * Everything here was already in storage_status_t and none of it was drawn:
+   * the filesystem, the write test, the mount attempt count and the last error.
+   * The bar is not decoration either - it is the used/capacity ratio, which is
+   * the one thing "28.5 GB free" does not tell you at a glance, and the
+   * question this screen exists to answer is whether there is room for tonight.
+   *
+   * Strictly BELOW the five rows. The two destructive rows are hit-tested at
+   * LIST_Y + (3 + i) * ROW_H, so a row added above them would move both
+   * rectangles away from what is drawn and put FORMAT CARD under the finger
+   * aiming at DELETE ALL. Nothing here is a target and nothing here moved the
+   * list.
+   */
+  const int by = LIST_Y + 5 * ROW_H + 28;
+
+  if (!sd.mounted) {
+    /* Why, not just that. mount_attempts separates "no card in the slot" from
+     * "a card the driver has tried and failed to mount", which are different
+     * problems and the screen used to show the same "None" for both. */
+    text(&UI_FONT_M, 24, by, sd.present ? "Card present, not mounted" : "No card in the slot",
+         W_TEXT);
+    char detail[80];
+    if (sd.last_error != NULL && sd.last_error[0] != '\0') {
+      snprintf(detail, sizeof detail, "%s, after %u mount attempt%s", sd.last_error,
+               (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
+    } else {
+      snprintf(detail, sizeof detail, "%u mount attempt%s since boot",
+               (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
+    }
+    text(&UI_FONT_S, 24, by + 30, detail, W_GRAYTEXT);
+    return;
+  }
+
+  /* The bar. Sunken well, navy fill for the used part - the same two colours
+   * a 1998 progress control used, so it reads as a gauge and not a graphic. */
+  const int bx = 24, bw = UI_W - 48, bh = 26;
+  const uint64_t total_b = sd.capacity_bytes;
+  const uint64_t used = total_b > sd.free_bytes ? total_b - sd.free_bytes : 0;
+  fill(bx, by, bw, bh, W_WINDOW);
+  bevel(bx, by, bw, bh, true);
+  if (total_b > 0) {
+    /* 64-bit before the divide: a 32 GB card times bw overflows 32 bits. */
+    int fw = (int)((used * (uint64_t)(bw - 4)) / total_b);
+    /* A card with anything at all on it shows at least one pixel: a bar that
+     * is empty at 40 MB used looks like a bar that is not working. */
+    if (fw == 0 && used > 0) fw = 1;
+    fill(bx + 2, by + 2, fw, bh - 4, W_SEL);
+  }
+
+  char usedb[24];
+  human_bytes(usedb, sizeof usedb, used);
+  char line[80];
+  snprintf(line, sizeof line, "%s used", usedb);
+  text(&UI_FONT_S, bx, by + bh + 8, line, W_GRAYTEXT);
+  /* The write test is the only thing here that says the card can be WRITTEN
+   * to, which is the property a capture depends on and free space is not. */
+  snprintf(line, sizeof line, "%s, write test %s", sd.filesystem != NULL ? sd.filesystem : "-",
+           sd.write_test != NULL ? sd.write_test : "none");
+  text_right(&UI_FONT_S, bx + bw, by + bh + 8, line, W_GRAYTEXT);
 }
 
 /* --- About -------------------------------------------------------- */
+
+/*
+ * What this unit is and what it is running.
+ *
+ * The screen used to be three rows and 240 px of face grey, and the third row -
+ * Device, the serial - was BLANK on hardware. It read `config_str("device",
+ * "-")`, and `device` is a key nothing in this firmware ever writes; the only
+ * reason it ever looked right was that the preview harness faked a value. So
+ * the row that mattered most was the one that never worked.
+ *
+ * It now comes from kdp_device_serial(), which is the same string
+ * GET_DEVICE_INFO answers as `serial` - so a support question asked from the
+ * panel and one asked from Studio name the same camera. Around it goes the rest
+ * of what someone on this screen is actually trying to establish, and nothing
+ * that is not already a fact the firmware holds.
+ *
+ * Two columns, because per-camera node firmware cannot fit any other way: eight
+ * full-width 52 px rows need 416 px and there are 405 px below the header. The
+ * left column is the body, the right column is the four cameras.
+ */
+#define AB_LX LIST_X
+#define AB_LW 470
+#define AB_RX (AB_LX + AB_LW + 16)
+#define AB_RW (UI_W - AB_RX - LIST_X)
+#define AB_ROW 46              /* seven of these fit where six of ROW_H do */
+#define AB_CAM_ROW 40
+
+/**
+ * The four cameras, cached, refreshed at most every two seconds.
+ *
+ * camlink_get_info_ch() bounds its wait at 20 ms per channel and then reads
+ * unlocked anyway (cam_link.c), so four channels is up to 80 ms of contention
+ * on the channel locks - INSIDE a draw. That matters because the hardware
+ * shutter fires from any screen: request() holds a channel lock across a whole
+ * round trip, and an information screen does not get to compete with a capture
+ * for it once per repaint.
+ *
+ * Two seconds because nothing on this row moves faster than that. Node firmware
+ * and the sensor model do not change while someone reads a screen, and `online`
+ * going stale by two seconds is still news by the time it is shown.
+ *
+ * Returns the static array rather than filling the caller's - four
+ * camlink_info_t is about 512 bytes, and this task has 8 KB and a history of
+ * canary panics over exactly that kind of local.
+ */
+static const camlink_info_t *about_cameras(void) {
+  static camlink_info_t s_cam[4];
+  static int64_t s_when_us;
+  const int64_t now = esp_timer_get_time();
+  if (s_when_us == 0 || now - s_when_us > 2000000) {
+    s_when_us = now;
+    for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cam[i]);
+  }
+  return s_cam;
+}
+
+/** "3h 12m", or "4m" under the hour. Boot-relative, which is what uptime is. */
+static void about_uptime(char *out, size_t cap) {
+  const int64_t s = esp_timer_get_time() / 1000000;
+  int h = (int)(s / 3600);
+  const int m = (int)((s / 60) % 60);
+  /* Clamped so the formatter has a bound the compiler can see. 99999 hours is
+   * eleven years of uptime; a board that reaches it has a more interesting
+   * problem than a clipped About row. */
+  if (h > 99999) h = 99999;
+  if (h > 0) snprintf(out, cap, "%dh %dm", h, m);
+  else snprintf(out, cap, "%dm", m);
+}
 
 static void draw_about(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_ABOUT);
 
-  /* body.name, above Device, and only when someone has set one.
+  /* body.name, and only when someone has set one.
    *
    * Copied rather than held: config_str() hands back a slot in a four-deep
-   * ring shared by every task, and the Device row below is a second read that
-   * would otherwise be free to land in the same slot. 24 characters is the
-   * limit SET_CONFIG enforces; 32 is room for it and the NUL with margin. */
+   * ring shared by every task, and any second read is free to land in the same
+   * slot. 24 characters is the limit SET_CONFIG enforces; 32 is room for it and
+   * the NUL with margin. */
   char name[32];
   config_str_copy("body.name", name, sizeof name);
   const bool named = name[0] != '\0';
 
-  draw_list_frame(named ? 4 : 3);
-  int y = LIST_Y;
-  draw_row(y, false, true, "KINO D4", "", false, C_MUTED);
-  y += ROW_H;
-  draw_row(y, false, true, "Firmware", KINO_FW_VERSION, false, C_MUTED);
-  y += ROW_H;
-  if (named) {
-    draw_row(y, false, true, "Name", name, false, C_MUTED);
-    y += ROW_H;
+  storage_status_t sd;
+  storage_get_status(&sd);
+
+  /* card is sized off human_bytes's two 24-byte outputs plus the joining
+   * words, not off what a 32 GB card happens to format to. */
+  char card[64], up[16], proto[16];
+  if (sd.mounted) {
+    char freeb[24], capb[24];
+    human_bytes(freeb, sizeof freeb, sd.free_bytes);
+    human_bytes(capb, sizeof capb, sd.capacity_bytes);
+    snprintf(card, sizeof card, "%s free of %s", freeb, capb);
+  } else {
+    snprintf(card, sizeof card, "%s", sd.present ? "Not mounted" : "None");
   }
-  /* The serial, which is what `device` is. Still shown when a name is set: the
-   * name is what a person calls the camera, the serial is what a support
-   * question needs, and neither substitutes for the other. */
-  draw_row(y, false, true, "Device", config_str("device", "-"), false, C_MUTED);
+  about_uptime(up, sizeof up);
+  snprintf(proto, sizeof proto, "KDP %d", KDP_PROTOCOL_VERSION);
+
+  /* The serial. Still shown when a name is set: the name is what a person
+   * calls the camera, the serial is what a support question needs, and neither
+   * substitutes for the other. Empty only if the KDP server has not started,
+   * which cannot happen from this screen - app_main() starts it long before
+   * ui_start() - so a dash here would be a state nobody can reach. */
+  const char *serial = kdp_device_serial();
+
+  /* ---- left column: the body ---- */
+  const struct {
+    const char *title;
+    const char *value;
+  } ROWS[] = {
+      {"Model", "KINO D4"},
+      {"Hardware", KDP_HARDWARE_REV},
+      {"Firmware", KINO_FW_VERSION},
+      {"Serial", serial[0] != '\0' ? serial : "-"},
+      {"Protocol", proto},
+      {"Card", card},
+      {"Uptime", up},
+  };
+  const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
+
+  const int lh = n * AB_ROW + 4;
+  fill(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh, W_WINDOW);
+  bevel(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh, true);
+  for (int i = 0; i < n; i++) {
+    draw_row_at(AB_LX, AB_LW, LIST_Y + i * AB_ROW, AB_ROW, false, true, ROWS[i].title,
+                ROWS[i].value, false);
+  }
+
+  /* The name under the list rather than in it: it is the only row here a
+   * person sets, so it is not the same kind of fact as the seven above. */
+  if (named) {
+    const int ny = LIST_Y + lh + 12;
+    text(&UI_FONT_S, AB_LX, ny, "NAME", W_GRAYTEXT);
+    text(&UI_FONT_M, AB_LX, ny + 20, name, W_TEXT);
+  }
+
+  /* ---- right column: the four cameras ---- */
+  text(&UI_FONT_S, AB_RX, LIST_Y - 2, "CAMERAS", W_GRAYTEXT);
+
+  const int cy0 = LIST_Y + 20;
+  const int ch = 4 * AB_CAM_ROW + 4;
+  fill(AB_RX - 2, cy0 - 2, AB_RW + 4, ch, W_WINDOW);
+  bevel(AB_RX - 2, cy0 - 2, AB_RW + 4, ch, true);
+
+  const camlink_info_t *cams = about_cameras();
+  for (int i = 0; i < 4; i++) {
+    /* By pointer, not by value: the struct is about 128 bytes and this loop
+     * runs four times in a draw path with 8 KB of stack. */
+    const camlink_info_t *info = &cams[i];
+
+    char label[8];
+    snprintf(label, sizeof label, "CAM%d", i + 1);
+
+    /* Firmware and sensor when the node answered; "No answer" when it did not.
+     * NOT "not fitted": camlink cannot tell an empty header from a node that
+     * is wedged, and the two want different things done about them. */
+    char val[40]; /* firmware[16] + sensor[16] + the two spaces */
+    if (info->online) {
+      snprintf(val, sizeof val, "%s  %s", info->firmware,
+               info->sensor[0] != '\0' ? info->sensor : "no sensor");
+    } else {
+      snprintf(val, sizeof val, "No answer");
+    }
+    draw_row_at(AB_RX, AB_RW, cy0 + i * AB_CAM_ROW, AB_CAM_ROW, false, info->online, label, val,
+                false);
+  }
+
+  /* Node firmware is per camera and the four can differ - a node reflashed on
+   * its own is the normal way that happens - which is the whole reason this is
+   * four rows and not one summary line. */
+  text(&UI_FONT_S, AB_RX, cy0 + ch + 10, "Node firmware, then the sensor", W_GRAYTEXT);
+  text(&UI_FONT_S, AB_RX, cy0 + ch + 30, "each node reports.", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
