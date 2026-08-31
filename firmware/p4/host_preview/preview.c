@@ -686,8 +686,19 @@ int main(int argc, char **argv) {
   s_focus[SCR_MENU] = 0;
   SHOT(SCR_MENU, "menu");
 
+  /*
+   * The focus ring, which no screenshot has ever contained.
+   *
+   * s_focus_shown is false until a physical key is used, and this harness has
+   * never set it - so "menu_settings_focus" was a picture of the menu with
+   * nothing focused, and every dotted rectangle in the firmware was unreviewed
+   * on every screen. It is set for the shots that are about focus and cleared
+   * again afterwards, so the plain shots stay plain.
+   */
+  s_focus_shown = true;
   s_focus[SCR_MENU] = 4;
   SHOT(SCR_MENU, "menu_settings_focus");
+  s_focus_shown = false;
 
   s_pressed = 4;
   SHOT(SCR_MENU, "menu_pressed");
@@ -772,8 +783,31 @@ int main(int argc, char **argv) {
   g_mode = "wiggle";
   g_look = "party-neg";
 
+  /* The LOOK screen's own focus and press, which is where the segmented bands,
+   * the picker buttons and a group box's top edge all meet: the dotted
+   * rectangle has to read inside a 40 px button that is itself inside an etched
+   * frame, and at 1 px that is only judgeable as a picture. */
+  s_focus_shown = true;
+  s_focus[SCR_LOOK] = LK_IT_NEXT;
+  s_pressed = LK_IT_FLASH + 1; /* FLASH / ON, held */
+  SHOT(SCR_LOOK, "look_focus_pressed");
+  s_pressed = -1;
+  s_focus_shown = false;
+
   s_focus[SCR_GALLERY] = 0;
   SHOT(SCR_GALLERY, "gallery");
+
+  /* A tile focused and a different tile held. The press used to be a dotted
+   * rectangle over the photograph and is now the selection plate and a shifted
+   * caption, so the two states have to be distinguishable side by side. */
+  s_focus_shown = true;
+  s_focus[SCR_GALLERY] = 1;
+  s_pressed = 4;
+  SHOT(SCR_GALLERY, "gallery_focus_pressed");
+  s_pressed = -1;
+  s_focus_shown = false;
+  s_focus[SCR_GALLERY] = 0;
+
   g_fake_total = 0;
   SHOT(SCR_GALLERY, "gallery_empty");
   g_fake_total = 14;
@@ -834,6 +868,25 @@ int main(int argc, char **argv) {
 
   /* ---- settings and its children ---- */
   SHOT(SCR_SETTINGS, "settings");
+
+  /* A list row focused and a list row held. Rows had no press state at all
+   * until now - pressing "Connection" put nothing on screen between the finger
+   * landing and the next screen arriving - and the focus rectangle inside a
+   * navy row is drawn in white, which is a case no other control has. */
+  s_focus_shown = true;
+  s_focus[SCR_SETTINGS] = 1;
+  s_pressed = 3;
+  SHOT(SCR_SETTINGS, "settings_focus_pressed");
+  s_pressed = -1;
+  s_focus_shown = false;
+  s_focus[SCR_SETTINGS] = 0;
+
+  /* The header's back button held. It is the one control every detail screen
+   * shares, and the only picture of it pressed. */
+  s_pressed = IT_BACK;
+  SHOT(SCR_SETTINGS, "settings_back_pressed");
+  s_pressed = -1;
+
   SHOT(SCR_DISPLAY, "settings_display");
   /* The two rows issue #144 added, on the two segments that had no way of
    * being selected before it: HOLD and NEVER. Both are drawn pushed in, so
@@ -873,6 +926,16 @@ int main(int argc, char **argv) {
   g_net_routed = false;
   g_saved_networks = 0;
   SHOT(SCR_STORAGE, "settings_storage");
+  /* The destructive row held, which is the state a finger is in for the moment
+   * before the confirmation appears. Also the only shot in which the capacity
+   * gauge and a lit row are on screen together. */
+  s_focus_shown = true;
+  s_focus[SCR_STORAGE] = ST_IT_FORMAT;
+  s_pressed = ST_IT_DELETE_ALL;
+  SHOT(SCR_STORAGE, "settings_storage_pressed");
+  s_pressed = -1;
+  s_focus_shown = false;
+  s_focus[SCR_STORAGE] = 0;
   /* A card the driver has tried and failed to mount, which is a different
    * screen from an empty slot and used to show the same "None" as one. */
   g_card_mounted = false;
@@ -888,6 +951,15 @@ int main(int argc, char **argv) {
 
   /* ---- power, and both confirmations ---- */
   SHOT(SCR_POWER, "power");
+  /* The rows moved 12 px down into the list well to meet the hit rectangles
+   * that were always there, so this is the shot that proves the three rows and
+   * the well line up - and the disabled row's grey against a focused row's
+   * navy in one frame. */
+  s_focus_shown = true;
+  s_focus[SCR_POWER] = 1;
+  SHOT(SCR_POWER, "power_focus");
+  s_focus_shown = false;
+  s_focus[SCR_POWER] = 0;
   s_screen = SCR_POWER;
   s_dialog = DLG_RESTART;
   s_dlg_focus = 0;

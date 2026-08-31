@@ -56,31 +56,29 @@ static const char *TAG = "ui";
  * palette nobody can read is a palette nobody will adjust. */
 #define RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
 
-/* The palette is packages/design-system/tokens.css, not an invention. That
- * file is the single Studio + Roll design system and states the language
- * outright: early/mid-2000s desktop-utility, silver-blue chrome, one-pixel
- * bevels, short glossy gradients local to controls, compact density. */
-#define C_CANVAS RGB(0xf7, 0xf8, 0xfa)
-#define C_PANEL RGB(0xe9, 0xee, 0xf5)
-#define C_PANEL_IN RGB(0xd7, 0xe0, 0xea)
-#define C_CHROME_TOP RGB(0xf7, 0xfa, 0xfd)
-#define C_CHROME_BOT RGB(0xcc, 0xd8, 0xe6)
-#define C_BORDER_DARK RGB(0x73, 0x83, 0x99)
-#define C_BORDER_MID RGB(0xaa, 0xb7, 0xc7)
-#define C_LINE RGB(0xcb, 0xd6, 0xe3)
-#define C_HILITE RGB(0xff, 0xff, 0xff)
-#define C_INK RGB(0x18, 0x23, 0x31)
-#define C_MUTED RGB(0x4c, 0x5a, 0x6b)
-#define C_FAINT RGB(0x5a, 0x6a, 0x7d)
-#define C_INV RGB(0xff, 0xff, 0xff)
+/*
+ * What is left of packages/design-system/tokens.css, which is the single
+ * Studio + Roll design system: the ACCENTS, and nothing structural.
+ *
+ * The file used to carry the whole of it - two dozen silver-blue chrome
+ * tokens, four-stop control gradients, one-pixel borders - alongside the
+ * Windows 98 system colours below, and drew some things with one set and some
+ * with the other. That is what "half-way into a Windows 98 look" meant in
+ * practice: two grammars in one file, and no rule saying which surface got
+ * which. The chrome is now entirely W_*, and the tokens that described chrome
+ * went with the code that used them.
+ *
+ * These five stayed because they are not chrome. They are the product's own
+ * colours, used where a state has to be named rather than where a surface has
+ * to be shaped: the four-frame mark, the capture strip's accent rule, the
+ * favourite star, and the dark ground a thumbnail that will not decode sits
+ * on. Those read the same in either grammar.
+ */
+#define C_CANVAS RGB(0xf7, 0xf8, 0xfa)  /* the icon sheet's ground, host preview only */
 #define C_BLUE RGB(0x2f, 0x70, 0xc9)
-#define C_BLUE_DARK RGB(0x17, 0x4e, 0x98)
-#define C_BLUE_WASH RGB(0xdc, 0xe9, 0xfb)
 #define C_GREEN RGB(0x48, 0xa8, 0x3e)
 #define C_YELLOW RGB(0xf4, 0xc5, 0x42)
 #define C_RED RGB(0xc8, 0x3a, 0x3a)
-#define C_SEL_TOP RGB(0x2f, 0x70, 0xc9)
-#define C_SEL_BOT RGB(0x1b, 0x51, 0x99)
 #define C_WELL RGB(0x26, 0x2e, 0x38)
 #define C_OK C_GREEN
 #define C_BAD C_RED
@@ -107,6 +105,16 @@ static const char *TAG = "ui";
 #define W_SELTEXT RGB(0xff, 0xff, 0xff)
 #define W_TITLE_L RGB(0x00, 0x00, 0x80) /* active title bar, left stop */
 #define W_TITLE_R RGB(0x10, 0x84, 0xd0) /* active title bar, right stop */
+/* Tooltip ground - the system's INFOBK, which is what a transient message sat
+ * on in 1998: pale yellow, one black hairline, black text. Not a bevel and not
+ * a window, because a tooltip is neither. */
+#define W_INFO RGB(0xff, 0xff, 0xe1)
+/* The selection navy with an edge on it, for the one raised surface on the
+ * interface that is not face grey: the storage gauge's fill. A raised edge
+ * needs a lighter and a darker tone of its own face, and mixing them at the
+ * call site would put two magic numbers in a draw path. */
+#define W_SEL_LT RGB(0x40, 0x40, 0xa8)
+#define W_SEL_DK RGB(0x00, 0x00, 0x40)
 
 /* Dark chrome, for the shoot and photograph views. */
 #define D_GROUND RGB(0x14, 0x18, 0x1e)
@@ -119,19 +127,46 @@ static const char *TAG = "ui";
 /* Layout                                                              */
 /* ------------------------------------------------------------------ */
 
-/* Main menu. No status bar: passive information does not get a permanent
- * strip on a camera. What is glanceable lives where it is useful - battery in
- * the viewfinder, storage only when it is running out. */
-#define M_MARGIN 24
-#define M_GAP 16
+/* Main menu: a launcher of six bevelled tiles over a status bar.
+ *
+ * The two lines at the foot - the wordmark and where the power is coming from -
+ * were floating silkscreen in the margin, which is what an unfinished theme
+ * looks like. They are the same two facts, in the window-bottom strip the era
+ * put exactly this kind of passive reading in, with a sunken panel round each
+ * so the pair reads as a status bar rather than as two stray captions. Nothing
+ * was added: there is still no battery percentage, because there is still no
+ * gauge on this body to read one from.
+ *
+ * The strip costs 36 px of grid height, which came out of the margins rather
+ * than the tiles - 24 px of outer margin and 16 px of gap was a grid designed
+ * to hold six loose objects apart, and tiles need the opposite. 13 and 12
+ * divide 800 exactly three ways at 250 px, so the row is symmetric to the pixel
+ * instead of one short on the right.
+ *
+ * tile_rect() and hit_test()'s SCR_MENU branch both derive from these, so the
+ * touch rectangles move with the tiles by construction.
+ */
+#define M_STATUS_H 34
+#define M_STATUS_Y (UI_H - 2 - M_STATUS_H) /* clear of the window frame */
+#define M_MARGIN 13
+#define M_GAP 12
 #define M_COLS 3
 #define M_ROWS 2
-#define M_TILE_W ((UI_W - 2 * M_MARGIN - (M_COLS - 1) * M_GAP) / M_COLS)  /* 240 */
-#define M_TILE_H ((UI_H - 2 * M_MARGIN - (M_ROWS - 1) * M_GAP) / M_ROWS)  /* 208 */
+#define M_TILE_W ((UI_W - 2 * M_MARGIN - (M_COLS - 1) * M_GAP) / M_COLS)  /* 250 */
+#define M_TILE_H ((M_STATUS_Y - 2 * M_MARGIN - (M_ROWS - 1) * M_GAP) / M_ROWS)  /* 205 */
 #define M_LABEL_H 24
 #define M_STACK (ICON_BOX + 10 + M_LABEL_H)  /* icon, air, label */
 
-#define RADIUS 3
+/* The artwork cache is captured over bare face grey and blitted back onto the
+ * tile face, which is the same colour - so the block has to stay clear of the
+ * tile's own bevel or the blit would paint face grey over it. Checked here
+ * rather than noticed on a panel: MT_H is 156 and the stack is centred, so the
+ * clearance is (M_TILE_H - M_STACK) / 2 + ICON_BOX / 2 - MT_H / 2 px at the
+ * top, and a pressed tile spends one of them. */
+_Static_assert((M_TILE_H - M_STACK) / 2 + ICON_BOX / 2 - (ICON_BOX + 12) / 2 >= 4,
+               "the cached menu artwork overlaps the tile bevel");
+_Static_assert(M_MARGIN + M_ROWS * M_TILE_H + (M_ROWS - 1) * M_GAP < M_STATUS_Y,
+               "the menu grid runs into the status bar");
 
 /* The filtered artwork, kept between repaints.
  *
@@ -351,23 +386,6 @@ static uint16_t mix(uint16_t a, uint16_t b, int k) {
   return (uint16_t)((r << 11) | (g << 5) | bl);
 }
 
-static void fill_round_grad(int x, int y, int w, int h, int r, uint16_t top, uint16_t bot) {
-  if (r * 2 > w) r = w / 2;
-  if (r * 2 > h) r = h / 2;
-  if (h <= 0) return;
-  for (int row = 0; row < h; row++) {
-    int inset = 0;
-    if (row < r) {
-      const int dy = r - row - 1;
-      inset = r - (int)__builtin_sqrtf((float)(r * r - dy * dy));
-    } else if (row >= h - r) {
-      const int dy = row - (h - r);
-      inset = r - (int)__builtin_sqrtf((float)(r * r - dy * dy));
-    }
-    fill(x + inset, y + row, w - 2 * inset, 1, mix(top, bot, row * 256 / h));
-  }
-}
-
 static void fill_grad(int x, int y, int w, int h, uint16_t top, uint16_t bot) {
   if (h <= 0) return;
   for (int r = 0; r < h; r++) fill(x, y + r, w, 1, mix(top, bot, r * 256 / h));
@@ -380,40 +398,36 @@ static void outline(int x, int y, int w, int h, uint16_t c) {
   fill(x + w - 1, y, 1, h, c);
 }
 
-/* The four-stop control gradient from tokens.css. That hard step at the
- * midpoint is the whole character of the era's controls: a smooth two-stop
- * ramp reads as a modern button, this reads as a 2003 one. */
-static void fill_stops4(int x, int y, int w, int h, uint16_t c0, uint16_t c45, uint16_t c50,
-                        uint16_t c100) {
-  if (h <= 0) return;
-  const int m45 = h * 45 / 100, m50 = h * 50 / 100;
-  for (int row = 0; row < h; row++) {
-    uint16_t c;
-    if (row < m45) c = mix(c0, c45, m45 ? row * 256 / m45 : 0);
-    else if (row < m50) c = mix(c45, c50, (m50 - m45) ? (row - m45) * 256 / (m50 - m45) : 0);
-    else c = mix(c50, c100, (h - m50) ? (row - m50) * 256 / (h - m50) : 0);
-    fill(x, y + row, w, 1, c);
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Windows 98 chrome                                                   */
+/*                                                                     */
+/* One geometry, three faces, and everything raised, sunken or etched   */
+/* on this interface goes through it.                                   */
+/*                                                                     */
+/* The two-pixel 3D edge is the whole language. Raised: white outside   */
+/* and #DFDFDF inside on the top and left, near-black outside and       */
+/* #808080 inside on the bottom and right. Sunken swaps them. Etched -  */
+/* what a group box and a status panel divider are - is sunken outside  */
+/* and raised inside, which is a groove rather than a step: one dark    */
+/* line and one light line offset by a pixel.                           */
+/*                                                                     */
+/* Four colours, two pixels, no gradient anywhere. It is why a 1998     */
+/* control reads as a physical thing while a single-pixel outline reads  */
+/* as a diagram - and why writing it out by hand at each call site,     */
+/* which is how this file arrived, produced surfaces that disagreed     */
+/* with each other by a pixel.                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * The two-pixel 3D edge, raised or sunken.
+ * The two-pixel edge, with its four tones given explicitly.
  *
- * Raised: white outside and #DFDFDF inside on the top and left, near-black
- * outside and #808080 inside on the bottom and right. Sunken swaps them.
- * Four colours, two pixels, no gradient anywhere - that is the entire
- * language, and it is why a 1998 control reads as a physical thing while a
- * single-pixel outline reads as a diagram.
+ * Only the three wrappers below should call this. It exists as a separate
+ * function because the dark chrome on the photograph view needs the same
+ * geometry in its own tones, and the alternative was a fourth copy of the
+ * eight fills.
  */
-static void bevel(int x, int y, int w, int h, bool sunken) {
-  const uint16_t o_tl = sunken ? W_SHADOW : W_HILITE;
-  const uint16_t o_br = sunken ? W_HILITE : W_DKSHAD;
-  const uint16_t i_tl = sunken ? W_DKSHAD : W_LIGHT;
-  const uint16_t i_br = sunken ? W_LIGHT : W_SHADOW;
+static void bevel4(int x, int y, int w, int h, uint16_t o_tl, uint16_t i_tl, uint16_t o_br,
+                   uint16_t i_br) {
   fill(x, y, w, 1, o_tl);
   fill(x, y, 1, h, o_tl);
   fill(x, y + h - 1, w, 1, o_br);
@@ -424,48 +438,153 @@ static void bevel(int x, int y, int w, int h, bool sunken) {
   fill(x + w - 2, y + 1, 1, h - 2, i_br);
 }
 
+/** A surface standing off the ground: a button, a tile, a window, a bar. */
+static void bevel_raised(int x, int y, int w, int h) {
+  bevel4(x, y, w, h, W_HILITE, W_LIGHT, W_DKSHAD, W_SHADOW);
+}
+
+/** A surface set into the ground: a well, a trough, a pressed control. */
+static void bevel_sunken(int x, int y, int w, int h) {
+  bevel4(x, y, w, h, W_SHADOW, W_DKSHAD, W_HILITE, W_LIGHT);
+}
+
+/** Sunken, in the dark chrome's tones. The photograph sits in a well too. */
+static void bevel_sunken_dark(int x, int y, int w, int h) {
+  bevel4(x, y, w, h, RGB(0x08, 0x0a, 0x0d), D_GROUND, D_EDGE, RGB(0x2c, 0x33, 0x3c));
+}
+
+/**
+ * A groove: sunken outside, raised inside.
+ *
+ * `gap_x`/`gap_w` cut a hole in the TOP pair only, which is where a group
+ * box's legend goes - the frame runs behind the words on both sides of them
+ * and the ground shows through between. Pass a zero width for a plain groove,
+ * which is what a status bar divider is.
+ */
+static void bevel_etched(int x, int y, int w, int h, int gap_x, int gap_w) {
+  /* Left and right first, so the top pair can be drawn as up to two runs
+   * without either of them having to know where the sides are. */
+  fill(x, y, 1, h, W_SHADOW);
+  fill(x + 1, y + 1, 1, h - 2, W_HILITE);
+  fill(x + w - 1, y, 1, h, W_HILITE);
+  fill(x + w - 2, y + 1, 1, h - 2, W_SHADOW);
+  fill(x, y + h - 1, w, 1, W_HILITE);
+  fill(x + 1, y + h - 2, w - 2, 1, W_SHADOW);
+
+  const int gl = gap_w > 0 ? gap_x - x : w;         /* the run left of the gap */
+  const int gr = gap_w > 0 ? (x + w) - (gap_x + gap_w) : 0;
+  if (gl > 0) {
+    fill(x, y, gl, 1, W_SHADOW);
+    fill(x + 1, y + 1, gl > 1 ? gl - 1 : 0, 1, W_HILITE);
+  }
+  if (gr > 0) {
+    fill(gap_x + gap_w, y, gr, 1, W_SHADOW);
+    fill(gap_x + gap_w, y + 1, gr - 1, 1, W_HILITE);
+  }
+}
+
 /** A push button: face fill, raised edge, and the whole face pushed in when
  * held. The label shifts a pixel down and right with it, which is most of
  * what makes a press feel mechanical. */
 static void button(int x, int y, int w, int h, bool down) {
   fill(x, y, w, h, W_FACE);
-  bevel(x, y, w, h, down);
+  if (down) bevel_sunken(x, y, w, h);
+  else bevel_raised(x, y, w, h);
 }
 
-/** The dotted focus rectangle. A real one, on the odd pixels, because the
- * alternating dots are what say "keyboard focus" rather than "selected". */
-static void focus_rect(int x, int y, int w, int h) {
+/** A white well: what everything that is read rather than pressed sits in. */
+static void well(int x, int y, int w, int h) {
+  fill(x, y, w, h, W_WINDOW);
+  bevel_sunken(x, y, w, h);
+}
+
+/**
+ * The dotted focus rectangle, inset inside the control it belongs to.
+ *
+ * On the odd pixels, because the alternating dots are what say "keyboard
+ * focus" rather than "selected" - and the ink is a parameter because half the
+ * focusable things on this interface are white type on the selection navy,
+ * where a black dotted rectangle is invisible.
+ */
+static void focus_rect(int x, int y, int w, int h, uint16_t ink) {
   for (int i = 0; i < w; i += 2) {
-    px_set(x + i, y, W_TEXT);
-    px_set(x + i, y + h - 1, W_TEXT);
+    px_set(x + i, y, ink);
+    px_set(x + i, y + h - 1, ink);
   }
   for (int i = 0; i < h; i += 2) {
-    px_set(x, y + i, W_TEXT);
-    px_set(x + w - 1, y + i, W_TEXT);
+    px_set(x, y + i, ink);
+    px_set(x + w - 1, y + i, ink);
   }
 }
 
-static void control(int x, int y, int w, int h, bool primary, bool down) {
-  if (primary) {
-    if (down)
-      fill_stops4(x, y, w, h, RGB(0x1d, 0x4c, 0x94), RGB(0x26, 0x61, 0x9f), RGB(0x2f, 0x70, 0xc9),
-                  RGB(0x35, 0x76, 0xcc));
-    else
-      fill_stops4(x, y, w, h, RGB(0x35, 0x76, 0xcc), RGB(0x2f, 0x70, 0xc9), RGB(0x26, 0x61, 0x9f),
-                  RGB(0x1d, 0x4c, 0x94));
-    outline(x, y, w, h, C_BLUE_DARK);
-    return;
-  }
-  if (down)
-    fill_stops4(x, y, w, h, RGB(0xc8, 0xd4, 0xe2), RGB(0xd8, 0xe1, 0xec), RGB(0xdc, 0xe4, 0xee),
-                RGB(0xe4, 0xeb, 0xf3));
-  else
-    fill_stops4(x, y, w, h, C_HILITE, RGB(0xf0, 0xf4, 0xf9), RGB(0xdd, 0xe6, 0xf0),
-                RGB(0xcf, 0xda, 0xe7));
-  outline(x, y, w, h, C_BORDER_DARK);
-  if (!down) {
-    fill(x + 1, y + 1, w - 2, 1, C_HILITE);
-    fill(x + 1, y + 1, 1, h - 2, C_HILITE);
+/** The standard focus mark: 3 px inside the control, in whichever ink reads. */
+static void focus_inset(int x, int y, int w, int h, uint16_t ink) {
+  focus_rect(x + 3, y + 3, w - 6, h - 6, ink);
+}
+
+/**
+ * The title bar's left-to-right ramp, ordered-dithered.
+ *
+ * The bar used to be one fill() per column through mix(), which interpolates
+ * inside RGB565 - so navy to #1084D0 across 790 px got 10 distinct blues and
+ * 3 reds, and the result was a dozen visible vertical bands rather than a
+ * ramp. At 4x magnification it reads as a staircase, which is the one thing a
+ * title bar must not do: it is the largest flat area on every screen.
+ *
+ * Dithering, not a wider palette, because the panel has no wider palette. A
+ * 4x4 Bayer threshold added to each channel before the 5/6/5 truncation
+ * scatters the quantisation error over a 4 px cell, and at this viewing
+ * distance the eye integrates it into the intermediate colour that does not
+ * exist. It is also exactly what the era did - every gradient on a 256-colour
+ * display in 1998 was a dither pattern, and the artefact is period-correct
+ * rather than merely tolerable.
+ *
+ * Cost: it writes the same 790 x 54 = 42 660 pixels the old per-column fill()
+ * loop wrote, and clips the rectangle once rather than bounds-testing every
+ * pixel, so the extra work is a table lookup, three adds and a pack per pixel
+ * over what was there before. That is about a ninth of what crt_rect() already
+ * does on the menu's labels on every single repaint, and it happens once per
+ * draw on screens that only repaint at 20 ms while a finger is down. Nothing
+ * is allocated and nothing but four ints goes on the stack.
+ */
+static void grad_h(int x, int y, int w, int h, uint16_t left, uint16_t right) {
+  static const uint8_t BAYER[4][4] = {
+      {0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5},
+  };
+  /* Clipped like fill(), and the ramp is measured on the ORIGINAL rectangle:
+   * a bar half off the left edge has to show the second half of its gradient,
+   * not a fresh one squeezed into what is left. No caller does that today; the
+   * alternative is a helper that is only correct for the callers it has. */
+  const int span = w;
+  int skip = 0;
+  if (x < 0) { w += x; skip = -x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x + w > UI_W) w = UI_W - x;
+  if (y + h > UI_H) h = UI_H - y;
+  if (w <= 0 || h <= 0 || span <= 0) return;
+
+  /* Unpacked to 8 bits once, so the per-pixel work is an add and a pack. */
+  const int lr = ((left >> 11) & 0x1F) << 3, lg = ((left >> 5) & 0x3F) << 2, lb = (left & 0x1F) << 3;
+  const int rr = ((right >> 11) & 0x1F) << 3, rg = ((right >> 5) & 0x3F) << 2,
+            rb = (right & 0x1F) << 3;
+
+  for (int col = 0; col < w; col++) {
+    const int k = (col + skip) * 256 / span;
+    const int r = lr + (((rr - lr) * k) >> 8);
+    const int g = lg + (((rg - lg) * k) >> 8);
+    const int b = lb + (((rb - lb) * k) >> 8);
+    uint16_t *p = s_cv + (size_t)y * UI_W + x + col;
+    for (int row = 0; row < h; row++, p += UI_W) {
+      /* The threshold is scaled to the quantisation step of each channel:
+       * eight levels for red and blue, four for green. Adding the same value
+       * to all three would over-dither green and under-dither the other two. */
+      const int t = BAYER[(y + row) & 3][(x + col) & 3];
+      int dr = r + (t >> 1), dg = g + (t >> 2), db = b + (t >> 1);
+      if (dr > 255) dr = 255;
+      if (dg > 255) dg = 255;
+      if (db > 255) db = 255;
+      *p = RGB(dr, dg, db);
+    }
   }
 }
 
@@ -638,8 +757,46 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
   }
 }
 
+/* A small solid chevron, ‹ or ›.
+ *
+ * chevron() below is the dark chrome's, 26 px and left-only. The font is ASCII
+ * 32..126 and carries neither character, so the picker buttons, the header's
+ * back button and a row that opens a screen get their own: six 2 px steps, one
+ * shape, so all three read as one family. */
+static void picker_arrow(int cx, int cy, bool right, uint16_t ink) {
+  for (int i = 0; i < 6; i++) {
+    const int x = right ? cx - 4 + i : cx + 3 - i;
+    fill(x, cy - 5 + i, 2, 2, ink);
+    fill(x, cy + 5 - i, 2, 2, ink);
+  }
+}
+
+/**
+ * The back mark on the header's system button.
+ *
+ * picker_arrow()'s shape at double the step and twice the thickness: 14x24
+ * rather than 7x12. The small one was tried in the 44 px button first and
+ * reads as a glyph that got lost in it - a system button's mark fills about a
+ * third of its face, and at 7 px this filled a sixth. The header's old
+ * chevron() was the opposite error at 26x28 in a 46 px box, which left 9 px of
+ * air and looked like artwork that had not been sized for the button.
+ *
+ * Centred on (cx, cy) properly, unlike picker_arrow, because at a 4 px block
+ * the 2 px of bottom-right overhang it ignores becomes visible.
+ */
+static void back_glyph(int cx, int cy, uint16_t ink) {
+  const int n = 11, t = 4;
+  for (int i = 0; i < n; i++) {
+    const int x = cx - t / 2 + (n - 1) / 2 - i;
+    fill(x, cy - t / 2 - (n - 1) + i, t, t, ink);
+    fill(x, cy - t / 2 + (n - 1) - i, t, t, ink);
+  }
+}
+
 /* A left-pointing chevron, drawn rather than set as a glyph: the font is ASCII
- * 32..126 and carries no such character. */
+ * 32..126 and carries no such character. Used only on the two dark screens -
+ * the viewfinder and the photograph - where there is no button to put a small
+ * mark in and the glyph has to carry the target on its own. */
 static void chevron(int x, int cy, uint16_t ink) {
   for (int i = 0; i <= 12; i++) {
     fill(x + i, cy - i - 2, 3, 3, ink);
@@ -1027,29 +1184,133 @@ static void crt_collapse(void) {
 /* Shared chrome                                                       */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The title bar, and the three surfaces it is made of.
+ *
+ * It was a navy plate floating in the 4 px gap inside the window frame, with a
+ * chevron drawn nearly edge to edge in a box that was almost square. Three
+ * things were wrong with that and all three are geometry: a caption bar in this
+ * grammar sits ON a raised bar rather than in a hole, a system button carries a
+ * glyph with air round it, and the caption is inset from the left of the plate
+ * rather than starting at it.
+ *
+ * HEAD_H is unchanged at 62 px on purpose. hit_test() sends the whole band back
+ * with `y < HEAD_H` and that is the right target - a 44 px button is smaller
+ * than a thumb - so the drawing had to fit the existing rectangle rather than
+ * the other way round.
+ */
+#define HD_BAR_X 2
+#define HD_BAR_Y 2
+#define HD_BAR_W (UI_W - 4)
+#define HD_BAR_H (HEAD_H - 4)
+#define HD_BTN 44
+#define HD_BTN_X (HD_BAR_X + 5)
+#define HD_BTN_Y (HD_BAR_Y + (HD_BAR_H - HD_BTN) / 2)
+#define HD_CAP_X (HD_BTN_X + HD_BTN + 5)
+#define HD_CAP_Y (HD_BAR_Y + 6)
+#define HD_CAP_W (UI_W - HD_BAR_X - 5 - HD_CAP_X)
+#define HD_CAP_H (HD_BAR_H - 12)
+/* The caption's own inset. A title that starts on the plate's first pixel is
+ * the detail that makes a bar read as a coloured rectangle rather than a
+ * caption bar; the system used 2 px and this panel is 800 px wide. */
+#define HD_CAP_PAD 10
+
+_Static_assert(HD_BTN + 10 <= HD_BAR_H, "the header system button does not fit its bar");
+
 static void draw_header(screen_t s) {
-  /* A real title bar: the two-stop blue, white bold-ish caption, and a
-   * raised close-box on the left carrying the chevron. The bar sits inside
-   * the window frame, so the whole screen reads as one window rather than a
-   * page with a strip on top. */
+  /* The screen is one window: raised frame, raised bar inside it, caption
+   * plate on the bar. Three surfaces, each one step further forward. */
   fill(0, 0, UI_W, HEAD_H, W_FACE);
-  bevel(0, 0, UI_W, UI_H, false);
+  bevel_raised(0, 0, UI_W, UI_H);
+  bevel_raised(HD_BAR_X, HD_BAR_Y, HD_BAR_W, HD_BAR_H);
 
-  const int bx = 4, by = 4, bw = UI_W - 8, bh = HEAD_H - 8;
-  for (int i = 0; i < bw; i++) {
-    fill(bx + i, by, 1, bh, mix(W_TITLE_L, W_TITLE_R, i * 256 / bw));
-  }
+  grad_h(HD_CAP_X, HD_CAP_Y, HD_CAP_W, HD_CAP_H, W_TITLE_L, W_TITLE_R);
 
+  /* Back, as a system button. The mark is back_glyph(), which is the same
+   * chevron a row that opens a screen carries, at the scale a 44 px button
+   * wants and pointing the other way - so the two read as one family. */
   const bool down = s_pressed == IT_BACK;
-  const int cw = bh - 8, cy = by + 4;
-  button(bx + 4, cy, cw, cw, down);
-  chevron(bx + 4 + cw / 2 - 6 + (down ? 1 : 0), cy + cw / 2 + (down ? 1 : 0), W_TEXT);
+  const int d = down ? 1 : 0;
+  button(HD_BTN_X, HD_BTN_Y, HD_BTN, HD_BTN, down);
+  back_glyph(HD_BTN_X + HD_BTN / 2 + d, HD_BTN_Y + HD_BTN / 2 + d, W_TEXT);
+  /* Nothing sets focus to IT_BACK today - touch deliberately does not, and
+   * there are no direction keys on this body - but the button is a focusable
+   * control the moment there are, and a header that cannot show focus is the
+   * one place a d-pad would strand a user. Two comparisons per header. */
+  if (foc(s, IT_BACK)) focus_inset(HD_BTN_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
 
   const int t = SCREEN_TITLE[s];
   if (t >= 0 && t < UI_LABEL_COUNT) {
     const ui_label_t *l = &UI_LABELS[t];
-    draw_bits(l->bits, l->w, l->h, l->stride, bx + cw + 14, by + (bh - l->h) / 2, 1, W_SELTEXT);
+    draw_bits(l->bits, l->w, l->h, l->stride, HD_CAP_X + HD_CAP_PAD,
+              HD_CAP_Y + (HD_CAP_H - l->h) / 2, 1, W_SELTEXT);
   }
+}
+
+/**
+ * A group box: an etched frame with its legend sitting in the top edge.
+ *
+ * This is the single change that stops content floating in grey. The screens
+ * carried bare captions - MODE, FLASH, VOLUME, CAM IDLE - set above controls
+ * that had no container at all, which is the half-finished look: the words
+ * belong to the control under them and nothing on screen said so.
+ *
+ * `note` is the right-hand half of the same edge, and it exists because these
+ * screens already put a sentence there - "Both modes capture four frames", a
+ * list position, a caption about where grading happens. Left as plain text it
+ * would be struck through by the frame's top line. It gets the same treatment
+ * as the legend, drawn in grey because it is a remark rather than a name.
+ *
+ * Both strings are UI_FONT_S: a legend names, it does not speak, and every
+ * legend on this interface is the small role.
+ *
+ * `ink` is the legend's, and it is a parameter for exactly one caller: the
+ * BRIGHTNESS box on the DISPLAY screen names a setting this body does not
+ * have, and it has said so in grey since it was written. A black legend over a
+ * grey sentence would put the two halves of that statement in different
+ * voices.
+ */
+static void group_box(int x, int y, int w, int h, const char *legend, uint16_t ink,
+                      const char *note) {
+  /* Neither string: a plain groove from the top of the rectangle, with no line
+   * of type to make room for. No caller does this today, and without the guard
+   * the arithmetic below would open a 6 px hole in the top edge for a legend
+   * that is not there. */
+  if (legend == NULL && note == NULL) {
+    bevel_etched(x, y, w, h, 0, 0);
+    return;
+  }
+
+  const int fy = y + UI_FONT_S.line_h / 2; /* the top edge runs through the type */
+  const int lw = legend != NULL ? text_w(&UI_FONT_S, legend) : 0;
+  const int nw = note != NULL ? text_w(&UI_FONT_S, note) : 0;
+
+  /* One gap, from the start of the legend to the end of the note. Two holes
+   * would leave a stub of frame between two pieces of text on a line that has
+   * nothing else on it, which reads as a mistake rather than as structure. */
+  const int gx = legend != NULL ? x + 9 : x + w - 9 - nw;
+  const int gw = nw > 0 ? (x + w - 9) - gx : lw + 6;
+
+  bevel_etched(x, fy, w, h - (fy - y), gx - 3, gw + 6);
+  if (legend != NULL) text(&UI_FONT_S, x + 9, y, legend, ink);
+  if (note != NULL) text_right(&UI_FONT_S, x + w - 9, y, note, W_GRAYTEXT);
+}
+
+/**
+ * A sunken status panel, and the ground it sits on.
+ *
+ * The window-bottom strip: a face-grey band across the client area with each
+ * reading in its own recess. Drawn as two calls rather than one so the caller
+ * decides how many panels there are and how wide each is - the menu wants a
+ * wide one and a narrow one, and a fixed split would put the wordmark and the
+ * power source in boxes sized by nothing.
+ */
+static void status_bar(int x, int y, int w, int h) {
+  fill(x, y, w, h, W_FACE);
+}
+
+static void status_panel(int x, int y, int w, int h) {
+  bevel_etched(x, y, w, h, 0, 0);
 }
 
 /* One list row at an arbitrary x, width and height. `value` may be NULL;
@@ -1061,43 +1322,54 @@ static void draw_header(screen_t s) {
  * carry per-camera firmware at all, and a second copy of the row idiom is how
  * the two would drift apart - so the idiom moved here and draw_row() became a
  * call to it with the standard geometry. */
-static void draw_row_at(int x, int w, int y, int h, bool focused, bool enabled,
+static void draw_row_at(int x, int w, int y, int h, bool focused, bool pressed, bool enabled,
                         const char *title, const char *value, bool arrow) {
   /* A list row on a white well with a navy selection: the 1998 listbox,
-   * which is also the clearest thing to read in a dark room. */
-  fill(x, y, w, h, focused ? W_SEL : W_WINDOW);
+   * which is also the clearest thing to read in a dark room.
+   *
+   * A row has no bevel to invert, so a press is the selection plate plus the
+   * one-pixel shift every other control on this interface makes - the same
+   * gesture in the only two terms a flat row has. Without it, pressing
+   * "Restart" or "Delete all photos" put nothing at all on screen between the
+   * finger landing and the dialog appearing, which on a slow card read like a
+   * touch that had been missed. */
+  const bool lit = focused || pressed;
+  fill(x, y, w, h, lit ? W_SEL : W_WINDOW);
+  const int d = pressed ? 1 : 0;
 
-  const uint16_t ti = focused ? W_SELTEXT : (enabled ? W_TEXT : W_GRAYTEXT);
-  const uint16_t vi = focused ? W_SELTEXT : (enabled ? RGB(0x40, 0x40, 0x40) : W_GRAYTEXT);
-  text(&UI_FONT_M, x + 14, y + (h - UI_FONT_M.line_h) / 2, title, ti);
+  const uint16_t ti = lit ? W_SELTEXT : (enabled ? W_TEXT : W_GRAYTEXT);
+  const uint16_t vi = lit ? W_SELTEXT : (enabled ? RGB(0x40, 0x40, 0x40) : W_GRAYTEXT);
+  text(&UI_FONT_M, x + 14 + d, y + (h - UI_FONT_M.line_h) / 2 + d, title, ti);
 
-  int right = x + w - 14;
+  int right = x + w - 14 + d;
   if (arrow) {
-    const int cy = y + h / 2;
-    for (int i = 0; i < 6; i++) {
-      fill(right - 8 + i, cy - 5 + i, 2, 2, ti);
-      fill(right - 8 + i, cy + 5 - i, 2, 2, ti);
-    }
+    picker_arrow(right - 4, y + h / 2 + d, true, ti);
     right -= 20;
   }
-  if (value) text_right(&UI_FONT_M, right, y + (h - UI_FONT_M.line_h) / 2, value, vi);
+  if (value) text_right(&UI_FONT_M, right, y + (h - UI_FONT_M.line_h) / 2 + d, value, vi);
+
+  /* Inside the row, in white: the plate under it is navy whenever a row can be
+   * focused at all, and a black dotted rectangle on navy is not a mark. */
+  if (focused) focus_inset(x, y, w, h, W_SELTEXT);
 }
 
 /* The standard full-width row, which is what every screen but About draws.
- * `value_ink` has never been read - the row picks its own inks from `focused`
- * and `enabled` - and is kept only because eleven call sites pass it. */
-static void draw_row(int y, bool focused, bool enabled, const char *title, const char *value,
-                     bool arrow, uint16_t value_ink) {
-  (void)value_ink;
-  draw_row_at(LIST_X, LIST_W, y, ROW_H, focused, enabled, title, value, arrow);
+ *
+ * The dead `value_ink` parameter eleven call sites were passing is gone, and
+ * `pressed` took its place: the row picks its own inks from `focused` and
+ * `enabled` and always did, but it had no way at all to know a finger was on
+ * it. Same arity, and every call site had to be visited to say which item
+ * index it draws - which is the point, because that is the line where a row's
+ * drawing and its hit rectangle agree or do not. */
+static void draw_row(int y, bool focused, bool pressed, bool enabled, const char *title,
+                     const char *value, bool arrow) {
+  draw_row_at(LIST_X, LIST_W, y, ROW_H, focused, pressed, enabled, title, value, arrow);
 }
 
 /* The window a list sits in: face ground, sunken white well. */
 static void draw_list_frame(int rows) {
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
-  const int h = rows * ROW_H + 4;
-  fill(LIST_X - 2, LIST_Y - 2, LIST_W + 4, h, W_WINDOW);
-  bevel(LIST_X - 2, LIST_Y - 2, LIST_W + 4, h, true);
+  well(LIST_X - 2, LIST_Y - 2, LIST_W + 4, rows * ROW_H + 4);
 }
 
 /* An on/off pill, the era's answer to a toggle: a recessed well with the live
@@ -1106,15 +1378,14 @@ static void draw_toggle(int x, int y, bool on, bool focused) {
   /* A checkbox, not a pill. 1998 had no sliding lozenge, and a tick in a
    * sunken box is unambiguous at a glance in a way a slider is not. */
   const int box = 26;
-  fill(x, y, box, box, W_WINDOW);
-  bevel(x, y, box, box, true);
+  well(x, y, box, box);
   if (on) {
     /* A hand-set tick: three rising pixels then five falling, the shape the
      * system font's checkmark actually had. */
     for (int i = 0; i < 3; i++) fill(x + 6 + i, y + 12 + i, 2, 3, W_TEXT);
     for (int i = 0; i < 5; i++) fill(x + 9 + i, y + 15 - i, 2, 3, W_TEXT);
   }
-  if (focused) focus_rect(x - 3, y - 3, box + 6, box + 6);
+  if (focused) focus_rect(x - 3, y - 3, box + 6, box + 6, W_TEXT);
 }
 
 /* A segmented selector: every option visible, the live one filled. */
@@ -1131,7 +1402,7 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
     const int d = (on || pressed_idx == i) ? 1 : 0;
     text_mid(&UI_FONT_M, bx + (cw - 2) / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, names[i],
              W_TEXT);
-    if (focus_idx == i) focus_rect(bx + 4, y + 4, cw - 10, h - 8);
+    if (focus_idx == i) focus_inset(bx, y, cw - 2, h, W_TEXT);
   }
 }
 
@@ -1141,20 +1412,6 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
  * write out twice - once for pressed, once for focused. */
 static int band_rel(int v, int base, int count) {
   return (v >= base && v < base + count) ? v - base : -1;
-}
-
-/* A small solid chevron, ‹ or ›.
- *
- * chevron() above is the header's, 26 px and left-only. The font is ASCII
- * 32..126 and carries neither character, so the picker buttons get their own:
- * six 2 px steps, the same shape draw_row() puts on a row that opens a
- * screen, so the two read as one family. */
-static void picker_arrow(int cx, int cy, bool right, uint16_t ink) {
-  for (int i = 0; i < 6; i++) {
-    const int x = right ? cx - 4 + i : cx + 3 - i;
-    fill(x, cy - 5 + i, 2, 2, ink);
-    fill(x, cy + 5 - i, 2, 2, ink);
-  }
 }
 
 /**
@@ -1180,12 +1437,11 @@ static void draw_picker(int x, int y, int w, int h, int btn, const char *value, 
   picker_arrow(nx + btn / 2 + (pressed == 1 ? 1 : 0), y + h / 2 + (pressed == 1 ? 1 : 0), true, ink);
 
   const int wx = x + btn + 6, ww = w - 2 * (btn + 6);
-  fill(wx, y, ww, h, W_WINDOW);
-  bevel(wx, y, ww, h, true);
+  well(wx, y, ww, h);
   text_mid(&UI_FONT_M, wx + ww / 2, y + (h - UI_FONT_M.line_h) / 2, value, ink);
 
-  if (focus == 0) focus_rect(x + 4, y + 4, btn - 8, h - 8);
-  if (focus == 1) focus_rect(nx + 4, y + 4, btn - 8, h - 8);
+  if (focus == 0) focus_inset(x, y, btn, h, W_TEXT);
+  if (focus == 1) focus_inset(nx, y, btn, h, W_TEXT);
 }
 
 static void human_bytes(char *out, size_t n, uint64_t bytes) {
@@ -1205,15 +1461,23 @@ static void tile_rect(int i, int *x, int *y) {
 }
 
 /**
- * Six objects on a light screen, and nothing else.
+ * Six targets on a light screen, and a strip that says where the power is.
  *
- * No status bar: a permanent strip of SD/WIFI/ROLL across the top is what a
- * miniature PC looks like. Passive state lives where it is useful instead -
- * battery in the viewfinder, storage only once it is nearly gone.
+ * They were six loose objects: artwork and a word, floating on face grey, with
+ * nothing round either. That reads as a desktop, and this is not a desktop -
+ * every one of the six is a button, and a launcher whose targets have no edges
+ * makes a user aim at a picture and hope. Each entry is now a raised tile that
+ * pushes in, which is the only thing on this screen that had to change for it
+ * to stop looking unfinished.
  *
- * Selection is deliberately quiet. The tile does not become a button; it gets
- * a pale plate and its label goes into a cobalt chip, which is how a selected
- * desktop icon read in 1998 and keeps the artwork the loudest thing on screen.
+ * Still no status bar across the TOP: a permanent strip of SD/WIFI/ROLL is
+ * what a miniature PC looks like, and none of it is glanceable on a camera.
+ * The strip at the FOOT carries the two things that were already down there.
+ *
+ * Selection stays quiet inside the tile. The label goes into a cobalt chip and
+ * a dotted rectangle goes round the stack; the artwork is left alone - no
+ * plate behind it, no tint over it - which is the whole reason for using these
+ * icons instead of redrawing them.
  */
 /**
  * Fill the artwork cache, once, from a screen with nothing on it but icons.
@@ -1278,7 +1542,7 @@ static void draw_menu(void) {
    * and on a panel used in a dark room it is far kinder than white. */
   fill(0, 0, UI_W, UI_H, W_FACE);
   /* The screen is one window. */
-  bevel(0, 0, UI_W, UI_H, false);
+  bevel_raised(0, 0, UI_W, UI_H);
 
   for (int i = 0; i < 6; i++) {
     int tx, ty;
@@ -1286,16 +1550,21 @@ static void draw_menu(void) {
     const bool sel = (foc(SCR_MENU, i));
     const bool down = (s_pressed == i);
 
+    /* The tile. Raised, and sunken while it is held - the same two states as
+     * every other button on the camera, at 250x205. The lift the icon used to
+     * do on focus is gone with it: a tile that moves is a tile whose edges
+     * move, and an edge that moves 2 px on selection reads as a rendering
+     * fault rather than as a highlight. Focus is the chip and the dots. */
+    button(tx, ty, M_TILE_W, M_TILE_H, down);
+
     const int top = ty + (M_TILE_H - M_STACK) / 2;
     const int icx = tx + M_TILE_W / 2;
     const int icy = top + ICON_BOX / 2;
 
-    /* Focus lifts the object two pixels off the ground and a press puts it
-     * back down. Not a hover animation - a bitmap sprite becoming powered,
-     * which is the 1998 way of saying "this one". */
-    const int lift = down ? 1 : (sel ? -2 : 0);
+    /* Everything inside a held tile moves with its face. */
+    const int lift = down ? 1 : 0;
 
-    const int bx = icx - MT_W / 2, by2 = icy - MT_H / 2 + lift;
+    const int bx = icx - MT_W / 2 + lift, by2 = icy - MT_H / 2 + lift;
     if (s_mcache[i] != NULL) {
       for (int r = 0; r < MT_H; r++) {
         const int gy = by2 + r;
@@ -1305,17 +1574,12 @@ static void draw_menu(void) {
       }
     } else {
       /* No room for the cache. Slower and unfiltered, but still a menu. */
-      icons_blit_centred(s_cv, UI_W, UI_H, i, icx, icy + lift);
+      icons_blit_centred(s_cv, UI_W, UI_H, i, icx + lift, icy + lift);
     }
 
-    /* Desktop-icon selection: the LABEL gets the navy plate and white text,
-     * and a dotted focus rectangle goes round the pair. The icon itself is
-     * left alone - no plate behind it, no tint over it - so the artwork
-     * stays the loudest thing on the screen, which is the whole reason for
-     * using these icons at all. */
     const int lw = text_w(&UI_FONT_M, MENU_LABEL[i]);
-    const int ly = top + ICON_BOX + 10;
-    const int px = icx - lw / 2 - 6, pw = lw + 12;
+    const int ly = top + ICON_BOX + 10 + lift;
+    const int px = icx - lw / 2 - 6 + lift, pw = lw + 12;
 
     if (sel || down) {
       fill(px, ly, pw, M_LABEL_H, W_SEL);
@@ -1323,31 +1587,47 @@ static void draw_menu(void) {
        * under the selected word is the only warm thing on the screen, and it
        * is what stops the selection reading as a plain system highlight. */
       fill(px, ly + M_LABEL_H - 2, pw, 2, C_YELLOW);
-      text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
+      text(&UI_FONT_M, icx - lw / 2 + lift, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
            W_SELTEXT);
     } else {
       text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
            W_TEXT);
     }
-    if (sel) {
-      focus_rect(icx - ICON_BOX / 2 - 6, top - 6, ICON_BOX + 12,
-                 ICON_BOX + 16 + M_LABEL_H + 12);
-    }
+    /* Inside the tile, not round the stack: 3 px in from the tile's own edge
+     * is where a focus rectangle goes in this grammar, and it also stops the
+     * dots landing on the icon artwork. */
+    if (sel) focus_inset(tx, ty, M_TILE_W, M_TILE_H, W_TEXT);
   }
 
-  /* The badge. Silkscreen on a moulding, not a title bar: no rule under it,
-   * no chrome around it, sitting in the margin the tiles do not use. */
-  text(&UI_FONT_S, 14, UI_H - 22, "kino D4", W_SHADOW);
-
-  /* What a glance is actually for. There is no battery gauge on this body,
-   * so this says where the power is coming from and nothing about how much
-   * is left - a percentage here would be invented. */
+  /*
+   * The status bar: the wordmark and where the power is coming from, each in
+   * its own recess, divided by the 2 px of face grey between the two panels.
+   *
+   * Both readings are exactly what they were. There is no battery gauge on
+   * this body, so the right panel says where the power comes from and nothing
+   * about how much is left - a percentage here would be invented.
+   */
   {
+    const int sy = M_STATUS_Y, sh = M_STATUS_H;
     const int bi = W98_BATTERY_IDX;
     const int be = icons_edge(bi);
-    icons_blit(s_cv, UI_W, UI_H, bi, UI_W - 14 - be, UI_H - 12 - be);
-    text_right(&UI_FONT_S, UI_W - 18 - be, UI_H - 22, usb_attached() ? "USB" : "BATTERY",
-               W_SHADOW);
+    /* Wide enough for BATTERY, the icon and the air round both. The left
+     * panel takes the rest, which is the Win98 split: one elastic panel and
+     * one sized to its contents. */
+    const int rw = text_w(&UI_FONT_S, "BATTERY") + be + 26;
+    const int rx = UI_W - 2 - rw;
+    const int ty = sy + (sh - UI_FONT_S.line_h) / 2;
+
+    status_bar(2, sy, UI_W - 4, sh);
+    status_panel(2, sy, rx - 4, sh);
+    status_panel(rx, sy, rw, sh);
+
+    text(&UI_FONT_S, 12, ty, "kino D4", W_TEXT);
+    /* The sprite is a 32 px box with a much smaller glyph in it, so centring
+     * the box on a 34 px panel puts two transparent rows over each groove
+     * rather than any artwork. */
+    icons_blit(s_cv, UI_W, UI_H, bi, UI_W - 10 - be, sy + (sh - be) / 2);
+    text_right(&UI_FONT_S, UI_W - 16 - be, ty, usb_attached() ? "USB" : "BATTERY", W_TEXT);
   }
 
   /* ---- the glass ---- */
@@ -1356,14 +1636,20 @@ static void draw_menu(void) {
    * rest are black on neutral grey, where I and Q are zero - but the LUMA
    * limit is not the identity on any of them: it is what softens a hard type
    * edge, and filtering only the selected label would leave the other five
-   * visibly crisper than it. Cheap enough at six rows of 32. */
+   * visibly crisper than it. Cheap enough at six rows of 32.
+   *
+   * Inset 3 px from the tile now, not run to its full width. The luma pass is
+   * a [1 2 1] and a bevel is a one-pixel line: taking the tile's edges into
+   * the filter turned every highlight and shadow into a two-pixel smear, which
+   * is the one thing a 2 px bevel cannot survive. The label is the only thing
+   * in this band that wants the glass. */
   static bool warm_timed;
   const int64_t tl = warm_timed ? 0 : esp_timer_get_time();
   for (int i = 0; i < 6; i++) {
     int tx, ty;
     tile_rect(i, &tx, &ty);
     const int top = ty + (M_TILE_H - M_STACK) / 2;
-    crt_rect(tx, top + ICON_BOX + 6, M_TILE_W, M_LABEL_H + 8);
+    crt_rect(tx + 3, top + ICON_BOX + 6, M_TILE_W - 6, M_LABEL_H + 8);
   }
   if (s_mcached && !warm_timed) {
     warm_timed = true;
@@ -1509,6 +1795,17 @@ static void look_set_mono(bool mono) {
 #define lk_label_y(r) (LK_Y0 + (r) * LK_ROW)
 #define lk_ctl_y(r) (lk_label_y(r) + 20)
 
+/* The group box round each row. It reaches 8 px wider than the control on
+ * each side and starts on the legend's own line, so the etched top edge runs
+ * through the middle of MODE, FLASH, LOOK, COLOUR and TARGET rather than above
+ * them. 6 px of air under the control is what stops the bottom groove touching
+ * a button's shadow. */
+#define LK_BOX_X (LK_X - 8)
+#define LK_BOX_W (LK_W + 16)
+#define LK_BOX_H (20 + LK_CTL_H + 6) /* legend line, control, air */
+
+_Static_assert(LK_X - 8 >= 2, "the LOOK group boxes run into the window frame");
+
 /* Rows in draw order: 0 MODE, 1 FLASH, 2 the look picker, 3 COLOUR/B&W,
  * 4 TARGET (QUAD only). The two footnotes follow the last drawn row. */
 #define LK_ROW_TARGET 4
@@ -1526,7 +1823,12 @@ static void look_set_mono(bool mono) {
 /* The detail strip under the last control row. Its height is here rather than
  * beside its drawing code so the assert below can see it. */
 #define LK_DET_H 52
-#define LK_DET_GAP 10
+/* 14, not the 10 it was. The control rows are group boxes now, so the last one
+ * has an etched bottom edge 6 px under its buttons; at a 10 px gap that groove
+ * and the detail strip's sunken top edge landed 4 px apart and read as one
+ * doubled line. There is room: the QUAD assert below still passes with 11 px
+ * to spare. */
+#define LK_DET_GAP 14
 
 /* Five rows plus the detail strip is the tightest screen on the camera, and the
  * overflow would only show on a panel in QUAD - which is why the two lines of
@@ -1709,8 +2011,8 @@ static void look_detail_col(int x, int w, int y, const char *value, bool set,
 
 /** The detail strip, under the last control row. */
 static void draw_look_detail(int y) {
-  fill(LK_X, y, LK_W, LK_DET_H, W_WINDOW);
-  bevel(LK_X, y, LK_W, LK_DET_H, true);
+  /* A well: five readings, no press. */
+  well(LK_X, y, LK_W, LK_DET_H);
 
   char id[KDP_RECIPE_ID_MAX];
   if (!look_current_id(id, sizeof id)) {
@@ -1804,14 +2106,19 @@ static void draw_look(void) {
    * notes that used to be stacked at the foot of the screen live on them
    * instead - beside the control each one is actually about, and costing no
    * vertical room at all. That is what freed the bottom of the screen for the
-   * detail strip. */
-  text(&UI_FONT_S, LK_X, lk_label_y(0), "MODE", W_TEXT);
-  text_right(&UI_FONT_S, LK_X + LK_W, lk_label_y(0),
-             "Both modes capture four frames. The difference is playback.", W_GRAYTEXT);
+   * detail strip.
+   *
+   * Both the word and the note are now IN the group box's top edge, which is
+   * what they always wanted to be: the label names the control under it and
+   * the note remarks on it, and until now nothing on screen tied either of
+   * them to the row of buttons below. Note that the frame is what carries the
+   * association - the strings are unchanged, every one of them. */
+  group_box(LK_BOX_X, lk_label_y(0), LK_BOX_W, LK_BOX_H, "MODE", W_TEXT,
+            "Both modes capture four frames. The difference is playback.");
   draw_segments(LK_X, lk_ctl_y(0), LK_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
                 band_rel(p0, LK_IT_MODE, 2), band_rel(f0, LK_IT_MODE, 2));
 
-  text(&UI_FONT_S, LK_X, lk_label_y(1), "FLASH", W_TEXT);
+  group_box(LK_BOX_X, lk_label_y(1), LK_BOX_W, LK_BOX_H, "FLASH", W_TEXT, NULL);
   draw_segments(LK_X, lk_ctl_y(1), LK_W, LK_CTL_H, FLASH_NAMES, 3, flash_index(),
                 band_rel(p0, LK_IT_FLASH, 3), band_rel(f0, LK_IT_FLASH, 3));
 
@@ -1819,20 +2126,19 @@ static void draw_look(void) {
    * the look is not on this camera, and an id may be longer than a name. */
   char look[KDP_RECIPE_ID_MAX];
   look_display(look, sizeof look);
-  text(&UI_FONT_S, LK_X, lk_label_y(2), "LOOK", W_TEXT);
   /* Where you are in the list. Cycling one at a time through up to 35 entries
    * with no idea how many there are or how far round you have come is the
    * complaint the picker earned; this is the cheapest honest answer to it. */
   char pos[24];
   look_position(pos, sizeof pos);
-  if (pos[0] != '\0') text_right(&UI_FONT_S, LK_X + LK_W, lk_label_y(2), pos, W_GRAYTEXT);
+  group_box(LK_BOX_X, lk_label_y(2), LK_BOX_W, LK_BOX_H, "LOOK", W_TEXT,
+            pos[0] != '\0' ? pos : NULL);
   draw_picker(LK_X, lk_ctl_y(2), LK_W, LK_CTL_H, LK_PICK_BTN, look, kdp_recipes_count() > 0,
               band_rel(p0, LK_IT_PREV, 2), band_rel(f0, LK_IT_PREV, 2));
 
   /* COLOUR and B&W are a different field from the look - SlotColorMode is
    * 'recipe' | 'mono' in the wire contract - so they stay their own row
    * rather than becoming two more entries in the picker. */
-  text(&UI_FONT_S, LK_X, lk_label_y(3), "COLOUR", W_TEXT);
   /*
    * The caption that replaces "Looks are applied when you import. The preview
    * does not change."
@@ -1850,8 +2156,8 @@ static void draw_look(void) {
    * claimed - the viewfinder stream does not carry these settings, only the
    * capture does, which is why the wording is "at capture" and not "now".
    */
-  text_right(&UI_FONT_S, LK_X + LK_W, lk_label_y(3),
-             "These reach the sensor at capture. Grading is still at import.", W_GRAYTEXT);
+  group_box(LK_BOX_X, lk_label_y(3), LK_BOX_W, LK_BOX_H, "COLOUR", W_TEXT,
+            "These reach the sensor at capture. Grading is still at import.");
   draw_segments(LK_X, lk_ctl_y(3), LK_W, LK_CTL_H, COLOR_NAMES, 2, look_is_mono() ? 1 : 0,
                 band_rel(p0, LK_IT_COLOR, 2), band_rel(f0, LK_IT_COLOR, 2));
 
@@ -1859,7 +2165,7 @@ static void draw_look(void) {
    * WIGGLE there is one look and a target row would be a control with one
    * legal value. */
   if (quad) {
-    text(&UI_FONT_S, LK_X, lk_label_y(LK_ROW_TARGET), "TARGET", W_TEXT);
+    group_box(LK_BOX_X, lk_label_y(LK_ROW_TARGET), LK_BOX_W, LK_BOX_H, "TARGET", W_TEXT, NULL);
     draw_segments(LK_X, lk_ctl_y(LK_ROW_TARGET), LK_W, LK_CTL_H, TARGET_NAMES, 5, s_look_target,
                   band_rel(p0, LK_IT_TARGET, 5), band_rel(f0, LK_IT_TARGET, 5));
   }
@@ -1969,19 +2275,34 @@ static void draw_gallery(void) {
     int x, y;
     gal_origin(i, &x, &y);
     const bool selected = foc(SCR_GALLERY, i);
+    const bool down = s_pressed == i;
 
     /* Every photograph sits in a sunken well; the focused one gets the navy
-     * plate a selected thumbnail had. */
-    fill(x - 3, y - 3, G_TILE_W + 6, G_TILE_H + 6, selected ? W_SEL : W_FACE);
-    bevel(x - 2, y - 2, G_TILE_W + 4, G_TILE_H + 4, true);
+     * plate a selected thumbnail had.
+     *
+     * A press lights the same plate, shifts the caption a pixel, and drops a
+     * second sunken edge INSIDE the picture - the well getting deeper, which is
+     * this grammar's press applied to the one surface that cannot invert. A
+     * recess that turned raised would read as the frame popping off the screen,
+     * and the picture itself cannot move: the blit is exactly G_TILE_W wide, so
+     * a pixel of travel would put its last column on the frame's shadow.
+     *
+     * The plate alone was tried and is not enough - it is 3 px of navy behind a
+     * bright photograph, invisible next to the focused tile. What the press
+     * used to be was a dotted rectangle over the photograph, which says
+     * "keyboard focus" and not "your finger is here". */
+    fill(x - 3, y - 3, G_TILE_W + 6, G_TILE_H + 6, (selected || down) ? W_SEL : W_FACE);
+    bevel_sunken(x - 2, y - 2, G_TILE_W + 4, G_TILE_H + 4);
+    const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
     } else {
       fill(x, y, G_TILE_W, G_TILE_H, C_WELL);
-      text_mid(&UI_FONT_S, x + G_TILE_W / 2, y + G_TILE_H / 2 - 9,
+      text_mid(&UI_FONT_S, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d,
                slots[i].state == TILE_PENDING ? "LOADING" : "NO IMAGE", D_DIM);
     }
-    if (s_pressed == i) focus_rect(x, y, G_TILE_W, G_TILE_H);
+    if (down) bevel_sunken(x, y, G_TILE_W, G_TILE_H);
+    if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, W_SELTEXT);
 
     /* A favourite is marked in the corner of the picture, not in the caption
      * strip below it. The caption already carries the frame mark and the mode
@@ -2012,8 +2333,8 @@ static void draw_gallery(void) {
     for (int k = 0; k < 4; k++) {
       st[k] = k < slots[i].frames ? FM_ON : (slots[i].partial ? FM_LOST : FM_OFF);
     }
-    four_mark(x + 2, y + G_TILE_H + 7, 8, st, false);
-    text_right(&UI_FONT_S, x + G_TILE_W - 2, y + G_TILE_H + 5, slots[i].mode, W_TEXT);
+    four_mark(x + 2 + d, y + G_TILE_H + 7 + d, 8, st, false);
+    text_right(&UI_FONT_S, x + G_TILE_W - 2 + d, y + G_TILE_H + 5 + d, slots[i].mode, W_TEXT);
   }
 
   /*
@@ -2048,7 +2369,16 @@ static void draw_gallery(void) {
   } else {
     snprintf(mid, sizeof mid, "%d photo%s", total, total == 1 ? "" : "s");
   }
-  text_mid(&UI_FONT_S, UI_W / 2, ty, mid, loading ? W_GRAYTEXT : W_TEXT);
+  /* The count in its own recess, so the one reading on this footer reads as a
+   * status panel rather than as a caption adrift between two buttons. Sized to
+   * the space between them whether or not they are drawn, which is what keeps
+   * the panel from moving when a one-page card becomes a three-page one. */
+  {
+    const int pw = pages > 1 ? 78 + 12 : 0;
+    const int sx = 24 + pw, sw = UI_W - 48 - 2 * pw;
+    status_panel(sx, fy + 4, sw, G_FOOT - 8);
+    text_mid(&UI_FONT_S, UI_W / 2, ty, mid, loading ? W_GRAYTEXT : W_TEXT);
+  }
 
   if (pages > 1) {
     const int bw = 78, bh = 32, by = fy + (G_FOOT - bh) / 2;
@@ -2058,13 +2388,13 @@ static void draw_gallery(void) {
     const bool has_prev = gallery_page() > 0;
     const bool has_next = gallery_page() < pages - 1;
     button(24, by, bw, bh, pd);
-    text_mid(&UI_FONT_S, 24 + bw / 2 + pd, by + (bh - UI_FONT_S.line_h) / 2 + pd, "PREV",
+    text_mid(&UI_FONT_M, 24 + bw / 2 + pd, by + (bh - UI_FONT_M.line_h) / 2 + pd, "PREV",
              has_prev ? W_TEXT : W_GRAYTEXT);
     button(UI_W - 24 - bw, by, bw, bh, nd);
-    text_mid(&UI_FONT_S, UI_W - 24 - bw / 2 + nd, by + (bh - UI_FONT_S.line_h) / 2 + nd, "NEXT",
+    text_mid(&UI_FONT_M, UI_W - 24 - bw / 2 + nd, by + (bh - UI_FONT_M.line_h) / 2 + nd, "NEXT",
              has_next ? W_TEXT : W_GRAYTEXT);
-    if (foc(SCR_GALLERY, G_IT_PREV)) focus_rect(28, by + 4, bw - 8, bh - 8);
-    if (foc(SCR_GALLERY, G_IT_NEXT)) focus_rect(UI_W - 20 - bw, by + 4, bw - 8, bh - 8);
+    if (foc(SCR_GALLERY, G_IT_PREV)) focus_inset(24, by, bw, bh, W_TEXT);
+    if (foc(SCR_GALLERY, G_IT_NEXT)) focus_inset(UI_W - 24 - bw, by, bw, bh, W_TEXT);
   }
 }
 
@@ -2202,7 +2532,10 @@ static void draw_photo(void) {
     fill(px, py, PH_W, PH_H, D_PANE);
     text_mid(&UI_FONT_M, UI_W / 2, py + PH_H / 2 - 12, "NO IMAGE", D_DIM);
   }
-  outline(px - 1, py - 1, PH_W + 2, PH_H + 2, D_EDGE);
+  /* The picture in a well, in the dark chrome's own tones. It was a 1 px
+   * keyline, which is the one thing this grammar has no word for: a frame is
+   * either raised or sunken, and a photograph is set into the body. */
+  bevel_sunken_dark(px - 2, py - 2, PH_W + 4, PH_H + 4);
 
   /* Back, top left, matching the viewfinder so the gesture is the same. */
   const uint16_t bink = (s_pressed == IT_BACK) ? C_BLUE : D_TEXT;
@@ -2223,7 +2556,7 @@ static void draw_photo(void) {
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
    * zeroed, so reading it directly put a focus ring on DELETE the first time
    * any photograph was opened, on a body whose only input is a finger. */
-  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_rect(dx + 4, by + 4, bw - 8, bh - 8);
+  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_inset(dx, by, bw, bh, W_TEXT);
 
   /* The star carries the state and the word carries the action, which is why
    * the label does not change between them: a button reading "UNFAVOURITE" on
@@ -2238,7 +2571,7 @@ static void draw_photo(void) {
   star(fx + 14 + fpush, by + (bh - STAR_H) / 2 + fpush,
        s_photo_fav ? RGB(0xd0, 0x9c, 0x00) : W_SHADOW);
   text_mid(&UI_FONT_S, fx + bw / 2 + 10 + fpush, ty + fpush, "FAVOURITE", W_TEXT);
-  if (foc(SCR_PHOTO, P_IT_FAV)) focus_rect(fx + 4, by + 4, bw - 8, bh - 8);
+  if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(fx, by, bw, bh, W_TEXT);
 
   /* No radio on this body, so Roll cannot take it. Dimmed with the reason
    * rather than hidden - a control that vanishes teaches nothing. */
@@ -2389,8 +2722,7 @@ static void draw_roll(void) {
      * card are not stranded for want of a roll - they import over USB-C either
      * way - and saying so is the difference between a number and an answer. */
     const int n = gallery_total();
-    fill(RL_M, wy, UI_W - 2 * RL_M, wh, W_WINDOW);
-    bevel(RL_M, wy, UI_W - 2 * RL_M, wh, true);
+    well(RL_M, wy, UI_W - 2 * RL_M, wh);
     if (n > 0) {
       char line[56];
       snprintf(line, sizeof line, "%d photo%s on the card", n, n == 1 ? "" : "s");
@@ -2434,6 +2766,15 @@ static void draw_roll(void) {
   if (s_qr_ok) {
     const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP, RL_QR_BOX);
     if (side > 0) {
+      /* The plate the symbol sits on, as a well - a white square floating on
+       * face grey was the last piece of bare chrome on this screen.
+       *
+       * The bevel is drawn OUTSIDE the white block, not over its edge. The
+       * outer 4 modules of that block are the quiet zone the QR spec requires,
+       * and at this pitch that is 40 px: eating 2 of them for a frame would
+       * take the margin a phone needs to find the symbol's edges down to 3.8
+       * modules to buy a border. The screen grows 2 px instead. */
+      bevel_sunken(RL_QR_CX - side / 2 - 2, RL_TOP - 2, side + 4, side + 4);
       text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
     }
   } else {
@@ -2499,8 +2840,7 @@ static void draw_roll(void) {
    * "offline" are answers to the same question.
    */
   const int py = UI_H - 78;
-  fill(RL_RX, py, RL_RW, 62, W_WINDOW);
-  bevel(RL_RX, py, RL_RW, 62, true);
+  well(RL_RX, py, RL_RW, 62);
 
   if (q.halted) {
     /* Distinct from failed: the jobs are fine, the credential or the
@@ -2543,7 +2883,8 @@ static void draw_settings(void) {
   draw_header(SCR_SETTINGS);
   draw_list_frame(5);
   for (int i = 0; i < 5; i++)
-    draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), true, SET_ROWS[i], NULL, true, C_MUTED);
+    draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), s_pressed == i, true, SET_ROWS[i], NULL,
+             true);
 }
 
 /* --- Display ------------------------------------------------------ */
@@ -2577,6 +2918,14 @@ static void draw_settings(void) {
 #define DSP_W (UI_W - 2 * DSP_X)
 #define DSP_LABEL_Y(r) (DSP_Y0 + (r) * DSP_PITCH)
 #define DSP_BAND_Y(r) (DSP_LABEL_Y(r) + 22)
+/* The group box round each band, on the same rule as LOOK's: 8 px wider than
+ * the control on each side, starting on the legend's line, 6 px of air under
+ * the buttons. */
+#define DSP_BOX_X (DSP_X - 8)
+#define DSP_BOX_W (DSP_W + 16)
+#define DSP_BOX_H (22 + DSP_BAND_H + 6)
+
+_Static_assert(DSP_BOX_H < DSP_PITCH, "the DISPLAY group boxes overlap each other");
 
 static const int DIM_S[3] = {15, 30, 60};
 static const int SLEEP_S[3] = {60, 120, 300};
@@ -2645,7 +2994,9 @@ static void draw_display(void) {
 
   const int f0 = s_focus_shown ? s_focus[SCR_DISPLAY] : -1;
   for (int r = 0; r < DSP_ROWS; r++) {
-    text(&UI_FONT_S, DSP_X, DSP_LABEL_Y(r), DSP_ROW[r].label, W_TEXT);
+    /* Four bands that used to sit under four bare words. The frame is what
+     * says which band each word names; the words are unchanged. */
+    group_box(DSP_BOX_X, DSP_LABEL_Y(r), DSP_BOX_W, DSP_BOX_H, DSP_ROW[r].label, W_TEXT, NULL);
     draw_segments(DSP_X, DSP_BAND_Y(r), DSP_W, DSP_BAND_H, DSP_ROW[r].names, DSP_ROW[r].count,
                   dsp_selected(r), band_rel(s_pressed, DSP_ROW[r].base, DSP_ROW[r].count),
                   band_rel(f0, DSP_ROW[r].base, DSP_ROW[r].count));
@@ -2654,9 +3005,14 @@ static void draw_display(void) {
   /* The backlight is a plain GPIO, on or off. A brightness control here would
    * be a slider that moves and changes nothing, so it is greyed-out text on
    * the dialog face - which is exactly how 1998 said "this does not apply".
-   * GET_CAPABILITIES says the same thing to Studio as brightnessControl. */
+   * GET_CAPABILITIES says the same thing to Studio as brightnessControl.
+   *
+   * In a group box like the four live rows, because it is the fifth setting on
+   * this screen and not a footnote about the other four. An empty box with one
+   * grey sentence in it is also the clearest possible statement that there is
+   * nothing here to press. */
   const int ny = DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18;
-  text(&UI_FONT_S, DSP_X, ny, "BRIGHTNESS", W_GRAYTEXT);
+  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + UI_FONT_S.line_h + 10, "BRIGHTNESS", W_GRAYTEXT, NULL);
   text(&UI_FONT_S, DSP_X, ny + 22, "Not adjustable - the backlight on this body is on or off.",
        W_GRAYTEXT);
 }
@@ -2794,7 +3150,7 @@ static void draw_sound(void) {
    * what they actually do, which is switch a sound on and off. */
   char clip[KDP_SOUND_NAME_MAX];
   snd_display(clip, sizeof clip);
-  draw_row(LIST_Y, false, true, "Shutter sound", NULL, false, C_MUTED);
+  draw_row(LIST_Y, false, false, true, "Shutter sound", NULL, false);
   {
     const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
     text_right(&UI_FONT_M, px - 12, LIST_Y + (ROW_H - UI_FONT_M.line_h) / 2, clip, W_TEXT);
@@ -2803,8 +3159,8 @@ static void draw_sound(void) {
     picker_arrow(px + SN_BTN / 2 + pd, by + SN_BTN / 2 + pd, false, W_TEXT);
     button(nx, by, SN_BTN, SN_BTN, nd);
     picker_arrow(nx + SN_BTN / 2 + nd, by + SN_BTN / 2 + nd, true, W_TEXT);
-    if (foc(SCR_SOUND, SN_IT_PREV)) focus_rect(px + 3, by + 3, SN_BTN - 6, SN_BTN - 6);
-    if (foc(SCR_SOUND, SN_IT_NEXT)) focus_rect(nx + 3, by + 3, SN_BTN - 6, SN_BTN - 6);
+    if (foc(SCR_SOUND, SN_IT_PREV)) focus_inset(px, by, SN_BTN, SN_BTN, W_TEXT);
+    if (foc(SCR_SOUND, SN_IT_NEXT)) focus_inset(nx, by, SN_BTN, SN_BTN, W_TEXT);
 
     /* The position, under the row's title rather than beside the clip name -
      * the right half of the row is already the name and two buttons. Same
@@ -2817,15 +3173,19 @@ static void draw_sound(void) {
     }
   }
 
-  draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, SN_IT_SHUTTER), true, "Play shutter sound", NULL, false,
-           C_MUTED);
+  draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, SN_IT_SHUTTER), s_pressed == SN_IT_SHUTTER, true,
+           "Play shutter sound", NULL, false);
   draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + ROW_H + (ROW_H - 26) / 2, shut, false);
-  draw_row(LIST_Y + 2 * ROW_H, foc(SCR_SOUND, SN_IT_BUTTON), true, "Play button sound", NULL, false,
-           C_MUTED);
+  draw_row(LIST_Y + 2 * ROW_H, foc(SCR_SOUND, SN_IT_BUTTON), s_pressed == SN_IT_BUTTON, true,
+           "Play button sound", NULL, false);
   draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + 2 * ROW_H + (ROW_H - 26) / 2, ui, false);
 
   const int y = LIST_Y + 3 * ROW_H + 26;
-  text(&UI_FONT_S, 24, y, "VOLUME", W_TEXT);
+  /* The one control on this screen that sat outside the list well, under a
+   * bare word. Same treatment as every other band on the camera, and the box
+   * reaches to the window margin the list well uses rather than to the band
+   * the band happens to be drawn at. */
+  group_box(LIST_X, y, LIST_W, 24 + 44 + 6, "VOLUME", W_TEXT, NULL);
   static const char *const VOL[3] = {"LOW", "MEDIUM", "HIGH"};
   static const int VOLV[3] = {3, 6, 9};
   draw_segments(24, y + 24, UI_W - 48, 44, VOL, 3, nearest_idx(config_int("shoot.volume", 6), VOLV),
@@ -2980,11 +3340,10 @@ static void draw_connection(void) {
 
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
   const int lh = n * pitch + 4;
-  fill(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh, W_WINDOW);
-  bevel(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh, true);
+  well(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh);
   for (int i = 0; i < n; i++) {
-    draw_row_at(LIST_X, LIST_W, LIST_Y + i * pitch, pitch, false, ROWS[i].enabled, ROWS[i].title,
-                ROWS[i].value, false);
+    draw_row_at(LIST_X, LIST_W, LIST_Y + i * pitch, pitch, false, false, ROWS[i].enabled,
+                ROWS[i].title, ROWS[i].value, false);
   }
 
   /* One line, and it has to say which of the two things is wrong. There is no
@@ -3038,16 +3397,17 @@ static void draw_storage(void) {
   const bool wiping = busy[0] != '\0';
 
   draw_list_frame(5);
-  draw_row(LIST_Y, false, true, "Card", sd.mounted ? capb : "None", false, C_MUTED);
-  draw_row(LIST_Y + ROW_H, false, true, "Free space", sd.mounted ? freeb : "-", false, C_MUTED);
-  draw_row(LIST_Y + 2 * ROW_H, false, true, "Photos", wiping ? busy : cnt, false, C_MUTED);
+  draw_row(LIST_Y, false, false, true, "Card", sd.mounted ? capb : "None", false);
+  draw_row(LIST_Y + ROW_H, false, false, true, "Free space", sd.mounted ? freeb : "-", false);
+  draw_row(LIST_Y + 2 * ROW_H, false, false, true, "Photos", wiping ? busy : cnt, false);
   /* Both destructive rows are live only with a card mounted, and neither is
    * live while the other is running: a FORMAT pressed into a running wipe
    * would be two things deleting the same directory. */
   draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, ST_IT_DELETE_ALL),
-           sd.mounted && !wiping && gallery_total() > 0, "Delete all photos", NULL, true, C_MUTED);
-  draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), sd.mounted && !wiping,
-           "Format card", NULL, true, C_MUTED);
+           s_pressed == ST_IT_DELETE_ALL, sd.mounted && !wiping && gallery_total() > 0,
+           "Delete all photos", NULL, true);
+  draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT,
+           sd.mounted && !wiping, "Format card", NULL, true);
 
   /*
    * The 145 px under the list.
@@ -3084,13 +3444,22 @@ static void draw_storage(void) {
     return;
   }
 
-  /* The bar. Sunken well, navy fill for the used part - the same two colours
-   * a 1998 progress control used, so it reads as a gauge and not a graphic. */
+  /* The gauge: a sunken trough with a raised navy bar standing in it.
+   *
+   * The trough was already a well. What it held was a flat navy rectangle,
+   * which is the one surface on the interface with no edge on it at all - and
+   * on a gauge that is exactly the wrong thing to leave flat, because the
+   * boundary between full and empty IS the reading. A 2 px raised edge in two
+   * tones of the selection navy puts it where the eye already looks.
+   *
+   * Below 5 px of fill there is no room for a raised edge, so a nearly-empty
+   * card shows the flat sliver instead: a bevel wider than the thing it is
+   * bevelling is a solid block of highlight, which reads as MORE used space
+   * rather than less. */
   const int bx = 24, bw = UI_W - 48, bh = 26;
   const uint64_t total_b = sd.capacity_bytes;
   const uint64_t used = total_b > sd.free_bytes ? total_b - sd.free_bytes : 0;
-  fill(bx, by, bw, bh, W_WINDOW);
-  bevel(bx, by, bw, bh, true);
+  well(bx, by, bw, bh);
   if (total_b > 0) {
     /* 64-bit before the divide: a 32 GB card times bw overflows 32 bits. */
     int fw = (int)((used * (uint64_t)(bw - 4)) / total_b);
@@ -3098,6 +3467,7 @@ static void draw_storage(void) {
      * is empty at 40 MB used looks like a bar that is not working. */
     if (fw == 0 && used > 0) fw = 1;
     fill(bx + 2, by + 2, fw, bh - 4, W_SEL);
+    if (fw >= 5) bevel4(bx + 2, by + 2, fw, bh - 4, W_SEL_LT, W_SEL, W_SEL_DK, W_SEL);
   }
 
   char usedb[24];
@@ -3236,10 +3606,9 @@ static void draw_about(void) {
   const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
 
   const int lh = n * AB_ROW + 4;
-  fill(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh, W_WINDOW);
-  bevel(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh, true);
+  well(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh);
   for (int i = 0; i < n; i++) {
-    draw_row_at(AB_LX, AB_LW, LIST_Y + i * AB_ROW, AB_ROW, false, true, ROWS[i].title,
+    draw_row_at(AB_LX, AB_LW, LIST_Y + i * AB_ROW, AB_ROW, false, false, true, ROWS[i].title,
                 ROWS[i].value, false);
   }
 
@@ -3247,17 +3616,25 @@ static void draw_about(void) {
    * person sets, so it is not the same kind of fact as the seven above. */
   if (named) {
     const int ny = LIST_Y + lh + 12;
-    text(&UI_FONT_S, AB_LX, ny, "NAME", W_GRAYTEXT);
+    /* NAME as a group-box legend, on the same rule as CAMERAS across the
+     * gutter: it was the last bare word on this screen, and a caption over a
+     * value with nothing round either is what the whole rework is removing. */
+    group_box(AB_LX - 8, ny, AB_LW + 16, 20 + UI_FONT_M.line_h + 8, "NAME", W_TEXT, NULL);
     text(&UI_FONT_M, AB_LX, ny + 20, name, W_TEXT);
   }
 
-  /* ---- right column: the four cameras ---- */
-  text(&UI_FONT_S, AB_RX, LIST_Y - 2, "CAMERAS", W_GRAYTEXT);
-
+  /* ---- right column: the four cameras ----
+   *
+   * CAMERAS was a bare grey word sitting above a well, which on a two-column
+   * screen is ambiguous about which column it names. It is the legend of a
+   * group box now, and the box encloses the well AND the two lines of note
+   * under it - the note is about these four rows and nothing else, and there
+   * was no mark on the screen that said so. */
   const int cy0 = LIST_Y + 20;
   const int ch = 4 * AB_CAM_ROW + 4;
-  fill(AB_RX - 2, cy0 - 2, AB_RW + 4, ch, W_WINDOW);
-  bevel(AB_RX - 2, cy0 - 2, AB_RW + 4, ch, true);
+  group_box(AB_RX - 8, LIST_Y - 2, AB_RW + 16,
+            (cy0 + ch + 30 + UI_FONT_S.line_h + 8) - (LIST_Y - 2), "CAMERAS", W_TEXT, NULL);
+  well(AB_RX - 2, cy0 - 2, AB_RW + 4, ch);
 
   const camlink_info_t *cams = about_cameras();
   for (int i = 0; i < 4; i++) {
@@ -3278,8 +3655,8 @@ static void draw_about(void) {
     } else {
       snprintf(val, sizeof val, "No answer");
     }
-    draw_row_at(AB_RX, AB_RW, cy0 + i * AB_CAM_ROW, AB_CAM_ROW, false, info->online, label, val,
-                false);
+    draw_row_at(AB_RX, AB_RW, cy0 + i * AB_CAM_ROW, AB_CAM_ROW, false, false, info->online, label,
+                val, false);
   }
 
   /* Node firmware is per camera and the four can differ - a node reflashed on
@@ -3299,10 +3676,21 @@ static void draw_power(void) {
   /* Shut down is drawn disabled: power.c controls the backlight and the
    * camera bank and has no power-off at all, and there is no soft latch in
    * the pin map for one. Restart is real. */
-  draw_row(BODY_Y, foc(SCR_POWER, 0), false, "Shut down", "Hold the power slide", false,
-           C_FAINT);
-  draw_row(BODY_Y + ROW_H, foc(SCR_POWER, 1), true, "Restart", NULL, true, C_MUTED);
-  draw_row(BODY_Y + 2 * ROW_H, foc(SCR_POWER, 2), true, "Cancel", NULL, false, C_MUTED);
+  /*
+   * In the list well every other list on this camera sits in, at LIST_Y.
+   *
+   * It was three bare rows drawn from BODY_Y with no frame at all, and the
+   * frame was not the only thing missing: hit_test() has always tested this
+   * screen at LIST_Y + i * ROW_H, which is 12 px BELOW where the rows were
+   * drawn. So the bottom 12 px of "Cancel" did nothing and the 12 px of face
+   * grey above "Shut down" quietly armed it. Moving the drawing to where the
+   * rectangles already are fixes both, and gives the screen the well.
+   */
+  draw_list_frame(3);
+  draw_row(LIST_Y, foc(SCR_POWER, 0), s_pressed == 0, false, "Shut down", "Hold the power slide",
+           false);
+  draw_row(LIST_Y + ROW_H, foc(SCR_POWER, 1), s_pressed == 1, true, "Restart", NULL, true);
+  draw_row(LIST_Y + 2 * ROW_H, foc(SCR_POWER, 2), s_pressed == 2, true, "Cancel", NULL, false);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3379,15 +3767,19 @@ static void draw_dialog(void) {
    * header, and buttons on the baseline. No minimise, no maximise, no drag -
    * this is a camera, not a window manager. */
   fill(DLG_X, DLG_Y, DLG_W, h, W_FACE);
-  bevel(DLG_X, DLG_Y, DLG_W, h, false);
+  bevel_raised(DLG_X, DLG_Y, DLG_W, h);
 
-  const int bx = DLG_X + 4, by = DLG_Y + 4, bw = DLG_W - 8, bh = 30;
-  for (int i = 0; i < bw; i++) {
-    fill(bx + i, by, 1, bh,
-         mix(d.destructive ? RGB(0x80, 0x00, 0x00) : W_TITLE_L,
-             d.destructive ? RGB(0xd0, 0x40, 0x10) : W_TITLE_R, i * 256 / bw));
-  }
-  text(&UI_FONT_S, bx + 8, by + (bh - UI_FONT_S.line_h) / 2, d.title, W_SELTEXT);
+  /* The same three surfaces as a screen header, at dialog scale: a raised bar
+   * inside the raised window, the caption plate on the bar, and the caption
+   * inset from the plate by the header's own padding. Dithered like the
+   * header - a 422 px ramp through RGB565 bands harder than a 790 px one, not
+   * less. */
+  const int bx = DLG_X + 3, by = DLG_Y + 3, bw = DLG_W - 6, bh = 32;
+  bevel_raised(bx, by, bw, bh);
+  grad_h(bx + 2, by + 2, bw - 4, bh - 4,
+         d.destructive ? RGB(0x80, 0x00, 0x00) : W_TITLE_L,
+         d.destructive ? RGB(0xd0, 0x40, 0x10) : W_TITLE_R);
+  text(&UI_FONT_S, bx + 2 + HD_CAP_PAD, by + (bh - UI_FONT_S.line_h) / 2, d.title, W_SELTEXT);
 
   text(&UI_FONT_M, DLG_X + 20, DLG_Y + 56, d.body, W_TEXT);
   if (d.sub) text(&UI_FONT_S, DLG_X + 20, DLG_Y + 90, d.sub, RGB(0x40, 0x40, 0x40));
@@ -3399,13 +3791,13 @@ static void draw_dialog(void) {
   button(b1, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 0);
   text_mid(&UI_FONT_M, b1 + DLG_BTN_W / 2 + (s_pressed == 0 ? 1 : 0),
            fy + (DLG_BTN_H - UI_FONT_M.line_h) / 2 + (s_pressed == 0 ? 1 : 0), "CANCEL", W_TEXT);
-  if (s_dlg_focus == 0) focus_rect(b1 + 4, fy + 4, DLG_BTN_W - 8, DLG_BTN_H - 8);
+  if (s_dlg_focus == 0) focus_inset(b1, fy, DLG_BTN_W, DLG_BTN_H, W_TEXT);
 
   button(b2, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 1);
   text_mid(&UI_FONT_M, b2 + DLG_BTN_W / 2 + (s_pressed == 1 ? 1 : 0),
            fy + (DLG_BTN_H - UI_FONT_M.line_h) / 2 + (s_pressed == 1 ? 1 : 0), d.go,
            d.destructive ? RGB(0x90, 0x00, 0x00) : W_TEXT);
-  if (s_dlg_focus == 1) focus_rect(b2 + 4, fy + 4, DLG_BTN_W - 8, DLG_BTN_H - 8);
+  if (s_dlg_focus == 1) focus_inset(b2, fy, DLG_BTN_W, DLG_BTN_H, W_TEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3488,11 +3880,27 @@ static void draw_capture_banner(void) {
 static void draw_toast(void) {
   if (s_toast[0] == '\0') return;
   if (esp_timer_get_time() - s_toast_us > 2200000) { s_toast[0] = '\0'; return; }
-  const int w = text_w(&UI_FONT_S, s_toast) + 40, h = 38;
-  const int x = (UI_W - w) / 2, y = UI_H - h - 26;
-  fill_round_grad(x, y, w, h, 3, RGB(0x1e, 0x26, 0x30), RGB(0x14, 0x1a, 0x22));
-  outline(x, y, w, h, RGB(0x44, 0x50, 0x5e));
-  text_mid(&UI_FONT_S, UI_W / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, RGB(0xe4, 0xe9, 0xee));
+  /*
+   * A tooltip, not a lozenge.
+   *
+   * It was a rounded dark gradient plate with a soft grey keyline - a modern
+   * toast, and the single most out-of-period object on the screen: nothing in
+   * 1998 had a rounded corner, and the two things this interface uses to say
+   * "surface" are a bevel and a groove, neither of which a rounded rectangle
+   * can carry. The system already had a word for a transient message that is
+   * not a window: INFOBK, one black hairline, black text, square corners. That
+   * is what this is now, and it is also more legible - the old plate put
+   * near-white 18 px type on a dark ground over whatever screen it covered.
+   */
+  /* 44 px off the bottom, not the 26 it was: the menu now has a status bar in
+   * the bottom 34 px and a tooltip crossing it looked like a rendering fault
+   * rather than like something floating over a window. Above it, the toast
+   * clears every screen's bottom chrome. */
+  const int w = text_w(&UI_FONT_S, s_toast) + 32, h = 34;
+  const int x = (UI_W - w) / 2, y = UI_H - h - 44;
+  fill(x, y, w, h, W_INFO);
+  outline(x, y, w, h, W_TEXT);
+  text_mid(&UI_FONT_S, UI_W / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, W_TEXT);
 }
 
 static void draw_screen(void) {
@@ -3646,7 +4054,9 @@ static int hit_test(int x, int y) {
         if (in(x, y, gx, gy, G_TILE_W, G_TILE_H + 22)) return i;
       }
       if (gallery_pages() > 1) {
-        const int fy = UI_H - G_FOOT, bw = 74, bh = 32, by = fy + (G_FOOT - bh) / 2;
+        /* 78, which is what the buttons are drawn at. It was 74, so the outer
+         * 4 px of both PREV and NEXT looked pressable and were not. */
+        const int fy = UI_H - G_FOOT, bw = 78, bh = 32, by = fy + (G_FOOT - bh) / 2;
         if (in(x, y, 24, by, bw, bh)) return G_IT_PREV;
         if (in(x, y, UI_W - 24 - bw, by, bw, bh)) return G_IT_NEXT;
       }

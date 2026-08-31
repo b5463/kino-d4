@@ -473,4 +473,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.15 is the device-screen relayout (#151) - drawing only, no KDP
   // surface, no capability. Same profile.
   '0.4.15': 'd4-settings-0-4-9',
+  // 0.4.16 is the Win98 chrome system (#152) - bevels, group boxes, wells,
+  // focus and press states. Drawing only, same profile.
+  '0.4.16': 'd4-settings-0-4-9',
 };
