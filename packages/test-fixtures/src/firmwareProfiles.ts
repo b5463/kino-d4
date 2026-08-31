@@ -460,4 +460,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // it device-side UI and card layout, no KDP command and no capability, so
   // it maps onto the 0.4.9 profile like 0.4.10 does.
   '0.4.11': 'd4-settings-0-4-9',
+  // 0.4.12 fixes three 0.4.11 gallery defects found on the bench (a dropped
+  // capture note, index-write card thrash under photography, a sleepless task
+  // loop). Same surface, same profile.
+  '0.4.12': 'd4-settings-0-4-9',
 };

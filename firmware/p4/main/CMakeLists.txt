@@ -158,4 +158,10 @@ endif()
 
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" KINO_FW_VERSION)
 string(STRIP "${KINO_FW_VERSION}" KINO_FW_VERSION)
+# file(READ) happens at configure time and nothing re-ran the configure when
+# only VERSION changed, so an existing build dir kept the old string - the
+# 0.4.12 bench flash reported 0.4.11 with 0.4.12's code inside. This makes a
+# VERSION edit re-run the configure like any source edit re-runs the compile.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_LIST_DIR}/../../VERSION")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_FW_VERSION="${KINO_FW_VERSION}")

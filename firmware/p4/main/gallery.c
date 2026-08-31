@@ -462,6 +462,23 @@ static void publish_walk(int count) {
 #define INDEX_MISS (-1)
 #define INDEX_BUSY (-2)
 
+/*
+ * Attempts one owed index write gets before it is abandoned.
+ *
+ * Unbounded retries were a livelock: index_write() returns false whenever a
+ * capture holds or wants the card, the task retried every 80 ms, and on a busy
+ * camera that is for ever. Eight attempts spread over roughly a second is
+ * plenty for a transient - a capture is seconds, not minutes, and a note or a
+ * walk arriving later sets s_index_dirty again with a fresh budget.
+ *
+ * Giving up is safe and costs one rebuild: the file on the card is then older
+ * than memory, the verify count pass notices on the next open, and the walk
+ * puts it right. An index that is merely stale is exactly the case the count
+ * check exists for.
+ */
+#define INDEX_WRITE_TRIES 8
+static int s_index_tries;
+
 /**
  * Load the whole index in one fread and publish it. INDEX_HIT, INDEX_MISS or
  * INDEX_BUSY.
@@ -573,6 +590,24 @@ static int index_load(void) {
 static bool index_write(void) {
   if (!storage_present()) return true; /* nowhere to write it; nothing owed */
   if (s_walking) return false;         /* a rebuild is mid-flight; it will ask again */
+  /*
+   * Nothing is CREATED while photography wants the card.
+   *
+   * Checked before the acquire and before the fopen, not only inside the write
+   * loop, and that ordering is the whole point. The yield poll below abandons
+   * by unlink()ing the temp file, so a card being photographed cost a
+   * directory-entry create plus a partial write plus a delete on every retry -
+   * every 80 ms, indefinitely, in a directory that on the bench card
+   * (KD4-D121BC) holds 527 entries. Refusing here costs one critical section.
+   *
+   * storage_capture_active() is the cheapest predicate storage.h offers for
+   * this: a portMUX critical section over the holder and the CAPTURE waiter
+   * count, no lock taken and no card touched. It answers "is anyone
+   * photographing", which is exactly the question - storage_yield_requested()
+   * answers "should I let go", which is the wrong question before you have
+   * taken anything.
+   */
+  if (storage_capture_active()) return false;
   if (!storage_acquire(STORAGE_USER_UI, 2000)) return false;
 
   FILE *f = fopen(INDEX_TMP_PATH, "wb");
@@ -742,9 +777,28 @@ static bool drain_notes(void) {
   note_t n;
   bool changed = false;
   while (xQueueReceive(s_notes, &n, 0) == pdTRUE) {
-    /* A list that does not exist yet has nothing to maintain: the walk or the
-     * index load about to run will see the capture on the card anyway. */
-    if (!s_have_list) continue;
+    /*
+     * No list yet, so this note waits - it is not consumed.
+     *
+     * It used to `continue`, which took the note off the queue and threw it
+     * away, on the reasoning that the walk about to run would see the capture
+     * on the card anyway. That reasoning depended on gallery_refresh() forcing
+     * a walk, and it no longer does: on an index HIT no walk runs at all, so
+     * the note was the only record that this capture existed and a photograph
+     * just taken stayed out of the list until a count-mismatch rebuild
+     * happened to notice. Requeued at the front and the drain stops, so the
+     * order of the remaining notes is preserved too.
+     */
+    if (!s_have_list) {
+      if (xQueueSendToFront(s_notes, &n, 0) != pdTRUE) {
+        /* The queue had room a microsecond ago - this cannot happen. If it
+         * does, the note is gone and a walk is the only thing that recovers
+         * the capture. */
+        s_rescan = true;
+        s_dirty = true;
+      }
+      break;
+    }
     if (!capture_name_ok(n.id)) continue;
     lock();
     const bool moved = n.removed ? note_remove(n.id) : note_add(n.id, n.when);
@@ -1115,12 +1169,36 @@ static void gallery_task(void *arg) {
     }
 
     if (s_index_dirty) {
-      if (index_write()) s_index_dirty = false;
-      else refused = true;
+      if (index_write()) {
+        s_index_dirty = false;
+        s_index_tries = 0;
+      } else if (++s_index_tries >= INDEX_WRITE_TRIES) {
+        /* Said out loud, because the next gallery open pays a full rebuild for
+         * it and that is otherwise an unexplained slow open. Not an error: the
+         * list in memory is right, only the file is behind. */
+        ESP_LOGW(TAG, "could not write the order index in %d attempts; the next open rebuilds",
+                 INDEX_WRITE_TRIES);
+        s_index_dirty = false;
+        s_index_tries = 0;
+      } else {
+        refused = true;
+      }
     }
 
     if (!s_dirty) s_loading = false;
-    if (refused) vTaskDelay(pdMS_TO_TICKS(80));
+    /*
+     * Every turn, unconditionally.
+     *
+     * There was no delay on this path at all, and load_tile() sets s_dirty
+     * again when its acquire times out (see the comment there) - so a busy
+     * card gave a turn that re-entered immediately, decoded nothing, and
+     * re-queued as a STORAGE_USER_UI waiter. It blocked inside
+     * storage_acquire() rather than burning CPU, but this task is priority 4
+     * unpinned against a priority-4 UI task pinned to CPU1, and a loop with no
+     * floor on its period has no business being that close to the compositor.
+     * 80 ms when the card refused work, 20 ms otherwise.
+     */
+    vTaskDelay(pdMS_TO_TICKS(refused ? 80 : 20));
   }
 }
 
