@@ -397,7 +397,19 @@ static void failf(capture_result_t *r, const char *code, const char *fmt, ...) {
 }
 
 /* Caller must hold capture_lock(). */
-static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) {
+/* The channel's klog source and wire id. CAMERA_TEST reaches all four
+ * channels since the four-camera bench (2026-08-30); everything below is per
+ * channel because every camlink call has been per channel since M1. */
+static const char *cam_tag(int cam) {
+  static const char *TAGS[4] = {"C1", "C2", "C3", "C4"};
+  return (cam >= 0 && cam < 4) ? TAGS[cam] : "P4";
+}
+static const char *cam_id_str(int cam) {
+  static const char *IDS[4] = {"cam1", "cam2", "cam3", "cam4"};
+  return (cam >= 0 && cam < 4) ? IDS[cam] : "cam?";
+}
+
+static void run_capture(int cam, int jpeg_quality, bool keep_files, capture_result_t *r) {
   memset(r, 0, sizeof *r);
   r->node_heap_kb = -1;
   r->node_psram_kb = -1;
@@ -406,7 +418,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   int64_t t0 = esp_timer_get_time();
 
   camlink_info_t info;
-  camlink_get_info(&info);
+  camlink_get_info_ch(cam, &info);
   if (!info.online) {
     fail(r, "CAMERA_OFFLINE", "Camera node not connected");
     return;
@@ -422,9 +434,9 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
 
   // Link health probe — the request-to-node bucket.
   uint32_t rtt = 0;
-  if (camlink_ping(&rtt) != ESP_OK) {
+  if (camlink_ping_ch(cam, &rtt) != ESP_OK) {
     camlink_stats_t s;
-    camlink_get_stats(&s);
+    camlink_get_stats_ch(cam, &s);
     failf(r, "NODE_BOOT_TIMEOUT", "Node stopped answering: %lu timeouts, %lu crc, last %s",
           (unsigned long)s.timeouts, (unsigned long)s.crc_errors,
           s.last_error[0] != '\0' ? s.last_error : "-");
@@ -435,7 +447,8 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   // Node capture.
   int64_t t_cap = esp_timer_get_time();
   camlink_capture_result_t cap;
-  esp_err_t err = camlink_capture(CAPTURE_RESOLUTION, jpeg_quality, &cap);
+  esp_err_t err = camlink_capture_ch(cam, CAPTURE_RESOLUTION, jpeg_quality,
+                                     12000 /* cam_link's CAPTURE_TIMEOUT_MS */, &cap);
   if (err == ESP_ERR_TIMEOUT) {
     failf(r, "TRANSFER_TIMEOUT", "Capture command timed out after %lu ms",
           (unsigned long)elapsed_ms(t_cap));
@@ -453,7 +466,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   r->node_heap_kb = cap.heap_kb;
   r->node_psram_kb = cap.psram_kb;
   if (cap.size < 4) {
-    camlink_release(cap.frame_id);
+    camlink_release_ch(cam, cap.frame_id);
     failf(r, "JPEG_INVALID", "Node reported an implausible JPEG size: %lu B",
           (unsigned long)cap.size);
     return;
@@ -463,7 +476,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   uint8_t *jpeg = heap_caps_malloc(cap.size, MALLOC_CAP_SPIRAM);
   if (jpeg == NULL) jpeg = malloc(cap.size);
   if (jpeg == NULL) {
-    camlink_release(cap.frame_id);
+    camlink_release_ch(cam, cap.frame_id);
     /* How short we were is the whole point: a 40 KB miss is a tuning
      * problem and a 400 KB miss is a design one. */
     failf(r, "OUT_OF_MEMORY", "JPEG staging wants %lu B, free %lu KB psram / %lu KB heap",
@@ -478,7 +491,8 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
     size_t want = cap.size - offset;
     if (want > NL_CHUNK_MAX) want = NL_CHUNK_MAX;
     size_t got = 0;
-    esp_err_t rerr = camlink_read(cap.frame_id, offset, jpeg + offset, want, &got);
+    esp_err_t rerr = camlink_read_ch(cam, cap.frame_id, offset, jpeg + offset, want,
+                                     3000 /* cam_link's DEFAULT_TIMEOUT_MS */, &got);
     if (rerr != ESP_OK || got == 0) {
       /* Where it died is the measurement. Failing at the first chunk is a
        * link fault; failing at 80% is a throughput or timeout budget the
@@ -489,7 +503,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
        * went into timeout budgets and signal integrity before the real NACK
        * surfaced from CAMERA_LINK_STATS instead of from the error itself. */
       camlink_stats_t xs;
-      camlink_get_stats(&xs);
+      camlink_get_stats_ch(cam, &xs);
       const bool timed_out = strcmp(xs.last_error, "TIMEOUT") == 0;
       failf(r, timed_out ? "TRANSFER_TIMEOUT" : "TRANSFER_FAILED",
             "Chunk read failed at %lu/%lu B (%lu%%) after %lu ms; link reports %s",
@@ -498,14 +512,14 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
             (unsigned long)elapsed_ms(t_xfer),
             xs.last_error[0] != '\0' ? xs.last_error : "nothing");
       free(jpeg);
-      camlink_release(cap.frame_id);
+      camlink_release_ch(cam, cap.frame_id);
       return;
     }
     crc_state = kdp_crc32_update(crc_state, jpeg + offset, got);
     offset += got;
   }
   r->t_transfer_ms = elapsed_ms(t_xfer);
-  camlink_release(cap.frame_id);
+  camlink_release_ch(cam, cap.frame_id);
 
   snprintf(r->crc_transfer, sizeof r->crc_transfer, "%08lx",
            (unsigned long)kdp_crc32_final(crc_state));
@@ -521,16 +535,26 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
     fail(r, "JPEG_INVALID", "Payload does not start with a JPEG SOI marker");
     return;
   }
-  hwv_mark_validated(HWV_CAM1_CAPTURE, "checksummed capture");
-  hwv_mark_validated(HWV_CAM1_JPEG_TRANSFER, "transfer CRC matched node CRC");
+  /* hwv_cam_item maps to the CAM2-4 registry rows; items without a per-cam
+   * row come back HWV_COUNT and hwv_mark_validated ignores them. */
+  hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_CAPTURE), "checksummed capture");
+  hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_JPEG_TRANSFER), "transfer CRC matched node CRC");
 
   // SD write.
   capture_uuid4(r->capture_uuid, sizeof r->capture_uuid);
   int64_t t_sd = esp_timer_get_time();
   storage_capture_t capture;
-  if (storage_capture_begin(&capture, r->capture_uuid) != ESP_OK) {
+  if (storage_capture_open(&capture, r->capture_uuid, "TC") != ESP_OK) {
     free(jpeg);
     fail(r, "SD_WRITE_FAILED", "Could not open the capture folder");
+    return;
+  }
+  /* The frame keeps the channel's own name: a TC folder from cam3 holds
+   * C3.JPG, the same name a product capture would give that camera's frame. */
+  if (storage_capture_frame_begin(&capture, cam) != ESP_OK) {
+    storage_capture_abort(&capture);
+    free(jpeg);
+    fail(r, "SD_WRITE_FAILED", "Could not open the frame file");
     return;
   }
   snprintf(r->capture_id, sizeof r->capture_id, "%s", capture.id);
@@ -544,7 +568,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   free(jpeg);
 
   camlink_info_t node;
-  camlink_get_info(&node);
+  camlink_get_info_ch(cam, &node);
   char *meta = build_meta_json(r, node.firmware);
   esp_err_t committed = meta != NULL ? storage_capture_commit(&capture, meta) : ESP_FAIL;
   if (meta != NULL) cJSON_free(meta);
@@ -557,7 +581,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
 
   // Stored-file read-back — the third checksum.
   char path[80];
-  snprintf(path, sizeof path, "%s/C1.JPG", capture.dir);
+  snprintf(path, sizeof path, "%s/C%d.JPG", capture.dir, cam + 1);
   uint32_t stored_crc = 0, stored_bytes = 0;
   if (storage_file_crc32(path, &stored_crc, &stored_bytes) != ESP_OK) {
     fail(r, "SD_VERIFY_FAILED", "Stored file could not be read back");
@@ -568,7 +592,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
     fail(r, "SD_VERIFY_FAILED", "Stored file checksum disagrees with transfer");
     return;
   }
-  hwv_mark_validated(HWV_CAM1_SD_WRITE, "stored file checksum verified");
+  hwv_mark_validated(hwv_cam_item(cam, HWV_CAM1_SD_WRITE), "stored file checksum verified");
 
   r->crc_match = true;
   r->ok = true;
@@ -576,7 +600,7 @@ static void run_capture(int jpeg_quality, bool keep_files, capture_result_t *r) 
   r->p4_heap_after = heap_kb();
   r->p4_psram_after = psram_kb();
 
-  klog("C1", "capture %s ok — %lu KB in %lu ms, crc %s verified", r->capture_id,
+  klog(cam_tag(cam), "capture %s ok — %lu KB in %lu ms, crc %s verified", r->capture_id,
        (unsigned long)(r->jpeg_bytes / 1024), (unsigned long)r->t_total_ms,
        r->crc_transfer);
 
@@ -1898,18 +1922,13 @@ static void handle_link_stats(uint32_t seq, cJSON *req) {
     send_nack(KDP_CMD_CAMERA_LINK_STATS, seq, "INVALID_ARGUMENT", "cam must be cam1..cam4");
     return;
   }
-  if (index != 0) {
-    send_nack(KDP_CMD_CAMERA_LINK_STATS, seq, "CAMERA_OFFLINE",
-              "Only cam1 has a link driver in Milestone 1B");
-    return;
-  }
   camlink_info_t info;
-  camlink_get_info(&info);
+  camlink_get_info_ch(index, &info);
   camlink_stats_t stats;
-  camlink_get_stats(&stats);
+  camlink_get_stats_ch(index, &stats);
 
   cJSON *json = cJSON_CreateObject();
-  cJSON_AddStringToObject(json, "cam", "cam1");
+  cJSON_AddStringToObject(json, "cam", cam_id_str(index));
   cJSON_AddNumberToObject(json, "baud", NL_DEFAULT_BAUD);
   cJSON_AddBoolToObject(json, "connected", info.online);
   cJSON_AddNumberToObject(json, "rxFrames", stats.rx_frames);
@@ -1944,14 +1963,7 @@ static void handle_link_stats_reset(uint32_t seq, cJSON *req) {
     send_nack(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, "INVALID_ARGUMENT", "cam must be cam1..cam4");
     return;
   }
-  /* Same condition, same code as handle_link_stats — a valid cam id with no
-   * link driver is offline, not malformed (issue #90). */
-  if (index != 0) {
-    send_nack(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, "CAMERA_OFFLINE",
-              "Only cam1 has a link driver in Milestone 1B");
-    return;
-  }
-  camlink_reset_stats();
+  camlink_reset_stats_ch(index);
   cJSON *json = cJSON_CreateObject();
   cJSON_AddBoolToObject(json, "ok", true);
   send_json(KDP_CMD_CAMERA_LINK_STATS_RESET, seq, json);
@@ -2346,9 +2358,9 @@ static void handle_hw_validation(uint32_t seq) {
   send_json(KDP_CMD_GET_HW_VALIDATION, seq, json);
 }
 
-static void capture_result_json(const capture_result_t *r, cJSON *json) {
+static void capture_result_json(int cam, const capture_result_t *r, cJSON *json) {
   cJSON_AddBoolToObject(json, "ok", true);
-  cJSON_AddStringToObject(json, "cam", "cam1");
+  cJSON_AddStringToObject(json, "cam", cam_id_str(cam));
   cJSON_AddStringToObject(json, "captureUuid", r->capture_uuid);
   cJSON_AddStringToObject(json, "captureId", r->capture_id);
   cJSON_AddStringToObject(json, "resolution", CAPTURE_RESOLUTION);
@@ -2483,10 +2495,6 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
     send_nack(KDP_CMD_CAMERA_TEST, seq, "INVALID_ARGUMENT", "cam must be cam1..cam4");
     return;
   }
-  if (index != 0) {
-    send_nack(KDP_CMD_CAMERA_TEST, seq, "CAMERA_OFFLINE", "Camera node not connected");
-    return;
-  }
   if (!capture_lock(0)) {
     send_nack(KDP_CMD_CAMERA_TEST, seq, "BUSY", "A capture or soak run is active");
     return;
@@ -2499,18 +2507,18 @@ static void handle_camera_test(uint32_t seq, cJSON *req) {
    * what a camera does with a shot just taken - and they already show the
    * last frame before the shutter. */
   const bool vf_was = viewfinder_hold(VF_HOLD_MS);
-  run_capture(-1, true, &result);
+  run_capture(index, -1, true, &result);
   viewfinder_review(450);
   viewfinder_release(vf_was);
   capture_unlock();
 
   if (!result.ok) {
-    klog("C1", "capture FAILED — %s: %s", result.err_code, result.err_msg);
+    klog(cam_tag(index), "capture FAILED — %s: %s", result.err_code, result.err_msg);
     send_nack(KDP_CMD_CAMERA_TEST, seq, result.err_code, result.err_msg);
     return;
   }
   cJSON *json = cJSON_CreateObject();
-  capture_result_json(&result, json);
+  capture_result_json(index, &result, json);
   send_json(KDP_CMD_CAMERA_TEST, seq, json);
 }
 
@@ -2586,7 +2594,7 @@ static void soak_task(void *arg) {
 
   for (uint32_t i = 0; i < args->captures; i++) {
     capture_result_t r;
-    run_capture(args->jpeg_quality, true, &r);
+    run_capture(0, args->jpeg_quality, true, &r);
 
     if (r.ok) {
       successful++;
