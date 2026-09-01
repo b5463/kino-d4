@@ -201,11 +201,19 @@ static bool s_mcached;
  * that were going to be empty anyway. Putting them in strips above and below
  * instead costs 27 px of pane height each, which is 49% of the picture area,
  * to fill margins that stay dark either way. */
-/* SHOOT: the four streams, edge to edge, and one way out.
+/* SHOOT: the four streams, edge to edge, one way out, and one strip of facts.
  *
- * Four panes of exactly a quarter of the screen. No gap, no keyline, no
- * margin, no markings - a viewfinder is for looking through, and every line
- * drawn on it is a line between you and the room.
+ * Four panes of exactly a quarter of the screen. No gap, no keyline, no margin
+ * between them - a viewfinder is for looking through, and every line drawn
+ * across it is a line between you and the room.
+ *
+ * The two things that ARE drawn on it are anchored to the edges and to
+ * nothing else: the MENU button in the top-left corner, and a 34 px status bar
+ * along the foot: 27 200 px of bar and 5104 of button, 8% of the panel between
+ * them, and none of it in the middle.
+ * That is the price of a finder that can say how it is set, and it was worth
+ * paying: the version that drew nothing sent you to another screen to find out
+ * whether the flash was on.
  *
  * 400x240 is 5:3 and the sensors are 4:3, so each stream is scaled to fill
  * the width and cropped 24 rows top and bottom - a tenth off each edge. The
@@ -386,11 +394,6 @@ static uint16_t mix(uint16_t a, uint16_t b, int k) {
   return (uint16_t)((r << 11) | (g << 5) | bl);
 }
 
-static void fill_grad(int x, int y, int w, int h, uint16_t top, uint16_t bot) {
-  if (h <= 0) return;
-  for (int r = 0; r < h; r++) fill(x, y + r, w, 1, mix(top, bot, r * 256 / h));
-}
-
 static void outline(int x, int y, int w, int h, uint16_t c) {
   fill(x, y, w, 1, c);
   fill(x, y + h - 1, w, 1, c);
@@ -499,6 +502,34 @@ static void well(int x, int y, int w, int h) {
 }
 
 /**
+ * Dim what is behind, in place.
+ *
+ * The one compositing operation this grammar needs and cannot express with a
+ * bevel: a modal has to make the screen under it read as unavailable, and a
+ * half-lit list still invites a press. `k` is 0..255 towards `tint`.
+ *
+ * It is a per-pixel loop and there is no cheaper way to darken pixels that are
+ * already on the canvas - but it is named and lives here so there is exactly
+ * one of it. It was written out by hand inside draw_dialog(), which is how a
+ * second one appeared on the viewfinder to keep MENU legible; that one is gone
+ * (a plate does the job for nothing), and this is the only caller left.
+ *
+ * Only for surfaces that are drawn once and then held. Nothing on a path that
+ * repaints at frame rate may call it: 800 x 480 is 384 000 unpack-mix-pack
+ * round trips.
+ */
+static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x + w > UI_W) w = UI_W - x;
+  if (y + h > UI_H) h = UI_H - y;
+  for (int r = 0; r < h; r++) {
+    uint16_t *row = s_cv + (size_t)(y + r) * UI_W + x;
+    for (int c = 0; c < w; c++) row[c] = mix(row[c], tint, k);
+  }
+}
+
+/**
  * The dotted focus rectangle, inset inside the control it belongs to.
  *
  * On the odd pixels, because the alternating dots are what say "keyboard
@@ -600,22 +631,6 @@ static void draw_bits(const uint8_t *bits, int w, int h, int stride, int x, int 
   }
 }
 
-static void draw_bits_clipped(const uint8_t *bits, int w, int h, int stride, int x, int y,
-                              uint16_t ink) {
-  for (int row = 0; row < h; row++) {
-    const int gy = y + row;
-    if ((unsigned)gy >= UI_H) continue;
-    const uint8_t *src = bits + (size_t)row * stride;
-    for (int col = 0; col < w; col++) {
-      if (!(src[col >> 3] & (0x80 >> (col & 7)))) continue;
-      const int gx = x + col;
-      if ((unsigned)gx >= UI_W) continue;
-      if (s_cv[(size_t)gy * UI_W + gx] != W_FACE) continue;
-      s_cv[(size_t)gy * UI_W + gx] = ink;
-    }
-  }
-}
-
 static int text_w(const ui_font_t *f, const char *s) {
   int w = 0;
   for (; *s; s++) {
@@ -682,6 +697,36 @@ static void text_scaled_mid(const ui_font_t *f, int cx, int y, const char *s, in
  */
 static int fit_scale(const ui_font_t *f, const char *s, int w) {
   return text_w(f, s) * 2 <= w ? 2 : 1;
+}
+
+/**
+ * `s` into `out`, cut to `w` pixels with an ellipsis when it did not fit.
+ *
+ * fit_scale() is the other half of this problem and only works where the
+ * container can afford two type sizes. A status panel cannot: it is 18 rows
+ * tall and the string in it is a look's name, which the wire contract allows
+ * to be 40 characters - about 440 px, wider than the panel will ever be.
+ *
+ * Three dots rather than a hard cut, because a name that simply stops reads as
+ * a truncated write rather than as a label too long for its box; and three
+ * ASCII dots rather than a single ellipsis glyph, because the face is ASCII
+ * 32..126. Both are what the era did.
+ *
+ * The chop is by character and re-measures each time - the face is
+ * proportional, so there is no character width to divide by. At most 40
+ * iterations over a string of at most 40 glyphs, and only when the name is
+ * actually too long.
+ */
+static void text_fit(char *out, size_t cap, const ui_font_t *f, const char *s, int w) {
+  snprintf(out, cap, "%s", s);
+  if (text_w(f, out) <= w) return;
+  const int budget = w - text_w(f, "...");
+  size_t n = strlen(out);
+  while (n > 0) {
+    out[--n] = '\0';
+    if (text_w(f, out) <= budget) break;
+  }
+  snprintf(out + n, cap - n, "...");
 }
 
 static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t ink) {
@@ -794,9 +839,11 @@ static void back_glyph(int cx, int cy, uint16_t ink) {
 }
 
 /* A left-pointing chevron, drawn rather than set as a glyph: the font is ASCII
- * 32..126 and carries no such character. Used only on the two dark screens -
- * the viewfinder and the photograph - where there is no button to put a small
- * mark in and the glyph has to carry the target on its own. */
+ * 32..126 and carries no such character. One caller left - the photograph -
+ * where there is no button to put a small mark in and the glyph has to carry
+ * the target on its own. The viewfinder used it for the same reason until it
+ * got a real button; that leaves this shape on one screen, and if the
+ * photograph ever gets a plate too it goes with it. */
 static void chevron(int x, int cy, uint16_t ink) {
   for (int i = 0; i <= 12; i++) {
     fill(x + i, cy - i - 2, 3, 3, ink);
@@ -1019,26 +1066,27 @@ static const char *const FLASH_ORDER[3] = {"auto", "on", "off"};
  * the cycle uses, so one table serves both. */
 #define FLASH_ORDER_BY_INDEX FLASH_ORDER
 
+/* The same three, as they are set on screen. Two screens show them now - LOOK's
+ * segmented band and the finder's status bar - and two copies of three strings
+ * is how one of them ends up saying something the other does not. */
+static const char *const FLASH_NAMES[3] = {"AUTO", "ON", "OFF"};
+
 static int flash_index(void) {
   const char *v = config_str("shoot.flashMode", "auto");
   for (int i = 0; i < 3; i++) if (strcmp(v, FLASH_ORDER[i]) == 0) return i;
   return 0;
 }
 
-/* When the flash last changed. The bolt and the word burn yellow for a
- * quarter of a second afterwards - long enough to see it happen from the
- * corner of your eye while you are looking at the picture, short enough not
- * to be an animation. */
-static int64_t s_flash_spark_us;
-
+/* The flash used to be a control ON the viewfinder, and a quarter-second
+ * yellow burn on the bolt was how a change announced itself while you were
+ * looking at the picture rather than at the control. The control moved to LOOK
+ * in 0.4.15, where the pressed segment says the same thing permanently and the
+ * finder is not even on screen - so the timestamp had no reader left and the
+ * burn had nothing to burn on. Both are gone. The SHOOT strip states the flash
+ * mode instead of flashing about it, which is what a status bar is for. */
 static void flash_cycle(void) {
   const int next = (flash_index() + 1) % 3;
   cfg_set_str("shoot.flashMode", FLASH_ORDER[next]);
-  s_flash_spark_us = esp_timer_get_time();
-}
-
-static bool flash_sparking(void) {
-  return s_flash_spark_us != 0 && esp_timer_get_time() - s_flash_spark_us < 250000;
 }
 
 static bool mode_is_quad(void) { return strcmp(config_str("mode", "wiggle"), "quad") == 0; }
@@ -1668,6 +1716,47 @@ static void draw_menu(void) {
 /* One thing you can touch on this screen. */
 #define SH_IT_BACK 0
 
+/*
+ * The two markings, and the only two.
+ *
+ * The way out is a system button, not a glyph on a fade. What was here was a
+ * 92x34 per-pixel darkening ramp with a chevron and the word MENU laid into
+ * the corner: no margin, no plate, no bevel, and a press that changed the ink
+ * and nothing else. It was the last hand-rolled chrome in this file. A plate
+ * does everything the ramp was for - it is opaque, so the type on it is legible
+ * over any room - and it costs 116 x 44 fills instead of 3128 unpack-mix-pack
+ * round trips a frame.
+ *
+ * The facts go in a status bar at the foot of the picture, which is the menu's
+ * status bar in the same tones at the same 34 px: one band, panels sized to
+ * their contents with one elastic panel, 2 px of face grey between them. The
+ * screen used to say nothing at all about how it was going to shoot - not the
+ * mode, not the flash, not the look, not how many cameras were answering - so
+ * every one of those decisions was made on another screen and then taken on
+ * trust while framing.
+ *
+ * Bottom rather than top: it is where a status bar goes, it is where the
+ * capture banner already lands (the banner is 40 px and covers this exactly,
+ * so a capture replaces the strip rather than stacking on it), and a bar under
+ * the picture cuts the two bottom panes rather than the two the horizon
+ * usually sits in.
+ *
+ * 34 px of 480 is 7% of the picture. Everything else is room.
+ */
+#define SH_BACK_X 10
+#define SH_BACK_Y 10
+#define SH_BACK_W 116
+#define SH_BACK_H 44   /* the header's system button height, and the touch floor */
+#define SH_BAR_H 34    /* == M_STATUS_H: this is the menu's status bar */
+#define SH_BAR_Y (UI_H - SH_BAR_H)
+#define SH_PN_Y (SH_BAR_Y + 3)
+#define SH_PN_H (SH_BAR_H - 6)
+#define SH_PN_GAP 2    /* the face grey a Win98 status bar divides panels with */
+#define SH_PN_PAD 10   /* text to panel edge, as on the menu's bar */
+
+_Static_assert(SH_BAR_H == M_STATUS_H, "the viewfinder's status bar is not the menu's");
+_Static_assert(SH_BACK_Y + SH_BACK_H < SH_BAR_Y, "the back button runs into the status bar");
+
 static void sh_pane_rect(int cam, int *x, int *y) {
   *x = (cam % 2) * SH_PANE_W;
   *y = (cam / 2) * SH_PANE_H;
@@ -1701,16 +1790,74 @@ static void sh_blit(const uint16_t *tile, int px, int py) {
   }
 }
 
+/* look_display() lives with the LOOK screen's other look plumbing, 200 lines
+ * below. The finder needs the same string - the same look, spelled the same
+ * way - and a second copy of that lookup is how two screens start disagreeing
+ * about which look is loaded. */
+static bool look_current_id(char *out, size_t cap);
+static void look_display(char *out, size_t cap);
+
 /**
- * SHOOT: four streams and a way back.
+ * The look's name for the status bar, remembered between frames.
  *
- * Everything else moved to LOOK - the mode, the flash, the look itself -
- * because they are all decisions about the photograph rather than parts of
- * seeing it, and none of them needs to be on screen while you are framing.
- * What is left is the room.
+ * look_display() walks the recipe list to turn an id into a name:
+ * kdp_recipes_name() is a cJSON_GetArrayItem per entry - O(n^2) over up to 35
+ * looks - and it takes a critical section for every custom one, which disables
+ * interrupts. That is fine on LOOK, which repaints when a finger lands. On the
+ * finder it would run about seventeen times a second for an answer that
+ * changes when someone visits another screen.
+ *
+ * So the walk happens only when the id under it changes. The id itself is
+ * cheap: one config read in WIGGLE, up to four in QUAD with target ALL.
+ *
+ * Keyed on the id, which means a look RENAMED in Studio while the finder is
+ * open keeps its old name here until the id changes or the screen is left.
+ * Worth it: the alternative is the walk, and a rename mid-frame is not a thing
+ * anyone does with the camera held up.
+ */
+static const char *shoot_look_name(void) {
+  static char s_id[KDP_RECIPE_ID_MAX];
+  static char s_name[KDP_RECIPE_NAME_MAX];
+  static bool s_have;
+
+  char cur[KDP_RECIPE_ID_MAX];
+  /* False is QUAD/ALL with four slots that disagree, where look_current_id
+   * leaves cam1's id in the buffer - a legal id, and the wrong cache key. \x01
+   * cannot appear in one (^[a-z0-9][a-z0-9-]*$), so it is the key for MIXED. */
+  if (!look_current_id(cur, sizeof cur)) snprintf(cur, sizeof cur, "\x01");
+  if (!s_have || strcmp(cur, s_id) != 0) {
+    snprintf(s_id, sizeof s_id, "%s", cur);
+    look_display(s_name, sizeof s_name);
+    s_have = true;
+  }
+  return s_name;
+}
+
+/** One panel of the status bar: the recess, and its reading inside it. */
+static int sh_panel(int x, int w, const char *s) {
+  status_panel(x, SH_PN_Y, w, SH_PN_H);
+  text(&UI_FONT_S, x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - UI_FONT_S.line_h) / 2, s, W_TEXT);
+  return x + w + SH_PN_GAP;
+}
+
+/**
+ * SHOOT: four streams, a way back, and how the next photograph will be taken.
+ *
+ * The decisions are made on LOOK - mode, flash, which look - because choosing
+ * is not part of seeing. But a viewfinder that cannot tell you what it is set
+ * to makes you leave it to check, which is worse than a 34 px bar. So the
+ * finder states them and changes none of them: everything on the strip is a
+ * reading, and the only thing on this screen that can be pressed is the way
+ * out.
+ *
+ * Nothing on the strip is invented. Mode and flash are the config fields LOOK
+ * writes, the look is the string LOOK's picker shows, and the count is the
+ * panes that decoded a frame this pass - the same fact that decided whether
+ * each quarter got a picture or a reason.
  */
 static void draw_shoot(void) {
   static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
+  int live = 0;
   for (int i = 0; i < 4; i++) {
     int px, py;
     sh_pane_rect(i, &px, &py);
@@ -1721,6 +1868,10 @@ static void draw_shoot(void) {
 
     if (tile != NULL) {
       sh_blit(tile, px, py);
+      /* Counted here rather than from viewfinder_status(): what the strip
+       * reports is what the screen is showing. A pane with pixels on it is a
+       * camera that answered, whatever the status word says a moment later. */
+      live++;
       continue;
     }
 
@@ -1737,20 +1888,77 @@ static void draw_shoot(void) {
              RGB(0x32, 0x38, 0x42));
   }
 
-  /* The only marking. A scrim under it, because it has to stay readable over
-   * whatever the room happens to be doing. */
+  /* ---- the way out ---- */
+
+  /* A system button, pressed the way every other button on this interface is:
+   * the bevel inverts and the face goes in a pixel, taking the mark and the
+   * word with it. The glyph and the label are centred as one group, so the
+   * plate is padded evenly whatever the face measures the word at. */
   const bool down = s_pressed == SH_IT_BACK;
-  for (int y = 0; y < 34; y++) {
-    uint16_t *row = s_cv + (size_t)y * UI_W;
-    const int k = 190 - y * 5;
-    for (int x = 0; x < 92; x++) {
-      const int fade = k - x * 2;
-      if (fade > 0) row[x] = mix(row[x], RGB(0x00, 0x00, 0x00), fade);
-    }
+  const int d = down ? 1 : 0;
+  button(SH_BACK_X, SH_BACK_Y, SH_BACK_W, SH_BACK_H, down);
+  {
+    const int gw = 24, gap = 8;
+    const int tw = text_w(&UI_FONT_S, "MENU");
+    const int gx = SH_BACK_X + (SH_BACK_W - (gw + gap + tw)) / 2 + d;
+    back_glyph(gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, W_TEXT);
+    text(&UI_FONT_S, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - UI_FONT_S.line_h) / 2 + d, "MENU",
+         W_TEXT);
   }
-  const uint16_t ink = down ? C_YELLOW : RGB(0xe6, 0xea, 0xf0);
-  chevron(12, 17, ink);
-  text(&UI_FONT_S, 28, 8, "MENU", ink);
+  if (foc(SCR_SHOOT, SH_IT_BACK))
+    focus_inset(SH_BACK_X, SH_BACK_Y, SH_BACK_W, SH_BACK_H, W_TEXT);
+
+  /* ---- how it will shoot ---- */
+
+  const char *const flash = FLASH_NAMES[flash_index()];
+  /* `live` counts the four panes, so this is nine characters. The buffer is
+   * sized for a full int anyway: the compiler cannot see the bound and
+   * -Werror=format-truncation is right to insist, and a buffer that only fits
+   * the value the code happens to produce is one refactor from a cut string. */
+  char cams[24];
+  snprintf(cams, sizeof cams, "%d/4 LIVE", live);
+
+  /* The bolt labels the flash panel so the word does not have to. It is the
+   * one drawn glyph in the build - the face is ASCII 32..126 and the Windows
+   * 98 archive has no flash asset - and it was drawn for the flash control
+   * that used to sit on this screen. This is where it went. */
+  const int bolt_w = 8, bolt_gap = 8;
+  const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
+  const int w_mode = text_w(&UI_FONT_S, mode) + 2 * SH_PN_PAD;
+  const int w_flash = bolt_w + bolt_gap + text_w(&UI_FONT_S, flash) + 2 * SH_PN_PAD;
+  const int w_cams = text_w(&UI_FONT_S, cams) + 2 * SH_PN_PAD;
+
+  fill(0, SH_BAR_Y, UI_W, SH_BAR_H, W_FACE);
+  /* Raised, unlike the menu's, which sits inside a window frame that supplies
+   * the edge. This screen has no frame - the panes run to all four sides - so
+   * the bar draws its own, and the white top line is what separates it from
+   * the picture rather than a keyline that belongs to neither. */
+  bevel_raised(0, SH_BAR_Y, UI_W, SH_BAR_H);
+
+  int x = 3;
+  x = sh_panel(x, w_mode, mode);
+  {
+    /* The flash panel by hand, because it is the one with a glyph in it. */
+    status_panel(x, SH_PN_Y, w_flash, SH_PN_H);
+    bolt(x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - 14) / 2, 1, W_TEXT);
+    text(&UI_FONT_S, x + SH_PN_PAD + bolt_w + bolt_gap,
+         SH_PN_Y + (SH_PN_H - UI_FONT_S.line_h) / 2, flash, W_TEXT);
+    x += w_flash + SH_PN_GAP;
+  }
+
+  /* The look takes what is left, and the camera count is flush right: one
+   * elastic panel and the rest sized to their contents, which is the split the
+   * menu's status bar uses. A look's name may be 40 characters by the wire
+   * contract, so it is the one reading that can outgrow its panel - and the
+   * elastic panel is the one that can afford to cut it. */
+  const int cams_x = UI_W - 3 - w_cams;
+  const int w_look = cams_x - SH_PN_GAP - x;
+  if (w_look > 2 * SH_PN_PAD + 24) {
+    char look[KDP_RECIPE_ID_MAX + 4];
+    text_fit(look, sizeof look, &UI_FONT_S, shoot_look_name(), w_look - 2 * SH_PN_PAD);
+    sh_panel(x, w_look, look);
+  }
+  sh_panel(cams_x, w_cams, cams);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2094,7 +2302,6 @@ static void draw_look(void) {
   draw_header(SCR_LOOK);
 
   static const char *const MODE_NAMES[2] = {"WIGGLE", "QUAD"};
-  static const char *const FLASH_NAMES[3] = {"AUTO", "ON", "OFF"};
   static const char *const COLOR_NAMES[2] = {"COLOUR", "B&W"};
   static const char *const TARGET_NAMES[5] = {"ALL", "CAM1", "CAM2", "CAM3", "CAM4"};
 
@@ -2195,6 +2402,23 @@ static void draw_look(void) {
 #define G_IT_PREV 6
 #define G_IT_NEXT 7
 
+/* Each tile is a well with a 2 px white mat, so the block round a photograph
+ * is 6 px wider on every side than the photograph: 2 of selection plate, 2 of
+ * sunken edge, 2 of mat. That is 3 px more than the old keyline had, in every
+ * direction, and it is spent out of gaps nothing measured before. Checked here
+ * because the caption's offsets are literals in the draw loop below and the
+ * pitch is arithmetic up here - the two only agreed by luck. */
+#define G_BLOCK 6
+#define G_CAP_TOP 5   /* the caption's offset below the picture, as drawn */
+_Static_assert(G_GAP >= 2 * G_BLOCK, "the gallery tile wells touch across a column gap");
+_Static_assert(G_X0 >= G_BLOCK, "the leftmost tile well runs off the screen");
+_Static_assert(G_Y0 >= BODY_Y + G_BLOCK, "the top row's well runs into the header");
+_Static_assert(G_CAP_TOP > 4, "the caption sits on the well's bottom edge");
+_Static_assert(G_PITCH - G_BLOCK >= G_TILE_H + G_CAP_TOP + 18,
+               "the caption runs into the next row's tile well");
+_Static_assert(G_Y0 + G_PITCH + G_TILE_H + G_CAP_TOP + 18 <= UI_H - G_FOOT,
+               "the bottom row's caption runs into the footer");
+
 static void gal_origin(int slot, int *x, int *y) {
   *x = G_X0 + (slot % G_COLS) * (G_TILE_W + G_GAP);
   *y = G_Y0 + (slot / G_COLS) * G_PITCH;
@@ -2291,8 +2515,21 @@ static void draw_gallery(void) {
      * bright photograph, invisible next to the focused tile. What the press
      * used to be was a dotted rectangle over the photograph, which says
      * "keyboard focus" and not "your finger is here". */
-    fill(x - 3, y - 3, G_TILE_W + 6, G_TILE_H + 6, (selected || down) ? W_SEL : W_FACE);
-    bevel_sunken(x - 2, y - 2, G_TILE_W + 4, G_TILE_H + 4);
+    /* The frame was a bevel drawn tight against the picture: 2 px of shadow
+     * with the photograph's own edge immediately inside it, which is a keyline
+     * that happens to be bevelled rather than a well. Every other reading
+     * surface on this interface - a list, the roll's figures, the storage
+     * bar - is white ground inside a sunken edge, and the grid was the last
+     * place a picture sat straight on the face.
+     *
+     * So: a well, with 2 px of its white ground showing all the way round the
+     * photograph as a mat. The picture does not move and does not change size -
+     * the blit is exactly G_TILE_W wide and a pixel of travel would put its
+     * last column on the frame's shadow - the frame moves outwards instead.
+     * The selection plate moves out with it and reads 2 px wide now rather
+     * than 1, which is the only other visible difference. */
+    fill(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, (selected || down) ? W_SEL : W_FACE);
+    well(x - 4, y - 4, G_TILE_W + 8, G_TILE_H + 8);
     const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
@@ -2333,8 +2570,12 @@ static void draw_gallery(void) {
     for (int k = 0; k < 4; k++) {
       st[k] = k < slots[i].frames ? FM_ON : (slots[i].partial ? FM_LOST : FM_OFF);
     }
-    four_mark(x + 2 + d, y + G_TILE_H + 7 + d, 8, st, false);
-    text_right(&UI_FONT_S, x + G_TILE_W - 2 + d, y + G_TILE_H + 5 + d, slots[i].mode, W_TEXT);
+    /* The mark is 8 px against 18 rows of type, so it sits 2 px lower to share
+     * the line's middle. Both offsets are from G_CAP_TOP, which is what the
+     * clearance assertions above are written against. */
+    four_mark(x + 2 + d, y + G_TILE_H + G_CAP_TOP + 2 + d, 8, st, false);
+    text_right(&UI_FONT_S, x + G_TILE_W - 2 + d, y + G_TILE_H + G_CAP_TOP + d, slots[i].mode,
+               W_TEXT);
   }
 
   /*
@@ -3754,10 +3995,7 @@ static void draw_dialog(void) {
   /* Scrim over whatever is behind, so the decision is the only live thing.
    * Heavy enough that the screen underneath reads as unavailable rather than
    * merely tinted - a half-lit list still invites a press. */
-  for (int y = 0; y < UI_H; y++) {
-    uint16_t *row = s_cv + (size_t)y * UI_W;
-    for (int x = 0; x < UI_W; x++) row[x] = mix(row[x], RGB(0x10, 0x16, 0x1e), 190);
-  }
+  scrim(0, 0, UI_W, UI_H, RGB(0x10, 0x16, 0x1e), 190);
 
   dlg_spec_t d;
   dialog_spec(&d);
@@ -3892,12 +4130,32 @@ static void draw_toast(void) {
    * is what this is now, and it is also more legible - the old plate put
    * near-white 18 px type on a dark ground over whatever screen it covered.
    */
-  /* 44 px off the bottom, not the 26 it was: the menu now has a status bar in
-   * the bottom 34 px and a tooltip crossing it looked like a rendering fault
-   * rather than like something floating over a window. Above it, the toast
-   * clears every screen's bottom chrome. */
+  /*
+   * Where it rests.
+   *
+   * It floated 44 px off the bottom on every screen, which on the menu put it
+   * across the SETTINGS tile's label - a tooltip covering the control it was
+   * raised by. "Mode: Quad" over the word SETTINGS is the exact failure: the
+   * message explains a press and hides what was pressed.
+   *
+   * So the strip is the bottom band, the height of the menu's status bar and
+   * flush with it, and on the menu that IS the status bar - which is where a
+   * windowed system has always put a transient message. On the gallery it
+   * lands between PREV and NEXT, inside the footer's own panel, because every
+   * gallery message ("Card busy") is narrower than the gap between them. On
+   * the list screens the band is bare face grey.
+   *
+   * Two screens keep controls down there and get the band above instead: the
+   * photograph, whose DELETE / FAVOURITE row is 34 px off the bottom, and the
+   * finder, whose status bar and capture banner both own the foot. On both,
+   * what it covers instead is the picture - which is content, and content is
+   * what a tooltip is allowed to float over.
+   */
   const int w = text_w(&UI_FONT_S, s_toast) + 32, h = 34;
-  const int x = (UI_W - w) / 2, y = UI_H - h - 44;
+  int y = UI_H - 2 - h;
+  if (s_screen == SCR_PHOTO) y = PH_CAP_Y - h - 8;
+  else if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 8;
+  const int x = (UI_W - w) / 2;
   fill(x, y, w, h, W_INFO);
   outline(x, y, w, h, W_TEXT);
   text_mid(&UI_FONT_S, UI_W / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, W_TEXT);
@@ -3999,9 +4257,14 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_SHOOT:
-      /* Generous, because it is the only target on the screen and it sits
-       * over live video where a small one would be hard to find. */
-      if (x < 150 && y < 70) return SH_IT_BACK;
+      /* The plate, plus 8 px of slop on every side. It was a bare 150x70 box
+       * in the corner, drawn from 0,0 - which was the only honest thing to do
+       * when the marking had no edges, and which meant a third of the target
+       * was over picture with nothing on it. Now the target is the button
+       * with a margin: 132x60 around a 116x44 plate, well over the 44 px
+       * floor, and every part of it looks pressable because it is. */
+      if (in(x, y, SH_BACK_X - 8, SH_BACK_Y - 8, SH_BACK_W + 16, SH_BACK_H + 16))
+        return SH_IT_BACK;
       return -1;
 
     case SCR_PHOTO: {
@@ -4217,7 +4480,6 @@ static void activate(int item) {
         if (s_focus[SCR_LOOK] >= item_count(SCR_LOOK)) s_focus[SCR_LOOK] = 0;
       } else if (item < LK_IT_PREV) {
         cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
-        s_flash_spark_us = esp_timer_get_time();
       } else if (item <= LK_IT_NEXT) {
         look_step(item == LK_IT_NEXT ? 1 : -1);
       } else if (item < LK_IT_TARGET) {

@@ -315,17 +315,37 @@ static void fake_viewfinder(void) {
   g_vf_filled = true;
 }
 
+/* Cameras that are not answering, one bit each. Zero is the four-camera body
+ * every other shot is taken on. */
+static unsigned g_vf_dead;
+
 esp_err_t viewfinder_init(void) { return ESP_OK; }
 bool viewfinder_ready(void) { return true; }
 void viewfinder_run(bool on) { (void)on; }
 const uint16_t *viewfinder_tile(int cam) {
   if (cam < 0 || cam >= 4) return NULL;
+  if (g_vf_dead & (1u << cam)) return NULL;
   if (!g_vf_filled) fake_viewfinder();
   return g_vf[cam];
 }
+/*
+ * The status now agrees with the pixels.
+ *
+ * It reported VF_NO_LINK for all four while viewfinder_tile() handed out a
+ * frame for all four, which is a state the camera cannot be in: a node that
+ * never answered has no picture to show. It went unnoticed because draw_shoot()
+ * only read the status on the panes with no tile, and there were none. The
+ * SHOOT strip counts live cameras, so a harness that lies here photographs a
+ * bar reading 0/4 LIVE over four pictures.
+ */
 void viewfinder_status(int cam, vf_status_t *out) {
-  (void)cam;
-  if (out) { out->state = VF_NO_LINK; out->frames = 0; out->last_ms = 0; out->bytes = 0; out->fps_x10 = 0; }
+  if (out == NULL) return;
+  const bool dead = cam < 0 || cam >= 4 || (g_vf_dead & (1u << cam));
+  out->state = dead ? VF_NO_LINK : VF_LIVE;
+  out->frames = dead ? 0 : 120;
+  out->last_ms = dead ? 0 : 60;
+  out->bytes = dead ? 0 : 9200;
+  out->fps_x10 = dead ? 0 : 165;
 }
 
 /* No physical controls on a workstation, and nothing to log to. */
@@ -713,16 +733,37 @@ int main(int argc, char **argv) {
   }
   shot("iconsheet");
 
-  /* ---- shoot: previews, mode, flash and the shutter on one screen ---- */
+  /*
+   * ---- shoot: the four panes, the way out, and the status bar ----
+   *
+   * These three shots rendered IDENTICALLY until 0.4.17. The harness set the
+   * flash and then the mode, and the screen drew neither - it had four panes
+   * and the word MENU - so three files with three names were three copies of
+   * one picture, and the fact that SHOOT told nobody how it would shoot was
+   * invisible in exactly the artifact that exists to make it visible. The
+   * status bar is what makes them different; if any two of them ever match
+   * again, the bar has stopped reading something.
+   */
   s_focus[SCR_SHOOT] = 3; /* the shutter, where focus lands on entry */
   SHOT(SCR_SHOOT, "shoot");
   g_flash_mode = "on";
   SHOT(SCR_SHOOT, "shoot_flash_on");
+  /* QUAD, flash off, and CAM3 not answering: the strip's count on something
+   * other than 4/4, and draw_shoot()'s no-picture branch - the pane that says
+   * NO CAMERA - which no screenshot has ever contained either. */
   g_flash_mode = "off";
   g_mode = "quad";
+  g_vf_dead = 1u << 2;
   SHOT(SCR_SHOOT, "shoot_quad_flash_off");
+  g_vf_dead = 0;
   g_flash_mode = "auto";
   g_mode = "wiggle";
+
+  /* The back button held down, over a bright scene. It is the only control on
+   * the screen and its press was an ink change on a fade until 0.4.17. */
+  s_pressed = SH_IT_BACK;
+  SHOT(SCR_SHOOT, "shoot_back_pressed");
+  s_pressed = -1;
 
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
@@ -992,10 +1033,21 @@ int main(int argc, char **argv) {
   }
 
   /* ---- a toast, which every screen can raise ---- */
+  /* On the menu it is the status bar's message. It used to float 44 px off the
+   * bottom, which put it across the SETTINGS tile's label - a tooltip covering
+   * the control that raised it, and this shot is the one that showed it. */
   s_screen = SCR_MENU;
   toast("Mode: Quad");
   draw_screen();
   shot("toast");
+
+  /* The same band on the gallery, where the footer's two buttons sit. Every
+   * message this screen raises is "Card busy", and the point of the shot is
+   * that it lands between PREV and NEXT rather than on either. */
+  s_screen = SCR_GALLERY;
+  toast("Card busy");
+  draw_screen();
+  shot("toast_gallery");
 
   if (g_write_failed) {
     fprintf(stderr, "one or more screens were not written\n");

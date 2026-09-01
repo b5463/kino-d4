@@ -476,4 +476,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.16 is the Win98 chrome system (#152) - bevels, group boxes, wells,
   // focus and press states. Drawing only, same profile.
   '0.4.16': 'd4-settings-0-4-9',
+  // 0.4.17 finishes the shooting screen (#153): a real back button, a status
+  // bar carrying mode/flash/look/live count. Drawing only, same profile.
+  '0.4.17': 'd4-settings-0-4-9',
 };
