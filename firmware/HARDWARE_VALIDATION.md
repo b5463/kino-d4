@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-01, firmware 0.4.18
+## Status — updated 2026-09-01, firmware 0.4.19
 
 0.4.11-0.4.13 landed in one bench day. 0.4.11 gives the gallery a persisted
 order index and DELETE ALL PHOTOS; its first session on the 527-capture card
@@ -315,6 +315,68 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### Four cameras, one register, and a mean luma of 5.3 - 0.4.19 bench, 2026-09-01
+
+The first session with all four camera nodes live. Board `KD4-D121BC`, four
+XIAO ESP32-S3 + OV3660 nodes on UARTs 1-4 at 921600, every node's own USB to
+the PC for power and programming.
+
+**Four-camera capture works.** `CAP_000640`: 4 frames, `complete`, dispatch
+spread **86 us**, first run of that path on hardware ever. To get there the
+P4 stopped hardcoding CAM2-4 offline in `build_camera_info()` - the
+"milestone 2" stub had outlived the driver, which had long since brought up
+all four UARTs, swept all four channels and pumped all four viewfinders. Same
+defect family as D21's constants; every channel now answers for itself
+through `camlink_get_info_ch()`.
+
+**Every frame was near-black in a well-lit room, and the cause was one
+register written in the wrong units.** Measured, not eyeballed: frames pulled
+off the card and decoded read mean luma **5.3/255** (max 149) and did not
+converge across captures (third in a row: 6.4, max 55). META showed sane
+settings on all four frames - aeLevel 0, gainCeiling 16 - so the look was not
+the culprit. A one-shot boot diagnostic dumping the sensor's own status
+cracked it:
+
+```
+AE at boot: aec=1 aec2=0 agc=1 ae_level=0 aec_value=490 agc_gain=2
+            gainceiling=248 awb=1
+```
+
+AEC and AGC were on; `agc_gain` was pinned at 2 of 30; and `gainceiling` read
+248 in a field documented 0-6. The OV3660's `set_gainceiling()` in
+esp32-camera is TYPED as taking the `gainceiling_t` enum and actually writes
+the value raw into `0x3A18/0x3A19`, the AEC gain-ceiling registers, which
+hold gain in **1/16 steps** - the part's own power-on default is 248 = 15.5x.
+So `gainceiling_from_factor(16) -> enum 3` set the ceiling to **0.19x**: the
+AGC was forbidden from applying gain, and only an emissive subject (a
+monitor) was bright enough to register - which is why every earlier bench
+photograph of a screen looked plausible while the room around it was black.
+Nothing wrote this register before the sensor path landed in 0.4.9, so the
+sensors ran on their sane default until the firmware "configured" them.
+
+**Fix (0.4.19, node):** `gainceiling_raw_for_sensor()` - for the OV3660 the
+requested factor times 16 (16x -> 256), capped at 64x where the ten bits run
+out; the enum stays for parts that mean it. Measured on the same desk in the
+same light: mean luma **5.3 -> 45.7**, full range 0-255, cam1's frame grew
+58 KB -> 290 KB, and the photograph is a photograph.
+
+**Costs and residuals now visible because exposure works:**
+- Preview frames grew ~3.5 KB -> ~4.8 KB at q30, so four-camera preview sits
+  at ~12 fps (each frame is 52 ms of a 92 KB/s line). `previewQuality: high`
+  (q18) trades further rate for less blocking; the wire is the bottleneck.
+- Four-camera preview loses ~3% of frames to READ timeouts - `crcErrors 0`
+  over 62.5 MB, `timeouts 639`, so the wiring is electrically clean and the
+  deadlines/buffers are not sized for four concurrent streams. Issue #158,
+  measured with 0.4.18's new `camera.viewfinder.drops` counters (shortRead
+  577-591 per camera dominates).
+- A node reset can leave the sensor unprobed (`Camera probe failed 0x106`)
+  and the node still reports `state: ready` - issue #157. Found the expensive
+  way: **opening a camnode's USB console asserts DTR and RESETS the node**,
+  which is now a recorded bench hazard; prefer klog and CAMERA_STATUS, and
+  after any console read re-check sensorDetected.
+
+End state: P4 0.4.19 and all four nodes 0.4.19, all online, sensors detected.
 
 ### The camera stops lying about itself, and the conformance suite runs from a terminal - 0.4.18 bench, 2026-09-01
 

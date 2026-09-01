@@ -1783,11 +1783,28 @@ static cJSON *build_camera_info(int index) {
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "id", ids[index]);
 
-  if (index == 0) {
+  /*
+   * Every channel answers for itself.
+   *
+   * This was `if (index == 0)`, with cam2-4 hardcoded offline behind the
+   * comment "CAM2-4 links land in milestone 2; reported offline, never
+   * faked". The faking is exactly what it was doing by the time anyone wired
+   * a second camera: camlink_init() brings up all four UARTs on their real
+   * pins, the sweep hellos each one, capture.c runs four workers and the
+   * viewfinder pumps four channels - so a wired CAM2 could take a photograph
+   * that this reply insisted was impossible, and every reader (Studio, the
+   * ROLL screen, the SHOOT bar's n/4 LIVE, the conformance suite) believed
+   * the reply. Same defect as GET_MODES' hardcoded availability (D21), found
+   * the same way: a constant that outlived the reason for it.
+   *
+   * An unwired channel still reports offline - that is now measured by the
+   * sweep getting no answer, not asserted by a branch.
+   */
+  {
     camlink_info_t info;
-    camlink_get_info(&info);
+    camlink_get_info_ch(index, &info);
     camlink_stats_t stats;
-    camlink_get_stats(&stats);
+    camlink_get_stats_ch(index, &stats);
     cJSON_AddBoolToObject(json, "online", info.online);
     if (info.online && info.sensor_detected) {
       cJSON_AddStringToObject(json, "sensor", info.sensor);
@@ -1811,15 +1828,6 @@ static cJSON *build_camera_info(int index) {
       cJSON_AddBoolToObject(node, "autofocus", info.autofocus);
       cJSON_AddNumberToObject(node, "baud", NL_DEFAULT_BAUD);
     }
-  } else {
-    // CAM2-4 links land in milestone 2; reported offline, never faked.
-    cJSON_AddBoolToObject(json, "online", false);
-    cJSON_AddNullToObject(json, "sensor");
-    cJSON_AddBoolToObject(json, "sensorDetected", false);
-    cJSON_AddStringToObject(json, "firmware", "");
-    cJSON_AddStringToObject(json, "state", "offline");
-    cJSON_AddNumberToObject(json, "latencyMs", 0);
-    cJSON_AddNumberToObject(json, "uartErrors", 0);
   }
   /*
    * What the viewfinder made of this camera, including the frames it threw

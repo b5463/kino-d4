@@ -484,4 +484,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // frames are counted, and GET_MODES derives availability instead of
   // hardcoding it. Additive response fields only, so the same profile.
   '0.4.18': 'd4-settings-0-4-9',
+  // 0.4.19: every camera channel answers CAMERA_STATUS for itself (#151-era
+  // stub removed), and the OV3660 gain ceiling is written in the sensor's
+  // 1/16-step units instead of the enum, which had capped AGC at 0.19x and
+  // made every frame near-black (#156). Behaviour only, same profile.
+  '0.4.19': 'd4-settings-0-4-9',
 };

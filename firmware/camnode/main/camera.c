@@ -172,6 +172,31 @@ esp_err_t camsensor_init(void) {
     ESP_LOGW(TAG, "sensor PID 0x%04x not in the driver's table", sensor->id.PID);
   }
 
+  /*
+   * What the sensor thinks its exposure loop is doing, once, at boot.
+   *
+   * Diagnostic for issue #156: every camera returned a near-black frame in a
+   * well-lit room (measured mean luma 5.3/255 on a 1600x1200 still pulled off
+   * the card), and this node has never configured auto-exposure at all - it
+   * writes ae_level and gainceiling, which are trims ON TOP of a loop nobody
+   * enables, and inherits whatever esp_camera_init left behind. The driver's
+   * reset() loads sensor_default_regs and 0x3503 (AEC/AGC manual enable) is
+   * not in that table, so AE is nominally automatic - which the black frames
+   * contradict. Printing the sensor's own view is cheaper than reasoning
+   * about which of the two is wrong.
+   *
+   * init_status() has just read these back off the part, so they are the
+   * hardware's answer rather than a copy of a request. One line, at boot,
+   * on a path that runs once.
+   */
+  ESP_LOGI(TAG,
+           "AE at boot: aec=%u aec2=%u agc=%u ae_level=%d aec_value=%u agc_gain=%u "
+           "gainceiling=%u awb=%u awb_gain=%u wb_mode=%u",
+           sensor->status.aec, sensor->status.aec2, sensor->status.agc,
+           (int)sensor->status.ae_level, sensor->status.aec_value, sensor->status.agc_gain,
+           sensor->status.gainceiling, sensor->status.awb, sensor->status.awb_gain,
+           sensor->status.wb_mode);
+
   /* Drop from the allocation size to the working default. Registers only; the
    * buffers stay cut for whatever init allocated, which is why this is safe in
    * this direction and would not be in the other. Guarded on the read-back
@@ -270,7 +295,33 @@ static int clamp_int(int v, int lo, int hi) {
  * the only gain-ceiling API esp32-camera exposes, and `applied` reports the
  * step that was written, so the card records what the sensor was told.
  */
-static gainceiling_t gainceiling_from_factor(int factor, int *snapped) {
+/*
+ * The gain ceiling, in the units the SENSOR wants - which are not the units
+ * the driver's prototype claims.
+ *
+ * esp32-camera types set_gainceiling() as taking a gainceiling_t enum
+ * (GAINCEILING_2X..128X = 0..6), and for OV2640 that is what it is. The
+ * OV3660 implementation ignores the enum meaning entirely and writes the
+ * number straight into the AEC gain-ceiling registers:
+ *
+ *     write_reg(0x3A18, (l >> 8) & 3); write_reg(0x3A19, l & 0xFF);
+ *
+ * Those hold a 10-bit ceiling in 1/16 steps, so the value IS the gain times
+ * sixteen. The part's own power-on default is 248 = 15.5x, read back on the
+ * bench at boot.
+ *
+ * Passing the enum therefore asked for a ceiling of 3, which is 0.19x - the
+ * AGC was forbidden from applying any gain at all. Measured consequence
+ * (issue #156): agc_gain pinned at 2 of 30 and a mean luma of 5.3/255 in a
+ * well-lit room on all four cameras, with only an emissive subject like a
+ * monitor bright enough to register. Nothing wrote this register before the
+ * sensor path landed in 0.4.9, so the sensors ran on their sane 15.5x default
+ * until the firmware "configured" them.
+ *
+ * OV2640 keeps the enum: the same call means two different things depending
+ * on the part, so the conversion has to know which part it is talking to.
+ */
+static int gainceiling_raw_for_sensor(int pid, int factor, int *snapped) {
   static const int FACTORS[] = {2, 4, 8, 16, 32, 64, 128};
   const int n = (int)(sizeof FACTORS / sizeof FACTORS[0]);
   int best = 0;
@@ -279,8 +330,20 @@ static gainceiling_t gainceiling_from_factor(int factor, int *snapped) {
     const int d_i = factor > FACTORS[i] ? factor - FACTORS[i] : FACTORS[i] - factor;
     if (d_i < d_best) best = i; /* strictly less: a tie keeps the lower step */
   }
+  if (pid == OV3660_PID) {
+    /* 1/16 steps, ten bits. 64x is the ceiling the registers can express
+     * (1023/16); the wire allows 128x, so it snaps down rather than wrapping
+     * into the two high bits of 0x3A18. */
+    int raw = FACTORS[best] * 16;
+    if (raw > 1023) {
+      raw = 64 * 16;
+      best = 5; /* 64x */
+    }
+    if (snapped != NULL) *snapped = FACTORS[best];
+    return raw;
+  }
   if (snapped != NULL) *snapped = FACTORS[best];
-  return (gainceiling_t)(GAINCEILING_2X + best);
+  return (int)(GAINCEILING_2X + best);
 }
 
 esp_err_t camsensor_apply(const camsensor_settings_t *in, camsensor_settings_t *applied) {
@@ -305,8 +368,8 @@ esp_err_t camsensor_apply(const camsensor_settings_t *in, camsensor_settings_t *
   }
   if (in->has_gain_ceiling && sensor->set_gainceiling != NULL) {
     int snapped = 0;
-    const gainceiling_t g = gainceiling_from_factor(in->gain_ceiling, &snapped);
-    if (sensor->set_gainceiling(sensor, g) == 0) {
+    const int raw = gainceiling_raw_for_sensor(s_pid, in->gain_ceiling, &snapped);
+    if (sensor->set_gainceiling(sensor, (gainceiling_t)raw) == 0) {
       s_applied.has_gain_ceiling = true;
       s_applied.gain_ceiling = snapped;
     } else {
