@@ -47,10 +47,19 @@ const isStr = (v: unknown): v is string => typeof v === 'string';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStrArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
 
+/**
+ * `sha256` is optional here because it is optional on the wire: the firmware
+ * that writes META.JSON omits the digest rather than hash four
+ * multi-megabyte JPEGs (contract D20), so requiring it rejected the metadata
+ * of every folder tethered off a real body and dropped the inspector to "no
+ * META.JSON". A malformed digest is still a rejection — a wrong digest is
+ * worse than none.
+ */
 function isCaptureFile(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false;
   const f = v as Record<string, unknown>;
-  return isStr(f.name) && isNum(f.sizeBytes) && isStr(f.sha256);
+  if (!isStr(f.name) || !isNum(f.sizeBytes)) return false;
+  return f.sha256 === undefined || (isStr(f.sha256) && /^[0-9a-f]{64}$/i.test(f.sha256));
 }
 
 function isExposure(v: unknown): boolean {
@@ -74,9 +83,25 @@ export function parseCaptureMeta(text: string | null): CaptureInfo | null {
   }
   if (typeof raw !== 'object' || raw === null) return null;
   const c = raw as Record<string, unknown>;
-  if (typeof c.meta !== 'object' || c.meta === null) return null;
-  const meta = c.meta as Record<string, unknown>;
+  /* A document may carry no `meta` block at all: the firmware attaches it
+   * only when META.JSON parsed (contract D20). That is not an unreadable
+   * document — the id, kind, timestamp and file list are still evidence, and
+   * the metadata table prints a dash and the reason for the rows `meta`
+   * would have filled. A `meta` that is present must still be complete;
+   * half a block would crash those rows instead of skipping them. */
+  if (c.meta !== undefined && (typeof c.meta !== 'object' || c.meta === null)) return null;
+  const meta = (c.meta ?? {}) as Record<string, unknown>;
+  const metaOk =
+    c.meta === undefined ||
+    (typeof meta.flash === 'boolean' &&
+      isNum(meta.batteryV) &&
+      isStr(meta.p4Firmware) &&
+      isStrArray(meta.cameraFirmware) &&
+      isNum(meta.gpioSkewUs) &&
+      Array.isArray(meta.exposure) &&
+      meta.exposure.every(isExposure));
   const ok =
+    metaOk &&
     isStr(c.id) &&
     (c.kind === 'wiggle' || c.kind === 'quad') &&
     isNum(c.ts) &&
@@ -85,14 +110,7 @@ export function parseCaptureMeta(text: string | null): CaptureInfo | null {
     (c.resolution === '1600x1200' || c.resolution === '2048x1536') &&
     isNum(c.totalKB) &&
     Array.isArray(c.files) &&
-    c.files.every(isCaptureFile) &&
-    typeof meta.flash === 'boolean' &&
-    isNum(meta.batteryV) &&
-    isStr(meta.p4Firmware) &&
-    isStrArray(meta.cameraFirmware) &&
-    isNum(meta.gpioSkewUs) &&
-    Array.isArray(meta.exposure) &&
-    meta.exposure.every(isExposure);
+    c.files.every(isCaptureFile);
   return ok ? (raw as CaptureInfo) : null;
 }
 
@@ -138,6 +156,7 @@ export function parseLocalCapture(
   const warnings: string[] = [];
   if (metaJson === null) warnings.push('NO META.JSON — TIME, LOOKS AND EXPOSURE UNKNOWN');
   else if (info === null) warnings.push('META.JSON UNREADABLE — TIME, LOOKS AND EXPOSURE UNKNOWN');
+  else if (info.meta === undefined) warnings.push('META.JSON CARRIES NO CAPTURE BLOCK — EXPOSURE, SKEW AND BATTERY UNKNOWN');
   if (frames.length !== EXPECTED_FRAMES) {
     warnings.push(`${frames.length} JPEG${frames.length === 1 ? '' : 'S'} IN FOLDER — A CAPTURE HAS ${EXPECTED_FRAMES}`);
   }

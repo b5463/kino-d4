@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-08-31, firmware 0.4.14
+## Status — updated 2026-09-01, firmware 0.4.18
 
 0.4.11-0.4.13 landed in one bench day. 0.4.11 gives the gallery a persisted
 order index and DELETE ALL PHOTOS; its first session on the 527-capture card
@@ -315,6 +315,78 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### The camera stops lying about itself, and the conformance suite runs from a terminal - 0.4.18 bench, 2026-09-01
+
+Board `KD4-D121BC`, P4 over USB-Serial-JTAG on COM8, one XIAO on CAM1
+(OV3660, node 0.4.13), `uartErrors 0` throughout. First session in which
+Studio's conformance suite ran against physical firmware since 0.4.9 - it had
+been browser-only until `scripts/kino-conformance.mjs` (issue #155) gave it a
+Node transport.
+
+**The first run, against 0.4.17, found three drifts in seven seconds.**
+25 of 32 cases passed. The failures that mattered:
+
+| case | verdict |
+|---|---|
+| `HELLO` | SHAPE - `unknown clockSource network`. The firmware sends it (clock.h: `host > network > persisted > unset`, `network` existing so TLS can validate a certificate); the normative type declared three values. The type was stale, not the camera. |
+| `GET_MODES` | SHAPE - `missing wiggle`. Two defects behind it, below. |
+| `CAMERA_TEST (CAM2)` | ERROR on a channel this body does not have fitted - normal bench configuration reporting red. |
+
+**GET_MODES was lying, and the type never described its reply.** The handler
+hardcoded `available: false` and `unavailableReason: "No capture pipeline in
+this build"` - a string from the M1B era nobody revisited when capture landed
+in 0.3.0. Measured in one run: `GET_MODES` said both modes were unavailable
+for want of a capture pipeline, and eleven cases later `CAMERA_CAPTURE` stored
+`CAP_000629`, 1 frame, `complete`, 2980 ms. Separately, `GetModesResponse` in
+the normative type declared `{ modes: ShootMode[] }` - a bare string array -
+while the P4 has answered `{ active, modes: [{id, name, available,
+unavailableReason}] }` since 0.3.0. Nothing caught either: the mock matched
+the stale type so every test passed, and the only reader was a conformance
+case that had never met hardware. Both recorded as D21.
+
+**0.4.18 answers the truth**, derived from the predicate `capture_fire()`
+itself uses, in its order - card, then camera:
+
+```
+"active": "wiggle"
+wiggle  available: true   unavailableReason: null
+quad    available: true   unavailableReason: null
+```
+
+**The re-run against 0.4.18: 26 pass, 2 skipped, 4 unsupported, 0 shape, 0
+error.** Both shape failures gone; CAM2 skips with `CAM2 is not fitted on this
+unit`. The four remaining are the documented unimplemented opcodes -
+`CAMERA_CALIBRATE` 0x35, `CAMERA_PREVIEW` 0x34, `MAINTENANCE` 0x50,
+`FW_BEGIN` 0x61 - and D17 now lists them so the next person can tell an
+expected gap from a regression. Link across the run: `crcFailures 0`,
+`timeouts 0`, `resyncs 5`, `readRetries 0`.
+
+**Two failures in the first 0.4.18 run were the suite tripping over its own
+side effects**, which is what a first hardware run is for. `CAMERA_CAPTURE`
+answered `A capture is already running` because `CAMERA_SOAK_TEST` runs
+immediately before it and its captures were still committing - 0.4.17 had
+merely been slow enough to pass. And `MEDIA_THUMB` failed on a capture with no
+thumbnail: `CAMERA_TEST` stores a `TC_*` single-frame capture with `C1.JPG`
+and no `THUMB.JPG`, earlier in the same run, and the MEDIA cases pick the
+newest capture. Both fixed in the suite, not the firmware: one bounded retry
+after a real settle (a second refusal still reports, because then something
+no case started is holding the pipeline), and an explicit skip naming why the
+capture has no thumbnail.
+
+**Also in 0.4.18, the diagnostics that cost this session hours.** The
+once-a-second `ui ... STALLED` line fired on every idle screen and evicted
+real evidence from a fixed-size ring; it now reports on an edge and only when
+a frame was owed, taking a healthy idle camera from 1.0 line/s to **zero** and
+a 60 s stall from 60 lines to 2. `GET_RUNTIME_STATS.ui` (`passes`,
+`lastPassAgeMs`, `stalled`) makes a wedged display task detectable by a host
+for the first time - there is no watchdog on it, so every other field answered
+normally while the panel was frozen. A refused card operation now names its
+holder (`Card is busy: the camera UI (task gallery) holds it`) instead of
+blaming a capture that was never running. Refused preview frames are counted
+by reason and surfaced under `camera.viewfinder`, where before an oversized
+frame was indistinguishable from a slow camera. D22 records the two new
+fields.
 
 ### Deleting a queued capture left its folder for ever, 0.4.14 bench, 2026-08-31
 

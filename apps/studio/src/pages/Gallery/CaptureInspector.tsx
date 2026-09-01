@@ -206,7 +206,7 @@ export function CaptureInspector({
   const kindLabel = summary.kind === 'wiggle' ? 'WIGGLEGRAM' : 'QUAD SET';
 
   // Where the offsets in use came from. Zeros are never shown as a measurement.
-  const offsetOrigin = info?.meta.calibration
+  const offsetOrigin = info?.meta?.calibration
     ? 'OFFSETS FROM CAPTURE META'
     : offsetsAvailable
       ? 'OFFSETS FROM DEVICE CALIBRATION'

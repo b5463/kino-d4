@@ -24,7 +24,8 @@ DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
         $(MAIN)/roll_queue.h $(MAIN)/gallery.h $(MAIN)/audio.h \
-        $(MAIN)/kdp_server.h $(MAIN)/kdp_recipes.h $(KDP_CORE)/kdp/protocol.h
+        $(MAIN)/kdp_server.h $(MAIN)/kdp_recipes.h $(MAIN)/pure.h \
+        $(KDP_CORE)/kdp/protocol.h
 
 # Every source and header is listed, including the ones that are #included
 # rather than compiled: a missing prerequisite here means make silently

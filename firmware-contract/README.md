@@ -369,11 +369,15 @@ better than a value carried across a power cycle and worse than a time a bench o
 all. Collapsing it into `host` would claim a person set the time; collapsing it into `persisted` would
 claim it drifts.
 
-**Status: firmware-side deviation, not yet reconciled.** `packages/kdp/src/protocol/types.ts` is
-normative and has not been widened, so a radio-build device fails Studio's conformance check on this
-field. The default build never emits it. Reconciling means widening the union in `types.ts`,
-`MockKinoDevice.ts` and `conformance.ts` in one commit; that is a `packages/**` change and belongs
-with the milestone that ships the radio, not with the firmware that can be built with it.
+**Resolved in the type, 2026-09-01.** The union is `'host' | 'network' | 'persisted' | 'unset'` in
+both `HelloResponse` and `CameraCaptureResult`, Studio's HELLO shape check accepts all four, and
+`MockKinoDevice.setClockSource` can report `network` so a host is testable without a radio on the
+bench. It was overdue rather than early: KD4-D121BC running 0.4.17 sends `clockSource: network` on
+first association, and the shape check failed HELLO on a body that was behaving correctly
+(`SHAPE HELLO — HELLO: unknown clockSource network`, 2026-09-01).
+
+A consumer must keep the four distinct. Collapsing `network` into `host` claims a person set the
+time; collapsing it into `persisted` claims it drifts. The default build still never emits it.
 
 
 ### D17 — 17 commands in `commands.ts` are not implemented by the D4 V1 P4 build
@@ -423,17 +427,39 @@ it gates `GET_STORAGE_STATUS`, `CAMERA_LINK_STATS`, `GET_HW_VALIDATION`,
 `STORAGE_SELF_TEST`, `CAMERA_TEST` and `CAMERA_SOAK_TEST`, all of which are
 implemented. `LINK_BENCH` and `SYNC_BENCH` are not behind it.
 
-Three cases in Studio's own conformance suite
-(`apps/studio/src/developer/conformance.ts`, 32 cases — 8 active, 24
-passive) target this set and
-cannot pass against 0.4.8: `CAMERA_CALIBRATE (get)`, `CAMERA_PREVIEW frame`,
-and `FW_BEGIN gate (outside maintenance)`. The last is a near miss worth
-noting — it expects a refusal citing maintenance and gets
-`UNSUPPORTED_COMMAND`, so the gate it tests is satisfied in substance while the
-assertion still fails. `GET_RECIPES` left this list at 0.4.8 and a `GET_SOUNDS`
-case joined the suite beside it; both are read-only, so both stay
-`active: false` — the flag marks a case that changes device state, not a case
-that is switched on.
+**Four cases in Studio's own conformance suite cannot pass against 0.4.17.**
+Measured on KD4-D121BC, P4 0.4.17, 2026-09-01: 32 cases (8 active, 24 passive),
+25 pass, 4 `UNSUPPORTED`, and one camera channel skipped because only CAM1 is
+fitted on that unit.
+
+| Case | Opcode | Why it cannot pass |
+|---|---|---|
+| `CAMERA_CALIBRATE (get)` | `0x35` | Not dispatched. Per-camera alignment calibration is not built; the D4 V1 body has no stored calibration to read back. |
+| `CAMERA_PREVIEW frame` | `0x34` | Not dispatched. The live viewfinder path is `CAMERA_VIEWFINDER`; `CAMERA_PREVIEW` is the older single-frame command and nothing implements it. |
+| `MAINTENANCE enter/exit` | `0x50` | Not dispatched — the whole Maintenance family is on the roadmap, not in the build. |
+| `FW_BEGIN gate (outside maintenance)` | `0x61` | Not dispatched. A near miss worth noting: the case expects a refusal citing maintenance and gets `UNSUPPORTED_COMMAND`, so the gate it tests is satisfied in substance while the assertion still fails. |
+
+All four are dispatcher-default NACKs, which is the documented degradation
+path, so the run is what a correct 0.4.17 body looks like. A fifth status —
+`error`, not `unsupported` — is a regression signal and not expected here: an
+`UNSUPPORTED` case whose opcode is on the table above is an expected gap, and
+anything else at those four names is new.
+
+`CAMERA_TEST (CAM2)` used to report `ERROR — Camera node not connected` on a
+one-camera bench unit. That was the hardware being honest, so the per-camera
+cases now skip and name the channel (`camMissing` in `conformance.ts`, fed by
+`GET_CAMERA_INFO`); an unfitted camera is not a firmware failure and must not
+be printed as one. `CAMERA_PREVIEW frame` aims at the first fitted channel
+instead of at CAM2 by name — the opcode is what it is testing, and on a
+one-camera unit the hardcoded channel hid the `UNSUPPORTED_COMMAND` answer
+behind "CAM2 is offline". `CAMERA_CAPTURE timing-test` skips on a body that
+advertises `vsyncTelemetry` with fewer than four channels fitted: a spread
+across four cameras cannot be measured with three, and 0.4.17 reports
+`vsyncTelemetry: false` and takes the refusal branch whatever is populated.
+
+`GET_RECIPES` left this list at 0.4.8 and a `GET_SOUNDS` case joined the suite
+beside it; both are read-only, so both stay `active: false` — the flag marks a
+case that changes device state, not a case that is switched on.
 
 ### D18 — `SET_RECIPE` takes a `cam`, and the two families that left D17
 
@@ -604,6 +630,43 @@ from a body older than 0.4.9 returns a `body` block without it; absent and `""`
 mean the same thing.
 
 
+### D20 — `CaptureFile.sha256` and `CaptureInfo.meta` are omitted by MEDIA_INFO
+
+`CaptureFile` typed `sha256: string` and `CaptureInfo` typed `meta` as a required object. The P4
+never sends the first and does not always send the second, so every `MEDIA_INFO` reply from real
+firmware was a lie the compiler endorsed — the same shape as D10, and the same outcome: Studio's
+`file.sha256.toLowerCase()` and `info.meta.batteryV.toFixed(2)` compiled clean and threw on the
+first capture off a real card.
+
+**Resolved in the type, 2026-09-01.** Both are optional now. The behaviour they describe is not a
+bug and does not change:
+
+| Field | 0.1.0+ | Why |
+|---|---|---|
+| `files[].sha256` | always absent | Hashing four multi-megabyte JPEGs on request blocks the KDP link for seconds. The key is omitted rather than filled with a wrong or empty digest — see the comment at `handle_media_info` in `firmware/p4/main/kdp_server.c`. |
+| `meta` | absent when the capture's `META.JSON` did not parse | The handler attaches the block only when it read one (`if (meta)`). A folder written by a body that lost power mid-write, or assembled by hand, has frames and no document. |
+
+A host must therefore:
+
+- treat a missing digest as **unverified**, never as verified. `downloadCaptureFile` in Studio
+  returns `{ data, verified }` and checks the bytes only against a digest that arrived; the
+  inspector's TRANSFER CHECK row and the tether notice say which of the two happened. A download
+  refused for want of a digest would make the gallery unusable on every shipped body, and a
+  download called verified without one is worse than the crash it replaced.
+- print a dash and the reason for every row `meta` would have filled. `0` there is not a neutral
+  value: it reads as a simultaneous trigger and a flat cell.
+- accept a `META.JSON` with neither field. Studio's folder import required both and reported the
+  metadata of every tethered capture as unreadable; a malformed digest is still rejected, because a
+  wrong digest is worse than none.
+
+Verifying a transfer needs a digest the body can afford to produce — a CRC over the file as it is
+read, or a digest computed once at capture and stored in `META.JSON`. Neither exists yet, and
+neither is a protocol change: `sha256` stays optional and starts arriving when something computes it.
+
+The reference device omitted nothing, which is why no test caught this. `scenarios.mediaInfoAsShipped`
+answers `MEDIA_INFO` the way the firmware does — no digests, no `meta`, and `META.JSON` refused on
+`MEDIA_READ` so the two agree.
+
 ## Decided — was "firmware team decision required"
 
 Issue #5 closed the six open questions this section used to list. They were open because physical
@@ -657,3 +720,70 @@ already shipped, one adds response types for commands no 0.1.x device answers, a
 unreachable in any real session. KDP stays at **1** for all of 0.x, and `versions.json` keeps
 `protocol.kdp: 1`. New behavior goes behind a capability flag; the version byte changes only when the
 framing or an existing payload's meaning does.
+
+### D21 — `GET_MODES` answered a shape this file never described, and lied about availability
+
+Two defects in one reply, found on 2026-09-01 by the first run of the
+conformance suite against real hardware (KD4-D121BC, P4 0.4.17) — the suite
+was browser-only until issue #155 gave it a terminal runner, so nothing had
+compared this reply to the contract since the capture pipeline shipped.
+
+**The shape.** `GetModesResponse` in `packages/kdp/src/protocol/types.ts`
+declared `{ modes: ShootMode[] }`, a bare array of strings. The P4 has answered
+`{ active, modes: [{ id, name, available, unavailableReason }] }` since 0.3.0.
+Nothing caught it: `MockKinoDevice` matched the stale type, so every test
+passed, and the only reader was the conformance case, which failed with
+`MODES: missing wiggle` the first time it met a real camera. **Resolved by
+widening the type to the shape the firmware sends** — the richer form carries
+the availability, which is the point — and by making the mock answer it too.
+
+**The lie.** `available` and `unavailableReason` were compile-time constants:
+`false` and `"No capture pipeline in this build"`, a string from the M1B era
+that nobody revisited when capture landed. Measured in a single conformance
+run: `GET_MODES` reported both modes unavailable for want of a capture
+pipeline, and eleven cases later `CAMERA_CAPTURE` stored `CAP_000629`,
+1 frame, `complete`, in 2980 ms. Every host asking this camera what it could
+do was told it could not shoot.
+
+**From firmware 0.4.18** both fields are derived from the predicate
+`capture_fire()` itself uses, in its order — a mounted card first, then a
+camera node that answered — so `available: true` means a capture requested at
+that instant would be taken. `unavailableReason` is `null` when available and
+always present. `SD_FULL` and `BUSY` are deliberately excluded: the first is
+arithmetic about a capture nobody has requested, the second is a sample of a
+state `capture_request()` re-checks, and either would make the field flicker.
+
+**Both modes report identically, and that is the truth rather than the old
+shortcut.** `capture_fire()` never consults the mode when deciding whether it
+may shoot — only which look and exposure to send each sensor. A quad with one
+camera stores one frame and commits `complete`. Availability is a property of
+the body, not of the mode. Advertising "quad needs four cameras" would be the
+same class of lie pointing the other way; a host that wants the pane count
+reads `GET_CAMERA_INFO`.
+
+`active` remains a stored selection that survives a reboot and may name an
+unavailable mode. That pair is coherent — it is what the camera will shoot
+once the reason clears — and the conformance case now asserts the coherence
+in both directions.
+
+### D22 — two additive fields the camera now reports about itself
+
+Firmware 0.4.18, both optional, both absent on older bodies.
+
+`GET_CAMERA_INFO` / `CAMERA_STATUS` gain `camera.viewfinder`
+(`frames`, `fpsX10`, `drops` keyed by reason and cumulative for the session).
+A preview frame the finder refused used to vanish silently, which made a
+refused frame indistinguishable from a slow camera. `noLink` is counted and
+never logged, because three channels are unwired on a V1 body and logging
+them would flood the ring it exists to protect.
+
+`GET_RUNTIME_STATS` gains `ui` (`passes`, `lastPassAgeMs`, `stalled`). There
+is no watchdog on the display task, so a wedged UI was invisible to a host —
+every other field answers from the KDP task and looks healthy. `stalled` is
+not derived from the age: a loop that turns over without presenting has a
+healthy age and a frozen panel, and separating those two is the point.
+
+Both replace the same firmware's previous diagnostic, a once-a-second
+`ui ... STALLED` klog line that fired on every idle screen and evicted real
+evidence from a fixed-size ring. It now reports on the edge only, and only
+when a frame was actually owed.

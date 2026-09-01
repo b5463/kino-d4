@@ -37,6 +37,7 @@
 #include "mesh3d.h"
 #include "net_link.h"
 #include "power.h"
+#include "pure.h"
 #include "qr.h"
 #include "roll_state.h"
 #include "storage.h"
@@ -4718,6 +4719,34 @@ static void icons_task(void *arg) {
   vTaskDelete(NULL);
 }
 
+/*
+ * The UI task's own pulse. See ui_liveness() in ui.h for why it exists at all.
+ *
+ * uint32 milliseconds, not the int64 microseconds everything else in this file
+ * uses: the reader is another task, a 32-bit aligned load is one instruction on
+ * RV32 and an int64 is two, and a torn read of the high word would report an
+ * age of days on a perfectly healthy camera. Wraps at 49.7 days of uptime; a
+ * body up that long has other problems and other diagnostics.
+ *
+ * Single writer (ui_task), many readers, no lock. volatile is enough: the only
+ * hazard a lock would remove is a reader seeing the pass counter one newer than
+ * the timestamp, which changes an age by one loop period.
+ */
+static volatile uint32_t s_ui_pass;
+static volatile uint32_t s_ui_pass_ms;
+static volatile bool s_ui_stalled;
+
+void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled) {
+  const uint32_t stamp = s_ui_pass_ms;
+  if (passes != NULL) *passes = s_ui_pass;
+  if (stalled != NULL) *stalled = s_ui_stalled;
+  if (age_ms != NULL) {
+    /* 0 rather than the whole uptime before the first pass: a camera whose UI
+     * has not started yet must not read as a UI that has been gone since boot. */
+    *age_ms = stamp == 0 ? 0 : (uint32_t)(esp_timer_get_time() / 1000) - stamp;
+  }
+}
+
 static void ui_task(void *arg) {
   (void)arg;
   splash();
@@ -4736,6 +4765,7 @@ static void ui_task(void *arg) {
   int held = -1;
   int64_t s_ui_report_us = 0;
   uint32_t s_ui_last_frames = 0;
+  ui_health_t health = {0};
   int64_t wake_since_us = 0;
   bool was_asleep = false;
   /* True from the touch that dismissed a held report until that finger lifts,
@@ -4743,6 +4773,12 @@ static void ui_task(void *arg) {
   bool swallow_touch = false;
 
   for (;;) {
+    /* The pulse, first thing and unconditionally. Several branches below
+     * `continue`, and a stamp that some passes skip reads as a wedge on a loop
+     * that is merely swallowing a wake press. */
+    s_ui_pass++;
+    s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
+
     /* Physical keys first: they were recorded on the buttons task and this
      * is the task that owns the canvas and the compositor. */
     drain_buttons();
@@ -4914,16 +4950,29 @@ static void ui_task(void *arg) {
     }
 
     /*
-     * Once a second: is the UI looping, and is it presenting?
+     * Once a second: was a frame DUE, and did one come out?
      *
      * A stuck preview has three quite different causes and they are
      * indistinguishable from the outside. The pump is known to keep running -
-     * measured at 5-6.7 fps while the screen looked frozen - so the question
-     * is what the UI is doing. If `frames` advances the compositor is running
-     * and the panel is stale; if it stops while these lines keep coming the UI
-     * is looping without presenting, and `held` says why, because a latched
-     * press skips the SHOOT repaint below; if the lines stop entirely the task
-     * is blocked or starved.
+     * measured at 5-6.7 fps while the screen looked frozen - so the question is
+     * what the UI is doing. If frames advance, the compositor is running and
+     * the panel is stale; if they stop while a frame was owed, the UI is
+     * looping without presenting; if the loop stops entirely, ui_liveness()
+     * says so to a host, because nothing running on this task can.
+     *
+     * "Was a frame due" is the whole of issue #140. The test used to be "did a
+     * frame come out", which an idle screen legitimately fails - it presents
+     * only when something changes - so the line fired every second forever and
+     * emptied the klog ring of the boot evidence someone needed. The decision
+     * lives in ui_health_step() (pure.c, host-tested) together with the
+     * reasoning and the rejected alternatives; this block supplies the two
+     * facts and prints the edges.
+     *
+     * `present_due` is the tail of this pass, below: the SHOOT screen with
+     * nothing latched is the one path that presents unconditionally. The busy
+     * path presents and `continue`s before reaching here, and a latched press
+     * means no repaint is owed - which is why the latch is watched separately
+     * rather than folded into the stall.
      */
     {
       const int64_t ui_now_us = esp_timer_get_time();
@@ -4931,15 +4980,36 @@ static void ui_task(void *arg) {
         s_ui_report_us = ui_now_us;
         uint32_t ui_frames = 0;
         gfx_stats(&ui_frames, NULL);
-        /* Only when it is worth reading. A line a second forever buries real
-         * faults in the ring, and with four cameras the finder is already
-         * writing its own. Silence means the compositor is presenting and
-         * nothing is latched, which is the whole question this answers. */
-        const bool ui_stalled = ui_frames == s_ui_last_frames;
-        if (ui_stalled || held != -1 || s_pressed != -1) {
-          klog("P4", "ui screen %d held %d pressed %d frames %lu%s", (int)s_screen, held,
-               s_pressed, (unsigned long)ui_frames, ui_stalled ? " STALLED" : "");
+        const bool frames_advanced = ui_frames != s_ui_last_frames;
+        const bool present_due = s_screen == SCR_SHOOT && held == -1;
+        const bool latched = held != -1 || s_pressed != -1;
+        switch (ui_health_step(&health, present_due, frames_advanced, latched)) {
+          case UI_HEALTH_STALLED:
+            klog("P4", "ui STALLED on screen %d - a frame was due, frames stuck at %lu",
+                 (int)s_screen, (unsigned long)ui_frames);
+            break;
+          case UI_HEALTH_PRESENTING:
+            klog("P4", "ui presenting again on screen %d, frames %lu", (int)s_screen,
+                 (unsigned long)ui_frames);
+            break;
+          case UI_HEALTH_STALL_ENDED:
+            klog("P4", "ui stall over on screen %d without a frame - nothing owed now",
+                 (int)s_screen);
+            break;
+          case UI_HEALTH_LATCH_STUCK:
+            klog("P4", "ui press latched %d s on screen %d (held %d pressed %d) - no lift",
+                 PURE_UI_LATCH_TICKS, (int)s_screen, held, s_pressed);
+            break;
+          case UI_HEALTH_LATCH_CLEARED:
+            klog("P4", "ui press released on screen %d", (int)s_screen);
+            break;
+          case UI_HEALTH_QUIET:
+            break;
         }
+        /* Published for ui_liveness(), so a host reading GET_RUNTIME_STATS gets
+         * the same latched answer as the klog rather than having to find the
+         * line in a ring that may already have rolled past it. */
+        s_ui_stalled = health.stalled;
         s_ui_last_frames = ui_frames;
       }
     }

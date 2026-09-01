@@ -165,6 +165,60 @@ void storage_lock_stats(uint32_t *yields, uint32_t *timeouts) {
   if (timeouts != NULL) *timeouts = s_acquire_timeouts;
 }
 
+/* The priority classes as prose, because these strings end up in a NACK a
+ * person reads. Named for what the holder IS doing rather than for the enum:
+ * "the camera UI" covers the gallery's index rebuild, a thumbnail decode and a
+ * host's MEDIA_* command, which is honest - they share the class precisely
+ * because they are the same priority - where "UI" alone would read as the
+ * screen and send a reader to ui.c. */
+static const char *holder_class(int user) {
+  switch (user) {
+    case STORAGE_USER_CAPTURE: return "a capture";
+    case STORAGE_USER_UI: return "the camera UI";
+    case STORAGE_USER_UPLOAD: return "an upload";
+    default: return "nothing";
+  }
+}
+
+void storage_holder_name(char *out, size_t len) {
+  if (out == NULL || len == 0) return;
+  char task[configMAX_TASK_NAME_LEN];
+  task[0] = '\0';
+  portENTER_CRITICAL(&s_wait_mux);
+  const int who = s_holder;
+  if (s_holder_task != NULL) {
+    /* pcTaskGetName() returns a pointer into the TCB's own name array, so this
+     * is a copy out of live memory rather than a call that can block. Inside
+     * the critical section so the handle cannot be cleared between the test
+     * and the read. */
+    const char *n = pcTaskGetName(s_holder_task);
+    if (n != NULL) strlcpy(task, n, sizeof task);
+  }
+  portEXIT_CRITICAL(&s_wait_mux);
+
+  if (who < 0) {
+    snprintf(out, len, "nothing");
+  } else if (task[0] != '\0') {
+    snprintf(out, len, "%s (task %s)", holder_class(who), task);
+  } else {
+    snprintf(out, len, "%s", holder_class(who));
+  }
+}
+
+void storage_card_busy_message(char *out, size_t len) {
+  if (out == NULL || len == 0) return;
+  char who[STORAGE_HOLDER_NAME_LEN];
+  storage_holder_name(who, sizeof who);
+  if (who[0] == '\0' || strcmp(who, "nothing") == 0) {
+    /* Free again by the time we asked. The honest answer is that the wait ran
+     * out, not a name: whoever takes the lock next did not cause this, and
+     * naming them would be a new version of the same lie. */
+    snprintf(out, len, "Card was busy and the wait ran out");
+  } else {
+    snprintf(out, len, "Card is busy: %s holds it", who);
+  }
+}
+
 esp_err_t storage_init(void) {
   /* Before the mount, so nothing can reach the card without a lock to take.
    * Idempotent: storage_init() is called once, but a retry must not leak a

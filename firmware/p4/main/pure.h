@@ -416,4 +416,147 @@ bool pure_wifi_passphrase_ok(const char *passphrase, bool is_open, bool keeps_st
  */
 bool pure_api_base_ok(const char *url);
 
+/* ------------------------------------------------------------------ */
+/* UI health watch                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Consecutive one-second ticks a press may stay latched before the watch says
+ * so.
+ *
+ * A finger on a tile is a few hundred milliseconds, and the longest deliberate
+ * gesture this UI has is the wake press, which ui_task() already ceilings at
+ * 1200 ms. Three seconds is past both, so a latch that survives it is a touch
+ * controller that stopped reporting the lift rather than a person pressing.
+ */
+#define PURE_UI_LATCH_TICKS 3
+
+/** What one tick of the UI health watch found worth saying. At most one. */
+typedef enum {
+  UI_HEALTH_QUIET = 0,     /* nothing changed that a reader needs */
+  UI_HEALTH_STALLED,       /* a frame was due this tick and none came out */
+  UI_HEALTH_PRESENTING,    /* the compositor moved again after a stall */
+  UI_HEALTH_STALL_ENDED,   /* nothing is due any more; it never did present */
+  UI_HEALTH_LATCH_STUCK,   /* a press has outlived any plausible finger */
+  UI_HEALTH_LATCH_CLEARED, /* ...and has now let go */
+} ui_health_report_t;
+
+/** The watch's carried state. Zero-initialise; the caller owns it. */
+typedef struct {
+  bool stalled;
+  bool latch_stuck;
+  uint16_t latch_ticks;
+} ui_health_t;
+
+/**
+ * One tick of the UI health watch: edges only, never a heartbeat.
+ *
+ * ## What was wrong (issue #140)
+ *
+ * The old test was `frames == last_frames`, klogged every second. The UI only
+ * presents when something changes, so a settled screen legitimately draws no
+ * frames and the line fired forever. Two costs, measured at the bench: it read
+ * as a wedged UI task and sent a session chasing a phantom deadlock, and - the
+ * real damage - a line a second into a fixed-size klog ring evicted the boot
+ * lines someone was about to ask for. A diagnostic that destroys evidence is
+ * worse than no diagnostic.
+ *
+ * ## The rule
+ *
+ * A stall is "a frame was DUE and none came out", not "no frame came out".
+ * `present_due` is the caller's answer to whether this pass was going to
+ * present, so an idle screen is idle rather than stalled. And it is reported on
+ * the EDGE - once on entry, once when it ends - so a stall that lasts a minute
+ * costs two lines instead of sixty.
+ *
+ * Rejected alternatives, both weaker:
+ *   - keep the every-second line and only add the due-a-frame gate: still one
+ *     line a second for the whole of any real stall, which is the flood again
+ *     exactly when the ring matters most.
+ *   - count ticks since the last input or state change: says "idle", which is
+ *     true and useless - it cannot tell an idle screen from a UI that stopped
+ *     presenting while work was pending, and that is the whole question.
+ *
+ * ## The latch, and why it is reported first
+ *
+ * A press held down skips the SHOOT repaint, so on that screen a stuck latch
+ * CAUSES the missing present. Reporting the symptom first sends a reader to
+ * the compositor; reporting the cause first sends them to the touch driver.
+ * The old code logged the latch every second while a finger rested on a
+ * button - three lines for a slow tap - so this fires only past
+ * PURE_UI_LATCH_TICKS, which no finger reaches.
+ *
+ * A tick that reports a latch edge does not also evaluate the stall; the next
+ * tick does. Two edges in one tick would need two lines, and the stall is
+ * still there a second later.
+ *
+ * ## What this deliberately cannot do
+ *
+ * Detect a wedged UI task. This runs ON that task, so a task blocked in a draw
+ * never reaches it and the only symptom is SILENCE, which is not evidence.
+ * That job belongs to a reader outside the task - see `ui_liveness()` and the
+ * `ui` object in GET_RUNTIME_STATS.
+ */
+ui_health_report_t ui_health_step(ui_health_t *h, bool present_due, bool frames_advanced,
+                                  bool input_latched);
+
+/* ------------------------------------------------------------------ */
+/* Shooting modes                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Why this body cannot take a photograph, or NULL when it can.
+ *
+ * ## What was wrong
+ *
+ * `GET_MODES` hardcoded `available: false` and "No capture pipeline in this
+ * build" for both modes. That was true in Milestone 1B and stopped being true
+ * when capture landed in 0.3.0; nobody changed it. Measured on KD4-D121BC
+ * running 0.4.17: GET_MODES reported both modes unavailable for want of a
+ * capture pipeline, and eleven cases later in the same conformance run
+ * CAMERA_CAPTURE stored CAP_000629, one frame, complete, 2980 ms. Every host
+ * that asked that camera what it could do was told it could not shoot.
+ *
+ * ## The predicate, taken from capture_fire() rather than invented
+ *
+ * capture_fire() refuses a shutter for exactly two reasons that are knowable
+ * before the shutter, and it checks them in this order:
+ *
+ *   1. no card mounted            -> SD_NOT_MOUNTED
+ *   2. no online camera with a
+ *      capture worker behind it   -> CAMERA_OFFLINE, "No camera answered"
+ *
+ * So this returns them in the same order, and the reason names the FIRST thing
+ * that would stop the shutter - which is what a host needs, because fixing the
+ * second while the first stands changes nothing.
+ *
+ * Two of capture_fire()'s gates are deliberately NOT here. SD_FULL is
+ * arithmetic on the frame count and resolution of a capture that has not been
+ * requested yet (storage_capture_reserve_bytes), so answering it here would be
+ * a bound that is stale by the time anyone shoots. BUSY is a sample of a state
+ * that changes between the answer and the shutter, and capture_request()
+ * already re-checks it; reporting a mode as unavailable because a capture is
+ * in flight would make GET_MODES flicker.
+ *
+ * ## Why the modes cannot differ
+ *
+ * capture.c never consults the mode when deciding whether it MAY shoot - only
+ * when deciding which look and exposure to put in each sensor. `quad` has no
+ * resolution of its own and no camera count of its own: "the four frames of a
+ * quad are the same four sensors as a wiggle, shown differently"
+ * (capture.c, capture_settings). So the availability of a mode is not a
+ * property of the mode at all, it is a property of the body, and reporting the
+ * two identically is the truth rather than a shortcut.
+ *
+ * Rejected: the stricter reading that `quad` needs four online cameras. Nothing
+ * in capture.c enforces it - a quad with one camera stores one frame and
+ * commits as complete - and advertising a rule the shutter does not apply is
+ * the same class of lie as this function exists to remove, pointing the other
+ * way. A host that wants to know how many panes it will get reads
+ * GET_CAMERA_INFO, which answers per camera.
+ *
+ * The returned string is a literal and outlives any caller.
+ */
+const char *capture_unavailable_reason(bool card_mounted, bool any_camera_ready);
+
 #endif

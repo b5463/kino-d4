@@ -68,6 +68,12 @@ static const char *TAG = "viewfinder";
 /* Older than this and a pane stops claiming to be live. */
 #define VF_STALE_MS 2000
 
+/* At most one dropped-frame line per camera per five seconds, matching the
+ * timing line's cadence for the same reason. A pump runs at up to 17 Hz and
+ * there are four of them, so an unthrottled line per drop is 68 a second -
+ * which does not describe a fault, it destroys the ring that would have. */
+#define VF_DROP_LOG_MS 5000
+
 
 /* VF_CAPTURE_TIMEOUT_MS and VF_READ_TIMEOUT_MS moved to viewfinder.h: a
  * capture's viewfinder_hold() timeout is arithmetic on them (VF_HOLD_MS) and
@@ -80,6 +86,10 @@ static SemaphoreHandle_t s_decode_lock;
 static vf_status_t s_status[4];
 static int64_t s_last_frame_us[4];
 static int64_t s_report_us[4]; /* throttles the per-frame timing line below */
+/* Throttles the dropped-frame line, separately from s_report_us: a camera that
+ * is dropping every frame never reaches the timing line at all, so sharing one
+ * throttle would mean the drop line only ever appeared when the drops stopped. */
+static int64_t s_drop_report_us[4];
 static bool s_ready;
 static volatile bool s_want_run; /* what the UI asked for */
 static atomic_int s_holds;       /* outstanding viewfinder_hold() calls */
@@ -240,6 +250,67 @@ void viewfinder_status(int cam, vf_status_t *out) {
   }
 }
 
+const char *vf_drop_str(vf_drop_t reason) {
+  switch (reason) {
+    case VF_DROP_NO_LINK: return "noLink";
+    case VF_DROP_EMPTY: return "empty";
+    case VF_DROP_OVERSIZE: return "oversize";
+    case VF_DROP_SHORT_READ: return "shortRead";
+    case VF_DROP_DECODE: return "decode";
+    default: return "?";
+  }
+}
+
+/**
+ * Count a dropped preview frame, and say so at most once every VF_DROP_LOG_MS.
+ *
+ * `bytes` is the frame size the NODE declared, for every reason: it is the
+ * number that explains all of them. Oversize says it is too big for the
+ * buffer, short read says how big the frame we lost part way through was
+ * (a 24 KB frame timing out mid-transfer is contention, a 2 KB one is not),
+ * and decode says how many bytes the engine refused. 0 where no frame was
+ * declared.
+ *
+ * The counter is unconditional and costs one increment on an aligned word.
+ * That is deliberate: this is the 17 Hz per camera path, and four cameras'
+ * worth of snprintf is not something a preview can afford, so the FORMATTING
+ * is the throttled part, not the counting. A count with no line still answers
+ * the question over the wire.
+ *
+ * ## Why VF_DROP_NO_LINK is counted and never logged
+ *
+ * On a V1 body CAM2-4 are unwired, so their pumps fail every attempt. Logging
+ * that would put roughly 0.6 lines a second of "the camera that was never
+ * there is still not there" into a fixed-size ring - the same
+ * evidence-destroying flood as the UI STALLED line this change removes, for
+ * the same reason. Nothing is lost: the pane already reads NO LINK, the state
+ * is already VF_NO_LINK, camera_task already logs the transition to live, and
+ * the counter is on the wire for anyone who wants the number.
+ *
+ * The four reasons that DO log all mean the node answered and the frame still
+ * failed, which is exactly the case that was indistinguishable from slow.
+ *
+ * Called only from that camera's own pump task, which is the only writer of
+ * s_status[cam].drops.
+ */
+static void vf_drop(int cam, vf_drop_t reason, uint32_t bytes) {
+  s_status[cam].drops[reason]++;
+  if (reason == VF_DROP_NO_LINK) return;
+  const int64_t now = esp_timer_get_time();
+  /* The first drop always speaks. A plain elapsed test against a zero-
+   * initialised stamp swallows everything in the first VF_DROP_LOG_MS of
+   * uptime, and a preview failing from the moment it starts is precisely the
+   * boot-window evidence this counter exists to preserve. */
+  if (s_drop_report_us[cam] != 0 &&
+      now - s_drop_report_us[cam] < (int64_t)VF_DROP_LOG_MS * 1000) {
+    return;
+  }
+  s_drop_report_us[cam] = now;
+  klog("P4", "cam%d vf dropped %s, %uB frame (%lu since boot)", cam + 1,
+       vf_drop_str(reason), (unsigned)bytes,
+       (unsigned long)s_status[cam].drops[reason]);
+}
+
 /**
  * Pull one frame from a node and decode it into that camera's tile.
  *
@@ -261,11 +332,17 @@ static bool pump_camera(int cam) {
   atomic_fetch_add(&s_quality_writes[cam], 1u);
   if (camlink_capture_ch(cam, VF_RESOLUTION, s_quality, VF_CAPTURE_TIMEOUT_MS, &res) !=
       ESP_OK) {
+    vf_drop(cam, VF_DROP_NO_LINK, 0);
     s_status[cam].state = VF_NO_LINK;
     return false;
   }
   if (res.size == 0 || res.size > VF_MAX_JPEG) {
     camlink_release_ch(cam, res.frame_id);
+    /* Two different faults behind one test, and they were both silent. Empty
+     * is a node that answered without exposing; oversize is a scene detailed
+     * enough to beat VF_MAX_JPEG, which is a picture we could have had with a
+     * lower preview quality and is worth knowing about rather than guessing at. */
+    vf_drop(cam, res.size == 0 ? VF_DROP_EMPTY : VF_DROP_OVERSIZE, res.size);
     s_status[cam].state = VF_ERROR;
     return false;
   }
@@ -287,6 +364,7 @@ static bool pump_camera(int cam) {
   camlink_release_ch(cam, res.frame_id);
 
   if (got_total != res.size) {
+    vf_drop(cam, VF_DROP_SHORT_READ, res.size);
     s_status[cam].state = VF_ERROR;
     return false;
   }
@@ -323,6 +401,7 @@ static bool pump_camera(int cam) {
                                              &out_size);
   xSemaphoreGive(s_decode_lock);
   if (err != ESP_OK) {
+    vf_drop(cam, VF_DROP_DECODE, res.size);
     s_status[cam].state = VF_ERROR;
     return false;
   }

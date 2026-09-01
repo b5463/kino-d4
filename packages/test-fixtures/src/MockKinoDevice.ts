@@ -435,7 +435,19 @@ export class MockKinoDevice implements MockDeviceLike {
    * clock on HELLO, which is the only way a body with no RTC ever learns the
    * date. A reboot puts it back to `persisted`, matching firmware: the stored
    * time survives, its accuracy does not. */
-  private clockSource: 'host' | 'persisted' | 'unset' = 'unset';
+  /** `network` is reachable only through `setClockSource` — the mock has no
+   * SNTP and will not claim one on its own. */
+  private clockSource: 'host' | 'network' | 'persisted' | 'unset' = 'unset';
+
+  /**
+   * Force the reported clock source, so a host can be tested against a radio
+   * build's `network` (contract D16) without one on the bench. The precedence
+   * rule `host > network > persisted > unset` is the firmware's; this setter
+   * states an outcome rather than modelling it.
+   */
+  setClockSource(source: 'host' | 'network' | 'persisted' | 'unset') {
+    this.clockSource = source;
+  }
   // KINO Twin §11/§13 identity override, DEVICE_INFO only — HELLO always
   // answers product 'KINO' (apps/studio session.ts rejects anything else).
   private identity = { serial: 'KINO000012', hardwareRevision: 'V1', product: 'KINO' };
@@ -630,6 +642,10 @@ export class MockKinoDevice implements MockDeviceLike {
     if (key === 'lowBattery' && value) { this.batteryV = 3.42; this.log('PWR', 'battery low 3.42 V'); }
     if (key === 'lowBattery' && !value) this.batteryV = 3.96;
     if (key === 'largeGallery2k') this.media.resize(value ? LARGE_GALLERY_SIZE : DEMO_GALLERY_SIZE);
+    if (key === 'mediaInfoAsShipped') {
+      this.media.setMediaInfoAsShipped(Boolean(value));
+      this.log('SD', value ? 'MEDIA_INFO: no per-file sha256, no meta block' : 'MEDIA_INFO: digests and meta computed');
+    }
     if (key === 'uploadBacklog') this.setUploadBacklog(Boolean(value));
     if (key === 'bootSpew' && value) this.emitBootSpew();
     this.scenarioCb?.();
@@ -2378,7 +2394,23 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, { ok: true });
         return;
       case Cmd.GET_MODES: {
-        const modes: GetModesResponse = { modes: ['wiggle', 'quad'] };
+        /* The shape the P4 actually sends (D21), not the bare string array
+         * this mock answered while the type was stale. Availability is
+         * derived here too, from the card and the camera the scenario has,
+         * so a host tested against the reference device meets the same
+         * coherence it meets on hardware. */
+        const cardIn = !this.scenarios.sdMissing;
+        const camUp = CAM_IDS.some((id) => this.cameraInfo(id).online);
+        const why = !cardIn ? 'No card' : !camUp ? 'No camera node answered' : null;
+        const modes: GetModesResponse = {
+          active: this.config.mode as GetModesResponse['active'],
+          modes: (['wiggle', 'quad'] as const).map((id) => ({
+            id,
+            name: id === 'wiggle' ? 'Wiggle' : 'Quad',
+            available: why === null,
+            unavailableReason: why,
+          })),
+        };
         this.respond(frame, modes);
         return;
       }

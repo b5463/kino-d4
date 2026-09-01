@@ -12,7 +12,7 @@ import {
   encodeFrame,
   encodeJson,
 } from '@kino/kdp';
-import type { Frame, JobProgress } from '@kino/kdp';
+import type { CaptureInfo, Frame, JobProgress } from '@kino/kdp';
 import {
   MockKinoDevice,
   RECIPE_PARITY_CASES,
@@ -661,4 +661,39 @@ describe('disconnect', () => {
     expect(mock.currentSessionId()).toBe('boot-1');
     client.dispose();
   });
+});
+
+describe('MEDIA_INFO as shipped (issue #154)', () => {
+  it('omits every per-file sha256 and the whole meta block, and refuses META.JSON to match', async () => {
+    const mock = new MockKinoDevice();
+    mock.setScenario('mediaInfoAsShipped', true);
+    const client = await connect(mock);
+
+    const page = await client.request<{ items: { id: string }[] }>(Cmd.MEDIA_LIST, { cursor: 0, limit: 1 });
+    const id = page.items[0].id;
+    const info = await client.request<CaptureInfo>(Cmd.MEDIA_INFO, { id });
+
+    expect(info.files.length).toBeGreaterThan(0);
+    for (const f of info.files) expect(f.sha256).toBeUndefined();
+    // Absent, not `{}`: an empty object passes a truthiness check and then
+    // throws on the first field read, which is the defect this reproduces.
+    expect(Object.keys(info)).not.toContain('meta');
+    expect(info.files[0].sizeBytes).toBeGreaterThan(0);
+
+    // The document `meta` is read out of is not readable either, so a host
+    // cannot recover through MEDIA_READ what MEDIA_INFO said is not there.
+    await expect(client.request(Cmd.MEDIA_READ, { id, file: 'META.JSON' })).rejects.toThrow(/NOT_FOUND|No META/i);
+  }, 20000);
+
+  it('computes both again when the scenario is switched off', async () => {
+    const mock = new MockKinoDevice();
+    mock.setScenario('mediaInfoAsShipped', true);
+    mock.setScenario('mediaInfoAsShipped', false);
+    const client = await connect(mock);
+
+    const page = await client.request<{ items: { id: string }[] }>(Cmd.MEDIA_LIST, { cursor: 0, limit: 1 });
+    const info = await client.request<CaptureInfo>(Cmd.MEDIA_INFO, { id: page.items[0].id });
+    expect(info.files[0].sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(info.meta?.p4Firmware).toBeDefined();
+  }, 20000);
 });

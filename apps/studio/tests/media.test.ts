@@ -51,7 +51,8 @@ describe('media over the protocol', () => {
     // was never in the MEDIA_READ allow-list nor on the card — the download
     // has to use the name MEDIA_INFO reported.
     expect(info.files[0].name).toBe('C1.JPG');
-    const data = await downloadCaptureFile(device, info, info.files[0].name, new TransferHandle());
+    const { data, verified } = await downloadCaptureFile(device, info, info.files[0].name, new TransferHandle());
+    expect(verified).toBe(true);
     expect(data.length).toBe(info.files[0].sizeBytes);
     expect(await sha256Hex(data)).toBe(info.files[0].sha256);
     // JPEG magic survives the trip

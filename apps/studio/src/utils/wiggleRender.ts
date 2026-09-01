@@ -32,7 +32,10 @@ export function captureOffsets(
   info: Pick<CaptureInfo, 'meta'> | null,
   live: LiveCamOffsets | null,
 ): CamOffset[] {
-  const recorded = info?.meta.calibration?.cams;
+  // `meta` itself is optional: a capture folder with no readable META.JSON
+  // answers MEDIA_INFO without it (contract D20). Absent meta means no
+  // recorded calibration, which is the live-calibration fallback below.
+  const recorded = info?.meta?.calibration?.cams;
   return CAM_IDS.map((id) => {
     const c = recorded !== undefined ? recorded[id] : live?.cams[id];
     return { x: c?.x ?? 0, y: c?.y ?? 0, rot: c?.rot ?? 0 };

@@ -66,6 +66,45 @@ typedef enum {
   VF_ERROR,       /* answered, but the frame did not decode */
 } vf_state_t;
 
+/*
+ * Why a preview frame did not become a picture.
+ *
+ * Every one of these used to be a silent `return false` in pump_camera(): the
+ * pane went to VF_ERROR or VF_NO_LINK, the pump backed off, and nothing was
+ * written down. From the outside that is indistinguishable from a camera that
+ * is merely slow, which is the ambiguity that made "the preview is freezing"
+ * take an hour at the bench. The answer turned out to be bench traffic
+ * contending for the same UART, and no counter in this firmware could have
+ * said so.
+ *
+ * Five reasons rather than the one oversize case that was reported, because
+ * they are the same defect: a short read and a refused decode were equally
+ * silent, and telling them apart is the whole diagnostic value. VF_ERROR alone
+ * cannot - it is the state for three of them.
+ *
+ * Counted per camera, always. Logged rate-limited, and only for the reasons
+ * where the node ANSWERED and the frame still failed - see vf_drop() in
+ * viewfinder.c for why VF_DROP_NO_LINK is counted silently.
+ */
+typedef enum {
+  VF_DROP_NO_LINK = 0, /* the capture request never came back */
+  VF_DROP_EMPTY,       /* answered, with a zero-byte frame */
+  VF_DROP_OVERSIZE,    /* bigger than the JPEG buffer - nowhere to put it */
+  VF_DROP_SHORT_READ,  /* the chunked read stopped before the declared size */
+  VF_DROP_DECODE,      /* the bytes arrived; the JPEG engine refused them */
+  VF_DROP_REASONS,
+} vf_drop_t;
+
+/**
+ * Short label for a drop reason.
+ *
+ * camelCase and no spaces so the same string serves as a klog word and as a
+ * JSON key under `viewfinder.drops` in CAMERA_STATUS - one vocabulary, so a
+ * line in the ring and a field on the wire cannot drift apart. "?" for an
+ * out-of-range reason rather than an out-of-bounds read.
+ */
+const char *vf_drop_str(vf_drop_t reason);
+
 typedef struct {
   vf_state_t state;
   uint32_t frames;    /* frames decoded since boot */
@@ -73,6 +112,14 @@ typedef struct {
   uint32_t bytes;     /* size of the newest JPEG */
   uint32_t fps_x10;   /* measured, times ten - a viewfinder's rate is the
                        * headline number for whether this is usable at all */
+  /* Frames that never became a picture, per reason, since boot. Indexed by
+   * vf_drop_t.
+   *
+   * Cumulative and never reset: a reader wants a RATE, and two readings of a
+   * monotonic counter give one, where a counter that clears itself on read
+   * loses whatever happened between two polls - which on a 17 Hz path is most
+   * of it. */
+  uint32_t drops[VF_DROP_REASONS];
 } vf_status_t;
 
 /** Start the preview loop. Safe without any node wired. */

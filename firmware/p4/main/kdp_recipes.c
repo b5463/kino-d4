@@ -385,6 +385,22 @@ bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
 /* Commands                                                            */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The BUSY reply, once.
+ *
+ * Four sites here said "Card is busy with a capture" on any card-lock timeout,
+ * whatever was holding it - one of them fired at the bench while the holder was
+ * the gallery's index rebuild, and sent a session looking for a capture that was
+ * not running. storage.c owns the wording (storage_card_busy_message), because
+ * it is the only thing that knows the answer and because identical text in six
+ * places is how a message stays wrong in all six.
+ */
+static kdp_module_reply_t busy_card(void) {
+  char msg[96];
+  storage_card_busy_message(msg, sizeof msg);
+  return kdp_module_fail("BUSY", msg);
+}
+
 static kdp_module_reply_t handle_get_recipes(void) {
   cJSON *json = cJSON_CreateObject();
   cJSON *factory = cJSON_AddArrayToObject(json, "factory");
@@ -435,7 +451,7 @@ static kdp_module_reply_t handle_set_recipe(const cJSON *req) {
     bool took = false;
     if (!s_custom_valid) {
       if (!storage_acquire_unless_held(STORAGE_USER_UI, RECIPES_CARD_WAIT_MS, &took))
-        return kdp_module_fail("BUSY", "Card is busy with a capture");
+        return busy_card();
       custom_sync();
       storage_release_if_taken(STORAGE_USER_UI, took);
     }
@@ -513,7 +529,7 @@ static kdp_module_reply_t handle_upload_recipe(const cJSON *req) {
   bool took = false;
   if (!storage_acquire_unless_held(STORAGE_USER_UI, RECIPES_CARD_WAIT_MS, &took)) {
     cJSON_free(text);
-    return kdp_module_fail("BUSY", "Card is busy with a capture");
+    return busy_card();
   }
   custom_sync();
 
@@ -599,7 +615,7 @@ static kdp_module_reply_t handle_delete_recipe(const cJSON *req) {
 
   bool took = false;
   if (!storage_acquire_unless_held(STORAGE_USER_UI, RECIPES_CARD_WAIT_MS, &took)) {
-    return kdp_module_fail("BUSY", "Card is busy with a capture");
+    return busy_card();
   }
 
   char path[160];
@@ -653,7 +669,7 @@ kdp_module_reply_t kdp_recipes_handle(uint8_t cmd, const cJSON *req) {
       if (s_custom_count == 0 && s_custom_valid) return handle_get_recipes();
       bool took = false;
       if (!storage_acquire_unless_held(STORAGE_USER_UI, RECIPES_CARD_WAIT_MS, &took)) {
-        return kdp_module_fail("BUSY", "Card is busy with a capture");
+        return busy_card();
       }
       custom_sync();
       kdp_module_reply_t reply = handle_get_recipes();

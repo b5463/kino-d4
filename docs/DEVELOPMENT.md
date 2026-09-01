@@ -165,6 +165,26 @@ Studio's FIRMWARE BUILDER drives the same steps through `npm run firmware:daemon
 
 Firmware behavior implements [`firmware-contract/`](../firmware-contract/README.md); pin assumptions live only in the two board headers and stay provisional until the bench record in `firmware/HARDWARE_VALIDATION.md` proves them.
 
+## Bench tools
+
+Both talk KDP over a serial port from a terminal, on the framing and protocol client `packages/kdp` gives Studio — no browser, no Web Serial, no clicking. `KINO_PORT` is the fallback for `--port`.
+
+```bash
+# One command, or the ordered link check (§7 of the M1 runbook).
+npx tsx scripts/kino-bench.mjs --port COM8 GET_DEVICE_INFO
+npx tsx scripts/kino-bench.mjs --port COM8 --sanity
+
+# The 32-case protocol conformance suite — the same cases Studio's DEVELOPER
+# panel runs, imported rather than reimplemented. 8 of the 32 are ACTIVE: they
+# take real photographs, write config, and enter maintenance. Firmware and
+# serial are printed at the top so a pasted run identifies itself.
+npx tsx scripts/kino-conformance.mjs --port COM8
+npx tsx scripts/kino-conformance.mjs --port COM8 --passive          # read-only 24
+npx tsx scripts/kino-conformance.mjs --port COM8 --json bench.json  # machine record
+```
+
+Exit status is 0 only when every reported case is `pass` or `skipped`, so the run belongs in a bench record verbatim. Per-command timeouts are the protocol client's; `--timeout` is a watchdog over the whole run.
+
 ## Schema changes
 
 Portable documents use independent versions and stepwise migrations. Parsers preserve unknown fields so an older Studio can read, modify, and write a newer device document without stripping data.

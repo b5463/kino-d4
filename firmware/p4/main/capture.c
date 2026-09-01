@@ -1594,6 +1594,8 @@ bool capture_request(const char *source) {
   return xQueueSend(s_requests, slot, 0) == pdTRUE;
 }
 
+uint32_t capture_ready_cams(void) { return s_workers_ready; }
+
 capture_stage_t capture_stage(void) { return s_stage; }
 
 void capture_ack(void) {

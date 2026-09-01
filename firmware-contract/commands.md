@@ -573,6 +573,10 @@ Gallery access through the P4 file server. Never send the whole gallery (04§9).
 (`[{ "name": "C1.JPG", "sizeBytes", "sha256" }]`) and `meta` (`flash`, `batteryV`, `p4Firmware`,
 `cameraFirmware`, `gpioSkewUs`, `exposure[]`).
 
+`files[].sha256` and `meta` are both **optional**: 0.1.0+ never computes a digest and attaches
+`meta` only when the capture's `META.JSON` parsed. A host reports a download with no digest as
+unverified and prints a dash for every `meta` row — see D20 in [`README.md`](README.md).
+
 `meta.calibration` is an **optional, additive** member (no protocol version bump):
 `{ "version": "cal-…", "cams": { "cam1": { "x": 0, "y": 0, "rot": 0 }, … } }` — the alignment
 calibration as it was at the shutter press, x/y in sensor pixels at the 1600-wide base, rot in

@@ -4,7 +4,7 @@
 
 import type { KinoDevice } from '../device/KinoDevice';
 import { Cmd, KinoCommandError, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
-import type { SoakTestSummary } from '@kino/kdp';
+import type { CamId, GetModesResponse, SoakTestSummary } from '@kino/kdp';
 
 export type ConformanceStatus = 'pass' | 'shape' | 'unsupported' | 'timeout' | 'error' | 'skipped';
 
@@ -32,6 +32,27 @@ interface Ctx {
   gallery?: boolean;
   /** Set by the GET_CAPABILITIES case; gates the bench-diagnostics cases. */
   bench?: boolean;
+  /**
+   * The camera channels that answered `GET_CAMERA_INFO`, set by that case.
+   *
+   * A bench unit is normally populated one camera at a time, and a case that
+   * fires a per-camera command at an unfitted channel reported ERROR — "Camera
+   * node not connected" — which is the hardware being honest, not the
+   * firmware being wrong. Red that a person learns to ignore is worse than no
+   * case at all, so those cases skip and name the channel.
+   */
+  onlineCams?: CamId[];
+}
+
+/**
+ * Skip reason for a per-camera case, or null to run it.
+ *
+ * Undefined `onlineCams` means GET_CAMERA_INFO did not answer; the case runs
+ * rather than skipping, because "we do not know" must not silence a test.
+ */
+function camMissing(ctx: Ctx, cam: CamId): string | null {
+  if (ctx.onlineCams === undefined) return null;
+  return ctx.onlineCams.includes(cam) ? null : `skipped — ${cam.toUpperCase()} is not fitted on this unit`;
 }
 
 interface Case {
@@ -50,12 +71,14 @@ const CASES: Case[] = [
       const r = await dev.hello(nonce, 1500);
       expectKeys(r, ['product', 'protocol'], 'HELLO');
       if (r.nonce !== undefined && r.nonce !== nonce) throw new ShapeError('HELLO: nonce not echoed');
-      /* A device that reports a clock source must report one of the three we
+      /* A device that reports a clock source must report one of the four we
        * know how to interpret. `unset` is a perfectly good answer from a body
        * that has never been told the time - what would not be is a plausible
-       * timestamp with nothing saying where it came from. */
+       * timestamp with nothing saying where it came from. `network` is the
+       * radio build's SNTP answer (contract D16); this check rejected it and
+       * failed HELLO on a body that was behaving correctly. */
       const clock = r.clockSource;
-      if (clock !== undefined && !['host', 'persisted', 'unset'].includes(clock)) {
+      if (clock !== undefined && !['host', 'network', 'persisted', 'unset'].includes(clock)) {
         throw new ShapeError(`HELLO: unknown clockSource ${String(clock)}`);
       }
       const clockNote = clock === undefined ? 'no clock' : `clock ${clock}`;
@@ -97,11 +120,13 @@ const CASES: Case[] = [
   {
     name: 'GET_CAMERA_INFO',
     active: false,
-    run: async (dev) => {
+    run: async (dev, ctx) => {
       const r = await dev.getCameraInfo();
       if (!Array.isArray(r.cameras) || r.cameras.length !== 4) throw new ShapeError('CAMERA_INFO: needs 4 cameras');
       expectKeys(r.cameras[0], ['id', 'online', 'sensor', 'firmware', 'state'], 'CAMERA_INFO[0]');
-      return `${r.cameras.filter((c) => c.online).length}/4 online`;
+      // Which channels are populated, for the per-camera cases below.
+      ctx.onlineCams = r.cameras.filter((c) => c.online).map((c) => c.id);
+      return `${ctx.onlineCams.length}/4 online`;
     },
   },
   {
@@ -148,9 +173,26 @@ const CASES: Case[] = [
     name: 'GET_MODES',
     active: false,
     run: async (dev) => {
-      const r = await dev.client.request<{ modes: string[] }>(0x20);
-      if (!Array.isArray(r.modes) || !r.modes.includes('wiggle')) throw new ShapeError('MODES: missing wiggle');
-      return r.modes.join(', ');
+      const r = await dev.client.request<GetModesResponse>(0x20);
+      if (!Array.isArray(r.modes)) throw new ShapeError('MODES: modes is not an array');
+      const wiggle = r.modes.find((m) => m?.id === 'wiggle');
+      if (!wiggle) throw new ShapeError('MODES: missing wiggle');
+      if (typeof wiggle.available !== 'boolean') throw new ShapeError('MODES: available is not a boolean');
+      // Availability and its reason must agree. A mode that is unavailable for
+      // no stated reason, or available with one, is the defect this case exists
+      // to catch: both fields were hardcoded constants until firmware 0.4.18.
+      for (const m of r.modes) {
+        if (m.available && m.unavailableReason !== null) {
+          throw new ShapeError(`MODES: ${m.id} is available and still gives a reason`);
+        }
+        if (!m.available && !m.unavailableReason) {
+          throw new ShapeError(`MODES: ${m.id} is unavailable with no reason`);
+        }
+      }
+      if (r.active !== 'wiggle' && r.active !== 'quad') {
+        throw new ShapeError(`MODES: unknown active mode ${String(r.active)}`);
+      }
+      return `active ${r.active} · ${r.modes.map((m) => `${m.id} ${m.available ? 'ok' : 'off'}`).join(', ')}`;
     },
   },
   {
@@ -263,6 +305,8 @@ const CASES: Case[] = [
     active: true,
     run: async (dev, ctx) => {
       if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const absent = camMissing(ctx, 'cam1');
+      if (absent) return absent;
       const r = await dev.cameraTest('cam1');
       expectKeys(r, ['ok', 'captureUuid', 'timing', 'checksums', 'memory'], 'CAMERA_TEST 1B');
       expectKeys(r.timing, ['requestToNodeMs', 'captureCommandToJpegReadyMs', 'jpegTransferMs', 'sdWriteMs', 'totalMs'], 'CAMERA_TEST.timing');
@@ -276,6 +320,8 @@ const CASES: Case[] = [
     active: true,
     run: async (dev, ctx) => {
       if (ctx.bench !== true) return 'skipped — pre-1B firmware';
+      const absent = camMissing(ctx, 'cam1');
+      if (absent) return absent;
       const handle = await dev.client.startJob<SoakTestSummary>(Cmd.CAMERA_SOAK_TEST, {
         cam: 'cam1',
         captures: 2,
@@ -299,7 +345,26 @@ const CASES: Case[] = [
     active: true,
     run: async (dev, ctx) => {
       if (ctx.gallery !== true) return 'skipped — no capture pipeline in this firmware';
-      const r = await dev.captureNow();
+      /*
+       * Wait for the pipeline to be idle before asking.
+       *
+       * CAMERA_SOAK_TEST runs immediately before this case and its captures
+       * are still committing when this one fires: on the bench, 0.4.18
+       * answered `A capture is already running` where 0.4.17 happened to be
+       * slow enough to pass. That is the suite racing itself, not a device
+       * defect, and a bench tool that reports red for its own ordering
+       * teaches people to ignore red. One retry after a real settle, because
+       * a SECOND refusal is worth reporting: it means something is holding
+       * the pipeline that no case in this run started.
+       */
+      let r;
+      try {
+        r = await dev.captureNow();
+      } catch (err) {
+        if (!(err instanceof KinoCommandError) || err.code !== 'BUSY') throw err;
+        await new Promise((res) => setTimeout(res, 4000));
+        r = await dev.captureNow();
+      }
       expectKeys(r, ['ok', 'schema', 'id', 'captureUuid', 'mode', 'frameCount', 'status', 'timing'], 'CAPTURE');
       if (r.schema !== 'kino.capture') throw new ShapeError(`CAPTURE: schema ${r.schema}`);
       if (r.frameCount < 1) throw new ShapeError('CAPTURE: reported ok with no frames');
@@ -343,6 +408,15 @@ const CASES: Case[] = [
       if (ctx.gallery !== true) return 'skipped — no capture pipeline in this firmware';
       const caps = await dev.getCapabilities();
       if (caps.capabilities.vsyncTelemetry === true) {
+        /* A spread across four cameras cannot be measured with three. A body
+         * that advertises vsyncTelemetry and has a channel unpopulated
+         * refuses the request, which is correct of it and not a protocol
+         * failure — so this skips and says which channels answered. A body
+         * that reports vsyncTelemetry: false takes the refusal branch below
+         * whatever is fitted. */
+        if (ctx.onlineCams !== undefined && ctx.onlineCams.length !== 4) {
+          return `skipped — needs 4 cameras, ${ctx.onlineCams.length} fitted (${ctx.onlineCams.join(', ') || 'none'})`;
+        }
         const r = await dev.timingTest();
         expectKeys(r, ['cams', 'gpioSpreadUs', 'vsyncSpreadUs', 'exposureSpreadUs', 'vsyncMeasured'], 'TIMING');
         if (!Array.isArray(r.cams) || r.cams.length !== 4) throw new ShapeError('TIMING: needs 4 cameras');
@@ -385,7 +459,11 @@ const CASES: Case[] = [
     run: async (dev, ctx) => {
       if (!ctx.captureId) return 'skipped — empty card';
       const r = await dev.mediaInfo(ctx.captureId);
-      expectKeys(r, ['files', 'meta'], 'MEDIA_INFO');
+      /* `meta` is not required. The handler attaches it only when the
+       * capture's META.JSON parsed (contract D20), so demanding the key here
+       * would fail a body that is behaving as the contract says. Its presence
+       * is reported below instead. */
+      expectKeys(r, ['files'], 'MEDIA_INFO');
       /*
        * Files present, not four files.
        *
@@ -412,7 +490,7 @@ const CASES: Case[] = [
        * link for seconds. Absent is reported, not failed. */
       const digests = r.files.filter((f) => typeof f.sha256 === 'string' && f.sha256.length === 64).length;
       ctx.fileName = r.files[0].name;
-      return `${ctx.captureId} · ${r.files.length} file(s) · ${digests} digest(s)`;
+      return `${ctx.captureId} · ${r.files.length} file(s) · ${digests} digest(s) · meta ${r.meta ? 'present' : 'absent'}`;
     },
   },
   {
@@ -420,6 +498,19 @@ const CASES: Case[] = [
     active: false,
     run: async (dev, ctx) => {
       if (!ctx.captureId) return 'skipped — empty card';
+      /*
+       * Not every capture on a card has a thumbnail, and this suite makes the
+       * ones that do not. CAMERA_TEST stores a `TC_*` single-frame capture
+       * with C1.JPG and no THUMB.JPG, and it runs before this case, so on the
+       * bench MEDIA_INFO's newest-capture pick landed on one and this case
+       * reported `error` for a body behaving correctly. Ask the capture
+       * whether it has one, and say so rather than fail if it does not.
+       */
+      const info = await dev.mediaInfo(ctx.captureId);
+      const hasThumb = info.files.some((f) => f.name.toUpperCase() === 'THUMB.JPG');
+      if (!hasThumb) {
+        return `skipped — ${ctx.captureId} carries no THUMB.JPG (a CAMERA_TEST capture does not write one)`;
+      }
       const bytes = await dev.mediaThumb(ctx.captureId);
       if (bytes.length < 100) throw new ShapeError('THUMB: too small to be a JPEG');
       if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new ShapeError('THUMB: not a JPEG');
@@ -486,7 +577,9 @@ const CASES: Case[] = [
   {
     name: 'CAMERA_TEST (CAM2)',
     active: true,
-    run: async (dev) => {
+    run: async (dev, ctx) => {
+      const absent = camMissing(ctx, 'cam2');
+      if (absent) return absent;
       const r = await dev.cameraTest('cam2');
       expectKeys(r, ['ok', 'jpegKB'], 'CAMERA_TEST');
       return `jpeg ${r.jpegKB} KB in ${r.durationMs} ms`;
@@ -495,10 +588,17 @@ const CASES: Case[] = [
   {
     name: 'CAMERA_PREVIEW frame',
     active: true,
-    run: async (dev) => {
-      const bytes = await dev.previewFrame('cam2');
+    run: async (dev, ctx) => {
+      /* Aimed at a channel that is actually populated rather than at CAM2 by
+       * name: on a one-camera bench unit the hardcoded CAM2 turned an
+       * UNSUPPORTED_COMMAND answer — the thing this case is here to record —
+       * into "CAM2 is offline". The first online channel is enough to learn
+       * whether the opcode exists. */
+      const cam = ctx.onlineCams?.[0];
+      if (ctx.onlineCams !== undefined && cam === undefined) return 'skipped — no camera is fitted on this unit';
+      const bytes = await dev.previewFrame(cam ?? 'cam2');
       if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new ShapeError('PREVIEW: not a JPEG');
-      return `${bytes.length} bytes`;
+      return `${(cam ?? 'cam2').toUpperCase()} · ${bytes.length} bytes`;
     },
   },
   {

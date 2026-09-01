@@ -12,6 +12,9 @@ export * from './protocol/KinoProtocolClient';
 
 export * from './transport/Transport';
 export * from './transport/SerialTransport';
+// Safe in the barrel because it imports nothing Node-only: the caller supplies
+// the port object. See the header of NodeSerialTransport.ts.
+export * from './transport/NodeSerialTransport';
 export * from './transport/MockTransport';
 export * from './transport/BroadcastTransport';
 export * from './transport/WebSocketTransport';

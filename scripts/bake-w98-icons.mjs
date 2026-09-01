@@ -16,6 +16,18 @@
 // DIB, and palette PNG. Both decoders are here rather than pulled in as a
 // dependency - the whole bake is 400 lines and has no node_modules.
 //
+// The header stores each icon PALETTE-INDEXED: one byte per pixel into a
+// per-icon RGB565 table, with index 0 meaning transparent. These are shell
+// icons - the widest of them uses 85 colours out of 2304 pixels - so a
+// straight RGB565 plane plus a byte-per-pixel alpha plane spent 3 bytes on
+// every pixel to carry at most 8 bits of information. Indexed costs 1 byte
+// per pixel plus at most 512 bytes of table, and it drops the alpha plane
+// entirely because "transparent" is just index 0. Measured over the seven
+// icons: 36,864 bytes of image data becomes 12,786, all of it flash the
+// radio image did not have to spare. Nothing about the picture changes -
+// every pixel decodes to the exact RGB565 value it had before - and the
+// unpacking happens once in icons_build(), never on a repaint.
+//
 // The artwork is Microsoft's. See THIRD_PARTY_NOTICES.md; the REUSE
 // annotation on the generated header records that and grants nothing.
 //
@@ -347,6 +359,13 @@ function emit(baked) {
   L.push('// by nearest neighbour, so the original pixels survive - these are pixel');
   L.push('// art, and an interpolating resampler destroys the thing worth keeping.');
   L.push('//');
+  L.push('// Stored palette-indexed: one byte per pixel into a per-icon RGB565 table,');
+  L.push('// index 0 being transparent. The widest of these uses 85 colours across');
+  L.push('// 2304 pixels, so a full RGB565 plane plus a byte-per-pixel alpha plane was');
+  L.push('// spending 3 bytes a pixel to carry 8 bits - 36,864 bytes of flash against');
+  L.push('// 12,786 for the same pixels indexed. icons.c expands to RGB565 + alpha in');
+  L.push('// PSRAM once at start-up, so the draw path is unchanged.');
+  L.push('//');
   for (const [key, s] of Object.entries(SRC)) {
     L.push(`// Source (${key}): https://github.com/${s.repo} @ ${s.commit}`);
   }
@@ -366,28 +385,27 @@ function emit(baked) {
   L.push(`#define W98_MENU_COUNT ${baked.length - 1}   /* the last entry is the battery */`);
   L.push('');
   L.push('typedef struct {');
-  L.push('  const char *name;      /* source file in the archive */');
   L.push('  uint8_t n;             /* native edge, 32 or 48 */');
   L.push('  uint8_t scale;         /* integer factor up to the tile box */');
-  L.push('  const uint16_t *rgb;   /* n*n RGB565 */');
-  L.push('  const uint8_t *alpha;  /* n*n, 0 or 255 - the ICO mask is 1 bit */');
+  L.push('  uint16_t ncol;         /* palette entries, slot 0 included */');
+  L.push('  const uint16_t *pal;   /* ncol RGB565 entries; slot 0 is transparent */');
+  L.push('  const uint8_t *idx;    /* n*n palette indices, 0 meaning transparent */');
   L.push('} w98_icon_t;');
   L.push('');
 
   for (const b of baked) {
-    L.push(`/* ${b.sym} - ${b.file}.ico, ${b.n}x${b.n} at ${b.bits} bpp, drawn at ${b.scale}x.`);
+    L.push(`/* ${b.sym} - ${b.file}.${SRC[b.src].ext}, ${b.n}x${b.n} at ${b.bits} bpp, drawn at ${b.scale}x`);
+    L.push(` * in ${b.pal.length - 1} colours.`);
     L.push(` * ${b.why} */`);
-    L.push(`static const uint16_t W98_${b.sym}_RGB[${b.n} * ${b.n}] = {`);
-    for (let y = 0; y < b.n; y++) {
-      const row = [];
-      for (let x = 0; x < b.n; x++) row.push('0x' + b.rgb[y * b.n + x].toString(16).padStart(4, '0'));
-      L.push('    ' + row.join(', ') + ',');
+    L.push(`static const uint16_t W98_${b.sym}_PAL[${b.pal.length}] = {`);
+    for (let i = 0; i < b.pal.length; i += 12) {
+      L.push('    ' + b.pal.slice(i, i + 12).map((c) => '0x' + c.toString(16).padStart(4, '0')).join(', ') + ',');
     }
     L.push('};');
-    L.push(`static const uint8_t W98_${b.sym}_A[${b.n} * ${b.n}] = {`);
+    L.push(`static const uint8_t W98_${b.sym}_IDX[${b.n} * ${b.n}] = {`);
     for (let y = 0; y < b.n; y++) {
       const row = [];
-      for (let x = 0; x < b.n; x++) row.push(String(b.alpha[y * b.n + x]).padStart(3, ' '));
+      for (let x = 0; x < b.n; x++) row.push(String(b.idx[y * b.n + x]).padStart(3, ' '));
       L.push('    ' + row.join(', ') + ',');
     }
     L.push('};');
@@ -397,7 +415,7 @@ function emit(baked) {
   L.push('/* Menu order: MODE, LOOK, GALLERY, ROLL, SETTINGS, POWER, then BATTERY. */');
   L.push('static const w98_icon_t W98_ICONS[W98_COUNT] = {');
   for (const b of baked) {
-    L.push(`    {"${b.file}", ${b.n}, ${b.scale}, W98_${b.sym}_RGB, W98_${b.sym}_A},`);
+    L.push(`    {${b.n}, ${b.scale}, ${b.pal.length}, W98_${b.sym}_PAL, W98_${b.sym}_IDX},  /* ${b.file} */`);
   }
   L.push('};');
   L.push('');
@@ -427,11 +445,32 @@ async function main() {
        * needs a matte this pipeline does not carry. 128 is the midpoint. */
       alpha[i] = rgba[i * 4 + 3] >= 128 ? 255 : 0;
     }
+    /* Index the pixels. Slot 0 is the transparent one and holds black, so a
+     * decoder that ignores coverage still writes something defined. Colours
+     * are added in raster order, which makes the table a deterministic
+     * function of the artwork - the --check diff would be worthless if this
+     * depended on Map iteration or a sort that ties. */
+    const pal = [0x0000];
+    const slot = new Map();
+    const idx = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (!alpha[i]) continue; /* idx stays 0 */
+      let k = slot.get(rgb[i]);
+      if (k === undefined) {
+        k = pal.length;
+        if (k > 255) throw new Error(`${icon.file}: over 255 opaque colours, too many for a byte index`);
+        pal.push(rgb[i]);
+        slot.set(rgb[i], k);
+      }
+      idx[i] = k;
+    }
+
     const opaque = alpha.reduce((a, v) => a + (v ? 1 : 0), 0);
-    baked.push({ ...icon, n: w, scale, rgb, alpha, bits: 'best' });
+    baked.push({ ...icon, n: w, scale, pal, idx, bits: 'best' });
     process.stdout.write(
       `${icon.sym.padEnd(9)} ${icon.file.padEnd(24)} ${w}x${w} x${scale} -> ${w * scale}px  ` +
-      `${Math.round((100 * opaque) / (w * h))}% opaque  sha ${icon.gotSha.slice(0, 12)}\n`,
+      `${Math.round((100 * opaque) / (w * h))}% opaque  ${pal.length - 1} colours  ` +
+      `sha ${icon.gotSha.slice(0, 12)}\n`,
     );
   }
 

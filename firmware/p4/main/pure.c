@@ -329,3 +329,57 @@ bool pure_api_base_ok(const char *url) {
   }
   return true;
 }
+
+
+ui_health_report_t ui_health_step(ui_health_t *h, bool present_due, bool frames_advanced,
+                                  bool input_latched) {
+  if (h == NULL) return UI_HEALTH_QUIET;
+
+  if (input_latched) {
+    /* Saturating: at one tick a second this is 18 hours, and a wrap would let
+     * a permanently stuck latch look briefly un-stuck. */
+    if (h->latch_ticks < UINT16_MAX) h->latch_ticks++;
+  } else {
+    h->latch_ticks = 0;
+  }
+
+  /* The cause before the symptom - see the header note. */
+  if (!h->latch_stuck && h->latch_ticks >= PURE_UI_LATCH_TICKS) {
+    h->latch_stuck = true;
+    return UI_HEALTH_LATCH_STUCK;
+  }
+  if (h->latch_stuck && h->latch_ticks == 0) {
+    h->latch_stuck = false;
+    return UI_HEALTH_LATCH_CLEARED;
+  }
+
+  if (!h->stalled) {
+    if (present_due && !frames_advanced) {
+      h->stalled = true;
+      return UI_HEALTH_STALLED;
+    }
+    return UI_HEALTH_QUIET;
+  }
+
+  /* Two ways out, and they are not the same news. A frame arriving means the
+   * compositor recovered. Work draining without one means the screen stopped
+   * needing a frame it never drew - the episode is over and something was
+   * dropped - and saying "presenting again" there would be a fresh lie of
+   * exactly the kind this function exists to remove. */
+  if (frames_advanced) {
+    h->stalled = false;
+    return UI_HEALTH_PRESENTING;
+  }
+  if (!present_due) {
+    h->stalled = false;
+    return UI_HEALTH_STALL_ENDED;
+  }
+  return UI_HEALTH_QUIET;
+}
+
+const char *capture_unavailable_reason(bool card_mounted, bool any_camera_ready) {
+  /* capture_fire()'s own order. The first blocking fact is the useful one. */
+  if (!card_mounted) return "No card to write the capture to";
+  if (!any_camera_ready) return "No camera node answered";
+  return NULL;
+}

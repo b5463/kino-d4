@@ -79,7 +79,10 @@ export function useCaptureFrames(source: CaptureSource, summaryId: string): Capt
           });
         });
         if (cancelled) return;
-        created = files.map(toFrame);
+        // `verified` is not carried onto a frame: what the inspector shows is
+        // whether the camera declared digests at all, and CaptureMeta reads
+        // that off `info.files` — the same fact downloadCaptureFile checked.
+        created = files.map(({ name, data }) => toFrame({ name, data }));
         setFrames(created);
       } catch (err) {
         if (!cancelled && !(err instanceof TransferCancelled)) {

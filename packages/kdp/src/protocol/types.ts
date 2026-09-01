@@ -54,14 +54,22 @@ export interface HelloResponse {
    */
   sessionId?: string | number;
   /**
-   * What the device's clock is worth right now.
+   * What the device's clock is worth right now, in precedence order
+   * `host > network > persisted > unset` (`clock.h`).
    *
-   * `host` — a host set it this session. `persisted` — restored across a power
-   * cycle and drifting, so it is a lower bound rather than a reading.
-   * `unset` — the device has never been told the time and its timestamps are
-   * uptime since the epoch. Absent on firmware without a clock at all.
+   * `host` — a host set it this session. `network` — an SNTP answer from the
+   * C6 radio; better than a time carried across a power cycle, worse than one
+   * a bench operator typed in, and kept distinct because
+   * `clock_trustworthy_for_tls()` decides whether a certificate may be
+   * validated against it at all. `persisted` — restored across a power cycle
+   * and drifting, so it is a lower bound rather than a reading. `unset` — the
+   * device has never been told the time and its timestamps are uptime since
+   * the epoch. Absent on firmware without a clock at all.
+   *
+   * A consumer must not collapse `network` into `host` (that claims a person
+   * set the time) or into `persisted` (that claims it drifts).
    */
-  clockSource?: 'host' | 'persisted' | 'unset';
+  clockSource?: 'host' | 'network' | 'persisted' | 'unset';
 }
 
 // ---- Capability negotiation ----
@@ -272,6 +280,22 @@ export interface CameraInfo {
      */
     gpioSkewUs: number;
   } | null;
+  /**
+   * What the preview pump did on this channel. Optional and additive;
+   * firmware 0.4.18+.
+   *
+   * `drops` is keyed by reason and cumulative for the session — two readings
+   * give a rate, where a self-clearing counter would lose whatever happened
+   * between polls. Before this, a frame the finder refused was indistinguish-
+   * able from a camera that was merely slow, which is a diagnosis that costs
+   * an hour at the bench. `noLink` counts and is deliberately never logged:
+   * on a V1 body three channels are unwired and would otherwise flood the ring.
+   */
+  viewfinder?: {
+    frames: number;
+    fpsX10: number;
+    drops: Record<string, number>;
+  };
   /** Present only on autofocus sensors (capability `autofocus`); undefined
    * on OV3660 modules — absence means "this camera has no focus to report". */
   focus?: CameraFocus;
@@ -525,13 +549,46 @@ export interface HwValidationReport {
 
 export type ShootMode = 'wiggle' | 'quad';
 
+/** One entry of GET_MODES. */
+export interface ModeOption {
+  id: ShootMode;
+  /** Display name as the camera spells it ("Wiggle", "Quad"). */
+  name: string;
+  /**
+   * Whether the shutter would accept this mode NOW. Derived, not a constant:
+   * the P4 answers from the same predicate `capture_fire()` uses (a mounted
+   * card, then a camera node that answered), so `true` means a capture
+   * requested this instant would be taken.
+   */
+  available: boolean;
+  /**
+   * Why not, in the camera's own words, or `null` when available. The field is
+   * always present so a host never has to distinguish absent from null.
+   */
+  unavailableReason: string | null;
+}
+
 /**
- * GET_MODES (0x20). The modes this device will accept in SET_MODE, so a host
- * does not have to assume the whole `ShootMode` union is available. Firmware
- * that ships one mode answers a one-element list rather than NACKing.
+ * GET_MODES (0x20). The modes this device will accept in SET_MODE, with
+ * whether each one can be shot right now, so a host does not have to assume
+ * the whole `ShootMode` union is available.
+ *
+ * This type described `{ modes: ShootMode[] }` — a bare string array — until
+ * 2026-09-01. The P4 has answered objects with an `active` selection since
+ * the capture pipeline landed, and nothing caught the divergence: the mock
+ * matched the stale type, and the only reader was a conformance case that had
+ * never been run against hardware (the suite was browser-only until #155).
+ * The richer shape wins because the availability it carries is the point —
+ * D21 records the reconciliation.
  */
 export interface GetModesResponse {
-  modes: ShootMode[];
+  /**
+   * The stored selection, which survives a reboot. It may name a mode that is
+   * currently unavailable — that pair is coherent and is what the camera will
+   * shoot once the reason clears.
+   */
+  active: ShootMode;
+  modes: ModeOption[];
 }
 
 /**
@@ -745,6 +802,24 @@ export interface RuntimeStats {
      */
     droppedTxFrames?: number;
   };
+  /**
+   * The display loop's own liveness. Optional and additive; firmware 0.4.18+.
+   *
+   * There is no watchdog on the UI task, so before this a wedged display was
+   * invisible to a host: the KDP task answers on its own priority and every
+   * other field looked healthy. `lastPassAgeMs` growing without bound is a
+   * stopped loop (healthy is 20-90 ms, the loop's own delay); `passes === 0`
+   * separates "never started" from "stopped".
+   *
+   * `stalled` is NOT derived from the age. A loop that turns over without
+   * presenting has a healthy age and a frozen panel, and telling those two
+   * apart is why both fields exist.
+   */
+  ui?: {
+    passes: number;
+    lastPassAgeMs: number;
+    stalled: boolean;
+  };
 }
 
 export type LogSource = 'P4' | 'C1' | 'C2' | 'C3' | 'C4' | 'PWR' | 'SD' | 'PROTO';
@@ -912,12 +987,28 @@ export interface CaptureFile {
    */
   name: string;
   sizeBytes: number;
-  sha256: string;
+  /**
+   * Lowercase-hex SHA-256 of the file, **omitted by every shipped body**:
+   * hashing four multi-megabyte JPEGs on request would block the link for
+   * seconds, so `kdp_server.c` leaves the key out rather than fill it with a
+   * wrong or empty digest (contract D20). A reader that finds it absent must
+   * report the transfer as unverified — never invent a digest, and never
+   * count a missing one as a match.
+   */
+  sha256?: string;
 }
 
 export interface CaptureInfo extends CaptureSummary {
   files: CaptureFile[];
-  meta: {
+  /**
+   * What the body recorded at the shutter press. **Absent when the capture
+   * folder holds no readable `META.JSON`**: the firmware attaches this key
+   * only when the document parsed, so a folder written by a body that lost
+   * power mid-write, or assembled by hand, answers MEDIA_INFO without it
+   * (contract D20). Nothing inside may be defaulted when it is missing — `0`
+   * here reads as a measured zero skew and a flat cell.
+   */
+  meta?: {
     flash: boolean;
     batteryV: number;
     p4Firmware: string;
@@ -1022,7 +1113,8 @@ export interface CameraCaptureResult {
   deviceId: string;
   mode: string;
   capturedAt: string;
-  clockSource: 'host' | 'persisted' | 'unset';
+  /** As in `HelloResponse.clockSource`; `network` only in a radio build. */
+  clockSource: 'host' | 'network' | 'persisted' | 'unset';
   frameCount: number;
   resolution: string;
   status: 'complete' | 'partial';

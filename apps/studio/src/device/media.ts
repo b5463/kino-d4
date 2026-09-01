@@ -1,14 +1,39 @@
 // Media transfer manager: chunked reads through the P4 with progress,
-// cancellation and SHA-256 verification. Nothing is presented as a finished
-// download until its checksum matches what the camera reported.
+// cancellation and SHA-256 verification. A download whose checksum does not
+// match what the camera reported is an error, not a file. A download the
+// camera gave no checksum for is handed over as **unverified** and says so:
+// shipped firmware omits CaptureFile.sha256 (contract D20), and treating an
+// absent digest as a match would turn every real transfer into a claim of
+// integrity nothing checked.
 
 import type { KinoDevice } from './KinoDevice';
-import type { CaptureInfo } from '@kino/kdp';
+import type { CaptureFile, CaptureInfo } from '@kino/kdp';
 import { KinoCommandError } from '@kino/kdp';
 import { useDeviceStore } from '../state/deviceStore';
 import { sha256Hex } from '../firmware/hashing';
 
 const CHUNK = 8192;
+
+/**
+ * A finished transfer, and whether its bytes were checked.
+ *
+ * `verified` is part of the result rather than an assumption because the
+ * digest is optional on the wire: a caller that writes these bytes somewhere
+ * a person will trust has to state which of the two it got.
+ */
+export interface TransferredFile {
+  name: string;
+  data: Uint8Array;
+  /** True only when a 64-hex digest arrived and the received bytes matched it. */
+  verified: boolean;
+}
+
+/** A digest the camera actually sent, or null. Anything malformed is null. */
+export function declaredDigest(file: CaptureFile): string | null {
+  return typeof file.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(file.sha256)
+    ? file.sha256.toLowerCase()
+    : null;
+}
 
 export interface TransferProgress {
   file: string;
@@ -38,14 +63,17 @@ export class TransferHandle {
   }
 }
 
-/** Download one file of a capture, verifying length and checksum. */
+/**
+ * Download one file of a capture, verifying its length always and its
+ * checksum whenever the camera declared one.
+ */
 export async function downloadCaptureFile(
   dev: KinoDevice,
   info: CaptureInfo,
   fileName: string,
   handle: TransferHandle,
   onProgress?: (done: number, total: number) => void,
-): Promise<Uint8Array> {
+): Promise<TransferredFile> {
   const file = info.files.find((f) => f.name === fileName);
   if (!file) throw new Error(`Capture ${info.id} has no file ${fileName}`);
   const out = new Uint8Array(file.sizeBytes);
@@ -58,11 +86,17 @@ export async function downloadCaptureFile(
     offset += chunk.length;
     onProgress?.(offset, file.sizeBytes);
   }
-  const digest = await sha256Hex(out);
-  if (digest !== file.sha256.toLowerCase()) {
+  const declared = declaredDigest(file);
+  if (declared === null) {
+    // Nothing to compare against. The bytes are returned — refusing a
+    // download because shipped firmware sends no digest would make the
+    // gallery unusable on real hardware — but not as verified bytes.
+    return { name: fileName, data: out, verified: false };
+  }
+  if ((await sha256Hex(out)) !== declared) {
     throw new Error(`${fileName} failed checksum verification after transfer — try again`);
   }
-  return out;
+  return { name: fileName, data: out, verified: true };
 }
 
 /** Download all four originals of a capture. */
@@ -71,14 +105,15 @@ export async function downloadCaptureSet(
   info: CaptureInfo,
   handle: TransferHandle,
   onProgress?: (p: TransferProgress) => void,
-): Promise<{ name: string; data: Uint8Array }[]> {
-  const results: { name: string; data: Uint8Array }[] = [];
+): Promise<TransferredFile[]> {
+  const results: TransferredFile[] = [];
   for (let i = 0; i < info.files.length; i++) {
     const f = info.files[i];
-    const data = await downloadCaptureFile(dev, info, f.name, handle, (done, total) =>
-      onProgress?.({ file: f.name, fileIndex: i, fileCount: info.files.length, bytesDone: done, bytesTotal: total }),
+    results.push(
+      await downloadCaptureFile(dev, info, f.name, handle, (done, total) =>
+        onProgress?.({ file: f.name, fileIndex: i, fileCount: info.files.length, bytesDone: done, bytesTotal: total }),
+      ),
     );
-    results.push({ name: f.name, data });
   }
   return results;
 }

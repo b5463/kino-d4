@@ -494,4 +494,43 @@ bool storage_capture_active(void);
  * a growing timeout count means the budget or the priorities are wrong. */
 void storage_lock_stats(uint32_t *yields, uint32_t *timeouts);
 
+/** Longest string storage_holder_name() writes, including the terminator. */
+#define STORAGE_HOLDER_NAME_LEN 48
+
+/**
+ * Name the card's current holder, for a diagnostic that would otherwise guess.
+ *
+ * Six KDP sites answered `BUSY, "Card is busy with a capture"` on ANY
+ * storage_acquire() timeout, whoever was actually holding the card. At the
+ * bench the holder was the gallery's own index rebuild, and the message sent a
+ * reader looking for a capture that was not running - the same class of fault
+ * as a stall line that fires on an idle screen.
+ *
+ * Two parts, because they answer different questions: the priority class says
+ * why the wait was not jumped, and the task name says which code to go and
+ * read. "nothing" when the lock is free.
+ *
+ * Cheap, and takes no lock - one critical section and one string copy - so it
+ * is safe to call from a handler that has just been REFUSED the lock, which is
+ * the only caller there is. The holder's task name is read under s_wait_mux so
+ * it stays consistent with the holder class; every card user is a long-lived
+ * task, so the TCB it names is not going away underneath the copy.
+ *
+ * Racy by construction, and phrased honestly because of it: this names the
+ * holder at the instant of the call, microseconds after an acquire gave up,
+ * which need not be the task that actually blocked the caller. So the message
+ * built from it is present tense - "X holds it" - and never "X blocked you".
+ */
+void storage_holder_name(char *out, size_t len);
+
+/**
+ * The one BUSY message every card-lock refusal uses.
+ *
+ * A function rather than a string literal per site: the six sites that said
+ * "Card is busy with a capture" held identical text, and identical text in six
+ * places is how a message stays wrong in all six at once. Writes at most `len`
+ * bytes including the terminator; 96 is comfortable.
+ */
+void storage_card_busy_message(char *out, size_t len);
+
 #endif

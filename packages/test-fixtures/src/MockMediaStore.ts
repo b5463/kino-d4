@@ -107,6 +107,22 @@ export class MockMediaStore {
   private fileCache = new Map<string, Uint8Array>();
   private thumbCache = new Map<string, Uint8Array>();
   private count = DEMO_CAPTURES;
+  private asShipped = false;
+
+  /**
+   * Answer MEDIA_INFO the way a shipped body answers it (contract D20).
+   *
+   * Two facts under one switch, because a mock that always sent both fields
+   * was a device no host could be tested against: the firmware **never**
+   * computes a per-file `sha256` — hashing four multi-megabyte JPEGs on
+   * request would block the link for seconds — and it attaches `meta` only
+   * when the capture's `META.JSON` could be read. While this is on, the
+   * store also refuses META.JSON on MEDIA_READ, so the missing `meta` has the
+   * reason the firmware would have had rather than being a bare omission.
+   */
+  setMediaInfoAsShipped(on: boolean) {
+    this.asShipped = on;
+  }
 
   /**
    * Resize the simulated card. 04 §19 asks for a 2,000+ entry gallery, which
@@ -285,9 +301,18 @@ export class MockMediaStore {
       // what the firmware writes to the card. It reported `C1_RAW.JPG` here
       // and then accepted both spellings on MEDIA_READ, so a host could round
       // trip a name the real body will refuse.
-      files.push({ name: `C${cam + 1}.JPG`, sizeBytes: bytes.length, sha256: await sha256Hex(bytes) });
+      files.push(
+        this.asShipped
+          ? { name: `C${cam + 1}.JPG`, sizeBytes: bytes.length }
+          : { name: `C${cam + 1}.JPG`, sizeBytes: bytes.length, sha256: await sha256Hex(bytes) },
+      );
     }
     c.summary.totalKB = Math.round(files.reduce((a, f) => a + f.sizeBytes, 0) / 1024);
+    if (this.asShipped) {
+      // No readable META.JSON, so no meta key — not an empty object and not
+      // zeroed fields. A host must render the absence, never a 0 V cell.
+      return { ...c.summary, files, corrupt: c.corrupt === true };
+    }
     const rnd = mulberry32(hashId(id) ^ 7);
     return {
       ...c.summary,
@@ -359,6 +384,10 @@ export class MockMediaStore {
    * would be a fixture pretending to be evidence.
    */
   private async metaJson(id: string): Promise<Uint8Array | null> {
+    // The document MEDIA_INFO's `meta` is read out of. When it is not
+    // readable the two must agree, or a host could recover through
+    // MEDIA_READ what MEDIA_INFO said the body did not have.
+    if (this.asShipped) return null;
     const info = await this.info(id);
     if (!info) return null;
     const doc = {

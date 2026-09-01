@@ -44,6 +44,7 @@
 #include "klog.h"
 #include "meta.h"
 #include "net_link.h"
+#include "ui.h"
 #if KINO_RADIO && KINO_C6_RESET_BENCH
 #include "net_hosted.h"
 #endif
@@ -1010,17 +1011,51 @@ static void handle_reset_config(uint32_t seq) {
 /**
  * The shooting modes this body knows about, and which is selected.
  *
- * `available` is false for both, and that is not a placeholder: the capture
- * pipeline does not exist in this build, so neither mode can actually be
- * shot. Selecting one is still meaningful - it is stored, it survives a
- * reboot, and it is what the camera will do the moment capture lands - so
- * the command answers rather than refusing.
+ * `available` and `unavailableReason` were CONSTANTS: false, and "No capture
+ * pipeline in this build". True in Milestone 1B, untrue since capture landed in
+ * 0.3.0, and never revisited. On KD4-D121BC running 0.4.17 this handler said
+ * wiggle and quad were both unavailable for want of a capture pipeline, and
+ * eleven cases later in the same conformance run CAMERA_CAPTURE stored
+ * CAP_000629 - one frame, complete, 2980 ms. Every host that asked the camera
+ * what it could do was told it could not shoot.
+ *
+ * The predicate now comes from capture_fire()'s own gates, in its own order,
+ * and lives in capture_unavailable_reason() (pure.c, host-tested) with the
+ * reasoning and the rejected stricter reading of `quad`. Both modes get the
+ * same answer because capture.c never consults the mode when deciding whether
+ * it may shoot - availability is a property of the body, not of the mode - and
+ * that is stated where it can be checked rather than assumed here.
+ *
+ * `active` still comes from the config and is still meaningful when the mode is
+ * unavailable: it is a stored selection that survives a reboot and is what the
+ * camera will shoot the moment a card and a camera are there. A host reading
+ * both fields gets a coherent pair - "active: wiggle, wiggle unavailable
+ * because no camera node answered" - and cannot get the incoherent one, an
+ * active mode that is unavailable while the other is not, because the two
+ * always agree.
  */
 static void handle_get_modes(uint32_t seq) {
   static const struct {
     const char *id;
     const char *name;
   } MODES[] = {{"wiggle", "Wiggle"}, {"quad", "Quad"}};
+
+  /* A card that is mounted, and one camera that is both online and has a worker
+   * behind it - the same conjunction capture_fire() builds its `ask` mask from,
+   * so a mode reported available is a mode the shutter will accept. */
+  storage_status_t sd;
+  storage_get_status(&sd);
+  const uint32_t ready = capture_ready_cams();
+  bool any_camera_ready = false;
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    camlink_info_t ci;
+    camlink_get_info_ch(i, &ci);
+    if (ci.online && (ready & (1u << i)) != 0) {
+      any_camera_ready = true;
+      break;
+    }
+  }
+  const char *why = capture_unavailable_reason(sd.mounted, any_camera_ready);
 
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "active", config_str("mode", "wiggle"));
@@ -1029,8 +1064,12 @@ static void handle_get_modes(uint32_t seq) {
     cJSON *m = cJSON_CreateObject();
     cJSON_AddStringToObject(m, "id", MODES[i].id);
     cJSON_AddStringToObject(m, "name", MODES[i].name);
-    cJSON_AddBoolToObject(m, "available", false);
-    cJSON_AddStringToObject(m, "unavailableReason", "No capture pipeline in this build");
+    cJSON_AddBoolToObject(m, "available", why == NULL);
+    /* The field stays present either way, null when there is nothing to
+     * explain - the shape this file uses everywhere for an absent value, and
+     * kinder to a host than a field that comes and goes. */
+    if (why != NULL) cJSON_AddStringToObject(m, "unavailableReason", why);
+    else cJSON_AddNullToObject(m, "unavailableReason");
     cJSON_AddItemToArray(arr, m);
   }
   send_json(KDP_CMD_GET_MODES, seq, json);
@@ -1782,6 +1821,39 @@ static cJSON *build_camera_info(int index) {
     cJSON_AddNumberToObject(json, "latencyMs", 0);
     cJSON_AddNumberToObject(json, "uartErrors", 0);
   }
+  /*
+   * What the viewfinder made of this camera, including the frames it threw
+   * away.
+   *
+   * Here rather than in CAMERA_LINK_STATS, where viewfinderFpsX10 already sits
+   * and where these arguably belong by kind - a preview frame is a capture, a
+   * chunked read and a release over one UART, so a dropped one is a link
+   * measurement. The deciding fact is reach: that handler NACKs CAMERA_OFFLINE
+   * for anything but cam1, because camlink's stats are still one global set
+   * from Milestone 1B, so a per-camera drop counter put there would answer for
+   * one camera out of four and hide exactly the "which pane is dropping"
+   * question it exists to answer. build_camera_info() is per camera for all
+   * four and GET_CAMERA_INFO returns the whole set in one request, which is the
+   * shape a bench actually asks in.
+   *
+   * Outside the index == 0 branch on purpose: the pumps run on all four
+   * channels whatever the link driver reports, so cam2-4 have real counters
+   * here rather than the faked zeroes that branch has to emit for fields it
+   * cannot know.
+   */
+  {
+    vf_status_t vf;
+    viewfinder_status(index, &vf);
+    cJSON *v = cJSON_AddObjectToObject(json, "viewfinder");
+    cJSON_AddNumberToObject(v, "frames", vf.frames);
+    cJSON_AddNumberToObject(v, "fpsX10", vf.fps_x10);
+    cJSON *drops = cJSON_AddObjectToObject(v, "drops");
+    for (int r = 0; r < VF_DROP_REASONS; r++) {
+      /* Keyed by vf_drop_str(), the same word the klog line uses, so a line in
+       * the ring and a field on the wire cannot drift apart. */
+      cJSON_AddNumberToObject(drops, vf_drop_str((vf_drop_t)r), vf.drops[r]);
+    }
+  }
   cJSON_AddNullToObject(json, "lastCapture"); /* no synchronized captures yet */
   return json;
 }
@@ -2072,6 +2144,38 @@ static void handle_runtime_stats(uint32_t seq) {
     cJSON_AddItemToArray(tasks, t);
   }
   cJSON_AddNumberToObject(json, "tasksUnmeasured", taskmon_unmeasured());
+
+  /*
+   * Is the UI task still turning over?
+   *
+   * The rows above say how close each task came to overflowing its stack and
+   * nothing at all about whether it is still running - taskmon holds a handle,
+   * not a heartbeat. The UI's own once-a-second klog line cannot answer it
+   * either: that line runs ON the UI task, so a task blocked in a draw simply
+   * stops producing it, and silence is indistinguishable from a healthy idle
+   * camera with nothing to say. Reading the old line as a wedge, and then
+   * having the boot evidence flooded out of the ring by it, is issue #140.
+   *
+   * This is the positive form. The loop stamps a pass counter and a timestamp;
+   * this handler runs on the KDP server task at priority 9 and answers whether
+   * or not that loop ever runs again. `lastPassAgeMs` should be a few tens of
+   * milliseconds - the loop's own delay is 20-90 ms - so anything in seconds is
+   * a wedge, positively, and `passes == 0` is a UI that never started rather
+   * than one that stopped.
+   */
+  {
+    uint32_t ui_passes = 0, ui_age_ms = 0;
+    bool ui_stalled = false;
+    ui_liveness(&ui_passes, &ui_age_ms, &ui_stalled);
+    cJSON *ui = cJSON_AddObjectToObject(json, "ui");
+    cJSON_AddNumberToObject(ui, "passes", ui_passes);
+    cJSON_AddNumberToObject(ui, "lastPassAgeMs", ui_age_ms);
+    /* The health watch's latched verdict: the loop is running and has not
+     * presented a frame it owed. Not derived from lastPassAgeMs - a UI that
+     * loops without presenting has a healthy age and a stale panel, which is
+     * the failure the two fields exist to tell apart. */
+    cJSON_AddBoolToObject(ui, "stalled", ui_stalled);
+  }
 
   send_json(KDP_CMD_GET_RUNTIME_STATS, seq, json);
 }
@@ -2718,7 +2822,16 @@ typedef void (*media_handler_t)(uint32_t seq, const cJSON *req);
  */
 static void with_card(uint8_t cmd, uint32_t seq, const cJSON *req, media_handler_t fn) {
   if (!storage_acquire(STORAGE_USER_UI, MEDIA_CARD_WAIT_MS)) {
-    send_nack(cmd, seq, "BUSY", "Card is busy with a capture");
+    /* Whoever is actually holding it, not "a capture".
+     *
+     * This said "Card is busy with a capture" on every timeout. At the bench
+     * the holder was the gallery's own index rebuild and the message sent a
+     * session looking for a capture that was not running. storage.c owns the
+     * phrasing now - the same text reached six sites by copy, which is how it
+     * stayed wrong in all six. */
+    char msg[96];
+    storage_card_busy_message(msg, sizeof msg);
+    send_nack(cmd, seq, "BUSY", msg);
     return;
   }
   fn(seq, req);

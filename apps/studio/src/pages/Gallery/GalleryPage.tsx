@@ -276,6 +276,7 @@ export function GalleryPage() {
       {localImport.section}
 
       {tether.lastError ? <p className="notice notice--err">Tether: {tether.lastError}</p> : null}
+      {tether.lastUnverified ? <p className="notice">Tether: {tether.lastUnverified}</p> : null}
       {error ? (
         <p className="notice notice--err">
           Could not read the card index: {error}

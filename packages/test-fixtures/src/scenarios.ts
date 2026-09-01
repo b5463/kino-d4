@@ -50,6 +50,14 @@ export interface ScenarioFlags {
   sdMissing: boolean;
   /** Report an early firmware: no VSYNC telemetry, phase cal or link bench. */
   legacyFirmware: boolean;
+  /**
+   * MEDIA_INFO answers the way every shipped body answers it: no per-file
+   * `sha256`, no `meta` object (contract D20). The mock computes both because
+   * it can, which made it the one device no host could reproduce a real card
+   * against — Studio threw on `file.sha256.toLowerCase()` and
+   * `info.meta.batteryV` against hardware and passed every test.
+   */
+  mediaInfoAsShipped: boolean;
   // ---- KINO Twin §20 fault injection ----
 
   /** Ignore the next HELLO after attach (one-shot) — 04 §12 boot glitch. */
@@ -172,6 +180,7 @@ export const scenarios = {
   lowBattery: descriptor('lowBattery', 'LOW BATTERY', false, 'the pack reports 3.42 V'),
   sdMissing: descriptor('sdMissing', 'SD MISSING', false, 'no card is mounted'),
   legacyFirmware: descriptor('legacyFirmware', 'LEGACY FIRMWARE 0.1.0', false, 'pre-timing firmware without the optional features'),
+  mediaInfoAsShipped: descriptor('mediaInfoAsShipped', 'MEDIA_INFO AS SHIPPED', false, 'MEDIA_INFO omits per-file sha256 and the meta block, like real firmware'),
   dropFirstHello: descriptor('dropFirstHello', 'DROP FIRST HELLO', true, 'the next HELLO after attach goes unanswered'),
   protocolMismatch: descriptor('protocolMismatch', 'PROTOCOL MISMATCH', false, 'HELLO answers protocol 99'),
   sdFull: descriptor('sdFull', 'SD FULL', false, 'the card reports 0 MB free; captures NACK SD_FULL'),

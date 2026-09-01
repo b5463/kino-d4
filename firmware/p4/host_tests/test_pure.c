@@ -760,6 +760,144 @@ static void test_api_base(void) {
   CHECK(!pure_api_base_ok(longurl), "over PURE_API_BASE_MAX");
 }
 
+/*
+ * The UI health watch (issue #140).
+ *
+ * The whole point of moving this decision into pure.c is that the defect was
+ * pure logic: "did a frame come out" instead of "was a frame due", edge instead
+ * of heartbeat. None of it needs a panel, and all of it is a truth table.
+ */
+static void test_ui_health(void) {
+  /* An idle screen is idle, not stalled. This is the false positive: no frame
+   * came out and none was due, once a second, forever. */
+  {
+    ui_health_t h = {0};
+    for (int i = 0; i < 100; i++) {
+      CHECK(ui_health_step(&h, false, false, false) == UI_HEALTH_QUIET, "idle screen is quiet");
+    }
+    CHECK(!h.stalled, "idle never latches a stall");
+  }
+
+  /* A healthy SHOOT screen: a frame was due and one came out. */
+  {
+    ui_health_t h = {0};
+    for (int i = 0; i < 100; i++) {
+      CHECK(ui_health_step(&h, true, true, false) == UI_HEALTH_QUIET, "presenting is quiet");
+    }
+  }
+
+  /* A real stall: due, and nothing came out. Reported ONCE. */
+  {
+    ui_health_t h = {0};
+    CHECK(ui_health_step(&h, true, false, false) == UI_HEALTH_STALLED, "stall on entry");
+    CHECK(h.stalled, "latched");
+    for (int i = 0; i < 60; i++) {
+      CHECK(ui_health_step(&h, true, false, false) == UI_HEALTH_QUIET,
+            "a minute of stall costs one line, not sixty");
+    }
+    CHECK(ui_health_step(&h, true, true, false) == UI_HEALTH_PRESENTING, "recovery is reported");
+    CHECK(!h.stalled, "latch cleared");
+    CHECK(ui_health_step(&h, true, true, false) == UI_HEALTH_QUIET, "and reported once");
+  }
+
+  /* The other way out: the work stopped being due without a frame ever
+   * arriving. Said differently, because "presenting again" would be untrue. */
+  {
+    ui_health_t h = {0};
+    CHECK(ui_health_step(&h, true, false, false) == UI_HEALTH_STALLED, "stall on entry");
+    CHECK(ui_health_step(&h, false, false, false) == UI_HEALTH_STALL_ENDED, "ended, no frame");
+    CHECK(!h.stalled, "latch cleared");
+    CHECK(ui_health_step(&h, false, false, false) == UI_HEALTH_QUIET, "then quiet");
+  }
+
+  /* A press is not a fault. A tap shorter than PURE_UI_LATCH_TICKS says
+   * nothing at all - the old code logged one line per second of it. */
+  {
+    ui_health_t h = {0};
+    for (int i = 0; i < PURE_UI_LATCH_TICKS - 1; i++) {
+      CHECK(ui_health_step(&h, true, true, true) == UI_HEALTH_QUIET, "a slow tap is quiet");
+    }
+    CHECK(ui_health_step(&h, true, true, false) == UI_HEALTH_QUIET, "and so is its release");
+    CHECK(h.latch_ticks == 0, "the counter resets on the lift");
+  }
+
+  /* A latch that outlives any finger: once on entry, once when it clears. */
+  {
+    ui_health_t h = {0};
+    for (int i = 0; i < PURE_UI_LATCH_TICKS - 1; i++) {
+      CHECK(ui_health_step(&h, true, true, true) == UI_HEALTH_QUIET, "below the threshold");
+    }
+    CHECK(ui_health_step(&h, true, true, true) == UI_HEALTH_LATCH_STUCK, "stuck at the threshold");
+    for (int i = 0; i < 60; i++) {
+      CHECK(ui_health_step(&h, true, true, true) == UI_HEALTH_QUIET, "reported once");
+    }
+    CHECK(ui_health_step(&h, true, true, false) == UI_HEALTH_LATCH_CLEARED, "and once on release");
+    CHECK(ui_health_step(&h, true, true, false) == UI_HEALTH_QUIET, "then quiet");
+  }
+
+  /* A latched press on SHOOT skips the repaint, so the two coexist. The CAUSE
+   * is reported first: a reader given "stalled" goes to the compositor, a
+   * reader given "latched" goes to the touch driver, and the latter is right. */
+  {
+    ui_health_t h = {0};
+    CHECK(ui_health_step(&h, true, false, true) == UI_HEALTH_STALLED, "tick 1: the stall");
+    for (int i = 1; i < PURE_UI_LATCH_TICKS - 1; i++) {
+      CHECK(ui_health_step(&h, true, false, true) == UI_HEALTH_QUIET, "the stall is not repeated");
+    }
+    CHECK(ui_health_step(&h, true, false, true) == UI_HEALTH_LATCH_STUCK,
+          "the latch is still reported while a stall is latched");
+  }
+
+  /* A latch edge does not also spend the tick on a stall edge; the next tick
+   * carries it. Nothing is lost - the stall is still there a second later. */
+  {
+    ui_health_t h = {0};
+    for (int i = 0; i < PURE_UI_LATCH_TICKS; i++) {
+      ui_health_step(&h, false, true, true);
+    }
+    CHECK(h.latch_stuck, "latched");
+    CHECK(!h.stalled, "nothing was due, so no stall");
+    CHECK(ui_health_step(&h, true, false, true) == UI_HEALTH_STALLED,
+          "the stall lands on the tick after the latch edge");
+  }
+
+  /* NULL is quiet rather than a crash: this is called from a task loop. */
+  CHECK(ui_health_step(NULL, true, false, true) == UI_HEALTH_QUIET, "NULL state");
+}
+
+/*
+ * GET_MODES telling the truth about whether this body can shoot.
+ *
+ * The defect was a constant, so the test's job is to pin the PREDICATE and its
+ * ORDER: card before camera, matching capture_fire(), so a body with neither is
+ * told about the card it has to put in first.
+ */
+static void test_mode_availability(void) {
+  CHECK(capture_unavailable_reason(true, true) == NULL, "card and a camera: shootable");
+
+  CHECK(capture_unavailable_reason(false, true) != NULL, "no card: not shootable");
+  CHECK(strcmp(capture_unavailable_reason(false, true), "No card to write the capture to") == 0,
+        "and the reason is the card");
+
+  CHECK(capture_unavailable_reason(true, false) != NULL, "no camera: not shootable");
+  CHECK(strcmp(capture_unavailable_reason(true, false), "No camera node answered") == 0,
+        "and the reason names the node, not the build");
+
+  /* Both missing reports the card, because capture_fire() checks it first and a
+   * host that fixes the camera while the card is still out has fixed nothing. */
+  CHECK(strcmp(capture_unavailable_reason(false, false), "No card to write the capture to") == 0,
+        "card outranks camera, as in capture_fire");
+
+  /* The string that started this: never again, in any combination. */
+  const char *r;
+  r = capture_unavailable_reason(false, false);
+  CHECK(strstr(r, "build") == NULL, "no reason blames the build (00)");
+  r = capture_unavailable_reason(false, true);
+  CHECK(strstr(r, "build") == NULL, "no reason blames the build (01)");
+  r = capture_unavailable_reason(true, false);
+  CHECK(strstr(r, "build") == NULL, "no reason blames the build (10)");
+}
+
 int main(void) {
   test_quality();
   test_frame_quality();
@@ -777,6 +915,8 @@ int main(void) {
   test_clock_adopt();
   test_strcopy();
   test_api_base();
+  test_ui_health();
+  test_mode_availability();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

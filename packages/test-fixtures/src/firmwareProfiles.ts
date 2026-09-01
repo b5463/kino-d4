@@ -479,4 +479,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.17 finishes the shooting screen (#153): a real back button, a status
   // bar carrying mode/flash/look/live count. Drawing only, same profile.
   '0.4.17': 'd4-settings-0-4-9',
+  // 0.4.18 stops the camera lying about itself (#140, D21, D22): the STALLED
+  // line reports on an edge, a card refusal names its holder, refused preview
+  // frames are counted, and GET_MODES derives availability instead of
+  // hardcoding it. Additive response fields only, so the same profile.
+  '0.4.18': 'd4-settings-0-4-9',
 };

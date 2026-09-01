@@ -31,7 +31,7 @@ const LIVE = {
   },
 };
 
-function infoWith(calibration: CaptureInfo['meta']['calibration']): Pick<CaptureInfo, 'meta'> {
+function infoWith(calibration: NonNullable<CaptureInfo['meta']>['calibration']): Pick<CaptureInfo, 'meta'> {
   return {
     meta: {
       flash: false,

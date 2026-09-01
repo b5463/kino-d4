@@ -80,11 +80,11 @@ describe('local import — folder with META.JSON', () => {
   it('carries recorded alignment offsets through untouched', () => {
     const frames = tetherFrames();
     const meta = tetherMeta(frames);
-    meta.meta.calibration = { version: 'cal-7', cams: { cam1: { x: -3, y: 2, rot: 0.4 } } };
+    meta.meta!.calibration = { version: 'cal-7', cams: { cam1: { x: -3, y: 2, rot: 0.4 } } };
     const cap = parseLocalCapture('WG_0042', frames, JSON.stringify(meta));
 
-    expect(cap.info?.meta.calibration?.version).toBe('cal-7');
-    expect(cap.info?.meta.calibration?.cams.cam1).toEqual({ x: -3, y: 2, rot: 0.4 });
+    expect(cap.info?.meta?.calibration?.version).toBe('cal-7');
+    expect(cap.info?.meta?.calibration?.cams.cam1).toEqual({ x: -3, y: 2, rot: 0.4 });
   });
 });
 
@@ -119,7 +119,11 @@ describe('local import — folder without usable META.JSON', () => {
 
   it('rejects a meta that is missing a field the inspector renders', () => {
     const frames = tetherFrames();
-    for (const drop of ['recipeIds', 'resolution', 'files', 'meta'] as const) {
+    // `meta` is not on this list: a document may legally carry none (contract
+    // D20 — the firmware attaches the block only when META.JSON parsed), and
+    // the rows it would fill print a dash and the reason. A `meta` that IS
+    // present must still be complete, which the batteryV case below pins.
+    for (const drop of ['recipeIds', 'resolution', 'files'] as const) {
       const meta = tetherMeta(frames) as unknown as Record<string, unknown>;
       delete meta[drop];
       expect(parseCaptureMeta(JSON.stringify(meta)), drop).toBeNull();
@@ -129,6 +133,10 @@ describe('local import — folder without usable META.JSON', () => {
     expect(parseCaptureMeta(JSON.stringify(noBattery))).toBeNull();
     // A resolution the device never reports is not accepted either.
     expect(parseCaptureMeta(JSON.stringify(tetherMeta(frames, { resolution: '4000x3000' as never })))).toBeNull();
+    // No meta block at all is a readable document, not a rejected one.
+    const noMeta = tetherMeta(frames) as unknown as Record<string, unknown>;
+    delete noMeta.meta;
+    expect(parseCaptureMeta(JSON.stringify(noMeta))?.id).toBe('WG_0042');
   });
 });
 

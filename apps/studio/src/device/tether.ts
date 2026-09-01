@@ -15,6 +15,14 @@ interface TetherState {
   saving: string | null; // capture id currently transferring
   savedCount: number;
   lastError: string | null;
+  /**
+   * The last capture written whose bytes nothing could check, and how many of
+   * its files that was. Not an error — the files are on disk and the transfer
+   * ran to the declared length — but shipped firmware sends no per-file
+   * SHA-256 (contract D20), so saying "SAVED" alone would claim a check that
+   * did not happen.
+   */
+  lastUnverified: string | null;
 }
 
 export const useTetherStore = create<TetherState>(() => ({
@@ -23,6 +31,7 @@ export const useTetherStore = create<TetherState>(() => ({
   saving: null,
   savedCount: 0,
   lastError: null,
+  lastUnverified: null,
 }));
 
 let dirHandle: FileSystemDirectoryHandle | null = null;
@@ -35,16 +44,16 @@ export async function startTether(): Promise<void> {
     } catch {
       return; // picker dismissed
     }
-    useTetherStore.setState({ enabled: true, target: dirHandle.name, lastError: null });
+    useTetherStore.setState({ enabled: true, target: dirHandle.name, lastError: null, lastUnverified: null });
   } else {
     dirHandle = null;
-    useTetherStore.setState({ enabled: true, target: 'Downloads', lastError: null });
+    useTetherStore.setState({ enabled: true, target: 'Downloads', lastError: null, lastUnverified: null });
   }
 }
 
 export function stopTether(): void {
   dirHandle = null;
-  useTetherStore.setState({ enabled: false, target: null, saving: null });
+  useTetherStore.setState({ enabled: false, target: null, saving: null, lastUnverified: null });
 }
 
 async function writeToFolder(captureId: string, files: { name: string; data: Uint8Array }[], metaJson: string) {
@@ -84,11 +93,21 @@ async function pullCapture(id: string) {
     const metaJson = JSON.stringify(info, null, 2);
     if (dirHandle) await writeToFolder(id, files, metaJson);
     else saveViaDownloads(id, files, metaJson);
-    useTetherStore.setState((s) => ({ saving: null, savedCount: s.savedCount + 1, lastError: null }));
+    const unchecked = files.filter((f) => !f.verified).length;
+    useTetherStore.setState((s) => ({
+      saving: null,
+      savedCount: s.savedCount + 1,
+      lastError: null,
+      lastUnverified:
+        unchecked > 0
+          ? `${id}: ${unchecked} of ${files.length} file(s) written unverified — the camera sent no SHA-256`
+          : null,
+    }));
   } catch (err) {
     useTetherStore.setState({
       saving: null,
       lastError: `${id}: ${err instanceof Error ? err.message : String(err)}`,
+      lastUnverified: null,
     });
   }
 }

@@ -377,8 +377,13 @@ static kdp_module_reply_t oom(void) {
   return kdp_module_fail("INTERNAL_ERROR", "Out of memory building the reply");
 }
 
+/* The holder, not a guess at one. This said "Card is busy with a capture" on
+ * any card-lock timeout; storage.c owns the wording now because it is the only
+ * thing that knows who actually holds the card. */
 static kdp_module_reply_t busy_card(void) {
-  return kdp_module_fail("BUSY", "Card is busy with a capture");
+  char msg[96];
+  storage_card_busy_message(msg, sizeof msg);
+  return kdp_module_fail("BUSY", msg);
 }
 
 /* ------------------------------------------------------------------ */

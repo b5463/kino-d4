@@ -203,6 +203,25 @@ bool capture_request(const char *source);
 capture_stage_t capture_stage(void);
 
 /**
+ * Bitmask of cameras that have a capture worker behind them, bit 0 = CAM1.
+ *
+ * capture_init() returns on the first worker it fails to create and main.c only
+ * logs that and carries on, so a body can be running with fewer workers than
+ * cameras. capture_fire() already drops such cameras from the mask it asks
+ * (a camera in `ask` with no worker never sets its done bit, and the wait for
+ * those bits is portMAX_DELAY) - this exports the same fact so a caller can
+ * answer "could this camera shoot" without shooting.
+ *
+ * Exported for GET_MODES, which used to answer that question with a hardcoded
+ * "no capture pipeline in this build". A predicate that reads the real mask is
+ * the difference between reporting the pipeline's state and remembering it.
+ *
+ * 0 before capture_init(). Set once per worker at init and never cleared, so no
+ * lock: a single aligned word, written before the KDP server exists.
+ */
+uint32_t capture_ready_cams(void);
+
+/**
  * Whether a capture or a bench command holds the pipeline, RIGHT NOW.
  *
  * Advisory, and for display only. It is a try-lock sample: it takes the capture
