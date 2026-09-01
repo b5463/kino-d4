@@ -17,7 +17,13 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-01, firmware 0.4.19
+## Status — updated 2026-09-02, firmware 0.4.19
+
+All four camera nodes are wired and proven: each XIAO+OV3660 answers on its
+own UART, captures a checksummed 1600x1200 frame to the card individually,
+and all four stay visible together across 23 discovery sweeps with zero link
+errors - the basic four-camera hardware proof ("Four nodes on four wires",
+below). The grouped shutter (#132) and exposure quality (#156) remain open.
 
 0.4.11-0.4.13 landed in one bench day. 0.4.11 gives the gallery a persisted
 order index and DELETE ALL PHOTOS; its first session on the 527-capture card
@@ -315,6 +321,79 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### Four nodes on four wires - the basic four-camera hardware proof, 2026-09-02
+
+**Scope (#159).** Prove each of the four XIAO ESP32-S3 + OV3660 nodes works
+independently on its wired UART, then that all four are simultaneously visible
+to the P4, then one individual capture per channel with all four connected.
+Nothing else: no grouped shutter (#132), no synchronization, no skew, no
+exposure-quality claim (#156), no Roll/network/SD-architecture change. All
+four nodes were wired throughout - "individually" means individually
+addressed, one channel at a time; nothing was physically detached.
+
+**The rig.** As `board_d4v1.h` and as wired: CAM1 UART1 TX GPIO52/RX GPIO51
+(JP1 7/9), CAM2 UART2 GPIO50/49 (JP1 11/13), CAM3 UART3 GPIO34/33 (JP1 17/8),
+CAM4 UART4 GPIO30/29 (JP1 12/14); common GND, each XIAO on its own USB-C, no
+P4 5 V to the nodes, SYNC_OUT and FLASH_EN disconnected. Node firmware 0.4.19
+on all four (self-reported over HELLO).
+
+**The enabler (`aa9a541`).** `CAMERA_TEST` was the last cam1-only door:
+`run_capture()` now takes the channel and uses the per-channel camlink calls
+end to end; the stored frame is `C<n>.JPG` in its own TC folder; the reply
+says which cam it measured; `CAMERA_LINK_STATS(_RESET)` lose the Milestone 1B
+gate and answer for the asked channel. Image: clean `git archive` of
+`aa9a541`, `kino-p4.bin` 1,527,696 B, SHA-256
+`6c1ecd32adf7f7a006d6ffb7297d3999f49276ef0c20c70887dad97a13c9c48a`, two
+passes identical, bench flags as every image this bring-up, P4 only, C6 and
+the nodes untouched. Flashing the 0.4.9 partition table reset the persisted
+session counter (boot-477 → boot-2); the app offset is unchanged by design.
+
+**TEST 1 - individual proof, one channel at a time.** For each channel:
+`CAMERA_STATUS` (the sweep's HELLO result), one `CAMERA_TEST` capture, the
+stored frame pulled to the host and decoded (PIL), link-stat deltas around
+the transaction.
+
+| Cam | Sensor · node fw | HELLO | Capture | JPEG | node/transfer/stored CRC | host decode | link deltas |
+|---|---|---|---|---|---|---|---|
+| CAM1 | OV3660 · 0.4.19 | ok, 4 ms | TC_000002, 1150 ms (node 52 / transfer 743 / SD 298) | 66,658 B | `41918fb0` ×3 | 1600x1200, SOI/EOI, decodes | +0 timeouts, +0 CRC |
+| CAM2 | OV3660 · 0.4.19 | ok, 4 ms | TC_000003, 1768 ms (386/974/332) | 87,486 B | `b630e6bd` ×3 | 1600x1200, decodes | +0, +0 |
+| CAM3 | OV3660 · 0.4.19 | ok, 4 ms | TC_000004, 1563 ms (394/806/273) | 72,406 B | `8bcf52d1` ×3 | 1600x1200, decodes | +0, +0 |
+| CAM4 | OV3660 · 0.4.19 | ok, 4 ms | TC_000005, 1617 ms (408/875/266) | 78,576 B | `e326c57d` ×3 | 1600x1200, decodes | +0, +0 |
+
+Every capture: three checksums agree (node CRC over the frame, CRC on the
+fly during the UART transfer, CRC of the file read back off the card), the
+host's own CRC32 of the pulled bytes matches too, and the node returns
+ready. An earlier CAM1 pass (TC_000001/TC_000002 duplicates from a harness
+retry) behaved identically.
+
+**TEST 2 - simultaneous discovery.** 14 observations over 3.7 min spanning
+23 firmware probe sweeps (`probesRun` 148 → 240, four probes per sweep,
+`probesDeferred` +0): all four channels `ready/online` in all 14
+observations; **0 offline transitions**; per-channel link over the watch:
++23 tx frames, +23 rx frames, **+0 timeouts, +0 CRC errors** on every wire;
+`lastError` empty everywhere.
+
+**TEST 3 - one individual capture per channel, all four connected.**
+TC_000006-TC_000009: CAM1 67,067 B `8837b2eb`, CAM2 118,376 B `d1343cf4`,
+CAM3 86,448 B `5ac09a73`, CAM4 99,083 B `051c5776` - all three checksums
+agree on each, every frame decodes at 1600x1200 on the host, four distinct
+images, 0 timeouts, 0 CRC errors, every node ready afterwards.
+
+**Registry.** All fifteen CAM2-4 rows moved UNVALIDATED → VALIDATED from
+real events in this session: `_UART` and `_NODE_LINK` ("node HELLO
+answered"), `_SENSOR_DETECT` ("OV3660"), `_JPEG_TRANSFER` ("transfer CRC
+matched node CRC"), `_SD_WRITE` ("stored file checksum verified").
+
+**UART watch.** No FIFO overrun, no failure near offset 8192, no chunk
+retries anywhere in the run - eight captures, ~660 KB moved across four
+wires, zero link errors.
+
+**Verdict: BASIC FOUR-CAMERA HARDWARE PROOF GO.** Each node works
+independently on its intended UART and all four are simultaneously visible
+and photographing. Not proven here, deliberately: the grouped four-camera
+shutter (#132), synchronization and skew, exposure quality (#156), and
+four-camera behaviour under upload load (Gate F ran on one camera).
 
 ### Four cameras, one register, and a mean luma of 5.3 - 0.4.19 bench, 2026-09-01
 
