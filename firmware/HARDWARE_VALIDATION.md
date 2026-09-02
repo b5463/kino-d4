@@ -392,6 +392,51 @@ required** (no Wi-Fi credentials / Roll token since the partition-table
 reflash wiped NVS). The four-camera transport connected sections remain blocked
 on the same reprovision.
 
+### Provisioning from Studio actually provisions - 0.4.24, 2026-09-02
+
+**Why this was needed.** The partition-table reflash earlier in the day wiped
+NVS: no Wi-Fi network, no Roll device token (`WIFI_IDLE / NO_CREDENTIALS`,
+`tokenStatus no-credential`). Re-provisioning by the intended path - register
+at `/api/studio/devices/register` with the provisioning token (the existing
+`KD4-D121BC` row rotates its token and keeps its id, `DEVICE_REGISTRATION_MODE`
+rotate), `SET_CONFIG roll.credentials` + `SAVE_CONFIG`, `NETWORK_SET`,
+`ROLL_JOIN` - found two breaks on that path. The same calls Studio makes were
+driven from the bench because Studio's Web Serial and the bench cannot share
+COM8; no secret was printed, logged or written to the transcript.
+
+**Break 1 - the credential never reached the HTTP client.** `SET_CONFIG`
+merged `roll.credentials.{deviceId,deviceToken}` into the config document and
+nothing read it there: `roll_http` takes its bearer token from `roll_state`'s
+NVS record, which only the dev-only self-registration in `roll_client.c` ever
+wrote. Measured: `GET_CONFIG` answered `hasDeviceToken: true` while
+`ROLL_STATUS` said `tokenStatus: no-credential`, and the token sat in the
+4000-byte config envelope on the card. Fix: `SET_CONFIG` hands the pair to
+`roll_state_set_credential()` and blanks `deviceToken` in what it merges
+(write-only by contract); `GET_CONFIG`'s `hasDeviceToken` reports
+`roll_state_has_credential()`; a token a firmware up to 0.4.22 already saved
+into config is imported once after `roll_state_init()` and blanked there
+(`kdp_server_import_roll_credential()`). The parser
+(`meta_take_roll_credential`, beside `meta_merge_into`) is host-tested with
+cJSON: absent, present-and-scrubbed, token-without-id, oversized, empty.
+
+**Break 2 - a saved network was never joined.** `NETWORK_SET` stored the
+network (`NETWORK_LIST`: `BRCD`, `hasPassword`, `autoJoin`) and the radio
+stayed `WIFI_IDLE / NO_CREDENTIALS` indefinitely: the auto-join decision ran at
+bring-up only, so a camera provisioned after boot needed a reboot. Fix: a saved
+auto-join network is joined at once when the radio is idle; an association or
+recovery in progress is not interrupted.
+
+**Image.** Clean archive of `9f0e59e` (0.4.24), `kino-p4.bin` 1,536,928 B,
+SHA-256 `31b7d754f87a0eb1399002970bb68ed7a89c5128debe5d8655bc1adc4b645cf9`, two
+passes identical, bench flags, working-tree `dependencies.lock` overlaid, P4
+only, C6 and nodes untouched. Host suites: 4,000+ checks, 0 failures (meta 166
+with the new credential cases); bench AND default configs compiled (the
+default build is the one that catches config-guard breaks).
+
+**Verification on the bench.** Boot-18 on 0.4.24: the boot import found the token a 0.4.22 SET_CONFIG had saved into config, moved it into roll_state and blanked it - `ROLL_STATUS tokenStatus: ok`, `GET_CONFIG hasDeviceToken: true` (now answered by roll_state), `network.apiBase http://10.20.99.57:3000`. The saved `BRCD` network joined at bring-up: `IP_READY`, 10.20.80.181, clock trusted from the network. One grouped capture, CAP_000056 (complete 4/4, 480,158 B, 2,787 ms, spread 257 us, 1 recovered chunk retry, CRC 4/4), uploaded within 15 s of the shutter: one `captures` row (`cap_F1A2_6GU2jCKQ15J6GIkow`, roll `roll__Mg6PTKzfodtJ7zxCjBoNA` = RRG8AZ) with four `original-frame` assets, frame_index 1-4 (123,590 / 91,731 / 106,136 / 158,701 B) and a thumb - the four-frame set as one logical capture. The join-on-save path (break 2) was not separately exercised on this boot because bring-up joined first; it is the same `net_link_connect` the bring-up uses. Beside the question: this image boots with the recovery reserve at **0/2** ("largest free 15872 B" - exactly the block size, so the 64-aligned allocation cannot fit) and `recoveryReady=False`; the memory landscape moved again with 0.4.23. Whether a C6 reset now survives is what the ROLL-C3 pass below measures.
+
+**ROLL-C3 restoration (Phase 3).** On 0.4.24 and 0.4.25 the ROLL-C3 rerun did not pass: the 0.4.24 boot held the reserve 0/2 and `C6_RESET_BENCH` panicked the P4 in the re-init probe (session changed, the pending job survived on the card); on 0.4.25 the radio never left `C6_BOOTING / C6_LINK_LOST` for 153 s after the reset (no panic, no recovery, `pending=4` never drained). Both are the internal-RAM exhaustion recorded in the 0.4.27 section below, where ROLL-C3 passes: two 4/4 sets, radio back at IP_READY +20 s, queue drained in 13 s, session unchanged.
+
 ### Internal RAM, not the reserve, was the #162 problem - 0.4.27, 2026-09-02
 
 **What 0.4.25 did.** After the reprovision, the reserve on 0.4.24 held 1/2 or
