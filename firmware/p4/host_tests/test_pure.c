@@ -898,6 +898,158 @@ static void test_mode_availability(void) {
   CHECK(strstr(r, "build") == NULL, "no reason blames the build (10)");
 }
 
+/* ------------------------------------------------------------------ */
+/* Wigglegram playback order                                           */
+/* ------------------------------------------------------------------ */
+
+/** Render a sequence as "0,1,2,3,2,1" so a failure prints what came out. */
+static const char *seq_str(const uint8_t *seq, int n) {
+  static char buf[64];
+  int at = 0;
+  buf[0] = '\0';
+  for (int i = 0; i < n && at < (int)sizeof buf - 4; i++) {
+    at += snprintf(buf + at, sizeof buf - (size_t)at, i ? ",%d" : "%d", seq[i]);
+  }
+  return buf;
+}
+
+#define SEQ_IS(want, loop, rtl, present)                                                      \
+  do {                                                                                        \
+    uint8_t got[PURE_WIGGLE_SEQ_MAX];                                                         \
+    const int n = pure_wiggle_sequence((loop), (rtl), (present), got, (int)sizeof got, NULL); \
+    const char *g = seq_str(got, n);                                                          \
+    CHECK(strcmp(g, (want)) == 0, "loop %d rtl %d present %#x -> %s, want %s", (int)(loop),   \
+          (int)(rtl), (unsigned)(present), g, (want));                                        \
+  } while (0)
+
+static void test_wiggle_sequence(void) {
+  /*
+   * The orders packages/media/src/sequence.ts produces, which is the whole
+   * point of this suite: the WebP a Roll bakes and the picture moving on the
+   * camera's panel are the same photograph, and two orders would make them two.
+   */
+  SEQ_IS("0,1,2,3,2,1", PURE_WIGGLE_BOUNCE, false, 0xf);
+  SEQ_IS("0,1,2,3", PURE_WIGGLE_CONTINUOUS, false, 0xf);
+  SEQ_IS("0,1,2,3", PURE_WIGGLE_SWEEP, false, 0xf);
+
+  /* rtl mirrors the positions, it does not reverse the array. Reversing the
+   * bounce would give "1,2,3,2,1,0" - the same cyclic loop entered half way
+   * through a swing, so it rests on a middle frame instead of an end. */
+  SEQ_IS("3,2,1,0,1,2", PURE_WIGGLE_BOUNCE, true, 0xf);
+  SEQ_IS("3,2,1,0", PURE_WIGGLE_CONTINUOUS, true, 0xf);
+
+  /* Only the repeat separates sweep from continuous, never the order. */
+  bool repeats = true;
+  uint8_t s[PURE_WIGGLE_SEQ_MAX];
+  pure_wiggle_sequence(PURE_WIGGLE_SWEEP, false, 0xf, s, (int)sizeof s, &repeats);
+  CHECK(!repeats, "sweep must not repeat");
+  pure_wiggle_sequence(PURE_WIGGLE_CONTINUOUS, false, 0xf, s, (int)sizeof s, &repeats);
+  CHECK(repeats, "continuous repeats");
+  pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0xf, s, (int)sizeof s, &repeats);
+  CHECK(repeats, "bounce repeats");
+
+  /* Frame counts below four. Three bounces as 2n-2 = 4; two collapses to the
+   * two frames, because the interior of a two-frame bounce is empty. */
+  SEQ_IS("0,1,2,1", PURE_WIGGLE_BOUNCE, false, 0x7);
+  SEQ_IS("0,1", PURE_WIGGLE_BOUNCE, false, 0x3);
+  SEQ_IS("1,0", PURE_WIGGLE_BOUNCE, true, 0x3);
+  SEQ_IS("0", PURE_WIGGLE_BOUNCE, false, 0x1);
+
+  /*
+   * The partial capture, which is the case frameCount cannot answer.
+   * A capture missing C2 swings C1 -> C3 -> C4 -> C3: the frames that are
+   * there, in camera order, as a three-frame wiggle.
+   */
+  SEQ_IS("0,2,3,2", PURE_WIGGLE_BOUNCE, false, 0xd);
+  SEQ_IS("3,2,0,2", PURE_WIGGLE_BOUNCE, true, 0xd);
+  SEQ_IS("1,3", PURE_WIGGLE_CONTINUOUS, false, 0xa);
+  /* One surviving frame is a still, whichever one it is. */
+  SEQ_IS("2", PURE_WIGGLE_BOUNCE, false, 0x4);
+
+  /* Nothing decoded is nothing to play - 0, not an empty swing. */
+  CHECK(pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0, s, (int)sizeof s, NULL) == 0,
+        "no frames present must refuse");
+  /* Bits above the four lenses are not frames. */
+  SEQ_IS("0", PURE_WIGGLE_BOUNCE, false, 0xf1);
+
+  /*
+   * Refuse rather than truncate. A short buffer must not produce a swing that
+   * stops somewhere arbitrary and jumps back; the caller's still is better.
+   */
+  uint8_t small[4];
+  CHECK(pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0xf, small, 4, NULL) == 0,
+        "a 6-long bounce into a 4-slot buffer must refuse");
+  CHECK(pure_wiggle_sequence(PURE_WIGGLE_CONTINUOUS, false, 0xf, small, 4, NULL) == 4,
+        "a 4-long sweep into a 4-slot buffer fits");
+  CHECK(pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0xf, NULL, 8, NULL) == 0,
+        "a NULL buffer must refuse");
+  CHECK(pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0xf, s, 0, NULL) == 0,
+        "a zero cap must refuse");
+
+  /* PURE_WIGGLE_SEQ_MAX has to hold the longest order there is, or the
+   * refusal above becomes the normal path and nothing ever plays. */
+  CHECK(pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0xf, s, PURE_WIGGLE_SEQ_MAX, NULL) == 6,
+        "the full bounce must fit PURE_WIGGLE_SEQ_MAX");
+
+  /* Every frame in an order is a frame that is present. This is the property
+   * that stops a missing frame being shown as whatever was in its buffer. */
+  for (unsigned mask = 1; mask < 16; mask++) {
+    for (int loop = 0; loop <= 2; loop++) {
+      for (int rtl = 0; rtl <= 1; rtl++) {
+        const int n = pure_wiggle_sequence((pure_wiggle_loop_t)loop, rtl != 0, mask, s,
+                                           (int)sizeof s, NULL);
+        CHECK(n >= 1, "mask %#x loop %d produced nothing", mask, loop);
+        for (int i = 0; i < n; i++) {
+          CHECK((mask & (1u << s[i])) != 0, "mask %#x loop %d rtl %d showed absent frame %d", mask,
+                loop, rtl, (int)s[i]);
+        }
+      }
+    }
+  }
+}
+
+static void test_wiggle_words(void) {
+  CHECK(pure_wiggle_loop("bounce") == PURE_WIGGLE_BOUNCE, "bounce");
+  CHECK(pure_wiggle_loop("continuous") == PURE_WIGGLE_CONTINUOUS, "continuous");
+  CHECK(pure_wiggle_loop("sweep") == PURE_WIGGLE_SWEEP, "sweep");
+  /* A stored envelope that has been through a host this firmware does not
+   * know still gets a wiggle rather than a still. */
+  CHECK(pure_wiggle_loop(NULL) == PURE_WIGGLE_BOUNCE, "NULL loop -> bounce");
+  CHECK(pure_wiggle_loop("") == PURE_WIGGLE_BOUNCE, "empty loop -> bounce");
+  /* media's vocabulary is not KDP's: `once` is media's word for KDP `sweep`,
+   * and taking it here would be the cast packages/media/src/playback.ts
+   * exists to prevent. */
+  CHECK(pure_wiggle_loop("once") == PURE_WIGGLE_BOUNCE, "media's own word is not KDP's");
+  CHECK(pure_wiggle_loop("BOUNCE") == PURE_WIGGLE_BOUNCE, "case is not folded; the default holds");
+
+  CHECK(pure_wiggle_direction_rtl("rtl"), "rtl");
+  CHECK(!pure_wiggle_direction_rtl("ltr"), "ltr");
+  CHECK(!pure_wiggle_direction_rtl(NULL), "NULL direction -> ltr");
+  CHECK(!pure_wiggle_direction_rtl(""), "empty direction -> ltr");
+}
+
+static void test_wiggle_period(void) {
+  CHECK(pure_wiggle_period_ms(8) == 125, "8 fps -> %d ms, want 125", pure_wiggle_period_ms(8));
+  CHECK(pure_wiggle_period_ms(10) == 100, "10 fps -> %d ms", pure_wiggle_period_ms(10));
+  /* Clamped, not rejected: the number comes from a slider or a stored
+   * preference and one a little out of range is a stale client. */
+  CHECK(pure_wiggle_period_ms(1) == 200, "1 fps clamps to the 5 fps floor -> %d ms",
+        pure_wiggle_period_ms(1));
+  CHECK(pure_wiggle_period_ms(240) == 66, "240 fps clamps to the 15 fps ceiling -> %d ms",
+        pure_wiggle_period_ms(240));
+  /* Absent - config_int's fallback path can hand over 0 - takes the camera's
+   * own default of 8, not media's 10. */
+  CHECK(pure_wiggle_period_ms(0) == 125, "no fps -> the camera default 8 fps");
+  CHECK(pure_wiggle_period_ms(-5) == 125, "a negative fps -> the camera default");
+
+  /* A period no shorter than the UI loop's own 20 ms pass, or the pacing
+   * would be asking for frames the loop cannot deliver. */
+  for (int fps = -10; fps < 60; fps++) {
+    const int ms = pure_wiggle_period_ms(fps);
+    CHECK(ms >= 20 && ms <= 200, "%d fps -> %d ms, outside 20..200", fps, ms);
+  }
+}
+
 int main(void) {
   test_quality();
   test_frame_quality();
@@ -917,6 +1069,9 @@ int main(void) {
   test_api_base();
   test_ui_health();
   test_mode_availability();
+  test_wiggle_sequence();
+  test_wiggle_words();
+  test_wiggle_period();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

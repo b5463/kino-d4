@@ -383,3 +383,61 @@ const char *capture_unavailable_reason(bool card_mounted, bool any_camera_ready)
   if (!any_camera_ready) return "No camera node answered";
   return NULL;
 }
+
+/* ------------------------------------------------------------------ */
+/* Wigglegram playback                                                 */
+/* ------------------------------------------------------------------ */
+
+pure_wiggle_loop_t pure_wiggle_loop(const char *word) {
+  if (word == NULL) return PURE_WIGGLE_BOUNCE;
+  if (strcmp(word, "continuous") == 0) return PURE_WIGGLE_CONTINUOUS;
+  if (strcmp(word, "sweep") == 0) return PURE_WIGGLE_SWEEP;
+  /* Including "bounce" itself, and including anything this firmware has never
+   * heard of. See the header: an envelope that has been through a host this
+   * camera does not know still gets a wiggle. */
+  return PURE_WIGGLE_BOUNCE;
+}
+
+bool pure_wiggle_direction_rtl(const char *word) {
+  return word != NULL && strcmp(word, "rtl") == 0;
+}
+
+int pure_wiggle_sequence(pure_wiggle_loop_t loop, bool rtl, unsigned present, uint8_t *seq,
+                         int cap, bool *repeats) {
+  if (repeats != NULL) *repeats = loop != PURE_WIGGLE_SWEEP;
+
+  /* The present frames in camera order. `have[p]` is the frame index at
+   * position p, so everything below reasons in positions and only the final
+   * write turns a position back into a frame - which is what makes the
+   * missing-frame case fall out rather than needing its own arm. */
+  uint8_t have[PURE_WIGGLE_FRAMES_MAX];
+  int n = 0;
+  for (int i = 0; i < PURE_WIGGLE_FRAMES_MAX; i++) {
+    if (present & (1u << i)) have[n++] = (uint8_t)i;
+  }
+  if (n == 0 || seq == NULL || cap <= 0) return 0;
+
+  const int len = (loop == PURE_WIGGLE_BOUNCE && n > 2) ? 2 * n - 2 : n;
+  /* Refuse rather than truncate. A short order is not a shorter wiggle, it is
+   * a swing that stops somewhere arbitrary and jumps back, and the caller's
+   * still is a better picture than that. */
+  if (len > cap) return 0;
+
+  int k = 0;
+  for (int p = 0; p < n; p++) seq[k++] = have[rtl ? n - 1 - p : p];
+  if (loop == PURE_WIGGLE_BOUNCE) {
+    /* The way back, ends excluded. Empty at one and two frames, which is why
+     * the length above collapses to n there: the interior of a two-frame
+     * bounce is empty and out-and-back is just the two frames, which still
+     * loops correctly. */
+    for (int p = n - 2; p > 0; p--) seq[k++] = have[rtl ? n - 1 - p : p];
+  }
+  return k;
+}
+
+int pure_wiggle_period_ms(int fps) {
+  if (fps <= 0) fps = PURE_WIGGLE_FPS_DEFAULT;
+  if (fps < PURE_WIGGLE_FPS_MIN) fps = PURE_WIGGLE_FPS_MIN;
+  if (fps > PURE_WIGGLE_FPS_MAX) fps = PURE_WIGGLE_FPS_MAX;
+  return 1000 / fps;
+}

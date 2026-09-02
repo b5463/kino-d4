@@ -98,6 +98,34 @@ static gallery_item_t s_slot[GALLERY_PAGE];
 static uint16_t *s_pixels[GALLERY_PAGE];
 
 /*
+ * The photograph screen's four frames, for the wigglegram player (#160).
+ *
+ * Everything but the pixels is under s_lock, because both the requester (the
+ * UI task) and the decoder (this task) touch it. The pixel buffers themselves
+ * are outside it: they are allocated once, never freed and never moved, so
+ * the only question about one is whether it currently means anything, and
+ * that question is answered by s_frame_have under the lock.
+ *
+ * The lifetime rule, which is why there is no wait in
+ * gallery_frames_cancel(): a buffer is written only while its bit is NOT in
+ * s_frame_have, and a new job clears the mask before the first write. So a
+ * decode still in flight when the user walks away lands in a buffer nobody is
+ * drawing from, and its result is dropped for being of the wrong generation.
+ * The alternative - freeing the buffers per photograph - needs the UI task to
+ * block until a decode that may be waiting on a 2 s card acquire lets go, and
+ * a DELETE that takes two seconds to acknowledge is worse than 1.23 MiB.
+ */
+static uint16_t *s_frame_pix[GALLERY_FRAME_MAX];
+static size_t s_frame_bytes; /* what the buffers were allocated for */
+static char s_frame_id[40];
+static int s_frame_w, s_frame_h;
+static uint16_t s_frame_pad;
+static int s_frame_next;      /* the next frame to attempt; GALLERY_FRAME_MAX = all tried */
+static uint32_t s_frame_gen;  /* bumped by every begin and every cancel */
+static uint32_t s_frame_have; /* bit i: C(i+1) decoded, for s_frame_gen */
+static bool s_frame_done;     /* all four attempted */
+
+/*
  * Notes from other tasks: one capture added, one capture removed.
  *
  * A queue and not a direct mutation, because the callers are the capture task
@@ -1015,6 +1043,136 @@ static bool load_tile(gallery_item_t *it, uint16_t *pixels) {
 }
 
 /* ---------------------------------------------------------------- */
+/* A capture's own frames                                            */
+/* ---------------------------------------------------------------- */
+
+/* What one turn of the frame job did, which is what the caller's delay is
+ * chosen from. */
+#define FRAME_NONE 0    /* nothing outstanding */
+#define FRAME_DID 1     /* one frame attempted */
+#define FRAME_YIELDED 2 /* the card was busy; the same frame is owed again */
+
+/**
+ * Decode one frame of the outstanding job, or report that there is none.
+ *
+ * One per turn on purpose. Four decodes back to back would hold the card for
+ * most of a second, and this task shares it with a shutter that must never
+ * queue behind a picture somebody is only looking at. The screen shows its
+ * still throughout, so the cost of taking four turns is nothing anyone sees.
+ */
+static int frames_step(void) {
+  char id[40];
+  int w, h, idx;
+  uint16_t pad;
+  uint32_t gen;
+
+  lock();
+  if (s_frame_id[0] == '\0' || s_frame_next >= GALLERY_FRAME_MAX) {
+    unlock();
+    return FRAME_NONE;
+  }
+  strlcpy(id, s_frame_id, sizeof id);
+  w = s_frame_w;
+  h = s_frame_h;
+  pad = s_frame_pad;
+  idx = s_frame_next;
+  gen = s_frame_gen;
+  unlock();
+
+  /* The card as the UI user, on the same 2 s budget as every other read here,
+   * and released before the lock is taken again - card before s_lock, never
+   * inverted (see the lock-order note at the top of this file). A refusal is
+   * a capture holding the bus: come back to the same frame on a later turn
+   * rather than dropping it, because a dropped frame is a shorter wiggle for
+   * a photograph that has all four on the card. */
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) return FRAME_YIELDED;
+  snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/C%d.JPG", CAPTURES_DIR, id, idx + 1);
+  const bool ok = thumb_load(s_tile_path, s_frame_pix[idx], w, h, pad) == ESP_OK;
+  storage_release(STORAGE_USER_UI);
+
+  lock();
+  /* Only if this is still the photograph being looked at. A result from the
+   * previous one would put a frame of it into a swing of this one. */
+  if (gen == s_frame_gen && s_frame_next == idx) {
+    if (ok) s_frame_have |= 1u << idx;
+    s_frame_next = idx + 1;
+    if (s_frame_next >= GALLERY_FRAME_MAX) s_frame_done = true;
+  }
+  unlock();
+  return FRAME_DID;
+}
+
+esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint32_t *gen) {
+  if (s_lock == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
+  if (w <= 0 || h <= 0) return ESP_ERR_INVALID_ARG;
+
+  const size_t want = THUMB_TILE_BYTES(w, h);
+  if (s_frame_bytes != 0 && want > s_frame_bytes) return ESP_ERR_INVALID_SIZE;
+  /* Recorded BEFORE the allocations, not after them. A first call that runs
+   * out of PSRAM half way leaves two buffers of this size behind, and a later
+   * call for a bigger frame would then be handed them - the guard above has to
+   * know the size even when the run that set it did not finish. */
+  if (s_frame_bytes == 0) s_frame_bytes = want;
+  for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
+    if (s_frame_pix[i] != NULL) continue;
+    /* 64-byte aligned, and a size rounded to the cache line, because these are
+     * PPA destinations and the PPA validates both (THUMB_TILE_BYTES, thumb.h).
+     * Getting only the pointer right is what cost a bench session once. */
+    s_frame_pix[i] = heap_caps_aligned_calloc(64, 1, want, MALLOC_CAP_SPIRAM);
+    if (s_frame_pix[i] == NULL) {
+      /* Whatever was allocated stays: the next photograph will want exactly
+       * these buffers, and freeing them here only guarantees the same failure
+       * again. The caller shows a still, which is what it is already showing. */
+      ESP_LOGW(TAG, "no PSRAM for the wiggle frames (%u bytes each)", (unsigned)want);
+      return ESP_ERR_NO_MEM;
+    }
+  }
+
+  lock();
+  s_frame_gen++;
+  strlcpy(s_frame_id, id, sizeof s_frame_id);
+  s_frame_w = w;
+  s_frame_h = h;
+  s_frame_pad = pad;
+  s_frame_next = 0;
+  /* Cleared BEFORE the first decode of this job can run, which is what makes
+   * a buffer safe to write: nothing may be read while its bit is clear. */
+  s_frame_have = 0;
+  s_frame_done = false;
+  if (gen != NULL) *gen = s_frame_gen;
+  unlock();
+  return ESP_OK;
+}
+
+void gallery_frames_cancel(void) {
+  if (s_lock == NULL) return;
+  lock();
+  s_frame_gen++;
+  s_frame_id[0] = '\0';
+  s_frame_next = GALLERY_FRAME_MAX;
+  s_frame_have = 0;
+  s_frame_done = false;
+  unlock();
+}
+
+bool gallery_frames_state(uint32_t gen, uint32_t *have, bool *done) {
+  if (s_lock == NULL) return false;
+  lock();
+  const bool mine = gen == s_frame_gen && s_frame_id[0] != '\0';
+  if (mine) {
+    if (have != NULL) *have = s_frame_have;
+    if (done != NULL) *done = s_frame_done;
+  }
+  unlock();
+  return mine;
+}
+
+const uint16_t *gallery_frame_pixels(int index) {
+  if (index < 0 || index >= GALLERY_FRAME_MAX) return NULL;
+  return s_frame_pix[index];
+}
+
+/* ---------------------------------------------------------------- */
 /* The task                                                          */
 /* ---------------------------------------------------------------- */
 
@@ -1093,7 +1251,22 @@ static void gallery_task(void *arg) {
 
     if (!s_dirty && !s_verify && !s_index_dirty) {
       s_loading = false;
-      vTaskDelay(pdMS_TO_TICKS(80));
+      /*
+       * The one place the wigglegram's frames are decoded: this task with
+       * nothing else owed. Deliberately below every branch above rather than
+       * beside them - a page the user is scrolling, a rebuild and a wipe are
+       * all work someone is waiting on, and a photograph that is already
+       * showing its first frame is not. It also means the job cannot starve
+       * the gallery: it only ever runs on a turn the gallery would have slept
+       * through.
+       *
+       * 20 ms after a decode so the next frame follows promptly (four frames
+       * in about a fifth of a second plus the decodes themselves), 80 ms when
+       * the card refused - the same floor the bottom of this loop uses, and
+       * for the same reason: this task must not spin against a capture.
+       */
+      const int fr = frames_step();
+      vTaskDelay(pdMS_TO_TICKS(fr == FRAME_DID ? 20 : 80));
       continue;
     }
 

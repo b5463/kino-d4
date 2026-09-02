@@ -489,4 +489,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 1/16-step units instead of the enum, which had capped AGC at 0.19x and
   // made every frame near-black (#156). Behaviour only, same profile.
   '0.4.19': 'd4-settings-0-4-9',
+  // 0.4.20: the photo screen plays a wigglegram (#160), and the bench capture
+  // path reaches all four channels (#159, committed unbumped by a concurrent
+  // session and carried here). Device-side only, same profile.
+  '0.4.20': 'd4-settings-0-4-9',
 };

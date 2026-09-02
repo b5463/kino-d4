@@ -18,7 +18,11 @@ LDFLAGS := -lm
 # stub would defeat the point — the QR on the ROLL screen has never been on a
 # panel, so these renders are the only place its pitch and quiet zone can be
 # looked at.
-SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c
+# pure.c is compiled for real for the same reason qr.c is, and now it has to
+# be: the photograph screen's wigglegram order comes from pure_wiggle_sequence()
+# on the draw path, so a stub would mean the renders showed an order no camera
+# will ever play. It has no ESP-IDF dependency - that is what it is for.
+SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
         $(MAIN)/ui_font.h $(MAIN)/ui_labels.h $(MAIN)/logo_kino_d4.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \

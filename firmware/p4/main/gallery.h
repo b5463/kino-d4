@@ -153,4 +153,79 @@ bool gallery_deleting(void);
 /** How far the wipe has got. `total` is 0 until the folders have been counted. */
 void gallery_delete_progress(int *done, int *total);
 
+/* ------------------------------------------------------------------ */
+/* A capture's own frames, for the wigglegram player                   */
+/* ------------------------------------------------------------------ */
+
+/** Four lenses, so four frames: C1..C4.JPG. */
+#define GALLERY_FRAME_MAX 4
+
+/**
+ * Decode a capture's C1..C4 into four buffers this module owns, in the
+ * background.
+ *
+ * ## Why this lives here and not on the photograph screen
+ *
+ * Four full decodes is tens of milliseconds each off the card, and the task
+ * that would otherwise do it is the one holding the canvas and the compositor
+ * on an 8 KB stack. The gallery task already exists, already owns the only
+ * polite card discipline in the firmware - a bounded acquire, a yield to a
+ * capture, a retry on the next turn - and is idle for the whole time a
+ * photograph is open. Adding a second worker would be a second copy of that
+ * discipline for a job this one is asleep through.
+ *
+ * The frames are decoded one per turn, and only on turns where the gallery has
+ * no page work of its own. A shutter press wins: the acquire times out, the
+ * frame is retried on a later turn, and the screen keeps showing its still.
+ *
+ * ## What it costs
+ *
+ * The four buffers are allocated on the first call and never freed:
+ * 4 x THUMB_TILE_BYTES(w, h), which at the photograph screen's 464x348 is
+ * 1,291,776 bytes - 1.23 MiB of the P4's 32 MB PSRAM. Held rather than freed
+ * per photograph because the alternative is a 1.23 MiB allocation on every
+ * open, which fails precisely when the camera is busiest, and because a buffer
+ * that cannot be freed cannot be freed underneath a decode that is still
+ * writing into it. That last point is the whole lifetime rule: nothing here
+ * ever dangles, so cancelling is a flag rather than a wait.
+ *
+ * `w`/`h` are fixed by the first call for the life of the boot; a later call
+ * asking for a larger frame is refused with ESP_ERR_INVALID_SIZE rather than
+ * writing past the buffers. There is one caller and it has one size.
+ *
+ * Returns ESP_OK with `*gen` set to the job's generation - the token every
+ * later call carries, so an answer about a photograph the user has left cannot
+ * be mistaken for one about the photograph they are looking at now.
+ * ESP_ERR_NO_MEM when the buffers could not be had, which is not an error the
+ * caller has to show: a photograph that cannot play is a photograph.
+ */
+esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint32_t *gen);
+
+/** Forget the outstanding job. Never blocks and never waits for a decode in
+ * flight: a decode that is already running finishes into a buffer nobody is
+ * reading and its result is dropped for being of the wrong generation. */
+void gallery_frames_cancel(void);
+
+/**
+ * Where `gen`'s job has got to. False when `gen` is not the current job, in
+ * which case the outputs are untouched.
+ *
+ * `have` is a bit mask, bit i for C(i+1) - the frames that decoded, which is
+ * not what META's frameCount says: a partial capture may be missing any one of
+ * the four, and presence is discovered by trying rather than by trusting the
+ * document. `done` means all four were TRIED, which is when the mask stops
+ * changing and playback may start.
+ */
+bool gallery_frames_state(uint32_t gen, uint32_t *have, bool *done);
+
+/**
+ * Frame `index`'s pixels, `w` x `h` as begun.
+ *
+ * Only valid for a bit set in the `have` of the CURRENT generation: a buffer
+ * outside that set is either being written or holds a previous photograph.
+ * The pointer itself never moves and is never freed, so holding it across a
+ * draw is safe; what changes is whether it means anything.
+ */
+const uint16_t *gallery_frame_pixels(int index);
+
 #endif

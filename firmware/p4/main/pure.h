@@ -559,4 +559,93 @@ ui_health_report_t ui_health_step(ui_health_t *h, bool present_due, bool frames_
  */
 const char *capture_unavailable_reason(bool card_mounted, bool any_camera_ready);
 
+/* ------------------------------------------------------------------ */
+/* Wigglegram playback                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Four lenses, so four frames. */
+#define PURE_WIGGLE_FRAMES_MAX 4
+/** The longest order any mode produces: a bounce over n frames is 2n-2. */
+#define PURE_WIGGLE_SEQ_MAX (2 * PURE_WIGGLE_FRAMES_MAX - 2)
+
+/** 02 §9's speed range, the same numbers packages/media/src/sequence.ts
+ * clamps to. The camera's own envelope defaults to 8 (config_store.c), which
+ * is what an unreadable or absent value falls back to here - not media's 10,
+ * because this is the device reading its own setting. */
+#define PURE_WIGGLE_FPS_MIN 5
+#define PURE_WIGGLE_FPS_MAX 15
+#define PURE_WIGGLE_FPS_DEFAULT 8
+
+/**
+ * KDP's loop vocabulary (WiggleLoop in packages/kdp/src/protocol/types.ts).
+ *
+ * These are the KDP words, not the media package's. The two vocabularies
+ * collide on two of three values - KDP `continuous` is media `sweep`, KDP
+ * `sweep` is media `once` (packages/media/src/playback.ts) - and the camera
+ * stores the KDP words, so this enum speaks KDP and the mapping is done once,
+ * here, rather than being re-derived at every call site.
+ */
+typedef enum {
+  PURE_WIGGLE_BOUNCE = 0, /* out and back, repeating: 0 1 2 3 2 1 */
+  PURE_WIGGLE_CONTINUOUS, /* one way, repeating, snapping back: 0 1 2 3 */
+  PURE_WIGGLE_SWEEP,      /* one way, ONCE, then hold the last frame */
+} pure_wiggle_loop_t;
+
+/** `wiggle.loop` as a word to the enum. Anything unrecognised, including NULL,
+ * is BOUNCE: the value comes out of a stored JSON envelope, and a mangled one
+ * still deserves the default wiggle rather than a still. */
+pure_wiggle_loop_t pure_wiggle_loop(const char *word);
+
+/** True for `wiggle.direction` == "rtl". Anything else, including NULL, is
+ * left-to-right, which is CAM1 first. */
+bool pure_wiggle_direction_rtl(const char *word);
+
+/**
+ * The order the frames are shown in, as frame indices 0..3 (C1..C4).
+ *
+ * This is the device's copy of packages/media/src/sequence.ts, and it must
+ * give the same answer: the baked WebP a Roll shows and the picture moving on
+ * the camera's own panel are the same photograph, and two orders would make
+ * them two. The rules are taken from there rather than re-invented:
+ *
+ *   - BOUNCE is out and back with neither end repeated - `0 1 2 3 2 1`, length
+ *     2n-2. Repeating an end (`0 1 2 3 3 2 1 0`) stalls the swing for two
+ *     frame periods at each turn, and the D4's parallax reads as a head
+ *     movement; a head that pauses at both extremes looks mechanical.
+ *   - CONTINUOUS is one pass, repeating. The snap back from the far frame to
+ *     the near one IS the effect.
+ *   - SWEEP is the same order as CONTINUOUS. The two differ in whether
+ *     playback repeats, not in which frames are shown - which is why the
+ *     repeat is a separate output and not a shape in the array.
+ *   - `rtl` mirrors the frame POSITIONS (p -> n-1-p) rather than reversing the
+ *     array. For the one-way modes the two are the same. For a bounce they are
+ *     not: mirroring gives `3 2 1 0 1 2`, which starts the swing at the far
+ *     camera and keeps its shape, while reversing gives `1 2 3 2 1 0` - the
+ *     same cyclic loop entered half way through a swing, so the frame it
+ *     rests on is a middle rather than an end.
+ *
+ * `present` is a bit mask of the frames that actually decoded, bit i for
+ * C(i+1). It is not `frameCount`: a partial capture with three frames may be
+ * missing any one of the four, and META records only how many were stored.
+ * The frames that are there are wiggled as an n-frame wiggle in camera order,
+ * so a capture missing C2 swings C1 -> C3 -> C4 -> C3 rather than holding a
+ * gap. That is a shorter swing, which is what it is - the parallax that was
+ * not photographed cannot be shown.
+ *
+ * Returns the length written, or 0 when nothing can be played - no frames
+ * present, or `cap` smaller than the order needs. 0 means REFUSE, and the
+ * caller shows the still. A single present frame returns 1, which is also a
+ * still: the caller treats a length below 2 as nothing to play.
+ *
+ * `repeats` may be NULL; it is false only for SWEEP.
+ */
+int pure_wiggle_sequence(pure_wiggle_loop_t loop, bool rtl, unsigned present, uint8_t *seq,
+                         int cap, bool *repeats);
+
+/** Milliseconds one frame is held, from `wiggle.fps`. Clamped to 5..15 fps
+ * rather than rejected, for the same reason media's clampWiggleFps() clamps:
+ * the number comes from a slider or a stored preference, and one a little out
+ * of range is a stale client, not a reason to refuse to play. */
+int pure_wiggle_period_ms(int fps);
+
 #endif

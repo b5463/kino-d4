@@ -437,6 +437,68 @@ void gallery_delete_progress(int *done, int *total) {
   if (total != NULL) *total = 0;
 }
 
+/*
+ * The wigglegram's four frames, invented here like the tiles above.
+ *
+ * On the camera these are four JPEGs off the card, decoded on the gallery
+ * task. There is no card here, so the harness IS the decode: it fills four
+ * buffers and reports them ready immediately. The synthetic frames carry a
+ * bar that moves 18 px per lens, which is a caricature of the ~19 mm baseline
+ * the real bodies have - the point is that a render of frame three is
+ * unmistakably not a render of frame one, which is the whole claim the
+ * photo_wiggle_playing shot exists to check.
+ *
+ * `g_frame_have` is driven by main() so the complete capture and the partial
+ * one both get a picture. It is the mask the device discovers by trying each
+ * file, so a 0 bit here is a frame that is not on the card at all.
+ */
+static uint16_t *g_frame[GALLERY_FRAME_MAX];
+static uint32_t g_frame_gen;
+static uint32_t g_frame_have = 0xf;
+
+esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint32_t *gen) {
+  (void)id;
+  (void)pad;
+  for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
+    free(g_frame[i]);
+    g_frame[i] = calloc((size_t)w * (size_t)h, sizeof(uint16_t));
+    if (g_frame[i] == NULL) return ESP_ERR_NO_MEM;
+    /* The background is the same in all four - it is the distance - and only
+     * the near object moves, which is what parallax is and what makes one
+     * frame of the swing tell you which frame it is. */
+    const int bar = w / 4 + i * 34;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        const int r = (x * 31) / w;
+        const int g = (y * 63) / h;
+        const int b = 31 - ((x + y) * 31) / (w + h);
+        uint16_t px = (uint16_t)((r << 11) | (g << 5) | b);
+        if (x >= bar && x < bar + 44 && y > h / 5 && y < h - h / 5) px = 0xffff;
+        g_frame[i][y * w + x] = px;
+      }
+    }
+  }
+  g_frame_gen++;
+  if (gen != NULL) *gen = g_frame_gen;
+  return ESP_OK;
+}
+
+void gallery_frames_cancel(void) { g_frame_gen++; }
+
+bool gallery_frames_state(uint32_t gen, uint32_t *have, bool *done) {
+  if (gen != g_frame_gen || g_frame_gen == 0) return false;
+  if (have != NULL) *have = g_frame_have;
+  /* Always finished. The still-loading state is not a separate picture: it is
+   * exactly the existing "photo" shot, which is the requirement. */
+  if (done != NULL) *done = true;
+  return true;
+}
+
+const uint16_t *gallery_frame_pixels(int index) {
+  if (index < 0 || index >= GALLERY_FRAME_MAX) return NULL;
+  return g_frame[index];
+}
+
 void klog(const char *src, const char *fmt, ...) {
   (void)src;
   (void)fmt;
@@ -1030,6 +1092,48 @@ int main(int argc, char **argv) {
     shot("photo_delete_confirm");
     s_dialog = DLG_NONE;
     photo_release();
+  }
+
+  /* ---- the same photograph, playing (#160) ----
+   *
+   * Two shots, because the two things worth looking at are different: that a
+   * frame of the swing is a different picture from the still, and that a
+   * capture missing a frame says so without moving anything else.
+   *
+   * The chrome around the well - the sunken bevel, the caption, the three
+   * buttons, the focus ring - is drawn by exactly the code the static shots
+   * use, and the diff against them is the check that an animating picture
+   * changed nothing but the picture.
+   */
+  {
+    const gallery_item_t *slots = gallery_slots();
+    g_stage = CAPTURE_IDLE; /* wiggle_tick() pauses for a capture, as it must */
+
+    /* slots[0] is a wiggle of four frames. */
+    g_frame_have = 0xf;
+    photo_open(&slots[0]);
+    /* One tick starts playback: ui_task calls this every pass, and the fake
+     * card above answers the whole job in the first one. */
+    wiggle_tick();
+    /* Mid-cycle, set directly rather than by waiting out three frame periods -
+     * this is a picture of a frame of the swing, not of the clock. Position 2
+     * of the default bounce order 0,1,2,3,2,1 is C3, so a diff against the
+     * static "photo" shot is the near object having moved. */
+    s_wig_pos = 2;
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
+    SHOT(SCR_PHOTO, "photo_wiggle_playing");
+    photo_release();
+
+    /* Three frames of four: C2 never reached the card. The swing is
+     * C1 -> C3 -> C4 -> C3, and position 2 is C4 - the far end of a swing that
+     * is short one lens, which is the frame this shot is about. */
+    g_frame_have = 0xd;
+    photo_open(&slots[0]);
+    wiggle_tick();
+    s_wig_pos = 2;
+    SHOT(SCR_PHOTO, "photo_partial");
+    photo_release();
+    g_frame_have = 0xf;
   }
 
   /* ---- a toast, which every screen can raise ---- */

@@ -395,6 +395,28 @@ and photographing. Not proven here, deliberately: the grouped four-camera
 shutter (#132), synchronization and skew, exposure quality (#156), and
 four-camera behaviour under upload load (Gate F ran on one camera).
 
+### The photo screen plays the wigglegram - 0.4.20, 2026-09-02
+
+The camera's whole purpose, finally on its own panel: opening a wiggle
+capture from the gallery plays it, bounce order 1-2-3-4-3-2 at wiggle.fps
+(clamped 5-15, default 8). The order comes from pure_wiggle_sequence(), a
+device-side port of packages/media/src/sequence.ts - the same module that
+bakes the Roll's WebP - so the swing on the panel and the swing a guest sees
+are the same photograph in the same order, including the rule that a mirrored
+bounce rests mid-swing rather than on an end. Partial captures play the
+frames that exist (the order is built from a decoded-frames bitmask, not
+META's count) under a "3 OF 4 FRAMES" note; an exhaustive host test over all
+15 masks x 3 loops x 2 directions pins that no absent frame is ever
+scheduled. C1 still shows instantly - the other frames decode one per gallery
+turn in the task's idle branch, yielding to the shutter; a dialog or an
+in-flight capture pauses the swing, navigation or DELETE cancels it without
+waiting. 1.23 MiB of PSRAM, one memcpy + present per frame shown, ui.stalled
+kept truthful (playing owes frames; loading, resting or paused owes none).
+
+Flashed to KD4-D121BC (P4 0.4.20, nodes 0.4.19), all four cameras online.
+This version also carries #159 from a concurrent session: the bench capture
+command reaches all four channels and CAMERA_LINK_STATS answers per channel.
+
 ### Four cameras, one register, and a mean luma of 5.3 - 0.4.19 bench, 2026-09-01
 
 The first session with all four camera nodes live. Board `KD4-D121BC`, four

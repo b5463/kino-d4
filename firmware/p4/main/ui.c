@@ -362,6 +362,34 @@ static int s_photo_frames;
  * second and this would be an SD read and a JSON parse in each of them. */
 static bool s_photo_fav;
 
+/*
+ * The wigglegram player (#160).
+ *
+ * A wiggle is four photographs of one moment from four lenses 19 mm apart,
+ * and the parallax between them is the whole of what the camera makes. Shown
+ * as C1 for ever, the screen was a picture of one lens - the one thing a
+ * wiggle is not. So the frames are decoded in the background (gallery.c owns
+ * that; this task must never decode) and, once they are all in, this steps
+ * through them.
+ *
+ * Nothing here allocates. The pixels belong to gallery.c, are never freed and
+ * never move, and a frame is read only while its bit is in `s_wig_have` for
+ * `s_wig_gen` - which is what makes a torn frame impossible without a lock on
+ * the draw path.
+ */
+static uint32_t s_wig_gen;       /* the gallery job token, 0 when none */
+static uint32_t s_wig_have;      /* frames decoded, bit i for C(i+1) */
+static bool s_wig_play;          /* stepping */
+static bool s_wig_repeat;        /* false for the KDP `sweep` loop: one pass, then hold */
+static uint8_t s_wig_seq[PURE_WIGGLE_SEQ_MAX];
+static int s_wig_len;
+static int s_wig_pos;
+static int s_wig_period_ms;
+static int64_t s_wig_next_us;
+/* How many of the four decoded, for the "3 OF 4 FRAMES" note. 0 means there
+ * is nothing to say - no job, or not finished yet. */
+static int s_wig_count;
+
 /* Item index reserved for the header's Back target on every detail screen.
  * Kept out of the 0..N-1 range so a screen's own items can be plain indices. */
 #define IT_BACK 200
@@ -2659,7 +2687,30 @@ static void draw_gallery(void) {
 #define P_IT_FAV 1
 #define P_IT_ROLL 2
 
+/*
+ * Stop playing and forget the job. Safe to call at any time, from this task.
+ *
+ * There is no wait in it and there must not be: gallery_frames_cancel() drops
+ * the job, and a decode already in flight lands in a buffer this screen has
+ * stopped reading (gallery.h, the lifetime rule). A dialog opening, a
+ * navigation, a DELETE and a capture all reach this, and a DELETE that took
+ * two seconds to acknowledge because a decode was waiting on a busy card
+ * would be a worse camera than one that shows a still.
+ */
+static void wiggle_stop(void) {
+  if (s_wig_gen != 0) gallery_frames_cancel();
+  s_wig_gen = 0;
+  s_wig_have = 0;
+  s_wig_play = false;
+  s_wig_repeat = false;
+  s_wig_len = 0;
+  s_wig_pos = 0;
+  s_wig_count = 0;
+  s_wig_next_us = 0;
+}
+
 static void photo_release(void) {
+  wiggle_stop();
   if (s_photo) { free(s_photo); s_photo = NULL; }
   s_photo_ok = false;
   s_photo_fav = false;
@@ -2720,7 +2771,154 @@ static bool photo_open(const gallery_item_t *it) {
     }
   }
   storage_release(STORAGE_USER_UI);
+
+  /*
+   * The rest of the wiggle, in the background, after the card is back.
+   *
+   * Only for a wiggle with more than one frame: a quad is four views of four
+   * different framings and stepping through them is a slideshow, not a
+   * parallax, and a single has nothing to step through. Both stay exactly as
+   * they were, which is the requirement.
+   *
+   * Posted after the release rather than before it so the gallery task is not
+   * queued behind a lock this task is still holding for a decode it has
+   * already finished.
+   *
+   * C1 is decoded again by the job even though `s_photo` usually holds it.
+   * That is one extra decode on a background task, and it buys the one thing
+   * that matters: every frame in the swing came from the same source at the
+   * same size. `s_photo` falls back to THUMB.JPG and even to C2, so reusing
+   * it would put a 300 px thumbnail, or the wrong lens, into position one of
+   * a swing of full-size frames - a visible pop once a cycle.
+   */
+  if (strcmp(s_photo_mode, "wiggle") == 0 && s_photo_frames > 1) {
+    uint32_t gen = 0;
+    if (gallery_frames_begin(it->id, PH_W, PH_H, C_WELL, &gen) == ESP_OK) s_wig_gen = gen;
+  }
   return true;
+}
+
+/*
+ * One pass of the player. True when the picture on screen has to change.
+ *
+ * Called from ui_task on every pass, which is every 20 ms, and it is the only
+ * thing that moves the frame. The panel is paced by that loop rather than by a
+ * timer or a spin: at the config's 5..15 fps a frame is held 200..66 ms, so a
+ * 20 ms pass lands within one pass of every deadline. The deadline is advanced
+ * by whole periods rather than set from `now`, so the swing does not drift.
+ *
+ * Rejected: a present loop of its own, the way SCR_SHOOT presents
+ * unconditionally at 60 ms. That would make the photograph screen a painter
+ * whether or not anything moved - a still photograph would repaint 12 times a
+ * second for as long as someone looked at it, on a battery.
+ */
+static bool wiggle_tick(void) {
+  if (s_wig_gen == 0) return false;
+
+  /* Not while a dialog is up, not while a capture is running.
+   *
+   * The dialog is the plain one: DELETE asks a question over the picture, and
+   * a picture that keeps moving under a modal is a screen that has not
+   * stopped to ask. The capture is the important one: the shutter owns the
+   * camera for a second or two and this is a decoration. Both PAUSE - the
+   * position and the deadline are kept - so dismissing a dialog carries on
+   * mid-swing rather than snapping back to frame one. */
+  if (s_dialog != DLG_NONE || capture_stage() != CAPTURE_IDLE) {
+    s_wig_next_us = 0;
+    return false;
+  }
+
+  if (s_wig_len == 0) {
+    /* Still loading. Nothing on screen changes until every frame has been
+     * tried: a swing that grows from two frames to four while someone watches
+     * changes speed and shape twice, which reads as a fault. */
+    uint32_t have = 0;
+    bool done = false;
+    if (!gallery_frames_state(s_wig_gen, &have, &done) || !done) return false;
+
+    s_wig_have = have;
+    s_wig_count = 0;
+    for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
+      if (have & (1u << i)) s_wig_count++;
+    }
+
+    /* The camera's own stored preference, not a second one invented here.
+     * config_str's result is used on the next line and not kept, which is what
+     * that ring is for. */
+    const pure_wiggle_loop_t loop = pure_wiggle_loop(config_str("wiggle.loop", "bounce"));
+    const bool rtl = pure_wiggle_direction_rtl(config_str("wiggle.direction", "ltr"));
+    s_wig_len = pure_wiggle_sequence(loop, rtl, have, s_wig_seq, (int)sizeof s_wig_seq,
+                                     &s_wig_repeat);
+    s_wig_period_ms = pure_wiggle_period_ms(config_int("wiggle.fps", PURE_WIGGLE_FPS_DEFAULT));
+
+    if (s_wig_len < 2) {
+      /*
+       * Nothing to play: no frame decoded, or one. The still IS the graceful
+       * answer, so there is no banner - but it is said once, here, because a
+       * wiggle that will not play is either a partly-written capture or a
+       * codec that stopped, and neither is visible from the outside.
+       * Once per photograph, never per frame: s_wig_gen is cleared below, so
+       * this branch cannot be re-entered for the same open.
+       */
+      klog("P4", "wiggle %s will not play: %d of 4 frames decoded", s_photo_id, s_wig_count);
+      wiggle_stop();
+      return false;
+    }
+    /* An order exists from here on, and `s_wig_len` is what says so. It stays
+     * set for as long as the photograph is open, through a pause and past the
+     * end of a sweep, because it is also what tells the draw to keep showing
+     * the frame the swing rests on rather than snapping back to the still. */
+
+    s_wig_play = true;
+    s_wig_pos = 0;
+    s_wig_next_us = esp_timer_get_time() + (int64_t)s_wig_period_ms * 1000;
+    klog("P4", "wiggle %s playing %d frames at %d ms", s_photo_id, s_wig_len, s_wig_period_ms);
+    /* Repaint now: the first frame of the order is not necessarily what the
+     * still showed (rtl starts at C4), and the frame note appears with it. */
+    return true;
+  }
+
+  /* A sweep that has run its one pass, holding its last frame. */
+  if (!s_wig_play) return false;
+
+  const int64_t now = esp_timer_get_time();
+  if (s_wig_next_us == 0) {
+    /* Resuming from a pause. Give the frame on screen a full period rather
+     * than firing immediately, or dismissing a dialog would jump the swing. */
+    s_wig_next_us = now + (int64_t)s_wig_period_ms * 1000;
+    return false;
+  }
+  if (now < s_wig_next_us) return false;
+
+  if (s_wig_pos + 1 >= s_wig_len && !s_wig_repeat) {
+    /* KDP `sweep` is media's `once` (packages/media/src/playback.ts): one pass,
+     * then hold the last frame. Holding rather than snapping back to C1,
+     * because the end of the sweep is where the photograph was left. */
+    s_wig_play = false;
+    return false;
+  }
+  s_wig_pos = (s_wig_pos + 1) % s_wig_len;
+
+  /* By whole periods, so a late pass does not shorten the next frame. A
+   * deadline that has fallen more than a period behind - the loop was busy
+   * with a toast or a capture banner - is resynced instead of firing several
+   * times in a row to catch up, which would be a stutter rather than a wiggle. */
+  s_wig_next_us += (int64_t)s_wig_period_ms * 1000;
+  if (s_wig_next_us < now) s_wig_next_us = now + (int64_t)s_wig_period_ms * 1000;
+  return true;
+}
+
+/** The pixels the photograph screen should draw: the frame of the swing when
+ * one is playing, the still otherwise. Never a buffer whose bit is clear. */
+static const uint16_t *photo_pixels(void) {
+  if (s_wig_len >= 2) {
+    const int frame = s_wig_seq[s_wig_pos];
+    if (s_wig_have & (1u << frame)) {
+      const uint16_t *px = gallery_frame_pixels(frame);
+      if (px != NULL) return px;
+    }
+  }
+  return s_photo_ok ? s_photo : NULL;
 }
 
 /*
@@ -2766,9 +2964,13 @@ static void draw_photo(void) {
   fill(0, 0, UI_W, UI_H, D_GROUND);
 
   const int px = PH_X0, py = PH_TOP;
-  if (s_photo_ok && s_photo) {
+  /* The frame of the swing while one is playing, the still otherwise. Same
+   * size, same well, same everything else: the picture moves and no pixel of
+   * the chrome around it does. */
+  const uint16_t *src = photo_pixels();
+  if (src != NULL) {
     for (int r = 0; r < PH_H; r++)
-      memcpy(s_cv + (size_t)(py + r) * UI_W + px, s_photo + (size_t)r * PH_W,
+      memcpy(s_cv + (size_t)(py + r) * UI_W + px, src + (size_t)r * PH_W,
              (size_t)PH_W * sizeof(uint16_t));
   } else {
     fill(px, py, PH_W, PH_H, D_PANE);
@@ -2787,6 +2989,26 @@ static void draw_photo(void) {
   char info[72];
   snprintf(info, sizeof info, "%s   %s   %d frames", s_photo_label, s_photo_mode, s_photo_frames);
   text(&UI_FONT_S, px, PH_CAP_Y, info, D_DIM);
+
+  /*
+   * A wiggle that is swinging fewer than four frames says so, at the right
+   * end of the caption row it already has.
+   *
+   * The count is what DECODED, not META's frameCount: a partial capture may
+   * be missing any one of the four and the document only records how many
+   * were stored, so the denominator is the four lenses and the numerator is
+   * what is actually on the card. Said only when it is short - a complete
+   * wiggle needs no note, and "4 OF 4 FRAMES" on every photograph is a label
+   * that teaches nothing and dilutes the one that does.
+   *
+   * On the caption's own baseline rather than over the picture: the well is a
+   * photograph and nothing this firmware has to say belongs inside it.
+   */
+  if (s_wig_len >= 2 && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX) {
+    char note[24];
+    snprintf(note, sizeof note, "%d OF %d FRAMES", s_wig_count, GALLERY_FRAME_MAX);
+    text_right(&UI_FONT_S, px + PH_W, PH_CAP_Y, note, D_DIM);
+  }
 
   const int bh = PH_BTN_H, by = PH_BTN_Y, bw = PH_BTN_W;
   const int ty = by + (bh - UI_FONT_S.line_h) / 2;
@@ -4942,10 +5164,26 @@ static void ui_task(void *arg) {
     const bool busy = cstage != CAPTURE_IDLE ||
                       (s_screen == SCR_GALLERY && gallery_loading()) ||
                       (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
-    if (held == -1 && s_screen != SCR_SHOOT && busy) {
+
+    /*
+     * The wigglegram advances here, above the busy branch rather than in the
+     * tail, so that a toast or a capture banner over the photograph does not
+     * freeze the picture underneath it. It is a state step and not a draw: it
+     * moves the frame index and says whether the screen owes a repaint.
+     *
+     * It is asked only on the screen that has one, and only with no finger
+     * down - a press repaints on its own edge, and stepping a frame under a
+     * held button would fight it for the canvas.
+     */
+    const bool wig_moved = (s_screen == SCR_PHOTO && held == -1) ? wiggle_tick() : false;
+
+    if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
       draw_screen();
       gfx_present();
-      vTaskDelay(pdMS_TO_TICKS(90));
+      /* 90 ms is the busy cadence; a wiggle frame that is only waiting for its
+       * own deadline goes back round at the loop's own 20 ms so the next
+       * deadline is not missed by 70. */
+      vTaskDelay(pdMS_TO_TICKS(busy ? 90 : 20));
       continue;
     }
 
@@ -4981,7 +5219,17 @@ static void ui_task(void *arg) {
         uint32_t ui_frames = 0;
         gfx_stats(&ui_frames, NULL);
         const bool frames_advanced = ui_frames != s_ui_last_frames;
-        const bool present_due = s_screen == SCR_SHOOT && held == -1;
+        /* A playing wigglegram is the second screen that owes frames, and it
+         * has to be counted or a photograph that stopped moving would read as
+         * a settled screen. It is stated as "playback is running" rather than
+         * "a frame is due on THIS pass", which is the only truthful form at
+         * this resolution: the check is once a second, a frame falls every
+         * 66-200 ms, and sampling the deadline would answer false on five
+         * passes out of six while the screen was in fact painting eight times
+         * a second. A photograph that is NOT playing - still loading, one
+         * frame, a quad - owes nothing and says so. */
+        const bool present_due =
+            held == -1 && (s_screen == SCR_SHOOT || (s_screen == SCR_PHOTO && s_wig_play));
         const bool latched = held != -1 || s_pressed != -1;
         switch (ui_health_step(&health, present_due, frames_advanced, latched)) {
           case UI_HEALTH_STALLED:
