@@ -502,4 +502,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.23: hard cuts, no crossfade at all; wiggle defaults 10 fps / continuous
   // to match the reference reel (#161). Device side only, same profile.
   '0.4.23': 'd4-settings-0-4-9',
+  // 0.4.24: SET_CONFIG roll.credentials reaches roll_state (Studio provisioning
+  // actually provisions) and NETWORK_SET joins a saved auto-join network at
+  // once. Device side only, same profile.
+  '0.4.24': 'd4-settings-0-4-9',
 };

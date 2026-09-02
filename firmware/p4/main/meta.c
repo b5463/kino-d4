@@ -300,6 +300,35 @@ void meta_merge_into(void *dst_in, const void *patch_in) {
   }
 }
 
+meta_credential_t meta_take_roll_credential(void *patch_in, char *device_id, size_t id_cap,
+                                            char *token, size_t token_cap) {
+  cJSON *patch = patch_in;
+  if (patch == NULL || device_id == NULL || token == NULL || id_cap == 0 || token_cap == 0) {
+    return META_CRED_NONE;
+  }
+  cJSON *roll = cJSON_GetObjectItem(patch, "roll");
+  cJSON *creds = cJSON_IsObject(roll) ? cJSON_GetObjectItem(roll, "credentials") : NULL;
+  if (!cJSON_IsObject(creds)) return META_CRED_NONE;
+  cJSON *tok = cJSON_GetObjectItem(creds, "deviceToken");
+  /* An empty token is an edit to the other fields, not a credential. */
+  if (!cJSON_IsString(tok) || tok->valuestring == NULL || tok->valuestring[0] == '\0') {
+    return META_CRED_NONE;
+  }
+  const cJSON *id = cJSON_GetObjectItem(creds, "deviceId");
+  const bool id_ok = cJSON_IsString(id) && id->valuestring != NULL && id->valuestring[0] != '\0' &&
+                     strlen(id->valuestring) < id_cap;
+  const bool tok_ok = strlen(tok->valuestring) < token_cap;
+  if (id_ok && tok_ok) {
+    snprintf(device_id, id_cap, "%s", id->valuestring);
+    snprintf(token, token_cap, "%s", tok->valuestring);
+  }
+  /* Wipe the bytes, then replace the item: the secret leaves the heap as well
+   * as the document. Blank rather than delete so the object keeps its shape. */
+  memset(tok->valuestring, 0, strlen(tok->valuestring));
+  cJSON_ReplaceItemInObject(creds, "deviceToken", cJSON_CreateString(""));
+  return (id_ok && tok_ok) ? META_CRED_OK : META_CRED_INVALID;
+}
+
 meta_migrate_result_t meta_migrate_config(void *root_in, void *defaults_in, int target_version) {
   cJSON *root = root_in;
   cJSON *defaults = defaults_in;

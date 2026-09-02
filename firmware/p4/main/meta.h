@@ -84,6 +84,27 @@ void meta_capture_summary(const void *meta, void *out);
  */
 void meta_merge_into(void *dst, const void *patch);
 
+typedef enum {
+  META_CRED_NONE = 0, /* no roll.credentials.deviceToken in the patch */
+  META_CRED_OK,       /* deviceId + deviceToken taken out; token blanked in the patch */
+  META_CRED_INVALID   /* a token was there but no id, or one did not fit; blanked anyway */
+} meta_credential_t;
+
+/**
+ * Take `roll.credentials.{deviceId, deviceToken}` OUT of a config patch.
+ *
+ * deviceToken is write-only by contract and must never sit in the config
+ * document: Studio provisions through SET_CONFIG (rollOps.ts
+ * registerRollDevice -> applyConfig) and until 0.4.23 the pair was merged into
+ * config where nothing read it - roll_http takes its bearer from roll_state.
+ * On OK the pair is copied out for roll_state_set_credential() and the
+ * patch's deviceToken is replaced by "" so what gets merged and saved carries
+ * no secret; on INVALID the token is blanked all the same. `patch` is a cJSON
+ * object; caps are the destination sizes including the terminator.
+ */
+meta_credential_t meta_take_roll_credential(void *patch, char *device_id, size_t id_cap,
+                                            char *token, size_t token_cap);
+
 /**
  * Wrap `leaf` in the nested objects named by a dotted path.
  *

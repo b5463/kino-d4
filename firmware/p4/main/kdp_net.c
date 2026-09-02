@@ -321,6 +321,20 @@ kdp_net_reply_t kdp_net_set(const cJSON *req) {
    * not nothing. */
   klog("P4", "wifi network saved: %s", ssid);
 
+  /* Saving an auto-join network joins it. Until 0.4.23 a camera whose radio
+   * sat in WIFI_IDLE for want of credentials stayed there after NETWORK_SET
+   * until a reboot (bench 2026-09-02, KD4-D121BC after an NVS wipe): the
+   * auto-join decision ran at bring-up only. Idle only - an association or a
+   * recovery in progress is not interrupted for a newly saved network. */
+  if (auto_join) {
+    net_status_t st;
+    net_link_status(&st, now_ms());
+    if (st.state == NET_WIFI_IDLE) {
+      klog("P4", "joining %s", ssid);
+      (void)net_link_connect(ssid, now_ms());
+    }
+  }
+
   cJSON *o = cJSON_CreateObject();
   if (o == NULL) return err_reply("INTERNAL_ERROR", "Could not build the reply");
   cJSON_AddBoolToObject(o, "ok", true);

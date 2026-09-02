@@ -22,6 +22,11 @@ typedef struct {
 
 esp_err_t kdp_server_start(const kdp_identity_t *identity);
 
+/** Move a device token that an earlier firmware saved into the config
+ * document (Studio provisioning, <= 0.4.22) into roll_state, and blank it
+ * there. Call once after roll_state_init(). No-op when there is none. */
+void kdp_server_import_roll_credential(void);
+
 /**
  * The serial GET_DEVICE_INFO answers, as `kdp_server_start()` was handed it.
  *

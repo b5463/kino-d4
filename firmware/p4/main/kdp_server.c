@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 
 #include "config_store.h"
+#include "roll_state.h"
 #include "cJSON.h"
 #include "gallery.h"
 #include "gallery_index.h"
@@ -900,10 +901,11 @@ static cJSON *config_envelope(void) {
     cJSON *roll = cJSON_GetObjectItem(copy, "roll");
     cJSON *creds = roll ? cJSON_GetObjectItem(roll, "credentials") : NULL;
     if (creds != NULL) {
-      const cJSON *tok = cJSON_GetObjectItem(creds, "deviceToken");
-      const bool has = cJSON_IsString(tok) && tok->valuestring && tok->valuestring[0];
+      /* Since 0.4.23 the token lives in roll_state, never in this document
+       * (the document keeps a blank deviceToken so its shape is stable), so
+       * the store is what answers "is there one". */
       cJSON_DeleteItemFromObject(creds, "deviceToken");
-      cJSON_AddBoolToObject(creds, "hasDeviceToken", has);
+      cJSON_AddBoolToObject(creds, "hasDeviceToken", roll_state_has_credential());
     }
     cJSON_AddItemToObject(json, "config", copy);
   }
@@ -1003,12 +1005,76 @@ static void handle_set_config(uint32_t seq, const cJSON *req) {
               "body.name is a string of at most 24 characters");
     return;
   }
-  if (config_merge(patch) != ESP_OK) {
+  /*
+   * roll.credentials.deviceToken is write-only and never lands in the config
+   * document. Studio provisions through this command (rollOps.ts
+   * registerRollDevice -> applyConfig), and until 0.4.23 the pair was merged
+   * into config where nothing read it - roll_http takes its bearer token from
+   * roll_state's record, which only the dev-only self-registration wrote - so
+   * a Studio-provisioned camera reported hasDeviceToken true and tokenStatus
+   * no-credential side by side (bench 2026-09-02, KD4-D121BC after an NVS
+   * wipe). The pair goes to roll_state here; the copy that is merged and saved
+   * carries a blank token.
+   */
+  cJSON *scrubbed = cJSON_Duplicate(patch, true);
+  if (scrubbed == NULL) {
+    send_nack(KDP_CMD_SET_CONFIG, seq, "OUT_OF_MEMORY", "No memory to apply the config");
+    return;
+  }
+  char cred_id[ROLL_DEVICE_ID_LEN];
+  char cred_tok[ROLL_DEVICE_TOKEN_LEN];
+  const meta_credential_t cred =
+      meta_take_roll_credential(scrubbed, cred_id, sizeof cred_id, cred_tok, sizeof cred_tok);
+  if (cred == META_CRED_INVALID) {
+    cJSON_Delete(scrubbed);
+    send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST",
+              "roll.credentials needs a deviceId and a deviceToken that fits");
+    return;
+  }
+  if (cred == META_CRED_OK) {
+    const esp_err_t cerr = roll_state_set_credential(cred_id, cred_tok);
+    memset(cred_tok, 0, sizeof cred_tok);
+    if (cerr != ESP_OK) {
+      cJSON_Delete(scrubbed);
+      send_nack(KDP_CMD_SET_CONFIG, seq, "STORAGE_ERROR", "The device credential would not store");
+      return;
+    }
+    klog("P4", "device credential stored for %s", cred_id);
+  }
+  const esp_err_t merr = config_merge(scrubbed);
+  cJSON_Delete(scrubbed);
+  if (merr != ESP_OK) {
     send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST", "Config could not be merged");
     return;
   }
   klog("P4", "config set rev %lu", (unsigned long)config_revision());
   send_json(KDP_CMD_SET_CONFIG, seq, config_envelope());
+}
+
+void kdp_server_import_roll_credential(void) {
+  /* A token a firmware up to 0.4.22 saved into the config document on Studio's
+   * behalf. Moved into roll_state once, then blanked and the document saved,
+   * so the secret leaves the NVS config envelope. Runs after roll_state_init. */
+  cJSON *copy = cJSON_Duplicate(config_get(), true);
+  if (copy == NULL) return;
+  char id[ROLL_DEVICE_ID_LEN];
+  char tok[ROLL_DEVICE_TOKEN_LEN];
+  const meta_credential_t cred = meta_take_roll_credential(copy, id, sizeof id, tok, sizeof tok);
+  cJSON_Delete(copy);
+  if (cred == META_CRED_NONE) return;
+  if (cred == META_CRED_OK && !roll_state_has_credential()) {
+    if (roll_state_set_credential(id, tok) == ESP_OK) {
+      klog("P4", "device credential imported from config for %s", id);
+    }
+  }
+  memset(tok, 0, sizeof tok);
+  /* Blanked whatever happened above: a token the store refused is still a
+   * secret in the wrong place. */
+  cJSON *blank = cJSON_Parse("{\"roll\":{\"credentials\":{\"deviceToken\":\"\"}}}");
+  if (blank != NULL) {
+    if (config_merge(blank) == ESP_OK) (void)config_save();
+    cJSON_Delete(blank);
+  }
 }
 
 static void handle_save_config(uint32_t seq) {

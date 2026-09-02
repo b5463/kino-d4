@@ -13,6 +13,7 @@
  * defects are the reason this file exists, and each has a test named for it.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cJSON.h"
@@ -634,6 +635,54 @@ static void test_patch_path(void) {
   CHECK(meta_patch_path("a.b", NULL) == NULL, "null leaf refused");
 }
 
+static void test_take_roll_credential(void) {
+  /* Bench 2026-09-02: Studio's SET_CONFIG roll.credentials merged into config
+   * where nothing read it, and the token sat in the NVS envelope. */
+  char id[64], tok[48];
+  cJSON *p0 = cJSON_Parse("{\"network\":{\"apiBase\":\"http://h\"}}");
+  CHECK(meta_take_roll_credential(p0, id, sizeof id, tok, sizeof tok) == META_CRED_NONE,
+        "no roll branch: nothing taken");
+  cJSON_Delete(p0);
+
+  cJSON *p1 = cJSON_Parse("{\"roll\":{\"credentials\":{\"deviceId\":\"dev_x\",\"deviceToken\":\"kdt_secret\",\"serverUrl\":\"http://h\"}}}");
+  CHECK(meta_take_roll_credential(p1, id, sizeof id, tok, sizeof tok) == META_CRED_OK, "credential taken");
+  CHECK(strcmp(id, "dev_x") == 0, "device id copied: %s", id);
+  CHECK(strcmp(tok, "kdt_secret") == 0, "token copied");
+  const cJSON *c1 = cJSON_GetObjectItem(cJSON_GetObjectItem(p1, "roll"), "credentials");
+  CHECK(str_of(c1, "deviceToken") != NULL && strcmp(str_of(c1, "deviceToken"), "") == 0,
+        "token blanked in the patch");
+  CHECK(strcmp(str_of(c1, "deviceId"), "dev_x") == 0, "id stays in the patch");
+  CHECK(strcmp(str_of(c1, "serverUrl"), "http://h") == 0, "siblings untouched");
+  char *printed = cJSON_PrintUnformatted(p1);
+  CHECK(printed != NULL && strstr(printed, "kdt_secret") == NULL, "the secret is gone from the document");
+  free(printed);
+  cJSON_Delete(p1);
+
+  cJSON *p2 = cJSON_Parse("{\"roll\":{\"credentials\":{\"deviceToken\":\"kdt_only\"}}}");
+  CHECK(meta_take_roll_credential(p2, id, sizeof id, tok, sizeof tok) == META_CRED_INVALID,
+        "a token without an id is invalid");
+  const cJSON *c2 = cJSON_GetObjectItem(cJSON_GetObjectItem(p2, "roll"), "credentials");
+  CHECK(strcmp(str_of(c2, "deviceToken"), "") == 0, "and is blanked anyway");
+  cJSON_Delete(p2);
+
+  char big[600];
+  memset(big, 'a', sizeof big - 1);
+  big[sizeof big - 1] = '\0';
+  char doc[720];
+  snprintf(doc, sizeof doc, "{\"roll\":{\"credentials\":{\"deviceId\":\"dev_x\",\"deviceToken\":\"%s\"}}}", big);
+  cJSON *p3 = cJSON_Parse(doc);
+  CHECK(meta_take_roll_credential(p3, id, sizeof id, tok, sizeof tok) == META_CRED_INVALID,
+        "an oversized token is refused");
+  const cJSON *c3 = cJSON_GetObjectItem(cJSON_GetObjectItem(p3, "roll"), "credentials");
+  CHECK(strcmp(str_of(c3, "deviceToken"), "") == 0, "and blanked");
+  cJSON_Delete(p3);
+
+  cJSON *p4 = cJSON_Parse("{\"roll\":{\"credentials\":{\"deviceId\":\"dev_x\",\"deviceToken\":\"\"}}}");
+  CHECK(meta_take_roll_credential(p4, id, sizeof id, tok, sizeof tok) == META_CRED_NONE,
+        "an empty token is an edit, not a credential");
+  cJSON_Delete(p4);
+}
+
 static void test_merge(void) {
   /* Deep merge: nested objects recurse, scalars replace. */
   cJSON *dst = cJSON_Parse("{\"a\":1,\"n\":{\"x\":1,\"y\":2},\"keep\":\"me\"}");
@@ -892,6 +941,7 @@ int main(void) {
 
   test_patch_path();
   test_merge();
+  test_take_roll_credential();
 
   test_migrate_current();
   test_migrate_unversioned();

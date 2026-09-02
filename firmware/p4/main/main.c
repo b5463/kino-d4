@@ -417,6 +417,7 @@ void app_main(void) {
     ESP_LOGW(TAG, "roll membership unreadable: %s - the camera has forgotten its roll",
              esp_err_to_name(rs_err));
   }
+  if (rs_err == ESP_OK) kdp_server_import_roll_credential();
 
   /* The radio, in the build that has one. In the default build this is an
    * inline `return ESP_ERR_NOT_SUPPORTED` and no pin is driven — the reason is
