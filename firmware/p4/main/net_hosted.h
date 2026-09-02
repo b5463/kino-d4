@@ -82,6 +82,12 @@ void net_hosted_counters(uint64_t *rx_bytes, uint64_t *tx_bytes, uint32_t *error
  * HTTP client, which is the only thing on this device that moves bulk. */
 void net_hosted_count_bytes(uint64_t rx, uint64_t tx);
 
+/** True when the full DMA recovery reserve is held, so a C6 reset can re-init
+ * the transport without asserting (#162). False means the radio works but a
+ * recovery is not guaranteed - internal-DMA headroom was too low at bring-up.
+ * Reported so a boot never silently claims recoverability it does not have. */
+bool net_hosted_recovery_ready(void);
+
 #else /* !KINO_RADIO */
 
 /* The default build. Inline so main.c needs no #ifdef and the call costs a
@@ -97,6 +103,8 @@ static inline void net_hosted_count_bytes(uint64_t rx, uint64_t tx) {
   (void)rx;
   (void)tx;
 }
+/* No radio, so no recovery to be ready for. */
+static inline bool net_hosted_recovery_ready(void) { return false; }
 
 #endif /* KINO_RADIO */
 

@@ -2075,6 +2075,10 @@ static void handle_runtime_stats(uint32_t seq) {
                           (double)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
   cJSON_AddNumberToObject(json, "largestInternalDmaKB",
                           (double)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024));
+  /* Whether the C6 recovery reserve is fully held (#162). False means the radio
+   * works but a C6 reset is not guaranteed to re-init without asserting;
+   * additive and honest, so a boot never silently claims recoverability. */
+  cJSON_AddBoolToObject(json, "recoveryReady", net_hosted_recovery_ready());
   /* The node scheduler (cam_sched.h): how often maintenance ran, how often it
    * stood aside for a capture, how often a capture waited for a probe to end.
    * Additive; the bench reads them to prove discovery keeps running. */

@@ -24,7 +24,7 @@
  *                 frame read as ~979 KB until then). The deinit was safe once
  *                 nothing had been sent into the dead slave first
  *   RESET_C6      the enable line, bring-up's own 20 ms
- *   HOSTED_UP     free the recovery reserve (two 16 KiB internal DMA blocks
+ *   HOSTED_UP     free the recovery reserve (two 15,872 B internal DMA blocks
  *                 held since bring-up: the P4's PSRAM heap carries no
  *                 MALLOC_CAP_DMA, and the component asserts when its 15,872 B
  *                 SW_AGGR buffer cannot be allocated), then esp_hosted_init()

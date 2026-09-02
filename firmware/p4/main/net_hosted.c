@@ -758,10 +758,24 @@ static void bring_up(void) {
  * looks like first boot, and handed back the moment before esp_hosted_init()
  * runs again: one for the probe, one for the aggregate TX buffer the bus
  * allocates lazily on its first frame (and asserts on too).
+ *
+ * The block size is the component's, not a round number. esp_hosted 3.0.6's
+ * eh_host_mcu_transport_init_event.c probes max(e2h_bufsz, h2e_bufsz), and
+ * both negotiate to 31 x EH_SDIO_CFG_BUF_BLOCK (512 B) = 15,872 B on this
+ * carrier - the exact alloc the assert at init_event.c:358 guards. This was
+ * 16,384 B, a round-up that fit at first boot on 0.4.6 but not once internal
+ * RAM grew across 0.4.7-0.4.20: the largest free internal-DMA block fell to
+ * 15,872 B, so a 16,384 B reserve held 0/2 and every C6 recovery re-init
+ * asserted (#162). 15,872 B is what the component actually needs and what is
+ * actually free, so the reserve holds again. Sizing to the requirement is not
+ * lowering the bar - the assert is the component's, unchanged; this stops
+ * asking the heap for more than either side ever uses.
  */
 #define DMA_RESERVE_BLOCKS 2
-#define DMA_RESERVE_BYTES 16384
+/* 31 * EH_SDIO_CFG_BUF_BLOCK (512): the negotiated SW_AGGR buffer size. */
+#define DMA_RESERVE_BYTES 15872
 static void *s_dma_reserve[DMA_RESERVE_BLOCKS];
+static int s_dma_reserve_held; /* honest recovery-readiness, read by net_hosted_recovery_ready() */
 
 static void dma_reserve_take(void) {
   int held = 0;
@@ -772,10 +786,20 @@ static void dma_reserve_take(void) {
     }
     if (s_dma_reserve[i] != NULL) held++;
   }
+  s_dma_reserve_held = held;
+  /* A boot that could not hold the whole reserve is one C6 reset away from the
+   * panic this reserve exists to prevent. Say so at WARN so it is not silent -
+   * the radio still works, but recovery is not guaranteed until it is fixed. */
   klog("C6", "recovery reserve: %d/%d x %d B internal DMA held; largest free %u B",
        held, DMA_RESERVE_BLOCKS, DMA_RESERVE_BYTES,
        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  if (held < DMA_RESERVE_BLOCKS) {
+    ESP_LOGW("C6", "recovery reserve incomplete (%d/%d): C6 recovery may panic re-init until internal-DMA headroom is restored",
+             held, DMA_RESERVE_BLOCKS);
+  }
 }
+
+bool net_hosted_recovery_ready(void) { return s_dma_reserve_held >= DMA_RESERVE_BLOCKS; }
 
 static void dma_reserve_release(void) {
   for (int i = 0; i < DMA_RESERVE_BLOCKS; i++) {
