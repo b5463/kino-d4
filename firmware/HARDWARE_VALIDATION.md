@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-02, firmware 0.4.21
+## Status — updated 2026-09-02, firmware 0.4.22
 
 One D4 shutter produces a truthful, durable four-frame set: 20 of 20 grouped
 captures complete 4/4 on the fixed image, every frame CRC-checked to the card,
@@ -588,6 +588,41 @@ independently on its intended UART and all four are simultaneously visible
 and photographing. Not proven here, deliberately: the grouped four-camera
 shutter (#132), synchronization and skew, exposure quality (#156), and
 four-camera behaviour under upload load (Gate F ran on one camera).
+
+### The snap comes back - a short fade instead of a dissolve, 0.4.22, 2026-09-02
+
+0.4.21's crossfade was judged on glass within the hour (cameras on the
+bench, not in the rig): smooth, and dead. Blending frame k toward k+1 across
+the whole dwell means the picture is always halfway between two lenses and
+never pops, and the pop is the wigglegram. 0.4.22 keeps the sub-step
+machinery and changes what it draws: at the start of each dwell the PREVIOUS
+frame fades INTO the new one over a fixed WIG_XFADE_MS (70 ms) with an
+ease-out curve, sampled at the end of each sub-step's display interval, and
+the rest of the dwell holds the raw frame. At the default 8 fps the boundary
+composite already carries ~84% of the new lens (27/32), lands fully one
+sub-step later, and the raw frame holds for the remaining ~60 ms. One-way
+wraps and the first dwell after start stay hard cuts as before. Sub-steps
+inside the hold owe no repaint, so the composite runs at most twice per frame
+step instead of on every sub-step - the blend cost drops with it.
+
+host_preview's photo_wiggle_blend shot now shows the boundary composite: the
+harness bar at C2's place near full weight and a faint ghost at C1's; all
+other renders byte-identical. Flashed to KD4-D121BC as 0.4.22; the swing is
+judged on glass and WIG_XFADE_MS (ui.c) is the knob - 0 is #160's hard cut.
+
+The reference, measured. A 14 s clip of another four-lens camera's output
+was supplied as "the motion I want". Mean absolute frame-to-frame luma
+difference over its wigglegram section, at the clip's 30 fps: the picture
+changes every third frame and the difference between changes is exactly
+zero - 10 fps, hard cuts, no crossfade at all. The changes come in a
+pattern of three small steps (9-15) and one large (35-41): a ONE-WAY
+four-frame loop, 1-2-3-4 then snap to 1, not a bounce. The smoothness in
+that clip is alignment - the subject is pinned and the background moves -
+plus the constant direction, which reads as rotation. Neither is a blend.
+So the bench unit's wiggle.fps is set to 10 and wiggle.loop to continuous
+(SET_CONFIG + SAVE_CONFIG) to match, and the alignment path from 0.4.21 is
+the thing that will close the remaining gap once captures carry a
+calibration block - which needs the cameras in the rig, not on the bench.
 
 ### The swing stops jumping - aligned frames and a crossfade, 0.4.21, 2026-09-02
 

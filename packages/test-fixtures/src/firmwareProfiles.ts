@@ -496,4 +496,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // and crossfades the steps (#161); also repairs #162's build break. Device
   // side only, same profile.
   '0.4.21': 'd4-settings-0-4-9',
+  // 0.4.22: the crossfade is a short front-loaded fade, not a whole-dwell
+  // dissolve - the snap is back (#161). Device side only, same profile.
+  '0.4.22': 'd4-settings-0-4-9',
 };

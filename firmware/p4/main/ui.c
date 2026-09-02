@@ -395,9 +395,21 @@ static int s_wig_count;
  * The crossfade (#161).
  *
  * Even with the frames aligned, six hard cuts at 5..15 fps read as the picture
- * stepping. So each dwell is split into a few sub-steps and frame k is blended
- * toward k+1 across it, at ~30 fps, on already-decoded PSRAM buffers - the swing
- * PERIOD is unchanged (subs x period/subs == period), only its granularity.
+ * stepping. So each dwell is split into a few sub-steps at ~30 fps and, at the
+ * START of each dwell, the previous frame is blended INTO the new one over a
+ * short fixed window (WIG_XFADE_MS) with an ease-out curve; the rest of the
+ * dwell holds the raw frame. The swing PERIOD is unchanged (subs x period/subs
+ * == period), only its granularity.
+ *
+ * The first cut of this was a dissolve across the whole dwell, and on glass it
+ * was smooth and dead: the snap of a wigglegram IS the effect, and a picture
+ * that is always halfway between two lenses never pops. So the fade is short
+ * and front-loaded - at the default 8 fps the boundary frame already sits at
+ * ~83% of the new lens and lands fully one sub-step later, then holds for the
+ * remaining ~60 ms. The eye reads the pop; the edge is not a bare cut. Sampled
+ * at the END of each sub-step's display interval so the first composite is
+ * already most of the way there rather than a half-and-half held for 31 ms.
+ * WIG_XFADE_MS is the knob: 0 is #160's hard cut, a whole dwell is the dissolve.
  *
  * The blend is a CPU RGB565 composite, not the PPA's ppa_do_blend - which this
  * IDF does have (esp_driver_ppa, PPA_OPERATION_BLEND). Two reasons, both about
@@ -425,6 +437,8 @@ static int s_wig_count;
  * hard cut, which is a working picture.
  */
 #define WIG_BLEND_FPS 30
+#define WIG_XFADE_MS 70          /* previous frame fades into the new one over this */
+static bool s_wig_fresh;         /* first dwell after start: no previous frame to fade from */
 static uint16_t *s_wig_blend;    /* PH_W x PH_H composite, allocated once */
 static bool s_wig_blend_tried;   /* so a failed alloc is logged once, not per open */
 static bool s_wig_blend_ready;   /* photo_pixels should show s_wig_blend this pass */
@@ -2762,6 +2776,7 @@ static void wiggle_stop(void) {
    * allocated once and kept, like the gallery's frame buffers. */
   s_wig_blend_ready = false;
   s_wig_sub = 0;
+  s_wig_fresh = false;
   s_wig_subs = 0;
 }
 
@@ -2915,42 +2930,55 @@ static void wig_composite(uint16_t *dst, const uint16_t *bg, const uint16_t *fg,
 }
 
 /*
- * Decide what the picture is at the current (position, sub-step): the raw frame
- * on a frame boundary, or frame k blended toward k+1 in between. Sets
- * s_wig_blend_ready, which is what photo_pixels reads.
+ * Decide what the picture is at the current (position, sub-step): the frame the
+ * swing sits on, with the PREVIOUS frame still fading out of it during the
+ * first WIG_XFADE_MS of the dwell. Sets s_wig_blend_ready, which is what
+ * photo_pixels reads; when it stays false the raw frame is the picture.
  *
  * The cases that DO NOT blend, and why each is a hard cut on purpose:
- *   - sub-step 0: a frame boundary IS the raw frame, and #160's shot of a
- *     playing wiggle set the position directly and expects exactly that.
- *   - a held sweep at its last frame: there is no next to move toward.
+ *   - the fade window is over: the raw frame is exactly what a finished fade
+ *     would composite, so the work is skipped and the frame held.
+ *   - the first dwell after the swing starts: there is no previous frame, the
+ *     still was already this picture (or C1, for rtl - a cut, as #160 had).
  *   - the continuous/one-way wrap from the far frame back to the near one: the
- *     snap is the effect (packages/media/src/sequence.ts), and a dissolve across
- *     the whole parallax would soften the one thing that mode is for. A BOUNCE
- *     wrap is a genuine one-lens swing step and does blend.
+ *     snap is the effect (packages/media/src/sequence.ts), and softening the
+ *     jump across the whole parallax would take away the one thing that mode is
+ *     for. A BOUNCE wrap is a genuine one-lens swing step and does blend.
  *   - a partial swing whose two ends are the same frame, or a frame not decoded,
  *     or no blend buffer: nothing safe to composite, so show the raw frame.
  */
+static uint32_t wig_fade_alpha(int sub) {
+  /* Where in the fade window this sub-step's display interval ENDS, in 1/256:
+   * t = (sub+1) * step / xfade, clamped. Then ease-out cubic, 1-(1-t)^3, in
+   * the composite's 1/32 units: a = 32 - 32*(1-t)^3 = 32 - u^3 >> 19 with
+   * u = 256*(1-t). u^3 <= 2^24, so the arithmetic stays in 32 bits. */
+  const uint32_t step_ms = (uint32_t)s_wig_period_ms / (uint32_t)(s_wig_subs < 1 ? 1 : s_wig_subs);
+  const uint32_t end_ms = (uint32_t)(sub + 1) * step_ms;
+  if (WIG_XFADE_MS <= 0 || end_ms >= (uint32_t)WIG_XFADE_MS) return 32u;
+  const uint32_t t = end_ms * 256u / (uint32_t)WIG_XFADE_MS;
+  const uint32_t u = 256u - t;
+  return 32u - ((u * u * u) >> 19);
+}
+
 static void wiggle_compose(void) {
   s_wig_blend_ready = false;
-  if (s_wig_sub == 0 || s_wig_subs < 2) return;
+  if (s_wig_fresh || s_wig_len < 2) return;
+  if (s_wig_pos == 0 && s_wig_oneway) return;
 
-  const bool wrap = s_wig_pos + 1 >= s_wig_len;
-  if (wrap && (!s_wig_repeat || s_wig_oneway)) return;
+  const uint32_t a = wig_fade_alpha(s_wig_sub);
+  if (a >= 32u) return;
 
   const int cur = s_wig_seq[s_wig_pos];
-  const int nxt = s_wig_seq[(s_wig_pos + 1) % s_wig_len];
-  if (nxt == cur) return;
-  if (!(s_wig_have & (1u << cur)) || !(s_wig_have & (1u << nxt))) return;
+  const int prv = s_wig_seq[(s_wig_pos + s_wig_len - 1) % s_wig_len];
+  if (prv == cur) return;
+  if (!(s_wig_have & (1u << cur)) || !(s_wig_have & (1u << prv))) return;
   if (!wig_ensure_blend()) return;
 
-  const uint16_t *bg = gallery_frame_pixels(cur);
-  const uint16_t *fg = gallery_frame_pixels(nxt);
+  const uint16_t *bg = gallery_frame_pixels(prv);
+  const uint16_t *fg = gallery_frame_pixels(cur);
   if (bg == NULL || fg == NULL) return;
 
-  /* fg's weight rises 0->32 across the dwell, so cur fades into next and lands
-   * exactly on next at the boundary where the position advances. */
-  const uint32_t a =
-      ((uint32_t)s_wig_sub * 32u + (uint32_t)s_wig_subs / 2u) / (uint32_t)s_wig_subs;
+  /* fg (the new frame) carries weight a of 32; prv fades out under it. */
   /* Timed, because the cost of this loop against the 20 ms ui pass is the one
    * number that decides between WIG_BLEND_FPS and the PPA blend, and it can
    * only be measured here - host_preview has no PSRAM to be slow in. The
@@ -3053,6 +3081,7 @@ static bool wiggle_tick(void) {
 
     s_wig_play = true;
     s_wig_pos = 0;
+    s_wig_fresh = true;
     s_wig_next_us = esp_timer_get_time() + (int64_t)s_wig_period_ms * 1000 / s_wig_subs;
     klog("P4", "wiggle %s playing %d frames at %d ms, %d sub-steps", s_photo_id, s_wig_len,
          s_wig_period_ms, s_wig_subs);
@@ -3094,6 +3123,7 @@ static bool wiggle_tick(void) {
     }
     s_wig_pos = (s_wig_pos + 1) % s_wig_len;
     s_wig_sub = 0;
+    s_wig_fresh = false;
   }
 
   /* By whole sub-steps, so a late pass does not shorten the next one. A deadline
@@ -3103,7 +3133,12 @@ static bool wiggle_tick(void) {
   s_wig_next_us += step_us;
   if (s_wig_next_us < now) s_wig_next_us = now + step_us;
 
+  /* A sub-step inside the hold - the fade is over and the raw frame was already
+   * on screen last pass - changes nothing, so it owes no repaint: a still
+   * photograph is not re-blitted 30 times a second because a clock ticked. */
+  const bool was_blend = s_wig_blend_ready;
   wiggle_compose();
+  if (s_wig_sub != 0 && !was_blend && !s_wig_blend_ready) return false;
   return true;
 }
 
@@ -3111,8 +3146,8 @@ static bool wiggle_tick(void) {
  * one is playing, the still otherwise. Never a buffer whose bit is clear. */
 static const uint16_t *photo_pixels(void) {
   if (s_wig_len >= 2) {
-    /* Mid-dwell, the composite of this frame and the next; on a boundary (or
-     * when a blend was refused), the raw frame the swing rests on. */
+    /* Inside the fade window, the composite of the previous frame and this one;
+     * past it (or when a blend was refused), the raw frame the swing sits on. */
     if (s_wig_blend_ready && s_wig_blend != NULL) return s_wig_blend;
     const int frame = s_wig_seq[s_wig_pos];
     if (s_wig_have & (1u << frame)) {
