@@ -588,6 +588,71 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The deferred four-camera cases - nodes back, recovery x5, Roll A->B, 2026-09-03
+
+**The outage.** All four camera nodes went silent between ~22:00 and 00:47 and
+came back at ~01:00 by themselves: every node then reported `resetReason
+power-on` with a fresh session (cam1 boot-82, cam2 boot-11), and the four XIAO
+USB ports (COM4-7, `303A:1001`) enumerated in the same minute the UARTs
+answered again. The P4 stayed up throughout (boot-116 across the whole night,
+`transportErrors` 0). Classification: NODE_NOT_POWERED, all four together,
+exact physical cause UNKNOWN (nobody at the bench reported touching it; the
+C6 console adapter is still unplugged). Not a P4 image fault: the 0.4.27 radio
+image that had all four ready at 21:11 saw the same silence at 00:55.
+
+**Restoration (0.4.28 bench image of `54cad08`, boot-116).** 20 discovery
+sweeps in 50 s: 4x READY throughout, 0 offline transitions, 0 new timeouts, 0
+CRC errors, HELLO latency 4 ms. Then five grouped captures with the radio
+idle: 5/5 complete 4/4, 0 partial, 0 BUSY, 0 chunk retries, every frame pulled
+from the card and its CRC equal to the CRC the node reported for that camera
+(no swapped file), every JPEG decodes. 3.1-4.4 s per set.
+
+**Five shutters during a real C6 recovery.** `C6_RESET_BENCH` at 01:11:16.1;
+the P4 recovered without a reboot in 14,170 ms (TEARDOWN -> RESET_C6 ->
+HOSTED_UP -> SDIO_WAIT -> WIFI_INIT -> WIFI_JOIN -> DHCP_WAIT -> HEALTHY,
+reserve released and re-taken 2/2). Shutter 1 fired at T0 + 2.1 s, inside
+TEARDOWN while `esp_hosted_deinit` was still running (radio `C6_BOOTING`):
+`CAP_000256`, 4/4, 682 KB, 3,920 ms, spread 379 us, META `complete`, queued,
+uploaded automatically once IP_READY returned, one backend row, four
+originals, SD = object = DB on all four frames. **Its KDP reply never reached
+the bench**: the host decoder logged 75,097 discarded bytes, 4 resyncs and 1
+CRC failure over that window - ESP-Hosted's own teardown/init logging on the
+shared USB-Serial-JTAG port corrupted the reply frame - and the bench waited
+its full 90 s. The device side was complete; the host confirmation was lost.
+Shutters 2-5 (`CAP_000257`-`260`) therefore landed after HEALTHY: 4/4 each,
+3,154-3,374 ms, two of them with an upload in flight. All five: one row per
+UUID, four originals, Roll `RRG8AZ`, SD = object = DB on 20 of 20 frames,
+session unchanged. State coverage as measured: one shutter in TEARDOWN /
+C6_BOOTING; HOSTED_UP through DHCP_WAIT carried no shutter this run (ROLL-C3
+on 0.4.27 has one grouped set mid-recovery as well).
+
+**Roll provenance A -> B, offline.** `RRG8AZ` -> set A `CAP_000261`
+(`77ddf0cd-...`), `ROLL_LEAVE`, `ROLL_JOIN KWP8GJ` (reused, no new server
+Roll) -> set B `CAP_000262` (`f9e388e3-...`), both with the API stopped so
+neither could upload before the switch. META `rollId` and the queue record's
+`rollId` name Roll A for A and Roll B for B; after LEAVE -> JOIN A and the API
+back, A uploaded to `roll__Mg6PTKzfodtJ7zxCjBoNA` and B to
+`roll_rmCXPNoeUSbGTg50sThSdw`, one row and four originals each, no relabel,
+no duplicate, hashes SD = object = DB 8 of 8. Final active Roll `RRG8AZ`.
+**PASS.**
+
+**Resources across the run (boot-116, uptime 12 -> 18 min).** Internal free
+98 -> 93 KB, minimum 89 -> 33 KB (the low point is the capture bursts, 30 KB
+above the exhaustion the 0.4.25 panics came from), largest DMA 31 -> 15 KB
+with the reserve held 2/2, `recoveryReady=True` throughout, task stack
+minimums unchanged (cap1-4 5.9 KB, kdp_server 2.4 KB, gallery 1.2 KB),
+`transportErrors` 1 (the one bench reset), no leak.
+
+**Still open: CAM4 partial-failure and CAM4 restore (operator).** Pre-check
+passed at 01:19 (4x READY, no capture, no transfer in flight): safe to remove
+CAM4's USB power. The contract to test against (`packages/kdp/src/protocol/
+types.ts`, `capture.c:1566`, `meta.c:34`): `status` is `complete` when every
+*online* camera stored a frame, `partial` when one did not; `frameCount` is the
+number stored. A body with CAM4 offline at the shutter therefore records a
+three-frame set marked `complete` with `frameCount 3`, no `C4.JPG` and no
+cam4 frame - DEGRADED_SET_RECORDED, not a rejection - and that is what the
+operator run must show.
+
 ### One shutter, four frames - grouped-capture transport, 2026-09-02
 
 **Scope (#132 transport/correctness gate).** Prove one logical D4 shutter
