@@ -17,7 +17,17 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-02, firmware 0.4.19
+## Status — updated 2026-09-02, firmware 0.4.20
+
+One D4 shutter produces a truthful, durable four-frame set: 20 of 20 grouped
+captures complete 4/4 on the fixed image, every frame CRC-checked to the card,
+unique per set, correctly named, with the partial-status invariant holding
+("One shutter, four frames", below). A four-way transfer defect found there -
+the largest frame abandoned to 1000 ms tail-loss retry stalls - is fixed in
+e08fb47. Two things block a full four-camera transport GO: C6 reset now panics
+the P4 (issue #162, a radio internal-DMA regression, not the capture path), and
+the connected/upload/Roll sections need an operator re-provision after a
+partition-table reflash wiped NVS. The 0.4.19 status paragraph follows.
 
 All four camera nodes are wired and proven: each XIAO+OV3660 answers on its
 own UART, captures a checksummed 1600x1200 frame to the card individually,
@@ -321,6 +331,130 @@ Note for the open `xfer` jitter question: the runtime reports **eight**
 camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in the
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
+
+### One shutter, four frames - grouped-capture transport, 2026-09-02
+
+**Scope (#132 transport/correctness gate).** Prove one logical D4 shutter
+produces a complete, truthful, durable four-frame set across CAM1-CAM4 and
+coexists with SD, Roll, uploads and C6 recovery. NOT the synchronization gate:
+SYNC_OUT and FLASH_EN stayed physically disconnected, no skew/flash/exposure
+timing was touched. The grouped path already existed (`capture_fire`, four
+concurrent workers, `ask` from responders, one UUID, `C1..C4.JPG` + META,
+`status` complete/partial); this session validated it and fixed the one
+transport defect it exposed.
+
+**Image.** Clean `git archive` of `e08fb47` (the transfer-timing fix, below)
+on firmware 0.4.20, `kino-p4.bin` 1,530,912 B, SHA-256
+`62a0dabf6b505c8bc8cd89ce8064be39e4f43c69c7559e4c6337bc236d34ec2e`, two passes
+identical, bench flags as every image, working-tree `dependencies.lock`
+overlaid, P4 only, C6 and nodes untouched. Node firmware 0.4.19 on all four.
+A partition-table reflash earlier in the session wiped NVS (Wi-Fi credentials
+and the Roll device token gone: `WIFI_IDLE / NO_CREDENTIALS`,
+`tokenStatus no-credential`), which gates the connected sections below.
+
+**First grouped shutter (baseline behaviour, before any change).** One
+`CAMERA_CAPTURE` with four online: CAP_000010, status complete, 4/4, one UUID
+`08fe7653…`, C1-C4 distinct sizes and CRCs, every card CRC == reply CRC, all
+decode 1600x1200, dispatch spread 251 us, META.JSON truthful (frameCount 4,
+per-frame crc32/sensor). The path is fully implemented and concurrent; no new
+capture-set format was invented.
+
+**The defect the 20-set run exposed (image aa9a541, before the fix).** 20/20
+accepted, 20 unique UUIDs, fresh frames (0 reused `nodeFrameStartUs`), 0 false
+BUSY, resources flat - but only **14 of 20 were a true 4/4**. Three were
+correctly marked `partial` with cam2's ~458 KB frame abandoned "transfer over
+budget" at 96-99%; three more shot 3/3 because cam2 read offline on the next
+capture after its frame was abandoned. Every set was truthful - META-last
+held, no set ever claimed four with three stored. Root cause, measured from
+112 READ timeouts: 107 held ~8.0-8.1 KB of the 8192-byte chunk with `disc 0B`
+- a dropped tail near the 8192 boundary (the historical offset-8192 loss, back
+under four-way concurrency, no hardware flow control). Each loss waited out the
+full 1000 ms `CHUNK_READ_TIMEOUT_MS` before a retry that then succeeded, and
+four-way contention made cam2's largest frame take ~7 s healthy, so a few
+1000 ms stalls tipped it past the 8000 ms `XFER_BUDGET_MS`. Abandoning it left
+the node mid-send, so cam2's next HELLO timed out - the 3/3 sets were a
+consequence of the 3/4 ones.
+
+**The fix (`e08fb47`).** `CHUNK_READ_TIMEOUT_MS` 1000 -> 400 (a healthy chunk
+arrives in ~120 ms even under four-way load, so a lost tail costs 400 ms to
+retry, not 1000) and `XFER_BUDGET_MS` 8000 -> 12000 (headroom for the largest
+frame under four-way load plus a run of the now-cheap retries), with a
+`_Static_assert` that one chunk's whole retry budget stays inside a quarter of
+the frame budget. Nodes untouched; the retry, its CRC check, the per-channel
+mutexes, the 8192-byte stacks and the probe scheduler are unchanged. The
+offset-8192 tail loss itself is NOT fixed - only made cheap to recover -
+reported reproduced, not closed.
+
+**20-set rerun on the fixed image (`e08fb47`).**
+
+| Metric | Result |
+|---|---|
+| sets requested / accepted | 20 / 20 |
+| complete 4/4 | **20 / 20** |
+| partial / silently-partial | 0 / 0 |
+| total JPEG frames stored | 80 |
+| unique set UUIDs | 20 of 20 |
+| per-camera frames stored | cam1 20, cam2 20, cam3 20, cam4 20 |
+| CRC mismatches (unrecovered) | 0 |
+| UART frame losses (unrecovered) | 0 |
+| stale/reused frames | 0 |
+| chunk retries (recovered) | 41, all with matching CRC |
+| grouped totalMs min/median/p95/max | 5160 / 5687 / 6570 / 6570 |
+| dispatchSpreadUs min/median/max | 237 / 265 / 283 |
+| sdWaitMs | 0 throughout |
+| false BUSY | 0 (probesDeferred +35, probesRun +88) |
+| heap | 26,875 -> 22,967 KB (gallery one-time), internalMin 52 KB, DMA 15 KB flat |
+
+Card-pull verification on sets 5/10/15/20: every C1-C4 file's card CRC ==
+reply crc32, decodes 1600x1200. Per-set identity holds: one UUID, four frames
+named for their own camera, no channel swap, no cross-set file mixing.
+
+**Partial-failure contract (§8).** Verified in code and by the pre-fix run's
+three genuine partials, not by a physical node power-off (the bench is driven
+over serial; making a node unavailable needs hands on its USB-C). The
+invariant is structural: workers write and close each `C<n>.JPG` first,
+`status = (stored == online) ? complete : partial` with `frameCount = stored`
+(count of `ok` frames only), META built and committed LAST, and any
+pre-commit failure aborts the whole folder (`storage_capture_abort`). META can
+never claim four when three stored - the pre-fix partials proved it live
+(cam2 entry `file:null` + error, frameCount 3, status partial). The physical
+power-off case is left for an operator.
+
+**Camera UART watch, four channels, ~120 sets across both runs.** No literal
+FIFO-overrun flag; the loss presents as `TIMEOUT cmd 0x11 ... held ~8.0 KB
+disc 0B` - tail loss near offset 8192. Per channel over the pre-fix run: C1 25,
+C2 37, C3 21, C4 29 READ timeouts, all but 5 `disc 0B` (clean tail loss), 5
+with a resync. On the fixed image every loss was recovered by retry with a
+matching CRC and no frame was lost. **offset-8192 tail loss is REPRODUCED
+under four-way load, not fixed** - the fix makes it cheap to recover.
+
+**C6 recovery (§17): REGRESSION - the P4 panics.** `C6_RESET_BENCH`
+deterministically panics the P4 on 0.4.20 (three resets, three panics,
+`resetReason=panic`), with or without a capture in flight. Coredump:
+`assert failed: eh_host_mcu_transport_process_init_event
+init_event.c:358 (probe)` in `sdio_process_rx`. `net_hosted.c`,
+`radio_recovery.c` and esp_hosted (3.0.6) are unchanged since 0.4.6 (when C6
+recovery was GO); the boot log now reads `recovery reserve: 0/2 x 16384 B held;
+largest free 15872 B` - internal-DMA headroom fell below the 16 KB reserve, so
+the reserve is not held and re-init asserts. Filed as issue #162 (radio/memory
+owner; out of this gate's scope to fix). Cameras return ready after each
+panic-reboot, so local capture survives, but the session does not.
+
+**Connected coexistence (§14-16, 18-20), offline backlog (§15), Roll
+provenance (§19), backend hashes (§18): NOT RUN.** NVS was wiped by the
+partition-table reflash, so there are no Wi-Fi credentials and no Roll device
+token; these need an operator re-provision (Studio, PROVISIONING_TOKEN) - the
+camera never self-mints. The single-camera Gate F queue fixes are unchanged in
+this image; four-camera upload durability is unproven pending re-provisioning.
+
+**Verdict: FOUR-CAMERA TRANSPORT NOT PROVEN.** Local grouped-capture transport
+and four-frame set correctness are proven on the connected-free path after the
+fix (20/20 complete, truthful, durable to the card, fresh, identity-correct,
+UART losses recovered). Blocked from GO by: the C6-recovery P4 panic (#162, a
+radio-memory regression) and the connected/backend/offline/Roll sections that
+need operator re-provisioning after the NVS wipe. The physical partial-failure
+case also awaits an operator. No four-camera synchronization or flash work was
+started.
 
 ### Four nodes on four wires - the basic four-camera hardware proof, 2026-09-02
 
