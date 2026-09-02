@@ -527,6 +527,67 @@ so `CONFIG_UART_ISR_IN_IRAM=y` costs 10-20 KB of this same budget and panicked
 a 0.4.24-based image at boot; it stays off. Next: the four-camera transport
 connected sections (Phase 5-8) on this headroom.
 
+### Four-camera transport, connected - phases 5-8 on 0.4.28, 2026-09-02/03
+
+**Question.** One logical shutter produces a complete, truthful, durable
+four-frame set while the connected stack - SD, Roll queue, uploads, C6
+recovery - is doing its work. Not the sync gate: SYNC_OUT (JP1 19 / GPIO32) and
+FLASH_EN (JP1 21 / GPIO28) stayed disconnected, and nothing here measures
+exposure, rolling shutter or skew.
+
+**Images.** Phases 5 (idle/upload/offline/drain), 6 and 8 ran on the peer
+session's 0.4.28 = `54cad08` (my 0.4.27 headroom fix plus #158's RX threshold
+32 and card writes after the transfers), the image the board carried when the
+port came back. That image was built without `KINO_C6_RESET_BENCH`, so its
+"recovery" scenario did not reset the C6 (`C6_RESET_BENCH` answered
+`UNSUPPORTED_COMMAND`); those five sets are counted as a sixth idle run and the
+recovery scenario was rerun on a bench image of the same commit: clean archive
+of `54cad08`, working-tree `dependencies.lock` overlaid, bench flags
+(`kino-p4.bin` 1,545,584 B, SHA-256 `4258b3148c554ae81f92e4806c4fd95f4d4c9c98fb64d5ca1198d3a83afbdb1a`). Provisioned (Roll `RRG8AZ`), Wi-Fi `BRCD`, API on
+10.20.99.57:3000. The C6 UART console witness (COM10) was not plugged in
+tonight; a reset is evidenced from the P4 side (radio state cycle, transport
+error count).
+
+**Phase 5 - the shutter under the connected stack (5 sets per scenario, boot-113).**
+
+| scenario | sets | 4/4 complete | partial | BUSY | totalMs min / median / max | sdWait max | chunk retries | shutters with an upload in flight |
+|---|---|---|---|---|---|---|---|---|
+| idle (queue drained) | 5 | 5 | 0 | 0 | 2,973 / 3,000 / 3,021 | 0 | 0 | 0 |
+| upload (back-to-back, previous set uploading) | 5 | 5 | 0 | 0 | 2,975 / 3,017 / 3,240 | 1 | 1 | 3 |
+| offline (API stopped; Wi-Fi up) | 5 | 5 | 0 | 0 | 2,970 / 3,040 / 3,044 | 0 | 0 | 4 |
+| drain (API back; 5 queued sets uploading while shooting) | 5 | 5 | 0 | 0 | 3,002 / 3,072 / 3,114 | 55 | 0 | 3 |
+| recovery-as-run (no reset happened; see above) | 5 | 5 | 0 | 0 | 2,872 / 2,915 / 3,105 | 24 | 0 | 4 |
+
+25 requests, 25 accepted, 25 complete 4/4, 0 partial, 0 BUSY, CRC 4/4 on
+every set, one recovered chunk retry in 100 frames. Offline: the five sets
+queued (`pending=4 uploading=1`, `lastError ... ESP_ERR_HTTP_CONNECT`) and
+nothing was marked failed; drain: the API came back and the queue emptied to
+`pending=0` while five more sets were shot, `failed` unchanged at 22 (all
+pre-dating this run). Heap across the five scenarios: internal free 93 -> 93
+KB, minimum 30 -> 28 KB, largest DMA 30 -> 28 KB, `recoveryReady=True`
+throughout.
+
+**Phase 5 - recovery, rerun with a real C6 reset.** Bench image of `54cad08`, boot-114, reserve `2/2 held; largest free 31744 B`, internal free 98 KB. `C6_RESET_BENCH` at T0: radio `C6_BOOTING / C6_LINK_LOST` ("recovery: ESP-Hosted transport init") -> `WIFI_CONNECTING` -> `IP_READY` within the first three reads (under 15 s), transport errors 0 -> 1, no panic, session unchanged, `recoveryReady=True` before and after. **The five shutters during this recovery could not be measured: all four camera nodes had gone silent on this boot** (`GET_CAMERA_INFO` 4x offline, `CAMERA_LINK_STATS` 88 HELLOs / 0 bytes received per channel) and every `CAMERA_CAPTURE` answered `CAMERA_OFFLINE`. The nodes answered on the same P4 image family until 21:49 and on the peer's burst after; reflashing the 0.4.27 radio image that had all four ready at 21:11 still showed 4x offline with 0 bytes received, so the loss is on the node side (power or cabling at the bench), not in the P4 image. A shutter during recovery *is* on record once on 0.4.27: ROLL-C3 set 2 (4/4, 3,357 ms) shot mid-recovery, uploaded after. The five-set version stays open until the nodes are back.
+
+**Phase 6 - the backend holds what the card holds.** For all 25 phase-5 sets:
+`captures` has exactly one row per UUID (duplicate UUIDs in the table: 0), the
+row's `roll_id` is the Roll the camera was on, and four `original-frame` assets
+exist. For one set per scenario all four frames were pulled from the card over
+KDP, the object fetched from MinIO and the row read from Postgres: **SD SHA-256
+= object SHA-256 = `assets.sha256`** for 20 of 20 frames.
+
+**Phase 7 - Roll provenance.** Not proven tonight, for two reasons found on the way. (1) Contract behaviour the script did not model: `ROLL_CREATE` answers `INVALID_STATE "Already on roll RRG8AZ"` while a Roll is active, and once it succeeds it *auto-joins* the Roll it made; `ROLL_JOIN` is then refused the same way. A switch is always `ROLL_LEAVE` then `ROLL_JOIN`, which is what Studio does. The run created Roll B (`KWP8GJ`, `roll_rmCXPNoeUSbGTg50sThSdw`, name `bench-roll-b`, left on the server) and the body was put back on `RRG8AZ` afterwards. (2) The two shutters (`rs_A`, `rs_B`) hit the same `CAMERA_OFFLINE` as above. The script now leaves before every join; the rerun needs the nodes.
+
+**Phase 8 - queue pressure.** 12 grouped sets at the shutter's own pace (5.8 s
+per set, 70 s), API up, uploads competing for the card: 12 accepted, 12
+complete 4/4, 8,386,563 B, sdWait up to 98 ms, 0 chunk retries, 0 BUSY. Queue
+peaked at `pending=9 uploading=1` and drained to 0 in 60 s after the last
+shutter; uploaded +12, failed +0. Card: 10 MB for 12 sets. Backend: 12 rows,
+12 with four originals, hashes SD = object = DB on 8 of 8 sampled frames.
+Photography starved upload, as designed; nothing was lost.
+
+**Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
+
 ### One shutter, four frames - grouped-capture transport, 2026-09-02
 
 **Scope (#132 transport/correctness gate).** Prove one logical D4 shutter
