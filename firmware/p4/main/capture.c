@@ -63,8 +63,19 @@ static const char *TAG = "capture";
  * fixed the losses went away with it. A chunk now either arrives or is gone,
  * so a long budget only makes a doomed frame take longer to admit it - and the
  * budget is spent four times over, once per camera, on every failing capture.
- */
-#define CHUNK_READ_TIMEOUT_MS 1000
+ *
+ * 400 ms, not 1000, since the four-camera transport bench (2026-09-02). With
+ * all four channels streaming at once the RX FIFO loses the tail of a chunk
+ * near the 8192-byte boundary - the historical offset-8192 loss, back under
+ * concurrency: 107 of 112 READ timeouts held ~8.0-8.1 KB of the 8192 with
+ * disc 0B, i.e. the node sent the chunk and the last ~120 bytes were dropped.
+ * Those bytes are already gone, so the read only ever waits out the whole
+ * timeout and the retry (same offset, uart flushed, node still holds the
+ * frame) gets them. A chunk that does arrive does so in ~120 ms even under
+ * four-way load, so 400 ms is >3x the healthy time and a lost tail now costs
+ * 400 ms to retry instead of 1000 - the difference between cam2's 458 KB
+ * frame finishing inside the budget and being abandoned at 98%. */
+#define CHUNK_READ_TIMEOUT_MS 400
 
 /* Attempts after the first. Two: measured captures now need zero, so this is
  * for a genuine glitch, and three attempts at 1000 ms bounds a bad chunk at
@@ -93,8 +104,26 @@ static const char *TAG = "capture";
  * fix for the compositor blacking out the link ISR, which is what was causing
  * the losses. The comment there said this budget should come down once the
  * bytes stopped being lost, and it has.
- */
-#define XFER_BUDGET_MS 8000
+ *
+ * 12 s, not 8, since the four-camera transport bench (2026-09-02). 8 s was
+ * sized for a single 241 KB frame; four cameras streaming at once share the
+ * P4's CPU and memory bus, so one frame's own transfer runs ~4x slower in
+ * wall-clock, and cam2's real scene made 458 KB frames whose healthy transfer
+ * alone was ~7 s. With the tail-loss retries above that tipped three of
+ * twenty sets past 8 s and cost cam2 its frame at 96-99%. 12 s is the largest
+ * frame's ~7 s under four-way load plus room for a realistic run of the
+ * now-cheap (400 ms) retries. A genuinely dead chunk still fails fast on
+ * CHUNK_RETRIES, not on this backstop, so a doomed frame is not what waits
+ * out the extra seconds. */
+#define XFER_BUDGET_MS 12000
+
+/* One bad chunk must never dominate a frame's budget: its whole worst case
+ * (first try plus every retry, each bounded by the read timeout) has to stay a
+ * small fraction of the per-frame budget, or a handful of bad chunks on the
+ * largest frame blows it - which is exactly what the four-camera bench found
+ * when the pairing was 1000 ms x 3 against 8000 ms. */
+_Static_assert((CHUNK_RETRIES + 1) * CHUNK_READ_TIMEOUT_MS <= XFER_BUDGET_MS / 4,
+               "a single chunk's retries must stay well inside the frame budget");
 
 /* Longest the flash is allowed to stay on. It is released as soon as every
  * node reports its capture finished; this only bounds the case where one
