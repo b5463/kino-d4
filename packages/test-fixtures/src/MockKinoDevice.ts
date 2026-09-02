@@ -115,7 +115,9 @@ function defaultConfig(): KinoConfig {
       resolution: '1600x1200',
       flash: true,
       fps: 10,
-      loop: 'bounce',
+      /** Firmware 0.4.23 default, matched here so the mock and a fresh camera
+       * agree: continuous 1-2-3-4-snap, as the reference reel plays. */
+      loop: 'continuous',
       direction: 'ltr',
       recipeId: 'party-neg',
       previewCam: 'cam2',

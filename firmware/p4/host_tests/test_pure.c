@@ -1039,8 +1039,8 @@ static void test_wiggle_period(void) {
         pure_wiggle_period_ms(240));
   /* Absent - config_int's fallback path can hand over 0 - takes the camera's
    * own default of 8, not media's 10. */
-  CHECK(pure_wiggle_period_ms(0) == 125, "no fps -> the camera default 8 fps");
-  CHECK(pure_wiggle_period_ms(-5) == 125, "a negative fps -> the camera default");
+  CHECK(pure_wiggle_period_ms(0) == 100, "no fps -> the camera default 10 fps");
+  CHECK(pure_wiggle_period_ms(-5) == 100, "a negative fps -> the camera default");
 
   /* A period no shorter than the UI loop's own 20 ms pass, or the pacing
    * would be asking for frames the loop cannot deliver. */

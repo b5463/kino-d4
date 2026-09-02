@@ -76,8 +76,12 @@ static cJSON *default_config(void) {
   cJSON *w = cJSON_AddObjectToObject(c, "wiggle");
   cJSON_AddStringToObject(w, "resolution", "1600x1200");
   cJSON_AddBoolToObject(w, "flash", false);
-  cJSON_AddNumberToObject(w, "fps", 8);
-  cJSON_AddStringToObject(w, "loop", "bounce");
+  /* 10 fps, continuous: measured off a reference wigglegram reel (firmware
+   * HARDWARE_VALIDATION.md, 0.4.23) - a frame every 100 ms, one-way 1-2-3-4
+   * then snap to 1. Also what MockKinoDevice and packages/media default to;
+   * the firmware's 8 was the odd one out. */
+  cJSON_AddNumberToObject(w, "fps", 10);
+  cJSON_AddStringToObject(w, "loop", "continuous");
   cJSON_AddStringToObject(w, "direction", "ltr");
   /* "party-neg", not "": the first factory look, and what MockKinoDevice and
    * Studio both default to. An empty id showed as an unnamed look on the LOOK

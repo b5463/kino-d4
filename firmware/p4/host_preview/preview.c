@@ -1193,29 +1193,6 @@ int main(int argc, char **argv) {
     g_frame_have = 0xf;
 
     /*
-     * The first sub-step of a dwell: the frame just landed on, with the previous
-     * one still fading out of it. At the default 8 fps the fade window
-     * (WIG_XFADE_MS) puts this composite at ~27/32 of the new frame.
-     *
-     * The position and sub-step are set directly and the compositor called by
-     * hand rather than waiting out a frame period - this is a picture of a
-     * blended frame, not of the clock. Position 1 of the default bounce order
-     * 0,1,2,3,2,1 is C2 arrived at from C1, so the harness's near bar appears
-     * at C2's place at ~84% and as a ghost at C1's, 34 px away. The ghost is the
-     * whole point: it is what a hard cut does not have, and it is gone one
-     * sub-step later - the snap stays, the edge is softened.
-     */
-    photo_open(&slots[0]);
-    wiggle_tick(); /* the fake card answers the whole job in one turn */
-    s_wig_pos = 1;
-    s_wig_sub = 0;
-    s_wig_fresh = false;
-    wiggle_compose();
-    s_focus[SCR_PHOTO] = P_IT_DELETE;
-    SHOT(SCR_PHOTO, "photo_wiggle_blend");
-    photo_release();
-
-    /*
      * An aligned frame, from a calibration this harness invents.
      *
      * A real calibration is a few sensor pixels and would move this picture by

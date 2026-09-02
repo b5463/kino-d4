@@ -499,4 +499,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.22: the crossfade is a short front-loaded fade, not a whole-dwell
   // dissolve - the snap is back (#161). Device side only, same profile.
   '0.4.22': 'd4-settings-0-4-9',
+  // 0.4.23: hard cuts, no crossfade at all; wiggle defaults 10 fps / continuous
+  // to match the reference reel (#161). Device side only, same profile.
+  '0.4.23': 'd4-settings-0-4-9',
 };

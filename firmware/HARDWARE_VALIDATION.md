@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-02, firmware 0.4.22
+## Status — updated 2026-09-02, firmware 0.4.23
 
 One D4 shutter produces a truthful, durable four-frame set: 20 of 20 grouped
 captures complete 4/4 on the fixed image, every frame CRC-checked to the card,
@@ -588,6 +588,24 @@ independently on its intended UART and all four are simultaneously visible
 and photographing. Not proven here, deliberately: the grouped four-camera
 shutter (#132), synchronization and skew, exposure quality (#156), and
 four-camera behaviour under upload load (Gate F ran on one camera).
+
+### The way the clip does it - hard cuts, 10 fps, continuous, 0.4.23, 2026-09-02
+
+Decision on the reference measurement below: the camera plays wigglegrams
+exactly as the reference reel does. The crossfade is removed outright - not
+set to zero, removed: no composite buffer, no sub-steps, no timing klog - and
+the player is #160's one-frame-per-period again, from the aligned decode of
+0.4.21. The camera's defaults move to wiggle.fps 10 and wiggle.loop
+continuous (config_store.c, PURE_WIGGLE_FPS_DEFAULT, ui.c's fallback), and
+MockKinoDevice's loop default moves with them so a fresh mock and a fresh
+camera agree; the mock and packages/media already said 10 fps, so the
+firmware's 8 was the drift. A configured unit keeps its saved values - the
+bench unit was set to 10/continuous by hand under 0.4.22 and reads the same
+now. host_preview drops the photo_wiggle_blend shot (56 -> 55 renders), all
+others byte-identical. Flashed to KD4-D121BC - from the shared working
+tree, so the flashed image also carries a concurrent session's then-
+uncommitted provisioning edits (kdp_server.c, kdp_net.c, main.c, meta.c),
+which land as 0.4.24; the committed 0.4.23 source was not flashed alone.
 
 ### The snap comes back - a short fade instead of a dissolve, 0.4.22, 2026-09-02
 

@@ -569,12 +569,13 @@ const char *capture_unavailable_reason(bool card_mounted, bool any_camera_ready)
 #define PURE_WIGGLE_SEQ_MAX (2 * PURE_WIGGLE_FRAMES_MAX - 2)
 
 /** 02 §9's speed range, the same numbers packages/media/src/sequence.ts
- * clamps to. The camera's own envelope defaults to 8 (config_store.c), which
- * is what an unreadable or absent value falls back to here - not media's 10,
- * because this is the device reading its own setting. */
+ * clamps to. The camera's own envelope defaults to 10 (config_store.c), which
+ * is what an unreadable or absent value falls back to here. It was 8 until
+ * 0.4.23, when a reference wigglegram reel was measured at a frame every
+ * 100 ms; 10 is also what MockKinoDevice and packages/media had all along. */
 #define PURE_WIGGLE_FPS_MIN 5
 #define PURE_WIGGLE_FPS_MAX 15
-#define PURE_WIGGLE_FPS_DEFAULT 8
+#define PURE_WIGGLE_FPS_DEFAULT 10
 
 /**
  * KDP's loop vocabulary (WiggleLoop in packages/kdp/src/protocol/types.ts).
