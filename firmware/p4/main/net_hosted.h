@@ -88,6 +88,11 @@ void net_hosted_count_bytes(uint64_t rx, uint64_t tx);
  * Reported so a boot never silently claims recoverability it does not have. */
 bool net_hosted_recovery_ready(void);
 
+/** Take the C6 recovery reserve from the pristine heap, before any camera,
+ * display or UI subsystem allocates internal DMA RAM. Call from app_main right
+ * after boot logging. Idempotent with the take that follows bring-up. */
+void net_hosted_reserve_early(void);
+
 #else /* !KINO_RADIO */
 
 /* The default build. Inline so main.c needs no #ifdef and the call costs a
@@ -105,6 +110,7 @@ static inline void net_hosted_count_bytes(uint64_t rx, uint64_t tx) {
 }
 /* No radio, so no recovery to be ready for. */
 static inline bool net_hosted_recovery_ready(void) { return false; }
+static inline void net_hosted_reserve_early(void) {}
 
 #endif /* KINO_RADIO */
 

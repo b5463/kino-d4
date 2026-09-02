@@ -801,6 +801,20 @@ static void dma_reserve_take(void) {
 
 bool net_hosted_recovery_ready(void) { return s_dma_reserve_held >= DMA_RESERVE_BLOCKS; }
 
+void net_hosted_reserve_early(void) {
+  /* From app_main, before the camera links, capture workers, display and UI
+   * allocate: the heap is still first-boot shaped and two 15,872 B internal
+   * DMA blocks are there for the taking. Taken only after bring-up (0.4.6)
+   * the reserve fitted 2/2 then; by 0.4.20-0.4.24 the largest free block at
+   * that moment was 15,872 B or less, the reserve held 1/2 or 0/2, and a C6
+   * reset panicked the P4 in the component's re-init probe (#162, measured
+   * twice on 2026-09-02). dma_reserve_take() skips blocks already held, so the
+   * post-bring-up take that follows is a no-op once this one succeeded. The
+   * component's own first init allocates its buffers from what is left, which
+   * the boot record has to confirm - it is the one thing this could starve. */
+  dma_reserve_take();
+}
+
 static void dma_reserve_release(void) {
   for (int i = 0; i < DMA_RESERVE_BLOCKS; i++) {
     if (s_dma_reserve[i] != NULL) {
