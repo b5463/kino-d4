@@ -190,8 +190,22 @@ static void cam_probe_task(void *arg) {
 void app_main(void) {
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    ESP_ERROR_CHECK(nvs_flash_init());
+    /* These were the last two ESP_ERROR_CHECKs in the firmware, on the first
+     * statements of a boot written from end to end to degrade. The branch is
+     * entered by design after a partition-table change (#143), and inside it
+     * nvs_flash_erase() answers ESP_ERR_NOT_FOUND on a table with no nvs
+     * partition and nvs_flash_init() can fail on a corrupt key partition -
+     * each of which aborted before kdp_server_start() and display_init(), so
+     * the panic took the recovery channel and the screen with it, and
+     * PANIC_REBOOT_DELAY 0 made it a tight loop. Every NVS consumer already
+     * treats a failed open as "no key": a camera with no NVS still takes
+     * photographs to the card, and says why it has no settings. */
+    const esp_err_t erase = nvs_flash_erase();
+    err = erase == ESP_OK ? nvs_flash_init() : erase;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "NVS unavailable: %s - booting without persisted settings",
+             esp_err_to_name(err));
   }
 
   /* Settings load before any subsystem reads one. Power management, the UI

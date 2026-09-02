@@ -602,6 +602,28 @@ pure_wiggle_loop_t pure_wiggle_loop(const char *word);
 bool pure_wiggle_direction_rtl(const char *word);
 
 /**
+ * True when `text` nests no deeper than `max_depth` levels of `{`/`[`.
+ *
+ * cJSON parses by recursion and its own nesting limit is 1000 levels - far
+ * more stack than the 3-4 KB tasks this firmware parses on (the gallery's
+ * META.JSON, the recipes on the card, the saved config on app_main, a KDP
+ * request). A document that fails this is refused before cJSON sees it, so a
+ * card edited on a PC or a hostile host cannot overflow a task stack into a
+ * reboot loop - and, for the config, cannot be SAVED into a document every
+ * boot then fails on. Strings are skipped with their escapes honoured, so a
+ * brace inside a value does not count. A NULL text is not ok.
+ */
+bool pure_json_depth_ok(const char *text, int max_depth);
+
+/** The same over a byte range that need not be NUL-terminated - a KDP payload
+ * sits in the decoder's frame buffer with the CRC after it. */
+bool pure_json_depth_ok_n(const char *text, size_t len, int max_depth);
+
+/** The depth every untrusted parse in this firmware allows. A kino.capture is
+ * three levels; a config envelope with calibration is five. */
+#define PURE_JSON_MAX_DEPTH 12
+
+/**
  * The order the frames are shown in, as frame indices 0..3 (C1..C4).
  *
  * This is the device's copy of packages/media/src/sequence.ts, and it must

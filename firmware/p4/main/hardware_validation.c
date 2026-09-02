@@ -89,6 +89,9 @@ hwv_item_t hwv_cam_item(int cam, hwv_item_t cam1_equivalent) {
 
 static uint8_t s_status[HWV_COUNT];
 static char s_detail[HWV_COUNT][48];
+/* Marked in RAM, not yet in NVS. See hwv_mark_validated for why the write is
+ * somebody else's job. */
+static volatile bool s_dirty[HWV_COUNT];
 
 /* Status keys are indexed, not named: item ids like CAM1_SENSOR_DETECT
  * exceed NVS_KEY_NAME_MAX_SIZE-1 (15), and nvs_set_u8 rejected them
@@ -138,20 +141,38 @@ void hwv_mark_validated(hwv_item_t item, const char *detail) {
   s_status[item] = HWV_VALIDATED;
   strlcpy(s_detail[item], detail != NULL ? detail : "", sizeof s_detail[item]);
   ESP_LOGI(TAG, "VALIDATED %s: %s", ITEM_IDS[item], s_detail[item]);
+  /*
+   * Not written to NVS here. This is called from eight tasks, three of them on
+   * 3-4 KB stacks, and an NVS write is a flash write: the caller's task must
+   * have its stack in cacheable DRAM or spi_flash's cache_utils asserts and the
+   * board reboots - which happened on 2026-09-02 when internal RAM ran dry and
+   * a task stack landed in TCM. The write is queued for hwv_persist(), which
+   * one task with a known-good stack calls from its own loop.
+   */
+  s_dirty[item] = true;
+  if (lock) xSemaphoreGive(lock);
+}
+
+void hwv_persist(void) {
+  bool any = false;
+  for (int i = 0; i < HWV_COUNT && !any; i++) any = s_dirty[i];
+  if (!any) return;
 
   nvs_handle_t nvs;
-  if (nvs_open("hwv", NVS_READWRITE, &nvs) == ESP_OK) {
+  if (nvs_open("hwv", NVS_READWRITE, &nvs) != ESP_OK) return;
+  for (int i = 0; i < HWV_COUNT; i++) {
+    if (!s_dirty[i]) continue;
+    s_dirty[i] = false;
     char key[24];
-    hwv_status_key((int)item, key, sizeof key);
+    hwv_status_key(i, key, sizeof key);
     esp_err_t err = nvs_set_u8(nvs, key, HWV_VALIDATED);
-    if (err != ESP_OK) ESP_LOGW(TAG, "persist %s failed: %s", ITEM_IDS[item], esp_err_to_name(err));
-    snprintf(key, sizeof key, "d.%d", (int)item);
-    err = nvs_set_str(nvs, key, s_detail[item]);
-    if (err != ESP_OK) ESP_LOGW(TAG, "persist detail %s failed: %s", ITEM_IDS[item], esp_err_to_name(err));
-    nvs_commit(nvs);
-    nvs_close(nvs);
+    if (err != ESP_OK) ESP_LOGW(TAG, "persist %s failed: %s", ITEM_IDS[i], esp_err_to_name(err));
+    snprintf(key, sizeof key, "d.%d", i);
+    err = nvs_set_str(nvs, key, s_detail[i]);
+    if (err != ESP_OK) ESP_LOGW(TAG, "persist detail %s failed: %s", ITEM_IDS[i], esp_err_to_name(err));
   }
-  if (lock) xSemaphoreGive(lock);
+  nvs_commit(nvs);
+  nvs_close(nvs);
 }
 
 hwv_status_t hwv_status(hwv_item_t item) {

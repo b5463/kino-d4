@@ -1003,6 +1003,12 @@ static void read_meta(gallery_item_t *it) {
              it->id, (int)sizeof s_tile_meta);
   }
 
+  /* Refused before cJSON recurses into it: this task has a 4 KB stack and the
+   * document came off a card anyone can write. */
+  if (!pure_json_depth_ok(s_tile_meta, PURE_JSON_MAX_DEPTH)) {
+    ESP_LOGW(TAG, "META.JSON for %s nests too deep; tile left unlabelled", it->id);
+    return;
+  }
   cJSON *m = cJSON_Parse(s_tile_meta);
   if (m == NULL) return;
   const cJSON *id = cJSON_GetObjectItem(m, "id");
@@ -1126,12 +1132,11 @@ esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad,
   if (s_lock == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
   if (w <= 0 || h <= 0) return ESP_ERR_INVALID_ARG;
 
-  const size_t want = THUMB_TILE_BYTES(w, h);
-  if (s_frame_bytes != 0 && want > s_frame_bytes) return ESP_ERR_INVALID_SIZE;
-  /* Recorded BEFORE the allocations, not after them. A first call that runs
-   * out of PSRAM half way leaves two buffers of this size behind, and a later
-   * call for a bigger frame would then be handed them - the guard above has to
-   * know the size even when the run that set it did not finish. */
+  /* Every buffer is the maximum size, whatever this job asks for: a quad opens
+   * its frames at half the well and a wiggle at the whole of it, in whichever
+   * order the user happens to browse, and the buffers are never freed. */
+  const size_t want = THUMB_TILE_BYTES(GALLERY_FRAME_MAX_W, GALLERY_FRAME_MAX_H);
+  if (THUMB_TILE_BYTES(w, h) > want) return ESP_ERR_INVALID_SIZE;
   if (s_frame_bytes == 0) s_frame_bytes = want;
   for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
     if (s_frame_pix[i] != NULL) continue;
@@ -1550,7 +1555,12 @@ esp_err_t gallery_init(void) {
    * kino.capture - not by its size, so raising that buffer to 4096 does not
    * deepen this stack. The index read and write add nothing: both buffers are
    * SPIRAM allocations and one rendered line is 72 bytes. */
-  if (xTaskCreate(gallery_task, "gallery", 4096, NULL, 4, &s_task) != pdPASS) {
+  /* CPU1, with ui_task and the viewfinder decoders (#158): every thumbnail
+   * and frame decode in this task syncs the cache over a PSRAM tile inside a
+   * critical section, and CPU0 owns the camera link ISRs with 1.39 ms of FIFO
+   * slack. A rescan after a capture used to decode a page of tiles while the
+   * finder was pulling four frames. */
+  if (xTaskCreatePinnedToCore(gallery_task, "gallery", 4096, NULL, 4, &s_task, 1) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
   taskmon_register("gallery", s_task);

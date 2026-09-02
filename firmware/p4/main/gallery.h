@@ -167,6 +167,16 @@ void gallery_delete_progress(int *done, int *total);
 /** Four lenses, so four frames: C1..C4.JPG. */
 #define GALLERY_FRAME_MAX 4
 
+/**
+ * The largest frame a job may ask for, and the size every frame buffer is
+ * allocated at. The photograph well is 464x348 (ui.c asserts it matches). A
+ * quad opens its frames at half this so four fit the well; sizing the buffers
+ * by the first job that ran would let a half-size quad, opened first after
+ * boot, starve every wiggle after it with ESP_ERR_INVALID_SIZE.
+ */
+#define GALLERY_FRAME_MAX_W 464
+#define GALLERY_FRAME_MAX_H 348
+
 /* The frame index and the calibration index are the same camera, so the two
  * counts have to agree: gallery_item_t.cal[] is sized by pure.h's count and
  * indexed by this one (gallery.c, frames_step). If they ever diverge, the

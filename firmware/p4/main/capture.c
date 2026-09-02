@@ -28,6 +28,7 @@
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
 #include "kdp_recipes.h"
+#include "isr_watch.h"
 #include "klog.h"
 #include "meta.h"
 #include "net_link.h"
@@ -74,8 +75,13 @@ static const char *TAG = "capture";
  * frame) gets them. A chunk that does arrive does so in ~120 ms even under
  * four-way load, so 400 ms is >3x the healthy time and a lost tail now costs
  * 400 ms to retry instead of 1000 - the difference between cam2's 458 KB
- * frame finishing inside the budget and being abandoned at 98%. */
-#define CHUNK_READ_TIMEOUT_MS 400
+ * frame finishing inside the budget and being abandoned at 98%.
+ *
+ * 250 since #158: a lost tail is never coming, so this timeout IS the price
+ * of every retry, and the healthy chunk under four-way load measures ~120 ms
+ * (latencyMaxMs 122 in CAMERA_LINK_STATS). Twice that is still a real
+ * margin for a slow node; three times was paying for nothing. */
+#define CHUNK_READ_TIMEOUT_MS 250
 
 /* Attempts after the first. Two: measured captures now need zero, so this is
  * for a genuine glitch, and three attempts at 1000 ms bounds a bad chunk at
@@ -137,6 +143,12 @@ _Static_assert((CHUNK_RETRIES + 1) * CHUNK_READ_TIMEOUT_MS <= XFER_BUDGET_MS / 4
 
 #define ALL_CAMS_MASK ((1u << CAPTURE_CAMS) - 1u)
 
+/* The largest frame a node is believed about. QXGA at quality 95 measured
+ * 241 KB and a busy real scene 458 KB; 1 MiB is twice that, and a node that
+ * claims more is describing a buffer it does not have (the S3 carries 8 MB of
+ * PSRAM, most of it the sensor's own frame buffers). */
+#define CAPTURE_MAX_JPEG (1024u * 1024u)
+
 /* ---------------------------------------------------------------- */
 /* module state                                                     */
 /* ---------------------------------------------------------------- */
@@ -145,9 +157,12 @@ typedef struct {
   int cam;
   SemaphoreHandle_t go;
   uint8_t *jpeg; /* PSRAM staging for this camera's frame */
-  /* Set only on the thumbnail camera, and only when its worker deliberately
-   * left `jpeg` allocated for capture_fire to hand to thumb_write. */
+  /* Bytes staged in `jpeg`. Every worker that received a frame leaves it
+   * allocated and sets this: since #158 the card is written by capture_fire
+   * after the LAST transfer, not by the worker during its siblings'. */
   uint32_t jpeg_bytes;
+  uint32_t transfer_crc; /* what the wire delivered, for store_frame */
+  bool store_pending;    /* a staged frame capture_fire still has to write */
   /* The worker records that this camera earned its hardware-validation marks;
    * capture_fire writes them once every transfer has finished. Written by one
    * worker, read by the coordinator after the done bits, so no lock. */
@@ -332,14 +347,14 @@ static void frame_failf(capture_frame_t *f, const char *fmt, ...) {
   f->ok = false;
 }
 
-/** Write one staged frame to the card. */
+/** Write one staged frame to the card. Called by capture_fire after the last
+ * transfer (#158), never while a sibling is still receiving. */
 static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32_t size,
                         uint32_t transfer_crc) {
   const int64_t t0 = esp_timer_get_time();
-  /* One writer at a time: the capture folder has a single open file handle,
-   * and four cameras finishing together would otherwise interleave. Holding
-   * this while another camera is still pulling bytes is the point - the card
-   * works during the transfers instead of after them. */
+  /* One writer at a time: the capture folder has a single open file handle.
+   * The writes are serial now anyway; the lock stays because CAMERA_TEST and
+   * the bench paths reach the same folder. */
   xSemaphoreTake(s_card, portMAX_DELAY);
 
   esp_err_t err = storage_capture_frame_begin(s_store, cam);
@@ -435,9 +450,12 @@ static void do_frame(worker_t *w) {
     frame_failf(f, "node refused the capture");
     return;
   }
-  if (cap.size < 4) {
+  if (cap.size < 4 || cap.size > CAPTURE_MAX_JPEG) {
+    /* Both ends. The size is the node's JSON, and without the upper bound a
+     * value near 4 GB wraps the 64-byte rounding below into a tiny staging
+     * buffer that the chunk loop then writes past for the rest of the frame. */
     camlink_release_ch(cam, cap.frame_id);
-    frame_failf(f, "node reported %lu B", (unsigned long)cap.size);
+    frame_failf(f, "node reported an implausible %lu B", (unsigned long)cap.size);
     return;
   }
   f->node_ms = cap.duration_ms;
@@ -578,24 +596,23 @@ static void do_frame(worker_t *w) {
   }
   f->bytes = cap.size;
 
-  store_frame(cam, f, w->jpeg, cap.size, transfer_crc);
-
-  /* The thumbnail still comes from the frame already in PSRAM - reading a
-   * 72-241 KB file back off the card to make one would undo the point - but it
-   * is written by capture_fire once every transfer is done, not here. So this
-   * worker hands its staging buffer over instead of freeing it, and capture_fire
-   * frees it at `finish` on every path. Exactly one camera per capture does
-   * this: s_thumb_cam is chosen by the coordinator before any worker runs. */
-  if (f->ok && cam == s_thumb_cam && thumb_ready()) {
-    w->jpeg_bytes = cap.size;
-  } else {
-    heap_caps_free(w->jpeg);
-    w->jpeg = NULL;
-  }
-
-  /* Not marked here. hwv_mark_validated writes NVS, and capture_fire does it
-   * after the last transfer - see the loop past the done bits. */
-  w->hwv_pending = f->ok;
+  /*
+   * Staged, not stored (#158). The frame stays in PSRAM and capture_fire
+   * writes it to the card once EVERY transfer has finished - see the store
+   * loop past the done bits. Writing it here, while up to three siblings were
+   * still receiving, was measured to cost them the tails of their chunks: the
+   * 1 ms probe in isr_watch.c recorded 1.6-2.7 ms interrupt gaps under this
+   * worker's card writes on every capture, and the RX FIFO cannot ride out a
+   * gap that long at any interrupt threshold. The thumbnail and the
+   * hardware-validation marks were already deferred for the same reason;
+   * the frame write was the last thing left inside the window.
+   *
+   * capture_fire frees the buffer at `finish` on every path, including the
+   * ones that never reach the store loop.
+   */
+  w->jpeg_bytes = cap.size;
+  w->transfer_crc = transfer_crc;
+  w->store_pending = true;
 }
 
 static void worker_task(void *arg) {
@@ -1155,6 +1172,9 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   capture_report_t r;
   memset(&r, 0, sizeof r);
   r.request_us = t_start;
+  /* Start the blackout record at the request, so what is reported after the
+   * transfers is this capture's window and not the idle screen before it. */
+  isr_watch_take(NULL, 0, NULL);
   r.sd_wait_ms = sd_wait_ms;
   r.probe_wait_ms = probe_wait_ms;
   snprintf(r.radio_state, sizeof r.radio_state, "%s", net_state_name(shutter_net.state));
@@ -1369,6 +1389,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   for (int i = 0; i < CAPTURE_CAMS; i++) {
     s_worker[i].hwv_pending = false;
     s_worker[i].jpeg_bytes = 0;
+    s_worker[i].store_pending = false;
   }
 
   if (flash) flash_set(1);
@@ -1396,6 +1417,58 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   xEventGroupWaitBits(s_done, ask, pdFALSE, pdTRUE, portMAX_DELAY);
   s_stage = CAPTURE_WRITING;
   klog("P4", "all frames in at +%lld us", (long long)(esp_timer_get_time() - r.request_us));
+  /*
+   * Every interrupt blackout longer than the RX FIFO during this capture, with
+   * the task on each core when it ended - relative to the request so it lines
+   * up with the chunk retries above (#158). Nothing recorded means no window
+   * this capture could have lost a byte to.
+   */
+  {
+    isr_watch_gap_t gaps[ISR_WATCH_SLOTS];
+    uint32_t dropped = 0;
+    const int n = isr_watch_take(gaps, ISR_WATCH_SLOTS, &dropped);
+    for (int i = 0; i < n; i++) {
+      klog("P4", "isr gap %lu us at +%lld us: core0 %s, core1 %s", (unsigned long)gaps[i].gap_us,
+           (long long)(gaps[i].at_us - r.request_us), gaps[i].core0, gaps[i].core1);
+    }
+    if (dropped != 0) klog("P4", "isr gaps: %lu more not recorded", (unsigned long)dropped);
+  }
+
+  /*
+   * The frames, to the card, now that nothing is on the wire (#158).
+   *
+   * In camera order, one writer, from the PSRAM buffers the workers left
+   * staged. This is where the interrupt gaps that used to eat chunk tails now
+   * fall, and they fall on nothing: the nodes have released their frames and
+   * the link is idle until the next capture. It costs the capture the writes'
+   * wall-clock in series (~100-150 ms each) instead of overlapped with the
+   * transfers; a single lost tail cost 400 ms, and most captures had one.
+   *
+   * A frame that fails to write is still a frame that was received: f->ok
+   * turns false here, the hardware-validation marks below skip it, and the
+   * report says which camera and why.
+   */
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    worker_t *w = &s_worker[i];
+    if (!w->store_pending) continue;
+    w->store_pending = false;
+    /* A staged frame is one whose transfer and CRC passed - do_frame stages
+     * nothing else - and f->ok is what store_frame SETS on a clean write, so
+     * it is not a precondition here. (It was, for one build, and every capture
+     * reported "No frame was stored" with all four frames sitting in PSRAM.) */
+    if (w->jpeg != NULL) {
+      store_frame(i, &r.cam[i], w->jpeg, w->jpeg_bytes, w->transfer_crc);
+    }
+    /* hwv_mark_validated writes NVS; it runs in the loop below, still out of
+     * the transfer window. */
+    w->hwv_pending = r.cam[i].ok;
+    /* Only the thumbnail camera's frame is still needed after this. */
+    if (i != s_thumb_cam || !r.cam[i].ok || !thumb_ready()) {
+      heap_caps_free(w->jpeg);
+      w->jpeg = NULL;
+      w->jpeg_bytes = 0;
+    }
+  }
 
   /*
    * The hardware-validation marks, here rather than in the workers.
@@ -1650,6 +1723,9 @@ void capture_on_done(capture_done_cb_t cb) {
 
 esp_err_t capture_init(const char *device_id) {
   if (s_lock != NULL) return ESP_OK;
+  /* From app_main, on CPU0 - the core camlink_init() put the link ISRs on, so
+   * the watch is held off by exactly what holds them off. */
+  if (isr_watch_init() != ESP_OK) ESP_LOGW(TAG, "isr watch unavailable");
   if (device_id != NULL && device_id[0] != '\0') {
     snprintf(s_device_id, sizeof s_device_id, "%s", device_id);
   }
@@ -1695,8 +1771,23 @@ esp_err_t capture_init(const char *device_id) {
      * that the worker was being preempted for longer than the 1.39 ms the RX
      * FIFO tolerates, and it changed nothing - 0/5 either way - so the
      * difference between this path and CAMERA_TEST is not scheduling. */
+    /*
+     * CPU1, away from the link ISRs (#158).
+     *
+     * Priority never was the fault; the core is. store_frame() writes a whole
+     * 100-300 KB PSRAM frame to the card while up to three siblings are still
+     * mid-chunk - by design, so the card works during the transfers - and the
+     * SD driver's cache writeback of that buffer runs in a critical section:
+     * interrupts off on the running core for a millisecond or more, against
+     * 1.39 ms of RX FIFO. camlink_init() runs from app_main on CPU0, so an
+     * unpinned worker landing there took the tail off its siblings' chunks:
+     * the 0.4.25 bench log shows READ timeouts holding 8055-8168 of ~8210 B
+     * with nothing discarded, clustered at late offsets right where the first
+     * camera finishes. Same fault and same fix as ui_task (ui.c) and the
+     * viewfinder (viewfinder.c).
+     */
     TaskHandle_t wh = NULL;
-    if (xTaskCreate(worker_task, name, 8192, &s_worker[i], 5, &wh) != pdPASS) {
+    if (xTaskCreatePinnedToCore(worker_task, name, 8192, &s_worker[i], 5, &wh, 1) != pdPASS) {
       return ESP_ERR_NO_MEM;
     }
     taskmon_register(name, wh);
@@ -1704,7 +1795,10 @@ esp_err_t capture_init(const char *device_id) {
   }
   /* 6 KB: this one builds META.JSON, which is the largest allocation-heavy
    * thing in the module. */
-  if (xTaskCreate(capture_task, "capture", 6144, NULL, 5, &s_task) != pdPASS) {
+  /* CPU1 as well: capture_fire runs thumb_write() - a full-frame hardware
+   * decode with cache maintenance over megabytes - the moment the transfers
+   * end, which is also the moment the viewfinder resumes pulling frames. */
+  if (xTaskCreatePinnedToCore(capture_task, "capture", 6144, NULL, 5, &s_task, 1) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
   taskmon_register("capture", s_task);

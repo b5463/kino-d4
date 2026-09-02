@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-02, firmware 0.4.23
+## Status — updated 2026-09-02, firmware 0.4.28
 
 One D4 shutter produces a truthful, durable four-frame set: 20 of 20 grouped
 captures complete 4/4 on the fixed image, every frame CRC-checked to the card,
@@ -723,6 +723,67 @@ independently on its intended UART and all four are simultaneously visible
 and photographing. Not proven here, deliberately: the grouped four-camera
 shutter (#132), synchronization and skew, exposure quality (#156), and
 four-camera behaviour under upload load (Gate F ran on one camera).
+
+### The four-camera link stops losing chunk tails - measured with a probe, not reasoned - 0.4.28, 2026-09-02
+
+Issue #158: four cameras lost about one chunk tail per capture (a 400 ms
+retry each) and ~3% of preview frames, with crcErrors 0 across tens of
+megabytes. The record blamed cache maintenance blacking out the link-ISR
+core, and two fixes built on that explanation changed nothing: pinning every
+cache-syncing task (viewfinder pumps, gallery, capture workers, coordinator)
+to CPU1 went 21 -> 21 lost tails in 20 captures; slicing the SD writes to
+16 KB went to 19. Reasoning was exhausted, so a probe was built: isr_watch.c,
+a 1 ms gptimer on CPU0 with a flash-resident handler, held off by exactly
+what holds the UART ISR off, recording every gap over 1.3 ms with the task on
+each core, logged by capture_fire beside the chunk retries.
+
+What it showed. Gaps of 1.5-2.9 ms, constantly, ending under ui, gallery and
+the capture workers on CPU1 or with both cores idle - cache stalls, which no
+pinning can move. And the arithmetic under every note in the tree was wrong:
+"1.39 ms of FIFO slack" assumes the ISR fires on the first byte, but the IDF
+driver fires at 120 of 128 (UART_FULL_THRESH_DEFAULT, esp_driver_uart), so
+on a continuous 8 KB chunk the ISR has 8 bytes - 87 us. The held-byte counts
+in the TIMEOUT lines matched: 8055-8194 of ~8210 held, 16-160 lost, exactly
+what a 1.2-3 ms gap costs at 92 bytes/ms.
+
+The fixes. uart_set_rx_full_threshold(32) in cam_link.c gives the ISR ~1 ms;
+capture.c stages all four frames in PSRAM and writes them to the card after
+the LAST transfer, so the card's 2 ms stalls land on an idle link;
+CHUNK_READ_TIMEOUT_MS 400 -> 250 because a lost tail never arrives and the
+timeout is the price of every retry. The 2026-08-29 "UART_ISR_IN_IRAM made
+it worse" result reproduced (54 lost tails in 12 captures) and is explained:
+with an 87 us budget the IRAM ISR misses by 2-10 bytes constantly. It also
+costs internal RAM (the ISR code shares the SRAM with the heap) and on the
+0.4.24 image that starved I2S, the JPEG decoder and the SD driver at boot and
+panicked app_main - the second panic loop of the evening after 1dff180's.
+
+Twenty CAMERA_CAPTURE requests 6 s apart, four nodes at 0.4.19. The bench
+image for the middle rows was 9f0e59e + the change under test, because HEAD
+(1dff180) did not boot on this unit at the time:
+
+| image | captures | lost tails | note |
+|---|---|---|---|
+| 0.4.25 baseline | 12 | 21 | 1 META.JSON write failure; 6 requests lost to another session on the port |
+| + every cache-syncing task pinned CPU1 | 19 | 21 | no change |
+| + SD writes in 16 KB slices | 19 | 19 | no change |
+| + CONFIG_UART_ISR_IN_IRAM (12 requests) | 12 | 54 | worse, 2-10 B short each |
+| + RX threshold 32 | 20 | 13 | first 12-capture run: 3 |
+| threshold 32 + IRAM ISR | - | - | boot panic, internal RAM |
+| 0.4.28: threshold 32 + writes after transfers | 20 | **0** | HEAD 2bc5c51 + this; internal free 98 KB, largest DMA 31 KB |
+
+And the serial writes cost nothing: a four-frame capture now completes in
+2.9-3.1 s (CAP_000197-212, 634-690 KB) against 3.3-4.5 s before, because the
+0.25-0.4 s of retries it used to carry are gone. The probe's only remaining
+gap is one 1.7-2.9 ms ui present at +65-78 ms, before any transfer starts.
+
+Also in this version: the quad detail view (#163) shows all four looks 2x2;
+and a panic audit of the whole P4 tree (two ESP_ERROR_CHECKs total, no
+abort/assert, every allocation checked) closed the indirect surface: the
+nvs_flash_init aborts in app_main degrade, hwv marks reach NVS only from
+kdp_server's known-good stack, a JSON depth prescan fronts every untrusted
+parse, the node's JPEG size is bounded above, and the main and event task
+stacks are raised. Preview shortRead with four cameras remains to be read
+on the SHOOT screen with the same counters.
 
 ### The way the clip does it - hard cuts, 10 fps, continuous, 0.4.23, 2026-09-02
 

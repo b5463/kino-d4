@@ -10,10 +10,11 @@ set(kino_srcs
     "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
   "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c"
-  "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c")
+  "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c" "isr_watch.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer
+              esp_driver_gptimer
               esp_lcd esp_driver_gpio esp_lcd_st7701 esp_lcd_touch_gt911 esp_driver_i2c
               esp_driver_i2s esp_codec_dev esp_driver_ppa esp_driver_jpeg esp_mm)
 

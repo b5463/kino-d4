@@ -251,7 +251,10 @@ esp_err_t power_init(void) {
   /* Checked, because power_init() returning ESP_OK with no task behind it is
    * a camera that never dims, never sleeps and never drops the camera rail -
    * on a 3000 mAh cell, and with nothing in the log to say why. */
-  if (xTaskCreate(power_task, "power", 3072, NULL, 2, &h) != pdPASS) {
+  /* 4096, up from 3072 - the smallest stack in the system, running config_int()
+   * (a cJSON walk) three times a pass plus klog's vsnprintf. The canary abort is
+   * an instant reboot; 1 KB of headroom is cheaper than that. */
+  if (xTaskCreate(power_task, "power", 4096, NULL, 2, &h) != pdPASS) {
     ESP_LOGE(TAG, "power task would not start: no heap; nothing will dim or sleep");
     klog("P4", "power task failed to start");
     /* s_ready was set above; clear it so a later retry actually retries

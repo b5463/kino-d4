@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "klog.h"
+#include "pure.h"
 #include "meta.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -296,7 +297,12 @@ esp_err_t config_init(void) {
     if (nvs_get_str(h, NVS_KEY, NULL, &len) == ESP_OK && len > 2 &&
         len <= CONFIG_MAX_BYTES) {
       char *text = malloc(len);
-      if (text != NULL && nvs_get_str(h, NVS_KEY, text, &len) == ESP_OK) {
+      if (text != NULL && nvs_get_str(h, NVS_KEY, text, &len) == ESP_OK &&
+          /* On app_main's 3.5 KB stack. A saved envelope that nests deeper than
+           * anything this firmware writes is treated as no config, which boots;
+           * parsing it would overflow into a reboot loop that only an NVS erase
+           * ends. SET_CONFIG refuses such a document before it can be saved. */
+          pure_json_depth_ok(text, PURE_JSON_MAX_DEPTH)) {
         cJSON *parsed = cJSON_Parse(text);
         cJSON *cfg = parsed ? cJSON_GetObjectItem(parsed, "config") : NULL;
         if (cJSON_IsObject(cfg)) {

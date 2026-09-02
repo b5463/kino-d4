@@ -339,6 +339,24 @@ esp_err_t camlink_init(void) {
      * that settled the IRAM one. */
     esp_err_t err = uart_driver_install(ch->uart, LINK_RX_BUF, 0, 0, NULL, 0);
     if (err == ESP_OK) err = uart_param_config(ch->uart, &config);
+    /*
+     * The RX interrupt at 32 of the 128 FIFO bytes, not the driver's 120 (#158).
+     *
+     * Every note in this file about "1.39 ms of FIFO slack" assumed the ISR
+     * is asked for the first byte. It is not: UART_FULL_THRESH_DEFAULT is 120
+     * (esp_driver_uart/src/uart.c), so on a continuous 8 KB chunk the ISR has
+     * 8 bytes - 87 us at 921600 - before the FIFO overflows. Measured with a
+     * 1 ms timer probe on this core (isr_watch.c), interrupt gaps of 1.5-2.9 ms
+     * happen constantly: a cache writeback for the compositor, a gallery tile
+     * decode, a worker's card write, on either core, and none of them can be
+     * pinned away because the stall is the shared cache's, not one core's
+     * interrupt mask. 32 gives the ISR 96 bytes, ~1.04 ms, and took the
+     * four-camera capture burst from ~1 lost chunk tail per capture to 0.15-
+     * 0.65. What remains is the >1.4 ms stalls, which capture.c now keeps out
+     * of the transfer window entirely. Costs ~2,900 interrupts/s per channel
+     * under a full transfer instead of ~770.
+     */
+    if (err == ESP_OK) err = uart_set_rx_full_threshold(ch->uart, 32);
     if (err == ESP_OK)
       err = uart_set_pin(ch->uart, ch->tx_pin, ch->rx_pin, UART_PIN_NO_CHANGE,
                          UART_PIN_NO_CHANGE);

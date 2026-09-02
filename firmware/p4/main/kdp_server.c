@@ -470,7 +470,10 @@ static void run_capture(int cam, int jpeg_quality, bool keep_files, capture_resu
   snprintf(r->crc_node, sizeof r->crc_node, "%s", cap.crc32);
   r->node_heap_kb = cap.heap_kb;
   r->node_psram_kb = cap.psram_kb;
-  if (cap.size < 4) {
+  /* Both ends, like capture.c: a size near 4 GB is a node describing memory it
+   * does not have, and the allocation below would then be sized by arithmetic
+   * on a lie. 1 MiB is twice the largest real frame measured. */
+  if (cap.size < 4 || cap.size > 1024u * 1024u) {
     camlink_release_ch(cam, cap.frame_id);
     failf(r, "JPEG_INVALID", "Node reported an implausible JPEG size: %lu B",
           (unsigned long)cap.size);
@@ -1371,6 +1374,8 @@ static cJSON *media_meta(const char *id) {
   const size_t got = fread(buf, 1, sizeof s_meta_buf - 1, f);
   fclose(f);
   buf[got] = '\0';
+  /* Off the card, so not ours to trust: see pure_json_depth_ok. */
+  if (!pure_json_depth_ok(buf, PURE_JSON_MAX_DEPTH)) return NULL;
   return cJSON_Parse(buf);
 }
 
@@ -2942,6 +2947,15 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
 
   cJSON *req = NULL;
   if (frame->payload_len > 0 && (frame->flags & KDP_FLAG_BINARY) == 0) {
+    /* Refused before cJSON recurses into it: SET_CONFIG would otherwise
+     * duplicate and merge the document, save it, and every boot after would
+     * parse it on app_main's 3.5 KB stack. Length-bounded, no copy - the
+     * payload is followed in the decoder's buffer by the CRC, not a NUL. */
+    if (!pure_json_depth_ok_n((const char *)frame->payload, frame->payload_len,
+                              PURE_JSON_MAX_DEPTH)) {
+      send_nack(frame->type, frame->seq, "BAD_REQUEST", "JSON nests too deep");
+      return;
+    }
     req = cJSON_ParseWithLength((const char *)frame->payload, frame->payload_len);
   }
 
@@ -3040,6 +3054,10 @@ static void server_task(void *arg) {
   for (;;) {
     int n = usb_link_read(rx, sizeof rx, 100);
     if (n > 0) kdp_decoder_push(&s_decoder, rx, (size_t)n, on_frame, NULL);
+    /* The hardware-validation marks reach NVS from here and only here: this
+     * task's 12 KB stack is created before anything can push it into TCM, and
+     * it turns over every 100 ms whether or not a host is connected. */
+    hwv_persist();
   }
 }
 

@@ -1177,6 +1177,27 @@ int main(int argc, char **argv) {
     SHOT(SCR_PHOTO, "photo_partial");
     photo_release();
     g_frame_have = 0xf;
+
+    /* ---- a quad, opened: all four looks at once ----
+     *
+     * slots[2] is a quad of four frames. The one tick completes the job and
+     * the grid replaces the still: four half-size frames in reading order,
+     * C1 top-left to C4 bottom-right. The chrome is the photograph screen's
+     * own, so a diff against "photo" is the well and nothing else. The partial
+     * shot has C3 missing and shows the hole where C3 belongs, named, with the
+     * other three exactly where they were. */
+    photo_open(&slots[2]);
+    wiggle_tick();
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
+    SHOT(SCR_PHOTO, "photo_quad");
+    photo_release();
+
+    g_frame_have = 0xb;
+    photo_open(&slots[2]);
+    wiggle_tick();
+    SHOT(SCR_PHOTO, "photo_quad_partial");
+    photo_release();
+    g_frame_have = 0xf;
   }
 
   /* ---- the crossfade and the alignment (#161) ----

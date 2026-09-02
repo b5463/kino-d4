@@ -513,5 +513,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.27: the early reserve goes (it boot-looped 0.4.25) and task-only
   // statics move to PSRAM so internal RAM has real headroom (#162). Device side
   // only, same profile.
-  '0.4.27': 'd4-settings-0-4-9',
+  '0.4.27': 'd4-settings-0-4-9',  // 0.4.28: four-camera link tails stop being lost (RX threshold, card writes
+  // after the transfers), quad detail view, panic audit fixes (#158 #163).
+  // Device side only, same profile.
+  '0.4.28': 'd4-settings-0-4-9',
 };

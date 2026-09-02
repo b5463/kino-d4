@@ -210,6 +210,14 @@ void hwv_init(void);
  * on transition. */
 void hwv_mark_validated(hwv_item_t item, const char *detail);
 
+/**
+ * Write any marks made since the last call to NVS. Called from ONE task whose
+ * stack is known to live in cacheable DRAM (kdp_server, 12 KB, created early),
+ * because a flash write from a stack in TCM asserts inside spi_flash and
+ * reboots the board. Cheap when nothing is dirty; safe to call every loop.
+ */
+void hwv_persist(void);
+
 hwv_status_t hwv_status(hwv_item_t item);
 const char *hwv_item_id(hwv_item_t item);
 const char *hwv_status_str(hwv_status_t status);

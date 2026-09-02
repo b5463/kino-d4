@@ -1111,6 +1111,35 @@ static void test_align(void) {
   CHECK(zxf[3].dx == 0 && zxf[3].dy == 0, "zero-offset frame does not move");
 }
 
+static void test_json_depth(void) {
+  CHECK(pure_json_depth_ok("{}", 1), "one object is depth 1");
+  CHECK(!pure_json_depth_ok("{}", 0), "depth 0 allows no nesting");
+  CHECK(pure_json_depth_ok("{\"a\":{\"b\":{\"c\":1}}}", 3), "three levels at limit 3");
+  CHECK(!pure_json_depth_ok("{\"a\":{\"b\":{\"c\":1}}}", 2), "three levels over limit 2");
+  CHECK(pure_json_depth_ok("[[[[1]]]]", 4), "arrays count");
+  CHECK(!pure_json_depth_ok("[[[[1]]]]", 3), "arrays count against the limit");
+  CHECK(pure_json_depth_ok("{\"s\":\"{{{{{{{{{{\"}", 1), "braces inside a string do not count");
+  CHECK(pure_json_depth_ok("{\"s\":\"a\\\"{{{{\"}", 1), "an escaped quote does not end the string");
+  CHECK(pure_json_depth_ok("", 0), "empty text is flat");
+  CHECK(!pure_json_depth_ok(NULL, 5), "NULL is refused");
+  /* Unbalanced input never goes negative and cannot buy depth back. */
+  CHECK(!pure_json_depth_ok("}}}}{{", 1), "closers do not credit depth");
+  /* The bounded form stops at len even without a NUL. */
+  CHECK(pure_json_depth_ok_n("{\"a\":1}{{{{{{", 7, 1), "bounded form ignores bytes past len");
+  CHECK(!pure_json_depth_ok_n("{{{", 3, 2), "bounded form counts what it sees");
+  /* A real kino.capture document sits far inside the firmware's limit. */
+  const char *meta =
+      "{\"id\":\"CAP_000001\",\"mode\":\"wiggle\",\"frames\":[{\"cam\":\"cam1\"}],"
+      "\"calibration\":{\"cams\":{\"cam1\":{\"x\":0,\"y\":0,\"rot\":0}}}}";
+  CHECK(pure_json_depth_ok(meta, PURE_JSON_MAX_DEPTH), "a kino.capture passes PURE_JSON_MAX_DEPTH");
+  /* And the attack it exists for does not. */
+  char deep[600];
+  for (int i = 0; i < 299; i++) deep[i] = '[';
+  for (int i = 299; i < 598; i++) deep[i] = ']';
+  deep[598] = '\0';
+  CHECK(!pure_json_depth_ok(deep, PURE_JSON_MAX_DEPTH), "299 levels are refused");
+}
+
 int main(void) {
   test_quality();
   test_frame_quality();
@@ -1134,6 +1163,7 @@ int main(void) {
   test_wiggle_words();
   test_wiggle_period();
   test_align();
+  test_json_depth();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

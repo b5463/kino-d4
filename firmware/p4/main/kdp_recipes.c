@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "klog.h"
+#include "pure.h"
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
 #include "recipe_rules.h"
@@ -149,6 +150,10 @@ static cJSON *recipe_read(const char *id, size_t *bytes) {
   fclose(f);
   s_read_buf[n] = '\0';
   if (bytes) *bytes = n;
+  /* A recipe is a flat document; one from a card edited elsewhere that nests
+   * past the limit is refused rather than parsed, which is the same outcome as
+   * a file that is not JSON at all. */
+  if (!pure_json_depth_ok(s_read_buf, PURE_JSON_MAX_DEPTH)) return NULL;
   return cJSON_Parse(s_read_buf);
 }
 

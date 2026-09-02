@@ -587,7 +587,29 @@ esp_err_t viewfinder_init(void) {
      * GET_RUNTIME_STATS reports the real high-water mark - the next change
      * to this number should come from that measurement, not from another
      * guess. */
-    xTaskCreate(camera_task, name, 8192, (void *)(intptr_t)i, 3, &vh);
+    /*
+     * Pinned to CPU1, away from the link ISRs (#158).
+     *
+     * camlink_init() runs from app_main on CPU0, so that core owns the four
+     * UART interrupts, and the UART FIFO is 128 bytes - 1.39 ms of wire at
+     * 921600. jpeg_decoder_process() syncs the cache over the staging JPEG
+     * and the 153 KB tile, and esp_cache_msync does that inside a critical
+     * section: interrupts off on the running core for a millisecond or two.
+     * With one camera that decode only ever landed on its own idle link. With
+     * four, an unpinned decoder landing on CPU0 blacks out the ISR while
+     * three siblings are mid-frame, and the bytes that arrive in that window
+     * are gone - which is what a shortRead with crcErrors 0 is. Same fault,
+     * same fix and same core as ui_task's compositor (ui.c).
+     */
+    if (xTaskCreatePinnedToCore(camera_task, name, 8192, (void *)(intptr_t)i, 3, &vh, 1) !=
+        pdPASS) {
+      /* Said, not swallowed: a pane whose task never started would otherwise
+       * report NO LINK for a camera that is wired and answering, and the real
+       * fault - no internal RAM for a stack - would be invisible. main.c logs
+       * this and boots without a finder, which is a camera that still shoots. */
+      ESP_LOGE(TAG, "no room for the %s task", name);
+      return ESP_ERR_NO_MEM;
+    }
     taskmon_register(name, vh);
   }
   return ESP_OK;

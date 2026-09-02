@@ -115,11 +115,26 @@ CONFIG_APP_REPRODUCIBLE_BUILD=y
 CONFIG_ESP_HOSTED=n
 CONFIG_ESP_WIFI_REMOTE_ENABLED=n
 
-# CONFIG_UART_ISR_IN_IRAM is deliberately NOT set.
+# CONFIG_UART_ISR_IN_IRAM is deliberately NOT set - and since 2026-09-02 the
+# result is understood, not just recorded (#158).
 #
 # Setting it on 2026-08-29 measurably broke the link. A bisect against d505174
 # gave CAMERA_TEST 4/5 without it and 0/5 with it, and reverting it gave 12/12
-# with no read timeouts at all.
+# with no read timeouts at all. Re-run on 2026-09-02 with four cameras: 54
+# lost chunk tails in 12 captures against ~20 without, each short by only
+# 2-10 bytes where the flash-resident ISR loses 24-160. The explanation is the
+# driver's RX threshold: UART_FULL_THRESH_DEFAULT is 120 of the 128-byte FIFO,
+# so the ISR has 8 bytes (87 us) to run on a continuous stream. An IRAM ISR
+# runs a little sooner and still misses by a few bytes, constantly; the
+# flash ISR misses by more, less often. The fix is the threshold
+# (cam_link.c, uart_set_rx_full_threshold 32), not where the ISR lives.
+#
+# There is also a cost: the option pulls the UART ISR and the ringbuf ISR
+# functions into IRAM, which on the P4 is the same SRAM as the internal heap.
+# On the 0.4.24 image that took the heap below what I2S, the JPEG decoder and
+# the SD driver needed at boot and the board panicked in app_main (stack
+# protection fault while logging the failures). Re-try only with the RAM
+# headroom of 0.4.27 measured first, and threshold 32 already in place.
 #
 # The reason first written here - that the driver's ring-buffer code stays in
 # flash - does not survive checking: CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH
@@ -127,7 +142,17 @@ CONFIG_ESP_WIFI_REMOTE_ENABLED=n
 # and the explanation was not, so this is recorded as an unexplained result
 # rather than an understood one.
 #
-# Worth re-running deliberately. It was measured while the compositor was
-# blacking out the link ISR's core with cache writebacks, which is the fault
-# that actually cost the bytes (see ui.c, ui_task pinned to CPU1); the two were
-# being measured on top of each other.
+# It was first measured while the compositor was blacking out the link ISR's
+# core with cache writebacks (see ui.c, ui_task pinned to CPU1); the two were
+# being measured on top of each other, and the 2026-09-02 re-run above is the
+# deliberate one.
+
+# Stacks that were one bad day from the canary (#158 audit, 2026-09-02).
+#
+# app_main runs the whole bring-up chain plus config_init()'s cJSON_Parse of
+# up to 4000 NVS bytes on the IDF default of 3584 bytes, and it is where the
+# board overflowed when several subsystems failed at once and logged it. The
+# system event task runs the Wi-Fi handlers and an NVS write on 2304 by
+# default; sdkconfig.radio already raised it and the default build now agrees.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096

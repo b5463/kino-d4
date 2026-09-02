@@ -533,3 +533,37 @@ pure_crop_t pure_align_plan(int src_w, int src_h, const pure_cam_offset_t *offse
   }
   return pure_align_overlap_crop(src_w, src_h, offsets, n, scale);
 }
+
+/* ------------------------------------------------------------------ */
+/* JSON nesting depth                                                  */
+/* ------------------------------------------------------------------ */
+
+bool pure_json_depth_ok_n(const char *text, size_t len, int max_depth) {
+  if (text == NULL || max_depth < 0) return false;
+  int depth = 0;
+  bool in_string = false;
+  for (size_t i = 0; i < len && text[i] != '\0'; i++) {
+    const char c = text[i];
+    if (in_string) {
+      if (c == '\\') {
+        i++; /* the escaped character, whatever it is, is not a quote */
+      } else if (c == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (c == '"') {
+      in_string = true;
+    } else if (c == '{' || c == '[') {
+      if (++depth > max_depth) return false;
+    } else if (c == '}' || c == ']') {
+      if (depth > 0) depth--;
+    }
+  }
+  return true;
+}
+
+bool pure_json_depth_ok(const char *text, int max_depth) {
+  if (text == NULL) return false;
+  return pure_json_depth_ok_n(text, strlen(text), max_depth);
+}

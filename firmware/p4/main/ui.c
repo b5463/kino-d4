@@ -390,6 +390,18 @@ static int64_t s_wig_next_us;
 /* How many of the four decoded, for the "3 OF 4 FRAMES" note. 0 means there
  * is nothing to say - no job, or not finished yet. */
 static int s_wig_count;
+/*
+ * A quad's detail view is all four looks at once, 2x2 in the well, not a
+ * still of one of them. It uses the same background frames job as the swing,
+ * at half the well's size; s_quad says the job is a grid and not a swing, and
+ * s_quad_ready that all four were tried and the grid may replace the still.
+ * Nothing steps: the grid is drawn once when it is ready and then owes no
+ * frames, exactly like a still.
+ */
+static bool s_quad;
+static bool s_quad_ready;
+_Static_assert(PH_W == GALLERY_FRAME_MAX_W && PH_H == GALLERY_FRAME_MAX_H,
+               "the frame buffers are sized to the photograph well");
 
 /*
  * Frames are hard cuts, on purpose (#161, 0.4.21-0.4.23).
@@ -2725,6 +2737,8 @@ static void wiggle_stop(void) {
   s_wig_pos = 0;
   s_wig_count = 0;
   s_wig_next_us = 0;
+  s_quad = false;
+  s_quad_ready = false;
 }
 
 static void photo_release(void) {
@@ -2809,8 +2823,16 @@ static bool photo_open(const gallery_item_t *it) {
    * it would put a 300 px thumbnail, or the wrong lens, into position one of
    * a swing of full-size frames - a visible pop once a cycle.
    */
-  if (strcmp(s_photo_mode, "wiggle") == 0 && s_photo_frames > 1) {
+  const bool wiggle = strcmp(s_photo_mode, "wiggle") == 0;
+  const bool quad = strcmp(s_photo_mode, "quad") == 0;
+  if ((wiggle || quad) && s_photo_frames > 1) {
     uint32_t gen = 0;
+    /* A quad's four looks share the well, so each is decoded at half its size
+     * and drawn in its own quadrant; the well stays 4:3 because the quadrant
+     * is. No alignment for a quad - four framings of four different looks are
+     * meant to differ. */
+    s_quad = quad;
+    const int fw = quad ? PH_W / 2 : PH_W, fh = quad ? PH_H / 2 : PH_H;
     /*
      * Where the alignment offsets come from (#161), in the order the contract
      * gives (types.ts, MEDIA_INFO `meta.calibration`):
@@ -2832,9 +2854,10 @@ static bool photo_open(const gallery_item_t *it) {
      * pure_align_plan().
      */
     const pure_cam_offset_t *off =
-        (it->cal_present && pure_align_has_offset(it->cal, PURE_WIGGLE_FRAMES_MAX)) ? it->cal
-                                                                                    : NULL;
-    if (gallery_frames_begin(it->id, PH_W, PH_H, C_WELL, off, &gen) == ESP_OK) s_wig_gen = gen;
+        (wiggle && it->cal_present && pure_align_has_offset(it->cal, PURE_WIGGLE_FRAMES_MAX))
+            ? it->cal
+            : NULL;
+    if (gallery_frames_begin(it->id, fw, fh, C_WELL, off, &gen) == ESP_OK) s_wig_gen = gen;
   }
   return true;
 }
@@ -2855,6 +2878,8 @@ static bool photo_open(const gallery_item_t *it) {
  */
 static bool wiggle_tick(void) {
   if (s_wig_gen == 0) return false;
+  /* A quad grid that has been drawn is finished: it neither loads nor plays. */
+  if (s_quad_ready) return false;
 
   /* Not while a dialog is up, not while a capture is running.
    *
@@ -2881,6 +2906,16 @@ static bool wiggle_tick(void) {
     s_wig_count = 0;
     for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
       if (have & (1u << i)) s_wig_count++;
+    }
+
+    if (s_quad) {
+      /* A grid, not a swing: no order, no period, nothing to step. One repaint
+       * replaces the still with the four looks (or the still stays, when none
+       * decoded - the NO IMAGE of a quad is its still). s_wig_gen is kept so
+       * photo_release cancels the finished job like any other. */
+      s_quad_ready = s_wig_count > 0;
+      if (!s_quad_ready) klog("P4", "quad %s: no frame decoded, showing the still", s_photo_id);
+      return s_quad_ready;
     }
 
     /* The camera's own stored preference, not a second one invented here.
@@ -3013,8 +3048,37 @@ static void draw_photo(void) {
   /* The frame of the swing while one is playing, the still otherwise. Same
    * size, same well, same everything else: the picture moves and no pixel of
    * the chrome around it does. */
-  const uint16_t *src = photo_pixels();
-  if (src != NULL) {
+  const uint16_t *src = s_quad_ready ? NULL : photo_pixels();
+  if (s_quad_ready) {
+    /*
+     * The quad: all four looks, 2x2, in reading order - C1 top-left, C2
+     * top-right, C3 bottom-left, C4 bottom-right, the same order the gallery
+     * tile and META count them. Each quadrant is one frame decoded at exactly
+     * this size, so nothing is scaled here. A look that never reached the card
+     * is a dark pane with its lens named, in place, so the other three do not
+     * move to fill it: a quad with a hole says where the hole is.
+     */
+    const int qw = PH_W / 2, qh = PH_H / 2;
+    for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
+      const int qx = px + (i & 1) * qw, qy = py + (i >> 1) * qh;
+      const uint16_t *fp = (s_wig_have & (1u << i)) ? gallery_frame_pixels(i) : NULL;
+      if (fp != NULL) {
+        for (int r = 0; r < qh; r++)
+          memcpy(s_cv + (size_t)(qy + r) * UI_W + qx, fp + (size_t)r * qw,
+                 (size_t)qw * sizeof(uint16_t));
+      } else {
+        char lens[4];
+        snprintf(lens, sizeof lens, "C%d", i + 1);
+        fill(qx, qy, qw, qh, D_PANE);
+        text_mid(&UI_FONT_S, qx + qw / 2, qy + qh / 2 - UI_FONT_S.line_h / 2, lens, D_DIM);
+      }
+    }
+    /* A 2 px seam in the ground colour between the quadrants, over one edge
+     * pixel of each: four pictures touching read as one picture with a crease,
+     * and the same tone as the surround makes the grid read as four wells. */
+    fill(px + qw - 1, py, 2, PH_H, D_GROUND);
+    fill(px, py + qh - 1, PH_W, 2, D_GROUND);
+  } else if (src != NULL) {
     for (int r = 0; r < PH_H; r++)
       memcpy(s_cv + (size_t)(py + r) * UI_W + px, src + (size_t)r * PH_W,
              (size_t)PH_W * sizeof(uint16_t));
@@ -3050,7 +3114,7 @@ static void draw_photo(void) {
    * On the caption's own baseline rather than over the picture: the well is a
    * photograph and nothing this firmware has to say belongs inside it.
    */
-  if (s_wig_len >= 2 && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX) {
+  if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX) {
     char note[24];
     snprintf(note, sizeof note, "%d OF %d FRAMES", s_wig_count, GALLERY_FRAME_MAX);
     text_right(&UI_FONT_S, px + PH_W, PH_CAP_Y, note, D_DIM);
