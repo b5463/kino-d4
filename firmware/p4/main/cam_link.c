@@ -6,6 +6,7 @@
 #include "board_d4v1_checks.h"
 #include "cJSON.h"
 #include "driver/uart.h"
+#include "esp_attr.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -113,7 +114,10 @@ struct channel_s {
 /* How long a channel stays quiet about a fault it has already reported. */
 #define TIMEOUT_LOG_QUIET_US (30 * 1000000)
 
-static channel_t s_ch[CAMLINK_CAMS];
+/* 36 KB in PSRAM: touched only from tasks with the cache on, never from an
+ * ISR and never while a flash write has the cache off. Internal SRAM is what
+ * ESP-Hosted's SDIO buffers, the UART rings and every task stack need (#162). */
+static EXT_RAM_BSS_ATTR channel_t s_ch[CAMLINK_CAMS];
 
 static bool valid_cam(int cam) { return cam >= 0 && cam < CAMLINK_CAMS && s_ch[cam].lock != NULL; }
 

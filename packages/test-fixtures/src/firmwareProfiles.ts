@@ -510,4 +510,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // camera links, capture, display and UI fragment internal DMA RAM (#162).
   // Device side only, same profile.
   '0.4.25': 'd4-settings-0-4-9',
+  // 0.4.27: the early reserve goes (it boot-looped 0.4.25) and task-only
+  // statics move to PSRAM so internal RAM has real headroom (#162). Device side
+  // only, same profile.
+  '0.4.27': 'd4-settings-0-4-9',
 };

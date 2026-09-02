@@ -392,6 +392,96 @@ required** (no Wi-Fi credentials / Roll token since the partition-table
 reflash wiped NVS). The four-camera transport connected sections remain blocked
 on the same reprovision.
 
+### Internal RAM, not the reserve, was the #162 problem - 0.4.27, 2026-09-02
+
+**What 0.4.25 did.** After the reprovision, the reserve on 0.4.24 held 1/2 or
+0/2 at bring-up and `C6_RESET_BENCH` again panicked in `init_event.c:358`.
+0.4.25 (`1dff180`) took the reserve at the top of `app_main`, from the
+first-boot heap. It held 2/2 - and the board boot-looped. The 25 s console
+capture after the flash holds two different panics on consecutive boots:
+
+- boot 1, 5.2 s, right after `eh_auto_init: initialising 'wifi'`:
+  `assert failed: sdio_tx_aggregate_iter eh_host_bus_sdio.c:786 (sdio_tx_aggr_buf)`.
+  The bus allocates its 15,872 B TX aggregate buffer lazily on the first frame
+  it sends; with the reserve holding 2 x 15,872 B across the component's first
+  init, that allocation failed.
+- boot 2, 11.7 s, first NVS write after `upload transport up`:
+  `assert failed: spi_flash_disable_interrupts_caches_and_other_cpu cache_utils.c:127
+  (esp_task_stack_is_sane_cache_disabled())`, SP `0x30100dc0`, TCB `0x30101220`.
+  The `upqueue` task was created at 5.8 s, when the largest free internal block
+  was 2,688 B; its 8 KB stack landed in the 8 KB TCM at `0x30100000`, which is
+  an INTERNAL heap region but not DRAM, and the first flash write from that
+  task tripped the cache-off stack check.
+
+**The measurement underneath.** `GET_RUNTIME_STATS` on 0.4.25: internal free
+**9 KB**, minimum **2 KB**, largest internal-DMA block **1-3 KB**, with the
+post-bring-up reserve line reading `2/2 held; largest free 2688 B`. Internal
+SRAM was exhausted; the reserve only decided which allocation starved.
+
+**Where internal SRAM goes (ELF `1dff180`, `riscv32-esp-elf-size`/`nm`).**
+Static: `.dram0.data` 13.7 KB, `.dram0.bss` 53 KB, `.dram1.bss` 84 KB, IRAM
+text 90 KB. Largest statics: `cam_link.c s_ch` 36,384 B, `klog.c s_ring`
+24,000 B, `upload_queue.c s_jobs` 9,728 B, `net_hosted.c s_hostlog` 6,144 B.
+Runtime: four UART rings of `LINK_RX_BUF` = 4 x 8,256 B = 33 KB each (132 KB;
+the driver uses `MALLOC_CAP_DEFAULT` because `UART_ISR_IN_IRAM` is off, and
+caps-malloc still prefers internal), ~143 KB of task stacks across 20 tasks
+(taskmon: the four `vf_cam` tasks keep 7.6 KB of their 8 KB free), ESP-Hosted's
+SDIO buffers. PSRAM carries no `MALLOC_CAP_DMA` on the P4, so none of the DMA
+users can move; the task-only statics can.
+
+**The fix (0.4.27).** `net_hosted_reserve_early()` removed; the reserve is
+taken after bring-up as on 0.4.6, sized 15,872 B as on 0.4.24, `recoveryReady`
+kept. `EXT_RAM_BSS_ATTR` on `s_ch`, `s_ring` and `s_jobs` with
+`CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y`: all three are touched only from
+tasks with the cache on, never from an ISR or during a flash write. Linker:
+`.ext_ram.bss` 70,112 B, internal `.dram` bss 137 KB -> 67 KB. Nodes, C6,
+grouped capture, UART protocol, Roll queue, scheduler and stacks untouched.
+Builds in all three configurations (bench, default, radio without bench).
+
+**Image.** HEAD `1dff180` plus only this change's seven files and the
+uncommitted `dependencies.lock`, `VERSION` 0.4.27: `kino-p4.bin` 1,537,184 B,
+SHA-256 `60fde04edcd157586a64340aaf2a9dc1fce629ae37d5b6a7668b4cdf09848725`.
+Not a pure-commit build; the committed tree is that tree.
+
+**Boot (KD4-D121BC, boot-111, provisioned, Roll `RRG8AZ`).** No panic.
+`recovery reserve: 2/2 x 15872 B internal DMA held; largest free 32768 B`.
+`wifi up` at 10.9 s. Internal free **70 KB**, minimum **59 KB**, largest DMA
+**31 KB**, `recoveryReady=True`; unchanged 20 s later. Cameras 4x ready.
+
+**Three-cycle recovery, credentialed (each `C6_RESET_BENCH` with the radio at IP_READY).**
+
+| cycle | P4 session | panic | back to IP_READY | cams | internalFree / largestDMA KB after |
+|---|---|---|---|---|---|
+| 1 | boot-111 | no | +19 s | 4x ready | 79 / 15 -> 96 / 22 |
+| 2 | boot-111 | no | +19 s | 4x ready | 97 / 31 |
+| 3 | boot-111 | no | +8 s | 4x ready | 96 / 31 |
+
+Session unchanged; `recoveryReady=True` before and after every cycle; internal
+free rises 70 -> 96 KB across the cycles (teardown returns what the first init
+took) and holds. **0 panic, 0 P4 reboot, 0 leak.**
+
+**Camera link, before and after (the PSRAM channel table was the one
+performance question).** `CAMERA_LINK_STATS` cam1-4: 0 CRC errors, 0 timeouts,
+0 retries, 0 duplicates, latencyMax 4-5 ms both before the cycles (7-8 frames
+each) and after (20 frames each). ROLL-C3's two grouped sets below: 4/4
+complete, 3,342 ms and 3,357 ms, one chunk retry each, against 3,164-4,096 ms
+and 0-5 retries on 0.4.25. No regression.
+
+**ROLL-C3 (four-camera), rerun.** API stopped; set 1 (`CAP_000171`, 720,564 B,
+4/4) queued; `C6_RESET_BENCH`; set 2 (`CAP_000172`, 4/4) shot during the
+recovery; radio back at IP_READY **+20 s**; API restored; queue drained to
+pending 0 in 13 s; session unchanged; backend one row per UUID, four originals
+each, same Roll. **PASS.** Internal minimum during the run 31 KB.
+
+**Status.** #162 FIXED on 0.4.27: automatic C6 recovery, no P4 panic,
+credentialed, three cycles plus ROLL-C3, with the reserve fully held from
+real headroom. The 0.4.24/0.4.25 reserve changes stand as history: 15,872 B
+is the right size, and taking it early was wrong. A related finding from the
+#158 session the same night: on the P4, IRAM and internal DRAM are one pool,
+so `CONFIG_UART_ISR_IN_IRAM=y` costs 10-20 KB of this same budget and panicked
+a 0.4.24-based image at boot; it stays off. Next: the four-camera transport
+connected sections (Phase 5-8) on this headroom.
+
 ### One shutter, four frames - grouped-capture transport, 2026-09-02
 
 **Scope (#132 transport/correctness gate).** Prove one logical D4 shutter

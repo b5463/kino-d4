@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "clock.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -20,7 +21,9 @@ typedef struct {
   char msg[KLOG_MSG_MAX];
 } klog_entry_t;
 
-static klog_entry_t s_ring[KLOG_CAPACITY];
+/* 24 KB in PSRAM. Written under a mutex, so never from an ISR or with the
+ * flash cache off; internal SRAM is reserved for what must be internal (#162). */
+static EXT_RAM_BSS_ATTR klog_entry_t s_ring[KLOG_CAPACITY];
 static uint32_t s_count; /* total entries ever written */
 static SemaphoreHandle_t s_lock;
 static klog_emit_fn s_emit;

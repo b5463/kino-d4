@@ -22,6 +22,14 @@ CONFIG_SPIRAM_SPEED_80M=y
 # More cache for the same reason: the framebuffer is the one workload here
 # with a continuous, unforgiving read rate.
 CONFIG_CACHE_L2_CACHE_256KB=y
+# Statics marked EXT_RAM_BSS_ATTR are placed in PSRAM. Internal SRAM is the
+# scarce pool on this board - ESP-Hosted's SDIO buffers, the four UART rings
+# and every task stack can only come from it - and on 0.4.25 it ran dry at
+# boot: 9 KB free, a task stack pushed into the 8 KB TCM, panics in the
+# radio's first transmit and in the next flash write (#162). Buffers that only
+# tasks touch (cam_link channels, the klog ring, the upload job table) do not
+# need to be there.
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
 
 # The board's flash is a Boya part. Without this the generic driver is used,
 # which works but cannot do chip-specific operations correctly - and this is

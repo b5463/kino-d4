@@ -212,9 +212,6 @@ void app_main(void) {
 
   klog_init();
   klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
-  /* The C6 recovery reserve, before anything below fragments internal DMA RAM
-   * (#162). A no-op in the build without a radio. */
-  net_hosted_reserve_early();
   ESP_LOGI(TAG, "P4_BOOT %s serial %s session %s transport usb-serial-jtag",
            KINO_FW_VERSION, id.serial, id.session_id);
   hwv_init();

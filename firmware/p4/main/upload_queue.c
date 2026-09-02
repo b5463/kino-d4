@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -95,7 +96,9 @@ static roll_http_fn s_http = roll_api_step;
 /* State                                                              */
 /* ------------------------------------------------------------------ */
 
-static rq_job_t s_jobs[UPLOAD_QUEUE_MAX];
+/* In PSRAM: task-only, under s_lock, never touched with the flash cache off.
+ * Internal SRAM is reserved for what must be internal (#162). */
+static EXT_RAM_BSS_ATTR rq_job_t s_jobs[UPLOAD_QUEUE_MAX];
 static int s_count;
 static int s_active = -1; /* index the worker is on, -1 when none */
 static SemaphoreHandle_t s_lock;

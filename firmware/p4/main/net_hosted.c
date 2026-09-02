@@ -770,6 +770,14 @@ static void bring_up(void) {
  * actually free, so the reserve holds again. Sizing to the requirement is not
  * lowering the bar - the assert is the component's, unchanged; this stops
  * asking the heap for more than either side ever uses.
+ *
+ * Not taken before bring-up. The bus allocates its TX aggregate buffer on the
+ * first frame it sends, so a reserve held across the component's first init
+ * starves that very allocation (eh_host_bus_sdio.c:786) - 0.4.25 did exactly
+ * this and boot-looped. The reserve is a promise about recovery, and it can
+ * only be made from what is left once the transport is up. The headroom it
+ * needs comes from keeping internal RAM for what must be internal: static
+ * buffers that only tasks touch (cam_link, klog, upload_queue) live in PSRAM.
  */
 #define DMA_RESERVE_BLOCKS 2
 /* 31 * EH_SDIO_CFG_BUF_BLOCK (512): the negotiated SW_AGGR buffer size. */
@@ -800,20 +808,6 @@ static void dma_reserve_take(void) {
 }
 
 bool net_hosted_recovery_ready(void) { return s_dma_reserve_held >= DMA_RESERVE_BLOCKS; }
-
-void net_hosted_reserve_early(void) {
-  /* From app_main, before the camera links, capture workers, display and UI
-   * allocate: the heap is still first-boot shaped and two 15,872 B internal
-   * DMA blocks are there for the taking. Taken only after bring-up (0.4.6)
-   * the reserve fitted 2/2 then; by 0.4.20-0.4.24 the largest free block at
-   * that moment was 15,872 B or less, the reserve held 1/2 or 0/2, and a C6
-   * reset panicked the P4 in the component's re-init probe (#162, measured
-   * twice on 2026-09-02). dma_reserve_take() skips blocks already held, so the
-   * post-bring-up take that follows is a no-op once this one succeeded. The
-   * component's own first init allocates its buffers from what is left, which
-   * the boot record has to confirm - it is the one thing this could starve. */
-  dma_reserve_take();
-}
 
 static void dma_reserve_release(void) {
   for (int i = 0; i < DMA_RESERVE_BLOCKS; i++) {
