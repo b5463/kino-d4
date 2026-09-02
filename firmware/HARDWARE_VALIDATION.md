@@ -332,6 +332,66 @@ camera-related tasks, `cap1`–`cap4` in cam_link and `vf_cam1`–`vf_cam4` in t
 viewfinder, not the four assumed when the priority-3 round-robin was proposed
 as the cause. Whatever that contention is, there is twice as much of it.
 
+### C6 recovery no longer panics the P4 - #162 fixed, 2026-09-02
+
+**The regression.** On 0.4.20, `C6_RESET_BENCH` panicked the P4 every time -
+`assert eh_host_mcu_transport_process_init_event init_event.c:358 (probe)` in
+`sdio_process_rx` - so the C6-recovery gate (GO on 0.4.6) was broken.
+
+**Root cause, from the component source.** esp_hosted 3.0.6's init handler, on
+SW_AGGR, probes a DMA-capable buffer of `max(e2h_bufsz, h2e_bufsz)` and asserts
+if it cannot be allocated ("no silent degrade"). Both negotiate to 31 x
+`EH_SDIO_CFG_BUF_BLOCK` (512 B) = **15,872 B** on this carrier. The recovery
+reserve (`net_hosted.c`) exists to guarantee that block across a reset, but was
+sized **16,384 B** - a round-up that fit at first boot on 0.4.6 and no longer
+does: internal RAM grew across 0.4.7-0.4.20, the largest free internal-DMA
+block fell to 15,872 B, the 16,384 B reserve held 0/2, and every re-init
+asserted. `net_hosted.c`/`radio_recovery.c`/esp_hosted are unchanged since
+0.4.6; the regression is memory headroom, not recovery logic.
+
+**The fix (`06ccdc0`).** `DMA_RESERVE_BYTES` 16384 -> 15872, the size the
+component actually allocates. Not an assertion change - the assert is the
+component's, untouched; this stops the reserve asking the heap for more than
+either direction ever uses. Honest telemetry added: `dma_reserve_take()` logs
+WARN when partial, `net_hosted_recovery_ready()` and `GET_RUNTIME_STATS`
+`recoveryReady` expose whether the full reserve is held, so a boot never
+silently claims recoverability. Nodes, C6, grouped capture, the UART protocol,
+the Roll queue, the scheduler and the 8192-byte camera stacks are untouched.
+
+**Image.** Clean archive of `06ccdc0`, `kino-p4.bin` 1,531,184 B, SHA-256
+`c8abf842741c6c8a1c75e46893476ce00c8dec914b1bb798328a1882bd8aeae1`, two passes
+identical, P4 only, C6 and nodes untouched, boot-11.
+
+**Three-cycle recovery test (KD4-D121BC, no credentials - NVS still wiped).**
+
+| cycle | P4 session | panic | transport re-init | cams after | internalFree / largestDMA KB |
+|---|---|---|---|---|---|
+| 1 | boot-11 | no | yes -> C6_BOOTING/WIFI_IDLE | 4x ready | 50 -> 82 / 7 -> 23 |
+| 2 | boot-11 | no | yes | 4x ready | 65 / 23 |
+| 3 | boot-11 | no | yes | 4x ready | 65 / 23 |
+
+Session unchanged through all three; **0 panic, 0 P4 reboot, 0 memory leak**
+(largest free internal-DMA block *defragments* to 23 KB after the first cycle).
+The panic is fixed.
+
+**Reserve margin, reported honestly.** At boot the reserve holds **1/2**
+(`largest free 7680 B` after taking one 15,872 B block - internal DMA is
+fragmented into one ~15,872 B hole and the rest <=7,680 B), so
+`recoveryReady=False` and the WARN fires. Recovery still succeeds because the
+teardown frees ESP-Hosted's own two buffers before re-init. Two paths to a full
+2/2: (a) a *completed* (credentialed) recovery re-takes the reserve from the
+post-cycle defragmented heap (largest 23 KB) - untestable until Wi-Fi is
+re-provisioned, because a no-credentials recovery stops at WIFI_IDLE and never
+reaches the RECOVERED re-take; (b) reclaim boot-time internal-DMA headroom
+consumed by 0.4.7-0.4.20 features. The panic being gone does not depend on
+either; the full guarantee does. Tracked on #162.
+
+**Status.** C6 RECOVERY MECHANISM PASS (no panic, three cycles, session
+stable, cameras healthy, no leak). **ROLL-C3 NOT RETESTED - reprovision
+required** (no Wi-Fi credentials / Roll token since the partition-table
+reflash wiped NVS). The four-camera transport connected sections remain blocked
+on the same reprovision.
+
 ### One shutter, four frames - grouped-capture transport, 2026-09-02
 
 **Scope (#132 transport/correctness gate).** Prove one logical D4 shutter
