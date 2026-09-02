@@ -1050,6 +1050,67 @@ static void test_wiggle_period(void) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Wigglegram alignment (mirror of packages/media/tests/alignment.test.ts) */
+/* ------------------------------------------------------------------ */
+
+static void test_align(void) {
+  /* The same four numbers the TS test asserts, because the panel's crop and the
+   * worker's crop have to be one crop - a wigglegram whose baked render and
+   * whose live player crop differently is two photographs of one moment. */
+  const pure_cam_offset_t none4[4] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+  CHECK(!pure_align_has_offset(none4, 4), "all-zero offsets are nothing to correct");
+  const pure_cam_offset_t one[2] = {{0, 0, 0}, {2, 0, 0}};
+  CHECK(pure_align_has_offset(one, 2), "one non-zero x is something to correct");
+  /* NULL and a zero count are both no-ops, which is the every-capture path. */
+  CHECK(!pure_align_has_offset(NULL, 4), "NULL offsets -> no-op");
+
+  /* Insets by the largest offset on each axis: 800 px render of a 1600 px
+   * sensor frame, scale 0.5. */
+  const pure_cam_offset_t off[4] = {{0, 0, 0}, {-6, 3, 0}, {4, -2, 0}, {0, 0, 0}};
+  pure_crop_t c = pure_align_overlap_crop(800, 600, off, 4, 0.5);
+  CHECK(c.w == 790, "crop w %d, want 790", c.w);
+  CHECK(c.h == 592, "crop h %d, want 592", c.h);
+  CHECK(c.x == 5, "crop x %d, want 5", c.x);
+  CHECK(c.y == 4, "crop y %d, want 4", c.y);
+
+  /* Rotation costs more than the 2 px pad, and the result stays even so a video
+   * encoder downstream accepts it. */
+  const pure_cam_offset_t rot[4] = {{0, 0, 0}, {0, 0, 1.5}, {0, 0, 0}, {0, 0, 0}};
+  pure_crop_t cr = pure_align_overlap_crop(800, 600, rot, 4, 0.5);
+  CHECK(cr.w < 790, "rotation slack shrinks the crop: w %d", cr.w);
+  CHECK(cr.w % 2 == 0 && cr.h % 2 == 0, "crop stays even (%dx%d)", cr.w, cr.h);
+
+  /* Never collapses below a usable size, whatever absurd offset arrives. */
+  const pure_cam_offset_t huge[4] = {{0, 0, 0}, {5000, 5000, 45}, {0, 0, 0}, {0, 0, 0}};
+  pure_crop_t ch = pure_align_overlap_crop(800, 600, huge, 4, 1.0);
+  CHECK(ch.w >= 16 && ch.h >= 16, "crop floors at 16 (%dx%d)", ch.w, ch.h);
+
+  /* The plan scales the stored offsets to the source resolution and passes
+   * rotation through unscaled. */
+  pure_frame_xform_t xf[4];
+  pure_crop_t pc = pure_align_plan(800, 600, off, 4, xf);
+  CHECK(xf[0].dx == 0 && xf[0].dy == 0 && xf[0].rot_deg == 0, "frame 0 does not move");
+  CHECK(xf[1].dx == -3 && xf[1].dy == 1.5 && xf[1].rot_deg == 0, "frame 1 dx %.1f dy %.1f",
+        xf[1].dx, xf[1].dy);
+  CHECK(xf[2].dx == 2 && xf[2].dy == -1, "frame 2 dx %.1f dy %.1f", xf[2].dx, xf[2].dy);
+  CHECK(pc.w == 790 && pc.h == 592, "plan crop matches the standalone one (%dx%d)", pc.w, pc.h);
+
+  /* At the sensor base width the offsets pass through 1:1 - scale is exactly 1. */
+  const pure_cam_offset_t base[4] = {{0, 0, 0}, {7, -4, -0.5}, {0, 0, 0}, {0, 0, 0}};
+  pure_frame_xform_t bxf[4];
+  pure_align_plan(PURE_ALIGN_SENSOR_BASE_W, 1200, base, 4, bxf);
+  CHECK(bxf[1].dx == 7 && bxf[1].dy == -4 && bxf[1].rot_deg == -0.5,
+        "at base width dx %.1f dy %.1f rot %.1f", bxf[1].dx, bxf[1].dy, bxf[1].rot_deg);
+
+  /* Zero offsets: the plan is a full-frame crop and no shift, which is the
+   * clean no-op every capture takes today. */
+  pure_frame_xform_t zxf[4];
+  pure_crop_t zc = pure_align_plan(1600, 1200, none4, 4, zxf);
+  CHECK(zc.x == 2 && zc.y == 2, "zero-offset crop keeps only the 2 px pad (x %d y %d)", zc.x, zc.y);
+  CHECK(zxf[3].dx == 0 && zxf[3].dy == 0, "zero-offset frame does not move");
+}
+
 int main(void) {
   test_quality();
   test_frame_quality();
@@ -1072,6 +1133,7 @@ int main(void) {
   test_wiggle_sequence();
   test_wiggle_words();
   test_wiggle_period();
+  test_align();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

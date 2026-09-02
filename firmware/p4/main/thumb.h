@@ -24,6 +24,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "pure.h" /* pure_cam_offset_t, for the aligned wigglegram decode */
 
 /*
  * The box a thumbnail fits inside, not the size it comes out.
@@ -80,5 +81,24 @@ esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path);
 #define THUMB_TILE_BYTES(w, h)   ((((size_t)(w) * (size_t)(h) * 2u) + (THUMB_CACHE_LINE - 1u)) & ~(size_t)(THUMB_CACHE_LINE - 1u))
 
 esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad);
+
+/**
+ * Like thumb_load, but placing the frame with a calibration alignment: crop the
+ * source to the overlap all four lenses cover, shifted by camera `cam`'s stored
+ * offset, and scale that crop to FILL the tile. The result is that the subject
+ * sits still across the swing instead of lurching between the four lens
+ * positions - the same crop and shift the worker bakes into a Roll's WebP,
+ * because both sides compute it from pure_align_plan() (packages/media's
+ * alignment.ts). `offsets` is cam1..cam4 at PURE_WIGGLE_FRAMES_MAX entries.
+ *
+ * The caller uses this ONLY when the offsets actually move a frame; the plain
+ * thumb_load is the path for every capture today. Kept a separate function from
+ * thumb_load rather than a shared core with a crop flag, deliberately: the
+ * fit-and-centre path is exercised by neither the host tests nor host_preview
+ * (which stubs this file) and runs only on hardware, so it must not be disturbed
+ * to add a path that no capture on any current card takes.
+ */
+esp_err_t thumb_load_aligned(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad,
+                             const pure_cam_offset_t *offsets, int cam);
 
 #endif

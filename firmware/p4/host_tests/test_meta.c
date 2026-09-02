@@ -828,6 +828,45 @@ static void test_meta_roll_snapshot(void) {
   cJSON_Delete(m);
 }
 
+/* ------------------------------------------------------------------ */
+/* meta_read_calibration                                               */
+/* ------------------------------------------------------------------ */
+
+static void test_calibration_present(void) {
+  /* The shape types.ts gives: calibration.cams.camN.{x,y,rot}, with a camera
+   * (cam4) deliberately omitted and cam2 missing its rot - both must read as
+   * zeros for the fields they lack, never a guess. */
+  const char *doc =
+      "{\"calibration\":{\"version\":\"cal-3\",\"cams\":{"
+      "\"cam1\":{\"x\":0,\"y\":0,\"rot\":0},"
+      "\"cam2\":{\"x\":-6,\"y\":3},"
+      "\"cam3\":{\"x\":4,\"y\":-2,\"rot\":1.5}}}}";
+  cJSON *m = cJSON_Parse(doc);
+  CHECK(m != NULL, "calibration doc parses");
+  pure_cam_offset_t off[PURE_WIGGLE_FRAMES_MAX];
+  const bool present = meta_read_calibration(m, off);
+  CHECK(present, "a calibration block is reported present");
+  CHECK(off[0].x == 0 && off[0].y == 0 && off[0].rot == 0, "cam1 is neutral");
+  CHECK(off[1].x == -6 && off[1].y == 3 && off[1].rot == 0, "cam2 x/y read, absent rot -> 0");
+  CHECK(off[2].x == 4 && off[2].y == -2 && off[2].rot == 1.5, "cam3 reads all three");
+  CHECK(off[3].x == 0 && off[3].y == 0 && off[3].rot == 0, "an omitted cam4 stays zero");
+  cJSON_Delete(m);
+}
+
+static void test_calibration_absent(void) {
+  /* Every capture this firmware has written: no calibration block at all, so
+   * the reader says absent and leaves four zeroed offsets - the no-op the
+   * playback path takes. */
+  cJSON *m = cJSON_Parse("{\"mode\":\"wiggle\",\"frameCount\":4}");
+  pure_cam_offset_t off[PURE_WIGGLE_FRAMES_MAX];
+  for (int i = 0; i < PURE_WIGGLE_FRAMES_MAX; i++) off[i].x = 99; /* poison, must be cleared */
+  CHECK(!meta_read_calibration(m, off), "no calibration block -> absent");
+  CHECK(off[0].x == 0 && off[3].x == 0, "absent leaves the offsets zeroed");
+  cJSON_Delete(m);
+  /* A NULL document is the lost-power/hand-assembled case - absent, not a crash. */
+  CHECK(!meta_read_calibration(NULL, off), "NULL meta -> absent");
+}
+
 int main(void) {
   test_meta_schema();
   test_meta_timing_honesty();
@@ -842,6 +881,9 @@ int main(void) {
   test_meta_survives_null();
   test_meta_document_size();
   test_meta_roll_snapshot();
+
+  test_calibration_present();
+  test_calibration_absent();
 
   test_summary_reads_real_keys();
   test_summary_ignores_wrong_keys();

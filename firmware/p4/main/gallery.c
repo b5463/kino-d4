@@ -15,6 +15,7 @@
 #include "freertos/task.h"
 #include "gallery_index.h"
 #include "klog.h"
+#include "meta.h"
 #include "storage.h"
 #include "taskmon.h"
 #include "thumb.h"
@@ -124,6 +125,11 @@ static int s_frame_next;      /* the next frame to attempt; GALLERY_FRAME_MAX = 
 static uint32_t s_frame_gen;  /* bumped by every begin and every cancel */
 static uint32_t s_frame_have; /* bit i: C(i+1) decoded, for s_frame_gen */
 static bool s_frame_done;     /* all four attempted */
+/* The capture's alignment calibration for this job. `s_frame_align` is false on
+ * every capture today; when true, each frame is decoded through a per-camera
+ * source crop and shift instead of a plain fit-and-centre. */
+static bool s_frame_align;
+static pure_cam_offset_t s_frame_off[GALLERY_FRAME_MAX];
 
 /*
  * Notes from other tasks: one capture added, one capture removed.
@@ -1015,6 +1021,10 @@ static void read_meta(gallery_item_t *it) {
    * is not a favourite - cJSON_IsTrue(NULL) is false, which is the answer we
    * want without a separate presence check. */
   it->favorite = cJSON_IsTrue(cJSON_GetObjectItem(m, "favorite"));
+  /* The capture's own alignment calibration, from the same parse. Absent on
+   * every capture this firmware has written, in which case cal_present is false
+   * and playback aligns nothing. */
+  it->cal_present = meta_read_calibration(m, it->cal);
   cJSON_Delete(m);
 }
 
@@ -1065,6 +1075,8 @@ static int frames_step(void) {
   int w, h, idx;
   uint16_t pad;
   uint32_t gen;
+  bool align;
+  pure_cam_offset_t off[GALLERY_FRAME_MAX];
 
   lock();
   if (s_frame_id[0] == '\0' || s_frame_next >= GALLERY_FRAME_MAX) {
@@ -1077,6 +1089,8 @@ static int frames_step(void) {
   pad = s_frame_pad;
   idx = s_frame_next;
   gen = s_frame_gen;
+  align = s_frame_align;
+  for (int i = 0; i < GALLERY_FRAME_MAX; i++) off[i] = s_frame_off[i];
   unlock();
 
   /* The card as the UI user, on the same 2 s budget as every other read here,
@@ -1087,7 +1101,12 @@ static int frames_step(void) {
    * a photograph that has all four on the card. */
   if (!storage_acquire(STORAGE_USER_UI, 2000)) return FRAME_YIELDED;
   snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/C%d.JPG", CAPTURES_DIR, id, idx + 1);
-  const bool ok = thumb_load(s_tile_path, s_frame_pix[idx], w, h, pad) == ESP_OK;
+  /* Aligned only when the capture carried a calibration that moves a frame;
+   * otherwise the untouched #160 placement, which is a plain fit-and-centre.
+   * The aligned variant crops the source to the common overlap, shifted by this
+   * camera's offset, so the subject sits where the worker's baked WebP puts it. */
+  const bool ok = (align ? thumb_load_aligned(s_tile_path, s_frame_pix[idx], w, h, pad, off, idx)
+                         : thumb_load(s_tile_path, s_frame_pix[idx], w, h, pad)) == ESP_OK;
   storage_release(STORAGE_USER_UI);
 
   lock();
@@ -1102,7 +1121,8 @@ static int frames_step(void) {
   return FRAME_DID;
 }
 
-esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint32_t *gen) {
+esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad,
+                               const pure_cam_offset_t *offsets, uint32_t *gen) {
   if (s_lock == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
   if (w <= 0 || h <= 0) return ESP_ERR_INVALID_ARG;
 
@@ -1135,6 +1155,13 @@ esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint3
   s_frame_h = h;
   s_frame_pad = pad;
   s_frame_next = 0;
+  /* The alignment for this job, decided here so a decode turn does not re-derive
+   * it. Active only when an offset actually moves a frame; a NULL or all-zero
+   * calibration is the plain #160 placement. */
+  s_frame_align = pure_align_has_offset(offsets, GALLERY_FRAME_MAX);
+  for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
+    s_frame_off[i] = offsets != NULL ? offsets[i] : (pure_cam_offset_t){0, 0, 0};
+  }
   /* Cleared BEFORE the first decode of this job can run, which is what makes
    * a buffer safe to write: nothing may be read while its bit is clear. */
   s_frame_have = 0;

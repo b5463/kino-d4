@@ -301,6 +301,117 @@ out:
   return result;
 }
 
+static int align_round(double v) { return (int)(v >= 0.0 ? v + 0.5 : v - 0.5); }
+
+esp_err_t thumb_load_aligned(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad,
+                             const pure_cam_offset_t *offsets, int cam) {
+  if (!thumb_ready() || tile == NULL || tile_w < 8 || tile_h < 8 || offsets == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (cam < 0 || cam >= PURE_WIGGLE_FRAMES_MAX) return ESP_ERR_INVALID_ARG;
+
+  size_t len = 0, cap = 0;
+  uint8_t *jpeg = slurp(path, &len, &cap);
+  if (jpeg == NULL) return ESP_ERR_NOT_FOUND;
+
+  jpeg_decode_picture_info_t info;
+  esp_err_t err = jpeg_decoder_get_info(jpeg, (uint32_t)len, &info);
+  if (err != ESP_OK || info.width == 0 || info.height == 0 || info.width > MAX_SRC_W ||
+      info.height > MAX_SRC_H) {
+    free(jpeg);
+    return err != ESP_OK ? err : ESP_ERR_INVALID_SIZE;
+  }
+
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  esp_err_t result = ESP_FAIL;
+
+  /* Same decode as thumb_load - the endianness note there applies here too. */
+  const uint32_t pad_w = (info.width + 15) & ~15u;
+  const uint32_t pad_h = (info.height + 15) & ~15u;
+  if (!ensure(&s_full, &s_full_cap, (size_t)pad_w * pad_h * 2, false)) {
+    klog("P4", "thumb align %s: no decode buffer for %lux%lu", path, (unsigned long)info.width,
+         (unsigned long)info.height);
+    goto out;
+  }
+  jpeg_decode_cfg_t dcfg = {
+      .output_format = JPEG_DECODE_OUT_FORMAT_RGB565,
+      .rgb_order = JPEG_DEC_RGB_ELEMENT_ORDER_BGR,
+  };
+  uint32_t decoded = 0;
+  err = jpeg_decoder_process(s_dec, &dcfg, jpeg, (uint32_t)len, s_full, (uint32_t)s_full_cap,
+                             &decoded);
+  if (err != ESP_OK) {
+    klog("P4", "thumb align %s: decode failed %s", path, esp_err_to_name(err));
+    goto out;
+  }
+
+  /* The plan against the ACTUAL decoded size, so the crop is inside the pixels
+   * that really exist. crop is the common overlap; this camera's shift moves the
+   * source window the crop is read from - shift the window the OPPOSITE way from
+   * the frame's own move, so the subject lands in the same place the worker's
+   * shifted-then-cropped frame puts it. */
+  pure_frame_xform_t xf[PURE_WIGGLE_FRAMES_MAX];
+  const pure_crop_t crop =
+      pure_align_plan((int)info.width, (int)info.height, offsets, PURE_WIGGLE_FRAMES_MAX, xf);
+  if (crop.w < 8 || crop.h < 8) goto out;
+
+  int sx = crop.x - align_round(xf[cam].dx);
+  int sy = crop.y - align_round(xf[cam].dy);
+  if (sx < 0) sx = 0;
+  if (sy < 0) sy = 0;
+  if (sx + crop.w > (int)info.width) sx = (int)info.width - crop.w;
+  if (sy + crop.h > (int)info.height) sy = (int)info.height - crop.h;
+  if (sx < 0 || sy < 0) goto out; /* a crop larger than the frame - refuse */
+
+  /* Fill the whole tile with pad and flush it, exactly as thumb_load does and
+   * for the same reason: the PPA DMA-writes over the middle, and dirty pad lines
+   * evicted afterwards would tear bands through the picture. Here the crop scales
+   * to fill the tile, so the pad shows only in the sub-pixel the fill rounds
+   * off - but the flush rule is the same. */
+  for (int i = 0; i < tile_w * tile_h; i++) tile[i] = pad;
+  esp_cache_msync(tile, THUMB_TILE_BYTES(tile_w, tile_h), ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+  ppa_srm_oper_config_t srm = {
+      .in = {.buffer = s_full,
+             .pic_w = pad_w,
+             .pic_h = pad_h,
+             .block_w = (uint32_t)crop.w,
+             .block_h = (uint32_t)crop.h,
+             .block_offset_x = (uint32_t)sx,
+             .block_offset_y = (uint32_t)sy,
+             .srm_cm = PPA_SRM_COLOR_MODE_RGB565},
+      .out = {.buffer = tile,
+              .buffer_size = THUMB_TILE_BYTES(tile_w, tile_h),
+              .pic_w = (uint32_t)tile_w,
+              .pic_h = (uint32_t)tile_h,
+              .block_offset_x = 0,
+              .block_offset_y = 0,
+              .srm_cm = PPA_SRM_COLOR_MODE_RGB565},
+      .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
+      /* Fill the tile from the crop. The crop is ~4:3 and the tile is 4:3, so
+       * the two scales are within rounding of each other; the calibration's
+       * rotation term is NOT applied here - the SRM PPA rotates only in 90 deg
+       * steps, and a degree or two of lens-mount rotation is folded into the
+       * crop's slack rather than turned into pixels. */
+      .scale_x = (float)tile_w / (float)crop.w,
+      .scale_y = (float)tile_h / (float)crop.h,
+      .mode = PPA_TRANS_MODE_BLOCKING,
+  };
+  const esp_err_t perr = ppa_do_scale_rotate_mirror(s_srm, &srm);
+  if (perr == ESP_OK) {
+    esp_cache_msync(tile, THUMB_TILE_BYTES(tile_w, tile_h), ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+    result = ESP_OK;
+  } else {
+    klog("P4", "thumb align PPA fail %s crop %dx%d@%d,%d tile %dx%d", esp_err_to_name(perr), crop.w,
+         crop.h, sx, sy, tile_w, tile_h);
+  }
+
+out:
+  xSemaphoreGive(s_lock);
+  free(jpeg);
+  return result;
+}
+
 esp_err_t thumb_write(const uint8_t *jpeg, size_t len, const char *path) {
   if (!thumb_ready() || jpeg == NULL || len < 4 || path == NULL) return ESP_ERR_INVALID_STATE;
 

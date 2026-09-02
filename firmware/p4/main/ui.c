@@ -381,6 +381,7 @@ static uint32_t s_wig_gen;       /* the gallery job token, 0 when none */
 static uint32_t s_wig_have;      /* frames decoded, bit i for C(i+1) */
 static bool s_wig_play;          /* stepping */
 static bool s_wig_repeat;        /* false for the KDP `sweep` loop: one pass, then hold */
+static bool s_wig_oneway;        /* continuous/sweep: the far->near wrap is a snap, not a swing */
 static uint8_t s_wig_seq[PURE_WIGGLE_SEQ_MAX];
 static int s_wig_len;
 static int s_wig_pos;
@@ -389,6 +390,46 @@ static int64_t s_wig_next_us;
 /* How many of the four decoded, for the "3 OF 4 FRAMES" note. 0 means there
  * is nothing to say - no job, or not finished yet. */
 static int s_wig_count;
+
+/*
+ * The crossfade (#161).
+ *
+ * Even with the frames aligned, six hard cuts at 5..15 fps read as the picture
+ * stepping. So each dwell is split into a few sub-steps and frame k is blended
+ * toward k+1 across it, at ~30 fps, on already-decoded PSRAM buffers - the swing
+ * PERIOD is unchanged (subs x period/subs == period), only its granularity.
+ *
+ * The blend is a CPU RGB565 composite, not the PPA's ppa_do_blend - which this
+ * IDF does have (esp_driver_ppa, PPA_OPERATION_BLEND). Two reasons, both about
+ * being able to trust it: this runs in host_preview where the PPA is stubbed, so
+ * the mid-blend frame is actually renderable and WAS reviewed as a picture; and
+ * it needs no second DMA client or cache dance on the UI pass, where the frames
+ * it reads were already M2C-synced by thumb.c.
+ *
+ * What it costs, by arithmetic rather than by hope - the bench has to confirm it,
+ * because nothing here has run on a board. 464x348 = 161,472 px, and all three
+ * buffers are in PSRAM: two reads and one write of 322,944 B is ~946 KB of PSRAM
+ * traffic per sub-step. At the 100-150 MB/s a cached sequential stream gets on
+ * this part that is roughly 6-10 ms, and the ~18 simple ops per pixel below run
+ * inside those stalls rather than after them. Against a ~31 ms sub-step (8 fps,
+ * four sub-steps) that is a third of the budget, with the draw's own blit on top
+ * - comfortable, not free. If the bench measures it tighter than that, drop
+ * WIG_BLEND_FPS to 20 (two sub-steps at the default fps); the PPA blend is the
+ * other way out and would move the traffic off the CPU entirely. What must NOT
+ * happen is the work moving to the gallery task, which owns the card.
+ *
+ * s_wig_blend is one PSRAM buffer allocated once for the life of the boot and
+ * never freed - the same discipline as the gallery's frame buffers, and for the
+ * same reason: a buffer that cannot be freed cannot be freed underneath a read.
+ * A failed alloc leaves it NULL, logs once, and playback falls back to #160's
+ * hard cut, which is a working picture.
+ */
+#define WIG_BLEND_FPS 30
+static uint16_t *s_wig_blend;    /* PH_W x PH_H composite, allocated once */
+static bool s_wig_blend_tried;   /* so a failed alloc is logged once, not per open */
+static bool s_wig_blend_ready;   /* photo_pixels should show s_wig_blend this pass */
+static int s_wig_sub;            /* sub-step within the current dwell, 0..s_wig_subs-1 */
+static int s_wig_subs;           /* sub-steps this dwell holds, >= 1 */
 
 /* Item index reserved for the header's Back target on every detail screen.
  * Kept out of the 0..N-1 range so a screen's own items can be plain indices. */
@@ -2697,16 +2738,31 @@ static void draw_gallery(void) {
  * two seconds to acknowledge because a decode was waiting on a busy card
  * would be a worse camera than one that shows a still.
  */
+static uint32_t s_wig_blend_max_us; /* worst wig_composite() this open, us */
+static uint32_t s_wig_blend_n;      /* composites this open */
+
 static void wiggle_stop(void) {
+  if (s_wig_blend_n != 0) {
+    klog("P4", "wiggle %s crossfade: %lu composites, worst %lu us", s_photo_id,
+         (unsigned long)s_wig_blend_n, (unsigned long)s_wig_blend_max_us);
+  }
+  s_wig_blend_max_us = 0;
+  s_wig_blend_n = 0;
   if (s_wig_gen != 0) gallery_frames_cancel();
   s_wig_gen = 0;
   s_wig_have = 0;
   s_wig_play = false;
   s_wig_repeat = false;
+  s_wig_oneway = false;
   s_wig_len = 0;
   s_wig_pos = 0;
   s_wig_count = 0;
   s_wig_next_us = 0;
+  /* The composite is per-swing state, cleared here; the BUFFER is not - it is
+   * allocated once and kept, like the gallery's frame buffers. */
+  s_wig_blend_ready = false;
+  s_wig_sub = 0;
+  s_wig_subs = 0;
 }
 
 static void photo_release(void) {
@@ -2793,9 +2849,120 @@ static bool photo_open(const gallery_item_t *it) {
    */
   if (strcmp(s_photo_mode, "wiggle") == 0 && s_photo_frames > 1) {
     uint32_t gen = 0;
-    if (gallery_frames_begin(it->id, PH_W, PH_H, C_WELL, &gen) == ESP_OK) s_wig_gen = gen;
+    /*
+     * Where the alignment offsets come from (#161), in the order the contract
+     * gives (types.ts, MEDIA_INFO `meta.calibration`):
+     *
+     *   1. the CAPTURE's own META.JSON block - what was true at the shutter
+     *      press, which is the only honest answer for a photograph taken
+     *      before the lenses were last calibrated. The gallery's single META
+     *      parse already carried it here in `it->cal`.
+     *   2. failing that, the live device calibration - and this body HAS none:
+     *      nothing in the firmware stores per-camera offsets, and nothing
+     *      writes that META block either, so every capture on every card today
+     *      reaches step 3.
+     *   3. all zeros, which is a clean no-op - NULL here, and the frames are
+     *      placed exactly as #160 placed them. Never an invented offset: a
+     *      guessed correction moves the subject to a place it never was.
+     *
+     * The day an align editor writes either source, the panel and the Roll's
+     * baked WebP crop and shift identically, because both compute it from
+     * pure_align_plan().
+     */
+    const pure_cam_offset_t *off =
+        (it->cal_present && pure_align_has_offset(it->cal, PURE_WIGGLE_FRAMES_MAX)) ? it->cal
+                                                                                    : NULL;
+    if (gallery_frames_begin(it->id, PH_W, PH_H, C_WELL, off, &gen) == ESP_OK) s_wig_gen = gen;
   }
   return true;
+}
+
+/* The one blend buffer, allocated the first time a swing needs it and kept.
+ * Returns false when there is no PSRAM for it, which is logged once and then
+ * means "hard cut" for the rest of the boot rather than a retry per open. */
+static bool wig_ensure_blend(void) {
+  if (s_wig_blend != NULL) return true;
+  if (s_wig_blend_tried) return false;
+  s_wig_blend_tried = true;
+  s_wig_blend = heap_caps_malloc((size_t)PH_W * PH_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  if (s_wig_blend == NULL) {
+    klog("P4", "no PSRAM for the wiggle crossfade buffer (%u B) - hard-cutting",
+         (unsigned)((size_t)PH_W * PH_H * sizeof(uint16_t)));
+    return false;
+  }
+  return true;
+}
+
+/*
+ * Composite `n` RGB565 pixels: dst = bg*(32-a)/32 + fg*a/32, with `a` in 0..32.
+ *
+ * The split-channel trick: red and blue sit in bits {15..11} and {4..0} with a
+ * clear gap between them, so both survive one multiply by up to 32 in a 32-bit
+ * word without bleeding into each other; green is done in the same pass. Two
+ * multiplies and a shift per pixel, no per-channel unpack, which is what keeps
+ * 161k pixels inside a sub-step. bg and fg were written by the PPA and already
+ * synced to memory by thumb.c, and dst is CPU-only, so no cache work here.
+ */
+static void wig_composite(uint16_t *dst, const uint16_t *bg, const uint16_t *fg, int n,
+                          uint32_t a) {
+  const uint32_t na = 32u - a;
+  for (int i = 0; i < n; i++) {
+    const uint32_t b = bg[i], f = fg[i];
+    const uint32_t rb = ((b & 0xF81Fu) * na + (f & 0xF81Fu) * a) >> 5;
+    const uint32_t g = ((b & 0x07E0u) * na + (f & 0x07E0u) * a) >> 5;
+    dst[i] = (uint16_t)((rb & 0xF81Fu) | (g & 0x07E0u));
+  }
+}
+
+/*
+ * Decide what the picture is at the current (position, sub-step): the raw frame
+ * on a frame boundary, or frame k blended toward k+1 in between. Sets
+ * s_wig_blend_ready, which is what photo_pixels reads.
+ *
+ * The cases that DO NOT blend, and why each is a hard cut on purpose:
+ *   - sub-step 0: a frame boundary IS the raw frame, and #160's shot of a
+ *     playing wiggle set the position directly and expects exactly that.
+ *   - a held sweep at its last frame: there is no next to move toward.
+ *   - the continuous/one-way wrap from the far frame back to the near one: the
+ *     snap is the effect (packages/media/src/sequence.ts), and a dissolve across
+ *     the whole parallax would soften the one thing that mode is for. A BOUNCE
+ *     wrap is a genuine one-lens swing step and does blend.
+ *   - a partial swing whose two ends are the same frame, or a frame not decoded,
+ *     or no blend buffer: nothing safe to composite, so show the raw frame.
+ */
+static void wiggle_compose(void) {
+  s_wig_blend_ready = false;
+  if (s_wig_sub == 0 || s_wig_subs < 2) return;
+
+  const bool wrap = s_wig_pos + 1 >= s_wig_len;
+  if (wrap && (!s_wig_repeat || s_wig_oneway)) return;
+
+  const int cur = s_wig_seq[s_wig_pos];
+  const int nxt = s_wig_seq[(s_wig_pos + 1) % s_wig_len];
+  if (nxt == cur) return;
+  if (!(s_wig_have & (1u << cur)) || !(s_wig_have & (1u << nxt))) return;
+  if (!wig_ensure_blend()) return;
+
+  const uint16_t *bg = gallery_frame_pixels(cur);
+  const uint16_t *fg = gallery_frame_pixels(nxt);
+  if (bg == NULL || fg == NULL) return;
+
+  /* fg's weight rises 0->32 across the dwell, so cur fades into next and lands
+   * exactly on next at the boundary where the position advances. */
+  const uint32_t a =
+      ((uint32_t)s_wig_sub * 32u + (uint32_t)s_wig_subs / 2u) / (uint32_t)s_wig_subs;
+  /* Timed, because the cost of this loop against the 20 ms ui pass is the one
+   * number that decides between WIG_BLEND_FPS and the PPA blend, and it can
+   * only be measured here - host_preview has no PSRAM to be slow in. The
+   * worst case per open is reported once when the swing stops (wiggle_stop),
+   * not per sub-step: 30 lines a second would flood the ring #140 exists to
+   * protect. */
+  const int64_t t0 = esp_timer_get_time();
+  wig_composite(s_wig_blend, bg, fg, PH_W * PH_H, a);
+  const uint32_t el = (uint32_t)(esp_timer_get_time() - t0);
+  if (el > s_wig_blend_max_us) s_wig_blend_max_us = el;
+  s_wig_blend_n++;
+  s_wig_blend_ready = true;
 }
 
 /*
@@ -2803,9 +2970,12 @@ static bool photo_open(const gallery_item_t *it) {
  *
  * Called from ui_task on every pass, which is every 20 ms, and it is the only
  * thing that moves the frame. The panel is paced by that loop rather than by a
- * timer or a spin: at the config's 5..15 fps a frame is held 200..66 ms, so a
- * 20 ms pass lands within one pass of every deadline. The deadline is advanced
- * by whole periods rather than set from `now`, so the swing does not drift.
+ * timer or a spin. Since #161 the unit of pacing is the SUB-STEP, not the frame:
+ * a frame's 200..66 ms dwell (5..15 fps) is split into a few ~33 ms sub-steps
+ * (WIG_BLEND_FPS), each of which blends the current frame a little further
+ * toward the next. A 20 ms pass still lands within one pass of every sub-step
+ * deadline, and the deadline is advanced by whole sub-steps rather than set from
+ * `now`, so neither the sub-steps nor the swing period drift.
  *
  * Rejected: a present loop of its own, the way SCR_SHOOT presents
  * unconditionally at 60 ms. That would make the photograph screen a painter
@@ -2850,6 +3020,18 @@ static bool wiggle_tick(void) {
     s_wig_len = pure_wiggle_sequence(loop, rtl, have, s_wig_seq, (int)sizeof s_wig_seq,
                                      &s_wig_repeat);
     s_wig_period_ms = pure_wiggle_period_ms(config_int("wiggle.fps", PURE_WIGGLE_FPS_DEFAULT));
+    /* One-way modes snap from the far frame back to the near one, and that snap
+     * is the effect; a bounce turns around instead, so its wrap is a swing step
+     * that crossfades like any other. wiggle_compose() needs to tell them apart. */
+    s_wig_oneway = loop != PURE_WIGGLE_BOUNCE;
+    /* Split each dwell into ~33 ms sub-steps for the crossfade. Rounded, floored
+     * at one: at 15 fps a 66 ms dwell is two sub-steps, at 5 fps six. One
+     * sub-step means the frame period is already shorter than a blend step, so
+     * it hard-cuts like #160 - which no configurable fps actually reaches. */
+    s_wig_subs = (s_wig_period_ms * WIG_BLEND_FPS + 500) / 1000;
+    if (s_wig_subs < 1) s_wig_subs = 1;
+    s_wig_sub = 0;
+    s_wig_blend_ready = false;
 
     if (s_wig_len < 2) {
       /*
@@ -2871,8 +3053,9 @@ static bool wiggle_tick(void) {
 
     s_wig_play = true;
     s_wig_pos = 0;
-    s_wig_next_us = esp_timer_get_time() + (int64_t)s_wig_period_ms * 1000;
-    klog("P4", "wiggle %s playing %d frames at %d ms", s_photo_id, s_wig_len, s_wig_period_ms);
+    s_wig_next_us = esp_timer_get_time() + (int64_t)s_wig_period_ms * 1000 / s_wig_subs;
+    klog("P4", "wiggle %s playing %d frames at %d ms, %d sub-steps", s_photo_id, s_wig_len,
+         s_wig_period_ms, s_wig_subs);
     /* Repaint now: the first frame of the order is not necessarily what the
      * still showed (rtl starts at C4), and the frame note appears with it. */
     return true;
@@ -2882,29 +3065,45 @@ static bool wiggle_tick(void) {
   if (!s_wig_play) return false;
 
   const int64_t now = esp_timer_get_time();
+  /* Never zero: this is a divisor, and the one path that could reach here with
+   * an uninitialised sub-step count is a caller poking the player's state
+   * directly (which host_preview does). A frame period is the honest fallback -
+   * it is #160's cadence. */
+  if (s_wig_subs < 1) s_wig_subs = 1;
+  const int64_t step_us = (int64_t)s_wig_period_ms * 1000 / s_wig_subs;
   if (s_wig_next_us == 0) {
-    /* Resuming from a pause. Give the frame on screen a full period rather
+    /* Resuming from a pause. Give the sub-step on screen a full interval rather
      * than firing immediately, or dismissing a dialog would jump the swing. */
-    s_wig_next_us = now + (int64_t)s_wig_period_ms * 1000;
+    s_wig_next_us = now + step_us;
     return false;
   }
   if (now < s_wig_next_us) return false;
 
-  if (s_wig_pos + 1 >= s_wig_len && !s_wig_repeat) {
-    /* KDP `sweep` is media's `once` (packages/media/src/playback.ts): one pass,
-     * then hold the last frame. Holding rather than snapping back to C1,
-     * because the end of the sweep is where the photograph was left. */
-    s_wig_play = false;
-    return false;
+  /* Advance one sub-step. A dwell that has run all its sub-steps advances the
+   * frame position - or ends a sweep - and resets the sub-step counter. */
+  s_wig_sub++;
+  if (s_wig_sub >= s_wig_subs) {
+    if (s_wig_pos + 1 >= s_wig_len && !s_wig_repeat) {
+      /* KDP `sweep` is media's `once` (packages/media/src/playback.ts): one pass,
+       * then hold the last frame. Holding rather than snapping back to C1,
+       * because the end of the sweep is where the photograph was left. Repaint
+       * once, so any blend that was mid-air resolves to the final frame. */
+      s_wig_play = false;
+      s_wig_blend_ready = false;
+      return true;
+    }
+    s_wig_pos = (s_wig_pos + 1) % s_wig_len;
+    s_wig_sub = 0;
   }
-  s_wig_pos = (s_wig_pos + 1) % s_wig_len;
 
-  /* By whole periods, so a late pass does not shorten the next frame. A
-   * deadline that has fallen more than a period behind - the loop was busy
-   * with a toast or a capture banner - is resynced instead of firing several
-   * times in a row to catch up, which would be a stutter rather than a wiggle. */
-  s_wig_next_us += (int64_t)s_wig_period_ms * 1000;
-  if (s_wig_next_us < now) s_wig_next_us = now + (int64_t)s_wig_period_ms * 1000;
+  /* By whole sub-steps, so a late pass does not shorten the next one. A deadline
+   * that has fallen more than a sub-step behind - the loop was busy with a toast
+   * or a capture banner - is resynced instead of firing several times in a row
+   * to catch up, which would be a stutter rather than a wiggle. */
+  s_wig_next_us += step_us;
+  if (s_wig_next_us < now) s_wig_next_us = now + step_us;
+
+  wiggle_compose();
   return true;
 }
 
@@ -2912,6 +3111,9 @@ static bool wiggle_tick(void) {
  * one is playing, the still otherwise. Never a buffer whose bit is clear. */
 static const uint16_t *photo_pixels(void) {
   if (s_wig_len >= 2) {
+    /* Mid-dwell, the composite of this frame and the next; on a boundary (or
+     * when a blend was refused), the raw frame the swing rests on. */
+    if (s_wig_blend_ready && s_wig_blend != NULL) return s_wig_blend;
     const int frame = s_wig_seq[s_wig_pos];
     if (s_wig_have & (1u << frame)) {
       const uint16_t *px = gallery_frame_pixels(frame);
@@ -5180,10 +5382,19 @@ static void ui_task(void *arg) {
     if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
       draw_screen();
       gfx_present();
-      /* 90 ms is the busy cadence; a wiggle frame that is only waiting for its
+      /*
+       * 90 ms is the busy cadence; a wiggle frame that is only waiting for its
        * own deadline goes back round at the loop's own 20 ms so the next
-       * deadline is not missed by 70. */
-      vTaskDelay(pdMS_TO_TICKS(busy ? 90 : 20));
+       * deadline is not missed by 70.
+       *
+       * A PLAYING wigglegram keeps the 20 ms pass even while something is busy.
+       * #160 could take the 90 ms here because its deadline was a whole frame
+       * period, 66..200 ms; a crossfade sub-step is ~33 ms, so 90 ms would make
+       * the swing run at a third speed for as long as a toast was up - and a
+       * toast is exactly what FAVOURITE raises on this screen.
+       */
+      const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
+      vTaskDelay(pdMS_TO_TICKS((busy && !wig_pacing) ? 90 : 20));
       continue;
     }
 
@@ -5228,8 +5439,14 @@ static void ui_task(void *arg) {
          * passes out of six while the screen was in fact painting eight times
          * a second. A photograph that is NOT playing - still loading, one
          * frame, a quad - owes nothing and says so. */
-        const bool present_due =
-            held == -1 && (s_screen == SCR_SHOOT || (s_screen == SCR_PHOTO && s_wig_play));
+        /* A playing wigglegram owes frames only while it is actually stepping.
+         * Under a DELETE dialog or an in-flight capture wiggle_tick() pauses -
+         * s_wig_play stays set so the swing resumes in place, but nothing is due
+         * and nothing comes out, so a paused photo must read as owing nothing or
+         * the health watch calls the pause a stall (#161: paused owes none). */
+        const bool wig_presenting = s_screen == SCR_PHOTO && s_wig_play &&
+                                    s_dialog == DLG_NONE && cstage == CAPTURE_IDLE;
+        const bool present_due = held == -1 && (s_screen == SCR_SHOOT || wig_presenting);
         const bool latched = held != -1 || s_pressed != -1;
         switch (ui_health_step(&health, present_due, frames_advanced, latched)) {
           case UI_HEALTH_STALLED:

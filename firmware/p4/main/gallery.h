@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "pure.h" /* pure_cam_offset_t, carried per tile for aligned playback */
 
 #define GALLERY_COLS 3
 #define GALLERY_ROWS 2
@@ -51,6 +52,12 @@ typedef struct {
    * tile can be marked without a second read of the same file - read_meta()
    * already has the parsed document in front of it. */
   bool favorite;
+  /* The capture's own alignment calibration, cam1..cam4, read from META.JSON by
+   * the same parse that fills the fields above. `cal_present` is false on every
+   * capture today (the firmware records none), and then playback aligns nothing.
+   * Never a guessed offset - a missing block or camera stays zero. */
+  bool cal_present;
+  pure_cam_offset_t cal[PURE_WIGGLE_FRAMES_MAX];
   tile_state_t state;
   const uint16_t *pixels; /* GALLERY_TILE_W * GALLERY_TILE_H, valid when READY */
 } gallery_item_t;
@@ -160,6 +167,13 @@ void gallery_delete_progress(int *done, int *total);
 /** Four lenses, so four frames: C1..C4.JPG. */
 #define GALLERY_FRAME_MAX 4
 
+/* The frame index and the calibration index are the same camera, so the two
+ * counts have to agree: gallery_item_t.cal[] is sized by pure.h's count and
+ * indexed by this one (gallery.c, frames_step). If they ever diverge, the
+ * offsets read past their array instead of failing here. */
+_Static_assert(GALLERY_FRAME_MAX == PURE_WIGGLE_FRAMES_MAX,
+               "a frame per lens and an offset per lens must be the same four");
+
 /**
  * Decode a capture's C1..C4 into four buffers this module owns, in the
  * background.
@@ -198,8 +212,18 @@ void gallery_delete_progress(int *done, int *total);
  * be mistaken for one about the photograph they are looking at now.
  * ESP_ERR_NO_MEM when the buffers could not be had, which is not an error the
  * caller has to show: a photograph that cannot play is a photograph.
+ *
+ * `offsets` is the capture's per-camera alignment calibration (cam1..cam4), or
+ * NULL for none. When it moves a frame at all, each frame is placed with a PPA
+ * source crop and shift so the subject sits still instead of lurching between
+ * the four lens positions - the same crop and shift the worker bakes into a
+ * Roll's WebP, computed from the same geometry (pure_align_plan). NULL, or all
+ * zeros, is the path every capture takes today, and it is byte-for-byte the
+ * #160 placement: a plain fit-and-centre with no crop. The caller passes at
+ * least PURE_WIGGLE_FRAMES_MAX offsets when non-NULL.
  */
-esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint32_t *gen);
+esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad,
+                               const pure_cam_offset_t *offsets, uint32_t *gen);
 
 /** Forget the outstanding job. Never blocks and never waits for a decode in
  * flight: a decode that is already running finishes into a buffer nobody is

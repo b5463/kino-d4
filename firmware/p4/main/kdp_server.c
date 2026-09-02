@@ -45,9 +45,13 @@
 #include "meta.h"
 #include "net_link.h"
 #include "ui.h"
-#if KINO_RADIO && KINO_C6_RESET_BENCH
+/* Unconditional, like main.c:26. net_hosted.h selects the real declarations
+ * under KINO_RADIO and inline stubs otherwise, so every caller compiles in
+ * every config. This include was guarded on KINO_C6_RESET_BENCH (opt-in, off
+ * in both shipped configs) while handle_runtime_stats() calls
+ * net_hosted_recovery_ready() unconditionally - d7413c2 (#162) failed to
+ * build in both configs with an implicit declaration. */
 #include "net_hosted.h"
-#endif
 #include "node_link/node_link.h"
 #include "power.h"
 #include "pure.h"

@@ -17,7 +17,7 @@ Rules:
 - Do not rewrite history. A failed assumption keeps its row, marked `FAILED`,
   with the replacement in a new row.
 
-## Status — updated 2026-09-02, firmware 0.4.20
+## Status — updated 2026-09-02, firmware 0.4.21
 
 One D4 shutter produces a truthful, durable four-frame set: 20 of 20 grouped
 captures complete 4/4 on the fixed image, every frame CRC-checked to the card,
@@ -588,6 +588,46 @@ independently on its intended UART and all four are simultaneously visible
 and photographing. Not proven here, deliberately: the grouped four-camera
 shutter (#132), synchronization and skew, exposure quality (#156), and
 four-camera behaviour under upload load (Gate F ran on one camera).
+
+### The swing stops jumping - aligned frames and a crossfade, 0.4.21, 2026-09-02
+
+0.4.20 played the wigglegram as four stills swapped at wiggle.fps, and on
+glass that reads as pictures jumping. 0.4.21 does two things about it, both
+ported from the Roll's own worker rather than invented on the panel.
+
+Alignment: pure_align_plan() is a field-for-field port of
+packages/media/src/alignment.ts (overlap crop, per-camera shift, rotation
+slack folded into the crop). When a capture's META.JSON carries a
+calibration block, each frame is decoded through the same crop and shift the
+worker uses to bake the WebP, so the subject sits still and only the parallax
+moves. When it does not - and today no capture does, because nothing in this
+firmware writes that block and no per-camera offsets are stored on the device
+- the path is literally 0.4.20's thumb_load(); no offset is invented, and the
+2 px inset a zero plan would add is never applied. The aligned path is proven
+by the host tests and by a host_preview render that pushes synthetic frames
+through the plan; it has not been exercised on hardware because no card has
+the data.
+
+Crossfade: between frame k and k+1 the picture is k blended toward k+1 in
+sub-steps at WIG_BLEND_FPS (30), so the default 8 fps swing is four
+sub-steps of a 1/32-weighted RGB565 composite instead of one cut. Frame
+boundaries stay raw frames; a continuous/one-way wrap stays a hard cut
+because the snap is that mode's effect; a held sweep, a partial swing, a
+missing frame or a refused blend buffer all fall back to the raw frame. One
+more 322,944 B PSRAM buffer, allocated on first use.
+
+Measured on this unit: P4 0.4.21 flashed, all four nodes online at 0.4.19,
+CAMERA_CAPTURE stores a four-frame capture. The composite cost against the
+20 ms ui pass is arithmetic so far (~161k px x 3 PSRAM buffers ~ 6-10 ms per
+sub-step); the firmware now times it and klogs "wiggle CAP_ crossfade: N
+composites, worst X us" when a swing stops, so the number is read off the
+next gallery session on glass. If worst exceeds ~15 ms the knob is
+WIG_BLEND_FPS (20), the other exit is ppa_do_blend.
+
+Also in this version: d7413c2 (#162) had left the net_hosted.h include in
+kdp_server.c behind an opt-in bench guard while calling
+net_hosted_recovery_ready() unconditionally, so both shipped configs failed
+to compile; the include is unconditional now, as main.c has always had it.
 
 ### The photo screen plays the wigglegram - 0.4.20, 2026-09-02
 

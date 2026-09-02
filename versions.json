@@ -149,7 +149,7 @@
     "latestMigration": "0011_lookup_indexes"
   },
   "firmware": {
-    "version": "0.4.20",
+    "version": "0.4.21",
     "source": "firmware/VERSION",
     "protocolHeader": "firmware/components/kdp_core/include/kdp/protocol.h",
     "tagPrefix": "kino-fw-v"

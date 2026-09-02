@@ -456,25 +456,68 @@ static uint16_t *g_frame[GALLERY_FRAME_MAX];
 static uint32_t g_frame_gen;
 static uint32_t g_frame_have = 0xf;
 
-esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad, uint32_t *gen) {
+/*
+ * One synthetic "sensor" pixel of frame `i`.
+ *
+ * Procedural rather than a filled buffer because the aligned path has to
+ * RESAMPLE it, the way the device's PPA resamples a real frame through a source
+ * crop. The background is the same in all four - it is the distance - and only
+ * the near bar moves, which is what parallax is and what makes one frame of the
+ * swing tell you which frame it is.
+ */
+static uint16_t synth_px(int x, int y, int i, int w, int h) {
+  const int r = (x * 31) / w;
+  const int g = (y * 63) / h;
+  const int b = 31 - ((x + y) * 31) / (w + h);
+  uint16_t px = (uint16_t)((r << 11) | (g << 5) | b);
+  const int bar = w / 4 + i * 34;
+  if (x >= bar && x < bar + 44 && y > h / 5 && y < h - h / 5) px = 0xffff;
+  return px;
+}
+
+esp_err_t gallery_frames_begin(const char *id, int w, int h, uint16_t pad,
+                               const pure_cam_offset_t *offsets, uint32_t *gen) {
   (void)id;
   (void)pad;
+  /*
+   * The device applies a calibration as a PPA source crop and shift
+   * (thumb_load_aligned). There is no PPA and no card here, so the harness
+   * resamples the synthetic frame through the SAME pure_align_plan() numbers -
+   * nearest neighbour instead of the PPA's filter - so an aligned render shows
+   * the geometry the device would produce rather than a picture of this stub.
+   *
+   * With no offsets this is pixel-for-pixel the frame the harness has always
+   * produced (sx == x, sy == y), which is what keeps every existing render
+   * unchanged.
+   */
+  const bool align = pure_align_has_offset(offsets, PURE_WIGGLE_FRAMES_MAX);
+  pure_frame_xform_t xf[PURE_WIGGLE_FRAMES_MAX];
+  pure_crop_t crop = {0, 0, w, h};
+  if (align) crop = pure_align_plan(w, h, offsets, PURE_WIGGLE_FRAMES_MAX, xf);
+
   for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
     free(g_frame[i]);
     g_frame[i] = calloc((size_t)w * (size_t)h, sizeof(uint16_t));
     if (g_frame[i] == NULL) return ESP_ERR_NO_MEM;
-    /* The background is the same in all four - it is the distance - and only
-     * the near object moves, which is what parallax is and what makes one
-     * frame of the swing tell you which frame it is. */
-    const int bar = w / 4 + i * 34;
+    /* This camera's window into the source: the common crop, moved back by the
+     * camera's own correction, which is what makes the subject sit still. */
+    int sx0 = 0, sy0 = 0;
+    if (align) {
+      sx0 = crop.x - (int)(xf[i].dx >= 0 ? xf[i].dx + 0.5 : xf[i].dx - 0.5);
+      sy0 = crop.y - (int)(xf[i].dy >= 0 ? xf[i].dy + 0.5 : xf[i].dy - 0.5);
+    }
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        const int r = (x * 31) / w;
-        const int g = (y * 63) / h;
-        const int b = 31 - ((x + y) * 31) / (w + h);
-        uint16_t px = (uint16_t)((r << 11) | (g << 5) | b);
-        if (x >= bar && x < bar + 44 && y > h / 5 && y < h - h / 5) px = 0xffff;
-        g_frame[i][y * w + x] = px;
+        int sx = x, sy = y;
+        if (align) {
+          sx = sx0 + (x * crop.w) / w;
+          sy = sy0 + (y * crop.h) / h;
+          if (sx < 0) sx = 0;
+          if (sy < 0) sy = 0;
+          if (sx >= w) sx = w - 1;
+          if (sy >= h) sy = h - 1;
+        }
+        g_frame[i][y * w + x] = synth_px(sx, sy, i, w, h);
       }
     }
   }
@@ -1134,6 +1177,71 @@ int main(int argc, char **argv) {
     SHOT(SCR_PHOTO, "photo_partial");
     photo_release();
     g_frame_have = 0xf;
+  }
+
+  /* ---- the crossfade and the alignment (#161) ----
+   *
+   * The two mechanisms that stop the swing reading as images jumping, and the
+   * two things a render can actually settle. Both are diffed against
+   * photo_wiggle_playing above, which is the same photograph at the same
+   * position with neither applied - so the difference in each file IS the
+   * mechanism, and every pixel of chrome outside the well must be identical.
+   */
+  {
+    const gallery_item_t *slots = gallery_slots();
+    g_stage = CAPTURE_IDLE;
+    g_frame_have = 0xf;
+
+    /*
+     * Half way through a dwell: frame k composited with k+1 at equal weight.
+     *
+     * The sub-step is set directly and the compositor called by hand rather than
+     * waiting out a frame period - this is a picture of a blended frame, not of
+     * the clock. Position 1 of the default bounce order 0,1,2,3,2,1 is C2, so
+     * this is C2 half way into C3, and the harness's near bar therefore appears
+     * TWICE at half weight, 34 px apart. That doubling is the whole point: it is
+     * what a hard cut does not have, and at 30 fps it is what the eye reads as
+     * the subject moving rather than jumping.
+     */
+    photo_open(&slots[0]);
+    wiggle_tick(); /* the fake card answers the whole job in one turn */
+    s_wig_pos = 1;
+    s_wig_sub = s_wig_subs / 2;
+    wiggle_compose();
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
+    SHOT(SCR_PHOTO, "photo_wiggle_blend");
+    photo_release();
+
+    /*
+     * An aligned frame, from a calibration this harness invents.
+     *
+     * A real calibration is a few sensor pixels and would move this picture by
+     * well under a pixel - a truthful render, and a useless one. So these
+     * offsets are sized to cancel the harness's own exaggerated 34 px-per-lens
+     * bar exactly, which makes the render answer the one question worth asking:
+     * does the subject stop lurching between the four lens positions. dx is
+     * offset.x scaled by PH_W/1600, so -34 px per lens needs about -117 sensor
+     * px per lens. The visible crop-and-zoom is the overlap crop doing its job
+     * at that caricature's scale, not a defect.
+     *
+     * Position 2 is C3, the same frame photo_wiggle_playing shows unaligned, so
+     * the bar has moved back to where C1 put it while the background gradient
+     * has been cropped and rescaled.
+     */
+    for (int c = 0; c < PURE_WIGGLE_FRAMES_MAX; c++) {
+      g_slot[0].cal[c].x = -34.0 * c / ((double)PH_W / (double)PURE_ALIGN_SENSOR_BASE_W);
+      g_slot[0].cal[c].y = 0.0;
+      g_slot[0].cal[c].rot = 0.0;
+    }
+    g_slot[0].cal_present = true;
+    photo_open(&slots[0]);
+    wiggle_tick();
+    s_wig_pos = 2;
+    SHOT(SCR_PHOTO, "photo_wiggle_aligned");
+    photo_release();
+    /* Off again: no capture on any card carries a calibration block, so every
+     * other render must show the un-aligned path. */
+    g_slot[0].cal_present = false;
   }
 
   /* ---- a toast, which every screen can raise ---- */

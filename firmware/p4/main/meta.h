@@ -30,9 +30,25 @@
 #include <stdint.h>
 
 #include "capture.h"
+#include "pure.h" /* pure_cam_offset_t, for the calibration reader */
 
 /* cJSON objects are passed as void* so callers that do not use cJSON — and
  * the public capture.h surface — need not include it. */
+
+/**
+ * Read a `calibration.cams.camN` block out of a parsed META.JSON into four
+ * offsets in camera order (cam1..cam4). Returns true when the document carried
+ * a calibration block at all; false leaves `out` all-zero.
+ *
+ * This is the capture's OWN truth about where its lenses sat - preferred over
+ * live device calibration because it is what was true at the shutter press
+ * (types.ts, MEDIA_INFO `meta.calibration`). Current firmware writes no such
+ * block, so this returns false on every capture on any card today, and the
+ * playback path then aligns nothing. A camera absent from the block, or a field
+ * missing, is a zero for that camera - never a guess. `out` must hold at least
+ * PURE_WIGGLE_FRAMES_MAX entries.
+ */
+bool meta_read_calibration(const void *meta, pure_cam_offset_t *out);
 
 /**
  * Write a `kino.capture` v1 document for `r` into `meta` (a cJSON object).

@@ -648,4 +648,90 @@ int pure_wiggle_sequence(pure_wiggle_loop_t loop, bool rtl, unsigned present, ui
  * of range is a stale client, not a reason to refuse to play. */
 int pure_wiggle_period_ms(int fps);
 
+/* ------------------------------------------------------------------ */
+/* Wigglegram alignment geometry                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A port of packages/media/src/alignment.ts - the calibration geometry, as
+ * numbers with no pixels in them.
+ *
+ * The panel plays the four frames straight off the card, at the four physical
+ * camera positions ~19 mm apart, so the subject lurches between them. The
+ * WORKER that bakes the WebP and MP4 a Roll guest sees does not: it moves each
+ * frame by that camera's stored x/y/rotation correction and crops to the
+ * overlap they all still cover, so the subject sits still and only the parallax
+ * moves. Those two have to be the SAME photograph, so the geometry lives in one
+ * place the TS side and this side both mirror rather than each inventing it.
+ *
+ * This module is the numbers only. Applying them is a PPA source crop + block
+ * offset in thumb.c, exactly the engine the thumbnail scaler already uses.
+ *
+ * Where the offsets come from is the caller's job, and the rule is strict: the
+ * capture's own META.JSON if it recorded a `calibration` block, else the live
+ * device calibration, else - which is every capture this firmware has written,
+ * because it records neither - all zeros, and then every function here is a
+ * clean no-op. Never a guessed offset (types.ts, MEDIA_INFO `meta.calibration`).
+ */
+
+/** The sensor width the stored x/y offsets are measured against
+ * (packages/media/src/alignment.ts SENSOR_BASE_W). */
+#define PURE_ALIGN_SENSOR_BASE_W 1600
+
+/** One camera's correction, in sensor pixels at the 1600-wide base; `rot` in
+ * degrees. `double` because a scaled offset is fractional (-6 px at a 0.5 scale
+ * is -3, but 7 px at 0.375 is 2.625) and the crop rounds it deliberately. */
+typedef struct {
+  double x;
+  double y;
+  double rot;
+} pure_cam_offset_t;
+
+/** A rectangle in source pixels. */
+typedef struct {
+  int x;
+  int y;
+  int w;
+  int h;
+} pure_crop_t;
+
+/** One frame's move, in source pixels at whatever resolution the plan was asked
+ * for: translate by (dx, dy), rotate `rot_deg` about the centre. */
+typedef struct {
+  double dx;
+  double dy;
+  double rot_deg;
+} pure_frame_xform_t;
+
+/** True when any of the `n` offsets moves a frame at all. False is the answer on
+ * every capture today, and it is what lets the caller take the untouched
+ * #160 path rather than a crop of the whole frame. */
+bool pure_align_has_offset(const pure_cam_offset_t *offsets, int n);
+
+/**
+ * The common crop, in source pixels, that every moved frame still covers.
+ * Mirrors computeOverlapCrop(): inset each side by the largest offset on that
+ * axis (scaled), plus a rotation slack of sin(maxRot) x half-diagonal, plus a
+ * 2 px pad; floor to an even size no smaller than 16, centred.
+ *
+ * `scale` is the source width over PURE_ALIGN_SENSOR_BASE_W - the same number
+ * the TS side passes - because the offsets are stored at the sensor base and
+ * the crop is wanted at the source's real resolution.
+ */
+pure_crop_t pure_align_overlap_crop(int w, int h, const pure_cam_offset_t *offsets, int n,
+                                    double scale);
+
+/**
+ * The whole plan at one source resolution, mirroring alignmentPlan(): scale the
+ * stored offsets into per-frame (dx, dy) at this resolution, pass rotation
+ * through unscaled, and return the crop those moves leave. `out` receives `n`
+ * transforms in offset order and may be NULL to ask for the crop alone.
+ *
+ * Computed against the ACTUAL decoded frame size at apply time, not a nominal
+ * one, so the crop is inside the pixels that really exist - a frame stored at a
+ * size other than the look's configured resolution still crops correctly.
+ */
+pure_crop_t pure_align_plan(int src_w, int src_h, const pure_cam_offset_t *offsets, int n,
+                            pure_frame_xform_t *out);
+
 #endif

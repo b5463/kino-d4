@@ -441,3 +441,95 @@ int pure_wiggle_period_ms(int fps) {
   if (fps > PURE_WIGGLE_FPS_MAX) fps = PURE_WIGGLE_FPS_MAX;
   return 1000 / fps;
 }
+
+/* ------------------------------------------------------------------ */
+/* Wigglegram alignment geometry                                       */
+/* ------------------------------------------------------------------ */
+
+/* sin and sqrt without math.h, because this file links on the host without
+ * libm (see pure_format_iso8601's note - same rule). Accuracy only has to be
+ * good enough for a crop inset that is then ceil()'d to a whole pixel, and the
+ * rotation term is zero on every capture this firmware writes. Kept local so
+ * the crop the panel computes and the crop the worker computes agree to the
+ * pixel for the offsets a real calibration produces (a degree or two); the
+ * worker's Math.sin and this Taylor series diverge only past the tens of
+ * degrees no lens mount reaches. */
+static double align_sqrt(double v) {
+  if (v <= 0.0) return 0.0;
+  double g = v > 1.0 ? v : 1.0; /* a seed at or above the root, so Newton descends */
+  for (int i = 0; i < 40; i++) g = 0.5 * (g + v / g);
+  return g;
+}
+
+static double align_sin(double rad) {
+  /* Range-reduce into -PI..PI so the series stays accurate; the input is a
+   * small positive angle in practice, but the absurd-offset guard test feeds
+   * 45 degrees and the reduction costs nothing. */
+  const double TWO_PI = 6.283185307179586;
+  const double PI = 3.141592653589793;
+  while (rad > PI) rad -= TWO_PI;
+  while (rad < -PI) rad += TWO_PI;
+  const double x2 = rad * rad;
+  /* Taylor to x^9: within 1e-6 across the whole reduced range. */
+  return rad * (1.0 - x2 / 6.0 * (1.0 - x2 / 20.0 * (1.0 - x2 / 42.0 * (1.0 - x2 / 72.0))));
+}
+
+static double align_abs(double v) { return v < 0.0 ? -v : v; }
+
+static int align_ceil_i(double v) {
+  int i = (int)v;
+  return ((double)i < v) ? i + 1 : i;
+}
+
+static int align_floor_i(double v) {
+  int i = (int)v;
+  return ((double)i > v) ? i - 1 : i;
+}
+
+bool pure_align_has_offset(const pure_cam_offset_t *offsets, int n) {
+  if (offsets == NULL) return false;
+  for (int i = 0; i < n; i++) {
+    if (offsets[i].x != 0.0 || offsets[i].y != 0.0 || offsets[i].rot != 0.0) return true;
+  }
+  return false;
+}
+
+pure_crop_t pure_align_overlap_crop(int w, int h, const pure_cam_offset_t *offsets, int n,
+                                    double scale) {
+  double max_x = 0.0, max_y = 0.0, max_rot = 0.0;
+  for (int i = 0; offsets != NULL && i < n; i++) {
+    const double ax = align_abs(offsets[i].x) * scale;
+    const double ay = align_abs(offsets[i].y) * scale;
+    const double ar = align_abs(offsets[i].rot);
+    if (ax > max_x) max_x = ax;
+    if (ay > max_y) max_y = ay;
+    if (ar > max_rot) max_rot = ar;
+  }
+  /* Rotation sweeps corners by ~sin(rot) x half-diagonal. */
+  const double half_diag = align_sqrt((double)w * w + (double)h * h) / 2.0;
+  const double slack = align_sin(max_rot * 3.141592653589793 / 180.0) * half_diag;
+  const int inset_x = align_ceil_i(max_x + slack) + 2;
+  const int inset_y = align_ceil_i(max_y + slack) + 2;
+  int cw = w - 2 * inset_x;
+  int ch = h - 2 * inset_y;
+  if (cw < 16) cw = 16;
+  if (ch < 16) ch = 16;
+  cw &= ~1;
+  ch &= ~1;
+  pure_crop_t crop = {align_floor_i((double)(w - cw) / 2.0), align_floor_i((double)(h - ch) / 2.0),
+                      cw, ch};
+  return crop;
+}
+
+pure_crop_t pure_align_plan(int src_w, int src_h, const pure_cam_offset_t *offsets, int n,
+                            pure_frame_xform_t *out) {
+  const double scale = (double)src_w / (double)PURE_ALIGN_SENSOR_BASE_W;
+  if (out != NULL) {
+    for (int i = 0; i < n; i++) {
+      out[i].dx = (offsets != NULL) ? offsets[i].x * scale : 0.0;
+      out[i].dy = (offsets != NULL) ? offsets[i].y * scale : 0.0;
+      out[i].rot_deg = (offsets != NULL) ? offsets[i].rot : 0.0;
+    }
+  }
+  return pure_align_overlap_crop(src_w, src_h, offsets, n, scale);
+}

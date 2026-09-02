@@ -492,5 +492,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.20: the photo screen plays a wigglegram (#160), and the bench capture
   // path reaches all four channels (#159, committed unbumped by a concurrent
   // session and carried here). Device-side only, same profile.
-  '0.4.20': 'd4-settings-0-4-9',
+  '0.4.20': 'd4-settings-0-4-9',  // 0.4.21: wiggle playback aligns each frame by its META calibration offset
+  // and crossfades the steps (#161); also repairs #162's build break. Device
+  // side only, same profile.
+  '0.4.21': 'd4-settings-0-4-9',
 };

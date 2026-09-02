@@ -186,6 +186,35 @@ void meta_capture_summary(const void *meta_in, void *out_in) {
                           (cJSON_IsString(st) && st->valuestring) ? st->valuestring : "unknown");
 }
 
+bool meta_read_calibration(const void *meta_in, pure_cam_offset_t *out) {
+  if (out == NULL) return false;
+  for (int i = 0; i < PURE_WIGGLE_FRAMES_MAX; i++) {
+    out[i].x = 0.0;
+    out[i].y = 0.0;
+    out[i].rot = 0.0;
+  }
+  const cJSON *meta = meta_in;
+  const cJSON *cal = meta ? cJSON_GetObjectItem(meta, "calibration") : NULL;
+  const cJSON *cams = cal ? cJSON_GetObjectItem(cal, "cams") : NULL;
+  if (!cJSON_IsObject(cams)) return false;
+
+  /* cam1..cam4, the CamId names the protocol uses (types.ts CAM_IDS), read in
+   * camera order so out[0] is CAM1 - the same order the frames and the wiggle
+   * sequence are in. A camera the block omits keeps its zero. */
+  static const char *const NAMES[PURE_WIGGLE_FRAMES_MAX] = {"cam1", "cam2", "cam3", "cam4"};
+  for (int i = 0; i < PURE_WIGGLE_FRAMES_MAX; i++) {
+    const cJSON *c = cJSON_GetObjectItem(cams, NAMES[i]);
+    if (!cJSON_IsObject(c)) continue;
+    const cJSON *x = cJSON_GetObjectItem(c, "x");
+    const cJSON *y = cJSON_GetObjectItem(c, "y");
+    const cJSON *rot = cJSON_GetObjectItem(c, "rot");
+    if (cJSON_IsNumber(x)) out[i].x = x->valuedouble;
+    if (cJSON_IsNumber(y)) out[i].y = y->valuedouble;
+    if (cJSON_IsNumber(rot)) out[i].rot = rot->valuedouble;
+  }
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Config envelope: deep merge and migration                           */
 /* ------------------------------------------------------------------ */
