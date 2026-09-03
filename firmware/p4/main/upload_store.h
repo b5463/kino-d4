@@ -137,14 +137,35 @@ bool upload_store_load(const char *uuid, rq_job_t *job, bool *valid);
  * Reads only. The caller logs the repair and persists the record.
  */
 /**
- * The Roll named by a META.JSON document. `text` need not be NUL-terminated.
- * Returns true and copies the id when `rollId` is a non-empty string; returns
- * false (and an empty `out`) for null, absent, or unparseable. Pure - this is
- * what the host tests exercise.
+ * What a META.JSON says about the Roll its capture was taken on.
+ *
+ * NONE and UNREADABLE are deliberately different answers. "META names no
+ * Roll" is a fact about the photograph and retires the capture; "META could
+ * not be read" is a fact about this reader and must retire nothing. Collapsing
+ * the two is what parked every four-camera capture on the bench card: their
+ * META is 2.3 KB, the reader's buffer was 2 KB, and a truncated parse answered
+ * "no Roll".
  */
-bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out, size_t cap);
+typedef enum {
+  UPLOAD_META_ROLL_OK = 0,     /* read, and it names a Roll; `out` holds it */
+  UPLOAD_META_ROLL_NONE,       /* read, and it names none - a local photograph */
+  UPLOAD_META_ROLL_UNREADABLE, /* absent, unparseable, larger than the read bound, or an
+                                  id too long for `cap`: no decision is possible */
+} upload_meta_roll_t;
+
+/**
+ * The Roll named by a META.JSON document. `text` need not be NUL-terminated.
+ * Pure - this is what the host tests exercise.
+ */
+upload_meta_roll_t upload_store_meta_roll_from_text(const char *text, size_t len, char *out,
+                                                   size_t cap);
 
 /** Same, from `<uuid>/META.JSON` on the card. */
+upload_meta_roll_t upload_store_meta_roll(const char *uuid, char *out, size_t cap);
+
+/** True only for OK. For callers that need a Roll and treat every other answer
+ * the same way - `upload_queue_enqueue()`, which has no job to retire. */
+bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out, size_t cap);
 bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap);
 
 /** Why a META.JSON frame list could not be used. Values are negative so the

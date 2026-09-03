@@ -402,6 +402,64 @@ rq_reconcile_t rq_reconcile_action(bool has_meta, const char *meta_roll_id, bool
 }
 
 /* ------------------------------------------------------------------ */
+/* Reconciliation coverage                                             */
+/* ------------------------------------------------------------------ */
+
+void rq_scan_init(rq_scan_t *s) {
+  if (s == NULL) return;
+  memset(s, 0, sizeof *s);
+}
+
+uint32_t rq_scan_skip(const rq_scan_t *s) { return s == NULL ? 0u : s->cursor; }
+
+void rq_scan_pass_done(rq_scan_t *s, uint32_t visited, uint32_t unadmitted, bool reached_end) {
+  if (s == NULL) return;
+  s->seen_cycle += unadmitted;
+  if (reached_end) {
+    /* The cycle closed: this is the whole card's answer, and the next pass
+     * starts again from the top. */
+    s->card_pending = s->seen_cycle;
+    s->seen_cycle = 0;
+    s->cursor = 0;
+    s->cycle_complete = true;
+    /* This cycle saw the card as it is now. Anything that changes it again
+     * sets this back. */
+    s->owed = false;
+    return;
+  }
+  s->cursor += visited;
+  s->cycle_complete = false;
+}
+
+void rq_scan_card_changed(rq_scan_t *s) {
+  if (s == NULL) return;
+  /*
+   * A new capture means the answer "the card has been walked end to end and
+   * nothing is owed" is no longer about this card.
+   *
+   * Measured on the bench: 42 captures taken faster than the queue could drain
+   * them, 29 completed, 13 left with work on their records, and the queue
+   * reporting `pending=0 cardPending=0 scanComplete=true`. `cycle_complete`
+   * was sticky - once any cycle had finished it stayed true - and
+   * `rq_scan_more()` was then false, so nothing scheduled the cycle that would
+   * have found them. The flag has to be about the LAST cycle, and a card that
+   * has changed since has not had one.
+   */
+  s->cycle_complete = false;
+  s->owed = true;
+}
+
+bool rq_scan_more(const rq_scan_t *s) {
+  if (s == NULL) return false;
+  /* Mid-cycle: the rest of the card has not been looked at yet. */
+  if (s->cursor > 0) return true;
+  /* A completed cycle that found work the window could not take. */
+  if (s->card_pending > 0) return true;
+  /* Or the card changed after that cycle, so its answer is stale. */
+  return s->owed;
+}
+
+/* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */
 /* ------------------------------------------------------------------ */
 

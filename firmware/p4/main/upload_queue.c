@@ -106,7 +106,11 @@ static TaskHandle_t s_task;
 static bool s_halted;
 static bool s_net_ready; /* last reported can-upload, so the log fires once */
 static bool s_cap_hit;   /* the last scan filled the RAM list and stopped */
-static bool s_rescan;    /* a slot has freed since then — the card holds more */
+static bool s_rescan;    /* a pass is owed now */
+/* Where the next pass starts, and what the last complete cycle found that the
+ * RAM window had no room for. The card is the queue; this is the window's
+ * position on it (#167). */
+static rq_scan_t s_scan;
 static int s_uploaded;
 static char s_last_error[RQ_ERROR_LEN];
 /* Parked captures on the card that are NOT in the RAM list, so
@@ -238,23 +242,41 @@ static bool queue_scan(void) {
   }
 
 
-  int looked_at = 0, added = 0, repaired = 0, parked_off = 0;
-  /* True while the pass is still on course to see every directory on the card.
-   * Only a pass that finishes may replace s_parked_off_list: a partial walk
-   * counts a subset and would report fewer parked captures than there are. */
-  bool whole_card = true;
-  struct dirent *e;
+  int looked_at = 0, added = 0, repaired = 0, parked_off = 0, unadmitted = 0, unreadable = 0,
+      retired = 0, retired_no_roll = 0, unwritten = 0;
+  /*
+   * The pass is a WINDOW on the card, not a prefix of it.
+   *
+   * SCAN_MAX_DIRS bounds the work one pass may do - the card is slow and a
+   * capture must be able to take it back - and rq_scan_skip() says where that
+   * work starts. Without the cursor the bound made every pass examine the same
+   * first 512 directories: with 788 on the card the newest 276 were invisible,
+   * so a capture that missed the RAM window at the shutter was never uploaded,
+   * not by a later pass and not after a reboot (#167).
+   *
+   * `seen` counts capture directories encountered including the skipped ones,
+   * because the cursor is positional. `looked_at` counts the ones this pass
+   * actually examined, which is what the work bound limits and what the cursor
+   * advances by.
+   */
+  const uint32_t skip = rq_scan_skip(&s_scan);
+  uint32_t seen = 0;
+  bool reached_end = false;
+  struct dirent *e = NULL;
+  /* Take the request under the lock rather than clearing it mid-function: an
+   * enqueue that lands while this pass is walking must not have its request
+   * dropped, and the only writer that clears it is this line. */
+  lock();
   s_cap_hit = false;
   s_rescan = false;
-  while ((e = readdir(d)) != NULL && looked_at < SCAN_MAX_DIRS) {
+  unlock();
+  while ((e = readdir(d)) != NULL) {
+    if (!storage_is_capture_dirname(e->d_name)) continue;
+    if (seen++ < skip) continue; /* examined by an earlier pass in this cycle */
+    if (looked_at >= SCAN_MAX_DIRS) break;
     /* Between entries, not inside one: a half-reconciled directory means
      * nothing, and one entry is a stat and a 400-byte read. */
-    if (storage_yield_requested(STORAGE_USER_UPLOAD)) {
-      s_rescan = true;
-      whole_card = false;
-      break;
-    }
-    if (!storage_is_capture_dirname(e->d_name)) continue;
+    if (storage_yield_requested(STORAGE_USER_UPLOAD)) break;
     looked_at++;
 
     /* storage_is_capture_dirname has proved this is 36 characters, but d_name
@@ -274,6 +296,13 @@ static bool queue_scan(void) {
     const rq_reconcile_t action =
         upload_store_inspect_ex(uuid, STORAGE_CAPTURE_FRAMES, &job, &needs_save);
     if (action == RQ_REC_IGNORE) continue;
+    if (action == RQ_REC_UNREADABLE) {
+      /* Left exactly as found, and counted. A card where this is not zero has
+       * captures no pass can decide about, which is worth seeing in the log
+       * rather than inferring from a queue that never drains. */
+      unreadable++;
+      continue;
+    }
     if (action == RQ_REC_REPAIR) {
       repaired++;
       ESP_LOGW(TAG, "rebuilding unreadable UPLOAD.JSON for %.8s", uuid);
@@ -285,9 +314,48 @@ static bool queue_scan(void) {
       klog("SD", "upload record %.8s: cameras %s", uuid,
            job.state == RQ_FAILED ? "unknown, parked" : "recovered from META");
     }
-    /* A record that changed, or that is new, has to land before the queue acts
-     * on it; a write that fails just leaves the directory for the next pass. */
-    if (needs_save && !upload_store_save(&job)) continue;
+    if (action == RQ_REC_RETIRE) {
+      /*
+       * Say which capture, and say why, because nothing else does.
+       *
+       * RETIRE parks the job in RAM with the reason and deliberately leaves
+       * `UPLOAD.JSON` alone, so the only trace of the decision is a number in
+       * `failed`. On a card with a hundred of them that number is unusable: it
+       * cannot separate "these photographs were taken off a Roll" from a
+       * reader that lost their Roll for them, which is exactly the confusion
+       * #168 lived in. Bounded to the first few per pass - the reason repeats,
+       * and a flooded log ring evicts the lines it is read from.
+       */
+      retired++;
+      /* Two classes, and only one of them is interesting. A META naming no
+       * Roll is an old photograph taken off a Roll and there are 166 of them
+       * on the bench card; a META naming a DIFFERENT Roll from the record is a
+       * disagreement worth a line every time. */
+      if (job.last_error[0] != '\0' && strstr(job.last_error, "capture none") != NULL) {
+        retired_no_roll++;
+      } else {
+        klog("SD", "capture %.8s retired: %s", uuid, job.last_error);
+      }
+    }
+
+    /*
+     * A record that changed, or that is new, has to land before the queue acts
+     * on it; a write that fails leaves the directory for the next pass.
+     *
+     * Counted and named, because this was the scan's last silent exit. A
+     * capture that lands here is skipped with no bucket, no count and no log
+     * line, and on a card where the write keeps failing that repeats on every
+     * pass and every boot - a photograph on the card, a record that says
+     * QUEUED, and a queue that says nothing is owed.
+     */
+    if (needs_save && !upload_store_save(&job)) {
+      unwritten++;
+      if (unwritten <= 3) {
+        klog("SD", "capture %.8s: its record could not be rewritten, left for the next pass",
+             uuid);
+      }
+      continue;
+    }
 
     if (job.state == RQ_FAILED) {
       /* Parked, and the list already holds as many parked captures as it
@@ -308,25 +376,43 @@ static bool queue_scan(void) {
     bool room = list_add(&job);
     unlock();
     if (!room) {
-      whole_card = false;
+      /* Nowhere to put it. Counted so the queue can say that durable work is
+       * waiting, and the pass stops here so the cursor resumes on this very
+       * directory once a slot frees. */
+      unadmitted++;
       break;
     }
+    if (added < 6) klog("SD", "queue admitted %.8s as %s", uuid, rq_state_name(job.state));
     added++;
   }
+  /* e is NULL only when readdir ran out, which is the whole card seen. Every
+   * break above leaves it non-NULL. */
+  reached_end = e == NULL;
   closedir(d);
   card_give();
 
-  if (whole_card && looked_at < SCAN_MAX_DIRS) {
-    /* The card is the authority on how many captures are parked. Recomputing
-     * here rather than only accumulating keeps the number from drifting when a
-     * trimmed job is re-read and trimmed again. */
-    lock();
+  lock();
+  rq_scan_pass_done(&s_scan, (uint32_t)looked_at, (uint32_t)unadmitted, reached_end);
+  /* Another pass is owed while the cycle is unfinished or the last complete
+   * cycle found work the window refused. */
+  if (rq_scan_more(&s_scan)) s_rescan = true;
+  if (reached_end) {
+    /* The card is the authority on how many captures are parked. Only a pass
+     * that reached the end may replace the count: a partial walk counts a
+     * subset and would report fewer parked captures than there are. */
     s_parked_off_list = parked_off;
-    unlock();
   }
+  unlock();
 
   if (looked_at > 0) {
-    ESP_LOGI(TAG, "reconcile: %d dirs, %d queued, %d repaired", looked_at, added, repaired);
+    ESP_LOGI(TAG,
+             "reconcile: %d dirs from %u, %d queued, %d repaired, %d unadmitted, %d unreadable, "
+             "%d retired (%d of them taken off any Roll), %d unwritten%s",
+             looked_at, (unsigned)skip, added, repaired, unadmitted, unreadable, retired,
+             retired_no_roll, unwritten, reached_end ? ", card seen" : "");
+  }
+  if (unreadable > 0) {
+    klog("SD", "upload queue: %d captures with an unreadable META, not queued", unreadable);
   }
   if (added > 0 || repaired > 0) {
     klog("SD", "upload queue: %d queued, %d repaired", added, repaired);
@@ -465,6 +551,32 @@ static bool run_one_step(void) {
    * Refused and failed are different and get different waits: busy means
    * someone else is on the card, so come back in a moment; a write that failed
    * means the card is gone or full, which is the full backoff cap. */
+  /*
+   * A settled job leaves the list whatever the card said.
+   *
+   * The drop used to sit after the persist branch below, which returns early
+   * when the write was refused - and a capture holding the card at that moment
+   * is exactly what a shutter three seconds later does. The job then stayed in
+   * the list as COMPLETE for ever: pick_job() skips it, UPLOAD_QUEUE_RETRY
+   * will not revive it, and upload_queue_status() counts it as pending (#166).
+   * Dropping it here costs at most one redundant `complete` call after a
+   * reboot, which the server is idempotent about and which this file already
+   * accepts elsewhere; leaving it costs a queue that never reads zero, which
+   * is also what made #167 hard to see.
+   */
+  if (snapshot.state == RQ_COMPLETE) {
+    lock();
+    const int done_at = relocate_job(idx, snapshot.uuid);
+    if (done_at >= 0) {
+      list_drop(done_at);
+      s_uploaded++;
+      /* A slot has freed: look at the card again rather than waiting for a
+       * reason to. */
+      s_rescan = true;
+    }
+    unlock();
+  }
+
   if (dirty) {
     const bool busy = !card_take();
     const bool wrote = !busy && upload_store_save(&snapshot);
@@ -492,15 +604,6 @@ static bool run_one_step(void) {
   }
 
   lock();
-  int at = relocate_job(idx, snapshot.uuid);
-  if (at >= 0 && s_jobs[at].state == RQ_COMPLETE) {
-    list_drop(at);
-    s_uploaded++;
-    /* The card held more than the RAM list could take and a slot has just
-     * freed. The rescan happens when the worker next runs dry — a directory
-     * scan does not belong between two network steps. */
-    if (s_cap_hit) s_rescan = true;
-  }
   /* Trimmed here and not at the moment of failure, because the FAILED state
    * has to be on the card first: a job dropped from the list before its record
    * was written would come back from the next reconciliation pass as
@@ -686,7 +789,19 @@ esp_err_t upload_queue_enqueue_slots(const char *capture_uuid, const char *roll_
 
   lock();
   esp_err_t err = ESP_OK;
-  if (find_job(job.uuid) < 0 && !list_add(&job)) err = ESP_ERR_NO_MEM;
+  if (find_job(job.uuid) < 0 && !list_add(&job)) {
+    err = ESP_ERR_NO_MEM;
+    /* The record is on the card and the window is full. Ask for a pass rather
+     * than waiting for a reboot: before #167 nothing set this, so the capture
+     * sat un-uploaded until the next boot - and on a card past the old scan
+     * horizon, for ever. */
+    s_rescan = true;
+  }
+  /* Whether or not it was admitted: the card now holds a capture no pass has
+   * seen, so the last cycle's "the whole card is seen and nothing is owed" is
+   * no longer an answer about this card, and a cycle is owed. */
+  rq_scan_card_changed(&s_scan);
+  s_rescan = true;
   unlock();
 
   wake();
@@ -709,6 +824,12 @@ void upload_queue_status(upload_queue_report_t *out) {
    * the card, UPLOAD_QUEUE_RETRY still revives them, and a display that showed
    * four when eight are parked would be reporting the size of a buffer. */
   out->failed += s_parked_off_list;
+  /* Durable work the window has not taken yet, and whether the card has been
+   * seen end to end since boot. `pending` is the active window; these two are
+   * what make "pending 0" mean "nothing left" rather than "nothing loaded"
+   * (#167). */
+  out->card_pending = (int)s_scan.card_pending;
+  out->scan_complete = s_scan.cycle_complete && !rq_scan_more(&s_scan);
   out->uploading = s_active >= 0 ? 1 : 0;
   out->uploaded = s_uploaded;
   out->halted = s_halted;

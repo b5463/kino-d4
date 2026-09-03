@@ -588,6 +588,131 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The card is the queue - 0.4.36, #167 #168 #166, 2026-09-03
+
+KD4-D121BC, one 32 GB card holding 788 capture directories from every bench
+session since 0.4.0, Roll RRG8AZ, four nodes on camnode 0.4.31 (unchanged - no
+node, C6, capture, UART, SYNC or FLASH_EN behaviour is touched by any of this).
+FLASH_EN stays physically disconnected.
+
+**What the queue said before.** `pending=0 uploading=0 uploaded=0 failed=4`,
+and by that reading the camera was done. It was not: capture
+`cf9df964-5691-41e8-bd53-d974397067c9` held a `QUEUED` record with `attempts=0`,
+`frameSlots [1,2,3,4]`, a `META.JSON` naming Roll `roll__Mg6PTKzfodtJ7zxCjBoNA`,
+four frames and a thumb on the card (C1 158,319 B, C4 197,257 B, THUMB 13,548 B,
+sizes matching its own META), and no row in the backend. Two full
+reconciliation cycles and an `UPLOAD_QUEUE_RETRY` left it untouched.
+
+**The prefix (#167).** `queue_scan()` bounded a pass at `SCAN_MAX_DIRS` (512)
+and restarted from `opendir()` every time, so the bound was a prefix of the
+card and the last 276 directories were unreachable - not slow, unreachable.
+With the cursor, one boot's passes read:
+
+```
+reconcile: 512 dirs from 0,   ...
+reconcile: 276 dirs from 512, ..., card seen
+```
+
+512 + 276 = 788. The second line is the region no earlier firmware had ever
+examined.
+
+**What was waiting there (#168).** The first pass over that region reported
+**166 captures retired** for `no Roll provenance: capture none, record
+roll__Mg6PTKzfodtJ7z` - the queue reading their META as naming no Roll while
+their record named one. Their META does name one. The reader that answers that
+question had its own 2048-byte buffer; a four-camera META is 2301 B and a
+three-camera one is 1916 B. `fread` filled the buffer, cJSON refused the
+truncated text, the roll id came back empty, and `rq_reconcile_action()` took
+"empty" for "the photograph was taken off a Roll" and retired it. RETIRE writes
+nothing to the card, so the same wrong decision was taken again on every pass
+and every boot. Three-camera captures fitted the buffer and uploaded, which is
+why this looked like a four-camera transport problem for two firmware versions.
+
+The same card, same directories, with one 4 KB bound for both META readers:
+
+| | 0.4.35 (old reader) | 0.4.36 |
+|---|---|---|
+| retired for no Roll provenance | 166 | 0 |
+| admitted as QUEUED | 0 | 32, then the window was full |
+| admitted as FAILED (parked) | 4 | 0 |
+| unreadable | 0 | 0 |
+
+**A measurement error of my own, recorded because it changed a conclusion.**
+0.4.33, 0.4.34 and 0.4.35 were built with an overlay list that did not include
+`upload_store.c`, so none of those three images carried the reader fix at all,
+and their bench readings describe the old reader. The counts above are the
+first that measure it. The overlay is per-file by design (a peer session shares
+this checkout), which is exactly how a file can be left out of it; the fix is
+to read the build's own `overlay` lines rather than to trust the intent.
+
+**Boot-time budgets on this card, for the record.** The orphan sweep in
+`storage.c` has the same shape of bound as the scan did - `SWEEP_MAX_DIRS` 512
+and a 3 s budget - and reports `capture sweep left 541 dirs for the next boot`,
+so it reaches about 247 directories per boot and successive boots reach further
+in. That is housekeeping and not a photograph at risk, and it is not changed
+here.
+
+**The backlog, uploaded.** With the reader fixed the same card drained without
+an operator touching anything: 32 captures admitted per pass, the RAM window
+draining to 0 and refilling from the cursor, and **166 of 166 uploaded with 0
+failures**. `cardPending` was observed counting down (5, then 0) and
+`scanComplete` went true when the card had been walked end to end with nothing
+owed - which is the reading that used to be indistinguishable from a queue that
+could not see its work. Backend rows 1171 -> 1327, so +156 for 166 completions:
+ten of them were already registered by an earlier attempt and the server is
+idempotent on `captureUuid`, which is the intended outcome and not a loss.
+`cf9df964` finished with a row on Roll `roll__Mg6PTKzfodtJ7zxCjBoNA` carrying
+four originals and one thumb. Internal SRAM held throughout: 60-90 KB free,
+**49 KB minimum**, recovery reserve 2/2, so the #162 headroom is unaffected by
+a 166-capture drain.
+
+**A completed cycle is not a permanent claim.** 42 grouped shutters taken back
+to back, faster than the queue drains: 29 completed, 13 were left with work on
+their records - two read back as `QUEUED` with `attempts=0` and
+`ORIGINALS_UPLOADING` with two of three frames confirmed - and the queue said
+`pending=0 cardPending=0 scanComplete=true`. `cycle_complete` was set by the
+first pass ever to reach the end of the card and never cleared, so
+`rq_scan_more()` answered false and no cycle was scheduled to find them. With
+the flag made per-cycle and every enqueue marking a cycle owed, the same 42
+captures ended **42 of 42 in the backend, three originals each, none missing**,
+found by reconciliation with no manual enqueue. All 42 were three-camera sets:
+one camera was dark for every shot of that burst, which is the hardware fault
+noted below and not a queue result.
+
+**The long offline hold, with the API actually stopped.** 0.4.37, the API
+process killed and its health endpoint refused for the whole run. 42 grouped shutters,
+all 42 accepted and committed to the card, `uploaded=0 failed=0` throughout,
+the RAM window holding 31 and the other ten refused at the shutter with their
+records written - and `scanComplete` reading **false** for the whole hold,
+which is the reading that used to be true. The API returns, and with no manual
+enqueue:
+
+```
+21:19:39  pending=0  uploaded=+32  cardPending=0  scanComplete=false
+21:21:25  pending=9  uploaded=+32  cardPending=0  scanComplete=true
+21:22:28  pending=0  uploaded=+42  cardPending=0  scanComplete=true
+```
+
+The window drains to empty at 32, the queue refuses to call itself done, the
+owed cycle then finds the ten it never held, and only after those upload does
+`scanComplete` and an empty window mean what it says. Backend: **42 of 42
+captures, one Roll, none missing**. Internal SRAM 86 KB free, 54 KB minimum,
+recovery reserve 2/2.
+
+**One camera was dark for the whole burst.** Every one of the 42 sets stored
+three frames, and the backend holds three originals for each. The queue's
+behaviour is correct for a partial set (#164) and that is what is being
+measured here; the missing camera is a hardware incident on the same channel
+that has now failed on the bench several times and it is not diagnosed in this
+session. No sync, ISR or sensor code was touched.
+
+**A settled job leaves the list (#166).** The COMPLETE drop used to sit after
+the record write, which returns early when a capture holds the card - so the
+job stayed in the RAM list as COMPLETE for ever, invisible to `pick_job()`,
+unrevivable by retry, and counted as `pending`. Dropping it when it settles is
+what let `pending` be trusted for the measurements above; without it the 166-
+capture drain could not have been read at all.
+
 ### The sync edge is trustworthy, the phase model is not - 0.4.31, #165, 2026-09-03
 
 Second half of the synchronization baseline: close the edge-integrity question,

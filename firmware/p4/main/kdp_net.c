@@ -148,6 +148,11 @@ static cJSON *queue_object(void) {
   cJSON_AddNumberToObject(o, "uploading", q.uploading);
   cJSON_AddNumberToObject(o, "failed", q.failed);
   cJSON_AddNumberToObject(o, "uploaded", q.uploaded);
+  /* Beyond the Studio interface: `pending` is the bounded active window, and
+   * these two say what the card still holds and whether it has been seen end
+   * to end. A host that only reads `pending` is unchanged (#167). */
+  cJSON_AddNumberToObject(o, "cardPending", q.card_pending);
+  cJSON_AddBoolToObject(o, "scanComplete", q.scan_complete);
   cJSON_AddBoolToObject(o, "draining", q.draining);
   /* Beyond the Studio interface, and deliberately: `halted` is not `failed`.
    * The jobs are fine and the device's credentials are not, and a user who

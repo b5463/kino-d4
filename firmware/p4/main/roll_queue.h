@@ -306,6 +306,16 @@ typedef enum {
   RQ_REC_RESUME,       /* has a job with work left — resume it */
   RQ_REC_REPAIR,       /* record unreadable or from a newer format — rebuild */
   RQ_REC_RETIRE,       /* the record names a Roll the capture never claimed — park it, never upload */
+  /**
+   * META.JSON is there and could not be read, so no decision is possible.
+   *
+   * Never returned by rq_reconcile_action(), which is given what META said;
+   * upload_store_inspect_ex() returns it when the read itself failed. The
+   * caller must leave the directory exactly as it found it and count it: this
+   * is the state that used to masquerade as RETIRE and park a photograph with
+   * a reason that was not true.
+   */
+  RQ_REC_UNREADABLE,
 } rq_reconcile_t;
 
 /**
@@ -353,6 +363,90 @@ void rq_job_boot_resume(rq_job_t *job);
  */
 void rq_job_network_restored(rq_job_t *job);
 
+
+/* ------------------------------------------------------------------ */
+/* Reconciliation coverage                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Where the next reconciliation pass should start, and whether one is owed.
+ *
+ * The card is the durable queue and the RAM list is a bounded window onto it.
+ * A pass therefore has to be able to stop - because the window filled, or
+ * because a capture wanted the card - and the next pass has to carry on rather
+ * than start again at the beginning. Without that, a pass with a work bound is
+ * a pass over a PREFIX of the card: on the bench, 788 capture directories
+ * against a 512-directory bound meant the newest 276 were never examined and a
+ * capture that missed the window at the shutter was never uploaded (#167).
+ *
+ * The cursor is positional - "skip this many capture directories" - and
+ * deliberately not a name or a timestamp:
+ *
+ *   - readdir order is the filesystem's business. FatFs returns directory
+ *     entries in slot order, which is neither creation order nor sorted, and
+ *     nothing in the API promises either. A positional cursor needs only that
+ *     the order be STABLE between two passes, which slot order is for a
+ *     directory nobody is deleting from.
+ *   - when it is not stable - a capture is deleted, or a new one fills a freed
+ *     slot - a positional cursor can skip an entry for one cycle. It cannot
+ *     lose it: the cursor wraps to zero at the end of every walk, so the next
+ *     cycle sees it. "Eventually discoverable" is the promise, and wrapping is
+ *     what keeps it.
+ *
+ * Four integers, so this costs nothing and can be tested on a host.
+ */
+typedef struct {
+  uint32_t cursor;      /* capture directories the next pass skips */
+  uint32_t seen_cycle;  /* eligible-but-unadmitted counted in this cycle so far */
+  uint32_t card_pending;/* the same, from the last cycle that reached the end */
+  bool cycle_complete;  /* the LAST pass reached the end of the directory */
+  /**
+   * A cycle is owed because the card changed under the window.
+   *
+   * Separate from `card_pending` because that is a count and this is not:
+   * a new capture means the last cycle's answer is about a different card,
+   * and inventing a count to say so would put a number in
+   * UPLOAD_QUEUE_STATUS that no pass measured.
+   */
+  bool owed;
+} rq_scan_t;
+
+void rq_scan_init(rq_scan_t *s);
+
+/** Capture directories the next pass must skip before it does any work. */
+uint32_t rq_scan_skip(const rq_scan_t *s);
+
+/**
+ * Book a finished pass.
+ *
+ * `visited`    capture directories examined after the skip.
+ * `unadmitted` of those, the eligible ones the RAM window had no room for.
+ * `reached_end` readdir returned NULL - the walk saw the whole directory.
+ *
+ * A pass that reached the end closes the cycle: the cursor returns to zero and
+ * `card_pending` becomes what that whole cycle found. A pass that stopped early
+ * advances the cursor by what it visited, so the next pass resumes there.
+ */
+void rq_scan_pass_done(rq_scan_t *s, uint32_t visited, uint32_t unadmitted, bool reached_end);
+
+/**
+ * A capture directory has appeared or changed since the last pass.
+ *
+ * Called for every enqueue, successful or refused. Clears `cycle_complete` and
+ * marks a cycle owed, so `scan_complete` cannot answer "the whole card has
+ * been seen and nothing is owed" about a card that has grown since it was
+ * seen. Without this the flag was sticky: on the bench, 42 captures taken
+ * faster than the queue could drain left 13 with work on their records while
+ * the queue reported nothing owed, because no pass was scheduled to find them.
+ */
+void rq_scan_card_changed(rq_scan_t *s);
+
+/**
+ * True when another pass is owed: the cursor is mid-cycle, or the last complete
+ * cycle found eligible work the window could not take. This is the honest
+ * answer to "is there durable work the RAM list is not showing".
+ */
+bool rq_scan_more(const rq_scan_t *s);
 
 /* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */

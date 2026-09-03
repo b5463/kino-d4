@@ -72,6 +72,18 @@ typedef struct {
   int uploading; /* the job the worker is on: 0 or 1 */
   int failed;    /* parked — repeating cannot help until something changes */
   int uploaded;  /* completed since boot */
+  /**
+   * Eligible captures on the card that the bounded RAM window has not admitted
+   * yet, as counted by the last reconciliation cycle that saw the whole card.
+   *
+   * `pending` is the active window and cannot exceed UPLOAD_QUEUE_MAX; this is
+   * the rest of the durable queue. Before #167 there was no such figure and no
+   * way to tell "the queue is empty" from "the queue cannot see the work".
+   */
+  int card_pending;
+  /** True when the card has been walked end to end and nothing is owed - so
+   * `pending == 0 && card_pending == 0 && scan_complete` really is done. */
+  bool scan_complete;
   bool draining; /* the worker is actively working the queue */
   /** True when the queue is stopped on a credential or association fault.
    * Distinct from `failed`: the jobs are fine, the device is not. */

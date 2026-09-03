@@ -252,6 +252,115 @@ static void test_meta_roll_id_from_text(void) {
   CHECK(!upload_store_meta_roll_id_from_text(on, strlen(on), NULL, 0), "NULL out");
 }
 
+/*
+ * "Names no Roll" and "could not be read" are different answers.
+ *
+ * The bench card carried 788 capture directories and every four-camera capture
+ * among them was parked as having no Roll provenance. Their META.JSON is
+ * 2301 B; the roll-id reader's buffer was 2048 B; the truncated text did not
+ * parse; the empty result was read as "META names no Roll" and the photograph
+ * was retired. A three-camera META (1916 B) fitted, which is why it looked
+ * like a four-camera problem in the transport rather than a reader bound.
+ */
+/*
+ * The bytes the bench card holds for capture cf9df964, verbatim apart from the
+ * capture uuid: four cameras, each with its transfer counters, its sync
+ * attribution and its sensor block. 2301 B, which is what the old 2048 B
+ * buffer cut in half of a JSON object.
+ */
+static const char FOUR_CAMERA_META[] =
+      "{\"schema\":\"kino.capture\",\"version\":1,\"id\":\"CAP_000785\",\"captureUuid\":\"3f2b9c11-4d8e-4a71"
+      "-9f02-77c1de40ab55\",\"rollId\":\"roll__Mg6PTKzfodtJ7zxCjBoNA\",\"deviceId\":\"kino-d121bc\",\"mod"
+      "e\":\"quad\",\"capturedAt\":\"2026-09-03T15:45:08+00:00\",\"capturedAtMs\":1788450308395,\"frameCo"
+      "unt\":4,\"resolution\":\"1600x1200\",\"recipeIds\":[\"raw-digi\",\"raw-digi\",\"raw-digi\",\"raw-digi\""
+      "],\"status\":\"complete\",\"visible\":true,\"clockSource\":\"network\",\"triggeredBy\":\"host\",\"timin"
+      "g\":{\"gpioTriggerSkewUs\":null,\"vsyncPhaseSkewUs\":null,\"effectiveExposureSkewUs\":null,\"una"
+      "vailableReason\":\"Nodes capture on command arrival, not on the trigger edge; rolling shut"
+      "ters free-run, so exposure alignment is unmeasured\",\"dispatchSpreadUs\":388,\"probeMs\":0,\""
+      "thumbnailMs\":279,\"metaCommitMs\":0,\"totalMs\":3323},\"frames\":[{\"cam\":\"cam1\",\"file\":\"C1.JPG"
+      "\",\"bytes\":158319,\"crc32\":\"f243bd78\",\"nodeMs\":1,\"transferMs\":1769,\"writeMs\":117,\"fireOffs"
+      "etUs\":1016,\"nodeFbGetUs\":1947,\"nodeFrameStartUs\":2191238083,\"nodeFrameAgeUs\":110553,\"syn"
+      "cClass\":\"ok\",\"syncSeq\":1205,\"syncEdgeUs\":2191346554,\"syncToCmdUs\":2082,\"syncToFrameUs\":-"
+      "108471,\"frameBeforeEdge\":true,\"sensor\":{\"aeLevel\":0,\"denoise\":0,\"sharpness\":1,\"quality\":"
+      "8}},{\"cam\":\"cam2\",\"file\":\"C2.JPG\",\"bytes\":188008,\"crc32\":\"5772b98d\",\"nodeMs\":24,\"transfe"
+      "rMs\":2099,\"writeMs\":105,\"fireOffsetUs\":1284,\"nodeFbGetUs\":24309,\"nodeFrameStartUs\":22007"
+      "93126,\"nodeFrameAgeUs\":88219,\"syncClass\":\"ok\",\"syncSeq\":1205,\"syncEdgeUs\":2200879165,\"sy"
+      "ncToCmdUs\":2180,\"syncToFrameUs\":-86039,\"frameBeforeEdge\":true,\"sensor\":{\"aeLevel\":0,\"den"
+      "oise\":0,\"sharpness\":1,\"quality\":8}},{\"cam\":\"cam3\",\"file\":\"C3.JPG\",\"bytes\":186035,\"crc32\""
+      ":\"c98a0c08\",\"nodeMs\":59,\"transferMs\":2078,\"writeMs\":130,\"fireOffsetUs\":1346,\"nodeFbGetUs"
+      "\":59340,\"nodeFrameStartUs\":2195959513,\"nodeFrameAgeUs\":53057,\"syncClass\":\"ok\",\"syncSeq\":"
+      "1205,\"syncEdgeUs\":2196010254,\"syncToCmdUs\":2316,\"syncToFrameUs\":-50741,\"frameBeforeEdge\""
+      ":true,\"sensor\":{\"aeLevel\":0,\"denoise\":0,\"sharpness\":1,\"quality\":8}},{\"cam\":\"cam4\",\"file\""
+      ":\"C4.JPG\",\"bytes\":197257,\"crc32\":\"7257f020\",\"nodeMs\":47,\"transferMs\":2229,\"writeMs\":136,"
+      "\"fireOffsetUs\":1404,\"nodeFbGetUs\":47459,\"nodeFrameStartUs\":2186516835,\"nodeFrameAgeUs\":6"
+      "4984,\"syncClass\":\"ok\",\"syncSeq\":1205,\"syncEdgeUs\":2186576586,\"syncToCmdUs\":5233,\"syncToF"
+      "rameUs\":-59751,\"frameBeforeEdge\":true,\"sensor\":{\"aeLevel\":0,\"denoise\":0,\"sharpness\":1,\"q"
+      "uality\":8}}]}";
+
+static void test_a_four_camera_meta_is_read_not_retired(void) {
+  const char *meta = FOUR_CAMERA_META;
+  const size_t len = sizeof FOUR_CAMERA_META - 1;
+  CHECK(len > 2048, "the document under test must be past the old 2048 B buffer: %u B",
+        (unsigned)len);
+  CHECK(len < 4096, "and inside the reader's bound: %u B", (unsigned)len);
+
+  char out[64];
+  CHECK(upload_store_meta_roll_from_text(meta, len, out, sizeof out) == UPLOAD_META_ROLL_OK,
+        "a four-camera META names its Roll");
+  CHECK(strcmp(out, "roll__Mg6PTKzfodtJ7zxCjBoNA") == 0, "and the id is exact: %s", out);
+
+  /* Exactly what the old reader handed the parser. */
+  CHECK(upload_store_meta_roll_from_text(meta, 2048, out, sizeof out) ==
+            UPLOAD_META_ROLL_UNREADABLE,
+        "a META cut at 2048 B is UNREADABLE, never NONE");
+  CHECK(out[0] == '\0', "and out is emptied");
+
+  /* Which is the whole point: rq_reconcile_action must not be asked. NONE
+   * retires a capture that has a Roll, and nothing writes that decision to
+   * the card, so it repeats on every boot for ever. */
+  rq_job_t job;
+  rq_job_init_slots(&job, UUID, "roll__Mg6PTKzfodtJ7zxCjBoNA", (const uint8_t[]){1, 2, 3, 4}, 4,
+                    true);
+  CHECK(rq_reconcile_action(true, "", true, true, &job) == RQ_REC_RETIRE,
+        "an empty roll id does retire - which is why the reader must not invent one");
+  CHECK(rq_reconcile_action(true, "roll__Mg6PTKzfodtJ7zxCjBoNA", true, true, &job) ==
+            RQ_REC_RESUME,
+        "and the same capture resumes once its Roll is actually read");
+}
+
+static void test_unreadable_and_none_are_distinct(void) {
+  char out[64];
+  const char *none = "{\"schema\":\"kino.capture\",\"rollId\":null}";
+  CHECK(upload_store_meta_roll_from_text(none, strlen(none), out, sizeof out) ==
+            UPLOAD_META_ROLL_NONE,
+        "a parsed META naming no Roll is NONE");
+  const char *absent = "{\"schema\":\"kino.capture\"}";
+  CHECK(upload_store_meta_roll_from_text(absent, strlen(absent), out, sizeof out) ==
+            UPLOAD_META_ROLL_NONE,
+        "an absent key is NONE");
+  const char *empty = "{\"rollId\":\"\"}";
+  CHECK(upload_store_meta_roll_from_text(empty, strlen(empty), out, sizeof out) ==
+            UPLOAD_META_ROLL_NONE,
+        "an empty string is NONE");
+
+  const char *bad = "{oops";
+  CHECK(upload_store_meta_roll_from_text(bad, strlen(bad), out, sizeof out) ==
+            UPLOAD_META_ROLL_UNREADABLE,
+        "unparseable is UNREADABLE");
+  const char *on = "{\"rollId\":\"roll__Mg6PTKzfodtJ7zxCjBoNA\"}";
+  CHECK(upload_store_meta_roll_from_text(on, strlen(on), out, 8) == UPLOAD_META_ROLL_UNREADABLE,
+        "a Roll id too long for the field is UNREADABLE, not NONE");
+  CHECK(upload_store_meta_roll_from_text(NULL, 0, out, sizeof out) == UPLOAD_META_ROLL_UNREADABLE,
+        "NULL text");
+
+  /* The bool wrapper keeps its old meaning: true only for OK. */
+  CHECK(upload_store_meta_roll_id_from_text(on, strlen(on), out, sizeof out), "wrapper: OK");
+  CHECK(!upload_store_meta_roll_id_from_text(none, strlen(none), out, sizeof out),
+        "wrapper: NONE is false");
+  CHECK(!upload_store_meta_roll_id_from_text(bad, strlen(bad), out, sizeof out),
+        "wrapper: UNREADABLE is false");
+}
+
 /* ------------------------------------------------------------------ */
 /* Format versions                                                     */
 /* ------------------------------------------------------------------ */
@@ -573,6 +682,8 @@ int main(void) {
   test_refuses_null_args();
   test_refusal_means_repair();
   test_meta_roll_id_from_text();
+  test_a_four_camera_meta_is_read_not_retired();
+  test_unreadable_and_none_are_distinct();
 
   test_future_version_is_refused();
 

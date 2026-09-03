@@ -530,4 +530,18 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // beside the accepted one, and sync attribution against the pulses actually
   // fired rather than a bare +1 (#165). Device side only, same profile.
   '0.4.31': 'd4-settings-0-4-9',
+  // 0.4.36: reconciliation is a resumable window on the card rather than a
+  // prefix of it, so a capture past the 512-directory bound is discoverable
+  // (#167); the reader that decides a capture's Roll provenance uses the same
+  // 4 KB bound as the frame-list reader, and an unreadable META is its own
+  // answer rather than "names no Roll", which had retired every four-camera
+  // capture that reached reconciliation (#168); a settled job leaves the RAM
+  // list even when its record write was refused (#166). UPLOAD_QUEUE_STATUS
+  // gains cardPending and scanComplete. Device side only, same profile.
+  '0.4.32': 'd4-settings-0-4-9',
+  '0.4.33': 'd4-settings-0-4-9',
+  '0.4.34': 'd4-settings-0-4-9',
+  '0.4.35': 'd4-settings-0-4-9',
+  '0.4.36': 'd4-settings-0-4-9',
+  '0.4.37': 'd4-settings-0-4-9',
 };

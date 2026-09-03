@@ -32,6 +32,12 @@ static int failures = 0;
     }                                             \
   } while (0)
 
+/* The two bounds the queue really uses. upload_queue.c owns them (it is not
+ * host-compilable), so they are restated here and the values must match:
+ * UPLOAD_QUEUE_MAX 32 and SCAN_MAX_DIRS 512. */
+#define UPLOAD_QUEUE_MAX_TEST 32
+#define SCAN_WORK_TEST 512
+
 static const char *UUID_A = "6f1c6f2a-9b3d-4c1e-8a77-0f2b5d4e1a90";
 
 /* Drive one job to completion the way the upload task would, returning the
@@ -992,7 +998,321 @@ static void test_slot_lists_are_validated(void) {
   CHECK(!rq_job_has_slots(&bare) && bare.frame_count == 2, "and leaves the record as it was");
 }
 
+/* ---- reconciliation coverage (#167) ------------------------------------ */
+
+/*
+ * A card, simulated: `n` capture directories in whatever order readdir gives
+ * them, each either already COMPLETE (the scan ignores it) or eligible work.
+ * A pass skips rq_scan_skip(), examines at most `work` directories, admits
+ * eligible ones while the RAM window has room, and books the result. This is
+ * the exact shape of queue_scan() with the filesystem and FreeRTOS removed.
+ */
+#define FAKE_CARD_MAX 1200
+
+typedef struct {
+  int n;                        /* capture directories on the card */
+  bool eligible[FAKE_CARD_MAX]; /* has work the queue should take */
+  bool admitted[FAKE_CARD_MAX]; /* the queue has it in RAM or has finished it */
+  int window;                   /* RAM slots in use */
+  int window_max;
+  int admits;                   /* admissions ever, to catch a double-admit */
+  int admit_count[FAKE_CARD_MAX];
+} fake_card_t;
+
+/* One pass. Returns the directories visited. */
+static int fake_pass(fake_card_t *c, rq_scan_t *s, int work) {
+  const uint32_t skip = rq_scan_skip(s);
+  int visited = 0, unadmitted = 0;
+  uint32_t seen = 0;
+  bool reached_end = true;
+  for (int i = 0; i < c->n; i++) {
+    if (seen++ < skip) continue; /* the cursor: these were looked at already */
+    if (visited >= work) {
+      reached_end = false; /* the work bound stopped this pass short */
+      break;
+    }
+    visited++;
+    if (!c->eligible[i] || c->admitted[i]) continue;
+    if (c->window >= c->window_max) {
+      unadmitted++;
+      /* queue_scan() stops walking when the window is full: there is nowhere
+       * to put what it finds, and the cursor must resume here. */
+      reached_end = false;
+      break;
+    }
+    c->window++;
+    c->admitted[i] = true;
+    c->admits++;
+    c->admit_count[i]++;
+  }
+  rq_scan_pass_done(s, (uint32_t)visited, (uint32_t)unadmitted, reached_end);
+  return visited;
+}
+
+/* Retire `k` jobs from the window, as uploads completing would. */
+static void fake_retire(fake_card_t *c, int k) {
+  while (k-- > 0 && c->window > 0) c->window--;
+}
+
+/* Drive passes and retirements until nothing is owed, bounded so a policy that
+ * cannot converge fails the test instead of hanging it. */
+static int fake_drain(fake_card_t *c, rq_scan_t *s, int work, int retire_per_round, int max_rounds) {
+  int rounds = 0;
+  for (; rounds < max_rounds; rounds++) {
+    int pending_before = 0;
+    for (int i = 0; i < c->n; i++) {
+      if (c->eligible[i] && !c->admitted[i]) pending_before++;
+    }
+    if (pending_before == 0 && !rq_scan_more(s)) break;
+    fake_pass(c, s, work);
+    fake_retire(c, retire_per_round);
+  }
+  return rounds;
+}
+
+static int fake_unadmitted(const fake_card_t *c) {
+  int n = 0;
+  for (int i = 0; i < c->n; i++) {
+    if (c->eligible[i] && !c->admitted[i]) n++;
+  }
+  return n;
+}
+
+/* A card of `n` directories where `eligible_from`.. are eligible. */
+static void fake_init(fake_card_t *c, int n, int window_max) {
+  memset(c, 0, sizeof *c);
+  c->n = n;
+  c->window_max = window_max;
+}
+
+static void test_scan_cursor_basics(void) {
+  rq_scan_t s;
+  rq_scan_init(&s);
+  CHECK(rq_scan_skip(&s) == 0, "a fresh cursor skips nothing");
+  CHECK(!rq_scan_more(&s), "and owes no pass");
+
+  /* A pass that stopped short advances the cursor and owes another. */
+  rq_scan_pass_done(&s, 512, 0, false);
+  CHECK(rq_scan_skip(&s) == 512, "the next pass resumes at 512, got %u", rq_scan_skip(&s));
+  CHECK(rq_scan_more(&s), "mid-cycle owes another pass");
+
+  /* Reaching the end closes the cycle and wraps. */
+  rq_scan_pass_done(&s, 276, 0, true);
+  CHECK(rq_scan_skip(&s) == 0, "the cycle wrapped, got %u", rq_scan_skip(&s));
+  CHECK(!rq_scan_more(&s), "a complete cycle that found nothing owes nothing");
+  CHECK(s.cycle_complete, "and says it completed");
+
+  /* A complete cycle that found work the window could not take still owes. */
+  rq_scan_init(&s);
+  rq_scan_pass_done(&s, 100, 3, true);
+  CHECK(s.card_pending == 3, "card_pending is the cycle's count, got %u", s.card_pending);
+  CHECK(rq_scan_more(&s), "work the window refused is still owed");
+
+  /* Unadmitted counts accumulate across the passes of one cycle. */
+  rq_scan_init(&s);
+  rq_scan_pass_done(&s, 50, 2, false);
+  rq_scan_pass_done(&s, 50, 1, false);
+  CHECK(s.card_pending == 0, "an unfinished cycle has published nothing yet");
+  rq_scan_pass_done(&s, 10, 4, true);
+  CHECK(s.card_pending == 7, "the whole cycle's count is 2+1+4, got %u", s.card_pending);
+
+  rq_scan_init(NULL);
+  CHECK(rq_scan_skip(NULL) == 0 && !rq_scan_more(NULL), "NULL is answered, not crashed");
+}
+
+static void test_scan_finds_work_past_the_window(void) {
+  /* A..C of the matrix: the RAM window is 32, and 31, 32 and 33 pending
+   * captures must all be discovered - the 33rd once a slot frees. */
+  const int counts[] = {31, 32, 33};
+  for (unsigned k = 0; k < sizeof counts / sizeof counts[0]; k++) {
+    fake_card_t c;
+    rq_scan_t s;
+    fake_init(&c, counts[k], UPLOAD_QUEUE_MAX_TEST);
+    rq_scan_init(&s);
+    for (int i = 0; i < c.n; i++) c.eligible[i] = true;
+    /* No retirement at first: the window fills and stays full. */
+    fake_pass(&c, &s, SCAN_WORK_TEST);
+    const int admitted_first = c.admits;
+    CHECK(admitted_first == (counts[k] < UPLOAD_QUEUE_MAX_TEST ? counts[k] : UPLOAD_QUEUE_MAX_TEST),
+          "%d pending: the first pass admits what fits (%d)", counts[k], admitted_first);
+    if (counts[k] > UPLOAD_QUEUE_MAX_TEST) {
+      CHECK(rq_scan_more(&s), "%d pending: more is owed", counts[k]);
+      CHECK(fake_unadmitted(&c) == counts[k] - UPLOAD_QUEUE_MAX_TEST,
+            "%d pending: the rest waits", counts[k]);
+    }
+    /* Now let jobs retire, as uploads completing would. */
+    const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 8, 400);
+    CHECK(fake_unadmitted(&c) == 0, "%d pending: every one discovered (%d left after %d rounds)",
+          counts[k], fake_unadmitted(&c), rounds);
+    for (int i = 0; i < c.n; i++) {
+      CHECK(c.admit_count[i] <= 1, "%d pending: directory %d admitted once, not %d times",
+            counts[k], i, c.admit_count[i]);
+    }
+  }
+}
+
+static void test_scan_has_no_directory_ceiling(void) {
+  /*
+   * D..H of the matrix, and the defect itself. The bench card held 788 capture
+   * directories against a 512-directory work bound, and the pending capture was
+   * the NEWEST - so a prefix scan never reached it however often it ran (#167).
+   * Every size here puts the only eligible capture last.
+   */
+  const int sizes[] = {511, 512, 513, 788, 1000, 1199};
+  for (unsigned k = 0; k < sizeof sizes / sizeof sizes[0]; k++) {
+    fake_card_t c;
+    rq_scan_t s;
+    fake_init(&c, sizes[k], UPLOAD_QUEUE_MAX_TEST);
+    rq_scan_init(&s);
+    c.eligible[sizes[k] - 1] = true; /* the last directory, past any prefix */
+    const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 8, 400);
+    CHECK(c.admitted[sizes[k] - 1],
+          "%d directories: the last one is found (took %d rounds)", sizes[k], rounds);
+    CHECK(c.admit_count[sizes[k] - 1] == 1, "%d directories: found exactly once", sizes[k]);
+  }
+}
+
+static void test_scan_is_fair_across_the_card(void) {
+  /* I and R: eligible captures early, middle and late are all discovered, and
+   * repeated drains do not starve any position. */
+  fake_card_t c;
+  rq_scan_t s;
+  fake_init(&c, 900, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(&s);
+  const int marks[] = {0, 1, 250, 449, 450, 511, 512, 513, 700, 898, 899};
+  for (unsigned i = 0; i < sizeof marks / sizeof marks[0]; i++) c.eligible[marks[i]] = true;
+  const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 4, 600);
+  CHECK(fake_unadmitted(&c) == 0, "every position discovered (%d left, %d rounds)",
+        fake_unadmitted(&c), rounds);
+  for (unsigned i = 0; i < sizeof marks / sizeof marks[0]; i++) {
+    CHECK(c.admit_count[marks[i]] == 1, "directory %d admitted exactly once", marks[i]);
+  }
+}
+
+static void test_scan_complete_records_do_not_monopolise(void) {
+  /* L: a card that is almost all COMPLETE still reaches its one piece of work.
+   * This is the bench card: 787 finished captures and one that never uploaded. */
+  fake_card_t c;
+  rq_scan_t s;
+  fake_init(&c, 788, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(&s);
+  c.eligible[787] = true;
+  int passes = 0;
+  while (!c.admitted[787] && passes < 100) {
+    fake_pass(&c, &s, SCAN_WORK_TEST);
+    passes++;
+  }
+  CHECK(c.admitted[787], "the one eligible capture among 787 complete ones is found");
+  CHECK(passes <= 3, "and within a cycle of passes, not eventually-forever: %d", passes);
+}
+
+static void test_scan_resumes_after_interruption(void) {
+  /* Q: a pass abandoned part-way (a capture wanted the card) resumes where it
+   * stopped rather than starting again, and skips nothing. */
+  fake_card_t c;
+  rq_scan_t s;
+  fake_init(&c, 700, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(&s);
+  for (int i = 600; i < 700; i++) c.eligible[i] = true;
+  /* Tiny work bounds, as if every pass were cut short after 40 directories. */
+  const int rounds = fake_drain(&c, &s, 40, 8, 2000);
+  CHECK(fake_unadmitted(&c) == 0, "interrupted passes still cover the card (%d left, %d rounds)",
+        fake_unadmitted(&c), rounds);
+}
+
+static void test_scan_survives_a_reboot(void) {
+  /* K: the cursor is RAM state and a reboot loses it. That must cost coverage
+   * of nothing - a fresh cursor starts at zero and the cycle still reaches the
+   * end of the card. */
+  fake_card_t c;
+  rq_scan_t s;
+  fake_init(&c, 788, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(&s);
+  c.eligible[787] = true;
+  fake_pass(&c, &s, SCAN_WORK_TEST); /* one pass, then "reboot" */
+  CHECK(!c.admitted[787], "the first bounded pass has not reached the end yet");
+  rq_scan_init(&s);                  /* the reboot */
+  const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 8, 400);
+  CHECK(c.admitted[787], "after the reboot it is still discovered (%d rounds)", rounds);
+}
+
+/*
+ * A completed cycle is an answer about the card it walked.
+ *
+ * Bench, 2026-09-03: 42 captures taken faster than the queue could drain them.
+ * 29 completed, 13 were left with work on their records, and the queue
+ * reported `pending=0 cardPending=0 scanComplete=true` - because
+ * `cycle_complete` was sticky, `rq_scan_more()` was therefore false, and no
+ * pass was ever scheduled to find them. The flag has to be about the LAST
+ * cycle, and a card that has grown since has not had one.
+ */
+static void test_a_new_capture_reopens_the_cycle(void) {
+  fake_card_t c;
+  rq_scan_t s;
+  fake_init(&c, 40, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(&s);
+
+  /* Walk a card with nothing owed: the cycle closes and says so. */
+  fake_pass(&c, &s, SCAN_WORK_TEST);
+  CHECK(s.cycle_complete, "a pass that reached the end closes the cycle");
+  CHECK(!rq_scan_more(&s), "and with nothing unadmitted, nothing is owed");
+  CHECK(s.card_pending == 0, "card_pending is 0");
+
+  /* A shutter. The window took it or it did not; either way the card changed. */
+  rq_scan_card_changed(&s);
+  CHECK(!s.cycle_complete, "the last cycle is no longer an answer about this card");
+  CHECK(rq_scan_more(&s), "so a cycle is owed");
+  CHECK(s.card_pending == 0, "and no count is invented to say so");
+
+  /* The cycle that follows closes it again, honestly. */
+  c.eligible[39] = true;
+  const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 8, 200);
+  CHECK(c.admitted[39], "the new capture is discovered (%d rounds)", rounds);
+  CHECK(s.cycle_complete && !rq_scan_more(&s), "and only then does nothing-owed return");
+}
+
+/* The same, with the window full at the shutter: the capture is refused, the
+ * cycle is owed, and it is found once a slot frees. This is the 42-into-32
+ * case, which is the one that stranded thirteen photographs. */
+static void test_a_refused_capture_is_still_owed(void) {
+  fake_card_t c;
+  rq_scan_t s;
+  fake_init(&c, 60, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(&s);
+  fake_pass(&c, &s, SCAN_WORK_TEST);
+  CHECK(!rq_scan_more(&s), "settled to nothing owed first");
+
+  /* Ten shutters land while the window is full of jobs that have not drained. */
+  c.window = c.window_max;
+  for (int i = 50; i < 60; i++) {
+    c.eligible[i] = true;
+    rq_scan_card_changed(&s);
+  }
+  fake_pass(&c, &s, SCAN_WORK_TEST); /* a pass that can admit nothing */
+  CHECK(rq_scan_more(&s), "a cycle is owed while the window cannot take them");
+
+  /* The window drains. Nothing else prompts the queue. */
+  c.window = 0;
+  const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 8, 400);
+  int found = 0;
+  for (int i = 50; i < 60; i++) {
+    if (c.admitted[i]) found++;
+  }
+  CHECK(found == 10, "all ten refused captures are discovered, %d found in %d rounds", found,
+        rounds);
+  CHECK(s.cycle_complete && !rq_scan_more(&s), "and the queue may then say nothing is owed");
+}
+
 int main(void) {
+  test_a_new_capture_reopens_the_cycle();
+  test_a_refused_capture_is_still_owed();
+  test_scan_cursor_basics();
+  test_scan_finds_work_past_the_window();
+  test_scan_has_no_directory_ceiling();
+  test_scan_is_fair_across_the_card();
+  test_scan_complete_records_do_not_monopolise();
+  test_scan_resumes_after_interruption();
+  test_scan_survives_a_reboot();
   test_backoff();
   test_classify();
   test_order_is_thumb_first();

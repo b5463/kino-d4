@@ -370,35 +370,68 @@ bool upload_store_load(const char *uuid, rq_job_t *job, bool *valid) {
   return true;
 }
 
-bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out, size_t cap) {
+upload_meta_roll_t upload_store_meta_roll_from_text(const char *text, size_t len, char *out,
+                                                   size_t cap) {
   if (out != NULL && cap > 0) out[0] = '\0';
-  if (text == NULL || out == NULL || cap == 0) return false;
+  if (text == NULL || out == NULL || cap == 0) return UPLOAD_META_ROLL_UNREADABLE;
   cJSON *doc = cJSON_ParseWithLength(text, len);
-  if (doc == NULL) return false;
+  /* Not "names no Roll": text this function could not parse says nothing at
+   * all about the capture's provenance, and answering NONE here is what
+   * retired every four-camera capture on the card. */
+  if (doc == NULL) return UPLOAD_META_ROLL_UNREADABLE;
   const cJSON *v = cJSON_GetObjectItem(doc, "rollId");
-  bool ok = false;
-  if (cJSON_IsString(v) && v->valuestring != NULL && v->valuestring[0] != '\0' &&
-      strlen(v->valuestring) < cap) {
-    snprintf(out, cap, "%s", v->valuestring);
-    ok = true;
+  upload_meta_roll_t r = UPLOAD_META_ROLL_NONE;
+  if (cJSON_IsString(v) && v->valuestring != NULL && v->valuestring[0] != '\0') {
+    if (strlen(v->valuestring) < cap) {
+      snprintf(out, cap, "%s", v->valuestring);
+      r = UPLOAD_META_ROLL_OK;
+    } else {
+      /* A Roll id longer than the field. Refused whole rather than truncated:
+       * a shortened id compares unequal to the record's and would retire the
+       * capture for a mismatch this reader invented. */
+      r = UPLOAD_META_ROLL_UNREADABLE;
+    }
   }
   cJSON_Delete(doc);
-  return ok;
+  return r;
 }
 
-bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap) {
+bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out, size_t cap) {
+  return upload_store_meta_roll_from_text(text, len, out, cap) == UPLOAD_META_ROLL_OK;
+}
+
+upload_meta_roll_t upload_store_meta_roll(const char *uuid, char *out, size_t cap) {
   if (out != NULL && cap > 0) out[0] = '\0';
-  if (uuid == NULL || out == NULL) return false;
+  if (uuid == NULL || out == NULL || cap == 0) return UPLOAD_META_ROLL_UNREADABLE;
   char path[96];
   upload_store_path(uuid, "META.JSON", path, sizeof path);
   FILE *f = fopen(path, "rb");
-  if (f == NULL) return false;
-  /* META.JSON is a few hundred bytes; the frames array is the only part that
-   * grows, and eight frames stay well inside this. */
-  static char buf[2048];
+  if (f == NULL) return UPLOAD_META_ROLL_UNREADABLE;
+  /*
+   * The same bound the frame-list reader uses, and for the same reason.
+   *
+   * This read had its own 2048-byte buffer, which a three-camera META (1.9 KB
+   * on the bench card) fits and a four-camera one (2.3 KB) does not. fread
+   * filled the buffer, cJSON refused the truncated text, the roll id came back
+   * empty, and rq_reconcile_action read that as "META names no Roll" and
+   * retired the capture. Every four-camera capture that reached reconciliation
+   * was parked with a reason that was not true, and no count said so.
+   *
+   * So: one bound for both readers, and a full buffer is now UNREADABLE rather
+   * than parsed. Eight cameras will not fit 4 KB either - that needs a larger
+   * bound or a streaming read, and it is now a reported condition instead of a
+   * silent one.
+   */
+  static char buf[META_READ_MAX];
   const size_t n = fread(buf, 1, sizeof buf, f);
+  const int io_err = ferror(f);
   fclose(f);
-  return upload_store_meta_roll_id_from_text(buf, n, out, cap);
+  if (io_err || n == 0 || n == sizeof buf) return UPLOAD_META_ROLL_UNREADABLE;
+  return upload_store_meta_roll_from_text(buf, n, out, cap);
+}
+
+bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap) {
+  return upload_store_meta_roll(uuid, out, cap) == UPLOAD_META_ROLL_OK;
 }
 
 /* Park `job` with `why`, so the queue status and GET_LOGS say what stopped it.
@@ -430,7 +463,15 @@ rq_reconcile_t upload_store_inspect_ex(const char *uuid, int max_frames, rq_job_
 
   const bool has_meta = upload_store_has_file(uuid, "META.JSON");
   char meta_roll[RQ_CAPTURE_ID_LEN] = "";
-  if (has_meta) (void)upload_store_meta_roll_id(uuid, meta_roll, sizeof meta_roll);
+  if (has_meta) {
+    /* An unreadable META is not a verdict on the photograph. Answering here
+     * rather than passing an empty roll id down keeps rq_reconcile_action from
+     * being asked a question it has no evidence for - and its answer, RETIRE,
+     * is unrecoverable without an operator. */
+    if (upload_store_meta_roll(uuid, meta_roll, sizeof meta_roll) == UPLOAD_META_ROLL_UNREADABLE) {
+      return RQ_REC_UNREADABLE;
+    }
+  }
 
   rq_job_t loaded;
   bool valid = false;
