@@ -791,6 +791,16 @@ That is a measurement, not a guess to make now.
 
 ## V2: align the phase once, on the edge that is already wired
 
+> **Mechanism revised.** This section proposed reaching the sensor over SCCB
+> from the sync ISR, because at the time the only known controls were
+> `0x3008`'s reset and standby bits. The V2-A audit below found that the
+> OV3660 has a dedicated frame-sync input (`FSIN`, pin E3, enabled by
+> `0x3835[0]`), which does the same job by design and takes the SCCB write
+> out of the critical path. The sequence and the skew reasoning here still
+> stand as the fallback if FSIN turns out to be unreachable on the module;
+> read them together with "The OV3660 has a frame-sync input" at the end of
+> this document.
+
 With rate drift measured at 1.6 ppm, the V2 problem is not "hold the sensors
 together" but "put them together once". That changes the recommendation from a
 board change to a firmware mechanism on hardware that already exists.
@@ -990,3 +1000,165 @@ deliberately untouched through the current work, and it wants its own bench run
 (finder idle, 100 captures, expect `frameBeforeEdge` to go from 98% to 0% and
 per-set total to rise by about a frame period). It is a correctness fix rather
 than a synchronization one, and it does not depend on any V2 decision.
+
+## V2-A: the sensor restart audit, against the datasheet
+
+Source: *OV3660 color CMOS QSXGA (3 megapixel) image sensor with OmniBSI
+technology*, PRELIMINARY SPECIFICATION version 1.3, 05.13.2011, OmniVision.
+Obtained for this audit; proprietary, so it is cited by section and not
+committed.
+
+### What 0x3008 actually is
+
+The register table (section 2.9, table 2-6) and the pinned driver's
+`ov3660_regs.h` agree:
+
+```
+0x3008  SYSTEM CTROL0  default 0x02  RW
+        Bit[7]: Software reset
+        Bit[6]: Software power down
+        Bit[5]: Reserved
+        Bit[4]: SRB clock SYNC enable
+        Bit[3]: Isolation suspend select
+        Bit[2:0]: Not used
+```
+
+The **default is 0x02**, so the correct writes are `0x42` to enter software
+power down and `0x02` to leave it - not `0x40` and `0x00`. The driver's
+`reset()` writing `0x82` is bit 7 over that same default, which is consistent.
+
+### The two suspend modes, and why the difference decides this gate
+
+Section 2.6, verbatim:
+
+> **2.6.1 hardware standby** - To initiate a hardware standby, the PWDN pin
+> (pin F6) must be tied to high. When this occurs, the OV3660 internal device
+> clock is halted and **all internal counters are reset** and registers are
+> maintained. Majority of the digital circuitry will remain in the power-cut
+> state.
+>
+> **2.6.2 software standby** - Executing a software standby through the SCCB
+> interface suspends internal circuit activity but does not halt the device
+> clock. **All register content is maintained in standby mode.**
+
+So software standby is documented to be cheap and to preserve configuration -
+both properties this experiment wanted. It is **not** documented to reset the
+internal counters, and the datasheet states counter reset only for *hardware*
+standby. Since re-phasing the frame timing is the entire purpose of the
+primitive, its central property is unsupported, and the asymmetry between those
+two paragraphs is evidence against it rather than mere silence.
+
+Section 2.5 also corrects a figure this study has been quoting: a software reset
+via `0x3008[7]` "clears all registers and resets them to their default values"
+and "requires ~2ms settling time". The >200 ms cost is the esp32-camera driver's
+own choice - two 100 ms delays plus a full `sensor_default_regs` reload - not a
+sensor requirement. Reset still destroys configuration, so it remains unusable
+as a phase primitive whatever it costs.
+
+### Verdict
+
+**V2-A SENSOR RESTART NOT PROVEN.** The register and the bit are authoritative;
+the re-phasing behaviour is not documented, so nothing was written to any
+sensor. Missing documentation, precisely: whether `0x3008[6]` entry and exit
+reset the frame timing counters, what the minimum standby dwell is, how many
+frames the stream takes to resume, and whether AE and AWB re-converge. None of
+that is in the datasheet, the pinned driver, or this repository. It is
+answerable only by measurement - and the mechanism below makes that measurement
+unnecessary.
+
+## The OV3660 has a frame-sync input, and that changes the V2 mechanism
+
+Found in the same audit and not previously known to this project.
+
+### The evidence
+
+- **Pin E3 is `FSIN`, "frame sync", I/O** (section 1, table 1-1 signal
+  descriptions, and block diagram figure 2-1, where FSIN enters the "timing
+  generator and system control logic" alongside XVCLK, RESETB and PWDN).
+- Table 1-2, configuration under various conditions: FSIN is **"input by
+  default (configurable)"** after reset release.
+- Direction: `0x3016 PAD OUTPUT ENABLE 00`, default `0x22`, "Bit[2]: FSIN
+  output enable (0: input; 1: output)". The default leaves bit 2 clear, so
+  **FSIN is an input out of reset**.
+- Function (section 7, table 7-8 timing control registers):
+
+```
+0x3835  TIMING TC REG35  0x00  RW   Bit[1]: FSIN reverse
+                                    Bit[0]: FSIN enable
+0x3836  TIMING TC REG36  0x00  RW   Bit[3:0]: FSIN output width
+```
+
+`0x3835[0]` enables it and `0x3835[1]` selects polarity. `0x3836` giving an
+FSIN **output** width, together with `0x3016[2]` selecting output, means the
+part can also *drive* FSIN - so a master/slave chain of sensors is a documented
+configuration, not only a slave-to-external-signal one.
+
+### Why this is the right mechanism
+
+It is purpose-built for what V2 needs: an external edge that aligns the
+sensor's frame timing.
+
+| mechanism | aligns phase | keeps config | cost | documented |
+|---|---|---|---|---|
+| `0x3008[7]` software reset | probably, via full reset | **no** | ~2 ms per datasheet, >200 ms as the driver does it | yes |
+| `0x3008[6]` software standby | **not documented** | yes | cheap | partly |
+| **FSIN + `0x3835[0]`** | **yes, by design** | yes | one edge | **yes** |
+
+And the edge already exists: `SYNC_OUT` on P4 GPIO32 / JP1 pin 19, fanned to
+all four nodes, measured at 1000/1000 accepted with zero rejected. The
+distribution network for four-sensor frame sync is built and proven. What is
+missing is the last few centimetres to each sensor's FSIN pad.
+
+### The one blocking question, and it is hardware
+
+**Is FSIN routed to the camera module's FPC?** Unresolved, and it decides
+everything:
+
+- The standard 24-pin DVP camera FPC carries power, SCCB, XVCLK, PCLK, VSYNC,
+  HREF, D[9:2], PWDN and RESETB. **FSIN is not normally among them**, and it is
+  not in this repository's own DVP record either - `docs/HARDWARE.md` and
+  `packages/hardware-profiles/src/profiles/d4-v1.json` record
+  `"interface": "DVP"` with no per-signal list.
+- The datasheet's reference schematic (figure 2-2) does bring FSIN out as a net
+  at the sensor, so whether it reaches the connector was decided by whoever
+  designed the XIAO Sense camera module, not by OmniVision.
+- Seeed publishes no FPC signal list that resolves it.
+
+The next action is therefore a **physical check on one camera module**:
+continuity from the sensor's E3 pad to the FPC, or the module vendor's
+schematic. Three outcomes:
+
+1. **FSIN is on the FPC** - V2 needs four short wires from JP1 pin 19 and two
+   register writes per node. No board respin, no clock work, and `SYNC_OUT`
+   keeps its measuring role exactly as the V2 sketch wanted.
+2. **FSIN is not on the FPC but is accessible on the module** - fine-pitch
+   rework on four modules. Unattractive but bounded.
+3. **FSIN is unreachable** - then the sensor carrier is the thing to change,
+   and that is the point at which a custom board is justified. A shared XCLK
+   comes along for free on such a board, which is the right time to take it
+   rather than now.
+
+What this does not change: PWDN is also unavailable today (`pin_pwdn = -1`),
+and hardware standby is the only documented way to reset the counters short of
+a full reset. **If the module exposes PWDN on the FPC but not FSIN, hardware
+standby becomes a second candidate worth measuring** - it halts the clock,
+resets the counters and keeps the registers, which is exactly the primitive
+V2-A went looking for and did not find in software.
+
+### SCCB, from configuration rather than estimate
+
+- Bus clock **100 kHz**: `CONFIG_SCCB_CLK_FREQ=100000`, read from the node's
+  own resolved `sdkconfig` and `build/config/sdkconfig.h`, not from the Kconfig
+  default. The Kconfig range allows up to 400 kHz.
+- A register write is 16-bit addressed - device address, register high,
+  register low, data: four bytes, 36 bit-times plus start and stop, so **about
+  380 us at 100 kHz** and about 95 us at 400 kHz.
+- Each node drives its **own** I2C controller (`sccb.c`, one port per node's
+  ESP32-S3), so four nodes' writes are genuinely parallel and are not
+  serialised through the P4. That was the property the common-edge architecture
+  needed, and it holds.
+
+That 380 us matters for a corrected reason. With FSIN the SCCB write is
+*setup* - done once, well before the edge - and the edge itself carries the
+timing. The write leaves the critical path entirely, which is why FSIN is a
+better architecture and not merely a different one.
