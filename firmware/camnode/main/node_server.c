@@ -425,22 +425,43 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   const int64_t cmd_us = esp_timer_get_time();
   camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
   /*
-   * A photograph must be encoded wholly under the settings that were just
-   * applied. The sensor encodes while it free-runs, so the frame in flight
-   * when NL_CMD_SENSOR rewrote quality has its bottom quantised under the
-   * wrong tables (bench CAP_000611/612: valid EOI, matching CRC, bottom 15%
-   * noise). discard_queued above cannot help - it drains what is FINISHED,
-   * and the damaged frame finishes after the drain. So: any frame armed
-   * before the last encoding change is released and the next one taken.
-   * Bounded at 3, which is one in practice (the in-flight frame); each retry
-   * costs one frame period and only follows an actual settings change, so a
-   * burst at a fixed look pays nothing. Previews skip this on purpose - one
-   * soft frame is invisible at finder rates, and blocking the finder a frame
-   * period per quality flip would halve it.
+   * A photograph must be armed AFTER the command that asked for it, and encoded
+   * wholly under the settings that were just applied. One predicate, two
+   * reasons, because the remedy for both is the same: release the frame and
+   * take the next one.
+   *
+   * The encoding half: the sensor encodes while it free-runs, so the frame in
+   * flight when NL_CMD_SENSOR rewrote quality has its bottom quantised under
+   * the wrong tables (bench CAP_000611/612: valid EOI, matching CRC, bottom
+   * 15% noise). discard_queued above cannot help - it drains what is FINISHED,
+   * and the damaged frame finishes after the drain.
+   *
+   * The freshness half, added after the 0.4.37 sync baseline measured it: with
+   * the live viewfinder running, 0 of 397 frames started before their own
+   * shutter's sync edge; with the finder idle, 385 of 393 did. The sensor
+   * streams unconditionally either way, so what differs is whether the P4's
+   * preview pump has drained the one-deep frame queue by shutter time. When it
+   * has not, discard_queued() drops the finished frame and the next one to
+   * complete was ALREADY IN FLIGHT when the discard ran - armed before the
+   * command, and by up to a frame period. One discard is one frame short of a
+   * guarantee, and the missing drain was being supplied, incidentally, by
+   * whether a UI happened to be asking for previews. That is not a property to
+   * rest a photograph on, so the requirement moves here where it can be stated:
+   * the frame must have been armed after cmd_us.
+   *
+   * Cost is paid only when it is owed. Finder live: the queue was already empty,
+   * the first frame is fresh, no retry. Finder idle: one extra frame period
+   * (~112 ms), which is what it costs to photograph the moment asked for
+   * instead of the one before it. Bounded at 3 as before, so a sensor that
+   * never produces a fresh frame fails rather than blocking the node. Previews
+   * still skip the whole thing on purpose - a preview frame a hundred
+   * milliseconds old is what a viewfinder shows anyway.
    */
   if (!preview) {
+    const int64_t encoding_us = camsensor_encoding_changed_us();
+    const int64_t must_start_after = encoding_us > cmd_us ? encoding_us : cmd_us;
     for (int retry = 0; retry < 3 && fb != NULL &&
-                        timing.frame_start_us <= camsensor_encoding_changed_us();
+                        timing.frame_start_us <= must_start_after;
          retry++) {
       camsensor_release(fb);
       fb = camsensor_capture(&duration_ms, &timing);

@@ -17,13 +17,62 @@ series on that channel and only a physical swap separates them:
 | D | the camera ribbon |
 | E | the connector and wiring between P4 and node |
 
+
+## Reprioritised, 2026-09-03: power comes first, and CAM1 is now the worse channel
+
+Read the node reset counters before doing anything else in this document. On
+2026-09-03, before any node was reflashed:
+
+| cam | node session | reset reason |
+|---|---|---|
+| **cam1** | **boot-85** | **power-on** |
+| cam2 | boot-15 | usb |
+| cam3 | boot-16 | usb |
+| cam4 | boot-11 | usb |
+
+Same image, same uptime, same number of bench flashes. CAM1 has taken about
+seventy more power-on resets than its siblings, which is a **power integrity**
+fault on that channel and is a different and more serious failure than CAM3's
+load-dependent `shortRead` excess. CAM3's counter is normal, so CAM3 is not
+power-cycling.
+
+**So the order changes:**
+
+### TEST 0 — CAM1 power path, before anything else
+
+Reseat CAM1's USB feed and its JP1 supply and ground. Change nothing else. Then
+`cam_reliability.ps1 -Config 'C1-power-reseat'` and, separately, read the node
+session counter again after an hour of streaming: it should not advance at all.
+
+- Counter stops advancing → the reseat fixed it; confirm over a longer soak.
+- Counter keeps advancing → substitute that node's power path (different USB
+  port and cable, then a different JP1 run) one change at a time.
+
+A reset counter differential of 85 against 11 is diagnosable by substitution in
+one step, and it should be closed before any timing or reliability measurement
+is trusted: while CAM1 was wedged, the other three channels accumulated
+`shortRead` drops fast, and with CAM1 healthy a 122 s window measured zero
+drops of any kind on all four. **One wedged channel contaminates the whole
+bank**, so every configuration in this document must be run with all four
+channels healthy or the comparison means nothing.
+
+### Then the CAM3 sequence below
+
+Unchanged, and note the control condition is now camnode **0.4.38** on all
+four rather than 0.4.31 - identical across the four, which is what the matrix
+needs.
+
 ## The rules
 
 - **One variable per configuration.** A swap that moves two things measures
   nothing.
-- **Do not flash a node to test hardware.** All four are on camnode 0.4.31 and
-  that is the control. If a node must be reflashed for an unrelated reason, the
-  configuration before and after are not comparable and both need a run.
+- **Do not flash a node to test hardware.** All four are on camnode **0.4.38**
+  and that is the control. If a node must be reflashed for an unrelated reason,
+  the configuration before and after are not comparable and both need a run.
+- **All four channels must be healthy for a run to count.** Measured: while one
+  channel was wedged the other three accumulated drops fast, and with it back a
+  122 s window gave zero drops on all four. Check `online` and the node session
+  counters before starting, not after.
 - **Never open a node's USB serial port.** On the XIAO's native USB CDC the
   host's line-state change at open resets the part; that already happened once
   on this bench and reset three nodes. Diagnose through the P4.

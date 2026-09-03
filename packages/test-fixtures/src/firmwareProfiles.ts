@@ -544,4 +544,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.35': 'd4-settings-0-4-9',
   '0.4.36': 'd4-settings-0-4-9',
   '0.4.37': 'd4-settings-0-4-9',
+  // 0.4.38: camnode only - a photograph must be armed after the command that
+  // asked for it, not merely after the last encoding change, so freshness no
+  // longer depends on whether a UI happens to be draining the preview queue.
+  // No KDP, settings or protocol change.
+  '0.4.38': 'd4-settings-0-4-9',
 };

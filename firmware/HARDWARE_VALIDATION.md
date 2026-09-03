@@ -588,6 +588,118 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### A photograph is armed after the command that asked for it - camnode 0.4.38, 2026-09-04
+
+The freshness gap recorded in `SYNC_FEASIBILITY.md` closed in the node's own
+capture predicate. One line of condition, no new state, no protocol change.
+
+`node_server.c` already released and re-took any frame armed before the last
+encoding change, bounded at three retries. The reference instant now also
+includes the command:
+
+```c
+const int64_t encoding_us = camsensor_encoding_changed_us();
+const int64_t must_start_after = encoding_us > cmd_us ? encoding_us : cmd_us;
+```
+
+so freshness is a property of the capture path rather than a side effect of
+whether a UI happens to be draining the node's one-deep preview queue.
+
+**Finder-live regression run**, 100 grouped captures, all four nodes on 0.4.38,
+against the 0.4.37 finder-live baseline of the same size:
+
+| | 0.4.37 | 0.4.38 |
+|---|---|---|
+| sets accepted | 100 of 100 | 100 of 100 |
+| sets with four frames | 99 | **100** |
+| frames carrying an error | 1 (cam3) | **none** |
+| **frameBeforeEdge** | 0 of 397 | **0 of 396** |
+| per-set totalMs, median | 3,994 | **3,257** |
+| per-set totalMs, p95 | 4,426 | 3,379 |
+| dispatch spread, median / max | 212 / 412 us | 167 / 380 us |
+| frame-start spread, median | 42.0 ms | 37.6 ms |
+
+The predicate **never fired**, which is the intended result in this condition:
+the preview pump had already drained the queue, so the first frame was already
+armed after the command. Per-set time did not rise - it fell by about 740 ms,
+which is the burst running without the one dropped frame and the one refused
+camera the 0.4.37 run carried, not an effect of this change. Frame-start spread
+is unchanged in distribution; it is dominated by random sensor phase and this
+change does not touch that.
+
+Node health across the run: no reset on any node (session counters 87/17/18/13
+unchanged start to end), heap 7,242 KB unchanged on all four, sensors detected
+throughout. P4: 88 KB internal free, 28 KB minimum, reserve 2/2, no reset,
+`transportErrors=0`, `reconnects=0`. Queue took the 100 new captures and
+reported `scanComplete=false` while they drained, as #167 requires.
+
+**Half proven, and the other half needs one touch on the device.** The
+finder-idle case - where 385 of 393 frames started before their own shutter
+edge on 0.4.37 - cannot be produced from the bench: `ui.c` calls
+`viewfinder_run(s_screen == SCR_SHOOT)`, so the preview pump runs exactly while
+the body is on the SHOOT screen and nothing over KDP changes that. With the
+body on any other screen, re-run
+
+```powershell
+& fresh38.ps1 -Scenario 'fresh38idle' -Shots 100
+```
+
+and `frameBeforeEdge` should read 0 where 0.4.37 read 98%, with per-set time
+about one frame period (~112 ms) higher because the retry now fires. That is
+the number this fix exists to move, and it is the one still owed.
+
+### CAM1's node has power-cycled 85 times; the others 11 to 16 - 0.4.37, #159, 2026-09-03
+
+The number that names the fault. Read from `GET_CAMERA_INFO`'s per-camera
+`node` object immediately before the 0.4.38 node flash, with nothing having
+been written to any node in this session:
+
+| cam | node session | node reset reason | uartErrors | latency ms |
+|---|---|---|---|---|
+| **cam1** | **boot-85** | **power-on** | 847 | 52 |
+| cam2 | boot-15 | usb | 703 | 6 |
+| cam3 | boot-16 | usb | 923 | 49 |
+| cam4 | boot-11 | usb | 444 | 44 |
+
+Every node runs the same image from the same build, has been powered for the
+same time and been flashed the same number of times by this bench. CAM1 has
+taken roughly seventy more resets than its siblings, and its reason is
+`ESP_RST_POWERON` - the node maps `ESP_RST_BROWNOUT` to "brownout" separately
+(`node_server.c:74`), so this is not the brownout detector firing: the rail
+went below the power-on-reset threshold and came back.
+
+**This is the mechanism behind the operator's original report** of CAM3
+"shutting down and disconnecting" and behind tonight's CAM1 outage. It is a
+node **power integrity** fault - a marginal supply or connector on that
+channel - and not a sensor, ribbon or UART-signal fault.
+
+**It also clears CAM3 of this particular charge.** CAM3's node is on boot-16,
+beside cam2's 15 and cam4's 11. CAM3 is not power-cycling abnormally; its
+load-dependent `shortRead` excess is a separate and much milder problem, still
+unresolved.
+
+**The outage, in sequence.** CAM1 read `online=False state=offline
+sensorDetected=False` with its preview counter frozen at 46,518 for at least
+nine minutes, while the link layer stayed alive (rx creeping, timeouts
+climbing, `crcErrors=2` - the first CRC on any channel). Its boot reason at
+that point was still `usb`. It then recovered by itself, and the reason had
+changed to `power-on`: the node power-cycled to escape the wedge rather than
+being recovered. While it was wedged the other three channels accumulated
+`shortRead` drops fast (cam2 53 -> 529, cam3 297 -> 708, cam4 94 -> 177); once
+CAM1 was back, a 122 s window measured **zero** drops of any kind on all four
+at about 1,400 preview frames each. So **one wedged channel degrades the whole
+preview bank**, which matters for every future measurement: a run taken while
+any channel is down is contaminated.
+
+The P4 was healthy throughout - 88 KB internal free, 28 KB minimum, reserve
+2/2, no reset, `transportErrors=0`, `reconnects=0` - so this is not P4 supply
+or P4 software.
+
+**Next action is hands-on and it is first in the swap matrix now:** CAM1's
+power path. Its USB feed and its JP1 supply and ground, reseated and then
+measured over a soak. A reset counter differential of 85 against 11 is
+diagnosable by substitution in one step.
+
 ### CAM1 went offline after 2.6 hours of streaming - 0.4.37, #159, 2026-09-03
 
 Recorded because it happened while nothing was being written to any node, and
