@@ -1024,8 +1024,18 @@ abort/assert, every allocation checked) closed the indirect surface: the
 nvs_flash_init aborts in app_main degrade, hwv marks reach NVS only from
 kdp_server's known-good stack, a JSON depth prescan fronts every untrusted
 parse, the node's JPEG size is bounded above, and the main and event task
-stacks are raised. Preview shortRead with four cameras remains to be read
-on the SHOOT screen with the same counters.
+stacks are raised.
+
+Soak, 2026-09-03 03:56-05:06, on 0.4.29 (516cfa8, which carries all of the
+above): 120 CAMERA_CAPTURE requests 30 s apart, 120 complete, 0 partial,
+0 chunk retries. Internal heap 91 KB free before and 88 KB after with the
+boot minimum unchanged at 46 KB, so nothing leaks per capture; ui passes
+165,058 -> 198,747, never stalled. The viewfinder counters read before the
+soak, after 4,112 s of uptime with the SHOOT screen up for part of it:
+cam1 12,678 frames, shortRead 7 (0.06%), oversize 5, noLink 3, decode 0;
+cam2 12,747 frames, shortRead not captured by the read, oversize 5. Against
+the 3% (591 of 19,011) that opened #158, the threshold closes the preview
+loss too. Still unexplained on #158: cam1's lower preview rate.
 
 ### The way the clip does it - hard cuts, 10 fps, continuous, 0.4.23, 2026-09-02
 
