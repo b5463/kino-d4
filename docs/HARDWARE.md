@@ -215,7 +215,7 @@ KDP keeps three values separate:
 2. `vsyncPhaseSkewUs`: sensor frame-phase separation.
 3. `effectiveExposureSkewUs`: the best measurement or estimate of scene exposure separation.
 
-The 100 to 400 µs figure is a trigger-distribution target. It is not a guaranteed exposure result. Firmware returns `null` and a reason when a timing value cannot be measured. Studio must preserve that uncertainty.
+The 100 to 400 µs figure is a trigger-distribution target. It is not a guaranteed exposure result. It was met on hardware on 2026-09-03 (the four nodes act on their commands within 129 µs of each other), and the other two targets - frame-start spread and effective exposure spread - are stated with their measured values in `firmware/SYNC_FEASIBILITY.md`, "Synchronization targets". Firmware returns `null` and a reason when a timing value cannot be measured. Studio must preserve that uncertainty.
 
 Host-side grading for effective exposure spread uses these bands:
 

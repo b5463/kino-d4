@@ -763,21 +763,30 @@ pure_crop_t pure_align_plan(int src_w, int src_h, const pure_cam_offset_t *offse
 
 /**
  * Whether a node's CAPTURE reply can be attributed to THIS shutter's SYNC_OUT
- * pulse. By generation, never by timestamp proximity: the node counts rising
- * edges since its boot and reports the count with every reply; one grouped
- * shutter is one pulse, so the count must be exactly one more than the node's
- * previous reply to us. The edge must also precede the command (a negative
- * sync_to_cmd_us is a pulse that arrived after the command was already being
- * acted on) and precede it recently - PURE_SYNC_EDGE_WINDOW_US - or it is an
- * old pulse the node is still reporting.
+ * pulse. By generation, never by timestamp proximity: the node counts accepted
+ * rising edges since its boot and reports the count with every reply, and the
+ * P4 knows how many pulses it has fired since that node last answered. The
+ * node's counter must have advanced by exactly that many - `expected`.
+ *
+ * `expected` is 1 for a camera that answered the previous shutter and n for a
+ * camera that was offline or silent for n-1 shutters in between: it still saw
+ * those pulses, it just had no reply to book them against. Requiring a bare +1
+ * called four such frames stale in the 2026-09-03 baseline when nothing was
+ * wrong with the wire (#165 edge audit).
+ *
+ * The edge must also precede the command (a negative sync_to_cmd_us is a pulse
+ * that arrived after the command was already being acted on) and precede it
+ * recently - PURE_SYNC_EDGE_WINDOW_US - or it is an old pulse the node is
+ * still reporting.
  *
  *   PURE_SYNC_NONE              no edge reported (older node, no sync wire)
  *   PURE_SYNC_OK                counter +1, edge in window: this shutter's edge
  *   PURE_SYNC_UNVERIFIED        edge in window but the P4 has no previous count
  *                               for this node (first reply since P4 boot, or
  *                               after a node reboot re-based the count)
- *   PURE_SYNC_STALE_GENERATION  counter did not move by one, or edge too old /
- *                               after the command: NOT this shutter's edge
+ *   PURE_SYNC_STALE_GENERATION  the counter did not move by `expected`, or the
+ *                               edge is too old or after the command: not a
+ *                               measurement of this shutter's pulse
  *
  * A bench averages OK only. UNVERIFIED is real data with an unproven
  * generation; STALE_GENERATION is a wiring or pulse fault to report.
@@ -794,7 +803,8 @@ typedef enum {
  * same channel up to 300 ms, a sensor apply a few hundred more. Two seconds. */
 #define PURE_SYNC_EDGE_WINDOW_US 2000000LL
 
-int pure_sync_classify(uint32_t last_seq, uint32_t seq, bool has_edge, int64_t sync_to_cmd_us);
+int pure_sync_classify(uint32_t last_seq, uint32_t seq, uint32_t expected, bool has_edge,
+                       int64_t sync_to_cmd_us);
 
 /** "none" | "ok" | "unverified" | "stale-generation". */
 const char *pure_sync_class_name(int cls);

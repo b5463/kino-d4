@@ -588,6 +588,224 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The sync edge is trustworthy, the phase model is not - 0.4.31, #165, 2026-09-03
+
+Second half of the synchronization baseline: close the edge-integrity question,
+write the target down, and only then decide whether a phase-aware capture is
+worth building. The answer to the last one turned out to be no, on the
+evidence, and that is the useful result.
+
+**Edge integrity, and it was two different faults.** The baseline refused nine
+of 557 attributed frames as `stale-generation`. Differencing every camera's
+counter across the measured shutters separates them:
+
+| | frames | what it was |
+|---|---|---|
+| bookkeeping | 4 | each followed a shutter in which that camera was offline. It saw that pulse; it simply had no reply to book it against, so its counter advanced by two while the P4 demanded one. Nothing wrong with the wire. |
+| extra edges | 5 | counter advanced by 2, 2, 2, 4 and 6 with no shutter skipped, on cam4 (three) and cam2 (two). The line produced more rising edges than pulses. |
+| missed edges | **0** | in 733 opportunities, no node ever failed to see a pulse. |
+
+The first is now impossible to misreport: `pure_sync_classify` takes the number
+of pulses actually fired since that camera last answered, so a camera that sat
+out a shutter is held to +2 and not to +1 (host-tested, including the
+CAP_000263-shaped case). The second is bounded by a 10 ms dead time in the
+node's ISR - fifty times the 200 us pulse and five hundred times any ringing,
+and two pulses can never legitimately be that close - with the **raw** edge
+count kept beside the accepted one so ringing stays visible rather than being
+filtered into silence.
+
+**The 1000-pulse edge soak.** `SYNC_BENCH` (0x46, allocated since the protocol
+was written and unimplemented until now) fires pulses with no camera attached
+and holds every node to one accepted edge per pulse, polling all four after
+every pulse so a bad pulse is reported by index. Ten calls of 100 pulses at a
+100 ms cadence:
+
+| camera | accepted | raw | rejected by dead time | polled missed | polled extra | edge timestamps monotonic |
+|---|---|---|---|---|---|---|
+| cam1 | 1000/1000 | 1000 | 0 | 0 | 0 | yes |
+| cam2 | 1000/1000 | 1000 | 0 | 0 | 0 | yes |
+| cam3 | 1000/1000 | 1000 | 0 | 0 | 0 | yes |
+| cam4 | 1000/1000 | 1000 | 0 | 0 | 0 | yes |
+
+**On an idle board the fan-out is electrically clean** - the dead time absorbed
+nothing because there was nothing to absorb. So the extra edges were not in the
+pulse train: they arrived during grouped captures, when four UARTs at 921600
+baud, the card, the display and an upload are all switching. Under that load on
+0.4.31: 100 grouped shutters, **zero `stale-generation` in 397 frames**,
+against six in the same-sized 0.4.30 run. Edge integrity: **SYNC REFERENCE
+CLEAN.**
+
+**Per-node frame period.** From `fbGetUs` on trustworthy frames, median per
+node: cam1 112,378 us, cam2 112,353, cam3 112,365, cam4 112,422. **70 us apart
+across the four**, each node's own p5-p95 spread 300-560 us. The sensors run at
+the same rate to one part in 1,600; the slow phase rotation seen in the
+baseline is not explained by period differences (70 us per period is 3.7 ms
+over a 6 s shutter interval, and the observed phase movement is 17-19 ms).
+
+**Replay, before touching capture timing.** Two error terms, separated by
+reducing each set modulo the sensor's own period:
+
+- **Boundary index.** In 32 of 91 baseline sets a camera returned a frame one
+  whole period later than the others. Removing it takes the median from
+  46,633 us to 20,747 us and p95 from 105,656 to 52,752.
+- **Inter-sensor phase.** What is left: median 20,747 us, p95 52,752 us, max
+  54,642 us - a roughly uniform spread over half a period. No command timing
+  removes this while the sensor decides when its own frame starts.
+
+Then the model itself, replayed against the measured data:
+
+| replay | median | p95 | max |
+|---|---|---|---|
+| measured, as taken | 46,633 | 105,656 | 109,703 |
+| whole-period alignment with **perfect** knowledge of this shutter (upper bound) | 20,797 | 52,579 | 54,469 |
+| **causal**: phase predicted from the previous shutter, which is what firmware could actually do | 56,378 | 112,266 | 112,356 |
+
+The causal replay is **worse than doing nothing**, and the reason is measurable:
+a camera's phase at the pulse moves by 16,823-18,872 us median between
+consecutive shutters and by up to half a period at p95. Phase history does not
+predict phase. Per the gate this work was given - implement only if the replay
+is promising - **no phase-aware scheduler was written.** The upper bound needs
+the phase of the shutter being taken, which means either a round trip per
+camera immediately before dispatch or the reserved `NL_CMD_ARM` with the node
+holding its buffer, and neither is justified by a bound of one halving.
+
+**Priming, measured rather than assumed.** 50 pairs, interleaved inside one run
+so the comparison cannot drift: a prime shutter, then the measured one
+immediately after.
+
+| mode | n | min | median | p95 | p99 | max |
+|---|---|---|---|---|---|---|
+| baseline, 6 s cadence | 96 | 59,015 | 85,918 | 99,830 | 100,695 | 100,952 |
+| prime shutter (first of each pair) | 50 | 57,785 | 58,812 | 102,462 | 103,473 | 103,473 |
+| primed shutter (second of each pair) | 50 | 57,646 | 58,842 | 102,646 | 102,794 | 102,794 |
+
+**Priming does nothing**: 58,812 against 58,842 us median over 50 pairs, a
+30 us difference. The gap between the single-shutter run and the paired runs
+(85,918 against 58,812) is larger than the effect under test and is not
+explained by priming, since it applies equally to the un-primed member of each
+pair. The methodological lesson is recorded with the number: any future timing
+intervention must be A/B interleaved inside one run, as this one was, because
+run-to-run variation swamps it.
+
+**And a confounder in my own baseline, found by the same comparison.** The
+0.4.30 run and these 0.4.31 runs are not comparable, because the display was on
+a different screen. With the live viewfinder running (0.4.30 idle run, boot-119)
+the node takes the shutter command 18,553 us after the pulse and always returns
+a fresh frame - `fbGetUs` 112.4 ms on all 391 frames, `frameAgeUs` negative on
+every one. With the finder idle (0.4.31 runs, boot-121, zero preview frames all
+boot) the command arrives in 2,086 us and the returned frame has usually
+**already started**: `frameAgeUs` positive on 394 of 397 frames, so the
+photograph is of a moment up to a frame period *before* the shutter. The finder
+also aligns the boundary index - all four cameras on the same boundary in 65%
+of sets with it live against **0%** without.
+
+That makes the live finder the only intervention measured tonight that improves
+alignment, and it is the state a photograph is normally taken from (the
+viewfinder follows the SHOOT screen; `CAMERA_PREVIEW` 0x34 is not implemented,
+so it cannot be driven over the link). The like-for-like 0.4.31 run in that
+state is not taken yet and needs an operator at the screen; until it is, the
+comparison table above stands only for the finder-idle state.
+
+**Images.** camnode 0.4.31 `kino-camnode.bin` 401,936 B, SHA-256
+`5fae081912b5d45ffc32012e7d3a545f92d14e6b48d301c4cad327d76c5a36e2`, on all four
+XIAOs; P4 bench `kino-p4.bin` 1,552,608 B, SHA-256
+`382a6ca48747ccaa93a766ef8b3277c06f100f2c57ada5a49c678a5fedd5e079`; default and
+radio-without-bench also build. Host suites: pure 1,789 checks, all fourteen
+green.
+
+**Resources.** Internal free 94 -> 91 KB across the 100-shutter run, minimum
+84 -> 56 KB, largest DMA 31 KB, reserve 2/2, `recoveryReady` true throughout;
+`transportErrors` 0; no panic, no SD error. The new telemetry is four bytes of
+state per camera on the P4 and two counters per node. #162's layout is
+untouched.
+
+**Two upload defects found by shooting 400 captures in an afternoon, both
+filed, neither a synchronization change.** #166: a COMPLETE job whose record
+write was refused stays in the RAM list and is counted as `pending` for ever
+(display only, self-heals at boot). #167 is more serious: a capture taken while
+the 32-entry RAM list is full is written durably and then **never uploaded**,
+because `queue_scan()` stops at 512 directories and this card holds 788, so the
+newest folders are never examined - not by a rescan and not at boot. Photographs
+are safe on the card; they never reach the Roll, and the queue reports
+`pending=0` as though there were nothing left. The offline-hold invariant
+therefore holds as proven for captures that reach the queue (20 held with the
+API down and 20 uploaded automatically on its return, same UUIDs, same Roll,
+`frameSlots 1/2/3/4`, one backend row each) and fails for captures taken past
+the list's capacity.
+
+## Synchronization targets
+
+Written 2026-09-03, after the first four-camera measurement (#165). Three
+quantities, three targets, three states of validation. They are not
+interchangeable and a number from one must never be reported against
+another's target.
+
+`packages/kdp/src/protocol/timing.ts` is normative for the vocabulary and for
+the exposure bands; this section adds the frame-start row, which nothing in the
+repository had defined, and records what has been measured against each.
+
+| | quantity | target | authority | measured |
+|---|---|---|---|---|
+| **A** | **Trigger distribution** - when the shared `SYNC_OUT` edge reaches each node | 100-400 us | `docs/HARDWARE.md` | **met**: the four nodes act on their commands within **129 us** of each other, and the P4's own dispatch spread is 161 us median, 443 us worst of 100 (#165 baseline) |
+| **B** | **Frame-start spread** - when each sensor's returned frame began its readout, against the common edge | **proposed below, not yet accepted** | this section | 46.6 ms median, 105.7 ms p95, 109.7 ms max idle; 20.8 ms median once the whole-frame offset is removed (#165) |
+| **C** | **Effective exposure spread** - when the scene was actually recorded, rolling shutter included | < 0.5 ms excellent, < 1 ms very good, < 2 ms usable, 2-5 ms visible on fast subjects, 5-10 ms motion contaminated, **> 10 ms not a synchronized capture** | `gradeSkew()` in `timing.ts`, "the V1 product targets" | **unmeasured and unmeasurable with the present instruments** - no VSYNC observation, no optical common-event rig; `kino.capture`'s three skews stay null with their reason |
+
+### Why B needs its own target
+
+Frame start is the closest quantity this firmware can observe. It is not
+exposure: `camera_fb_t.timestamp` is the instant DMA was armed for a frame,
+the rolling shutter then integrates each row in turn, and the relationship
+between the two is not measured. B is therefore a *proxy* target - useful
+because it is measurable today and because it bounds C from below (exposure
+cannot be better aligned than frame start), and dangerous if anyone reports it
+as C.
+
+### The proposal for B
+
+Two error terms were separated in the baseline and they behave differently:
+
+- **Boundary-index error.** In 32 of 91 four-camera sets, at least one camera
+  returned a frame one whole 112.4 ms period later than the others. Remove it
+  and the median falls from 46.6 ms to 20.8 ms. It is a scheduling artefact:
+  the four commands arrive at slightly different points in four independent
+  frame cycles, so some cameras catch boundary *k* and others *k+1*.
+- **Inter-sensor phase.** With the boundary index removed, the four sensors'
+  frame phases still differ by **20.8 ms median, 52.6 ms p95, 54.5 ms max** -
+  roughly a uniform spread over half a period. This is what four free-running
+  oscillators do, and no command timing can remove it while the sensor decides
+  when its own frame starts.
+
+Proposed, for acceptance:
+
+> **B1 (achievable with command timing alone):** frame-start spread median
+> <= 25 ms and p95 <= 55 ms on four cameras, idle. This is the boundary-index
+> error removed and nothing else. It is not a synchronization claim; it is
+> "no camera is a whole frame out".
+>
+> **B2 (requires controlling the sensor's frame start):** frame-start spread
+> p95 <= 10 ms, which is the point at which C could plausibly enter
+> `gradeSkew`'s "motion contaminated" band rather than "not a synchronized
+> capture". Not reachable by software timing on this architecture.
+
+B1 is a housekeeping target. B2 is the product one, and the measurement says
+plainly that it needs either OV3660 frame-timing register control or a body
+whose sensors can be externally triggered - the D3 and D4 rungs of the
+roadmap's escalation ladder, not the D1/D2 rungs.
+
+### What this means for the V1 claim
+
+`gradeSkew()` calls anything above 10 ms "not a synchronized capture", and the
+measured inter-sensor phase spread is 20.8 ms median and 52.6 ms p95 before
+exposure timing is even considered. **On free-running OV3660s at 112.4 ms per
+frame, the V1 exposure target is not reachable, and no amount of command-side
+scheduling changes that.** The roadmap's Gate C asked exactly this question -
+"if that interval is 30 ms the product works; if it is 200 ms the product as
+conceived does not exist on this architecture" - and the answer for D4-V1 is
+that the interval is 112 ms and the residual spread is a fifth to a half of it.
+
+That is a hardware-and-driver conclusion, reached with the instrument built in
+0.4.30/0.4.31 and stated here so no later work quietly re-scopes it.
+
 ### Synchronization baseline - the common edge is measured, nothing is tuned - 0.4.30, #165, 2026-09-03
 
 **Soak consumed first (transport endurance, 0.4.29).** 03:56-05:06, 120

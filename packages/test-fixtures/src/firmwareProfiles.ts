@@ -525,4 +525,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // carry syncSeq, syncEdgeUs, syncToFrameUs, syncClass - measurement only,
   // nothing in the sensor path changes (#165). Device side only, same profile.
   '0.4.30': 'd4-settings-0-4-9',
+  // 0.4.31: SYNC_BENCH (0x46) implemented as the edge-integrity instrument, a
+  // 10 ms dead time on the node's sync input with the raw edge count kept
+  // beside the accepted one, and sync attribution against the pulses actually
+  // fired rather than a bare +1 (#165). Device side only, same profile.
+  '0.4.31': 'd4-settings-0-4-9',
 };

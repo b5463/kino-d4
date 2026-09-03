@@ -526,6 +526,36 @@ esp_err_t camlink_ping_ch(int cam, uint32_t *rtt_ms) {
 
 esp_err_t camlink_ping(uint32_t *rtt_ms) { return camlink_ping_ch(0, rtt_ms); }
 
+esp_err_t camlink_sync_ch(int cam, camlink_sync_t *out) {
+  if (out == NULL) return ESP_ERR_INVALID_ARG;
+  memset(out, 0, sizeof *out);
+  if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
+  uint8_t resp[512];
+  size_t len = 0;
+  esp_err_t err = request(cam, NL_CMD_STATUS, NULL, resp, sizeof resp - 1, &len,
+                          DEFAULT_TIMEOUT_MS);
+  if (err != ESP_OK) return err;
+  resp[len] = '\0';
+  cJSON *json = cJSON_Parse((const char *)resp);
+  if (json == NULL) return ESP_ERR_INVALID_RESPONSE;
+  const cJSON *seq = cJSON_GetObjectItem(json, "syncSeq");
+  const cJSON *raw = cJSON_GetObjectItem(json, "syncRawEdges");
+  if (cJSON_IsNumber(seq) && cJSON_IsNumber(raw)) {
+    out->present = true;
+    out->seq = (uint32_t)seq->valuedouble;
+    out->raw = (uint32_t)raw->valuedouble;
+    const cJSON *rej = cJSON_GetObjectItem(json, "syncRejected");
+    if (cJSON_IsNumber(rej)) out->rejected = (uint32_t)rej->valuedouble;
+    const cJSON *dt = cJSON_GetObjectItem(json, "syncDeadtimeUs");
+    if (cJSON_IsNumber(dt)) out->deadtime_us = (uint32_t)dt->valuedouble;
+    const cJSON *edge = cJSON_GetObjectItem(json, "syncEdgeUs");
+    if (cJSON_IsNumber(edge)) out->edge_us = (int64_t)edge->valuedouble;
+    out->input_ready = cJSON_IsTrue(cJSON_GetObjectItem(json, "syncInput"));
+  }
+  cJSON_Delete(json);
+  return ESP_OK;
+}
+
 esp_err_t camlink_capture_ch(int cam, const char *resolution, int jpeg_quality,
                              uint32_t timeout_ms, camlink_capture_result_t *out) {
   if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;

@@ -2896,6 +2896,149 @@ static void handle_c6_reset_bench(uint32_t seq) {
   send_json(KDP_CMD_C6_RESET_BENCH, seq, json);
 }
 
+/*
+ * SYNC_BENCH (0x46): the edge-integrity instrument.
+ *
+ * Fires N SYNC_OUT pulses with nothing else attached - no camera is asked for
+ * a frame, nothing is stored - and holds every node to exactly one accepted
+ * edge per pulse. The counters come from the nodes themselves over
+ * NL_CMD_STATUS: `seq` is edges the node accepted, `raw` every rising edge its
+ * pin produced, `rejected` those its dead time refused. A miss and a duplicate
+ * are therefore distinguishable rather than both reading as "wrong count":
+ *
+ *   accepted delta  < pulses  ->  the node missed pulses
+ *   accepted delta  > pulses  ->  extra edges got through the dead time
+ *   raw delta       > pulses  ->  the line rang; the filter absorbed it
+ *
+ * With `poll` (the default) every node is read after every pulse, so the first
+ * bad pulse is reported by index instead of only as a total. That costs four
+ * STATUS round trips per pulse, which is why `pulses` is bounded per call - a
+ * thousand-pulse run is ten calls, and the bench script adds them up.
+ *
+ * `gapMs` is held at or above twice the node dead time so a bench run cannot
+ * itself be filtered.
+ */
+#define SYNC_BENCH_MAX_PULSES 200
+#define SYNC_BENCH_MIN_GAP_MS 20
+#define SYNC_BENCH_MAX_GAP_MS 1000
+
+static void handle_sync_bench(uint32_t seq, const cJSON *req) {
+  int pulses = 100;
+  int gap_ms = 100;
+  bool poll = true;
+  const cJSON *jp = cJSON_GetObjectItem(req, "pulses");
+  if (cJSON_IsNumber(jp)) pulses = (int)jp->valuedouble;
+  const cJSON *jg = cJSON_GetObjectItem(req, "gapMs");
+  if (cJSON_IsNumber(jg)) gap_ms = (int)jg->valuedouble;
+  const cJSON *jpoll = cJSON_GetObjectItem(req, "poll");
+  if (cJSON_IsBool(jpoll)) poll = cJSON_IsTrue(jpoll);
+  if (pulses < 1 || pulses > SYNC_BENCH_MAX_PULSES) {
+    send_nack(KDP_CMD_SYNC_BENCH, seq, "INVALID_ARGUMENT",
+              "pulses must be 1..200; a longer run is several calls");
+    return;
+  }
+  if (gap_ms < SYNC_BENCH_MIN_GAP_MS || gap_ms > SYNC_BENCH_MAX_GAP_MS) {
+    send_nack(KDP_CMD_SYNC_BENCH, seq, "INVALID_ARGUMENT",
+              "gapMs must be 20..1000, at least twice the node dead time");
+    return;
+  }
+  if (capture_busy()) {
+    send_nack(KDP_CMD_SYNC_BENCH, seq, "BUSY", "A capture is running");
+    return;
+  }
+
+  camlink_sync_t start[CAMLINK_CAMS], prev[CAMLINK_CAMS], now[CAMLINK_CAMS];
+  bool watched[CAMLINK_CAMS] = {false};
+  int first_bad[CAMLINK_CAMS];
+  int missed[CAMLINK_CAMS] = {0};
+  int extra[CAMLINK_CAMS] = {0};
+  bool monotonic[CAMLINK_CAMS];
+  for (int c = 0; c < CAMLINK_CAMS; c++) {
+    first_bad[c] = -1;
+    monotonic[c] = true;
+    if (camlink_sync_ch(c, &start[c]) == ESP_OK && start[c].present) watched[c] = true;
+    prev[c] = start[c];
+  }
+
+  int fired = 0;
+  int refused = 0;
+  for (int i = 0; i < pulses; i++) {
+    if (capture_sync_pulse() != ESP_OK) {
+      refused++;
+      break; /* a capture took the cameras: stop rather than report a hole */
+    }
+    fired++;
+    vTaskDelay(pdMS_TO_TICKS(gap_ms));
+    if (!poll) continue;
+    for (int c = 0; c < CAMLINK_CAMS; c++) {
+      if (!watched[c]) continue;
+      if (camlink_sync_ch(c, &now[c]) != ESP_OK || !now[c].present) continue;
+      const int32_t d = (int32_t)(now[c].seq - prev[c].seq);
+      if (d != 1) {
+        if (first_bad[c] < 0) first_bad[c] = i + 1;
+        if (d < 1) {
+          missed[c] += 1 - d;
+        } else {
+          extra[c] += d - 1;
+        }
+      }
+      if (now[c].seq > prev[c].seq && now[c].edge_us <= prev[c].edge_us) monotonic[c] = false;
+      prev[c] = now[c];
+    }
+  }
+
+  cJSON *json = cJSON_CreateObject();
+  if (json == NULL) {
+    send_nack(KDP_CMD_SYNC_BENCH, seq, "INTERNAL_ERROR", "Could not build the reply");
+    return;
+  }
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddNumberToObject(json, "pulses", fired);
+  cJSON_AddNumberToObject(json, "gapMs", gap_ms);
+  cJSON_AddBoolToObject(json, "polled", poll);
+  cJSON_AddNumberToObject(json, "refusedByCapture", refused);
+  cJSON_AddNumberToObject(json, "pulseWidthUs", CAPTURE_TRIGGER_PULSE_US);
+  cJSON *cams = cJSON_AddArrayToObject(json, "cameras");
+  for (int c = 0; c < CAMLINK_CAMS && cams != NULL; c++) {
+    cJSON *e = cJSON_CreateObject();
+    if (e == NULL) break;
+    char name[8];
+    snprintf(name, sizeof name, "cam%d", c + 1);
+    cJSON_AddStringToObject(e, "cam", name);
+    cJSON_AddBoolToObject(e, "watched", watched[c]);
+    if (watched[c]) {
+      camlink_sync_t end;
+      const bool read_ok = camlink_sync_ch(c, &end) == ESP_OK && end.present;
+      cJSON_AddBoolToObject(e, "inputReady", end.input_ready);
+      cJSON_AddNumberToObject(e, "deadtimeUs", (double)end.deadtime_us);
+      cJSON_AddNumberToObject(e, "seqBefore", (double)start[c].seq);
+      cJSON_AddNumberToObject(e, "seqAfter", read_ok ? (double)end.seq : 0);
+      const int32_t acc = read_ok ? (int32_t)(end.seq - start[c].seq) : 0;
+      const int32_t raw = read_ok ? (int32_t)(end.raw - start[c].raw) : 0;
+      cJSON_AddNumberToObject(e, "acceptedEdges", acc);
+      cJSON_AddNumberToObject(e, "rawEdges", raw);
+      cJSON_AddNumberToObject(e, "rejectedEdges",
+                              read_ok ? (double)(end.rejected - start[c].rejected) : 0);
+      cJSON_AddNumberToObject(e, "expected", fired);
+      cJSON_AddNumberToObject(e, "shortBy", fired - acc);
+      cJSON_AddNumberToObject(e, "extraRaw", raw - fired);
+      if (poll) {
+        cJSON_AddNumberToObject(e, "polledMissed", missed[c]);
+        cJSON_AddNumberToObject(e, "polledExtra", extra[c]);
+        if (first_bad[c] >= 0) {
+          cJSON_AddNumberToObject(e, "firstBadPulse", first_bad[c]);
+        } else {
+          cJSON_AddNullToObject(e, "firstBadPulse");
+        }
+        cJSON_AddBoolToObject(e, "edgeMonotonic", monotonic[c]);
+      }
+      cJSON_AddBoolToObject(e, "clean", read_ok && acc == fired);
+    }
+    cJSON_AddItemToArray(cams, e);
+  }
+  send_json(KDP_CMD_SYNC_BENCH, seq, json);
+}
+
 // ---- dispatch ----
 
 /* How long a MEDIA_* command waits for the card before answering BUSY. A
@@ -3010,6 +3153,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
     case KDP_CMD_C6_RESET_BENCH: handle_c6_reset_bench(frame->seq); break;
+    case KDP_CMD_SYNC_BENCH: handle_sync_bench(frame->seq, req); break;
     /* Read-only. The rest of the FW_* group stays failed-closed — see the
      * handler's comment for why a query is not an update path. */
     case KDP_CMD_FW_QUERY: handle_fw_query(frame->seq); break;

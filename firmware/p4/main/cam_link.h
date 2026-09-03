@@ -29,6 +29,26 @@ typedef struct {
 
 #define CAMLINK_TEMP_UNKNOWN INT32_MIN
 
+/**
+ * A node's sync-edge counters, read fresh from NL_CMD_STATUS.
+ *
+ * `seq` counts ACCEPTED edges - the generation id a capture reply carries and
+ * the figure the P4 holds to one per pulse fired. `raw` counts every rising
+ * edge the pin produced and `rejected` those the node's dead time refused, so
+ * ringing on the fan-out stays visible rather than being filtered into
+ * silence. `edge_us` is the node's own clock at its last accepted edge; it
+ * shares no epoch with the P4 or with another node.
+ */
+typedef struct {
+  bool present;        /* the node reported the fields at all (0.4.31+) */
+  bool input_ready;    /* the node armed its GPIO */
+  uint32_t seq;
+  uint32_t raw;
+  uint32_t rejected;
+  uint32_t deadtime_us;
+  int64_t edge_us;     /* 0 when the node has never seen an edge */
+} camlink_sync_t;
+
 typedef struct {
   uint32_t rx_frames;
   uint32_t tx_frames;
@@ -151,6 +171,10 @@ esp_err_t camlink_hello_ch(int cam);
  * on a one-camera body were refused BUSY (Gate F bench, 2026-08-30). */
 esp_err_t camlink_hello_ch_timeout(int cam, uint32_t timeout_ms);
 esp_err_t camlink_ping_ch(int cam, uint32_t *rtt_ms);
+
+/** One STATUS round trip, for the node's sync counters alone. Measurement
+ * only: it asks the node nothing about its camera and changes nothing. */
+esp_err_t camlink_sync_ch(int cam, camlink_sync_t *out);
 /*
  * The per-camera capture and read take an explicit timeout, because the two
  * callers want opposite things from a slow node. A stored capture is worth

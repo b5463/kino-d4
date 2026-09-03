@@ -572,16 +572,17 @@ bool pure_json_depth_ok(const char *text, int max_depth) {
 /* Sync-edge attribution (#165)                                        */
 /* ------------------------------------------------------------------ */
 
-int pure_sync_classify(uint32_t last_seq, uint32_t seq, bool has_edge, int64_t sync_to_cmd_us) {
+int pure_sync_classify(uint32_t last_seq, uint32_t seq, uint32_t expected, bool has_edge,
+                       int64_t sync_to_cmd_us) {
   if (!has_edge || seq == 0) return PURE_SYNC_NONE;
   /* The edge must be before the command, and not by more than the window. */
   const bool in_window = sync_to_cmd_us >= 0 && sync_to_cmd_us <= PURE_SYNC_EDGE_WINDOW_US;
   if (!in_window) return PURE_SYNC_STALE_GENERATION;
-  if (last_seq == 0) return PURE_SYNC_UNVERIFIED; /* no baseline to hold +1 against */
-  if (seq == last_seq + 1u) return PURE_SYNC_OK;
-  /* Counter went backwards (node rebooted, count re-based below ours) or
-   * jumped (a pulse this node saw that we did not book, or one it missed and
-   * then two came): either way not provably this shutter's edge. */
+  if (last_seq == 0 || expected == 0) return PURE_SYNC_UNVERIFIED; /* no baseline to hold it to */
+  if (seq == last_seq + expected) return PURE_SYNC_OK;
+  /* Counter went backwards (node rebooted, count re-based below ours) or moved
+   * by the wrong amount - an edge this node counted that no pulse of ours
+   * produced, or one it missed. Either way not provably this shutter's edge. */
   return PURE_SYNC_STALE_GENERATION;
 }
 

@@ -1144,27 +1144,50 @@ static void test_json_depth(void) {
 
 static void test_sync_classify(void) {
   /* No edge reported: an older node, or a node with no sync wire. */
-  CHECK(pure_sync_classify(0, 0, false, 0) == PURE_SYNC_NONE, "no edge, no count -> none");
-  CHECK(pure_sync_classify(7, 8, false, 1000) == PURE_SYNC_NONE, "count without edge -> none");
-  CHECK(pure_sync_classify(7, 0, true, 1000) == PURE_SYNC_NONE, "edge with count 0 is impossible -> none");
+  CHECK(pure_sync_classify(0, 0, 1, false, 0) == PURE_SYNC_NONE, "no edge, no count -> none");
+  CHECK(pure_sync_classify(7, 8, 1, false, 1000) == PURE_SYNC_NONE, "count without edge -> none");
+  CHECK(pure_sync_classify(7, 0, 1, true, 1000) == PURE_SYNC_NONE, "edge with count 0 -> none");
 
-  /* The ordinary shutter: counter +1, edge 1.2 ms before the command. */
-  CHECK(pure_sync_classify(41, 42, true, 1200) == PURE_SYNC_OK, "+1 in window -> ok");
-  CHECK(pure_sync_classify(41, 42, true, 0) == PURE_SYNC_OK, "edge at the command instant -> ok");
-  CHECK(pure_sync_classify(41, 42, true, PURE_SYNC_EDGE_WINDOW_US) == PURE_SYNC_OK, "edge at the window edge -> ok");
+  /* The ordinary shutter: one pulse fired since this camera last answered. */
+  CHECK(pure_sync_classify(41, 42, 1, true, 1200) == PURE_SYNC_OK, "+1 for one pulse -> ok");
+  CHECK(pure_sync_classify(41, 42, 1, true, 0) == PURE_SYNC_OK, "edge at the command instant -> ok");
+  CHECK(pure_sync_classify(41, 42, 1, true, PURE_SYNC_EDGE_WINDOW_US) == PURE_SYNC_OK,
+        "edge at the window edge -> ok");
 
-  /* First reply since the P4 booted: the edge is plausible, the +1 unproven. */
-  CHECK(pure_sync_classify(0, 42, true, 1200) == PURE_SYNC_UNVERIFIED, "no baseline -> unverified");
+  /*
+   * The case a bare +1 got wrong (#165 edge audit). A camera offline for one
+   * shutter still saw that pulse; it simply had no reply to book it against.
+   * Four frames in the 2026-09-03 baseline were called stale for this reason
+   * with nothing wrong on the wire, and every one followed a shutter in which
+   * that camera was missing.
+   */
+  CHECK(pure_sync_classify(37, 39, 2, true, 1200) == PURE_SYNC_OK,
+        "+2 after one skipped shutter -> ok");
+  CHECK(pure_sync_classify(70, 75, 5, true, 1200) == PURE_SYNC_OK,
+        "+5 after four skipped shutters -> ok");
+  CHECK(pure_sync_classify(37, 38, 2, true, 1200) == PURE_SYNC_STALE_GENERATION,
+        "one pulse short of the two fired -> stale");
+  CHECK(pure_sync_classify(37, 40, 2, true, 1200) == PURE_SYNC_STALE_GENERATION,
+        "one edge more than the two fired -> stale");
+
+  /* First reply since the P4 booted: the edge is plausible, the count unproven. */
+  CHECK(pure_sync_classify(0, 42, 1, true, 1200) == PURE_SYNC_UNVERIFIED, "no baseline -> unverified");
+  CHECK(pure_sync_classify(41, 42, 0, true, 1200) == PURE_SYNC_UNVERIFIED,
+        "no pulse recorded for this shutter -> unverified, never a claim");
 
   /* Not this shutter's pulse. */
-  CHECK(pure_sync_classify(41, 43, true, 1200) == PURE_SYNC_STALE_GENERATION, "+2 -> stale generation");
-  CHECK(pure_sync_classify(41, 41, true, 1200) == PURE_SYNC_STALE_GENERATION, "+0 -> stale generation (node missed the pulse, reports the old edge)");
-  CHECK(pure_sync_classify(41, 3, true, 1200) == PURE_SYNC_STALE_GENERATION, "counter went backwards (node reboot) -> stale generation");
-  CHECK(pure_sync_classify(41, 42, true, -500) == PURE_SYNC_STALE_GENERATION, "edge after the command -> stale generation");
-  CHECK(pure_sync_classify(41, 42, true, PURE_SYNC_EDGE_WINDOW_US + 1) == PURE_SYNC_STALE_GENERATION, "edge older than the window -> stale generation");
-  /* The window rule is applied before the baseline rule: an old edge with no
-   * baseline is still not this shutter's. */
-  CHECK(pure_sync_classify(0, 42, true, 5000000) == PURE_SYNC_STALE_GENERATION, "no baseline but too old -> stale generation");
+  CHECK(pure_sync_classify(41, 43, 1, true, 1200) == PURE_SYNC_STALE_GENERATION,
+        "an extra edge on one pulse -> stale (the ringing the audit found)");
+  CHECK(pure_sync_classify(41, 41, 1, true, 1200) == PURE_SYNC_STALE_GENERATION,
+        "a missed edge -> stale");
+  CHECK(pure_sync_classify(41, 3, 1, true, 1200) == PURE_SYNC_STALE_GENERATION,
+        "counter went backwards (node reboot) -> stale");
+  CHECK(pure_sync_classify(41, 42, 1, true, -500) == PURE_SYNC_STALE_GENERATION,
+        "edge after the command -> stale");
+  CHECK(pure_sync_classify(41, 42, 1, true, PURE_SYNC_EDGE_WINDOW_US + 1) == PURE_SYNC_STALE_GENERATION,
+        "edge older than the window -> stale");
+  CHECK(pure_sync_classify(0, 42, 1, true, 5000000) == PURE_SYNC_STALE_GENERATION,
+        "no baseline but too old -> stale");
 
   CHECK(strcmp(pure_sync_class_name(PURE_SYNC_OK), "ok") == 0, "name ok");
   CHECK(strcmp(pure_sync_class_name(PURE_SYNC_UNVERIFIED), "unverified") == 0, "name unverified");

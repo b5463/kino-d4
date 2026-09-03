@@ -85,8 +85,9 @@ typedef struct {
    * This frame against the common SYNC_OUT edge, as the node measured it
    * (#165). sync_class says whether the node's reply can be attributed to
    * THIS shutter's pulse (pure_sync_classify): PURE_SYNC_OK means the node's
-   * edge counter advanced by exactly one since its last reply and the edge
-   * preceded the command within the window; anything else is not a
+   * edge counter advanced by exactly the number of pulses fired since that
+   * camera last answered and the edge preceded the command within the window;
+   * anything else is not a
    * measurement of this shutter and the bench must not average it in.
    * sync_to_frame_us is node frame DMA arm minus node edge time - comparable
    * across nodes, negative when the frame was already in flight at the pulse
@@ -325,6 +326,21 @@ typedef void (*capture_done_cb_t)(const capture_report_t *r);
  * on the capture task, so it must not block. */
 #define CAPTURE_MAX_LISTENERS 4
 void capture_on_done(capture_done_cb_t cb);
+
+/**
+ * Fire one SYNC_OUT pulse and nothing else - the edge-integrity bench (#165).
+ *
+ * Identical to the pulse a grouped shutter emits, from the same code, and it
+ * advances the same pulse counter the sync attribution uses, so a bench run
+ * cannot make the next capture look like a missed generation. Refused with
+ * ESP_ERR_INVALID_STATE while a capture holds the cameras, and with
+ * ESP_ERR_INVALID_STATE when the GPIO was never armed. No camera is asked for
+ * anything; nothing is stored.
+ */
+esp_err_t capture_sync_pulse(void);
+
+/** Width of that pulse, so a bench reply can state what it fired. */
+#define CAPTURE_TRIGGER_PULSE_US 200
 
 /** RFC 4122 v4, from the hardware RNG. */
 void capture_uuid4(char *out, size_t cap);

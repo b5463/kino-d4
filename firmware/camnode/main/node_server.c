@@ -149,14 +149,44 @@ static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *
  * counter is the generation id the P4 attributes replies by - each grouped
  * shutter must advance it by exactly one on every node.
  */
-static volatile int64_t s_sync_edge_us;
-static volatile uint32_t s_sync_seq;
+/*
+ * Dead time after an accepted edge, in which further rising edges are counted
+ * but not taken as a new pulse.
+ *
+ * The P4 fires one 200 us pulse per grouped shutter and shutters are seconds
+ * apart, so two pulses can never legitimately be 10 ms apart - SYNC_BENCH is
+ * held to >= 20 ms for the same reason. Against that, the baseline measured
+ * eleven extra rising edges in 733 pulses on an unterminated 28 AWG fan-out to
+ * four inputs (deltas of 2, and once 4 and once 6), and never a missed one:
+ * the line rings, most visibly on cam2 and cam4. 10 ms is fifty times the
+ * pulse width and five hundred times any ringing, so one pulse-event becomes
+ * exactly one counted edge without a component change. The raw count is kept
+ * beside the accepted one so the ringing stays visible instead of being
+ * silently filtered away (#165 edge audit).
+ */
+#define SYNC_DEADTIME_US 10000
+
+static volatile int64_t s_sync_edge_us;   /* last ACCEPTED edge */
+static volatile uint32_t s_sync_seq;      /* accepted edges: the generation id */
+static volatile uint32_t s_sync_raw;      /* every rising edge the pin produced */
+static volatile uint32_t s_sync_rejected; /* raw edges inside the dead time */
 static bool s_sync_input_ready;
+/* The ISR can run on either core, so the snapshot below needs a spinlock and
+ * not just this core's interrupt mask. */
+static portMUX_TYPE s_sync_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static void IRAM_ATTR sync_isr(void *arg) {
   (void)arg;
-  s_sync_edge_us = esp_timer_get_time();
-  s_sync_seq++;
+  const int64_t now = esp_timer_get_time();
+  portENTER_CRITICAL_ISR(&s_sync_mux);
+  s_sync_raw++;
+  if (s_sync_seq == 0 || now - s_sync_edge_us >= SYNC_DEADTIME_US) {
+    s_sync_edge_us = now;
+    s_sync_seq++;
+  } else {
+    s_sync_rejected++;
+  }
+  portEXIT_CRITICAL_ISR(&s_sync_mux);
 }
 
 static void sync_input_init(void) {
@@ -180,21 +210,34 @@ static void sync_input_init(void) {
   s_sync_input_ready = true;
 }
 
-/* One consistent (seq, edge) pair. */
-static void sync_snapshot(uint32_t *seq, int64_t *edge_us) {
-  portDISABLE_INTERRUPTS();
+/* One consistent set of counters. Taken under the ISR's own spinlock, so a
+ * reply can never carry a sequence from one edge and a timestamp from the
+ * next. */
+static void sync_snapshot(uint32_t *seq, int64_t *edge_us, uint32_t *raw, uint32_t *rejected) {
+  portENTER_CRITICAL(&s_sync_mux);
   *seq = s_sync_seq;
   *edge_us = s_sync_edge_us;
-  portENABLE_INTERRUPTS();
+  if (raw != NULL) *raw = s_sync_raw;
+  if (rejected != NULL) *rejected = s_sync_rejected;
+  portEXIT_CRITICAL(&s_sync_mux);
 }
 
-/* syncSeq on every reply that describes the node, so the P4 knows the count
- * before the first shutter and can require +1 per pulse afterwards. */
+/* The sync counters on every reply that describes the node, so the P4 knows
+ * the count before the first shutter, can hold the node to one accepted edge
+ * per pulse it fired, and can see the raw edge rate underneath. */
 static void add_sync_seq(cJSON *json) {
-  uint32_t seq;
+  uint32_t seq, raw, rejected;
   int64_t edge;
-  sync_snapshot(&seq, &edge);
+  sync_snapshot(&seq, &edge, &raw, &rejected);
   cJSON_AddNumberToObject(json, "syncSeq", (double)seq);
+  cJSON_AddNumberToObject(json, "syncRawEdges", (double)raw);
+  cJSON_AddNumberToObject(json, "syncRejected", (double)rejected);
+  if (seq > 0) {
+    cJSON_AddNumberToObject(json, "syncEdgeUs", (double)edge);
+  } else {
+    cJSON_AddNullToObject(json, "syncEdgeUs");
+  }
+  cJSON_AddNumberToObject(json, "syncDeadtimeUs", SYNC_DEADTIME_US);
   cJSON_AddBoolToObject(json, "syncInput", s_sync_input_ready);
 }
 
@@ -378,7 +421,7 @@ static void handle_capture(uint32_t seq, cJSON *req) {
    * cannot be booked against this frame. */
   uint32_t sync_seq;
   int64_t sync_edge_us;
-  sync_snapshot(&sync_seq, &sync_edge_us);
+  sync_snapshot(&sync_seq, &sync_edge_us, NULL, NULL);
   const int64_t cmd_us = esp_timer_get_time();
   camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
   /*
@@ -455,6 +498,7 @@ static void handle_capture(uint32_t seq, cJSON *req) {
    * None of these is exposure time.
    */
   cJSON_AddNumberToObject(json, "syncSeq", (double)sync_seq);
+  cJSON_AddNumberToObject(json, "syncRawEdges", (double)s_sync_raw);
   if (sync_seq > 0) {
     cJSON_AddNumberToObject(json, "syncEdgeUs", (double)sync_edge_us);
     cJSON_AddNumberToObject(json, "syncToCmdUs", (double)(cmd_us - sync_edge_us));

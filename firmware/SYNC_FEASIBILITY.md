@@ -532,3 +532,78 @@ moves down again.
 
 **No synchronization mechanism was implemented in this phase.** Options 1 and 2 are specified above
 and left for M1/M4 with hardware evidence in hand.
+
+---
+
+## Synchronization targets
+
+Written 2026-09-03, after the first four-camera measurement (#165). Three
+quantities, three targets, three states of validation. They are not
+interchangeable and a number from one must never be reported against
+another's target.
+
+`packages/kdp/src/protocol/timing.ts` is normative for the vocabulary and for
+the exposure bands; this section adds the frame-start row, which nothing in the
+repository had defined, and records what has been measured against each.
+
+| | quantity | target | authority | measured |
+|---|---|---|---|---|
+| **A** | **Trigger distribution** - when the shared `SYNC_OUT` edge reaches each node | 100-400 us | `docs/HARDWARE.md` | **met**: the four nodes act on their commands within **129 us** of each other, and the P4's own dispatch spread is 161 us median, 443 us worst of 100 (#165 baseline) |
+| **B** | **Frame-start spread** - when each sensor's returned frame began its readout, against the common edge | **proposed below, not yet accepted** | this section | 46.6 ms median, 105.7 ms p95, 109.7 ms max idle; 20.8 ms median once the whole-frame offset is removed (#165) |
+| **C** | **Effective exposure spread** - when the scene was actually recorded, rolling shutter included | < 0.5 ms excellent, < 1 ms very good, < 2 ms usable, 2-5 ms visible on fast subjects, 5-10 ms motion contaminated, **> 10 ms not a synchronized capture** | `gradeSkew()` in `timing.ts`, "the V1 product targets" | **unmeasured and unmeasurable with the present instruments** - no VSYNC observation, no optical common-event rig; `kino.capture`'s three skews stay null with their reason |
+
+### Why B needs its own target
+
+Frame start is the closest quantity this firmware can observe. It is not
+exposure: `camera_fb_t.timestamp` is the instant DMA was armed for a frame,
+the rolling shutter then integrates each row in turn, and the relationship
+between the two is not measured. B is therefore a *proxy* target - useful
+because it is measurable today and because it bounds C from below (exposure
+cannot be better aligned than frame start), and dangerous if anyone reports it
+as C.
+
+### The proposal for B
+
+Two error terms were separated in the baseline and they behave differently:
+
+- **Boundary-index error.** In 32 of 91 four-camera sets, at least one camera
+  returned a frame one whole 112.4 ms period later than the others. Remove it
+  and the median falls from 46.6 ms to 20.8 ms. It is a scheduling artefact:
+  the four commands arrive at slightly different points in four independent
+  frame cycles, so some cameras catch boundary *k* and others *k+1*.
+- **Inter-sensor phase.** With the boundary index removed, the four sensors'
+  frame phases still differ by **20.8 ms median, 52.6 ms p95, 54.5 ms max** -
+  roughly a uniform spread over half a period. This is what four free-running
+  oscillators do, and no command timing can remove it while the sensor decides
+  when its own frame starts.
+
+Proposed, for acceptance:
+
+> **B1 (achievable with command timing alone):** frame-start spread median
+> <= 25 ms and p95 <= 55 ms on four cameras, idle. This is the boundary-index
+> error removed and nothing else. It is not a synchronization claim; it is
+> "no camera is a whole frame out".
+>
+> **B2 (requires controlling the sensor's frame start):** frame-start spread
+> p95 <= 10 ms, which is the point at which C could plausibly enter
+> `gradeSkew`'s "motion contaminated" band rather than "not a synchronized
+> capture". Not reachable by software timing on this architecture.
+
+B1 is a housekeeping target. B2 is the product one, and the measurement says
+plainly that it needs either OV3660 frame-timing register control or a body
+whose sensors can be externally triggered - the D3 and D4 rungs of the
+roadmap's escalation ladder, not the D1/D2 rungs.
+
+### What this means for the V1 claim
+
+`gradeSkew()` calls anything above 10 ms "not a synchronized capture", and the
+measured inter-sensor phase spread is 20.8 ms median and 52.6 ms p95 before
+exposure timing is even considered. **On free-running OV3660s at 112.4 ms per
+frame, the V1 exposure target is not reachable, and no amount of command-side
+scheduling changes that.** The roadmap's Gate C asked exactly this question -
+"if that interval is 30 ms the product works; if it is 200 ms the product as
+conceived does not exist on this architecture" - and the answer for D4-V1 is
+that the interval is 112 ms and the residual spread is a fifth to a half of it.
+
+That is a hardware-and-driver conclusion, reached with the instrument built in
+0.4.30/0.4.31 and stated here so no later work quietly re-scopes it.

@@ -47,7 +47,7 @@ static const char *TAG = "capture";
 /* The trigger edge. 200 us is far longer than any receiver needs and short
  * enough to be invisible in the capture budget; it exists to be seen on a
  * scope during bring-up, not to meet a timing spec nothing implements yet. */
-#define TRIGGER_PULSE_US 200
+#define TRIGGER_PULSE_US CAPTURE_TRIGGER_PULSE_US
 
 /* A node has to expose, encode a UXGA JPEG and answer. The bench run measured
  * 380-520 ms for that; four seconds is generous enough that a timeout means
@@ -215,12 +215,18 @@ static TaskHandle_t s_task;
 static capture_report_t *s_active;
 static storage_capture_t *s_store;
 static int64_t s_trigger_us;
-/* Each node's sync-edge counter as last reported to us, per camera (#165).
- * A reply whose counter is not exactly this + 1 was not timed against this
- * shutter's pulse, whatever its timestamps look like. Zero until a node has
- * reported once; a node reboot resets its counter, which shows up as a
- * generation mismatch on the next shutter and is then re-based. */
+/*
+ * Sync-edge attribution bookkeeping (#165).
+ *
+ * s_sync_pulses counts every SYNC_OUT pulse this boot - one per grouped
+ * shutter, plus any the edge bench fired. s_sync_last_seq/_pulse remember, per
+ * camera, the counter it reported and the pulse count at that moment, so the
+ * expected advance is the number of pulses since that camera last answered:
+ * a camera that was offline for a shutter still saw that pulse. Zero until a
+ * node has reported once; a node reboot re-bases it on the next shutter. */
+static uint32_t s_sync_pulses;
 static uint32_t s_sync_last_seq[CAPTURE_CAMS];
+static uint32_t s_sync_last_pulse[CAPTURE_CAMS];
 static char s_resolution[16];
 static int s_sensor_quality;
 /* Which camera's frame becomes THUMB.JPG. Chosen once by the coordinator
@@ -339,6 +345,19 @@ static void trigger_pulse(void) {
   gpio_set_level(BOARD_SYNC_OUT, 1);
   esp_rom_delay_us(TRIGGER_PULSE_US);
   gpio_set_level(BOARD_SYNC_OUT, 0);
+  s_sync_pulses++;
+}
+
+esp_err_t capture_sync_pulse(void) {
+  if (!s_gpio_ready) return ESP_ERR_INVALID_STATE;
+  /* Never inside a capture: the pulse itself is harmless, but a bench that
+   * fired one mid-shutter would put an extra generation between a camera's
+   * reply and the next, which is exactly the confusion this bench exists to
+   * remove. */
+  if (!capture_lock(0)) return ESP_ERR_INVALID_STATE;
+  trigger_pulse();
+  capture_unlock();
+  return ESP_OK;
 }
 
 /* ---------------------------------------------------------------- */
@@ -474,7 +493,10 @@ static void do_frame(worker_t *w) {
    * never by timestamp proximity: the node's counter must have moved by
    * exactly one since its last reply to us. The rule lives in pure.c so the
    * host tests hold it. */
-  f->sync_class = pure_sync_classify(s_sync_last_seq[cam], cap.sync_seq, cap.has_sync,
+  /* Pulses fired since this camera last answered: 1 normally, more when it was
+   * offline or silent for a shutter. It saw those pulses either way. */
+  const uint32_t expected = s_sync_pulses - s_sync_last_pulse[cam];
+  f->sync_class = pure_sync_classify(s_sync_last_seq[cam], cap.sync_seq, expected, cap.has_sync,
                                      cap.sync_to_cmd_us);
   f->sync_seq = cap.sync_seq;
   f->sync_edge_us = cap.has_sync ? cap.sync_edge_us : 0;
@@ -482,6 +504,7 @@ static void do_frame(worker_t *w) {
   f->sync_to_frame_us = cap.has_sync ? cap.sync_to_frame_us : 0;
   f->frame_before_edge = cap.has_sync && cap.sync_to_frame_us < 0;
   s_sync_last_seq[cam] = cap.sync_seq;
+  s_sync_last_pulse[cam] = s_sync_pulses;
 
   /*
    * The stale-frame signature, flagged the moment it appears rather than left
