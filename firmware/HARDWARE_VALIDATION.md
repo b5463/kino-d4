@@ -650,6 +650,23 @@ the number this fix exists to move, and it is the one still owed.
 
 ### CAM1's node has power-cycled 85 times; the others 11 to 16 - 0.4.37, #159, 2026-09-03
 
+> **Corrected 2026-09-04: the counter is a LIFETIME total, not a rate.**
+> `main.c`'s `next_boot_count()` keeps the count in NVS under key `boot`,
+> incrementing every boot and surviving an app-only flash, so it counts every
+> power-up the node has ever had including bring-up and every reflash. CAM1
+> was the first node wired on this bench ("First camera on the wire,
+> 2026-08-28"), so a higher lifetime count has an innocent explanation and the
+> 85-against-11 differential is a weak prior rather than evidence of a current
+> fault. `resetReason` is sticky in the same way: it describes the last reset
+> whenever that was, so a node reads `power-on` indefinitely after one power
+> cycle.
+>
+> What survives from this section: CAM1 took **one observed spontaneous
+> power-on reset in session** - the recovery from its 9-minute wedge at about
+> 23:47 - and CAM4 took one between 23:56 and 00:15. Only a DELTA measured
+> over a controlled window establishes a rate, which is what the CAM1
+> power-integrity soak exists to do.
+
 The number that names the fault. Read from `GET_CAMERA_INFO`'s per-camera
 `node` object immediately before the 0.4.38 node flash, with nothing having
 been written to any node in this session:

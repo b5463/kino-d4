@@ -30,11 +30,17 @@ Read the node reset counters before doing anything else in this document. On
 | cam3 | boot-16 | usb |
 | cam4 | boot-11 | usb |
 
-Same image, same uptime, same number of bench flashes. CAM1 has taken about
-seventy more power-on resets than its siblings, which is a **power integrity**
-fault on that channel and is a different and more serious failure than CAM3's
-load-dependent `shortRead` excess. CAM3's counter is normal, so CAM3 is not
-power-cycling.
+**Read that table as a lifetime total, not a rate.** The counter lives in NVS
+(`main.c`, `next_boot_count()`), increments every boot and survives an app
+flash, so it includes bring-up and every reflash the node has ever had. CAM1
+was the first node wired on this bench, which explains a higher count without
+any fault. `resetReason` is sticky too - it names the last reset whenever it
+happened.
+
+What is real evidence: CAM1 took one **observed** spontaneous power-on reset
+in session, recovering from a nine-minute wedge, and CAM4 took one
+independently later the same evening. Two nodes, hours apart, not
+simultaneous. A rate can only come from a delta over a controlled window.
 
 **So the order changes:**
 
@@ -48,9 +54,10 @@ session counter again after an hour of streaming: it should not advance at all.
 - Counter keeps advancing → substitute that node's power path (different USB
   port and cable, then a different JP1 run) one change at a time.
 
-A reset counter differential of 85 against 11 is diagnosable by substitution in
-one step, and it should be closed before any timing or reliability measurement
-is trusted: while CAM1 was wedged, the other three channels accumulated
+The counter delta over that window is the whole measurement - the absolute
+value carries no information. It should be closed before any timing or
+reliability measurement is trusted: while CAM1 was wedged, the other three
+channels accumulated
 `shortRead` drops fast, and with CAM1 healthy a 122 s window measured zero
 drops of any kind on all four. **One wedged channel contaminates the whole
 bank**, so every configuration in this document must be run with all four
