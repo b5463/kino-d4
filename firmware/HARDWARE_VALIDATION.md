@@ -699,12 +699,15 @@ owed cycle then finds the ten it never held, and only after those upload does
 captures, one Roll, none missing**. Internal SRAM 86 KB free, 54 KB minimum,
 recovery reserve 2/2.
 
-**One camera was dark for the whole burst.** Every one of the 42 sets stored
-three frames, and the backend holds three originals for each. The queue's
-behaviour is correct for a partial set (#164) and that is what is being
-measured here; the missing camera is a hardware incident on the same channel
-that has now failed on the bench several times and it is not diagnosed in this
-session. No sync, ISR or sensor code was touched.
+**CAM3 was dark for both bursts, and that is a hardware incident.** Across the
+84 grouped shutters of the two 42-capture runs, cam1 and cam2 delivered 84
+frames each, cam4 delivered 82, and **cam3 delivered none**: 39 of its 42
+attempts came back `node refused the capture` and 3 `no answer in 4000 ms`. So
+every set stored three frames and the backend holds three originals for each,
+which is the correct queue behaviour for a partial set (#164) and is what these
+runs measure. CAM3 has now failed on the bench four times and stays
+hardware-suspect; it is not diagnosed here, and no node, sync, ISR or sensor
+code was touched.
 
 **A settled job leaves the list (#166).** The COMPLETE drop used to sit after
 the record write, which returns early when a capture holds the card - so the
