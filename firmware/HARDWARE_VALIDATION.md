@@ -643,15 +643,53 @@ with the reserve held 2/2, `recoveryReady=True` throughout, task stack
 minimums unchanged (cap1-4 5.9 KB, kdp_server 2.4 KB, gallery 1.2 KB),
 `transportErrors` 1 (the one bench reset), no leak.
 
-**Still open: CAM4 partial-failure and CAM4 restore (operator).** Pre-check
-passed at 01:19 (4x READY, no capture, no transfer in flight): safe to remove
-CAM4's USB power. The contract to test against (`packages/kdp/src/protocol/
-types.ts`, `capture.c:1566`, `meta.c:34`): `status` is `complete` when every
-*online* camera stored a frame, `partial` when one did not; `frameCount` is the
-number stored. A body with CAM4 offline at the shutter therefore records a
-three-frame set marked `complete` with `frameCount 3`, no `C4.JPG` and no
-cam4 frame - DEGRADED_SET_RECORDED, not a rejection - and that is what the
-operator run must show.
+**Controlled camera loss - the operator pulled CAM2 (02:03).** Pre-check at
+01:19: 4x READY, no capture, no transfer in flight. With CAM2's USB power
+removed the firmware marked cam2 offline within 5 s; one grouped shutter:
+`CAP_000263` (`6fd26d63-...`), accepted, `status complete`, `frameCount 3`,
+frames cam1 `C1.JPG` 138,510 B / cam3 `C3.JPG` 136,689 B / cam4 `C4.JPG`
+110,896 B, spread 114 us, 2,509 ms. Card: `C2.JPG` absent (MEDIA_READ
+`NOT_FOUND`), META lists exactly those three frames with their camera ids,
+every stored frame's CRC equals the CRC its node reported at this shutter
+(f4245568 / ad4f1581 / dafa8056) and all three decode at 1600x1200 - no stale
+frame, no reused frame, no relabel. Against the contract (`types.ts`
+CaptureEvent.status, `capture.c:1566`, `meta.c:34`: `complete` when every
+*online* camera stored, `frameCount` = stored): **the capture side is exactly
+as documented - DEGRADED_SET_RECORDED.**
+
+**And then it cannot upload.** `UPLOAD.JSON` after 12 attempts: `state FAILED`,
+`frameCount 3`, `frameDone [true,false,false]`, `lastError "the asset is not on
+the card"`. Backend: one row, `original-frame 1` and the thumb, nothing else.
+Mechanism, from the source: the queue job carries only `frame_count`
+(`roll_queue.h`: "frames the capture actually holds"); `rq_next_step()`
+(`roll_queue.c:120`) hands out frame indices 1..frame_count and `roll_api.c:346`
+turns each into `C%d.JPG`, so a three-frame set stored as C1/C3/C4 is asked
+for C1, C2, C3 - C2 does not exist, the step fails, and after 12 attempts the
+job is marked FAILED with C3 and C4 never tried. The same set with CAM4
+missing (C1/C2/C3) would have uploaded, which is why the case as briefed
+(power off CAM4) would not have found it. The capture path names frames by
+camera slot and writes that list into META; the queue assumes the slots are
+contiguous. **Upload of a degraded set with a non-trailing camera missing is
+a permanent FAILED job: FAIL for this case.** Nothing was changed in firmware
+tonight; the fix belongs to the Roll queue (enumerate the frames META names,
+or carry the slot list in the job), under its own issue.
+
+**Host-link finding, seen twice tonight.** With the display on the viewfinder
+page the device emits a log event every ~0.5 s on the same USB-Serial-JTAG link
+as KDP replies, and under that stream about one MEDIA_READ page in thirty never
+arrives (the stock puller waits 45 s and aborts; a page-retrying puller
+finished both files with 0 and 2 retries). The lost CAMERA_CAPTURE reply during
+the C6 teardown log burst is the same symptom. The device answers every
+request when asked again; it is the reply that is lost in flight. Candidate
+issue: KDP reply integrity under concurrent log-event traffic.
+
+**CAM2 restore.** Power back on at 02:20: cam2 READY on its own 4 s later, no P4
+reboot, no command. 16 sweeps: 4x READY, 0 offline transitions, 0 new timeouts,
+0 CRC errors. Three grouped captures (`CAP_000264`-`266`): 3/3 complete 4/4,
+2.3-2.7 s, 0 chunk retries, 0 BUSY, every frame's card CRC equal to the CRC its
+node reported (12 of 12, all decode 1600x1200), cam2's frames fresh and its
+own. **PASS.** Internal minimum over the whole night 26 KB (boot-116, 3 h of
+grouped captures, uploads, one recovery); free stayed 93-98 KB, reserve 2/2.
 
 ### One shutter, four frames - grouped-capture transport, 2026-09-02
 
