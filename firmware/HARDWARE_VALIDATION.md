@@ -588,6 +588,64 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### CAM3 is not a streaming outlier - reliability bench C0, 0.4.37, #159, 2026-09-03
+
+The channel that has been called hardware-suspect four times, measured properly
+for the first time: 10 minutes of live viewfinder with no captures, then 100
+grouped captures, one command per configuration
+(`cam_reliability.ps1 -Config <name>`). Per-camera counters come from
+`GET_CAMERA_INFO`, which carries `viewfinder.frames` and `viewfinder.drops`
+keyed by reason for all four channels, plus `CAMERA_LINK_STATS` per channel.
+**No node USB console was opened**: on a native-USB XIAO that is a reset, and a
+reset is indistinguishable from the fault being hunted.
+
+**Phase 1, streaming only, 10 minutes.**
+
+| cam | preview frames | shortRead | oversize | noLink | decode | timeout | retries | CRC |
+|---|---|---|---|---|---|---|---|---|
+| cam1 | 7,962 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| cam2 | 8,054 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| cam3 | 7,935 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| cam4 | 7,835 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+Zero of everything on all four, about 8,000 frames each, zero offline samples,
+no node reset. **Under pure streaming CAM3 is not an outlier at all** - it is
+within 1.5% of cam1 on frame count.
+
+**Phase 2, 100 grouped captures with the finder still live.** 100 of 100
+accepted, 99 sets with four frames, 0 refused. Counts are over the phase, and
+the shortRead column is preview frames dropped while the captures ran.
+
+| cam | capture frames | frame errors | shortRead | timeout | retries | CRC |
+|---|---|---|---|---|---|---|
+| cam1 | 100 | 0 | 0 | 2 | 0 | 0 |
+| cam2 | 100 | 0 | 0 | 4 | 0 | 0 |
+| cam3 | 99 | 0 | 4 | 8 | 0 | 0 |
+| cam4 | 100 | 0 | 1 | 3 | 0 | 0 |
+
+Node boot reason unchanged on all four, every rx counter monotonic, no CRC
+error anywhere, internal SRAM minimum 28 KB with viewfinder, captures and
+uploads together, reserve 2/2.
+
+**What this establishes, and what it does not.** CAM3's excess is real but
+**load-dependent and small**: nothing at all when only streaming, roughly two
+to four times the others under capture load, on counts of 4 against 0, 0 and 1.
+Every failure is recovered by a retry and no photograph was lost. The
+CAM3-specific mode is `shortRead` - a transfer that begins and is truncated -
+with `crcErrors` zero, so the bytes that arrive are sound and simply stop.
+
+The lifetime figure that started this hunt, 297 shortReads on cam3 against
+53-94 on the others, is **contaminated** and should not be quoted: part of that
+count was accumulated during the operator error recorded above, where opening
+the four node USB consoles reset three nodes and put the links into a timeout
+storm. The clean numbers are the two tables here.
+
+**Root cause: NOT ISOLATED.** Distinguishing the P4 UART channel from the XIAO,
+the OV3660 module, the ribbon and the connector needs physical swaps, one
+variable at a time, which this session cannot perform. The bench above is the
+comparable measurement each configuration needs; the procedure is in
+`firmware/CAM3_SWAP_MATRIX.md`.
+
 ### The viewfinder is the sync variable - finder-live baseline, 0.4.37, #165, 2026-09-03
 
 100 grouped shutters with the live viewfinder running on all four channels, on

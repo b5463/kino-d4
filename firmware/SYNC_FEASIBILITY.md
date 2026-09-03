@@ -631,7 +631,17 @@ Dispatch is already two to three orders of magnitude better than the thing that
 dominates. That is why the phase-aware scheduler was rejected on replay and why
 priming changed nothing: both act on the 0.3% term.
 
-### What the 69 us period difference costs, and why it decides the design
+### What the 69 us period difference costs — SUPERSEDED, see "The sensors are rate-locked" below
+
+> **This section was wrong and is kept for the record.** It read the 69 us
+> figure as a rate difference between the four sensors and concluded that a
+> one-time phase alignment decays in about three minutes. The 69 us was
+> measured in the finder-live condition, where the returned frame is chosen by
+> preview-pump timing rather than by the sensor's phase, so it is a sampling
+> artefact and not a rate. Measuring the sensors against each other directly
+> (below) gives **1.6 ppm**, which is 400 times smaller and points at a
+> different V2 design. The reasoning that followed from it - that only a shared
+> clock can hold phase - does not survive.
 
 The four sensors do not merely start out of phase, they *drift*: 69 us per
 frame between the fastest and slowest node. A perfect one-time alignment decays
@@ -640,9 +650,7 @@ by a full frame period after
     112,387 us / 69 us = 1,629 frames = about 183 seconds
 
 so any scheme that aligns phase once and then leaves the sensors alone is good
-for roughly three minutes. This is the number that rules out the register-only
-approaches below, and it is a consequence of four separate crystals, not of
-firmware.
+for roughly three minutes.
 
 ### The OV3660 registers, and the honest limit of what they can do
 
@@ -700,3 +708,285 @@ median spread; `wiggle` playback is 10 fps hard cuts, where 42 ms of
 inter-camera time on a static subject is invisible and on a moving one reads as
 part of the parallax. The product-visible work is alignment, not
 synchronization, and it is not blocked by any of the above.
+
+## The sensors are rate-locked: 1.6 ppm, measured
+
+This supersedes the 69 us reasoning above and changes the V2 recommendation.
+
+### Method
+
+`syncToFrameUs` is each node's own frame start against the ONE shared
+`SYNC_OUT` edge. For a single shutter the difference between two cameras,
+
+    d_ij = syncToFrameUs_i - syncToFrameUs_j
+
+is their relative frame phase at that instant, with the edge cancelling. Two
+consecutive shutters are about 6 s apart, and at even 600 ppm the relative
+phase would move only 3.7 ms between samples - far under half a 112.4 ms
+period - so the sequence can be unwrapped and its slope IS the relative rate.
+A flat `d_ij` means the sensors are rate-locked and a one-time alignment holds;
+a sloped one measures how fast an alignment decays.
+
+The measurement must be taken with the **finder idle**. In the finder-live
+condition the returned frame is whichever the preview pump's draining left in
+flight, so `nodeFrameStartUs` is quantised by pump timing and the phase signal
+is destroyed: fitting that data gives 105-465 ppm with a residual RMS of
+47-173 ms, i.e. a straight line through noise. That is where the 69 us came
+from. Finder-idle captures return the frame boundary immediately BEFORE the
+edge (98% of them), which is a direct phase readout.
+
+### Result, from the 0.4.31 finder-idle run, 99 shutters over 17.6 minutes
+
+| pair | least squares | first half | second half | median pairwise | worst residual |
+|---|---|---|---|---|---|
+| cam1-cam2 | -1.50 ppm | -1.70 | -1.32 | -1.50 | 243 us |
+| cam1-cam3 | +1.58 ppm | +1.44 | +1.65 | +1.58 | 162 us |
+| cam1-cam4 | -1.10 ppm | -1.25 | -1.03 | -1.10 | 206 us |
+| cam2-cam4 | +0.40 ppm | +0.45 | +0.29 | +0.39 | 135 us |
+
+Split halves agree to within 0.4 ppm, an outlier-proof median-of-pairwise-
+slopes estimator reproduces least squares to two decimals, and the worst
+residual is 243 us against a 112,387 us period. **The four OV3660s are
+rate-locked to within +/-1.6 ppm.**
+
+Why that is credible rather than surprising: each node's XCLK is LEDC-derived
+from that node's own PLL at exactly 80/5 = 16 MHz, the four sensors run one
+identical register set, and the four crystals are the same part on the same
+board at the same temperature. A crystal offset also partly cancels in this
+measurement, because a node's `esp_timer` and its sensor's XCLK come from the
+same crystal.
+
+### What that means
+
+At 1.6 ppm, a one-time phase alignment decays past
+
+| tolerance | time to exceed it |
+|---|---|
+| 2 ms | about 21 minutes |
+| 10 ms | about 1.7 hours |
+| one full frame period (112.4 ms) | about 19 hours |
+
+So **rate drift is not the obstacle, and a shared XCLK is not necessary to
+hold phase.** The obstacle is that nothing has ever ALIGNED the phases: each
+sensor's phase is set by whenever its own `esp_camera_init()` happened to start
+streaming after that node booted, and it then holds that offset for hours. In
+the run measured, those fixed offsets happened to be spread across about 86 ms
+of the 112.4 ms period, which is exactly why the finder-idle spread was 85.9 ms
+median with a narrow 47-101 ms range: a stable spread, not a wandering one.
+
+Phase alignment is therefore a **one-shot problem, not a control problem** -
+which is also why every rejected idea in this document (phase-aware
+scheduling, static delays, VTS chasing, a shutter-sampled loop) was the wrong
+shape. They all tried to track something that does not move.
+
+### The residual risk this measurement does not cover
+
+Temperature. Crystal frequency moves tens of ppm across a full temperature
+range, and the four sensors do not sit at the same temperature under load. The
+17.6 minutes measured here were at thermal steady state on a bench. A V2 gate
+must re-measure after a cold start and under sustained capture load; if
+relative rate moves to tens of ppm when warm, the 2 ms budget shrinks from
+21 minutes to under a minute and a periodic re-alignment becomes necessary.
+That is a measurement, not a guess to make now.
+
+## V2: align the phase once, on the edge that is already wired
+
+With rate drift measured at 1.6 ppm, the V2 problem is not "hold the sensors
+together" but "put them together once". That changes the recommendation from a
+board change to a firmware mechanism on hardware that already exists.
+
+### What is already in place and proven
+
+```
+P4 GPIO32 SYNC_OUT ──┬──> node1 GPIO2 SYNC_IN
+   (200 us pulse in  ├──> node2 GPIO2
+    capture_fire)    ├──> node3 GPIO2
+                     └──> node4 GPIO2      common ground, one 28 AWG branch each
+```
+
+Measured: 1000 pulses, 1000/1000 accepted on all four nodes with raw counts
+also exactly 1000, zero rejected, timestamps monotonic. Each node already runs
+an `IRAM_ATTR` rising-edge ISR that timestamps and counts, with a 10 ms dead
+time. The distribution network for a simultaneous instruction to four sensors
+is therefore built, tested, and currently used only for measurement.
+
+### The proposed sequence
+
+1. P4 sends a new `NL_CMD_ALIGN` to all four nodes. Nothing time-critical:
+   each node simply arms a flag. Command skew between nodes is irrelevant
+   because no node acts on receipt.
+2. P4 fires one `SYNC_OUT` pulse.
+3. Each node's existing sync ISR sees the edge and releases a high-priority
+   task that performs the sensor phase reset.
+4. All four sensors restart their frame timing from the same physical instant.
+   The residual skew is the spread of (ISR release + SCCB transaction + sensor
+   response), NOT the spread of four UART commands.
+5. Normal grouped capture resumes. `SYNC_OUT` keeps its measurement role, so
+   the same instrument that found the problem verifies the fix.
+
+The point of moving the action onto the edge is that it replaces the one term
+that cannot be made small - four independent UART commands, measured at 212 us
+median and 412 us worst - with terms that can.
+
+### Skew budget, honestly labelled
+
+| term | estimate | basis |
+|---|---|---|
+| sync ISR to task release | single-digit us | existing ISR is IRAM_ATTR and does two stores |
+| SCCB write of the restart register | 70 us at 400 kHz, 270 us at 100 kHz for a 3-byte write | I2C arithmetic; the driver's SCCB rate should be read before this is trusted |
+| **variation** of the above between nodes | tens of us | same code, same clock, same instant |
+| sensor response to the restart | **UNKNOWN** | not in the driver source; needs the OV3660 datasheet and a bench measurement |
+
+The first three are small and knowable. The fourth is the whole risk, and it is
+the one thing no amount of firmware design settles - if the OV3660's restart
+latency varies by milliseconds part to part, this approach caps out there.
+
+### The OV3660 controls that exist, from the driver source
+
+Read out of `managed_components/espressif__esp32-camera` (pinned 2.1.7), not
+from the datasheet, which this repository does not hold:
+
+- `SYSTEM_CTROL0` is register **0x3008**, and its header comment documents
+  **bit 7 as software reset**. The driver's `reset()` writes `0x82`, waits
+  100 ms, reloads `sensor_default_regs`, sets AE level, waits another 100 ms.
+  So a full software reset is available but costs >200 ms and discards every
+  setting, which the node would then have to re-apply.
+- Bit 6 of the same register is **software standby** on this sensor family, and
+  a standby exit is the cheaper way to restart streaming. **The header does not
+  document bit 6, so this is inference and must be confirmed against the
+  datasheet before it is designed in.**
+- `sensor->set_reg(sensor, reg, mask, value)` and `get_reg()` are exposed in
+  `sensor.h` and implemented by `ov3660.c`, so a node can drive any register
+  without patching the pinned component. This is what makes the mechanism a
+  node-firmware change rather than a fork.
+- `set_res_raw()` exposes `totalX`/`totalY` (`HTS`/`VTS`, 0x380c-0x380f)
+  directly. That is the handle a VTS phase-chaser would use, and it stays
+  unused: see the rejection above, and note that at 1.6 ppm there is nothing
+  for a tracking loop to track.
+- There is **no hardware reset or power-down line**: `camera.c` initialises
+  with `pin_pwdn = -1` and `pin_reset = -1`. A simultaneous hardware reset of
+  four sensors is not available without a wiring change, which is why the
+  restart has to go over SCCB.
+
+### Why this is preferred over a shared XCLK as the first V2 step
+
+A shared XCLK removes rate error. Rate error is measured at 1.6 ppm and costs
+2 ms of alignment every 21 minutes, so removing it buys very little. It also
+does not align phase at all - the brief's own section 8 is right about that.
+Against that small benefit:
+
+- On the XIAO ESP32-S3 Sense the XCLK is generated **inside the module** by the
+  LEDC peripheral on GPIO10 and routed to the camera FPC on the module itself.
+  There is no exposed XCLK input. Sharing a clock means either cutting or
+  contending with GPIO10's net on four modules, or abandoning the Sense camera
+  connector for a custom sensor carrier.
+- Four OV3660 XCLK inputs plus routing is a real load at 16 MHz and would want
+  a fan-out buffer rather than one GPIO, which is a board change.
+
+So: shared XCLK is a **V2+ option that becomes necessary only if** the measured
+relative rate rises materially when warm, or if the SCCB restart turns out to
+be non-deterministic. Both are measurements that come first.
+
+### Validation gates for the phase-alignment prototype
+
+| gate | what it proves | how |
+|---|---|---|
+| **V2-A** | the sensor can be restarted at all over SCCB without a full reset | one node, one register write, frame timing observed to restart |
+| **V2-B** | restart latency and its part-to-part variation | one node at a time, edge to first new frame start, 100 repeats |
+| **V2-C** | four sensors align on one edge | `syncToFrameUs` spread immediately after an aligned restart, finder idle |
+| **V2-D** | the alignment holds | spread at +0 s, +1 min, +5 min, +30 min, cold start and warm |
+| **V2-E** | freshness survives it | finder-live capture correctness unchanged, `frameBeforeEdge` still 0% |
+| **V2-F** | nothing else regressed | Roll, offline hold, automatic upload, transport error rates |
+| **V2-G** | the product target | optical measurement of effective exposure, not frame start |
+
+Only V2-G speaks to `gradeSkew()`. Everything above it measures frame start,
+which is what `camera_fb_t.timestamp` can see and no more.
+
+### The optical test, when it comes
+
+`camera_fb_t.timestamp` is the DMA arm - frame start - and the product target
+is effective exposure. Nothing measured in V1 or proposed in V2-A..F closes
+that gap. The eventual test needs one light event visible to all four sensors
+simultaneously, or a moving target with known velocity, so that relative
+exposure can be inferred from the images themselves rather than from
+timestamps. FLASH_EN is the natural source and it is physically disconnected;
+that stays deferred until the timing architecture is chosen, so no flash work
+is implied by any of the above.
+
+## Freshness currently depends on the viewfinder, and it should not
+
+### The measured fact
+
+| condition | frames whose exposure started BEFORE the shutter's own sync edge |
+|---|---|
+| finder live (0.4.30, 0.4.37) | **0 of 391 and 0 of 397** |
+| finder idle (0.4.31) | **385 of 393 (98%)** |
+
+A photograph that predates the shutter by up to a frame period is a capture
+correctness defect, not a synchronization one - the same class as the original
+134-second stale frame at the top of this document, smaller in magnitude.
+
+### Why, exactly
+
+The sensor streams continuously from `esp_camera_init()` with `fb_count = 2` and
+`CAMERA_GRAB_LATEST`; `cam_hal.c` sizes the frame queue to `fb_count - 1`, so
+one completed frame can wait while DMA fills the other buffer. Nothing about
+that depends on the UI.
+
+What depends on the UI is whether that one-deep queue is EMPTY when the shutter
+fires:
+
+- **Finder live.** The P4's preview pump has been draining the queue at about
+  13 fps, so at shutter time it is usually empty. `camsensor_discard_queued()`
+  finds nothing to drop and returns immediately, and `esp_camera_fb_get()` then
+  blocks until the next frame completes - a frame that was armed after the
+  command. Fresh.
+- **Finder idle.** Nothing has drained the queue since the previous capture, so
+  it holds one completed frame. `discard_queued()` drops that one, and
+  `fb_get()` returns the next frame to complete - which was already in flight
+  in the other buffer when the discard ran, so it was armed before the command.
+  Stale by up to a frame period.
+
+One discard is one frame short of a guarantee, and the missing frame is
+supplied, incidentally, by the preview pump. So the product invariant today is
+really: **normal photography is only fresh because the UI happens to be
+streaming previews.** That is a coupling nobody chose and nothing enforces.
+
+### Recommendation, design only
+
+Do **not** introduce a `CAM_STREAM_ACTIVE` product state to fix this. The
+sensor is already streaming unconditionally; a new state would describe
+something that is always true and would still leave freshness resting on a
+side effect.
+
+Put the guarantee where the requirement is - in the node's capture predicate.
+`node_server.c` already has exactly this pattern for a different reason: after
+an encoding change it releases and re-fetches while
+`timing.frame_start_us <= camsensor_encoding_changed_us()`, bounded at three
+retries. The change is to widen that reference instant to include the command:
+
+```c
+const int64_t must_start_after = MAX(camsensor_encoding_changed_us(), cmd_us);
+for (int retry = 0; retry < 3 && fb != NULL &&
+                    timing.frame_start_us <= must_start_after; retry++) {
+  camsensor_release(fb);
+  fb = camsensor_capture(&duration_ms, &timing);
+}
+```
+
+Properties worth having:
+
+- Freshness becomes a property of the capture path, true whether or not any UI
+  is running, and stated in one predicate rather than implied by a pump.
+- The cost is paid only when the frame really was stale: nothing in the
+  finder-live case, one extra frame period (~112 ms) in the finder-idle case.
+  Today that case silently returns the wrong instant instead.
+- Previews keep skipping it, as they already do.
+- The bound stays at three retries, so a sensor that never produces a fresh
+  frame fails rather than blocking the node.
+
+Not implemented here: it is a node-firmware change, the nodes are on 0.4.31 and
+deliberately untouched through the current work, and it wants its own bench run
+(finder idle, 100 captures, expect `frameBeforeEdge` to go from 98% to 0% and
+per-set total to rise by about a frame period). It is a correctness fix rather
+than a synchronization one, and it does not depend on any V2 decision.
