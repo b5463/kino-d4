@@ -588,6 +588,55 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### CAM1 went offline after 2.6 hours of streaming - 0.4.37, #159, 2026-09-03
+
+Recorded because it happened while nothing was being written to any node, and
+because it is a different and more serious failure than the CAM3 outlier this
+session set out to isolate.
+
+**State**, sampled six times over 90 s from `GET_CAMERA_INFO` and
+`CAMERA_LINK_STATS`:
+
+```
+cam1 online=False state=offline sensorDetected=False frames=46518 (frozen)
+     link connected=False  rx=146,578->146,585  timeouts 685->720  crcErrors=2
+     lastNodeBootReason=usb  lastError=TIMEOUT
+cam2/cam3/cam4 online=True state=ready sensorDetected=True, frames climbing
+     (51,936 / 54,684 / 57,127)
+```
+
+**What it is not.** The node did **not** reboot - `lastNodeBootReason` is
+unchanged and rx still creeps up, so the link layer is alive and answering
+occasionally. No node USB console was opened at any point in this session's V2
+work, no node was reflashed, and no sensor register was written; the only
+traffic was read-only KDP queries. So this is not the console-reset artefact
+recorded earlier in this document.
+
+**What it looks like.** The node is running but its camera pipeline has
+stopped: `sensorDetected` false and the preview frame counter frozen while the
+other three climb. `crcErrors=2` is the first CRC on any channel this session -
+every earlier fault was `shortRead` with CRC zero - so this is a different
+signature.
+
+Preceded by about 2.6 hours of continuous four-channel viewfinder streaming
+plus roughly 250 grouped captures and 242 uploads. Internal SRAM on the P4 was
+88 KB free with a 28 KB minimum and the reserve held 2/2, so the P4 side is not
+starved.
+
+**Not recovered, deliberately.** There is no KDP camera-reset command
+(`CAMERA_STATUS`, `ARM`, `TEST`, `CAPTURE`, `PREVIEW`, `CALIBRATE`, `PHASE`,
+`FOCUS`, `LINK_STATS`, `LINK_STATS_RESET` - none re-initialises a node's
+sensor), so recovery needs a node power cycle, which is a hands-on action. The
+state was preserved and reported rather than cleared, because clearing it
+destroys the only evidence.
+
+**Consequences for the plan.** CAM1 was the node nominated for the V2-A/B
+single-node experiment as the known-healthy channel; it is now the least
+healthy. Two channels have now shown distinct faults - CAM3 load-dependent
+`shortRead` with no CRC, CAM1 a hard stop with CRC - which makes the hands-on
+swap matrix in `CAM3_SWAP_MATRIX.md` more urgent and suggests widening it to
+CAM1 rather than treating CAM3 as the single suspect.
+
 ### CAM3 is not a streaming outlier - reliability bench C0, 0.4.37, #159, 2026-09-03
 
 The channel that has been called hardware-suspect four times, measured properly
