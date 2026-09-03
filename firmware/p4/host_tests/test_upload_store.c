@@ -395,9 +395,176 @@ static void test_escape_heavy_error_still_fits(void) {
   cJSON_free(text);
 }
 
+/* ---- which cameras: frameSlots and META's frames (#164) ---------------- */
+
+static void test_round_trip_frame_slots(void) {
+  /* The record for a C1/C3/C4 set with camera 1 landed. This is the field
+   * whose absence stranded CAP_000263; it has to survive the trip exactly. */
+  static const uint8_t slots[] = {1, 3, 4};
+  rq_job_t in;
+  rq_job_init_slots(&in, UUID, "roll_2026_09_03", slots, 3, true);
+  in.frame_done[0] = true;
+  in.state = RQ_ORIGINALS_UPLOADING;
+  rq_job_t out;
+  memset(&out, 0xAA, sizeof out);
+  CHECK(round_trip(&in, &out), "a sparse record reads back as valid");
+  CHECK(out.frame_count == 3, "frameCount 3, got %d", out.frame_count);
+  CHECK(out.frame_slot[0] == 1 && out.frame_slot[1] == 3 && out.frame_slot[2] == 4,
+        "frameSlots [1,3,4], got [%d,%d,%d]", out.frame_slot[0], out.frame_slot[1], out.frame_slot[2]);
+  CHECK(out.frame_done[0] && !out.frame_done[1] && !out.frame_done[2], "frameDone [t,f,f]");
+  CHECK(rq_job_has_slots(&out), "knows its cameras");
+  for (int i = 3; i < RQ_MAX_FRAMES; i++) CHECK(out.frame_slot[i] == 0, "slot %d past the list is 0", i);
+
+  char *text = upload_store_encode(&in);
+  CHECK(text != NULL && strstr(text, "\"frameSlots\":[1,3,4]") != NULL,
+        "the record spells the cameras out: %s", text ? text : "(null)");
+  if (text) cJSON_free(text);
+}
+
+static void test_legacy_record_without_slots_decodes_as_unknown(void) {
+  /* UPLOAD.JSON as every firmware up to 0.4.28 wrote it - CAP_000263's, word
+   * for word except the ids. It must still decode (it is ours), with the
+   * cameras marked unknown so the reconciler goes to META, never read as
+   * "frames 1, 2, 3". */
+  const char *legacy =
+      "{\"formatVersion\":1,\"captureUuid\":\"3f2b9c11-4d8e-4a71-9f02-77c1de40ab55\","
+      "\"captureId\":\"cap_sIU7yKIzcmDMlxm63j9EQQ\",\"rollId\":\"roll__Mg6PTKzfodtJ7zxCjBoNA\","
+      "\"state\":8,\"stateName\":\"FAILED\",\"frameCount\":3,\"thumbPresent\":true,"
+      "\"thumbDone\":true,\"frameDone\":[true,false,false],\"attempts\":12,\"rereadAttempts\":0,"
+      "\"nextAttemptMs\":4310720,\"lastError\":\"the asset is not on the card\"}";
+  rq_job_t job;
+  CHECK(upload_store_decode(legacy, strlen(legacy), UUID, &job), "a pre-slot record is valid");
+  CHECK(job.frame_count == 3, "frameCount 3");
+  CHECK(!rq_job_has_slots(&job), "cameras unknown until META says");
+  CHECK(job.frame_done[0] && !job.frame_done[1], "the old confirmations are kept for adoption");
+  CHECK(job.state == RQ_FAILED && job.attempts == 12, "parked as it was");
+  /* And such a job asks for nothing until it knows its cameras. */
+  CHECK(rq_next_step(&job, 0).kind == RQ_STEP_NOTHING, "FAILED asks for nothing");
+  job.state = RQ_QUEUED;
+  strncpy(job.capture_id, "cap_x", sizeof job.capture_id - 1);
+  job.thumb_done = true;
+  CHECK(rq_next_step(&job, 0).frame_index == 0 && rq_next_step(&job, 0).kind != RQ_STEP_UPLOAD_FRAME,
+        "an unknown camera is never asked for as a file");
+}
+
+static void test_bad_frame_slots_are_refused(void) {
+  const char *head =
+      "{\"formatVersion\":1,\"captureId\":\"cap_a\",\"rollId\":\"roll_a\",\"state\":4,"
+      "\"frameCount\":3,\"thumbPresent\":false,\"thumbDone\":false,\"frameDone\":[false,false,false],";
+  const char *tails[] = {
+      "\"frameSlots\":[1,3]}",          /* count disagrees with frameCount */
+      "\"frameSlots\":[1,3,3]}",        /* a camera twice */
+      "\"frameSlots\":[0,3,4]}",        /* slot 0 */
+      "\"frameSlots\":[1,3,9]}",        /* past RQ_MAX_FRAMES */
+      "\"frameSlots\":[1,3,4.5]}",      /* not an integer */
+      "\"frameSlots\":\"1,3,4\"}",      /* not an array */
+      "\"frameSlots\":[1,\"3\",4]}",    /* not numbers */
+  };
+  for (size_t i = 0; i < sizeof tails / sizeof tails[0]; i++) {
+    char text[512];
+    snprintf(text, sizeof text, "%s%s", head, tails[i]);
+    rq_job_t job;
+    memset(&job, 0xAA, sizeof job);
+    CHECK(!upload_store_decode(text, strlen(text), UUID, &job), "refused: %s", tails[i]);
+  }
+  char good[512];
+  snprintf(good, sizeof good, "%s%s", head, "\"frameSlots\":[1,3,4]}");
+  rq_job_t job;
+  CHECK(upload_store_decode(good, strlen(good), UUID, &job) && job.frame_slot[2] == 4,
+        "and the well-formed one is read");
+}
+
+/* A META.JSON in the shape meta.c writes, with the frames given. */
+static const char *META_HEAD =
+    "{\"schema\":\"kino.capture\",\"version\":1,\"id\":\"CAP_000263\","
+    "\"captureUuid\":\"6fd26d63-51f9-42da-b7a9-67f0819adb31\",\"rollId\":\"roll__Mg6PTKzfodtJ7zxCjBoNA\","
+    "\"mode\":\"quad\",\"status\":\"complete\",\"resolution\":\"1600x1200\",";
+
+static int meta_frames(const char *frames_json, int frame_count, uint8_t *slots, int cap) {
+  char text[1024];
+  snprintf(text, sizeof text, "%s\"frameCount\":%d,\"frames\":%s}", META_HEAD, frame_count,
+           frames_json);
+  return upload_store_meta_frames_from_text(text, strlen(text), 4, slots, cap);
+}
+
+static void test_meta_frames(void) {
+  uint8_t s[RQ_MAX_FRAMES];
+
+  /* The bench document, as written with CAM2 dark: cam2 has file null. */
+  int n = meta_frames(
+      "[{\"cam\":\"cam1\",\"file\":\"C1.JPG\",\"bytes\":138510,\"crc32\":\"f4245568\"},"
+      "{\"cam\":\"cam3\",\"file\":\"C3.JPG\",\"bytes\":136689,\"crc32\":\"ad4f1581\"},"
+      "{\"cam\":\"cam4\",\"file\":\"C4.JPG\",\"bytes\":110896,\"crc32\":\"dafa8056\"}]",
+      3, s, RQ_MAX_FRAMES);
+  CHECK(n == 3 && s[0] == 1 && s[1] == 3 && s[2] == 4, "D. CAM2 dark -> [1,3,4], got n=%d", n);
+
+  n = meta_frames(
+      "[{\"cam\":\"cam1\",\"file\":\"C1.JPG\"},{\"cam\":\"cam2\",\"file\":null,\"error\":\"TIMEOUT\"},"
+      "{\"cam\":\"cam3\",\"file\":\"C3.JPG\"},{\"cam\":\"cam4\",\"file\":\"C4.JPG\"}]",
+      3, s, RQ_MAX_FRAMES);
+  CHECK(n == 3 && s[1] == 3, "a camera that was asked and failed (file null) is not a frame: n=%d", n);
+
+  n = meta_frames("[{\"cam\":\"cam1\",\"file\":\"C1.JPG\"},{\"cam\":\"cam2\",\"file\":\"C2.JPG\"},"
+                  "{\"cam\":\"cam3\",\"file\":\"C3.JPG\"},{\"cam\":\"cam4\",\"file\":\"C4.JPG\"}]",
+                  4, s, RQ_MAX_FRAMES);
+  CHECK(n == 4 && s[3] == 4, "A. full set -> [1,2,3,4]");
+
+  n = meta_frames("[{\"cam\":\"cam2\",\"file\":\"C2.JPG\"},{\"cam\":\"cam3\",\"file\":\"C3.JPG\"},"
+                  "{\"cam\":\"cam4\",\"file\":\"C4.JPG\"}]",
+                  3, s, RQ_MAX_FRAMES);
+  CHECK(n == 3 && s[0] == 2, "E. CAM1 dark -> [2,3,4]");
+
+  n = meta_frames("[{\"cam\":\"cam1\",\"file\":\"C1.JPG\"},{\"cam\":\"cam4\",\"file\":\"C4.JPG\"}]", 2,
+                  s, RQ_MAX_FRAMES);
+  CHECK(n == 2 && s[0] == 1 && s[1] == 4, "F. only 1 and 4");
+
+  n = meta_frames("[]", 0, s, RQ_MAX_FRAMES);
+  CHECK(n == 0, "no frames is a valid (empty) list, got %d", n);
+
+  /* M. frameCount disagrees with the frames that have a file. */
+  n = meta_frames("[{\"cam\":\"cam1\",\"file\":\"C1.JPG\"},{\"cam\":\"cam3\",\"file\":\"C3.JPG\"}]", 3,
+                  s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_COUNT, "M. count mismatch refused, got %d", n);
+
+  /* N. a camera twice. */
+  n = meta_frames("[{\"cam\":\"cam1\",\"file\":\"C1.JPG\"},{\"cam\":\"cam1\",\"file\":\"C1.JPG\"}]", 2,
+                  s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_SLOT, "N. duplicate camera refused, got %d", n);
+
+  /* A camera the body does not have. */
+  n = meta_frames("[{\"cam\":\"cam5\",\"file\":\"C5.JPG\"}]", 1, s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_SLOT, "camera 5 refused on a four-camera body, got %d", n);
+
+  /* A file that is not the camera's. */
+  n = meta_frames("[{\"cam\":\"cam3\",\"file\":\"C2.JPG\"}]", 1, s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_FILE, "cam3 in C2.JPG refused, got %d", n);
+
+  /* L. malformed: no frames array, an entry without cam, not JSON. No
+   * contiguous fallback in any of them. */
+  char text[256];
+  snprintf(text, sizeof text, "%s\"frameCount\":4}", META_HEAD);
+  n = upload_store_meta_frames_from_text(text, strlen(text), 4, s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_MALFORMED, "L. no frames array refused, got %d", n);
+  n = meta_frames("[{\"file\":\"C1.JPG\"}]", 1, s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_MALFORMED, "L. an entry without cam refused, got %d", n);
+  n = upload_store_meta_frames_from_text("{\"frames\":[", 11, 4, s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_MALFORMED, "L. truncated JSON refused, got %d", n);
+  n = upload_store_meta_frames_from_text(NULL, 0, 4, s, RQ_MAX_FRAMES);
+  CHECK(n == UPLOAD_META_FRAMES_MALFORMED, "NULL refused");
+
+  /* Capacity: more frames than the caller can take is refused, not truncated. */
+  n = meta_frames("[{\"cam\":\"cam1\",\"file\":\"C1.JPG\"},{\"cam\":\"cam2\",\"file\":\"C2.JPG\"}]", 2,
+                  s, 1);
+  CHECK(n == UPLOAD_META_FRAMES_SLOT, "a list longer than the caller's buffer is refused, got %d", n);
+}
+
 int main(void) {
   test_round_trip();
   test_round_trip_frame_progress();
+  test_round_trip_frame_slots();
+  test_legacy_record_without_slots_decodes_as_unknown();
+  test_bad_frame_slots_are_refused();
+  test_meta_frames();
   test_round_trip_every_state();
   test_encoded_shape();
 

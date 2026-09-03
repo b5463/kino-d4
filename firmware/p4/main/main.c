@@ -62,30 +62,8 @@ static void gallery_on_capture(const capture_report_t *r) {
   gallery_refresh();
 }
 
-/*
- * A capture landed, so queue it for the active Roll.
- *
- * Runs on the capture task, immediately after the commit. It writes one small
- * file and returns — it must not touch the network and must not block, because
- * the next thing this task does is accept another shutter press.
- *
- * `r->stored` rather than `r->online` or a fixed 4: the frames that actually
- * reached the card are the frames there are to upload, and a partial capture
- * must not claim four. A capture that stored nothing is not queued at all —
- * there is nothing to send, and a job that could only fail would show up as
- * an error the user cannot act on.
- *
- * The return value is deliberately ignored. A failed enqueue costs an upload,
- * never a photograph: the capture is committed on the card either way, and
- * boot-time reconciliation finds anything this missed.
- */
 /** HELLO timeout for a channel that answered nothing last time. */
 #define OFFLINE_PROBE_MS 300u
-
-static void queue_on_capture(const capture_report_t *r) {
-  if (r == NULL || !r->ok || r->stored <= 0) return;
-  (void)upload_queue_enqueue(r->uuid, r->stored, r->thumbnail_ms > 0);
-}
 
 static uint32_t next_boot_count(void) {
   nvs_handle_t nvs;
@@ -458,17 +436,11 @@ void app_main(void) {
              esp_err_to_name(uq_err));
   }
 
-  /*
-   * Queue every new capture.
-   *
-   * A listener rather than a call inside capture.c, for the same reason the
-   * gallery is one: the capture path should not know what else wants to hear
-   * about a photograph. It runs ON THE CAPTURE TASK, so it does one small
-   * file write and returns — see upload_queue_enqueue(). It cannot fail the
-   * capture, and if it fails, reconciliation finds the capture at the next
-   * boot, which is why that path is worth having.
-   */
-  capture_on_done(queue_on_capture);
+  /* Every new capture is queued by upload_queue.c's own capture-done listener,
+   * registered in upload_queue_start(): it has the shutter's Roll snapshot and
+   * the list of cameras whose frames reached the card, which is what a job
+   * needs (#164). A second listener here used to enqueue the same capture
+   * again from a frame count; the queue de-duplicated it and it is gone. */
 
   ESP_LOGI(TAG, "KINO D4 P4 %s up: serial %s, session %s, sd %s, display %s", KINO_FW_VERSION,
            id.serial, id.session_id, storage_present() ? "mounted" : "absent",

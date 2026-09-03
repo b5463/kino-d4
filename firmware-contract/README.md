@@ -787,3 +787,25 @@ Both replace the same firmware's previous diagnostic, a once-a-second
 `ui ... STALLED` klog line that fired on every idle screen and evicted real
 evidence from a fixed-size ring. It now reports on the edge only, and only
 when a frame was actually owed.
+
+### D23 — `frameIndex` is the camera slot, and a capture's frames may be sparse
+
+Firmware 0.4.29 (#164). `docs/roll/ROLL_DEVICE_CONTRACT.md` said original
+frames carry `frameIndex` 1..N contiguous. The capture path never promised
+that: a grouped capture stores the frames of the cameras that answered,
+named by camera (`C3.JPG` is camera 3), and META.JSON's `frames` lists
+exactly those, with `frameCount` their number. With camera 2 dark the set is
+frames 1, 3 and 4 and `frameCount` is 3.
+
+The Roll queue used to enumerate 1..`frameCount` from a count, so that set
+was asked for `C2.JPG` until it parked (bench 2026-09-03, CAP_000263). It now
+carries the camera list in `UPLOAD.JSON` (`frameSlots`, beside `frameDone`,
+both positional and read together), takes it from the capture report at the
+shutter and from META.JSON's `frames` at reconciliation, and never from a
+count or a scan of the card. On the wire `frameIndex` is the camera slot;
+the server's identity `captureUuid + role + frameIndex` and its
+`alreadyComplete` replay are unchanged, and it accepts any positive
+`frameIndex`. Records written before 0.4.29 have no `frameSlots`; the
+reconciler adopts the list from META (an old `frameDone[i]` meant camera
+i+1 and is read that way) and rewrites the record. A META with no usable
+frame list parks the job with the reason, rather than guessing.

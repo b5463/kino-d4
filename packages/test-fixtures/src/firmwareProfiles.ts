@@ -517,4 +517,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // after the transfers), quad detail view, panic audit fixes (#158 #163).
   // Device side only, same profile.
   '0.4.28': 'd4-settings-0-4-9',
+  // 0.4.29: the Roll queue uploads the cameras a capture holds (frameSlots from
+  // META), not C1..C<frameCount>; a set with a middle camera dark now leaves
+  // the body (#164). Device side only, same profile.
+  '0.4.29': 'd4-settings-0-4-9',
 };

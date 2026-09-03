@@ -125,9 +125,9 @@ bool upload_store_load(const char *uuid, rq_job_t *job, bool *valid);
  * (the record as stored) and for ENQUEUE/REPAIR (a fresh record rebuilt from
  * the files present), and untouched for IGNORE.
  *
- * The rebuilt frame count comes from the C<n>.JPG files, bounded by
- * `max_frames`, not from META.JSON: the files are what would be uploaded, and a
- * metadata field that disagreed with them would be the wrong answer.
+ * The rebuilt frame list comes from META.JSON's `frames`, bounded by
+ * `max_frames` cameras; see upload_store_inspect_ex below for why not the
+ * files.
  *
  * `roll_id` NULL or empty means the device is not on a Roll. ENQUEUE and REPAIR
  * then degrade to IGNORE — there is nowhere for the bytes to go, and a job with
@@ -147,11 +147,57 @@ bool upload_store_meta_roll_id_from_text(const char *text, size_t len, char *out
 /** Same, from `<uuid>/META.JSON` on the card. */
 bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap);
 
+/** Why a META.JSON frame list could not be used. Values are negative so the
+ * count of a usable list (>= 0) and a refusal never collide. */
+typedef enum {
+  UPLOAD_META_FRAMES_MALFORMED = -1,   /* not JSON, no `frames` array, or an entry without a `cam` */
+  UPLOAD_META_FRAMES_COUNT = -2,       /* `frameCount` disagrees with the entries that have a file */
+  UPLOAD_META_FRAMES_SLOT = -3,        /* a camera outside 1..max_slot, or named twice */
+  UPLOAD_META_FRAMES_FILE = -4,        /* an entry's `file` is not C<cam>.JPG */
+} upload_meta_frames_err_t;
+
+/**
+ * The frames a META.JSON document says the capture holds: for every entry of
+ * `frames` whose `file` is a string, the camera number from its `cam`
+ * ("cam3" -> 3), in document order, into `slots` (up to `cap`). Entries with
+ * `file: null` are cameras that were asked and failed; they are not frames.
+ *
+ * Returns the number of frames, or an upload_meta_frames_err_t. Refused, not
+ * guessed: a document whose `frameCount` is not the number of frames, that
+ * names a camera twice or outside 1..max_slot, or whose file name is not the
+ * camera's, is one this queue will not upload from - the capture path writes
+ * all of those consistently, so a disagreement means the document is not one
+ * it wrote. Pure; `text` need not be NUL-terminated.
+ */
+int upload_store_meta_frames_from_text(const char *text, size_t len, int max_slot,
+                                       uint8_t *slots, int cap);
+
+/** Same, from `<uuid>/META.JSON` on the card. UPLOAD_META_FRAMES_MALFORMED when
+ * the file cannot be read. */
+int upload_store_meta_frames(const char *uuid, int max_slot, uint8_t *slots, int cap);
+
 /*
  * Reconcile one capture folder. The Roll comes from the capture's META.JSON,
  * never from a parameter: the caller no longer tells this function which Roll
  * is current, because that is exactly the information it must not use.
+ *
+ * The frame list comes from META.JSON's `frames` (upload_store_meta_frames),
+ * never from a scan for C<n>.JPG: files tell you what is there, META tells you
+ * what the photograph is, and the two agree by construction (metadata last).
+ * A committed capture whose META names no usable frame list, or names a frame
+ * that is not on the card, comes back FAILED with the reason in last_error -
+ * parked where the queue status can show it, never guessed at.
+ *
+ * `*needs_save` (may be NULL) is set when the record on the card must be
+ * rewritten before the queue acts: a new ENQUEUE/REPAIR record, or a RESUME
+ * record written before frame_slot existed that has just adopted its list
+ * from META (rq_job_adopt_slots).
  */
+rq_reconcile_t upload_store_inspect_ex(const char *uuid, int max_frames, rq_job_t *out,
+                                       bool *needs_save);
+
+/** upload_store_inspect_ex without the save flag: RESUME records that adopted
+ * a frame list are then persisted on the next post-step write. */
 rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames,
                                     rq_job_t *out);
 

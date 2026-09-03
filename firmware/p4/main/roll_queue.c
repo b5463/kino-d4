@@ -93,9 +93,21 @@ void rq_job_network_restored(rq_job_t *job) {
 /* Job lifecycle                                                      */
 /* ------------------------------------------------------------------ */
 
-void rq_job_init(rq_job_t *job, const char *uuid, const char *roll_id, int frame_count,
-                 bool thumb_present) {
-  if (job == NULL) return;
+bool rq_slots_valid(const uint8_t *slots, int count, int max_slot) {
+  if (count < 0 || count > RQ_MAX_FRAMES) return false;
+  if (count > 0 && slots == NULL) return false;
+  if (max_slot > RQ_MAX_FRAMES) max_slot = RQ_MAX_FRAMES;
+  bool seen[RQ_MAX_FRAMES + 1] = {false};
+  for (int i = 0; i < count; i++) {
+    const int s = slots[i];
+    if (s < 1 || s > max_slot) return false;
+    if (seen[s]) return false; /* one camera, one frame: a duplicate is a lie */
+    seen[s] = true;
+  }
+  return true;
+}
+
+static void init_common(rq_job_t *job, const char *uuid, const char *roll_id, bool thumb_present) {
   memset(job, 0, sizeof *job);
   if (uuid != NULL) {
     pure_strcopy(job->uuid, sizeof job->uuid, uuid);
@@ -103,11 +115,58 @@ void rq_job_init(rq_job_t *job, const char *uuid, const char *roll_id, int frame
   if (roll_id != NULL) {
     pure_strcopy(job->roll_id, sizeof job->roll_id, roll_id);
   }
-  if (frame_count < 0) frame_count = 0;
-  if (frame_count > RQ_MAX_FRAMES) frame_count = RQ_MAX_FRAMES;
-  job->frame_count = frame_count;
   job->thumb_present = thumb_present;
   job->state = RQ_QUEUED;
+}
+
+bool rq_job_init_slots(rq_job_t *job, const char *uuid, const char *roll_id,
+                       const uint8_t *slots, int count, bool thumb_present) {
+  if (job == NULL) return false;
+  init_common(job, uuid, roll_id, thumb_present);
+  if (!rq_slots_valid(slots, count, RQ_MAX_FRAMES)) return false;
+  for (int i = 0; i < count; i++) job->frame_slot[i] = slots[i];
+  job->frame_count = count;
+  return true;
+}
+
+void rq_job_init(rq_job_t *job, const char *uuid, const char *roll_id, int frame_count,
+                 bool thumb_present) {
+  if (job == NULL) return;
+  init_common(job, uuid, roll_id, thumb_present);
+  if (frame_count < 0) frame_count = 0;
+  if (frame_count > RQ_MAX_FRAMES) frame_count = RQ_MAX_FRAMES;
+  /* Contiguous by construction, and only by construction: cameras 1..N. */
+  for (int i = 0; i < frame_count; i++) job->frame_slot[i] = (uint8_t)(i + 1);
+  job->frame_count = frame_count;
+}
+
+bool rq_job_has_slots(const rq_job_t *job) {
+  if (job == NULL) return false;
+  for (int i = 0; i < job->frame_count && i < RQ_MAX_FRAMES; i++) {
+    if (job->frame_slot[i] == 0) return false;
+  }
+  return true;
+}
+
+bool rq_job_adopt_slots(rq_job_t *job, const uint8_t *slots, int count) {
+  if (job == NULL) return false;
+  if (job->frame_count > 0 && rq_job_has_slots(job)) return false;
+  if (!rq_slots_valid(slots, count, RQ_MAX_FRAMES)) return false;
+
+  /* The old queue's position i was camera i+1: that is the file it opened and
+   * the frameIndex it sent. Read each camera's confirmation from there. */
+  bool old_done[RQ_MAX_FRAMES];
+  const int old_count = job->frame_count > RQ_MAX_FRAMES ? RQ_MAX_FRAMES : job->frame_count;
+  memcpy(old_done, job->frame_done, sizeof old_done);
+  memset(job->frame_done, 0, sizeof job->frame_done);
+  memset(job->frame_slot, 0, sizeof job->frame_slot);
+  for (int i = 0; i < count; i++) {
+    const int cam = slots[i];
+    job->frame_slot[i] = (uint8_t)cam;
+    job->frame_done[i] = (cam - 1 < old_count) && old_done[cam - 1];
+  }
+  job->frame_count = count;
+  return true;
 }
 
 bool rq_job_settled(const rq_job_t *job) {
@@ -115,12 +174,23 @@ bool rq_job_settled(const rq_job_t *job) {
   return job->state == RQ_COMPLETE || job->state == RQ_FAILED;
 }
 
-/* First frame, 1-based, that has not been confirmed. 0 when all are done. */
+/* The camera slot of the first position not yet confirmed. 0 when all are done
+ * - and 0 for a position whose camera is unknown, which a record without slots
+ * has: such a job asks for nothing until the reconciler has adopted its list,
+ * because "position 2" names no file. */
 static int first_pending_frame(const rq_job_t *job) {
   for (int i = 0; i < job->frame_count && i < RQ_MAX_FRAMES; i++) {
-    if (!job->frame_done[i]) return i + 1;
+    if (!job->frame_done[i]) return job->frame_slot[i];
   }
   return 0;
+}
+
+/* Position of camera `slot` in this job, or -1 when the job holds no such frame. */
+static int position_of_slot(const rq_job_t *job, int slot) {
+  for (int i = 0; i < job->frame_count && i < RQ_MAX_FRAMES; i++) {
+    if (job->frame_slot[i] == slot) return i;
+  }
+  return -1;
 }
 
 rq_step_t rq_next_step(const rq_job_t *job, int64_t now_ms) {
@@ -214,13 +284,14 @@ bool rq_apply(rq_job_t *job, rq_step_t step, rq_disposition_t disp, const char *
           job->state = RQ_THUMB_READY;
           break;
 
-        case RQ_STEP_UPLOAD_FRAME:
-          if (step.frame_index >= 1 && step.frame_index <= RQ_MAX_FRAMES) {
-            job->frame_done[step.frame_index - 1] = true;
-          }
+        case RQ_STEP_UPLOAD_FRAME: {
+          /* Confirmed by camera, not by position: the step named a slot. */
+          const int pos = position_of_slot(job, step.frame_index);
+          if (pos >= 0) job->frame_done[pos] = true;
           job->reread_attempts = 0;
           job->state = RQ_ORIGINALS_UPLOADING;
           break;
+        }
 
         case RQ_STEP_COMPLETE_CAPTURE:
           job->state = RQ_COMPLETE;

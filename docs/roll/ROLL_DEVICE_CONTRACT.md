@@ -35,7 +35,7 @@ Per capture, in this order:
 
 1. `POST /api/device/rolls/{rollId}/captures` with the capture document. 201 (created) and 200 (replay) both return the same `{captureId}` for the same `captureUuid`.
 2. Optional but strongly preferred first asset: `thumb` (JPEG, ~200×150). It flips the capture to `preview-ready` and guests see the tile immediately.
-3. Each original frame as role `original-frame` with `frameIndex` 1..N (contiguous, `image/jpeg` only):
+3. Each original frame as role `original-frame` with `frameIndex` = the camera slot (1..4 on D4; `image/jpeg` only). The set is the frames META.JSON lists, and it need not be contiguous: a capture taken with camera 2 dark holds frames 1, 3 and 4, `frameCount` is 3, and exactly those three assets are uploaded — `frameIndex` names the camera, never a position in the sequence (firmware #164, 2026-09-03):
    - `POST /api/device/captures/{captureId}/assets/init` `{role, frameIndex?, mime, bytes, sha256}` → `{uploadId, partSize, alreadyComplete}`. If `alreadyComplete`, skip to the next asset.
    - `PUT /api/device/uploads/{uploadId}/parts/{partNo}` raw octet-stream, parts ≤ `partSize` (5 MiB).
    - `POST /api/device/uploads/{uploadId}/complete`. The server re-hashes the stored object; 422 `CHECKSUM_MISMATCH` means re-upload.

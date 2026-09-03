@@ -124,9 +124,10 @@ static char *read_card_file(const char *path, size_t cap) {
  *     know where it would go;
  *   - `deviceId`, which is empty at commit time on a camera that had not yet
  *     registered;
- *   - `frameCount`, from the files the queue is actually going to upload. The
- *     contract requires frameIndex 1..N contiguous, and a document claiming a
- *     frame that is not on the card would promise one that never arrives.
+ *   - `frameCount`, the number of frames the queue is actually going to
+ *     upload - the job's list, which came from this document's own `frames`.
+ *     A document claiming a frame that is not on the card would promise one
+ *     that never arrives.
  *
  * `mode` is forced to "single" for a one-frame capture, because Roll renders
  * Wiggle controls from that field and a single frame with Wiggle controls is a
@@ -342,6 +343,9 @@ void roll_api_step(const rq_job_t *job, rq_step_t step, roll_step_result_t *out)
       step_asset(job, "thumb", 0, "THUMB.JPG", out);
       break;
     case RQ_STEP_UPLOAD_FRAME: {
+      /* frame_index is the camera slot (roll_queue.h): the file is that
+       * camera's, and so is the wire frameIndex. Never a position - the third
+       * frame of a C1/C3/C4 set is camera 4 (#164). */
       char filename[12];
       snprintf(filename, sizeof filename, "C%d.JPG", step.frame_index);
       step_asset(job, "original-frame", step.frame_index, filename, out);

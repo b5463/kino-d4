@@ -270,18 +270,24 @@ static bool queue_scan(void) {
     if (known) continue;
 
     rq_job_t job = {0};
+    bool needs_save = false;
     const rq_reconcile_t action =
-        upload_store_inspect(uuid, STORAGE_CAPTURE_FRAMES, &job);
+        upload_store_inspect_ex(uuid, STORAGE_CAPTURE_FRAMES, &job, &needs_save);
     if (action == RQ_REC_IGNORE) continue;
     if (action == RQ_REC_REPAIR) {
       repaired++;
       ESP_LOGW(TAG, "rebuilding unreadable UPLOAD.JSON for %.8s", uuid);
       klog("SD", "upload record rebuilt for %.8s", uuid);
+    } else if (action == RQ_REC_RESUME && needs_save) {
+      /* A record from before frameSlots: its cameras were just read from META
+       * (or it was parked because META could not say). Logged because it is
+       * the migration #164 called for, and it happens once per photograph. */
+      klog("SD", "upload record %.8s: cameras %s", uuid,
+           job.state == RQ_FAILED ? "unknown, parked" : "recovered from META");
     }
-    /* RESUME is already on the card as it stands. The other two are new records
-     * and have to land before the queue acts on them; a write that fails just
-     * leaves the directory for the next pass. */
-    if (action != RQ_REC_RESUME && !upload_store_save(&job)) continue;
+    /* A record that changed, or that is new, has to land before the queue acts
+     * on it; a write that fails just leaves the directory for the next pass. */
+    if (needs_save && !upload_store_save(&job)) continue;
 
     if (job.state == RQ_FAILED) {
       /* Parked, and the list already holds as many parked captures as it
@@ -563,7 +569,15 @@ static void on_capture_done(const capture_report_t *r) {
   if (r == NULL || !r->ok || r->stored <= 0) return;
   if (r->roll_id[0] == '\0') return;
   const bool thumb = upload_store_has_file(r->uuid, "THUMB.JPG");
-  const esp_err_t err = upload_queue_enqueue_for(r->uuid, r->roll_id, r->stored, thumb);
+  /* The cameras whose frames are on the card, by slot - the same list META's
+   * `frames` was just written from (meta.c walks r->cam the same way). Not a
+   * count: a set with camera 2 dark is [1,3,4], and the job has to say so. */
+  uint8_t slots[RQ_MAX_FRAMES];
+  int n = 0;
+  for (int i = 0; i < CAPTURE_CAMS && n < RQ_MAX_FRAMES; i++) {
+    if (r->cam[i].ok) slots[n++] = (uint8_t)(i + 1);
+  }
+  const esp_err_t err = upload_queue_enqueue_slots(r->uuid, r->roll_id, slots, n, thumb);
   if (err != ESP_OK) {
     klog("P4", "upload: %s not queued (%s); reconciliation will retry at boot", r->id,
          esp_err_to_name(err));
@@ -615,30 +629,36 @@ esp_err_t upload_queue_start(void) {
   return ESP_OK;
 }
 
-esp_err_t upload_queue_enqueue(const char *capture_uuid, int frame_count, bool thumb_present) {
+esp_err_t upload_queue_enqueue(const char *capture_uuid, bool thumb_present) {
   if (capture_uuid == NULL || !storage_is_capture_dirname(capture_uuid)) {
     return ESP_ERR_INVALID_ARG;
   }
-  /* The capture's own Roll, from its META.JSON. Not the Roll that is active
-   * now: UPLOAD_ENQUEUE is a host asking about an existing photograph, and
-   * the photograph already knows which Roll it was taken on, or that it was
-   * taken on none. */
+  /* The capture's own Roll and its own frame list, both from its META.JSON.
+   * Not the Roll that is active now, and not a count of C<n>.JPG files:
+   * UPLOAD_ENQUEUE is a host asking about an existing photograph, and the
+   * photograph already says which Roll it was taken on, or that it was taken
+   * on none, and which cameras it holds. */
   char roll_id[RQ_CAPTURE_ID_LEN];
   if (!upload_store_meta_roll_id(capture_uuid, roll_id, sizeof roll_id)) {
     return ESP_ERR_INVALID_STATE;
   }
-  return upload_queue_enqueue_for(capture_uuid, roll_id, frame_count, thumb_present);
+  uint8_t slots[RQ_MAX_FRAMES];
+  const int n = upload_store_meta_frames(capture_uuid, STORAGE_CAPTURE_FRAMES, slots, RQ_MAX_FRAMES);
+  if (n < 0) return ESP_ERR_INVALID_RESPONSE;
+  return upload_queue_enqueue_slots(capture_uuid, roll_id, slots, n, thumb_present);
 }
 
-esp_err_t upload_queue_enqueue_for(const char *capture_uuid, const char *roll_id, int frame_count,
-                                   bool thumb_present) {
+esp_err_t upload_queue_enqueue_slots(const char *capture_uuid, const char *roll_id,
+                                     const uint8_t *slots, int count, bool thumb_present) {
   if (capture_uuid == NULL || !storage_is_capture_dirname(capture_uuid)) {
     return ESP_ERR_INVALID_ARG;
   }
   if (roll_id == NULL || roll_id[0] == '\0') return ESP_OK; /* no Roll, no job */
 
   rq_job_t job;
-  rq_job_init(&job, capture_uuid, roll_id, frame_count, thumb_present);
+  if (!rq_job_init_slots(&job, capture_uuid, roll_id, slots, count, thumb_present)) {
+    return ESP_ERR_INVALID_ARG;
+  }
 
   /*
    * One file write, no network, no blocking.

@@ -8,6 +8,7 @@
  */
 #include "upload_store.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -46,6 +47,17 @@ static char *encode_raw(const rq_job_t *job) {
   cJSON_AddNumberToObject(j, "frameCount", job->frame_count);
   cJSON_AddBoolToObject(j, "thumbPresent", job->thumb_present);
   cJSON_AddBoolToObject(j, "thumbDone", job->thumb_done);
+  /* Which camera each position is, beside whether it landed. The two arrays
+   * are the same length and read together: frameSlots [1,3,4] with frameDone
+   * [true,false,false] means camera 1 is on the server and cameras 3 and 4
+   * are next. Written only when the job knows its cameras; a record that
+   * does not is one the reconciler still has to complete from META. */
+  if (rq_job_has_slots(job)) {
+    cJSON *slots = cJSON_AddArrayToObject(j, "frameSlots");
+    for (int i = 0; slots != NULL && i < job->frame_count && i < RQ_MAX_FRAMES; i++) {
+      cJSON_AddItemToArray(slots, cJSON_CreateNumber(job->frame_slot[i]));
+    }
+  }
   cJSON *frames = cJSON_AddArrayToObject(j, "frameDone");
   for (int i = 0; frames != NULL && i < job->frame_count && i < RQ_MAX_FRAMES; i++) {
     cJSON_AddItemToArray(frames, cJSON_CreateBool(job->frame_done[i]));
@@ -164,8 +176,135 @@ bool upload_store_decode(const char *text, size_t len, const char *uuid, rq_job_
     }
   }
 
+  /* frameSlots: absent on records written before 0.4.29, which leaves every
+   * slot 0 and rq_job_has_slots() false - the reconciler then adopts the list
+   * from META. Present, it has to be a usable list of exactly frameCount
+   * cameras; anything else is a record this queue did not write, refused
+   * whole so reconciliation rebuilds it from META rather than uploading from
+   * a list that could name the wrong camera. */
+  const cJSON *slots = cJSON_GetObjectItem(j, "frameSlots");
+  if (slots != NULL) {
+    uint8_t list[RQ_MAX_FRAMES];
+    int n = 0;
+    bool ok = cJSON_IsArray(slots);
+    const cJSON *e = NULL;
+    if (ok) {
+      cJSON_ArrayForEach(e, slots) {
+        if (n >= RQ_MAX_FRAMES || !cJSON_IsNumber(e) || e->valuedouble < 1 ||
+            e->valuedouble > RQ_MAX_FRAMES || e->valuedouble != (int)e->valuedouble) {
+          ok = false;
+          break;
+        }
+        list[n++] = (uint8_t)e->valuedouble;
+      }
+    }
+    if (!ok || n != job->frame_count || !rq_slots_valid(list, n, RQ_MAX_FRAMES)) {
+      cJSON_Delete(j);
+      memset(job, 0, sizeof *job);
+      return false;
+    }
+    for (int i = 0; i < n; i++) job->frame_slot[i] = list[i];
+  }
+
   cJSON_Delete(j);
   return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* META.JSON frames                                                   */
+/* ------------------------------------------------------------------ */
+
+int upload_store_meta_frames_from_text(const char *text, size_t len, int max_slot,
+                                       uint8_t *slots, int cap) {
+  if (text == NULL || slots == NULL || cap <= 0) return UPLOAD_META_FRAMES_MALFORMED;
+  if (max_slot > RQ_MAX_FRAMES) max_slot = RQ_MAX_FRAMES;
+  cJSON *doc = cJSON_ParseWithLength(text, len);
+  if (doc == NULL) return UPLOAD_META_FRAMES_MALFORMED;
+
+  const cJSON *frames = cJSON_GetObjectItem(doc, "frames");
+  if (!cJSON_IsArray(frames)) {
+    cJSON_Delete(doc);
+    return UPLOAD_META_FRAMES_MALFORMED;
+  }
+
+  int n = 0;
+  int err = 0;
+  const cJSON *e = NULL;
+  cJSON_ArrayForEach(e, frames) {
+    const cJSON *cam = cJSON_GetObjectItem(e, "cam");
+    const cJSON *file = cJSON_GetObjectItem(e, "file");
+    if (!cJSON_IsString(cam) || cam->valuestring == NULL) {
+      err = UPLOAD_META_FRAMES_MALFORMED;
+      break;
+    }
+    /* `file: null` is a camera that was asked and produced nothing: not a
+     * frame, not an error in the document. Only a string names a file. */
+    if (!cJSON_IsString(file) || file->valuestring == NULL) continue;
+
+    /* "cam<n>", one digit: the capture path writes nothing else. */
+    const char *c = cam->valuestring;
+    if (strncmp(c, "cam", 3) != 0 || c[3] < '1' || c[3] > '9' || c[4] != '\0') {
+      err = UPLOAD_META_FRAMES_SLOT;
+      break;
+    }
+    const int slot = c[3] - '0';
+    if (slot > max_slot) {
+      err = UPLOAD_META_FRAMES_SLOT;
+      break;
+    }
+    /* The file must be the camera's own: C<n>.JPG. A document that says cam3
+     * is in C2.JPG is not one capture.c wrote. */
+    char want[12];
+    snprintf(want, sizeof want, "C%d.JPG", slot);
+    if (strcmp(file->valuestring, want) != 0) {
+      err = UPLOAD_META_FRAMES_FILE;
+      break;
+    }
+    if (n >= cap || n >= RQ_MAX_FRAMES) {
+      err = UPLOAD_META_FRAMES_SLOT;
+      break;
+    }
+    slots[n++] = (uint8_t)slot;
+  }
+
+  if (err == 0 && !rq_slots_valid(slots, n, max_slot)) err = UPLOAD_META_FRAMES_SLOT;
+
+  /* frameCount is written as the number of stored frames (meta.c). A document
+   * whose count and list disagree is not trusted either way. */
+  if (err == 0) {
+    const cJSON *fc = cJSON_GetObjectItem(doc, "frameCount");
+    if (!cJSON_IsNumber(fc) || (int)fc->valuedouble != n) err = UPLOAD_META_FRAMES_COUNT;
+  }
+
+  cJSON_Delete(doc);
+  return err != 0 ? err : n;
+}
+
+/* META.JSON on this firmware is 1.5-1.9 KB with four frames and their sensor
+ * blocks (bench 2026-09-03); roll_api.c reads it with the same 4 KB bound. */
+#define META_READ_MAX 4096
+
+int upload_store_meta_frames(const char *uuid, int max_slot, uint8_t *slots, int cap) {
+  if (uuid == NULL) return UPLOAD_META_FRAMES_MALFORMED;
+  char path[96];
+  upload_store_path(uuid, "META.JSON", path, sizeof path);
+  FILE *f = fopen(path, "rb");
+  if (f == NULL) return UPLOAD_META_FRAMES_MALFORMED;
+  static char buf[META_READ_MAX];
+  const size_t n = fread(buf, 1, sizeof buf, f);
+  const int io_err = ferror(f);
+  fclose(f);
+  if (io_err || n == 0) return UPLOAD_META_FRAMES_MALFORMED;
+  return upload_store_meta_frames_from_text(buf, n, max_slot, slots, cap);
+}
+
+static const char *meta_frames_reason(int err) {
+  switch (err) {
+    case UPLOAD_META_FRAMES_COUNT: return "META frameCount disagrees with its frames";
+    case UPLOAD_META_FRAMES_SLOT: return "META names a camera twice or outside the body";
+    case UPLOAD_META_FRAMES_FILE: return "META names a frame file that is not its camera's";
+    default: return "META has no usable frame list";
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -262,7 +401,31 @@ bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap) {
   return upload_store_meta_roll_id_from_text(buf, n, out, cap);
 }
 
-rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames, rq_job_t *out) {
+/* Park `job` with `why`, so the queue status and GET_LOGS say what stopped it.
+ * The photograph is untouched; UPLOAD_QUEUE_RETRY re-reads META and may find
+ * a list next time (a card that was busy, for instance). */
+static void park(rq_job_t *job, const char *why) {
+  job->state = RQ_FAILED;
+  snprintf(job->last_error, sizeof job->last_error, "%s", why);
+}
+
+/* The frame list META names, checked against the card: every named file must
+ * exist. Returns the count, or a negative upload_meta_frames_err_t; a missing
+ * file is UPLOAD_META_FRAMES_FILE. */
+static int frames_from_meta(const char *uuid, int max_frames, uint8_t *slots, int cap) {
+  const int n = upload_store_meta_frames(uuid, max_frames, slots, cap);
+  if (n < 0) return n;
+  for (int i = 0; i < n; i++) {
+    char name[12];
+    snprintf(name, sizeof name, "C%d.JPG", slots[i]);
+    if (!upload_store_has_file(uuid, name)) return UPLOAD_META_FRAMES_FILE;
+  }
+  return n;
+}
+
+rq_reconcile_t upload_store_inspect_ex(const char *uuid, int max_frames, rq_job_t *out,
+                                       bool *needs_save) {
+  if (needs_save != NULL) *needs_save = false;
   if (uuid == NULL || out == NULL) return RQ_REC_IGNORE;
 
   const bool has_meta = upload_store_has_file(uuid, "META.JSON");
@@ -279,6 +442,26 @@ rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames, rq_job_t *
     *out = loaded;
     /* The record's deadline was set by the boot that wrote it. */
     rq_job_boot_resume(out);
+    if (out->frame_count > 0 && !rq_job_has_slots(out)) {
+      /* Written before frameSlots existed. Its cameras are in META; adopt them
+       * (rq_job_adopt_slots keeps what the old queue confirmed, by camera) and
+       * ask the caller to write the record back before the queue acts. A META
+       * that cannot say parks the job rather than letting it guess C1..CN,
+       * which is the guess that stranded CAP_000263. */
+      uint8_t slots[RQ_MAX_FRAMES];
+      const int n = frames_from_meta(uuid, max_frames, slots, RQ_MAX_FRAMES);
+      if (n < 0 || !rq_job_adopt_slots(out, slots, n)) {
+        park(out, n < 0 ? meta_frames_reason(n) : "META frame list could not be adopted");
+      } else if (out->state == RQ_FAILED && out->attempts >= RQ_MAX_ATTEMPTS) {
+        /* Parked by the old enumeration asking for a camera the set never
+         * had. The record now knows its cameras; the job stays parked - the
+         * user's retry revives it, exactly as for any other parked job - and
+         * the reason on it says what happened rather than the stale detail. */
+        snprintf(out->last_error, sizeof out->last_error,
+                 "frame list recovered from META; retry to upload the remaining cameras");
+      }
+      if (needs_save != NULL) *needs_save = true;
+    }
     return action;
   }
   if (action == RQ_REC_RETIRE) {
@@ -299,12 +482,18 @@ rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames, rq_job_t *
     return action;
   }
 
-  int frames = 0;
-  for (int i = 1; i <= max_frames && i <= RQ_MAX_FRAMES; i++) {
-    char name[12];
-    snprintf(name, sizeof name, "C%d.JPG", i);
-    if (upload_store_has_file(uuid, name)) frames = i;
+  /* ENQUEUE or REPAIR: a fresh record from what META says the photograph is. */
+  uint8_t slots[RQ_MAX_FRAMES];
+  const int n = frames_from_meta(uuid, max_frames, slots, RQ_MAX_FRAMES);
+  const bool thumb = upload_store_has_file(uuid, "THUMB.JPG");
+  if (n < 0 || !rq_job_init_slots(out, uuid, meta_roll, slots, n, thumb)) {
+    rq_job_init_slots(out, uuid, meta_roll, NULL, 0, thumb);
+    park(out, n < 0 ? meta_frames_reason(n) : "META frame list could not be adopted");
   }
-  rq_job_init(out, uuid, meta_roll, frames, upload_store_has_file(uuid, "THUMB.JPG"));
+  if (needs_save != NULL) *needs_save = true;
   return action;
+}
+
+rq_reconcile_t upload_store_inspect(const char *uuid, int max_frames, rq_job_t *out) {
+  return upload_store_inspect_ex(uuid, max_frames, out, NULL);
 }

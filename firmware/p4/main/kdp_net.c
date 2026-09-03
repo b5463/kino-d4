@@ -741,14 +741,20 @@ kdp_net_reply_t kdp_net_upload_enqueue(const cJSON *req) {
   }
 
   bool thumb = false;
-  const int frames = capture_frames_on_card(id, &thumb);
+  /* Only the thumbnail is looked up here. Which frames the capture holds is
+   * META.JSON's `frames` list, read by upload_queue_enqueue(): a count of
+   * C<n>.JPG files cannot say which cameras they are (#164). */
+  (void)capture_frames_on_card(id, &thumb);
 
-  const esp_err_t err = upload_queue_enqueue(id, frames, thumb);
+  const esp_err_t err = upload_queue_enqueue(id, thumb);
   if (err == ESP_ERR_INVALID_STATE) {
     /* The photograph's own META.JSON names no Roll. It was taken off a Roll
      * and stays a local photograph; queuing it into the Roll active now would
      * be the provenance defect this path used to have. */
     return err_reply("INVALID_STATE", "Capture %s was not taken on a Roll", id);
+  }
+  if (err == ESP_ERR_INVALID_RESPONSE) {
+    return err_reply("INVALID_STATE", "Capture %s has no usable frame list in META.JSON", id);
   }
   if (err != ESP_OK) return err_reply("STORAGE_ERROR", "Could not queue the capture");
 

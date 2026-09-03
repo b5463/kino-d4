@@ -41,6 +41,16 @@
  * confirmed done. That is why progress is a set of completion flags and not a
  * byte offset: a byte offset would be a second source of truth about the
  * server's state, and it would be wrong exactly when it mattered.
+ *
+ * ## Which frames
+ *
+ * `frameIndex` is the camera: C3.JPG is camera 3 is frameIndex 3, whatever
+ * else the set holds. A capture with a dark camera is stored as the frames
+ * that exist - C1/C3/C4 when the second camera was off - and META.JSON's
+ * `frames` is the list. The job carries that list (frame_slot[]) and walks
+ * it; `frame_count` is its length and decides nothing on its own. The queue
+ * that counted instead of listing asked such a set for C2.JPG twelve times
+ * and parked a good photograph (#164, bench 2026-09-03).
  */
 #ifndef P4_ROLL_QUEUE_H
 #define P4_ROLL_QUEUE_H
@@ -118,10 +128,25 @@ typedef struct {
   char capture_id[RQ_CAPTURE_ID_LEN];  /* server id; "" until registered */
   char roll_id[RQ_CAPTURE_ID_LEN];     /* the Roll this job belongs to */
   rq_state_t state;
-  int frame_count;                     /* frames the capture actually holds */
+  int frame_count;                     /* entries in frame_slot[]; never an enumeration */
   bool thumb_present;                  /* a THUMB.JPG exists on the card */
   bool thumb_done;                     /* server confirmed the thumb asset */
-  bool frame_done[RQ_MAX_FRAMES];      /* per-frame confirmation, 0-based */
+  /*
+   * Which camera each queued frame came from: the 1-based camera slot, in
+   * upload order, one per position 0..frame_count-1. Position i and slot
+   * frame_slot[i] name one file, C<slot>.JPG, and one wire asset,
+   * frameIndex = slot. frame_done[] is indexed by the same POSITION, so a
+   * record that says slots [1,3,4] with done [true,false,false] resumes at
+   * camera 3 - never at a "frame 2" that was never taken.
+   *
+   * This is the field the 2026-09-03 bench found missing (#164): with only a
+   * count, the queue asked a set stored as C1/C3/C4 for C1, C2, C3, and a
+   * photograph with the second camera dark could never leave the camera. A
+   * slot of 0 means the record predates the field; rq_job_has_slots() says
+   * so and the reconciler recovers the list from META.JSON.
+   */
+  uint8_t frame_slot[RQ_MAX_FRAMES];
+  bool frame_done[RQ_MAX_FRAMES];      /* per-position confirmation, see frame_slot */
   uint32_t attempts;                   /* consecutive transient failures */
   uint32_t reread_attempts;            /* bounded 422 re-reads */
   int64_t next_attempt_ms;             /* monotonic deadline while RETRY_WAIT */
@@ -131,8 +156,10 @@ typedef struct {
 /** The step rq_next_step() chose. */
 typedef struct {
   rq_step_kind_t kind;
-  /** 1-based frame index for RQ_STEP_UPLOAD_FRAME, else 0. The contract
-   * requires frameIndex 1..N contiguous, so this is the wire value. */
+  /** The camera slot (1-based) for RQ_STEP_UPLOAD_FRAME, else 0. It is the
+   * wire `frameIndex` and it names the file, C<frame_index>.JPG. It is NOT a
+   * position in the upload sequence: the third frame of a set stored as
+   * C1/C3/C4 is frame_index 4. */
   int frame_index;
 } rq_step_t;
 
@@ -218,9 +245,52 @@ rq_step_t rq_next_step(const rq_job_t *job, int64_t now_ms);
  */
 bool rq_apply(rq_job_t *job, rq_step_t step, rq_disposition_t disp, const char *detail);
 
-/** Initialise a fresh job for a capture that has just been committed. */
+/**
+ * Initialise a fresh job for a capture whose frames are the cameras in
+ * `slots` (1-based camera numbers, upload order, `count` of them). This is the
+ * constructor the shutter and the reconciler use: the list comes from the
+ * capture report or from META.JSON's `frames`, never from a count. An invalid
+ * list (see rq_slots_valid) produces an empty job - zero frames, which the
+ * queue completes rather than guesses at - and returns false.
+ */
+bool rq_job_init_slots(rq_job_t *job, const char *uuid, const char *roll_id,
+                       const uint8_t *slots, int count, bool thumb_present);
+
+/**
+ * Initialise a fresh job for a capture of `frame_count` CONTIGUOUS frames,
+ * cameras 1..frame_count. Kept for callers and tests that build a full set
+ * by construction; anything that learned its frames from the card must use
+ * rq_job_init_slots(), because a count cannot say which cameras they were.
+ */
 void rq_job_init(rq_job_t *job, const char *uuid, const char *roll_id, int frame_count,
                  bool thumb_present);
+
+/**
+ * True when `slots` is a usable frame list: `count` in 0..RQ_MAX_FRAMES, every
+ * slot in 1..max_slot, no slot twice. Order is not constrained - META writes
+ * ascending camera order and the queue uploads in the order given.
+ */
+bool rq_slots_valid(const uint8_t *slots, int count, int max_slot);
+
+/** True when every position of the job names its camera (no zero slots). A
+ * record written before frame_slot existed answers false. */
+bool rq_job_has_slots(const rq_job_t *job);
+
+/**
+ * Give a record that predates frame_slot[] its camera list, from META.JSON.
+ *
+ * The old record's frameDone[i] was written by a queue that believed position
+ * i WAS camera i+1: that is the file it opened and the frameIndex it sent. So
+ * the confirmation for camera n, if any, sits at old index n-1, and that is
+ * where it is read from - position by camera, not position by position. A
+ * camera whose old index lies past the old count was never attempted and
+ * starts not-done. At worst a frame is offered to the server again, which the
+ * idempotent asset init answers `alreadyComplete`; a frame is never skipped.
+ *
+ * Returns false and leaves the job untouched when `slots` is invalid or the
+ * job already has slots.
+ */
+bool rq_job_adopt_slots(rq_job_t *job, const uint8_t *slots, int count);
 
 /** True when the job needs no further network work. */
 bool rq_job_settled(const rq_job_t *job);

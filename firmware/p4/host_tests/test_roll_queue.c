@@ -772,6 +772,226 @@ static void test_fifty_offline_captures_reach_roll_exactly_once(void) {
   }
 }
 
+/* ---- which frames: camera slots, not a count (#164) ------------------- */
+
+/* Drive a registered job through its frame steps and record the camera slot
+ * of every RQ_STEP_UPLOAD_FRAME it asks for, in order. Returns how many. */
+static int frame_sequence(rq_job_t *job, int *out, int cap) {
+  int n = 0;
+  strncpy(job->capture_id, "cap_srv_slots", sizeof job->capture_id - 1);
+  for (int guard = 0; guard < 32; guard++) {
+    rq_step_t s = rq_next_step(job, 0);
+    if (s.kind == RQ_STEP_NOTHING || s.kind == RQ_STEP_WAIT_BACKOFF) break;
+    if (s.kind == RQ_STEP_UPLOAD_FRAME && n < cap) out[n++] = s.frame_index;
+    rq_apply(job, s, RQ_DISP_OK, NULL);
+    if (s.kind == RQ_STEP_COMPLETE_CAPTURE) break;
+  }
+  return n;
+}
+
+static void expect_sequence(const uint8_t *slots, int count, const char *label) {
+  rq_job_t job;
+  CHECK(rq_job_init_slots(&job, UUID_A, "roll_0001", slots, count, true), "%s: init", label);
+  int got[RQ_MAX_FRAMES];
+  const int n = frame_sequence(&job, got, RQ_MAX_FRAMES);
+  CHECK(n == count, "%s: uploads %d frames, not %d", label, count, n);
+  for (int i = 0; i < count && i < n; i++) {
+    CHECK(got[i] == slots[i], "%s: frame %d is camera %d, asked for %d", label, i + 1, slots[i],
+          got[i]);
+  }
+  CHECK(job.state == RQ_COMPLETE, "%s: completes, got %s", label, rq_state_name(job.state));
+  /* And nothing was asked for that the set does not hold. */
+  for (int i = 0; i < n; i++) {
+    bool held = false;
+    for (int k = 0; k < count; k++) held |= slots[k] == got[i];
+    CHECK(held, "%s: asked for camera %d, which this set never had", label, got[i]);
+  }
+}
+
+static void test_sparse_sets_upload_their_own_cameras(void) {
+  /* The bench case (2026-09-03, CAP_000263): camera 2 dark, the set is
+   * C1/C3/C4. The old queue asked for C1, C2, C3 - C2 twelve times, then
+   * parked - and C3 and C4 never travelled. */
+  static const uint8_t full[] = {1, 2, 3, 4};
+  static const uint8_t no4[] = {1, 2, 3};
+  static const uint8_t no3[] = {1, 2, 4};
+  static const uint8_t no2[] = {1, 3, 4};
+  static const uint8_t no1[] = {2, 3, 4};
+  static const uint8_t two[] = {1, 4};
+  static const uint8_t one[] = {3};
+  expect_sequence(full, 4, "A full set");
+  expect_sequence(no4, 3, "B missing CAM4");
+  expect_sequence(no3, 3, "C missing CAM3");
+  expect_sequence(no2, 3, "D missing CAM2");
+  expect_sequence(no1, 3, "E missing CAM1");
+  expect_sequence(two, 2, "F only CAM1 and CAM4");
+  expect_sequence(one, 1, "one camera, and not camera 1");
+}
+
+static void test_frame_done_is_by_camera_across_a_reboot(void) {
+  /* I. Power cut after the first frame of a C1/C3/C4 set. The record holds
+   * slots [1,3,4] and done [true,false,false]; the next boot must ask for
+   * camera 3 - not "frame 2", which would be C2.JPG, which is not there. */
+  static const uint8_t slots[] = {1, 3, 4};
+  rq_job_t before;
+  rq_job_init_slots(&before, UUID_A, "roll_0001", slots, 3, true);
+  strncpy(before.capture_id, "cap_srv_sparse", sizeof before.capture_id - 1);
+  before.thumb_done = true;
+  before.frame_done[0] = true;
+  before.state = RQ_ORIGINALS_UPLOADING;
+
+  rq_job_t after = before; /* what UPLOAD.JSON carries across the reset */
+  rq_step_t s = rq_next_step(&after, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_FRAME, "resumes into a frame, got %d", s.kind);
+  CHECK(s.frame_index == 3, "resumes at camera 3, got %d", s.frame_index);
+  rq_apply(&after, s, RQ_DISP_OK, NULL);
+  CHECK(after.frame_done[1] && !after.frame_done[2], "camera 3 confirmed at position 1, camera 4 still pending");
+
+  s = rq_next_step(&after, 0);
+  CHECK(s.frame_index == 4, "then camera 4, got %d", s.frame_index);
+  rq_apply(&after, s, RQ_DISP_OK, NULL);
+  CHECK(rq_next_step(&after, 0).kind == RQ_STEP_COMPLETE_CAPTURE, "then complete");
+
+  /* A confirmation for a camera the job does not hold changes nothing. */
+  rq_job_t stray;
+  rq_job_init_slots(&stray, UUID_A, "roll_0001", slots, 3, false);
+  strncpy(stray.capture_id, "cap_srv_stray", sizeof stray.capture_id - 1);
+  rq_step_t bogus = {RQ_STEP_UPLOAD_FRAME, 2};
+  rq_apply(&stray, bogus, RQ_DISP_OK, NULL);
+  CHECK(!stray.frame_done[0] && !stray.frame_done[1] && !stray.frame_done[2],
+        "confirming camera 2 on a set without it marks nothing");
+}
+
+static void test_retry_after_second_sparse_frame_registers_once(void) {
+  /* J. Camera 3 of a C1/C3/C4 set fails transiently, twice; the retry must
+   * come back to camera 3 under the same capture id, not re-register and not
+   * skip to camera 4. */
+  static const uint8_t slots[] = {1, 3, 4};
+  rq_job_t job;
+  rq_job_init_slots(&job, UUID_A, "roll_0001", slots, 3, false);
+  int registers = 0;
+  int asked3 = 0;
+  for (int guard = 0; guard < 32 && !rq_job_settled(&job); guard++) {
+    rq_step_t s = rq_next_step(&job, 1000);
+    if (s.kind == RQ_STEP_WAIT_BACKOFF) {
+      job.next_attempt_ms = 0;
+      continue;
+    }
+    if (s.kind == RQ_STEP_REGISTER) {
+      registers++;
+      strncpy(job.capture_id, "cap_srv_j", sizeof job.capture_id - 1);
+    }
+    if (s.kind == RQ_STEP_UPLOAD_FRAME && s.frame_index == 3 && asked3++ < 2) {
+      rq_apply(&job, s, RQ_DISP_RETRY, "502");
+      continue;
+    }
+    rq_apply(&job, s, RQ_DISP_OK, NULL);
+  }
+  CHECK(registers == 1, "registered once, not %d times", registers);
+  CHECK(asked3 == 3, "camera 3 was asked for until it landed: %d times", asked3);
+  CHECK(job.state == RQ_COMPLETE, "completes after the retries, got %s", rq_state_name(job.state));
+  CHECK(job.frame_done[0] && job.frame_done[1] && job.frame_done[2], "all three cameras landed");
+}
+
+static void test_legacy_record_adopts_its_cameras_from_meta(void) {
+  /* G. CAP_000263 as the old queue left it: frameCount 3, no slots, done
+   * [true,false,false] - camera 1 landed, then it asked for C2.JPG until it
+   * parked. META says [1,3,4]. After adoption camera 1 stays done and cameras
+   * 3 and 4 are what remains. */
+  rq_job_t legacy;
+  rq_job_init(&legacy, UUID_A, "roll_0001", 3, true);
+  memset(legacy.frame_slot, 0, sizeof legacy.frame_slot); /* as decoded from a pre-slot record */
+  strncpy(legacy.capture_id, "cap_sIU7yKIzcmDMlxm63j9EQQ", sizeof legacy.capture_id - 1);
+  legacy.thumb_done = true;
+  legacy.frame_done[0] = true;
+  legacy.state = RQ_FAILED;
+  legacy.attempts = 12;
+  CHECK(!rq_job_has_slots(&legacy), "a pre-slot record does not know its cameras");
+  CHECK(rq_next_step(&legacy, 0).kind == RQ_STEP_NOTHING, "parked: asks for nothing until revived");
+
+  static const uint8_t meta[] = {1, 3, 4};
+  CHECK(rq_job_adopt_slots(&legacy, meta, 3), "adopts META's list");
+  CHECK(rq_job_has_slots(&legacy), "knows its cameras now");
+  CHECK(legacy.frame_count == 3, "still three frames");
+  CHECK(legacy.frame_done[0] && !legacy.frame_done[1] && !legacy.frame_done[2],
+        "camera 1 kept as done; cameras 3 and 4 pending (done=%d,%d,%d)", legacy.frame_done[0],
+        legacy.frame_done[1], legacy.frame_done[2]);
+  CHECK(strcmp(legacy.capture_id, "cap_sIU7yKIzcmDMlxm63j9EQQ") == 0, "same server capture id");
+
+  /* The user's retry: revive as upload_queue_retry_all() does, then drain. */
+  legacy.attempts = 0;
+  legacy.next_attempt_ms = 0;
+  legacy.state = RQ_RETRY_WAIT;
+  int got[RQ_MAX_FRAMES];
+  const int n = frame_sequence(&legacy, got, RQ_MAX_FRAMES);
+  CHECK(n == 2 && got[0] == 3 && got[1] == 4, "uploads cameras 3 then 4 and nothing else (n=%d)", n);
+  CHECK(legacy.state == RQ_COMPLETE, "completes");
+
+  /* Old done bits map by CAMERA: a legacy 4-frame record with C1 and C3
+   * confirmed under the contiguous reading keeps exactly those. */
+  rq_job_t four;
+  rq_job_init(&four, UUID_A, "roll_0001", 4, false);
+  memset(four.frame_slot, 0, sizeof four.frame_slot);
+  four.frame_done[0] = true;
+  four.frame_done[2] = true;
+  static const uint8_t full[] = {1, 2, 3, 4};
+  CHECK(rq_job_adopt_slots(&four, full, 4), "H. legacy full set adopts");
+  CHECK(four.frame_done[0] && !four.frame_done[1] && four.frame_done[2] && !four.frame_done[3],
+        "H. cameras 1 and 3 stay done, 2 and 4 pending");
+
+  /* Legacy done bit at an index past the new list is dropped, and a done bit
+   * for a camera the old queue confirmed under the wrong name is re-offered
+   * rather than believed: old [true,true,false] with META [1,3,4] means C1 and
+   * C2 were "confirmed" - C2 could not have been - so camera 3 (old index 2)
+   * is pending and camera 4 (old index 3) is pending. */
+  rq_job_t odd;
+  rq_job_init(&odd, UUID_A, "roll_0001", 3, false);
+  memset(odd.frame_slot, 0, sizeof odd.frame_slot);
+  odd.frame_done[0] = true;
+  odd.frame_done[1] = true;
+  CHECK(rq_job_adopt_slots(&odd, meta, 3), "adopts");
+  CHECK(odd.frame_done[0] && !odd.frame_done[1] && !odd.frame_done[2],
+        "a confirmation that could only have been camera 2's is not carried to camera 3");
+
+  /* A job that already knows its cameras is left alone. */
+  rq_job_t knows;
+  rq_job_init_slots(&knows, UUID_A, "roll_0001", meta, 3, false);
+  CHECK(!rq_job_adopt_slots(&knows, full, 4), "a record with slots does not adopt another list");
+  CHECK(knows.frame_count == 3 && knows.frame_slot[1] == 3, "and is unchanged");
+}
+
+static void test_slot_lists_are_validated(void) {
+  /* M/N and friends: the lists this queue refuses to upload from. */
+  static const uint8_t dup[] = {1, 3, 3};
+  static const uint8_t zero[] = {0, 1};
+  static const uint8_t five[] = {1, 5};
+  static const uint8_t ok[] = {4, 1};
+  CHECK(!rq_slots_valid(dup, 3, 4), "N. a camera named twice");
+  CHECK(!rq_slots_valid(zero, 2, 4), "slot 0 is no camera");
+  CHECK(!rq_slots_valid(five, 2, 4), "camera 5 on a four-camera body");
+  CHECK(rq_slots_valid(five, 2, 8), "camera 5 is fine when the body has eight");
+  CHECK(!rq_slots_valid(NULL, 1, 4), "no list with a count");
+  CHECK(!rq_slots_valid(ok, -1, 4), "negative count");
+  CHECK(!rq_slots_valid(ok, RQ_MAX_FRAMES + 1, RQ_MAX_FRAMES), "count past the array");
+  CHECK(rq_slots_valid(ok, 2, 4), "order is the caller's; [4,1] is a valid list");
+  CHECK(rq_slots_valid(NULL, 0, 4), "an empty list is valid: a frameless capture completes");
+
+  rq_job_t job;
+  CHECK(!rq_job_init_slots(&job, UUID_A, "roll_0001", dup, 3, true), "init refuses a duplicate");
+  CHECK(job.frame_count == 0 && strcmp(job.uuid, UUID_A) == 0,
+        "and leaves an empty, identifiable job rather than a guessed one");
+  /* The body's camera count is the reconciler's bound (it passes max_frames);
+   * the pure adoption refuses what no body could have: a duplicate, or a slot
+   * past RQ_MAX_FRAMES. */
+  static const uint8_t nine[] = {1, 9};
+  rq_job_t bare;
+  rq_job_init(&bare, UUID_A, "roll_0001", 2, false);
+  memset(bare.frame_slot, 0, sizeof bare.frame_slot);
+  CHECK(!rq_job_adopt_slots(&bare, nine, 2), "adoption refuses camera 9");
+  CHECK(!rq_job_adopt_slots(&bare, dup, 3), "adoption refuses a duplicate");
+  CHECK(!rq_job_has_slots(&bare) && bare.frame_count == 2, "and leaves the record as it was");
+}
+
 int main(void) {
   test_backoff();
   test_classify();
@@ -795,6 +1015,11 @@ int main(void) {
   test_state_names();
   test_init_clamps();
   test_fifty_offline_captures_reach_roll_exactly_once();
+  test_sparse_sets_upload_their_own_cameras();
+  test_frame_done_is_by_camera_across_a_reboot();
+  test_retry_after_second_sparse_frame_registers_once();
+  test_legacy_record_adopts_its_cameras_from_meta();
+  test_slot_lists_are_validated();
 
   if (failures > 0) {
     printf("p4 roll-queue tests: %d/%d checks FAILED\n", failures, checks);

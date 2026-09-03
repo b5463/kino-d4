@@ -588,6 +588,84 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The queue uploads the cameras a capture holds - 0.4.29, #164, 2026-09-03
+
+**The defect, restated from the source.** `rq_job_t` carried `frame_count`
+and nothing else about which frames; `rq_next_step()` (`roll_queue.c:120`)
+handed out 1..frame_count and `roll_api.c:346` turned each into `C%d.JPG`.
+The capture path names frames by camera (`C3.JPG` is camera 3) and META's
+`frames` lists exactly the stored ones, so a set stored as C1/C3/C4 was asked
+for C1, C2, C3. `upload_store_inspect()` rebuilt records from a `C%d.JPG` scan
+the same way, and `UPLOAD_ENQUEUE` counted files. Only a trailing missing
+camera ever uploaded.
+
+**The fix.** The job carries the camera list: `frame_slot[]`, 1-based, in
+upload order, `frame_count` its length; `frame_done[]` is positional against
+it; the step's `frame_index` is the camera slot, which is the file and the
+wire `frameIndex` (the server accepts any positive `frameIndex`; identity
+`captureUuid + role + frameIndex` unchanged). The list comes from the capture
+report at the shutter (`r->cam[i].ok`, the same walk meta.c writes `frames`
+from) and from META.JSON's `frames` at reconciliation and `UPLOAD_ENQUEUE`
+(`upload_store_meta_frames`: entries with a file, `cam<n>` -> n, file must be
+`C<n>.JPG`, count must equal `frameCount`, no duplicates, camera within the
+body, every named file on the card). `UPLOAD.JSON` gains `frameSlots` beside
+`frameDone`; a record without it (every one written before 0.4.29) is adopted
+from META at reconciliation - old `frameDone[i]` meant camera i+1 and is read
+by camera - rewritten, and a parked job stays parked with the reason updated
+until the user's retry. META that cannot say parks the job with the reason;
+there is no contiguous fallback and no card scan. main.c's second capture-done
+enqueue (a count) is gone. Nodes, C6, grouped capture, UART protocol, radio
+recovery, sync: untouched.
+
+**Host tests.** roll-queue 1,236 checks (sparse matrix A-F: full, each single
+camera missing, [1,4], one camera; resume by camera across a reboot; retry
+without a second registration; legacy adoption incl. the CAP_000263 record;
+list validation), upload-store 141 (frameSlots round trip, the pre-0.4.29
+record decodes with cameras unknown, seven malformed `frameSlots` refused,
+META frames: the bench document, null-file entries, count mismatch,
+duplicate, camera 5, wrong file, malformed, capacity). All fourteen suites
+green.
+
+**Image.** HEAD `cfc461b` plus this change's nine files and the uncommitted
+`dependencies.lock`, `VERSION` 0.4.29, bench flags: `kino-p4.bin`
+1,548,368 B, SHA-256
+`16395d30e36ce3855c855b238a03e953dcd2d04f7e6290b934e7f1cb59f512cf`; default
+and radio-without-bench configurations also build. Boot-117, reserve 2/2
+with 31,744 B free, internal free 95 KB.
+
+**CAP_000263 (the bench's own casualty), before.** `UPLOAD.JSON`: FAILED,
+attempts 12, `frameCount 3`, `frameDone [true,false,false]`, "the asset is
+not on the card"; META frames cam1/cam3/cam4; backend one row
+`cap_sIU7yKIzcmDMlxm63j9EQQ`, original 1 and the thumb. Nothing on the card
+was edited.
+
+**CAP_000263, after.** The 0.4.29 boot reconcile rewrote the record:
+`frameSlots [1,3,4]`, `frameDone [true,false,false]`, still FAILED, reason
+"frame list recovered from META; retry to upload the remaining cameras".
+`UPLOAD_QUEUE_RETRY` revives four parked jobs per press (PARKED_IN_RAM_MAX);
+four presses revived all 23 parked jobs on the card and **every one of them
+uploaded** (failed 23 -> 0) - the older ones were casualties of the same
+enumeration or of the outage. CAP_000263 after: **COMPLETE**, `frameDone
+[true,true,true]`, attempts 0, the same `captureId`; backend originals 1, 3, 4 `ready` (`cam-01.jpg`, `cam-03.jpg`, `cam-04.jpg`) and the thumb, one row, and SD = object = DB for all three frames.
+C2.JPG was never requested: the record's list has no camera 2 and the server
+holds no asset 2.
+
+**Test A - five full sets on 0.4.29.** `CAP_000267`-`271`: 5/5 complete 4/4,
+0 partial, 0 BUSY, 0 chunk retries, CRC 4/4; all uploaded; backend one row,
+four originals, right Roll, SD = object = DB on 20 of 20 frames. (One local
+pull of C1 during the run failed on the host side and succeeded on the
+backend pass - the KDP reply-loss item, not the queue.)
+
+**Test B - CAM2 off.** Power off at 03:01, cam2 offline within 5 s. One grouped shutter: `CAP_000272` (`6533fbf1-...`), `complete`, `frameCount 3`, frames cam1 149,716 B / cam3 141,983 B / cam4 112,706 B, 3,660 ms, spread 605 us; `C2.JPG` absent; every stored frame's card CRC equal to the node's (b0a21c06 / d381a7dd / 3a1ea479), all decode 1600x1200. The record written at the shutter: `frameSlots [1,3,4]`. Upload with the API up: REGISTER, THUMB, C1, C3, C4, COMPLETE - `frameDone [true,true,true]`, state COMPLETE 32 s after the shutter, attempts 0. Backend: one row (`cap_J4XVdAu8zs42Y0RWhgMP0Q`), originals 1, 3, 4 ready, the thumb, **no asset 2**, SD = object = DB on all three frames. `C2.JPG` was never asked for: the list has no camera 2. **PASS.**
+
+**Test C - CAM3 off.** CAM2 back (READY on its own in 4 s), CAM3 off at 03:41, offline within 5 s. `CAP_000273` (`ae8e03f0-...`), `complete`, `frameCount 3`, frames cam1 129,723 B / cam2 98,357 B / cam4 109,625 B, 2,412 ms, spread 118 us; `C3.JPG` absent; CRCs equal to the nodes' (1fd016cc for cam2 checked locally; all three by hash below). Record `frameSlots [1,2,4]`; uploaded C1, C2, C4, COMPLETE; backend one row (`cap_MTuL_adnwsOOEiRWP9ApKQ`), originals 1, 2, 4 ready, the thumb, **no asset 3**, SD = object = DB on all three. A different hole, same result: nothing is hard-coded to camera 2. **PASS.**
+
+**Restore.** CAM3 back on at 03:46: READY on its own in 4 s, no reboot. 16 sweeps: 4x READY, 0 offline transitions, 0 new timeouts, 0 CRC errors. Three grouped captures (`CAP_000274`-`276`): 3/3 complete 4/4, 3.2-4.4 s, 0 chunk retries, 0 BUSY, card CRC equal to the node's on every frame the plain puller reached; all three uploaded (queue 33 uploaded, 0 failed); backend one row and four originals each, SD = object = DB on 12 of 12 frames (one of them re-pulled with the page-retrying puller after the stock one lost a reply under the viewfinder's log stream). **PASS.** Camera-link counters since boot-117: cam3 22 CRC errors and 119 timeouts, all around its power-off and power-on (0 during the 16 sweeps and the captures after); cam1/2/4 0 CRC errors.
+
+**Resources.** boot-117 across the whole run (64 min): internal free 95 -> 91 KB, minimum 84 -> 46 KB, largest DMA 31 KB with the reserve held 2/2 throughout, `recoveryReady=True`, task stack minimums as on 0.4.27/0.4.28 (cap1-4 5.9 KB, kdp_server 2.2 KB, gallery 1.3 KB, upqueue 2.4 KB), transportErrors 0, no leak. The #162 layout is untouched.
+
+**Status.** #164 FIXED and physically proven: a degraded set with any camera missing uploads exactly its own frames under one capture identity; full sets unchanged; legacy parked records recover from META. The KDP reply-loss item (replies lost on the USB link under log-event traffic: the C6 teardown burst, the viewfinder page) stays a separate open issue, untouched here.
+
 ### The deferred four-camera cases - nodes back, recovery x5, Roll A->B, 2026-09-03
 
 **The outage.** All four camera nodes went silent between ~22:00 and 00:47 and
