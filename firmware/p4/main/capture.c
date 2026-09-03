@@ -215,6 +215,12 @@ static TaskHandle_t s_task;
 static capture_report_t *s_active;
 static storage_capture_t *s_store;
 static int64_t s_trigger_us;
+/* Each node's sync-edge counter as last reported to us, per camera (#165).
+ * A reply whose counter is not exactly this + 1 was not timed against this
+ * shutter's pulse, whatever its timestamps look like. Zero until a node has
+ * reported once; a node reboot resets its counter, which shows up as a
+ * generation mismatch on the next shutter and is then re-based. */
+static uint32_t s_sync_last_seq[CAPTURE_CAMS];
 static char s_resolution[16];
 static int s_sensor_quality;
 /* Which camera's frame becomes THUMB.JPG. Chosen once by the coordinator
@@ -464,6 +470,18 @@ static void do_frame(worker_t *w) {
   f->node_fb_get_us = cap.fb_get_us;
   f->node_frame_start_us = cap.frame_start_us;
   f->node_frame_age_us = cap.frame_age_us;
+  /* This frame against the common edge (#165). Attribution is by generation,
+   * never by timestamp proximity: the node's counter must have moved by
+   * exactly one since its last reply to us. The rule lives in pure.c so the
+   * host tests hold it. */
+  f->sync_class = pure_sync_classify(s_sync_last_seq[cam], cap.sync_seq, cap.has_sync,
+                                     cap.sync_to_cmd_us);
+  f->sync_seq = cap.sync_seq;
+  f->sync_edge_us = cap.has_sync ? cap.sync_edge_us : 0;
+  f->sync_to_cmd_us = cap.has_sync ? cap.sync_to_cmd_us : 0;
+  f->sync_to_frame_us = cap.has_sync ? cap.sync_to_frame_us : 0;
+  f->frame_before_edge = cap.has_sync && cap.sync_to_frame_us < 0;
+  s_sync_last_seq[cam] = cap.sync_seq;
 
   /*
    * The stale-frame signature, flagged the moment it appears rather than left

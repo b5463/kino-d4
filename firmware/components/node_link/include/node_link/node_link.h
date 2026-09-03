@@ -58,7 +58,12 @@ typedef enum {
    * what its sensor is actually set to.
    */
   NL_CMD_STATUS = 0x02,
-  // -> {resolution?,quality?} <- {ok,frameId,size,durationMs,crc32,heapKB,psramKB}
+  // -> {resolution?,quality?} <- {ok,frameId,size,durationMs,crc32,heapKB,psramKB,
+  //      cmdUs,fbGetUs,frameStartUs,frameAgeUs,
+  //      syncSeq,syncEdgeUs|null,syncToCmdUs|null,syncToFrameUs|null}   (0.4.30+, #165:
+  //      the node's own esp_timer; syncSeq counts SYNC_IN rising edges since boot and is
+  //      the generation id; syncToFrameUs = frameStartUs - syncEdgeUs is the cross-node
+  //      comparable figure; none of it is exposure time)
   NL_CMD_CAPTURE = 0x10,
   NL_CMD_READ = 0x11,    // -> {frameId,offset,length} <- BINARY slice (short past EOF)
   NL_CMD_RELEASE = 0x12, // -> {frameId} <- {ok}

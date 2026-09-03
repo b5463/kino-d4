@@ -97,7 +97,7 @@ RECOVERY_SRC = $(MAIN)/radio_recovery.c test_radio_recovery.c
 SCHED_SRC = $(MAIN)/cam_sched.c test_cam_sched.c
 # meta.c reaches capture.h -> cam_link.h -> esp_err.h, and nothing else from
 # ESP-IDF. shim/ provides exactly that one header.
-META_SRC = $(MAIN)/meta.c test_meta.c $(CJSON_DIR)/cJSON.c
+META_SRC = $(MAIN)/meta.c $(MAIN)/pure.c test_meta.c $(CJSON_DIR)/cJSON.c
 # upload_store.c reaches nothing from ESP-IDF except cJSON - no FreeRTOS, no
 # storage.h, no clock. That is the whole point of the split; see upload_store.h.
 STORE_SRC = $(MAIN)/upload_store.c $(MAIN)/roll_queue.c test_upload_store.c             $(CJSON_DIR)/cJSON.c

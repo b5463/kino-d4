@@ -1140,7 +1140,41 @@ static void test_json_depth(void) {
   CHECK(!pure_json_depth_ok(deep, PURE_JSON_MAX_DEPTH), "299 levels are refused");
 }
 
+/* ---- sync-edge attribution (#165) -------------------------------------- */
+
+static void test_sync_classify(void) {
+  /* No edge reported: an older node, or a node with no sync wire. */
+  CHECK(pure_sync_classify(0, 0, false, 0) == PURE_SYNC_NONE, "no edge, no count -> none");
+  CHECK(pure_sync_classify(7, 8, false, 1000) == PURE_SYNC_NONE, "count without edge -> none");
+  CHECK(pure_sync_classify(7, 0, true, 1000) == PURE_SYNC_NONE, "edge with count 0 is impossible -> none");
+
+  /* The ordinary shutter: counter +1, edge 1.2 ms before the command. */
+  CHECK(pure_sync_classify(41, 42, true, 1200) == PURE_SYNC_OK, "+1 in window -> ok");
+  CHECK(pure_sync_classify(41, 42, true, 0) == PURE_SYNC_OK, "edge at the command instant -> ok");
+  CHECK(pure_sync_classify(41, 42, true, PURE_SYNC_EDGE_WINDOW_US) == PURE_SYNC_OK, "edge at the window edge -> ok");
+
+  /* First reply since the P4 booted: the edge is plausible, the +1 unproven. */
+  CHECK(pure_sync_classify(0, 42, true, 1200) == PURE_SYNC_UNVERIFIED, "no baseline -> unverified");
+
+  /* Not this shutter's pulse. */
+  CHECK(pure_sync_classify(41, 43, true, 1200) == PURE_SYNC_STALE_GENERATION, "+2 -> stale generation");
+  CHECK(pure_sync_classify(41, 41, true, 1200) == PURE_SYNC_STALE_GENERATION, "+0 -> stale generation (node missed the pulse, reports the old edge)");
+  CHECK(pure_sync_classify(41, 3, true, 1200) == PURE_SYNC_STALE_GENERATION, "counter went backwards (node reboot) -> stale generation");
+  CHECK(pure_sync_classify(41, 42, true, -500) == PURE_SYNC_STALE_GENERATION, "edge after the command -> stale generation");
+  CHECK(pure_sync_classify(41, 42, true, PURE_SYNC_EDGE_WINDOW_US + 1) == PURE_SYNC_STALE_GENERATION, "edge older than the window -> stale generation");
+  /* The window rule is applied before the baseline rule: an old edge with no
+   * baseline is still not this shutter's. */
+  CHECK(pure_sync_classify(0, 42, true, 5000000) == PURE_SYNC_STALE_GENERATION, "no baseline but too old -> stale generation");
+
+  CHECK(strcmp(pure_sync_class_name(PURE_SYNC_OK), "ok") == 0, "name ok");
+  CHECK(strcmp(pure_sync_class_name(PURE_SYNC_UNVERIFIED), "unverified") == 0, "name unverified");
+  CHECK(strcmp(pure_sync_class_name(PURE_SYNC_STALE_GENERATION), "stale-generation") == 0, "name stale");
+  CHECK(strcmp(pure_sync_class_name(PURE_SYNC_NONE), "none") == 0, "name none");
+  CHECK(strcmp(pure_sync_class_name(99), "none") == 0, "unknown class reads as none");
+}
+
 int main(void) {
+  test_sync_classify();
   test_quality();
   test_frame_quality();
   test_ev_to_ae_level();

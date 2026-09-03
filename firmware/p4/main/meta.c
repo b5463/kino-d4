@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "pure.h"
 
 /* ------------------------------------------------------------------ */
 /* META.JSON generation                                                */
@@ -99,6 +100,34 @@ void meta_build_capture(const capture_report_t *r, const char *device_id, void *
       cJSON_AddNumberToObject(e, "nodeFbGetUs", (double)f->node_fb_get_us);
       cJSON_AddNumberToObject(e, "nodeFrameStartUs", (double)f->node_frame_start_us);
       cJSON_AddNumberToObject(e, "nodeFrameAgeUs", (double)f->node_frame_age_us);
+      /*
+       * The frame against the common SYNC_OUT edge, node-measured (#165).
+       * syncClass: "ok" = attributable to this shutter's pulse (node counter
+       * advanced by exactly one, edge before the command within the window);
+       * "unverified" = first reply from this node since the P4 booted, edge
+       * plausible but the +1 rule had no baseline; "stale-generation" = the
+       * counter did not advance by one or the edge is too old, so the node did
+       * not see THIS pulse; "none" = the node reported no edge (older node
+       * firmware or no sync wire). The three microsecond fields are null
+       * unless the node reported an edge. syncToFrameUs is DMA arm minus
+       * edge: negative means the frame was already in flight at the pulse,
+       * which frameBeforeEdge states outright. None of this is exposure time;
+       * the three skews above stay null.
+       */
+      cJSON_AddStringToObject(e, "syncClass", pure_sync_class_name(f->sync_class));
+      /* pure.h is included at the top of this file for exactly this call. */
+      cJSON_AddNumberToObject(e, "syncSeq", (double)f->sync_seq);
+      if (f->sync_class != PURE_SYNC_NONE) {
+        cJSON_AddNumberToObject(e, "syncEdgeUs", (double)f->sync_edge_us);
+        cJSON_AddNumberToObject(e, "syncToCmdUs", (double)f->sync_to_cmd_us);
+        cJSON_AddNumberToObject(e, "syncToFrameUs", (double)f->sync_to_frame_us);
+        cJSON_AddBoolToObject(e, "frameBeforeEdge", f->frame_before_edge);
+      } else {
+        cJSON_AddNullToObject(e, "syncEdgeUs");
+        cJSON_AddNullToObject(e, "syncToCmdUs");
+        cJSON_AddNullToObject(e, "syncToFrameUs");
+        cJSON_AddNullToObject(e, "frameBeforeEdge");
+      }
     } else {
       cJSON_AddNullToObject(e, "file");
       cJSON_AddStringToObject(e, "error", f->err);

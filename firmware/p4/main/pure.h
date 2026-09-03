@@ -757,4 +757,46 @@ pure_crop_t pure_align_overlap_crop(int w, int h, const pure_cam_offset_t *offse
 pure_crop_t pure_align_plan(int src_w, int src_h, const pure_cam_offset_t *offsets, int n,
                             pure_frame_xform_t *out);
 
+/* ------------------------------------------------------------------ */
+/* Sync-edge attribution (#165)                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Whether a node's CAPTURE reply can be attributed to THIS shutter's SYNC_OUT
+ * pulse. By generation, never by timestamp proximity: the node counts rising
+ * edges since its boot and reports the count with every reply; one grouped
+ * shutter is one pulse, so the count must be exactly one more than the node's
+ * previous reply to us. The edge must also precede the command (a negative
+ * sync_to_cmd_us is a pulse that arrived after the command was already being
+ * acted on) and precede it recently - PURE_SYNC_EDGE_WINDOW_US - or it is an
+ * old pulse the node is still reporting.
+ *
+ *   PURE_SYNC_NONE              no edge reported (older node, no sync wire)
+ *   PURE_SYNC_OK                counter +1, edge in window: this shutter's edge
+ *   PURE_SYNC_UNVERIFIED        edge in window but the P4 has no previous count
+ *                               for this node (first reply since P4 boot, or
+ *                               after a node reboot re-based the count)
+ *   PURE_SYNC_STALE_GENERATION  counter did not move by one, or edge too old /
+ *                               after the command: NOT this shutter's edge
+ *
+ * A bench averages OK only. UNVERIFIED is real data with an unproven
+ * generation; STALE_GENERATION is a wiring or pulse fault to report.
+ */
+typedef enum {
+  PURE_SYNC_NONE = 0,
+  PURE_SYNC_OK = 1,
+  PURE_SYNC_UNVERIFIED = 2,
+  PURE_SYNC_STALE_GENERATION = 3,
+} pure_sync_class_t;
+
+/** Oldest an edge may be, relative to the node acting on the command, and still
+ * be this shutter's: dispatch is ~1-3 ms, a probe ahead of the command on the
+ * same channel up to 300 ms, a sensor apply a few hundred more. Two seconds. */
+#define PURE_SYNC_EDGE_WINDOW_US 2000000LL
+
+int pure_sync_classify(uint32_t last_seq, uint32_t seq, bool has_edge, int64_t sync_to_cmd_us);
+
+/** "none" | "ok" | "unverified" | "stale-generation". */
+const char *pure_sync_class_name(int cls);
+
 #endif

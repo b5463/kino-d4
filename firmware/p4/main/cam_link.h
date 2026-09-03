@@ -79,6 +79,20 @@ typedef struct {
   int64_t fb_get_us;      /* wall time the node spent inside esp_camera_fb_get() */
   int64_t frame_start_us; /* node esp_timer when this frame's DMA began */
   int64_t frame_age_us;   /* command arrival minus frame start; >0 means stale */
+  /*
+   * The common sync edge as this node saw it (#165, node firmware 0.4.30+).
+   * has_sync is false on older nodes and on a node that has never seen an
+   * edge (syncEdgeUs null); sync_seq is still reported in that case (0 when
+   * never seen). sync_to_frame_us = frameStartUs - syncEdgeUs is the one
+   * figure comparable across nodes: each node measures its own frame against
+   * the same physical pulse. Negative: the frame was in flight before the
+   * pulse. Not exposure time.
+   */
+  bool has_sync;
+  uint32_t sync_seq;       /* rising edges the node has counted since its boot */
+  int64_t sync_edge_us;    /* node esp_timer at the last edge */
+  int64_t sync_to_cmd_us;  /* command acted on, relative to the edge */
+  int64_t sync_to_frame_us;/* frame DMA arm, relative to the edge */
 } camlink_capture_result_t;
 
 /**

@@ -82,6 +82,24 @@ typedef struct {
   int64_t node_frame_age_us;   /* command arrival minus frame start; >0 = stale */
 
   /*
+   * This frame against the common SYNC_OUT edge, as the node measured it
+   * (#165). sync_class says whether the node's reply can be attributed to
+   * THIS shutter's pulse (pure_sync_classify): PURE_SYNC_OK means the node's
+   * edge counter advanced by exactly one since its last reply and the edge
+   * preceded the command within the window; anything else is not a
+   * measurement of this shutter and the bench must not average it in.
+   * sync_to_frame_us is node frame DMA arm minus node edge time - comparable
+   * across nodes, negative when the frame was already in flight at the pulse
+   * (frame_before_edge). None of this is exposure timing.
+   */
+  int sync_class;              /* pure_sync_class_t */
+  uint32_t sync_seq;           /* node's edge count at this capture */
+  int64_t sync_edge_us;        /* node esp_timer at the edge, 0 when none */
+  int64_t sync_to_cmd_us;      /* node command time minus edge */
+  int64_t sync_to_frame_us;    /* node frame DMA arm minus edge */
+  bool frame_before_edge;      /* sync_to_frame_us < 0: stale for timing */
+
+  /*
    * What the node reported the sensor ACCEPTED, from the NL_CMD_SENSOR reply -
    * never what was asked for.
    *

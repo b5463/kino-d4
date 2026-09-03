@@ -588,6 +588,282 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### Synchronization baseline - the common edge is measured, nothing is tuned - 0.4.30, #165, 2026-09-03
+
+**Soak consumed first (transport endurance, 0.4.29).** 03:56-05:06, 120
+`CAMERA_CAPTURE` 30 s apart: 120 complete 4/4, 0 partial, 0 chunk retries,
+internal free 91 -> 88 KB with the minimum unchanged at 46 KB (peer
+session's record above). Read off the board at 05:08 before anything was
+flashed: P4 session boot-117 throughout (no reset), `transportErrors 0`,
+`reconnects 0`, no C6 recovery, queue 153 uploaded / 0 failed, four nodes
+READY, link CRC counters unchanged since the CAM3 power cycle (cam3 22, the
+rest 0), HELLO timeouts +9/+14/+16/+25 over the 80 min (probe HELLOs on busy
+nodes, none unrecovered). No transport regression; FOUR-CAMERA TRANSPORT
+stays GO.
+
+**What the repo says the sync design is.** `board_d4v1.h`: `SYNC_OUT` GPIO32,
+JP1 pin 19, driven by `trigger_pulse()` in `capture_fire()` - 200 us
+active-high, idle low, fired once per grouped shutter just before the four
+capture commands are dispatched. `board_xiao_s3.h`: `BOARD_SYNC_IN 2`, the
+XIAO pad D1, PROVISIONAL and never read before 0.4.30. `node_link.h`
+reserves `NL_CMD_ARM`/`NL_CMD_TRIGGER_INFO` and defines the field semantics
+this record uses. `SYNC_FEASIBILITY.md` (M0.D, confirmed 2026-08-28): the
+OV3660 free-runs on DVP, the driver's `esp_camera_fb_get()` is a queue
+receive, `fb_count 2` / `GRAB_LATEST`, so a photograph is the frame in
+flight when the command lands. The hardware profile (`d4-v1.json`) routes
+one 28 AWG sync branch from `display.SYNC_OUT` to each `camN.SYNC_IN`.
+`docs/HARDWARE.md`: "the 100 to 400 us figure is a trigger-distribution
+target. It is not a guaranteed exposure result." No exposure target exists
+in the repository; Gate C's threshold is "M2-defined" and M2 has not run.
+
+**Classification, from source and then from measurement.** Before wiring:
+SOFTWARE_DISPATCH_ONLY - the P4 pulsed a pin nobody read, nodes captured on
+command arrival. After wiring: still SOFTWARE_DISPATCH_ONLY for the sensor -
+the edge starts nothing; the node's ISR only timestamps it. The pulse is the
+instrument's common time reference, not a trigger. The measurement then settles it from the other
+side: `syncToCmdUs` is 18.5 ms on every node and within 129 us across the
+four, so the edge is distributed simultaneously and the commands are picked up
+together; and yet frame start lands anywhere inside one frame period. A pulse
+that controlled a sensor could not produce that. **NODE_TRIGGERED is not the
+case either** - the node does not act on the edge at all; it only reads its
+clock. The classification for D4-V1 is SOFTWARE_DISPATCH_ONLY, now measured
+rather than inferred.
+
+**Measurement semantics (each in that node's own esp_timer domain; no epoch
+is shared between nodes or with the P4).**
+- `syncEdgeUs` - node time of the last SYNC_IN rising edge, from a
+  `GPIO_INTR_POSEDGE` ISR in IRAM that stores the time and increments
+  `syncSeq`, nothing else. Not the exposure, not the frame: the pulse.
+- `frameStartUs` - `camera_fb_t.timestamp`, written by the driver when DMA
+  is armed for the returned frame, i.e. the VSYNC that started the readout of
+  that frame. Not exposure start, not exposure centre; a rolling shutter
+  integrated each row before its readout.
+- `fbGetUs` - wall time inside `esp_camera_fb_get()`. Near zero means a frame
+  was already waiting.
+- `frameAgeUs` - `cmdUs - frameStartUs`: positive means the frame's readout
+  began before the command was acted on (the in-flight frame).
+- `syncToFrameUs` - `frameStartUs - syncEdgeUs`: the one cross-node
+  comparable figure. NEGATIVE means the frame was already in flight when the
+  pulse came; `frameBeforeEdge` states it. It is frame-start-relative-to-edge
+  and nothing else.
+- `syncSeq` - edges counted since the node booted: the generation id. The P4
+  attributes a reply to this shutter only if the node's count advanced by
+  exactly one since its previous reply and the edge preceded the command
+  within 2 s (`pure_sync_classify`, host-tested): `syncClass` "ok" /
+  "unverified" (first reply since the P4 booted) / "stale-generation" /
+  "none" (no edge ever seen: older node, or no wire).
+- `frameStartSpreadUs` - per set, max - min of `syncToFrameUs` over frames
+  classed "ok". Frame-start spread. Not exposure skew.
+
+**Images.** camnode 0.4.30 `kino-camnode.bin` 401,520 B, SHA-256
+`c5d636643fabd6ab2d612663fe266ead7a0f1e90470760c68bc5f23403a250d4`, flashed
+to all four XIAOs over their own USB ports (COM4-7) after the soak; P4 0.4.30
+bench `kino-p4.bin` 1,549,232 B, SHA-256
+`2eeaeb971e252ad9e127f73765e845f35d130abc6262b4aef16cc7a121958013`; both
+from HEAD `b0e7403` plus this change's files and the uncommitted
+`dependencies.lock`; default and radio P4 configurations also build. Boot-118,
+reserve 2/2 with 31,744 B free. Negative control before wiring: the first
+grouped shutter on 0.4.30 (`CAP_000397`, 4/4) reported `syncClass none`,
+`syncSeq 0` on all four cameras - an unwired pull-down input says "no edge",
+never 0 us.
+
+**Wiring.** One 28 AWG branch from JP1 pin 19 (`SYNC_OUT`, GPIO32) to
+pad D1 (GPIO2) on each of the four XIAOs, on the common ground already shared
+with the UART harness - the topology `d4-v1.json` has carried as the `camN-sync`
+nets since the harness was designed. JP1 pin 21 / `FLASH_EN` left open, no
+strobe, no optical test. Fitted by the operator between 05:12 and 05:20. The
+first shutter afterwards had `syncSeq` 1 on three nodes and `unverified`, the
+next `ok` with the counter at 2, then 3: the wire, the ISR and the +1
+attribution rule all confirmed on the hardware.
+
+Fitting the CAM3 branch stopped that node's camera: its link stayed perfect
+(4 ms HELLO, 3,439 frames, 0 CRC errors, firmware 0.4.30, no reboot) while
+every capture returned `HARDWARE_ERROR` and its own console printed
+`cam_hal: Failed to get frame: timeout` - the DVP stream had stopped. CAM1
+captured normally in the same window as the control, and CAM3 had captured
+normally on this firmware minutes earlier, so it was the module or its ribbon,
+not the image and not the sync design. Reseating the camera ribbon and
+power-cycling CAM3 restored it (node boot-13, `power-on`, sensor OV3660,
+49,418 B test frame). Recorded because it is the second CAM3 incident tonight:
+it also carries the 22 historic link CRC errors and it was the node
+power-cycled for the sparse-upload test.
+
+**Stale-frame validation.** **Zero stale frames in 397, and the proof is positive rather
+than an absence.** On every attributed frame `frameBeforeEdge` was false,
+`nodeFrameAgeUs` was negative (the frame's DMA arm followed the command), and
+`nodeFbGetUs` never showed the near-zero stale signature. `nodeFbGetUs` median
+112,379 us, min 112,182, p95 112,788: every capture paid one full frame period
+inside `esp_camera_fb_get()`, which is what `camsensor_discard_queued()` plus a
+fresh fetch costs and what makes the returned frame the shutter's own. The same
+figures give the frame period empirically for the first time: **112.4 ms at
+UXGA on a 16 MHz XCLK, 8.9 fps, held to +-0.3 ms** - the source's ~112 ms
+estimate, confirmed on four sensors.
+
+**Idle baseline.** 100 grouped shutters, 6 s apart, radio associated, boot-119,
+all 100 accepted; 391 of 397 frames attributed to their own pulse, 6 refused as
+`stale-generation`; 91 sets had all four frames attributed.
+
+| metric | n | min | median | p95 | p99 | max |
+|---|---|---|---|---|---|---|
+| `frameStartSpreadUs` (4/4 attributed sets) | 91 | 17,888 | 46,633 | 105,656 | 109,596 | 109,703 |
+| `dispatchSpreadUs` (P4 command dispatch, for contrast) | 100 | 113 | 161 | 332 | 380 | 443 |
+| capture `totalMs` (transport, not timing) | 100 | 3,017 | 3,405 | 3,737 | 3,808 | 3,876 |
+
+The spread's maximum, 109.7 ms, is one frame period. Frame start is spread
+across the whole interval: 10-20 ms in 37 sets, 40-50 in 16, 70-80 in 8,
+100-110 in 24. `syncToFrameUs` itself clusters at 230-295 ms (command, then a
+discarded frame, then a fresh one) with a second cluster at 340-355 ms, one
+frame period further out.
+
+**Per-camera offsets.** Sync edge to frame start, attributed frames only, and how
+often each camera was first or last of its set:
+
+| camera | n | median | p95 | max | min | earliest | latest |
+|---|---|---|---|---|---|---|---|
+| cam1 | 96 | 263,685 | 347,900 | 351,571 | 239,446 | 21 | 51 |
+| cam2 | 99 | 273,829 | 344,185 | 351,669 | 241,297 | 51 | 15 |
+| cam3 | 98 | 265,906 | 349,721 | 352,416 | 238,413 | 15 | 4 |
+| cam4 | 98 | 265,822 | 351,095 | 352,456 | 240,949 | 4 | 21 |
+
+No camera leads or lags persistently: the four medians sit within 10 ms of each
+other, which is inside the per-shutter spread. But the ORDER is not random.
+Every one of the 91 four-frame sets ordered the cameras as a rotation of
+cam1 -> cam2 -> cam3 -> cam4: cam2 first in 51 sets, cam1 in 21, cam3 in 15,
+cam4 in 4, and no other permutation ever appeared. Four free-running clocks at
+nearly the same frequency, holding a fixed phase order while the absolute phase
+rotates slowly past the pulse.
+
+Sync edge to command acted on - link and node scheduling, not timing - was
+18,487 / 18,552 / 18,574 / 18,616 us median (cam1..cam4), p95 under 18.9 ms,
+max 22.8 ms: the four nodes take up their commands within **129 us** of each
+other.
+
+**Connected scenarios.** 20 grouped shutters in each state, same instrument.
+
+| scenario | sets | 4/4 attributed | spread min | median | p95 | max | dispatch median / max |
+|---|---|---|---|---|---|---|---|
+| radio associated, uploading (back to back) | 20 | 19 | 18,700 | 18,910 | 106,525 | 108,199 | 166 / 360 |
+| API unreachable (offline hold) | 20 | 20 | 16,571 | 18,810 | 104,641 | 107,579 | 164 / 359 |
+| backlog draining | 20 | 18 | 16,207 | 16,443 | 106,685 | 108,371 | 164 / 430 |
+| during a C6 reset recovery | 20 | 19 | 15,887 | 16,393 | 103,494 | 107,433 | 160 / 192 |
+
+Every scenario has the same shape as idle and none is worse: the maximum stays
+one frame period, the floor is 16-19 ms, and dispatch stays inside a few
+hundred microseconds - tightest of all during the C6 recovery (192 us max),
+where Gate F's photography-first priority is doing its job. 319 of 320 frames
+attributed; 0 stale frames; 60 of 80 sets had all four frames attributed and
+the shortfall is node availability, not timing (below).
+
+The medians are the interesting difference: 16-19 ms back to back against
+46,633 us at the 6 s idle cadence. Consecutive shutters largely preserve the
+relative phase - each node's next frame boundary is set by its own just-finished
+capture, and the four captures finish close together - while six idle seconds
+let the phases drift apart again. That is a lead for the tuning gate, not a
+result to claim.
+
+**Offline hold and automatic send (15A/15B), verified while measuring.** API
+stopped with the radio still `IP_READY`: 20 shutters, all accepted, all
+complete 4/4 - no shutter waited on the network. The queue rose to 23 pending
+with `ESP_ERR_HTTP_CONNECT` as the reason and **nothing marked failed**. On the
+six sampled sets META read `complete`, four frames, the shutter-time Roll, and
+all four frames still carried `syncClass ok`: **timing telemetry survives an
+offline capture**. Their durable records read QUEUED or RETRY_WAIT with
+`frameSlots 1/2/3/4` and the same Roll. The API was restored and nothing was
+re-enqueued by hand: `uploaded` went 119 -> 139, exactly the twenty, and the
+backend answered 20 distinct UUIDs, 20 rows, 20 with four originals, one Roll.
+No duplicate, no relabel, no manual step.
+
+**Dominant source of spread.** **Sensor free-running frame phase, quantised by the 112.4 ms
+frame period.** The evidence, in order of weight:
+
+1. The spread's maximum is the frame period (109.7 ms against a measured
+   112.4 ms) in all five scenarios, and the distribution fills the interval.
+2. Command dispatch is three orders of magnitude smaller: 161 us median,
+   443 us worst of 100 sets, and the four nodes act on their commands within
+   129 us of each other. Dispatch and node scheduling cannot produce tens of
+   milliseconds.
+3. `syncToFrameUs` is bimodal at exactly one frame period apart - a camera
+   either gives the next boundary or the one after it.
+4. The camera order is always a rotation of 1->2->3->4, which is what four
+   independent oscillators of nearly equal frequency do and what neither a
+   scheduler nor a link would do.
+5. Every frame's DMA arm followed the command by two frame periods (discard,
+   then fresh), so the returned frame is the shutter's own and the residue is
+   the sensor's phase, not staleness.
+
+Nothing here is attributable to software dispatch, node scheduling or the
+transport. It is where `SYNC_FEASIBILITY.md` predicted it would be from source
+reading in August, now measured on four sensors.
+
+**UART versus capture timing.** Kept apart throughout. Per-camera UART transfer, attributed
+frames: cam1 1,373 ms median, cam2 2,260, cam3 1,347, cam4 1,387 - cam2's
+JPEGs are simply larger (190-210 KB against 115-150 KB), and since #158 the
+four card writes follow the transfers rather than overlapping them. Whole
+captures took 3,017-3,876 ms idle and 2,433-4,100 ms connected. **None of that
+is capture timing:** four transfers taking seconds does not mean the four
+photographs are seconds apart, and the frame-start figures above are measured
+before a single byte of JPEG moves. Chunk retries in the 160 measured shutters:
+0. Transport quality and capture-timing quality are reported separately and
+neither was used to discard the other's samples.
+
+**Resources.** | | idle run start | idle run end | connected end | after a clean reboot |
+|---|---|---|---|---|
+| internal free | 89 KB | 69 KB | 92 KB | 92 KB |
+| internal minimum | 52 KB | 45 KB | 44 KB | 85 KB |
+| largest internal DMA | 31 KB | 31 KB | 31 KB | 31 KB |
+| recovery reserve | 2/2 | 2/2 | 2/2 | 2/2 |
+
+`recoveryReady` true throughout; capture-worker stacks 5.8-7.7 KB free,
+`kdp_server` 2.2 KB, `upqueue` 2.4 KB, unchanged from 0.4.29; `transportErrors`
+0 except the single deliberate C6 reset; no SD errors; no panic. The minimum
+dipped to 44 KB under the 100-shutter run and recovered - twenty times the
+2 KB that #162 was, and the new telemetry added no internal buffer at all (one
+`int64_t` and one `uint32_t` per node, four bytes of state per camera on the
+P4). The #162 layout is untouched.
+
+Two board events to record honestly: the P4 took a `power-on` reset between the
+CAM3 reseat and the baseline (operator power event at the bench, not a panic -
+boot-118 to boot-119), and I rebooted it deliberately at the end to test the
+queue-count defect below. No reset during any measurement run.
+
+**Node availability, and an accidental confirmation of #164.** Four of the 160
+measured shutters produced three-camera sets because cam1 or cam3 was offline at
+the probe (idle 34 and 38 and 68, drain 4). The contract behaved: `status
+complete` over the online cameras, `frameCount 3`, and all four uploaded with
+their real slots - `frameSlots 1/2/4` and `2/3/4`, backend assets at exactly
+those frame indices. #164's fix handling sets the bench produced by accident
+rather than by an operator pulling a plug. The offline drops themselves are
+bench flakiness on those two nodes and belong with #157.
+
+**A queue count that never returns to zero (#166, filed, not fixed here).**
+After the runs `UPLOAD_QUEUE_STATUS` sat at `pending=4 uploading=0 failed=0`
+with nothing to upload. Cause, from the source: `run_one_step()` drops a
+COMPLETE job from its RAM list at the end of the function, but the persist
+branch returns first when `card_take()` is refused - which is exactly what a
+shutter three seconds later does. The job stays in the list as COMPLETE, and
+from then on `pick_job()` skips it, `UPLOAD_QUEUE_RETRY` will not revive it and
+`upload_queue_status()` counts it as pending. No photograph is affected: all
+four were COMPLETE on the card, the backend held every set, and a reboot
+cleared the count to zero exactly as reconciliation predicts. Display and
+`uploaded` under-count only.
+
+**Verdict.** **SYNC BASELINE MEASURED.** There is now a trustworthy
+instrument (a common physical edge, timestamped in each node's own clock,
+attributed by generation, with stale frames provably absent) and a first
+four-camera number: frame-start spread median 46.6 ms and maximum 109.7 ms at a
+6 s cadence, 16-19 ms median back to back, bounded by the measured 112.4 ms
+frame period, unchanged by uploads, backlog, an unreachable API or a C6
+recovery. Command distribution is 161 us median and 443 us worst, inside the
+100-400 us trigger-distribution figure `docs/HARDWARE.md` records - and that
+document is explicit that this is not an exposure result. No exposure-skew
+target exists in the repository: Gate C's threshold is "M2-defined" and M2 has
+not run, so nothing here is graded pass or fail against a number.
+
+This is **not** four-camera sync GO, and none of it is exposure skew: frame
+start is not exposure start, a rolling shutter integrates per row, and the three
+`kino.capture` skews stay null with their reason. The next gate tunes and
+validates; this one only established what there is to tune.
+
 ### The queue uploads the cameras a capture holds - 0.4.29, #164, 2026-09-03
 
 **The defect, restated from the source.** `rq_job_t` carried `frame_count`

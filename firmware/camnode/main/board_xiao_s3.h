@@ -47,7 +47,10 @@
 #define BOARD_LINK_TX 43
 #define BOARD_LINK_RX 44
 
-// --- Sync input (PROVISIONAL, unused in Milestone 1) ---
+// --- Sync input (PROVISIONAL pin; read since 0.4.30 for measurement, #165) ---
+// XIAO pad D1. The P4's SYNC_OUT (GPIO32, JP1 pin 19) fans out to this pin on
+// all four nodes, common ground. Input with pull-down, rising-edge ISR that
+// only timestamps and counts; nothing in the sensor path reads it.
 #define BOARD_SYNC_IN 2
 
 // --- User LED (Seeed: active-low yellow LED) ---

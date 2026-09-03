@@ -8,8 +8,10 @@
 #include "board_xiao_s3.h"
 #include "camera.h"
 #include "cJSON.h"
+#include "driver/gpio.h"
 #include "driver/temperature_sensor.h"
 #include "driver/uart.h"
+#include "esp_attr.h"
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -125,6 +127,77 @@ static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *
   cJSON_free(text);
 }
 
+/*
+ * The sync edge, observed - measurement only (#165).
+ *
+ * The P4 pulses SYNC_OUT (200 us high) at every grouped shutter, before the
+ * four capture commands go out. Until 0.4.30 no node read it. Now the rising
+ * edge on BOARD_SYNC_IN is timestamped in this node's esp_timer domain and
+ * counted, and the CAPTURE reply reports the last edge beside the frame's own
+ * DMA-arm time. (frameStartUs - syncEdgeUs) is then comparable across nodes
+ * with no shared clock, because every node measures its own frame against the
+ * same physical edge.
+ *
+ * What the edge does NOT do: it does not start an exposure, arm the sensor, or
+ * change which frame the driver hands back. The OV3660 free-runs and the
+ * capture below still returns the frame in flight when the command arrives.
+ * This is the instrument, not the mechanism; it exists so the spread can be
+ * measured before anything is tuned.
+ *
+ * ISR discipline: timestamp and count, nothing else. Both are read under a
+ * critical section in handle_capture so seq and edge are one snapshot. The
+ * counter is the generation id the P4 attributes replies by - each grouped
+ * shutter must advance it by exactly one on every node.
+ */
+static volatile int64_t s_sync_edge_us;
+static volatile uint32_t s_sync_seq;
+static bool s_sync_input_ready;
+
+static void IRAM_ATTR sync_isr(void *arg) {
+  (void)arg;
+  s_sync_edge_us = esp_timer_get_time();
+  s_sync_seq++;
+}
+
+static void sync_input_init(void) {
+  const gpio_config_t io = {
+      .pin_bit_mask = 1ULL << BOARD_SYNC_IN,
+      .mode = GPIO_MODE_INPUT,
+      /* The P4 idles the line low and pulses high; an unwired input must read
+       * low too, so a node with no sync wire reports no edges instead of the
+       * mains hum on a floating pin. */
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_ENABLE,
+      .intr_type = GPIO_INTR_POSEDGE,
+  };
+  if (gpio_config(&io) != ESP_OK) return;
+  /* The camera driver does not own the GPIO ISR service; if something else
+   * installed it first that is fine, only a real failure leaves the input
+   * unarmed. IRAM so the edge is still seen while the cache is off. */
+  esp_err_t err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return;
+  if (gpio_isr_handler_add(BOARD_SYNC_IN, sync_isr, NULL) != ESP_OK) return;
+  s_sync_input_ready = true;
+}
+
+/* One consistent (seq, edge) pair. */
+static void sync_snapshot(uint32_t *seq, int64_t *edge_us) {
+  portDISABLE_INTERRUPTS();
+  *seq = s_sync_seq;
+  *edge_us = s_sync_edge_us;
+  portENABLE_INTERRUPTS();
+}
+
+/* syncSeq on every reply that describes the node, so the P4 knows the count
+ * before the first shutter and can require +1 per pulse afterwards. */
+static void add_sync_seq(cJSON *json) {
+  uint32_t seq;
+  int64_t edge;
+  sync_snapshot(&seq, &edge);
+  cJSON_AddNumberToObject(json, "syncSeq", (double)seq);
+  cJSON_AddBoolToObject(json, "syncInput", s_sync_input_ready);
+}
+
 static void handle_hello(uint32_t seq) {
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "product", "KINO-CAMNODE");
@@ -138,6 +211,7 @@ static void handle_hello(uint32_t seq) {
   cJSON_AddNumberToObject(json, "heapKB", heap_kb());
   cJSON_AddNumberToObject(json, "psramKB", psram_kb());
   cJSON_AddNumberToObject(json, "baud", NL_DEFAULT_BAUD);
+  add_sync_seq(json);
   if (camsensor_detected()) {
     char pid[8];
     snprintf(pid, sizeof pid, "0x%04x", camsensor_pid());
@@ -198,6 +272,7 @@ static void handle_status(uint32_t seq) {
   add_temp(json);
   cJSON_AddNumberToObject(json, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(json, "resyncs", s_decoder.stats.resyncs);
+  add_sync_seq(json);
   /* What NL_CMD_SENSOR has got into the sensor since this node booted. Absent
    * when nothing has, which is how the P4 sees that a node reset underneath
    * its change-only cache and re-sends. */
@@ -298,6 +373,12 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   const uint32_t discard_ms = preview ? 0 : camsensor_discard_queued();
   uint32_t duration_ms = 0;
   camsensor_timing_t timing;
+  /* The sync edge as it stands when this command is acted on: taken before the
+   * capture so a pulse for the NEXT shutter, arriving during a slow transfer,
+   * cannot be booked against this frame. */
+  uint32_t sync_seq;
+  int64_t sync_edge_us;
+  sync_snapshot(&sync_seq, &sync_edge_us);
   const int64_t cmd_us = esp_timer_get_time();
   camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
   /*
@@ -361,6 +442,28 @@ static void handle_capture(uint32_t seq, cJSON *req) {
    * command arrived, which is the stale-frame signature stated directly
    * rather than left for a reader to subtract. */
   cJSON_AddNumberToObject(json, "frameAgeUs", (double)(cmd_us - timing.frame_start_us));
+  /*
+   * The common edge, and this frame against it (#165). syncSeq is the number
+   * of rising edges this node has seen since boot - the generation the P4
+   * attributes this reply to. syncEdgeUs is the last one, node esp_timer, null
+   * until the first edge ever arrives (a node with no sync wire says null for
+   * ever, never 0). syncToCmdUs = cmd - edge: how long after the pulse this
+   * command was acted on. syncToFrameUs = frameStart - edge: where this
+   * frame's DMA arm sits relative to the pulse - NEGATIVE means the frame was
+   * already in flight when the pulse came, which with a free-running sensor
+   * is the expected case, and the P4 marks such a frame stale for timing.
+   * None of these is exposure time.
+   */
+  cJSON_AddNumberToObject(json, "syncSeq", (double)sync_seq);
+  if (sync_seq > 0) {
+    cJSON_AddNumberToObject(json, "syncEdgeUs", (double)sync_edge_us);
+    cJSON_AddNumberToObject(json, "syncToCmdUs", (double)(cmd_us - sync_edge_us));
+    cJSON_AddNumberToObject(json, "syncToFrameUs", (double)(timing.frame_start_us - sync_edge_us));
+  } else {
+    cJSON_AddNullToObject(json, "syncEdgeUs");
+    cJSON_AddNullToObject(json, "syncToCmdUs");
+    cJSON_AddNullToObject(json, "syncToFrameUs");
+  }
   cJSON_AddStringToObject(json, "crc32", crc_hex);
   cJSON_AddNumberToObject(json, "heapKB", heap_kb());
   cJSON_AddNumberToObject(json, "psramKB", psram_kb());
@@ -529,6 +632,10 @@ esp_err_t node_server_start(const char *session_id) {
   } else {
     s_tsens = NULL; /* STATUS then reports tempC null, never a guess */
   }
+
+  /* The sync-edge witness (#165): measurement only, never in the capture path. */
+  sync_input_init();
+  if (!s_sync_input_ready) ESP_LOGW(TAG, "sync input GPIO%d not armed", BOARD_SYNC_IN);
 
   kdp_decoder_init(&s_decoder, s_decode_buf, sizeof s_decode_buf);
   s_state = camsensor_detected() ? NL_STATE_READY : NL_STATE_ERROR;

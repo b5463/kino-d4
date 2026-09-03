@@ -809,3 +809,28 @@ the server's identity `captureUuid + role + frameIndex` and its
 reconciler adopts the list from META (an old `frameDone[i]` meant camera
 i+1 and is read that way) and rewrites the record. A META with no usable
 frame list parks the job with the reason, rather than guessing.
+
+### D24 — the node reports the shared sync edge, and `META.JSON` frames carry it
+
+Firmware 0.4.30 (#165). Additive, measurement only. `NL_CMD_CAPTURE`'s reply
+gains `syncSeq` (rising edges the node has counted on `SYNC_IN` since its
+boot - the generation id), and `syncEdgeUs`, `syncToCmdUs`, `syncToFrameUs`,
+each null until that node has ever seen an edge. `NL_CMD_HELLO` and
+`NL_CMD_STATUS` gain `syncSeq` and `syncInput`. All values are that node's own
+`esp_timer` microseconds and share no epoch with the P4 or with another node;
+only `syncToFrameUs = frameStartUs - syncEdgeUs` is comparable across nodes,
+because every node measures its own frame against the same physical pulse.
+
+`kino.capture` frame entries gain `syncClass` (`ok` | `unverified` |
+`stale-generation` | `none`), `syncSeq`, `syncEdgeUs`, `syncToCmdUs`,
+`syncToFrameUs` and `frameBeforeEdge`, the last four null when the node
+reported no edge. A reader that ignores them still gets a valid
+`kino.capture`. `frameBeforeEdge` true means the returned frame's DMA arm
+preceded the pulse, which is the expected case with a free-running sensor and
+marks the frame stale for timing purposes.
+
+None of this is exposure timing. `timing.gpioTriggerSkewUs`,
+`vsyncPhaseSkewUs` and `effectiveExposureSkewUs` stay null with their
+`unavailableReason`, and `vsyncTelemetry` stays false: the edge is a common
+time reference for frame-start measurement, not a trigger, and a rolling
+shutter integrates per row where this firmware cannot observe.

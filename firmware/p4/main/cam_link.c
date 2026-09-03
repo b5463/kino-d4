@@ -564,6 +564,20 @@ esp_err_t camlink_capture_ch(int cam, const char *resolution, int jpeg_quality,
   if (cJSON_IsNumber(fstart)) out->frame_start_us = (int64_t)fstart->valuedouble;
   const cJSON *fage = cJSON_GetObjectItem(json, "frameAgeUs");
   if (cJSON_IsNumber(fage)) out->frame_age_us = (int64_t)fage->valuedouble;
+  /* The sync edge (#165): syncSeq always numeric on a 0.4.30+ node, the three
+   * relative values null until the first edge. Absent altogether on older
+   * nodes, which leaves has_sync false and sync_seq 0. */
+  const cJSON *sseq = cJSON_GetObjectItem(json, "syncSeq");
+  if (cJSON_IsNumber(sseq)) out->sync_seq = (uint32_t)sseq->valuedouble;
+  const cJSON *sedge = cJSON_GetObjectItem(json, "syncEdgeUs");
+  const cJSON *scmd = cJSON_GetObjectItem(json, "syncToCmdUs");
+  const cJSON *sframe = cJSON_GetObjectItem(json, "syncToFrameUs");
+  if (cJSON_IsNumber(sedge) && cJSON_IsNumber(scmd) && cJSON_IsNumber(sframe)) {
+    out->has_sync = true;
+    out->sync_edge_us = (int64_t)sedge->valuedouble;
+    out->sync_to_cmd_us = (int64_t)scmd->valuedouble;
+    out->sync_to_frame_us = (int64_t)sframe->valuedouble;
+  }
   out->size = (uint32_t)size->valuedouble;
   const cJSON *dur = cJSON_GetObjectItem(json, "durationMs");
   out->duration_ms = cJSON_IsNumber(dur) ? (uint32_t)dur->valuedouble : 0;

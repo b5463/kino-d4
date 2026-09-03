@@ -521,4 +521,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // META), not C1..C<frameCount>; a set with a middle camera dark now leaves
   // the body (#164). Device side only, same profile.
   '0.4.29': 'd4-settings-0-4-9',
+  // 0.4.30: the nodes timestamp the SYNC_OUT edge and the capture reply / META
+  // carry syncSeq, syncEdgeUs, syncToFrameUs, syncClass - measurement only,
+  // nothing in the sensor path changes (#165). Device side only, same profile.
+  '0.4.30': 'd4-settings-0-4-9',
 };
