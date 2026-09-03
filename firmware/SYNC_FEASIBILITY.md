@@ -607,3 +607,96 @@ that the interval is 112 ms and the residual spread is a fifth to a half of it.
 
 That is a hardware-and-driver conclusion, reached with the instrument built in
 0.4.30/0.4.31 and stated here so no later work quietly re-scopes it.
+
+## Where the next step goes, and what registers can and cannot do
+
+Written after the finder-live baseline of 0.4.37 (100 shutters, viewfinder
+live, `firmware/HARDWARE_VALIDATION.md`). Design only: nothing here is
+implemented, and nothing here should be implemented without the hardware
+decision it depends on.
+
+### The architecture this body is, measured
+
+**SOFTWARE_DISPATCH_ONLY.** Four sensors, each free-running on its own XCLK,
+triggered by four independent commands over four UARTs, with one shared
+`SYNC_OUT` edge used only as a measuring reference. Three numbers place it:
+
+| term | measured | share of the 112.4 ms period |
+|---|---|---|
+| command dispatch spread | 212 us median, 412 us max | 0.2-0.4% |
+| sensor phase (frame-start spread) | 42.0 ms median, 102.8 ms p95 | 37-91% |
+| frame period difference between nodes | 69 us (112,353-112,422 us) | 0.06% per frame |
+
+Dispatch is already two to three orders of magnitude better than the thing that
+dominates. That is why the phase-aware scheduler was rejected on replay and why
+priming changed nothing: both act on the 0.3% term.
+
+### What the 69 us period difference costs, and why it decides the design
+
+The four sensors do not merely start out of phase, they *drift*: 69 us per
+frame between the fastest and slowest node. A perfect one-time alignment decays
+by a full frame period after
+
+    112,387 us / 69 us = 1,629 frames = about 183 seconds
+
+so any scheme that aligns phase once and then leaves the sensors alone is good
+for roughly three minutes. This is the number that rules out the register-only
+approaches below, and it is a consequence of four separate crystals, not of
+firmware.
+
+### The OV3660 registers, and the honest limit of what they can do
+
+**Recommended, and already the case: register parity.** All four sensors are
+configured from one driver with one set of frame-timing registers, so total
+horizontal and total vertical (`HTS`/`VTS`, `0x380C`-`0x380F`) and the PLL
+dividers are identical across the four. The 69 us residual is therefore *not* a
+register mismatch and cannot be tuned out by changing them - it is XCLK
+tolerance. Nothing to do; the value of stating it is that "align the timing
+registers" is the obvious first idea and it is already true.
+
+**Not recommended: chasing phase with `VTS` padding.** `VTS` sets the frame
+period, so writing a slightly different `VTS` to a lagging sensor would shift
+its phase - a software phase-locked loop with the sensors as the oscillators
+and `syncToFrameUs` as the error signal. Against it: the error is only
+observable once per capture (a capture is the only time the P4 learns a node's
+frame start), the loop would need a per-frame error to be stable, a `VTS` write
+takes effect at the next frame boundary with a driver-dependent delay, and a
+mid-stream `VTS` change is visible as an exposure step because the AE loop is
+referenced to frame time. A control loop whose sample rate is "when the user
+presses the shutter" is not a control loop. This is the one idea in this area
+that looks affordable in firmware and it should not be built.
+
+**The only register work worth doing is a synchronous restart**, and it is a
+mitigation rather than a fix: soft-reset all four sensors from one P4 tick so
+their internal counters begin together, bounding the phase error to the reset
+skew plus 69 us per frame of drift. Cost: every camera drops a frame and the AE
+loop re-converges, so it belongs at the start of a session or before a burst,
+never inside one. Expected result, from the drift number above: sub-millisecond
+phase immediately after the reset, decaying past 10 ms within about 150 frames
+(17 s) and past a full period in three minutes. Worth measuring with the
+existing instrument before it is believed, because the reset skew over four
+UARTs is exactly the kind of term that turns out to dominate.
+
+### The step that actually attacks the dominant term
+
+**One clock for four sensors.** A single oscillator fanned out to all four
+XCLK pins removes the 69 us drift by construction: same clock, same `VTS`, same
+period, so a one-time alignment holds indefinitely and the synchronous restart
+above becomes a real fix instead of a three-minute mitigation. Combined with
+the restart, phase error collapses to reset skew.
+
+This is a **hardware change** - a clock buffer and four routed traces, or four
+short flying leads on the bench - and therefore a V2 decision, not a firmware
+one. It is the D3/D4 rung the escalation ladder already names. Recorded here
+with the number that justifies it so the choice is not re-argued from scratch:
+without a common clock, no firmware can hold four OV3660s in phase for longer
+than about three minutes, and with one, the residual is a single reset skew.
+
+### What ships in the meantime
+
+Nothing in the sync path, and that is a decision rather than a deferral. The
+finder-live condition already gives four fresh frames per shutter with a 42 ms
+median spread; `wiggle` playback is 10 fps hard cuts, where 42 ms of
+inter-camera time on a static subject is invisible and on a moving one reads as
+part of the parallax. The product-visible work is alignment, not
+synchronization, and it is not blocked by any of the above.

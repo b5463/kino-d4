@@ -588,6 +588,83 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The viewfinder is the sync variable - finder-live baseline, 0.4.37, #165, 2026-09-03
+
+100 grouped shutters with the live viewfinder running on all four channels, on
+0.4.37. **Nothing in the sync path changed since 0.4.31**: same node image
+(camnode 0.4.31), same 200 us `SYNC_OUT` pulse in `capture_fire()`, same
+generation attribution, same 10 ms dead time. The only variable is the
+viewfinder, which was uncontrolled between the 0.4.30 and 0.4.31 runs and made
+them non-comparable. This run closes that.
+
+`syncToFrameUs = frameStartUs - syncEdgeUs` is the only cross-node comparable
+quantity: each node measures its own frame start against the same physical
+edge, with no shared clock. Distributions, not averages.
+
+| | 0.4.30 finder LIVE | 0.4.31 finder IDLE | 0.4.37 finder LIVE |
+|---|---|---|---|
+| sets | 100 | 100 | 100 |
+| sets with four usable frames | 91 | 96 | **98** |
+| frame-start spread, median | 46.6 ms | 85.9 ms | **42.0 ms** |
+| spread p95 | 105.8 ms | 99.9 ms | 102.8 ms |
+| spread max | 109.7 ms | 101.0 ms | 108.0 ms |
+| spread min | 10.1 ms | 47.0 ms | 14.4 ms |
+| frames that started BEFORE the edge | 0 of 391 | **385 of 393 (98%)** | 0 of 397 |
+| edge -> command, median | 18.6 ms | 2.1 ms | 17.1 ms |
+| stale-generation | 6 | 0 | 1 |
+
+**0.4.37 finder-live reproduces 0.4.30 finder-live**, which is the result that
+matters for comparability: median spread 42.0 against 46.6 ms, freshness 0%
+stale in both, command landing 17.1 against 18.6 ms after the edge. The queue
+work of this session did not perturb the sync path, and the 0.4.31 numbers were
+a different experiment rather than a regression.
+
+**What the viewfinder does, at n=100 each.** Running, it costs 15 ms of command
+latency (the node is mid-stream when the trigger arrives) and buys freshness:
+every returned frame started after the shutter's own edge, and the spread
+halves, 85.9 -> 42.0 ms. Idle, the command lands in 2.1 ms and 98% of returned
+frames started BEFORE the edge - the driver hands over the buffer it already
+had, so the photograph predates the shutter that asked for it. For a
+photograph, freshness is not optional, so the finder-live condition is the one
+the product ships in and the one to measure against.
+
+**Dispatch is not the problem, and has not been since it was first measured.**
+Command dispatch spread across the four channels: **median 212 us, max 412 us**
+over 100 shutters, against the 100-400 us trigger-distribution target in
+`docs/HARDWARE.md`. Frame-start spread is 100 to 500 times that, and is bounded
+by the 112.4 ms frame period. The dominant term is free-running sensor phase.
+
+**Against the target.** `gradeSkew()` in `packages/kdp/src/protocol/timing.ts`
+calls under 2 ms usable and over 10 ms "not a synchronized capture", for
+*effective exposure*. Frame-start spread alone is a median of 42 ms and a p95
+of 103 ms. `firmware/SYNC_FEASIBILITY.md` already records that the V1 exposure
+target is unreachable on free-running OV3660s; this run measures the gap at
+n=100 under the shipping condition rather than inferring it.
+
+**Verdict: SYNC BASELINE MEASURED.** Not met, and not measurable as exposure -
+frame start is what the instrument can see. What it is measured against is now
+one condition, stated, with 100 sets on each side.
+
+**Delivery and the links, during the same run.** All four cameras answered all
+100 shutters; 99 sets stored four frames and one stored three (`cam3`, one `no
+answer in 4000 ms`). Per-set total 3,994 ms median. No node rebooted at any
+point - `lastNodeBootReason` unchanged on all four and every rx counter
+monotonic. Internal SRAM minimum fell to **28 KB** with the viewfinder, the
+captures and the uploads all running, the lowest yet seen; the recovery reserve
+held 2/2 throughout. The queue took the 100 new captures as they landed and
+reported `pending=0` with **`scanComplete=false`** while 26 were still on the
+card - the #167 invariant doing exactly what it was added for.
+
+**CAM3's channel is worse than the other three, and it is not a reboot.** Over
+67 s of viewfinder streaming with no captures: cam3 took 23 new timeouts
+against 4, 6 and 5 on cam1, cam2 and cam4, and the P4's log names the mechanism
+- `cam3 vf dropped shortRead, 3652B frame (68 since boot)`. Every one is
+recovered by a retry, so no photograph was lost. A `connected=false` sample was
+also caught on cam1 and was back inside 12 s: the flag is momentary between
+frames after a timeout, so a single reading of it is not a disconnection. CAM3
+stays hardware-suspect on its wiring and connector, which is the fourth
+distinct incident on that channel; nothing was changed to chase it here.
+
 ### The card is the queue - 0.4.36, #167 #168 #166, 2026-09-03
 
 KD4-D121BC, one 32 GB card holding 788 capture directories from every bench
