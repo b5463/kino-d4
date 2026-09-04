@@ -641,11 +641,10 @@ watch item. Host suites: gallery-index 78 -> 173 checks (totals at 0, 1, 31,
 counted-not-trusted total; missing, empty, no-header, future-version and
 corrupt-line recovery), fourteen suites green.
 
-**LOCAL MEDIA COUNT: NOT PROVEN.** Device index, `MEDIA_LIST` total and the
-Photos row now read the same figure by construction, and the device side
-measures 1,434. The Photos row is on the camera's own screen, which this
-session cannot see. **Expected value on the Storage screen: 1434.** Delete All
-should be enabled. Operator confirmation is what turns this into PASS.
+**LOCAL MEDIA COUNT: PASS.** Device index, `MEDIA_LIST` total and the Photos
+row read the same figure by construction; the device side measures 1,434, and
+the operator confirmed the Storage screen on the camera itself: **Photos =
+1434, Delete All enabled** (2026-09-04). The three counts agree.
 
 **MEDIA_LIST: PASS.** Prompt, paginated, exact total, correct summaries, no
 regression in capture latency.
