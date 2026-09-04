@@ -975,7 +975,10 @@ int storage_media_count(void) {
    * upload_queue.c's enqueue.
    */
   bool took = false;
-  if (!storage_acquire_unless_held(STORAGE_USER_UI, 2000, &took)) return -1;
+  /* 0 ms: this must never WAIT for the card. A caller that cannot have it now
+   * gets the previous answer, because the alternative - seen on the bench - is
+   * a draw path blocking seconds behind a capture. */
+  if (!storage_acquire_unless_held(STORAGE_USER_UI, 0, &took)) return s_media_count;
 
   DIR *d = opendir(MOUNT "/KINO/CAPTURES");
   if (d == NULL) {
@@ -1005,6 +1008,21 @@ int storage_media_count(void) {
     struct stat st;
     if (stat(meta, &st) != 0) continue; /* interrupted commit, not a photograph */
     count++;
+
+    /*
+     * Give the card back the moment a capture wants it.
+     *
+     * A thousand stat()s is seconds of card time, and this used to hold
+     * STORAGE_USER_UI for all of it: on the bench that took grouped captures
+     * from 4 s to 75 s and left the KDP link answering in 9 s. An abandoned
+     * walk costs nothing - the previous count stands and the next call starts
+     * again - so yielding is strictly better than finishing.
+     */
+    if ((count & 0x3F) == 0 && storage_yield_requested(STORAGE_USER_UI)) {
+      closedir(d);
+      storage_release_if_taken(STORAGE_USER_UI, took);
+      return s_media_count; /* stale, and still not marked valid */
+    }
   }
   closedir(d);
   storage_release_if_taken(STORAGE_USER_UI, took);
@@ -1016,6 +1034,19 @@ int storage_media_count(void) {
 
 int storage_media_count_cached(void) {
   if (s_media_count_valid) return s_media_count;
+  /*
+   * Recount at most once every few seconds, however often this is called.
+   *
+   * The storage screen calls this on every redraw and every shutter
+   * invalidates it, so without a floor the card gets walked continuously - the
+   * regression this rate limit exists to prevent. Between attempts the last
+   * good number is shown, which is at worst a few captures stale on a screen
+   * that is about to be redrawn anyway.
+   */
+  static int64_t s_next_try_us;
+  const int64_t now = esp_timer_get_time();
+  if (now < s_next_try_us) return s_media_count;
+  s_next_try_us = now + 5000000; /* 5 s */
   return storage_media_count();
 }
 

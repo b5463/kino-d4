@@ -588,6 +588,81 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The fresh-frame predicate closes the finder-idle stale frame - 0.4.40, 2026-09-04
+
+The half of the 0.4.38 proof that was owed. Operator put the body off the SHOOT
+screen; the pump being stopped was verified rather than assumed - preview frame
+counters static at 0 and `fpsX10` 0 on all four - and re-verified after the
+P4 reflash, because a reboot could have put the UI back on SHOOT.
+
+| | frameBeforeEdge | node fb_get, median | per-set totalMs, median |
+|---|---|---|---|
+| 0.4.31 finder idle, no predicate | **385 of 393 (98%)** | 56 ms | 3,125 |
+| 0.4.38 finder live, predicate | 0 of 396 | 112 ms | 3,257 |
+| **0.4.40 finder idle, predicate** | **0 of 423 (0%)** | **112 ms** | 2,880 |
+
+**98% to 0%.** The node's `fb_get` now sits at exactly one frame period where it
+used to return in 56 ms - half a period, the signature of handing back a frame
+already in flight. That is the predicate firing, and 112 ms is what it costs to
+photograph the moment asked for instead of the one before it. Per-set time did
+not rise: the four-camera transfer dominates.
+
+100 of 100 accepted, 99 sets with four frames, **zero** shortRead on any
+channel, no CRC, no node reset (sessions 90/19/20/16 unchanged), node heap
+7,242 KB unchanged, P4 internal 86 KB free with a 65 KB minimum and the reserve
+held, `transportErrors=0`.
+
+The 423 frames span 108 sets rather than 100: eight sets came from an aborted
+run earlier the same hour, also finder-idle with the predicate on camnode
+0.4.38, so they measure the same condition and are included rather than
+silently dropped.
+
+**Verdict: FRESH FRAME PREDICATE PASS.** Finder-idle stale frames are
+eliminated and finder-live behaviour is unchanged.
+
+### The sensors were phase-aligned to 5 ms, by accident, and it held
+
+Not looked for, and it is the most useful thing this run produced.
+
+`syncToFrameUs` across each set, taken circularly so a set straddling a frame
+boundary is not read as a near-full-period spread:
+
+```
+set   2   spread 5306 us    cam1=51819 cam2=52938 cam3=57125 cam4=56136
+set  25   spread 5101 us
+set  50   spread 4895 us
+set  75   spread 4851 us
+set 100   spread 4881 us
+
+99 sets: median 4895 us   p95 5179   max 5306   min 1240
+4 of 99 sets straddled a frame boundary
+```
+
+**Median 4.9 ms where the same measurement gave 85.9 ms on 0.4.31 and 37.6 ms
+on 0.4.38** - and stable across eight minutes, with the same camera ordering
+every set and the spread shrinking about 425 us over the run, which is 0.9 ppm
+and agrees with the 1.6 ppm relative rate measured independently.
+
+Why: reflashing the P4 cuts node power, so all four nodes took a power-on reset
+together and ran `esp_camera_init()` within milliseconds of each other. Their
+sensor streams therefore started together, and the residual 4.9 ms is the
+spread in node boot and init time.
+
+**What this means for V2, stated carefully.** It is an accidental demonstration
+of the phase-alignment concept: a simultaneous sensor start aligns frame phase,
+and at 1.6 ppm the alignment holds for a long time. It also reframes every
+earlier spread figure in this document - 42 ms and 85.9 ms were measured with
+sensors that had started at *different* times, so they are a property of
+unaligned start rather than of the architecture.
+
+It does not mean synchronization is solved. This is frame START, not exposure;
+4.9 ms is still more than twice `gradeSkew()`'s 2 ms usable threshold and sits
+at the edge of its 5-10 ms motion-contaminated band; and the alignment
+mechanism here - node boot timing - is the crudest one available, with tens of
+milliseconds of jitter in principle. The proposed edge-triggered restart
+replaces it with an ISR and an SCCB write, which should do far better. V2-C
+remains unrun.
+
 ### The card said zero photographs - 0.4.39, 2026-09-04
 
 The reported defect: the camera shows 0 pictures over a card holding well over

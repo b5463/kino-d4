@@ -554,4 +554,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // gallery list's 240-capped total, and MEDIA_LIST reports it as `total`.
   // media_meta's buffer grows past a four-camera META. Same profile.
   '0.4.39': 'd4-settings-0-4-9',
+  // 0.4.40: the media count never waits for the card and yields it back to a
+  // capture, and it recounts at most once every five seconds - 0.4.39 walked
+  // the card from the draw path on every redraw. Same profile.
+  '0.4.40': 'd4-settings-0-4-9',
 };
