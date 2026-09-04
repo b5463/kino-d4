@@ -8,6 +8,7 @@
 
 #include "cJSON.h"
 #include "esp_heap_caps.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -26,11 +27,32 @@ static const char *TAG = "gallery";
 #define INDEX_PATH CAPTURES_DIR "/" GIDX_FILE
 #define INDEX_TMP_PATH CAPTURES_DIR "/" GIDX_TMP_FILE
 
-/* How many capture folders the camera will page through. A 32 GB card holds
- * thousands, and holding every name would cost 40 KB for a list nobody scrolls
- * to the end of. The newest are what anyone is looking for, so the scan keeps
- * the last MAX_SCAN by name and says so when there are more. */
-#define MAX_SCAN 240
+/*
+ * How many capture folders the camera indexes.
+ *
+ * This was 240, which was the right number while the index only fed the
+ * gallery screen: nobody scrolls to the end of a list of hundreds. It is now
+ * also what MEDIA_LIST reports as `total` and what the Photos row shows, and
+ * an index capped below the card's contents makes both of those under-report -
+ * 240 over a card holding 1,325. So the cap is sized for a real card with
+ * headroom rather than for a screen.
+ *
+ * The cost is memory, and all of it is in PSRAM: the two name tables are
+ * heap_caps_malloc(MALLOC_CAP_SPIRAM) at 40 bytes a row, and the three
+ * timestamp and order arrays below carry EXT_RAM_BSS_ATTR for the same reason
+ * cam_link's channel table and the upload job table do (#162) - internal SRAM
+ * is the scarce pool and none of this is touched from an ISR or with the flash
+ * cache off. At 4096 that is about 400 KB of PSRAM and nothing internal.
+ *
+ * A card holding MORE than this still works: the newest MAX_SCAN are indexed
+ * and shown, the walk's `seen` count records the truth, and the overflow is
+ * logged. The counts would then under-report, which is why the number has
+ * headroom over the largest card measured.
+ */
+#define MAX_SCAN 4096
+
+/* s_order holds indices into s_names as uint16_t, so the cap has to fit. */
+_Static_assert(MAX_SCAN <= 65535, "MAX_SCAN must fit in s_order's uint16_t");
 
 /* The name table's row and the index's name field are the same field in two
  * files, and a mismatch would be a silent truncation into a path. */
@@ -51,8 +73,8 @@ _Static_assert(GIDX_NAME_MAX == 40, "gallery_index.h and s_names[40] must agree"
  * gallery_index.h.
  */
 static char (*s_names)[40];
-static uint64_t s_mtime[MAX_SCAN];
-static uint16_t s_order[MAX_SCAN];
+static EXT_RAM_BSS_ATTR uint64_t s_mtime[MAX_SCAN];
+static EXT_RAM_BSS_ATTR uint16_t s_order[MAX_SCAN];
 static int s_total;
 static int s_total_seen;
 
@@ -72,7 +94,7 @@ static int s_total_seen;
  * that can put a wrongly-ordered gallery right.
  */
 static char (*s_walk_names)[40];
-static uint64_t s_walk_mtime[MAX_SCAN];
+static EXT_RAM_BSS_ATTR uint64_t s_walk_mtime[MAX_SCAN];
 static int s_walk_count; /* names collected so far, across passes */
 static int s_walk_seen;  /* folders the last COMPLETED pass counted */
 static bool s_walking;   /* a rebuild is part-way through */
@@ -579,6 +601,25 @@ static int index_load(void) {
      * that parses fine and describes the wrong card. */
     ESP_LOGW(TAG, "order index says %d entries, read %d (%d skipped); rebuilding", h.entries, n,
              skipped);
+  } else if (h.entries < h.total_seen && h.total_seen <= MAX_SCAN) {
+    /*
+     * A good index, written by a firmware whose cap was smaller than this one.
+     *
+     * It describes the card honestly - `entries` of `total_seen` - but it is
+     * short of what this build can hold, and `entries` is now what MEDIA_LIST
+     * reports as `total` and what the Photos row shows. Left alone it would
+     * under-report for ever, because every other check here passes: the count
+     * matches the body and nothing is corrupt. Measured on the bench card
+     * after raising the cap from 240 to 4096: MEDIA_LIST answered total=240
+     * over 1,325 captures until this branch existed.
+     *
+     * Only when the whole card would now FIT (`total_seen <= MAX_SCAN`).
+     * Past the cap a short index is the correct outcome and rebuilding it on
+     * every open would be the permanent-rebuild loop this file has fixed
+     * before.
+     */
+    ESP_LOGI(TAG, "order index holds %d of %d captures and this build fits %d; rebuilding",
+             h.entries, h.total_seen, MAX_SCAN);
   } else {
     lock();
     for (int i = 0; i < n; i++) {
@@ -1474,6 +1515,17 @@ void gallery_note_removed(const char *id) {
     s_rescan = true;
     s_dirty = true;
   }
+}
+
+/*
+ * s_total_seen is what the walk counted on the card and s_total is what the
+ * list holds; on a card inside the cap they are equal, and past it `seen` is
+ * the truthful one. Either way this is index state, not a card walk.
+ */
+int gallery_media_count(void) {
+  if (!s_have_list) return -1;
+  const int n = s_total_seen > s_total ? s_total_seen : s_total;
+  return n;
 }
 
 int gallery_total(void) { return s_total; }

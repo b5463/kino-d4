@@ -558,4 +558,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // capture, and it recounts at most once every five seconds - 0.4.39 walked
   // the card from the draw path on every redraw. Same profile.
   '0.4.40': 'd4-settings-0-4-9',
+  // 0.4.41: MEDIA_LIST and the Photos row answer from the persisted order
+  // index instead of walking the card; the index holds every capture (cap
+  // 240 -> 4096, arrays in PSRAM); `total` is the counted valid-photograph
+  // figure. Same profile.
+  '0.4.41': 'd4-settings-0-4-9',
 };

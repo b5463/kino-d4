@@ -104,6 +104,18 @@ void gallery_refresh(void);
 void gallery_note_added(const char *id, uint64_t captured_at_ms);
 void gallery_note_removed(const char *id);
 
+/**
+ * Photographs on the card, from the persisted order index.
+ *
+ * This is the number the Photos row shows and the one Delete All is gated on,
+ * and it is deliberately NOT gallery_total(): that is the length of the
+ * gallery LIST, which is capped and is zero until the first walk publishes -
+ * on a card of 1,325 it read 0 and disabled Delete All. This answers from
+ * index state already in RAM, so it costs nothing and can be called from a
+ * draw path. Negative when the gallery has no answer yet.
+ */
+int gallery_media_count(void);
+
 int gallery_total(void);
 int gallery_page(void);
 int gallery_pages(void);

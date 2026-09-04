@@ -19,6 +19,7 @@
  * when the device stopped.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "gallery_index.h"
@@ -306,7 +307,160 @@ static void test_max_bytes(void) {
   CHECK(gidx_max_bytes(-1) > 0, "a negative cap produced no bound");
 }
 
+
+/* ------------------------------------------------------------------ */
+/* gidx_page: the totals and pagination MEDIA_LIST answers from        */
+/* ------------------------------------------------------------------ */
+
+/* Build an index of `n` captures, newest first, into a heap buffer. */
+static char *build_index(int n, int header_entries, int total_seen) {
+  const size_t cap = gidx_max_bytes(n > 0 ? n : 1) + 256;
+  char *buf = malloc(cap);
+  if (buf == NULL) return NULL;
+  size_t at = 0;
+  at += gidx_render_header(buf + at, cap - at, header_entries, total_seen);
+  for (int i = 0; i < n; i++) {
+    char name[GIDX_NAME_MAX];
+    snprintf(name, sizeof name, "%08x-aaaa-4bbb-8ccc-ddddeeeeff%02x", 0x1000000 + i, i & 0xff);
+    at += gidx_render_line(buf + at, cap - at, (uint64_t)(9000000000000ULL - (uint64_t)i * 1000ULL),
+                           name);
+  }
+  buf[at] = 0;
+  return buf;
+}
+
+/* The counts the product has to get exactly right, including the two the old
+ * scan horizons broke on (240, 512) and the size of the real bench card. */
+static void test_page_totals(void) {
+  static const int SIZES[] = {0, 1, 31, 32, 33, 239, 240, 241, 511, 512, 513, 788, 1000, 1325};
+  for (size_t k = 0; k < sizeof SIZES / sizeof SIZES[0]; k++) {
+    const int n = SIZES[k];
+    char *buf = build_index(n, n, n);
+    CHECK(buf != NULL, "index of %d could not be built", n);
+    if (buf == NULL) continue;
+    gidx_entry_t page[20];
+    gidx_header_t h;
+    int total = -1, skipped = -1;
+    const int got = gidx_page(buf, 0, 20, page, &h, &total, &skipped);
+    CHECK(total == n, "total for %d captures came back %d", n, total);
+    CHECK(got == (n < 20 ? n : 20), "page of %d captures returned %d", n, got);
+    CHECK(skipped == 0, "clean index of %d reported %d skipped", n, skipped);
+    CHECK(h.entries == n, "header entries for %d came back %d", n, h.entries);
+    free(buf);
+  }
+}
+
+/* A page is a window on the total, and the total never changes with it. */
+static void test_page_windows(void) {
+  char *buf = build_index(1325, 1325, 1325);
+  CHECK(buf != NULL, "1325-entry index");
+  if (buf == NULL) return;
+  gidx_entry_t page[50];
+  gidx_header_t h;
+  int total = 0;
+
+  int got = gidx_page(buf, 0, 20, page, &h, &total, NULL);
+  CHECK(got == 20 && total == 1325, "page 1: %d items, total %d", got, total);
+  char keep[GIDX_NAME_MAX];
+  snprintf(keep, sizeof keep, "%s", page[0].name);
+
+  got = gidx_page(buf, 20, 20, page, &h, &total, NULL);
+  CHECK(got == 20 && total == 1325, "page 2: %d items, total %d", got, total);
+  CHECK(strcmp(page[0].name, keep) != 0, "page 2 started where page 1 did");
+
+  got = gidx_page(buf, 1320, 20, page, &h, &total, NULL);
+  CHECK(got == 5 && total == 1325, "last page: %d items, total %d", got, total);
+  got = gidx_page(buf, 1325, 20, page, &h, &total, NULL);
+  CHECK(got == 0 && total == 1325, "past the end: %d items, total %d", got, total);
+  got = gidx_page(buf, 99999, 20, page, &h, &total, NULL);
+  CHECK(got == 0 && total == 1325, "far past the end: %d items, total %d", got, total);
+
+  got = gidx_page(buf, 0, 0, NULL, &h, &total, NULL);
+  CHECK(got == 0 && total == 1325, "count-only: %d copied, total %d", got, total);
+  free(buf);
+}
+
+/* Newest first has to survive paging: the gallery's contract is that the last
+ * photograph taken is the first one shown. */
+static void test_page_order(void) {
+  char *buf = build_index(100, 100, 100);
+  CHECK(buf != NULL, "100-entry index");
+  if (buf == NULL) return;
+  gidx_entry_t page[100];
+  gidx_header_t h;
+  int total = 0;
+  const int got = gidx_page(buf, 0, 100, page, &h, &total, NULL);
+  CHECK(got == 100 && total == 100, "full read");
+  bool descending = true;
+  for (int i = 1; i < got; i++) {
+    if (page[i].captured_at_ms > page[i - 1].captured_at_ms) descending = false;
+  }
+  CHECK(descending, "the page is not newest-first");
+  free(buf);
+}
+
+/* The total is COUNTED, so a header that lies about its own body cannot set
+ * it - and the disagreement stays visible so a caller can ask for a rebuild. */
+static void test_page_total_is_counted_not_trusted(void) {
+  char *buf = build_index(50, 999, 999);
+  CHECK(buf != NULL, "index with a lying header");
+  if (buf == NULL) return;
+  gidx_entry_t page[10];
+  gidx_header_t h;
+  int total = 0;
+  const int got = gidx_page(buf, 0, 10, page, &h, &total, NULL);
+  CHECK(got == 10, "page still returned");
+  CHECK(total == 50, "total followed the header (%d) instead of the body", total);
+  CHECK(h.entries == 999, "the header claim is still reported: %d", h.entries);
+  CHECK(total != h.entries, "the disagreement must be visible to the caller");
+  free(buf);
+}
+
+/* Recovery cases. None of these may be mistaken for an empty card, because
+ * "0 photographs" is what disabled Delete All over a full one. */
+static void test_page_recovery_cases(void) {
+  gidx_entry_t page[10];
+  gidx_header_t h;
+  int total = -1;
+
+  CHECK(gidx_page(NULL, 0, 10, page, &h, &total, NULL) == -1, "NULL text must refuse");
+  CHECK(gidx_page("", 0, 10, page, &h, &total, NULL) == -1, "empty file must refuse");
+  CHECK(gidx_page("not an index at all\n", 0, 10, page, &h, &total, NULL) == -1,
+        "a file with no header must refuse");
+  CHECK(gidx_page("KINOIDX 99 5 5\n", 0, 10, page, &h, &total, NULL) == -1,
+        "a future version must refuse");
+
+  char *empty = build_index(0, 0, 0);
+  CHECK(empty != NULL, "empty index");
+  if (empty != NULL) {
+    total = -1;
+    const int got = gidx_page(empty, 0, 10, page, &h, &total, NULL);
+    CHECK(got == 0 && total == 0, "an empty index reads as 0 photographs, not a fault");
+    free(empty);
+  }
+
+  const char *mixed =
+      "KINOIDX 1 4 4\n"
+      "9000000000000 aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\n"
+      "this line is rubbish\n"
+      "8999999999000 bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\n"
+      "8999999998000 cccccccc-cccc-4ccc-8ccc-cccccccccccc\n";
+  int skipped = 0;
+  total = 0;
+  int got = gidx_page(mixed, 0, 10, page, &h, &total, &skipped);
+  CHECK(got == 3 && total == 3, "corrupt line: %d items, total %d", got, total);
+  CHECK(skipped == 1, "the corrupt line was not counted as skipped (%d)", skipped);
+  got = gidx_page(mixed, 1, 10, page, &h, &total, &skipped);
+  CHECK(got == 2 && strncmp(page[0].name, "bbbb", 4) == 0,
+        "cursor 1 must land on the second VALID entry, not the second line");
+}
+
 int main(void) {
+  test_page_totals();
+  test_page_windows();
+  test_page_order();
+  test_page_total_is_counted_not_trusted();
+  test_page_recovery_cases();
   test_line_round_trip();
   test_line_rejects();
   test_header();

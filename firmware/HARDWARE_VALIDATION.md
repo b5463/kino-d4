@@ -588,6 +588,72 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### MEDIA_LIST answers from the index: 81.7 s to 4.3 s, and `total` is photographs - 0.4.41, 2026-09-04
+
+**Architecture.** One source of truth, the persisted order index gallery.c
+already maintains (`INDEX.TXT`, `gallery_index.h`):
+
+- **FAST PATH** - `MEDIA_LIST` reads the index into PSRAM in one fread and
+  pages it with `gidx_page()`, a pure function that COUNTS every valid line and
+  COPIES only the requested window, so `total` is exact and memory is bounded
+  by the page. The Photos row reads `gallery_media_count()`, index state
+  already in RAM, so the draw path touches no card at all - the 0.4.39 class
+  of regression cannot recur from there.
+- **RECOVERY PATH** - the exhaustive card walk, kept for an index that is
+  missing, unreadable or has no usable header, logged when it runs. `gidx_page`
+  also reports a header that disagrees with its own body, which is the
+  half-written-index signature; `MEDIA_LIST` marks that `indexStale` and asks
+  the gallery to rebuild rather than trusting either number.
+
+The index used to cap at 240 entries because it only fed a screen. It is now
+also what `total` and the Photos row report, so the cap is 4096 with every
+array in PSRAM (`EXT_RAM_BSS_ATTR`, the #162 precedent) and nothing new in
+internal SRAM. A firmware that raises the cap finds an index that is honest but
+short - `entries` below `total_seen` - and that case now triggers a rebuild
+where every other check passed; without it the bench card read `total=240`
+over 1,434 photographs after the upgrade.
+
+**Real card, 1,434 photographs**, four-camera transport live, Roll queue
+retrying against a stopped API in the background:
+
+| | before (0.4.39) | after (0.4.41) |
+|---|---|---|
+| `MEDIA_LIST` page 1, queue idle | 81.7 s | **4.3 s** |
+| `MEDIA_LIST` page 1, queue retrying uploads | - | 13.7 s |
+| `MEDIA_LIST` last page (cursor 1429) | - | **1.26 s** |
+| `total` | 1325, directory entries | **1434, counted valid photographs** |
+| `indexStale` | - | absent (index rebuilt and consistent) |
+| items page 1 / page 2 / last | - | 20 / 20 (distinct) / **5, hasMore=false** |
+| summaries | `unknown` / 0 | `complete` / 4 |
+| grouped capture during the run | 4-5 s baseline | **4,901 ms**, dispatch 224 us |
+| HELLO | - | 1.16 s |
+
+The remaining per-page cost is `media_summary()` opening one META.JSON per
+item; the 13.7 s figure is that contended by the upload queue holding the
+card, and it falls to 4.3 s when the queue is idle. Both are inside a client
+timeout where 81.7 s was not.
+
+Resources: internal 85 KB free, 49 KB minimum, largest DMA 31 KB, reserve 2/2,
+`transportErrors=0`, card `lastError` empty. **Gallery task stack minimum
+1,328 B** - not lower than before this change, but thin, and recorded as a
+watch item. Host suites: gallery-index 78 -> 173 checks (totals at 0, 1, 31,
+32, 33, 239, 240, 241, 511, 512, 513, 788, 1000, 1325; page windows;
+counted-not-trusted total; missing, empty, no-header, future-version and
+corrupt-line recovery), fourteen suites green.
+
+**LOCAL MEDIA COUNT: NOT PROVEN.** Device index, `MEDIA_LIST` total and the
+Photos row now read the same figure by construction, and the device side
+measures 1,434. The Photos row is on the camera's own screen, which this
+session cannot see. **Expected value on the Storage screen: 1434.** Delete All
+should be enabled. Operator confirmation is what turns this into PASS.
+
+**MEDIA_LIST: PASS.** Prompt, paginated, exact total, correct summaries, no
+regression in capture latency.
+
+**DELETE ALL: not reached.** The gate is un-hooked from the stale count, but
+its enumeration has not been moved onto the index and no test matrix exists
+for it yet. No destructive operation was run; the card is intact.
+
 ### The fresh-frame predicate closes the finder-idle stale frame - 0.4.40, 2026-09-04
 
 The half of the 0.4.38 proof that was owed. Operator put the body off the SHOOT

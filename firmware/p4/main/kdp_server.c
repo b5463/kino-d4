@@ -1210,6 +1210,11 @@ static void handle_set_mode(uint32_t seq, const cJSON *req) {
 #define CAPTURES_DIR "/sdcard/KINO/CAPTURES"
 #define MEDIA_MAX_LIST 512
 
+/* Must match gallery.c's MAX_SCAN: it is the same index being read, and a
+ * reader that sized its buffer smaller would truncate the file and under-count
+ * the card - the failure this whole change exists to remove. */
+#define MEDIA_INDEX_MAX 4096
+
 /* Directory names, sorted, so paging is stable between calls. A capture id
  * sorts lexicographically the same way it sorts by time because the sequence
  * is zero-padded, so this is also newest-last. */
@@ -1577,6 +1582,81 @@ static void handle_media_thumb(uint32_t seq, const cJSON *req) {
   free(buf);
 }
 
+/*
+ * MEDIA_LIST's fast path: the persisted order index.
+ *
+ * The walk below it opens META.JSON once per capture directory to sort by
+ * capture time, and on the bench card of 1,325 that measured 81.7 s - long
+ * past any client's timeout, which is how a card of photographs reached a UI
+ * as nothing at all. gallery.c already maintains INDEX.TXT for exactly this
+ * reason: capture times and names, newest first, written once per change to
+ * the card.
+ *
+ * So: read that one file and page it. The whole index for 4096 entries is
+ * about 200 KB, read into PSRAM in one fread, and gidx_page() counts every
+ * valid line while copying only the requested window.
+ *
+ * Returns the number of items written to `out`, or -1 when the index is
+ * missing, unreadable or has no usable header - which is the caller's signal
+ * to fall back to the exhaustive walk. `*total` is every valid capture in the
+ * index; `*stale` says the header disagreed with its own body, which means the
+ * index wants rebuilding even though this read succeeded.
+ */
+static int media_index_page(int cursor, int limit, gidx_entry_t *out, int *total, bool *stale) {
+  if (total != NULL) *total = 0;
+  if (stale != NULL) *stale = false;
+
+  FILE *f = fopen(CAPTURES_DIR "/" GIDX_FILE, "rb");
+  if (f == NULL) return -1;
+
+  const size_t cap = gidx_max_bytes(MEDIA_INDEX_MAX) + 1;
+  char *text = heap_caps_malloc(cap, MALLOC_CAP_SPIRAM);
+  if (text == NULL) {
+    fclose(f);
+    return -1;
+  }
+  const size_t got = fread(text, 1, cap - 1, f);
+  fclose(f);
+  text[got] = '\0';
+
+  gidx_header_t hdr;
+  int counted = 0, skipped = 0;
+  const int n = gidx_page(text, cursor, limit, out, &hdr, &counted, &skipped);
+  heap_caps_free(text);
+  if (n < 0) return -1;
+
+  /*
+   * An index shorter than the card it describes.
+   *
+   * `total_seen` is what the walk that wrote this file counted on the card;
+   * `entries` is what it could store. When the second is smaller the file is
+   * honest but incomplete - written by a firmware whose cap was lower - and
+   * reporting `counted` would under-report the card. So report the card's own
+   * figure and ask the gallery to rebuild, which it can now do because this
+   * build's cap fits.
+   */
+  if (counted < hdr.total_seen && hdr.total_seen <= MEDIA_INDEX_MAX) {
+    ESP_LOGI(TAG, "order index holds %d of %d captures; asking for a rebuild", counted,
+             hdr.total_seen);
+    gallery_refresh();
+    if (total != NULL) *total = hdr.total_seen;
+    if (stale != NULL) *stale = true;
+    return n;
+  }
+
+  if (total != NULL) *total = counted;
+  if (stale != NULL) *stale = counted != hdr.entries;
+  if (counted != hdr.entries) {
+    /* Not fatal and not silent: the file is readable and every line in it is
+     * good, but it does not hold what its own header claims - a write cut
+     * short, or a card edited elsewhere. The count reported is the one the
+     * lines support. */
+    ESP_LOGW(TAG, "order index header claims %d captures, body holds %d", hdr.entries, counted);
+  }
+  if (skipped > 0) ESP_LOGW(TAG, "order index: %d unreadable lines skipped", skipped);
+  return n;
+}
+
 static void handle_media_list(uint32_t seq, const cJSON *req) {
   storage_status_t sd;
   storage_get_status(&sd);
@@ -1587,9 +1667,56 @@ static void handle_media_list(uint32_t seq, const cJSON *req) {
 
   const cJSON *jc = cJSON_GetObjectItem(req, "cursor");
   const cJSON *jl = cJSON_GetObjectItem(req, "limit");
-  const int cursor = (int)clamp_num(jc, 0, MEDIA_MAX_LIST, 0);
+  const int cursor = (int)clamp_num(jc, 0, MEDIA_INDEX_MAX, 0);
   /* 100 is maxGalleryPageSize in GET_CAPABILITIES. */
   const int limit = (int)clamp_num(jl, 1, 100, 50);
+
+  /*
+   * FAST PATH: the persisted order index. RECOVERY PATH: the card walk.
+   *
+   * Normal listing must never walk the card - that is what took 81.7 s on a
+   * 1,325-capture card and timed every client out. The walk stays for the case
+   * the index cannot answer: missing, unreadable, or no usable header, which
+   * happens on a card written by an older firmware, one edited in a PC, or
+   * before the gallery has ever built the index.
+   */
+  gidx_entry_t *page = heap_caps_malloc(sizeof *page * (size_t)limit, MALLOC_CAP_SPIRAM);
+  if (page == NULL) {
+    send_nack(KDP_CMD_MEDIA_LIST, seq, "BUSY", "Out of memory");
+    return;
+  }
+  int total = 0;
+  bool stale = false;
+  const int from_index = media_index_page(cursor, limit, page, &total, &stale);
+
+  if (from_index >= 0) {
+    cJSON *json = cJSON_CreateObject();
+    /*
+     * `total` is every valid capture the index holds - photographs, counted,
+     * not directory entries. media_scan's old figure counted anything readdir
+     * returned and reported 1325 where the photograph count was lower.
+     */
+    cJSON_AddNumberToObject(json, "total", total);
+    cJSON *items = cJSON_AddArrayToObject(json, "items");
+    for (int i = 0; i < from_index; i++) {
+      cJSON_AddItemToArray(items, media_summary(page[i].name));
+    }
+    const int next = cursor + from_index;
+    if (next < total) cJSON_AddNumberToObject(json, "nextCursor", next);
+    else cJSON_AddNullToObject(json, "nextCursor");
+    cJSON_AddBoolToObject(json, "hasMore", next < total);
+    /* Beyond the Studio interface, and only when true: the index is readable
+     * but disagrees with its own header, so the gallery owes a rebuild. A
+     * host that ignores it sees a correct list either way. */
+    if (stale) cJSON_AddBoolToObject(json, "indexStale", true);
+    heap_caps_free(page);
+    send_json(KDP_CMD_MEDIA_LIST, seq, json);
+    return;
+  }
+  heap_caps_free(page);
+
+  ESP_LOGW(TAG, "no usable order index; falling back to the card walk");
+  klog("P4", "media list: no order index, walking the card");
 
   char (*names)[64] = calloc(MEDIA_MAX_LIST, 64);
   if (names == NULL) {
@@ -1601,10 +1728,6 @@ static void handle_media_list(uint32_t seq, const cJSON *req) {
 
   cJSON *json = cJSON_CreateObject();
   /*
-   * `total` is how many PHOTOGRAPHS the card holds, and paging runs over the
-   * newest MEDIA_MAX_LIST of those, so hasMore and nextCursor are bounded by
-   * `listable` - pointing a cursor past it would page into nothing.
-   *
    * `on_card` now applies the product's eligibility rule inside media_scan -
    * a capture-shaped directory holding a committed META.JSON - so it is a
    * photograph count rather than a directory-entry count.

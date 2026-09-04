@@ -205,3 +205,42 @@ int gidx_oldest(const uint64_t *ms, int n) {
   }
   return oldest;
 }
+
+int gidx_page(const char *text, int cursor, int limit, gidx_entry_t *out, gidx_header_t *hdr,
+              int *valid_total, int *skipped) {
+  if (valid_total != NULL) *valid_total = 0;
+  if (skipped != NULL) *skipped = 0;
+  if (text == NULL || hdr == NULL) return -1;
+  if (cursor < 0) cursor = 0;
+
+  char line[GIDX_LINE_MAX];
+  const char *p = take_line(text, line, sizeof line);
+  if (p == NULL || !gidx_parse_header(line, hdr)) return -1;
+
+  int valid = 0; /* valid capture lines seen so far, which is the paging index */
+  int taken = 0;
+  while ((p = take_line(p, line, sizeof line)) != NULL) {
+    gidx_entry_t e;
+    if (line[0] == '\0' || !gidx_parse_line(line, &e)) {
+      if (skipped != NULL) (*skipped)++;
+      continue;
+    }
+    /*
+     * Every valid line is COUNTED; only the requested window is COPIED.
+     *
+     * That split is the whole point of this function. The count has to be
+     * exhaustive - it is what MEDIA_LIST reports as `total` and what the
+     * Photos row shows - while the copy has to be bounded, because a caller
+     * asking for twenty photographs must not need memory for thirteen
+     * hundred. It also means the total is COUNTED rather than taken from the
+     * header: a header that disagrees with its own body (a truncated write, a
+     * card edited in a PC) would otherwise report a number no line backs up.
+     */
+    if (valid >= cursor && (limit <= 0 || taken < limit) && out != NULL) {
+      out[taken++] = e;
+    }
+    valid++;
+  }
+  if (valid_total != NULL) *valid_total = valid;
+  return taken;
+}

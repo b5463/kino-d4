@@ -3967,7 +3967,16 @@ static void draw_storage(void) {
    * capture directories holding a committed META.JSON, exhaustively, and
    * remembers the answer so this draw path pays nothing.
    */
-  const int media = storage_media_count_cached();
+  /*
+   * From the gallery's index, not a card walk.
+   *
+   * storage_media_count_cached() walks the card, and calling it from this draw
+   * path was the 0.4.39 regression: every shutter invalidates the count, so on
+   * a 1,325-directory card the walk ran on every redraw holding the card lock
+   * and grouped captures went from 4 s to 75 s. The index answers from RAM.
+   * The storage counter remains for reconciliation and recovery.
+   */
+  const int media = gallery_media_count();
   if (media < 0) snprintf(cnt, sizeof cnt, "-");
   else snprintf(cnt, sizeof cnt, "%d", media);
 

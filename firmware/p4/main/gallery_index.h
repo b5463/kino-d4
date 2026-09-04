@@ -160,6 +160,28 @@ int gidx_parse(const char *text, gidx_entry_t *out, int max, gidx_header_t *hdr,
  * rule is testable and so the scan, the incremental add and the index load
  * cannot each grow their own version of it.
  */
+/**
+ * One page of the index, with the exhaustive total beside it.
+ *
+ * `cursor` is a count of VALID capture lines to skip, not a byte or line
+ * offset, so a corrupt line in the middle of the file cannot shift the
+ * pagination of everything after it. `limit` bounds what is written to `out`;
+ * 0 or less copies nothing and only counts.
+ *
+ * `*valid_total` is every valid capture line in the file, counted, not read
+ * out of the header. The header's `entries` is still returned in `*hdr` so a
+ * caller can notice the two disagreeing and ask for a rebuild - which is the
+ * detection mechanism for a half-written index.
+ *
+ * Returns entries copied into `out`, or -1 when there is no usable header.
+ *
+ * This exists so MEDIA_LIST and the Photos row can answer from the persisted
+ * index instead of walking the card. The walk they used to do opened
+ * META.JSON once per directory and measured 81.7 s on a card of 1,325.
+ */
+int gidx_page(const char *text, int cursor, int limit, gidx_entry_t *out, gidx_header_t *hdr,
+              int *valid_total, int *skipped);
+
 int gidx_oldest(const uint64_t *ms, int n);
 
 #endif
