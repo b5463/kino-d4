@@ -588,6 +588,61 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The preview collapse is the upload queue's card scan, not the cameras - 0.4.38, #159, 2026-09-04
+
+Three runs of the same script on the same hardware, separated only by what the
+Roll queue was doing. Preview drops over ten minutes of pure streaming, no
+captures:
+
+| queue state at start | run | cam1 | cam2 | cam3 | cam4 |
+|---|---|---|---|---|---|
+| settled, `scanComplete=true` | 22:51 | 0 | 0 | 0 | 0 |
+| **cycle owed, `scanComplete=false`** | 00:18 | **451** | **406** | **339** | 22 |
+| settled, `scanComplete=true` | 02:03 | 3 | 0 | 0 | 0 |
+
+In the middle run preview throughput also halved - about 3,500-4,400 frames per
+channel against roughly 8,000 in the clean runs - while `nodeMs`, the time a
+node spends inside `fb_get` for a capture, stayed at **112 ms in every run**.
+The sensors never changed rate and the capture JPEG sizes never moved, so this
+is not the sensors, the light, or the links. It is the P4: with a
+reconciliation cycle owed, the queue worker walks 800+ capture directories,
+holds the storage lock and floods the SD bus, and the preview pump loses whole
+transfers to it (`shortRead`, `crcErrors` zero throughout).
+
+**CAM4's apparent immunity in the middle run was a symptom, not a property.**
+It took 22 drops while its siblings took hundreds; with the queue settled all
+four read zero. Nothing about CAM4's wiring explains it and nothing needs to.
+
+**And the per-channel outlier moved.** Under capture load in the 02:03 run -
+9 captures, 9 accepted, 8 with four frames - `shortRead` was cam1 194, cam2 27,
+cam3 **0**, cam4 8. CAM3, the channel this bench has called hardware-suspect
+four times, was the cleanest. Whatever the load-dependent drop mechanism is, it
+does not live on CAM3.
+
+### CAM1 power integrity after the reseat - inconclusive, 10 minutes
+
+The operator reseated CAM1's power path, then disconnected and reconnected all
+four cameras. Every node came back with its session counter advanced by exactly
+one and reason `power-on` - cam1 88->89, cam2 17->18, cam3 18->19, cam4 14->15 -
+so each took one explained reset and, because those NVS counters are per-board
+fingerprints, **no node changed position**.
+
+A 10-minute run then showed **zero node session changes** on any channel.
+
+**Classification: NOT REPRODUCED, and that is weak.** At the observed rate of
+roughly one spontaneous reset per node per few hours, ten minutes has very
+little chance of catching one; absence here is not evidence the reseat worked.
+The hour-long soak this needs was stopped at ten minutes when the operator
+disconnected the cameras. `NODE_POWER_ISOLATION.md` holds the procedure.
+
+**Two instrument artefacts to score against, both found the hard way.** A
+single `online`/`sensorDetected` false sample taken while that channel is
+transferring a capture is not an outage - the frame counter keeps advancing;
+only sustained offline with a frozen counter counts. And a session field that
+reads back empty is not a reset - a reset reads `boot-N -> boot-N+1`, never
+`boot-N -> ""`. Both produced false alarms in this session's logs before being
+guarded.
+
 ### A photograph is armed after the command that asked for it - camnode 0.4.38, 2026-09-04
 
 The freshness gap recorded in `SYNC_FEASIBILITY.md` closed in the node's own
