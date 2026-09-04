@@ -951,6 +951,74 @@ bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirna
  */
 #define SWEEP_BUDGET_MS 3000
 
+/* ------------------------------------------------------------------ */
+/* Local media count                                                   */
+/* ------------------------------------------------------------------ */
+
+/* Last measured count and whether it can still be trusted. Written only under
+ * the card lock by storage_media_count(); read without it, because an int is
+ * read atomically on this target and a caller that races a commit wants the
+ * number one capture stale rather than a blocked draw. */
+static int s_media_count = -1;
+static bool s_media_count_valid;
+
+void storage_media_count_invalidate(void) { s_media_count_valid = false; }
+
+int storage_media_count(void) {
+  if (s_card == NULL) return -1;
+  /*
+   * unless_held, not acquire: MEDIA_LIST already runs inside with_card(),
+   * which holds STORAGE_USER_UI, and this lock is not recursive. Taking it
+   * again timed out after two seconds and made this function answer -1, so
+   * MEDIA_LIST silently fell back to the old inflated figure - the fix looked
+   * like it had not shipped. Same shape, same reason, as the note in
+   * upload_queue.c's enqueue.
+   */
+  bool took = false;
+  if (!storage_acquire_unless_held(STORAGE_USER_UI, 2000, &took)) return -1;
+
+  DIR *d = opendir(MOUNT "/KINO/CAPTURES");
+  if (d == NULL) {
+    storage_release_if_taken(STORAGE_USER_UI, took);
+    /* No captures directory yet is a card holding no photographs, which is a
+     * different answer from a card that cannot be read. */
+    return 0;
+  }
+
+  int count = 0;
+  struct dirent *e;
+  while ((e = readdir(d)) != NULL) {
+    if (e->d_name[0] == '.') continue;
+    /* Name first: it is free, and it rejects the gallery's own index files and
+     * anything a person dropped on the card by hand before any I/O is spent. */
+    if (!storage_is_capture_dirname(e->d_name)) continue;
+
+    /* storage_is_capture_dirname has proved this is 36 characters, but d_name
+     * is declared up to NAME_MAX and the compiler reasons from the
+     * declaration. Same idiom as the reconciliation and sweep loops. */
+    char name[37];
+    memcpy(name, e->d_name, 36);
+    name[36] = '\0';
+
+    char meta[80];
+    snprintf(meta, sizeof meta, "%s/KINO/CAPTURES/%s/META.JSON", MOUNT, name);
+    struct stat st;
+    if (stat(meta, &st) != 0) continue; /* interrupted commit, not a photograph */
+    count++;
+  }
+  closedir(d);
+  storage_release_if_taken(STORAGE_USER_UI, took);
+
+  s_media_count = count;
+  s_media_count_valid = true;
+  return count;
+}
+
+int storage_media_count_cached(void) {
+  if (s_media_count_valid) return s_media_count;
+  return storage_media_count();
+}
+
 void storage_sweep_orphans(storage_sweep_t *out) {
   storage_sweep_t s = {0};
   if (out != NULL) *out = s;

@@ -1442,6 +1442,9 @@ void gallery_refresh(void) {
 }
 
 void gallery_note_added(const char *id, uint64_t captured_at_ms) {
+  /* The card's photograph count changed. storage.c caches it for the
+   * storage screen, so it has to be told rather than left to notice. */
+  storage_media_count_invalidate();
   if (s_notes == NULL || id == NULL || id[0] == '\0') return;
   note_t n;
   memset(&n, 0, sizeof n);
@@ -1459,6 +1462,9 @@ void gallery_note_added(const char *id, uint64_t captured_at_ms) {
 }
 
 void gallery_note_removed(const char *id) {
+  /* The card's photograph count changed. storage.c caches it for the
+   * storage screen, so it has to be told rather than left to notice. */
+  storage_media_count_invalidate();
   if (s_notes == NULL || id == NULL || id[0] == '\0') return;
   note_t n;
   memset(&n, 0, sizeof n);
@@ -1506,6 +1512,9 @@ int gallery_scan_progress(void) {
 }
 
 void gallery_delete_all(void) {
+  /* The card's photograph count changed. storage.c caches it for the
+   * storage screen, so it has to be told rather than left to notice. */
+  storage_media_count_invalidate();
   if (s_lock == NULL || s_names == NULL) return;
   if (s_wipe_req) return;
   s_wipe_total = -1;

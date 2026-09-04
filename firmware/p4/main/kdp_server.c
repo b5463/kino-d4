@@ -1286,6 +1286,17 @@ static int media_scan(char (*names)[64], int cap, int *on_card) {
      * which would produce an id that maps to no directory. */
     const size_t len = strlen(e->d_name);
     if (len == 0 || len >= 64) continue;
+    /*
+     * TODO(#media-count): `total` counts every entry readdir returns, so a
+     * card carrying stray folders or interrupted commits reports more
+     * photographs than it holds - 1325 measured on the bench card. The
+     * eligibility rule belongs here, but adding a stat() per entry to a walk
+     * that already opens META.JSON per entry pushed this command from 83 s to
+     * over 150 s and it timed out. MEDIA_LIST needs the gallery's persisted
+     * order index (gallery_index.h) instead of re-reading the card, and that
+     * is the change this figure waits on. The UI's Photos row and Delete All
+     * no longer depend on it - they use storage_media_count().
+     */
     total++;
 
     if (count < cap) {
@@ -1363,7 +1374,23 @@ static int media_scan(char (*names)[64], int cap, int *on_card) {
  * time on one task, and nothing outside this file calls these.
  */
 static char s_meta_path[160];
-static char s_meta_buf[1024];
+/*
+ * 4 KB, not 1 KB, and it is the third time this project has been bitten by a
+ * fixed buffer smaller than a four-camera META.JSON.
+ *
+ * A four-camera document measured 2301 B on the bench card (three cameras is
+ * 1916 B). At 1024 the fread returned a truncated object, cJSON refused it,
+ * media_meta() answered NULL, and every four-camera capture listed as
+ * `status: unknown, frameCount: 0, capturedAt: ""` - a gallery of blanks over
+ * photographs that are perfectly intact on the card. #168 was the same
+ * mistake in the Roll-provenance reader at 2048 B, and upload_store.c's
+ * META_READ_MAX is the 4096 both frame-list and roll-id readers now share.
+ *
+ * Kept in .bss with the path for the reason below; 4 KB is affordable there
+ * and would not be on this task's 8 KB stack.
+ */
+#define MEDIA_META_MAX 4096
+static char s_meta_buf[MEDIA_META_MAX];
 
 static cJSON *media_meta(const char *id) {
   char *const path = s_meta_path;
@@ -1573,9 +1600,15 @@ static void handle_media_list(uint32_t seq, const cJSON *req) {
   const int listable = media_scan(names, MEDIA_MAX_LIST, &on_card);
 
   cJSON *json = cJSON_CreateObject();
-  /* `total` is what is on the card. Paging runs over the newest
-   * MEDIA_MAX_LIST of those, so hasMore and nextCursor are bounded by
-   * `listable` — pointing a cursor past it would page into nothing. */
+  /*
+   * `total` is how many PHOTOGRAPHS the card holds, and paging runs over the
+   * newest MEDIA_MAX_LIST of those, so hasMore and nextCursor are bounded by
+   * `listable` - pointing a cursor past it would page into nothing.
+   *
+   * `on_card` now applies the product's eligibility rule inside media_scan -
+   * a capture-shaped directory holding a committed META.JSON - so it is a
+   * photograph count rather than a directory-entry count.
+   */
   cJSON_AddNumberToObject(json, "total", on_card);
   cJSON *items = cJSON_AddArrayToObject(json, "items");
   int sent = 0;

@@ -588,6 +588,70 @@ Photography starved upload, as designed; nothing was lost.
 
 **Verdict.** **GO for what was measured, not yet the full stamp.** One logical shutter gave a complete, truthful, durable four-frame set in 37 of 37 attempts under the connected stack - idle, mid-upload, API down, API returning with a backlog draining, and a 12-set burst - with 0 partial sets, 0 BUSY, 1 chunk retry in 148 frames, every set one backend row with four originals on the right Roll, and SD = object = DB hashes on 28 of 28 sampled frames. C6 recovery itself is fixed and measured (0.4.27 section; one grouped set shot mid-recovery on ROLL-C3). Three items stay open and none is a firmware finding: the five-shutter recovery scenario and Roll provenance need the camera nodes back on the bench, and the physical partial-failure test (power off CAM4, expect a truthful `partial` 3/4 set) needs an operator. SYNC_OUT and FLASH_EN untouched; nothing here starts the sync gate.
 
+### The card said zero photographs - 0.4.39, 2026-09-04
+
+The reported defect: the camera shows 0 pictures over a card holding well over
+a thousand, and Delete All is greyed out because of it. Four separate faults,
+found by audit and then measured on the card.
+
+**1. Delete All is gated on the gallery screen's count.** `ui.c` drew the
+Photos row from `gallery_total()` and enabled Delete All on
+`gallery_total() > 0`. That figure is the gallery LIST's length: capped at
+`MAX_SCAN` (240) and **zero until the first walk has published**. So a card of
+1,300 photographs reads 240 at best and 0 before the walk finishes - and the
+zero disables the only way to clear the card.
+
+**2. Four-camera captures listed as blanks.** `media_meta()` in kdp_server.c
+read META.JSON into `s_meta_buf[1024]`. A four-camera document is 2,301-2,313 B
+on this card. The fread truncated it, cJSON refused it, and every four-camera
+capture came back `status: unknown, frameCount: 0`. **Measured before and after
+on the same five captures:**
+
+```
+before   1de2d441  status=unknown   frames=0
+after    1de2d441  status=complete  frames=4
+after    ccec72d2  status=complete  frames=3   (a truthful degraded set)
+```
+
+This is the third time a fixed buffer smaller than a four-camera META has cost
+this project a defect - #168 was the Roll-provenance reader at 2048 B. The
+buffer is now 4096, the same bound upload_store.c settled on.
+
+**3. `MEDIA_LIST` takes 81.7 s on this card**, because `media_scan()` opens
+META.JSON for every one of ~1,325 directories to sort by capture time. Any
+client times out, which is the other way the count reaches a UI as nothing.
+Unfixed: it needs the gallery's persisted order index (`gallery_index.h`)
+rather than re-reading the card, and that is too large a change to land
+untested. A TODO marks it in place.
+
+**4. `total` counts directory entries, not photographs.** `media_scan` counts
+everything readdir returns that is not a dotfile and not the index file - no
+capture-name check, no META requirement - so it reported **1325** where the
+photograph count is lower. Applying the eligibility rule there was tried and
+reverted: a `stat()` per entry pushed the command from 81.7 s past the 150 s
+client timeout. It belongs in the index-based rewrite with the rest.
+
+**The fix that did land.** `storage_media_count()` in storage.c: one
+authoritative walk, the product's eligibility rule - a capture-shaped directory
+holding a committed META.JSON is one photograph, whatever it holds inside -
+exhaustive with no scan horizon, and bounded memory because it counts rather
+than collects. `storage_media_count_cached()` serves the draw path and
+`storage_media_count_invalidate()` is called from `gallery_note_added()`,
+`gallery_note_removed()` and `gallery_delete_all()`. The Photos row and the
+Delete All gate now read it instead of `gallery_total()`.
+
+One bug worth recording from writing it: the first version called
+`storage_acquire()`, but `MEDIA_LIST` already runs inside `with_card()` holding
+the same non-recursive lock, so the count timed out after two seconds and
+silently answered -1. `storage_acquire_unless_held()` exists for exactly this
+and is what it uses.
+
+**Status: LOCAL MEDIA COUNT NOT PROVEN.** The device-side count is implemented
+and the summaries are fixed and measured, but the Photos row is on the camera's
+own screen and this session cannot see it, and `MEDIA_LIST`'s `total` still
+reports directory entries. Delete All's enumeration was not reworked and no
+destructive test was run - the bench card's photographs are intact.
+
 ### The preview collapse is the upload queue's card scan, not the cameras - 0.4.38, #159, 2026-09-04
 
 Three runs of the same script on the same hardware, separated only by what the

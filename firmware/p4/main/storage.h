@@ -329,6 +329,66 @@ typedef struct {
 void storage_sweep_orphans(storage_sweep_t *out);
 
 /* ------------------------------------------------------------------ */
+/* Local media: how many photographs the card holds                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The authoritative count of photographs stored on this card.
+ *
+ * ## What counts
+ *
+ * ONE capture directory holding a committed `META.JSON` is ONE photograph,
+ * whatever it holds inside. A four-frame set counts once; a truthful degraded
+ * set stored as C1/C3/C4 counts once; the JPEGs, the thumbnail and the
+ * metadata are not counted individually. META.JSON is written last, so its
+ * presence IS the commit - the same rule storage_sweep_orphans() uses to
+ * decide what is a photograph and what is an interrupted write.
+ *
+ * Deliberately NOT any of these, which are different questions this project
+ * has confused before:
+ *   - the upload queue's RAM window (`pending`)
+ *   - reconciliation's `cardPending`
+ *   - how many captures the backend has accepted
+ *   - how many tiles the gallery screen can hold
+ *   - how many items one MEDIA_LIST page returned
+ *
+ * A photograph counts whether or not it has ever been uploaded. An offline
+ * capture is a photograph the moment its metadata lands.
+ *
+ * ## Exhaustive, and bounded in memory rather than in reach
+ *
+ * There is no scan horizon. The 512-directory prefix that made reconciliation
+ * blind to the newest captures (#167) was the same shape of mistake and it is
+ * not repeated here: this walks the whole directory every time. It can afford
+ * to because it COUNTS rather than collects - one `stat()` per directory and
+ * no array - so the memory is constant whether the card holds ten captures or
+ * a hundred thousand.
+ *
+ * It is not free in TIME: a stat costs a few milliseconds on this card, so a
+ * thousand captures is measured in seconds. Callers on a drawing path must use
+ * the cached form below rather than calling this per frame.
+ *
+ * Returns a negative value when the card is not mounted or cannot be read, so
+ * "no card" is distinguishable from "a card holding nothing" - a distinction
+ * the Photos row and Delete All both need and which a bare 0 destroys.
+ */
+int storage_media_count(void);
+
+/**
+ * The same number, remembered.
+ *
+ * Recomputed only when the card has changed under us - a capture committed, a
+ * capture deleted, a card mounted - and returned from memory otherwise, so the
+ * storage screen can read it on every draw. `storage_media_count_invalidate()`
+ * is what makes it recompute; anything that adds or removes a capture
+ * directory owes that call.
+ */
+int storage_media_count_cached(void);
+
+/** The count on the card is no longer what we last measured. */
+void storage_media_count_invalidate(void);
+
+/* ------------------------------------------------------------------ */
 /* Card access coordination                                            */
 /* ------------------------------------------------------------------ */
 

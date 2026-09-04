@@ -3956,7 +3956,20 @@ static void draw_storage(void) {
   char freeb[24], capb[24], cnt[16];
   human_bytes(freeb, sizeof freeb, sd.free_bytes);
   human_bytes(capb, sizeof capb, sd.capacity_bytes);
-  snprintf(cnt, sizeof cnt, "%d", gallery_total());
+  /*
+   * The card's own count, not the gallery screen's.
+   *
+   * gallery_total() is how many captures the gallery LIST holds, capped at
+   * MAX_SCAN (240) and zero until the first walk has published. On a card of
+   * hundreds it under-reports, and before the walk it reads 0 - which is what
+   * put "0" on this row over a card holding a thousand photographs and, worse,
+   * disabled Delete All along with it. storage_media_count_cached() counts
+   * capture directories holding a committed META.JSON, exhaustively, and
+   * remembers the answer so this draw path pays nothing.
+   */
+  const int media = storage_media_count_cached();
+  if (media < 0) snprintf(cnt, sizeof cnt, "-");
+  else snprintf(cnt, sizeof cnt, "%d", media);
 
   /* While the wipe runs, the Photos row counts down instead of the label
    * saying nothing for the minute a card of 500 captures takes. One line, in
@@ -3978,7 +3991,7 @@ static void draw_storage(void) {
    * live while the other is running: a FORMAT pressed into a running wipe
    * would be two things deleting the same directory. */
   draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, ST_IT_DELETE_ALL),
-           s_pressed == ST_IT_DELETE_ALL, sd.mounted && !wiping && gallery_total() > 0,
+           s_pressed == ST_IT_DELETE_ALL, sd.mounted && !wiping && media > 0,
            "Delete all photos", NULL, true);
   draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT,
            sd.mounted && !wiping, "Format card", NULL, true);

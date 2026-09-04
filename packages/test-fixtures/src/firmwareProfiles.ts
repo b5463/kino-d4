@@ -549,4 +549,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // longer depends on whether a UI happens to be draining the preview queue.
   // No KDP, settings or protocol change.
   '0.4.38': 'd4-settings-0-4-9',
+  // 0.4.39: the card's photograph count is one authoritative walk - a capture
+  // directory holding a committed META.JSON is one photograph - instead of the
+  // gallery list's 240-capped total, and MEDIA_LIST reports it as `total`.
+  // media_meta's buffer grows past a four-camera META. Same profile.
+  '0.4.39': 'd4-settings-0-4-9',
 };
