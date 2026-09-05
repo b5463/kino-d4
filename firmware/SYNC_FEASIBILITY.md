@@ -1162,3 +1162,5 @@ That 380 us matters for a corrected reason. With FSIN the SCCB write is
 *setup* - done once, well before the edge - and the edge itself carries the
 timing. The write leaves the critical path entirely, which is why FSIN is a
 better architecture and not merely a different one.
+
+Continued in [`SYNC_HARDWARE_ACCESS.md`](SYNC_HARDWARE_ACCESS.md): what FSIN, PWDN and RESET can be reached on the XIAO Sense stack (2026-09-05).
