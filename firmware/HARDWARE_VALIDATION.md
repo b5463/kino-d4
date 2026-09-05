@@ -653,6 +653,61 @@ regression in capture latency.
 its enumeration has not been moved onto the index and no test matrix exists
 for it yet. No destructive operation was run; the card is intact.
 
+### Release closure: C6 reset resume, renders, resources - 0.4.43, 2026-09-05 evening
+
+**C6 RESET RESUME: PASS (bench).** Boot-147, uptime 3.5 h, 100 captures and
+154 uploads behind it. Dev API killed; one grouped capture (4/4) queued;
+`C6_RESET_BENCH`. +9 s C6_BOOTING, **+17 s IP_READY**, same P4 session, no
+panic. A grouped capture during the recovery: 4/4. API back: the pending
+upload went by itself (uploaded 89 -> 91), then pending 0 / cardPending 0 /
+scanComplete true / failed 0. `serverState` read unreachable while the API was
+down and reachable one poll after it returned. A second cycle straight after,
+with the reserve NOT held (below): +18 s to IP_READY, capture 4/4, recoveries
+2, transportErrors 2 (one per reset, as expected).
+
+**Resource flag, not a fault.** After the first recovery `recoveryReady`
+read false and stayed false: largest DMA-capable internal block 15 KB, below
+what the two reserve blocks need; internal free 106 KB, minimum 35 KB. The
+0.4.27 three-cycle record had the reserve held before and after every cycle
+with the DMA block back at 31 KB, but those cycles ran minutes after a boot.
+This one ran after 3.5 h of uploads and captures, so the difference is heap
+fragmentation over a session, not a code change in the recovery path; the
+recovery itself worked twice without the reserve. A reboot re-arms it (boot
+readings this morning: reserve held, DMA 31 KB). Watch item for #162: measure
+the reserve after long sessions on the next release, do not redesign.
+
+**Stacks at 3.5 h:** capture 5,780, cap1-4 5,824-5,836, kdp_server 1,864,
+gallery 2,224 (5 KB stack), ui 2,568, upqueue 2,492, c6link 1,956, audio
+1,472, touch 2,064, icons 2,280, power 2,088 B minimum free.
+
+**Host renders of the 0.4.43 screens** (`firmware/p4/host_preview`, rebuilt
+after its stubs had drifted and CI could not build it): ROLL shows the index
+count, "COUNTING THE CARD" only while the scan is incomplete, UPLOADING NOW,
+ONLINE; STORAGE shows Delete all photos live and Format card dimmed with
+"Not available"; SHOOT shows "4/4 SAVED". The renderer draws with the
+firmware's own ui.c, so these are the strings the panel draws; the operator
+glance at the real panel is still the visual acceptance.
+
+**Icons.** Operator decision 2026-09-05: the Windows 98 shell icons stay.
+The project is not sold or published; builds are for the owner's own units.
+The notices and the REUSE override keep stating that no licence is held, and
+the release stop-gate in `docs/RELEASING.md` applies only if a binary is ever
+distributed (#134).
+
+**Release artifacts (private builds).** camnode 0.4.43 built from HEAD in the
+IDF 5.5.1 container: `01fe896a8a371569f1868936176baf4546f2bf0a746097b47bc7d4ae57505884`
+(the nodes still run 0.4.38; the source between them changed only the version
+string). P4: the bench image flashed and proven is `7e17f206ab4d…` (radio
+config + `KINO_C6_RESET_BENCH=1`); the release candidate is the radio config
+without the bench command, sha recorded in `dist/release/release.json` and
+`SHA256SUMS` when built. `npm run release` runs version, licence, lint and
+build gates and records `source.dirty`; the tree carries another session's
+uncommitted hardware CAD files, so `dirty: true` is expected and stated.
+
+**Not run here (operator):** Delete All and single delete on an expendable
+card; the visual acceptance on the panel; mobile PWA; production deployment
+and the real production E2E (kino.acronym.sk answers 404 - nothing deployed).
+
 ### Queue truth, automatic resume, and a console off the KDP endpoint - 0.4.43, 2026-09-05
 
 Software-completion phase. Bench: KD4-D121BC on COM8, four nodes on camnode

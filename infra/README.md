@@ -106,6 +106,45 @@ The default mutation budget is 60 requests per minute per device token; one four
 
 Run `npm run test:uploader -- --help` for fixture, timeout, and pacing options. Production registration is first-write-wins, so reuse `KINO_DEVICE_ID` and `KINO_DEVICE_TOKEN` after the initial physically controlled registration instead of attempting to register the serial again.
 
+## Pre-deploy checklist (release closure, 2026-09-05)
+
+Run through this before the first `deploy.ps1 up` on the public host, and
+again after any change to `.env.production`. Each line is a check, not a
+setting to invent.
+
+| Check | How | Expected |
+|---|---|---|
+| Secrets complete | `deploy.ps1 check` | no `change-me` left; `compose config --quiet` passes |
+| `NODE_ENV` | `.env.production` | `production` (the dev cookie secret and dev provisioning token are refused unless `development`/`test`) |
+| Public hostname and base URL | `.env.production` | `KINO_SITE_ADDRESS=kino.acronym.sk`, `PUBLIC_BASE_URL=https://kino.acronym.sk` |
+| TLS | Caddy log after `up`; `https://kino.acronym.sk/api/healthz` | certificate issued by ACME for the site address, 200 with `db`, `redis`, `storage` true |
+| PWA API URL | none to set | roll-web is same-origin behind Caddy; there is no `VITE_*` base URL to get wrong |
+| API base compiled into the camera | `firmware/HARDWARE_VALIDATION.md`, `GET_CONFIG network.apiBase` | the bench image is built with `-DKINO_ROLL_API_BASE=https://kino.acronym.sk`; the stored `network.apiBase` on the bench body points at the LAN dev API and must be cleared or set to production before the E2E |
+| Object store endpoint | compose | `S3_ENDPOINT=http://object-storage:9000` (private network), `OBJECT_DELIVERY=proxy` |
+| Private buckets | `mc anonymous get` on `kino-media` | no anonymous policy |
+| CORS | `apps/api/src/server.ts` | only `PUBLIC_BASE_URL` origin reflected in production |
+| Migrations before start | compose `migrate` service | api and worker wait on `service_completed_successfully` |
+| Persistent volumes | `docker volume ls` | `pgdata`, `miniodata`, `caddy_data` present after first `up` |
+| Restart policy | compose | `unless-stopped` on every long-running service |
+| Stale multipart uploads | compose `object-storage` env | `MINIO_API_STALE_UPLOADS_EXPIRY=24h`, `MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL=6h` |
+| Device registration | compose | `DEVICE_REGISTRATION_MODE=first-write-wins` |
+| Backup scheduled | see below | `infra/scripts/backup.sh` on a timer, `BACKUP_ROOT` on another machine |
+
+### What the backups cover
+
+- `deploy.ps1 backup` is **PostgreSQL only** (`pg_dump`). It does not touch
+  object storage. A database dump alone does not protect a single photograph:
+  the originals, thumbnails and renders live in MinIO.
+- `infra/scripts/backup.sh` is the full recovery point: `pg_dump` plus `mc
+  mirror` of both buckets into one dated snapshot with `SHA256SUMS`, and
+  `infra/scripts/restore-drill.sh` proves a snapshot restores. Both are POSIX
+  shell. On the Windows deployment host they have to run inside a container
+  (`docker compose run --rm` with the compose network) from a scheduled task;
+  nothing in `deploy.ps1` does that today. Until it is scheduled, **there is
+  no backup of original photographs on the Windows host.**
+- Database rows and objects are one recovery point; never restore a newer
+  database over an older media snapshot (see the restore runbook).
+
 ## Backups and observability
 
 Nightly backup, retention, isolated restoration, and ready-asset digest verification are documented in [the restore runbook](../docs/runbooks/restore.md). The backup target must be an absolute off-host mount; the scripts deliberately refuse a blank, relative, or root target.
