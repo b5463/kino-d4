@@ -653,6 +653,67 @@ regression in capture latency.
 its enumeration has not been moved onto the index and no test matrix exists
 for it yet. No destructive operation was run; the card is intact.
 
+### Delete All removes what the index holds, and tells the queue first - 0.4.42, 2026-09-05
+
+**DELETE ALL CODE READY - DESTRUCTIVE TEST PENDING.** The wipe was reworked on
+the index and proven only non-destructively; the 1,434-photograph bench card
+was NOT wiped, and no Delete All was issued to the device at any point.
+
+What changed. `gallery.c` lost its readdir wipe (`wipe_pass`, the count pass
+that sized it, and the `WIPE_YIELDED` state). The new `wipe_step()` iterates
+the index list in RAM - the same names the Photos row counts and `MEDIA_LIST`
+pages - 32 items per turn under one `STORAGE_USER_UI` acquire, yielding to a
+shutter between items. For each item it calls `upload_queue_forget(uuid)` BEFORE
+`storage_capture_delete()`, so no job outlives its files: `rq_forget_action()`
+is a pure rule (not in the list: nothing; the job in flight: drop after the
+step returns, do not persist its result; otherwise: drop now), and every branch
+re-arms the card-changed cursor so the parked-off-list recount stays truthful
+(#167). When the last indexed item is gone the list is published empty,
+`INDEX.TXT` is written at once (retried through `s_index_dirty` if a capture
+holds the card), and a count pass looks for folders the index never held; if
+any remain, a rebuild is owed and a second Delete All removes them. Progress
+reads `gallery_media_count()`, so "DELETING n OF 1434" and "Photos 1434" cannot
+disagree. Scope: the local card only - `STORAGE_CAPTURE_FILES` plus
+`UPLOAD.JSON` and its temp, `rmdir` refuses a folder holding anything else, and
+nothing on the remote Roll is touched. Lock order: the queue takes the storage
+lock before its list lock and never the reverse; the wipe takes storage then
+the list lock, so the call into the queue from inside the wipe cannot invert.
+
+Host matrix. roll-queue 1,393 -> 1,407 checks (forget matrix over the three
+list states, and shape-blindness across queue positions); gallery-index
+173 -> 188 (SIZES now includes 1434, 1435 and 4096, the card and the cap);
+fourteen suites green. Bench, default and radio configurations build.
+
+A gate tried and withdrawn, measured. The first 0.4.42 image also required a
+committed `META.JSON` before the walk counted a folder (one `stat()` per entry,
+before the known-name check). On this card it held the card for about 3.5
+minutes after a boot that rebuilt: `MEDIA_LIST` was refused `BUSY: the camera UI
+(task gallery) holds it` from 18:57 to 19:00:06. A `stat()` is a linear lookup in
+a 1,435-entry FAT directory, and the gate paid it for every folder on every pass,
+where the 0.4.41 walk read one `META.JSON` per UNKNOWN name only. The verify
+count pass did not share the gate, so the two totals could disagree and force a
+rebuild on every boot. Withdrawn; the shipped 0.4.42 walk is the 0.4.41 walk.
+Same card, same sequence (boot, one capture within 15 s, upload queue scanning):
+the gallery held the card about one minute (02:37:0x to 02:38:02), `MEDIA_LIST`
+answered in 2.7-4.3 s once released, and the total went 1436 -> 1437 as the
+index write for the new capture landed - the file lags one capture until the
+queue lets the write through, then agrees. Husks (folders without META) stay
+the boot sweep's business, and Delete All removes them too.
+
+Non-destructive verification on the shipped image (boot-141+, COM8, nodes on
+camnode 0.4.38): firmware reads 0.4.42; grouped captures 3,567 ms and 3,867 ms,
+4/4 frames, no regression; `MEDIA_LIST` 3.2 s at +4 s from boot with the queue
+scanning; internal RAM 86 KB free, minimum 51-72 KB, DMA 31 KB, recovery reserve
+held; stacks unchanged except the gallery task at 1,324 B minimum free (the
+0.4.41 watch item was 1,328 B; still a watch item, not a fault).
+
+What the destructive test must show, on a card that can be lost: Photos and
+`MEDIA_LIST` total go to 0; `INDEX.TXT` header reads `0 0`; the upload queue
+reports no pending, uploading or failed job for a wiped capture; non-capture
+files on the card survive; a second Delete All on the empty card is a no-op;
+power off mid-wipe leaves a card whose next boot rebuilds to exactly the
+survivors. Not run here.
+
 ### The fresh-frame predicate closes the finder-idle stale frame - 0.4.40, 2026-09-04
 
 The half of the 0.4.38 proof that was owed. Operator put the body off the SHOOT

@@ -18,6 +18,7 @@
 #include "klog.h"
 #include "meta.h"
 #include "storage.h"
+#include "upload_queue.h"
 #include "taskmon.h"
 #include "thumb.h"
 
@@ -450,7 +451,6 @@ static int walk_pass(void) {
       return WALK_YIELDED;
     }
     if (!capture_name_ok(e->d_name)) continue;
-    seen++;
     /* capture_name_ok() has proved this is under 40 characters, but d_name is
      * declared up to NAME_MAX and the compiler reasons from the declaration -
      * so the bound has to be visible in the types or -O2 flags the path
@@ -458,6 +458,7 @@ static int walk_pass(void) {
      * idiom, same reason, as upload_queue.c's reconciliation loop. */
     char name[40];
     strlcpy(name, e->d_name, sizeof name);
+    seen++;
     if (walk_has(name)) continue;
     walk_add(name, capture_taken_ms(name));
   }
@@ -889,106 +890,90 @@ static bool drain_notes(void) {
 /* DELETE ALL PHOTOS                                                 */
 /* ---------------------------------------------------------------- */
 
-#define WIPE_YIELDED (-1)
-
-/**
- * One pass of the wipe. Captures removed, or WIPE_YIELDED when it stopped
- * early.
+/*
+ * DELETE ALL, driven by the index.
  *
- * ## What it deletes, and how
+ * It used to walk the directory itself: one readdir count pass to size the
+ * progress row, then readdir passes deleting every capture-shaped folder. That
+ * was a second definition of "what is a photograph" beside the one the Photos
+ * row, MEDIA_LIST and INDEX.TXT share - and it told the upload queue nothing,
+ * so a deleted capture with a live job retried a missing asset to the cap and
+ * parked FAILED.
  *
- * storage_capture_delete(), the same function the single-photo delete and the
- * boot orphan sweep use: it unlinks only the six names in
- * STORAGE_CAPTURE_FILES and then rmdir()s, which refuses a non-empty
- * directory. So a folder holding anything this firmware did not put there is
- * left standing, with whatever is in it. That is not a limitation to work
- * around - a recursive remove over names read off a removable card is how a
- * DELETE ALL PHOTOS takes something that was not a photo.
+ * Now it removes exactly the items the index holds, in index order, telling
+ * the queue about each one first, and writes the empty index when it is done.
+ * The count on the progress row is gallery_media_count(), the same figure the
+ * Photos row shows, so "DELETING 12 OF 1434" and "Photos 1434" cannot disagree.
  *
- * Captures only. /sdcard/KINO/SOUNDS, /RECIPES, the config and the upload
- * queue's own files are all outside CAPTURES and are never opened here. The
- * index's two files are excluded by capture_name_ok() and rewritten empty when
- * the wipe finishes.
+ * Crash tolerance is the existing shape, not a new one. A reboot mid-wipe
+ * loses the RAM list; INDEX.TXT on the card still claims the deleted items,
+ * the verify pass counts fewer folders than its header and rebuilds, and the
+ * remaining photographs come back discoverable while the deleted ones do not.
+ * storage_capture_delete() removes META.JSON before the record, so an
+ * interruption inside one item leaves the interrupted-commit shape the boot
+ * sweep already removes.
  *
- * ## Why passes
- *
- * Two reasons, and either alone would be enough. A shutter press mid-wipe has
- * to win, so the yield check is per entry and the pass returns the card. And
- * FatFs is being asked to walk a directory whose entries are being removed
- * underneath it, which can skip entries; the caller repeats until a complete
- * pass removes nothing, so a skipped folder is taken on the next one.
- *
- * A photograph taken during the wipe therefore gets deleted too - the wipe
- * goes round again and the new folder is in the directory. That is what DELETE
- * ALL PHOTOS says it does, and the alternative (a snapshot of names taken up
- * front) leaves photographs behind on a card the user was told is empty, which
- * is the worse of the two surprises. "The shutter wins" is about the card, not
- * about the picture surviving the operation the user just confirmed.
- *
- * ## What happens to a queued upload
- *
- * Verified against upload_queue.c and roll_queue.c rather than assumed.
- * UPLOAD.JSON lives INSIDE the capture's own folder and is NOT in
- * STORAGE_CAPTURE_FILES, so the rmdir above leaves the folder standing with
- * just that record in it. Boot reconciliation asks
- * rq_reconcile_action(has_meta=false, ...) about it and gets RQ_REC_IGNORE -
- * no META.JSON means "not a capture", which is exactly right here - so no
- * queue row is created and nothing is stranded. A job already in the RAM list
- * when the wipe runs re-reads the card on its next step, fails, and parks
- * within its retry budget; there is no queue-drop entry point in
- * upload_queue.h to call instead, and adding one is a change to the upload
- * queue's contract rather than to this screen. The folder that is left is not
- * shown in the gallery either: it has no META.JSON, so its tile would read
- * NO IMAGE - which is why the count pass, not the tile, is what decides
- * whether the list is right.
+ * Cards holding more than MAX_SCAN: only the indexed items are removed here.
+ * The count pass at the end sees what is left, marks a rebuild, and a second
+ * Delete All removes the rest. Documented rather than hidden, because the
+ * alternative is a readdir path deleting things the index never listed.
  */
-static int wipe_pass(void) {
-  if (!storage_present()) return 0;
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) return WIPE_YIELDED;
-  DIR *d = opendir(CAPTURES_DIR);
-  if (d == NULL) {
-    storage_release(STORAGE_USER_UI);
-    return 0;
-  }
-  int removed = 0;
-  bool finished = true;
-  struct dirent *e;
-  while ((e = readdir(d)) != NULL) {
-    if (storage_yield_requested(STORAGE_USER_UI)) {
-      finished = false;
-      break;
-    }
-    if (!capture_name_ok(e->d_name)) continue;
-    /* Bounded in the types, like walk_pass above: d_name is declared up to
-     * NAME_MAX and this path is a delete, so the bound had better be one the
-     * compiler can see. */
-    char name[40];
-    strlcpy(name, e->d_name, sizeof name);
-    snprintf(s_scan_path, sizeof s_scan_path, "%s/%s", CAPTURES_DIR, name);
-    storage_capture_delete(s_scan_path);
-    removed++;
-    if (s_wipe_done < s_wipe_total) s_wipe_done = s_wipe_done + 1;
-  }
-  closedir(d);
-  storage_release(STORAGE_USER_UI);
-  return finished ? removed : WIPE_YIELDED;
-}
+#define WIPE_BATCH 32
 
-/** One turn of the wipe on the gallery task. True when there is nothing left. */
 static bool wipe_step(void) {
   if (s_wipe_total < 0) {
-    const int n = count_pass();
-    if (n < 0) return false; /* card busy; count again next turn */
+    /* No list yet - the user went straight to the storage screen after boot.
+     * The index if there is one, the card if there is not: the same two paths
+     * the gallery open uses, run here because the task loop puts the wipe
+     * first and alone. */
+    if (!s_have_list) {
+      const int hit = storage_present() ? index_load() : INDEX_MISS;
+      if (hit == INDEX_BUSY) return false;
+      if (hit != INDEX_HIT) {
+        const int found = storage_present() ? walk_pass() : 0;
+        if (found == WALK_YIELDED) return false;
+        publish_walk(found);
+      }
+    }
+    lock();
+    const int n = s_total;
+    unlock();
     s_wipe_total = n;
     s_wipe_done = 0;
     klog("SD", "delete all photos: %d captures", n);
   }
-  const int removed = wipe_pass();
-  if (removed == WIPE_YIELDED) return false;
-  if (removed > 0) return false; /* go round again; FatFs may have skipped some */
 
-  /* A complete pass that removed nothing: the captures directory holds no
-   * capture folders. */
+  /* One batch per turn, so the card is never held across the whole wipe and
+   * a shutter press between batches is answered. */
+  lock();
+  const int n = s_total;
+  unlock();
+  if (s_wipe_done < n) {
+    if (!storage_present()) return false;
+    if (!storage_acquire(STORAGE_USER_UI, 2000)) return false;
+    int batch = 0;
+    while (s_wipe_done < n && batch < WIPE_BATCH) {
+      char name[40];
+      lock();
+      strlcpy(name, s_names[s_order[s_wipe_done]], sizeof name);
+      unlock();
+      /* Queue first, files second: a job that outlived its files is the
+       * failure this ordering prevents. */
+      upload_queue_forget(name);
+      snprintf(s_scan_path, sizeof s_scan_path, "%s/%s", CAPTURES_DIR, name);
+      storage_capture_delete(s_scan_path);
+      s_wipe_done = s_wipe_done + 1;
+      batch++;
+      if (storage_yield_requested(STORAGE_USER_UI)) break;
+    }
+    storage_release(STORAGE_USER_UI);
+    return false; /* more to do, or yielded; either way come back */
+  }
+
+  /* Every indexed item is gone. Publish the empty list and write it down now
+   * rather than lazily, so INDEX.TXT stops claiming media that no longer
+   * exists the moment the wipe finishes. index_write() may refuse because a
+   * capture holds the card; s_index_dirty then retries it. */
   lock();
   s_total = 0;
   s_total_seen = 0;
@@ -996,8 +981,18 @@ static bool wipe_step(void) {
   reset_page();
   unlock();
   s_have_list = true;
-  s_index_dirty = true; /* an empty index, so the next open is still one fread */
+  s_index_dirty = !index_write();
   s_dirty = true;
+
+  /* What is left on the card that the index never held - a card past
+   * MAX_SCAN, or folders the sweep owns. Counted so the Photos row stays
+   * truthful and a rebuild is owed if there is anything. */
+  const int left = count_pass();
+  if (left > 0) {
+    ESP_LOGW(TAG, "delete all: %d capture folders remain that were not indexed; rebuilding",
+             left);
+    s_rescan = true;
+  }
   ESP_LOGI(TAG, "delete all photos: %d removed", s_wipe_done);
   klog("SD", "delete all photos done: %d removed", s_wipe_done);
   return true;

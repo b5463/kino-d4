@@ -332,7 +332,7 @@ static char *build_index(int n, int header_entries, int total_seen) {
 /* The counts the product has to get exactly right, including the two the old
  * scan horizons broke on (240, 512) and the size of the real bench card. */
 static void test_page_totals(void) {
-  static const int SIZES[] = {0, 1, 31, 32, 33, 239, 240, 241, 511, 512, 513, 788, 1000, 1325};
+  static const int SIZES[] = {0, 1, 31, 32, 33, 239, 240, 241, 511, 512, 513, 788, 1000, 1325, 1434, 1435, 4096};
   for (size_t k = 0; k < sizeof SIZES / sizeof SIZES[0]; k++) {
     const int n = SIZES[k];
     char *buf = build_index(n, n, n);

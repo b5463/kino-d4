@@ -625,3 +625,27 @@ char *rq_redact(char *dst, size_t dst_size, const char *src) {
   dst[out] = '\0';
   return dst;
 }
+
+rq_forget_t rq_forget_action(bool in_list, bool active) {
+  /*
+   * What the queue does when the photograph a job describes is deleted.
+   *
+   * Not in the list: nothing to drop. The record on the card went with the
+   * directory, so reconciliation cannot bring it back; the only thing owed is
+   * a fresh scan cycle, and the caller does that regardless of this answer.
+   *
+   * In the list and idle: drop it now. Every step re-reads from the card, so
+   * a job whose files are gone can only fail - twelve retries and a park, and
+   * a FAILED count that says the user should press retry on a photograph they
+   * chose to delete.
+   *
+   * In the list and mid-step: the worker holds a snapshot and will re-find
+   * the job by uuid when the step returns. Dropping it under the worker is
+   * what still_ours() exists to survive, but it also throws away the result
+   * of a step that may have just landed a frame on the server - harmless,
+   * since the capture is being deleted, but the cleaner shape is to let the
+   * step finish and drop instead of persisting. That is AFTER_STEP.
+   */
+  if (!in_list) return RQ_FORGET_NONE;
+  return active ? RQ_FORGET_AFTER_STEP : RQ_FORGET_NOW;
+}

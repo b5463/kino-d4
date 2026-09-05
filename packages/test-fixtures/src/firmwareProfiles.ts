@@ -563,4 +563,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 240 -> 4096, arrays in PSRAM); `total` is the counted valid-photograph
   // figure. Same profile.
   '0.4.41': 'd4-settings-0-4-9',
+  // 0.4.42: Delete All removes exactly the indexed photographs, tells the
+  // upload queue about each one first, and writes the empty index when done;
+  // the gallery walk only indexes folders holding a committed META.JSON.
+  // Same profile.
+  '0.4.42': 'd4-settings-0-4-9',
 };

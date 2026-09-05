@@ -169,5 +169,19 @@ int upload_queue_retry_all(void);
  */
 void upload_queue_network_restored(void);
 
+/**
+ * A capture was deleted locally: drop any job for it.
+ *
+ * Called by the gallery for every photograph it removes, before the files go.
+ * Without it the job stayed in the RAM window, every step re-read a missing
+ * asset, and the capture parked FAILED after the retry cap - a count telling
+ * the user to retry a photograph they had just deleted. rq_forget_action()
+ * decides; this applies it and marks a scan cycle owed. Safe from any task;
+ * takes the queue lock, never the card.
+ */
+void upload_queue_forget(const char *capture_uuid);
+
+
+
 
 #endif /* P4_UPLOAD_QUEUE_H */

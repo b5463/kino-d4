@@ -441,6 +441,31 @@ void rq_scan_pass_done(rq_scan_t *s, uint32_t visited, uint32_t unadmitted, bool
  */
 void rq_scan_card_changed(rq_scan_t *s);
 
+/* ------------------------------------------------------------------ */
+/* A photograph was deleted locally                                    */
+/* ------------------------------------------------------------------ */
+
+/** What upload_queue_forget() should do with the job for a deleted capture. */
+typedef enum {
+  RQ_FORGET_NONE = 0,   /* no job in the list: nothing to drop */
+  RQ_FORGET_NOW,        /* idle job: drop it from the list at once */
+  RQ_FORGET_AFTER_STEP, /* the worker is mid-step on it: drop when the step returns */
+} rq_forget_t;
+
+/**
+ * Deleting a photograph locally must not leave a job pointing at files that
+ * are gone. Before this the job stayed, every step re-read a missing asset,
+ * and the capture parked FAILED after the retry cap - a count telling the
+ * user to retry a photograph they had just chosen to delete.
+ *
+ * `in_list` is whether the RAM window holds a job for the uuid; `active`
+ * whether the worker is inside a step on that very job. Pure and tested;
+ * upload_queue.c supplies the two facts and acts on the answer.
+ */
+rq_forget_t rq_forget_action(bool in_list, bool active);
+
+
+
 /**
  * True when another pass is owed: the cursor is mid-cycle, or the last complete
  * cycle found eligible work the window could not take. This is the honest

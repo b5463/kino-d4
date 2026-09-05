@@ -107,6 +107,9 @@ static bool s_halted;
 static bool s_net_ready; /* last reported can-upload, so the log fires once */
 static bool s_cap_hit;   /* the last scan filled the RAM list and stopped */
 static bool s_rescan;    /* a pass is owed now */
+/* A delete asked for the job the worker is mid-step on; see
+ * upload_queue_forget() and the check after the step returns. */
+static bool s_forget_active;
 /* Where the next pass starts, and what the last complete cycle found that the
  * RAM window had no room for. The card is the queue; this is the window's
  * position on it (#167). */
@@ -508,6 +511,17 @@ static bool run_one_step(void) {
     /* The UUID has left the list — a COMPLETE drop or a parked trim, and
      * neither wants this result. A job that merely MOVED is found again above
      * and the result applied where it now lives. */
+    s_forget_active = false;
+    s_active = -1;
+    unlock();
+    return true;
+  }
+  if (s_forget_active) {
+    /* upload_queue_forget() ran while this step was in flight. The photograph
+     * is gone from the card, so the result - landed or not - has nowhere to
+     * be recorded and nothing left to upload. Drop, and do not persist. */
+    s_forget_active = false;
+    list_drop(idx);
     s_active = -1;
     unlock();
     return true;
@@ -806,6 +820,38 @@ esp_err_t upload_queue_enqueue_slots(const char *capture_uuid, const char *roll_
 
   wake();
   return err;
+}
+
+
+/* Set by upload_queue_forget() when the job being deleted is the one the
+ * worker is inside a step on. run_one_step() reads it once the step returns
+ * and drops the job instead of persisting it. Lock held for both. */
+
+void upload_queue_forget(const char *capture_uuid) {
+  if (capture_uuid == NULL) return;
+  lock();
+  const int idx = find_job(capture_uuid);
+  const rq_forget_t what = rq_forget_action(idx >= 0, idx >= 0 && idx == s_active);
+  switch (what) {
+    case RQ_FORGET_NOW:
+      list_drop(idx);
+      break;
+    case RQ_FORGET_AFTER_STEP:
+      s_forget_active = true;
+      break;
+    case RQ_FORGET_NONE:
+    default:
+      break;
+  }
+  /*
+   * The card changed under the window either way. Its UPLOAD.JSON is gone
+   * with the directory, so reconciliation cannot resurrect the job; what a
+   * cycle still owes is the parked-off-list recount, which is the only place
+   * a deleted parked capture could otherwise keep inflating `failed` (#167).
+   */
+  rq_scan_card_changed(&s_scan);
+  s_rescan = true;
+  unlock();
 }
 
 void upload_queue_status(upload_queue_report_t *out) {

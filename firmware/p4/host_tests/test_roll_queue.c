@@ -1303,7 +1303,45 @@ static void test_a_refused_capture_is_still_owed(void) {
   CHECK(s.cycle_complete && !rq_scan_more(&s), "and the queue may then say nothing is owed");
 }
 
+
+/* ------------------------------------------------------------------ */
+/* rq_forget_action: the queue's side of a local delete                */
+/* ------------------------------------------------------------------ */
+
+static void test_forget_matrix(void) {
+  /* The four cases, each named for the queue state the photograph was in. */
+  CHECK(rq_forget_action(false, false) == RQ_FORGET_NONE,
+        "A: no job (already uploaded, or never queued) -> nothing to drop");
+  CHECK(rq_forget_action(true, false) == RQ_FORGET_NOW,
+        "B/C/D: queued, retrying or parked and idle -> drop now");
+  CHECK(rq_forget_action(true, true) == RQ_FORGET_AFTER_STEP,
+        "in flight -> let the step return, then drop instead of persisting");
+  /* active without in_list is a contradiction the caller cannot produce; it
+   * must still answer safely and it must not drop anything. */
+  CHECK(rq_forget_action(false, true) == RQ_FORGET_NONE,
+        "active but not listed is not a drop");
+}
+
+/* Sparse sets are the same job shape as full ones - frameSlots [1,3,4] is a
+ * list, not a count - so forgetting one must not depend on its shape. */
+static void test_forget_is_shape_blind(void) {
+  rq_job_t sparse;
+  const uint8_t slots[3] = {1, 3, 4};
+  CHECK(rq_job_init_slots(&sparse, "3f2b9c11-4d8e-4a71-9f02-77c1de40ab55", "roll_x", slots, 3,
+                          true),
+        "sparse job builds");
+  /* Whatever state it is in, an idle job in the list is dropped now. */
+  for (int st = RQ_QUEUED; st <= RQ_FAILED; st++) {
+    sparse.state = (rq_state_t)st;
+    CHECK(rq_forget_action(true, false) == RQ_FORGET_NOW,
+          "state %d: idle listed job is dropped now", st);
+  }
+}
+
+
 int main(void) {
+  test_forget_matrix();
+  test_forget_is_shape_blind();
   test_a_new_capture_reopens_the_cycle();
   test_a_refused_capture_is_still_owed();
   test_scan_cursor_basics();
