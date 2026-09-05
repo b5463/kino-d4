@@ -201,9 +201,21 @@ static cJSON *roll_view(void) {
 
   /* The camera cannot reach the server, so it must not claim the server is
    * reachable. This is a fact about the radio, not about the server. */
+  /* ... and a radio with an address is not a server that answers. The queue
+   * knows what the last HTTP exchange did; `serverReachable` is false the
+   * moment the server stopped answering, and `serverState` says whether it
+   * has been asked at all since boot. */
   net_status_t net;
   net_link_status(&net, now_ms());
-  cJSON_AddBoolToObject(o, "serverReachable", net_link_can_upload(&net));
+  upload_queue_report_t q;
+  upload_queue_status(&q);
+  cJSON_AddBoolToObject(o, "serverReachable",
+                        net_link_can_upload(&net) && q.server_state != UPLOAD_SERVER_UNREACHABLE);
+  cJSON_AddStringToObject(o, "serverState",
+                          !net_link_can_upload(&net)                     ? "offline"
+                          : q.server_state == UPLOAD_SERVER_REACHABLE   ? "reachable"
+                          : q.server_state == UPLOAD_SERVER_UNREACHABLE ? "unreachable"
+                                                                        : "unknown");
 
   /* `ok` | `token-expired`. A token the camera has never obtained is not
    * expired — the honest third value is that there is none, and reporting

@@ -568,4 +568,9 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // the gallery walk only indexes folders holding a committed META.JSON.
   // Same profile.
   '0.4.42': 'd4-settings-0-4-9',
+  // 0.4.43: single delete tells the upload queue; the ROLL screen counts
+  // the index and the card, not a 32-entry window; parked-for-network jobs
+  // resume by themselves; serverReachable is what the server said. Same
+  // profile.
+  '0.4.43': 'd4-settings-0-4-9',
 };

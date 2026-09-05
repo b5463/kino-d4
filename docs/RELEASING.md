@@ -8,14 +8,37 @@ KINO has no published release pipeline yet. This checklist defines the first saf
 
 | Surface | Current value | Authority |
 |---|---:|---|
-| Repository workspace | `0.1.0` | root `package.json` |
-| KINO Studio | `0.9.0` | `apps/studio/package.json` |
+| Repository workspace | `0.1.1` | root `package.json` |
+| KINO Studio | `0.9.1` | `apps/studio/package.json` |
+| KINO Roll API / worker | `0.2.0` | `apps/api/package.json`, `apps/worker/package.json` |
+| KINO Roll web | `0.5.0` | `apps/roll-web/package.json` |
 | KDP protocol | `1` | `PROTOCOL_VERSION` in `packages/kdp/src/protocol/commands.ts` |
 | KDP config envelope | `1` | `CONFIG_SCHEMA_VERSION` in `packages/kdp/src/protocol/types.ts` |
 | Portable documents | `1` per schema | `packages/schemas/src/` |
-| Physical firmware | `0.1.0`, no published release | `firmware/VERSION`, checked against `versions.json` |
+| Physical firmware (P4 and camera node, one image family) | `0.4.43`, bench builds only, no published release | `firmware/VERSION`, checked against `versions.json` |
 
 A Studio release does not automatically bump KDP. A schema bump does not automatically bump the protocol. Change the smallest surface that matches the compatibility change.
+
+## Stop-gates that are not in any script
+
+- **Firmware artwork.** `firmware/p4/main/icons_w98.h` carries Microsoft's
+  Windows 98 shell icons under `LicenseRef-Microsoft-Proprietary`
+  (`REUSE.toml`, `THIRD_PARTY_NOTICES.md`). Publishing any P4 binary built
+  from this tree redistributes them. Issue #134 has to be answered - a licence,
+  or original artwork in the same idiom - before a firmware release exists.
+  `npm run license:check` proves the mapping is intact; it does not make the
+  redistribution lawful.
+- **Roll on the internet.** The backend and web have been proven only against
+  a development API on the LAN. `kino.acronym.sk` answered 404 on 2026-09-05.
+  Production deployment (`infra/README.md`, `infra/deploy.ps1`) is an operator
+  step with credentials this repository does not hold.
+- **Destructive firmware paths.** Delete All (0.4.42) is index-driven and
+  host-tested and has never been executed on a real card. Run it on an
+  expendable card before a release claims it.
+
+The table above is hand-written; `npm run version:check` verifies
+`versions.json` against the sources, not this table. When they disagree,
+`versions.json` is right.
 
 ## Before cutting a version
 

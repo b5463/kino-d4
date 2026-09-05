@@ -121,6 +121,17 @@ static char s_last_error[RQ_ERROR_LEN];
  * happened to fit. Recomputed from the card by a reconciliation pass that runs
  * to the end, and bumped in between by every job this file trims. */
 static int s_parked_off_list;
+/* What the last step learned about the server (see upload_server_state_t),
+ * and whether transient parks on the card are welcome back into the window:
+ * set when the network or the server comes back, so the next pass adopts
+ * them as RETRY_WAIT instead of counting them as failed. */
+static upload_server_state_t s_server_state;
+static bool s_revive_parked;
+static bool s_boot_revived; /* the once-per-boot welcome above ran */
+/* When a probe last woke a parked job to find out whether the server is back.
+ * A link that is up with every job parked would otherwise never try again. */
+static int64_t s_last_probe_ms;
+#define PARKED_PROBE_MS (10 * 60 * 1000)
 
 /* Insertion order for the RAM list. list_drop() fills a hole from the tail, so
  * an array index says nothing about age — and when parked jobs have to be
@@ -233,6 +244,9 @@ static int trim_parked(void) {
  * re-arms s_rescan, and every action it takes is idempotent.
  */
 static bool queue_scan(void) {
+  lock();
+  if (s_parked_off_list == 0) s_revive_parked = false;
+  unlock();
   if (!card_take()) {
     s_rescan = true;
     return false;
@@ -341,6 +355,20 @@ static bool queue_scan(void) {
       }
     }
 
+    if (job.state == RQ_FAILED && rq_park_is_transient(&job)) {
+      lock();
+      const bool welcome = s_revive_parked;
+      unlock();
+      if (welcome) {
+        /* Parked because the server was away, and the server is back (or the
+         * network is): back in play, and the record rewritten so the card
+         * agrees. Bounded by list room like any other adoption; what does
+         * not fit stays parked on the card for the next pass. */
+        rq_job_revive(&job);
+        needs_save = true;
+      }
+    }
+
     /*
      * A record that changed, or that is new, has to land before the queue acts
      * on it; a write that fails leaves the directory for the next pass.
@@ -404,6 +432,18 @@ static bool queue_scan(void) {
      * that reached the end may replace the count: a partial walk counts a
      * subset and would report fewer parked captures than there are. */
     s_parked_off_list = parked_off;
+    /* The first complete count after boot finds the captures an outage parked
+     * before the reboot. The link-up revive ran before any of them had been
+     * counted, so without this they waited for the ten-minute probe (bench
+     * 2026-09-05: 101 parked, first upload at +10 min). If the server is not
+     * known to be down, welcome them back now; the next pass adopts them. */
+    if (parked_off > 0 && !s_revive_parked && s_server_state != UPLOAD_SERVER_UNREACHABLE &&
+        !s_boot_revived) {
+      s_boot_revived = true;
+      s_revive_parked = true;
+      s_rescan = true;
+      klog("P4", "upload: %d job(s) parked before boot, back in play", parked_off);
+    }
   }
   unlock();
 
@@ -483,6 +523,74 @@ static uint32_t jittered_backoff(uint32_t attempts) {
   return base - base / 4u + esp_random() % (span + 1u);
 }
 
+/*
+ * The server is back, or the network is: every job parked for a run of
+ * network failures goes back in play. Lock held by the caller. Parked
+ * captures the window trimmed are on the card; the flag tells the next pass
+ * to adopt them as RETRY_WAIT rather than count them (#167 shape, in
+ * reverse).
+ */
+static void revive_transient_locked(const char *why) {
+  int revived = 0;
+  for (int i = 0; i < s_count; i++) {
+    if (!rq_park_is_transient(&s_jobs[i])) continue;
+    rq_job_revive(&s_jobs[i]);
+    revived++;
+  }
+  if (s_parked_off_list > 0) {
+    s_revive_parked = true;
+    s_rescan = true;
+  }
+  if (revived > 0 || s_parked_off_list > 0) {
+    klog("P4", "upload: %s, %d parked job(s) back in play, %d more on the card", why, revived,
+         s_parked_off_list);
+  }
+}
+
+/* What the step's HTTP result says about the server. Lock held. */
+static void note_server_locked(const roll_step_result_t *res) {
+  if (res->card_yielded) return; /* the card refused; the server was never asked */
+  const upload_server_state_t was = s_server_state;
+  s_server_state = res->status > 0 ? UPLOAD_SERVER_REACHABLE : UPLOAD_SERVER_UNREACHABLE;
+  if (s_server_state == UPLOAD_SERVER_REACHABLE && was != UPLOAD_SERVER_REACHABLE) {
+    revive_transient_locked("server answered");
+  }
+}
+
+/*
+ * Nothing to do and jobs parked for network reasons: every PARKED_PROBE_MS,
+ * wake one of them so the queue finds out whether the server is back. One,
+ * not all - if it is still down that costs one connect attempt per ten
+ * minutes, and if it is up its answer revives the rest. True when it did
+ * something, so the worker loops rather than sleeps.
+ */
+static bool maybe_probe_parked(void) {
+  const int64_t now = now_ms();
+  if (s_last_probe_ms != 0 && now - s_last_probe_ms < PARKED_PROBE_MS) return false;
+  bool did = false;
+  lock();
+  for (int i = 0; i < s_count; i++) {
+    if (!rq_park_is_transient(&s_jobs[i])) continue;
+    rq_job_revive(&s_jobs[i]);
+    did = true;
+    break;
+  }
+  if (!did && s_parked_off_list > 0) {
+    /* Nothing parked in RAM, some on the card: let the pass bring one in. */
+    s_revive_parked = true;
+    s_rescan = true;
+    did = true;
+  }
+  unlock();
+  if (did) {
+    s_last_probe_ms = now;
+    klog("P4", "upload: probing whether the server is back");
+  } else {
+    s_last_probe_ms = now; /* nothing parked; check again in a while */
+  }
+  return did;
+}
+
 /** Run one step for one job, then persist. Returns true when it did work. */
 static bool run_one_step(void) {
   rq_step_t step;
@@ -503,6 +611,7 @@ static bool run_one_step(void) {
   rq_disposition_t disp = rq_classify_step(res.status, res.card_yielded);
 
   lock();
+  note_server_locked(&res);
   /* Apply to the live record, not the snapshot: retry_all may have cleared this
    * job's backoff while the step was in flight, and writing the snapshot back
    * would undo that. rq_apply is a pure transition either way. */
@@ -660,6 +769,7 @@ static void worker_task(void *arg) {
     }
 
     if (run_one_step()) continue;
+    if (!s_rescan && maybe_probe_parked()) continue;
     if (s_rescan) {
       /* Clears both flags, and re-arms s_rescan when it could not finish.
        * Sleeping on a refusal is what keeps that from being a spin. */
@@ -879,6 +989,7 @@ void upload_queue_status(upload_queue_report_t *out) {
   out->uploading = s_active >= 0 ? 1 : 0;
   out->uploaded = s_uploaded;
   out->halted = s_halted;
+  out->server_state = s_server_state;
   out->draining = !storage_capture_active() && s_net_ready && !s_halted &&
                   (out->pending > 0 || s_active >= 0);
   memcpy(out->last_error, s_last_error, sizeof out->last_error);
@@ -893,6 +1004,10 @@ void upload_queue_network_restored(void) {
     rq_job_network_restored(&s_jobs[i]);
     due++;
   }
+  /* The link is back. Jobs that parked because it was gone come back with
+   * it - the user should not have to press anything for a photograph the
+   * network lost. */
+  revive_transient_locked("network back");
   unlock();
   if (due > 0) klog("P4", "upload: network back, %d waiting job(s) due now", due);
   wake();
@@ -909,10 +1024,7 @@ int upload_queue_retry_all(void) {
      * retry is saying that history is stale. RETRY_WAIT with a zero deadline is
      * due immediately, and rq_next_step() re-enters from the completion flags
      * rather than the state — so this need not guess where the job had got to. */
-    job->attempts = 0;
-    job->reread_attempts = 0;
-    job->next_attempt_ms = 0;
-    job->state = RQ_RETRY_WAIT;
+    rq_job_revive(job);
     revived++;
   }
   s_halted = false;
@@ -921,7 +1033,10 @@ int upload_queue_retry_all(void) {
    * retry the user just pressed is meant for them too. Reviving the ones in
    * RAM frees the parked slots, so a pass over the card brings the rest back
    * in. The worker runs it when it next comes up empty. */
-  if (s_parked_off_list > 0) s_rescan = true;
+  if (s_parked_off_list > 0) {
+    s_revive_parked = true;
+    s_rescan = true;
+  }
   unlock();
 
   /* Not written to the card. Backoff deadlines are monotonic milliseconds,

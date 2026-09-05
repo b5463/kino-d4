@@ -160,3 +160,21 @@ Set a fresh production secret and an explicit environment. Do not weaken the che
 Include the smallest repeatable path, logs with private data removed, exact versions, and the result from KINO Twin. Hardware faults should include voltage readings, the unit record from [`hardware/TESTING.md`](../hardware/TESTING.md), and clear photographs of the affected connection.
 
 Use the repository issue form that matches the fault. Security failures belong in a private advisory, as described in [`SECURITY.md`](../SECURITY.md).
+
+## Known open issues, 2026-09-05
+
+One list, so an incident does not start with a search of the bench log.
+
+| Symptom | State | Where the detail is |
+|---|---|---|
+| A KDP reply is dropped or arrives corrupt while the camera is logging heavily | Root cause found and removed in firmware 0.4.43: the console was also on USB-Serial-JTAG, the endpoint KDP frames use, so ESP_LOG text landed inside replies. Console is UART0 only from 0.4.43. Bench proof: the decoder's `discardedBytes` must stay 0 over a session. | `firmware/HARDWARE_VALIDATION.md` (reply-loss item), `CHANGELOG.md` 0.4.43 |
+| `GET_LOGS` or any reply larger than about 4 KB never arrives | Fixed in 0.4.x: the USB write was sliced to 1024 bytes and replies are capped at one 16 KB frame; `GET_LOGS` returns the newest lines that fit. | `CHANGELOG.md`, `firmware-contract/commands.md` |
+| `ROLL_STATUS.serverReachable` says true while the API is stopped | Fixed in 0.4.43: it now also requires the last HTTP exchange to have been answered; `serverState` says offline / unknown / reachable / unreachable. | `firmware-contract/commands.md` RollView |
+| The ROLL screen says 0 waiting while hundreds of captures are on the card | Fixed in 0.4.43: the screen shows window plus card and says when the card is still being counted. Over KDP use `pending + cardPending` and `scanComplete`. | `firmware-contract/commands.md` QueueReport |
+| Uploads parked `failed` after an outage never resume | Fixed in 0.4.43: parks caused by a run of network failures are revived when the link or the server comes back, and probed every 10 minutes. Parks the server refused (4xx) still wait for a retry from Studio. | `firmware/p4/main/upload_queue.c` |
+| A backend capture stays `processing` after every asset is present | Status converges on read; a render enqueued lazily from the guest or host routes did not recompute it. Fixed in the API on 2026-09-05. | `apps/api/src/uploads/uploads.ts` |
+| Gallery task stack minimum about 1.3 KB | Watch item, not a fault. Measured every release; do not add stack use to that task without re-measuring. | `firmware/HARDWARE_VALIDATION.md` |
+| The gallery index holds at most 4096 captures | The Photos count and `MEDIA_LIST.total` stay exact past the cap; the gallery shows the newest 4096 and Delete All removes what is indexed, then rebuilds and needs a second press for the rest. About 4096 captures is 3.2 GB of a 32 GB card. | `firmware/p4/main/gallery.c` |
+| Delete All has never been run on a real card | Code ready and host-tested (0.4.42). Destructive test waits for an expendable card. | `CHANGELOG.md` 0.4.42 |
+| Menu icons are Microsoft artwork | Release blocker for any published firmware binary, issue #134. | `docs/RELEASING.md` stop-gates |
+

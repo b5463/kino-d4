@@ -831,16 +831,34 @@ esp_err_t storage_capture_commit(storage_capture_t *c, const char *meta_json) {
   if (c->jpg != NULL && storage_capture_frame_end(c) != ESP_OK) return ESP_FAIL;
   if (c->written == 0) return ESP_ERR_INVALID_STATE;
 
-  char path[80];
+  /*
+   * Written to META.TMP and renamed, not written in place. META.JSON is the
+   * commit marker: everything that reads the card treats its presence as
+   * "this photograph is finished", and several readers stat() it without
+   * parsing. A power cut in the middle of a write in place left a truncated
+   * META.JSON that passed that test. The rename is one directory-entry
+   * update, so the marker either exists whole or not at all; a leftover
+   * META.TMP is an interrupted commit, which the boot sweep already removes
+   * along with the folder, and storage_capture_delete() unlinks it by name.
+   */
+  char tmp[80], path[80];
+  snprintf(tmp, sizeof tmp, "%s/META.TMP", c->dir);
   snprintf(path, sizeof path, "%s/META.JSON", c->dir);
-  FILE *meta = fopen(path, "wb");
+  FILE *meta = fopen(tmp, "wb");
   if (meta == NULL) return ESP_FAIL;
   size_t len = strlen(meta_json);
   int failed = fwrite(meta_json, 1, len, meta) != len;
   failed |= fflush(meta) != 0;
   failed |= fsync(fileno(meta)) != 0;
   failed |= fclose(meta) != 0;
-  if (failed) set_error("SD_WRITE_FAILED");
+  if (!failed) {
+    unlink(path); /* a re-commit of the same folder; FAT rename will not replace */
+    failed = rename(tmp, path) != 0;
+  }
+  if (failed) {
+    set_error("SD_WRITE_FAILED");
+    unlink(tmp);
+  }
   return failed ? ESP_FAIL : ESP_OK;
 }
 
@@ -1148,7 +1166,7 @@ void storage_sweep_orphans(storage_sweep_t *out) {
  * media allow-list reads this same array rather than keeping its own.
  */
 const char *const STORAGE_CAPTURE_FILES[STORAGE_CAPTURE_FILE_COUNT] = {
-    "C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG", "META.JSON", "THUMB.JPG",
+    "C1.JPG", "C2.JPG", "C3.JPG", "C4.JPG", "META.JSON", "THUMB.JPG", "META.TMP",
 };
 
 /*

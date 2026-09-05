@@ -23,6 +23,7 @@
 #include "roll_state.h"
 #include "cJSON.h"
 #include "gallery.h"
+#include "upload_queue.h"
 #include "gallery_index.h"
 #include "driver/temperature_sensor.h"
 #include "esp_heap_caps.h"
@@ -1794,6 +1795,10 @@ static void handle_media_delete(uint32_t seq, const cJSON *req) {
     send_nack(KDP_CMD_MEDIA_DELETE, seq, "NOT_FOUND", "No such capture");
     return;
   }
+  /* Queue first, files second - the same order as Delete All. A job left
+   * behind re-read a missing asset to the retry cap and parked FAILED, and
+   * that number then sat in UPLOAD_QUEUE_STATUS until a reboot. */
+  upload_queue_forget(jid->valuestring);
   storage_capture_delete(dir);
   /* Told, after the delete and only after it. The gallery's order index would
    * otherwise still name this capture, and the first evidence would be a tile

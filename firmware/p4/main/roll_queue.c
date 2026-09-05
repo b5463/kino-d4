@@ -649,3 +649,19 @@ rq_forget_t rq_forget_action(bool in_list, bool active) {
   if (!in_list) return RQ_FORGET_NONE;
   return active ? RQ_FORGET_AFTER_STEP : RQ_FORGET_NOW;
 }
+
+bool rq_park_is_transient(const rq_job_t *job) {
+  if (job == NULL || job->state != RQ_FAILED) return false;
+  /* PARK leaves attempts alone and REREAD exhaustion trips its own counter,
+   * so a park with the transient counter at the cap and re-reads within
+   * bounds can only have come from the RETRY branch. */
+  return job->attempts >= RQ_MAX_ATTEMPTS && job->reread_attempts <= RQ_MAX_REREADS;
+}
+
+void rq_job_revive(rq_job_t *job) {
+  if (job == NULL) return;
+  job->attempts = 0;
+  job->reread_attempts = 0;
+  job->next_attempt_ms = 0;
+  job->state = RQ_RETRY_WAIT;
+}

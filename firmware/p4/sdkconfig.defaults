@@ -41,6 +41,12 @@ CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 # Console stays on UART0 (GPIO37/38 on this board). KDP owns USB-Serial-JTAG
 # exclusively so log output can never interleave into a frame mid-session.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# The console is UART0 only. IDF's default adds USB-Serial-JTAG as a
+# secondary console, which is the endpoint KDP owns: every ESP_LOG line was
+# being written between and inside framed replies, and the host decoder
+# resynced past the damage and lost the reply (HARDWARE_VALIDATION.md, the
+# open reply-loss item). Logs reach the host through GET_LOGS.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
 # ── The partition table is ours, not IDF's ──────────────────────────
 #

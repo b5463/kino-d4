@@ -1339,9 +1339,64 @@ static void test_forget_is_shape_blind(void) {
 }
 
 
+/* A park from a run of network failures is transient; a park the server or
+ * the bytes caused is not. The predicate reads only persisted fields. */
+static void test_transient_park_predicate(void) {
+  rq_job_t job;
+  const uint8_t slots[4] = {1, 2, 3, 4};
+  CHECK(rq_job_init_slots(&job, "3f2b9c11-4d8e-4a71-9f02-77c1de40ab56", "roll_x", slots, 4, true),
+        "job builds");
+  CHECK(!rq_park_is_transient(&job), "a queued job is not a park");
+  rq_step_t step = {.kind = RQ_STEP_REGISTER};
+  for (int i = 0; i < RQ_MAX_ATTEMPTS; i++) rq_apply(&job, step, RQ_DISP_RETRY, "connect");
+  CHECK(job.state == RQ_FAILED, "RQ_MAX_ATTEMPTS transient failures park the job");
+  CHECK(rq_park_is_transient(&job), "a park from the retry cap is transient");
+
+  rq_job_t refused;
+  CHECK(rq_job_init_slots(&refused, "3f2b9c11-4d8e-4a71-9f02-77c1de40ab57", "roll_x", slots, 4,
+                          true),
+        "second job builds");
+  rq_apply(&refused, step, RQ_DISP_PARK, "404");
+  CHECK(refused.state == RQ_FAILED, "PARK parks");
+  CHECK(!rq_park_is_transient(&refused), "a server refusal is not transient");
+
+  rq_job_t bad;
+  CHECK(rq_job_init_slots(&bad, "3f2b9c11-4d8e-4a71-9f02-77c1de40ab58", "roll_x", slots, 4, true),
+        "third job builds");
+  for (int i = 0; i <= RQ_MAX_REREADS; i++) rq_apply(&bad, step, RQ_DISP_REREAD, "422");
+  CHECK(bad.state == RQ_FAILED, "exhausted re-reads park");
+  CHECK(!rq_park_is_transient(&bad), "exhausted re-reads are not transient");
+  CHECK(!rq_park_is_transient(NULL), "NULL is not a park");
+}
+
+/* Revive puts a park back in play exactly as UPLOAD_QUEUE_RETRY always did,
+ * and a revived job that fails again parks again after the same cap - so the
+ * automatic path is bounded the way the manual one is. */
+static void test_revive_round_trip(void) {
+  rq_job_t job;
+  const uint8_t slots[3] = {1, 3, 4};
+  CHECK(rq_job_init_slots(&job, "3f2b9c11-4d8e-4a71-9f02-77c1de40ab59", "roll_x", slots, 3, true),
+        "sparse job builds");
+  rq_step_t step = {.kind = RQ_STEP_REGISTER};
+  for (int i = 0; i < RQ_MAX_ATTEMPTS; i++) rq_apply(&job, step, RQ_DISP_RETRY, "connect");
+  CHECK(rq_park_is_transient(&job), "parked transient");
+  rq_job_revive(&job);
+  CHECK(job.state == RQ_RETRY_WAIT, "revived job waits");
+  CHECK(job.attempts == 0 && job.reread_attempts == 0 && job.next_attempt_ms == 0,
+        "revive clears the counters and the deadline");
+  CHECK(!rq_park_is_transient(&job), "a revived job is no longer a park");
+  CHECK(job.frame_slot[0] == 1 && job.frame_slot[1] == 3 && job.frame_slot[2] == 4,
+        "revive keeps the camera list");
+  for (int i = 0; i < RQ_MAX_ATTEMPTS; i++) rq_apply(&job, step, RQ_DISP_RETRY, "connect");
+  CHECK(job.state == RQ_FAILED && rq_park_is_transient(&job), "parks again after the cap");
+}
+
+
 int main(void) {
   test_forget_matrix();
   test_forget_is_shape_blind();
+  test_transient_park_predicate();
+  test_revive_round_trip();
   test_a_new_capture_reopens_the_cycle();
   test_a_refused_capture_is_still_owed();
   test_scan_cursor_basics();

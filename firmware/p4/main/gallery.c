@@ -1616,7 +1616,11 @@ esp_err_t gallery_init(void) {
    * critical section, and CPU0 owns the camera link ISRs with 1.39 ms of FIFO
    * slack. A rescan after a capture used to decode a page of tiles while the
    * finder was pulling four frames. */
-  if (xTaskCreatePinnedToCore(gallery_task, "gallery", 4096, NULL, 4, &s_task, 1) != pdPASS) {
+  /* 5 KB, not 4: the 4 KB stack measured 1,324 B minimum free idle and
+   * 1,248 B while the upload queue drained a hundred parked captures under
+   * the gallery (0.4.43 bench, 2026-09-05). One kilobyte of internal RAM
+   * buys the margin back; the budget (#162) holds at 87 KB free. */
+  if (xTaskCreatePinnedToCore(gallery_task, "gallery", 5120, NULL, 4, &s_task, 1) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
   taskmon_register("gallery", s_task);

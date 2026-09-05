@@ -600,7 +600,7 @@ by the `network` / `rollUpload` capability flags.
 | `NETWORK_DELETE` | `0xa2` | → `{ "ssid": "loft-guest" }` ← `{ "ok": true, "networks": [NetworkView] }` |
 | `NETWORK_STATUS` | `0xa3` | → `{}` ← `{ "state", "ssid", "ip", "rssi", "since", "internet" }` |
 | `ROLL_STATUS` | `0xa4` | → `{}` ← `RollView` |
-| `ROLL_CREATE` | `0xa5` | → `{ "name": "Friday party" }` ← `{ "rollId", "slug", "guestUrl", "name", "role" }` |
+| `ROLL_CREATE` | `0xa5` | → `{ "name": "Friday party" }` ← `RollView` (the reference device answers the full view; the five roll fields are inside `roll`) |
 | `ROLL_JOIN` | `0xa6` | → `{ "slug": "amber-001" }` (`code` accepted as an alias) ← `RollView` |
 | `ROLL_LEAVE` | `0xa7` | → `{}` ← `{ "ok": true, ...RollView }` |
 | `UPLOAD_QUEUE_STATUS` | `0xa8` | → `{}` ← `QueueReport` |
@@ -614,14 +614,32 @@ by the `network` / `rollUpload` capability flags.
 
 // QueueReport — upload queue counters. `draining` is true while the
 // device is actively working the queue on a timer.
-{ "pending": 12, "uploading": 1, "failed": 2, "uploaded": 118, "draining": true }
+//
+// `pending` is the device's ACTIVE WINDOW (32 jobs on the reference device),
+// not the card. `cardPending` is what the card still holds beyond that
+// window, and `scanComplete` says whether the card has been seen end to end
+// since boot - so "nothing left" is pending 0, cardPending 0, scanComplete
+// true, and anything else is "nothing loaded yet" (#166, #167). `failed` is
+// parked jobs, including ones parked on the card outside the window; a job
+// parked for a run of network failures is revived by the device itself when
+// the server answers again, a job the server refused waits for
+// UPLOAD_QUEUE_RETRY. `uploaded` counts since power-on. `halted` is not
+// `failed`: the jobs are fine and the credential or association is not.
+{ "pending": 12, "uploading": 1, "failed": 2, "uploaded": 118, "draining": true,
+  "cardPending": 640, "scanComplete": true, "halted": false, "lastError": null }
 
 // RollView — on a roll
 { "active": true,
   "roll": { "rollId": "roll_0001", "slug": "amber-001",
             "guestUrl": "https://kino.roll/amber-001", "name": "Friday party",
             "role": "host", "joinedAt": 1755301234567 },
-  "queue": { "pending": 12, "uploading": 1, "failed": 2, "uploaded": 118, "draining": true } }
+  "queue": { "pending": 12, "uploading": 1, "failed": 2, "uploaded": 118, "draining": true },
+  // Two fields beyond the Studio interface. `serverReachable` is false when
+  // the radio has no address OR the last HTTP exchange got no answer; it was
+  // the radio state alone until 0.4.43 and read true with the API stopped.
+  // `serverState` is offline | unknown (nothing tried since boot) |
+  // reachable | unreachable.
+  "serverReachable": true, "serverState": "reachable", "tokenStatus": "ok" }
 
 // RollView — NOT on a roll. This is the state a fresh device reports,
 // so it is the first one firmware bring-up hits. `roll` is null, not omitted,

@@ -3295,7 +3295,9 @@ static void draw_roll(void) {
      * screen is actually asking, which is what becomes of them. Photos on the
      * card are not stranded for want of a roll - they import over USB-C either
      * way - and saying so is the difference between a number and an answer. */
-    const int n = gallery_total();
+    /* The index's count, exact and from RAM - gallery_total() is the shown
+     * list's length, capped, and 0 before the first walk (gallery.h). */
+    const int n = gallery_media_count() < 0 ? 0 : gallery_media_count();
     well(RL_M, wy, UI_W - 2 * RL_M, wh);
     if (n > 0) {
       char line[56];
@@ -3389,19 +3391,39 @@ static void draw_roll(void) {
   /* Counts, as big numerals. `pending` is what has not reached the Roll yet,
    * and it is the number a host actually wants at a party. */
   char num[16];
-  const int total = gallery_total();
-  snprintf(num, sizeof num, "%d", total);
+  const int total = gallery_media_count();
+  if (total < 0) snprintf(num, sizeof num, "-");
+  else snprintf(num, sizeof num, "%d", total);
   y = roll_stat(y, num, total == 1 ? "PHOTO ON THE CARD" : "PHOTOS ON THE CARD");
 
+  /*
+   * What has not reached the Roll yet: the active window AND the captures
+   * still on the card that the window has no room for. `pending` alone is
+   * the size of a 32-entry buffer, and on a card with 700 waiting it read 0
+   * and fell through to "uploaded" (#166, #167). Until the card has been
+   * seen end to end since boot the number is a floor, and the label says so.
+   */
+  const int waiting = q.pending + q.card_pending;
   if (q.uploading > 0) {
     snprintf(num, sizeof num, "%d", q.uploading);
     y = roll_stat(y, num, "UPLOADING NOW");
-  } else if (q.pending > 0) {
-    snprintf(num, sizeof num, "%d", q.pending);
-    y = roll_stat(y, num, "WAITING TO UPLOAD");
+  } else if (waiting > 0) {
+    snprintf(num, sizeof num, "%d", waiting);
+    y = roll_stat(y, num, q.scan_complete ? "WAITING TO UPLOAD" : "WAITING, STILL COUNTING");
+  } else if (!q.scan_complete) {
+    y = roll_stat(y, "-", "COUNTING THE CARD");
   } else {
+    /* s_uploaded is a since-boot counter and says so; "uploaded to the
+     * roll" read as a lifetime total, which it never was. */
     snprintf(num, sizeof num, "%d", q.uploaded);
-    y = roll_stat(y, num, "UPLOADED TO THE ROLL");
+    y = roll_stat(y, num, "UPLOADED SINCE POWER ON");
+  }
+  if (q.failed > 0) {
+    /* Parked: the server refused them, or the network failed so often they
+     * stopped trying. The queue wakes the second kind by itself when the
+     * server answers again; the first kind waits for a retry from Studio. */
+    snprintf(num, sizeof num, "%d", q.failed);
+    y = roll_stat(y, num, "NOT UPLOADED, PARKED");
   }
 
   /*
@@ -3428,7 +3450,12 @@ static void draw_roll(void) {
   /* One phrase for whether anything is actually moving. "OFFLINE" with photos
    * waiting is a complete and honest description of this body today. */
   const char *link, *why;
-  if (online) {
+  if (online && q.server_state == UPLOAD_SERVER_UNREACHABLE) {
+    /* Wi-Fi up, server not answering. Was shown as ONLINE, because the only
+     * input was the radio; a dead API and a working one looked the same. */
+    link = "SERVER NOT ANSWERING";
+    why = "Wi-Fi is up. Uploads retry on their own.";
+  } else if (online) {
     link = "ONLINE";
     why = "Captures upload as they are taken.";
   } else if (!net.radio_routed) {
@@ -3994,7 +4021,13 @@ static void draw_storage(void) {
 
   draw_list_frame(5);
   draw_row(LIST_Y, false, false, true, "Card", sd.mounted ? capb : "None", false);
-  draw_row(LIST_Y + ROW_H, false, false, true, "Free space", sd.mounted ? freeb : "-", false);
+  /* Low space is said where the number is, not discovered at a failed
+   * shutter. 512 MB is about 650 four-camera captures at the bench median of
+   * 0.77 MB per capture; below it the row appends LOW. */
+  char freerow[40];
+  const bool low = sd.mounted && sd.free_bytes < (512ull << 20);
+  snprintf(freerow, sizeof freerow, "%s%s", sd.mounted ? freeb : "-", low ? "  LOW" : "");
+  draw_row(LIST_Y + ROW_H, false, false, true, "Free space", freerow, false);
   draw_row(LIST_Y + 2 * ROW_H, false, false, true, "Photos", wiping ? busy : cnt, false);
   /* Both destructive rows are live only with a card mounted, and neither is
    * live while the other is running: a FORMAT pressed into a running wipe
@@ -4002,8 +4035,12 @@ static void draw_storage(void) {
   draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, ST_IT_DELETE_ALL),
            s_pressed == ST_IT_DELETE_ALL, sd.mounted && !wiping && media > 0,
            "Delete all photos", NULL, true);
-  draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT,
-           sd.mounted && !wiping, "Format card", NULL, true);
+  /* Drawn dimmed: there is no format entry point in storage.c, and a live
+   * row that opens a confirm dialog and then says "not available" is a
+   * control that lies twice. The row stays so the layout and the hit test
+   * (row minus three) do not move. */
+  draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT, false,
+           "Format card", "Not available", false);
 
   /*
    * The 145 px under the list.
@@ -4312,7 +4349,7 @@ static void dialog_spec(dlg_spec_t *d) {
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
       break;
     case DLG_DELETE_ALL:
-      snprintf(sub, sizeof sub, "%d photos. This cannot be undone.", gallery_total());
+      snprintf(sub, sizeof sub, "%d photos. This cannot be undone.", gallery_media_count() < 0 ? 0 : gallery_media_count());
       /* "photos", and the sub line says how many, because that is the number a
        * person checks before pressing this. It says nothing about sounds,
        * looks or settings on purpose: they are not touched, and listing what
@@ -4320,7 +4357,7 @@ static void dialog_spec(dlg_spec_t *d) {
       *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
       break;
     case DLG_FORMAT:
-      snprintf(sub, sizeof sub, "All %d photos will be deleted.", gallery_total());
+      snprintf(sub, sizeof sub, "All %d photos will be deleted.", gallery_media_count() < 0 ? 0 : gallery_media_count());
       *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", sub, "FORMAT", true};
       break;
     default:
@@ -4442,7 +4479,11 @@ static void draw_capture_banner(void) {
     default:
       if (!r.ok) {
         for (int i = 0; i < 4; i++) st[i] = FM_LOST;
-        snprintf(line, sizeof line, "%s", r.err_code[0] ? r.err_code : "NO PHOTO");
+        /* The reason a person can act on, not the contract code. "Needs
+         * 4096 KB, 812 KB free" was computed for every failure and never
+         * drawn; SD_FULL was. The code stays in the log and the KDP reply. */
+        snprintf(line, sizeof line, "%.60s",
+                 r.err_msg[0] ? r.err_msg : (r.err_code[0] ? r.err_code : "NO PHOTO"));
         accent = C_BAD;
       } else {
         /* One cell per camera that actually delivered, and the rest marked
@@ -4764,6 +4805,9 @@ static void dialog_commit(void) {
         audio_warning();
         break;
       }
+      /* Queue first, files second, as Delete All does: a job left behind
+       * re-reads a missing asset to the retry cap and parks FAILED. */
+      upload_queue_forget(s_photo_id);
       storage_capture_delete(dir);
       storage_release(STORAGE_USER_UI);
       photo_release();
@@ -4916,15 +4960,16 @@ static void activate(int item) {
        * DELETE ALL could mean. */
       if (gallery_deleting()) break;
       if (item == ST_IT_DELETE_ALL) {
-        if (gallery_total() <= 0) {
+        if (gallery_media_count() <= 0) {
           toast("No photos on the card");
           break;
         }
         s_dialog = DLG_DELETE_ALL;
         s_dlg_focus = 0;
       } else if (item == ST_IT_FORMAT) {
-        s_dialog = DLG_FORMAT;
-        s_dlg_focus = 0;
+        /* Dimmed row; a press still lands here from the hit test. Say so
+         * without a confirm dialog for a thing that cannot happen. */
+        toast("Format is not available");
       }
       break;
 

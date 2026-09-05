@@ -16,6 +16,7 @@ Start with the question you need answered. The repository contains working contr
 | What is being built next? | [Roadmap](../ROADMAP.md) |
 | What is actively planned or in progress? | [GitHub Project workflow](PROJECT.md) |
 | How is a version released? | [Release guide](RELEASING.md) |
+| How is KINO Roll deployed to a server, backed up, restored? | [Infrastructure](../infra/README.md), [restore runbook](runbooks/restore.md), [observability](runbooks/observability.md) |
 | Which version changes when? | [Versioning](VERSIONING.md) |
 | Which license applies to a path? | [Root license map](../LICENSE) and [`REUSE.toml`](../REUSE.toml) |
 | How do I report a vulnerability? | [Security policy](../SECURITY.md) |
@@ -75,6 +76,7 @@ When two documents disagree, use this order:
 - `firmware/README.md`
 - `apps/api/README.md`
 - `docs/roll/*`
+- `infra/README.md` and `docs/runbooks/*`
 
 Update these when behavior changes.
 

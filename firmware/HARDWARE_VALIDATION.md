@@ -653,6 +653,97 @@ regression in capture latency.
 its enumeration has not been moved onto the index and no test matrix exists
 for it yet. No destructive operation was run; the card is intact.
 
+### Queue truth, automatic resume, and a console off the KDP endpoint - 0.4.43, 2026-09-05
+
+Software-completion phase. Bench: KD4-D121BC on COM8, four nodes on camnode
+0.4.38, dev API on the LAN (Docker Desktop had been off overnight, so the
+device had parked 105 captures as failed by the time the API came back - the
+outage was real, not staged).
+
+**USB integrity.** 0.4.42 showed `discardedBytes: 92` on one KDP call; that is
+console text on the KDP endpoint (`CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG`
+was set by IDF default). 0.4.43 with `CONFIG_ESP_CONSOLE_SECONDARY_NONE`:
+**0 discarded bytes, 0 resyncs over 39 calls** including GET_LOGS, MEDIA_INFO,
+ROLL_STATUS polling and a grouped capture. The reply-loss item that has been
+open since the first four-camera session is closed at its cause.
+
+**Automatic resume.** Before the flash: pending 0, failed 105, cardPending 0,
+scanComplete true, serverReachable true (with the API up again). After the
+flash, on 0.4.43: link-up revive found nothing (the card had not been counted
+yet); the first pass adopted 4 parked into RAM, counted 101 on the card; at
++10 min the probe woke one, the server answered, "3 parked job(s) back in
+play, 101 more on the card", the pass adopted 32, and the queue drained in
+waves of 32 at 3 to 4 uploads per 20 s: uploaded 4 -> 103, failed 101 -> 0,
+by 14:36. No button was pressed. The ten-minute wait at boot is closed in the
+same image by the first-complete-pass revive (code, unproven on the bench:
+by the time it was flashed nothing was parked). Backend: 80 rows in 40 min,
+80 distinct UUIDs, one Roll, 411 original frames for 103 captures, thumbs and
+stills present, **0 duplicate (rollId, captureUuid) pairs** over the whole
+table. Capture status columns read `processing` until a guest read converges
+them (lazy by design; the PWA feed does it).
+
+**serverState.** `unknown` at boot until the first exchange, `reachable`
+after; `serverReachable` now false when the server does not answer.
+
+**META commit.** A grouped capture on 0.4.43: 4/4, MEDIA_INFO shows the
+committed META with the Roll id, written through META.TMP and rename.
+
+**Resources.** Boot on 0.4.43: internal 93 KB free, minimum 83 KB, DMA 31 KB,
+reserve held; gallery task 4,564 B minimum free on the new 5 KB stack (was
+1,324 B idle and 1,248 B under the drain on 4 KB). Stack budget cost 1 KB of
+internal RAM.
+
+**Long offline test (Phase 16), 14:47 to 15:04.** Queue idle and card counted
+(MEDIA_LIST total 1448). Dev API process killed, Wi-Fi left up: 40 grouped
+captures, all accepted locally (4/4). During the outage `serverReachable`
+read false and `serverState` unreachable; the queue held 31 pending plus one
+in flight, parked nothing in the 60 s it was watched, spun on nothing. API
+restarted: `serverState` reachable within one poll, drain 1 to 2 uploads per
+16 s, the first window of 32 empty by 14:58, the remaining 8 adopted by 15:03
+and done by 15:04 (the five-minute gap is the pass cadence while the window
+sits empty and is the one latency worth trimming later). Final: pending 0,
+uploading 0, failed 0, cardPending 0, scanComplete true, uploaded 40.
+Backend: 40 rows for 40 UUIDs, 0 duplicates, every row on RRG8AZ with frames
+1,2,3,4. **OFFLINE HOLD and RECONNECT AUTO SEND: PASS.** MEDIA_LIST returned
+BUSY while the 40 captures were being written (the gallery held the card for
+its index writes) - expected contention, not a count error.
+
+**Roll switch during offline (Phase 17), 15:05 to 15:12.** ROLL_CREATE while
+on a Roll is refused (INVALID_STATE "Already on roll RRG8AZ"): the contract
+is leave, then create or join. ROLL_LEAVE (local, works offline) then
+ROLL_CREATE "prov-b-43" -> A9C3F8, joined. API killed; 6 captures on B while
+offline, `serverState` unreachable; ROLL_JOIN back to RRG8AZ while on B is
+refused with the same truthful message - switching needs the server, and the
+body says which Roll it is on. API back; LEAVE; JOIN RRG8AZ; 3 captures.
+Drain to pending 0, failed 0, cardPending 0, scanComplete true, uploaded 49.
+Backend: the 6 B captures are 6 rows on roll_eJ2j2cD75ARdpS8vViNNtw, the 3
+A captures are 3 rows on roll__Mg6PTKzfodtJ7zxCjBoNA, frames 1,2,3,4 each,
+0 duplicates, nothing relabelled by reconciliation. **ROLL SWITCH PROVENANCE:
+PASS.** The device is back on RRG8AZ (bench-local).
+
+**Soak (Phase 18), 15:12 to 15:20.** 40 grouped captures back to back on
+0.4.43 while the queue uploaded behind them: 40 of 40 complete 4/4, 2.9 to
+3.2 s per set (0.4.42 measured 3.8 s; the log text is off the USB link and
+the queue no longer fights the gallery for the card on every draw). Node
+deltas over the run: frames 0 (finder idle), shortRead 0, decode 0, UART
+errors 0, CRC 0, resyncs 0, timeouts 0; all four node sessions unchanged
+since 13:04 (boot-91, 20, 21, 17, power-on). Day total on this bench: 100
+grouped captures (10 on 0.4.42, 90 on 0.4.43) and 154 automatic uploads.
+
+**Closing snapshot, 15:20.** Internal 85 KB free, minimum 47 KB, largest DMA
+31 KB, recovery reserve held. Stacks: capture 5,780, kdp_server 1,864, ui
+2,568, gallery 2,224 B minimum free on the 5 KB stack (the 4 KB stack would
+have been at about 1.2 KB; #162 budget intact). MEDIA_LIST 3.3 s, total
+1537 = 1448 + 40 + 6 + 3 + 40, exact. Net: 0 transport errors, 0 reconnects,
+0 recoveries. Card 28,653 MB free, no error. Queue still draining the soak
+set (pending 23, uploading 1, failed 0) when the snapshot was taken.
+
+**Not seen from here.** The ROLL screen strings (WAITING TO UPLOAD, STILL
+COUNTING, NOT UPLOADED PARKED, SERVER NOT ANSWERING, UPLOADED SINCE POWER ON)
+and the LOW suffix on the Storage screen are drawn by code the host cannot
+read back; an operator glance at the ROLL screen during a drain is the visual
+confirmation still owed.
+
 ### Delete All removes what the index holds, and tells the queue first - 0.4.42, 2026-09-05
 
 **DELETE ALL CODE READY - DESTRUCTIVE TEST PENDING.** The wipe was reworked on

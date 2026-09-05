@@ -464,6 +464,29 @@ typedef enum {
  */
 rq_forget_t rq_forget_action(bool in_list, bool active);
 
+/**
+ * A job parked because the NETWORK kept failing, as opposed to one the
+ * server refused or whose bytes will not verify.
+ *
+ * RQ_FAILED is one state for two different histories. A 4xx (PARK) and an
+ * exhausted re-read (REREAD) mean repeating cannot help, and only the user
+ * can decide about them. A run of RQ_MAX_ATTEMPTS transient failures means
+ * the server was not there - a routed radio with the API down for an evening
+ * parks every capture in exactly this way (bench 2026-09-05: 105 of them).
+ * Those photographs owe nobody a button: when the server answers again they
+ * should go. This is the predicate that separates the two, from fields the
+ * record already persists.
+ */
+bool rq_park_is_transient(const rq_job_t *job);
+
+/**
+ * Put a parked or waiting job back in play: attempts cleared, due now,
+ * RETRY_WAIT so rq_next_step() re-enters from the completion flags. What
+ * UPLOAD_QUEUE_RETRY has always done to every job; now also what the queue
+ * does by itself to a transient park when the server comes back.
+ */
+void rq_job_revive(rq_job_t *job);
+
 
 
 /**

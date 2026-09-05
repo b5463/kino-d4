@@ -148,7 +148,7 @@ void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
 
 /* Every file of a capture a HOST may read. Shared by the delete path and the
  * MEDIA_READ allow-list so the two cannot drift. */
-#define STORAGE_CAPTURE_FILE_COUNT 6
+#define STORAGE_CAPTURE_FILE_COUNT 7
 extern const char *const STORAGE_CAPTURE_FILES[STORAGE_CAPTURE_FILE_COUNT];
 
 /*

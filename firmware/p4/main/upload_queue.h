@@ -67,6 +67,17 @@
 
 /** What `UPLOAD_QUEUE_STATUS` reports. Mirrors `UploadQueueReport` in
  * apps/studio/src/roll/rollTypes.ts. */
+/* What the last HTTP exchange said about the server, as distinct from what
+ * the radio says about the network. UNKNOWN until a step has been tried since
+ * boot; a connect failure or timeout is UNREACHABLE; any HTTP status at all -
+ * a 500 included - is REACHABLE, because a server that answers is one the
+ * queue can talk to. */
+typedef enum {
+  UPLOAD_SERVER_UNKNOWN = 0,
+  UPLOAD_SERVER_REACHABLE,
+  UPLOAD_SERVER_UNREACHABLE,
+} upload_server_state_t;
+
 typedef struct {
   int pending;   /* queued, not yet settled, not currently in flight */
   int uploading; /* the job the worker is on: 0 or 1 */
@@ -88,6 +99,7 @@ typedef struct {
   /** True when the queue is stopped on a credential or association fault.
    * Distinct from `failed`: the jobs are fine, the device is not. */
   bool halted;
+  upload_server_state_t server_state; /* see upload_server_state_t */
   /** Redacted, and safe to show on the display or send over KDP. */
   char last_error[RQ_ERROR_LEN];
 } upload_queue_report_t;

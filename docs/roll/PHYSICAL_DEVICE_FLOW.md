@@ -208,5 +208,7 @@ in [`ROLL_GUEST_ACCEPTANCE_TESTS.md`](ROLL_GUEST_ACCEPTANCE_TESTS.md) with no
 Roll or API change, and passes the outage drill — two captures taken while the
 server is down appear exactly once each after it returns.
 
-That test cannot run until the transport exists. The part of it that can be
-checked without hardware is checked: `make -C firmware/p4/host_tests test-queue`.
+That test has run on hardware: 42 captures taken with the API down uploaded by
+themselves when it returned (0.4.36, `firmware/HARDWARE_VALIDATION.md`), and
+0.4.43 revives jobs the outage parked without a button press. The host half is
+`make -C firmware/p4/host_tests test-queue`.

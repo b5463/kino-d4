@@ -1,6 +1,6 @@
 # Roll device contract
 
-What physical D4 firmware must implement to upload captures directly to KINO Roll. This is the target for the future Wi-Fi/Roll-upload firmware milestone. It is NOT part of Milestone 1: the shipped 0.1.0 firmware has no network stack and reports `rollUpload: false`, `network: false`.
+What physical D4 firmware implements to upload captures directly to KINO Roll. Implemented and proven on hardware since firmware 0.4.4 (first photographs on a real backend) and 0.4.36 (automatic drain of 166 captures after an outage); the reference implementation is `firmware/p4/main/upload_queue.c`, `roll_api.c`, `roll_queue.c`. The paragraph that stood here until 2026-09-05 described the 0.1.0 firmware with no network stack; that firmware is history.
 
 Until that milestone, the Twin development bridge (`apps/twin/src/roll/bridge.ts`) implements this exact contract in the browser, against the real API. The `infra/scripts/test-uploader.ts` and `infra/scripts/party-sim.ts` scripts implement it from Node. All three exist so the firmware team inherits a proven wire contract, not a design document.
 
