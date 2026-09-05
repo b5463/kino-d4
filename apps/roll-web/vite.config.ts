@@ -40,7 +40,9 @@ export default defineConfig({
         theme_color: '#174e98',
         background_color: '#e9edf2',
         display: 'standalone',
-        start_url: '.',
+        // The landing page: an installed app opens on "enter a roll code",
+        // not on whatever route it happened to be installed from.
+        start_url: '/',
         // The D4 badge from the KINO wordmark, white on the header blue. The
         // "kino" word was the other candidate and lost on measurement: at
         // 5.8:1 it is an unreadable smear in a 48px launcher tile, while the

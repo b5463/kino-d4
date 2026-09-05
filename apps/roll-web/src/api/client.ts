@@ -1,4 +1,5 @@
 import { ASSET_ROLES } from '@kino/schemas';
+import { parseCaptureDetail, parseFeedPage } from './validate';
 
 /**
  * The typed client the guest feed, capture detail and PIN gate are built
@@ -120,6 +121,14 @@ export function isNoRollError(error: unknown): boolean {
 
 export function isMissingCaptureError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404 && error.code === 'CAPTURE_NOT_FOUND';
+}
+
+/** A 2xx whose body is not the shape this client was written against. */
+export class MalformedPayloadError extends Error {
+  constructor(what: string) {
+    super(`the API answered with a ${what} this app cannot read`);
+    this.name = 'MalformedPayloadError';
+  }
 }
 
 /**
@@ -278,11 +287,7 @@ export function createRollApi(baseUrl = ''): RollApi {
       // page size other than the default turns out to be needed.
       const qs = params.toString();
 
-      const data = await requestJson<{
-        items: CaptureView[];
-        nextCursor: string | null;
-        hasMore: boolean;
-      }>(
+      const data = await requestJson<unknown>(
         joinUrl(
           baseUrl,
           `/api/rolls/${encodeURIComponent(slug)}/captures${qs === '' ? '' : `?${qs}`}`,
@@ -291,15 +296,15 @@ export function createRollApi(baseUrl = ''): RollApi {
         slug,
       );
 
-      return {
-        items: data.items,
-        nextCursor: data.nextCursor ?? undefined,
-        hasMore: data.hasMore,
-      };
+      // Checked, not cast: one malformed capture is dropped from the page
+      // (see `parseFeedPage`), a malformed page is an error the caller shows.
+      const page = parseFeedPage(data);
+      if (page === null) throw new MalformedPayloadError('feed page');
+      return page;
     },
 
     async getCapture(slug, id) {
-      return requestJson<CaptureDetail>(
+      const data = await requestJson<unknown>(
         joinUrl(
           baseUrl,
           `/api/rolls/${encodeURIComponent(slug)}/captures/${encodeURIComponent(id)}`,
@@ -307,6 +312,9 @@ export function createRollApi(baseUrl = ''): RollApi {
         undefined,
         slug,
       );
+      const capture = parseCaptureDetail(data);
+      if (capture === null) throw new MalformedPayloadError('capture');
+      return capture;
     },
 
     assetUrl(assetId, options) {

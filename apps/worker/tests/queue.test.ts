@@ -276,6 +276,56 @@ describe('independence: one failure touches nothing else (07 §26)', () => {
   });
 });
 
+/**
+ * The dev log at boot: `render-social-formats` jobs for captures a test suite had
+ * already deleted, each failing "could not record a failed attempt" once per
+ * attempt. The `running` insert hits the capture foreign key before the handler
+ * runs, the failure cannot be recorded for the same reason, and BullMQ retried
+ * the whole thing five times. A capture that is gone is not coming back.
+ */
+describe('a job whose capture row no longer exists is dropped, not retried', () => {
+  it('completes without running the handler, writes no rows, and warns once', async () => {
+    const missing = `cap_t22_${RUN}_missing`;
+    const warnings: string[] = [];
+    const errors: Error[] = [];
+    // Five attempts on purpose: the bug was that all five ran.
+    const queue = newQueue({
+      attempts: 5,
+      backoffDelay: 5,
+      onWarn: (message) => warnings.push(message),
+      onError: (err) => errors.push(err),
+    });
+    const jobKey = `${missing}:render-social-formats`;
+
+    let runs = 0;
+    queue.registerHandler('render-social-formats', async () => {
+      runs += 1;
+    });
+
+    await queue.enqueue('render-social-formats', { captureId: missing, jobKey });
+    queue.start(runtime.ctx);
+
+    await waitFor('the job to settle', async () => {
+      const job = await queue.queue.getJob(jobKeyToJobId(jobKey));
+      return (await job?.isCompleted()) === true || (await job?.isFailed()) === true;
+    });
+
+    const job = await queue.queue.getJob(jobKeyToJobId(jobKey));
+    // Complete, not failed: dropped is a verdict, and a failed job would sit in
+    // Redis for a week saying something went wrong that nobody can act on.
+    expect(await job?.isCompleted()).toBe(true);
+    expect(job?.attemptsMade).toBe(1);
+    expect(runs).toBe(0);
+
+    expect(await eventsFor(missing)).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(missing);
+    expect(warnings[0]).toContain('render-social-formats');
+    // And nothing reached the error sink — the old path logged there once per attempt.
+    expect(errors).toEqual([]);
+  });
+});
+
 describe('retry policy', () => {
   it('stops at the configured attempt count', async () => {
     const captureId = await newCapture();

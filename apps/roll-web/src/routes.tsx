@@ -3,18 +3,19 @@ import { RollFeedPage } from './pages/RollFeedPage';
 import { RollDisplayPage } from './pages/RollDisplayPage';
 import { CaptureDetailPage } from './pages/CaptureDetailPage';
 import { HostDashboardPage } from './pages/HostDashboardPage';
+import { LandingPage } from './pages/LandingPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 /**
- * The three routes this task wires up. No router dependency was named for
+ * Five routes: the landing page at `/`, the guest feed, one capture, the
+ * display mode and the host dashboard. No router dependency was named for
  * roll-web (`react`, `react-dom`, `@tanstack/react-virtual`, `vite-plugin-pwa`,
  * `@kino/schemas`, `@kino/media` is the full list), so this is a small
- * hand-rolled matcher rather than an unlisted `react-router-dom` — Tasks
- * 27-31 build the real pages behind these three matches; this task only
- * proves the paths resolve to something.
+ * hand-rolled matcher rather than an unlisted `react-router-dom`.
  */
 
 export type Route =
+  | { name: 'landing' }
   | { name: 'roll-feed'; slug: string }
   | { name: 'roll-display'; slug: string }
   | { name: 'capture-detail'; slug: string; captureId: string }
@@ -28,6 +29,10 @@ function segment(raw: string): string {
 
 export function matchRoute(pathname: string): Route {
   const parts = pathname.split('/').filter((part) => part !== '');
+
+  if (parts.length === 0) {
+    return { name: 'landing' };
+  }
 
   if (parts[0] === 'host' && parts.length === 1) {
     return { name: 'host-dashboard' };
@@ -83,6 +88,8 @@ export function AppRoutes() {
   }, [surface]);
 
   switch (route.name) {
+    case 'landing':
+      return <LandingPage />;
     case 'roll-feed':
       return <RollFeedPage slug={route.slug} />;
     case 'roll-display':

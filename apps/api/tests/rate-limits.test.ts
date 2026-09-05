@@ -6,7 +6,8 @@ import { buildServer } from '../src/server';
 import { loadConfig } from '../src/config';
 import { newToken } from '../src/auth/tokens';
 import { RATE_LIMITS } from '../src/plugins/rateLimits';
-import { devices } from '../src/db/schema';
+import { guestMissKey } from '../src/routes/guest-rolls';
+import { auditEvents, devices, rolls } from '../src/db/schema';
 
 const suffix = randomBytes(2).readUInt16BE(0);
 const ip = (offset: number): string => `10.${(suffix >> 8) & 255}.${suffix & 255}.${offset}`;
@@ -68,6 +69,37 @@ describe('shared production rate limits', () => {
     );
   });
 
+  it('limits the device status poll to 120 requests per minute and bearer token', async () => {
+    await exhaust(
+      {
+        method: 'GET',
+        url: '/api/device/captures/cap_rate_limit_missing/status',
+        headers: {
+          authorization: `Bearer ${newToken('kdt')}`,
+          'x-forwarded-for': ip(5),
+        },
+      },
+      RATE_LIMITS.deviceRead.max,
+    );
+  });
+
+  it('limits the device roll list to 120 requests per minute and bearer token', async () => {
+    // Its own counter: `@fastify/rate-limit` keys the Redis store per route
+    // (`RedisStore.child` appends method and URL), so a `groupId` names a
+    // budget, it does not pool one across routes.
+    await exhaust(
+      {
+        method: 'GET',
+        url: '/api/device/rolls/current',
+        headers: {
+          authorization: `Bearer ${newToken('kdt')}`,
+          'x-forwarded-for': ip(6),
+        },
+      },
+      RATE_LIMITS.deviceRead.max,
+    );
+  });
+
   it('locks a device out for an hour after ten unknown Roll join codes', async () => {
     const registered = await app.inject({
       method: 'POST',
@@ -111,5 +143,80 @@ describe('shared production rate limits', () => {
       await app.redis.del(`join-misses:${device.deviceId}`);
       await app.db.delete(devices).where(eq(devices.id, device.deviceId));
     }
+  });
+});
+
+/**
+ * The guest slug oracle. Ten unknown slugs from one address lock that address
+ * out of `GET /api/rolls/:slug` for an hour, and while locked a *real* slug
+ * gets the very same 404 — a distinct answer would be a second oracle.
+ */
+describe('guest slug miss lock', () => {
+  const missBody = { code: 'ROLL_NOT_FOUND', message: 'no roll with that slug' };
+  let rollId = '';
+  let slug = '';
+
+  beforeAll(async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/host/rolls',
+      headers: { 'x-forwarded-for': ip(7) },
+      payload: { title: `Miss lock ${suffix}` },
+    });
+    expect(created.statusCode).toBe(201);
+    ({ rollId, slug } = created.json<{ rollId: string; slug: string }>());
+  });
+
+  afterAll(async () => {
+    // ip(2) is the guest-read exhaustion above: 301 misses leave a lock behind.
+    await app.redis.del(guestMissKey(ip(2)), guestMissKey(ip(8)), guestMissKey(ip(9)));
+    await app.db.delete(auditEvents).where(eq(auditEvents.rollId, rollId));
+    await app.db.delete(rolls).where(eq(rolls.id, rollId));
+  });
+
+  it('answers the same 404 for a real slug once an address has missed ten times', async () => {
+    const headers = { 'x-forwarded-for': ip(8) };
+
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      const miss = await app.inject({ method: 'GET', url: `/api/rolls/ZZZZ${attempt}`, headers });
+      expect(miss.statusCode).toBe(404);
+      expect(miss.json()).toEqual(missBody);
+    }
+    expect(await app.redis.get(guestMissKey(ip(8)))).toBe('10');
+    // The count carries its hour.
+    expect(await app.redis.ttl(guestMissKey(ip(8)))).toBeGreaterThan(3500);
+
+    // Locked: the roll exists, the answer says it does not, byte for byte.
+    const locked = await app.inject({ method: 'GET', url: `/api/rolls/${slug}`, headers });
+    expect(locked.statusCode).toBe(404);
+    expect(locked.json()).toEqual(missBody);
+
+    // Another address is unaffected — the lock is per caller, not per roll.
+    const other = await app.inject({
+      method: 'GET',
+      url: `/api/rolls/${slug}`,
+      headers: { 'x-forwarded-for': ip(10) },
+    });
+    expect(other.statusCode).toBe(200);
+  });
+
+  it('clears the count on a hit, so hand-typed mistakes stay forgiving', async () => {
+    const headers = { 'x-forwarded-for': ip(9) };
+
+    for (let attempt = 1; attempt <= 9; attempt += 1) {
+      const miss = await app.inject({ method: 'GET', url: `/api/rolls/YYYY${attempt}`, headers });
+      expect(miss.statusCode).toBe(404);
+    }
+    expect(await app.redis.get(guestMissKey(ip(9)))).toBe('9');
+
+    const hit = await app.inject({ method: 'GET', url: `/api/rolls/${slug}`, headers });
+    expect(hit.statusCode).toBe(200);
+    expect(await app.redis.get(guestMissKey(ip(9)))).toBeNull();
+
+    // And the tenth miss after a hit is the first of a new count, not a lock.
+    const again = await app.inject({ method: 'GET', url: '/api/rolls/YYYY10', headers });
+    expect(again.statusCode).toBe(404);
+    const stillOpen = await app.inject({ method: 'GET', url: `/api/rolls/${slug}`, headers });
+    expect(stillOpen.statusCode).toBe(200);
   });
 });

@@ -41,8 +41,9 @@ describe('matchRoute', () => {
     expect(matchRoute('/r/abc123/')).toEqual({ name: 'roll-feed', slug: 'abc123' });
   });
 
-  it('falls back to not-found for the root path', () => {
-    expect(matchRoute('/')).toEqual({ name: 'not-found', pathname: '/' });
+  it('matches the landing page at the root path', () => {
+    expect(matchRoute('/')).toEqual({ name: 'landing' });
+    expect(matchRoute('')).toEqual({ name: 'landing' });
   });
 
   it('falls back to not-found for an unrelated path', () => {

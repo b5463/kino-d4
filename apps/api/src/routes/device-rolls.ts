@@ -6,7 +6,11 @@ import { createRoll, guestUrlFor } from '../rolls/rolls';
 import { SLUG_PATTERN, normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls } from '../db/schema';
 import { fail, invalidBody } from './errors';
-import { deviceCreateRateLimit, deviceJoinRateLimit } from '../plugins/rateLimits';
+import {
+  deviceCreateRateLimit,
+  deviceJoinRateLimit,
+  deviceReadRateLimit,
+} from '../plugins/rateLimits';
 
 /**
  * Rolls as the camera sees them (03 §8, 03 §17).
@@ -155,7 +159,7 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
    * touchscreen. Assigned means created-by *or* joined, which is the same OR
    * that `requireDeviceRoll` enforces; open means `live`.
    */
-  app.get('/api/device/rolls/current', { preHandler: app.requireDevice }, async (request) => {
+  app.get('/api/device/rolls/current', { config: deviceReadRateLimit, preHandler: app.requireDevice }, async (request) => {
     const deviceId = deviceOf(request).id;
 
     const rows = await app.db

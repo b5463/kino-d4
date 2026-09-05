@@ -29,7 +29,7 @@ import { newId } from '../ids';
 import { assets, captures, devices, rollDevices, rolls, uploadSessions } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
 
-import { deviceUploadRateLimit } from '../plugins/rateLimits';
+import { deviceReadRateLimit, deviceUploadRateLimit } from '../plugins/rateLimits';
 
 /**
  * Capture-time provenance (audit #59). `kino.capture` is passthrough by
@@ -325,11 +325,11 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
    * would tell a camera its capture did not complete when it did. What it costs
    * is real and worth naming — a job whose row exists but whose BullMQ entry was
    * never added will not be retried by a later complete, because the row is what
-   * makes the second call a no-op. Reconciling that (re-submitting `queued` rows
-   * with no live job) needs a sweeper, and a sweeper is not this task.
-   *
-   * Deferred, deliberately, and recorded here so it is not rediscovered: the
-   * queued-row reconcile sweeper is audit API-14 and is not built.
+   * makes the second call a no-op. Reconciling that is the worker's sweeper
+   * (`apps/worker/src/sweeper.ts`, audit API-14): every five minutes it re-adds
+   * the job for any `queued` row older than two minutes that BullMQ does not
+   * hold under the row's jobId. So a swallowed failure here costs minutes, not
+   * a capture pinned in `processing`.
    */
   async function submit(jobs: readonly QueuedJob[]): Promise<void> {
     if (jobs.length === 0) return;
@@ -486,7 +486,7 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
 
   app.get(
     '/api/device/captures/:captureId/status',
-    { preHandler: app.requireDevice },
+    { config: deviceReadRateLimit, preHandler: app.requireDevice },
     async (request, reply) => {
       const ctx = await requireCapture(app, request, reply);
       if (ctx === null) return reply;

@@ -156,6 +156,18 @@ services:
       MINIO_PROMETHEUS_AUTH_TYPE: public
       S3_BUCKET: ${S3_BUCKET:-kino-media}
       S3_FIRMWARE_BUCKET: ${S3_FIRMWARE_BUCKET:-kino-firmware}
+      # Incomplete multipart uploads (audit API-13). A camera that loses power
+      # mid-transfer leaves parts nobody completes and nobody aborts; the API's
+      # own abort is best effort (apps/api/src/uploads/sessions.ts). MinIO does
+      # NOT accept an S3 lifecycle rule for this: on this release an
+      # AbortIncompleteMultipartUpload-only rule is refused as malformed XML by
+      # both `mc ilm import` and the S3 API, and the element is silently dropped
+      # when it rides along with an Expiration (verified against the pinned
+      # images). The server's own sweeper is the knob instead. Both values are
+      # MinIO's defaults, pinned here so the policy is in the repo and not in a
+      # default that can move between releases.
+      MINIO_API_STALE_UPLOADS_EXPIRY: 24h
+      MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL: 6h
     volumes: [miniodata:/data]
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']

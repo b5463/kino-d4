@@ -89,6 +89,15 @@ async function requestRender(
   return { statusCode: res.statusCode, body: res.json<Record<string, unknown>>() };
 }
 
+async function storedStatus(captureId: string): Promise<string> {
+  const [row] = await app.db
+    .select({ status: schema.captures.status })
+    .from(schema.captures)
+    .where(eq(schema.captures.id, captureId));
+  if (row === undefined) throw new Error(`capture ${captureId} vanished`);
+  return row.status;
+}
+
 async function eventRowsFor(captureId: string, job: string): Promise<{ status: string }[]> {
   return app.db
     .select({ status: schema.processingEvents.status })
@@ -211,6 +220,57 @@ describe('POST /api/rolls/:slug/captures/:captureId/renders', () => {
       expect(res.statusCode).toBe(400);
       expect(res.body['code']).toBe('ROLE_NOT_RENDERABLE');
     }
+  });
+
+  /**
+   * The trap on `convergeCaptureStatus`: reads skip settled rows, so a job
+   * queued against a `ready` capture was invisible — the capture stayed `ready`
+   * while the render ran and stayed `ready` if the render was abandoned. The
+   * route now recomputes right after the enqueue.
+   */
+  it('moves a ready capture to processing, and to partial once the render is abandoned', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    expect(await storedStatus(captureId)).toBe('ready');
+
+    const res = await requestRender(roll.slug, captureId, 'social-4x5');
+    expect(res.statusCode).toBe(202);
+    // The `queued` row is now the capture's latest job state. A live dev worker
+    // may already have appended `running`/`failed` — every one of those reads
+    // as `processing` too.
+    expect(await storedStatus(captureId)).toBe('processing');
+
+    // The worker's give-up, as `markJobAbandoned` writes it: retire the enqueue
+    // row, append `abandoned`. The timestamp is an hour ahead so a live dev
+    // worker's own retry rows for this job cannot outrank it and make the
+    // assertion below a race.
+    const settledAt = new Date(Date.now() + 60 * 60 * 1000);
+    await app.db
+      .update(schema.processingEvents)
+      .set({ status: 'superseded' })
+      .where(
+        and(
+          eq(schema.processingEvents.captureId, captureId),
+          eq(schema.processingEvents.status, 'queued'),
+        ),
+      );
+    await app.db.insert(schema.processingEvents).values({
+      id: newId('pev'),
+      captureId,
+      job: 'render-social-formats',
+      status: 'abandoned',
+      error: 'test: attempts exhausted',
+      at: settledAt,
+    });
+
+    // `processing` is non-terminal, so an ordinary guest read converges it.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/rolls/${roll.slug}/captures/${captureId}`,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json<{ status: string }>().status).toBe('partial');
+    expect(await storedStatus(captureId)).toBe('partial');
   });
 
   it('404s a capture that does not exist on this roll', async () => {

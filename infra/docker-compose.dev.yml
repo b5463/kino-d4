@@ -54,6 +54,11 @@ services:
     environment:
       MINIO_ROOT_USER: kino
       MINIO_ROOT_PASSWORD: kino-secret
+      # Same stale-multipart sweep as prod (see the note there): MinIO refuses
+      # an abort-incomplete-multipart lifecycle rule, so the server setting is
+      # the policy. Pinned so dev and prod reclaim orphaned parts on one clock.
+      MINIO_API_STALE_UPLOADS_EXPIRY: 24h
+      MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL: 6h
     ports: ['9000:9000', '9001:9001']
     volumes: [miniodata:/data]
     healthcheck:

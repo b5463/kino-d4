@@ -199,16 +199,17 @@ export interface StillSource {
  *    exclusion lives *here*, in the rule, rather than at each call site: it is
  *    one hazard, and a fourth caller (Task 24's renders) inherits the fix instead
  *    of having to remember it.
- * 2. **Otherwise the frame at `floor(frameCount / 2)`.** Frame indices are
- *    1-based (`cam-01.jpg`), so four cameras give frame 2 — the centre-ish
- *    viewpoint, which on the V1 rig is also the metering camera. Deriving it
- *    from `frame_count` rather than from the rows means a capture that lost a
- *    frame still yields the same viewpoint choice, which keeps a re-run
- *    byte-identical.
- * 3. **If that exact frame is not stored, the nearest one that is.** A capture
- *    missing its middle frame still deserves a thumbnail; refusing would leave
- *    the tile blank forever over one lost upload. Ties break towards the lower
- *    index, so the choice is deterministic.
+ * 2. **Otherwise the lower median of the frames actually stored**, ordered by
+ *    `frameIndex`. Four stored cameras `[1,2,3,4]` give camera 2 — the
+ *    centre-ish viewpoint, which on the V1 rig is also the metering camera. A
+ *    sparse `[1,3,4]` gives camera 3, the middle of what there is.
+ *
+ *    It used to be "the frame nearest `floor(frameCount / 2)`", which compared a
+ *    *count* against a camera *number* and only agreed with this by coincidence
+ *    at four frames: a capture that lost camera 2 fell back to camera 1, an
+ *    edge viewpoint, when camera 3 was right there. Reading the rows keeps the
+ *    rule about the pictures that exist. A re-run over the same rows is still
+ *    byte-identical, because the rows are the only input.
  */
 export function stillSource(capture: CaptureIdentity, rows: readonly AssetRow[]): StillSource {
   const ownKey = workerStillKey(capture);
@@ -217,18 +218,12 @@ export function stillSource(capture: CaptureIdentity, rows: readonly AssetRow[])
   );
   if (uploaded !== undefined) return { key: uploaded.objectKey, frameIndex: null };
 
+  // `originalFrames` already sorts by frameIndex ascending.
   const frames = originalFrames(rows);
-  if (frames.length === 0) {
+  // Lower median: index 1 of four, index 1 of three, index 0 of one or two.
+  const best = frames[Math.floor((frames.length - 1) / 2)];
+  if (best === undefined) {
     throw new Error(`capture ${capture.id} has no stored original frame to derive from`);
-  }
-
-  const wanted = Math.floor(capture.frameCount / 2);
-  let best = frames[0];
-  if (best === undefined) throw new Error(`capture ${capture.id} has no stored original frame`);
-  for (const frame of frames) {
-    const distance = Math.abs((frame.frameIndex ?? 0) - wanted);
-    const bestDistance = Math.abs((best.frameIndex ?? 0) - wanted);
-    if (distance < bestDistance) best = frame;
   }
   return { key: best.objectKey, frameIndex: best.frameIndex };
 }

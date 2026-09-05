@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { HostApi, HostCaptureView, HostRollEvent, HostRollView } from '../api/hostClient';
 import { Button, Panel, StatusLamp, ToolbarFrame } from '@kino/design-system';
 import kinoRoll from '../assets/kino-roll-dark.png';
+import { SafeImage } from '../components/SafeImage';
 
 export interface HostDashboardProps {
   api: HostApi;
@@ -318,7 +319,7 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
             const deleted = capture.deletedAt !== null;
             return (
               <article key={capture.captureId} data-capture-id={capture.captureId} data-muted={!capture.visible || deleted} className="host-capture">
-                {poster === null || !capture.visible || deleted ? <div className="host-capture-placeholder">{deleted ? 'In trash' : capture.visible ? 'Processing' : 'Hidden'}</div> : <img className="roll-media" src={api.assetUrl(poster)} alt="" loading="lazy" />}
+                {poster === null || !capture.visible || deleted ? <div className="host-capture-placeholder">{deleted ? 'In trash' : capture.visible ? 'Processing' : 'Hidden'}</div> : <SafeImage className="roll-media" src={api.assetUrl(poster)} alt="" loading="lazy" />}
                 <div className="host-capture-meta"><strong>{capture.mode}</strong> · {new Date(capture.capturedAt).toLocaleTimeString()}</div>
                 {!capture.visible ? <span>HIDDEN</span> : null}
                 {deleted ? <span> · TRASHED</span> : null}

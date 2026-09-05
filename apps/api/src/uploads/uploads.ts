@@ -385,10 +385,13 @@ async function convergeRow(
  * extra work by the number of *unsettled* captures on the page.
  *
  * The corollary is a trap for a future caller: a job enqueued *lazily* against an
- * already-terminal capture (`render-wiggle-mp4` and `render-contact-sheet`, which
- * `plannedJobs` leaves out for Task 22 to queue on first request) will never be
- * picked up by a read, because reads skip terminal rows. Whoever adds such a site
- * must call `recomputeCaptureStatus` itself when that job settles.
+ * already-terminal capture will never be picked up by a read, because reads skip
+ * terminal rows. Whoever adds such a site must call `recomputeCaptureStatus`
+ * right after the enqueue: the `queued` row moves the capture back to
+ * `processing`, which is non-terminal, and from there the ordinary read-time
+ * convergence settles it again when the job lands or is abandoned. The two sites
+ * that exist — the guest render request (`guest-captures.ts`) and the host's
+ * playback PATCH (`host-captures.ts`) — both do this.
  */
 export async function convergeCaptureStatus(
   db: KinoDatabase,

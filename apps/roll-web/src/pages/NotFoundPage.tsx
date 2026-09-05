@@ -2,7 +2,7 @@ export interface NotFoundPageProps {
   pathname: string;
 }
 
-/** Anything outside `/r/:slug`, `/r/:slug/c/:captureId` and `/host`. */
+/** Anything outside `/`, `/r/:slug`, `/r/:slug/display`, `/r/:slug/c/:captureId` and `/host`. */
 export function NotFoundPage({ pathname }: NotFoundPageProps) {
   return (
     <main className="k-gate">

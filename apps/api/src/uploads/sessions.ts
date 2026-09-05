@@ -183,12 +183,13 @@ export async function openSession(
  * Abandons a multipart upload. Best effort: an orphaned upload costs storage, a
  * failed abort must not cost the device its retry.
  *
- * Best effort is exactly as far as this goes, and the other half is **deferred**:
- * a bucket lifecycle rule that aborts incomplete multipart uploads after a few
- * days is the only thing that reclaims the parts of an upload nobody ever
- * completed and nobody ever aborted — a camera that lost power mid-transfer.
- * That is a bucket policy, not application code, so it belongs with the storage
- * configuration in `infra/`; recorded here as audit API-13 and not built.
+ * Best effort is exactly as far as this goes. The other half — reclaiming the
+ * parts of an upload nobody ever completed and nobody ever aborted, a camera
+ * that lost power mid-transfer — is storage policy, not application code, and
+ * lives in `infra/docker-compose.*.yml` (audit API-13): MinIO's own stale-upload
+ * sweep, `MINIO_API_STALE_UPLOADS_EXPIRY=24h`, pinned on the server. Not an S3
+ * lifecycle rule, because this MinIO release refuses an
+ * `AbortIncompleteMultipartUpload`-only rule; the compose note has the detail.
  */
 async function abortQuietly(
   app: FastifyInstance,

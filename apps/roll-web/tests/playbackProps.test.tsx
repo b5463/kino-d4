@@ -23,6 +23,7 @@ vi.mock('../src/components/WigglePlayer', () => ({
 
 // Imported after the mock so the page binds to the recorder.
 const { CaptureDetail } = await import('../src/pages/CaptureDetail');
+const { playerPlayback } = await import('../src/components/playback');
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,8 +43,8 @@ function capture(playback: CaptureDetailView['playback']): CaptureDetailView {
     reacted: false,
     assets: Array.from({ length: 4 }, (_unused, index) => ({
       role: 'original-frame',
-      assetId: `asset_${String(index)}`,
-      frameIndex: index,
+      assetId: `asset_${String(index + 1)}`,
+      frameIndex: index + 1,
       mime: 'image/jpeg',
       bytes: 100,
       width: 1600,
@@ -107,6 +108,27 @@ describe('playback props reach the wiggle player', () => {
 
   it('defaults to bounce with no stored choice', async () => {
     await render(capture(null));
-    expect(seen.at(-1)).toMatchObject({ fps: undefined, loop: 'bounce' });
+    expect(seen.at(-1)).toMatchObject({ fps: undefined, loop: 'bounce', direction: 'ltr' });
+  });
+
+  it('passes the stored direction through', async () => {
+    await render(capture({ direction: 'rtl' }));
+    expect(seen.at(-1)).toMatchObject({ direction: 'rtl' });
+  });
+});
+
+describe('playerPlayback', () => {
+  // The display page used to hand the player only frames and a poster; this
+  // one helper is what every caller spreads, so none of them can forget.
+  it('maps a full stored choice', () => {
+    expect(playerPlayback({ fps: 7, loop: 'sweep', direction: 'rtl' })).toEqual({
+      fps: 7,
+      loop: 'once',
+      direction: 'rtl',
+    });
+  });
+
+  it('fills the player defaults for null', () => {
+    expect(playerPlayback(null)).toEqual({ fps: undefined, loop: 'bounce', direction: 'ltr' });
   });
 });

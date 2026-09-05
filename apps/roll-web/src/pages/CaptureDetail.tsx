@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { kdpLoopToMediaLoop } from '@kino/media';
 import {
   rollApi,
   type AssetRole,
@@ -8,6 +7,9 @@ import {
   type RollApi,
   type RollView,
 } from '../api/client';
+import { playerPlayback } from '../components/playback';
+import { SafeImage } from '../components/SafeImage';
+import { StatusChip } from '../components/StatusChip';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { setPick } from '../state/picks';
 
@@ -19,10 +21,31 @@ export interface CaptureDetailProps {
   shareUrl?: string;
 }
 
+/**
+ * Sorted by `frameIndex`, which is the 1-based CAMERA NUMBER, never a position.
+ * A sparse capture (cameras 1, 3, 4) lists three assets with frameIndex 1, 3, 4;
+ * the frame's place in this list is its playhead slot, its frameIndex its name.
+ */
 function assetsByRole(capture: CaptureDetailView, role: string): CaptureAssetDetail[] {
   return capture.assets
     .filter((asset) => asset.role === role)
     .sort((left, right) => (left.frameIndex ?? 0) - (right.frameIndex ?? 0));
+}
+
+/** `CAM 3` — the camera that shot this frame, from frameIndex, never the array slot. */
+export function cameraLabel(asset: { frameIndex: number | null }, fallbackSlot: number): string {
+  return `CAM ${String(asset.frameIndex ?? fallbackSlot + 1)}`;
+}
+
+/** `1-4` when every camera answered, `1, 3, 4` when one did not. */
+export function framesLabel(originals: readonly { frameIndex: number | null }[], frameCount: number): string {
+  const cameras = originals
+    .map((asset) => asset.frameIndex)
+    .filter((index): index is number => index !== null);
+  if (cameras.length === 0) return frameCount >= 2 ? `1-${String(frameCount)}` : '1';
+  const contiguous = cameras.every((camera, position) => camera === position + 1);
+  if (cameras.length === 1) return String(cameras[0]);
+  return contiguous ? `1-${String(cameras.length)}` : cameras.join(', ');
 }
 
 function preferredAsset(capture: CaptureDetailView): CaptureAssetDetail | undefined {
@@ -76,11 +99,12 @@ export function fileName(
 
 function assetImage(asset: CaptureAssetDetail, api: RollApi, alt = '') {
   return (
-    <img
+    <SafeImage
       key={asset.assetId}
       src={api.assetUrl(asset.assetId)}
       alt={alt}
       className="photo-img"
+      retry
     />
   );
 }
@@ -235,10 +259,15 @@ export function CaptureDetail({
   };
 
   const pinnedFrame = frame === null ? undefined : originals[frame];
+  const failed = capture.status === 'failed';
 
   let media;
   if (pinnedFrame !== undefined) {
-    media = assetImage(pinnedFrame, api, `Frame ${String((frame ?? 0) + 1)}`);
+    media = assetImage(pinnedFrame, api, `${cameraLabel(pinnedFrame, frame ?? 0)} frame`);
+  } else if (failed) {
+    // A failed capture gets no player: whatever frames exist may be half
+    // written. The still, if the worker made one, is the honest picture.
+    media = still === undefined ? <p className="photo-processing">FAILED</p> : assetImage(still, api, 'Failed capture');
   } else if (capture.mode === 'wiggle') {
     // Playback is not a download: a host turning saves off must not freeze
     // the photograph or hide the frames it was built from.
@@ -246,9 +275,7 @@ export function CaptureDetail({
       originalUrls.length >= 2 ? (
         <WigglePlayer
           frames={originalUrls}
-          fps={capture.playback?.fps}
-          // The stored loop word is KDP's; the player speaks @kino/media's.
-          loop={kdpLoopToMediaLoop(capture.playback?.loop ?? 'bounce')}
+          {...playerPlayback(capture.playback)}
           poster={still === undefined ? undefined : api.assetUrl(still.assetId)}
         />
       ) : still === undefined ? (
@@ -268,8 +295,8 @@ export function CaptureDetail({
         >
           {originals.map((asset, index) => (
             <figure key={asset.assetId} className="photo-figure">
-              {assetImage(asset, api, `Camera ${String(index + 1)} frame`)}
-              <figcaption>CAM {String(index + 1)}</figcaption>
+              {assetImage(asset, api, `${cameraLabel(asset, index)} frame`)}
+              <figcaption>{cameraLabel(asset, index)}</figcaption>
             </figure>
           ))}
         </div>
@@ -289,7 +316,7 @@ export function CaptureDetail({
   // "save photo" on a wiggle wants a picture their camera roll can show.
   const stillRoles = ['enhanced-still', 'kino-still', 'thumb'];
   const savablePhoto = stillRoles.flatMap((role) => assetsByRole(capture, role))[0] ?? originals[0];
-  const showFrameStrip = capture.mode === 'wiggle' && originals.length > 0;
+  const showFrameStrip = capture.mode === 'wiggle' && originals.length > 0 && !failed;
 
   // The leading mark on a row IS the shape you are about to save.
   const box = (w: number, h: number): ReactElement => (
@@ -319,23 +346,28 @@ export function CaptureDetail({
 
       <div ref={heroRef} className="k-hero">
         {media}
+        <StatusChip status={capture.status} present={originals.length} />
       </div>
 
       {showFrameStrip ? (
         <>
-          <h2 className="k-sr">The four frames</h2>
+          <h2 className="k-sr">The frames</h2>
           <div aria-label="Original frame strip" className="frame-strip">
+            {/* `data-slot` is the frame's place in the stored list — the same
+                index the player publishes on `data-frame` — so the playhead
+                follows position while the printed name follows the camera. */}
             {originals.map((asset, index) => (
               <button
                 key={asset.assetId}
                 type="button"
                 className="frame-thumb"
+                data-slot={index}
                 aria-pressed={frame === index}
-                aria-label={`Frame ${String(index + 1)}`}
+                aria-label={`${cameraLabel(asset, index)} frame`}
                 onClick={() => setFrame(frame === index ? null : index)}
               >
-                <img src={api.assetUrl(asset.assetId)} alt="" />
-                <span aria-hidden="true">{index + 1}</span>
+                <SafeImage src={api.assetUrl(asset.assetId)} alt="" />
+                <span aria-hidden="true">{cameraLabel(asset, index)}</span>
               </button>
             ))}
           </div>
@@ -347,10 +379,10 @@ export function CaptureDetail({
         <div><dt>device</dt><dd>D4</dd></div>
         <div>
           <dt>frames</dt>
-          <dd>{capture.frameCount >= 2 ? `1-${String(capture.frameCount)}` : '1'}</dd>
+          <dd>{framesLabel(originals, capture.frameCount)}</dd>
         </div>
-        {frame === null ? null : (
-          <div><dt>showing</dt><dd>{frame + 1}</dd></div>
+        {pinnedFrame === undefined ? null : (
+          <div><dt>showing</dt><dd>{cameraLabel(pinnedFrame, frame ?? 0)}</dd></div>
         )}
       </dl>
 

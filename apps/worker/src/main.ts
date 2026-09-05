@@ -4,6 +4,7 @@ import { registerImageHandlers, registerRollHandlers } from './jobs';
 import { createEraser } from './storage/eraser';
 import { purgeTrash, PURGE_CRON } from './jobs/purgeTrash';
 import { configureQueue, jobOptionsFor } from './queue';
+import { describeSweep, SWEEP_INTERVAL_MS, sweepQueuedRows } from './sweeper';
 
 /**
  * The worker process.
@@ -52,10 +53,24 @@ async function main(): Promise<void> {
   const worker = queue.start(runtime.ctx);
   console.log(`[worker] consuming ${queue.name}`);
 
+  // The queued-row reconcile sweep (audit API-14): once now, because a restart
+  // is exactly when a lost add is most likely to have happened, then every five
+  // minutes. A sweep that fails is logged and the next one runs anyway.
+  const sweep = async (): Promise<void> => {
+    try {
+      console.log(`[worker] ${describeSweep(await sweepQueuedRows(runtime.ctx.db, queue))}`);
+    } catch (err) {
+      console.error('[worker] sweep failed', err);
+    }
+  };
+  void sweep();
+  const sweeper = setInterval(() => void sweep(), SWEEP_INTERVAL_MS);
+
   let stopping = false;
   const stop = (signal: NodeJS.Signals): void => {
     if (stopping) return;
     stopping = true;
+    clearInterval(sweeper);
     console.log(`[worker] ${signal}: finishing active jobs`);
     // Not forced: an in-flight render is allowed to finish, and anything still
     // waiting stays in the queue for the next process. A half-written

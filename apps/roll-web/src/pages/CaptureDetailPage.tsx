@@ -8,6 +8,8 @@ import {
   type RollView,
 } from '../api/client';
 import { CaptureDetail, clockOf } from './CaptureDetail';
+import { LoadFailure } from '../components/LoadFailure';
+import { OfflineBanner } from '../components/OfflineBanner';
 import { rollLabel } from '../components/SiteHeader';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { NoRollPage } from './NotFoundPage';
@@ -75,6 +77,7 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   return (
     <>
       <div className="k-app">
+        <OfflineBanner />
         <div className="k-bar">
           <a className="k-back" href={`/r/${encodeURIComponent(slug)}`} aria-label="Back to the roll">
             <span aria-hidden="true">&#8249;</span>
@@ -84,7 +87,7 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
               is about this photograph rather than about the roll. */}
           {capture === null ? null : <span className="k-count">{clockOf(capture.capturedAt)}</span>}
         </div>
-        {error !== null ? <p className="roll-alert" role="alert">{error.message}</p> : null}
+        {error !== null ? <LoadFailure onRetry={() => setAttempt((current) => current + 1)} /> : null}
         {capture === null || roll === null ? (error === null ? <p className="k-note">READING…</p> : null) : null}
         {capture !== null && roll !== null ? (
           <CaptureDetail slug={slug} capture={capture} roll={roll} />

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
-import { kdpLoopToMediaLoop } from '@kino/media';
 import {
   isNoRollError,
   PinRequiredError,
@@ -9,14 +8,18 @@ import {
   type RollView,
 } from '../api/client';
 import { evictCaptureAssets } from '../cache/assets';
+import { LoadFailure } from '../components/LoadFailure';
+import { OfflineBanner } from '../components/OfflineBanner';
+import { SafeImage } from '../components/SafeImage';
 import { GuestBar, rollLabel, shortDate, SiteFooter } from '../components/SiteHeader';
-import { WigglePlayer } from '../components/WigglePlayer';
+import { CAMERA_SLOTS, StatusChip } from '../components/StatusChip';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
+import { rememberRoll } from '../state/lastRoll';
 import { togglePick, usePickedCaptures, usePicks } from '../state/picks';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
-import { RollClosed } from './RollClosed';
+import { RollClosed, RollStateBanner, rollAcceptsUploads } from './RollClosed';
 
 export interface RollFeedPageProps {
   slug: string;
@@ -61,17 +64,39 @@ export function clockMark(value: string): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}`;
 }
 
+/** The camera numbers that answered, from `frameIndex` (1-based camera number), sorted. */
+export function camerasPresent(capture: Pick<CaptureView, 'assets'>): number[] {
+  return capture.assets
+    .filter((asset) => asset.role === 'original-frame')
+    .map((asset) => asset.frameIndex)
+    .filter((index): index is number => index !== null)
+    .sort((left, right) => left - right);
+}
+
 /**
- * One bar per camera. The lit bar is the frame on screen — the player puts
- * its index on `data-frame` and the stylesheet lights the matching bar, so
- * the mark is the wiggle's playhead rather than a badge kept in step by
- * hand. A single-frame capture collapses to one wide bar.
+ * One bar per CAMERA SLOT, 1 to 4, lit when a frame from that camera exists
+ * and dark when it does not — cameras 1, 3, 4 show slot 2 unlit. Each lit bar
+ * carries `data-pos`, the frame's index in the stored list, which is the index
+ * a live player publishes on `data-frame`; the stylesheet lights the matching
+ * bar so the mark is the playhead, not a badge kept in step by hand. Until
+ * the feed knows which cameras answered it lights the first `frameCount`
+ * slots. A single-frame capture collapses to one wide bar.
  */
-function FrameMark({ frames }: { frames: number }) {
-  if (frames < 2) return <span className="k-frames k-frames--solo" aria-hidden="true"><b /></span>;
+export function FrameMark({ capture }: { capture: Pick<CaptureView, 'assets' | 'frameCount'> }) {
+  if (capture.frameCount < 2) return <span className="k-frames k-frames--solo" aria-hidden="true"><b /></span>;
+  const known = camerasPresent(capture);
+  const cameras = known.length > 0 ? known : Array.from({ length: Math.min(capture.frameCount, CAMERA_SLOTS) }, (_unused, index) => index + 1);
   return (
     <span className="k-frames" aria-hidden="true">
-      <b /><b /><b /><b />
+      {Array.from({ length: CAMERA_SLOTS }, (_unused, index) => {
+        const camera = index + 1;
+        const position = cameras.indexOf(camera);
+        return position === -1 ? (
+          <b key={camera} data-cam={camera} data-missing="" />
+        ) : (
+          <b key={camera} data-cam={camera} data-pos={position} />
+        );
+      })}
     </span>
   );
 }
@@ -93,48 +118,34 @@ export function CaptureTile({
   onPick: (captureId: string) => void;
 }) {
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
-  const animated = assetOf(capture, ['wiggle-webp', 'wiggle-preview']);
-  // Memoized on `capture.assets`, not rebuilt per render: a new array every
-  // scroll re-render is a new `frames` prop, and the player treats that as a
-  // new set of frames — every wigglegram on screen snapped back to its poster.
-  const originals = useMemo(
-    () =>
-      capture.assets
-        .filter((asset) => asset.role === 'original-frame')
-        .map((asset) => rollApi.assetUrl(asset.assetId)),
-    [capture.assets],
-  );
-  // The baked animation wins in the feed whenever it exists: it is one request
-  // of a few tens of kB, where the live player is four full-resolution
-  // originals per tile — four requests times every tile on screen, on party
-  // Wi-Fi. The live player is the fallback until the worker has baked one, and
-  // stays the default on the capture page, where the guest asked for that one
-  // photograph.
-  //
-  // Playback is not a download. This used to require `downloadsEnabled`, so a
-  // host turning saves off silently froze every photograph in the roll.
-  const movable = capture.mode === 'wiggle' && animated === undefined && originals.length >= 2;
-
-  let media;
-  if (movable) {
-    media = (
-      <WigglePlayer
-        frames={originals}
-        fps={capture.playback?.fps}
-        // The stored loop word is KDP's; the player speaks @kino/media's.
-        loop={kdpLoopToMediaLoop(capture.playback?.loop ?? 'bounce')}
-        poster={poster === undefined ? undefined : rollApi.assetUrl(poster.assetId)}
-      />
+  const failed = capture.status === 'failed';
+  // A failed capture shows its still if the worker made one, never a bake.
+  const animated = failed ? undefined : assetOf(capture, ['wiggle-webp', 'wiggle-preview']);
+  // The grid never mounts the live player. A baked animation is one request
+  // of a few tens of kB; the live player is four full-resolution originals
+  // per tile, times every tile on screen, on party Wi-Fi. Until the worker
+  // has baked one the tile is the thumb, still, wearing "Processing…". The
+  // live player belongs to the capture page, where the guest asked for that
+  // one photograph.
+  const source = animated ?? poster;
+  const media =
+    source === undefined ? (
+      <span className="k-processing" aria-label={failed ? 'Capture failed' : 'Capture processing'}>
+        {failed ? 'FAILED' : 'Processing…'}
+      </span>
+    ) : (
+      <SafeImage src={rollApi.assetUrl(source.assetId)} alt="" loading="lazy" className="photo-img" />
     );
-  } else {
-    const source = animated ?? poster;
-    media =
-      source === undefined ? (
-        <span className="k-processing" aria-label="Capture processing">Processing…</span>
-      ) : (
-        <img src={rollApi.assetUrl(source.assetId)} alt="" loading="lazy" className="photo-img" />
-      );
-  }
+  // failed and partial come from the wire; a wiggle with no bake yet is
+  // processing whatever the status column says, because that is what the
+  // guest is looking at.
+  const chipStatus =
+    failed || capture.status === 'partial'
+      ? capture.status
+      : capture.mode === 'wiggle' && animated === undefined
+        ? 'processing'
+        : capture.status;
+  const present = camerasPresent(capture).length || capture.frameCount;
 
   return (
     <div className="k-shot" data-new={isNew || undefined}>
@@ -146,13 +157,14 @@ export function CaptureTile({
         {media}
       </a>
       {isNew ? <span className="k-new">New</span> : null}
+      {source === undefined ? null : <StatusChip status={chipStatus} present={present} />}
       <div className="k-overlay">
         <span className="k-idx">
-          <FrameMark frames={capture.frameCount} />
+          <FrameMark capture={capture} />
           <span className="k-no">{index}</span>
           {/* Motion off: the range is spelled out, since the bars cannot move.
               A baked animation moves without the player, so it is not still. */}
-          {capture.frameCount >= 2 && !movable && animated === undefined ? (
+          {capture.frameCount >= 2 && animated === undefined ? (
             <span className="k-still">1-{capture.frameCount}</span>
           ) : null}
         </span>
@@ -261,8 +273,11 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   const refreshRoll = useCallback(async (): Promise<void> => {
     try {
-      setRoll(await rollApi.getRoll(slug));
+      const next = await rollApi.getRoll(slug);
+      setRoll(next);
       setRollError(null);
+      // The landing page offers a way back to the roll last opened here.
+      rememberRoll(slug, next.title);
     } catch (caught) {
       setRollError(caught instanceof Error ? caught : new Error(String(caught)));
     }
@@ -365,10 +380,15 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   if (isNoRollError(failure)) return <NoRollPage />;
 
   const photoCount = roll?.photoCount ?? feed.captures.length;
+  const acceptsUploads = rollAcceptsUploads(roll?.status);
+  const retry = async (): Promise<void> => {
+    await Promise.all([refreshRoll(), feed.refetchHead().catch(() => {})]);
+  };
 
   return (
     <>
       <div className="k-app">
+        <OfflineBanner />
         <GuestBar name={rollLabel(roll?.title, slug)} count={photoCount} hidden={barHidden}>
           <nav className="k-nav" aria-label="Roll sections">
             <button type="button" aria-current={tab === 'photos'} onClick={() => setTab('photos')}>
@@ -390,8 +410,9 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
         </GuestBar>
 
         {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
+        {roll?.status === 'archived' ? <RollStateBanner status="archived" /> : null}
 
-        {failure !== null ? <p className="roll-alert" role="alert">{failure.message}</p> : null}
+        {failure !== null ? <LoadFailure onRetry={() => void retry()} /> : null}
 
         {tab === 'info' && roll !== null ? (
           <div className="k-info">
@@ -422,8 +443,10 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
             {tab === 'photos' && feed.captures.length === 0 && !feed.loading && failure === null ? (
               <div className="k-note" role="status" aria-live="polite">
                 <span className="k-blank" aria-hidden="true"><b /><b /><b /><b /></span>
-                <b>No photographs yet</b>
-                They appear here as the camera sends them. You can leave this page open.
+                {/* A closed or archived roll takes no more uploads, so "leave
+                    this page open" would be a promise nothing can keep. */}
+                <b>{acceptsUploads ? 'No photographs yet' : 'No photographs'}</b>
+                {acceptsUploads ? 'They appear here as the camera sends them. You can leave this page open.' : null}
               </div>
             ) : null}
             {tab === 'picks' && shown.length === 0 ? (

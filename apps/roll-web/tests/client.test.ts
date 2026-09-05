@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, createRollApi, PinRequiredError } from '../src/api/client';
+import { ApiError, createRollApi, MalformedPayloadError, PinRequiredError } from '../src/api/client';
 
 /** A minimal `Response`-shaped stub, built only from what the client reads. */
 function jsonResponse(status: number, body: unknown): Response {
@@ -160,6 +160,78 @@ describe('createRollApi', () => {
       const api = createRollApi();
       fetchMock.mockResolvedValueOnce(emptyResponse(204));
       await expect(api.submitPin('abc123', '4242')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('payload validation', () => {
+    const good = (captureId: string) => ({
+      captureId,
+      mode: 'wiggle',
+      look: null,
+      capturedAt: '2026-08-14T20:00:00.000Z',
+      createdAt: '2026-08-14T20:00:01.000Z',
+      frameCount: 4,
+      resolution: '1600x1200',
+      status: 'ready',
+      playback: { fps: 10, loop: 'bounce', direction: 'ltr' },
+      assets: [
+        { role: 'thumb', assetId: 'ast_t', frameIndex: null, width: 480, height: 360 },
+        { role: 'original-frame', assetId: 'ast_1', frameIndex: 1, width: 1600, height: 1200 },
+      ],
+    });
+
+    it('drops a malformed capture from a feed page, keeps the rest, and warns once', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, {
+          items: [
+            good('cap_1'),
+            // No captureId at all and `assets` is not an array: unrenderable.
+            { mode: 'wiggle', capturedAt: 'x', status: 'ready', frameCount: 4, assets: 'nope' },
+            good('cap_3'),
+          ],
+          nextCursor: null,
+          hasMore: false,
+        }),
+      );
+
+      const page = await createRollApi().listCaptures('abc123');
+      expect(page.items.map((item) => item.captureId)).toEqual(['cap_1', 'cap_3']);
+      expect(page.hasMore).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain('dropped 1 malformed capture');
+    });
+
+    it('keeps a capture but drops an asset whose role this app does not know', async () => {
+      const item = good('cap_1');
+      item.assets.push({ role: 'hologram', assetId: 'ast_h', frameIndex: null, width: null, height: null } as never);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { items: [item], nextCursor: null, hasMore: false }));
+
+      const page = await createRollApi().listCaptures('abc123');
+      expect(page.items[0]?.assets.map((asset) => asset.role)).toEqual(['thumb', 'original-frame']);
+    });
+
+    it('rejects a feed page that is not a page at all', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { captures: [] }));
+      await expect(createRollApi().listCaptures('abc123')).rejects.toBeInstanceOf(MalformedPayloadError);
+    });
+
+    it('getCapture rejects a malformed detail instead of handing the page a shape it cannot render', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { captureId: 'cap_1' }));
+      await expect(createRollApi().getCapture('abc123', 'cap_1')).rejects.toBeInstanceOf(MalformedPayloadError);
+    });
+
+    it('getCapture accepts a well-formed detail and carries mime and bytes', async () => {
+      const detail = {
+        ...good('cap_1'),
+        reactionCount: 2,
+        reacted: true,
+        assets: [{ role: 'original-frame', assetId: 'ast_1', frameIndex: 1, width: 1600, height: 1200, mime: 'image/jpeg', bytes: 100 }],
+      };
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, detail));
+      const capture = await createRollApi().getCapture('abc123', 'cap_1');
+      expect(capture.assets[0]).toMatchObject({ mime: 'image/jpeg', bytes: 100, frameIndex: 1 });
+      expect(capture.reacted).toBe(true);
     });
   });
 

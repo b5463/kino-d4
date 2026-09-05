@@ -31,7 +31,7 @@ Mapping from the product-prompt state names:
 
 ## Asset roles
 
-`ASSET_ROLES`: `thumb`, `kino-still`, `original-frame` (the only role with `frameIndex`, JPEG only, immutable once written), `wiggle-preview`, `wiggle-webp`, `wiggle-mp4`, `gif`, `contact-sheet`, `enhanced-still`, `enhanced-wiggle`, `metadata`.
+`ASSET_ROLES`: `thumb`, `kino-still`, `original-frame` (the only role with `frameIndex`, JPEG only, immutable once written), `wiggle-preview`, `wiggle-webp`, `wiggle-mp4`, `gif`, `contact-sheet`, `enhanced-still`, `enhanced-wiggle`, `social-9x16`, `social-4x5`, `social-1x1`, `metadata`.
 
 Capability-aware rendering: the guest app renders only assets that exist and are `ready`. A `single` capture never gets wiggle derivatives; `render-wiggle-webp` is planned only for `mode: wiggle` (`plannedJobs`, `apps/api/src/uploads/uploads.ts`).
 

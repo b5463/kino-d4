@@ -16,9 +16,12 @@ interface FeedItems {
   captures: CaptureView[];
   /** Live arrivals held back while the guest is scrolled down — the "N new" pill. */
   pending: CaptureView[];
+  /** The keyset cursor for the page after the last one loaded. */
+  nextCursor: string | undefined;
+  hasMore: boolean;
 }
 
-const EMPTY: FeedItems = { captures: [], pending: [] };
+const EMPTY: FeedItems = { captures: [], pending: [], nextCursor: undefined, hasMore: true };
 
 export interface RollFeedState {
   captures: CaptureView[];
@@ -40,10 +43,11 @@ export interface RollFeedState {
 /** Keyset-paginated guest feed state, with live-update-safe identity merging. */
 export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState {
   // One state object: every mutation has to see captures and pending together,
-  // or a race between a buffer and a flush could duplicate a capture.
+  // or a race between a buffer and a flush could duplicate a capture. The
+  // cursor lives here too, so a head refetch decides "was the list empty"
+  // from the state it is updating rather than from a closure that was current
+  // when the callback was built.
   const [items, setItems] = useState<FeedItems>(EMPTY);
-  const [nextCursor, setNextCursor] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const activeRequestsRef = useRef(0);
@@ -82,7 +86,14 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
         // either.
         setItems((current) => {
           if (current.captures.length === 0) {
-            return { captures: page.items, pending: current.pending };
+            // Nothing was shown, so this page IS the list and its cursor is
+            // the tail.
+            return {
+              captures: page.items,
+              pending: current.pending,
+              nextCursor: page.nextCursor,
+              hasMore: page.hasMore,
+            };
           }
           const known = new Set(current.captures.map((capture) => capture.captureId));
           const boundary = page.items.findIndex((capture) => known.has(capture.captureId));
@@ -91,12 +102,10 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
           return {
             captures: mergeUnique(rest, current.captures),
             pending: mergeUnique(fresh, current.pending),
+            nextCursor: current.nextCursor,
+            hasMore: current.hasMore,
           };
         });
-        if (items.captures.length === 0) {
-          setNextCursor(page.nextCursor);
-          setHasMore(page.hasMore);
-        }
         return;
       }
 
@@ -106,27 +115,23 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
         pending: current.pending.filter(
           (capture) => !page.items.some((item) => item.captureId === capture.captureId),
         ),
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
       }));
-      setNextCursor(page.nextCursor);
-      setHasMore(page.hasMore);
     },
-    [items.captures.length, readPage],
+    [readPage],
   );
 
   useEffect(() => {
     generationRef.current += 1;
     const generation = generationRef.current;
     setItems(EMPTY);
-    setNextCursor(undefined);
-    setHasMore(true);
     setError(null);
 
     void readPage()
       .then((page) => {
         if (page === null || generation !== generationRef.current) return;
-        setItems({ captures: page.items, pending: [] });
-        setNextCursor(page.nextCursor);
-        setHasMore(page.hasMore);
+        setItems({ captures: page.items, pending: [], nextCursor: page.nextCursor, hasMore: page.hasMore });
       })
       .catch(() => {
         // `readPage` has already put the failure in state for the page to show.
@@ -137,21 +142,23 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
     };
   }, [readPage]);
 
+  const { nextCursor, hasMore } = items;
   const loadMore = useCallback(async (): Promise<void> => {
     if (!hasMore || loading) return;
     const generation = generationRef.current;
     const page = await readPage(nextCursor);
     if (page === null || generation !== generationRef.current) return;
     setItems((current) => ({
+      ...current,
       captures: mergeUnique(current.captures, page.items),
-      pending: current.pending,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
     }));
-    setNextCursor(page.nextCursor);
-    setHasMore(page.hasMore);
   }, [hasMore, loading, nextCursor, readPage]);
 
   const prepend = useCallback((capture: CaptureView): void => {
     setItems((current) => ({
+      ...current,
       captures: mergeUnique([capture], current.captures),
       pending: current.pending.filter((held) => held.captureId !== capture.captureId),
     }));
@@ -162,18 +169,19 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
       // Already visible: this is an update, not an arrival — patch it in place.
       current.captures.some((shown) => shown.captureId === capture.captureId)
         ? {
+            ...current,
             captures: current.captures.map((shown) =>
               shown.captureId === capture.captureId ? capture : shown,
             ),
-            pending: current.pending,
           }
-        : { captures: current.captures, pending: mergeUnique([capture], current.pending) },
+        : { ...current, pending: mergeUnique([capture], current.pending) },
     );
   }, []);
 
   const flushPending = useCallback((): string[] => {
     const flushed = items.pending.map((capture) => capture.captureId);
     setItems((current) => ({
+      ...current,
       captures: mergeUnique(current.pending, current.captures),
       pending: [],
     }));
@@ -183,13 +191,13 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
   const replace = useCallback((capture: CaptureView): void => {
     const patch = (list: CaptureView[]): CaptureView[] =>
       list.map((candidate) => (candidate.captureId === capture.captureId ? capture : candidate));
-    setItems((current) => ({ captures: patch(current.captures), pending: patch(current.pending) }));
+    setItems((current) => ({ ...current, captures: patch(current.captures), pending: patch(current.pending) }));
   }, []);
 
   const remove = useCallback((captureId: string): void => {
     const drop = (list: CaptureView[]): CaptureView[] =>
       list.filter((capture) => capture.captureId !== captureId);
-    setItems((current) => ({ captures: drop(current.captures), pending: drop(current.pending) }));
+    setItems((current) => ({ ...current, captures: drop(current.captures), pending: drop(current.pending) }));
   }, []);
 
   return {

@@ -6,7 +6,7 @@ import {
   type JobsOptions,
   type RedisOptions,
 } from 'bullmq';
-import { appendProcessingEvent, markJobAbandoned } from './jobs/events';
+import { appendProcessingEvent, isCaptureGoneViolation, markJobAbandoned } from './jobs/events';
 import { isJobName, type JobCtx, type JobHandler, type JobName, type JobPayload } from './jobs/types';
 
 /**
@@ -32,6 +32,10 @@ import { isJobName, type JobCtx, type JobHandler, type JobName, type JobPayload 
  *   in `processing` forever, because its latest row said `failed` and a `failed`
  *   row is indistinguishable from "attempt 2 of 5". See the long note on
  *   `markJobAbandoned` for why the mechanism is a supersede rather than a delete.
+ *   A job whose *capture row* is gone is terminal in a different way: nothing can
+ *   be recorded against it and nobody is waiting for it, so the processor drops
+ *   it — one warning, no rows, and BullMQ files it as complete. See the catch
+ *   block in `processorFor`.
  * - **Independent.** Every job runs inside its own try/catch with its own
  *   `processing_events` rows. A handler that throws marks *its* job failed and
  *   touches nothing else, so a dead MP4 render cannot cost a capture its
@@ -152,6 +156,8 @@ export interface JobQueueOptions {
   concurrency?: number;
   /** Where BullMQ's own connection/worker errors go. Defaults to stderr. */
   onError?: (err: Error) => void;
+  /** Where a dropped job is reported — not an error, somebody should still see it. */
+  onWarn?: (message: string) => void;
 }
 
 export interface JobQueue {
@@ -196,6 +202,11 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
     ((err: Error): void => {
       console.error('[worker] queue error', err);
     });
+  const onWarn =
+    options.onWarn ??
+    ((message: string): void => {
+      console.warn(`[worker] ${message}`);
+    });
 
   // BullMQ's blocking connection requires an unbounded retry setting; a caller
   // that names one wins, so a deployment can still pin its own client options.
@@ -214,16 +225,23 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
    * error is the one worth surfacing and swallowing this one keeps it visible.
    * `running`/`done` are not wrapped — a database that cannot record progress
    * is a genuine job failure.
+   *
+   * Returns `false` when the write failed *because the capture row is gone*:
+   * the caller drops the job at that point instead of retrying into the same
+   * constraint four more times.
    */
-  async function tryLog(what: string, write: () => Promise<void>): Promise<void> {
+  async function tryLog(what: string, write: () => Promise<void>): Promise<boolean> {
     try {
       await write();
+      return true;
     } catch (err) {
+      if (isCaptureGoneViolation(err)) return false;
       onError(
         new Error(`could not record ${what}: ${messageOf(err)}`, {
           cause: err instanceof Error ? err : undefined,
         }),
       );
+      return true;
     }
   }
 
@@ -254,10 +272,22 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
         if (captureId !== null) await appendProcessingEvent(ctx.db, captureId, jobName, 'done');
       } catch (err) {
         if (captureId !== null) {
+          // The capture row is gone — trashed and purged, or a test's fixture
+          // deleted under a job it queued. The `running` insert above is
+          // usually what says so, before the handler ever ran. Nothing can be
+          // recorded against a capture that does not exist, and nothing is
+          // waiting for the derivative, so the job is *dropped*: one warning,
+          // no rows, a normal return so BullMQ files it as complete rather
+          // than retrying into the same constraint five times over.
+          if (isCaptureGoneViolation(err)) {
+            onWarn(`dropped ${jobName} for ${captureId}: the capture row no longer exists`);
+            return;
+          }
+
           // Every attempt is logged, not just the last: "it failed three times"
           // is what the log is for, and the read that matters — latest row per
           // job — is unaffected by the extra rows.
-          await tryLog('a failed attempt', () =>
+          const recorded = await tryLog('a failed attempt', () =>
             appendProcessingEvent(
               ctx.db,
               captureId,
@@ -266,6 +296,15 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
               `attempt ${attempt}/${attemptLimit}: ${messageOf(err)}`,
             ),
           );
+          // Same drop, reached the other way round: the handler failed (often
+          // with `MissingCaptureError`) and the capture vanished before or
+          // while it ran, so even the failure cannot be written down.
+          if (!recorded) {
+            onWarn(
+              `dropped ${jobName} for ${captureId}: the capture row no longer exists (${messageOf(err)})`,
+            );
+            return;
+          }
 
           // This was the last attempt, so the job is over. Both writes are
           // tolerated failures for the same reason the one above is: the job's

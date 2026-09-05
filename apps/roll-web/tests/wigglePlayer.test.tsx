@@ -121,6 +121,32 @@ describe('WigglePlayer', () => {
     }
   });
 
+  it('walks the frames backwards for rtl', async () => {
+    // An rtl bounce over four frames is 3,2,1,0,1,2 — it opens on the last camera.
+    await render(<WigglePlayer frames={FRAMES} fps={10} direction="rtl" />);
+    expect(image().getAttribute('src')).toBe(FRAMES[3]);
+
+    act(() => runFrame(0));
+    act(() => runFrame(100));
+    expect(image().getAttribute('src')).toBe(FRAMES[2]);
+  });
+
+  it('renders a single frame as a still instead of throwing', async () => {
+    await render(<WigglePlayer frames={[FRAMES[0]!]} />);
+    expect(image().getAttribute('src')).toBe(FRAMES[0]);
+    expect(container.querySelector('[data-wiggle-player]')?.hasAttribute('data-still')).toBe(true);
+    expect(container.querySelector('button')).toBeNull();
+    expect(callbacks.size).toBe(0);
+  });
+
+  it('falls back to the poster with no frames at all, and to nothing without one', async () => {
+    await render(<WigglePlayer frames={[]} poster="/poster.jpg" />);
+    expect(image().getAttribute('src')).toBe('/poster.jpg');
+
+    await render(<WigglePlayer frames={[]} />);
+    expect(container.querySelector('img')).toBeNull();
+  });
+
   it('cancels its animation frame on unmount', async () => {
     await render(<WigglePlayer frames={FRAMES} />);
     expect(callbacks.size).toBe(1);

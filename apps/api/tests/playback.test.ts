@@ -242,6 +242,44 @@ describe('PATCH /api/host/captures/:captureId/playback', () => {
     });
   });
 
+  it('moves a settled capture back to processing while the re-render runs', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    // A real `ready` capture has its frames; the recompute reads no rows at all
+    // as `created`, which would hide what this test is about.
+    await app.db.insert(schema.assets).values({
+      id: newId('asset'),
+      captureId,
+      role: 'original-frame',
+      frameIndex: 1,
+      mime: 'image/jpeg',
+      width: 1600,
+      height: 1200,
+      bytes: 1024,
+      sha256: null,
+      objectKey: derivedKey(roll.rollId, captureId, 'cam-01.jpg'),
+      status: 'ready',
+    });
+    const before = await app.db
+      .select({ status: schema.captures.status })
+      .from(schema.captures)
+      .where(eq(schema.captures.id, captureId));
+    expect(before[0]?.status).toBe('ready');
+
+    const { statusCode } = await patchPlayback(captureId, roll.hostToken, { fps: 10 });
+    expect(statusCode).toBe(200);
+
+    // Reads skip settled rows, so without the route's own recompute the new
+    // `queued` row would never move this capture off `ready` (the trap noted on
+    // `convergeCaptureStatus`). `running`/`failed` rows from a live dev worker
+    // also read as `processing`, so this is stable under the shared queue.
+    const after = await app.db
+      .select({ status: schema.captures.status })
+      .from(schema.captures)
+      .where(eq(schema.captures.id, captureId));
+    expect(after[0]?.status).toBe('processing');
+  });
+
   it('re-enqueues the MP4 render only when that asset already exists', async () => {
     const roll = await createRoll();
     const captureId = await insertCapture(roll.rollId);

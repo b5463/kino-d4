@@ -425,7 +425,7 @@ describe('generate-thumbnail', () => {
     expect(await publishedRoles(captureId)).toEqual(['thumb']);
   });
 
-  it('takes the frame at floor(frameCount / 2) when no still was uploaded', async () => {
+  it('takes the lower median of the stored frames when no still was uploaded', async () => {
     // Four frames → frame 2, the centre-ish viewpoint (CAM2 is also the
     // metering camera on the V1 rig).
     const captureId = await newCapture();
@@ -434,6 +434,18 @@ describe('generate-thumbnail', () => {
     const [row] = await assetsWithRole(captureId, 'thumb');
     if (row !== undefined) writtenKeys.push(row.objectKey);
     expect(await markerFrameIndex(await objectBytes(row?.objectKey ?? ''))).toBe(2);
+  });
+
+  it('picks the middle of what is stored when a frame is missing', async () => {
+    // Camera 2 never arrived. The old rule compared frameCount/2 = 2 against
+    // camera numbers and fell back to camera 1, an edge viewpoint; the median
+    // of [1, 3, 4] is camera 3.
+    const captureId = await newCapture({ frameIndexes: [1, 3, 4] });
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+
+    const [row] = await assetsWithRole(captureId, 'thumb');
+    if (row !== undefined) writtenKeys.push(row.objectKey);
+    expect(await markerFrameIndex(await objectBytes(row?.objectKey ?? ''))).toBe(3);
   });
 
   it('prefers a kino-still the device uploaded over any original frame', async () => {

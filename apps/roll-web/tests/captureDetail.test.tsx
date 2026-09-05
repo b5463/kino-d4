@@ -10,7 +10,9 @@ import { readPicks } from '../src/state/picks';
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
 
-function capture(mode: string, frameCount: number): CaptureView {
+/** `frameIndex` is the 1-based CAMERA NUMBER on the wire, never a 0-based slot. */
+function capture(mode: string, frameCount: number, cameras?: number[]): CaptureView {
+  const numbers = cameras ?? Array.from({ length: frameCount }, (_unused, index) => index + 1);
   return {
     captureId: 'cap_1',
     mode,
@@ -23,10 +25,10 @@ function capture(mode: string, frameCount: number): CaptureView {
     playback: null,
     reactionCount: 2,
     reacted: false,
-    assets: Array.from({ length: frameCount }, (_unused, index) => ({
+    assets: numbers.map((camera) => ({
       role: 'original-frame',
-      assetId: `asset_${String(index)}`,
-      frameIndex: index,
+      assetId: `asset_${String(camera)}`,
+      frameIndex: camera,
       mime: 'image/jpeg',
       bytes: 100,
       width: 1600,
@@ -108,6 +110,80 @@ describe('CaptureDetail', () => {
     ]);
     expect(container.querySelectorAll('.photo-look')).toHaveLength(1);
     expect(container.querySelector('.photo-look')?.textContent).toBe('CLASSIC');
+  });
+
+  it('names a sparse capture by camera number, not by array slot', async () => {
+    // Cameras 1, 3 and 4 answered; camera 2 did not. Three assets, frameIndex
+    // 1, 3, 4 — the labels must say CAM 1 / CAM 3 / CAM 4, never CAM 1/2/3.
+    await render(capture('wiggle', 3, [1, 3, 4]), roll());
+
+    const thumbs = [...container.querySelectorAll<HTMLButtonElement>('.frame-thumb')];
+    expect(thumbs.map((thumb) => thumb.querySelector('span')?.textContent)).toEqual(['CAM 1', 'CAM 3', 'CAM 4']);
+    expect(thumbs.map((thumb) => thumb.getAttribute('aria-label'))).toEqual([
+      'CAM 1 frame',
+      'CAM 3 frame',
+      'CAM 4 frame',
+    ]);
+    // The playhead slot is the frame's place in the stored list, 0..2.
+    expect(thumbs.map((thumb) => thumb.getAttribute('data-slot'))).toEqual(['0', '1', '2']);
+    expect(container.querySelector('.k-exif')?.textContent).toContain('1, 3, 4');
+
+    // Pinning the middle thumb shows camera 3, and says so.
+    await act(async () => thumbs[1]?.click());
+    expect(container.querySelector('.k-exif')?.textContent).toContain('CAM 3');
+  });
+
+  it('sorts frames by frameIndex whatever order the API listed them in', async () => {
+    const view = capture('quad', 4);
+    view.assets = [...view.assets].reverse();
+    await render(view, roll());
+    expect([...container.querySelectorAll('figcaption')].map((caption) => caption.textContent)).toEqual([
+      'CAM 1',
+      'CAM 2',
+      'CAM 3',
+      'CAM 4',
+    ]);
+  });
+
+  it('shows a 3 OF 4 chip on a partial capture and keeps the player', async () => {
+    const view = capture('wiggle', 3, [1, 3, 4]);
+    view.status = 'partial';
+    await render(view, roll());
+    expect(container.querySelector('.k-chip')?.textContent).toBe('3 OF 4');
+    expect(container.querySelector('[data-wiggle-player]')).not.toBeNull();
+  });
+
+  it('shows FAILED and mounts no player on a failed capture', async () => {
+    const view = capture('wiggle', 4);
+    view.status = 'failed';
+    await render(view, roll());
+    expect(container.querySelector('.k-chip')?.textContent).toBe('FAILED');
+    expect(container.querySelector('[data-wiggle-player]')).toBeNull();
+    expect(container.querySelector('.frame-strip')).toBeNull();
+  });
+
+  it('replaces a broken hero image with the placeholder and retries once', async () => {
+    const view = capture('single', 1);
+    view.assets = [
+      ...view.assets,
+      { role: 'kino-still', assetId: 'asset_1', frameIndex: null, mime: 'image/webp', bytes: 9, width: 1280, height: 960 },
+    ];
+    await render(view, roll());
+    const img = container.querySelector<HTMLImageElement>('.k-hero img');
+    expect(img).not.toBeNull();
+    await act(async () => img?.dispatchEvent(new Event('error')));
+    expect(container.querySelector('.k-img-missing')?.textContent).toContain('Image unavailable');
+
+    const retry = container.querySelector<HTMLButtonElement>('.k-img-missing button');
+    expect(retry?.textContent).toBe('Retry');
+    await act(async () => retry?.click());
+    expect(container.querySelector<HTMLImageElement>('.k-hero img')?.getAttribute('src')).toBe(
+      '/api/assets/asset_1/content',
+    );
+
+    // Once. A second failure is just the placeholder.
+    await act(async () => container.querySelector('.k-hero img')?.dispatchEvent(new Event('error')));
+    expect(container.querySelector('.k-img-missing button')).toBeNull();
   });
 
   it('derives three grid columns for a six-frame Quad instead of hard-coding two', async () => {

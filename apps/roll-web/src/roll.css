@@ -308,15 +308,71 @@ body[data-surface='guest'] .n,
 .k-frames { display: flex; gap: 2px; align-items: flex-end; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%)); }
 .k-frames b { display: block; width: 3px; height: 9px; background: rgb(255 255 255 / 34%); }
 .k-frames--solo b { width: 9px; background: rgb(255 255 255 / 55%); }
-.k-shot .k-frames b:first-child { background: #fff; }
-.k-shot:has([data-frame='1']) .k-frames b:first-child,
-.k-shot:has([data-frame='2']) .k-frames b:first-child,
-.k-shot:has([data-frame='3']) .k-frames b:first-child { background: rgb(255 255 255 / 34%); }
-.k-shot:has([data-frame='1']) .k-frames b:nth-child(2),
-.k-shot:has([data-frame='2']) .k-frames b:nth-child(3),
-.k-shot:has([data-frame='3']) .k-frames b:nth-child(4) { background: #fff; }
+/* One bar per camera slot. A camera that sent nothing is a dark bar; the
+   first frame that did arrive is lit at rest. `data-pos` is the frame's index
+   in the stored list, the same number a live player publishes on
+   `data-frame`, so lighting follows position while the slot stays the camera. */
+.k-frames b[data-missing] { background: rgb(255 255 255 / 10%); }
+.k-shot .k-frames b[data-pos='0'] { background: #fff; }
+.k-shot:has([data-frame='1']) .k-frames b[data-pos='0'],
+.k-shot:has([data-frame='2']) .k-frames b[data-pos='0'],
+.k-shot:has([data-frame='3']) .k-frames b[data-pos='0'] { background: rgb(255 255 255 / 34%); }
+.k-shot:has([data-frame='1']) .k-frames b[data-pos='1'],
+.k-shot:has([data-frame='2']) .k-frames b[data-pos='2'],
+.k-shot:has([data-frame='3']) .k-frames b[data-pos='3'] { background: #fff; }
 /* Motion off: every bar outlined, the first lit, and the range spelled out. */
 .k-still { font-size: 10px; color: rgb(255 255 255 / 85%); text-shadow: 0 1px 3px rgb(0 0 0 / 80%); font-variant-numeric: tabular-nums; }
+
+/* The one word a degraded capture wears: top right, out of the overlay row. */
+.k-chip {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  z-index: 2;
+  padding: 3px 6px;
+  background: rgb(11 11 12 / 78%);
+  color: var(--k-ink);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.k-chip[data-state='failed'] { color: var(--k-pick); }
+.k-chip[data-state='processing'] { color: var(--k-dim); }
+
+/* A picture that did not load: the same block, two words, no broken icon. */
+.k-img-missing {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #17171a;
+  color: var(--k-dim);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.k-img-missing button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  font: 400 12px var(--k-ui);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
+}
+
+/* No network: one line under the plate, nothing else changes. */
+.k-offline {
+  padding: 6px 12px;
+  background: var(--k-window);
+  color: var(--k-dim);
+  font-size: 11.5px;
+  text-align: center;
+  box-shadow: inset 0 -1px 0 var(--k-hair);
+}
 
 /* 18px of heart inside a 48px target. */
 .k-pick {
@@ -347,7 +403,19 @@ body[data-surface='guest'] .n,
 .k-blank { display: flex; gap: 3px; justify-content: center; margin-bottom: 15px; }
 .k-blank b { width: 9px; height: 26px; background: #2b2b30; display: block; }
 .k-end { padding: 18px 12px 34px; color: #3a3a38; font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.roll-alert { margin: 10px 12px; color: var(--k-pick); font-size: 12.5px; }
+.roll-alert { display: flex; align-items: center; gap: 12px; margin: 10px 12px; color: var(--k-pick); font-size: 12.5px; }
+.roll-alert span { flex: 1; min-width: 0; }
+.roll-alert button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  font: 400 12.5px var(--k-ui);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
+}
+.roll-closed { margin: 10px 12px; padding: 8px 12px; background: var(--k-window); color: var(--k-dim); font-size: 12px; }
 
 /* The one floating control, because it has to reach a scrolled thumb. */
 .new-pill {
@@ -419,8 +487,9 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .k-bar .k-who { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .k-bar .k-count { font-size: 12.5px; }
 
-.k-hero { flex: 1; min-height: 0; background: #000; line-height: 0; display: flex; align-items: center; }
+.k-hero { position: relative; flex: 1; min-height: 0; background: #000; line-height: 0; display: flex; align-items: center; }
 .k-hero > * { width: 100%; }
+.k-hero > .k-chip { width: auto; line-height: 1; }
 .k-hero > img, .k-hero > div { width: 100%; }
 .k-hero img { display: block; width: 100%; max-height: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
 .k-hero [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
@@ -436,10 +505,10 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 /* While the wiggle plays, the frame on screen brightens in the strip: the
    player publishes its index and the strip reads it, so the two can never
    drift. `aria-pressed` stays reserved for a frame the guest pinned. */
-.photo-page:has(.k-hero [data-frame='0']) .frame-thumb:nth-child(1) img,
-.photo-page:has(.k-hero [data-frame='1']) .frame-thumb:nth-child(2) img,
-.photo-page:has(.k-hero [data-frame='2']) .frame-thumb:nth-child(3) img,
-.photo-page:has(.k-hero [data-frame='3']) .frame-thumb:nth-child(4) img { opacity: 1; }
+.photo-page:has(.k-hero [data-frame='0']) .frame-thumb[data-slot='0'] img,
+.photo-page:has(.k-hero [data-frame='1']) .frame-thumb[data-slot='1'] img,
+.photo-page:has(.k-hero [data-frame='2']) .frame-thumb[data-slot='2'] img,
+.photo-page:has(.k-hero [data-frame='3']) .frame-thumb[data-slot='3'] img { opacity: 1; }
 .frame-thumb[aria-pressed='true'] span { color: #fff; }
 
 .k-exif { display: flex; flex-wrap: wrap; gap: 5px 14px; margin: 0; padding: 11px 12px; font-size: 11px; color: var(--k-dim); font-variant-numeric: tabular-nums; }
@@ -560,6 +629,10 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
 }
 .k-gate button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 35%); }
+.k-gate-error { margin: 0 0 10px; color: var(--k-pick); font-size: 12px; }
+/* The landing page: the code goes in as the card prints it, spaced capitals. */
+.k-landing input { text-transform: uppercase; letter-spacing: 0.18em; }
+.k-landing .k-landing-back { color: var(--k-ink); text-decoration: underline; }
 
 @media (min-width: 720px) {
   .k-stream { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }

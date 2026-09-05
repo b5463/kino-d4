@@ -45,6 +45,19 @@ export const RATE_LIMITS = {
    * below what an abuser wants from an unmetered endpoint.
    */
   deviceCreate: { max: 60, timeWindow: '1 minute', groupId: 'device-create' },
+  /**
+   * The camera's two reads — a capture's status and its roll list — keyed by
+   * credential like every other device route. They were the last unmetered
+   * device endpoints, and a status poll is exactly what firmware loops on.
+   *
+   * A budget of their own rather than `deviceUpload`'s: a capture is a dozen
+   * upload calls, and a status poll sharing that 60 would ration the uploads by
+   * the polling. 120 is one poll every half second. (The counter is per route —
+   * `@fastify/rate-limit` keys its Redis store by method and URL — so each of
+   * the two reads gets the full 120; `groupId` names the budget, it does not
+   * pool it.)
+   */
+  deviceRead: { max: 120, timeWindow: '1 minute', groupId: 'device-read' },
 } as const;
 
 /** Redis keys never contain a bearer credential, even though the limit is per token. */
@@ -94,6 +107,9 @@ export const deviceJoinRateLimit = { rateLimit: RATE_LIMITS.deviceJoin };
 export const hostCreateRateLimit = { rateLimit: RATE_LIMITS.hostCreate };
 export const deviceCreateRateLimit = {
   rateLimit: { ...RATE_LIMITS.deviceCreate, keyGenerator: deviceKey },
+};
+export const deviceReadRateLimit = {
+  rateLimit: { ...RATE_LIMITS.deviceRead, keyGenerator: deviceKey },
 };
 
 /** Shared Redis-backed limits, disabled globally and opted into by route. */

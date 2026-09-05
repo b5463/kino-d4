@@ -331,6 +331,31 @@ describe('Roll feed hooks', () => {
     expect(current().captures.map((item) => item.captureId)).toEqual(['cap_2', 'cap_1']);
   });
 
+  it('refetchHead({buffer:true}) on an empty list takes the page cursor from the state it updates', async () => {
+    // The old code read `items.captures.length` from the closure, so a
+    // callback built while the list was empty could set the cursor after the
+    // list had filled — and every length change rebuilt the callback, which
+    // resubscribed the event stream. The decision now lives in the updater.
+    const listCaptures = vi
+      .fn()
+      .mockResolvedValueOnce({ items: [], nextCursor: undefined, hasMore: false })
+      .mockResolvedValue({ items: [capture('cap_1')], nextCursor: 'tail', hasMore: true });
+    const api = apiWith({ listCaptures });
+    const { current, Harness } = feedHarness(api);
+    await render(<Harness />);
+    expect(current().captures).toHaveLength(0);
+    expect(current().hasMore).toBe(false);
+
+    const before = current().refetchHead;
+    await act(async () => current().refetchHead({ buffer: true }));
+
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_1']);
+    expect(current().pending).toHaveLength(0);
+    expect(current().hasMore).toBe(true);
+    // Same function: the callback no longer depends on the list length.
+    expect(current().refetchHead).toBe(before);
+  });
+
   it('prepend removes the capture from pending so a flush cannot duplicate it', async () => {
     const api = apiWith();
     const { current, Harness } = feedHarness(api);

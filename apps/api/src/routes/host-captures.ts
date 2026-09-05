@@ -16,7 +16,12 @@ import {
   type ModerationView,
 } from '../captures/moderation';
 import { assets, captures } from '../db/schema';
-import { enqueueProcessingJobs, type JobName, type QueuedJob } from '../uploads/uploads';
+import {
+  enqueueProcessingJobs,
+  recomputeCaptureStatus,
+  type JobName,
+  type QueuedJob,
+} from '../uploads/uploads';
 import {
   createProcessingQueue,
   resubmitJob,
@@ -235,6 +240,18 @@ export const hostCaptureRoutes: FastifyPluginAsync = async (app) => {
         // already `queued` is skipped here and picks the new settings up when
         // it runs — the row is read at render time.
         await resubmit(await enqueueProcessingJobs(app.db, capture.id, jobs));
+
+        // The capture is settled by now (`ready` or `partial`), and reads skip
+        // settled rows, so the fresh `queued` row would never be picked up —
+        // the trap described on `convergeCaptureStatus`. Recompute here so the
+        // capture shows `processing` while the re-render runs and the next read
+        // settles it again once the job lands. Logged, not returned: the
+        // playback write and the rows are committed.
+        try {
+          await recomputeCaptureStatus(app.db, capture.id);
+        } catch (err) {
+          convergeWarning(app)(err, capture.id);
+        }
       }
 
       // Guests re-fetch the capture and its playback with it. Failure is

@@ -3,6 +3,7 @@ import {
   clampWiggleFps,
   wiggleSequence,
   type LoopMode,
+  type WiggleDirection,
 } from '@kino/media';
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
@@ -12,6 +13,8 @@ export interface WigglePlayerProps {
   frames: string[];
   fps?: number;
   loop?: LoopMode;
+  /** The host's stored sweep direction; `ltr` walks the frames as given. */
+  direction?: WiggleDirection;
   /** Shown until preloading finishes and whenever reduced motion has not been opted into. */
   poster?: string;
   autoPlay?: boolean;
@@ -36,17 +39,29 @@ function pageIsVisible(): boolean {
  * The frame order is imported from `@kino/media`, the same function used by the
  * worker's baked WebP/MP4 outputs, so live and downloaded wiggles cannot drift.
  */
-export function WigglePlayer({
+export function WigglePlayer(props: WigglePlayerProps) {
+  // Fewer than two frames is a still, not an error: a degraded capture that
+  // uploaded one frame must not take the page down with it.
+  if (props.frames.length < 2) {
+    const source = props.frames[0] ?? props.poster;
+    if (source === undefined) return null;
+    return (
+      <div data-wiggle-player="" data-still="" style={{ position: 'relative', width: '100%' }}>
+        <img src={source} alt="" draggable={false} style={{ display: 'block', width: '100%' }} />
+      </div>
+    );
+  }
+  return <AnimatedWigglePlayer {...props} />;
+}
+
+function AnimatedWigglePlayer({
   frames,
   fps,
   loop = 'bounce',
+  direction = 'ltr',
   poster,
   autoPlay = true,
 }: WigglePlayerProps) {
-  if (frames.length < 2) {
-    throw new RangeError(`WigglePlayer needs at least two frames, got ${String(frames.length)}`);
-  }
-
   const containerRef = useRef<HTMLDivElement>(null);
   const positionRef = useRef(0);
   const frameRequestRef = useRef<number | null>(null);
@@ -58,7 +73,10 @@ export function WigglePlayer({
    */
   const frameKey = frames.join('\n');
   const frameUrls = useMemo(() => frameKey.split('\n'), [frameKey]);
-  const sequence = useMemo(() => wiggleSequence(frameUrls.length, loop, 'ltr'), [frameUrls.length, loop]);
+  const sequence = useMemo(
+    () => wiggleSequence(frameUrls.length, loop, direction),
+    [direction, frameUrls.length, loop],
+  );
   const frameRate = clampWiggleFps(fps);
 
   const [position, setPosition] = useState(0);

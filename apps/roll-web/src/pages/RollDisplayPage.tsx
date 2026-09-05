@@ -6,6 +6,8 @@ import {
   type CaptureView,
   type RollView,
 } from '../api/client';
+import { playerPlayback } from '../components/playback';
+import { SafeImage } from '../components/SafeImage';
 import { ScanQr } from '../components/ScanQr';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { useRollEvents } from '../hooks/useRollEvents';
@@ -140,18 +142,23 @@ export function RollDisplayPage({ slug }: RollDisplayPageProps) {
   if (shown !== undefined) {
     const poster = assetOf(shown, ['enhanced-still', 'kino-still', 'thumb', 'wiggle-preview']);
     const animated = assetOf(shown, ['wiggle-webp', 'wiggle-preview']);
+    // Camera order, from frameIndex (the 1-based camera number), never the
+    // order the API happened to list the assets in.
     const originals = shown.assets
       .filter((asset) => asset.role === 'original-frame')
+      .sort((left, right) => (left.frameIndex ?? 0) - (right.frameIndex ?? 0))
       .map((asset) => rollApi.assetUrl(asset.assetId));
 
     // Playback is not a download, and a save permission decides what leaves a
     // guest's phone, never what a screen at the party may show. This gate used
     // to require `downloadsEnabled`, so a host turning saves off froze the
     // display; the feed and the capture page were already decoupled from it.
-    if (shown.mode === 'wiggle' && originals.length >= 2) {
+    // A failed capture gets no player: its frames may be half written.
+    if (shown.mode === 'wiggle' && originals.length >= 2 && shown.status !== 'failed') {
       media = (
         <WigglePlayer
           frames={originals}
+          {...playerPlayback(shown.playback)}
           poster={poster === undefined ? undefined : rollApi.assetUrl(poster.assetId)}
         />
       );
@@ -159,7 +166,7 @@ export function RollDisplayPage({ slug }: RollDisplayPageProps) {
       const source = animated ?? poster;
       media =
         source === undefined ? null : (
-          <img key={shown.captureId} src={rollApi.assetUrl(source.assetId)} alt="" className="display-img" />
+          <SafeImage key={shown.captureId} src={rollApi.assetUrl(source.assetId)} alt="" className="display-img" />
         );
     }
   }

@@ -66,6 +66,38 @@ export async function appendProcessingEvent(
   });
 }
 
+/** PostgreSQL's SQLSTATE for a foreign-key violation. */
+const FOREIGN_KEY_VIOLATION = '23503';
+
+/** The constraint that ties an event row to its capture. */
+const CAPTURE_FK = 'processing_events_capture_id_captures_id_fk';
+
+/**
+ * Whether a failed write says the capture row is gone.
+ *
+ * The write path here is `drizzle → postgres.js`, and drizzle wraps the driver's
+ * error in a `DrizzleQueryError` whose `cause` is the `PostgresError` carrying
+ * `code` and `constraint_name`. Both layers are checked, so this keeps working
+ * whether or not a future drizzle stops wrapping.
+ *
+ * Why the queue wants to know: a job for a capture that was trashed and purged
+ * between enqueue and pickup cannot record anything — its `running` row hits
+ * this constraint before the handler even starts — and a job that cannot record
+ * its own failure used to retry all five attempts, each one failing the same way.
+ * The capture is not coming back, so the honest outcome is to drop the job.
+ */
+export function isCaptureGoneViolation(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; depth < 4 && typeof current === 'object' && current !== null; depth += 1) {
+    const record = current as Record<string, unknown>;
+    if (record['code'] === FOREIGN_KEY_VIOLATION && record['constraint_name'] === CAPTURE_FK) {
+      return true;
+    }
+    current = record['cause'];
+  }
+  return false;
+}
+
 /**
  * Records that a job is permanently over, and unblocks its re-enqueue.
  *

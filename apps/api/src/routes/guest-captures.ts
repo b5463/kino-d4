@@ -8,7 +8,7 @@ import {
   readCaptureFeedPage,
 } from '../captures/feed';
 import { createProcessingQueue, submitJob, type ProcessingQueue } from '../queue/producer';
-import { enqueueProcessingJobs, type JobName } from '../uploads/uploads';
+import { enqueueProcessingJobs, recomputeCaptureStatus, type JobName } from '../uploads/uploads';
 import { convergeWarning, fail } from './errors';
 import {
   ensureGuestId,
@@ -185,6 +185,19 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
         } catch (err) {
           app.log.error({ err, jobKey: item.payload.jobKey }, 'render job was not queued');
         }
+      }
+
+      // The capture is usually `ready` by the time a guest asks for a render, and
+      // reads skip settled rows (see the trap note on `convergeCaptureStatus`).
+      // Without this the new `queued` row is invisible: the capture would stay
+      // `ready` while the job ran, and stay `ready` if it were abandoned. Moving it
+      // to `processing` here is what lets the next read converge it to `ready` or
+      // `partial` when the job settles. A failed recompute is logged and the 202
+      // stands — the row and the job are already committed.
+      try {
+        await recomputeCaptureStatus(app.db, detail.captureId);
+      } catch (err) {
+        convergeWarning(app)(err, detail.captureId);
       }
 
       return reply.code(202).send({ role, job });
