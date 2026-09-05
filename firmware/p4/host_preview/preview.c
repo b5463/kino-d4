@@ -416,6 +416,7 @@ static void fake_gallery(void) {
 esp_err_t gallery_init(void) { return ESP_OK; }
 void gallery_refresh(void) {}
 int gallery_total(void) { return g_fake_total; }
+int gallery_media_count(void) { return g_fake_total; }
 int gallery_page(void) { return 1; }
 int gallery_pages(void) { return 3; }
 void gallery_turn(int delta) { (void)delta; }
@@ -724,9 +725,10 @@ bool roll_state_has_credential(void) { return g_roll_active; }
 static upload_queue_report_t g_queue;
 
 esp_err_t upload_queue_start(void) { return ESP_OK; }
-esp_err_t upload_queue_enqueue(const char *uuid, int frames, bool thumb) {
-  (void)uuid; (void)frames; (void)thumb; return ESP_OK;
+esp_err_t upload_queue_enqueue(const char *uuid, bool thumb) {
+  (void)uuid; (void)thumb; return ESP_OK;
 }
+void upload_queue_forget(const char *capture_uuid) { (void)capture_uuid; }
 void upload_queue_status(upload_queue_report_t *out) {
   if (out != NULL) *out = g_queue;
 }

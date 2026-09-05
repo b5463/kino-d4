@@ -176,5 +176,5 @@ One list, so an incident does not start with a search of the bench log.
 | Gallery task stack minimum about 1.3 KB | Watch item, not a fault. Measured every release; do not add stack use to that task without re-measuring. | `firmware/HARDWARE_VALIDATION.md` |
 | The gallery index holds at most 4096 captures | The Photos count and `MEDIA_LIST.total` stay exact past the cap; the gallery shows the newest 4096 and Delete All removes what is indexed, then rebuilds and needs a second press for the rest. About 4096 captures is 3.2 GB of a 32 GB card. | `firmware/p4/main/gallery.c` |
 | Delete All has never been run on a real card | Code ready and host-tested (0.4.42). Destructive test waits for an expendable card. | `CHANGELOG.md` 0.4.42 |
-| Menu icons are Microsoft artwork | Release blocker for any published firmware binary, issue #134. | `docs/RELEASING.md` stop-gates |
+| Menu icons are Microsoft artwork | Accepted by the operator for private, unpublished builds (2026-09-05); a blocker only if a binary is ever distributed, issue #134. | `docs/RELEASING.md` stop-gates |
 

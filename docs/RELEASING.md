@@ -27,7 +27,9 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   from this tree redistributes them. Issue #134 has to be answered - a licence,
   or original artwork in the same idiom - before a firmware release exists.
   `npm run license:check` proves the mapping is intact; it does not make the
-  redistribution lawful.
+  redistribution lawful. **Operator decision, 2026-09-05:** the project is not
+  sold or published; builds are for the owner's own units, and the artwork
+  stays. The gate therefore applies only if a binary is ever distributed.
 - **Roll on the internet.** The backend and web have been proven only against
   a development API on the LAN. `kino.acronym.sk` answered 404 on 2026-09-05.
   Production deployment (`infra/README.md`, `infra/deploy.ps1`) is an operator
