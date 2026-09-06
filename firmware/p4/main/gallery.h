@@ -25,15 +25,20 @@
 #define GALLERY_PAGE (GALLERY_COLS * GALLERY_ROWS)
 
 /*
- * 4:3, and 3x2 of them fills the body of an 800x480 screen.
+ * 4:3, and 3x2 of them fills the body of an 800x480 screen: three across 800
+ * with 14 px between and 8 at each edge, two down the 415 px under the header
+ * with the frame mark and mode word laid over each tile's bottom edge rather
+ * than in a strip beneath it (ui.c, draw_gallery, checks the arithmetic).
  *
  * The aspect ratio is not a layout preference. Every sensor on this camera is
  * 4:3, thumb_load mats whatever does not fit, and a tile of any other shape
  * therefore puts a black border down the side of every photograph the camera
- * will ever take.
+ * will ever take. thumb_load also scales in sixteenths and rounds down, so
+ * the 288x224 THUMB.JPG lands in this tile at 13/16 - 234x182 - with a 9 px
+ * mat each side, against 198x154 in the 208x156 tile it replaces.
  */
-#define GALLERY_TILE_W 208
-#define GALLERY_TILE_H 156
+#define GALLERY_TILE_W 252
+#define GALLERY_TILE_H 189
 
 typedef enum {
   TILE_EMPTY = 0, /* no capture in this slot */
@@ -135,7 +140,7 @@ bool gallery_loading(void);
  * Capture folders a full rebuild has collected so far, or 0 when none is
  * running.
  *
- * One number, because the footer has room for one and because it is the only
+ * One number, because the header's count slot has room for one and it is the only
  * one that answers the question a person actually has in front of a screen
  * that says READING CARD: is it getting anywhere. It rises across passes - a
  * rebuild that yields the card to a capture keeps what it collected - so a
@@ -181,13 +186,14 @@ void gallery_delete_progress(int *done, int *total);
 
 /**
  * The largest frame a job may ask for, and the size every frame buffer is
- * allocated at. The photograph well is 464x348 (ui.c asserts it matches). A
+ * allocated at. The photograph well is 600x450 (ui.c asserts it matches),
+ * which is 1600x1200 at exactly 6/16, so a frame fills it with no mat. A
  * quad opens its frames at half this so four fit the well; sizing the buffers
  * by the first job that ran would let a half-size quad, opened first after
  * boot, starve every wiggle after it with ESP_ERR_INVALID_SIZE.
  */
-#define GALLERY_FRAME_MAX_W 464
-#define GALLERY_FRAME_MAX_H 348
+#define GALLERY_FRAME_MAX_W 600
+#define GALLERY_FRAME_MAX_H 450
 
 /* The frame index and the calibration index are the same camera, so the two
  * counts have to agree: gallery_item_t.cal[] is sized by pure.h's count and
@@ -217,9 +223,9 @@ _Static_assert(GALLERY_FRAME_MAX == PURE_WIGGLE_FRAMES_MAX,
  * ## What it costs
  *
  * The four buffers are allocated on the first call and never freed:
- * 4 x THUMB_TILE_BYTES(w, h), which at the photograph screen's 464x348 is
- * 1,291,776 bytes - 1.23 MiB of the P4's 32 MB PSRAM. Held rather than freed
- * per photograph because the alternative is a 1.23 MiB allocation on every
+ * 4 x THUMB_TILE_BYTES(w, h), which at the photograph screen's 600x450 is
+ * 2,160,128 bytes - 2.06 MiB of the P4's 32 MB PSRAM. Held rather than freed
+ * per photograph because the alternative is a 2.06 MiB allocation on every
  * open, which fails precisely when the camera is busiest, and because a buffer
  * that cannot be freed cannot be freed underneath a decode that is still
  * writing into it. That last point is the whole lifetime rule: nothing here

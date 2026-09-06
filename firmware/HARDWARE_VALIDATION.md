@@ -695,6 +695,8 @@ cc4a68db (bench; release 1fa9bbe1). Boot-162, index verified 5, capture
 9,876 B, ui 3,884 B.
 ### SINGLE DELETE: PASS, and the shutter fix proven - 0.4.45, 2026-09-05 late
 
+**0.4.50, the pictures get the panel.** Operator on the body after 0.4.49: the gallery and photograph images "so small and so much wasted space". Gallery 3x2 tiles 208x156 -> 252x189 with the caption on the tile and paging moved into the header (no footer); photograph well 464x348 -> 600x450, which is the first size that is an exact sixteenth (6/16) of a 1600x1200 frame - 464x348 had been showing a 400x300 picture with a mat. Controls in a left column, BACK where it was. Bench image `53af8a71fe6b` flashed to the app slot; partition table and NVS untouched. Operator check pending: gallery tiles, tap a tile, PREV/NEXT in the header on a multi-page card, the photograph with DELETE and FAVOURITE in the column, a quad, a wiggle playing.
+
 Operator at the body, host on telemetry only. 0.4.45 flashed (capture task
 10 KB, last-panic boot line).
 

@@ -589,4 +589,8 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   '0.4.48': 'd4-settings-0-4-9',
   // 0.4.49: the ROLL column spaced over its height. Same profile.
   '0.4.49': 'd4-settings-0-4-9',
+  // 0.4.50: the gallery and the photograph screen give the panel to the
+  // pictures - 252x189 tiles with the facts on the tile and paging in the
+  // header, a 600x450 well that is an exact sixth of a frame. Same profile.
+  '0.4.50': 'd4-settings-0-4-9',
 };

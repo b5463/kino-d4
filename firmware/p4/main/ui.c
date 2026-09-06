@@ -228,39 +228,59 @@ static bool s_mcached;
 
 /* The single-photograph view decodes at this size rather than scaling the
  * gallery thumbnail: thumb_load takes any target, so there is no reason to
- * show someone a 208 px thumbnail blown up to half the screen. */
+ * show someone a 252 px thumbnail blown up to most of the screen. */
 /*
- * The photo screen, laid out so nothing lands on anything else.
+ * The photo screen: the picture on the right, everything else in a column
+ * on the left, and nothing on anything else.
  *
- * It used to overlap: a 390 px image at y=22 ended at 412, the caption sat at
- * 422 and the DELETE / SEND TO ROLL row started at 434, so the caption ran
- * into the buttons and the picture crowded them from above. 4:3 is kept - the
- * sensor's aspect - so the frame is not distorted to make room.
+ * 600x450 is 1600x1200 at exactly 6/16. thumb_load scales in sixteenths and
+ * rounds DOWN so the picture fits the tile, so a well of any other size gets
+ * the next step below it and a mat round the picture: the old 464x348 well
+ * showed a 400x300 picture (4/16) inside 32 px of white on each side, which
+ * is what "the image is so small" meant. At 600x450 a frame fills the well
+ * edge to edge, and a quad's quadrants are 300x225 - 3/16, also exact.
+ *
+ * The 192 px left of the well is what 800 leaves after the well and an 8 px
+ * margin, and it takes everything that is not the picture: BACK, the caption
+ * as one fact per line, and the three buttons stacked at the foot. They used
+ * to be a row under the picture, which spent 62 px of the height on a panel
+ * that is short of height and not of width. 4:3 is kept - the sensor's
+ * aspect - so the frame is not distorted to make room.
  *
  * The arithmetic is checked below rather than trusted, because every one of
  * these was a loose number in the draw code and the overlap was invisible
  * until someone opened a photograph on the bench.
  */
-#define PH_W 464
-#define PH_H 348
-#define PH_TOP 40       /* clear of the BACK chevron at y=14 */
+#define PH_W 600
+#define PH_H 450
+#define PH_TOP 15
+#define PH_X0 (UI_W - 8 - PH_W)   /* 192: the well's right margin is 8 px */
+/* The control column. BACK stays at (14,14) so the gesture matches the
+ * viewfinder; the column starts under it at the same x. */
+#define PH_COL_X 14
+#define PH_COL_W 162
+#define PH_CAP_Y 48       /* the first caption line, under BACK */
+#define PH_LINE 18        /* UI_FONT_S.line_h, which _Static_assert cannot read */
+#define PH_CAP_LINES 4    /* label, mode, frame count, and the short-wiggle note */
+/* Three buttons, full column width, top to bottom: DELETE, FAVOURITE, SEND TO
+ * ROLL. Written as arithmetic rather than three literals because draw_photo()
+ * and hit_test() both walk it, and the two used to carry different widths -
+ * 150 drawn against 150 tested only by luck. */
 #define PH_BTN_H 34
-#define PH_BTN_GAP 18   /* below the buttons, to the bottom edge */
-#define PH_BTN_Y (UI_H - PH_BTN_H - PH_BTN_GAP)
-#define PH_CAP_Y (PH_TOP + PH_H + 12) /* caption, between picture and buttons */
-/* Three controls now, evenly across the width of the picture. Written as
- * arithmetic rather than three literals because draw_photo() and hit_test()
- * both walk it, and the two used to carry different widths - 150 drawn
- * against 150 tested only by luck. */
-#define PH_X0 ((UI_W - PH_W) / 2)
-#define PH_BTN_SP 14
-#define PH_BTN_W ((PH_W - 2 * PH_BTN_SP) / 3)
-#define PH_BTN_X(i) (PH_X0 + (i) * (PH_BTN_W + PH_BTN_SP))
+#define PH_BTN_W PH_COL_W
+#define PH_BTN_GAP 10     /* between buttons */
+#define PH_BTN_BOT 15     /* below the last button, to the bottom edge */
+#define PH_BTN_Y(i) (UI_H - PH_BTN_BOT - (3 - (i)) * PH_BTN_H - (2 - (i)) * PH_BTN_GAP)
 
-_Static_assert(PH_TOP + PH_H < PH_CAP_Y, "photo overlaps its caption");
-_Static_assert(PH_CAP_Y + 16 <= PH_BTN_Y, "caption overlaps the buttons");
-_Static_assert(PH_BTN_Y + PH_BTN_H < UI_H, "buttons fall off the bottom");
 _Static_assert(PH_W * 3 == PH_H * 4, "photo pane is not 4:3");
+_Static_assert(PH_X0 >= 2 && PH_TOP >= 2 && PH_X0 + PH_W + 2 <= UI_W && PH_TOP + PH_H + 2 <= UI_H,
+               "the photo well's bevel runs off the screen");
+_Static_assert(PH_COL_X + PH_COL_W + 2 <= PH_X0 - 2, "the control column runs into the well");
+_Static_assert(PH_CAP_Y + PH_CAP_LINES * PH_LINE + 8 <= PH_BTN_Y(0),
+               "the caption runs into the buttons");
+_Static_assert(PH_BTN_Y(0) < PH_BTN_Y(1) && PH_BTN_Y(1) < PH_BTN_Y(2) &&
+                   PH_BTN_Y(2) + PH_BTN_H < UI_H,
+               "the buttons are out of order or fall off the bottom");
 
 /* ------------------------------------------------------------------ */
 /* Screens                                                             */
@@ -886,15 +906,22 @@ static void picker_arrow(int cx, int cy, bool right, uint16_t ink) {
  *
  * Centred on (cx, cy) properly, unlike picker_arrow, because at a 4 px block
  * the 2 px of bottom-right overhang it ignores becomes visible.
+ *
+ * `right` mirrors it, for the gallery's page-forward button: the same 14x24
+ * mark in the same 44 px button, so PREV / NEXT and BACK read as one set of
+ * system buttons rather than a button and two words. Both directions cover
+ * the same 14 columns, cx-7..cx+6, so a mirrored pair sits level.
  */
-static void back_glyph(int cx, int cy, uint16_t ink) {
+static void arrow_glyph(int cx, int cy, bool right, uint16_t ink) {
   const int n = 11, t = 4;
   for (int i = 0; i < n; i++) {
-    const int x = cx - t / 2 + (n - 1) / 2 - i;
+    const int x = right ? cx - t / 2 - (n - 1) / 2 + i : cx - t / 2 + (n - 1) / 2 - i;
     fill(x, cy - t / 2 - (n - 1) + i, t, t, ink);
     fill(x, cy - t / 2 + (n - 1) - i, t, t, ink);
   }
 }
+
+static void back_glyph(int cx, int cy, uint16_t ink) { arrow_glyph(cx, cy, false, ink); }
 
 /* A left-pointing chevron, drawn rather than set as a glyph: the font is ASCII
  * 32..126 and carries no such character. One caller left - the photograph -
@@ -2446,36 +2473,60 @@ static void draw_look(void) {
 /* Gallery                                                             */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The grid: 3x2 tiles of 252x189, and nothing else in the body.
+ *
+ * The body used to hold 208x156 tiles, a 20 px caption strip under each, and
+ * a 40 px footer for PREV / NEXT and the count, and the pictures came to 39%
+ * of the panel. The footer's three things now live in the header bar, which
+ * had 700 px of caption plate for a 150 px word, and the caption strip is an
+ * overlay along each tile's bottom edge. What that frees goes to the tiles:
+ * 252x189 is the widest 4:3 tile three of which fit across 800 with the 6 px
+ * block a well needs at each edge and 14 px between columns, and two rows of
+ * it fit the 63..478 body with 8 px above and 9 below. THUMB.JPG is 288x224,
+ * so a tile shows it at 13/16 - 234x182 - against 198x154 before.
+ */
 #define G_COLS GALLERY_COLS
 #define G_TILE_W GALLERY_TILE_W
 #define G_TILE_H GALLERY_TILE_H
 #define G_GAP 14
-#define G_CAP 20   /* the one-line caption under each tile */
-#define G_X0 ((UI_W - (G_COLS * G_TILE_W + (G_COLS - 1) * G_GAP)) / 2)
-#define G_Y0 (BODY_Y + 8)
-#define G_PITCH (G_TILE_H + G_CAP + 12)
-#define G_FOOT 40
+#define G_X0 ((UI_W - (G_COLS * G_TILE_W + (G_COLS - 1) * G_GAP)) / 2)   /* 8 */
+#define G_Y0 (BODY_Y + 8)                                               /* 71 */
+#define G_PITCH (G_TILE_H + G_GAP)                                      /* 203 */
+/* The facts plate along the tile's bottom edge: the frame mark and the mode
+ * word, on the same dark tone the favourite star sits on. */
+#define G_STRIP 20
 
 /* Items 0..5 are tiles, 6 is page-back, 7 is page-forward. */
 #define G_IT_PREV 6
 #define G_IT_NEXT 7
 
+/* PREV and NEXT are header system buttons at the right end of the bar, the
+ * mirror of the back button at HD_BTN_X: the same 44 px square, 5 px in from
+ * the bar's edge, with the caption plate cut 5 px short of them the way it
+ * starts 5 px after BACK. 4 px between the pair, so they read as one control
+ * with two ends rather than two buttons that happen to be adjacent. */
+#define G_PG_GAP 4
+#define G_NEXT_X (UI_W - HD_BAR_X - 5 - HD_BTN)   /* 749 */
+#define G_PREV_X (G_NEXT_X - G_PG_GAP - HD_BTN)   /* 701 */
+
 /* Each tile is a well with a 2 px white mat, so the block round a photograph
  * is 6 px wider on every side than the photograph: 2 of selection plate, 2 of
- * sunken edge, 2 of mat. That is 3 px more than the old keyline had, in every
- * direction, and it is spent out of gaps nothing measured before. Checked here
- * because the caption's offsets are literals in the draw loop below and the
- * pitch is arithmetic up here - the two only agreed by luck. */
+ * sunken edge, 2 of mat. The gap between tiles has to hold two of them and the
+ * screen edge one, and the bottom row's block has to clear the window frame's
+ * 2 px bevel. Checked here because the pitch is arithmetic and the margins are
+ * literals - the two only agreed by luck before this was written down. */
 #define G_BLOCK 6
-#define G_CAP_TOP 5   /* the caption's offset below the picture, as drawn */
 _Static_assert(G_GAP >= 2 * G_BLOCK, "the gallery tile wells touch across a column gap");
+_Static_assert(G_PITCH - G_TILE_H >= 2 * G_BLOCK, "the gallery tile wells touch across a row gap");
 _Static_assert(G_X0 >= G_BLOCK, "the leftmost tile well runs off the screen");
 _Static_assert(G_Y0 >= BODY_Y + G_BLOCK, "the top row's well runs into the header");
-_Static_assert(G_CAP_TOP > 4, "the caption sits on the well's bottom edge");
-_Static_assert(G_PITCH - G_BLOCK >= G_TILE_H + G_CAP_TOP + 18,
-               "the caption runs into the next row's tile well");
-_Static_assert(G_Y0 + G_PITCH + G_TILE_H + G_CAP_TOP + 18 <= UI_H - G_FOOT,
-               "the bottom row's caption runs into the footer");
+_Static_assert(G_Y0 + G_PITCH + G_TILE_H + G_BLOCK <= UI_H - 2,
+               "the bottom row's well runs into the window frame");
+_Static_assert(G_STRIP >= 18 && G_STRIP < G_TILE_H / 4,
+               "the facts strip does not hold a line of type, or eats the picture");
+_Static_assert(G_PREV_X > HD_CAP_X + HD_CAP_PAD + 320,
+               "the paging buttons run into the GALLERY caption and its count");
 
 static void gal_origin(int slot, int *x, int *y) {
   *x = G_X0 + (slot % G_COLS) * (G_TILE_W + G_GAP);
@@ -2486,7 +2537,7 @@ static void gal_origin(int slot, int *x, int *y) {
 /* The favourite mark                                                  */
 /*                                                                     */
 /* A bitmap, not a scan-converted polygon. The mark has to be legible   */
-/* at 11 px in the corner of a 208 px tile, and at that size a computed */
+/* at 11 px in the corner of a 252 px tile, and at that size a computed */
 /* five-point star is a blob with three of its points lost to rounding. */
 /* The font is ASCII 32..126 and carries no star glyph, so this is the  */
 /* only way to draw one at all.                                        */
@@ -2596,25 +2647,15 @@ static void draw_gallery(void) {
       text_mid(&UI_FONT_S, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d,
                slots[i].state == TILE_PENDING ? "LOADING" : "NO IMAGE", D_DIM);
     }
-    if (down) bevel_sunken(x, y, G_TILE_W, G_TILE_H);
-    if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, W_SELTEXT);
-
-    /* A favourite is marked in the corner of the picture, not in the caption
-     * strip below it. The caption already carries the frame mark and the mode
-     * and is the busiest 22 px on the screen; the top-right corner of a tile
-     * is the one place that is empty on every photograph.
+    /* The facts, on a plate along the picture's bottom edge rather than in a
+     * strip under it. No filename, no size, no path: the picture is the
+     * content and the rest is file management. The plate is the same dark
+     * tone the favourite star already sits on, so a tile carries one kind of
+     * mark and not two; it costs the bottom 20 rows of a 189-row picture,
+     * which is less than the 32 rows of caption and gap it replaces and is
+     * taken from the picture's edge rather than from its size.
      *
-     * On its own dark plate, because the mark sits over a photograph and a
-     * white star on a bright sky is not a mark. */
-    if (slots[i].favorite) {
-      const int sx = x + G_TILE_W - STAR_W - 6, sy = y + 5;
-      fill(sx - 3, sy - 3, STAR_W + 6, STAR_H + 6, RGB(0x12, 0x16, 0x1c));
-      star(sx, sy, C_YELLOW);
-    }
-
-    /* One short caption. No filename, no size, no path: the picture is the
-     * content and the rest is file management. */
-    /* The mark instead of a sentence: four cells, lit for the frames that
+     * The mark instead of a sentence: four cells, lit for the frames that
      * are actually in the folder. A full capture reads as four filled cells
      * at a glance and a partial one is obvious without counting.
      *
@@ -2628,26 +2669,51 @@ static void draw_gallery(void) {
     for (int k = 0; k < 4; k++) {
       st[k] = k < slots[i].frames ? FM_ON : (slots[i].partial ? FM_LOST : FM_OFF);
     }
-    /* The mark is 8 px against 18 rows of type, so it sits 2 px lower to share
-     * the line's middle. Both offsets are from G_CAP_TOP, which is what the
-     * clearance assertions above are written against. */
-    four_mark(x + 2 + d, y + G_TILE_H + G_CAP_TOP + 2 + d, 8, st, false);
-    text_right(&UI_FONT_S, x + G_TILE_W - 2 + d, y + G_TILE_H + G_CAP_TOP + d, slots[i].mode,
-               W_TEXT);
+    const int sy0 = y + G_TILE_H - G_STRIP;
+    fill(x, sy0, G_TILE_W, G_STRIP, RGB(0x12, 0x16, 0x1c));
+    /* The mark is 8 px in a 20 px strip and the type is 18, so each sits in
+     * the strip's middle on its own terms: 6 above the cells, 1 above the
+     * line. Dark-ground cells, which is the variant the capture banner uses. */
+    four_mark(x + 6 + d, sy0 + (G_STRIP - 8) / 2 + d, 8, st, true);
+    text_right(&UI_FONT_S, x + G_TILE_W - 6 + d, sy0 + (G_STRIP - UI_FONT_S.line_h) / 2 + d,
+               slots[i].mode, W_SELTEXT);
+
+    /* Drawn after the strip so the press reads as the whole well, strip
+     * included, going deeper. */
+    if (down) bevel_sunken(x, y, G_TILE_W, G_TILE_H);
+    if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, W_SELTEXT);
+
+    /* A favourite is marked in the top-right corner of the picture, away from
+     * the facts strip along the bottom, which already carries the frame mark
+     * and the mode; the top-right corner of a tile is the one place that is
+     * empty on every photograph.
+     *
+     * On its own dark plate, because the mark sits over a photograph and a
+     * white star on a bright sky is not a mark. */
+    if (slots[i].favorite) {
+      const int sx = x + G_TILE_W - STAR_W - 6, sy = y + 5;
+      fill(sx - 3, sy - 3, STAR_W + 6, STAR_H + 6, RGB(0x12, 0x16, 0x1c));
+      star(sx, sy, C_YELLOW);
+    }
   }
 
   /*
-   * The footer says one thing at a time, in the middle.
+   * The count, and the page buttons, in the header bar.
    *
-   * "READING CARD" used to be drawn at x=24 - the same place as the PREV
-   * button - so while the card was being read the two sat on top of each
-   * other and the screen showed a boxed "REPRE#NG|CARD". The state and the
-   * page position are the same piece of information at different moments, so
-   * they share the one slot instead of fighting for it.
+   * They were a 40 px footer. The bar's caption plate is 737 px wide for a
+   * word that is 150, and the body is the one place on this screen where
+   * height is worth anything, so the footer's three things moved up: the
+   * two buttons as system buttons at the bar's right end, mirroring BACK at
+   * its left, and the one line of text right-aligned on the plate beside
+   * them. draw_header() painted the plate to the bar's edge; the plate is cut
+   * 5 px short of PREV here, the same 5 px it starts after BACK.
+   *
+   * The text says one thing at a time. "READING CARD" and the page position
+   * are the same piece of information at different moments, so they share the
+   * one slot instead of fighting for it - which is how the footer once showed
+   * a boxed "REPRE#NG|CARD" with the two drawn on top of each other.
    */
   const int pages = gallery_pages();
-  const int fy = UI_H - G_FOOT;
-  const int ty = fy + (G_FOOT - UI_FONT_S.line_h) / 2;
   const bool loading = gallery_loading();
 
   char mid[48];
@@ -2668,32 +2734,31 @@ static void draw_gallery(void) {
   } else {
     snprintf(mid, sizeof mid, "%d photo%s", total, total == 1 ? "" : "s");
   }
-  /* The count in its own recess, so the one reading on this footer reads as a
-   * status panel rather than as a caption adrift between two buttons. Sized to
-   * the space between them whether or not they are drawn, which is what keeps
-   * the panel from moving when a one-page card becomes a three-page one. */
-  {
-    const int pw = pages > 1 ? 78 + 12 : 0;
-    const int sx = 24 + pw, sw = UI_W - 48 - 2 * pw;
-    status_panel(sx, fy + 4, sw, G_FOOT - 8);
-    text_mid(&UI_FONT_S, UI_W / 2, ty, mid, loading ? W_GRAYTEXT : W_TEXT);
+
+  /* Right-aligned to the plate's end, or to the plate's new end when the
+   * buttons are there: the same HD_CAP_PAD inset the title has on the left. */
+  int plate_end = HD_CAP_X + HD_CAP_W;
+  if (pages > 1) {
+    plate_end = G_PREV_X - 5;
+    fill(plate_end, HD_CAP_Y, HD_CAP_X + HD_CAP_W - plate_end, HD_CAP_H, W_FACE);
   }
+  text_right(&UI_FONT_S, plate_end - HD_CAP_PAD, HD_CAP_Y + (HD_CAP_H - UI_FONT_S.line_h) / 2,
+             mid, loading ? W_LIGHT : W_SELTEXT);
 
   if (pages > 1) {
-    const int bw = 78, bh = 32, by = fy + (G_FOOT - bh) / 2;
     const int pd = s_pressed == G_IT_PREV ? 1 : 0, nd = s_pressed == G_IT_NEXT ? 1 : 0;
     /* Greyed at the ends rather than hidden. A control that disappears moves
      * the other one and teaches nothing; a dead one shows you where you are. */
     const bool has_prev = gallery_page() > 0;
     const bool has_next = gallery_page() < pages - 1;
-    button(24, by, bw, bh, pd);
-    text_mid(&UI_FONT_M, 24 + bw / 2 + pd, by + (bh - UI_FONT_M.line_h) / 2 + pd, "PREV",
-             has_prev ? W_TEXT : W_GRAYTEXT);
-    button(UI_W - 24 - bw, by, bw, bh, nd);
-    text_mid(&UI_FONT_M, UI_W - 24 - bw / 2 + nd, by + (bh - UI_FONT_M.line_h) / 2 + nd, "NEXT",
-             has_next ? W_TEXT : W_GRAYTEXT);
-    if (foc(SCR_GALLERY, G_IT_PREV)) focus_inset(24, by, bw, bh, W_TEXT);
-    if (foc(SCR_GALLERY, G_IT_NEXT)) focus_inset(UI_W - 24 - bw, by, bw, bh, W_TEXT);
+    button(G_PREV_X, HD_BTN_Y, HD_BTN, HD_BTN, pd);
+    arrow_glyph(G_PREV_X + HD_BTN / 2 + pd, HD_BTN_Y + HD_BTN / 2 + pd, false,
+                has_prev ? W_TEXT : W_GRAYTEXT);
+    button(G_NEXT_X, HD_BTN_Y, HD_BTN, HD_BTN, nd);
+    arrow_glyph(G_NEXT_X + HD_BTN / 2 + nd, HD_BTN_Y + HD_BTN / 2 + nd, true,
+                has_next ? W_TEXT : W_GRAYTEXT);
+    if (foc(SCR_GALLERY, G_IT_PREV)) focus_inset(G_PREV_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
+    if (foc(SCR_GALLERY, G_IT_NEXT)) focus_inset(G_NEXT_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
   }
 }
 
@@ -2748,9 +2813,9 @@ static void photo_release(void) {
   s_photo_fav = false;
 }
 
-/* Decoded at PH_W x PH_H rather than by scaling the 208 px gallery tile:
+/* Decoded at PH_W x PH_H rather than by scaling the 252 px gallery tile:
  * thumb_load takes any target size, so there is no reason to show a
- * thumbnail blown up to half the screen.
+ * thumbnail blown up to most of the screen.
  *
  * Takes the card, like every other reader. This runs up to three full-res
  * hardware JPEG decodes off the SD card and it did so without going through
@@ -3084,7 +3149,7 @@ static void draw_photo(void) {
              (size_t)PH_W * sizeof(uint16_t));
   } else {
     fill(px, py, PH_W, PH_H, D_PANE);
-    text_mid(&UI_FONT_M, UI_W / 2, py + PH_H / 2 - 12, "NO IMAGE", D_DIM);
+    text_mid(&UI_FONT_M, px + PH_W / 2, py + PH_H / 2 - 12, "NO IMAGE", D_DIM);
   }
   /* The picture in a well, in the dark chrome's own tones. It was a 1 px
    * keyline, which is the one thing this grammar has no word for: a frame is
@@ -3096,13 +3161,23 @@ static void draw_photo(void) {
   chevron(14, 14, bink);
   text(&UI_FONT_S, 32, 14 - UI_FONT_S.line_h / 2, "BACK", bink);
 
-  char info[72];
-  snprintf(info, sizeof info, "%s   %s   %d frames", s_photo_label, s_photo_mode, s_photo_frames);
-  text(&UI_FONT_S, px, PH_CAP_Y, info, D_DIM);
+  /* The caption, one fact per line down the column: what it is called, what
+   * kind of capture, how many frames. It was one line under the picture, with
+   * three spaces between the facts; the column is 162 px and the line was
+   * wider than that, so it breaks where the spaces were. */
+  int cy = PH_CAP_Y;
+  text(&UI_FONT_S, PH_COL_X, cy, s_photo_label, D_DIM);
+  cy += UI_FONT_S.line_h;
+  text(&UI_FONT_S, PH_COL_X, cy, s_photo_mode, D_DIM);
+  cy += UI_FONT_S.line_h;
+  char info[24];
+  snprintf(info, sizeof info, "%d frames", s_photo_frames);
+  text(&UI_FONT_S, PH_COL_X, cy, info, D_DIM);
+  cy += UI_FONT_S.line_h;
 
   /*
-   * A wiggle that is swinging fewer than four frames says so, at the right
-   * end of the caption row it already has.
+   * A wiggle that is swinging fewer than four frames says so, on the caption's
+   * fourth line.
    *
    * The count is what DECODED, not META's frameCount: a partial capture may
    * be missing any one of the four and the document only records how many
@@ -3111,26 +3186,27 @@ static void draw_photo(void) {
    * wiggle needs no note, and "4 OF 4 FRAMES" on every photograph is a label
    * that teaches nothing and dilutes the one that does.
    *
-   * On the caption's own baseline rather than over the picture: the well is a
-   * photograph and nothing this firmware has to say belongs inside it.
+   * In the column rather than over the picture: the well is a photograph and
+   * nothing this firmware has to say belongs inside it.
    */
   if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX) {
     char note[24];
     snprintf(note, sizeof note, "%d OF %d FRAMES", s_wig_count, GALLERY_FRAME_MAX);
-    text_right(&UI_FONT_S, px + PH_W, PH_CAP_Y, note, D_DIM);
+    text(&UI_FONT_S, PH_COL_X, cy + 8, note, D_DIM);
   }
 
-  const int bh = PH_BTN_H, by = PH_BTN_Y, bw = PH_BTN_W;
-  const int ty = by + (bh - UI_FONT_S.line_h) / 2;
+  /* The three controls, stacked at the foot of the column, DELETE at the top
+   * and SEND TO ROLL at the bottom - the order they had left to right. */
+  const int bh = PH_BTN_H, bx = PH_COL_X, bw = PH_BTN_W;
 
-  const int dx = PH_BTN_X(0);
+  const int dy = PH_BTN_Y(0);
   const int dd = s_pressed == P_IT_DELETE ? 1 : 0;
-  button(dx, by, bw, bh, dd);
-  text_mid(&UI_FONT_S, dx + bw / 2 + dd, ty + dd, "DELETE", W_TEXT);
+  button(bx, dy, bw, bh, dd);
+  text_mid(&UI_FONT_S, bx + bw / 2 + dd, dy + (bh - UI_FONT_S.line_h) / 2 + dd, "DELETE", W_TEXT);
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
    * zeroed, so reading it directly put a focus ring on DELETE the first time
    * any photograph was opened, on a body whose only input is a finger. */
-  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_inset(dx, by, bw, bh, W_TEXT);
+  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_inset(bx, dy, bw, bh, W_TEXT);
 
   /* The star carries the state and the word carries the action, which is why
    * the label does not change between them: a button reading "UNFAVOURITE" on
@@ -3138,20 +3214,21 @@ static void draw_photo(void) {
    * and in two different grammars. Gold star, it is a favourite; grey star, it
    * is not. The button always toggles. It is also drawn pushed in while it is
    * one, the same way a live segment is on every other screen here. */
-  const int fx = PH_BTN_X(1);
+  const int fy = PH_BTN_Y(1);
   const int fd = s_pressed == P_IT_FAV ? 1 : 0;
   const int fpush = (fd || s_photo_fav) ? 1 : 0;
-  button(fx, by, bw, bh, fd || s_photo_fav);
-  star(fx + 14 + fpush, by + (bh - STAR_H) / 2 + fpush,
+  button(bx, fy, bw, bh, fd || s_photo_fav);
+  star(bx + 14 + fpush, fy + (bh - STAR_H) / 2 + fpush,
        s_photo_fav ? RGB(0xd0, 0x9c, 0x00) : W_SHADOW);
-  text_mid(&UI_FONT_S, fx + bw / 2 + 10 + fpush, ty + fpush, "FAVOURITE", W_TEXT);
-  if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(fx, by, bw, bh, W_TEXT);
+  text_mid(&UI_FONT_S, bx + bw / 2 + 10 + fpush, fy + (bh - UI_FONT_S.line_h) / 2 + fpush,
+           "FAVOURITE", W_TEXT);
+  if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, W_TEXT);
 
   /* No radio on this body, so Roll cannot take it. Dimmed with the reason
    * rather than hidden - a control that vanishes teaches nothing. */
-  const int rx = PH_BTN_X(2);
-  button(rx, by, bw, bh, false);
-  text_mid(&UI_FONT_S, rx + bw / 2, ty, "SEND TO ROLL", W_GRAYTEXT);
+  const int ry = PH_BTN_Y(2);
+  button(bx, ry, bw, bh, false);
+  text_mid(&UI_FONT_S, bx + bw / 2, ry + (bh - UI_FONT_S.line_h) / 2, "SEND TO ROLL", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -4559,24 +4636,26 @@ static void draw_toast(void) {
    * So the strip is the bottom band, the height of the menu's status bar and
    * flush with it, and on the menu that IS the status bar - which is where a
    * windowed system has always put a transient message. On the gallery it
-   * lands between PREV and NEXT, inside the footer's own panel, because every
-   * gallery message ("Card busy") is narrower than the gap between them. On
-   * the list screens the band is bare face grey.
+   * lands across the foot of the bottom row of tiles, over picture and not
+   * over a control - the page buttons are in the header. On the list screens
+   * the band is bare face grey.
    *
-   * Two screens keep controls down there and get the band above instead: the
-   * photograph, whose DELETE / FAVOURITE row is 34 px off the bottom, and the
-   * finder, whose status bar and capture banner both own the foot. On both,
-   * what it covers instead is the picture - which is content, and content is
-   * what a tooltip is allowed to float over.
+   * The finder keeps controls down there and gets the band above instead: its
+   * status bar and capture banner both own the foot, so the toast sits over
+   * the picture - which is content, and content is what a tooltip is allowed
+   * to float over. The photograph's buttons are in a column on the left, so
+   * the band stays at the bottom and is centred over the well rather than the
+   * screen: every photograph message ("Favourite", "Card busy") is about the
+   * picture, and centred on the screen it would straddle the column's edge.
    */
   const int w = text_w(&UI_FONT_S, s_toast) + 32, h = 34;
   int y = UI_H - 2 - h;
-  if (s_screen == SCR_PHOTO) y = PH_CAP_Y - h - 8;
-  else if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 8;
-  const int x = (UI_W - w) / 2;
+  if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 8;
+  int x = (UI_W - w) / 2;
+  if (s_screen == SCR_PHOTO) x = PH_X0 + (PH_W - w) / 2;
   fill(x, y, w, h, W_INFO);
   outline(x, y, w, h, W_TEXT);
-  text_mid(&UI_FONT_S, UI_W / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, W_TEXT);
+  text_mid(&UI_FONT_S, x + w / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, W_TEXT);
 }
 
 static void draw_screen(void) {
@@ -4687,11 +4766,11 @@ static int hit_test(int x, int y) {
 
     case SCR_PHOTO: {
       if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
-      /* The same PH_BTN_X/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
+      /* The same PH_BTN_Y/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
        * not a target: it is drawn dead, and a press that lands on it should do
        * nothing rather than raise a toast about a radio that is not there. */
-      if (in(x, y, PH_BTN_X(0), PH_BTN_Y, PH_BTN_W, PH_BTN_H)) return P_IT_DELETE;
-      if (in(x, y, PH_BTN_X(1), PH_BTN_Y, PH_BTN_W, PH_BTN_H)) return P_IT_FAV;
+      if (in(x, y, PH_COL_X, PH_BTN_Y(0), PH_BTN_W, PH_BTN_H)) return P_IT_DELETE;
+      if (in(x, y, PH_COL_X, PH_BTN_Y(1), PH_BTN_W, PH_BTN_H)) return P_IT_FAV;
       return -1;
     }
 
@@ -4699,7 +4778,18 @@ static int hit_test(int x, int y) {
   }
 
   /* Every other screen has the standard header, and the whole of it goes
-   * back: a 26 px chevron is a smaller target than a thumb is wide. */
+   * back: a 26 px chevron is a smaller target than a thumb is wide.
+   *
+   * Except the right end of the gallery's, where PREV and NEXT are. Their
+   * targets are the full height of the band and run to the screen's edge and
+   * 8 px past PREV's left face, split down the 4 px between them - the same
+   * margin-round-the-button rule the finder's back button uses, so a thumb
+   * that lands on the bevel turns the page rather than leaving the gallery. */
+  if (s_screen == SCR_GALLERY && gallery_total() > 0 && gallery_pages() > 1) {
+    const int split = G_NEXT_X - G_PG_GAP / 2;
+    if (in(x, y, G_PREV_X - 8, 0, split - (G_PREV_X - 8), HEAD_H)) return G_IT_PREV;
+    if (in(x, y, split, 0, UI_W - split, HEAD_H)) return G_IT_NEXT;
+  }
   if (y < HEAD_H) return IT_BACK;
 
   switch (s_screen) {
@@ -4732,15 +4822,11 @@ static int hit_test(int x, int y) {
       for (int i = 0; i < GALLERY_PAGE; i++) {
         int gx, gy;
         gal_origin(i, &gx, &gy);
-        if (in(x, y, gx, gy, G_TILE_W, G_TILE_H + 22)) return i;
+        /* The tile itself: the facts are on it now, not in a strip under it. */
+        if (in(x, y, gx, gy, G_TILE_W, G_TILE_H)) return i;
       }
-      if (gallery_pages() > 1) {
-        /* 78, which is what the buttons are drawn at. It was 74, so the outer
-         * 4 px of both PREV and NEXT looked pressable and were not. */
-        const int fy = UI_H - G_FOOT, bw = 78, bh = 32, by = fy + (G_FOOT - bh) / 2;
-        if (in(x, y, 24, by, bw, bh)) return G_IT_PREV;
-        if (in(x, y, UI_W - 24 - bw, by, bw, bh)) return G_IT_NEXT;
-      }
+      /* PREV and NEXT are in the header and were tested above, before the
+       * band's own back target. */
       return -1;
     }
     case SCR_SETTINGS:
