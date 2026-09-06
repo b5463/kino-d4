@@ -653,6 +653,18 @@ regression in capture latency.
 its enumeration has not been moved onto the index and no test matrix exists
 for it yet. No destructive operation was run; the card is intact.
 
+### Standing rule, from 2026-09-05: acceptance includes the physical shutter
+
+Every release acceptance on this bench fires the physical shutter at least
+three times on the image under test and records the capture task's minimum
+free stack afterwards. Host-driven `CAMERA_CAPTURE` runs on another task with
+twice the stack and proved nothing about the product path for a whole day.
+Camnode provenance for the 0.4.47 bundle: `git diff da16bc5..HEAD --
+firmware/camnode firmware/components firmware/VERSION` is the version line
+only; the nodes run 0.4.38 and the 0.4.47 node image differs from it by that
+string. Bundles from this tree are private (Windows 98 icons, #134); they are
+not to be published.
+
 ### SINGLE DELETE: PASS, and the shutter fix proven - 0.4.45, 2026-09-05 late
 
 Operator at the body, host on telemetry only. 0.4.45 flashed (capture task

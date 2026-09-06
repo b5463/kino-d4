@@ -42,6 +42,27 @@ The table above is hand-written; `npm run version:check` verifies
 `versions.json` against the sources, not this table. When they disagree,
 `versions.json` is right.
 
+## Bench acceptance a release cannot skip
+
+- **Real shutter presses.** At least three physical shutter presses on the
+  release image, 4/4 where the hardware is healthy, and the capture task's
+  minimum free stack recorded afterwards (reference: about 4,048 B free on
+  the 10 KB stack, 0.4.45). KDP `CAMERA_CAPTURE` runs on the kdp_server task
+  and its 12 KB; the shutter runs on the capture task. On 2026-09-05 a hundred
+  host-driven captures passed and the first two physical presses panicked
+  the body (stack protection fault). A soak that fires the shutter over KDP
+  does not exercise the shutter.
+- **Firmware binaries are private.** The P4 image carries Microsoft Windows 98
+  shell icons under an operator decision for the owner's own units (#134,
+  2026-09-05). Release bundles built from this tree are for private use;
+  nothing containing `icons_w98.h` may be published or handed on until the
+  artwork or its licence is resolved. Say so in every release record.
+- **Camnode provenance.** The camera-node binary in a bundle is stamped from
+  `firmware/VERSION`; before publishing, either show the source delta since
+  the last physically proven node image is version-only (`git diff <proven>..HEAD
+  -- firmware/camnode firmware/components`) or flash the nodes and re-run the
+  shutter and capture checks.
+
 ## Before cutting a version
 
 1. Start from a clean worktree at the intended commit.
