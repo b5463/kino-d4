@@ -1,0 +1,47 @@
+# Temporary PC-hosted production behind an outbound Cloudflare Tunnel.
+#
+#   docker compose --env-file infra/.env.production \
+#     -f infra/docker-compose.prod.yml -f infra/docker-compose.tunnel.yml up -d --build
+#
+# The public hostname (kino.acronym.sk) terminates TLS at Cloudflare's edge and
+# reaches this machine through a connection the `tunnel` container opens
+# OUTBOUND. Nothing on the PC listens on the internet: no router forwarding,
+# no 80/443 on the host, and Postgres, Redis, MinIO, the API and the worker
+# stay on the private Compose network exactly as in the production file.
+#
+# What this overlay changes, and only this:
+#   - proxy (Caddy) publishes no host ports and serves plain HTTP on :80
+#     inside the Compose network (Caddyfile.tunnel). It cannot obtain ACME
+#     certificates behind a tunnel, and it does not need to: the certificate is
+#     Cloudflare's. TRUST_PROXY is already true in the production file, so the
+#     API reads the client address from X-Forwarded-For that Caddy forwards.
+#   - tunnel (cloudflared) runs with a token from the Zero Trust dashboard,
+#     where the public hostname kino.acronym.sk is mapped to
+#     http://proxy:80. The token is a secret: .env.production only.
+#
+# Everything a client sees is https://kino.acronym.sk. PUBLIC_BASE_URL, the
+# D4's stored network.apiBase and the PWA's same-origin API all stay on that
+# name, so moving this stack to a server later is a DNS/tunnel change and
+# nothing else (infra/README.md, "PC-hosted production").
+services:
+  proxy:
+    ports: !reset []
+    environment:
+      KINO_SITE_ADDRESS: ':80'
+    volumes: !override
+      - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  tunnel:
+    image: cloudflare/cloudflared:2025.8.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in the selected environment file}
+    depends_on:
+      proxy: { condition: service_started }
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'

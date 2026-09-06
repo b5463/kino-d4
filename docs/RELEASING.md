@@ -70,7 +70,12 @@ The table above is hand-written; `npm run version:check` verifies
 3. Confirm [`ROADMAP.md`](../ROADMAP.md) and the README build-status note still match reality.
 4. Review protocol and schema compatibility.
 5. Review database migrations and rollback consequences.
-6. Build with the lockfile and Node.js 22.
+6. Build with the lockfile and Node.js 22. `npm ci` needs npm 10 (the lockfile
+   refuses npm 9: `npx npm@10.9.8 ci`); the scripts themselves run on either.
+7. For a distributable bundle, build from a clean detached worktree so the
+   manifest says `dirty: false` (`git worktree add --detach <dir> HEAD`,
+   `npm ci` there, copy the firmware binaries into `firmware/*/build/`,
+   `npm run release`).
 
 ```bash
 npm ci

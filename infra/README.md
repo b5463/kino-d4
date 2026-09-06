@@ -106,6 +106,76 @@ The default mutation budget is 60 requests per minute per device token; one four
 
 Run `npm run test:uploader -- --help` for fixture, timeout, and pacing options. Production registration is first-write-wins, so reuse `KINO_DEVICE_ID` and `KINO_DEVICE_TOKEN` after the initial physically controlled registration instead of attempting to register the serial again.
 
+## PC-hosted production behind a tunnel (first production phase)
+
+The canonical product URL is `https://kino.acronym.sk`. For the first
+production phase the stack runs on the operator's Windows PC, and the public
+hostname reaches it through an **outbound** tunnel. Clients never learn a LAN
+address, a PC name or a temporary IP: the D4's stored `network.apiBase`, the
+PWA's same-origin API and `PUBLIC_BASE_URL` all say `kino.acronym.sk`, so a
+later move to a server is a DNS/tunnel change and nothing else.
+
+### Layout
+
+```
+Internet -> kino.acronym.sk (TLS at the tunnel edge)
+         -> outbound tunnel (cloudflared, no inbound ports on the PC)
+         -> proxy (Caddy, plain HTTP on the Compose network)
+         -> api:3000 / web:8080
+postgres, redis, object-storage, worker: Compose network only, never published
+```
+
+Files: `docker-compose.prod.yml` + `docker-compose.tunnel.yml` (overlay:
+removes the proxy's host ports, serves Caddy on `:80` inside the network via
+`Caddyfile.tunnel`, adds the `tunnel` service) and `.env.production` with
+`CLOUDFLARE_TUNNEL_TOKEN`. Prerequisite: the `acronym.sk` zone on Cloudflare
+DNS (free plan) so a tunnel can own `kino.acronym.sk` - Cloudflare Tunnel only
+serves hostnames in a zone it manages. The alternatives are a paid tunnel with
+custom domains or router port-forwarding to Caddy on 80/443, which the
+production file already supports without the overlay.
+
+### Bring-up
+
+```powershell
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 init      # writes infra\.env.production with generated secrets
+# edit infra\.env.production: KINO_SITE_ADDRESS, PUBLIC_BASE_URL, PROVISIONING_TOKEN, CLOUDFLARE_TUNNEL_TOKEN
+docker compose --env-file infra\.env.production -f infra\docker-compose.prod.yml -f infra\docker-compose.tunnel.yml config --quiet
+docker compose --env-file infra\.env.production -f infra\docker-compose.prod.yml -f infra\docker-compose.tunnel.yml up -d --build
+```
+
+Verify from outside the LAN: `https://kino.acronym.sk/` is the Roll PWA,
+`https://kino.acronym.sk/api/healthz` returns `ok` with `db`, `redis`,
+`storage` true, the certificate is valid, and nothing on the PC listens on
+80/443 (`netstat -an | findstr :443`).
+
+### What the PC must do
+
+| Requirement | How | Status |
+|---|---|---|
+| Docker Desktop starts at logon | Docker Desktop > Settings > General > Start Docker Desktop when you sign in | operator setting |
+| Containers come back after a reboot | every service has `restart: unless-stopped`; Docker Desktop restarts them once its engine is up | in the compose files |
+| The tunnel comes back | `tunnel` service, same restart policy; cloudflared reconnects on its own | in the overlay |
+| Data survives container restart and rebuilds | named volumes `pgdata`, `miniodata`, `caddy_data`, `caddy_config` | in the compose file |
+| The PC does not sleep | `powercfg /change standby-timeout-ac 0` and `powercfg /change hibernate-timeout-ac 0`; keep the machine on mains | operator setting |
+| Windows sign-in is not required | Docker Desktop runs in the user session: after a reboot the stack is down until someone signs in, unless auto-logon is configured. Documented limitation | operator decision |
+| Backups of both stores | `infra/scripts/backup.sh` on a schedule (Postgres dump + mirror of both buckets); `deploy.ps1 backup` is Postgres only and protects no photograph | not scheduled yet |
+
+### Availability, stated plainly
+
+When the PC is off, asleep, rebooting or without internet, `kino.acronym.sk`
+is unavailable. Photography is not: the shutter works, the capture is on the
+SD card with its UUID and Roll, the queue waits, and when the stack returns
+the uploads resume by themselves (proven on the bench on 2026-09-05 with a
+40-capture outage and a 105-capture backlog). The PC-hosted phase is a
+real-world test of exactly that design.
+
+### Migration later
+
+Back up Postgres and both buckets with `backup.sh`, restore them on the new
+host with `restore-drill.sh`'s procedure, point the tunnel (or DNS) at the new
+host. The D4, the Roll codes, the PWA URL, the schema and the object keys do
+not change.
+
 ## Pre-deploy checklist (release closure, 2026-09-05)
 
 Run through this before the first `deploy.ps1 up` on the public host, and
