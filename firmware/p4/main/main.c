@@ -16,6 +16,8 @@
 #include "ui.h"
 #include "viewfinder.h"
 #include "esp_log.h"
+#include "esp_core_dump.h"
+#include "esp_heap_caps.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -165,6 +167,32 @@ static void cam_probe_task(void *arg) {
   }
 }
 
+
+/*
+ * The last panic, said out loud at boot.
+ *
+ * The console is UART0 only since 0.4.43 (KDP owns USB-Serial-JTAG), so the
+ * panic handler's backtrace reaches nobody on the bench. The coredump in
+ * flash has it: the crashing task, its PC, and the RISC-V trap cause and
+ * value, which espcoredump does not print for this chip. One line per boot
+ * while a dump exists, so GET_LOGS carries the cause of the last crash until
+ * the next one overwrites it. The 2026-09-05 panic (capture task, inside
+ * sprintf while writing UPLOAD.JSON, 1.5 KB of stack free) is the case this
+ * would have answered.
+ */
+static void log_last_panic(void) {
+  if (esp_core_dump_image_check() != ESP_OK) return;
+  esp_core_dump_summary_t *s = heap_caps_calloc(1, sizeof *s, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (s == NULL) return;
+  if (esp_core_dump_get_summary(s) == ESP_OK) {
+    klog("P4", "last panic: task %s pc 0x%08lx mcause 0x%lx mtval 0x%08lx ra 0x%08lx sp 0x%08lx",
+         s->exc_task, (unsigned long)s->exc_pc, (unsigned long)s->ex_info.mcause,
+         (unsigned long)s->ex_info.mtval, (unsigned long)s->ex_info.ra,
+         (unsigned long)s->ex_info.sp);
+  }
+  free(s);
+}
+
 void app_main(void) {
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -204,6 +232,7 @@ void app_main(void) {
 
   klog_init();
   klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
+  log_last_panic();
   ESP_LOGI(TAG, "P4_BOOT %s serial %s session %s transport usb-serial-jtag",
            KINO_FW_VERSION, id.serial, id.session_id);
   hwv_init();

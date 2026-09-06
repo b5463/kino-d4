@@ -573,4 +573,15 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // resume by themselves; serverReachable is what the server said. Same
   // profile.
   '0.4.43': 'd4-settings-0-4-9',
+  // 0.4.44: the restart and shut-down dialogs speak to the owner. Same profile.
+  '0.4.44': 'd4-settings-0-4-9',
+  // 0.4.45: the capture task gets the stack the physical shutter path needs
+  // (6 KB overflowed by 48 bytes); boot logs the last panic. Same profile.
+  '0.4.45': 'd4-settings-0-4-9',
+  // 0.4.46: the gallery says in the KDP log when it rebuilds, verifies or
+  // cannot write its index. Same profile.
+  '0.4.46': 'd4-settings-0-4-9',
+  // 0.4.47: the gallery verifies its index against the card at boot (the
+  // 0.4.45 edit that was meant to do this never reached the file). Same profile.
+  '0.4.47': 'd4-settings-0-4-9',
 };

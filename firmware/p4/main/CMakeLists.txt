@@ -16,7 +16,9 @@ set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer
               esp_driver_gptimer
               esp_lcd esp_driver_gpio esp_lcd_st7701 esp_lcd_touch_gt911 esp_driver_i2c
-              esp_driver_i2s esp_codec_dev esp_driver_ppa esp_driver_jpeg esp_mm)
+              esp_driver_i2s esp_codec_dev esp_driver_ppa esp_driver_jpeg esp_mm
+  espcoredump # the last panic, read from the coredump partition at boot (main.c)
+)
 
 # The radio variant:
 #

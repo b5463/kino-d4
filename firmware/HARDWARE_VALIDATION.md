@@ -653,6 +653,108 @@ regression in capture latency.
 its enumeration has not been moved onto the index and no test matrix exists
 for it yet. No destructive operation was run; the card is intact.
 
+### SINGLE DELETE: PASS, and the shutter fix proven - 0.4.45, 2026-09-05 late
+
+Operator at the body, host on telemetry only. 0.4.45 flashed (capture task
+10 KB, last-panic boot line).
+
+- Boot line on 0.4.45 read the stored dump: `last panic: task capture pc
+  0x400edeaa mcause 0x1b mtval 0x00000000 ra 0x400e57f0 sp 0x4ff46410`.
+- Three shutter presses: CAP_001541, 001542, 001543, all 4/4, 764/753/769 KB,
+  3.8 to 4.1 s, spread 206 to 289 us, **no panic**, session boot-154 held.
+  Capture task minimum free **4,048 B on 10 KB**: the shutter path needs about
+  6.2 KB, so the 6 KB stack had no chance and the bench's host-driven
+  captures never used it. Fix proven.
+- One photograph deleted through the gallery. Index: 3 folders already on
+  the card (the second panicked shot now counted) + 3 - 1 = **5**; MEDIA_LIST
+  total 5, the deleted id absent; queue pending 0, failed 0, cardPending 0,
+  scanComplete true, uploaded 2 - the deleted capture's job was forgotten
+  before it uploaded and left nothing behind. SD errors 0.
+- Reboot (boot-155): total 5, same five ids, queue clean, scanComplete true,
+  SD errors 0, reserve held. **Deletion durable. SINGLE DELETE: PASS.**
+- Not exercised: unrelated files on the card (none placed); a delete of a
+  capture mid-upload (the deleted one had not started).
+
+**0.4.47, 2026-09-06 13:10.** Flashed `dbc22d5a…` (bench). Boot-158 log:
+`boot 0.4.47`, `last panic: task capture pc 0x400edeaa mcause 0x1b ...` (the
+dump is still in flash), then **`order index verified: 5 captures`** - the
+boot-time verify running for the first time. MEDIA_LIST total 5, reserve
+held, DMA 31 KB, capture task 9,876 B free, gallery 2,712 B, SD errors 0.
+
+0.4.46 adds nothing but KDP-log lines for the gallery's rebuild, verify and
+index-write outcomes, because those were ESP_LOGW on a console nobody can
+read since 0.4.43 moved it to UART0; the boot-verify question above was only
+answerable by inference.
+
+### The shutter path overflowed its stack, twice - 0.4.43, 2026-09-05 evening
+
+**What happened.** After the Delete All run and a reboot, the operator pressed
+the shutter on the emptied card: panic. A KDP `CAMERA_CAPTURE` from the host
+then worked (4/4, no panic). The operator pressed the shutter again: panic,
+same place.
+
+**Coredumps** (partition 0x650000, read with esptool, decoded against the
+reproduced 0.4.43 bench ELF - the build is byte-reproducible, so the ELF
+matched the dump's app SHA): crashed task `capture`, PC 0x400edeaa in the
+prologue of newlib `__ssprint_r` (`sw s5,20(sp)`), frames `sprintf("%d")` <-
+cJSON `print_number` <- `print_array` (frameSlots) <- `cJSON_PrintUnformatted`
+<- `encode_raw` <- `upload_store_encode` <- `upload_store_save` <-
+`upload_queue_enqueue_slots` <- `on_capture_done` <- `capture_fire("shutter")`
+<- `capture_task`. Both dumps identical. gdb on the second: TCB `pxStack`
+0x4ff46440, crashed `sp` 0x4ff46410 - **48 bytes below the stack base**. The
+dump's "1,584 free" was the painted high-water mark; the guard fired before
+the write. The 0.4.44 boot line then read the stored dump: `last panic: task
+capture pc 0x400edeaa mcause 0x1b mtval 0x00000000` - 0x1b is the RISC-V
+stack protection fault. Also in the second dump: the capture task at priority
+22/5, inherited from esp_timer waiting on a lock it held.
+
+**Why the bench never saw it.** Every capture the bench fires is KDP
+`CAMERA_CAPTURE`, and `kdp_server.c` calls `capture_fire()` on its own task
+with 12 KB of stack. The physical shutter runs `capture_task` with 6 KB and
+runs `on_capture_done()` on it. 100 captures on 0.4.43 today, none by hand.
+The task monitor's 5,780 B minimum free for `capture` was true: the task had
+never run the deep chain. **A soak that fires the shutter over KDP does not
+exercise the shutter.** The 0.4.45 soak below presses it.
+
+**Data.** Nothing lost. Both crashes came after `META.JSON` was committed;
+the queue's boot reconciliation found both folders without `UPLOAD.JSON`,
+rebuilt the records and uploaded them (backend: four originals each, same
+Roll). The gallery index did not know them until a verify pass ran - the
+Photos count read 2 with 3 folders on the card - which is why 0.4.45
+verifies the index at boot.
+
+**Fix (0.4.45).** `capture_task` stack 6 KB -> 10 KB; `log_last_panic()` in
+main.c. The boot-time index verify intended for the same image never reached
+gallery.c (found on 2026-09-06 when 0.4.46 booted without its line); it ships
+in 0.4.47. Result recorded below after the flash.
+
+### DELETE ALL: PASS on the 1540-capture card - 0.4.43, 2026-09-05 evening
+
+The operator declared the historical card expendable (every capture on it was
+bench test material) and ran Delete All from the STORAGE screen with its
+confirm dialog. Telemetry only from the host; no delete command was issued
+over KDP.
+
+- Start 18:58, "delete all photos: 1540 captures". Free space climbed from
+  28,653 MB in steps while KDP reads were refused BUSY by the gallery holding
+  the card between batches; SD errors 0 throughout; internal RAM steady at
+  105 KB; gallery task minimum unchanged at 2,224 B.
+- 19:14:47 "delete all photos done: 1540 removed", no "remain that were not
+  indexed" line: the index held exactly what the card held. About 16 minutes
+  for 1,540 folders, 32 per turn, yielding between batches.
+- Before reboot: MEDIA_LIST total 0 in 1.2 s, no stale flag; queue pending 0,
+  uploading 0, failed 0, cardPending 0, scanComplete true - the eight jobs
+  queued when the wipe began were forgotten with their folders, none left
+  dangling; free space 29,812 of 29,812 MB.
+- After reboot (boot-148): MEDIA_LIST total 0, queue clean, scanComplete
+  true, SD errors 0. Nothing came back. The recovery reserve was held again
+  after the reboot (DMA block 31 KB), confirming the 15 KB reading earlier was
+  a long session, not a code change.
+- Second press: at zero photographs the Delete All row is dimmed by design.
+- Not exercised: unrelated files on the card (none had been placed).
+
+**DELETE ALL: PASS.** Single delete follows on fresh captures.
+
 ### Release closure: C6 reset resume, renders, resources - 0.4.43, 2026-09-05 evening
 
 **C6 RESET RESUME: PASS (bench).** Boot-147, uptime 3.5 h, 100 captures and

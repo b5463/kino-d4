@@ -4342,7 +4342,7 @@ static void dialog_spec(dlg_spec_t *d) {
   static char sub[64];
   switch (s_dialog) {
     case DLG_RESTART:
-      *d = (dlg_spec_t){"RESTART", "Restart KINO D4?", NULL, "RESTART", false};
+      *d = (dlg_spec_t){"RESTART", "Back in a moment?", "KINO restarts and comes back to SHOOT.", "RESTART", false};
       break;
     case DLG_DELETE:
       snprintf(sub, sizeof sub, "%d frames. This cannot be undone.", s_photo_frames);
@@ -4361,7 +4361,7 @@ static void dialog_spec(dlg_spec_t *d) {
       *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", sub, "FORMAT", true};
       break;
     default:
-      *d = (dlg_spec_t){"SHUT DOWN", "Shut down KINO D4?", NULL, "SHUT DOWN", false};
+      *d = (dlg_spec_t){"SHUT DOWN", "Calling it a night?", "Hold the power slide to wake KINO up again.", "SHUT DOWN", false};
       break;
   }
 }

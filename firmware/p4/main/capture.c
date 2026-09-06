@@ -1834,12 +1834,22 @@ esp_err_t capture_init(const char *device_id) {
     taskmon_register(name, wh);
     s_workers_ready |= 1u << i; /* only a task that exists can set its done bit */
   }
-  /* 6 KB: this one builds META.JSON, which is the largest allocation-heavy
-   * thing in the module. */
+  /* 10 KB, not 6. The physical shutter runs the whole capture on THIS task,
+   * and after the frames it runs on_capture_done(): upload_queue_enqueue_slots
+   * -> upload_store_save -> cJSON_PrintUnformatted -> newlib sprintf, a chain
+   * that overflowed 6 KB by 48 bytes on 2026-09-05 (coredump: mcause 0x1b
+   * stack protection fault, sp 0x4ff46410 under pxStack 0x4ff46440) and
+   * panicked the body on every shutter press of the evening. The bench had
+   * never seen it: KDP's CAMERA_CAPTURE calls capture_fire() on the
+   * kdp_server task and its 12 KB, so a hundred host-driven captures a day
+   * kept this task at 5.7 KB free while the product path was 48 bytes over.
+   * The margin is bought with 4 KB of internal RAM (#162 budget 93 KB free at
+   * boot); the honest measurement is the physical-shutter soak in
+   * HARDWARE_VALIDATION.md, not the host-driven one. */
   /* CPU1 as well: capture_fire runs thumb_write() - a full-frame hardware
    * decode with cache maintenance over megabytes - the moment the transfers
    * end, which is also the moment the viewfinder resumes pulling frames. */
-  if (xTaskCreatePinnedToCore(capture_task, "capture", 6144, NULL, 5, &s_task, 1) != pdPASS) {
+  if (xTaskCreatePinnedToCore(capture_task, "capture", 10240, NULL, 5, &s_task, 1) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
   taskmon_register("capture", s_task);

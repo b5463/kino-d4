@@ -596,6 +596,7 @@ static int index_load(void) {
   const int n = gidx_parse(text, rows, MAX_SCAN, &h, &skipped);
   if (n < 0) {
     ESP_LOGW(TAG, "order index has no usable header; rebuilding");
+    klog("SD", "order index has no usable header; rebuilding");
   } else if (n != h.entries || skipped > 0) {
     /* The count is the detection mechanism, so it is checked and not trusted:
      * a power cut between two fwrites, or a card edited in a PC, leaves a file
@@ -734,6 +735,7 @@ static bool index_write(void) {
     unlink(INDEX_TMP_PATH);
     storage_release(STORAGE_USER_UI);
     ESP_LOGW(TAG, "could not rename the order index into place");
+    klog("SD", "order index: rename into place failed");
     return false;
   }
   storage_release(STORAGE_USER_UI);
@@ -1314,6 +1316,7 @@ static void gallery_task(void *arg) {
         s_rescan = true;
         s_dirty = true;
         ESP_LOGW(TAG, "an indexed capture is not on the card; rebuilding the order");
+        klog("SD", "an indexed capture is not on the card; rebuilding the order");
       }
     }
 
@@ -1401,8 +1404,10 @@ static void gallery_task(void *arg) {
         lock();
         const int want = s_total_seen;
         unlock();
+        if (seen == want) klog("SD", "order index verified: %d captures", seen);
         if (seen != want) {
           ESP_LOGW(TAG, "card holds %d capture folders, the index says %d; rebuilding", seen, want);
+          klog("SD", "card holds %d captures, the index says %d; rebuilding", seen, want);
           s_rescan = true;
           s_dirty = true;
         }
@@ -1417,6 +1422,7 @@ static void gallery_task(void *arg) {
         /* Said out loud, because the next gallery open pays a full rebuild for
          * it and that is otherwise an unexplained slow open. Not an error: the
          * list in memory is right, only the file is behind. */
+        klog("SD", "order index not written in %d attempts; the next open rebuilds", INDEX_WRITE_TRIES);
         ESP_LOGW(TAG, "could not write the order index in %d attempts; the next open rebuilds",
                  INDEX_WRITE_TRIES);
         s_index_dirty = false;
@@ -1620,6 +1626,13 @@ esp_err_t gallery_init(void) {
    * 1,248 B while the upload queue drained a hundred parked captures under
    * the gallery (0.4.43 bench, 2026-09-05). One kilobyte of internal RAM
    * buys the margin back; the budget (#162) holds at 87 KB free. */
+  /* Verify the index against the card once at boot, before anyone opens the
+   * gallery. A capture that was committed but never noted - the shutter path
+   * panicked between META.JSON and the note twice on 2026-09-05 - sat on the
+   * card, was found and uploaded by the queue, and stayed out of the Photos
+   * count until the gallery screen happened to open. One index read and one
+   * readdir count at boot make the count truthful from the first screen. */
+  s_verify = true;
   if (xTaskCreatePinnedToCore(gallery_task, "gallery", 5120, NULL, 4, &s_task, 1) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
