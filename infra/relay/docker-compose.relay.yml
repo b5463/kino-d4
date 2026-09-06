@@ -1,0 +1,47 @@
+﻿# PC-hosted production reached through a relay VPS (no port-forwarding, works
+# behind carrier NAT, DNS stays at Websupport).
+#
+#   docker compose --env-file infra/.env.production \
+#     -f infra/docker-compose.prod.yml -f infra/relay/docker-compose.relay.yml up -d --build
+#
+# Layout:
+#   Websupport DNS  kino.acronym.sk  A  -> <VPS static IPv4>
+#   VPS: caddy (TLS via ACME for kino.acronym.sk) -> 127.0.0.1:8080
+#        frps (frp server) listening on 7000, token-authenticated
+#   PC:  frpc (this file; mount paths are relative to infra/, the project dir) opens ONE outbound connection to the VPS and exposes
+#        the Compose-internal proxy:80 as 127.0.0.1:8080 on the VPS
+#        caddy proxy: plain HTTP on the Compose network, no host ports
+#
+# Nothing on the PC listens on the internet. Postgres, Redis, MinIO, the API
+# and the worker stay on the private Compose network. Every client URL is
+# https://kino.acronym.sk; moving the stack onto the VPS later is "run the
+# same compose there and point Caddy at it", with no D4 or PWA change.
+#
+# Secrets in .env.production: RELAY_HOST (VPS address), RELAY_TOKEN (shared
+# with frps). See infra/relay/vps/ for the VPS side.
+services:
+  proxy:
+    ports: !reset []
+    environment:
+      KINO_SITE_ADDRESS: ':80'
+    volumes: !override
+      - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  relay:
+    image: snowdreamtech/frpc:0.61.1
+    restart: unless-stopped
+    environment:
+      RELAY_HOST: ${RELAY_HOST:?set RELAY_HOST (the relay VPS address) in the selected environment file}
+      RELAY_TOKEN: ${RELAY_TOKEN:?set RELAY_TOKEN (shared with frps on the VPS) in the selected environment file}
+    volumes:
+      - ./relay/frpc.toml:/etc/frp/frpc.toml:ro
+    depends_on:
+      proxy: { condition: service_started }
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'

@@ -1,0 +1,12 @@
+# kino.acronym.sk on the relay VPS. Caddy obtains and renews the certificate
+# itself (ACME over 80/443) and forwards everything to the tunnelled PC Caddy
+# on 127.0.0.1:8080, which routes /api/* and / exactly as production does.
+# flush_interval -1: the Roll feed is server-sent events.
+{$KINO_SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+		header_up X-Forwarded-Proto https
+	}
+	log
+}

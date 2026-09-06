@@ -1,0 +1,34 @@
+# The relay VPS: the public face of kino.acronym.sk while the KINO stack runs
+# on the operator's PC. Two containers, no data.
+#
+#   cp .env.example .env   # RELAY_TOKEN (long random), KINO_SITE_ADDRESS
+#   docker compose up -d
+#
+# Websupport DNS: kino.acronym.sk A -> this machine's static IPv4. Open only
+# 80, 443 (Caddy, ACME) and 7000 (frps, token + TLS) in the VPS firewall.
+# frps binds the tunnelled port on 127.0.0.1 only, so the PC's Caddy is never
+# reachable except through this Caddy.
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      KINO_SITE_ADDRESS: ${KINO_SITE_ADDRESS:?set KINO_SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  frps:
+    image: snowdreamtech/frps:0.61.1
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      RELAY_TOKEN: ${RELAY_TOKEN:?set RELAY_TOKEN}
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
+
+volumes:
+  caddy_data:
+  caddy_config:

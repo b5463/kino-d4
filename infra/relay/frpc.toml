@@ -1,0 +1,17 @@
+# frp client on the PC: one outbound, token-authenticated, TLS-wrapped
+# connection to the relay VPS. The only thing exposed is the Compose-internal
+# Caddy on proxy:80, and only as 127.0.0.1:8080 on the VPS, where the VPS
+# Caddy terminates TLS for kino.acronym.sk and forwards to it.
+serverAddr = "{{ .Envs.RELAY_HOST }}"
+serverPort = 7000
+auth.method = "token"
+auth.token = "{{ .Envs.RELAY_TOKEN }}"
+transport.tls.enable = true
+loginFailExit = false
+
+[[proxies]]
+name = "kino-web"
+type = "tcp"
+localIP = "proxy"
+localPort = 80
+remotePort = 8080

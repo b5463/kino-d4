@@ -1,0 +1,11 @@
+# frp server on the relay VPS. The PC's frpc connects here (7000, token, TLS)
+# and its proxy appears as 127.0.0.1:8080, which only the VPS Caddy reads.
+bindAddr = "0.0.0.0"
+bindPort = 7000
+proxyBindAddr = "127.0.0.1"
+auth.method = "token"
+auth.token = "{{ .Envs.RELAY_TOKEN }}"
+transport.tls.force = true
+allowPorts = [
+  { single = 8080 }
+]
