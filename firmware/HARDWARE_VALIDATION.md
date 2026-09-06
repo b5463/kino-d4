@@ -677,10 +677,17 @@ shows OFFLINE, "3 waiting to upload / Saved safely on camera / They go when
 Wi-Fi returns."; server silent shows KINO NOT ANSWERING with the same two
 lines and "Wi-Fi is up."; a card not yet counted shows COUNTING THE CARD
 alone; a credential fault shows UPLOAD PAUSED and "Check the roll in Studio."
-The queue report gained last_upload_ms and burst_done for the bar. Flashed
-a069d590 (bench): boot-159, order index verified 5, queue clean, internal
-88 KB, capture 9,876 B, ui 3,884 B, gallery 2,712 B minimum free. Visual
-acceptance on the panel (W) remains the operator's.
+The queue report gained last_upload_ms and burst_done for the bar.
+
+First flash, a069d590, did NOT carry the screen: the build overlay list had
+been written from PowerShell with CR line endings, the build script matched
+no file and built the committed 0.4.47 sources under a 0.4.48 label. The
+operator saw the old screen and said so. The script now strips CR; the ROLL
+work was committed (c60b087) and rebuilt from HEAD 1709553 with no overlay:
+**a75ca1087e2d481e** (bench), release configuration a414ccc698136d38. Boot-161:
+order index verified 5, queue clean, internal 88 KB, capture 9,876 B, ui
+3,884 B, gallery 2,708 B minimum free. Visual acceptance on the panel (W)
+remains the operator's.
 ### SINGLE DELETE: PASS, and the shutter fix proven - 0.4.45, 2026-09-05 late
 
 Operator at the body, host on telemetry only. 0.4.45 flashed (capture task
