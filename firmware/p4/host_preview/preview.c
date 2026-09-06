@@ -976,31 +976,53 @@ int main(int argc, char **argv) {
   g_roll.role = ROLL_ROLE_HOST;
   g_roll.joined_at_ms = 1787000000000LL;
 
-  /* Online and idle: everything that was taken has landed. */
+  /* Online and caught up: everything that was taken has landed, 8 s ago. */
   g_net_state = NET_IP_READY;
   g_net_routed = true;
   memset(&g_queue, 0, sizeof g_queue);
   g_queue.uploaded = 12;
+  g_queue.scan_complete = true;
+  g_queue.server_state = UPLOAD_SERVER_REACHABLE;
+  g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 8000;
   SHOT(SCR_ROLL, "roll_active");
 
-  /* Online and working: one in flight, three behind it. */
+  /* Online and working: five landed in this burst, one in flight, three
+   * behind it - a bar with something to say. */
   g_queue.uploading = 1;
   g_queue.pending = 3;
+  g_queue.burst_done = 5;
   g_queue.draining = true;
+  g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 2000;
   SHOT(SCR_ROLL, "roll_uploading");
 
-  /* The state this body is actually in: a real Roll, a real backlog, and no
-   * radio link to drain it through. */
-  g_net_state = NET_C6_NOT_ROUTED;
-  g_net_routed = false;
+  /* Wi-Fi gone, three waiting: saved safely on the camera, not failed. */
+  g_net_state = NET_WIFI_IDLE;
+  g_net_routed = true;
   memset(&g_queue, 0, sizeof g_queue);
-  g_queue.pending = 8;
+  g_queue.pending = 3;
+  g_queue.scan_complete = true;
   SHOT(SCR_ROLL, "roll_offline");
+
+  /* Just booted: the card has not been counted yet and nothing is known to
+   * be waiting. The line lasts seconds and then disappears. */
+  g_net_state = NET_IP_READY;
+  memset(&g_queue, 0, sizeof g_queue);
+  g_queue.server_state = UPLOAD_SERVER_UNKNOWN;
+  SHOT(SCR_ROLL, "roll_counting");
+
+  /* Wi-Fi up, the server not answering: a different word from OFFLINE, and
+   * still nothing a guest should read as a failed photograph. */
+  memset(&g_queue, 0, sizeof g_queue);
+  g_queue.pending = 2;
+  g_queue.scan_complete = true;
+  g_queue.server_state = UPLOAD_SERVER_UNREACHABLE;
+  SHOT(SCR_ROLL, "roll_server_quiet");
 
   /* Stopped on a credential fault, which is not the same as failed. */
   memset(&g_queue, 0, sizeof g_queue);
   g_queue.halted = true;
   g_queue.pending = 8;
+  g_queue.scan_complete = true;
   snprintf(g_queue.last_error, sizeof g_queue.last_error, "INVALID_DEVICE_TOKEN");
   SHOT(SCR_ROLL, "roll_paused");
 

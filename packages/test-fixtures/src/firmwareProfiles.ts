@@ -584,4 +584,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.47: the gallery verifies its index against the card at boot (the
   // 0.4.45 edit that was meant to do this never reached the file). Same profile.
   '0.4.47': 'd4-settings-0-4-9',
+  // 0.4.48: the ROLL screen speaks to a guest - address under the QR, one lamp
+  // word, one big count, and only the upload lines that matter. Same profile.
+  '0.4.48': 'd4-settings-0-4-9',
 };

@@ -860,7 +860,7 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
   }
 }
 
-/* A small solid chevron, ‹ or ›.
+/* A small solid chevron, â€¹ or â€º.
  *
  * chevron() below is the dark chrome's, 26 px and left-only. The font is ASCII
  * 32..126 and carries neither character, so the picker buttons, the header's
@@ -3172,14 +3172,14 @@ static void draw_photo(void) {
 static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
   const int total = qr->size + 2 * QR_QUIET;
   const int pitch = box / total;
-  if (pitch < 1) return 0; /* no room Ã¢â‚¬â€ the caller shows the code as text */
+  if (pitch < 1) return 0; /* no room ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the caller shows the code as text */
 
   const int side = total * pitch;
   const int x0 = cx - side / 2;
 
   /* White ground for the symbol and its quiet zone together. W_WINDOW is
    * 0xffffff and W_TEXT is 0x000000, so the symbol gets full contrast rather
-   * than the 0xc0 face grey Ã¢â‚¬â€ a QR drawn on the face ground scans poorly. */
+   * than the 0xc0 face grey ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a QR drawn on the face ground scans poorly. */
   fill(x0, top, side, side, W_WINDOW);
 
   const int m0 = x0 + QR_QUIET * pitch;
@@ -3200,10 +3200,10 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
  *
  * Four states, and the difference between them is what a user needs:
  *
- *   no roll   Ã¢â‚¬â€ nothing to show, and how to get one
- *   active    Ã¢â‚¬â€ the QR a guest scans, plus what is waiting
- *   offline   Ã¢â‚¬â€ the same, but honest that nothing is moving
- *   paused    Ã¢â‚¬â€ something is wrong and retrying will not fix it
+ *   no roll   ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â nothing to show, and how to get one
+ *   active    ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the QR a guest scans, plus what is waiting
+ *   offline   ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the same, but honest that nothing is moving
+ *   paused    ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â something is wrong and retrying will not fix it
  *
  * The old screen said "NOT CONNECTED / This body has no radio fitted", which
  * was wrong on both counts: the radio IS fitted, and a Roll assigned from
@@ -3272,7 +3272,7 @@ static void draw_roll(void) {
   const bool online = net_link_can_upload(&net);
 
   if (!active) {
-    /* No Roll. Say how to get one rather than only that there isn't one Ã¢â‚¬â€ and
+    /* No Roll. Say how to get one rather than only that there isn't one ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â and
      * do not offer a CREATE button, because ROLL_CREATE is an HTTP POST this
      * body cannot make. A control that cannot work is the same defect as a
      * shutter that logs instead of capturing. */
@@ -3319,7 +3319,7 @@ static void draw_roll(void) {
    * Encoded once per Roll and cached, not once per repaint. Two reasons, and
    * the second is the one that matters: the screen repaints every 90 ms while
    * anything is busy, and qr_encode() puts about 1.4 KB of bitfields and
-   * codeword buffers on the caller's stack Ã¢â‚¬â€ which here is the UI task's. Nine
+   * codeword buffers on the caller's stack ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â which here is the UI task's. Nine
    * mask evaluations of a 57x57 grid on every frame would also be pure waste
    * for a symbol that changes only when the Roll does.
    *
@@ -3351,7 +3351,16 @@ static void draw_roll(void) {
        * take the margin a phone needs to find the symbol's edges down to 3.8
        * modules to buy a border. The screen grows 2 px instead. */
       bevel_sunken(RL_QR_CX - side / 2 - 2, RL_TOP - 2, side + 4, side + 4);
-      text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
+      /* The address under the symbol, without its scheme: a guest whose phone
+       * will not scan types this. Secondary to the QR by size and colour. */
+      const char *addr = roll.guest_url;
+      if (strncmp(addr, "https://", 8) == 0) addr += 8;
+      else if (strncmp(addr, "http://", 7) == 0) addr += 7;
+      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 8) {
+        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, addr, W_GRAYTEXT);
+      } else {
+        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
+      }
     }
   } else {
     /* The URL did not encode, so the column shows the code itself, big. A
@@ -3367,108 +3376,121 @@ static void draw_roll(void) {
              "The join link is too long to encode.", W_GRAYTEXT);
   }
 
-  /* ---- right column: the roll, and what is happening to it ---- */
+  /* ---- right column: the roll, and what is happening to it ----
+   *
+   * Name, code, one word for the connection, one big number for the card,
+   * and then only what is useful right now: nothing waiting reads "All
+   * uploaded" and when the last one landed; work in flight reads a count, a
+   * bar and "Uploading now"; work waiting with no way to send it reads the
+   * count and "Saved safely on camera". No queue internals reach a guest at a
+   * party. */
+  const int64_t now = esp_timer_get_time() / 1000;
+  const bool server_quiet = online && q.server_state == UPLOAD_SERVER_UNREACHABLE;
+  const bool can_send = online && !server_quiet && !q.halted;
+  const int waiting = q.pending + q.card_pending;
 
-  /* The Roll's name, or its code when it has no name. Sized to the column
-   * rather than assumed to fit: ROLL_NAME is host-supplied text. */
   const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
   int y = RL_TOP;
   text_scaled(&UI_FONT_M, RL_RX, y, title, fit_scale(&UI_FONT_M, title, RL_RW), W_TEXT);
-  y += UI_FONT_M.line_h * 2 + 6;
-
-  /* The code, next to the QR that encodes it. A guest whose phone will not
-   * scan - a cracked lens, a camera permission refused - can type this, and
-   * until now it was only ever shown when the QR itself failed. */
-  if (s_qr_ok) {
-    /* Sized off the field, not off the six-character slugs Roll issues today:
-     * roll.slug is host data and ROLL_SLUG_LEN is what bounds it. */
-    char code[sizeof roll.slug + 8];
-    snprintf(code, sizeof code, "CODE  %s", roll.slug);
-    text(&UI_FONT_M, RL_RX, y, code, W_TEXT);
-  }
-  y += UI_FONT_M.line_h + 18;
-
-  /* Counts, as big numerals. `pending` is what has not reached the Roll yet,
-   * and it is the number a host actually wants at a party. */
-  char num[16];
-  const int total = gallery_media_count();
-  if (total < 0) snprintf(num, sizeof num, "-");
-  else snprintf(num, sizeof num, "%d", total);
-  y = roll_stat(y, num, total == 1 ? "PHOTO ON THE CARD" : "PHOTOS ON THE CARD");
-
-  /*
-   * What has not reached the Roll yet: the active window AND the captures
-   * still on the card that the window has no room for. `pending` alone is
-   * the size of a 32-entry buffer, and on a card with 700 waiting it read 0
-   * and fell through to "uploaded" (#166, #167). Until the card has been
-   * seen end to end since boot the number is a floor, and the label says so.
-   */
-  const int waiting = q.pending + q.card_pending;
-  if (q.uploading > 0) {
-    snprintf(num, sizeof num, "%d", q.uploading);
-    y = roll_stat(y, num, "UPLOADING NOW");
-  } else if (waiting > 0) {
-    snprintf(num, sizeof num, "%d", waiting);
-    y = roll_stat(y, num, q.scan_complete ? "WAITING TO UPLOAD" : "WAITING, STILL COUNTING");
-  } else if (!q.scan_complete) {
-    y = roll_stat(y, "-", "COUNTING THE CARD");
-  } else {
-    /* s_uploaded is a since-boot counter and says so; "uploaded to the
-     * roll" read as a lifetime total, which it never was. */
-    snprintf(num, sizeof num, "%d", q.uploaded);
-    y = roll_stat(y, num, "UPLOADED SINCE POWER ON");
-  }
-  if (q.failed > 0) {
-    /* Parked: the server refused them, or the network failed so often they
-     * stopped trying. The queue wakes the second kind by itself when the
-     * server answers again; the first kind waits for a retry from Studio. */
-    snprintf(num, sizeof num, "%d", q.failed);
-    y = roll_stat(y, num, "NOT UPLOADED, PARKED");
+  y += UI_FONT_M.line_h * 2 + 4;
+  if (roll.name[0] != '\0') {
+    /* The code only when the name is not already the code. */
+    text(&UI_FONT_M, RL_RX, y, roll.slug, W_GRAYTEXT);
+    y += UI_FONT_M.line_h + 6;
   }
 
-  /*
-   * The link state, in a well at the foot of the column.
-   *
-   * It was 18 px grey text under three other lines of 18 px grey text, which
-   * made the one word that says whether anything is moving the least visible
-   * thing on the screen. A plate at the bottom of the column is where a status
-   * line belongs, and the halted case gets the same plate because "paused" and
-   * "offline" are answers to the same question.
-   */
-  const int py = UI_H - 78;
-  well(RL_RX, py, RL_RW, 62);
+  /* The connection word, with a square lamp in front of it. Green is "your
+   * photographs are leaving the camera"; grey is "not right now"; the third
+   * colour is the one case a guest can do nothing about and should not be
+   * told is their Wi-Fi. */
+  {
+    const char *word;
+    uint16_t lamp;
+    if (q.halted) {
+      word = "UPLOAD PAUSED";
+      lamp = C_BAD;
+    } else if (server_quiet) {
+      word = "KINO NOT ANSWERING";
+      lamp = C_BAD;
+    } else if (online) {
+      word = "ONLINE";
+      lamp = C_OK;
+    } else {
+      word = "OFFLINE";
+      lamp = W_SHADOW;
+    }
+    const int ly = y + (UI_FONT_M.line_h - 12) / 2;
+    fill(RL_RX, ly, 12, 12, W_TEXT);
+    fill(RL_RX + 2, ly + 2, 8, 8, lamp);
+    text(&UI_FONT_M, RL_RX + 22, y, word, W_TEXT);
+    y += UI_FONT_M.line_h + 18;
+  }
 
+  /* The card, as one big number. gallery_media_count() is the index in RAM,
+   * exact, the same figure the Storage screen shows; -1 only before the
+   * first index read after boot. */
+  {
+    const int total = gallery_media_count();
+    char big[24];
+    if (total < 0) snprintf(big, sizeof big, "- PHOTOS");
+    else snprintf(big, sizeof big, "%d %s", total, total == 1 ? "PHOTO" : "PHOTOS");
+    text_scaled(&UI_FONT_M, RL_RX, y, big, fit_scale(&UI_FONT_M, big, RL_RW) >= 2 ? 2 : 1, W_TEXT);
+    y += UI_FONT_M.line_h * 2 + 10;
+  }
+
+  /* What is happening to them. Three lines at most. */
+  char l1[48] = "", l2[48] = "", l3[48] = "";
+  bool bar = false;
+  int bar_done = 0, bar_total = 0;
   if (q.halted) {
-    /* Distinct from failed: the jobs are fine, the credential or the
-     * association is not, and retrying the queue is the wrong instinct. */
-    text(&UI_FONT_M, RL_RX + 12, py + 8, "UPLOAD PAUSED", W_TEXT);
-    text(&UI_FONT_S, RL_RX + 12, py + 36,
-         q.last_error[0] != '\0' ? q.last_error : "Check the roll in Studio", W_GRAYTEXT);
-    return;
+    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
+    snprintf(l2, sizeof l2, "Saved safely on camera");
+    snprintf(l3, sizeof l3, "Check the roll in Studio.");
+  } else if (waiting > 0 || q.uploading > 0) {
+    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
+    if (can_send) {
+      bar = true;
+      bar_done = q.burst_done;
+      bar_total = q.burst_done + waiting + q.uploading;
+      snprintf(l2, sizeof l2, "%s", q.uploading > 0 ? "Uploading now" : "Starting upload");
+    } else {
+      snprintf(l2, sizeof l2, "Saved safely on camera");
+      snprintf(l3, sizeof l3, "%s",
+               server_quiet ? "Wi-Fi is up. They go when KINO answers."
+                            : "They go when Wi-Fi returns.");
+    }
+  } else if (!q.scan_complete) {
+    /* Nothing waiting that the queue knows of, and it has not seen the
+     * whole card since boot. Honest for the seconds it lasts. */
+    snprintf(l1, sizeof l1, "COUNTING THE CARD");
+  } else if (q.last_upload_ms > 0) {
+    snprintf(l1, sizeof l1, "All uploaded");
+    const int64_t ago_s = (now - q.last_upload_ms) / 1000;
+    if (ago_s < 60) snprintf(l2, sizeof l2, "Last upload %llds ago", (long long)ago_s);
+    else if (ago_s < 3600) snprintf(l2, sizeof l2, "Last upload %lldm ago", (long long)(ago_s / 60));
+    else snprintf(l2, sizeof l2, "Last upload %lldh ago", (long long)(ago_s / 3600));
+  } else if (can_send) {
+    snprintf(l1, sizeof l1, "All uploaded");
+  } else {
+    snprintf(l1, sizeof l1, "Nothing waiting");
+    if (!online) snprintf(l2, sizeof l2, "Uploads resume when Wi-Fi returns.");
   }
 
-  /* One phrase for whether anything is actually moving. "OFFLINE" with photos
-   * waiting is a complete and honest description of this body today. */
-  const char *link, *why;
-  if (online && q.server_state == UPLOAD_SERVER_UNREACHABLE) {
-    /* Wi-Fi up, server not answering. Was shown as ONLINE, because the only
-     * input was the radio; a dead API and a working one looked the same. */
-    link = "SERVER NOT ANSWERING";
-    why = "Wi-Fi is up. Uploads retry on their own.";
-  } else if (online) {
-    link = "ONLINE";
-    why = "Captures upload as they are taken.";
-  } else if (!net.radio_routed) {
-    /* Not "offline": there is no radio route to be offline from. The
-     * Connection screen carries the detail. */
-    link = "NO RADIO LINK";
-    why = "Photos leave over USB-C.";
-  } else {
-    link = "OFFLINE";
-    why = "Uploads resume when Wi-Fi returns.";
+  if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 8; }
+  if (bar) {
+    /* The bar exists only while there is work: a full or empty bar with
+     * nothing behind it would be a decoration. */
+    const int bw = RL_RW - 4, bh = 14;
+    bevel_sunken(RL_RX, y, bw, bh);
+    fill(RL_RX + 2, y + 2, bw - 4, bh - 4, W_HILITE);
+    if (bar_total > 0) {
+      const int fw = (int)((int64_t)(bw - 4) * bar_done / bar_total);
+      if (fw > 0) fill(RL_RX + 2, y + 2, fw, bh - 4, RGB(0x00, 0x00, 0xa8));
+    }
+    y += bh + 10;
   }
-  text(&UI_FONT_M, RL_RX + 12, py + 8, link, W_TEXT);
-  text(&UI_FONT_S, RL_RX + 12, py + 36, why, W_GRAYTEXT);
+  if (l2[0]) { text(&UI_FONT_S, RL_RX, y, l2, W_GRAYTEXT); y += UI_FONT_S.line_h + 6; }
+  if (l3[0]) { text(&UI_FONT_S, RL_RX, y, l3, W_GRAYTEXT); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -3728,7 +3750,7 @@ static void snd_step(int delta) {
 #define SN_IT_VOL 4
 #define SN_IT_COUNT 7
 
-#define SN_BTN 36 /* the picker's ‹ › buttons, inside a 52 px row */
+#define SN_BTN 36 /* the picker's â€¹ â€º buttons, inside a 52 px row */
 
 /* The picker's two buttons and the value beside them, right-aligned in the
  * row the same way a toggle is. */
@@ -3841,8 +3863,8 @@ static void draw_sound(void) {
  * "Not fitted" was wrong twice over: the ESP32-C6 IS on the Guition module,
  * and what is missing is the P4's route to it, which is a wiring question
  * rather than an absent part. A user reading "Not fitted" goes looking for a
- * component to add. So the screen reports the two facts separately Ã¢â‚¬â€ the chip
- * is there, and the firmware cannot reach it Ã¢â‚¬â€ the same way the capabilities
+ * component to add. So the screen reports the two facts separately ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the chip
+ * is there, and the firmware cannot reach it ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the same way the capabilities
  * split `flashControl` from `flashHardware`.
  *
  * Every value comes from net_link, so this screen becomes correct on its own
@@ -3871,7 +3893,7 @@ static void draw_connection(void) {
 
   /* Wi-Fi: the SSID and signal when there is one, and otherwise a state a
    * user can act on. Association without an address says "Getting address"
-   * rather than "Connected" Ã¢â‚¬â€ claiming connected there is how a camera
+   * rather than "Connected" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â claiming connected there is how a camera
    * insists it is online while nothing resolves. */
   char wifi[64];
   switch (net.state) {
@@ -5490,13 +5512,13 @@ esp_err_t ui_start(void) {
   ESP_LOGI(TAG, "UI_READY %dx%d landscape via PPA, tiles %dx%d", UI_W, UI_H, M_TILE_W, M_TILE_H);
   TaskHandle_t ui_h = NULL;
   /* 8192, not 6144. The ROLL screen calls qr_encode(), which puts roughly
-   * 1.4 KB of bitfields and codeword buffers on this stack Ã¢â‚¬â€ two 456-byte
-   * module grids plus 562 bytes of codewords Ã¢â‚¬â€ on top of whatever the draw
+   * 1.4 KB of bitfields and codeword buffers on this stack ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â two 456-byte
+   * module grids plus 562 bytes of codewords ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â on top of whatever the draw
    * path already uses. That figure is CALCULATED from the sizes in qr.c, not
    * measured on a board, so the margin is deliberate: an overflow here would
    * land on a repaint and read as a display or touch fault rather than as a
    * QR encoder. Confirm against GET_RUNTIME_STATS on the first bench run that
-   * opens the ROLL screen with a Roll assigned Ã¢â‚¬â€ that is what the per-task
+   * opens the ROLL screen with a Roll assigned ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â that is what the per-task
    * high-water figure is for. */
   /*
    * Pinned to CPU1, away from the link interrupts.

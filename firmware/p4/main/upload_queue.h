@@ -100,6 +100,12 @@ typedef struct {
    * Distinct from `failed`: the jobs are fine, the device is not. */
   bool halted;
   upload_server_state_t server_state; /* see upload_server_state_t */
+  /* For the ROLL screen: when the last upload landed (monotonic ms, 0 when
+   * none since boot) and how many have landed since the queue last had
+   * nothing waiting - the numerator of a progress bar that exists only while
+   * there is work. */
+  int64_t last_upload_ms;
+  int burst_done;
   /** Redacted, and safe to show on the display or send over KDP. */
   char last_error[RQ_ERROR_LEN];
 } upload_queue_report_t;

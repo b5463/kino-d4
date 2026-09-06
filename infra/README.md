@@ -118,8 +118,8 @@ later move to a server is a DNS/tunnel change and nothing else.
 ### Layout
 
 ```
-Internet -> kino.acronym.sk (TLS at the tunnel edge)
-         -> outbound tunnel (cloudflared, no inbound ports on the PC)
+Internet -> kino.acronym.sk (TLS at the relay or tunnel edge)
+         -> outbound tunnel (frpc to the relay VPS, or cloudflared; no inbound ports on the PC)
          -> proxy (Caddy, plain HTTP on the Compose network)
          -> api:3000 / web:8080
 postgres, redis, object-storage, worker: Compose network only, never published
@@ -133,6 +133,39 @@ DNS (free plan) so a tunnel can own `kino.acronym.sk` - Cloudflare Tunnel only
 serves hostnames in a zone it manages. The alternatives are a paid tunnel with
 custom domains or router port-forwarding to Caddy on 80/443, which the
 production file already supports without the overlay.
+
+### Which path: measured on 2026-09-06
+
+DNS for `acronym.sk` stays at Websupport (operator decision); Cloudflare
+Tunnel is therefore not available for this hostname. The bench PC egresses as
+`46.34.228.61` (O2 Slovakia), but the route beyond the customer gateway runs
+through carrier-side private addresses (`10.106.16.198`, `10.109.122.193`),
+which is the signature of carrier NAT. Confirm on the router's status page:
+
+- WAN address equals `46.34.228.61`: not behind CGNAT. Direct path possible:
+  Websupport `A kino.acronym.sk -> 46.34.228.61`, router TCP 80 and 443 to
+  this PC, production compose as-is (Caddy does ACME). A residential address
+  is dynamic; a Websupport-API updater would then be needed on the PC.
+- WAN address is `10.x` or `100.64-127.x`: CGNAT. Inbound 80/443 can never
+  arrive, and no DNS or router change helps. Use the relay below.
+
+**Recommended: relay VPS** (`infra/relay/`). A small VPS with a static IPv4
+runs Caddy (ACME for `kino.acronym.sk`) and an frp server; the PC runs frpc,
+which opens one outbound, token-authenticated, TLS connection and exposes only
+the Compose-internal Caddy as `127.0.0.1:8080` on the VPS. Websupport gets one
+`A` record pointing at the VPS, which is static, so no DDNS. Nothing on the PC
+listens on the internet; the VPS holds no data; and it is the machine the
+stack moves to later, at which point the relay is switched off and Caddy on the
+VPS points at the local stack. Cost: the cheapest VPS the operator trusts.
+
+```
+PC:  docker compose --env-file infra/.env.production -f infra/docker-compose.prod.yml -f infra/relay/docker-compose.relay.yml up -d --build
+VPS: cd relay/vps && cp .env.example .env && docker compose up -d   # firewall: 80, 443, 7000
+```
+
+`infra/docker-compose.tunnel.yml` (Cloudflare) stays in the tree for a
+hostname that is on Cloudflare DNS; it is not usable for `kino.acronym.sk`
+while Websupport is authoritative.
 
 ### Bring-up
 

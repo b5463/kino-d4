@@ -665,6 +665,22 @@ only; the nodes run 0.4.38 and the 0.4.47 node image differs from it by that
 string. Bundles from this tree are private (Windows 98 icons, #134); they are
 not to be published.
 
+### ROLL screen for a guest - 0.4.48, 2026-09-06
+
+Operator brief: keep QR left and roll right, add the join address, one lamp
+word, one big count, upload lines only when useful, no internals. Six states
+rendered by the host preview before the flash (roll_active, roll_uploading,
+roll_offline, roll_counting, roll_server_quiet, roll_paused) and read against
+the brief: caught up shows "All uploaded / Last upload 8s ago"; uploading
+shows "3 waiting to upload", a bar filled 5 of 9, "Uploading now"; Wi-Fi off
+shows OFFLINE, "3 waiting to upload / Saved safely on camera / They go when
+Wi-Fi returns."; server silent shows KINO NOT ANSWERING with the same two
+lines and "Wi-Fi is up."; a card not yet counted shows COUNTING THE CARD
+alone; a credential fault shows UPLOAD PAUSED and "Check the roll in Studio."
+The queue report gained last_upload_ms and burst_done for the bar. Flashed
+a069d590 (bench): boot-159, order index verified 5, queue clean, internal
+88 KB, capture 9,876 B, ui 3,884 B, gallery 2,712 B minimum free. Visual
+acceptance on the panel (W) remains the operator's.
 ### SINGLE DELETE: PASS, and the shutter fix proven - 0.4.45, 2026-09-05 late
 
 Operator at the body, host on telemetry only. 0.4.45 flashed (capture task

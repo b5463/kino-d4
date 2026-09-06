@@ -115,6 +115,8 @@ static bool s_forget_active;
  * position on it (#167). */
 static rq_scan_t s_scan;
 static int s_uploaded;
+static int64_t s_last_upload_ms; /* when the last COMPLETE landed */
+static int s_burst_done;         /* landed since the queue was last empty */
 static char s_last_error[RQ_ERROR_LEN];
 /* Parked captures on the card that are NOT in the RAM list, so
  * UPLOAD_QUEUE_STATUS reports how many are parked rather than how many
@@ -693,6 +695,8 @@ static bool run_one_step(void) {
     if (done_at >= 0) {
       list_drop(done_at);
       s_uploaded++;
+      s_last_upload_ms = now_ms();
+      s_burst_done++;
       /* A slot has freed: look at the card again rather than waiting for a
        * reason to. */
       s_rescan = true;
@@ -990,6 +994,11 @@ void upload_queue_status(upload_queue_report_t *out) {
   out->uploaded = s_uploaded;
   out->halted = s_halted;
   out->server_state = s_server_state;
+  /* A burst ends when nothing is waiting and nothing is in flight; the next
+   * capture starts a new one at zero, so the bar never shows a stale fill. */
+  if (out->pending + out->card_pending == 0 && s_active < 0) s_burst_done = 0;
+  out->burst_done = s_burst_done;
+  out->last_upload_ms = s_last_upload_ms;
   out->draining = !storage_capture_active() && s_net_ready && !s_halted &&
                   (out->pending > 0 || s_active >= 0);
   memcpy(out->last_error, s_last_error, sizeof out->last_error);
