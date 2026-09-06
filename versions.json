@@ -158,7 +158,7 @@
     "manifest": "hardware/manifest.json",
     "product": "KINO D4",
     "revision": "D4-V1",
-    "designVersion": "0.1.4",
+    "designVersion": "0.1.3",
     "status": "prototype",
     "tagPrefix": "kino-d4-hw-v"
   }
