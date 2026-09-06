@@ -146,7 +146,7 @@
   ],
   "database": {
     "journal": "apps/api/drizzle/meta/_journal.json",
-    "latestMigration": "0011_lookup_indexes"
+    "latestMigration": "0012_feed_captured_index"
   },
   "firmware": {
     "version": "0.4.49",
