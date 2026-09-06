@@ -506,6 +506,10 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   justify-content: center;
 }
 .k-hero > * { width: 100%; max-width: 100%; }
+/* A picture that is also a control: the whole frame, no chrome. In the quad
+   overview it enlarges the frame; on the enlarged frame it goes back. */
+.photo-open { display: block; width: 100%; padding: 0; border: 0; background: none; line-height: 0; cursor: pointer; }
+.photo-open:focus-visible { outline: 2px solid var(--k-ink); outline-offset: -2px; }
 .k-hero > .k-chip { width: auto; line-height: 1; }
 /* The frame's own ratio arrives inline from the asset row; 4:3 is the fallback
    for a row without a size. */
@@ -556,6 +560,7 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   .photo-quad-wrap { max-width: min(100%, calc((100dvh - 200px) * var(--quad-ratio, 1.3333))); }
   .k-hero > img,
   .k-hero > .k-img-missing,
+  .k-hero > .photo-open,
   .k-hero > [data-wiggle-player] { max-width: min(100%, calc((100dvh - 160px) * var(--hero-ratio, 1.3333))); margin-inline: auto; }
 }
 

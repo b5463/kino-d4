@@ -85,6 +85,26 @@ export function quadRatio(
   return (columns * frame) / rows;
 }
 
+/**
+ * Which frame a quad opens on. A phone in portrait is ~390 CSS px wide: a
+ * 2x2 of 4:3 frames puts each picture at 195x146, which is a contact sheet,
+ * not a photograph - the operator's words were "you cannot even make out the
+ * pictures". So on a narrow screen the page opens on ONE frame, the full
+ * width, with the CAM strip under it to switch; a tap on the big frame goes
+ * back to the 2x2. A desktop has the room and opens on the overview. Null
+ * means the overview. Pure so it can be tested without a window; the caller
+ * passes what `matchMedia` said.
+ */
+export function initialQuadFrame(
+  capture: Pick<CaptureDetailView, 'mode' | 'assets'>,
+  narrow: boolean,
+): number | null {
+  if (!narrow || capture.mode !== 'quad') return null;
+  return assetsByRole(capture, 'original-frame').length > 0 ? 0 : null;
+}
+
+const NARROW = '(max-width: 600px)';
+
 /** `21:40` and `2026.08.22 21:40` — the way the camera writes a time. */
 function two(n: number): string {
   return String(n).padStart(2, '0');
@@ -152,8 +172,14 @@ export function CaptureDetail({
   const [status, setStatus] = useState('');
   const [reacting, setReacting] = useState(false);
   const [saving, setSaving] = useState(false);
-  // null = the default view (wigglegram when available); a number pins one D4 frame.
-  const [frame, setFrame] = useState<number | null>(null);
+  // null = the default view (wigglegram, or the quad overview); a number pins
+  // one D4 frame. A quad on a phone starts pinned - see `initialQuadFrame`.
+  const [frame, setFrame] = useState<number | null>(() =>
+    initialQuadFrame(
+      initialCapture,
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(NARROW).matches,
+    ),
+  );
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setCapture(initialCapture), [initialCapture]);
@@ -298,7 +324,18 @@ export function CaptureDetail({
 
   let media;
   if (pinnedFrame !== undefined) {
-    media = assetImage(pinnedFrame, api, `${cameraLabel(pinnedFrame, frame ?? 0)} frame`);
+    const picture = assetImage(pinnedFrame, api, `${cameraLabel(pinnedFrame, frame ?? 0)} frame`);
+    // On a quad the big frame is itself the way back to the 2x2: one tap,
+    // no extra control. A wiggle's pinned frame stays a plain picture - its
+    // way back is the strip, where the pressed thumb un-pins.
+    media =
+      capture.mode === 'quad' ? (
+        <button type="button" className="photo-open" aria-label="Show all frames" onClick={() => setFrame(null)}>
+          {picture}
+        </button>
+      ) : (
+        picture
+      );
   } else if (failed) {
     // A failed capture gets no player: whatever frames exist may be half
     // written. The still, if the worker made one, is the honest picture.
@@ -335,9 +372,18 @@ export function CaptureDetail({
           className="photo-quad"
           style={{ gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))` }}
         >
+          {/* Every frame in the overview is a tap target: it pins that frame
+              to the full hero width, where a picture can be looked at. */}
           {originals.map((asset, index) => (
             <figure key={asset.assetId} className="photo-figure">
-              {assetImage(asset, api, `${cameraLabel(asset, index)} frame`)}
+              <button
+                type="button"
+                className="photo-open"
+                aria-label={`Show ${cameraLabel(asset, index)} large`}
+                onClick={() => setFrame(index)}
+              >
+                {assetImage(asset, api, `${cameraLabel(asset, index)} frame`)}
+              </button>
               <figcaption>{cameraLabel(asset, index)}</figcaption>
             </figure>
           ))}
@@ -358,7 +404,12 @@ export function CaptureDetail({
   // Never the thumb: a 720 px tile is not a photograph anyone wants to keep.
   const stillRoles = ['enhanced-still', 'kino-still'];
   const savablePhoto = stillRoles.flatMap((role) => assetsByRole(capture, role))[0] ?? originals[0];
-  const showFrameStrip = capture.mode === 'wiggle' && originals.length > 0 && !failed;
+  // The strip under the hero: a wiggle's frames, and a quad's four looks -
+  // on a quad it is how a phone moves between the four full-width pictures.
+  // Two frames at least: with one there is nothing to move between, and a
+  // strip of one thumb is one enormous square under the same picture.
+  const showFrameStrip =
+    (capture.mode === 'wiggle' || capture.mode === 'quad') && originals.length > 1 && !failed;
 
   // The leading mark on a row IS the shape you are about to save.
   const box = (w: number, h: number): ReactElement => (

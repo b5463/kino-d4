@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptureDetail as CaptureView, RollApi, RollView } from '../src/api/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { aspectOf, CaptureDetail, heroStill, quadRatio } from '../src/pages/CaptureDetail';
+import { aspectOf, CaptureDetail, heroStill, initialQuadFrame, quadRatio } from '../src/pages/CaptureDetail';
 import { readPicks } from '../src/state/picks';
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
@@ -541,5 +541,19 @@ describe('CaptureDetail on a phone', () => {
       expect(rule('.photo-look')).toContain('display: block');
       expect(css).not.toMatch(/\.photo-look\s*\{[^}]*position: absolute/);
     });
+  });
+});
+
+describe('initialQuadFrame', () => {
+  const frame = (frameIndex: number) => ({
+    role: 'original-frame', assetId: `a${String(frameIndex)}`, frameIndex, width: 1600, height: 1200, mime: 'image/jpeg', bytes: 1,
+  });
+  it('opens a quad on its first frame on a narrow screen', () => {
+    expect(initialQuadFrame({ mode: 'quad', assets: [frame(0), frame(1), frame(2), frame(3)] } as never, true)).toBe(0);
+  });
+  it('opens on the overview on a wide screen, and never pins a wiggle or an empty quad', () => {
+    expect(initialQuadFrame({ mode: 'quad', assets: [frame(0), frame(1)] } as never, false)).toBeNull();
+    expect(initialQuadFrame({ mode: 'wiggle', assets: [frame(0), frame(1)] } as never, true)).toBeNull();
+    expect(initialQuadFrame({ mode: 'quad', assets: [] } as never, true)).toBeNull();
   });
 });
