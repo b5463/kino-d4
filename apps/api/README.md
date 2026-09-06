@@ -390,8 +390,9 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts` and live `guests` |
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
+| `POST /api/host/rolls/:rollId/clear` | host | every capture to the trash in one statement → `{cleared: n}`; one `roll.cleared` event; 5/min per token |
 | `GET /api/rolls/:slug` | guest | includes photo count plus download/reaction switches |
-| `GET /api/rolls/:slug/captures` | guest | visible capture feed with ordered asset summaries |
+| `GET /api/rolls/:slug/captures` | guest | visible capture feed, newest shutter time first (`captured_at`, then id), with ordered asset summaries |
 | `GET /api/rolls/:slug/captures/:captureId` | guest | visible detail plus anonymous reaction state |
 | `POST /api/rolls/:slug/captures/:captureId/react` | guest | toggles one signed, session-only anonymous heart |
 | `GET /api/rolls/:slug/events` | guest | SSE; see [Live events](#live-events-03-7-05-10) |
@@ -946,6 +947,7 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 | `DELETE /api/host/captures/:captureId` | host (capture) | `deleted_at = now()`; `capture.deleted` |
 | `POST /api/host/rolls/:rollId/export` | host | `202 {jobId}`, `Location:` the poll route |
 | `GET /api/host/rolls/:rollId/export/:jobId` | host | `{status, url?}` |
+| `POST /api/host/rolls/:rollId/clear` | host | `deleted_at = now()` on every live capture; `capture.deleted` audit row per capture + one `roll.cleared`; one `roll.cleared` event |
 
 The four write routes each write an `audit_events` row with actor `host` and actions
 `capture.hidden` / `capture.unhidden` / `capture.deleted` / `roll.exported`. For

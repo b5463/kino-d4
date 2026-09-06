@@ -33,6 +33,15 @@ import type { Redis } from 'ioredis';
  */
 export type RollEvent =
   | { type: 'roll.opened' | 'roll.closed' }
+  /**
+   * Every capture of the roll went to the trash at once (`POST
+   * /api/host/rolls/:rollId/clear`). ONE event, not one `capture.deleted` per
+   * capture: a 2,000-capture clear would push 2,000 entries through a stream
+   * capped at ~500, so a reconnecting guest could never replay it, and every
+   * open guest would run 2,000 removals. The guest empties its list; the host
+   * re-reads its own.
+   */
+  | { type: 'roll.cleared' }
   | {
       type: 'capture.created' | 'capture.updated' | 'capture.hidden' | 'capture.deleted';
       captureId: string;
@@ -51,6 +60,7 @@ export type RollEvent =
 const rollEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('roll.opened') }).strict(),
   z.object({ type: z.literal('roll.closed') }).strict(),
+  z.object({ type: z.literal('roll.cleared') }).strict(),
   z.object({ type: z.literal('capture.created'), captureId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('capture.updated'), captureId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('capture.hidden'), captureId: z.string().min(1) }).strict(),

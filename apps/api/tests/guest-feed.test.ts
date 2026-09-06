@@ -69,7 +69,10 @@ async function createRoll(body: Record<string, unknown> = {}): Promise<CreatedRo
 
 interface CaptureFixture {
   id: string;
+  /** Sets BOTH `capturedAt` and `createdAt` unless `capturedAt` says otherwise. */
   createdAt?: Date;
+  /** The shutter time on its own — the feed's sort key. */
+  capturedAt?: Date;
   visible?: boolean;
   deletedAt?: Date | null;
 }
@@ -84,7 +87,7 @@ async function insertCaptures(rollId: string, fixtures: readonly CaptureFixture[
       rollId,
       deviceId: device.deviceId,
       mode: 'wiggle',
-      capturedAt: fixture.createdAt ?? new Date(),
+      capturedAt: fixture.capturedAt ?? fixture.createdAt ?? new Date(),
       frameCount: 4,
       resolution: '1600x1200',
       status: 'ready',
@@ -341,12 +344,56 @@ describe('GET /api/rolls/:slug/captures — keyset pagination (06 §11)', () => 
     expect(ids).toEqual(expected);
   });
 
-  it('returns newest first', async () => {
+  it('returns newest shutter time first', async () => {
     const page = await feed(roll.slug, '?limit=3');
-    const times = page.items.map((item) => Date.parse(item.createdAt));
+    const times = page.items.map((item) => Date.parse(item.capturedAt));
 
     expect(times).toEqual([...times].sort((a, b) => b - a));
     expect(page.items[0]?.captureId).toBe(expected[0]);
+  });
+
+  /**
+   * The phone report: a camera that was offline for the evening uploads its
+   * backlog afterwards, and ordered by upload time two hundred old shots sat
+   * on top of what guests had just taken. The keyset is `(captured_at, id)`,
+   * so a late upload of an older shot files under its shutter time — on both
+   * feeds, and across a page boundary.
+   */
+  it('files a late upload of an older shot by its shutter time, not its upload time', async () => {
+    const backlog = await createRoll({ title: `Backlog ${RUN}` });
+    const shot = Date.UTC(2026, 7, 15, 21, 0, 0);
+    const uploaded = Date.UTC(2026, 7, 15, 23, 30, 0);
+    // Six live shots, uploaded as they were taken.
+    const live: CaptureFixture[] = Array.from({ length: 6 }, (_unused, i) => ({
+      id: newId('cap'),
+      createdAt: new Date(shot + (i + 10) * 60_000),
+    }));
+    // Three older shots that reached the API two and a half hours later.
+    const late: CaptureFixture[] = Array.from({ length: 3 }, (_unused, i) => ({
+      id: newId('cap'),
+      capturedAt: new Date(shot + i * 60_000),
+      createdAt: new Date(uploaded + i * 1_000),
+    }));
+    await insertCaptures(backlog.rollId, [...live, ...late]);
+
+    const byShutter = [...live, ...late]
+      .sort((a, b) => (b.capturedAt ?? b.createdAt)!.getTime() - (a.capturedAt ?? a.createdAt)!.getTime())
+      .map((fixture) => fixture.id);
+
+    // A page size that splits the late three from the live six mid-list.
+    const { ids } = await walk(backlog.slug, 4);
+    expect(ids).toEqual(byShutter);
+    // The late three are the oldest shots, so they close the feed — newest of them first.
+    expect(ids.slice(-3)).toEqual([...late].reverse().map((fixture) => fixture.id));
+
+    // The host list walks the same keyset.
+    const host = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${backlog.rollId}/captures?limit=100`,
+      headers: bearer(backlog.hostToken),
+    });
+    expect(host.statusCode).toBe(200);
+    expect(host.json<FeedPage>().items.map((item) => item.captureId)).toEqual(byShutter);
   });
 
   it('defaults to 50 and clamps the limit to 1..100', async () => {
@@ -398,7 +445,7 @@ describe('GET /api/rolls/:slug/captures — keyset pagination (06 §11)', () => 
    * millisecond but not the microsecond — invisible at ms-spaced fixtures and
    * silently lossy on rows the server timestamps itself.
    */
-  it('does not lose rows whose createdAt differs below the millisecond', async () => {
+  it('does not lose rows that share a capturedAt to the millisecond', async () => {
     const dense = await createRoll({ title: `Dense ${RUN}` });
     const ids: string[] = [];
     for (let i = 0; i < 8; i += 1) {

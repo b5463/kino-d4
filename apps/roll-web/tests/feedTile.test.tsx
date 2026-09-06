@@ -23,7 +23,7 @@ vi.mock('../src/components/WigglePlayer', () => ({
   },
 }));
 
-const { CaptureTile, FrameMark } = await import('../src/pages/RollFeedPage');
+const { CaptureTile, FrameMark, TILE_SIZES, tileSources } = await import('../src/pages/RollFeedPage');
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
@@ -177,5 +177,54 @@ describe('feed tile media source', () => {
     expect(container.querySelector('.k-img-missing')?.textContent).toContain('Image unavailable');
     // Tiles get no Retry; that belongs to the capture page.
     expect(container.querySelector('.k-img-missing button')).toBeNull();
+  });
+});
+
+/**
+ * A tile on a phone is the full CSS width at 2–3× DPR. The `thumb` alone
+ * (480 px on older rolls, 720 px now) is upscaled there; the `kino-still` is
+ * 1280 px. The browser picks between them from `srcset` + `sizes`.
+ */
+describe('tile sources', () => {
+  const url = (id: string): string => `/api/assets/${id}/content`;
+  const sized = (role: CaptureAssetSummary['role'], assetId: string, width: number | null, height: number | null): CaptureAssetSummary =>
+    ({ role, assetId, frameIndex: null, width, height });
+
+  it('offers the thumb and the kino-still as width candidates, thumb as the plain src', () => {
+    const sources = tileSources(
+      { assets: [sized('kino-still', 'still', 1280, 960), sized('thumb', 'thumb', 480, 360), ...ORIGINALS] },
+      url,
+    );
+    expect(sources).toEqual({
+      src: '/api/assets/thumb/content',
+      srcSet: '/api/assets/thumb/content 480w, /api/assets/still/content 1280w',
+      sizes: TILE_SIZES,
+    });
+    // One column on a phone, so the tile is the viewport: 100vw at 3× on a
+    // 390 px phone asks for 1170 px, which selects the still.
+    expect(TILE_SIZES.endsWith('100vw')).toBe(true);
+  });
+
+  it('gives no srcset when only one still has a known width', () => {
+    expect(tileSources({ assets: [sized('thumb', 'thumb', 720, 540)] }, url)).toEqual({ src: '/api/assets/thumb/content' });
+    expect(tileSources({ assets: [sized('thumb', 'thumb', null, null), sized('kino-still', 'still', 1280, 960)] }, url)).toEqual({
+      src: '/api/assets/thumb/content',
+    });
+    expect(tileSources({ assets: ORIGINALS }, url)).toBeUndefined();
+  });
+
+  it('puts the srcset on the tile image itself', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const view = capture([sized('kino-still', 'still', 1280, 960), sized('thumb', 'thumb', 720, 540)]);
+    await act(async () => {
+      root.render(<CaptureTile slug="party" capture={view} index="001" isNew={false} picked={false} onPick={() => undefined} />);
+    });
+    const img = host.querySelector<HTMLImageElement>('.k-shot img');
+    expect(img?.getAttribute('srcset')).toBe('/api/assets/thumb/content 720w, /api/assets/still/content 1280w');
+    expect(img?.getAttribute('sizes')).toBe(TILE_SIZES);
+    await act(async () => root.unmount());
+    host.remove();
   });
 });

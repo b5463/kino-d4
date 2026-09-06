@@ -121,6 +121,7 @@ export type AuditAction =
   | 'roll.downloads-disabled'
   | 'roll.slug-regenerated'
   | 'roll.exported'
+  | 'roll.cleared'
   | 'capture.hidden'
   | 'capture.unhidden'
   | 'capture.deleted';

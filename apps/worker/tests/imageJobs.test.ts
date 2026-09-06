@@ -393,7 +393,7 @@ afterAll(async () => {
 /* --------------------------------------------------------- the handlers -- */
 
 describe('generate-thumbnail', () => {
-  it('writes a 480 px WebP of the middle frame, with a ready asset row and an event', async () => {
+  it('writes a 720 px WebP of the middle frame, with a ready asset row and an event', async () => {
     const captureId = await newCapture();
     const jobKey = `${captureId}:generate-thumbnail`;
 
@@ -410,11 +410,14 @@ describe('generate-thumbnail', () => {
     const meta = await sharp(body).metadata();
     expect(meta.format).toBe('webp');
     expect(meta.width).toBe(THUMBNAIL_WIDTH);
-    expect(THUMBNAIL_WIDTH).toBe(480);
-    // 1600×1200 at 480 wide is 360 tall: the aspect ratio is preserved, never
+    // 720, not 480: a phone tile is the full CSS width at 2–3× DPR, and 480
+    // was upscaled everywhere (see `images/sizes.ts`).
+    expect(THUMBNAIL_WIDTH).toBe(720);
+    expect(THUMBNAIL_QUALITY).toBeGreaterThanOrEqual(82);
+    // 1600×1200 at 720 wide is 540 tall: the aspect ratio is preserved, never
     // cropped — a thumbnail that lied about the frame's shape would misplace
     // every tile in the guest feed.
-    expect(meta.height).toBe(360);
+    expect(meta.height).toBe(540);
 
     // The row is a description of these exact bytes, not of the plan.
     expect(row?.bytes).toBe(body.length);
@@ -474,12 +477,12 @@ describe('generate-thumbnail', () => {
      * Both jobs are queued by the same capture-complete, so BullMQ decides which
      * runs first. `generate-gallery-still` writes role `kino-still` at
      * `derived/still.webp`; if the thumbnail counted that as an uploaded still,
-     * it would re-encode a 1280 px WebP q82 down to 480 px q70 — WebP→WebP
+     * it would re-encode a 1280 px WebP q82 down to 720 px q82 — WebP→WebP
      * generation loss — and its bytes would depend on who won the race. Jobs that
      * are idempotent (03 §19) cannot have order-dependent output.
      *
      * The discriminator is the *bytes*: a thumbnail derived from the frame and one
-     * derived from the still are both 480 px WebP of camera 2, so nothing about
+     * derived from the still are both 720 px WebP of camera 2, so nothing about
      * their dimensions or their marker pixel tells them apart.
      */
     const captureId = await newCapture();

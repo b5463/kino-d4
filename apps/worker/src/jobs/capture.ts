@@ -193,7 +193,7 @@ export interface StillSource {
  *    `generate-thumbnail` are queued by the same capture-complete. If that row
  *    counted as "uploaded", then whichever job BullMQ happened to run second
  *    would derive from the other's output: a thumbnail re-encoding a 1280 px
- *    WebP q82 down to 480 px q70 is WebP→WebP generation loss, and — worse — its
+ *    WebP q82 down to 720 px q82 is WebP→WebP generation loss, and — worse — its
  *    bytes and therefore its sha256 would depend on which job won the race.
  *    Idempotent jobs (03 §19) cannot have order-dependent output. So the
  *    exclusion lives *here*, in the rule, rather than at each call site: it is

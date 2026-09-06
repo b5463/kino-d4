@@ -487,11 +487,29 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .k-bar .k-who { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .k-bar .k-count { font-size: 12.5px; }
 
-.k-hero { position: relative; flex: 1; min-height: 0; background: #000; line-height: 0; display: flex; align-items: center; }
-.k-hero > * { width: 100%; }
+/* A COLUMN. The hero was a row flexbox, and the quad rendered as three row
+   items — grid, look label, chip — so the four frames shared the phone's
+   width with the label and came out as ~150 px thumbnails stacked in the
+   top-left corner. Everything the hero shows is one child now, full width,
+   centred in the leftover height. */
+.k-hero {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  background: #000;
+  line-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.k-hero > * { width: 100%; max-width: 100%; }
 .k-hero > .k-chip { width: auto; line-height: 1; }
-.k-hero > img, .k-hero > div { width: 100%; }
-.k-hero img { display: block; width: 100%; max-height: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
+/* The frame's own ratio arrives inline from the asset row; 4:3 is the fallback
+   for a row without a size. */
+.k-hero img { display: block; width: 100%; height: auto; max-height: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
 .k-hero [data-wiggle-player] > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
 
 /* Contiguous: hairlines read as frame separations, not four cards. */
@@ -516,12 +534,30 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .k-exif dt { color: var(--k-faint); }
 .k-exif dd { margin: 0; }
 
-.photo-quad { display: grid; gap: 1px; background: var(--k-hair); }
+/* ---- quad: 2x2 of originals to both edges, CAM n under each, the look as a
+   caption row under the block. Portrait: each frame is 50% of the container
+   width and its height follows the frame's ratio. `--quad-ratio` (width over
+   height of the whole block, set inline) is only read in landscape, where the
+   block is capped by height instead so it fits without scrolling. */
+.photo-quad-wrap { width: 100%; max-width: 100%; margin-inline: auto; }
+.photo-quad { display: grid; gap: 1px; width: 100%; background: var(--k-hair); }
 .photo-figure { min-width: 0; margin: 0; background: #000; line-height: 0; }
-.photo-figure img { display: block; width: 100%; }
+.photo-figure img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; }
+.photo-figure .k-img-missing { aspect-ratio: 4 / 3; }
 .photo-figure figcaption { padding: 4px 5px; background: var(--k-ground); color: var(--k-faint); font-size: 10px; line-height: 1.4; }
 /* The capture's look, printed once for the whole quad rather than per camera. */
-.photo-look { margin: 0; padding: 4px 5px; background: var(--k-ground); color: var(--k-faint); font-size: 10px; line-height: 1.4; }
+.photo-look { display: block; margin: 0; padding: 4px 5px; background: var(--k-ground); color: var(--k-faint); font-size: 10px; line-height: 1.4; text-align: right; }
+
+/* Landscape and desktop: cap by height. The chrome around the hero is the
+   back bar (50), the facts row (~40) and the action plate (~68); the quad
+   adds two caption rows (~44). What is left is the height the picture may
+   take, and its width follows from the ratio set inline. */
+@media (orientation: landscape) {
+  .photo-quad-wrap { max-width: min(100%, calc((100dvh - 200px) * var(--quad-ratio, 1.3333))); }
+  .k-hero > img,
+  .k-hero > .k-img-missing,
+  .k-hero > [data-wiggle-player] { max-width: min(100%, calc((100dvh - 160px) * var(--hero-ratio, 1.3333))); margin-inline: auto; }
+}
 
 /* Action keys on the plate: Save is the dark one, Pick is a switch beside it. */
 .k-acts {
@@ -634,13 +670,14 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .k-landing input { text-transform: uppercase; letter-spacing: 0.18em; }
 .k-landing .k-landing-back { color: var(--k-ink); text-decoration: underline; }
 
+/* The stream is NOT a grid. The rows are: `RollFeedPage` lays each row out
+   as its own grid of `columns` tiles inside a virtualised, absolutely placed
+   row. A grid on the stream itself made every virtual row one CELL of a
+   three-column grid, so on a desktop the whole feed sat in the left third of
+   the page at 159 px a tile. Column count lives in `useColumnCount` and
+   `TILE_SIZES`, nowhere else. */
 @media (min-width: 720px) {
-  .k-stream { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
-  .k-clock { grid-column: 1 / -1; }
   .k-bar, .k-exif, .k-acts, .k-info, .k-note { max-width: 900px; margin-inline: auto; }
-}
-@media (min-width: 1100px) {
-  .k-stream { grid-template-columns: 1fr 1fr 1fr; }
 }
 
 /* ---- PIN gate + not-found (narrow single card) ---- */
@@ -660,6 +697,11 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .host-stat-value { display: block; font: 700 18px var(--k-mono); }
 
 .host-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+/* The danger area: the same white panel, a burgundy rule, no red wash. */
+.host-danger { padding-left: 8px; border-left: 3px solid var(--k-burgundy); }
+.host-danger p { margin-bottom: 8px; }
+.host-danger code { padding: 1px 4px; background: #f2f5f9; border: 1px solid var(--k-border); font: 700 12px var(--k-mono); letter-spacing: 0.08em; }
+.host-danger input { max-width: 200px; font: 700 14px var(--k-mono); letter-spacing: 0.12em; text-transform: uppercase; }
 .host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--k-border); }
 
 .host-captures { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }

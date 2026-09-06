@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import {
   rollApi,
   type AssetRole,
@@ -48,18 +48,41 @@ export function framesLabel(originals: readonly { frameIndex: number | null }[],
   return contiguous ? `1-${String(cameras.length)}` : cameras.join(', ');
 }
 
-function preferredAsset(capture: CaptureDetailView): CaptureAssetDetail | undefined {
-  const roles = [
-    'enhanced-wiggle',
-    'wiggle-mp4',
-    'wiggle-webp',
-    'contact-sheet',
-    'enhanced-still',
-    'kino-still',
-    'wiggle-preview',
-    'thumb',
-  ];
-  return roles.flatMap((role) => assetsByRole(capture, role))[0];
+/**
+ * The still the hero shows when it is not playing frames: the processed look
+ * first (`enhanced-still`, then the device's own `kino-still`, 1280 px), then
+ * the middle ORIGINAL frame — the same camera the worker's still would show.
+ * Never `thumb`: that is a 480–720 px feed tile, and on a phone the hero is
+ * the full viewport width at 2–3× DPR, where a tile reads as a blurred
+ * thumbnail scaled up. A thumb never appears on this page at all.
+ */
+export function heroStill(capture: CaptureDetailView): CaptureAssetDetail | undefined {
+  const processed = ['enhanced-still', 'kino-still'].flatMap((role) => assetsByRole(capture, role))[0];
+  if (processed !== undefined) return processed;
+  const originals = assetsByRole(capture, 'original-frame');
+  return originals[Math.floor(originals.length / 2)] ?? originals[0];
+}
+
+/** `1600 / 1200` from the asset row, or null when the worker did not record a size. */
+export function aspectOf(asset: { width: number | null; height: number | null }): string | null {
+  if (asset.width === null || asset.height === null || asset.width <= 0 || asset.height <= 0) return null;
+  return `${String(asset.width)} / ${String(asset.height)}`;
+}
+
+/**
+ * Width over height of the whole quad: `columns` frames across, the rows it
+ * takes below, each frame at the first frame's ratio. Landscape and desktop
+ * cap the quad's width from this so the block fits the viewport height
+ * without scrolling; portrait ignores it and takes the full width.
+ */
+export function quadRatio(
+  frames: readonly { width: number | null; height: number | null }[],
+  columns: number,
+): number {
+  const first = frames.find((frame) => aspectOf(frame) !== null);
+  const frame = first === undefined ? 4 / 3 : (first.width ?? 4) / (first.height ?? 3);
+  const rows = Math.max(1, Math.ceil(Math.max(frames.length, 1) / columns));
+  return (columns * frame) / rows;
 }
 
 /** `21:40` and `2026.08.22 21:40` — the way the camera writes a time. */
@@ -98,12 +121,18 @@ export function fileName(
 }
 
 function assetImage(asset: CaptureAssetDetail, api: RollApi, alt = '') {
+  // The frame's own ratio, so the box is right before the bytes arrive and a
+  // 4:3 frame is never letterboxed into a square or squeezed into 16:9.
+  const aspect = aspectOf(asset);
   return (
     <SafeImage
       key={asset.assetId}
       src={api.assetUrl(asset.assetId)}
       alt={alt}
       className="photo-img"
+      width={asset.width ?? undefined}
+      height={asset.height ?? undefined}
+      style={aspect === null ? undefined : { aspectRatio: aspect }}
       retry
     />
   );
@@ -130,7 +159,7 @@ export function CaptureDetail({
   useEffect(() => setCapture(initialCapture), [initialCapture]);
 
   const originals = useMemo(() => assetsByRole(capture, 'original-frame'), [capture.assets]);
-  const still = preferredAsset(capture);
+  const still = heroStill(capture);
   // Memoized on the assets, not rebuilt every render: a fresh array is a new
   // `frames` prop, and the player reads that as a new set of frames — it
   // restarted the preload and dropped back to the poster on every re-render.
@@ -260,6 +289,12 @@ export function CaptureDetail({
 
   const pinnedFrame = frame === null ? undefined : originals[frame];
   const failed = capture.status === 'failed';
+  // Width over height of what the hero shows, for the landscape height cap.
+  const heroAsset = pinnedFrame ?? originals[0] ?? still;
+  const heroRatio =
+    heroAsset === undefined || aspectOf(heroAsset) === null
+      ? null
+      : ((heroAsset.width ?? 4) / (heroAsset.height ?? 3)).toFixed(4);
 
   let media;
   if (pinnedFrame !== undefined) {
@@ -285,8 +320,15 @@ export function CaptureDetail({
       );
   } else if (capture.mode === 'quad') {
     const columns = Math.ceil(Math.sqrt(capture.frameCount));
+    // One hero child, not three. The grid, the look and the chip used to be
+    // separate flex items of a ROW flexbox, so on a phone the four frames
+    // shared the width with the label and rendered as a stack of thumbnails
+    // in the top-left corner with the look floating beside them.
     media = (
-      <>
+      <div
+        className="photo-quad-wrap"
+        style={{ '--quad-ratio': quadRatio(originals, columns).toFixed(4) } as CSSProperties}
+      >
         <div
           aria-label="Quad frames"
           data-columns={columns}
@@ -300,13 +342,12 @@ export function CaptureDetail({
             </figure>
           ))}
         </div>
-        {/* One look, once. `look` is a single value for the whole capture on
-            the guest wire — there are no per-camera recipeIds there — so
-            printing it under all four frames claimed four recipes that do not
-            exist. When the wire carries per-camera recipeIds, the label moves
-            back under each frame and means something. */}
+        {/* One look, once, as a caption row under the grid. `look` is a single
+            value for the whole capture on the guest wire — there are no
+            per-camera recipeIds there — so printing it under all four frames
+            claimed four recipes that do not exist. */}
         <p className="photo-look">{capture.look ?? 'KINO standard'}</p>
-      </>
+      </div>
     );
   } else {
     media = still === undefined ? <p className="photo-processing">Processing…</p> : assetImage(still, api, 'KINO capture');
@@ -314,7 +355,8 @@ export function CaptureDetail({
 
   // SAVE PHOTO is a still, never an animation or a video — a guest tapping
   // "save photo" on a wiggle wants a picture their camera roll can show.
-  const stillRoles = ['enhanced-still', 'kino-still', 'thumb'];
+  // Never the thumb: a 720 px tile is not a photograph anyone wants to keep.
+  const stillRoles = ['enhanced-still', 'kino-still'];
   const savablePhoto = stillRoles.flatMap((role) => assetsByRole(capture, role))[0] ?? originals[0];
   const showFrameStrip = capture.mode === 'wiggle' && originals.length > 0 && !failed;
 
@@ -344,7 +386,11 @@ export function CaptureDetail({
     <article className="photo-page">
       <h1 className="k-sr">{`${roll.title} — capture from ${clockOf(capture.capturedAt)}`}</h1>
 
-      <div ref={heroRef} className="k-hero">
+      <div
+        ref={heroRef}
+        className="k-hero"
+        style={heroRatio === null ? undefined : ({ '--hero-ratio': heroRatio } as CSSProperties)}
+      >
         {media}
         <StatusChip status={capture.status} present={originals.length} />
       </div>

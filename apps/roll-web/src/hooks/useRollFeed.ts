@@ -12,6 +12,46 @@ function mergeUnique(first: readonly CaptureView[], second: readonly CaptureView
   return merged;
 }
 
+/**
+ * The feed's order, as the API sorts it: shutter time descending, id
+ * descending inside a tie (`(captured_at, id)` in `captures/feed.ts`).
+ * Negative when `left` belongs above `right`.
+ */
+export function compareFeedOrder(
+  left: Pick<CaptureView, 'capturedAt' | 'captureId'>,
+  right: Pick<CaptureView, 'capturedAt' | 'captureId'>,
+): number {
+  const byTime = Date.parse(right.capturedAt) - Date.parse(left.capturedAt);
+  if (byTime !== 0 && !Number.isNaN(byTime)) return byTime;
+  return left.captureId < right.captureId ? 1 : left.captureId > right.captureId ? -1 : 0;
+}
+
+/**
+ * Files `arrivals` into `list` at their sorted positions, newest shutter time
+ * first, replacing an entry that shares an id.
+ *
+ * Not a prepend. A capture reaching the API late — the camera was offline, or
+ * the upload retried — is announced as `capture.created` like any other, and
+ * blindly putting it at the head sat a backlog of older shots on top of the
+ * photographs guests had just taken. Its shutter time says where it goes.
+ * `list` is assumed already in feed order (it came from the API that way);
+ * nothing else is reordered.
+ */
+export function insertByCapturedAt(
+  list: readonly CaptureView[],
+  arrivals: readonly CaptureView[],
+): CaptureView[] {
+  const next = [...list];
+  for (const capture of arrivals) {
+    const at = next.findIndex((shown) => shown.captureId === capture.captureId);
+    if (at !== -1) next.splice(at, 1);
+    let slot = next.findIndex((shown) => compareFeedOrder(capture, shown) < 0);
+    if (slot === -1) slot = next.length;
+    next.splice(slot, 0, capture);
+  }
+  return next;
+}
+
 interface FeedItems {
   captures: CaptureView[];
   /** Live arrivals held back while the guest is scrolled down — the "N new" pill. */
@@ -28,13 +68,16 @@ export interface RollFeedState {
   pending: CaptureView[];
   loadMore(): Promise<void>;
   hasMore: boolean;
+  /** Files a live arrival by its shutter time — the head only if it IS the newest. */
   prepend(capture: CaptureView): void;
   /** Holds a live arrival in `pending` instead of shifting the visible grid. */
   buffer(capture: CaptureView): void;
-  /** Moves everything pending to the head and returns the moved ids. */
+  /** Files everything pending by shutter time and returns the moved ids. */
   flushPending(): string[];
   replace(capture: CaptureView): void;
   remove(captureId: string): void;
+  /** The host cleared the roll: nothing shown, nothing pending, nothing more to load. */
+  clear(): void;
   refetchHead(options?: { buffer?: boolean }): Promise<void>;
   loading: boolean;
   error: Error | null;
@@ -159,7 +202,7 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
   const prepend = useCallback((capture: CaptureView): void => {
     setItems((current) => ({
       ...current,
-      captures: mergeUnique([capture], current.captures),
+      captures: insertByCapturedAt(current.captures, [capture]),
       pending: current.pending.filter((held) => held.captureId !== capture.captureId),
     }));
   }, []);
@@ -182,7 +225,7 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
     const flushed = items.pending.map((capture) => capture.captureId);
     setItems((current) => ({
       ...current,
-      captures: mergeUnique(current.pending, current.captures),
+      captures: insertByCapturedAt(current.captures, current.pending),
       pending: [],
     }));
     return flushed;
@@ -200,6 +243,10 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
     setItems((current) => ({ ...current, captures: drop(current.captures), pending: drop(current.pending) }));
   }, []);
 
+  const clear = useCallback((): void => {
+    setItems({ captures: [], pending: [], nextCursor: undefined, hasMore: false });
+  }, []);
+
   return {
     captures: items.captures,
     pending: items.pending,
@@ -210,6 +257,7 @@ export function useRollFeed(slug: string, api: RollApi = rollApi): RollFeedState
     flushPending,
     replace,
     remove,
+    clear,
     refetchHead,
     loading,
     error,

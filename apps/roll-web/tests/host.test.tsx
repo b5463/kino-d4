@@ -60,6 +60,7 @@ function fakeApi(overrides: Partial<HostApi> = {}): HostApi {
     hide: vi.fn().mockResolvedValue({ captureId: 'cap_1', visible: false, deletedAt: null, purgeAfter: null }),
     unhide: vi.fn(),
     deleteCapture: vi.fn(),
+    clearRoll: vi.fn().mockResolvedValue({ cleared: 1 }),
     regenerateSlug: vi.fn(),
     startExport: vi.fn(),
     getExport: vi.fn(),
@@ -179,6 +180,80 @@ describe('host dashboard', () => {
     });
     expect(listCaptures).toHaveBeenCalledTimes(2);
     expect(getRoll).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the roll only after the host types the roll code, and reports the count', async () => {
+    const clearRoll = vi.fn().mockResolvedValue({ cleared: 1 });
+    const getRoll = vi.fn().mockResolvedValue({ ...roll, counts: { captures: 1, pending: 0, hidden: 0 } });
+    const api = fakeApi({ clearRoll, getRoll });
+    await render(api);
+
+    const button = (label: string): HTMLButtonElement | undefined =>
+      [...container.querySelectorAll('button')].find((item) => item.textContent === label);
+
+    // The confirm is hidden until asked for.
+    expect(container.querySelector('#host-clear-code')).toBeNull();
+    await act(async () => button('Clear roll…')?.click());
+
+    // The count is shown before anything happens; the button is dead until
+    // the code matches; a wrong code stays dead.
+    const form = container.querySelector('form[aria-label="Clear roll"]');
+    expect(form?.textContent).toContain('all 1 captures');
+    expect(form?.textContent).toContain('ABC234');
+    const confirm = button('Clear 1 captures');
+    expect(confirm?.disabled).toBe(true);
+    const input = container.querySelector<HTMLInputElement>('#host-clear-code');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    const type = async (value: string): Promise<void> => {
+      await act(async () => {
+        setter?.call(input, value);
+        input?.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    await type('ABC999');
+    expect(button('Clear 1 captures')?.disabled).toBe(true);
+    expect(clearRoll).not.toHaveBeenCalled();
+
+    // Case does not matter — the card prints capitals, thumbs do not.
+    await type('abc234');
+    expect(button('Clear 1 captures')?.disabled).toBe(false);
+    await act(async () => {
+      form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(clearRoll).toHaveBeenCalledWith('roll_1');
+    expect(container.querySelector('#host-clear-code')).toBeNull();
+    expect(container.querySelector('.host-danger [role="status"]')?.textContent).toContain('Cleared 1 capture');
+    // The grid shows the rows in the trash rather than gone.
+    expect(container.querySelector('[data-capture-id="cap_1"]')?.textContent).toContain('TRASHED');
+  });
+
+  it('re-lists the roll on a roll.cleared event', async () => {
+    let eventHandler: ((event: HostRollEvent) => void) | undefined;
+    const listCaptures = vi
+      .fn()
+      .mockResolvedValueOnce({ items: [capture], hasMore: false })
+      .mockResolvedValue({ items: [{ ...capture, deletedAt: '2026-08-20T13:00:00.000Z' }], hasMore: false });
+    const getRoll = vi.fn().mockResolvedValue(roll);
+    const api = fakeApi({
+      listCaptures,
+      getRoll,
+      events: vi.fn((_rollId, handler) => {
+        eventHandler = handler;
+        return vi.fn();
+      }),
+    });
+    await render(api);
+    await act(async () => {
+      eventHandler?.({ type: 'roll.cleared' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listCaptures).toHaveBeenCalledTimes(2);
+    expect(getRoll).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-capture-id="cap_1"]')?.textContent).toContain('TRASHED');
   });
 
   it('polls an export job until its download link is ready', async () => {

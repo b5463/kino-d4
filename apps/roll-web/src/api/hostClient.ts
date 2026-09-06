@@ -48,7 +48,7 @@ export interface ModerationView {
 }
 
 export type HostRollEvent =
-  | { type: 'roll.opened' | 'roll.closed' }
+  | { type: 'roll.opened' | 'roll.closed' | 'roll.cleared' }
   | {
       type: 'capture.created' | 'capture.updated' | 'capture.hidden' | 'capture.deleted';
       captureId: string;
@@ -68,6 +68,8 @@ export interface HostApi {
   hide(captureId: string): Promise<ModerationView>;
   unhide(captureId: string): Promise<ModerationView>;
   deleteCapture(captureId: string): Promise<ModerationView>;
+  /** Trashes every capture of the roll; answers how many moved. */
+  clearRoll(rollId: string): Promise<{ cleared: number }>;
   regenerateSlug(rollId: string): Promise<{ slug: string; guestUrl: string }>;
   startExport(rollId: string): Promise<{ jobId: string }>;
   getExport(rollId: string, jobId: string): Promise<{ status: string; url?: string }>;
@@ -161,6 +163,8 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
       request(`/api/host/captures/${encodeURIComponent(captureId)}/unhide`, { method: 'POST' }),
     deleteCapture: (captureId) =>
       request(`/api/host/captures/${encodeURIComponent(captureId)}`, { method: 'DELETE' }),
+    clearRoll: (rollId) =>
+      request(`/api/host/rolls/${encodeURIComponent(rollId)}/clear`, { method: 'POST' }),
     regenerateSlug: (rollId) =>
       request(`/api/host/rolls/${encodeURIComponent(rollId)}/regenerate-slug`, { method: 'POST' }),
     startExport: (rollId) =>

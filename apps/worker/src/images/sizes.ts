@@ -12,14 +12,26 @@
  * runs in.
  */
 
-/** A feed tile. 480 px covers a 2× phone tile without paying for a 3× one. */
-export const THUMBNAIL_WIDTH = 480;
+/**
+ * A feed tile: 720 px on the long edge.
+ *
+ * Was 480. The guest feed is one photograph per row on a phone, so a tile is
+ * the full CSS width — 360 to 430 px — at 2× to 3× DPR, i.e. 720 to 1290
+ * device pixels. A 480 px tile was upscaled on every phone and read as a
+ * blurred thumbnail; 720 is sharp at 2× and acceptable at 3×, where the feed
+ * offers the 1280 px `kino-still` through `srcset` instead. Not larger: the
+ * tile still has to arrive over a party's uplink ahead of the still, and at
+ * 720 px q82 a 4:3 WebP is ~60–90 kB. Thumbs already written stay at their
+ * old size; only new captures get this one.
+ */
+export const THUMBNAIL_WIDTH = 720;
 
 /**
- * q70 for a thumbnail. Below the still's quality on purpose: at 480 px the
- * artefacts are invisible and the bytes are what the guest feed spends.
+ * q82 for a thumbnail — the same as the still. At 720 px on a phone the tile
+ * IS what the guest looks at until they tap, and q70's ringing on hard edges
+ * was visible at 2× DPR. Above q85 WebP grows quickly for no visible gain.
  */
-export const THUMBNAIL_QUALITY = 70;
+export const THUMBNAIL_QUALITY = 82;
 
 /** The gallery's single-frame view — one tap in from a tile. */
 export const GALLERY_STILL_WIDTH = 1280;

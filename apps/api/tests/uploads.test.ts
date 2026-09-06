@@ -1211,9 +1211,11 @@ describe('POST /api/device/captures/:captureId/complete', () => {
       .where(eq(schema.processingEvents.captureId, captureId));
     expect(events.length).toBeGreaterThan(0);
     expect(new Set(events.map((row) => row.status))).toEqual(new Set(['queued']));
-    // The device already supplied the thumb, so no worker is asked to redo it
-    // (03 §4 — device previews take priority, workers fill gaps).
-    expect(events.map((row) => row.job)).not.toContain('generate-thumbnail');
+    // The device supplied its 288 px THUMB.JPG, and the worker is STILL asked
+    // for a thumb: the device's is the instant placeholder, the worker's 720 px
+    // WebP replaces it on the same row (see `plannedJobs`). The device's
+    // kino-still, when it sends one, is not redone.
+    expect(events.map((row) => row.job)).toContain('generate-thumbnail');
 
     // Calling complete twice must not double the queue.
     expect(

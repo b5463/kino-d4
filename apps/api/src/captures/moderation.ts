@@ -200,3 +200,43 @@ export async function trashCapture(
   if (updated === null) return { capture: await currentState(db, capture), changed: false };
   return { capture: updated, changed: true };
 }
+
+/**
+ * Moves EVERY capture of a roll to the trash — `POST /api/host/rolls/:rollId/clear`.
+ *
+ * The same write as `trashCapture`, once per row, in one statement: `deleted_at
+ * = now()` where it is still null, `visible` left alone, so the purge job finds
+ * these rows exactly as it finds a single delete's and a restore could put each
+ * one back as the host had it. `isNull(deleted_at)` in the WHERE is what makes a
+ * second call clear 0 and leave every earlier timestamp — and grace period —
+ * where it was.
+ *
+ * One audit row per capture (`capture.deleted`, target = the id), because the
+ * purge trail is per capture and a clear must not leave 2,000 purges with no
+ * delete before them; plus one `roll.cleared` row saying it was one action.
+ * Returns the ids that moved, so the route can say how many and announce
+ * nothing when the answer is none.
+ */
+export async function trashRollCaptures(db: KinoDatabase, rollId: string): Promise<string[]> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .update(captures)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(captures.rollId, rollId), isNull(captures.deletedAt)))
+      .returning({ id: captures.id });
+    if (rows.length === 0) return [];
+
+    await tx.insert(auditEvents).values(
+      auditRows([
+        ...rows.map((row) => ({
+          rollId,
+          actor: 'host',
+          action: 'capture.deleted' as const,
+          target: row.id,
+        })),
+        { rollId, actor: 'host', action: 'roll.cleared', target: null },
+      ]),
+    );
+    return rows.map((row) => row.id);
+  });
+}

@@ -25,19 +25,32 @@ export interface RollFeedPageProps {
   slug: string;
 }
 
-/** One photograph per row on a phone; two on a tablet, three on a desktop. */
+/**
+ * One photograph per row on a phone; two on a tablet, three on a laptop,
+ * four on a wide desktop. A 4:3 tile is a third of 1440 px = 480 px wide and
+ * a quarter of 1920 px = 480 px wide, so the tile never shrinks as the window
+ * grows past a laptop - it gains a column instead. Must agree with
+ * `TILE_SIZES`, which tells the browser the same widths for `srcset`.
+ */
+export const COLUMN_BREAKPOINTS: readonly [query: string, columns: number][] = [
+  ['(min-width: 1600px)', 4],
+  ['(min-width: 1100px)', 3],
+  ['(min-width: 720px)', 2],
+];
+
 function useColumnCount(): number {
   const pick = (): number => {
     if (typeof window.matchMedia !== 'function') return 1;
-    if (window.matchMedia('(min-width: 1100px)').matches) return 3;
-    if (window.matchMedia('(min-width: 720px)').matches) return 2;
+    for (const [query, columns] of COLUMN_BREAKPOINTS) {
+      if (window.matchMedia(query).matches) return columns;
+    }
     return 1;
   };
   const [columns, setColumns] = useState(pick);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const media = ['(min-width: 1100px)', '(min-width: 720px)'].map((query) => window.matchMedia(query));
+    const media = COLUMN_BREAKPOINTS.map(([query]) => window.matchMedia(query));
     const changed = (): void => setColumns(pick());
     for (const entry of media) entry.addEventListener('change', changed);
     return () => {
@@ -48,12 +61,49 @@ function useColumnCount(): number {
   return columns;
 }
 
-function assetOf(capture: CaptureView, roles: readonly string[]) {
+function assetOf(capture: Pick<CaptureView, 'assets'>, roles: readonly string[]) {
   for (const role of roles) {
     const asset = capture.assets.find((candidate) => candidate.role === role);
     if (asset !== undefined) return asset;
   }
   return undefined;
+}
+
+/**
+ * How wide a tile is, as the browser needs it for `sizes`: the column count
+ * `useColumnCount` derives from the same two breakpoints.
+ */
+export const TILE_SIZES = '(min-width: 1600px) 25vw, (min-width: 1100px) 33vw, (min-width: 720px) 50vw, 100vw';
+
+/**
+ * The still a tile paints, with every wider still the capture has as a
+ * `srcset` candidate.
+ *
+ * One tile is the full phone width. A 390 px CSS tile on a 3× screen wants
+ * 1170 device pixels, and the `thumb` (720 px, 480 on rolls processed before
+ * the size was raised) is not that; the `kino-still` (1280 px) is. `src`
+ * stays the thumb, so a browser without `srcset` still gets the cheap tile,
+ * and `sizes` tells the rest which candidate to fetch — a desktop column at
+ * 1× takes the thumb, a 3× phone takes the still. A candidate without a
+ * recorded width cannot be described, so it is left out rather than guessed.
+ */
+export function tileSources(
+  capture: Pick<CaptureView, 'assets'>,
+  assetUrl: (assetId: string) => string,
+): { src: string; srcSet?: string; sizes?: string } | undefined {
+  const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
+  if (poster === undefined) return undefined;
+  const candidates = ['thumb', 'kino-still', 'enhanced-still']
+    .flatMap((role) => capture.assets.filter((asset) => asset.role === role))
+    .filter((asset) => asset.width !== null && asset.width > 0);
+  const widths = new Map<number, string>();
+  for (const asset of candidates) widths.set(asset.width ?? 0, asset.assetId);
+  if (widths.size < 2) return { src: assetUrl(poster.assetId) };
+  const srcSet = [...widths.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([width, assetId]) => `${assetUrl(assetId)} ${String(width)}w`)
+    .join(', ');
+  return { src: assetUrl(poster.assetId), srcSet, sizes: TILE_SIZES };
 }
 
 /** `21:40` — the clock mark a group of captures is filed under. */
@@ -128,13 +178,22 @@ export function CaptureTile({
   // live player belongs to the capture page, where the guest asked for that
   // one photograph.
   const source = animated ?? poster;
+  // A baked animation is one file at one size; a still gets the srcset.
+  const stillSources = animated === undefined ? tileSources(capture, (id) => rollApi.assetUrl(id)) : undefined;
   const media =
     source === undefined ? (
       <span className="k-processing" aria-label={failed ? 'Capture failed' : 'Capture processing'}>
         {failed ? 'FAILED' : 'Processing…'}
       </span>
     ) : (
-      <SafeImage src={rollApi.assetUrl(source.assetId)} alt="" loading="lazy" className="photo-img" />
+      <SafeImage
+        src={rollApi.assetUrl(source.assetId)}
+        srcSet={stillSources?.srcSet}
+        sizes={stillSources?.sizes}
+        alt=""
+        loading="lazy"
+        className="photo-img"
+      />
     );
   // failed and partial come from the wire; a wiggle with no bake yet is
   // processing whatever the status column says, because that is what the
@@ -332,6 +391,14 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // The host cleared the roll: the list empties in one step, live, and the
+  // "N new" pill goes with it. The cached tiles are left to the cache's own
+  // expiry — evicting two thousand entries one by one is not worth a stall.
+  const clearLive = useCallback((): void => {
+    feed.clear();
+    setFreshIds(new Set());
+  }, [feed]);
+
   useRollEvents(
     slug,
     {
@@ -340,6 +407,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
       remove: removeLive,
       refetchHead: refetchHeadLive,
       onRollChanged: refreshRoll,
+      onRollCleared: clearLive,
     },
     rollApi,
     roll !== null && !(failure instanceof PinRequiredError) && !isNoRollError(failure),

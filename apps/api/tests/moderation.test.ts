@@ -493,6 +493,105 @@ describe('DELETE /api/host/captures/:captureId (03 §11)', () => {
 
 /* ------------------------------------------------- stale-snapshot guards -- */
 
+describe('POST /api/host/rolls/:rollId/clear', () => {
+  it('trashes every capture of that roll, and only that roll, and empties the guest feed live', async () => {
+    const target = await createRoll(`Clear me ${RUN}`);
+    const other = await createRoll(`Leave me ${RUN}`);
+    const earlier = new Date(Date.now() - 60 * 60 * 1000);
+    const [a, b, alreadyTrashed] = await Promise.all([
+      insertCapture(target.rollId),
+      insertCapture(target.rollId, { visible: false }),
+      insertCapture(target.rollId, { deletedAt: earlier }),
+    ]);
+    const [c, d] = await Promise.all([insertCapture(other.rollId), insertCapture(other.rollId)]);
+    expect((await feedIds(target.slug)).sort()).toEqual([a].sort());
+
+    const before = Date.now();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/host/rolls/${target.rollId}/clear`,
+      headers: bearer(target.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    // Two: the visible one and the hidden one. The one already in the trash
+    // is not cleared again.
+    expect(res.json()).toEqual({ cleared: 2 });
+
+    // Guest: nothing, both ways in.
+    expect(await feedIds(target.slug)).toEqual([]);
+    const detail = await app.inject({ method: 'GET', url: `/api/rolls/${target.slug}/captures/${a}` });
+    expect(detail.statusCode).toBe(404);
+
+    // Host: every row still listed, every one in the trash, the hidden one
+    // still hidden — the same write a single delete makes.
+    const listed = (await hostList(target.rollId, target.hostToken)).items;
+    expect(listed.map((item) => item.captureId).sort()).toEqual([a, b, alreadyTrashed].sort());
+    for (const item of listed) {
+      expect(item.deletedAt).not.toBeNull();
+      expect(item.purgeAfter).not.toBeNull();
+    }
+    expect(listed.find((item) => item.captureId === b)?.visible).toBe(false);
+    for (const id of [a, b]) {
+      const row = await captureRow(id);
+      expect(row?.deletedAt?.getTime()).toBeGreaterThanOrEqual(before - 1_000);
+    }
+    // The earlier trash keeps its earlier timestamp and its earlier purge date.
+    expect((await captureRow(alreadyTrashed))?.deletedAt?.getTime()).toBe(earlier.getTime());
+
+    // The other roll did not move.
+    expect((await feedIds(other.slug)).sort()).toEqual([c, d].sort());
+    expect(await publishedEvents(other.rollId)).toEqual([]);
+
+    // One roll-level event, not one per capture; one audit row per capture
+    // plus one for the action.
+    expect(await publishedEvents(target.rollId)).toEqual(['roll.cleared']);
+    expect((await auditRowsFor(target.rollId, 'capture.deleted')).map((row) => row.target).sort()).toEqual(
+      [a, b].sort(),
+    );
+    expect(await auditRowsFor(target.rollId, 'roll.cleared')).toEqual([{ target: null }]);
+
+    // Idempotent: the second call clears nothing and says nothing.
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/host/rolls/${target.rollId}/clear`,
+      headers: bearer(target.hostToken),
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ cleared: 0 });
+    expect(await publishedEvents(target.rollId)).toEqual(['roll.cleared']);
+    expect(await auditRowsFor(target.rollId, 'roll.cleared')).toHaveLength(1);
+  });
+
+  it('is host-only, per roll, and rate limited per token', async () => {
+    const roll = await createRoll(`Clear auth ${RUN}`);
+    const stranger = await createRoll(`Stranger ${RUN}`);
+    await insertCapture(roll.rollId);
+
+    const anonymous = await app.inject({ method: 'POST', url: `/api/host/rolls/${roll.rollId}/clear` });
+    expect(anonymous.statusCode).toBe(401);
+    const foreign = await app.inject({
+      method: 'POST',
+      url: `/api/host/rolls/${roll.rollId}/clear`,
+      headers: bearer(stranger.hostToken),
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(await feedIds(roll.slug)).toHaveLength(1);
+
+    // Five in a minute on one token go through; the sixth is refused.
+    const answers: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/host/rolls/${roll.rollId}/clear`,
+        headers: bearer(roll.hostToken),
+      });
+      answers.push(res.statusCode);
+    }
+    expect(answers).toEqual([200, 200, 200, 200, 200, 429]);
+    expect(await feedIds(roll.slug)).toEqual([]);
+  });
+});
+
 describe('moderation guards are in the WHERE, not in the read snapshot', () => {
   /**
    * The two route-level race tests above interleave whatever the event loop

@@ -19,6 +19,7 @@ SSE was chosen over WebSocket deliberately: delivery is one-way, proxies and pho
 | `processing.completed {captureId, role}` | Worker finished one derivative |
 | `capture.hidden` / `capture.deleted` | Host moderation; guests' feeds react live |
 | `roll.opened` / `roll.closed` | Host lifecycle |
+| `roll.cleared` | Host cleared the roll (`POST /api/host/rolls/:rollId/clear`): one event for the whole roll, never one `capture.deleted` per capture, so a 2,000-capture clear cannot flood a stream capped at ~500 entries. Guests empty their list; the host re-lists |
 
 ## Progressive delivery to the guest
 

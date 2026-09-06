@@ -175,6 +175,7 @@ export interface RollApi {
 const ROLL_EVENT_TYPES = [
   'roll.opened',
   'roll.closed',
+  'roll.cleared',
   'capture.created',
   'capture.updated',
   'capture.hidden',

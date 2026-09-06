@@ -1,0 +1,1 @@
+CREATE INDEX "captures_roll_captured" ON "captures" USING btree ("roll_id","captured_at");

@@ -186,7 +186,8 @@ export const captures = pgTable(
   },
   (t) => [
     uniqueIndex('captures_roll_uuid').on(t.rollId, t.captureUuid), // idempotency anchor
-    index('captures_roll_created').on(t.rollId, t.createdAt), // feed pagination
+    index('captures_roll_created').on(t.rollId, t.createdAt), // counts, recap windows
+    index('captures_roll_captured').on(t.rollId, t.capturedAt), // feed pagination (captured_at, id)
   ],
 );
 

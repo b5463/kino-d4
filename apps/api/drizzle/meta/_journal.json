@@ -78,6 +78,13 @@
       "when": 1788175297130,
       "tag": "0011_lookup_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788707811932,
+      "tag": "0012_feed_captured_index",
+      "breakpoints": true
     }
   ]
 }

@@ -51,6 +51,10 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [pin, setPin] = useState('');
+  // Clear roll: the confirm is open, what the host has typed, and the answer.
+  const [clearing, setClearing] = useState(false);
+  const [clearCode, setClearCode] = useState('');
+  const [clearResult, setClearResult] = useState<string | null>(null);
 
   const refreshCaptures = useCallback(
     async (rollId: string): Promise<void> => {
@@ -143,6 +147,11 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
         case 'roll.closed':
           reads.push(refreshRoll());
           break;
+        // Every capture moved at once (another tab, or this one): one re-list
+        // is cheaper than two thousand patches, and the counts moved too.
+        case 'roll.cleared':
+          reads.push(refreshCaptures(rollId), refreshRoll());
+          break;
         // One capture changed and the totals did not.
         case 'capture.updated':
         case 'processing.completed':
@@ -156,7 +165,7 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
     };
 
     return api.events(rollId, reconcile);
-  }, [api, patchCapture, roll?.rollId]);
+  }, [api, patchCapture, refreshCaptures, roll?.rollId]);
 
   const run = async (action: () => Promise<void>): Promise<void> => {
     setBusy(true);
@@ -208,6 +217,26 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
       setCaptures(previous);
       throw caught;
     }
+  };
+
+  /**
+   * Clears the roll. The confirm is the roll code typed back, not a dialog
+   * button: a host with 2,000 test captures and a party starting in an hour
+   * must not be able to do this with a mis-tap. Rows go to the trash for the
+   * grace period, so the dashboard shows them TRASHED rather than gone.
+   */
+  const clearRoll = async (): Promise<void> => {
+    if (roll === null) return;
+    setClearResult(null);
+    const { cleared } = await api.clearRoll(roll.rollId);
+    const now = new Date().toISOString();
+    setCaptures((items) =>
+      items.map((item) => (item.deletedAt === null ? { ...item, deletedAt: now } : item)),
+    );
+    setRoll(await api.getRoll(roll.rollId));
+    setClearing(false);
+    setClearCode('');
+    setClearResult(`Cleared ${String(cleared)} ${cleared === 1 ? 'capture' : 'captures'}. In the trash for 7 days, then purged.`);
   };
 
   const startExport = async (): Promise<void> => {
@@ -308,6 +337,54 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
           <Button disabled={busy} onClick={() => void run(startExport)}>Prepare ZIP</Button>
           {exportState !== null ? <p role="status" aria-live="polite" aria-atomic="true">{exportState}</p> : null}
           {exportUrl !== null ? <a className="roll-action" href={exportUrl}>Download ZIP</a> : null}
+        </Panel>
+
+        <Panel title="Danger">
+          <div className="host-danger" data-clearing={clearing}>
+            {clearing ? (
+              <form
+                aria-label="Clear roll"
+                onSubmit={(event: FormEvent) => {
+                  event.preventDefault();
+                  if (clearCode.trim().toUpperCase() !== roll.slug.toUpperCase()) return;
+                  void run(clearRoll);
+                }}
+              >
+                <p>
+                  This trashes all <b>{roll.counts.captures}</b> captures in this roll. Guests see it empty at once. The trash is purged after 7 days.
+                </p>
+                <label htmlFor="host-clear-code">Type the roll code <code>{roll.slug}</code> to confirm</label>
+                <input
+                  id="host-clear-code"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  value={clearCode}
+                  onChange={(event) => setClearCode(event.target.value)}
+                />
+                <ToolbarFrame aria-label="Clear roll confirmation">
+                  <Button
+                    type="submit"
+                    variant="danger-solid"
+                    disabled={busy || clearCode.trim().toUpperCase() !== roll.slug.toUpperCase()}
+                  >
+                    {busy ? 'Clearing…' : `Clear ${roll.counts.captures} captures`}
+                  </Button>
+                  <Button type="button" disabled={busy} onClick={() => { setClearing(false); setClearCode(''); }}>Cancel</Button>
+                </ToolbarFrame>
+              </form>
+            ) : (
+              <>
+                <p>Clear roll: every capture goes to the trash. Nothing is deleted for 7 days.</p>
+                <Button
+                  variant="danger"
+                  disabled={busy || roll.counts.captures === 0}
+                  onClick={() => { setClearResult(null); setClearing(true); }}
+                >Clear roll…</Button>
+              </>
+            )}
+            {clearResult !== null ? <p role="status" aria-live="polite" aria-atomic="true">{clearResult}</p> : null}
+          </div>
         </Panel>
       </section>
 

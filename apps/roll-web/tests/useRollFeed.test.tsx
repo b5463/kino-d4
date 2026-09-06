@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptureView, RollApi } from '../src/api/client';
 import { useRollEvents, type RollEventHandlers } from '../src/hooks/useRollEvents';
-import { useRollFeed, type RollFeedState } from '../src/hooks/useRollFeed';
+import { compareFeedOrder, insertByCapturedAt, useRollFeed, type RollFeedState } from '../src/hooks/useRollFeed';
 import { evictCaptureAssets, ROLL_ASSET_CACHE } from '../src/cache/assets';
 
 const reactTestGlobal = globalThis as typeof globalThis & {
@@ -13,12 +13,12 @@ const reactTestGlobal = globalThis as typeof globalThis & {
 };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
 
-function capture(captureId: string, status = 'ready'): CaptureView {
+function capture(captureId: string, status = 'ready', capturedAt = '2026-08-14T20:00:00.000Z'): CaptureView {
   return {
     captureId,
     mode: 'single',
     look: null,
-    capturedAt: '2026-08-14T20:00:00.000Z',
+    capturedAt,
     createdAt: '2026-08-14T20:00:01.000Z',
     frameCount: 1,
     resolution: '1600x1200',
@@ -273,9 +273,11 @@ describe('Roll feed hooks', () => {
     const { current, Harness } = feedHarness(api);
     await render(<Harness />);
 
+    // Newer shutter times than the head, so they belong above it. (At an
+    // equal time the id tiebreaker decides, as it does on the API.)
     act(() => {
-      current().buffer(capture('cap_b'));
-      current().buffer(capture('cap_a'));
+      current().buffer(capture('cap_b', 'ready', '2026-08-14T20:05:00.000Z'));
+      current().buffer(capture('cap_a', 'ready', '2026-08-14T20:06:00.000Z'));
     });
 
     let flushed: string[] = [];
@@ -383,5 +385,138 @@ describe('Roll feed hooks', () => {
     expect(open).toHaveBeenCalledWith(ROLL_ASSET_CACHE);
     expect(removeCached).toHaveBeenCalledWith('/api/assets/ast_thumb/content');
     expect(removeCached).toHaveBeenCalledWith('/api/assets/ast_wiggle/content');
+  });
+});
+
+/**
+ * The phone report: a camera that was offline uploads its backlog later, and
+ * every one of those is announced as `capture.created`. Prepending them sat
+ * two hundred old shots above the photographs guests had just taken. A live
+ * arrival is filed by its shutter time — the API's own order, `(captured_at,
+ * id)` descending — and only a genuinely newer shot reaches the head.
+ */
+describe('live arrivals are filed by shutter time', () => {
+  const at = (minute: number): string => `2026-08-14T20:${String(minute).padStart(2, '0')}:00.000Z`;
+
+  it('compareFeedOrder is newest first, id descending inside a tie — the API keyset', () => {
+    expect(compareFeedOrder(capture('cap_a', 'ready', at(5)), capture('cap_b', 'ready', at(4)))).toBeLessThan(0);
+    expect(compareFeedOrder(capture('cap_a', 'ready', at(4)), capture('cap_b', 'ready', at(5)))).toBeGreaterThan(0);
+    expect(compareFeedOrder(capture('cap_b', 'ready', at(5)), capture('cap_a', 'ready', at(5)))).toBeLessThan(0);
+    expect(compareFeedOrder(capture('cap_a', 'ready', at(5)), capture('cap_a', 'ready', at(5)))).toBe(0);
+  });
+
+  it('insertByCapturedAt puts an older shot below the newer ones and a newer one on top', () => {
+    const shown = [capture('cap_3', 'ready', at(30)), capture('cap_2', 'ready', at(20)), capture('cap_1', 'ready', at(10))];
+    const late = capture('cap_late', 'ready', at(15));
+    const fresh = capture('cap_fresh', 'ready', at(40));
+    expect(insertByCapturedAt(shown, [late, fresh]).map((c) => c.captureId)).toEqual([
+      'cap_fresh',
+      'cap_3',
+      'cap_2',
+      'cap_late',
+      'cap_1',
+    ]);
+    // Older than everything: the tail. Same id: replaced in place, not doubled.
+    expect(insertByCapturedAt(shown, [capture('cap_0', 'ready', at(1))]).at(-1)?.captureId).toBe('cap_0');
+    const patched = insertByCapturedAt(shown, [capture('cap_2', 'processing', at(20))]);
+    expect(patched.map((c) => c.captureId)).toEqual(['cap_3', 'cap_2', 'cap_1']);
+    expect(patched[1]?.status).toBe('processing');
+  });
+
+  async function mounted(api: RollApi): Promise<{ current(): RollFeedState }> {
+    const observed: { current: RollFeedState | null } = { current: null };
+    function Harness() {
+      observed.current = useRollFeed('party', api);
+      return null;
+    }
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<Harness />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    return {
+      current: () => {
+        if (observed.current === null) throw new Error('feed hook did not render');
+        return observed.current;
+      },
+    };
+  }
+
+  it('prepend files a late upload of an older shot where it was taken', async () => {
+    const api = apiWith({
+      listCaptures: vi.fn().mockResolvedValue({
+        items: [capture('cap_3', 'ready', at(30)), capture('cap_1', 'ready', at(10))],
+        hasMore: false,
+      }),
+    });
+    const { current } = await mounted(api);
+
+    act(() => current().prepend(capture('cap_backlog', 'ready', at(20))));
+    expect(current().captures.map((c) => c.captureId)).toEqual(['cap_3', 'cap_backlog', 'cap_1']);
+
+    act(() => current().prepend(capture('cap_now', 'ready', at(45))));
+    expect(current().captures[0]?.captureId).toBe('cap_now');
+  });
+
+  it('the "N new" pill still counts a late arrival, and a flush files it by shutter time', async () => {
+    const api = apiWith({
+      listCaptures: vi.fn().mockResolvedValue({
+        items: [capture('cap_3', 'ready', at(30)), capture('cap_1', 'ready', at(10))],
+        hasMore: false,
+      }),
+    });
+    const { current } = await mounted(api);
+
+    act(() => {
+      current().buffer(capture('cap_backlog', 'ready', at(20)));
+      current().buffer(capture('cap_now', 'ready', at(45)));
+    });
+    expect(current().pending).toHaveLength(2);
+
+    let flushed: string[] = [];
+    act(() => {
+      flushed = current().flushPending();
+    });
+    expect(flushed.sort()).toEqual(['cap_backlog', 'cap_now']);
+    expect(current().captures.map((c) => c.captureId)).toEqual(['cap_now', 'cap_3', 'cap_backlog', 'cap_1']);
+  });
+
+  it('clear empties the list and the pill together, and roll.cleared reaches the page handler', async () => {
+    const api = apiWith({
+      listCaptures: vi.fn().mockResolvedValue({ items: [capture('cap_1')], nextCursor: 'more', hasMore: true }),
+    });
+    const { current } = await mounted(api);
+    act(() => current().buffer(capture('cap_2', 'ready', at(50))));
+    expect(current().captures).toHaveLength(1);
+    expect(current().pending).toHaveLength(1);
+
+    act(() => current().clear());
+    expect(current().captures).toEqual([]);
+    expect(current().pending).toEqual([]);
+    expect(current().hasMore).toBe(false);
+
+    // The event hook: one roll-level event, the clear handler and the roll refresh.
+    const source = new FakeEventSource();
+    const onRollCleared = vi.fn();
+    const onRollChanged = vi.fn();
+    const remove = vi.fn();
+    const events = apiWith({ events: vi.fn(() => source as unknown as EventSource) });
+    function Harness() {
+      useRollEvents('party', { onRollCleared, onRollChanged, remove }, events);
+      return null;
+    }
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<Harness />));
+    act(() => source.dispatch('roll.cleared', { type: 'roll.cleared' }));
+    expect(onRollCleared).toHaveBeenCalledTimes(1);
+    expect(onRollChanged).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+    host.remove();
   });
 });

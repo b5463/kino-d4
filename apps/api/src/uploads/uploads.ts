@@ -657,15 +657,23 @@ export function jobKeyFor(captureId: string, job: JobName): string {
 /**
  * Which jobs a finished capture needs (03 §4, Task 22's fan-out).
  *
- * A role the device already uploaded is skipped: device previews take priority
- * and workers exist to fill gaps and upgrade quality, not to redo work that has
- * already arrived. `render-wiggle-mp4` and `render-contact-sheet` are absent on
+ * `generate-thumbnail` is ALWAYS queued, even when the device sent a `thumb`.
+ * The camera's THUMB.JPG is its own 288 px gallery tile, made for a 208 px
+ * well on an 800x480 panel; on a phone the feed tile is the full width at
+ * 2-3x DPR, and the same file blown up to 1170 device pixels was the "horrid
+ * quality" the roll was judged by. The device thumb still has a job: it is on
+ * the wire seconds before the worker's, so the tile is a picture at once. The
+ * worker's 720 px WebP then lands on the same `(capture, thumb, NULL)` row
+ * (`publishDerived` upserts on the unique constraint) and every later read
+ * gets the good one. The 7 kB device object stays in the bucket under its
+ * upload key; nothing references it after the upsert. A role that is
+ * genuinely better from the device (`kino-still`, `wiggle-webp`) is still
+ * skipped, and `render-wiggle-mp4` / `render-contact-sheet` are absent on
  * purpose — Task 22 enqueues those lazily, on first request, to keep the
  * party-time queue short.
  */
 export function plannedJobs(mode: string, uploadedRoles: ReadonlySet<string>): JobName[] {
-  const jobs: JobName[] = ['extract-metadata'];
-  if (!uploadedRoles.has('thumb')) jobs.push('generate-thumbnail');
+  const jobs: JobName[] = ['extract-metadata', 'generate-thumbnail'];
   if (!uploadedRoles.has('kino-still')) jobs.push('generate-gallery-still');
   if (mode === 'wiggle' && !uploadedRoles.has('wiggle-webp')) jobs.push('render-wiggle-webp');
   return jobs;

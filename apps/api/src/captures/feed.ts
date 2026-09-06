@@ -55,10 +55,17 @@ export function parseLimit(raw: unknown): Parsed<number> {
 /* ---------------------------------------------------------------- cursor -- */
 
 /**
- * The keyset the feed pages on: `(createdAt, id)`, newest first.
+ * The keyset the feed pages on: `(capturedAt, id)`, newest SHUTTER first.
+ *
+ * `capturedAt`, not `createdAt`. `createdAt` is when the upload reached the
+ * API, and a camera that spent an evening offline uploads its backlog in one
+ * burst afterwards — ordered by upload time, two hundred old shots landed on
+ * top of the photographs guests had just taken. The shutter time is the order
+ * the roll was actually shot in, and it is what the guest reads the feed as.
+ * Both feeds, guest and host, walk the same keyset.
  *
  * `id` is not decoration. Captures arrive in bursts from four cameras and
- * regularly share a `createdAt` to the microsecond; a cursor on the timestamp
+ * regularly share a timestamp to the microsecond; a cursor on the timestamp
  * alone either repeats the whole tied group on the next page or skips the rest
  * of it. The tiebreaker makes the ordering total, which is the property keyset
  * pagination actually depends on.
@@ -70,7 +77,7 @@ export function parseLimit(raw: unknown): Parsed<number> {
  */
 export interface FeedCursor {
   /**
-   * `created_at::text` **as PostgreSQL rendered it**, not a JavaScript `Date`.
+   * `captured_at::text` **as PostgreSQL rendered it**, not a JavaScript `Date`.
    *
    * This is the load-bearing detail. `timestamptz` keeps microseconds; a
    * `Date` keeps milliseconds. Round-tripping the cursor through a `Date` would
@@ -331,7 +338,7 @@ interface CaptureRow {
 }
 
 /**
- * One page of a roll's captures, newest first, for either audience.
+ * One page of a roll's captures, newest shutter time first, for either audience.
  *
  * `limit + 1` rows are read and the extra one dropped: it answers `hasMore`
  * exactly, with no second COUNT query and no lying about the last page.
@@ -353,7 +360,7 @@ async function readPage(
       visible: captures.visible,
       deletedAt: captures.deletedAt,
       // The cursor's half of the keyset, at full PostgreSQL precision.
-      cursorAt: sql<string>`${captures.createdAt}::text`,
+      cursorAt: sql<string>`${captures.capturedAt}::text`,
     })
     .from(captures)
     .where(
@@ -363,10 +370,10 @@ async function readPage(
           ? undefined
           : // A row comparison, which is what makes this a single index-ordered
             // seek rather than the `a < x OR (a = x AND b < y)` expansion.
-            sql`(${captures.createdAt}, ${captures.id}) < (${cursor.at}::timestamptz, ${cursor.id})`,
+            sql`(${captures.capturedAt}, ${captures.id}) < (${cursor.at}::timestamptz, ${cursor.id})`,
       ),
     )
-    .orderBy(desc(captures.createdAt), desc(captures.id))
+    .orderBy(desc(captures.capturedAt), desc(captures.id))
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;

@@ -19,7 +19,9 @@ import { rollCaptureCounts } from '../uploads/uploads';
 import { countRollViewers } from '../events/viewers';
 import { auditEvents, devices, rolls } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
-import { hostCreateRateLimit } from '../plugins/rateLimits';
+import { hostClearRateLimit, hostCreateRateLimit } from '../plugins/rateLimits';
+import { trashRollCaptures } from '../captures/moderation';
+import { publishRollEvent } from '../events/publish';
 
 /**
  * The host dashboard's API (03 §10).
@@ -181,6 +183,36 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const slug = await regenerateSlug(app.db, rollOf(request));
       return { slug, guestUrl: guestUrlFor(app.config, slug) };
+    },
+  );
+
+  /**
+   * Clears the roll: every capture not already in the trash goes there, the
+   * same way `DELETE /api/host/captures/:captureId` sends one. Nothing is
+   * destroyed here — the purge job removes the bytes after the grace period,
+   * and until then the host list still shows every row as TRASHED.
+   *
+   * Addressed by rollId, so it sits with the roll routes under `requireHost`
+   * rather than with the capture verbs. Answers `{ cleared: n }`; a second
+   * call clears 0 and announces nothing, like a repeated hide. One
+   * `roll.cleared` event for the whole roll (see `RollEvent`), published only
+   * when something moved. A failed publish is logged, not returned: the rows
+   * are committed and the feed is already empty for anyone who loads it.
+   */
+  app.post(
+    '/api/host/rolls/:rollId/clear',
+    { preHandler: app.requireHost('rollId'), config: hostClearRateLimit },
+    async (request) => {
+      const roll = rollOf(request);
+      const cleared = await trashRollCaptures(app.db, roll.id);
+      if (cleared.length > 0) {
+        try {
+          await publishRollEvent(app.redis, roll.id, { type: 'roll.cleared' });
+        } catch (err) {
+          app.log.warn({ err, rollId: roll.id }, 'roll.cleared event was not published');
+        }
+      }
+      return { cleared: cleared.length };
     },
   );
 };

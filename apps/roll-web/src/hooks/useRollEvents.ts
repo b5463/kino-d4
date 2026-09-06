@@ -4,6 +4,7 @@ import { rollApi, type CaptureView, type RollApi } from '../api/client';
 const EVENT_TYPES = [
   'roll.opened',
   'roll.closed',
+  'roll.cleared',
   'capture.created',
   'capture.updated',
   'capture.hidden',
@@ -23,11 +24,18 @@ export interface RollEventHandlers {
    * answered. Absent means "all of them", which is what the feed wants.
    */
   wants?(captureId: string): boolean;
+  /**
+   * A capture that just arrived. Named for what it used to do; the feed now
+   * files it by shutter time (`useRollFeed.prepend`), so a late upload of an
+   * older shot lands where it was taken, not on top.
+   */
   prepend?(capture: CaptureView): void;
   replace?(capture: CaptureView): void;
   remove?(captureId: string): void;
   refetchHead?(): void | Promise<void>;
   onRollChanged?(): void | Promise<void>;
+  /** The host cleared the roll: everything shown is in the trash now. */
+  onRollCleared?(): void | Promise<void>;
   onError?(error: Error): void;
 }
 
@@ -169,6 +177,13 @@ export function useRollEvents(
       for (const type of ['roll.opened', 'roll.closed'] as const) {
         source.addEventListener(type, () => invoke(handlersRef.current.onRollChanged));
       }
+
+      // One event for the whole roll (see the API's `RollEvent`): the list
+      // empties in one step and the roll's count is re-read.
+      source.addEventListener('roll.cleared', () => {
+        invoke(handlersRef.current.onRollCleared);
+        invoke(handlersRef.current.onRollChanged);
+      });
     };
 
     const pause = (): void => {

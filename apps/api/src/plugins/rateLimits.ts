@@ -58,6 +58,13 @@ export const RATE_LIMITS = {
    * pool it.)
    */
   deviceRead: { max: 120, timeWindow: '1 minute', groupId: 'device-read' },
+  /**
+   * Clearing a roll, keyed by the host token. One UPDATE over every capture of
+   * the roll plus an audit row per capture; a host does it once, maybe twice
+   * when the first answer was lost. Five a minute is generous for a person and
+   * a hard stop for a script holding a leaked token.
+   */
+  hostClear: { max: 5, timeWindow: '1 minute', groupId: 'host-clear' },
 } as const;
 
 /** Redis keys never contain a bearer credential, even though the limit is per token. */
@@ -110,6 +117,10 @@ export const deviceCreateRateLimit = {
 };
 export const deviceReadRateLimit = {
   rateLimit: { ...RATE_LIMITS.deviceRead, keyGenerator: deviceKey },
+};
+/** `deviceKey` hashes whatever bearer is presented; a host token is one. */
+export const hostClearRateLimit = {
+  rateLimit: { ...RATE_LIMITS.hostClear, keyGenerator: deviceKey },
 };
 
 /** Shared Redis-backed limits, disabled globally and opted into by route. */
