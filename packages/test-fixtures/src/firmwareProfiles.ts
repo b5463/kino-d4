@@ -587,4 +587,6 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.48: the ROLL screen speaks to a guest - address under the QR, one lamp
   // word, one big count, and only the upload lines that matter. Same profile.
   '0.4.48': 'd4-settings-0-4-9',
+  // 0.4.49: the ROLL column spaced over its height. Same profile.
+  '0.4.49': 'd4-settings-0-4-9',
 };

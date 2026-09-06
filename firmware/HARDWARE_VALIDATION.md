@@ -688,6 +688,11 @@ work was committed (c60b087) and rebuilt from HEAD 1709553 with no overlay:
 order index verified 5, queue clean, internal 88 KB, capture 9,876 B, ui
 3,884 B, gallery 2,708 B minimum free. Visual acceptance on the panel (W)
 remains the operator's.
+
+**0.4.49, spacing.** Operator on the panel: too tight at the top, empty at
+the bottom. Blocks respaced (26 to 30 px), rendered on the host, flashed
+cc4a68db (bench; release 1fa9bbe1). Boot-162, index verified 5, capture
+9,876 B, ui 3,884 B.
 ### SINGLE DELETE: PASS, and the shutter fix proven - 0.4.45, 2026-09-05 late
 
 Operator at the body, host on telemetry only. 0.4.45 flashed (capture task

@@ -3392,11 +3392,11 @@ static void draw_roll(void) {
   const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
   int y = RL_TOP;
   text_scaled(&UI_FONT_M, RL_RX, y, title, fit_scale(&UI_FONT_M, title, RL_RW), W_TEXT);
-  y += UI_FONT_M.line_h * 2 + 4;
+  y += UI_FONT_M.line_h * 2 + 10;
   if (roll.name[0] != '\0') {
     /* The code only when the name is not already the code. */
     text(&UI_FONT_M, RL_RX, y, roll.slug, W_GRAYTEXT);
-    y += UI_FONT_M.line_h + 6;
+    y += UI_FONT_M.line_h + 26;
   }
 
   /* The connection word, with a square lamp in front of it. Green is "your
@@ -3423,7 +3423,7 @@ static void draw_roll(void) {
     fill(RL_RX, ly, 12, 12, W_TEXT);
     fill(RL_RX + 2, ly + 2, 8, 8, lamp);
     text(&UI_FONT_M, RL_RX + 22, y, word, W_TEXT);
-    y += UI_FONT_M.line_h + 18;
+    y += UI_FONT_M.line_h + 30;
   }
 
   /* The card, as one big number. gallery_media_count() is the index in RAM,
@@ -3435,7 +3435,7 @@ static void draw_roll(void) {
     if (total < 0) snprintf(big, sizeof big, "- PHOTOS");
     else snprintf(big, sizeof big, "%d %s", total, total == 1 ? "PHOTO" : "PHOTOS");
     text_scaled(&UI_FONT_M, RL_RX, y, big, fit_scale(&UI_FONT_M, big, RL_RW) >= 2 ? 2 : 1, W_TEXT);
-    y += UI_FONT_M.line_h * 2 + 10;
+    y += UI_FONT_M.line_h * 2 + 26;
   }
 
   /* What is happening to them. Three lines at most. */
@@ -3476,7 +3476,7 @@ static void draw_roll(void) {
     if (!online) snprintf(l2, sizeof l2, "Uploads resume when Wi-Fi returns.");
   }
 
-  if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 8; }
+  if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 14; }
   if (bar) {
     /* The bar exists only while there is work: a full or empty bar with
      * nothing behind it would be a decoration. */
@@ -3487,9 +3487,9 @@ static void draw_roll(void) {
       const int fw = (int)((int64_t)(bw - 4) * bar_done / bar_total);
       if (fw > 0) fill(RL_RX + 2, y + 2, fw, bh - 4, RGB(0x00, 0x00, 0xa8));
     }
-    y += bh + 10;
+    y += bh + 14;
   }
-  if (l2[0]) { text(&UI_FONT_S, RL_RX, y, l2, W_GRAYTEXT); y += UI_FONT_S.line_h + 6; }
+  if (l2[0]) { text(&UI_FONT_S, RL_RX, y, l2, W_GRAYTEXT); y += UI_FONT_S.line_h + 10; }
   if (l3[0]) { text(&UI_FONT_S, RL_RX, y, l3, W_GRAYTEXT); }
 }
 
