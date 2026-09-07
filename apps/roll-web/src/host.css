@@ -48,6 +48,28 @@ body[data-surface='host'] :focus-visible {
   outline-offset: 2px;
 }
 
+/* ---- touch targets ----
+
+   `roll.css` gives shared controls a 36px minimum under `(pointer: coarse)`,
+   which is the guest browser's number. This page is not that job: it is
+   moderated one-handed, at a party, in the dark, and its controls are Hide,
+   Delete and Clear roll. Measured on the live dashboard at 390px, the buttons
+   came out 24px and 30px tall — a Delete a thumb can miss by 10px, with the
+   next tile's Delete underneath it. 44px, which is the smallest target a thumb
+   hits reliably, for every control on the surface.
+
+   Two exceptions keep their own smaller rules by specificity, both deliberate
+   and both documented where they are declared: the roll-settings checkbox (the
+   `<label>` is the target) and the stuck-list buttons (sentences, not chips).
+   `CaptureGrid.tileChrome()` is the other half of this rule — the virtualiser's
+   first row estimate has to know the button row grew. */
+@media (pointer: coarse) {
+  body[data-surface='host'] .kino-button,
+  body[data-surface='host'] button:not(.kino-button),
+  body[data-surface='host'] input,
+  body[data-surface='host'] .host-setup > summary { min-height: 44px; }
+}
+
 /* A disabled primary button has to stop being primary.
 
    `roll.css` paints `.kino-button--primary` with a blue gradient and white
@@ -236,24 +258,12 @@ body[data-surface='host'] .host-now-stuck button:not(.kino-button):hover {
 }
 .host-now-clear { margin: 0; color: var(--k-mut); }
 
-/* ---- the alarm line ----
-
-   A camera that cannot reach the server while the header still says LIVE is
-   the one state the old page hid: it was a pale pink box two screens down.
-   This sits directly under the header, full width, and says what to do. */
-
-.host-alarm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  margin: 0 0 var(--h-gap);
-  padding: 9px 12px;
-  border: 1px solid var(--k-burgundy);
-  border-left-width: 4px;
-  background: var(--h-bad-bg);
+/* A state that has no control, because the API has no transition out of it:
+   "Archived. It cannot be reopened." sitting where Reopen Roll would be. */
+.host-terminal {
+  color: var(--k-mut);
+  font: 0.75rem/1.5 var(--k-sans);
 }
-.host-alarm strong { letter-spacing: 0.04em; }
 
 /* ---- header controls ---- */
 
@@ -437,6 +447,13 @@ body[data-surface='host'] .host-qr--empty { aspect-ratio: 1 / 1; background: #ee
   padding: 6px 10px;
   border-left: 3px solid var(--k-blue);
   background: #eff4fb;
+}
+/* A finished-and-failed export is not a wait. It used to keep the blue
+   in-progress rule while saying "The export failed.", which is the panel
+   telling the host two different things at once. */
+.host-export-state[data-tone='bad'] {
+  border-left-color: var(--k-burgundy);
+  background: var(--h-bad-bg);
 }
 .host-export-state span { flex: 1 1 200px; }
 .host-export-done { margin: 8px 0 0; }

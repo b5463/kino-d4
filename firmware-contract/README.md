@@ -41,6 +41,33 @@ Two distinct type systems are in play and must not be confused:
 
 Firmware produces both. They overlap in subject (a capture, a device, a config) and differ in shape.
 
+## What is not here: the camera's HTTP upload API
+
+This directory covers **KDP only** — the framed protocol the camera speaks over USB-C and the
+`kino.*` documents it produces. It does not describe how a capture reaches the KINO Roll server.
+
+The camera's server-facing contract is HTTP, it is normative, and it lives in
+[`docs/roll/ROLL_DEVICE_CONTRACT.md`](../docs/roll/ROLL_DEVICE_CONTRACT.md). Read it for device
+registration and the bearer token, joining a roll, the multipart `init` / `part` / `complete`
+sequence and its part size, the `<captureUuid>:<role>:<frameIndex>` idempotency key, resume after a
+power loss, and which HTTP status the firmware must retry versus refuse.
+
+Which document answers what:
+
+| Question | Document |
+|---|---|
+| Frame layout, CRC, sequence ids, payload cap | [`kdp-framing.md`](kdp-framing.md) |
+| Command and event ids, payload shapes, job semantics | [`commands.md`](commands.md) |
+| `kino.*` document fields, versions, migrations | [`schemas.md`](schemas.md) |
+| Any HTTP request the camera makes to a Roll server | [`docs/roll/ROLL_DEVICE_CONTRACT.md`](../docs/roll/ROLL_DEVICE_CONTRACT.md) |
+| Whether a Roll upload behaviour is implemented, and where it stops | [`docs/roll/PHYSICAL_DEVICE_FLOW.md`](../docs/roll/PHYSICAL_DEVICE_FLOW.md) |
+
+The upload contract is not copied here, and must not be: two copies of a retry rule is one copy
+that is wrong. Its authority is the same as this directory's — `apps/api/src` and the committed
+migrations — and it records its own deviations. The overlap between the two is only the
+vocabulary: a role, a `frameIndex` and a `captureUuid` mean the same thing on both sides, and
+[`schemas.md`](schemas.md) is where those are defined.
+
 ## Versioning
 
 | Constant | Value | Where |

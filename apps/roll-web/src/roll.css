@@ -1007,7 +1007,6 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 
 /* ---- host dashboard ---- */
 
-.host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .host-stat { min-width: 105px; padding: 6px 10px; border: 1px solid var(--k-border); background: #fff; }
 .host-stat-label { color: var(--k-mut); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.1em; }
 .host-stat-value { display: block; font: 700 1.125rem var(--k-mono); }
@@ -1020,7 +1019,6 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .host-danger input { max-width: 200px; font: 700 0.875rem var(--k-mono); letter-spacing: 0.12em; text-transform: uppercase; }
 .host-qr { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--k-border); }
 
-.host-captures { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
 .host-capture { padding: 4px; border: 1px solid var(--k-border); background: #fff; }
 .host-capture[data-muted='true'] { opacity: 0.55; }
 .host-capture .roll-media, .host-capture .photo-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #dfe5ec; }
@@ -1141,7 +1139,6 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 @media (max-width: 600px) {
   .roll-header { padding: 8px; }
   .host-settings { grid-template-columns: 1fr; }
-  .host-captures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -10,8 +10,10 @@ import {
   roll,
   firmwareManifest,
   ASSET_ROLES,
+  ASSET_STATUSES,
   CAPTURE_MODES,
   ROLL_STATUSES,
+  ROLL_PRIVACY,
   CAPTURE_STATUSES,
   type SchemaDef,
 } from '../src/index';
@@ -46,6 +48,20 @@ describe('enumerations', () => {
 
   it('lists the roll states from 03§22', () => {
     expect(ROLL_STATUSES).toEqual(['draft', 'live', 'closed', 'archived', 'trash']);
+  });
+
+  // The two the API derives from "was a PIN supplied?", and nothing else.
+  // `public` is a later addition; a name nothing can produce is a promise.
+  it('lists the roll privacy modes the API can write', () => {
+    expect(ROLL_PRIVACY).toEqual(['unlisted', 'pin']);
+  });
+
+  // Two values, matching the only two the platform writes. The `assets.status`
+  // column comment in apps/api still says `pending|uploading|ready|failed`;
+  // those two extra names have no writer — upload progress and failure live on
+  // `upload_sessions.status`.
+  it('lists the asset states the platform actually writes', () => {
+    expect(ASSET_STATUSES).toEqual(['pending', 'ready']);
   });
 
   it('lists the capture states from 05§8', () => {
@@ -324,6 +340,12 @@ describe('kino.roll', () => {
   it('rejects an unknown roll state', () => {
     expect(() => parseVersioned(roll, { ...rollExample, status: 'exploded' })).toThrow();
   });
+
+  it('accepts a PIN-protected roll and refuses a privacy mode nothing can write', () => {
+    expect(parseVersioned(roll, { ...rollExample, privacy: 'pin' }).privacy).toBe('pin');
+    // 03§9 defers public rolls; the API has no code path that writes this.
+    expect(() => parseVersioned(roll, { ...rollExample, privacy: 'public' })).toThrow();
+  });
 });
 
 describe('kino.capture', () => {
@@ -435,6 +457,27 @@ describe('kino.asset', () => {
   it('rejects a sha256 that is not a 64-char lowercase hex digest', () => {
     expect(() => parseVersioned(asset, { ...assetExample, sha256: 'abc' })).toThrow();
     expect(() => parseVersioned(asset, { ...assetExample, sha256: 'C'.repeat(64) })).toThrow();
+  });
+
+  it('rejects an asset state nothing writes', () => {
+    // The stale column comment's names, refused on purpose.
+    expect(() => parseVersioned(asset, { ...assetExample, status: 'uploading' })).toThrow();
+    expect(() => parseVersioned(asset, { ...assetExample, status: 'failed' })).toThrow();
+  });
+
+  it('accepts a per-camera derived row and a capture-level one', () => {
+    // `thumb` holds a capture-level row at null plus one per camera; the camera
+    // number is 1-based and may be sparse (D23).
+    const perCamera = parseVersioned(asset, { ...assetExample, role: 'thumb', frameIndex: 3 });
+    expect(perCamera.frameIndex).toBe(3);
+    expect(parseVersioned(asset, { ...assetExample, frameIndex: null }).frameIndex).toBeNull();
+    expect(parseVersioned(asset, assetExample).frameIndex).toBeUndefined();
+  });
+
+  it('rejects a frame index that is not a camera number', () => {
+    // 0 is not a camera; the slots are 1-based.
+    expect(() => parseVersioned(asset, { ...assetExample, frameIndex: 0 })).toThrow();
+    expect(() => parseVersioned(asset, { ...assetExample, frameIndex: 1.5 })).toThrow();
   });
 
   it('accepts a non-image asset with no pixel dimensions', () => {

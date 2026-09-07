@@ -386,9 +386,10 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `POST /api/device/rolls` | device | → `{rollId, slug, guestUrl, hostUrl, hostToken}`, `201` |
 | `POST /api/device/rolls/join` `{slug}` | device | writes `roll_devices`; idempotent |
 | `GET /api/device/rolls/current` | device | assigned rolls with `status = live` |
-| `POST /api/device/rolls/:rollId/heartbeat` | device (roll) | `{pending?, uploading?, failed?, serverState?, firmware?}` → `{ok: true}`; upserts `roll_devices` |
+| `POST /api/device/rolls/:rollId/heartbeat` | device (roll) | `{pending?, uploading?, failed?, serverState?, firmware?, uploadPaused?}` → `{ok: true}`; upserts `roll_devices` |
 | `POST /api/host/rolls` | **none** | host web creation; mints a new host token |
-| `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts`, live `guests`, and `cameras` newest heartbeat first |
+| `GET /api/host/session` | host token, no `:rollId` | the dashboard view of the roll the token itself names — see [Host auth on a route with no `:rollId`](#host-auth-on-a-route-with-no-rollid) |
+| `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts`, live `guests`, and `cameras` newest heartbeat first, each with `uploadPaused` (`null` = the camera does not report it) |
 | `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status`; a status that moves publishes `roll.opened` / `roll.closed` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
 | `POST /api/host/rolls/:rollId/clear` | host | every capture to the trash in one statement → `{cleared: n}`; one `roll.cleared` event; 5/min per token |
@@ -929,11 +930,12 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 
 ### Known gaps
 
-- Roll deletion (trash grace + purge job) removes rows and objects but does
-  not `DEL` the roll's `roll:<id>:stream` and viewer keys. The stream is
-  bounded at `MAXLEN ~ 500` entries, so an orphaned key is small but
-  permanent. If orphaned keys ever matter, the purge job is the place to
-  `DEL` both.
+- Nothing ever `DEL`s a roll's `roll:<id>:stream`. There is no roll deletion in
+  the platform — no route removes a `rolls` row, and `purge-trash` purges
+  *captures* — so the key outlives the party rather than being orphaned by a
+  delete. It is bounded at `MAXLEN ~ 500` entries, so the cost is one small
+  permanent key per roll ever created. The viewer key is not part of this: it
+  carries a `PEXPIRE` and clears itself.
 - A client that stops reading is dropped once 64 KB has queued for it, rather
   than being buffered indefinitely. That is safe *because* of `Last-Event-ID`:
   it reconnects and replays.
@@ -948,6 +950,7 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 | `DELETE /api/host/captures/:captureId` | host (capture) | `deleted_at = now()`; `capture.deleted` |
 | `POST /api/host/captures/:captureId/restore` | host (capture) | `deleted_at = NULL`, `visible` untouched; `capture.updated` |
 | `GET /api/host/captures/:captureId` | host (capture) | one row in the host list's shape |
+| `PATCH /api/host/captures/:captureId/playback` | host (capture) | `{fps?, loop?, direction?}`, REPLACED whole → `{captureId, playback}`; re-queues `render-wiggle-webp`, and `render-wiggle-mp4` only when that asset already exists; publishes `capture.updated` |
 | `POST /api/host/rolls/:rollId/export` | host | `202 {jobId}`, `Location:` the poll route |
 | `GET /api/host/rolls/:rollId/export/:jobId` | host | `{status, url?}`; the url is presigned, or `/content` when `OBJECT_DELIVERY=proxy` |
 | `GET /api/host/rolls/:rollId/export/:jobId/content` | host | streams the ZIP; `attachment; filename="kino-roll-<slug>-<date>.zip"` |
@@ -956,7 +959,8 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 
 Every write route here writes an `audit_events` row with actor `host` and actions
 `capture.hidden` / `capture.unhidden` / `capture.deleted` / `capture.restored` /
-`roll.exported`. For these, `target` is the id of the row the action applied to, not a destroyed value
+`roll.exported` — the one exception being `PATCH …/playback`, which changes how a
+photograph is played back and not whether it is there. For these, `target` is the id of the row the action applied to, not a destroyed value
 — an entry that did not name its capture would record only that *something* was
 hidden.
 

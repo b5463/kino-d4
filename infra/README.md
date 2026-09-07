@@ -106,6 +106,17 @@ The default mutation budget is 60 requests per minute per device token; one four
 
 Run `npm run test:uploader -- --help` for fixture, timeout, and pacing options. Production registration is first-write-wins, so reuse `KINO_DEVICE_ID` and `KINO_DEVICE_TOKEN` after the initial physically controlled registration instead of attempting to register the serial again.
 
+### Per-camera thumbnail backfill
+
+`infra/scripts/backfill-thumbnails.ts` re-queues `generate-thumbnail` for captures processed before the worker started writing one thumbnail per camera. Those captures still make a capture page fetch four full originals — 754 kB instead of 293 kB. Nothing is migrated: the job is idempotent, so the tool only queues work.
+
+```sh
+npx tsx infra/scripts/backfill-thumbnails.ts --roll RRG8AZ            # dry run, writes nothing
+npx tsx infra/scripts/backfill-thumbnails.ts --roll RRG8AZ --apply    # queue it, 100 captures at a time
+```
+
+Dry run is the default and reports how many captures are affected and how much storage the run would add. It is safe to run twice, and re-running it is the resume. A backfill raises the host dashboard's Pending count for as long as it runs, so do not start one during a live party. Procedure, measured costs and the interruption behaviour are in [the thumbnail backfill runbook](../docs/runbooks/thumbnail-backfill.md).
+
 ## PC-hosted production behind a tunnel (first production phase)
 
 The canonical product URL is `https://kino.acronym.sk`. For the first

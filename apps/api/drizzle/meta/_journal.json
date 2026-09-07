@@ -92,6 +92,13 @@
       "when": 1788721698685,
       "tag": "0013_roll_device_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788790433350,
+      "tag": "0014_roll_device_upload_paused",
+      "breakpoints": true
     }
   ]
 }

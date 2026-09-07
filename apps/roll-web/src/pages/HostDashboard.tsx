@@ -59,7 +59,7 @@ export function exportWording(status: string): string {
     case 'completed':
       return 'Ready.';
     case 'failed':
-      return 'The export failed.';
+      return 'The export failed. Prepare it again.';
     default:
       return `Export: ${status}`;
   }
@@ -76,11 +76,24 @@ export function exportWording(status: string): string {
  */
 export function waitedFor(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 60) return `${String(seconds)} s`;
+  // No-break spaces: the line lives in a flex box that wraps, and a plain
+  // space let it break between the figure and its unit — "Waiting 0" then "s."
+  // on the next line, seen on the dev API at 1440px.
+  if (seconds < 60) return `${String(seconds)}\u00a0s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${String(minutes)} min`;
-  return `${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min`;
+  if (minutes < 60) return `${String(minutes)}\u00a0min`;
+  return `${String(Math.floor(minutes / 60))}\u00a0h ${String(minutes % 60)}\u00a0min`;
 }
+
+/**
+ * How long a wait has to be before saying it is worth the words.
+ *
+ * "Waiting 0 s." next to "Queued. The server is getting to it." is the page
+ * talking for the sake of it. The number exists to tell a host that a queued
+ * export has been queued for four minutes and the worker is probably down, and
+ * it only starts being that after a few seconds.
+ */
+export const EXPORT_WAIT_FLOOR_MS = 5_000;
 
 /** A destructive action that asks first, in the panel, with no browser dialog. */
 function Confirm({
@@ -430,10 +443,13 @@ export function HostDashboard({
   };
 
   const [exportStopped, setExportStopped] = useState(false);
+  /** A finished-and-failed job, so the line can be an alarm and not a wait. */
+  const [exportFailed, setExportFailed] = useState(false);
   const startExport = async (): Promise<void> => {
     if (roll === null) return;
     setExportUrl(null);
     setExportStopped(false);
+    setExportFailed(false);
     setExportSince(Date.now());
     setExportState('Asking the server for a ZIP…');
     const { jobId } = await api.startExport(roll.rollId);
@@ -445,7 +461,21 @@ export function HostDashboard({
         setExportSince(null);
         return;
       }
-      if (current.status === 'failed') throw new Error('The export failed. Try again.');
+      /**
+       * A failed export stops being a wait and says so in the panel it was
+       * started from — it does not throw.
+       *
+       * Throwing put the same sentence in two places at once: the page-wide
+       * alert under the header said "The export failed. Try again." while this
+       * panel's own line still carried the blue in-progress treatment, a live
+       * "Waiting 0 s." and a Stop watching button for a job that had already
+       * stopped. One sentence, in the panel with the button that caused it.
+       */
+      if (current.status === 'failed') {
+        setExportSince(null);
+        setExportFailed(true);
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
   };
@@ -565,9 +595,16 @@ export function HostDashboard({
                 })
               }
             />
+          ) : roll.status === 'archived' ? (
+            /* Archived is terminal in the API — `ROLL_STATUS_TRANSITIONS` in
+               `rolls/rolls.ts` lets an archived roll go only to archived — so
+               this used to be a permanently greyed-out "Reopen Roll" with
+               nothing anywhere saying why. A dead control is worse than no
+               control: it reads as the page being broken. */
+            <span className="host-terminal">Archived. It cannot be reopened.</span>
           ) : (
             <Button
-              disabled={busy || roll.status === 'archived'}
+              disabled={busy}
               onClick={() => void run(async () => void (await update({ status: 'live' })))}
             >
               Reopen Roll
@@ -731,10 +768,18 @@ export function HostDashboard({
               Prepare ZIP
             </Button>
             {exportState !== null && !exportStopped ? (
-              <p className="host-export-state" role="status" aria-live="polite" aria-atomic="true">
+              <p
+                className="host-export-state"
+                data-tone={exportFailed ? 'bad' : 'busy'}
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
                 <span>
                   {exportState}
-                  {exportSince === null ? '' : ` Waiting ${waitedFor(now - exportSince)}.`}
+                  {exportSince === null || now - exportSince < EXPORT_WAIT_FLOOR_MS
+                    ? ''
+                    : ` Waiting ${waitedFor(now - exportSince)}.`}
                 </span>
                 {exportSince === null ? null : (
                   <Button

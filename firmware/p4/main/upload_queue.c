@@ -800,6 +800,10 @@ static void heartbeat_tick(void) {
        * window had to drop. A job still backing off is work in progress and is
        * already counted above. */
       .failed = rep.failed,
+      /* One source of truth: the queue's own halt flag, the same one the ROLL
+       * screen draws UPLOAD PAUSED from (ui.c). Not a fact the cadence reads -
+       * see rq_heartbeat_due(). */
+      .halted = rep.halted,
       .server_state = (int)rep.server_state,
   };
 
@@ -811,6 +815,7 @@ static void heartbeat_tick(void) {
       .uploading = facts.uploading,
       .failed = facts.failed,
       .server_state = hb_server_name(rep.server_state),
+      .upload_paused = facts.halted,
   };
   int status = 0;
   const bool ok = roll_api_heartbeat(roll.roll_id, &hb, &status);
@@ -849,6 +854,18 @@ static void worker_task(void *arg) {
       ESP_LOGI(TAG, "transport %s (%s)", ready ? "up" : "down", net_state_name(st.state));
       klog("P4", "upload transport %s: %s", ready ? "up" : "down", net_state_name(st.state));
     }
+    /* Before the eligibility gate below, not after it, and this is the whole
+     * reason a halted camera reaches a dashboard at all: `s_halted` used to
+     * `continue` past this call, so the queue that most needed reporting was
+     * the one that stopped reporting. Now the halt goes out in the body on the
+     * ordinary period and the host reads UPLOAD PAUSED instead of silence.
+     *
+     * A transport that is down still sends nothing - rq_heartbeat_due() takes
+     * `net_up` and answers false - so this costs no request that could not have
+     * gone out. Between steps, never inside one, and never while a capture
+     * holds the card: the capture branch above has already returned. */
+    heartbeat_tick();
+
     if (!ready || s_halted) {
       /* Not eligible: no radio in this build (NOT_ROUTED), or a routed radio
        * short of IP_READY, or the queue halted on a credential failure. The
@@ -859,10 +876,6 @@ static void worker_task(void *arg) {
       xTaskNotifyWait(0, 0, &ignored, IDLE_TICKS);
       continue;
     }
-
-    /* Between steps, never inside one, and never while a capture holds the
-     * card — the branch above has already returned in that case. */
-    heartbeat_tick();
 
     if (run_one_step()) continue;
     if (!s_rescan && maybe_probe_parked()) continue;

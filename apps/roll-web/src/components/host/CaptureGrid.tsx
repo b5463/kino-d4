@@ -21,12 +21,21 @@ import { SafeImage } from '../SafeImage';
 export const CAPTURE_FILTERS = ['all', 'pending', 'hidden', 'trash', 'failed'] as const;
 export type CaptureFilter = (typeof CAPTURE_FILTERS)[number];
 
+/**
+ * The bar's words.
+ *
+ * "Failed to process", not "Failed". The status strip above carries the
+ * camera's own count of photographs it gave up sending, and a bar reading
+ * "Failed 0" beside "4 photographs the camera gave up sending" read as the
+ * page arguing with itself. This count is captures the server took in and
+ * could not process; the label says so. See `StatusStrip.stuckItems`.
+ */
 const FILTER_LABEL: Record<CaptureFilter, string> = {
   all: 'All',
   pending: 'Pending',
   hidden: 'Hidden',
   trash: 'In trash',
-  failed: 'Failed',
+  failed: 'Failed to process',
 };
 
 export function matchesFilter(capture: HostCaptureView, filter: CaptureFilter): boolean {
@@ -70,8 +79,24 @@ export function tileState(capture: HostCaptureView): string {
 
 /** Tile width the CSS grid lands on, and the height one row of them needs. */
 const MIN_TILE = 170;
-/** Border, padding, the meta line and the button row under the 4:3 media. */
-const TILE_CHROME = 60;
+
+/**
+ * Border, padding, the meta line and the button row under the 4:3 media.
+ *
+ * Bigger on a touch screen, because the buttons are: `host.css` gives every
+ * control on this surface a 44px minimum under `(pointer: coarse)`, so the
+ * chrome under the picture is a 44px row plus the meta line rather than a 24px
+ * row plus the meta line. Only the first estimate depends on this — rows on
+ * screen are measured — but an estimate 20px short per row is 40 rows of drift
+ * by the bottom of a party's roll.
+ */
+function tileChrome(): number {
+  const coarse =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches;
+  return coarse ? 82 : 60;
+}
 
 interface GridMetrics {
   columns: number;
@@ -100,7 +125,7 @@ function useGridMetrics(ref: React.RefObject<HTMLDivElement | null>): GridMetric
         columns,
         // 4:3 media plus the meta line and the button row. Rounded up, never
         // below a floor: a zero estimate makes the virtualiser render nothing.
-        rowHeight: Math.max(120, Math.round((tile * 3) / 4) + TILE_CHROME),
+        rowHeight: Math.max(120, Math.round((tile * 3) / 4) + tileChrome()),
         scrollMargin: element.getBoundingClientRect().top + window.scrollY,
         ready: true,
       });
@@ -173,9 +198,10 @@ export function CaptureGrid({
             size="sm"
             variant={name === filter ? 'primary' : 'default'}
             aria-pressed={name === filter}
-            // Empty filters stay live rather than disabled. "Failed 0" is a
-            // fact the host wants to read, and being able to select it and see
-            // "Nothing in Failed." is how they confirm it rather than assume.
+            // Empty filters stay live rather than disabled. "Failed to
+            // process 0" is a fact the host wants to read, and being able to
+            // select it and see "Nothing failed to process." is how they
+            // confirm it rather than assume.
             onClick={() => onFilter(name)}
           >
             {FILTER_LABEL[name]} {counts[name]}
@@ -187,7 +213,9 @@ export function CaptureGrid({
         <p className="host-quiet">
           {captures.length === 0
             ? 'No captures yet. They appear here as the camera uploads them.'
-            : `Nothing in ${FILTER_LABEL[filter]}.`}
+            : filter === 'failed'
+              ? 'Nothing failed to process.'
+              : `Nothing in ${FILTER_LABEL[filter]}.`}
         </p>
       ) : null}
 

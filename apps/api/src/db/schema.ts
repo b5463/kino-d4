@@ -154,6 +154,19 @@ export const rollDevices = pgTable(
     /** What the camera thinks of *this* server: unknown|reachable|unreachable. */
     serverState: text('server_state'),
     firmwareVersion: text('firmware_version'),
+    /**
+     * The camera's upload queue is halted — it stopped trying because this
+     * server refused its credential (401/403). The ROLL screen calls it
+     * UPLOAD PAUSED, and it is the one camera state that never clears itself:
+     * nothing will upload until a person re-provisions the device.
+     *
+     * Three-valued on purpose, and the third value is the reason it is nullable
+     * rather than `notNull().default(false)`. NULL means the camera did not say,
+     * which is what any firmware predating this field does; `false` means it
+     * said its queue is running. A default of `false` would have made every
+     * older camera claim a healthy queue it has no opinion about.
+     */
+    uploadPaused: boolean('upload_paused'),
   },
   (t) => [
     primaryKey({ columns: [t.rollId, t.deviceId] }),
@@ -230,7 +243,7 @@ export const assets = pgTable(
     bytes: bigint('bytes', { mode: 'number' }),
     sha256: text('sha256'),
     objectKey: text('object_key').notNull().unique(), // rolls/<rollId>/captures/<capId>/... (05§6)
-    status: text('status').notNull().default('pending'), // pending|uploading|ready|failed
+    status: text('status').notNull().default('pending'), // pending|ready - see kino.asset in @kino/schemas
     /**
      * Producer identity for derived assets (audit #59): which job, which
      * renderer, which settings. Retuning a render constant is invisible in

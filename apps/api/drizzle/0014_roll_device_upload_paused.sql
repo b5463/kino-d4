@@ -1,0 +1,1 @@
+ALTER TABLE "roll_devices" ADD COLUMN "upload_paused" boolean;

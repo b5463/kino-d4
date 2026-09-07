@@ -86,6 +86,23 @@ const heartbeatBody = z
      */
     serverState: z.enum(['unknown', 'reachable', 'unreachable']).optional(),
     firmware: z.string().trim().min(1).max(64).optional(),
+    /**
+     * The camera's upload queue is halted: it stopped trying because this server
+     * refused its credential (401/403). The camera's own ROLL screen has said
+     * UPLOAD PAUSED since 0.4.x; the dashboard had the same words and nothing
+     * feeding them.
+     *
+     * It is the state a host most needs, because it is the only one that does
+     * not clear itself — a camera with a dead uplink catches up when the uplink
+     * comes back, a camera whose token this server rejects uploads nothing ever
+     * again until somebody re-provisions it.
+     *
+     * Optional like every field here, and the omission is *kept*: firmware that
+     * predates this field sends no such key, and storing NULL rather than
+     * `false` is what stops an old camera claiming a healthy queue it has no
+     * opinion about. See the column comment in `db/schema.ts`.
+     */
+    uploadPaused: z.boolean().optional(),
   })
   .strict();
 
@@ -262,7 +279,7 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
       const parsed = heartbeatBody.safeParse(request.body ?? {});
       if (!parsed.success) return invalidBody(reply, parsed.error);
 
-      const { pending, uploading, failed, serverState, firmware } = parsed.data;
+      const { pending, uploading, failed, serverState, firmware, uploadPaused } = parsed.data;
       const rollId = rollOf(request).id;
       const deviceId = deviceOf(request).id;
 
@@ -275,6 +292,10 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
         queueFailed: failed ?? null,
         serverState: serverState ?? null,
         firmwareVersion: firmware ?? null,
+        // `?? null`, not `?? false`: an omitted key stores NULL and stays
+        // readable as "this camera never said", which is what firmware older
+        // than the field is. Only an explicit `false` stores false.
+        uploadPaused: uploadPaused ?? null,
       };
 
       await app.db

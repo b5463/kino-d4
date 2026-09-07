@@ -1250,6 +1250,7 @@ describe('POST /api/device/rolls/:rollId/heartbeat', () => {
       failed: number | null;
       serverState: string | null;
       firmware: string | null;
+      uploadPaused: boolean | null;
     }[]
   > {
     const res = await app.inject({
@@ -1330,6 +1331,7 @@ describe('POST /api/device/rolls/:rollId/heartbeat', () => {
       failed: null,
       serverState: null,
       firmware: null,
+      uploadPaused: null,
     });
   });
 
@@ -1359,6 +1361,31 @@ describe('POST /api/device/rolls/:rollId/heartbeat', () => {
     expect((await cameras(created))[0]).toMatchObject({ pending: 7 });
   });
 
+  it('carries UPLOAD PAUSED to the dashboard, and keeps "did not say" apart from "not paused"', async () => {
+    const created = await createAsDevice({ title: `Paused ${RUN}` });
+
+    // The state the camera's ROLL screen calls UPLOAD PAUSED: the queue stopped
+    // because this server refused the credential, so nothing uploads until
+    // somebody re-provisions the device. Nothing else on the roll says so —
+    // `pending: 12` on its own reads as a camera that is merely behind.
+    await heartbeat(created.rollId, deviceA.deviceToken, { pending: 12, uploadPaused: true });
+    expect((await cameras(created))[0]).toMatchObject({ pending: 12, uploadPaused: true });
+
+    // A camera that says its queue is running.
+    await heartbeat(created.rollId, deviceA.deviceToken, { uploadPaused: false });
+    expect((await cameras(created))[0]?.uploadPaused).toBe(false);
+
+    // And the case the column is nullable for: firmware that predates the field
+    // omits the key, which must not read as `false`. `null` is the dashboard's
+    // cue to say nothing rather than to draw a green light.
+    await heartbeat(created.rollId, deviceA.deviceToken, { pending: 3 });
+    const [camera] = await cameras(created);
+    expect(camera?.uploadPaused).toBeNull();
+    expect(camera?.uploadPaused).not.toBe(false);
+    // Nothing else in the body changed meaning: the counters still land.
+    expect(camera).toMatchObject({ pending: 3 });
+  });
+
   it('refuses a device that is not on the roll, and a roll that does not exist', async () => {
     const created = await createAsDevice({ title: `Not yours ${RUN}` });
 
@@ -1383,6 +1410,7 @@ describe('POST /api/device/rolls/:rollId/heartbeat', () => {
       { pending: 100_001 },
       { serverState: 'probably' },
       { firmware: '' },
+      { uploadPaused: 'yes' },
       { pendng: 3 },
     ]) {
       const res = await heartbeat(created.rollId, deviceA.deviceToken, payload);

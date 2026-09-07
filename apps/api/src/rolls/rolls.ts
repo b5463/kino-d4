@@ -368,6 +368,17 @@ export interface RollCamera {
   failed: number | null;
   serverState: string | null;
   firmware: string | null;
+  /**
+   * The camera's upload queue is halted on a credential the server refused, the
+   * state its own ROLL screen calls UPLOAD PAUSED.
+   *
+   * Three-valued, and the dashboard needs all three: `true` is "nothing will
+   * upload until someone re-provisions this camera", `false` is "the queue is
+   * running", and `null` is "this camera does not report it" — firmware that
+   * predates the field. Rendering `null` as "not paused" would put a green
+   * light on a camera nobody has asked.
+   */
+  uploadPaused: boolean | null;
 }
 
 export interface HostRollView {
@@ -429,6 +440,7 @@ export async function readRollCameras(db: KinoDatabase, rollId: string): Promise
       failed: rollDevices.queueFailed,
       serverState: rollDevices.serverState,
       firmware: rollDevices.firmwareVersion,
+      uploadPaused: rollDevices.uploadPaused,
     })
     .from(rollDevices)
     .innerJoin(devices, eq(devices.id, rollDevices.deviceId))

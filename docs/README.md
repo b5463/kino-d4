@@ -17,6 +17,7 @@ Start with the question you need answered. The repository contains working contr
 | What is actively planned or in progress? | [GitHub Project workflow](PROJECT.md) |
 | How is a version released? | [Release guide](RELEASING.md) |
 | How is KINO Roll deployed to a server, backed up, restored? | [Infrastructure](../infra/README.md), [restore runbook](runbooks/restore.md), [observability](runbooks/observability.md) |
+| A change landed that only new captures benefit from. How is the backlog re-derived? | [Thumbnail backfill](runbooks/thumbnail-backfill.md) |
 | Which version changes when? | [Versioning](VERSIONING.md) |
 | Which license applies to a path? | [Root license map](../LICENSE) and [`REUSE.toml`](../REUSE.toml) |
 | How do I report a vulnerability? | [Security policy](../SECURITY.md) |

@@ -294,6 +294,18 @@ typedef struct {
   int pending;
   int uploading;
   int failed;
+  /**
+   * The queue is stopped on a credential this server refused (401/403) - what
+   * the ROLL screen calls UPLOAD PAUSED. It travels with the other counts so
+   * the heartbeat reads it off upload_queue.c's own report and never keeps a
+   * second flag of its own.
+   *
+   * Deliberately NOT a fact rq_heartbeat_due() reads. A halted camera is the
+   * one whose silence a host is most likely to misread as an idle camera, so
+   * the cadence stays exactly what it is with the queue running: a halt
+   * neither suppresses a heartbeat nor brings one early.
+   */
+  bool halted;
   /** upload_server_state_t, widened so this file needs no ESP-IDF header. */
   int server_state;
 } rq_hb_facts_t;

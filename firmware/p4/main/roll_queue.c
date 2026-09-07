@@ -169,7 +169,11 @@ bool rq_heartbeat_due(const rq_hb_state_t *st, const rq_hb_facts_t *now_facts, b
   if (since >= RQ_HEARTBEAT_PERIOD_MS) return true;
   if (since < RQ_HEARTBEAT_MIN_GAP_MS) return false;
 
-  /* The two changes a host acts on. Everything else waits for the period. */
+  /* The two changes a host acts on. Everything else waits for the period -
+   * `halted` included, and that is the point of leaving it out: the halt goes
+   * out in the body of the next ordinary heartbeat, on the same 45 s the queue
+   * keeps when it is running. A halted camera that beat early once and then
+   * went quiet would look like a camera that had gone away. */
   if (hb_busy(now_facts) != hb_busy(&st->sent_facts)) return true;
   if (now_facts->server_state != st->sent_facts.server_state) return true;
   return false;

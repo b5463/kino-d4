@@ -429,6 +429,11 @@ bool roll_api_heartbeat(const char *roll_id, const roll_heartbeat_t *hb, int *ou
   cJSON_AddNumberToObject(body, "uploading", hb_count(hb->uploading));
   cJSON_AddNumberToObject(body, "failed", hb_count(hb->failed));
   cJSON_AddStringToObject(body, "serverState", hb_server_state(hb->server_state));
+  /* Always sent, never omitted: `false` is a real answer ("the queue is
+   * running") and the API stores the absence of the key as NULL to mean "this
+   * firmware does not report it". Sending it unconditionally is what keeps this
+   * camera out of that third bucket. */
+  cJSON_AddBoolToObject(body, "uploadPaused", hb->upload_paused);
   /* Which build is reporting. The dashboard reads a fleet, and "the stuck ones
    * are all on 0.4.42" is the sentence this field exists to make possible. */
   cJSON_AddStringToObject(body, "firmware", KINO_FW_VERSION);

@@ -24,10 +24,11 @@ import type { HostCameraView } from '../../api/hostClient';
  *  - OFFLINE is a heartbeat that stopped arriving. A camera with no Wi-Fi
  *    cannot report that it has no Wi-Fi, so silence *is* the report, and
  *    OFFLINE is the camera's own word for the state the host is looking at.
- *  - UPLOAD PAUSED is read from `uploadPaused` if a server ever sends it. No
- *    deployed API does today; the branch costs one comparison and means the
- *    word appears the day the heartbeat carries it, rather than a fifth word
- *    being invented for a state the camera already names.
+ *  - UPLOAD PAUSED is `uploadPaused === true`, which the heartbeat and
+ *    `GET /api/host/rolls/:rollId` now carry (`rolls.ts`, `RollCamera`). It is
+ *    three-valued on the wire — `null` is "this firmware does not report it" —
+ *    so only the explicit `true` shows the word; `null` must never be read as
+ *    "not paused", because nobody asked that camera.
  *  - NOT REPORTING is the one word here that is not the camera's, and it is
  *    reserved for the one thing the camera cannot say: nothing has ever
  *    arrived. Firmware older than the heartbeat is silent and may be uploading
@@ -99,22 +100,16 @@ export function cameraReport(camera: HostCameraView, now: number = Date.now()): 
 
   const seen = relativeTime(camera.lastSeenAt, now);
 
-  if (camera.uploadPaused === true) {
-    return {
-      word: 'UPLOAD PAUSED',
-      lamp: 'err',
-      queue,
-      line2: 'Saved safely on camera',
-      note: 'Uploads are stopped on the camera. Start them again on its screen.',
-      seen,
-      alarm: true,
-    };
-  }
-
   /**
    * Silence, not a state the camera announced. Everything below the word is
    * as old as the heartbeat, so the counters are shown and dated rather than
    * shown as if they were current.
+   *
+   * This is deliberately ahead of the UPLOAD PAUSED branch. `uploadPaused` is
+   * a field in a heartbeat, so a camera that paused and then went off the air
+   * keeps sending nothing and its last message keeps saying "paused" for as
+   * long as the tab is open. OFFLINE is the newer fact of the two: the host
+   * cannot go and unpause a camera that is not on.
    */
   if (now - new Date(camera.lastSeenAt).getTime() > CAMERA_STALE_MS) {
     return {
@@ -125,6 +120,29 @@ export function cameraReport(camera: HostCameraView, now: number = Date.now()): 
       note: `No status for ${seen.replace(' ago', '')}. The camera is off, asleep, or out of Wi-Fi. Nothing below is newer than that.`,
       seen,
       alarm: waiting > 0,
+    };
+  }
+
+  /**
+   * UPLOAD PAUSED, and it is the worst of the four words.
+   *
+   * The camera halts its own queue when the server refuses its upload
+   * credential (`firmware/HARDWARE_VALIDATION.md`: "a credential fault shows
+   * UPLOAD PAUSED and 'Check the roll in Studio.'"). Nothing at all leaves the
+   * card until somebody re-provisions it — unlike OFFLINE and KINO NOT
+   * ANSWERING, waiting does not fix this one — so it says so, and it says the
+   * other half too, because a host reading an alarm needs to know what is at
+   * stake: the photographs are on the card and none of them are lost.
+   */
+  if (camera.uploadPaused === true) {
+    return {
+      word: 'UPLOAD PAUSED',
+      lamp: 'err',
+      queue,
+      line2: 'Saved safely on camera',
+      note: 'Check the roll in Studio. The camera stopped its own queue because this server refused its upload credential, and nothing will upload until that is fixed. Waiting will not clear it.',
+      seen,
+      alarm: true,
     };
   }
 
@@ -230,9 +248,13 @@ function CameraRow({ camera, now }: { camera: HostCameraView; now: number }) {
         <strong className="host-camera-serial">{camera.serial ?? camera.deviceId}</strong>
       </div>
       {report.queue === '' ? null : <div className="host-camera-queue">{report.queue}</div>}
+      {/* Whose count this is, said in the line itself. The moderation filter
+          bar a screen below carries a "Failed to process" count from the
+          captures table, and the two are different numbers about different
+          things — see `stuckItems`. */}
       {failed > 0 ? (
         <div className="host-camera-failed">
-          {String(failed)} {failed === 1 ? 'upload failed' : 'uploads failed'}
+          Gave up sending {String(failed)} {failed === 1 ? 'photograph' : 'photographs'}
         </div>
       ) : null}
       <p className="host-camera-note">{report.note}</p>

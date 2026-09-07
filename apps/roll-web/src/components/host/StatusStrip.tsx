@@ -39,6 +39,25 @@ export interface StuckItem {
  * Upload failures come from the camera and are not in the capture list at all
  * — a photograph that never left the card has no row here — so they are stated
  * first and separately, and they have no filter to jump to.
+ *
+ * ## Two different numbers, both of which used to be called "failed"
+ *
+ * This tile read "4 uploads failed on the camera" while the moderation filter
+ * bar one panel below read "Failed 0", on the same screen, and both were
+ * right. They count different things in different places:
+ *
+ *  - the camera's own tally of photographs it stopped trying to send
+ *    (`cameras[].failed`, from the heartbeat). Those files are on the SD card
+ *    and the server has never seen them, so they have no capture row and no
+ *    filter to jump to.
+ *  - captures the server accepted and then could not process
+ *    (`status === 'failed'`). Those are rows, and Failed to process selects
+ *    them.
+ *
+ * A host cannot be asked to hold that distinction in their head, so neither
+ * number is allowed to say only "failed": each one names who counted it and
+ * what happened, and the filter bar's label is "Failed to process" for the
+ * same reason.
  */
 export function stuckItems(
   cameras: HostCameraView[] | undefined,
@@ -51,14 +70,24 @@ export function stuckItems(
     out.push({
       filter: null,
       count: uploadsFailed,
-      label: uploadsFailed === 1 ? 'upload failed on the camera' : 'uploads failed on the camera',
+      label:
+        uploadsFailed === 1
+          ? 'photograph the camera gave up sending'
+          : 'photographs the camera gave up sending',
     });
   }
 
   const live = captures.filter((capture) => capture.deletedAt === null);
   const failed = live.filter((capture) => capture.status === 'failed').length;
   if (failed > 0) {
-    out.push({ filter: 'failed', count: failed, label: 'failed to process' });
+    out.push({
+      filter: 'failed',
+      count: failed,
+      label:
+        failed === 1
+          ? 'photograph the server could not process'
+          : 'photographs the server could not process',
+    });
   }
 
   const processing = live.filter(
@@ -87,6 +116,7 @@ export function StatusStrip({
   const report = camera === null ? null : cameraReport(camera, now);
   const others = cameras === undefined ? 0 : Math.max(0, cameras.length - 1);
   const stuck = stuckItems(cameras, captures);
+  const trashed = captures.filter((capture) => capture.deletedAt !== null).length;
 
   /**
    * `report.alarm` first, not the lamp.
@@ -158,11 +188,26 @@ export function StatusStrip({
         )}
       </div>
 
-      {/* 2. Is anything stuck? */}
-      <div className="host-now-tile" data-tone={stuck.length === 0 ? 'ok' : 'bad'}>
+      {/*
+        2. Is anything stuck?
+
+        "Nothing stuck." in green, next to a tile shouting UPLOAD PAUSED, is
+        the page contradicting itself: a camera holding six photographs it
+        cannot send is the definition of stuck. Nothing is repeated here — the
+        count and the sentences stay in the camera's own tile, which is where
+        the host has to act — but this tile stops claiming otherwise.
+      */}
+      <div
+        className="host-now-tile"
+        data-tone={stuck.length > 0 ? 'bad' : report?.alarm === true ? 'warn' : 'ok'}
+      >
         <h2 className="host-now-label">Stuck</h2>
         {stuck.length === 0 ? (
-          <p className="host-now-clear">Nothing stuck.</p>
+          <p className="host-now-clear">
+            {report?.alarm === true
+              ? 'Nothing stuck on the server. The camera is — read the Camera tile.'
+              : 'Nothing stuck.'}
+          </p>
         ) : (
           <ul className="host-now-stuck">
             {stuck.map((item) => (
@@ -182,7 +227,15 @@ export function StatusStrip({
         )}
       </div>
 
-      {/* 3. How many photographs are there? */}
+      {/*
+        3. How many photographs are there?
+
+        `roll.counts.captures` is the server's count of captures not in the
+        trash, hidden ones included. The moderation bar's "All" is every row
+        this page is holding, trash included, so the two differ by exactly the
+        trash — which is why the trash is named here. Without that line the
+        host read "12 PHOTOS" beside "All 13" and had no way to close the gap.
+      */}
       <div className="host-now-tile" data-tone="off">
         <h2 className="host-now-label">On this roll</h2>
         <p className="host-now-figure">
@@ -192,6 +245,7 @@ export function StatusStrip({
         <p className="host-now-sub">
           {roll.guests.toLocaleString()} {roll.guests === 1 ? 'guest' : 'guests'}
           {roll.counts.hidden > 0 ? ` · ${String(roll.counts.hidden)} hidden` : ''}
+          {trashed > 0 ? ` · ${String(trashed)} in the trash, not counted` : ''}
         </p>
       </div>
     </section>

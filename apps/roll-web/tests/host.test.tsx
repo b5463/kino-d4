@@ -16,7 +16,13 @@ import {
   type HostRollView,
 } from '../src/api/hostClient';
 import { ApiError } from '../src/api/client';
-import { HostDashboard, exportWording, formatBytes } from '../src/pages/HostDashboard';
+import {
+  EXPORT_WAIT_FLOOR_MS,
+  HostDashboard,
+  exportWording,
+  formatBytes,
+  waitedFor,
+} from '../src/pages/HostDashboard';
 import { HostDashboardPage } from '../src/pages/HostDashboardPage';
 import { cameraReport, relativeTime, worstCamera } from '../src/components/host/CameraPanel';
 import { stuckItems } from '../src/components/host/StatusStrip';
@@ -303,8 +309,12 @@ describe('host dashboard', () => {
     expect(container.querySelector('[data-capture-id="cap_2"]')).not.toBeNull();
     expect(container.querySelector('[data-capture-id="cap_1"]')).toBeNull();
 
-    await act(async () => button('Failed 0')?.click());
-    expect(container.textContent).toContain('Nothing in Failed.');
+    // "Failed to process 0", not "Failed 0": the status strip above carries
+    // the camera's own count of photographs it gave up sending, and a bar
+    // reading "Failed 0" beside that read as the page arguing with itself.
+    expect(button('Failed 0')).toBeUndefined();
+    await act(async () => button('Failed to process 0')?.click());
+    expect(container.textContent).toContain('Nothing failed to process.');
   });
 
   it('says what the ZIP will cost before the button, in words', async () => {
@@ -394,9 +404,51 @@ describe('host dashboard', () => {
       button('Prepare ZIP')?.click();
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
-    expect(container.querySelector('.host-export-state')?.textContent).toContain('Waiting');
+    const line = container.querySelector('.host-export-state');
+    expect(line?.textContent).toContain('Queued. The server is getting to it.');
+    // ...but NOT "Waiting 0 s.", which is the page talking for the sake of it.
+    // The figure is there to say a job has been queued for four minutes and
+    // the worker is probably down, and it only starts saying that after
+    // `EXPORT_WAIT_FLOOR_MS`.
+    expect(line?.textContent).not.toContain('Waiting');
+    expect(line?.getAttribute('data-tone')).toBe('busy');
     await act(async () => button('Stop watching')?.click());
     expect(container.querySelector('.host-export-state')).toBeNull();
+  });
+
+  /**
+   * A failed export used to be told twice and told wrong: the page-wide alert
+   * said "The export failed. Try again." while the panel's own line kept the
+   * blue in-progress rule, a live "Waiting 0 s." and a Stop watching button
+   * for a job that had already stopped.
+   */
+  it('says a failed export failed once, in the panel that started it', async () => {
+    const startExport = vi.fn().mockResolvedValue({ jobId: 'export_1' });
+    const getExport = vi.fn().mockResolvedValue({ status: 'failed' });
+    await render(
+      fakeApi({
+        startExport,
+        getExport,
+        exportEstimate: vi.fn().mockResolvedValue({ files: 4, bytes: 900 }),
+      }),
+    );
+
+    await act(async () => {
+      button('Prepare ZIP')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const line = container.querySelector('.host-export-state');
+    expect(line?.textContent).toContain('The export failed. Prepare it again.');
+    expect(line?.getAttribute('data-tone')).toBe('bad');
+    // Not a wait any more, and nothing left to stop watching.
+    expect(line?.textContent).not.toContain('Waiting');
+    expect(button('Stop watching')).toBeUndefined();
+    // And the sentence is in one place, not in a page-wide alert as well.
+    expect(container.querySelector('.roll-alert')).toBeNull();
+    expect(container.textContent?.match(/The export failed/g)?.length).toBe(1);
+    // The button that caused it is still the way out.
+    expect(button('Prepare ZIP')?.disabled).toBe(false);
   });
 
   /** Nothing on the roll is not "0 B, 0 files"; it is nothing to download. */
@@ -472,7 +524,7 @@ describe('host dashboard', () => {
     expect(tiles.length).toBe(3);
     expect(tiles[0]?.textContent).toContain('ONLINE');
     expect(tiles[0]?.textContent).toContain('6 waiting to upload');
-    expect(tiles[1]?.textContent).toContain('2 uploads failed on the camera');
+    expect(tiles[1]?.textContent).toContain('2 photographs the camera gave up sending');
     expect(tiles[2]?.textContent).toContain('214');
     expect(tiles[2]?.textContent).toContain('PHOTOS');
     expect(tiles[2]?.textContent).toContain('41 guests');
@@ -557,6 +609,125 @@ describe('host dashboard', () => {
     const quiet = container.querySelector('.host-now-camera');
     expect(quiet?.getAttribute('data-tone')).toBe('off');
     expect(quiet?.getAttribute('role')).toBeNull();
+  });
+
+  /**
+   * UPLOAD PAUSED is the worst of the camera's four words and the only one
+   * waiting does not fix: the camera halted its own queue because the server
+   * refused its upload credential. The tile has to read as that alarm, and it
+   * has to say the other half too — the photographs are on the card.
+   */
+  it('reads a paused camera as the alarm it is, in the camera words', async () => {
+    const paused: HostCameraView = {
+      deviceId: 'dev_1',
+      serial: 'KINO-D4-001',
+      lastSeenAt: new Date().toISOString(),
+      pending: 6,
+      uploading: 0,
+      failed: 0,
+      serverState: 'reachable',
+      firmware: '0.4.52',
+      uploadPaused: true,
+    };
+    await render(fakeApi({ resolveSession: vi.fn().mockResolvedValue({ ...roll, cameras: [paused] }) }));
+
+    const tile = container.querySelector('.host-now-camera');
+    expect(tile?.textContent).toContain('UPLOAD PAUSED');
+    expect(tile?.getAttribute('data-tone')).toBe('bad');
+    expect(tile?.getAttribute('role')).toBe('alert');
+    // The camera's own three lines, copied from `firmware/p4/main/ui.c`.
+    expect(tile?.textContent).toContain('6 waiting to upload');
+    expect(tile?.textContent).toContain('Saved safely on camera');
+    expect(tile?.textContent).toContain('Check the roll in Studio.');
+    // What is at stake, and that waiting is not a plan.
+    expect(tile?.textContent).toContain('nothing will upload until that is fixed');
+    expect(tile?.textContent).toContain('Waiting will not clear it.');
+
+    // `null` is "this firmware does not report it" and must not read as a
+    // running queue: the same camera without the field is ONLINE, not paused.
+    await render(
+      fakeApi({
+        resolveSession: vi
+          .fn()
+          .mockResolvedValue({ ...roll, cameras: [{ ...paused, uploadPaused: null }] }),
+      }),
+    );
+    expect(container.querySelector('.host-now-camera')?.textContent).toContain('ONLINE');
+  });
+
+  /**
+   * "Nothing stuck.", in green, beside a tile shouting UPLOAD PAUSED was the
+   * page arguing with itself: a camera holding six photographs it cannot send
+   * is the definition of stuck. Nothing is repeated — the count and the
+   * sentences stay in the camera's tile, which is where the host has to act.
+   */
+  it('does not claim nothing is stuck while the camera is', async () => {
+    const stuckCamera: HostCameraView = {
+      deviceId: 'dev_1',
+      serial: 'KINO-D4-001',
+      lastSeenAt: new Date().toISOString(),
+      pending: 6,
+      uploading: 0,
+      failed: 0,
+      serverState: 'unreachable',
+      firmware: '0.4.52',
+      uploadPaused: false,
+    };
+    await render(
+      fakeApi({ resolveSession: vi.fn().mockResolvedValue({ ...roll, cameras: [stuckCamera] }) }),
+    );
+    const tiles = [...container.querySelectorAll('.host-now .host-now-tile')];
+    expect(tiles[1]?.textContent).toBe(
+      'StuckNothing stuck on the server. The camera is — read the Camera tile.',
+    );
+    expect(tiles[1]?.getAttribute('data-tone')).toBe('warn');
+
+    // A healthy camera and a clean server still get the short answer.
+    await render(fakeApi());
+    const clean = [...container.querySelectorAll('.host-now .host-now-tile')];
+    expect(clean[1]?.textContent).toBe('StuckNothing stuck.');
+    expect(clean[1]?.getAttribute('data-tone')).toBe('ok');
+  });
+
+  /**
+   * "12 PHOTOS" is the server's count of captures not in the trash; the filter
+   * bar's "All" is every row this page holds, trash included. The two differ
+   * by exactly the trash, and the host had no way to close the gap.
+   */
+  it('names the trash, so the big count and the All filter reconcile', async () => {
+    await render(
+      fakeApi({
+        resolveSession: vi
+          .fn()
+          .mockResolvedValue({ ...roll, counts: { captures: 1, pending: 0, hidden: 0 } }),
+        listCaptures: vi.fn().mockResolvedValue({ items: [capture, trashed], hasMore: false }),
+      }),
+    );
+    const tiles = [...container.querySelectorAll('.host-now .host-now-tile')];
+    expect(tiles[2]?.textContent).toContain('1 in the trash, not counted');
+    expect(button('All 2')).toBeDefined();
+  });
+
+  /**
+   * `ROLL_STATUS_TRANSITIONS` in the API makes archived terminal. The header
+   * used to answer that with a permanently greyed-out "Reopen Roll" and no
+   * word anywhere about why, which reads as the page being broken.
+   */
+  it('says an archived roll cannot be reopened instead of greying a button', async () => {
+    await render(
+      fakeApi({ resolveSession: vi.fn().mockResolvedValue({ ...roll, status: 'archived' }) }),
+    );
+    expect(button('Reopen Roll')).toBeUndefined();
+    expect(container.querySelector('.host-terminal')?.textContent).toBe(
+      'Archived. It cannot be reopened.',
+    );
+
+    // A closed roll still has the transition, so it still has the control.
+    await render(
+      fakeApi({ resolveSession: vi.fn().mockResolvedValue({ ...roll, status: 'closed' }) }),
+    );
+    expect(button('Reopen Roll')?.disabled).toBe(false);
+    expect(container.querySelector('.host-terminal')).toBeNull();
   });
 
   /**
@@ -773,6 +944,71 @@ describe('camera panel', () => {
     expect(worstCamera([newer, stuck], now)?.deviceId).toBe('stuck');
   });
 
+  /**
+   * All four of the camera's own words, plus the one that is not the camera's,
+   * and the two orderings between them that are easy to get backwards.
+   */
+  it('renders each of the four camera words with its own sentences', () => {
+    const paused = cameraReport(camera({ uploadPaused: true, pending: 6 }), now);
+    expect(paused.word).toBe('UPLOAD PAUSED');
+    expect(paused.lamp).toBe('err');
+    expect(paused.alarm).toBe(true);
+    expect(paused.queue).toBe('6 waiting to upload');
+    expect(paused.line2).toBe('Saved safely on camera');
+    expect(paused.note).toContain('Check the roll in Studio.');
+    expect(paused.note).toContain('refused its upload credential');
+
+    // A pause with an empty queue is still an alarm: nothing shot from now on
+    // will leave the camera either.
+    expect(cameraReport(camera({ uploadPaused: true }), now).alarm).toBe(true);
+
+    // `false` and `null` are both "not paused", and only `true` shows the word.
+    expect(cameraReport(camera({ uploadPaused: false }), now).word).toBe('ONLINE');
+    expect(cameraReport(camera({ uploadPaused: null }), now).word).toBe('ONLINE');
+
+    // Silence outranks a stale pause. `uploadPaused` is a field in a
+    // heartbeat, so a camera that paused and then went off the air keeps
+    // saying "paused" for as long as the tab is open — and the host cannot go
+    // and unpause a camera that is not on.
+    const goneDark = cameraReport(
+      camera({ uploadPaused: true, pending: 6, lastSeenAt: '2026-08-20T11:50:00.000Z' }),
+      now,
+    );
+    expect(goneDark.word).toBe('OFFLINE');
+    expect(goneDark.note).toContain('Nothing below is newer');
+
+    // ...but a pause outranks an unreachable server, because the pause is the
+    // thing a host has to go and fix.
+    expect(
+      cameraReport(camera({ uploadPaused: true, serverState: 'unreachable' }), now).word,
+    ).toBe('UPLOAD PAUSED');
+
+    // And it takes the headline on a roll with several cameras.
+    const healthy = camera({ deviceId: 'ok', lastSeenAt: '2026-08-20T12:00:11.000Z' });
+    const quiet = camera({ deviceId: 'quiet', serverState: 'unreachable' });
+    const halted = camera({ deviceId: 'halted', uploadPaused: true });
+    expect(worstCamera([healthy, quiet, halted], now)?.deviceId).toBe('halted');
+  });
+
+  /** The per-camera row says whose count its failure number is. */
+  it('names the camera as the owner of its own failed-upload count', async () => {
+    const withFailures: HostRollView = {
+      ...roll,
+      cameras: [camera({ failed: 4 }), camera({ deviceId: 'dev_2', serial: 'KINO-D4-002' })],
+    };
+    const api = fakeApi({ resolveSession: vi.fn().mockResolvedValue(withFailures) });
+    await act(async () => {
+      root.render(<HostDashboard api={api} pollMs={0} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector('.host-camera-failed')?.textContent).toBe(
+      'Gave up sending 4 photographs',
+    );
+    // The word "failed" on its own belonged to two different numbers.
+    expect(container.querySelector('.host-camera-failed')?.textContent).not.toContain('failed');
+  });
+
   it('says an older firmware does not report, rather than calling it offline', () => {
     const never = cameraReport(camera({ lastSeenAt: null, pending: null, uploading: null, failed: null, serverState: null, firmware: '0.3.9' }), now);
     expect(never.word).toBe('NOT REPORTING');
@@ -828,8 +1064,24 @@ describe('host helpers', () => {
     expect(exportWording('queued')).toContain('Queued');
     expect(exportWording('running')).toContain('Building the ZIP');
     expect(exportWording('done')).toBe('Ready.');
+    expect(exportWording('failed')).toBe('The export failed. Prepare it again.');
     // An unknown state is still shown rather than swallowed.
     expect(exportWording('reticulating')).toBe('Export: reticulating');
+  });
+
+  /**
+   * The figure and its unit are one word. The line lives in a flex box that
+   * wraps, and a plain space let it break between them — "Waiting 0" on one
+   * line and "s." on the next, seen on the dev API at 1440px.
+   */
+  it('keeps a waited-for figure and its unit on the same line', () => {
+    expect(waitedFor(9_000)).toBe('9\u00a0s');
+    expect(waitedFor(240_000)).toBe('4\u00a0min');
+    expect(waitedFor(3 * 3_600_000 + 300_000)).toBe('3\u00a0h 5\u00a0min');
+    expect(waitedFor(-5)).toBe('0\u00a0s');
+    // And the floor is short enough to be a wait and long enough not to be 0.
+    expect(EXPORT_WAIT_FLOOR_MS).toBeGreaterThan(0);
+    expect(EXPORT_WAIT_FLOOR_MS).toBeLessThan(30_000);
   });
 
   it('counts what is stuck, worst first, and only what is really stuck', () => {
@@ -852,7 +1104,9 @@ describe('host helpers', () => {
     // The camera's failures come first and have no filter: a photograph that
     // never left the card has no row in this list to jump to.
     expect(items[0]?.filter).toBeNull();
-    expect(items[0]?.label).toContain('upload');
+    // Each label names who counted it. "failed" on its own belonged to both.
+    expect(items[0]?.label).toBe('photographs the camera gave up sending');
+    expect(items[1]?.label).toBe('photograph the server could not process');
     expect(items[1]?.filter).toBe('failed');
     expect(items[2]?.filter).toBe('pending');
     // A trashed capture is not stuck; it is thrown away.

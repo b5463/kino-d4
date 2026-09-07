@@ -1580,6 +1580,40 @@ static void test_heartbeat_cadence(void) {
   rq_heartbeat_sent(&srv, &idle, 0);
   CHECK(rq_heartbeat_due(&srv, &lost, true, true, 20000), "reachable to unreachable is early");
 
+  /* UPLOAD PAUSED rides in the body and changes nothing about the cadence.
+   *
+   * A halt is the state a host most needs to hear about - a rejected token
+   * uploads nothing ever again, unlike a dead uplink that catches up on its
+   * own - and it is also the state whose silence reads as a camera that has
+   * simply been packed away. So it must not buy an early heartbeat (which
+   * would spend the 10 s floor on news that keeps) and it must not suppress
+   * one. Same 45 s as a queue that is running, with `uploadPaused: true` in
+   * the body of whichever heartbeat was going out anyway.
+   *
+   * The other half of that promise is in upload_queue.c: `s_halted` used to
+   * `continue` past heartbeat_tick() entirely, so the halted camera was the
+   * one that went quiet. That call now sits above the eligibility gate.
+   */
+  rq_hb_state_t halt;
+  memset(&halt, 0, sizeof halt);
+  const rq_hb_facts_t running = {
+      .pending = 4, .uploading = 1, .failed = 0, .halted = false, .server_state = 1};
+  const rq_hb_facts_t paused = {
+      .pending = 4, .uploading = 1, .failed = 0, .halted = true, .server_state = 1};
+  rq_heartbeat_sent(&halt, &running, 1000);
+  CHECK(!rq_heartbeat_due(&halt, &paused, true, true, 1000 + RQ_HEARTBEAT_MIN_GAP_MS),
+        "a queue that just halted does not buy an early heartbeat");
+  CHECK(!rq_heartbeat_due(&halt, &paused, true, true, 1000 + RQ_HEARTBEAT_PERIOD_MS - 1),
+        "nor one just short of the period");
+  CHECK(rq_heartbeat_due(&halt, &paused, true, true, 1000 + RQ_HEARTBEAT_PERIOD_MS),
+        "and the period still fires while halted, which is how the host sees UPLOAD PAUSED");
+  /* And back the other way: a halt clearing is not an early heartbeat either. */
+  rq_heartbeat_sent(&halt, &paused, 50000);
+  CHECK(!rq_heartbeat_due(&halt, &running, true, true, 50000 + RQ_HEARTBEAT_MIN_GAP_MS),
+        "a halt clearing waits for the period too");
+  CHECK(rq_heartbeat_due(&halt, &running, true, true, 50000 + RQ_HEARTBEAT_PERIOD_MS),
+        "and then goes out with uploadPaused false");
+
   /* A clock that appears to go backwards must not become a licence to send. */
   rq_hb_state_t back;
   memset(&back, 0, sizeof back);

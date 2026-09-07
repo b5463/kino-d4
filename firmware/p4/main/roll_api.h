@@ -103,6 +103,19 @@ typedef struct {
    * API's enum, so upload_queue.c maps its own state and never passes text
    * through from elsewhere. */
   const char *server_state;
+  /**
+   * The upload queue is halted on a credential this server refused - the ROLL
+   * screen's UPLOAD PAUSED, sent as `uploadPaused`.
+   *
+   * The one camera state that does not clear itself: an uplink comes back on
+   * its own, a rejected token does not, and nothing uploads until somebody
+   * re-provisions the device. The dashboard had the words already and nothing
+   * feeding them.
+   *
+   * Read straight off upload_queue_report_t.halted at the call site. This
+   * struct holds no opinion of its own about whether the queue is stopped.
+   */
+  bool upload_paused;
 } roll_heartbeat_t;
 
 /**
