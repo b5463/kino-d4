@@ -45,6 +45,20 @@ interface Options {
   drainMs: number;
   outPath: string;
   headed: boolean;
+  /**
+   * Extra request headers for every request the tab makes, the EventSource
+   * included.
+   *
+   * This exists because a free tunnel tier can put an interstitial in front of
+   * the origin: Pinggy's free plan serves a "make sure you trust this website"
+   * page to browser user agents, so the app never boots and no EventSource is
+   * ever opened - a run that looks like a total streaming failure and is
+   * actually a consent screen. Pinggy skips it for a request carrying
+   * `X-Pinggy-No-Screen`. ngrok has the same shape of thing with a different
+   * header name. Passing it here keeps the harness honest about what it is
+   * measuring rather than teaching it about one vendor.
+   */
+  headers: Record<string, string>;
 }
 
 /** What the in-page probe hands back. All page timestamps are `Date.now()` in the tab. */
@@ -97,7 +111,10 @@ SSE_INCONCLUSIVE.
   --interval MS    target spacing between captures (default 3000)
   --drain MS       listen this long after the last capture (default 20000)
   --out PATH       raw per-event JSON (default test-results/sse-latency/<ts>.json)
-  --headed         show the browser, for watching a suspicious run`;
+  --headed         show the browser, for watching a suspicious run
+  --header "K: V"  extra header on every request, repeatable. For a tunnel that
+                   gates browsers behind an interstitial: Pinggy free wants
+                   --header "X-Pinggy-No-Screen: 1"`;
 
 function parseArgs(argv: readonly string[]): Options {
   const options: Options = {
@@ -109,6 +126,7 @@ function parseArgs(argv: readonly string[]): Options {
     drainMs: 20_000,
     outPath: '',
     headed: false,
+    headers: {},
   };
   for (let i = 0; i < argv.length; i += 1) {
     const next = (): string => {
@@ -126,6 +144,12 @@ function parseArgs(argv: readonly string[]): Options {
     else if (flag === '--drain') options.drainMs = Number(next());
     else if (flag === '--out') options.outPath = resolve(next());
     else if (flag === '--headed') options.headed = true;
+    else if (flag === '--header') {
+      const raw = next();
+      const at = raw.indexOf(':');
+      if (at < 1) throw new Error(`--header wants "Name: value", got ${JSON.stringify(raw)}`);
+      options.headers[raw.slice(0, at).trim()] = raw.slice(at + 1).trim();
+    }
     else if (flag === '--help' || flag === '-h') {
       console.log(USAGE);
       process.exit(0);
@@ -576,7 +600,12 @@ async function main(): Promise<void> {
       // about; these are the same flags playwright.config.ts uses.
       args: ['--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
     });
-    const page = await browser.newPage({ viewport: { width: 480, height: 900 } });
+    const page = await browser.newPage({
+      viewport: { width: 480, height: 900 },
+      // Context-level, so it reaches the EventSource too and not just the
+      // document - the interstitial gates every request, including the stream.
+      ...(Object.keys(options.headers).length > 0 ? { extraHTTPHeaders: options.headers } : {}),
+    });
     // A page that throws is a page that measures nothing, and the failure has
     // to be visible in the transcript rather than looking like a silent stream.
     page.on('pageerror', (error) => console.error(`  [page error] ${error.message.split('\n')[0]}`));
