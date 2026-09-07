@@ -437,6 +437,147 @@ wakes.
 
 ---
 
+## 5. Proving the live feed streams through a candidate ingress
+
+This section is not an event-day step. It is the measurement that has to exist
+before an ingress mechanism from
+[`public-ingress-options.md`](public-ingress-options.md) is chosen, and again
+before one is swapped.
+
+**The risk.** The guest feed is an `EventSource` — a GET returning
+`text/event-stream`. Tunnels buffer that. `cloudflared` has open issues where
+SSE over GET is not streamed at all and flushes only when the connection
+closes, and there are community reports of edge buffering until roughly 100 kB
+has accumulated. At party event sizes, 100 kB of roll events is the whole
+night. A buffered path does not fail: the page connects, the spinner stops,
+nothing arrives for minutes, then twenty photographs appear at once. Watching a
+page and forming an impression cannot tell that apart from a quiet party.
+
+`infra/scripts/sse-latency.ts` answers it with numbers.
+
+```powershell
+npx tsx infra/scripts/sse-latency.ts --base-url http://localhost:5173 --events 22 --interval 3000
+```
+
+Options: `--api-base URL` if captures should be posted somewhere other than the
+origin under test, `--roll SLUG` to shoot into an existing roll instead of a
+fresh one, `--drain MS` for how long to wait for stragglers after the last
+capture, `--out PATH` for the raw JSON, `--headed` to watch it.
+
+What it does: opens a real Chromium on `<base>/r/<slug>`, so the measurement
+uses the app's own `EventSource` and the app's own render path — the probe wraps
+the `EventSource` constructor before the bundle loads and never touches product
+code. It then drives real captures through the device wire contract with
+`runTestUploader` from `infra/scripts/test-uploader.ts`, so there is one upload
+implementation in this repository and the harness is not it.
+
+### The four timestamps
+
+| Timestamp | Clock | Real or derived |
+|---|---|---|
+| capture created | the driver, i.e. this PC | measured — the `POST /api/device/rolls/:id/captures` response |
+| server published | the Redis container | measured — the SSE `id:` **is** a Redis stream entry id, `<ms>-<seq>` |
+| received in the browser | the browser tab | measured — the probe's own listener, registered before the app's |
+| visible in the feed | the browser tab | measured — a DOM node carrying that capture id is attached |
+
+Receive and visible latency are differences on one clock, because the driver
+and the browser are two processes on the machine you run this from. The script
+measures that offset instead of assuming it and prints whether the two share a
+clock; it refuses a verdict above 250 ms. **Server published is a third
+clock**, so `server → browser` is only meaningful when the origin machine is
+also this machine. Across a tunnel, compare its *spread* between runs, never its
+absolute value. Nothing is estimated: if no `id:` reached the browser, the
+output says a server send time was not obtainable rather than printing one.
+
+Receive latency of `0 ms`, or `-1 ms`, is correct and not a clock fault. The API
+publishes the event before it answers the camera's POST, so on loopback the
+guest's tab can hold the event before the camera has been told the capture
+exists.
+
+### The rule
+
+Everything scales by the **measured** median gap between capture creations, not
+by `--interval`, because the driver uploads four frames per capture and the
+pacing it achieves is the only honest baseline for "is this gap long".
+
+`SSE_INCONCLUSIVE`, checked first, if any of: fewer than 20 correlated events;
+a created capture never arrived; the `EventSource` reconnected or errored during
+the run (a reconnect replays from the Redis stream, and replayed arrival times
+say nothing about streaming); measured driver-to-browser clock offset above
+250 ms; or the driver's own pacing was uneven, max create gap above 3× the
+median.
+
+`SSE_BUFFERED` if any of:
+
+- **clustering** — at least 30 % of arrivals land within 0.3× the interval of
+  the previous arrival, *and* some arrival gap is at least 3× the interval. Both
+  halves are required: bunching alone is jitter, one long gap alone is one
+  hiccup. Together they are the signature — the path holds events and releases
+  them as a block.
+- **sawtooth** — some event's receive latency is at least 1.5× the interval
+  lower than the previous event's, *and* the worst receive latency is at least
+  2× the interval plus 1 s. A streaming path has a flat latency series; a path
+  filling a buffer makes the oldest event in each block wait longest, so latency
+  ramps within a block and drops at the next flush.
+- **a floor** — p95 receive latency at or above 5 s. Not a signature; at that
+  point the feed is not live whatever its shape.
+
+`SSE_STREAMING_PASS` only if none of those *and* p95 receive latency ≤ 1500 ms
+*and* every arrival gap ≤ 2.5× the interval. Anything left over is
+`SSE_INCONCLUSIVE` — a stream that arrives in order but slowly or unevenly is a
+real third answer and is not rounded up to a pass.
+
+Exit codes: `0` pass, `1` buffered, `2` inconclusive. So it can gate a
+checklist, and an inconclusive run cannot be mistaken for a green one.
+
+### The local control baseline
+
+A tunnel run means nothing on its own. This is the reference, taken with no
+tunnel in the path — `--base-url http://localhost:5173`, so Vite serves the PWA
+and proxies `/api` to the API on :3000, one origin as production has:
+
+| Metric | n | median | p95 | max |
+|---|---|---|---|---|
+| create → received in browser | 22 | 0 ms | 0 ms | 0 ms |
+| create → visible in feed | 22 | 339 ms | 347 ms | 352 ms |
+| arrival gap (paced at 3000 ms) | 21 | 3006 ms | 3013 ms | 3015 ms |
+| server published → received | 22 | 2 ms | 3 ms | 3 ms |
+
+Verdict `SSE_STREAMING_PASS`; 0 % bunched arrivals, largest latency reset 1 ms,
+driver-to-browser clock offset 0 ms. Arrival gaps track the driver's 3 s pacing
+to within 15 ms, which is what an unbuffered path looks like: the feed is
+paced by the shutter and by nothing else.
+
+The same run at `--events 20 --interval 15000`, which is slow enough that every
+frame upload also succeeds, reproduces it: receive latency median/p95/max
+0/0/0 ms, visible 339/345/348 ms, arrival gaps 15005/15016/15016 ms against
+15 s pacing, server-published-to-received 3/4/4 ms, no driver failures. Both
+raw files are in `test-results/sse-latency/`.
+
+Two things to know when reading a run against this:
+
+- The local baseline has a Vite dev proxy in the path that production does not.
+  It buffers nothing measurable, so it does not weaken the comparison, but it is
+  a hop and it is in the number.
+- At `--interval 3000` the driver trips the device upload rate limit
+  (`deviceUpload`, 60 requests per minute per device) part-way through, and some
+  captures fail to upload their frames. Those failures are printed separately
+  and deliberately left out of the verdict: the capture row and its
+  `capture.created` event exist either way, which is what is being measured.
+  `--interval 15000` was measured to stay under it; use that for a run where
+  every upload should also succeed.
+
+### Reading a tunnel run
+
+Point `--base-url` at the tunnel hostname and run the same command. Compare
+against the table above and against the rule, not against an impression.
+`SSE_BUFFERED` disqualifies the mechanism for KINO Roll — the live feed is the
+product, and there is no client-side workaround for an edge that will not flush.
+Keep the raw JSON from both runs with the decision; `test-results/sse-latency/`
+is where it lands and it is gitignored, so copy it somewhere durable.
+
+---
+
 ## What this document deliberately does not require
 
 Recorded because these were production prerequisites before the model changed,
