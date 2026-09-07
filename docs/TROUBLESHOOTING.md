@@ -232,6 +232,21 @@ Two separate mechanisms produced this, and both are addressed:
 
 If it is still `processing` after that read, it is case 2 and the sweeper owns it: wait one sweep (five minutes) and read again. If it is still stuck after two sweeps, the job is failing rather than missing — read `deploy.ps1 logs -Service worker` for that `jobKey` before doing anything else. There is no operator command that forces a re-render; the sweeper is the only automatic recovery, and re-running the capture-complete call from the camera is a no-op because the row is what makes it one.
 
+### During an event: the origin, the tunnel or the internet disappeared
+
+Not a camera fault, and not a reason to stop the party. The shutter does not wait on the network: the capture is on the card with its UUID and roll before anything is uploaded, the queue is durable across a power cycle, and the camera resumes on its own timer when the server answers again. There is no manual enqueue and no command that pushes a backlog.
+
+What to say and what to look at is one table in [`event-day.md` §2](runbooks/event-day.md), written in the ROLL screen's own words. The two things worth repeating here:
+
+- **UPLOAD PAUSED is the exception.** Every other state clears itself; that one is a credential this server refused and needs Studio over USB. Everything else is patience.
+- **Afterwards, prove it with numbers, not impressions.** `deploy.ps1 drain -Roll <slug> -Expect <n>` must show every camera at `waiting 0 uploading 0 failed 0`, seen seconds ago, and the roll holding the expected capture count. A resumed upload cannot duplicate a photograph — `(roll_id, capture_uuid)` is unique and each asset upload carries the idempotency key `<captureUuid>:<role>:<frameIndex>`.
+
+### The feed freezes, then jumps several photographs at once
+
+Health is fine, capture pages load, and new photographs arrive in batches instead of one at a time. That is an HTTP hop buffering the server-sent event stream, not the worker and not the camera.
+
+The API already sends `x-accel-buffering: no` and `no-transform`, and a heartbeat comment every 25 s; all three Caddyfiles set `flush_interval -1` and use an eight-entry compression allow list that omits `text/event-stream`. So a hop we control is not the suspect — a hosted ingress in front of it is. Compare a second phone on a different network to confirm, then read [`public-ingress-options.md`](runbooks/public-ingress-options.md): the relay path forwards raw TCP and has no content type for anything to buffer, which is why it is the recommended shape.
+
 ## API tests fail immediately
 
 Start and migrate the local services:
@@ -246,11 +261,19 @@ Expected host ports are PostgreSQL `5435`, Redis `6380`, MinIO `9000`, and MinIO
 
 If health returns `503`, inspect which dependency is false. A missing migration usually reports a missing relation during test setup. A missing `kino-media` bucket fails storage health even when MinIO itself is reachable.
 
+## The site is down between events
+
+Expected. Production is on-demand event hosting on the operator's PC: the stack runs on event days and through the drain-and-backup window afterwards, and the URL does not answer when that machine is asleep or off. That is not an incident and it does not need a remedy — bring the stack up when it is needed ([`event-day.md`](runbooks/event-day.md)).
+
+It becomes a fault only when the site is down *during* an event, and the section below is then the right one.
+
 ## The site was up yesterday and is down after a reboot
 
 Docker Desktop runs in the operator's user session, so on the PC-hosted deployment the whole stack is down from boot until someone signs in. The containers themselves are `restart: unless-stopped` and come back on their own **once the engine is up** — the engine is the part that waits for a login.
 
-Remedies, in the order they matter: automatic sign-in plus a lock-screen task at logon; *Start Docker Desktop when you sign in*; `powercfg /change standby-timeout-ac 0` so the machine never sleeps. The exact commands and the one test that proves it (reboot, touch nothing, check `/api/healthz` from mobile data three minutes later) are in [the deployment runbook](runbooks/production-relay-deploy.md#windows-specific-risks-with-the-remedy).
+During an event, the remedy is to sign in and run `deploy.ps1 up -Relay`. Nothing is lost while that happens; the cameras hold their photographs.
+
+Between events there is nothing to fix. The unattended remedies — automatic sign-in plus a lock-screen task at logon, *Start Docker Desktop when you sign in*, a permanent `powercfg /change standby-timeout-ac 0` — belong to the always-on phase and its dedicated machine ([`origin-machine-move.md`](runbooks/origin-machine-move.md)). Do not apply a permanent sleep disable to the operator's own PC for an on-demand deployment; disable it for the event and restore the previous value afterwards ([`event-day.md` §4](runbooks/event-day.md)). The unattended commands and the reboot test are recorded in [the deployment runbook](runbooks/production-relay-deploy.md#windows-specific-risks-with-the-remedy) for when that phase arrives.
 
 Two things that look like this fault and are not: a container someone stopped by hand stays stopped, because that is what `unless-stopped` means — start it explicitly. And Docker Desktop can start while its engine does not, usually a pending WSL2 update waiting for a click; `docker version` returning a pipe error rather than a server version is that case.
 

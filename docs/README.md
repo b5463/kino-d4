@@ -28,6 +28,9 @@ Start with the question you need answered. The repository contains working contr
 | How does Twin model firmware and photograph a scene? | [Twin firmware model](TWIN_FIRMWARE_MODEL.md), [Twin virtual camera](TWIN_VIRTUAL_CAMERA.md) |
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
 | How does a camera upload to Roll, and how does Twin stand in today? | [Device contract](roll/ROLL_DEVICE_CONTRACT.md), [Twin integration](roll/ROLL_TWIN_INTEGRATION.md), and the other guides in [`docs/roll/`](roll/) |
+| What happens on an event day, from starting the PC to shutting it down? | [Event day](runbooks/event-day.md) |
+| How does kino.acronym.sk get a public front door from a machine behind carrier NAT? | [Public ingress options](runbooks/public-ingress-options.md) |
+| How does production move to a dedicated machine without changing the URL? | [Origin machine move](runbooks/origin-machine-move.md) |
 | How does someone run a party with KINO Roll, from provisioning to the export? | [Host guide](roll/HOST_GUIDE.md); when photographs are not appearing, the Roll ladder in [Troubleshooting](TROUBLESHOOTING.md) |
 | How is the guest app accepted on a real phone? | [Roll mobile PWA acceptance](roll/ROLL_PWA_MOBILE_ACCEPTANCE.md) |
 | What does the physical camera's Roll path look like, and where does it stop? | [Physical device flow](roll/PHYSICAL_DEVICE_FLOW.md) |

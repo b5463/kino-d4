@@ -72,7 +72,7 @@ What that blocks, per path:
 | Path | Blocked by Apache? | Why |
 |---|---|---|
 | **Relay VPS (recommended)** | **No.** | With the relay overlay the stack publishes **zero** host ports (proven below). Caddy serves `:80` inside the Compose network only. frpc dials **out** to the VPS. Apache can keep both ports and nothing collides. |
-| Cloudflare Tunnel overlay | No, same reason. Blocked for a different reason: `acronym.sk` is not on Cloudflare DNS. | |
+| Cloudflare Tunnel overlay | No, same reason. Not chosen for a different reason: the **free** shape needs Cloudflare authoritative for `acronym.sk`, and the zone is staying at Websupport. Cloudflare is not impossible — a partial (CNAME) setup keeps the zone but is Business or Enterprise only at $250/month, and Cloudflare for SaaS custom hostnames costs $0/month with 100 hostnames on the free plan but needs a second domain on a Cloudflare account as the front door. Costs, conditions and the server-sent-events argument that keeps the relay first: [`public-ingress-options.md`](public-ingress-options.md). | |
 | Direct, router-forwarded | **Yes, hard block.** | The production stack publishes `80:80` and `443:443`. `docker compose up` fails on port allocation, and the site stays down. Before that path is possible: `Stop-Service wordpressApache-1` and `Set-Service wordpressApache-1 -StartupType Disabled`, or move Apache to other ports. Do not do this to make the relay work — it is not needed there. |
 
 `deploy.ps1 check` now warns when 80 or 443 is already held and the relay
@@ -402,6 +402,29 @@ deploy at that row — do not proceed and revisit.
 | F4 | Backup produced a real snapshot | `backup-task.ps1 verify -BackupRoot <path>` | Exit 0: fresh, non-empty `postgres.dump`, non-empty object mirror, `SHA256SUMS` present |
 | F5 | Restore proven once | `infra/scripts/restore-drill.sh` against that snapshot; record it in [`restore.md`](restore.md) | Drill passes and is logged |
 | F6 | Camera registered | Studio over USB-C with `PROVISIONING_TOKEN` | Once per serial; production is first-write-wins |
+
+### F1 and F2 do not apply to an on-demand deployment
+
+The deployment model changed after this list was written. Production is now
+**on-demand event hosting**: the stack runs on event days and long enough
+afterwards for the upload queue to drain and one backup to finish, then the PC
+may sleep or be shut down. It is not a 24/7 service.
+
+So, for this stage:
+
+- **F1 (sleep permanently disabled)** becomes a per-event toggle with the
+  previous value read first and restored afterwards.
+  [`event-day.md` §4](event-day.md) has the exact commands.
+- **F2 (survives a reboot unattended)** is not required. Nobody needs the site
+  at four in the morning, and a rebooted PC has no Docker engine until somebody
+  signs in anyway.
+- F3, F4, F5 and F6 stand unchanged, and F4 gains a per-event sibling:
+  `deploy.ps1 event-backup -Roll <slug> -BackupRoot <path>`.
+
+The twelve pre-event checks that replace F1 and F2, the during-event failure
+model, and the drain gate are in [`event-day.md`](event-day.md). F1 and F2 come
+back as requirements when the origin moves to a dedicated always-on machine:
+[`origin-machine-move.md`](origin-machine-move.md).
 
 ### The answer
 

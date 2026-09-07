@@ -30,14 +30,62 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   redistribution lawful. **Operator decision, 2026-09-05:** the project is not
   sold or published; builds are for the owner's own units, and the artwork
   stays. The gate therefore applies only if a binary is ever distributed.
-- **Roll on the internet.** The backend and web have been proven only against
-  a development API on the LAN. `kino.acronym.sk` answered 404 on 2026-09-05
-  and today resolves to Websupport parking (`37.9.175.156`,
+- **Gate U — Roll on the internet.** The backend and web have been proven only
+  against a development API on the LAN. `kino.acronym.sk` answered 404 on
+  2026-09-05 and today resolves to Websupport parking (`37.9.175.156`,
   `2a00:4b40:aaaa:2004::7`). Production deployment is an operator step with
   credentials and a VPS this repository does not hold. The stack is deployable
   — every compose combination interpolates from the example env files alone and
   nothing but the edge publishes a host port — but nothing in this tree has
   served a request over TLS on the public name.
+
+  **What passing means at this stage.** Production is on-demand event hosting
+  on the operator's PC, not a 24/7 service, so this gate no longer asks for
+  one. It passes when all of the following have been observed in a single event
+  session:
+
+  1. `https://kino.acronym.sk` serves during the session, with valid HTTPS and
+     no certificate warning.
+  2. The Roll PWA opens on a phone using **mobile data**, not the venue LAN.
+  3. `/api/healthz` returns `{"ok":true,"db":true,"redis":true,"storage":true}`
+     through the public URL.
+  4. One **physical shutter press** — not a KDP-triggered capture — reaches a
+     guest's phone end to end while online.
+  5. The origin is taken away mid-session and the camera holds: the ROLL screen
+     reads "N waiting to upload" with "Saved safely on camera", and the count on
+     the card keeps rising.
+  6. The origin comes back and the backlog uploads itself with **no manual
+     enqueue** and **no duplicates** — the roll's capture count equals the
+     number of shutter presses, which the unique index on
+     `(roll_id, capture_uuid)` and the `<captureUuid>:<role>:<frameIndex>`
+     upload idempotency key are what guarantee.
+  7. A live update lands on a real phone: a new capture appears without a
+     reload.
+  8. The database and object storage persist across a stack restart (named
+     volumes, `down` without `-v`).
+  9. A post-event backup covering **both** stores completes and verifies:
+     `deploy.ps1 event-backup -Roll <slug> -BackupRoot <off-PC path>`.
+
+  The drain gate that says the session is over —  `pending`, `uploading`,
+  `cardPending` and `failed` at zero, `scanComplete` true, and the expected
+  capture count on the roll — is one command,
+  `deploy.ps1 drain -Roll <slug> -Expect <n>`, and the procedure around it is
+  [`docs/runbooks/event-day.md`](runbooks/event-day.md).
+
+  **Classification when it passes: ON-DEMAND PC-HOSTED PRODUCTION PASS.** An
+  always-on machine is explicitly **not** required, and neither is a permanent
+  Windows sleep disable, unattended overnight availability, automatic recovery
+  while nobody is using KINO, a dedicated PC, or 24/7 Docker uptime. Those are
+  the next phase's gates
+  ([`docs/runbooks/origin-machine-move.md`](runbooks/origin-machine-move.md)) and
+  a release must not be held for them. A release record must say
+  "on-demand PC-hosted production" rather than "production" without
+  qualification, because the URL does not answer when the PC is asleep and that
+  is by design at this stage.
+
+  The public ingress mechanism is not part of this gate and is still being
+  decided: see
+  [`docs/runbooks/public-ingress-options.md`](runbooks/public-ingress-options.md).
 
   The blocking finding, measured 2026-09-06 and 2026-09-07: the PC egresses as
   `46.34.228.61` but two RFC1918 hops (`10.106.16.198`, `10.109.122.193`) sit
@@ -54,7 +102,10 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   The one unknown that could still change the recommendation is the router's
   own WAN address as shown on its status page; that document says what each
   possible answer means. A release must not claim a public Roll deployment
-  until gates B through F in it have passed.
+  until gates B through F in it have passed — except F1 (sleep permanently
+  disabled) and F2 (survives a reboot unattended), which belong to the always-on
+  phase and are replaced at this stage by the twelve pre-event checks in
+  [`docs/runbooks/event-day.md`](runbooks/event-day.md).
 - **Destructive firmware paths.** Delete All (0.4.42) is index-driven and
   host-tested and has never been executed on a real card. Run it on an
   expendable card before a release claims it.

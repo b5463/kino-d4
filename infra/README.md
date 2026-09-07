@@ -40,8 +40,20 @@ powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 update  # git pull --f
 powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 status
 powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 logs -Service api
 powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 backup  # pg_dump to infra\backups\
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 drain -Roll amber-001 -Expect 137
+powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 event-backup -Roll amber-001 -BackupRoot D:\kino-backups
 powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 down    # volumes preserved
 ```
+
+`drain` and `event-backup` exist for the on-demand event model below. `drain`
+answers "is it safe to shut this PC down yet" in one command: it reads each
+camera's last heartbeat and this server's own rows out of PostgreSQL, counts the
+objects in the bucket, and exits 0 only on `SAFE TO SHUT DOWN`. `event-backup`
+takes one snapshot of **both** stores into
+`<BackupRoot>\events\<yyyy-MM-dd>-<slug>` and verifies it — it is
+`backup-task.ps1 run` plus `verify` with a per-event root, not a third backup
+implementation. Both are documented step by step in
+[`docs/runbooks/event-day.md`](../docs/runbooks/event-day.md).
 
 `init` replaces every `change-me` placeholder with a generated secret, keeping the same token identical everywhere it appears (so `DATABASE_URL`/`REDIS_URL` stay consistent with the passwords). `-EnvName staging` targets `infra/.env.staging` instead. `backup` covers the database only; the MinIO volume follows `infra/scripts/backup.sh`.
 
@@ -123,6 +135,18 @@ Dry run is the default and reports how many captures are affected and how much s
 
 ## PC-hosted production behind a tunnel (first production phase)
 
+> **This phase is ON-DEMAND EVENT HOSTING, not a 24/7 service.** The stack runs
+> on event days and long enough afterwards for the upload queue to drain and one
+> backup to finish; then the PC may sleep or be shut down. The event workflow —
+> the twelve-check pre-event list, what to say when the origin disappears
+> mid-party, the drain gate, the event backup, and how to disable sleep for one
+> evening and put the setting back — is
+> [`docs/runbooks/event-day.md`](../docs/runbooks/event-day.md). The move to a
+> dedicated always-on machine is
+> [`docs/runbooks/origin-machine-move.md`](../docs/runbooks/origin-machine-move.md),
+> and that is where a permanent sleep disable, unattended availability and
+> constant Docker uptime become requirements. They are not requirements here.
+
 > **Deployment day is written out step by step in
 > [`docs/runbooks/production-relay-deploy.md`](../docs/runbooks/production-relay-deploy.md)**:
 > what to provision, the one Websupport record, the commands on the VPS and on
@@ -151,16 +175,36 @@ postgres, redis, object-storage, worker: Compose network only, never published
 Files: `docker-compose.prod.yml` + `docker-compose.tunnel.yml` (overlay:
 removes the proxy's host ports, serves Caddy on `:80` inside the network via
 `Caddyfile.tunnel`, adds the `tunnel` service) and `.env.production` with
-`CLOUDFLARE_TUNNEL_TOKEN`. Prerequisite: the `acronym.sk` zone on Cloudflare
-DNS (free plan) so a tunnel can own `kino.acronym.sk` - Cloudflare Tunnel only
-serves hostnames in a zone it manages. The alternatives are a paid tunnel with
-custom domains or router port-forwarding to Caddy on 80/443, which the
+`CLOUDFLARE_TUNNEL_TOKEN`. Prerequisite for the **free** shape of that path: the
+`acronym.sk` zone moved to Cloudflare DNS, because a free-plan tunnel serves a
+hostname only in a zone Cloudflare is authoritative for. That is what the
+operator refused - the zone move, not Cloudflare. Two other Cloudflare shapes do
+keep the zone at Websupport, and their costs and conditions are compared in
+[`docs/runbooks/public-ingress-options.md`](../docs/runbooks/public-ingress-options.md);
+the other alternative is router port-forwarding to Caddy on 80/443, which the
 production file already supports without the overlay.
 
 ### Which path: measured on 2026-09-06
 
-DNS for `acronym.sk` stays at Websupport (operator decision); Cloudflare
-Tunnel is therefore not available for this hostname. The bench PC egresses as
+DNS for `acronym.sk` stays at Websupport (operator decision), which rules out
+the **free** Cloudflare Tunnel shape: that one needs Cloudflare authoritative
+for the zone. It does not rule out Cloudflare. A partial (CNAME) setup keeps the
+zone at Websupport but is Business or Enterprise only, at $250/month, and
+Cloudflare for SaaS custom hostnames reaches the same result at $0/month with
+100 hostnames on the free plan, at the cost of a second domain on a Cloudflare
+account acting as the front door. The comparison, the costs and the conditions
+are in
+[`docs/runbooks/public-ingress-options.md`](../docs/runbooks/public-ingress-options.md).
+
+The relay below is still the recommended path, and the deciding argument is not
+price: it is server-sent events. frp forwards raw TCP, so there is no content
+type for anything to buffer, and the only HTTP-aware hop is a Caddy this
+repository already gates with `flush_interval -1` and an eight-entry compression
+allow list that omits `text/event-stream`. Every hosted ingress inserts an HTTP
+proxy nobody here controls in front of the product's headline feature, and
+whether Cloudflare buffers event streams could not be confirmed either way.
+
+The bench PC egresses as
 `46.34.228.61` (O2 Slovakia), but the route beyond the customer gateway runs
 through carrier-side private addresses (`10.106.16.198`, `10.109.122.193`),
 which is the signature of carrier NAT. Confirm on the router's status page:
@@ -214,8 +258,11 @@ Manager, is also running and holds neither port.)
 not passed. Verified on this machine: it named PID 8088.
 
 `infra/docker-compose.tunnel.yml` (Cloudflare) stays in the tree for a
-hostname that is on Cloudflare DNS; it is not usable for `kino.acronym.sk`
-while Websupport is authoritative.
+hostname Cloudflare is authoritative for. It cannot serve `kino.acronym.sk` on
+the free plan while Websupport holds the zone; it could serve it through
+Cloudflare for SaaS or a Business-plan partial setup, which is a different
+build-out and belongs to
+[`public-ingress-options.md`](../docs/runbooks/public-ingress-options.md).
 
 ### Bring-up
 
@@ -239,25 +286,47 @@ Verify from outside the LAN: `https://kino.acronym.sk/` is the Roll PWA,
 | Containers come back after a reboot | every service has `restart: unless-stopped`; Docker Desktop restarts them once its engine is up | in the compose files |
 | The tunnel comes back | `tunnel` service, same restart policy; cloudflared reconnects on its own | in the overlay |
 | Data survives container restart and rebuilds | named volumes `pgdata`, `miniodata`, `caddy_data`, `caddy_config` | in the compose file |
-| The PC does not sleep | `powercfg /change standby-timeout-ac 0` and `powercfg /change hibernate-timeout-ac 0`; keep the machine on mains | operator setting |
-| Windows sign-in is not required | Docker Desktop runs in the user session: after a reboot the stack is down until someone signs in, unless auto-logon is configured. Documented limitation | operator decision |
-| Backups of both stores | `infra/scripts/backup.sh` on a schedule (Postgres dump + mirror of both buckets); `deploy.ps1 backup` is Postgres only and protects no photograph | registered as a daily Scheduled Task by the helper next to `deploy.ps1`; see "Scheduling the backup on the Windows host" |
+| The PC does not sleep **during an event** | `powercfg /change standby-timeout-ac 0`, restored to the previous value afterwards; keep the machine on mains | operator setting, per event. Read the current index first: [`event-day.md` §4](../docs/runbooks/event-day.md) |
+| Backups of both stores | `deploy.ps1 event-backup` after each event (Postgres dump + mirror of both buckets, in a per-event directory), and `infra/scripts/backup.sh` on a schedule for the days between. `deploy.ps1 backup` is Postgres only and protects no photograph | `event-backup` next to `deploy.ps1`; the daily task is "Scheduling the backup on the Windows host" |
+| The queue is proven empty before the machine goes to sleep | `deploy.ps1 drain -Roll <slug> -Expect <n>` | one command, exit 0 = safe |
+
+Requirements this phase does **not** have, recorded because they were
+prerequisites before the model changed and become prerequisites again on a
+dedicated machine: a permanent sleep disable, unattended overnight
+availability, automatic recovery while nobody is using KINO, a dedicated PC,
+and 24/7 Docker uptime. Two consequences of that, worth stating rather than
+discovering: Docker Desktop runs in the signed-in user session, so a rebooted
+PC has no engine until somebody signs in; and `restart: unless-stopped` brings
+the containers back once the engine is up, which is recovery for a crash during
+an event, not availability at four in the morning. Both are addressed in
+[`origin-machine-move.md`](../docs/runbooks/origin-machine-move.md).
 
 ### Availability, stated plainly
 
-When the PC is off, asleep, rebooting or without internet, `kino.acronym.sk`
-is unavailable. Photography is not: the shutter works, the capture is on the
-SD card with its UUID and Roll, the queue waits, and when the stack returns
-the uploads resume by themselves (proven on the bench on 2026-09-05 with a
-40-capture outage and a 105-capture backlog). The PC-hosted phase is a
-real-world test of exactly that design.
+`kino.acronym.sk` is available while the origin PC is awake with the stack up —
+that is, on event days and the drain-and-backup window after them. When the PC
+is off, asleep, rebooting or without internet, the URL does not answer, and in
+this phase that is an accepted state rather than an incident.
+
+Photography is never unavailable: the shutter works, the capture is on the SD
+card with its UUID and Roll, the queue waits, and when the stack returns the
+uploads resume by themselves with no manual enqueue (proven on the bench on
+2026-09-05 with a 40-capture outage and a 105-capture backlog). The PC-hosted
+phase is a real-world test of exactly that design, which is why an on-demand
+origin is a legitimate first production phase and not a compromise.
+
+What the operator says at a party when the origin is away, and which numbers
+prove the recovery afterwards, are in
+[`event-day.md` §2](../docs/runbooks/event-day.md).
 
 ### Migration later
 
-Back up Postgres and both buckets with `backup.sh`, restore them on the new
-host with `restore-drill.sh`'s procedure, point the tunnel (or DNS) at the new
-host. The D4, the Roll codes, the PWA URL, the schema and the object keys do
-not change.
+Back up Postgres and both buckets, restore both on the new host, carry
+`.env.production` across by hand, start the stack, move the ingress origin. The
+canonical URL, the Roll codes, the capture UUIDs, the object keys, the schema
+and the camera's stored `network.apiBase` do not change — the full procedure,
+the invariants and what breaks each of them are in
+[`docs/runbooks/origin-machine-move.md`](../docs/runbooks/origin-machine-move.md).
 
 ## Pre-deploy checklist (release closure, 2026-09-05)
 
@@ -267,7 +336,11 @@ setting to invent. For the relay deployment specifically, walk the ordered gate
 list in
 [`docs/runbooks/production-relay-deploy.md`](../docs/runbooks/production-relay-deploy.md)
 instead - it covers these rows plus the VPS, the DNS record, the tunnel and the
-Windows reboot behaviour, and it ends in a yes/no.
+Windows reboot behaviour, and it ends in a yes/no. Its gates F1 (sleep
+permanently disabled) and F2 (survives a reboot unattended) belong to the
+always-on phase and are not gates for an on-demand event deployment; the
+per-event checklist that replaces them is
+[`docs/runbooks/event-day.md` §1](../docs/runbooks/event-day.md).
 
 | Check | How | Expected |
 |---|---|---|
