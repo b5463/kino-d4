@@ -1,5 +1,23 @@
 # Public ingress options for kino.acronym.sk
 
+> **DECIDED, 2026-09-07: option A, the relay VPS.** The operator has chosen it
+> and closed the question. Cloudflare Tunnel, Cloudflare for SaaS, ngrok,
+> Tailscale Funnel and direct router forwarding are **not** to be re-evaluated
+> for this deployment. The deciding argument was predictable live-feed
+> behaviour, not cost: frp carries the connection through infrastructure we
+> control and both HTTP-aware Caddy hops are already configured for
+> `text/event-stream`. The roughly EUR 5 a month is accepted, and zero-cost
+> alternatives are explicitly not worth deployment uncertainty here.
+>
+> What survives below: the comparison, as the record of why; the DNS change for
+> option A, which is now the change to make once the VPS exists; and the
+> event-day failure modes. Everything about the other options is history, kept
+> so the decision can be audited, not re-opened.
+>
+> Deployment procedure lives in
+> [production-relay-deploy.md](production-relay-deploy.md). The blocker is one
+> VPS with a static IPv4; nothing else is waiting on software.
+
 An assessment, not a deployment. Nothing in this document has been done. No DNS
 record was changed, no router setting was touched, no account was created, no
 tunnel client was run. The last section is the only place with instructions in
