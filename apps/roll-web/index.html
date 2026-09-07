@@ -27,6 +27,14 @@
     <link rel="apple-touch-icon" href="/icon-apple-touch.png" />
     <meta name="apple-mobile-web-app-title" content="KINO Roll" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!--
+      The standardised spelling of the line above. iOS reads only the
+      `apple-` one, so both have to be here: Chrome warns on every load that
+      the prefixed name is deprecated, and an operator reading a phone's
+      console during acceptance should not have to decide whether that
+      warning is the bug they are looking for.
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <!--

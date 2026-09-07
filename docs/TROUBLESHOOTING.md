@@ -200,9 +200,24 @@ curl -sS https://<host>/api/healthz
 | `redis` | Redis | The queue is down, so captures stall in `processing`; the guest live feed stops updating and the dashboard reports 0 guests. |
 | `storage` | MinIO, or the `kino-media` bucket is missing | Asset init and part uploads fail. The camera sees 5xx and retries. |
 
-No answer at all, from outside the LAN, with the camera saying **KINO NOT ANSWERING**: the stack is down, the PC is asleep, or the tunnel/relay is not connected. See the tunnel section of [`infra/README.md`](../infra/README.md).
+No answer at all, from outside the LAN, with the camera saying **KINO NOT ANSWERING**: the stack is down, the PC is asleep, or the tunnel/relay is not connected. The next section separates those.
 
-Logs at this step: `deploy.ps1 logs -Service api`, then `-Service worker`, then `-Service proxy`. Container names are `api`, `worker`, `proxy`, `web`, `postgres`, `redis`, `object-storage`.
+Logs at this step: `deploy.ps1 logs -Service api -Relay`, then `-Service worker`, then `-Service proxy`. Container names are `api`, `worker`, `proxy`, `web`, `postgres`, `redis`, `object-storage`, and `relay` on a relay deployment. Drop `-Relay` only on a stack that publishes 80/443 itself.
+
+### Is the tunnel down, or is the stack down?
+
+On the relay deployment (`infra/relay/`) the public name terminates TLS on a VPS and reaches the PC through one outbound frp connection. Two layers can fail and they look nothing alike once you know where to look. The full table, with the VPS-side commands, is in [the deployment runbook](runbooks/production-relay-deploy.md#is-it-the-tunnel-or-is-it-the-stack). The discriminator:
+
+| What `https://kino.acronym.sk/api/healthz` returns | Layer |
+|---|---|
+| **502**, with valid TLS | **The tunnel.** The VPS answered; nothing was behind it. PC off, asleep, no internet, Docker Desktop not running, wrong `RELAY_TOKEN`, or port 7000 closed on the VPS. |
+| **503 with a JSON body** naming `db`, `redis` or `storage` | **The stack.** That JSON could only have been written by the API, so the tunnel is fine. Read the table above for the named dependency. |
+| **200** with `ok:true` | Neither. The fault is further up — DNS on the client, the camera's stored `network.apiBase`, or the roll itself. |
+| No TCP connection at all | The VPS or its firewall, not the PC. |
+| TLS warning | The VPS's Caddy or ACME. Do **not** delete `caddy_data` to retry; Let's Encrypt rate-limits duplicates. |
+| Resolves to `37.9.175.156` | DNS. That is the Websupport parking address, so the `A` record was never changed or has not propagated. |
+
+A running `relay` container is not proof of a tunnel. frpc retries forever by design, so a wrong token gives a healthy-looking container that never connected. The proof is the log line `login to server success` (`deploy.ps1 logs -Service relay -Relay`).
 
 ### The case the audit found: a capture stuck in `processing`
 
@@ -230,6 +245,16 @@ npm run test -w @kino/api
 Expected host ports are PostgreSQL `5435`, Redis `6380`, MinIO `9000`, and MinIO console `9001`. The defaults match `infra/.env.example`.
 
 If health returns `503`, inspect which dependency is false. A missing migration usually reports a missing relation during test setup. A missing `kino-media` bucket fails storage health even when MinIO itself is reachable.
+
+## The site was up yesterday and is down after a reboot
+
+Docker Desktop runs in the operator's user session, so on the PC-hosted deployment the whole stack is down from boot until someone signs in. The containers themselves are `restart: unless-stopped` and come back on their own **once the engine is up** — the engine is the part that waits for a login.
+
+Remedies, in the order they matter: automatic sign-in plus a lock-screen task at logon; *Start Docker Desktop when you sign in*; `powercfg /change standby-timeout-ac 0` so the machine never sleeps. The exact commands and the one test that proves it (reboot, touch nothing, check `/api/healthz` from mobile data three minutes later) are in [the deployment runbook](runbooks/production-relay-deploy.md#windows-specific-risks-with-the-remedy).
+
+Two things that look like this fault and are not: a container someone stopped by hand stays stopped, because that is what `unless-stopped` means — start it explicitly. And Docker Desktop can start while its engine does not, usually a pending WSL2 update waiting for a click; `docker version` returning a pipe error rather than a server version is that case.
+
+While the site is down, photography is not. The shutter works, the capture is on the card with its UUID and Roll, and the camera's queue drains by itself when the stack returns.
 
 ## Production refuses the cookie secret
 

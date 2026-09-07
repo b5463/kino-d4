@@ -85,13 +85,19 @@ export function AppRoutes() {
   // styles never have to out-specify each other.
   useEffect(() => {
     document.body.dataset.surface = surface;
-    // ...and the browser's own chrome with it. A manifest has one theme
-    // colour and this app has two surfaces: `--k-ground` for the near-black
-    // guest browser, the site header blue for the light `/host` page. One
-    // black value for both would paint a black status bar over a pale
-    // operator page.
+    // ...and the browser's own chrome with it. This tag carries the GUEST
+    // colour only, `--k-ground`. The light `/host` page needs a pale status
+    // bar instead, and it cannot be done from here: `vite-plugin-pwa`
+    // rewrites the document's first `theme-color` from the manifest after
+    // startup, so an edit made here comes back as the guest colour a moment
+    // later. `HostDashboardPage` therefore prepends a tag of its own and
+    // holds it - a browser honours the first applicable `theme-color` - and
+    // removes it on the way out. Setting a host value here as well would be
+    // a second declaration that loses to that one, which is how the two
+    // disagreed: this line claimed the header blue while the host page
+    // painted its own ground.
     const tag = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (tag !== null) tag.content = surface === 'host' ? '#174e98' : '#0b0b0c';
+    if (tag !== null) tag.content = '#0b0b0c';
   }, [surface]);
 
   switch (route.name) {

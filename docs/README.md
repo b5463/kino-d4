@@ -16,7 +16,7 @@ Start with the question you need answered. The repository contains working contr
 | What is being built next? | [Roadmap](../ROADMAP.md) |
 | What is actively planned or in progress? | [GitHub Project workflow](PROJECT.md) |
 | How is a version released? | [Release guide](RELEASING.md) |
-| How is KINO Roll deployed to a server, backed up, restored? | [Infrastructure](../infra/README.md), [restore runbook](runbooks/restore.md), [observability](runbooks/observability.md) |
+| How is KINO Roll deployed to a server, backed up, restored? | [Infrastructure](../infra/README.md), [relay deployment](runbooks/production-relay-deploy.md), [restore runbook](runbooks/restore.md), [observability](runbooks/observability.md) |
 | A change landed that only new captures benefit from. How is the backlog re-derived? | [Thumbnail backfill](runbooks/thumbnail-backfill.md) |
 | Which version changes when? | [Versioning](VERSIONING.md) |
 | Which license applies to a path? | [Root license map](../LICENSE) and [`REUSE.toml`](../REUSE.toml) |
@@ -29,6 +29,7 @@ Start with the question you need answered. The repository contains working contr
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
 | How does a camera upload to Roll, and how does Twin stand in today? | [Device contract](roll/ROLL_DEVICE_CONTRACT.md), [Twin integration](roll/ROLL_TWIN_INTEGRATION.md), and the other guides in [`docs/roll/`](roll/) |
 | How does someone run a party with KINO Roll, from provisioning to the export? | [Host guide](roll/HOST_GUIDE.md); when photographs are not appearing, the Roll ladder in [Troubleshooting](TROUBLESHOOTING.md) |
+| How is the guest app accepted on a real phone? | [Roll mobile PWA acceptance](roll/ROLL_PWA_MOBILE_ACCEPTANCE.md) |
 | What does the physical camera's Roll path look like, and where does it stop? | [Physical device flow](roll/PHYSICAL_DEVICE_FLOW.md) |
 | Why has the ESP32-C6 radio not been brought up? | [C6 hardware map](../firmware/C6_HARDWARE_MAP.md) for the blocking evidence, [C6 bring-up](../firmware/C6_BRINGUP.md) for the procedure once it is unblocked |
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |

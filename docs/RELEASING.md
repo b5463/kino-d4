@@ -31,9 +31,30 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   sold or published; builds are for the owner's own units, and the artwork
   stays. The gate therefore applies only if a binary is ever distributed.
 - **Roll on the internet.** The backend and web have been proven only against
-  a development API on the LAN. `kino.acronym.sk` answered 404 on 2026-09-05.
-  Production deployment (`infra/README.md`, `infra/deploy.ps1`) is an operator
-  step with credentials this repository does not hold.
+  a development API on the LAN. `kino.acronym.sk` answered 404 on 2026-09-05
+  and today resolves to Websupport parking (`37.9.175.156`,
+  `2a00:4b40:aaaa:2004::7`). Production deployment is an operator step with
+  credentials and a VPS this repository does not hold. The stack is deployable
+  — every compose combination interpolates from the example env files alone and
+  nothing but the edge publishes a host port — but nothing in this tree has
+  served a request over TLS on the public name.
+
+  The blocking finding, measured 2026-09-06 and 2026-09-07: the PC egresses as
+  `46.34.228.61` but two RFC1918 hops (`10.106.16.198`, `10.109.122.193`) sit
+  beyond the operator's own router, which is the signature of carrier-grade
+  NAT, and the PC has no IPv6 egress at all. Direct inbound hosting is
+  therefore not viable, ports 80 and 443 on the PC are held by a Bitnami
+  Apache service in any case, and DNS is not moving to Cloudflare. The
+  recommended path is the relay VPS in `infra/relay/`, which keeps Websupport
+  authoritative and needs one `A` record.
+
+  The whole procedure, the rollback, and a gate list that ends in a yes/no on
+  whether `https://kino.acronym.sk` can be served:
+  [`docs/runbooks/production-relay-deploy.md`](runbooks/production-relay-deploy.md).
+  The one unknown that could still change the recommendation is the router's
+  own WAN address as shown on its status page; that document says what each
+  possible answer means. A release must not claim a public Roll deployment
+  until gates B through F in it have passed.
 - **Destructive firmware paths.** Delete All (0.4.42) is index-driven and
   host-tested and has never been executed on a real card. Run it on an
   expendable card before a release claims it.

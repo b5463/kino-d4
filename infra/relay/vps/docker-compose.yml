@@ -8,6 +8,15 @@
 # 80, 443 (Caddy, ACME) and 7000 (frps, token + TLS) in the VPS firewall.
 # frps binds the tunnelled port on 127.0.0.1 only, so the PC's Caddy is never
 # reachable except through this Caddy.
+# Both containers cap their own logs. A VPS is usually the smallest disk in the
+# deployment, and an frps that logs every reconnect of a PC on a domestic line
+# is the thing that fills it.
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: '5'
+
 services:
   caddy:
     image: caddy:2.10.2-alpine
@@ -19,6 +28,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    security_opt: [no-new-privileges:true]
+    logging: *json-logging
 
   frps:
     image: snowdreamtech/frps:0.61.1
@@ -28,6 +39,8 @@ services:
       RELAY_TOKEN: ${RELAY_TOKEN:?set RELAY_TOKEN}
     volumes:
       - ./frps.toml:/etc/frp/frps.toml:ro
+    security_opt: [no-new-privileges:true]
+    logging: *json-logging
 
 volumes:
   caddy_data:

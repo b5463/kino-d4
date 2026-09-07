@@ -960,7 +960,7 @@ int main(int argc, char **argv) {
   SHOT(SCR_GALLERY, "gallery_empty");
   g_fake_total = 14;
 
-  /* ---- Roll: all four states, because they are what the screen is for ----
+  /* ---- Roll: every state it has, because they are what the screen is for ----
    *
    * These are the only pictures of the Roll screen that exist. No board has
    * ever had a Roll assigned, and the QR in particular has never been on a

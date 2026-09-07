@@ -45,6 +45,8 @@ powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 down    # volumes pres
 
 `init` replaces every `change-me` placeholder with a generated secret, keeping the same token identical everywhere it appears (so `DATABASE_URL`/`REDIS_URL` stay consistent with the passwords). `-EnvName staging` targets `infra/.env.staging` instead. `backup` covers the database only; the MinIO volume follows `infra/scripts/backup.sh`.
 
+`-Relay` adds `infra/relay/docker-compose.relay.yml` to the file list and must be passed on **every** action of a relay deployment, `down` and `logs` included. Without it the file list is the production file alone: the frpc container is dropped and 80/443 are republished on the host, which is exactly what the relay exists to avoid. `check` also refuses to be quiet about a port that is already held - see "Ports 80 and 443 on the PC are taken" below.
+
 ## Production (manual steps)
 
 1. Copy `infra/.env.prod.example` to `infra/.env.production`.
@@ -57,6 +59,8 @@ docker compose --env-file infra/.env.production -f infra/docker-compose.prod.yml
 ```
 
 Only Caddy publishes host ports. PostgreSQL, Redis, MinIO, the API, the worker, and the static web service remain on the private Compose network. Caddy obtains and renews TLS automatically for a public hostname, streams server-sent events without buffering, sends `/api/*` to the API, and serves Studio at `/studio/` with Roll everywhere else. Roll invitation and host pages receive an `X-Robots-Tag: noindex, nofollow, noarchive` header.
+
+Server-sent events need two things from every Caddy hop, not one. `flush_interval -1` on the `/api/*` proxy is the first. The second is that `text/event-stream` is never compressed: Caddy's default `encode` match includes `text/*`, which covers SSE, and a compressor in front of a long-lived stream delivers a batch of events minutes late instead of one event now. All three Caddyfiles (`Caddyfile`, `Caddyfile.tunnel`, `relay/vps/Caddyfile`) therefore replace the default with an explicit eight-entry Content-Type allow list that omits it. Verified by adapting each file with the pinned `caddy:2.10.2-alpine` image: the JSON matcher lists the eight types and the string `event-stream` does not appear anywhere in the adapted config.
 
 Production sets `OBJECT_DELIVERY=proxy`: media and firmware bytes pass through the authorized API rather than exposing an internal MinIO URL. Local development retains short-lived presigned URLs.
 
@@ -119,6 +123,14 @@ Dry run is the default and reports how many captures are affected and how much s
 
 ## PC-hosted production behind a tunnel (first production phase)
 
+> **Deployment day is written out step by step in
+> [`docs/runbooks/production-relay-deploy.md`](../docs/runbooks/production-relay-deploy.md)**:
+> what to provision, the one Websupport record, the commands on the VPS and on
+> the PC in order, verification through the canonical URL, how to tell a dead
+> tunnel from a dead stack, rollback, the Windows sleep/reboot remedies, and a
+> gate list that ends in a yes/no. This section is the design; that document is
+> the procedure.
+
 The canonical product URL is `https://kino.acronym.sk`. For the first
 production phase the stack runs on the operator's Windows PC, and the public
 hostname reaches it through an **outbound** tunnel. Clients never learn a LAN
@@ -170,9 +182,36 @@ stack moves to later, at which point the relay is switched off and Caddy on the
 VPS points at the local stack. Cost: the cheapest VPS the operator trusts.
 
 ```
-PC:  docker compose --env-file infra/.env.production -f infra/docker-compose.prod.yml -f infra/relay/docker-compose.relay.yml up -d --build
+PC:  powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 up -Relay
+     # equivalently, by hand:
+     docker compose --env-file infra/.env.production -f infra/docker-compose.prod.yml -f infra/relay/docker-compose.relay.yml up -d --build
 VPS: cd relay/vps && cp .env.example .env && docker compose up -d   # firewall: 80, 443, 7000
 ```
+
+`deploy.ps1` takes `-Relay`, and it belongs on **every** action for a relay
+deployment - `check`, `up`, `update`, `status`, `logs`, `down`. Without it the
+file list is the production file alone, which drops the frpc container and
+republishes 80/443 on the host.
+
+### Ports 80 and 443 on the PC are taken (measured 2026-09-07)
+
+`netstat -ano` shows `0.0.0.0:80` and `0.0.0.0:443` LISTENING on PID 8088:
+`httpd.exe` from `C:\Bitnami\wordpress-6.0.3-0\apache2\bin\`, owned by the
+Windows service **`wordpressApache-1`**, start mode Automatic - so it returns on
+every reboot. (`PEMHTTPD`, a second Apache from EDB Postgres Enterprise
+Manager, is also running and holds neither port.)
+
+- **Relay and tunnel paths: not blocked.** Both overlays `!reset` the proxy's
+  `ports`, so the stack publishes nothing at all and Caddy serves `:80` only
+  inside the Compose network. Apache keeps both ports; nothing collides.
+- **Direct, router-forwarded path: hard block.** The production file alone
+  publishes `80:80` and `443:443` and `up` fails on port allocation. That path
+  needs `Stop-Service wordpressApache-1` plus
+  `Set-Service wordpressApache-1 -StartupType Disabled`, or Apache moved to
+  other ports. Do not do that to make the relay work - it is not needed there.
+
+`deploy.ps1 check` now warns when 80 or 443 is already held and `-Relay` was
+not passed. Verified on this machine: it named PID 8088.
 
 `infra/docker-compose.tunnel.yml` (Cloudflare) stays in the tree for a
 hostname that is on Cloudflare DNS; it is not usable for `kino.acronym.sk`
@@ -224,7 +263,11 @@ not change.
 
 Run through this before the first `deploy.ps1 up` on the public host, and
 again after any change to `.env.production`. Each line is a check, not a
-setting to invent.
+setting to invent. For the relay deployment specifically, walk the ordered gate
+list in
+[`docs/runbooks/production-relay-deploy.md`](../docs/runbooks/production-relay-deploy.md)
+instead - it covers these rows plus the VPS, the DNS record, the tunnel and the
+Windows reboot behaviour, and it ends in a yes/no.
 
 | Check | How | Expected |
 |---|---|---|
@@ -236,6 +279,9 @@ setting to invent.
 | API base compiled into the camera | `firmware/HARDWARE_VALIDATION.md`, `GET_CONFIG network.apiBase` | the bench image is built with `-DKINO_ROLL_API_BASE=https://kino.acronym.sk`; the stored `network.apiBase` on the bench body points at the LAN dev API and must be cleared or set to production before the E2E |
 | Object store endpoint | compose | `S3_ENDPOINT=http://object-storage:9000` (private network), `OBJECT_DELIVERY=proxy` |
 | Private buckets | `mc anonymous get` on `kino-media` | no anonymous policy |
+| Only the edge publishes a port | `docker compose --env-file infra/.env.prod.example -f infra/docker-compose.prod.yml config \| grep published` | exactly two entries, both on `proxy` (80, 443). With `-f infra/relay/docker-compose.relay.yml` added: **no output at all**. Read the rendered config, not the source file - an overlay can add a port the source does not show |
+| MinIO console port | compose `object-storage` command | `--console-address ':9001'`. Pinned so it does not move between runs; neither 9000 nor 9001 is published |
+| Log growth is bounded | compose | every service carries `logging: *json-logging` (20 MB x 5). An uncapped container log fills the Docker drive and takes the stack with it |
 | CORS | `apps/api/src/server.ts` | only `PUBLIC_BASE_URL` origin reflected in production |
 | Migrations before start | compose `migrate` service | api and worker wait on `service_completed_successfully` |
 | Persistent volumes | `docker volume ls` | `pgdata`, `miniodata`, `caddy_data` present after first `up` |
@@ -263,13 +309,29 @@ setting to invent.
 
 ### Scheduling the backup on the Windows host
 
-A PowerShell helper alongside `infra/deploy.ps1` registers a **daily Windows
-Scheduled Task** that runs `infra/scripts/backup.sh` inside a container on the
-Compose network, so the POSIX script works on a host that has no shell for it.
-It is the only thing that makes the sentence above — no backup of original
-photographs on the Windows host — stop being true. **(The helper's exact filename, parameters and
-task name were not in the tree at the time of writing; treat the names here as
-unverified and read the script itself before relying on them.)**
+The helper is **`infra/backup-task.ps1`**. It registers a daily Windows
+Scheduled Task that runs `infra/scripts/backup.sh` through Git-for-Windows bash
+against the Compose network, so the POSIX script works on a host that has no
+shell for it. It is the only thing that makes the sentence above — no backup
+of original photographs on the Windows host — stop being true.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File infra\backup-task.ps1 register -BackupRoot D:\kino-backups
+powershell -ExecutionPolicy Bypass -File infra\backup-task.ps1 run      -BackupRoot D:\kino-backups
+powershell -ExecutionPolicy Bypass -File infra\backup-task.ps1 verify   -BackupRoot D:\kino-backups
+powershell -ExecutionPolicy Bypass -File infra\backup-task.ps1 status
+```
+
+Task name `KINO Roll daily backup`, daily at `-At` (default 03:30), running as
+SYSTEM with `-StartWhenAvailable`. `-BackupRoot` must be an absolute path; that
+it is off-host is the operator's judgement and the script says so rather than
+pretending to check. `register` does not take the first backup - run `run` once,
+then `verify` the next morning. `verify` returns 0 only when the newest snapshot
+is younger than `-MaxAgeHours` (30), carries a non-empty `postgres.dump`,
+carries a **non-empty object mirror**, and matches its own `SHA256SUMS`.
+
+It satisfies every requirement in the table below, which is why the table is
+still here: read it before replacing the helper with something homemade.
 
 Whatever the helper is called, the job it registers must satisfy all of the
 following, and the point of writing them down is that a job that satisfies only

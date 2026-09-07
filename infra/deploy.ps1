@@ -14,6 +14,14 @@ server. PowerShell 5.1 compatible — runs on a stock Windows Server.
   powershell -ExecutionPolicy Bypass -File infra\deploy.ps1 down
 
   -EnvName staging selects infra/.env.staging (default: production).
+  -Relay   adds infra/relay/docker-compose.relay.yml to EVERY action.
+
+-Relay is not optional decoration on a relay deployment. Without it `up`
+renders the production file alone, which drops the frpc container and
+republishes 80/443 on the host. On the operator's PC those ports are held by
+the Bitnami `wordpressApache-1` service, so that `up` fails on a port
+allocation error and the site stays down. Pass -Relay on every command for a
+stack reached through infra/relay/, `down` and `logs` included.
 
 init  creates the environment file from its example and replaces every
       change-me placeholder with a freshly generated secret — the same token
@@ -39,6 +47,10 @@ param(
   [ValidateSet('production', 'staging')]
   [string]$EnvName = 'production',
 
+  # Drive the PC-behind-a-relay-VPS stack (infra/relay/). See the note above:
+  # every action needs it, not only `up`.
+  [switch]$Relay,
+
   [string]$Service = ''
 )
 
@@ -46,7 +58,17 @@ $ErrorActionPreference = 'Stop'
 $infraDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $infraDir
 $composeFile = Join-Path $infraDir 'docker-compose.prod.yml'
+$relayFile = Join-Path $infraDir 'relay\docker-compose.relay.yml'
 $envFile = Join-Path $infraDir (".env.$EnvName")
+
+# One file list, built once, used by every docker compose call below. The relay
+# overlay's bind mounts are written relative to infra/ on purpose, because
+# Compose resolves relative paths against the FIRST -f file's directory.
+$composeArgs = @('-f', $composeFile)
+if ($Relay) {
+  if (-not (Test-Path $relayFile)) { throw "Missing relay overlay: $relayFile" }
+  $composeArgs += @('-f', $relayFile)
+}
 if ($EnvName -eq 'production') {
   $exampleFile = Join-Path $infraDir '.env.prod.example'
 } else {
@@ -55,7 +77,7 @@ if ($EnvName -eq 'production') {
 
 function Invoke-Compose {
   param([string[]]$ComposeArgs)
-  & docker compose --env-file $envFile -f $composeFile @ComposeArgs
+  & docker compose --env-file $envFile @composeArgs @ComposeArgs
   if ($LASTEXITCODE -ne 0) { throw "docker compose $($ComposeArgs -join ' ') failed ($LASTEXITCODE)" }
 }
 
@@ -89,7 +111,28 @@ function Assert-Ready {
     throw "$envFile still contains change-me placeholders on line(s): $(($leftover | ForEach-Object { $_.LineNumber }) -join ', ')"
   }
   Invoke-Compose @('config', '--quiet')
-  Write-Host "OK: docker, $((Split-Path -Leaf $envFile)), compose interpolation." -ForegroundColor Green
+  $shape = if ($Relay) { 'production + relay overlay (no host ports at all)' } else { 'production (proxy publishes 80/443 on this host)' }
+  Write-Host "OK: docker, $((Split-Path -Leaf $envFile)), compose interpolation. Shape: $shape." -ForegroundColor Green
+
+  <#
+    Without -Relay the proxy publishes KINO_HTTP_PORT/KINO_HTTPS_PORT on the
+    host, and `up` then fails outright if something already holds them. Say so
+    before a ten-minute build gets there. netstat rather than
+    Get-NetTCPConnection, so this still runs on a stock PowerShell 5.1.
+  #>
+  if (-not $Relay) {
+    $httpPort = Read-EnvValue 'KINO_HTTP_PORT' '80'
+    $httpsPort = Read-EnvValue 'KINO_HTTPS_PORT' '443'
+    foreach ($port in @($httpPort, $httpsPort)) {
+      $pattern = '^\s+TCP\s+\S+:' + [regex]::Escape($port) + '\s+\S+\s+LISTENING\s+(\d+)'
+      $held = & netstat -ano -p TCP | Select-String -Pattern $pattern
+      if ($held) {
+        $owners = ($held | ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique) -join ', '
+        Write-Host "WARNING: TCP $port is already LISTENING (PID $owners). 'up' without -Relay cannot allocate it." -ForegroundColor Yellow
+        Write-Host "         Stop that listener, or run the relay shape: deploy.ps1 up -Relay" -ForegroundColor Yellow
+      }
+    }
+  }
 }
 
 function Wait-Healthy {
@@ -98,7 +141,7 @@ function Wait-Healthy {
   foreach ($svc in $Services) {
     Write-Host "waiting for $svc to report healthy..."
     while ($true) {
-      $id = (& docker compose --env-file $envFile -f $composeFile ps -q $svc) 2>$null
+      $id = (& docker compose --env-file $envFile @composeArgs ps -q $svc) 2>$null
       if ($id) {
         $state = (& docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $id) 2>$null
         if ($state -eq 'healthy') { Write-Host "  $svc healthy" -ForegroundColor Green; break }
@@ -137,7 +180,16 @@ switch ($Action) {
     Invoke-Compose @('up', '-d', '--build')
     Wait-Healthy @('api', 'web')
     $site = Read-EnvValue 'KINO_SITE_ADDRESS' 'localhost'
-    Write-Host "Stack is up. Verify externally: https://$site/api/healthz , https://$site/ , https://$site/studio/" -ForegroundColor Green
+    if ($Relay) {
+      # frpc has no healthcheck: "connected" is a log line, not a container
+      # state. Print it rather than let a running container imply a tunnel.
+      Write-Host 'Relay client log - look for "login to server success":' -ForegroundColor Cyan
+      Invoke-Compose @('logs', '--tail', '20', 'relay')
+      $base = Read-EnvValue 'PUBLIC_BASE_URL' "https://$site"
+      Write-Host "Stack is up. Verify from a phone on mobile data: $base/api/healthz , $base/ , $base/studio/" -ForegroundColor Green
+    } else {
+      Write-Host "Stack is up. Verify externally: https://$site/api/healthz , https://$site/ , https://$site/studio/" -ForegroundColor Green
+    }
   }
   'update' {
     Push-Location $repoRoot
@@ -167,6 +219,9 @@ switch ($Action) {
     $dbName = Read-EnvValue 'POSTGRES_DB' 'kino'
     # cmd.exe redirection keeps the dump byte-faithful; PowerShell's own
     # redirection re-encodes text streams.
+    # Only the production file here, deliberately: the project name comes from
+    # `name: kino-${KINO_ENV}` in it, so `exec` finds the running postgres with
+    # or without the relay overlay and the dump does not depend on the shape.
     & cmd /c "docker compose --env-file `"$envFile`" -f `"$composeFile`" exec -T postgres pg_dump -U $dbUser -d $dbName > `"$outFile`""
     if ($LASTEXITCODE -ne 0) { throw 'pg_dump failed - is the stack running?' }
     Write-Host "Database dump: $outFile" -ForegroundColor Green

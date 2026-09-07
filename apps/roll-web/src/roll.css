@@ -40,6 +40,22 @@ body {
   font: 0.8125rem/1.5 var(--k-sans);
 }
 
+/* The ground a phone paints BEFORE React has stamped `data-surface` on
+   <body>, which it can only do from an effect after the bundle has run.
+   Without this rule the pale operator page above is what a guest sees for as
+   long as 395 kB of JavaScript takes to arrive over a party's cell signal —
+   and permanently if it never arrives. Measured on the built output with the
+   bundle blocked: a flat #e9edf2 sheet, behind a #0b0b0c install splash and
+   under a #0b0b0c status bar, which is the one combination the manifest's
+   `background_color` and the `theme-color` meta both promise will not happen.
+   The unstamped default is therefore the guest ground; `/host` takes the pale
+   page back the moment `data-surface='host'` lands, at the cost of one dark
+   frame on an operator page nobody installs. */
+body:not([data-surface]) {
+  background: var(--k-ground);
+  color: var(--k-ink);
+}
+
 #root { display: flex; flex-direction: column; min-height: 100dvh; }
 #root > main { flex: 1; }
 
