@@ -295,10 +295,28 @@ function Invoke-Psql {
   param([string]$Sql)
   $dbUser = Read-EnvValue 'POSTGRES_USER' 'kino'
   $dbName = Read-EnvValue 'POSTGRES_DB' 'kino'
+  <#
+    Ask whether the container is running BEFORE exec'ing into it, rather than
+    reading the failure afterwards. `docker compose exec` against a stopped
+    service writes `service "postgres" is not running` to stderr, and Windows
+    PowerShell 5.1 wraps a native command's stderr in a NativeCommandError, so
+    the operator gets a stack trace over the call site instead of an answer.
+    Redirecting with 2>&1 makes that worse, not better - it turns every stderr
+    line into an error record. On an event night this command exists to answer
+    one question in one line, so the stopped-stack case is detected and said
+    plainly.
+  #>
+  $running = & docker compose --env-file $envFile -f $composeFile ps --status running --services
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Docker did not answer. Is Docker Desktop running?'
+  }
+  if (@($running | ForEach-Object { "$_".Trim() }) -notcontains 'postgres') {
+    throw 'The production stack is not running, so there is nothing to drain. Start it with: deploy.ps1 up -Relay'
+  }
   $rows = & docker compose --env-file $envFile -f $composeFile exec -T postgres `
     psql -U $dbUser -d $dbName -v ON_ERROR_STOP=1 -At -F '|' -c $Sql
   if ($LASTEXITCODE -ne 0) {
-    throw 'psql did not answer. Is the stack up? Check: deploy.ps1 status'
+    throw 'psql did not answer. Check: deploy.ps1 logs -Service postgres'
   }
   return @($rows | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
 }
