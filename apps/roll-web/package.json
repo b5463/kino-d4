@@ -1,7 +1,7 @@
 {
   "name": "@kino/roll-web",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "license": "SEE LICENSE IN LICENSE",
   "description": "KINO Roll - guest-facing gallery PWA for a KINO Roll (03\u00a76-\u00a79)",
   "type": "module",
