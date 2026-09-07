@@ -4,7 +4,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptureDetail, RollApi } from '../src/api/client';
-import { useRollEvents, type RollEventHandlers } from '../src/hooks/useRollEvents';
+import {
+  CAPTURE_REFETCH_DEBOUNCE_MS,
+  ROLL_REFRESH_DEBOUNCE_MS,
+  useRollEvents,
+  type RollEventHandlers,
+} from '../src/hooks/useRollEvents';
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
@@ -57,6 +62,7 @@ describe('useRollEvents capture filter', () => {
   let api: RollApi;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -77,7 +83,15 @@ describe('useRollEvents capture filter', () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    vi.useRealTimers();
   });
+
+  /** Lets the fetches resolve and any trailing debounce fire. */
+  async function settle(ms = 0): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
 
   async function mount(handlers: RollEventHandlers): Promise<FakeEventSource> {
     function Harness() {
@@ -115,11 +129,146 @@ describe('useRollEvents capture filter', () => {
     await act(async () => {
       source.emit('capture.updated', { type: 'capture.updated', captureId: 'cap_mine' });
       await Promise.resolve();
-      await Promise.resolve();
     });
+    // The update waits out its trailing debounce; the fetch is not in the tick
+    // the event arrived in.
+    expect(getCapture).not.toHaveBeenCalled();
+    await settle(CAPTURE_REFETCH_DEBOUNCE_MS);
     expect(getCapture).toHaveBeenCalledTimes(1);
     expect(getCapture).toHaveBeenCalledWith('party', 'cap_mine');
     expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses a photograph's nine update events into one refetch", async () => {
+    /**
+     * Measured: one photograph announced itself as `capture.created`, then five
+     * `capture.updated` and four `processing.completed` as its four asset roles
+     * finished — eleven round trips per photograph per open tab, ten of them
+     * for the same id.
+     */
+    const prepend = vi.fn();
+    const replace = vi.fn();
+    const source = await mount({ prepend, replace });
+
+    await act(async () => {
+      source.emit('capture.created', { type: 'capture.created', captureId: 'cap_1' });
+      await Promise.resolve();
+    });
+    // The arrival is what the guest is waiting for: immediate, on its own.
+    expect(getCapture).toHaveBeenCalledTimes(1);
+
+    await settle(0);
+    for (let step = 0; step < 5; step += 1) {
+      await act(async () => {
+        source.emit('capture.updated', { type: 'capture.updated', captureId: 'cap_1' });
+        await vi.advanceTimersByTimeAsync(20);
+      });
+    }
+    for (let step = 0; step < 4; step += 1) {
+      await act(async () => {
+        source.emit('processing.completed', { type: 'processing.completed', captureId: 'cap_1' });
+        await vi.advanceTimersByTimeAsync(20);
+      });
+    }
+    expect(getCapture).toHaveBeenCalledTimes(1);
+
+    await settle(CAPTURE_REFETCH_DEBOUNCE_MS);
+    expect(getCapture).toHaveBeenCalledTimes(2);
+    expect(prepend).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one capture fetch on the wire and refetches what landed behind it', async () => {
+    /**
+     * Nine convergent events must not become nine sockets. The events that
+     * land while a `GET` is open are answered by exactly one more `GET`, so a
+     * capture can never be left showing a state the server has moved past.
+     */
+    let release: ((capture: CaptureDetail) => void) | undefined;
+    getCapture.mockImplementationOnce(
+      () =>
+        new Promise<CaptureDetail>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const replace = vi.fn();
+    const source = await mount({ prepend: vi.fn(), replace });
+
+    await act(async () => {
+      source.emit('capture.created', { type: 'capture.created', captureId: 'cap_1' });
+      await Promise.resolve();
+    });
+    expect(getCapture).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      source.emit('capture.updated', { type: 'capture.updated', captureId: 'cap_1' });
+      source.emit('processing.completed', { type: 'processing.completed', captureId: 'cap_1' });
+      await Promise.resolve();
+    });
+    expect(getCapture).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release?.(detail('cap_1'));
+      await Promise.resolve();
+    });
+    await settle(CAPTURE_REFETCH_DEBOUNCE_MS);
+    expect(getCapture).toHaveBeenCalledTimes(2);
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads the roll record after the arrival, never beside it', async () => {
+    /**
+     * `capture.created` used to put `getCapture` and `getRoll` on the wire in
+     * the same tick. Through a tunnel that charges about 2.2 s for a new
+     * connection and serialises them, that pair was the whole 4,439 ms the
+     * guest waited for a tile the origin answered in 10 to 17 ms.
+     */
+    let release: ((capture: CaptureDetail) => void) | undefined;
+    getCapture.mockImplementationOnce(
+      () =>
+        new Promise<CaptureDetail>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const onRollChanged = vi.fn();
+    const source = await mount({ prepend: vi.fn(), onRollChanged });
+
+    await act(async () => {
+      source.emit('capture.created', { type: 'capture.created', captureId: 'cap_1' });
+      await Promise.resolve();
+    });
+    expect(onRollChanged).not.toHaveBeenCalled();
+
+    // Still nothing while the capture holds the connection.
+    await settle(ROLL_REFRESH_DEBOUNCE_MS * 2);
+    expect(onRollChanged).not.toHaveBeenCalled();
+
+    await act(async () => {
+      release?.(detail('cap_1'));
+      await Promise.resolve();
+    });
+    await settle(ROLL_REFRESH_DEBOUNCE_MS);
+    expect(onRollChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('a roll-level event still re-reads the roll immediately', async () => {
+    const onRollChanged = vi.fn();
+    const source = await mount({ onRollChanged });
+
+    act(() => source.emit('roll.closed', { type: 'roll.closed' }));
+    expect(onRollChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a queued refetch for a capture that was deleted', async () => {
+    const source = await mount({ replace: vi.fn(), remove: vi.fn() });
+
+    await act(async () => {
+      source.emit('capture.updated', { type: 'capture.updated', captureId: 'cap_1' });
+      await vi.advanceTimersByTimeAsync(100);
+      source.emit('capture.deleted', { type: 'capture.deleted', captureId: 'cap_1' });
+    });
+    await settle(CAPTURE_REFETCH_DEBOUNCE_MS * 2);
+    expect(getCapture).not.toHaveBeenCalled();
   });
 
   it('drops a removal for a capture this subscriber does not hold', async () => {

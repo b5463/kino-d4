@@ -483,9 +483,28 @@ bucket, and the limiter never *mints* one — handing out browser state is
 registered before `rateLimitsPlugin` in `buildServer`: both parse in an
 `onRequest` hook, and hooks run in registration order.)
 
-Device upload mutations are grouped at 60/minute/token, and `POST /api/device/rolls`
-joins them at 60/minute/token — keyed by credential rather than address, because
-four cameras on one venue uplink share an address but not a token. Anonymous
+**6. Device uploads — 120/minute/token, per route, for a registered camera.**
+Keyed by credential rather than address, because four cameras on one venue uplink
+share an address but not a token, and behind a tunnel a whole site is one address.
+
+The counter is per method and route pattern, so each of the five upload routes
+carries its own 120. One grouped four-camera capture spends 1 on capture create,
+5 on `assets/init`, 5 on part `PUT` and 5 on upload complete (thumb plus four
+frames, one part each — a D4 frame is 92–159 kB against a 5 MiB part size), and 1
+on capture complete. The busiest route is therefore 5 per capture, and the
+sustained ceiling is `max / 5` captures a minute.
+
+At the old 60 that was 12 a minute — one capture every 5.0 s — against a camera
+that shoots about 20 a minute: a run at 3 s pacing took 429s on `assets/init` from
+the 16th capture of 22 onward. At 120 the ceiling is 24 a minute, one every 2.5 s,
+which is faster than the hardware can shoot and leaves 20 % over the 3 s target
+for the firmware's own retries.
+
+The 120 is only for a credential the `devices` table knows. `deviceKey` runs
+before authentication and hashes whatever bearer is presented, so `deviceUploadMax`
+resolves the token first: an unknown, revoked or wrong-scope bearer keeps the old
+**60**, which is all that is needed to bound the cost of the 401 it is about to
+get. `POST /api/device/rolls` stays at 60/minute/token. Anonymous
 `POST /api/host/rolls` is limited to 60/minute/IP as a row/storage abuse surface.
 
 `GET /api/device/rolls/current` also caps its result at 50 rolls: the query was

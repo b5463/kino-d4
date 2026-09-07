@@ -520,3 +520,207 @@ describe('live arrivals are filed by shutter time', () => {
     host.remove();
   });
 });
+
+/**
+ * The event hook and the feed together, which is how a guest sees them: a
+ * photograph's whole burst of events — created, five updates, four
+ * completions — has to end in one card in its final state, and cost the tab
+ * two round trips instead of eleven.
+ */
+describe('a photograph costs the tab two round trips', () => {
+  const at = (minute: number): string => `2026-08-14T20:${String(minute).padStart(2, '0')}:00.000Z`;
+  let host: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  async function settle(ms = 0): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  async function live(
+    api: RollApi,
+    options: { buffer?: boolean; onRollChanged?: () => void } = {},
+  ): Promise<{ current(): RollFeedState }> {
+    const observed: { current: RollFeedState | null } = { current: null };
+    function Harness() {
+      const feed = useRollFeed('party', api);
+      observed.current = feed;
+      useRollEvents(
+        'party',
+        {
+          prepend: options.buffer === true ? feed.buffer : feed.prepend,
+          replace: feed.replace,
+          remove: feed.remove,
+          refetchHead: feed.refetchHead,
+          onRollChanged: options.onRollChanged,
+        },
+        api,
+      );
+      return null;
+    }
+    await act(async () => {
+      root.render(<Harness />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    return {
+      current: () => {
+        if (observed.current === null) throw new Error('feed hook did not render');
+        return observed.current;
+      },
+    };
+  }
+
+  /** The camera's own sequence for one photograph, in the order the API emits it. */
+  function burst(source: FakeEventSource, captureId: string): void {
+    for (let step = 0; step < 5; step += 1) {
+      source.dispatch('capture.updated', { type: 'capture.updated', captureId });
+    }
+    for (let step = 0; step < 4; step += 1) {
+      source.dispatch('processing.completed', { type: 'processing.completed', captureId });
+    }
+  }
+
+  it('ends in the final state, in one card, after two capture fetches and one roll read', async () => {
+    const source = new FakeEventSource();
+    let status = 'processing';
+    const getCapture = vi.fn((_slug: string, id: string) =>
+      Promise.resolve(capture(id, status, at(30))),
+    );
+    const onRollChanged = vi.fn();
+    const api = apiWith({
+      events: vi.fn(() => source as unknown as EventSource),
+      getCapture: getCapture as unknown as RollApi['getCapture'],
+    });
+    const { current } = await live(api, { onRollChanged });
+
+    await act(async () => {
+      source.dispatch('capture.created', { type: 'capture.created', captureId: 'cap_new' });
+      await Promise.resolve();
+    });
+    await settle(0);
+    expect(getCapture).toHaveBeenCalledTimes(1);
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_new']);
+    expect(current().captures[0]?.status).toBe('processing');
+
+    status = 'ready';
+    await act(async () => {
+      burst(source, 'cap_new');
+      await Promise.resolve();
+    });
+    await settle(400);
+
+    // Two GETs for the photograph, one roll read behind them — not eleven.
+    expect(getCapture).toHaveBeenCalledTimes(2);
+    expect(onRollChanged).toHaveBeenCalledTimes(1);
+    // A debounce that swallowed the last event would leave this 'processing'.
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_new']);
+    expect(current().captures[0]?.status).toBe('ready');
+    expect(current().pending).toEqual([]);
+  });
+
+  it('keeps two photographs in shutter order, one card each', async () => {
+    const source = new FakeEventSource();
+    const shutter: Record<string, string> = { cap_older: at(20), cap_newer: at(40) };
+    const getCapture = vi.fn((_slug: string, id: string) =>
+      Promise.resolve(capture(id, 'ready', shutter[id] ?? at(10))),
+    );
+    const api = apiWith({
+      events: vi.fn(() => source as unknown as EventSource),
+      getCapture: getCapture as unknown as RollApi['getCapture'],
+    });
+    const { current } = await live(api);
+
+    // The newer photograph is announced first; the older upload catches up.
+    await act(async () => {
+      source.dispatch('capture.created', { type: 'capture.created', captureId: 'cap_newer' });
+      source.dispatch('capture.created', { type: 'capture.created', captureId: 'cap_older' });
+      burst(source, 'cap_newer');
+      burst(source, 'cap_older');
+      await Promise.resolve();
+    });
+    await settle(400);
+
+    expect(getCapture).toHaveBeenCalledTimes(4);
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_newer', 'cap_older']);
+  });
+
+  it("still holds a scrolled guest's arrival in the pill, once, in its final state", async () => {
+    const source = new FakeEventSource();
+    let status = 'processing';
+    const api = apiWith({
+      events: vi.fn(() => source as unknown as EventSource),
+      listCaptures: vi.fn().mockResolvedValue({ items: [capture('cap_old', 'ready', at(5))], hasMore: false }),
+      getCapture: vi.fn((_slug: string, id: string) =>
+        Promise.resolve(capture(id, status, at(30))),
+      ) as unknown as RollApi['getCapture'],
+    });
+    const { current } = await live(api, { buffer: true });
+
+    await act(async () => {
+      source.dispatch('capture.created', { type: 'capture.created', captureId: 'cap_new' });
+      await Promise.resolve();
+    });
+    await settle(0);
+    status = 'ready';
+    await act(async () => {
+      burst(source, 'cap_new');
+      await Promise.resolve();
+    });
+    await settle(400);
+
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_old']);
+    expect(current().pending.map((item) => item.captureId)).toEqual(['cap_new']);
+    expect(current().pending[0]?.status).toBe('ready');
+
+    act(() => {
+      current().flushPending();
+    });
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_new', 'cap_old']);
+    expect(current().pending).toEqual([]);
+  });
+
+  it('lets the API overrule the coalesced state on a reconnect head refetch', async () => {
+    const source = new FakeEventSource();
+    const api = apiWith({
+      events: vi.fn(() => source as unknown as EventSource),
+      listCaptures: vi
+        .fn()
+        .mockResolvedValueOnce({ items: [], hasMore: false })
+        .mockResolvedValue({ items: [capture('cap_new', 'ready', at(30))], hasMore: false }),
+      getCapture: vi.fn((_slug: string, id: string) =>
+        Promise.resolve(capture(id, 'processing', at(30))),
+      ) as unknown as RollApi['getCapture'],
+    });
+    const { current } = await live(api);
+
+    await act(async () => {
+      source.dispatch('capture.created', { type: 'capture.created', captureId: 'cap_new' });
+      await Promise.resolve();
+    });
+    await settle(0);
+    expect(current().captures[0]?.status).toBe('processing');
+
+    // The stream dropped; the reconnect's head refetch is the authority.
+    act(() => source.dispatch('error'));
+    await settle(1_000);
+    expect(current().captures.map((item) => item.captureId)).toEqual(['cap_new']);
+    expect(current().captures[0]?.status).toBe('ready');
+  });
+});

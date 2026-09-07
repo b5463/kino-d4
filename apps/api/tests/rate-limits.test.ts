@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { buildServer } from '../src/server';
 import { loadConfig } from '../src/config';
 import { newToken } from '../src/auth/tokens';
-import { RATE_LIMITS } from '../src/plugins/rateLimits';
+import { RATE_LIMITS, UNTRUSTED_DEVICE_UPLOAD_MAX } from '../src/plugins/rateLimits';
 import {
   guestMissIndexKey,
   guestMissKey,
@@ -70,19 +70,73 @@ describe('shared production rate limits', () => {
     );
   });
 
-  it('limits device uploads to 60 requests per minute and bearer token', async () => {
-    await exhaust(
-      {
-        method: 'POST',
-        url: '/api/device/rolls/rate-limit-missing/captures',
-        headers: {
-          authorization: `Bearer ${newToken('kdt')}`,
-          'x-forwarded-for': ip(3),
-        },
-        payload: {},
+  /**
+   * The trusted 120 belongs to a camera the `devices` table knows, and this
+   * token belongs to nobody: it has the right `kdt_` shape and nothing behind
+   * it. It keeps the untrusted 60, which is only what bounds the cost of the
+   * 401 it is about to get.
+   */
+  it('gives an unregistered device bearer the untrusted 60, not the trusted 120', async () => {
+    const options: InjectOptions = {
+      method: 'POST',
+      url: '/api/device/rolls/rate-limit-missing/captures',
+      headers: {
+        authorization: `Bearer ${newToken('kdt').token}`,
+        'x-forwarded-for': ip(3),
       },
-      RATE_LIMITS.deviceUpload.max,
-    );
+      payload: {},
+    };
+
+    const first = await app.inject(options);
+    expect(first.headers['x-ratelimit-limit']).toBe(String(UNTRUSTED_DEVICE_UPLOAD_MAX));
+    expect(UNTRUSTED_DEVICE_UPLOAD_MAX).toBeLessThan(RATE_LIMITS.deviceUpload.max);
+
+    // One already spent above.
+    await exhaust(options, UNTRUSTED_DEVICE_UPLOAD_MAX - 1);
+  });
+
+  /**
+   * A real credential for the wrong scope. Refused by `requireDevice` with a
+   * 403, and refused the trusted allowance without the database being asked —
+   * the prefix alone settles it.
+   */
+  it('gives a host-scoped bearer the untrusted 60 on a device upload route', async () => {
+    const options: InjectOptions = {
+      method: 'POST',
+      url: '/api/device/rolls/rate-limit-missing/captures',
+      headers: {
+        authorization: `Bearer ${newToken('hrt').token}`,
+        'x-forwarded-for': ip(11),
+      },
+      payload: {},
+    };
+
+    const first = await app.inject(options);
+    expect(first.statusCode).toBe(403);
+    expect(first.headers['x-ratelimit-limit']).toBe(String(UNTRUSTED_DEVICE_UPLOAD_MAX));
+
+    await exhaust(options, UNTRUSTED_DEVICE_UPLOAD_MAX - 1);
+  });
+
+  /**
+   * The budgets this change did NOT touch. A single number moved — device
+   * uploads — and every other bucket is asserted here rather than trusted to a
+   * reviewer's diff reading, because a guest limit quietly widened while
+   * "fixing uploads" is exactly the regression nobody notices.
+   */
+  it('leaves every other budget where it was', () => {
+    expect(RATE_LIMITS.guestRead.max).toBe(300);
+    expect(RATE_LIMITS.assetContent.max).toBe(3_000);
+    expect(RATE_LIMITS.pinAttempt.max).toBe(60);
+    expect(RATE_LIMITS.registration.max).toBe(10);
+    expect(RATE_LIMITS.deviceJoin.max).toBe(30);
+    expect(RATE_LIMITS.hostCreate.max).toBe(60);
+    expect(RATE_LIMITS.deviceCreate.max).toBe(60);
+    expect(RATE_LIMITS.deviceRead.max).toBe(120);
+    expect(RATE_LIMITS.hostClear.max).toBe(5);
+    for (const limit of Object.values(RATE_LIMITS)) {
+      expect(limit.timeWindow).toBe('1 minute');
+    }
   });
 
   it('limits the device status poll to 120 requests per minute and bearer token', async () => {
@@ -160,6 +214,95 @@ describe('shared production rate limits', () => {
       await app.db.delete(devices).where(eq(devices.id, device.deviceId));
     }
   });
+});
+
+/**
+ * The trusted device upload allowance, on a credential the `devices` table
+ * actually holds.
+ *
+ * Both routes used here answer 404 after `requireDevice` has passed — a capture
+ * id and an upload id that belong to nothing — so the budget is exercised
+ * without writing a row or an object. Each has its own counter
+ * (`RedisStore.child` prefixes the key with method and route URL), which is why
+ * the two tests below can spend a full budget each in the same minute.
+ */
+describe('trusted device upload allowance', () => {
+  const MISSING_CAPTURE = 'cap_rate_trusted_missing';
+  const MISSING_UPLOAD = 'upl_rate_trusted_missing';
+  const serial = `KD4-RATE-TRUSTED-${randomBytes(4).toString('hex')}`;
+  let token = '';
+  let deviceId = '';
+
+  beforeAll(async () => {
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/studio/devices/register',
+      headers: {
+        'x-forwarded-for': ip(12),
+        authorization: `Bearer ${app.config.PROVISIONING_TOKEN}`,
+      },
+      payload: { serial, product: 'KINO D4', hardwareRevision: 'v1' },
+    });
+    expect(registered.statusCode).toBe(200);
+    ({ deviceId, deviceToken: token } = registered.json<{
+      deviceId: string;
+      deviceToken: string;
+    }>());
+  }, 60_000);
+
+  afterAll(async () => {
+    await app.db.delete(devices).where(eq(devices.id, deviceId));
+  }, 60_000);
+
+  it('gives a registered camera 120 asset inits a minute, then 429s', async () => {
+    const options: InjectOptions = {
+      method: 'POST',
+      url: `/api/device/captures/${MISSING_CAPTURE}/assets/init`,
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': ip(12) },
+      payload: {},
+    };
+
+    const first = await app.inject(options);
+    // Authenticated, so the refusal is about the capture and not the credential
+    // — which is what makes this a measurement of the budget and nothing else.
+    expect(first.statusCode).toBe(404);
+    expect(first.headers['x-ratelimit-limit']).toBe(String(RATE_LIMITS.deviceUpload.max));
+
+    // 120 asset inits is 24 four-camera captures a minute (five inits each:
+    // thumb plus four frames), one every 2.5 s. The old 60 was one every 5.0 s.
+    await exhaust(options, RATE_LIMITS.deviceUpload.max - 1);
+  }, 120_000);
+
+  /**
+   * A burst no camera can produce — 200 part PUTs launched at once, against a
+   * shutter that manages about 20 four-camera captures a minute (100 parts).
+   * Exactly the budget gets through and the rest are refused: the ceiling is
+   * still a ceiling, it was only moved.
+   */
+  it('bounds a burst faster than any physical camera', async () => {
+    const attempts = 200;
+    const responses = await Promise.all(
+      Array.from({ length: attempts }, async () =>
+        app.inject({
+          method: 'PUT',
+          url: `/api/device/uploads/${MISSING_UPLOAD}/parts/1`,
+          headers: {
+            authorization: `Bearer ${token}`,
+            'x-forwarded-for': ip(12),
+            'content-type': 'application/octet-stream',
+          },
+          payload: Buffer.from('one part'),
+        }),
+      ),
+    );
+
+    const codes = responses.map((response) => response.statusCode);
+    const refused = codes.filter((code) => code === 429).length;
+    expect(codes.filter((code) => code !== 429)).toHaveLength(RATE_LIMITS.deviceUpload.max);
+    expect(refused).toBe(attempts - RATE_LIMITS.deviceUpload.max);
+    // Redis `INCR` is atomic, so concurrency cannot buy an extra request.
+    expect(new Set(codes.filter((code) => code !== 429))).toEqual(new Set([404]));
+  }, 120_000);
 });
 
 /**

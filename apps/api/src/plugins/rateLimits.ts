@@ -2,12 +2,54 @@ import rateLimit from '@fastify/rate-limit';
 import fp from 'fastify-plugin';
 import type { FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { bearerToken, hashToken } from '../auth/tokens';
+import { eq } from 'drizzle-orm';
+import { bearerToken, hashToken, timingSafeHexEqual, tokenScope } from '../auth/tokens';
 import { guestIdOf } from '../captures/reactions';
 import { normalizeSlug } from '../rolls/slug';
+import { devices } from '../db/schema';
 
 export const RATE_LIMITS = {
-  deviceUpload: { max: 60, timeWindow: '1 minute', groupId: 'device-upload' },
+  /**
+   * What a *registered* camera gets on the five upload routes: 120 requests a
+   * minute per device credential, per route.
+   *
+   * It was 60, and 60 throttled a real camera at a real party. The counter is
+   * per method-and-route-pattern (`RedisStore.child` prefixes the Redis key
+   * with the method and the route URL), so each of the five routes carries its
+   * own budget, and what one grouped four-camera capture spends on each of them
+   * is:
+   *
+   * ```text
+   *   POST /api/device/rolls/:rollId/captures            1   (the capture row)
+   *   POST /api/device/captures/:captureId/assets/init   5   (thumb + 4 frames)
+   *   PUT  /api/device/uploads/:uploadId/parts/:partNo   5   (one part each)
+   *   POST /api/device/uploads/:uploadId/complete        5
+   *   POST /api/device/captures/:captureId/complete      1
+   * ```
+   *
+   * Five assets, not four: `firmware/p4/main/roll_api.c` uploads a THUMB.JPG
+   * before the frames (`RQ_STEP_UPLOAD_THUMB`, then one
+   * `RQ_STEP_UPLOAD_FRAME` per camera). One part each, not more: `PART_SIZE` is
+   * 5 MiB and a bench-measured D4 frame is 92–159 kB with a 7.6 kB thumb
+   * (`firmware/HARDWARE_VALIDATION.md`), so every asset is a single part with
+   * three orders of magnitude to spare.
+   *
+   * So the binding route is whichever of the three per-asset ones is busiest —
+   * all three at 5 — and the sustained ceiling is `max / 5` captures a minute.
+   * At 60 that was 12 a minute, one every 5.0 s. The camera shoots about 20 a
+   * minute, and a run at 3 s pacing took 429s on `assets/init` from the 16th
+   * capture on. At 120 the ceiling is 24 a minute, one every 2.5 s: faster than
+   * the hardware can shoot, and 20 % of headroom over the 3 s target for the
+   * firmware's own retries.
+   *
+   * Not larger, because the ceiling is what stops a leaked device token turning
+   * the upload path into free object storage: `MAX_ASSET_BYTES` is 32 MiB and
+   * this route budget is the only thing bounding how many of those arrive.
+   *
+   * The trusted number is handed out only to a credential the `devices` table
+   * actually knows — see `deviceUploadMax` and `UNTRUSTED_DEVICE_UPLOAD_MAX`.
+   */
+  deviceUpload: { max: 120, timeWindow: '1 minute', groupId: 'device-upload' },
   guestRead: { max: 300, timeWindow: '1 minute', groupId: 'guest-read' },
   /**
    * Media, on its own budget.
@@ -74,9 +116,9 @@ export const RATE_LIMITS = {
    * credential like every other device route. They were the last unmetered
    * device endpoints, and a status poll is exactly what firmware loops on.
    *
-   * A budget of their own rather than `deviceUpload`'s: a capture is a dozen
-   * upload calls, and a status poll sharing that 60 would ration the uploads by
-   * the polling. 120 is one poll every half second. (The counter is per route —
+   * A budget of their own rather than `deviceUpload`'s: a capture is seventeen
+   * upload calls, and a status poll sharing that budget would ration the uploads
+   * by the polling. 120 is one poll every half second. (The counter is per route —
    * `@fastify/rate-limit` keys its Redis store by method and URL — so each of
    * the two reads gets the full 120; `groupId` names the budget, it does not
    * pool it.)
@@ -91,7 +133,17 @@ export const RATE_LIMITS = {
   hostClear: { max: 5, timeWindow: '1 minute', groupId: 'host-clear' },
 } as const;
 
-/** Redis keys never contain a bearer credential, even though the limit is per token. */
+/**
+ * Redis keys never contain a bearer credential, even though the limit is per
+ * token.
+ *
+ * Per credential and not per address on purpose: behind a tunnel or a venue
+ * uplink many clients share one egress address, and four cameras on one uplink
+ * share an address but not a token. It hashes whatever bearer is presented — it
+ * cannot know whether the token is real, because it runs before authentication —
+ * so a route whose allowance is worth stealing decides the *size* of the bucket
+ * separately (`deviceUploadMax`).
+ */
 function deviceKey(request: FastifyRequest): string {
   const token = bearerToken(request.headers.authorization);
   return token === null ? `ip:${request.ip}` : `token:${hashToken(token)}`;
@@ -122,8 +174,54 @@ function guestKey(request: FastifyRequest): string {
   return guestId === null ? `ip:${request.ip}` : `guest:${guestId}`;
 }
 
+/**
+ * What a bearer that is *not* a registered device gets on the upload routes:
+ * the old 60 a minute, unchanged.
+ *
+ * The raised allowance belongs to a valid KINO camera, so it cannot be handed
+ * out before the credential has been checked. `deviceKey` keys on the token
+ * hash, which is the right key — but it hashes whatever bearer is presented,
+ * including a made-up one, so on its own it would give every invented token a
+ * fresh 120. Every request metered here is about to be refused by
+ * `requireDevice` anyway; 60 is only what bounds the cost of refusing it.
+ */
+export const UNTRUSTED_DEVICE_UPLOAD_MAX = 60;
+
+/**
+ * The upload allowance for this request: 120 for a camera the `devices` table
+ * knows, 60 for anything else.
+ *
+ * Decided here rather than after authentication because the limiter runs on
+ * `onRequest`, before the body is parsed — which is the whole point of it on the
+ * part route, where a body is 5 MiB. Moving the limiter to `preHandler` so it
+ * could read `request.device` would mean buffering those 5 MiB for a request
+ * that is about to be refused.
+ *
+ * The cost is one indexed single-row lookup on `devices.token_hash`, the same
+ * one `requireDevice` is about to do; on a table with one row per camera that is
+ * cheaper than the Redis round trip beside it. Tokens whose prefix is not `kdt`
+ * are answered without touching the database at all. The comparison that decides
+ * is the constant-time one, for the same reason it is in `requireDevice`: the
+ * answer here is observable in `x-ratelimit-limit`.
+ */
+async function deviceUploadMax(request: FastifyRequest): Promise<number> {
+  const token = bearerToken(request.headers.authorization);
+  if (token === null || tokenScope(token) !== 'kdt') return UNTRUSTED_DEVICE_UPLOAD_MAX;
+
+  const presented = hashToken(token);
+  const [row] = await request.server.db
+    .select({ tokenHash: devices.tokenHash })
+    .from(devices)
+    .where(eq(devices.tokenHash, presented))
+    .limit(1);
+
+  return row !== undefined && timingSafeHexEqual(row.tokenHash, presented)
+    ? RATE_LIMITS.deviceUpload.max
+    : UNTRUSTED_DEVICE_UPLOAD_MAX;
+}
+
 export const deviceUploadRateLimit = {
-  rateLimit: { ...RATE_LIMITS.deviceUpload, keyGenerator: deviceKey },
+  rateLimit: { ...RATE_LIMITS.deviceUpload, keyGenerator: deviceKey, max: deviceUploadMax },
 };
 
 export const guestReadRateLimit = {
@@ -174,6 +272,22 @@ export const hostClearRateLimit = {
   rateLimit: { ...RATE_LIMITS.hostClear, keyGenerator: deviceKey },
 };
 
+declare module 'fastify' {
+  interface FastifyInstance {
+    /**
+     * The Redis key prefix this instance's counters live under.
+     *
+     * Decorated because a test that wants to expire a window has to address
+     * exactly this server's keys: in `NODE_ENV=test` the namespace carries a
+     * uuid, and a test that deleted by wildcard would reach into a parallel
+     * suite's buckets. The full key is
+     * `<nameSpace><METHOD><route pattern>-<key><groupId>`
+     * (`RedisStore.child` in `@fastify/rate-limit`).
+     */
+    rateLimitNameSpace: string;
+  }
+}
+
 /** Shared Redis-backed limits, disabled globally and opted into by route. */
 export const rateLimitsPlugin = fp(
   async (app) => {
@@ -185,6 +299,7 @@ export const rateLimitsPlugin = fp(
       app.config.NODE_ENV === 'test'
         ? `kino-rate-limit-test-${process.pid}-${randomUUID()}-`
         : 'kino-rate-limit-';
+    app.decorate('rateLimitNameSpace', nameSpace);
     await app.register(rateLimit, {
       global: false,
       redis: app.redis,

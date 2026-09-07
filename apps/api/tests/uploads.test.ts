@@ -3,8 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
-import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { buildServer } from '../src/server';
+import { hashToken } from '../src/auth/tokens';
+import { RATE_LIMITS, UNTRUSTED_DEVICE_UPLOAD_MAX } from '../src/plugins/rateLimits';
 import { loadConfig, type ApiConfig } from '../src/config';
 import {
   assertNotOriginalOverwrite,
@@ -49,7 +51,15 @@ const REQUIRED_TABLES = ['captures', 'assets', 'upload_sessions', 'upload_parts'
 
 const SERIAL_A = `KD4-T18-${RUN}-A`;
 const SERIAL_B = `KD4-T18-${RUN}-B`;
-const SERIALS = [SERIAL_A, SERIAL_B];
+/**
+ * Two more cameras, each with a rate-limit budget nothing else in this file
+ * spends. The upload counters are keyed by token hash, so a device of its own is
+ * what makes "no 429 at three-second pacing" a measurement of the limit rather
+ * than of whatever the tests above happened to use up first.
+ */
+const SERIAL_PACE = `KD4-T18-${RUN}-PACE`;
+const SERIAL_RETRY = `KD4-T18-${RUN}-RETRY`;
+const SERIALS = [SERIAL_A, SERIAL_B, SERIAL_PACE, SERIAL_RETRY];
 
 const createdRollIds: string[] = [];
 
@@ -1617,4 +1627,310 @@ describe('capture status reads the latest processing event per job (Task 22)', (
     // rows, and this one's original is on the server.
     expect(await completeCapture(captureId)).toBe('processing');
   }, 60_000);
+});
+
+/* ---------------------------------------------------- the upload budget -- */
+
+/**
+ * The rate limit as the camera meets it.
+ *
+ * `deviceUpload` was 60 a minute per route, and the counter is per method and
+ * route pattern, so the binding routes are the three the camera calls once per
+ * asset. One grouped four-camera capture is five assets — a thumb and four
+ * frames (`firmware/p4/main/roll_api.c`) — one part each, so those routes see
+ * five requests per capture and the sustained ceiling was 60/5 = 12 captures a
+ * minute, one every 5.0 s. The camera shoots about 20 a minute.
+ *
+ * These two tests are the two halves of that: that a real pace no longer 429s,
+ * and that a 429 costs nothing permanent when one does happen.
+ */
+describe('the device upload budget at camera pace', () => {
+  /** Bench-measured D4 sizes: a 7.6 kB thumb and 92-159 kB frames. */
+  const THUMB_BYTES = 7_600;
+  const FRAME_BYTES = [123_590, 91_731, 106_136, 158_701] as const;
+
+  /** Every response this suite drove, so a single 429 anywhere fails the test. */
+  interface Attempt {
+    what: string;
+    status: number;
+  }
+
+  async function registerAndOpen(
+    serial: string,
+  ): Promise<{ token: string; deviceId: string; rollId: string }> {
+    const credential = await register(serial);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/device/rolls',
+      headers: bearer(credential.deviceToken),
+      payload: { title: `Upload budget ${serial}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const roll = created.json<CreatedRollResponse>();
+    createdRollIds.push(roll.rollId);
+    return { token: credential.deviceToken, deviceId: credential.deviceId, rollId: roll.rollId };
+  }
+
+  /**
+   * One whole grouped capture over the wire, as the camera sends it: create,
+   * thumb, four frames, capture complete. Seventeen requests, and every status
+   * is recorded rather than asserted, so the caller can say what the *pace*
+   * produced instead of failing on the first surprise.
+   */
+  async function shootOneCapture(
+    rollId: string,
+    token: string,
+    deviceId: string,
+    sequence: number,
+    log: Attempt[],
+  ): Promise<string> {
+    const doc = captureDoc({
+      deviceId,
+      capturedAt: new Date(Date.now() + sequence).toISOString(),
+    });
+    const created = await postCapture(rollId, doc, token);
+    log.push({ what: 'capture create', status: created.statusCode });
+    const { captureId } = created.json<{ captureId: string }>();
+
+    const assets: { role: string; frameIndex?: number; mime: string; body: Buffer }[] = [
+      { role: 'thumb', mime: 'image/jpeg', body: randomBytes(THUMB_BYTES) },
+      ...FRAME_BYTES.map((bytes, index) => ({
+        role: 'original-frame',
+        frameIndex: index + 1,
+        mime: 'image/jpeg',
+        body: randomBytes(bytes),
+      })),
+    ];
+
+    for (const asset of assets) {
+      const init = await initAsset(
+        captureId,
+        {
+          role: asset.role,
+          ...(asset.frameIndex === undefined ? {} : { frameIndex: asset.frameIndex }),
+          mime: asset.mime,
+          bytes: asset.body.length,
+          sha256: sha256Hex(asset.body),
+        },
+        token,
+      );
+      log.push({ what: `${asset.role} init`, status: init.statusCode });
+      const { uploadId } = init.json<InitResponse>();
+
+      // One part each, and that is the point: `PART_SIZE` is 5 MiB against a
+      // 159 kB frame, so a real capture is five part PUTs and never more.
+      expect(asset.body.length).toBeLessThanOrEqual(PART_SIZE);
+      const part = await putPart(uploadId, 1, asset.body, token);
+      log.push({ what: `${asset.role} part 1`, status: part.statusCode });
+
+      const done = await completeUpload(uploadId, token);
+      log.push({ what: `${asset.role} complete`, status: done.statusCode });
+    }
+
+    const finished = await app.inject({
+      method: 'POST',
+      url: `/api/device/captures/${captureId}/complete`,
+      headers: bearer(token),
+    });
+    log.push({ what: 'capture complete', status: finished.statusCode });
+    return captureId;
+  }
+
+  /**
+   * Sixteen captures at three-second pacing, which is the run that used to fail.
+   *
+   * Sixteen is chosen against the old ceiling and not for roundness: it puts 80
+   * requests on each of the three per-asset routes inside one 60 s window, so at
+   * 60 the sixteenth capture could not have finished — the reported failure
+   * started at capture 16 of 22 — while at 120 there is room for 24. Pacing is
+   * against a fixed start time rather than a sleep between captures, so upload
+   * work cannot quietly stretch the interval out of the window.
+   */
+  it('takes a capture every three seconds with no 429 at all', async () => {
+    const camera = await registerAndOpen(SERIAL_PACE);
+    const log: Attempt[] = [];
+    const captureIds: string[] = [];
+    const captures = 16;
+    const intervalMs = 3_000;
+    const startedAt = Date.now();
+
+    for (let sequence = 0; sequence < captures; sequence += 1) {
+      const due = startedAt + sequence * intervalMs;
+      const wait = due - Date.now();
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      captureIds.push(
+        await shootOneCapture(camera.rollId, camera.token, camera.deviceId, sequence, log),
+      );
+    }
+
+    expect(log.length / captures).toBe(17);
+
+    const refused = log.filter((attempt) => attempt.status === 429);
+    expect(refused, `429 on ${refused.map((entry) => entry.what).join(', ')}`).toHaveLength(0);
+    // Nothing else went wrong either: 201 for a created capture, 200 for the
+    // rest. A 500 that never 429s would pass a 429 count on its own.
+    expect(log.filter((attempt) => attempt.status >= 300)).toHaveLength(0);
+
+    // Eighty requests on each per-asset route inside the window: over the old
+    // 60, under the new 120.
+    expect(captures * 5).toBeGreaterThan(UNTRUSTED_DEVICE_UPLOAD_MAX);
+    expect(captures * 5).toBeLessThanOrEqual(RATE_LIMITS.deviceUpload.max);
+
+    expect(new Set(captureIds).size).toBe(captures);
+    const rows = await app.db
+      .select({ id: schema.captures.id })
+      .from(schema.captures)
+      .where(eq(schema.captures.rollId, camera.rollId));
+    expect(rows).toHaveLength(captures);
+  }, 300_000);
+
+  /**
+   * What a 429 costs. The firmware treats it as transient and retries the same
+   * capture and the same asset after a backoff, so the property that matters is
+   * that the retry converges on the row that already exists instead of making a
+   * second one.
+   *
+   * The budget is spent here on requests refused for another reason entirely — a
+   * roll id and a capture id that belong to nothing — because the limiter runs on
+   * `onRequest`, before authorisation and before the body is parsed. That is what
+   * lets the test drive a real 429 on the real routes without first creating 120
+   * captures.
+   */
+  it('does not duplicate a capture or an upload when a 429 is retried', async () => {
+    const camera = await registerAndOpen(SERIAL_RETRY);
+    const tokenHash = hashToken(camera.token);
+
+    /** The counter key for one route, addressed exactly and never by wildcard. */
+    const windowKey = (method: string, route: string): string =>
+      `${app.rateLimitNameSpace}${method}${route}-token:${tokenHash}${RATE_LIMITS.deviceUpload.groupId}`;
+
+    const spend = async (options: InjectOptions, refusedWith: number): Promise<void> => {
+      for (let attempt = 0; attempt < RATE_LIMITS.deviceUpload.max; attempt += 1) {
+        const response = await app.inject(options);
+        expect(response.statusCode).toBe(refusedWith);
+      }
+    };
+
+    /* ---- the capture row -------------------------------------------------- */
+
+    const createRoute = '/api/device/rolls/:rollId/captures';
+    await spend(
+      {
+        method: 'POST',
+        url: '/api/device/rolls/roll_does_not_exist/captures',
+        headers: bearer(camera.token),
+        payload: {},
+      },
+      404,
+    );
+
+    // The budget is keyed on the credential, not the address: the counter this
+    // spending landed in is named by the token hash and carries no address.
+    expect(await app.redis.get(windowKey('POST', createRoute))).toBe(
+      String(RATE_LIMITS.deviceUpload.max),
+    );
+
+    const doc = captureDoc({ deviceId: camera.deviceId });
+    const throttled = await postCapture(camera.rollId, doc, camera.token);
+    expect(throttled.statusCode).toBe(429);
+    expect(throttled.headers['retry-after']).toBeDefined();
+
+    // The backoff, without waiting a minute for it: the window is deleted, which
+    // is what its own expiry would have done.
+    await app.redis.del(windowKey('POST', createRoute));
+
+    const retried = await postCapture(camera.rollId, doc, camera.token);
+    expect(retried.statusCode).toBe(201);
+    const { captureId } = retried.json<{ captureId: string }>();
+
+    // And the retry of the retry, because a camera that lost the 201 sends it
+    // again: 200 and the same id, never a second row.
+    const again = await postCapture(camera.rollId, doc, camera.token);
+    expect(again.statusCode).toBe(200);
+    expect(again.json<{ captureId: string }>().captureId).toBe(captureId);
+
+    const captureRows = await app.db
+      .select({ id: schema.captures.id })
+      .from(schema.captures)
+      .where(
+        and(
+          eq(schema.captures.rollId, camera.rollId),
+          eq(schema.captures.captureUuid, doc['captureUuid'] as string),
+        ),
+      );
+    expect(captureRows).toHaveLength(1);
+
+    /* ---- the asset and its upload session --------------------------------- */
+
+    const initRoute = '/api/device/captures/:captureId/assets/init';
+    await spend(
+      {
+        method: 'POST',
+        url: '/api/device/captures/cap_does_not_exist/assets/init',
+        headers: bearer(camera.token),
+        payload: {},
+      },
+      404,
+    );
+
+    const body = randomBytes(FRAME_BYTES[0]);
+    const initPayload = {
+      role: 'original-frame',
+      frameIndex: 1,
+      mime: 'image/jpeg',
+      bytes: body.length,
+      sha256: sha256Hex(body),
+    };
+
+    const initThrottled = await initAsset(captureId, initPayload, camera.token);
+    expect(initThrottled.statusCode).toBe(429);
+
+    await app.redis.del(windowKey('POST', initRoute));
+
+    const init = await initAsset(captureId, initPayload, camera.token);
+    expect(init.statusCode).toBe(200);
+    const opened = init.json<InitResponse>();
+    expect(opened.alreadyComplete).toBe(false);
+
+    // A second init after the 429 — the camera does not know which of its calls
+    // arrived — resumes the same session rather than opening a second one.
+    const resumed = await initAsset(captureId, initPayload, camera.token);
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json<InitResponse>().uploadId).toBe(opened.uploadId);
+
+    expect((await putPart(opened.uploadId, 1, body, camera.token)).statusCode).toBe(200);
+    const finished = await completeUpload(opened.uploadId, camera.token);
+    expect(finished.statusCode).toBe(200);
+    const { assetId } = finished.json<{ assetId: string }>();
+
+    // Once complete, the init the firmware re-sends after a 429 is answered
+    // `alreadyComplete` against the same upload id, and a repeated complete is
+    // still a 200.
+    const replay = await initAsset(captureId, initPayload, camera.token);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json<InitResponse>()).toMatchObject({
+      uploadId: opened.uploadId,
+      alreadyComplete: true,
+    });
+    expect((await completeUpload(opened.uploadId, camera.token)).statusCode).toBe(200);
+
+    const assetRows = await app.db
+      .select({ id: schema.assets.id, objectKey: schema.assets.objectKey })
+      .from(schema.assets)
+      .where(eq(schema.assets.captureId, captureId));
+    expect(assetRows).toHaveLength(1);
+    expect(assetRows[0]?.id).toBe(assetId);
+
+    const sessionRows = await app.db
+      .select({ id: schema.uploadSessions.id })
+      .from(schema.uploadSessions)
+      .where(eq(schema.uploadSessions.assetId, assetId));
+    expect(sessionRows).toHaveLength(1);
+
+    // One object, and it is the bytes that were sent — not a part that landed
+    // twice.
+    const stored = await objectBytes(assetRows[0]?.objectKey ?? '');
+    expect(stored.length).toBe(body.length);
+    expect(sha256Hex(stored)).toBe(initPayload.sha256);
+  }, 300_000);
 });

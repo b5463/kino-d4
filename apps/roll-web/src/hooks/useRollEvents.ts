@@ -15,6 +15,15 @@ const EVENT_TYPES = [
 export const EVENT_RECONNECT_MIN_MS = 1_000;
 export const EVENT_RECONNECT_MAX_MS = 30_000;
 
+/**
+ * How long a capture's refetch waits for the rest of its burst. One photograph
+ * emits nine update events as its four asset roles finish, all inside a few
+ * hundred milliseconds; 300 ms of trailing quiet turns them into one `GET`.
+ */
+export const CAPTURE_REFETCH_DEBOUNCE_MS = 300;
+/** The same trailing quiet for the roll record, which no guest is watching. */
+export const ROLL_REFRESH_DEBOUNCE_MS = 300;
+
 export interface RollEventHandlers {
   /**
    * Which captures this subscriber cares about. Returning false for an id
@@ -104,16 +113,136 @@ export function useRollEvents(
     const wanted = (captureId: string): boolean =>
       handlersRef.current.wants?.(captureId) ?? true;
 
-    const fetchCapture = (captureId: string, mode: 'prepend' | 'replace'): void => {
-      if (!wanted(captureId)) return;
+    /**
+     * Per capture id: the trailing-debounce timer, whether a `GET` for it is on
+     * the wire, whether another event landed while it was, and how the next
+     * answer should be filed.
+     */
+    interface CaptureSlot {
+      timer: ReturnType<typeof setTimeout> | null;
+      open: boolean;
+      again: boolean;
+      mode: 'prepend' | 'replace';
+      /** The capture was hidden or deleted; an answer still in flight is stale. */
+      dropped: boolean;
+    }
+
+    const slots = new Map<string, CaptureSlot>();
+    let rollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const slotFor = (captureId: string): CaptureSlot => {
+      const found = slots.get(captureId);
+      if (found !== undefined) return found;
+      const fresh: CaptureSlot = {
+        timer: null,
+        open: false,
+        again: false,
+        mode: 'replace',
+        dropped: false,
+      };
+      slots.set(captureId, fresh);
+      return fresh;
+    };
+
+    /**
+     * The roll's own record — title, status, photo count — re-read on a trailing
+     * debounce instead of in the same tick as the capture fetch.
+     *
+     * Measured through a tunnel that reaps idle sockets after 5 to 9 s and
+     * charges about 2.2 s per new connection: `capture.created` used to put
+     * `getCapture` and `getRoll` on the wire together, the browser opened two
+     * cold connections and served them one after the other, and the guest waited
+     * 4,439 ms for a tile the origin had answered in 10 to 17 ms. Now the
+     * arrival gets the connection to itself and the roll record follows on it
+     * while it is still warm.
+     */
+    const refreshRollSoon = (): void => {
+      if (rollTimer !== null) clearTimeout(rollTimer);
+      rollTimer = setTimeout(() => {
+        rollTimer = null;
+        if (stopped) return;
+        invoke(handlersRef.current.onRollChanged);
+      }, ROLL_REFRESH_DEBOUNCE_MS);
+    };
+
+    const runFetch = (captureId: string, slot: CaptureSlot): void => {
+      const mode = slot.mode;
+      slot.mode = 'replace';
+      slot.open = true;
       void api
         .getCapture(slug, captureId)
         .then((capture) => {
-          if (stopped) return;
+          if (stopped || slot.dropped) return;
           if (mode === 'prepend') handlersRef.current.prepend?.(capture);
           else handlersRef.current.replace?.(capture);
         })
-        .catch(report);
+        .catch(report)
+        .finally(() => {
+          slot.open = false;
+          if (stopped) return;
+          // An arrival is the one event a guest is waiting on, so the roll
+          // record is re-read only after its picture is in hand.
+          if (mode === 'prepend' && !slot.dropped) refreshRollSoon();
+          if (slot.again) {
+            slot.again = false;
+            // Whatever landed mid-flight is still unanswered: ask once more, so
+            // a debounce can never leave a capture showing a stale state.
+            requestCapture(captureId, slot.mode);
+            return;
+          }
+          if (slot.timer === null && !slot.dropped) slots.delete(captureId);
+        });
+    };
+
+    /**
+     * One `GET` per capture id at a time, and one per burst of updates.
+     *
+     * A single photograph announces itself as `capture.created`, then five
+     * `capture.updated` and four `processing.completed` as its four asset roles
+     * finish. That was eleven round trips per photograph per open tab, ten of
+     * them for the same id. `capture.created` still goes out immediately — that
+     * is the one the guest is waiting for; the rest collapse into one refetch
+     * once the burst stops.
+     */
+    function requestCapture(captureId: string, mode: 'prepend' | 'replace'): void {
+      if (!wanted(captureId)) {
+        // Not this subscriber's capture, but the roll's count still moved.
+        if (mode === 'prepend') refreshRollSoon();
+        return;
+      }
+      const slot = slotFor(captureId);
+      slot.dropped = false;
+      // A created outranks a queued update: an arrival has to be filed into the
+      // list, and `replace` only patches a card that is already there.
+      if (mode === 'prepend') slot.mode = 'prepend';
+
+      if (slot.open) {
+        slot.again = true;
+        return;
+      }
+      if (slot.mode === 'prepend') {
+        if (slot.timer !== null) clearTimeout(slot.timer);
+        slot.timer = null;
+        runFetch(captureId, slot);
+        return;
+      }
+      if (slot.timer !== null) clearTimeout(slot.timer);
+      slot.timer = setTimeout(() => {
+        slot.timer = null;
+        if (stopped) return;
+        runFetch(captureId, slot);
+      }, CAPTURE_REFETCH_DEBOUNCE_MS);
+    }
+
+    /** The capture is gone: cancel its queued refetch and ignore any answer. */
+    const forgetCapture = (captureId: string): void => {
+      const slot = slots.get(captureId);
+      if (slot === undefined) return;
+      if (slot.timer !== null) clearTimeout(slot.timer);
+      slot.timer = null;
+      slot.again = false;
+      slot.dropped = true;
+      slots.delete(captureId);
     };
 
     const closeSource = (): void => {
@@ -154,14 +283,13 @@ export function useRollEvents(
       source.addEventListener('capture.created', (event) => {
         const payload = payloadOf(event);
         if (payload === null) return;
-        fetchCapture(payload.captureId, 'prepend');
-        invoke(handlersRef.current.onRollChanged);
+        requestCapture(payload.captureId, 'prepend');
       });
 
       for (const type of ['capture.updated', 'processing.completed'] as const) {
         source.addEventListener(type, (event) => {
           const payload = payloadOf(event);
-          if (payload !== null) fetchCapture(payload.captureId, 'replace');
+          if (payload !== null) requestCapture(payload.captureId, 'replace');
         });
       }
 
@@ -169,6 +297,7 @@ export function useRollEvents(
         source.addEventListener(type, (event) => {
           const payload = payloadOf(event);
           if (payload === null) return;
+          forgetCapture(payload.captureId);
           if (wanted(payload.captureId)) handlersRef.current.remove?.(payload.captureId);
           invoke(handlersRef.current.onRollChanged);
         });
@@ -216,6 +345,9 @@ export function useRollEvents(
     return () => {
       stopped = true;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      if (rollTimer !== null) clearTimeout(rollTimer);
+      for (const slot of slots.values()) if (slot.timer !== null) clearTimeout(slot.timer);
+      slots.clear();
       closeSource();
       document.removeEventListener('visibilitychange', visibilityChanged);
       window.removeEventListener('pagehide', pageHidden);
