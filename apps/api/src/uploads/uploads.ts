@@ -600,22 +600,136 @@ export function assetObjectKey(
  * Streamed, not buffered — the verification must not become the thing that
  * decides how large an asset may be.
  */
+export interface StoredObjectDigest {
+  sha256: string;
+  bytes: number;
+  /** The first `MAGIC_BYTES` of the object, for `bytesMatchMime`. */
+  head: Buffer;
+}
+
 export async function digestStoredObject(
   s3: S3Client,
   bucket: string,
   key: string,
-): Promise<{ sha256: string; bytes: number }> {
+): Promise<StoredObjectDigest> {
   const got = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   if (got.Body === undefined) throw new Error(`stored object ${key} has no body`);
 
   const hash = createHash('sha256');
   let bytes = 0;
+  // Collected on the way past rather than with a second ranged GET: the object
+  // is already streaming through this loop for the digest, so the type check
+  // costs 16 bytes of memory and no extra round trip to storage.
+  const lead: Buffer[] = [];
+  let leadBytes = 0;
   for await (const chunk of got.Body as Readable) {
     const buffer = chunk as Uint8Array;
     hash.update(buffer);
     bytes += buffer.byteLength;
+    if (leadBytes < MAGIC_BYTES) {
+      const wanted = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength).subarray(
+        0,
+        MAGIC_BYTES - leadBytes,
+      );
+      lead.push(wanted);
+      leadBytes += wanted.byteLength;
+    }
   }
-  return { sha256: hash.digest('hex'), bytes };
+  return { sha256: hash.digest('hex'), bytes, head: Buffer.concat(lead, leadBytes) };
+}
+
+/* ------------------------------------------------------------ magic bytes -- */
+
+/**
+ * How much of an object has to be read to tell what it is. Twelve is the
+ * longest prefix any signature below needs (RIFF....WEBP); sixteen is rounded
+ * up so a future format has room.
+ */
+export const MAGIC_BYTES = 16;
+
+/**
+ * What the stored bytes actually are, or `null` when nothing recognises them.
+ *
+ * A prefix test, not a parser. It answers "do these bytes announce themselves
+ * as something?", which is the same question a browser's own sniffing algorithm
+ * asks — and browser sniffing is the threat here, so matching its shape is the
+ * point rather than a shortcut.
+ *
+ * The markup entries are the ones that matter. `image/jpeg` mislabelled as
+ * `image/webp` is a bug; `<!DOCTYPE html>` mislabelled as `image/webp` is
+ * same-origin script running against the guest's PIN and access cookies, since
+ * this platform serves asset bytes inline from the cookie origin.
+ */
+export function sniffContentType(head: Buffer): string | null {
+  if (startsWith(head, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (startsWith(head, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  if (ascii(head, 0, 6) === 'GIF87a' || ascii(head, 0, 6) === 'GIF89a') return 'image/gif';
+  // RIFF container, WEBP form type. The four bytes between them are the file
+  // length, which is not a constant and is not checked.
+  if (ascii(head, 0, 4) === 'RIFF' && ascii(head, 8, 12) === 'WEBP') return 'image/webp';
+  // ISO base media: the first box is `ftyp` at offset 4. Its brand (isom, mp42,
+  // avc1, ...) is deliberately not pinned — every muxer picks its own.
+  if (ascii(head, 4, 8) === 'ftyp') return 'video/mp4';
+  return sniffMarkup(head);
+}
+
+/**
+ * Anything a browser would be willing to treat as a document or a script.
+ *
+ * Deliberately loose about *which* markup it is — the answer is only ever
+ * compared for inequality against an allow-listed image or video type, so
+ * `text/html` stands in for the whole family. Leading whitespace is skipped
+ * because browsers skip it too.
+ */
+function sniffMarkup(head: Buffer): string | null {
+  const text = head.toString('latin1').replace(/^[\s\u0000]+/, '').toLowerCase();
+  if (text.startsWith('<?xml') || text.startsWith('<!doctype') || text.startsWith('<svg')) {
+    return 'text/html';
+  }
+  if (text.startsWith('<html') || text.startsWith('<head') || text.startsWith('<body')) {
+    return 'text/html';
+  }
+  if (text.startsWith('<script') || text.startsWith('<!--')) return 'text/html';
+  return null;
+}
+
+/**
+ * Whether the stored bytes contradict the type the device declared.
+ *
+ * `mime` is client-declared. It is allow-listed (`MIME_EXTENSIONS`) and the
+ * sha256 is verified, but neither of those says anything about what the bytes
+ * *are* — so anything holding a device token could store an HTML document,
+ * declare it `image/webp`, and have the API serve it inline from the origin
+ * that holds the guest's cookies. `nosniff` is one half of that fix; refusing
+ * to write the object down is the other.
+ *
+ * ## Why a contradiction test rather than a required signature
+ *
+ * The strict form — "the bytes must carry the declared type's magic number" —
+ * refuses more, and it refuses the wrong things: `application/json` has no
+ * magic number at all, and a future allow-listed type whose signature nobody
+ * adds here would be rejected wholesale on a deployment nobody meant to break.
+ * The contradiction form refuses exactly the case that has a consequence: bytes
+ * that announce themselves as one thing while the declaration says another.
+ *
+ * The residual gap, stated rather than hidden: bytes matching no signature at
+ * all are accepted. They are also bytes no browser sniffs into a document —
+ * that is the same list, read from the other end — and `nosniff` on the
+ * delivery route is what holds the line for them.
+ */
+export function contradictsDeclaredMime(mime: string, head: Buffer): string | null {
+  const sniffed = sniffContentType(head);
+  if (sniffed === null || sniffed === mime) return null;
+  return sniffed;
+}
+
+function startsWith(head: Buffer, signature: readonly number[]): boolean {
+  if (head.length < signature.length) return false;
+  return signature.every((byte, index) => head[index] === byte);
+}
+
+function ascii(head: Buffer, start: number, end: number): string {
+  return head.length < end ? '' : head.subarray(start, end).toString('latin1');
 }
 
 /* ------------------------------------------------------- processing jobs -- */

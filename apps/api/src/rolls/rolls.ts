@@ -6,7 +6,7 @@ import type { PublicRollRow } from '../auth/plugins';
 import { newToken } from '../auth/tokens';
 import { hashPin } from '../auth/pins';
 import { newId } from '../ids';
-import { auditEvents, rolls } from '../db/schema';
+import { auditEvents, devices, rollDevices, rolls } from '../db/schema';
 import { isUniqueViolation } from '../db/errors';
 import type { RollCaptureCounts } from '../uploads/uploads';
 import { newSlug } from './slug';
@@ -124,7 +124,8 @@ export type AuditAction =
   | 'roll.cleared'
   | 'capture.hidden'
   | 'capture.unhidden'
-  | 'capture.deleted';
+  | 'capture.deleted'
+  | 'capture.restored';
 
 export interface AuditEntry {
   rollId: string;
@@ -154,6 +155,25 @@ const STATUS_AUDIT: Record<HostRollStatus, AuditAction> = {
 
 export function statusAuditAction(to: HostRollStatus): AuditAction {
   return STATUS_AUDIT[to];
+}
+
+/**
+ * Which roll event a status change owes the guests, or null for none.
+ *
+ * `RollEvent` has exactly two — `roll.opened` and `roll.closed` — because those
+ * are the only two things a guest gallery has to react to: whether more photos
+ * are coming. Archiving is deliberately null: an archived roll is still closed,
+ * the guests were told when it closed, and a second event would make every open
+ * PWA re-fetch a roll whose guest-visible state did not move.
+ */
+const STATUS_EVENT: Record<HostRollStatus, 'roll.opened' | 'roll.closed' | null> = {
+  live: 'roll.opened',
+  closed: 'roll.closed',
+  archived: null,
+};
+
+export function statusRollEvent(to: HostRollStatus): 'roll.opened' | 'roll.closed' | null {
+  return STATUS_EVENT[to];
 }
 
 export function auditRows(entries: readonly AuditEntry[]): (typeof auditEvents.$inferInsert)[] {
@@ -326,6 +346,30 @@ export async function regenerateSlug(
  * or `pinHash` — so `hasPin` is derived from `privacy`, which is the flag the
  * PIN gate itself keys on.
  */
+/**
+ * One camera on the roll, as the dashboard sees it.
+ *
+ * The fields after `serial` are all nullable and all come from the camera's own
+ * heartbeat (`POST /api/device/rolls/:rollId/heartbeat`). A device that joined
+ * and never sent one reports nulls throughout — "never heard from" is a
+ * different fact from "last seen at the epoch with an empty queue", and the
+ * dashboard has to be able to draw the difference.
+ *
+ * `lastSeenAt` is what separates "camera offline" from "nobody is shooting", the
+ * question the host could not answer at all before: a roll with no new captures
+ * looks identical either way.
+ */
+export interface RollCamera {
+  deviceId: string;
+  serial: string;
+  lastSeenAt: Date | null;
+  pending: number | null;
+  uploading: number | null;
+  failed: number | null;
+  serverState: string | null;
+  firmware: string | null;
+}
+
 export interface HostRollView {
   rollId: string;
   slug: string;
@@ -349,6 +393,47 @@ export interface HostRollView {
    * go *down* on its own.
    */
   guests: number;
+  /**
+   * The cameras assigned to this roll, newest heartbeat first, so the one that
+   * spoke most recently is the one the dashboard draws at the top.
+   *
+   * Beside `deviceSerial` rather than replacing it: that field names the camera
+   * that *created* the roll and is part of the view's contract already, while a
+   * roll can have four cameras on it and any of them may be the one that has
+   * gone quiet.
+   */
+  cameras: RollCamera[];
+}
+
+/**
+ * The cameras on a roll and the last thing each one said.
+ *
+ * `roll_devices` is the whole source. A device gets a row there when it joins,
+ * and the heartbeat upserts one for a camera that *created* the roll and
+ * therefore never joined — so a camera appears here from the moment it either
+ * joins or first calls in, and a roll whose camera has never called in reports
+ * an empty list rather than a device with invented numbers.
+ *
+ * `nulls last` on the ordering is what puts the never-heard-from devices at the
+ * bottom: PostgreSQL sorts nulls first under `desc` by default, which would put
+ * the silent cameras above the one that spoke a second ago.
+ */
+export async function readRollCameras(db: KinoDatabase, rollId: string): Promise<RollCamera[]> {
+  return db
+    .select({
+      deviceId: devices.id,
+      serial: devices.serial,
+      lastSeenAt: rollDevices.lastSeenAt,
+      pending: rollDevices.queuePending,
+      uploading: rollDevices.queueUploading,
+      failed: rollDevices.queueFailed,
+      serverState: rollDevices.serverState,
+      firmware: rollDevices.firmwareVersion,
+    })
+    .from(rollDevices)
+    .innerJoin(devices, eq(devices.id, rollDevices.deviceId))
+    .where(eq(rollDevices.rollId, rollId))
+    .orderBy(sql`${rollDevices.lastSeenAt} desc nulls last`, devices.serial);
 }
 
 /**
@@ -364,6 +449,7 @@ export function hostRollView(
   counts: RollCaptureCounts,
   guests: number,
   deviceSerial: string | null,
+  cameras: RollCamera[],
 ): HostRollView {
   return {
     rollId: roll.id,
@@ -382,6 +468,8 @@ export function hostRollView(
     counts,
     // Real since Task 21: `countRollViewers` reads the roll's viewer set.
     guests,
+    // The `roll_devices` rows and their last heartbeat.
+    cameras,
   };
 }
 

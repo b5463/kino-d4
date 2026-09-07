@@ -23,7 +23,13 @@ import {
   submitJob,
   type ProcessingQueue,
 } from '../queue/producer';
-import { finishUpload, openSession, recordPart, upsertAsset } from '../uploads/sessions';
+import {
+  finishUpload,
+  multipartExists,
+  openSession,
+  recordPart,
+  upsertAsset,
+} from '../uploads/sessions';
 import { publishRollEvent, type RollEvent } from '../events/publish';
 import { newId } from '../ids';
 import { assets, captures, devices, rollDevices, rolls, uploadSessions } from '../db/schema';
@@ -554,8 +560,29 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
         existing.sha256Expected === sha256 &&
         asset.objectKey === key
       ) {
-        // Resume: same bytes, same destination, parts already sent still count.
-        return reply.send({ uploadId: existing.id, partSize: PART_SIZE, alreadyComplete: false });
+        /**
+         * Resume: same bytes, same destination, parts already sent still count
+         * — **if** storage still has the multipart. MinIO abandons one nobody
+         * finished after 24 hours (`MINIO_API_STALE_UPLOADS_EXPIRY`), and the
+         * row here has no way to know that. Resuming a swept upload used to
+         * hand the camera an id every later call answered `NoSuchUpload` on;
+         * that surfaced as a 500, which the firmware contract classifies as
+         * transient, so it retried the same dead id forever.
+         *
+         * One `ListParts`, on the retry path only. If the upload is gone this
+         * falls through to `openSession`, which opens a fresh multipart, drops
+         * the stale part rows and reuses the same session row — so the device
+         * gets the *same* `{uploadId, partSize, alreadyComplete: false}` it
+         * asked for and simply re-sends its parts from SD. Nothing in the
+         * device contract changes; the recovery is invisible to it.
+         */
+        if (await multipartExists(app, asset.objectKey, existing.s3UploadId)) {
+          return reply.send({ uploadId: existing.id, partSize: PART_SIZE, alreadyComplete: false });
+        }
+        request.log.info(
+          { uploadId: existing.id, assetId: asset.id },
+          'multipart upload was swept by storage; opening a fresh one',
+        );
       }
 
       const opened = await openSession(app, {
@@ -622,6 +649,16 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const stored = await recordPart(app, session, asset.objectKey, partNo, body);
+      if (stored.status === 'swept') {
+        // Same code and the same instruction as any other non-open session: the
+        // camera re-inits, which transparently opens a fresh multipart above.
+        return fail(
+          reply,
+          409,
+          'UPLOAD_NOT_OPEN',
+          'storage no longer holds this upload; init again',
+        );
+      }
       if (stored.status === 'too-large') {
         // 413, and the same code as an oversized single part: from the device's
         // side both mean "these bytes do not fit what you declared". The numbers
@@ -666,6 +703,27 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
       }
       if (outcome.status === 'no-parts') {
         return fail(reply, 400, 'NO_PARTS', 'send at least one part before completing');
+      }
+      if (outcome.status === 'swept') {
+        // 409, not 500. The device contract treats 5xx as transient and retries
+        // the same upload id, which is precisely the loop this fixes; 409 with
+        // "init again" is the answer it already knows how to act on, and the
+        // re-init opens a fresh multipart without the camera being told.
+        return fail(
+          reply,
+          409,
+          'UPLOAD_NOT_OPEN',
+          'storage no longer holds this upload; init again',
+        );
+      }
+      if (outcome.status === 'content-type-mismatch') {
+        return fail(
+          reply,
+          422,
+          'CONTENT_TYPE_MISMATCH',
+          `the stored bytes look like ${outcome.sniffed}, not the declared ${outcome.declared}; ` +
+            'start again from init with the right type',
+        );
       }
       if (outcome.status === 'checksum-mismatch') {
         return fail(

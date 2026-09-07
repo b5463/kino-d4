@@ -4,6 +4,7 @@ import type { FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { bearerToken, hashToken } from '../auth/tokens';
 import { guestIdOf } from '../captures/reactions';
+import { normalizeSlug } from '../rolls/slug';
 
 export const RATE_LIMITS = {
   deviceUpload: { max: 60, timeWindow: '1 minute', groupId: 'device-upload' },
@@ -24,9 +25,32 @@ export const RATE_LIMITS = {
    * turning the bucket into an egress tap.
    */
   assetContent: { max: 3_000, timeWindow: '1 minute', groupId: 'asset-content' },
-  pinAttempt: { max: 5, timeWindow: '1 minute', groupId: 'pin-attempt' },
+  /**
+   * PIN attempts, keyed by address **and roll** (see `pinAttemptKey` below).
+   *
+   * It was five a minute per address, and behind the relay every guest at a
+   * venue is one address: thirty phones typing the right PIN at the doors is
+   * thirty requests a minute from one key, and twenty-five of them got a 429 on
+   * a PIN they had typed correctly. Meanwhile a distributed attacker still had
+   * five guesses per address per minute against a four-digit PIN, because
+   * nothing counted attempts against the roll.
+   *
+   * So the two halves are now split between two mechanisms. This one is a
+   * *request* limit, sized for a crowd (sixty a minute per address per roll) and
+   * scoped so a venue cannot exhaust its own budget by succeeding. The
+   * brute-force limit is `auth/pinLockout.ts`: ten wrong PINs close that roll's
+   * gate for fifteen minutes no matter where they came from — which is the
+   * control a botnet cannot spread its way around.
+   */
+  pinAttempt: { max: 60, timeWindow: '1 minute', groupId: 'pin-attempt' },
   registration: { max: 10, timeWindow: '1 minute', groupId: 'device-registration' },
-  deviceJoin: { max: 30, timeWindow: '1 minute', groupId: 'device-join-ip' },
+  /**
+   * Roll join, keyed by device token rather than by address (`groupId` renamed
+   * from `device-join-ip` to match). Four cameras on one venue uplink share an
+   * address but not a credential, and this route is behind `requireDevice`, so
+   * there is always a credential to charge it to.
+   */
+  deviceJoin: { max: 30, timeWindow: '1 minute', groupId: 'device-join' },
   hostCreate: { max: 60, timeWindow: '1 minute', groupId: 'host-create' },
   /**
    * Roll creation from a camera — `hostCreate`'s bucket, keyed by credential
@@ -108,9 +132,36 @@ export const guestReadRateLimit = {
 export const assetContentRateLimit = {
   rateLimit: { ...RATE_LIMITS.assetContent, keyGenerator: guestKey },
 };
-export const pinAttemptRateLimit = { rateLimit: RATE_LIMITS.pinAttempt };
+/**
+ * Address plus the roll being unlocked.
+ *
+ * A guest at a venue is metered against the roll they are actually opening, so
+ * the party's own traffic cannot be exhausted by anything else on the same
+ * uplink, and an attacker cycling rolls from one address gets a fresh bucket
+ * per roll — which is fine, because the per-roll lockout in
+ * `auth/pinLockout.ts` is what bounds *that*, and it is indifferent to source.
+ *
+ * The raw `:slug` is normalised so `ABC123` and `abc123` share one bucket
+ * rather than two.
+ */
+function pinAttemptKey(request: FastifyRequest): string {
+  const params: unknown = request.params;
+  const raw =
+    typeof params === 'object' && params !== null
+      ? (params as Record<string, unknown>)['slug']
+      : undefined;
+  const slug = typeof raw === 'string' ? normalizeSlug(raw) : '';
+  return `ip:${request.ip}:slug:${slug}`;
+}
+
+export const pinAttemptRateLimit = {
+  rateLimit: { ...RATE_LIMITS.pinAttempt, keyGenerator: pinAttemptKey },
+};
 export const registrationRateLimit = { rateLimit: RATE_LIMITS.registration };
-export const deviceJoinRateLimit = { rateLimit: RATE_LIMITS.deviceJoin };
+/** Charged to the camera's own token; see `RATE_LIMITS.deviceJoin`. */
+export const deviceJoinRateLimit = {
+  rateLimit: { ...RATE_LIMITS.deviceJoin, keyGenerator: deviceKey },
+};
 export const hostCreateRateLimit = { rateLimit: RATE_LIMITS.hostCreate };
 export const deviceCreateRateLimit = {
   rateLimit: { ...RATE_LIMITS.deviceCreate, keyGenerator: deviceKey },

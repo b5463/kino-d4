@@ -19,7 +19,7 @@ import {
   type RollCaptureRow,
 } from './roll';
 import { evenPixels, WIGGLE_DIRECTION_DEFAULT, WIGGLE_LOOP_DEFAULT } from './wiggle';
-import { resolveFfmpegPath } from './wiggleMp4';
+import { FFMPEG_KILL_SIGNAL, resolveFfmpegPath } from './wiggleMp4';
 import type { JobCtx, JobPayload, WorkerDatabase } from './types';
 
 /**
@@ -80,6 +80,24 @@ export const RECAP_SEGMENT_FRAMES = Math.round(RECAP_SEGMENT_SECONDS * RECAP_FPS
 
 /** x264 CRF 23 — its default, and a recap is a convenience copy, not a master. */
 export const RECAP_CRF = 23;
+
+/**
+ * How long one recap encode may take before it is killed.
+ *
+ * Longer than the wigglegram's two minutes because this one is not CPU-bound:
+ * `filmFrames` fetches and decodes every capture of the roll *while* ffmpeg is
+ * consuming the pipe, so the wall clock is dominated by S3 round trips. Order of
+ * magnitude on the worst roll seen — 1,900 captures, four frames each — is one
+ * GET plus one sharp decode per frame at maybe 20 ms each, which is around 40
+ * minutes of fetching before a single x264 slice is the bottleneck.
+ *
+ * Ninety minutes is that with room, and it is still finite, which is the whole
+ * point: without a timeout a stalled S3 socket or a wedged encoder holds one of
+ * four concurrency slots forever, and BullMQ's lock manager keeps renewing the
+ * lock so nothing ever notices. A recap that hits this limit fails, its row says
+ * `failed`, and the host can press the button again.
+ */
+export const RECAP_TIMEOUT_MS = 90 * 60 * 1000;
 
 /** "Plain type on dark grey, no decoration" (03 §21). */
 export const RECAP_CARD_BACKGROUND = '#2a2a2a';
@@ -405,7 +423,11 @@ export async function generateRecap(payload: JobPayload, ctx: JobCtx): Promise<v
           '+faststart',
           outputPath,
         ],
-        { input: Readable.from(filmFrames(ctx, card, captures, RECAP_WIDTH, height, counter)) },
+        {
+          input: Readable.from(filmFrames(ctx, card, captures, RECAP_WIDTH, height, counter)),
+          timeout: RECAP_TIMEOUT_MS,
+          killSignal: FFMPEG_KILL_SIGNAL,
+        },
       );
 
       if (counter.segments < 2) throw new EmptyRollError(rollId);

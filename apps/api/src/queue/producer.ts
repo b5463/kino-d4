@@ -77,14 +77,39 @@ export function createProcessingQueue(
 }
 
 /**
- * Adds one job. Adding the same `jobKey` again while that job still exists is a
- * no-op inside BullMQ, so this needs no pre-check of its own (03 §19).
+ * Adds one job, clearing whatever is left of the last one under that id.
+ *
+ * ## Why the remove is not optional
+ *
+ * BullMQ's `add()` is a no-op whenever the job hash exists — **in any state**,
+ * not only the live ones. The script checks `EXISTS <prefix><jobId>` and returns
+ * the existing id (bullmq 6.1.2, `scripts/addStandardJob-9.js`,
+ * `handleDuplicatedJob`). Retention keeps a terminally failed job for seven days
+ * (`KEEP_FAILED`) and a completed one for a day (`KEEP_COMPLETED`), so a job that
+ * exhausted its five attempts leaves a receipt in Redis that swallows every
+ * later add of the same key for a week.
+ *
+ * That used to be harmless because a failed job also left its `queued` row in
+ * place, which blocked the enqueue upstream. It stopped being harmless when the
+ * worker started retiring that row: `markJobAbandoned` frees the lock, the next
+ * capture-complete writes a fresh `queued` row — and this `add` silently does
+ * nothing, because the week-old failure is still sitting on the id. The capture
+ * waits in `processing` behind a row whose job was never queued.
+ *
+ * So the receipt goes first, exactly as `resubmitJob` already does it. Nothing
+ * about idempotency is given up: `remove` returns 0 for an **active** job and
+ * leaves it alone (`removeJob`'s script refuses a locked job), in which case the
+ * add is a no-op and the running job keeps its lock — so two concurrent
+ * capture-completes still produce one unit of work, which is the property 03 §19
+ * actually asks for. A job that is merely waiting is removed and immediately
+ * re-added with the same payload, which is the same job.
  */
 export async function submitJob(
   queue: ProcessingQueue,
   name: JobName,
   payload: JobPayload,
 ): Promise<void> {
+  await queue.remove(jobKeyToJobId(payload.jobKey));
   await queue.add(name, payload, jobOptionsFor(payload.jobKey));
 }
 
@@ -93,19 +118,25 @@ export async function submitJob(
  *
  * The idempotency that protects capture-complete works against a re-render:
  * a *completed* job is retained in Redis for a day (`KEEP_COMPLETED`), and a
- * retained job blocks its own `jobId`, so a plain `submitJob` after a playback
- * change would be a silent no-op and the files would keep the old settings.
- * The stale finished job is removed first; `remove` returns 0 for a job that
- * is missing — fine, nothing to clear — or **active**, in which case the add
- * is also a no-op and the running render keeps its lock. That last case can
- * bake the previous settings; the row the handler reads at run time usually
- * saves it, and a second PATCH re-queues cleanly once the job finishes.
+ * retained job blocks its own `jobId`, so a plain add after a playback change
+ * would be a silent no-op and the files would keep the old settings.
+ *
+ * `submitJob` now clears the id itself, for the same reason and by the same
+ * mechanism, so this is a name rather than a second behaviour: a re-render and a
+ * recovery from a retained failure are the same two Redis calls. It is kept as
+ * its own function because the *intent* differs and the call sites read better
+ * for saying which one they mean.
+ *
+ * `remove` returns 0 for a job that is missing — fine, nothing to clear — or
+ * **active**, in which case the add is also a no-op and the running render keeps
+ * its lock. That last case can bake the previous settings; the row the handler
+ * reads at run time usually saves it, and a second PATCH re-queues cleanly once
+ * the job finishes.
  */
 export async function resubmitJob(
   queue: ProcessingQueue,
   name: JobName,
   payload: JobPayload,
 ): Promise<void> {
-  await queue.remove(jobKeyToJobId(payload.jobKey));
   await submitJob(queue, name, payload);
 }

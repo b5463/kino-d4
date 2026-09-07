@@ -1,19 +1,64 @@
 {$KINO_SITE_ADDRESS} {
 	encode zstd gzip
 
+	# Set at the edge AND in the API (apps/api/src/plugins/securityHeaders.ts).
+	# The duplication is deliberate: this covers the SPA, which the API never
+	# serves, and the API covers a direct hit on port 3000 — a bench, a
+	# container reached from inside the Compose network, a debugging
+	# port-forward. A header that lives only in a proxy config is a header that
+	# disappears the moment somebody bypasses the proxy.
+	header {
+		# One year, subdomains included, no preload. Preload is a one-way door
+		# committing the name to browsers' built-in lists; the first deployment
+		# is a PC behind a relay and must stay reversible.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# The important one. /api/assets/:id/content serves stored bytes inline
+		# from the same origin as the guest's PIN and access cookies, with a
+		# content type the uploading camera declared. Without this a browser
+		# that disagrees with the declaration sniffs the body and may run it as
+		# a document.
+		X-Content-Type-Options nosniff
+		# A guest URL is /r/<slug> and the slug IS the access control for an
+		# unlisted roll (03 §9). It must not leave in a Referer.
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		# Caddy's own advertisement is not information a client needs.
+		-Server
+	}
+
 	@privatePages path /r/* /host /host/*
 	header @privatePages X-Robots-Tag "noindex, nofollow, noarchive"
 
 	handle /api/* {
+		# No CSP here: the API sets its own, and it is far stricter than the
+		# SPA's (default-src 'none' — nothing this process returns is a
+		# document). A site-level `header` directive would replace it.
 		reverse_proxy api:3000 {
 			flush_interval -1
 		}
 	}
 
 	handle {
+		# The SPA's policy. Everything it loads is same-origin: the Vite bundle,
+		# the @fontsource woff2 files, the icons, the manifest, the workbox
+		# service worker, the API and its SSE stream.
+		#
+		# script-src 'self' with no 'unsafe-inline' is the line that matters,
+		# and it holds because vite-plugin-pwa runs with injectRegister:false —
+		# there is no inline registration snippet in the built index.html.
+		#
+		# style-src carries 'unsafe-inline' and that is a real, named
+		# concession: React `style={{...}}` props and the design system's
+		# runtime styles are inline styles, a static build has no server to mint
+		# a nonce, and hashing every one of them would break on the next commit.
+		# It buys an attacker style injection, not script execution.
+		#
+		# img-src data: is the QR code (qrcode renders to a data URL); blob: is
+		# a saved render. object-src 'none' and base-uri 'self' close the two
+		# classic ways around script-src.
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 		reverse_proxy web:8080
 	}
 
 	log
 }
-

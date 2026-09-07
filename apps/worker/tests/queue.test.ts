@@ -265,8 +265,13 @@ describe('independence: one failure touches nothing else (07 §26)', () => {
     await queue.enqueue('ai-enhance', { captureId, jobKey: `${captureId}:ai-enhance` });
     queue.start(runtime.ctx);
 
+    // `abandoned`, not `failed`, for the reason the sibling test above spells
+    // out: the terminal path writes `failed` and *then* `abandoned`, so waiting
+    // on the first of the two lets the assertion run one row early. It passed
+    // for as long as the two writes landed inside one poll interval, which is a
+    // property of the machine and not of the code.
     await waitFor('the unhandled job to be recorded', async () =>
-      statusesOf(await eventsFor(captureId), 'ai-enhance').includes('failed'),
+      statusesOf(await eventsFor(captureId), 'ai-enhance').includes('abandoned'),
     );
     // No `running` row: the name was rejected before a handler could be looked
     // up. `abandoned` follows because a job with no handler has nothing to retry

@@ -1,9 +1,13 @@
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne } from 'drizzle-orm';
 import { TRASH_GRACE_DAYS, TRASH_GRACE_MS } from '@kino/schemas';
 import type { KinoDatabase } from '../plugins/db';
 import type { HostCapture } from '../auth/plugins';
 import { auditRows } from '../rolls/rolls';
-import { auditEvents, captures } from '../db/schema';
+import { convergeCaptureStatus, type ConvergeFailureLog } from '../uploads/uploads';
+// Type-only, and it has to stay that way: `feed.ts` imports `purgeAfter` from
+// here at runtime, so a value import in this direction would close the cycle.
+import type { HostCaptureView } from './feed';
+import { assets, auditEvents, captures } from '../db/schema';
 
 /**
  * The two moderation verbs of 03 §11, and the difference between them.
@@ -15,6 +19,13 @@ import { auditEvents, captures } from '../db/schema';
  *            objects survive `TRASH_GRACE_DAYS` so a host who deleted the wrong
  *            photo at a party can get it back the next morning. Task 25's purge
  *            job is what finally removes the bytes.
+ *   restore — `deleted_at = NULL`. What makes the grace period mean anything:
+ *            without it the trash is a countdown with no way out, and "get it
+ *            back the next morning" was not actually a thing the API offered.
+ *
+ * `visible` and `deleted_at` are separate columns and every verb here touches
+ * exactly one of them. That is what lets a restore return a capture as the host
+ * had it rather than as the delete found it.
  *
  * Both live here rather than in the route file because "what a guest may see" has
  * exactly one definition (`guestVisible` in `feed.ts` reads the same two columns)
@@ -52,6 +63,94 @@ export function moderationView(capture: HostCapture): ModerationView {
     visible: capture.visible,
     deletedAt: capture.deletedAt,
     purgeAfter: capture.deletedAt === null ? null : purgeAfter(capture.deletedAt),
+  };
+}
+
+/**
+ * One capture, in the same shape `GET /api/host/rolls/:rollId/captures` gives
+ * each row.
+ *
+ * It exists because the dashboard had no way to read one capture. Patching a
+ * single photo's playback meant re-walking the host list until the id turned up
+ * — 36 pages on a 1,800-capture roll to refresh one tile — and every one of
+ * those pages cost a keyset query, a convergence pass and an asset join over
+ * fifty captures the caller had already thrown away.
+ *
+ * The shape is `HostCaptureView` verbatim, so a client can drop the answer
+ * straight back into the list it came from. What it does *not* share with the
+ * list is the paging machinery: there is no cursor, no `limit + 1`, no ordering
+ * — one id, one row — so the two readers agree on the item and have nothing else
+ * to keep in step. The pieces that do carry rules are borrowed rather than
+ * restated: `convergeCaptureStatus` settles the status the same way the feed's
+ * pass does, and `purgeAfter` above is the one definition of the grace period.
+ *
+ * `rollId` is part of the WHERE rather than checked afterwards, for the same
+ * reason `readCaptureDetail` puts it there: a capture id from another roll must
+ * be indistinguishable from one that does not exist. The host preHandler already
+ * derives the roll from the capture, so this cannot fail in practice — which is
+ * exactly when a guard is worth keeping, because the day the auth layer is
+ * refactored it is the only thing still holding.
+ *
+ * Nothing is filtered out. The host sees hidden and trashed captures and every
+ * asset role including `metadata`; this is the host's own record of the roll,
+ * and the audience filters in `feed.ts` are about guests.
+ */
+export async function readHostCapture(
+  db: KinoDatabase,
+  rollId: string,
+  captureId: string,
+  onConvergeFailure?: ConvergeFailureLog,
+): Promise<HostCaptureView | null> {
+  const [row] = await db
+    .select({
+      id: captures.id,
+      mode: captures.mode,
+      look: captures.look,
+      capturedAt: captures.capturedAt,
+      createdAt: captures.createdAt,
+      frameCount: captures.frameCount,
+      resolution: captures.resolution,
+      status: captures.status,
+      playback: captures.playback,
+      visible: captures.visible,
+      deletedAt: captures.deletedAt,
+    })
+    .from(captures)
+    .where(and(eq(captures.id, captureId), eq(captures.rollId, rollId)))
+    .limit(1);
+  if (row === undefined) return null;
+
+  const status = await convergeCaptureStatus(db, row.id, row.status, onConvergeFailure);
+
+  // Only `ready` assets are named, the same rule the feed applies: a pending row
+  // is a key with no bytes at it, so its id would only ever 409.
+  const assetRows = await db
+    .select({
+      assetId: assets.id,
+      role: assets.role,
+      frameIndex: assets.frameIndex,
+      width: assets.width,
+      height: assets.height,
+    })
+    .from(assets)
+    .where(and(eq(assets.captureId, row.id), eq(assets.status, 'ready')))
+    // Deterministic order, so a client diffing two responses sees no churn.
+    .orderBy(assets.role, assets.frameIndex);
+
+  return {
+    captureId: row.id,
+    mode: row.mode,
+    look: row.look,
+    capturedAt: row.capturedAt,
+    createdAt: row.createdAt,
+    frameCount: row.frameCount,
+    resolution: row.resolution,
+    status,
+    playback: row.playback ?? null,
+    assets: assetRows,
+    visible: row.visible,
+    deletedAt: row.deletedAt,
+    purgeAfter: row.deletedAt === null ? null : purgeAfter(row.deletedAt),
   };
 }
 
@@ -190,6 +289,58 @@ export async function trashCapture(
           rollId: capture.rollId,
           actor: 'host',
           action: 'capture.deleted',
+          target: capture.id,
+        },
+      ]),
+    );
+    return row;
+  });
+
+  if (updated === null) return { capture: await currentState(db, capture), changed: false };
+  return { capture: updated, changed: true };
+}
+
+/**
+ * Takes a capture back out of the trash — the other half of `trashCapture`.
+ *
+ * `visible` is deliberately left alone here too, and that is the whole reason
+ * the two flags were kept separate in the first place: a capture that was hidden
+ * before it was deleted comes back hidden, which is how the host left it. A
+ * restore that also unhid would publish a photo the host had already taken down.
+ *
+ * `isNotNull(deleted_at)` in the WHERE is the same concurrency guard the delete
+ * uses, in the same direction: two restores of one capture write one audit row
+ * and announce once, because PostgreSQL's row lock decides which one found a row
+ * to update rather than a comparison made a round trip earlier.
+ *
+ * Nothing here brings bytes back. It does not have to: the purge job destroys
+ * objects only after `TRASH_GRACE_DAYS`, so every capture this can reach still
+ * has its assets in storage exactly where they were.
+ */
+export async function restoreCapture(
+  db: KinoDatabase,
+  capture: HostCapture,
+): Promise<ModerationResult> {
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(captures)
+      .set({ deletedAt: null })
+      .where(
+        and(
+          eq(captures.id, capture.id),
+          eq(captures.rollId, capture.rollId),
+          isNotNull(captures.deletedAt),
+        ),
+      )
+      .returning(moderationColumns);
+    if (row === undefined) return null;
+
+    await tx.insert(auditEvents).values(
+      auditRows([
+        {
+          rollId: capture.rollId,
+          actor: 'host',
+          action: 'capture.restored',
           target: capture.id,
         },
       ]),

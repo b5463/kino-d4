@@ -66,6 +66,21 @@ export async function appendProcessingEvent(
   });
 }
 
+/**
+ * A `processing_events.error` is a breadcrumb, not a log sink.
+ *
+ * Here rather than in `queue.ts` because it is a fact about this column: two
+ * callers now write an error into it — the processor's own failure path and the
+ * queue's stalled-job recorder — and both have to agree on the ceiling.
+ */
+export const MAX_ERROR_CHARS = 500;
+
+/** An error as one short line, safe to put in `processing_events.error`. */
+export function truncateError(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.length > MAX_ERROR_CHARS ? `${text.slice(0, MAX_ERROR_CHARS - 1)}…` : text;
+}
+
 /** PostgreSQL's SQLSTATE for a foreign-key violation. */
 const FOREIGN_KEY_VIOLATION = '23503';
 

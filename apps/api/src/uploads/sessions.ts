@@ -4,6 +4,7 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
+  ListPartsCommand,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import type { FastifyInstance } from 'fastify';
@@ -12,7 +13,7 @@ import { newId } from '../ids';
 import { assets, uploadParts, uploadSessions } from '../db/schema';
 import { isUniqueViolation } from '../db/errors';
 import { assertNotOriginalOverwrite } from './objectKeys';
-import { digestStoredObject } from './uploads';
+import { contradictsDeclaredMime, digestStoredObject } from './uploads';
 
 /** Backs `upload_sessions.idempotency_key`; see `drizzle/0001_init.sql`. */
 const SESSION_KEY_CONSTRAINT = 'upload_sessions_idempotency_key_unique';
@@ -210,12 +211,92 @@ async function abortQuietly(
   }
 }
 
+/* ------------------------------------------------- the 24-hour sweep -- */
+
+/**
+ * MinIO abandons a multipart upload nobody finished after 24 hours
+ * (`MINIO_API_STALE_UPLOADS_EXPIRY`, pinned in `infra/docker-compose.prod.yml`).
+ * The row in `upload_sessions` knows nothing about that, so a camera that lost
+ * power on Friday and came back on Sunday resumes a session the API still calls
+ * `open` against an upload id storage has never heard of.
+ *
+ * Every S3 call that names the upload id then answers `NoSuchUpload`, which the
+ * route turned into a 500 — and the device contract classifies 5xx as
+ * "transient, back off and resume", so the camera repeated the same dead upload
+ * id forever. That loop is the bug; this predicate is how it is recognised.
+ *
+ * `NoSuchKey` is matched alongside it because the SDK reports the same
+ * condition under that code on some paths (a completed-and-deleted object, a
+ * bucket that lost the part manifest), and both mean the same thing to us:
+ * whatever storage was holding for this session is gone.
+ */
+export function isMissingUpload(err: unknown): boolean {
+  let cursor: unknown = err;
+  for (let depth = 0; depth < 4 && typeof cursor === 'object' && cursor !== null; depth += 1) {
+    const candidate = cursor as { name?: unknown; Code?: unknown; cause?: unknown };
+    const code = typeof candidate.Code === 'string' ? candidate.Code : candidate.name;
+    if (code === 'NoSuchUpload' || code === 'NoSuchKey') return true;
+    cursor = candidate.cause;
+  }
+  return false;
+}
+
+/**
+ * Whether the multipart upload this session points at still exists in storage.
+ *
+ * One `ListParts`, and only on the *resume* branch of init — the branch that is
+ * already a retry, so the round trip is paid by a client that is by definition
+ * not in a hurry. A first init never reaches it.
+ *
+ * Any error that is not `NoSuchUpload` is rethrown: "storage is unreachable"
+ * must not be mistaken for "the upload was swept", or a blip would silently
+ * discard the parts a camera has already sent.
+ */
+export async function multipartExists(
+  app: FastifyInstance,
+  key: string,
+  s3UploadId: string,
+): Promise<boolean> {
+  try {
+    await app.s3.send(
+      new ListPartsCommand({
+        Bucket: app.config.S3_BUCKET,
+        Key: key,
+        UploadId: s3UploadId,
+        MaxParts: 1,
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isMissingUpload(err)) return false;
+    throw err;
+  }
+}
+
+/**
+ * Forgets everything this session recorded about a multipart upload storage no
+ * longer has, so the next `init` opens a fresh one instead of resuming a ghost.
+ *
+ * The part rows go too, not just the status: they carry etags of parts that no
+ * longer exist, and a `CompleteMultipartUpload` built from them would fail for
+ * a second, more confusing reason.
+ */
+export async function forgetSweptUpload(app: FastifyInstance, sessionId: string): Promise<void> {
+  await app.db.delete(uploadParts).where(eq(uploadParts.uploadId, sessionId));
+  await app.db
+    .update(uploadSessions)
+    .set({ status: 'failed', partsReceived: 0 })
+    .where(eq(uploadSessions.id, sessionId));
+}
+
 /* ------------------------------------------------------------------ parts -- */
 
 /** Whether a part was stored, or the reason the bytes were refused. */
 export type PartOutcome =
   | { status: 'recorded' }
-  | { status: 'too-large'; total: number; expected: number };
+  | { status: 'too-large'; total: number; expected: number }
+  /** Storage swept the multipart while the camera was away. Re-init. */
+  | { status: 'swept' };
 
 /**
  * Sends one part to storage and records its etag.
@@ -255,16 +336,26 @@ export async function recordPart(
     return { status: 'too-large', total, expected: session.bytesExpected };
   }
 
-  const uploaded = await app.s3.send(
-    new UploadPartCommand({
-      Bucket: app.config.S3_BUCKET,
-      Key: key,
-      UploadId: session.s3UploadId,
-      PartNumber: partNo,
-      Body: body,
-      ContentLength: body.length,
-    }),
-  );
+  let uploaded;
+  try {
+    uploaded = await app.s3.send(
+      new UploadPartCommand({
+        Bucket: app.config.S3_BUCKET,
+        Key: key,
+        UploadId: session.s3UploadId,
+        PartNumber: partNo,
+        Body: body,
+        ContentLength: body.length,
+      }),
+    );
+  } catch (err) {
+    // The 24-hour sweep can land between two parts of the same transfer, not
+    // only between two sessions. Recognised here so the answer is a 409 the
+    // camera re-inits on, rather than the 500 it would retry forever.
+    if (!isMissingUpload(err)) throw err;
+    await forgetSweptUpload(app, session.id);
+    return { status: 'swept' };
+  }
   if (uploaded.ETag === undefined) {
     throw new Error(`storage did not return an etag for part ${partNo} of ${key}`);
   }
@@ -297,6 +388,8 @@ export type UploadOutcome =
   | { status: 'no-parts' }
   | { status: 'checksum-mismatch' }
   | { status: 'size-mismatch'; stored: number; expected: number }
+  | { status: 'content-type-mismatch'; declared: string; sniffed: string }
+  | { status: 'swept' }
   | { status: 'ready'; sha256: string; bytes: number };
 
 /**
@@ -370,16 +463,30 @@ export async function finishUpload(
       .orderBy(asc(uploadParts.partNo));
     if (parts.length === 0) return { status: 'no-parts' };
 
-    await app.s3.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: app.config.S3_BUCKET,
-        Key: asset.objectKey,
-        UploadId: session.s3UploadId,
-        MultipartUpload: {
-          Parts: parts.map((part) => ({ PartNumber: part.partNo, ETag: part.etag })),
-        },
-      }),
-    );
+    try {
+      await app.s3.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: app.config.S3_BUCKET,
+          Key: asset.objectKey,
+          UploadId: session.s3UploadId,
+          MultipartUpload: {
+            Parts: parts.map((part) => ({ PartNumber: part.partNo, ETag: part.etag })),
+          },
+        }),
+      );
+    } catch (err) {
+      // The last place the sweep can bite: every part was sent, the camera lost
+      // the answer to `complete`, and by the time it asked again storage had
+      // dropped the upload. Fail the session inside this transaction so the
+      // next init opens a fresh multipart instead of resuming a ghost.
+      if (!isMissingUpload(err)) throw err;
+      await tx.delete(uploadParts).where(eq(uploadParts.uploadId, session.id));
+      await tx
+        .update(uploadSessions)
+        .set({ status: 'failed', partsReceived: 0 })
+        .where(eq(uploadSessions.id, session.id));
+      return { status: 'swept' };
+    }
 
     const stored = await digestStoredObject(app.s3, app.config.S3_BUCKET, asset.objectKey);
     if (stored.sha256 !== session.sha256Expected) {
@@ -402,6 +509,29 @@ export async function finishUpload(
     if (stored.bytes !== session.bytesExpected) {
       await refuseStoredObject(app, tx, session.id, asset.objectKey);
       return { status: 'size-mismatch', stored: stored.bytes, expected: session.bytesExpected };
+    }
+
+    /**
+     * The digest proves the bytes are the ones the device meant to send. It
+     * proves nothing about what they *are* — `mime` is a client string, and a
+     * device token that declared `image/webp` over an HTML document would have
+     * had it stored, then served inline from the origin that holds the guest's
+     * cookies.
+     *
+     * Checked on `stored.head`, the first bytes of the object the digest loop
+     * already read, so this adds no round trip to storage. Checked here rather
+     * than at init because init has no bytes yet: the declaration and the
+     * content only meet once the object exists.
+     *
+     * Disposed exactly like a checksum failure — the object was never accepted,
+     * so it is removed and the asset stays `pending`. The device sees a 422,
+     * which its contract classifies as "do not retry the same bytes", and that
+     * is the right answer: re-sending the same file cannot make it a WebP.
+     */
+    const sniffed = contradictsDeclaredMime(asset.mime, stored.head);
+    if (sniffed !== null) {
+      await refuseStoredObject(app, tx, session.id, asset.objectKey);
+      return { status: 'content-type-mismatch', declared: asset.mime, sniffed };
     }
 
     await tx

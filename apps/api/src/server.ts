@@ -8,7 +8,7 @@ import { sql } from 'drizzle-orm';
 import { HeadBucketCommand } from '@aws-sdk/client-s3';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
-import { loadConfig, type ApiConfig } from './config';
+import { isDevEnvironment, loadConfig, type ApiConfig } from './config';
 import { buildLoggerOptions } from './logging';
 import { dbPlugin } from './plugins/db';
 import { redisPlugin } from './plugins/redis';
@@ -18,6 +18,7 @@ import { eventsPlugin } from './plugins/events';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
 import { robotsPlugin } from './rolls/robots';
+import { securityHeadersPlugin } from './plugins/securityHeaders';
 import { studioDeviceRoutes } from './routes/studio-devices';
 import { deviceRollRoutes } from './routes/device-rolls';
 import { deviceCaptureRoutes } from './routes/device-captures';
@@ -102,14 +103,17 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
    * read any roll that operator can, from a deployed API. Nothing in production
    * legitimately calls this API from localhost, so nothing legitimate is lost.
    *
-   * Opt-OUT, not opt-in, and deliberately the opposite polarity to the config
-   * checks: those refuse a published secret unless the environment is *provably*
-   * development, whereas this one keeps a developer's browser working unless the
-   * environment says production. Getting it wrong in either direction is a
-   * broken bench, not an open door — the cookie policy is the thing that must
-   * fail closed, and it does.
+   * Opt-IN, exactly like every check in `config.ts`, and it did not used to be.
+   * The old test was `NODE_ENV !== 'production'`, which fails **open** on the
+   * single most likely deployment mistake — forgetting to set NODE_ENV at all —
+   * and this is a `credentials: true` policy: reflecting an origin tells the
+   * browser it may send the guest's PIN and access cookies there and read the
+   * answer. `isDevEnvironment` is the same predicate the cookie secret and the
+   * provisioning token key on, so an unset, misspelled or unfamiliar NODE_ENV
+   * now refuses localhost here too. A developer whose bench stops reflecting is
+   * a developer who has not set NODE_ENV; `npm run dev -w @kino/api` sets it.
    */
-  const reflectLocalhost = config.NODE_ENV !== 'production';
+  const reflectLocalhost = isDevEnvironment(config.NODE_ENV);
   app.register(cors, {
     origin: (origin, done) => {
       if (!origin) return done(null, true);
@@ -158,6 +162,12 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
    * assumed: `rolls.test.ts` asserts the header on that route specifically.
    */
   app.register(robotsPlugin);
+  /**
+   * Same shape and the same reason as `robotsPlugin`: a plain root-context
+   * `onSend` hook, so it covers every route in this file plus `/api/healthz`
+   * and anything a later task mounts, without each of them remembering.
+   */
+  app.register(securityHeadersPlugin);
   app.register(authPlugin);
   app.register(studioDeviceRoutes);
   app.register(deviceRollRoutes);

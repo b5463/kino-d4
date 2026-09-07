@@ -85,6 +85,13 @@
       "when": 1788707811932,
       "tag": "0012_feed_captured_index",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788721698685,
+      "tag": "0013_roll_device_heartbeat",
+      "breakpoints": true
     }
   ]
 }

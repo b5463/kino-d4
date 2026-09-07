@@ -130,6 +130,30 @@ export const rollDevices = pgTable(
       .notNull()
       .references(() => devices.id),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * The camera's last heartbeat (`POST /api/device/rolls/:rollId/heartbeat`),
+     * and the queue depth it reported with it.
+     *
+     * The dashboard's question is "is the camera offline, or is nobody
+     * shooting?", and before this there was nothing on the roll that could tell
+     * the two apart — a roll with no new captures for ten minutes looks the same
+     * either way. The heartbeat is the camera saying it is still there; the
+     * three counters are what it still owes the server.
+     *
+     * All nullable, and they stay null for a device that has joined a roll and
+     * never sent one. That is the honest reading: "never heard from" is not
+     * "0 pending, last seen at the epoch", and a dashboard has to be able to say
+     * so. Overwritten in place rather than appended to a log — the host needs
+     * the current state of the camera, not its history, and one row per device
+     * per roll cannot grow.
+     */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    queuePending: integer('queue_pending'),
+    queueUploading: integer('queue_uploading'),
+    queueFailed: integer('queue_failed'),
+    /** What the camera thinks of *this* server: unknown|reachable|unreachable. */
+    serverState: text('server_state'),
+    firmwareVersion: text('firmware_version'),
   },
   (t) => [
     primaryKey({ columns: [t.rollId, t.deviceId] }),

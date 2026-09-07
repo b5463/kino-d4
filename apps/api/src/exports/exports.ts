@@ -1,11 +1,11 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { GetObjectCommand, HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { KinoDatabase } from '../plugins/db';
 import { newId } from '../ids';
 import { auditRows } from '../rolls/rolls';
 import { rollDerivedKey } from '../uploads/objectKeys';
-import { auditEvents, exportJobs } from '../db/schema';
+import { assets, auditEvents, captures, exportJobs } from '../db/schema';
 
 /**
  * The host's "download everything" (03 §25), as state rather than as a request.
@@ -26,6 +26,13 @@ export const EXPORT_JOB_NAME = 'export-roll';
 
 /** The statuses that mean "this export has not finished one way or the other". */
 export const EXPORT_LIVE_STATUSES = ['queued', 'running'] as const;
+
+/**
+ * The asset status the ZIP actually contains, mirrored from `writeZip`'s own
+ * WHERE. A `pending` row is a key with no bytes at it, so it is neither zipped
+ * nor estimated.
+ */
+const EXPORTED_ASSET_STATUS = 'ready';
 
 /**
  * 24 hours (03 §25, "expiring links").
@@ -73,6 +80,46 @@ export interface ExportJobRow {
   id: string;
   rollId: string;
   status: string;
+  createdAt: Date;
+  /** Null until the job settles; the download name prefers it when it is set. */
+  finishedAt: Date | null;
+}
+
+/**
+ * `kino-roll-7F3K9Q-2026-09-06.zip` — what the host's browser saves the file as.
+ *
+ * The slug and a date rather than the jobId: a host who exports the same roll
+ * twice in a week ends up with two files in one Downloads folder, and
+ * `exp_9c1f...zip` next to `exp_2b70...zip` says nothing about which party
+ * either one is. The date is the export's own, not today's, so re-downloading a
+ * link from yesterday still names yesterday.
+ *
+ * ISO date, not a locale format: it sorts, and it has no separator that any
+ * filesystem objects to.
+ */
+export function exportDownloadName(slug: string, at: Date): string {
+  return `kino-roll-${slug}-${at.toISOString().slice(0, 10)}.zip`;
+}
+
+/**
+ * The proxied download URL, for deployments where storage is not reachable from
+ * the host's browser.
+ *
+ * `signExportUrl` presigns against `S3_ENDPOINT`, which in production is the
+ * internal Compose hostname `object-storage:9000` with no published port — so
+ * the link it produces resolves nowhere outside the Docker network and Download
+ * ZIP fails on a DNS error. Every other asset path already honours
+ * `OBJECT_DELIVERY` (see `assets.ts` and `firmware.ts`); this is the export's
+ * half of the same switch.
+ *
+ * Absolute, built from `PUBLIC_BASE_URL`, for the same reason the firmware
+ * manifest's download links are: the host may be reading this response from a
+ * different origin than the API's, and a relative path would send it to the
+ * wrong one.
+ */
+export function exportContentUrl(publicBaseUrl: string, rollId: string, jobId: string): string {
+  const base = publicBaseUrl.replace(/\/+$/, '');
+  return `${base}/api/host/rolls/${rollId}/export/${jobId}/content`;
 }
 
 /**
@@ -154,7 +201,13 @@ export async function readExportJob(
   jobId: string,
 ): Promise<ExportJobRow | undefined> {
   const [row] = await db
-    .select({ id: exportJobs.id, rollId: exportJobs.rollId, status: exportJobs.status })
+    .select({
+      id: exportJobs.id,
+      rollId: exportJobs.rollId,
+      status: exportJobs.status,
+      createdAt: exportJobs.createdAt,
+      finishedAt: exportJobs.finishedAt,
+    })
     .from(exportJobs)
     .where(and(eq(exportJobs.id, jobId), eq(exportJobs.rollId, rollId)))
     .limit(1);
@@ -182,6 +235,60 @@ export async function exportObjectExists(
     // would change nothing about the answer this function gives.
     return false;
   }
+}
+
+/** What the ZIP would weigh, before anybody presses the button. */
+export interface ExportEstimate {
+  files: number;
+  bytes: number;
+}
+
+/**
+ * How big this roll's export would be.
+ *
+ * The host was asked to start a job whose size was invisible until it finished:
+ * a 300-capture party is four gigabytes, and nothing on the dashboard said so
+ * before the download began. This is the number that lets the UI say "≈17 GB,
+ * 9,400 files" first.
+ *
+ * The predicate is the export worker's, restated in one aggregate rather than
+ * re-derived: `loadRollCaptures(rollId, {includeHidden: true})` takes every
+ * capture whose `deleted_at` is null — hidden included, because the ZIP is the
+ * host's own copy of the roll — and `writeZip` adds every `ready` asset of each.
+ * Anything else here would produce a figure that does not describe the file the
+ * host actually gets.
+ *
+ * One aggregate, no rows loaded. The whole point of an estimate is that it is
+ * cheaper than the thing it estimates, and a roll with 9,400 assets would
+ * otherwise cost 9,400 rows across the wire to add up numbers PostgreSQL is
+ * holding already. `bytes` is nullable on the row — the column is filled at
+ * upload completion — so a null sums to nothing rather than to NaN, and the
+ * count still names the file.
+ */
+export async function estimateRollExport(
+  db: KinoDatabase,
+  rollId: string,
+): Promise<ExportEstimate> {
+  const [row] = await db
+    .select({
+      files: sql<string>`count(*)`,
+      bytes: sql<string>`coalesce(sum(${assets.bytes}), 0)`,
+    })
+    .from(assets)
+    .innerJoin(captures, eq(captures.id, assets.captureId))
+    .where(
+      and(
+        eq(captures.rollId, rollId),
+        isNull(captures.deletedAt),
+        eq(assets.status, EXPORTED_ASSET_STATUS),
+      ),
+    );
+
+  // `count` and `sum` come back as strings from node-postgres: bigint does not
+  // fit a JS number in general, and the driver refuses to guess. A roll's byte
+  // total does fit (Number.MAX_SAFE_INTEGER is 9 PB), so the conversion is safe
+  // here and would not be for an arbitrary bigint column.
+  return { files: Number(row?.files ?? 0), bytes: Number(row?.bytes ?? 0) };
 }
 
 /** A 24 h GET link to a ZIP that has already been confirmed present. */

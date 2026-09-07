@@ -5,6 +5,7 @@ import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId, 
 import { publishDerived } from './derive';
 import { WIGGLE_WEBP_QUALITY, WIGGLE_WIDTH, evenPixels, wiggleFpsFor } from './wiggle';
 import { SHARP_INPUT } from '../images/decode';
+import { log } from '../log';
 import { localSharpProvider } from '../ai/localSharp';
 import { AiPlanError, resolvePlan } from '../ai/presets';
 import { loadAiConfig, resolveAiDecision } from '../ai/provider';
@@ -231,5 +232,5 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
  */
 export const aiEnhanceHandler: JobHandler = async (payload, ctx) => {
   const result = await aiEnhance(payload, ctx);
-  console.log(`[worker] ai-enhance ${payload.jobKey}: ${result.skipped}`);
+  log.info('ai-enhance finished', { jobKey: payload.jobKey, skipped: result.skipped });
 };

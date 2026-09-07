@@ -107,7 +107,7 @@ describe('the queued-row reconcile sweeper (audit API-14)', () => {
     await insertEvent(captureId, 'generate-thumbnail', 'queued', THREE_MINUTES);
 
     const first = await sweepQueuedRows(runtime.ctx.db, queue, { captureIds: [captureId] });
-    expect(first).toEqual({ scanned: 1, resubmitted: 1, present: 0, unknown: 0 });
+    expect(first).toEqual({ scanned: 1, resubmitted: 1, present: 0, unknown: 0, retained: 0 });
 
     // Under the id the API would have used, carrying the payload a handler expects.
     const jobKey = `${captureId}:generate-thumbnail`;
@@ -118,7 +118,7 @@ describe('the queued-row reconcile sweeper (audit API-14)', () => {
 
     // Idempotent: the second pass sees the job and adds nothing.
     const second = await sweepQueuedRows(runtime.ctx.db, queue, { captureIds: [captureId] });
-    expect(second).toEqual({ scanned: 1, resubmitted: 0, present: 1, unknown: 0 });
+    expect(second).toEqual({ scanned: 1, resubmitted: 0, present: 1, unknown: 0, retained: 0 });
     expect(await queue.queue.getWaitingCount()).toBe(1);
 
     // And it wrote nothing: the row it found is the only row there is.
@@ -162,7 +162,7 @@ describe('the queued-row reconcile sweeper (audit API-14)', () => {
     await insertEvent(captureId, 'render-hologram', 'queued', THREE_MINUTES);
 
     const report = await sweepQueuedRows(runtime.ctx.db, queue, { captureIds: [captureId] });
-    expect(report).toEqual({ scanned: 1, resubmitted: 0, present: 0, unknown: 1 });
+    expect(report).toEqual({ scanned: 1, resubmitted: 0, present: 0, unknown: 1, retained: 0 });
     expect(await queue.queue.getWaitingCount()).toBe(0);
   });
 

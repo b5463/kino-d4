@@ -4,6 +4,11 @@ set -Eeuo pipefail
 COMPOSE_FILE="${COMPOSE_FILE:-infra/docker-compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-infra/.env.production}"
 BACKUP_ROOT="${BACKUP_ROOT:-}"
+# Retention, in snapshots kept. Overridable so the Windows scheduled task
+# (infra/backup-task.ps1) carries one number the operator chose rather than
+# two hard-coded here. Fourteen days plus eight weeks stays the default drill.
+KEEP_DAILY="${KEEP_DAILY:-14}"
+KEEP_WEEKLY="${KEEP_WEEKLY:-8}"
 
 die() { printf 'backup: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die 'docker is required'
@@ -76,6 +81,8 @@ prune_after() {
   done
 }
 
-prune_after "$BACKUP_ROOT/daily" 14
-prune_after "$BACKUP_ROOT/weekly" 8
+[[ "$KEEP_DAILY" =~ ^[0-9]+$ && "$KEEP_DAILY" -ge 1 ]] || die 'KEEP_DAILY must be a positive integer'
+[[ "$KEEP_WEEKLY" =~ ^[0-9]+$ && "$KEEP_WEEKLY" -ge 1 ]] || die 'KEEP_WEEKLY must be a positive integer'
+prune_after "$BACKUP_ROOT/daily" "$KEEP_DAILY"
+prune_after "$BACKUP_ROOT/weekly" "$KEEP_WEEKLY"
 printf 'backup complete: %s\n' "$destination"

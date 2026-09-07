@@ -11,6 +11,7 @@ import { Redis } from 'ioredis';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import type { WorkerConfig } from './config';
+import { errorFields, log } from './log';
 import * as schema from './db/schema';
 import { derivedCaptureKey, guardOriginalWrites, rollDerivedKey } from './storage/derived';
 import type { DerivedBody, JobCtx } from './jobs/types';
@@ -66,13 +67,14 @@ export function createJobRuntime(config: WorkerConfig): JobRuntime {
   // ioredis emits 'error' on an unhandled socket failure; without a listener
   // that becomes an uncaught exception and kills the process.
   redis.on('error', (err: Error) => {
-    console.error('[worker] redis client error', err);
+    log.error('redis client error', errorFields(err, log.level === 'debug'));
   });
 
   const ctx: JobCtx = {
     db,
     s3,
     redis,
+    bucket: config.S3_BUCKET,
 
     async getObject(key: string): Promise<Readable> {
       const got = await s3.send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));

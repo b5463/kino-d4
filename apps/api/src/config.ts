@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { z } from 'zod';
 
 /**
@@ -34,6 +35,81 @@ export const DEV_PROVISIONING_TOKEN = 'kino-dev-provisioning-token-do-not-use-in
  */
 const DEV_ENVIRONMENTS = new Set(['development', 'test']);
 
+/**
+ * "Is this provably a development environment?" — the one question the cookie
+ * secret, the provisioning token, the registration mode **and** the CORS policy
+ * all key on.
+ *
+ * Exported because `server.ts` needs the same answer. It used to ask the
+ * opposite question (`NODE_ENV !== 'production'`) and therefore reflected
+ * localhost origins on a `credentials: true` policy whenever a deployment
+ * forgot to set NODE_ENV at all — the exact mistake every check in this file
+ * exists to survive.
+ */
+export function isDevEnvironment(nodeEnv: string | undefined): boolean {
+  return nodeEnv !== undefined && DEV_ENVIRONMENTS.has(nodeEnv);
+}
+
+/**
+ * What Fastify's `trustProxy` is allowed to be, and why it is no longer a
+ * boolean.
+ *
+ * `true` trusts **every** hop, which means whatever a client puts in
+ * `X-Forwarded-For` becomes `request.ip`: every per-address rate limit, the
+ * guest slug-miss lock and the audit log then key on a value the attacker
+ * chose. The variable therefore has to say *which* hop it trusts.
+ *
+ * Accepted spellings:
+ *
+ *   false                  no proxy; the socket address is the client (default)
+ *   <n>                    trust n hops from the server (proxy-addr semantics)
+ *   loopback,uniquelocal   a comma-separated list of presets, addresses or CIDRs
+ *
+ * Production behind Caddy wants the **list** form, not a count. The relay path
+ * is client → VPS Caddy → frp → PC Caddy → api, so the number of internal hops
+ * that append to `X-Forwarded-For` depends on whether the relay overlay is in
+ * play; a count that is right for one file is wrong for the other. A list of
+ * private ranges is right for both: proxy-addr walks the header right to left,
+ * discards every entry that is inside the Compose/loopback space, and stops at
+ * the first public address — which is the guest. A forged prefix sits to the
+ * *left* of the real one and is never reached.
+ *
+ * `true` is refused rather than silently accepted: a deployment that means "one
+ * proxy" must say `1`, and one behind Caddy must name the private ranges.
+ *
+ * The one honest limit of the list form: it assumes the real client arrives
+ * from a public address. A request from inside the operator's own LAN is itself
+ * "trusted", so the walk continues past it and a forged entry to its left would
+ * be believed. That costs a bench operator a wrong `request.ip` in a rate-limit
+ * key and nothing else — no gate keys on the address — and the hop-count form
+ * is there for a deployment where LAN clients matter.
+ */
+const TRUST_PROXY_PRESETS = new Set(['loopback', 'linklocal', 'uniquelocal']);
+
+export type TrustProxySetting = boolean | number | string[];
+
+function parseTrustProxy(raw: string): TrustProxySetting | null {
+  const value = raw.trim();
+  if (value === 'false') return false;
+  if (/^\d+$/.test(value)) {
+    const hops = Number(value);
+    return hops >= 1 ? hops : null;
+  }
+
+  const entries = value.split(',').map((entry) => entry.trim());
+  if (entries.length === 0 || entries.some((entry) => entry === '')) return null;
+  for (const entry of entries) {
+    if (TRUST_PROXY_PRESETS.has(entry)) continue;
+    // `10.0.0.0/8` and a bare address are both legal proxy-addr entries; only
+    // the address half is checked, because the prefix length is proxy-addr's
+    // to validate and it says so loudly.
+    const address = entry.split('/')[0] ?? '';
+    if (isIP(address) !== 0) continue;
+    return null;
+  }
+  return entries;
+}
+
 export const configSchema = z.object({
   // Host port 5435 -> container 5432; see infra/docker-compose.dev.yml.
   DATABASE_URL: absoluteUrl.default('postgres://kino:kino@localhost:5435/kino'),
@@ -53,12 +129,27 @@ export const configSchema = z.object({
   // MinIO ignores the region but the AWS SDK requires one to sign requests.
   S3_REGION: z.string().min(1).default('us-east-1'),
   PUBLIC_BASE_URL: absoluteUrl.default('https://kino.acronym.sk'),
-  // The API is normally private behind Caddy. Only then may forwarded client
-  // addresses drive per-IP rate limits; direct development defaults closed.
+  /**
+   * The API is normally private behind Caddy. Only then may forwarded client
+   * addresses drive per-IP rate limits; direct development defaults closed.
+   *
+   * See `parseTrustProxy` for the accepted spellings and for why the old
+   * boolean `true` is now refused.
+   */
   TRUST_PROXY: z
-    .enum(['true', 'false'])
+    .string()
     .default('false')
-    .transform((value) => value === 'true'),
+    .superRefine((value, ctx) => {
+      if (parseTrustProxy(value) !== null) return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'must be false, a hop count (1, 2, ...), or a comma-separated list of ' +
+          'addresses, CIDRs or presets (loopback, linklocal, uniquelocal). ' +
+          '`true` trusts every hop and is refused',
+      });
+    })
+    .transform((value) => parseTrustProxy(value) ?? false),
   // Presigned MinIO URLs are convenient in local development. Production
   // keeps MinIO private and streams authorized objects through the API.
   OBJECT_DELIVERY: z.enum(['presigned', 'proxy']).default('presigned'),
@@ -106,8 +197,8 @@ export const configSchema = z.object({
  * accepting it.
  */
 const validatedConfigSchema = configSchema.superRefine((config, ctx) => {
-  const isDevEnvironment = config.NODE_ENV !== undefined && DEV_ENVIRONMENTS.has(config.NODE_ENV);
-  if (!isDevEnvironment && config.COOKIE_SECRET === DEV_COOKIE_SECRET) {
+  const isDev = isDevEnvironment(config.NODE_ENV);
+  if (!isDev && config.COOKIE_SECRET === DEV_COOKIE_SECRET) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['COOKIE_SECRET'],
@@ -117,7 +208,7 @@ const validatedConfigSchema = configSchema.superRefine((config, ctx) => {
   }
   // Same direction of test, same reason: a deployment that forgot NODE_ENV must
   // not be the one that quietly accepts a secret printed in the repository.
-  if (!isDevEnvironment && config.PROVISIONING_TOKEN === DEV_PROVISIONING_TOKEN) {
+  if (!isDev && config.PROVISIONING_TOKEN === DEV_PROVISIONING_TOKEN) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['PROVISIONING_TOKEN'],
@@ -157,7 +248,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   // closed. An explicit variable can still select a recovery mode deliberately.
   if (
     present['DEVICE_REGISTRATION_MODE'] === undefined &&
-    (parsed.data.NODE_ENV === undefined || !DEV_ENVIRONMENTS.has(parsed.data.NODE_ENV))
+    !isDevEnvironment(parsed.data.NODE_ENV)
   ) {
     return { ...parsed.data, DEVICE_REGISTRATION_MODE: 'first-write-wins' };
   }

@@ -1,3 +1,8 @@
 LICENSE text eol=lf
 LICENSES/** text eol=lf
 REUSE.toml text eol=lf
+# Shell scripts run under bash, on the Windows host too: infra/scripts/backup.sh
+# is invoked by the scheduled backup task through Git Bash, and a CRLF checkout
+# makes bash read `set -Eeuo pipefail` as an invalid option and die on line 2
+# with an error that names neither the file nor the cause.
+*.sh text eol=lf

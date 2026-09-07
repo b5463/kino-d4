@@ -1,18 +1,39 @@
-# Caddy behind the Cloudflare Tunnel: plain HTTP on the Compose network, TLS
-# belongs to the edge. Same routes as Caddyfile; only the site address differs.
+# Caddy behind the Cloudflare Tunnel or the frp relay: plain HTTP on the Compose
+# network, TLS belongs to the edge. Same routes and the same headers as
+# Caddyfile; only the site address differs.
+#
+# HSTS is set here even though this listener speaks HTTP, and that is correct:
+# the client's connection terminated in TLS at the relay VPS (or at Cloudflare),
+# so the response the browser actually receives arrived over https and the
+# header applies to that connection. The API's own copy is the one that is
+# conditional on request.protocol, because the API cannot know.
 :80 {
 	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Asset bytes are served inline from the cookie origin; see Caddyfile.
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		-Server
+	}
 
 	@privatePages path /r/* /host /host/*
 	header @privatePages X-Robots-Tag "noindex, nofollow, noarchive"
 
 	handle /api/* {
+		# No CSP here: the API sets its own and it is stricter. See Caddyfile.
 		reverse_proxy api:3000 {
 			flush_interval -1
 		}
 	}
 
 	handle {
+		# Identical to Caddyfile's SPA policy — same bundle, same origin. The
+		# reasoning for each directive lives there; keeping the two byte-for-byte
+		# identical is what makes a diff between these files meaningful.
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 		reverse_proxy web:8080
 	}
 

@@ -10,9 +10,12 @@ import {
   createRoll,
   guestUrlFor,
   hostRollView,
+  readRollCameras,
   regenerateSlug,
   statusAuditAction,
+  statusRollEvent,
   type AuditEntry,
+  type HostRollStatus,
   type HostRollView,
 } from '../rolls/rolls';
 import { rollCaptureCounts } from '../uploads/uploads';
@@ -121,6 +124,8 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
 
       const patch: Partial<typeof rolls.$inferInsert> = {};
       const audit: AuditEntry[] = [];
+      /** The status the roll actually moved to, or null if it did not move. */
+      let movedTo: HostRollStatus | null = null;
       const entry = (action: AuditEntry['action'], target?: string | null): void => {
         audit.push({ rollId: roll.id, actor: 'host', action, target: target ?? null });
       };
@@ -158,6 +163,9 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
         }
         if (status !== roll.status) {
           patch.status = status;
+          // Kept typed, so the event lookup below does not have to widen
+          // `patch.status` back out of `string` and guess what it holds.
+          movedTo = status;
           // `closedAt` is the timestamp of the *current* closure, so reopening
           // clears it rather than leaving a stale one behind. Archiving keeps
           // whatever closing set, because an archived roll is still closed.
@@ -168,6 +176,31 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const updated = await applyPatch(app, roll, patch, audit);
+
+      /**
+       * Closing and reopening are the two roll changes a guest has to hear
+       * about, and until now the PATCH announced neither — `RollEvent` defined
+       * `roll.opened` and `roll.closed`, both clients listened, and nothing ever
+       * published one. A guest watching a roll that closed kept a live gallery
+       * until it reloaded the page.
+       *
+       * Keyed on `movedTo`, not on the request's `status` field: re-sending the
+       * state a roll is already in is a legitimate idempotent PATCH, and it must
+       * not tell every connected guest to re-fetch. Same rule as the audit row
+       * beside it. Failure is logged and the request still succeeds, exactly as
+       * `clear` does below — the row is committed, so the roll is already closed
+       * for anyone who loads it, and refusing the host's own state change
+       * because Redis blinked is the worse trade.
+       */
+      const type = movedTo === null ? null : statusRollEvent(movedTo);
+      if (type !== null) {
+        try {
+          await publishRollEvent(app.redis, roll.id, { type });
+        } catch (err) {
+          app.log.warn({ err, rollId: roll.id, type }, `${type} event was not published`);
+        }
+      }
+
       return dashboard(app, updated);
     },
   );
@@ -218,15 +251,16 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
 };
 
 /**
- * The dashboard payload: the roll, its capture counts and its live guest count.
+ * The dashboard payload: the roll, its capture counts, its live guest count and
+ * the cameras on it.
  *
  * One function for both routes so the GET and the PATCH cannot answer with
  * different shapes — a host UI that re-renders from a PATCH response would
  * otherwise lose whichever number the PATCH forgot.
  *
- * The two reads run concurrently: they hit different servers and neither depends
- * on the other, so serialising them would make every dashboard render cost the
- * sum of two round trips instead of the larger one.
+ * The reads run concurrently: they hit different servers, or at worst different
+ * tables, and none depends on another — serialising them would make every
+ * dashboard render cost the sum of four round trips instead of the largest one.
  *
  * A Redis failure reports **0 guests** rather than failing the dashboard, and
  * that is an honest degradation rather than a convenient one: the viewer set is
@@ -235,7 +269,7 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
  * the outage itself is visible.
  */
 async function dashboard(app: FastifyInstance, roll: PublicRollRow): Promise<HostRollView> {
-  const [counts, guests, deviceSerial] = await Promise.all([
+  const [counts, guests, deviceSerial, cameras] = await Promise.all([
     rollCaptureCounts(app.db, roll.id, convergeWarning(app)),
     countRollViewers(app.redis, roll.id).catch((err: unknown) => {
       app.log.warn({ err, rollId: roll.id }, 'guest count unavailable; reporting zero');
@@ -249,8 +283,9 @@ async function dashboard(app: FastifyInstance, roll: PublicRollRow): Promise<Hos
           .where(eq(devices.id, roll.createdByDeviceId))
           .limit(1)
           .then(([device]) => device?.serial ?? null),
+    readRollCameras(app.db, roll.id),
   ]);
-  return hostRollView(app.config, roll, counts, guests, deviceSerial);
+  return hostRollView(app.config, roll, counts, guests, deviceSerial, cameras);
 }
 
 /**

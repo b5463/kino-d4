@@ -40,6 +40,17 @@ const RUN = randomBytes(4).toString('hex');
 const config: ApiConfig = loadConfig();
 const app: FastifyInstance = buildServer(config);
 
+/**
+ * The same server with production's delivery mode.
+ *
+ * `OBJECT_DELIVERY=proxy` is what a deployment sets when storage is private —
+ * `object-storage:9000` inside the Compose network, with no published port — so
+ * a presigned export link resolves nowhere in the host's browser. Both servers
+ * share one database and one bucket, so a roll created through `app` is the same
+ * roll `proxyApp` serves.
+ */
+const proxyApp: FastifyInstance = buildServer({ ...config, OBJECT_DELIVERY: 'proxy' });
+
 const REQUIRED_TABLES = ['captures', 'assets', 'rolls', 'export_jobs'];
 
 const SERIAL = `KD4-T21-${RUN}`;
@@ -107,6 +118,35 @@ async function insertAsset(rollId: string, captureId: string): Promise<string> {
     sha256: null,
     objectKey: derivedKey(rollId, captureId, 'thumb.webp'),
     status: 'ready',
+  });
+  return id;
+}
+
+/**
+ * An asset row with a size on it, for the export estimate.
+ *
+ * The role is a parameter because `assets_capture_role_frame` is unique with
+ * NULLS NOT DISTINCT: two `thumb` rows on one capture are a constraint
+ * violation, not a second file.
+ */
+async function insertSizedAsset(
+  rollId: string,
+  captureId: string,
+  fixture: { role: string; bytes: number; status?: string },
+): Promise<string> {
+  const id = newId('asset');
+  await app.db.insert(schema.assets).values({
+    id,
+    captureId,
+    role: fixture.role,
+    frameIndex: null,
+    mime: 'image/webp',
+    width: 480,
+    height: 360,
+    bytes: fixture.bytes,
+    sha256: null,
+    objectKey: derivedKey(rollId, captureId, `${fixture.role}.webp`),
+    status: fixture.status ?? 'ready',
   });
   return id;
 }
@@ -203,6 +243,7 @@ async function assertMigrated(): Promise<void> {
 
 beforeAll(async () => {
   await app.ready();
+  await proxyApp.ready();
   await assertMigrated();
 
   const res = await app.inject({
@@ -273,6 +314,7 @@ afterAll(async () => {
     }
   }
 
+  await proxyApp.close();
   await app.close();
 }, 60_000);
 
@@ -1047,4 +1089,399 @@ describe('GET /api/host/rolls/:rollId — the dashboard numbers (03 §10)', () =
 
     void pending;
   });
+});
+
+/* --------------------------------------------------------------- restore -- */
+
+describe('POST /api/host/captures/:captureId/restore (03 §11)', () => {
+  it('brings a trashed capture back and leaves its visible flag exactly as it was', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    await insertAsset(roll.rollId, captureId);
+
+    // Hidden first, then deleted. The two flags are separate precisely so this
+    // capture comes back hidden rather than published to the guest feed.
+    await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${captureId}/hide`,
+      headers: bearer(roll.hostToken),
+    });
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${captureId}/restore`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      captureId,
+      visible: false,
+      deletedAt: null,
+      purgeAfter: null,
+    });
+
+    expect(await captureRow(captureId)).toMatchObject({ visible: false, deletedAt: null });
+    // Out of the trash but still hidden, so the guest feed must not have it.
+    expect(await feedIds(roll.slug)).toEqual([]);
+
+    // Unhiding is what actually publishes it, and the capture is intact.
+    await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${captureId}/unhide`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(await feedIds(roll.slug)).toEqual([captureId]);
+  });
+
+  it('announces capture.updated and writes one audit row naming the capture', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${captureId}/restore`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+
+    expect(await publishedEvents(roll.rollId)).toEqual(['capture.deleted', 'capture.updated']);
+    expect(await auditRowsFor(roll.rollId, 'capture.restored')).toEqual([{ target: captureId }]);
+  });
+
+  it('is a no-op on a capture that is not in the trash, twice over', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+
+    // Never deleted: there is nothing to restore, so nothing may be recorded.
+    const never = await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${captureId}/restore`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(never.statusCode).toBe(200);
+    expect(never.json()).toMatchObject({ captureId, deletedAt: null });
+    expect(await auditActions(roll.rollId)).toEqual([]);
+    expect(await publishedEvents(roll.rollId)).toEqual([]);
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+    for (const _ of [1, 2]) {
+      void _;
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/host/captures/${captureId}/restore`,
+        headers: bearer(roll.hostToken),
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    // One restore happened; the second found nothing to update.
+    expect(await auditActions(roll.rollId)).toEqual(['capture.deleted', 'capture.restored']);
+    expect(await publishedEvents(roll.rollId)).toEqual(['capture.deleted', 'capture.updated']);
+  });
+
+  it('keeps one restore when two race', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+
+    // Both preHandlers read the same trashed snapshot, which is what a client
+    // retrying on a timeout produces. The WHERE clause is what decides.
+    const [a, b] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/host/captures/${captureId}/restore`,
+        headers: bearer(roll.hostToken),
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/host/captures/${captureId}/restore`,
+        headers: bearer(roll.hostToken),
+      }),
+    ]);
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    expect(await auditRowsFor(roll.rollId, 'capture.restored')).toEqual([{ target: captureId }]);
+    expect(await publishedEvents(roll.rollId)).toEqual(['capture.deleted', 'capture.updated']);
+  });
+});
+
+/* ---------------------------------------------------- one capture, by id -- */
+
+describe('GET /api/host/captures/:captureId', () => {
+  it('answers with the same row the host list gives, without paging to find it', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    await insertAsset(roll.rollId, captureId);
+    await app.inject({
+      method: 'POST',
+      url: `/api/host/captures/${captureId}/hide`,
+      headers: bearer(roll.hostToken),
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+
+    const listed = (await hostList(roll.rollId, roll.hostToken)).items.find(
+      (item) => item.captureId === captureId,
+    );
+    // Field for field the list's own item: a dashboard has to be able to drop
+    // this answer straight back into the list it came from.
+    expect(res.json()).toEqual(listed);
+    expect(res.json<{ visible: boolean }>().visible).toBe(false);
+  });
+
+  it('shows a trashed capture with its purgeAfter, like the host list does', async () => {
+    const roll = await createRoll();
+    const captureId = await insertCapture(roll.rollId);
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/captures/${captureId}`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ deletedAt: string; purgeAfter: string }>();
+    expect(Date.parse(body.purgeAfter) - Date.parse(body.deletedAt)).toBe(
+      TRASH_GRACE_DAYS * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it('refuses a capture in another roll, and 404s one that never existed', async () => {
+    const mine = await createRoll('Read mine');
+    const other = await createRoll('Read other');
+    const theirs = await insertCapture(other.rollId);
+
+    const across = await app.inject({
+      method: 'GET',
+      url: `/api/host/captures/${theirs}`,
+      headers: bearer(mine.hostToken),
+    });
+    expect(across.statusCode).toBe(403);
+
+    const unknown = await app.inject({
+      method: 'GET',
+      url: `/api/host/captures/${newId('cap')}`,
+      headers: bearer(mine.hostToken),
+    });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json<{ code: string }>().code).toBe('CAPTURE_NOT_FOUND');
+  });
+});
+
+/* ---------------------------------------------------------- export size -- */
+
+describe('GET /api/host/rolls/:rollId/export/estimate (03 §25)', () => {
+  it('sums the ready assets the ZIP would actually contain', async () => {
+    const roll = await createRoll(`Estimate ${RUN}`);
+
+    const live = await insertCapture(roll.rollId);
+    await insertSizedAsset(roll.rollId, live, { role: 'thumb', bytes: 1_000 });
+    await insertSizedAsset(roll.rollId, live, { role: 'kino-still', bytes: 2_000 });
+    // Not stored yet, so it is neither zipped nor counted.
+    await insertSizedAsset(roll.rollId, live, {
+      role: 'wiggle-webp',
+      bytes: 500,
+      status: 'pending',
+    });
+
+    // Hidden captures ARE exported — the ZIP is the host's own copy of the roll,
+    // and `loadRollCaptures(..., {includeHidden: true})` is what the worker asks
+    // for. Trashed ones are not.
+    const hidden = await insertCapture(roll.rollId, { visible: false });
+    await insertSizedAsset(roll.rollId, hidden, { role: 'thumb', bytes: 4_000 });
+    const trashed = await insertCapture(roll.rollId, { deletedAt: new Date() });
+    await insertSizedAsset(roll.rollId, trashed, { role: 'thumb', bytes: 8_000 });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/estimate`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ files: 3, bytes: 7_000 });
+  });
+
+  it('answers honest zeros for a roll with nothing in it', async () => {
+    const roll = await createRoll(`Empty estimate ${RUN}`);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/estimate`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ files: 0, bytes: 0 });
+  });
+
+  it('does not read as a job id: the poll route never sees "estimate"', async () => {
+    const roll = await createRoll(`Estimate routing ${RUN}`);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/estimate`,
+      headers: bearer(roll.hostToken),
+    });
+    // The poll route would have answered EXPORT_JOB_NOT_FOUND.
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ status?: string }>().status).toBeUndefined();
+  });
+
+  it('is host-scoped like every other roll route', async () => {
+    const mine = await createRoll('Estimate mine');
+    const other = await createRoll('Estimate other');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${other.rollId}/export/estimate`,
+      headers: bearer(mine.hostToken),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+/* --------------------------------------------------- the ZIP, through us -- */
+
+describe('GET /api/host/rolls/:rollId/export/:jobId/content (03 §25)', () => {
+  /** A done export row with its ZIP actually stored, ready to be fetched. */
+  async function storedExport(
+    roll: CreatedRollResponse,
+    finishedAt: Date,
+    body: Buffer,
+  ): Promise<string> {
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/host/rolls/${roll.rollId}/export`,
+      headers: bearer(roll.hostToken),
+    });
+    const { jobId } = created.json<{ jobId: string }>();
+    exportJobIds.push(jobId);
+
+    await app.db
+      .update(schema.exportJobs)
+      .set({ status: 'done', finishedAt })
+      .where(eq(schema.exportJobs.id, jobId));
+
+    const key = exportObjectKey(roll.rollId, jobId);
+    await app.s3.send(
+      new PutObjectCommand({
+        Bucket: config.S3_BUCKET,
+        Key: key,
+        Body: body,
+        ContentType: 'application/zip',
+      }),
+    );
+    storedKeys.push(key);
+    return jobId;
+  }
+
+  it('streams the bytes with the roll slug and the export date on the file', async () => {
+    const roll = await createRoll(`Proxy export ${RUN}`);
+    const zip = randomBytes(2_048);
+    const jobId = await storedExport(roll, new Date('2026-03-04T12:00:00Z'), zip);
+
+    const res = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/${jobId}/content`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toBe(
+      `attachment; filename="kino-roll-${roll.slug}-2026-03-04.zip"`,
+    );
+    expect(res.headers['content-length']).toBe(String(zip.length));
+    expect(res.rawPayload.equals(zip)).toBe(true);
+  }, 30_000);
+
+  it('hands the host the proxied link instead of a presigned one when storage is private', async () => {
+    const roll = await createRoll(`Proxy link ${RUN}`);
+    const jobId = await storedExport(roll, new Date('2026-03-04T12:00:00Z'), randomBytes(64));
+
+    const res = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/${jobId}`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ status: string; url?: string }>();
+    expect(body.status).toBe('done');
+    // Absolute and on this API, not on S3_ENDPOINT — which in production is an
+    // internal Compose hostname the host's browser cannot resolve.
+    expect(body.url).toBe(
+      `${config.PUBLIC_BASE_URL.replace(/\/+$/, '')}` +
+        `/api/host/rolls/${roll.rollId}/export/${jobId}/content`,
+    );
+    expect(body.url).not.toContain('X-Amz-Signature');
+  }, 30_000);
+
+  it('refuses a job that has not finished, and one whose ZIP is gone', async () => {
+    const roll = await createRoll(`Proxy not ready ${RUN}`);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/host/rolls/${roll.rollId}/export`,
+      headers: bearer(roll.hostToken),
+    });
+    const { jobId } = created.json<{ jobId: string }>();
+    exportJobIds.push(jobId);
+
+    const queued = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/${jobId}/content`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(queued.statusCode).toBe(409);
+    expect(queued.json<{ code: string }>().code).toBe('EXPORT_NOT_READY');
+
+    // Stand in for the handler finishing the row and losing the upload.
+    await app.db
+      .update(schema.exportJobs)
+      .set({ status: 'done', finishedAt: new Date() })
+      .where(eq(schema.exportJobs.id, jobId));
+
+    const missing = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${roll.rollId}/export/${jobId}/content`,
+      headers: bearer(roll.hostToken),
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json<{ code: string }>().code).toBe('EXPORT_OBJECT_MISSING');
+  }, 30_000);
+
+  it('404s a job id belonging to another roll rather than serving its ZIP', async () => {
+    const mine = await createRoll('Content mine');
+    const other = await createRoll('Content other');
+    const jobId = await storedExport(other, new Date('2026-03-04T12:00:00Z'), randomBytes(64));
+
+    const res = await proxyApp.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${mine.rollId}/export/${jobId}/content`,
+      headers: bearer(mine.hostToken),
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json<{ code: string }>().code).toBe('EXPORT_JOB_NOT_FOUND');
+  }, 30_000);
 });

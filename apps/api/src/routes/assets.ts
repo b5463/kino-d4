@@ -1,6 +1,6 @@
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { ASSET_CACHE_CONTROL, deliverAsset, wantsDownload } from '../captures/delivery';
+import { assetCacheControl, deliverAsset, wantsDownload } from '../captures/delivery';
 import { fail } from './errors';
 import { assetContentRateLimit } from '../plugins/rateLimits';
 
@@ -44,9 +44,12 @@ export const assetRoutes: FastifyPluginAsync = async (app) => {
 
     if (!delivered.ok) return fail(reply, delivered.status, delivered.code, delivered.message);
 
-    // `private` keeps both responses out of shared caches. For redirects its
-    // lifetime also remains below the one-minute signature lifetime.
-    reply.header('cache-control', ASSET_CACHE_CONTROL);
+    // `private` keeps both responses out of shared caches. The lifetime differs
+    // by delivery mode and `assetCacheControl` owns that choice: a redirect must
+    // expire before the signature it carries, proxied bytes need not expire at
+    // all and get a day. See the note on `ASSET_CONTENT_MAX_AGE_SECONDS` for
+    // what that day costs after a slug is regenerated.
+    reply.header('cache-control', assetCacheControl(delivered.delivery));
     if (delivered.delivery === 'proxy') {
       const object = await app.s3.send(
         new GetObjectCommand({ Bucket: app.config.S3_BUCKET, Key: delivered.objectKey }),

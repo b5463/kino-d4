@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server';
 import { loadConfig, type ApiConfig } from '../src/config';
 import { hashToken } from '../src/auth/tokens';
+import { readRollHistory } from '../src/events/publish';
 import { SLUG_ALPHABET, SLUG_PATTERN, newSlug } from '../src/rolls/slug';
 import {
   assertRollAcceptsUploads,
@@ -131,6 +132,12 @@ async function auditActions(rollId: string): Promise<string[]> {
   return rows.map((row) => row.action);
 }
 
+/** Every event a roll has published, oldest first. */
+async function publishedEvents(rollId: string): Promise<string[]> {
+  const history = await readRollHistory(app.redis, rollId, '0-0');
+  return history.map((entry) => entry.event.type);
+}
+
 async function rollRow(rollId: string): Promise<typeof schema.rolls.$inferSelect> {
   const [row] = await app.db.select().from(schema.rolls).where(eq(schema.rolls.id, rollId));
   if (row === undefined) throw new Error(`roll ${rollId} vanished`);
@@ -152,6 +159,11 @@ afterAll(async () => {
     await app.db.delete(auditEvents).where(inArray(auditEvents.rollId, createdRollIds));
     await app.db.delete(rollDevices).where(inArray(rollDevices.rollId, createdRollIds));
     await app.db.delete(rolls).where(inArray(rolls.id, createdRollIds));
+
+    // Closing and reopening publish now, so this suite leaves streams behind.
+    await app.redis.del(
+      ...createdRollIds.flatMap((id) => [`roll:${id}:stream`, `roll:${id}:events`]),
+    );
   }
   if (migrated) {
     await app.db.delete(schema.devices).where(inArray(schema.devices.serial, SERIALS));
@@ -1142,5 +1154,241 @@ describe('X-Robots-Tag on the guest URL space (03 §9)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['x-robots-tag']).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------ close/reopen reaches guests -- */
+
+describe('PATCH /api/host/rolls/:rollId announces the status change (05 §10)', () => {
+  const patchStatus = async (
+    created: CreatedRollResponse,
+    status: string,
+  ): Promise<ReturnType<FastifyInstance['inject']>> =>
+    app.inject({
+      method: 'PATCH',
+      url: `/api/host/rolls/${created.rollId}`,
+      headers: bearer(created.hostToken),
+      payload: { status },
+    });
+
+  it('publishes roll.closed on the way out and roll.opened on the way back', async () => {
+    const created = await createAsHost({ title: `Announce ${RUN}` });
+
+    expect((await patchStatus(created, 'closed')).statusCode).toBe(200);
+    expect(await publishedEvents(created.rollId)).toEqual(['roll.closed']);
+
+    expect((await patchStatus(created, 'live')).statusCode).toBe(200);
+    expect(await publishedEvents(created.rollId)).toEqual(['roll.closed', 'roll.opened']);
+  });
+
+  it('says nothing when the status did not move', async () => {
+    const created = await createAsHost({ title: `Idempotent ${RUN}` });
+
+    // A roll that is already live. PATCH is idempotent, so this is a legitimate
+    // request — and it must not tell every connected guest to re-fetch.
+    expect((await patchStatus(created, 'live')).statusCode).toBe(200);
+    expect(await publishedEvents(created.rollId)).toEqual([]);
+
+    expect((await patchStatus(created, 'closed')).statusCode).toBe(200);
+    expect((await patchStatus(created, 'closed')).statusCode).toBe(200);
+    // One close, not two.
+    expect(await publishedEvents(created.rollId)).toEqual(['roll.closed']);
+  });
+
+  it('announces nothing for a change that leaves the guest-visible state alone', async () => {
+    const created = await createAsHost({ title: `Quiet ${RUN}` });
+
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/host/rolls/${created.rollId}`,
+      headers: bearer(created.hostToken),
+      payload: { title: `Renamed ${RUN}`, downloadsEnabled: false },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(await publishedEvents(created.rollId)).toEqual([]);
+
+    // Archiving is the other one: an archived roll is still closed, and the
+    // guests were told when it closed.
+    expect((await patchStatus(created, 'closed')).statusCode).toBe(200);
+    expect((await patchStatus(created, 'archived')).statusCode).toBe(200);
+    expect(await publishedEvents(created.rollId)).toEqual(['roll.closed']);
+  });
+
+  it('refuses an impossible transition without announcing it', async () => {
+    const created = await createAsHost({ title: `No jump ${RUN}` });
+
+    const res = await patchStatus(created, 'archived');
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ code: string }>().code).toBe('INVALID_STATE');
+    expect(await publishedEvents(created.rollId)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------- heartbeat -- */
+
+describe('POST /api/device/rolls/:rollId/heartbeat', () => {
+  const heartbeat = async (
+    rollId: string,
+    token: string,
+    payload: Record<string, unknown> = {},
+  ): Promise<ReturnType<FastifyInstance['inject']>> =>
+    app.inject({
+      method: 'POST',
+      url: `/api/device/rolls/${rollId}/heartbeat`,
+      headers: bearer(token),
+      payload,
+    });
+
+  /** The dashboard's own view of the cameras on a roll. */
+  async function cameras(created: CreatedRollResponse): Promise<
+    {
+      deviceId: string;
+      serial: string;
+      lastSeenAt: string | null;
+      pending: number | null;
+      uploading: number | null;
+      failed: number | null;
+      serverState: string | null;
+      firmware: string | null;
+    }[]
+  > {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/host/rolls/${created.rollId}`,
+      headers: bearer(created.hostToken),
+    });
+    expect(res.statusCode).toBe(200);
+    return res.json<{ cameras: never[] }>().cameras;
+  }
+
+  it('puts a camera that created the roll on the dashboard, queue depth and all', async () => {
+    const created = await createAsDevice({ title: `Heartbeat ${RUN}` });
+
+    // Creating a roll writes `rolls.created_by_device_id` and no `roll_devices`
+    // row, so a heartbeat that only UPDATEd would write nothing at all.
+    expect(await cameras(created)).toEqual([]);
+
+    const before = Date.now();
+    const res = await heartbeat(created.rollId, deviceA.deviceToken, {
+      pending: 12,
+      uploading: 1,
+      failed: 0,
+      serverState: 'reachable',
+      firmware: '0.4.43',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+
+    const [camera] = await cameras(created);
+    expect(camera).toMatchObject({
+      deviceId: deviceA.deviceId,
+      serial: SERIAL_A,
+      pending: 12,
+      uploading: 1,
+      failed: 0,
+      serverState: 'reachable',
+      firmware: '0.4.43',
+    });
+    expect(Date.parse(camera?.lastSeenAt ?? '')).toBeGreaterThanOrEqual(before - 1_000);
+  });
+
+  it('overwrites in place rather than piling up rows', async () => {
+    const created = await createAsDevice({ title: `Heartbeat twice ${RUN}` });
+
+    await heartbeat(created.rollId, deviceA.deviceToken, { pending: 40 });
+    const first = (await cameras(created))[0]?.lastSeenAt ?? '';
+    await heartbeat(created.rollId, deviceA.deviceToken, { pending: 3, serverState: 'unreachable' });
+
+    const list = await cameras(created);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ pending: 3, serverState: 'unreachable' });
+    // The queue drained, and the row says so rather than keeping the old depth.
+    expect(Date.parse(list[0]?.lastSeenAt ?? '')).toBeGreaterThanOrEqual(Date.parse(first));
+  });
+
+  it('orders the cameras by who spoke last, with the silent ones underneath', async () => {
+    const created = await createAsDevice({ title: `Two cameras ${RUN}` });
+
+    const join = await app.inject({
+      method: 'POST',
+      url: '/api/device/rolls/join',
+      headers: bearer(deviceB.deviceToken),
+      payload: { slug: created.slug },
+    });
+    expect(join.statusCode).toBe(200);
+
+    // deviceB has joined and never called in: nulls throughout, and it must not
+    // sort above the camera that spoke a moment ago.
+    await heartbeat(created.rollId, deviceA.deviceToken, { pending: 0 });
+
+    const list = await cameras(created);
+    expect(list.map((camera) => camera.serial)).toEqual([SERIAL_A, SERIAL_B]);
+    expect(list[1]).toMatchObject({
+      lastSeenAt: null,
+      pending: null,
+      uploading: null,
+      failed: null,
+      serverState: null,
+      firmware: null,
+    });
+  });
+
+  it('takes an empty body: the timestamp is the whole message', async () => {
+    const created = await createAsDevice({ title: `Bare heartbeat ${RUN}` });
+
+    const res = await heartbeat(created.rollId, deviceA.deviceToken);
+    expect(res.statusCode).toBe(200);
+
+    const [camera] = await cameras(created);
+    expect(camera?.lastSeenAt).not.toBeNull();
+    expect(camera?.pending).toBeNull();
+  });
+
+  it('keeps beating on a closed roll, because a queue still draining is what the host wants to see', async () => {
+    const created = await createAsDevice({ title: `Closed heartbeat ${RUN}` });
+    const closed = await app.inject({
+      method: 'PATCH',
+      url: `/api/host/rolls/${created.rollId}`,
+      headers: bearer(created.hostToken),
+      payload: { status: 'closed' },
+    });
+    expect(closed.statusCode).toBe(200);
+
+    const res = await heartbeat(created.rollId, deviceA.deviceToken, { pending: 7 });
+    expect(res.statusCode).toBe(200);
+    expect((await cameras(created))[0]).toMatchObject({ pending: 7 });
+  });
+
+  it('refuses a device that is not on the roll, and a roll that does not exist', async () => {
+    const created = await createAsDevice({ title: `Not yours ${RUN}` });
+
+    const stranger = await heartbeat(created.rollId, deviceB.deviceToken, { pending: 1 });
+    expect(stranger.statusCode).toBe(403);
+    expect(stranger.json()).toMatchObject({ code: 'DEVICE_NOT_IN_ROLL' });
+    // Nothing written: a refused heartbeat must not create the membership row it
+    // was refused for.
+    expect(await cameras(created)).toEqual([]);
+
+    const unknown = await heartbeat(`roll_${RUN}nope`, deviceA.deviceToken);
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json()).toMatchObject({ code: 'ROLL_NOT_FOUND' });
+  });
+
+  it('refuses a body it cannot trust', async () => {
+    const created = await createAsDevice({ title: `Bad heartbeat ${RUN}` });
+
+    for (const payload of [
+      { pending: -1 },
+      { pending: 1.5 },
+      { pending: 100_001 },
+      { serverState: 'probably' },
+      { firmware: '' },
+      { pendng: 3 },
+    ]) {
+      const res = await heartbeat(created.rollId, deviceA.deviceToken, payload);
+      expect(res.statusCode).toBe(400);
+    }
+    // A rejected body leaves no row behind either.
+    expect(await cameras(created)).toEqual([]);
   });
 });

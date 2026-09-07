@@ -88,6 +88,57 @@ if (ASSET_CACHE_MAX_AGE_SECONDS >= ASSET_URL_TTL_SECONDS) {
 }
 
 /**
+ * The **proxy** mode's cache lifetime: twenty-four hours, `immutable`.
+ *
+ * ## Why it is not 55 seconds
+ *
+ * The 55 above is a constraint on the *redirect*, not on the bytes: a cached
+ * `Location` that outlives its signature renders a broken tile. Proxy mode has
+ * no signature — the response IS the object — so nothing about it expires, and
+ * an asset id is immutable by construction (content-addressed by sha256,
+ * refused if it would overwrite an original). At 55 seconds a guest who scrolls
+ * back up a minute later re-issued every request: three joined rows and a full
+ * object read per tile, on the operator's home uplink. Production runs
+ * `OBJECT_DELIVERY=proxy`, so that was the real cost, every time.
+ *
+ * ## The interaction with revocation, stated as a number
+ *
+ * Cache lifetime is not the same thing as authorization lifetime. Regenerating
+ * a guest slug bumps `access_epoch`, and from that moment `guestHasRollAccess`
+ * refuses every request carrying a stale stamp — but it cannot reach into a
+ * cache that has already been filled. So:
+ *
+ *   - an asset a guest has NOT already fetched is cut off immediately;
+ *   - an asset already in that guest's browser cache stays readable, on that
+ *     device only, for at most **24 hours** after revocation.
+ *
+ * 24 hours is chosen, not inherited. `apps/roll-web/vite.config.ts` already
+ * caches `/api/assets/*` in the service worker with `maxAgeSeconds: 60 * 60 *
+ * 24`, so on the PWA — the client that matters — the true revocation lag has
+ * been a day since Task 26 regardless of what this header said. Making the two
+ * agree turns that lag from an accident of two unrelated files into one stated
+ * number. Shortening it means changing both, and the vite config's comment
+ * already names the proper fix: evict the specific asset ids from
+ * `kino-roll-assets` on `capture.hidden` / `capture.deleted` over the event
+ * stream, which is instant and does not depend on any expiry at all.
+ *
+ * `private`, never `public`: these bytes are one guest's, and no shared cache —
+ * the relay Caddy included — may hold them.
+ */
+export const ASSET_CONTENT_MAX_AGE_SECONDS = 24 * 60 * 60;
+
+export const ASSET_CONTENT_CACHE_CONTROL =
+  `private, max-age=${ASSET_CONTENT_MAX_AGE_SECONDS}, immutable`;
+
+/**
+ * Which of the two a delivery gets. One function so the route cannot pair a
+ * redirect with the long lifetime, which is the mistake that breaks tiles.
+ */
+export function assetCacheControl(delivery: 'redirect' | 'proxy'): string {
+  return delivery === 'proxy' ? ASSET_CONTENT_CACHE_CONTROL : ASSET_CACHE_CONTROL;
+}
+
+/**
  * The roles the host's download switch does **not** govern — and therefore, by
  * omission, every role it does (03 §25, "guest: according to host permission").
  *

@@ -28,6 +28,29 @@ import type { Redis } from 'ioredis';
 /** How many events a roll's stream keeps, and therefore how far back a replay reaches. */
 export const ROLL_STREAM_MAXLEN = 500;
 
+/**
+ * How long a roll's stream key survives its last event.
+ *
+ * `MAXLEN ~ 500` bounds how *tall* one stream gets and says nothing about how
+ * many streams exist: every roll ever opened kept a key forever, so a venue
+ * running a KINO every weekend grows Redis by one stream a party and never gives
+ * one back. Redis is the ephemeral half of this platform — PostgreSQL and the
+ * bucket are the durable record — so a stream that outlives every possible
+ * reader is pure cost.
+ *
+ * Seven days, refreshed on every publish. The reader this protects is a guest
+ * who closed the tab at the party and opens it again on the way home, or the
+ * next morning; nobody replays a week-old feed, and by then the PWA fetches the
+ * capture list rather than the event log. It is also the same window as the
+ * trash grace period, so "how long does a roll's history stay warm" has one
+ * answer.
+ *
+ * The refresh is what makes this safe for a live roll: any publish — the API's
+ * or a worker's — pushes the expiry out again, so a stream only ever dies after
+ * a full week of silence.
+ */
+export const ROLL_STREAM_TTL_SECONDS = 7 * 24 * 60 * 60;
+
 /** The pub/sub channel a roll's live subscribers listen on. */
 export function rollEventChannel(rollId: string): string {
   return `roll:${rollId}:events`;
@@ -66,8 +89,9 @@ export async function publishRollEvent(
   event: ProcessingCompletedEvent,
 ): Promise<string> {
   const payload = JSON.stringify(event);
+  const key = rollStreamKey(rollId);
   const id = await redis.xadd(
-    rollStreamKey(rollId),
+    key,
     'MAXLEN',
     '~',
     ROLL_STREAM_MAXLEN,
@@ -77,7 +101,11 @@ export async function publishRollEvent(
   );
   // XADD only answers null for NOMKSTREAM against a missing stream, which this
   // call does not use. Impossible-but-checked beats returning a fake id.
-  if (id === null) throw new Error(`XADD to ${rollStreamKey(rollId)} returned no entry id`);
+  if (id === null) throw new Error(`XADD to ${key} returned no entry id`);
+
+  // Between the record and the announcement, so a retry of this publish — which
+  // is idempotent for the subscriber — is also what repairs a missed refresh.
+  await redis.expire(key, ROLL_STREAM_TTL_SECONDS);
 
   await redis.publish(rollEventChannel(rollId), JSON.stringify({ id, event }));
   return id;

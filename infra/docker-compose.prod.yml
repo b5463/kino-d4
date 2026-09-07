@@ -21,9 +21,29 @@ x-runtime-environment: &runtime-environment
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in the selected environment file}
   COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET in the selected environment file}
   PROVISIONING_TOKEN: ${PROVISIONING_TOKEN:?set PROVISIONING_TOKEN in the selected environment file}
-  TRUST_PROXY: 'true'
+  # Which hop may name the client address. NOT 'true' any more — that trusted
+  # every hop, so a forged X-Forwarded-For became request.ip and every per-address
+  # limit keyed on a value the client chose. The default names the private ranges
+  # Caddy and frp live in, which is correct whether or not the relay overlay
+  # (infra/relay/docker-compose.relay.yml) is in play; see the note in
+  # infra/.env.prod.example.
+  TRUST_PROXY: ${TRUST_PROXY:-loopback,uniquelocal}
   OBJECT_DELIVERY: proxy
   DEVICE_REGISTRATION_MODE: ${DEVICE_REGISTRATION_MODE:-first-write-wins}
+
+# Read by the worker only (apps/worker/src/ai/provider.ts, jobs/wiggleMp4.ts).
+# Every AI value defaults closed, so an environment file that says nothing about
+# them is a valid production configuration: no enhancement runs, no frame leaves.
+x-worker-environment: &worker-environment
+  AI_MODE: ${AI_MODE:-off}
+  AI_PROVIDER: ${AI_PROVIDER:-}
+  AI_ENDPOINT: ${AI_ENDPOINT:-}
+  AI_MODEL: ${AI_MODEL:-}
+  AI_ALLOW_EXTERNAL: ${AI_ALLOW_EXTERNAL:-false}
+  AI_OPERATIONS: ${AI_OPERATIONS:-}
+  AI_STRENGTH: ${AI_STRENGTH:-}
+  # Unset uses the bundled ffmpeg-static that the worker image ships.
+  FFMPEG_PATH: ${FFMPEG_PATH:-}
 
 services:
   proxy:
@@ -107,7 +127,8 @@ services:
       dockerfile: infra/Dockerfile
       target: worker
     restart: unless-stopped
-    environment: *runtime-environment
+    environment:
+      <<: [*runtime-environment, *worker-environment]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

@@ -10,6 +10,8 @@ import { decodeCursor, parseLimit, readHostCaptureFeedPage } from '../captures/f
 import { convergeWarning, fail, invalidBody } from './errors';
 import {
   moderationView,
+  readHostCapture,
+  restoreCapture,
   setCaptureVisible,
   trashCapture,
   type ModerationResult,
@@ -32,7 +34,7 @@ import { publishRollEvent, type RollEvent } from '../events/publish';
 /**
  * Host moderation (03 §11): the host's own capture list, hide, unhide, delete.
  *
- * Three of the four routes are addressed by **captureId** — which is
+ * Every route here but the listing is addressed by **captureId** — which is
  * why they sit here and not in `host-rolls.ts`. `requireHost` keys its token
  * comparison on a roll id path parameter and these have none, so they use
  * `requireHostCapture`, which derives the roll from the capture and compares
@@ -63,9 +65,14 @@ import { publishRollEvent, type RollEvent } from '../events/publish';
  * feed's reader through an audience flag, so both share one keyset, one cursor
  * encoding and one asset join.
  *
- * 03 §29 — "do not overbuild moderation for V1" — is why there is no bulk
- * endpoint, no reason field, no reviewer queue and no restore route (Task 25 owns
- * restore). Three verbs, a list, and an audit row.
+ * Restore is here now. It was left out on the grounds that Task 25 owned it,
+ * which left the trash a seven-day countdown with no way out — the grace period
+ * that 03 §11 describes was unreachable from the API, so "get the photo back the
+ * next morning" was a property of the schema and of nothing else.
+ *
+ * 03 §29 — "do not overbuild moderation for V1" — is still why there is no bulk
+ * endpoint, no reason field and no reviewer queue. Four verbs, a list, a
+ * single-capture read, and an audit row.
  */
 
 function queryOf(request: FastifyRequest): Record<string, unknown> {
@@ -187,6 +194,59 @@ export const hostCaptureRoutes: FastifyPluginAsync = async (app) => {
         type: 'capture.deleted',
         captureId,
       })),
+  );
+
+  /**
+   * Takes a capture back out of the trash (03 §11's grace period, made usable).
+   *
+   * `capture.updated`, not a verb of its own: to a guest this is a capture
+   * reappearing, which is the same instruction as any other change — re-fetch
+   * it. Exactly the call `unhide` makes, for exactly the same reason.
+   *
+   * `visible` is untouched, so a capture that was hidden before it was deleted
+   * comes back hidden. See `restoreCapture` — that separation is the whole
+   * reason delete never wrote `visible` in the first place.
+   */
+  app.post(
+    '/api/host/captures/:captureId/restore',
+    { preHandler: app.requireHostCapture('captureId') },
+    async (request) =>
+      announceModeration(app, await restoreCapture(app.db, captureOf(request)), (captureId) => ({
+        type: 'capture.updated',
+        captureId,
+      })),
+  );
+
+  /**
+   * One capture, in the shape the host list gives each row.
+   *
+   * The dashboard had no way to read a single capture, so refreshing one tile
+   * after a playback patch meant paging the host list until the id turned up —
+   * 36 requests on an 1,800-capture roll, each of them a keyset query and an
+   * asset join over fifty rows the caller discarded.
+   *
+   * Addressed by captureId and therefore under `requireHostCapture`, like the
+   * moderation verbs: a host token for roll A cannot read a capture in roll B,
+   * and the preHandler is the same one that already establishes that.
+   */
+  app.get(
+    '/api/host/captures/:captureId',
+    { preHandler: app.requireHostCapture('captureId') },
+    async (request, reply) => {
+      const capture = captureOf(request);
+      const view = await readHostCapture(
+        app.db,
+        capture.rollId,
+        capture.id,
+        convergeWarning(app),
+      );
+      if (view === null) {
+        // Purged between the preHandler and the read — the same trash race the
+        // playback patch answers this way.
+        return fail(reply, 404, 'CAPTURE_NOT_FOUND', 'capture does not exist');
+      }
+      return view;
+    },
   );
 
   /**

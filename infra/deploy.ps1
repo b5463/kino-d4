@@ -24,8 +24,11 @@ check validates docker, the env file, and the compose interpolation.
 up    builds and starts the stack, then waits for the api and web
       containers to report healthy.
 update = git pull --ff-only + up.
-backup writes a pg_dump SQL file to infra\backups\. Object storage lives in
-      the MinIO volume; see infra/scripts/backup.sh for the full drill.
+backup writes a pg_dump SQL file to infra\backups\. That is a catalogue, not
+      a photo library - the objects live in the MinIO volume. For the real
+      thing, which mirrors both buckets alongside the dump, use
+      infra\backup-task.ps1: register it once and it runs daily, and its
+      `verify` answers whether last night's snapshot is fresh and non-empty.
 down  stops the stack. Volumes are always preserved.
 #>
 param(

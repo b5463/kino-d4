@@ -386,9 +386,10 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `POST /api/device/rolls` | device | → `{rollId, slug, guestUrl, hostUrl, hostToken}`, `201` |
 | `POST /api/device/rolls/join` `{slug}` | device | writes `roll_devices`; idempotent |
 | `GET /api/device/rolls/current` | device | assigned rolls with `status = live` |
+| `POST /api/device/rolls/:rollId/heartbeat` | device (roll) | `{pending?, uploading?, failed?, serverState?, firmware?}` → `{ok: true}`; upserts `roll_devices` |
 | `POST /api/host/rolls` | **none** | host web creation; mints a new host token |
-| `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts` and live `guests` |
-| `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status` |
+| `GET /api/host/rolls/:rollId` | host | dashboard view: real capture `counts`, live `guests`, and `cameras` newest heartbeat first |
+| `PATCH /api/host/rolls/:rollId` | host | `title` / `pin` / `downloadsEnabled` / `status`; a status that moves publishes `roll.opened` / `roll.closed` |
 | `POST /api/host/rolls/:rollId/regenerate-slug` | host | → `{slug, guestUrl}`; old slug 404s |
 | `POST /api/host/rolls/:rollId/clear` | host | every capture to the trash in one statement → `{cleared: n}`; one `roll.cleared` event; 5/min per token |
 | `GET /api/rolls/:slug` | guest | includes photo count plus download/reaction switches |
@@ -945,13 +946,17 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 | `POST /api/host/captures/:captureId/hide` | host (capture) | `visible = false`; `capture.hidden` |
 | `POST /api/host/captures/:captureId/unhide` | host (capture) | `visible = true`; `capture.updated` |
 | `DELETE /api/host/captures/:captureId` | host (capture) | `deleted_at = now()`; `capture.deleted` |
+| `POST /api/host/captures/:captureId/restore` | host (capture) | `deleted_at = NULL`, `visible` untouched; `capture.updated` |
+| `GET /api/host/captures/:captureId` | host (capture) | one row in the host list's shape |
 | `POST /api/host/rolls/:rollId/export` | host | `202 {jobId}`, `Location:` the poll route |
-| `GET /api/host/rolls/:rollId/export/:jobId` | host | `{status, url?}` |
+| `GET /api/host/rolls/:rollId/export/:jobId` | host | `{status, url?}`; the url is presigned, or `/content` when `OBJECT_DELIVERY=proxy` |
+| `GET /api/host/rolls/:rollId/export/:jobId/content` | host | streams the ZIP; `attachment; filename="kino-roll-<slug>-<date>.zip"` |
+| `GET /api/host/rolls/:rollId/export/estimate` | host | `{files, bytes}` over ready assets of live captures |
 | `POST /api/host/rolls/:rollId/clear` | host | `deleted_at = now()` on every live capture; `capture.deleted` audit row per capture + one `roll.cleared`; one `roll.cleared` event |
 
-The four write routes each write an `audit_events` row with actor `host` and actions
-`capture.hidden` / `capture.unhidden` / `capture.deleted` / `roll.exported`. For
-these, `target` is the id of the row the action applied to, not a destroyed value
+Every write route here writes an `audit_events` row with actor `host` and actions
+`capture.hidden` / `capture.unhidden` / `capture.deleted` / `capture.restored` /
+`roll.exported`. For these, `target` is the id of the row the action applied to, not a destroyed value
 — an entry that did not name its capture would record only that *something* was
 hidden.
 

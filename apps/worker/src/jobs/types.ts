@@ -108,6 +108,18 @@ export interface JobCtx {
   s3: S3Client;
   redis: Redis;
   /**
+   * The media bucket every key here addresses.
+   *
+   * On the context because three jobs now send a command `ctx` has no method
+   * for — the retention purge deletes a roll's expired ZIPs and MP4s, the
+   * upload reaper aborts a multipart, and `publishDerived` removes the object a
+   * derivative just superseded — and every one of them needs the bucket name
+   * that `putDerived` closes over. Not a capability: `ctx.s3` could already send
+   * those commands, and `guardOriginalWrites` is still the thing that decides
+   * which keys they may name.
+   */
+  bucket: string;
+  /**
    * The stored object's body as a stream.
    *
    * `Promise<Readable>` rather than the plan's bare `Readable`: fetching an

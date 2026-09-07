@@ -50,6 +50,32 @@ import type { JobCtx, JobPayload } from './types';
 const FFMPEG_PATH_VAR = 'FFMPEG_PATH';
 
 /**
+ * The signal a timed-out encode is killed with.
+ *
+ * SIGKILL rather than SIGTERM, and the reason is what a timeout means here: the
+ * encode is *already* not responding on the schedule it should. A polite signal
+ * to a process that is wedged on a pipe read costs another `forceKillAfterDelay`
+ * before the slot comes back, and the output is discarded either way — the temp
+ * directory goes in the `finally` below whether ffmpeg finished or not.
+ */
+export const FFMPEG_KILL_SIGNAL = 'SIGKILL';
+
+/**
+ * How long one wigglegram encode may take before it is killed.
+ *
+ * Six 960×720 frames looped four times is 24 encoded frames — a fraction of a
+ * second of x264 on any machine that can run this worker at all, and under two
+ * seconds on the slowest one measured. Two minutes is therefore not a budget,
+ * it is a diagnosis: an encode past it is not slow, it is stuck.
+ *
+ * It has to have a number at all because `execa` has no default timeout, and a
+ * hung ffmpeg holds one of four concurrency slots (`JOB_CONCURRENCY`) forever
+ * while BullMQ's lock manager cheerfully renews its lock every 30 s. Four of
+ * those and the worker is alive, idle and processing nothing.
+ */
+export const WIGGLE_MP4_TIMEOUT_MS = 2 * 60 * 1000;
+
+/**
  * The ffmpeg binary to run: `FFMPEG_PATH` when the operator set it, the bundled
  * `ffmpeg-static` build otherwise.
  *
@@ -135,7 +161,11 @@ export async function renderWiggleMp4(payload: JobPayload, ctx: JobCtx): Promise
         '+faststart',
         outputPath,
       ],
-      { input: joinPages(wiggle) },
+      {
+        input: joinPages(wiggle),
+        timeout: WIGGLE_MP4_TIMEOUT_MS,
+        killSignal: FFMPEG_KILL_SIGNAL,
+      },
     );
 
     body = await readFile(outputPath);

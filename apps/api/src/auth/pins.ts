@@ -50,12 +50,64 @@ export async function hashPin(pin: string): Promise<string> {
   ].join('$');
 }
 
+/* ---------------------------------------------------- the CPU is a limit -- */
+
+/**
+ * A PIN verification is ~30 ms of ~16 MiB scrypt, and that cost cuts both ways:
+ * it is what makes a stolen `pin_hash` expensive to attack, and it is what
+ * makes `POST /api/rolls/:slug/pin` the most expensive unauthenticated route on
+ * the server. Node runs scrypt on the libuv threadpool — four threads by
+ * default — so unbounded concurrent verifications do not merely queue, they
+ * starve every other threadpool user in the process (file reads, zlib, DNS)
+ * while the event loop stays idle and looks healthy.
+ *
+ * So the gate is explicit rather than accidental. Four in flight, matching the
+ * default threadpool; a bounded waiting line behind it; and past that the
+ * caller is told to come back, which is a truthful 503 rather than a request
+ * that sits until it times out. The per-roll lockout and the per-address limit
+ * bound the arrival rate above this; this bounds what a burst that gets through
+ * both can do to the rest of the process.
+ */
+const MAX_CONCURRENT_VERIFICATIONS = 4;
+const MAX_QUEUED_VERIFICATIONS = 32;
+
+/** Thrown when the waiting line is full. The route turns it into a 503. */
+export class PinVerifierBusyError extends Error {
+  constructor() {
+    super('PIN verification is saturated');
+    this.name = 'PinVerifierBusyError';
+  }
+}
+
+let inFlight = 0;
+const waiting: (() => void)[] = [];
+
+async function acquireVerifier(): Promise<void> {
+  if (inFlight < MAX_CONCURRENT_VERIFICATIONS) {
+    inFlight += 1;
+    return;
+  }
+  if (waiting.length >= MAX_QUEUED_VERIFICATIONS) throw new PinVerifierBusyError();
+  await new Promise<void>((resolve) => waiting.push(resolve));
+  inFlight += 1;
+}
+
+function releaseVerifier(): void {
+  inFlight -= 1;
+  const next = waiting.shift();
+  if (next !== undefined) next();
+}
+
 /**
  * Verifies a candidate PIN against a stored hash.
  *
  * `null`/unparseable stored value returns false rather than throwing: a roll
  * marked `privacy: 'pin'` with no `pin_hash` is a misconfiguration, and the
  * safe reading of a missing lock is "locked", not "open".
+ *
+ * The two cheap refusals above the semaphore are deliberate: a stored value
+ * that is absent or unparseable costs no scrypt at all, so a misconfigured roll
+ * cannot consume a verification slot.
  */
 export async function verifyPin(pin: string, stored: string | null): Promise<boolean> {
   if (stored === null) return false;
@@ -82,12 +134,20 @@ export async function verifyPin(pin: string, stored: string | null): Promise<boo
   const expected = Buffer.from(rawKey, 'base64url');
   if (salt.length === 0 || expected.length === 0) return false;
 
-  const actual = await new Promise<Buffer | null>((resolve) => {
-    scrypt(pin, salt, expected.length, { N, r, p, maxmem: MAX_MEM }, (err, derived) => {
-      resolve(err ? null : derived);
+  await acquireVerifier();
+  let actual: Buffer | null;
+  try {
+    actual = await new Promise<Buffer | null>((resolve) => {
+      scrypt(pin, salt, expected.length, { N, r, p, maxmem: MAX_MEM }, (err, derived) => {
+        resolve(err ? null : derived);
+      });
     });
-  });
+  } finally {
+    releaseVerifier();
+  }
   if (actual === null || actual.length !== expected.length) return false;
 
+  // Unchanged, and deliberately so: the comparison that decides stays
+  // constant-time, and the scrypt parameters above stay where they were.
   return timingSafeEqual(actual, expected);
 }

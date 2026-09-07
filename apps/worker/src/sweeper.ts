@@ -1,7 +1,8 @@
 import { and, asc, eq, gte, inArray, lt, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { processingEvents } from './db/schema';
-import { isJobName, jobKeyFor, type WorkerDatabase } from './jobs/types';
+import { errorFields, log } from './log';
+import { isJobName, jobKeyFor, type JobName, type JobPayload, type WorkerDatabase } from './jobs/types';
 import { jobKeyToJobId, type JobQueue } from './queue';
 
 /**
@@ -52,6 +53,98 @@ export interface SweepReport {
   present: number;
   /** Rows naming a job this build does not know — logged, never queued. */
   unknown: number;
+  /**
+   * Rows whose job was still in Redis but *finished* — a retained failure or
+   * completion — and was therefore cleared and re-added. A subset of
+   * `resubmitted`; counted separately because it is the case that used to be
+   * silently miscounted as `present`.
+   */
+  retained: number;
+}
+
+/**
+ * BullMQ states that mean the job is over.
+ *
+ * A retained job in one of these is not work in flight, it is a receipt.
+ * `removeOnFail: {age: 7d}` keeps a terminally failed job in Redis for a week,
+ * and — this is the part that bites — `add()` with an existing `jobId` is a
+ * **no-op in every state**, not just the live ones: `addStandardJob`'s script
+ * checks `EXISTS <prefix><jobId>` and returns the existing id if the hash is
+ * there (bullmq 6.1.2, `scripts/addStandardJob-9.js`). So once
+ * `markJobAbandoned` frees the `queued` lock and a later capture-complete writes
+ * a fresh `queued` row, nothing gets behind it — and this sweeper, which asked
+ * only "does `getJob` find something", counted the receipt as the job and never
+ * re-added it. A capture could sit in `processing` for seven days.
+ *
+ * `unknown` is deliberately absent: `getJob` returned a job, so something is
+ * there, and re-adding over a state this build cannot name is a guess. It is
+ * counted as present and left for the next sweep.
+ */
+export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set(['completed', 'failed']);
+
+/**
+ * The three things a sweep does to BullMQ, and nothing else.
+ *
+ * Narrow on purpose: the decision below is the part worth testing, and a fake
+ * that has to satisfy the whole `Queue` type is a fake nobody writes.
+ */
+export interface SweepQueue {
+  getJob(jobId: string): Promise<{ getState(): Promise<string> } | undefined>;
+  /** Returns 0 when there was nothing to remove, or the job is active and locked. */
+  remove(jobId: string): Promise<number>;
+  enqueue(name: JobName, payload: JobPayload): Promise<void>;
+}
+
+/** The real queue, seen through `SweepQueue`. */
+export function sweepQueueOf(queue: JobQueue): SweepQueue {
+  return {
+    getJob: (jobId) => queue.queue.getJob(jobId),
+    remove: (jobId) => queue.queue.remove(jobId),
+    enqueue: (name, payload) => queue.enqueue(name, payload),
+  };
+}
+
+/** What one stale row turned out to be. */
+export type RowOutcome = 'present' | 'resubmitted' | 'retained';
+
+/**
+ * Decides one stale `queued` row, and acts on it.
+ *
+ * Three answers:
+ *
+ * - **present** — a job exists and is waiting, delayed in a backoff, or active.
+ *   Nothing to do; the row is the enqueue record of work that is still coming.
+ * - **retained** — a job exists and is finished. The receipt is removed and the
+ *   work re-added, because the row says the work is still owed and the receipt is
+ *   the only thing standing in the way. Removing first is not optional: the add
+ *   would otherwise be a no-op against the same id.
+ * - **resubmitted** — no job at all, the original case this sweeper was written
+ *   for: an add the API lost, or a job Redis dropped.
+ *
+ * `remove` answering 0 is fine and is not checked: the job went between the
+ * `getState` and the `remove` (so the add works), or it is active and locked (so
+ * the add is a no-op and the running job keeps its lock, which is the outcome
+ * anyone would want).
+ */
+export async function reconcileQueuedRow(
+  queue: SweepQueue,
+  captureId: string,
+  job: JobName,
+): Promise<RowOutcome> {
+  const jobKey = jobKeyFor(captureId, job);
+  const jobId = jobKeyToJobId(jobKey);
+
+  const existing = await queue.getJob(jobId);
+  if (existing !== undefined) {
+    const state = await existing.getState();
+    if (!TERMINAL_JOB_STATES.has(state)) return 'present';
+    await queue.remove(jobId);
+    await queue.enqueue(job, { captureId, jobKey });
+    return 'retained';
+  }
+
+  await queue.enqueue(job, { captureId, jobKey });
+  return 'resubmitted';
 }
 
 export interface SweepOptions {
@@ -116,21 +209,38 @@ export async function sweepQueuedRows(
     .orderBy(asc(processingEvents.at), asc(processingEvents.id))
     .limit(limit);
 
-  const report: SweepReport = { scanned: rows.length, resubmitted: 0, present: 0, unknown: 0 };
+  const report: SweepReport = {
+    scanned: rows.length,
+    resubmitted: 0,
+    present: 0,
+    unknown: 0,
+    retained: 0,
+  };
+
+  const sweepQueue = sweepQueueOf(queue);
 
   for (const row of rows) {
     if (!isJobName(row.job)) {
       report.unknown += 1;
       continue;
     }
-    const jobKey = jobKeyFor(row.captureId, row.job);
-    const existing = await queue.queue.getJob(jobKeyToJobId(jobKey));
-    if (existing !== undefined) {
-      report.present += 1;
-      continue;
+    try {
+      const outcome = await reconcileQueuedRow(sweepQueue, row.captureId, row.job);
+      if (outcome === 'present') report.present += 1;
+      else {
+        report.resubmitted += 1;
+        if (outcome === 'retained') report.retained += 1;
+      }
+    } catch (err) {
+      // One row that could not be reconciled is not the sweep's problem to
+      // solve: it stays `queued`, it is still stale, and the next run tries it
+      // again. Throwing here would cost every row behind it its turn.
+      log.warn('could not reconcile a stale queued row', {
+        captureId: row.captureId,
+        job: row.job,
+        ...errorFields(err, log.level === 'debug'),
+      });
     }
-    await queue.enqueue(row.job, { captureId: row.captureId, jobKey });
-    report.resubmitted += 1;
   }
 
   return report;
@@ -140,6 +250,7 @@ export async function sweepQueuedRows(
 export function describeSweep(report: SweepReport): string {
   return (
     `sweep: ${report.scanned} stale queued row(s), ` +
-    `${report.resubmitted} resubmitted, ${report.present} present, ${report.unknown} unknown job name(s)`
+    `${report.resubmitted} resubmitted (${report.retained} over a finished job), ` +
+    `${report.present} present, ${report.unknown} unknown job name(s)`
   );
 }

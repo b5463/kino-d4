@@ -7,7 +7,8 @@ import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastif
 // plugin itself is registered in server.ts.
 import '@fastify/cookie';
 import { bearerToken, hashToken, timingSafeHexEqual, tokenScope } from './tokens';
-import { verifyPin } from './pins';
+import { PinVerifierBusyError, verifyPin } from './pins';
+import { clearPinAttempts, pinLockoutOf, recordPinFailure } from './pinLockout';
 import { normalizeSlug } from '../rolls/slug';
 import { captures, rollDevices, rolls, devices } from '../db/schema';
 import { pinAttemptRateLimit } from '../plugins/rateLimits';
@@ -691,12 +692,59 @@ export const authPlugin = fp(
         return fail(reply, 400, 'ROLL_HAS_NO_PIN', 'this roll is not PIN protected');
       }
 
+      /**
+       * The per-roll counter, read before any scrypt runs. A roll that has
+       * already taken `PIN_ATTEMPT_LIMIT` wrong answers refuses without
+       * verifying, which closes the guessing and the CPU-burn at the same
+       * point — they are one attack seen from two sides.
+       *
+       * 429 with `retry-after`, not 401: the caller is being rate limited, and
+       * saying so is not a disclosure. The roll's existence was already
+       * confirmed by the 404 two checks up, and this answer says nothing about
+       * whether any PIN was right.
+       */
+      const lockout = await pinLockoutOf(app.redis, row.id);
+      if (lockout.locked) {
+        reply.header('retry-after', String(lockout.retryAfter));
+        return fail(
+          reply,
+          429,
+          'PIN_LOCKED',
+          `too many wrong PINs for this roll; try again in ${lockout.retryAfter} seconds`,
+        );
+      }
+
       // The submitted PIN is never logged and never echoed: Task 14's request
       // serializer is an allow-list that excludes bodies, and this reply says
       // only whether it matched.
-      if (!(await verifyPin(parsed.data.pin, row.pinHash))) {
+      let opened: boolean;
+      try {
+        opened = await verifyPin(parsed.data.pin, row.pinHash);
+      } catch (err) {
+        // Every verification slot and the whole waiting line are busy. A 503
+        // with a retry hint is the honest answer; the alternative is a request
+        // that sits in a queue until the client gives up.
+        if (!(err instanceof PinVerifierBusyError)) throw err;
+        reply.header('retry-after', '2');
+        return fail(reply, 503, 'PIN_VERIFIER_BUSY', 'too many PIN checks at once; retry shortly');
+      }
+
+      if (!opened) {
+        const failed = await recordPinFailure(app.redis, row.id);
+        if (failed.locked) {
+          reply.header('retry-after', String(failed.retryAfter));
+          return fail(
+            reply,
+            429,
+            'PIN_LOCKED',
+            `too many wrong PINs for this roll; try again in ${failed.retryAfter} seconds`,
+          );
+        }
         return fail(reply, 401, 'INVALID_PIN', 'that PIN does not open this roll');
       }
+
+      // A guest who got in resets the roll for everybody. See `pinLockout.ts`.
+      await clearPinAttempts(app.redis, row.id);
 
       reply.setCookie(pinCookieName(row.id), pinFingerprint(row.id, row.pinHash), {
         signed: true,
@@ -717,7 +765,9 @@ export const authPlugin = fp(
       return { ok: true };
     });
   },
-  { name: 'kino-auth', dependencies: ['kino-db'] },
+  // `kino-redis` joined `kino-db` when the PIN route grew its per-roll
+  // attempt counter: `app.redis` has to exist before this plugin loads.
+  { name: 'kino-auth', dependencies: ['kino-db', 'kino-redis'] },
 );
 
 /** Narrows `request.device` after `requireDevice`, failing loudly if it is absent. */

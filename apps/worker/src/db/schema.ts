@@ -127,6 +127,23 @@ export const assets = pgTable(
   ],
 );
 
+/**
+ * The multipart upload sessions (05 §9). **Read and retired, never opened**: a
+ * worker does not upload, and the only column it writes is `status`, when it
+ * reaps a session the camera abandoned.
+ *
+ * Mirrored narrowly, like everything else here: the columns the reaper needs to
+ * find a stale row (`status`, `created_at`) and to abort what it left behind in
+ * storage (`s3_upload_id`, plus `asset_id` to reach the object key).
+ */
+export const uploadSessions = pgTable('upload_sessions', {
+  id: text('id').primaryKey(),
+  assetId: text('asset_id').notNull(),
+  s3UploadId: text('s3_upload_id'),
+  status: text('status').notNull(), // open|complete|aborted|failed
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 /* ------------------------------------------------- the roll-scoped tables -- */
 
 /**

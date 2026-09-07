@@ -13,8 +13,11 @@
 #   - proxy (Caddy) publishes no host ports and serves plain HTTP on :80
 #     inside the Compose network (Caddyfile.tunnel). It cannot obtain ACME
 #     certificates behind a tunnel, and it does not need to: the certificate is
-#     Cloudflare's. TRUST_PROXY is already true in the production file, so the
-#     API reads the client address from X-Forwarded-For that Caddy forwards.
+#     Cloudflare's. TRUST_PROXY in the production file names the private
+#     ranges Caddy and cloudflared live in, so the API reads the client
+#     address out of the X-Forwarded-For chain rather than trusting all of
+#     it - which matters more here than in the direct deployment, because a
+#     tunnel puts one more hop in front of Caddy.
 #   - tunnel (cloudflared) runs with a token from the Zero Trust dashboard,
 #     where the public hostname kino.acronym.sk is mapped to
 #     http://proxy:80. The token is a secret: .env.production only.

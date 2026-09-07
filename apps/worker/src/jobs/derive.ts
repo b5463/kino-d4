@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { ASSET_ROLES } from '@kino/schemas';
 import { assets } from '../db/schema';
 import { newId } from '../ids';
 import { publishRollEvent } from '../events/publish';
+import { errorFields, log } from '../log';
 import type { CaptureRow } from './capture';
 import type { DerivedBody, JobCtx } from './types';
 
@@ -70,6 +73,78 @@ export interface DerivedResult {
   bytes: number;
 }
 
+/**
+ * Removes the object a derivative just replaced.
+ *
+ * The case this is for is the device thumb. A camera uploads its own ~7 kB
+ * `thumb.jpg` so the feed has something the instant the capture lands, and
+ * `generate-thumbnail` is queued anyway (05 §19 wants a 720 px WebP). The
+ * worker's `thumb.webp` upserts onto the same `(capture, 'thumb', NULL)` row and
+ * rewrites `object_key` — at which point the JPEG is in the bucket with nothing
+ * naming it. `assets.object_key` is the only link (05 §6), so once the row moves
+ * those bytes are unreachable and, after the capture is purged, undeletable:
+ * `eraseCapture` lists the folder rather than the rows precisely because of
+ * leaks like this one, but only for a capture that reaches the trash.
+ *
+ * Three conditions, and each one is a refusal to guess:
+ *
+ * 1. **The key actually changed.** A re-render onto the same name is the normal
+ *    case and deletes nothing.
+ * 2. **The old key is inside this capture's own `derived/` folder.** A row that
+ *    somehow pointed at an original, or at another capture, is a row this
+ *    function has no business acting on — and `guardOriginalWrites` refuses the
+ *    delete underneath it either way.
+ * 3. **No other asset row names it.** `assets.object_key` is unique, so this can
+ *    only be a row written between the read and the upsert; the check costs one
+ *    query and is the difference between a cleanup and a data loss.
+ *
+ * Best effort, always: a failure here is logged and swallowed. The derivative is
+ * stored, the row is right, and the guest's tile is live — losing all of that
+ * over an orphaned 7 kB object would be the wrong trade.
+ */
+export async function removeSupersededObject(
+  ctx: JobCtx,
+  capture: CaptureRow,
+  role: AssetRole,
+  previousKey: string,
+  currentKey: string,
+): Promise<void> {
+  if (previousKey === currentKey) return;
+
+  const folder = `rolls/${capture.rollId}/captures/${capture.id}/derived/`;
+  if (!previousKey.startsWith(folder)) {
+    log.warn('superseded object is not in this capture\'s derived folder; left alone', {
+      captureId: capture.id,
+      role,
+      previousKey,
+    });
+    return;
+  }
+
+  try {
+    const referencing = await ctx.db
+      .select({ id: assets.id })
+      .from(assets)
+      .where(eq(assets.objectKey, previousKey))
+      .limit(1);
+    if (referencing.length > 0) return;
+
+    await ctx.s3.send(new DeleteObjectCommand({ Bucket: ctx.bucket, Key: previousKey }));
+    log.debug('deleted superseded derivative object', {
+      captureId: capture.id,
+      role,
+      previousKey,
+    });
+  } catch (err) {
+    log.warn('could not delete superseded derivative object', {
+      captureId: capture.id,
+      role,
+      previousKey,
+      ...errorFields(err, log.level === 'debug'),
+    });
+  }
+}
+
 export async function publishDerived(
   ctx: JobCtx,
   capture: CaptureRow,
@@ -77,6 +152,24 @@ export async function publishDerived(
 ): Promise<DerivedResult> {
   const body = Buffer.isBuffer(artifact.body) ? artifact.body : Buffer.from(artifact.body);
   const sha256 = createHash('sha256').update(body).digest('hex');
+
+  /*
+   * Read before the write, because `ON CONFLICT DO UPDATE ... RETURNING` returns
+   * the row as it now is: the key being replaced is only visible beforehand.
+   * A row that appears between this read and the upsert simply means nothing is
+   * superseded as far as this job knows, which is the safe direction to be wrong.
+   */
+  const [existing] = await ctx.db
+    .select({ objectKey: assets.objectKey })
+    .from(assets)
+    .where(
+      and(
+        eq(assets.captureId, capture.id),
+        eq(assets.role, artifact.role),
+        isNull(assets.frameIndex),
+      ),
+    )
+    .limit(1);
 
   const key = await ctx.putDerived(
     capture.rollId,
@@ -131,6 +224,12 @@ export async function publishDerived(
     captureId: capture.id,
     role: artifact.role,
   });
+
+  // After the announcement, not before it: the guest's tile does not wait on
+  // housekeeping, and this cannot fail the job in any case.
+  if (existing !== undefined) {
+    await removeSupersededObject(ctx, capture, artifact.role, existing.objectKey, key);
+  }
 
   return { key, sha256, bytes: body.length };
 }

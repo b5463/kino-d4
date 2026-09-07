@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { loadWorkerConfig, type WorkerConfig } from '../src/config';
 import { createJobRuntime, type JobRuntime } from '../src/context';
 import { assets, auditEvents, captures, exportJobs } from '../src/db/schema';
@@ -432,7 +437,14 @@ describe('the purge escape', () => {
 
     // And the eraser is not reachable *through* the context: there is no member
     // of `JobCtx` that can delete anything.
+    //
+    // `bucket` is a string, not a capability. It is the name of the bucket every
+    // key on this context already addresses, and the two assertions above are
+    // what say why adding it changed nothing: `ctx.s3` was always able to *send*
+    // a delete, and what refuses it is `guardOriginalWrites` reading the key —
+    // not the caller's ignorance of which bucket to name.
     expect(Object.keys(runtime.ctx).sort()).toEqual([
+      'bucket',
       'db',
       'getObject',
       'putDerived',
@@ -441,6 +453,26 @@ describe('the purge escape', () => {
       's3',
       'statObject',
     ]);
+
+    // Stated rather than implied: the delete guard covers the batch form too, so
+    // a handler cannot reach an original by asking for several keys at once.
+    await expect(
+      runtime.ctx.s3.send(
+        new DeleteObjectsCommand({
+          Bucket: runtime.ctx.bucket,
+          Delete: { Objects: [{ Key: original }] },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(OriginalWriteError);
+
+    // And a write to one, which is the half `01 §7` is actually about.
+    await expect(
+      runtime.ctx.s3.send(
+        new PutObjectCommand({ Bucket: runtime.ctx.bucket, Key: original, Body: Buffer.from('x') }),
+      ),
+    ).rejects.toBeInstanceOf(OriginalWriteError);
+
+    expect(await runtime.ctx.statObject(original)).not.toBeNull();
   });
 
   it('is a delete-only client: the eraser cannot write a byte anywhere', async () => {

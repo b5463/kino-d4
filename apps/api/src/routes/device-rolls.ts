@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { and, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { deviceOf } from '../auth/plugins';
+import { deviceOf, rollOf } from '../auth/plugins';
 import { createRoll, guestUrlFor } from '../rolls/rolls';
 import { SLUG_PATTERN, normalizeSlug } from '../rolls/slug';
 import { rollDevices, rolls } from '../db/schema';
@@ -15,8 +15,8 @@ import {
 /**
  * Rolls as the camera sees them (03 §8, 03 §17).
  *
- * Three verbs and no more: start a roll, join one somebody else started, and
- * list the rolls this device is allowed to shoot into. Everything a *host*
+ * Start a roll, join one somebody else started, list the rolls this device is
+ * allowed to shoot into, and call in on one of them. Everything a *host*
  * does — rename, close, set a PIN — is deliberately absent, because a device
  * token must not host-moderate (07 §25). The boot-time check in `authPlugin`
  * enforces the URL half of that; the missing routes are the other half.
@@ -54,6 +54,39 @@ const createBody = z
  */
 const joinBody = z
   .object({ slug: z.string().transform(normalizeSlug).pipe(z.string().regex(SLUG_PATTERN)) })
+  .strict();
+
+/**
+ * What a camera says when it calls in (`POST /api/device/rolls/:rollId/heartbeat`).
+ *
+ * Every field optional: a camera that only wants to say "still here" sends `{}`,
+ * and firmware that learns to report a new number later does not need a second
+ * route. `.strict()` for the reason every body here is — a misspelled `pendng`
+ * would otherwise be a silent zero on the host's dashboard, which is worse than
+ * a 400 because it looks like an answer.
+ *
+ * The counters are bounded ints rather than plain numbers. The queue depth comes
+ * off a device that has just come back from an outage, so "how many captures do
+ * I still owe you" is exactly the field most likely to arrive as a negative or a
+ * float from a bad cast; a bound also stops a compromised token writing a number
+ * the dashboard renders. 100k is four orders of magnitude above a full SD card.
+ */
+const HEARTBEAT_QUEUE_MAX = 100_000;
+
+const heartbeatBody = z
+  .object({
+    pending: z.number().int().min(0).max(HEARTBEAT_QUEUE_MAX).optional(),
+    uploading: z.number().int().min(0).max(HEARTBEAT_QUEUE_MAX).optional(),
+    failed: z.number().int().min(0).max(HEARTBEAT_QUEUE_MAX).optional(),
+    /**
+     * What the camera thinks of *this* server, which is not the same question as
+     * whether the heartbeat arrived: a camera that has been failing uploads for
+     * ten minutes and finally got one request through reports `unreachable`, and
+     * the host needs to see that rather than a green light.
+     */
+    serverState: z.enum(['unknown', 'reachable', 'unreachable']).optional(),
+    firmware: z.string().trim().min(1).max(64).optional(),
+  })
   .strict();
 
 /** Which statuses a device is offered as "current". Closed rolls take no uploads. */
@@ -189,4 +222,68 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
     // the fewer places a host credential travels, the better.
     return { rolls: rows };
   });
+
+  /**
+   * The camera saying it is still there, every 30–60 s.
+   *
+   * It answers the one question the dashboard could not: a roll with no new
+   * captures for ten minutes reads the same whether the camera is packed away or
+   * sitting in a corner with a dead uplink, and the host had nothing to tell
+   * those apart. The queue counters are the second half of it — a camera that is
+   * reachable but 400 captures behind is a different problem from one that is
+   * simply idle.
+   *
+   * `requireDeviceRoll` is the membership check, unchanged: a device token still
+   * reaches only the rolls it created or joined, so a heartbeat cannot be used to
+   * probe for rolls (07 §25). Any status, including a closed roll — a camera
+   * still draining its queue into a roll that closed an hour ago is exactly the
+   * state a host wants to see, and refusing the heartbeat would hide it.
+   *
+   * **Upsert, not update.** A camera that *created* the roll has no
+   * `roll_devices` row — creation writes `rolls.created_by_device_id` and nothing
+   * else — so an UPDATE would silently write nothing for the most common camera
+   * on the roll. The insert is what puts it on the dashboard, and the composite
+   * primary key makes every heartbeat after the first an update in place.
+   *
+   * Metered on `deviceRead`'s budget: 120 a minute is one heartbeat every half
+   * second, two orders of magnitude above what firmware sends, and the counter is
+   * per route so it does not ration a camera's status polls.
+   *
+   * `{ok: true}` and nothing else. The camera has nothing to do with the answer,
+   * and a body it might start acting on is a contract this route has not earned.
+   */
+  app.post(
+    '/api/device/rolls/:rollId/heartbeat',
+    {
+      config: deviceReadRateLimit,
+      preHandler: [app.requireDevice, app.requireDeviceRoll('rollId')],
+    },
+    async (request, reply) => {
+      const parsed = heartbeatBody.safeParse(request.body ?? {});
+      if (!parsed.success) return invalidBody(reply, parsed.error);
+
+      const { pending, uploading, failed, serverState, firmware } = parsed.data;
+      const rollId = rollOf(request).id;
+      const deviceId = deviceOf(request).id;
+
+      // Written even when the body was empty: the timestamp *is* the heartbeat,
+      // and the counters are what the camera chose to say about itself.
+      const state = {
+        lastSeenAt: new Date(),
+        queuePending: pending ?? null,
+        queueUploading: uploading ?? null,
+        queueFailed: failed ?? null,
+        serverState: serverState ?? null,
+        firmwareVersion: firmware ?? null,
+      };
+
+      await app.db
+        .insert(rollDevices)
+        .values({ rollId, deviceId, ...state })
+        .onConflictDoUpdate({ target: [rollDevices.rollId, rollDevices.deviceId], set: state })
+        .execute();
+
+      return reply.send({ ok: true });
+    },
+  );
 };
