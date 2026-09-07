@@ -106,9 +106,19 @@ function Assert-Ready {
   if (-not (Test-Path $envFile)) {
     throw "Missing $envFile - run: deploy.ps1 init -EnvName $EnvName"
   }
-  $leftover = Select-String -Path $envFile -Pattern 'change-me'
+  <#
+    Only live assignments count. The shipped example carries a commented
+    `#CLOUDFLARE_TUNNEL_TOKEN=change-me-...`, which is a documented value for a
+    path this deployment does not use - matching it refused a correctly filled
+    environment and would have stopped a deployment for nothing. Report the KEY
+    names too: on the day, "RELAY_HOST" is the answer and a line number is a
+    lookup.
+  #>
+  $leftover = Get-Content $envFile |
+    Where-Object { $_ -notmatch '^\s*#' -and $_ -match 'change-me' } |
+    ForEach-Object { ($_ -split '=', 2)[0].Trim() }
   if ($leftover) {
-    throw "$envFile still contains change-me placeholders on line(s): $(($leftover | ForEach-Object { $_.LineNumber }) -join ', ')"
+    throw "$envFile still needs a real value for: $($leftover -join ', ')"
   }
   Invoke-Compose @('config', '--quiet')
   $shape = if ($Relay) { 'production + relay overlay (no host ports at all)' } else { 'production (proxy publishes 80/443 on this host)' }
