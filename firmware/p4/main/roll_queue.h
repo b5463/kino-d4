@@ -69,6 +69,11 @@
 #define RQ_CAPTURE_ID_LEN 64
 /** Longest error detail retained for the display and UPLOAD_QUEUE_STATUS. */
 #define RQ_ERROR_LEN 96
+/** The API's own `code` field — "UPLOAD_NOT_OPEN", "CHECKSUM_MISMATCH". Room
+ * for every code in ROLL_DEVICE_CONTRACT.md's error table and then some; a
+ * longer one is not read at all, which means it matches nothing and is
+ * classified on its status alone. Never persisted: it lives for one step. */
+#define RQ_ERROR_CODE_LEN 40
 
 /** On-card format version for UPLOAD.JSON. Bump only on a breaking change;
  * rq_job_load() must keep reading every version it has ever written. */
@@ -117,6 +122,15 @@ typedef enum {
    * FAILED because twelve consecutive yields under a burst of shutters were
    * booked as transient failures. Appended so no other value moves. */
   RQ_DISP_YIELD,
+  /* The upload session the last step addressed is gone: 409 UPLOAD_NOT_OPEN,
+   * which means the server considers it `complete` or `aborted`. The part PUT
+   * and the session `complete` both name an uploadId that will never accept
+   * anything again, so repeating the step gets the same 409 - twelve attempts
+   * at 1 s doubling to a 30 s cap, then a parked photograph. Run the asset
+   * again from `init` instead, at once: that is one request and it is the one
+   * that can succeed. Bounded by the same counter as RQ_DISP_REREAD, because
+   * it asks for the same thing. Appended so no other value moves. */
+  RQ_DISP_REINIT,
 } rq_disposition_t;
 
 /**
@@ -204,18 +218,110 @@ uint32_t rq_backoff_ms(uint32_t attempts);
  * 401/403 are RQ_DISP_HALT rather than RQ_DISP_PARK: a wrong token or a lost
  * association fails every job identically, so parking them one at a time
  * would walk the whole queue into FAILED for a fault the user can fix.
+ *
+ * The status alone. Equivalent to rq_classify_response(status, NULL), which is
+ * the honest answer when the reply body could not be read: two 409s need
+ * opposite cures and only the body tells them apart.
  */
 rq_disposition_t rq_classify_status(int status);
 
+/**
+ * Classify a status together with the API's `code` from the reply body, or
+ * NULL when there was none to read.
+ *
+ * One status needs the code and the rest do not: 409. `UPLOAD_IN_PROGRESS` is
+ * a genuine race and retries; `UPLOAD_NOT_OPEN` is a session that will never
+ * accept another byte and re-inits. See RQ_DISP_REINIT.
+ */
+rq_disposition_t rq_classify_response(int status, const char *code);
+
 /** A step result with the yield flag folded in: yielded wins over any status,
- * because a step that never ran has no status worth reading. */
-rq_disposition_t rq_classify_step(int status, bool card_yielded);
+ * because a step that never ran has no status worth reading. `code` may be
+ * NULL. */
+rq_disposition_t rq_classify_step(int status, const char *code, bool card_yielded);
+
+/**
+ * The API's `{"code": "..."}` out of a JSON error body, into `out`.
+ *
+ * A scanner rather than a parser, deliberately: this runs on a body that may
+ * be truncated at the buffer bound, may be a proxy's HTML, and is read on the
+ * failure path where allocating a document is the last thing wanted. The first
+ * `"code"` key wins, which is the API's own field order.
+ *
+ * Only A-Z and underscore are accepted, because that is what every code in
+ * ROLL_DEVICE_CONTRACT.md's table is made of. Anything else - an escape, a
+ * space, a lowercase word from a `message` - means this is not the field, and
+ * false with `out` emptied is the right answer: an unread code classifies on
+ * the status alone, which is the behaviour that shipped.
+ */
+bool rq_error_code(const char *body, char *out, size_t cap);
 
 /**
  * True when a job in RETRY_WAIT is ready to run again. Split out so the
  * upload task never compares clocks itself, and so the test can.
  */
 bool rq_retry_due(const rq_job_t *job, int64_t now_ms);
+
+/* ------------------------------------------------------------------ */
+/* Heartbeat cadence                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * `POST /api/device/rolls/{rollId}/heartbeat` exists so a host dashboard can
+ * tell three things apart that all look identical from the server side: the
+ * camera is off, the camera is on and nobody is shooting, and the camera is on
+ * with a worker that has stopped moving. A timestamp with the queue's counts
+ * beside it answers all three; the body is optional to the last field, so the
+ * arrival is most of the message.
+ *
+ * The cadence lives here, with the rest of the queue's timing policy, because
+ * it is arithmetic with no I/O in it and this is the file the host tests
+ * compile. upload_queue.c owns the clock and the request.
+ */
+
+/** Ordinary period while a Roll is joined and the network is up. Well inside
+ * the device read budget of 120 requests per minute per token. */
+#define RQ_HEARTBEAT_PERIOD_MS 45000
+/** Floor between two heartbeats, whatever changed. A queue thrashing between
+ * empty and busy must not turn into a request per step. */
+#define RQ_HEARTBEAT_MIN_GAP_MS 10000
+
+/** What one heartbeat says, and the only facts a change of which is worth
+ * sending early. `pending` is what the ROLL screen calls waiting: the RAM
+ * window plus the durable remainder on the card, so the body and the display
+ * cannot disagree. */
+typedef struct {
+  int pending;
+  int uploading;
+  int failed;
+  /** upload_server_state_t, widened so this file needs no ESP-IDF header. */
+  int server_state;
+} rq_hb_facts_t;
+
+/** What the last heartbeat said and when. Zeroed at boot means "none yet". */
+typedef struct {
+  bool sent;
+  int64_t sent_ms;
+  rq_hb_facts_t sent_facts;
+} rq_hb_state_t;
+
+/**
+ * True when a heartbeat should go out now.
+ *
+ * Never with no Roll joined - there is no rollId to address and no host to
+ * tell - and never with the transport down, where the request would only
+ * burn a connect timeout on the worker. Otherwise: the first one as soon as
+ * both are true, then every RQ_HEARTBEAT_PERIOD_MS, and early when the queue
+ * crosses between having work and having none or the server's reachability
+ * changes - but never inside RQ_HEARTBEAT_MIN_GAP_MS of the last one.
+ */
+bool rq_heartbeat_due(const rq_hb_state_t *st, const rq_hb_facts_t *now_facts, bool joined,
+                      bool net_up, int64_t now_ms);
+
+/** Record that one went out (or was attempted). Called whether or not the
+ * server answered: a failed heartbeat must not become a retry loop, and the
+ * next period is the retry. */
+void rq_heartbeat_sent(rq_hb_state_t *st, const rq_hb_facts_t *facts, int64_t now_ms);
 
 /* ------------------------------------------------------------------ */
 /* Resume                                                             */

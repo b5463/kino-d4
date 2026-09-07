@@ -55,6 +55,16 @@ bool roll_api_join(const char *slug, roll_api_assoc_t *out) {
   return false;
 }
 
+/* Nothing to tell and nothing to tell it over. Status 0 rather than an
+ * invented code: the caller's only decision is whether to log, and there is
+ * nothing here worth a log line at all. */
+bool roll_api_heartbeat(const char *roll_id, const roll_heartbeat_t *hb, int *out_status) {
+  (void)roll_id;
+  (void)hb;
+  if (out_status != NULL) *out_status = 0;
+  return false;
+}
+
 #else /* KINO_RADIO */
 
 #include "cJSON.h"
@@ -166,12 +176,21 @@ static char *capture_document(const rq_job_t *job, bool *card_busy) {
 /* Steps                                                              */
 /* ------------------------------------------------------------------ */
 
+/* The wire's answer into the step's — status, detail and code together.
+ * Copying detail without the code beside it is how a 409 loses the one field
+ * that says which 409 it is, and that cost twelve attempts on a step that
+ * could never land. */
+static void take_http(roll_step_result_t *res, const roll_http_out_t *http) {
+  res->status = http->status;
+  memcpy(res->detail, http->detail, sizeof res->detail);
+  memcpy(res->code, http->code, sizeof res->code);
+}
+
 static void step_register(const rq_job_t *job, roll_step_result_t *res) {
   roll_http_out_t http;
   memset(&http, 0, sizeof http);
   if (!roll_client_ensure_registered(&http)) {
-    res->status = http.status;
-    memcpy(res->detail, http.detail, sizeof res->detail);
+    take_http(res, &http);
     return;
   }
 
@@ -198,8 +217,7 @@ static void step_register(const rq_job_t *job, roll_step_result_t *res) {
   cJSON *reply = roll_client_call("POST", path, doc, &http);
   cJSON_free(doc);
 
-  res->status = http.status;
-  memcpy(res->detail, http.detail, sizeof res->detail);
+  take_http(res, &http);
   if (reply != NULL) {
     /* 201 created and 200 replay both carry the same captureId for the same
      * captureUuid, which is what makes a reboot mid-upload safe. */
@@ -276,8 +294,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
   cJSON *reply = roll_client_call("POST", path, text, &http);
   cJSON_free(text);
 
-  res->status = http.status;
-  memcpy(res->detail, http.detail, sizeof res->detail);
+  take_http(res, &http);
   if (reply == NULL) return;
 
   char upload_id[64];
@@ -303,8 +320,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
     const size_t len = bytes - offset < part_size ? bytes - offset : part_size;
     snprintf(path, sizeof path, "/api/device/uploads/%s/parts/%d", upload_id, part_no);
     roll_http_put_file(path, file_path, offset, len, &http);
-    res->status = http.status;
-    memcpy(res->detail, http.detail, sizeof res->detail);
+    take_http(res, &http);
     if (http.status == 0 && strcmp(http.detail, "card busy") == 0) res->card_yielded = true;
     if (http.status < 200 || http.status >= 300) return;
   }
@@ -312,8 +328,7 @@ static void step_asset(const rq_job_t *job, const char *role, int frame_index,
   snprintf(path, sizeof path, "/api/device/uploads/%s/complete", upload_id);
   cJSON *fin = roll_client_call("POST", path, NULL, &http);
   if (fin != NULL) cJSON_Delete(fin);
-  res->status = http.status;
-  memcpy(res->detail, http.detail, sizeof res->detail);
+  take_http(res, &http);
 }
 
 static void step_complete(const rq_job_t *job, roll_step_result_t *res) {
@@ -322,8 +337,7 @@ static void step_complete(const rq_job_t *job, roll_step_result_t *res) {
   roll_http_out_t http;
   cJSON *reply = roll_client_call("POST", path, NULL, &http);
   if (reply != NULL) cJSON_Delete(reply);
-  res->status = http.status;
-  memcpy(res->detail, http.detail, sizeof res->detail);
+  take_http(res, &http);
 }
 
 void roll_api_step(const rq_job_t *job, rq_step_t step, roll_step_result_t *out) {
@@ -362,6 +376,78 @@ void roll_api_step(const rq_job_t *job, rq_step_t step, roll_step_result_t *out)
       break;
   }
   ESP_LOGI(TAG, "step %d for %.8s -> %d", (int)step.kind, job->uuid, out->status);
+}
+
+/* ------------------------------------------------------------------ */
+/* Heartbeat                                                          */
+/* ------------------------------------------------------------------ */
+
+#ifndef KINO_FW_VERSION
+/* main/CMakeLists.txt reads firmware/VERSION and defines this for the
+ * component. The fallback keeps a translation unit built outside that
+ * definition compiling; a dashboard told "unknown" is better than a build that
+ * does not happen. */
+#define KINO_FW_VERSION "unknown"
+#endif
+
+/* The API takes 0..100000 for each count and answers 400 outside it. Clamping
+ * rather than refusing: a heartbeat is the least important thing this firmware
+ * does and must not turn into a 400 anyone has to explain. */
+static int hb_count(int v) {
+  if (v < 0) return 0;
+  return v > 100000 ? 100000 : v;
+}
+
+/* The API's enum, and only the API's enum. A serverState it does not know is a
+ * 400 for the whole body, so an unrecognised string becomes "unknown" - which
+ * is exactly what the camera would be saying anyway. */
+static const char *hb_server_state(const char *s) {
+  if (s == NULL) return "unknown";
+  if (strcmp(s, "reachable") == 0) return "reachable";
+  if (strcmp(s, "unreachable") == 0) return "unreachable";
+  return "unknown";
+}
+
+bool roll_api_heartbeat(const char *roll_id, const roll_heartbeat_t *hb, int *out_status) {
+  if (out_status != NULL) *out_status = 0;
+  if (roll_id == NULL || roll_id[0] == '\0' || hb == NULL) return false;
+
+  char why[RQ_ERROR_LEN];
+  if (!roll_http_ready(why, sizeof why)) return false;
+  /*
+   * No credential, no call. Deliberately NOT roll_client_ensure_registered():
+   * that would let a heartbeat trigger a self-registration, and this camera
+   * does not mint its own credential - Studio provisions it (#146). A camera
+   * with no credential is one nobody has provisioned yet, and it has nothing
+   * to say to a dashboard.
+   */
+  if (!roll_state_has_credential()) return false;
+
+  cJSON *body = cJSON_CreateObject();
+  if (body == NULL) return false;
+  cJSON_AddNumberToObject(body, "pending", hb_count(hb->pending));
+  cJSON_AddNumberToObject(body, "uploading", hb_count(hb->uploading));
+  cJSON_AddNumberToObject(body, "failed", hb_count(hb->failed));
+  cJSON_AddStringToObject(body, "serverState", hb_server_state(hb->server_state));
+  /* Which build is reporting. The dashboard reads a fleet, and "the stuck ones
+   * are all on 0.4.42" is the sentence this field exists to make possible. */
+  cJSON_AddStringToObject(body, "firmware", KINO_FW_VERSION);
+  char *text = cJSON_PrintUnformatted(body);
+  cJSON_Delete(body);
+  if (text == NULL) return false;
+
+  char path[128];
+  snprintf(path, sizeof path, "/api/device/rolls/%s/heartbeat", roll_id);
+  roll_http_out_t http;
+  cJSON *reply = roll_client_call("POST", path, text, &http);
+  cJSON_free(text);
+  if (reply != NULL) cJSON_Delete(reply);
+
+  if (out_status != NULL) *out_status = http.status;
+  /* No klog, no ESP_LOGW: a heartbeat that failed is not news at this level,
+   * and the caller is the one holding the once-a-minute budget for saying so.
+   * Nothing here touches a job, the queue's halt flag, or the card. */
+  return http.status == 200;
 }
 
 /* ------------------------------------------------------------------ */

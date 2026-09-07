@@ -24,12 +24,50 @@ uint32_t rq_backoff_ms(uint32_t attempts) {
   return ms > RQ_BACKOFF_CAP_MS ? RQ_BACKOFF_CAP_MS : ms;
 }
 
-rq_disposition_t rq_classify_step(int status, bool card_yielded) {
+rq_disposition_t rq_classify_step(int status, const char *code, bool card_yielded) {
   if (card_yielded) return RQ_DISP_YIELD;
-  return rq_classify_status(status);
+  return rq_classify_response(status, code);
 }
 
-rq_disposition_t rq_classify_status(int status) {
+rq_disposition_t rq_classify_status(int status) { return rq_classify_response(status, NULL); }
+
+bool rq_error_code(const char *body, char *out, size_t cap) {
+  if (out == NULL || cap == 0) return false;
+  out[0] = '\0';
+  if (body == NULL) return false;
+
+  static const char key[] = "\"code\"";
+  const char *p = strstr(body, key);
+  if (p == NULL) return false;
+  p += sizeof key - 1;
+
+  while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+  if (*p != ':') return false;
+  p++;
+  while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+  if (*p != '"') return false;
+  p++;
+
+  size_t n = 0;
+  while (*p != '\0' && *p != '"') {
+    /* Every code in the contract's table is A-Z and underscores. Anything
+     * else means this is not the field we are after, and half of a code is
+     * worse than none: it could match nothing, or worse, match. */
+    if (!((*p >= 'A' && *p <= 'Z') || *p == '_')) goto fail;
+    if (n + 1 >= cap) goto fail; /* longer than any code this firmware acts on */
+    out[n++] = *p++;
+  }
+  if (*p != '"') goto fail; /* the body was cut off before the closing quote */
+  out[n] = '\0';
+  if (n == 0) goto fail;
+  return true;
+
+fail:
+  out[0] = '\0';
+  return false;
+}
+
+rq_disposition_t rq_classify_response(int status, const char *code) {
   /* No response at all: DNS, TLS, connect, timeout, or the C6 link dropping
    * mid-request. Always transient — the bytes were never judged. */
   if (status <= 0) return RQ_DISP_RETRY;
@@ -43,7 +81,25 @@ rq_disposition_t rq_classify_status(int status) {
        * actionable instead of walking it into FAILED one job at a time. */
       return RQ_DISP_HALT;
 
-    case 409: /* UPLOAD_IN_PROGRESS — another init is open for this asset */
+    case 409:
+      /*
+       * Two 409s with opposite cures, told apart by the API's own code.
+       *
+       * UPLOAD_NOT_OPEN: the server considers the session complete or
+       * aborted, so the part PUT and the session complete address an uploadId
+       * that will never accept another byte. Repeating the step gets the same
+       * 409 — twelve attempts, 1 s doubling to a 30 s cap, then a parked
+       * photograph that one `init` would have rescued. Re-init instead.
+       *
+       * UPLOAD_IN_PROGRESS: another init for the same asset is genuinely in
+       * flight, and the retry finds that session and resumes it. Backing off
+       * is right.
+       *
+       * No code, or a code we do not know: retry, as this firmware always
+       * has. A body that could not be read must not turn a transient race
+       * into a re-init.
+       */
+      if (code != NULL && strcmp(code, "UPLOAD_NOT_OPEN") == 0) return RQ_DISP_REINIT;
       return RQ_DISP_RETRY;
 
     case 422: /* CHECKSUM_MISMATCH — stored object did not re-hash */
@@ -87,6 +143,43 @@ void rq_job_boot_resume(rq_job_t *job) {
 void rq_job_network_restored(rq_job_t *job) {
   if (job == NULL) return;
   if (job->state == RQ_RETRY_WAIT) job->next_attempt_ms = 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Heartbeat cadence                                                  */
+/* ------------------------------------------------------------------ */
+
+/* Work the dashboard would call "busy". Only whether it is zero matters: a
+ * count that ticks down from 40 to 39 is not news, a queue that reaches zero
+ * is. */
+static bool hb_busy(const rq_hb_facts_t *f) { return f->pending > 0 || f->uploading > 0; }
+
+bool rq_heartbeat_due(const rq_hb_state_t *st, const rq_hb_facts_t *now_facts, bool joined,
+                      bool net_up, int64_t now_ms) {
+  if (st == NULL || now_facts == NULL) return false;
+  /* No Roll, no rollId to address and no host waiting to hear. The contract
+   * has no camera-level heartbeat and this must not invent one. */
+  if (!joined || !net_up) return false;
+  if (!st->sent) return true; /* the first one, as soon as there is somewhere to send it */
+
+  int64_t since = now_ms - st->sent_ms;
+  /* A monotonic clock does not go backwards, but a caller mixing two of them
+   * would; treat that as "just sent" rather than as a licence to send. */
+  if (since < 0) since = 0;
+  if (since >= RQ_HEARTBEAT_PERIOD_MS) return true;
+  if (since < RQ_HEARTBEAT_MIN_GAP_MS) return false;
+
+  /* The two changes a host acts on. Everything else waits for the period. */
+  if (hb_busy(now_facts) != hb_busy(&st->sent_facts)) return true;
+  if (now_facts->server_state != st->sent_facts.server_state) return true;
+  return false;
+}
+
+void rq_heartbeat_sent(rq_hb_state_t *st, const rq_hb_facts_t *facts, int64_t now_ms) {
+  if (st == NULL || facts == NULL) return;
+  st->sent = true;
+  st->sent_ms = now_ms;
+  st->sent_facts = *facts;
 }
 
 /* ------------------------------------------------------------------ */
@@ -328,12 +421,32 @@ bool rq_apply(rq_job_t *job, rq_step_t step, rq_disposition_t disp, const char *
       return false;
     }
 
-    case RQ_DISP_REREAD: {
-      /* The server rejected the stored bytes. Re-reading the card is the one
-       * thing that can fix that, and it is bounded so a genuinely corrupt
-       * file parks instead of looping. Note this does NOT touch `attempts`:
-       * a checksum mismatch is not a network failure and must not inherit or
-       * contribute to the network backoff. */
+    case RQ_DISP_REREAD:
+    case RQ_DISP_REINIT: {
+      /* Two different faults, one cure and one bound.
+       *
+       * REREAD: the server rejected the stored bytes. Re-reading the card is
+       * the one thing that can fix that.
+       *
+       * REINIT: the upload session is gone (409 UPLOAD_NOT_OPEN). A fresh
+       * `init` is the one thing that can fix that.
+       *
+       * Both mean "run this asset again from init", both are answered by the
+       * next step re-entering at init from the completion flags, and both are
+       * bounded by `reread_attempts` so a server that keeps giving the same
+       * answer parks the job instead of looping the camera for ever. One
+       * counter rather than two: it counts re-runs of an asset, it is cleared
+       * by the asset landing, and a second field would have to be persisted
+       * in UPLOAD.JSON to say the same thing.
+       *
+       * Neither touches `attempts`: neither is a network failure, so neither
+       * inherits or feeds the network backoff.
+       *
+       * Nothing is lost and nothing doubles. No completion flag is cleared
+       * here, so a frame already confirmed stays confirmed and is not sent
+       * again; a frame not confirmed is still on the card, and a fresh init
+       * declares the same bytes and the same sha256 with its parts numbered
+       * from 1 inside the new session. */
       job->reread_attempts++;
       set_error(job, detail);
       if (job->reread_attempts > RQ_MAX_REREADS) {

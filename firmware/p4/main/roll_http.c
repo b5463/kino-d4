@@ -339,6 +339,12 @@ static void finish(esp_http_client_handle_t client, const roll_http_req_t *req,
     char safe[RQ_ERROR_LEN];
     rq_redact(safe, sizeof safe, text);
     rq_sanitise_detail(out->detail, sizeof out->detail, safe);
+
+    /* The `code` is read from the WHOLE body, not from `detail`: detail is
+     * truncated to 96 bytes and has already been through redaction and
+     * sanitising, any of which can cut a code in half. Two 409s need opposite
+     * cures and this is what tells them apart (rq_classify_response). */
+    (void)rq_error_code(req->response, out->code, sizeof out->code);
   }
 }
 
@@ -500,7 +506,21 @@ void roll_http_put_file(const char *path, const char *file_path, size_t offset, 
     return;
   }
 
-  const roll_http_req_t req = {.method = "PUT", .path = path, .authenticate = true};
+  /*
+   * A part PUT used to discard its reply body, because a 204 has nothing in
+   * it worth keeping. It does now: 409 UPLOAD_NOT_OPEN arrives HERE, on the
+   * part PUT, and without the body there is no `code` to tell it from 409
+   * UPLOAD_IN_PROGRESS — so the session-is-gone case burned twelve attempts
+   * on a step that could never land. finish() reads into this and nothing
+   * else; it is wiped before returning, like every other buffer a reply
+   * touches, because any of them can echo a URL back.
+   */
+  char response[ROLL_HTTP_MAX_RESPONSE];
+  const roll_http_req_t req = {.method = "PUT",
+                               .path = path,
+                               .authenticate = true,
+                               .response = response,
+                               .response_cap = sizeof response};
   esp_http_client_handle_t client = open_client("PUT", path, true, out);
   if (client == NULL) {
     free(buf);
@@ -571,6 +591,7 @@ void roll_http_put_file(const char *path, const char *file_path, size_t offset, 
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
   free(buf);
+  memset(response, 0, sizeof response);
   ESP_LOGI(TAG, "part %s: %u bytes -> %d", path, (unsigned)sent, out->status);
 }
 

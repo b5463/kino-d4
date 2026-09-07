@@ -54,6 +54,11 @@ typedef struct {
   int status;
   size_t body_len;
   char detail[RQ_ERROR_LEN]; /* already redacted */
+  /** The API's `code` on a >= 400 reply, empty otherwise or when the body did
+   * not carry one. It is a fixed vocabulary of A-Z and underscores
+   * (rq_error_code), so no secret can reach it and it is not redacted;
+   * `detail` beside it still is. */
+  char code[RQ_ERROR_CODE_LEN];
 } roll_http_out_t;
 
 /** What to send. `json_body` and the file streaming below are exclusive. */

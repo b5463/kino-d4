@@ -102,8 +102,9 @@ static void test_classify(void) {
   CHECK(rq_classify_status(401) == RQ_DISP_HALT, "401 halts the queue");
   CHECK(rq_classify_status(403) == RQ_DISP_HALT, "403 halts the queue");
 
-  /* Transient, per the contract's error table. */
-  CHECK(rq_classify_status(409) == RQ_DISP_RETRY, "409 UPLOAD_IN_PROGRESS retries init");
+  /* Transient, per the contract's error table. A 409 whose body could not be
+   * read keeps the behaviour that shipped: retry. */
+  CHECK(rq_classify_status(409) == RQ_DISP_RETRY, "a 409 with no code read retries");
   CHECK(rq_classify_status(429) == RQ_DISP_RETRY, "429 honours backoff");
   CHECK(rq_classify_status(500) == RQ_DISP_RETRY, "500 retries");
   CHECK(rq_classify_status(502) == RQ_DISP_RETRY, "502 retries");
@@ -259,10 +260,19 @@ static void test_yield_costs_no_attempt(void) {
    * "the asset is not on the card" while C1.JPG sat on the card intact -
    * every stat during a burst of shutters found the card held by a capture,
    * and each refusal was booked as a transient failure. */
-  CHECK(rq_classify_step(0, true) == RQ_DISP_YIELD, "a yield is a yield whatever the status");
-  CHECK(rq_classify_step(201, true) == RQ_DISP_YIELD, "even with a status the step did not run");
-  CHECK(rq_classify_step(0, false) == RQ_DISP_RETRY, "no yield: status 0 is the usual transient");
-  CHECK(rq_classify_step(201, false) == RQ_DISP_OK, "no yield: the status speaks");
+  CHECK(rq_classify_step(0, NULL, true) == RQ_DISP_YIELD,
+        "a yield is a yield whatever the status");
+  CHECK(rq_classify_step(201, NULL, true) == RQ_DISP_YIELD,
+        "even with a status the step did not run");
+  CHECK(rq_classify_step(0, NULL, false) == RQ_DISP_RETRY,
+        "no yield: status 0 is the usual transient");
+  CHECK(rq_classify_step(201, NULL, false) == RQ_DISP_OK, "no yield: the status speaks");
+  /* A code changes nothing about a yield: the step did not run, so there was
+   * no reply to carry one. */
+  CHECK(rq_classify_step(409, "UPLOAD_NOT_OPEN", true) == RQ_DISP_YIELD,
+        "a code cannot outrank a step that never ran");
+  CHECK(rq_classify_step(409, "UPLOAD_NOT_OPEN", false) == RQ_DISP_REINIT,
+        "no yield: the code speaks too");
 
   rq_job_t job;
   rq_job_init(&job, UUID_A, "roll_0001", 1, true);
@@ -1392,6 +1402,191 @@ static void test_revive_round_trip(void) {
 }
 
 
+/* ---- the two 409s ----------------------------------------------------- */
+
+static void test_error_code_scanner(void) {
+  char code[RQ_ERROR_CODE_LEN];
+
+  CHECK(rq_error_code("{\"code\":\"UPLOAD_NOT_OPEN\",\"message\":\"gone\"}", code, sizeof code),
+        "the API's own field order reads");
+  CHECK(strcmp(code, "UPLOAD_NOT_OPEN") == 0, "got %s", code);
+
+  CHECK(rq_error_code("{ \"code\" : \"UPLOAD_IN_PROGRESS\" }", code, sizeof code),
+        "whitespace around the colon is still JSON");
+  CHECK(strcmp(code, "UPLOAD_IN_PROGRESS") == 0, "got %s", code);
+
+  /* Not a code, and each of these has to come back false with `out` emptied —
+   * a half-read code would be classified, which is worse than not reading it. */
+  CHECK(!rq_error_code(NULL, code, sizeof code) && code[0] == '\0', "no body, no code");
+  CHECK(!rq_error_code("", code, sizeof code) && code[0] == '\0', "empty body, no code");
+  CHECK(!rq_error_code("<html>502 Bad Gateway</html>", code, sizeof code) && code[0] == '\0',
+        "a proxy's HTML is not a code");
+  CHECK(!rq_error_code("{\"code\":\"upload_not_open\"}", code, sizeof code) && code[0] == '\0',
+        "the vocabulary is upper case; lower case is some other field");
+  CHECK(!rq_error_code("{\"code\":42}", code, sizeof code) && code[0] == '\0',
+        "a number is not a code");
+  CHECK(!rq_error_code("{\"code\":\"\"}", code, sizeof code) && code[0] == '\0',
+        "an empty string is not a code");
+  /* The response buffer is bounded, so a long body arrives cut off. A code
+   * with no closing quote is a code we did not finish reading. */
+  CHECK(!rq_error_code("{\"code\":\"UPLOAD_NOT_OP", code, sizeof code) && code[0] == '\0',
+        "a truncated body yields nothing rather than a prefix");
+
+  /* Longer than anything this firmware acts on: refused rather than
+   * truncated, so it can never accidentally equal a code we compare against. */
+  char tiny[8];
+  CHECK(!rq_error_code("{\"code\":\"UPLOAD_NOT_OPEN\"}", tiny, sizeof tiny) && tiny[0] == '\0',
+        "a code that does not fit is not half-read");
+}
+
+static void test_the_two_409s_differ(void) {
+  /* Same status, opposite cures. ROLL_DEVICE_CONTRACT.md's error table:
+   * UPLOAD_IN_PROGRESS is another init genuinely in flight and the retry
+   * resumes it; UPLOAD_NOT_OPEN is a session the server has already completed
+   * or aborted, which will refuse every part for ever. */
+  CHECK(rq_classify_response(409, "UPLOAD_IN_PROGRESS") == RQ_DISP_RETRY,
+        "UPLOAD_IN_PROGRESS is a real race and backs off");
+  CHECK(rq_classify_response(409, "UPLOAD_NOT_OPEN") == RQ_DISP_REINIT,
+        "UPLOAD_NOT_OPEN goes back to init instead of burning twelve attempts");
+  CHECK(rq_classify_response(409, "ROLL_CLOSED") == RQ_DISP_RETRY,
+        "a closed roll is not a closed upload session");
+  CHECK(rq_classify_response(409, NULL) == RQ_DISP_RETRY,
+        "an unreadable body must not turn a race into a re-init");
+  CHECK(rq_classify_response(409, "") == RQ_DISP_RETRY, "nor an empty code");
+
+  /* The code is read on 409 and nowhere else. A server that put
+   * UPLOAD_NOT_OPEN on a 500 or a 401 must not change what those mean. */
+  CHECK(rq_classify_response(500, "UPLOAD_NOT_OPEN") == RQ_DISP_RETRY, "5xx still retries");
+  CHECK(rq_classify_response(401, "UPLOAD_NOT_OPEN") == RQ_DISP_HALT, "401 still halts");
+  CHECK(rq_classify_response(404, "UPLOAD_NOT_OPEN") == RQ_DISP_PARK, "404 still parks");
+  CHECK(rq_classify_response(200, "UPLOAD_NOT_OPEN") == RQ_DISP_OK, "200 is still success");
+}
+
+static void test_upload_not_open_reinits_then_parks(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 2, false);
+  strncpy(job.capture_id, "cap_srv_0009", sizeof job.capture_id - 1);
+  rq_step_t s = rq_next_step(&job, 0);
+  CHECK(s.kind == RQ_STEP_UPLOAD_FRAME && s.frame_index == 1, "first frame first");
+
+  /* The part PUT answers 409 UPLOAD_NOT_OPEN. The step runs again from init,
+   * immediately: there is nothing to wait for, and the twelve attempts at 1 s
+   * doubling to a 30 s cap were the whole defect. */
+  rq_apply(&job, s, RQ_DISP_REINIT, "UPLOAD_NOT_OPEN");
+  CHECK(job.state == RQ_RETRY_WAIT, "first one re-inits, got %s", rq_state_name(job.state));
+  CHECK(job.attempts == 0, "a closed session is not a network failure, got %u", job.attempts);
+  CHECK(job.reread_attempts == 1, "bounded by the same counter as a re-read, got %u",
+        job.reread_attempts);
+  CHECK(rq_retry_due(&job, 0), "re-inits at once rather than waiting out a backoff");
+
+  /* The step it comes back to is the SAME frame — the asset is re-run from
+   * init, and nothing about the capture was lost on the way. */
+  rq_step_t again = rq_next_step(&job, 0);
+  CHECK(again.kind == RQ_STEP_UPLOAD_FRAME && again.frame_index == 1,
+        "comes back to the same camera's frame");
+  CHECK(!job.frame_done[0] && !job.frame_done[1], "no frame was marked by a failure");
+
+  /* Bounded. A server answering UPLOAD_NOT_OPEN to a freshly opened session
+   * every time is pathological, and the camera parks rather than looping. */
+  rq_apply(&job, again, RQ_DISP_REINIT, "UPLOAD_NOT_OPEN");
+  CHECK(job.state == RQ_RETRY_WAIT, "second one still re-inits");
+  rq_apply(&job, again, RQ_DISP_REINIT, "UPLOAD_NOT_OPEN");
+  CHECK(job.state == RQ_FAILED, "past RQ_MAX_REREADS it parks, got %s", rq_state_name(job.state));
+  CHECK(!rq_park_is_transient(&job),
+        "a park the server argued for waits for a deliberate retry, not for the link");
+}
+
+static void test_a_reinit_cannot_double_upload_a_frame(void) {
+  rq_job_t job;
+  rq_job_init(&job, UUID_A, "roll_0001", 3, false);
+  strncpy(job.capture_id, "cap_srv_0010", sizeof job.capture_id - 1);
+
+  /* Frame 1 landed. Frame 2's session is gone. */
+  rq_step_t one = rq_next_step(&job, 0);
+  rq_apply(&job, one, RQ_DISP_OK, NULL);
+  rq_step_t two = rq_next_step(&job, 0);
+  CHECK(two.frame_index == 2, "on the second camera, got %d", two.frame_index);
+
+  rq_apply(&job, two, RQ_DISP_REINIT, "UPLOAD_NOT_OPEN");
+  rq_step_t after = rq_next_step(&job, 0);
+  CHECK(after.kind == RQ_STEP_UPLOAD_FRAME && after.frame_index == 2,
+        "the re-init resumes at the frame that failed, not at the one that landed");
+  CHECK(job.frame_done[0], "the confirmed frame stays confirmed and is not sent twice");
+
+  /* And the asset landing clears the bound, so a later mismatch on another
+   * frame gets its own two chances rather than inheriting these. */
+  rq_apply(&job, after, RQ_DISP_OK, NULL);
+  CHECK(job.reread_attempts == 0, "an asset that landed clears the re-run count, got %u",
+        job.reread_attempts);
+}
+
+/* ---- heartbeat cadence ------------------------------------------------- */
+
+static void test_heartbeat_cadence(void) {
+  const rq_hb_facts_t idle = {.pending = 0, .uploading = 0, .failed = 0, .server_state = 1};
+  const rq_hb_facts_t busy = {.pending = 4, .uploading = 1, .failed = 0, .server_state = 1};
+  const rq_hb_facts_t lost = {.pending = 0, .uploading = 0, .failed = 0, .server_state = 2};
+
+  rq_hb_state_t st;
+  memset(&st, 0, sizeof st);
+
+  /* Never off a Roll. There is no rollId to address and no host listening;
+   * inventing a camera-level heartbeat is not this contract's shape. */
+  CHECK(!rq_heartbeat_due(&st, &idle, false, true, 0), "no Roll, no heartbeat");
+  CHECK(!rq_heartbeat_due(&st, &idle, false, false, 999999), "and time does not change that");
+  /* Never with the transport down: the request would only burn a connect
+   * timeout on the worker that should be draining the queue. */
+  CHECK(!rq_heartbeat_due(&st, &idle, true, false, 0), "no transport, no heartbeat");
+
+  /* The first one goes as soon as there is somewhere to send it. */
+  CHECK(rq_heartbeat_due(&st, &idle, true, true, 1000), "the first one is due immediately");
+  rq_heartbeat_sent(&st, &idle, 1000);
+  CHECK(st.sent && st.sent_ms == 1000, "recorded");
+
+  /* Then silence until the period, if nothing a host acts on has changed. */
+  CHECK(!rq_heartbeat_due(&st, &idle, true, true, 2000), "not a second later");
+  CHECK(!rq_heartbeat_due(&st, &idle, true, true, 1000 + 44999), "not just short of 45 s");
+  CHECK(rq_heartbeat_due(&st, &idle, true, true, 1000 + RQ_HEARTBEAT_PERIOD_MS),
+        "45 s after the last one");
+
+  /* The queue going from working to empty is the state change the dashboard
+   * exists to see, and it does not wait out the period. */
+  CHECK(rq_heartbeat_due(&st, &busy, true, true, 1000 + RQ_HEARTBEAT_MIN_GAP_MS),
+        "empty to working is worth an early one");
+  rq_heartbeat_sent(&st, &busy, 11000);
+  CHECK(rq_heartbeat_due(&st, &idle, true, true, 11000 + RQ_HEARTBEAT_MIN_GAP_MS),
+        "working to empty likewise");
+
+  /* But never inside the floor. A queue thrashing between empty and busy must
+   * not become one request per step against a 120/min budget. */
+  CHECK(!rq_heartbeat_due(&st, &idle, true, true, 11000 + RQ_HEARTBEAT_MIN_GAP_MS - 1),
+        "the 10 s floor holds even for a state change");
+  CHECK(!rq_heartbeat_due(&st, &lost, true, true, 11001), "and for a server change");
+
+  /* Counts moving inside the same state are not news; only the crossing is. */
+  rq_hb_state_t deep;
+  memset(&deep, 0, sizeof deep);
+  const rq_hb_facts_t many = {.pending = 40, .uploading = 1, .failed = 0, .server_state = 1};
+  const rq_hb_facts_t fewer = {.pending = 39, .uploading = 1, .failed = 0, .server_state = 1};
+  rq_heartbeat_sent(&deep, &many, 0);
+  CHECK(!rq_heartbeat_due(&deep, &fewer, true, true, 20000),
+        "40 down to 39 waits for the period");
+  CHECK(rq_heartbeat_due(&deep, &fewer, true, true, RQ_HEARTBEAT_PERIOD_MS),
+        "the period still fires during a long drain, which is how a stuck worker shows");
+
+  /* The server going away is the other thing a host acts on. */
+  rq_hb_state_t srv;
+  memset(&srv, 0, sizeof srv);
+  rq_heartbeat_sent(&srv, &idle, 0);
+  CHECK(rq_heartbeat_due(&srv, &lost, true, true, 20000), "reachable to unreachable is early");
+
+  /* A clock that appears to go backwards must not become a licence to send. */
+  rq_hb_state_t back;
+  memset(&back, 0, sizeof back);
+  rq_heartbeat_sent(&back, &idle, 100000);
+  CHECK(!rq_heartbeat_due(&back, &busy, true, true, 5000), "a backwards clock reads as just sent");
+}
+
 int main(void) {
   test_forget_matrix();
   test_forget_is_shape_blind();
@@ -1420,6 +1615,11 @@ int main(void) {
   test_transient_failure_backs_off_then_resumes();
   test_retry_is_bounded();
   test_checksum_mismatch_rereads_then_parks();
+  test_error_code_scanner();
+  test_the_two_409s_differ();
+  test_upload_not_open_reinits_then_parks();
+  test_a_reinit_cannot_double_upload_a_frame();
+  test_heartbeat_cadence();
   test_park_and_halt_differ();
   test_settled_jobs_ignore_further_outcomes();
   test_reconcile();

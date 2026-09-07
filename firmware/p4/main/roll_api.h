@@ -40,6 +40,11 @@ typedef struct {
   int status;
   char capture_id[RQ_CAPTURE_ID_LEN]; /* RQ_STEP_REGISTER only */
   char detail[RQ_ERROR_LEN];          /* already redacted */
+  /** The API's `code` from the error body, empty when there was none to read.
+   * Read on the failure path only, and read at all because 409
+   * UPLOAD_IN_PROGRESS and 409 UPLOAD_NOT_OPEN need opposite cures — see
+   * rq_classify_response(). Never persisted. */
+  char code[RQ_ERROR_CODE_LEN];
   /** The step did not run because a capture held the card. Costs no attempt;
    * see RQ_DISP_YIELD. */
   bool card_yielded;
@@ -71,6 +76,47 @@ bool roll_api_create(const char *title, roll_api_assoc_t *out);
 /** `POST /api/device/rolls/join`, the path that turns a bare slug into a
  * rollId and a guestUrl. This is what a camera cannot do without a radio. */
 bool roll_api_join(const char *slug, roll_api_assoc_t *out);
+
+/* ------------------------------------------------------------------ */
+/* Heartbeat                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What one `POST /api/device/rolls/{rollId}/heartbeat` says.
+ *
+ * Every field on the wire is optional and the body may be `{}` — the arrival
+ * is most of the message, and a dashboard that only learns "this camera was
+ * alive 20 seconds ago" already knows more than it did. These are the fields
+ * this camera has an honest answer for. The body is `.strict()` server-side,
+ * so an extra key is a 400: add one here only with the API.
+ *
+ * `pending` is what the ROLL screen calls waiting — the RAM window plus the
+ * durable remainder on the card — so the display and the dashboard cannot
+ * disagree about how much is owed. `failed` is parked, not retrying: a job
+ * still backing off is work in progress, not a job that needs a person.
+ */
+typedef struct {
+  int pending;
+  int uploading;
+  int failed;
+  /** "unknown" | "reachable" | "unreachable". Anything else is refused by the
+   * API's enum, so upload_queue.c maps its own state and never passes text
+   * through from elsewhere. */
+  const char *server_state;
+} roll_heartbeat_t;
+
+/**
+ * Tell the host this camera is alive. Blocks the calling task for one request.
+ *
+ * The least important thing this firmware does, and it is written to behave
+ * that way: it takes no card lock, changes no job, and a failure is silent —
+ * the caller drops it. A 401 or 403 here must never halt the upload queue; the
+ * queue's own steps are what decide that.
+ *
+ * Returns true only on a 200. `out_status` may be NULL; when given it carries
+ * the HTTP status (0 for no response) so the caller can rate-limit its log.
+ */
+bool roll_api_heartbeat(const char *roll_id, const roll_heartbeat_t *hb, int *out_status);
 
 /**
  * True when a call could be attempted, with `why` filled in when not.

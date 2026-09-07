@@ -610,7 +610,7 @@ static bool run_one_step(void) {
 
   roll_step_result_t res = {0};
   s_http(&snapshot, step, &res);
-  rq_disposition_t disp = rq_classify_step(res.status, res.card_yielded);
+  rq_disposition_t disp = rq_classify_step(res.status, res.code, res.card_yielded);
 
   lock();
   note_server_locked(&res);
@@ -656,9 +656,12 @@ static bool run_one_step(void) {
   }
   if (job->state == RQ_RETRY_WAIT) {
     /* roll_queue.c never reads a clock, so the deadline is set here. A re-read
-     * runs immediately: a checksum mismatch is not a network failure and has
-     * nothing to wait for. */
-    job->next_attempt_ms = disp == RQ_DISP_REREAD ? now_ms()
+     * and a re-init both run immediately: neither a checksum mismatch nor a
+     * closed upload session is a network failure, and neither has anything to
+     * wait for. A re-init that waited out a backoff would be most of what the
+     * change was meant to remove. */
+    const bool now_again = disp == RQ_DISP_REREAD || disp == RQ_DISP_REINIT;
+    job->next_attempt_ms = now_again      ? now_ms()
                            : disp == RQ_DISP_YIELD ? now_ms() + CARD_WAIT_MS
                                                    : now_ms() + jittered_backoff(job->attempts);
   }
@@ -741,6 +744,91 @@ static bool run_one_step(void) {
   return true;
 }
 
+/* ------------------------------------------------------------------ */
+/* Heartbeat                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * `POST /api/device/rolls/{rollId}/heartbeat`: one every 45 s while a Roll is
+ * joined and the transport is up, plus one within a second or two of the queue
+ * crossing between busy and empty or the server changing reachability, and
+ * never two inside 10 s. rq_heartbeat_due() owns that arithmetic and the host
+ * tests compile it; this owns the clock, the counts and the request.
+ *
+ * It runs on THIS task, at a step boundary, and that is the whole of its
+ * priority. The upload worker sits below the UI and below the capture workers,
+ * the loop below has already stood aside for a capture holding the card, and
+ * nothing in the shutter path waits on this task — so a heartbeat cannot delay
+ * a photograph. What it can do is sit between two upload steps for the length
+ * of one request; the 10 s floor bounds how often, and a server slow enough for
+ * that to matter is one the next upload step was going to wait on anyway.
+ *
+ * A task of its own would remove even that and costs more than it saves: an
+ * esp-tls session needs its own stack out of the internal SRAM this firmware is
+ * short of (#162), and two TLS sessions at once double the peak.
+ */
+static rq_hb_state_t s_hb;
+
+/* At most one line a minute about heartbeats. A camera off the network would
+ * otherwise fill the log with its least interesting failure and evict the ones
+ * that matter. */
+#define HB_LOG_GAP_MS 60000
+static int64_t s_hb_logged_ms;
+
+static const char *hb_server_name(upload_server_state_t s) {
+  switch (s) {
+    case UPLOAD_SERVER_REACHABLE: return "reachable";
+    case UPLOAD_SERVER_UNREACHABLE: return "unreachable";
+    default: return "unknown";
+  }
+}
+
+static void heartbeat_tick(void) {
+  roll_state_t roll;
+  const bool joined = roll_state_get(&roll) && roll.roll_id[0] != '\0';
+
+  upload_queue_report_t rep;
+  upload_queue_status(&rep);
+
+  const rq_hb_facts_t facts = {
+      /* pending + card_pending — the same sum the ROLL screen calls waiting
+       * (ui.c). One number for the panel and the dashboard: a host told 3
+       * while the body shows 41 is worse than a host told nothing. */
+      .pending = rep.pending + rep.card_pending,
+      .uploading = rep.uploading,
+      /* Parked, not retrying: jobs in RQ_FAILED plus the parked ones the RAM
+       * window had to drop. A job still backing off is work in progress and is
+       * already counted above. */
+      .failed = rep.failed,
+      .server_state = (int)rep.server_state,
+  };
+
+  const int64_t now = now_ms();
+  if (!rq_heartbeat_due(&s_hb, &facts, joined, s_net_ready, now)) return;
+
+  const roll_heartbeat_t hb = {
+      .pending = facts.pending,
+      .uploading = facts.uploading,
+      .failed = facts.failed,
+      .server_state = hb_server_name(rep.server_state),
+  };
+  int status = 0;
+  const bool ok = roll_api_heartbeat(roll.roll_id, &hb, &status);
+
+  /* Recorded whether or not it landed. A failed heartbeat that re-armed at once
+   * would be a request per loop against a server that is down; the next period
+   * is the retry, and nothing here is worth more than that. */
+  rq_heartbeat_sent(&s_hb, &facts, now);
+
+  if (!ok && now - s_hb_logged_ms >= HB_LOG_GAP_MS) {
+    s_hb_logged_ms = now;
+    /* The status and nothing else — no body, no rollId, no token. A 401 or 403
+     * here says the credential is wrong, which the queue's own steps report
+     * properly; a heartbeat must never halt the queue from in here. */
+    ESP_LOGW(TAG, "heartbeat -> %d", status);
+  }
+}
+
 static void worker_task(void *arg) {
   (void)arg;
   for (;;) {
@@ -771,6 +859,10 @@ static void worker_task(void *arg) {
       xTaskNotifyWait(0, 0, &ignored, IDLE_TICKS);
       continue;
     }
+
+    /* Between steps, never inside one, and never while a capture holds the
+     * card — the branch above has already returned in that case. */
+    heartbeat_tick();
 
     if (run_one_step()) continue;
     if (!s_rescan && maybe_probe_parked()) continue;
