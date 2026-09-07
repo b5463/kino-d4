@@ -1,24 +1,43 @@
+import type { ReactNode } from 'react';
+import kinoRoll from '../assets/kino-roll-light.png';
+
 export interface NotFoundPageProps {
   pathname: string;
+}
+
+/**
+ * The three dead ends a guest can reach, and the one thing they have in
+ * common: they used to be bare black pages with two lines of text on them and
+ * no mark, no way on. A guest who scanned a card and landed here could not
+ * tell whether they were in the right app. Each one now carries the wordmark,
+ * says what happened in one line, and offers the one move that makes sense.
+ */
+function Dead({ title, line, children }: { title: string; line: string; children?: ReactNode }) {
+  return (
+    <main className="k-gate">
+      <img className="k-mark" src={kinoRoll} alt="KINO Roll" />
+      <h1>{title}</h1>
+      <p className="k-gate-lede">{line}</p>
+      {children}
+    </main>
+  );
 }
 
 /** Anything outside `/`, `/r/:slug`, `/r/:slug/display`, `/r/:slug/c/:captureId` and `/host`. */
 export function NotFoundPage({ pathname }: NotFoundPageProps) {
   return (
-    <main className="k-gate">
-      <h1>Not found</h1>
-      <p>No route matches {pathname}.</p>
-    </main>
+    <Dead title="Not found" line={`No page at ${pathname}.`}>
+      <a className="k-gate-act" href="/">Open a roll</a>
+    </Dead>
   );
 }
 
 /** A valid Roll route whose secret slug is no longer available. */
 export function NoRollPage() {
   return (
-    <main className="k-gate">
-      <h1>No roll here</h1>
-      <p>This link may be old, or the roll may have been removed.</p>
-    </main>
+    <Dead title="No roll here" line="This link may be old, or the roll may have been removed.">
+      <a className="k-gate-act" href="/">Enter a roll code</a>
+    </Dead>
   );
 }
 
@@ -32,14 +51,13 @@ export function NoRollPage() {
  */
 export function NoCapturePage({ slug }: { slug: string }) {
   return (
-    <main className="k-gate">
-      <h1>This photo is no longer in the roll.</h1>
-      <p>The host removed it. The rest of the roll is still here.</p>
-      <p>
-        <a className="k-landing-back" href={`/r/${encodeURIComponent(slug)}`}>
-          Back to the roll
-        </a>
-      </p>
-    </main>
+    <Dead
+      title="This photograph is gone"
+      line="The host removed it. The rest of the roll is still here."
+    >
+      <a className="k-gate-act" href={`/r/${encodeURIComponent(slug)}`}>
+        Back to the roll
+      </a>
+    </Dead>
   );
 }

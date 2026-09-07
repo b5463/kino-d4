@@ -102,7 +102,8 @@ describe('guest resilience pieces', () => {
     await act(async () => {
       root.render(<RollStateBanner status="archived" />);
     });
-    expect(container.querySelector('[role="status"]')?.textContent).toBe('This roll is archived.');
+    expect(container.querySelector('.roll-closed b')?.textContent).toBe('Archived');
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('Nothing new will arrive.');
 
     expect(rollAcceptsUploads('live')).toBe(true);
     expect(rollAcceptsUploads(undefined)).toBe(true);

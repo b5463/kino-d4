@@ -18,7 +18,8 @@ import {
 import { ApiError } from '../src/api/client';
 import { HostDashboard, exportWording, formatBytes } from '../src/pages/HostDashboard';
 import { HostDashboardPage } from '../src/pages/HostDashboardPage';
-import { cameraReport, relativeTime } from '../src/components/host/CameraPanel';
+import { cameraReport, relativeTime, worstCamera } from '../src/components/host/CameraPanel';
+import { stuckItems } from '../src/components/host/StatusStrip';
 import { matchesFilter } from '../src/components/host/CaptureGrid';
 
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qr') } }));
@@ -84,12 +85,17 @@ function fakeApi(overrides: Partial<HostApi> = {}): HostApi {
     deleteCapture: vi
       .fn()
       .mockResolvedValue({ captureId: 'cap_1', visible: false, deletedAt: '2026-08-20T12:06:00.000Z', purgeAfter: '2026-08-27T12:06:00.000Z' }),
-    restore: vi.fn().mockResolvedValue({ ...capture, deletedAt: null, purgeAfter: null }),
+    // A ModerationView, which is what POST /restore really answers — four
+    // fields, not a whole capture. Verified against the running API.
+    restore: vi
+      .fn()
+      .mockResolvedValue({ captureId: 'cap_1', visible: true, deletedAt: null, purgeAfter: null }),
     clearRoll: vi.fn().mockResolvedValue({ cleared: 1 }),
     regenerateSlug: vi.fn(),
     startExport: vi.fn(),
     getExport: vi.fn(),
     exportEstimate: vi.fn().mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'no estimate')),
+    exportBlob: vi.fn().mockResolvedValue(new Blob(['zip'])),
     assetUrl: vi.fn((id: string) => `/asset/${id}`),
     events: vi.fn(() => vi.fn()),
     ...overrides,
@@ -269,7 +275,15 @@ describe('host dashboard', () => {
 
     await act(async () => button('Undo delete')?.click());
     expect(restore).toHaveBeenCalledWith('cap_1');
-    expect(container.querySelector('[data-capture-id="cap_1"]')?.textContent).toContain('Delete');
+    const back = container.querySelector('[data-capture-id="cap_1"]');
+    expect(back?.textContent).toContain('Delete');
+    // And the capture is still a capture. `restore` answers a ModerationView,
+    // so assigning the reply over the row used to wipe mode, capturedAt,
+    // status and assets — the tile came back with an undefined mode and an
+    // Invalid Date on it.
+    expect(back?.getAttribute('aria-label')).toContain('wiggle');
+    expect(back?.getAttribute('aria-label')).not.toContain('Invalid Date');
+    expect(back?.getAttribute('aria-label')).toContain('Visible');
   });
 
   it('filters the grid without reordering it', async () => {
@@ -315,11 +329,81 @@ describe('host dashboard', () => {
 
     expect(startExport).toHaveBeenCalledWith('roll_1');
     expect(getExport).toHaveBeenCalledTimes(2);
-    const link = container.querySelector<HTMLAnchorElement>('a[href="https://storage.test/export.zip"]');
-    expect(link?.textContent).toBe('Download ZIP');
-    expect(link?.getAttribute('download')).toBe('kino-roll-ABC234.zip');
     // And it says another export is another ZIP, not a replacement.
     expect(container.textContent).toContain('Preparing it again builds another one');
+  });
+
+  /**
+   * Production runs `OBJECT_DELIVERY: proxy`, so the URL the poll route hands
+   * back is the API's own `/export/:jobId/content`, which is behind
+   * `requireHost` and reads the bearer token and nothing else. This used to be
+   * a plain `<a href download>`: the browser sent no Authorization header, the
+   * route answered 401, and the page said nothing at all. Confirmed against
+   * the running dev API — 200 with the header, 401 without it.
+   */
+  it('fetches the ZIP with the host token rather than linking at it', async () => {
+    const exportBlob = vi.fn().mockResolvedValue(new Blob(['zip']));
+    const startExport = vi.fn().mockResolvedValue({ jobId: 'export_1' });
+    const url = 'https://roll.test/api/host/rolls/roll_1/export/export_1/content';
+    const getExport = vi.fn().mockResolvedValue({ status: 'done', url });
+    await render(
+      fakeApi({
+        startExport,
+        getExport,
+        exportBlob,
+        exportEstimate: vi.fn().mockResolvedValue({ files: 4, bytes: 900 }),
+      }),
+    );
+
+    await act(async () => {
+      button('Prepare ZIP')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    // No bare link to the authenticated route — that is the whole bug.
+    expect(container.querySelector(`a[href="${url}"]`)).toBeNull();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    URL.createObjectURL = vi.fn(() => 'blob:zip');
+    URL.revokeObjectURL = vi.fn();
+    await act(async () => {
+      button('Download ZIP')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(exportBlob).toHaveBeenCalledWith(url);
+    expect(click).toHaveBeenCalled();
+    click.mockRestore();
+  });
+
+  /**
+   * A queued export with no worker behind it polls for ever. Measured on the
+   * dev API: a job stayed `queued` for the whole session, and the panel said
+   * "the server is getting to it" the entire time with no way out.
+   */
+  it('says how long an export has been queued, and lets the host stop watching', async () => {
+    const startExport = vi.fn().mockResolvedValue({ jobId: 'export_1' });
+    const getExport = vi.fn().mockResolvedValue({ status: 'queued' });
+    await render(
+      fakeApi({
+        startExport,
+        getExport,
+        exportEstimate: vi.fn().mockResolvedValue({ files: 4, bytes: 900 }),
+      }),
+    );
+
+    await act(async () => {
+      button('Prepare ZIP')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(container.querySelector('.host-export-state')?.textContent).toContain('Waiting');
+    await act(async () => button('Stop watching')?.click());
+    expect(container.querySelector('.host-export-state')).toBeNull();
+  });
+
+  /** Nothing on the roll is not "0 B, 0 files"; it is nothing to download. */
+  it('offers no ZIP of an empty roll', async () => {
+    await render(fakeApi({ exportEstimate: vi.fn().mockResolvedValue({ files: 0, bytes: 0 }) }));
+    expect(container.querySelector('.host-estimate')?.textContent).toBe('Nothing to download yet.');
+    expect(button('Prepare ZIP')?.disabled).toBe(true);
   });
 
   it('asks before closing the roll, which stops the camera mid-party', async () => {
@@ -356,12 +440,158 @@ describe('host dashboard', () => {
     expect(download).not.toBeNull();
   });
 
-  it('reads the totals as a description list, not four loose divs', async () => {
+  /**
+   * The four equal tiles that used to head the page — CAPTURES, GUESTS,
+   * PENDING, HIDDEN — put the least urgent number at the largest size, and two
+   * of them repeated, from a different source and in different words, counts
+   * the filter bar already carried. On screen the two disagreed.
+   *
+   * What replaces them is the order the host actually asks in.
+   */
+  it('answers the camera, then what is stuck, then the count - in that order', async () => {
+    const withCamera: HostRollView = {
+      ...roll,
+      counts: { captures: 214, pending: 0, hidden: 3 },
+      guests: 41,
+      cameras: [
+        {
+          deviceId: 'dev_1',
+          serial: 'KINO-D4-001',
+          lastSeenAt: new Date().toISOString(),
+          pending: 6,
+          uploading: 1,
+          failed: 2,
+          serverState: 'reachable',
+          firmware: '0.4.43',
+        },
+      ],
+    };
+    await render(fakeApi({ resolveSession: vi.fn().mockResolvedValue(withCamera) }));
+
+    const tiles = [...container.querySelectorAll('.host-now .host-now-tile')];
+    expect(tiles.length).toBe(3);
+    expect(tiles[0]?.textContent).toContain('ONLINE');
+    expect(tiles[0]?.textContent).toContain('6 waiting to upload');
+    expect(tiles[1]?.textContent).toContain('2 uploads failed on the camera');
+    expect(tiles[2]?.textContent).toContain('214');
+    expect(tiles[2]?.textContent).toContain('PHOTOS');
+    expect(tiles[2]?.textContent).toContain('41 guests');
+    // The old four-tile list is gone rather than kept alongside.
+    expect(container.querySelector('dl.host-stats')).toBeNull();
+  });
+
+  /**
+   * The header lamp says LIVE because the *roll* is live, which is true and
+   * beside the point when the camera cannot reach the server. That state used
+   * to be a pale box two screens down from a green light.
+   */
+  it('raises a camera that cannot reach the server above the fold', async () => {
+    const unreachable: HostRollView = {
+      ...roll,
+      cameras: [
+        {
+          deviceId: 'dev_1',
+          serial: 'KINO-D4-001',
+          lastSeenAt: new Date().toISOString(),
+          pending: 31,
+          uploading: 0,
+          failed: 4,
+          serverState: 'unreachable',
+          firmware: '0.4.43',
+        },
+      ],
+    };
+    await render(fakeApi({ resolveSession: vi.fn().mockResolvedValue(unreachable) }));
+    // The camera tile IS the alarm — one block, not a burgundy banner repeating
+    // the same sentence above a tile that already says it.
+    const tile = container.querySelector('.host-now-camera');
+    expect(tile?.getAttribute('role')).toBe('alert');
+    expect(tile?.getAttribute('data-tone')).toBe('bad');
+    expect(tile?.textContent).toContain('KINO NOT ANSWERING');
+    expect(tile?.textContent).toContain('31 waiting to upload');
+    expect(tile?.textContent).toContain('They go when KINO answers');
+    // It is the first thing under the header, and there is only one of it.
+    expect(container.querySelector('.host-now')?.firstElementChild).toBe(tile);
+    expect(container.querySelectorAll('.host-alarm').length).toBe(0);
+
+    // A healthy camera does not interrupt a screen reader.
     await render(fakeApi());
-    const list = container.querySelector('dl.host-stats');
-    expect(list?.querySelectorAll('dt').length).toBe(4);
-    expect(list?.querySelector('dt')?.textContent).toBe('CAPTURES');
-    expect(list?.querySelector('dd')?.textContent).toBe('1');
+    expect(container.querySelector('.host-now-camera')?.getAttribute('role')).toBeNull();
+  });
+
+  /**
+   * OFFLINE carries an `off` lamp — correctly, the camera is not lit up — but
+   * an OFFLINE camera with photographs waiting on its card is the problem on
+   * the page. The tile used to take its colour from the lamp alone, so it drew
+   * a grey rule on a white ground while announcing itself as an alert.
+   */
+  it('colours the camera tile by whether it is stuck, not by the lamp', async () => {
+    // Named, and typed, rather than reached for through `cameras![0]` later:
+    // indexing an optional array widens every field to `| undefined`, so the
+    // second fixture below could not be spread from it.
+    const stranded: HostCameraView = {
+      deviceId: 'dev_1',
+      serial: 'KINO-D4-001',
+      // Well past CAMERA_STALE_MS, so the word is OFFLINE.
+      lastSeenAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+      pending: 6,
+      uploading: 0,
+      failed: 0,
+      serverState: 'reachable',
+      firmware: '0.4.52',
+    };
+    const offlineWithBacklog: HostRollView = { ...roll, cameras: [stranded] };
+    await render(fakeApi({ resolveSession: vi.fn().mockResolvedValue(offlineWithBacklog) }));
+    const tile = container.querySelector('.host-now-camera');
+    expect(tile?.textContent).toContain('OFFLINE');
+    expect(tile?.textContent).toContain('6 waiting to upload');
+    expect(tile?.getAttribute('data-tone')).toBe('bad');
+    expect(tile?.getAttribute('role')).toBe('alert');
+
+    // Nothing waiting and the same silence is not an alarm, only an absence.
+    const offlineIdle: HostRollView = {
+      ...roll,
+      cameras: [{ ...stranded, pending: 0 }],
+    };
+    await render(fakeApi({ resolveSession: vi.fn().mockResolvedValue(offlineIdle) }));
+    const quiet = container.querySelector('.host-now-camera');
+    expect(quiet?.getAttribute('data-tone')).toBe('off');
+    expect(quiet?.getAttribute('role')).toBeNull();
+  });
+
+  /**
+   * Six equal panels between the status and the photographs meant scrolling
+   * past the QR, the PIN and a Clear Roll button to reach the work.
+   */
+  it('opens setup on a roll with nothing on it, because that host is setting up', async () => {
+    await render(
+      fakeApi({
+        resolveSession: vi
+          .fn()
+          .mockResolvedValue({ ...roll, counts: { captures: 0, pending: 0, hidden: 0 } }),
+      }),
+    );
+    expect(container.querySelector<HTMLDetailsElement>('.host-setup')?.open).toBe(true);
+  });
+
+  it('folds setup away once the roll has photographs on it', async () => {
+    await render(
+      fakeApi({
+        resolveSession: vi
+          .fn()
+          .mockResolvedValue({ ...roll, counts: { captures: 214, pending: 0, hidden: 0 } }),
+      }),
+    );
+    const setup = container.querySelector<HTMLDetailsElement>('.host-setup');
+    expect(setup?.open).toBe(false);
+
+    // And it stays where the host puts it: a section that reshut itself as the
+    // next capture landed would close under the hand holding it.
+    await act(async () => {
+      setup!.open = true;
+      setup!.dispatchEvent(new Event('toggle'));
+    });
+    expect(container.querySelector<HTMLDetailsElement>('.host-setup')?.open).toBe(true);
   });
 
   it('offers a way back to the paste form when the token is refused', async () => {
@@ -489,13 +719,58 @@ describe('camera panel', () => {
     expect(cameraReport(camera({ serverState: 'offline' }), now).word).toBe('OFFLINE');
   });
 
-  it('reads a heartbeat older than two minutes as not reporting', () => {
+  /**
+   * A camera with no Wi-Fi cannot send a heartbeat saying it has no Wi-Fi, so
+   * the silence IS the report, and OFFLINE — the camera's own word for it — is
+   * what the host is looking at. NOT REPORTING was a fifth word invented for a
+   * state the camera already names, and it is now kept for the one thing the
+   * camera genuinely cannot say: nothing has ever arrived.
+   */
+  it('reads a heartbeat that stopped arriving as the camera reads it: OFFLINE', () => {
     const stale = cameraReport(camera({ lastSeenAt: '2026-08-20T11:55:00.000Z' }), now);
-    expect(stale.word).toBe('NOT REPORTING');
-    expect(stale.lamp).toBe('warn');
-    expect(stale.note).toContain('5 m ago');
+    expect(stale.word).toBe('OFFLINE');
+    expect(stale.lamp).toBe('off');
+    expect(stale.note).toContain('5 m');
+    // Nothing under the word is claimed to be current.
+    expect(stale.note).toContain('Nothing below is newer');
     // A heartbeat one second inside the window is still a report.
     expect(cameraReport(camera({ lastSeenAt: '2026-08-20T11:58:13.000Z' }), now).word).toBe('ONLINE');
+  });
+
+  /** Several cameras, one stuck: the strip speaks for the stuck one. */
+  it('lets a stuck camera speak for the roll', () => {
+    const cameras = [
+      camera({ deviceId: 'a' }),
+      camera({ deviceId: 'b', serverState: 'unreachable' }),
+      camera({ deviceId: 'c' }),
+    ];
+    expect(worstCamera(cameras, now)?.deviceId).toBe('b');
+    expect(worstCamera([camera({ deviceId: 'a' })], now)?.deviceId).toBe('a');
+    expect(worstCamera([], now)).toBeNull();
+  });
+
+  /**
+   * Seen on a live roll: one camera uploading with six waiting, and three that
+   * had joined and never sent a heartbeat. Ranking purely by distance from
+   * ONLINE put NOT REPORTING in the headline and hid the only camera that was
+   * working — and NOT REPORTING says of itself that the camera may be
+   * uploading perfectly well, so it is an absence of news, not news.
+   */
+  it('prefers the camera that is actually working over one that has never spoken', () => {
+    const working = camera({ deviceId: 'live', pending: 6, uploading: 1 });
+    const silent = camera({ deviceId: 'silent', lastSeenAt: null, pending: null, uploading: null, failed: null, serverState: null });
+    expect(worstCamera([silent, working, silent], now)?.deviceId).toBe('live');
+    expect(cameraReport(silent, now).word).toBe('NOT REPORTING');
+
+    // Freshest heartbeat wins among cameras that are all fine.
+    const older = camera({ deviceId: 'older', lastSeenAt: '2026-08-20T11:59:00.000Z' });
+    const newer = camera({ deviceId: 'newer', lastSeenAt: '2026-08-20T12:00:10.000Z' });
+    expect(worstCamera([older, newer], now)?.deviceId).toBe('newer');
+    expect(worstCamera([newer, older], now)?.deviceId).toBe('newer');
+
+    // But a stuck camera still outranks a fresher healthy one.
+    const stuck = camera({ deviceId: 'stuck', serverState: 'unreachable', lastSeenAt: '2026-08-20T11:59:30.000Z' });
+    expect(worstCamera([newer, stuck], now)?.deviceId).toBe('stuck');
   });
 
   it('says an older firmware does not report, rather than calling it offline', () => {
@@ -555,6 +830,34 @@ describe('host helpers', () => {
     expect(exportWording('done')).toBe('Ready.');
     // An unknown state is still shown rather than swallowed.
     expect(exportWording('reticulating')).toBe('Export: reticulating');
+  });
+
+  it('counts what is stuck, worst first, and only what is really stuck', () => {
+    const failed = { ...capture, captureId: 'c1', status: 'failed' };
+    const processing = { ...capture, captureId: 'c2', status: 'processing' };
+    const cameras = [
+      {
+        deviceId: 'd',
+        serial: null,
+        lastSeenAt: null,
+        pending: null,
+        uploading: null,
+        failed: 3,
+        serverState: null,
+        firmware: null,
+      },
+    ];
+    const items = stuckItems(cameras, [capture, failed, processing, trashed]);
+    expect(items.map((item) => item.count)).toEqual([3, 1, 1]);
+    // The camera's failures come first and have no filter: a photograph that
+    // never left the card has no row in this list to jump to.
+    expect(items[0]?.filter).toBeNull();
+    expect(items[0]?.label).toContain('upload');
+    expect(items[1]?.filter).toBe('failed');
+    expect(items[2]?.filter).toBe('pending');
+    // A trashed capture is not stuck; it is thrown away.
+    expect(stuckItems([], [trashed])).toEqual([]);
+    expect(stuckItems(undefined, [capture])).toEqual([]);
   });
 
   it('sorts a capture into exactly the filters it belongs to', () => {

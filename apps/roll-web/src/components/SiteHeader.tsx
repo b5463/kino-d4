@@ -60,6 +60,16 @@ export function GuestBar({
   );
 }
 
-export function SiteFooter() {
-  return <footer className="k-end">End of roll</footer>;
+/**
+ * The end mark, printed only where the stream really ends. The count is there
+ * because "End of roll" on its own is a full stop with no fact in it: after
+ * four hundred screens the one thing a guest wants back is how far they came.
+ */
+export function SiteFooter({ count }: { count?: number }) {
+  return (
+    <footer className="k-end">
+      <i aria-hidden="true" />
+      End of roll{count === undefined ? '' : ` · ${String(count)} ${count === 1 ? 'frame' : 'frames'}`}
+    </footer>
+  );
 }

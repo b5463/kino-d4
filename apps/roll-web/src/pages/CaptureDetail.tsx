@@ -9,7 +9,7 @@ import {
 } from '../api/client';
 import { playerPlayback } from '../components/playback';
 import { SafeImage } from '../components/SafeImage';
-import { StatusChip } from '../components/StatusChip';
+import { NoPicture, StatusChip } from '../components/StatusChip';
 import { WigglePlayer } from '../components/WigglePlayer';
 import { setPick } from '../state/picks';
 
@@ -484,6 +484,10 @@ export function CaptureDetail({
       : ((heroAsset.width ?? 4) / (heroAsset.height ?? 3)).toFixed(4);
 
   let media;
+  // True when the hero has no picture at all and `NoPicture` is standing in
+  // for one. It already prints the state in full, so the facts row below must
+  // not print it a second time.
+  let heroBlank = false;
   if (pinnedFrame !== undefined) {
     const picture = assetImage(pinnedFrame, api, `${cameraLabel(pinnedFrame, frame ?? 0)} frame`);
     // On a quad the big frame is itself the way back to the 2x2: one tap,
@@ -500,22 +504,23 @@ export function CaptureDetail({
   } else if (failed) {
     // A failed capture gets no player: whatever frames exist may be half
     // written. The still, if the worker made one, is the honest picture.
-    media = still === undefined ? <p className="photo-processing">FAILED</p> : assetImage(still, api, 'Failed capture');
+    heroBlank = still === undefined;
+    media = heroBlank ? <NoPicture status="failed" /> : assetImage(still!, api, 'Failed capture');
   } else if (capture.mode === 'wiggle') {
     // Playback is not a download: a host turning saves off must not freeze
     // the photograph or hide the frames it was built from.
-    media =
-      originalUrls.length >= 2 ? (
-        <WigglePlayer
-          frames={originalUrls}
-          {...playerPlayback(capture.playback)}
-          poster={still === undefined ? undefined : api.assetUrl(still.assetId)}
-        />
-      ) : still === undefined ? (
-        <p className="photo-processing">Processing…</p>
-      ) : (
-        assetImage(still, api, 'Wiggle capture')
-      );
+    heroBlank = originalUrls.length < 2 && still === undefined;
+    media = heroBlank ? (
+      <NoPicture status="processing" />
+    ) : originalUrls.length >= 2 ? (
+      <WigglePlayer
+        frames={originalUrls}
+        {...playerPlayback(capture.playback)}
+        poster={still === undefined ? undefined : api.assetUrl(still.assetId)}
+      />
+    ) : (
+      assetImage(still!, api, 'Wiggle capture')
+    );
   } else if (capture.mode === 'quad') {
     const columns = Math.ceil(Math.sqrt(capture.frameCount));
     // One hero child, not three. The grid, the look and the chip used to be
@@ -557,7 +562,8 @@ export function CaptureDetail({
       </div>
     );
   } else {
-    media = still === undefined ? <p className="photo-processing">Processing…</p> : assetImage(still, api, 'KINO capture');
+    heroBlank = still === undefined;
+    media = heroBlank ? <NoPicture status="processing" /> : assetImage(still!, api, 'KINO capture');
   }
 
   // SAVE PHOTO is a still, never an animation or a video — a guest tapping
@@ -569,8 +575,19 @@ export function CaptureDetail({
   // on a quad it is how a phone moves between the four full-width pictures.
   // Two frames at least: with one there is nothing to move between, and a
   // strip of one thumb is one enormous square under the same picture.
+  //
+  // A quad showing its OVERVIEW is already four frames on screen, each of them
+  // a tap target for the same thing the strip does. Repeating them underneath
+  // as a second, smaller row of the same four pictures — which is what a
+  // desktop got, since a wide screen opens on the overview — is a contact
+  // sheet of the contact sheet. So on a quad the strip appears only once one
+  // frame is filling the hero and the others are off screen, which is the
+  // state it was built for. A wiggle always has it: its hero is one moving
+  // picture and the strip is the only way to see the frames apart.
   const showFrameStrip =
-    (capture.mode === 'wiggle' || capture.mode === 'quad') && originals.length > 1 && !failed;
+    !failed &&
+    originals.length > 1 &&
+    (capture.mode === 'wiggle' || (capture.mode === 'quad' && frame !== null));
 
   // The leading mark on a row IS the shape you are about to save.
   const box = (w: number, h: number): ReactElement => (
@@ -604,7 +621,6 @@ export function CaptureDetail({
         style={heroRatio === null ? undefined : ({ '--hero-ratio': heroRatio } as CSSProperties)}
       >
         {media}
-        <StatusChip status={capture.status} present={originals.length} />
       </div>
 
       {showFrameStrip ? (
@@ -653,6 +669,16 @@ export function CaptureDetail({
         {pinnedFrame === undefined ? null : (
           <div><dt>showing</dt><dd>{cameraLabel(pinnedFrame, frame ?? 0)}</dd></div>
         )}
+        {/* The state reads as a FACT of this photograph, in the row of facts,
+            not as a plate floating over the picture in the hero. `partial` is
+            deliberately absent: `frames` already prints `1, 3, 4` right beside
+            this, and "3 OF 4" next to it is the same sentence twice. */}
+        {!heroBlank && (capture.status === 'failed' || capture.status === 'processing') ? (
+          <div>
+            <dt>state</dt>
+            <dd><StatusChip status={capture.status} present={originals.length} /></dd>
+          </div>
+        ) : null}
       </dl>
 
       <div className="k-acts" aria-label="Capture actions">
@@ -718,7 +744,7 @@ export function CaptureDetail({
             <li>
               <button
                 type="button"
-                className="action-link"
+                className="action-link k-share"
                 aria-label="Share"
                 onClick={() => {
                   void share();

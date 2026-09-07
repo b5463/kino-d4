@@ -10,8 +10,15 @@ import { setRouteMeta } from '../src/meta';
 import { LandingPage } from '../src/pages/LandingPage';
 import { NoCapturePage, NoRollPage } from '../src/pages/NotFoundPage';
 import { PinGate } from '../src/pages/PinGate';
-import { hourMarks, rowEstimate, type StreamItem } from '../src/pages/RollFeedPage';
-import type { RollApi } from '../src/api/client';
+import {
+  indexSize,
+  markGranularity,
+  rowEstimate,
+  streamItems,
+  timeIndex,
+  type StreamItem,
+} from '../src/pages/RollFeedPage';
+import type { CaptureView, RollApi } from '../src/api/client';
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactTestGlobal.IS_REACT_ACT_ENVIRONMENT = true;
@@ -130,14 +137,18 @@ describe('text tokens', () => {
   });
 });
 
-describe('the hour index', () => {
+describe('the time index', () => {
   function clock(label: string, at: string): StreamItem {
     return { kind: 'clock', key: `t_${at}`, label, at };
   }
+  function day(label: string, at: string): StreamItem {
+    return { kind: 'day', key: `d_${at}`, label, at };
+  }
   const row: StreamItem = { kind: 'row', key: 'r_1', captures: [] };
 
-  it('offers the first stream row of each hour it has loaded', () => {
+  it('offers the first stream row of each hour it has loaded, under its day', () => {
     const items: StreamItem[] = [
+      day('05.09.26', '2026-09-05T21:40:00'),
       clock('21:40', '2026-09-05T21:40:00'),
       row,
       clock('21:12', '2026-09-05T21:12:00'),
@@ -145,24 +156,101 @@ describe('the hour index', () => {
       clock('20:59', '2026-09-05T20:59:00'),
       row,
     ];
-    expect(hourMarks(items)).toEqual([
-      { key: '05.09 21', label: '21:00', index: 0 },
-      { key: '05.09 20', label: '20:00', index: 4 },
+    const days = timeIndex(items);
+    expect(days).toHaveLength(1);
+    expect(days[0]?.label).toBe('05.09.26');
+    // The DAY's own index is the day row; each hour's is the first clock mark
+    // of that hour, which is the row a jump has to land on.
+    expect(days[0]?.index).toBe(0);
+    expect(days[0]?.hours.map((hour) => [hour.label, hour.index])).toEqual([
+      ['21:00', 1],
+      ['20:00', 5],
     ]);
+    expect(indexSize(days)).toBe(2);
   });
 
-  it('prints the day only when the roll crosses midnight', () => {
-    const marks = hourMarks([
+  /**
+   * The day is a heading now, not six characters repeated on every key. It
+   * used to be printed inline on each chip, and only when the roll happened
+   * to cross midnight.
+   */
+  it('starts a new day whenever the stream does', () => {
+    const days = timeIndex([
+      day('06.09.26', '2026-09-06T00:20:00'),
       clock('00:20', '2026-09-06T00:20:00'),
       row,
+      day('05.09.26', '2026-09-05T23:40:00'),
       clock('23:40', '2026-09-05T23:40:00'),
       row,
     ]);
-    expect(marks.map((mark) => mark.label)).toEqual(['06.09 · 00:00', '05.09 · 23:00']);
+    expect(days.map((entry) => [entry.label, entry.hours.map((hour) => hour.label)])).toEqual([
+      ['06.09.26', ['00:00']],
+      ['05.09.26', ['23:00']],
+    ]);
   });
 
-  it('ignores rows and unparseable marks', () => {
-    expect(hourMarks([row, { kind: 'clock', key: 't', label: '', at: 'not a time' }])).toEqual([]);
+  it('ignores rows and unparseable marks, and drops a day with no hours', () => {
+    expect(timeIndex([row, { kind: 'clock', key: 't', label: '', at: 'not a time' }])).toEqual([]);
+    expect(timeIndex([day('05.09.26', '2026-09-05T21:00:00'), row])).toEqual([]);
+    expect(indexSize([])).toBe(0);
+  });
+});
+
+/**
+ * Defect 1. The first row of the feed printed `shortDate(roll.createdAt)` —
+ * the ROLL's birthday — beside a capture taken on a different day, and a roll
+ * spanning ten days had no boundary in it anywhere. Days come from each
+ * capture's own `capturedAt` now.
+ */
+describe('day boundaries in the stream', () => {
+  function capture(id: string, at: string): CaptureView {
+    return {
+      captureId: id,
+      mode: 'quad',
+      look: null,
+      capturedAt: at,
+      createdAt: at,
+      frameCount: 4,
+      resolution: '1600x1200',
+      status: 'complete',
+      playback: null,
+      assets: [],
+    };
+  }
+
+  it('marks every calendar day the loaded captures cross', () => {
+    const items = streamItems(
+      [
+        capture('c1', '2026-09-07T03:05:00'),
+        capture('c2', '2026-09-05T22:03:00'),
+        capture('c3', '2026-09-05T22:03:30'),
+      ],
+      1,
+    );
+    expect(items.map((item) => `${item.kind}:${item.kind === 'row' ? String(item.captures.length) : item.label}`))
+      .toEqual(['day:07.09.26', 'clock:03:05', 'row:1', 'day:05.09.26', 'clock:22:03', 'row:1', 'row:1']);
+  });
+
+  /**
+   * Defect: on more than one column a mark per MINUTE broke the row after
+   * every tile, so a 1440 px desktop feed was one left-hand column with two
+   * thirds of the screen black. Above one column the mark is the hour.
+   */
+  it('files captures under the hour once a row can hold more than one', () => {
+    expect(markGranularity(1)).toBe('minute');
+    expect(markGranularity(3)).toBe('hour');
+    const items = streamItems(
+      [
+        capture('c1', '2026-09-05T22:31:00'),
+        capture('c2', '2026-09-05T22:14:00'),
+        capture('c3', '2026-09-05T22:02:00'),
+      ],
+      3,
+    );
+    expect(items.map((item) => item.kind)).toEqual(['day', 'clock', 'row']);
+    expect(items[1]).toMatchObject({ kind: 'clock', label: '22:00' });
+    expect(items[2]).toMatchObject({ kind: 'row' });
+    expect((items[2] as { captures: CaptureView[] }).captures).toHaveLength(3);
   });
 });
 
@@ -203,9 +291,18 @@ describe('copy', () => {
     await act(async () => {
       root.render(<NoCapturePage slug="RRG8AZ" />);
     });
-    expect(container.querySelector('h1')?.textContent).toBe('This photo is no longer in the roll.');
+    // Headings on the guest surface carry no full stop — "Open a roll",
+    // "No roll here" — and this one used to be the only sentence among them.
+    expect(container.querySelector('h1')?.textContent).toBe('This photograph is gone');
+    expect(container.textContent).toContain('The host removed it.');
     expect(container.textContent).not.toContain('No roll here');
-    expect(container.querySelector('a')?.getAttribute('href')).toBe('/r/RRG8AZ');
+    // A dead end has to offer the one move that makes sense, as a key rather
+    // than as body text: the same plate control the gates use.
+    const out = container.querySelector('a.k-gate-act');
+    expect(out?.getAttribute('href')).toBe('/r/RRG8AZ');
+    expect(out?.textContent?.trim()).toBe('Back to the roll');
+    // ...and the mark, so a guest can tell which app they landed in.
+    expect(container.querySelector<HTMLImageElement>('.k-mark')?.src).toContain('kino-roll-light');
   });
 
   it('keeps the roll-level 404 for a roll that is actually gone', async () => {

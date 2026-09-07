@@ -3,7 +3,257 @@
    `roll.css` is the guest surface and is owned elsewhere; everything the
    operator page needs that the guest page does not lives here and is imported
    by `pages/HostDashboard.tsx`. Rules are scoped to `body[data-surface='host']`
-   where they could otherwise reach a guest route through a shared class. */
+   where they could otherwise reach a guest route through a shared class.
+
+   ## What the page is for
+
+   The guest app is a dark plate/window/ground instrument. This is the other
+   half of the same product and deliberately not a copy of it: a pale,
+   utilitarian operator surface — white panels, 1px borders, mono for anything
+   the machine wrote. Same family, different job.
+
+   ## The order everything is in
+
+   During a party the host asks three questions, always in this order:
+
+     1. is the camera uploading?
+     2. is anything stuck?
+     3. how many photographs are there?
+
+   `.host-now` answers all three above the fold and is the reason this file
+   exists in its current shape. Everything that is *setup* — the QR, the PIN,
+   the export, the danger area — is folded into `.host-setup`, which is shut by
+   default the moment the roll has captures on it, because by then the host has
+   already done the setup and wants the pictures. */
+
+/* Host-prefixed, so they are safe on :root and do not need the surface
+   attribute to have been stamped on <body> yet. */
+:root {
+  /* One spacing scale for the whole surface, so a gap is a decision and not a
+     number somebody typed. */
+  --h-gap: 10px;
+  --h-gap-lg: 16px;
+  --h-pad: 12px;
+  --h-amber: #c9a227;
+  --h-amber-bg: #fdf7e3;
+  --h-bad-bg: #fdf4f6;
+  --h-ok-bg: #f1f7ef;
+  --h-tile-bg: #f7f9fc;
+}
+
+/* A 2px focus ring on the operator surface: this page is used one-handed on a
+   phone at a party, and the 2006-website default was hard to spot on white. */
+body[data-surface='host'] :focus-visible {
+  outline: 2px solid var(--k-header);
+  outline-offset: 2px;
+}
+
+/* A disabled primary button has to stop being primary.
+
+   `roll.css` paints `.kino-button--primary` with a blue gradient and white
+   text, and disables buttons by setting the text to `--k-mut`. Together that
+   is grey type on a mid-blue fill: seen on the live dashboard, "Prepare ZIP"
+   on an empty roll was unreadable. Disabled means "not the thing to press",
+   so it drops back to the ordinary flat control. */
+body[data-surface='host'] .kino-button--primary:disabled,
+body[data-surface='host'] .kino-button--danger-solid:disabled {
+  border-color: var(--k-border);
+  background: #eef1f5;
+  color: var(--k-mut);
+}
+
+/* ---- header: who this roll is, and the two controls that act on it ---- */
+
+.roll-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px var(--h-gap-lg);
+  padding-bottom: 10px;
+  margin-bottom: var(--h-gap-lg);
+  border-bottom: 2px solid var(--k-border);
+}
+.roll-head h1 {
+  margin: 2px 0 3px;
+  font-size: 1.375rem;
+  letter-spacing: -0.01em;
+}
+/* Machine-written identity — the code, the serial — is set in mono so it reads
+   as something to be copied out rather than as prose. */
+.roll-subhead {
+  color: var(--k-mut);
+  font: 0.75rem/1.5 var(--k-mono);
+}
+.roll-subhead b {
+  color: var(--k-text);
+  letter-spacing: 0.08em;
+}
+.roll-head-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .roll-head {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .roll-head h1 { font-size: 1.1875rem; }
+  .roll-head-controls { justify-content: flex-start; }
+}
+
+/* ---- the three questions ----
+
+   Camera gets twice the width of the other two because it is the only tile
+   with sentences in it. Below 860px the two narrow tiles pair up under it;
+   below 520px everything stacks, camera first, which is the order the
+   questions are asked in. */
+
+.host-now {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--h-gap);
+  margin-bottom: var(--h-gap-lg);
+}
+@media (max-width: 860px) {
+  .host-now { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .host-now-camera { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  .host-now { grid-template-columns: minmax(0, 1fr); }
+}
+
+.host-now-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: var(--h-pad) 14px;
+  border: 1px solid var(--k-border);
+  border-left: 4px solid var(--k-border);
+  background: #fff;
+}
+.host-now-tile[data-tone='ok'] { border-left-color: var(--k-green); }
+.host-now-tile[data-tone='warn'] { border-left-color: var(--h-amber); background: var(--h-amber-bg); }
+.host-now-tile[data-tone='bad'] { border-left-color: var(--k-burgundy); background: var(--h-bad-bg); }
+.host-now-tile[data-tone='off'] { border-left-color: var(--k-mut); background: var(--h-tile-bg); }
+
+/* The tile's own caption. Same size and weight as a panel title so the three
+   tiles read as a row of headed boxes and not as three loose paragraphs. */
+.host-now-label {
+  margin: 0;
+  color: var(--k-mut);
+  font: 700 0.6875rem var(--k-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The camera's word, at the size the camera's own screen gives it. The lamp is
+   the shared primitive — symbol plus text, never colour alone — scaled up
+   rather than reimplemented. */
+.host-now-word .kino-status-lamp {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font: 700 1.0625rem/1.2 var(--k-sans);
+  letter-spacing: 0.03em;
+  color: var(--k-text);
+}
+.host-now-word .kino-status-lamp--ok .kino-status-symbol { color: var(--k-green); }
+.host-now-word .kino-status-lamp--err .kino-status-symbol { color: var(--k-burgundy); }
+.host-now-word .kino-status-lamp--warn .kino-status-symbol { color: var(--h-amber); }
+.host-now-word .kino-status-lamp--off .kino-status-symbol { color: var(--k-mut); }
+
+/* The queue, in the camera's words: "6 waiting to upload" is the headline of
+   this tile, not a footnote to the connection word. */
+.host-now-queue {
+  margin: 1px 0 0;
+  font: 700 1rem/1.3 var(--k-mono);
+}
+.host-now-line { margin: 0; color: var(--k-text); }
+.host-now-foot {
+  margin-top: auto;
+  padding-top: 4px;
+  color: var(--k-mut);
+  font: 0.6875rem/1.5 var(--k-mono);
+}
+
+/* Question 3: one big number, the way the camera prints it on its own screen. */
+.host-now-figure {
+  margin: 0;
+  font: 700 2.125rem/1 var(--k-mono);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.host-now-unit {
+  margin-left: 6px;
+  font: 700 0.75rem var(--k-sans);
+  letter-spacing: 0.1em;
+  color: var(--k-mut);
+}
+.host-now-sub { margin: 0; color: var(--k-mut); }
+
+/* Question 2. Each stuck thing is the button that filters the grid to it —
+   the answer to "what is stuck" should be one tap from the sentence saying so
+   rather than a hunt through five filter chips. */
+.host-now-stuck {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* `display: inline`, and it matters twice. `roll.css` styles every bare button
+   on this surface as a beveled command button — a chip here would read as a
+   thing to press rather than as the sentence it is — and that rule makes it an
+   inline-FLEX box, which drops whitespace-only text nodes: "10 failed to
+   process" rendered as "10failed to process". The selector carries `:not
+   (.kino-button)` to out-specify it rather than to out-order it. */
+body[data-surface='host'] .host-now-stuck button:not(.kino-button) {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--k-link);
+  font: 700 0.8125rem/1.45 var(--k-sans);
+  text-align: left;
+  cursor: pointer;
+}
+body[data-surface='host'] .host-now-stuck button:not(.kino-button):hover {
+  border-color: transparent;
+  text-decoration: underline;
+}
+.host-now-stuck b {
+  font-family: var(--k-mono);
+  font-variant-numeric: tabular-nums;
+}
+.host-now-clear { margin: 0; color: var(--k-mut); }
+
+/* ---- the alarm line ----
+
+   A camera that cannot reach the server while the header still says LIVE is
+   the one state the old page hid: it was a pale pink box two screens down.
+   This sits directly under the header, full width, and says what to do. */
+
+.host-alarm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 0 var(--h-gap);
+  padding: 9px 12px;
+  border: 1px solid var(--k-burgundy);
+  border-left-width: 4px;
+  background: var(--h-bad-bg);
+}
+.host-alarm strong { letter-spacing: 0.04em; }
 
 /* ---- header controls ---- */
 
@@ -11,7 +261,7 @@
 .host-copy-field {
   width: 260px;
   max-width: 50vw;
-  font: 11px var(--k-mono);
+  font: 0.6875rem var(--k-mono);
 }
 
 /* One line, once per device: the token has no second copy anywhere. */
@@ -20,90 +270,221 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 8px 0;
-  padding: 7px 10px;
-  border: 1px solid #c9a227;
-  border-left: 3px solid #c9a227;
-  background: #fdf7e3;
+  margin: 0 0 var(--h-gap);
+  padding: 9px 12px;
+  border: 1px solid var(--h-amber);
+  border-left-width: 4px;
+  background: var(--h-amber-bg);
 }
-.host-warn > span { flex: 1 1 260px; }
+.host-warn > span { flex: 1 1 280px; }
 
-/* ---- totals as a description list ---- */
+/* ---- setup: everything that is not the party ----
 
-.host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.host-stats .host-stat {
-  min-width: 105px;
-  padding: 6px 10px;
+   `<details>`, not a panel grid. Six equal panels between the status and the
+   photographs made the host scroll past the QR, the PIN and a Clear Roll
+   button to reach the work; shut, the whole lot is one line. It opens itself
+   on a roll with nothing on it, which is exactly when the host is setting up. */
+
+.host-setup {
+  margin-bottom: var(--h-gap-lg);
   border: 1px solid var(--k-border);
   background: #fff;
 }
-.host-stats dt.host-stat-label {
+.host-setup > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px var(--h-pad);
+  background: #f2f5f9;
   color: var(--k-mut);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font: 700 0.6875rem var(--k-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
 }
-.host-stats dd.host-stat-value {
-  display: block;
-  margin: 0;
-  font: 700 18px var(--k-mono);
+.host-setup[open] > summary { border-bottom: 1px solid var(--k-border-soft); }
+.host-setup > summary::-webkit-details-marker { display: none; }
+.host-setup > summary::marker { content: ''; }
+/* A caret drawn here rather than borrowed from the platform: the platform's
+   sits outside the flex row and drags the label off the panel's left edge. */
+.host-setup > summary::before {
+  content: '▸';
+  font-size: 0.75rem;
+  transition: transform 0.12s;
+}
+.host-setup[open] > summary::before { transform: rotate(90deg); }
+.host-setup-hint {
+  margin-left: auto;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.host-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* Panels size to their own content. Stretched to the tallest in the row, the
+     one-line Camera panel became a 450px empty white box. */
+  align-items: start;
+  gap: var(--h-gap);
+  padding: var(--h-gap);
+}
+@media (max-width: 600px) {
+  .host-setup-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ---- camera panel ---- */
+/* ---- forms ----
+
+   `roll.css` gives every host form `display:grid; gap:8px`, so the `<br>` that
+   used to follow each label doubled the gap and the button that followed an
+   input sat a full row away from it. Fields are declared here instead. */
+
+.host-field { display: grid; gap: 4px; margin-bottom: var(--h-gap); }
+.host-field:last-child { margin-bottom: 0; }
+.host-field-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.host-field-row input { flex: 1 1 140px; min-width: 0; }
+.host-hint { margin: 0; color: var(--k-mut); font-size: 0.75rem; }
+
+/* Checkbox and its words on one line, with the box on the text baseline. The
+   bare `<label>` wrapped and dropped its text under the box on a phone. */
+.host-check { margin: 0 0 var(--h-gap); }
+.host-check label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--k-text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  cursor: pointer;
+}
+/* `min-height: 0` is load-bearing on a phone. `roll.css` gives every input a
+   36px minimum under `(pointer: coarse)` for thumbs, which is right for a text
+   field and wrong for a checkbox: the box stayed 16px and sat centred in a
+   36px line box, so it drew a full line BELOW its own label. The touch target
+   is the whole `<label>`, which is bigger than 36px anyway. */
+.host-check input[type='checkbox'] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 2px 0 0;
+}
+
+/* ---- camera list (setup panel: the per-camera detail) ---- */
 
 .host-cameras { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.host-camera { padding: 6px 8px; border: 1px solid var(--k-border-soft); background: #fbfcfe; }
+.host-camera {
+  padding: 8px 10px;
+  border: 1px solid var(--k-border-soft);
+  border-left: 3px solid var(--k-border);
+  background: #fbfcfe;
+}
 .host-camera-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
-.host-camera-serial { font: 700 12px var(--k-mono); letter-spacing: 0.04em; }
-.host-camera-queue { margin-top: 4px; font: 700 14px var(--k-mono); }
+.host-camera-serial { font: 700 0.75rem var(--k-mono); letter-spacing: 0.04em; }
+.host-camera-queue { margin-top: 4px; font: 700 0.875rem var(--k-mono); }
 .host-camera-failed { margin-top: 2px; color: var(--k-burgundy); font-weight: 700; }
 .host-camera-note { margin: 4px 0 2px; color: var(--k-text); }
-.host-camera-foot { color: var(--k-mut); font: 11px var(--k-mono); }
+.host-camera-foot { color: var(--k-mut); font: 0.6875rem var(--k-mono); }
+.host-camera[data-word='ONLINE'] { border-left-color: var(--k-green); }
 /* A camera that cannot report anything must not read as a healthy one. */
-.host-camera[data-word='NOT REPORTING'] { background: #f4f6f8; }
+.host-camera[data-word='NOT REPORTING'],
+.host-camera[data-word='OFFLINE'] { border-left-color: var(--k-mut); background: var(--h-tile-bg); }
 .host-camera[data-word='KINO NOT ANSWERING'],
-.host-camera[data-word='UPLOAD PAUSED'] { border-color: var(--k-burgundy); background: #fdf4f6; }
+.host-camera[data-word='UPLOAD PAUSED'] {
+  border-left-color: var(--k-burgundy);
+  background: var(--h-bad-bg);
+}
 
 /* ---- guest link card ---- */
 
 .host-qr-card {
-  padding: 10px;
+  padding: var(--h-pad);
   border: 1px solid var(--k-border);
   background: #fff;
   text-align: center;
 }
-.host-qr { display: block; width: 220px; max-width: 100%; height: auto; margin: 0 auto; }
-.host-qr--empty { aspect-ratio: 1 / 1; background: #eef2f6; }
+body[data-surface='host'] .host-qr { display: block; width: 200px; max-width: 100%; height: auto; margin: 0 auto; }
+body[data-surface='host'] .host-qr--empty { aspect-ratio: 1 / 1; background: #eef2f6; }
 .host-qr-code {
-  margin-top: 6px;
-  font: 700 26px var(--k-mono);
+  margin-top: 8px;
+  font: 700 1.75rem/1.1 var(--k-mono);
   letter-spacing: 0.18em;
+  /* The letter-spacing is trailing whitespace on the last glyph; without this
+     the code sits visibly left of centre in its own card. */
+  text-indent: 0.18em;
 }
-.host-qr-url { color: var(--k-mut); font: 12px var(--k-mono); }
-.host-qr-actions { margin-top: 6px; }
-.host-rotate { margin-top: 8px; }
+.host-qr-url { color: var(--k-mut); font: 0.75rem var(--k-mono); }
+.host-qr-actions { margin-top: 8px; }
+.host-rotate { margin-top: var(--h-gap); padding-top: var(--h-gap); border-top: 1px solid var(--k-border-soft); }
 
 /* ---- shared small text ---- */
 
 .host-quiet { margin: 6px 0 0; color: var(--k-mut); }
-.host-check label { color: var(--k-text); font-weight: 400; }
-.host-estimate { margin: 0 0 6px; font: 700 14px var(--k-mono); }
+.host-estimate { margin: 0 0 8px; font: 700 0.875rem var(--k-mono); }
 .host-trash-note {
-  margin: 6px 0;
-  padding: 4px 8px;
+  margin: 8px 0;
+  padding: 6px 10px;
   border-left: 3px solid var(--k-green);
-  background: #f1f7ef;
+  background: var(--h-ok-bg);
 }
+/* The export's own progress line, which has to be legible across a room while
+   the host waits for a 17 GB ZIP. */
+.host-export-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--k-blue);
+  background: #eff4fb;
+}
+.host-export-state span { flex: 1 1 200px; }
+.host-export-done { margin: 8px 0 0; }
 
 /* A destructive action that asks in the page rather than in a browser dialog. */
 .host-confirm {
-  padding: 6px 8px;
+  padding: 10px;
   border: 1px solid var(--k-burgundy);
-  background: #fdf4f6;
+  border-left-width: 3px;
+  background: var(--h-bad-bg);
 }
-.host-confirm p { margin: 0 0 6px; }
+.host-confirm p { margin: 0 0 8px; }
 
-/* ---- moderation grid ---- */
+/* The danger area: the same white panel, a burgundy rule, no red wash. */
+body[data-surface='host'] .host-danger { padding-left: 10px; border-left: 3px solid var(--k-burgundy); }
+body[data-surface='host'] .host-danger p { margin-bottom: 8px; }
+body[data-surface='host'] .host-danger code {
+  padding: 1px 5px;
+  border: 1px solid var(--k-border);
+  background: #f2f5f9;
+  font: 700 0.75rem var(--k-mono);
+  letter-spacing: 0.08em;
+}
+body[data-surface='host'] .host-danger input {
+  max-width: 220px;
+  font: 700 0.9375rem var(--k-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---- moderation ---- */
+
+/* Two thousand tiles is a lot of scrolling to get back to the filter that
+   chose them, so the bar comes with. The negative inline margin is the panel
+   body's own padding, given back, so the sticky strip spans the panel edge to
+   edge and nothing shows through beside it. */
+.host-filters {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 -10px 10px;
+  padding: 8px 10px;
+  background: #fff;
+  border-bottom: 1px solid var(--k-border-soft);
+}
 
 .host-captures-window { position: relative; margin-top: 8px; }
 .host-captures-runway { position: relative; width: 100%; }
@@ -118,29 +499,58 @@
   width: 100%;
   padding-bottom: 8px;
 }
-.host-capture { padding: 4px; border: 1px solid var(--k-border); background: #fff; }
-.host-capture[data-muted='true'] { opacity: 0.55; }
-.host-capture .roll-media,
-.host-capture .photo-img {
+body[data-surface='host'] .host-capture {
+  position: relative;
+  padding: 4px;
+  border: 1px solid var(--k-border);
+  background: #fff;
+}
+body[data-surface='host'] .host-capture[data-muted='true'] { opacity: 0.6; }
+body[data-surface='host'] .host-capture[data-state='Failed'] { border-color: var(--k-burgundy); }
+body[data-surface='host'] .host-capture .roll-media,
+body[data-surface='host'] .host-capture .photo-img {
   display: block;
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   background: #dfe5ec;
 }
-.host-capture-placeholder {
+body[data-surface='host'] .host-capture-placeholder {
   display: grid;
   place-items: center;
   aspect-ratio: 4 / 3;
   background: #dfe5ec;
   color: var(--k-mut);
+  font-size: 0.75rem;
   font-weight: 700;
 }
-.host-capture[data-state='Failed'] .host-capture-placeholder { color: var(--k-burgundy); }
-.host-capture-meta { padding: 4px 1px; font: 11px var(--k-mono); }
+/* The state is a corner chip on the picture and only when the state is not the
+   ordinary one. Every tile printing "Visible" across its middle told the host
+   nothing and hid the thumbnail behind a word. */
+.host-capture-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  background: #26313dd9;
+  color: #fff;
+  font: 700 0.625rem var(--k-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.host-capture[data-state='Failed'] .host-capture-badge { background: var(--k-burgundy); }
+body[data-surface='host'] .host-capture-meta {
+  padding: 5px 2px 4px;
+  color: var(--k-mut);
+  font: 0.6875rem var(--k-mono);
+}
+.host-capture-meta b { color: var(--k-text); }
 
 @media (max-width: 640px) {
   .host-copy-field { display: none; }
+  /* The summary's list of what is inside is a convenience on a wide screen and
+     a second line of chrome on a phone. */
+  .host-setup-hint { display: none; }
 }
 
 /* ---- print: the QR card, and nothing else ----

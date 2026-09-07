@@ -93,7 +93,9 @@ describe('Roll access states', () => {
     await render(<RollClosed closedAt="2026-08-14T22:30:00.000Z" />);
     // The same formatter every other date on the guest surface uses — not a
     // raw locale timestamp with seconds in it.
-    expect(container.textContent).toBe('CLOSED — 15.08.26');
+    expect(container.querySelector('.roll-closed b')?.textContent).toBe('Closed · 15.08.26');
+    // ...and what closing MEANS, which the stamp on its own never said.
+    expect(container.textContent).toContain('No more photographs are coming.');
   });
 
   it('uses the plain product 404 for an unknown or stale Roll link', async () => {

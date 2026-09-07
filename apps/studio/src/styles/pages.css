@@ -1202,13 +1202,24 @@
   text-align: center;
 }
 
+/* The queue in the camera's own words, at the size the camera gives it. The
+   host dashboard prints the same sentence (`apps/roll-web/src/host.css`,
+   `.host-now-queue`); an operator with both screens open reads one line. */
 .queueline {
-  margin: 0 0 var(--gap);
+  margin: 0 0 4px;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+}
+
+/* The second line: what is happening to the photographs that have not gone. */
+.queuenote {
+  margin: 0 0 var(--gap);
+  color: var(--red-dark);
+  font-size: var(--fs-sm);
+  font-weight: 700;
 }
 
 /* Pinned to the bottom of the section: the camera works without any of this. */

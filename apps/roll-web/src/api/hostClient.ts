@@ -100,8 +100,18 @@ export interface HostApi {
   hide(captureId: string): Promise<ModerationView>;
   unhide(captureId: string): Promise<ModerationView>;
   deleteCapture(captureId: string): Promise<ModerationView>;
-  /** Takes a capture back out of the trash. Idempotent; leaves `visible` alone. */
-  restore(captureId: string): Promise<HostCaptureView>;
+  /**
+   * Takes a capture back out of the trash. Idempotent; leaves `visible` alone.
+   *
+   * Answers a `ModerationView` — `captureId`, `visible`, `deletedAt`,
+   * `purgeAfter` — and NOT a whole capture, the same as hide/unhide/delete.
+   * This was typed as `HostCaptureView`, and the dashboard duly assigned the
+   * reply over the row: restoring a capture replaced its `mode`, `capturedAt`,
+   * `status` and `assets` with nothing. Verified against the running API,
+   * which is the only way to catch it — the shape is right there in the
+   * response body and nowhere in the types.
+   */
+  restore(captureId: string): Promise<ModerationView>;
   /** Trashes every capture of the roll; answers how many moved. */
   clearRoll(rollId: string): Promise<{ cleared: number }>;
   regenerateSlug(rollId: string): Promise<{ slug: string; guestUrl: string }>;
@@ -109,6 +119,24 @@ export interface HostApi {
   getExport(rollId: string, jobId: string): Promise<{ status: string; url?: string }>;
   /** Size of the ZIP the host is about to ask for, before they ask for it. */
   exportEstimate(rollId: string): Promise<HostExportEstimate>;
+  /**
+   * The finished ZIP, as bytes this tab can save.
+   *
+   * Not an `<a href>`, because in production it cannot be one. The API runs
+   * `OBJECT_DELIVERY: proxy` (`infra/docker-compose.prod.yml`), so the URL the
+   * poll route hands back is `/api/host/rolls/:id/export/:jobId/content` —
+   * behind `requireHost`, which reads `Authorization: Bearer hrt_…` and
+   * nothing else. A browser following a plain link sends no such header, so
+   * the download the host pressed answered 401 and the page said nothing.
+   * Verified against the running dev API: the same URL is 200 with the header
+   * and 401 without it.
+   *
+   * A presigned URL (the `presigned` delivery mode, and dev's default) needs
+   * no header and must not be given one — signing covers the exact set of
+   * headers, and an extra `authorization` is how a signed S3 GET turns into a
+   * 403. `sameOrigin` decides, so one method covers both deployments.
+   */
+  exportBlob(url: string): Promise<Blob>;
   assetUrl(assetId: string): string;
   events(rollId: string, onEvent: (event: HostRollEvent) => void): () => void;
 }
@@ -215,6 +243,39 @@ interface ApiErrorBody {
   message?: unknown;
 }
 
+/**
+ * Whether a URL is this API, and so whether the host token belongs on it.
+ *
+ * A relative URL always is. An absolute one is only when its origin matches
+ * the page's — a presigned storage URL points somewhere else entirely, and
+ * sending a bearer token to a third party is how a credential leaks.
+ */
+export function sameOrigin(url: string, origin: string = window.location.origin): boolean {
+  try {
+    return new URL(url, origin).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hands a blob to the browser as a file.
+ *
+ * `<a download>` on a blob URL, clicked once, then revoked on the next frame:
+ * revoking synchronously races the download in Chromium and produces a file
+ * of zero bytes.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export function createHostApi(token: string, baseUrl = ''): HostApi {
   const headers = (): HeadersInit => ({ authorization: `Bearer ${token}` });
 
@@ -283,6 +344,13 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
       request(
         `/api/host/rolls/${encodeURIComponent(rollId)}/export/${encodeURIComponent(jobId)}`,
       ),
+    async exportBlob(url) {
+      const res = await fetch(url, sameOrigin(url) ? { headers: headers() } : {});
+      if (!res.ok) {
+        throw new ApiError(res.status, 'EXPORT_DOWNLOAD_FAILED', `the ZIP came back ${String(res.status)}`);
+      }
+      return res.blob();
+    },
     assetUrl: (assetId) => `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/content`,
     events(rollId, onEvent) {
       const controller = new AbortController();

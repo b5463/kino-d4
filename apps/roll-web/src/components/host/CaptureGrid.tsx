@@ -163,13 +163,19 @@ export function CaptureGrid({
 
   return (
     <>
-      <ToolbarFrame aria-label="Capture filter">
+      {/* Sticky: two thousand tiles is a long way back to the control that
+          chose them, and on a phone it is the only way to change filter
+          without scrolling to the top of the panel. */}
+      <ToolbarFrame aria-label="Capture filter" className="host-filters">
         {CAPTURE_FILTERS.map((name) => (
           <Button
             key={name}
             size="sm"
             variant={name === filter ? 'primary' : 'default'}
             aria-pressed={name === filter}
+            // Empty filters stay live rather than disabled. "Failed 0" is a
+            // fact the host wants to read, and being able to select it and see
+            // "Nothing in Failed." is how they confirm it rather than assume.
             onClick={() => onFilter(name)}
           >
             {FILTER_LABEL[name]} {counts[name]}
@@ -179,7 +185,9 @@ export function CaptureGrid({
 
       {shown.length === 0 ? (
         <p className="host-quiet">
-          {captures.length === 0 ? 'No captures yet.' : `Nothing in ${FILTER_LABEL[filter]}.`}
+          {captures.length === 0
+            ? 'No captures yet. They appear here as the camera uploads them.'
+            : `Nothing in ${FILTER_LABEL[filter]}.`}
         </p>
       ) : null}
 
@@ -315,13 +323,21 @@ function CaptureTile({
       // screen reader read as a stray word belonging to nothing.
       aria-label={`${capture.mode} capture at ${time} — ${state}`}
     >
-      {poster === null || !capture.visible || deleted ? (
-        <div className="host-capture-placeholder">{state}</div>
+      {/* The picture, whatever the state — a hidden capture is still the
+          photograph the host has to look at to decide whether to unhide it,
+          and painting the word "Hidden" over it took that away. The state is
+          a corner chip instead, and only when the state is not the ordinary
+          one: every tile stamped "Visible" said nothing 90% of the time. */}
+      {poster === null ? (
+        <div className="host-capture-placeholder">
+          {capture.status === 'failed' ? 'No file' : 'No preview yet'}
+        </div>
       ) : (
         <SafeImage className="roll-media" src={assetUrl(poster)} alt="" loading="lazy" />
       )}
+      {state === 'Visible' ? null : <span className="host-capture-badge">{state}</span>}
       <div className="host-capture-meta">
-        <strong>{capture.mode}</strong> · {time}
+        <b>{capture.mode}</b> · {time}
       </div>
       {deleted ? (
         <ToolbarFrame aria-label={`Restore ${capture.mode} capture`}>

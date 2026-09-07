@@ -127,25 +127,29 @@ export function HostAccessPanel({
         The host link is the whole key to this roll. Anyone who has it is the host; nobody can mint
         you a new one.
       </p>
-      <CopyHostLink token={token} />
+      <p className="host-field">
+        <CopyHostLink token={token} />
+      </p>
       <p className="host-check">
         <label>
           <input
             type="checkbox"
             checked={remembered}
             onChange={(event) => onRemember(event.target.checked)}
-          />{' '}
+          />
           Keep me signed in on this device
         </label>
       </p>
-      <p className="host-quiet">
+      <p className="host-hint">
         {remembered
           ? 'Kept in this browser until you sign out. Do not tick this on a borrowed machine.'
           : 'Off: closing this tab signs you out, and only the host link gets you back.'}
       </p>
-      <Button variant="danger" onClick={onSignOut}>
-        Sign out
-      </Button>
+      <p className="host-rotate">
+        <Button variant="danger" onClick={onSignOut}>
+          Sign out
+        </Button>
+      </p>
     </Panel>
   );
 }

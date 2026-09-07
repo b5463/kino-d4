@@ -55,14 +55,19 @@ export function QrCard({ guestUrl, slug }: { guestUrl: string; slug: string }) {
         <div className="host-qr-url">{spokenUrl(guestUrl)}</div>
       </div>
       <ToolbarFrame aria-label="Guest QR" className="host-qr-actions">
-        <a
-          className="kino-button kino-button--sm"
-          href={source === '' ? undefined : source}
-          download={`kino-roll-${slug}.png`}
-          aria-disabled={source === ''}
-        >
-          Download QR
-        </a>
+        {/* Rendered only once there is a PNG to hand over. An `<a>` with no
+            `href` is not a link: it drops out of the tab order and out of the
+            accessibility tree, so `aria-disabled` on it was decorating
+            something a keyboard could not reach in either state. */}
+        {source === '' ? (
+          <Button size="sm" disabled>
+            Download QR
+          </Button>
+        ) : (
+          <a className="kino-button kino-button--sm" href={source} download={`kino-roll-${slug}.png`}>
+            Download QR
+          </a>
+        )}
         <Button size="sm" onClick={() => window.print()}>
           Print card
         </Button>

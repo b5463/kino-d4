@@ -147,11 +147,17 @@ describe('CaptureDetail', () => {
     ]);
   });
 
-  it('shows a 3 OF 4 chip on a partial capture and keeps the player', async () => {
+  /**
+   * `partial` gets no state word of its own here: the `frames` fact three
+   * columns to the left already prints `1, 3, 4`, and "3 OF 4" beside it is
+   * the same sentence twice. The feed tile, which has no facts row, keeps it.
+   */
+  it('states a partial capture through its frames and keeps the player', async () => {
     const view = capture('wiggle', 3, [1, 3, 4]);
     view.status = 'partial';
     await render(view, roll());
-    expect(container.querySelector('.k-chip')?.textContent).toBe('3 OF 4');
+    expect(container.querySelector('.k-exif')?.textContent).toContain('1, 3, 4');
+    expect(container.querySelector('.k-state')).toBeNull();
     expect(container.querySelector('[data-wiggle-player]')).not.toBeNull();
   });
 
@@ -159,7 +165,9 @@ describe('CaptureDetail', () => {
     const view = capture('wiggle', 4);
     view.status = 'failed';
     await render(view, roll());
-    expect(container.querySelector('.k-chip')?.textContent).toBe('FAILED');
+    // In the row of FACTS, not on the photograph.
+    expect(container.querySelector('.k-hero .k-state')).toBeNull();
+    expect(container.querySelector('.k-exif .k-state')?.textContent).toBe('FAILED');
     expect(container.querySelector('[data-wiggle-player]')).toBeNull();
     expect(container.querySelector('.frame-strip')).toBeNull();
   });
@@ -451,7 +459,7 @@ describe('CaptureDetail on a phone', () => {
   it('hands the hero ONE child for a quad: the grid and the look row inside one wrap', async () => {
     await render(withDerivatives(capture('quad', 4)));
     const hero = container.querySelector('.k-hero');
-    const children = [...(hero?.children ?? [])].filter((child) => !child.classList.contains('k-chip'));
+    const children = [...(hero?.children ?? [])];
     expect(children).toHaveLength(1);
     expect(children[0]?.className).toBe('photo-quad-wrap');
 
@@ -495,8 +503,21 @@ describe('CaptureDetail on a phone', () => {
     expect(container.querySelector('.photo-figure img[src*="asset_thumb"]')).toBeNull();
   });
 
+  /**
+   * A quad opens on the overview on anything but a narrow screen, and there
+   * the strip is deliberately absent — the 2x2 above it is the same four
+   * pictures and the same four tap targets. Pinning one frame is the state
+   * the strip exists for, so that is the state these two tests set up.
+   */
+  async function pinFirstFrame(): Promise<void> {
+    const open = container.querySelector<HTMLButtonElement>('.photo-figure .photo-open');
+    await act(async () => open?.click());
+  }
+
   it('boxes every strip cell before its bytes arrive, and never blocks the hero', async () => {
     await render(withDerivatives(capture('quad', 4)));
+    expect(container.querySelector('.frame-strip')).toBeNull();
+    await pinFirstFrame();
     const strip = [...container.querySelectorAll<HTMLImageElement>('.frame-thumb img')];
     expect(strip.map((img) => img.getAttribute('src'))).toEqual([
       '/api/assets/asset_1/content',
@@ -528,8 +549,6 @@ describe('CaptureDetail on a phone', () => {
     ];
     const cells = [...container.querySelectorAll<HTMLImageElement>('.photo-figure img')];
     expect(cells.map((img) => img.getAttribute('src'))).toEqual(expected);
-    const strip = [...container.querySelectorAll<HTMLImageElement>('.frame-thumb img')];
-    expect(strip.map((img) => img.getAttribute('src'))).toEqual(expected);
 
     // Four different pictures, not one repeated — asserted as a set so it
     // cannot pass by the list happening to be in order.
@@ -546,8 +565,13 @@ describe('CaptureDetail on a phone', () => {
       expect(img.getAttribute('height')).toBe('540');
     }
 
-    // No original is fetched for the overview or the strip any more.
+    // No original is fetched for the overview any more...
     expect(container.querySelector('.photo-figure img[src*="asset_1/"]')).toBeNull();
+
+    // ...nor for the strip, once a pinned frame brings it out.
+    await pinFirstFrame();
+    const strip = [...container.querySelectorAll<HTMLImageElement>('.frame-thumb img')];
+    expect(strip.map((img) => img.getAttribute('src'))).toEqual(expected);
     expect(container.querySelector('.frame-thumb img[src*="asset_1/"]')).toBeNull();
   });
 

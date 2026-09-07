@@ -87,8 +87,10 @@ export function HostDashboardPage() {
   return (
     <main className="roll-shell roll-shell--narrow">
       <div className="roll-brand"><img src={kinoRoll} alt="KINO Roll" /> · HOST</div>
-      <Panel title="Private dashboard">
-        <h1>Host dashboard</h1>
+      {/* The panel's own title band is the heading. This used to carry both a
+          band reading PRIVATE DASHBOARD and an <h1> reading "Host dashboard"
+          one line below it, which is the same thing said twice at two sizes. */}
+      <Panel title="Host dashboard">
         <p>Open the private host link supplied when this Roll was created, or paste its host token.</p>
         {/* A rejected token used to do nothing whatsoever: the button
             appeared to work and the page never moved or explained itself. */}
@@ -106,19 +108,22 @@ export function HostDashboardPage() {
           }
           setError('That does not look like a host token. Open the private host link from when the Roll was created, or paste the token from it.');
         }}>
-          <label htmlFor="host-token">Host token</label>
-          <input id="host-token" name="token" type="password" autoComplete="off" required />
+          <div className="host-field">
+            <label htmlFor="host-token">Host token</label>
+            <input id="host-token" name="token" type="password" autoComplete="off" required />
+            <p className="host-hint">Starts with hrt_. It is the part of the host link after the #.</p>
+          </div>
           <p className="host-check">
             <label>
-              <input id="host-remember" name="remember" type="checkbox" /> Keep me signed in on this
-              device
+              <input id="host-remember" name="remember" type="checkbox" />
+              Keep me signed in on this device
             </label>
           </p>
           <Button variant="primary" type="submit">Open dashboard</Button>
         </form>
-        <p className="host-quiet">
-          There is one host link per Roll and it cannot be re-issued. Off, this tab forgets the
-          token when you close it.
+        <p className="host-hint">
+          There is one host link per Roll and it cannot be re-issued. Left unticked, this tab
+          forgets the token when you close it.
         </p>
         {error === '' ? null : <p className="roll-alert" role="alert">{error}</p>}
       </Panel>

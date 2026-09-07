@@ -39,8 +39,11 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
   return (
     <main className="k-gate">
       <img className="k-mark" src={kinoRoll} alt="KINO Roll" />
-      <p className="k-gate-note">PRIVATE ROLL</p>
+      {/* The code, because a guest arriving from a scanned card has no other
+          way to check they are at the right roll before typing a PIN into it. */}
+      <p className="k-gate-note">PRIVATE ROLL · <span className="k-code">{slug}</span></p>
       <h1>This roll needs a PIN</h1>
+      <p className="k-gate-lede">It is printed on the card with the roll code.</p>
       <form onSubmit={(event) => void submit(event)}>
         <label htmlFor="roll-pin">PIN</label>
         {/* `autoComplete` is deliberately off, NOT `one-time-code`: iOS reads

@@ -13,9 +13,14 @@ export interface RollClosedProps {
  */
 export function RollClosed({ closedAt }: RollClosedProps) {
   const date = closedAt === null ? '' : shortDate(closedAt);
+  // "CLOSED — 07.09.26" was a stamp with no consequence in it. What closing
+  // means to a guest is that the roll is finished and nothing new will land
+  // while they wait, so the banner says that instead of leaving them to infer
+  // it from a word borrowed from the host's vocabulary.
   return (
     <aside role="status" className="roll-closed">
-      {date === '' ? 'CLOSED' : `CLOSED — ${date}`}
+      <b>Closed{date === '' ? '' : ` · ${date}`}</b>
+      <span>No more photographs are coming. Everything here stays.</span>
     </aside>
   );
 }
@@ -30,7 +35,8 @@ export function RollStateBanner({ status }: { status: string }) {
   if (status !== 'archived') return null;
   return (
     <aside role="status" className="roll-closed">
-      This roll is archived.
+      <b>Archived</b>
+      <span>This roll has been put away. Nothing new will arrive.</span>
     </aside>
   );
 }

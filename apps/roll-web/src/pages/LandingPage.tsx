@@ -42,6 +42,9 @@ export function LandingPage({ onOpen, lastRoll = readLastRoll() }: LandingPagePr
     <main className="k-gate k-landing">
       <img className="k-mark" src={kinoRoll} alt="KINO Roll" />
       <h1>Open a roll</h1>
+      {/* What the field wants, before it is tapped. The rule was only ever
+          stated in the error a guest had to earn by getting it wrong. */}
+      <p className="k-gate-lede">Six letters and digits, from the camera or the card.</p>
       <form onSubmit={submit}>
         {/* No `autoFocus`. On a small Android the keyboard it summons
             covers "Scan the code on the camera to join" — the line that
@@ -64,9 +67,9 @@ export function LandingPage({ onOpen, lastRoll = readLastRoll() }: LandingPagePr
         <button type="submit" className="k-save">Open roll</button>
       </form>
       {error === '' ? null : <p className="k-gate-error" role="alert">{error}</p>}
-      <p>Scan the code on the camera to join.</p>
+      <p className="k-gate-foot">Or scan the code on the camera.</p>
       {lastRoll === null ? null : (
-        <p>
+        <p className="k-gate-foot">
           <a className="k-landing-back" href={`/r/${encodeURIComponent(lastRoll.slug)}`}>
             Back to {lastRoll.title.trim() === '' ? lastRoll.slug : lastRoll.title}
           </a>

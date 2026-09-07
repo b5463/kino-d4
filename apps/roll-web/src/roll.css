@@ -191,7 +191,8 @@ body[data-surface='guest'] a { color: var(--k-ink); }
 body[data-surface='guest'] .k-top a,
 body[data-surface='guest'] .k-bar a,
 body[data-surface='guest'] .k-info a,
-body[data-surface='guest'] .k-tray a { color: var(--k-p-ink); }
+body[data-surface='guest'] .k-tray a,
+body[data-surface='guest'] .k-gate-act { color: var(--k-p-ink); }
 body[data-surface='guest'] :focus-visible { outline: 2px solid var(--k-ink); outline-offset: 1px; }
 body[data-surface='guest'] .n,
 .k-num { font-variant-numeric: tabular-nums; }
@@ -271,22 +272,80 @@ body[data-surface='guest'] .n,
 .k-nav button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 34%); }
 .k-nav .k-cnt { font-size: 0.6875rem; font-variant-numeric: tabular-nums; opacity: 0.85; }
 
-/* ---- clock marks: what the retracting header uncovers ---- */
+/* ---- day and clock marks: what the retracting header uncovers ----
 
-.k-clock {
+   Two ranks of the same mark. The clock is the quiet one, once per minute on
+   a phone and once per hour where a row holds more than one tile; the day is
+   the loud one, drawn once per calendar day with a rule across the stream so
+   a roll that ran over several nights reads as several nights.
+
+   Both are also the handle for the time index (`.k-index`), which is why they
+   are buttons. That is the whole of the navigation: no strip, no second bar —
+   the mark already says where the guest is, so it is the thing to press to go
+   somewhere else. The chevron at the right end is the only added ink. */
+
+.k-clock,
+.k-day {
   position: sticky;
   top: 0;
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 12px 5px;
+  width: 100%;
+  border: 0;
+  padding: 8px 12px 6px;
   line-height: 1;
+  text-align: left;
+  font: inherit;
+  color: inherit;
   background: linear-gradient(var(--k-ground) 72%, rgb(11 11 12 / 0%));
 }
+button.k-clock, button.k-day { cursor: pointer; }
 .k-clock i { width: 1px; height: 8px; background: #33333a; display: block; flex: none; }
 .k-clock span { font-size: 0.6875rem; line-height: 1; color: var(--k-dim); font-variant-numeric: tabular-nums; }
-.k-clock .k-day { margin-left: auto; color: var(--k-faint); }
+
+/* The day mark: a rule that crosses the whole stream, and the date sitting on
+   it. Solid ground rather than a fade, because it is a boundary and a boundary
+   that dissolves into the photograph below it is not one. */
+.k-day {
+  padding: 20px 12px 7px;
+  background: var(--k-ground);
+}
+.k-day i {
+  flex: 1;
+  order: 2;
+  width: auto;
+  height: 1px;
+  background: var(--k-hair);
+  display: block;
+}
+.k-day span {
+  order: 1;
+  flex: none;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--k-ink);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The affordance: a small chevron, drawn from the same 1px stock as the rest
+   of the marks rather than a glyph, so it takes the mark's colour and never
+   arrives as a font fallback box. */
+.k-jump-mark {
+  order: 3;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-right: 1px solid var(--k-faint);
+  border-bottom: 1px solid var(--k-faint);
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+/* Beside the label on both marks, never pushed to the far edge: a lone
+   chevron at the right of a 28 px row belongs to nothing the eye can see. */
+.k-day .k-jump-mark { border-color: var(--k-dim); }
 
 /* ---- the stream: photographs to both edges, nothing framing them ---- */
 
@@ -318,6 +377,15 @@ body[data-surface='guest'] .n,
 .k-overlay > * { pointer-events: auto; }
 .k-idx { display: flex; align-items: center; gap: 7px; height: 44px; color: #fff; }
 .k-no { font-size: 0.6875rem; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgb(0 0 0 / 80%); }
+/* The tile's own minute. Printed only where the row mark above is an hour —
+   two columns and up — because there the mark cannot carry it. One shade back
+   from the capture number so the number stays the thing being read. */
+.k-at {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(255 255 255 / 72%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+}
 
 /* THE MARK: one bar per camera, and the filled bar is the frame on screen —
    so while a wiggle plays this is its playhead rather than a badge that has
@@ -329,7 +397,12 @@ body[data-surface='guest'] .n,
    first frame that did arrive is lit at rest. `data-pos` is the frame's index
    in the stored list, the same number a live player publishes on
    `data-frame`, so lighting follows position while the slot stays the camera. */
-.k-frames b[data-missing] { background: rgb(255 255 255 / 10%); }
+/* An EMPTY slot, not a dim one. At 10% white it was invisible on a dark
+   photograph, so a partial capture's whole statement — "camera 2 sent
+   nothing" — could not be seen; raising the fill instead would have collided
+   with the 34% of a camera that did answer but is not the frame on screen.
+   An outline says "slot, nothing in it" and cannot be confused with either. */
+.k-frames b[data-missing] { background: none; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 45%); }
 .k-shot .k-frames b[data-pos='0'] { background: #fff; }
 .k-shot:has([data-frame='1']) .k-frames b[data-pos='0'],
 .k-shot:has([data-frame='2']) .k-frames b[data-pos='0'],
@@ -340,22 +413,63 @@ body[data-surface='guest'] .n,
 /* Motion off: every bar outlined, the first lit, and the range spelled out. */
 .k-still { font-size: 0.6875rem; color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / 80%); font-variant-numeric: tabular-nums; }
 
-/* The one word a degraded capture wears: top right, out of the overlay row. */
-.k-chip {
-  position: absolute;
-  right: 6px;
-  top: 6px;
-  z-index: 2;
-  padding: 3px 6px;
-  background: var(--k-ground);
-  color: var(--k-ink);
+/* The one word a degraded capture wears.
+
+   It used to be `.k-chip`: an opaque plate absolutely positioned in the tile's
+   top-right CORNER, sitting on the photograph. On this roll — dark indoor
+   frames, nearly all of them — that plate was the brightest thing on the
+   screen, and it read as a sticker applied to a picture rather than as
+   something the picture IS.
+
+   So it is text now, set on the line that already describes the photograph:
+   the tile's overlay row beside the frame bars and the number, and the capture
+   page's row of facts beside `shot` and `frames`. Same word, same weight, two
+   surfaces. The tile's copy takes the overlay's shadow because it is over a
+   photograph; the facts row's does not, because it is not. */
+.k-state {
   font-size: 0.6875rem;
   line-height: 1;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
+  color: var(--k-dim);
 }
-.k-chip[data-state='failed'] { color: var(--k-pick); }
-.k-chip[data-state='processing'] { color: var(--k-dim); }
+.k-idx .k-state {
+  margin-left: 8px;
+  color: rgb(255 255 255 / 78%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
+}
+.k-state[data-state='failed'],
+.k-idx .k-state[data-state='failed'] { color: var(--k-pick); }
+
+/* No picture at all: the recessed window from the header plate, with the state
+   written in it. One block for the feed tile and for the capture hero, so
+   "this one is still coming" looks the same wherever a guest meets it. The
+   capture page used to render `<p class="photo-processing">` here, for which
+   no rule was ever written — unstyled body text in a black hero. */
+.k-nopic {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  margin: 0;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0 24px;
+  background: var(--k-window);
+  box-shadow: inset 0 1px 0 #000, inset 0 -1px 0 #26262b;
+  text-align: center;
+}
+.k-nopic b {
+  font-weight: 400;
+  font-size: 0.75rem;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  color: var(--k-w-dim);
+}
+.k-nopic span { font-size: 0.75rem; line-height: 1.35; color: var(--k-w-dim); }
+.k-nopic[data-state='failed'] b { color: var(--k-pick); }
+/* In the hero the block is not a 4:3 tile — it is whatever room the hero has. */
+.k-hero > .k-nopic { aspect-ratio: auto; min-height: 42vh; }
 
 /* A picture that did not load: the same block, two words, no broken icon. */
 .k-img-missing {
@@ -413,13 +527,24 @@ body[data-surface='guest'] .n,
   .k-pick { transition: none; }
 }
 
-.k-processing { display: grid; place-items: center; aspect-ratio: 4 / 3; color: var(--k-dim); font-size: 0.75rem; }
 .k-new { position: absolute; left: 6px; top: 6px; z-index: 2; padding: 3px 6px; background: var(--k-ink); color: var(--k-ground); font-size: 0.6875rem; line-height: 1; }
 .k-note { padding: 44px 22px; text-align: center; color: var(--k-dim); font-size: 0.84375rem; }
 .k-note b { display: block; margin-bottom: 5px; color: var(--k-ink); font-weight: 700; font-size: 0.90625rem; }
 .k-blank { display: flex; gap: 3px; justify-content: center; margin-bottom: 15px; }
 .k-blank b { width: 9px; height: 26px; background: #2b2b30; display: block; }
-.k-end { padding: 18px 12px 34px; color: var(--k-faint); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
+/* The end mark is now the last thing in a 1,900-frame stream and nothing else,
+   so it is allowed a rule above it: it is a boundary, like the day marks. */
+.k-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 12px 40px;
+  color: var(--k-faint);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.k-end i { width: 20px; height: 1px; background: var(--k-hair); display: block; flex: none; }
 .roll-alert { display: flex; align-items: center; gap: 12px; margin: 10px 12px; color: var(--k-pick); font-size: 0.78125rem; }
 .roll-alert span { flex: 1; min-width: 0; }
 .roll-alert button {
@@ -432,13 +557,35 @@ body[data-surface='guest'] .n,
   cursor: pointer;
   box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
 }
-.roll-closed { margin: 10px 12px; padding: 8px 12px; background: var(--k-window); color: var(--k-dim); font-size: 0.75rem; }
+/* Two lines: what happened, and what it means for the guest. The state word
+   takes the plate's own ink so it reads as a stamp; the consequence sits under
+   it in the window's quiet ink. */
+.roll-closed {
+  display: grid;
+  gap: 3px;
+  margin: 10px 12px;
+  padding: 9px 12px 10px;
+  background: var(--k-window);
+  font-size: 0.75rem;
+}
+.roll-closed b {
+  font-weight: 400;
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--k-w-ink);
+}
+.roll-closed span { color: var(--k-w-dim); line-height: 1.4; }
 
-/* The one floating control, because it has to reach a scrolled thumb. */
+/* The one floating control, because it has to reach a scrolled thumb.
+   Above the plate (z 6), not under it: the plate returns on the first upward
+   move, and a pill hidden behind the chrome the moment a guest looks up is a
+   pill that only works while nobody is looking for it. */
 .new-pill {
   position: sticky;
   top: 8px;
-  z-index: 5;
+  z-index: 7;
   display: block;
   margin: 8px auto;
   min-height: 38px;
@@ -453,39 +600,70 @@ body[data-surface='guest'] .n,
 }
 .new-pill:active { transform: translateY(1px); }
 
-/* ---- the hour index: how a guest crosses an evening ----
+/* ---- the time index: how a guest crosses ten days ----
 
-   A strip of keys, one per hour the loaded stream covers, in the same
-   moulded grammar as the nav. It scrolls sideways rather than wrapping: a
-   long night is a long strip, and a strip that wraps to three rows pushes
-   the photographs off the screen, which is the opposite of the point. */
+   What this replaces: a horizontal strip of pale plate keys pinned above the
+   feed. It read as a second navigation bar under the first one, it repeated
+   the clock marks immediately below it, it took ~60 px off the top of every
+   screen for the whole session, and past the fourth key it ran off the right
+   edge with no scrollbar and no fade to say there was more.
 
-.k-jump {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  margin: 0 10px 8px;
-  padding: 2px;
-  background: var(--k-plate-lo);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 28%);
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
+   So it is not a bar. It is a panel, opened from a mark in the stream, closed
+   the moment it is used — nothing at rest, everything when asked. Days are
+   headings and hours are keys under them, wrapped rather than scrolled, so
+   nothing can be clipped at any width. The dark window ground rather than the
+   plate: a full-screen sheet of pale plate over a roll of dark photographs is
+   a flashbulb, and this opens in a dark room. */
+
+.k-index { position: fixed; inset: 0; z-index: 20; }
+.k-index-body {
+  position: absolute;
+  inset: auto 0 0;
+  max-height: 76dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 12px calc(18px + env(safe-area-inset-bottom));
+  background: var(--k-window);
+  box-shadow: inset 0 1px 0 #33333a, 0 -1px 0 #000;
+  animation: k-rise 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.k-jump::-webkit-scrollbar { display: none; }
-.k-jump button {
-  flex: none;
-  min-height: 38px;
-  padding: 0 11px;
+@media (prefers-reduced-motion: reduce) {
+  .k-index-body { animation: none; }
+}
+.k-index-day { padding: 12px 0 4px; }
+.k-index-day + .k-index-day { box-shadow: inset 0 1px 0 #26262b; }
+.k-index-day h2 {
+  margin: 0 0 9px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--k-w-ink);
+  font-variant-numeric: tabular-nums;
+}
+/* A fixed track rather than flex-wrap: the keys are all four characters wide,
+   so a grid puts them on a column and the eye reads down a day as a clock. */
+.k-index-hours { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 2px; }
+.k-index-hours button {
+  min-height: 44px;
   border: 0;
-  background: var(--k-plate);
-  color: var(--k-p-ink);
-  font: 400 0.75rem var(--k-ui);
+  background: #212126;
+  color: var(--k-w-ink);
+  font: 400 0.78125rem var(--k-ui);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 #33333a, inset 0 -1px 0 #000;
+}
+.k-index-hours button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 60%); }
+/* You are here. The hour the top of the screen is currently inside takes the
+   plate, the way the pressed key in the tab well does — same grammar, opposite
+   ground, because this panel is the window and the nav is the plate. */
+.k-index-hours button[aria-current='true'] {
+  background: var(--k-plate);
+  color: var(--k-p-ink);
   box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
 }
-.k-jump button:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 34%); }
+.k-index-note { margin: 14px 0 0; color: var(--k-w-dim); font-size: 0.71875rem; line-height: 1.4; }
 
 /* ---- info: the spec label on the underside of a device ---- */
 
@@ -503,6 +681,13 @@ body[data-surface='guest'] .n,
 .k-info dd { margin: 0; padding: 10px 12px 11px 14px; color: var(--k-legend); box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%); }
 .k-info dt:first-of-type, .k-info dd:first-of-type { box-shadow: none; }
 .k-info dd b { color: var(--k-p-ink); font-weight: 400; }
+/* A roll code is read out loud and typed in by hand, so it is spaced like the
+   card it is printed on. */
+.k-code { letter-spacing: 0.18em; font-variant-numeric: tabular-nums; }
+/* A link on the plate had no affordance at all: the guest anchor rule paints
+   it the plate's own ink, so "Open this roll on a screen" read as a statement
+   rather than a thing to press. */
+.k-link { text-decoration: underline; text-underline-offset: 2px; }
 
 /* ---- photo page ---- */
 
@@ -527,6 +712,11 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   align-items: center;
   gap: 10px;
   flex: none;
+  /* The desktop rule below gives this `margin-inline: auto`, and an auto
+     cross-axis margin on a flex ITEM cancels `align-items: stretch` — so the
+     back bar shrank to fit its own contents and rendered as a 225 px pill
+     floating at the top of a 1440 px page instead of a bar across it. */
+  width: 100%;
   height: 50px;
   padding: 0 10px 0 0;
   background: var(--k-plate);
@@ -615,6 +805,21 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   .k-hero > [data-wiggle-player] { max-width: min(100%, calc((100dvh - 160px) * var(--hero-ratio, 1.3333))); margin-inline: auto; }
 }
 
+/* One column for the whole page. The chrome around the hero is capped at 900
+   and the picture was capped by viewport HEIGHT, so at 1440x900 the quad came
+   out 933 wide inside a 900 wide back bar, facts row and action plate — three
+   edges that nearly line up read worse than three that do. */
+@media (min-width: 720px) {
+  .photo-quad-wrap { max-width: min(100%, 900px, calc((100dvh - 200px) * var(--quad-ratio, 1.3333))); }
+  .k-hero > img,
+  .k-hero > .k-img-missing,
+  .k-hero > .photo-open,
+  .k-hero > [data-wiggle-player] {
+    max-width: min(100%, 900px, calc((100dvh - 160px) * var(--hero-ratio, 1.3333)));
+    margin-inline: auto;
+  }
+}
+
 /* Action keys on the plate: Save is the dark one, Pick is a switch beside it. */
 .k-acts {
   flex: none;
@@ -663,8 +868,15 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   .k-tray { animation: none; }
 }
 .k-grip { width: 38px; height: 4px; margin: 8px auto 2px; background: var(--k-plate-lo); border-radius: 2px; box-shadow: inset 0 1px 1px rgb(0 0 0 / 30%); }
-.k-tray-head { margin: 0; padding: 4px 14px 9px; color: var(--k-legend); font-size: 0.6875rem; font-weight: 400; }
+/* Aligned with the row LABELS, not with the tray's own edge: the rows indent
+   past a 30 px lead mark and a 13 px gap, so a head sitting at 14 px lined up
+   with nothing underneath it. */
+.k-tray-head { margin: 0; padding: 4px 14px 9px 57px; color: var(--k-legend); font-size: 0.6875rem; font-weight: 400; letter-spacing: 0.04em; }
 .k-tray li { box-shadow: inset 0 1px 0 var(--k-plate-hi); border-top: 1px solid var(--k-plate-lo); }
+/* Share is not a save and Cancel is not an action on the photograph, so both
+   are set off from the list of files rather than continuing it. */
+.k-tray li:has(> .k-share) { margin-top: 8px; }
+.k-tray li:has(> .k-cancel) { border-top-width: 2px; }
 .k-sheet .action-link {
   display: flex;
   align-items: center;
@@ -703,10 +915,18 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
    dark surface wants. `invert(1)` turned it black on the near-black
    ground and the mark simply was not there. */
 .k-gate .k-mark { height: 15px; margin-bottom: 14px; }
-.k-gate-note { margin: 0 0 10px; color: var(--k-dim); font-size: 0.71875rem; }
-.k-gate h1 { margin: 0 0 8px; color: var(--k-ink); font-size: 1rem; }
+.k-gate-note { margin: 0 0 10px; color: var(--k-dim); font-size: 0.71875rem; letter-spacing: 0.08em; }
+.k-gate h1 { margin: 0 0 6px; color: var(--k-ink); font-size: 1rem; }
 .k-gate p { color: var(--k-dim); font-size: 0.8125rem; }
-.k-gate label { display: block; margin-bottom: 5px; color: var(--k-faint); font-size: 0.6875rem; }
+/* The line under the heading that says what the field wants. It belongs to the
+   heading, so it closes the gap to it and opens one to the form. */
+.k-gate-lede { margin: 0 0 18px; line-height: 1.45; }
+/* Everything after the button. `p` kept its default 1em top margin of zero and
+   16px below, so the helper line sat flush against the button it was helping
+   and floated 16px away from nothing. */
+.k-gate-foot { margin: 18px 0 0; }
+.k-gate-foot + .k-gate-foot { margin-top: 10px; }
+.k-gate label { display: block; margin-bottom: 5px; color: var(--k-faint); font-size: 0.6875rem; letter-spacing: 0.08em; }
 .k-gate input {
   width: 100%;
   min-height: 48px;
@@ -734,7 +954,27 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
 .k-gate-error { margin: 0 0 10px; color: var(--k-pick); font-size: 0.75rem; }
 /* The landing page: the code goes in as the card prints it, spaced capitals. */
 .k-landing input { text-transform: uppercase; letter-spacing: 0.18em; }
-.k-landing .k-landing-back { color: var(--k-ink); text-decoration: underline; }
+/* NOT scoped to `.k-landing`. The recovery link on the no-capture gate used
+   the same class and got no underline there, so the one way out of a dead end
+   was painted as plain body text. */
+.k-landing-back { color: var(--k-ink); text-decoration: underline; text-underline-offset: 2px; }
+/* The one move a dead end offers: the gate's own key, so "what do I do now"
+   is answered by something that looks pressed rather than read. */
+.k-gate-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 4px;
+  background: var(--k-plate);
+  color: var(--k-p-ink);
+  font-size: 0.90625rem;
+  text-decoration: none;
+  box-shadow: inset 0 1px 0 var(--k-plate-hi), inset 0 -1px 0 var(--k-plate-lo);
+}
+.k-gate-act:hover { text-decoration: none; }
+.k-gate-act:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgb(0 0 0 / 35%); }
 
 /* The stream is NOT a grid. The rows are: `RollFeedPage` lays each row out
    as its own grid of `columns` tiles inside a virtualised, absolutely placed
@@ -743,7 +983,17 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
    the page at 159 px a tile. Column count lives in `useColumnCount` and
    `TILE_SIZES`, nowhere else. */
 @media (min-width: 720px) {
-  .k-bar, .k-exif, .k-acts, .k-info, .k-note { max-width: 900px; margin-inline: auto; }
+  /* The frame strip belongs to the same column as everything else around the
+     hero; full-bleed it was the one band on the page that ran to both edges. */
+  .k-bar, .k-exif, .k-acts, .k-info, .k-note, .frame-strip { width: 100%; max-width: 900px; margin-inline: auto; }
+  /* The stream is full-bleed on a desktop, so the plate is too — but three
+     keys stretched across 1440 px are 480 px each, which is a toolbar, not a
+     set of controls. Capped and aligned to the mark on its left, so the plate
+     reads as one row of parts rather than three enormous slabs. */
+  .k-nav { max-width: 520px; margin-left: 12px; }
+  /* The index panel is a sheet on a phone and a column on a desktop; a
+     full-width band of hour keys across 1440 px is the strip again. */
+  .k-index-body { inset: auto 0 0 auto; width: min(420px, 100%); }
 }
 
 /* ---- PIN gate + not-found (narrow single card) ---- */
@@ -809,28 +1059,57 @@ body[data-surface='guest'] .k-app:has(.photo-page) { display: flex; flex-directi
   font-size: 1.125rem;
   font-weight: 700;
 }
+/* A scrim under the caption row. Without it the roll name and the QR sat
+   directly on the photograph and depended on it being dark — which most of
+   this roll is, and the one bright frame is exactly when a projector is
+   being looked at. */
+.display-root::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 190px;
+  pointer-events: none;
+  background: linear-gradient(rgb(0 0 0 / 0%), rgb(0 0 0 / 62%));
+}
 .display-title {
   position: absolute;
-  left: 18px;
-  bottom: 14px;
-  color: rgb(255 255 255 / 75%);
-  font-size: 0.9375rem;
-  font-weight: 700;
+  z-index: 1;
+  left: 22px;
+  bottom: 20px;
+  color: rgb(255 255 255 / 88%);
+  /* Read from across a room, not from a laptop. A 1080p projector and a 4K TV
+     are the same CSS width as a desktop window, so a fixed 15 px roll name was
+     a footnote nobody at the party could read; this scales with the screen. */
+  font: 400 clamp(1.125rem, 2.2vw, 2.25rem) var(--k-ui);
   letter-spacing: 0.06em;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+  text-shadow: 0 1px 4px rgb(0 0 0 / 85%);
 }
 .display-qr {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
+  z-index: 1;
+  right: 20px;
+  bottom: 20px;
   display: grid;
   justify-items: center;
-  gap: 4px;
-  padding: 8px;
-  background: rgb(255 255 255 / 92%);
-  border-radius: 3px;
+  gap: 6px;
+  padding: 10px 10px 9px;
+  background: #fff;
 }
-.display-qr-slug { color: #26313d; font: 700 0.6875rem var(--k-mono); }
+/* Read from across a room: the call is the big line, the code the small one
+   under it, both in the guest face rather than Consolas — this screen is the
+   brand's, not the operator's. */
+.display-qr-call {
+  margin: 0;
+  color: #1c1c1e;
+  font: 400 clamp(0.8125rem, 1.1vw, 1.0625rem) var(--k-ui);
+  line-height: 1;
+}
+.display-qr-slug {
+  color: #5d5a53;
+  font: 400 clamp(0.75rem, 1vw, 1rem) var(--k-ui);
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---- new build waiting (main.tsx onNeedRefresh) ---- */
 

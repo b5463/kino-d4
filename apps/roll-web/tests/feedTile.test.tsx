@@ -114,14 +114,16 @@ describe('feed tile media source', () => {
 
   it('never mounts the live player over originals in the grid; the thumb waits with Processing…', async () => {
     // Four full-resolution originals per tile, times every tile on screen, is
-    // what the grid must not ask party Wi-Fi for. The still thumb and a chip
+    // what the grid must not ask party Wi-Fi for. The still thumb and one word
     // hold the place until the worker has baked an animation.
     await render(capture([...ORIGINALS, asset('thumb', 'thumb_1')]));
 
     expect(seen).toHaveLength(0);
     expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/assets/thumb_1/content');
-    expect(container.querySelector('.k-chip')?.textContent).toBe('Processing…');
-    expect(container.querySelector('.k-chip')?.getAttribute('data-state')).toBe('processing');
+    // The word is IN the overlay row, never a plate floating on the picture.
+    expect(container.querySelector('.k-overlay .k-idx .k-state')?.textContent).toBe('PROCESSING');
+    expect(container.querySelector('.k-state')?.getAttribute('data-state')).toBe('processing');
+    expect(container.querySelector('.k-chip')).toBeNull();
   });
 
   it('spells out the frame range only when the tile really cannot move', async () => {
@@ -147,8 +149,25 @@ describe('feed tile media source', () => {
       { cam: '3', pos: '1', missing: false },
       { cam: '4', pos: '2', missing: false },
     ]);
-    expect(container.querySelector('.k-chip')?.textContent).toBe('3 OF 4');
-    expect(container.querySelector('.k-chip')?.getAttribute('data-state')).toBe('partial');
+    expect(container.querySelector('.k-overlay .k-idx .k-state')?.textContent).toBe('3 OF 4');
+    expect(container.querySelector('.k-state')?.getAttribute('data-state')).toBe('partial');
+  });
+
+  /**
+   * The mark may only be read as the camera roster when the list ACCOUNTS for
+   * every frame the capture claims. Many feed rows on a real roll carry
+   * `frameCount: 4` and one `original-frame`; the old test was "some originals
+   * were listed", so those drew one lit bar and three empty slots — a complete
+   * photograph accused of losing three cameras.
+   */
+  it('does not accuse a complete capture of losing cameras the feed simply did not list', async () => {
+    await render(
+      capture([asset('original-frame', 'orig_1', 1), asset('thumb', 'thumb_1')], { frameCount: 4 }),
+    );
+    expect(bars().map((bar) => bar.missing)).toEqual([false, false, false, false]);
+    // ...and it is not called partial either: the word comes from the wire's
+    // own status, never from counting the assets the feed happened to send.
+    expect(container.querySelector('.k-state')?.getAttribute('data-state')).not.toBe('partial');
   });
 
   it('lights the first frameCount slots while the feed does not yet know which cameras answered', async () => {
@@ -164,7 +183,7 @@ describe('feed tile media source', () => {
     );
 
     expect(seen).toHaveLength(0);
-    expect(container.querySelector('.k-chip')?.textContent).toBe('FAILED');
+    expect(container.querySelector('.k-overlay .k-idx .k-state')?.textContent).toBe('FAILED');
     // The still, never the bake.
     expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/assets/thumb_1/content');
   });

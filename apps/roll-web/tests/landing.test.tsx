@@ -55,7 +55,9 @@ describe('LandingPage', () => {
       root.render(<LandingPage onOpen={onOpen} lastRoll={null} />);
     });
 
-    expect(container.textContent).toContain('Scan the code on the camera to join.');
+    expect(container.textContent).toContain('Or scan the code on the camera.');
+    // What the field wants, said before a guest can get it wrong.
+    expect(container.textContent).toContain('Six letters and digits');
     expect(container.querySelector('label')?.textContent).toBe('Roll code');
 
     await act(async () => typeCode(' ab c2 3d'));

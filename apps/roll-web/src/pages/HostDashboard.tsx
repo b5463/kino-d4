@@ -6,11 +6,13 @@ import type {
   HostRollEvent,
   HostRollView,
 } from '../api/hostClient';
+import { saveBlob } from '../api/hostClient';
 import { ApiError } from '../api/client';
 import { Button, Panel, StatusLamp, ToolbarFrame } from '@kino/design-system';
 import kinoRoll from '../assets/kino-roll-dark.png';
 import { CameraPanel } from '../components/host/CameraPanel';
 import { CaptureGrid, type CaptureFilter } from '../components/host/CaptureGrid';
+import { StatusStrip } from '../components/host/StatusStrip';
 import { CopyHostLink, HostAccessPanel, HostLinkWarning } from '../components/host/HostLink';
 import { QrCard } from '../components/host/QrCard';
 import '../host.css';
@@ -63,15 +65,21 @@ export function exportWording(status: string): string {
   }
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return (
-    // A description list, not four divs: label and number are a pair, and the
-    // pairing was carried by nothing but their order on the screen.
-    <div className="host-stat">
-      <dt className="host-stat-label">{label}</dt>
-      <dd className="host-stat-value">{value}</dd>
-    </div>
-  );
+/**
+ * How long a queued export has been queued, in words.
+ *
+ * Not decoration. The export is handed to a worker over BullMQ, and a
+ * deployment whose worker is down (measured on the dev API: a job sat at
+ * `queued` for the whole session) leaves this panel saying "Queued. The server
+ * is getting to it." for ever. The host is entitled to know that "for ever"
+ * has so far been four minutes, and to stop watching.
+ */
+export function waitedFor(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${String(seconds)} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${String(minutes)} min`;
+  return `${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min`;
 }
 
 /** A destructive action that asks first, in the panel, with no browser dialog. */
@@ -87,6 +95,7 @@ function Confirm({
   openLabel,
   openDisabled,
   variant = 'danger',
+  size,
 }: {
   open: boolean;
   title: string;
@@ -99,10 +108,11 @@ function Confirm({
   openLabel: string;
   openDisabled?: boolean;
   variant?: 'danger' | 'default';
+  size?: 'sm';
 }) {
   if (!open) {
     return (
-      <Button variant={variant} disabled={openDisabled === true || busy} onClick={onOpen}>
+      <Button variant={variant} size={size} disabled={openDisabled === true || busy} onClick={onOpen}>
         {openLabel}
       </Button>
     );
@@ -136,7 +146,9 @@ export function HostDashboard({
   const [fatal, setFatal] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [exportState, setExportState] = useState<string | null>(null);
+  const [exportSince, setExportSince] = useState<number | null>(null);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [estimate, setEstimate] = useState<HostExportEstimate | null>(null);
   const [title, setTitle] = useState('');
   const [pin, setPin] = useState('');
@@ -150,6 +162,16 @@ export function HostDashboard({
   const [clearResult, setClearResult] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [rotating, setRotating] = useState(false);
+  /**
+   * The setup section, once the host has opened or shut it by hand.
+   *
+   * Null means "nobody has said", and the default below decides: open on a
+   * roll with nothing on it, because that host is setting up; shut once there
+   * are photographs, because that host is working. Sticky afterwards — a
+   * section that reshuts itself the moment the first capture lands would be a
+   * section that closes under the hand holding it.
+   */
+  const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
 
   const refreshCaptures = useCallback(
     async (rollId: string): Promise<void> => {
@@ -280,6 +302,20 @@ export function HostDashboard({
     return api.events(rollId, reconcile);
   }, [api, patchCapture, refreshCaptures, roll?.rollId]);
 
+  /**
+   * The camera's word, re-read on a timer as well as on an event.
+   *
+   * ONLINE going to OFFLINE is the passage of time, not a message: no event
+   * arrives, because the thing that happened is that nothing arrived. Without
+   * this the strip would keep saying ONLINE, next to "last status 9 s ago",
+   * for as long as the tab stayed open.
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+
   const run = async (action: () => Promise<void>): Promise<void> => {
     setBusy(true);
     setError(null);
@@ -355,9 +391,14 @@ export function HostDashboard({
     setTrashNote(null);
     void run(async () => {
       try {
-        const restored = await api.restore(captureId);
+        const result = await api.restore(captureId);
+        // Merged, not assigned. `restore` answers a ModerationView — four
+        // fields — so assigning it over the row wiped `mode`, `capturedAt`,
+        // `status` and `assets`, and the restored tile came back with an
+        // undefined mode and an Invalid Date. Same merge the other three
+        // moderation verbs already used.
         setCaptures((items) =>
-          items.map((item) => (item.captureId === captureId ? restored : item)),
+          items.map((item) => (item.captureId === captureId ? { ...item, ...result } : item)),
         );
       } catch (caught) {
         setCaptures(previous);
@@ -388,9 +429,12 @@ export function HostDashboard({
     );
   };
 
+  const [exportStopped, setExportStopped] = useState(false);
   const startExport = async (): Promise<void> => {
     if (roll === null) return;
     setExportUrl(null);
+    setExportStopped(false);
+    setExportSince(Date.now());
     setExportState('Asking the server for a ZIP…');
     const { jobId } = await api.startExport(roll.rollId);
     for (;;) {
@@ -398,11 +442,30 @@ export function HostDashboard({
       setExportState(exportWording(current.status));
       if (current.url !== undefined) {
         setExportUrl(current.url);
+        setExportSince(null);
         return;
       }
       if (current.status === 'failed') throw new Error('The export failed. Try again.');
       await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
+  };
+
+  /**
+   * The ZIP, fetched with the host token and handed to the browser as a file.
+   *
+   * See `HostApi.exportBlob`: in the deployment mode production actually runs,
+   * the download URL is an authenticated API route, and the plain `<a download>`
+   * this used to be answered 401 with nothing on screen to say so.
+   */
+  const saveZip = (url: string, slug: string): void => {
+    setSaving(true);
+    void run(async () => {
+      try {
+        saveBlob(await api.exportBlob(url), `kino-roll-${slug}.zip`);
+      } finally {
+        setSaving(false);
+      }
+    });
   };
 
   const displayUrl = useMemo(() => {
@@ -437,12 +500,26 @@ export function HostDashboard({
 
   if (roll === null) {
     return (
-      <main className="roll-shell">
-        <h1>Host dashboard</h1>
-        <p role="status">{error ?? 'Reading the roll…'}</p>
+      <main className="roll-shell roll-shell--narrow">
+        <div className="roll-brand">
+          <img src={kinoRoll} alt="KINO Roll" /> · HOST
+        </div>
+        <Panel title="Host dashboard">
+          <p role="status">{error ?? 'Reading the roll…'}</p>
+        </Panel>
       </main>
     );
   }
+
+  const setupIsOpen = setupOpen ?? roll.counts.captures === 0;
+  const showCameraPanel = roll.cameras !== undefined && roll.cameras.length > 1;
+  const setupContents = [
+    'guest link',
+    ...(showCameraPanel ? ['cameras'] : []),
+    'PIN',
+    'download',
+    'danger',
+  ].join(' · ');
 
   return (
     <main className="roll-shell">
@@ -454,11 +531,12 @@ export function HostDashboard({
           <h1>{roll.title}</h1>
           {/* Was "WEB CREATED", which sat where a status goes and read as one. */}
           <div className="roll-subhead">
-            Code {roll.slug} ·{' '}
+            Code <b>{roll.slug}</b> ·{' '}
             {roll.deviceSerial === null ? 'started from a browser' : `camera ${roll.deviceSerial}`}
+            {roll.hasPin ? ' · PIN set' : ''}
           </div>
         </div>
-        <ToolbarFrame aria-label="Roll status controls">
+        <ToolbarFrame aria-label="Roll status controls" className="roll-head-controls">
           <StatusLamp
             state={roll.status === 'live' ? 'ok' : 'off'}
             label={roll.status.toUpperCase()}
@@ -506,219 +584,273 @@ export function HostDashboard({
         </p>
       ) : null}
 
-      <dl aria-label="Roll totals" className="host-stats">
-        <Stat label="CAPTURES" value={roll.counts.captures} />
-        <Stat label="GUESTS" value={roll.guests} />
-        <Stat label="PENDING" value={roll.counts.pending} />
-        <Stat label="HIDDEN" value={roll.counts.hidden} />
-      </dl>
+      <StatusStrip roll={roll} captures={captures} now={now} onFilter={setFilter} />
 
-      <section className="host-settings">
-        <CameraPanel cameras={roll.cameras} />
-
-        <Panel title="Guest link">
-          <QrCard guestUrl={roll.guestUrl} slug={roll.slug} />
-          {/* New tabs, both of them: the guest link used to navigate the host
-              out of their own dashboard and then ask them for the PIN. */}
-          <ToolbarFrame aria-label="Guest surfaces">
-            <a className="kino-button kino-button--sm" href={roll.guestUrl} target="_blank" rel="noreferrer noopener">
-              Open guest view
-            </a>
-            <a className="kino-button kino-button--sm" href={displayUrl} target="_blank" rel="noreferrer noopener">
-              Open TV display
-            </a>
-          </ToolbarFrame>
-          <div className="host-rotate">
-            <Confirm
-              open={rotating}
-              title="Regenerate guest link"
-              body="A new code is issued and the old link, and every printed QR of it, stops working at once."
-              confirmLabel="Issue a new code"
-              openLabel="Regenerate guest link…"
-              busy={busy}
-              onOpen={() => setRotating(true)}
-              onCancel={() => setRotating(false)}
-              onConfirm={() =>
-                void run(async () => {
-                  const rotated = await api.regenerateSlug(roll.rollId);
-                  setRoll({ ...roll, slug: rotated.slug, guestUrl: rotated.guestUrl });
-                  setRotating(false);
-                })
-              }
-            />
-          </div>
-        </Panel>
-
-        {token === undefined ? null : (
-          <HostAccessPanel
-            token={token}
-            remembered={remembered}
-            onRemember={(value) => onRemember?.(value)}
-            onSignOut={() => onSignOut?.()}
-          />
-        )}
-
-        <Panel title="Roll settings">
-          <form
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              void run(async () => void (await update({ title })));
-            }}
-          >
-            <label htmlFor="host-title">Title</label>
-            <br />
-            <input
-              id="host-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={120}
-            />
-            <Button type="submit" disabled={busy || title.trim() === ''}>
-              Rename
-            </Button>
-          </form>
-          <p>
-            <label>
-              <input
-                type="checkbox"
-                checked={roll.downloadsEnabled}
-                onChange={(event) =>
-                  void run(async () => void (await update({ downloadsEnabled: event.target.checked })))
+      {/* Setup, folded away. See `setupOpen` above for why it starts where it
+          starts, and `host.css` for why it is not six panels in a row. */}
+      <details
+        className="host-setup"
+        open={setupIsOpen}
+        onToggle={(event) => setSetupOpen((event.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary>
+          Roll setup
+          <span className="host-setup-hint">{setupContents}</span>
+        </summary>
+        <div className="host-setup-grid">
+          <Panel title="Guest link">
+            <QrCard guestUrl={roll.guestUrl} slug={roll.slug} />
+            {/* New tabs, both of them: the guest link used to navigate the host
+                out of their own dashboard and then ask them for the PIN. */}
+            <ToolbarFrame aria-label="Guest surfaces">
+              <a className="kino-button kino-button--sm" href={roll.guestUrl} target="_blank" rel="noreferrer noopener">
+                Open guest view
+              </a>
+              <a className="kino-button kino-button--sm" href={displayUrl} target="_blank" rel="noreferrer noopener">
+                Open TV display
+              </a>
+            </ToolbarFrame>
+            <div className="host-rotate">
+              <Confirm
+                open={rotating}
+                title="Regenerate guest link"
+                body="A new code is issued and the old link, and every printed QR of it, stops working at once."
+                confirmLabel="Issue a new code"
+                openLabel="Regenerate guest link…"
+                size="sm"
+                busy={busy}
+                onOpen={() => setRotating(true)}
+                onCancel={() => setRotating(false)}
+                onConfirm={() =>
+                  void run(async () => {
+                    const rotated = await api.regenerateSlug(roll.rollId);
+                    setRoll({ ...roll, slug: rotated.slug, guestUrl: rotated.guestUrl });
+                    setRotating(false);
+                  })
                 }
-              />{' '}
-              Guest downloads
-            </label>
-          </p>
-          <form
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              void run(async () => {
-                await update({ pin });
-                setPin('');
-              });
-            }}
-          >
-            <label htmlFor="host-pin">{roll.hasPin ? 'Replace PIN' : 'Set PIN'}</label>
-            <br />
-            <input
-              id="host-pin"
-              type="password"
-              inputMode="numeric"
-              autoComplete="new-password"
-              value={pin}
-              minLength={4}
-              onChange={(event) => setPin(event.target.value)}
-            />
-            <Button type="submit" disabled={busy || pin.length < 4}>
-              Save PIN
-            </Button>
-            {roll.hasPin ? (
-              <Button disabled={busy} onClick={() => void run(async () => void (await update({ pin: null })))}>
-                Remove PIN
-              </Button>
-            ) : null}
-          </form>
-        </Panel>
+              />
+            </div>
+          </Panel>
 
-        <Panel title="Download all">
-          <p className="host-estimate">
-            {estimate === null
-              ? 'Size unknown on this server.'
-              : `≈${formatBytes(estimate.bytes)}, ${estimate.files.toLocaleString()} files`}
-          </p>
-          <Button disabled={busy} onClick={() => void run(startExport)}>
-            Prepare ZIP
-          </Button>
-          {exportState !== null ? (
-            <p role="status" aria-live="polite" aria-atomic="true">
-              {exportState}
-            </p>
-          ) : null}
-          {exportUrl !== null ? (
-            <a className="roll-action" href={exportUrl} download={`kino-roll-${roll.slug}.zip`}>
-              Download ZIP
-            </a>
-          ) : null}
-          <p className="host-quiet">
-            The ZIP is built on the server and comes down through this dashboard to your Downloads
-            folder. Preparing it again builds another one — it does not replace the first.
-          </p>
-        </Panel>
+          {/* The per-camera list, and only when there is something in it the
+              status strip has not already said. One camera's serial, age and
+              firmware are in the strip's own foot line, so rendering this
+              panel too printed the same camera twice on one screen — and on an
+              empty roll printed "No camera has joined this roll yet." twice. */}
+          {showCameraPanel ? <CameraPanel cameras={roll.cameras} now={now} /> : null}
 
-        <Panel title="Danger">
-          <div className="host-danger" data-clearing={clearing}>
-            {clearing ? (
-              <form
-                aria-label="Clear roll"
-                onSubmit={(event: FormEvent) => {
-                  event.preventDefault();
-                  if (clearCode.trim().toUpperCase() !== roll.slug.toUpperCase()) return;
-                  void run(clearRoll);
-                }}
-              >
-                <p>
-                  This trashes all <b>{roll.counts.captures}</b> captures in this roll. Guests see it
-                  empty at once. The trash is purged after {TRASH_GRACE}.
-                </p>
-                <label htmlFor="host-clear-code">
-                  Type the roll code <code>{roll.slug}</code> to confirm
-                </label>
-                <input
-                  id="host-clear-code"
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  value={clearCode}
-                  onChange={(event) => setClearCode(event.target.value)}
-                />
-                <ToolbarFrame aria-label="Clear roll confirmation">
-                  <Button
-                    type="submit"
-                    variant="danger-solid"
-                    disabled={busy || clearCode.trim().toUpperCase() !== roll.slug.toUpperCase()}
-                  >
-                    {busy ? 'Clearing…' : `Clear ${roll.counts.captures} captures`}
+          <Panel title="Roll settings">
+            <form
+              onSubmit={(event: FormEvent) => {
+                event.preventDefault();
+                void run(async () => void (await update({ title })));
+              }}
+            >
+              <div className="host-field">
+                <label htmlFor="host-title">Title</label>
+                <div className="host-field-row">
+                  <input
+                    id="host-title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    maxLength={120}
+                  />
+                  <Button type="submit" disabled={busy || title.trim() === ''}>
+                    Rename
                   </Button>
+                </div>
+              </div>
+            </form>
+            <p className="host-check">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={roll.downloadsEnabled}
+                  onChange={(event) =>
+                    void run(async () => void (await update({ downloadsEnabled: event.target.checked })))
+                  }
+                />
+                Guests may download the full-size file
+              </label>
+            </p>
+            <form
+              onSubmit={(event: FormEvent) => {
+                event.preventDefault();
+                void run(async () => {
+                  await update({ pin });
+                  setPin('');
+                });
+              }}
+            >
+              <div className="host-field">
+                <label htmlFor="host-pin">{roll.hasPin ? 'Replace PIN' : 'Set PIN'}</label>
+                <div className="host-field-row">
+                  <input
+                    id="host-pin"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    value={pin}
+                    minLength={4}
+                    onChange={(event) => setPin(event.target.value)}
+                  />
+                  <Button type="submit" disabled={busy || pin.length < 4}>
+                    Save PIN
+                  </Button>
+                  {roll.hasPin ? (
+                    <Button
+                      variant="danger"
+                      disabled={busy}
+                      onClick={() => void run(async () => void (await update({ pin: null })))}
+                    >
+                      Remove PIN
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="host-hint">
+                  {roll.hasPin
+                    ? 'Guests type it once to open the roll. At least 4 digits.'
+                    : 'Optional. At least 4 digits. Guests type it once to open the roll.'}
+                </p>
+              </div>
+            </form>
+          </Panel>
+
+          <Panel title="Download all">
+            <p className="host-estimate">
+              {estimate === null
+                ? 'Size unknown on this server.'
+                : estimate.files === 0
+                  ? 'Nothing to download yet.'
+                  : `≈${formatBytes(estimate.bytes)}, ${estimate.files.toLocaleString()} files`}
+            </p>
+            {/* Preparing is the setup step; the download that follows is the
+                one the host is actually after, so that is the primary and this
+                is not. Both are on screen at once after the first ZIP. */}
+            <Button disabled={busy || estimate?.files === 0} onClick={() => void run(startExport)}>
+              Prepare ZIP
+            </Button>
+            {exportState !== null && !exportStopped ? (
+              <p className="host-export-state" role="status" aria-live="polite" aria-atomic="true">
+                <span>
+                  {exportState}
+                  {exportSince === null ? '' : ` Waiting ${waitedFor(now - exportSince)}.`}
+                </span>
+                {exportSince === null ? null : (
                   <Button
-                    type="button"
-                    disabled={busy}
+                    size="sm"
                     onClick={() => {
-                      setClearing(false);
-                      setClearCode('');
+                      setExportStopped(true);
+                      setExportSince(null);
                     }}
                   >
-                    Cancel
+                    Stop watching
                   </Button>
-                </ToolbarFrame>
-              </form>
-            ) : (
-              <>
-                <p>
-                  Clear roll: every capture goes to the trash. Nothing is deleted for {TRASH_GRACE}.
-                </p>
-                <Button
-                  variant="danger"
-                  disabled={busy || roll.counts.captures === 0}
-                  onClick={() => {
-                    setClearResult(null);
-                    setClearing(true);
-                  }}
-                >
-                  Clear roll…
-                </Button>
-              </>
-            )}
-            {clearResult !== null ? (
-              <p role="status" aria-live="polite" aria-atomic="true">
-                {clearResult}
+                )}
               </p>
             ) : null}
-          </div>
-        </Panel>
-      </section>
+            {exportUrl !== null ? (
+              <p className="host-export-done">
+                <Button
+                  variant="primary"
+                  busy={saving}
+                  onClick={() => saveZip(exportUrl, roll.slug)}
+                >
+                  Download ZIP
+                </Button>
+              </p>
+            ) : null}
+            <p className="host-quiet">
+              The ZIP is built on the server and comes down through this dashboard to your Downloads
+              folder. Preparing it again builds another one — it does not replace the first.
+            </p>
+          </Panel>
+
+          {token === undefined ? null : (
+            <HostAccessPanel
+              token={token}
+              remembered={remembered}
+              onRemember={(value) => onRemember?.(value)}
+              onSignOut={() => onSignOut?.()}
+            />
+          )}
+
+          <Panel title="Danger">
+            <div className="host-danger" data-clearing={clearing}>
+              {clearing ? (
+                <form
+                  aria-label="Clear roll"
+                  onSubmit={(event: FormEvent) => {
+                    event.preventDefault();
+                    if (clearCode.trim().toUpperCase() !== roll.slug.toUpperCase()) return;
+                    void run(clearRoll);
+                  }}
+                >
+                  <p>
+                    This trashes all <b>{roll.counts.captures}</b> captures in this roll. Guests see
+                    it empty at once. The trash is purged after {TRASH_GRACE}.
+                  </p>
+                  <label htmlFor="host-clear-code">
+                    Type the roll code <code>{roll.slug}</code> to confirm
+                  </label>
+                  <input
+                    id="host-clear-code"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    value={clearCode}
+                    onChange={(event) => setClearCode(event.target.value)}
+                  />
+                  <ToolbarFrame aria-label="Clear roll confirmation">
+                    <Button
+                      type="submit"
+                      variant="danger-solid"
+                      disabled={busy || clearCode.trim().toUpperCase() !== roll.slug.toUpperCase()}
+                    >
+                      {busy ? 'Clearing…' : `Clear ${roll.counts.captures} captures`}
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setClearing(false);
+                        setClearCode('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </ToolbarFrame>
+                </form>
+              ) : (
+                <>
+                  <p>
+                    Clear roll: every capture goes to the trash. Nothing is deleted for{' '}
+                    {TRASH_GRACE}.
+                  </p>
+                  <Button
+                    variant="danger"
+                    disabled={busy || roll.counts.captures === 0}
+                    onClick={() => {
+                      setClearResult(null);
+                      setClearing(true);
+                    }}
+                  >
+                    Clear roll…
+                  </Button>
+                </>
+              )}
+              {clearResult !== null ? (
+                <p role="status" aria-live="polite" aria-atomic="true">
+                  {clearResult}
+                </p>
+              ) : null}
+            </div>
+          </Panel>
+        </div>
+      </details>
 
       <Panel title="Moderation">
-        <p className="host-quiet">
+        <p className="host-hint">
           Hidden captures stay on the server and disappear from the guest page. Deleted ones go to
           the trash and are kept for {TRASH_GRACE} — until then, Restore brings them back.
         </p>

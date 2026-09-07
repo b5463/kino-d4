@@ -430,8 +430,12 @@ describe('(d) upload queue', () => {
     const html = renderToStaticMarkup(
       createElement(UploadQueuePanel, { queue, busy: false, error: null, onRetry: async () => {} }),
     );
-    expect(html).toContain('12 PENDING');
-    expect(html).toContain('2 FAILED');
+    // The camera's own wording, not the queue struct's field names read out
+    // loud: the operator reads this panel and the camera's roll screen at the
+    // same time. Source of truth is `firmware/p4/main/ui.c`.
+    expect(html).toContain('12 waiting to upload');
+    expect(html).toContain('2 uploads failed');
+    expect(html).toContain('Saved safely on camera');
     expect(html).toContain('RETRY FAILED');
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-live="polite"');
@@ -466,7 +470,8 @@ describe('(d) upload queue', () => {
         onRetry: async () => {},
       }),
     );
-    expect(html).toContain('NOTHING QUEUED');
+    // 118 uploaded and nothing queued is "All uploaded" on the camera.
+    expect(html).toContain('All uploaded');
     expect(html).toContain('aria-atomic="true"');
   });
 });
@@ -561,8 +566,8 @@ describe('(f) push to Roll', () => {
     const html = renderToStaticMarkup(
       createElement(UploadQueuePanel, { queue, busy: false, error: null, onRetry: async () => {} }),
     );
-    expect(html).toContain('1 PENDING');
-    expect(html).not.toContain('NOTHING QUEUED');
+    expect(html).toContain('1 waiting to upload');
+    expect(html).not.toContain('All uploaded');
   });
 
   it('NACKs UPLOAD_ENQUEUE when the camera is not on a Roll', async () => {

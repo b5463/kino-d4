@@ -12,7 +12,7 @@ import { LoadFailure } from '../components/LoadFailure';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { SafeImage } from '../components/SafeImage';
 import { GuestBar, rollLabel, shortDate, SiteFooter } from '../components/SiteHeader';
-import { CAMERA_SLOTS, StatusChip } from '../components/StatusChip';
+import { CAMERA_SLOTS, NoPicture, StatusChip } from '../components/StatusChip';
 import { useOnline } from '../hooks/useOnline';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
@@ -194,7 +194,21 @@ export function camerasPresent(capture: Pick<CaptureView, 'assets'>): number[] {
 export function FrameMark({ capture }: { capture: Pick<CaptureView, 'assets' | 'frameCount'> }) {
   if (capture.frameCount < 2) return <span className="k-frames k-frames--solo" aria-hidden="true"><b /></span>;
   const known = camerasPresent(capture);
-  const cameras = known.length > 0 ? known : Array.from({ length: Math.min(capture.frameCount, CAMERA_SLOTS) }, (_unused, index) => index + 1);
+  // `known.length > 0` was the wrong test and it made the mark lie.
+  //
+  // A feed row does not always list every `original-frame` a capture has —
+  // plenty of rows on this roll carry `frameCount: 4` and exactly one of them
+  // — so "some originals were listed" is not "these are the cameras that
+  // answered". With the old test such a capture drew ONE lit bar and three
+  // empty slots: a complete photograph accused of losing three cameras, and
+  // the emptier the slot became legible the worse the accusation read.
+  //
+  // Only a list that accounts for every frame the capture claims can be read
+  // as the roster. A genuinely partial capture still shows its gaps, because
+  // its `frameCount` IS the number of cameras that answered (three cameras,
+  // `frameCount: 3`, `original-frame` 1, 3 and 4 — slot 2 empty).
+  const complete = known.length >= capture.frameCount;
+  const cameras = complete ? known : Array.from({ length: Math.min(capture.frameCount, CAMERA_SLOTS) }, (_unused, index) => index + 1);
   return (
     <span className="k-frames" aria-hidden="true">
       {Array.from({ length: CAMERA_SLOTS }, (_unused, index) => {
@@ -218,6 +232,7 @@ export function CaptureTile({
   isNew,
   picked,
   onPick,
+  showClock = false,
 }: {
   slug: string;
   capture: CaptureView;
@@ -225,6 +240,12 @@ export function CaptureTile({
   isNew: boolean;
   picked: boolean;
   onPick: (captureId: string) => void;
+  /**
+   * Print this tile's own minute in the overlay. Set when the row mark above
+   * is only an hour — on two or more columns a row holds a whole hour, so
+   * without this the minute a photograph was taken is nowhere on the feed.
+   */
+  showClock?: boolean;
 }) {
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
   const failed = capture.status === 'failed';
@@ -241,9 +262,7 @@ export function CaptureTile({
   const stillSources = animated === undefined ? tileSources(capture, (id) => rollApi.assetUrl(id)) : undefined;
   const media =
     source === undefined ? (
-      <span className="k-processing" aria-label={failed ? 'Capture failed' : 'Capture processing'}>
-        {failed ? 'FAILED' : 'Processing…'}
-      </span>
+      <NoPicture status={failed ? 'failed' : 'processing'} />
     ) : (
       <SafeImage
         // `stillSources.src`, not the poster: when no candidate can be
@@ -278,16 +297,23 @@ export function CaptureTile({
         {media}
       </a>
       {isNew ? <span className="k-new">New</span> : null}
-      {source === undefined ? null : <StatusChip status={chipStatus} present={present} />}
       <div className="k-overlay">
         <span className="k-idx">
           <FrameMark capture={capture} />
           <span className="k-no">{index}</span>
+          {showClock ? <span className="k-at">{clockMark(capture.capturedAt)}</span> : null}
           {/* Motion off: the range is spelled out, since the bars cannot move.
-              A baked animation moves without the player, so it is not still. */}
-          {capture.frameCount >= 2 && animated === undefined ? (
+              A baked animation moves without the player, so it is not still.
+              With the minute printed there is no room for both, and the bars
+              beside it already say how many frames there are. */}
+          {capture.frameCount >= 2 && animated === undefined && !showClock ? (
             <span className="k-still">1-{capture.frameCount}</span>
           ) : null}
+          {/* The state of the photograph, on the line that already carries
+              what this photograph IS — never a plate dropped on the picture.
+              A tile with no picture at all says it in the empty window
+              instead, so the word is not printed twice. */}
+          {source === undefined ? null : <StatusChip status={chipStatus} present={present} />}
         </span>
         <button
           type="button"
@@ -303,18 +329,78 @@ export function CaptureTile({
   );
 }
 
-/** A clock mark, or a row of captures filed under the one above it. */
+/**
+ * A mark in the stream — a day or a clock — and, when there is more than one
+ * hour loaded, the handle that opens the time index.
+ *
+ * It is a button only when there is somewhere to go. A control that opens an
+ * empty list is worse than no control, and on a roll with one hour in it there
+ * is nothing to jump between.
+ */
+function Mark({
+  className,
+  label,
+  canJump,
+  onJump,
+}: {
+  className: string;
+  label: string;
+  canJump: boolean;
+  onJump: () => void;
+}) {
+  const inner = (
+    <>
+      <i aria-hidden="true" />
+      <span>{label}</span>
+    </>
+  );
+  if (!canJump) return <div className={className}>{inner}</div>;
+  return (
+    <button type="button" className={className} aria-label={`${label} — jump to another time`} onClick={onJump}>
+      {inner}
+      <span className="k-jump-mark" aria-hidden="true" />
+    </button>
+  );
+}
+
+/** A day boundary, a clock mark, or a row of captures filed under the mark above. */
 export type StreamItem =
+  | { kind: 'day'; key: string; label: string; at: string }
   | { kind: 'clock'; key: string; label: string; at: string }
   | { kind: 'row'; key: string; captures: CaptureView[] };
 
+/** `2026-8-7` — the calendar day a capture belongs to, in the guest's own zone. */
+function dayKey(at: Date): string {
+  return `${String(at.getFullYear())}-${String(at.getMonth())}-${String(at.getDate())}`;
+}
+
 /**
- * Consecutive captures sharing a minute are filed under one clock mark, so
- * the roll reads as a sequence of moments instead of repeating the same
- * relative timestamp under every tile.
+ * How coarse a clock mark is, for a given column count.
+ *
+ * A mark ends the row it is standing over, so on a phone (one column) a mark
+ * per MINUTE costs nothing: every tile is its own row anyway. On two, three or
+ * four columns it cost everything — the captures on this roll are minutes
+ * apart, so every group held one tile, every row broke after one tile, and a
+ * 1440 px desktop feed was a single left-hand column with two thirds of the
+ * screen black. Above one column the mark is the HOUR and the minutes fill
+ * the rows underneath it; the tile then prints its own minute (`showClock`).
+ */
+export function markGranularity(columns: number): 'minute' | 'hour' {
+  return columns > 1 ? 'hour' : 'minute';
+}
+
+/**
+ * The stream: day boundaries, clock marks, and rows of tiles under them.
+ *
+ * The day comes from each capture's OWN `capturedAt`. It used to come from
+ * `roll.createdAt` printed once on the very first mark, which on this roll put
+ * `29.08.26` over a photograph taken on 07.09 and left a roll spanning ten
+ * days with no boundary anywhere in it.
  */
 export function streamItems(captures: readonly CaptureView[], columns: number): StreamItem[] {
   const items: StreamItem[] = [];
+  const hourly = markGranularity(columns) === 'hour';
+  let day: string | null = null;
   let mark: string | null = null;
   let row: CaptureView[] = [];
 
@@ -325,11 +411,27 @@ export function streamItems(captures: readonly CaptureView[], columns: number): 
   };
 
   for (const capture of captures) {
-    const label = clockMark(capture.capturedAt);
-    if (label !== mark) {
+    const at = new Date(capture.capturedAt);
+    const clock = clockMark(capture.capturedAt);
+    const nextDay = Number.isNaN(at.getTime()) ? null : dayKey(at);
+    if (nextDay !== null && nextDay !== day) {
       flush();
-      mark = label;
-      items.push({ kind: 'clock', key: `t_${capture.captureId}`, label, at: capture.capturedAt });
+      day = nextDay;
+      // A new day restarts the clock marks: 23:50 and 00:10 are different
+      // hours anyway, but two consecutive days can share one.
+      mark = null;
+      items.push({
+        kind: 'day',
+        key: `d_${capture.captureId}`,
+        label: shortDate(capture.capturedAt),
+        at: capture.capturedAt,
+      });
+    }
+    const nextMark = clock === '' ? '' : hourly ? `${clock.slice(0, 2)}:00` : clock;
+    if (nextMark !== mark) {
+      flush();
+      mark = nextMark;
+      items.push({ kind: 'clock', key: `t_${capture.captureId}`, label: nextMark, at: capture.capturedAt });
     }
     row.push(capture);
     if (row.length === columns) flush();
@@ -351,7 +453,10 @@ const PREPEND_SCROLL_LIMIT_PX = 80;
  * real element on the first measure anyway; this only has to be close enough
  * that the scrollbar is not a lie before that happens.
  */
-const CLOCK_ROW_PX = 25;
+const CLOCK_ROW_PX = 28;
+
+/** A day boundary is the same line with a rule above it and more air. */
+const DAY_ROW_PX = 46;
 
 /**
  * How tall one row of tiles is, from the width it actually has.
@@ -369,52 +474,70 @@ export function rowEstimate(streamWidth: number, columns: number): number {
   return Math.round(tile * 0.75) + 1;
 }
 
-/** One entry in the hour index: a label and the stream row it jumps to. */
+/** One entry in the time index: a label and the stream row it jumps to. */
 export interface HourMark {
   key: string;
-  /** `21:00`, or `06.09 · 21:00` when the roll crosses midnight. */
+  /** `21:00`. The day it belongs to is the heading above it. */
   label: string;
   /** Index into the stream, which is what `scrollToIndex` takes. */
   index: number;
 }
 
+/** One day of the loaded roll, and the hours inside it. */
+export interface DayMark extends HourMark {
+  hours: HourMark[];
+}
+
 /**
- * The hour index, derived from the clock marks already in the stream.
+ * The time index, derived from the marks already in the stream.
  *
- * A roll is an evening, and 1,900 captures of one is four hundred screens of
- * linear scrolling. This is the shortest thing that makes that navigable
- * without inventing a second data source: the stream already files captures
- * under clock marks, so the first mark of each hour IS the row an "21:00"
- * jump should land on. Nothing is fetched for it and nothing is guessed.
+ * A roll is an evening — or, on this one, ten days — and 1,900 captures is
+ * four hundred screens of linear scrolling. This is the shortest thing that
+ * makes that navigable without inventing a second data source: the stream
+ * already files captures under day and clock marks, so the first mark of each
+ * hour IS the row a "21:00" jump should land on. Nothing is fetched for it and
+ * nothing is guessed.
  *
- * It can only offer hours that are LOADED — the feed is keyset-paginated and
- * the API has no time index a client could ask for a cursor by hour. So the
- * strip grows as the guest goes deeper, which is honest: every chip in it
- * lands on a row that exists.
+ * It can only offer what is LOADED — the feed is keyset-paginated and the API
+ * has no time index a client could ask for a cursor by hour — so it grows as
+ * the guest goes deeper. That is honest: every key in it lands on a row that
+ * exists, and the panel says so.
  *
- * The day is printed only when the roll crosses midnight, because on the
- * common one-evening roll it would be the same six characters on every chip.
+ * Days rather than a flat hour list because a flat list repeats the same six
+ * characters on every key and gives the eye nothing to land on. The heading
+ * carries the day once and the hours under it stay two digits wide.
  */
-export function hourMarks(items: readonly StreamItem[]): HourMark[] {
-  const marks: HourMark[] = [];
+export function timeIndex(items: readonly StreamItem[]): DayMark[] {
+  const days: DayMark[] = [];
   const seen = new Set<string>();
-  const days = new Set<string>();
 
   items.forEach((item, index) => {
+    if (item.kind === 'day') {
+      days.push({ key: `d_${item.at}`, label: item.label, index, hours: [] });
+      return;
+    }
     if (item.kind !== 'clock') return;
     const at = new Date(item.at);
     if (Number.isNaN(at.getTime())) return;
-    const two = (n: number): string => String(n).padStart(2, '0');
-    const day = `${two(at.getDate())}.${two(at.getMonth() + 1)}`;
-    const key = `${day} ${two(at.getHours())}`;
-    days.add(day);
+    // A stream that starts mid-day (it cannot, but the function is pure and
+    // is called on hand-built lists in the tests) still gets a heading.
+    if (days.length === 0) {
+      days.push({ key: `d_${item.at}`, label: shortDate(item.at), index, hours: [] });
+    }
+    const day = days[days.length - 1]!;
+    const label = `${String(at.getHours()).padStart(2, '0')}:00`;
+    const key = `${day.key} ${label}`;
     if (seen.has(key)) return;
     seen.add(key);
-    marks.push({ key, label: `${two(at.getHours())}:00`, index });
+    day.hours.push({ key, label, index });
   });
 
-  if (days.size < 2) return marks;
-  return marks.map((mark) => ({ ...mark, label: `${mark.key.slice(0, 5)} · ${mark.label}` }));
+  return days.filter((day) => day.hours.length > 0);
+}
+
+/** How many hours the whole index offers — under two there is nothing to jump between. */
+export function indexSize(days: readonly DayMark[]): number {
+  return days.reduce((total, day) => total + day.hours.length, 0);
 }
 
 /** Virtualized, keyset-paginated and live-updating guest Roll gallery. */
@@ -464,7 +587,26 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   }, [slug]);
   const shown = tab === 'picks' ? picked : feed.captures;
   const items = useMemo(() => streamItems(shown, columns), [columns, shown]);
-  const marks = useMemo(() => hourMarks(items), [items]);
+  const days = useMemo(() => timeIndex(items), [items]);
+  const hourly = markGranularity(columns) === 'hour';
+
+  // The time index is opened FROM a mark in the stream rather than living in a
+  // strip above it. The strip it replaces was a row of pale plate keys that ate
+  // the top of the feed, repeated the clock marks immediately below it and ran
+  // off the right edge with nothing to say so. A mark is already sticky at the
+  // top of the screen and already says where the guest is; making it the
+  // control adds no chrome at all and puts the affordance on the thing it
+  // describes.
+  const [indexOpen, setIndexOpen] = useState(false);
+  useEffect(() => {
+    if (!indexOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setIndexOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [indexOpen]);
+  const canJump = indexSize(days) > 1;
 
   const refreshRoll = useCallback(async (): Promise<void> => {
     try {
@@ -585,13 +727,25 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
 
   const virtualizer = useWindowVirtualizer({
     count: items.length,
-    estimateSize: (index) =>
-      items[index]?.kind === 'clock' ? CLOCK_ROW_PX : rowEstimate(streamWidth, columns),
+    estimateSize: (index) => {
+      const kind = items[index]?.kind;
+      if (kind === 'clock') return CLOCK_ROW_PX;
+      if (kind === 'day') return DAY_ROW_PX;
+      return rowEstimate(streamWidth, columns);
+    },
     overscan: 3,
     scrollMargin: listRef.current?.offsetTop ?? 0,
   });
   const virtualRows = virtualizer.getVirtualItems();
   const lastVirtualRow = virtualRows[virtualRows.length - 1];
+  // Where the guest is, in the index's own terms: the last hour that starts at
+  // or above the topmost rendered row. Without it the panel is a list of
+  // places with no "you are here", which is half a map.
+  const topIndex = virtualRows[0]?.index ?? 0;
+  const currentHourKey = days
+    .flatMap((day) => day.hours)
+    .filter((hour) => hour.index <= topIndex)
+    .at(-1)?.key;
 
   useEffect(() => {
     if (
@@ -658,7 +812,14 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
             <dl>
               <dt>Roll</dt>
               <dd><b>{roll.title}</b></dd>
-              <dt>Date</dt>
+              {/* The code, because it is what a guest reads out to somebody
+                  who wants in and there was nowhere else on the app to find
+                  it once the QR card had been put down. */}
+              <dt>Code</dt>
+              <dd><b className="k-code">{slug}</b></dd>
+              {/* "Date" claimed one day for a roll that can run for ten. This
+                  is the day the roll was opened, and it says so. */}
+              <dt>Started</dt>
               <dd>{shortDate(roll.createdAt)}</dd>
               {/* One word for the count everywhere: FRAMES. The header window
                   prints `1918 FR`, this row prints `1918 frames`, and the two
@@ -672,7 +833,11 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
               <dt>Saving</dt>
               <dd>{roll.downloadsEnabled ? 'On — you can keep these photographs' : 'Off for this roll'}</dd>
               <dt>Display</dt>
-              <dd><a href={`/r/${encodeURIComponent(slug)}/display`}>Open this roll on a screen</a></dd>
+              <dd>
+                <a className="k-link" href={`/r/${encodeURIComponent(slug)}/display`}>
+                  Open this roll on a screen
+                </a>
+              </dd>
             </dl>
           </div>
         ) : null}
@@ -711,22 +876,38 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
               </button>
             ) : null}
 
-            {/* Only the hours already LOADED can be offered: the feed is
+            {/* Only what is already LOADED can be offered: the feed is
                 keyset-paginated and the API has no time index a client could
-                ask for a cursor by hour, so the strip grows as the guest goes
-                deeper. Every chip on it lands on a row that exists. */}
-            {tab === 'photos' && marks.length > 1 ? (
-              <nav className="k-jump" aria-label="Jump to an hour">
-                {marks.map((mark) => (
-                  <button
-                    key={mark.key}
-                    type="button"
-                    onClick={() => virtualizer.scrollToIndex(mark.index, { align: 'start' })}
-                  >
-                    {mark.label}
-                  </button>
-                ))}
-              </nav>
+                ask for a cursor by hour, so this grows as the guest goes
+                deeper. Every key in it lands on a row that exists, and the
+                last line of the panel says as much. */}
+            {indexOpen ? (
+              <div className="k-index" role="dialog" aria-modal="true" aria-label="Jump to a time">
+                <button type="button" className="k-veil" aria-label="Close" onClick={() => setIndexOpen(false)} />
+                <div className="k-index-body">
+                  {days.map((day) => (
+                    <section key={day.key} className="k-index-day">
+                      <h2>{day.label}</h2>
+                      <div className="k-index-hours">
+                        {day.hours.map((hour) => (
+                          <button
+                            key={hour.key}
+                            type="button"
+                            aria-current={hour.key === currentHourKey}
+                            onClick={() => {
+                              virtualizer.scrollToIndex(hour.index, { align: 'start' });
+                              setIndexOpen(false);
+                            }}
+                          >
+                            {hour.label}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                  <p className="k-index-note">More hours appear as you scroll further back.</p>
+                </div>
+              </div>
             ) : null}
 
             <div ref={listRef} className="k-stream" role="region" aria-label="Roll captures">
@@ -746,15 +927,14 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                         transform: `translateY(${String(virtualRow.start - virtualizer.options.scrollMargin)}px)`,
                       }}
                     >
-                      {item === undefined ? null : item.kind === 'clock' ? (
-                        <div className="k-clock">
-                          <i aria-hidden="true" />
-                          <span>{item.label}</span>
-                          {/* The date belongs on the first mark of the roll, where it
-                              is the answer to "when was this"; repeating it on every
-                              group would be the timestamp-under-every-tile again. */}
-                          {virtualRow.index === 0 ? <span className="k-day">{shortDate(roll?.createdAt)}</span> : null}
-                        </div>
+                      {item === undefined ? null : item.kind === 'day' ? (
+                        /* A real day boundary, from the captures' own clocks.
+                           It used to be `shortDate(roll.createdAt)` printed
+                           once on the very first mark, which put the roll's
+                           birthday over a photograph taken ten days later. */
+                        <Mark className="k-day" label={item.label} canJump={canJump} onJump={() => setIndexOpen(true)} />
+                      ) : item.kind === 'clock' ? (
+                        <Mark className="k-clock" label={item.label} canJump={canJump} onJump={() => setIndexOpen(true)} />
                       ) : (
                         <div
                           style={{
@@ -773,6 +953,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                               isNew={freshIds.has(capture.captureId)}
                               picked={picks.has(capture.captureId)}
                               onPick={onPickToggle}
+                              showClock={hourly}
                             />
                           ))}
                         </div>
@@ -785,7 +966,14 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
           </>
         ) : null}
       </div>
-      <SiteFooter />
+      {/* The end mark belongs to the STREAM and only once the stream has
+          actually ended. It used to be printed unconditionally, so it sat
+          under "Nothing picked", under the Info table, and — worst — directly
+          under "Could not reach the roll", where it told a guest whose roll
+          had not loaded at all that they had reached the end of it. */}
+      {tab === 'photos' && !feed.hasMore && feed.captures.length > 0 && failure === null ? (
+        <SiteFooter count={feed.captures.length} />
+      ) : null}
     </>
   );
 }

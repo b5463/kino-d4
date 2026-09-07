@@ -34,10 +34,13 @@ export function ScanQr({ slug }: { slug: string }) {
   }, [url]);
 
   return (
+    // On a wall the QR was a naked square with a six-character code under it
+    // and nothing saying what either was for. One line does that job.
     <div className="display-qr">
       {failed ? null : (
         <canvas ref={canvasRef} width={160} height={160} role="img" aria-label={`QR code for ${url}`} />
       )}
+      <p className="display-qr-call">Scan for the photos</p>
       <code className="display-qr-slug">{slug}</code>
     </div>
   );
