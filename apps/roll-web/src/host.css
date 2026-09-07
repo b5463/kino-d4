@@ -1,0 +1,167 @@
+/* Host dashboard only.
+
+   `roll.css` is the guest surface and is owned elsewhere; everything the
+   operator page needs that the guest page does not lives here and is imported
+   by `pages/HostDashboard.tsx`. Rules are scoped to `body[data-surface='host']`
+   where they could otherwise reach a guest route through a shared class. */
+
+/* ---- header controls ---- */
+
+.host-copy { display: inline-flex; align-items: center; gap: 6px; }
+.host-copy-field {
+  width: 260px;
+  max-width: 50vw;
+  font: 11px var(--k-mono);
+}
+
+/* One line, once per device: the token has no second copy anywhere. */
+.host-warn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 7px 10px;
+  border: 1px solid #c9a227;
+  border-left: 3px solid #c9a227;
+  background: #fdf7e3;
+}
+.host-warn > span { flex: 1 1 260px; }
+
+/* ---- totals as a description list ---- */
+
+.host-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.host-stats .host-stat {
+  min-width: 105px;
+  padding: 6px 10px;
+  border: 1px solid var(--k-border);
+  background: #fff;
+}
+.host-stats dt.host-stat-label {
+  color: var(--k-mut);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.host-stats dd.host-stat-value {
+  display: block;
+  margin: 0;
+  font: 700 18px var(--k-mono);
+}
+
+/* ---- camera panel ---- */
+
+.host-cameras { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.host-camera { padding: 6px 8px; border: 1px solid var(--k-border-soft); background: #fbfcfe; }
+.host-camera-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.host-camera-serial { font: 700 12px var(--k-mono); letter-spacing: 0.04em; }
+.host-camera-queue { margin-top: 4px; font: 700 14px var(--k-mono); }
+.host-camera-failed { margin-top: 2px; color: var(--k-burgundy); font-weight: 700; }
+.host-camera-note { margin: 4px 0 2px; color: var(--k-text); }
+.host-camera-foot { color: var(--k-mut); font: 11px var(--k-mono); }
+/* A camera that cannot report anything must not read as a healthy one. */
+.host-camera[data-word='NOT REPORTING'] { background: #f4f6f8; }
+.host-camera[data-word='KINO NOT ANSWERING'],
+.host-camera[data-word='UPLOAD PAUSED'] { border-color: var(--k-burgundy); background: #fdf4f6; }
+
+/* ---- guest link card ---- */
+
+.host-qr-card {
+  padding: 10px;
+  border: 1px solid var(--k-border);
+  background: #fff;
+  text-align: center;
+}
+.host-qr { display: block; width: 220px; max-width: 100%; height: auto; margin: 0 auto; }
+.host-qr--empty { aspect-ratio: 1 / 1; background: #eef2f6; }
+.host-qr-code {
+  margin-top: 6px;
+  font: 700 26px var(--k-mono);
+  letter-spacing: 0.18em;
+}
+.host-qr-url { color: var(--k-mut); font: 12px var(--k-mono); }
+.host-qr-actions { margin-top: 6px; }
+.host-rotate { margin-top: 8px; }
+
+/* ---- shared small text ---- */
+
+.host-quiet { margin: 6px 0 0; color: var(--k-mut); }
+.host-check label { color: var(--k-text); font-weight: 400; }
+.host-estimate { margin: 0 0 6px; font: 700 14px var(--k-mono); }
+.host-trash-note {
+  margin: 6px 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--k-green);
+  background: #f1f7ef;
+}
+
+/* A destructive action that asks in the page rather than in a browser dialog. */
+.host-confirm {
+  padding: 6px 8px;
+  border: 1px solid var(--k-burgundy);
+  background: #fdf4f6;
+}
+.host-confirm p { margin: 0 0 6px; }
+
+/* ---- moderation grid ---- */
+
+.host-captures-window { position: relative; margin-top: 8px; }
+.host-captures-runway { position: relative; width: 100%; }
+/* The 8px between rows is padding on the row, not a grid gap, so the height
+   the virtualiser measures is the height the row actually occupies. */
+.host-captures-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding-bottom: 8px;
+}
+.host-capture { padding: 4px; border: 1px solid var(--k-border); background: #fff; }
+.host-capture[data-muted='true'] { opacity: 0.55; }
+.host-capture .roll-media,
+.host-capture .photo-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #dfe5ec;
+}
+.host-capture-placeholder {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  background: #dfe5ec;
+  color: var(--k-mut);
+  font-weight: 700;
+}
+.host-capture[data-state='Failed'] .host-capture-placeholder { color: var(--k-burgundy); }
+.host-capture-meta { padding: 4px 1px; font: 11px var(--k-mono); }
+
+@media (max-width: 640px) {
+  .host-copy-field { display: none; }
+}
+
+/* ---- print: the QR card, and nothing else ----
+
+   A host printing this page wants the thing that goes on a table: the code,
+   the address and the QR. Hiding by visibility rather than display keeps the
+   card's own box intact wherever it sits in the panel grid. */
+@media print {
+  body[data-surface='host'] { background: #fff; }
+  body[data-surface='host'] * { visibility: hidden; }
+  body[data-surface='host'] .host-qr-card,
+  body[data-surface='host'] .host-qr-card * { visibility: visible; }
+  body[data-surface='host'] .host-qr-card {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 24px;
+    border: 0;
+  }
+  body[data-surface='host'] .host-qr { width: 62mm; }
+  body[data-surface='host'] .host-qr-code { font-size: 34px; }
+  body[data-surface='host'] .host-qr-actions { display: none !important; }
+}

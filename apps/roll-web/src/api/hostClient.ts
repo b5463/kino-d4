@@ -2,6 +2,34 @@ import { ApiError, type CaptureAssetSummary } from './client';
 
 export const HOST_TOKEN_STORAGE_KEY = 'kino.hostToken';
 
+/**
+ * One camera's own account of itself, from its heartbeat on the roll.
+ *
+ * Every counter is nullable and stays null for a camera that joined and never
+ * sent a heartbeat — firmware older than the heartbeat does not send one at
+ * all. "Never heard from" is not "0 pending at the epoch", and the dashboard
+ * has to be able to say which of the two it is looking at.
+ */
+export interface HostCameraView {
+  deviceId: string;
+  serial: string | null;
+  lastSeenAt: string | null;
+  pending: number | null;
+  uploading: number | null;
+  failed: number | null;
+  /** What the camera thinks of this server: unknown | reachable | unreachable. */
+  serverState: string | null;
+  firmware: string | null;
+  /** The camera's upload queue is halted by the operator, if it says so. */
+  uploadPaused?: boolean | null;
+}
+
+/** What a full-roll ZIP would cost, before the host asks for one. */
+export interface HostExportEstimate {
+  files: number;
+  bytes: number;
+}
+
 export interface HostRollView {
   rollId: string;
   slug: string;
@@ -17,6 +45,8 @@ export interface HostRollView {
   closedAt: string | null;
   counts: { captures: number; pending: number; hidden: number };
   guests: number;
+  /** Absent on an API that predates the camera panel; never invented here. */
+  cameras?: HostCameraView[];
 }
 
 export interface HostCaptureView {
@@ -65,44 +95,119 @@ export interface HostApi {
     },
   ): Promise<HostRollView>;
   listCaptures(rollId: string, cursor?: string): Promise<HostCapturePage>;
+  /** One capture, read straight. Replaces paging the feed until it turns up. */
+  getCapture(captureId: string): Promise<HostCaptureView>;
   hide(captureId: string): Promise<ModerationView>;
   unhide(captureId: string): Promise<ModerationView>;
   deleteCapture(captureId: string): Promise<ModerationView>;
+  /** Takes a capture back out of the trash. Idempotent; leaves `visible` alone. */
+  restore(captureId: string): Promise<HostCaptureView>;
   /** Trashes every capture of the roll; answers how many moved. */
   clearRoll(rollId: string): Promise<{ cleared: number }>;
   regenerateSlug(rollId: string): Promise<{ slug: string; guestUrl: string }>;
   startExport(rollId: string): Promise<{ jobId: string }>;
   getExport(rollId: string, jobId: string): Promise<{ status: string; url?: string }>;
+  /** Size of the ZIP the host is about to ask for, before they ask for it. */
+  exportEstimate(rollId: string): Promise<HostExportEstimate>;
   assetUrl(assetId: string): string;
   events(rollId: string, onEvent: (event: HostRollEvent) => void): () => void;
 }
 
+const HOST_TOKEN_PATTERN = /^hrt_[A-Za-z0-9_-]+$/;
+
+export function isHostToken(value: string): boolean {
+  return HOST_TOKEN_PATTERN.test(value.trim());
+}
+
+type ReadWriteStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+/** Storage that is missing (a locked-down browser) must not take the page down. */
+function safeStorage(pick: () => Storage): ReadWriteStorage {
+  try {
+    return pick();
+  } catch {
+    return { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+  }
+}
+
 /**
- * Accepts a deep-link token exactly once, moves it to tab-scoped storage, and
- * strips it from browser history before any other request or render can leak it.
+ * Accepts a deep-link token exactly once, moves it to storage, and strips it
+ * from browser history before any other request or render can leak it.
+ *
+ * Two stores, on purpose. `sessionStorage` is the default and dies with the
+ * tab, which is right for a borrowed laptop. `localStorage` is only ever
+ * written when the host ticks "keep me signed in on this device" — but it is
+ * always *read*, because a host who ticked it last night and closed the tab
+ * has no other copy of the token: there is no re-issue route, and losing it
+ * loses moderation, close and export for that roll for good.
  */
 export function consumeHostToken(
   location: Pick<Location, 'hash' | 'pathname' | 'search'> = window.location,
   history: Pick<History, 'replaceState'> = window.history,
-  storage: Pick<Storage, 'getItem' | 'setItem'> = window.sessionStorage,
+  session: ReadWriteStorage = safeStorage(() => window.sessionStorage),
+  local: ReadWriteStorage = safeStorage(() => window.localStorage),
 ): string | null {
   const params = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : '');
   const fromHash = params.get('token');
-  if (fromHash !== null && /^hrt_[A-Za-z0-9_-]+$/.test(fromHash)) {
-    storage.setItem(HOST_TOKEN_STORAGE_KEY, fromHash);
+  if (fromHash !== null && HOST_TOKEN_PATTERN.test(fromHash)) {
+    session.setItem(HOST_TOKEN_STORAGE_KEY, fromHash);
+    // A token arriving fresh replaces a remembered one rather than fighting it.
+    if (local.getItem(HOST_TOKEN_STORAGE_KEY) !== null) {
+      local.setItem(HOST_TOKEN_STORAGE_KEY, fromHash);
+    }
     history.replaceState(null, '', `${location.pathname}${location.search}`);
     return fromHash;
   }
-  return storage.getItem(HOST_TOKEN_STORAGE_KEY);
+  return session.getItem(HOST_TOKEN_STORAGE_KEY) ?? local.getItem(HOST_TOKEN_STORAGE_KEY);
 }
 
 export function storeHostToken(
   token: string,
-  storage: Pick<Storage, 'setItem'> = window.sessionStorage,
+  session: ReadWriteStorage = safeStorage(() => window.sessionStorage),
 ): boolean {
-  if (!/^hrt_[A-Za-z0-9_-]+$/.test(token.trim())) return false;
-  storage.setItem(HOST_TOKEN_STORAGE_KEY, token.trim());
+  if (!HOST_TOKEN_PATTERN.test(token.trim())) return false;
+  session.setItem(HOST_TOKEN_STORAGE_KEY, token.trim());
   return true;
+}
+
+/** Whether this device is holding the token past the tab closing. */
+export function isHostTokenRemembered(
+  local: ReadWriteStorage = safeStorage(() => window.localStorage),
+): boolean {
+  return local.getItem(HOST_TOKEN_STORAGE_KEY) !== null;
+}
+
+/** Turns "keep me signed in on this device" on or off for the token in hand. */
+export function rememberHostToken(
+  token: string,
+  remember: boolean,
+  local: ReadWriteStorage = safeStorage(() => window.localStorage),
+): void {
+  if (remember && HOST_TOKEN_PATTERN.test(token.trim())) {
+    local.setItem(HOST_TOKEN_STORAGE_KEY, token.trim());
+    return;
+  }
+  local.removeItem(HOST_TOKEN_STORAGE_KEY);
+}
+
+/** Sign out: forget the token in both stores, on this device only. */
+export function clearHostToken(
+  session: ReadWriteStorage = safeStorage(() => window.sessionStorage),
+  local: ReadWriteStorage = safeStorage(() => window.localStorage),
+): void {
+  session.removeItem(HOST_TOKEN_STORAGE_KEY);
+  local.removeItem(HOST_TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Rebuilds the full host link from the token the tab is holding.
+ *
+ * The token is minted once and stripped from the URL on arrival, so the only
+ * place the whole link still exists is here. This is what the "Copy host link"
+ * control hands back to the host so they can put it somewhere durable.
+ */
+export function hostLinkUrl(token: string, origin: string = window.location.origin): string {
+  return `${origin}/host#token=${token}`;
 }
 
 interface ApiErrorBody {
@@ -157,6 +262,9 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
       }>(`/api/host/rolls/${encodeURIComponent(rollId)}/captures${suffix}`);
       return { ...page, nextCursor: page.nextCursor ?? undefined };
     },
+    getCapture: (captureId) => request(`/api/host/captures/${encodeURIComponent(captureId)}`),
+    restore: (captureId) =>
+      request(`/api/host/captures/${encodeURIComponent(captureId)}/restore`, { method: 'POST' }),
     hide: (captureId) =>
       request(`/api/host/captures/${encodeURIComponent(captureId)}/hide`, { method: 'POST' }),
     unhide: (captureId) =>
@@ -169,6 +277,8 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
       request(`/api/host/rolls/${encodeURIComponent(rollId)}/regenerate-slug`, { method: 'POST' }),
     startExport: (rollId) =>
       request(`/api/host/rolls/${encodeURIComponent(rollId)}/export`, { method: 'POST' }),
+    exportEstimate: (rollId) =>
+      request(`/api/host/rolls/${encodeURIComponent(rollId)}/export/estimate`),
     getExport: (rollId, jobId) =>
       request(
         `/api/host/rolls/${encodeURIComponent(rollId)}/export/${encodeURIComponent(jobId)}`,

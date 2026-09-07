@@ -27,6 +27,7 @@ Start with the question you need answered. The repository contains working contr
 | How does Twin model firmware and photograph a scene? | [Twin firmware model](TWIN_FIRMWARE_MODEL.md), [Twin virtual camera](TWIN_VIRTUAL_CAMERA.md) |
 | What should Studio and Roll become? | [Platform spec pack](../kino_dev_spec_pack/00_README.md) |
 | How does a camera upload to Roll, and how does Twin stand in today? | [Device contract](roll/ROLL_DEVICE_CONTRACT.md), [Twin integration](roll/ROLL_TWIN_INTEGRATION.md), and the other guides in [`docs/roll/`](roll/) |
+| How does someone run a party with KINO Roll, from provisioning to the export? | [Host guide](roll/HOST_GUIDE.md); when photographs are not appearing, the Roll ladder in [Troubleshooting](TROUBLESHOOTING.md) |
 | What does the physical camera's Roll path look like, and where does it stop? | [Physical device flow](roll/PHYSICAL_DEVICE_FLOW.md) |
 | Why has the ESP32-C6 radio not been brought up? | [C6 hardware map](../firmware/C6_HARDWARE_MAP.md) for the blocking evidence, [C6 bring-up](../firmware/C6_BRINGUP.md) for the procedure once it is unblocked |
 | How should the digital twin behave? | [Twin simulator spec](../kino_twin_spec/KINO_TWIN_SIMULATOR_SPEC.md) |

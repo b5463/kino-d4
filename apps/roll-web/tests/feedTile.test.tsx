@@ -206,11 +206,60 @@ describe('tile sources', () => {
   });
 
   it('gives no srcset when only one still has a known width', () => {
-    expect(tileSources({ assets: [sized('thumb', 'thumb', 720, 540)] }, url)).toEqual({ src: '/api/assets/thumb/content' });
-    expect(tileSources({ assets: [sized('thumb', 'thumb', null, null), sized('kino-still', 'still', 1280, 960)] }, url)).toEqual({
+    expect(tileSources({ assets: [sized('thumb', 'thumb', 720, 540)] }, url, 1)).toEqual({ src: '/api/assets/thumb/content' });
+    expect(tileSources({ assets: ORIGINALS }, url, 1)).toBeUndefined();
+  });
+
+  /**
+   * The rule that fixes the 4x upscale on a phone.
+   *
+   * A device-uploaded `thumb` has `width: null`, so it can never be a srcset
+   * candidate and the browser was left painting a 288 px image across 1170
+   * device pixels. With nothing to choose between, the client chooses: below
+   * 2x the cheap thumb is enough, at 2x and above it is not.
+   */
+  it('takes the still instead of an unmeasured thumb on a high-DPR screen', () => {
+    const assets = [sized('thumb', 'thumb', null, null), sized('kino-still', 'still', 1280, 960)];
+
+    // A 1x desktop column: the thumb is still the cheap, correct answer.
+    expect(tileSources({ assets }, url, 1)).toEqual({ src: '/api/assets/thumb/content' });
+
+    // A 2x or 3x phone, one tile per row: the 1280 px still.
+    expect(tileSources({ assets }, url, 2)).toEqual({ src: '/api/assets/still/content' });
+    expect(tileSources({ assets }, url, 3)).toEqual({ src: '/api/assets/still/content' });
+
+    // A thumb that DOES have a width is describable, so the browser decides
+    // and the client stops guessing.
+    const measured = [sized('thumb', 'thumb', 720, 540), sized('kino-still', 'still', 1280, 960)];
+    expect(tileSources({ assets: measured }, url, 3)?.srcSet).toBe(
+      '/api/assets/thumb/content 720w, /api/assets/still/content 1280w',
+    );
+
+    // No still to fall back to: the thumb is all there is, at any DPR.
+    expect(tileSources({ assets: [sized('thumb', 'thumb', null, null)] }, url, 3)).toEqual({
       src: '/api/assets/thumb/content',
     });
-    expect(tileSources({ assets: ORIGINALS }, url)).toBeUndefined();
+  });
+
+  it('paints the tile with whatever src the rule chose, not the poster', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const treeRoot = createRoot(host);
+    const original = window.devicePixelRatio;
+    Object.defineProperty(window, 'devicePixelRatio', { value: 3, configurable: true });
+    try {
+      const view = capture([sized('thumb', 'thumb', null, null), sized('kino-still', 'still', 1280, 960)]);
+      await act(async () => {
+        treeRoot.render(<CaptureTile slug="party" capture={view} index="001" isNew={false} picked={false} onPick={() => undefined} />);
+      });
+      expect(host.querySelector<HTMLImageElement>('.k-shot img')?.getAttribute('src')).toBe(
+        '/api/assets/still/content',
+      );
+    } finally {
+      Object.defineProperty(window, 'devicePixelRatio', { value: original, configurable: true });
+      await act(async () => treeRoot.unmount());
+      host.remove();
+    }
   });
 
   it('puts the srcset on the tile image itself', async () => {

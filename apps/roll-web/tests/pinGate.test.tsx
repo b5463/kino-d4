@@ -65,9 +65,12 @@ describe('Roll access states', () => {
       .mockRejectedValue(new ApiError(401, 'INVALID_PIN', 'that PIN does not open this roll'));
     await render(<PinGate slug="party" onUnlocked={vi.fn()} api={api(submitPin)} />);
 
-    expect(container.textContent).toContain('This Roll needs a PIN');
+    expect(container.textContent).toContain('This roll needs a PIN');
+    // Sentence case everywhere: the gate's own button said OPEN ROLL while
+    // the landing page's said "Open roll".
+    expect(container.querySelector('button[type="submit"]')?.textContent).toBe('Open roll');
     expect(container.querySelector('#roll-pin')?.getAttribute('inputmode')).toBe('numeric');
-    expect(container.querySelector('#roll-pin')?.getAttribute('autocomplete')).toBe('one-time-code');
+    expect(container.querySelector('#roll-pin')?.getAttribute('autocomplete')).toBe('off')  // NOT one-time-code: iOS offers an SMS code for a PIN printed on a card;
     await enterPinAndSubmit('0000');
 
     expect(submitPin).toHaveBeenCalledWith('party', '0000');
@@ -88,12 +91,13 @@ describe('Roll access states', () => {
 
   it('shows the closed time without making the gallery unreadable', async () => {
     await render(<RollClosed closedAt="2026-08-14T22:30:00.000Z" />);
-    expect(container.textContent).toContain('CLOSED —');
-    expect(container.textContent).toContain('2026');
+    // The same formatter every other date on the guest surface uses — not a
+    // raw locale timestamp with seconds in it.
+    expect(container.textContent).toBe('CLOSED — 15.08.26');
   });
 
   it('uses the plain product 404 for an unknown or stale Roll link', async () => {
     await render(<NoRollPage />);
-    expect(container.querySelector('h1')?.textContent).toBe('No Roll here.');
+    expect(container.querySelector('h1')?.textContent).toBe('No roll here');
   });
 });

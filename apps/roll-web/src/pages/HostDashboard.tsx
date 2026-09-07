@@ -1,60 +1,155 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import QRCode from 'qrcode';
-import type { HostApi, HostCaptureView, HostRollEvent, HostRollView } from '../api/hostClient';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import type {
+  HostApi,
+  HostCaptureView,
+  HostExportEstimate,
+  HostRollEvent,
+  HostRollView,
+} from '../api/hostClient';
+import { ApiError } from '../api/client';
 import { Button, Panel, StatusLamp, ToolbarFrame } from '@kino/design-system';
 import kinoRoll from '../assets/kino-roll-dark.png';
-import { SafeImage } from '../components/SafeImage';
+import { CameraPanel } from '../components/host/CameraPanel';
+import { CaptureGrid, type CaptureFilter } from '../components/host/CaptureGrid';
+import { CopyHostLink, HostAccessPanel, HostLinkWarning } from '../components/host/HostLink';
+import { QrCard } from '../components/host/QrCard';
+import '../host.css';
 
 export interface HostDashboardProps {
   api: HostApi;
   pollMs?: number;
+  /** The token this dashboard is holding, for rebuilding the host link. */
+  token?: string;
+  remembered?: boolean;
+  onRemember?: (remember: boolean) => void;
+  /** Forget the token on this device and go back to the paste form. */
+  onSignOut?: () => void;
+}
+
+/** How long the trash keeps a capture before the purge. Said out loud, in words. */
+export const TRASH_GRACE = '7 days';
+
+/** "≈17 GB" — an estimate, printed as one. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'kB', 'MB', 'GB', 'TB'];
+  const step = Math.min(units.length - 1, Math.floor(Math.log10(bytes) / 3));
+  const value = bytes / 1000 ** step;
+  return `${value >= 100 || step === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[step] ?? 'B'}`;
+}
+
+/**
+ * Export job states, in words.
+ *
+ * The panel printed the raw enum — "Export queued", "Export running" — which
+ * is the worker's vocabulary, not a host's.
+ */
+export function exportWording(status: string): string {
+  switch (status) {
+    case 'queued':
+    case 'pending':
+      return 'Queued. The server is getting to it.';
+    case 'running':
+    case 'processing':
+      return 'Building the ZIP. You can leave this page open.';
+    case 'done':
+    case 'ready':
+    case 'completed':
+      return 'Ready.';
+    case 'failed':
+      return 'The export failed.';
+    default:
+      return `Export: ${status}`;
+  }
 }
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
+    // A description list, not four divs: label and number are a pair, and the
+    // pairing was carried by nothing but their order on the screen.
     <div className="host-stat">
-      <div className="host-stat-label">{label}</div>
-      <strong className="host-stat-value">{value}</strong>
+      <dt className="host-stat-label">{label}</dt>
+      <dd className="host-stat-value">{value}</dd>
     </div>
   );
 }
 
-function GuestQr({ url }: { url: string }) {
-  const [source, setSource] = useState('');
-  useEffect(() => {
-    let active = true;
-    void QRCode.toDataURL(url, { width: 220, margin: 1 }).then((value) => {
-      if (active) setSource(value);
-    });
-    return () => {
-      active = false;
-    };
-  }, [url]);
-  return source === '' ? null : <img className="host-qr" src={source} width={220} height={220} alt="Guest Roll QR code" />;
-}
-
-function posterOf(capture: HostCaptureView): string | null {
+/** A destructive action that asks first, in the panel, with no browser dialog. */
+function Confirm({
+  open,
+  title,
+  body,
+  confirmLabel,
+  busy,
+  onConfirm,
+  onCancel,
+  onOpen,
+  openLabel,
+  openDisabled,
+  variant = 'danger',
+}: {
+  open: boolean;
+  title: string;
+  body: ReactNode;
+  confirmLabel: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onOpen: () => void;
+  openLabel: string;
+  openDisabled?: boolean;
+  variant?: 'danger' | 'default';
+}) {
+  if (!open) {
+    return (
+      <Button variant={variant} disabled={openDisabled === true || busy} onClick={onOpen}>
+        {openLabel}
+      </Button>
+    );
+  }
   return (
-    capture.assets.find((asset) => asset.role === 'thumb')?.assetId ??
-    capture.assets.find((asset) => asset.role === 'kino-still')?.assetId ??
-    capture.assets.find((asset) => asset.role === 'wiggle-preview')?.assetId ??
-    null
+    <div className="host-confirm" role="group" aria-label={title}>
+      <p>{body}</p>
+      <ToolbarFrame aria-label={title}>
+        <Button variant="danger-solid" disabled={busy} onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+        <Button disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+      </ToolbarFrame>
+    </div>
   );
 }
 
-export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
+export function HostDashboard({
+  api,
+  pollMs = 1_000,
+  token,
+  remembered = false,
+  onRemember,
+  onSignOut,
+}: HostDashboardProps) {
   const [roll, setRoll] = useState<HostRollView | null>(null);
   const [captures, setCaptures] = useState<HostCaptureView[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [fatal, setFatal] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [exportState, setExportState] = useState<string | null>(null);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
+  const [estimate, setEstimate] = useState<HostExportEstimate | null>(null);
   const [title, setTitle] = useState('');
   const [pin, setPin] = useState('');
+  const [filter, setFilter] = useState<CaptureFilter>('all');
+  // The capture the last Delete click trashed, which gets the Undo wording.
+  const [undoFor, setUndoFor] = useState<string | null>(null);
+  const [trashNote, setTrashNote] = useState<string | null>(null);
   // Clear roll: the confirm is open, what the host has typed, and the answer.
   const [clearing, setClearing] = useState(false);
   const [clearCode, setClearCode] = useState('');
   const [clearResult, setClearResult] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   const refreshCaptures = useCallback(
     async (rollId: string): Promise<void> => {
@@ -80,52 +175,70 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
   /**
    * One capture, merged in place.
    *
-   * The host API has no `GET /api/host/captures/:id` — the list endpoint is the
-   * only reader — so this pages the keyset feed and STOPS at the wanted id
-   * instead of walking the whole roll. Captures come back newest first, so a
-   * live change costs one page in the ordinary case, where re-listing the roll
-   * cost every page of it on every event.
+   * This used to page the keyset feed until the wanted id turned up, because
+   * the host API had no single-capture read. For a capture near the bottom of
+   * a party's roll that was 36 requests to learn that one derivative had
+   * finished. `GET /api/host/captures/:id` is one.
    */
   const patchCapture = useCallback(
-    async (rollId: string, captureId: string): Promise<void> => {
-      let cursor: string | undefined;
-      do {
-        const page = await api.listCaptures(rollId, cursor);
-        const found = page.items.find((item) => item.captureId === captureId);
-        if (found !== undefined) {
-          setCaptures((items) =>
-            items.some((item) => item.captureId === captureId)
-              ? items.map((item) => (item.captureId === captureId ? found : item))
-              : // A capture this dashboard has not seen yet (created elsewhere,
-                // or unhidden into view) goes in by capture time, which is the
-                // order the list endpoint itself uses.
-                [...items, found].sort(
-                  (left, right) =>
-                    new Date(right.capturedAt).getTime() - new Date(left.capturedAt).getTime(),
-                ),
-          );
+    async (captureId: string): Promise<void> => {
+      let found: HostCaptureView;
+      try {
+        found = await api.getCapture(captureId);
+      } catch (caught) {
+        // Gone for good (purged), or an event for a capture this token cannot
+        // see. Anything else is a transport problem and must not empty a tile.
+        if (caught instanceof ApiError && caught.status === 404) {
+          setCaptures((items) => items.filter((item) => item.captureId !== captureId));
           return;
         }
-        cursor = page.hasMore ? page.nextCursor : undefined;
-      } while (cursor !== undefined);
-      // Not in the roll at all: a purge, or an event for another roll.
-      setCaptures((items) => items.filter((item) => item.captureId !== captureId));
+        throw caught;
+      }
+      setCaptures((items) =>
+        items.some((item) => item.captureId === captureId)
+          ? items.map((item) => (item.captureId === captureId ? found : item))
+          : // A capture this dashboard has not seen yet goes in by capture
+            // time, which is the order the list endpoint itself uses.
+            [...items, found].sort(
+              (left, right) =>
+                new Date(right.capturedAt).getTime() - new Date(left.capturedAt).getTime(),
+            ),
+      );
     },
     [api],
   );
 
   useEffect(() => {
-    void refresh().catch((caught: unknown) =>
-      setError(caught instanceof Error ? caught.message : String(caught)),
-    );
+    void refresh().catch((caught: unknown) => {
+      if (caught instanceof ApiError && (caught.status === 401 || caught.status === 403)) {
+        setFatal(caught);
+        return;
+      }
+      setError(caught instanceof Error ? caught.message : String(caught));
+    });
   }, [refresh]);
 
+  // The estimate is one read, at load, so the Download-all panel can say what
+  // the button is about to cost before the host presses it.
+  useEffect(() => {
+    const rollId = roll?.rollId;
+    if (rollId === undefined) return;
+    let live = true;
+    void api
+      .exportEstimate(rollId)
+      .then((value) => {
+        if (live) setEstimate(value);
+      })
+      // No estimate route on this server: the panel simply says nothing rather
+      // than raising an error over a button that still works.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, roll?.rollId]);
+
   /**
-   * An event says what changed; the dashboard now reads back only that.
-   *
-   * It used to re-list the whole roll — every page — on every event, so a
-   * camera shooting through a party had the host client re-downloading the
-   * entire moderation grid several times a minute.
+   * An event says what changed; the dashboard reads back only that.
    *
    * - `capture.updated` / `processing.completed`: one capture changed, and the
    *   roll's counts did not. Patch the capture, ask for nothing else.
@@ -155,11 +268,11 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
         // One capture changed and the totals did not.
         case 'capture.updated':
         case 'processing.completed':
-          reads.push(patchCapture(rollId, event.captureId));
+          reads.push(patchCapture(event.captureId));
           break;
         // A capture appearing, hidden or trashed moves the totals with it.
         default:
-          reads.push(patchCapture(rollId, event.captureId), refreshRoll());
+          reads.push(patchCapture(event.captureId), refreshRoll());
       }
       void Promise.all(reads).catch(() => {});
     };
@@ -220,6 +333,40 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
   };
 
   /**
+   * Delete stays one click — a host moderating a party cannot afford a dialog
+   * per tile — and the mis-tap is answered afterwards instead: the tile keeps
+   * an Undo, every trashed capture keeps a Restore, and the trash holds for the
+   * whole grace period, so there is nothing here that a mis-tap loses.
+   */
+  const trash = (captureId: string): void => {
+    setUndoFor(captureId);
+    setTrashNote(`In the trash. Kept for ${TRASH_GRACE}, then purged.`);
+    void run(() => moderate(captureId, 'delete'));
+  };
+
+  const restore = (captureId: string): void => {
+    const previous = captures;
+    setCaptures((items) =>
+      items.map((item) =>
+        item.captureId === captureId ? { ...item, deletedAt: null, purgeAfter: null } : item,
+      ),
+    );
+    if (undoFor === captureId) setUndoFor(null);
+    setTrashNote(null);
+    void run(async () => {
+      try {
+        const restored = await api.restore(captureId);
+        setCaptures((items) =>
+          items.map((item) => (item.captureId === captureId ? restored : item)),
+        );
+      } catch (caught) {
+        setCaptures(previous);
+        throw caught;
+      }
+    });
+  };
+
+  /**
    * Clears the roll. The confirm is the roll code typed back, not a dialog
    * button: a host with 2,000 test captures and a party starting in an hour
    * must not be able to do this with a mis-tap. Rows go to the trash for the
@@ -236,17 +383,19 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
     setRoll(await api.getRoll(roll.rollId));
     setClearing(false);
     setClearCode('');
-    setClearResult(`Cleared ${String(cleared)} ${cleared === 1 ? 'capture' : 'captures'}. In the trash for 7 days, then purged.`);
+    setClearResult(
+      `Cleared ${String(cleared)} ${cleared === 1 ? 'capture' : 'captures'}. In the trash for ${TRASH_GRACE}, then purged.`,
+    );
   };
 
   const startExport = async (): Promise<void> => {
     if (roll === null) return;
     setExportUrl(null);
-    setExportState('Starting export…');
+    setExportState('Asking the server for a ZIP…');
     const { jobId } = await api.startExport(roll.rollId);
     for (;;) {
       const current = await api.getExport(roll.rollId, jobId);
-      setExportState(`Export ${current.status}`);
+      setExportState(exportWording(current.status));
       if (current.url !== undefined) {
         setExportUrl(current.url);
         return;
@@ -256,11 +405,41 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
     }
   };
 
+  const displayUrl = useMemo(() => {
+    if (roll === null) return '';
+    try {
+      const url = new URL(roll.guestUrl);
+      return `${url.origin}/r/${roll.slug}/display?qr=1`;
+    } catch {
+      return `/r/${roll.slug}/display?qr=1`;
+    }
+  }, [roll]);
+
+  if (fatal !== null) {
+    return (
+      <main className="roll-shell roll-shell--narrow">
+        <div className="roll-brand">
+          <img src={kinoRoll} alt="KINO Roll" /> · HOST
+        </div>
+        <Panel title="Host link rejected">
+          <p role="alert">
+            This host link is no longer accepted. It may have been replaced, or the roll may be
+            gone.
+          </p>
+          <p className="host-quiet">The server said: {fatal.message}</p>
+          <Button variant="primary" onClick={() => onSignOut?.()}>
+            Paste a different host token
+          </Button>
+        </Panel>
+      </main>
+    );
+  }
+
   if (roll === null) {
     return (
       <main className="roll-shell">
         <h1>Host dashboard</h1>
-        <p>{error ?? 'Loading Roll…'}</p>
+        <p role="status">{error ?? 'Reading the roll…'}</p>
       </main>
     );
   }
@@ -269,74 +448,201 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
     <main className="roll-shell">
       <header className="roll-head">
         <div>
-          <div className="roll-brand"><img src={kinoRoll} alt="KINO Roll" /> · HOST</div>
+          <div className="roll-brand">
+            <img src={kinoRoll} alt="KINO Roll" /> · HOST
+          </div>
           <h1>{roll.title}</h1>
-          <div className="roll-subhead">{roll.deviceSerial ?? 'WEB CREATED'}</div>
+          {/* Was "WEB CREATED", which sat where a status goes and read as one. */}
+          <div className="roll-subhead">
+            Code {roll.slug} ·{' '}
+            {roll.deviceSerial === null ? 'started from a browser' : `camera ${roll.deviceSerial}`}
+          </div>
         </div>
         <ToolbarFrame aria-label="Roll status controls">
-          <StatusLamp state={roll.status === 'live' ? 'ok' : 'off'} label={roll.status.toUpperCase()} />
-          <Button
-            disabled={busy || roll.status === 'archived'}
-            onClick={() => void run(async () => void (await update({ status: roll.status === 'live' ? 'closed' : 'live' })))}
-          >
-            {roll.status === 'live' ? 'Close Roll' : 'Reopen Roll'}
-          </Button>
+          <StatusLamp
+            state={roll.status === 'live' ? 'ok' : 'off'}
+            label={roll.status.toUpperCase()}
+          />
+          {token === undefined ? null : <CopyHostLink token={token} />}
+          {roll.status === 'live' ? (
+            <Confirm
+              open={closing}
+              title="Close roll"
+              body={
+                <>
+                  Closing stops the camera uploading to this roll and shuts the guest page. Guests
+                  keep what is already here. You can reopen it afterwards.
+                </>
+              }
+              confirmLabel="Close the roll"
+              openLabel="Close Roll…"
+              busy={busy}
+              openDisabled={roll.status !== 'live'}
+              onOpen={() => setClosing(true)}
+              onCancel={() => setClosing(false)}
+              onConfirm={() =>
+                void run(async () => {
+                  await update({ status: 'closed' });
+                  setClosing(false);
+                })
+              }
+            />
+          ) : (
+            <Button
+              disabled={busy || roll.status === 'archived'}
+              onClick={() => void run(async () => void (await update({ status: 'live' })))}
+            >
+              Reopen Roll
+            </Button>
+          )}
         </ToolbarFrame>
       </header>
 
-      {error !== null ? <p className="roll-alert" role="alert">{error}</p> : null}
+      {token === undefined ? null : <HostLinkWarning token={token} />}
 
-      <section aria-label="Roll totals" className="host-stats">
+      {error !== null ? (
+        <p className="roll-alert" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <dl aria-label="Roll totals" className="host-stats">
         <Stat label="CAPTURES" value={roll.counts.captures} />
         <Stat label="GUESTS" value={roll.guests} />
         <Stat label="PENDING" value={roll.counts.pending} />
         <Stat label="HIDDEN" value={roll.counts.hidden} />
-      </section>
+      </dl>
 
       <section className="host-settings">
+        <CameraPanel cameras={roll.cameras} />
+
         <Panel title="Guest link">
-          <GuestQr url={roll.guestUrl} />
-          <p><a href={roll.guestUrl}>{roll.guestUrl}</a></p>
-          <Button
-            disabled={busy}
-            onClick={() => void run(async () => {
-              if (!window.confirm('Regenerate guest link? Old links stop working.')) return;
-              const rotated = await api.regenerateSlug(roll.rollId);
-              setRoll({ ...roll, slug: rotated.slug, guestUrl: rotated.guestUrl });
-            })}
-          >Regenerate guest link</Button>
+          <QrCard guestUrl={roll.guestUrl} slug={roll.slug} />
+          {/* New tabs, both of them: the guest link used to navigate the host
+              out of their own dashboard and then ask them for the PIN. */}
+          <ToolbarFrame aria-label="Guest surfaces">
+            <a className="kino-button kino-button--sm" href={roll.guestUrl} target="_blank" rel="noreferrer noopener">
+              Open guest view
+            </a>
+            <a className="kino-button kino-button--sm" href={displayUrl} target="_blank" rel="noreferrer noopener">
+              Open TV display
+            </a>
+          </ToolbarFrame>
+          <div className="host-rotate">
+            <Confirm
+              open={rotating}
+              title="Regenerate guest link"
+              body="A new code is issued and the old link, and every printed QR of it, stops working at once."
+              confirmLabel="Issue a new code"
+              openLabel="Regenerate guest link…"
+              busy={busy}
+              onOpen={() => setRotating(true)}
+              onCancel={() => setRotating(false)}
+              onConfirm={() =>
+                void run(async () => {
+                  const rotated = await api.regenerateSlug(roll.rollId);
+                  setRoll({ ...roll, slug: rotated.slug, guestUrl: rotated.guestUrl });
+                  setRotating(false);
+                })
+              }
+            />
+          </div>
         </Panel>
 
+        {token === undefined ? null : (
+          <HostAccessPanel
+            token={token}
+            remembered={remembered}
+            onRemember={(value) => onRemember?.(value)}
+            onSignOut={() => onSignOut?.()}
+          />
+        )}
+
         <Panel title="Roll settings">
-          <form onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            void run(async () => void (await update({ title })));
-          }}>
-            <label htmlFor="host-title">Title</label><br />
-            <input id="host-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} />
-            <Button type="submit" disabled={busy || title.trim() === ''}>Rename</Button>
+          <form
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              void run(async () => void (await update({ title })));
+            }}
+          >
+            <label htmlFor="host-title">Title</label>
+            <br />
+            <input
+              id="host-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              maxLength={120}
+            />
+            <Button type="submit" disabled={busy || title.trim() === ''}>
+              Rename
+            </Button>
           </form>
           <p>
-            <label><input type="checkbox" checked={roll.downloadsEnabled} onChange={(event) => void run(async () => void (await update({ downloadsEnabled: event.target.checked })))} /> Guest downloads</label>
+            <label>
+              <input
+                type="checkbox"
+                checked={roll.downloadsEnabled}
+                onChange={(event) =>
+                  void run(async () => void (await update({ downloadsEnabled: event.target.checked })))
+                }
+              />{' '}
+              Guest downloads
+            </label>
           </p>
-          <form onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            void run(async () => {
-              await update({ pin });
-              setPin('');
-            });
-          }}>
-            <label htmlFor="host-pin">{roll.hasPin ? 'Replace PIN' : 'Set PIN'}</label><br />
-            <input id="host-pin" type="password" inputMode="numeric" autoComplete="new-password" value={pin} minLength={4} onChange={(event) => setPin(event.target.value)} />
-            <Button type="submit" disabled={busy || pin.length < 4}>Save PIN</Button>
-            {roll.hasPin ? <Button disabled={busy} onClick={() => void run(async () => void (await update({ pin: null })))}>Remove PIN</Button> : null}
+          <form
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              void run(async () => {
+                await update({ pin });
+                setPin('');
+              });
+            }}
+          >
+            <label htmlFor="host-pin">{roll.hasPin ? 'Replace PIN' : 'Set PIN'}</label>
+            <br />
+            <input
+              id="host-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              value={pin}
+              minLength={4}
+              onChange={(event) => setPin(event.target.value)}
+            />
+            <Button type="submit" disabled={busy || pin.length < 4}>
+              Save PIN
+            </Button>
+            {roll.hasPin ? (
+              <Button disabled={busy} onClick={() => void run(async () => void (await update({ pin: null })))}>
+                Remove PIN
+              </Button>
+            ) : null}
           </form>
         </Panel>
 
         <Panel title="Download all">
-          <Button disabled={busy} onClick={() => void run(startExport)}>Prepare ZIP</Button>
-          {exportState !== null ? <p role="status" aria-live="polite" aria-atomic="true">{exportState}</p> : null}
-          {exportUrl !== null ? <a className="roll-action" href={exportUrl}>Download ZIP</a> : null}
+          <p className="host-estimate">
+            {estimate === null
+              ? 'Size unknown on this server.'
+              : `≈${formatBytes(estimate.bytes)}, ${estimate.files.toLocaleString()} files`}
+          </p>
+          <Button disabled={busy} onClick={() => void run(startExport)}>
+            Prepare ZIP
+          </Button>
+          {exportState !== null ? (
+            <p role="status" aria-live="polite" aria-atomic="true">
+              {exportState}
+            </p>
+          ) : null}
+          {exportUrl !== null ? (
+            <a className="roll-action" href={exportUrl} download={`kino-roll-${roll.slug}.zip`}>
+              Download ZIP
+            </a>
+          ) : null}
+          <p className="host-quiet">
+            The ZIP is built on the server and comes down through this dashboard to your Downloads
+            folder. Preparing it again builds another one — it does not replace the first.
+          </p>
         </Panel>
 
         <Panel title="Danger">
@@ -351,9 +657,12 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
                 }}
               >
                 <p>
-                  This trashes all <b>{roll.counts.captures}</b> captures in this roll. Guests see it empty at once. The trash is purged after 7 days.
+                  This trashes all <b>{roll.counts.captures}</b> captures in this roll. Guests see it
+                  empty at once. The trash is purged after {TRASH_GRACE}.
                 </p>
-                <label htmlFor="host-clear-code">Type the roll code <code>{roll.slug}</code> to confirm</label>
+                <label htmlFor="host-clear-code">
+                  Type the roll code <code>{roll.slug}</code> to confirm
+                </label>
                 <input
                   id="host-clear-code"
                   autoComplete="off"
@@ -370,46 +679,65 @@ export function HostDashboard({ api, pollMs = 1_000 }: HostDashboardProps) {
                   >
                     {busy ? 'Clearing…' : `Clear ${roll.counts.captures} captures`}
                   </Button>
-                  <Button type="button" disabled={busy} onClick={() => { setClearing(false); setClearCode(''); }}>Cancel</Button>
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setClearing(false);
+                      setClearCode('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
                 </ToolbarFrame>
               </form>
             ) : (
               <>
-                <p>Clear roll: every capture goes to the trash. Nothing is deleted for 7 days.</p>
+                <p>
+                  Clear roll: every capture goes to the trash. Nothing is deleted for {TRASH_GRACE}.
+                </p>
                 <Button
                   variant="danger"
                   disabled={busy || roll.counts.captures === 0}
-                  onClick={() => { setClearResult(null); setClearing(true); }}
-                >Clear roll…</Button>
+                  onClick={() => {
+                    setClearResult(null);
+                    setClearing(true);
+                  }}
+                >
+                  Clear roll…
+                </Button>
               </>
             )}
-            {clearResult !== null ? <p role="status" aria-live="polite" aria-atomic="true">{clearResult}</p> : null}
+            {clearResult !== null ? (
+              <p role="status" aria-live="polite" aria-atomic="true">
+                {clearResult}
+              </p>
+            ) : null}
           </div>
         </Panel>
       </section>
 
       <Panel title="Moderation">
-        {captures.length === 0 ? <p>No captures yet.</p> : null}
-        <div className="host-captures">
-          {captures.map((capture) => {
-            const poster = posterOf(capture);
-            const deleted = capture.deletedAt !== null;
-            return (
-              <article key={capture.captureId} data-capture-id={capture.captureId} data-muted={!capture.visible || deleted} className="host-capture">
-                {poster === null || !capture.visible || deleted ? <div className="host-capture-placeholder">{deleted ? 'In trash' : capture.visible ? 'Processing' : 'Hidden'}</div> : <SafeImage className="roll-media" src={api.assetUrl(poster)} alt="" loading="lazy" />}
-                <div className="host-capture-meta"><strong>{capture.mode}</strong> · {new Date(capture.capturedAt).toLocaleTimeString()}</div>
-                {!capture.visible ? <span>HIDDEN</span> : null}
-                {deleted ? <span> · TRASHED</span> : null}
-                {!deleted ? (
-                  <ToolbarFrame aria-label={`Moderate ${capture.mode} capture`}>
-                    <Button size="sm" onClick={() => void run(() => moderate(capture.captureId, capture.visible ? 'hide' : 'unhide'))}>{capture.visible ? 'Hide' : 'Unhide'}</Button>
-                    <Button size="sm" variant="danger" onClick={() => void run(() => moderate(capture.captureId, 'delete'))}>Delete</Button>
-                  </ToolbarFrame>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
+        <p className="host-quiet">
+          Hidden captures stay on the server and disappear from the guest page. Deleted ones go to
+          the trash and are kept for {TRASH_GRACE} — until then, Restore brings them back.
+        </p>
+        {trashNote !== null ? (
+          <p className="host-trash-note" role="status" aria-live="polite">
+            {trashNote}
+          </p>
+        ) : null}
+        <CaptureGrid
+          captures={captures}
+          assetUrl={api.assetUrl}
+          busy={busy}
+          filter={filter}
+          onFilter={setFilter}
+          onHide={(captureId, next) => void run(() => moderate(captureId, next))}
+          onDelete={trash}
+          onRestore={restore}
+          undoFor={undoFor}
+        />
       </Panel>
     </main>
   );

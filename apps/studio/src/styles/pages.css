@@ -1219,3 +1219,48 @@
   font-size: var(--fs-sm);
   color: var(--text-mut);
 }
+
+/* Rolls started on this machine: the operator's spare copy of a host link,
+   folded away because it is a safety net, not a daily control. */
+.rolls-created {
+  margin-top: var(--gap);
+  border-top: 1px solid var(--border-soft, var(--border-mid));
+  padding-top: var(--gap);
+}
+
+.rolls-created > summary {
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rolls-created-list {
+  margin: var(--gap) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--gap);
+}
+
+.rolls-created-head code {
+  font-family: var(--mono);
+  letter-spacing: 0.12em;
+}
+
+.rolls-created-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Roll codes are read out loud and typed back; wide tracking stops a 5 from
+   being typed as an S. */
+.input.rollcode {
+  font-family: var(--mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}

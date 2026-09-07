@@ -7,12 +7,14 @@ import {
   type CaptureDetail as CaptureDetailView,
   type RollView,
 } from '../api/client';
-import { CaptureDetail, clockOf } from './CaptureDetail';
+import { CaptureDetail, clockOf, heroStill } from './CaptureDetail';
 import { LoadFailure } from '../components/LoadFailure';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { rollLabel } from '../components/SiteHeader';
 import { useRollEvents } from '../hooks/useRollEvents';
-import { NoRollPage } from './NotFoundPage';
+import { useOnline } from '../hooks/useOnline';
+import { absoluteUrl, setRouteMeta } from '../meta';
+import { NoCapturePage, NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
 
 export interface CaptureDetailPageProps {
@@ -25,6 +27,19 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   const [roll, setRoll] = useState<RollView | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const online = useOnline();
+
+  // What a pasted link to this photograph previews as. The image is the
+  // capture's still — the picture, not the roll's cover.
+  useEffect(() => {
+    if (roll === null || capture === null) return;
+    const still = heroStill(capture);
+    setRouteMeta({
+      title: `${rollLabel(roll.title, slug)} · ${clockOf(capture.capturedAt)} — KINO Roll`,
+      description: `One capture from a KINO D4, ${capture.frameCount === 1 ? 'single frame' : `${String(capture.frameCount)} frames`}.`,
+      image: still === undefined ? undefined : absoluteUrl(rollApi.assetUrl(still.assetId)),
+    });
+  }, [capture, roll, slug]);
 
   useEffect(() => {
     let active = true;
@@ -72,7 +87,8 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
     return <PinGate slug={slug} onUnlocked={() => setAttempt((current) => current + 1)} />;
   }
 
-  if (isNoRollError(error) || isMissingCaptureError(error)) return <NoRollPage />;
+  if (isMissingCaptureError(error)) return <NoCapturePage slug={slug} />;
+  if (isNoRollError(error)) return <NoRollPage />;
 
   return (
     <>
@@ -87,8 +103,20 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
               is about this photograph rather than about the roll. */}
           {capture === null ? null : <span className="k-count">{clockOf(capture.capturedAt)}</span>}
         </div>
-        {error !== null ? <LoadFailure onRetry={() => setAttempt((current) => current + 1)} /> : null}
-        {capture === null || roll === null ? (error === null ? <p className="k-note">READING…</p> : null) : null}
+        {error !== null ? (
+          <LoadFailure onRetry={() => setAttempt((current) => current + 1)} offline={!online} what="photo" />
+        ) : null}
+        {/* Offline and not loaded yet: say so NOW rather than after the
+            service worker's five-second network timeout has run out and
+            produced a red line blaming a connection the phone already knows
+            it does not have. */}
+        {capture === null || roll === null
+          ? error !== null
+            ? null
+            : online
+              ? <p className="k-note">Reading roll…</p>
+              : <p className="k-note" role="status">You&#39;re offline. This photo has not been loaded yet.</p>
+          : null}
         {capture !== null && roll !== null ? (
           <CaptureDetail slug={slug} capture={capture} roll={roll} />
         ) : null}

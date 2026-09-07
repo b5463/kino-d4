@@ -43,6 +43,10 @@ export function LandingPage({ onOpen, lastRoll = readLastRoll() }: LandingPagePr
       <img className="k-mark" src={kinoRoll} alt="KINO Roll" />
       <h1>Open a roll</h1>
       <form onSubmit={submit}>
+        {/* No `autoFocus`. On a small Android the keyboard it summons
+            covers "Scan the code on the camera to join" — the line that
+            tells a guest who has no code what to do instead. The field is
+            the first thing on the page; tapping it is one tap. */}
         <label htmlFor="roll-code">Roll code</label>
         <input
           id="roll-code"
@@ -56,7 +60,6 @@ export function LandingPage({ onOpen, lastRoll = readLastRoll() }: LandingPagePr
           value={code}
           onChange={(event) => setCode(normaliseRollCode(event.target.value))}
           required
-          autoFocus
         />
         <button type="submit" className="k-save">Open roll</button>
       </form>

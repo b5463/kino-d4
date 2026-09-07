@@ -4,7 +4,13 @@ import { Button } from '../../components/Button';
 import { Unsupported } from '../../components/Unsupported';
 import { getDevice, isSimulated } from '../../app/session';
 import { supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
-import { putRollLinks, rollLinksFor, useRollLinks } from '../../state/rollLinks';
+import {
+  forgetCreatedRoll,
+  putRollLinks,
+  rememberCreatedRoll,
+  rollLinksFor,
+  useRollLinks,
+} from '../../state/rollLinks';
 import {
   DEFAULT_ROLL_SERVER_URL,
   StubRollServerClient,
@@ -66,6 +72,7 @@ export function RollPage() {
   // reports a host dashboard, so page state lost it on the first page swap and
   // the panel then denied a Roll that was published fine.
   const linkMap = useRollLinks((s) => s.byRollId);
+  const createdRolls = useRollLinks((s) => s.created);
 
   const refresh = useCallback(async () => {
     const dev = getDevice();
@@ -220,6 +227,15 @@ export function RollPage() {
         hostUrl: started.hostUrl,
         origin: started.deviceOnly ? 'device-only' : 'server',
       });
+      // The second copy of the host link, on the machine that ran the party.
+      rememberCreatedRoll({
+        deviceRollId: started.deviceRollId,
+        title: opts.title,
+        slug: started.slug,
+        guestUrl: started.guestUrl,
+        hostUrl: started.hostUrl,
+        createdAt: new Date().toISOString(),
+      });
     });
 
   // A joined Roll was created by someone else, so this session knows no host
@@ -267,6 +283,8 @@ export function RollPage() {
         onStart={start}
         onJoin={join}
         onLeave={leave}
+        createdRolls={createdRolls}
+        onForgetRoll={forgetCreatedRoll}
       />
 
       <UploadQueuePanel queue={queue} busy={queueBusy} error={queueError} onRetry={retryUploads} />

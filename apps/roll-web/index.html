@@ -2,10 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      `viewport-fit=cover` is load-bearing, not cosmetic. Without it iOS lays
+      the page out inside the safe area and EVERY `env(safe-area-inset-*)` in
+      roll.css resolves to 0 — so the header's top padding, the action
+      plate's bottom padding and the save sheet's were all writing 0 on the
+      one class of device they exist for. With it the page reaches the edges
+      and those insets carry the real numbers.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
+    <!--
+      The guest surface's ground. `/host` is a light page and overrides this
+      at runtime (`routes.tsx#surfaceOf`) — one black value for everything
+      would paint a black bar over a pale operator page.
+    -->
     <meta name="theme-color" content="#0b0b0c" />
     <link rel="icon" href="/icon-192.png" type="image/png" />
+    <!--
+      Without this iOS puts a SCREENSHOT of the page on the home screen. 180px
+      and opaque, because an apple-touch-icon gets no transparency and no
+      rounding of its own — the OS does both.
+    -->
+    <link rel="apple-touch-icon" href="/icon-apple-touch.png" />
+    <meta name="apple-mobile-web-app-title" content="KINO Roll" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!--
+      Static link-preview defaults. `src/meta.ts` replaces these with the
+      roll's or the capture's own once they load; a scraper that does not run
+      JavaScript at least gets a KINO card instead of a blank one. See that
+      file for why a real per-capture preview needs server-side rendering.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="KINO Roll" />
+    <meta property="og:title" content="KINO Roll" />
+    <meta property="og:description" content="Photographs from a KINO D4." />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
     <!--
       03§9: rolls are unlisted by default and never belong in a search index.
       This app is entirely guest (/r/*) and host (/host) surface — nothing

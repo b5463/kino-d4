@@ -13,8 +13,10 @@ import { OfflineBanner } from '../components/OfflineBanner';
 import { SafeImage } from '../components/SafeImage';
 import { GuestBar, rollLabel, shortDate, SiteFooter } from '../components/SiteHeader';
 import { CAMERA_SLOTS, StatusChip } from '../components/StatusChip';
+import { useOnline } from '../hooks/useOnline';
 import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
+import { absoluteUrl, setRouteMeta } from '../meta';
 import { rememberRoll } from '../state/lastRoll';
 import { togglePick, usePickedCaptures, usePicks } from '../state/picks';
 import { NoRollPage } from './NotFoundPage';
@@ -76,20 +78,45 @@ function assetOf(capture: Pick<CaptureView, 'assets'>, roles: readonly string[])
 export const TILE_SIZES = '(min-width: 1600px) 25vw, (min-width: 1100px) 33vw, (min-width: 720px) 50vw, 100vw';
 
 /**
- * The still a tile paints, with every wider still the capture has as a
- * `srcset` candidate.
+ * Below this device pixel ratio a `thumb` is enough for a tile; at or above
+ * it, it is not. One tile is the full phone width, so a 360–430 px CSS tile
+ * at 2× already wants 720–860 device pixels and at 3× wants 1080–1290. A
+ * `thumb` is 720 px at best and 288 px on the device-uploaded rows this roll
+ * is full of, which is where the visible 4× upscale came from.
+ */
+const TILE_STILL_DPR = 2;
+
+/**
+ * The still a tile paints, and the rule that decides it.
  *
- * One tile is the full phone width. A 390 px CSS tile on a 3× screen wants
- * 1170 device pixels, and the `thumb` (720 px, 480 on rolls processed before
- * the size was raised) is not that; the `kino-still` (1280 px) is. `src`
- * stays the thumb, so a browser without `srcset` still gets the cheap tile,
- * and `sizes` tells the rest which candidate to fetch — a desktop column at
- * 1× takes the thumb, a 3× phone takes the still. A candidate without a
- * recorded width cannot be described, so it is left out rather than guessed.
+ * ## The rule
+ *
+ * A `srcset` candidate has to be describable — the browser picks by width, so
+ * an asset with no recorded width cannot be one. The worker records widths;
+ * a DEVICE-uploaded `thumb` does not (`width: null` on every such row), and
+ * that is most of them. The old code therefore emitted no `srcset` at all and
+ * left a 288 px thumb painted across 1170 device pixels.
+ *
+ * So, in order:
+ *
+ *  1. Build the `srcset` from the candidates whose widths ARE known. Two or
+ *     more of them and the browser decides, which is always the better answer
+ *     — a desktop column at 1× takes the small one, a 3× phone the large one.
+ *  2. Fewer than two describable candidates and there is nothing to choose
+ *     between, so this picks the single `src` itself, by device pixel ratio:
+ *     under 2× the poster thumb is enough for one-tile-per-row; at 2× or more
+ *     it is not, and the 1280 px `kino-still` becomes the `src` instead.
+ *  3. No still with a known width either — take the poster and accept it.
+ *
+ * The hero on the capture page is unaffected: it never uses a thumb at all
+ * (`heroStill`), and this is the feed's rule only.
+ *
+ * `dpr` is a parameter rather than a `window` read so the rule is testable.
  */
 export function tileSources(
   capture: Pick<CaptureView, 'assets'>,
   assetUrl: (assetId: string) => string,
+  dpr: number = typeof window === 'undefined' ? 1 : window.devicePixelRatio,
 ): { src: string; srcSet?: string; sizes?: string } | undefined {
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
   if (poster === undefined) return undefined;
@@ -98,12 +125,26 @@ export function tileSources(
     .filter((asset) => asset.width !== null && asset.width > 0);
   const widths = new Map<number, string>();
   for (const asset of candidates) widths.set(asset.width ?? 0, asset.assetId);
-  if (widths.size < 2) return { src: assetUrl(poster.assetId) };
-  const srcSet = [...widths.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([width, assetId]) => `${assetUrl(assetId)} ${String(width)}w`)
-    .join(', ');
-  return { src: assetUrl(poster.assetId), srcSet, sizes: TILE_SIZES };
+
+  if (widths.size >= 2) {
+    const srcSet = [...widths.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([width, assetId]) => `${assetUrl(assetId)} ${String(width)}w`)
+      .join(', ');
+    return { src: assetUrl(poster.assetId), srcSet, sizes: TILE_SIZES };
+  }
+
+  // Step 2. Only reached when the poster's own width is unrecorded, because a
+  // poster WITH a width is itself one of the describable candidates and a
+  // second one would have taken the branch above.
+  if (poster.width === null && dpr >= TILE_STILL_DPR) {
+    const still = ['kino-still', 'enhanced-still']
+      .flatMap((role) => capture.assets.filter((asset) => asset.role === role))
+      .find((asset) => asset.width !== null && asset.width > 0);
+    if (still !== undefined) return { src: assetUrl(still.assetId) };
+  }
+
+  return { src: assetUrl(poster.assetId) };
 }
 
 /** `21:40` — the clock mark a group of captures is filed under. */
@@ -187,7 +228,10 @@ export function CaptureTile({
       </span>
     ) : (
       <SafeImage
-        src={rollApi.assetUrl(source.assetId)}
+        // `stillSources.src`, not the poster: when no candidate can be
+        // described the rule above has already chosen the one file this tile
+        // should fetch, and re-deriving it here would throw that away.
+        src={stillSources?.src ?? rollApi.assetUrl(source.assetId)}
         srcSet={stillSources?.srcSet}
         sizes={stillSources?.sizes}
         alt=""
@@ -242,8 +286,8 @@ export function CaptureTile({
 }
 
 /** A clock mark, or a row of captures filed under the one above it. */
-type StreamItem =
-  | { kind: 'clock'; key: string; label: string }
+export type StreamItem =
+  | { kind: 'clock'; key: string; label: string; at: string }
   | { kind: 'row'; key: string; captures: CaptureView[] };
 
 /**
@@ -267,7 +311,7 @@ export function streamItems(captures: readonly CaptureView[], columns: number): 
     if (label !== mark) {
       flush();
       mark = label;
-      items.push({ kind: 'clock', key: `t_${capture.captureId}`, label });
+      items.push({ kind: 'clock', key: `t_${capture.captureId}`, label, at: capture.capturedAt });
     }
     row.push(capture);
     if (row.length === columns) flush();
@@ -283,9 +327,82 @@ export function streamItems(captures: readonly CaptureView[], columns: number): 
  */
 const PREPEND_SCROLL_LIMIT_PX = 80;
 
+/**
+ * A clock mark's own height: `.k-clock` is 8 + 5 px of padding around one
+ * 11 px line. Measured, not guessed — the virtualiser corrects it from the
+ * real element on the first measure anyway; this only has to be close enough
+ * that the scrollbar is not a lie before that happens.
+ */
+const CLOCK_ROW_PX = 25;
+
+/**
+ * How tall one row of tiles is, from the width it actually has.
+ *
+ * The estimate used to be a flat 220 px against a real ~300 px row, so the
+ * total height was a third short: the scrollbar claimed the roll was shorter
+ * than it is and the page grew under the guest's thumb as each page measured
+ * itself. A tile is 4:3 and `columns` of them share the stream's width, so
+ * the height follows from the width and nothing else. The overlay is
+ * absolutely positioned inside the tile and adds none; the `1` is the row's
+ * `paddingBottom` hairline, which does.
+ */
+export function rowEstimate(streamWidth: number, columns: number): number {
+  const tile = Math.max(1, streamWidth) / Math.max(1, columns);
+  return Math.round(tile * 0.75) + 1;
+}
+
+/** One entry in the hour index: a label and the stream row it jumps to. */
+export interface HourMark {
+  key: string;
+  /** `21:00`, or `06.09 · 21:00` when the roll crosses midnight. */
+  label: string;
+  /** Index into the stream, which is what `scrollToIndex` takes. */
+  index: number;
+}
+
+/**
+ * The hour index, derived from the clock marks already in the stream.
+ *
+ * A roll is an evening, and 1,900 captures of one is four hundred screens of
+ * linear scrolling. This is the shortest thing that makes that navigable
+ * without inventing a second data source: the stream already files captures
+ * under clock marks, so the first mark of each hour IS the row an "21:00"
+ * jump should land on. Nothing is fetched for it and nothing is guessed.
+ *
+ * It can only offer hours that are LOADED — the feed is keyset-paginated and
+ * the API has no time index a client could ask for a cursor by hour. So the
+ * strip grows as the guest goes deeper, which is honest: every chip in it
+ * lands on a row that exists.
+ *
+ * The day is printed only when the roll crosses midnight, because on the
+ * common one-evening roll it would be the same six characters on every chip.
+ */
+export function hourMarks(items: readonly StreamItem[]): HourMark[] {
+  const marks: HourMark[] = [];
+  const seen = new Set<string>();
+  const days = new Set<string>();
+
+  items.forEach((item, index) => {
+    if (item.kind !== 'clock') return;
+    const at = new Date(item.at);
+    if (Number.isNaN(at.getTime())) return;
+    const two = (n: number): string => String(n).padStart(2, '0');
+    const day = `${two(at.getDate())}.${two(at.getMonth() + 1)}`;
+    const key = `${day} ${two(at.getHours())}`;
+    days.add(day);
+    if (seen.has(key)) return;
+    seen.add(key);
+    marks.push({ key, label: `${two(at.getHours())}:00`, index });
+  });
+
+  if (days.size < 2) return marks;
+  return marks.map((mark) => ({ ...mark, label: `${mark.key.slice(0, 5)} · ${mark.label}` }));
+}
+
 /** Virtualized, keyset-paginated and live-updating guest Roll gallery. */
 export function RollFeedPage({ slug }: RollFeedPageProps) {
   const feed = useRollFeed(slug);
+  const online = useOnline();
   const [roll, setRoll] = useState<RollView | null>(null);
   const [rollError, setRollError] = useState<Error | null>(null);
   const [tab, setTab] = useState<'photos' | 'picks' | 'info'>('photos');
@@ -329,6 +446,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   }, [slug]);
   const shown = tab === 'picks' ? picked : feed.captures;
   const items = useMemo(() => streamItems(shown, columns), [columns, shown]);
+  const marks = useMemo(() => hourMarks(items), [items]);
 
   const refreshRoll = useCallback(async (): Promise<void> => {
     try {
@@ -345,6 +463,20 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   useEffect(() => {
     void refreshRoll();
   }, [refreshRoll]);
+
+  // What a pasted roll link previews as. The cover is the newest capture's
+  // tile — the same picture the guest is looking at when they copy the link.
+  const cover = feed.captures[0];
+  useEffect(() => {
+    const title = roll === null ? rollLabel(undefined, slug) : rollLabel(roll.title, slug);
+    const count = roll?.photoCount ?? feed.captures.length;
+    const still = cover === undefined ? undefined : tileSources(cover, (id) => rollApi.assetUrl(id));
+    setRouteMeta({
+      title: `${title} — KINO Roll`,
+      description: `${String(count)} ${count === 1 ? 'frame' : 'frames'} from a KINO D4.`,
+      image: still === undefined ? undefined : absoluteUrl(still.src),
+    });
+  }, [cover, feed.captures.length, roll, slug]);
 
   const removeLive = useCallback(
     (captureId: string): void => {
@@ -413,9 +545,30 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     roll !== null && !(failure instanceof PinRequiredError) && !isNoRollError(failure),
   );
 
+  // The stream's own width, which is what a row's height is derived from.
+  // Read off the element rather than the window: the stream is capped at
+  // 900 px from 720 px up, so on a desktop the window width is not the tile
+  // width and an estimate built from it is out by a third the other way.
+  const [streamWidth, setStreamWidth] = useState(() =>
+    typeof window === 'undefined' ? 390 : window.innerWidth,
+  );
+  useEffect(() => {
+    const element = listRef.current;
+    if (element === null) return;
+    const measure = (): void => {
+      if (element.clientWidth > 0) setStreamWidth(element.clientWidth);
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [tab]);
+
   const virtualizer = useWindowVirtualizer({
     count: items.length,
-    estimateSize: () => 220,
+    estimateSize: (index) =>
+      items[index]?.kind === 'clock' ? CLOCK_ROW_PX : rowEstimate(streamWidth, columns),
     overscan: 3,
     scrollMargin: listRef.current?.offsetTop ?? 0,
   });
@@ -480,7 +633,7 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
         {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
         {roll?.status === 'archived' ? <RollStateBanner status="archived" /> : null}
 
-        {failure !== null ? <LoadFailure onRetry={() => void retry()} /> : null}
+        {failure !== null ? <LoadFailure onRetry={() => void retry()} offline={!online} /> : null}
 
         {tab === 'info' && roll !== null ? (
           <div className="k-info">
@@ -489,9 +642,12 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
               <dd><b>{roll.title}</b></dd>
               <dt>Date</dt>
               <dd>{shortDate(roll.createdAt)}</dd>
+              {/* One word for the count everywhere: FRAMES. The header window
+                  prints `1918 FR`, this row prints `1918 frames`, and the two
+                  no longer disagree about what is being counted. */}
               <dt>Frames</dt>
               <dd>
-                <b>{photoCount}</b> {photoCount === 1 ? 'capture' : 'captures'}
+                <b>{photoCount}</b> {photoCount === 1 ? 'frame' : 'frames'}
               </dd>
               <dt>Camera</dt>
               <dd><b>KINO D4</b> · four lenses</dd>
@@ -535,6 +691,24 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
               >
                 {feed.pending.length} new
               </button>
+            ) : null}
+
+            {/* Only the hours already LOADED can be offered: the feed is
+                keyset-paginated and the API has no time index a client could
+                ask for a cursor by hour, so the strip grows as the guest goes
+                deeper. Every chip on it lands on a row that exists. */}
+            {tab === 'photos' && marks.length > 1 ? (
+              <nav className="k-jump" aria-label="Jump to an hour">
+                {marks.map((mark) => (
+                  <button
+                    key={mark.key}
+                    type="button"
+                    onClick={() => virtualizer.scrollToIndex(mark.index, { align: 'start' })}
+                  >
+                    {mark.label}
+                  </button>
+                ))}
+              </nav>
             ) : null}
 
             <div ref={listRef} className="k-stream" role="region" aria-label="Roll captures">

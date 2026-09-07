@@ -36,9 +36,19 @@ export default defineConfig({
         name: 'KINO Roll',
         short_name: 'KINO Roll',
         description: 'Guest gallery for a KINO Roll',
-        // Matches the dark-blue site bar and pale blue-grey page.
-        theme_color: '#174e98',
-        background_color: '#e9edf2',
+        // The GUEST shell, which is what an installed KINO Roll opens on
+        // (`start_url: '/'`). These two colours are the install splash and
+        // the task-switcher card, and they were still the old light design's
+        // — so the app flashed pale blue-grey before painting a near-black
+        // page. `--k-ground` from roll.css, both of them: the splash and the
+        // page it becomes are the same surface.
+        //
+        // The per-surface value lives in the page, not here: a manifest has
+        // one theme colour, and `/host` is a light operator page. `index.html`
+        // carries the guest `theme-color` and `routes.tsx` swaps it for the
+        // host's, which is the only place that distinction can be made.
+        theme_color: '#0b0b0c',
+        background_color: '#0b0b0c',
         display: 'standalone',
         // The landing page: an installed app opens on "enter a roll code",
         // not on whatever route it happened to be installed from.
@@ -55,7 +65,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // `woff2` is in the list because the two BIZ UDPGothic subsets are
+        // part of the app SHELL, not content: every line of guest chrome is
+        // set in them. Precached they arrive with the build; left out they
+        // were fetched at runtime, so the first offline paint fell back to
+        // system-ui and the interface changed shape. ~56 kB for both.
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {

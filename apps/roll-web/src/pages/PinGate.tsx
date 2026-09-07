@@ -27,7 +27,7 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
       setError(
         caught instanceof ApiError && caught.code === 'INVALID_PIN'
           ? 'That PIN did not work.'
-          : 'Could not open this Roll. Try again.',
+          : 'Could not open this roll. Try again.',
       );
     } finally {
       setSubmitting(false);
@@ -40,22 +40,26 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
     <main className="k-gate">
       <img className="k-mark" src={kinoRoll} alt="KINO Roll" />
       <p className="k-gate-note">PRIVATE ROLL</p>
-      <h1>This Roll needs a PIN</h1>
+      <h1>This roll needs a PIN</h1>
       <form onSubmit={(event) => void submit(event)}>
         <label htmlFor="roll-pin">PIN</label>
+        {/* `autoComplete` is deliberately off, NOT `one-time-code`: iOS reads
+            that as "an SMS is coming" and offers a code from Messages that
+            has nothing to do with this roll. A roll PIN is printed on a card
+            and typed by hand. */}
         <input
           id="roll-pin"
           name="pin"
           type="password"
           inputMode="numeric"
-          autoComplete="one-time-code"
+          autoComplete="off"
           value={pin}
           onChange={(event) => setPin(event.target.value)}
           required
           autoFocus
         />
         <button type="submit" className="k-save" disabled={submitting}>
-          {submitting ? 'OPENING…' : 'OPEN ROLL'}
+          {submitting ? 'Opening…' : 'Open roll'}
         </button>
       </form>
       {error === '' ? null : <p className="roll-alert" role="alert">{error}</p>}

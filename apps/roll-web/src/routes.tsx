@@ -85,6 +85,13 @@ export function AppRoutes() {
   // styles never have to out-specify each other.
   useEffect(() => {
     document.body.dataset.surface = surface;
+    // ...and the browser's own chrome with it. A manifest has one theme
+    // colour and this app has two surfaces: `--k-ground` for the near-black
+    // guest browser, the site header blue for the light `/host` page. One
+    // black value for both would paint a black status bar over a pale
+    // operator page.
+    const tag = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (tag !== null) tag.content = surface === 'host' ? '#174e98' : '#0b0b0c';
   }, [surface]);
 
   switch (route.name) {

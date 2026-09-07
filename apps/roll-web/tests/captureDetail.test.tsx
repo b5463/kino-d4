@@ -446,7 +446,14 @@ describe('CaptureDetail on a phone', () => {
     expect(wrap.style.getPropertyValue('--quad-ratio')).toBe('1.3333');
   });
 
-  it('paints every quad frame from its ORIGINAL at the frame ratio, never from the thumb', async () => {
+  /**
+   * The instructed fix for the quad's ~770 kB was to draw the strip and the
+   * overview from the capture's `thumb`. It was implemented, looked at, and
+   * reverted: every derived asset carries `frameIndex: null`, so the four
+   * cells all showed the SAME camera under four different captions. The
+   * cheap copy is only used where it genuinely is the frame.
+   */
+  it('keeps a distinct ORIGINAL in every quad cell, at the frame ratio', async () => {
     await render(withDerivatives(capture('quad', 4)));
     const images = [...container.querySelectorAll<HTMLImageElement>('.photo-figure img')];
     expect(images.map((img) => img.getAttribute('src'))).toEqual([
@@ -459,9 +466,41 @@ describe('CaptureDetail on a phone', () => {
       expect(img.style.aspectRatio).toBe('1600 / 1200');
       expect(img.getAttribute('width')).toBe('1600');
       expect(img.getAttribute('height')).toBe('1200');
+      // Behind the hero, and boxed before the bytes land.
+      expect(img.getAttribute('loading')).toBe('lazy');
+      expect(img.getAttribute('fetchpriority')).toBe('low');
     }
     expect([...container.querySelectorAll('figcaption')].map((c) => c.textContent)).toEqual(['CAM 1', 'CAM 2', 'CAM 3', 'CAM 4']);
-    expect(container.querySelector('img[src*="asset_thumb"]')).toBeNull();
+    expect(container.querySelector('.photo-figure img[src*="asset_thumb"]')).toBeNull();
+  });
+
+  it('boxes every strip cell before its bytes arrive, and never blocks the hero', async () => {
+    await render(withDerivatives(capture('quad', 4)));
+    const strip = [...container.querySelectorAll<HTMLImageElement>('.frame-thumb img')];
+    expect(strip.map((img) => img.getAttribute('src'))).toEqual([
+      '/api/assets/asset_1/content',
+      '/api/assets/asset_2/content',
+      '/api/assets/asset_3/content',
+      '/api/assets/asset_4/content',
+    ]);
+    for (const img of strip) {
+      expect(img.style.aspectRatio).toBe('1 / 1');
+      expect(img.getAttribute('loading')).toBe('lazy');
+      expect(img.getAttribute('fetchpriority')).toBe('low');
+    }
+  });
+
+  it('uses the cheap copy where it IS the frame: a single-frame capture', async () => {
+    // One frame, so the capture's own thumb depicts it exactly. Nothing is
+    // being chosen between and 9 kB does the job of 190.
+    const view = withDerivatives(capture('single', 1));
+    view.mode = 'wiggle';
+    view.frameCount = 1;
+    await render(view);
+    // The hero still never takes a thumb; only the sheet-sized copies may.
+    expect(container.querySelector<HTMLImageElement>('.k-hero img')?.getAttribute('src')).toBe(
+      '/api/assets/asset_still/content',
+    );
   });
 
   it('shows a single capture from the kino-still, and from the original when there is none — never the thumb', async () => {
@@ -541,6 +580,97 @@ describe('CaptureDetail on a phone', () => {
       expect(rule('.photo-look')).toContain('display: block');
       expect(css).not.toMatch(/\.photo-look\s*\{[^}]*position: absolute/);
     });
+  });
+});
+
+describe('the Save sheet as a dialog', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  async function openSheet(): Promise<HTMLButtonElement> {
+    const view = capture('quad', 4);
+    view.assets = [
+      ...view.assets,
+      { role: 'kino-still', assetId: 'asset_still', frameIndex: null, mime: 'image/webp', bytes: 9, width: 1280, height: 960 },
+    ];
+    await act(async () => {
+      root.render(<CaptureDetail slug="party" capture={view} roll={roll()} api={api()} />);
+    });
+    const save = container.querySelector<HTMLButtonElement>('.k-acts .k-save');
+    if (save === null) throw new Error('no Save button');
+    save.focus();
+    await act(async () => save.click());
+    return save;
+  }
+
+  /**
+   * It already claimed `role="dialog" aria-modal="true"` and delivered none
+   * of it: focus stayed on the button behind, Escape did nothing, and the
+   * page it covered was still in the tab order.
+   */
+  it('moves focus into the sheet on open and back out on close', async () => {
+    const save = await openSheet();
+    expect(container.querySelector('.k-sheet')).not.toBeNull();
+
+    // Focus is inside the tray, and not on the veil — landing on "Close" is
+    // not what opening a save sheet means.
+    const focused = document.activeElement as HTMLElement | null;
+    expect(focused?.closest('.k-tray')).not.toBeNull();
+    expect(focused?.classList.contains('k-veil')).toBe(false);
+
+    const cancel = container.querySelector<HTMLButtonElement>('.k-cancel');
+    await act(async () => cancel?.click());
+    expect(container.querySelector('.k-sheet')).toBeNull();
+    expect(document.activeElement).toBe(save);
+  });
+
+  it('closes on Escape', async () => {
+    const save = await openSheet();
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(container.querySelector('.k-sheet')).toBeNull();
+    expect(document.activeElement).toBe(save);
+  });
+
+  it('makes the page behind inert while it is open, and not after', async () => {
+    await openSheet();
+    const article = container.querySelector('.photo-page');
+    const behind = [...(article?.children ?? [])].filter((child) => !child.classList.contains('k-sheet'));
+    expect(behind.length).toBeGreaterThan(2);
+    // Every sibling of the sheet, including the plate carrying Save itself.
+    expect(behind.every((child) => child.hasAttribute('inert'))).toBe(true);
+    expect(container.querySelector('.k-sheet')?.hasAttribute('inert')).toBe(false);
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.k-veil')?.click());
+    expect(behind.some((child) => child.hasAttribute('inert'))).toBe(false);
+  });
+
+  it('wraps Tab at the ends of its own list', async () => {
+    await openSheet();
+    const inSheet = [...container.querySelectorAll<HTMLElement>('.k-sheet a[href], .k-sheet button:not([disabled])')];
+    const last = inSheet[inSheet.length - 1];
+    last?.focus();
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    });
+    expect(document.activeElement).toBe(inSheet[0]);
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+    });
+    expect(document.activeElement).toBe(last);
   });
 });
 

@@ -48,6 +48,9 @@ const updateServiceWorker = registerSW({
 
     const line = document.createElement('span');
     line.textContent = 'A newer version of this page is ready.';
+    // "Later" used to be `--k-dim` on the plate: 1.84:1, a control a guest
+    // could see was there and could not read. It is a real button and takes
+    // the plate's real ink; the stylesheet gives it the recessed key.
 
     const reload = document.createElement('button');
     reload.type = 'button';

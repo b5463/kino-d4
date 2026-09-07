@@ -135,6 +135,88 @@ If it does not return:
 
 Firmware rollback is not implemented in the current KDP command surface. Recovery uses the board bootloader and a known build until that contract exists.
 
+## Roll: photographs are not appearing
+
+Walk this in order. Each step rules something out, so do not skip one because the next looks more likely. Steps 1 and 2 need no terminal.
+
+### Step 1 — read the camera's ROLL screen
+
+The connection word first. It is the only place that separates a network fault from a server fault.
+
+| Word on the screen | What it means | What it rules out | Do this |
+|---|---|---|---|
+| **ONLINE** | Wi-Fi is up and the server answered the last request. | The whole network path. The fault is further in — go to step 2. | Go to step 2. |
+| **OFFLINE** | The camera has no network. | The server. Nothing is wrong on the server side that this camera can see. | Venue Wi-Fi, range, router. Photographs are on the card and go when Wi-Fi returns. |
+| **KINO NOT ANSWERING** | Wi-Fi is up; the server did not answer. | The camera's Wi-Fi. Do not go looking at the access point. | The stack, the tunnel or relay, the internet between them. Go to step 4. |
+| **UPLOAD PAUSED** | The queue halted itself: credentials or roll association were refused (HTTP 401 or 403). | A transient fault. It will not clear on its own. | Check the device token and the roll association in Studio. The camera says "Check the roll in Studio." |
+
+Then the three lines under the card count:
+
+- **"COUNTING THE CARD"** — the camera has not finished reading the card since boot. It does not yet know what it owes. Wait for it to settle before believing any count. A zero seen here is not a zero.
+- **"N waiting to upload" / "Saved safely on camera"** — the photographs exist on the SD card. They are not lost. The camera has no way to send them right now; the connection word above says why.
+- **"N waiting to upload"** with a bar — uploads are moving. If N falls, the system is working and the answer is patience.
+- **"All uploaded" / "Last upload Ns ago"** — the camera owes the server nothing. The photographs are on the server. Whatever is wrong is on the server side or in the guest's browser. Go to step 3.
+
+Logs at this step: the camera's own log, `GET_LOGS` over KDP from Studio with the camera on USB-C. The upload queue's decisions are in `firmware/p4/main/upload_queue.c` and `roll_queue.c`.
+
+### Step 2 — read the dashboard's camera panel
+
+Open the host dashboard with the host link. The camera panel shows each joined camera, when it was last heard from, and what it still owes.
+
+- **The camera is listed and recently seen, queue empty** — the camera and the server agree. Go to step 3.
+- **The camera is listed and recently seen, queue not empty** — uploads are in flight. Compare with the camera's own count; the camera is the one that is ahead.
+- **Never heard from** — the camera joined but has never sent a heartbeat. Either it has not been on the network since joining, or it runs firmware older than the heartbeat. That is not proof the camera is broken; go back to step 1.
+- **Last seen minutes ago and not moving, while the camera says ONLINE** — the two disagree. Trust the camera about the camera; treat this as a server-side fault and go to step 4.
+
+The panel is fed by `POST /api/device/rolls/:rollId/heartbeat`. A camera that does not send it leaves those columns null; the panel says "never heard from" rather than inventing a zero.
+
+Logs at this step: `deploy.ps1 logs -Service api`, or `docker compose --env-file infra/.env.production -f infra/docker-compose.prod.yml logs api`.
+
+### Step 3 — do captures appear, and do they stay PENDING?
+
+Look at the host capture list. A capture that reached the server appears there, with a status.
+
+A capture moves `created → preview-ready → originals-uploading → complete → processing → ready`. Two of those are worth watching:
+
+- **The capture is not in the list at all.** The server never received it. That is the camera or the network — go back to step 1.
+- **The capture is in the list and settles to `ready` within a minute or two.** Working. If a guest still cannot see it, check that it is not hidden or trashed, and that the guest is on the right roll code.
+- **The capture is stuck pending for more than five minutes** — that is the worker, not the camera. The bytes are on the server; nothing is rendering them. Go to step 4 and read the worker's log, not the API's.
+
+Five minutes is the number because the worker's sweeper runs every five minutes (`SWEEP_INTERVAL_MS`, `apps/worker/src/sweeper.ts`) and re-adds any job whose row is older than two minutes and whose queue entry is missing. Anything the sweeper can fix is fixed inside one sweep. Something still stuck after two sweeps is not a lost job.
+
+Logs at this step: `deploy.ps1 logs -Service worker`.
+
+### Step 4 — `GET /api/healthz`
+
+```sh
+curl -sS https://<host>/api/healthz
+```
+
+`200` with `{"ok":true,"db":true,"redis":true,"storage":true}` means all three dependencies answered. `503` names which one did not:
+
+| False | What is down | Symptom upstream |
+|---|---|---|
+| `db` | PostgreSQL | Nothing works. Captures do not even get created. |
+| `redis` | Redis | The queue is down, so captures stall in `processing`; the guest live feed stops updating and the dashboard reports 0 guests. |
+| `storage` | MinIO, or the `kino-media` bucket is missing | Asset init and part uploads fail. The camera sees 5xx and retries. |
+
+No answer at all, from outside the LAN, with the camera saying **KINO NOT ANSWERING**: the stack is down, the PC is asleep, or the tunnel/relay is not connected. See the tunnel section of [`infra/README.md`](../infra/README.md).
+
+Logs at this step: `deploy.ps1 logs -Service api`, then `-Service worker`, then `-Service proxy`. Container names are `api`, `worker`, `proxy`, `web`, `postgres`, `redis`, `object-storage`.
+
+### The case the audit found: a capture stuck in `processing`
+
+Symptom: every asset of a capture is present and `ready`, and the capture itself sits at `processing` and never settles.
+
+Two separate mechanisms produced this, and both are addressed:
+
+1. **A status column nobody refreshed.** The stored status is a cache. A render enqueued lazily from a guest or host route did not recompute it, so the row stayed at `processing` after the work finished. Fixed in the API on 2026-09-05: status converges on read (`convergeCaptureStatus`, `apps/api/src/uploads/uploads.ts`).
+2. **A `queued` row whose BullMQ job was never added.** The API commits the job row before adding the job and swallows a failed add, on purpose — a 500 there would tell a camera its capture did not complete when it did. The row then pins the capture in `processing` for good. The worker's sweeper is the other half (audit API-14).
+
+**What the operator does now:** re-read the capture. `GET /api/host/captures/:captureId` recomputes and returns the settled status — one read is the whole fix for case 1. **(The route is from this branch's change contract and was not read back out of `apps/api/src/routes/host-captures.ts` at the time of writing; `GET /api/device/captures/:captureId/status` does the same convergence and is verified.)**
+
+If it is still `processing` after that read, it is case 2 and the sweeper owns it: wait one sweep (five minutes) and read again. If it is still stuck after two sweeps, the job is failing rather than missing — read `deploy.ps1 logs -Service worker` for that `jobKey` before doing anything else. There is no operator command that forces a re-render; the sweeper is the only automatic recovery, and re-running the capture-complete call from the camera is a no-op because the row is what makes it one.
+
 ## API tests fail immediately
 
 Start and migrate the local services:

@@ -191,7 +191,7 @@ Verify from outside the LAN: `https://kino.acronym.sk/` is the Roll PWA,
 | Data survives container restart and rebuilds | named volumes `pgdata`, `miniodata`, `caddy_data`, `caddy_config` | in the compose file |
 | The PC does not sleep | `powercfg /change standby-timeout-ac 0` and `powercfg /change hibernate-timeout-ac 0`; keep the machine on mains | operator setting |
 | Windows sign-in is not required | Docker Desktop runs in the user session: after a reboot the stack is down until someone signs in, unless auto-logon is configured. Documented limitation | operator decision |
-| Backups of both stores | `infra/scripts/backup.sh` on a schedule (Postgres dump + mirror of both buckets); `deploy.ps1 backup` is Postgres only and protects no photograph | not scheduled yet |
+| Backups of both stores | `infra/scripts/backup.sh` on a schedule (Postgres dump + mirror of both buckets); `deploy.ps1 backup` is Postgres only and protects no photograph | registered as a daily Scheduled Task by the helper next to `deploy.ps1`; see "Scheduling the backup on the Windows host" |
 
 ### Availability, stated plainly
 
@@ -232,6 +232,7 @@ setting to invent.
 | Stale multipart uploads | compose `object-storage` env | `MINIO_API_STALE_UPLOADS_EXPIRY=24h`, `MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL=6h` |
 | Device registration | compose | `DEVICE_REGISTRATION_MODE=first-write-wins` |
 | Backup scheduled | see below | `infra/scripts/backup.sh` on a timer, `BACKUP_ROOT` on another machine |
+| Restore proven | `docs/runbooks/restore.md` drill log | one recorded drill against a snapshot from this deployment, less than 30 days old |
 
 ### What the backups cover
 
@@ -242,11 +243,93 @@ setting to invent.
   mirror` of both buckets into one dated snapshot with `SHA256SUMS`, and
   `infra/scripts/restore-drill.sh` proves a snapshot restores. Both are POSIX
   shell. On the Windows deployment host they have to run inside a container
-  (`docker compose run --rm` with the compose network) from a scheduled task;
-  nothing in `deploy.ps1` does that today. Until it is scheduled, **there is
-  no backup of original photographs on the Windows host.**
+  (`docker compose run --rm` with the compose network) from a scheduled task —
+  which is what the helper described under "Scheduling the backup on the
+  Windows host" below registers. Until that task exists and has produced a
+  snapshot, **there is no backup of original photographs on the Windows host.**
 - Database rows and objects are one recovery point; never restore a newer
   database over an older media snapshot (see the restore runbook).
+
+### Scheduling the backup on the Windows host
+
+A PowerShell helper alongside `infra/deploy.ps1` registers a **daily Windows
+Scheduled Task** that runs `infra/scripts/backup.sh` inside a container on the
+Compose network, so the POSIX script works on a host that has no shell for it.
+It is the only thing that makes the sentence above — no backup of original
+photographs on the Windows host — stop being true. **(The helper's exact filename, parameters and
+task name were not in the tree at the time of writing; treat the names here as
+unverified and read the script itself before relying on them.)**
+
+Whatever the helper is called, the job it registers must satisfy all of the
+following, and the point of writing them down is that a job that satisfies only
+the first is worse than no job, because it looks like a backup:
+
+| Requirement | Why |
+|---|---|
+| One job covers PostgreSQL **and** both buckets | A `pg_dump` alone protects no photograph. Originals, thumbnails and renders are objects in MinIO; the database holds only the rows that point at them. `deploy.ps1 backup` is `pg_dump` only and is not a backup of the party. |
+| Database and objects captured in the **same** run | Rows and objects are one recovery point. Two jobs on two schedules drift, and a restore then puts a newer database over an older media snapshot — asset rows pointing at objects that do not exist. `backup.sh` writes both into one dated snapshot with `SHA256SUMS` for this reason. |
+| `BACKUP_ROOT` is an absolute path on **another machine** | A snapshot on the same disk as `pgdata` and `miniodata` survives nothing that matters. The script refuses a blank, relative or root target; it cannot refuse a target that is merely on the wrong drive. |
+| The task runs whether or not anyone is signed in | Docker Desktop runs in the user session, so a task configured "run only when user is logged on" silently does nothing on a rebooted, unattended PC — the same limitation the availability table above records for the stack itself. |
+| The run's exit status is checked | A run is successful only when it prints `backup complete`. Alert when no new daily directory appears for 26 hours, a snapshot checksum fails, or free space falls below 20% (thresholds from the restore runbook). |
+
+Retention is the script's, not the task's: `backup.sh` prunes daily snapshots
+after 14 and weekly after 8. Do not add a second retention policy in the
+scheduled task.
+
+### Restore rehearsal cadence
+
+A backup that has never been restored is a hypothesis.
+
+- **Every 30 days**, run `infra/scripts/restore-drill.sh` against the most
+  recent daily snapshot. The restore runbook alerts when the last successful
+  drill is older than 30 days; this is that alert's other half.
+- **Before any migration to a new host**, and **after any change** to
+  `backup.sh`, `restore-drill.sh`, the schema, or the bucket layout.
+- The drill never touches production: it builds a uniquely named Compose
+  project with scratch volumes, verifies the manifest, restores both stores,
+  and asserts orphan-free asset rows plus SHA-256 on every `ready` asset.
+- **Record each real run** in the log at the end of
+  [`docs/runbooks/restore.md`](../docs/runbooks/restore.md), with the exact
+  snapshot directory and the final output line. A script review, a syntax
+  check, or "it looked fine" is not a drill and does not reset the 30 days.
+
+## What a fresh deployment does, in order
+
+One list, so a first `up` on a new host is not a search through three sections.
+Each step must finish before the next means anything.
+
+1. **`deploy.ps1 init`** writes `infra/.env.production` and replaces every
+   `change-me` with a generated secret, keeping repeated tokens identical so
+   `DATABASE_URL` and `REDIS_URL` stay consistent with the passwords.
+2. **Edit `.env.production` by hand** for the values no generator can know:
+   `KINO_SITE_ADDRESS`, `PUBLIC_BASE_URL`, `PROVISIONING_TOKEN`, and the tunnel
+   or relay credential if one is used.
+3. **`deploy.ps1 check`** — Docker present, no placeholder left, `compose
+   config --quiet` interpolates.
+4. **Walk the pre-deploy checklist above.** It is a list of checks, not
+   settings to invent.
+5. **`deploy.ps1 up`** builds the images and starts the stack.
+6. **The `migrate` container runs to completion first.** The API and worker
+   wait on `service_completed_successfully`, so a failed migration leaves the
+   application stopped rather than booting against a partial schema.
+7. **`createbucket` creates `kino-media` and the firmware bucket.** Storage
+   health is false until it has.
+8. **API and worker start**, sharing `JOB_QUEUE_PREFIX`. The same value in both
+   or the worker consumes a queue nobody writes to.
+9. **Caddy obtains a certificate** for the site address, over ACME — directly
+   if the host is reachable on 80/443, or on the relay VPS if the PC is behind
+   carrier NAT (see the measured section above). Only Caddy publishes host
+   ports; PostgreSQL, Redis, MinIO, the API, the worker and the web service
+   stay on the private Compose network.
+10. **Verify from outside the LAN**: `https://<host>/api/healthz` returns 200
+    with `db`, `redis` and `storage` true, `/` is the Roll PWA, `/studio/` is
+    Studio, and nothing on the PC listens on 80/443 when a tunnel or relay is
+    in use.
+11. **Register the camera** from Studio over USB-C, using `PROVISIONING_TOKEN`.
+    Production is `first-write-wins`, so this happens once per serial.
+12. **Schedule the backup**, then **run the restore drill once** against its
+    first snapshot. The deployment is not finished until a snapshot has been
+    restored; until then there is a stack, not a recovery point.
 
 ## Backups and observability
 

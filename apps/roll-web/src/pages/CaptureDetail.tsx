@@ -26,7 +26,7 @@ export interface CaptureDetailProps {
  * A sparse capture (cameras 1, 3, 4) lists three assets with frameIndex 1, 3, 4;
  * the frame's place in this list is its playhead slot, its frameIndex its name.
  */
-function assetsByRole(capture: CaptureDetailView, role: string): CaptureAssetDetail[] {
+function assetsByRole(capture: Pick<CaptureDetailView, 'assets'>, role: string): CaptureAssetDetail[] {
   return capture.assets
     .filter((asset) => asset.role === role)
     .sort((left, right) => (left.frameIndex ?? 0) - (right.frameIndex ?? 0));
@@ -61,6 +61,46 @@ export function heroStill(capture: CaptureDetailView): CaptureAssetDetail | unde
   if (processed !== undefined) return processed;
   const originals = assetsByRole(capture, 'original-frame');
   return originals[Math.floor(originals.length / 2)] ?? originals[0];
+}
+
+/**
+ * The cheapest asset that depicts a given FRAME.
+ *
+ * ## Why this is not simply "the thumb"
+ *
+ * A quad's 97 px strip and its 2x2 overview draw four `original-frame`
+ * assets — four full 1600x1200 JPEGs, ~770 kB, for eight boxes none of which
+ * is wider than 195 CSS px. On venue Wi-Fi with fifty phones that is the
+ * dominant traffic, and swapping in the capture's `thumb` (9 kB) or its
+ * `kino-still` (100 kB) would remove nearly all of it.
+ *
+ * It was tried, and it is wrong. Every derived asset carries
+ * `frameIndex: null` (`worker/src/jobs/derive.ts`), because the worker builds
+ * ONE derivative per capture from ONE camera (`stillSource` in
+ * `worker/src/jobs/capture.ts`). There is no per-camera thumbnail. So the
+ * substitution paints the same picture in all four cells: on the bench roll
+ * CAM 1 through CAM 4 are visibly different views, and a strip whose whole
+ * job is "pick a camera by what it saw" became four copies of camera 3 with
+ * different captions. That is not a cheaper strip, it is a wrong one.
+ *
+ * So this returns a derivative only when the derivative genuinely IS that
+ * frame — a single-frame capture — and the original otherwise. The bytes
+ * that remain are the price of showing four different photographs, and the
+ * fix for them is a per-frame `thumb` from the worker (a `frame_index` on the
+ * thumbnail job), not a client-side substitution. What the client CAN do is
+ * make sure the hero paints first and the sheet-sized copies arrive behind
+ * it, which is what `sheetImage` does.
+ */
+export function frameSource(
+  capture: Pick<CaptureDetailView, 'assets' | 'frameCount'>,
+  frame: CaptureAssetDetail,
+): CaptureAssetDetail {
+  if (capture.frameCount >= 2) return frame;
+  for (const role of ['thumb', 'kino-still']) {
+    const asset = capture.assets.find((candidate) => candidate.role === role);
+    if (asset !== undefined) return asset;
+  }
+  return frame;
 }
 
 /** `1600 / 1200` from the asset row, or null when the worker did not record a size. */
@@ -158,6 +198,44 @@ function assetImage(asset: CaptureAssetDetail, api: RollApi, alt = '') {
   );
 }
 
+/**
+ * A contact-sheet-sized picture: the small derivative's bytes drawn at the
+ * frame's own shape.
+ *
+ * `aspectRatio` comes from whichever of the two rows recorded a size, so the
+ * box is the right shape before any bytes arrive and nothing reflows when
+ * they do. `width`/`height` are the intrinsic size of the FILE being fetched
+ * — they have to describe the bytes, not the frame, or the browser's own
+ * ratio would disagree with the CSS one.
+ */
+function sheetImage(
+  source: CaptureAssetDetail,
+  frame: { width: number | null; height: number | null },
+  api: RollApi,
+  alt: string,
+  aspectFallback: string,
+) {
+  const aspect = aspectOf(frame) ?? aspectOf(source) ?? aspectFallback;
+  return (
+    <SafeImage
+      src={api.assetUrl(source.assetId)}
+      alt={alt}
+      className="photo-img"
+      // The intrinsic size of the FILE, plus the ratio of the frame, so the
+      // box is right before the bytes land and nothing reflows when they do.
+      width={source.width ?? undefined}
+      height={source.height ?? undefined}
+      // Behind the hero. These are contact-sheet copies of pictures the guest
+      // has not asked to look at yet; the one they ARE looking at must not
+      // queue behind them on a party uplink.
+      loading="lazy"
+      decoding="async"
+      fetchPriority="low"
+      style={{ aspectRatio: aspect }}
+    />
+  );
+}
+
 /** Mode-aware capture presentation, separated from loading so it is acceptance-testable. */
 export function CaptureDetail({
   slug,
@@ -181,8 +259,74 @@ export function CaptureDetail({
     ),
   );
   const heroRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
 
   useEffect(() => setCapture(initialCapture), [initialCapture]);
+
+  /**
+   * The Save sheet is a modal, so it has to behave like one.
+   *
+   * It carried `role="dialog" aria-modal="true"` and none of what those two
+   * attributes promise: focus stayed on the Save button behind it, Escape did
+   * nothing, and a screen reader or a keyboard walked straight past the sheet
+   * into a page it was covering. All three are the same fix.
+   *
+   * `inert` on the page behind is what makes "the background is not there"
+   * true for the tab order, the pointer AND the accessibility tree at once —
+   * a hand-rolled tab trap only ever covers the first. The sheet is a child
+   * of the article, so the article cannot be the inert element; its two
+   * children that are NOT the sheet are marked instead.
+   */
+  useEffect(() => {
+    if (!saving) return;
+    const previouslyFocused = document.activeElement;
+    const sheet = sheetRef.current;
+    const article = articleRef.current;
+
+    const behind =
+      article === null
+        ? []
+        : [...article.children].filter((child): child is HTMLElement => child instanceof HTMLElement && !child.classList.contains('k-sheet'));
+    for (const element of behind) element.setAttribute('inert', '');
+
+    const focusables = (): HTMLElement[] =>
+      sheet === null
+        ? []
+        : [...sheet.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')];
+
+    // The first ACTION, not the veil: the veil is a close target that happens
+    // to be first in the DOM, and landing on "Close" is not what opening a
+    // save sheet means.
+    const first = focusables().filter((element) => !element.classList.contains('k-veil'))[0];
+    first?.focus();
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSaving(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      // `inert` already keeps the background out of the tab order; this only
+      // wraps the ends of the sheet's own list so focus cannot reach the
+      // browser chrome and never come back.
+      const inSheet = focusables();
+      if (inSheet.length === 0) return;
+      const edge = event.shiftKey ? inSheet[0] : inSheet[inSheet.length - 1];
+      if (document.activeElement === edge) {
+        event.preventDefault();
+        (event.shiftKey ? inSheet[inSheet.length - 1] : inSheet[0])?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      for (const element of behind) element.removeAttribute('inert');
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [saving]);
 
   const originals = useMemo(() => assetsByRole(capture, 'original-frame'), [capture.assets]);
   const still = heroStill(capture);
@@ -382,7 +526,7 @@ export function CaptureDetail({
                 aria-label={`Show ${cameraLabel(asset, index)} large`}
                 onClick={() => setFrame(index)}
               >
-                {assetImage(asset, api, `${cameraLabel(asset, index)} frame`)}
+{sheetImage(frameSource(capture, asset), asset, api, `${cameraLabel(asset, index)} frame`, '4 / 3')}
               </button>
               <figcaption>{cameraLabel(asset, index)}</figcaption>
             </figure>
@@ -434,7 +578,7 @@ export function CaptureDetail({
     savablePhoto === undefined ? null : api.assetUrl(savablePhoto.assetId, { download: true });
 
   return (
-    <article className="photo-page">
+    <article className="photo-page" ref={articleRef}>
       <h1 className="k-sr">{`${roll.title} — capture from ${clockOf(capture.capturedAt)}`}</h1>
 
       <div
@@ -463,7 +607,18 @@ export function CaptureDetail({
                 aria-label={`${cameraLabel(asset, index)} frame`}
                 onClick={() => setFrame(frame === index ? null : index)}
               >
-                <SafeImage src={api.assetUrl(asset.assetId)} alt="" />
+{/* A 97 px cell of a picture the guest has not opened. Square by
+                    CSS; `aspect-ratio` here too so the row has its height
+                    before any bytes arrive. Low priority and lazy: the hero
+                    is the picture being looked at and goes first. */}
+                <SafeImage
+                  src={api.assetUrl(frameSource(capture, asset).assetId)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  fetchPriority="low"
+                  style={{ aspectRatio: '1 / 1' }}
+                />
                 <span aria-hidden="true">{cameraLabel(asset, index)}</span>
               </button>
             ))}
@@ -512,7 +667,7 @@ export function CaptureDetail({
           second box competing with "Save photo"; they are formats of the same
           decision, so they belong behind the same control. */}
       {saving ? (
-        <div className="k-sheet" role="dialog" aria-modal="true" aria-label="Save">
+        <div className="k-sheet" role="dialog" aria-modal="true" aria-label="Save" ref={sheetRef}>
           <button type="button" className="k-veil" aria-label="Close" onClick={() => setSaving(false)} />
           <menu className="k-tray">
             <li><div className="k-grip" aria-hidden="true" /><p className="k-tray-head">Save · goes to your photos</p></li>

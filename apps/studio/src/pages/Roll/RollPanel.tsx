@@ -5,7 +5,78 @@ import { Led } from '../../components/Led';
 import { FieldRow, ToggleField } from '../../components/fields';
 import type { RollView } from '../../roll/rollTypes';
 import type { StartRollOptions } from '../../roll/rollOps';
-import type { RollLinkOrigin } from '../../state/rollLinks';
+import type { CreatedRoll, RollLinkOrigin } from '../../state/rollLinks';
+
+/**
+ * Copy a host link to the clipboard.
+ *
+ * The Roll server mints the host token once and cannot re-issue it. Studio is
+ * the machine that saw it first, so it is the machine that can hand the
+ * operator a second copy — before the dashboard tab that holds the only other
+ * one is closed.
+ */
+function CopyLink({ url, label = 'COPY HOST LINK' }: { url: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      size="sm"
+      onClick={() => {
+        void navigator.clipboard
+          .writeText(url)
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false));
+      }}
+    >
+      {copied ? 'COPIED' : label}
+    </Button>
+  );
+}
+
+/** Every Roll this machine started, with the host link that came back. */
+function CreatedRolls({
+  rolls,
+  onForget,
+}: {
+  rolls: CreatedRoll[];
+  onForget?: (deviceRollId: string) => void;
+}) {
+  if (rolls.length === 0) return null;
+  return (
+    <details className="rolls-created">
+      <summary>Rolls started on this machine ({rolls.length})</summary>
+      <p className="field-hint">
+        The host link cannot be re-issued. This list is the spare copy — it is kept in this browser
+        only, and anyone with the link is the host.
+      </p>
+      <ul className="rolls-created-list">
+        {rolls.map((roll) => (
+          <li key={roll.deviceRollId}>
+            <div className="rolls-created-head">
+              <strong>{roll.title}</strong> <code>{roll.slug}</code>
+            </div>
+            <div className="rolls-created-actions">
+              {roll.hostUrl ? (
+                <>
+                  <a className="btn btn--sm" href={roll.hostUrl} target="_blank" rel="noreferrer noopener">
+                    OPEN
+                  </a>
+                  <CopyLink url={roll.hostUrl} />
+                </>
+              ) : (
+                <span className="field-hint">Camera-only Roll — no host dashboard.</span>
+              )}
+              {onForget ? (
+                <Button size="sm" variant="danger" onClick={() => onForget(roll.deviceRollId)}>
+                  FORGET
+                </Button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 /**
  * Roll lifecycle (02 §17, terminology per 01 §10). The camera is the source of
@@ -67,7 +138,8 @@ function StartForm({
   const [pin, setPin] = useState('');
   const [downloadsEnabled, setDownloadsEnabled] = useState(true);
 
-  const canStart = title.trim().length > 0 && !busy;
+  const pinTooShort = pin.length > 0 && pin.length < 4;
+  const canStart = title.trim().length > 0 && !pinTooShort && !busy;
 
   const submit = () => {
     if (!canStart) return;
@@ -92,18 +164,29 @@ function StartForm({
           onChange={(e) => setTitle(e.target.value)}
         />
       </FieldRow>
-      <FieldRow label="GUEST PIN" htmlFor={pinId} hint="Optional. Guests type it once to open the Roll.">
+      {/* The server rejects a PIN shorter than four with a 400, so a 1-3
+          character PIN was a form that looked accepted and then failed. */}
+      <FieldRow
+        label="GUEST PIN"
+        htmlFor={pinId}
+        hint="Optional. At least 4 digits. Guests type it once to open the Roll."
+      >
         <input
           id={pinId}
           type="text"
           className="input"
           value={pin}
+          minLength={4}
           maxLength={12}
           inputMode="numeric"
+          pattern="[0-9]{4,12}"
           disabled={busy}
-          onChange={(e) => setPin(e.target.value)}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))}
         />
       </FieldRow>
+      {pinTooShort ? (
+        <p className="field-hint field-hint--warn">A PIN must be at least 4 digits, or empty.</p>
+      ) : null}
       <ToggleField
         label="GUEST DOWNLOADS"
         checked={downloadsEnabled}
@@ -111,7 +194,12 @@ function StartForm({
         onChange={setDownloadsEnabled}
       />
       <div className="panel-actions">
-        <Button type="submit" variant="primary" busy={busy} disabled={title.trim().length === 0}>
+        <Button
+          type="submit"
+          variant="primary"
+          busy={busy}
+          disabled={title.trim().length === 0 || pinTooShort}
+        >
           Start a Roll
         </Button>
       </div>
@@ -119,34 +207,58 @@ function StartForm({
   );
 }
 
+/**
+ * Roll codes.
+ *
+ * Six characters from a Crockford-style alphabet with the look-alikes taken
+ * out — no 0/O, no 1/I/L, no U. The field used to hint "e.g. amber-001" and
+ * lowercase what was typed before sending it, so it advertised a shape that
+ * does not exist and then mangled the shape that does.
+ */
+export const ROLL_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+export const ROLL_CODE_LENGTH = 6;
+
+/** What the host actually read out, whatever the thumbs did to it. */
+export function normaliseRollCode(raw: string): string {
+  return [...raw.toUpperCase()]
+    .filter((character) => ROLL_CODE_ALPHABET.includes(character))
+    .join('')
+    .slice(0, ROLL_CODE_LENGTH);
+}
+
 function JoinForm({ busy, onJoin }: { busy: boolean; onJoin: (slug: string) => Promise<void> }) {
   const slugId = useId();
   const [slug, setSlug] = useState('');
 
-  const canJoin = slug.trim().length >= 3 && !busy;
+  const canJoin = slug.length === ROLL_CODE_LENGTH && !busy;
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (canJoin) void onJoin(slug.trim().toLowerCase());
+        if (canJoin) void onJoin(slug);
       }}
     >
-      <FieldRow label="ROLL CODE" htmlFor={slugId} hint="The code the host read out, e.g. amber-001.">
+      <FieldRow
+        label="ROLL CODE"
+        htmlFor={slugId}
+        hint="Six characters from the host's screen, e.g. NXVJHK. No O, I, L, U, 0 or 1."
+      >
         <input
           id={slugId}
           type="text"
-          className="input"
+          className="input rollcode"
           value={slug}
-          maxLength={48}
-          autoCapitalize="none"
+          maxLength={ROLL_CODE_LENGTH}
+          autoCapitalize="characters"
+          autoComplete="off"
           spellCheck={false}
           disabled={busy}
-          onChange={(e) => setSlug(e.target.value)}
+          onChange={(e) => setSlug(normaliseRollCode(e.target.value))}
         />
       </FieldRow>
       <div className="panel-actions">
-        <Button type="submit" busy={busy} disabled={slug.trim().length < 3}>
+        <Button type="submit" busy={busy} disabled={slug.length !== ROLL_CODE_LENGTH}>
           Join a Roll
         </Button>
       </div>
@@ -164,6 +276,8 @@ export function RollPanel({
   onStart,
   onJoin,
   onLeave,
+  createdRolls = [],
+  onForgetRoll,
 }: {
   view: RollView | null;
   /** Public URL for guests — the server's if it published one, else the camera's. */
@@ -177,6 +291,9 @@ export function RollPanel({
   onStart: (opts: StartRollOptions) => Promise<void>;
   onJoin: (slug: string) => Promise<void>;
   onLeave: () => Promise<void>;
+  /** Rolls this machine started, kept as the operator's spare host links. */
+  createdRolls?: CreatedRoll[];
+  onForgetRoll?: (deviceRollId: string) => void;
 }) {
   const roll = view?.roll ?? null;
   const active = view?.active === true && roll !== null;
@@ -208,9 +325,14 @@ export function RollPanel({
           {shownGuestUrl ? <GuestQr url={shownGuestUrl} /> : null}
           <div className="panel-actions">
             {hostUrl ? (
-              <a className="btn" href={hostUrl} target="_blank" rel="noreferrer noopener">
-                OPEN HOST DASHBOARD
-              </a>
+              <>
+                <a className="btn" href={hostUrl} target="_blank" rel="noreferrer noopener">
+                  OPEN HOST DASHBOARD
+                </a>
+                {/* Copy it now: the dashboard strips the token from the URL on
+                    arrival and the server will not mint a second one. */}
+                <CopyLink url={hostUrl} />
+              </>
             ) : origin === 'device-only' ? (
               <span className="field-hint">
                 No host dashboard — this Roll exists on the camera only.
@@ -224,12 +346,14 @@ export function RollPanel({
               Leave Roll
             </Button>
           </div>
+          <CreatedRolls rolls={createdRolls} onForget={onForgetRoll} />
         </>
       ) : (
         <>
           <StartForm busy={busy} onStart={onStart} />
           <hr className="roll-sep" />
           <JoinForm busy={busy} onJoin={onJoin} />
+          <CreatedRolls rolls={createdRolls} onForget={onForgetRoll} />
         </>
       )}
     </Panel>

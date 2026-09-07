@@ -1,12 +1,21 @@
+import { shortDate } from '../components/SiteHeader';
+
 export interface RollClosedProps {
   closedAt: string | null;
 }
 
+/**
+ * `toLocaleString()` printed a raw locale timestamp down to the second —
+ * "9/6/2026, 10:14:03 PM" — next to an Info tab and clock marks that write
+ * every other date as `06.09.26`. One formatter, `shortDate`, writes them
+ * all. The seconds were never information a guest wanted: what closing means
+ * is "no more photographs after this day", not which second the host tapped.
+ */
 export function RollClosed({ closedAt }: RollClosedProps) {
-  const date = closedAt === null ? 'date unavailable' : new Date(closedAt).toLocaleString();
+  const date = closedAt === null ? '' : shortDate(closedAt);
   return (
     <aside role="status" className="roll-closed">
-      CLOSED — {date}
+      {date === '' ? 'CLOSED' : `CLOSED — ${date}`}
     </aside>
   );
 }
