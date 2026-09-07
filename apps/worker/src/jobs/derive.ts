@@ -23,8 +23,9 @@ import type { DerivedBody, JobCtx } from './types';
  * 2. **Then the row, as an upsert.** Jobs are retryable (03 §19), so a handler
  *    that already ran must land on the *same* row rather than a second one. The
  *    conflict target is the API's `assets_capture_role_frame` — `NULLS NOT
- *    DISTINCT`, which is what makes it cover derived roles at all, since their
- *    `frame_index` is NULL.
+ *    DISTINCT`, which is what makes it cover a capture-level derivative at all,
+ *    since its `frame_index` is NULL, and what lets a role hold that row *and*
+ *    one per camera at the same time (`DerivedArtifact.frameIndex`).
  * 3. **Then the event.** Announcing a derivative before it is queryable would
  *    send every subscriber to fetch a capture whose asset row is not there yet.
  *
@@ -54,6 +55,36 @@ export interface DerivedArtifact {
   name: string;
   /** The 05 §19 asset role this artifact fills. */
   role: AssetRole;
+  /**
+   * The camera this artifact depicts, when it depicts exactly one.
+   *
+   * Null — the default, and what every derivative was until per-camera tiles —
+   * means "this artifact is the capture's", the one row a feed tile picks. A
+   * number means "this artifact is CAM n's", and it is the same 1-based camera
+   * number the `original-frame` row carries, never a position in an array: a
+   * capture that lost camera 2 writes thumbs at 1, 3, 4.
+   *
+   * The two kinds coexist on one role because `assets_capture_role_frame` is
+   * `NULLS NOT DISTINCT`: NULL collides with NULL, 3 collides with 3, and NULL
+   * does not collide with 3. A handler that emits both therefore lands on
+   * `1 + frames` rows and re-running it lands on the same ones.
+   */
+  frameIndex?: number | null;
+  /**
+   * Whether this artifact gets its own `processing.completed`. Default true.
+   *
+   * The event makes every subscribed guest re-read the whole capture, so a
+   * handler that emits five rows would cost fifty phones five refetches of the
+   * same document — the traffic this per-camera work exists to remove. A
+   * handler emitting a set announces the LAST one and leaves the rest silent:
+   * the refetch that the announcement triggers reads all of them, because it
+   * reads the capture, not the row.
+   *
+   * Only safe within one handler, and only when the announced write is the last
+   * one. A silent artifact with nothing announced after it is a derivative no
+   * live client learns about until it reloads the page.
+   */
+  announce?: boolean;
   mime: string;
   body: DerivedBody;
   /** Pixel dimensions, or null for something that has none — a JSON document. */
@@ -159,6 +190,7 @@ export async function publishDerived(
    * A row that appears between this read and the upsert simply means nothing is
    * superseded as far as this job knows, which is the safe direction to be wrong.
    */
+  const frameIndex = artifact.frameIndex ?? null;
   const [existing] = await ctx.db
     .select({ objectKey: assets.objectKey })
     .from(assets)
@@ -166,7 +198,11 @@ export async function publishDerived(
       and(
         eq(assets.captureId, capture.id),
         eq(assets.role, artifact.role),
-        isNull(assets.frameIndex),
+        // Matched the same way the unique index matches, or the read would find
+        // a sibling: a role now holds a capture-level row AND one per camera,
+        // and `isNull` on a per-frame write reads the capture-level key and
+        // deletes the object underneath the feed tile.
+        frameIndex === null ? isNull(assets.frameIndex) : eq(assets.frameIndex, frameIndex),
       ),
     )
     .limit(1);
@@ -191,9 +227,10 @@ export async function publishDerived(
       id: newId('asset'),
       captureId: capture.id,
       role: artifact.role,
-      // Derived roles have no frame index, and the unique index is NULLS NOT
-      // DISTINCT precisely so that NULL still collides with NULL.
-      frameIndex: null,
+      // NULL for a capture-level derivative, a camera number for one that
+      // depicts a single frame. The unique index is NULLS NOT DISTINCT
+      // precisely so that NULL still collides with NULL.
+      frameIndex,
       mime: artifact.mime,
       width: artifact.width ?? null,
       height: artifact.height ?? null,
@@ -219,11 +256,13 @@ export async function publishDerived(
       },
     });
 
-  await publishRollEvent(ctx.redis, capture.rollId, {
-    type: 'processing.completed',
-    captureId: capture.id,
-    role: artifact.role,
-  });
+  if (artifact.announce !== false) {
+    await publishRollEvent(ctx.redis, capture.rollId, {
+      type: 'processing.completed',
+      captureId: capture.id,
+      role: artifact.role,
+    });
+  }
 
   // After the announcement, not before it: the guest's tile does not wait on
   // housekeeping, and this cannot fail the job in any case.

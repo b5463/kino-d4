@@ -64,40 +64,57 @@ export function heroStill(capture: CaptureDetailView): CaptureAssetDetail | unde
 }
 
 /**
- * The cheapest asset that depicts a given FRAME.
+ * The cheapest asset that depicts a given FRAME — that frame, not the capture.
  *
- * ## Why this is not simply "the thumb"
+ * ## What this is for
  *
- * A quad's 97 px strip and its 2x2 overview draw four `original-frame`
- * assets — four full 1600x1200 JPEGs, ~770 kB, for eight boxes none of which
- * is wider than 195 CSS px. On venue Wi-Fi with fifty phones that is the
- * dominant traffic, and swapping in the capture's `thumb` (9 kB) or its
- * `kino-still` (100 kB) would remove nearly all of it.
+ * The 97 px strip and the 2x2 overview drew four `original-frame` assets: four
+ * full 1600x1200 JPEGs, ~754 kB over four object fetches, for eight boxes none
+ * of which is wider than 195 CSS px. With fifty guests on venue Wi-Fi that was
+ * the dominant traffic on this page.
  *
- * It was tried, and it is wrong. Every derived asset carries
- * `frameIndex: null` (`worker/src/jobs/derive.ts`), because the worker builds
- * ONE derivative per capture from ONE camera (`stillSource` in
- * `worker/src/jobs/capture.ts`). There is no per-camera thumbnail. So the
- * substitution paints the same picture in all four cells: on the bench roll
- * CAM 1 through CAM 4 are visibly different views, and a strip whose whole
- * job is "pick a camera by what it saw" became four copies of camera 3 with
- * different captions. That is not a cheaper strip, it is a wrong one.
+ * The obvious substitution — draw the capture's `thumb` in every cell — was
+ * tried and reverted, correctly. A capture-level derivative is ONE camera's
+ * picture (`stillSource` in `worker/src/jobs/capture.ts`), so it painted the
+ * same view in all four cells: on this roll CAM 1 to CAM 4 are visibly
+ * different, and a strip whose whole job is "pick a camera by what it saw"
+ * became four copies of camera 3 with different captions. Not a cheaper strip,
+ * a wrong one.
  *
- * So this returns a derivative only when the derivative genuinely IS that
- * frame — a single-frame capture — and the original otherwise. The bytes
- * that remain are the price of showing four different photographs, and the
- * fix for them is a per-frame `thumb` from the worker (a `frame_index` on the
- * thumbnail job), not a client-side substitution. What the client CAN do is
- * make sure the hero paints first and the sheet-sized copies arrive behind
- * it, which is what `sheetImage` does.
+ * The worker now writes a `thumb` per camera as well as the capture-level one
+ * (`worker/src/jobs/thumbnail.ts`), each carrying its own `frameIndex`, so
+ * there is finally something per-camera and small to draw. The order below is
+ * the order of increasing bytes for the SAME picture, and nothing in it is
+ * allowed to be a different camera:
+ *
+ *  1. that frame's own `thumb` — 720 px WebP, tens of kB;
+ *  2. that frame's own `kino-still`/`enhanced-still`, if a per-frame one ever
+ *     exists — no worker writes one today, and the lookup costs nothing;
+ *  3. the original.
+ *
+ * A capture-level row is matched only for a SINGLE-frame capture, where "the
+ * capture's picture" and "this frame" are the same photograph. That is what
+ * `frameIndex === null` may not mean on a quad, and the check is the whole
+ * difference between this and the reverted version.
+ *
+ * The hero is deliberately not a caller: it shows the full original (or the
+ * processed still), because that is the picture a guest is actually looking at.
  */
+const FRAME_SOURCE_ROLES = ['thumb', 'enhanced-still', 'kino-still'] as const;
+
 export function frameSource(
   capture: Pick<CaptureDetailView, 'assets' | 'frameCount'>,
   frame: CaptureAssetDetail,
 ): CaptureAssetDetail {
-  if (capture.frameCount >= 2) return frame;
-  for (const role of ['thumb', 'kino-still']) {
-    const asset = capture.assets.find((candidate) => candidate.role === role);
+  const solo = capture.frameCount < 2;
+  for (const role of FRAME_SOURCE_ROLES) {
+    const asset = capture.assets.find(
+      (candidate) =>
+        candidate.role === role &&
+        // This camera's own derivative, or — on a one-frame capture only — the
+        // capture's, which depicts that same single frame.
+        (candidate.frameIndex === frame.frameIndex || (solo && candidate.frameIndex === null)),
+    );
     if (asset !== undefined) return asset;
   }
   return frame;

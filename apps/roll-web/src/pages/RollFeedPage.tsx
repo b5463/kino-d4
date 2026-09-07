@@ -63,9 +63,20 @@ function useColumnCount(): number {
   return columns;
 }
 
+/**
+ * The capture-level asset for the first of these roles that has one.
+ *
+ * `frameIndex === null` is the filter that makes this still mean what it did.
+ * A role used to hold at most one derived row; `thumb` now holds the
+ * capture-level tile AND one per camera (worker `jobs/thumbnail.ts`), so a bare
+ * `find(role === 'thumb')` is "whichever camera the API happened to list
+ * first" — a tile that is one of four views rather than the capture's own.
+ */
 function assetOf(capture: Pick<CaptureView, 'assets'>, roles: readonly string[]) {
   for (const role of roles) {
-    const asset = capture.assets.find((candidate) => candidate.role === role);
+    const asset = capture.assets.find(
+      (candidate) => candidate.role === role && candidate.frameIndex === null,
+    );
     if (asset !== undefined) return asset;
   }
   return undefined;
@@ -121,7 +132,12 @@ export function tileSources(
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
   if (poster === undefined) return undefined;
   const candidates = ['thumb', 'kino-still', 'enhanced-still']
-    .flatMap((role) => capture.assets.filter((asset) => asset.role === role))
+    .flatMap((role) =>
+      // Capture-level rows only. A per-camera `thumb` is 720 px too, so it
+      // would collide with the capture's own in the width map below and the
+      // browser would pick one camera's frame for the whole tile.
+      capture.assets.filter((asset) => asset.role === role && asset.frameIndex === null),
+    )
     .filter((asset) => asset.width !== null && asset.width > 0);
   const widths = new Map<number, string>();
   for (const asset of candidates) widths.set(asset.width ?? 0, asset.assetId);
@@ -139,7 +155,9 @@ export function tileSources(
   // second one would have taken the branch above.
   if (poster.width === null && dpr >= TILE_STILL_DPR) {
     const still = ['kino-still', 'enhanced-still']
-      .flatMap((role) => capture.assets.filter((asset) => asset.role === role))
+      .flatMap((role) =>
+        capture.assets.filter((asset) => asset.role === role && asset.frameIndex === null),
+      )
       .find((asset) => asset.width !== null && asset.width > 0);
     if (still !== undefined) return { src: assetUrl(still.assetId) };
   }

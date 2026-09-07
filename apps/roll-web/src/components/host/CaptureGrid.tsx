@@ -45,13 +45,18 @@ export function matchesFilter(capture: HostCaptureView, filter: CaptureFilter): 
   }
 }
 
+/**
+ * The tile's picture: the capture's own derivative, not one camera's.
+ *
+ * `frameIndex === null` is what keeps that true. `thumb` now holds a
+ * capture-level tile AND one per camera (worker `jobs/thumbnail.ts`), so a bare
+ * role match would put a single camera's frame on the host's tile — the same
+ * mistake the guest feed's `assetOf` avoids the same way.
+ */
 export function posterOf(capture: HostCaptureView): string | null {
-  return (
-    capture.assets.find((asset) => asset.role === 'thumb')?.assetId ??
-    capture.assets.find((asset) => asset.role === 'kino-still')?.assetId ??
-    capture.assets.find((asset) => asset.role === 'wiggle-preview')?.assetId ??
-    null
-  );
+  const captureLevel = (role: string): string | undefined =>
+    capture.assets.find((asset) => asset.role === role && asset.frameIndex === null)?.assetId;
+  return captureLevel('thumb') ?? captureLevel('kino-still') ?? captureLevel('wiggle-preview') ?? null;
 }
 
 /** What a tile says it is, in one word, for the placeholder and the label. */

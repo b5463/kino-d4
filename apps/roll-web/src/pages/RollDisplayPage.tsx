@@ -25,9 +25,20 @@ export const DISPLAY_CYCLE_MS = 8_000;
 /** The display rotates through this many of the newest captures. */
 const CYCLE_POOL = 12;
 
+/**
+ * The capture-level asset for the first of these roles that has one.
+ *
+ * `frameIndex === null` is the filter that makes this still mean what it did.
+ * A role used to hold at most one derived row; `thumb` now holds the
+ * capture-level tile AND one per camera (worker `jobs/thumbnail.ts`), so a bare
+ * `find(role === 'thumb')` is "whichever camera the API happened to list
+ * first" — a tile that is one of four views rather than the capture's own.
+ */
 function assetOf(capture: CaptureView, roles: readonly string[]) {
   for (const role of roles) {
-    const asset = capture.assets.find((candidate) => candidate.role === role);
+    const asset = capture.assets.find(
+      (candidate) => candidate.role === role && candidate.frameIndex === null,
+    );
     if (asset !== undefined) return asset;
   }
   return undefined;

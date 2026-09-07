@@ -1,9 +1,63 @@
 import sharp from 'sharp';
 import { SHARP_INPUT } from '../images/decode';
 import { THUMBNAIL_QUALITY, THUMBNAIL_WIDTH } from '../images/sizes';
-import { loadAssets, loadCapture, readObject, requireCaptureId, stillSource } from './capture';
+import {
+  loadAssets,
+  loadCapture,
+  originalFrames,
+  readObject,
+  requireCaptureId,
+  stillSource,
+} from './capture';
 import { publishDerived } from './derive';
+import type { AssetRow, CaptureRow } from './capture';
 import type { JobCtx, JobPayload } from './types';
+
+/**
+ * `derived/frames/thumb-cam-03.webp` — one camera's tile.
+ *
+ * Under `frames/` and carrying the camera number, so it cannot collide with the
+ * capture-level `derived/thumb.webp` and a listing of the folder reads as what
+ * it is. Two digits, so a rig that ever grows past nine cameras still sorts, and
+ * because the API's `dispositionFor` already spells a camera `cam-01`.
+ *
+ * The camera number, never an array position: a capture that lost camera 2
+ * writes `thumb-cam-01`, `thumb-cam-03`, `thumb-cam-04`, and the row's
+ * `frame_index` says the same thing. A key built from a position would rename
+ * every frame the day a missing camera's upload landed late.
+ */
+export function frameThumbName(frameIndex: number): string {
+  return `frames/thumb-cam-${String(frameIndex).padStart(2, '0')}.webp`;
+}
+
+/** THUMBNAIL_WIDTH px of WebP, and the size the encoder actually wrote. */
+async function encodeThumb(body: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
+  const { data, info } = await sharp(body, SHARP_INPUT)
+    // EXIF orientation applied before anything else: a camera that reports a
+    // rotation and is ignored produces a sideways tile.
+    .rotate()
+    .resize({ width: THUMBNAIL_WIDTH })
+    .webp({ quality: THUMBNAIL_QUALITY })
+    .toBuffer({ resolveWithObject: true });
+  return { data, width: info.width, height: info.height };
+}
+
+/**
+ * The settings that decided these bytes (audit #59), plus which camera they are
+ * — so a row that turns up in the wrong cell can be traced without re-rendering
+ * it. Null is the capture-level tile.
+ */
+function thumbProducer(capture: CaptureRow, frameIndex: number | null): Record<string, unknown> {
+  return {
+    job: 'thumbnail',
+    encoder: 'sharp/webp',
+    targetWidth: THUMBNAIL_WIDTH,
+    quality: THUMBNAIL_QUALITY,
+    // `look` is identity only — the P4 baked it into the source JPEG.
+    look: capture.look,
+    frameIndex,
+  };
+}
 
 /**
  * `generate-thumbnail` — the feed tile (03 §4).
@@ -13,9 +67,9 @@ import type { JobCtx, JobPayload } from './types';
  * `generate-gallery-still` on purpose — a tile and the still behind it must show
  * the same camera.
  *
- * This job is queued only when the device did *not* upload its own `thumb`
- * (`plannedJobs` in the API), so reaching here means the platform owes the
- * capture a tile.
+ * `plannedJobs` queues it for every capture, device thumb or not: a camera's
+ * own ~7 kB JPEG is what the feed shows in the first seconds, and 05 §19 still
+ * wants a 720 px WebP behind it.
  *
  * ## Why the width is unconditional
  *
@@ -25,34 +79,88 @@ import type { JobCtx, JobPayload } from './types';
  * known tile width a guess, and upscaling a frame that arrived undersized is a
  * far smaller problem than a feed with two tile sizes in it. Height follows the
  * aspect ratio: cropping here would lie about the frame's shape.
+ *
+ * ## Why a multi-frame capture also gets one thumb per camera, and why here
+ *
+ * The capture page draws a strip of 97 px cells and a 2x2 overview, one box per
+ * camera. With only a capture-level thumb the client had nothing per camera to
+ * draw with, so it drew the `original-frame` rows: four 1600x1200 JPEGs, ~754 kB
+ * over four object fetches, for eight boxes none of which is wider than 195 CSS
+ * px. Substituting the capture-level thumb was tried and reverted, correctly —
+ * it is ONE camera's picture (`stillSource`), so all four cells showed the same
+ * view. The only honest cheap strip is a real thumb per camera.
+ *
+ * They are extra work inside this job rather than a job of their own, for two
+ * reasons that both come back to 03 §19's idempotency rule — *a job's output
+ * must not depend on which job ran first*:
+ *
+ *  - **One product, one lifecycle.** A second job name means a second
+ *    `processing_events` row and a second entry in `plannedJobs`, and therefore
+ *    a window in which `nextCaptureStatus` calls a capture `ready` while half
+ *    its tiles exist. The capture owes a guest *its tiles*, not "a tile and,
+ *    separately, some tiles".
+ *  - **A job name is a deploy contract.** `isJobName` refuses a name this build
+ *    does not know, so a new name queued by a newer API against a worker that
+ *    has not rolled yet fails every capture until it has. Extending a handler
+ *    costs no such window.
+ *
+ * The order-dependence the rule warns about is absent either way: the per-camera
+ * thumbs read `original-frame` rows only, and no job writes those. The
+ * capture-level thumb keeps `stillSource`, which already excludes the worker's
+ * own still for exactly that reason.
+ *
+ * The capture-level thumb is still written, always, with a null frame index. It
+ * is the row the feed tile picks, it is what a client built before this change
+ * expects to find, and `assets_capture_role_frame` is `NULLS NOT DISTINCT` so
+ * the two kinds sit on the same role without colliding.
  */
 export async function generateThumbnail(payload: JobPayload, ctx: JobCtx): Promise<void> {
   const captureId = requireCaptureId(payload);
   const capture = await loadCapture(ctx.db, captureId);
   const assetRows = await loadAssets(ctx.db, captureId);
 
-  const source = stillSource(capture, assetRows);
-  const body = await readObject(ctx, source.key);
+  const frames: AssetRow[] = originalFrames(assetRows);
+  // One stored frame IS the capture-level thumb — `stillSource` picks it — so a
+  // per-camera copy of it would be the same bytes under a second name.
+  const perCamera = frames.length >= 2 ? frames : [];
 
-  const { data, info } = await sharp(body, SHARP_INPUT)
-    // EXIF orientation applied before anything else: a camera that reports a
-    // rotation and is ignored produces a sideways tile.
-    .rotate()
-    .resize({ width: THUMBNAIL_WIDTH })
-    .webp({ quality: THUMBNAIL_QUALITY })
-    .toBuffer({ resolveWithObject: true });
+  for (const frame of perCamera) {
+    // `originalFrames` already dropped the null indexes; the check is what makes
+    // that readable to the type, not a second filter.
+    if (frame.frameIndex === null) continue;
+    const encoded = await encodeThumb(await readObject(ctx, frame.objectKey));
+    await publishDerived(ctx, capture, {
+      name: frameThumbName(frame.frameIndex),
+      role: 'thumb',
+      frameIndex: frame.frameIndex,
+      mime: 'image/webp',
+      body: encoded.data,
+      width: encoded.width,
+      height: encoded.height,
+      // Silent: the capture-level thumb below announces, and the refetch that
+      // announcement triggers reads the whole capture, these rows included. A
+      // crash inside this loop leaves the job unfinished and the retry rewrites
+      // the same bytes, because the stored frames are its only input.
+      announce: false,
+      producer: thumbProducer(capture, frame.frameIndex),
+    });
+  }
+
+  // Last, and the one that announces. Written unconditionally: it is the feed
+  // tile's row and the one a client built before this change looks for.
+  const source = stillSource(capture, assetRows);
+  const encoded = await encodeThumb(await readObject(ctx, source.key));
 
   await publishDerived(ctx, capture, {
     name: 'thumb.webp',
     role: 'thumb',
     mime: 'image/webp',
-    body: data,
+    body: encoded.data,
     // The dimensions of the bytes that were written, read back off the encoder
     // rather than computed from the request — a row that describes what was
     // asked for instead of what happened is a row that can be wrong.
-    width: info.width,
-    height: info.height,
-    // `look` is identity only — the P4 baked it into the source JPEG.
-    producer: { job: 'thumbnail', encoder: 'sharp/webp', targetWidth: THUMBNAIL_WIDTH, quality: THUMBNAIL_QUALITY, look: capture.look },
+    width: encoded.width,
+    height: encoded.height,
+    producer: thumbProducer(capture, null),
   });
 }

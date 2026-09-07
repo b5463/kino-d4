@@ -140,10 +140,18 @@ export function decodeCursor(raw: unknown): Parsed<FeedCursor | null> {
 
 /* ----------------------------------------------------------------- views -- */
 
-/** What the feed says about one asset: enough to pick a tile source, no more. */
+/**
+ * What the feed says about one asset: enough to pick a tile source, no more.
+ *
+ * `frameIndex` is not decoration on a derived row any more. `thumb` holds a
+ * capture-level tile at NULL plus one per camera (worker `jobs/thumbnail.ts`),
+ * and it is `frameIndex` that tells a client which cell a given thumb belongs
+ * in — and which single row the feed tile is allowed to use.
+ */
 export interface CaptureAssetSummary {
   role: string;
   assetId: string;
+  /** The 1-based CAMERA NUMBER, or null for an asset that is the whole capture's. */
   frameIndex: number | null;
   width: number | null;
   height: number | null;
@@ -287,7 +295,12 @@ async function readReadyAssets(
     .from(assets)
     .where(and(inArray(assets.captureId, [...captureIds]), eq(assets.status, 'ready')))
     // Deterministic order, so a client diffing two responses sees no churn.
-    .orderBy(assets.role, assets.frameIndex);
+    // NULLS FIRST is load-bearing now that a role can hold a capture-level row
+    // AND one per camera: PostgreSQL sorts NULLs LAST by default, so the plain
+    // `orderBy` handed a client CAM 1's `thumb` as the first one with that role
+    // — and every feed tile picks its poster with `find(role === 'thumb')`.
+    // The capture-level row comes first, which is what that reads as.
+    .orderBy(assets.role, sql`${assets.frameIndex} ASC NULLS FIRST`);
 
   for (const row of rows) {
     // The audience filter, applied where the ids are handed out. A guest is

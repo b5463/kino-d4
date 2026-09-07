@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { TRASH_GRACE_DAYS, TRASH_GRACE_MS } from '@kino/schemas';
 import type { KinoDatabase } from '../plugins/db';
 import type { HostCapture } from '../auth/plugins';
@@ -135,7 +135,12 @@ export async function readHostCapture(
     .from(assets)
     .where(and(eq(assets.captureId, row.id), eq(assets.status, 'ready')))
     // Deterministic order, so a client diffing two responses sees no churn.
-    .orderBy(assets.role, assets.frameIndex);
+    // NULLS FIRST is load-bearing now that a role can hold a capture-level row
+    // AND one per camera: PostgreSQL sorts NULLs LAST by default, so the plain
+    // `orderBy` handed a client CAM 1's `thumb` as the first one with that role
+    // — and every feed tile picks its poster with `find(role === 'thumb')`.
+    // The capture-level row comes first, which is what that reads as.
+    .orderBy(assets.role, sql`${assets.frameIndex} ASC NULLS FIRST`);
 
   return {
     captureId: row.id,

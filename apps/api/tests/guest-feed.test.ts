@@ -101,13 +101,23 @@ async function insertCaptures(rollId: string, fixtures: readonly CaptureFixture[
 interface AssetFixture {
   role: string;
   frameIndex?: number;
+  /**
+   * A DERIVED name, for a role that holds more than one row.
+   *
+   * Without it a fixture carrying a `frameIndex` is filed under `original/`,
+   * which is right for `original-frame` and wrong for the per-camera `thumb`
+   * the worker now writes — a derivative of a frame is still a derivative. It
+   * doubles as the key this fixture's id is returned under, since `role` alone
+   * no longer names one row.
+   */
+  name?: string;
   status?: string;
   mime?: string;
   width?: number | null;
   height?: number | null;
 }
 
-/** Inserts asset rows for a capture and returns `{role: assetId}`. */
+/** Inserts asset rows for a capture and returns `{role or name: assetId}`. */
 async function insertAssets(
   rollId: string,
   captureId: string,
@@ -116,9 +126,10 @@ async function insertAssets(
   const rows = fixtures.map((fixture) => {
     const mime = fixture.mime ?? 'image/webp';
     const frameIndex = fixture.frameIndex ?? null;
+    const derivedName = fixture.name ?? `${fixture.role}.${mime.split('/')[1] ?? 'bin'}`;
     const objectKey =
-      frameIndex === null
-        ? derivedKey(rollId, captureId, `${fixture.role}.${mime.split('/')[1] ?? 'bin'}`)
+      fixture.name !== undefined || frameIndex === null
+        ? derivedKey(rollId, captureId, derivedName)
         : originalKey(rollId, captureId, frameIndex);
     return {
       id: newId('asset'),
@@ -138,7 +149,7 @@ async function insertAssets(
   await app.db.insert(schema.assets).values(rows);
 
   const byRole: Record<string, string> = {};
-  for (const row of rows) byRole[row.role] = row.id;
+  for (const [index, row] of rows.entries()) byRole[fixtures[index]?.name ?? row.role] = row.id;
   return byRole;
 }
 
@@ -572,6 +583,63 @@ describe('GET /api/rolls/:slug/captures/:captureId', () => {
     ]);
     expect(res.body).not.toContain('rolls/');
     expect(body.assets.find((asset) => asset.role === 'original-frame')?.frameIndex).toBe(1);
+  });
+
+  it('gives a guest the per-camera thumbs, the capture-level one first', async () => {
+    /**
+     * The worker writes one `thumb` per camera plus the capture's own
+     * (`worker/src/jobs/thumbnail.ts`). Nothing on the way to a guest may drop
+     * the per-camera rows — the strip and the 2x2 have nothing small to draw
+     * without them — and nothing may reorder the capture-level one out of
+     * first place, because every feed tile picks its poster by role.
+     */
+    const roll = await createRoll({ title: `Frame thumbs ${RUN}` });
+    const captureId = newId('cap');
+    await insertCaptures(roll.rollId, [{ id: captureId }]);
+    await insertAssets(roll.rollId, captureId, [
+      { role: 'thumb', width: 720, height: 540 },
+      ...[1, 2, 3, 4].map((camera) => ({
+        role: 'thumb',
+        frameIndex: camera,
+        name: `frames/thumb-cam-0${String(camera)}.webp`,
+        width: 720,
+        height: 540,
+      })),
+      ...[1, 2, 3, 4].map((camera) => ({
+        role: 'original-frame',
+        frameIndex: camera,
+        mime: 'image/jpeg',
+        width: 1600,
+        height: 1200,
+      })),
+    ]);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/rolls/${roll.slug}/captures/${captureId}`,
+    });
+    expect(res.statusCode).toBe(200);
+
+    const thumbs = res
+      .json<{ assets: { role: string; frameIndex: number | null; assetId: string }[] }>()
+      .assets.filter((asset) => asset.role === 'thumb');
+
+    // NULLS FIRST: the capture's own tile leads, then the cameras in order.
+    expect(thumbs.map((asset) => asset.frameIndex)).toEqual([null, 1, 2, 3, 4]);
+    // Five distinct rows, not one row named five times.
+    expect(new Set(thumbs.map((asset) => asset.assetId)).size).toBe(5);
+    expect(res.body).not.toContain('rolls/');
+
+    // And each of them is actually fetchable by a guest — an id in the feed
+    // that only ever 404s is worse than no id at all.
+    for (const thumb of thumbs) {
+      await storeBytes(thumb.assetId, Buffer.from(`cam ${String(thumb.frameIndex)}`));
+      const asset = await app.inject({
+        method: 'GET',
+        url: `/api/assets/${thumb.assetId}/content`,
+      });
+      expect([200, 302]).toContain(asset.statusCode);
+    }
   });
 
   it('404s a hidden, a deleted and a foreign roll’s capture alike', async () => {

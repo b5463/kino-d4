@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptureDetail as CaptureView, RollApi, RollView } from '../src/api/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { aspectOf, CaptureDetail, heroStill, initialQuadFrame, quadRatio } from '../src/pages/CaptureDetail';
+import { aspectOf, CaptureDetail, frameSource, heroStill, initialQuadFrame, quadRatio } from '../src/pages/CaptureDetail';
 import { readPicks } from '../src/state/picks';
 
 const reactTestGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
@@ -427,6 +427,27 @@ describe('CaptureDetail on a phone', () => {
     return view;
   }
 
+  /**
+   * And one thumb per camera on top of that — what a capture processed by the
+   * current worker holds (`worker/src/jobs/thumbnail.ts`). Every camera gets
+   * its OWN id, because the whole point is four different pictures.
+   */
+  function withFrameThumbs(view: CaptureView, cameras: number[] = [1, 2, 3, 4]): CaptureView {
+    view.assets = [
+      ...view.assets,
+      ...cameras.map((camera) => ({
+        role: 'thumb' as const,
+        assetId: `asset_thumb_cam${String(camera)}`,
+        frameIndex: camera,
+        mime: 'image/webp',
+        bytes: 40_000,
+        width: 720,
+        height: 540,
+      })),
+    ];
+    return view;
+  }
+
   it('hands the hero ONE child for a quad: the grid and the look row inside one wrap', async () => {
     await render(withDerivatives(capture('quad', 4)));
     const hero = container.querySelector('.k-hero');
@@ -447,13 +468,13 @@ describe('CaptureDetail on a phone', () => {
   });
 
   /**
-   * The instructed fix for the quad's ~770 kB was to draw the strip and the
-   * overview from the capture's `thumb`. It was implemented, looked at, and
-   * reverted: every derived asset carries `frameIndex: null`, so the four
-   * cells all showed the SAME camera under four different captions. The
-   * cheap copy is only used where it genuinely is the frame.
+   * A capture processed before the per-camera thumbs existed — every capture
+   * already on roll RRG8AZ. There is nothing small that depicts CAM 1, so the
+   * cell falls back to CAM 1's original. Expensive, and correct: the earlier
+   * attempt drew the capture-level `thumb` in all four cells and showed the
+   * same camera four times under four different captions.
    */
-  it('keeps a distinct ORIGINAL in every quad cell, at the frame ratio', async () => {
+  it('keeps a distinct ORIGINAL in every quad cell when there are no per-camera thumbs', async () => {
     await render(withDerivatives(capture('quad', 4)));
     const images = [...container.querySelectorAll<HTMLImageElement>('.photo-figure img')];
     expect(images.map((img) => img.getAttribute('src'))).toEqual([
@@ -488,6 +509,71 @@ describe('CaptureDetail on a phone', () => {
       expect(img.getAttribute('loading')).toBe('lazy');
       expect(img.getAttribute('fetchpriority')).toBe('low');
     }
+  });
+
+  /**
+   * The whole point of the per-camera thumbs: eight boxes, none wider than
+   * 195 CSS px, drawn from eight ~40 kB WebPs instead of four 190 kB JPEGs —
+   * and still four DIFFERENT pictures, one per camera, which is the property
+   * the reverted client-only version broke.
+   */
+  it('draws the strip and the 2x2 from each camera OWN thumb when the worker made them', async () => {
+    await render(withFrameThumbs(withDerivatives(capture('quad', 4))));
+
+    const expected = [
+      '/api/assets/asset_thumb_cam1/content',
+      '/api/assets/asset_thumb_cam2/content',
+      '/api/assets/asset_thumb_cam3/content',
+      '/api/assets/asset_thumb_cam4/content',
+    ];
+    const cells = [...container.querySelectorAll<HTMLImageElement>('.photo-figure img')];
+    expect(cells.map((img) => img.getAttribute('src'))).toEqual(expected);
+    const strip = [...container.querySelectorAll<HTMLImageElement>('.frame-thumb img')];
+    expect(strip.map((img) => img.getAttribute('src'))).toEqual(expected);
+
+    // Four different pictures, not one repeated — asserted as a set so it
+    // cannot pass by the list happening to be in order.
+    expect(new Set(cells.map((img) => img.getAttribute('src'))).size).toBe(4);
+    // The capture-level tile is still not one of them: it is CAM 2's picture,
+    // and putting it in a cell captioned CAM 1 is the bug this replaces.
+    expect(container.querySelector('.photo-figure img[src*="asset_thumb/"]')).toBeNull();
+
+    for (const img of cells) {
+      // The BOX is the frame's ratio; `width`/`height` describe the file being
+      // fetched, which is now the 720 px thumb rather than the 1600 px frame.
+      expect(img.style.aspectRatio).toBe('1600 / 1200');
+      expect(img.getAttribute('width')).toBe('720');
+      expect(img.getAttribute('height')).toBe('540');
+    }
+
+    // No original is fetched for the overview or the strip any more.
+    expect(container.querySelector('.photo-figure img[src*="asset_1/"]')).toBeNull();
+    expect(container.querySelector('.frame-thumb img[src*="asset_1/"]')).toBeNull();
+  });
+
+  it('falls back per camera, not per capture, when only some frames have a thumb', async () => {
+    // A half-processed capture, or a sparse one. CAM 3 has its own thumb; the
+    // rest have to be their originals — never CAM 3's picture under CAM 1.
+    await render(withFrameThumbs(withDerivatives(capture('quad', 4)), [3]));
+    const cells = [...container.querySelectorAll<HTMLImageElement>('.photo-figure img')];
+    expect(cells.map((img) => img.getAttribute('src'))).toEqual([
+      '/api/assets/asset_1/content',
+      '/api/assets/asset_2/content',
+      '/api/assets/asset_thumb_cam3/content',
+      '/api/assets/asset_4/content',
+    ]);
+  });
+
+  it('keeps the hero on the full original, never on a per-camera thumb', async () => {
+    // A guest looking at one picture gets the picture, not a 720 px tile of it.
+    const view = withFrameThumbs(withDerivatives(capture('quad', 4)));
+    await render(view);
+    const [firstCell] = container.querySelectorAll<HTMLButtonElement>('.photo-figure .photo-open');
+    await act(async () => firstCell?.click());
+
+    const hero = container.querySelector<HTMLImageElement>('.k-hero img');
+    expect(hero?.getAttribute('src')).toBe('/api/assets/asset_1/content');
+    expect(hero?.getAttribute('width')).toBe('1600');
   });
 
   it('uses the cheap copy where it IS the frame: a single-frame capture', async () => {
@@ -671,6 +757,48 @@ describe('the Save sheet as a dialog', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
     });
     expect(document.activeElement).toBe(last);
+  });
+});
+
+describe('frameSource', () => {
+  const original = (camera: number) => ({
+    role: 'original-frame',
+    assetId: `orig_${String(camera)}`,
+    frameIndex: camera,
+    mime: 'image/jpeg',
+    bytes: 190_000,
+    width: 1600,
+    height: 1200,
+  });
+  const thumb = (frameIndex: number | null) => ({
+    role: 'thumb',
+    assetId: frameIndex === null ? 'thumb_capture' : `thumb_${String(frameIndex)}`,
+    frameIndex,
+    mime: 'image/webp',
+    bytes: 40_000,
+    width: 720,
+    height: 540,
+  });
+
+  it('prefers the frame own thumb over the frame own still and over the original', () => {
+    const assets = [original(1), original(2), thumb(null), thumb(1), thumb(2)];
+    expect(frameSource({ assets, frameCount: 2 } as never, original(2) as never).assetId).toBe('thumb_2');
+  });
+
+  it('never substitutes the capture-level row on a multi-frame capture', () => {
+    // The reverted version did exactly this and painted CAM 2's picture in
+    // all four cells.
+    const assets = [original(1), original(2), original(3), original(4), thumb(null)];
+    for (const camera of [1, 2, 3, 4]) {
+      expect(frameSource({ assets, frameCount: 4 } as never, original(camera) as never).assetId).toBe(
+        `orig_${String(camera)}`,
+      );
+    }
+  });
+
+  it('does substitute it on a single-frame capture, where it IS that frame', () => {
+    const assets = [original(1), thumb(null)];
+    expect(frameSource({ assets, frameCount: 1 } as never, original(1) as never).assetId).toBe('thumb_capture');
   });
 });
 

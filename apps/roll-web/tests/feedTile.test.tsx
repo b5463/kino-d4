@@ -241,6 +241,41 @@ describe('tile sources', () => {
     });
   });
 
+  /**
+   * A `thumb` no longer names one row: the worker writes the capture's tile at
+   * `frameIndex: null` plus one per camera. The tile must take the capture's,
+   * because a per-camera thumb is one of four views and the feed shows one
+   * picture per capture — and it must not offer a per-camera row as a `srcset`
+   * candidate either, where it would collide with the capture's at the same
+   * 720 px width and let the browser pick a single camera's frame.
+   */
+  it('ignores the per-camera thumbs and tiles from the capture own', () => {
+    const perCamera = [1, 2, 3, 4].map((camera) => ({
+      role: 'thumb' as const,
+      assetId: `thumb_cam${String(camera)}`,
+      frameIndex: camera,
+      width: 720,
+      height: 540,
+    }));
+    const assets = [
+      sized('thumb', 'thumb', 720, 540),
+      ...perCamera,
+      sized('kino-still', 'still', 1280, 960),
+      ...ORIGINALS,
+    ];
+
+    expect(tileSources({ assets }, url)).toEqual({
+      src: '/api/assets/thumb/content',
+      srcSet: '/api/assets/thumb/content 720w, /api/assets/still/content 1280w',
+      sizes: TILE_SIZES,
+    });
+
+    // And with the API's own ordering — NULLS FIRST — the same answer, so the
+    // rule is the filter and not the row order it happens to be handed.
+    const shuffled = [...perCamera, sized('thumb', 'thumb', 720, 540), sized('kino-still', 'still', 1280, 960)];
+    expect(tileSources({ assets: shuffled }, url)?.src).toBe('/api/assets/thumb/content');
+  });
+
   it('paints the tile with whatever src the rule chose, not the poster', async () => {
     const host = document.createElement('div');
     document.body.append(host);

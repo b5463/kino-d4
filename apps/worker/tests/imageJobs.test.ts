@@ -222,6 +222,7 @@ async function assetRows(
 ): Promise<
   {
     role: string;
+    frameIndex: number | null;
     status: string;
     mime: string;
     width: number | null;
@@ -234,6 +235,7 @@ async function assetRows(
   return runtime.ctx.db
     .select({
       role: assets.role,
+      frameIndex: assets.frameIndex,
       status: assets.status,
       mime: assets.mime,
       width: assets.width,
@@ -252,6 +254,27 @@ async function assetsWithRole(
   role: string,
 ): Promise<Awaited<ReturnType<typeof assetRows>>> {
   return (await assetRows(captureId)).filter((row) => row.role === role);
+}
+
+/**
+ * Every `thumb` row, with its object registered for teardown.
+ *
+ * A multi-frame capture now holds five: the capture-level tile plus one per
+ * camera. `assetsWithRole(...)[0]` is therefore no longer "the thumbnail" —
+ * PostgreSQL sorts NULLs last, so it is camera 1 — and a test that kept reading
+ * it would silently start asserting about the wrong picture.
+ */
+async function thumbRows(captureId: string): Promise<Awaited<ReturnType<typeof assetRows>>> {
+  const rows = await assetsWithRole(captureId, 'thumb');
+  for (const row of rows) writtenKeys.push(row.objectKey);
+  return rows;
+}
+
+/** The one `thumb` that belongs to the capture rather than to a camera. */
+async function captureThumb(
+  captureId: string,
+): Promise<Awaited<ReturnType<typeof assetRows>>[number] | undefined> {
+  return (await thumbRows(captureId)).find((row) => row.frameIndex === null);
 }
 
 async function objectBytes(key: string): Promise<Buffer> {
@@ -399,12 +422,11 @@ describe('generate-thumbnail', () => {
 
     await generateThumbnail({ captureId, jobKey }, runtime.ctx);
 
-    const [row] = await assetsWithRole(captureId, 'thumb');
+    const row = await captureThumb(captureId);
     expect(row).toBeDefined();
     expect(row?.status).toBe('ready');
     expect(row?.mime).toBe('image/webp');
     expect(row?.objectKey).toBe(`rolls/${rollId}/captures/${captureId}/derived/thumb.webp`);
-    if (row !== undefined) writtenKeys.push(row.objectKey);
 
     const body = await objectBytes(row?.objectKey ?? '');
     const meta = await sharp(body).metadata();
@@ -434,8 +456,7 @@ describe('generate-thumbnail', () => {
     const captureId = await newCapture();
     await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
 
-    const [row] = await assetsWithRole(captureId, 'thumb');
-    if (row !== undefined) writtenKeys.push(row.objectKey);
+    const row = await captureThumb(captureId);
     expect(await markerFrameIndex(await objectBytes(row?.objectKey ?? ''))).toBe(2);
   });
 
@@ -446,8 +467,7 @@ describe('generate-thumbnail', () => {
     const captureId = await newCapture({ frameIndexes: [1, 3, 4] });
     await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
 
-    const [row] = await assetsWithRole(captureId, 'thumb');
-    if (row !== undefined) writtenKeys.push(row.objectKey);
+    const row = await captureThumb(captureId);
     expect(await markerFrameIndex(await objectBytes(row?.objectKey ?? ''))).toBe(3);
   });
 
@@ -467,8 +487,7 @@ describe('generate-thumbnail', () => {
 
     await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
 
-    const [row] = await assetsWithRole(captureId, 'thumb');
-    if (row !== undefined) writtenKeys.push(row.objectKey);
+    const row = await captureThumb(captureId);
     expect(await markerFrameIndex(await objectBytes(row?.objectKey ?? ''))).toBe(4);
   });
 
@@ -497,8 +516,7 @@ describe('generate-thumbnail', () => {
     if (still !== undefined) writtenKeys.push(still.objectKey);
 
     await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
-    const [thumb] = await assetsWithRole(captureId, 'thumb');
-    if (thumb !== undefined) writtenKeys.push(thumb.objectKey);
+    const thumb = await captureThumb(captureId);
     const produced = await objectBytes(thumb?.objectKey ?? '');
 
     // What a thumbnail of the original middle frame is, encoded exactly as the
@@ -531,27 +549,107 @@ describe('generate-thumbnail', () => {
     });
 
     await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
-    const [thumb] = await assetsWithRole(captureId, 'thumb');
-    if (thumb !== undefined) writtenKeys.push(thumb.objectKey);
+    const thumb = await captureThumb(captureId);
     expect(await markerFrameIndex(await objectBytes(thumb?.objectKey ?? ''))).toBe(2);
   });
 
-  it('produces one asset row however many times it runs (05 §9)', async () => {
+  it('produces one row per camera plus one for the capture, however many times it runs (05 §9)', async () => {
     const captureId = await newCapture();
     const payload = { captureId, jobKey: `${captureId}:generate-thumbnail` };
 
     await generateThumbnail(payload, runtime.ctx);
-    const first = await assetsWithRole(captureId, 'thumb');
+    const first = await thumbRows(captureId);
     await generateThumbnail(payload, runtime.ctx);
-    const second = await assetsWithRole(captureId, 'thumb');
+    const second = await thumbRows(captureId);
 
-    expect(first).toHaveLength(1);
-    expect(second).toHaveLength(1);
-    // Same key, same digest: a rerun rewrites the derivative in place rather
-    // than growing a second row the feed would have to choose between.
-    expect(second[0]?.objectKey).toBe(first[0]?.objectKey);
-    expect(second[0]?.sha256).toBe(first[0]?.sha256);
-    if (first[0] !== undefined) writtenKeys.push(first[0].objectKey);
+    // Four cameras: one tile each, plus the capture's own.
+    expect(first).toHaveLength(FRAME_COUNT + 1);
+    expect(second).toHaveLength(FRAME_COUNT + 1);
+    // Same keys, same digests: a rerun rewrites each derivative in place rather
+    // than growing a second row the feed would have to choose between. The
+    // conflict target is `(capture, role, frame_index)` with NULLS NOT
+    // DISTINCT, so the capture-level row is upserted too and not duplicated.
+    expect(second.map((row) => row.objectKey)).toEqual(first.map((row) => row.objectKey));
+    expect(second.map((row) => row.sha256)).toEqual(first.map((row) => row.sha256));
+  });
+
+  it('writes one thumb per camera, each of its own frame, at the tile size', async () => {
+    const captureId = await newCapture({ mode: 'quad' });
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+
+    const perCamera = (await thumbRows(captureId)).filter((row) => row.frameIndex !== null);
+    expect(perCamera.map((row) => row.frameIndex)).toEqual([1, 2, 3, 4]);
+
+    for (const row of perCamera) {
+      const camera = String(row.frameIndex).padStart(2, '0');
+      // Under `frames/`, so it cannot collide with `derived/thumb.webp`.
+      expect(row.objectKey).toBe(
+        `rolls/${rollId}/captures/${captureId}/derived/frames/thumb-cam-${camera}.webp`,
+      );
+      expect(row.status).toBe('ready');
+      expect(row.mime).toBe('image/webp');
+
+      const body = await objectBytes(row.objectKey);
+      const meta = await sharp(body).metadata();
+      // The same width and quality as the capture-level tile: a strip cell and
+      // a feed tile are the same kind of picture at the same kind of size.
+      expect(meta.format).toBe('webp');
+      expect(meta.width).toBe(THUMBNAIL_WIDTH);
+      expect(row.bytes).toBe(body.length);
+      expect(row.sha256).toBe(sha256Hex(body));
+
+      // The whole point: CAM n's thumb is CAM n's picture, read out of the
+      // pixels. Four identical cells is the bug this replaces.
+      expect(await markerFrameIndex(body)).toBe(row.frameIndex);
+    }
+
+    // And the capture-level tile is still there, still camera 2, still the row
+    // an older client and the feed tile look for.
+    const captureLevel = await captureThumb(captureId);
+    expect(captureLevel?.objectKey).toBe(
+      `rolls/${rollId}/captures/${captureId}/derived/thumb.webp`,
+    );
+    expect(await markerFrameIndex(await objectBytes(captureLevel?.objectKey ?? ''))).toBe(2);
+  });
+
+  it('names the per-camera thumbs by camera number, not by position', async () => {
+    // Camera 2 never arrived. The rows and the keys both say 1, 3, 4 — a key
+    // built from an array position would call camera 3 `cam-02`.
+    const captureId = await newCapture({ mode: 'quad', frameIndexes: [1, 3, 4] });
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+
+    const perCamera = (await thumbRows(captureId)).filter((row) => row.frameIndex !== null);
+    expect(perCamera.map((row) => row.frameIndex)).toEqual([1, 3, 4]);
+    expect(perCamera.map((row) => row.objectKey.split('/').at(-1))).toEqual([
+      'thumb-cam-01.webp',
+      'thumb-cam-03.webp',
+      'thumb-cam-04.webp',
+    ]);
+    for (const row of perCamera) {
+      expect(await markerFrameIndex(await objectBytes(row.objectKey))).toBe(row.frameIndex);
+    }
+  });
+
+  it('announces once, not once per camera', async () => {
+    // Every `processing.completed` makes each subscribed guest re-read the
+    // whole capture. Five events would cost fifty phones five refetches of the
+    // same document — the traffic the per-camera tiles exist to remove.
+    const captureId = await newCapture({ mode: 'quad' });
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+    await thumbRows(captureId);
+
+    expect(await publishedRoles(captureId)).toEqual(['thumb']);
+  });
+
+  it('leaves a single-frame capture with one thumb', async () => {
+    // One stored frame IS the capture-level thumb, so a per-camera copy would
+    // be the same bytes under a second name.
+    const captureId = await newCapture({ frameCount: 1, frameIndexes: [1] });
+    await generateThumbnail({ captureId, jobKey: `${captureId}:generate-thumbnail` }, runtime.ctx);
+
+    const rows = await thumbRows(captureId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.frameIndex).toBeNull();
   });
 });
 
