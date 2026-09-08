@@ -241,7 +241,7 @@ USB-Serial-JTAG; and the C6 transport — SDIO enumeration, the `GPIO54` enable
 line on the meter, the version gate at 3.0.6, Wi-Fi scan, association, DHCP,
 DNS and SNTP, and `ROLL_CREATE` against a real backend.
 
-What stays **UNVALIDATED**: CAM2–CAM4 (nothing is wired to them), inter-camera
+What stays **UNVALIDATED**: inter-camera
 exposure skew and everything else behind the sync gate, `SYNC_TRIGGER_GPIO32`
 (driven, and since node firmware 0.4.30 the nodes DO count edges and report
 `syncSeq`/`syncEdgeUs`, which `handle_sync_bench` polls — what no node does is
@@ -250,6 +250,12 @@ exposure skew and everything else behind the sync gate, `SYNC_TRIGGER_GPIO32`
 GPIO28/JP1-21 to `BOARD_BTN_SHUTTER` under ECN-0003, so probing that pin for a
 flash enable finds a button), the shutter and Fn buttons (no switch fitted),
 `C6_TLS` (the API is not deployed) and `SD_C6_COEXIST`.
+
+CAM2–CAM4 came off that list: all four nodes are wired and answer. The record
+below has a pre-check reading 4x READY, grouped shutters carrying all four
+frames, and a controlled-loss test that powers CAM2 down mid-session and
+brings it back — which is also what proved nothing is hard-coded to camera 2,
+because the same test on CAM3 leaves a different hole with the same result.
 
 `C6_ROLL_UPLOAD` is no longer in that list: 0.4.4 is the first firmware whose
 photographs reached a Roll from the body, 0.4.6 closed the local gate

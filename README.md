@@ -36,7 +36,11 @@ A five-controller camera is miserable to service with an IDE, five serial logs, 
 
 The repository contains that workbench, the wire protocol it speaks, the Roll backend used after capture, shared document schemas, and a reference camera that can fail on command.
 
-> **Honest build status:** Studio, KDP, schemas, test fixtures, the Roll backend with workers, the public Roll client, and KINO Twin work today against the simulated device. Physical D4 firmware and measured hardware dimensions are not shipped yet; everything hardware-gated is marked as such.
+> **Honest build status.** Studio, KDP, schemas, test fixtures, the Roll backend with workers, the public Roll client, and KINO Twin all work against the simulated device, and the whole software suite is covered by tests that run without hardware.
+>
+> There is a camera now. Firmware 0.4.55 runs on a physical D4: it captures on all four cameras, writes originals to the card, draws its own gallery and shooting screens, and since 0.4.4 uploads to a Roll over Wi-Fi from the body itself. The body is released too — design 0.1.4, a printable PETG slab whose dimensions are measured rather than estimated.
+>
+> What is not finished, stated rather than implied: the camera has **no flash** ([`ECN-0003`](hardware/changes/ECN-0003-shutter-on-jp1-21.md) took its enable pin for the shutter, and a replacement module is not chosen); inter-camera **exposure skew is still unmeasured**, which is the measurement the wiggle's quality actually rests on; and the Roll is reached on an event day through a tunnel rather than a permanently hosted origin ([`docs/runbooks/event-day.md`](docs/runbooks/event-day.md)). Anything gated on a measurement says so where it is claimed, and returns `null` rather than a guess.
 
 ## Try Studio
 
@@ -62,7 +66,9 @@ npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixture
 npm run build
 ```
 
-That is every suite that runs without Docker, and the same line CI runs. The API and worker also need PostgreSQL, Redis, and S3-compatible storage. Its local stack and ports are documented in [the development guide](docs/DEVELOPMENT.md#api-stack).
+That is every JavaScript suite that runs without Docker, and the same line CI runs. The API and worker also need PostgreSQL, Redis, and S3-compatible storage; their local stack and ports are documented in [the development guide](docs/DEVELOPMENT.md#api-stack).
+
+Two suites are outside that line on purpose. The firmware's are C, built and run with `make -C firmware/p4/host_tests test-all` and `make -C firmware/components/kdp_core/host_tests` — 6,246 checks that need no camera, and the two that link cJSON need the IDF container. KINO Print's are Python (`npm run test -w @kino/print`), so a bare `npm test` at the root fails on a machine without Python.
 
 ## The three tools
 
@@ -84,6 +90,10 @@ A working 3D copy of the D4. It speaks the same KDP as real hardware: power it o
 
 The shared album after the party. The camera uploads over Wi-Fi; guests open a link, watch photos arrive live, view the four frames behind each one, favourite and download. The client is a PWA that works on a phone at the event.
 
+The host gets a separate surface on the same link: a dashboard that says which camera is uploading and which is stuck, hides or restores a photograph, clears the roll, and exports the lot as a ZIP. A roll can carry a PIN, and a trashed photograph stays recoverable for seven days. There is a third surface for a screen at the party — a projector page that cycles the newest captures and keeps the display awake.
+
+The Roll is run for an event rather than hosted permanently: the origin is a laptop, reached through an outbound tunnel for the night, with no port forwarded. [`docs/runbooks/event-day.md`](docs/runbooks/event-day.md) is the procedure, and it ends by taking the tunnel down.
+
 ![KINO Roll guest gallery with demo captures](docs/assets/product/roll-feed-demo.png)
 
 <p align="center"><sub>The guest gallery with demo captures from the test uploader.</sub></p>
@@ -91,6 +101,10 @@ The shared album after the party. The camera uploads over Wi-Fi; guests open a l
 ![KINO Roll photo page with demo captures](docs/assets/product/roll-photo-demo.png)
 
 <p align="center"><sub>One photo: the D4 frame strip switches the preview. Simulated captures.</sub></p>
+
+### And one workshop tool
+
+[KINO Print](apps/prusa-print-98/README.md) is not part of the camera. It is a local print host for the MK3S that prints the body, and it is here because the bodies in this repository kept failing on the bed for reasons a slicer does not warn about. It reads the PrusaSlicer metadata out of a `.gcode`, refuses to start until a person confirms the printer is physically clear, and streams the job itself. Its PETG preflight is the point: it catches a first layer that is too hot, full-temperature probing, a profile mismatch, and a nozzle that heats before the bed wait, then holds the nozzle at 170 °C through bed heating and mesh levelling and raises it just before the prime line. The source file is never modified.
 
 ## What comes out of the camera
 
@@ -113,11 +127,16 @@ Both modes obey the same boring, important rule: the microSD card gets the origi
 | Sensors | 4 × OV3660 rolling-shutter sensors, up to 2048 × 1536 |
 | Storage | 32 GB microSD |
 | Battery | 1S 3000 mAh LiPo |
-| Flash | 3 W CRI90 natural-white LED with constant-current driver |
+| Flash | **Not fitted.** `ECN-0003` dropped the direct-flash assembly and gave its enable pin to the shutter; an external module will replace it and is not chosen |
 | Sound | 8 Ω / 2 W speaker |
 | Camera wiring | Four UART pairs plus one shared sync line |
+| Body | Printed PETG slab, 131 × 90 × 65.5 mm, design 0.1.4 — two-part chassis, glued face shell, sliding lens cover, dovetail rear door |
 
 The boards are ordinary, replaceable parts. The exact power limits, wire gauges, battery constraints, mechanical stack, and confidence level of every measurement live in [`docs/HARDWARE.md`](docs/HARDWARE.md).
+
+Two printable bodies are released, and they are alternatives rather than versions of each other. [`KINO_FIELD_BODY`](hardware/cad/KINO_FIELD_BODY/README.md) is the one above: PETG on a desktop printer, support-free, and its release is gated by 82 automated checks over the actual meshes — that every part prints flat, and that both print jobs fit a 250 × 210 bed. [`KINO_RESIN_BODY`](hardware/cad/KINO_RESIN_BODY/README.md) is printed entirely through JLCPCB in three parts, with an MJF nylon skeleton carrying everything and a clear SLA shell that touches nothing electrical, so it can be reprinted in another colour without re-qualifying an optical dimension.
+
+The camera knows when its cover is shut without a switch. The Hall sensor the shell used to be drilled for had to be fitted before the face shell was glued on — the one irreversible step in the assembly — so it is gone. Closed, all four lenses face an opaque plate 0.2 mm away; firmware reads a mean luminance off the frames the viewfinder already decodes and decides from all four together. It ships observing only: the two thresholds have to be read at the bench, because the sensors run auto-exposure and a covered one reports amplified noise rather than zero.
 
 ## One cable, five controllers
 
@@ -153,16 +172,24 @@ A trigger spread under 100 µs can still hide 10 to 30 ms between real exposures
 
 | Path | Owns |
 |---|---|
+| [`firmware`](firmware/README.md) | What runs on the camera: the ESP32-P4 application, the four camera nodes, the C6 radio image, and the host test suites |
 | [`apps/studio`](apps/studio) | Camera setup, shooting, looks, media, firmware, recovery, diagnostics |
 | [`apps/api`](apps/api) | Rolls, authentication, uploads, object storage, live events |
 | [`apps/worker`](apps/worker) | Derivative jobs, recaps, exports, trash purge |
 | [`apps/roll-web`](apps/roll-web) | Public Roll guest PWA and private host dashboard |
 | [`apps/twin`](apps/twin) | KINO Twin: 3D assembly, simulation, measurement, engineering exports |
+| [`apps/prusa-print-98`](apps/prusa-print-98/README.md) | KINO Print: the local USB print host that prints the body, with the PETG preflight that stops a bad job |
 | [`packages/kdp`](packages/kdp) | The KINO Device Protocol: frames, CRC, commands, transports, request lifecycle |
 | [`packages/schemas`](packages/schemas) | Versioned `kino.*` documents shared across processes |
 | [`packages/test-fixtures`](packages/test-fixtures) | Reference camera, recipes, media, and injected failures |
-| [`firmware-contract`](firmware-contract) | The contract camera firmware must implement |
-| [`hardware`](hardware) | BOM, wiring, assembly, acceptance tests, and future CAD or PCB source |
+| [`packages/media`](packages/media) | Wiggle sequencing and playback, shared by the worker and the clients |
+| [`packages/design-system`](packages/design-system) | The shared interface vocabulary |
+| [`packages/hardware-profiles`](packages/hardware-profiles) | Board and sensor profiles the simulator and Studio read |
+| [`packages/simulator-engine`](packages/simulator-engine) | The device simulation behind KINO Twin |
+| [`packages/three-assets`](packages/three-assets) | Geometry and materials for the 3D twin |
+| [`firmware-contract`](firmware-contract) | The contract camera firmware must implement, and every recorded deviation from it |
+| [`hardware`](hardware) | BOM, wiring, assembly, acceptance tests, two released printable bodies, and the Rev1 mainboard schematic |
+| [`infra`](infra/README.md) | Compose files, the deploy script, backups, and the load and latency harnesses |
 | [`kino_dev_spec_pack`](kino_dev_spec_pack) | Permanent Studio and Roll product specifications |
 | [`kino_twin_spec`](kino_twin_spec) | The 3D twin and virtual-device specification |
 
@@ -174,8 +201,13 @@ This project has history, and some old planning material is still useful. It is 
 - [Architecture](docs/ARCHITECTURE.md): process boundaries, state ownership, uploads, and package relationships
 - [Development](docs/DEVELOPMENT.md): setup, services, migrations, tests, and protocol changes
 - [Troubleshooting](docs/TROUBLESHOOTING.md): browser, USB, protocol, power, sync, media, recovery, and API failures
-- [Firmware contract](firmware-contract/README.md): the handoff extracted from working protocol source
+- [Firmware contract](firmware-contract/README.md): the handoff extracted from working protocol source, and every deviation the firmware is allowed
+- [Firmware](firmware/README.md): what runs on the camera, how to build all three configurations, and what each host suite covers
 - [Hardware build package](hardware/README.md): BOM, wiring, assembly order, and acceptance sheet
+- [Field body](hardware/cad/KINO_FIELD_BODY/README.md) and [resin body](hardware/cad/KINO_RESIN_BODY/README.md): the two printable bodies, their measured inputs, and the gates each release passes
+- [Running an event](docs/runbooks/event-day.md): the whole night, from bringing the stack up to taking the tunnel down
+- [Restoring from backup](docs/runbooks/restore.md) and [what to watch](docs/runbooks/observability.md): the two things needed when a party is already underway
+- [Host guide](docs/roll/HOST_GUIDE.md): the Roll dashboard, written for whoever is running the camera rather than for a developer
 - [Contributing](CONTRIBUTING.md): required contracts, tests, measurements, and pull request rules
 - [Roadmap](ROADMAP.md): current work and the deliberately unfinished edges
 - [Releasing](docs/RELEASING.md): independent versions, compatibility review, artifacts, and publishing
