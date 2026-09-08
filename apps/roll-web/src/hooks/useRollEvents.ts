@@ -1,16 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { rollApi, type CaptureView, type RollApi } from '../api/client';
-
-const EVENT_TYPES = [
-  'roll.opened',
-  'roll.closed',
-  'roll.cleared',
-  'capture.created',
-  'capture.updated',
-  'capture.hidden',
-  'capture.deleted',
-  'processing.completed',
-] as const;
+import { rollApi, type CaptureDetail, type RollApi } from '../api/client';
 
 export const EVENT_RECONNECT_MIN_MS = 1_000;
 export const EVENT_RECONNECT_MAX_MS = 30_000;
@@ -37,9 +26,16 @@ export interface RollEventHandlers {
    * A capture that just arrived. Named for what it used to do; the feed now
    * files it by shutter time (`useRollFeed.prepend`), so a late upload of an
    * older shot lands where it was taken, not on top.
+   *
+   * A `CaptureDetail`, not a `CaptureView`: this hook fetches with
+   * `api.getCapture`, so a detail is what it always had in hand. Typed as the
+   * narrower view it made the capture page cast the value back
+   * (`setCapture(next as CaptureDetailView)`) on nothing but the knowledge of
+   * which method the hook happened to call. A feed handler that only wants a
+   * `CaptureView` still fits — a detail IS one.
    */
-  prepend?(capture: CaptureView): void;
-  replace?(capture: CaptureView): void;
+  prepend?(capture: CaptureDetail): void;
+  replace?(capture: CaptureDetail): void;
   remove?(captureId: string): void;
   refetchHead?(): void | Promise<void>;
   onRollChanged?(): void | Promise<void>;
@@ -250,7 +246,7 @@ export function useRollEvents(
       source = null;
     };
 
-    let connect: (recovering: boolean) => void;
+    let connect: () => void;
 
     const scheduleReconnect = (): void => {
       closeSource();
@@ -261,11 +257,11 @@ export function useRollEvents(
         reconnectTimer = null;
         if (stopped || paused) return;
         invoke(handlersRef.current.refetchHead);
-        connect(true);
+        connect();
       }, delay);
     };
 
-    connect = (_recovering: boolean): void => {
+    connect = (): void => {
       if (stopped || paused || source !== null) return;
       try {
         source = api.events(slug);
@@ -326,7 +322,7 @@ export function useRollEvents(
       if (stopped || !paused) return;
       paused = false;
       invoke(handlersRef.current.refetchHead);
-      connect(true);
+      connect();
     };
 
     const visibilityChanged = (): void => {
@@ -340,7 +336,7 @@ export function useRollEvents(
     window.addEventListener('pagehide', pageHidden);
     window.addEventListener('pageshow', pageShown);
 
-    if (!paused) connect(false);
+    if (!paused) connect();
 
     return () => {
       stopped = true;
@@ -355,5 +351,3 @@ export function useRollEvents(
     };
   }, [api, enabled, slug]);
 }
-
-export { EVENT_TYPES };

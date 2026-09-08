@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ApiError, rollApi, type RollApi } from '../api/client';
+import { apiFailureMessage, rollApi, type RollApi } from '../api/client';
 import kinoRoll from '../assets/kino-roll-light.png';
 
 export interface PinGateProps {
@@ -24,11 +24,15 @@ export function PinGate({ slug, onUnlocked, api = rollApi }: PinGateProps) {
       setPin('');
       await onUnlocked();
     } catch (caught) {
-      setError(
-        caught instanceof ApiError && caught.code === 'INVALID_PIN'
-          ? 'That PIN did not work.'
-          : 'Could not open this roll. Try again.',
-      );
+      /**
+       * Every failure but a wrong PIN used to read "Could not open this roll.
+       * Try again." — which on a lockout is the app inviting the one action
+       * that extends it. `apiFailureMessage` carries the lockout's own
+       * `retry-after` window, the closed roll and the server being down; the
+       * fallback stays for a genuine transport failure, where trying again IS
+       * the thing to do.
+       */
+      setError(apiFailureMessage(caught) ?? 'Could not reach the roll. Check the connection.');
     } finally {
       setSubmitting(false);
     }

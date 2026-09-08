@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  apiFailureMessage,
   isMissingCaptureError,
   rollApi,
   type CaptureView,
   type RollApi,
 } from '../api/client';
+import { capturedAtMs } from '../captures';
 
 /**
  * MY PICKS — the guest's local favorites for one roll.
@@ -14,9 +16,19 @@ import {
  * (the API has none). The server stays the truth: every write here happens
  * after a reaction toggle succeeded, or when the server says a picked capture
  * no longer exists.
+ *
+ * That last sentence was false for the feed. The tile's heart called
+ * `togglePick` and nothing else — no request, ungated by the roll's
+ * `reactionsEnabled` — while the capture page's heart posted a reaction and
+ * read the answer back. Both wrote this one key, so hearting a tile and then
+ * opening it showed an empty heart with a count of zero. There is one
+ * behaviour now (`toggleReaction`) and both surfaces use it.
  */
 
 const PICKS_EVENT = 'kino-picks';
+
+/** How many picked captures are read at once. A browser gives an origin six. */
+const PICK_FETCH_CONCURRENCY = 4;
 
 function keyOf(slug: string): string {
   return `kino-picks:${slug}`;
@@ -69,11 +81,36 @@ export function setPick(slug: string, captureId: string, picked: boolean): void 
   writePicks(slug, picks);
 }
 
-/** Flips a pick locally and returns the new state. */
-export function togglePick(slug: string, captureId: string): boolean {
-  const picked = !readPicks(slug).has(captureId);
-  setPick(slug, captureId, picked);
-  return picked;
+/**
+ * Flips a heart on the server and records what the server then said.
+ *
+ * `POST .../react` is a toggle on the API side, so the reply is read back
+ * rather than guessed: `reacted` and `reactionCount` are what the capture page
+ * prints, and the local set is only a cache of the first of them.
+ *
+ * The reaction routes answer 409 `REACTIONS_DISABLED` when the host has turned
+ * hearts off, which can happen between the page rendering the control and the
+ * guest pressing it. That is not an error to raise at a guest — the control
+ * simply cannot do anything — so it comes back as a message the caller can
+ * print in the one status line it has, and the local set is left alone.
+ */
+export async function toggleReaction(
+  slug: string,
+  captureId: string,
+  api: RollApi = rollApi,
+): Promise<{ reacted: boolean; count: number } | { failed: string }> {
+  try {
+    await api.react(slug, captureId);
+    const next = await api.getCapture(slug, captureId);
+    setPick(slug, next.captureId, next.reacted);
+    return { reacted: next.reacted, count: next.reactionCount };
+  } catch (caught) {
+    if (isMissingCaptureError(caught)) {
+      setPick(slug, captureId, false);
+      return { failed: 'That photograph is no longer on this roll.' };
+    }
+    return { failed: apiFailureMessage(caught) ?? 'Could not save that. Try again.' };
+  }
 }
 
 /** The pick set, re-read whenever this tab or another one writes it. */
@@ -126,13 +163,22 @@ export function usePickedCaptures(
    * only thing that discards a late answer is a change of roll or unmount.
    */
   const slugRef = useRef(slug);
+  /**
+   * Whether this hook is still mounted.
+   *
+   * Set on the way IN as well as cleared on the way out. It used to be
+   * initialised once and only ever cleared, so React re-invoking the effect —
+   * which StrictMode does on every mount in development (`src/main.tsx`) —
+   * left the flag false for the life of the component and every guard below
+   * discarded a perfectly good answer. The picks tab then stayed empty.
+   */
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     slugRef.current = slug;
@@ -148,32 +194,61 @@ export function usePickedCaptures(
     );
     if (missing.length === 0) return;
 
-    for (const captureId of missing) {
-      inFlight.add(captureId);
-      void api
-        .getCapture(slug, captureId)
-        .then((capture) => {
-          if (!mountedRef.current || slugRef.current !== slug) return;
-          setFetched((current) => new Map(current).set(captureId, capture));
-        })
-        .catch((caught: unknown) => {
-          if (!mountedRef.current || slugRef.current !== slug) return;
-          if (isMissingCaptureError(caught)) setPick(slug, captureId, false);
-        })
-        .finally(() => {
-          // Released either way: a resolved id is in `fetched`, a 404'd one is
-          // out of `picks`, and anything else (a dropped connection) is worth
-          // one more attempt the next time this effect runs.
-          inFlight.delete(captureId);
-        });
+    const queue = [...missing];
+    for (const captureId of queue) inFlight.add(captureId);
+
+    const one = async (captureId: string): Promise<void> => {
+      try {
+        const capture = await api.getCapture(slug, captureId);
+        if (!mountedRef.current || slugRef.current !== slug) return;
+        setFetched((current) => new Map(current).set(captureId, capture));
+      } catch (caught) {
+        if (!mountedRef.current || slugRef.current !== slug) return;
+        if (isMissingCaptureError(caught)) setPick(slug, captureId, false);
+      } finally {
+        // Released either way: a resolved id is in `fetched`, a 404'd one is
+        // out of `picks`, and anything else (a dropped connection) is worth
+        // one more attempt the next time this effect runs.
+        inFlight.delete(captureId);
+      }
+    };
+
+    /**
+     * PICK_FETCH_CONCURRENCY at a time, not all of them at once.
+     *
+     * Forty picks used to be forty parallel `getCapture` calls in one loop, on
+     * the same venue uplink the photographs are coming down. A browser opens
+     * six connections per origin, so the extra thirty-four queued behind the
+     * feed's own reads and every one of them was ahead of the next page of
+     * tiles.
+     */
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const captureId = queue.shift();
+        if (captureId === undefined) return;
+        await one(captureId);
+      }
+    };
+    for (let lane = 0; lane < Math.min(PICK_FETCH_CONCURRENCY, missing.length); lane += 1) {
+      void worker();
     }
+
+    /**
+     * A request already on the wire outlives an effect re-run, deliberately —
+     * cancelling it while still counting it as in-flight would leave the id
+     * fetched by nobody. What the cleanup does release is the ids still
+     * WAITING in the queue, which this run will now never send: without that
+     * they would stay marked in-flight for ever and no later run would ask.
+     */
+    return () => {
+      for (const captureId of queue) inFlight.delete(captureId);
+      queue.length = 0;
+    };
   }, [api, loaded, picks, slug]);
 
   const byId = new Map<string, CaptureView>();
   for (const capture of loaded) if (picks.has(capture.captureId)) byId.set(capture.captureId, capture);
   for (const [id, capture] of fetched) if (picks.has(id) && !byId.has(id)) byId.set(id, capture);
 
-  return [...byId.values()].sort(
-    (left, right) => new Date(right.capturedAt).getTime() - new Date(left.capturedAt).getTime(),
-  );
+  return [...byId.values()].sort((left, right) => capturedAtMs(right) - capturedAtMs(left));
 }

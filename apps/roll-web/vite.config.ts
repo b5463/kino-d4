@@ -71,6 +71,28 @@ export default defineConfig({
         // were fetched at runtime, so the first offline paint fell back to
         // system-ui and the interface changed shape. ~56 kB for both.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        /**
+         * Three files in that glob are never rendered on a roll visit, and a
+         * roll visit is the only visit that matters at a party.
+         *
+         *  - `icon-512.png` and `icon-apple-touch.png` are launcher art. A
+         *    browser fetches them when the guest INSTALLS the app or adds it to
+         *    a home screen, which is a deliberate act with a network behind it;
+         *    `icon-192.png` stays precached because it is the one the manifest
+         *    is most often read for.
+         *  - `kino-roll-light-*.png` is the light wordmark, used by the PIN
+         *    gate and the landing page only. A PIN roll fetches it on demand,
+         *    once, and every other roll never asks for it at all.
+         *
+         * That is ~65 kB off the install a guest pays for before they see a
+         * photograph. The dark wordmark, the fonts, the CSS and the JS stay:
+         * those ARE the roll.
+         */
+        globIgnores: [
+          '**/icon-512.png',
+          '**/icon-apple-touch.png',
+          '**/assets/kino-roll-light-*.png',
+        ],
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {

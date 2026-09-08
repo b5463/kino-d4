@@ -7,7 +7,7 @@ import { ApiError, type CaptureView, type RollApi } from '../src/api/client';
 import {
   readPicks,
   setPick,
-  togglePick,
+  toggleReaction,
   usePickedCaptures,
   usePicks,
 } from '../src/state/picks';
@@ -59,11 +59,40 @@ describe('picks store', () => {
     expect([...readPicks('party')]).toEqual(['cap_2']);
   });
 
-  it('togglePick flips and reports the new state', () => {
-    expect(togglePick('party', 'cap_1')).toBe(true);
+  /**
+   * The heart writes to the server and records what the server then said. It
+   * used to be a purely local flip on the feed and a server write on the
+   * capture page, both over one storage key — so hearting a tile and opening
+   * it showed an empty heart with count 0.
+   */
+  it('records the state the server reports, not the state it guessed', async () => {
+    const api = apiWith({
+      react: vi.fn().mockResolvedValue(undefined),
+      getCapture: vi.fn().mockResolvedValue({ ...capture('cap_1'), reacted: true, reactionCount: 3 }),
+    });
+
+    await expect(toggleReaction('party', 'cap_1', api)).resolves.toEqual({ reacted: true, count: 3 });
+    expect(api.react).toHaveBeenCalledWith('party', 'cap_1');
     expect(readPicks('party').has('cap_1')).toBe(true);
-    expect(togglePick('party', 'cap_1')).toBe(false);
+
+    const off = apiWith({
+      react: vi.fn().mockResolvedValue(undefined),
+      getCapture: vi.fn().mockResolvedValue({ ...capture('cap_1'), reacted: false, reactionCount: 2 }),
+    });
+    await expect(toggleReaction('party', 'cap_1', off)).resolves.toEqual({ reacted: false, count: 2 });
     expect(readPicks('party').has('cap_1')).toBe(false);
+  });
+
+  /** The host can turn hearts off between the page rendering the control and the guest pressing it. */
+  it('reports a refused reaction as a message and leaves the stored set alone', async () => {
+    setPick('party', 'cap_1', true);
+    const api = apiWith({
+      react: vi.fn().mockRejectedValue(new ApiError(409, 'REACTIONS_DISABLED', 'Reactions are off')),
+    });
+
+    const result = await toggleReaction('party', 'cap_1', api);
+    expect(result).toHaveProperty('failed');
+    expect(readPicks('party').has('cap_1')).toBe(true);
   });
 
   it('survives garbage in the stored value', () => {

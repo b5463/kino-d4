@@ -123,6 +123,12 @@ function AnimatedWigglePlayer({
       for (const image of preloads) {
         image.onload = null;
         image.onerror = null;
+        // Dropping the handlers stopped this component hearing about the
+        // fetch; it did not stop the fetch. Four full-resolution originals per
+        // cancelled player kept downloading for the life of the tab, which on
+        // the display page is every eight seconds. Clearing `src` is the one
+        // documented way to tell the browser to abandon an image load.
+        image.src = '';
       }
     };
   }, [frameUrls]);

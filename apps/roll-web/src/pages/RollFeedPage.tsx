@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
+  apiFailureMessage,
   isNoRollError,
   PinRequiredError,
   rollApi,
@@ -8,6 +9,7 @@ import {
   type RollView,
 } from '../api/client';
 import { evictCaptureAssets } from '../cache/assets';
+import { assetOf } from '../captures';
 import { LoadFailure } from '../components/LoadFailure';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { SafeImage } from '../components/SafeImage';
@@ -18,7 +20,7 @@ import { useRollEvents } from '../hooks/useRollEvents';
 import { useRollFeed } from '../hooks/useRollFeed';
 import { absoluteUrl, setRouteMeta } from '../meta';
 import { rememberRoll } from '../state/lastRoll';
-import { togglePick, usePickedCaptures, usePicks } from '../state/picks';
+import { toggleReaction, usePickedCaptures, usePicks } from '../state/picks';
 import { NoRollPage } from './NotFoundPage';
 import { PinGate } from './PinGate';
 import { RollClosed, RollStateBanner, rollAcceptsUploads } from './RollClosed';
@@ -31,8 +33,13 @@ export interface RollFeedPageProps {
  * One photograph per row on a phone; two on a tablet, three on a laptop,
  * four on a wide desktop. A 4:3 tile is a third of 1440 px = 480 px wide and
  * a quarter of 1920 px = 480 px wide, so the tile never shrinks as the window
- * grows past a laptop - it gains a column instead. Must agree with
- * `TILE_SIZES`, which tells the browser the same widths for `srcset`.
+ * grows past a laptop - it gains a column instead.
+ *
+ * The stream is full-bleed at every width: `roll.css` caps the page chrome at
+ * 900 px and says in its own comment that the stream is not part of that. So a
+ * column really is a quarter of the window on a wide screen and keeps growing
+ * with it, which is why `TILE_SIZES` — which must agree with this — carries a
+ * pixel ceiling rather than bare `vw`.
  */
 export const COLUMN_BREAKPOINTS: readonly [query: string, columns: number][] = [
   ['(min-width: 1600px)', 4],
@@ -64,29 +71,21 @@ function useColumnCount(): number {
 }
 
 /**
- * The capture-level asset for the first of these roles that has one.
- *
- * `frameIndex === null` is the filter that makes this still mean what it did.
- * A role used to hold at most one derived row; `thumb` now holds the
- * capture-level tile AND one per camera (worker `jobs/thumbnail.ts`), so a bare
- * `find(role === 'thumb')` is "whichever camera the API happened to list
- * first" — a tile that is one of four views rather than the capture's own.
- */
-function assetOf(capture: Pick<CaptureView, 'assets'>, roles: readonly string[]) {
-  for (const role of roles) {
-    const asset = capture.assets.find(
-      (candidate) => candidate.role === role && candidate.frameIndex === null,
-    );
-    if (asset !== undefined) return asset;
-  }
-  return undefined;
-}
-
-/**
  * How wide a tile is, as the browser needs it for `sizes`: the column count
- * `useColumnCount` derives from the same two breakpoints.
+ * `useColumnCount` derives from the same three breakpoints, with a ceiling.
+ *
+ * The ceiling is the correction. This was pure `vw` with no cap, and the
+ * comment above it claimed the stream was capped at 900 px from 720 px up —
+ * `roll.css` caps the page CHROME at 900 px (`.k-bar`, `.k-exif`, `.k-acts`,
+ * `.k-info`, `.k-note`, `.frame-strip`) and deliberately leaves the stream
+ * full-bleed, so on a 2560 px display four columns really are 640 px each and
+ * the tiles keep growing with the window. 640 px is the honest cap: nothing
+ * this app serves a tile from is wider (`kino-still` is 1280 px, a `thumb` 720,
+ * and the device-uploaded thumbs 288), so promising more than that only makes
+ * the browser fetch the largest candidate it can find on every screen.
  */
-export const TILE_SIZES = '(min-width: 1600px) 25vw, (min-width: 1100px) 33vw, (min-width: 720px) 50vw, 100vw';
+export const TILE_SIZES =
+  '(min-width: 1600px) min(25vw, 640px), (min-width: 1100px) min(33vw, 640px), (min-width: 720px) 50vw, 100vw';
 
 /**
  * Below this device pixel ratio a `thumb` is enough for a tile; at or above
@@ -233,19 +232,34 @@ export function CaptureTile({
   picked,
   onPick,
   showClock = false,
+  eager = false,
 }: {
   slug: string;
   capture: CaptureView;
-  index: string;
+  /**
+   * The capture's place in the roll, zero-padded — or null when this surface
+   * cannot know it. The Picks tab is the null case: a pick can be a capture
+   * that is not in any loaded feed page, so the lookup missed and the tile
+   * printed `000`, which is a number and a wrong one. Nothing is better than
+   * a wrong frame number, and the clock beside it still identifies the shot.
+   */
+  index: string | null;
   isNew: boolean;
   picked: boolean;
-  onPick: (captureId: string) => void;
+  /** Null when the roll has hearts turned off; the control is not rendered. */
+  onPick: ((captureId: string) => void) | null;
   /**
    * Print this tile's own minute in the overlay. Set when the row mark above
    * is only an hour — on two or more columns a row holds a whole hour, so
    * without this the minute a photograph was taken is nowhere on the feed.
    */
   showClock?: boolean;
+  /**
+   * The first photograph on the roll. Every tile was `loading="lazy"`,
+   * including the one above the fold, so the picture a guest opens the roll to
+   * see waited for a layout pass before the browser would even ask for it.
+   */
+  eager?: boolean;
 }) {
   const poster = assetOf(capture, ['thumb', 'kino-still', 'wiggle-preview']);
   const failed = capture.status === 'failed';
@@ -272,7 +286,14 @@ export function CaptureTile({
         srcSet={stillSources?.srcSet}
         sizes={stillSources?.sizes}
         alt=""
-        loading="lazy"
+        // The tile is 4:3 by stylesheet, so this is not what shapes the box —
+        // it is the intrinsic size of the FILE, which is what stops the
+        // browser reflowing the row when the bytes turn out to disagree with
+        // the estimate. Absent on the device-uploaded rows, which record none.
+        width={source.width ?? undefined}
+        height={source.height ?? undefined}
+        loading={eager ? 'eager' : 'lazy'}
+        fetchPriority={eager ? 'high' : undefined}
         className="photo-img"
       />
     );
@@ -292,7 +313,11 @@ export function CaptureTile({
       <a
         className="k-open"
         href={`/r/${encodeURIComponent(slug)}/c/${encodeURIComponent(capture.captureId)}`}
-        aria-label={`Open capture ${index} from ${clockMark(capture.capturedAt)}`}
+        aria-label={
+          index === null
+            ? `Open capture from ${clockMark(capture.capturedAt)}`
+            : `Open capture ${index} from ${clockMark(capture.capturedAt)}`
+        }
       >
         {media}
       </a>
@@ -300,8 +325,8 @@ export function CaptureTile({
       <div className="k-overlay">
         <span className="k-idx">
           <FrameMark capture={capture} />
-          <span className="k-no">{index}</span>
-          {showClock ? <span className="k-at">{clockMark(capture.capturedAt)}</span> : null}
+          {index === null ? null : <span className="k-no">{index}</span>}
+          {showClock || index === null ? <span className="k-at">{clockMark(capture.capturedAt)}</span> : null}
           {/* Motion off: the range is spelled out, since the bars cannot move.
               A baked animation moves without the player, so it is not still.
               With the minute printed there is no room for both, and the bars
@@ -315,15 +340,31 @@ export function CaptureTile({
               instead, so the word is not printed twice. */}
           {source === undefined ? null : <StatusChip status={chipStatus} present={present} />}
         </span>
-        <button
-          type="button"
-          className="k-pick"
-          aria-pressed={picked}
-          aria-label={picked ? `Remove pick ${index}` : `Pick ${index}`}
-          onClick={() => onPick(capture.captureId)}
-        >
-          {picked ? '\u2665' : '\u2661'}
-        </button>
+        {/* No heart when the roll has hearts off. It used to be rendered
+            unconditionally and to write only to this phone, while the capture
+            page's heart posted a reaction and WAS gated on
+            `roll.reactionsEnabled` \u2014 two hearts meaning two things through one
+            storage key, so hearting a tile and opening it showed an empty
+            heart with a count of zero. One behaviour, one gate. */}
+        {onPick === null ? null : (
+          <button
+            type="button"
+            className="k-pick"
+            aria-pressed={picked}
+            aria-label={
+              index === null
+                ? picked
+                  ? 'Remove heart'
+                  : 'Add heart'
+                : picked
+                  ? `Remove pick ${index}`
+                  : `Pick ${index}`
+            }
+            onClick={() => onPick(capture.captureId)}
+          >
+            {picked ? '\u2665' : '\u2661'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -366,7 +407,14 @@ function Mark({
 /** A day boundary, a clock mark, or a row of captures filed under the mark above. */
 export type StreamItem =
   | { kind: 'day'; key: string; label: string; at: string }
-  | { kind: 'clock'; key: string; label: string; at: string }
+  /**
+   * `hour` is the `HH:00` this mark files under, computed here from the same
+   * `Date` the day boundary already needed. `timeIndex` used to re-parse
+   * `at` into a fresh `Date` per mark to work it out again, which on a roll
+   * with 1,900 captures is a second full pass of date parsing on every live
+   * arrival.
+   */
+  | { kind: 'clock'; key: string; label: string; at: string; hour: string }
   | { kind: 'row'; key: string; captures: CaptureView[] };
 
 /** `2026-8-7` — the calendar day a capture belongs to, in the guest's own zone. */
@@ -427,11 +475,18 @@ export function streamItems(captures: readonly CaptureView[], columns: number): 
         at: capture.capturedAt,
       });
     }
-    const nextMark = clock === '' ? '' : hourly ? `${clock.slice(0, 2)}:00` : clock;
+    const hour = clock === '' ? '' : `${clock.slice(0, 2)}:00`;
+    const nextMark = clock === '' ? '' : hourly ? hour : clock;
     if (nextMark !== mark) {
       flush();
       mark = nextMark;
-      items.push({ kind: 'clock', key: `t_${capture.captureId}`, label: nextMark, at: capture.capturedAt });
+      items.push({
+        kind: 'clock',
+        key: `t_${capture.captureId}`,
+        label: nextMark,
+        at: capture.capturedAt,
+        hour,
+      });
     }
     row.push(capture);
     if (row.length === columns) flush();
@@ -517,15 +572,18 @@ export function timeIndex(items: readonly StreamItem[]): DayMark[] {
       return;
     }
     if (item.kind !== 'clock') return;
-    const at = new Date(item.at);
-    if (Number.isNaN(at.getTime())) return;
+    // Any falsy hour, not just the empty string: `streamItems` writes `''` for
+    // an `at` it could not parse, and this function is pure and is called on
+    // hand-built lists, where the field can be missing outright. An index key
+    // labelled `undefined` lands the guest nowhere.
+    if (!item.hour) return;
     // A stream that starts mid-day (it cannot, but the function is pure and
     // is called on hand-built lists in the tests) still gets a heading.
     if (days.length === 0) {
       days.push({ key: `d_${item.at}`, label: shortDate(item.at), index, hours: [] });
     }
     const day = days[days.length - 1]!;
-    const label = `${String(at.getHours()).padStart(2, '0')}:00`;
+    const label = item.hour;
     const key = `${day.key} ${label}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -555,15 +613,31 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
    * A capture's number is its place in the roll, counted from the oldest, so
    * `003` means the same thing to two guests looking at the same photograph.
    * The feed arrives newest first, hence the subtraction.
+   *
+   * A Map, built once per feed change, not a `findIndex` per tile. The
+   * `findIndex` was O(n) inside a callback the whole grid depends on, so every
+   * tile re-rendered whenever the feed changed and each one then walked the
+   * list: about sixty tiles times 1,900 captures, ~114,000 comparisons per
+   * render on a party roll.
+   *
+   * Null rather than `000` for a capture that is not in the feed at all. The
+   * Picks tab shows `picked`, which can hold captures fetched by id and absent
+   * from every loaded page, and those tiles used to number themselves `000`.
    */
+  const feedIndex = useMemo(() => {
+    const positions = new Map<string, number>();
+    feed.captures.forEach((capture, at) => positions.set(capture.captureId, at));
+    return positions;
+  }, [feed.captures]);
+
   const indexOf = useCallback(
-    (captureId: string): string => {
-      const at = feed.captures.findIndex((c) => c.captureId === captureId);
-      const total = Math.max(feed.captures.length, roll?.photoCount ?? 0);
-      const nth = at < 0 ? 0 : total - at;
-      return String(nth).padStart(3, '0');
+    (captureId: string): string | null => {
+      const at = feedIndex.get(captureId);
+      if (at === undefined) return null;
+      const total = Math.max(feedIndex.size, roll?.photoCount ?? 0);
+      return String(total - at).padStart(3, '0');
     },
-    [feed.captures, roll?.photoCount],
+    [feedIndex, roll?.photoCount],
   );
 
   // The plate gives way going down the roll and returns on the first upward
@@ -572,19 +646,27 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   const [barHidden, setBarHidden] = useState(false);
   useEffect(() => {
     let previous = window.scrollY;
+    // One read and at most one state write per animation frame. Unthrottled,
+    // this ran `setBarHidden` on every scroll event the browser could emit —
+    // a React render per frame of a flick, competing with the virtualiser's
+    // own work on the same thumb movement.
+    let frame: number | null = null;
     const onScroll = (): void => {
-      const y = window.scrollY;
-      setBarHidden(y > 120 && y > previous);
-      previous = y;
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const y = window.scrollY;
+        setBarHidden(y > 120 && y > previous);
+        previous = y;
+      });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+    };
   }, []);
 
-  // Picking is immediate and local: no request, no toast, no confirmation.
-  const onPickToggle = useCallback((captureId: string): void => {
-    togglePick(slug, captureId);
-  }, [slug]);
   const shown = tab === 'picks' ? picked : feed.captures;
   const items = useMemo(() => streamItems(shown, columns), [columns, shown]);
   const days = useMemo(() => timeIndex(items), [items]);
@@ -598,13 +680,69 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   // control adds no chrome at all and puts the affordance on the thing it
   // describes.
   const [indexOpen, setIndexOpen] = useState(false);
+  const indexRef = useRef<HTMLDivElement>(null);
+  /**
+   * The index panel claims `role="dialog" aria-modal="true"`, so it has to
+   * behave like one.
+   *
+   * It did not. `aria-modal` tells assistive technology that everything
+   * outside this element is not there — while focus stayed on the mark in the
+   * stream that opened it, which is outside. A screen reader user was left
+   * with a page that had been declared hidden and a cursor sitting in the
+   * hidden part of it. Escape already worked; the other three halves of a
+   * dialog are focus in, focus trapped, focus restored.
+   *
+   * `inert` on everything the panel is NOT is what makes "not there" true for
+   * the tab order, the pointer AND the accessibility tree at once, the same
+   * way the capture page's save sheet does it. The panel is a child of the app
+   * shell, so the shell cannot be the inert element; its other children are.
+   * The keydown wrap only stops focus escaping into the browser chrome and
+   * never coming back.
+   */
   useEffect(() => {
     if (!indexOpen) return;
+    const previouslyFocused = document.activeElement;
+    const panel = indexRef.current;
+    const behind =
+      panel?.parentElement === null || panel?.parentElement === undefined
+        ? []
+        : [...panel.parentElement.children].filter(
+            (child): child is HTMLElement => child instanceof HTMLElement && child !== panel,
+          );
+    for (const element of behind) element.setAttribute('inert', '');
+
+    const focusables = (): HTMLElement[] =>
+      panel === null
+        ? []
+        : [...panel.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]')];
+
+    // The first HOUR, not the veil: the veil is a close target that happens to
+    // be first in the DOM, and landing on "Close" is not what opening a
+    // time index means.
+    const first = focusables().filter((element) => !element.classList.contains('k-veil'))[0];
+    (first ?? panel)?.focus();
+
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setIndexOpen(false);
+      if (event.key === 'Escape') {
+        setIndexOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const inPanel = focusables();
+      if (inPanel.length === 0) return;
+      const edge = event.shiftKey ? inPanel[0] : inPanel[inPanel.length - 1];
+      if (document.activeElement === edge) {
+        event.preventDefault();
+        (event.shiftKey ? inPanel[inPanel.length - 1] : inPanel[0])?.focus();
+      }
     };
+
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      for (const element of behind) element.removeAttribute('inert');
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
   }, [indexOpen]);
   const canJump = indexSize(days) > 1;
 
@@ -648,6 +786,24 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
   );
 
   const failure = rollError ?? feed.error;
+
+  /**
+   * The heart on a tile: the same thing the capture page's heart does.
+   *
+   * It used to be `togglePick` — a localStorage write, no request, and no
+   * `reactionsEnabled` gate — while the capture page posted a reaction and
+   * read the server's answer back. Both wrote the same storage key, so
+   * hearting a tile and then opening that photograph showed an empty heart
+   * with a count of zero, and `state/picks.ts` claimed the server stayed the
+   * truth while the feed was quietly making that false.
+   */
+  const [pickStatus, setPickStatus] = useState('');
+  const onPickToggle = useCallback((captureId: string): void => {
+    setPickStatus('');
+    void toggleReaction(slug, captureId).then((result) => {
+      if ('failed' in result) setPickStatus(result.failed);
+    });
+  }, [slug]);
 
   // Only captures that arrive through the live event stream get the NEW
   // badge; initial pages and older pages never do. The badge stays for the
@@ -705,25 +861,56 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     roll !== null && !(failure instanceof PinRequiredError) && !isNoRollError(failure),
   );
 
-  // The stream's own width, which is what a row's height is derived from.
-  // Read off the element rather than the window: the stream is capped at
-  // 900 px from 720 px up, so on a desktop the window width is not the tile
-  // width and an estimate built from it is out by a third the other way.
-  const [streamWidth, setStreamWidth] = useState(() =>
-    typeof window === 'undefined' ? 390 : window.innerWidth,
-  );
+  /**
+   * The stream's own geometry: how wide it is, and how far down the document
+   * it starts.
+   *
+   * Both read off the element, and both re-read whenever anything above it can
+   * have moved. The width is what a row's height is derived from — the stream
+   * is full-bleed, so on a desktop a column is a quarter of the window and an
+   * estimate built from anything else is out by a third.
+   *
+   * The offset is the one that was broken. `scrollMargin` was
+   * `listRef.current?.offsetTop ?? 0` read during render: on the first render
+   * the ref is null, so the virtualiser was born believing the stream starts
+   * at the top of the document, and nothing ever told it otherwise — not the
+   * offline banner appearing, not the closed-roll banner, not the header
+   * retracting, not the "N new" pill. Every row was then positioned from a
+   * stale origin. It is state now, measured after layout and on every resize.
+   */
+  const [stream, setStream] = useState<{ width: number; top: number }>(() => ({
+    width: typeof window === 'undefined' ? 390 : window.innerWidth,
+    top: 0,
+  }));
   useEffect(() => {
     const element = listRef.current;
     if (element === null) return;
     const measure = (): void => {
-      if (element.clientWidth > 0) setStreamWidth(element.clientWidth);
+      const width = element.clientWidth;
+      const top = element.getBoundingClientRect().top + window.scrollY;
+      setStream((current) =>
+        // Only on a real change: this runs from a ResizeObserver and from
+        // every scroll-driven layout the banners cause, and a fresh object
+        // per call would re-render the whole grid for nothing.
+        (width > 0 && current.width !== width) || current.top !== top
+          ? { width: width > 0 ? width : current.width, top }
+          : current,
+      );
     };
     measure();
     if (typeof ResizeObserver !== 'function') return;
+    // The stream itself for its width; the app shell for everything that can
+    // push it down the page without changing its size.
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [tab]);
+    const shell = element.closest('.k-app');
+    if (shell !== null) observer.observe(shell);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [tab, indexOpen, roll?.status, online, failure]);
 
   const virtualizer = useWindowVirtualizer({
     count: items.length,
@@ -731,11 +918,21 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
       const kind = items[index]?.kind;
       if (kind === 'clock') return CLOCK_ROW_PX;
       if (kind === 'day') return DAY_ROW_PX;
-      return rowEstimate(streamWidth, columns);
+      return rowEstimate(stream.width, columns);
     },
     overscan: 3,
-    scrollMargin: listRef.current?.offsetTop ?? 0,
+    scrollMargin: stream.top,
   });
+
+  /**
+   * Throw the measurement cache away when the tab changes.
+   *
+   * Photos and Picks are two different lists behind one virtualiser, and the
+   * rows are keyed by position, so the heights measured for Photos row 0..n
+   * were reused for whatever Picks put in those positions — a clock mark's
+   * 28 px standing in for a row of tiles, and back again.
+   */
+  useEffect(() => virtualizer.measure(), [tab, columns, stream.width, virtualizer]);
   const virtualRows = virtualizer.getVirtualItems();
   const lastVirtualRow = virtualRows[virtualRows.length - 1];
   // Where the guest is, in the index's own terms: the last hour that starts at
@@ -747,13 +944,19 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
     .filter((hour) => hour.index <= topIndex)
     .at(-1)?.key;
 
+  /**
+   * The load-more trigger. The `!feed.loading` guard that used to be part of
+   * this condition read state against a dependency (`feed`) that is a fresh
+   * object every render, so two runs in one commit could both see
+   * `loading: false` and both fetch the same page. The guard is inside
+   * `useRollFeed.loadMore` now, where it is a ref and is read synchronously.
+   */
   useEffect(() => {
     if (
       tab === 'photos' &&
       lastVirtualRow !== undefined &&
       lastVirtualRow.index >= items.length - 2 &&
-      feed.hasMore &&
-      !feed.loading
+      feed.hasMore
     ) {
       void feed.loadMore().catch(() => {});
     }
@@ -802,10 +1005,34 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
           </nav>
         </GuestBar>
 
-        {roll?.status === 'closed' ? <RollClosed closedAt={roll.closedAt} /> : null}
-        {roll?.status === 'archived' ? <RollStateBanner status="archived" /> : null}
+        {/* All five roll statuses, not two. `draft` and `trash` used to render
+            nothing at all, so a roll that was not open yet or had been deleted
+            looked exactly like a live one with no photographs on it —
+            underneath the line "They appear here as the camera sends them",
+            which nothing was going to make true. `RollStateBanner` carries the
+            other three; `closed` keeps its own component because it prints a
+            date. */}
+        {roll?.status === 'closed' ? (
+          <RollClosed closedAt={roll.closedAt} />
+        ) : roll === null ? null : (
+          <RollStateBanner status={roll.status} />
+        )}
 
-        {failure !== null ? <LoadFailure onRetry={() => void retry()} offline={!online} /> : null}
+        {/* Page-wide only when there is no roll on screen. A `loadMore` that
+            failed with two hundred photographs already loaded used to paint
+            "Could not reach the roll" across the top of them; that failure
+            belongs to the load-more control, at the bottom, where it is. */}
+        {failure !== null && feed.captures.length === 0 ? (
+          <LoadFailure
+            onRetry={() => void retry()}
+            offline={!online}
+            reason={apiFailureMessage(failure)}
+          />
+        ) : null}
+
+        {pickStatus === '' ? null : (
+          <p className="k-note" role="status" aria-live="polite" aria-atomic="true">{pickStatus}</p>
+        )}
 
         {tab === 'info' && roll !== null ? (
           <div className="k-info">
@@ -864,16 +1091,23 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
               </div>
             ) : null}
 
+            {/* The announcement and the control are two elements, because they
+                cannot be one. `role="status"` on a `<button>` REPLACES the
+                button role, so assistive technology was told about a live
+                region and given no way to activate it — the one control on
+                this page that reaches a scrolled thumb was, to a screen
+                reader, not a control at all. The span announces; the button
+                is a button. */}
             {tab === 'photos' && feed.pending.length > 0 ? (
-              <button
-                type="button"
-                className="new-pill"
-                role="status"
-                aria-live="polite"
-                onClick={flushPending}
-              >
-                {feed.pending.length} new
-              </button>
+              <>
+                <span className="k-sr" role="status" aria-live="polite">
+                  {feed.pending.length} new{' '}
+                  {feed.pending.length === 1 ? 'photograph' : 'photographs'}
+                </span>
+                <button type="button" className="new-pill" onClick={flushPending}>
+                  {feed.pending.length} new
+                </button>
+              </>
             ) : null}
 
             {/* Only what is already LOADED can be offered: the feed is
@@ -882,7 +1116,14 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                 deeper. Every key in it lands on a row that exists, and the
                 last line of the panel says as much. */}
             {indexOpen ? (
-              <div className="k-index" role="dialog" aria-modal="true" aria-label="Jump to a time">
+              <div
+                ref={indexRef}
+                className="k-index"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Jump to a time"
+                tabIndex={-1}
+              >
                 <button type="button" className="k-veil" aria-label="Close" onClick={() => setIndexOpen(false)} />
                 <div className="k-index-body">
                   {days.map((day) => (
@@ -952,8 +1193,9 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                               index={indexOf(capture.captureId)}
                               isNew={freshIds.has(capture.captureId)}
                               picked={picks.has(capture.captureId)}
-                              onPick={onPickToggle}
+                              onPick={roll?.reactionsEnabled === true ? onPickToggle : null}
                               showClock={hourly}
+                              eager={capture.captureId === cover?.captureId}
                             />
                           ))}
                         </div>
@@ -963,6 +1205,23 @@ export function RollFeedPage({ slug }: RollFeedPageProps) {
                 })}
               </div>
             </div>
+
+            {/* One more page did not arrive. Scoped to the control that asked
+                for it: the photographs above are still readable, still
+                openable and still saveable, so a page-wide alert is a lie
+                about the state of the page. */}
+            {tab === 'photos' && feed.loadMoreError !== null ? (
+              <p className="roll-alert" role="alert">
+                <span>
+                  {online
+                    ? (apiFailureMessage(feed.loadMoreError) ?? 'Could not load more of the roll.')
+                    : "You're offline. The rest of the roll is not here yet."}
+                </span>
+                <button type="button" onClick={() => void feed.loadMore().catch(() => {})}>
+                  Try again
+                </button>
+              </p>
+            ) : null}
           </>
         ) : null}
       </div>

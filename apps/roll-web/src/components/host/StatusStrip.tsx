@@ -180,7 +180,7 @@ export function StatusStrip({
                 panel is not also rendered for a single camera — see
                 `HostDashboard`. */}
             <p className="host-now-foot">
-              {camera.serial ?? camera.deviceId} · last status {report.seen}
+              {camera.serial} · last status {report.seen}
               {camera.firmware === null ? '' : ` · firmware ${camera.firmware}`}
               {others === 0 ? '' : ` · ${String(others)} more ${others === 1 ? 'camera' : 'cameras'}`}
             </p>

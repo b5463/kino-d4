@@ -11,6 +11,7 @@ import { LandingPage } from '../src/pages/LandingPage';
 import { NoCapturePage, NoRollPage } from '../src/pages/NotFoundPage';
 import { PinGate } from '../src/pages/PinGate';
 import {
+  clockMark,
   indexSize,
   markGranularity,
   rowEstimate,
@@ -138,8 +139,15 @@ describe('text tokens', () => {
 });
 
 describe('the time index', () => {
+  /**
+   * `hour` is computed the way `streamItems` computes it, because a clock mark
+   * now carries the `HH:00` it files under rather than making `timeIndex`
+   * re-parse `at` per mark. A hand-built item that omits it is not a stream
+   * item the app can produce, so building one here would test nothing.
+   */
   function clock(label: string, at: string): StreamItem {
-    return { kind: 'clock', key: `t_${at}`, label, at };
+    const mark = clockMark(at);
+    return { kind: 'clock', key: `t_${at}`, label, at, hour: mark === '' ? '' : `${mark.slice(0, 2)}:00` };
   }
   function day(label: string, at: string): StreamItem {
     return { kind: 'day', key: `d_${at}`, label, at };
@@ -190,7 +198,9 @@ describe('the time index', () => {
   });
 
   it('ignores rows and unparseable marks, and drops a day with no hours', () => {
-    expect(timeIndex([row, { kind: 'clock', key: 't', label: '', at: 'not a time' }])).toEqual([]);
+    expect(
+      timeIndex([row, { kind: 'clock', key: 't', label: '', at: 'not a time', hour: '' }]),
+    ).toEqual([]);
     expect(timeIndex([day('05.09.26', '2026-09-05T21:00:00'), row])).toEqual([]);
     expect(indexSize([])).toBe(0);
   });

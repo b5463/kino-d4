@@ -11,7 +11,7 @@ import { playerPlayback } from '../components/playback';
 import { SafeImage } from '../components/SafeImage';
 import { NoPicture, StatusChip } from '../components/StatusChip';
 import { WigglePlayer } from '../components/WigglePlayer';
-import { setPick } from '../state/picks';
+import { toggleReaction } from '../state/picks';
 
 export interface CaptureDetailProps {
   slug: string;
@@ -375,15 +375,31 @@ export function CaptureDetail({
     }
   };
 
+  /**
+   * The heart.
+   *
+   * `void react()` with only a `finally` meant every failure was an unhandled
+   * promise rejection and the guest saw nothing move: the host turning hearts
+   * off between this page rendering and the tap answers 409
+   * `REACTIONS_DISABLED`, and that is a sentence, not a crash. `toggleReaction`
+   * is the shared behaviour — the feed tile's heart is the same call — and it
+   * hands back either the server's new count or a line for the status row.
+   */
   const react = async (): Promise<void> => {
     if (reacting) return;
     setReacting(true);
+    setStatus('');
     try {
-      await api.react(slug, capture.captureId);
-      const next = await api.getCapture(slug, capture.captureId);
-      setCapture(next);
-      // The local picks set is a cache of the server's per-guest truth.
-      setPick(slug, next.captureId, next.reacted);
+      const result = await toggleReaction(slug, capture.captureId, api);
+      if ('failed' in result) {
+        setStatus(result.failed);
+        return;
+      }
+      setCapture((current) => ({
+        ...current,
+        reacted: result.reacted,
+        reactionCount: result.count,
+      }));
     } finally {
       setReacting(false);
     }

@@ -1,4 +1,4 @@
-import { ASSET_ROLES } from '@kino/schemas';
+import { ASSET_ROLES } from './roles';
 import type {
   AssetRole,
   CaptureAssetDetail,
@@ -12,14 +12,24 @@ import type {
  * Shape checks for what the guest API sends. `@kino/schemas` describes the
  * STORED capture and asset (`kino.capture`, `kino.asset`: versioned envelopes
  * with `id`, `captureUuid`, `deviceId`), not the guest wire view, so the only
- * piece of it that applies here is the `ASSET_ROLES` enum. Everything else is
- * checked by hand against the wire types in `client.ts`.
+ * piece of it that applies here is the asset role list (`./roles`). Everything
+ * else is checked by hand against the wire types in `client.ts`.
  *
  * The bar is "will the page render it without throwing", not "is every field
  * exactly right": a wrong string in `mode` shows an odd tile, a missing
- * `assets` array takes the whole feed down. Unknown asset roles are dropped
- * from the capture rather than failing it — a new derivative must not blank a
- * photograph.
+ * `assets` array takes the whole feed down.
+ *
+ * Two forward-compatible holes on purpose, and they are the same hole:
+ *
+ *  - an unknown asset ROLE drops that asset and keeps the capture, because a
+ *    new derivative must not blank a photograph;
+ *  - an unusable PLAYBACK value drops that value and keeps the capture, for
+ *    exactly the same reason. It did not: a `null` fps (which JSON produces
+ *    for an unrecorded rate) or any loop word this build has not heard of made
+ *    the whole capture parse to nothing — dropped from the feed with a console
+ *    warning, and `getCapture` threw, so the capture page could not open at
+ *    all. Playback only ever decides how a wigglegram is animated, and the
+ *    player has defaults for every part of it.
  */
 
 const ROLE_SET: ReadonlySet<string> = new Set(ASSET_ROLES);
@@ -40,22 +50,26 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function playbackOf(value: unknown): CapturePlayback | null | undefined {
-  if (value === null || value === undefined) return null;
-  if (!isRecord(value)) return undefined;
+/**
+ * The host's playback choice, with anything unusable left out.
+ *
+ * Never fails the capture. Each of the three keys is optional on the wire and
+ * absent means "the player's default", so a value this build cannot use is
+ * indistinguishable from one that was never sent — and a photograph is worth
+ * more than a frame rate. `playback` itself being something other than an
+ * object (a string, an array) is the one case that yields no playback at all,
+ * which is still `null`, still the defaults, still the photograph.
+ */
+function playbackOf(value: unknown): CapturePlayback | null {
+  if (value === null || value === undefined || !isRecord(value)) return null;
   const playback: CapturePlayback = {};
-  if (value.fps !== undefined) {
-    if (!isFiniteNumber(value.fps)) return undefined;
-    playback.fps = value.fps;
-  }
-  if (value.loop !== undefined) {
-    if (value.loop !== 'bounce' && value.loop !== 'continuous' && value.loop !== 'sweep') return undefined;
+  // `null` is what JSON carries for an unrecorded rate, and it used to be the
+  // single most likely way to lose a capture entirely.
+  if (isFiniteNumber(value.fps)) playback.fps = value.fps;
+  if (value.loop === 'bounce' || value.loop === 'continuous' || value.loop === 'sweep') {
     playback.loop = value.loop;
   }
-  if (value.direction !== undefined) {
-    if (value.direction !== 'ltr' && value.direction !== 'rtl') return undefined;
-    playback.direction = value.direction;
-  }
+  if (value.direction === 'ltr' || value.direction === 'rtl') playback.direction = value.direction;
   return playback;
 }
 
@@ -99,7 +113,6 @@ function captureBaseOf(value: unknown): Omit<CaptureView, 'assets'> | null {
   if (!isString(value.mode) || !isString(value.capturedAt) || !isString(value.status)) return null;
   if (!isFiniteNumber(value.frameCount)) return null;
   const playback = playbackOf(value.playback);
-  if (playback === undefined) return null;
   const look = value.look ?? null;
   if (look !== null && !isString(look)) return null;
   return {
@@ -144,7 +157,7 @@ export function parseCaptureDetail(value: unknown): CaptureDetail | null {
  */
 export function parseFeedPage(value: unknown): {
   items: CaptureView[];
-  nextCursor: string | undefined;
+  nextCursor: string | null;
   hasMore: boolean;
 } | null {
   if (!isRecord(value) || !Array.isArray(value.items)) return null;
@@ -160,7 +173,7 @@ export function parseFeedPage(value: unknown): {
   }
   return {
     items,
-    nextCursor: isString(value.nextCursor) ? value.nextCursor : undefined,
+    nextCursor: isString(value.nextCursor) ? value.nextCursor : null,
     hasMore: value.hasMore === true,
   };
 }

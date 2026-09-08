@@ -105,10 +105,16 @@ describe('guest resilience pieces', () => {
     expect(container.querySelector('.roll-closed b')?.textContent).toBe('Archived');
     expect(container.querySelector('[role="status"]')?.textContent).toContain('Nothing new will arrive.');
 
+    // `live` is the only one of the five states that accepts uploads, and an
+    // unknown or not-yet-loaded status fails closed: the promise that
+    // photographs "appear here as the camera sends them" is one this app
+    // cannot keep for a `draft` or `trash` roll, and used to make it anyway.
     expect(rollAcceptsUploads('live')).toBe(true);
-    expect(rollAcceptsUploads(undefined)).toBe(true);
+    expect(rollAcceptsUploads(undefined)).toBe(false);
     expect(rollAcceptsUploads('closed')).toBe(false);
     expect(rollAcceptsUploads('archived')).toBe(false);
+    expect(rollAcceptsUploads('draft')).toBe(false);
+    expect(rollAcceptsUploads('trash')).toBe(false);
   });
 
   it('a live roll gets no state banner', async () => {

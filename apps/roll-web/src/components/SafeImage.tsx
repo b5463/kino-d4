@@ -10,7 +10,18 @@ export interface SafeImageProps extends ImgHTMLAttributes<HTMLImageElement> {
  * An `<img>` that fails to a neutral block instead of the browser's broken
  * icon. No external asset: the block is CSS and two words.
  */
-export function SafeImage({ src, retry = false, className, ...rest }: SafeImageProps) {
+export function SafeImage({
+  src,
+  retry = false,
+  className,
+  /**
+   * Off the main thread unless a caller says otherwise. Decoding a 1600x1200
+   * JPEG synchronously blocks the frame it lands in, and on this app that
+   * frame is usually one the guest is scrolling.
+   */
+  decoding = 'async',
+  ...rest
+}: SafeImageProps) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
@@ -40,5 +51,14 @@ export function SafeImage({ src, retry = false, className, ...rest }: SafeImageP
   }
 
   // The key remounts the element, which is what makes the browser ask again.
-  return <img key={attempt} {...rest} src={src} className={className} onError={() => setFailed(true)} />;
+  return (
+    <img
+      key={attempt}
+      {...rest}
+      decoding={decoding}
+      src={src}
+      className={className}
+      onError={() => setFailed(true)}
+    />
+  );
 }

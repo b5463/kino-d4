@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type {
   HostApi,
   HostCaptureView,
@@ -95,6 +95,16 @@ export function waitedFor(ms: number): string {
  */
 export const EXPORT_WAIT_FLOOR_MS = 5_000;
 
+/**
+ * How long the panel keeps asking about one export before it stops.
+ *
+ * Ten minutes. A ZIP of a party roll is minutes of work, so this is not a
+ * timeout on the job — the job is on the server and unaffected — it is a bound
+ * on this page hammering the API once a second for ever about a job whose
+ * worker is not running.
+ */
+export const EXPORT_POLL_LIMIT_MS = 10 * 60_000;
+
 /** A destructive action that asks first, in the panel, with no browser dialog. */
 function Confirm({
   open,
@@ -155,6 +165,22 @@ export function HostDashboard({
 }: HostDashboardProps) {
   const [roll, setRoll] = useState<HostRollView | null>(null);
   const [captures, setCaptures] = useState<HostCaptureView[]>([]);
+  /** Keyset cursor for the page after the last one loaded; null means the end. */
+  const [capturesCursor, setCapturesCursor] = useState<string | null>(null);
+  const loadingMoreRef = useRef(false);
+  /**
+   * Whether this dashboard is still on screen.
+   *
+   * The export poller is an unbounded loop with a sleep in it, so it is the
+   * one thing here that can outlive the tree it sets state on.
+   */
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [fatal, setFatal] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -186,19 +212,47 @@ export function HostDashboard({
    */
   const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
 
+  /**
+   * The first page of captures, and only the first page.
+   *
+   * This used to walk the whole roll before the panel painted: 1,900 captures
+   * is thirty-eight sequential requests, and it ran again from the top on
+   * `roll.cleared`. A host opening the dashboard to hide one photograph waited
+   * for all of it. The grid is virtualised anyway, so the pages after the
+   * first are worth exactly as much as the rows on screen — `loadMoreCaptures`
+   * fetches them as the host scrolls.
+   */
   const refreshCaptures = useCallback(
     async (rollId: string): Promise<void> => {
-      const all: HostCaptureView[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await api.listCaptures(rollId, cursor);
-        all.push(...page.items);
-        cursor = page.hasMore ? page.nextCursor : undefined;
-      } while (cursor !== undefined);
-      setCaptures(all);
+      const page = await api.listCaptures(rollId);
+      setCaptures(page.items);
+      setCapturesCursor(page.hasMore ? (page.nextCursor ?? null) : null);
     },
     [api],
   );
+
+  const loadMoreCaptures = useCallback((): void => {
+    const rollId = roll?.rollId;
+    const cursor = capturesCursor;
+    if (rollId === undefined || cursor === null || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    void api
+      .listCaptures(rollId, cursor)
+      .then((page) => {
+        setCaptures((items) => {
+          const known = new Set(items.map((item) => item.captureId));
+          return [...items, ...page.items.filter((item) => !known.has(item.captureId))];
+        });
+        setCapturesCursor(page.hasMore ? (page.nextCursor ?? null) : null);
+      })
+      .catch(() => {
+        // A page that did not arrive is not a page-wide failure: the rows
+        // already loaded are still moderatable, and the next scroll asks again.
+      })
+      .finally(() => {
+        loadingMoreRef.current = false;
+      });
+  }, [api, capturesCursor, roll?.rollId]);
 
   const refresh = useCallback(async (): Promise<void> => {
     const next = await api.resolveSession();
@@ -453,8 +507,28 @@ export function HostDashboard({
     setExportSince(Date.now());
     setExportState('Asking the server for a ZIP…');
     const { jobId } = await api.startExport(roll.rollId);
+    const startedAt = Date.now();
     for (;;) {
+      /**
+       * Two ways out that this loop did not have.
+       *
+       * It was a bare `for(;;)` with a one-second sleep, no cap and no unmount
+       * check: a job stuck at `queued` because the worker is down — measured on
+       * the dev API, it stayed there for the whole session — polled the API
+       * once a second for as long as the tab lived, and every answer called
+       * `setExportState` on a tree that may no longer exist.
+       */
+      if (!mountedRef.current) return;
+      if (Date.now() - startedAt > EXPORT_POLL_LIMIT_MS) {
+        setExportSince(null);
+        setExportFailed(true);
+        setExportState(
+          `Given up watching after ${waitedFor(EXPORT_POLL_LIMIT_MS)}. The ZIP may still be building — prepare it again to start watching.`,
+        );
+        return;
+      }
       const current = await api.getExport(roll.rollId, jobId);
+      if (!mountedRef.current) return;
       setExportState(exportWording(current.status));
       if (current.url !== undefined) {
         setExportUrl(current.url);
@@ -906,7 +980,7 @@ export function HostDashboard({
         ) : null}
         <CaptureGrid
           captures={captures}
-          assetUrl={api.assetUrl}
+          assetBlob={api.assetBlob}
           busy={busy}
           filter={filter}
           onFilter={setFilter}
@@ -914,6 +988,8 @@ export function HostDashboard({
           onDelete={trash}
           onRestore={restore}
           undoFor={undoFor}
+          hasMore={capturesCursor !== null}
+          onNeedMore={loadMoreCaptures}
         />
       </Panel>
     </main>

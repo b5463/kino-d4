@@ -245,7 +245,7 @@ function CameraRow({ camera, now }: { camera: HostCameraView; now: number }) {
     <li className="host-camera" data-word={report.word}>
       <div className="host-camera-head">
         <StatusLamp state={report.lamp} label={report.word} />
-        <strong className="host-camera-serial">{camera.serial ?? camera.deviceId}</strong>
+        <strong className="host-camera-serial">{camera.serial}</strong>
       </div>
       {report.queue === '' ? null : <div className="host-camera-queue">{report.queue}</div>}
       {/* Whose count this is, said in the line itself. The moderation filter

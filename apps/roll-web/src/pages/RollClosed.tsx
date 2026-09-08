@@ -25,18 +25,51 @@ export function RollClosed({ closedAt }: RollClosedProps) {
   );
 }
 
-/** A roll that is closed or archived takes no more captures from the camera. */
+/**
+ * Whether the camera can still add to this roll.
+ *
+ * `live` is the only state that can. Five exist
+ * (`packages/schemas/src/media.ts#ROLL_STATUSES`) and this used to name two of
+ * the four that cannot, so a `draft` or `trash` roll told a guest that
+ * photographs "appear here as the camera sends them" when nothing was coming.
+ * Written the positive way round, an unknown status is treated as not
+ * accepting rather than as live — a promise this app cannot keep is worse than
+ * one line of caution.
+ */
 export function rollAcceptsUploads(status: string | undefined): boolean {
-  return status !== 'closed' && status !== 'archived';
+  return status === 'live';
 }
 
-/** The banner for a roll state that changes what a guest can expect. */
+/**
+ * The banner for a roll state that changes what a guest can expect.
+ *
+ * `closed` has its own component above, because it carries a date. The other
+ * three that are not `live` each say the one thing a guest needs; `live` and
+ * anything unrecognised say nothing, which is the right amount for a roll that
+ * is simply working.
+ */
+const ROLL_STATE_LINES: Record<string, { word: string; line: string }> = {
+  draft: {
+    word: 'Not open yet',
+    line: 'The host has not opened this roll. Nothing is coming until they do.',
+  },
+  archived: {
+    word: 'Archived',
+    line: 'This roll has been put away. Nothing new will arrive.',
+  },
+  trash: {
+    word: 'Deleted',
+    line: 'This roll has been deleted. What is still here will go with it.',
+  },
+};
+
 export function RollStateBanner({ status }: { status: string }) {
-  if (status !== 'archived') return null;
+  const state = ROLL_STATE_LINES[status];
+  if (state === undefined) return null;
   return (
     <aside role="status" className="roll-closed">
-      <b>Archived</b>
-      <span>This roll has been put away. Nothing new will arrive.</span>
+      <b>{state.word}</b>
+      <span>{state.line}</span>
     </aside>
   );
 }

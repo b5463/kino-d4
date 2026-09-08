@@ -1,4 +1,4 @@
-import { ASSET_ROLES } from '@kino/schemas';
+import { ASSET_ROLES } from './roles';
 import { parseCaptureDetail, parseFeedPage } from './validate';
 
 /**
@@ -12,10 +12,10 @@ import { parseCaptureDetail, parseFeedPage } from './validate';
  * `apps/api/src/rolls/rolls.ts` and `apps/api/src/captures/feed.ts`, which are
  * NOT under `routes/`. These are not the storage-side `@kino/schemas`
  * envelopes, which describe a different thing (a versioned persisted record,
- * not a guest response). The one piece of `@kino/schemas` reused here is the
- * `ASSET_ROLES` enum: an asset's `role` on the guest wire is the same string
- * that schema already names, so re-typing it by hand here would just be a
- * second copy that can drift.
+ * not a guest response). The asset `role` enum is the one list the guest wire
+ * and that schema share; it lives in `./roles` and is checked against the
+ * schema's copy by test rather than imported, because importing it pulls zod
+ * into the guest bundle.
  *
  * `Date` never appears below. Every timestamp crosses the wire as whatever
  * `JSON.stringify(Date)` produces — an ISO 8601 string — and this client keeps
@@ -24,7 +24,7 @@ import { parseCaptureDetail, parseFeedPage } from './validate';
  * for every caller.
  */
 
-/** An asset role, taken from the one enum the guest feed and `@kino/schemas` share. */
+/** An asset role, from the one list the guest feed and `@kino/schemas` share. */
 export type AssetRole = (typeof ASSET_ROLES)[number];
 
 /** `GET /api/rolls/:slug` — see `apps/api/src/rolls/rolls.ts#guestRollView`. */
@@ -84,10 +84,21 @@ export interface CaptureDetail extends Omit<CaptureView, 'assets'> {
   reacted: boolean;
 }
 
-/** A page of the guest feed, exactly as `RollApi.listCaptures` promises it. */
-export interface CaptureFeedPage {
+/**
+ * A page of the guest feed, exactly as `RollApi.listCaptures` promises it.
+ *
+ * `nextCursor` is `string | null` and always present, which is what
+ * `apps/api/src/captures/feed.ts` actually writes. It used to be typed
+ * `nextCursor?: string` — an optional key that never arrives absent — so every
+ * caller had to treat "no more pages" and "the field was not sent" as the same
+ * thing when only one of them can happen.
+ *
+ * Not exported: `RollApi` is the surface this module offers and nothing outside
+ * it names this shape.
+ */
+interface CaptureFeedPage {
   items: CaptureView[];
-  nextCursor?: string;
+  nextCursor: string | null;
   hasMore: boolean;
 }
 
@@ -109,10 +120,79 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    /**
+     * The `retry-after` window, in seconds, when the API sent one. Only a 429
+     * carries it today — the PIN lockout in `apps/api/src/auth/pins.ts` — and
+     * without it the gate could only say "try again", which is the one thing a
+     * locked-out guest must not do: every attempt extends the lockout.
+     */
+    public readonly retryAfterSeconds: number | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** `retry-after` as seconds. The header is either a delta or an HTTP date. */
+function retryAfterOf(res: Response): number | null {
+  const raw = res.headers.get('retry-after');
+  if (raw === null) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const at = Date.parse(raw);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+/** `45 seconds`, `2 minutes` — a wait said the way a person would say it. */
+export function waitWording(seconds: number): string {
+  if (seconds < 90) {
+    const whole = Math.max(1, Math.round(seconds));
+    return `${String(whole)} ${whole === 1 ? 'second' : 'seconds'}`;
+  }
+  const minutes = Math.round(seconds / 60);
+  return `${String(minutes)} ${minutes === 1 ? 'minute' : 'minutes'}`;
+}
+
+/**
+ * What a guest is told about one failed request.
+ *
+ * Every non-2xx used to collapse into a single line — "Could not open this
+ * roll. Try again." — which on a PIN lockout (429 with a `retry-after`) is the
+ * app inviting the retry that extends the lockout, and on a closed roll or a
+ * disabled download is the app blaming the connection for a decision the host
+ * made. Null means "nothing specific to say"; the caller keeps its own
+ * fallback line rather than this inventing one.
+ */
+export function apiFailureMessage(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+
+  if (error.status === 429) {
+    return error.retryAfterSeconds === null
+      ? 'Too many tries. Wait a minute before trying again.'
+      : `Too many tries. Wait ${waitWording(error.retryAfterSeconds)} before trying again — each try extends the wait.`;
+  }
+
+  switch (error.code) {
+    case 'INVALID_PIN':
+      return 'That PIN did not work.';
+    case 'ROLL_CLOSED':
+      return 'This roll is closed. Nothing new can be added to it.';
+    case 'DOWNLOADS_DISABLED':
+      return 'Saving is off for this roll.';
+    case 'REACTIONS_DISABLED':
+      return 'Hearts are off for this roll.';
+    case 'INVALID_CURSOR':
+      return 'This part of the roll has moved. Reload the page.';
+    default:
+      break;
+  }
+
+  if (error.status === 503) return 'The roll server is not answering. Try again in a moment.';
+  if (error.status === 409) return 'The roll changed while you were reading it. Reload the page.';
+  if (error.status === 403) return 'This roll does not allow that.';
+  if (error.status === 400) return 'The roll server refused that request. Reload the page.';
+  return null;
 }
 
 export function isNoRollError(error: unknown): boolean {
@@ -146,12 +226,34 @@ export class PinRequiredError extends Error {
   }
 }
 
+/**
+ * Per-request options every read accepts.
+ *
+ * `signal` is the reason this exists. Nothing here could be cancelled, so
+ * moving between rolls — or opening a capture and going straight back — left
+ * every in-flight request running to completion on a party uplink, competing
+ * with the photographs the guest is now looking at.
+ */
+export interface ReadOptions {
+  signal?: AbortSignal;
+}
+
+/** `listCaptures` also takes the page size, which the caller knows and the API does not. */
+export interface FeedPageOptions extends ReadOptions {
+  /**
+   * How many capture records to ask for. Omitted, the API sends its own
+   * default of 50 — fifty records of assets and playback to paint the one or
+   * two tiles a phone screen holds.
+   */
+  limit?: number;
+}
+
 /** The contract Tasks 27-31 are written against. */
 export interface RollApi {
-  getRoll(slug: string): Promise<RollView>;
+  getRoll(slug: string, options?: ReadOptions): Promise<RollView>;
   submitPin(slug: string, pin: string): Promise<void>;
-  listCaptures(slug: string, cursor?: string): Promise<CaptureFeedPage>;
-  getCapture(slug: string, id: string): Promise<CaptureDetail>;
+  listCaptures(slug: string, cursor?: string, options?: FeedPageOptions): Promise<CaptureFeedPage>;
+  getCapture(slug: string, id: string, options?: ReadOptions): Promise<CaptureDetail>;
   /**
    * `options.download` appends `?download=1` (`wantsDownload` in
    * `apps/api/src/captures/delivery.ts`), which asks the API for `Content-Disposition:
@@ -231,7 +333,12 @@ async function requestJson<T>(input: string, init?: RequestInit, slug?: string):
 
   if (!res.ok) {
     const body = await readErrorBody(res);
-    throw new ApiError(res.status, errorCode(body), errorMessage(body, res.statusText));
+    throw new ApiError(
+      res.status,
+      errorCode(body),
+      errorMessage(body, res.statusText),
+      retryAfterOf(res),
+    );
   }
 
   // A 2xx with an empty body (e.g. a bare 204, or a stub in a test) is not a
@@ -259,10 +366,10 @@ export function createRollApi(baseUrl = ''): RollApi {
   const lastEventIds = new Map<string, string>();
 
   return {
-    async getRoll(slug) {
+    async getRoll(slug, options) {
       return requestJson<RollView>(
         joinUrl(baseUrl, `/api/rolls/${encodeURIComponent(slug)}`),
-        undefined,
+        { signal: options?.signal },
         slug,
       );
     },
@@ -275,17 +382,17 @@ export function createRollApi(baseUrl = ''): RollApi {
       });
     },
 
-    async listCaptures(slug, cursor) {
+    async listCaptures(slug, cursor, options) {
       const params = new URLSearchParams();
       // `cursor` is opaque and round-tripped exactly as received — never
       // decoded, re-encoded, or otherwise touched. See
       // `apps/api/src/captures/feed.ts#decodeCursor` for why: its encoding is
       // an internal detail this client has no business depending on.
       if (cursor !== undefined) params.set('cursor', cursor);
-      // `limit` is not exposed yet — the brief's `RollApi` shape names only
-      // `(slug, cursor?)`, and the API defaults to `FEED_LIMIT_DEFAULT` (50)
-      // on its own. A future task can add an optional third parameter if a
-      // page size other than the default turns out to be needed.
+      // The page size is the caller's decision, not the API's default: a phone
+      // paints one or two tiles on first sight and the API's own
+      // `FEED_LIMIT_DEFAULT` is 50 capture records, assets and all.
+      if (options?.limit !== undefined) params.set('limit', String(options.limit));
       const qs = params.toString();
 
       const data = await requestJson<unknown>(
@@ -293,7 +400,7 @@ export function createRollApi(baseUrl = ''): RollApi {
           baseUrl,
           `/api/rolls/${encodeURIComponent(slug)}/captures${qs === '' ? '' : `?${qs}`}`,
         ),
-        undefined,
+        { signal: options?.signal },
         slug,
       );
 
@@ -304,13 +411,13 @@ export function createRollApi(baseUrl = ''): RollApi {
       return page;
     },
 
-    async getCapture(slug, id) {
+    async getCapture(slug, id, options) {
       const data = await requestJson<unknown>(
         joinUrl(
           baseUrl,
           `/api/rolls/${encodeURIComponent(slug)}/captures/${encodeURIComponent(id)}`,
         ),
-        undefined,
+        { signal: options?.signal },
         slug,
       );
       const capture = parseCaptureDetail(data);

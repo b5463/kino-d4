@@ -258,9 +258,11 @@ describe('createRollApi', () => {
       // The cursor travels exactly as received — never re-encoded, never
       // parsed. A `?` join and one `cursor=<value>` is the whole contract.
       expect(secondUrl).toBe(`/api/rolls/abc123/captures?cursor=${opaqueCursor}`);
-      // `nextCursor: null` from the API becomes `undefined` on the client
-      // side of the `RollApi` contract, never a literal null falling through.
-      expect(second.nextCursor).toBeUndefined();
+      // `null` travels as `null`. The API always sends the key and sends it
+      // null on the last page, so the client type is `string | null` rather
+      // than an optional that never arrives absent — the shape a caller has
+      // to handle is the one the wire actually has.
+      expect(second.nextCursor).toBeNull();
       expect(second.hasMore).toBe(false);
     });
   });

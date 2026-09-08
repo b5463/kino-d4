@@ -5,23 +5,32 @@ export const HOST_TOKEN_STORAGE_KEY = 'kino.hostToken';
 /**
  * One camera's own account of itself, from its heartbeat on the roll.
  *
- * Every counter is nullable and stays null for a camera that joined and never
+ * Every COUNTER is nullable and stays null for a camera that joined and never
  * sent a heartbeat — firmware older than the heartbeat does not send one at
  * all. "Never heard from" is not "0 pending at the epoch", and the dashboard
  * has to be able to say which of the two it is looking at.
+ *
+ * `serial` and `uploadPaused` are not counters and were typed as if they were.
+ * `devices.serial` is a non-null column and `readRollCameras` selects it
+ * straight (`apps/api/src/rolls/rolls.ts`), so the `?? camera.deviceId`
+ * fallbacks around this app were guarding against a value the API cannot send.
+ * `uploadPaused` is always present and `boolean | null`, where the null means
+ * "this camera has not said" — a real third state the panel renders, and not
+ * the same thing as an absent key.
  */
 export interface HostCameraView {
   deviceId: string;
-  serial: string | null;
+  serial: string;
   lastSeenAt: string | null;
   pending: number | null;
   uploading: number | null;
   failed: number | null;
   /** What the camera thinks of this server: unknown | reachable | unreachable. */
   serverState: string | null;
+  /** Null for a camera that has not reported one. */
   firmware: string | null;
-  /** The camera's upload queue is halted by the operator, if it says so. */
-  uploadPaused?: boolean | null;
+  /** True halted, false running, null the camera has not said. */
+  uploadPaused: boolean | null;
 }
 
 /** What a full-roll ZIP would cost, before the host asks for one. */
@@ -137,15 +146,25 @@ export interface HostApi {
    * 403. `sameOrigin` decides, so one method covers both deployments.
    */
   exportBlob(url: string): Promise<Blob>;
-  assetUrl(assetId: string): string;
+  /**
+   * One asset's bytes, with the host token on the request.
+   *
+   * Not a URL, which is what this was. `GET /api/assets/:id/content` is behind
+   * `requireHost` for a capture the guest wire will not serve — a hidden one, a
+   * trashed one, any capture at all on a PIN roll — and it reads
+   * `Authorization: Bearer hrt_…` and nothing else. A bare URL in an `<img
+   * src>` sends no such header, so exactly the tiles a host opens the
+   * dashboard to look at answered 404 or 401 and drew the missing-image block.
+   * The same reason `exportBlob` immediately above is a fetch and not a link.
+   *
+   * The caller owns the object URL this becomes and must revoke it — see
+   * `components/host/HostImage.tsx`, which is the only caller.
+   */
+  assetBlob(assetId: string, signal?: AbortSignal): Promise<Blob>;
   events(rollId: string, onEvent: (event: HostRollEvent) => void): () => void;
 }
 
 const HOST_TOKEN_PATTERN = /^hrt_[A-Za-z0-9_-]+$/;
-
-export function isHostToken(value: string): boolean {
-  return HOST_TOKEN_PATTERN.test(value.trim());
-}
 
 type ReadWriteStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -250,7 +269,7 @@ interface ApiErrorBody {
  * the page's — a presigned storage URL points somewhere else entirely, and
  * sending a bearer token to a third party is how a credential leaks.
  */
-export function sameOrigin(url: string, origin: string = window.location.origin): boolean {
+function sameOrigin(url: string, origin: string = window.location.origin): boolean {
   try {
     return new URL(url, origin).origin === origin;
   } catch {
@@ -351,7 +370,16 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
       }
       return res.blob();
     },
-    assetUrl: (assetId) => `${baseUrl}/api/assets/${encodeURIComponent(assetId)}/content`,
+    async assetBlob(assetId, signal) {
+      const res = await fetch(`${baseUrl}/api/assets/${encodeURIComponent(assetId)}/content`, {
+        headers: headers(),
+        signal,
+      });
+      if (!res.ok) {
+        throw new ApiError(res.status, 'ASSET_FETCH_FAILED', `the asset came back ${String(res.status)}`);
+      }
+      return res.blob();
+    },
     events(rollId, onEvent) {
       const controller = new AbortController();
       void keepEventStreamOpen(
@@ -371,8 +399,8 @@ export function createHostApi(token: string, baseUrl = ''): HostApi {
  * dashboard and never backed off; a deploy or an API restart is exactly when
  * that matters.
  */
-export const HOST_EVENT_RECONNECT_MIN_MS = 1_000;
-export const HOST_EVENT_RECONNECT_MAX_MS = 30_000;
+const HOST_EVENT_RECONNECT_MIN_MS = 1_000;
+const HOST_EVENT_RECONNECT_MAX_MS = 30_000;
 
 /**
  * The delay before the next attempt: exponential, capped, and jittered.
@@ -381,7 +409,7 @@ export const HOST_EVENT_RECONNECT_MAX_MS = 30_000;
  * off the same event — the API going away — so without it they all come back in
  * the same instant, repeatedly.
  */
-export function hostReconnectDelayMs(
+function hostReconnectDelayMs(
   attempt: number,
   random: () => number = Math.random,
 ): number {

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  apiFailureMessage,
   isMissingCaptureError,
   isNoRollError,
   PinRequiredError,
@@ -7,6 +8,7 @@ import {
   type CaptureDetail as CaptureDetailView,
   type RollView,
 } from '../api/client';
+import { evictCaptureAssets } from '../cache/assets';
 import { CaptureDetail, clockOf, heroStill } from './CaptureDetail';
 import { LoadFailure } from '../components/LoadFailure';
 import { OfflineBanner } from '../components/OfflineBanner';
@@ -27,6 +29,8 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   const [roll, setRoll] = useState<RollView | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [attempt, setAttempt] = useState(0);
+  /** The host removed this photograph, or cleared the roll, while it was open. */
+  const [gone, setGone] = useState(false);
   const online = useOnline();
 
   // What a pasted link to this photograph previews as. The image is the
@@ -42,24 +46,30 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   }, [capture, roll, slug]);
 
   useEffect(() => {
-    let active = true;
+    // Cancelled on the way out, not merely ignored: going straight back to the
+    // feed used to leave a roll read and a full capture read running against
+    // the same uplink the tiles are coming down.
+    const controller = new AbortController();
     setCapture(null);
     setRoll(null);
     setError(null);
+    setGone(false);
 
-    void Promise.all([rollApi.getRoll(slug), rollApi.getCapture(slug, captureId)])
+    void Promise.all([
+      rollApi.getRoll(slug, { signal: controller.signal }),
+      rollApi.getCapture(slug, captureId, { signal: controller.signal }),
+    ])
       .then(([nextRoll, nextCapture]) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setRoll(nextRoll);
         setCapture(nextCapture);
       })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught : new Error(String(caught)));
+        if (controller.signal.aborted) return;
+        setError(caught instanceof Error ? caught : new Error(String(caught)));
       });
 
-    return () => {
-      active = false;
-    };
+    return () => controller.abort();
   }, [attempt, captureId, slug]);
 
   // Without this the SAVE actions' "Rendering…" would never resolve: a lazy
@@ -71,17 +81,44 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
   // events; without the filter each one cost a full `getCapture` here, and the
   // answer was then thrown away because the id did not match. One photograph
   // on screen, one capture fetched.
+  /**
+   * The host pulled this photograph while a guest was looking at it.
+   *
+   * The page passed only `wants` and `replace`, so `capture.hidden` and
+   * `capture.deleted` called an undefined `remove` handler and there was no
+   * `onRollCleared` at all: a deleted photograph stayed on the guest's screen
+   * for as long as they left the tab open, and its bytes stayed in the asset
+   * cache, still servable offline. Moderation has to reach here too.
+   *
+   * Evicting first and then showing the 404 page in the same order the feed
+   * uses (`RollFeedPage.removeLive`): both URLs per asset, the inline one and
+   * the `?download=1` one, which are different cache keys for the same bytes.
+   */
+  const dropCapture = useCallback((): void => {
+    setCapture((current) => {
+      if (current !== null) void evictCaptureAssets(current, rollApi).catch(() => {});
+      return null;
+    });
+    setGone(true);
+  }, []);
+
   useRollEvents(
     slug,
     {
       wants: (id) => id === captureId,
       replace: (next) => {
-        if (next.captureId === captureId) setCapture(next as CaptureDetailView);
+        if (next.captureId === captureId) setCapture(next);
       },
+      remove: (id) => {
+        if (id === captureId) dropCapture();
+      },
+      onRollCleared: dropCapture,
     },
     rollApi,
     roll !== null && error === null,
   );
+
+  if (gone) return <NoCapturePage slug={slug} />;
 
   if (error instanceof PinRequiredError) {
     return <PinGate slug={slug} onUnlocked={() => setAttempt((current) => current + 1)} />;
@@ -104,7 +141,12 @@ export function CaptureDetailPage({ slug, captureId }: CaptureDetailPageProps) {
           {capture === null ? null : <span className="k-count">{clockOf(capture.capturedAt)}</span>}
         </div>
         {error !== null ? (
-          <LoadFailure onRetry={() => setAttempt((current) => current + 1)} offline={!online} what="photo" />
+          <LoadFailure
+            onRetry={() => setAttempt((current) => current + 1)}
+            offline={!online}
+            what="photo"
+            reason={apiFailureMessage(error)}
+          />
         ) : null}
         {/* Offline and not loaded yet: say so NOW rather than after the
             service worker's five-second network timeout has run out and

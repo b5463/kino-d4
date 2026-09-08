@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Button, ToolbarFrame } from '@kino/design-system';
 import type { HostCaptureView } from '../../api/hostClient';
-import { SafeImage } from '../SafeImage';
+import { HostImage } from './HostImage';
 
 /**
  * The moderation grid.
@@ -146,7 +146,7 @@ function useGridMetrics(ref: React.RefObject<HTMLDivElement | null>): GridMetric
 
 export interface CaptureGridProps {
   captures: HostCaptureView[];
-  assetUrl: (assetId: string) => string;
+  assetBlob: (assetId: string, signal?: AbortSignal) => Promise<Blob>;
   busy: boolean;
   filter: CaptureFilter;
   onFilter: (filter: CaptureFilter) => void;
@@ -155,11 +155,21 @@ export interface CaptureGridProps {
   onRestore: (captureId: string) => void;
   /** The capture deleted by the last click, which gets the Undo wording. */
   undoFor: string | null;
+  /** There are more pages of captures than are loaded. */
+  hasMore?: boolean;
+  /**
+   * Ask for the next page: the host has scrolled to within two rows of what is
+   * loaded. The dashboard used to page the ENTIRE roll before it painted
+   * anything — thirty-eight sequential requests for 1,900 captures, again on
+   * `roll.cleared` — so the moderation panel a host opened to hide one
+   * photograph took half a minute to appear.
+   */
+  onNeedMore?: () => void;
 }
 
 export function CaptureGrid({
   captures,
-  assetUrl,
+  assetBlob,
   busy,
   filter,
   onFilter,
@@ -167,6 +177,8 @@ export function CaptureGrid({
   onDelete,
   onRestore,
   undoFor,
+  hasMore = false,
+  onNeedMore,
 }: CaptureGridProps) {
   const counts = useMemo(() => {
     const out: Record<CaptureFilter, number> = { all: 0, pending: 0, hidden: 0, trash: 0, failed: 0 };
@@ -225,8 +237,10 @@ export function CaptureGrid({
             shown={shown}
             metrics={metrics}
             filter={filter}
-            assetUrl={assetUrl}
+            assetBlob={assetBlob}
             busy={busy}
+            hasMore={hasMore}
+            onNeedMore={onNeedMore}
             onHide={onHide}
             onDelete={onDelete}
             onRestore={onRestore}
@@ -250,17 +264,22 @@ function VirtualRows({
   shown,
   metrics,
   filter,
-  assetUrl,
+  assetBlob,
   busy,
   onHide,
   onDelete,
   onRestore,
   undoFor,
+  hasMore,
+  onNeedMore,
 }: {
   shown: HostCaptureView[];
   metrics: GridMetrics;
   filter: CaptureFilter;
-} & Pick<CaptureGridProps, 'assetUrl' | 'busy' | 'onHide' | 'onDelete' | 'onRestore' | 'undoFor'>) {
+} & Pick<
+  CaptureGridProps,
+  'assetBlob' | 'busy' | 'onHide' | 'onDelete' | 'onRestore' | 'undoFor' | 'hasMore' | 'onNeedMore'
+>) {
   const { columns, rowHeight, scrollMargin } = metrics;
   const rows = Math.ceil(shown.length / columns);
 
@@ -286,9 +305,20 @@ function VirtualRows({
   // virtualiser keeps offsets from the old, longer one.
   useEffect(() => virtualizer.measure(), [filter, rowHeight, columns, virtualizer]);
 
+  // Two rows of headroom, which is one screen of overscan plus a little: the
+  // next page is asked for before the host reaches the bottom rather than
+  // after they hit it.
+  const virtualRows = virtualizer.getVirtualItems();
+  const lastRow = virtualRows[virtualRows.length - 1];
+  useEffect(() => {
+    if (hasMore && onNeedMore !== undefined && lastRow !== undefined && lastRow.index >= rows - 2) {
+      onNeedMore();
+    }
+  }, [hasMore, lastRow, onNeedMore, rows]);
+
   return (
     <div className="host-captures-runway" style={{ height: `${String(virtualizer.getTotalSize())}px` }}>
-      {virtualizer.getVirtualItems().map((row) => {
+      {virtualRows.map((row) => {
         const start = row.index * columns;
         return (
           <div
@@ -305,7 +335,7 @@ function VirtualRows({
               <CaptureTile
                 key={capture.captureId}
                 capture={capture}
-                assetUrl={assetUrl}
+                assetBlob={assetBlob}
                 busy={busy}
                 onHide={onHide}
                 onDelete={onDelete}
@@ -322,7 +352,7 @@ function VirtualRows({
 
 function CaptureTile({
   capture,
-  assetUrl,
+  assetBlob,
   busy,
   onHide,
   onDelete,
@@ -330,7 +360,7 @@ function CaptureTile({
   undo,
 }: {
   capture: HostCaptureView;
-  assetUrl: (assetId: string) => string;
+  assetBlob: (assetId: string, signal?: AbortSignal) => Promise<Blob>;
   busy: boolean;
   onHide: (captureId: string, next: 'hide' | 'unhide') => void;
   onDelete: (captureId: string) => void;
@@ -361,7 +391,7 @@ function CaptureTile({
           {capture.status === 'failed' ? 'No file' : 'No preview yet'}
         </div>
       ) : (
-        <SafeImage className="roll-media" src={assetUrl(poster)} alt="" loading="lazy" />
+        <HostImage className="roll-media" assetId={poster} assetBlob={assetBlob} />
       )}
       {state === 'Visible' ? null : <span className="host-capture-badge">{state}</span>}
       <div className="host-capture-meta">

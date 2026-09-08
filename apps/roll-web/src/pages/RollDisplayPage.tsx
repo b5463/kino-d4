@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  apiFailureMessage,
   isNoRollError,
   PinRequiredError,
   rollApi,
   type CaptureView,
   type RollView,
 } from '../api/client';
+import { evictCaptureAssets } from '../cache/assets';
+import { assetOf } from '../captures';
 import { playerPlayback } from '../components/playback';
 import { SafeImage } from '../components/SafeImage';
 import { ScanQr } from '../components/ScanQr';
@@ -24,25 +27,6 @@ export const DISPLAY_CYCLE_MS = 8_000;
 
 /** The display rotates through this many of the newest captures. */
 const CYCLE_POOL = 12;
-
-/**
- * The capture-level asset for the first of these roles that has one.
- *
- * `frameIndex === null` is the filter that makes this still mean what it did.
- * A role used to hold at most one derived row; `thumb` now holds the
- * capture-level tile AND one per camera (worker `jobs/thumbnail.ts`), so a bare
- * `find(role === 'thumb')` is "whichever camera the API happened to list
- * first" — a tile that is one of four views rather than the capture's own.
- */
-function assetOf(capture: CaptureView, roles: readonly string[]) {
-  for (const role of roles) {
-    const asset = capture.assets.find(
-      (candidate) => candidate.role === role && candidate.frameIndex === null,
-    );
-    if (asset !== undefined) return asset;
-  }
-  return undefined;
-}
 
 /**
  * `/r/:slug/display` — the roll on a TV or projector at the party.
@@ -81,14 +65,47 @@ export function RollDisplayPage({ slug }: RollDisplayPageProps) {
     [feed],
   );
 
+  /**
+   * The host hid or deleted this one: off the screen now, and its bytes out of
+   * the cache with it.
+   *
+   * The projector kept showing a deleted photograph. `remove` took it out of
+   * the feed, but the cycle pool is a slice taken on render and the cached
+   * asset was left servable, so the picture on the wall was the one thing in
+   * the venue that had not heard.
+   */
+  const removeLive = useCallback(
+    (captureId: string): void => {
+      const capture = feed.captures.find((candidate) => candidate.captureId === captureId);
+      feed.remove(captureId);
+      setCurrentId((shownId) => (shownId === captureId ? null : shownId));
+      if (capture !== undefined) void evictCaptureAssets(capture, rollApi).catch(() => {});
+    },
+    [feed],
+  );
+
+  /**
+   * The host cleared the roll: the screen empties.
+   *
+   * There was no handler at all, so `roll.cleared` reached the display and
+   * nothing happened to the twelve captures it was cycling — a projector at
+   * the front of the room carrying on showing photographs the host had just
+   * put in the trash.
+   */
+  const clearLive = useCallback((): void => {
+    feed.clear();
+    setCurrentId(null);
+  }, [feed]);
+
   useRollEvents(
     slug,
     {
       prepend: prependLive,
       replace: feed.replace,
-      remove: feed.remove,
+      remove: removeLive,
       refetchHead: feed.refetchHead,
       onRollChanged: refreshRoll,
+      onRollCleared: clearLive,
     },
     rollApi,
     roll !== null && !(failure instanceof PinRequiredError) && !isNoRollError(failure),
@@ -160,12 +177,29 @@ export function RollDisplayPage({ slug }: RollDisplayPageProps) {
       .sort((left, right) => (left.frameIndex ?? 0) - (right.frameIndex ?? 0))
       .map((asset) => rollApi.assetUrl(asset.assetId));
 
-    // Playback is not a download, and a save permission decides what leaves a
-    // guest's phone, never what a screen at the party may show. This gate used
-    // to require `downloadsEnabled`, so a host turning saves off froze the
-    // display; the feed and the capture page were already decoupled from it.
-    // A failed capture gets no player: its frames may be half written.
-    if (shown.mode === 'wiggle' && originals.length >= 2 && shown.status !== 'failed') {
+    /**
+     * The BAKED animation first, the live player only when there is none.
+     *
+     * `animated` was computed here and then never used by the branch that
+     * actually ran, so every wigglegram with two or more originals mounted the
+     * live player: four full-resolution JPEGs, twelve to twenty megabytes, per
+     * capture, every eight seconds, over the venue's Wi-Fi — while a 960 px
+     * `wiggle-webp` of the same photograph sat there at a few tens of kB. The
+     * feed already reasons this way and says so in its own comment; the
+     * display did not.
+     *
+     * Playback is not a download, and a save permission decides what leaves a
+     * guest's phone, never what a screen at the party may show. This gate used
+     * to require `downloadsEnabled`, so a host turning saves off froze the
+     * display. A failed capture gets no player either way: its frames may be
+     * half written.
+     */
+    if (
+      animated === undefined &&
+      shown.mode === 'wiggle' &&
+      originals.length >= 2 &&
+      shown.status !== 'failed'
+    ) {
       media = (
         <WigglePlayer
           frames={originals}
@@ -186,7 +220,13 @@ export function RollDisplayPage({ slug }: RollDisplayPageProps) {
     <div className="display-root">
       {media === null ? (
         <p className="display-empty" role="status" aria-live="polite">
-          {failure !== null ? failure.message : 'No photos yet.'}
+          {/* Never the raw error. This is a projector at the front of a room,
+              and it printed `TypeError: Failed to fetch` across the wall. Same
+              treatment as `components/LoadFailure.tsx`: what the reader can
+              act on, in the reader's own words. */}
+          {failure === null
+            ? 'No photos yet.'
+            : (apiFailureMessage(failure) ?? 'Cannot reach the roll. Check the connection.')}
         </p>
       ) : (
         <div className="display-hero" aria-label="Latest captures">{media}</div>

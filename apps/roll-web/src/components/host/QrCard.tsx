@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
 import { Button, ToolbarFrame } from '@kino/design-system';
 
 /**
@@ -10,6 +9,12 @@ import { Button, ToolbarFrame } from '@kino/design-system';
  * below is the printed artefact — code, address, QR — and `host.css` hides the
  * rest of the dashboard when the page is printed. The PNG is encoded at 512 px
  * so the downloaded file survives being put on paper.
+ *
+ * `qrcode` is imported on demand, the way `components/ScanQr.tsx` already did
+ * it. It was a static import here and a dynamic one there, which Vite reports
+ * as a chunking conflict and resolves by giving up on the split: the encoder
+ * ended up in the main chunk, so every guest scrolling a feed downloaded a QR
+ * generator neither guest surface can reach.
  */
 
 const QR_PIXELS = 512;
@@ -29,9 +34,15 @@ export function QrCard({ guestUrl, slug }: { guestUrl: string; slug: string }) {
 
   useEffect(() => {
     let active = true;
-    void QRCode.toDataURL(guestUrl, { width: QR_PIXELS, margin: 1 }).then((value) => {
-      if (active) setSource(value);
-    });
+    void import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(guestUrl, { width: QR_PIXELS, margin: 1 }))
+      .then((value) => {
+        if (active) setSource(value);
+      })
+      .catch(() => {
+        // No QR. The code and the address are printed beside it and are what a
+        // host reads out anyway; the card is still a card.
+      });
     return () => {
       active = false;
     };
