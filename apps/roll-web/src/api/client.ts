@@ -252,7 +252,13 @@ export interface FeedPageOptions extends ReadOptions {
 export interface RollApi {
   getRoll(slug: string, options?: ReadOptions): Promise<RollView>;
   submitPin(slug: string, pin: string): Promise<void>;
-  listCaptures(slug: string, cursor?: string, options?: FeedPageOptions): Promise<CaptureFeedPage>;
+  /**
+   * `cursor` takes the `null` a previous page reported, not just a string.
+   * `nextCursor` is `string | null` because that is what the API sends, and
+   * every caller holds one of those - making them coerce it here would put
+   * `?? undefined` at each call site to say nothing.
+   */
+  listCaptures(slug: string, cursor?: string | null, options?: FeedPageOptions): Promise<CaptureFeedPage>;
   getCapture(slug: string, id: string, options?: ReadOptions): Promise<CaptureDetail>;
   /**
    * `options.download` appends `?download=1` (`wantsDownload` in
@@ -388,7 +394,9 @@ export function createRollApi(baseUrl = ''): RollApi {
       // decoded, re-encoded, or otherwise touched. See
       // `apps/api/src/captures/feed.ts#decodeCursor` for why: its encoding is
       // an internal detail this client has no business depending on.
-      if (cursor !== undefined) params.set('cursor', cursor);
+      // `null` is a real value here - the last page reports it - and means the
+      // same as absent: start from the head.
+      if (cursor !== undefined && cursor !== null) params.set('cursor', cursor);
       // The page size is the caller's decision, not the API's default: a phone
       // paints one or two tiles on first sight and the API's own
       // `FEED_LIMIT_DEFAULT` is 50 capture records, assets and all.

@@ -248,9 +248,17 @@ async function readPaged(
  * thumbnails have none at all, and those fall back to the first original.
  */
 export async function getThumbUrl(dev: KinoDevice, id: string): Promise<string> {
-  const key = thumbKey(id);
+  const serial = currentSerial();
+  dropOtherSerials(serial);
+  const key = thumbKey(id, serial);
   const cached = thumbCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    // A hit re-inserts, so insertion order stays least-recently-used first
+    // and the eviction loop can take the head.
+    thumbCache.delete(key);
+    thumbCache.set(key, cached);
+    return cached.url;
+  }
   let bytes: Uint8Array;
   try {
     bytes = await readPaged((offset) => dev.mediaThumb(id, offset, THUMB_PAGE), THUMB_MAX, `Thumbnail for ${id}`);
@@ -266,18 +274,23 @@ export async function getThumbUrl(dev: KinoDevice, id: string): Promise<string> 
   }
   if (bytes.length === 0) throw new Error(`Camera returned no thumbnail bytes for ${id}`);
   const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-  thumbCache.set(key, url);
+  rememberThumb(key, url, bytes.length);
   return url;
 }
 
-export function dropThumb(id: string) {
-  const key = thumbKey(id);
-  const url = thumbCache.get(key);
-  if (url) URL.revokeObjectURL(url);
-  thumbCache.delete(key);
+/**
+ * Forget one capture's thumbnail.
+ *
+ * Keyed on the serial the entry was stored under rather than whichever body
+ * is on the cable now, so deleting a capture frees the bytes it actually
+ * holds instead of missing and leaking them.
+ */
+export function dropThumb(id: string, serial = currentSerial()) {
+  forget(thumbKey(id, serial));
 }
 
 export function clearThumbCache() {
-  for (const url of thumbCache.values()) URL.revokeObjectURL(url);
-  thumbCache.clear();
+  for (const key of [...thumbCache.keys()]) forget(key);
+  thumbCacheBytes = 0;
+  thumbCacheSerial = null;
 }

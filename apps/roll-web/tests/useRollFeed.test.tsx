@@ -124,14 +124,20 @@ describe('Roll feed hooks', () => {
   });
 
   it('does not let a slow previous slug block or overwrite the new roll', async () => {
-    let resolveOld: ((page: { items: CaptureView[]; hasMore: false }) => void) | undefined;
-    const oldPage = new Promise<{ items: CaptureView[]; hasMore: false }>((resolve) => {
+    // `nextCursor` is part of a page now: always sent, null on the last one.
+    type Page = { items: CaptureView[]; nextCursor: null; hasMore: false };
+    let resolveOld: ((page: Page) => void) | undefined;
+    const oldPage = new Promise<Page>((resolve) => {
       resolveOld = resolve;
     });
-    const listCaptures = vi.fn((slug: string) =>
+    const listCaptures = vi.fn((slug: string, _cursor?: string | null, _options?: unknown) =>
       slug === 'old'
         ? oldPage
-        : Promise.resolve({ items: [capture('cap_new_roll')], hasMore: false as const }),
+        : Promise.resolve({
+            items: [capture('cap_new_roll')],
+            nextCursor: null,
+            hasMore: false as const,
+          }),
     );
     const api = apiWith({ listCaptures });
     const observed: { current: RollFeedState | null } = { current: null };
@@ -146,7 +152,7 @@ describe('Roll feed hooks', () => {
     expect(observed.current?.captures.map((item) => item.captureId)).toEqual(['cap_new_roll']);
 
     await act(async () => {
-      resolveOld?.({ items: [capture('cap_old_roll')], hasMore: false });
+      resolveOld?.({ items: [capture('cap_old_roll')], nextCursor: null, hasMore: false });
       await Promise.resolve();
     });
     expect(observed.current?.captures.map((item) => item.captureId)).toEqual(['cap_new_roll']);

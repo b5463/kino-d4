@@ -102,7 +102,7 @@ function fakeApi(overrides: Partial<HostApi> = {}): HostApi {
     getExport: vi.fn(),
     exportEstimate: vi.fn().mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'no estimate')),
     exportBlob: vi.fn().mockResolvedValue(new Blob(['zip'])),
-    assetUrl: vi.fn((id: string) => `/asset/${id}`),
+    assetBlob: vi.fn(() => Promise.resolve(new Blob(['jpeg'], { type: 'image/jpeg' }))),
     events: vi.fn(() => vi.fn()),
     ...overrides,
   };
@@ -515,6 +515,7 @@ describe('host dashboard', () => {
           failed: 2,
           serverState: 'reachable',
           firmware: '0.4.43',
+          uploadPaused: false,
         },
       ],
     };
@@ -550,6 +551,7 @@ describe('host dashboard', () => {
           failed: 4,
           serverState: 'unreachable',
           firmware: '0.4.43',
+          uploadPaused: false,
         },
       ],
     };
@@ -591,6 +593,7 @@ describe('host dashboard', () => {
       failed: 0,
       serverState: 'reachable',
       firmware: '0.4.52',
+      uploadPaused: false,
     };
     const offlineWithBacklog: HostRollView = { ...roll, cameras: [stranded] };
     await render(fakeApi({ resolveSession: vi.fn().mockResolvedValue(offlineWithBacklog) }));
@@ -872,6 +875,7 @@ describe('camera panel', () => {
     failed: 0,
     serverState: 'reachable',
     firmware: '0.4.43',
+    uploadPaused: false,
     ...over,
   });
 
@@ -1090,13 +1094,16 @@ describe('host helpers', () => {
     const cameras = [
       {
         deviceId: 'd',
-        serial: null,
+        // `serial` is NOT NULL on the devices table, so a camera row always
+        // has one; only the heartbeat fields below can be null.
+        serial: 'KINO-D4-009',
         lastSeenAt: null,
         pending: null,
         uploading: null,
         failed: 3,
         serverState: null,
         firmware: null,
+        uploadPaused: null,
       },
     ];
     const items = stuckItems(cameras, [capture, failed, processing, trashed]);
