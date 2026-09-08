@@ -1,22 +1,54 @@
 # Public ingress options for kino.acronym.sk
 
-> **DECIDED, 2026-09-07: option A, the relay VPS.** The operator has chosen it
-> and closed the question. Cloudflare Tunnel, Cloudflare for SaaS, ngrok,
-> Tailscale Funnel and direct router forwarding are **not** to be re-evaluated
-> for this deployment. The deciding argument was predictable live-feed
-> behaviour, not cost: frp carries the connection through infrastructure we
-> control and both HTTP-aware Caddy hops are already configured for
-> `text/event-stream`. The roughly EUR 5 a month is accepted, and zero-cost
-> alternatives are explicitly not worth deployment uncertainty here.
+> ## Standing decision, 2026-09-08
 >
-> What survives below: the comparison, as the record of why; the DNS change for
-> option A, which is now the change to make once the VPS exists; and the
-> event-day failure modes. Everything about the other options is history, kept
-> so the decision can be audited, not re-opened.
+> | | |
+> |---|---|
+> | **SELECTED** | Pinggy Pro custom-domain tunnel |
+> | **BLOCKER** | Privacy and data processing, not yet cleared. Do not purchase. |
+> | **FALLBACK** | Self-controlled relay VPS (`infra/relay/`) |
+> | **NOT SELECTED** | Cloudflare DNS migration; Cloudflare for SaaS with a second domain; ngrok; Tailscale Funnel; direct port forwarding |
 >
-> Deployment procedure lives in
-> [production-relay-deploy.md](production-relay-deploy.md). The blocker is one
-> VPS with a static IPv4; nothing else is waiting on software.
+> The chain is `kino.acronym.sk` → Websupport CNAME → Pinggy's persistent
+> custom-domain target → an outbound SSH tunnel from the event PC → the local
+> production Caddy. On-demand: started before an event, stopped once the queue
+> has drained and the backup is done.
+>
+> Selected because it needs no VPS and no second domain, leaves Websupport
+> authoritative, works behind the confirmed carrier NAT, and was proven
+> empirically rather than assumed — the live event stream passed through it and
+> a real phone on cellular passed acceptance. Pro carries the custom domain and
+> removes the visitor warning screen, and its token-bound target is stable
+> enough that Websupport is edited once. About USD 3 a month for one seat, with
+> no published transfer quota.
+>
+> **Purchase is blocked, and not on price.** KINO Roll carries photographs of
+> identifiable people. Pinggy can inspect HTTP tunnel traffic through its web
+> debugger, its terms take broad rights over submitted content, and no data
+> processing agreement or standard contractual clauses have been identified,
+> with processing under Indian jurisdiction. That is not something to treat as
+> cleared by silence. The next step is written clarification from Pinggy on
+> tunnel-payload handling and whether a DPA is available. See
+> [pinggy-plan-facts.md](pinggy-plan-facts.md).
+>
+> **The relay VPS is the fallback, not a dead end.** It is technically valid and
+> fully prepared, and it is the privacy and control answer precisely because
+> raw relay infrastructure carries no third-party HTTP tunnel provider that can
+> read application payloads. Use it if the privacy position cannot be made
+> acceptable, if Pinggy proves operationally unreliable, if its custom-domain
+> behaviour changes materially, or if a future deployment needs infrastructure
+> under our own control. Its procedure stays live in
+> [production-relay-deploy.md](production-relay-deploy.md).
+>
+> **What this document is now.** It is the comparison that produced the
+> shortlist, kept as the record of why each option was ranked where it was. Its
+> 2026-09-07 recommendation of the relay VPS is **superseded** by the decision
+> above: Pinggy was not viable when this was written, because its streaming
+> behaviour was unknown, and measurement settled that. The relay's own
+> recommendation text below is left as written rather than rewritten, so the
+> reasoning can be audited; read it as the fallback's case, which still holds.
+> Cloudflare, ngrok, Tailscale and direct forwarding stay closed and are not to
+> be reopened without new evidence.
 
 An assessment, not a deployment. Nothing in this document has been done. No DNS
 record was changed, no router setting was touched, no account was created, no

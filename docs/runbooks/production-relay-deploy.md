@@ -36,7 +36,21 @@ router setting changes that. An `AAAA` record to the PC is impossible for a
 second, independent reason: the PC has no IPv6 address to put in one.
 
 So direct inbound hosting is not viable, and per the standing instruction we
-stop before any network change. The relay is the path that works while
+stop before any network change.
+>
+> **Status, 2026-09-08: this is the FALLBACK ingress, not the selected one.**
+> The selected path is a Pinggy Pro custom-domain tunnel, whose purchase is
+> blocked pending privacy and data-processing clarification — see
+> [public-ingress-options.md](public-ingress-options.md) for the standing
+> decision and [pinggy-plan-facts.md](pinggy-plan-facts.md) for the blocker.
+> Nothing below is invalid or abandoned: this procedure is complete, tested as
+> far as it can be without a VPS, and it is the privacy and control answer,
+> because a relay we operate has no third-party tunnel provider reading
+> application payloads. Follow it if the Pinggy privacy position cannot be made
+> acceptable, if Pinggy proves unreliable or changes its custom-domain
+> behaviour, or if a deployment needs infrastructure under our own control.
+
+The relay is the path that works while
 Websupport stays authoritative for `acronym.sk`.
 
 **The one remaining unknown.** Everything above is consistent with CGNAT but
@@ -71,7 +85,7 @@ What that blocks, per path:
 
 | Path | Blocked by Apache? | Why |
 |---|---|---|
-| **Relay VPS (recommended)** | **No.** | With the relay overlay the stack publishes **zero** host ports (proven below). Caddy serves `:80` inside the Compose network only. frpc dials **out** to the VPS. Apache can keep both ports and nothing collides. |
+| **Relay VPS (this document, the fallback)** | **No.** | With the relay overlay the stack publishes **zero** host ports (proven below). Caddy serves `:80` inside the Compose network only. frpc dials **out** to the VPS. Apache can keep both ports and nothing collides. |
 | Cloudflare Tunnel overlay | No, same reason. Not chosen for a different reason: the **free** shape needs Cloudflare authoritative for `acronym.sk`, and the zone is staying at Websupport. Cloudflare is not impossible — a partial (CNAME) setup keeps the zone but is Business or Enterprise only at $250/month, and Cloudflare for SaaS custom hostnames costs $0/month with 100 hostnames on the free plan but needs a second domain on a Cloudflare account as the front door. Costs, conditions and the server-sent-events argument that keeps the relay first: [`public-ingress-options.md`](public-ingress-options.md). | |
 | Direct, router-forwarded | **Yes, hard block.** | The production stack publishes `80:80` and `443:443`. `docker compose up` fails on port allocation, and the site stays down. Before that path is possible: `Stop-Service wordpressApache-1` and `Set-Service wordpressApache-1 -StartupType Disabled`, or move Apache to other ports. Do not do this to make the relay work — it is not needed there. |
 

@@ -196,13 +196,24 @@ account acting as the front door. The comparison, the costs and the conditions
 are in
 [`docs/runbooks/public-ingress-options.md`](../docs/runbooks/public-ingress-options.md).
 
-The relay below is still the recommended path, and the deciding argument is not
-price: it is server-sent events. frp forwards raw TCP, so there is no content
-type for anything to buffer, and the only HTTP-aware hop is a Caddy this
-repository already gates with `flush_interval -1` and an eight-entry compression
-allow list that omits `text/event-stream`. Every hosted ingress inserts an HTTP
-proxy nobody here controls in front of the product's headline feature, and
-whether Cloudflare buffers event streams could not be confirmed either way.
+**Standing decision, 2026-09-08: the selected ingress is a Pinggy Pro
+custom-domain tunnel, and the relay below is the FALLBACK.** Purchase of Pinggy
+Pro is blocked pending privacy and data-processing clarification, because KINO
+Roll carries photographs of identifiable people and Pinggy can inspect HTTP
+tunnel traffic; see
+[`docs/runbooks/pinggy-plan-facts.md`](../docs/runbooks/pinggy-plan-facts.md).
+
+The relay stays fully documented and valid. What changed is evidence, not
+merit: the argument for the relay was that server-sent events are safe through
+it by construction — frp forwards raw TCP, so there is no content type for
+anything to buffer, and the only HTTP-aware hop is a Caddy this repository
+already gates with `flush_interval -1` and an eight-entry compression allow list
+that omits `text/event-stream` — while every hosted tunnel puts an HTTP proxy
+nobody here controls in front of the product's headline feature. That argument
+was sound when no hosted tunnel had been measured. Pinggy has since been
+measured, at two pacings, and it streams. The relay remains the answer whenever
+privacy or control decides the question, since a relay we operate carries no
+third party that can read the payload.
 
 The bench PC egresses as
 `46.34.228.61` (O2 Slovakia), but the route beyond the customer gateway runs
@@ -216,7 +227,7 @@ which is the signature of carrier NAT. Confirm on the router's status page:
 - WAN address is `10.x` or `100.64-127.x`: CGNAT. Inbound 80/443 can never
   arrive, and no DNS or router change helps. Use the relay below.
 
-**Recommended: relay VPS** (`infra/relay/`). A small VPS with a static IPv4
+**The fallback: relay VPS** (`infra/relay/`). A small VPS with a static IPv4
 runs Caddy (ACME for `kino.acronym.sk`) and an frp server; the PC runs frpc,
 which opens one outbound, token-authenticated, TLS connection and exposes only
 the Compose-internal Caddy as `127.0.0.1:8080` on the VPS. Websupport gets one

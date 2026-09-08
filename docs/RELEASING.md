@@ -83,25 +83,29 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   qualification, because the URL does not answer when the PC is asleep and that
   is by design at this stage.
 
-  The public ingress mechanism is not part of this gate and is still being
-  decided: see
-  [`docs/runbooks/public-ingress-options.md`](runbooks/public-ingress-options.md).
+  The public ingress mechanism is not part of this gate. It is decided as of
+  2026-09-08: **selected** is a Pinggy Pro custom-domain tunnel, **blocked**
+  pending privacy and data-processing clarification, with the self-controlled
+  relay VPS as the **fallback**. The standing decision and its conditions:
+  [`docs/runbooks/public-ingress-options.md`](runbooks/public-ingress-options.md);
+  the blocker:
+  [`docs/runbooks/pinggy-plan-facts.md`](runbooks/pinggy-plan-facts.md).
 
   The blocking finding, measured 2026-09-06 and 2026-09-07: the PC egresses as
   `46.34.228.61` but two RFC1918 hops (`10.106.16.198`, `10.109.122.193`) sit
   beyond the operator's own router, which is the signature of carrier-grade
   NAT, and the PC has no IPv6 egress at all. Direct inbound hosting is
   therefore not viable, ports 80 and 443 on the PC are held by a Bitnami
-  Apache service in any case, and DNS is not moving to Cloudflare. The
-  recommended path is the relay VPS in `infra/relay/`, which keeps Websupport
-  authoritative and needs one `A` record.
+  Apache service in any case, and DNS is not moving to Cloudflare. Both live
+  paths keep Websupport authoritative: the selected Pinggy tunnel needs one
+  `CNAME` on the `kino` label, and the fallback relay VPS needs one `A`.
 
   The whole procedure, the rollback, and a gate list that ends in a yes/no on
   whether `https://kino.acronym.sk` can be served:
   [`docs/runbooks/production-relay-deploy.md`](runbooks/production-relay-deploy.md).
-  The one unknown that could still change the recommendation is the router's
-  own WAN address as shown on its status page; that document says what each
-  possible answer means. A release must not claim a public Roll deployment
+  That document is the fallback's procedure. The router's own WAN address, as
+  shown on its status page, is still the one unmeasured fact, and it changes
+  nothing about either live path — both work behind carrier NAT. A release must not claim a public Roll deployment
   until gates B through F in it have passed — except F1 (sleep permanently
   disabled) and F2 (survives a reboot unattended), which belong to the always-on
   phase and are replaced at this stage by the twelve pre-event checks in

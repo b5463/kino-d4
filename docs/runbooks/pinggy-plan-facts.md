@@ -1,5 +1,46 @@
 # Pinggy paid plan: what KINO Roll would be buying
 
+> ## Standing decision, 2026-09-08
+>
+> | | |
+> |---|---|
+> | **SELECTED** | Pinggy Pro custom-domain tunnel |
+> | **BLOCKER** | Privacy and data processing, not yet cleared. Do not purchase. |
+> | **FALLBACK** | Self-controlled relay VPS (`infra/relay/`) |
+> | **NOT SELECTED** | Cloudflare DNS migration; Cloudflare for SaaS with a second domain; ngrok; Tailscale Funnel; direct port forwarding |
+>
+> The chain is `kino.acronym.sk` → Websupport CNAME → Pinggy's persistent
+> custom-domain target → an outbound SSH tunnel from the event PC → the local
+> production Caddy. On-demand: started before an event, stopped once the queue
+> has drained and the backup is done.
+>
+> Selected because it needs no VPS and no second domain, leaves Websupport
+> authoritative, works behind the confirmed carrier NAT, and was proven
+> empirically rather than assumed — the live event stream passed through it and
+> a real phone on cellular passed acceptance. Pro carries the custom domain and
+> removes the visitor warning screen, and its token-bound target is stable
+> enough that Websupport is edited once. About USD 3 a month for one seat, with
+> no published transfer quota.
+>
+> **Purchase is blocked, and not on price.** KINO Roll carries photographs of
+> identifiable people. Pinggy can inspect HTTP tunnel traffic through its web
+> debugger, its terms take broad rights over submitted content, and no data
+> processing agreement or standard contractual clauses have been identified,
+> with processing under Indian jurisdiction. That is not something to treat as
+> cleared by silence. The next step is written clarification from Pinggy on
+> tunnel-payload handling and whether a DPA is available. See
+> [pinggy-plan-facts.md](pinggy-plan-facts.md).
+>
+> **The relay VPS is the fallback, not a dead end.** It is technically valid and
+> fully prepared, and it is the privacy and control answer precisely because
+> raw relay infrastructure carries no third-party HTTP tunnel provider that can
+> read application payloads. Use it if the privacy position cannot be made
+> acceptable, if Pinggy proves operationally unreliable, if its custom-domain
+> behaviour changes materially, or if a future deployment needs infrastructure
+> under our own control. Its procedure stays live in
+> [production-relay-deploy.md](production-relay-deploy.md).
+
+
 Research only. No account was created, no trial started, no payment detail
 entered, no DNS record changed. Nothing in this document has been done.
 

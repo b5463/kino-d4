@@ -20,7 +20,7 @@ ever holds a LAN address, a PC name or a temporary IP.
 The public ingress mechanism is a separate decision and this document does not
 assume one. Where a check depends on it, it says so and points at
 [`public-ingress-options.md`](public-ingress-options.md). Bring-up of the relay
-shape, which is the recommended one, is
+shape, which is the one both live ingress paths use, is
 [`production-relay-deploy.md`](production-relay-deploy.md).
 
 All commands run from the repository root on the origin PC.
