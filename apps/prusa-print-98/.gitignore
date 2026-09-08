@@ -1,0 +1,21 @@
+# Build output. electron-builder writes well over a gigabyte here and none of
+# it belongs in git; `npm run dist:win` reproduces all of it from source.
+# The packaged KINO-Print-*-Windows.zip archives are kept on disk because old
+# versions cannot be rebuilt from current source, but they are not committed
+# either - they are release artifacts, not repository content.
+release/
+release-final/
+dist/
+
+# Python bytecode from bridge.py / print_worker.py / gcode_info.py.
+__pycache__/
+
+# tsc artifacts. vite.config.mjs is the config the build actually uses (see the
+# build script); the .js and .d.ts beside it are emitted from vite.config.ts
+# and are not sources.
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Electron smoke-test output.
+test-results/

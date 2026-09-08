@@ -90,3 +90,25 @@ Consequences, stated plainly rather than deferred:
 
 Issue #134 records the decision and must be resolved before a release carries
 these files.
+
+## W95FA typeface (Alina Sava, OFL-1.1)
+
+`apps/prusa-print-98/public/fonts/w95fa.woff2` is W95FA, Alina Sava's modern
+recreation of the Windows 95 user-interface typeface, under the SIL Open Font
+License 1.1. It is what KINO Print's Windows 98 styling is actually set in.
+
+Unlike the traced Roboto outlines the field body engraves — which are
+outlines, not font software — **this is the font software, and it ships**: in
+the app's Vite bundle and in the packaged Windows build. The OFL permits that.
+What it does not permit is shipping it without its notice, so
+`W95FA-NOTICE.txt` and `W95FA-OFL.txt` sit beside the file, and `REUSE.toml`
+overrides the blanket MIT declaration covering `apps/**` so the typeface is
+not relabelled as ours. The licence text is in `LICENSES/OFL-1.1.txt`.
+
+Two obligations the OFL attaches, stated rather than assumed: the Reserved
+Font Name must not be used for a modified version, so a subset or a
+re-hinted build cannot keep the name W95FA; and the licence and notice travel
+with any redistribution, including the packaged `.exe`, which bundles the
+`.woff2` inside its resources.
+
+Source: <https://www.dafont.com/W95FA.font>.

@@ -1,0 +1,7 @@
+W95FA
+
+Modern recreation of the Windows 95 user-interface typeface by Alina Sava.
+Distributed under the SIL Open Font License, Version 1.1.
+
+Source: https://www.dafont.com/W95FA.font
+License: https://openfontlicense.org/open-font-license-official-text/

@@ -37,6 +37,9 @@ const required = [
   // Espressif's vendored C6 partition table is Apache-2.0 and REUSE.toml says
   // so, which obliges the tree to carry the text it names.
   'LICENSES/Apache-2.0.txt',
+  // W95FA is the one piece of third-party FONT SOFTWARE this tree ships, in
+  // KINO Print's bundle and its packaged build. Same obligation.
+  'LICENSES/OFL-1.1.txt',
   'REUSE.toml',
   'TRADEMARKS.md',
 ];
@@ -81,6 +84,11 @@ for (const marker of [
   // tools/ holds the two bitmap generators. Declared with scripts/, because a
   // path in neither block has no license at all.
   '"tools/**"',
+  // The bundled W95FA typeface. apps/** is MIT, so losing this override would
+  // relabel someone else's font software as ours - and unlike the traced
+  // Roboto outlines, this file ships.
+  'SPDX-License-Identifier = "OFL-1.1"',
+  '"apps/prusa-print-98/public/fonts/w95fa.woff2"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
 
 // LICENSE is what a human reads; REUSE.toml is what the tooling reads. They
@@ -112,6 +120,19 @@ if (await exists('firmware/p4/main/icons_w98.h')) {
     notices.includes('icons_w98.h'),
     'THIRD_PARTY_NOTICES.md does not mention the bundled Windows 98 icon artwork',
   );
+}
+
+// The shipped typeface, same rule: an override in REUSE.toml grants nothing on
+// its own, and the OFL's terms are the notice travelling with the file.
+if (await exists('apps/prusa-print-98/public/fonts/w95fa.woff2')) {
+  for (const beside of ['W95FA-OFL.txt', 'W95FA-NOTICE.txt']) {
+    check(
+      await exists(`apps/prusa-print-98/public/fonts/${beside}`),
+      `the bundled W95FA typeface has lost ${beside}; the OFL requires it to travel with the font`,
+    );
+  }
+  const notices = await text('THIRD_PARTY_NOTICES.md');
+  check(notices.includes('W95FA'), 'THIRD_PARTY_NOTICES.md does not mention the bundled W95FA typeface');
 }
 
 const rootPackage = await json('package.json');
