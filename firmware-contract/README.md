@@ -198,17 +198,26 @@ until they are added to `commands.ts`:
 | `UART_STRESS_TEST` | Named `LINK_BENCH` 0x44 |
 | `FLASH_TEST` | Replaced by `CAMERA_CALIBRATE` 0x35 with `{"action":"flash-test"}` |
 | `SPEAKER_TEST` / `BUTTON_TEST` | Absent — both are checks inside `SELF_TEST` 0x42 |
-| `FW_ROLLBACK` | Absent |
+| `FW_ROLLBACK` | Allocated as `Cmd.FW_ROLLBACK` = `0x66` in `commands.ts` and reserved, but no firmware implements it — the D4 V1 P4 answers `UNSUPPORTED_COMMAND` from the dispatcher's default case (see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_)). The reserved request/response shape is in `docs/RELEASE_TRUST.md`; `ROADMAP.md` carries it as future work. **The opcode is not free.** |
 
-Source commands **not in spec 04§7** — repo additions, normative:
+Source commands **not in spec 04§7** — repo additions, normative. Every opcode
+here is allocated; none of them is a free slot:
 
 | Command | Value | Note |
 |---|---|---|
 | `GET_SOUNDS` … `SOUND_DELETE` | `0x26`–`0x2b` | Custom shutter-sound storage, chunked upload |
 | `CAMERA_PHASE` | `0x36` | VSYNC phase measurement and re-phasing (04§14 calls for it in prose) |
-| `SET_LINK_BAUD` | `0x45` | Camera UART baud switching |
 | `GET_RUNTIME_STATS` | `0x43` | Heap, temps, protocol counters |
+| `SET_LINK_BAUD` | `0x45` | Camera UART baud switching |
+| `SYNC_BENCH` | `0x46` | SYNC-line edge counter. Blocking, and it reports no skew — see [`commands.md`](commands.md#sync_bench--0x46) and [D4](#d4--sync_bench-numeric-value). Implemented |
+| `STORAGE_SELF_TEST` | `0x47` | Non-destructive card round trip with a named failing phase. Milestone 1B (#66). Implemented |
+| `CAMERA_LINK_STATS`, `CAMERA_LINK_STATS_RESET` | `0x48`, `0x49` | Per-channel UART counters. Milestone 1B (#66). Implemented |
+| `CAMERA_SOAK_TEST` | `0x4a` | Async capture soak run. Milestone 1B (#66). Implemented |
+| `GET_HW_VALIDATION` | `0x4b` | The runtime hardware-validation registry, 56 items. Milestone 1B (#66). Implemented |
+| `STORAGE_BENCH` | `0x4c` | Sustained throughput and per-block write latency; `worstBlockMs` is the figure that decides a four-frame burst. Milestone 1B (#66). Implemented |
+| `C6_RESET_BENCH` | `0x4d` | **Bench only, private.** One reset pulse to the C6 while the P4 keeps running, so ROLL-C test 3 can be run. Only a P4 built with `-DKINO_C6_RESET_BENCH=1` handles it; every other build NACKs `UNSUPPORTED_COMMAND` and moves no pin. Not gated by a capability, because no product client may send it |
 | `MEDIA_THUMB`, `MEDIA_FAVORITE` | `0x72`, `0x75` | |
+| `NETWORK_*`, `ROLL_*`, `UPLOAD_*` | `0xa0`–`0xaa` | Network, Roll membership and the upload queue (04§7 prose). Above the event range so a command id and an event id can never collide in a trace |
 
 ### D9 — Gallery cursor is a number, not an opaque string
 
@@ -407,25 +416,33 @@ A consumer must keep the four distinct. Collapsing `network` into `host` claims 
 time; collapsing it into `persisted` claims it drifts. The default build still never emits it.
 
 
-### D17 — 17 commands in `commands.ts` are not implemented by the D4 V1 P4 build
+### D17 — 16 commands in `commands.ts` are not implemented by the D4 V1 P4 build
 
-`commands.ts` declares 71 commands. The shipping P4 firmware dispatches 54 and
-answers the rest with an `UNSUPPORTED_COMMAND` NACK from the dispatcher's
-default case. That is the documented degradation path, and it is exercised: no
-unimplemented command hangs, times out, or returns a malformed frame.
+`commands.ts` declares **72** commands. The shipping P4 firmware dispatches
+**56** and answers the rest with an `UNSUPPORTED_COMMAND` NACK from the
+dispatcher's default case. That is the documented degradation path, and it is
+exercised: no unimplemented command hangs, times out, or returns a malformed
+frame.
 
-Audited by comparing the `Cmd` enum against the handlers in
-`firmware/p4/main/kdp_server.c`, 2026-08-30, firmware 0.4.8. The count was 27
-at 0.4.2; the looks and sounds families left the table in 0.4.8 (see
-[D18](#d18--set_recipe-takes-a-cam-and-the-two-families-that-left-d17)).
+Audited by comparing the `Cmd` enum against the `case KDP_CMD_*` labels in
+`firmware/p4/main/kdp_server.c`. The count was 27 at 0.4.2; the looks and sounds
+families left the table in 0.4.8 (see
+[D18](#d18--set_recipe-takes-a-cam-and-the-two-families-that-left-d17)), and
+`SYNC_BENCH` and `STORAGE_BENCH` left it after that. Re-count from the two
+sources rather than trusting these numbers — they have been stale twice.
 
 | Family | Commands | Roadmap |
 |---|---|---|
-| Camera control beyond capture | `CAMERA_ARM`, `CAMERA_FOCUS`, `CAMERA_PHASE`, `CAMERA_PREVIEW`, `CAMERA_CALIBRATE` | Yes |
-| Firmware update | `FW_BEGIN`, `FW_CHUNK`, `FW_END`, `FW_ABORT`, `FW_STATUS`, `FW_ROLLBACK` | Yes — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) |
-| Maintenance | `ENTER_MAINTENANCE`, `EXIT_MAINTENANCE`, `FACTORY_RESET` | Yes |
-| Bench | `LINK_BENCH`, `SYNC_BENCH` | Yes |
-| Link | `SET_LINK_BAUD` | Yes |
+| Camera control beyond capture | `CAMERA_ARM` `0x31`, `CAMERA_PREVIEW` `0x34`, `CAMERA_CALIBRATE` `0x35`, `CAMERA_PHASE` `0x36`, `CAMERA_FOCUS` `0x37` | Yes |
+| Firmware update | `FW_BEGIN` `0x61`, `FW_CHUNK` `0x62`, `FW_END` `0x63`, `FW_ABORT` `0x64`, `FW_STATUS` `0x65`, `FW_ROLLBACK` `0x66` | Yes — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) |
+| Maintenance | `ENTER_MAINTENANCE` `0x50`, `EXIT_MAINTENANCE` `0x51`, `FACTORY_RESET` `0x53` | Yes |
+| Bench | `LINK_BENCH` `0x44` | Yes |
+| Link | `SET_LINK_BAUD` `0x45` | Yes |
+
+`SYNC_BENCH` (`0x46`) is **dispatched** and used to sit in the Bench row above.
+It is a blocking edge counter, not the async job the contract once described —
+see [`commands.md`](commands.md#sync_bench--0x46). `STORAGE_BENCH` (`0x4c`) is
+dispatched too.
 
 Every family above is on `firmware/FIRMWARE_ROADMAP.md`. None is an accidental
 omission, and none is a protocol disagreement — the wire contract is agreed,
@@ -449,10 +466,11 @@ firmware older than 0.4.8 omits it; an absent flag means the commands NACK,
 not that the answer is unknown. The four families still listed above take the
 same treatment when they land.
 
-`benchDiagnostics` is honest despite the two unimplemented `*_BENCH` commands:
-it gates `GET_STORAGE_STATUS`, `CAMERA_LINK_STATS`, `GET_HW_VALIDATION`,
-`STORAGE_SELF_TEST`, `CAMERA_TEST` and `CAMERA_SOAK_TEST`, all of which are
-implemented. `LINK_BENCH` and `SYNC_BENCH` are not behind it.
+`benchDiagnostics` is honest: it gates `GET_STORAGE_STATUS`,
+`CAMERA_LINK_STATS`, `CAMERA_LINK_STATS_RESET`, `GET_HW_VALIDATION`,
+`STORAGE_SELF_TEST`, `STORAGE_BENCH`, `CAMERA_TEST` and `CAMERA_SOAK_TEST`, all
+of which are implemented. `LINK_BENCH` and `SYNC_BENCH` are not behind it —
+`LINK_BENCH` is the one `*_BENCH` command with no handler.
 
 **Four cases in Studio's own conformance suite cannot pass against 0.4.17.**
 Measured on KD4-D121BC, P4 0.4.17, 2026-09-01: 32 cases (8 active, 24 passive),
@@ -462,9 +480,22 @@ fitted on that unit.
 | Case | Opcode | Why it cannot pass |
 |---|---|---|
 | `CAMERA_CALIBRATE (get)` | `0x35` | Not dispatched. Per-camera alignment calibration is not built; the D4 V1 body has no stored calibration to read back. |
-| `CAMERA_PREVIEW frame` | `0x34` | Not dispatched. The live viewfinder path is `CAMERA_VIEWFINDER`; `CAMERA_PREVIEW` is the older single-frame command and nothing implements it. |
+| `CAMERA_PREVIEW frame` | `0x34` | Not dispatched, and **nothing replaces it**. There is no KDP way to get a preview frame off this body. |
 | `MAINTENANCE enter/exit` | `0x50` | Not dispatched — the whole Maintenance family is on the roadmap, not in the build. |
 | `FW_BEGIN gate (outside maintenance)` | `0x61` | Not dispatched. A near miss worth noting: the case expects a refusal citing maintenance and gets `UNSUPPORTED_COMMAND`, so the gate it tests is satisfied in substance while the assertion still fails. |
+
+**There is no live-viewfinder KDP command.** This entry named
+`CAMERA_VIEWFINDER` as "the live viewfinder path"; no such identifier exists in
+`packages/kdp/src/protocol/commands.ts`, in
+`firmware/components/kdp_core/include/kdp/protocol.h`, or in the dispatcher. The
+viewfinder is **body-local**: `firmware/p4/main/viewfinder.c` pumps frames from
+one camera over the node link's own `NL_CMD_CAPTURE` and draws them on the
+panel. What reaches KDP is a read-only `camera.viewfinder` block in
+`GET_CAMERA_INFO` (`{ frames, fpsX10, drops }`, firmware 0.4.18+) plus
+`viewfinderFpsX10` — statistics, not pixels. `shoot.viewfinder` in the config
+store chooses which camera feeds it. A host cannot start, stop or read the
+finder, and `CAMERA_PREVIEW` — the one command that would hand over a frame —
+is not dispatched. Do not build a Studio preview against this body.
 
 All four are dispatcher-default NACKs, which is the documented degradation
 path, so the run is what a correct 0.4.17 body looks like. A fifth status —

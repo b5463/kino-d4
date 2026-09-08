@@ -218,15 +218,45 @@ capture is filed into a roll. `mode` ∈ `wiggle | quad | single`; `status` ∈ 
   "height": 960,
   "bytes": 412032,
   "sha256": "…64 lowercase hex chars…",
+  "frameIndex": null,
   "status": "ready"
 }
 ```
 
-`role` is a closed enum — `ASSET_ROLES` in `media.ts`, eleven values. `status` is deliberately **not**
-an enum: 05§8 enumerates capture states only and describes asset progress in prose, so pinning wire
-strings would be invention. `width`/`height` are absent for non-pixel roles such as `metadata`.
-`bytes` and `sha256` are unknown until the upload finalizes. `sha256` must be 64 lowercase hex chars
-when present.
+`role` is a closed enum — `ASSET_ROLES` in `media.ts`, **fourteen** values:
+
+```
+thumb            kino-still       original-frame   wiggle-preview
+wiggle-webp      wiggle-mp4       gif              contact-sheet
+enhanced-still   enhanced-wiggle  social-9x16      social-4x5
+social-1x1       metadata
+```
+
+Build a role switch from the enum in `packages/schemas/src/media.ts`, not from a count in prose. This
+list said eleven and omitted `social-9x16`, `social-4x5`, `social-1x1` and `metadata`, so a switch
+written from it dropped four roles. `gif` has no producer today and is documented as reserved in
+`media.ts`; it is still in the enum, so a parser must accept it.
+
+`status` is a closed enum too — `ASSET_STATUSES` in `media.ts`, exactly `pending | ready`, and the
+field is `z.enum(ASSET_STATUSES)`. This document said it was deliberately not an enum, on the
+grounds that 05§8 enumerates capture states only. That was wrong in the direction that breaks
+things: `pending` is the insert default and what a re-`init` resets an asset to, `ready` is written
+by upload `complete` and by the worker's derived-row upsert, and **nothing writes anything else**. A
+document carrying `status: "uploading"` throws at `parseVersioned`, and there is no migration to
+repair it. An upload's own progress and its failures live on `upload_sessions.status`
+(`open | complete | aborted | failed`), which is a different column on a different table.
+
+`frameIndex` is the asset's camera-slot identity — a **camera number**, 1-based, never an array
+position. It is `null` for a capture-level asset and carries the camera for a per-camera one: `thumb`
+now holds one capture-level row at `null` plus one row per camera. The uniqueness rule that keeps
+re-rendering idempotent is `(captureId, role, frameIndex)` with NULLS NOT DISTINCT, so the field is
+part of an asset's identity, not a hint about it. It obeys D23's sparse-slot rule: a capture that
+lost camera 2 carries 1, 3, 4 with a hole where 2 would be, and an exporter that treats the field as
+a position renumbers every frame the day the missing upload lands late — collapsing the per-camera
+thumbs into one.
+
+`width`/`height` are absent for non-pixel roles such as `metadata`. `bytes` and `sha256` are unknown
+until the upload finalizes. `sha256` must be 64 lowercase hex chars when present.
 
 ### `kino.roll`
 
@@ -244,7 +274,15 @@ when present.
 ```
 
 `slug` is a random unguessable public slug (05§14). `status` ∈ `draft | live | closed | archived | trash`.
-`privacy` is a free string — 03§9 names the modes in prose without fixing wire strings.
+
+`privacy` is a closed enum — `ROLL_PRIVACY` in `media.ts`, exactly `unlisted | pin`, and the field is
+`z.enum(ROLL_PRIVACY)`. This document called it a free string on the grounds that 03§9 names the
+modes in prose; that reading produced documents with `privacy: "public"`, which throws at
+`parseVersioned` with no migration to repair it. The API never accepts `privacy` from a client — it
+derives it from whether a PIN was supplied — so those two strings are the whole set. `public` is a
+later addition and is deliberately absent: a name nothing can produce would be a promise, not a
+schema.
+
 `downloadsEnabled` has **no default**: download policy is a privacy decision and is never inferred.
 
 ### `kino.firmware-manifest`

@@ -298,7 +298,8 @@ esp_err_t config_init(void) {
         len <= CONFIG_MAX_BYTES) {
       char *text = malloc(len);
       if (text != NULL && nvs_get_str(h, NVS_KEY, text, &len) == ESP_OK &&
-          /* On app_main's 3.5 KB stack. A saved envelope that nests deeper than
+          /* On app_main's 8 KB stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE). A saved
+           * envelope that nests deeper than
            * anything this firmware writes is treated as no config, which boots;
            * parsing it would overflow into a reboot loop that only an NVS erase
            * ends. SET_CONFIG refuses such a document before it can be saved. */

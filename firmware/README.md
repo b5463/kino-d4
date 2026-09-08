@@ -43,9 +43,10 @@ is the canonical build environment (run from the repo root):
 docker run --rm -v "$PWD:/project" -w /project/firmware/p4      espressif/idf:v5.5.1 idf.py build
 docker run --rm -v "$PWD:/project" -w /project/firmware/camnode espressif/idf:v5.5.1 idf.py build
 
-# The radio coprocessor image. Builds today; has never been flashed. Read
-# c6/README.md first — the C6 module's flash size is unknown and an oversized
-# FLASHSIZE flashes and then fails to boot.
+# The radio coprocessor image. Flashed and running on KD4-D121BC since
+# 2026-08-29 — see the table above and c6/README.md. Read c6/README.md before
+# writing C6 flash on any OTHER board: the module's flash size is not known
+# for every carrier, and an oversized FLASHSIZE flashes and then fails to boot.
 docker run --rm -v "$PWD:/project" -w /project/firmware/c6      espressif/idf:v5.5.1 idf.py build
 
 # Bench tool, same container (see uvc-preview/README.md before flashing it: the
@@ -130,7 +131,7 @@ NVS at `0x9000`; the new one puts `phy_init` and `otadata` there and NVS at
 
 - **config** — the whole config document (`kino` namespace), plus the boot and
   capture counters.
-- **hwv rows** — all 60 validation items, both keys each (`hwv`).
+- **hwv rows** — all 56 validation items, both keys each (`hwv`).
 - **saved Wi-Fi networks** — up to 8 SSIDs and passphrases (`kino_wifi`).
 - **the Roll device credential** — the identity this unit registered with on
   the LAN backend (`kino_roll`).
@@ -206,19 +207,30 @@ without a panel.
 
 ## Milestone state
 
-Milestone 1B (issue #66): P4 serves HELLO, GET_DEVICE_INFO, GET_CAPABILITIES,
-GET_STORAGE_STATUS, GET_CAMERA_INFO, CAMERA_STATUS, REBOOT, plus the bench
-diagnostics group gated by the `benchDiagnostics` capability:
+This section described Milestone 1B (issue #66) and was left at it: seven
+commands plus the bench group, "everything else answers
+`UNSUPPORTED_COMMAND`", "every other capability flag is `false`", and "CAM1 is
+the only wired node". None of that is the shipping firmware. Read
+[`firmware-contract/README.md`](../firmware-contract/README.md#d17--72-commands-declared-56-dispatched)
+for the authoritative allocation, and `GET_CAPABILITIES` on a body for what
+that body can do — a count in prose here is a number that rots.
+
+Where it actually stands at 0.4.55: the dispatcher answers **56** of the 72
+commands `commands.ts` declares, and NACKs the rest from its default case. The
+config store, the whole `MEDIA_*` group, `CAMERA_CAPTURE`, the `SOUND_*` group
+and the eleven `0xa0`–`0xaa` network and Roll commands are all served. Eleven
+capability flags report true. All four camera nodes are wired and answer;
+captures land in `/KINO/CAPTURES/<uuid>/` with a `kino.capture` META.JSON, and
+since 0.4.4 they reach a Roll from the body itself.
+
+The bench diagnostics group, gated by the `benchDiagnostics` capability, is
 `CAMERA_TEST` (measured stages, three agreeing CRC-32 checksums, memory
-stats), `STORAGE_SELF_TEST`, `CAMERA_LINK_STATS(_RESET)`,
-`CAMERA_SOAK_TEST` (async job), `GET_HW_VALIDATION` (per-unit runtime
-registry, persisted in NVS). `GET_RUNTIME_STATS` (real on-chip temperatures
-or null, live protocol counters), `GET_LOGS`/`CLEAR_LOGS` + `LOG` events
-(200-entry structured ring), and a six-check `SELF_TEST` with events are
-also implemented. Everything else answers `UNSUPPORTED_COMMAND`;
-every other capability flag is `false`. CAM1 is the only wired node;
-CAM2–CAM4 report `offline`. Captures land in `/KINO/CAPTURES/<uuid>/` with a
-`kino.capture` META.JSON.
+stats), `STORAGE_SELF_TEST`, `STORAGE_BENCH`, `CAMERA_LINK_STATS(_RESET)`,
+`CAMERA_SOAK_TEST` (async job) and `GET_HW_VALIDATION` (per-unit runtime
+registry, 56 items, persisted in NVS). `GET_RUNTIME_STATS` (real on-chip
+temperatures or null, live protocol counters), `GET_LOGS`/`CLEAR_LOGS` + `LOG`
+events (200-entry structured ring) and a six-check `SELF_TEST` with events are
+implemented outside that gate.
 
 Much of this is bench-validated. [`HARDWARE_VALIDATION.md`](HARDWARE_VALIDATION.md)
 is the record and the only authority on which row is which; as of 2026-08-29 it
@@ -231,8 +243,20 @@ DNS and SNTP, and `ROLL_CREATE` against a real backend.
 
 What stays **UNVALIDATED**: CAM2–CAM4 (nothing is wired to them), inter-camera
 exposure skew and everything else behind the sync gate, `SYNC_TRIGGER_GPIO32`
-(driven, but no node reads the edge), `FLASH_EN_GPIO28` (routed, never driven
-into a load, no flash board), the shutter and Fn buttons (no switch fitted),
-`C6_TLS` (the API is not deployed), `SD_C6_COEXIST`, and `C6_ROLL_UPLOAD` — no
-capture has reached a Roll from this body. Read the file rather than this
-paragraph before making a claim.
+(driven, and since node firmware 0.4.30 the nodes DO count edges and report
+`syncSeq`/`syncEdgeUs`, which `handle_sync_bench` polls — what no node does is
+*arm* on the edge), `FLASH_EN_GPIO28` (no longer routed at all:
+`board_d4v1.h` leaves `BOARD_FLASH_EN` as `BOARD_GPIO_NONE` and gives
+GPIO28/JP1-21 to `BOARD_BTN_SHUTTER` under ECN-0003, so probing that pin for a
+flash enable finds a button), the shutter and Fn buttons (no switch fitted),
+`C6_TLS` (the API is not deployed) and `SD_C6_COEXIST`.
+
+`C6_ROLL_UPLOAD` is no longer in that list: 0.4.4 is the first firmware whose
+photographs reached a Roll from the body, 0.4.6 closed the local gate
+(**LOCAL ROLL E2E GO**, **GATE F GO** for the connected single-camera path),
+and every ROLL session since has uploaded. It was still written here as "no
+capture has reached a Roll from this body".
+
+These are per-unit runtime rows, so what a given body has validated is what
+`GET_HW_VALIDATION` says about that body. Read the validation file, or the
+camera, rather than this paragraph before making a claim.

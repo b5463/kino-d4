@@ -30,7 +30,10 @@
  * The box a thumbnail fits inside, not the size it comes out.
  *
  * The PPA scales in sixteenths, so a 1600-wide frame reduces by 3/16 and not
- * by the 0.2 that would land on exactly 320 - it comes out 300x225. Rounding
+ * by the 0.2 that would land on exactly 320. thumb.c then trims each edge down
+ * to a multiple of 16 (`& ~15u`), because the encoder is handed dimensions it
+ * can actually represent - so 1600x1200 comes out 288x224, not the 300x225
+ * the sixteenths alone would give. Rounding
  * up instead would overflow the box, and resampling afterwards to hit a round
  * number would spend a second of CPU to make a 320-pixel picture out of a
  * 300-pixel one. Readers take the size from the JPEG, which is where a JPEG's

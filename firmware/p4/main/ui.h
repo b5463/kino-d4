@@ -5,10 +5,14 @@
 // 480x800 portrait, so everything here is laid out in logical landscape
 // coordinates (800x480) and transposed on the way to the framebuffer.
 //
-// This first pass carries no text and no icons on purpose. Orientation, the
-// touch-to-pixel mapping and the press feedback all have to be right before a
-// UI toolkit is worth adding, and a wrong transpose is much easier to see in
-// six plain rectangles than under a layer of widgets.
+// That transpose is still the thing to get right first, and it was once
+// checked against six plain rectangles with no text and no icons - which is
+// what this comment used to describe. It has not been true for a long time:
+// ui.c is a quarter of a megabyte and draws a font, icons, a QR symbol, the
+// gallery, the photograph screen and the ROLL screen. What has not changed is
+// that there is no UI toolkit: every screen is drawn by this file's own
+// primitives, and `firmware/p4/host_preview/` renders them with the same code
+// so a layout can be looked at without a panel.
 #ifndef P4_UI_H
 #define P4_UI_H
 

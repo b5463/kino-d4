@@ -142,11 +142,13 @@ CONFIG_ESP_WIFI_REMOTE_ENABLED=n
 # protection fault while logging the failures). Re-try only with the RAM
 # headroom of 0.4.27 measured first, and threshold 32 already in place.
 #
-# The reason first written here - that the driver's ring-buffer code stays in
+# The reason FIRST written here - that the driver's ring-buffer code stays in
 # flash - does not survive checking: CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH
-# is not set, so those functions are already in IRAM. The measurement is real
-# and the explanation was not, so this is recorded as an unexplained result
-# rather than an understood one.
+# is not set, so those functions are already in IRAM. That explanation is
+# withdrawn; the threshold explanation above replaced it on 2026-09-02, which
+# is why the head of this block now says the result is understood. This
+# paragraph used to end by calling it an unexplained result, contradicting the
+# first two lines of the same comment.
 #
 # It was first measured while the compositor was blacking out the link ISR's
 # core with cache writebacks (see ui.c, ui_task pinned to CPU1); the two were

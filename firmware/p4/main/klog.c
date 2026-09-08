@@ -96,8 +96,10 @@ static size_t json_string_len(const char *s) {
   return n;
 }
 
-/* Serialized cost of one entry including its separating comma:
- * {"t":<digits>,"src":"<src>","msg":"<msg>"} = 24 fixed chars + fields. */
+/* Serialized cost of one entry including its separating comma. The exact
+ * format is in the body - this used to describe a one-timestamp entry
+ * ({"t":...} = 24 fixed chars) while the code has written both t and us for a
+ * while, so the number here disagreed with the number returned. */
 static size_t entry_json_cost(const klog_entry_t *entry) {
   char buf[24];
   const int t_len = snprintf(buf, sizeof buf, "%lld", (long long)entry->t_ms);

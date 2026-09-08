@@ -38,10 +38,12 @@ static int failures = 0;
     }                                             \
   } while (0)
 
-/* The gallery's cap, mirrored here rather than included: gallery.c pulls in
- * FreeRTOS and the JPEG codec, and this suite must build with a plain
- * compiler. A disagreement shows up as a bounds test that stops proving
- * anything, which is why the number is named in both places. */
+/* A deliberately small scan horizon for the bounds tests, NOT gallery.c's cap.
+ * gallery.c is at 4096 and pulls in FreeRTOS and the JPEG codec, so this suite
+ * cannot include it and must build with a plain compiler. 240 keeps the
+ * horizon cases cheap; the real cap is exercised as one of the sizes in the
+ * pagination sweep below. This comment used to claim the two numbers mirrored
+ * each other, which read as a drift bug every time anyone checked. */
 #define MAX_SCAN 240
 
 /* ------------------------------------------------------------------ */

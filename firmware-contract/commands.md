@@ -13,7 +13,7 @@ Payload shapes are marked:
 
 ```
 0x01–0x06  Discovery          0x50–0x53  Maintenance
-0x10–0x13  Configuration      0x60–0x65  Firmware
+0x10–0x13  Configuration      0x60–0x66  Firmware
 0x20–0x25  Modes / recipes    0x70–0x75  Media
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
 0x30–0x37  Camera             0xa0–0xaa  Network / Roll / upload queue
@@ -104,7 +104,12 @@ Response (**typed**, `CapabilitiesResponse`):
     "wiggle": true, "quad": true, "gallery": true, "flashControl": true,
     "vsyncTelemetry": true, "phaseCalibration": true,
     "xiaoProxyUpdate": true, "linkBench": true, "customSounds": true,
-    "autofocus": false, "focusLock": false, "manualFocus": false
+    "autofocus": false, "focusLock": false, "manualFocus": false,
+    "benchDiagnostics": true, "recipes": true, "configStore": true,
+    "mediaIndex": true, "powerManagement": true, "powerTelemetry": false,
+    "flashHardware": false, "brightnessControl": false,
+    "radioFitted": true, "radioRouted": false,
+    "network": false, "roll": false, "rollUpload": false
   },
   "limits": {
     "maxUartBaud": 3000000,
@@ -117,15 +122,44 @@ Response (**typed**, `CapabilitiesResponse`):
 ```
 
 `Capabilities` in `types.ts` declares `cameraCount` (a count, not a flag) plus the nine boolean flags
-above, and these optional ones: `autofocus`, `focusLock`, `manualFocus`, `benchDiagnostics`,
-`network` and `roll`. Optional means absent on firmware that predates the feature — and absence is
-an answer (not supported), not an unknown.
+above, and these optional ones:
 
-`network` gates `NETWORK_LIST/SET/DELETE/STATUS`; `roll` gates the `ROLL_*` commands and the upload
-queue. The reference device additionally reports `rollUpload` and `syncBench` (**mock**), which are
-still not in the interface: `rollUpload` shipped before the interface was settled and Studio reads
-it off the reported object (`supportsRollUpload`), so typing it now would silently change that
-gate's shape.
+| Flag | True means |
+|---|---|
+| `autofocus` | The OV5640_AF group exists. Absent on OV3660 firmware, and the whole focus surface goes with it. Never infer it from a sensor name |
+| `focusLock` | AF can lock the lens for a capture group (focus → lock → arm → capture) |
+| `manualFocus` | The VCM position can be set directly (MANUAL mode) |
+| `benchDiagnostics` | The Milestone 1B group answers: `STORAGE_SELF_TEST`, `STORAGE_BENCH`, `CAMERA_LINK_STATS(_RESET)`, `CAMERA_SOAK_TEST`, `GET_HW_VALIDATION`, and the extended `CAMERA_TEST` / `GET_STORAGE_STATUS` payloads |
+| `recipes` | The look/recipe family answers: `GET_RECIPES`, `SET_RECIPE`, `UPLOAD_RECIPE`, `DELETE_RECIPE`. Omitted by firmware older than 0.4.8. A look is stored and selected; nothing in this firmware applies one to a sensor |
+| `network` | `NETWORK_LIST/SET/DELETE/STATUS` answer |
+| `roll` | The `ROLL_*` commands answer |
+| `rollUpload` | The upload queue answers, on its own. Typed since 2026-09; it shipped before the interface was settled and Studio read it off the raw object for a while (`supportsRollUpload`) |
+| `configStore` | The settings store answers: `GET`/`SET`/`SAVE`/`RESET_CONFIG`. D17, from 0.2.0 |
+| `flashHardware` | A flash emitter is fitted and reachable. Apart from `flashControl` on purpose: the firmware can hold a flash window open with no LED on the other end, which is exactly D4-V1 since ECN-0003 |
+| `mediaIndex` | The gallery *index* answers: `MEDIA_LIST/INFO/DELETE/FAVORITE`. Apart from `gallery`, which is pixels — `MEDIA_READ` and `MEDIA_THUMB`. 0.2.0 could list captures it could not hand over |
+| `powerManagement` | `autoDimS`, `sleepS` and `camIdleTimeoutS` actually cut power. D10/D17 |
+| `powerTelemetry` | The body can measure the cell. False on D4-V1 — no sense divider or gauge bus reaches the P4, so `batteryV` and `batteryPct` are `null` |
+| `radioFitted` | An ESP32-C6 is soldered on |
+| `radioRouted` | This firmware has a transport to that radio. A build-time opt-in on D4-V1 |
+| `brightnessControl` | `BodyConfig.brightness` moves the backlight. **Defaults to true — see below** |
+
+Optional means absent on firmware that predates the feature. **Absence is an answer — "not
+supported" — not an unknown.** One exception:
+
+> **`brightnessControl` is the one flag a host must read as TRUE when absent.** Only an explicit
+> `false` disables the control. Firmware older than 0.4.9 never answered the question, and greying a
+> slider on a body that never said it cannot dim would be inventing a limit. Studio carries this as a
+> named default inside `supports()` rather than as a general "missing means yes" rule — see
+> [README D19](README.md#d19--nl_cmd_sensor-and-the-settings-that-finally-do-something). Applying the
+> general rule here greys the brightness control on every body.
+
+Two flags are false on D4-V1 for hardware reasons, not missing drivers: `brightnessControl` (D11 —
+the Guition carrier drives the panel backlight from a plain GPIO, so the setting is stored and echoed
+and nothing dims) and `flashHardware` (ECN-0003 took GPIO28 for the shutter and left the flash with
+no P4 pin).
+
+`syncBench` is now the only flag the reference device reports that the interface does not declare
+(**mock**). `rollUpload` is typed.
 
 **A capability flag and the dispatcher must agree.** A device that advertises no network support and
 then answers `NETWORK_LIST` is worse than a device with no network support at all.
@@ -273,12 +307,43 @@ field is `look`** — writing `recipe` there parses clean and silently loses the
 
 | Cmd | Value | Payload |
 |---|---:|---|
-| `GET_MODES` | `0x20` | → `{}` ← `GetModesResponse` `{ "modes": ["wiggle","quad"] }`. The modes this device accepts in `SET_MODE`; a one-mode device answers a one-element list rather than NACKing. Not in the 1B set — 0.1.x NACKs `UNSUPPORTED_COMMAND`. No Studio caller yet |
+| `GET_MODES` | `0x20` | → `{}` ← **typed** `GetModesResponse`. See below |
 | `SET_MODE` | `0x21` | → `{ "mode": "wiggle" \| "quad" }` ← **mock** `{ "ok": true }` |
 | `GET_RECIPES` | `0x22` | → `{}` ← **typed** `RecipesResponse` = `{ "factory": Recipe[], "custom": Recipe[] }` |
 | `SET_RECIPE` | `0x23` | → `{ "id": "party-neg" }` ← **mock** `{ "ok": true }` |
 | `UPLOAD_RECIPE` | `0x24` | → `{ "recipe": {...} }` ← **mock** `{ "ok": true }` |
 | `DELETE_RECIPE` | `0x25` | → `{ "id": "my-look" }` ← **mock** `{ "ok": true }` |
+
+#### `GET_MODES` — 0x20
+
+**typed** `GetModesResponse` in `packages/kdp/src/protocol/types.ts`. Two fields, not one:
+
+```json
+{
+  "active": "wiggle",
+  "modes": [
+    { "id": "wiggle", "name": "Wiggle", "available": true, "unavailableReason": null },
+    { "id": "quad", "name": "Quad", "available": false, "unavailableReason": "No card mounted" }
+  ]
+}
+```
+
+- `active` is the **stored** selection and survives a reboot. It may name a mode that is currently
+  unavailable; that pair is coherent and is what the camera will shoot once the reason clears.
+- `available` is derived, not a constant. The P4 answers from the same predicate `capture_fire()`
+  uses — a mounted card, then a camera node that answered — so `true` means a capture requested this
+  instant would be taken.
+- `unavailableReason` is always present: a string in the camera's own words, or `null`. A host never
+  has to distinguish absent from null.
+
+A one-mode device answers a one-element `modes` list rather than NACKing.
+
+This entry described `{ "modes": ["wiggle","quad"] }` — a bare string array — and said the command
+was "not in the 1B set" and NACKed on 0.1.x. Both were stale. The P4 has answered objects with an
+`active` selection since the capture pipeline landed; the stale type in `types.ts` was corrected on
+2026-09-01 and the richer shape won, because the availability it carries is the point.
+[README D21](README.md#d21--get_modes-answered-a-shape-this-file-never-described-and-lied-about-availability)
+records the reconciliation — implement from this entry and D21, not from the array.
 
 The recipe document itself is **deliberately not part of the protocol contract** — `RecipesResponse<R>`
 is generic and the app defines `R`. The device stores and returns recipes opaquely; it validates them
@@ -377,14 +442,14 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 | `GET_RUNTIME_STATS` | `0x43` | → `{}` ← **typed** `RuntimeStats` |
 | `LINK_BENCH` | `0x44` | → `{ "baud": 2000000, "bytes": 262144 }` ← **typed** `LinkBenchResult`. Timeout 20 s |
 | `SET_LINK_BAUD` | `0x45` | → `{ "baud": 1500000 }` ← **inline** `{ "ok": true, "baud": 1500000 }`. Timeout 6 s |
-| `SYNC_BENCH` | `0x46` | → `{ "triggers": 20 }` ← **mock** `{ "jobId": "job_1", "accepted": true }`, then `JOB_*` events. See below |
+| `SYNC_BENCH` | `0x46` | → `{ "pulses": 100, "gapMs": 100, "poll": true }` ← one plain RESPONSE with per-camera edge counts. **Blocking, up to ~200 s.** See below |
 | `STORAGE_SELF_TEST` | `0x47` | → `{}` ← **typed** `StorageSelfTestResult`. Timeout 10 s. Gated by `benchDiagnostics` |
 | `CAMERA_LINK_STATS` | `0x48` | → `{ "cam": "cam1" }` ← **typed** `CameraLinkStats`. Gated by `benchDiagnostics` |
 | `CAMERA_LINK_STATS_RESET` | `0x49` | → `{ "cam": "cam1" }` ← **inline** `{ "ok": true }`. Counters zero, `latencyMaxMs` included; `lastSequence` survives |
 | `CAMERA_SOAK_TEST` | `0x4a` | → **typed** `SoakTestRequest` ← `JobStartResponse`, then `JOB_*`; `result` is **typed** `SoakTestSummary` |
 | `GET_HW_VALIDATION` | `0x4b` | → `{}` ← **typed** `HwValidationReport`. Gated by `benchDiagnostics` |
 | `C6_RESET_BENCH` | `0x4d` | → `{}` ← `{ ok: true, target: "C6" }`. **Bench only, private.** One reset pulse to the C6 coprocessor (the P4 keeps running); exists so ROLL-C test 3 can be run. Handled only by a P4 built with `-DKINO_C6_RESET_BENCH=1`; every other build NACKs `UNSUPPORTED_COMMAND` and moves no pin. Not gated by a capability because no product client may send it |
-| `STORAGE_BENCH` | `0x4c` | → **typed** `StorageBenchRequest` ← **typed** `StorageBenchResult`. Timeout 120 s. Gated by `benchDiagnostics`. **Reserved in firmware — see below** |
+| `STORAGE_BENCH` | `0x4c` | → **typed** `StorageBenchRequest` ← **typed** `StorageBenchResult`. Timeout 120 s. Gated by `benchDiagnostics`. **Implemented — see below** |
 
 #### `STORAGE_BENCH` — 0x4c
 
@@ -394,25 +459,50 @@ partially per pass — that is the real bench procedure, not a mock artifact.
 Sustained throughput, not a health check — `STORAGE_SELF_TEST` already answers whether the card
 works. **`worstBlockMs` is the number that decides a four-frame burst**: the burst stalls on its
 slowest block, and an average hides exactly the internal-erase event that drops a frame. Report
-it prominently or not at all. Ranges: `sizeMB` 1–512, `blockKB` 4–4096, `passes` 1–16; anything
-outside is `INVALID_ARGUMENT`. No card or no free space is `SD_ERROR`, never a zeroed result.
+it prominently or not at all. No card or no free space is `SD_ERROR`, never a zeroed result.
 
-**Firmware status: reserved, not implemented.** The opcode is defined in
-`kdp/protocol.h` so host and firmware agree on the number, but `firmware/p4/main/kdp_server.c`
-registers no handler and `STORAGE_BENCH` is not in the M1B whitelist — the M1B profile therefore
-NACKs it `UNSUPPORTED_COMMAND` automatically. It is reserved rather than rushed because it is not
-straightforward with the existing storage helpers: `storage_self_test()` writes one 64 KB temp
-file and reports a phase, while a bench needs a sized multi-pass writer, per-block wall clocks, a
-p95 over thousands of samples on a memory-constrained P4, free-space pre-checks, and cleanup on
-abort — and it holds the capture lock long enough to need the async-job pattern rather than a
-plain request. The reference device (MockKinoDevice) implements it, so Studio's panel is
-exercised end to end; the P4 answers honestly that it cannot.
+**Firmware status: implemented.** `handle_storage_bench` in `firmware/p4/main/kdp_server.c`, dispatched
+from the `KDP_CMD_STORAGE_BENCH` case; `benchDiagnostics` is true and covers it. This section said
+"reserved, no handler" for a while, and the cost of that was a bench operator skipping a working
+120 s throughput test — the one that produces `worstBlockMs`, which is the number this section itself
+says decides a four-frame burst. Run it.
 
-#### Milestone 1B bench diagnostics — 0x47–0x4b
+What the device does, where it differs from the typed request:
 
-Repo additions (issue #66), normative. All five are gated by one optional
-capability flag, **`benchDiagnostics`** — absent means pre-1B firmware and the
-group answers `UNSUPPORTED_COMMAND`. The flag and the dispatcher must agree.
+- The run is non-destructive: one temp file under `/KINO` with an unmistakably temporary name, CRC-32
+  read-back, then removed. Throughput is never reported unless the read-back CRC matched.
+- It holds the **capture lock**, shared with `CAMERA_TEST` and the soak run, and answers `BUSY` if a
+  capture or soak run is active. It is a plain blocking request, not an async job.
+- `sizeKB` is accepted alongside `sizeMB`, so a caller can ask for the 64 KiB size
+  `STORAGE_SELF_TEST` uses — a whole number of megabytes cannot express it.
+- **Out-of-range values are clamped, not refused.** The firmware does not answer `INVALID_ARGUMENT`
+  here. Its bounds are `sizeKB` 64–8192 (default 1024), `blockKB` 4–128 (default 32), `passes` ≤ 8
+  (default 1) — tighter than the `sizeMB` 1–512 / `blockKB` 4–4096 / `passes` 1–16 the typed request
+  and the reference device carry. A host asking for 512 MB gets 8 MiB and a result that does not say
+  so; read `bytes` and `passes` out of the response rather than assuming the request was honoured.
+- A failure NACKs with the **failing phase** as the code (`storage_bench_phase_str`), not a bare
+  `BENCH_FAILED`: "slow" and "did not finish" are different problems.
+- Additive fields beyond the typed result: `ok`, `failedPhase`, `passes`, `totalMs`, `cleanupOk`, and
+  two per-pass blocks — `sustained` (the sized run, which the top-level figures come from) and
+  `small`, a 64 KiB run directly comparable with `STORAGE_SELF_TEST` on the same card.
+- A successful run marks `HWV_SD_LDO_CH4` validated: a verified round trip at a megabyte rather than
+  at 64 KB.
+
+`M1B_COMMANDS` does not gate this, and it gates nothing in firmware. It is a **test-fixture
+whitelist** — `packages/test-fixtures/src/firmwareProfiles.ts`, "the exact KDP surface of
+`kdp_server.c` at 0.1.0" — used to make the reference device refuse what an 0.1.0 body refused. The
+real gate is the dispatcher's `switch` plus the capability flag. A command missing from
+`M1B_COMMANDS` means the M1B *profile* NACKs it; it says nothing about today's firmware.
+
+#### Milestone 1B bench diagnostics — 0x47–0x4c
+
+Repo additions (issue #66), normative. All six — `STORAGE_SELF_TEST`,
+`CAMERA_LINK_STATS`, `CAMERA_LINK_STATS_RESET`, `CAMERA_SOAK_TEST`,
+`GET_HW_VALIDATION` and `STORAGE_BENCH` — are gated by one optional capability
+flag, **`benchDiagnostics`** — absent means pre-1B firmware and the group answers
+`UNSUPPORTED_COMMAND`. The flag and the dispatcher must agree. `C6_RESET_BENCH`
+(0x4d) sits inside the numeric range and is **not** part of this group: it is
+bench-only, private, and gated by a build flag rather than a capability.
 
 - **`STORAGE_SELF_TEST`** is non-destructive: mount → write one temp file
   under `/KINO` → fsync → read back → CRC verify → delete. `failedPhase` names
@@ -437,7 +527,12 @@ group answers `UNSUPPORTED_COMMAND`. The flag and the dispatcher must agree.
   progresses. The summary's min/max/avg fields are null when nothing
   succeeded; `heapDeltaKB`/`psramDeltaKB` trending negative fails the bench.
 - **`GET_HW_VALIDATION`** reports the runtime hardware-validation registry:
-  16 items, status `unvalidated | validated | failed | not-applicable`. An
+  **56 items** (`hwv_item_t` in `firmware/p4/main/hardware_validation.h`, up to
+  but not including `HWV_COUNT`; `ITEM_IDS` in the matching `.c` carries the wire
+  ids and a `_Static_assert` keeps the two in step). The registry is append-only
+  because statuses persist in NVS keyed by the enum's index, so this number only
+  ever grows — read it from the enum, never from a count in prose. Each item has
+  a status of `unvalidated | validated | failed | not-applicable`. An
   item is `validated` only when the real event happened on that unit (frame
   decoded over USB, card mounted, node HELLO answered, checksummed capture
   stored). Firmware never auto-marks `failed` — it cannot tell a wrong pin
@@ -483,22 +578,68 @@ as strings, so neither breaks, and the firmware names are the ones to keep.
 `Cmd.SYNC_BENCH` in `packages/kdp/src/protocol/commands.ts`. The value is normative; do not renumber.
 See [README D4](README.md#d4--sync_bench-numeric-value).
 
-An async job — a hundred triggers outlives any request deadline. Request/response are **mock**:
+**A blocking SYNC-line edge counter. Not an async job, and it measures no skew.** The firmware
+(`handle_sync_bench` in `firmware/p4/main/kdp_server.c`) is the shipped truth; this entry describes
+it.
 
-→ `{ "triggers": 20 }` (clamped to 1–200, default 20)
-← `{ "jobId": "job_1", "accepted": true }`
+Request:
 
-Then `JOB_PROGRESS` events, and a `JOB_COMPLETE` whose `result` is:
+```json
+{ "pulses": 100, "gapMs": 100, "poll": true }
+```
+
+- `pulses` — 1–200, default **100**. Outside the range is `INVALID_ARGUMENT` ("a longer run is
+  several calls").
+- `gapMs` — 20–1000, default **100**. The floor is at least twice the node dead time.
+- `poll` — default `true`. Read each node's sync counter after every pulse, which is what earns the
+  `polled*` fields below. `false` reads only the endpoints.
+- `triggers` is **ignored**. It is the field the async design used and no firmware ever read it; a
+  request carrying only `triggers` runs the 100 × 100 ms default, which is a 10 s block.
+
+The P4 fires one shared-SYNC pulse per iteration and waits `gapMs` between them, **inside the
+request handler**, then answers once. Budget `pulses × gapMs`: the default is ~10 s and the worst
+case (200 × 1000 ms) is ~200 s. Set the host's per-command timeout from the request, not from a
+default — and expect the KDP link to be held for the duration. `capture_busy()` is checked first, so
+a run started while a capture is in flight is refused `BUSY` rather than queued.
+
+Response — one plain RESPONSE frame, no `jobId`, no `JOB_*` events:
 
 ```json
 {
-  "triggers": 20, "frameIntervalUs": 33333, "aligned": false,
-  "samples": [{ "trigger": 0, "cams": [{ "cam": "cam1", "gpioUs": 41, "vsyncPhaseUs": 7180, "exposureUs": 7402 }] }],
-  "perTrigger": [{ "trigger": 0, "gpioSpreadUs": 22, "vsyncSpreadUs": 21402, "exposureSpreadUs": 21688 }]
+  "ok": true,
+  "pulses": 100,
+  "gapMs": 100,
+  "polled": true,
+  "refusedByCapture": 0,
+  "pulseWidthUs": 200,
+  "cameras": [
+    {
+      "cam": "cam1", "watched": true, "inputReady": true, "deadtimeUs": 1500,
+      "seqBefore": 0, "seqAfter": 100,
+      "acceptedEdges": 100, "rawEdges": 100, "rejectedEdges": 0,
+      "expected": 100, "shortBy": 0, "extraRaw": 0,
+      "polledMissed": 0, "polledExtra": 0, "firstBadPulse": null, "edgeMonotonic": true,
+      "clean": true
+    }
+  ]
 }
 ```
 
-Requires all four cameras; the reference device answers `CAMERA_OFFLINE` otherwise.
+- `pulses` echoes how many actually **fired**, which is lower than requested if a capture took the
+  cameras mid-run: the loop stops rather than report a hole, and `refusedByCapture` counts that.
+- `watched` is false for a camera that did not answer at the start of the run. A camera with
+  `watched: false` carries no other fields — the bench reports on the cameras that were there. There
+  is no all-four-cameras requirement and no `CAMERA_OFFLINE` for a missing one.
+- `shortBy` = `expected - acceptedEdges`; `extraRaw` = `rawEdges - expected`. `clean` is
+  `acceptedEdges == expected`.
+- The `polled*` fields, `firstBadPulse` and `edgeMonotonic` are present only when `poll` was true.
+  `firstBadPulse` is the 1-based pulse at which a node's counter first skipped, or `null`.
+
+**No timing figures come out of this command.** It carried `gpioUs`, `vsyncPhaseUs`, `exposureUs`,
+`frameIntervalUs`, `aligned`, `samples` and `perTrigger` in the async design; the firmware reports
+none of them and cannot — `vsyncTelemetry` is false on this build. Counting edges answers "did every
+node see the trigger", which is a wiring and dead-time question. It does not answer any of the three
+timing metrics at the end of this document, and a host must not present it as skew.
 
 ### Maintenance — 0x50–0x53
 
@@ -511,7 +652,7 @@ Requires all four cameras; the reference device answers `CAMERA_OFFLINE` otherwi
 
 Both reboots produce a new `sessionId` — see [Session change](#session-change).
 
-### Firmware — 0x60–0x65
+### Firmware — 0x60–0x66
 
 `FW_BEGIN` → `FW_CHUNK`* → `FW_END`. The P4 is the update gateway for the camera nodes.
 
@@ -523,6 +664,19 @@ Both reboots produce a new `sessionId` — see [Session change](#session-change)
 | `FW_END` | `0x63` | → `{}` ← **typed** `FwEndResponse` = `{ "ok": true, "verified": true }`. Timeout 15 s |
 | `FW_ABORT` | `0x64` | → `{}` ← **mock** `{ "ok": true }` |
 | `FW_STATUS` | `0x65` | → `{ "target": "cam3" }` ← **typed** `FwStatusResponse` = `{ "target", "state", "version", "error"? }` |
+| `FW_ROLLBACK` | `0x66` | → `{}` ← **inline** `{ "ok": true, "rebooting": true }` on a device with A/B slots. **Allocated and reserved; no firmware implements it, and the D4-V1 P4 NACKs `UNSUPPORTED_COMMAND`.** See below |
+
+**`0x66` is taken.** `Cmd.FW_ROLLBACK = 0x66` exists in `packages/kdp/src/protocol/commands.ts` and
+carried no row in this file, so "the next free slot after `0x65`" looked like `0x66` and was not.
+Allocate the next firmware command at `0x67`, and extend this heading and the value map with it.
+
+`FW_ROLLBACK` returns to the previous OTA slot. Nothing implements it: the D4-V1 P4 build has a
+single application partition, so there is no previous slot to return to, and the dispatcher answers
+`UNSUPPORTED_COMMAND`. The number is held so it cannot be reused and so no UI is built against an
+invented shape; the slot state machine and NACK codes it would need are in `docs/RELEASE_TRUST.md`,
+and `ROADMAP.md` carries it as future work. Build no host path against it — see
+[README D8](README.md#d8--command-surface-differs-from-spec-047s-name-lists) and
+[README D15](README.md#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_).
 
 `FwBeginRequest` = `{ "target": "cam3", "size": 984320, "sha256": "…", "version": "0.2.0" }`.
 `target` ∈ `cam1 | cam2 | cam3 | cam4 | p4`.
@@ -743,7 +897,9 @@ These follow from the host's job lifecycle in `KinoProtocolClient` and are not o
    unclaimed job ids, 16 progress events each, newest kept) and replays them on registration. Ordering
    within a job is preserved; do not reorder progress events to compensate.
 5. **Emit progress in batches, not per unit of work.** The reference device reports roughly every 10 %
-   of a `SYNC_BENCH` run rather than per trigger.
+   of a `CAMERA_SOAK_TEST` run rather than per capture. (`SYNC_BENCH` used to be
+   the example here; on real firmware it is a blocking request that emits no job
+   events at all — see [`SYNC_BENCH` — 0x46](#sync_bench--0x46).)
 
 Abandoning the progress stream host-side does **not** cancel the job. There is no cancel command; a
 job runs to completion or dies with the session.
