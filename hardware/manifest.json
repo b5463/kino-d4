@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "product": "KINO D4",
   "hardwareRevision": "D4-V1",
-  "designVersion": "0.1.3",
+  "designVersion": "0.1.4",
   "status": "prototype",
   "sourceLocation": "https://github.com/b5463/kino-d4",
   "license": "CERN-OHL-S-2.0",
@@ -12,7 +12,7 @@
     "wiring": { "path": "hardware/WIRING.md", "revision": 1 },
     "assembly": { "path": "hardware/ASSEMBLY.md", "revision": 1 },
     "testing": { "path": "hardware/TESTING.md", "revision": 1 },
-    "cad": { "path": "hardware/cad", "revision": 0, "status": "not-released" },
+    "cad": { "path": "hardware/cad", "revision": 3, "status": "prototype" },
     "pcb": { "path": "hardware/pcb", "revision": 0, "status": "perfboard-v1" }
   },
   "compatibility": {

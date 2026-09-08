@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "4e6a51fa-bac4-4112-949a-bfc414102201")
+	(paper "A4")
+	(title_block (title "GUITION 26-PIN INTERFACE") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nJ100 Molex 5054482651, 26 positions\nPins 2/4: P4_5V; pins 5/6/16: GND\nFour UART pairs from measured ECN-0002 map\nPin 19: SYNC_MASTER; pin 10: CAM_PWR_EN\nPin 21: BTN_SHUTTER_N per ECN-0003\nPins 23/25: shared I2C\nPins 20/22/24/26: C6 service\n\nGPIO35 / PIN 15: DO NOT CONNECT.\n3.3 V pins are sense/service only; never back-power the Guition board."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "e55b0784-fb46-4564-8b47-58d20bc32202")
+	)
+	(embedded_fonts no)
+)

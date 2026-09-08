@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "48edc96e-87a7-4ef9-b279-541555532701")
+	(paper "A4")
+	(title_block (title "TEST, PROGRAMMING AND SERVICE") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nBottom-side pogo pads for all required rails, UARTs, sync branches and I2C\nCamera enable/fault and system power-management test access\nXIAO UART boot/reset recovery routes for CAM1-CAM4\nC6 UART, IO9 and CHIP_PU service pads\nSTUSB NVM and board EEPROM production access\nSerial number and QR/UID programming record\n\nPogo geometry is blocked by mounting coordinates and fixture access."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "5db0da56-45d2-4cd0-bb6a-d4adab932702")
+	)
+	(embedded_fonts no)
+)

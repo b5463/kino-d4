@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "15c5d249-41c7-4d32-964c-d54128022301")
+	(paper "A4")
+	(title_block (title "CAMERA POWER AND MONITORING") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nPAC1954T-E/4MX and four Kelvin shunts\nFour TPS2553DRVR current-limited branches\nTCA9539PWR enables and FAULT_N inputs\nSN74LVC08APWR gates every branch with CAM_PWR_EN\nPer-branch effective bulk >= 22 uF plus local 100 nF\nCAM1_5V through CAM4_5V rail test points\n\nINITIAL LIMIT: about 1 A; final resistor from measured inrush/capture current."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "505db0f3-bd51-4125-b356-7a9de3a32302")
+	)
+	(embedded_fonts no)
+)

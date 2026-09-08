@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "7ece65ce-cb96-4c1c-a76a-609bb67f2401")
+	(paper "A4")
+	(title_block (title "UART AND SYNCHRONIZATION") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nEight 3.3 V UART signals with 33 ohm configuration footprints and test pads\nCAM1 52/51; CAM2 50/49; CAM3 34/33; CAM4 30/29\nSN74LVC125APWRG3 four-way SYNC fan-out from GPIO32 / JP1 pin 19\n33 ohm branch source resistors, isolation links and test pads\nCAMn_SYNC to XIAO D1 / GPIO2\nCAMn_FSIN, CAMn_PWDN and CAMn_RESET future-interposer pads\n\nRoute every branch over continuous L2 ground and validate concurrent 921600 baud."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "5848076c-3e94-4d86-b77a-463a14082402")
+	)
+	(embedded_fonts no)
+)

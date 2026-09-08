@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "c54c72d3-cd32-4ca2-b229-8b0332662601")
+	(paper "A4")
+	(title_block (title "FUEL GAUGE, I2C AND BOARD ID") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nBQ27441DRZR-G1A plus 10 milliohm Kelvin shunt\nINA228AIDGSR plus 5 milliohm SYS_5V Kelvin shunt\n24AA025E48T-I/OT board EEPROM and EUI-48\nShared MB_I2C_SDA/SCL configuration links and DNP pull-ups\nAddress straps, write protect, alert routing and test pads\n\nBattery NTC is owned by charger safety loop; gauge uses internal or host temperature until curve is known."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "1b99e72a-4533-4d60-8360-89bd09212602")
+	)
+	(embedded_fonts no)
+)

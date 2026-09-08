@@ -1,0 +1,46 @@
+{
+  "file": "KINO_FIELD_FACE_PRINT.stl",
+  "threshold": "downward face steeper than 45 degrees",
+  "candidateTriangles": 48,
+  "candidateAreaMm2": 29.43,
+  "regions": [
+    {
+      "triangles": 46,
+      "areaMm2": 15.86,
+      "horizontalAreaMm2": 15.86,
+      "bounds": {
+        "x": [
+          21.25,
+          25.75
+        ],
+        "y": [
+          33.75,
+          38.25
+        ],
+        "z": [
+          5.5,
+          5.5
+        ]
+      }
+    },
+    {
+      "triangles": 2,
+      "areaMm2": 13.57,
+      "horizontalAreaMm2": 0.15,
+      "bounds": {
+        "x": [
+          22.24,
+          23.51
+        ],
+        "y": [
+          18.75,
+          33.75
+        ],
+        "z": [
+          0.5,
+          1.76
+        ]
+      }
+    }
+  ]
+}

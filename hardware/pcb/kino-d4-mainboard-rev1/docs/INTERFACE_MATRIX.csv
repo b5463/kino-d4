@@ -1,0 +1,47 @@
+Interface,Position,Net,Direction_from_mainboard,Voltage,Default_state,Destination_or_note,Status
+P4_J100,1,P4_3V3_SENSE_A,Input,3.3V,High,Sense only; never back-power Guition,MEASURED_MAP
+P4_J100,2,P4_5V_A,Output,5V,Off,Parallel Guition supply contact,REQUIRED
+P4_J100,3,P4_3V3_SENSE_B,Input,3.3V,High,Sense only; never back-power Guition,MEASURED_MAP
+P4_J100,4,P4_5V_B,Output,5V,Off,Parallel Guition supply contact,REQUIRED
+P4_J100,5,GND,Return,0V,0V,Ground return,REQUIRED
+P4_J100,6,GND,Return,0V,0V,Ground return,REQUIRED
+P4_J100,7,CAM1_P4_TX,Input,3.3V,High,XIAO CAM1 GPIO44 RX,VALIDATED_MAPPING
+P4_J100,8,CAM3_P4_RX,Output,3.3V,High,XIAO CAM3 GPIO43 TX,VALIDATED_MAPPING
+P4_J100,9,CAM1_P4_RX,Output,3.3V,High,XIAO CAM1 GPIO43 TX,VALIDATED_MAPPING
+P4_J100,10,CAM_PWR_EN,Input,3.3V,Low,Global camera-bank hardware gate,MEASURED_MAP
+P4_J100,11,CAM2_P4_TX,Input,3.3V,High,XIAO CAM2 GPIO44 RX,VALIDATED_MAPPING
+P4_J100,12,CAM4_P4_TX,Input,3.3V,High,XIAO CAM4 GPIO44 RX,VALIDATED_MAPPING
+P4_J100,13,CAM2_P4_RX,Output,3.3V,High,XIAO CAM2 GPIO43 TX,VALIDATED_MAPPING
+P4_J100,14,CAM4_P4_RX,Output,3.3V,High,XIAO CAM4 GPIO43 TX,VALIDATED_MAPPING
+P4_J100,15,GPIO35_NC,None,3.3V,Open,Serial-boot strap; no copper beyond connector pad,DO_NOT_CONNECT
+P4_J100,16,GND,Return,0V,0V,Ground return,REQUIRED
+P4_J100,17,CAM3_P4_TX,Input,3.3V,High,XIAO CAM3 GPIO44 RX; GPIO34 strap-safe only as output,VALIDATED_MAPPING
+P4_J100,18,C6_3V3_SENSE,Input,3.3V,High,Service sense only; do not load,RESERVED
+P4_J100,19,SYNC_MASTER,Input,3.3V,Low,Buffered to CAM1-CAM4 GPIO2,VALIDATED_SOURCE
+P4_J100,20,C6_UART_RX_SERVICE,Output,3.3V,High,Pogo/service only,RESERVED
+P4_J100,21,BTN_SHUTTER_N,Output,3.3V,High,External shutter pulls low,VALIDATED
+P4_J100,22,C6_UART_TX_SERVICE,Input,3.3V,High,Pogo/service only,RESERVED
+P4_J100,23,MB_I2C_SDA,Bidirectional,3.3V,Open-drain,Shared mainboard control bus,MEASURE_PULLUPS
+P4_J100,24,C6_BOOT_SERVICE,Bidirectional,3.3V,Open,C6 IO9 pogo only; no default pull,RESERVED
+P4_J100,25,MB_I2C_SCL,Input,3.3V,Open-drain,Shared mainboard control bus,MEASURE_PULLUPS
+P4_J100,26,C6_EN_SERVICE,Bidirectional,3.3V,Do not drive,Pogo only; polarity must be preserved,RESERVED
+BAT_J200,1,BAT_PLUS,Input,3.0-4.2V,Present,Production cell positive,NTC_AND_CELL_DATASHEET_BLOCKER
+BAT_J200,2,BAT_TEMP,Input,Analog,Unknown,Production cell thermistor to BAT_MINUS,NTC_BLOCKER
+BAT_J200,3,BAT_MINUS,Return,0V,0V,Production cell negative,REQUIRED
+SHUTTER_J300,1,BTN_SHUTTER_N,Input,3.3V,High,Normally-open button to ground,VALIDATED_LOGIC
+SHUTTER_J300,2,GND,Return,0V,0V,Button return,REQUIRED
+CAM1_J401,1-2,CAM1_5V,Output,5V,Off,Parallel power contacts,PROVISIONAL_CONNECTOR
+CAM1_J401,3-4,GND,Return,0V,0V,Parallel return contacts,PROVISIONAL_CONNECTOR
+CAM1_J401,5,CAM1_P4_TX,Output,3.3V,High,XIAO GPIO44 RX,VALIDATED_MAPPING
+CAM1_J401,6,CAM1_P4_RX,Input,3.3V,High,XIAO GPIO43 TX,VALIDATED_MAPPING
+CAM1_J401,7,CAM1_SYNC,Output,3.3V,Low,XIAO D1 GPIO2,VALIDATED_MAPPING
+CAM1_J401,8,CAM1_XIAO_RESET_N,Output,3.3V,High,XIAO reset/recovery via node interposer,PROVISIONAL
+CAM1_J401,9,CAM1_XIAO_BOOT_N,Output,3.3V,High,XIAO GPIO0 recovery via node interposer,PROVISIONAL
+CAM1_J401,10,CAM1_DETECT,Input,3.3V,High,Reserved detect or ground-ID,PROVISIONAL
+CAM2_J402,1-10,SAME_AS_CAM1_INDEXED,Bidirectional,5V_and_3.3V,See_CAM1,Identical CAM2 harness,PROVISIONAL_CONNECTOR
+CAM3_J403,1-10,SAME_AS_CAM1_INDEXED,Bidirectional,5V_and_3.3V,See_CAM1,Identical CAM3 harness,PROVISIONAL_CONNECTOR
+CAM4_J404,1-10,SAME_AS_CAM1_INDEXED,Bidirectional,5V_and_3.3V,See_CAM1,Identical CAM4 harness,PROVISIONAL_CONNECTOR
+SENSOR_J411,1-4,CAM1_FSIN_PWDN_RESET_GND,Bidirectional,Sensor_domain,Open,Future OV3660 interposer pads only,PROVISIONAL
+SENSOR_J412,1-4,CAM2_FSIN_PWDN_RESET_GND,Bidirectional,Sensor_domain,Open,Future OV3660 interposer pads only,PROVISIONAL
+SENSOR_J413,1-4,CAM3_FSIN_PWDN_RESET_GND,Bidirectional,Sensor_domain,Open,Future OV3660 interposer pads only,PROVISIONAL
+SENSOR_J414,1-4,CAM4_FSIN_PWDN_RESET_GND,Bidirectional,Sensor_domain,Open,Future OV3660 interposer pads only,PROVISIONAL

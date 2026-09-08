@@ -1,0 +1,17 @@
+Category,Load_or_scenario,Voltage_V,Typical_current_A,Design_current_A,Typical_power_W,Design_power_W,Assumption_or_action,Status
+Load,Guition_JC4880P443C-I-W,5.0,0.320,1.000,1.600,5.000,1A is transient allocation not measured steady state,MEASURE_REQUIRED
+Load,CAM1_XIAO_S3_plus_OV3660,5.0,0.140,0.350,0.700,1.750,Branch supports 0.6A continuous and about 1A short fault limit,MEASURE_REQUIRED
+Load,CAM2_XIAO_S3_plus_OV3660,5.0,0.140,0.350,0.700,1.750,Branch supports 0.6A continuous and about 1A short fault limit,MEASURE_REQUIRED
+Load,CAM3_XIAO_S3_plus_OV3660,5.0,0.140,0.350,0.700,1.750,Branch supports 0.6A continuous and about 1A short fault limit,MEASURE_REQUIRED
+Load,CAM4_XIAO_S3_plus_OV3660,5.0,0.140,0.350,0.700,1.750,Branch supports 0.6A continuous and about 1A short fault limit,MEASURE_REQUIRED
+Load,Mainboard_logic_and_monitors,5.0,0.100,0.200,0.500,1.000,Allowance excludes conversion loss,ESTIMATE
+Total,Typical_system,5.0,0.980,0.980,4.900,4.900,Sum of typical allocations,ESTIMATE
+Total,Simultaneous_capture_allocation,5.0,2.600,2.600,13.000,13.000,Guition transient plus four 350mA captures plus mainboard,ESTIMATE
+Total,Conservative_continuous_design,5.0,3.650,3.650,18.250,18.250,1A Guition plus four 0.6A branches plus 0.25A board,DESIGN_CAPACITY
+Rail,SYS_5V_converter_capability,5.0,0.000,4.000,0.000,20.000,Silicon and copper target; not battery-harness continuous capability,DESIGN_TARGET
+Source,USB_PD_preferred,9.0,2.000,2.000,18.000,18.000,About 16.2W after representative 90 percent whole-path efficiency,REQUIRED
+Source,USB_C_fallback_max,5.0,3.000,3.000,15.000,15.000,Only after 3A advertisement or PD contract,REQUIRED
+Charge,Cell_charge_target_at_4p2V,4.2,1.000,1.500,4.200,6.300,Reduce dynamically as system load rises,CELL_DATASHEET_BLOCKER
+Battery,Battery_harness_continuous_nominal,3.7,3.000,3.000,11.100,11.100,About 10W SYS_5V after 90 percent boost efficiency,CONNECTOR_AND_CELL_BLOCKER
+Battery,Battery_harness_short_pulse_nominal,3.7,6.000,6.000,22.200,22.200,Duration and temperature require cell/PCM/harness validation,CONNECTOR_AND_CELL_BLOCKER
+Estimate,Typical_runtime_3Ah,3.7,1.505,1.505,5.568,5.568,About 1.8h using 90 percent usable energy and 88 percent conversion; values are battery-side input,ESTIMATE

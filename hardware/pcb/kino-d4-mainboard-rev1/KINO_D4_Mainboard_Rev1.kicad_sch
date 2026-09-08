@@ -1,0 +1,259 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100")
+	(paper "A3")
+	(title_block
+		(title "KINO D4 MAINBOARD")
+		(date "2026-09-05")
+		(rev "1.0-PHASE1")
+		(company "KINO D4")
+		(comment 1 "ARCHITECTURE BASELINE - NOT FOR FABRICATION")
+		(comment 2 "KiCad 10.0.6")
+	)
+	(lib_symbols)
+	(text "KINO D4 MAINBOARD REV 1.0\nPHASE 1 ARCHITECTURE - NOT FOR FABRICATION"
+		(exclude_from_sim no)
+		(at 42 24 0)
+		(effects
+			(font (size 2.5 2.5) (bold yes))
+			(justify left bottom)
+		)
+		(uuid "c998b24b-972a-4c2b-90fc-fb7bceff1001")
+	)
+	(text "Measured source of truth: ECN-0002 JP1 map, amended by ECN-0003 shutter reassignment.\nGPIO35 / JP1 pin 15 MUST remain unconnected."
+		(exclude_from_sim no)
+		(at 42 35 0)
+		(effects
+			(font (size 1.4 1.4) (bold yes))
+			(justify left bottom)
+		)
+		(uuid "f810ff74-b755-42bb-b4ed-7ca8c7fd1002")
+	)
+	(text "Functional sheets below are the approved capture plan. Component values, footprints, mounting holes and routing remain provisional until the release gates close."
+		(exclude_from_sim no)
+		(at 42 43 0)
+		(effects
+			(font (size 1.27 1.27))
+			(justify left bottom)
+		)
+		(uuid "7d617260-3d83-40dc-bcca-74463f581003")
+	)
+	(sheet
+		(at 42 55)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 255 230 200 0.18))
+		(uuid "b501b7d3-6ebd-4ceb-b4d9-f1b7ff3a1101")
+		(property "Sheetname" "01 USB-C, PD, charger and rails"
+			(at 42 54 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "01_usb_pd_power.kicad_sch"
+			(at 42 84 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "2"))
+			)
+		)
+	)
+	(sheet
+		(at 112 55)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 210 235 255 0.18))
+		(uuid "394d3d3a-b22e-48f6-8675-5c1547891102")
+		(property "Sheetname" "02 Guition 26-pin interface"
+			(at 112 54 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "02_p4_interface.kicad_sch"
+			(at 112 84 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "3"))
+			)
+		)
+	)
+	(sheet
+		(at 182 55)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 220 255 220 0.18))
+		(uuid "85c27599-1d22-4aa6-8978-851773f11103")
+		(property "Sheetname" "03 Camera power and monitoring"
+			(at 182 54 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "03_camera_power.kicad_sch"
+			(at 182 84 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "4"))
+			)
+		)
+	)
+	(sheet
+		(at 252 55)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 235 220 255 0.18))
+		(uuid "b4d7a626-4cd4-4d44-92fe-c352cb321104")
+		(property "Sheetname" "04 UART and synchronization"
+			(at 252 54 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "04_uart_sync.kicad_sch"
+			(at 252 84 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "5"))
+			)
+		)
+	)
+	(sheet
+		(at 42 104)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 255 240 210 0.18))
+		(uuid "c0f61d9e-9438-41ed-944f-0322e1671105")
+		(property "Sheetname" "05 Power button and shutdown"
+			(at 42 103 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "05_power_control.kicad_sch"
+			(at 42 133 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "6"))
+			)
+		)
+	)
+	(sheet
+		(at 112 104)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 220 245 245 0.18))
+		(uuid "1e735077-b472-4b41-860a-b94139e81106")
+		(property "Sheetname" "06 Fuel gauge, I2C and board ID"
+			(at 112 103 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "06_monitoring_id.kicad_sch"
+			(at 112 133 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "7"))
+			)
+		)
+	)
+	(sheet
+		(at 182 104)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 235 235 235 0.18))
+		(uuid "08a49d8e-c00b-45ab-8667-ea2c17af1107")
+		(property "Sheetname" "07 Test, programming and service"
+			(at 182 103 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "07_test_service.kicad_sch"
+			(at 182 133 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "8"))
+			)
+		)
+	)
+	(sheet
+		(at 252 104)
+		(size 58 28)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke (width 0.3) (type solid))
+		(fill (color 255 220 220 0.18))
+		(uuid "0a09d9f7-fabb-42bd-aa72-2dfc6cd21108")
+		(property "Sheetname" "08 Protection and connectors"
+			(at 252 103 0)
+			(effects (font (size 1.27 1.27) (bold yes)) (justify left bottom))
+		)
+		(property "Sheetfile" "08_protection_connectors.kicad_sch"
+			(at 252 133 0)
+			(effects (font (size 1.0 1.0)) (justify left top))
+		)
+		(instances
+			(project "KINO_D4_Mainboard_Rev1"
+				(path "/3b2fa9b6-4ca6-4c5a-9b0a-83e5356aa100" (page "9"))
+			)
+		)
+	)
+	(text "POWER FLOW: USB-C / BATTERY -> NVDC POWER PATH -> SYS_RAW -> 5 V BOOST -> P4 + 4 PROTECTED CAMERA BRANCHES"
+		(exclude_from_sim no)
+		(at 42 151 0)
+		(effects (font (size 1.5 1.5) (bold yes)) (justify left bottom))
+		(uuid "864c28d1-dd49-46fb-abd9-36a9393d1004")
+	)
+	(text "Blocking inputs: battery NTC/cell data; measured current ladder; final connectors/harnesses; switch opening; mounting holes and keep-outs."
+		(exclude_from_sim no)
+		(at 42 160 0)
+		(effects (font (size 1.27 1.27)) (justify left bottom))
+		(uuid "6e61d542-1a5b-44b5-a713-636426d11005")
+	)
+	(sheet_instances
+		(path "/" (page "1"))
+	)
+	(embedded_fonts no)
+)

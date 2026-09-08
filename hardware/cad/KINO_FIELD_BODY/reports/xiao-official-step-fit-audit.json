@@ -1,0 +1,3842 @@
+{
+  "source": "Seeed Studio official XIAO ESP32-S3 Sense STEP",
+  "coordinateMapping": {
+    "stepToRig": "rig X=STEP Z, rig Y=STEP X, rig Z=STEP Y",
+    "mainBoardSeatZMm": 110,
+    "lensCentersXmm": [
+      47,
+      69,
+      91,
+      113
+    ]
+  },
+  "importedMeshes": 103,
+  "failedComponentImports": [],
+  "mainRigClashes": [],
+  "nonBoardComponentClashes": [],
+  "femaleHeaderResults": [
+    {
+      "camera": 1,
+      "side": "left",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "side": "left",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "side": "right",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "side": "right",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "side": "left",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "side": "left",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "side": "right",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "side": "right",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "side": "left",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "side": "left",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "side": "right",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "side": "right",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "side": "left",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "side": "left",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "side": "right",
+      "direction": "rear",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "side": "right",
+      "direction": "front",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    }
+  ],
+  "headerClashes": [],
+  "componentResults": [
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 0,
+      "meshName": "BOSS-EXTRUDE14_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 1,
+      "meshName": "BOSS-EXTRUDE7_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 2,
+      "meshName": "BOSS-EXTRUDE7_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 3,
+      "meshName": "BOSS-EXTRUDE14_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 4,
+      "meshName": "BOSS-EXTRUDE14_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 5,
+      "meshName": "BOSS-EXTRUDE14_11_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 6,
+      "meshName": "BOSS-EXTRUDE7_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 7,
+      "meshName": "BOSS-EXTRUDE14_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 8,
+      "meshName": "BOSS-EXTRUDE14_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 9,
+      "meshName": "BOSS-EXTRUDE14_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 10,
+      "meshName": "MIRROR2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 11,
+      "meshName": "BOSS-EXTRUDE14_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 12,
+      "meshName": "BOSS-EXTRUDE14_12_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 13,
+      "meshName": "BOSS-EXTRUDE7_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 14,
+      "meshName": "BOSS-EXTRUDE7_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 15,
+      "meshName": "BOSS-EXTRUDE14_10_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 16,
+      "meshName": "BOSS-EXTRUDE7_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 17,
+      "meshName": "BOSS-EXTRUDE14_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 18,
+      "meshName": "CHAMFER9",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 19,
+      "meshName": "BOSS-EXTRUDE14_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 20,
+      "meshName": "BOSS-EXTRUDE7_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 21,
+      "meshName": "BOSS-EXTRUDE7_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 22,
+      "meshName": "CUT-EXTRUDE5",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 23,
+      "meshName": "BOSS-EXTRUDE7_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 24,
+      "meshName": "Shield",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 25,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 26,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 27,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 28,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 29,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 30,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 31,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 32,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 33,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 34,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 35,
+      "meshName": "U.FL-R-SMT-1_10_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 36,
+      "meshName": "DF40C-30DP-0.4V_51_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "main-board",
+      "meshIndex": 37,
+      "meshName": "SOLID",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 1.727966
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 38,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 39,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 40,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 41,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 42,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 43,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 44,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 45,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 46,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 47,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 48,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 49,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 50,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 51,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 52,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 53,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 54,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 55,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 56,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 57,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 58,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 59,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 60,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 61,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 62,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 63,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 64,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 65,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 66,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 67,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 68,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 69,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 70,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 71,
+      "meshName": "PCB",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 72,
+      "meshName": "MicroSD v2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 73,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 74,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 75,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 76,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 77,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 78,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 79,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 80,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 81,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 82,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 83,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 84,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 85,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 86,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 87,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 88,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 89,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 90,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 91,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 92,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 93,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 94,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 95,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 96,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 97,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "sense-expansion",
+      "meshIndex": 98,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "camera-module",
+      "meshIndex": 99,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "camera-module",
+      "meshIndex": 100,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "camera-module",
+      "meshIndex": 101,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 1,
+      "cameraX": 47,
+      "group": "camera-module",
+      "meshIndex": 102,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 0,
+      "meshName": "BOSS-EXTRUDE14_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 1,
+      "meshName": "BOSS-EXTRUDE7_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 2,
+      "meshName": "BOSS-EXTRUDE7_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 3,
+      "meshName": "BOSS-EXTRUDE14_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 4,
+      "meshName": "BOSS-EXTRUDE14_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 5,
+      "meshName": "BOSS-EXTRUDE14_11_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 6,
+      "meshName": "BOSS-EXTRUDE7_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 7,
+      "meshName": "BOSS-EXTRUDE14_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 8,
+      "meshName": "BOSS-EXTRUDE14_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 9,
+      "meshName": "BOSS-EXTRUDE14_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 10,
+      "meshName": "MIRROR2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 11,
+      "meshName": "BOSS-EXTRUDE14_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 12,
+      "meshName": "BOSS-EXTRUDE14_12_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 13,
+      "meshName": "BOSS-EXTRUDE7_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 14,
+      "meshName": "BOSS-EXTRUDE7_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 15,
+      "meshName": "BOSS-EXTRUDE14_10_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 16,
+      "meshName": "BOSS-EXTRUDE7_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 17,
+      "meshName": "BOSS-EXTRUDE14_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 18,
+      "meshName": "CHAMFER9",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 19,
+      "meshName": "BOSS-EXTRUDE14_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 20,
+      "meshName": "BOSS-EXTRUDE7_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 21,
+      "meshName": "BOSS-EXTRUDE7_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 22,
+      "meshName": "CUT-EXTRUDE5",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 23,
+      "meshName": "BOSS-EXTRUDE7_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 24,
+      "meshName": "Shield",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 25,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 26,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 27,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 28,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 29,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 30,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 31,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 32,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 33,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 34,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 35,
+      "meshName": "U.FL-R-SMT-1_10_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 36,
+      "meshName": "DF40C-30DP-0.4V_51_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "main-board",
+      "meshIndex": 37,
+      "meshName": "SOLID",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 1.727967
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 38,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 39,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 40,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 41,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 42,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 43,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 44,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 45,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 46,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 47,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 48,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 49,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 50,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 51,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 52,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 53,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 54,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 55,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 56,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 57,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 58,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 59,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 60,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 61,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 62,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 63,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 64,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 65,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 66,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 67,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 68,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 69,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 70,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 71,
+      "meshName": "PCB",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 72,
+      "meshName": "MicroSD v2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 73,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 74,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 75,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 76,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 77,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 78,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 79,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 80,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 81,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 82,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 83,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 84,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 85,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 86,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 87,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 88,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 89,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 90,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 91,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 92,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 93,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 94,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 95,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 96,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 97,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "sense-expansion",
+      "meshIndex": 98,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "camera-module",
+      "meshIndex": 99,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "camera-module",
+      "meshIndex": 100,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "camera-module",
+      "meshIndex": 101,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 2,
+      "cameraX": 69,
+      "group": "camera-module",
+      "meshIndex": 102,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 0,
+      "meshName": "BOSS-EXTRUDE14_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 1,
+      "meshName": "BOSS-EXTRUDE7_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 2,
+      "meshName": "BOSS-EXTRUDE7_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 3,
+      "meshName": "BOSS-EXTRUDE14_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 4,
+      "meshName": "BOSS-EXTRUDE14_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 5,
+      "meshName": "BOSS-EXTRUDE14_11_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 6,
+      "meshName": "BOSS-EXTRUDE7_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 7,
+      "meshName": "BOSS-EXTRUDE14_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 8,
+      "meshName": "BOSS-EXTRUDE14_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 9,
+      "meshName": "BOSS-EXTRUDE14_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 10,
+      "meshName": "MIRROR2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 11,
+      "meshName": "BOSS-EXTRUDE14_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 12,
+      "meshName": "BOSS-EXTRUDE14_12_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 13,
+      "meshName": "BOSS-EXTRUDE7_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 14,
+      "meshName": "BOSS-EXTRUDE7_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 15,
+      "meshName": "BOSS-EXTRUDE14_10_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 16,
+      "meshName": "BOSS-EXTRUDE7_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 17,
+      "meshName": "BOSS-EXTRUDE14_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 18,
+      "meshName": "CHAMFER9",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 19,
+      "meshName": "BOSS-EXTRUDE14_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 20,
+      "meshName": "BOSS-EXTRUDE7_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 21,
+      "meshName": "BOSS-EXTRUDE7_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 22,
+      "meshName": "CUT-EXTRUDE5",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 23,
+      "meshName": "BOSS-EXTRUDE7_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 24,
+      "meshName": "Shield",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 25,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 26,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 27,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 28,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 29,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 30,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 31,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 32,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 33,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 34,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 35,
+      "meshName": "U.FL-R-SMT-1_10_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 36,
+      "meshName": "DF40C-30DP-0.4V_51_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "main-board",
+      "meshIndex": 37,
+      "meshName": "SOLID",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 1.727969
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 38,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 39,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 40,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 41,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 42,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 43,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 44,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 45,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 46,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 47,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 48,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 49,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 50,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 51,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 52,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 53,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 54,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 55,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 56,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 57,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 58,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 59,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 60,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 61,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 62,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 63,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 64,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 65,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 66,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 67,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 68,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 69,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 70,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 71,
+      "meshName": "PCB",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 72,
+      "meshName": "MicroSD v2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 73,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 74,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 75,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 76,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 77,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 78,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 79,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 80,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 81,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 82,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 83,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 84,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 85,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 86,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 87,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 88,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 89,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 90,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 91,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 92,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 93,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 94,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 95,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 96,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 97,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "sense-expansion",
+      "meshIndex": 98,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "camera-module",
+      "meshIndex": 99,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "camera-module",
+      "meshIndex": 100,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "camera-module",
+      "meshIndex": 101,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 3,
+      "cameraX": 91,
+      "group": "camera-module",
+      "meshIndex": 102,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 0,
+      "meshName": "BOSS-EXTRUDE14_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 1,
+      "meshName": "BOSS-EXTRUDE7_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 2,
+      "meshName": "BOSS-EXTRUDE7_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 3,
+      "meshName": "BOSS-EXTRUDE14_4_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 4,
+      "meshName": "BOSS-EXTRUDE14_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 5,
+      "meshName": "BOSS-EXTRUDE14_11_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 6,
+      "meshName": "BOSS-EXTRUDE7_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 7,
+      "meshName": "BOSS-EXTRUDE14_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 8,
+      "meshName": "BOSS-EXTRUDE14_3_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 9,
+      "meshName": "BOSS-EXTRUDE14_7_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 10,
+      "meshName": "MIRROR2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 11,
+      "meshName": "BOSS-EXTRUDE14_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 12,
+      "meshName": "BOSS-EXTRUDE14_12_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 13,
+      "meshName": "BOSS-EXTRUDE7_8_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 14,
+      "meshName": "BOSS-EXTRUDE7_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 15,
+      "meshName": "BOSS-EXTRUDE14_10_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 16,
+      "meshName": "BOSS-EXTRUDE7_9_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 17,
+      "meshName": "BOSS-EXTRUDE14_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 18,
+      "meshName": "CHAMFER9",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 19,
+      "meshName": "BOSS-EXTRUDE14_1_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 20,
+      "meshName": "BOSS-EXTRUDE7_6_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 21,
+      "meshName": "BOSS-EXTRUDE7_2_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 22,
+      "meshName": "CUT-EXTRUDE5",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 23,
+      "meshName": "BOSS-EXTRUDE7_5_",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 24,
+      "meshName": "Shield",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 25,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 26,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 27,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 28,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 29,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 30,
+      "meshName": "Body",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 31,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 32,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 33,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 34,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 35,
+      "meshName": "U.FL-R-SMT-1_10_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 36,
+      "meshName": "DF40C-30DP-0.4V_51_ v1",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "main-board",
+      "meshIndex": 37,
+      "meshName": "SOLID",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 1.727966
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 38,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 39,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 40,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 41,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 42,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 43,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 44,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 45,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 46,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 47,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 48,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 49,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 50,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 51,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 52,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 53,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 54,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 55,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 56,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 57,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 58,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 59,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 60,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 61,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 62,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 63,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 64,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 65,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 66,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 67,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 68,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 69,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 70,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 71,
+      "meshName": "PCB",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 72,
+      "meshName": "MicroSD v2",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 73,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 74,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 75,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 76,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 77,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 78,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 79,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 80,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 81,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 82,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 83,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 84,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 85,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 86,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 87,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 88,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 89,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 90,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 91,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 92,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 93,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 94,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 95,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 96,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 97,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "sense-expansion",
+      "meshIndex": 98,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "camera-module",
+      "meshIndex": 99,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "camera-module",
+      "meshIndex": 100,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "camera-module",
+      "meshIndex": 101,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    },
+    {
+      "camera": 4,
+      "cameraX": 113,
+      "group": "camera-module",
+      "meshIndex": 102,
+      "meshName": "(unnamed)",
+      "mainRigCollisionMm3": 0,
+      "clampCollisionMm3": 0
+    }
+  ]
+}

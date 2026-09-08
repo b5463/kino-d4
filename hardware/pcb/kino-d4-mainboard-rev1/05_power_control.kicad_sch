@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "62df95b0-c82f-46fb-812f-1c8699c42501")
+	(paper "A4")
+	(title_block (title "POWER BUTTON AND SHUTDOWN") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nLTC2955CTS8-1#TRMPBF always-on controller\nC&K KT11B0SAM35LFG edge-mounted side button\nEN drives TPS61288L product-load boundary\nINT status read through TCA9539\nOpen-drain KILL request from P4-controlled expander\nInitial C_TMR 1.8 uF for nominal about 9.5 s hold\nOptional USB-insertion auto-on configuration link\n\nBench requirement: graceful software shutdown plus 8-10 s forced off with P4 frozen."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "23d4a3c8-355c-4564-babe-bff64bd82502")
+	)
+	(embedded_fonts no)
+)

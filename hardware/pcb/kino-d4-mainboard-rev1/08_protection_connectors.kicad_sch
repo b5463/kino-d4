@@ -1,0 +1,16 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "de493b4d-8098-4070-b273-8df0b1972801")
+	(paper "A4")
+	(title_block (title "PROTECTION AND CONNECTORS") (date "2026-09-05") (rev "1.0-PHASE1") (comment 1 "NOT FOR FABRICATION"))
+	(lib_symbols)
+	(text "CAPTURE PLAN\n\nUSB CC ESD, VBUS TVS/filter and controlled input FETs\nBattery fuse, reverse polarity and pack-PCM coordination\nMolex 26-pin Guition and 3-pin battery connectors\nJST SH shutter connector and ESD/filter option\nFour identical locking camera connectors\nConnector pin-1, polarity and harness drawing references\n\nBLOCKED SELECTIONS: final cell protection, USB TVS, camera connector/interposer and USB-C receptacle."
+		(exclude_from_sim no)
+		(at 35 35 0)
+		(effects (font (size 1.5 1.5)) (justify left bottom))
+		(uuid "73e8b890-ff04-4652-8511-bf937ab02802")
+	)
+	(embedded_fonts no)
+)

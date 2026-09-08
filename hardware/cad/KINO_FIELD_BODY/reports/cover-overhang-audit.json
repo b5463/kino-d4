@@ -1,0 +1,331 @@
+{
+  "file": "KINO_FIELD_LENS_SLIDER.stl",
+  "threshold": "downward face steeper than 45 degrees",
+  "candidateTriangles": 540,
+  "candidateAreaMm2": 79.81,
+  "regions": [
+    {
+      "triangles": 46,
+      "areaMm2": 8.02,
+      "horizontalAreaMm2": 8.02,
+      "bounds": {
+        "x": [
+          21.9,
+          25.1
+        ],
+        "y": [
+          34.4,
+          37.6
+        ],
+        "z": [
+          1.1,
+          1.1
+        ]
+      }
+    },
+    {
+      "triangles": 20,
+      "areaMm2": 7.9,
+      "horizontalAreaMm2": 7.9,
+      "bounds": {
+        "x": [
+          52.63,
+          55.86
+        ],
+        "y": [
+          44.06,
+          48.21
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 46,
+      "areaMm2": 7.1,
+      "horizontalAreaMm2": 7.1,
+      "bounds": {
+        "x": [
+          84.52,
+          87.57
+        ],
+        "y": [
+          44.06,
+          48.22
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 89,
+      "areaMm2": 6.43,
+      "horizontalAreaMm2": 6.43,
+      "bounds": {
+        "x": [
+          56.39,
+          59.45
+        ],
+        "y": [
+          44,
+          48.27
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 24,
+      "areaMm2": 6.16,
+      "horizontalAreaMm2": 6.16,
+      "bounds": {
+        "x": [
+          81.41,
+          84.1
+        ],
+        "y": [
+          44.07,
+          48.21
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 64,
+      "areaMm2": 6.15,
+      "horizontalAreaMm2": 6.15,
+      "bounds": {
+        "x": [
+          73.39,
+          76.08
+        ],
+        "y": [
+          44,
+          48.27
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 64,
+      "areaMm2": 6.15,
+      "horizontalAreaMm2": 6.15,
+      "bounds": {
+        "x": [
+          47.92,
+          50.62
+        ],
+        "y": [
+          44,
+          48.27
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 64,
+      "areaMm2": 6.15,
+      "horizontalAreaMm2": 6.15,
+      "bounds": {
+        "x": [
+          44.75,
+          47.45
+        ],
+        "y": [
+          44,
+          48.27
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 26,
+      "areaMm2": 5.55,
+      "horizontalAreaMm2": 5.55,
+      "bounds": {
+        "x": [
+          63.9,
+          66.95
+        ],
+        "y": [
+          44.06,
+          48.21
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 14,
+      "areaMm2": 5.3,
+      "horizontalAreaMm2": 5.3,
+      "bounds": {
+        "x": [
+          77.72,
+          81.28
+        ],
+        "y": [
+          44.06,
+          48.21
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 7,
+      "areaMm2": 3.42,
+      "horizontalAreaMm2": 3.42,
+      "bounds": {
+        "x": [
+          109.5,
+          109.69
+        ],
+        "y": [
+          33.73,
+          52.28
+        ],
+        "z": [
+          1.01,
+          1.01
+        ]
+      }
+    },
+    {
+      "triangles": 8,
+      "areaMm2": 3.42,
+      "horizontalAreaMm2": 3.42,
+      "bounds": {
+        "x": [
+          20.31,
+          20.5
+        ],
+        "y": [
+          33.73,
+          52.28
+        ],
+        "z": [
+          1.01,
+          1.01
+        ]
+      }
+    },
+    {
+      "triangles": 13,
+      "areaMm2": 3.33,
+      "horizontalAreaMm2": 3.33,
+      "bounds": {
+        "x": [
+          69.59,
+          71.27
+        ],
+        "y": [
+          44.06,
+          48.24
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 13,
+      "areaMm2": 3.33,
+      "horizontalAreaMm2": 3.33,
+      "bounds": {
+        "x": [
+          42.43,
+          44.11
+        ],
+        "y": [
+          44.06,
+          48.24
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 14,
+      "areaMm2": 0.48,
+      "horizontalAreaMm2": 0.48,
+      "bounds": {
+        "x": [
+          61.33,
+          62.12
+        ],
+        "y": [
+          45.76,
+          46.53
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 14,
+      "areaMm2": 0.47,
+      "horizontalAreaMm2": 0.47,
+      "bounds": {
+        "x": [
+          72.04,
+          72.82
+        ],
+        "y": [
+          44.03,
+          44.79
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    },
+    {
+      "triangles": 14,
+      "areaMm2": 0.47,
+      "horizontalAreaMm2": 0.47,
+      "bounds": {
+        "x": [
+          67.39,
+          68.18
+        ],
+        "y": [
+          44.03,
+          44.79
+        ],
+        "z": [
+          0.4,
+          0.4
+        ]
+      }
+    }
+  ]
+}

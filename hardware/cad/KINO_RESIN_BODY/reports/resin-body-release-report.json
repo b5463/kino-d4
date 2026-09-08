@@ -1,0 +1,202 @@
+{
+  "status": "RELEASE_CHECKS_PASSED",
+  "useCase": "resin body: a clear SLA shell and a black SLA face over a black PETG skeleton that carries every piece of electronics",
+  "process": {
+    "shell": "JLCPCB SLA, transparent resin (8001-class), 2.0 mm walls, clear",
+    "face": "JLCPCB SLA, tough black resin (8228-class), 2.5 mm plate, 3.0 mm raised lens bar",
+    "skeleton": "JLCPCB MJF, nylon PA12, black - tough where resin is brittle, and it takes heat-set inserts",
+    "fasteners": "4 x M2.5 countersunk through the face into M2.5 brass heat-set inserts in the nylon skeleton; 4 x M2 into M2 inserts for the XIAO clamps. No thread in any resin part."
+  },
+  "parts": {
+    "skeleton": {
+      "mm": [
+        120.5,
+        77.5,
+        42.7
+      ],
+      "cm3": 34.54,
+      "triangles": 8252
+    },
+    "shell": {
+      "mm": [
+        125,
+        82,
+        65.5
+      ],
+      "cm3": 50.13,
+      "triangles": 816
+    },
+    "face": {
+      "mm": [
+        123.7,
+        80.7,
+        5.5
+      ],
+      "cm3": 30.55,
+      "triangles": 2876
+    }
+  },
+  "measured": {
+    "p4StandoffPattern": [
+      61.9,
+      54.8
+    ],
+    "p4Standoff": {
+      "odMm": 3.5,
+      "heightMm": 3.3
+    },
+    "p4PatternOffsetFromModuleCentre": [
+      -9.3,
+      0
+    ],
+    "moduleMm": [
+      117.01,
+      69.41,
+      13.8
+    ],
+    "cameraLensPitch": 22
+  },
+  "staged": [
+    "sliding lens cover and its track",
+    "rear door",
+    "shutter pod and button",
+    "bench coupons"
+  ],
+  "releaseChecks": [
+    {
+      "name": "the depth stack still sums to the body depth",
+      "pass": true,
+      "details": "face 2.5 + skeleton 2.5 + camera/XIAO stack 11.5 + header 14 + margin 1.4 + bay 14.6 + module 13.8 + foam 1.2 + door 4 = 65.5; the module's PCB back lands at 46.5, the same plane as the field body's"
+    },
+    {
+      "name": "the envelope is smaller than the field body's, in the walls and not the stack",
+      "pass": true,
+      "details": "125 x 82 x 65.5 against 131 x 90 x 65.5: 6 mm of width and 8 mm of height, from 2 mm resin walls where PETG needed 6.0. Depth is set by the electronics and does not move - both bodies grew 0.9 mm when the camera's stand-off stopped being chosen and started being derived."
+    },
+    {
+      "name": "the camera reaches its lens hole",
+      "pass": true,
+      "details": "board back at Z=16.5 less the stack's 15 mm puts the lens face at Z=1.50: through the 2.5 mm skeleton plate and 1 mm into the face's cell, which is open air behind its bore"
+    },
+    {
+      "name": "the module's PCB seats on the skeleton with the fold behind it",
+      "pass": true,
+      "details": "3.9 mm of stand-off takes the module's 3.5 mm PCB with 0.4 mm left for the folded ribbon, out of a 7 mm ribbon"
+    },
+    {
+      "name": "the module fits the cavity with float on every side",
+      "pass": true,
+      "details": "121.0 x 78.0 mm cavity around a 117.01 x 69.41 module: 1.99 mm a side in X, 4.30 in Y"
+    },
+    {
+      "name": "shell walls are at or over the bureau's recommended minimum",
+      "pass": true,
+      "details": "2 mm, against 1.0 mm minimum and 2.0 recommended for JLCPCB SLA in 8001"
+    },
+    {
+      "name": "skeleton is one part",
+      "pass": true,
+      "details": "1 connected component(s): one solid"
+    },
+    {
+      "name": "shell is one part",
+      "pass": true,
+      "details": "1 connected component(s): one solid"
+    },
+    {
+      "name": "face is one part",
+      "pass": true,
+      "details": "1 connected component(s): one solid"
+    },
+    {
+      "name": "all four lens bores are open through the skeleton",
+      "pass": true,
+      "details": "Ø6.7 probe clear at X 29.5, 51.5, 73.5, 95.5 on Y 39.0"
+    },
+    {
+      "name": "the lens row is on the measured 22.00 mm pitch",
+      "pass": true,
+      "details": "pitches 22.000, 22.000, 22.000 mm, collinear on Y 39.00"
+    },
+    {
+      "name": "the assembled face and skeleton pass the design field on every lens",
+      "pass": true,
+      "details": "79.5-degree diagonal clear on the tightest of the four, against the 78-degree design figure (the OV3660's real field is MEASURE_REQUIRED)"
+    },
+    {
+      "name": "the face and skeleton block every path to a sensor but the cell",
+      "pass": true,
+      "details": "light paths beside each cell, face/skeleton: 100%/100%, 100%/100%, 100%/100%, 100%/100% solid. The clear shell can light up without a sensor seeing it, which is what lets the firmware's cover-closed test read dark."
+    },
+    {
+      "name": "all four standoff sockets take the brass and grip it at the floor",
+      "pass": true,
+      "details": "Ø3.5 brass enters all 4 sockets to the floor and is gripped in 4: Ø4.20 mouth closing to Ø3.60 over 2 mm"
+    },
+    {
+      "name": "the standoff pattern is the drawing's, on its unmeasured centre",
+      "pass": true,
+      "details": "61.9 x 54.8 between centres, of Ø3.5 x 3.3 brass, pattern centre 9.3 mm left of module centre. Diameter and height MEASURED, pitch from the drawing, offset PROVISIONAL and shared with the field body - so a paper check there settles it here too."
+    },
+    {
+      "name": "the standoff pitch and the caliper span across the standoffs agree",
+      "pass": true,
+      "details": "61.9 x 54.8 between centres plus Ø3.5 of brass is 65.4 x 58.3 edge to edge, against 65 x 58 measured - inside the 0.5 mm a whole-millimetre reading can hide"
+    },
+    {
+      "name": "the face drops into the shell's recess without interference",
+      "pass": true,
+      "details": "-0.0000 mm^3 shared between the face and the shell at 0.15 mm a side"
+    },
+    {
+      "name": "the face lands on the skeleton, not on air",
+      "pass": true,
+      "details": "-0.0000 mm^3 of overlap; the face's back plane and the skeleton's front plane are both Z=2.5"
+    },
+    {
+      "name": "the assembled camera is one solid",
+      "pass": true,
+      "details": "1 connected component(s) with all three parts seated"
+    },
+    {
+      "name": "the face finishes flush with the shell's outer surface",
+      "pass": true,
+      "details": "face spans Z -3.00..2.50 against a recess 2.5 deep; the bar stands 3 mm proud by design"
+    },
+    {
+      "name": "all four face screws pass through resin into a thread in PETG",
+      "pass": true,
+      "details": "4 clearance holes in the face and 4 M2.5 insert pockets in the skeleton; the resin carries no thread anywhere on this camera"
+    },
+    {
+      "name": "every skeleton feature is coarser than MJF can resolve",
+      "pass": true,
+      "details": "pinch ribs 0.5 mm proud, fences 1.5 mm, plate 2.5 mm, against a 0.5 mm smallest resolvable detail and a 1.5 mm recommended wall. The field body's 0.20 mm ribs would not have appeared at all."
+    },
+    {
+      "name": "the skeleton sits on Z=0 so a viewer opens it the right way up",
+      "pass": true,
+      "details": "Z starts at 0.0000"
+    },
+    {
+      "name": "no sealed pocket for unsintered powder to stay in",
+      "pass": true,
+      "details": "genus 4: the lens bores are the only tunnels through the part, and every pocket, socket and insert bore opens to the surface"
+    },
+    {
+      "name": "shell has no sealed void for resin to sit in",
+      "pass": true,
+      "details": "genus 1: the shell is a tube, open at the front and the rear, so every internal surface drains"
+    },
+    {
+      "name": "face has no sealed void for resin to sit in",
+      "pass": true,
+      "details": "genus 8: the face is a plate with four cells and four screw holes, so every internal surface drains"
+    },
+    {
+      "name": "the rear door zone is reserved and clear",
+      "pass": true,
+      "details": "Z 61.5..65.5 is empty across the cavity, waiting for the door. The sliding lens cover, the door and the shutter are STAGED - see the README."
+    }
+  ]
+}

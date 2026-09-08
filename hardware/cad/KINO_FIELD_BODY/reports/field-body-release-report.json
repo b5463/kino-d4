@@ -1,0 +1,2067 @@
+{
+  "status": "RELEASE_CHECKS_PASSED",
+  "generatedAt": "2026-09-08T21:58:31.674Z",
+  "useCase": "first field test: four-camera wiggle capture, handheld, battery bank in a pocket feeding the P4 over one long USB-C cable; P4 powers the four XIAOs through the JP1 harness",
+  "measured": {
+    "p4StandoffPattern": [
+      61.9,
+      54.8
+    ],
+    "p4PatternOffsetFromModuleCentre": [
+      -9.3,
+      0
+    ],
+    "p4Standoff": {
+      "thread": "M2 female",
+      "odMm": 3.5,
+      "heightMm": 3.3
+    },
+    "moduleMm": [
+      117.01,
+      69.41,
+      13.8
+    ],
+    "cameraLensPitch": 22
+  },
+  "geometry": {
+    "chassisMm": [
+      137.5,
+      92.2,
+      65.5
+    ],
+    "faceShellMm": [
+      131,
+      90,
+      9
+    ],
+    "assembledDepthMm": 74.5,
+    "printOrientation": "chassis lens-face down, face shell relief-up, door outer-face down; all three print with zero support material",
+    "p4Capture": "four vertical posts press the threaded standoff tops; the foam-shimmed sliding rear door presses the glass perimeter through its full-length 45-degree dovetails. Tool-less: the door slides in from the far end and clicks over a detent; a firm pull opens it. The standoff threads stay free for the bench fit gauge.",
+    "bezelFoamShimMm": 1.2,
+    "hardware": {
+      "m2Screws": "4 x M2x8-10 (XIAO clamps only; no screws to open or close the camera)",
+      "a2Inserts": "4 x A2 brass M2, OD 3.5 x L 4 (XIAO clamp bosses only; the rear door is tool-less)",
+      "quarterTwentyNuts": "none supplied by the camera - no tripod mount, and the overhead light is held by its own two nuts reached down the light shaft",
+      "foam": "1.2 mm adhesive foam strip around the bezel window lip"
+    },
+    "cameraLensCentersX": [
+      32.5,
+      54.5,
+      76.5,
+      98.5
+    ],
+    "xiaoBoardCenterY": 49.95,
+    "wiring": "P4 powered by USB-C standing off its component side into the open bay - no wall recess - with the cable turning down and out the bottom passage at X=40; four XIAOs wired to JP1 through the open rear; shutter switch to JP1 21 / GPIO28 with GND on JP1 6 or 16",
+    "branding": "KINO D4 V1 22MM P4 62X55",
+    "files": {
+      "bodyInfo": {
+        "triangleCount": 22768,
+        "bytes": 1138484
+      },
+      "bodyRearInfo": {
+        "triangleCount": 12566,
+        "bytes": 628384
+      },
+      "faceInfo": {
+        "triangleCount": 8566,
+        "bytes": 428384
+      },
+      "sliderInfo": {
+        "triangleCount": 3952,
+        "bytes": 197684
+      },
+      "keeperInfo": {
+        "triangleCount": 20,
+        "bytes": 1084
+      },
+      "alignInfo": {
+        "triangleCount": 3322,
+        "bytes": 166184
+      },
+      "bezelInfo": {
+        "triangleCount": 4342,
+        "bytes": 217184
+      },
+      "clampInfo": {
+        "triangleCount": 1918,
+        "bytes": 95984
+      },
+      "shutterInfo": {
+        "triangleCount": 1322,
+        "bytes": 66184
+      },
+      "postTestInfo": {
+        "triangleCount": 3128,
+        "bytes": 156484
+      },
+      "camCouponInfo": {
+        "triangleCount": 1504,
+        "bytes": 75284
+      },
+      "stackInfo": {
+        "triangleCount": 4496,
+        "bytes": 224884
+      },
+      "rigInfo": {
+        "triangleCount": 10348,
+        "bytes": 517484
+      },
+      "skelInfo": {
+        "triangleCount": 9228,
+        "bytes": 461484
+      },
+      "doorJointInfo": {
+        "triangleCount": 2612,
+        "bytes": 130684
+      },
+      "sliderCouponInfo": {
+        "triangleCount": 6992,
+        "bytes": 349684
+      },
+      "jointCouponInfo": {
+        "triangleCount": 1464,
+        "bytes": 73284
+      },
+      "pilotInfo": {
+        "triangleCount": 3748,
+        "bytes": 187484
+      },
+      "plate1Info": {
+        "triangleCount": 35334,
+        "bytes": 1766784
+      },
+      "plate2Info": {
+        "triangleCount": 20120,
+        "bytes": 1006084
+      }
+    }
+  },
+  "printSettings": "PETG, 0.4 mm nozzle, 0.20 mm layers, 2 perimeters, 20% gyroid, supports OFF, brim unnecessary (11562 mm^2 flat first layer); every part on its largest flat face as shipped",
+  "releaseChecks": [
+    {
+      "name": "single Boolean body",
+      "pass": true,
+      "details": "1 connected component(s)"
+    },
+    {
+      "name": "front half is one part",
+      "pass": true,
+      "details": "1 connected component(s)"
+    },
+    {
+      "name": "rear half is one part",
+      "pass": true,
+      "details": "1 connected component(s)"
+    },
+    {
+      "name": "halves do not overlap",
+      "pass": true,
+      "details": "0.0000 mm^3 shared between the two prints"
+    },
+    {
+      "name": "halves reassemble to the whole chassis",
+      "pass": true,
+      "details": "16.115 mm^3 of the body in neither half outside the sockets over 1791 mm^2 = 0.0180 mm mean thickness, in 117 region(s) spanning X 0.0..131.0, Y -2.2..89.7, Z 0.0..65.5; -0.009 mm^3 of the halves not body outside the pegs over 557 mm^2 = 0.0000 mm mean thickness, in 496 region(s) spanning X 0.3..131.0, Y -0.0..90.0, Z 4.6..63.5"
+    },
+    {
+      "name": "optical datum is entirely in the front half",
+      "pass": true,
+      "details": "rear half carries -0.0000 mm^3 forward of the cut; front half carries 100.00% of the camera plate's 57.3 cm^3, 0.0097 mm^3 apart"
+    },
+    {
+      "name": "split pads stay clear of the module footprint",
+      "pass": true,
+      "details": "pads reach to Y 80.3 and 9.7; module spans Y 10.3-79.7"
+    },
+    {
+      "name": "every joint bolt is reachable past a fitted module",
+      "pass": true,
+      "details": "4 heads; a Ø2.5 driver clears the module by 1.80 mm at the tightest"
+    },
+    {
+      "name": "bolt head reaches its pocket from the door, top X=18",
+      "pass": true,
+      "details": "Ø4.7 clear from the pocket floor at Z=40.9 to the door plane at 61.5"
+    },
+    {
+      "name": "driver reaches the head through the door zone, top X=18",
+      "pass": true,
+      "details": "Ø2.5 key shaft clear from the head to open air past the door rails"
+    },
+    {
+      "name": "bolt head reaches its pocket from the door, bottom X=18",
+      "pass": true,
+      "details": "Ø4.7 clear from the pocket floor at Z=40.9 to the door plane at 61.5"
+    },
+    {
+      "name": "driver reaches the head through the door zone, bottom X=18",
+      "pass": true,
+      "details": "Ø2.5 key shaft clear from the head to open air past the door rails"
+    },
+    {
+      "name": "bolt head reaches its pocket from the door, top X=92",
+      "pass": true,
+      "details": "Ø4.7 clear from the pocket floor at Z=40.9 to the door plane at 61.5"
+    },
+    {
+      "name": "driver reaches the head through the door zone, top X=92",
+      "pass": true,
+      "details": "Ø2.5 key shaft clear from the head to open air past the door rails"
+    },
+    {
+      "name": "bolt head reaches its pocket from the door, bottom X=92",
+      "pass": true,
+      "details": "Ø4.7 clear from the pocket floor at Z=40.9 to the door plane at 61.5"
+    },
+    {
+      "name": "driver reaches the head through the door zone, bottom X=92",
+      "pass": true,
+      "details": "Ø2.5 key shaft clear from the head to open air past the door rails"
+    },
+    {
+      "name": "alignment peg present, top X=18",
+      "pass": true,
+      "details": "100% of a Ø4.6 x 3 mm peg stands on the front pad"
+    },
+    {
+      "name": "alignment socket open, top X=18",
+      "pass": true,
+      "details": "Ø4.90 socket takes the peg at 0.15 mm per side"
+    },
+    {
+      "name": "M2.5 pilot open, top X=18",
+      "pass": true,
+      "details": "Ø2 pilot, 8.5 mm deep, for an M2.5 self-tapper"
+    },
+    {
+      "name": "M2.5 clearance and counterbore open, top X=18",
+      "pass": true,
+      "details": "Ø2.7 through the rear pad into a Ø5 x 3 counterbore facing the door"
+    },
+    {
+      "name": "alignment peg present, bottom X=18",
+      "pass": true,
+      "details": "100% of a Ø4.6 x 3 mm peg stands on the front pad"
+    },
+    {
+      "name": "alignment socket open, bottom X=18",
+      "pass": true,
+      "details": "Ø4.90 socket takes the peg at 0.15 mm per side"
+    },
+    {
+      "name": "M2.5 pilot open, bottom X=18",
+      "pass": true,
+      "details": "Ø2 pilot, 8.5 mm deep, for an M2.5 self-tapper"
+    },
+    {
+      "name": "M2.5 clearance and counterbore open, bottom X=18",
+      "pass": true,
+      "details": "Ø2.7 through the rear pad into a Ø5 x 3 counterbore facing the door"
+    },
+    {
+      "name": "alignment peg present, top X=92",
+      "pass": true,
+      "details": "100% of a Ø4.6 x 3 mm peg stands on the front pad"
+    },
+    {
+      "name": "alignment socket open, top X=92",
+      "pass": true,
+      "details": "Ø4.90 socket takes the peg at 0.15 mm per side"
+    },
+    {
+      "name": "M2.5 pilot open, top X=92",
+      "pass": true,
+      "details": "Ø2 pilot, 8.5 mm deep, for an M2.5 self-tapper"
+    },
+    {
+      "name": "M2.5 clearance and counterbore open, top X=92",
+      "pass": true,
+      "details": "Ø2.7 through the rear pad into a Ø5 x 3 counterbore facing the door"
+    },
+    {
+      "name": "alignment peg present, bottom X=92",
+      "pass": true,
+      "details": "100% of a Ø4.6 x 3 mm peg stands on the front pad"
+    },
+    {
+      "name": "alignment socket open, bottom X=92",
+      "pass": true,
+      "details": "Ø4.90 socket takes the peg at 0.15 mm per side"
+    },
+    {
+      "name": "M2.5 pilot open, bottom X=92",
+      "pass": true,
+      "details": "Ø2 pilot, 8.5 mm deep, for an M2.5 self-tapper"
+    },
+    {
+      "name": "M2.5 clearance and counterbore open, bottom X=92",
+      "pass": true,
+      "details": "Ø2.7 through the rear pad into a Ø5 x 3 counterbore facing the door"
+    },
+    {
+      "name": "joint bolt length engages the front pilot",
+      "pass": true,
+      "details": "M2.5x16: 9.0 mm through the rear pad, 7.0 mm into the 8.5 mm pilot"
+    },
+    {
+      "name": "single Boolean bezel",
+      "pass": true,
+      "details": "1 connected component(s)"
+    },
+    {
+      "name": "clamps are four parts",
+      "pass": true,
+      "details": "4 connected component(s)"
+    },
+    {
+      "name": "shutter is two parts",
+      "pass": true,
+      "details": "2 connected component(s)"
+    },
+    {
+      "name": "shutter terminal relief through the cradle",
+      "pass": true,
+      "details": "1.8 mm band clear out through both cradle walls, so terminals standing proud of the 6 mm body are not clamped"
+    },
+    {
+      "name": "shutter stop plate survives the terminal dish",
+      "pass": true,
+      "details": "1.0 mm of plate under the 0.6 mm dish, over a 6.6 mm span"
+    },
+    {
+      "name": "exact lens pitch",
+      "pass": true,
+      "details": "[32.5,54.5,76.5,98.5]"
+    },
+    {
+      "name": "lens bore 32.5 open",
+      "pass": true,
+      "details": "Ø7.1 mm window through the front plate"
+    },
+    {
+      "name": "lens bore 54.5 open",
+      "pass": true,
+      "details": "Ø7.1 mm window through the front plate"
+    },
+    {
+      "name": "lens bore 76.5 open",
+      "pass": true,
+      "details": "Ø7.1 mm window through the front plate"
+    },
+    {
+      "name": "lens bore 98.5 open",
+      "pass": true,
+      "details": "Ø7.1 mm window through the front plate"
+    },
+    {
+      "name": "module insertion path",
+      "pass": true,
+      "details": "the module plus 0.3 mm plan clearance drops from the rear rim to its seat without touching the body"
+    },
+    {
+      "name": "seated module volume",
+      "pass": true,
+      "details": "no body material inside the seated 117.01 x 69.41 x 13.8 module"
+    },
+    {
+      "name": "P4 component keep-out",
+      "pass": true,
+      "details": "0.000000 mm^3 outside the four standoff relief zones in the 14.6 mm bay"
+    },
+    {
+      "name": "post 25.25,17.6 reaches standoff plane",
+      "pass": true,
+      "details": "socket floor at Z=43.2 mm carries 100% of the Ø3.5 standoff footprint on a Ø8 post"
+    },
+    {
+      "name": "standoff socket 25.25,17.6 is a snug cone",
+      "pass": true,
+      "details": "Ø3.60 at the floor opening to Ø4.20 at the mouth over 2 mm: the Ø3.5 brass drops in with 0.05 mm a side at the floor and 0.35 at the mouth"
+    },
+    {
+      "name": "post 25.25,17.6 stops short of the board",
+      "pass": true,
+      "details": "post rim at Z=45.2, PCB back at 46.5: 1.3 mm clear, with 1.3 mm of the brass still proud of the socket"
+    },
+    {
+      "name": "socket 25.25,17.6 keeps a wall",
+      "pass": true,
+      "details": "1.90 mm of post wall around the socket"
+    },
+    {
+      "name": "post 25.25,72.4 reaches standoff plane",
+      "pass": true,
+      "details": "socket floor at Z=43.2 mm carries 100% of the Ø3.5 standoff footprint on a Ø8 post"
+    },
+    {
+      "name": "standoff socket 25.25,72.4 is a snug cone",
+      "pass": true,
+      "details": "Ø3.60 at the floor opening to Ø4.20 at the mouth over 2 mm: the Ø3.5 brass drops in with 0.05 mm a side at the floor and 0.35 at the mouth"
+    },
+    {
+      "name": "post 25.25,72.4 stops short of the board",
+      "pass": true,
+      "details": "post rim at Z=45.2, PCB back at 46.5: 1.3 mm clear, with 1.3 mm of the brass still proud of the socket"
+    },
+    {
+      "name": "socket 25.25,72.4 keeps a wall",
+      "pass": true,
+      "details": "1.90 mm of post wall around the socket"
+    },
+    {
+      "name": "post 87.15,17.6 reaches standoff plane",
+      "pass": true,
+      "details": "socket floor at Z=43.2 mm carries 100% of the Ø3.5 standoff footprint on a Ø8 post"
+    },
+    {
+      "name": "standoff socket 87.15,17.6 is a snug cone",
+      "pass": true,
+      "details": "Ø3.60 at the floor opening to Ø4.20 at the mouth over 2 mm: the Ø3.5 brass drops in with 0.05 mm a side at the floor and 0.35 at the mouth"
+    },
+    {
+      "name": "post 87.15,17.6 stops short of the board",
+      "pass": true,
+      "details": "post rim at Z=45.2, PCB back at 46.5: 1.3 mm clear, with 1.3 mm of the brass still proud of the socket"
+    },
+    {
+      "name": "socket 87.15,17.6 keeps a wall",
+      "pass": true,
+      "details": "1.90 mm of post wall around the socket"
+    },
+    {
+      "name": "post 87.15,72.4 reaches standoff plane",
+      "pass": true,
+      "details": "socket floor at Z=43.2 mm carries 100% of the Ø3.5 standoff footprint on a Ø8 post"
+    },
+    {
+      "name": "standoff socket 87.15,72.4 is a snug cone",
+      "pass": true,
+      "details": "Ø3.60 at the floor opening to Ø4.20 at the mouth over 2 mm: the Ø3.5 brass drops in with 0.05 mm a side at the floor and 0.35 at the mouth"
+    },
+    {
+      "name": "post 87.15,72.4 stops short of the board",
+      "pass": true,
+      "details": "post rim at Z=45.2, PCB back at 46.5: 1.3 mm clear, with 1.3 mm of the brass still proud of the socket"
+    },
+    {
+      "name": "socket 87.15,72.4 keeps a wall",
+      "pass": true,
+      "details": "1.90 mm of post wall around the socket"
+    },
+    {
+      "name": "door window clears the panel's active area",
+      "pass": true,
+      "details": "X 5.70 mm/side, Y 2.62 mm/side on a 93.6 x 56.16 mm active area, against 0.4 mm needed (0.05 socket slop at the floor + 0.15 print, and margin)"
+    },
+    {
+      "name": "door frame is even on all four sides",
+      "pass": true,
+      "details": "frame 10.0 mm per side in X against 9.6 in Y: 0.4 mm of difference"
+    },
+    {
+      "name": "door window stays inside the module outline",
+      "pass": true,
+      "details": "X 6.01 mm, Y 4.00 mm of module carried by the door frame on each side"
+    },
+    {
+      "name": "bottom wall keeps material behind the dovetail groove",
+      "pass": true,
+      "details": "6 mm wall less a 1.5 mm dovetail bite leaves 4.5 mm carrying the groove"
+    },
+    {
+      "name": "top wall keeps material behind the dovetail groove",
+      "pass": true,
+      "details": "6 mm wall less a 1.5 mm dovetail bite leaves 4.5 mm carrying the groove"
+    },
+    {
+      "name": "walls are uniform unless someone chose otherwise",
+      "pass": true,
+      "details": "all four at 6 mm, leaving 4.5 mm behind each dovetail groove - the geometry the door coupon was proved on"
+    },
+    {
+      "name": "depth stack adds up to the body depth",
+      "pass": true,
+      "details": "front plate 5 + camera-module gap + XIAO board 11.5 + XIAO header pins + wire loop 14 + XIAO-to-module margin 1.4 + P4 heatsink + wiring clearance 14.6 + module thickness 13.8 + foam shim 1.2 + door plate 4 = 65.5 mm"
+    },
+    {
+      "name": "assembled depth stays within its declared limit",
+      "pass": true,
+      "details": "74.5 mm over the lens bar, the proudest thing on the front now that the grip is gone; a real N8000 is 68 mm and the body alone is 65.5 mm"
+    },
+    {
+      "name": "XIAO wiring zone clears the module bay",
+      "pass": true,
+      "details": "XIAO board back at Z=16.5 mm plus 14 mm of header and wire room reaches Z=30.5 mm, still under the bay floor at Z=31.9 mm"
+    },
+    {
+      "name": "XIAO wiring zone is actually open",
+      "pass": true,
+      "details": "14 mm behind each XIAO for soldered header pins and the wire loop leaving them"
+    },
+    {
+      "name": "camera pocket 32.5 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket 32.5 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis crush 0.2 mm each, pushing the head onto the datum walls"
+    },
+    {
+      "name": "camera pocket 54.5 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket 54.5 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis crush 0.2 mm each, pushing the head onto the datum walls"
+    },
+    {
+      "name": "camera pocket 76.5 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket 76.5 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis crush 0.2 mm each, pushing the head onto the datum walls"
+    },
+    {
+      "name": "camera pocket 98.5 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket 98.5 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis crush 0.2 mm each, pushing the head onto the datum walls"
+    },
+    {
+      "name": "the camera reaches its lens hole",
+      "pass": true,
+      "details": "board back at Z=16.5 less the stack's 15 mm overall height puts the lens face at Z=1.50, which is the pocket floor at Z=1.50, 1.5 mm of plate and bore still ahead of it"
+    },
+    {
+      "name": "the module's PCB seats on the plate with the fold behind it",
+      "pass": true,
+      "details": "3.9 mm of stand-off takes the module's 3.5 mm PCB with 0.4 mm left for the folded ribbon"
+    },
+    {
+      "name": "the head fits inside the front plate",
+      "pass": true,
+      "details": "3.5 mm of holder and barrel in a 3.5 mm pocket plus 1.5 mm of bore"
+    },
+    {
+      "name": "the field cone's pupil sits behind the lens face",
+      "pass": true,
+      "details": "pupil 2.6 mm behind the plate's front face, lens face 1.50 mm behind it"
+    },
+    {
+      "name": "the ribbon reaches the fold it has to make",
+      "pass": true,
+      "details": "a 0.4 mm fold costs about 1.4 mm of the 7 mm ribbon, the rest running to the connector"
+    },
+    {
+      "name": "camera module footprint clear at X=32.5",
+      "pass": true,
+      "details": "16.5 x 18.9 x 3.5 mm clear behind the plate for the module PCB and its ribbon (0.00 mm^3 obstructed)"
+    },
+    {
+      "name": "camera module footprint clear at X=54.5",
+      "pass": true,
+      "details": "16.5 x 18.9 x 3.5 mm clear behind the plate for the module PCB and its ribbon (0.00 mm^3 obstructed)"
+    },
+    {
+      "name": "camera module footprint clear at X=76.5",
+      "pass": true,
+      "details": "16.5 x 18.9 x 3.5 mm clear behind the plate for the module PCB and its ribbon (0.00 mm^3 obstructed)"
+    },
+    {
+      "name": "camera module footprint clear at X=98.5",
+      "pass": true,
+      "details": "16.5 x 18.9 x 3.5 mm clear behind the plate for the module PCB and its ribbon (0.00 mm^3 obstructed)"
+    },
+    {
+      "name": "camera pocket takes up part variation",
+      "pass": true,
+      "details": "0.15 mm nominal slack against 0.2 mm ribs: a nominal head is a light interference fit, and the coupon resolves the rest"
+    },
+    {
+      "name": "lens bore guides the barrel and leaves a seat",
+      "pass": true,
+      "details": "Ø7.1 mm bore guiding a Ø7 mm barrel at 0.050 mm per side, on a 0.78 mm seat at mid-face (wider at the corners). Ream with a 7 mm bit if it prints tight."
+    },
+    {
+      "name": "no part of the shell reaches into the camera's field of view",
+      "pass": true,
+      "details": "81.9 degrees clear through the 11.4 mm tunnel (plate 5 + face 9.0, pupil 2.6 mm back), against 78 degrees diagonal needed: 3.9 degrees of margin. Per lens: 81.9, 81.9, 81.9, 81.9"
+    },
+    {
+      "name": "all four lenses see the same amount",
+      "pass": true,
+      "details": "0.00 degrees of difference between the widest and narrowest cell"
+    },
+    {
+      "name": "light stud bore passes through the top wall",
+      "pass": true,
+      "details": "Ø8.5 mm bore through the 6 mm top wall at X=66, Z=16, opening straight into the cavity"
+    },
+    {
+      "name": "flat top seats the light's base plate",
+      "pass": true,
+      "details": "83% of an 18 mm square footprint centred at X=66, Z=16 is solid top wall, against 82% expected once the Ø8.5 bore is taken out"
+    },
+    {
+      "name": "two nuts fit on the stud inside the cavity",
+      "pass": true,
+      "details": "13.0 mm of stud inside the body against 12.0 mm for two 6 mm nuts"
+    },
+    {
+      "name": "stud and its nuts clear the cavity",
+      "pass": true,
+      "details": "Ø13.2 x 13.0 mm swept by the nuts below the top wall is clear"
+    },
+    {
+      "name": "P4 gauge socket 9.0,9.0 matches the posts",
+      "pass": true,
+      "details": "Ø3.60 floor / Ø4.20 mouth x 2 mm cone in the pad, 1.90 mm of pad wall around it - the same socket the body's posts carry"
+    },
+    {
+      "name": "P4 gauge socket 9.0,63.8 matches the posts",
+      "pass": true,
+      "details": "Ø3.60 floor / Ø4.20 mouth x 2 mm cone in the pad, 1.90 mm of pad wall around it - the same socket the body's posts carry"
+    },
+    {
+      "name": "P4 gauge socket 70.9,9.0 matches the posts",
+      "pass": true,
+      "details": "Ø3.60 floor / Ø4.20 mouth x 2 mm cone in the pad, 1.90 mm of pad wall around it - the same socket the body's posts carry"
+    },
+    {
+      "name": "P4 gauge socket 70.9,63.8 matches the posts",
+      "pass": true,
+      "details": "Ø3.60 floor / Ø4.20 mouth x 2 mm cone in the pad, 1.90 mm of pad wall around it - the same socket the body's posts carry"
+    },
+    {
+      "name": "P4 gauge touches nothing but the four standoff tops",
+      "pass": true,
+      "details": "0.00 mm^3 of the gauge sits within 12 mm of the pad plane outside the four Ø8 pads, so only the standoffs are contacted and the board's ~11 mm headers clear"
+    },
+    {
+      "name": "P4 gauge works with an M2x8",
+      "pass": true,
+      "details": "5.4 mm of gauge above the seat leaves an M2x8 2.6 mm of thread in the 3.3 mm standoff - enough to pull the pads down, not enough to bottom out. A bore straight through 15 mm of gauge would have needed M2x20."
+    },
+    {
+      "name": "P4 bridge gauge coupon prints flat and quick",
+      "pass": true,
+      "details": "80 x 73 x 15 mm, 8.8 cm^3, sitting on the bed"
+    },
+    {
+      "name": "P4 bridge gauge coupon prints support-free",
+      "pass": true,
+      "details": "0.00 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.00 mm^2"
+    },
+    {
+      "name": "camera fit coupon prints flat and quick",
+      "pass": true,
+      "details": "62 x 22 x 4 mm, 4.0 cm^3, sitting on the bed"
+    },
+    {
+      "name": "camera fit coupon prints support-free",
+      "pass": true,
+      "details": "0.00 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.00 mm^2"
+    },
+    {
+      "name": "XIAO stack coupon prints flat and quick",
+      "pass": true,
+      "details": "88 x 30 x 19 mm, 15.6 cm^3, sitting on the bed"
+    },
+    {
+      "name": "XIAO stack coupon prints support-free",
+      "pass": true,
+      "details": "0.00 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.00 mm^2"
+    },
+    {
+      "name": "wiggle rig coupon prints flat and quick",
+      "pass": true,
+      "details": "88 x 126 x 18 mm, 39.8 cm^3, sitting on the bed"
+    },
+    {
+      "name": "wiggle rig coupon prints support-free",
+      "pass": true,
+      "details": "16.95 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.94 mm^2"
+    },
+    {
+      "name": "skeletal rig coupon prints flat and quick",
+      "pass": true,
+      "details": "88 x 85 x 18 mm, 20.6 cm^3, sitting on the bed"
+    },
+    {
+      "name": "skeletal rig coupon prints support-free",
+      "pass": true,
+      "details": "0.00 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.00 mm^2"
+    },
+    {
+      "name": "door joint coupon prints flat and quick",
+      "pass": true,
+      "details": "72 x 91 x 15 mm, 14.9 cm^3, sitting on the bed"
+    },
+    {
+      "name": "door joint coupon prints support-free",
+      "pass": true,
+      "details": "80.00 mm^2 of >45-degree downward faces (allowed 200), largest single face 18.75 mm^2"
+    },
+    {
+      "name": "lens cover track coupon prints flat and quick",
+      "pass": true,
+      "details": "102 x 95 x 7 mm, 26.4 cm^3, sitting on the bed"
+    },
+    {
+      "name": "lens cover track coupon prints support-free",
+      "pass": true,
+      "details": "71.89 mm^2 of >45-degree downward faces (allowed 100), largest single face 1.65 mm^2"
+    },
+    {
+      "name": "split joint coupon prints flat and quick",
+      "pass": true,
+      "details": "40 x 10 x 18 mm, 3.8 cm^3, sitting on the bed"
+    },
+    {
+      "name": "split joint coupon prints support-free",
+      "pass": true,
+      "details": "0.97 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.06 mm^2"
+    },
+    {
+      "name": "shutter coupon prints flat and quick",
+      "pass": true,
+      "details": "78 x 19 x 24 mm, 6.7 cm^3, sitting on the bed"
+    },
+    {
+      "name": "shutter coupon prints support-free",
+      "pass": true,
+      "details": "59.85 mm^2 of >45-degree downward faces (allowed 120), largest single face 8.26 mm^2"
+    },
+    {
+      "name": "face alignment tool coupon prints flat and quick",
+      "pass": true,
+      "details": "85 x 14 x 19 mm, 9.0 cm^3, sitting on the bed"
+    },
+    {
+      "name": "face alignment tool coupon prints support-free",
+      "pass": true,
+      "details": "65.32 mm^2 of >45-degree downward faces (allowed 80), largest single face 1.39 mm^2"
+    },
+    {
+      "name": "insert pilots coupon prints flat and quick",
+      "pass": true,
+      "details": "64 x 30 x 15 mm, 10.5 cm^3, sitting on the bed"
+    },
+    {
+      "name": "insert pilots coupon prints support-free",
+      "pass": true,
+      "details": "0.62 mm^2 of >45-degree downward faces (allowed 80), largest single face 0.08 mm^2"
+    },
+    {
+      "name": "station coupon carries an open lens bore",
+      "pass": true,
+      "details": "the located camera pocket and its bore came through the cut"
+    },
+    {
+      "name": "station coupon carries the clamp boss pilot",
+      "pass": true,
+      "details": "Ø3.2 x 4.6 mm pocket for the A2 insert, on the real boss"
+    },
+    {
+      "name": "station coupon is one lens pitch wide",
+      "pass": true,
+      "details": "22.0 mm, so the cut faces land midway between stations and the fences are whole"
+    },
+    {
+      "name": "rig takes its own short clamps, carried in its file",
+      "pass": true,
+      "details": "boss top and board back are coplanar at Z=16.5 on the rig against Z=16.5 on the body, and the same planar clamp spans both: 0.00 mm^3 of interference, 100% of each toe landing on the board"
+    },
+    {
+      "name": "skeletal rig lens bore 32.5 open",
+      "pass": true,
+      "details": "the pocket and bore came through with the plate cut back to a boss"
+    },
+    {
+      "name": "skeletal rig lens bore 54.5 open",
+      "pass": true,
+      "details": "the pocket and bore came through with the plate cut back to a boss"
+    },
+    {
+      "name": "skeletal rig lens bore 76.5 open",
+      "pass": true,
+      "details": "the pocket and bore came through with the plate cut back to a boss"
+    },
+    {
+      "name": "skeletal rig lens bore 98.5 open",
+      "pass": true,
+      "details": "the pocket and bore came through with the plate cut back to a boss"
+    },
+    {
+      "name": "skeletal rig takes its own short clamps too",
+      "pass": true,
+      "details": "board back still at Z=16.5 off a 3 mm truss instead of a 5 mm plate: 0.00 mm^3 interference, 100% of each toe on the board"
+    },
+    {
+      "name": "skeletal rig has room for the 5 V / GND bus board",
+      "pass": true,
+      "details": "the 70 x 30 mm board overhangs its own posts on two legs and a cross rail rather than a slab, with 14 mm clear above it (0.00 mm^3 obstructed)"
+    },
+    {
+      "name": "wiggle rig has room for the 5 V / GND bus board",
+      "pass": true,
+      "details": "70 x 30 mm perfboard sits 4 mm off the apron on four posts with 14 mm of clear height above it for header strips and plugged housings (0.00 mm^3 obstructed)"
+    },
+    {
+      "name": "bus board post pilot 12.3,56.0",
+      "pass": true,
+      "details": "Ø1.7 mm pilot for an M2 self-tapper"
+    },
+    {
+      "name": "bus board post pilot 12.3,78.8",
+      "pass": true,
+      "details": "Ø1.7 mm pilot for an M2 self-tapper"
+    },
+    {
+      "name": "bus board post pilot 75.8,56.0",
+      "pass": true,
+      "details": "Ø1.7 mm pilot for an M2 self-tapper"
+    },
+    {
+      "name": "bus board post pilot 75.8,78.8",
+      "pass": true,
+      "details": "Ø1.7 mm pilot for an M2 self-tapper"
+    },
+    {
+      "name": "door coupon has both the wall rails and the door",
+      "pass": true,
+      "details": "2 pieces: a length of both grooved walls at their true spacing, and the matching length of door"
+    },
+    {
+      "name": "shutter coupon carries the collar, the pod, the pocket and both button parts",
+      "pass": true,
+      "details": "3 pieces (wall chunk, actuator, retainer); the Ø10.4 stem path through the wall and pod is open"
+    },
+    {
+      "name": "P4 pattern",
+      "pass": true,
+      "details": "61.9 x 54.8 mm CENTRE pitch of Ø3.5 x 3.3 brass, centre 9.3 mm left of module centre; the pitch is the drawing's, the diameter and height are measured, the offset is still PROVISIONAL and checked on paper"
+    },
+    {
+      "name": "the standoff pitch and the caliper span across the standoffs agree",
+      "pass": true,
+      "details": "61.9 x 54.8 between centres plus Ø3.5 of brass is 65.4 x 58.3 edge to edge, against 65 x 58 measured with calipers - inside the 0.5 mm a whole-millimetre reading can hide. If these ever disagree by more, one of them is the other one's field."
+    },
+    {
+      "name": "module capture stack",
+      "pass": true,
+      "details": "glass rear at 60.3 mm, door inner face at 61.5 mm: 1.2 mm foam-shim gap gives the compression preload"
+    },
+    {
+      "name": "installed clamps are four parts",
+      "pass": true,
+      "details": "one bow clamp per station"
+    },
+    {
+      "name": "XIAO 32.5 board volume open",
+      "pass": true,
+      "details": "the 17.8 x 21.0 x 1.2 board sits on its corner pads untouched"
+    },
+    {
+      "name": "XIAO 32.5 lens/sensor pocket open",
+      "pass": true,
+      "details": "3.9 mm front stack space between board face and plate around the lens"
+    },
+    {
+      "name": "XIAO 32.5 heatsink/header rear space",
+      "pass": true,
+      "details": "10 mm behind the board is open except the clamp foot, a 9 mm strip down the centreline"
+    },
+    {
+      "name": "XIAO 32.5 clamp boss at board-back plane",
+      "pass": true,
+      "details": "boss top flush with the board back at Z=16.5 mm"
+    },
+    {
+      "name": "XIAO 32.5 insert pocket open",
+      "pass": true,
+      "details": "Ø3.2 x 4.6 mm pocket for the A2 M2 insert (OD 3.5 x L 4)"
+    },
+    {
+      "name": "XIAO 32.5 insert pocket blind floor",
+      "pass": true,
+      "details": "pocket keeps a solid floor above the plate"
+    },
+    {
+      "name": "XIAO 32.5 clamp screw passage",
+      "pass": true,
+      "details": "M2 passes the printed clamp into the boss insert"
+    },
+    {
+      "name": "XIAO 32.5 clamp screw reachable with a driver from the door",
+      "pass": true,
+      "details": "Ø5 shaft from Z 20.1 to the rear face at (32.5, 81.5): 0.000 mm^3 in the way, module out"
+    },
+    {
+      "name": "XIAO 32.5 clamp presses the centreline strip",
+      "pass": true,
+      "details": "a 9 x 3 mm foot bears on bare board between the header rows"
+    },
+    {
+      "name": "XIAO 32.5 clamp under bay",
+      "pass": true,
+      "details": "clamp top at 20.1 mm stays under the bay floor at 31.9 mm"
+    },
+    {
+      "name": "XIAO 54.5 board volume open",
+      "pass": true,
+      "details": "the 17.8 x 21.0 x 1.2 board sits on its corner pads untouched"
+    },
+    {
+      "name": "XIAO 54.5 lens/sensor pocket open",
+      "pass": true,
+      "details": "3.9 mm front stack space between board face and plate around the lens"
+    },
+    {
+      "name": "XIAO 54.5 heatsink/header rear space",
+      "pass": true,
+      "details": "10 mm behind the board is open except the clamp foot, a 9 mm strip down the centreline"
+    },
+    {
+      "name": "XIAO 54.5 clamp boss at board-back plane",
+      "pass": true,
+      "details": "boss top flush with the board back at Z=16.5 mm"
+    },
+    {
+      "name": "XIAO 54.5 insert pocket open",
+      "pass": true,
+      "details": "Ø3.2 x 4.6 mm pocket for the A2 M2 insert (OD 3.5 x L 4)"
+    },
+    {
+      "name": "XIAO 54.5 insert pocket blind floor",
+      "pass": true,
+      "details": "pocket keeps a solid floor above the plate"
+    },
+    {
+      "name": "XIAO 54.5 clamp screw passage",
+      "pass": true,
+      "details": "M2 passes the printed clamp into the boss insert"
+    },
+    {
+      "name": "XIAO 54.5 clamp screw reachable with a driver from the door",
+      "pass": true,
+      "details": "Ø5 shaft from Z 20.1 to the rear face at (54.5, 81.5): 0.000 mm^3 in the way, module out"
+    },
+    {
+      "name": "XIAO 54.5 clamp presses the centreline strip",
+      "pass": true,
+      "details": "a 9 x 3 mm foot bears on bare board between the header rows"
+    },
+    {
+      "name": "XIAO 54.5 clamp under bay",
+      "pass": true,
+      "details": "clamp top at 20.1 mm stays under the bay floor at 31.9 mm"
+    },
+    {
+      "name": "XIAO 76.5 board volume open",
+      "pass": true,
+      "details": "the 17.8 x 21.0 x 1.2 board sits on its corner pads untouched"
+    },
+    {
+      "name": "XIAO 76.5 lens/sensor pocket open",
+      "pass": true,
+      "details": "3.9 mm front stack space between board face and plate around the lens"
+    },
+    {
+      "name": "XIAO 76.5 heatsink/header rear space",
+      "pass": true,
+      "details": "10 mm behind the board is open except the clamp foot, a 9 mm strip down the centreline"
+    },
+    {
+      "name": "XIAO 76.5 clamp boss at board-back plane",
+      "pass": true,
+      "details": "boss top flush with the board back at Z=16.5 mm"
+    },
+    {
+      "name": "XIAO 76.5 insert pocket open",
+      "pass": true,
+      "details": "Ø3.2 x 4.6 mm pocket for the A2 M2 insert (OD 3.5 x L 4)"
+    },
+    {
+      "name": "XIAO 76.5 insert pocket blind floor",
+      "pass": true,
+      "details": "pocket keeps a solid floor above the plate"
+    },
+    {
+      "name": "XIAO 76.5 clamp screw passage",
+      "pass": true,
+      "details": "M2 passes the printed clamp into the boss insert"
+    },
+    {
+      "name": "XIAO 76.5 clamp screw reachable with a driver from the door",
+      "pass": true,
+      "details": "Ø5 shaft from Z 20.1 to the rear face at (80.5, 81.5): 0.000 mm^3 in the way, module out"
+    },
+    {
+      "name": "XIAO 76.5 clamp presses the centreline strip",
+      "pass": true,
+      "details": "a 9 x 3 mm foot bears on bare board between the header rows"
+    },
+    {
+      "name": "XIAO 76.5 clamp under bay",
+      "pass": true,
+      "details": "clamp top at 20.1 mm stays under the bay floor at 31.9 mm"
+    },
+    {
+      "name": "XIAO 98.5 board volume open",
+      "pass": true,
+      "details": "the 17.8 x 21.0 x 1.2 board sits on its corner pads untouched"
+    },
+    {
+      "name": "XIAO 98.5 lens/sensor pocket open",
+      "pass": true,
+      "details": "3.9 mm front stack space between board face and plate around the lens"
+    },
+    {
+      "name": "XIAO 98.5 heatsink/header rear space",
+      "pass": true,
+      "details": "10 mm behind the board is open except the clamp foot, a 9 mm strip down the centreline"
+    },
+    {
+      "name": "XIAO 98.5 clamp boss at board-back plane",
+      "pass": true,
+      "details": "boss top flush with the board back at Z=16.5 mm"
+    },
+    {
+      "name": "XIAO 98.5 insert pocket open",
+      "pass": true,
+      "details": "Ø3.2 x 4.6 mm pocket for the A2 M2 insert (OD 3.5 x L 4)"
+    },
+    {
+      "name": "XIAO 98.5 insert pocket blind floor",
+      "pass": true,
+      "details": "pocket keeps a solid floor above the plate"
+    },
+    {
+      "name": "XIAO 98.5 clamp screw passage",
+      "pass": true,
+      "details": "M2 passes the printed clamp into the boss insert"
+    },
+    {
+      "name": "XIAO 98.5 clamp screw reachable with a driver from the door",
+      "pass": true,
+      "details": "Ø5 shaft from Z 20.1 to the rear face at (109.5, 67.0): 0.000 mm^3 in the way, module out"
+    },
+    {
+      "name": "XIAO 98.5 clamp presses the centreline strip",
+      "pass": true,
+      "details": "a 9 x 3 mm foot bears on bare board between the header rows"
+    },
+    {
+      "name": "XIAO 98.5 clamp under bay",
+      "pass": true,
+      "details": "clamp top at 20.1 mm stays under the bay floor at 31.9 mm"
+    },
+    {
+      "name": "XIAO 1-2 edge gap",
+      "pass": true,
+      "details": "4.20 mm between adjacent boards for header wiring"
+    },
+    {
+      "name": "XIAO 2-3 edge gap",
+      "pass": true,
+      "details": "4.20 mm between adjacent boards for header wiring"
+    },
+    {
+      "name": "XIAO 3-4 edge gap",
+      "pass": true,
+      "details": "4.20 mm between adjacent boards for header wiring"
+    },
+    {
+      "name": "cable exit passage open",
+      "pass": true,
+      "details": "Ø13.6 mm clear inside a 14 x 20.0 mm rounded slot through the bottom wall at X=40"
+    },
+    {
+      "name": "cable passage spans the connector plane",
+      "pass": true,
+      "details": "passage spans Z=35.5-49.5 across the receptacle plane just in front of the PCB back at 46.5 mm"
+    },
+    {
+      "name": "zip-tie slot left open",
+      "pass": true,
+      "details": "3.2 x 6.2 mm tie path through the bottom wall"
+    },
+    {
+      "name": "zip-tie slot right open",
+      "pass": true,
+      "details": "3.2 x 6.2 mm tie path through the bottom wall"
+    },
+    {
+      "name": "loose piggyback board and its headers clear the bay depth",
+      "pass": true,
+      "details": "12.6 mm of board plus plugged headers in 16.0 mm of bay: 3.4 mm spare"
+    },
+    {
+      "name": "piggyback board has a clear home in the bay",
+      "pass": true,
+      "details": "54 x 33 x 12.6 mm box at X 38.5-92.5, Y 26.5-59.5, Z 31.9-44.5 is empty (0.0000 mm^3 fouled). It lies between the two post rows, not between the columns."
+    },
+    {
+      "name": "loose piggyback board fits the bay in plan",
+      "pass": true,
+      "details": "54 x 33 mm board in a 119.0 x 78.0 mm bay slab"
+    },
+    {
+      "name": "straight USB-C plug clears the XIAO stack",
+      "pass": true,
+      "details": "16.0 mm between the back of the XIAO header wiring and the module's PCB face, against 16 mm for a straight plug standing off it. A right-angle cable would need about 9 mm."
+    },
+    {
+      "name": "shutter flange assembly path",
+      "pass": true,
+      "details": "Ø14.0 flange passes the open Ø14.8 rear bore"
+    },
+    {
+      "name": "shutter guide open",
+      "pass": true,
+      "details": "Ø11.4 mm guide to the top face"
+    },
+    {
+      "name": "shutter plunger clearances",
+      "pass": true,
+      "details": "running clearance in the guide plus captive flange retention"
+    },
+    {
+      "name": "shutter press-face projection",
+      "pass": true,
+      "details": "1.40 mm nominal projection above the top face"
+    },
+    {
+      "name": "shutter two-wire exit",
+      "pass": true,
+      "details": "two Ø2.0 mm leads on 2.4 mm centres reach the open bay"
+    },
+    {
+      "name": "shutter opposite-end lead exits",
+      "pass": true,
+      "details": "one Ø2.0 mm lead out of each end of the switch through a 3.0 mm channel, both into the open bay"
+    },
+    {
+      "name": "shutter lead channels stay in the pod",
+      "pass": true,
+      "details": "channels reach X=±4.80 of the pod's ±9.5 mm, apex at Z=24.0 against the cut at 31.9"
+    },
+    {
+      "name": "shutter retainer fits the bore",
+      "pass": true,
+      "details": "Ø14.4 cup in the Ø14.8 bore, Ø17.5 stop plate"
+    },
+    {
+      "name": "shutter pod clears the module",
+      "pass": true,
+      "details": "pod inner face at Y=81.0 vs module top edge at 79.7 mm"
+    },
+    {
+      "name": "no RESET hole in the bottom wall",
+      "pass": true,
+      "details": "bottom wall is 100% solid where the Ø3.2 passage used to run, at X=106.4, Z=22"
+    },
+    {
+      "name": "clamp foot runs between the header rows",
+      "pass": true,
+      "details": "9 mm foot in a 12.5 mm channel: 1.75 mm clear of each header row, at every Y along the board"
+    },
+    {
+      "name": "no strap bore pierces the front face",
+      "pass": true,
+      "details": "no bore pierces the front face; the strap attaches to a lug on the +X wall of the rear half (gated below), not to anything on the optical datum"
+    },
+    {
+      "name": "door seats without interference",
+      "pass": true,
+      "details": "0.0000 mm^3 of coincident-face film only; the seated door rests on the groove floors and pilaster tops"
+    },
+    {
+      "name": "door slide position -1 mm",
+      "pass": true,
+      "details": "0.201 mm^3 while the Ø1.0 mm wall bumps sit on the wedges' crests"
+    },
+    {
+      "name": "door slide position -2 mm",
+      "pass": true,
+      "details": "0.094 mm^3 while the Ø1.0 mm wall bumps sit on the wedges' crests"
+    },
+    {
+      "name": "door slide position -8 mm",
+      "pass": true,
+      "details": "0.0000 mm^3: free travel (resting film only)"
+    },
+    {
+      "name": "door slide position -20 mm",
+      "pass": true,
+      "details": "0.0000 mm^3: free travel (resting film only)"
+    },
+    {
+      "name": "door slide position -45 mm",
+      "pass": true,
+      "details": "0.0000 mm^3: free travel (resting film only)"
+    },
+    {
+      "name": "door slide position -80 mm",
+      "pass": true,
+      "details": "-0.0000 mm^3: free travel (resting film only)"
+    },
+    {
+      "name": "door slide position -110 mm",
+      "pass": true,
+      "details": "0.0000 mm^3: free travel (resting film only)"
+    },
+    {
+      "name": "detent holds the door shut",
+      "pass": true,
+      "details": "wall bumps stand 0.30 mm proud into the grooves (0.15 into the wedge past its 0.15 clearance) - bottom: bump yes, dimple open, crest bites, channel free; top: bump yes, dimple open, crest bites, channel free"
+    },
+    {
+      "name": "foam gasket ring bears on the module's border",
+      "pass": true,
+      "details": "5.26 mm of bearing strip at the sides and 3.25 top and bottom, against 3 needed; outer edge 0.75 mm inside the 117.01 x 69.41 module, inner edge on the window and 5.7 x 2.6 mm clear of the active area"
+    },
+    {
+      "name": "door slide geometry",
+      "pass": true,
+      "details": "1.35 mm of engaged tongue each side reacts the foam preload against a square shoulder"
+    },
+    {
+      "name": "the door slide is a square shoulder, roofed in one layer over its own root",
+      "pass": true,
+      "details": "tongue 1.5 mm tall in a 1.85 mm groove (0.35 mm of Z clearance), shoulder from Z 63.35 to 65.5 leaves 2.15 mm of wall over it; the roof reaches 1.5 mm inboard off the groove's deep wall in a single layer, well inside what the layer gate allows a bridge"
+    },
+    {
+      "name": "bezel window covers the active area",
+      "pass": true,
+      "details": "105 x 61.4 window over the 93.6 x 56.16 active area with at least 4 mm of glass border under the lip"
+    },
+    {
+      "name": "a raceway wide enough for the whole loom exists at every station",
+      "pass": true,
+      "details": "the loom needs 45 mm^2; the tightest station is X=20 with 99 mm^2 free (upper 99, lower 99)"
+    },
+    {
+      "name": "both raceways are usable, not just one",
+      "pass": true,
+      "details": "upper raceway 99-178 mm^2, lower 99-178 mm^2 across the width"
+    },
+    {
+      "name": "XIAO 32.5 has room for its own pins and loop",
+      "pass": true,
+      "details": "5821 mm^3 free behind the board against 113 mm^3 for five conductors with a 12 mm service loop"
+    },
+    {
+      "name": "XIAO 54.5 has room for its own pins and loop",
+      "pass": true,
+      "details": "5821 mm^3 free behind the board against 113 mm^3 for five conductors with a 12 mm service loop"
+    },
+    {
+      "name": "XIAO 76.5 has room for its own pins and loop",
+      "pass": true,
+      "details": "5821 mm^3 free behind the board against 113 mm^3 for five conductors with a 12 mm service loop"
+    },
+    {
+      "name": "XIAO 98.5 has room for its own pins and loop",
+      "pass": true,
+      "details": "5821 mm^3 free behind the board against 113 mm^3 for five conductors with a 12 mm service loop"
+    },
+    {
+      "name": "JP1 connector housings clear the posts and the front plate",
+      "pass": true,
+      "details": "46 mm of clear header length between the mounting posts for a 33 mm JP1, with 14 mm of housing height in the 42 mm of space in front of the PCB"
+    },
+    {
+      "name": "XIAO headers take plugged housings, not just solder joints",
+      "pass": true,
+      "details": "15.4 mm behind each board against 14 mm for a plugged Dupont housing: the loom can be connectorised on the camera side instead of soldered permanently"
+    },
+    {
+      "name": "interior has usable slack overall",
+      "pass": true,
+      "details": "351.6 cm^3 free inside once the module, a 45 mm heatsink, the four boards and their clamps are in"
+    },
+    {
+      "name": "harness corridor from JP1 to the XIAO band",
+      "pass": true,
+      "details": "46 x 15 mm channel between the upper P4 posts, clear from Z=17.5 (just over the clamp bosses) to the PCB plane: the JP1 loom crosses the clamps and runs down to all four boards"
+    },
+    {
+      "name": "XIAO 32.5 service end reachable",
+      "pass": true,
+      "details": "room at the board's USB-C/microSD end for a plug and fingers with the door off"
+    },
+    {
+      "name": "XIAO 54.5 service end reachable",
+      "pass": true,
+      "details": "room at the board's USB-C/microSD end for a plug and fingers with the door off"
+    },
+    {
+      "name": "XIAO 76.5 service end reachable",
+      "pass": true,
+      "details": "room at the board's USB-C/microSD end for a plug and fingers with the door off"
+    },
+    {
+      "name": "XIAO 98.5 service end reachable",
+      "pass": true,
+      "details": "room at the board's USB-C/microSD end for a plug and fingers with the door off"
+    },
+    {
+      "name": "shutter leads reach the module",
+      "pass": true,
+      "details": "open run in front of the module, Y 74.5-81.0, from under the shutter pod toward the JP1 header edge, for the two switch leads"
+    },
+    {
+      "name": "cable turns from the socket to the bottom exit",
+      "pass": true,
+      "details": "clear run below the module from the bottom-wall passage up toward the connector edge"
+    },
+    {
+      "name": "foot 8,4 stands proud",
+      "pass": true,
+      "details": "2.2 mm pad lifting the bottom face off the table"
+    },
+    {
+      "name": "foot 8,52.5 stands proud",
+      "pass": true,
+      "details": "2.2 mm pad lifting the bottom face off the table"
+    },
+    {
+      "name": "foot 104,4 stands proud",
+      "pass": true,
+      "details": "2.2 mm pad lifting the bottom face off the table"
+    },
+    {
+      "name": "foot 104,52.5 stands proud",
+      "pass": true,
+      "details": "2.2 mm pad lifting the bottom face off the table"
+    },
+    {
+      "name": "feet clear every bottom-wall opening",
+      "pass": true,
+      "details": "4 pads placed around the cable exit and both tie slots"
+    },
+    {
+      "name": "every foot pad lies inside the body depth",
+      "pass": true,
+      "details": "4 pads within Z 0..65.5; rearmost edge at 63.5 mm"
+    },
+    {
+      "name": "front face carries only the four lens cells",
+      "pass": true,
+      "details": "4 holes in the front face; the strap bore was moved to the face shell's lug so it no longer pierces the front"
+    },
+    {
+      "name": "front-face opening count matches the inventory",
+      "pass": true,
+      "details": "5 voids in a slice through the front plate: four lens cells and the surrounding air. Any other number means an undeclared opening."
+    },
+    {
+      "name": "hole inventory is fully justified",
+      "pass": true,
+      "details": "18 openings total, each with a stated reason"
+    },
+    {
+      "name": "front half prints support-free",
+      "pass": true,
+      "details": "137.76 mm^2 of >45-degree downward faces, largest single face 3.99 mm^2"
+    },
+    {
+      "name": "rear half prints support-free",
+      "pass": true,
+      "details": "455.87 mm^2 of >45-degree downward faces, largest single face 90.60 mm^2 - about 354 of it is the door slide's shoulder, judged by the layer gate rather than by angle"
+    },
+    {
+      "name": "face shell relief points up in print",
+      "pass": true,
+      "details": "0 mm^2 of >45-degree downward faces, largest single face 0.00 mm^2; the raised form itself costs nothing because it grows away from the bed"
+    },
+    {
+      "name": "alignment tool seats through the cells into the plate bores",
+      "pass": true,
+      "details": "0.0000 mm^3 of tool inside the shell or chassis with the bar on the panel floor and all four pegs through both Ø7.1 lands"
+    },
+    {
+      "name": "alignment pegs are a locating fit in the bores",
+      "pass": true,
+      "details": "Ø6.9 peg in Ø7.1 bore: 0.100 mm per side"
+    },
+    {
+      "name": "alignment pegs pass the plate and stop in open cavity",
+      "pass": true,
+      "details": "peg tips 1.2 mm past the plate's back at Z=5; the cameras are not fitted while the shell is glued"
+    },
+    {
+      "name": "alignment bar fits between the track's lips",
+      "pass": true,
+      "details": "bar spans X 23.0-108.0 inside the lips at 22.2 and 109.8"
+    },
+    {
+      "name": "track ends 0.3 above the closed cover",
+      "pass": true,
+      "details": "panel top at Y 53.50, closed cover top at 53.2"
+    },
+    {
+      "name": "lens cover is one part",
+      "pass": true,
+      "details": "1 connected component(s)"
+    },
+    {
+      "name": "lens cover runs free in its track, closed and open",
+      "pass": true,
+      "details": "0.0000 / 0.0000 mm^3 of interference with the face at the two positions, 0.1 mm side clearance"
+    },
+    {
+      "name": "lens cover is retained by the dovetail lips",
+      "pass": true,
+      "details": "8.07 mm^3 of lip engagement when the cover is pulled 0.5 mm forward"
+    },
+    {
+      "name": "closed cover hides all four cells",
+      "pass": true,
+      "details": "100.0% of the weakest Ø18.4 cell mouth is covered"
+    },
+    {
+      "name": "open cover clears all four cells",
+      "pass": true,
+      "details": "0.0000 mm^3 of any cell mouth is under the open cover; its top edge sits at Y 31.8 against cell bottoms at 33.8"
+    },
+    {
+      "name": "open cover stows inside the track",
+      "pass": true,
+      "details": "open, the cover's bottom edge is at Y 11.4; the track starts at 11.1"
+    },
+    {
+      "name": "cover detents are placed to hold both positions",
+      "pass": true,
+      "details": "holding ribs Ø0.8 at Y 32.30 in the 1.0 mm between an open top edge of 31.8 and a closed bottom edge of 32.8"
+    },
+    {
+      "name": "cover detent ribs stand sliderClr + bite off the walls",
+      "pass": true,
+      "details": "ribs stand 0.25 mm off both track walls: 0.15 mm into the cover's edge past its 0.1 mm clearance"
+    },
+    {
+      "name": "cover's edge crests meet the detent ribs leaving either position",
+      "pass": true,
+      "details": "0.0783 mm^3 shared 1.0 mm below closed, 0.0785 mm^3 1.0 mm above open; plan corners R0.6, crests 1.5 mm"
+    },
+    {
+      "name": "cover slides free between the crests",
+      "pass": true,
+      "details": "-0.0000 mm^3 shared with the face halfway along the travel: the ribs ride the 0.2 mm relief in the cover's edges"
+    },
+    {
+      "name": "keeper is one part",
+      "pass": true,
+      "details": "1 connected component(s), 0.92 cm^3"
+    },
+    {
+      "name": "keeper seats in the rim gap clear of the face and the open cover",
+      "pass": true,
+      "details": "0.0000 mm^3 shared with the face, 0.0000 with the open cover; 0.1 mm a side"
+    },
+    {
+      "name": "keeper stops the cover leaving the open end",
+      "pass": true,
+      "details": "136.5 mm^3 of keeper in the way of a cover pushed 1.5 mm past open"
+    },
+    {
+      "name": "keeper fills the gap's mouth",
+      "pass": true,
+      "details": "keeper spans Y 5.5..11.0 (panel starts 11.1, bar chamfer ends 6.4), front at Z -9.00 (bar face -9.0)"
+    },
+    {
+      "name": "keeper prints support-free",
+      "pass": true,
+      "details": "0.00 mm^2 of >45-degree downward faces, largest 0.00 mm^2"
+    },
+    {
+      "name": "lens cover prints support-free",
+      "pass": true,
+      "details": "71.83 mm^2 of >45-degree downward faces, largest 1.65 mm^2 (lettering strokes only)"
+    },
+    {
+      "name": "face shell's front edge is rounded",
+      "pass": true,
+      "details": "R3 over the plate's 3 mm: the outline corner is air at the front, solid 4 mm inboard"
+    },
+    {
+      "name": "chassis' rear edge is rounded",
+      "pass": true,
+      "details": "R3 on the rear rim: the wall's outer corner is air in the last 0.5 mm, solid 4 mm inboard"
+    },
+    {
+      "name": "rounding the rear rim kept the feet",
+      "pass": true,
+      "details": "all four foot pads still stand proud below the outline"
+    },
+    {
+      "name": "cable groove runs from the exit slot to the rear edge",
+      "pass": true,
+      "details": "4.5 x 2 mm groove, Z 42.5 to 65.5; a 4 mm cable lies 0.2 mm clear of the table plane"
+    },
+    {
+      "name": "cable groove leaves a web to the door's dovetail",
+      "pass": true,
+      "details": "2.5 mm of bottom wall between the groove floor and the dovetail bite over the door zone"
+    },
+    {
+      "name": "vent slots are open through both side walls",
+      "pass": true,
+      "details": "8 of 8 slots clear, 2 x 11 mm, Z 34.4-45.4 in the rear half (cut at 31.9)"
+    },
+    {
+      "name": "vent slots sit in the rear half, ahead of the module",
+      "pass": true,
+      "details": "slots span Z 33.4-46.4 between the cut at 31.9 and the module face at 46.5"
+    },
+    {
+      "name": "cover ridge stands just proud of the bar",
+      "pass": true,
+      "details": "ridge front at Z -9.80, bar face at -9.00: 0.80 mm proud"
+    },
+    {
+      "name": "the face shell's back carries no Hall pocket or lead channel",
+      "pass": true,
+      "details": "solid where the Ø4.5 x 5.5 pocket at (107.5, 36) and the 2.5 x 1.75 channel down to Y 20 used to be: 100.0% and 99.8%"
+    },
+    {
+      "name": "the front plate carries no Hall lead hole",
+      "pass": true,
+      "details": "100.0% solid where the Ø2.4 hole through the plate at (107.5, 20.0) used to be"
+    },
+    {
+      "name": "the cover's back carries no magnet pocket",
+      "pass": true,
+      "details": "100.0% solid where the Ø3.2 x 1.1 pocket in the cover's back used to be"
+    },
+    {
+      "name": "the split seam runs in a V-groove on all four faces",
+      "pass": true,
+      "details": "0.6 mm deep and 1.43 mm tall at the cut plane Z=31.9, walls at 50 degrees - bottom grooved; top grooved; left grooved; right grooved"
+    },
+    {
+      "name": "both halves carry their half of the seam chamfer",
+      "pass": true,
+      "details": "front half chamfered at its top edge, rear half chamfered at its bottom edge"
+    },
+    {
+      "name": "the seam groove leaves the wall alone",
+      "pass": true,
+      "details": "5.4 mm of wall under the groove; the bolt's head pocket reaches 2.25 mm from that face"
+    },
+    {
+      "name": "face plate carries the grain at the intended density",
+      "pass": true,
+      "details": "31% of the plate's top 0.2 mm removed over a 20 x 12 mm sample, against 31% intended: 0.5 mm grooves on a 1.6 mm pitch, 1.1 mm lands"
+    },
+    {
+      "name": "the grain keeps a clean land at every border",
+      "pass": true,
+      "details": "solid fraction in the land strips: outline 100.0%, lens bar 100.0%, serial 100.0% - 4 mm inside the outline, 2.5 around the lens bar, 2 around the serial"
+    },
+    {
+      "name": "every outer wall carries the flutes at the intended density",
+      "pass": true,
+      "details": "19% of the outer 0.2 mm intended void (45-degree V 0.25 mm deep, 0.5 mm wide at the surface, on a 1.6 mm pitch = 1.1 mm lands), read: bottom wall, front half 18%, top wall, front half 19%, -X wall, front half 19%, +X wall, front half 19%, -X wall, rear half 18%, +X wall, rear half 18%, bottom wall, rear half 18%"
+    },
+    {
+      "name": "the flutes bottom out and leave the wall behind them solid",
+      "pass": true,
+      "details": "solid fraction in the 0.2 mm shell just inboard of the 0.25 mm floor: bottom wall 100.0%, -X wall 100.0%, top wall 100.0% - a 6 mm wall keeps 5.75 mm"
+    },
+    {
+      "name": "the flutes keep a land at every seat, pad and parting line",
+      "pass": true,
+      "details": "solid fraction in the outer 0.2 mm: light base seat 100.0%, a foot's root 100.0%, bed land below the flutes 100.0%, seam land, front side 100.0%, seam land, rear side 100.0%, door-frame land above the flutes 100.0%"
+    },
+    {
+      "name": "the flute pattern closes exactly around the body",
+      "pass": true,
+      "details": "267 flutes on a 1.5976 mm step round a 426.5 mm loop (asked for 1.6); last to first 1.5955 mm"
+    },
+    {
+      "name": "front half serial is engraved",
+      "pass": true,
+      "details": "\"REV 0.1.4 · SN 001\" 45.1 x 4.3 mm, 0.4 mm deep on the bottom face at (65.5, 0.0, 27.0); 0.027 of the 26.2 mm^3 recess left uncut (0.10%)"
+    },
+    {
+      "name": "front half serial reads the right way round",
+      "pass": true,
+      "details": "left third 25.1 / right third 26.2 mm^2 cut, against 25.1 / 26.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "front half serial strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.44 mm^2 of 65.6 thinner than 0.45 mm (0.7%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "front half serial leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "rear half serial is engraved",
+      "pass": true,
+      "details": "\"REV 0.1.4 · SN 001\" 45.1 x 4.3 mm, 0.4 mm deep on the bottom face at (88.0, 0.0, 47.0); 0.013 of the 26.2 mm^3 recess left uncut (0.05%)"
+    },
+    {
+      "name": "rear half serial reads the right way round",
+      "pass": true,
+      "details": "left third 28.4 / right third 30.6 mm^2 cut, against 25.1 / 26.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "rear half serial strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.44 mm^2 of 65.6 thinner than 0.45 mm (0.7%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "rear half serial leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "face shell serial is engraved",
+      "pass": true,
+      "details": "\"REV 0.1.4 · SN 001\" 45.1 x 4.3 mm, 0.4 mm deep on the front face at (65.5, 68.0, -3.0); 0.233 of the 26.2 mm^3 recess left uncut (0.89%)"
+    },
+    {
+      "name": "face shell serial reads the right way round",
+      "pass": true,
+      "details": "left third 24.9 / right third 26.0 mm^2 cut, against 25.1 / 26.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "face shell serial strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.44 mm^2 of 65.6 thinner than 0.45 mm (0.7%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "face shell serial leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "lens cover serial is engraved",
+      "pass": true,
+      "details": "\"REV 0.1.4 · SN 001\" 45.1 x 4.3 mm, 0.4 mm deep on the rear face at (66.0, 44.0, -6.8); 0.224 of the 26.2 mm^3 recess left uncut (0.85%)"
+    },
+    {
+      "name": "lens cover serial reads the right way round",
+      "pass": true,
+      "details": "left third 24.9 / right third 26.0 mm^2 cut, against 25.1 / 26.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "lens cover serial strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.44 mm^2 of 65.6 thinner than 0.45 mm (0.7%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "lens cover serial leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "door serial is engraved",
+      "pass": true,
+      "details": "\"REV 0.1.4 · SN 001\" 45.1 x 4.3 mm, 0.4 mm deep on the rear face at (65.5, 7.0, 65.5); 0.000 of the 26.2 mm^3 recess left uncut (0.00%)"
+    },
+    {
+      "name": "door serial reads the right way round",
+      "pass": true,
+      "details": "left third 25.1 / right third 26.2 mm^2 cut, against 25.1 / 26.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "door serial strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.44 mm^2 of 65.6 thinner than 0.45 mm (0.7%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "door serial leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "alignment tool serial is engraved",
+      "pass": true,
+      "details": "\"REV 0.1.4 · SN 001\" 45.1 x 4.3 mm, 0.4 mm deep on the front face at (65.5, 40.9, 0.0); 0.220 of the 26.2 mm^3 recess left uncut (0.84%)"
+    },
+    {
+      "name": "alignment tool serial reads the right way round",
+      "pass": true,
+      "details": "left third 24.9 / right third 26.0 mm^2 cut, against 25.1 / 26.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "alignment tool serial strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.44 mm^2 of 65.6 thinner than 0.45 mm (0.7%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "alignment tool serial leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "D4 badge is engraved",
+      "pass": true,
+      "details": "\"boxed D4 from the wordmark\" 25.3 x 9.0 mm, 0.4 mm deep on the top face at (90.0, 90.0, 24.0); 0.000 of the 39.0 mm^3 recess left uncut (0.00%)"
+    },
+    {
+      "name": "D4 badge reads the right way round",
+      "pass": true,
+      "details": "left third 30.6 / right third 30.0 mm^2 cut, against 30.6 / 30.0 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "D4 badge strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.04 mm^2 of 97.6 thinner than 0.45 mm (0.0%) - the box outline is the thinnest part"
+    },
+    {
+      "name": "D4 badge leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "camera 1 number is engraved",
+      "pass": true,
+      "details": "\"1\" 1.7 x 4.2 mm, 0.4 mm deep on the rear face at (32.5, 62.0, 5.0); 0.001 of the 1.4 mm^3 recess left uncut (0.08%)"
+    },
+    {
+      "name": "camera 1 number reads the right way round",
+      "pass": true,
+      "details": "left third 0.3 / right third 2.3 mm^2 cut, against 0.3 / 2.3 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "camera 1 number strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.05 mm^2 of 3.4 thinner than 0.45 mm (1.6%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "camera 1 number leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "camera 2 number is engraved",
+      "pass": true,
+      "details": "\"2\" 2.9 x 4.2 mm, 0.4 mm deep on the rear face at (54.5, 62.0, 5.0); 0.004 of the 2.2 mm^3 recess left uncut (0.17%)"
+    },
+    {
+      "name": "camera 2 number reads the right way round",
+      "pass": true,
+      "details": "left third 1.7 / right third 1.8 mm^2 cut, against 1.7 / 1.8 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "camera 2 number strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.04 mm^2 of 5.5 thinner than 0.45 mm (0.8%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "camera 2 number leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "camera 3 number is engraved",
+      "pass": true,
+      "details": "\"3\" 2.7 x 4.3 mm, 0.4 mm deep on the rear face at (76.5, 62.0, 5.0); 0.004 of the 2.3 mm^3 recess left uncut (0.17%)"
+    },
+    {
+      "name": "camera 3 number reads the right way round",
+      "pass": true,
+      "details": "left third 1.5 / right third 2.5 mm^2 cut, against 1.5 / 2.5 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "camera 3 number strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.05 mm^2 of 5.7 thinner than 0.45 mm (0.9%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "camera 3 number leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "camera 4 number is engraved",
+      "pass": true,
+      "details": "\"4\" 3.1 x 4.2 mm, 0.4 mm deep on the rear face at (98.5, 62.0, 5.0); 0.005 of the 2.2 mm^3 recess left uncut (0.22%)"
+    },
+    {
+      "name": "camera 4 number reads the right way round",
+      "pass": true,
+      "details": "left third 1.2 / right third 2.2 mm^2 cut, against 1.2 / 2.2 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "camera 4 number strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.05 mm^2 of 5.6 thinner than 0.45 mm (0.9%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "camera 4 number leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "spec line is engraved",
+      "pass": true,
+      "details": "\"KINO D4 FIELD BODY\" 39.5 x 3.2 mm, 0.4 mm deep on the bottom face at (65.5, 0.0, 20.0); 0.016 of the 21.3 mm^3 recess left uncut (0.07%)"
+    },
+    {
+      "name": "spec line reads the right way round",
+      "pass": true,
+      "details": "left third 18.9 / right third 17.6 mm^2 cut, against 18.9 / 17.6 in the text - reader's right derived from the face normal"
+    },
+    {
+      "name": "spec line strokes are at least 0.45 mm wide",
+      "pass": true,
+      "details": "0.64 mm^2 of 53.4 thinner than 0.45 mm (1.2%) - Roboto Regular at 4 mm caps, emboldened 0.08 a side"
+    },
+    {
+      "name": "spec line leaves material behind it",
+      "pass": true,
+      "details": "the slab 0.8 mm under the surface is solid across the whole engraving"
+    },
+    {
+      "name": "camera 1 number sits on bare plate, above its board",
+      "pass": true,
+      "details": "\"1\" 1.7 x 4.2 mm at (32.5, 62.0) on the plate's inner face, baseline 1.5 mm above the board's top edge at 60.5; 0.0000 mm^3 of anything standing in the 3 mm above it"
+    },
+    {
+      "name": "camera 2 number sits on bare plate, above its board",
+      "pass": true,
+      "details": "\"2\" 2.9 x 4.2 mm at (54.5, 62.0) on the plate's inner face, baseline 1.5 mm above the board's top edge at 60.5; 0.0000 mm^3 of anything standing in the 3 mm above it"
+    },
+    {
+      "name": "camera 3 number sits on bare plate, above its board",
+      "pass": true,
+      "details": "\"3\" 2.7 x 4.3 mm at (76.5, 62.0) on the plate's inner face, baseline 1.5 mm above the board's top edge at 60.5; 0.0000 mm^3 of anything standing in the 3 mm above it"
+    },
+    {
+      "name": "camera 4 number sits on bare plate, above its board",
+      "pass": true,
+      "details": "\"4\" 3.1 x 4.2 mm at (98.5, 62.0) on the plate's inner face, baseline 1.5 mm above the board's top edge at 60.5; 0.0000 mm^3 of anything standing in the 3 mm above it"
+    },
+    {
+      "name": "stow-zone hatch is cut at the intended density",
+      "pass": true,
+      "details": "21% of the floor's top 0.3 mm removed over Y 12.6-31.3, against 24% intended (0.6 mm grooves on a 2.5 mm pitch)"
+    },
+    {
+      "name": "the cover rides two bearing lands at the floor plane, relieved either side",
+      "pass": true,
+      "details": "lands at X 36.0 and 96.0 read 100.0%, 100.0% solid at the floor plane; the floor 1.25 mm off a land reads 0.0% - relieved by 0.25 mm. Contact drops from about 1824 mm^2 of hatched floor to 102 mm^2 of smooth land."
+    },
+    {
+      "name": "floor under the closed cover is unhatched",
+      "pass": true,
+      "details": "100.0% solid where the cover sits closed - the cells' cones are the only openings there"
+    },
+    {
+      "name": "plate 1 (chassis) fits a 250 x 210 bed on Z=0",
+      "pass": true,
+      "details": "137.5 x 190.4 x 45.2 mm"
+    },
+    {
+      "name": "plate 1 (chassis) carries every part, none merged",
+      "pass": true,
+      "details": "2 separate parts, 2 expected"
+    },
+    {
+      "name": "plate 1 (chassis) is the released meshes, unmoved in Z",
+      "pass": true,
+      "details": "216.26 cm^3 on the plate against 216.26 in its parts - the same solids, only translated"
+    },
+    {
+      "name": "plate 2 (face, door, cover, keeper, clamps, button) fits a 250 x 210 bed on Z=0",
+      "pass": true,
+      "details": "226.4 x 176.7 x 9.0 mm"
+    },
+    {
+      "name": "plate 2 (face, door, cover, keeper, clamps, button) carries every part, none merged",
+      "pass": true,
+      "details": "10 separate parts, 10 expected"
+    },
+    {
+      "name": "plate 2 (face, door, cover, keeper, clamps, button) is the released meshes, unmoved in Z",
+      "pass": true,
+      "details": "74.59 cm^3 on the plate against 74.59 in its parts - the same solids, only translated"
+    },
+    {
+      "name": "strap anchor stands on the rear half's cut face with an open cord hole",
+      "pass": true,
+      "details": "Ø3.5 hole open through 8 mm of lug at (-3.3, 71.0), 6.50 mm proud of the -X wall, Z 31.9-40 on the rear half only"
+    },
+    {
+      "name": "the cord hole is walled on both sides by more than one bead",
+      "pass": true,
+      "details": "1.5 mm of lug each side of the Ø3.5 cord hole (outboard 100% solid, inboard 100%), against 1.2 minimum - three beads at a 0.4 nozzle. It shipped with 0.5 mm outboard and no gate on it."
+    },
+    {
+      "name": "strap anchor clears the vent slots and the rear rim round",
+      "pass": true,
+      "details": "lug Y 66-76 above the top vent at 63.0; Z top 40 under the R3 rim at 62.5"
+    },
+    {
+      "name": "the strap anchor is not on the wall the shooting hand grips",
+      "pass": true,
+      "details": "shutter at X 115 puts the grip on the +X end; the anchor is at X 0 on the -X wall, 115 mm away"
+    },
+    {
+      "name": "every node's USB-C can be reached with a right-angle plug in place",
+      "pass": true,
+      "details": "12 x 7 mm plug body, 16 mm straight / 7 mm angled past the board end at Y 60.5, clamp lifted - node 1: straight blocked (110 mm^3, the P4 post), right-angle clear; node 2: straight clear, right-angle clear; node 3: straight clear, right-angle clear; node 4: straight clear, right-angle clear"
+    },
+    {
+      "name": "face shell is one part",
+      "pass": true,
+      "details": "1 connected component(s)"
+    },
+    {
+      "name": "relief height: base plate",
+      "pass": true,
+      "details": "3.01 mm above the mating plane, expected 3.00 ±0.3"
+    },
+    {
+      "name": "relief height: lens bar rim",
+      "pass": true,
+      "details": "9.00 mm above the mating plane, expected 9.00 ±0.4"
+    },
+    {
+      "name": "relief height: lens accent ledge",
+      "pass": true,
+      "details": "8.20 mm above the mating plane, expected 8.20 ±0.4"
+    },
+    {
+      "name": "relief height: lens bar side rim, full height behind the lips",
+      "pass": true,
+      "details": "9.00 mm above the mating plane, expected 9.00 ±0.4"
+    },
+    {
+      "name": "relief height: lens panel floor",
+      "pass": true,
+      "details": "6.55 mm above the mating plane, expected 6.80 ±0.4"
+    },
+    {
+      "name": "lens panel contains all four cells",
+      "pass": true,
+      "details": "cells span X 23.3-107.7, Y 33.8-52.2 inside panel X 21.2-110.8, Y 11.1-53.5"
+    },
+    {
+      "name": "cells leave a web between them",
+      "pass": true,
+      "details": "3.6 mm of panel between adjacent cells, at Ø18.4 cells on 22 mm pitch"
+    },
+    {
+      "name": "lettering reads left to right for a reader facing the camera",
+      "pass": true,
+      "details": "\"KINO\" lays out first character at highest X, which is the reader's left"
+    },
+    {
+      "name": "wordmark reads the right way round in the print file",
+      "pass": true,
+      "details": "left third 153 mm^2 vs right third 105 mm^2 of raised mark (ratio 1.46); the trace has 768 vs 517 cells (ratio 1.49)"
+    },
+    {
+      "name": "wordmark fits the cover between the ridge and the top edge",
+      "pass": true,
+      "details": "80.0 x 10.7 mm mark at 0.45 mm cells, Y 39.0-49.7 in a band 36.5-52.2"
+    },
+    {
+      "name": "wordmark is a traced outline, not a pixel grid",
+      "pass": true,
+      "details": "12 polygons, 472 vertices, traced at 0.0175 mm, smoothed over 0.1575 and simplified to 0.01"
+    },
+    {
+      "name": "wordmark's thinnest stroke prints as one line",
+      "pass": true,
+      "details": "the D4 box outline is 0.46 mm wide on the cover (6 polygons make the box); a 0.4 mm nozzle lays 0.45"
+    },
+    {
+      "name": "relief has real range",
+      "pass": true,
+      "details": "the lens strip stands 6.0 mm off the base plate: form, not engraving"
+    },
+    {
+      "name": "face shell seats flat on the chassis",
+      "pass": true,
+      "details": "the shell's mating face is exactly the chassis front plane at Z=0"
+    },
+    {
+      "name": "face shell lens hole 32.5 aligns",
+      "pass": true,
+      "details": "the shell's cell is concentric with the chassis bore and clear through"
+    },
+    {
+      "name": "face shell lens hole 54.5 aligns",
+      "pass": true,
+      "details": "the shell's cell is concentric with the chassis bore and clear through"
+    },
+    {
+      "name": "face shell lens hole 76.5 aligns",
+      "pass": true,
+      "details": "the shell's cell is concentric with the chassis bore and clear through"
+    },
+    {
+      "name": "face shell lens hole 98.5 aligns",
+      "pass": true,
+      "details": "the shell's cell is concentric with the chassis bore and clear through"
+    },
+    {
+      "name": "no shell relief overhangs the base plate",
+      "pass": true,
+      "details": "0.00 mm^3 of relief stands outside the base plate's silhouette"
+    },
+    {
+      "name": "bezel prints support-free",
+      "pass": true,
+      "details": "0.00 mm^2 of >45-degree downward faces in print orientation, largest single face 0.00 mm^2 (judged by span in the layer gate, not by this area)"
+    },
+    {
+      "name": "every part builds layer on layer: no island wider than a bead, none seeding a feature",
+      "pass": true,
+      "details": "island limits 0.40 mm wide / 20 mm^2 a layer, bridge limit 5 mm span - front half bridges 50.3 mm^2 (widest 0.00 mm), no islands; rear half bridges 341.5 mm^2 (widest 0.00 mm), no islands; face shell clean; door clean; cover bridges 24.4 mm^2 (widest 0.00 mm), no islands; keeper clean; clamps clean; button bridges 31.8 mm^2 (widest 0.00 mm), no islands"
+    },
+    {
+      "name": "front-face bed contact",
+      "pass": true,
+      "details": "11562 mm^2 first layer; no brim needed"
+    },
+    {
+      "name": "screw test is quick and no taller than its lift needs",
+      "pass": true,
+      "details": "15.0 mm tall on 12 mm of pad lift, 8.8 cm^3 of filament"
+    },
+    {
+      "name": "screw test passage 9.0,9.0",
+      "pass": true,
+      "details": "Ø2.4 mm M2 passage is open at the real pattern"
+    },
+    {
+      "name": "screw test passage 9.0,63.8",
+      "pass": true,
+      "details": "Ø2.4 mm M2 passage is open at the real pattern"
+    },
+    {
+      "name": "screw test passage 70.9,9.0",
+      "pass": true,
+      "details": "Ø2.4 mm M2 passage is open at the real pattern"
+    },
+    {
+      "name": "screw test passage 70.9,63.8",
+      "pass": true,
+      "details": "Ø2.4 mm M2 passage is open at the real pattern"
+    }
+  ]
+}

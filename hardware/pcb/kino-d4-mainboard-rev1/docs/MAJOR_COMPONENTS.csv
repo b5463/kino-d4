@@ -1,0 +1,25 @@
+Function,Manufacturer,Preferred_MPN,Package_or_family,Status,Rationale,Freeze_gate
+USB_PD_sink,STMicroelectronics,STUSB4500QTR,QFN-24,PROVISIONAL_SELECTED,Standalone dead-battery PD sink with NVM PDO profiles,NVM image and 5V/9V interoperability test
+Battery_charger_power_path,Texas Instruments,BQ25798RQMR,VQFN-HR-29_4x4mm,PROVISIONAL_SELECTED,1-4S buck-boost charger with NVDC BATFET TS input ADC and 5A class path,Final cell data thermal layout and autonomous defaults
+Main_5V_boost,Texas Instruments,TPS61288LRQQR,VQFN-HR-11_2p5x3mm,PROVISIONAL_SELECTED,15A switch class gives 5V 4A rail design margin,WEBENCH/datasheet component calculation and thermal test
+Mainboard_3V3,Texas Instruments,TPS62162DSGR,WSON-8_2x2mm,PROVISIONAL_SELECTED,Fixed 3.3V 1A efficient rail from SYS_5V,Logic load calculation and PCBWay assembly
+Fuel_gauge,Texas Instruments,BQ27441DRZR-G1A,VSON-12_4x2p5mm,PROVISIONAL_SELECTED,4.2V 1S system-side impedance-track gauge with 10mR shunt,Production cell chemistry and gauge learning cycle
+Total_SYS5V_monitor,Texas Instruments,INA228AIDGSR,VSSOP-10,PROVISIONAL_SELECTED,20-bit bidirectional power energy and charge monitor,Address and 5mR Kelvin shunt review
+Four_camera_monitors,Microchip Technology,PAC1954T-E/4MX,VQFN-16_3x3mm,PROVISIONAL_SELECTED,Four high-side channels with power accumulator,Address and 20mR Kelvin shunt review
+Camera_load_switch_x4,Texas Instruments,TPS2553DRVR,WSON-6_2x2mm,PROVISIONAL_SELECTED,Adjustable current limit reverse blocking and FAULT output,Measured inrush and ILIM resistor
+Camera_enable_AND,Texas Instruments,SN74LVC08APWR,TSSOP-14,PROVISIONAL_SELECTED,Combines GPIO31 global gate with four expander enables,Truth-table and reset-state review
+GPIO_expander,Texas Instruments,TCA9539PWR,TSSOP-24,PROVISIONAL_SELECTED,16 I2C GPIO with RESET for enables faults and power-control status,Shared-bus address and firmware driver
+SYNC_fanout,Texas Instruments,SN74LVC125APWRG3,TSSOP-14,PROVISIONAL_SELECTED,Four independently isolatable 3.3V buffers,Edge integrity and branch resistor test
+Board_ID_EEPROM,Microchip Technology,24AA025E48T-I/OT,SOT-23-6,PROVISIONAL_SELECTED,2Kbit EEPROM plus factory EUI-48,Record format and write-protect plan
+Power_button_controller,Analog Devices,LTC2955CTS8-1#TRMPBF,TSOT-23-8,PROVISIONAL_SELECTED,Graceful firmware shutdown plus capacitor-set forced off,1.8uF timer tolerance and 8-10s bench test
+Side_power_switch,C&K,KT11B0SAM35LFG,Right_angle_SMT_6p3x6p3mm,PROVISIONAL_SELECTED,Side actuated IP57 3N and 100k-cycle class,Controlled mechanical drawing and enclosure opening
+P4_mainboard_header,Molex,5054482651,Micro-Lock_Plus_1p25_dual_row_RA_26,PROVISIONAL_SELECTED,Keyed latched 1.5A/contact 26-circuit compact header,Mating 5054322601 harness availability and continuity sample
+P4_harness_housing,Molex,5054322601,Micro-Lock_Plus_1p25_dual_row_26,PROVISIONAL_SELECTED,Positive-lock housing for motherboard end,Contact crimp and Guition 2x13 transition drawing
+Battery_mainboard_header,Molex,5055780341,Micro-Lock_Plus_2p0_RA_3,PROVISIONAL_SELECTED,Keyed positive-lock 3-circuit battery entry,Mating 5055700301 and final pack supplier approval
+Battery_harness_housing,Molex,5055700301,Micro-Lock_Plus_2p0_3,PROVISIONAL_SELECTED,Supports 22-26AWG family and locked polarity,Crimp/contact current and production harness qualification
+Shutter_header,JST,SM02B-SRSS-TB(LF)(SN),SH_1p0_side_entry_2,PROVISIONAL_SELECTED,Compact polarized short signal harness,Mating SHR-02V-S-B and enclosure routing
+Camera_connector_x4,TBD,JST_GH_or_Molex_Micro-Lock_10pos,Locking_10_position,UNRESOLVED,Two 5V and two GND contacts plus UART sync reset boot,Placement wire gauge and node interposer review
+USB_C_receptacle,TBD,GCT_USB4105-GF-A_or_equivalent,USB-C_24pin_mid_or_top_mount,UNRESOLVED,Common compact 3A family candidate,Enclosure datum durability and PCBWay sourcing
+USB_CC_ESD,TBD,TBD,Two_line_low_capacitance_ESD,UNRESOLVED,Protect both CC pins without disturbing PD signalling,STUSB4500 reference design and surge review
+USB_VBUS_TVS,TBD,TBD,At_least_12V_standoff_TVS,UNRESOLVED,Must survive normal 9V PD and clamp connector transients,Surge target and BQ25798/STUSB limits
+Battery_reverse_and_protection,TBD,TBD,Bidirectional_low_loss_FET_solution,UNRESOLVED,Coordinate reverse connection OVP UVP OCP and pack PCM,Final production pack/PCM datasheet

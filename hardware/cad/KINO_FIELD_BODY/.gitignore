@@ -1,0 +1,4 @@
+# Staging output from generate-field-body.mjs. Released files are promoted to
+# this folder only after validate-stl.mjs passes on the candidate set, so the
+# candidates themselves are working files and must not be committed.
+.candidate/
