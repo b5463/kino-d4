@@ -962,10 +962,15 @@ bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirna
  *
  * 3 s, and the rest is left for the next boot. An orphan is not urgent - it
  * costs a few hundred kilobytes and nothing reads it - while a camera that
- * appears dead for a minute after power-on is the fault everyone reports. The
- * remainder is picked up on the next boot because readdir() returns entries in
- * directory order and the completed ones are skipped after one stat() each, so
- * successive boots reach further in.
+ * appears dead for a minute after power-on is the fault everyone reports.
+ *
+ * The remainder is picked up on the next boot because a persisted cursor says
+ * where this pass stopped (sweep_cursor_load below). It used to say instead
+ * that "the completed ones are skipped after one stat() each, so successive
+ * boots reach further in" - which was wrong in the way that matters: one
+ * stat() each is precisely what the budget is spent on, so with no cursor
+ * every boot re-walked the same leading directories and nothing past that
+ * horizon was ever examined at all.
  */
 #define SWEEP_BUDGET_MS 3000
 
@@ -1068,6 +1073,44 @@ int storage_media_count_cached(void) {
   return storage_media_count();
 }
 
+/**
+ * How many capture directories the last sweep got through, kept across boots.
+ *
+ * Without this the budget above bought nothing. The comment on
+ * SWEEP_BUDGET_MS claimed "successive boots reach further in" because the
+ * completed ones are skipped after one stat() each - but one stat() each is
+ * exactly what the budget is spent on, so every boot re-examined the same
+ * leading directories and nothing past that horizon was ever looked at. On a
+ * card holding 1,540 captures the sweep saw the first few hundred, for ever.
+ * Orphans past the horizon were permanent.
+ *
+ * The same shape as rq_scan_skip() in roll_queue.c, which fixed this for the
+ * upload scan and was not carried over: skip what the last pass counted,
+ * work, then record where we stopped - and reset to the top when the pass
+ * reaches the end, so the next boot starts a fresh cycle.
+ *
+ * readdir() order is FatFs directory order, which is stable for a directory
+ * nothing is adding to. A capture written between two boots can shift an
+ * entry across the cursor and be skipped for one cycle; it is picked up on
+ * the next, and an orphan is not urgent. Losing a boot's worth of sweeping is
+ * the cost of not stat()ing 1,540 directories at every power-on.
+ */
+static uint32_t sweep_cursor_load(void) {
+  nvs_handle_t nvs;
+  uint32_t at = 0;
+  if (nvs_open("kino", NVS_READONLY, &nvs) != ESP_OK) return 0;
+  if (nvs_get_u32(nvs, "sweepat", &at) != ESP_OK) at = 0;
+  nvs_close(nvs);
+  return at;
+}
+
+static void sweep_cursor_store(uint32_t at) {
+  nvs_handle_t nvs;
+  if (nvs_open("kino", NVS_READWRITE, &nvs) != ESP_OK) return;
+  if (nvs_set_u32(nvs, "sweepat", at) == ESP_OK) nvs_commit(nvs);
+  nvs_close(nvs);
+}
+
 void storage_sweep_orphans(storage_sweep_t *out) {
   storage_sweep_t s = {0};
   if (out != NULL) *out = s;
@@ -1077,11 +1120,17 @@ void storage_sweep_orphans(storage_sweep_t *out) {
   if (d == NULL) return; /* no captures directory yet is not a fault */
 
   const int64_t deadline = esp_timer_get_time() + (int64_t)SWEEP_BUDGET_MS * 1000;
+  const uint32_t skip_to = sweep_cursor_load();
+  uint32_t seen = 0;
   int looked_at = 0;
   struct dirent *e;
   while ((e = readdir(d)) != NULL) {
     if (e->d_name[0] == '.') continue;
     if (!storage_is_capture_dirname(e->d_name)) continue;
+    /* Where the last boot stopped. Counted but not stat()ed - the whole point
+     * is that a directory the previous pass already answered for costs
+     * nothing this time. */
+    if (seen++ < skip_to) continue;
     /* Both bounds counted, not just hit: a sweep that stopped early used to
      * look exactly like a sweep that found nothing more, so the one card that
      * needed attention was the one the log said least about. */
@@ -1134,6 +1183,11 @@ void storage_sweep_orphans(storage_sweep_t *out) {
     }
   }
   closedir(d);
+
+  /* Where to start next time. Reaching the end closes the cycle and goes back
+   * to the top; stopping early records the position so the next boot begins
+   * there instead of re-walking what this one already answered for. */
+  sweep_cursor_store(s.skipped > 0 ? skip_to + (uint32_t)s.scanned : 0u);
 
   if (s.scanned > 0) {
     ESP_LOGI(TAG, "capture sweep: %d scanned, %d complete, %d removed, %d preserved, %d left",

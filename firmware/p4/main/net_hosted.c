@@ -832,8 +832,15 @@ static rr_t s_rr;
 static bool s_linked;                 /* bring-up or a recovery reached LINK_READY */
 static volatile bool s_loss_event;    /* transport failure event, or a bench reset */
 static volatile bool s_bench_loss;    /* a bench reset specifically; restarts a parked machine */
+/* An operator asked for the radio again (KDP network-set). Same effect as a
+ * bench reset on a parked machine, and unlike that one it is in every build. */
+static volatile bool s_retry_request;
 static int s_probe_failures;
 static int64_t s_next_probe_ms;
+
+/* See net_hosted.h. Sets the flag and returns; the recovery task acts on it on
+ * its next tick, so this never blocks the caller - which is a KDP handler. */
+void net_hosted_request_retry(void) { s_retry_request = true; }
 
 static void hosted_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   (void)arg;
@@ -1020,10 +1027,13 @@ static void supervisor_task(void *arg) {
          * fresh, explicit event - a transport failure, a bench reset - starts
          * another round; a link that is simply still down does not, or this
          * would be the reset loop that must not ship. */
-        if (!s_bench_loss) continue;
+        if (!s_bench_loss && !s_retry_request) continue;
+        const bool asked = s_retry_request;
         s_bench_loss = false;
+        s_retry_request = false;
         s_loss_event = false;
-        klog("C6", "bench reset while parked; recovering again");
+        klog("C6", asked ? "asked for the radio while parked; recovering again"
+                         : "bench reset while parked; recovering again");
         rr_link_lost(&s_rr, now);
         continue;
       }

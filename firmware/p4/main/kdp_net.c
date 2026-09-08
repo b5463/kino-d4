@@ -21,6 +21,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "klog.h"
+#include "net_hosted.h"
 #include "net_link.h"
 #include "pure.h"
 #include "roll_api.h"
@@ -337,6 +338,17 @@ kdp_net_reply_t kdp_net_set(const cJSON *req) {
   /* Deliberately no passphrase and no length in the log line. A length is
    * not nothing. */
   klog("P4", "wifi network saved: %s", ssid);
+
+  /* And un-park the recovery machine, which is the same fault one state
+   * further on than the WIFI_IDLE case described below. After RR_MAX_ATTEMPTS
+   * (or an auth failure after a recovery, or an incompatible C6) the machine
+   * parks and will not start another round on its own - correctly, because a
+   * link that is merely still down must not, or it becomes a reset loop. The
+   * escape was a flag only bench builds could set, so a shipped camera needed
+   * a power cycle. Saving credentials is an operator saying "join this
+   * network"; it counts as the explicit event the park rule asks for. A
+   * no-op in a default build and when nothing is parked. */
+  net_hosted_request_retry();
 
   /* Saving an auto-join network joins it. Until 0.4.23 a camera whose radio
    * sat in WIFI_IDLE for want of credentials stayed there after NETWORK_SET

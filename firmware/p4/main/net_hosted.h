@@ -88,6 +88,28 @@ void net_hosted_count_bytes(uint64_t rx, uint64_t tx);
  * Reported so a boot never silently claims recoverability it does not have. */
 bool net_hosted_recovery_ready(void);
 
+/**
+ * An operator has explicitly asked for the radio again. Un-parks it.
+ *
+ * After RR_MAX_ATTEMPTS, a post-recovery auth failure or an incompatible C6,
+ * the recovery machine parks and stays parked - deliberately, because a link
+ * that is merely still down must not start another round or this becomes the
+ * reset loop that must not ship. Photographs keep going to the card, so
+ * nothing is lost; but the ONLY escape was a flag set by a function compiled
+ * into bench builds alone, which meant a shipped camera needed a power cycle
+ * and no command could ask.
+ *
+ * This is the fresh, explicit event the park rule always wanted and had no
+ * general source for. It is a request, not a reset: it clears the park so the
+ * next tick may try again, and everything that bounds a recovery still
+ * bounds it.
+ *
+ * Called from the KDP network-set path, because supplying credentials is an
+ * operator saying "join this network" - and doing nothing with that until the
+ * next power cycle is the fault being reported.
+ */
+void net_hosted_request_retry(void);
+
 #else /* !KINO_RADIO */
 
 /* The default build. Inline so main.c needs no #ifdef and the call costs a
@@ -105,6 +127,9 @@ static inline void net_hosted_count_bytes(uint64_t rx, uint64_t tx) {
 }
 /* No radio, so no recovery to be ready for. */
 static inline bool net_hosted_recovery_ready(void) { return false; }
+/* Nothing to un-park. Inline for the same reason as the rest: the callers
+ * must read the same in both builds. */
+static inline void net_hosted_request_retry(void) {}
 
 #endif /* KINO_RADIO */
 

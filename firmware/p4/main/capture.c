@@ -1124,13 +1124,21 @@ static void sensor_settings_for(int cam, const char *mode, camlink_sensor_t *wan
         want->has_gain_ceiling = true;
         want->gain_ceiling = rc.gain_limit;
       }
+      /* Clamped on this path too, for the reason stated above the config
+       * defaults: `kdp_recipes.c` parses these straight out of the look's
+       * JSON as `(int)v` with no range check, and `recipe_rules.c` validates
+       * the key names and not the numbers - so an uploaded look could put an
+       * out-of-range value into an SCCB register write on four sensors, which
+       * is precisely what clamping the config path was meant to stop. Same
+       * bounds, same reason, and the same choice to clamp rather than refuse:
+       * a look with a wrong number still takes the photograph. */
       if (rc.has_denoise) {
         want->has_denoise = true;
-        want->denoise = rc.denoise;
+        want->denoise = clamp_int(rc.denoise, 0, 8);
       }
       if (rc.has_sharpness) {
         want->has_sharpness = true;
-        want->sharpness = rc.sharpness;
+        want->sharpness = clamp_int(rc.sharpness, -3, 3);
       }
     }
   }

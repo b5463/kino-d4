@@ -9,6 +9,7 @@
 #include "upload_store.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -290,12 +291,32 @@ int upload_store_meta_frames(const char *uuid, int max_slot, uint8_t *slots, int
   upload_store_path(uuid, "META.JSON", path, sizeof path);
   FILE *f = fopen(path, "rb");
   if (f == NULL) return UPLOAD_META_FRAMES_MALFORMED;
-  static char buf[META_READ_MAX];
-  const size_t n = fread(buf, 1, sizeof buf, f);
+  /* One buffer per call, not one static shared by every caller - the same
+   * reasoning as storage_file_crc32(). This was `static`, and it is shared
+   * with upload_store_meta_roll() below: one caller holds the card lock and
+   * the KDP path holds nothing, so a second fread can land between the
+   * first's fread and its parse. Torn JSON almost always fails to parse, so
+   * the likely cost is a capture not queued rather than a frame uploaded
+   * twice - but that is luck, not a guarantee.
+   *
+   * `malloc`, not `heap_caps_malloc`: this file is in the host test set and
+   * has to build with plain gcc. 4 KB per call, freed on every path.
+   *
+   * A full buffer is UNREADABLE rather than parsed, the same bound the roll
+   * reader states for itself - it landed there and not here, so a META that
+   * exactly filled the buffer was parsed from a truncated tail. */
+  char *buf = malloc(META_READ_MAX);
+  if (buf == NULL) return UPLOAD_META_FRAMES_MALFORMED;
+  const size_t n = fread(buf, 1, META_READ_MAX, f);
   const int io_err = ferror(f);
   fclose(f);
-  if (io_err || n == 0) return UPLOAD_META_FRAMES_MALFORMED;
-  return upload_store_meta_frames_from_text(buf, n, max_slot, slots, cap);
+  if (io_err || n == 0 || n == META_READ_MAX) {
+    free(buf);
+    return UPLOAD_META_FRAMES_MALFORMED;
+  }
+  const int result = upload_store_meta_frames_from_text(buf, n, max_slot, slots, cap);
+  free(buf);
+  return result;
 }
 
 static const char *meta_frames_reason(int err) {
@@ -422,12 +443,21 @@ upload_meta_roll_t upload_store_meta_roll(const char *uuid, char *out, size_t ca
    * bound or a streaming read, and it is now a reported condition instead of a
    * silent one.
    */
-  static char buf[META_READ_MAX];
-  const size_t n = fread(buf, 1, sizeof buf, f);
+  /* Per call, not shared. See upload_store_meta_frames() above: these two
+   * readers had one `static` buffer between them, taken under different
+   * locks. */
+  char *buf = malloc(META_READ_MAX);
+  if (buf == NULL) return UPLOAD_META_ROLL_UNREADABLE;
+  const size_t n = fread(buf, 1, META_READ_MAX, f);
   const int io_err = ferror(f);
   fclose(f);
-  if (io_err || n == 0 || n == sizeof buf) return UPLOAD_META_ROLL_UNREADABLE;
-  return upload_store_meta_roll_from_text(buf, n, out, cap);
+  if (io_err || n == 0 || n == META_READ_MAX) {
+    free(buf);
+    return UPLOAD_META_ROLL_UNREADABLE;
+  }
+  const int result = upload_store_meta_roll_from_text(buf, n, out, cap);
+  free(buf);
+  return result;
 }
 
 bool upload_store_meta_roll_id(const char *uuid, char *out, size_t cap) {
