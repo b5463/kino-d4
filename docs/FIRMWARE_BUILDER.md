@@ -27,7 +27,10 @@ daemon every 5 s and says plainly when it is offline.
    build** (`VERSION_DRIFT`); the only way past is the explicit
    skip-checks override, and the artifact then carries `checksRun: false`
    which the panel prints as `CHECKS SKIPPED`.
-2. `kdp host tests` — the 42-check framing contract suite under gcc.
+2. `kdp host tests` — the framing and protocol contract suite
+   (`firmware/components/kdp_core/host_tests/test_kdp.c`) under plain gcc. The
+   check count is not quoted here on purpose; it grows with the suite and the
+   runner prints it.
 3. `idf.py build (espressif/idf:v5.5.1)` — real output streamed to the panel:
    status, per-step elapsed time, warning/error counts, binary size,
    partition usage line, artifact path.

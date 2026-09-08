@@ -118,7 +118,11 @@ Load mode uses the same upload path and can add concurrent, fully paginated gues
 npm run test:uploader -- --base-url https://staging.kino.acronym.sk --serial KD4-LOAD-0001 --captures 4 --viewers 24 --viewer-polls 2
 ```
 
-The default mutation budget is 60 requests per minute per device token; one four-frame capture uses about 14 mutations. For a hundreds-of-captures endurance run, pace one camera with `--slow 1s` or run multiple physically distinct test-device credentials. Do not weaken the production budget merely to make a benchmark finish sooner.
+The upload budget is 120 requests per minute per device token **per route** for a registered camera (`deviceUpload` in `apps/api/src/plugins/rateLimits.ts`; 60 is only the fallback for a bearer the `devices` table does not know). The counter is keyed by method and route pattern, so the five upload routes each carry their own 120 and the budgets are not pooled. One four-frame capture spends seventeen mutations — 1 capture create, 5 `assets/init`, 5 part `PUT`, 5 upload complete, 1 capture complete — so the busiest route is 5 per capture and the sustained ceiling is 24 captures a minute, one every 2.5 s.
+
+For a hundreds-of-captures endurance run, pace one camera with `--slow 1s` or run multiple physically distinct test-device credentials. Do not weaken the production budget merely to make a benchmark finish sooner.
+
+`--concurrency N` runs N captures in flight at once (default 1, clamped to `--captures`). It multiplies the per-route spend, so raise it only when you are measuring the limiter itself. `--title TEXT` names the Roll the run creates; the default is `KINO uploader acceptance`, so set it when a staging run has to be findable afterwards on the host dashboard.
 
 Run `npm run test:uploader -- --help` for fixture, timeout, and pacing options. Production registration is first-write-wins, so reuse `KINO_DEVICE_ID` and `KINO_DEVICE_TOKEN` after the initial physically controlled registration instead of attempting to register the serial again.
 

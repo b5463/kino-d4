@@ -15,7 +15,7 @@ SSE was chosen over WebSocket deliberately: delivery is one-way, proxies and pho
 | Event | Emitted when |
 |---|---|
 | `capture.created` | Capture document inserted (`device-captures.ts`) |
-| `capture.updated` | Capture completed, or any asset upload completed — this is the progressive-asset signal |
+| `capture.updated` | **"Re-fetch this capture."** Four writers, not one: capture completed, any asset upload completed (`device-captures.ts`), a host **unhide**, and a host **restore** out of the trash (`host-captures.ts`). It is the progressive-asset signal *and* the reappearance signal, deliberately — to a guest, an asset arriving and a capture coming back are the same instruction, and the event union carries ids only (05§10), so a `capture.unhidden` or `capture.restored` verb would buy the PWA nothing. A client that re-fetches only the asset list on this event misses both reappearances |
 | `processing.completed {captureId, role}` | Worker finished one derivative |
 | `capture.hidden` / `capture.deleted` | Host moderation; guests' feeds react live |
 | `roll.opened` / `roll.closed` | Host lifecycle |

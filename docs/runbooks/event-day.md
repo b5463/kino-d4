@@ -559,13 +559,26 @@ Two things to know when reading a run against this:
 - The local baseline has a Vite dev proxy in the path that production does not.
   It buffers nothing measurable, so it does not weaken the comparison, but it is
   a hop and it is in the number.
-- At `--interval 3000` the driver trips the device upload rate limit
-  (`deviceUpload`, 60 requests per minute per device) part-way through, and some
-  captures fail to upload their frames. Those failures are printed separately
-  and deliberately left out of the verdict: the capture row and its
-  `capture.created` event exist either way, which is what is being measured.
-  `--interval 15000` was measured to stay under it; use that for a run where
-  every upload should also succeed.
+- At `--interval 3000` the driver tripped the device upload rate limit part-way
+  through when that run was recorded, and some captures failed to upload their
+  frames. Those failures are printed separately and deliberately left out of the
+  verdict: the capture row and its `capture.created` event exist either way,
+  which is what is being measured.
+
+  The budget has since changed. `deviceUpload` is **120 per minute per route**
+  for a registered camera (`apps/api/src/plugins/rateLimits.ts`; 60 is only the
+  fallback for a bearer the `devices` table does not know), the counter is per
+  route rather than pooled, and the busiest route is 5 calls per capture — so the
+  ceiling is 24 captures a minute. `--interval 3000` is 20 a minute and now sits
+  under it; the recorded 3000 ms failures belong to the old 60 budget and should
+  not reproduce. That has not been re-measured, so the numbers in the table above
+  stand as they were taken.
+
+  `--interval 15000` stays the flag to use for a run where every upload must also
+  succeed. Not because it is the only interval under the limit any more — it is
+  4 a minute against a ceiling of 24 — but because it is the interval the
+  committed baseline in `test-results/sse-latency/` was measured at, and a
+  buffering verdict is a comparison against that baseline.
 
 ### Reading a tunnel run
 

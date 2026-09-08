@@ -41,27 +41,51 @@ Every hardware design change needs a numbered ECN under `hardware/changes/`. The
 
 ## Firmware
 
-The D4 firmware (`firmware/`) carries one semantic version in `firmware/VERSION`, shared by the P4 and camera-node images — the nodes run the same binary and a release ships both targets together in one `kino.firmware-manifest`. `versions.json` records it and `npm run version:check` also verifies that `KDP_PROTOCOL_VERSION` in the firmware's `protocol.h` matches the TypeScript source. Before `1.0.0` the firmware is pre-release; a release additionally requires the bench record in `firmware/HARDWARE_VALIDATION.md` to back what the images claim to support.
+The D4 firmware (`firmware/`) carries one semantic version in `firmware/VERSION`, shared by the P4 and camera-node images — the nodes run the same binary and a release ships both targets together in one `kino.firmware-manifest`. Before `1.0.0` the firmware is pre-release; a release additionally requires the bench record in `firmware/HARDWARE_VALIDATION.md` to back what the images claim to support.
+
+**A firmware bump touches four files, and `npm run version:check` fails on any one of them:**
+
+| File | What the check asserts |
+|---|---|
+| `firmware/VERSION` | The version itself, and that it is semver |
+| `versions.json` (`firmware.version`) | Equal to `firmware/VERSION` |
+| `firmware/components/kdp_core/include/kdp/protocol.h` | `KDP_PROTOCOL_VERSION` matches `versions.json`, and every `KDP_CMD_*`/`KDP_EVT_*` name and value matches `packages/kdp/src/protocol/commands.ts` in both directions |
+| `packages/test-fixtures/src/firmwareProfiles.ts` | `PROFILE_FOR_VERSION` has an entry for the new version. The Twin emulates "current firmware" through that map, so a bump without an entry silently makes the Twin model an older device (#90) |
+
+The fourth is the one that surprises people: the change sequence below has no step that names it, and `version:check` reports it at step 5 as `PROFILE_FOR_VERSION has no entry for firmware <x.y.z>`. A release that adds no KDP command and no capability maps onto the existing profile — see [`TWIN_FIRMWARE_MODEL.md`](TWIN_FIRMWARE_MODEL.md) for which — so the entry is usually one line.
+
+`npm run version:check -- --firmware` scopes the run to exactly these four plus the protocol records, which is the gate the build daemon uses; unrelated backend drift must not block a firmware build.
 
 ## Tags
 
+Every tag form is the `tagPrefix` of an entry in [`versions.json`](../versions.json), which is what `scripts/check-versions.mjs` reads. All sixteen are listed here; do not invent one for a surface that is missing from this table — add it to `versions.json` first.
+
 | Surface | Tag form | Example |
 |---|---|---|
-| Workspace snapshot | `kino-v<VERSION>` | `kino-v0.1.0` |
-| Studio | `kino-studio-v<VERSION>` | `kino-studio-v0.9.0` |
-| API | `kino-api-v<VERSION>` | `kino-api-v0.1.0` |
-| KDP package | `kino-kdp-v<VERSION>` | `kino-kdp-v0.1.0` |
-| Schemas package | `kino-schemas-v<VERSION>` | `kino-schemas-v0.1.0` |
-| D4 hardware package | `kino-d4-hw-v<VERSION>` | `kino-d4-hw-v0.1.0` |
-| D4 firmware | `kino-fw-v<VERSION>` | `kino-fw-v0.1.0` |
+| Workspace snapshot | `kino-v<VERSION>` | `kino-v0.1.1` |
+| Studio | `kino-studio-v<VERSION>` | `kino-studio-v0.9.1` |
+| Twin | `kino-twin-v<VERSION>` | `kino-twin-v0.1.0` |
+| API | `kino-api-v<VERSION>` | `kino-api-v0.3.0` |
+| Worker | `kino-worker-v<VERSION>` | `kino-worker-v0.2.0` |
+| Guest PWA (roll-web) | `kino-roll-web-v<VERSION>` | `kino-roll-web-v0.6.0` |
+| KDP package | `kino-kdp-v<VERSION>` | `kino-kdp-v0.2.0` |
+| Media package | `kino-media-v<VERSION>` | `kino-media-v0.1.0` |
+| Hardware-profiles package | `kino-hardware-profiles-v<VERSION>` | `kino-hardware-profiles-v0.1.1` |
+| Schemas package | `kino-schemas-v<VERSION>` | `kino-schemas-v0.2.0` |
+| Simulator-engine package | `kino-simulator-engine-v<VERSION>` | `kino-simulator-engine-v0.1.0` |
+| Test-fixtures package | `kino-test-fixtures-v<VERSION>` | `kino-test-fixtures-v0.1.0` |
+| Three-assets package | `kino-three-assets-v<VERSION>` | `kino-three-assets-v0.1.0` |
+| Design-system package | `kino-design-system-v<VERSION>` | `kino-design-system-v0.1.0` |
+| D4 firmware | `kino-fw-v<VERSION>` | `kino-fw-v0.4.53` |
+| D4 hardware package | `kino-d4-hw-v<VERSION>` | `kino-d4-hw-v0.1.4` |
 
 Tags are annotated and point to the commit containing the matching manifests and changelogs. A tag does not replace a GitHub release or its checksums.
 
 ## Change sequence
 
 1. Write the code change or hardware ECN.
-2. Update the owning source version.
+2. Update the owning source version — and its `package-lock.json` entry for a workspace package, which `version:check` compares too.
 3. Update `versions.json` and the relevant changelog.
-4. Update compatibility documentation.
+4. Update compatibility documentation. On a **firmware** bump this includes `PROFILE_FOR_VERSION` in `packages/test-fixtures/src/firmwareProfiles.ts` — see the four files under [Firmware](#firmware).
 5. Run `npm run version:check`, tests, lint, and build.
-6. Tag only the reviewed release commit.
+6. Tag only the reviewed release commit, using the form from the table above.

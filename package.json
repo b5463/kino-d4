@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.1.1",
   "license": "SEE LICENSE IN LICENSE",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
@@ -16,6 +19,13 @@
     "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
     "test:uploader": "tsx infra/scripts/test-uploader.ts",
     "party:sim": "tsx infra/scripts/party-sim.ts",
+    "sse:latency": "tsx infra/scripts/sse-latency.ts",
+    "bench": "tsx scripts/kino-bench.mjs",
+    "bench:conformance": "tsx scripts/kino-conformance.mjs",
+    "bench:console": "tsx scripts/kino-console.mjs",
+    "bench:pull": "tsx scripts/kino-pull.mjs",
+    "bench:sound": "tsx scripts/kino-sound-bench.mjs",
+    "bench:skew": "node scripts/skew-stats.mjs",
     "project": "node scripts/kino-project.mjs",
     "preview:all": "node scripts/preview-all.mjs",
     "dev:all": "node scripts/dev-all.mjs",
@@ -23,7 +33,19 @@
     "test:acceptance": "playwright test",
     "release": "node scripts/release.mjs"
   },
-  "devDependencies": { "@playwright/test": "^1.62.1", "serialport": "^13.0.0", "tsx": "^4.21.0", "ws": "^8.19.0" },
-  "optionalDependencies": { "@rollup/rollup-linux-x64-gnu": "4.62.4" },
-  "engines": { "node": ">=22" }
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "manifold-3d": "^3.5.1",
+    "occt-import-js": "^0.0.23",
+    "serialport": "^13.0.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.19.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.62.4"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@10.9.8"
 }

@@ -36,7 +36,13 @@ export default defineConfig({
   webServer: {
     command: 'npm run preview:all',
     url: `http://localhost:${PORT}/dev/twin/`,
-    reuseExistingServer: true,
+    // Never attach to a server this run did not start. It was `true`, and on a
+    // machine with two checkouts that meant the second run silently drove the
+    // first checkout's `dist/` and produced a pass belonging to neither tree.
+    // The spec asserts against the current build, so a stale server is not a
+    // shortcut — it is a wrong answer. With `false`, a port already in use
+    // fails the run immediately, which is the report you want.
+    reuseExistingServer: false,
     timeout: 120_000,
     env: { PORT: String(PORT) },
   },

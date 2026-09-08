@@ -238,6 +238,10 @@ A firmware release should also contain a manifest, target identifiers, size, SHA
 
 The build daemon emits one single-target manifest per build (`firmware/<app>/build/kino-<app>-manifest.json`); assemble the publishable package by copying both `.bin` files into a directory and merging the two manifests' `targets` maps into one `manifest.json`. Connection settings come from the same environment variables as the API (`DATABASE_URL`, `S3_*`).
 
+## After publishing
+
+Six steps, and they belong to the release as a whole — not to the firmware catalog upload above. They lost their heading at some point and sat unlabelled under it, which handed the operator publishing firmware a Studio acceptance list and left the real post-release checklist with nothing to link to.
+
 - Install the published Studio bundle in a clean browser profile.
 - Exercise KINO Twin and one physical camera if hardware support is claimed.
 - Verify the API health route and a complete upload against the target environment.

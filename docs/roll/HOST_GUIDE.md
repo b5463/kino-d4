@@ -2,7 +2,7 @@
 
 For the person throwing the party. Start to finish, in the order the evening happens.
 
-This describes what the software does today. Where it does not do something, the sentence says so. Behaviour marked **(unverified)** is described from the change contract for this branch and was not read back out of the code at the time of writing.
+This describes what the software does today. Where it does not do something, the sentence says so. Every behaviour below has been read back out of the code; the file names in brackets are where.
 
 ---
 
@@ -51,9 +51,9 @@ If you lose it, the roll keeps running and guests keep seeing photographs. You l
 
 So, before you do anything else: copy it out of the browser and paste it somewhere that survives the evening. A note on your own phone, a password manager entry, a message to yourself. Not just the open browser tab.
 
-The dashboard has a **copy host link** button for exactly this. **(unverified — described from this branch's change contract; not read back out of `apps/roll-web` at the time of writing.)**
+The dashboard has a **copy host link** button for exactly this (`apps/roll-web/src/components/host/HostLink.tsx`).
 
-There is also an optional **keep me signed in on this device** on the dashboard. Turning it on stores the token in that browser so a reload does not lock you out. It is a convenience on *that* device only; it is not a backup of the token, and it is not a way to get the token back if you never copied it. **(unverified — same reason.)**
+There is also an optional **keep me signed in on this device** on the dashboard. Turning it on stores the token in that browser so a reload does not lock you out. It is a convenience on *that* device only; it is not a backup of the token, and it is not a way to get the token back if you never copied it.
 
 ---
 
@@ -78,7 +78,7 @@ Four routes in, all equivalent:
 | Route | What the guest does |
 |---|---|
 | Camera screen | Scans the QR block on the D4's ROLL screen, under **SCAN TO JOIN**. If the join URL is too long to encode, the camera shows the six-character code large instead, with "Enter this code to join". |
-| Printed card | Scans the QR on a card you printed from the dashboard. **(unverified — printable QR card is from this branch's change contract.)** |
+| Printed card | Scans the QR on a card you printed from the dashboard (`apps/roll-web/src/components/host/QrCard.tsx`). |
 | TV display | Scans from a screen showing `/r/<CODE>/display` — the display page, meant for a television or a projector, which also shows photographs as they land. |
 | Typing | Goes to the site root and types the six characters into the roll-code box. |
 
@@ -126,7 +126,7 @@ Under the connection word, the card count as one big number, then at most three 
 
 ### The dashboard — the truth about the server
 
-Capture counts, live guest count, the moderation list, and a camera panel showing each joined camera: when it was last heard from, and how much it still owes. A camera that has joined but never sent a heartbeat shows as never heard from rather than as zero pending — those are different facts and the panel keeps them different. **(unverified — the camera panel and its heartbeat source are from this branch's change contract.)**
+Capture counts, live guest count, the moderation list, and a camera panel showing each joined camera: when it was last heard from, and how much it still owes. A camera that has joined but never sent a heartbeat shows as never heard from rather than as zero pending — those are different facts and the panel keeps them different (`apps/roll-web/src/components/host/CameraPanel.tsx`).
 
 ### Which to trust for what
 
@@ -145,7 +145,7 @@ Two different actions on the dashboard, and they are not the same:
 
 **Hide.** The photograph stops appearing to guests. Nothing is deleted. Unhide puts it straight back. Use this for the ordinary case: someone's eyes shut, a bad frame, a photo the subject asked you to take down for now.
 
-**Trash.** The photograph goes into the trash and stops appearing to guests. The bytes are *not* removed immediately: they survive a grace period of **7 days**, and the dashboard shows each trashed capture with the date its bytes will actually go. Within that window, **restore** brings the capture back intact. **(unverified — the restore control and `POST /api/host/captures/:captureId/restore` are from this branch's change contract; `docs/roll/ROLL_DEVICE_CONTRACT.md` and the moderation code confirm the 7-day grace and the trash state, not the restore route.)**
+**Trash.** The photograph goes into the trash and stops appearing to guests. The bytes are *not* removed immediately: they survive a grace period of **7 days**, and the dashboard shows each trashed capture with the date its bytes will actually go. Within that window, **restore** brings the capture back intact. The control is on the dashboard and it calls `POST /api/host/captures/:captureId/restore` (`apps/api/src/routes/host-captures.ts`). A trashed photograph is recoverable for those 7 days — do not treat one as lost.
 
 After the 7 days a purge job removes the objects. There is no undo past that point.
 
@@ -171,13 +171,13 @@ From closed you can reopen (back to live) or archive. **Archive is terminal** �
 
 Export gives you one ZIP of the whole roll: every original frame of every capture.
 
-**Size.** Ask the dashboard for the size estimate before you start. A 300-capture party is on the order of four gigabytes. **(unverified — `GET /api/host/rolls/:rollId/export/estimate` and the dashboard estimate are from this branch's change contract.)**
+**Size.** Ask the dashboard for the size estimate before you start. A 300-capture party is on the order of four gigabytes. The dashboard reads `GET /api/host/rolls/:rollId/export/estimate` (`apps/api/src/routes/host-export.ts`).
 
 **It is prepared once.** Starting an export queues a background job. While that job is running, asking again joins the same job rather than starting a second one. When it finishes, the dashboard gives you a download.
 
 **Re-exporting makes another copy.** Once an export has finished, a new export request is a new job and a new ZIP, built from the roll as it is *now* — so a photograph you trashed between the two exports is in the first ZIP and not the second. Each ZIP occupies storage on the server.
 
-**Where it goes.** The dashboard hands you a download link. In production the bytes come back through the API rather than from an internal storage URL, so the link works from outside the server's network. The signed link is good for 24 hours; after that, ask the dashboard for the export again. **(unverified — the proxied production download is from this branch's change contract; the 24-hour signed-URL lifetime is read from `apps/api/src/exports/exports.ts`.)**
+**Where it goes.** The dashboard hands you a download link. In production the bytes come back through the API rather than from an internal storage URL, so the link works from outside the server's network. The signed link is good for 24 hours; after that, ask the dashboard for the export again. Production runs `OBJECT_DELIVERY=proxy`, which is what routes the bytes through the API (`apps/api/src/routes/host-export.ts`, `apps/api/src/exports/exports.ts`).
 
 Turning off guest downloads does not lock *you* out of your own export.
 

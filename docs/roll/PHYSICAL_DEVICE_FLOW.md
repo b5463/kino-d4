@@ -122,25 +122,37 @@ carried across a simulated reboot, then drained — each registers exactly once.
 ## Retry, and the 422 that needed reconciling
 
 Backoff is 1 s doubling to a 30 s cap, bounded, then the job parks. Responses
-classify four ways:
+classify **five** ways — `rq_classify_response()` in
+`firmware/p4/main/roll_queue.c` is the reference, and it reads the error `code`
+out of the body because two 409s mean opposite things:
 
-| Response | Action |
-|---|---|
-| network error, timeout, 5xx, 429, 409 | retry with backoff |
-| 422 `CHECKSUM_MISMATCH` | re-read the file from the card, bounded, then park |
-| 400, 404, 413 | park this job; the queue continues |
-| 401, 403 | **halt the queue** and surface it |
+| Response | Action | Bound |
+|---|---|---|
+| no response at all (DNS, TLS, connect, timeout, link loss), 5xx, 429, and every 409 **except** `UPLOAD_NOT_OPEN` | retry the same bytes after backoff | `RQ_MAX_ATTEMPTS` (12) consecutive failures, then park |
+| 409 `UPLOAD_NOT_OPEN` | **re-init the asset at once, with no backoff** | `RQ_MAX_REREADS` (2), then park |
+| any 422 — `CHECKSUM_MISMATCH` and `SIZE_MISMATCH` | re-read the file from the card and run the asset again from `init` | `RQ_MAX_REREADS` (2), then park |
+| 400, 404, 413, 415, any other 4xx | park this job; the queue continues | — |
+| 401, 403 | **halt the queue** and surface it | — |
 
 401/403 halt rather than park because they fail every job identically —
 parking them one at a time walks the whole queue into FAILED for a fault the
 user can fix. A halted job keeps its progress and resumes untouched.
 
-The contract states 422 twice and the two statements have to be reconciled:
-its queue section groups 422 with the drop statuses ("do not retry the same
-bytes"), and its error table says "re-read the file from SD and re-upload".
-Both hold — the prohibition is on the *same bytes*, and a re-read is a fresh
-read, which is the one thing that can fix a checksum mismatch. So 422 is a
-bounded re-read that parks rather than loops.
+`UPLOAD_NOT_OPEN` is not a retry and must not inherit backoff. The session the
+camera holds is `complete`, `aborted`, or its storage-side multipart was swept
+after 24 hours, so repeating the step earns the same 409 forever. Nothing here
+is congestion. It shares `RQ_MAX_REREADS` with the re-read row — both mean "run
+this asset again from the beginning" — and does not touch the network attempt
+counter. Until firmware 0.4.51 it was a plain retry, and a job burned all 12
+attempts on a dead upload id before parking.
+
+The re-read row is likewise not a network failure and does not touch
+`RQ_MAX_ATTEMPTS`. The contract states 422 twice and the two statements
+reconcile: its queue section groups 422 with the drop statuses ("do not retry
+the same bytes"), and its error table says "re-read the file from SD and
+re-upload". Both hold — the prohibition is on the *same bytes*, and a re-read is
+a fresh read, which is the one thing that can fix a mismatch the server measured
+against the **stored** object.
 
 ## Photography wins
 
@@ -154,7 +166,13 @@ card during a four-camera transfer competes for the SDMMC bus the capture's
 timing budget depends on. Yielding costs an upload a few seconds. Not yielding
 costs frames.
 
-Gate F is the measurement that has to confirm this, and it has not been run.
+Gate F is the measurement that confirms this, and it has been run on the one
+camera attached: 0.4.6, capture timing and CRC unchanged within noise with the
+radio idle, uploading, draining a backlog and recovering, and every accepted
+photograph byte-identical on the card, in the object store and in the database —
+**GATE F GO for the connected single-camera path**
+(`firmware/HARDWARE_VALIDATION.md`). The four-camera case, the radio-off baseline
+and current draw are still unmeasured.
 
 ## What exists
 
@@ -162,17 +180,37 @@ Gate F is the measurement that has to confirm this, and it has not been run.
 |---|---|
 | Roll API, database, storage, worker, SSE, guest PWA | **shipped** — issues #7, #8, #9, #10, #20, #21, #114 |
 | Twin bridge implementing this contract in the browser | **shipped** — `apps/twin/src/roll/bridge.ts` |
-| Studio Network / Roll / upload-queue panels | **shipped** — gated on capability flags the firmware does not yet set |
-| `roll_queue` decisions | **CODE DONE**, host-tested |
-| `upload_queue` durability and reconciliation | **CODE DONE** |
-| `roll_state` membership persistence | **CODE DONE** |
-| Wi-Fi credential store | **CODE DONE** |
-| `NETWORK_*` / `ROLL_*` / `UPLOAD_*` KDP surface | **CODE DONE** |
-| D4 radio and Roll screens | **CODE DONE** |
-| C6 slave image | see [`../../firmware/c6/README.md`](../../firmware/c6/README.md) |
-| **P4 to C6 transport** | **BLOCKED** — routing unknown, see [`../../firmware/C6_HARDWARE_MAP.md`](../../firmware/C6_HARDWARE_MAP.md) |
-| **HTTP/TLS client** | **seam only** — blocked on the transport |
-| **Any upload from real hardware** | **has never happened** |
+| Studio Network / Roll / upload-queue panels | **shipped**. The Roll and Network pages are still gated on `network`, `roll` and `rollUpload`, which the firmware reports **false on purpose** — see below |
+| `roll_queue` decisions | **shipped**, host-tested and run on hardware |
+| `upload_queue` durability and reconciliation | **shipped** — two defects that parked good photographs were found on the bench and fixed |
+| `roll_state` membership persistence | **shipped** — survives reboot |
+| Wi-Fi credential store | **shipped** |
+| `NETWORK_*` / `ROLL_*` / `UPLOAD_*` KDP surface | **shipped** — all handlers dispatch |
+| C6 slave image | **flashed and run.** Pinned ESP-Hosted 3.0.6 on `KD4-D121BC`, 2026-08-29; `C6_SLAVE_VERSION` VALIDATED. See [`../../firmware/c6/README.md`](../../firmware/c6/README.md) |
+| **P4 to C6 transport** | **works.** SDIO slot 1, host version gate passes. It recovers from a C6 reset without a P4 reboot as of 0.4.6 — five times in a row, and under a pending upload |
+| **HTTP/TLS client** | **works.** `C6_TLS` earned, and the queue drains over it |
+| **Any upload from real hardware** | **has happened.** 0.4.4 is the first firmware whose photographs reached a Roll: capture, thumbnail-first upload, byte-identical original, worker jobs settled, one row per photograph. 0.4.6 closed the local Roll gate — **LOCAL ROLL E2E GO** — and measured **GATE F GO for the connected single-camera path** |
+
+Everything above is recorded in
+[`../../firmware/HARDWARE_VALIDATION.md`](../../firmware/HARDWARE_VALIDATION.md)
+against an observed event on a named unit, not inferred from code. What is
+**still unmeasured**: the four-camera Gate F case, the radio-off baseline, and
+current draw.
+
+The one thing in this table that still reads like a gap is the capability flags,
+and it is deliberate rather than stale. The body now reports true for every flag
+whose handler answers for real — `wiggle`, `quad`, `gallery`, `mediaIndex`,
+`flashControl`, `benchDiagnostics`, `configStore`, `powerManagement`,
+`radioFitted`, plus `recipes` and `customSounds` off their own module predicates
+(`handle_capabilities` in `firmware/p4/main/kdp_server.c`) — and holds `network`,
+`roll` and `rollUpload` at **false** — Studio's `supports()` is fail-closed, so
+setting them true renders the Roll and Network pages and issues commands that
+must then refuse, which is a broken panel instead of an absent one (#133). What
+the handlers being present buys meanwhile is a specific `NETWORK_UNAVAILABLE`
+naming the radio state instead of an `UNSUPPORTED_COMMAND` that cannot tell an
+unimplemented command from an unrouted chip. `rollUpload` goes true when a
+capture reaches a Roll from a body with these flags read as permission, not
+before.
 
 Nothing on the server side needed changing. The device contract was written
 against a working implementation — the Twin bridge and
@@ -197,9 +235,11 @@ The camera then:
 - queues every capture durably against that Roll,
 - reports the backlog in `UPLOAD_QUEUE_STATUS` and on the display.
 
-A guest can scan the camera's screen and open the Roll. What waits for the
-transport is only the upload itself — so when the radio does come up, the
-backlog drains into a Roll that already exists and already has guests on it.
+A guest can scan the camera's screen and open the Roll. This path is worth
+keeping now that the radio works: the default P4 build links no radio, so on a
+body without the radio route this is the whole provisioning story, and the
+backlog it accumulates drains into a Roll that already exists and already has
+guests on it the moment a radio build is flashed.
 
 ## The acceptance test this is aimed at
 

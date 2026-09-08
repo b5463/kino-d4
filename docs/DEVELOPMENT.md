@@ -87,7 +87,7 @@ npm run dev -w @kino/twin       # twin on :5174, /api proxied to :3000
 npm run dev -w @kino/studio     # studio on :5175, /api proxied to :3000
 ```
 
-Built bundles: `npm run preview:all` serves `apps/studio/dist` and `apps/twin/dist` on :4400 and proxies `/api` to :3000 (`KINO_API_URL` overrides). It binds `127.0.0.1`; to open it from a phone on the same network, set `HOST=0.0.0.0` — that also exposes the proxied API, so do it on a network you trust. Load and liveness tooling: `npm run party:sim` (see `docs/roll/ROLL_PARTY_LOAD_TEST.md` — mind the 60/min device rate limit) and `npm run test:uploader`. The full Twin→Roll walkthrough is `docs/roll/ROLL_TWIN_INTEGRATION.md`.
+Built bundles: `npm run preview:all` serves `apps/studio/dist` and `apps/twin/dist` on :4400 and proxies `/api` to :3000 (`KINO_API_URL` overrides). It binds `127.0.0.1`; to open it from a phone on the same network, set `HOST=0.0.0.0` — that also exposes the proxied API, so do it on a network you trust. Load and liveness tooling: `npm run party:sim` (see `docs/roll/ROLL_PARTY_LOAD_TEST.md` — the device upload budget is 120/minute **per route**, 5 calls per capture, so 24 captures a minute) and `npm run test:uploader`. The full Twin→Roll walkthrough is `docs/roll/ROLL_TWIN_INTEGRATION.md`.
 
 Stop the services and keep data:
 
@@ -129,6 +129,26 @@ npm ci --ignore-scripts
 Both variables are read at render time, so a blank value falls back to the bundled
 build rather than failing.
 
+## Tests, and two ways two runs destroy each other
+
+`npm test` runs every workspace suite. Two of them are not safe to run twice at once on one machine.
+
+**The API database suite takes a fixed database name.** `apps/api/tests/db.test.ts` uses `kino_test` and starts with `drop database ... with (force)`, which terminates whatever is connected — so a second run kills the first run's connections mid-suite and both report failures that have nothing to do with the code. `apps/api/tests/auth.test.ts` shows the fix: it namespaces its database with `randomBytes(4)`. Until the db suite does the same, run one at a time, or point the second run at its own Postgres.
+
+**The acceptance walk serves a build.** `playwright.config.ts` starts `npm run preview:all` on port 4401. `reuseExistingServer` is now `false`, so a second run fails immediately on the busy port instead of silently driving the first checkout's `dist/` and reporting a pass that belongs to neither tree. Run `npm run build` first; the spec drives real KDP against the current build.
+
+`apps/prusa-print-98`'s `test` script is `python -m unittest discover`, so a bare root `npm test` needs Python on PATH.
+
+## Searching the firmware tree
+
+Stale ESP-IDF build trees sit under `firmware/p4/` (`build/`, `build-428/`, `build-428-radio/`, `build-1471/`, `build-1471-radio/`). They are gitignored and untracked, but they hold `.elf`, `.a` and `.obj` files in which every KDP command name survives as a debug symbol — so an unfiltered `grep` for a command name returns a floor of about 25 hits and an unimplemented command reads as implemented.
+
+Scope every search to source:
+
+```bash
+grep -rn --include=*.c --include=*.h STORAGE_BENCH firmware/
+```
+
 ## Protocol changes
 
 Change a KDP behavior in this order:
@@ -167,20 +187,46 @@ Firmware behavior implements [`firmware-contract/`](../firmware-contract/README.
 
 ## Bench tools
 
-Both talk KDP over a serial port from a terminal, on the framing and protocol client `packages/kdp` gives Studio — no browser, no Web Serial, no clicking. `KINO_PORT` is the fallback for `--port`.
+Six tools under `scripts/`, each with a root npm script. Most talk KDP over a serial port from a terminal, on the framing and protocol client `packages/kdp` gives Studio — no browser, no Web Serial, no clicking. `KINO_PORT` is the fallback for `--port`.
+
+| Script | Tool | What it is for |
+|---|---|---|
+| `npm run bench` | `scripts/kino-bench.mjs` | Send any JSON-bodied command; `--sanity` runs the ordered link check |
+| `npm run bench:conformance` | `scripts/kino-conformance.mjs` | The 32-case protocol conformance suite against real hardware |
+| `npm run bench:console` | `scripts/kino-console.mjs` | Plain serial console for a camera node's ESP_LOG boot text (nodes do not speak KDP) |
+| `npm run bench:pull` | `scripts/kino-pull.mjs` | Pull one file out of a capture over `MEDIA_READ` so you can look at the pixels |
+| `npm run bench:sound` | `scripts/kino-sound-bench.mjs` | Custom-sound upload/read/delete — `SOUND_CHUNK` has a binary body `bench` cannot send |
+| `npm run bench:skew` | `scripts/skew-stats.mjs` | Inter-camera **exposure**-skew statistics from hand-entered CSV (M2 measurement) |
+
+Opening a node's own port reboots that node, so `bench:console` is a bring-up instrument, not a monitor for a running rig — diagnose a live camera through the P4 instead.
+
+`bench:skew` is arithmetic only, and deliberately so: its input is a human reading a photographed millisecond timing reference. Never feed it `dispatchSpreadUs`, which measures when the P4 put four commands on four UARTs and has no established relationship to when light reached a sensor.
 
 ```bash
 # One command, or the ordered link check (§7 of the M1 runbook).
-npx tsx scripts/kino-bench.mjs --port COM8 GET_DEVICE_INFO
-npx tsx scripts/kino-bench.mjs --port COM8 --sanity
+npm run bench -- --port COM8 GET_DEVICE_INFO
+npm run bench -- --port COM8 --sanity
+
+# A node's boot log: sensor model, PID, SCCB address, PSRAM, READY.
+npm run bench:console -- --port COM6 --seconds 20
+
+# One frame off the card, to tell a corrupt frame from one rendered wrongly.
+npm run bench:pull -- --port COM8 --id <uuid> --file C1.JPG --out shot.jpg
+
+# Custom sounds. `-` in place of a file generates a 300 ms 880 Hz sine.
+npm run bench:sound -- --port COM8 list
+npm run bench:sound -- --port COM8 upload - snd-tone "880 Hz"
+
+# Exposure skew, max(cameras) - min(cameras) per capture, in ms.
+npm run bench:skew -- measurements.csv
 
 # The 32-case protocol conformance suite — the same cases Studio's DEVELOPER
 # panel runs, imported rather than reimplemented. 8 of the 32 are ACTIVE: they
 # take real photographs, write config, and enter maintenance. Firmware and
 # serial are printed at the top so a pasted run identifies itself.
-npx tsx scripts/kino-conformance.mjs --port COM8
-npx tsx scripts/kino-conformance.mjs --port COM8 --passive          # read-only 24
-npx tsx scripts/kino-conformance.mjs --port COM8 --json bench.json  # machine record
+npm run bench:conformance -- --port COM8
+npm run bench:conformance -- --port COM8 --passive          # read-only 24
+npm run bench:conformance -- --port COM8 --json bench.json  # machine record
 ```
 
 Exit status is 0 only when every reported case is `pass` or `skipped`, so the run belongs in a bench record verbatim. Per-command timeouts are the protocol client's; `--timeout` is a watchdog over the whole run.
