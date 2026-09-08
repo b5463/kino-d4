@@ -1196,6 +1196,87 @@ static void test_sync_classify(void) {
   CHECK(strcmp(pure_sync_class_name(99), "none") == 0, "unknown class reads as none");
 }
 
+/* ------------------------------------------------------------------ */
+/* Lens cover                                                          */
+/* ------------------------------------------------------------------ */
+
+/* Feed the same four readings n times at dt and return the settled state. */
+static int lid_feed(pure_lid_t *st, int a, int b, int c, int d, int n, unsigned dt) {
+  const int means[4] = {a, b, c, d};
+  int out = st->state;
+  for (int i = 0; i < n; i++) out = pure_lid_update(st, means, 4, dt);
+  return out;
+}
+
+static void test_lid(void) {
+  /* Nothing seen yet is not "open". A camera that has just booted with the
+   * cover down must not claim the cover is up. */
+  pure_lid_t st;
+  memset(&st, 0, sizeof st);
+  CHECK(st.state == PURE_LID_UNKNOWN, "zeroed state is unknown");
+
+  /* Four dark cameras, held past the close dwell. dt=500 needs four samples:
+   * the first carries no elapsed time, then 500, 1000, 1500. */
+  memset(&st, 0, sizeof st);
+  CHECK(lid_feed(&st, 2, 3, 1, 0, 3, 500) == PURE_LID_UNKNOWN,
+        "three dark samples is 1000 ms, short of the %u ms close dwell", PURE_LID_CLOSE_MS);
+  CHECK(lid_feed(&st, 2, 3, 1, 0, 1, 500) == PURE_LID_CLOSED, "the fourth sample closes it");
+
+  /* Opening is quick: one dwell of 300 ms, so the second sample at 500 does it. */
+  CHECK(lid_feed(&st, 90, 120, 80, 110, 1, 500) == PURE_LID_CLOSED,
+        "one lit sample carries no elapsed time yet");
+  CHECK(lid_feed(&st, 90, 120, 80, 110, 1, 500) == PURE_LID_OPEN,
+        "the second lit sample opens it, %u ms dwell", PURE_LID_OPEN_MS);
+
+  /* One camera disagreeing is a thumb or a dead sensor, not the cover. */
+  CHECK(lid_feed(&st, 2, 3, 1, 90, 10, 500) == PURE_LID_OPEN,
+        "three dark and one lit decides nothing, however long it runs");
+  CHECK(st.agreed == 0, "no side agreed, got %d", st.agreed);
+
+  /* The band between the thresholds withholds the decision, so a slow dim
+   * cannot chatter the state across one number. */
+  const int mid = (PURE_LID_DARK + PURE_LID_LIT) / 2;
+  CHECK(lid_feed(&st, mid, mid, mid, mid, 20, 500) == PURE_LID_OPEN,
+        "readings inside the band leave the state alone");
+
+  /* Evidence has to be continuous. A dark run broken by one ambiguous sample
+   * starts the case again rather than resuming it. */
+  memset(&st, 0, sizeof st);
+  st.state = PURE_LID_OPEN;
+  lid_feed(&st, 2, 2, 2, 2, 3, 500);          /* 1000 ms of the 1500 needed */
+  lid_feed(&st, mid, mid, mid, mid, 1, 500);  /* one sample with no opinion */
+  CHECK(st.held_ms == 0, "the interrupted case was dropped, held %u", st.held_ms);
+  CHECK(lid_feed(&st, 2, 2, 2, 2, 3, 500) == PURE_LID_OPEN,
+        "three fresh dark samples is 1000 ms again, still short");
+  CHECK(lid_feed(&st, 2, 2, 2, 2, 1, 500) == PURE_LID_CLOSED, "the fourth closes it");
+
+  /* Too few cameras answering decides nothing: -1 is "did not answer". */
+  memset(&st, 0, sizeof st);
+  CHECK(lid_feed(&st, 2, 2, -1, -1, 10, 500) == PURE_LID_UNKNOWN,
+        "two cameras is below the %d needed", PURE_LID_MIN_CAMS);
+  CHECK(st.answered == 2, "counted %d answering", st.answered);
+  /* Three is enough, so one dead node does not freeze the signal. */
+  CHECK(lid_feed(&st, 2, 2, 2, -1, 4, 500) == PURE_LID_CLOSED, "three dark cameras is enough");
+  CHECK(st.answered == 3, "counted %d answering", st.answered);
+
+  /* The thresholds are exclusive bounds on the band, not inside it. */
+  memset(&st, 0, sizeof st);
+  CHECK(lid_feed(&st, PURE_LID_DARK, PURE_LID_DARK, PURE_LID_DARK, PURE_LID_DARK, 4, 500) ==
+            PURE_LID_CLOSED,
+        "a reading exactly at PURE_LID_DARK counts as dark");
+  CHECK(lid_feed(&st, PURE_LID_LIT, PURE_LID_LIT, PURE_LID_LIT, PURE_LID_LIT, 2, 500) ==
+            PURE_LID_OPEN,
+        "a reading exactly at PURE_LID_LIT counts as lit");
+
+  /* A null or empty round is survivable and clears any part-built case. */
+  CHECK(pure_lid_update(NULL, NULL, 0, 500) == PURE_LID_UNKNOWN, "null state is handled");
+  CHECK(pure_lid_update(&st, NULL, 0, 500) == PURE_LID_OPEN, "an empty round keeps the state");
+
+  CHECK(strcmp(pure_lid_state_name(PURE_LID_CLOSED), "closed") == 0, "closed name");
+  CHECK(strcmp(pure_lid_state_name(PURE_LID_OPEN), "open") == 0, "open name");
+  CHECK(strcmp(pure_lid_state_name(99), "unknown") == 0, "unknown name for a stray value");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1221,6 +1302,7 @@ int main(void) {
   test_wiggle_period();
   test_align();
   test_json_depth();
+  test_lid();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

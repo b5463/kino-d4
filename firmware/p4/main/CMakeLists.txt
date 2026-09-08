@@ -9,7 +9,7 @@ set(kino_srcs
   # object was compiled, linked and then dropped by --gc-sections at best.
   # The source stays on disk; it is just not in the image.
   "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "icons.c" "board_i2c.c"
-  "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
+  "audio.c" "config_store.c" "power.c" "lid.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "gallery_index.c" "net_link.c"
     "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"

@@ -24,6 +24,7 @@
 #include "hardware_validation.h"
 #include "kdp_server.h"
 #include "klog.h"
+#include "lid.h"
 #include "esp_timer.h"
 #include "net_hosted.h"
 #include "net_link.h"
@@ -408,6 +409,15 @@ void app_main(void) {
   esp_err_t pw_err = power_init();
   if (pw_err != ESP_OK) {
     ESP_LOGE(TAG, "power management unavailable: %s", esp_err_to_name(pw_err));
+  }
+
+  /* Reads the lens cover off the viewfinder's own frames, so it needs both of
+   * the two above it. It observes and logs and changes nothing until its two
+   * thresholds have been measured at the bench - see lid.h - so failing to
+   * start costs a diagnostic, not a behaviour. */
+  esp_err_t lid_err = lid_init();
+  if (lid_err != ESP_OK) {
+    ESP_LOGE(TAG, "lens cover watcher unavailable: %s", esp_err_to_name(lid_err));
   }
 
   /*

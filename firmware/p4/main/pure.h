@@ -809,4 +809,84 @@ int pure_sync_classify(uint32_t last_seq, uint32_t seq, uint32_t expected, bool 
 /** "none" | "ok" | "unverified" | "stale-generation". */
 const char *pure_sync_class_name(int cls);
 
+/* ------------------------------------------------------------------ */
+/* Lens cover, read from what the cameras see                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The field body's lens cover sits 0.2 mm in front of four opaque cells, so
+ * with it closed every camera sees the same nothing and with it open every
+ * camera sees the room. That is a usable signal without the Hall switch the
+ * shell is drilled for - and it is only usable if it is read carefully, which
+ * is what this state machine is for.
+ *
+ * Three rules, and each exists because the naive version is wrong:
+ *
+ *   - ALL the cameras that answered must agree. One dark camera is a thumb, a
+ *     dead node, or a sensor that failed to probe. Four dark together is the
+ *     cover.
+ *   - There is a band between dark and lit where nobody has an opinion. A
+ *     single threshold makes the state chatter at dusk, and this state puts
+ *     the camera to sleep.
+ *   - A candidate has to HOLD before it wins, and closing holds longer than
+ *     opening. Sleeping by mistake costs the shot; waking by mistake costs a
+ *     little battery.
+ *
+ * What it cannot tell you: a dark room reads exactly like a closed cover. That
+ * failure is benign - if all four lenses see nothing there is nothing to
+ * photograph - but it is the reason this drives idle behaviour and not, say,
+ * a shutter interlock.
+ */
+#define PURE_LID_CAMS 4
+
+/*
+ * Luminance thresholds, 0..255 on the decoded mean.
+ *
+ * MEASURE_REQUIRED. These are placeholders until somebody sits at the bench
+ * with the cover on and the cover off and reads the numbers off the log; they
+ * cannot be derived, because the node runs auto-exposure and a covered sensor
+ * does not produce zero, it produces amplified noise, and how much depends on
+ * the part. Until they are measured the watcher runs in observe-only mode.
+ */
+#define PURE_LID_DARK 10 /* at or below: this camera sees nothing */
+#define PURE_LID_LIT 40  /* at or above: this camera sees the room */
+
+/** Fewest cameras that must answer before any decision is made. Three, so one
+ * dead node does not freeze the signal, and so no decision ever rests on a
+ * single sensor. */
+#define PURE_LID_MIN_CAMS 3
+
+/** How long a candidate must hold. Closing is slower on purpose: it is the
+ * direction that costs a photograph if it fires by mistake. */
+#define PURE_LID_CLOSE_MS 1500u
+#define PURE_LID_OPEN_MS 300u
+
+typedef enum {
+  PURE_LID_UNKNOWN = 0, /* no agreement, too few cameras, or nothing seen yet */
+  PURE_LID_OPEN = 1,
+  PURE_LID_CLOSED = 2,
+} pure_lid_state_t;
+
+typedef struct {
+  int state;         /* pure_lid_state_t, the settled answer */
+  int candidate;     /* what the last sample argued for */
+  uint32_t held_ms;  /* how long the candidate has argued it */
+  int answered;      /* cameras that gave a reading last sample */
+  int agreed;        /* how many of those were on the candidate's side */
+} pure_lid_t;
+
+/**
+ * Fold one round of readings into the state.
+ *
+ * `means` is one mean luminance per camera, 0..255, or NEGATIVE for a camera
+ * that did not answer. `dt_ms` is the time since the previous call.
+ *
+ * Returns the settled state, which changes only when a candidate has held for
+ * its dwell. Zeroing the struct is a valid starting point.
+ */
+int pure_lid_update(pure_lid_t *st, const int *means, int n, uint32_t dt_ms);
+
+/** "unknown" | "open" | "closed". */
+const char *pure_lid_state_name(int state);
+
 #endif

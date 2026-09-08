@@ -86,6 +86,23 @@ void power_activity(void) {
 
 void power_wake(void) { power_activity(); }
 
+void power_sleep_now(void) {
+  const int sleep_s = config_int("body.sleepS", 120);
+  if (sleep_s <= 0) {
+    /* Sleep is switched off in BodyConfig. A cover going on is not a reason to
+     * overrule that: somebody set it deliberately, and a camera that sleeps
+     * when its owner has told it not to is worse than one that stays lit. */
+    klog("P4", "sleep asked for, but body.sleepS is 0");
+    return;
+  }
+  if (s_stage == POWER_ASLEEP) return;
+  /* Age the idle clock past the timeout. power_task picks it up within 500 ms
+   * and does the real transition, including undoing it if a finger lands in
+   * the same pass. */
+  s_last_activity = esp_timer_get_time() - ((int64_t)sleep_s * 1000000LL);
+  ESP_LOGI(TAG, "sleep requested, %ds timeout aged out", sleep_s);
+}
+
 void power_get(power_state_t *out) {
   if (out == NULL) return;
   const int64_t idle_us = esp_timer_get_time() - s_last_activity;

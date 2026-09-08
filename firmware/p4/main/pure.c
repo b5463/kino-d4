@@ -594,3 +594,84 @@ const char *pure_sync_class_name(int cls) {
     default: return "none";
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Lens cover                                                          */
+/* ------------------------------------------------------------------ */
+
+int pure_lid_update(pure_lid_t *st, const int *means, int n, uint32_t dt_ms) {
+  if (st == NULL) return PURE_LID_UNKNOWN;
+  if (means == NULL || n <= 0) {
+    st->candidate = PURE_LID_UNKNOWN;
+    st->held_ms = 0;
+    st->answered = 0;
+    st->agreed = 0;
+    return st->state;
+  }
+
+  int answered = 0, dark = 0, lit = 0;
+  for (int i = 0; i < n; i++) {
+    if (means[i] < 0) continue; /* that camera did not answer */
+    answered++;
+    if (means[i] <= PURE_LID_DARK) {
+      dark++;
+    } else if (means[i] >= PURE_LID_LIT) {
+      lit++;
+    }
+    /* Between the two thresholds a camera has no opinion, and because the
+     * rules below want unanimity it withholds the whole decision. That is the
+     * hysteresis: the state cannot chatter across one threshold. */
+  }
+
+  int candidate = PURE_LID_UNKNOWN;
+  int agreed = 0;
+  if (answered >= PURE_LID_MIN_CAMS) {
+    if (dark == answered) {
+      candidate = PURE_LID_CLOSED;
+      agreed = dark;
+    } else if (lit == answered) {
+      candidate = PURE_LID_OPEN;
+      agreed = lit;
+    }
+  }
+  st->answered = answered;
+  st->agreed = agreed;
+
+  if (candidate == PURE_LID_UNKNOWN) {
+    /* No opinion this round. Drop any part-built case rather than letting it
+     * bridge a gap: evidence for "the cover just closed" has to be continuous
+     * or it is not evidence of an event. */
+    st->candidate = PURE_LID_UNKNOWN;
+    st->held_ms = 0;
+    return st->state;
+  }
+
+  if (candidate == st->state) {
+    /* Already there. Nothing to prove, and held_ms cannot run away. */
+    st->candidate = candidate;
+    st->held_ms = 0;
+    return st->state;
+  }
+
+  if (candidate != st->candidate) {
+    st->candidate = candidate;
+    st->held_ms = 0; /* first sample of a new case carries no elapsed time */
+  } else {
+    st->held_ms += dt_ms;
+  }
+
+  const uint32_t need = (candidate == PURE_LID_CLOSED) ? PURE_LID_CLOSE_MS : PURE_LID_OPEN_MS;
+  if (st->held_ms >= need) {
+    st->state = candidate;
+    st->held_ms = 0;
+  }
+  return st->state;
+}
+
+const char *pure_lid_state_name(int state) {
+  switch (state) {
+    case PURE_LID_OPEN: return "open";
+    case PURE_LID_CLOSED: return "closed";
+    default: return "unknown";
+  }
+}

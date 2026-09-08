@@ -50,6 +50,20 @@ void power_get(power_state_t *out);
 void power_wake(void);
 
 /**
+ * Ask for sleep now, without waiting out `sleepS`.
+ *
+ * For a deliberate act that means "I have finished" - the lens cover going on
+ * is the one that exists (lid.c). It ages the idle clock past the configured
+ * timeout rather than switching the panel off here, so the transition still
+ * goes through the one path in power_task that knows about the backlight, the
+ * stage, and the finger that may be arriving in the same pass.
+ *
+ * Honours the configuration: with `sleepS` at 0 the camera is set never to
+ * sleep, and this does nothing rather than overriding that.
+ */
+void power_sleep_now(void);
+
+/**
  * True while the gesture that woke the screen is still on the glass.
  *
  * The UI uses this to swallow that whole press, so a camera pulled out of a
