@@ -40,6 +40,28 @@
 
 #include "roll_queue.h"
 
+/**
+ * The `detail` a step sets when the CARD, not the network, stopped it.
+ *
+ * ONE constant, compared against by roll_api.c and emitted by roll_http.c,
+ * because it was two literals: "card busy" when the lock could not be taken
+ * and "yielded the card to a capture" when it was given up mid-part, while
+ * roll_api.c compared against only the first. A deliberate yield - the case
+ * the design is proudest of - therefore burned an attempt from the retry
+ * budget, and twelve of them parked the photograph as failed. A string
+ * compared in one file and written in another has to be a symbol.
+ *
+ * Its meaning: transient, ours, and not the server's. The queue must retry
+ * without spending the budget.
+ *
+ * OUTSIDE the `KINO_RADIO` guard below, unlike everything else in this
+ * header: `upload_queue.c` names it on the step path that both builds
+ * compile, and a plain string constant has no radio dependency to guard.
+ * Inside the guard it simply did not exist in a default build, which is a
+ * compile error and not a missing feature.
+ */
+#define ROLL_HTTP_CARD_YIELD_DETAIL "the card went to a capture"
+
 #ifdef KINO_RADIO
 
 /** Largest response body this module keeps. The API's device replies are a
@@ -101,22 +123,6 @@ typedef struct {
 bool roll_http_api_base(char *out, size_t cap);
 
 bool roll_http_ready(char *why, size_t cap);
-
-/**
- * The `detail` a step sets when the CARD, not the network, stopped it.
- *
- * ONE constant, compared against by roll_api.c and emitted by roll_http.c,
- * because it was two literals: "card busy" when the lock could not be taken
- * and "yielded the card to a capture" when it was given up mid-part, while
- * roll_api.c compared against only the first. A deliberate yield - the case
- * the design is proudest of - therefore burned an attempt from the retry
- * budget, and twelve of them parked the photograph as failed. A string
- * compared in one file and written in another has to be a symbol.
- *
- * Its meaning: transient, ours, and not the server's. The queue must retry
- * without spending the budget.
- */
-#define ROLL_HTTP_CARD_YIELD_DETAIL "the card went to a capture"
 
 /** Perform a request with a JSON or empty body. Blocks the calling task. */
 void roll_http_perform(const roll_http_req_t *req, roll_http_out_t *out);

@@ -242,6 +242,13 @@ static bool send_raw_event(uint8_t evt, uint32_t seq, const uint8_t *payload, ui
 
 static void send_nack(uint8_t type, uint32_t seq, const char *code, const char *message);
 
+/* Defined with the rest of the MEDIA card bookkeeping, ~1800 lines below, and
+ * called from the MEDIA handlers above it: the bytes are in RAM by then and
+ * the reply can take 3.5 s, so the card is released before the wire work
+ * rather than after the handler returns. Declared here because a static
+ * definition after an implicit one is an error, not a warning. */
+static void media_card_done(void);
+
 static void send_json(uint8_t type, uint32_t seq, cJSON *json) {
   char *text = cJSON_PrintUnformatted(json);
   cJSON_Delete(json);
