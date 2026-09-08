@@ -10,17 +10,20 @@ import { log } from '../log';
  *
  * sharp hands each pipeline to libvips, and libvips defaults its thread pool to
  * **the machine's CPU count, per pipeline**. This worker runs `JOB_CONCURRENCY`
- * = 4 jobs at a time and most of them are sharp pipelines, so on an 8-core host
- * that is 4 × 8 = 32 worker threads fighting over 8 cores — plus the four
- * ffmpeg processes a render batch can spawn. Oversubscription like that does not
- * make anything faster; it makes every job slower by the same factor and turns a
- * 2 GB container into an OOM kill, because each of those threads carries its own
- * tile buffers.
+ * jobs at a time and most of them are sharp pipelines, so on an 8-core host
+ * with a concurrency of 4 the default is 4 × 8 = 32 worker threads fighting
+ * over 8 cores — plus the four ffmpeg processes a render batch can spawn.
+ * Oversubscription like that does not make anything faster; it makes every job
+ * slower by the same factor and turns a 2 GB container into an OOM kill,
+ * because each of those threads carries its own tile buffers.
  *
- * So: `floor(cores / JOB_CONCURRENCY)`, at least 1. Four jobs × two threads on an
- * 8-core box is 8 threads for 8 cores, which is the number that was meant all
- * along. On a 2-core box it is 4 × 1 — one thread per job, no oversubscription,
- * and the concurrency limit is doing the scheduling instead of the thread pool.
+ * So: `floor(cores / JOB_CONCURRENCY)`, at least 1. `JOB_CONCURRENCY` is itself
+ * `floor(cores / 2)` capped at 4, so the product lands on the core count at
+ * every size: 8 cores → 4 jobs × 2 threads, 4 → 2 × 2, 2 → 1 × 2. That pairing
+ * is the point — the two numbers were derived together, and a fixed
+ * concurrency of 4 against a 2-core box was 4 jobs × 1 thread, i.e. 4 runnable
+ * CPU-bound threads for 2 cores with the thread pool doing the scheduling
+ * instead of the concurrency limit.
  *
  * `availableParallelism()` rather than `cpus().length`, because it respects the
  * cgroup CPU quota a container is actually given; `cpus()` reports the host's

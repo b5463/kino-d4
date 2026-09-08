@@ -10,7 +10,7 @@ import {
 import { Redis } from 'ioredis';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import type { WorkerConfig } from './config';
+import { s3ClientOptions, type WorkerConfig } from './config';
 import { errorFields, log } from './log';
 import * as schema from './db/schema';
 import { derivedCaptureKey, guardOriginalWrites, rollDerivedKey } from './storage/derived';
@@ -37,16 +37,7 @@ export function createJobRuntime(config: WorkerConfig): JobRuntime {
   });
   const db = drizzle(client, { schema });
 
-  const s3 = new S3Client({
-    endpoint: config.S3_ENDPOINT,
-    region: config.S3_REGION,
-    // MinIO serves buckets as path segments, not as virtual host subdomains.
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: config.S3_ACCESS_KEY,
-      secretAccessKey: config.S3_SECRET_KEY,
-    },
-  });
+  const s3 = new S3Client(s3ClientOptions(config));
 
   /**
    * 01 §7, enforced in the client rather than in the handlers.

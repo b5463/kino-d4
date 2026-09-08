@@ -18,11 +18,18 @@
  * Was 480. The guest feed is one photograph per row on a phone, so a tile is
  * the full CSS width — 360 to 430 px — at 2× to 3× DPR, i.e. 720 to 1290
  * device pixels. A 480 px tile was upscaled on every phone and read as a
- * blurred thumbnail; 720 is sharp at 2× and acceptable at 3×, where the feed
- * offers the 1280 px `kino-still` through `srcset` instead. Not larger: the
+ * blurred thumbnail; 720 is sharp at 2× and acceptable at 3×. Not larger: the
  * tile still has to arrive over a party's uplink ahead of the still, and at
  * 720 px q82 a 4:3 WebP is ~60–90 kB. Thumbs already written stay at their
  * old size; only new captures get this one.
+ *
+ * This paragraph used to add that at 3× "the feed offers the 1280 px
+ * `kino-still` through `srcset` instead", which was a claim about a client this
+ * workspace does not own and cannot check. A browser only picks by DPR when it
+ * is given two width-described candidates — `thumb 720w, still 1280w` plus a
+ * `sizes` attribute — and until Roll web emits that pair, the tile is the
+ * whole story at every DPR. So the 720 has to stand on its own, which is what
+ * the numbers above are about.
  */
 export const THUMBNAIL_WIDTH = 720;
 

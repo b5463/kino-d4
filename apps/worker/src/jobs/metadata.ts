@@ -1,6 +1,6 @@
 import exifr from 'exifr';
 import { captureCalibration } from './calibration';
-import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId } from './capture';
+import { loadAssets, loadCapture, originalFrames, readObjectPrefix, requireCaptureId } from './capture';
 import { publishDerived } from './derive';
 import type { JobCtx, JobPayload } from './types';
 
@@ -30,6 +30,26 @@ import type { JobCtx, JobPayload } from './types';
  * `single`. Which frame was actually read is recorded in `exifSourceFrame` so
  * nothing has to assume.
  */
+/**
+ * How much of a frame is read to parse its EXIF: 64 KiB (audit #8).
+ *
+ * EXIF is the APP1 segment, which a JPEG writer puts immediately after the SOI
+ * marker — the first few hundred bytes for the tags themselves, plus however
+ * large the embedded IFD1 thumbnail is, which on a camera JPEG is 10–20 kB.
+ * 64 KiB clears both with room and is a third of a whole D4 frame (~188 kB),
+ * so this job stopped moving 124 kB per capture across the network to look at
+ * the first 5 kB of it.
+ *
+ * `ifd1: false` below means the embedded thumbnail is not even parsed — but it
+ * still sits between the tags and the pixel data, so it has to be *inside* the
+ * range for the header to be complete.
+ *
+ * Not smaller: the failure mode of an under-sized range is silent. exifr would
+ * find the marker, run off the end of the buffer, and this job would publish
+ * `exif: null` for a frame that has perfectly good EXIF.
+ */
+export const EXIF_PREFIX_BYTES = 64 * 1024;
+
 export async function extractMetadata(payload: JobPayload, ctx: JobCtx): Promise<void> {
   const captureId = requireCaptureId(payload);
   const capture = await loadCapture(ctx.db, captureId);
@@ -37,7 +57,8 @@ export async function extractMetadata(payload: JobPayload, ctx: JobCtx): Promise
   const frames = originalFrames(assetRows);
 
   const first = frames[0] ?? null;
-  const exif = first === null ? null : await readExif(await readObject(ctx, first.objectKey));
+  const exif =
+    first === null ? null : await readExif(await readObjectPrefix(ctx, first.objectKey, EXIF_PREFIX_BYTES));
 
   const document = {
     captureId: capture.id,

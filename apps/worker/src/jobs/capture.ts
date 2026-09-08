@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { asc, eq } from 'drizzle-orm';
 import { UnrecoverableError } from 'bullmq';
 import { assets, captures } from '../db/schema';
@@ -233,5 +235,40 @@ export async function readObject(ctx: JobCtx, key: string): Promise<Buffer> {
   const stream = await ctx.getObject(key);
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Reads the **first `bytes` bytes** of a stored object.
+ *
+ * A ranged GET, for the one reader that wants a file's header rather than its
+ * pixels: `extract-metadata` parses EXIF, which lives in the APP1 segment right
+ * behind the JPEG's SOI marker, and it was reading whole 188 kB frames to get
+ * at the first few kB of them (audit #8).
+ *
+ * `ctx.s3` rather than `ctx.getObject`, because a range is a property of the
+ * request and `getObject` has no argument for one. It is a read, so
+ * `guardOriginalWrites` has nothing to say about it.
+ *
+ * Storage that ignores `Range` answers 200 with the whole object, and that is a
+ * correct outcome here — the caller gets more bytes than it asked for and parses
+ * the same header out of them. Nothing downstream depends on the length.
+ */
+export async function readObjectPrefix(
+  ctx: JobCtx,
+  key: string,
+  bytes: number,
+): Promise<Buffer> {
+  const got = await ctx.s3.send(
+    new GetObjectCommand({
+      Bucket: ctx.bucket,
+      Key: key,
+      Range: `bytes=0-${String(bytes - 1)}`,
+    }),
+  );
+  if (got.Body === undefined) throw new Error(`stored object ${key} has no body`);
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of got.Body as Readable) chunks.push(Buffer.from(chunk as Uint8Array));
   return Buffer.concat(chunks);
 }

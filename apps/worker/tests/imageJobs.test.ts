@@ -1195,6 +1195,89 @@ describe('a job that exhausts its attempts stops blocking its own re-enqueue', (
   });
 });
 
+/* ----------------------------------------------- success is terminal too -- */
+
+describe('a job that SUCCEEDS stops blocking its own re-enqueue', () => {
+  it('appends done and releases the queued row', async () => {
+    const captureId = await newCapture();
+    const queue = newQueue();
+    const job = 'extract-metadata';
+    const jobKey = `${captureId}:${job}`;
+
+    // The API's capture-complete row. Its survival past a *successful* run was
+    // the other half of the bug: both documented re-render paths insert a fresh
+    // `queued` row, and the partial unique index dropped every one of them.
+    await runtime.ctx.db.insert(processingEvents).values({
+      id: `pev_t23_${RUN}_ok`,
+      captureId,
+      job,
+      status: 'queued',
+    });
+
+    queue.registerHandler(job, async () => {
+      /* the row-keeping is what is under test, not the render */
+    });
+    await queue.enqueue(job, { captureId, jobKey });
+    queue.start(runtime.ctx);
+
+    await waitFor('the done row', async () =>
+      statusesOf(await eventsFor(captureId), job).includes('done'),
+    );
+
+    // The enqueue row keeps its place and its timestamp; only the word changed.
+    expect(statusesOf(await eventsFor(captureId), job)).toEqual([
+      'superseded',
+      'running',
+      'done',
+    ]);
+
+    const stillQueued = await runtime.ctx.db
+      .select({ id: processingEvents.id })
+      .from(processingEvents)
+      .where(
+        and(
+          eq(processingEvents.captureId, captureId),
+          eq(processingEvents.job, job),
+          eq(processingEvents.status, 'queued'),
+        ),
+      );
+    expect(stillQueued).toEqual([]);
+
+    // Which is the point: a late frame can have this job run over it again.
+    await runtime.ctx.db.insert(processingEvents).values({
+      id: `pev_t23_${RUN}_ok2`,
+      captureId,
+      job,
+      status: 'queued',
+    });
+    expect(statusesOf(await eventsFor(captureId), job)).toContain('queued');
+  });
+
+  it('leaves a sibling job that is still queued alone', async () => {
+    const captureId = await newCapture();
+    const queue = newQueue();
+    const done = 'extract-metadata';
+    const sibling = 'generate-thumbnail';
+
+    await runtime.ctx.db.insert(processingEvents).values([
+      { id: `pev_t23_${RUN}_k1`, captureId, job: done, status: 'queued' },
+      { id: `pev_t23_${RUN}_k2`, captureId, job: sibling, status: 'queued' },
+    ]);
+
+    queue.registerHandler(done, async () => {
+      /* nothing */
+    });
+    await queue.enqueue(done, { captureId, jobKey: `${captureId}:${done}` });
+    queue.start(runtime.ctx);
+
+    await waitFor('the done row', async () =>
+      statusesOf(await eventsFor(captureId), done).includes('done'),
+    );
+
+    expect(statusesOf(await eventsFor(captureId), sibling)).toEqual(['queued']);
+  });
+});
+
 describe('ai-enhance (audit #62)', () => {
   const saved = { mode: process.env.AI_MODE, provider: process.env.AI_PROVIDER };
 

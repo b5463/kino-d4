@@ -21,34 +21,67 @@ import type { SharpOptions } from 'sharp';
  */
 
 /**
- * 100 megapixels.
+ * 12 megapixels, and the number is sized against what a job *holds*, not
+ * against what a sensor might one day produce.
  *
- * The real article is nowhere near it: a D4 frame is 1600×1200 (1.9 MP), the
- * tallest intermediate anything builds is a four-page wiggle strip at roughly
- * 8 MP, and the recap film is 1080p. So this is more than a decade of sensor
- * headroom and still an order of magnitude below sharp's own default of ~268 MP
- * (0x3FFF²), which is the number that matters here: a decompression bomb is a
- * few KB of file that asks for gigabytes of pixel buffer, and the ceiling is what
- * turns that from an OOM-killed worker — which takes every job in flight with it
- * — into one job that fails and one capture that goes `partial`.
+ * ## What the hardware actually makes
+ *
+ * A D4 frame is 1600×1200 = 1.92 MP. The intermediates are all smaller or
+ * barely larger: the animated-WebP strip is six 960×720 pages stacked, i.e.
+ * 960×4320 = 4.15 MP (four *source* frames are 7.7 MP, but that is four
+ * separate buffers, not one decode); the recap film is 960 px wide, one frame
+ * at a time. So 12 MP is 6.2× the real frame and still covers a jump to a 4K
+ * sensor (3840×2160 = 8.3 MP) without an edit here.
+ *
+ * ## Why it came down from 100 MP
+ *
+ * The ceiling is a per-decode allocation limit, and the aligned wiggle path
+ * holds several at once (`jobs/wiggle.ts`): four decoded source frames, four
+ * resized frames, and the stacked strip. Raw RGB is 3 bytes per pixel, so:
+ *
+ * - at 12 MP:  4×36 MB + 4×2.07 MB + 12.4 MB ≈ 165 MB per job.
+ * - at 100 MP: one frame is 300 MB, four of them are 1.2 GB, and the job passes
+ *   1.5 GB — an OOM kill in a 2 GB container, which takes every other job in
+ *   flight with it *and* leaves the killed job's slot wedged behind a lock
+ *   BullMQ keeps renewing. That is the exact failure the ceiling exists to
+ *   prevent, so a ceiling that permits it is not doing its job.
+ *
+ * At the real 1600×1200 a wiggle job holds ~45 MB, which is what four
+ * concurrent jobs are sized against.
+ *
+ * Still far below sharp's own default of ~268 MP (0x3FFF²), which is the other
+ * number that matters: a decompression bomb is a few KB of file that asks for
+ * gigabytes of pixel buffer.
  */
-export const MAX_INPUT_PIXELS = 100_000_000;
+export const MAX_INPUT_PIXELS = 12_000_000;
 
 /**
- * `failOn: 'warning'` is sharp's own default, stated rather than inherited.
+ * `failOn: 'error'`, one notch down from sharp's `'warning'` default.
  *
- * It is the strict end of the scale: a truncated file or a decoder warning is an
- * error, not something to render half of. That is the right trade for this
- * pipeline — every input either came through `complete`, which verified its
- * sha256 against what the device declared, or was produced by this worker, so a
- * warning means something is genuinely wrong and a half-decoded frame published
- * as a `ready` asset would be worse than a failed job.
+ * `'warning'` is the strictest setting there is, and it refuses a *slightly
+ * truncated* JPEG outright — the frame decodes, the last few MCU rows are
+ * missing, libjpeg says "premature end of data segment", and sharp turns that
+ * into a thrown error. On this pipeline that costs five attempts over ten
+ * minutes and ends in an `abandoned` row, for a frame that would have produced
+ * a perfectly good 720 px tile: the missing bytes are the bottom rows of a
+ * 1600×1200 frame, and at 720 px they are a handful of pixels.
  *
- * Written down because the alternative is a silent behavioural change: if the
- * library's default moves to 'truncated', every derivative in the platform
- * quietly starts accepting partial frames.
+ * How a truncated frame gets here at all, given that `complete` verifies the
+ * sha256 the device declared: the camera computes that digest over what it
+ * wrote to the SD card, and a card that filled or a node that browned out
+ * mid-write produces a short file whose digest matches the short file. The
+ * upload is then honest and the JPEG is still clipped.
+ *
+ * `'error'` still refuses everything that is genuinely broken — a corrupt
+ * header, a wrong marker, a file that is not an image — so what changes is
+ * exactly the salvageable case. `'truncated'` and `'none'` go further and are
+ * not taken: those accept a decode that failed halfway, which would publish a
+ * half-grey tile as a `ready` asset.
+ *
+ * Written down rather than inherited because the alternative is a silent
+ * behavioural change the day the library's default moves.
  */
 export const SHARP_INPUT: SharpOptions = {
   limitInputPixels: MAX_INPUT_PIXELS,
-  failOn: 'warning',
+  failOn: 'error',
 };

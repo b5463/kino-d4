@@ -82,13 +82,17 @@ function thumbProducer(capture: CaptureRow, frameIndex: number | null): Record<s
  *
  * ## Why a multi-frame capture also gets one thumb per camera, and why here
  *
- * The capture page draws a strip of 97 px cells and a 2x2 overview, one box per
+ * The capture page draws a strip of cells and a 2x2 overview, one box per
  * camera. With only a capture-level thumb the client had nothing per camera to
  * draw with, so it drew the `original-frame` rows: four 1600x1200 JPEGs, ~754 kB
- * over four object fetches, for eight boxes none of which is wider than 195 CSS
- * px. Substituting the capture-level thumb was tried and reverted, correctly —
- * it is ONE camera's picture (`stillSource`), so all four cells showed the same
- * view. The only honest cheap strip is a real thumb per camera.
+ * over four object fetches, for eight boxes that at their largest are 225 CSS px
+ * per strip cell and 450 CSS px per quad cell on a desktop layout (97 px and
+ * 195 px are the phone numbers). At 2x DPR the widest of those wants 900 device
+ * pixels, so `THUMBNAIL_WIDTH` = 720 is the ceiling being *approached* on a
+ * desktop, not one exceeded — and it is still a tenth of the bytes an original
+ * frame costs. Substituting the capture-level thumb was tried and reverted,
+ * correctly — it is ONE camera's picture (`stillSource`), so all four cells
+ * showed the same view. The only honest cheap strip is a real thumb per camera.
  *
  * They are extra work inside this job rather than a job of their own, for two
  * reasons that both come back to 03 §19's idempotency rule — *a job's output
@@ -113,6 +117,16 @@ function thumbProducer(capture: CaptureRow, frameIndex: number | null): Record<s
  * is the row the feed tile picks, it is what a client built before this change
  * expects to find, and `assets_capture_role_frame` is `NULLS NOT DISTINCT` so
  * the two kinds sit on the same role without colliding.
+ *
+ * ## One of those tiles is the capture-level tile
+ *
+ * `stillSource` picks one of the stored frames, so on a four-frame wiggle the
+ * capture-level `thumb.webp` and one camera's tile are the same photograph at
+ * the same width and quality — byte-identical output from two encodes. It is
+ * encoded once now and the buffer is written under both names: a decode and an
+ * encode saved per capture. The ~50 kB is not saved, because
+ * `assets.object_key` is unique and the per-camera row cannot point at the
+ * capture-level object — see the note inside the handler.
  */
 export async function generateThumbnail(payload: JobPayload, ctx: JobCtx): Promise<void> {
   const captureId = requireCaptureId(payload);
@@ -120,15 +134,39 @@ export async function generateThumbnail(payload: JobPayload, ctx: JobCtx): Promi
   const assetRows = await loadAssets(ctx.db, captureId);
 
   const frames: AssetRow[] = originalFrames(assetRows);
-  // One stored frame IS the capture-level thumb — `stillSource` picks it — so a
-  // per-camera copy of it would be the same bytes under a second name.
+  const source = stillSource(capture, assetRows);
   const perCamera = frames.length >= 2 ? frames : [];
+
+  /*
+   * The capture-level tile is encoded first, and one of the per-camera tiles is
+   * that same encode (audit #5).
+   *
+   * `stillSource` picks one of the stored frames — an uploaded `kino-still`
+   * first, otherwise the lower median of what is stored — so on a four-frame
+   * wiggle the capture-level `thumb.webp` and one camera's tile are the same
+   * frame at the same width and quality. Encoding it twice produced two objects
+   * with byte-identical contents: a wasted decode and encode per capture, which
+   * at a party's rate is a decode per photograph for nothing.
+   *
+   * So it is encoded once and the buffer is reused. The second **object** is
+   * still written, and that is not an oversight: `assets.object_key` is UNIQUE
+   * across the table, so two rows cannot name one object, and the per-camera row
+   * has to exist — it is what the capture page's strip reads, and its
+   * `frame_index` is what says which cell it belongs in. Dropping the duplicate
+   * ~50 kB would mean either losing that row or relaxing that constraint, and
+   * the constraint is the API's.
+   */
+  const captureTile = await encodeThumb(await readObject(ctx, source.key));
 
   for (const frame of perCamera) {
     // `originalFrames` already dropped the null indexes; the check is what makes
     // that readable to the type, not a second filter.
     if (frame.frameIndex === null) continue;
-    const encoded = await encodeThumb(await readObject(ctx, frame.objectKey));
+
+    // The frame the capture-level tile already encoded: same bytes, second key.
+    const shared = frame.objectKey === source.key;
+    const encoded = shared ? captureTile : await encodeThumb(await readObject(ctx, frame.objectKey));
+
     await publishDerived(ctx, capture, {
       name: frameThumbName(frame.frameIndex),
       role: 'thumb',
@@ -142,25 +180,27 @@ export async function generateThumbnail(payload: JobPayload, ctx: JobCtx): Promi
       // crash inside this loop leaves the job unfinished and the retry rewrites
       // the same bytes, because the stored frames are its only input.
       announce: false,
-      producer: thumbProducer(capture, frame.frameIndex),
+      producer: {
+        ...thumbProducer(capture, frame.frameIndex),
+        // Says that these bytes are the capture-level tile's, so a reader
+        // comparing two identical sha256 values does not have to guess why.
+        ...(shared ? { sameBytesAs: 'thumb.webp' } : {}),
+      },
     });
   }
 
   // Last, and the one that announces. Written unconditionally: it is the feed
   // tile's row and the one a client built before this change looks for.
-  const source = stillSource(capture, assetRows);
-  const encoded = await encodeThumb(await readObject(ctx, source.key));
-
   await publishDerived(ctx, capture, {
     name: 'thumb.webp',
     role: 'thumb',
     mime: 'image/webp',
-    body: encoded.data,
+    body: captureTile.data,
     // The dimensions of the bytes that were written, read back off the encoder
     // rather than computed from the request — a row that describes what was
     // asked for instead of what happened is a row that can be wrong.
-    width: encoded.width,
-    height: encoded.height,
+    width: captureTile.width,
+    height: captureTile.height,
     producer: thumbProducer(capture, null),
   });
 }

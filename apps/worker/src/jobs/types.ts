@@ -59,14 +59,22 @@ export function jobKeyFor(captureId: string, job: JobName): string {
   return `${captureId}:${job}`;
 }
 
-/**
- * `<rollId>:<jobName>:<exportId>` — roll-scoped work is not unique per roll,
- * because a host may export the same roll twice and legitimately want two
- * artifacts. The export id is what separates them.
+/*
+ * There is deliberately no `rollJobKeyFor` here.
+ *
+ * The three-part `<rollId>:<jobName>:<exportId>` key one used to build had no
+ * callers and was wrong in a way that would have failed at run time, not at
+ * compile time: a roll-scoped job reads its **row** id out of the first segment
+ * (`jobRowIdOf` in `roll.ts`), and `claimExportRow` matches on
+ * `(id = <that>, roll_id = <payload.rollId>)`. A key that led with the ROLL id
+ * would match zero rows and throw `MissingExportJobError` on every export.
+ *
+ * The shape the API actually builds is `<rowId>:<jobName>` — `exportJobKey` —
+ * which is the same two-part shape as `jobKeyFor` and already separates two
+ * exports of one roll, because the row id is per export. See the note on
+ * `jobRowIdOf` for why the row id is in the key rather than in a second
+ * payload field.
  */
-export function rollJobKeyFor(rollId: string, job: JobName, exportId: string): string {
-  return `${rollId}:${job}:${exportId}`;
-}
 
 /**
  * Bytes a handler may hand to `putDerived`.
@@ -80,6 +88,16 @@ export function rollJobKeyFor(rollId: string, job: JobName, exportId: string): s
 export type DerivedBody = Buffer | Uint8Array;
 
 export type WorkerDatabase = PostgresJsDatabase<typeof schema>;
+
+/**
+ * The handle inside `db.transaction(async (tx) => …)`.
+ *
+ * Derived from `WorkerDatabase` rather than imported from drizzle's internals,
+ * because the concrete type is `PgTransaction` over four generic parameters
+ * this workspace has no other reason to name — and a hand-written version would
+ * drift from the database's the first time drizzle changes one of them.
+ */
+export type WorkerTransaction = Parameters<Parameters<WorkerDatabase['transaction']>[0]>[0];
 
 /**
  * Everything a handler is given, and the boundary of what it can do.

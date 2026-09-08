@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { SHARP_INPUT } from '../images/decode';
 import { loadCapture, requireCaptureId } from './capture';
 import { publishDerived } from './derive';
-import { joinPages, loadWiggleFrames, WIGGLE_WEBP_QUALITY } from './wiggle';
+import { joinPages, loadWiggleFrames, WIGGLE_WEBP_EFFORT, WIGGLE_WEBP_QUALITY } from './wiggle';
 import type { JobCtx, JobPayload } from './types';
 
 /**
@@ -48,6 +48,9 @@ export async function renderWiggleWebp(payload: JobPayload, ctx: JobCtx): Promis
   })
     .webp({
       quality: WIGGLE_WEBP_QUALITY,
+      // See `WIGGLE_WEBP_EFFORT`: ~30 kB off the platform's largest image
+      // derivative for ~0.3 s of encode, once, on the file every guest fetches.
+      effort: WIGGLE_WEBP_EFFORT,
       loop: 0,
       // One delay per page rather than a single number: the container stores them
       // per frame anyway, and a later variable-speed mode (02 §9's friendly speed
@@ -69,6 +72,7 @@ export async function renderWiggleWebp(payload: JobPayload, ctx: JobCtx): Promis
       job: 'wiggle-webp',
       encoder: 'sharp/webp-anim',
       quality: WIGGLE_WEBP_QUALITY,
+      effort: WIGGLE_WEBP_EFFORT,
       fps: wiggle.fps,
       width: wiggle.width,
       frames: wiggle.order.length,

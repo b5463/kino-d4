@@ -42,6 +42,24 @@ export const WIGGLE_WIDTH = evenPixels(960);
 export const WIGGLE_WEBP_QUALITY = 75;
 
 /**
+ * libwebp effort 6, one below the maximum, against a default of 4.
+ *
+ * This file is the platform's single biggest image derivative — six 960x720
+ * pages, ~300 kB — and it is the one every guest in the feed downloads. Effort
+ * is where libwebp spends time searching for better predictors, and on frames
+ * that are six views of one scene there is a great deal to find: 6 gives
+ * 8–12 % fewer bytes than 4 (~300 kB → ~270 kB), for roughly 2x the encode
+ * time — ~0.6 s instead of ~0.3 s on the reference box.
+ *
+ * Not 6 everywhere: on a 720 px thumbnail the same trade is ~5 kB for ~40 ms
+ * on a file that has to arrive *first*, so those stay at the default.
+ *
+ * Not effort 7 either. The last notch is another ~1.5x of time for under 1 %,
+ * and this encode is inside a job that holds a concurrency slot.
+ */
+export const WIGGLE_WEBP_EFFORT = 6;
+
+/**
  * How many times the MP4 repeats the sequence.
  *
  * An MP4 has no loop flag a player is obliged to honour — a share sheet, a chat
@@ -166,8 +184,9 @@ export function wiggleFpsFor(capture: CaptureRow): number {
  * Not over `captures.frame_count`. The count is what the device declared, and a
  * render can only show frames it has: with frame 3 of four still uploading, a
  * sequence built from the declared count would index a frame that is not there.
- * Three stored frames bounce as three (`0,1,2,1`), which is a shorter wiggle of
- * the same scene rather than a broken one.
+ * Three stored frames bounce as the four-entry sequence `0,1,2,1` — three
+ * distinct frames, one of them played twice — which is a shorter wiggle of the
+ * same scene rather than a broken one.
  *
  * Fewer than two stored frames is refused, and refused *retryably* (a plain
  * `Error`, not `UnrecoverableError`): the ordinary cause is a capture whose

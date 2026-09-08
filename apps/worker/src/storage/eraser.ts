@@ -4,7 +4,7 @@ import {
   S3Client,
   type ObjectIdentifier,
 } from '@aws-sdk/client-s3';
-import type { WorkerConfig } from '../config';
+import { s3ClientOptions, type WorkerConfig } from '../config';
 import { captureFolderPrefix } from './derived';
 
 /**
@@ -167,12 +167,10 @@ export interface MediaEraser {
 const DELETE_BATCH = 1000;
 
 export function createEraser(config: WorkerConfig): MediaEraser {
-  const client = new S3Client({
-    endpoint: config.S3_ENDPOINT,
-    region: config.S3_REGION,
-    forcePathStyle: true,
-    credentials: { accessKeyId: config.S3_ACCESS_KEY, secretAccessKey: config.S3_SECRET_KEY },
-  });
+  // The same timeouts and attempt cap as `ctx.s3` — see `s3ClientOptions`. A
+  // purge pass walks a capture folder page by page, so a stalled socket here
+  // wedges `purge-trash`'s concurrency slot exactly like any other job's.
+  const client = new S3Client(s3ClientOptions(config));
   guardEraseOnly(client);
 
   return {

@@ -3,8 +3,15 @@ import sharp from 'sharp';
 import { wiggleSequence } from '@kino/media';
 import { loadAssets, loadCapture, originalFrames, readObject, requireCaptureId, stillSource } from './capture';
 import { publishDerived } from './derive';
-import { WIGGLE_WEBP_QUALITY, WIGGLE_WIDTH, evenPixels, wiggleFpsFor } from './wiggle';
+import {
+  WIGGLE_WEBP_EFFORT,
+  WIGGLE_WEBP_QUALITY,
+  WIGGLE_WIDTH,
+  evenPixels,
+  wiggleFpsFor,
+} from './wiggle';
 import { SHARP_INPUT } from '../images/decode';
+import { GALLERY_STILL_QUALITY, GALLERY_STILL_WIDTH } from '../images/sizes';
 import { log } from '../log';
 import { localSharpProvider } from '../ai/localSharp';
 import { AiPlanError, resolvePlan } from '../ai/presets';
@@ -160,12 +167,55 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
     sourceFrames: stored.length,
   };
 
-  // The still: the same reference frame the KINO still uses, so the two are
-  // the same photograph through two pipelines.
+  /*
+   * The still: the same reference frame the KINO still uses, so the two are the
+   * same photograph through two pipelines.
+   *
+   * ## Finding the frame (audit #6b)
+   *
+   * `stillSource` has two answers, and only one of them is a frame this job
+   * enhanced. When the device uploaded a `kino-still` — the priority case, 03
+   * §4 — it returns that still's key and `frameIndex: null`, and the enhanced
+   * frames are the *originals*, so no `objectKey` in `stored` can ever match
+   * it. The old `Math.max(0, findIndex(...))` turned that -1 into 0 and
+   * published camera 1's enhancement as the enhanced still: a different
+   * viewpoint from the KINO still it is meant to pair with, silently, on every
+   * capture that had a device still.
+   *
+   * So the frame is chosen the way `stillSource` chooses one when there is no
+   * uploaded still: the lower median of the frames actually stored, which is
+   * `stored[floor((length - 1) / 2)]` — index 1 of four, 1 of three, 0 of one
+   * or two. `stored` is `originalFrames`, already sorted by `frameIndex`, so
+   * this is the same arithmetic over the same rows, and when `stillSource` did
+   * pick a frame the two agree by construction rather than by a key comparison.
+   */
   const still = stillSource(capture, assets);
-  const referenceIndex = Math.max(0, stored.findIndex((frame) => frame.objectKey === still.key));
-  const enhancedStill = await sharp(result.frames[referenceIndex] ?? result.frames[0], SHARP_INPUT)
-    .webp({ quality: WIGGLE_WEBP_QUALITY })
+  const referenceIndex =
+    still.frameIndex === null
+      ? Math.floor((stored.length - 1) / 2)
+      : stored.findIndex((frame) => frame.frameIndex === still.frameIndex);
+  const reference = result.frames[referenceIndex] ?? result.frames[0];
+
+  /*
+   * ## And the geometry (audit #6a)
+   *
+   * Resized to `GALLERY_STILL_WIDTH` at `GALLERY_STILL_QUALITY`, i.e. 1280 px
+   * q82 — the KINO still's numbers, from `images/sizes.ts`.
+   *
+   * There was no `.resize()` here at all, and no `.rotate()`. The output was
+   * therefore whatever the provider handed back, at the animated wiggle's q75:
+   * a local sharp pass returns the source frame's 1600x1200, and an upscaler
+   * returns 3200x2400 or larger. The client PREFERS `enhanced-still` for the
+   * hero (`socialFormats.ts` does too), so the enhanced view was a different
+   * size and a lower quality than the plain one it replaced — a 4x-larger
+   * object that looked worse. q75 is the *wiggle's* number and belongs to six
+   * frames of one scene; a single still somebody looks at is the one place
+   * worth spending bytes.
+   */
+  const enhancedStill = await sharp(reference, SHARP_INPUT)
+    .rotate()
+    .resize({ width: GALLERY_STILL_WIDTH })
+    .webp({ quality: GALLERY_STILL_QUALITY })
     .toBuffer({ resolveWithObject: true });
 
   await publishDerived(ctx, capture, {
@@ -175,7 +225,16 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
     body: enhancedStill.data,
     width: enhancedStill.info.width,
     height: enhancedStill.info.height,
-    producer,
+    // `sharp/webp`, because that is what this encode emits. The geometry is
+    // recorded beside it: these are the KINO still's numbers, and a reader
+    // comparing the two rows should not have to open two files to see that.
+    producer: {
+      ...producer,
+      encoder: 'sharp/webp',
+      targetWidth: GALLERY_STILL_WIDTH,
+      quality: GALLERY_STILL_QUALITY,
+      referenceFrameIndex: stored[referenceIndex]?.frameIndex ?? null,
+    },
   });
 
   // The wiggle: the enhanced frames through the same geometry and encoder
@@ -186,6 +245,16 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
     const height = evenPixels(
       Math.round((WIGGLE_WIDTH * (first.height ?? WIGGLE_WIDTH)) / (first.width ?? WIGGLE_WIDTH)),
     );
+    /*
+     * Same shape as the aligned wiggle path, and the same memory arithmetic
+     * (audit #4): `result.frames` is still held — that is the provider's
+     * output, one buffer per camera — while `pages` fills with the resized raw
+     * copies and `stacked` concatenates them again. At the real 1600x1200 that
+     * is 4x5.76 MB of provider output + 4x2.07 MB of pages + 12.4 MB stacked ≈
+     * 44 MB. What bounds it is `MAX_INPUT_PIXELS`: an upscaling provider can
+     * return frames far larger than the originals it was given, and 12 MP is
+     * the ceiling on each decode here.
+     */
     const pages: Buffer[] = [];
     for (const frame of result.frames) {
       pages.push(
@@ -205,7 +274,14 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
       ...SHARP_INPUT,
       raw: { width: WIGGLE_WIDTH, height: height * order.length, channels: 3, pageHeight: height },
     })
-      .webp({ quality: WIGGLE_WEBP_QUALITY, loop: 0, delay: order.map(() => delayMs) })
+      // The KINO wiggle's encoder settings exactly, effort included — the only
+      // difference between the two files must be the enhancement itself.
+      .webp({
+        quality: WIGGLE_WEBP_QUALITY,
+        effort: WIGGLE_WEBP_EFFORT,
+        loop: 0,
+        delay: order.map(() => delayMs),
+      })
       .toBuffer();
 
     await publishDerived(ctx, capture, {
@@ -215,7 +291,14 @@ export async function aiEnhance(payload: JobPayload, ctx: JobCtx): Promise<AiEnh
       body: animated,
       width: WIGGLE_WIDTH,
       height,
-      producer: { ...producer, encoder: 'sharp/webp-anim', quality: WIGGLE_WEBP_QUALITY, fps, frames: order.length },
+      producer: {
+        ...producer,
+        encoder: 'sharp/webp-anim',
+        quality: WIGGLE_WEBP_QUALITY,
+        effort: WIGGLE_WEBP_EFFORT,
+        fps,
+        frames: order.length,
+      },
     });
   }
 

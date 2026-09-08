@@ -69,7 +69,16 @@ export async function generateGalleryStill(payload: JobPayload, ctx: JobCtx): Pr
     body: data,
     width: info.width,
     height: info.height,
-    // `look` is identity only — the P4 baked it into the source JPEG.
-    producer: { job: 'gallery-still', encoder: 'sharp/jpeg', targetWidth: GALLERY_STILL_WIDTH, quality: GALLERY_STILL_QUALITY, look: capture.look },
+    // `sharp/webp`, not `sharp/jpeg`: line 62 above is `.webp()`, the mime is
+    // `image/webp` and the file is `still.webp`. Every row this job has ever
+    // written carries the wrong encoder (audit #7). `look` is identity only —
+    // the P4 baked it into the source JPEG.
+    producer: {
+      job: 'gallery-still',
+      encoder: 'sharp/webp',
+      targetWidth: GALLERY_STILL_WIDTH,
+      quality: GALLERY_STILL_QUALITY,
+      look: capture.look,
+    },
   });
 }

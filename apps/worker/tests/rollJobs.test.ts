@@ -14,6 +14,7 @@ import { createJobRuntime, type JobRuntime } from '../src/context';
 import { assets, auditEvents, captures, exportJobs } from '../src/db/schema';
 import { ROLL_HANDLERS } from '../src/jobs';
 import { exportRoll, MissingExportJobError } from '../src/jobs/exportRoll';
+import { markOutsideFailure } from '../src/jobs/outsideFailure';
 import { PURGE_AUDIT_ACTION, purgeTrash, TRASH_GRACE_DAYS } from '../src/jobs/purgeTrash';
 import {
   createEraser,
@@ -309,6 +310,91 @@ describe('export-roll', () => {
     await expect(
       exportRoll({ rollId, jobKey: `exp_t25x_${RUN}_absent:export-roll` }, runtime.ctx),
     ).rejects.toBeInstanceOf(MissingExportJobError);
+  });
+});
+
+/* ------------------------------------- a roll job killed outside its handler -- */
+
+/**
+ * `markOutsideFailure` is called from the queue's `failed` listener, which
+ * BullMQ reaches for a job it failed *without* running the processor — a stalled
+ * job past `maxStalledCount`. The handler therefore never moved the row, and
+ * these are the assertions about what did (audit #2).
+ *
+ * Called directly with the payload BullMQ would have carried, because producing
+ * a real stall means killing a worker mid-render on a five-minute lock.
+ */
+describe('a roll-scoped job that dies outside its processor', () => {
+  function killedJob(jobId: string, name: 'export-roll' | 'generate-recap') {
+    return {
+      id: `${jobId}~${name}`,
+      name,
+      data: { rollId, jobKey: `${jobId}:${name}` },
+    } as unknown as Parameters<typeof markOutsideFailure>[1];
+  }
+
+  /**
+   * `export_jobs_roll_live` allows exactly one queued-or-running row per roll,
+   * and the export suite above leaves one behind on purpose (it claims a fresh
+   * row to prove the index freed). So this suite retires whatever is live before
+   * it claims its own.
+   */
+  async function retireLiveExports(): Promise<void> {
+    await runtime.ctx.db
+      .update(exportJobs)
+      .set({ status: 'failed', finishedAt: new Date() })
+      .where(sql`${exportJobs.rollId} = ${rollId} and ${exportJobs.status} in ('queued','running')`);
+  }
+
+  it('fails the export row, so the roll can export again', async () => {
+    await retireLiveExports();
+    const jobId = await claimExport('running');
+
+    await markOutsideFailure(
+      runtime.ctx,
+      killedJob(jobId, 'export-roll'),
+      new Error('job stalled more than allowable limit'),
+    );
+
+    const [row] = await runtime.ctx.db
+      .select({
+        status: exportJobs.status,
+        error: exportJobs.error,
+        finishedAt: exportJobs.finishedAt,
+      })
+      .from(exportJobs)
+      .where(eq(exportJobs.id, jobId));
+
+    expect(row?.status).toBe('failed');
+    expect(row?.error).toContain('outside the processor');
+    // Stamped, because `finished_at` is the clock retention counts from: a
+    // `failed` row with no `finished_at` is never expired, so the partial ZIP
+    // the killed job left behind would never be reclaimed.
+    expect(row?.finishedAt).toBeInstanceOf(Date);
+
+    // Which is the whole point: `export_jobs_roll_live` is free.
+    const next = await claimExport();
+    expect(next).not.toBe(jobId);
+  });
+
+  it('leaves a row that already finished alone', async () => {
+    await retireLiveExports();
+    const jobId = await claimExport('done');
+
+    await markOutsideFailure(
+      runtime.ctx,
+      killedJob(jobId, 'export-roll'),
+      new Error('the process died after the upload'),
+    );
+
+    // A `done` row belongs to a job that produced its artifact before something
+    // killed the process. Overwriting it would delete a finished export out from
+    // under the host on the next retention pass.
+    const [row] = await runtime.ctx.db
+      .select({ status: exportJobs.status })
+      .from(exportJobs)
+      .where(eq(exportJobs.id, jobId));
+    expect(row?.status).toBe('done');
   });
 });
 

@@ -37,16 +37,51 @@ export async function renderSocialFormats(payload: JobPayload, ctx: JobCtx): Pro
   const sourceKey = enhanced?.objectKey ?? stillSource(capture, assetRows).key;
   const body = await readObject(ctx, sourceKey);
 
+  /*
+   * Decoded once, into raw pixels, and the three crops are taken from those
+   * (audit #8).
+   *
+   * `sharp(body, …)` inside the loop was three decodes of one object: libvips
+   * decodes lazily per pipeline, so a new instance over the same Buffer does
+   * the JPEG again. At 1600x1200 that is ~15 ms each, three times, for pixels
+   * that cannot have changed. `.clone()` is not the answer — it shares an input
+   * *stream*, not a decoded buffer.
+   *
+   * The cost is one raw copy in memory: 1600x1200x3 = 5.76 MB, held while three
+   * crops are encoded. The EXIF rotate happens once here too, which also means
+   * the three crops cannot disagree about orientation.
+   */
+  const oriented = await sharp(body, SHARP_INPUT)
+    .rotate()
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const raw = {
+    width: oriented.info.width,
+    height: oriented.info.height,
+    channels: oriented.info.channels,
+  };
+
   for (const format of SOCIAL_FORMATS) {
-    const { data, info } = await sharp(body, SHARP_INPUT)
-      .rotate()
+    const { data, info } = await sharp(oriented.data, { ...SHARP_INPUT, raw })
       .resize({
         width: format.width,
         height: format.height,
         fit: 'cover',
         position: 'attention',
       })
-      .jpeg({ quality: SOCIAL_QUALITY })
+      /*
+       * `mozjpeg` and `progressive` (audit #9).
+       *
+       * A social crop is 1080 px of a party photo — ~180 kB at q85 baseline.
+       * mozjpeg's trellis quantisation and its own quantisation tables give the
+       * same q85 in ~10–15 % fewer bytes (~155 kB), at roughly 3x the encode
+       * time: ~90 ms instead of ~30 ms, three times, on a job that already
+       * spent a round trip fetching the source. Progressive is free and is what
+       * makes a 155 kB image readable before it has all arrived, which is the
+       * whole life of this file — it exists to be uploaded somewhere.
+       */
+      .jpeg({ quality: SOCIAL_QUALITY, progressive: true, mozjpeg: true })
       .toBuffer({ resolveWithObject: true });
 
     await publishDerived(ctx, capture, {
@@ -58,10 +93,11 @@ export async function renderSocialFormats(payload: JobPayload, ctx: JobCtx): Pro
       height: info.height,
       producer: {
         job: 'social-formats',
-        encoder: 'sharp/jpeg',
+        encoder: 'sharp/mozjpeg',
         fit: 'cover',
         position: 'attention',
         quality: SOCIAL_QUALITY,
+        progressive: true,
       },
     });
   }

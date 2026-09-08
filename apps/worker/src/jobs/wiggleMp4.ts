@@ -69,11 +69,61 @@ export const FFMPEG_KILL_SIGNAL = 'SIGKILL';
  * it is a diagnosis: an encode past it is not slow, it is stuck.
  *
  * It has to have a number at all because `execa` has no default timeout, and a
- * hung ffmpeg holds one of four concurrency slots (`JOB_CONCURRENCY`) forever
- * while BullMQ's lock manager cheerfully renews its lock every 30 s. Four of
- * those and the worker is alive, idle and processing nothing.
+ * hung ffmpeg holds one of the worker's `JOB_CONCURRENCY` slots forever while
+ * BullMQ's lock manager cheerfully renews its lock every 2.5 minutes. That many
+ * of those and the worker is alive, idle and processing nothing. The S3 client's
+ * own timeouts (`s3ClientOptions`) close the same hole for the jobs that stall
+ * on a socket rather than on a subprocess.
  */
 export const WIGGLE_MP4_TIMEOUT_MS = 2 * 60 * 1000;
+
+/**
+ * x264's `-preset slow`, against a default of `medium`.
+ *
+ * The preset is a time-for-bytes dial, and here the time is free: 24 encoded
+ * frames of 960x720 is ~0.2 s at `medium` and ~0.5 s at `slow` on the reference
+ * box, inside a job whose own timeout is two minutes. What it buys is roughly
+ * 8–12 % off a file whose entire purpose is to be sent to somebody over a
+ * party's uplink.
+ *
+ * Not `veryslow`: another ~2x of time for a couple of per cent, and the encode
+ * holds a concurrency slot while it runs.
+ */
+export const WIGGLE_MP4_PRESET = 'slow';
+
+/**
+ * H.264 Baseline, level 3.1, and no audio track.
+ *
+ * ## Baseline
+ *
+ * This file exists to leave the app: a share sheet, a chat app, a camera roll,
+ * a `<video>` in a browser somebody else chose. Baseline is the profile every
+ * one of those decodes — including hardware decoders in old Android phones and
+ * the strictest of the messaging apps' re-encoders, which is the difference
+ * between a wiggle that plays and a grey box with a spinner.
+ *
+ * It costs bytes: no CABAC and no B-frames is ~10–15 % larger at the same CRF.
+ * On a 24-frame 960x720 clip that is a few tens of kB on a file of a few
+ * hundred, which is worth paying for a file that plays everywhere. (The feed's
+ * animated WebP is the one that is optimised for size; this is the one that is
+ * optimised for compatibility.)
+ *
+ * ## Level 3.1
+ *
+ * Level is the decoder's capability contract, and it has to *cover* the stream:
+ * 3.1 permits 1280x720 at 30 fps, so 960x720 at 10 fps sits well inside it.
+ * Naming it rather than letting x264 infer one means a decoder can refuse or
+ * accept the file up front instead of discovering the answer mid-stream.
+ *
+ * ## `-an`
+ *
+ * There is no audio input — the frames come in over a `rawvideo` pipe — so this
+ * changes no bytes. It is stated so that ffmpeg cannot go looking: without it,
+ * a future filter graph or input that carries a track would silently add an
+ * audio stream to a wigglegram.
+ */
+export const WIGGLE_MP4_PROFILE = 'baseline';
+export const WIGGLE_MP4_LEVEL = '3.1';
 
 /**
  * The ffmpeg binary to run: `FFMPEG_PATH` when the operator set it, the bundled
@@ -151,8 +201,15 @@ export async function renderWiggleMp4(payload: JobPayload, ctx: JobCtx): Promise
         `loop=loop=${WIGGLE_MP4_LOOPS - 1}:size=${wiggle.order.length}:start=0`,
         '-r',
         String(wiggle.fps),
+        '-an',
         '-c:v',
         'libx264',
+        '-preset',
+        WIGGLE_MP4_PRESET,
+        '-profile:v',
+        WIGGLE_MP4_PROFILE,
+        '-level:v',
+        WIGGLE_MP4_LEVEL,
         '-pix_fmt',
         'yuv420p',
         '-crf',
@@ -187,6 +244,9 @@ export async function renderWiggleMp4(payload: JobPayload, ctx: JobCtx): Promise
       job: 'wiggle-mp4',
       encoder: 'ffmpeg/x264',
       crf: WIGGLE_MP4_CRF,
+      preset: WIGGLE_MP4_PRESET,
+      profile: WIGGLE_MP4_PROFILE,
+      level: WIGGLE_MP4_LEVEL,
       loops: WIGGLE_MP4_LOOPS,
       fps: wiggle.fps,
       // Same calibration identity as the WebP's — the two files must be the

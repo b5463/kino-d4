@@ -19,7 +19,12 @@ import {
   type RollCaptureRow,
 } from './roll';
 import { evenPixels, WIGGLE_DIRECTION_DEFAULT, WIGGLE_LOOP_DEFAULT } from './wiggle';
-import { FFMPEG_KILL_SIGNAL, resolveFfmpegPath } from './wiggleMp4';
+import {
+  FFMPEG_KILL_SIGNAL,
+  WIGGLE_MP4_LEVEL,
+  WIGGLE_MP4_PROFILE,
+  resolveFfmpegPath,
+} from './wiggleMp4';
 import type { JobCtx, JobPayload, WorkerDatabase } from './types';
 
 /**
@@ -64,11 +69,36 @@ import type { JobCtx, JobPayload, WorkerDatabase } from './types';
 export const RECAP_WIDTH = evenPixels(960);
 
 /**
- * 10 fps — 02 §9's wiggle default.
+ * 10 fps — 02 §9's wiggle *default*, and fixed.
  *
- * The recap's frame rate is *the wiggle's* frame rate, because a wiggle segment
- * has to look like the wigglegram a guest already watched in the feed. Anything
- * else re-times it.
+ * ## It does not follow `captures.playback` (audit #11)
+ *
+ * The feed's renders do: `wiggleFpsFor` / `wiggleLoopFor` /
+ * `wiggleDirectionFor` read the host's per-capture choice off the row, so a
+ * capture the host set to 15 fps rtl continuous plays that way in the feed and
+ * in its own MP4. The recap plays every capture at 10 fps, bounce, ltr,
+ * whatever the row says. That is a real difference and this is the place it is
+ * written down; the comment here used to claim the recap matched the feed,
+ * which it never did.
+ *
+ * ## Why fixed
+ *
+ * The film is **one** `rawvideo` stream at **one** `-framerate`. A segment's
+ * frame rate is not a property this pipeline has: `filmFrames` yields
+ * `RECAP_SEGMENT_FRAMES` = 12 frames per capture and ffmpeg times all of them
+ * at `RECAP_FPS`, so honouring a 15 fps capture would mean either re-timing one
+ * segment inside a constant-rate stream — a filter graph, plus a variable frame
+ * rate, plus "how many frames is this film" becoming a question with two
+ * answers — or resampling the segment's 12 frames to look faster, which at 12
+ * frames is a visibly different wiggle rather than the same one played quicker.
+ *
+ * Loop and direction *could* be read cheaply (`wiggleSequence` takes both, and
+ * `segmentFor` already calls it), and are deliberately not: a recap is a film
+ * of hard cuts (see the note at the top of this file), the segment is one
+ * bounce cycle in 1.2 s by construction, and a `continuous` capture in the
+ * middle of it would land mid-sweep at the cut. One rate, one loop, one
+ * direction is the version that cannot be wrong; per-capture playback belongs
+ * to the version of this job that has a filter graph.
  */
 export const RECAP_FPS = 10;
 
@@ -82,6 +112,26 @@ export const RECAP_SEGMENT_FRAMES = Math.round(RECAP_SEGMENT_SECONDS * RECAP_FPS
 export const RECAP_CRF = 23;
 
 /**
+ * x264's `-preset veryfast`, and this one goes the *other* way from the
+ * wigglegram's `slow`.
+ *
+ * The two encodes are different sizes of problem. A wigglegram is 24 frames and
+ * the preset costs 0.3 s. A recap of 300 captures is 3,612 frames and the worst
+ * roll seen is 1,900 captures = 22,824 frames, all of them 960x720. At `medium`
+ * that is minutes of x264 — and x264 here is not a background cost, it is the
+ * thing draining the pipe: `filmFrames` yields into ffmpeg's stdin, so a slower
+ * encoder applies backpressure to the fetch loop and pushes the whole job
+ * toward `RECAP_TIMEOUT_MS`.
+ *
+ * `veryfast` at the same CRF is roughly 20–25 % more bytes and roughly 3x fewer
+ * CPU seconds. On a film that is mostly held stills — twelve identical frames
+ * per still segment, which x264 folds into almost nothing whatever the preset —
+ * that percentage applies to a small number, and the recap is explicitly a
+ * convenience copy.
+ */
+export const RECAP_PRESET = 'veryfast';
+
+/**
  * How long one recap encode may take before it is killed.
  *
  * Longer than the wigglegram's two minutes because this one is not CPU-bound:
@@ -92,10 +142,12 @@ export const RECAP_CRF = 23;
  * minutes of fetching before a single x264 slice is the bottleneck.
  *
  * Ninety minutes is that with room, and it is still finite, which is the whole
- * point: without a timeout a stalled S3 socket or a wedged encoder holds one of
- * four concurrency slots forever, and BullMQ's lock manager keeps renewing the
+ * point: without a timeout a wedged encoder holds one of the worker's
+ * `JOB_CONCURRENCY` slots forever, and BullMQ's lock manager keeps renewing the
  * lock so nothing ever notices. A recap that hits this limit fails, its row says
- * `failed`, and the host can press the button again.
+ * `failed`, and the host can press the button again. A stalled S3 socket is
+ * handled an order of magnitude sooner and closer to the fault, by the client's
+ * own `requestTimeout` (`s3ClientOptions`).
  */
 export const RECAP_TIMEOUT_MS = 90 * 60 * 1000;
 
@@ -254,11 +306,12 @@ async function filmHeight(ctx: JobCtx, captures: readonly RollCaptureRow[]): Pro
 /**
  * One capture's segment, or `null` when it has nothing stored.
  *
- * A wiggle with two or more stored frames plays its bounce sequence — the same
- * sequence `@kino/media` gives the feed's player and the baked WebP, so the
- * recap's version of a wigglegram is the version the guest already saw. Anything
- * else — a single, a quad, a wiggle whose frames have not all arrived — is the
- * capture's still, held.
+ * A wiggle with two or more stored frames plays a bounce sequence, built by the
+ * same `@kino/media` function the feed's player and the baked WebP use — but
+ * with the 02 §9 *defaults*, not with the host's per-capture playback choice.
+ * See `RECAP_FPS` for why the whole film is fixed at 10 fps / bounce / ltr.
+ * Anything else — a single, a quad, a wiggle whose frames have not all arrived
+ * — is the capture's still, held.
  *
  * The sequence runs over the frames that are *stored*, not over
  * `captures.frame_count`: a capture mid-upload wiggles as three frames rather than
@@ -410,8 +463,20 @@ export async function generateRecap(payload: JobPayload, ctx: JobCtx): Promise<v
           '-',
           '-r',
           String(RECAP_FPS),
+          // No audio: the input is a rawvideo pipe, so this changes no bytes —
+          // it stops a future filter graph from quietly adding a track.
+          '-an',
           '-c:v',
           'libx264',
+          '-preset',
+          RECAP_PRESET,
+          // Baseline at level 3.1, the same compatibility trade the wigglegram
+          // MP4 makes and for the same reason — a recap is a file a host sends
+          // to people. See `WIGGLE_MP4_PROFILE`.
+          '-profile:v',
+          WIGGLE_MP4_PROFILE,
+          '-level:v',
+          WIGGLE_MP4_LEVEL,
           '-pix_fmt',
           'yuv420p',
           '-crf',

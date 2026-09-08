@@ -73,15 +73,35 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
   for (const [position, source] of sources.entries()) {
     const left = position * (CONTACT_SHEET_CELL_WIDTH + CONTACT_SHEET_GUTTER);
 
+    /*
+     * Raw pixels as the overlay, not a PNG (audit #8).
+     *
+     * `.png()` here meant every cell was deflate-compressed and then decoded
+     * again by `composite` below — eight extra codec passes per sheet for
+     * bytes that never leave this function. The cells are the labels' shape
+     * already: `renderLabel` hands `composite` raw RGB with a `raw` descriptor,
+     * and that is the only form libvips does not have to unpack.
+     *
+     * The memory is bounded and small: one cell is 320x240x3 = 230 kB, so four
+     * of them held at once is 0.9 MB.
+     */
+    const cell = await sharp(source, SHARP_INPUT)
+      .rotate()
+      // `cover` rather than `contain`: cells must be exactly the same size for
+      // the geometry above to be the truth, and a frame that is not 4:3 is
+      // better cropped than letterboxed into a cell of dead pixels.
+      .resize({ width: CONTACT_SHEET_CELL_WIDTH, height: cellHeight, fit: 'cover' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
     overlays.push({
-      input: await sharp(source, SHARP_INPUT)
-        .rotate()
-        // `cover` rather than `contain`: cells must be exactly the same size for
-        // the geometry above to be the truth, and a frame that is not 4:3 is
-        // better cropped than letterboxed into a cell of dead pixels.
-        .resize({ width: CONTACT_SHEET_CELL_WIDTH, height: cellHeight, fit: 'cover' })
-        .png()
-        .toBuffer(),
+      input: cell.data,
+      raw: {
+        width: cell.info.width,
+        height: cell.info.height,
+        channels: cell.info.channels,
+      },
       left,
       top: 0,
     });
@@ -107,7 +127,18 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
     },
   })
     .composite(overlays)
-    .jpeg({ quality: CONTACT_SHEET_QUALITY })
+    /*
+     * `mozjpeg` and `progressive` (audit #9).
+     *
+     * A four-cell sheet is 1304x240 and ~120 kB at q85 baseline. mozijpeg's
+     * trellis quantisation gets the same q85 in ~10–15 % fewer bytes (~105 kB)
+     * for roughly 3x the encode time — ~60 ms rather than ~20 ms, once, on a
+     * job that already spent four object fetches. Progressive costs nothing and
+     * matters here for the same reason it matters for the social crops: this is
+     * the artifact a host forwards, so it is read over somebody else's
+     * connection.
+     */
+    .jpeg({ quality: CONTACT_SHEET_QUALITY, progressive: true, mozjpeg: true })
     .toBuffer({ resolveWithObject: true });
 
   await publishDerived(ctx, capture, {
@@ -118,7 +149,14 @@ export async function renderContactSheet(payload: JobPayload, ctx: JobCtx): Prom
     width: info.width,
     height: info.height,
     // `look` is identity only — the P4 baked it into the source JPEGs.
-    producer: { job: 'contact-sheet', encoder: 'sharp/jpeg', cellWidth: CONTACT_SHEET_CELL_WIDTH, quality: CONTACT_SHEET_QUALITY, look: capture.look },
+    producer: {
+      job: 'contact-sheet',
+      encoder: 'sharp/mozjpeg',
+      cellWidth: CONTACT_SHEET_CELL_WIDTH,
+      quality: CONTACT_SHEET_QUALITY,
+      progressive: true,
+      look: capture.look,
+    },
   });
 }
 

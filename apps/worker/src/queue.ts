@@ -6,10 +6,12 @@ import {
   type JobsOptions,
   type RedisOptions,
 } from 'bullmq';
+import { availableParallelism } from 'node:os';
 import {
   appendProcessingEvent,
   isCaptureGoneViolation,
   markJobAbandoned,
+  markJobSucceeded,
   truncateError,
 } from './jobs/events';
 import { errorFields, log } from './log';
@@ -37,13 +39,18 @@ import { isJobName, type JobCtx, type JobHandler, type JobName, type JobPayload 
  *   `apps/api/src/queue/producer.ts` mirrors these two numbers and is pinned to
  *   them by a contract test — a producer that disagreed would silently ship a
  *   different retry policy than the one documented here.
- * - **Terminal.** A job that runs out of attempts is *finished*, and says so:
- *   `markJobAbandoned` appends an `abandoned` row and retires the `queued` row
- *   the API wrote. Without that, an exhausted job left its enqueue lock in place
- *   — so no later capture-complete could ever re-queue it — and left the capture
- *   in `processing` forever, because its latest row said `failed` and a `failed`
- *   row is indistinguishable from "attempt 2 of 5". See the long note on
- *   `markJobAbandoned` for why the mechanism is a supersede rather than a delete.
+ * - **Terminal.** A job that is over is *finished*, and says so, in both
+ *   directions: `markJobSucceeded` appends `done` and `markJobAbandoned`
+ *   appends `abandoned`, and both retire the `queued` row the API wrote.
+ *   Without that retirement a finished job left its enqueue lock in place, so
+ *   no later capture-complete could ever re-queue it — on the failure path that
+ *   also left the capture in `processing` forever, because its latest row said
+ *   `failed` and a `failed` row is indistinguishable from "attempt 2 of 5"; on
+ *   the success path it made every re-render a silent no-op. Retiring the row
+ *   does not weaken the idempotency above: two concurrent runs of one
+ *   `(capture, job)` are stopped by the `jobId`, not by that row. See the long
+ *   note on `retireQueuedRow` for why the mechanism is a supersede rather than
+ *   a delete.
  *   A job whose *capture row* is gone is terminal in a different way: nothing can
  *   be recorded against it and nobody is waiting for it, so the processor drops
  *   it — one warning, no rows, and BullMQ files it as complete. See the catch
@@ -55,13 +62,13 @@ import { isJobName, type JobCtx, type JobHandler, type JobName, type JobPayload 
  *   is the payload and the context, and the context's only write path is
  *   `putDerived`.
  *
- * ## Why a factory and module-level functions
+ * ## Why a factory
  *
  * `createJobQueue` is the real object: tests need their own queue, on their own
  * prefix, with a backoff measured in milliseconds instead of tens of seconds.
- * `enqueue`/`registerHandler` are the process-wide form the plan names, and
- * they delegate to whatever `configureQueue` built — one queue per process,
- * which is what `main.ts` wants.
+ * `configureQueue` is the same thing with a one-per-process guard, which is
+ * what `main.ts` wants; callers hold the object it returns and call
+ * `queue.enqueue` / `queue.registerHandler` on it.
  */
 
 /** The queue every KINO job goes through. One queue, many job names. */
@@ -115,16 +122,40 @@ export function jobKeyToJobId(jobKey: string): string {
   return jobKey.split(':').join(JOB_ID_SEPARATOR);
 }
 
+/** The most jobs one worker runs at once, whatever the box. */
+export const JOB_CONCURRENCY_MAX = 4;
+
 /**
- * How many jobs one worker process runs at once.
+ * How many jobs one worker process runs at once: `floor(cores / 2)`, at least
+ * 1, at most 4.
  *
  * Above one because the jobs are wildly uneven — `extract-metadata` is
  * milliseconds, `render-wiggle-mp4` is seconds — and a party-time queue where a
- * render blocks every thumbnail behind it is the failure 07 §26 is about. Kept
- * small because the work is CPU-bound: this is a concurrency limit, not a
- * parallelism claim.
+ * render blocks every thumbnail behind it is the failure 07 §26 is about.
+ *
+ * ## Why it is derived and not 4
+ *
+ * The work is CPU-bound, and `images/tuning.ts` gives libvips
+ * `floor(cores / JOB_CONCURRENCY)` threads per pipeline, floored at 1. A fixed
+ * 4 therefore stopped being a limit on a small box and became oversubscription:
+ * on a 2-core container it is 4 jobs × 1 thread = 4 runnable CPU-bound threads
+ * for 2 cores, plus up to 4 ffmpeg processes. Nothing finishes sooner; every job
+ * takes ~2× longer, and four jobs' worth of decoded frames sit in memory at once
+ * (~45 MB each at 1600×1200) instead of one's.
+ *
+ * `cores / 2` keeps the product at the core count on every size: 8 cores → 4
+ * jobs × 2 threads; 4 → 2 × 2; 2 → 1 × 2. The cap at 4 is memory and the ffmpeg
+ * processes, not CPU — a 32-core box would otherwise run 16 renders and hold 16
+ * jobs' pixel buffers.
+ *
+ * `availableParallelism()` rather than `cpus().length`, for the reason
+ * `images/tuning.ts` spells out: it respects the cgroup CPU quota the container
+ * was actually given.
  */
-export const JOB_CONCURRENCY = 4;
+export const JOB_CONCURRENCY = Math.min(
+  JOB_CONCURRENCY_MAX,
+  Math.max(1, Math.floor(availableParallelism() / 2)),
+);
 
 /**
  * How long Redis keeps a finished job.
@@ -321,7 +352,11 @@ export function createJobQueue(options: JobQueueOptions): JobQueue {
 
       if (captureId !== null) await appendProcessingEvent(ctx.db, captureId, jobName, 'running');
       await handler(job.data, ctx);
-      if (captureId !== null) await appendProcessingEvent(ctx.db, captureId, jobName, 'done');
+      // `markJobSucceeded`, not a bare `done` append: the `done` row and the
+      // retirement of the API's `queued` row are one transaction, because a
+      // `done` row over a live enqueue lock is a job nothing can ever queue
+      // again. See the note on `retireQueuedRow`.
+      if (captureId !== null) await markJobSucceeded(ctx.db, captureId, jobName);
     } catch (err) {
       if (captureId !== null) {
         // The capture row is gone — trashed and purged, or a test's fixture
@@ -503,23 +538,18 @@ export function configureQueue(options: JobQueueOptions): JobQueue {
   return defaultQueue;
 }
 
-function current(): JobQueue {
-  if (defaultQueue === null) throw new Error('call configureQueue() before using the process queue');
-  return defaultQueue;
-}
-
-/**
- * Adds a job to the process queue.
+/*
+ * The process-wide `enqueue`/`registerHandler` wrappers that used to live here
+ * are gone. Both had zero callers — `main.ts` and every test hold the object
+ * `configureQueue` returns and call `queue.enqueue` / `queue.registerHandler`
+ * on it — and `enqueue`'s docstring described a fan-out that does not exist:
+ * Task 25's export and recap jobs do not queue follow-up work, and the sweeper
+ * (`sweeper.ts`) is the only worker-side producer there is, through `JobQueue`.
  *
- * Nothing in Task 22 calls this: capture-complete is produced by the API
- * (`apps/api/src/queue/producer.ts`), which is the process that knows a capture
- * finished. It is here for the fan-out that is worker-to-worker — Task 25's
- * export and recap jobs queue their own follow-up work.
+ * It was also the wrong shape to copy from. `queue.add()` is a no-op against an
+ * existing `jobId` **in every state**, retained completions and failures
+ * included, so a producer that wants the work to actually run has to `remove`
+ * first — which the API's `submitJob` does and this did not. `sweepQueuedRows`
+ * is the worker's version of that, and it removes a finished job before it
+ * re-adds one (see `TERMINAL_JOB_STATES`).
  */
-export async function enqueue(name: JobName, payload: JobPayload): Promise<void> {
-  await current().enqueue(name, payload);
-}
-
-export function registerHandler(name: JobName, fn: JobHandler): void {
-  current().registerHandler(name, fn);
-}
