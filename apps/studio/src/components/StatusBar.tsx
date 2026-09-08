@@ -1,7 +1,8 @@
 import { Led } from './Led';
 import { ConnectionStrip } from './ConnectionStrip';
 import { useConnectionStore } from '../state/connectionStore';
-import { useDeviceStore } from '../state/deviceStore';
+import { useEffect, useState } from 'react';
+import { pollAgeMs, POLL_PERIOD_MS, useDeviceStore } from '../state/deviceStore';
 import { useDeviceBusy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
 import { formatMB } from '../utils/format';
@@ -19,6 +20,26 @@ export function StatusBar() {
   const dirty = useDraftStore((s) => s.dirty);
   const unsaved = [...new Set(Object.values(dirty))];
 
+  // Staleness is a function of the clock, so it needs a clock: the store only
+  // changes when a poll does something, and a poll that stopped happening
+  // changes nothing at all.
+  const poll = useDeviceStore((s) => s.poll);
+  const [now, setNow] = useState(() => Date.now());
+  const watching = poll.failures > 0 || poll.pausedBy !== null;
+  useEffect(() => {
+    if (!watching) return;
+    const timer = setInterval(() => setNow(Date.now()), POLL_PERIOD_MS);
+    setNow(Date.now());
+    return () => clearInterval(timer);
+  }, [watching]);
+  const ageMs = pollAgeMs(poll, now);
+  const stale =
+    ageMs === null
+      ? null
+      : poll.pausedBy !== null
+        ? `HELD ${Math.round(ageMs / 1000)}s — ${poll.pausedBy} HAS THE LINK`
+        : `STALE ${Math.round(ageMs / 1000)}s — ${poll.lastError ?? 'THE CAMERA STOPPED ANSWERING'}`;
+
   return (
     // A landmark, not a live region: the cells inside announce themselves, and
     // wrapping the whole bar in role="status" would re-read every number on
@@ -32,6 +53,18 @@ export function StatusBar() {
       {busyLabel ? (
         <span className="status-cell" role="status">
           <Led state="busy" label={`${busyLabel} RUNNING`} />
+        </span>
+      ) : null}
+      {/* The numbers to the right are only as good as the last poll. When
+          that stopped, say so beside them rather than letting them read as
+          live. */}
+      {stale ? (
+        <span
+          className="status-cell"
+          role="status"
+          title="Camera, power and storage readings below are not current"
+        >
+          <Led state={poll.pausedBy !== null ? 'busy' : 'warn'} label={`VALUES ${stale}`} />
         </span>
       ) : null}
       {unsaved.length > 0 ? (

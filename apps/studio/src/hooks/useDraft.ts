@@ -120,5 +120,22 @@ export function useDraft<T>(source: T | null, persist?: { key: string; label: st
     [read, write],
   );
 
-  return { draft, dirty, changes, changedFields, patch, discard, setDraft } as const;
+  /**
+   * Adopt a device-reported value as both the draft and its baseline.
+   *
+   * This is what a page calls after a save: the camera has spoken, and what it
+   * kept is now the value on screen. `discard` cannot do this job — it reads
+   * `source` as of the last render, which is still the pre-save config in the
+   * same tick a write completes. Without it, a clamped write left the field
+   * showing the refused number and the bar claiming unsaved changes that no
+   * amount of pressing APPLY could ever save.
+   */
+  const rebase = useCallback(
+    (next: T) => {
+      write({ draft: structuredClone(next), base: structuredClone(next) });
+    },
+    [write],
+  );
+
+  return { draft, dirty, changes, changedFields, patch, discard, setDraft, rebase } as const;
 }

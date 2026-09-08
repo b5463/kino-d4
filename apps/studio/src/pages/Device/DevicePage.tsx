@@ -8,13 +8,16 @@ import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SelectField, SliderField, TextField, ToggleField } from '../../components/fields';
 import { useDeviceStore, supports } from '../../state/deviceStore';
 import {
+  applyConfigChecked,
   getDevice,
   refreshCalibration,
   refreshConfig,
   refreshDeviceInfo,
   refreshRecipes,
   refreshSounds,
+  resetConfigToDefaults,
 } from '../../app/session';
+import { blockedBy, claimDevice, releaseDevice } from '../../state/deviceBusy';
 import { onUi } from '../../state/uiBus';
 import { useDraft } from '../../hooks/useDraft';
 import type { BodyConfig } from '@kino/kdp';
@@ -26,6 +29,9 @@ import type { BackupSound, KinoBackup } from '../../device/backup';
 import { readSound, uploadSound } from '../../device/sounds';
 import { downloadText } from '../../utils/download';
 import { playBuiltin } from '../../utils/soundFx';
+
+/** Owner id the restore sequence identifies itself by on the link. */
+const RESTORE_OWNER = 'restore';
 
 /** "1 look" / "2 looks" — never "1 look(s)". */
 function plural(n: number, noun: string): string {
@@ -70,7 +76,7 @@ function diffLabel(path: string): string {
 
 export function DevicePage() {
   const state = useDeviceStore();
-  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<BodyConfig>(state.config?.body ?? null, {
+  const { draft, dirty, changes, changedFields, patch, discard, rebase } = useDraft<BodyConfig>(state.config?.body ?? null, {
     key: 'device',
     label: 'Device',
   });
@@ -81,6 +87,8 @@ export function DevicePage() {
   } | null>(null);
   const [backupNotice, setBackupNotice] = useState<string | null>(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [resetConfigOpen, setResetConfigOpen] = useState(false);
+  const [resetConfigBusy, setResetConfigBusy] = useState(false);
   const restoreFileRef = useRef<HTMLInputElement>(null);
 
   const { info, power, storage, config } = state;
@@ -162,6 +170,18 @@ export function DevicePage() {
     setRestoreBusy(true);
     const soundsSupported = supports(state, 'customSounds');
     let soundsWritten = 0;
+    // A restore is minutes of writes over the same UART every bench measures
+    // on, so it takes the exclusive claim like they do. Unfenced, it competed
+    // with a running burn-in and could be refused BUSY mid-sequence — which is
+    // exactly the half-restored camera the message below warns about.
+    if (!claimDevice(RESTORE_OWNER, 'RESTORING KINO')) {
+      setBackupNotice(
+        `${blockedBy(RESTORE_OWNER) ?? 'Another operation'} is using the link — nothing was restored.`,
+      );
+      setRestoreBusy(false);
+      return;
+    }
+    let refused: ReturnType<typeof diffConfigs> = [];
     try {
       // The writes. Only a failure in here can leave the camera half-restored.
       // Sounds first — the config may name a custom clip as shutter sound.
@@ -172,7 +192,7 @@ export function DevicePage() {
           soundsWritten++;
         }
       }
-      await dev.applyConfig(backup.config);
+      refused = (await dev.applyConfig(backup.config)).refused;
       await dev.applyCalibration(backup.calibration.cams);
       for (const recipe of backup.customRecipes) {
         await dev.uploadRecipe({ ...recipe, factory: false });
@@ -183,6 +203,8 @@ export function DevicePage() {
       );
       setRestoreBusy(false);
       return;
+    } finally {
+      releaseDevice(RESTORE_OWNER);
     }
 
     // Every write was acknowledged. What follows is Studio catching up with a
@@ -205,17 +227,47 @@ export function DevicePage() {
     if (readBack !== null) {
       notes.push(`Reading the camera back afterwards failed: ${readBack}. Press SYNC to refresh this screen.`);
     }
+    // The camera is allowed to clamp a restored value and still ACK it, so a
+    // restored setting is not necessarily the setting in the file.
+    if (refused.length > 0) {
+      notes.push(
+        `KINO kept a different value for ${plural(refused.length, 'field')}: ${refused
+          .map((d) => `${diffLabel(d.path)} (file ${d.from}, kept ${d.to})`)
+          .join('; ')}.`,
+      );
+    }
     setBackupNotice(
       `Restore complete — settings, calibration, ${plural(backup.customRecipes.length, 'look')} and ${plural(soundsWritten, 'sound')} written to KINO.${notes.length ? ' ' + notes.join(' ') : ''}`,
     );
     setRestoreBusy(false);
   };
 
+  // Fenced by the exclusive link claim and read back — see applyConfigChecked.
   const applyBody = async () => {
-    const dev = getDevice();
-    if (!dev || !draft) throw new Error('Not connected');
-    await dev.applyConfig({ body: draft });
-    await refreshConfig();
+    if (!draft) throw new Error('Not connected');
+    const { config: stored, refused } = await applyConfigChecked({ body: draft });
+    rebase(stored.body);
+    return { refused };
+  };
+
+  /**
+   * RESET_CONFIG. The firmware has implemented it since kdp_server.c:1103 and
+   * nothing in Studio could ask for it — a working device capability with no
+   * way to invoke it. It is not the factory reset below: no reboot, no
+   * credentials touched, only settings.
+   */
+  const runResetConfig = async () => {
+    setResetConfigOpen(false);
+    setResetConfigBusy(true);
+    setBackupNotice(null);
+    try {
+      await resetConfigToDefaults();
+      setBackupNotice('Every setting is back to the firmware defaults. Wi-Fi, looks and calibration were not touched.');
+    } catch (err) {
+      setBackupNotice(`Settings were not reset: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setResetConfigBusy(false);
+    }
   };
 
   if (!info) return null;
@@ -466,6 +518,21 @@ export function DevicePage() {
             <Button busy={restoreBusy} onClick={() => restoreFileRef.current?.click()}>
               RESTORE FROM FILE…
             </Button>
+            {/* RESET_CONFIG. Sits here because it is the other way to get back
+                to a known state, and nowhere else in Studio could ask for it. */}
+            <Button
+              variant="danger"
+              busy={resetConfigBusy}
+              disabled={!config}
+              title={
+                config
+                  ? 'Every setting back to the firmware defaults. Wi-Fi, looks and calibration are kept.'
+                  : 'This firmware reports no configuration to reset'
+              }
+              onClick={() => setResetConfigOpen(true)}
+            >
+              RESET SETTINGS…
+            </Button>
           </>
         }
       >
@@ -487,6 +554,23 @@ export function DevicePage() {
       </Panel>
 
       <ApplyBar dirty={dirty} changeCount={changes} changedFields={changedFields} onApply={applyBody} onDiscard={discard} />
+
+      <ConfirmDialog
+        open={resetConfigOpen}
+        danger
+        title="RESET SETTINGS"
+        confirmLabel="RESET SETTINGS"
+        cancelLabel="KEEP THEM"
+        onCancel={() => setResetConfigOpen(false)}
+        onConfirm={() => void runResetConfig()}
+      >
+        <p>
+          Put <strong>every setting</strong> back to the firmware defaults — shoot, wiggle, quad and
+          body. Custom looks, custom sounds, calibration and Wi-Fi are kept, and the camera does not
+          reboot. Any unsaved changes on other pages are dropped. This cannot be undone; back up
+          first if you want these settings back.
+        </p>
+      </ConfirmDialog>
 
       {/* Restore overwrites every setting and every calibration value on the
           camera. It gets the red treatment and CANCEL keeps the focus. */}

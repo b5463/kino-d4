@@ -3,6 +3,7 @@
 // the encoder is unavailable.
 
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import { bounceSequence } from './bounce';
 
 const CODEC = 'avc1.42001f'; // H.264 baseline, level 3.1 — fine for 800×600
 
@@ -21,7 +22,7 @@ export async function mp4Supported(width: number, height: number): Promise<boole
 }
 
 /**
- * Encode a bounce-sequence MP4 from four frames. Repeats the 1-2-3-4-3-2
+ * Encode a bounce-sequence MP4 from the frames present. Repeats that
  * cycle for ~durationS seconds at the given fps.
  */
 type FrameSource = HTMLImageElement | HTMLCanvasElement;
@@ -37,6 +38,7 @@ export async function encodeWiggleMp4(
   fps: number,
   durationS = 4,
 ): Promise<Uint8Array> {
+  if (images.length === 0) throw new Error('This capture has no frames to export.');
   const src = sourceSize(images[0]);
   const width = Math.min(src.w, 1280) & ~1;
   const height = Math.round((src.h / src.w) * width) & ~1;
@@ -67,7 +69,7 @@ export async function encodeWiggleMp4(
     framerate: fps,
   });
 
-  const bounce = [0, 1, 2, 3, 2, 1];
+  const bounce = bounceSequence(images.length);
   const totalFrames = Math.max(bounce.length, Math.round(durationS * fps));
   const frameUs = Math.round(1_000_000 / fps);
 

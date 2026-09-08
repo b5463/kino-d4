@@ -430,6 +430,20 @@ export class KinoProtocolClient {
     return this.registerJob<TResult>(started.jobId);
   }
 
+  /**
+   * Attach to a job the caller has already seen accepted.
+   *
+   * `startJob` is this plus the request that started it, and is what almost
+   * every caller wants. This seam exists for the one command whose reply shape
+   * differs between peers — SYNC_BENCH answers a plain RESPONSE on shipped
+   * firmware and a job start on the reference device — so the caller has to
+   * read the reply before it knows which model it is in. Events that arrive
+   * before this call are held for it, exactly as they are for `startJob`.
+   */
+  adoptJob<TResult = JobResult>(jobId: string): JobHandle<TResult> {
+    return this.registerJob<TResult>(jobId);
+  }
+
   private registerJob<TResult>(jobId: string): JobHandle<TResult> {
     let resolve!: (value: JobResult) => void;
     let reject!: (err: Error) => void;

@@ -6,6 +6,7 @@ import { Led } from './Led';
 import { onUi } from '../state/uiBus';
 import { useDeviceStore } from '../state/deviceStore';
 import { configLabel } from '../utils/configLabels';
+import type { ConfigDiff } from '../utils/diffConfig';
 
 /**
  * Sticky unsaved-changes bar. Nothing is shown as saved until the device
@@ -24,6 +25,19 @@ import { configLabel } from '../utils/configLabels';
  */
 const SAVED_HOLD_MS = 6000;
 
+/**
+ * What an APPLY handler may report back.
+ *
+ * `refused` is the fields the camera stored differently from what was sent —
+ * SET_CONFIG is allowed to clamp and still ACK, so a successful save is not
+ * proof the values on screen are the ones asked for. A handler that returns
+ * nothing is treated as a clean write, which is what every non-config apply
+ * (a look upload, a recipe) is.
+ */
+export interface ApplyOutcome {
+  refused: ConfigDiff[];
+}
+
 export function ApplyBar({
   dirty,
   onApply,
@@ -35,7 +49,7 @@ export function ApplyBar({
   changedFields,
 }: {
   dirty: boolean;
-  onApply: () => Promise<void>;
+  onApply: () => Promise<ApplyOutcome | void>;
   onDiscard: () => void;
   applyLabel?: string;
   changeCount?: number;
@@ -44,7 +58,11 @@ export function ApplyBar({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [saved, setSaved] = useState<{ at: string; revision: number | null } | null>(null);
+  const [saved, setSaved] = useState<{
+    at: string;
+    revision: number | null;
+    refused: ConfigDiff[];
+  } | null>(null);
   const savedRef = useRef<HTMLParagraphElement>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,16 +70,22 @@ export function ApplyBar({
     setBusy(true);
     setError(null);
     onApply()
-      .then(() => {
+      .then((outcome) => {
         // Read the revision after the caller refreshed, so it is the camera's
         // number and not Studio's optimism.
         const revision = useDeviceStore.getState().configRevision;
+        const refused = outcome?.refused ?? [];
         setSaved({
           at: new Date().toLocaleTimeString([], { hour12: false }),
           revision: typeof revision === 'number' ? revision : null,
+          refused,
         });
         if (holdTimer.current) clearTimeout(holdTimer.current);
-        holdTimer.current = setTimeout(() => setSaved(null), SAVED_HOLD_MS);
+        // A refusal is the operator's evidence that a value is not what they
+        // typed. It stays until they navigate or edit, not for six seconds.
+        if (refused.length === 0) {
+          holdTimer.current = setTimeout(() => setSaved(null), SAVED_HOLD_MS);
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setBusy(false));
@@ -97,20 +121,38 @@ export function ApplyBar({
     if (dirty && saved) setSaved(null);
   }, [dirty, saved]);
 
-  if (!dirty) {
-    if (!saved) return null;
-    return (
-      <div className="applybar applybar--saved">
-        <p className="applybar-saved" role="status" tabIndex={-1} ref={savedRef}>
-          <Led state="ok" label="" />
-          <span>
-            <strong>SAVED TO KINO</strong> · {saved.at}
-            {saved.revision !== null ? ` · CONFIG REV ${saved.revision}` : ''}
-          </span>
-        </p>
-      </div>
-    );
-  }
+  // A clamped write is reported whether or not anything is still dirty: the
+  // page rebases onto what the camera kept, so `dirty` is false and the row
+  // would otherwise vanish with the news in it.
+  const savedRow = saved ? (
+    <div className={`applybar ${saved.refused.length > 0 ? 'applybar--warn' : 'applybar--saved'}`}>
+      <p className="applybar-saved" role="status" tabIndex={-1} ref={savedRef}>
+        <Led state={saved.refused.length > 0 ? 'warn' : 'ok'} label="" />
+        <span>
+          <strong>SAVED TO KINO</strong> · {saved.at}
+          {saved.revision !== null ? ` · CONFIG REV ${saved.revision}` : ''}
+          {saved.refused.length > 0 ? (
+            <>
+              <br />
+              <strong>
+                KINO KEPT {saved.refused.length === 1 ? 'A DIFFERENT VALUE' : 'DIFFERENT VALUES'} FOR{' '}
+                {saved.refused.length} {saved.refused.length === 1 ? 'FIELD' : 'FIELDS'}
+              </strong>{' '}
+              — the fields below now show what the camera has, not what was sent.
+              <br />
+              {saved.refused.map((d) => (
+                <span key={d.path} className="mono" style={{ display: 'block' }}>
+                  {configLabel(d.path)}: sent {d.from}, kept {d.to}
+                </span>
+              ))}
+            </>
+          ) : null}
+        </span>
+      </p>
+    </div>
+  ) : null;
+
+  if (!dirty) return savedRow;
 
   const names = (changedFields ?? []).map(configLabel);
   const summary =

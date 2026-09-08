@@ -13,9 +13,21 @@ import { CaptureMeta, ImportedFileMeta } from './CaptureMeta';
 import { MatchPanel } from './MatchPanel';
 import { PushToRoll } from './PushToRoll';
 import { DEVICE_SOURCE, useCaptureFrames } from './useCaptureFrames';
-import type { CaptureSource } from './useCaptureFrames';
+import type { CaptureFrame, CaptureSource } from './useCaptureFrames';
+import type { CaptureInfo } from '@kino/kdp';
+
+/**
+ * The look recorded for one frame's camera.
+ *
+ * `recipeIds` is in CAM order — four entries for a quad — so indexing it by
+ * the frame's position in the folder prints CAM2's look under a CAM3 tile the
+ * moment a camera is missing.
+ */
+function recipeForSlot(info: CaptureInfo, frame: CaptureFrame, index: number): string | undefined {
+  const at = slotIndex(frame.slot);
+  return info.recipeIds[at >= 0 ? at : index];
+}
 import {
-  SEQ_BOUNCE,
   alignedSources,
   buildContactSheet,
   buildGifBytes,
@@ -23,7 +35,9 @@ import {
   buildZipBytes,
   saveBlob,
 } from './captureExports';
-import { captureOffsets, hasAnyOffset } from '../../utils/wiggleRender';
+import { bounceSequence } from '../../utils/bounce';
+import { slotIndex, slotLabel, slotTag } from '../../utils/camSlots';
+import { captureOffsets, hasAnyOffset, offsetsForFrames } from '../../utils/wiggleRender';
 
 export function CaptureInspector({
   summary,
@@ -67,7 +81,11 @@ export function CaptureInspector({
   // `captureOffsets`. `info` is null until MEDIA_INFO answers, so the first
   // render uses live calibration and settles once the meta arrives.
   const camOffsets = captureOffsets(info, calibration);
-  const offsetsAvailable = hasAnyOffset(camOffsets);
+  // Per-frame, keyed off each frame's own name. `camOffsets` is in CAM order
+  // and the frames are only the cameras that answered (contract D23), so the
+  // two lists do not line up on a capture that lost one.
+  const frameOffsets = offsetsForFrames(camOffsets, frames ?? []);
+  const offsetsAvailable = hasAnyOffset(frameOffsets);
   const [alignedCrop, setAlignedCrop] = useState(true);
   const stepRef = useRef(0);
   const headId = useId();
@@ -114,17 +132,25 @@ export function CaptureInspector({
     void mp4Supported(800, 600).then(setMp4Ok);
   }, [summary.kind]);
 
-  // Wiggle playback: bounce through the four viewpoints at the chosen fps.
+  // Wiggle playback: bounce through the viewpoints this capture actually has,
+  // at the chosen fps. Never four unconditionally — a capture that lost a
+  // camera has three frames and the fourth index does not exist.
   useEffect(() => {
     if (summary.kind !== 'wiggle' || !playing || !frames || selectedFrame !== null) return;
+    const seq = bounceSequence(frames.length);
+    if (seq.length < 2) return;
     const timer = setInterval(() => {
-      stepRef.current = (stepRef.current + 1) % SEQ_BOUNCE.length;
-      setFrameIdx(SEQ_BOUNCE[stepRef.current]);
+      stepRef.current = (stepRef.current + 1) % seq.length;
+      setFrameIdx(seq[stepRef.current]);
     }, Math.max(1000 / fps, 40));
     return () => clearInterval(timer);
   }, [summary.kind, playing, frames, fps, selectedFrame]);
 
-  const shownFrame = selectedFrame ?? frameIdx;
+  // The frame count can shrink under a running timer (a re-read, a different
+  // capture), so the index is clamped where it is read, not only where it is
+  // set. An out-of-range read here is a blank screen for the whole app.
+  const frameCount = frames?.length ?? 0;
+  const shownFrame = Math.min(Math.max(selectedFrame ?? frameIdx, 0), Math.max(0, frameCount - 1));
 
   const runExport = async (tag: string, run: () => Promise<void>) => {
     setExporting(tag);
@@ -137,7 +163,7 @@ export function CaptureInspector({
     }
   };
 
-  const sources = () => alignedSources(frames ?? [], alignedCrop && offsetsAvailable ? camOffsets : null);
+  const sources = () => alignedSources(frames ?? [], alignedCrop && offsetsAvailable ? frameOffsets : null);
 
   const exportMp4 = () =>
     runExport('mp4', async () => {
@@ -272,9 +298,13 @@ export function CaptureInspector({
                 </span>
                 <span className="val">{progress.pct}%</span>
               </div>
+            ) : frames.length === 0 ? (
+              <p className="notice notice--warn">
+                This capture holds no readable frames. Nothing to show, align or export.
+              </p>
             ) : alignMode ? (
               <AlignEditor
-                frameUrls={frames.map((f) => f.url)}
+                frames={frames}
                 onClose={leaveAlign}
                 onDirtyChange={setAlignDirty}
               />
@@ -282,53 +312,66 @@ export function CaptureInspector({
               <>
                 <div className="inspector-stage">
                   {summary.kind === 'wiggle' && selectedFrame === null ? (
-                    <img src={frames[shownFrame].url} alt={`Camera ${shownFrame + 1} viewpoint`} />
+                    <img
+                      src={frames[shownFrame].url}
+                      alt={`${slotLabel(frames[shownFrame].slot, shownFrame)} viewpoint`}
+                    />
                   ) : summary.kind === 'quad' && selectedFrame === null ? (
                     <div className="inspector-quad">
                       {frames.map((f, i) => (
                         <figure key={f.name}>
-                          <img src={f.url} alt={`CAM ${i + 1}`} />
+                          <img src={f.url} alt={slotLabel(f.slot, i)} />
                           <figcaption>
-                            CAM {i + 1}
-                            {info && info.recipeIds[i] ? ` · ${lookName(info.recipeIds[i])}` : ''}
+                            {slotLabel(f.slot, i)}
+                            {info && recipeForSlot(info, f, i) ? ` · ${lookName(recipeForSlot(info, f, i))}` : ''}
                           </figcaption>
                         </figure>
                       ))}
                     </div>
                   ) : (
-                    <img src={frames[shownFrame].url} alt={`Camera ${shownFrame + 1} frame`} />
+                    <img
+                      src={frames[shownFrame].url}
+                      alt={`${slotLabel(frames[shownFrame].slot, shownFrame)} frame`}
+                    />
                   )}
                 </div>
 
                 {/* Each frame carries its own download, so the tools row below is
                     only whole-capture exports. */}
                 <div className="inspector-strip">
-                  {frames.map((f, i) => (
-                    <span key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <button
-                        type="button"
-                        aria-pressed={selectedFrame === i}
-                        aria-label={`Inspect CAM ${i + 1} frame`}
-                        onClick={() => setSelectedFrame(selectedFrame === i ? null : i)}
-                      >
-                        <img src={f.url} alt="" />
-                      </button>
-                      <Button
-                        size="sm"
-                        aria-label={`Download CAM ${i + 1} JPEG`}
-                        title={`Save ${summary.id}_C${i + 1}.jpg`}
-                        style={{ padding: '0 4px' }}
-                        onClick={() =>
-                          saveBlob(
-                            `${summary.id}_C${i + 1}.jpg`,
-                            new Blob([f.data as BlobPart], { type: 'image/jpeg' }),
-                          )
-                        }
-                      >
-                        ↓ C{i + 1}.JPG
-                      </Button>
-                    </span>
-                  ))}
+                  {frames.map((f, i) => {
+                    // The button is named after the camera in the file name.
+                    // Numbering the strip 1..n instead saved CAM3's bytes as
+                    // `_C2.jpg` on any capture that lost a camera.
+                    const tag = slotTag(f.slot, i);
+                    const label = slotLabel(f.slot, i);
+                    return (
+                      <span key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <button
+                          type="button"
+                          aria-pressed={selectedFrame === i}
+                          aria-label={`Inspect ${label} frame`}
+                          onClick={() => setSelectedFrame(selectedFrame === i ? null : i)}
+                        >
+                          <img src={f.url} alt="" />
+                        </button>
+                        <Button
+                          size="sm"
+                          aria-label={`Download ${label} JPEG`}
+                          title={`Save ${summary.id}_${tag}.jpg`}
+                          style={{ padding: '0 4px' }}
+                          onClick={() =>
+                            saveBlob(
+                              `${summary.id}_${tag}.jpg`,
+                              new Blob([f.data as BlobPart], { type: 'image/jpeg' }),
+                            )
+                          }
+                        >
+                          ↓ {tag}.JPG
+                        </Button>
+                      </span>
+                    );
+                  })}
                   {summary.kind === 'wiggle' ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
                       <Button size="sm" onClick={() => setPlaying(!playing)} disabled={selectedFrame !== null}>
@@ -450,8 +493,8 @@ export function CaptureInspector({
               </>
             )}
 
-            {frames && !alignMode ? (
-              <MatchPanel frameUrls={frames.map((f) => f.url)} isWiggle={summary.kind === 'wiggle'} />
+            {frames && frames.length > 0 && !alignMode ? (
+              <MatchPanel frames={frames} isWiggle={summary.kind === 'wiggle'} />
             ) : null}
 
             {info ? <CaptureMeta info={info} kind={summary.kind} lookName={lookName} /> : null}

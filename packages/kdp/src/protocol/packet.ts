@@ -105,8 +105,28 @@ export interface DecoderStats {
   discardedBytes: number;
 }
 
+/** Initial pending-byte capacity. One full frame fits without a grow. */
+const INITIAL_CAPACITY = 1 << 15;
+
 export class FrameDecoder {
-  private buf = new Uint8Array(0);
+  /**
+   * Pending bytes live in a reused buffer between `head` and `tail`.
+   *
+   * The previous implementation allocated `pending + arrival` and copied the
+   * whole pending buffer on every read, then `slice`d it again for each
+   * partial frame. An 8,210-byte frame arriving in 64-byte USB reads cost
+   * ~128 copies averaging ~4 kB — about half a megabyte of copying per frame.
+   * Appending into spare capacity and advancing `head` instead makes the cost
+   * linear in the bytes received. The wire format, the resync rules and every
+   * counter below are unchanged.
+   */
+  private buf = new Uint8Array(INITIAL_CAPACITY);
+  private view = new DataView(this.buf.buffer);
+  /** First byte not yet consumed. */
+  private head = 0;
+  /** One past the last valid byte. */
+  private tail = 0;
+
   readonly stats: DecoderStats = {
     frames: 0,
     crcFailures: 0,
@@ -115,17 +135,38 @@ export class FrameDecoder {
   };
 
   reset(): void {
-    this.buf = new Uint8Array(0);
+    this.head = 0;
+    this.tail = 0;
+  }
+
+  /**
+   * Make room for `need` more bytes: slide the pending bytes down to offset 0,
+   * and only allocate when they genuinely do not fit.
+   */
+  private append(data: Uint8Array): void {
+    if (data.length === 0) return;
+    if (this.buf.length - this.tail < data.length) {
+      const pending = this.tail - this.head;
+      if (pending + data.length > this.buf.length) {
+        let cap = this.buf.length;
+        while (cap < pending + data.length) cap *= 2;
+        const next = new Uint8Array(cap);
+        next.set(this.buf.subarray(this.head, this.tail));
+        this.buf = next;
+        this.view = new DataView(next.buffer);
+      } else if (this.head > 0) {
+        this.buf.set(this.buf.subarray(this.head, this.tail), 0);
+      }
+      this.head = 0;
+      this.tail = pending;
+    }
+    this.buf.set(data, this.tail);
+    this.tail += data.length;
   }
 
   /** Feed raw bytes; returns every complete, CRC-valid frame found. */
   push(data: Uint8Array): Frame[] {
-    if (data.length > 0) {
-      const merged = new Uint8Array(this.buf.length + data.length);
-      merged.set(this.buf);
-      merged.set(data, this.buf.length);
-      this.buf = merged;
-    }
+    this.append(data);
 
     const frames: Frame[] = [];
     let offset = 0;
@@ -138,20 +179,24 @@ export class FrameDecoder {
      */
     let resyncCounted = false;
 
+    // `offset` and `start` are both relative to `head`, so the arithmetic
+    // below reads exactly as it did when the pending bytes were their own
+    // array. `head` is only advanced on the paths that used to reslice.
     while (true) {
+      const pending = this.tail - this.head;
       // Scan for magic.
       let start = -1;
-      for (let i = offset; i + 1 < this.buf.length; i++) {
-        if (this.buf[i] === MAGIC0 && this.buf[i + 1] === MAGIC1) {
+      for (let i = offset; i + 1 < pending; i++) {
+        if (this.buf[this.head + i] === MAGIC0 && this.buf[this.head + i + 1] === MAGIC1) {
           start = i;
           break;
         }
       }
       if (start === -1) {
         // Keep at most the final byte (could be the first half of a magic).
-        const keep = this.buf.length > 0 && this.buf[this.buf.length - 1] === MAGIC0 ? 1 : 0;
-        this.stats.discardedBytes += this.buf.length - keep - offset > 0 ? this.buf.length - keep - offset : 0;
-        this.buf = this.buf.slice(this.buf.length - keep);
+        const keep = pending > 0 && this.buf[this.tail - 1] === MAGIC0 ? 1 : 0;
+        this.stats.discardedBytes += pending - keep - offset > 0 ? pending - keep - offset : 0;
+        this.head = this.tail - keep;
         return frames;
       }
       if (start > offset) {
@@ -160,13 +205,13 @@ export class FrameDecoder {
       }
       resyncCounted = false;
 
-      if (this.buf.length - start < HEADER_LEN) {
-        this.buf = this.buf.slice(start);
+      if (pending - start < HEADER_LEN) {
+        this.head += start;
         return frames;
       }
 
-      const view = new DataView(this.buf.buffer, this.buf.byteOffset + start);
-      const payloadLen = view.getUint32(10, true);
+      const at = this.head + start;
+      const payloadLen = this.view.getUint32(at + 10, true);
 
       if (payloadLen > MAX_PAYLOAD) {
         // Corrupt length — skip past this magic and rescan.
@@ -178,17 +223,13 @@ export class FrameDecoder {
       }
 
       const total = HEADER_LEN + payloadLen + CRC_LEN;
-      if (this.buf.length - start < total) {
-        this.buf = this.buf.slice(start);
+      if (pending - start < total) {
+        this.head += start;
         return frames;
       }
 
-      const frameBytes = this.buf.subarray(start, start + total);
-      const expected = new DataView(
-        frameBytes.buffer,
-        frameBytes.byteOffset + HEADER_LEN + payloadLen,
-      ).getUint32(0, true);
-      const actual = crc32(frameBytes.subarray(0, HEADER_LEN + payloadLen));
+      const expected = this.view.getUint32(at + HEADER_LEN + payloadLen, true);
+      const actual = crc32(this.buf.subarray(at, at + HEADER_LEN + payloadLen));
 
       if (expected !== actual) {
         this.stats.crcFailures++;
@@ -204,17 +245,19 @@ export class FrameDecoder {
       }
 
       frames.push({
-        version: frameBytes[2],
-        type: frameBytes[3],
-        flags: frameBytes[4],
-        seq: view.getUint32(6, true),
-        payload: frameBytes.slice(HEADER_LEN, HEADER_LEN + payloadLen),
+        version: this.buf[at + 2],
+        type: this.buf[at + 3],
+        flags: this.buf[at + 4],
+        seq: this.view.getUint32(at + 6, true),
+        // A copy, not a view: the pending buffer is reused, so a view would
+        // be overwritten by the next arriving read.
+        payload: this.buf.slice(at + HEADER_LEN, at + HEADER_LEN + payloadLen),
       });
       this.stats.frames++;
       offset = start + total;
 
-      if (offset >= this.buf.length) {
-        this.buf = new Uint8Array(0);
+      if (offset >= pending) {
+        this.head = this.tail;
         return frames;
       }
     }

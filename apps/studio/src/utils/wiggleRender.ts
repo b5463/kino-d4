@@ -9,6 +9,7 @@
 
 import { alignmentPlan, hasAnyOffset, type CamOffset } from '@kino/media';
 import { CAM_IDS, type CamId, type CaptureInfo } from '@kino/kdp';
+import { slotIndex } from './camSlots';
 
 export { SENSOR_BASE_W, computeOverlapCrop, hasAnyOffset } from '@kino/media';
 export type { CamOffset } from '@kino/media';
@@ -42,8 +43,31 @@ export function captureOffsets(
   });
 }
 
+const NEUTRAL_OFFSET: CamOffset = { x: 0, y: 0, rot: 0 };
+
 /**
- * Produce four aligned, cropped canvases from the original frames.
+ * `captureOffsets` in **frame** order — each frame paired with the calibration
+ * of the camera that actually took it.
+ *
+ * `captureOffsets` is indexed in CAM order, and the frames on a card are only
+ * the cameras that answered (contract D23). Applying `offsets[i]` to
+ * `images[i]` therefore handed camera 3's frame camera 2's correction the
+ * moment CAM2 was missing. A frame whose name states no slot gets no
+ * correction rather than the next one in line.
+ */
+export function offsetsForFrames(
+  camOffsets: CamOffset[],
+  frames: readonly { slot: CamId | null }[],
+): CamOffset[] {
+  return frames.map((frame) => {
+    const at = slotIndex(frame.slot);
+    return at >= 0 && at < camOffsets.length ? camOffsets[at] : NEUTRAL_OFFSET;
+  });
+}
+
+/**
+ * Produce one aligned, cropped canvas per frame supplied. `offsets` is in
+ * frame order — see `offsetsForFrames`, never CAM order.
  * Returns null when there are no offsets to apply.
  */
 export function buildAlignedFrames(

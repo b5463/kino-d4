@@ -21,15 +21,38 @@ import { SerialTransport, webSerialSupported } from '@kino/kdp';
 import { BroadcastTransport, WebSocketTransport } from '@kino/kdp';
 import { setConnection, useConnectionStore } from '../state/connectionStore';
 import type { ConnectionFault } from '../state/connectionStore';
-import { clearDeviceState, setDeviceState, supports, useDeviceStore } from '../state/deviceStore';
+import {
+  clearDeviceState,
+  pollFailed,
+  pollPaused,
+  pollSucceeded,
+  setDeviceState,
+  supports,
+  useDeviceStore,
+} from '../state/deviceStore';
 import { resetDrafts } from '../state/draftStore';
-import { claimDevice, releaseDevice, resetDeviceBusy } from '../state/deviceBusy';
+import { blockedBy, claimDevice, releaseDevice, resetDeviceBusy } from '../state/deviceBusy';
+import type { ConfigDiff } from '../utils/diffConfig';
+import { CLIENT_VERSION } from './version';
 import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
 import { appendLog } from '../state/logStore';
 import { recordCamera } from '../state/knownCameras';
 
-/** Reported in HELLO so the device's own log names the peer (04 §4). */
-const CLIENT_NAME = 'kino-studio';
+/**
+ * Reported in HELLO so the device's own log names the peer (04 §4).
+ *
+ * With the version in it. It used to be the bare product name, so a camera log
+ * pulled off a unit in the field said a KINO Studio had spoken to it and not
+ * which one — the field exists to answer exactly that.
+ */
+const CLIENT_NAME = CLIENT_VERSION;
+
+/**
+ * Owner id the poller identifies itself by against `deviceBusy`. It never
+ * takes the claim — a poll that stole the link from a bench would be the same
+ * bug the other way round — it only checks whether someone else holds it.
+ */
+const POLL_OWNER = 'poll';
 
 type BusEvent = 'calibration' | 'selftest' | 'capture' | 'phase';
 
@@ -66,7 +89,6 @@ let transport: Transport | null = null;
 let client: KinoProtocolClient | null = null;
 let device: KinoDevice | null = null;
 let lastKind: TransportKind | null = null;
-let lastSerialPort: SerialPort | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollInFlight = false;
 let expectRebootUntil = 0;
@@ -166,7 +188,6 @@ export async function connectSerial(): Promise<void> {
     setConnection({ phase: 'disconnected' });
     return;
   }
-  lastSerialPort = port;
   await connectWith(() => new SerialTransport(port), 'serial');
 }
 
@@ -481,6 +502,7 @@ export async function drainStaleSession(): Promise<boolean> {
   try {
     await populateAll();
     staleAfterRestart = false;
+    pollSucceeded();
     return true;
   } finally {
     releaseDevice('session-restart');
@@ -501,6 +523,62 @@ export async function refreshConfig() {
   if (!device) return;
   const envelope = await device.getConfig();
   setDeviceState({ config: envelope.config, configRevision: envelope.configRevision ?? 0 });
+}
+
+/** Owner id every config write identifies itself by. */
+const CONFIG_OWNER = 'config';
+
+/**
+ * Write config, read it back, store what the camera actually kept.
+ *
+ * Fenced by the exclusive claim like the benches are: a SET/SAVE/GET on a
+ * link a burn-in is measuring corrupts that measurement and can be refused
+ * BUSY by the firmware halfway through, which would leave SET applied and
+ * SAVE not. It is three short round trips, so the claim is held briefly, and
+ * a blocked write says who has the link instead of going out anyway.
+ *
+ * Returns the config the camera reports afterwards and the requested fields it
+ * did not keep. Every page's APPLY goes through here.
+ */
+export async function applyConfigChecked(
+  patch: Partial<import('@kino/kdp').KinoConfig>,
+): Promise<{ config: import('@kino/kdp').KinoConfig; refused: ConfigDiff[] }> {
+  const dev = device;
+  if (!dev) throw new Error('KINO is not connected.');
+  if (!claimDevice(CONFIG_OWNER, 'SAVING SETTINGS')) {
+    throw new Error(`${blockedBy(CONFIG_OWNER) ?? 'Another operation'} is using the link — nothing was written.`);
+  }
+  try {
+    const { envelope, refused } = await dev.applyConfig(patch);
+    setDeviceState({ config: envelope.config, configRevision: envelope.configRevision ?? 0 });
+    return { config: envelope.config, refused };
+  } finally {
+    releaseDevice(CONFIG_OWNER);
+  }
+}
+
+/**
+ * RESET_CONFIG, fenced and followed by a full re-read.
+ *
+ * The command has been in the firmware since kdp_server.c:1103 with no way to
+ * invoke it from anywhere in Studio. It is not FACTORY_RESET: no reboot, no
+ * credentials touched, just every setting back to the firmware's defaults —
+ * so it needs no reconnect, only fresh state and dropped drafts, because
+ * every draft on screen was edited against settings that no longer exist.
+ */
+export async function resetConfigToDefaults(): Promise<void> {
+  const dev = device;
+  if (!dev) throw new Error('KINO is not connected.');
+  if (!claimDevice(CONFIG_OWNER, 'RESETTING SETTINGS')) {
+    throw new Error(`${blockedBy(CONFIG_OWNER) ?? 'Another operation'} is using the link — nothing was changed.`);
+  }
+  try {
+    await dev.resetConfig();
+  } finally {
+    releaseDevice(CONFIG_OWNER);
+  }
+  resetDrafts();
+  await refreshConfig();
 }
 
 export async function refreshRecipes() {
@@ -557,6 +635,18 @@ function startPolling() {
     if (!device || pollInFlight) return;
     const phase = useConnectionStore.getState().phase;
     if (phase !== 'connected' && phase !== 'maintenance') return;
+    // The exclusive claim is not advisory. `deviceBusy` exists because four
+    // things measuring one UART at once produce four wrong numbers, and the
+    // poller was the one participant that never asked: camera info every 4 s,
+    // storage and power every 8 s and a full HELLO every 12 s went out through
+    // a claimed bench, so every timing and power figure Studio printed was
+    // measured on a contended link. It stands down instead, and the values on
+    // screen are marked as held rather than quietly ageing.
+    const holder = blockedBy(POLL_OWNER);
+    if (holder !== null) {
+      pollPaused(holder);
+      return;
+    }
     pollInFlight = true;
     tick++;
     try {
@@ -585,9 +675,16 @@ function startPolling() {
       // often enough for a status lamp and rare enough not to compete with
       // the camera poll for the link.
       if (tick % 5 === 0) await pollNetworkRoll(device);
-    } catch {
+      pollSucceeded();
+    } catch (err) {
       // A single missed poll (busy device, injected timeout) is not a
       // disconnect. The transport close handler owns real disconnects.
+      //
+      // It is not nothing either: swallowing it left the last good power,
+      // storage and camera state on screen with no way to tell it apart from
+      // a live reading. The values stay — they are all there is — and the
+      // status bar says how old they are and why.
+      pollFailed(message(err));
     } finally {
       pollInFlight = false;
     }
@@ -741,10 +838,4 @@ function message(err: unknown): string {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-// Serial reconnect uses the remembered port; exported for the connect screen
-// to re-offer "reconnect last port" later without a new picker dialog.
-export function getLastSerialPort(): SerialPort | null {
-  return lastSerialPort;
 }

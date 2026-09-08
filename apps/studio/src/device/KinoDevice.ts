@@ -41,7 +41,17 @@ import type {
 } from '@kino/kdp';
 import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
 import type { CameraFocus, FocusMode, TimingResult } from '@kino/kdp';
+import { readbackDiff } from '../utils/diffConfig';
+import type { ConfigDiff } from '../utils/diffConfig';
 import type { Recipe } from '../recipes/recipeTypes';
+
+/** What a config write actually achieved. See `KinoDevice.applyConfig`. */
+export interface ConfigApplyResult {
+  /** The config as the camera reports it after the save. */
+  envelope: ConfigEnvelope;
+  /** Requested fields the camera stored differently. Empty on a clean write. */
+  refused: ConfigDiff[];
+}
 import type {
   NetworkListResponse,
   NetworkSetRequest,
@@ -95,13 +105,29 @@ export class KinoDevice {
     return this.client.request<ConfigEnvelope>(Cmd.GET_CONFIG);
   }
 
-  async applyConfig(patch: Partial<KinoConfig>): Promise<void> {
+  /**
+   * SET_CONFIG + SAVE_CONFIG, then read the config back and say what the
+   * camera did not keep.
+   *
+   * The read-back is not belt and braces: SET_CONFIG may clamp a value to the
+   * firmware's range and still ACK, so an accepted write is not the same as
+   * the write that was asked for. Nothing compared the two, and the only
+   * symptom was the unsaved marker returning immediately after a successful
+   * save with no field named.
+   */
+  async applyConfig(patch: Partial<KinoConfig>): Promise<ConfigApplyResult> {
     await this.client.request(Cmd.SET_CONFIG, { schemaVersion: CONFIG_SCHEMA_VERSION, config: patch });
     await this.client.request(Cmd.SAVE_CONFIG);
+    const envelope = await this.getConfig();
+    return { envelope, refused: readbackDiff(patch, envelope.config) };
   }
 
+  /**
+   * RESET_CONFIG — every setting back to the firmware's defaults, without the
+   * reboot and the credential wipe FACTORY_RESET performs.
+   */
   resetConfig() {
-    return this.client.request(Cmd.RESET_CONFIG);
+    return this.client.request(Cmd.RESET_CONFIG, undefined, 6000);
   }
 
   setMode(mode: ShootMode) {
@@ -251,8 +277,20 @@ export class KinoDevice {
     return this.client.request<{ cams: Record<string, CameraFocus> }>(Cmd.CAMERA_FOCUS, { action: 'trigger' }, 5_000);
   }
 
+  /**
+   * Hold the current focus for the capture group, or release it.
+   *
+   * Both directions are the same `lock` action with a boolean — the firmware
+   * has no separate unlock — so `focusUnlock` below is this call with `false`
+   * and exists because "release the lock" is what the caller means and there
+   * was no sender for it at all.
+   */
   focusLock(locked: boolean) {
     return this.client.request<{ ok: boolean; locked: boolean }>(Cmd.CAMERA_FOCUS, { action: 'lock', locked });
+  }
+
+  focusUnlock() {
+    return this.focusLock(false);
   }
 
   focusSet(cam: CamId, position: number) {

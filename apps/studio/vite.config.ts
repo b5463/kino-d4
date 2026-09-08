@@ -1,11 +1,21 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+
+// The shipped version comes from the manifest `npm run version:check` polices,
+// not from a string typed into a component.
+const { version } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
 
 // Static deploy target: relative base so the bundle works from any path
 // (file server subdirectory, GitHub Pages, USB stick).
 export default defineConfig({
   base: './',
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   server: {
     // Fixed port so docs stay true: roll-web 5173, twin 5174, studio 5175.
     // /api proxied like the other apps, so the Roll server panel works

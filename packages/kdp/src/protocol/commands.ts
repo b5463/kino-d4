@@ -62,8 +62,14 @@ export enum Cmd {
   LINK_BENCH = 0x44,
   SET_LINK_BAUD = 0x45,
   /**
-   * Skew Bench: fire N triggers and report per-camera timing for each. An
-   * async job (04 §15) — hundreds of triggers outlive any request deadline.
+   * Edge-integrity bench: fire `pulses` triggers `gapMs` apart and report, per
+   * camera, how many of those edges the node accepted.
+   *
+   * **Not an async job.** The firmware blocks in-line for `pulses × gapMs` —
+   * up to ~200 s at the maxima — and answers one plain RESPONSE
+   * (`SyncBenchResponse`): edge counts, no skew figures and no progress or
+   * completion events. A caller that waits for a job completion waits
+   * forever. The request deadline has to cover the whole run.
    */
   SYNC_BENCH = 0x46,
 

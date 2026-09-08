@@ -1292,6 +1292,19 @@ input[type='number'].slider-entry {
   background: #f4fbf3;
 }
 
+/* Saved, but not as sent: SET_CONFIG clamped a value and ACKed it. Amber, and
+   it stays up until the operator edits or leaves — a six-second green flash is
+   not how you tell someone a number on screen is not the one they typed. */
+.applybar--warn {
+  border-color: #d9c08a;
+  background: #fdf9ef;
+}
+
+.applybar--warn .applybar-saved {
+  align-items: flex-start;
+  color: var(--amber-dark, #7a5a13);
+}
+
 .applybar-saved {
   display: flex;
   align-items: center;

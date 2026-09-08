@@ -14,6 +14,43 @@ import type {
 import type { Recipe } from '../recipes/recipeTypes';
 import type { NetworkStatus, RollView } from '../roll/rollTypes';
 
+/**
+ * How current the polled values are.
+ *
+ * The poller used to swallow every error, so a camera that started NACKing
+ * left the last good power, storage and camera state on screen indefinitely
+ * with nothing to say they were minutes old — the operator reads a number and
+ * believes it is now. This is the marker that says otherwise, and it also
+ * carries the case where the poll deliberately stands down because a bench
+ * holds the link.
+ */
+export interface PollHealth {
+  /** When the poller last completed a read. Null before the first one. */
+  lastOkAt: number | null;
+  /** Consecutive failed polls. Zero means the last one worked. */
+  failures: number;
+  /** Why the most recent poll failed; null when it did not. */
+  lastError: string | null;
+  /** Label of the operation holding the exclusive claim, when standing down. */
+  pausedBy: string | null;
+}
+
+/** The poll interval, in ms. Exported so "how stale" has one definition. */
+export const POLL_PERIOD_MS = 4000;
+
+/**
+ * Age of the polled values in ms, or null when nothing is stale.
+ *
+ * One missed poll is a busy device, not a fault (a NACK, an injected timeout),
+ * so nothing is called stale until two periods have gone by without a read.
+ */
+export function pollAgeMs(poll: PollHealth, now: number): number | null {
+  if (poll.failures === 0 && poll.pausedBy === null) return null;
+  if (poll.lastOkAt === null) return null;
+  const age = now - poll.lastOkAt;
+  return age > POLL_PERIOD_MS * 2 ? age : null;
+}
+
 // Everything in this store is device-reported truth, refreshed by the
 // session poller or by explicit commands. Unsaved form drafts live in page
 // state, never here.
@@ -49,7 +86,11 @@ interface DeviceState {
   limits: DeviceLimits | null;
   firmwareLabel: string | null;
   configRevision: number;
+  /** Freshness of everything above that the poller owns. */
+  poll: PollHealth;
 }
+
+const freshPoll: PollHealth = { lastOkAt: null, failures: 0, lastError: null, pausedBy: null };
 
 const initial: DeviceState = {
   info: null,
@@ -70,6 +111,7 @@ const initial: DeviceState = {
   limits: null,
   firmwareLabel: null,
   configRevision: 0,
+  poll: freshPoll,
 };
 
 export const useDeviceStore = create<DeviceState>(() => initial);
@@ -79,7 +121,29 @@ export function setDeviceState(patch: Partial<DeviceState>) {
 }
 
 export function clearDeviceState() {
-  useDeviceStore.setState(initial);
+  useDeviceStore.setState({ ...initial, poll: { ...freshPoll } });
+}
+
+/** A poll finished: the values on screen are current again. */
+export function pollSucceeded() {
+  useDeviceStore.setState({
+    poll: { lastOkAt: Date.now(), failures: 0, lastError: null, pausedBy: null },
+  });
+}
+
+/** A poll failed. The values stay — they are all there is — but not silently. */
+export function pollFailed(reason: string) {
+  const poll = useDeviceStore.getState().poll;
+  useDeviceStore.setState({
+    poll: { ...poll, failures: poll.failures + 1, lastError: reason, pausedBy: null },
+  });
+}
+
+/** The poller stood down because `label` holds the exclusive claim. */
+export function pollPaused(label: string) {
+  const poll = useDeviceStore.getState().poll;
+  if (poll.pausedBy === label) return;
+  useDeviceStore.setState({ poll: { ...poll, pausedBy: label } });
 }
 
 export function allRecipes(state: DeviceState): Recipe[] {

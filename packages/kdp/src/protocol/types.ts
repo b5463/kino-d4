@@ -413,6 +413,71 @@ export interface StorageBenchResult {
   bytes: number;
 }
 
+/**
+ * SYNC_BENCH request, as the firmware reads it
+ * (`handle_sync_bench`, firmware/p4/main/kdp_server.c).
+ *
+ * `pulses` is 1..200 and `gapMs` 20..1000; anything outside NACKs
+ * INVALID_ARGUMENT. `poll` off skips the per-pulse edge read, which is the
+ * cheaper run when only the totals are wanted.
+ */
+export interface SyncBenchRequest {
+  pulses?: number;
+  gapMs?: number;
+  poll?: boolean;
+}
+
+/** One camera's edge accounting for a SYNC_BENCH run. */
+export interface SyncBenchCameraEdges {
+  cam: CamId;
+  /** False when the channel reported no sync block at the start of the run. */
+  watched: boolean;
+  // Everything below is present only for a watched camera.
+  inputReady?: boolean;
+  deadtimeUs?: number;
+  seqBefore?: number;
+  seqAfter?: number;
+  /** Edges the node accepted across the run. */
+  acceptedEdges?: number;
+  /** Edges seen before the node's own filter. */
+  rawEdges?: number;
+  rejectedEdges?: number;
+  /** Pulses actually fired — what `acceptedEdges` is measured against. */
+  expected?: number;
+  /** `expected - acceptedEdges`. Positive means edges went missing. */
+  shortBy?: number;
+  /** `rawEdges - expected`. Positive means the node saw bounce. */
+  extraRaw?: number;
+  // Polled runs only (`poll` defaulted on).
+  polledMissed?: number;
+  polledExtra?: number;
+  /** 1-based pulse where the sequence first stepped by anything but 1. */
+  firstBadPulse?: number | null;
+  edgeMonotonic?: boolean;
+  clean?: boolean;
+}
+
+/**
+ * SYNC_BENCH reply.
+ *
+ * This is a plain RESPONSE, not a job: the firmware blocks in-line for
+ * `pulses × gapMs` (up to ~200 s at the maxima) and answers once. It reports
+ * per-camera **edge counts** — whether every trigger arrived and was accepted
+ * — and no skew figures at all. Exposure and VSYNC-phase timing come from
+ * CAMERA_PHASE and CAMERA_CAPTURE, not from here.
+ */
+export interface SyncBenchResponse {
+  ok: boolean;
+  /** Pulses actually fired. Short of the request when a capture took over. */
+  pulses: number;
+  gapMs: number;
+  polled: boolean;
+  /** Pulses refused because a capture claimed the cameras. */
+  refusedByCapture: number;
+  pulseWidthUs: number;
+  cameras: SyncBenchCameraEdges[];
+}
+
 export interface CameraLinkStats {
   cam: CamId;
   baud: number;
@@ -424,7 +489,12 @@ export interface CameraLinkStats {
   crcErrors: number;
   decoderResyncs: number;
   timeouts: number;
-  /** Request retries performed by the P4. Zero until a retry policy exists. */
+  /**
+   * Request retries performed by the P4. Non-zero on any build that carries
+   * the chunk-retry policy (`CHUNK_RETRIES` in firmware/p4/main/capture.c) —
+   * a tail-loss retry is the ordinary case on a loaded four-camera transfer,
+   * not a fault, so a rising count is not on its own a link problem.
+   */
   retries: number;
   /** Responses whose sequence id was already answered. */
   duplicateFrames: number;
@@ -438,6 +508,15 @@ export interface CameraLinkStats {
   /** Node-reported reset reason from its last HELLO; null when never seen. */
   lastNodeBootReason: string | null;
   lastError: string | null;
+  /**
+   * Viewfinder frame rate on this channel, in tenths of a frame per second.
+   *
+   * Every preview frame is a capture, a chunked read and a release over this
+   * UART, so the finder's rate is a link measurement and the firmware reports
+   * it here (firmware/p4/main/kdp_server.c, `viewfinderFpsX10`). Optional
+   * because builds before it simply omit the field.
+   */
+  viewfinderFpsX10?: number;
 }
 
 /** Per-stage bench timing for one diagnostic capture. Wall-clock buckets on

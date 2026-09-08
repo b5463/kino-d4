@@ -4,15 +4,22 @@
 // on `frames`, so the two are interchangeable.
 
 import { useEffect, useState } from 'react';
-import type { CaptureInfo } from '@kino/kdp';
+import type { CamId, CaptureInfo } from '@kino/kdp';
 import { getDevice } from '../../app/session';
 import { downloadCaptureSet, TransferCancelled, TransferHandle } from '../../device/media';
+import { slotFromFileName } from '../../utils/camSlots';
 import type { LocalCapture } from '../../device/localImport';
 
 export interface CaptureFrame {
   name: string;
   data: Uint8Array;
   url: string;
+  /**
+   * Which camera took it, read off `name` — the only place that fact exists.
+   * Null when the name states no slot. Never derived from the array position:
+   * a capture holds only the cameras that answered (contract D23).
+   */
+  slot: CamId | null;
 }
 
 export type CaptureSource = { kind: 'device' } | { kind: 'local'; capture: LocalCapture };
@@ -28,7 +35,11 @@ export interface CaptureFramesState {
 }
 
 function toFrame(f: { name: string; data: Uint8Array }): CaptureFrame {
-  return { ...f, url: URL.createObjectURL(new Blob([new Uint8Array(f.data)], { type: 'image/jpeg' })) };
+  return {
+    ...f,
+    url: URL.createObjectURL(new Blob([new Uint8Array(f.data)], { type: 'image/jpeg' })),
+    slot: slotFromFileName(f.name),
+  };
 }
 
 export function useCaptureFrames(source: CaptureSource, summaryId: string): CaptureFramesState {

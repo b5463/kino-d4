@@ -28,7 +28,26 @@ export const CAPTURE_STATUSES = [
  */
 export const ROLL_STATUSES = ['draft', 'live', 'closed', 'archived', 'trash'] as const;
 
-/** Asset roles (05§19). */
+/**
+ * Asset roles (05§19). Fourteen values.
+ *
+ * `gif` stays, and it is the one name here that nothing produces: no worker job
+ * writes it and no route can request it. That looks like a straight breach of
+ * the rule stated below `ROLL_PRIVACY` — "a name nothing can produce would be a
+ * promise, not a schema" — so the difference is worth writing down rather than
+ * leaving for the next reader to rediscover.
+ *
+ * `public` was never in `ROLL_PRIVACY`; keeping it out costs nothing. `gif` is
+ * already in this shipped closed enum, and taking it out is a narrowing: any
+ * document that carries the name stops parsing, and there is no migration that
+ * can repair a value the schema no longer admits. A role a parser accepts and a
+ * producer never emits is inert. A role a document holds and the parser refuses
+ * is an unreadable file.
+ *
+ * So it is reserved, not promised: 05§19 names it, nothing renders it, and it
+ * comes out at the next `kino.asset` version bump with a migration, or when
+ * something writes one.
+ */
 export const ASSET_ROLES = [
   'thumb',
   'kino-still',
@@ -36,6 +55,7 @@ export const ASSET_ROLES = [
   'wiggle-preview',
   'wiggle-webp',
   'wiggle-mp4',
+  /** Reserved — no producer. See the note above this list. */
   'gif',
   'contact-sheet',
   'enhanced-still',
@@ -55,12 +75,13 @@ export const ASSET_ROLES = [
  * object (`apps/api/src/uploads/sessions.ts`) and when the worker upserts a
  * derived row (`apps/worker/src/jobs/derive.ts`). Nothing writes anything else.
  *
- * The `assets.status` column comment in `apps/api/src/db/schema.ts` still reads
- * `pending|uploading|ready|failed`. Those two extra names have no writer: an
- * upload's own progress and its failures live on `upload_sessions.status`
+ * The `assets.status` column comment in `apps/api/src/db/schema.ts` agrees:
+ * `pending|ready`. It used to read `pending|uploading|ready|failed`, and this
+ * note used to record that drift. `uploading` and `failed` never had a writer —
+ * an upload's own progress and its failures live on `upload_sessions.status`
  * (`open|complete|aborted|failed`), and a refused upload leaves the asset
- * `pending` on purpose, so the device starts again from init. If that column
- * comment ever becomes true, this list is what has to grow with it.
+ * `pending` on purpose, so the device starts again from init. If either extra
+ * name ever gains a writer, this list and that column comment grow together.
  */
 export const ASSET_STATUSES = ['pending', 'ready'] as const;
 

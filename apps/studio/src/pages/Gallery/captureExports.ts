@@ -10,10 +10,11 @@ import type { GifFrame } from '../../utils/gif';
 import { encodeWiggleMp4 } from '../../utils/mp4';
 import { buildAlignedFrames } from '../../utils/wiggleRender';
 import type { CamOffset } from '../../utils/wiggleRender';
+import { bounceSequence } from '../../utils/bounce';
+import { slotLabel, slotTag } from '../../utils/camSlots';
 import type { CaptureFrame } from './useCaptureFrames';
 
-/** Viewpoint order for wiggle playback and every animated export. */
-export const SEQ_BOUNCE = [0, 1, 2, 3, 2, 1];
+export { bounceSequence } from '../../utils/bounce';
 
 export type FrameSource = HTMLImageElement | HTMLCanvasElement;
 
@@ -51,6 +52,7 @@ export async function alignedSources(
 }
 
 export function buildGifBytes(sources: FrameSource[], fps: number): Uint8Array {
+  if (sources.length === 0) throw new Error('This capture has no frames to export.');
   const first = sources[0];
   const srcW = first instanceof HTMLImageElement ? first.naturalWidth : first.width;
   const srcH = first instanceof HTMLImageElement ? first.naturalHeight : first.height;
@@ -61,7 +63,7 @@ export function buildGifBytes(sources: FrameSource[], fps: number): Uint8Array {
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const delayMs = 1000 / fps;
-  const gifFrames: GifFrame[] = SEQ_BOUNCE.map((idx) => {
+  const gifFrames: GifFrame[] = bounceSequence(sources.length).map((idx) => {
     ctx.drawImage(sources[idx], 0, 0, w, h);
     return { rgba: ctx.getImageData(0, 0, w, h).data, delayMs };
   });
@@ -73,20 +75,27 @@ export function buildMp4Bytes(sources: FrameSource[], fps: number): Promise<Uint
 }
 
 export function buildZipBytes(frames: CaptureFrame[], info: CaptureInfo): Uint8Array {
-  const entries = frames.map((f, i) => ({ name: `C${i + 1}_RAW.JPG`, data: f.data }));
+  // The slot comes off the frame's own name, not its position: a capture
+  // missing CAM2 used to ship C3's bytes inside the file called C2_RAW.JPG.
+  const entries = frames.map((f, i) => ({ name: `${slotTag(f.slot, i)}_RAW.JPG`, data: f.data }));
   entries.push({ name: 'metadata.json', data: new TextEncoder().encode(JSON.stringify(info, null, 2)) });
   return buildZip(entries);
 }
 
 /** 2×2 sheet, CAM label burned into each tile, `caption` along the foot. */
 export async function buildContactSheet(frames: CaptureFrame[], caption: string): Promise<Blob | null> {
+  if (frames.length === 0) return null;
   const imgs = await loadFrameImages(frames);
   const fw = imgs[0].naturalWidth;
   const fh = imgs[0].naturalHeight;
   const pad = 12;
+  // Two across, as many rows as there are frames — a capture missing a camera
+  // is three tiles, not four, and must not be laid out for four.
+  const cols = Math.min(2, imgs.length);
+  const rows = Math.ceil(imgs.length / 2);
   const canvas = document.createElement('canvas');
-  canvas.width = fw * 2 + pad * 3;
-  canvas.height = fh * 2 + pad * 3 + 26;
+  canvas.width = fw * cols + pad * (cols + 1);
+  canvas.height = fh * rows + pad * (rows + 1) + 26;
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#f2f4f7';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -98,7 +107,9 @@ export async function buildContactSheet(frames: CaptureFrame[], caption: string)
     ctx.fillRect(x + 6, y + fh - 24, 52, 18);
     ctx.fillStyle = '#fff';
     ctx.font = '700 12px Consolas, monospace';
-    ctx.fillText(`CAM ${i + 1}`, x + 11, y + fh - 11);
+    // The tile is labelled with the camera that took it, read off the file
+    // name — the position in the sheet says nothing about which one that is.
+    ctx.fillText(slotLabel(frames[i].slot, i), x + 11, y + fh - 11);
   });
   ctx.fillStyle = '#536273';
   ctx.font = '700 13px Consolas, monospace';

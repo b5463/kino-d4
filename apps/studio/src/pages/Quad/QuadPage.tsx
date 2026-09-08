@@ -6,7 +6,7 @@ import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SelectField, SliderField, TextField, ToggleField } from '../../components/fields';
 import { useDeviceStore, allRecipes } from '../../state/deviceStore';
 import { useDraft } from '../../hooks/useDraft';
-import { getDevice, refreshConfig } from '../../app/session';
+import { applyConfigChecked } from '../../app/session';
 import type { CamId, GainStrategy, QuadConfig, SlotColorMode, SlotFlash } from '@kino/kdp';
 import { CAM_IDS } from '@kino/kdp';
 import { formatEv } from '../../utils/format';
@@ -52,7 +52,7 @@ const QUAD_PRESETS: { name: string; slots: QuadConfig['slots'] }[] = [
 
 export function QuadPage() {
   const state = useDeviceStore();
-  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<QuadConfig>(state.config?.quad ?? null, {
+  const { draft, dirty, changes, changedFields, patch, discard, rebase } = useDraft<QuadConfig>(state.config?.quad ?? null, {
     key: 'quad',
     label: 'Quad',
   });
@@ -79,11 +79,11 @@ export function QuadPage() {
     copyTimer.current = setTimeout(() => setCopied(null), 4000);
   };
 
+  // Fenced by the exclusive link claim and read back — see applyConfigChecked.
   const apply = async () => {
-    const dev = getDevice();
-    if (!dev) throw new Error('Not connected');
-    await dev.applyConfig({ quad: draft });
-    await refreshConfig();
+    const { config: stored, refused } = await applyConfigChecked({ quad: draft });
+    rebase(stored.quad);
+    return { refused };
   };
 
   return (

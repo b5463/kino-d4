@@ -9,6 +9,7 @@ import { getDevice, refreshCalibration } from '../../app/session';
 import type { CalibrationData, CamCalibration, CamId } from '@kino/kdp';
 import { CAM_IDS, NEUTRAL_CAL } from '@kino/kdp';
 import { formatSigned } from '../../utils/format';
+import type { CaptureFrame } from './useCaptureFrames';
 
 const REF: CamId = 'cam2';
 /** Stylesheet caps a canvas in an inspector stage at 420px tall. */
@@ -43,11 +44,12 @@ function readOffsets(calibration: CalibrationData | null): Offsets {
 }
 
 export function AlignEditor({
-  frameUrls,
+  frames,
   onClose,
   onDirtyChange,
 }: {
-  frameUrls: string[];
+  /** The frames on the card. Each carries the camera that took it. */
+  frames: CaptureFrame[];
   onClose: () => void;
   /** Lifted so the inspector can refuse to close on unsaved offsets. */
   onDirtyChange?: (dirty: boolean) => void;
@@ -58,8 +60,15 @@ export function AlignEditor({
   const rootRef = useRef<HTMLDivElement>(null);
   const [stageW, setStageW] = useState(0);
   const [dpr, setDpr] = useState(() => (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1));
-  const [images, setImages] = useState<HTMLImageElement[] | null>(null);
-  const [cam, setCam] = useState<CamId>('cam1');
+  // Keyed by the camera each frame's own file name states — never by its
+  // position in the folder. A capture stores only the cameras that answered
+  // (contract D23), so on a card with C1/C3/C4 the old `images[1]` reference
+  // was CAM3's frame and the editor wrote CAM1's nudges against it.
+  const [images, setImages] = useState<Partial<Record<CamId, HTMLImageElement>> | null>(null);
+  // The cameras this capture can actually align, in CAM order.
+  const present = CAM_IDS.filter((id) => frames.some((f) => f.slot === id));
+  const alignable = present.filter((id) => id !== REF);
+  const [cam, setCam] = useState<CamId>(() => alignable[0] ?? 'cam1');
   const [blend, setBlend] = useState<'overlay' | 'difference'>('difference');
   const [offsets, setOffsets] = useState<Offsets>(() => readOffsets(calibration));
   // What was on the device when the editor opened — the dirty baseline.
@@ -86,25 +95,30 @@ export function AlignEditor({
   useEffect(() => {
     let cancelled = false;
     void Promise.all(
-      frameUrls.map(
-        (url) =>
-          new Promise<HTMLImageElement>((resolve, reject) => {
+      frames.map(
+        (frame) =>
+          new Promise<{ slot: CamId | null; img: HTMLImageElement }>((resolve, reject) => {
             const img = new Image();
-            img.onload = () => resolve(img);
+            img.onload = () => resolve({ slot: frame.slot, img });
             img.onerror = () => reject(new Error('decode failed'));
-            img.src = url;
+            img.src = frame.url;
           }),
       ),
     ).then(
-      (imgs) => {
-        if (!cancelled) setImages(imgs);
+      (loaded) => {
+        if (cancelled) return;
+        const bySlot: Partial<Record<CamId, HTMLImageElement>> = {};
+        // A frame whose name states no slot cannot be attributed to a camera,
+        // so it is not offered for alignment at all.
+        for (const { slot, img } of loaded) if (slot !== null) bySlot[slot] = img;
+        setImages(bySlot);
       },
       (err) => setError(err instanceof Error ? err.message : String(err)),
     );
     return () => {
       cancelled = true;
     };
-  }, [frameUrls]);
+  }, [frames]);
 
   // Track the stage box and the display's pixel ratio: the backing store is
   // sized from both, never from a fixed number.
@@ -128,8 +142,9 @@ export function AlignEditor({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !images) return;
-    const refImg = images[1]; // CAM2
-    const activeImg = images[Number(cam.slice(-1)) - 1];
+    const refImg = images[REF];
+    const activeImg = images[cam];
+    if (!refImg || !activeImg) return;
     const aspect = refImg.naturalHeight / refImg.naturalWidth;
 
     // Drawn size first: as wide as the stage allows, capped by the same 420px
@@ -203,7 +218,14 @@ export function AlignEditor({
   return (
     <div ref={rootRef}>
       <div className="inspector-stage" ref={stageRef} style={{ minHeight: 0 }}>
-        {images ? (
+        {images && (!images[REF] || alignable.length === 0) ? (
+          // Nothing to align against, or nothing to align. Say which.
+          <span className="mono" style={{ color: 'var(--text-on-dark)', textAlign: 'center', padding: '0 10px' }}>
+            {images[REF]
+              ? 'THIS CAPTURE HOLDS ONLY THE CAM2 REFERENCE — NOTHING TO ALIGN AGAINST IT.'
+              : 'NO CAM2 FRAME IN THIS CAPTURE — ALIGNMENT IS MEASURED AGAINST CAM2.'}
+          </span>
+        ) : images ? (
           <canvas
             ref={canvasRef}
             aria-label={`${cam.toUpperCase()} ${blend} view against the CAM2 reference — offset ${formatSigned(o.x)} px X, ${formatSigned(o.y)} px Y, ${formatSigned(rot, ROT_DECIMALS)}° rotation`}
@@ -224,7 +246,7 @@ export function AlignEditor({
       <SegField
         label="CAMERA"
         value={cam}
-        options={CAM_IDS.filter((c) => c !== REF).map((c) => ({ value: c, label: c.toUpperCase() }))}
+        options={alignable.map((c) => ({ value: c, label: c.toUpperCase() }))}
         onChange={(v) => setCam(v as CamId)}
       />
       <SegField

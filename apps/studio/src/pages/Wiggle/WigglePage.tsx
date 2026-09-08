@@ -5,8 +5,14 @@ import { WiggleViz } from '../../components/WiggleViz';
 import { SegField, SelectField, SliderField, ToggleField } from '../../components/fields';
 import { useDeviceStore, allRecipes } from '../../state/deviceStore';
 import { useDraft } from '../../hooks/useDraft';
-import { getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
+import { applyConfigChecked, getDevice, refreshDeviceInfo } from '../../app/session';
 import type { CamId, Resolution, WiggleConfig, WiggleDirection, WiggleLoop } from '@kino/kdp';
+import { allowedResolutions, RESOLUTIONS } from '../../utils/limits';
+
+const RESOLUTION_LABEL: Record<Resolution, string> = {
+  '1600x1200': '2M · 1600×1200',
+  '2048x1536': '3M · 2048×1536',
+};
 
 const DENOISE_LABELS = [
   { value: '0', label: 'OFF' },
@@ -31,10 +37,10 @@ function speedLabel(fps: number): string {
 export function WigglePage() {
   const state = useDeviceStore();
   const config = state.config;
-  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<WiggleConfig>(config?.wiggle ?? null, {
-    key: 'wiggle',
-    label: 'Wiggle',
-  });
+  const { draft, dirty, changes, changedFields, patch, discard, rebase } = useDraft<WiggleConfig>(
+    config?.wiggle ?? null,
+    { key: 'wiggle', label: 'Wiggle' },
+  );
 
   if (!config || !draft) return null;
 
@@ -45,12 +51,30 @@ export function WigglePage() {
   const apply = async () => {
     const dev = getDevice();
     if (!dev) throw new Error('Not connected');
-    await dev.applyConfig({ wiggle: draft });
+    // Fenced, and read back: `applyConfigChecked` takes the exclusive link
+    // claim and reports which requested fields the camera did not keep.
+    const { config: stored, refused } = await applyConfigChecked({ wiggle: draft });
     await dev.setActiveRecipe(draft.recipeId);
-    await Promise.all([refreshConfig(), refreshDeviceInfo()]);
+    await refreshDeviceInfo();
+    // What the camera kept is now what the page shows. Leaving the refused
+    // value in the draft is what made a successful save read as unsaved work.
+    rebase(stored.wiggle);
+    return { refused };
   };
 
   const recipeOptions = allRecipes(state).map((r) => ({ value: r.id, label: r.name.toUpperCase() }));
+
+  const allowed = allowedResolutions(state.limits);
+  const resolutionOptions = allowed.map((res) => ({ value: res, label: RESOLUTION_LABEL[res] }));
+  // A draft holding a resolution the camera has since said it cannot do still
+  // has to be visible — greying it out of the row would leave the field
+  // showing a value with no selected option.
+  if (!allowed.includes(draft.resolution)) {
+    resolutionOptions.push({
+      value: draft.resolution,
+      label: `${RESOLUTION_LABEL[draft.resolution] ?? draft.resolution} (ABOVE THIS CAMERA'S LIMIT)`,
+    });
+  }
 
   return (
     <>
@@ -101,13 +125,18 @@ export function WigglePage() {
       </Panel>
 
       <Panel title="CAPTURE">
+        {/* Only what the camera says it can do. `limits.maxResolution` was
+            read by nothing but the conformance suite, so a body that caps at
+            2M was still offered 3M — a setting it refuses. */}
         <SegField
           label="RESOLUTION"
           value={draft.resolution}
-          options={[
-            { value: '1600x1200', label: '2M · 1600×1200' },
-            { value: '2048x1536', label: '3M · 2048×1536' },
-          ]}
+          options={resolutionOptions}
+          hint={
+            resolutionOptions.length < RESOLUTIONS.length
+              ? `This camera reports ${state.limits?.maxResolution} as its maximum.`
+              : undefined
+          }
           onChange={(v) => patch((d) => ({ ...d, resolution: v as Resolution }))}
         />
         <ToggleField

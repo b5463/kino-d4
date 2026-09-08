@@ -41,6 +41,9 @@ export function FocusPanel() {
 
   const afCams = cameras.filter((cam) => cam.focus);
   const mode = config?.wiggle.focusMode ?? 'party-auto';
+  // One button, two directions: whichever the cameras are in, the label says
+  // what pressing it does.
+  const anyLocked = afCams.some((cam) => cam.focus?.locked === true);
 
   async function run(action: () => Promise<unknown>) {
     const dev = getDevice();
@@ -105,6 +108,23 @@ export function FocusPanel() {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="sm" disabled={busy} onClick={() => void run(() => getDevice()!.focusTrigger())}>
           TRIGGER AF
+        </Button>
+        {/* The firmware has held and released focus since audit #55 and
+            nothing here could ask it to: `focusLock` had no caller and there
+            was no unlock sender at all, so a lens stuck on the wrong subject
+            could only be freed by changing mode. */}
+        <Button
+          size="sm"
+          disabled={busy || afCams.length === 0}
+          variant={anyLocked ? 'primary' : 'default'}
+          title={
+            anyLocked
+              ? 'Release the focus lock so the next capture can refocus'
+              : 'Hold the current lens positions for the capture group'
+          }
+          onClick={() => void run(() => (anyLocked ? getDevice()!.focusUnlock() : getDevice()!.focusLock(true)))}
+        >
+          {anyLocked ? 'RELEASE FOCUS' : 'HOLD FOCUS'}
         </Button>
         <Button size="sm" disabled={busy} onClick={() => void run(() => getDevice()!.focusStoreFixed())}
           title="Persist the current locked positions as the PARTY FIXED calibration">

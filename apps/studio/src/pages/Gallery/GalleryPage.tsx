@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Panel } from '../../components/Panel';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
@@ -22,6 +22,7 @@ import {
   nextGalleryListLimit,
 } from './galleryPaging';
 import type { GalleryFilter as Filter, GallerySort as Sort } from './galleryPaging';
+import { galleryPageRequest } from '../../utils/limits';
 
 /** Concurrent thumbnail reads. The P4 is a small computer. */
 const THUMB_WORKERS = 2;
@@ -79,8 +80,13 @@ export function GalleryPage() {
       const all: CaptureSummary[] = [];
       let cursor: number | null = 0;
       let reported: number | null = null;
+      // The device declares its own MEDIA_LIST ceiling in `limits`; asking for
+      // 100 rows regardless was asking a camera that caps at 50 for a page it
+      // is entitled to truncate. Read at call time so `load` keeps its stable
+      // identity — it is the dependency of the effect that runs it.
+      const limit = galleryPageRequest(useDeviceStore.getState().limits);
       while (cursor !== null && alive.current) {
-        const chunk = await dev.mediaList({ cursor, limit: 100 });
+        const chunk = await dev.mediaList({ cursor, limit });
         if (reported === null) reported = chunk.total;
         all.push(...chunk.items);
         cursor = chunk.hasMore ? chunk.nextCursor : null;
@@ -144,12 +150,15 @@ export function GalleryPage() {
 
   const tether = useTetherStore();
 
-  const visible = galleryView(captures ?? [], filter, sort);
+  // Filtering and sorting up to 5,000 rows — `galleryView` copies, filters and
+  // sorts — ran on every render, and the 4 s poll renders this page. Memoised
+  // on the only three things it depends on.
+  const visible = useMemo(() => galleryView(captures ?? [], filter, sort), [captures, filter, sort]);
   const pageCount = galleryPageCount(visible);
   const current = clampGalleryPage(visible, page);
   const from = current * PAGE_SIZE;
-  const slice = galleryPageSlice(visible, page);
-  const pageKey = slice.map((c) => c.id).join(',');
+  const slice = useMemo(() => galleryPageSlice(visible, page), [visible, page]);
+  const pageKey = useMemo(() => slice.map((c) => c.id).join(','), [slice]);
 
   // Thumbnails are fetched for the page you are on, two at a time. Fetching
   // all 94 up front spent the link on cards nobody had scrolled to.

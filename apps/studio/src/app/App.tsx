@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { MenuBar } from '../components/MenuBar';
 import type { MenuSpec } from '../components/MenuBar';
@@ -28,12 +28,28 @@ import { GalleryPage } from '../pages/Gallery/GalleryPage';
 import { RollPage } from '../pages/Roll/RollPage';
 import { DevicePage } from '../pages/Device/DevicePage';
 import { UpdatesPage } from '../pages/Updates/UpdatesPage';
-import { DeveloperPage } from '../pages/Developer/DeveloperPage';
-import { BringUpPage } from '../pages/BringUp/BringUpPage';
-import { BenchPage } from '../pages/Bench/BenchPage';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { APP_VERSION } from './version';
+
+/**
+ * Developer-only sections, split out of the first load.
+ *
+ * These three carry the conformance suite, the bring-up worksheet, the timing
+ * bench, the power-load ladder and — through `developer/powerLoad` — the whole
+ * @kino/simulator-engine power model. None of it can be reached without
+ * Tools › Developer Mode, and all of it used to be in the chunk every operator
+ * downloads before the connect screen paints.
+ */
+const DeveloperPage = lazy(() =>
+  import('../pages/Developer/DeveloperPage').then((m) => ({ default: m.DeveloperPage })),
+);
+const BringUpPage = lazy(() =>
+  import('../pages/BringUp/BringUpPage').then((m) => ({ default: m.BringUpPage })),
+);
+const BenchPage = lazy(() => import('../pages/Bench/BenchPage').then((m) => ({ default: m.BenchPage })));
 
 const PAGE_KEY = 'kino-studio.page';
-export const APP_VERSION = '1.0.0';
+export { APP_VERSION };
 
 const PAGES: Record<PageId, ComponentType> = {
   overview: OverviewPage,
@@ -288,7 +304,22 @@ export function App() {
                 </div>
               ) : null}
               <div className="workspace-inner">
-                <Page />
+                {/* One section failing is not the application failing: the
+                    shell, the connection and the menus stay up, and the
+                    boundary resets when you navigate somewhere else. */}
+                <ErrorBoundary
+                  what={PAGE_LABEL[page]}
+                  resetKey={page}
+                  action={
+                    <Button size="sm" onClick={() => goto('overview')}>
+                      GO TO OVERVIEW
+                    </Button>
+                  }
+                >
+                  <Suspense fallback={<p className="microlabel">LOADING {PAGE_LABEL[page].toUpperCase()}…</p>}>
+                    <Page />
+                  </Suspense>
+                </ErrorBoundary>
               </div>
             </>
           ) : offlineWorksheet && developerMode ? (
@@ -302,7 +333,11 @@ export function App() {
                   BACK TO CONNECT
                 </Button>
               </p>
-              {offlineWorksheet === 'bringup' ? <BringUpPage /> : <BenchPage />}
+              <ErrorBoundary what="Offline worksheet" resetKey={offlineWorksheet}>
+                <Suspense fallback={<p className="microlabel">LOADING WORKSHEET…</p>}>
+                  {offlineWorksheet === 'bringup' ? <BringUpPage /> : <BenchPage />}
+                </Suspense>
+              </ErrorBoundary>
             </div>
           ) : (
             <ConnectHome onWorksheet={developerMode ? setOfflineWorksheet : undefined} />

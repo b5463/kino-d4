@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { computeFrameStats } from '../../utils/frameStats';
 import type { FrameStats } from '../../utils/frameStats';
+import { slotLabel } from '../../utils/camSlots';
+import type { CaptureFrame } from './useCaptureFrames';
 
 /** Drawn size of the sparkline, in CSS pixels. */
 const HIST_W = 64;
@@ -58,19 +60,19 @@ function MiniHist({ hist, label }: { hist: number[]; label: string }) {
   return <canvas ref={ref} aria-label={label} style={{ display: 'block' }} />;
 }
 
-export function MatchPanel({ frameUrls, isWiggle }: { frameUrls: string[]; isWiggle: boolean }) {
+export function MatchPanel({ frames, isWiggle }: { frames: CaptureFrame[]; isWiggle: boolean }) {
   const [stats, setStats] = useState<FrameStats[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void Promise.all(
-      frameUrls.map(
-        (url) =>
+      frames.map(
+        (frame) =>
           new Promise<HTMLImageElement>((resolve, reject) => {
             const img = new Image();
             img.onload = () => resolve(img);
             img.onerror = () => reject(new Error('decode failed'));
-            img.src = url;
+            img.src = frame.url;
           }),
       ),
     ).then(
@@ -82,15 +84,26 @@ export function MatchPanel({ frameUrls, isWiggle }: { frameUrls: string[]; isWig
     return () => {
       cancelled = true;
     };
-  }, [frameUrls]);
+  }, [frames]);
 
-  if (!stats) return null;
-  const ref = stats[1]; // CAM2
+  if (!stats || stats.length === 0) return null;
+  // CAM2 is the metering reference — the camera named `cam2` by its file, not
+  // whatever happens to sit second in the folder. A capture that lost CAM2
+  // used to quote every delta against CAM3 under a "VS CAM2" heading; now it
+  // says so instead. `refIdx` is -1 when CAM2 is not on the card.
+  const refIdx = frames.findIndex((f) => f.slot === 'cam2');
+  const ref = refIdx >= 0 ? stats[refIdx] : null;
+  const deltas = isWiggle && ref !== null;
 
   return (
     <div style={{ marginTop: 10 }}>
       <p className="microlabel" style={{ marginBottom: 4 }}>
-        SENSOR MATCH{isWiggle ? ' · DELTAS VS CAM2' : ' · QUAD — LOOKS DIFFER BY DESIGN'}
+        SENSOR MATCH
+        {isWiggle
+          ? deltas
+            ? ' · DELTAS VS CAM2'
+            : ' · NO CAM2 FRAME — NO REFERENCE TO COMPARE AGAINST'
+          : ' · QUAD — LOOKS DIFFER BY DESIGN'}
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table className="table">
@@ -98,42 +111,46 @@ export function MatchPanel({ frameUrls, isWiggle }: { frameUrls: string[]; isWig
             <tr>
               <th>CAMERA</th>
               <th className="num">LUMA</th>
-              {isWiggle ? <th className="num">Δ LUMA</th> : null}
+              {deltas ? <th className="num">Δ LUMA</th> : null}
               {/* Each delta sits next to the channel it belongs to. Packing
                   three of them into one `+12/+5/-0` cell meant reading a
                   string instead of scanning a column. */}
               <th className="num">R</th>
-              {isWiggle ? <th className="num">Δ R</th> : null}
+              {deltas ? <th className="num">Δ R</th> : null}
               <th className="num">G</th>
-              {isWiggle ? <th className="num">Δ G</th> : null}
+              {deltas ? <th className="num">Δ G</th> : null}
               <th className="num">B</th>
-              {isWiggle ? <th className="num">Δ B</th> : null}
+              {deltas ? <th className="num">Δ B</th> : null}
               <th>HISTOGRAM</th>
             </tr>
           </thead>
           <tbody>
-            {stats.map((s, i) => (
-              <tr key={i}>
-                <td>
-                  CAM {i + 1}
-                  {i === 1 && isWiggle ? ' (ref)' : ''}
-                </td>
-                <td className="num">{s.luma.toFixed(1)}</td>
-                {isWiggle ? <td className="num">{i === 1 ? '—' : delta(s.luma - ref.luma, 1)}</td> : null}
-                <td className="num">{s.r.toFixed(0)}</td>
-                {isWiggle ? <td className="num">{i === 1 ? '—' : delta(s.r - ref.r)}</td> : null}
-                <td className="num">{s.g.toFixed(0)}</td>
-                {isWiggle ? <td className="num">{i === 1 ? '—' : delta(s.g - ref.g)}</td> : null}
-                <td className="num">{s.b.toFixed(0)}</td>
-                {isWiggle ? <td className="num">{i === 1 ? '—' : delta(s.b - ref.b)}</td> : null}
-                <td>
-                  <MiniHist
-                    hist={s.hist}
-                    label={`CAM ${i + 1} luma histogram, 16 bins${i === 1 && isWiggle ? ' (reference)' : ''}`}
-                  />
-                </td>
-              </tr>
-            ))}
+            {stats.map((s, i) => {
+              const isRef = i === refIdx;
+              const name = slotLabel(frames[i]?.slot ?? null, i);
+              return (
+                <tr key={frames[i]?.name ?? i}>
+                  <td>
+                    {name}
+                    {isRef && deltas ? ' (ref)' : ''}
+                  </td>
+                  <td className="num">{s.luma.toFixed(1)}</td>
+                  {deltas ? <td className="num">{isRef ? '—' : delta(s.luma - ref!.luma, 1)}</td> : null}
+                  <td className="num">{s.r.toFixed(0)}</td>
+                  {deltas ? <td className="num">{isRef ? '—' : delta(s.r - ref!.r)}</td> : null}
+                  <td className="num">{s.g.toFixed(0)}</td>
+                  {deltas ? <td className="num">{isRef ? '—' : delta(s.g - ref!.g)}</td> : null}
+                  <td className="num">{s.b.toFixed(0)}</td>
+                  {deltas ? <td className="num">{isRef ? '—' : delta(s.b - ref!.b)}</td> : null}
+                  <td>
+                    <MiniHist
+                      hist={s.hist}
+                      label={`${name} luma histogram, 16 bins${isRef && deltas ? ' (reference)' : ''}`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

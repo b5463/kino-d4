@@ -120,16 +120,76 @@ export async function downloadCaptureSet(
 
 /**
  * Object URLs for capture thumbnails, keyed by **camera serial and capture
- * id**.
+ * id**, bounded, least-recently-used first out.
  *
  * The id alone is not unique across cameras: capture ids are per-card
  * sequences, so swapping the cable from one body to another served camera A's
  * thumbnails on camera B's grid. The key carries the unit the bytes came from.
+ *
+ * The bound is the other half. This was unbounded and only ever emptied on
+ * disconnect, so browsing a 5,000-capture card retained one object URL per
+ * capture viewed — up to `THUMB_MAX` each — and every one of them held its
+ * JPEG bytes alive for the session. Anything the grid is actually looking at
+ * is a page of 24 tiles, so a few pages' worth is the whole working set.
  */
-const thumbCache = new Map<string, string>();
+const THUMB_CACHE_MAX = 96;
+/** Total retained thumbnail bytes. A page of 24 at 256 kB is 6 MB. */
+const THUMB_CACHE_BYTES = 8 * 1024 * 1024;
 
-function thumbKey(id: string): string {
-  return `${useDeviceStore.getState().info?.serial ?? 'unknown'}/${id}`;
+interface ThumbEntry {
+  url: string;
+  bytes: number;
+}
+
+/** Insertion order is LRU order: `touch` re-inserts, eviction takes the head. */
+const thumbCache = new Map<string, ThumbEntry>();
+let thumbCacheBytes = 0;
+/** Serial the cache currently holds entries for. */
+let thumbCacheSerial: string | null = null;
+
+function currentSerial(): string {
+  return useDeviceStore.getState().info?.serial ?? 'unknown';
+}
+
+function thumbKey(id: string, serial = currentSerial()): string {
+  return `${serial}/${id}`;
+}
+
+function forget(key: string) {
+  const entry = thumbCache.get(key);
+  if (!entry) return;
+  URL.revokeObjectURL(entry.url);
+  thumbCacheBytes -= entry.bytes;
+  thumbCache.delete(key);
+}
+
+/**
+ * A different body is on the cable.
+ *
+ * The old cache could not free what it held for the previous unit: every
+ * helper built its key from the *current* serial, so those entries were
+ * unreachable — not served, not evicted, just leaked for the session. They
+ * belong to a camera that is no longer here, so they go.
+ */
+function dropOtherSerials(serial: string) {
+  if (thumbCacheSerial === serial) return;
+  thumbCacheSerial = serial;
+  for (const key of [...thumbCache.keys()]) {
+    if (!key.startsWith(`${serial}/`)) forget(key);
+  }
+}
+
+function rememberThumb(key: string, url: string, bytes: number) {
+  forget(key);
+  thumbCache.set(key, { url, bytes });
+  thumbCacheBytes += bytes;
+  // Oldest use first. `thumbCache.keys()` yields insertion order, and every
+  // hit re-inserts, so the head is the least recently used entry.
+  for (const key of thumbCache.keys()) {
+    if (thumbCache.size <= THUMB_CACHE_MAX && thumbCacheBytes <= THUMB_CACHE_BYTES) break;
+    if (thumbCache.size === 1) break; // never evict the entry just stored
+    forget(key);
+  }
 }
 
 /** A thumbnail page. Both firmware and the reference device cap a reply here. */

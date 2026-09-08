@@ -9,7 +9,7 @@ import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy
 import { FocusPanel } from './FocusPanel';
 import { Unsupported } from '../../components/Unsupported';
 import { useDraft } from '../../hooks/useDraft';
-import { getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
+import { applyConfigChecked, getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
 import type { CamId, ShootConfig, ShootMode } from '@kino/kdp';
 import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
 import type { BuiltinSoundId } from '../../utils/soundFx';
@@ -142,7 +142,7 @@ export function ShootPage() {
   const state = useDeviceStore();
   const config = state.config;
   const storage = state.storage;
-  const { draft, dirty, changes, changedFields, patch, discard } = useDraft<ShootConfig>(config?.shoot ?? null, {
+  const { draft, dirty, changes, changedFields, patch, discard, rebase } = useDraft<ShootConfig>(config?.shoot ?? null, {
     key: 'shoot',
     label: 'Shoot',
   });
@@ -218,11 +218,11 @@ export function ShootPage() {
     }
   };
 
+  // Fenced by the exclusive link claim and read back — see applyConfigChecked.
   const apply = async () => {
-    const dev = getDevice();
-    if (!dev) throw new Error('Not connected');
-    await dev.applyConfig({ shoot: draft });
-    await refreshConfig();
+    const { config: stored, refused } = await applyConfigChecked({ shoot: draft });
+    rebase(stored.shoot);
+    return { refused };
   };
 
   // Rough shots-remaining estimate from free space and current resolution.
