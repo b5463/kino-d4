@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { guestReadRateLimit } from '../plugins/rateLimits';
+import { guestReadRateLimit, guestRenderRateLimit } from '../plugins/rateLimits';
 import { rollOf } from '../auth/plugins';
 import {
   decodeCursor,
@@ -150,7 +150,9 @@ export const guestCaptureRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post(
     '/api/rolls/:slug/captures/:captureId/renders',
-    { config: guestReadRateLimit, preHandler: app.guestRollAccess },
+    // Its own bucket, not the 300/min read budget: this one enqueues a render.
+    // See `RATE_LIMITS.guestRender`.
+    { config: guestRenderRateLimit, preHandler: app.guestRollAccess },
     async (request, reply) => {
       const roll = rollOf(request);
       if (!roll.downloadsEnabled) {

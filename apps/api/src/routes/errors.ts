@@ -17,6 +17,35 @@ export function fail(
 }
 
 /**
+ * A server-side failure that has detail worth logging and no business being in
+ * the response body.
+ *
+ * Four throw sites used to interpolate an id into the message — a captureUuid, a
+ * rollId, an assetId, a sessionId. The message of a 500 is a string the client
+ * reads, and Fastify's default handler sends it verbatim, so those ids were
+ * handed to whoever provoked the failure: a device token learned a capture uuid
+ * it had not been told, a host learned an internal id, and every one of them
+ * ended up in a client log or a screenshot.
+ *
+ * The fix is not "shorten the message". It is to put the ids somewhere only the
+ * server reads: `detail` is logged by `buildServer`'s error handler alongside
+ * `err`, and the body is the generic envelope every other 500 answers with. One
+ * class rather than a `request.log.error` at each throw site, because two of the
+ * four are in modules that have no logger — `uploads/sessions.ts` and
+ * `exports/exports.ts` are handed a database, not a Fastify instance.
+ */
+export class InternalError extends Error {
+  /** Logged with the error, never serialised into a response. */
+  readonly detail: Record<string, unknown>;
+
+  constructor(message: string, detail: Record<string, unknown>) {
+    super(message);
+    this.name = 'InternalError';
+    this.detail = detail;
+  }
+}
+
+/**
  * A 400 naming the offending fields.
  *
  * It reports field **names** only, never the submitted values — a rejected body

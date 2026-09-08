@@ -15,6 +15,10 @@ import {
 } from '../exports/exports';
 import { createProcessingQueue, submitJob, type ProcessingQueue } from '../queue/producer';
 import { fail } from './errors';
+import {
+  hostExportDownloadRateLimit,
+  hostExportEstimateRateLimit,
+} from '../plugins/rateLimits';
 
 /**
  * Host downloads of a whole roll (03 §25).
@@ -147,7 +151,9 @@ export const hostExportRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get(
     '/api/host/rolls/:rollId/export/:jobId/content',
-    { preHandler: app.requireHost('rollId') },
+    // The only route here that streams gigabytes; six a minute per host token.
+    // See `RATE_LIMITS.hostExportDownload`.
+    { preHandler: app.requireHost('rollId'), config: hostExportDownloadRateLimit },
     async (request, reply) => {
       const roll = rollOf(request);
       const job = await readExportJob(app.db, roll.id, paramOf(request, 'jobId'));
@@ -202,11 +208,13 @@ export const hostExportRoutes: FastifyPluginAsync = async (app) => {
    *
    * Deliberately not part of the dashboard payload: the dashboard is polled and
    * this is an aggregate over every asset of the roll, so folding it in would
-   * put a growing scan on the request that must stay cheap.
+   * put a growing scan on the request that must stay cheap. Metered for the same
+   * reason — keeping the scan off the polled route and then leaving it unmetered
+   * gives the cost straight back. See `RATE_LIMITS.hostExportEstimate`.
    */
   app.get(
     '/api/host/rolls/:rollId/export/estimate',
-    { preHandler: app.requireHost('rollId') },
+    { preHandler: app.requireHost('rollId'), config: hostExportEstimateRateLimit },
     async (request) => estimateRollExport(app.db, rollOf(request).id),
   );
 };

@@ -271,10 +271,18 @@ export const hostCaptureRoutes: FastifyPluginAsync = async (app) => {
       if (!parsed.success) return invalidBody(reply, parsed.error);
       const capture = captureOf(request);
 
+      // `rollId` in the WHERE, like every other capture write in this file. The
+      // preHandler compared the host token against the roll it read *from this
+      // capture*, so the pairing is what the authorization rests on — and an id
+      // alone in the WHERE means the statement no longer enforces the pairing
+      // the token was checked against. It is defence in depth today (a capture
+      // does not change rolls) and the difference between a write that is
+      // authorized and a write that happens to be, which is not a distinction to
+      // leave to a comment.
       const [updated] = await app.db
         .update(captures)
         .set({ playback: parsed.data })
-        .where(eq(captures.id, capture.id))
+        .where(and(eq(captures.id, capture.id), eq(captures.rollId, capture.rollId)))
         .returning({ mode: captures.mode, playback: captures.playback });
       if (updated === undefined) {
         // Purged between the preHandler and the write — the trash race.

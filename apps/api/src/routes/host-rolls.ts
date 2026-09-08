@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { publicRollColumns, rollOf, type PublicRollRow } from '../auth/plugins';
 import { hashPin } from '../auth/pins';
@@ -22,7 +22,12 @@ import { rollCaptureCounts } from '../uploads/uploads';
 import { countRollViewers } from '../events/viewers';
 import { auditEvents, devices, rolls } from '../db/schema';
 import { convergeWarning, fail, invalidBody } from './errors';
-import { hostClearRateLimit, hostCreateRateLimit } from '../plugins/rateLimits';
+import {
+  hostClearRateLimit,
+  hostCreateRateLimit,
+  hostPatchRateLimit,
+  hostRotateSlugRateLimit,
+} from '../plugins/rateLimits';
 import { trashRollCaptures } from '../captures/moderation';
 import { publishRollEvent } from '../events/publish';
 
@@ -102,7 +107,9 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch(
     '/api/host/rolls/:rollId',
-    { preHandler: app.requireHost('rollId') },
+    // Metered because of `pin`: setting one runs scrypt, and the verifier pool
+    // it runs in is shared with the guest PIN route. See `RATE_LIMITS.hostPatch`.
+    { preHandler: app.requireHost('rollId'), config: hostPatchRateLimit },
     async (request, reply) => {
       const parsed = patchBody.safeParse(request.body);
       if (!parsed.success) return invalidBody(reply, parsed.error);
@@ -176,6 +183,19 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const updated = await applyPatch(app, roll, patch, audit);
+      if (updated === 'stale') {
+        // The roll moved between the preHandler's read and this write — another
+        // tab, a retried request, or the same host on a phone. 409, not a
+        // silent overwrite: the transition above was decided against a status
+        // this roll no longer has, so applying it would apply a decision nobody
+        // made. The dashboard re-reads and the host sees where the roll is.
+        return fail(
+          reply,
+          409,
+          'ROLL_CHANGED',
+          'this roll changed while the update was being applied; re-read it and try again',
+        );
+      }
 
       /**
        * Closing and reopening are the two roll changes a guest has to hear
@@ -209,10 +229,14 @@ export const hostRollRoutes: FastifyPluginAsync = async (app) => {
    * Rotates the guest link (03 §10, "regenerate guest slug"). This is the
    * host's answer to a link that leaked: the old slug stops resolving the
    * instant the update lands, so every copy of it 404s.
+   *
+   * Metered at `hostClear`'s five a minute, for `hostClear`'s reason: each call
+   * cuts every guest of the roll off and leaves the host a new link to
+   * re-distribute. See `RATE_LIMITS.hostRotateSlug`.
    */
   app.post(
     '/api/host/rolls/:rollId/regenerate-slug',
-    { preHandler: app.requireHost('rollId') },
+    { preHandler: app.requireHost('rollId'), config: hostRotateSlugRateLimit },
     async (request) => {
       const slug = await regenerateSlug(app.db, rollOf(request));
       return { slug, guestUrl: guestUrlFor(app.config, slug) };
@@ -295,13 +319,33 @@ async function dashboard(app: FastifyInstance, roll: PublicRollRow): Promise<Hos
  * statement fails is worse than none — it reads as authoritative while being
  * incomplete. Returns the fresh row through `publicRollColumns`, the same
  * projection `request.roll` uses, so no credential hash can ride back out.
+ *
+ * ## The write is guarded on the status the caller decided against
+ *
+ * `WHERE id = ... AND status = <the preHandler's status>`, always — not only
+ * when `status` is one of the patched columns. The caller's whole decision rests
+ * on that snapshot: `canTransition` was asked about it, `closedAt` was set or
+ * cleared because of it, and the audit action was chosen from it. Two concurrent
+ * PATCHes both read `live`, both pass `canTransition`, and with only an id in
+ * the WHERE both write — leaving two audit rows and two `roll.closed` events for
+ * one closure, and `closedAt` stamped by whichever landed second. It is not a
+ * rare interleaving: a client timeout does not cancel the in-flight request, so
+ * the retry races the original by construction. Same rule the moderation writes
+ * follow (`captures/moderation.ts`): the predicate goes in the statement, and
+ * "no row came back" is the honest definition of "somebody else got there
+ * first".
+ *
+ * `'stale'` rather than a throw, because this is a 409 the host can act on and
+ * not a server fault. It replaces a `roll ${id} disappeared during update` that
+ * both mis-diagnosed the case — the roll had not disappeared, it had moved — and
+ * put an internal id in a 500's message.
  */
 async function applyPatch(
   app: FastifyInstance,
   roll: PublicRollRow,
   patch: Partial<typeof rolls.$inferInsert>,
   audit: readonly AuditEntry[],
-): Promise<PublicRollRow> {
+): Promise<PublicRollRow | 'stale'> {
   if (Object.keys(patch).length === 0) {
     // Every field matched what was already stored. An audit entry without a
     // corresponding column change would mean the trail is recording something
@@ -314,14 +358,13 @@ async function applyPatch(
     const [updated] = await tx
       .update(rolls)
       .set(patch)
-      .where(eq(rolls.id, roll.id))
+      .where(and(eq(rolls.id, roll.id), eq(rolls.status, roll.status)))
       .returning(publicRollColumns);
 
-    if (updated === undefined) {
-      // `requireHost` already resolved this row, so it cannot vanish mid-request
-      // without something being very wrong. Rolling back is the honest answer.
-      throw new Error(`roll ${roll.id} disappeared during update`);
-    }
+    // No row means the status is no longer the one every decision above was
+    // made against. Rolling back is the point: the audit rows describe a
+    // transition that did not happen.
+    if (updated === undefined) return 'stale';
     if (audit.length > 0) await tx.insert(auditEvents).values(auditRows(audit));
 
     return updated;

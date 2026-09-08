@@ -56,8 +56,35 @@ export async function readReactionState(
 }
 
 /**
- * Toggles one heart while locking the capture, making repeated/concurrent taps
- * converge on a valid unique row instead of surfacing a database conflict.
+ * Toggles one heart.
+ *
+ * ## Why there is no lock any more
+ *
+ * This used to take `SELECT ... FOR UPDATE` on the **capture** row and run four
+ * statements inside a transaction. The lock was on the wrong row and bought
+ * nothing: `reactions_unique` on `(capture_id, guest_id, kind)` already makes
+ * the only outcome that matters — one heart per guest per capture — impossible
+ * to violate, whatever order two taps arrive in. What the lock did buy was
+ * contention on the one row every guest looking at the same photograph needs:
+ * a popular capture at a party serialised every tap on it, each one holding a
+ * pooled connection (`max: 10`) for the length of four round trips, behind the
+ * same row a device's own writes touch.
+ *
+ * So the write is two statements and no transaction, and the index decides:
+ *
+ * - `DELETE ... RETURNING` asks "was there a heart?" and removes it in one
+ *   statement, so no read can go stale between the question and the write. Rows
+ *   back means this tap was an un-react.
+ * - Nothing back means there was none, so insert one — `onConflictDoNothing`,
+ *   because a double-tap that raced itself has one of the two lose at the index,
+ *   and "there is a heart" is what both taps were asking for. A conflict is
+ *   convergence here, not an error.
+ *
+ * Two genuinely concurrent taps from the *same* guest can still interleave into
+ * either order, which is what a double-tap means, and both leave the row in a
+ * state the guest asked for. The count is read afterwards and is a snapshot: it
+ * can differ by one from what a simultaneous stranger's tap will make it, which
+ * is true of any count anyone reads.
  */
 export async function toggleReaction(
   db: KinoDatabase,
@@ -65,54 +92,45 @@ export async function toggleReaction(
   captureId: string,
   guestId: () => string,
 ): Promise<ReactionState | null> {
-  return db.transaction(async (tx) => {
-    const [capture] = await tx
-      .select({ id: captures.id })
-      .from(captures)
-      .where(
-        and(
-          eq(captures.id, captureId),
-          eq(captures.rollId, rollId),
-          eq(captures.visible, true),
-          sql`${captures.deletedAt} is null`,
-        ),
-      )
-      .for('update')
-      .limit(1);
-    if (capture === undefined) return null;
+  // The same ownership/visibility test as the guest detail route, and a plain
+  // read: nothing downstream depends on this row not changing, because the
+  // reaction row's own constraint is what keeps the write correct.
+  const [capture] = await db
+    .select({ id: captures.id })
+    .from(captures)
+    .where(
+      and(
+        eq(captures.id, captureId),
+        eq(captures.rollId, rollId),
+        eq(captures.visible, true),
+        sql`${captures.deletedAt} is null`,
+      ),
+    )
+    .limit(1);
+  if (capture === undefined) return null;
 
-    // Mint the anonymous session only after the target passed the same
-    // ownership/visibility test as the guest detail route. A probe for a
-    // hidden or unknown id must not create browser state.
-    const reactingGuestId = guestId();
+  // Mint the anonymous session only after the target passed that test. A probe
+  // for a hidden or unknown id must not create browser state.
+  const reactingGuestId = guestId();
+  const mine = and(
+    eq(reactions.captureId, captureId),
+    eq(reactions.guestId, reactingGuestId),
+    eq(reactions.kind, 'heart'),
+  );
 
-    const [existing] = await tx
-      .select({ id: reactions.id })
-      .from(reactions)
-      .where(
-        and(
-          eq(reactions.captureId, captureId),
-          eq(reactions.guestId, reactingGuestId),
-          eq(reactions.kind, 'heart'),
-        ),
-      )
-      .limit(1);
+  const removed = await db.delete(reactions).where(mine).returning({ id: reactions.id });
+  if (removed.length === 0) {
+    await db
+      .insert(reactions)
+      .values({ id: newId('reaction'), captureId, guestId: reactingGuestId, kind: 'heart' })
+      // Bare: `reactions_unique` is the only constraint an insert here can hit,
+      // and naming it would be a second copy of the schema's own rule.
+      .onConflictDoNothing();
+  }
 
-    if (existing === undefined) {
-      await tx.insert(reactions).values({
-        id: newId('reaction'),
-        captureId,
-        guestId: reactingGuestId,
-        kind: 'heart',
-      });
-    } else {
-      await tx.delete(reactions).where(eq(reactions.id, existing.id));
-    }
-
-    const [count] = await tx
-      .select({ reactionCount: sql<number>`count(*)::int` })
-      .from(reactions)
-      .where(and(eq(reactions.captureId, captureId), eq(reactions.kind, 'heart')));
-    return { reactionCount: count?.reactionCount ?? 0, reacted: existing === undefined };
-  });
+  const [count] = await db
+    .select({ reactionCount: sql<number>`count(*)::int` })
+    .from(reactions)
+    .where(and(eq(reactions.captureId, captureId), eq(reactions.kind, 'heart')));
+  return { reactionCount: count?.reactionCount ?? 0, reacted: removed.length === 0 };
 }

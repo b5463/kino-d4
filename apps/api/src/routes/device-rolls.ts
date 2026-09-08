@@ -156,10 +156,14 @@ export const deviceRollRoutes: FastifyPluginAsync = async (app) => {
    * access: the 200 has already written the `roll_devices` row. There is no
    * second step left to defend.
    *
-   * Task 36 meters this route per source IP and keeps a second, per-device miss
-   * counter. Ten unknown codes lock that device out for an hour; a valid code
-   * clears the miss history. This leaves ordinary hand-entry forgiving while
-   * making a sustained walk of the slug space impractical.
+   * Task 36 meters this route at 30 a minute per **device credential** — not per
+   * source address (`deviceJoinRateLimit` keys on the token hash): four cameras
+   * on one venue uplink share an address but not a token, and the route is behind
+   * `requireDevice`, so there is always a credential to charge it to. A second,
+   * per-device miss counter sits beside it: ten unknown codes lock that device
+   * out for an hour, and a valid code clears the miss history. This leaves
+   * ordinary hand-entry forgiving while making a sustained walk of the slug space
+   * impractical.
    */
   app.post('/api/device/rolls/join', { config: deviceJoinRateLimit, preHandler: app.requireDevice }, async (request, reply) => {
     const parsed = joinBody.safeParse(request.body);

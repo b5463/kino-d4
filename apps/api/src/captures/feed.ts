@@ -33,22 +33,43 @@ export interface QueryRejection {
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: QueryRejection };
 
 /**
+ * A decimal, non-negative integer and nothing else: digits, and optionally the
+ * spaces a query string may have picked up around them.
+ *
+ * A regex rather than `Number()`, because `Number()` accepts a *lot* more than
+ * the error message admits to. `0x10` became 16, `5e1` became 50, `1_0` was
+ * refused but `  10  ` was not, and `Infinity` parsed — every one of them a
+ * value the caller did not write and the reply never mentions. Worse,
+ * `Number('-5')` is an integer, so a negative limit passed the check and was
+ * then *clamped up* to 1: a client that asked for minus five pages got one row
+ * and no indication anything was wrong with what it sent. Matching the message
+ * is the whole point of this — the message says integers, so this accepts
+ * integers.
+ */
+const DECIMAL_INTEGER = /^\d+$/;
+
+/** One sentence, used by both refusals, so they cannot drift apart. */
+const NOT_AN_INTEGER = 'limit must be a whole number of rows';
+
+/**
  * `limit` is **clamped**, not rejected, when it is out of range: a client that
  * asks for 500 wants "as many as you will give me", and answering 100 is the
- * honest reply. A limit that is not a number at all is a different thing — a
- * typo that would silently become 50 and leave the caller wondering why its
- * page size is ignored — so that one is refused.
+ * honest reply. Zero clamps to one for the same reason.
+ *
+ * A limit that is not an integer at all is a different thing — a typo that would
+ * silently become 50 and leave the caller wondering why its page size is
+ * ignored — so that one is refused, and so is a negative one: there is no
+ * reading of `-5` that "as many as you will give me" covers.
  */
 export function parseLimit(raw: unknown): Parsed<number> {
   if (raw === undefined) return { ok: true, value: FEED_LIMIT_DEFAULT };
-  if (typeof raw !== 'string' || raw.trim() === '') {
-    return { ok: false, error: { code: 'INVALID_LIMIT', message: 'limit must be an integer' } };
+  if (typeof raw !== 'string' || !DECIMAL_INTEGER.test(raw.trim())) {
+    return { ok: false, error: { code: 'INVALID_LIMIT', message: NOT_AN_INTEGER } };
   }
 
-  const value = Number(raw);
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
-    return { ok: false, error: { code: 'INVALID_LIMIT', message: 'limit must be an integer' } };
-  }
+  const value = Number(raw.trim());
+  // A run of digits long enough to lose precision as a double is not a page
+  // size anybody meant; it clamps to the maximum like any other large number.
   return { ok: true, value: Math.min(Math.max(value, FEED_LIMIT_MIN), FEED_LIMIT_MAX) };
 }
 

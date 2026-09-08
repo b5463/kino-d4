@@ -1120,11 +1120,14 @@ describe('the upload round trip (03 §16, 05 §8)', () => {
     }
   }, 30_000);
 
-  it('serialises two completes of the same upload behind a row lock', async () => {
-    // The immutability guard reads the asset's digest and then a write happens.
-    // Without `SELECT ... FOR UPDATE` spanning both, a concurrent complete can
-    // flip the asset between those moments — and both callers would run
-    // CompleteMultipartUpload against the same upload id.
+  it('converges two completes of the same upload on one ready asset', async () => {
+    // Both callers reach CompleteMultipartUpload, and only the first one's
+    // succeeds — finishing a multipart consumes the upload id, so the second
+    // gets `NoSuchUpload` for an object that is present and correct. It must
+    // read that as "somebody already completed this", not as the 24-hour sweep:
+    // `finishUpload` asks storage whether the object exists to tell them apart,
+    // then settles the row under `SELECT ... FOR UPDATE`, where the immutability
+    // guard is evaluated against the digest as it is by then.
     const roll = await createRoll();
     const { captureId } = await newCapture(roll.rollId);
 

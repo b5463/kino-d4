@@ -6,6 +6,7 @@ import { newId } from '../ids';
 import { auditRows } from '../rolls/rolls';
 import { rollDerivedKey } from '../uploads/objectKeys';
 import { assets, auditEvents, captures, exportJobs } from '../db/schema';
+import { InternalError } from '../routes/errors';
 
 /**
  * The host's "download everything" (03 §25), as state rather than as a request.
@@ -185,7 +186,11 @@ export async function claimExportJob(db: KinoDatabase, rollId: string): Promise<
     if (live !== undefined) return live.id;
   }
 
-  throw new Error(`could not claim an export job for roll ${rollId} in ${CLAIM_ATTEMPTS} attempts`);
+  // The roll id goes to the log, not to the host: this is a 500, and its
+  // message is a string the caller reads.
+  throw new InternalError(`could not claim an export job in ${CLAIM_ATTEMPTS} attempts`, {
+    rollId,
+  });
 }
 
 /**

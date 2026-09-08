@@ -10,8 +10,8 @@ import { bearerToken, hashToken, timingSafeHexEqual, tokenScope } from './tokens
 import { PinVerifierBusyError, verifyPin } from './pins';
 import { clearPinAttempts, pinLockoutOf, recordPinFailure } from './pinLockout';
 import { normalizeSlug } from '../rolls/slug';
-import { captures, rollDevices, rolls, devices } from '../db/schema';
-import { pinAttemptRateLimit } from '../plugins/rateLimits';
+import { captures, rollDevices, rolls } from '../db/schema';
+import { deviceRowFor, pinAttemptRateLimit } from '../plugins/rateLimits';
 
 /**
  * The three authentication scopes of 05 §12, as Fastify preHandlers.
@@ -36,9 +36,19 @@ import { pinAttemptRateLimit } from '../plugins/rateLimits';
  * name and value format need exactly one definition site.
  */
 
+/**
+ * The camera behind a device-scoped request.
+ *
+ * `product` and `hardwareRevision` are here because `requireDevice` has the row
+ * in its hand and capture-create needs them: they go into the capture's
+ * provenance (audit #59), as they are *now*, and reading them again by primary
+ * key was a second lookup of a row this preHandler had already read.
+ */
 export interface DeviceIdentity {
   id: string;
   serial: string;
+  product: string | null;
+  hardwareRevision: string | null;
 }
 
 /**
@@ -287,21 +297,84 @@ export function guestMayReadRoll(
  * Rotating the slug takes the old link out of service, but `GET
  * /api/assets/:assetId/content` is addressed by asset id and derives the roll
  * from the asset — so every id the leaked link already handed out would keep
- * working. This cookie carries the roll's `access_epoch`; regenerating the slug
+ * working. This cookie carries each roll's `access_epoch`; regenerating a slug
  * bumps that number, which invalidates every stamp issued under the old link in
  * exactly the way a new PIN invalidates every PIN cookie.
  *
- * Modelled on the PIN cookie on purpose — same signing, same fingerprint shape,
- * same 30 days — because the two are the same mechanism pointed at two different
- * facts, and one of them already works.
+ * ## ONE cookie for every roll, not one cookie per roll
+ *
+ * It used to be `kino_roll_<rollId>`, path `/`, thirty days — a *new cookie per
+ * roll a phone had ever opened*. Each one is a 30-character name and a signed
+ * 32-hex value, so around 130 bytes on the wire, and path `/` means every
+ * request carries all of them: not just the API calls, but every asset tile in
+ * the gallery. A phone that had been to a dozen parties sent 1.5 kB of dead
+ * stamps with each of the hundreds of tile requests one gallery screen makes,
+ * and a phone that had been to fifty tipped the request over the header limit
+ * and got a **431** — the roll simply stopped loading, permanently, with nothing
+ * a guest could do about it and nothing on the server to explain it.
+ *
+ * So the epochs are folded into one cookie: `<rollId>:<epoch>` pairs, newest
+ * first, capped at `MAX_STAMPED_ROLLS`. The size is now bounded by that cap
+ * rather than by how many parties the phone's owner has been to, and it cannot
+ * grow past it however long the browser keeps the cookie.
+ *
+ * ## What replaced the fingerprint, and why the security property is unchanged
+ *
+ * The old value was a truncated sha256 of `<rollId>:<epoch>`; this one is the
+ * pair itself. Nothing is lost, because the fingerprint was never what made the
+ * stamp unforgeable — the **signature** is, and `@fastify/cookie` signs this
+ * cookie exactly as it signed that one. An epoch is not a secret either: it is a
+ * small counter a guest could guess in one try. What the guest cannot do is
+ * produce a signed cookie saying so, and that is the whole of the control.
+ *
+ * The check is therefore still "is the stamp this request carries the epoch the
+ * roll is on now", and a stale or missing stamp is refused exactly as before.
  */
-const accessCookieName = (rollId: string): string => `kino_roll_${rollId}`;
+const ACCESS_COOKIE = 'kino_rolls';
 
-function accessFingerprint(rollId: string, accessEpoch: number): string {
-  return createHash('sha256')
-    .update(`${rollId}:${accessEpoch}`)
-    .digest('hex')
-    .slice(0, 32);
+/** The legacy per-roll cookie name, cleared on sight. See `stampRollAccess`. */
+const LEGACY_ACCESS_PREFIX = 'kino_roll_';
+
+/**
+ * How many rolls one phone's stamp remembers: sixteen.
+ *
+ * The cookie is around 45 bytes per entry, so sixteen is roughly 750 bytes —
+ * comfortably inside every browser's 4 kB per-cookie limit with the signature
+ * on top, and small enough to ride along on an asset tile without being the
+ * reason a request is large.
+ *
+ * Sixteen rather than four because eviction has a real cost: a guest whose
+ * stamp for a roll has been dropped and who then fetches an asset of that roll
+ * without loading its page again is refused, and their fix is to open the roll
+ * link once more. Sixteen live rolls is far past what any one phone has open at
+ * a time, and the ones it forgets first are the ones it has not opened for
+ * longest.
+ */
+const MAX_STAMPED_ROLLS = 16;
+
+/** `<rollId>:<epoch>` pairs, `~`-separated — neither character occurs in an id. */
+const ENTRY_SEPARATOR = '~';
+const FIELD_SEPARATOR = ':';
+
+/** The stamps a request carries, newest first, or empty when there are none. */
+function readStamps(request: FastifyRequest): { rollId: string; epoch: number }[] {
+  const raw = request.cookies[ACCESS_COOKIE];
+  if (raw === undefined) return [];
+
+  const unsigned = request.unsignCookie(raw);
+  if (!unsigned.valid || unsigned.value === null) return [];
+
+  const stamps: { rollId: string; epoch: number }[] = [];
+  for (const entry of unsigned.value.split(ENTRY_SEPARATOR)) {
+    const cut = entry.lastIndexOf(FIELD_SEPARATOR);
+    if (cut <= 0) continue;
+    const epoch = Number(entry.slice(cut + 1));
+    // A malformed entry is dropped rather than failing the whole cookie: one
+    // bad pair must not cost a guest the stamps beside it.
+    if (!Number.isSafeInteger(epoch) || epoch < 0) continue;
+    stamps.push({ rollId: entry.slice(0, cut), epoch });
+  }
+  return stamps;
 }
 
 /**
@@ -314,12 +387,23 @@ function accessFingerprint(rollId: string, accessEpoch: number): string {
  * roll read rather than only when the epoch is non-zero, so a guest who was
  * browsing before the first revocation is holding a stale stamp afterwards
  * rather than no stamp at all.
+ *
+ * This roll goes to the front and its previous entry is dropped, so re-opening a
+ * roll refreshes both its epoch and its place in the eviction order.
  */
 export function stampRollAccess(
+  request: FastifyRequest,
   reply: FastifyReply,
   roll: { id: string; accessEpoch: number },
 ): void {
-  reply.setCookie(accessCookieName(roll.id), accessFingerprint(roll.id, roll.accessEpoch), {
+  const kept = readStamps(request)
+    .filter((stamp) => stamp.rollId !== roll.id)
+    .slice(0, MAX_STAMPED_ROLLS - 1);
+  const value = [{ rollId: roll.id, epoch: roll.accessEpoch }, ...kept]
+    .map((stamp) => `${stamp.rollId}${FIELD_SEPARATOR}${String(stamp.epoch)}`)
+    .join(ENTRY_SEPARATOR);
+
+  reply.setCookie(ACCESS_COOKIE, value, {
     signed: true,
     httpOnly: true,
     sameSite: 'lax',
@@ -329,6 +413,20 @@ export function stampRollAccess(
     secure: 'auto',
     maxAge: PIN_COOKIE_MAX_AGE_SECONDS,
   });
+
+  /**
+   * Expire whatever per-roll cookies this phone is still carrying.
+   *
+   * Without this a browser that already holds forty of them keeps sending them
+   * for the rest of their thirty days, so the fix would only help phones that
+   * have never opened a roll — i.e. not the ones with the problem. The names are
+   * read off this request, so it clears exactly what is there and nothing else,
+   * and the path has to match the one they were set with or the browser ignores
+   * the deletion.
+   */
+  for (const name of Object.keys(request.cookies)) {
+    if (name.startsWith(LEGACY_ACCESS_PREFIX)) reply.clearCookie(name, { path: '/' });
+  }
 }
 
 /**
@@ -359,13 +457,12 @@ export function guestHasRollAccess(
 ): boolean {
   if (roll.accessEpoch === 0) return true;
 
-  const raw = request.cookies[accessCookieName(roll.id)];
-  if (raw === undefined) return false;
-
-  const unsigned = request.unsignCookie(raw);
-  if (!unsigned.valid || unsigned.value === null) return false;
-
-  return timingSafeHexEqual(unsigned.value, accessFingerprint(roll.id, roll.accessEpoch));
+  // A plain equality, not a constant-time one: the cookie's signature is what
+  // makes the stamp unforgeable, and an epoch is a small public counter — there
+  // is no secret here for a timing difference to leak.
+  return readStamps(request).some(
+    (stamp) => stamp.rollId === roll.id && stamp.epoch === roll.accessEpoch,
+  );
 }
 
 /**
@@ -438,20 +535,24 @@ export const authPlugin = fp(
         }
 
         const presented = hashToken(token);
-        const [row] = await app.db
-          .select({ id: devices.id, serial: devices.serial, tokenHash: devices.tokenHash })
-          .from(devices)
-          .where(eq(devices.tokenHash, presented))
-          .limit(1);
+        // Through `deviceRowFor`, so the lookup the rate limiter already did on
+        // the upload routes is not repeated here. It is the same index and the
+        // same row; only the decision below is repeated, which it must be.
+        const row = await deviceRowFor(request, presented);
 
         // The indexed lookup selects a candidate; the comparison that actually
         // decides is the constant-time one, so the equality that grants access
         // never runs through the database's own byte comparison.
-        if (row === undefined || !timingSafeHexEqual(row.tokenHash, presented)) {
+        if (row === null || !timingSafeHexEqual(row.tokenHash, presented)) {
           return fail(reply, 401, 'INVALID_DEVICE_TOKEN', 'unknown or revoked device token');
         }
 
-        request.device = { id: row.id, serial: row.serial };
+        request.device = {
+          id: row.id,
+          serial: row.serial,
+          product: row.product,
+          hardwareRevision: row.hardwareRevision,
+        };
         return undefined;
       }),
     );
@@ -658,7 +759,7 @@ export const authPlugin = fp(
       // Only after the gate has said yes, and only on the slug path: presenting
       // the current slug is the grant, and this is the receipt the asset route
       // reads. A refusal above stamps nothing.
-      stampRollAccess(reply, roll);
+      stampRollAccess(request, reply, roll);
 
       request.roll = roll;
       return undefined;

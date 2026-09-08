@@ -52,6 +52,26 @@ export const RATE_LIMITS = {
   deviceUpload: { max: 120, timeWindow: '1 minute', groupId: 'device-upload' },
   guestRead: { max: 300, timeWindow: '1 minute', groupId: 'guest-read' },
   /**
+   * The guest's one **write** that costs server work: `POST
+   * /api/rolls/:slug/captures/:captureId/renders`.
+   *
+   * It carried the 300/min read budget, which is the wrong shape for it entirely.
+   * That number is sized for scrolling — a gallery screen is a feed request and a
+   * tile per capture — while this route enqueues a render: `render-wiggle-mp4` is
+   * the heaviest job in the platform, and `render-social-formats` produces three
+   * crops. The `jobKey` dedupe collapses repeats of the *same* capture and role,
+   * so it is not a way to run one job a thousand times; walking a roll's captures
+   * is, and 300 a minute is 300 MP4 encodes queued by one phone.
+   *
+   * 20 a minute is sized for the gesture it actually serves: a guest looking at a
+   * photograph and tapping Save. Four renderable roles per capture (mp4 plus
+   * three social crops) means five captures a minute fully rendered from one
+   * phone, which is faster than anyone taps and slower than anyone can walk a
+   * roll with. Keyed like the reads, so a phone is metered as itself where it has
+   * a guest cookie and as its address otherwise.
+   */
+  guestRender: { max: 20, timeWindow: '1 minute', groupId: 'guest-render' },
+  /**
    * Media, on its own budget.
    *
    * One gallery screen is one feed request and a tile per capture, and opening a
@@ -131,6 +151,60 @@ export const RATE_LIMITS = {
    * a hard stop for a script holding a leaked token.
    */
   hostClear: { max: 5, timeWindow: '1 minute', groupId: 'host-clear' },
+  /**
+   * `PATCH /api/host/rolls/:rollId`, keyed by the host token.
+   *
+   * Metered because of one field. `pin` re-hashes with scrypt on **every** PATCH
+   * that names it — deliberately, so a rotated PIN invalidates every cookie
+   * issued under the old salt — and scrypt is priced to be expensive. The
+   * verifier pool in `auth/pins.ts` bounds how many run at once, which means an
+   * unmetered PATCH loop does not burn the box: it fills that pool, and the queue
+   * behind it is shared with `POST /api/rolls/:slug/pin`, so a leaked host token
+   * could stall every guest at the door of every roll on the instance.
+   *
+   * 30 a minute against a host who edits a title, sets a PIN and closes the roll
+   * — three or four PATCHes an event, a handful more if they are fiddling. It is
+   * two orders of magnitude below what makes the verifier pool a bottleneck.
+   */
+  hostPatch: { max: 30, timeWindow: '1 minute', groupId: 'host-patch' },
+  /**
+   * `POST /api/host/rolls/:rollId/regenerate-slug`, keyed by the host token.
+   *
+   * `hostClear`'s number, for `hostClear`'s reason: it is destructive to
+   * everybody else. One call bumps `access_epoch`, which 404s every copy of the
+   * old link and refuses every stamp issued under it — so a host who taps it
+   * three times has cut their guests off three times and has three links to
+   * re-share. A person does this once, twice if the first answer was lost. Five a
+   * minute is generous for that and a hard stop for a loop.
+   */
+  hostRotateSlug: { max: 5, timeWindow: '1 minute', groupId: 'host-rotate-slug' },
+  /**
+   * `GET /api/host/rolls/:rollId/export/:jobId/content`, keyed by the host token.
+   *
+   * This is the only route in the API that streams gigabytes: a 300-capture
+   * party is roughly four. It holds a socket to storage and a socket to the
+   * client for the whole transfer, and nothing about a second concurrent request
+   * for the same ZIP is useful — a browser's download manager fetches it once.
+   *
+   * Six a minute leaves room for the real retry story (a download that failed at
+   * 80 % and is started again, a host who moved to a laptop) while making
+   * "stream the same 4 GB two hundred times" impossible on one token. Note that
+   * the budget bounds *requests*, not bytes: a single stream still runs to
+   * completion, which is what a host asked for.
+   */
+  hostExportDownload: { max: 6, timeWindow: '1 minute', groupId: 'host-export-download' },
+  /**
+   * `GET /api/host/rolls/:rollId/export/estimate`, keyed by the host token.
+   *
+   * An aggregate over every ready asset of every live capture of the roll — a
+   * scan that grows with the party, on a table that is being written to while it
+   * runs. It is deliberately not part of the dashboard payload for exactly that
+   * reason, and leaving it unmetered gave back the cost the separation avoided.
+   *
+   * 30 a minute: the dashboard shows "≈17 GB, 9,400 files" next to a button, so
+   * it is read on load and on a manual refresh, not polled.
+   */
+  hostExportEstimate: { max: 30, timeWindow: '1 minute', groupId: 'host-export-estimate' },
 } as const;
 
 /**
@@ -209,15 +283,54 @@ async function deviceUploadMax(request: FastifyRequest): Promise<number> {
   if (token === null || tokenScope(token) !== 'kdt') return UNTRUSTED_DEVICE_UPLOAD_MAX;
 
   const presented = hashToken(token);
-  const [row] = await request.server.db
-    .select({ tokenHash: devices.tokenHash })
-    .from(devices)
-    .where(eq(devices.tokenHash, presented))
-    .limit(1);
+  const row = await deviceRowFor(request, presented);
 
-  return row !== undefined && timingSafeHexEqual(row.tokenHash, presented)
+  return row !== null && timingSafeHexEqual(row.tokenHash, presented)
     ? RATE_LIMITS.deviceUpload.max
     : UNTRUSTED_DEVICE_UPLOAD_MAX;
+}
+
+/**
+ * The `devices` row for the bearer this request presented, read **once**.
+ *
+ * The upload path looked it up twice per request. The limiter reads it in
+ * `onRequest` to decide the bucket size, `requireDevice` reads it again in
+ * `preHandler` to authenticate — the same index, the same row, the same
+ * `token_hash` — and capture-create read it a third time by primary key for the
+ * hardware revision it stamps into provenance. On the hottest route in the
+ * platform (five inits, five parts and five completes per grouped capture, from
+ * four cameras) that is fifteen wasted round trips a photograph on a pool of ten
+ * connections.
+ *
+ * Cached on the request rather than in a process-wide map, deliberately: a
+ * cache with a lifetime longer than one request is a cache that can serve a
+ * revoked token, and a revoked token must stop working on the next request
+ * rather than when something expires. The key is the *presented* hash, so a
+ * request cannot be handed a row that belongs to a different credential, and the
+ * constant-time comparison that actually grants access still happens at every
+ * reader — this only saves the lookup, never the decision.
+ */
+export async function deviceRowFor(
+  request: FastifyRequest,
+  tokenHash: string,
+): Promise<DeviceCredentialRow | null> {
+  const cached = request.deviceRow;
+  if (cached !== null && cached.tokenHash === tokenHash) return cached;
+
+  const [row] = await request.server.db
+    .select({
+      id: devices.id,
+      serial: devices.serial,
+      product: devices.product,
+      hardwareRevision: devices.hardwareRevision,
+      tokenHash: devices.tokenHash,
+    })
+    .from(devices)
+    .where(eq(devices.tokenHash, tokenHash))
+    .limit(1);
+
+  request.deviceRow = row ?? null;
+  return request.deviceRow;
 }
 
 export const deviceUploadRateLimit = {
@@ -226,6 +339,10 @@ export const deviceUploadRateLimit = {
 
 export const guestReadRateLimit = {
   rateLimit: { ...RATE_LIMITS.guestRead, keyGenerator: guestKey },
+};
+/** The render request's own bucket; see `RATE_LIMITS.guestRender`. */
+export const guestRenderRateLimit = {
+  rateLimit: { ...RATE_LIMITS.guestRender, keyGenerator: guestKey },
 };
 export const assetContentRateLimit = {
   rateLimit: { ...RATE_LIMITS.assetContent, keyGenerator: guestKey },
@@ -267,12 +384,53 @@ export const deviceCreateRateLimit = {
 export const deviceReadRateLimit = {
   rateLimit: { ...RATE_LIMITS.deviceRead, keyGenerator: deviceKey },
 };
-/** `deviceKey` hashes whatever bearer is presented; a host token is one. */
+/**
+ * `deviceKey` hashes whatever bearer is presented; a host token is one.
+ *
+ * All five host budgets below key on it for that reason: a host route always has
+ * a credential, and the address is the wrong key — a venue's own uplink, or a
+ * host and their guests behind one NAT, would share a bucket that belongs to a
+ * token.
+ */
 export const hostClearRateLimit = {
   rateLimit: { ...RATE_LIMITS.hostClear, keyGenerator: deviceKey },
 };
+export const hostPatchRateLimit = {
+  rateLimit: { ...RATE_LIMITS.hostPatch, keyGenerator: deviceKey },
+};
+export const hostRotateSlugRateLimit = {
+  rateLimit: { ...RATE_LIMITS.hostRotateSlug, keyGenerator: deviceKey },
+};
+export const hostExportDownloadRateLimit = {
+  rateLimit: { ...RATE_LIMITS.hostExportDownload, keyGenerator: deviceKey },
+};
+export const hostExportEstimateRateLimit = {
+  rateLimit: { ...RATE_LIMITS.hostExportEstimate, keyGenerator: deviceKey },
+};
+
+/**
+ * The columns of a `devices` row anything on the request path needs: the two
+ * that identify the camera, the two that go into a capture's provenance, and the
+ * hash that says which credential the row was found by.
+ */
+export interface DeviceCredentialRow {
+  id: string;
+  serial: string;
+  product: string | null;
+  hardwareRevision: string | null;
+  tokenHash: string;
+}
 
 declare module 'fastify' {
+  interface FastifyRequest {
+    /**
+     * The `devices` row for the bearer on this request, or null before anything
+     * has looked one up. Read through `deviceRowFor`, never directly — the cache
+     * is only sound because that function keys it on the presented hash.
+     */
+    deviceRow: DeviceCredentialRow | null;
+  }
+
   interface FastifyInstance {
     /**
      * The Redis key prefix this instance's counters live under.
@@ -300,6 +458,11 @@ export const rateLimitsPlugin = fp(
         ? `kino-rate-limit-test-${process.pid}-${randomUUID()}-`
         : 'kino-rate-limit-';
     app.decorate('rateLimitNameSpace', nameSpace);
+    // Declared here rather than in `authPlugin` because the limiter's
+    // `onRequest` hook is the first thing to fill it, and `authPlugin` loads
+    // after this one. Declared up front so every request object has the same
+    // shape; Fastify deoptimises requests that grow new properties per-request.
+    app.decorateRequest('deviceRow', null);
     await app.register(rateLimit, {
       global: false,
       redis: app.redis,

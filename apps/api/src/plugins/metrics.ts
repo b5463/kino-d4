@@ -4,6 +4,7 @@ import type { FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { sql } from 'drizzle-orm';
 import { createProcessingQueue, type ProcessingQueue } from '../queue/producer';
+import { fail } from '../routes/errors';
 
 const LATENCY_BUCKETS = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5] as const;
 const ACTIVE_DEVICE_WINDOW_MS = 15 * 60_000;
@@ -136,10 +137,15 @@ export const metricsPlugin = fp(
 
     app.get('/api/metrics', async (request, reply) => {
       const metricsToken = app.config.METRICS_TOKEN;
-      if (metricsToken === undefined) return reply.code(404).send({ code: 'NOT_FOUND' });
+      // Both answers carry the same `{code, message}` envelope every other
+      // route on this API uses (`routes/errors.ts`). A bodiless `{code}` was a
+      // third shape for a client to handle.
+      if (metricsToken === undefined) {
+        return fail(reply, 404, 'NOT_FOUND', 'metrics are not enabled on this deployment');
+      }
       if (!constantTimeToken(request.headers.authorization, metricsToken)) {
         reply.header('www-authenticate', 'Bearer');
-        return reply.code(401).send({ code: 'METRICS_TOKEN_REQUIRED' });
+        return fail(reply, 401, 'METRICS_TOKEN_REQUIRED', 'expected Authorization: Bearer <token>');
       }
 
       queue ??= createProcessingQueue(app.config);

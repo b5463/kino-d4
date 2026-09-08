@@ -410,19 +410,29 @@ describe('GET /api/rolls/:slug/captures — keyset pagination (06 §11)', () => 
   it('defaults to 50 and clamps the limit to 1..100', async () => {
     expect((await feed(roll.slug)).items).toHaveLength(FEED_LIMIT_DEFAULT);
     expect((await feed(roll.slug, '?limit=0')).items).toHaveLength(1);
-    expect((await feed(roll.slug, '?limit=-9')).items).toHaveLength(1);
     expect((await feed(roll.slug, '?limit=100000')).items).toHaveLength(FEED_LIMIT_MAX);
   });
 
-  it('rejects a limit that is not a number rather than guessing one', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: `/api/rolls/${roll.slug}/captures?limit=fifty`,
-    });
+  /**
+   * The error message says "a whole number of rows", so the parser has to mean
+   * it. `Number()` did not: `0x10` was 16, `5e1` was 50, and `-9` was an
+   * integer that then got *clamped up* to 1 — a client that asked for minus
+   * nine pages got one row and no indication anything was wrong with what it
+   * sent. Clamping is for a number that is out of range, not for one that is
+   * not a page size at all.
+   */
+  it.each(['fifty', '0x10', '5e1', '-9', '1.5', ' '])(
+    'rejects limit=%j rather than guessing a page size',
+    async (limit) => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/rolls/${roll.slug}/captures?limit=${encodeURIComponent(limit)}`,
+      });
 
-    expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ code: 'INVALID_LIMIT' });
-  });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ code: 'INVALID_LIMIT' });
+    },
+  );
 
   it('answers 400, not 500, for a tampered cursor', async () => {
     const good = (await feed(roll.slug, '?limit=5')).nextCursor;
@@ -1059,7 +1069,7 @@ describe('POST /api/host/rolls/:rollId/regenerate-slug revokes asset access', ()
     // A guest opens the roll through the link it was given, and the tile loads.
     const opened = await app.inject({ method: 'GET', url: `/api/rolls/${roll.slug}` });
     expect(opened.statusCode).toBe(200);
-    const stamp = opened.cookies.find((c) => c.name === `kino_roll_${roll.rollId}`);
+    const stamp = opened.cookies.find((c) => c.name === 'kino_rolls');
     expect(stamp).toMatchObject({ httpOnly: true, path: '/' });
     const stale = { cookie: `${stamp?.name ?? ''}=${stamp?.value ?? ''}` };
     expect((await app.inject({ method: 'GET', url: assetUrl, headers: stale })).statusCode).toBe(
@@ -1091,7 +1101,7 @@ describe('POST /api/host/rolls/:rollId/regenerate-slug revokes asset access', ()
     // the same asset back: this revokes a link, it does not delete photographs.
     const reopened = await app.inject({ method: 'GET', url: `/api/rolls/${fresh}` });
     expect(reopened.statusCode).toBe(200);
-    const current = reopened.cookies.find((c) => c.name === `kino_roll_${roll.rollId}`);
+    const current = reopened.cookies.find((c) => c.name === 'kino_rolls');
     const renewed = { cookie: `${current?.name ?? ''}=${current?.value ?? ''}` };
     expect((await app.inject({ method: 'GET', url: assetUrl, headers: renewed })).statusCode).toBe(
       302,

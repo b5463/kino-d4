@@ -55,12 +55,39 @@ project `kino-dev`, so it never collides with other stacks on the machine.
 
 `src/config.ts` validates the environment with zod:
 
-`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_FIRMWARE_BUCKET`, `S3_ACCESS_KEY`,
-`S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`, `COOKIE_SECRET`,
+`DATABASE_URL`, `REDIS_URL`, `JOB_QUEUE_PREFIX`, `METRICS_TOKEN`, `S3_ENDPOINT`, `S3_BUCKET`,
+`S3_FIRMWARE_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `PUBLIC_BASE_URL`,
+`TRUST_PROXY`, `OBJECT_DELIVERY`, `DEVICE_REGISTRATION_MODE`, `COOKIE_SECRET`,
 `PROVISIONING_TOKEN`, `NODE_ENV`, `LOG_LEVEL`.
 
 Every key has a dev default matching the compose file, so **no `.env` is needed
-locally**. Three of them are not about the compose stack:
+locally** — `METRICS_TOKEN` is the one exception and has no default at all.
+Five of them are worth reading before a deployment:
+
+- `TRUST_PROXY` decides whether a forwarded client address is believed. It
+  defaults to `false`, so a direct-facing API meters by the socket's own
+  address; behind Caddy it takes a hop count, a comma-separated list of
+  addresses or CIDRs, or one of the presets `loopback`, `linklocal`,
+  `uniquelocal`. The old boolean `true` is **refused**: it trusts every hop, so
+  any client could name its own address and buy a fresh rate-limit bucket. Note
+  the second consequence — the guest cookies are `secure: 'auto'`, so behind a
+  TLS-terminating proxy an untrusted `X-Forwarded-Proto` means Fastify sees
+  `http` and drops the Secure flag.
+- `METRICS_TOKEN` is the bearer `GET /api/metrics` compares constant-time, and
+  it is `optional()` with **no** default: absent, the route answers `404` rather
+  than existing unauthenticated, so a deployment that forgets it exposes
+  nothing. Minimum 24 characters. Production Compose requires it.
+- `OBJECT_DELIVERY` is `presigned` or `proxy`. `presigned` redirects a guest to
+  storage and is convenient locally; `proxy` streams the bytes through this API,
+  which is what production runs because MinIO is private there with no published
+  port. It also decides which URL the export poll route hands back.
+- `DEVICE_REGISTRATION_MODE` is `rotate` or `first-write-wins`, and production
+  wants the latter — see [Device registration](#device-registration--read-this-before-exposing-it).
+- `JOB_QUEUE_PREFIX` is the BullMQ key prefix, shared with the worker. It exists
+  so a test can isolate a real producer/consumer pair without that worker
+  consuming another suite's jobs.
+
+Three more are not about the compose stack:
 
 - `COOKIE_SECRET` signs the guest PIN session cookie. Its default is a published
   placeholder, and config loading **fails** unless `NODE_ENV` is explicitly
@@ -237,6 +264,9 @@ explicit reason rather than hiding a package that does not match the connected
 device. `GET /api/firmware/releases/:release/manifest?channel=stable` returns
 the validated `kino.firmware-manifest` plus short-lived download URLs for each
 target in the separate `S3_FIRMWARE_BUCKET`.
+`GET /api/firmware/releases/:release/files/:target?channel=stable` streams one
+image out of that bucket through the API, for a deployment where storage has no
+published port — the same reason `OBJECT_DELIVERY=proxy` exists for media.
 
 Publishing is intentionally a CLI operation in V1. A package directory contains
 `manifest.json` and every target named by its `targets` map. The command checks
@@ -397,7 +427,10 @@ fail-closed because `NODE_ENV` has no default and an unset value is not `test`.
 | `GET /api/rolls/:slug/captures` | guest | visible capture feed, newest shutter time first (`captured_at`, then id), with ordered asset summaries |
 | `GET /api/rolls/:slug/captures/:captureId` | guest | visible detail plus anonymous reaction state |
 | `POST /api/rolls/:slug/captures/:captureId/react` | guest | toggles one signed, session-only anonymous heart |
+| `POST /api/rolls/:slug/captures/:captureId/renders` `{role}` | guest | queues a lazily rendered derivative (`wiggle-mp4`, `social-9x16`, `social-4x5`, `social-1x1`) → `202 {role, job}`; behind `downloadsEnabled`; own 20/min bucket |
 | `GET /api/rolls/:slug/events` | guest | SSE; see [Live events](#live-events-03-7-05-10) |
+| `GET /api/host/rolls/:rollId/events` | host | the same SSE stream for the dashboard, replaying from `Last-Event-ID` |
+| `GET /api/metrics` | `METRICS_TOKEN` bearer | Prometheus text; `404` when the token is unset |
 
 `POST /api/host/rolls` is unauthenticated for the same reason device
 registration is: V1 has no accounts (05 §12), so the call *mints* the
@@ -450,17 +483,49 @@ suites cannot throttle one another. The controls remain ordered by what a
 successful guess wins:
 
 **1. `POST /api/device/rolls/join` — enumeration that converts directly into
-write scope.** Limited to 30/minute/IP. Each authenticated device also gets a
-miss counter: ten unknown slugs lock it for one hour, while a valid join clears
-the history. This covers both source rotation and free-token rotation without
-making a single human typo punitive.
+write scope.** Limited to 30/minute per **device credential**, not per address:
+the route is behind `requireDevice`, so there is always a token to charge it to,
+and four cameras on one venue uplink share an address but not a credential —
+metering by address would have them exhausting each other's budget. Each
+authenticated device also gets a miss counter: ten unknown slugs lock it for one
+hour, while a valid join clears the history. This covers both source rotation and
+free-token rotation without making a single human typo punitive.
 
 **2. `POST /api/studio/devices/register` — identity takeover.** Limited to
 10/minute/IP, with production first-write-wins. An existing serial cannot rotate
 a deployed token; see the registration section above.
 
-**3. `POST /api/rolls/:slug/pin` — online PIN guessing.** Limited to
-5/minute/IP. scrypt remains defence in depth, not the request budget.
+**3. `POST /api/rolls/:slug/pin` — online PIN guessing.** Two mechanisms, split
+because one number cannot do both jobs.
+
+The *request* limit is 60/minute keyed on **address plus roll**, not 5/minute/IP.
+It was 5/minute/IP, and behind the relay every guest at a venue is one address:
+thirty phones typing the right PIN at the doors is thirty requests from one key,
+and twenty-five of them got a 429 on a PIN they had typed correctly. Keying on
+the roll as well means a party cannot exhaust its own budget by succeeding.
+
+The *brute-force* limit — the control that actually bounds guessing — is the
+per-roll lockout in `src/auth/pinLockout.ts`: **ten wrong PINs close that roll's
+gate for fifteen minutes**, counted in Redis against the roll and indifferent to
+where the attempts came from, which is what a distributed attacker cannot spread
+its way around. It is read *before* any scrypt runs, so it closes the guessing
+and the CPU burn at the same point, and a guest who gets in clears the counter
+for everybody. scrypt remains defence in depth, not the request budget.
+
+**6. Expensive and destructive host routes**, all keyed on the host token.
+`PATCH /api/host/rolls/:rollId` is 30/minute because setting a `pin` runs scrypt
+in a verifier pool shared with (3). `POST …/regenerate-slug` and `POST …/clear`
+are 5/minute each: both are destructive to every guest of the roll, and a person
+does them once. `GET …/export/:jobId/content` is 6/minute — it is the only route
+that streams gigabytes — and `GET …/export/estimate` is 30/minute, being an
+aggregate over every asset of the roll.
+
+**7. `POST /api/rolls/:slug/captures/:captureId/renders` — the guest's one
+write.** 20/minute, keyed like (4). It carried (4)'s 300 read budget, which is
+sized for scrolling; this route *enqueues a render*, and `render-wiggle-mp4` is
+the heaviest job in the platform. Four renderable roles per capture makes 20 a
+minute five fully rendered captures — faster than anyone taps Save, and far
+slower than one phone can walk a roll queueing MP4 encodes.
 
 **4. Guest reads.** 300/minute across Roll metadata, feeds, details, live events
 and firmware. This meters the existence oracle and bounds anonymous read
@@ -771,13 +836,23 @@ genuinely incomplete, which is the one thing `partial` exists to prevent. While
 the jobs are still running the answer is `processing` — a failed asset may yet
 be retried, so the outcome is not decided.
 
-### One stub, marked as such
+### Queueing the processing jobs
 
-- `enqueueProcessingJobs` in `src/uploads/uploads.ts` — writes the
-  `processing_events` `queued` rows and returns the payloads a real queue would
-  have been handed. Task 22 adds `await enqueue(name, payload)` inside the loop;
-  the job names, the `jobKey` format and the fan-out rule (skip a role the device
-  already uploaded — 03 §4) are already Task 22's.
+- `enqueueProcessingJobs` in `src/uploads/uploads.ts` writes the
+  `processing_events` `queued` rows and returns the payloads for the jobs *this
+  call* actually queued. It is not a stub and has not been one since Task 22: the
+  producer is `src/queue/producer.ts`, `submitJob` hands each payload to BullMQ
+  (`queue.remove` then `queue.add` under the row's own `jobKey`, so a week-old
+  retained failure cannot swallow a fresh enqueue), and capture-complete in
+  `src/routes/device-captures.ts` calls it. The fan-out rule — skip a role the
+  device already uploaded, 03 §4 — is `plannedJobs`.
+
+  Rows first, queue second, and the split is deliberate: the row is what makes a
+  retried capture-complete a no-op, so it has to be committed before anything can
+  act on the job, and only the rows the insert actually created are submitted.
+  A failed `queue.add` is logged rather than returned — a 500 there would tell a
+  camera its capture did not complete when it did. The roll export is the one
+  exception and fails the request; see below.
 
   It inserts and lets an index decide, like everything else here: migration
   `0004` adds `processing_events_capture_job_queued`, a **partial** unique index
@@ -791,15 +866,25 @@ be retried, so the outcome is not decided.
 ### Known gaps
 
 - An abandoned session leaves an incomplete multipart upload in MinIO until
-  something aborts it. `init` aborts the previous one when it restarts a
-  session, but a device that simply stops leaves it behind; a bucket lifecycle
-  rule is the real answer. **Deferred as audit API-13** and not built here: it is
-  bucket policy rather than application code, so it belongs with the storage
-  configuration in `infra/`.
-- A job whose `queued` row is committed but whose BullMQ entry was never added is
-  never retried, because the row is what makes a second capture-complete a no-op.
-  Reconciling that needs a sweeper over `queued` rows with no live job.
-  **Deferred as audit API-14** and not built here.
+  something aborts it. `init` aborts the previous one when it restarts a session,
+  but a device that simply stops leaves it behind. **Closed, in `infra/`, not
+  here** (audit API-13): the answer is storage policy rather than application
+  code, and it is MinIO's own stale-upload sweep —
+  `MINIO_API_STALE_UPLOADS_EXPIRY=24h`, pinned on the server in
+  `infra/docker-compose.prod.yml`. Not an S3 lifecycle rule, because this MinIO
+  release refuses an `AbortIncompleteMultipartUpload`-only rule; the compose note
+  has the detail. The API's side of it is that a *swept* upload is now recognised
+  rather than 500'd: `isMissingUpload` in `src/uploads/sessions.ts` turns
+  `NoSuchUpload` into a `409 … init again` at init, at every part and at
+  complete, so a camera that lost power on Friday recovers on Sunday instead of
+  retrying a dead upload id forever.
+- A job whose `queued` row is committed but whose BullMQ entry was never added
+  would never be retried, because the row is what makes a second
+  capture-complete a no-op. **Closed** (audit API-14): the worker's sweeper,
+  `apps/worker/src/sweeper.ts`, re-adds the job for any `queued` row older than
+  two minutes that BullMQ does not hold under the row's `jobId`, every five
+  minutes. So a swallowed `queue.add` failure costs minutes, not a capture
+  pinned in `processing`.
 - Two concurrent `init` calls for the same asset both create a multipart upload;
   the loser now answers `409 UPLOAD_IN_PROGRESS` and aborts the upload it had
   just created, so the database stays single-session — but a failed abort still
@@ -949,12 +1034,15 @@ means there is nobody to count. The outage itself shows up in `/api/healthz`.
 
 ### Known gaps
 
-- Nothing ever `DEL`s a roll's `roll:<id>:stream`. There is no roll deletion in
-  the platform — no route removes a `rolls` row, and `purge-trash` purges
-  *captures* — so the key outlives the party rather than being orphaned by a
-  delete. It is bounded at `MAXLEN ~ 500` entries, so the cost is one small
-  permanent key per roll ever created. The viewer key is not part of this: it
-  carries a `PEXPIRE` and clears itself.
+- Nothing ever `DEL`s a roll's `roll:<id>:stream` — there is no roll deletion in
+  the platform, no route removes a `rolls` row, and `purge-trash` purges
+  *captures*. The key is not permanent any more, though: `publishRollEvent`
+  sets a `PEXPIRE` of `ROLL_STREAM_TTL_MS` (48 h) beside every `XADD`, so the
+  window is measured from the last event and a live roll's stream never expires
+  under a reconnecting guest. `MAXLEN ~ 500` bounds how many entries it holds;
+  the expiry is what bounds how long it holds them. Past 48 h a reconnect gets
+  no replay and the client re-fetches, which is what events carrying ids only
+  (05 §10) already means it can do.
 - A client that stops reading is dropped once 64 KB has queued for it, rather
   than being buffered indefinitely. That is safe *because* of `Last-Event-ID`:
   it reconnects and replays.
@@ -1050,8 +1138,14 @@ failed publish does not fail the request: the row is committed, so the capture i
 already gone for anyone loading the page, and refusing the host's moderation
 because Redis blinked would be the worse trade.
 
-There is no bulk endpoint, no reason field, no reviewer queue and no restore
-route — 03 §29, "do not overbuild moderation for V1".
+There is no bulk endpoint, no reason field and no reviewer queue — 03 §29, "do
+not overbuild moderation for V1". Restore **is** here:
+`POST /api/host/captures/:captureId/restore` (`src/routes/host-captures.ts`)
+clears `deleted_at` and leaves `visible` alone, so a capture that was hidden
+before it was deleted comes back hidden. It was left out originally on the
+grounds that the purge task owned it, which made 03 §11's grace period a
+seven-day countdown with no way out — the property existed in the schema and
+nowhere on the API.
 
 ### Export state lives in `export_jobs`, not `processing_events`
 
@@ -1108,10 +1202,11 @@ photos.
 
 ### Known gap
 
-- There is no restore route in the V1 moderation surface. A trashed capture can
-  only be recovered administratively during its seven-day grace period. The V1
-  plan deliberately limits moderation to hide/unhide/delete; adding a host
-  restore action remains a product decision rather than an unfinished purge.
+- A `done` export whose ZIP has gone missing from storage is reported as `done`
+  with the link withheld, and logged at error level. Nothing re-runs it: the host
+  has to press export again, which claims a fresh job. Re-queueing
+  automatically would need the poll route to be able to write, and a route that
+  starts the heaviest job in the platform on a read is not the trade.
 
 ## Logging
 

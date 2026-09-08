@@ -91,6 +91,30 @@ export interface RollEventDelivery {
 /** How many events a roll's stream keeps, and therefore how far back a replay reaches. */
 export const ROLL_STREAM_MAXLEN = 500;
 
+/**
+ * How long a roll's stream survives its last event: 48 hours.
+ *
+ * `MAXLEN ~ 500` bounds how *many* entries a stream holds and says nothing about
+ * how long the key lives, so every roll ever created left a permanent key behind
+ * — one per roll, forever, in the same Redis that holds the rate-limit counters
+ * and the viewer sets.
+ *
+ * The window is chosen against what the stream is *for*, which is replay after a
+ * reconnect: a phone that slept in a pocket, a guest who walked out of range,
+ * a tab restored on the way home. That is minutes, occasionally an hour. 48
+ * hours covers a party that runs past midnight plus the whole of the next day,
+ * so nobody who was actually at the event loses a replay, and it is refreshed on
+ * every event — a live roll's stream never expires while photographs are still
+ * arriving. Beyond it the gallery is a page load, not a replay: events carry ids
+ * only and the client re-fetches (05 §10), so the cost of an expired stream is
+ * one full fetch instead of a delta.
+ *
+ * Not hours: a roll that goes quiet for an afternoon and picks up again in the
+ * evening is one event, not two. Not months: nothing reads a two-week-old event,
+ * and a key nobody reads is a key nobody notices growing.
+ */
+export const ROLL_STREAM_TTL_MS = 48 * 60 * 60 * 1_000;
+
 /** The pub/sub channel a roll's live subscribers listen on. */
 export function rollEventChannel(rollId: string): string {
   return `roll:${rollId}:events`;
@@ -195,6 +219,14 @@ export async function publishRollEvent(
   // call does not use. Treating it as impossible-but-checked beats returning a
   // fake id that a client would later replay from.
   if (id === null) throw new Error(`XADD to ${rollStreamKey(rollId)} returned no entry id`);
+
+  // Beside the XADD rather than at roll creation, so the window is measured
+  // from the last event and a live roll's stream is never dropped from under a
+  // reconnecting guest. See `ROLL_STREAM_TTL_MS`. It runs before the PUBLISH for
+  // the same reason the XADD does: a failure here must not cost a subscriber the
+  // event, and a stream with no expiry is the state this whole platform ran in
+  // until now — recoverable, unlike an event nobody recorded.
+  await redis.pexpire(rollStreamKey(rollId), ROLL_STREAM_TTL_MS);
 
   await redis.publish(rollEventChannel(rollId), JSON.stringify({ id, event }));
   return id;

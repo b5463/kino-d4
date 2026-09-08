@@ -32,8 +32,8 @@ import {
 } from '../uploads/sessions';
 import { publishRollEvent, type RollEvent } from '../events/publish';
 import { newId } from '../ids';
-import { assets, captures, devices, rollDevices, rolls, uploadSessions } from '../db/schema';
-import { convergeWarning, fail, invalidBody } from './errors';
+import { assets, captures, rollDevices, rolls, uploadSessions } from '../db/schema';
+import { InternalError, convergeWarning, fail, invalidBody } from './errors';
 
 import { deviceReadRateLimit, deviceUploadRateLimit } from '../plugins/rateLimits';
 
@@ -388,7 +388,6 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       const roll = rollOf(request);
-      assertRollAcceptsUploads(roll);
 
       let doc;
       try {
@@ -407,37 +406,67 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
         return fail(reply, 400, 'INVALID_CAPTURE', 'capturedAt is not a date');
       }
 
-      // `onConflictDoNothing` + read-back, never a pre-check SELECT: two
-      // concurrent retries of the same capture both reach the index, the loser's
-      // INSERT blocks until the winner commits and then returns no row, and the
-      // read-back sees the committed one. That is the whole race (05 §9).
-      // The request context carries only {id, serial}; provenance wants the
-      // hardware revision as it is NOW, from the devices row — one PK lookup.
-      const identity = deviceOf(request);
-      const [deviceRow] = await app.db
-        .select({ serial: devices.serial, product: devices.product, hardwareRevision: devices.hardwareRevision })
-        .from(devices)
-        .where(eq(devices.id, identity.id));
-      const device = { id: identity.id, ...(deviceRow ?? { serial: identity.serial, product: null, hardwareRevision: null }) };
-      const [inserted] = await app.db
-        .insert(captures)
-        .values({
-          id: newId('cap'),
-          captureUuid: doc.captureUuid,
-          rollId: roll.id,
-          deviceId: device.id,
-          mode: doc.mode,
-          look: doc.look ?? null,
-          capturedAt,
-          frameCount: doc.frameCount,
-          resolution: doc.resolution,
-          timing: doc.timing ?? null,
-          provenance: captureProvenance(doc, device),
-          status: nextCaptureStatus([], false),
-          visible: doc.visible,
-        })
-        .onConflictDoNothing()
-        .returning({ id: captures.id });
+      // `requireDevice` read the whole devices row to authenticate this request,
+      // so the identity it left on the request already carries the product and
+      // hardware revision provenance wants as they are NOW. It used to be read
+      // again here by primary key — a second lookup of a row the preHandler had
+      // in its hand, on the busiest write in the platform.
+      const device = deviceOf(request);
+
+      /**
+       * The upload gate and the row it guards, in one transaction.
+       *
+       * `assertRollAcceptsUploads` used to run on `rollOf(request)`, which is the
+       * preHandler's snapshot — a read that finished before the body was even
+       * parsed. Closing a roll is precisely the thing a host does while cameras
+       * are still shooting, so that snapshot going stale mid-request is the
+       * normal case rather than an edge one, and a capture accepted against it
+       * lands in a roll that is already closed with nothing to notice.
+       *
+       * Re-read inside the transaction that writes the capture, so the status the
+       * decision is made on and the row the decision produces cannot straddle the
+       * host's PATCH. `RollClosedError` rolls the transaction back and answers 409
+       * `ROLL_CLOSED`, exactly as it did from the preHandler snapshot.
+       *
+       * `onConflictDoNothing` + read-back, never a pre-check SELECT: two
+       * concurrent retries of the same capture both reach the index, the loser's
+       * INSERT blocks until the winner commits and then returns no row, and the
+       * read-back sees the committed one. That is the whole race (05 §9).
+       */
+      const inserted = await app.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ status: rolls.status })
+          .from(rolls)
+          .where(eq(rolls.id, roll.id))
+          .limit(1);
+        if (current === undefined) {
+          throw new InternalError('a roll vanished between authentication and its capture', {
+            rollId: roll.id,
+          });
+        }
+        assertRollAcceptsUploads(current);
+
+        const [row] = await tx
+          .insert(captures)
+          .values({
+            id: newId('cap'),
+            captureUuid: doc.captureUuid,
+            rollId: roll.id,
+            deviceId: device.id,
+            mode: doc.mode,
+            look: doc.look ?? null,
+            capturedAt,
+            frameCount: doc.frameCount,
+            resolution: doc.resolution,
+            timing: doc.timing ?? null,
+            provenance: captureProvenance(doc, device),
+            status: nextCaptureStatus([], false),
+            visible: doc.visible,
+          })
+          .onConflictDoNothing()
+          .returning({ id: captures.id });
+        return row;
+      });
 
       if (inserted !== undefined) {
         await announce(app, roll.id, { type: 'capture.created', captureId: inserted.id });
@@ -451,8 +480,13 @@ export const deviceCaptureRoutes: FastifyPluginAsync = async (app) => {
         .limit(1);
       if (existing === undefined) {
         // The insert conflicted with something that is not the idempotency
-        // anchor. Guessing which would be worse than saying so.
-        throw new Error(`capture ${doc.captureUuid} conflicted but cannot be read back`);
+        // anchor. Guessing which would be worse than saying so. The uuid is in
+        // the log, not in the answer: this is a 500, and a 500's message is read
+        // by whoever provoked it.
+        throw new InternalError('a capture insert conflicted but cannot be read back', {
+          rollId: roll.id,
+          captureUuid: doc.captureUuid,
+        });
       }
 
       // 200, not 201: nothing was created. Same id, so a retry converges.

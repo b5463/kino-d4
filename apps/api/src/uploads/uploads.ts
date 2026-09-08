@@ -3,9 +3,9 @@ import type { Readable } from 'node:stream';
 import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { CAPTURE_STATUSES } from '@kino/schemas';
-import type { KinoDatabase } from '../plugins/db';
+import type { KinoDatabase, KinoTransaction } from '../plugins/db';
 import { newId } from '../ids';
-import { captures, processingEvents } from '../db/schema';
+import { assets, captures, processingEvents } from '../db/schema';
 import { derivedKey, originalKey } from './objectKeys';
 
 /**
@@ -136,6 +136,20 @@ export function nextCaptureStatus(
     // While the queue is still working, the outcome is not decided yet — a
     // failed asset may still be retried, so `processing` is the honest answer.
     if (!jobsDone) return 'processing';
+    /**
+     * The jobs are finished, but an asset that is neither `ready` nor `failed`
+     * is still in flight — a frame the camera is uploading now, or a derivative
+     * row a worker created and has not filled. `ready` is a SETTLED status and
+     * nothing revisits a settled capture, so answering it here would freeze the
+     * capture at "complete" with an upload still running and no later read able
+     * to correct it. `processing` keeps it unsettled, which is what lets the
+     * next read settle it once the asset lands one way or the other.
+     *
+     * This branch is the one a recompute racing a worker's commit lands in: the
+     * job rows say done, the asset rows still hold a pending one. It must not be
+     * the branch that writes a terminal status.
+     */
+    if (assets.some(inFlight)) return 'processing';
     // Once it has finished, a capture that permanently lost an asset — or a
     // derivative a job was supposed to produce and never did — is `partial`, not
     // `ready` (05 §8). Reporting `ready` here would drop it out of the host's
@@ -197,7 +211,7 @@ function previewOrCreated(assets: readonly AssetState[]): CaptureStatus {
  * be mistaken for a live enqueue.
  */
 async function latestJobStatuses(
-  db: KinoDatabase,
+  db: KinoDatabase | KinoTransaction,
   captureId: string,
 ): Promise<{ job: string; status: string }[]> {
   const lifecycleRank = sql`case ${processingEvents.status}
@@ -243,28 +257,71 @@ async function latestJobStatuses(
  * and they count as lost, which is what turns the answer into `partial` rather
  * than `ready`. `partial` is right even when every asset row is intact: the
  * platform owes this capture a derivative it is never going to produce.
+ *
+ * ## One transaction, and a guarded write
+ *
+ * The two reads and the UPDATE run in a single transaction, on a single pooled
+ * connection. They used to run under one `Promise.all`, which took **two**
+ * connections and therefore two independent snapshots: a recompute could read
+ * the job rows after a worker's commit and the asset rows before it, decide
+ * "jobs finished, nothing pending", and store `ready` — a settled status no
+ * later read revisits, so the pending asset was stranded for good. One
+ * transaction removes the two-snapshot half of that; the `jobsQueued` branch of
+ * `nextCaptureStatus` removes the outcome.
+ *
+ * The write then carries `WHERE status = <the status this call read>`. Two
+ * recomputes of one capture race routinely — a device's asset-complete and a
+ * guest's feed read land within milliseconds of each other — and the guard is
+ * what makes the loser a **no-op** rather than an overwrite computed from an
+ * older snapshot. No row back means somebody else already moved it, and the
+ * value that won is what this returns, because that is what the next reader
+ * sees.
  */
 export async function recomputeCaptureStatus(
   db: KinoDatabase,
   captureId: string,
 ): Promise<CaptureStatus> {
-  const [assetRows, jobRows] = await Promise.all([
-    db.query.assets.findMany({
-      columns: { role: true, status: true },
-      where: (asset, { eq: is }) => is(asset.captureId, captureId),
-    }),
-    latestJobStatuses(db, captureId),
-  ]);
+  return db.transaction(async (tx) => {
+    // The status the decision is made against, read first so the guard below
+    // covers everything read after it.
+    const [before] = await tx
+      .select({ status: captures.status })
+      .from(captures)
+      .where(eq(captures.id, captureId))
+      .limit(1);
+    if (before === undefined) {
+      throw new Error('recomputed the status of a capture that is not there');
+    }
 
-  const jobsQueued = jobRows.length > 0;
-  // Settled either way: `done` succeeded, `abandoned` will not be tried again.
-  const jobsDone =
-    jobsQueued && jobRows.every((job) => job.status === 'done' || job.status === 'abandoned');
-  const jobsLost = jobRows.some((job) => job.status === 'abandoned');
-  const status = nextCaptureStatus(assetRows, jobsDone, jobsQueued, jobsLost);
+    const assetRows = await tx
+      .select({ role: assets.role, status: assets.status })
+      .from(assets)
+      .where(eq(assets.captureId, captureId));
+    const jobRows = await latestJobStatuses(tx, captureId);
 
-  await db.update(captures).set({ status }).where(eq(captures.id, captureId));
-  return status;
+    const jobsQueued = jobRows.length > 0;
+    // Settled either way: `done` succeeded, `abandoned` will not be tried again.
+    const jobsDone =
+      jobsQueued && jobRows.every((job) => job.status === 'done' || job.status === 'abandoned');
+    const jobsLost = jobRows.some((job) => job.status === 'abandoned');
+    const status = nextCaptureStatus(assetRows, jobsDone, jobsQueued, jobsLost);
+
+    const written = await tx
+      .update(captures)
+      .set({ status })
+      .where(and(eq(captures.id, captureId), eq(captures.status, before.status)))
+      .returning({ status: captures.status });
+    if (written.length > 0) return status;
+
+    // Lost the race. Report what the winner stored rather than what this call
+    // computed from a snapshot that is now one commit behind.
+    const [after] = await tx
+      .select({ status: captures.status })
+      .from(captures)
+      .where(eq(captures.id, captureId))
+      .limit(1);
+    return (after?.status ?? before.status) as CaptureStatus;
+  });
 }
 
 /* --------------------------------------------------- convergence on read -- */
@@ -283,10 +340,10 @@ const NO_LOG: ConvergeFailureLog = () => {};
  * How many recomputes may be in flight at once.
  *
  * Three, because of the pool. `dbPlugin` opens `postgres(..., { max: 10 })`, and
- * one `recomputeCaptureStatus` peaks at **two** pooled connections - its asset
- * read and its job read run under one `Promise.all` - before taking one more for
- * the `UPDATE`. Three in flight is therefore at most six of the ten, leaving four
- * for the device uploads and guest requests sharing that pool.
+ * one `recomputeCaptureStatus` holds exactly **one** pooled connection for the
+ * length of its transaction — two reads and a guarded UPDATE, no S3 and no other
+ * service in between. Three in flight is therefore three of the ten, leaving
+ * seven for the device uploads and guest requests sharing that pool.
  *
  * Unbounded was the alternative, and it is a latency cliff exactly when it hurts:
  * a live 500-capture roll would have one dashboard render queue ~1500 statements

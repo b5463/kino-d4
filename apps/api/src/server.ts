@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, {
   type FastifyBaseLogger,
+  type FastifyError,
   type FastifyInstance,
   type FastifyServerOptions,
 } from 'fastify';
@@ -17,6 +18,7 @@ import { metricsPlugin } from './plugins/metrics';
 import { eventsPlugin } from './plugins/events';
 import { s3Plugin } from './plugins/s3';
 import { authPlugin } from './auth/plugins';
+import { InternalError, fail } from './routes/errors';
 import { robotsPlugin } from './rolls/robots';
 import { securityHeadersPlugin } from './plugins/securityHeaders';
 import { studioDeviceRoutes } from './routes/studio-devices';
@@ -41,6 +43,58 @@ declare module 'fastify' {
 
 /** A dependency that is unreachable must not stall the health endpoint. */
 const HEALTH_PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * The code an answer gets when the error carries none of its own.
+ *
+ * Every route in this API answers `{code, message}` (`routes/errors.ts`), and
+ * until now anything *thrown* answered Fastify's own
+ * `{statusCode, error, message}` instead — so a client had two envelopes to
+ * parse and no way to know which it was about to get. These fill the code in for
+ * the throws that come from outside our own modules: `@fastify/rate-limit`'s
+ * 429, a body over the limit, a parser refusing a content type.
+ */
+const STATUS_CODES: Readonly<Record<number, string>> = {
+  400: 'INVALID_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  405: 'METHOD_NOT_ALLOWED',
+  406: 'NOT_ACCEPTABLE',
+  409: 'CONFLICT',
+  413: 'PAYLOAD_TOO_LARGE',
+  415: 'UNSUPPORTED_MEDIA_TYPE',
+  422: 'UNPROCESSABLE',
+  429: 'RATE_LIMITED',
+};
+
+/**
+ * The status an error asks for, or 500.
+ *
+ * `RollClosedError`, `AssetShapeError` and `OriginalOverwriteError` declare a
+ * `statusCode`, and so does every error `@fastify/rate-limit` and Fastify's own
+ * machinery raise. Anything below 400 is not a refusal — an error object
+ * carrying `statusCode: 200` is a bug, not an answer — so it becomes a 500.
+ */
+function statusOf(err: unknown): number {
+  const status = (err as { statusCode?: unknown }).statusCode;
+  return typeof status === 'number' && status >= 400 && status <= 599 ? status : 500;
+}
+
+/**
+ * The error's own code where it has one of ours, the status's word otherwise.
+ *
+ * `FST_ERR_*` is Fastify's internal naming and is deliberately not passed
+ * through: it names the internal that raised the error rather than what the
+ * caller did wrong, and it would put a second vocabulary on a surface that has
+ * one. Postgres's own numeric codes never reach this — they arrive as 500s,
+ * which never look at the code at all.
+ */
+function codeOf(err: unknown, status: number): string {
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === 'string' && code.length > 0 && !code.startsWith('FST_')) return code;
+  return STATUS_CODES[status] ?? 'REQUEST_FAILED';
+}
 
 async function probe(
   log: FastifyBaseLogger,
@@ -89,6 +143,54 @@ export function buildServer(config: ApiConfig = loadConfig()): FastifyInstance {
   const app = Fastify(options);
 
   app.decorate('config', config);
+
+  /**
+   * Every error answers the one `{code, message}` envelope (`routes/errors.ts`).
+   *
+   * Set here, before any route plugin is registered, because a child context
+   * inherits the handler its parent had when the context was created — a handler
+   * installed after the registrations would cover the root context only, which
+   * is `/api/healthz` and nothing else.
+   *
+   * ## Expected refusals versus unexpected failures
+   *
+   * A refusal that a module *chose* — `ROLL_CLOSED`, `ORIGINAL_IMMUTABLE`,
+   * `UNSUPPORTED_MIME`, a 429 from the limiter — carries its own status and its
+   * own message, and both are safe to hand back: they were written to be read by
+   * a camera or a browser.
+   *
+   * Anything reaching 500 was not chosen, so its message is an implementation
+   * detail: a driver's constraint name, a bucket name, an S3 endpoint, an id
+   * interpolated by whoever threw. None of that goes in the body. It goes in the
+   * log, with `err` and with `InternalError.detail`, where the reqId already ties
+   * it to the request that caused it (05 §17); the caller gets a fixed sentence
+   * and the reqId it sent.
+   */
+  app.setErrorHandler((err: FastifyError, request, reply) => {
+    const status = statusOf(err);
+    if (status >= 500) {
+      const detail = err instanceof InternalError ? err.detail : {};
+      request.log.error({ err, ...detail }, 'request failed');
+      return fail(
+        reply,
+        status,
+        'INTERNAL_ERROR',
+        'the server could not complete this request; retry, and quote the x-request-id',
+      );
+    }
+    return fail(reply, status, codeOf(err, status), err.message);
+  });
+
+  /**
+   * A URL nothing is mounted at is a 404 in the same envelope. Fastify's own
+   * default answers `{message: "Route GET:/api/nope not found", error, statusCode}`,
+   * which is the second shape this API is trying not to have — and it echoes the
+   * path back, which turns a typo in a client into a reflected string.
+   */
+  app.setNotFoundHandler((request, reply) =>
+    fail(reply, 404, 'NOT_FOUND', 'no route is mounted at this path'),
+  );
+
   /**
    * Studio talks to the Roll server cross-origin (it is a device tool, not a
    * page this API serves), and dev tooling runs Studio/Twin/roll-web on assorted

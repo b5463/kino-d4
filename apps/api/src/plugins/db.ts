@@ -35,7 +35,18 @@ export const dbPlugin = fp<DbPluginOptions>(
       // The pool holds 10 connections for every route. A statement that hangs
       // (lock, dead storage behind a trigger, runaway query) must release its
       // connection instead of wedging the pool.
-      connection: { statement_timeout: 15_000 },
+      //
+      // `idle_in_transaction_session_timeout` closes the other half of that.
+      // `statement_timeout` only bounds a statement that is *running*; a
+      // transaction that has finished a statement and is waiting on something
+      // outside PostgreSQL — an S3 round trip, a queue add, a stalled event
+      // loop — is idle, so no statement timer applies to it, and it keeps both
+      // its connection and every row lock it took. Ten of those is the whole
+      // pool, held by requests that are not asking the database for anything.
+      // 20 s is above the slowest legitimate transaction in the API (a few
+      // indexed statements, single-digit milliseconds) by three orders of
+      // magnitude, so anything it kills is genuinely wedged.
+      connection: { statement_timeout: 15_000, idle_in_transaction_session_timeout: 20_000 },
       onnotice: () => {},
     });
 

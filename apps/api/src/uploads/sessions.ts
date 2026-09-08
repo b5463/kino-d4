@@ -4,14 +4,15 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
   ListPartsCommand,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import type { FastifyInstance } from 'fastify';
-import type { KinoDatabase } from '../plugins/db';
 import { newId } from '../ids';
 import { assets, uploadParts, uploadSessions } from '../db/schema';
 import { isUniqueViolation } from '../db/errors';
+import { InternalError } from '../routes/errors';
 import { assertNotOriginalOverwrite } from './objectKeys';
 import { contradictsDeclaredMime, digestStoredObject } from './uploads';
 
@@ -29,9 +30,6 @@ const SESSION_KEY_CONSTRAINT = 'upload_sessions_idempotency_key_unique';
 
 export type AssetRow = typeof assets.$inferSelect;
 export type SessionRow = typeof uploadSessions.$inferSelect;
-
-/** The handle drizzle hands a `db.transaction` callback. */
-type KinoTransaction = Parameters<Parameters<KinoDatabase['transaction']>[0]>[0];
 
 /* ------------------------------------------------------------------ asset -- */
 
@@ -393,25 +391,40 @@ export type UploadOutcome =
   | { status: 'ready'; sha256: string; bytes: number };
 
 /**
- * The whole of `complete`, under a row lock (01 §7).
+ * The whole of `complete`: verify outside a transaction, commit inside a short
+ * one (01 §7).
  *
- * ## Why a lock and not just a check
+ * ## No S3 call happens inside a transaction, and that is the point
  *
- * The immutability guard reads the asset's stored digest and then a write
- * happens. Between those two moments a *concurrent* complete for the same asset
- * can flip it to `ready` with different content — so the guard would be
- * answering about a state that no longer exists by the time it matters. Reading
- * the asset `FOR UPDATE` and holding that lock across the guard **and** the
- * write closes the window: the second completer blocks until the first commits,
- * then re-reads and sees the digest it now has to match.
+ * This used to take `SELECT ... FOR UPDATE` on the asset row and hold it across
+ * a `CompleteMultipartUpload`, a full sha256 re-stream of the stored object and
+ * sometimes a `DeleteObject`. The pool is `max: 10` (`src/plugins/db.ts`), so
+ * ten cameras finishing an asset each — one grouped capture is five assets, and
+ * a party has four cameras — held all ten connections while waiting on storage,
+ * and every other request in the process queued behind a network round trip
+ * that has nothing to do with the database. A slow or unreachable MinIO turned
+ * "uploads are slow" into "the API is down".
  *
- * The session is re-read inside the same transaction for the same reason — the
- * row the route resolved may already have been completed or failed by whoever
- * held the lock first, and the snapshot it is holding cannot know that.
+ * So the work is ordered verify-then-commit: read the rows, decide, talk to
+ * storage, and only then open a transaction that does nothing but write.
  *
- * The lock is held across the S3 round trip (complete + re-read), which is the
- * deliberate cost: it is one asset row, contended only by another attempt to
- * write the same object, which is exactly what must not run in parallel.
+ * ## What still protects the immutability guard (01 §7)
+ *
+ * The guard is evaluated **twice**: once on the rows read up front, which is
+ * what refuses an overwrite before any bytes are committed to the key, and once
+ * inside the write transaction under `FOR UPDATE` against the digest as it is
+ * *then*, which is what refuses a loser that raced past the first check. The
+ * session is re-read inside the same transaction too, so a session another call
+ * already completed or failed cannot be written twice.
+ *
+ * What the shorter lock gives up is narrow and worth stating: two concurrent
+ * completes can both reach `CompleteMultipartUpload`. They cannot carry
+ * different bytes — there is one session row per asset, its `sha256_expected` is
+ * fixed at init, and changing it requires a re-init that
+ * `assertNotOriginalOverwrite` already refuses for a ready original — so both
+ * write the same object, and the second row write is refused. Same object, one
+ * row: the outcome the lock used to buy, without holding a connection across
+ * the network.
  *
  * ## What it does
  *
@@ -432,107 +445,163 @@ export async function finishUpload(
   sessionId: string,
   assetId: string,
 ): Promise<UploadOutcome> {
-  return app.db.transaction(async (tx) => {
-    // `.for('update')` is load-bearing, not a hint. See the note above.
-    const [asset] = await tx.select().from(assets).where(eq(assets.id, assetId)).for('update');
-    if (asset === undefined) throw new Error(`asset ${assetId} vanished mid-upload`);
+  const [asset] = await app.db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
+  if (asset === undefined) {
+    throw new InternalError('an asset row vanished mid-upload', { assetId });
+  }
 
-    const [session] = await tx
-      .select()
-      .from(uploadSessions)
-      .where(eq(uploadSessions.id, sessionId))
-      .limit(1);
-    if (session === undefined) throw new Error(`upload session ${sessionId} vanished`);
+  const [session] = await app.db
+    .select()
+    .from(uploadSessions)
+    .where(eq(uploadSessions.id, sessionId))
+    .limit(1);
+  if (session === undefined) {
+    throw new InternalError('an upload session vanished mid-upload', { sessionId });
+  }
 
-    if (session.status === 'complete') return { status: 'already-complete' };
-    if (session.status !== 'open' || session.s3UploadId === null) {
-      return { status: 'not-open', was: session.status };
-    }
+  if (session.status === 'complete') return { status: 'already-complete' };
+  if (session.status !== 'open' || session.s3UploadId === null) {
+    return { status: 'not-open', was: session.status };
+  }
 
-    // Guarded here, inside the lock, against the digest as it is *now*.
-    assertNotOriginalOverwrite(
-      asset.objectKey,
-      asset.status === 'ready' ? asset.sha256 : null,
-      session.sha256Expected,
+  // First of the two guard evaluations: refuse an overwrite before any bytes
+  // are committed to the key. The second one is inside the write transaction.
+  assertNotOriginalOverwrite(
+    asset.objectKey,
+    asset.status === 'ready' ? asset.sha256 : null,
+    session.sha256Expected,
+  );
+
+  const parts = await app.db
+    .select()
+    .from(uploadParts)
+    .where(eq(uploadParts.uploadId, session.id))
+    .orderBy(asc(uploadParts.partNo));
+  if (parts.length === 0) return { status: 'no-parts' };
+
+  try {
+    await app.s3.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: app.config.S3_BUCKET,
+        Key: asset.objectKey,
+        UploadId: session.s3UploadId,
+        MultipartUpload: {
+          Parts: parts.map((part) => ({ PartNumber: part.partNo, ETag: part.etag })),
+        },
+      }),
     );
-
-    const parts = await tx
-      .select()
-      .from(uploadParts)
-      .where(eq(uploadParts.uploadId, session.id))
-      .orderBy(asc(uploadParts.partNo));
-    if (parts.length === 0) return { status: 'no-parts' };
-
-    try {
-      await app.s3.send(
-        new CompleteMultipartUploadCommand({
-          Bucket: app.config.S3_BUCKET,
-          Key: asset.objectKey,
-          UploadId: session.s3UploadId,
-          MultipartUpload: {
-            Parts: parts.map((part) => ({ PartNumber: part.partNo, ETag: part.etag })),
-          },
-        }),
-      );
-    } catch (err) {
-      // The last place the sweep can bite: every part was sent, the camera lost
-      // the answer to `complete`, and by the time it asked again storage had
-      // dropped the upload. Fail the session inside this transaction so the
-      // next init opens a fresh multipart instead of resuming a ghost.
-      if (!isMissingUpload(err)) throw err;
-      await tx.delete(uploadParts).where(eq(uploadParts.uploadId, session.id));
-      await tx
-        .update(uploadSessions)
-        .set({ status: 'failed', partsReceived: 0 })
-        .where(eq(uploadSessions.id, session.id));
+  } catch (err) {
+    if (!isMissingUpload(err)) throw err;
+    /**
+     * `NoSuchUpload` has two causes and they need opposite answers.
+     *
+     * The sweep: every part was sent, the camera lost the answer to `complete`,
+     * and by the time it asked again MinIO's 24-hour stale-upload expiry had
+     * dropped the multipart. Nothing was written, so the session has to fail and
+     * the next init opens a fresh multipart instead of resuming a ghost.
+     *
+     * A concurrent complete: another call for this same session already
+     * finished the multipart, which is what *consumes* the upload id — so
+     * storage answers `NoSuchUpload` to the second caller even though the object
+     * it wanted is there and correct. Failing the session on that would be
+     * wrong twice over: it would tell a camera to re-init an asset that is
+     * already on the server, and it would mark a session failed that another
+     * call is in the middle of completing.
+     *
+     * The object is what tells them apart, and one `HeadObject` is what asks. If
+     * it exists the multipart was completed — by us or by a peer with the same
+     * bytes, since a session's `sha256_expected` is fixed at init — so this call
+     * carries on and verifies it like any other, and the row write below is
+     * settled under the lock. Only on a missing object is it really swept.
+     */
+    if (!(await storedObjectExists(app, asset.objectKey))) {
+      await forgetSweptUpload(app, session.id);
       return { status: 'swept' };
     }
+  }
 
-    const stored = await digestStoredObject(app.s3, app.config.S3_BUCKET, asset.objectKey);
-    if (stored.sha256 !== session.sha256Expected) {
-      await refuseStoredObject(app, tx, session.id, asset.objectKey);
-      return { status: 'checksum-mismatch' };
-    }
-    /**
-     * The digest matched, so the *content* is what was promised — and the length
-     * still has to be what was declared, because `bytes_expected` is what every
-     * size limit upstream was enforced against. A device that declares two
-     * megabytes and stores thirty has walked around the per-part ceiling by
-     * lying at init, and this is where that becomes visible: after the object
-     * exists, which is the only moment its true length is known.
-     *
-     * Same disposal as a checksum failure, deliberately: the object was never
-     * accepted, so it is removed rather than left under a key the platform would
-     * later treat as authoritative, and the asset stays `pending` so the device
-     * starts again from init.
-     */
-    if (stored.bytes !== session.bytesExpected) {
-      await refuseStoredObject(app, tx, session.id, asset.objectKey);
-      return { status: 'size-mismatch', stored: stored.bytes, expected: session.bytesExpected };
+  const stored = await digestStoredObject(app.s3, app.config.S3_BUCKET, asset.objectKey);
+  if (stored.sha256 !== session.sha256Expected) {
+    await refuseStoredObject(app, session.id, asset.objectKey);
+    return { status: 'checksum-mismatch' };
+  }
+  /**
+   * The digest matched, so the *content* is what was promised — and the length
+   * still has to be what was declared, because `bytes_expected` is what every
+   * size limit upstream was enforced against. A device that declares two
+   * megabytes and stores thirty has walked around the per-part ceiling by lying
+   * at init, and this is where that becomes visible: after the object exists,
+   * which is the only moment its true length is known.
+   *
+   * Same disposal as a checksum failure, deliberately: the object was never
+   * accepted, so it is removed rather than left under a key the platform would
+   * later treat as authoritative, and the asset stays `pending` so the device
+   * starts again from init.
+   */
+  if (stored.bytes !== session.bytesExpected) {
+    await refuseStoredObject(app, session.id, asset.objectKey);
+    return { status: 'size-mismatch', stored: stored.bytes, expected: session.bytesExpected };
+  }
+
+  /**
+   * The digest proves the bytes are the ones the device meant to send. It
+   * proves nothing about what they *are* — `mime` is a client string, and a
+   * device token that declared `image/webp` over an HTML document would have
+   * had it stored, then served inline from the origin that holds the guest's
+   * cookies.
+   *
+   * Checked on `stored.head`, the first bytes of the object the digest loop
+   * already read, so this adds no round trip to storage. Checked here rather
+   * than at init because init has no bytes yet: the declaration and the
+   * content only meet once the object exists.
+   *
+   * Disposed exactly like a checksum failure — the object was never accepted,
+   * so it is removed and the asset stays `pending`. The device sees a 422,
+   * which its contract classifies as "do not retry the same bytes", and that
+   * is the right answer: re-sending the same file cannot make it a WebP.
+   */
+  const sniffed = contradictsDeclaredMime(asset.mime, stored.head);
+  if (sniffed !== null) {
+    await refuseStoredObject(app, session.id, asset.objectKey);
+    return { status: 'content-type-mismatch', declared: asset.mime, sniffed };
+  }
+
+  /**
+   * The bytes are verified and the object is in place. Everything left is a row
+   * write, so the transaction is opened here and closed two statements later —
+   * no S3 call, no digest, nothing but the database inside it.
+   *
+   * `FOR UPDATE` on the asset is the second guard evaluation, against the digest
+   * as it is *now*: a concurrent complete that raced past the check at the top
+   * of this function is refused here, after it has committed and this one can
+   * see what it wrote. The session is re-read for the same reason — it may
+   * already be `complete` or `failed`, and the snapshot from before the storage
+   * round trip cannot know that.
+   */
+  return app.db.transaction(async (tx) => {
+    const [locked] = await tx.select().from(assets).where(eq(assets.id, asset.id)).for('update');
+    if (locked === undefined) {
+      throw new InternalError('an asset row vanished mid-upload', { assetId });
     }
 
-    /**
-     * The digest proves the bytes are the ones the device meant to send. It
-     * proves nothing about what they *are* — `mime` is a client string, and a
-     * device token that declared `image/webp` over an HTML document would have
-     * had it stored, then served inline from the origin that holds the guest's
-     * cookies.
-     *
-     * Checked on `stored.head`, the first bytes of the object the digest loop
-     * already read, so this adds no round trip to storage. Checked here rather
-     * than at init because init has no bytes yet: the declaration and the
-     * content only meet once the object exists.
-     *
-     * Disposed exactly like a checksum failure — the object was never accepted,
-     * so it is removed and the asset stays `pending`. The device sees a 422,
-     * which its contract classifies as "do not retry the same bytes", and that
-     * is the right answer: re-sending the same file cannot make it a WebP.
-     */
-    const sniffed = contradictsDeclaredMime(asset.mime, stored.head);
-    if (sniffed !== null) {
-      await refuseStoredObject(app, tx, session.id, asset.objectKey);
-      return { status: 'content-type-mismatch', declared: asset.mime, sniffed };
+    const [current] = await tx
+      .select({ status: uploadSessions.status })
+      .from(uploadSessions)
+      .where(eq(uploadSessions.id, session.id))
+      .limit(1);
+    if (current === undefined) {
+      throw new InternalError('an upload session vanished mid-upload', { sessionId });
     }
+    // Whoever held the lock first already finished this session. Its bytes are
+    // this session's bytes, so the asset is on the server either way.
+    if (current.status === 'complete') return { status: 'already-complete' };
+    if (current.status !== 'open') return { status: 'not-open', was: current.status };
+
+    assertNotOriginalOverwrite(
+      locked.objectKey,
+      locked.status === 'ready' ? locked.sha256 : null,
+      session.sha256Expected,
+    );
 
     await tx
       .update(assets)
@@ -559,12 +628,51 @@ export async function finishUpload(
  */
 async function refuseStoredObject(
   app: FastifyInstance,
-  tx: KinoTransaction,
   sessionId: string,
   key: string,
 ): Promise<void> {
   await forgetObject(app, key);
-  await tx.update(uploadSessions).set({ status: 'failed' }).where(eq(uploadSessions.id, sessionId));
+  await app.db
+    .update(uploadSessions)
+    .set({ status: 'failed' })
+    .where(eq(uploadSessions.id, sessionId));
+}
+
+/**
+ * Whether the object is in the bucket. Used only on the `NoSuchUpload` path, so
+ * it costs a round trip exactly when something has already gone sideways.
+ *
+ * Anything that is not a 404 is rethrown, because "storage is unreachable" must
+ * not be read as "the bytes are not there" — the same rule `multipartExists`
+ * follows, for the same reason. Read the other way round: a rethrow is a 500,
+ * which the device contract classifies as transient and retries, and that is the
+ * right answer to an unreachable bucket. Marking the session failed on it would
+ * cost the camera every part it has already sent.
+ */
+async function storedObjectExists(app: FastifyInstance, key: string): Promise<boolean> {
+  try {
+    await app.s3.send(new HeadObjectCommand({ Bucket: app.config.S3_BUCKET, Key: key }));
+    return true;
+  } catch (err) {
+    // A HEAD has no response body, so the SDK cannot read an S3 error *code*
+    // out of one: a missing object arrives as `NotFound` with a 404 rather than
+    // as the `NoSuchKey` the GET paths report. Both spellings are checked, and
+    // the status is checked under them, so this does not depend on which name
+    // a given MinIO release picks.
+    if (isMissingUpload(err) || statusOfObjectError(err) === 404) return false;
+    throw err;
+  }
+}
+
+/** The HTTP status behind an S3 SDK error, where it carries one. */
+function statusOfObjectError(err: unknown): number | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const { $metadata: metadata, name } = err as { $metadata?: unknown; name?: unknown };
+  if (typeof metadata === 'object' && metadata !== null) {
+    const status = (metadata as { httpStatusCode?: unknown }).httpStatusCode;
+    if (typeof status === 'number') return status;
+  }
+  return name === 'NotFound' ? 404 : undefined;
 }
 
 /** Removes an object that was never accepted. Best effort, and loudly logged. */

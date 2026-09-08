@@ -243,7 +243,25 @@ export const assets = pgTable(
     bytes: bigint('bytes', { mode: 'number' }),
     sha256: text('sha256'),
     objectKey: text('object_key').notNull().unique(), // rolls/<rollId>/captures/<capId>/... (05§6)
-    status: text('status').notNull().default('pending'), // pending|ready - see kino.asset in @kino/schemas
+    /**
+     * `pending` on insert, `ready` once the upload is verified, `failed` when
+     * something gave up on it.
+     *
+     * Only two of those have a writer today. `pending` is the insert default
+     * (`upsertAsset`, and the worker's own derived rows) and `ready` is written
+     * by `finishUpload` after the stored object's sha256 and length have both
+     * been checked. `failed` has none — nothing in the API or the worker ever
+     * writes it — but it is not dead vocabulary: `nextCaptureStatus` reads it as
+     * the thing that makes a capture `partial` rather than `ready`, which is
+     * what `partial` exists for, so the day an upload is written off it is the
+     * value to write.
+     *
+     * The comment here used to say `uploading|failed`. `uploading` has never
+     * existed in any writer or reader — a row is `pending` for exactly the
+     * period that word describes — and a reader who trusted this comment would
+     * have looked for a state the platform does not have.
+     */
+    status: text('status').notNull().default('pending'),
     /**
      * Producer identity for derived assets (audit #59): which job, which
      * renderer, which settings. Retuning a render constant is invisible in
@@ -350,7 +368,22 @@ export const processingEvents = pgTable(
       .notNull()
       .references(() => captures.id),
     job: text('job').notNull(), // 'render-wiggle-webp', ...
-    status: text('status').notNull(), // queued|running|done|failed
+    /**
+     * `queued|running|done|failed|superseded|abandoned`.
+     *
+     * The first four are one attempt's lifecycle. The last two are Task 23's,
+     * and both are written by the worker: `abandoned` when a job runs out of
+     * attempts (`markJobAbandoned`) — the verdict that lets a capture settle as
+     * `partial` instead of sitting in `processing` for the rest of time — and
+     * `superseded` on the retired `queued` row it replaces, which is how the
+     * partial unique index below is freed without a live enqueue ever being
+     * mistaken for one.
+     *
+     * All six are ranked by `latestJobStatuses` in `src/uploads/uploads.ts`, so
+     * a status missing from this comment is a status a reader of the schema
+     * cannot account for in the log.
+     */
+    status: text('status').notNull(),
     error: text('error'),
     at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   },
