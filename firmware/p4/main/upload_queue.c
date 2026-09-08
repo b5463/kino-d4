@@ -25,6 +25,10 @@
 #include "klog.h"
 #include "net_link.h"
 #include "roll_api.h"
+/* For ROLL_HTTP_CARD_YIELD_DETAIL only. The header declares no radio types
+ * and roll_api.c includes it in both builds, so this costs the default build
+ * nothing. */
+#include "roll_http.h"
 #include "storage.h"
 #include "taskmon.h"
 #include "upload_store.h"
@@ -724,7 +728,9 @@ static bool run_one_step(void) {
       }
       unlock();
       if (busy) {
-        rq_redact(s_last_error, sizeof s_last_error, "card busy");
+        /* Same constant the steps use, so the three places that describe
+         * this one condition cannot drift apart again. */
+        rq_redact(s_last_error, sizeof s_last_error, ROLL_HTTP_CARD_YIELD_DETAIL);
       } else {
         rq_redact(s_last_error, sizeof s_last_error, "UPLOAD.JSON write failed");
         ESP_LOGW(TAG, "could not persist %.8s; backing off", snapshot.uuid);

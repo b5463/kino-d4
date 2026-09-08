@@ -164,12 +164,30 @@ esp_err_t camsensor_init(void) {
     }
     ESP_LOGI(TAG, "sensor detected: %s (PID 0x%04x)", s_name, sensor->id.PID);
   } else {
-    /* The sensor answered SCCB - esp_camera_init succeeded - but its PID is
-     * not in the driver's table, so name, maximum size and the autofocus
-     * verdict are all unknown. HELLO then reports sensorDetected false on a
-     * sensor that is present, which is the honest answer and a bench fact
-     * worth a line rather than a silent branch. */
-    ESP_LOGW(TAG, "sensor PID 0x%04x not in the driver's table", sensor->id.PID);
+    /*
+     * The sensor answered SCCB and esp_camera_init SUCCEEDED - so it is
+     * present, initialised and streaming - but its PID is absent from
+     * esp_camera_sensor_get_info's table, so the name, the maximum frame size
+     * and the autofocus verdict are unknown.
+     *
+     * s_detected used to be left false here, and camsensor_detected() gates
+     * handle_capture: a working camera answered every CAPTURE with
+     * HARDWARE_ERROR "No sensor detected" because a lookup table did not know
+     * its part number. Unknown is not absent. It is detected, with the three
+     * unknown fields left unknown: s_name carries the PID so a bench line
+     * names something real, s_max_res stays empty (HELLO reports null, and
+     * the resolution the P4 asks for is validated by set_framesize either
+     * way) and autofocus stays false, which is what an unknown sensor is
+     * entitled to claim.
+     */
+    s_pid = sensor->id.PID;
+    s_detected = true;
+    snprintf(s_name, sizeof s_name, "pid-0x%04x", sensor->id.PID);
+    s_max_res[0] = '\0';
+    ESP_LOGW(TAG,
+             "sensor PID 0x%04x not in the driver's table; reporting it as "
+             "detected with name/maxSize/autofocus unknown",
+             sensor->id.PID);
   }
 
   /*
@@ -451,7 +469,23 @@ esp_err_t camsensor_set_resolution(const char *resolution) {
   if (size == s_framesize) return ESP_OK;
   if (sensor->set_framesize(sensor, size) != 0) return ESP_FAIL;
   s_encode_changed_us = esp_timer_get_time();
-  s_framesize = size;
+  /*
+   * What the sensor ACCEPTED, read back - not what was requested.
+   *
+   * This recorded `size`. A driver that clamps (or returns 0 having written
+   * nothing) then left s_framesize claiming a mode the sensor is not in, and
+   * the change-only guard above turned the next REAL request for that mode
+   * into a no-op returning ESP_OK. The viewfinder would have gone on being
+   * served capture-sized frames while every call said it had switched.
+   *
+   * status.framesize is the driver's own record of the last accepted write.
+   * If it disagrees with the request the guard now re-attempts next time,
+   * which is the behaviour that recovers.
+   */
+  s_framesize = sensor->status.framesize;
+  if (s_framesize != size) {
+    ESP_LOGW(TAG, "set_framesize %d accepted as %d", (int)size, (int)s_framesize);
+  }
 
   /*
    * Throw away what is queued, because it is the previous size.
@@ -503,6 +537,57 @@ camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing
         fb != NULL ? (int64_t)fb->timestamp.tv_sec * 1000000 + fb->timestamp.tv_usec : 0;
   }
   return fb;
+}
+
+/*
+ * Smallest byte count that can be a real JPEG from this sensor.
+ *
+ * A bare JFIF header with quantisation and Huffman tables is already about
+ * 600 bytes before a single MCU, and the smallest size this node is ever
+ * asked for is 160x120. 512 is comfortably below any real frame and
+ * comfortably above the handful of bytes a stalled DMA leaves behind, which
+ * is the case this bound is for.
+ */
+#define JPEG_MIN_BYTES 512
+
+/*
+ * How far back from the end EOI is looked for.
+ *
+ * FFD9 should be the final two bytes, but the DMA writes in fixed-size bursts
+ * and drivers pad the tail, so a strict last-two-bytes test would reject good
+ * frames. 64 bytes is longer than any padding observed and short enough that
+ * a frame missing its whole last row still fails.
+ */
+#define JPEG_EOI_SEARCH 64
+
+bool camsensor_jpeg_valid(const camera_fb_t *fb, const char **why) {
+  if (fb == NULL || fb->buf == NULL) {
+    if (why != NULL) *why = "no frame";
+    return false;
+  }
+  if (fb->format != PIXFORMAT_JPEG) {
+    /* The node asked for JPEG and never reconfigures the format, so this can
+     * only mean the driver handed back something else - a case that used to
+     * be CRC'd and shipped as a photograph. */
+    if (why != NULL) *why = "not JPEG pixel format";
+    return false;
+  }
+  if (fb->len < JPEG_MIN_BYTES) {
+    if (why != NULL) *why = "implausibly short";
+    return false;
+  }
+  if (fb->buf[0] != 0xFF || fb->buf[1] != 0xD8) {
+    if (why != NULL) *why = "no SOI";
+    return false;
+  }
+  /* EOI, which is the marker a truncated encode actually loses. The P4
+   * checked SOI only, and a frame cut off at 90% keeps its SOI. */
+  const size_t back = fb->len < JPEG_EOI_SEARCH ? fb->len : JPEG_EOI_SEARCH;
+  for (size_t i = fb->len - back; i + 1 < fb->len; i++) {
+    if (fb->buf[i] == 0xFF && fb->buf[i + 1] == 0xD9) return true;
+  }
+  if (why != NULL) *why = "no EOI";
+  return false;
 }
 
 void camsensor_release(camera_fb_t *fb) {

@@ -57,8 +57,40 @@ typedef struct {
   uint32_t crc_errors;
   uint32_t resyncs;
   uint32_t timeouts;
-  uint32_t retries; /* zero until a retry policy exists */
+  /**
+   * Chunk reads re-issued by the caller's retry policy. This said "zero until
+   * a retry policy exists" long after one did: capture.c has had
+   * CHUNK_RETRIES 2 since it was written and fires it at every failed READ,
+   * so GET_RUNTIME_STATS published 0 and link health read cleaner than it was
+   * - a link needing two retries per frame looked identical to one needing
+   * none. cam_link cannot count these itself, because whether a failed
+   * request is retried is the caller's decision; capture.c reports each one
+   * through camlink_note_retry_ch().
+   */
+  uint32_t retries;
   uint32_t duplicates;
+  /**
+   * Replies whose payload was larger than the buffer the caller offered, and
+   * were therefore cut short. This had no counter and no error: an over-long
+   * reply became truncated JSON, failed to parse, and the camera was reported
+   * OFFLINE - a wiring diagnosis for a message-size fault. request() now
+   * returns ESP_ERR_INVALID_SIZE and last_error says REPLY_TRUNCATED.
+   */
+  uint32_t truncated;
+  /** Replies whose VERSION byte was not NL_PROTOCOL_VERSION. Not delivered.
+   * kdp-framing.md:236-240 says a device checks inbound version; the node
+   * already NACKs BAD_VERSION and the P4 side checked nothing. */
+  uint32_t bad_version;
+  /**
+   * Replies discarded because TYPE did not echo the command, or because they
+   * arrived carrying REQUEST/EVENT framing on a link that has neither. A
+   * mismatched type meant a RELEASE reply could satisfy a pending READ and
+   * hand its JSON to the chunk buffer.
+   */
+  uint32_t bad_type;
+  /** uart_write_bytes() calls that wrote short or failed. Ignoring these made
+   * a failed write indistinguishable from a silent node. */
+  uint32_t write_errors;
   uint32_t last_sequence;
   /**
    * Worst successful request RTT since the last reset. The bench needs the
@@ -113,6 +145,24 @@ typedef struct {
   int64_t sync_edge_us;    /* node esp_timer at the last edge */
   int64_t sync_to_cmd_us;  /* command acted on, relative to the edge */
   int64_t sync_to_frame_us;/* frame DMA arm, relative to the edge */
+  /*
+   * Whether the node's freshness guarantee actually held for this frame.
+   *
+   * The node retries until it gets a frame whose DMA began AFTER the command
+   * that asked for it. That loop is bounded, and when the bound is reached the
+   * node answers ok:true with a frame armed BEFORE its own shutter. Nothing
+   * marked it, so a photograph of the moment before the shutter press was
+   * indistinguishable from a good one, on the card and on the wire.
+   *
+   * `frame_fresh` is the node's own verdict. `freshness_retries` is how many
+   * frames it threw away getting there - 0 on the common path.
+   *
+   * true / 0 for a node too old to report the field. That is the honest
+   * default: those nodes ran the same bounded loop, and assuming the failure
+   * case would mark every frame from every older node as suspect.
+   */
+  bool frame_fresh;
+  uint32_t freshness_retries;
 } camlink_capture_result_t;
 
 /**
@@ -145,6 +195,30 @@ typedef struct {
 
 /** CAM1..CAM4. Index 0 is CAM1 throughout. */
 #define CAMLINK_CAMS 4
+
+/**
+ * Count one caller-driven retry of a request on this channel.
+ *
+ * cam_link issues exactly what it is asked to issue once; the retry policy
+ * lives in capture.c (CHUNK_RETRIES). Without this the `retries` field it
+ * publishes was permanently 0 while the policy fired.
+ */
+void camlink_note_retry_ch(int cam);
+
+/**
+ * RELEASE with no frameId: "free whatever you are holding".
+ *
+ * For the one exit where the P4 has no frame id to name - a CAPTURE that
+ * timed out. The node may still be mid-encode; the request queues behind that
+ * work and is answered when it lands, which is exactly the point. Every other
+ * exit from a capture names its id and must keep using
+ * camlink_release_ch(): an unconditional release racing a LATER capture would
+ * free that one.
+ *
+ * node_server.c handle_release() treats an absent frameId as unconditional,
+ * deliberately, for this call.
+ */
+esp_err_t camlink_release_held_ch(int cam, uint32_t timeout_ms);
 
 esp_err_t camlink_init(void);
 

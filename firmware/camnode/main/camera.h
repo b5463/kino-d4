@@ -124,6 +124,20 @@ typedef struct {
 camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing);
 
 /**
+ * Whether `fb` is a whole JPEG: JPEG pixel format, plausible length, SOI at
+ * the front and EOI at the back.
+ *
+ * The node returned whatever the driver gave it and CRC'd that, so a
+ * partially encoded frame arrived at the P4 "verified" - a matching checksum
+ * over a truncated file. The P4 checked SOI and nobody checked EOI at all,
+ * which is the marker a truncation actually removes.
+ *
+ * `why` is set to a short constant reason on failure and left alone on
+ * success; it may be NULL.
+ */
+bool camsensor_jpeg_valid(const camera_fb_t *fb, const char **why);
+
+/**
  * esp_timer time of the last register write that changes how a frame is
  * ENCODED (quality, framesize). A photograph must come from a frame armed
  * after this instant - fb->timestamp / timing.frame_start_us is in the same

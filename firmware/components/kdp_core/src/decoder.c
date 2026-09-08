@@ -1,5 +1,6 @@
 #include "kdp/decoder.h"
 
+#include <stdbool.h>
 #include <string.h>
 
 #include "kdp/crc32.h"
@@ -23,6 +24,14 @@ void kdp_decoder_reset(kdp_decoder_t *d) { d->len = 0; }
 static size_t scan(kdp_decoder_t *d, kdp_frame_cb_t cb, void *ctx) {
   size_t emitted = 0;
   size_t offset = 0;
+  /* Set when this pass has already counted a resync for a frame it threw away
+   * -- a garbled length, a failed CRC. The magic scan below counts a resync
+   * when a later magic proves bytes were skipped, which for a discarded frame
+   * is the same event seen twice: one bad frame reported two resyncs, and
+   * kdp-framing.md:212 says one. Matches FrameDecoder.push()'s resyncCounted
+   * (packet.ts:133-139). Without the latch every decoderResyncs and
+   * protocol.droppedPackets figure was up to 2x. */
+  bool resync_counted = false;
 
   for (;;) {
     /* Scan for magic. */
@@ -43,11 +52,18 @@ static size_t scan(kdp_decoder_t *d, kdp_frame_cb_t cb, void *ctx) {
     }
     if (start > offset) {
       d->stats.discarded_bytes += (uint32_t)(start - offset);
-      d->stats.resyncs++;
+      if (!resync_counted) d->stats.resyncs++;
     }
+    resync_counted = false;
 
     if (d->len - start < KDP_HEADER_LEN) {
-      memmove(d->buf, d->buf + start, d->len - start);
+      /* start == 0 on every partial push of the camera link: the last push
+       * left the buffer compacted, so there is nothing to move. Copying the
+       * buffer onto itself cost 8.5x amplification -- 512-byte reads over an
+       * 8 KiB chunk moved ~69.6 KiB of PSRAM per 8 KiB delivered, ~1.3 MB per
+       * frame, ~5 MB per four-camera set -- inside the window
+       * HARDWARE_VALIDATION.md:2522 blames for tail loss. */
+      if (start > 0) memmove(d->buf, d->buf + start, d->len - start);
       d->len -= start;
       return emitted;
     }
@@ -60,12 +76,13 @@ static size_t scan(kdp_decoder_t *d, kdp_frame_cb_t cb, void *ctx) {
     if (payload_len > KDP_MAX_PAYLOAD || total > d->cap) {
       d->stats.resyncs++;
       d->stats.discarded_bytes += 2;
+      resync_counted = true;
       offset = start + 2;
       continue;
     }
 
     if (d->len - start < total) {
-      memmove(d->buf, d->buf + start, d->len - start);
+      if (start > 0) memmove(d->buf, d->buf + start, d->len - start);
       d->len -= start;
       return emitted;
     }
@@ -75,6 +92,12 @@ static size_t scan(kdp_decoder_t *d, kdp_frame_cb_t cb, void *ctx) {
     if (expected != actual) {
       d->stats.crc_failures++;
       d->stats.resyncs++;
+      /* The two magic bytes leave the stream as surely as in the over-length
+       * branch above, and were not counted -- a session reported crcFailures
+       * with discarded_bytes still 0, which reads as "corruption, nothing
+       * lost". packet.ts:196-200 counts them on both paths. */
+      d->stats.discarded_bytes += 2;
+      resync_counted = true;
       offset = start + 2; /* resync just past the magic */
       continue;
     }

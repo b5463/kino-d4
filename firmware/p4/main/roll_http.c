@@ -3,7 +3,12 @@
  * a capture off the card into a part PUT. See roll_http.h for the rules that
  * are not negotiable.
  *
- * Nothing here has been run on hardware.
+ * The C6 transport is not routed on this carrier
+ * (firmware/C6_HARDWARE_MAP.md), so no part PUT from this file has moved over
+ * a radio on a KINO body. The client, the certificate bundle and the clock
+ * rule ARE exercised: firmware/C6_BRINGUP.md records a certificate-verified
+ * GET /api/healthz through roll_http_perform() on a named unit. Treat the
+ * request path as bench-tested and the upload path as untested.
  */
 #include "roll_http.h"
 
@@ -46,25 +51,40 @@ static const char *TAG = "rollhttp";
 /*
  * Whether an `http://` base may be used at all.
  *
- * 1 by default, so the LAN bench keeps working: there is no certificate for a
- * laptop on a party's Wi-Fi, and the base is a value an operator sets
- * deliberately.
+ * 0 BY DEFAULT. This read "1 by default, a production build sets it to 0",
+ * and the symbol was plumbed nowhere: it appeared only in this file and
+ * roll_http.h, so the `#ifndef` default was the only value any build could
+ * ever have. Every buildable image accepted an `http://` base out of NVS and
+ * put the device bearer token on the air in cleartext. A switch nothing can
+ * set is not a switch.
  *
- * A PRODUCTION BUILD SETS THIS TO 0 — `-DKINO_ALLOW_HTTP_API_BASE=0`. The
- * device token travels in an `Authorization` header on every request, so an
- * http base puts the credential on the air in cleartext for anyone in the
- * room; and `network.apiBase` lives in NVS, not in the image, so a bench value
- * survives a reflash and would ship that way silently. With this at 0 an http
- * base is refused and the reason says so, rather than being quietly upgraded
- * to https against a server that has none.
+ * Secure by default is the only safe direction here, because `network.apiBase`
+ * lives in NVS rather than in the image: a bench value survives a reflash, so
+ * a permissive default ships silently on any unit that was ever benched.
+ *
+ * A BENCH BUILD OPTS IN, explicitly, on the command line:
+ *
+ *   idf.py -DKINO_ALLOW_HTTP_API_BASE=1 \
+ *          -DKINO_ROLL_API_BASE=http://192.168.1.20:3000 \
+ *          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.radio" build
+ *
+ * See firmware/p4/main/CMakeLists.txt, which forwards it the same way it
+ * forwards KINO_ROLL_API_BASE. With it unset an http base is refused and the
+ * reason says so, rather than being quietly upgraded to https against a
+ * server that has none.
  */
 #ifndef KINO_ALLOW_HTTP_API_BASE
-#define KINO_ALLOW_HTTP_API_BASE 1
+#define KINO_ALLOW_HTTP_API_BASE 0
 #endif
 
 /** Bytes moved per card read and per socket write. 16 KiB is a compromise:
  * large enough that a 300 KB frame is twenty round trips rather than three
- * hundred, small enough that a capture waiting for the card waits one read. */
+ * hundred, small enough that a capture waiting for the card waits one read.
+ *
+ * "waits one read" is now true. put_file held the storage lock across the
+ * whole part, socket writes included, so a capture pressing the shutter
+ * waited for esp_http_client_write - bounded by HTTP_TIMEOUT_MS, 15 s, not by
+ * a card read. The lock is taken per read and released before each write. */
 #define CHUNK_BYTES 16384
 
 /** Network timeout for one request. The queue's own backoff is what handles a
@@ -94,14 +114,18 @@ static bool scheme_allowed(const char *base) {
     warned = true;
     ESP_LOGW(TAG,
              "API base is http://; the device token travels in cleartext. "
-             "A production build sets KINO_ALLOW_HTTP_API_BASE=0");
+             "This image was built with KINO_ALLOW_HTTP_API_BASE=1, which is "
+             "a bench opt-in and not the default");
   }
   return true;
 #else
   static bool refused;
   if (!refused) {
     refused = true;
-    ESP_LOGE(TAG, "http:// API base refused: this build allows https:// only");
+    ESP_LOGE(TAG,
+             "http:// API base refused: this build allows https:// only. "
+             "A bench that needs http rebuilds with "
+             "-DKINO_ALLOW_HTTP_API_BASE=1");
   }
   return false;
 #endif
@@ -535,30 +559,53 @@ void roll_http_put_file(const char *path, const char *file_path, size_t offset, 
     return;
   }
 
-  bool ok = storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS);
-  FILE *f = ok ? fopen(file_path, "rb") : NULL;
-  if (f == NULL || fseek(f, (long)offset, SEEK_SET) != 0) {
-    if (f != NULL) fclose(f);
-    if (ok) storage_release(STORAGE_USER_UPLOAD);
-    fail_out(out, ok ? "the capture file would not open" : "card busy");
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    free(buf);
-    return;
-  }
-
+  /*
+   * The card is held for the READ and given back for the WRITE.
+   *
+   * It used to be taken once, before the loop, and released after it - so the
+   * hold spanned every esp_http_client_write() in the part, and one of those
+   * can block for HTTP_TIMEOUT_MS, 15 s. roll_http.h claimed the bound was
+   * "one card read"; the real bound was the network's. A shutter press
+   * arriving mid-part waited on a socket.
+   *
+   * The handle is closed with each release rather than kept open across it.
+   * The lock is not only bus arbitration: the FAT mount has max_files = 4
+   * (storage.h), so a descriptor held while the lock is free is a descriptor a
+   * capture may not be able to get. The extra cost is one f_open per 16 KiB -
+   * a directory lookup, a few milliseconds - which an upload can afford and a
+   * capture cannot.
+   */
   size_t left = len;
   size_t sent = 0;
   const char *stopped = NULL;
   while (left > 0) {
+    const size_t want = left < CHUNK_BYTES ? left : CHUNK_BYTES;
+    size_t got = 0;
+
+    if (!storage_acquire(STORAGE_USER_UPLOAD, CARD_WAIT_MS)) {
+      /* Someone with priority has it. Same meaning as the yield below, so the
+       * same detail: transient, ours, and it must not spend an attempt. */
+      stopped = ROLL_HTTP_CARD_YIELD_DETAIL;
+      break;
+    }
     /* Photography wins, immediately. Abandoning a part costs nothing: the
      * contract's part PUT is idempotent and the asset init replays. */
     if (storage_yield_requested(STORAGE_USER_UPLOAD)) {
-      stopped = "yielded the card to a capture";
+      storage_release(STORAGE_USER_UPLOAD);
+      stopped = ROLL_HTTP_CARD_YIELD_DETAIL;
       break;
     }
-    const size_t want = left < CHUNK_BYTES ? left : CHUNK_BYTES;
-    const size_t got = fread(buf, 1, want, f);
+    FILE *f = fopen(file_path, "rb");
+    if (f == NULL || fseek(f, (long)(offset + sent), SEEK_SET) != 0) {
+      if (f != NULL) fclose(f);
+      storage_release(STORAGE_USER_UPLOAD);
+      stopped = "the capture file would not open";
+      break;
+    }
+    got = fread(buf, 1, want, f);
+    fclose(f);
+    storage_release(STORAGE_USER_UPLOAD);
+
     if (got == 0) {
       stopped = "the capture file is shorter than its record";
       break;
@@ -571,8 +618,6 @@ void roll_http_put_file(const char *path, const char *file_path, size_t offset, 
     sent += got;
     left -= got;
   }
-  fclose(f);
-  storage_release(STORAGE_USER_UPLOAD);
   net_hosted_count_bytes(0, (uint64_t)sent);
 
   if (stopped != NULL) {

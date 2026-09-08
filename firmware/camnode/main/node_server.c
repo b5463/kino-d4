@@ -30,12 +30,59 @@ static const char *TAG = "node_server";
 #define LINK_RX_BUF 4096
 #define LINK_TX_BUF 0 /* blocking writes */
 
+/*
+ * Everything one CAPTURE may spend chasing a fresh frame, including the first
+ * fetch.
+ *
+ * The P4's product path gives a CAPTURE 4000 ms (capture.c,
+ * NODE_CAPTURE_TIMEOUT_MS) and its bench default gives 12000 (cam_link.c,
+ * CAPTURE_TIMEOUT_MS). Whatever this node spends has to fit the SMALLER of
+ * those, with room left for the CRC over the JPEG and the cJSON print - a few
+ * hundred milliseconds for 240 KB at -O2. 3000 ms leaves ~1000 ms of the
+ * 4000 for that and the wire.
+ *
+ * Sized as a deadline rather than as a retry count because a retry count does
+ * not know what a fetch costs: at esp32-camera's FB_GET_TIMEOUT of 4000 ms,
+ * three retries plus the first fetch plus the discard is 20 s.
+ */
+#define CAPTURE_BUDGET_MS 3000
+
+/* Second bound, for the case where fetches are fast and the sensor simply
+ * never produces a frame armed after the command. Unchanged at 3; the
+ * deadline above is what makes the worst case finite. */
+#define FRESHNESS_RETRIES_MAX 3
+
+/*
+ * Largest offset or length a READ may name.
+ *
+ * The node holds exactly one JPEG in PSRAM and the biggest this sensor makes
+ * at QXGA q95 is under 512 KB, so 16 MiB is far above any legitimate value.
+ * It exists so a garbled or negative number is rejected as an argument
+ * instead of becoming a size_t by an undefined conversion.
+ */
+#define READ_ARG_MAX (16 * 1024 * 1024)
+
 static char s_session_id[16];
 static const char *s_state = NL_STATE_BOOTING;
 
 // The held frame: one capture lives in PSRAM until the P4 releases it or
 // requests the next capture.
 static camera_fb_t *s_fb;
+/*
+ * Frame ids, scoped to this boot.
+ *
+ * This started at 0 on every boot, so after a node reset the ids ALIASED: a
+ * P4 that had reached frame 7, and a node that rebooted and reached 7 again,
+ * agree on an id that names two different frames. A READ for the P4's frame 7
+ * would then be answered out of the new one, and handle_release's BAD_ID
+ * check - the whole point of which is that a late RELEASE must not free a
+ * later frame - passes.
+ *
+ * The seed is the session id the P4 gets in HELLO, so the two ends are talking
+ * about the same generation, and the low bits are cleared so an id is still
+ * short in a log. A reboot mid-session therefore produces ids the P4 cannot
+ * mistake for the ones it already holds.
+ */
 static uint32_t s_frame_id;
 
 /*
@@ -96,6 +143,15 @@ static void add_temp(cJSON *json) {
   }
 }
 
+/* Replies the UART would not take. A short or failed write is why the P4 sees
+ * a timeout, so it has to be visible as something other than the node being
+ * slow; STATUS publishes it. */
+static uint32_t s_tx_write_errors;
+
+/* Inbound frames dropped for carrying RESPONSE/ERROR framing on a link that
+ * only ever receives requests. */
+static uint32_t s_rx_bad_framing;
+
 static void send_frame(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t *payload,
                        uint32_t len) {
   size_t total = kdp_encode_frame(s_tx_buf, sizeof s_tx_buf, NL_PROTOCOL_VERSION, type,
@@ -104,7 +160,15 @@ static void send_frame(uint8_t type, uint8_t flags, uint32_t seq, const uint8_t 
     ESP_LOGE(TAG, "encode failed (len %lu)", (unsigned long)len);
     return;
   }
-  uart_write_bytes(BOARD_LINK_UART_NUM, s_tx_buf, total);
+  /* The return was discarded. LINK_TX_BUF is 0, so writes are blocking and a
+   * short return means the driver refused - the P4 then waits out its whole
+   * budget and charges the silence to this node, with nothing on either end
+   * recording that the reply was never sent. */
+  const int written = uart_write_bytes(BOARD_LINK_UART_NUM, s_tx_buf, total);
+  if (written < 0 || (size_t)written != total) {
+    s_tx_write_errors++;
+    ESP_LOGE(TAG, "uart write %d of %u B for type 0x%02x", written, (unsigned)total, type);
+  }
 }
 
 static void send_json(uint8_t type, uint32_t seq, cJSON *json) {
@@ -315,6 +379,11 @@ static void handle_status(uint32_t seq) {
   add_temp(json);
   cJSON_AddNumberToObject(json, "crcFailures", s_decoder.stats.crc_failures);
   cJSON_AddNumberToObject(json, "resyncs", s_decoder.stats.resyncs);
+  /* Replies the UART refused, and inbound frames dropped for carrying reply
+   * framing. Both used to be invisible: the P4 saw a timeout either way and
+   * charged it to a slow node. */
+  cJSON_AddNumberToObject(json, "txWriteErrors", (double)s_tx_write_errors);
+  cJSON_AddNumberToObject(json, "rxBadFraming", (double)s_rx_bad_framing);
   add_sync_seq(json);
   /* What NL_CMD_SENSOR has got into the sensor since this node booted. Absent
    * when nothing has, which is how the P4 sees that a node reset underneath
@@ -457,19 +526,84 @@ static void handle_capture(uint32_t seq, cJSON *req) {
    * still skip the whole thing on purpose - a preview frame a hundred
    * milliseconds old is what a viewfinder shows anyway.
    */
+  bool frame_fresh = true;
+  uint32_t freshness_retries = 0;
   if (!preview) {
     const int64_t encoding_us = camsensor_encoding_changed_us();
     const int64_t must_start_after = encoding_us > cmd_us ? encoding_us : cmd_us;
-    for (int retry = 0; retry < 3 && fb != NULL &&
-                        timing.frame_start_us <= must_start_after;
-         retry++) {
+    /*
+     * Bounded by the CLOCK, not only by a retry count.
+     *
+     * This was `retry < 3` against esp32-camera's FB_GET_TIMEOUT of 4000 ms
+     * per fb_get, so the worst case was the first fetch plus three retries
+     * plus the discard: five fb_gets, 20 s. The P4's product path allows
+     * NODE_CAPTURE_TIMEOUT_MS 4000 (capture.c) and its default allows
+     * CAPTURE_TIMEOUT_MS 12000 (cam_link.c). The node could therefore spend
+     * 20 s on a capture the P4 abandoned at 4, and go on holding the frame -
+     * which is the state that made a camera read offline on the NEXT capture.
+     *
+     * A retry count cannot bound this because it does not know what a fetch
+     * costs. A deadline can. CAPTURE_BUDGET_MS is the whole freshness
+     * sequence; the P4's 4000 ms has to cover that plus the CRC over the JPEG
+     * and the cJSON print, measured at a few hundred milliseconds for 240 KB
+     * at -O2, so 3000 leaves ~1000 ms of the product path's budget for the
+     * reply and the wire. The retry cap stays as a second bound for the case
+     * where fetches are fast and the sensor simply never produces a fresh
+     * frame.
+     *
+     * Do not raise the P4 side to make room here: the audit that found this
+     * requires a node-side p99 before that number moves.
+     */
+    const int64_t deadline_us = cmd_us + (int64_t)CAPTURE_BUDGET_MS * 1000;
+    while (fb != NULL && timing.frame_start_us <= must_start_after) {
+      if (freshness_retries >= FRESHNESS_RETRIES_MAX) break;
+      if (esp_timer_get_time() >= deadline_us) break;
       camsensor_release(fb);
       fb = camsensor_capture(&duration_ms, &timing);
+      freshness_retries++;
+    }
+    /*
+     * Whether the guarantee actually held, SAID OUT LOUD.
+     *
+     * The loop used to fall out after three attempts and the reply was
+     * ok:true either way, with nothing set - so a photograph armed before its
+     * own shutter was indistinguishable from a good one, on the wire and on
+     * the card. It is still ok:true, deliberately: the frame is a real
+     * photograph and throwing it away would lose the moment outright. It is
+     * now labelled.
+     */
+    frame_fresh = fb != NULL && timing.frame_start_us > must_start_after;
+    if (!frame_fresh && fb != NULL) {
+      ESP_LOGW(TAG,
+               "frame not fresh: DMA armed %lld us before the command, after %lu retries",
+               (long long)(must_start_after - timing.frame_start_us),
+               (unsigned long)freshness_retries);
     }
   }
   if (fb == NULL) {
     s_state = NL_STATE_ERROR;
     send_nack(NL_CMD_CAPTURE, seq, "HARDWARE_ERROR", "Capture failed");
+    return;
+  }
+  /*
+   * The frame is a whole JPEG, checked HERE, before the CRC is taken over it.
+   *
+   * Nothing on this node validated what the driver returned - no format
+   * check, no SOI, no EOI, no length sanity - and the CRC below is computed
+   * over whatever it was, so a partially encoded frame reached the P4 with a
+   * matching checksum: "verified" truncation. The P4 checks SOI (capture.c)
+   * and nothing checked EOI, which is the marker a truncated encode loses.
+   *
+   * NACKed rather than sent: the P4 retries a whole capture, and a frame that
+   * is not a JPEG cannot be repaired downstream.
+   */
+  const char *bad = NULL;
+  if (!camsensor_jpeg_valid(fb, &bad)) {
+    ESP_LOGE(TAG, "capture rejected: %s (%u B)", bad != NULL ? bad : "invalid",
+             (unsigned)fb->len);
+    camsensor_release(fb);
+    s_state = camsensor_detected() ? NL_STATE_READY : NL_STATE_ERROR;
+    send_nack(NL_CMD_CAPTURE, seq, "JPEG_INVALID", bad != NULL ? bad : "not a whole JPEG");
     return;
   }
   s_fb = fb;
@@ -491,6 +625,13 @@ static void handle_capture(uint32_t seq, cJSON *req) {
    * a preview, which does not discard). Either way durationMs is the returned
    * frame's own cost. */
   cJSON_AddNumberToObject(json, "discardMs", discard_ms);
+  /* The freshness verdict and what it cost. `frameFresh` false means this
+   * frame's DMA began before the command that asked for it and the bounded
+   * retry above could not get a later one - a photograph of the instant
+   * before the shutter, labelled rather than hidden. Always true for a
+   * preview, which does not ask for freshness. */
+  cJSON_AddBoolToObject(json, "frameFresh", frame_fresh);
+  cJSON_AddNumberToObject(json, "freshnessRetries", (double)freshness_retries);
   /* Stale-frame diagnostics. All microseconds in THIS node's esp_timer domain,
    * which shares no epoch with the P4 or with any other node - only
    * differences within one node are meaningful. See camsensor_timing_t.
@@ -547,8 +688,24 @@ static void handle_read(uint32_t seq, cJSON *req) {
     send_nack(NL_CMD_READ, seq, "BAD_ID", "No such frame held");
     return;
   }
-  size_t off = (size_t)offset->valuedouble;
-  size_t len = (size_t)length->valuedouble;
+  /*
+   * Range-checked BEFORE the cast.
+   *
+   * These were cast straight from valuedouble. A negative offset - or a NaN,
+   * which cJSON accepts nothing of, but a garbled digit run can produce a
+   * value beyond 2^32 - converts to size_t by wrapping, so `-1` became
+   * 0xFFFFFFFF (or 2^64-1) and `off >= s_fb->len` then took the len=0 branch
+   * by luck rather than by check. Undefined conversion is not a bounds test.
+   */
+  const double off_raw = offset->valuedouble;
+  const double len_raw = length->valuedouble;
+  if (off_raw < 0 || off_raw > (double)READ_ARG_MAX || len_raw < 0 ||
+      len_raw > (double)READ_ARG_MAX) {
+    send_nack(NL_CMD_READ, seq, "INVALID_ARGUMENT", "offset and length must be in range");
+    return;
+  }
+  size_t off = (size_t)off_raw;
+  size_t len = (size_t)len_raw;
   if (len > NL_CHUNK_MAX) len = NL_CHUNK_MAX;
   /* Past EOF reads return short, not an error - that zero-length reply is how
    * the P4 learns the transfer is done. Send the base pointer for it: s_fb->buf
@@ -601,6 +758,21 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
   (void)ctx;
   if (frame->version != NL_PROTOCOL_VERSION) {
     send_nack(frame->type, frame->seq, "BAD_VERSION", "Unsupported link version");
+    return;
+  }
+  /*
+   * Requests only. The P4 is the only initiator on this link and the node
+   * sends no events, so a frame arriving with RESPONSE or ERROR set is either
+   * this node's own reply looped back on a miswired harness or a stray from
+   * another channel. Dispatching it ran a real command - a looped-back
+   * RELEASE reply would free the held frame mid-transfer.
+   *
+   * Silently dropped, not NACKed: answering a response with a response is how
+   * a loop becomes a storm. kdp_server.c rejects the mirror case on the host
+   * link for the same reason.
+   */
+  if ((frame->flags & (KDP_FLAG_RESPONSE | KDP_FLAG_ERROR)) != 0) {
+    s_rx_bad_framing++;
     return;
   }
 
@@ -676,6 +848,16 @@ static void server_task(void *arg) {
 
 esp_err_t node_server_start(const char *session_id) {
   strncpy(s_session_id, session_id, sizeof s_session_id - 1);
+  /* Session-scoped frame ids: see s_frame_id. The session id is a random
+   * string minted once per boot, so hashing it gives a per-boot base that no
+   * previous boot's ids can collide with. The top bits are left clear so
+   * s_frame_id++ can run for the life of a session without wrapping into
+   * another session's range. */
+  uint32_t seed = 0x811C9DC5u;
+  for (const char *p = s_session_id; *p != '\0'; p++) {
+    seed = (seed ^ (uint32_t)(unsigned char)*p) * 16777619u;
+  }
+  s_frame_id = (seed & 0x00FFFF00u) | 0x00000100u;
 
   const uart_config_t config = {
       .baud_rate = NL_DEFAULT_BAUD,

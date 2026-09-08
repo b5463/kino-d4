@@ -385,7 +385,11 @@ static int test_corrupt_length_discard_accounting(void) {
   // 2 for the bad-length magic, then the remaining 16 bytes of the junk header
   // once the real magic is located at offset 18.
   CHECK(d.stats.discarded_bytes == 18);
-  CHECK(d.stats.resyncs == 2);
+  // One discarded frame is ONE resync (kdp-framing.md:212). This pinned 2:
+  // the over-length skip and the later scan that found the real magic past it
+  // are the same event from both ends, and the latch in scan() now suppresses
+  // the second, matching packet.ts's resyncCounted.
+  CHECK(d.stats.resyncs == 1);
   CHECK(d.stats.frames == 1);
   return 0;
 }

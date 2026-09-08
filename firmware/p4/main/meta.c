@@ -1,5 +1,6 @@
 #include "meta.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -38,9 +39,46 @@ void meta_build_capture(const capture_report_t *r, const char *device_id, void *
    * Until firmware 0.4.9 nothing filled this and MEDIA_LIST showed every
    * photograph as recipe-less; meta_capture_summary already read the key. */
   cJSON *recipes = cJSON_AddArrayToObject(m, "recipeIds");
+  const char *look = NULL;
+  bool look_mixed = false;
   for (int i = 0; i < r->recipe_id_count && i < 4; i++) {
-    if (r->recipe_ids[i][0] != '\0')
-      cJSON_AddItemToArray(recipes, cJSON_CreateString(r->recipe_ids[i]));
+    if (r->recipe_ids[i][0] == '\0') continue;
+    cJSON_AddItemToArray(recipes, cJSON_CreateString(r->recipe_ids[i]));
+    if (look == NULL) {
+      look = r->recipe_ids[i];
+    } else if (strcmp(look, r->recipe_ids[i]) != 0) {
+      look_mixed = true;
+    }
+  }
+  /*
+   * `look` - the PORTABLE name - written alongside `recipeIds`, the wire name.
+   *
+   * firmware-contract/README.md:94-117 (D1): KDP wire payloads carry `recipe*`
+   * field names, a kino.capture document carries `look`. Crossing them fails
+   * silently. kino.capture is .passthrough() and `look` is optional, so a
+   * document holding only `recipeIds` validates clean, while
+   * apps/api/src/routes/device-captures.ts:430 stores `doc.look ?? null`.
+   * captures.look was therefore NULL for every photograph this camera has
+   * ever taken, and the guest app printed "KINO standard" over a frame shot
+   * on party-neg. No error, no warning - the unknown key was just preserved.
+   *
+   * BOTH keys stay. meta_capture_summary() below reads `recipeIds` to answer
+   * MEDIA_LIST, so dropping it would blind the device's own gallery, and
+   * .passthrough() means the extra key costs nothing but its bytes.
+   *
+   * One string out of four ids: the four cameras normally carry the same look,
+   * so the common case is unambiguous. When a quad gives slots different looks
+   * `look` takes the FIRST populated id in cam order and `looksMixed: true`
+   * marks the single field as a lossy summary; `recipeIds` remains the full
+   * truth. Writing nothing for a mixed capture would put it straight back in
+   * the NULL case this fix exists to remove.
+   *
+   * Absent, not "", when no look was in force. `look` is optional in the
+   * schema, and "" is a look id that resolves to nothing.
+   */
+  if (look != NULL) {
+    cJSON_AddStringToObject(m, "look", look);
+    if (look_mixed) cJSON_AddBoolToObject(m, "looksMixed", true);
   }
   cJSON_AddStringToObject(m, "status", r->status);
   cJSON_AddBoolToObject(m, "visible", true);
@@ -100,6 +138,20 @@ void meta_build_capture(const capture_report_t *r, const char *device_id, void *
       cJSON_AddNumberToObject(e, "nodeFbGetUs", (double)f->node_fb_get_us);
       cJSON_AddNumberToObject(e, "nodeFrameStartUs", (double)f->node_frame_start_us);
       cJSON_AddNumberToObject(e, "nodeFrameAgeUs", (double)f->node_frame_age_us);
+      /*
+       * Whether the node's freshness guarantee actually held for this frame
+       * (#7). false = the frame's DMA began before the command that asked for
+       * it and the node's bounded retry could not get a later one: a
+       * photograph of the instant before the shutter press. The node answers
+       * ok:true either way - the frame is real and the moment is not
+       * repeatable - so this is the only place the difference is recorded.
+       *
+       * Written on every frame, not only the false ones: absent would be
+       * indistinguishable from a node too old to report it, and that is the
+       * ambiguity this field exists to close.
+       */
+      cJSON_AddBoolToObject(e, "frameFresh", f->frame_fresh);
+      cJSON_AddNumberToObject(e, "freshnessRetries", (double)f->freshness_retries);
       /*
        * The frame against the common SYNC_OUT edge, node-measured (#165).
        * syncClass: "ok" = attributable to this shutter's pulse (node counter

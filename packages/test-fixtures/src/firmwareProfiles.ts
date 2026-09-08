@@ -596,7 +596,10 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // 0.4.52: the camera reports its queue to the host and re-inits an upload
   // session the server has forgotten. Nothing on the settings surface moved.
   '0.4.52': 'd4-settings-0-4-9',
-  // 0.4.54: the heartbeat carries the halted flag, and is sent even while the
-  // queue is halted. Nothing on the settings surface moved.
-  '0.4.54': 'd4-settings-0-4-9',
+  '0.4.53': 'd4-settings-0-4-9',
+  // 0.4.55: the audit pass. A capture document finally carries `look`, the
+  // host-log buffer stops reading past its own stack frame, an http API base
+  // needs an explicit build flag, and the decoder counts one resync per
+  // discarded frame. Nothing on the settings surface moved.
+  '0.4.55': 'd4-settings-0-4-9',
 };

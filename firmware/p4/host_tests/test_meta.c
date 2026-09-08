@@ -94,6 +94,27 @@ static capture_report_t sample_report(void) {
     r.cam[i].node_fb_get_us = 445000 + i;
     r.cam[i].node_frame_start_us = 990000 + i;
     r.cam[i].node_frame_age_us = 1200 + i;
+    /*
+     * The sync fields, POPULATED.
+     *
+     * sync_class was left at PURE_SYNC_NONE by memset, so meta_build_capture
+     * took its four-null branch on every frame and the document-size test
+     * below - the one whose comment claims "every field populated" - was
+     * measuring the narrowest sync case, not the widest. The four numbers it
+     * skipped are about 100 bytes across four frames.
+     *
+     * PURE_SYNC_OK is the case that writes all four, which is also the normal
+     * case on a wired unit.
+     */
+    r.cam[i].sync_class = PURE_SYNC_OK;
+    r.cam[i].sync_seq = 1200u + (uint32_t)i;
+    r.cam[i].sync_edge_us = 988000 + i;
+    r.cam[i].sync_to_cmd_us = 1500 + i;
+    r.cam[i].sync_to_frame_us = 2000 + i;
+    r.cam[i].frame_before_edge = false;
+    /* The node's freshness verdict (#7), written on every frame. */
+    r.cam[i].frame_fresh = true;
+    r.cam[i].freshness_retries = 0;
     /* What the node reported it accepted. Different per camera, because the
      * whole point of a QUAD slot is that the four sensors are set apart. */
     r.cam[i].sensor.has_ae_level = true;
@@ -426,16 +447,24 @@ static void test_meta_survives_null(void) {
  * grows whenever a field is added to meta.c and nothing else would notice.
  *
  * Where it stands today, measured rather than estimated: a four-frame document
- * with every field populated is 1787 bytes, so 2309 bytes of the 4096 are
- * still free.
+ * with every field populated is 2477 bytes, so 1619 bytes of the 4096 are
+ * still free. The test prints the figure on every run.
  *
- * The `sensor` object is the most recent growth and it is the largest per
- * frame so far. At its widest -
+ * That figure was 1787 and it was wrong twice over. sample_report() left
+ * sync_class at PURE_SYNC_NONE, so every frame took meta_build_capture's
+ * four-null sync branch and the "every field populated" claim measured the
+ * NARROWEST sync case - about 100 bytes light across four frames. And the
+ * document has since gained `look` / `looksMixed` (the portable look name,
+ * firmware-contract D1) at the top and `frameFresh` / `freshnessRetries` per
+ * frame. Both are now populated here, so the number is the real widest.
+ *
+ * The `sensor` object is the largest per-frame addition so far. At its widest -
  * `,"sensor":{"aeLevel":-2,"gainCeiling":128,"denoise":8,"sharpness":-3,"quality":63}`
- * - it is 83 bytes, so four frames cost at most 332. That is 14 per cent of
- * the remaining headroom for one object, which is the number to remember
- * before the next per-frame field: about seven more of this size would reach
- * the buffer, and gallery.c's buffer is not this file's to change.
+ * - it is 83 bytes, so four frames cost at most 332. Against 1619 free that
+ * is 21 per cent of the remaining headroom for ONE object, which is the
+ * number to remember before the next per-frame field: about four more of this
+ * size reach the buffer, not seven. gallery.c's buffer is not this file's to
+ * change.
  */
 static void test_meta_document_size(void) {
   capture_report_t r = sample_report(); /* four frames, every field populated */
@@ -445,6 +474,10 @@ static void test_meta_document_size(void) {
   CHECK(text != NULL, "a four-frame document serialises");
   const size_t len = text != NULL ? strlen(text) : 0;
 
+  /* Printed on every run, not only on failure. The figure in the comment
+   * above went stale twice because nothing made it visible. */
+  printf("meta: four frames, every field populated = %u B (%u free of 4096)\n",
+         (unsigned)len, (unsigned)(4096 - len));
   CHECK(len < 4096, "four frames must fit gallery.c's 4096-byte buffer -> %u B",
         (unsigned)len);
   /* The lower bound is the defect, kept as an assertion: a four-frame document

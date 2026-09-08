@@ -4,8 +4,12 @@
 set(kino_srcs
   "main.c" "usb_link.c" "storage.c" "cam_link.c" "kdp_server.c" "hardware_validation.c"
     "hwv_rules.c"
-  "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "mesh3d.c" "icons.c" "board_i2c.c"
-  "audio.c" "config_store.c" "power.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
+  # mesh3d.c is NOT here: 493 lines that no translation unit calls. ui.c:37
+  # includes mesh3d.h and nothing else references a symbol from it, so the
+  # object was compiled, linked and then dropped by --gc-sections at best.
+  # The source stays on disk; it is just not in the image.
+  "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "icons.c" "board_i2c.c"
+  "audio.c" "config_store.c" "power.c" "lid.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "gallery_index.c" "net_link.c"
     "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
@@ -104,6 +108,25 @@ if(KINO_RADIO_BUILD)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE
                                KINO_ROLL_API_BASE="${KINO_ROLL_API_BASE}")
   endif()
+  # Whether an `http://` Roll API base is accepted. The default in
+  # roll_http.c is 0 - https only - because `network.apiBase` lives in NVS and
+  # survives a reflash, so a permissive default ships on any unit that was
+  # ever benched, with the device bearer token in cleartext.
+  #
+  # This define was documented in roll_http.c and forwarded by nothing, so the
+  # header default was the only value any build could have. A LAN bench has no
+  # certificate and must opt in by hand:
+  #
+  #   idf.py -DKINO_ALLOW_HTTP_API_BASE=1 ... build
+  if(KINO_ALLOW_HTTP_API_BASE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE
+                               KINO_ALLOW_HTTP_API_BASE=1)
+    message(WARNING
+            "KINO_ALLOW_HTTP_API_BASE=1: this image will accept an http:// "
+            "Roll API base and send the device bearer token in cleartext. "
+            "Bench builds only.")
+  endif()
+
   if(KINO_SNTP_SERVER)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE
                                KINO_SNTP_SERVER="${KINO_SNTP_SERVER}")
@@ -150,6 +173,20 @@ elseif(CONFIG_ESP_HOSTED)
           "CONFIG_ESP_HOSTED is y but sdkconfig.radio was not used. That build "
           "would drive the C6 pins with no driver behind them. See "
           "firmware/C6_BRINGUP.md step 4.")
+endif()
+
+# Bench switch: the interrupt-blackout watch (#158, isr_watch.c). A gptimer
+# firing every 1000 us with a handler that is deliberately NOT IRAM-safe -
+# that is the whole measurement - so it adds ~1,000 interrupts per second to
+# the exact budget #158 exists to protect. capture.c armed it unconditionally,
+# in every image, including the ones whose link timing it perturbs.
+#
+#   idf.py -DKINO_ISR_WATCH=1 ... build
+#
+# Unset, isr_watch_init() is never called: no timer, no ISR, and
+# isr_watch_take() reports zero gaps.
+if(KINO_ISR_WATCH)
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_ISR_WATCH=1)
 endif()
 
 # Bench switch: `idf.py -DKINO_UI_FRAME_DUMP=1 build` makes the UI print its

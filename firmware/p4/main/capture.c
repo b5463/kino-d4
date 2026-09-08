@@ -56,7 +56,10 @@ static const char *TAG = "capture";
 
 /*
  * One chunk is 8192 B, about 89 ms of line time at 921600 baud, so this is
- * eleven times the cost of the thing it waits for.
+ * 2.8 times the cost of the thing it waits for.
+ *
+ * ("Eleven times" was written when this was 1000 ms and never re-derived as
+ * the value came down through 400 to 250.)
  *
  * It was 4000 ms, sized on a bench run where a chunk read arrived 8075 bytes
  * of 8192 at 1528 ms and roughly every chunk needed a retry. That run has been
@@ -84,8 +87,10 @@ static const char *TAG = "capture";
 #define CHUNK_READ_TIMEOUT_MS 250
 
 /* Attempts after the first. Two: measured captures now need zero, so this is
- * for a genuine glitch, and three attempts at 1000 ms bounds a bad chunk at
- * 3 s instead of the 16 s the old pairing allowed. */
+ * for a genuine glitch, and three attempts at CHUNK_READ_TIMEOUT_MS bounds a
+ * bad chunk at 750 ms - the _Static_assert below is what holds that against
+ * the frame budget. (This said "three attempts at 1000 ms bounds a bad chunk
+ * at 3 s"; the timeout is 250, so the real bound is 750 ms.) */
 #define CHUNK_RETRIES 2
 
 /*
@@ -131,10 +136,34 @@ static const char *TAG = "capture";
 _Static_assert((CHUNK_RETRIES + 1) * CHUNK_READ_TIMEOUT_MS <= XFER_BUDGET_MS / 4,
                "a single chunk's retries must stay well inside the frame budget");
 
-/* Longest the flash is allowed to stay on. It is released as soon as every
- * node reports its capture finished; this only bounds the case where one
- * never answers. At 350-500 mA the difference matters to the battery. */
-#define FLASH_MAX_MS 900
+/*
+ * Longest the flash is allowed to stay on.
+ *
+ * It is released as soon as every node reports its capture finished; this only
+ * bounds the case where one never answers. At 350-500 mA the difference
+ * matters to the battery.
+ *
+ * What the old comment did not say: this is NOT a safety bound, it is a
+ * deadline. A node whose exposure and encode together exceed 900 ms has the
+ * flash switched off BEFORE it exposes, and gets an underexposed frame with no
+ * error anywhere - the capture succeeds and the picture is dark. Measured node
+ * capture is 380-520 ms, so 900 has margin today, but NODE_CAPTURE_TIMEOUT_MS
+ * allows 4000: any node that is merely slow lands in that window.
+ *
+ * Latent while BOARD_FLASH_EN is BOARD_GPIO_NONE - GPIO28/JP1-21 went to
+ * BOARD_BTN_SHUTTER in ECN-0003, so nothing is driven. The assert below is
+ * what makes it safe for the day a pin is assigned: the timeout has to cover
+ * the capture the flash is lighting, or the two numbers are lying to each
+ * other.
+ */
+#define FLASH_MAX_MS 4200
+
+/* The flash must outlast the capture it is lighting, with margin for the
+ * command's own round trip. If a future board wants a shorter flash than the
+ * node's worst capture, the node timeout is what has to come down first -
+ * and that needs a node-side p99, not an edit here. */
+_Static_assert(FLASH_MAX_MS >= NODE_CAPTURE_TIMEOUT_MS,
+               "the flash must not switch off before a slow node has exposed");
 
 /* After switching the camera bank on, the nodes have to boot before they can
  * answer. Measured at 410 ms on the bench unit; 900 leaves margin without
@@ -364,11 +393,31 @@ esp_err_t capture_sync_pulse(void) {
 /* one camera's frame                                               */
 /* ---------------------------------------------------------------- */
 
+/** `v` brought inside [lo, hi]. For values that arrive from NVS or the wire. */
+static int clamp_int(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
 static void frame_failf(capture_frame_t *f, const char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
   vsnprintf(f->err, sizeof f->err, fmt, ap);
   va_end(ap);
+  f->ok = false;
+}
+
+/**
+ * The same, plus the KDP error code this failure IS.
+ *
+ * `code` must be a string literal: the report outlives every stack this is
+ * called from. See capture_frame_t.fail_code - CAPTURE_FAILED used to be the
+ * only name a client ever saw for four distinct faults the contract already
+ * has codes for.
+ */
+static void frame_fail_codef(capture_frame_t *f, const char *code, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(f->err, sizeof f->err, fmt, ap);
+  va_end(ap);
+  f->fail_code = code;
   f->ok = false;
 }
 
@@ -400,7 +449,11 @@ static void store_frame(int cam, capture_frame_t *f, const uint8_t *jpeg, uint32
   xSemaphoreGive(s_card);
 
   if (err != ESP_OK) {
-    frame_failf(f, "card write failed");
+    /* SD_WRITE_FAILED, not CAPTURE_FAILED: the frames were transferred and
+     * checksummed and the card is what refused them. Reporting a card fault
+     * under the name used for a dead camera link sends the operator to the
+     * wrong end of the machine. */
+    frame_fail_codef(f, "SD_WRITE_FAILED", "card write failed");
     return;
   }
   f->write_ms = ms_since(t0);
@@ -468,7 +521,28 @@ static void do_frame(worker_t *w) {
   xEventGroupSetBits(s_exposed, 1u << cam);
 
   if (err == ESP_ERR_TIMEOUT) {
-    frame_failf(f, "no answer in %d ms", NODE_CAPTURE_TIMEOUT_MS);
+    /*
+     * Release the frame, even with no id to name it by.
+     *
+     * This was the one exit of six that issued no camlink_release_ch(): the
+     * CAPTURE never answered, so no frame_id exists. But the node is
+     * single-threaded and still finishing that capture, and when it does it
+     * holds the frame buffer - the state that made this camera read offline
+     * on the NEXT capture, because the P4's CAPTURE arrived while a frame was
+     * held and the node's implicit release raced its own encode.
+     *
+     * RELEASE with no frameId is what node_server.c handle_release()
+     * documents as the unconditional case, kept for exactly this. It queues
+     * behind whatever the node is doing and is answered when that lands.
+     * Bounded at NODE_CAPTURE_TIMEOUT_MS rather than the link default: the
+     * node has just proved it can be slow, and this runs on a worker after
+     * the capture has already failed.
+     */
+    const esp_err_t rel = camlink_release_held_ch(cam, NODE_CAPTURE_TIMEOUT_MS);
+    if (rel != ESP_OK) {
+      klog(cam_tag(cam), "release after capture timeout failed: %s", esp_err_to_name(rel));
+    }
+    frame_fail_codef(f, "TRANSFER_TIMEOUT", "no answer in %d ms", NODE_CAPTURE_TIMEOUT_MS);
     return;
   }
   if (err != ESP_OK) {
@@ -489,6 +563,16 @@ static void do_frame(worker_t *w) {
   f->node_fb_get_us = cap.fb_get_us;
   f->node_frame_start_us = cap.frame_start_us;
   f->node_frame_age_us = cap.frame_age_us;
+  /* The node's own verdict on whether this frame was armed after its shutter
+   * (#7). Recorded, not corrected: the frame is a real photograph and the
+   * moment is not repeatable, so the answer is to label it. Logged here too,
+   * because a card read after the party is not when this should be found. */
+  f->frame_fresh = cap.frame_fresh;
+  f->freshness_retries = cap.freshness_retries;
+  if (!cap.frame_fresh) {
+    klog(cam_tag(cam), "frame NOT fresh: armed before the shutter, %lu node retries",
+         (unsigned long)cap.freshness_retries);
+  }
   /* This frame against the common edge (#165). Attribution is by generation,
    * never by timestamp proximity: the node's counter must have moved by
    * exactly one since its last reply to us. The rule lives in pure.c so the
@@ -553,9 +637,9 @@ static void do_frame(worker_t *w) {
     if (ms_since(t_xfer) > XFER_BUDGET_MS) {
       klog(cam_tag(cam), "transfer gave up at %lu of %lu B after %ums",
            (unsigned long)offset, (unsigned long)cap.size, (unsigned)ms_since(t_xfer));
-      frame_failf(f, "transfer over budget at %lu%% of %lu B",
-                  (unsigned long)((uint64_t)offset * 100 / cap.size),
-                  (unsigned long)cap.size);
+      frame_fail_codef(f, "TRANSFER_TIMEOUT", "transfer over budget at %lu%% of %lu B",
+                       (unsigned long)((uint64_t)offset * 100 / cap.size),
+                       (unsigned long)cap.size);
       heap_caps_free(w->jpeg);
       w->jpeg = NULL;
       camlink_release_ch(cam, cap.frame_id);
@@ -596,6 +680,12 @@ static void do_frame(worker_t *w) {
        * that matters most - a chunk that failed all three ways and killed the
        * frame - reported two failures instead of three. */
       f->chunk_retries++;
+      /* The link's own counter, which was permanently 0 while this policy
+       * fired: cam_link cannot see a retry because it is asked for one
+       * request at a time, so the caller reports it. Without this
+       * CameraLinkStats.retries published 0 and GET_RUNTIME_STATS made a link
+       * needing two retries a frame look identical to a clean one. */
+      camlink_note_retry_ch(cam);
       if (attempt < CHUNK_RETRIES) {
         klog(cam_tag(cam), "chunk at %lu failed (%s), retry %d of %d",
              (unsigned long)offset, esp_err_to_name(rerr), attempt + 1, CHUNK_RETRIES);
@@ -606,9 +696,10 @@ static void do_frame(worker_t *w) {
       klog(cam_tag(cam), "chunk FAILED at offset %lu want %u after %d attempts, %ums",
            (unsigned long)offset, (unsigned)want, CHUNK_RETRIES + 1,
            (unsigned)ms_since(t_chunk));
-      frame_failf(f, "link died at %lu%% of %lu B after %d attempts",
-                  (unsigned long)((uint64_t)offset * 100 / cap.size),
-                  (unsigned long)cap.size, CHUNK_RETRIES + 1);
+      frame_fail_codef(f, "TRANSFER_TIMEOUT",
+                       "link died at %lu%% of %lu B after %d attempts",
+                       (unsigned long)((uint64_t)offset * 100 / cap.size),
+                       (unsigned long)cap.size, CHUNK_RETRIES + 1);
       heap_caps_free(w->jpeg);
       w->jpeg = NULL;
       camlink_release_ch(cam, cap.frame_id);
@@ -624,16 +715,48 @@ static void do_frame(worker_t *w) {
   char transfer_hex[12];
   snprintf(transfer_hex, sizeof transfer_hex, "%08lx", (unsigned long)transfer_crc);
   if (cap.crc32[0] != '\0' && strcmp(transfer_hex, cap.crc32) != 0) {
-    frame_failf(f, "link corrupted the frame (%s vs %s)", transfer_hex, cap.crc32);
+    frame_fail_codef(f, "TRANSFER_CRC_MISMATCH", "link corrupted the frame (%s vs %s)",
+                     transfer_hex, cap.crc32);
     heap_caps_free(w->jpeg);
     w->jpeg = NULL;
     return;
   }
   if (w->jpeg[0] != 0xFF || w->jpeg[1] != 0xD8) {
-    frame_failf(f, "not a JPEG — no SOI marker");
+    frame_fail_codef(f, "JPEG_INVALID", "not a JPEG — no SOI marker");
     heap_caps_free(w->jpeg);
     w->jpeg = NULL;
     return;
+  }
+  /*
+   * EOI as well as SOI, because SOI is the marker a truncation KEEPS.
+   *
+   * A frame cut off at 90% still starts FFD8; what it loses is the FFD9 at the
+   * end. Nobody checked for it - not the node (which CRC'd whatever the driver
+   * gave it) and not here - so a partially encoded frame reached the card with
+   * a matching checksum on both ends. The node now validates before it CRCs;
+   * this is the P4's half, and it also catches a transfer that ended early
+   * with a CRC the node never reported.
+   *
+   * Searched over the last 64 bytes rather than pinned to the final two: the
+   * sensor's DMA writes in bursts and drivers pad the tail, so the strict test
+   * rejects good frames.
+   */
+  {
+    const size_t back = cap.size < 64u ? cap.size : 64u;
+    bool eoi = false;
+    for (size_t i = cap.size - back; i + 1 < cap.size; i++) {
+      if (w->jpeg[i] == 0xFF && w->jpeg[i + 1] == 0xD9) {
+        eoi = true;
+        break;
+      }
+    }
+    if (!eoi) {
+      frame_fail_codef(f, "JPEG_INVALID", "truncated JPEG — no EOI in the last %u B",
+                       (unsigned)back);
+      heap_caps_free(w->jpeg);
+      w->jpeg = NULL;
+      return;
+    }
   }
   f->bytes = cap.size;
 
@@ -953,11 +1076,23 @@ static void sensor_settings_for(int cam, const char *mode, camlink_sensor_t *wan
     want->quality = s_sensor_quality;
   }
   {
+    /*
+     * Clamped to the ranges cam_link.h:130-141 documents - 0..8 for denoise,
+     * -3..3 for sharpness - because these come out of NVS and went to the wire
+     * unchecked. config_store validates nothing about a number's range, so a
+     * stale or hand-set key put an out-of-range value into an SCCB register
+     * write on four sensors. The node clamps, but only after this has crossed
+     * a cable, and the project's own rule is that a boundary is checked where
+     * the value enters the system.
+     *
+     * Clamped rather than refused: a look with a wrong number should still
+     * take the photograph, at the nearest setting the sensor has.
+     */
     double v = 0;
     want->has_denoise = true;
-    want->denoise = cfg_num("wiggle.denoise", &v) ? (int)v : 1;
+    want->denoise = clamp_int(cfg_num("wiggle.denoise", &v) ? (int)v : 1, 0, 8);
     want->has_sharpness = true;
-    want->sharpness = cfg_num("wiggle.sharpness", &v) ? (int)v : 1;
+    want->sharpness = clamp_int(cfg_num("wiggle.sharpness", &v) ? (int)v : 1, -3, 3);
   }
 
   /* 2. the look this camera is wearing. */
@@ -1561,13 +1696,26 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
      * with one camera fitted, cam1's "no link" is the least informative
      * message available and hides the real one. */
     const char *why = "No frame was stored";
+    /*
+     * The code the first real failure NAMES, not CAPTURE_FAILED for all of
+     * them. firmware-contract/commands.md:519-520 defines TRANSFER_TIMEOUT,
+     * TRANSFER_CRC_MISMATCH, JPEG_INVALID and SD_WRITE_FAILED, and this
+     * collapsed all four - plus a card fault - into one string, so Studio
+     * could not tell a dead cable from a full card.
+     *
+     * CAPTURE_FAILED remains the answer when no frame carried a specific
+     * code: an offline camera, a node that refused, no room to stage. That is
+     * what it means.
+     */
+    const char *code = "CAPTURE_FAILED";
     for (int i = 0; i < CAPTURE_CAMS; i++) {
       if (r.cam[i].attempted && r.cam[i].err[0] != '\0') {
         why = r.cam[i].err;
+        if (r.cam[i].fail_code != NULL) code = r.cam[i].fail_code;
         break;
       }
     }
-    fail(&r, "CAPTURE_FAILED", why);
+    fail(&r, code, why);
     goto finish;
   }
 
@@ -1746,8 +1894,21 @@ void capture_ack(void) {
 }
 
 bool capture_busy(void) {
-  if (!capture_lock(0)) return s_lock != NULL;
-  capture_unlock();
+  if (s_lock == NULL) return false;
+  /*
+   * The semaphore DIRECTLY, not capture_lock(0)/capture_unlock().
+   *
+   * capture_lock() also calls cam_sched_capture_admit(), which increments
+   * capture_waits when a probe is in flight, and capture_unlock() calls
+   * cam_sched_capture_done(). The only caller of this is GET_RUNTIME_STATS
+   * (kdp_server.c), so reading "is a capture running" moved the scheduler
+   * counters the #132 gate is judged on: a host polling stats generated its
+   * own capture_waits and probes_deferred. The header promised "exclusion for
+   * exactly zero instructions" and this is what makes that true - it is now a
+   * read of the semaphore and of nothing else.
+   */
+  if (xSemaphoreTake(s_lock, 0) != pdTRUE) return true;
+  xSemaphoreGive(s_lock);
   return false;
 }
 
@@ -1764,9 +1925,17 @@ void capture_on_done(capture_done_cb_t cb) {
 
 esp_err_t capture_init(const char *device_id) {
   if (s_lock != NULL) return ESP_OK;
+#if KINO_ISR_WATCH
   /* From app_main, on CPU0 - the core camlink_init() put the link ISRs on, so
-   * the watch is held off by exactly what holds them off. */
+   * the watch is held off by exactly what holds them off.
+   *
+   * BENCH BUILDS ONLY. This was called unconditionally, in every image, and it
+   * arms a gptimer at 1000 us whose handler is deliberately not IRAM-safe
+   * (isr_watch.c) - ~1,000 extra interrupts per second competing for the same
+   * budget #158 exists to protect, in order to measure that budget. See
+   * KINO_ISR_WATCH in firmware/p4/main/CMakeLists.txt. */
   if (isr_watch_init() != ESP_OK) ESP_LOGW(TAG, "isr watch unavailable");
+#endif
   if (device_id != NULL && device_id[0] != '\0') {
     snprintf(s_device_id, sizeof s_device_id, "%s", device_id);
   }

@@ -21,10 +21,20 @@
  * Costs one timer and one short ISR per millisecond. The report is pulled by
  * whoever wants it (the capture path, after its transfers) and logged there,
  * never from the ISR.
+ *
+ * BENCH ONLY. 1,000 non-IRAM interrupts per second is a measurable load on
+ * the same budget the measurement is about, so a product image must not carry
+ * it. Set KINO_ISR_WATCH=1 at build time to arm it; see
+ * firmware/p4/main/CMakeLists.txt. Unarmed, isr_watch_take() reports nothing
+ * and every caller reads zero gaps - which is the truth for that image.
  */
 #include <stdint.h>
 
 #include "esp_err.h"
+
+#ifndef KINO_ISR_WATCH
+#define KINO_ISR_WATCH 0
+#endif
 
 #define ISR_WATCH_GAP_US 1300
 #define ISR_WATCH_SLOTS 8

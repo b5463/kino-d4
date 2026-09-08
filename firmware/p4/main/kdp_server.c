@@ -167,6 +167,14 @@ static long clamp_num(const cJSON *n, double lo, double hi, long dflt) {
 #define RESPONSE_WRITE_TIMEOUT_MS 1500
 #define TX_LOCK_TIMEOUT_MS 2000
 
+/* The bench camera path's per-chunk read budget. The same 250 ms the shutter
+ * path uses (capture.c, CHUNK_READ_TIMEOUT_MS) and for the same measured
+ * reason: a healthy chunk under four-way load is ~120 ms and a lost tail is
+ * never coming, so this is the price of every failure. It was 3000 here,
+ * which made one dropped tail cost twelve times what the product pays.
+ * The bench path stays retry-free - see the call site. */
+#define BENCH_CHUNK_READ_TIMEOUT_MS 250
+
 /* How long an event may hold the TX lock. Long enough that a host between
  * two reads never loses one, short enough that server_task's next response
  * waits a quarter second rather than until a cable is plugged back in. */
@@ -500,8 +508,27 @@ static void run_capture(int cam, int jpeg_quality, bool keep_files, capture_resu
     size_t want = cap.size - offset;
     if (want > NL_CHUNK_MAX) want = NL_CHUNK_MAX;
     size_t got = 0;
+    /*
+     * The SHUTTER path's chunk budget, on the shutter path's reasoning.
+     *
+     * This was 3000 ms - cam_link's DEFAULT_TIMEOUT_MS - while capture.c uses
+     * 250. Two policies for one cable: a dropped tail cost the bench path the
+     * full 3 s and then failed the frame, so the same fault measured 12x
+     * longer here than in the product and looked like a different fault.
+     *
+     * 250 is not arbitrary, it is measured: a healthy chunk under four-way
+     * load takes ~120 ms (CAMERA_LINK_STATS latencyMaxMs 122), and a lost tail
+     * is never coming, so the timeout IS the price of the failure. See
+     * capture.c's CHUNK_READ_TIMEOUT_MS.
+     *
+     * STILL RETRY-FREE, deliberately. capture.c's own note on its retry loop
+     * says it is "deliberately NOT added to CAMERA_TEST. That path is the
+     * bench control for raw link behaviour, and retrying there would hide the
+     * very faults it exists to measure." That reasoning holds: this is the
+     * control. Only the budget is unified, not the policy.
+     */
     esp_err_t rerr = camlink_read_ch(cam, cap.frame_id, offset, jpeg + offset, want,
-                                     3000 /* cam_link's DEFAULT_TIMEOUT_MS */, &got);
+                                     BENCH_CHUNK_READ_TIMEOUT_MS, &got);
     if (rerr != ESP_OK || got == 0) {
       /* Where it died is the measurement. Failing at the first chunk is a
        * link fault; failing at 80% is a throughput or timeout budget the
@@ -1539,6 +1566,9 @@ static void handle_media_read(uint32_t seq, const cJSON *req) {
   }
   const size_t got = fread(buf, 1, (size_t)length, f);
   fclose(f);
+  /* The bytes are in RAM; the card is not needed to put them on the wire, and
+   * the wire can take 3.5 s. See media_card_done(). */
+  media_card_done();
   /* A zero-length reply is the honest answer for a read that starts exactly
    * at the end of the file, and is how a client knows it has everything. */
   send_raw(KDP_CMD_MEDIA_READ, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, buf, got);
@@ -1579,6 +1609,7 @@ static void handle_media_thumb(uint32_t seq, const cJSON *req) {
   }
   const size_t got = fread(buf, 1, (size_t)length, f);
   fclose(f);
+  media_card_done(); /* the bytes are in RAM; see media_card_done() */
   send_raw(KDP_CMD_MEDIA_THUMB, KDP_FLAG_RESPONSE | KDP_FLAG_BINARY, seq, buf, got);
   free(buf);
 }
@@ -1711,6 +1742,7 @@ static void handle_media_list(uint32_t seq, const cJSON *req) {
      * host that ignores it sees a correct list either way. */
     if (stale) cJSON_AddBoolToObject(json, "indexStale", true);
     heap_caps_free(page);
+    media_card_done(); /* the document is built; the write is not card work */
     send_json(KDP_CMD_MEDIA_LIST, seq, json);
     return;
   }
@@ -1744,6 +1776,7 @@ static void handle_media_list(uint32_t seq, const cJSON *req) {
   else cJSON_AddNullToObject(json, "nextCursor");
   cJSON_AddBoolToObject(json, "hasMore", next < listable);
   free(names);
+  media_card_done();
   send_json(KDP_CMD_MEDIA_LIST, seq, json);
 }
 
@@ -3207,6 +3240,82 @@ static void handle_sync_bench(uint32_t seq, const cJSON *req) {
  * read. Longer than the latter, shorter than a host's request timeout. */
 #define MEDIA_CARD_WAIT_MS 3000
 
+/* ------------------------------------------------------------------ */
+/* net_task: the commands that go on the air                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * NETWORK_STATUS, ROLL_CREATE and ROLL_JOIN performed OFF server_task.
+ *
+ * They ran inline. Each one is an address resolution plus a TLS exchange
+ * bounded only by roll_http.c's HTTP_TIMEOUT_MS of 15000 ms, and server_task
+ * is the sole reader of the 4096-byte USB RX ring (usb_link.c) - so for that
+ * whole window nothing else was taken off the wire and every other host
+ * command timed out. A host asking "are you online?" made the camera stop
+ * answering, which is the opposite of the question.
+ *
+ * One job at a time, depth 2, and no coalescing: these are operator actions
+ * seconds apart, and a queue that silently dropped one would leave a host
+ * waiting for a reply that is never coming. A full queue answers BUSY, which
+ * a host can retry.
+ *
+ * The request JSON is DUPLICATED. The cJSON the dispatcher holds is parsed
+ * from the decoder's frame buffer and freed when on_frame returns; by the time
+ * net_task runs, that frame is long gone.
+ */
+typedef struct {
+  uint8_t cmd;
+  uint32_t seq;
+  cJSON *req; /* owned by the job; NULL is legal */
+} net_job_t;
+
+#define NET_JOB_QUEUE_LEN 2
+static QueueHandle_t s_net_jobs;
+
+static void net_job_submit(uint8_t cmd, uint32_t seq, const cJSON *req) {
+  if (s_net_jobs == NULL) {
+    send_nack(cmd, seq, "INTERNAL_ERROR", "The network worker is not running");
+    return;
+  }
+  net_job_t job = {.cmd = cmd, .seq = seq, .req = NULL};
+  if (req != NULL) {
+    job.req = cJSON_Duplicate(req, true);
+    if (job.req == NULL) {
+      send_nack(cmd, seq, "OUT_OF_MEMORY", "Could not copy the request");
+      return;
+    }
+  }
+  /* No wait: blocking here would put server_task back where this fix took it
+   * out of. */
+  if (xQueueSend(s_net_jobs, &job, 0) != pdTRUE) {
+    cJSON_Delete(job.req);
+    send_nack(cmd, seq, "BUSY", "A network request is already in flight");
+  }
+}
+
+static void net_task(void *arg) {
+  (void)arg;
+  for (;;) {
+    net_job_t job;
+    if (xQueueReceive(s_net_jobs, &job, portMAX_DELAY) != pdTRUE) continue;
+    switch (job.cmd) {
+      case KDP_CMD_NETWORK_STATUS:
+        send_net(job.cmd, job.seq, kdp_net_status(job.req));
+        break;
+      case KDP_CMD_ROLL_CREATE:
+        send_net(job.cmd, job.seq, kdp_net_roll_create(job.req));
+        break;
+      case KDP_CMD_ROLL_JOIN:
+        send_net(job.cmd, job.seq, kdp_net_roll_join(job.req));
+        break;
+      default:
+        send_nack(job.cmd, job.seq, "INTERNAL_ERROR", "Not a network job");
+        break;
+    }
+    cJSON_Delete(job.req);
+  }
+}
+
 typedef void (*media_handler_t)(uint32_t seq, const cJSON *req);
 
 /**
@@ -3219,6 +3328,33 @@ typedef void (*media_handler_t)(uint32_t seq, const cJSON *req);
  * lock - but the frame spread widens and a MEDIA_READ mid-capture stalls
  * behind the writes anyway. Taking the lock says so up front: BUSY, retry.
  */
+/*
+ * Whether with_card still holds the card for the handler now running.
+ *
+ * A file static because the KDP server dispatches one command at a time on
+ * one task - the same rule s_meta_buf relies on.
+ */
+static bool s_media_card_held;
+
+/**
+ * "I am finished with the card." Releases it early; idempotent.
+ *
+ * Every MEDIA_* handler emitted its reply while still holding the card, and a
+ * reply costs up to TX_LOCK_TIMEOUT_MS 2000 waiting for the TX lock plus
+ * RESPONSE_WRITE_TIMEOUT_MS 1500 writing - 3.5 s of a host not reading, with
+ * the card held the whole time. A capture pressing the shutter in that window
+ * waited for a USB write. The card work and the write have nothing to do with
+ * each other, so the handlers call this between them.
+ *
+ * with_card() calls it again after the handler returns, which covers the
+ * argument-validation early returns - those touch no card at all.
+ */
+static void media_card_done(void) {
+  if (!s_media_card_held) return;
+  s_media_card_held = false;
+  storage_release(STORAGE_USER_UI);
+}
+
 static void with_card(uint8_t cmd, uint32_t seq, const cJSON *req, media_handler_t fn) {
   if (!storage_acquire(STORAGE_USER_UI, MEDIA_CARD_WAIT_MS)) {
     /* Whoever is actually holding it, not "a capture".
@@ -3233,8 +3369,26 @@ static void with_card(uint8_t cmd, uint32_t seq, const cJSON *req, media_handler
     send_nack(cmd, seq, "BUSY", msg);
     return;
   }
+  s_media_card_held = true;
+  /*
+   * The yield, polled before any card work starts.
+   *
+   * storage_acquire's lock is priority-ordered but it does not preempt: a
+   * capture that asked for the card while this command was queueing gets the
+   * grant only when this handler is done. Nothing here checked, so a MEDIA_*
+   * command that arrived a millisecond before a shutter press ran its whole
+   * directory walk first. Answering BUSY costs the host one retry; the
+   * shutter cannot retry.
+   */
+  if (storage_yield_requested(STORAGE_USER_UI)) {
+    media_card_done();
+    char msg[96];
+    storage_card_busy_message(msg, sizeof msg);
+    send_nack(cmd, seq, "BUSY", msg);
+    return;
+  }
   fn(seq, req);
-  storage_release(STORAGE_USER_UI);
+  media_card_done();
 }
 
 static void on_frame(const kdp_frame_t *frame, void *ctx) {
@@ -3325,10 +3479,15 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_NETWORK_LIST: send_net(frame->type, frame->seq, kdp_net_list(req)); break;
     case KDP_CMD_NETWORK_SET: send_net(frame->type, frame->seq, kdp_net_set(req)); break;
     case KDP_CMD_NETWORK_DELETE: send_net(frame->type, frame->seq, kdp_net_delete(req)); break;
-    case KDP_CMD_NETWORK_STATUS: send_net(frame->type, frame->seq, kdp_net_status(req)); break;
+    /* These three reach the network - a DNS lookup plus a TLS exchange, up to
+     * HTTP_TIMEOUT_MS 15000 - so they are handed to net_task instead of run
+     * here. See net_job_submit(). */
+    case KDP_CMD_NETWORK_STATUS:
+    case KDP_CMD_ROLL_CREATE:
+    case KDP_CMD_ROLL_JOIN:
+      net_job_submit(frame->type, frame->seq, req);
+      break;
     case KDP_CMD_ROLL_STATUS: send_net(frame->type, frame->seq, kdp_net_roll_status()); break;
-    case KDP_CMD_ROLL_CREATE: send_net(frame->type, frame->seq, kdp_net_roll_create(req)); break;
-    case KDP_CMD_ROLL_JOIN: send_net(frame->type, frame->seq, kdp_net_roll_join(req)); break;
     case KDP_CMD_ROLL_LEAVE: send_net(frame->type, frame->seq, kdp_net_roll_leave()); break;
     case KDP_CMD_UPLOAD_QUEUE_STATUS:
       send_net(frame->type, frame->seq, kdp_net_upload_status());
@@ -3416,12 +3575,34 @@ esp_err_t kdp_server_start(const kdp_identity_t *identity) {
     s_tsens = tsens; /* otherwise GET_RUNTIME_STATS reports tempC.p4 null */
   }
 
+  /* The network worker, before the server that feeds it. 8 KB: ROLL_CREATE
+   * nests two 1 KB HTTP response buffers under cJSON parsing, which is the
+   * measurement that took server_task from 8 KB to 12 KB - it is that frame
+   * that moves here, not an extra one. Priority 4, below every product task:
+   * a host asking about the network must never outrank the shutter. */
+  s_net_jobs = xQueueCreate(NET_JOB_QUEUE_LEN, sizeof(net_job_t));
+  TaskHandle_t net = NULL;
+  if (s_net_jobs == NULL || xTaskCreate(net_task, "kdp_net", 8192, NULL, 4, &net) != pdPASS) {
+    /* Not fatal: every other command still works, and the three that need
+     * this answer INTERNAL_ERROR rather than blocking the transport. */
+    ESP_LOGE(TAG, "network worker not started; NETWORK_STATUS/ROLL_CREATE/ROLL_JOIN refused");
+    if (s_net_jobs != NULL) {
+      vQueueDelete(s_net_jobs);
+      s_net_jobs = NULL;
+    }
+  } else {
+    taskmon_register("kdp_net", net);
+  }
+
   kdp_decoder_init(&s_decoder, s_decode_buf, KDP_MAX_FRAME);
   TaskHandle_t srv = NULL;
-  /* 12 KB, from 8. ROLL_CREATE runs on this task and nests two 1 KB HTTP
-   * response buffers under cJSON parsing; measured on KD4-D121BC at 580 bytes
-   * free after one such call. A large GET_LOGS reply had already taken it to
-   * ~1.1 KB. Neither is a place to be one snprintf from the guard page. */
+  /* 12 KB, from 8. It was ROLL_CREATE that needed it - two 1 KB HTTP response
+   * buffers nested under cJSON parsing, measured on KD4-D121BC at 580 bytes
+   * free after one such call - and that frame now runs on kdp_net instead. It
+   * stays at 12 KB for the OTHER measurement: a large GET_LOGS reply had
+   * already taken this task to ~1.1 KB free, which is not a place to be one
+   * snprintf from the guard page. Do not trim it back without re-measuring
+   * GET_LOGS. */
   BaseType_t ok = xTaskCreate(server_task, "kdp_server", 12288, NULL, 9, &srv);
   taskmon_register("kdp_server", srv);
   return ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;

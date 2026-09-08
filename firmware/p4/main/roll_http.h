@@ -102,18 +102,46 @@ bool roll_http_api_base(char *out, size_t cap);
 
 bool roll_http_ready(char *why, size_t cap);
 
+/**
+ * The `detail` a step sets when the CARD, not the network, stopped it.
+ *
+ * ONE constant, compared against by roll_api.c and emitted by roll_http.c,
+ * because it was two literals: "card busy" when the lock could not be taken
+ * and "yielded the card to a capture" when it was given up mid-part, while
+ * roll_api.c compared against only the first. A deliberate yield - the case
+ * the design is proudest of - therefore burned an attempt from the retry
+ * budget, and twelve of them parked the photograph as failed. A string
+ * compared in one file and written in another has to be a symbol.
+ *
+ * Its meaning: transient, ours, and not the server's. The queue must retry
+ * without spending the budget.
+ */
+#define ROLL_HTTP_CARD_YIELD_DETAIL "the card went to a capture"
+
 /** Perform a request with a JSON or empty body. Blocks the calling task. */
 void roll_http_perform(const roll_http_req_t *req, roll_http_out_t *out);
 
 /**
  * PUT `len` bytes of `file_path` starting at `offset` as an octet-stream.
  *
- * Reads the card under `STORAGE_USER_UPLOAD` and polls
- * `storage_yield_requested()` between chunks. When a capture wants the card
- * this abandons the request and returns `status` 0 with a detail saying so —
- * which the queue treats as transient and retries. That is correct rather
- * than merely acceptable: the contract's part re-PUT is idempotent, and an
- * abandoned upload costs nothing while a dropped frame costs a photograph.
+ * Takes `STORAGE_USER_UPLOAD` for each card READ and gives it back before the
+ * socket write, so the longest this can hold the card is one 16 KiB read and
+ * never a network operation. It used to hold it across the whole part - every
+ * `esp_http_client_write()` included - and a single write can block for
+ * `HTTP_TIMEOUT_MS`, 15 s, so the real bound was the network's and not the
+ * card's.
+ *
+ * Each pass also polls `storage_yield_requested()`, and a lock it cannot get
+ * within `CARD_WAIT_MS` is treated the same way. Either abandons the request
+ * and returns `status` 0 with `ROLL_HTTP_CARD_YIELD_DETAIL`, which the queue
+ * treats as transient and retries WITHOUT spending an attempt. That is correct
+ * rather than merely acceptable: the contract's part re-PUT is idempotent, and
+ * an abandoned upload costs nothing while a dropped frame costs a photograph.
+ *
+ * The file handle is closed with each release, not kept open across it. The
+ * lock is not only about the SDMMC bus: the FAT mount has `max_files = 4`
+ * (storage.h), so a handle held while the lock is free can be the descriptor
+ * a capture cannot get.
  */
 void roll_http_put_file(const char *path, const char *file_path, size_t offset, size_t len,
                         roll_http_out_t *out);

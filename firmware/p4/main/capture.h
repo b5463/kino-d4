@@ -115,6 +115,38 @@ typedef struct {
    * independently: that is the whole point of a QUAD slot.
    */
   camlink_sensor_t sensor;
+
+  /*
+   * The node's freshness verdict for this frame (#7).
+   *
+   * false means the node could not get a frame whose DMA began after the
+   * command that asked for it, ran out of its budget, and answered anyway.
+   * That is a photograph of the instant BEFORE the shutter press, and until
+   * this field existed it was indistinguishable from a good one - the reply
+   * was ok:true either way and nothing was recorded.
+   *
+   * true for a node too old to report it, which is the honest default: those
+   * nodes ran the same bounded loop and marking all their frames suspect
+   * would say more than is known.
+   */
+  bool frame_fresh;
+  uint32_t freshness_retries; /* frames the node discarded getting there */
+
+  /*
+   * Which KDP error code this frame's failure is, when it failed.
+   *
+   * NULL on success and on a failure with no more specific name. A static
+   * string literal only - the report outlives the worker's stack.
+   *
+   * It exists because the capture-level failure used to be reported as
+   * CAPTURE_FAILED for every cause: a transfer that timed out, a CRC that did
+   * not match, a frame that was not a JPEG and a card that would not take the
+   * write all arrived at Studio under one name, while
+   * firmware-contract/commands.md:519-520 defines TRANSFER_TIMEOUT,
+   * TRANSFER_CRC_MISMATCH, JPEG_INVALID and SD_WRITE_FAILED for exactly those
+   * four.
+   */
+  const char *fail_code;
 } capture_frame_t;
 
 /** What became of the press. */
@@ -247,6 +279,12 @@ uint32_t capture_ready_cams(void);
  * lock, gives it straight back, and reports what it saw - so by the time the
  * caller reads the answer, the lock may be held by someone else or may have
  * been let go. It is exclusion for exactly zero instructions.
+ *
+ * It is also a pure READ, and that had to be fixed to be true. It went
+ * through capture_lock(0), which also runs cam_sched_capture_admit() and
+ * increments capture_waits and probes_deferred (cam_sched.c) - so polling
+ * this from GET_RUNTIME_STATS moved the very numbers the #132 gate is judged
+ * on. It now takes the capture semaphore directly and touches no counter.
  *
  * Never use it to protect a sequence. cam_probe_task did, and then greeted four
  * channels for up to twelve seconds inside the window it thought it had

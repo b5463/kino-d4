@@ -439,9 +439,17 @@ static int hostlog_vprintf(const char *fmt, va_list args) {
   const int n = vsnprintf(line, sizeof line, fmt, copy);
   va_end(copy);
   if (n > 0) {
+    /* vsnprintf returns the length it WOULD have written, not what it wrote.
+     * `take` was clamped only against `room` (up to 6143), so any ESP-Hosted
+     * line over 191 bytes memcpy'd up to 5.9 KiB of whatever followed `line`
+     * on the stack into s_hostlog - and GET_LOGS serves s_hostlog. Inside
+     * portENTER_CRITICAL, on a priority-22 task with a 4096-byte stack, so the
+     * read ran off the end of the stack itself. Clamp to what the buffer
+     * actually holds first, then to the room left. */
+    size_t take = (size_t)n;
+    if (take > sizeof line - 1) take = sizeof line - 1;
     portENTER_CRITICAL(&s_hostlog_mux);
     if (s_hostlog_len + 1 < HOSTED_LOG_CAP) {
-      size_t take = (size_t)n;
       const size_t room = HOSTED_LOG_CAP - s_hostlog_len - 1;
       if (take > room) take = room;
       memcpy(s_hostlog + s_hostlog_len, line, take);
