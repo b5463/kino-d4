@@ -21,6 +21,12 @@ on:
     paths:
       - 'apps/twin/**'
       - 'apps/studio/**'
+      # The harness proxies /api (playwright.config.ts), so the API and the
+      # PWA it serves are inputs to this walk even though the walk is named
+      # after the twin. Omitted before, which meant a PR touching either ran
+      # no acceptance job at all.
+      - 'apps/api/**'
+      - 'apps/roll-web/**'
       - 'packages/**'
       - 'e2e/**'
       - 'scripts/**'
@@ -30,6 +36,12 @@ on:
     paths:
       - 'apps/twin/**'
       - 'apps/studio/**'
+      # The harness proxies /api (playwright.config.ts), so the API and the
+      # PWA it serves are inputs to this walk even though the walk is named
+      # after the twin. Omitted before, which meant a PR touching either ran
+      # no acceptance job at all.
+      - 'apps/api/**'
+      - 'apps/roll-web/**'
       - 'packages/**'
       - 'e2e/**'
       - 'scripts/**'

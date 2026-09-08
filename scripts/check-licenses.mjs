@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -176,6 +177,60 @@ for (const directory of await workspaceDirectories()) {
 
 const hardware = await json('hardware/manifest.json');
 check(hardware.license === 'CERN-OHL-S-2.0', `hardware manifest license is ${hardware.license ?? 'missing'}`);
+
+/**
+ * Coverage: every tracked file matches at least one REUSE.toml glob.
+ *
+ * Everything above asserts that a list of literal strings APPEARS in
+ * REUSE.toml, which says nothing about whether the tree it describes is
+ * covered — a new top-level directory with no annotation passed, and six
+ * tracked paths already matched no glob at all when this was written. This is
+ * the check that makes `license:check` about the repository rather than about
+ * one file's contents.
+ *
+ * Not `reuse lint`: that is a Python tool in a Node toolchain and no workflow
+ * installs it. This is the same question asked with what is already here.
+ *
+ * The matcher is deliberately a little stricter than REUSE's own: `*` does not
+ * cross a `/`, `**` does. Being stricter can only ask for an annotation that
+ * REUSE would have inferred, which is a sentence in REUSE.toml, never a
+ * missing grant.
+ */
+function globToRegExp(glob) {
+  let out = '';
+  for (let i = 0; i < glob.length; i += 1) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        // `**/` may match nothing at all, so `**/x` also matches a bare `x`.
+        if (glob[i + 2] === '/') { out += '(?:.*/)?'; i += 2; } else { out += '.*'; i += 1; }
+      } else {
+        out += '[^/]*';
+      }
+    } else if (c === '?') out += '[^/]';
+    else out += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${out}$`);
+}
+
+/**
+ * The licence texts themselves and the file a human opens first. REUSE exempts
+ * `LICENSES/` by definition — those files ARE the licences — and `LICENSE` is
+ * the copy of one, so neither needs an annotation pointing at itself.
+ */
+const LICENSE_TEXT_PATHS = [/^LICENSES\//, /^LICENSE$/];
+
+const globs = [...reuse.matchAll(/^\s*"([^"]+)",?\s*$/gm)].map((m) => m[1]).map(globToRegExp);
+const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
+  .split('\0')
+  .filter(Boolean);
+const uncovered = tracked.filter(
+  (file) => !LICENSE_TEXT_PATHS.some((re) => re.test(file)) && !globs.some((re) => re.test(file)),
+);
+check(
+  uncovered.length === 0,
+  `${String(uncovered.length)} tracked path(s) match no REUSE.toml glob, so they have no declared license: ${uncovered.slice(0, 12).join(', ')}${uncovered.length > 12 ? ', ...' : ''}`,
+);
 
 if (errors.length) {
   console.error('License metadata errors:');

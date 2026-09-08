@@ -20,6 +20,17 @@ on:
         'firmware/**',
         'firmware-contract/**',
         'packages/kdp/**',
+        # The portable document schemas are a firmware input too, not just the
+        # KDP protocol: the camera writes `kino.capture`, and a field renamed
+        # here is data the body silently stops carrying - the document is a
+        # passthrough schema, so it parses clean either way. That exact seam
+        # broke once (the look was written as `recipeIds` and read as `look`)
+        # and no firmware job ran on it.
+        'packages/schemas/**',
+        # PROFILE_FOR_VERSION is enforced on every firmware bump by
+        # check-versions.mjs, and versions.json carries the firmware block.
+        'packages/test-fixtures/**',
+        'versions.json',
         'scripts/firmware-daemon.mjs',
         'scripts/check-versions.mjs',
         '.github/workflows/firmware.yml',
@@ -30,6 +41,17 @@ on:
         'firmware/**',
         'firmware-contract/**',
         'packages/kdp/**',
+        # The portable document schemas are a firmware input too, not just the
+        # KDP protocol: the camera writes `kino.capture`, and a field renamed
+        # here is data the body silently stops carrying - the document is a
+        # passthrough schema, so it parses clean either way. That exact seam
+        # broke once (the look was written as `recipeIds` and read as `look`)
+        # and no firmware job ran on it.
+        'packages/schemas/**',
+        # PROFILE_FOR_VERSION is enforced on every firmware bump by
+        # check-versions.mjs, and versions.json carries the firmware block.
+        'packages/test-fixtures/**',
+        'versions.json',
         'scripts/firmware-daemon.mjs',
         'scripts/check-versions.mjs',
         '.github/workflows/firmware.yml',

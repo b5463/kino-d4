@@ -66,3 +66,14 @@ firmware/p4/host_tests/test_*
 firmware/components/kdp_core/host_tests/test_*
 !firmware/components/kdp_core/host_tests/test_*.c
 firmware/*/build-*/
+
+# Device and tool logs, anywhere. There was no rule for these at all: a
+# `usb_print.log` sat at the repository root, untracked and matching nothing,
+# one `git add -A` from being committed - the same class the host-test binaries
+# above were enumerated to close, missed at the root. A log is output; it is
+# never the record.
+#
+# Deliberately NOT ignoring the scripts beside them: an untracked `.py` at the
+# root is either work in flight or something that belongs under `scripts/`, and
+# ignoring it hides that decision from whoever has to make it.
+*.log
