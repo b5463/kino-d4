@@ -19,7 +19,7 @@ Measured on the PC, 2026-09-06 and re-checked 2026-09-07:
 
 | Fact | Value |
 |---|---|
-| Egress address seen by the internet | `46.34.228.61` (O2 Slovakia) |
+| Egress address seen by the internet | one address in O2 Slovakia's CGNAT pool — not recorded here, see the note below |
 | `tracert` hop 1 | `10.20.99.1` — the operator's own router |
 | `tracert` hop 2 | `10.106.16.198` — private, **beyond** the router |
 | `tracert` hop 4 | `10.109.122.193` — private, beyond the router |
@@ -28,7 +28,7 @@ Measured on the PC, 2026-09-06 and re-checked 2026-09-07:
 | `kino.acronym.sk` today | `37.9.175.156`, `2a00:4b40:aaaa:2004::7` (Websupport parking) |
 
 Two private hops sitting **beyond** the operator's own router is the signature
-of carrier-grade NAT: the public address `46.34.228.61` belongs to the carrier,
+of carrier-grade NAT: the public address belongs to the carrier,
 not to the router, and it is shared. An inbound TCP connection to port 443 has
 nowhere to be forwarded from, because the carrier's NAT has no rule for this
 subscriber and no interface the operator can configure. No DNS record and no
@@ -61,9 +61,9 @@ interface. The router's status page can. Read it before buying anything:
 
 | Router WAN address shows | Meaning | What to do |
 |---|---|---|
-| `46.34.228.61` (equals the egress address) | Not behind CGNAT. The public address terminates on the router. | The direct path becomes possible: one `A` record to `46.34.228.61`, router TCP 80 and 443 forwarded to this PC, production compose as-is with Caddy doing ACME. It is still a *worse* path — a residential address is dynamic, so a Websupport-API updater would be needed on the PC, and the Apache problem below becomes blocking rather than irrelevant. The relay remains the recommendation; the direct path becomes a fallback that exists. |
+| The same address the line egresses as | Not behind CGNAT. The public address terminates on the router. | The direct path becomes possible: one `A` record to it, router TCP 80 and 443 forwarded to this PC, production compose as-is with Caddy doing ACME. It is still a *worse* path — a residential address is dynamic, so a Websupport-API updater would be needed on the PC, and the Apache problem below becomes blocking rather than irrelevant. The relay remains the recommendation; the direct path becomes a fallback that exists. |
 | `10.x.x.x` or `100.64–100.127.x.x` | CGNAT confirmed. | Relay. Inbound 80/443 can never arrive. |
-| A public address that is **not** `46.34.228.61` | Something else is in the path (a second NAT, a VPN, a modem in router mode). | Do not deploy on assumptions. Record what it says and re-derive. |
+| A public address **different** from the egress address | Something else is in the path (a second NAT, a VPN, a modem in router mode). | Do not deploy on assumptions. Record what it says and re-derive. |
 
 Nothing else in this document changes with the answer. The relay path works in
 all three cases.
@@ -453,10 +453,11 @@ back as requirements when the origin moves to a dedicated always-on machine:
 - **No, and it cannot be made to** without either the relay or a DNS move, if
   A1 comes back `10.x` / `100.64–127.x` and the relay is refused. There is no
   third option that keeps DNS at Websupport and the router untouched.
-- **Not yet** if A1 comes back `46.34.228.61`. The direct path then exists, but
-  it needs Apache off 80/443, a router forwarding rule, and a dynamic-DNS
-  updater against the Websupport API. The relay is still the shorter and more
-  reversible path, and it is the one this document describes.
+- **Not yet** if A1 comes back with the egress address itself. The direct
+  path then exists, but it needs Apache off 80/443, a router forwarding rule,
+  and a dynamic-DNS updater against the Websupport API. The relay is still
+  the shorter and more reversible path, and it is the one this document
+  describes.
 
 ### When the stack later moves onto the VPS
 

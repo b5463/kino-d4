@@ -124,9 +124,9 @@ for the day the relay path is actually executed.
 ## The problem in one paragraph
 
 The stack runs on a Windows PC on a domestic O2 Slovakia line. It egresses as
-`46.34.228.61`, but `tracert` shows the operator's own router at hop 1
-(`10.20.99.1`) and then two carrier-side private addresses beyond it
-(`10.106.16.198`, `10.109.122.193`) before the first public hop
+an address in the carrier's own pool, but `tracert` shows the operator's own
+router at hop 1 (`10.20.99.1`) and then two carrier-side private addresses
+beyond it (`10.106.16.198`, `10.109.122.193`) before the first public hop
 (`90.176.30.41`). That is carrier NAT: the public address is the carrier's and
 is shared, so an inbound TCP connection to 443 has no forwarding rule to
 arrive through and no interface the operator can configure. The PC has no
@@ -158,7 +158,8 @@ evidenced, and an architecture was being chosen on top of it.
 |---|---|
 | ISP | O2 Slovakia, AS28952 |
 | Connection | fixed broadband — O2's own registration says `FBB`, so this is not read off the ASN |
-| Public IPv4 seen from outside | `46.34.228.61`, agreed by ipify, icanhazip and ifconfig.co |
+| Public IPv4 seen from outside | one address, agreed by ipify, icanhazip and ifconfig.co. Deliberately not recorded — see below |
+| RIPE netname for that address | `O2SK-CGNAT-POOL-FBB`, status ASSIGNED PA, org O2.SK |
 | Local gateway | `10.20.99.1` (Ubiquiti, nginx on 80/443/8080) |
 | Upstream provider hop | `10.106.16.198` — RFC1918 |
 | Further provider hop | `10.109.122.193` — RFC1918 |
@@ -170,7 +171,29 @@ The traceroute was run twice, to `1.1.1.1` and to `8.8.8.8`, and gave the same
 five hops. **Three private hops stand between this PC and the first public
 address.** Even with full administrative control of the Ubiquiti gateway, a
 port-forward there terminates inside `10.106/10.109` space. No device the
-operator can reach holds `46.34.228.61`.
+operator can reach holds that address.
+
+### Why the address itself is not written down
+
+This repository is public, and the operator's egress address identifies their
+home connection. It is not recorded here, and it should not be added back.
+
+Nothing in the argument needs it. What carries the verdict is the *shape*: a
+gateway on RFC1918, two more carrier-side private hops beyond it, no global
+IPv6, and O2's own registration naming the block a CGNAT pool. Those are
+properties of the network, not of the household. The literal address adds no
+evidence and cannot be un-published.
+
+Read it live when it is actually needed:
+
+```powershell
+curl -4 https://api.ipify.org
+```
+
+RFC1918 addresses (`10.x`) are left in place throughout these documents. They
+are not routable, they identify nobody from outside, and they appear in bench
+records and a URL-validation test fixture where removing them would rewrite
+history for no gain.
 
 ### The decisive record
 
@@ -237,10 +260,10 @@ is not a refusal, and business tariffs may differ. Only O2 can answer it.
 **DynDNS is not a solution to CGNAT, and must never be written up as one.** It
 solves exactly one problem: a public address that *changes*. It cannot conjure
 a public address that does not exist, and it cannot create an inbound path.
-Behind carrier NAT a DynDNS updater would faithfully publish `46.34.228.61` —
-an address shared with other O2 subscribers, on which nothing routes to this
-PC. It becomes useful the moment a real public IPv4 exists, and not one moment
-before.
+Behind carrier NAT a DynDNS updater would faithfully publish the carrier's
+address — an address shared with other O2 subscribers, on which nothing routes
+to this PC. It becomes useful the moment a real public IPv4 exists, and not
+one moment before.
 
 ### Architecture consequence
 
@@ -382,11 +405,11 @@ not charge.
 
 ### What would change this answer
 
-- **The router's WAN status page shows `46.34.228.61`.** Then the line is not
-  behind CGNAT, and a direct path exists. It is still worse — a residential
-  address is dynamic, so a Websupport-API updater becomes necessary, and
-  `wordpressApache-1` has to be stopped and disabled. It becomes a fallback
-  that exists, not the recommendation.
+- **The router's WAN status page shows the egress address itself.** Then the
+  line is not behind CGNAT, and a direct path exists. It is still worse — a
+  residential address is dynamic, so a Websupport-API updater becomes
+  necessary, and `wordpressApache-1` has to be stopped and disabled. It
+  becomes a fallback that exists, not the recommendation.
 - **A measured Cloudflare run shows `text/event-stream` passing through
   unbuffered**, event by event, over a custom hostname on a free plan, for the
   length of a party. Then option D's zero monthly cost becomes hard to argue

@@ -95,7 +95,7 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   [`docs/runbooks/public-ingress-options.md`](runbooks/public-ingress-options.md).
 
   The blocking finding, measured 2026-09-06 and 2026-09-07: the PC egresses as
-  `46.34.228.61` but two RFC1918 hops (`10.106.16.198`, `10.109.122.193`) sit
+  a carrier address but two RFC1918 hops (`10.106.16.198`, `10.109.122.193`) sit
   beyond the operator's own router, which is the signature of carrier-grade
   NAT — and confirmed on 2026-09-09 by O2's own RIPE registration, which names
   the egress block `O2SK-CGNAT-POOL-FBB`. The PC has no IPv6 egress at all.
