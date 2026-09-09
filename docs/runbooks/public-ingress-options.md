@@ -1,54 +1,112 @@
 # Public ingress options for kino.acronym.sk
 
-> ## Standing decision, 2026-09-08
+> ## Standing decision, 2026-09-09
 >
 > | | |
 > |---|---|
-> | **SELECTED** | Pinggy Pro custom-domain tunnel |
-> | **BLOCKER** | Privacy and data processing, not yet cleared. Do not purchase. |
-> | **FALLBACK** | Self-controlled relay VPS (`infra/relay/`) |
-> | **NOT SELECTED** | Cloudflare DNS migration; Cloudflare for SaaS with a second domain; ngrok; Tailscale Funnel; direct port forwarding |
+> | **SELECTED** | **None** — awaiting O2's answer on a public dynamic IPv4 |
+> | **CURRENT BLOCKER** | O2 CGNAT on the operator's fixed-broadband line, and no globally routable IPv6 |
+> | **PREFERRED IF AVAILABLE** | Direct IPv4 hosting from the operator's PC + Websupport DynDNS. **Conditional, not selected.** |
+> | **FALLBACK** | Self-controlled relay VPS (`infra/relay/`) — technically valid |
+> | **EVALUATED / NOT CURRENTLY SELECTED** | Pinggy Pro; Cloudflare Tunnel; Cloudflare for SaaS with a second domain; ngrok; Tailscale Funnel; direct forwarding while behind CGNAT |
 >
-> The chain is `kino.acronym.sk` → Websupport CNAME → Pinggy's persistent
-> custom-domain target → an outbound SSH tunnel from the event PC → the local
-> production Caddy. On-demand: started before an event, stopped once the queue
-> has drained and the backup is done.
+> ### The one open external question
 >
-> Selected because it needs no VPS and no second domain, leaves Websupport
-> authoritative, works behind the confirmed carrier NAT, and was proven
-> empirically rather than assumed — the live event stream passed through it and
-> a real phone on cellular passed acceptance. Pro carries the custom domain and
-> removes the visitor warning screen, and its token-bound target is stable
-> enough that Websupport is edited once. About USD 3 a month for one seat, with
-> no published transfer quota.
+> > **Can O2 remove THIS fixed-broadband line from CGNAT and assign a public
+> > dynamic IPv4 address?**
 >
-> **Purchase is blocked, and not on price.** KINO Roll carries photographs of
-> identifiable people. Pinggy can inspect HTTP tunnel traffic through its web
-> debugger, its terms take broad rights over submitted content, and no data
-> processing agreement or standard contractual clauses have been identified,
-> with processing under Indian jurisdiction. That is not something to treat as
-> cleared by silence. The next step is written clarification from Pinggy on
-> tunnel-payload handling and whether a DPA is available. See
-> [pinggy-plan-facts.md](pinggy-plan-facts.md).
+> Nothing else about ingress is undecided. That question needs an authoritative
+> answer from O2 support and cannot be settled from this repository. The
+> evidence that it is the only question left is in
+> [The network constraint, confirmed](#the-network-constraint-confirmed--2026-09-09):
+> O2's own RIPE registration names the egress block
+> `O2SK-CGNAT-POOL-FBB`.
 >
-> **The relay VPS is the fallback, not a dead end.** It is technically valid and
-> fully prepared, and it is the privacy and control answer precisely because
-> raw relay infrastructure carries no third-party HTTP tunnel provider that can
-> read application payloads. Use it if the privacy position cannot be made
-> acceptable, if Pinggy proves operationally unreliable, if its custom-domain
-> behaviour changes materially, or if a future deployment needs infrastructure
-> under our own control. Its procedure stays live in
+> ### If O2 says yes
+>
+> The preferred architecture becomes
+>
+> ```
+> kino.acronym.sk → Websupport DNS / DynDNS → public dynamic IPv4
+>                → router → Windows PC → KINO Roll
+> ```
+>
+> because everything stays on the operator's PC — photographs included — with
+> no tunnel provider, no VPS, no second domain, no DNS migration, no CDN and no
+> recurring ingress cost. Websupport stays authoritative, and DynDNS handles a
+> changing address.
+>
+> **This is not marked SELECTED, and must not be, until O2 confirms.** It is
+> the preferred path *if* a public dynamic IPv4 is available. Note also that
+> DynDNS is what solves an address that CHANGES; it is not, and can never be, a
+> way around CGNAT.
+>
+> ### If O2 says no
+>
+> Direct PC hosting is permanently closed on this connection, and the ingress
+> alternatives below may be reconsidered — **by operator decision.** This
+> document does not pre-select one for that case.
+>
+> ### Status of each option
+>
+> **Pinggy Pro — EVALUATED, TECHNICALLY VIABLE, NOT CURRENTLY SELECTED.** This
+> supersedes its selection of 2026-09-08. It is explicitly **not** technically
+> rejected, and the evidence stands: it traversed the carrier NAT, its SSE
+> streaming passed empirically at two pacings with a real phone on cellular,
+> its persistent custom-domain architecture was feasible, and the Pro pricing
+> and custom-domain research was completed (about USD 3 a month for one seat,
+> no published transfer quota). It is not selected because the operator asked
+> for a free or self-hosted path to be tried first, because the privacy and
+> data-processing position was never resolved — Pinggy can inspect HTTP tunnel
+> traffic through its web debugger, its terms take broad rights over submitted
+> content, no DPA or standard contractual clauses were identified, and
+> processing sits under Indian jurisdiction — and because no purchase was ever
+> authorised. Detail in [pinggy-plan-facts.md](pinggy-plan-facts.md).
+>
+> **Cloudflare Tunnel — EVALUATED, NOT SELECTED.** The Free-plan CDN terms are
+> an uncomfortable fit for a product whose guest traffic is overwhelmingly
+> photographs, while the specified architecture keeps photographs on the PC and
+> excludes the paid Cloudflare storage mitigation that the terms point at. Not
+> reopened here.
+>
+> **Relay VPS — FALLBACK, TECHNICALLY VALID.** Fully prepared, and the privacy
+> and control answer precisely because raw relay infrastructure carries no
+> third-party HTTP tunnel provider that can read application payloads. It
+> remains available if O2 refuses a public IPv4, if the operator later wants
+> maximum infrastructure control, or if third-party tunnel privacy and terms
+> stay unacceptable. **Not selected.** Its procedure stays live in
 > [production-relay-deploy.md](production-relay-deploy.md).
 >
-> **What this document is now.** It is the comparison that produced the
-> shortlist, kept as the record of why each option was ranked where it was. Its
-> 2026-09-07 recommendation of the relay VPS is **superseded** by the decision
-> above: Pinggy was not viable when this was written, because its streaming
-> behaviour was unknown, and measurement settled that. The relay's own
-> recommendation text below is left as written rather than rewritten, so the
-> reasoning can be audited; read it as the fallback's case, which still holds.
-> Cloudflare, ngrok, Tailscale and direct forwarding stay closed and are not to
-> be reopened without new evidence.
+> **Cloudflare for SaaS with a second domain, ngrok, Tailscale Funnel, and
+> direct forwarding while behind CGNAT — EVALUATED, NOT SELECTED.** The last of
+> those is not a preference but a measurement: while this line is behind CGNAT,
+> forwarding cannot work at all.
+>
+> ### A separate implementation issue, not an ingress blocker
+>
+> Ports 80 and 443 on the operator's PC are already held by Bitnami's Apache
+> (`httpd.exe`, service `wordpressApache-1`, start mode Automatic). If direct
+> public hosting ever becomes viable, KINO's Caddy cannot simply bind to host
+> 80/443 until that conflict is deliberately resolved — by moving or
+> reconfiguring Apache, by reverse-proxying KINO through the existing front
+> end, by different local ports with a router mapping, or by some other
+> arrangement chosen on purpose.
+>
+> **No solution is chosen here, and none should be implemented yet.** This is
+> subordinate to the CGNAT question: there is no reason to touch a working
+> WordPress installation until O2 confirms that a public IPv4 path exists at
+> all.
+>
+> ### What this document is now
+>
+> It is the comparison that produced the shortlist, kept as the record of why
+> each option was ranked where it was. Two earlier recommendations are
+> **superseded** and deliberately left in place below rather than rewritten, so
+> the reasoning can be audited: the 2026-09-07 recommendation of the relay VPS,
+> and the 2026-09-08 selection of Pinggy Pro. Read each as the case its author
+> made on the evidence available at the time. Pinggy was not viable on
+> 2026-09-07 because its streaming behaviour was unknown, and measurement
+> settled that; the relay's case still holds as the fallback's case.
 
 An assessment, not a deployment. Nothing in this document has been done. No DNS
 record was changed, no router setting was touched, no account was created, no

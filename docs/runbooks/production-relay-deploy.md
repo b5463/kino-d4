@@ -38,16 +38,18 @@ second, independent reason: the PC has no IPv6 address to put in one.
 So direct inbound hosting is not viable, and per the standing instruction we
 stop before any network change.
 >
-> **Status, 2026-09-08: this is the FALLBACK ingress, not the selected one.**
-> The selected path is a Pinggy Pro custom-domain tunnel, whose purchase is
-> blocked pending privacy and data-processing clarification — see
-> [public-ingress-options.md](public-ingress-options.md) for the standing
-> decision and [pinggy-plan-facts.md](pinggy-plan-facts.md) for the blocker.
+> **Status, 2026-09-09: this is the FALLBACK ingress, and nothing is selected.**
+> No ingress is selected: the decision waits on whether O2 can take the
+> operator's fixed-broadband line off CGNAT and assign a public dynamic IPv4.
+> See [public-ingress-options.md](public-ingress-options.md#standing-decision-2026-09-09)
+> for the standing decision, which lives there and only there. Pinggy Pro, the
+> path selected on 2026-09-08, is superseded and now evaluated-not-selected.
 > Nothing below is invalid or abandoned: this procedure is complete, tested as
 > far as it can be without a VPS, and it is the privacy and control answer,
 > because a relay we operate has no third-party tunnel provider reading
-> application payloads. Follow it if the Pinggy privacy position cannot be made
-> acceptable, if Pinggy proves unreliable or changes its custom-domain
+> application payloads. Follow it if O2 refuses a public IPv4, if the operator
+> wants maximum infrastructure control, if third-party tunnel privacy cannot be
+> made acceptable, if a provider proves unreliable or changes its custom-domain
 > behaviour, or if a deployment needs infrastructure under our own control.
 
 The relay is the path that works while

@@ -83,22 +83,27 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   qualification, because the URL does not answer when the PC is asleep and that
   is by design at this stage.
 
-  The public ingress mechanism is not part of this gate. It is decided as of
-  2026-09-08: **selected** is a Pinggy Pro custom-domain tunnel, **blocked**
-  pending privacy and data-processing clarification, with the self-controlled
-  relay VPS as the **fallback**. The standing decision and its conditions:
-  [`docs/runbooks/public-ingress-options.md`](runbooks/public-ingress-options.md);
-  the blocker:
-  [`docs/runbooks/pinggy-plan-facts.md`](runbooks/pinggy-plan-facts.md).
+  The public ingress mechanism is not part of this gate. As of 2026-09-09
+  **nothing is selected**: the decision waits on one external answer — whether
+  O2 can take the operator's fixed-broadband line off CGNAT and assign a public
+  dynamic IPv4. Direct hosting from the PC with Websupport DynDNS is the
+  preferred path *if* that answer is yes, and is explicitly not selected until
+  it is; the self-controlled relay VPS remains the **fallback**. Pinggy Pro,
+  selected on 2026-09-08, is superseded and now evaluated-not-selected, on
+  operator preference and unresolved privacy questions rather than on
+  technical grounds. The standing decision and its conditions:
+  [`docs/runbooks/public-ingress-options.md`](runbooks/public-ingress-options.md).
 
   The blocking finding, measured 2026-09-06 and 2026-09-07: the PC egresses as
   `46.34.228.61` but two RFC1918 hops (`10.106.16.198`, `10.109.122.193`) sit
   beyond the operator's own router, which is the signature of carrier-grade
-  NAT, and the PC has no IPv6 egress at all. Direct inbound hosting is
-  therefore not viable, ports 80 and 443 on the PC are held by a Bitnami
-  Apache service in any case, and DNS is not moving to Cloudflare. Both live
-  paths keep Websupport authoritative: the selected Pinggy tunnel needs one
-  `CNAME` on the `kino` label, and the fallback relay VPS needs one `A`.
+  NAT — and confirmed on 2026-09-09 by O2's own RIPE registration, which names
+  the egress block `O2SK-CGNAT-POOL-FBB`. The PC has no IPv6 egress at all.
+  Direct inbound hosting is therefore not viable on this connection, ports 80
+  and 443 on the PC are held by a Bitnami Apache service in any case, and DNS
+  is not moving to Cloudflare. Every candidate path keeps Websupport
+  authoritative: direct hosting would need one `A` on the `kino` label, the
+  fallback relay VPS one `A`, and a tunnel one `CNAME`.
 
   The whole procedure, the rollback, and a gate list that ends in a yes/no on
   whether `https://kino.acronym.sk` can be served:
