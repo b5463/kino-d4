@@ -2,11 +2,13 @@
 
 Status: **Phase 1 architecture baseline — NOT FOR FABRICATION**
 
-This directory is the KiCad 10 design workspace for the custom KINO D4
-mainboard. Phase 1 establishes the system partitioning, measured Guition JP1
-mapping, power budget, candidate power architecture, interface contracts and
-mechanical placement constraints. It deliberately does not pretend that the
-unresolved battery, load and enclosure measurements are complete.
+The KiCad 10 workspace for the custom KINO D4 mainboard.
+
+Phase 1 settles the questions that can be settled on paper: how the system
+divides into sheets, what the measured Guition JP1 header actually carries,
+what the loads add up to, which power architecture is the candidate, and where
+parts have to sit. The battery, load and enclosure measurements are still
+missing, and nothing here claims otherwise.
 
 ## Open in KiCad 10
 

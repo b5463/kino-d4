@@ -280,6 +280,26 @@ describe('the virtualiser estimate', () => {
     // Never zero or negative, whatever it is handed before the first measure.
     expect(rowEstimate(0, 0)).toBeGreaterThan(0);
   });
+
+  /**
+   * The estimate above is only true while the CSS lets the ratio decide the
+   * height. Tile images carry intrinsic `width`/`height` attributes so a tile
+   * reserves its box before the bytes land — and the height attribute also
+   * RESOLVES the used height, which makes a box with both dimensions resolved
+   * ignore `aspect-ratio` completely.
+   *
+   * That shipped once: every feed tile rendered as tall as its source image
+   * (720 px for a 960x720 wiggle) instead of 4:3, cropped the photograph
+   * through `object-fit: cover`, and put the row estimate back to being a lie.
+   * It was found by taking a screenshot, not by a test, so here is the test.
+   */
+  it('lets the aspect ratio decide the height of every ratio-boxed image', () => {
+    const ratioRules = CSS.split('\n').filter(
+      (line) => line.includes('aspect-ratio:') && line.includes('width: 100%'),
+    );
+    expect(ratioRules.length).toBeGreaterThan(0);
+    for (const rule of ratioRules) expect(rule).toContain('height: auto');
+  });
 });
 
 describe('copy', () => {

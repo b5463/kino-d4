@@ -36,11 +36,17 @@ A five-controller camera is miserable to service with an IDE, five serial logs, 
 
 The repository contains that workbench, the wire protocol it speaks, the Roll backend used after capture, shared document schemas, and a reference camera that can fail on command.
 
-> **Honest build status.** Studio, KDP, schemas, test fixtures, the Roll backend with workers, the public Roll client, and KINO Twin all work against the simulated device, and the whole software suite is covered by tests that run without hardware.
+> **Honest build status.** The software works against the simulated camera and is covered by tests that need no hardware. That is Studio, the protocol, the Roll backend and its workers, the guest client, and KINO Twin.
 >
-> There is a camera now. Firmware 0.4.55 runs on a physical D4: it captures on all four cameras, writes originals to the card, draws its own gallery and shooting screens, and since 0.4.4 uploads to a Roll over Wi-Fi from the body itself. The body is released too — design 0.1.4, a printable PETG slab whose dimensions are measured rather than estimated.
+> There is a real camera now. Firmware 0.4.55 captures on all four cameras and writes the originals to the card. It draws its own screens. Since 0.4.4 it has uploaded to a Roll over Wi-Fi from the body itself. The body is released too: design 0.1.4, a printable PETG slab, measured rather than estimated.
 >
-> What is not finished, stated rather than implied: the camera has **no flash** ([`ECN-0003`](hardware/changes/ECN-0003-shutter-on-jp1-21.md) took its enable pin for the shutter, and a replacement module is not chosen); inter-camera **exposure skew is still unmeasured**, which is the measurement the wiggle's quality actually rests on; and the Roll is reached on an event day through a tunnel rather than a permanently hosted origin ([`docs/runbooks/event-day.md`](docs/runbooks/event-day.md)). Anything gated on a measurement says so where it is claimed, and returns `null` rather than a guess.
+> Three things are not finished, and it is worth naming them here rather than leaving a reader to find out.
+>
+> The camera has **no flash**. [`ECN-0003`](hardware/changes/ECN-0003-shutter-on-jp1-21.md) dropped the assembly and gave its enable pin to the shutter. A replacement module has not been chosen.
+>
+> **Exposure skew between the four cameras has never been measured.** That is the number the wiggle's quality actually rests on. Firmware reports the two skews it can observe and returns `null` for this one, with a reason.
+>
+> **There is no public front door yet.** The operator's line sits behind O2 carrier NAT, so `kino.acronym.sk` cannot point at the PC, and no ingress has been selected — see [the standing decision](docs/runbooks/public-ingress-options.md#standing-decision-2026-09-09). A party still works: the camera writes to its card first and uploads when it can.
 
 ## Try Studio
 
@@ -137,6 +143,26 @@ The boards are ordinary, replaceable parts. The exact power limits, wire gauges,
 Two printable bodies are released, and they are alternatives rather than versions of each other. [`KINO_FIELD_BODY`](hardware/cad/KINO_FIELD_BODY/README.md) is the one above: PETG on a desktop printer, support-free, and its release is gated by 82 automated checks over the actual meshes — that every part prints flat, and that both print jobs fit a 250 × 210 bed. [`KINO_RESIN_BODY`](hardware/cad/KINO_RESIN_BODY/README.md) is printed entirely through JLCPCB in three parts, with an MJF nylon skeleton carrying everything and a clear SLA shell that touches nothing electrical, so it can be reprinted in another colour without re-qualifying an optical dimension.
 
 The camera knows when its cover is shut without a switch. The Hall sensor the shell used to be drilled for had to be fitted before the face shell was glued on — the one irreversible step in the assembly — so it is gone. Closed, all four lenses face an opaque plate 0.2 mm away; firmware reads a mean luminance off the frames the viewfinder already decodes and decides from all four together. It ships observing only: the two thresholds have to be read at the bench, because the sensors run auto-exposure and a covered one reports amplified noise rather than zero.
+
+### The screen on the camera
+
+The camera runs its own interface on the 4.3-inch panel. No phone, no laptop, nothing to pair. Six tiles: shoot, pick a look, browse the card, open a Roll, settings, power.
+
+![The D4 home screen, rendered by the firmware](docs/assets/product/firmware-menu-render.png)
+
+<p align="center"><sub>The home screen at 800 × 480. Drawn by the firmware's own code through <code>firmware/p4/host_preview</code> — not a photograph of the panel.</sub></p>
+
+ROLL is the screen that matters at a party. It shows the QR a guest scans, the address for anyone who would rather type it, one word for the connection, and a count that comes from the card rather than from the server.
+
+![The ROLL screen with a QR code and upload state](docs/assets/product/firmware-roll-active-render.png)
+
+<p align="center"><sub>Also a firmware render. The roll name and code are invented for the render.</sub></p>
+
+Both pictures come out of a program that compiles `ui.c` and draws the screens on a workstation. It renders 59 of them, including every failure state — a card that will not mount, a server that has stopped answering, a capture that saved three frames out of four. Looking at the interface used to mean a build, a flash and a serial capture; now it is one command:
+
+```bash
+make -C firmware/p4/host_preview && firmware/p4/host_preview/preview out/
+```
 
 ## One cable, five controllers
 
