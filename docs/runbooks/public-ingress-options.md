@@ -86,6 +86,132 @@ stays on Websupport (`ns1`, `ns2`, `ns3.websupport.sk`, confirmed by
 `37.9.175.156` and `2a00:4b40:aaaa:2004::7`, both TTL 600 — Websupport
 parking.
 
+## The network constraint, confirmed — 2026-09-09
+
+The paragraph above was written from a traceroute and was right. This section
+is the proof, gathered because "CGNAT confirmed" had been asserted rather than
+evidenced, and an architecture was being chosen on top of it.
+
+**Verdict: direct PC hosting is blocked by O2 CGNAT.**
+
+### Evidence
+
+| Observation | Value |
+|---|---|
+| ISP | O2 Slovakia, AS28952 |
+| Connection | fixed broadband — O2's own registration says `FBB`, so this is not read off the ASN |
+| Public IPv4 seen from outside | `46.34.228.61`, agreed by ipify, icanhazip and ifconfig.co |
+| Local gateway | `10.20.99.1` (Ubiquiti, nginx on 80/443/8080) |
+| Upstream provider hop | `10.106.16.198` — RFC1918 |
+| Further provider hop | `10.109.122.193` — RFC1918 |
+| First public routed hop | `90.176.30.41` (O2) |
+| Router holds the public IPv4 | **No** |
+| Global IPv6 | none on the host; no IPv6 default route and no delegated prefix |
+
+The traceroute was run twice, to `1.1.1.1` and to `8.8.8.8`, and gave the same
+five hops. **Three private hops stand between this PC and the first public
+address.** Even with full administrative control of the Ubiquiti gateway, a
+port-forward there terminates inside `10.106/10.109` space. No device the
+operator can reach holds `46.34.228.61`.
+
+### The decisive record
+
+O2's own RIPE registration for the address this line egresses as:
+
+```
+netname:  O2SK-CGNAT-POOL-FBB
+status:   ASSIGNED PA
+org:      O2.SK
+```
+
+The ISP names the block a **CGNAT pool for fixed broadband**. That is
+documentation from the party that operates it, not an inference from hop
+shapes, and it is why this section says *confirmed* rather than *consistent
+with*.
+
+### Inbound probe
+
+A temporary HTTP listener was bound to `0.0.0.0:58080`, verified answering on
+loopback and on the LAN address, and then addressed from outside:
+
+- four external nodes (AT, TR, UA, US) — **all "Connection timed out"**
+- the listener logged **no inbound connection at all**, only the two local hits
+- external ICMP to the same address from three further nodes (FR, IR, SI) —
+  all timed out
+
+The listener was stopped, the port released and the script deleted.
+
+**Caveat, stated because it matters:** Windows Firewall blocks inbound on all
+three profiles and had no rule admitting that port, and the session was not
+elevated, so no temporary allow rule could be added. **The probe is therefore
+supporting evidence, not proof.** It cannot distinguish a packet dropped by the
+carrier from one dropped at the host.
+
+It does not need to. The firewall explains neither the three private hops nor
+`O2SK-CGNAT-POOL-FBB`, and those two are what carry the verdict.
+
+### What O2 publishes
+
+**Public static IPv4 — NOT AVAILABLE.** From O2's own product page, verbatim:
+
+> "Služba 'Verejná statická IP adresa' nie je dostupná pre O2 Internet optikou
+> ani O2 Internet vzduchom."
+
+*(The 'Public static IP address' service is not available for O2 Internet over
+fibre, nor for O2 Internet wireless.)*
+
+**Public dynamic IPv4 / CGNAT opt-out — UNKNOWN.** O2 publishes nothing either
+way. Recorded as unknown rather than unavailable: absence from a marketing page
+is not a refusal, and business tariffs may differ. Only O2 can answer it.
+
+### Websupport, and what DynDNS is not
+
+- An explicit `A kino.acronym.sk` record **is possible**, and would override the
+  wildcard without touching the root, `www`, mail, MX, SPF, DKIM or the
+  wildcard itself.
+- `kino.acronym.sk` has **no record of its own today** — it resolves only
+  because `*.acronym.sk` catches it. See
+  [`acronym-sk-dns-premigration.md`](acronym-sk-dns-premigration.md).
+- Websupport runs an official **DynDNS2** service, so ddclient and most routers
+  can drive it. Credentials come from the panel under *Zabezpečenie a
+  prihlásenie* → *API autentifikácia*, generated with the DynDNS option.
+
+**DynDNS is not a solution to CGNAT, and must never be written up as one.** It
+solves exactly one problem: a public address that *changes*. It cannot conjure
+a public address that does not exist, and it cannot create an inbound path.
+Behind carrier NAT a DynDNS updater would faithfully publish `46.34.228.61` —
+an address shared with other O2 subscribers, on which nothing routes to this
+PC. It becomes useful the moment a real public IPv4 exists, and not one moment
+before.
+
+### Architecture consequence
+
+The ordinary shape
+
+```
+kino.acronym.sk → public IPv4 → router port forward → Windows PC
+```
+
+**cannot work on this connection.** Not because of a setting, a firewall rule
+or a DNS record, but because the public address belongs to the carrier and is
+shared. There is nothing to forward from and no interface to configure.
+
+A second, independent obstacle would remain even on a public line, and is
+recorded so it is not rediscovered: ports 80 and 443 on this PC are already
+held by Bitnami's Apache (`httpd.exe`, service `wordpressApache-1`, start mode
+Automatic). That one is merely a conflict to resolve; CGNAT is not.
+
+### The one open external question
+
+> **Can O2 remove this fixed-broadband line from CGNAT and assign a public
+> dynamic IPv4?**
+
+That is the only unresolved question in this section, and it cannot be answered
+from here — it needs O2 directly. Everything else above is settled.
+
+Nothing in this section selects, re-opens or rules out any ingress option. It
+records what the connection is.
+
 ## What every option is scored against
 
 | Requirement | What passing means |

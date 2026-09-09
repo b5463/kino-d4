@@ -219,17 +219,28 @@ measured, at two pacings, and it streams. The relay remains the answer whenever
 privacy or control decides the question, since a relay we operate carries no
 third party that can read the payload.
 
-The bench PC egresses as
-`46.34.228.61` (O2 Slovakia), but the route beyond the customer gateway runs
-through carrier-side private addresses (`10.106.16.198`, `10.109.122.193`),
-which is the signature of carrier NAT. Confirm on the router's status page:
+**Carrier NAT: settled, 2026-09-09.** This branch used to end "confirm on the
+router's status page" and offered a direct-path option if the WAN address
+turned out to be public. That question is closed, and the direct path is not
+available.
 
-- WAN address equals `46.34.228.61`: not behind CGNAT. Direct path possible:
-  Websupport `A kino.acronym.sk -> 46.34.228.61`, router TCP 80 and 443 to
-  this PC, production compose as-is (Caddy does ACME). A residential address
-  is dynamic; a Websupport-API updater would then be needed on the PC.
-- WAN address is `10.x` or `100.64-127.x`: CGNAT. Inbound 80/443 can never
-  arrive, and no DNS or router change helps. Use the relay below.
+The bench PC egresses as `46.34.228.61` (O2 Slovakia, AS28952). Its gateway is
+`10.20.99.1`, and the route beyond it runs through two carrier-side private
+addresses (`10.106.16.198`, `10.109.122.193`) before the first public hop
+(`90.176.30.41`). O2's own RIPE registration for the egress address reads
+`netname: O2SK-CGNAT-POOL-FBB` — the ISP naming it a CGNAT pool for fixed
+broadband. The host has no global IPv6 and no delegated prefix, and an inbound
+probe from four countries reached nothing. O2 publishes that a public static
+IPv4 is not available for these products.
+
+So: **inbound 80/443 can never arrive, and no DNS or router change helps.** Do
+not spend time on port forwarding, UPnP, or a dynamic-DNS updater — DynDNS
+tracks an address that changes, and cannot create one that does not exist.
+Every viable path is an outbound connection from the PC.
+
+The evidence, the probe's own caveat, and the single remaining question for O2
+are in
+[`docs/runbooks/public-ingress-options.md`](../docs/runbooks/public-ingress-options.md#the-network-constraint-confirmed--2026-09-09).
 
 **The fallback: relay VPS** (`infra/relay/`). A small VPS with a static IPv4
 runs Caddy (ACME for `kino.acronym.sk`) and an frp server; the PC runs frpc,
