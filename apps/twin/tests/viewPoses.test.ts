@@ -50,16 +50,22 @@ describe('viewPose — axis views', () => {
 });
 
 describe('viewPose — lens', () => {
-  it('sits at the cam2 lens center — X = -11 at 22 mm pitch', () => {
-    const pose = viewPose('lens', BBOX, 22);
-    expect(pose.position[0]).toBe(-11);
-    expect(pose.position[1]).toBe(10);
-    expect(pose.position[2]).toBe(18);
+  it('sits at the cam2 lens center handed in from the profile — X = +11 at 22 mm pitch', () => {
+    const pose = viewPose('lens', BBOX, 22, undefined, [11, -2, 26.35]);
+    expect(pose.position[0]).toBe(11);
+    expect(pose.position[1]).toBe(-2);
+    expect(pose.position[2]).toBe(26.35);
   });
 
-  it('X = -10 at 20 mm pitch — reads pitch from the argument, not a hard-coded value', () => {
-    const pose = viewPose('lens', BBOX, 20);
-    expect(pose.position[0]).toBe(-10);
+  it('X = +10 at 20 mm pitch — reads pitch from the argument, not a hard-coded value', () => {
+    const pose = viewPose('lens', BBOX, 20, undefined, [10, -2, 26.35]);
+    expect(pose.position[0]).toBe(10);
+  });
+
+  it('without a lens sits on the axis at the bbox front face rather than inventing a height', () => {
+    const pose = viewPose('lens', BBOX, 22);
+    expect(pose.position[1]).toBe(0);
+    expect(pose.position[2]).toBe(BBOX.max[2]);
   });
 
   it('looks straight down +Z (target ahead of the lens on Z only)', () => {

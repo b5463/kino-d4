@@ -10,12 +10,19 @@ export interface InstanceTransform {
 
 /**
  * X position of one camera-bar lens center (§5). At the 22 mm default pitch
- * the row sits at -33/-11/+11/+33 — camIndex 1..4 maps onto that evenly
- * spaced, symmetric row (2.5 is the row's own midpoint, between indices 2
- * and 3, so the whole bar stays centered on X=0 at any pitch).
+ * the row sits at +33/+11/-11/-33 for cameras 1..4 — an evenly spaced,
+ * symmetric row (2.5 is the row's own midpoint, between indices 2 and 3, so
+ * the whole bar stays centered on X=0 at any pitch).
+ *
+ * Camera 1 is at +X. The Twin looks at the camera with +Z toward the lenses,
+ * and the field body's CAD puts camera 1 at low body-X with the shutter at
+ * high body-X - the photographer's right hand - so camera 1 is on the
+ * photographer's LEFT, which from the front is +X. The profile's baked
+ * camera positions (scripts/bake-twin-body.mjs) say the same thing; this
+ * formula only re-pitches them.
  */
 export function camBarX(camIndex: 1 | 2 | 3 | 4, pitchMm: number): number {
-  return (camIndex - 2.5) * pitchMm;
+  return (2.5 - camIndex) * pitchMm;
 }
 
 /**

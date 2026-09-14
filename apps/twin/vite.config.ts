@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
@@ -10,6 +11,11 @@ export default defineConfig({
     // Fixed port so docs and QR base URLs stay true across restarts:
     // roll-web 5173, twin 5174, studio 5175 (issue #86).
     port: 5174,
+    // The body's shells are imported straight from the released CAD folder,
+    // two levels above this app (scene/fieldBodyMeshes.ts). The dev server
+    // already reaches the workspace root; Vitest's server defaults to the app
+    // root alone and would deny them, so say the repository root here.
+    fs: { allow: [fileURLToPath(new URL('../..', import.meta.url))] },
     // Roll development bridge (issue #75): same-origin /api reaches the Roll
     // API. ws:false keeps SSE passthrough intact — same setup as roll-web.
     proxy: {

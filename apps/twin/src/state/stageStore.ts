@@ -106,7 +106,16 @@ interface StageState {
    * the 69–75° target band, and every render it produces is SIMULATED.
    */
   lensFovDeg: LensFovDeg;
+  /**
+   * The external light on the body's top stud (ECN-0003 dropped the built-in
+   * flash). OFF: it lights nothing. FLASH: it fires for a capture the device
+   * asks a flash for, as the built-in one did. CONSTANT: on for every
+   * preview and capture - a video light, which is what is fitted.
+   */
+  topLight: TopLightMode;
 }
+
+export type TopLightMode = 'off' | 'flash' | 'constant';
 
 let subjectCounter = 0;
 
@@ -122,6 +131,7 @@ function initialState(): StageState {
     lighting: { preset: 'indoor', ...LIGHTING_PRESETS.indoor },
     room: false,
     lensFovDeg: 72,
+    topLight: 'flash',
   };
 }
 
@@ -167,6 +177,10 @@ export function setLightingValue(patch: Partial<LightingValues>): void {
 
 export function setRoom(room: boolean): void {
   useStageStore.setState({ room });
+}
+
+export function setTopLight(mode: TopLightMode): void {
+  useStageStore.setState({ topLight: mode });
 }
 
 export function setLensFovDeg(deg: LensFovDeg): void {

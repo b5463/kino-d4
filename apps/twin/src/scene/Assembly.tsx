@@ -4,10 +4,8 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { resolveDimensions } from '@kino/hardware-profiles';
 import type { ComponentDef, InstanceDef, MeasuredOverride, ResolvedDims } from '@kino/hardware-profiles';
 import {
-  ENCLOSURE_PANEL_THICKNESS_MM,
   applyVisualMode,
   attachComponentMesh,
-  buildAcrylicPanel,
   buildComponentObject,
   fallbackBoxMm,
   hasComponentMesh,
@@ -15,13 +13,13 @@ import {
 import type { VisualMode } from '@kino/three-assets';
 import { useSceneStore, setHovered } from '../state/sceneStore';
 import type { ViewMode } from '../state/sceneStore';
+import { registerFieldBodyMeshes } from './fieldBodyMeshes';
 import { instanceTransforms, type InstanceTransform } from './transforms';
 
-// §7 construction note on the enclosure-shell component: "2-3mm clear acrylic
-// panels". The profile only carries the full 126x80x36 envelope as one
-// dimension claim; the illustrative panel thickness lives in three-assets
-// (shared with the skeleton frame's inset so the two can never drift apart).
-const PANEL_THICKNESS_MM = ENCLOSURE_PANEL_THICKNESS_MM;
+// The field body's six shells are Tier A meshes straight from the released
+// CAD (hardware/cad/KINO_FIELD_BODY/twin); every other part is its profile
+// proxy until a converted mesh is registered for it.
+registerFieldBodyMeshes();
 
 function degToRadTuple([x, y, z]: [number, number, number]): [number, number, number] {
   return [THREE.MathUtils.degToRad(x), THREE.MathUtils.degToRad(y), THREE.MathUtils.degToRad(z)];
@@ -65,19 +63,12 @@ function InstanceNode({ instance, component, override, transform, visualMode }: 
   // life of the static D4_V1 profile.
   const resolved = useMemo<ResolvedDims>(() => resolveDimensions(component, override), [component, override]);
 
-  // The enclosure is two components (audit #63): the chassis skeleton frame
-  // (built by buildComponentObject, as any other component) and the
-  // front/rear acrylic shell panels, thin plates built separately by
-  // buildAcrylicPanel — never rebuilt on every explode/pitch tick, only
-  // when overrides touch this component (§ three-assets builders).
-  const object = useMemo(() => {
-    const isAcrylicPanel = component.id === 'enclosure-shell';
-    if (isAcrylicPanel) {
-      const [w, h] = fallbackBoxMm(resolved.sizeMm);
-      return buildAcrylicPanel([w, h, PANEL_THICKNESS_MM], instance.id);
-    }
-    return buildComponentObject(component, { resolved, instanceId: instance.id });
-  }, [component, instance.id, resolved]);
+  // Built once per component/override, never on an explode/pitch tick; a
+  // registered Tier A mesh (the body's shells) replaces the proxy body below.
+  const object = useMemo(
+    () => buildComponentObject(component, { resolved, instanceId: instance.id, lensOffsetMm: instance.opticalCenterOffsetMm }),
+    [component, instance.id, instance.opticalCenterOffsetMm, resolved],
+  );
 
   // The group above is an R3F <primitive>: R3F attaches and detaches it but
   // never frees what the builder allocated. A measured override (or an

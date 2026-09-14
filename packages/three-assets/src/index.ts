@@ -2,10 +2,8 @@ export { twinMaterials, XRAY_OPACITY, KEEPOUT_OPACITY, type TwinMaterials, type 
 
 export {
   buildComponentObject,
-  buildAcrylicPanel,
   applyVisualMode,
   fallbackBoxMm,
-  ENCLOSURE_PANEL_THICKNESS_MM,
   type BuildOpts,
   type VisualMode,
 } from './builders';
@@ -18,4 +16,5 @@ export {
   hasComponentMesh,
   registerComponentMesh,
   type MeshProvider,
+  stlProvider,
 } from './tierA';

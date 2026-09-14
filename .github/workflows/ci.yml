@@ -12,6 +12,7 @@ jobs:
       - run: npm ci
       - run: npm run version:check
       - run: npm run license:check
+      - run: npm run twin:body:check
       - run: npm run lint
       # service-free suites; add new workspaces here
       - run: npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures -w @kino/hardware-profiles -w @kino/simulator-engine -w @kino/three-assets -w @kino/twin -w @kino/design-system -w @kino/media -w @kino/roll-web

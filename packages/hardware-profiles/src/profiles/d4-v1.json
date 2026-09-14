@@ -4,9 +4,19 @@
   "profile": "d4-v1",
   "name": "KINO D4 V1",
   "units": "mm",
-  "body": { "sizeMm": [126, 80, 36], "confidence": "PROVISIONAL" },
+  "body": {
+    "sizeMm": [
+      137.5,
+      92.2,
+      75.3
+    ],
+    "confidence": "OFFICIAL_CAD"
+  },
   "cameraPitchMm": 22,
-  "cameraPitchRangeMm": [20, 24],
+  "cameraPitchRangeMm": [
+    20,
+    24
+  ],
   "components": [
     {
       "id": "main-display",
@@ -17,13 +27,21 @@
       "sources": [
         {
           "kind": "OFFICIAL_SPEC",
-          "sizeMm": [117.01, 69.41, null],
+          "sizeMm": [
+            117.01,
+            69.41,
+            null
+          ],
           "ref": "https://www.guition.com/esp32p4-display-module/esp32p4-display",
           "note": "manufacturer module envelope"
         },
         {
           "kind": "OFFICIAL_SPEC",
-          "sizeMm": [114.4, 66.8, null],
+          "sizeMm": [
+            114.4,
+            66.8,
+            null
+          ],
           "ref": "public manual (see SOURCES.md)",
           "note": "conflicting public-manual board envelope; MEASURE TO LOCK (§6)"
         }
@@ -32,24 +50,153 @@
         "display": "4.3in IPS capacitive",
         "header2x13": {
           "note": "JP1, 2x13, 2.54 mm, top-to-bottom. Odd pins = left column, even pins = right column; row i carries pins 2i+1 (left) and 2i+2 (right). Twelve P4 GPIOs are exposed: 52, 51, 50, 49, 35, 34, 32, 28 left and 33, 31, 30, 29 right. MEASURED on the board, not transcribed: JP1 13 answered as GPIO49 and JP1 7 as GPIO52 under a per-pin scan (ECN-0002). GPIO35 (pin 15) is spare and is the serial-bootloader strap. I2C_* and C6_* pins are reserved.",
-          "left": ["3V3", "3V3", "GND", "GPIO52", "GPIO51", "GPIO50", "GPIO49", "GPIO35", "GPIO34", "GPIO32", "GPIO28", "I2C_SDA", "I2C_SCL"],
-          "right": ["5V", "5V", "GND", "GPIO33", "GPIO31", "GPIO30", "GPIO29", "GND", "ESP_3V3", "C6_U0RXD", "C6_U0TXD", "C6_IO9", "C6_CHIP_PU"]
+          "left": [
+            "3V3",
+            "3V3",
+            "GND",
+            "GPIO52",
+            "GPIO51",
+            "GPIO50",
+            "GPIO49",
+            "GPIO35",
+            "GPIO34",
+            "GPIO32",
+            "GPIO28",
+            "I2C_SDA",
+            "I2C_SCL"
+          ],
+          "right": [
+            "5V",
+            "5V",
+            "GND",
+            "GPIO33",
+            "GPIO31",
+            "GPIO30",
+            "GPIO29",
+            "GND",
+            "ESP_3V3",
+            "C6_U0RXD",
+            "C6_U0TXD",
+            "C6_IO9",
+            "C6_CHIP_PU"
+          ]
         },
         "resolution": "480x800",
-        "mcu": ["ESP32-P4", "ESP32-C6"],
+        "mcu": [
+          "ESP32-P4",
+          "ESP32-C6"
+        ],
         "psramMB": 32,
         "flashMB": 16,
         "voltageV": 5,
         "publicApproxCurrentA": 0.32
       },
       "keepouts": [
-        { "id": "usb-c-1", "label": "USB-C port 1", "sizeMm": [9, 8, 4], "offsetMm": [-40, -30, 4.5], "kind": "connector" },
-        { "id": "usb-c-2", "label": "USB-C port 2", "sizeMm": [9, 8, 4], "offsetMm": [-25, -30, 4.5], "kind": "connector" },
-        { "id": "tf-slot", "label": "TF/microSD slot", "sizeMm": [15, 2, 3], "offsetMm": [40, -30, 4], "kind": "insertion" },
-        { "id": "speaker-connector", "label": "Speaker connector", "sizeMm": [6, 4, 3], "offsetMm": [50, 20, 4], "kind": "connector" },
-        { "id": "battery-connector", "label": "Battery connector", "sizeMm": [8, 4, 4], "offsetMm": [50, 10, 4.5], "kind": "connector" },
-        { "id": "camera-connector", "label": "Camera connector", "sizeMm": [10, 4, 4], "offsetMm": [50, 0, 4.5], "kind": "connector" },
-        { "id": "header-2x13", "label": "2x13 header", "sizeMm": [33, 3, 9], "offsetMm": [0, -30, 7], "kind": "connector" }
+        {
+          "id": "usb-c-1",
+          "label": "USB-C port 1",
+          "sizeMm": [
+            9,
+            8,
+            4
+          ],
+          "offsetMm": [
+            -40,
+            -30,
+            4.5
+          ],
+          "kind": "connector"
+        },
+        {
+          "id": "usb-c-2",
+          "label": "USB-C port 2",
+          "sizeMm": [
+            9,
+            8,
+            4
+          ],
+          "offsetMm": [
+            -25,
+            -30,
+            4.5
+          ],
+          "kind": "connector"
+        },
+        {
+          "id": "tf-slot",
+          "label": "TF/microSD slot",
+          "sizeMm": [
+            15,
+            2,
+            3
+          ],
+          "offsetMm": [
+            40,
+            -30,
+            4
+          ],
+          "kind": "insertion"
+        },
+        {
+          "id": "speaker-connector",
+          "label": "Speaker connector",
+          "sizeMm": [
+            6,
+            4,
+            3
+          ],
+          "offsetMm": [
+            50,
+            20,
+            4
+          ],
+          "kind": "connector"
+        },
+        {
+          "id": "battery-connector",
+          "label": "Battery connector",
+          "sizeMm": [
+            8,
+            4,
+            4
+          ],
+          "offsetMm": [
+            50,
+            10,
+            4.5
+          ],
+          "kind": "connector"
+        },
+        {
+          "id": "camera-connector",
+          "label": "Camera connector",
+          "sizeMm": [
+            10,
+            4,
+            4
+          ],
+          "offsetMm": [
+            50,
+            0,
+            4.5
+          ],
+          "kind": "connector"
+        },
+        {
+          "id": "header-2x13",
+          "label": "2x13 header",
+          "sizeMm": [
+            33,
+            3,
+            9
+          ],
+          "offsetMm": [
+            0,
+            -30,
+            7
+          ],
+          "kind": "connector"
+        }
       ]
     },
     {
@@ -60,8 +207,13 @@
       "sources": [
         {
           "kind": "OFFICIAL_SPEC",
-          "sizeMm": [21.0, 17.8, 15.0],
-          "ref": "https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/"
+          "sizeMm": [
+            17.8,
+            21,
+            15
+          ],
+          "ref": "https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/",
+          "note": "Seeed module envelope 21 x 17.8 x 15; portrait in the field body's seat (17.8 across the bar, 21 tall), lens 6.95 mm below the board centre"
         }
       ],
       "specs": {
@@ -70,7 +222,10 @@
         "psramMB": 8,
         "flashMB": 8,
         "sensor": "OV3660",
-        "resolution": [2048, 1536],
+        "resolution": [
+          2048,
+          1536
+        ],
         "horizontalFovDeg": null,
         "verticalFovDeg": null,
         "fovConfidence": "MEASURE_REQUIRED",
@@ -95,26 +250,49 @@
           "note": "Capability-driven sensor identity; behavior must key off the reported sensor, never a global assumption",
           "OV3660": {
             "status": "current prototype sensor",
-            "resolution": [2048, 1536],
+            "resolution": [
+              2048,
+              1536
+            ],
             "interface": "DVP",
             "autofocus": false,
             "confidence": "OFFICIAL_SPEC"
           },
           "OV5640_AF": {
             "status": "planned upgrade, PROVISIONAL until modules are on the bench",
-            "resolution": [2592, 1944],
+            "resolution": [
+              2592,
+              1944
+            ],
             "interface": "DVP 24-pin",
             "moduleFamily": "MJY5OAF-F3M-V1 compatible",
             "autofocus": true,
             "vcm": true,
             "afvddV": 2.8,
-            "lensFovTargetDeg": [69, 72],
+            "lensFovTargetDeg": [
+              69,
+              72
+            ],
             "confidence": "PROVISIONAL"
           }
         }
       },
       "keepouts": [
-        { "id": "service-usb", "label": "Service USB-C access", "sizeMm": [10, 8, 10], "offsetMm": [0, 0, -8], "kind": "service" }
+        {
+          "id": "service-usb",
+          "label": "Service USB-C access",
+          "sizeMm": [
+            10,
+            8,
+            10
+          ],
+          "offsetMm": [
+            0,
+            0,
+            -8
+          ],
+          "kind": "service"
+        }
       ]
     },
     {
@@ -125,7 +303,11 @@
       "sources": [
         {
           "kind": "PROVISIONAL",
-          "sizeMm": [73.0, 55.0, 5.0],
+          "sizeMm": [
+            73,
+            55,
+            5
+          ],
           "note": "PROVISIONAL_SIZE_CODE_MEASURE_ACTUAL — nominal size-code proxy, actual pouch folds/lead exit must be measured"
         }
       ],
@@ -137,9 +319,26 @@
         "wire": "24AWG power + 26-28AWG NTC",
         "connector": "PH2.0-3P"
       },
-      "massG": { "value": 55, "tag": "ESTIMATED" },
+      "massG": {
+        "value": 55,
+        "tag": "ESTIMATED"
+      },
       "keepouts": [
-        { "id": "cushion-clearance", "label": "Foam cushion / pouch expansion allowance", "sizeMm": [75, 57, 7], "offsetMm": [0, 0, 0], "kind": "clearance" }
+        {
+          "id": "cushion-clearance",
+          "label": "Foam cushion / pouch expansion allowance",
+          "sizeMm": [
+            75,
+            57,
+            7
+          ],
+          "offsetMm": [
+            0,
+            0,
+            0
+          ],
+          "kind": "clearance"
+        }
       ]
     },
     {
@@ -147,15 +346,37 @@
       "name": "F3A fast axial fuse",
       "qty": 1,
       "meshTier": "C",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [null, null, null] }],
-      "specs": { "ratingA": 3.0, "type": "fast" }
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ]
+        }
+      ],
+      "specs": {
+        "ratingA": 3,
+        "type": "fast"
+      }
     },
     {
       "id": "bms",
       "name": "1S 10A protection board",
       "qty": 1,
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ],
+          "note": "MEASURE_REQUIRED"
+        }
+      ]
     },
     {
       "id": "power-module",
@@ -165,30 +386,86 @@
       "sources": [
         {
           "kind": "SELLER_SPEC",
-          "sizeMm": [28.0, 28.0, 11.36],
+          "sizeMm": [
+            28,
+            28,
+            11.36
+          ],
           "ref": "https://files.waveshare.com/wiki/common/SW6106%20Datasheet.pdf",
           "note": "SELLER_SPEC_PROVISIONAL — exact purchased carrier; SW6106 carrier PCBs vary by supplier, MEASURE_REQUIRED before lock (§7.7)"
         }
       ],
-      "specs": { "controller": "SW6106", "powerClassW": 18, "systemRailV": 5 }
+      "specs": {
+        "controller": "SW6106",
+        "powerClassW": 18,
+        "systemRailV": 5
+      }
     },
     {
       "id": "camera-switch",
       "name": "AO4407/AO4407A high-side switch assembly",
       "qty": 4,
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "PCB_LAYOUT_DEPENDENT" }],
-      "specs": { "parts": ["AO4407/AO4407A", "SOP8-DIP8 adapter", "2N3904", "4.7k", "100k", "100k", "1N5819"] }
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ],
+          "note": "PCB_LAYOUT_DEPENDENT"
+        }
+      ],
+      "specs": {
+        "parts": [
+          "AO4407/AO4407A",
+          "SOP8-DIP8 adapter",
+          "2N3904",
+          "4.7k",
+          "100k",
+          "100k",
+          "1N5819"
+        ]
+      }
     },
     {
       "id": "speaker",
       "name": "8ohm 2W speaker",
       "qty": 1,
       "meshTier": "B",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [35.0, 25.0, null], "note": "SELLER_SPEC_MEASURE_THICKNESS — thickness unmeasured" }],
-      "specs": { "impedanceOhm": 8, "powerW": 2, "connector": "1.25mm 2-pin" },
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            35,
+            25,
+            null
+          ],
+          "note": "SELLER_SPEC_MEASURE_THICKNESS — thickness unmeasured"
+        }
+      ],
+      "specs": {
+        "impedanceOhm": 8,
+        "powerW": 2,
+        "connector": "1.25mm 2-pin"
+      },
       "keepouts": [
-        { "id": "speaker-opening", "label": "Acoustic opening", "sizeMm": [30, 20, 2], "offsetMm": [0, 0, 1], "kind": "clearance" }
+        {
+          "id": "speaker-opening",
+          "label": "Acoustic opening",
+          "sizeMm": [
+            30,
+            20,
+            2
+          ],
+          "offsetMm": [
+            0,
+            0,
+            1
+          ],
+          "kind": "clearance"
+        }
       ]
     },
     {
@@ -196,10 +473,36 @@
       "name": "SanDisk Ultra microSD",
       "qty": 1,
       "meshTier": "B",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [15.0, 11.0, 1.0], "note": "standard" }],
-      "specs": { "capacityGB": 32 },
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            15,
+            11,
+            1
+          ],
+          "note": "standard"
+        }
+      ],
+      "specs": {
+        "capacityGB": 32
+      },
       "keepouts": [
-        { "id": "ejection-path", "label": "Card ejection travel", "sizeMm": [20, 11, 3], "offsetMm": [10, 0, 0], "kind": "ejection" }
+        {
+          "id": "ejection-path",
+          "label": "Card ejection travel",
+          "sizeMm": [
+            20,
+            11,
+            3
+          ],
+          "offsetMm": [
+            10,
+            0,
+            0
+          ],
+          "kind": "ejection"
+        }
       ]
     },
     {
@@ -207,54 +510,154 @@
       "name": "26-pin 2x13 IDC ribbon",
       "qty": 1,
       "meshTier": "C",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [100.0, null, null], "note": "length only; pitch captured in specs" }],
-      "specs": { "lengthMm": 100.0, "pitchMm": 2.54, "pins": "2x13" }
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            100,
+            null,
+            null
+          ],
+          "note": "length only; pitch captured in specs"
+        }
+      ],
+      "specs": {
+        "lengthMm": 100,
+        "pitchMm": 2.54,
+        "pins": "2x13"
+      }
     },
     {
       "id": "camera-harness",
       "name": "PH2.0 4P camera harness",
       "qty": 4,
       "meshTier": "C",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [100.0, null, null], "note": "length only" }],
-      "specs": { "nets": ["5V", "GND", "UART_TX", "UART_RX"] }
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            100,
+            null,
+            null
+          ],
+          "note": "length only"
+        }
+      ],
+      "specs": {
+        "nets": [
+          "5V",
+          "GND",
+          "UART_TX",
+          "UART_RX"
+        ]
+      }
     },
     {
       "id": "sync-wire",
       "name": "28AWG sync wire",
       "qty": 4,
       "meshTier": "C",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [null, null, null] }]
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ]
+        }
+      ]
     },
     {
       "id": "main-power-wire",
       "name": "20AWG silicone wire",
       "qty": "as-needed",
       "meshTier": "C",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [null, null, null], "note": "KNOWN_WIRE_GAUGE — as-routed" }],
-      "specs": { "nets": ["BAT+", "BAT-", "5V", "GND"] }
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ],
+          "note": "KNOWN_WIRE_GAUGE — as-routed"
+        }
+      ],
+      "specs": {
+        "nets": [
+          "BAT+",
+          "BAT-",
+          "5V",
+          "GND"
+        ]
+      }
     },
     {
       "id": "bulk-cap",
       "name": "1000uF 10V low-ESR capacitor",
       "qty": "as-needed",
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED — design-dependent" }]
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ],
+          "note": "MEASURE_REQUIRED — design-dependent"
+        }
+      ]
     },
     {
       "id": "bypass-cap",
       "name": "100nF 50V ceramic",
       "qty": "as-needed",
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "PACKAGE_MEASURE_REQUIRED — design-dependent" }]
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ],
+          "note": "PACKAGE_MEASURE_REQUIRED — design-dependent"
+        }
+      ]
     },
     {
       "id": "tact-switch",
       "name": "6x6x4.3mm tactile switch",
       "qty": "as-needed",
       "meshTier": "B",
-      "sources": [{ "kind": "SELLER_SPEC", "sizeMm": [6.0, 6.0, 4.3] }],
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            6,
+            6,
+            4.3
+          ]
+        }
+      ],
       "keepouts": [
-        { "id": "button-travel", "label": "Button travel", "sizeMm": [6, 6, 2], "offsetMm": [0, 0, 3], "kind": "travel" }
+        {
+          "id": "button-travel",
+          "label": "Button travel",
+          "sizeMm": [
+            6,
+            6,
+            2
+          ],
+          "offsetMm": [
+            0,
+            0,
+            3
+          ],
+          "kind": "travel"
+        }
       ]
     },
     {
@@ -262,72 +665,707 @@
       "name": "MSK-22D14 SPDT slide switch",
       "qty": 1,
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [
+            null,
+            null,
+            null
+          ],
+          "note": "MEASURE_REQUIRED"
+        }
+      ]
     },
     {
       "id": "perfboard",
-      "name": "DKAWS/Perma-Proto style carrier",
+      "name": "Hub board (the wiring carrier)",
       "qty": 1,
       "meshTier": "C",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [null, null, null], "note": "MEASURE_REQUIRED" }]
+      "sources": [
+        {
+          "kind": "SELLER_SPEC",
+          "sizeMm": [
+            54,
+            33,
+            12.6
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "board 54 x 33 (seller), 12.6 mm with plugged headers; floats in the 14.6 mm bay between the P4 post rows, wrapped in Kapton (field-body README, Wiring room)"
+        }
+      ],
+      "model": "54 × 33 mm piggyback, Dupont headers"
     },
     {
-      "id": "enclosure-shell",
-      "name": "KINO D4 enclosure shell panels",
-      "qty": 2,
-      "meshTier": "B",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [126.0, 80.0, 36.0], "note": "PROVISIONAL — shared full-enclosure envelope, panel thickness unmeasured" }],
-      "material": { "value": "2-3 mm clear acrylic today; SLA UTR-8100 candidate", "tag": "ESTIMATED" },
-      "specs": { "construction": ["2-3mm clear acrylic panels"] }
-    },
-    {
-      "id": "enclosure-chassis",
-      "name": "KINO D4 enclosure chassis",
+      "id": "light-stud",
+      "name": "1/4-20 light stud",
       "qty": 1,
       "meshTier": "B",
-      "sources": [{ "kind": "PROVISIONAL", "sizeMm": [126.0, 80.0, 36.0], "note": "PROVISIONAL — shared full-enclosure envelope" }],
-      "material": { "value": "PETG skeleton today; SLS PA12-GF candidate", "tag": "ESTIMATED" },
-      "specs": { "construction": ["black PETG skeleton", "M2 heat-set inserts"] }
+      "sources": [
+        {
+          "kind": "MEASURED",
+          "sizeMm": [
+            6.35,
+            19,
+            6.35
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "the 19 mm below the light's 18 mm square base: 6 through the top wall, 13 inside for its two nuts; the stud is 25 with 6 buried in the base"
+        }
+      ],
+      "material": {
+        "value": "steel, zinc plated",
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "thread": "1/4-20 UNC",
+        "lengthMm": 25,
+        "buriedInLightMm": 6,
+        "nuts": 2,
+        "note": "Fit and tighten the nuts before the XIAO boards go in (README, Hardware)."
+      }
+    },
+    {
+      "id": "top-light",
+      "name": "External constant light (video light) on the top stud",
+      "qty": 1,
+      "meshTier": "B",
+      "sources": [
+        {
+          "kind": "PROVISIONAL",
+          "sizeMm": [
+            50,
+            32,
+            38
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "MEASURE_REQUIRED - envelope of the bought light; only its base plate and stud are measured"
+        }
+      ],
+      "specs": {
+        "mount": "1/4-20 stud, 18 mm square base plate on the flat top",
+        "note": "Replaces the built-in flash assembly dropped by ECN-0003. Drive and control are the light's own."
+      }
+    },
+    {
+      "id": "field-chassis-front",
+      "name": "KINO field body — chassis, front half",
+      "model": "KINO_FIELD_BODY 0.1.4 · KINO_TWIN_CHASSIS_FRONT.stl",
+      "qty": 1,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_CAD",
+          "sizeMm": [
+            131,
+            92.2,
+            45.2
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "assembled bounding box from generate-field-body.mjs (design 0.1.4); print file KINO_FIELD_BODY_FRONT_PRINT.stl"
+        }
+      ],
+      "material": {
+        "value": "PETG, black — FDM, support-free",
+        "tag": "ESTIMATED"
+      },
+      "massG": {
+        "value": 175.26,
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "cad": {
+          "body": "KINO_FIELD_BODY",
+          "file": "KINO_TWIN_CHASSIS_FRONT.stl",
+          "print": "KINO_FIELD_BODY_FRONT_PRINT.stl",
+          "frame": "body"
+        },
+        "note": "Plate, camera pockets and bores, XIAO seats and clamp bosses, P4 posts, the shutter pod. The whole optical datum."
+      }
+    },
+    {
+      "id": "field-chassis-rear",
+      "name": "KINO field body — chassis, rear half",
+      "model": "KINO_FIELD_BODY 0.1.4 · KINO_TWIN_CHASSIS_REAR.stl",
+      "qty": 1,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_CAD",
+          "sizeMm": [
+            137.5,
+            92.2,
+            33.6
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "assembled bounding box from generate-field-body.mjs (design 0.1.4); print file KINO_FIELD_BODY_REAR_PRINT.stl"
+        }
+      ],
+      "material": {
+        "value": "PETG, black — FDM, support-free",
+        "tag": "ESTIMATED"
+      },
+      "massG": {
+        "value": 99.39,
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "cad": {
+          "body": "KINO_FIELD_BODY",
+          "file": "KINO_TWIN_CHASSIS_REAR.stl",
+          "print": "KINO_FIELD_BODY_REAR_PRINT.stl",
+          "frame": "body"
+        },
+        "note": "Module seat, door grooves, cable exit, vents, the strap lug on the -X wall. Bolts to the front half at the bay floor."
+      }
+    },
+    {
+      "id": "field-face-shell",
+      "name": "KINO field body — face shell",
+      "model": "KINO_FIELD_BODY 0.1.4 · KINO_TWIN_FACE.stl",
+      "qty": 1,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_CAD",
+          "sizeMm": [
+            131,
+            90,
+            9
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "assembled bounding box from generate-field-body.mjs (design 0.1.4); print file KINO_FIELD_FACE_PRINT.stl"
+        }
+      ],
+      "material": {
+        "value": "PETG, black — FDM, support-free",
+        "tag": "ESTIMATED"
+      },
+      "massG": {
+        "value": 68.4,
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "cad": {
+          "body": "KINO_FIELD_BODY",
+          "file": "KINO_TWIN_FACE.stl",
+          "print": "KINO_FIELD_FACE_PRINT.stl",
+          "frame": "body"
+        },
+        "note": "Glued to the chassis front. Lens bar, the four 81.9° cells, the cover track."
+      }
+    },
+    {
+      "id": "field-lens-cover",
+      "name": "KINO field body — sliding lens cover",
+      "model": "KINO_FIELD_BODY 0.1.4 · KINO_TWIN_LENS_COVER.stl",
+      "qty": 1,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_CAD",
+          "sizeMm": [
+            89.4,
+            20.39,
+            3
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "assembled bounding box from generate-field-body.mjs (design 0.1.4); print file KINO_FIELD_LENS_SLIDER.stl"
+        }
+      ],
+      "material": {
+        "value": "PETG, black — FDM, support-free",
+        "tag": "ESTIMATED"
+      },
+      "massG": {
+        "value": 4.91,
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "cad": {
+          "body": "KINO_FIELD_BODY",
+          "file": "KINO_TWIN_LENS_COVER.stl",
+          "print": "KINO_FIELD_LENS_SLIDER.stl",
+          "frame": "body"
+        },
+        "note": "Modelled OPEN (dropped to shoot), 21.4 mm below closed. The KINO D4 wordmark and thumb ridge are raised on it."
+      }
+    },
+    {
+      "id": "field-slider-keeper",
+      "name": "KINO field body — slider keeper",
+      "model": "KINO_FIELD_BODY 0.1.4 · KINO_TWIN_SLIDER_KEEPER.stl",
+      "qty": 1,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_CAD",
+          "sizeMm": [
+            89.4,
+            5.52,
+            2.2
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "assembled bounding box from generate-field-body.mjs (design 0.1.4); print file KINO_FIELD_SLIDER_KEEPER.stl"
+        }
+      ],
+      "material": {
+        "value": "PETG, black — FDM, support-free",
+        "tag": "ESTIMATED"
+      },
+      "massG": {
+        "value": 1.16,
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "cad": {
+          "body": "KINO_FIELD_BODY",
+          "file": "KINO_TWIN_SLIDER_KEEPER.stl",
+          "print": "KINO_FIELD_SLIDER_KEEPER.stl",
+          "frame": "body"
+        },
+        "note": "Glued into the track entry gap once the cover is in: the positive stop."
+      }
+    },
+    {
+      "id": "field-rear-door",
+      "name": "KINO field body — rear door",
+      "model": "KINO_FIELD_BODY 0.1.4 · KINO_TWIN_DOOR.stl",
+      "qty": 1,
+      "meshTier": "A",
+      "sources": [
+        {
+          "kind": "OFFICIAL_CAD",
+          "sizeMm": [
+            125,
+            80.7,
+            4
+          ],
+          "ref": "hardware/cad/KINO_FIELD_BODY/twin/field-body-twin-datums.json",
+          "note": "assembled bounding box from generate-field-body.mjs (design 0.1.4); print file KINO_FIELD_BEZEL_PRINT.stl"
+        }
+      ],
+      "material": {
+        "value": "PETG, black — FDM, support-free",
+        "tag": "ESTIMATED"
+      },
+      "massG": {
+        "value": 15.55,
+        "tag": "ESTIMATED"
+      },
+      "specs": {
+        "cad": {
+          "body": "KINO_FIELD_BODY",
+          "file": "KINO_TWIN_DOOR.stl",
+          "print": "KINO_FIELD_BEZEL_PRINT.stl",
+          "frame": "body"
+        },
+        "note": "Tool-less dovetail door with the display window; foam gasket on its lip."
+      }
     }
   ],
   "instances": [
-    { "id": "cam1", "component": "camera-node", "positionMm": [-33, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
-    { "id": "cam2", "component": "camera-node", "positionMm": [-11, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
-    { "id": "cam3", "component": "camera-node", "positionMm": [11, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
-    { "id": "cam4", "component": "camera-node", "positionMm": [33, 10, 7], "rotationDeg": [0, 0, 0], "group": "camera-bar", "explodeOrder": 6, "explodeDirMm": [0, 0, 1] },
-    { "id": "display", "component": "main-display", "positionMm": [0, 0, -11.5], "rotationDeg": [0, 0, 0], "explodeOrder": 4, "explodeDirMm": [0, 0, -1] },
-    { "id": "battery", "component": "battery", "positionMm": [-30, 0, -9.5], "rotationDeg": [0, 0, 90], "group": "power", "explodeOrder": 1 },
-    { "id": "carrier", "component": "perfboard", "positionMm": [0, -5, -4], "rotationDeg": [0, 0, 0], "explodeOrder": 5 },
-    { "id": "power-module", "component": "power-module", "positionMm": [25, -14, 0], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
-    { "id": "bms", "component": "bms", "positionMm": [-25, -15, -4], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
-    { "id": "fuse", "component": "fuse", "positionMm": [-10, -8, -2], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 2 },
-    { "id": "speaker", "component": "speaker", "positionMm": [0, -27, 5], "rotationDeg": [0, 0, 0], "explodeOrder": 3 },
-    { "id": "bulk-cap", "component": "bulk-cap", "positionMm": [10, -5, -8], "rotationDeg": [0, 0, 0], "group": "power", "explodeOrder": 5 },
-    { "id": "front-acrylic", "component": "enclosure-shell", "positionMm": [0, 0, 16.5], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 9, "explodeDirMm": [0, 0, 1] },
-    { "id": "rear-acrylic", "component": "enclosure-shell", "positionMm": [0, 0, -16.5], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0, "explodeDirMm": [0, 0, -1] },
-    { "id": "skeleton", "component": "enclosure-chassis", "positionMm": [0, 0, 0], "rotationDeg": [0, 0, 0], "group": "shell", "explodeOrder": 0 }
+    {
+      "id": "cam1",
+      "component": "camera-node",
+      "positionMm": [
+        33,
+        4.95,
+        18.85
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "camera-bar",
+      "explodeOrder": 6,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ],
+      "opticalCenterOffsetMm": [
+        0,
+        -6.95,
+        7.5
+      ],
+      "opticalCenterConfidence": "OFFICIAL_CAD"
+    },
+    {
+      "id": "cam2",
+      "component": "camera-node",
+      "positionMm": [
+        11,
+        4.95,
+        18.85
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "camera-bar",
+      "explodeOrder": 6,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ],
+      "opticalCenterOffsetMm": [
+        0,
+        -6.95,
+        7.5
+      ],
+      "opticalCenterConfidence": "OFFICIAL_CAD"
+    },
+    {
+      "id": "cam3",
+      "component": "camera-node",
+      "positionMm": [
+        -11,
+        4.95,
+        18.85
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "camera-bar",
+      "explodeOrder": 6,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ],
+      "opticalCenterOffsetMm": [
+        0,
+        -6.95,
+        7.5
+      ],
+      "opticalCenterConfidence": "OFFICIAL_CAD"
+    },
+    {
+      "id": "cam4",
+      "component": "camera-node",
+      "positionMm": [
+        -33,
+        4.95,
+        18.85
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "camera-bar",
+      "explodeOrder": 6,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ],
+      "opticalCenterOffsetMm": [
+        0,
+        -6.95,
+        7.5
+      ],
+      "opticalCenterConfidence": "OFFICIAL_CAD"
+    },
+    {
+      "id": "display",
+      "component": "main-display",
+      "positionMm": [
+        0,
+        0,
+        -25.55
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "explodeOrder": 4,
+      "explodeDirMm": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "id": "carrier",
+      "component": "perfboard",
+      "positionMm": [
+        0,
+        -2,
+        -10.35
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "body",
+      "explodeOrder": 3,
+      "explodeDirMm": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "id": "shutter",
+      "component": "tact-switch",
+      "positionMm": [
+        -49.5,
+        36.85,
+        6.85
+      ],
+      "rotationDeg": [
+        90,
+        0,
+        0
+      ],
+      "group": "body",
+      "explodeOrder": 7,
+      "explodeDirMm": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "id": "light-stud",
+      "component": "light-stud",
+      "positionMm": [
+        -0.5,
+        35.5,
+        11.85
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "body",
+      "explodeOrder": 8,
+      "explodeDirMm": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "id": "top-light",
+      "component": "top-light",
+      "positionMm": [
+        -0.5,
+        64,
+        11.85
+      ],
+      "rotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "group": "body",
+      "explodeOrder": 9,
+      "explodeDirMm": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "id": "chassis-front",
+      "component": "field-chassis-front",
+      "positionMm": [
+        0,
+        -1.1,
+        5.25
+      ],
+      "rotationDeg": [
+        0,
+        180,
+        0
+      ],
+      "group": "shell",
+      "explodeOrder": 4,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "chassis-rear",
+      "component": "field-chassis-rear",
+      "positionMm": [
+        3.25,
+        -1.1,
+        -20.85
+      ],
+      "rotationDeg": [
+        0,
+        180,
+        0
+      ],
+      "group": "shell",
+      "explodeOrder": 2,
+      "explodeDirMm": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "id": "face-shell",
+      "component": "field-face-shell",
+      "positionMm": [
+        0,
+        0,
+        32.35
+      ],
+      "rotationDeg": [
+        0,
+        180,
+        0
+      ],
+      "group": "shell",
+      "explodeOrder": 8,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "lens-cover",
+      "component": "field-lens-cover",
+      "positionMm": [
+        -0.5,
+        -23.4,
+        36.15
+      ],
+      "rotationDeg": [
+        0,
+        180,
+        0
+      ],
+      "group": "shell",
+      "explodeOrder": 10,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "slider-keeper",
+      "component": "field-slider-keeper",
+      "positionMm": [
+        -0.5,
+        -36.76,
+        35.75
+      ],
+      "rotationDeg": [
+        0,
+        180,
+        0
+      ],
+      "group": "shell",
+      "explodeOrder": 9,
+      "explodeDirMm": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "rear-door",
+      "component": "field-rear-door",
+      "positionMm": [
+        3,
+        0,
+        -35.65
+      ],
+      "rotationDeg": [
+        0,
+        180,
+        0
+      ],
+      "group": "shell",
+      "explodeOrder": 0,
+      "explodeDirMm": [
+        0,
+        0,
+        -1
+      ]
+    }
   ],
   "power": {
     "battery": {
       "nominalV": 3.7,
       "capacitymAh": 3000,
-      "internalOhm": { "value": 0.08, "tag": "ESTIMATED" },
+      "internalOhm": {
+        "value": 0.08,
+        "tag": "ESTIMATED"
+      },
       "safeContinuousA": 3,
       "shortPulseMaxA": 6,
       "chargePreferredA": 0.6,
       "chargeMaxA": 1.5
     },
-    "boost": { "efficiency": { "value": 0.85, "tag": "ESTIMATED" }, "classW": { "value": 18, "tag": "MANUFACTURER" } },
-    "loads": {
-      "p4Display": { "amps": 0.32, "tag": "MANUFACTURER" },
-      "camIdle": { "amps": 0.14, "tag": "MANUFACTURER", "note": "Seeed example workload" },
-      "camActive": { "amps": 0.347, "tag": "MANUFACTURER", "note": "Seeed example workload" },
-      "flash350": { "amps": 0.35, "tag": "ESTIMATED", "note": "default" },
-      "flash500": { "amps": 0.5, "tag": "ESTIMATED", "note": "experimental" },
-      "flash650": { "amps": 0.65, "tag": "ESTIMATED", "note": "controlled testing profile only" },
-      "wifiTx": { "amps": 0.25, "tag": "ESTIMATED" }
+    "boost": {
+      "efficiency": {
+        "value": 0.85,
+        "tag": "ESTIMATED"
+      },
+      "classW": {
+        "value": 18,
+        "tag": "MANUFACTURER"
+      }
     },
-    "fuse": { "ratingA": 3, "type": "fast" }
+    "loads": {
+      "p4Display": {
+        "amps": 0.32,
+        "tag": "MANUFACTURER"
+      },
+      "camIdle": {
+        "amps": 0.14,
+        "tag": "MANUFACTURER",
+        "note": "Seeed example workload"
+      },
+      "camActive": {
+        "amps": 0.347,
+        "tag": "MANUFACTURER",
+        "note": "Seeed example workload"
+      },
+      "flash350": {
+        "amps": 0.35,
+        "tag": "ESTIMATED",
+        "note": "default"
+      },
+      "flash500": {
+        "amps": 0.5,
+        "tag": "ESTIMATED",
+        "note": "experimental"
+      },
+      "flash650": {
+        "amps": 0.65,
+        "tag": "ESTIMATED",
+        "note": "controlled testing profile only"
+      },
+      "wifiTx": {
+        "amps": 0.25,
+        "tag": "ESTIMATED"
+      }
+    },
+    "fuse": {
+      "ratingA": 3,
+      "type": "fast"
+    }
   },
   "alternatePower": {
     "16340-bench": {
@@ -338,60 +1376,1011 @@
         "battery": {
           "nominalV": 3.7,
           "capacitymAh": 3000,
-          "internalOhm": { "value": 0.05, "tag": "ESTIMATED" },
+          "internalOhm": {
+            "value": 0.05,
+            "tag": "ESTIMATED"
+          },
           "safeContinuousA": 3,
           "shortPulseMaxA": 5,
           "chargePreferredA": 0.5,
           "chargeMaxA": 1
         },
-        "boost": { "efficiency": { "value": 0.85, "tag": "ESTIMATED" }, "classW": { "value": 18, "tag": "MANUFACTURER" } },
-        "loads": {
-          "p4Display": { "amps": 0.32, "tag": "MANUFACTURER" },
-          "camIdle": { "amps": 0.14, "tag": "MANUFACTURER", "note": "Seeed example workload" },
-          "camActive": { "amps": 0.347, "tag": "MANUFACTURER", "note": "Seeed example workload" },
-          "flash350": { "amps": 0.35, "tag": "ESTIMATED", "note": "default" },
-          "flash500": { "amps": 0.5, "tag": "ESTIMATED", "note": "experimental" },
-          "flash650": { "amps": 0.65, "tag": "ESTIMATED", "note": "controlled testing profile only" },
-          "wifiTx": { "amps": 0.25, "tag": "ESTIMATED" }
+        "boost": {
+          "efficiency": {
+            "value": 0.85,
+            "tag": "ESTIMATED"
+          },
+          "classW": {
+            "value": 18,
+            "tag": "MANUFACTURER"
+          }
         },
-        "fuse": { "ratingA": 3, "type": "fast" }
+        "loads": {
+          "p4Display": {
+            "amps": 0.32,
+            "tag": "MANUFACTURER"
+          },
+          "camIdle": {
+            "amps": 0.14,
+            "tag": "MANUFACTURER",
+            "note": "Seeed example workload"
+          },
+          "camActive": {
+            "amps": 0.347,
+            "tag": "MANUFACTURER",
+            "note": "Seeed example workload"
+          },
+          "flash350": {
+            "amps": 0.35,
+            "tag": "ESTIMATED",
+            "note": "default"
+          },
+          "flash500": {
+            "amps": 0.5,
+            "tag": "ESTIMATED",
+            "note": "experimental"
+          },
+          "flash650": {
+            "amps": 0.65,
+            "tag": "ESTIMATED",
+            "note": "controlled testing profile only"
+          },
+          "wifiTx": {
+            "amps": 0.25,
+            "tag": "ESTIMATED"
+          }
+        },
+        "fuse": {
+          "ratingA": 3,
+          "type": "fast"
+        }
       }
     }
   },
   "nets": [
-    { "id": "cam1-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam1", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [-9.9, 7, -2.5], [-23.1, 9, -2.5], [-33, 10, 7]] },
-    { "id": "cam1-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam1", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [-9.9, 6, -2.5], [-23.1, 8, -2.5], [-33, 10, 7]] },
-    { "id": "cam1-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM1_TX" }, "to": { "instance": "cam1", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -3], [-23.1, 8, -2.5], [-33, 10, 5], [-33, 10, 7]] },
-    { "id": "cam1-rx", "cls": "UART", "from": { "instance": "cam1", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM1_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-33, 10, 7], [-33, 10, 4], [-23.1, 8, -2.5], [1, 4, -3], [0, 0, -11.5]] },
-    { "id": "cam1-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam1", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -3], [-23.1, 7, -2.5], [-33, 9, 5], [-33, 10, 7]] },
-
-    { "id": "cam2-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam2", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [-3.3, 7, -2.5], [-7.7, 9, -2.5], [-11, 10, 7]] },
-    { "id": "cam2-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam2", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [-3.3, 6, -2.5], [-7.7, 8, -2.5], [-11, 10, 7]] },
-    { "id": "cam2-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM2_TX" }, "to": { "instance": "cam2", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -3], [-7.7, 8, -2.5], [-11, 10, 5], [-11, 10, 7]] },
-    { "id": "cam2-rx", "cls": "UART", "from": { "instance": "cam2", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM2_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[-11, 10, 7], [-11, 10, 4], [-7.7, 8, -2.5], [1, 4, -3], [0, 0, -11.5]] },
-    { "id": "cam2-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam2", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -3], [-7.7, 7, -2.5], [-11, 9, 5], [-11, 10, 7]] },
-
-    { "id": "cam3-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam3", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [3.3, 7, -4], [7.7, 9, -3], [11, 10, 7]] },
-    { "id": "cam3-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam3", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [3.3, 6, -4], [7.7, 8, -3], [11, 10, 7]] },
-    { "id": "cam3-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM3_TX" }, "to": { "instance": "cam3", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -4], [7.7, 8, -4], [11, 10, 5], [11, 10, 7]] },
-    { "id": "cam3-rx", "cls": "UART", "from": { "instance": "cam3", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM3_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[11, 10, 7], [11, 10, 4], [7.7, 8, -4], [1, 4, -4], [0, 0, -11.5]] },
-    { "id": "cam3-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam3", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -4], [7.7, 7, -4], [11, 9, 5], [11, 10, 7]] },
-
-    { "id": "cam4-5v", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_SW" }, "to": { "instance": "cam4", "pin": "VCC" }, "gauge": "24AWG", "color": "red", "waypointsMm": [[0, -5, -4], [9.9, 7, -4], [23.1, 9, -3], [33, 10, 7]] },
-    { "id": "cam4-gnd", "cls": "POWER", "from": { "instance": "carrier", "pin": "GND" }, "to": { "instance": "cam4", "pin": "GND" }, "gauge": "24AWG", "color": "black", "waypointsMm": [[0, -5, -4], [9.9, 6, -4], [23.1, 8, -3], [33, 10, 7]] },
-    { "id": "cam4-tx", "cls": "UART", "from": { "instance": "display", "pin": "CAM4_TX" }, "to": { "instance": "cam4", "pin": "UART_RX" }, "gauge": "28AWG", "color": "blue", "waypointsMm": [[0, 0, -11.5], [1, 4, -4], [23.1, 8, -4], [33, 10, 5], [33, 10, 7]] },
-    { "id": "cam4-rx", "cls": "UART", "from": { "instance": "cam4", "pin": "UART_TX" }, "to": { "instance": "display", "pin": "CAM4_RX" }, "gauge": "28AWG", "color": "green", "waypointsMm": [[33, 10, 7], [33, 10, 4], [23.1, 8, -4], [1, 4, -4], [0, 0, -11.5]] },
-    { "id": "cam4-sync", "cls": "SYNC", "from": { "instance": "display", "pin": "SYNC_OUT" }, "to": { "instance": "cam4", "pin": "SYNC_IN" }, "gauge": "28AWG", "color": "yellow", "waypointsMm": [[0, 0, -11.5], [1, 3, -4], [23.1, 7, -4], [33, 9, 5], [33, 10, 7]] },
-
-    { "id": "main-batt-fuse", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT+" }, "to": { "instance": "fuse", "pin": "IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[-30, 0, -9.5], [-20, -4, -4], [-10, -8, -2]] },
-    { "id": "main-fuse-bms", "cls": "POWER", "from": { "instance": "fuse", "pin": "OUT" }, "to": { "instance": "bms", "pin": "P+" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[-10, -8, -2], [-17, -11, -3], [-25, -15, -4]] },
-    { "id": "main-bms-pm", "cls": "POWER", "from": { "instance": "bms", "pin": "P-OUT" }, "to": { "instance": "power-module", "pin": "VIN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[-25, -15, -4], [-10, -17, -3], [10, -17, -3], [25, -14, 0]] },
-    { "id": "main-pm-carrier", "cls": "POWER", "from": { "instance": "power-module", "pin": "5V_OUT" }, "to": { "instance": "carrier", "pin": "5V_IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[25, -14, 0], [15, -11, -2], [7, -7, -3], [0, -5, -4]] },
-    { "id": "main-carrier-display", "cls": "POWER", "from": { "instance": "carrier", "pin": "5V_BUS" }, "to": { "instance": "display", "pin": "5V_IN" }, "gauge": "20AWG", "color": "red", "waypointsMm": [[0, -5, -4], [1, -2, -9], [0, 0, -11.5]] },
-    { "id": "main-batt-gnd", "cls": "POWER", "from": { "instance": "battery", "pin": "BAT-" }, "to": { "instance": "carrier", "pin": "GND_BUS" }, "gauge": "20AWG", "color": "black", "waypointsMm": [[-30, 0, -9.5], [-15, -3, -4], [0, -5, -4]] },
-
-    { "id": "btn-shutter", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_SHUTTER" }, "to": { "instance": "carrier", "pin": "SW1" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [2, -3, -9], [0, -5, -4]] },
-    { "id": "btn-fn", "cls": "BUTTONS", "from": { "instance": "display", "pin": "BTN_FN" }, "to": { "instance": "carrier", "pin": "SW2" }, "gauge": "28AWG", "color": "grey", "waypointsMm": [[0, 0, -11.5], [3, -4, -9], [0, -5, -4]] }
+    {
+      "id": "cam1-5v",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "5V_SW"
+      },
+      "to": {
+        "instance": "cam1",
+        "pin": "VCC"
+      },
+      "gauge": "24AWG",
+      "color": "red",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          37,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam1-gnd",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "GND"
+      },
+      "to": {
+        "instance": "cam1",
+        "pin": "GND"
+      },
+      "gauge": "24AWG",
+      "color": "black",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          37,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam1-tx",
+      "cls": "UART",
+      "from": {
+        "instance": "display",
+        "pin": "CAM1_TX"
+      },
+      "to": {
+        "instance": "cam1",
+        "pin": "UART_RX"
+      },
+      "gauge": "28AWG",
+      "color": "blue",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          37,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam1-rx",
+      "cls": "UART",
+      "from": {
+        "instance": "cam1",
+        "pin": "UART_TX"
+      },
+      "to": {
+        "instance": "display",
+        "pin": "CAM1_RX"
+      },
+      "gauge": "28AWG",
+      "color": "green",
+      "waypointsMm": [
+        [
+          33,
+          4.95,
+          18.85
+        ],
+        [
+          37,
+          -32.5,
+          18.85
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          0,
+          -25.55
+        ]
+      ]
+    },
+    {
+      "id": "cam1-sync",
+      "cls": "SYNC",
+      "from": {
+        "instance": "display",
+        "pin": "SYNC_OUT"
+      },
+      "to": {
+        "instance": "cam1",
+        "pin": "SYNC_IN"
+      },
+      "gauge": "28AWG",
+      "color": "yellow",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          37,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          -32.5,
+          18.85
+        ],
+        [
+          33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam2-5v",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "5V_SW"
+      },
+      "to": {
+        "instance": "cam2",
+        "pin": "VCC"
+      },
+      "gauge": "24AWG",
+      "color": "red",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam2-gnd",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "GND"
+      },
+      "to": {
+        "instance": "cam2",
+        "pin": "GND"
+      },
+      "gauge": "24AWG",
+      "color": "black",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam2-tx",
+      "cls": "UART",
+      "from": {
+        "instance": "display",
+        "pin": "CAM2_TX"
+      },
+      "to": {
+        "instance": "cam2",
+        "pin": "UART_RX"
+      },
+      "gauge": "28AWG",
+      "color": "blue",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam2-rx",
+      "cls": "UART",
+      "from": {
+        "instance": "cam2",
+        "pin": "UART_TX"
+      },
+      "to": {
+        "instance": "display",
+        "pin": "CAM2_RX"
+      },
+      "gauge": "28AWG",
+      "color": "green",
+      "waypointsMm": [
+        [
+          11,
+          4.95,
+          18.85
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          0,
+          -25.55
+        ]
+      ]
+    },
+    {
+      "id": "cam2-sync",
+      "cls": "SYNC",
+      "from": {
+        "instance": "display",
+        "pin": "SYNC_OUT"
+      },
+      "to": {
+        "instance": "cam2",
+        "pin": "SYNC_IN"
+      },
+      "gauge": "28AWG",
+      "color": "yellow",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          -32.5,
+          18.85
+        ],
+        [
+          11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam3-5v",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "5V_SW"
+      },
+      "to": {
+        "instance": "cam3",
+        "pin": "VCC"
+      },
+      "gauge": "24AWG",
+      "color": "red",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam3-gnd",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "GND"
+      },
+      "to": {
+        "instance": "cam3",
+        "pin": "GND"
+      },
+      "gauge": "24AWG",
+      "color": "black",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam3-tx",
+      "cls": "UART",
+      "from": {
+        "instance": "display",
+        "pin": "CAM3_TX"
+      },
+      "to": {
+        "instance": "cam3",
+        "pin": "UART_RX"
+      },
+      "gauge": "28AWG",
+      "color": "blue",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam3-rx",
+      "cls": "UART",
+      "from": {
+        "instance": "cam3",
+        "pin": "UART_TX"
+      },
+      "to": {
+        "instance": "display",
+        "pin": "CAM3_RX"
+      },
+      "gauge": "28AWG",
+      "color": "green",
+      "waypointsMm": [
+        [
+          -11,
+          4.95,
+          18.85
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          0,
+          -25.55
+        ]
+      ]
+    },
+    {
+      "id": "cam3-sync",
+      "cls": "SYNC",
+      "from": {
+        "instance": "display",
+        "pin": "SYNC_OUT"
+      },
+      "to": {
+        "instance": "cam3",
+        "pin": "SYNC_IN"
+      },
+      "gauge": "28AWG",
+      "color": "yellow",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          -32.5,
+          18.85
+        ],
+        [
+          -11,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam4-5v",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "5V_SW"
+      },
+      "to": {
+        "instance": "cam4",
+        "pin": "VCC"
+      },
+      "gauge": "24AWG",
+      "color": "red",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          -37,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam4-gnd",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "GND"
+      },
+      "to": {
+        "instance": "cam4",
+        "pin": "GND"
+      },
+      "gauge": "24AWG",
+      "color": "black",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          -37,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam4-tx",
+      "cls": "UART",
+      "from": {
+        "instance": "display",
+        "pin": "CAM4_TX"
+      },
+      "to": {
+        "instance": "cam4",
+        "pin": "UART_RX"
+      },
+      "gauge": "28AWG",
+      "color": "blue",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          -37,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "cam4-rx",
+      "cls": "UART",
+      "from": {
+        "instance": "cam4",
+        "pin": "UART_TX"
+      },
+      "to": {
+        "instance": "display",
+        "pin": "CAM4_RX"
+      },
+      "gauge": "28AWG",
+      "color": "green",
+      "waypointsMm": [
+        [
+          -33,
+          4.95,
+          18.85
+        ],
+        [
+          -37,
+          -32.5,
+          18.85
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          0,
+          -25.55
+        ]
+      ]
+    },
+    {
+      "id": "cam4-sync",
+      "cls": "SYNC",
+      "from": {
+        "instance": "display",
+        "pin": "SYNC_OUT"
+      },
+      "to": {
+        "instance": "cam4",
+        "pin": "SYNC_IN"
+      },
+      "gauge": "28AWG",
+      "color": "yellow",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          -37,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          -32.5,
+          18.85
+        ],
+        [
+          -33,
+          4.95,
+          18.85
+        ]
+      ]
+    },
+    {
+      "id": "main-carrier-display",
+      "cls": "POWER",
+      "from": {
+        "instance": "carrier",
+        "pin": "5V_BUS"
+      },
+      "to": {
+        "instance": "display",
+        "pin": "5V_IN"
+      },
+      "gauge": "20AWG",
+      "color": "red",
+      "waypointsMm": [
+        [
+          0,
+          -2,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          0,
+          -25.55
+        ]
+      ]
+    },
+    {
+      "id": "btn-shutter",
+      "cls": "BUTTONS",
+      "from": {
+        "instance": "display",
+        "pin": "BTN_SHUTTER"
+      },
+      "to": {
+        "instance": "carrier",
+        "pin": "SW1"
+      },
+      "gauge": "28AWG",
+      "color": "grey",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          0,
+          -2,
+          -10.35
+        ]
+      ]
+    },
+    {
+      "id": "btn-fn",
+      "cls": "BUTTONS",
+      "from": {
+        "instance": "display",
+        "pin": "BTN_FN"
+      },
+      "to": {
+        "instance": "carrier",
+        "pin": "SW2"
+      },
+      "gauge": "28AWG",
+      "color": "grey",
+      "waypointsMm": [
+        [
+          0,
+          0,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -25.55
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          0,
+          -32.5,
+          -10.35
+        ],
+        [
+          0,
+          -2,
+          -10.35
+        ]
+      ]
+    }
   ],
   "gpio": {
     "CAM_PWR_EN": "GPIO31",
@@ -418,27 +2407,93 @@
     "rows": 13,
     "note": "Physical pin per assigned signal. Twelve header GPIOs carry eleven signals, so GPIO35 on JP1 15 is spare and must stay unconnected: it is the ESP32-P4 serial-bootloader strap. JP1 21 / GPIO28 was FLASH_EN under ECN-0002 and carries BTN_SHUTTER since ECN-0003 (2026-08-30), which dropped the built-in flash from D4-V1 for a separate external module with no P4 pin; the signal count is still eleven. GPIO28 is not a strapping pin (those are GPIO34-38), which is why a switch to ground is safe there and would not be on JP1 15. Firmware source of truth: firmware/p4/main/board_d4v1.h BOARD_*_JP1; test_board_pins.c --dump generates these values.",
     "pins": {
-      "CAM1_TX": { "pin": 7, "gpio": "GPIO52" },
-      "CAM1_RX": { "pin": 9, "gpio": "GPIO51" },
-      "CAM2_TX": { "pin": 11, "gpio": "GPIO50" },
-      "CAM2_RX": { "pin": 13, "gpio": "GPIO49" },
-      "CAM3_TX": { "pin": 17, "gpio": "GPIO34" },
-      "CAM3_RX": { "pin": 8, "gpio": "GPIO33" },
-      "CAM4_TX": { "pin": 12, "gpio": "GPIO30" },
-      "CAM4_RX": { "pin": 14, "gpio": "GPIO29" },
-      "SYNC_OUT": { "pin": 19, "gpio": "GPIO32" },
-      "CAM_PWR_EN": { "pin": 10, "gpio": "GPIO31" },
-      "BTN_SHUTTER": { "pin": 21, "gpio": "GPIO28" }
+      "CAM1_TX": {
+        "pin": 7,
+        "gpio": "GPIO52"
+      },
+      "CAM1_RX": {
+        "pin": 9,
+        "gpio": "GPIO51"
+      },
+      "CAM2_TX": {
+        "pin": 11,
+        "gpio": "GPIO50"
+      },
+      "CAM2_RX": {
+        "pin": 13,
+        "gpio": "GPIO49"
+      },
+      "CAM3_TX": {
+        "pin": 17,
+        "gpio": "GPIO34"
+      },
+      "CAM3_RX": {
+        "pin": 8,
+        "gpio": "GPIO33"
+      },
+      "CAM4_TX": {
+        "pin": 12,
+        "gpio": "GPIO30"
+      },
+      "CAM4_RX": {
+        "pin": 14,
+        "gpio": "GPIO29"
+      },
+      "SYNC_OUT": {
+        "pin": 19,
+        "gpio": "GPIO32"
+      },
+      "CAM_PWR_EN": {
+        "pin": 10,
+        "gpio": "GPIO31"
+      },
+      "BTN_SHUTTER": {
+        "pin": 21,
+        "gpio": "GPIO28"
+      }
     },
     "reserved": [
-      { "pin": 15, "net": "GPIO35", "gpio": "GPIO35", "use": "SPARE. ESP32-P4 serial-bootloader strap: held low at reset the chip enters the ROM downloader. Leave unconnected" },
-      { "pin": 18, "net": "ESP_3V3", "use": "C6 supply" },
-      { "pin": 23, "net": "I2C_SDA", "use": "ES8311/ES7210 audio codec I2C" },
-      { "pin": 25, "net": "I2C_SCL", "use": "ES8311/ES7210 audio codec I2C" },
-      { "pin": 20, "net": "C6_U0RXD", "use": "C6 programming/recovery" },
-      { "pin": 22, "net": "C6_U0TXD", "use": "C6 programming/recovery" },
-      { "pin": 24, "net": "C6_IO9", "use": "C6 boot strap" },
-      { "pin": 26, "net": "C6_CHIP_PU", "use": "C6 reset" }
+      {
+        "pin": 15,
+        "net": "GPIO35",
+        "gpio": "GPIO35",
+        "use": "SPARE. ESP32-P4 serial-bootloader strap: held low at reset the chip enters the ROM downloader. Leave unconnected"
+      },
+      {
+        "pin": 18,
+        "net": "ESP_3V3",
+        "use": "C6 supply"
+      },
+      {
+        "pin": 23,
+        "net": "I2C_SDA",
+        "use": "ES8311/ES7210 audio codec I2C"
+      },
+      {
+        "pin": 25,
+        "net": "I2C_SCL",
+        "use": "ES8311/ES7210 audio codec I2C"
+      },
+      {
+        "pin": 20,
+        "net": "C6_U0RXD",
+        "use": "C6 programming/recovery"
+      },
+      {
+        "pin": 22,
+        "net": "C6_U0TXD",
+        "use": "C6 programming/recovery"
+      },
+      {
+        "pin": 24,
+        "net": "C6_IO9",
+        "use": "C6 boot strap"
+      },
+      {
+        "pin": 26,
+        "net": "C6_CHIP_PU",
+        "use": "C6 reset"
+      }
     ]
   }
 }

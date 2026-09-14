@@ -22,12 +22,15 @@ import {
   type SubjectKind,
   type LightingPresetId,
   type LensFovDeg,
+  setTopLight,
+  type TopLightMode,
 } from '../state/stageStore';
 
 export function StagePanel() {
   const subjects = useStageStore((s) => s.subjects);
   const selectedId = useStageStore((s) => s.selectedId);
   const lighting = useStageStore((s) => s.lighting);
+  const topLight = useStageStore((s) => s.topLight);
   const room = useStageStore((s) => s.room);
   const lensFovDeg = useStageStore((s) => s.lensFovDeg);
   const [kind, setKind] = useState<SubjectKind>('person');
@@ -134,6 +137,27 @@ export function StagePanel() {
           </div>
         </div>
       ) : null}
+
+      <div className="twin-panel-section">
+        <span className="twin-field-label">TOP LIGHT</span>
+        <div className="twin-button-grid">
+          {(['off', 'flash', 'constant'] as TopLightMode[]).map((mode) => (
+            <button
+              type="button"
+              key={mode}
+              className={topLight === mode ? 'twin-btn twin-btn--active' : 'twin-btn'}
+              onClick={() => setTopLight(mode)}
+            >
+              {mode.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <p className="twin-panel-note">
+          The external light on the body's 1/4-20 stud (the built-in flash went with ECN-0003). FLASH fires it for a
+          capture the device asks a flash for; CONSTANT keeps it on for every preview and capture. Its envelope is
+          PROVISIONAL until the unit is measured.
+        </p>
+      </div>
 
       <div className="twin-panel-section">
         <span className="twin-field-label">LIGHTING</span>

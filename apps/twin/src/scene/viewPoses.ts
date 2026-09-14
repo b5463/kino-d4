@@ -74,18 +74,21 @@ export function bboxFromBodySizeMm(sizeMm: [number, number, number]): Box3Like {
  * (`current`, position minus target) and only refits the distance to the
  * current bbox — falling back to the scene's initial start-pose direction
  * when no current pose is given (e.g. before the controls ref exists).
- * `lens` ignores `bboxMm` entirely: it is the cam2 lens-center viewpoint
- * (§3 camera-lens view), positioned at that lens and looking straight
- * down +Z.
+ * `lens` is the cam2 lens-center viewpoint (§3 camera-lens view): positioned
+ * at that lens (`lensMm`, from the profile) and looking straight down +Z.
  */
 export function viewPose(
   name: ViewPoseName,
   bboxMm: Box3Like,
   pitchMm: number,
   current?: ViewPoseResult,
+  lensMm?: [number, number, number],
 ): ViewPoseResult {
   if (name === 'lens') {
-    const position: [number, number, number] = [camBarX(2, pitchMm), 10, 18];
+    // Camera 2's lens centre: Y and Z from the profile (instance origin plus
+    // its optical offset, handed in by the caller), X re-pitched like the bar.
+    // Without a lens the pose sits on the axis at the bbox's front face.
+    const position: [number, number, number] = [camBarX(2, pitchMm), lensMm ? lensMm[1] : 0, lensMm ? lensMm[2] : bboxMm.max[2]];
     const target: [number, number, number] = [position[0], position[1], position[2] + LENS_LOOK_AHEAD_MM];
     return { position, target };
   }
