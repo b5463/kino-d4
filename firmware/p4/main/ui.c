@@ -258,34 +258,11 @@ static bool s_mcached;
  */
 #define PH_W 600
 #define PH_H 450
-#define PH_TOP 15
-#define PH_X0 (UI_W - 8 - PH_W)   /* 192: the well's right margin is 8 px */
-/* The control column. BACK stays at (14,14) so the gesture matches the
- * viewfinder; the column starts under it at the same x. */
-#define PH_COL_X 14
-#define PH_COL_W 162
-#define PH_CAP_Y 48       /* the first caption line, under BACK */
-#define PH_LINE 18        /* UI_FONT_S.line_h, which _Static_assert cannot read */
-#define PH_CAP_LINES 4    /* label, mode, frame count, and the short-wiggle note */
-/* Three buttons, full column width, top to bottom: DELETE, FAVOURITE, SEND TO
- * ROLL. Written as arithmetic rather than three literals because draw_photo()
- * and hit_test() both walk it, and the two used to carry different widths -
- * 150 drawn against 150 tested only by luck. */
-#define PH_BTN_H 34
-#define PH_BTN_W PH_COL_W
-#define PH_BTN_GAP 10     /* between buttons */
-#define PH_BTN_BOT 15     /* below the last button, to the bottom edge */
-#define PH_BTN_Y(i) (UI_H - PH_BTN_BOT - (3 - (i)) * PH_BTN_H - (2 - (i)) * PH_BTN_GAP)
-
+#define PH_TOP 0
+#define PH_X0 ((UI_W - PH_W) / 2)   /* 100: the picture centred, the title over its corner */
+#define PH_LINE_Y (PH_H + 6)        /* the one line under it: facts left, actions right */
 _Static_assert(PH_W * 3 == PH_H * 4, "photo pane is not 4:3");
-_Static_assert(PH_X0 >= 2 && PH_TOP >= 2 && PH_X0 + PH_W + 2 <= UI_W && PH_TOP + PH_H + 2 <= UI_H,
-               "the photo well's bevel runs off the screen");
-_Static_assert(PH_COL_X + PH_COL_W + 2 <= PH_X0 - 2, "the control column runs into the well");
-_Static_assert(PH_CAP_Y + PH_CAP_LINES * PH_LINE + 8 <= PH_BTN_Y(0),
-               "the caption runs into the buttons");
-_Static_assert(PH_BTN_Y(0) < PH_BTN_Y(1) && PH_BTN_Y(1) < PH_BTN_Y(2) &&
-                   PH_BTN_Y(2) + PH_BTN_H < UI_H,
-               "the buttons are out of order or fall off the bottom");
+_Static_assert(PH_TOP + PH_H + 30 <= UI_H, "no room for the line under the photograph");
 
 /* ------------------------------------------------------------------ */
 /* Screens                                                             */
@@ -3167,16 +3144,7 @@ static void draw_look(void) {
  * 2 px bevel. Checked here because the pitch is arithmetic and the margins are
  * literals - the two only agreed by luck before this was written down. */
 #define G_BLOCK 6
-_Static_assert(G_GAP >= 2 * G_BLOCK, "the gallery tile wells touch across a column gap");
-_Static_assert(G_PITCH - G_TILE_H >= 2 * G_BLOCK, "the gallery tile wells touch across a row gap");
-_Static_assert(G_X0 >= G_BLOCK, "the leftmost tile well runs off the screen");
-_Static_assert(G_Y0 >= BODY_Y + G_BLOCK, "the top row's well runs into the header");
-_Static_assert(G_Y0 + G_PITCH + G_TILE_H + G_BLOCK <= UI_H - 2,
-               "the bottom row's well runs into the window frame");
-_Static_assert(G_STRIP >= 18 && G_STRIP < G_TILE_H / 4,
-               "the facts strip does not hold a line of type, or eats the picture");
-_Static_assert(G_PREV_X > HD_CAP_X + HD_CAP_PAD + 320,
-               "the paging buttons run into the GALLERY caption and its count");
+_Static_assert(G_Y0 + G_PITCH + G_TILE_H <= UI_H, "the bottom row runs off the screen");
 
 static void gal_origin(int slot, int *x, int *y) {
   *x = G_X0 + (slot % G_COLS) * (G_TILE_W + G_GAP);
@@ -3215,218 +3183,121 @@ static void star(int x, int y, uint16_t ink) {
   }
 }
 
-static void gal_blit(const uint16_t *px, int x, int y) {
-  for (int r = 0; r < G_TILE_H; r++)
-    memcpy(s_cv + (size_t)(y + r) * UI_W + x, px + (size_t)r * G_TILE_W,
-           (size_t)G_TILE_W * sizeof(uint16_t));
+/* The grid's vertical offset while a page turns: the old page slides out and
+ * the new one in along the same spring. */
+static mo_val_t s_gal_dy;
+static int64_t s_gal_last_us;
+static int s_gal_from_page = -1; /* the page that is leaving, -1 when settled */
+
+/** Blit a tile at (x, y), clipped to the client area; `inset` shrinks it by that many px a side (a press). */
+static void gal_blit_at(const uint16_t *px, int x, int y, int inset) {
+  const int w = G_TILE_W - 2 * inset, h = G_TILE_H - 2 * inset;
+  for (int r = 0; r < h; r++) {
+    const int dy = y + inset + r;
+    if (dy < HEAD_H || dy >= UI_H) continue;
+    const uint16_t *src = px + (size_t)(inset ? r * G_TILE_H / h : r) * G_TILE_W;
+    uint16_t *dst = s_cv + (size_t)dy * UI_W + x + inset;
+    if (inset == 0) {
+      memcpy(dst, src, (size_t)w * sizeof(uint16_t));
+    } else {
+      for (int c = 0; c < w; c++) dst[c] = src[c * G_TILE_W / w];
+    }
+  }
+}
+
+/** Turn the page with the grid sliding: +1 up (next), -1 down (previous). */
+static void gal_turn(int dir) {
+  const int pages = gallery_pages();
+  const int page = gallery_page();
+  if ((dir > 0 && page >= pages - 1) || (dir < 0 && page <= 0)) return;
+  s_gal_from_page = page;
+  gallery_turn(dir);
+  mo_launch(&s_gal_dy, (float)(dir * (UI_H - HEAD_H)), 0.f, -dir * 0.6f);
+  s_gal_last_us = esp_timer_get_time();
+  s_mo_live_count++;
+}
+
+/** One tile's marks: a star for a favourite, the count only when frames are missing. */
+static void gal_marks(const gallery_item_t *it, int x, int y) {
+  if (it->favorite) jtext_fx(x + G_TILE_W - 18.f, y + 14.f, "★", 1.f, 0.f, C_YELLOW, 255, true, false);
+  if (it->partial) {
+    char n[8];
+    snprintf(n, sizeof n, "%d/4", it->frames);
+    jtext_fx(x + 8.f + jtext_w(n, 1) / 2.f, y + G_TILE_H - 14.f, n, 1.f, 0.f, C_YELLOW, 255, true, false);
+  }
+  if (strcmp(it->mode, "quad") == 0)
+    jtext_fx(x + G_TILE_W - 8.f - jtext_w("QUAD", 1) / 2.f, y + G_TILE_H - 14.f, "QUAD", 1.f, 0.f, C_INK, 200, true, false);
 }
 
 static void draw_gallery(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
-  draw_header(SCR_GALLERY);
-
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   storage_status_t sd;
   storage_get_status(&sd);
   const int total = gallery_total();
 
   if (total == 0) {
-    /* "READING CARD" while the scan is still running, because the scan now
-     * happens on the gallery task rather than inside this touch handler: the
-     * first entry arrives here with a total of zero and would otherwise say
-     * "NO PHOTOS YET" for the second it takes to count them. */
     const bool counting = sd.mounted && gallery_loading();
-    /* The count matters most here: this is the first open on a card with no
-     * order index yet, which is the one case that still walks every capture
-     * folder. Without a number the screen says the same thing for seven
-     * seconds and reads as a hang. */
-    char h1buf[24];
     const int walked = gallery_scan_progress();
-    if (counting && walked > 0) snprintf(h1buf, sizeof h1buf, "READING CARD %d", walked);
-    else snprintf(h1buf, sizeof h1buf, "READING CARD");
-    const char *h1 = !sd.mounted ? "NO CARD" : counting ? h1buf : "NO PHOTOS YET";
-    const char *h2 = !sd.mounted   ? "Insert a microSD card to store photos."
-                     : counting    ? "Looking through the captures on the card."
-                                   : "Press the shutter to take one.";
-    text_mid(&UI_FONT_M, UI_W / 2, UI_H / 2 - 26, h1, W_TEXT);
-    text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, h2, W_GRAYTEXT);
+    char h1[32];
+    if (!sd.mounted) snprintf(h1, sizeof h1, "カードなし");
+    else if (counting && walked > 0) snprintf(h1, sizeof h1, "読込中 %d", walked);
+    else if (counting) snprintf(h1, sizeof h1, "読込中");
+    else snprintf(h1, sizeof h1, "写真なし");
+    const char *h2 = !sd.mounted ? "INSERT A MICROSD CARD" : counting ? "READING THE CARD" : "PRESS THE SHUTTER";
+    jtext_fx(UI_W / 2.f, UI_H / 2.f - 10.f, h1, 3.f, 0.f, C_INK, 255, false, true);
+    jtext_fx(UI_W / 2.f, UI_H / 2.f + 34.f, h2, 1.f, 0.f, HDR_DIM, 255, false, false);
+    draw_header(SCR_GALLERY);
     return;
   }
+
+  /* The slide: while a turn is in flight the grid is drawn displaced, and
+   * the page it replaces is not redrawn (its tiles are already gone from the
+   * slots) - the motion is the new page arriving, which is enough. */
+  {
+    const int64_t now = esp_timer_get_time();
+    const float dt = s_gal_last_us ? (float)(now - s_gal_last_us) / 1000.f : 0.f;
+    s_gal_last_us = now;
+    if (!mo_spring(&s_gal_dy, dt, MO_SETTLE)) s_gal_from_page = -1;
+  }
+  const int dy = (int)s_gal_dy.v;
 
   const gallery_item_t *slots = gallery_slots();
   for (int i = 0; i < GALLERY_PAGE; i++) {
     if (slots[i].state == TILE_EMPTY) continue;
     int x, y;
     gal_origin(i, &x, &y);
-    const bool selected = foc(SCR_GALLERY, i);
+    y += dy;
+    if (y + G_TILE_H <= HEAD_H || y >= UI_H) continue;
     const bool down = s_pressed == i;
-
-    /* Every photograph sits in a sunken well; the focused one gets the navy
-     * plate a selected thumbnail had.
-     *
-     * A press lights the same plate, shifts the caption a pixel, and drops a
-     * second sunken edge INSIDE the picture - the well getting deeper, which is
-     * this grammar's press applied to the one surface that cannot invert. A
-     * recess that turned raised would read as the frame popping off the screen,
-     * and the picture itself cannot move: the blit is exactly G_TILE_W wide, so
-     * a pixel of travel would put its last column on the frame's shadow.
-     *
-     * The plate alone was tried and is not enough - it is 3 px of navy behind a
-     * bright photograph, invisible next to the focused tile. What the press
-     * used to be was a dotted rectangle over the photograph, which says
-     * "keyboard focus" and not "your finger is here". */
-    /* The frame was a bevel drawn tight against the picture: 2 px of shadow
-     * with the photograph's own edge immediately inside it, which is a keyline
-     * that happens to be bevelled rather than a well. Every other reading
-     * surface on this interface - a list, the roll's figures, the storage
-     * bar - is white ground inside a sunken edge, and the grid was the last
-     * place a picture sat straight on the face.
-     *
-     * So: a well, with 2 px of its white ground showing all the way round the
-     * photograph as a mat. The picture does not move and does not change size -
-     * the blit is exactly G_TILE_W wide and a pixel of travel would put its
-     * last column on the frame's shadow - the frame moves outwards instead.
-     * The selection plate moves out with it and reads 2 px wide now rather
-     * than 1, which is the only other visible difference. */
-    fill(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, (selected || down) ? W_SEL : W_FACE);
-    well(x - 4, y - 4, G_TILE_W + 8, G_TILE_H + 8);
-    const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
-      gal_blit(slots[i].pixels, x, y);
+      gal_blit_at(slots[i].pixels, x, y, down ? 6 : 0);
     } else {
-      fill(x, y, G_TILE_W, G_TILE_H, C_WELL);
-      text_mid(&UI_FONT_S, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d,
-               slots[i].state == TILE_PENDING ? "LOADING" : "NO IMAGE", D_DIM);
+      fill(x, y < HEAD_H ? HEAD_H : y, G_TILE_W, G_TILE_H - (y < HEAD_H ? HEAD_H - y : 0), RGB(0x1a, 0x1e, 0x24));
+      jtext_fx(x + G_TILE_W / 2.f, y + G_TILE_H / 2.f, slots[i].state == TILE_PENDING ? "…" : "画像なし", 1.f, 0.f, HDR_DIM,
+               255, false, false);
     }
-    /* The facts, on a plate along the picture's bottom edge rather than in a
-     * strip under it. No filename, no size, no path: the picture is the
-     * content and the rest is file management. The plate is the same dark
-     * tone the favourite star already sits on, so a tile carries one kind of
-     * mark and not two; it costs the bottom 20 rows of a 189-row picture,
-     * which is less than the 32 rows of caption and gap it replaces and is
-     * taken from the picture's edge rather than from its size.
-     *
-     * The mark instead of a sentence: four cells, lit for the frames that
-     * are actually in the folder. A full capture reads as four filled cells
-     * at a glance and a partial one is obvious without counting.
-     *
-     * An empty cell is only LOST when the capture actually lost something.
-     * This used to paint every unfilled cell red, so a one-camera body showed
-     * three "camera did not answer" marks under every photograph it had ever
-     * taken correctly - damage reported where there was none. META.JSON says
-     * `partial` when frames were asked for and did not arrive; that is the
-     * only case worth colouring as a fault. */
-    fm_cell_t st[4];
-    for (int k = 0; k < 4; k++) {
-      st[k] = k < slots[i].frames ? FM_ON : (slots[i].partial ? FM_LOST : FM_OFF);
-    }
-    const int sy0 = y + G_TILE_H - G_STRIP;
-    fill(x, sy0, G_TILE_W, G_STRIP, RGB(0x12, 0x16, 0x1c));
-    /* The mark is 8 px in a 20 px strip and the type is 18, so each sits in
-     * the strip's middle on its own terms: 6 above the cells, 1 above the
-     * line. Dark-ground cells, which is the variant the capture banner uses. */
-    four_mark(x + 6 + d, sy0 + (G_STRIP - 8) / 2 + d, 8, st, true);
-    text_right(&UI_FONT_S, x + G_TILE_W - 6 + d, sy0 + (G_STRIP - UI_FONT_S.line_h) / 2 + d,
-               slots[i].mode, W_SELTEXT);
-
-    /* Drawn after the strip so the press reads as the whole well, strip
-     * included, going deeper. */
-    if (down) bevel_sunken(x, y, G_TILE_W, G_TILE_H);
-    if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, W_SELTEXT);
-
-    /* A favourite is marked in the top-right corner of the picture, away from
-     * the facts strip along the bottom, which already carries the frame mark
-     * and the mode; the top-right corner of a tile is the one place that is
-     * empty on every photograph.
-     *
-     * On its own dark plate, because the mark sits over a photograph and a
-     * white star on a bright sky is not a mark. */
-    if (slots[i].favorite) {
-      const int sx = x + G_TILE_W - STAR_W - 6, sy = y + 5;
-      fill(sx - 3, sy - 3, STAR_W + 6, STAR_H + 6, RGB(0x12, 0x16, 0x1c));
-      star(sx, sy, C_YELLOW);
-    }
+    if (y >= HEAD_H) gal_marks(&slots[i], x, y);
+    if (foc(SCR_GALLERY, i)) fill(x, y + G_TILE_H + 3, G_TILE_W, 2, C_INK);
   }
 
-  /*
-   * The count, and the page buttons, in the header bar.
-   *
-   * They were a 40 px footer. The bar's caption plate is 737 px wide for a
-   * word that is 150, and the body is the one place on this screen where
-   * height is worth anything, so the footer's three things moved up: the
-   * two buttons as system buttons at the bar's right end, mirroring BACK at
-   * its left, and the one line of text right-aligned on the plate beside
-   * them. draw_header() painted the plate to the bar's edge; the plate is cut
-   * 5 px short of PREV here, the same 5 px it starts after BACK.
-   *
-   * The text says one thing at a time. "READING CARD" and the page position
-   * are the same piece of information at different moments, so they share the
-   * one slot instead of fighting for it - which is how the footer once showed
-   * a boxed "REPRE#NG|CARD" with the two drawn on top of each other.
-   */
-  const int pages = gallery_pages();
-  const bool loading = gallery_loading();
-
-  char mid[48];
-  if (loading) {
-    /* The count while a full rebuild is walking the card, nothing while the
-     * order came out of the index - which is the honest distinction: an index
-     * hit reads no capture folders at all, so there is no number, and it is
-     * over before anyone reads the line anyway. A rebuild on a 500-capture
-     * card takes seconds and a screen that says only READING CARD for that
-     * long is indistinguishable from one that has hung. */
-    const int walked = gallery_scan_progress();
-    if (walked > 0) snprintf(mid, sizeof mid, "READING CARD %d", walked);
-    else snprintf(mid, sizeof mid, "READING CARD");
-  } else if (pages > 1) {
-    /* Both numbers: which page you are on, and how much there is. Without the
-     * total, "3 of 8" says nothing about whether that is 18 photographs or 48. */
-    snprintf(mid, sizeof mid, "%d of %d      %d photos", gallery_page() + 1, pages, total);
-  } else {
-    snprintf(mid, sizeof mid, "%d photo%s", total, total == 1 ? "" : "s");
-  }
-
-  /* Right-aligned to the plate's end, or to the plate's new end when the
-   * buttons are there: the same HD_CAP_PAD inset the title has on the left. */
-  int plate_end = HD_CAP_X + HD_CAP_W;
-  if (pages > 1) {
-    plate_end = G_PREV_X - 5;
-    fill(plate_end, HD_CAP_Y, HD_CAP_X + HD_CAP_W - plate_end, HD_CAP_H, W_FACE);
-  }
-  text_right(&UI_FONT_S, plate_end - HD_CAP_PAD, HD_CAP_Y + (HD_CAP_H - UI_FONT_S.line_h) / 2,
-             mid, loading ? W_LIGHT : W_SELTEXT);
-
-  if (pages > 1) {
-    const int pd = s_pressed == G_IT_PREV ? 1 : 0, nd = s_pressed == G_IT_NEXT ? 1 : 0;
-    /* Greyed at the ends rather than hidden. A control that disappears moves
-     * the other one and teaches nothing; a dead one shows you where you are. */
-    const bool has_prev = gallery_page() > 0;
-    const bool has_next = gallery_page() < pages - 1;
-    button(G_PREV_X, HD_BTN_Y, HD_BTN, HD_BTN, pd);
-    arrow_glyph(G_PREV_X + HD_BTN / 2 + pd, HD_BTN_Y + HD_BTN / 2 + pd, false,
-                has_prev ? W_TEXT : W_GRAYTEXT);
-    button(G_NEXT_X, HD_BTN_Y, HD_BTN, HD_BTN, nd);
-    arrow_glyph(G_NEXT_X + HD_BTN / 2 + nd, HD_BTN_Y + HD_BTN / 2 + nd, true,
-                has_next ? W_TEXT : W_GRAYTEXT);
-    if (foc(SCR_GALLERY, G_IT_PREV)) focus_inset(G_PREV_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
-    if (foc(SCR_GALLERY, G_IT_NEXT)) focus_inset(G_NEXT_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
+  draw_header(SCR_GALLERY);
+  /* Where you are, in the header's right end: page n / N and the count. */
+  {
+    const int pages = gallery_pages();
+    char pos[40];
+    if (gallery_loading()) {
+      const int walked = gallery_scan_progress();
+      if (walked > 0) snprintf(pos, sizeof pos, "読込中 %d", walked);
+      else snprintf(pos, sizeof pos, "読込中");
+    } else if (pages > 1) {
+      snprintf(pos, sizeof pos, "%d / %d   %d枚", gallery_page() + 1, pages, total);
+    } else {
+      snprintf(pos, sizeof pos, "%d枚", total);
+    }
+    if (!notice_live()) jtext_right(UI_W - 24, HDR_Y + 8, pos, 1, HDR_DIM);
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* One photograph                                                      */
-/* ------------------------------------------------------------------ */
-
-/*
- * The photograph screen's three controls, left to right as they are drawn.
- *
- * FAVOURITE was inserted between DELETE and SEND TO ROLL, which moved
- * P_IT_ROLL from 1 to 2. Nothing reads P_IT_ROLL - the control is drawn dead
- * because there is no radio on this body - but the number is kept in step with
- * the layout so it is right on the day one is fitted.
- *
- * item_count(SCR_PHOTO) is 2, not 3: DELETE and FAVOURITE both do something,
- * SEND TO ROLL does not, and a focus ring is a promise that pressing will act.
- */
 #define P_IT_DELETE 0
 #define P_IT_FAV 1
 #define P_IT_ROLL 2
@@ -3756,144 +3627,65 @@ static void photo_toggle_favourite(void) {
   toast(want ? "Favourite" : "Not favourite");
 }
 
-static void draw_photo(void) {
-  fill(0, 0, UI_W, UI_H, D_GROUND);
+static int s_ph_del_x0, s_ph_del_x1, s_ph_fav_x0, s_ph_fav_x1;
 
+static void draw_photo(void) {
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   const int px = PH_X0, py = PH_TOP;
-  /* The frame of the swing while one is playing, the still otherwise. Same
-   * size, same well, same everything else: the picture moves and no pixel of
-   * the chrome around it does. */
   const uint16_t *src = s_quad_ready ? NULL : photo_pixels();
   if (s_quad_ready) {
-    /*
-     * The quad: all four looks, 2x2, in reading order - C1 top-left, C2
-     * top-right, C3 bottom-left, C4 bottom-right, the same order the gallery
-     * tile and META count them. Each quadrant is one frame decoded at exactly
-     * this size, so nothing is scaled here. A look that never reached the card
-     * is a dark pane with its lens named, in place, so the other three do not
-     * move to fill it: a quad with a hole says where the hole is.
-     */
     const int qw = PH_W / 2, qh = PH_H / 2;
     for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
       const int qx = px + (i & 1) * qw, qy = py + (i >> 1) * qh;
       const uint16_t *fp = (s_wig_have & (1u << i)) ? gallery_frame_pixels(i) : NULL;
       if (fp != NULL) {
         for (int r = 0; r < qh; r++)
-          memcpy(s_cv + (size_t)(qy + r) * UI_W + qx, fp + (size_t)r * qw,
-                 (size_t)qw * sizeof(uint16_t));
+          memcpy(s_cv + (size_t)(qy + r) * UI_W + qx, fp + (size_t)r * qw, (size_t)qw * sizeof(uint16_t));
       } else {
         char lens[4];
         snprintf(lens, sizeof lens, "C%d", i + 1);
-        fill(qx, qy, qw, qh, D_PANE);
-        text_mid(&UI_FONT_S, qx + qw / 2, qy + qh / 2 - UI_FONT_S.line_h / 2, lens, D_DIM);
+        fill(qx, qy, qw, qh, RGB(0x1a, 0x1e, 0x24));
+        jtext_fx(qx + qw / 2.f, qy + qh / 2.f, lens, 1.f, 0.f, HDR_DIM, 255, false, false);
       }
     }
-    /* A 2 px seam in the ground colour between the quadrants, over one edge
-     * pixel of each: four pictures touching read as one picture with a crease,
-     * and the same tone as the surround makes the grid read as four wells. */
-    fill(px + qw - 1, py, 2, PH_H, D_GROUND);
-    fill(px, py + qh - 1, PH_W, 2, D_GROUND);
+    fill(px + qw - 1, py, 2, PH_H, HDR_GROUND);
+    fill(px, py + qh - 1, PH_W, 2, HDR_GROUND);
   } else if (src != NULL) {
     for (int r = 0; r < PH_H; r++)
-      memcpy(s_cv + (size_t)(py + r) * UI_W + px, src + (size_t)r * PH_W,
-             (size_t)PH_W * sizeof(uint16_t));
+      memcpy(s_cv + (size_t)(py + r) * UI_W + px, src + (size_t)r * PH_W, (size_t)PH_W * sizeof(uint16_t));
   } else {
-    fill(px, py, PH_W, PH_H, D_PANE);
-    text_mid(&UI_FONT_M, px + PH_W / 2, py + PH_H / 2 - 12, "NO IMAGE", D_DIM);
+    fill(px, py, PH_W, PH_H, RGB(0x1a, 0x1e, 0x24));
+    jtext_fx(px + PH_W / 2.f, py + PH_H / 2.f, "画像なし", 2.f, 0.f, HDR_DIM, 255, false, true);
   }
-  /* The picture in a well, in the dark chrome's own tones. It was a 1 px
-   * keyline, which is the one thing this grammar has no word for: a frame is
-   * either raised or sunken, and a photograph is set into the body. */
-  bevel_sunken_dark(px - 2, py - 2, PH_W + 4, PH_H + 4);
+  draw_header_at(SCR_PHOTO, true);
 
-  /* Back, top left, matching the viewfinder so the gesture is the same. */
-  const uint16_t bink = (s_pressed == IT_BACK) ? C_BLUE : D_TEXT;
-  chevron(14, 14, bink);
-  text(&UI_FONT_S, 32, 14 - UI_FONT_S.line_h / 2, "BACK", bink);
-
-  /* The caption, one fact per line down the column: what it is called, what
-   * kind of capture, how many frames. It was one line under the picture, with
-   * three spaces between the facts; the column is 162 px and the line was
-   * wider than that, so it breaks where the spaces were. */
-  int cy = PH_CAP_Y;
-  text(&UI_FONT_S, PH_COL_X, cy, s_photo_label, D_DIM);
-  cy += UI_FONT_S.line_h;
-  text(&UI_FONT_S, PH_COL_X, cy, s_photo_mode, D_DIM);
-  cy += UI_FONT_S.line_h;
-  char info[24];
-  snprintf(info, sizeof info, "%d frames", s_photo_frames);
-  text(&UI_FONT_S, PH_COL_X, cy, info, D_DIM);
-  cy += UI_FONT_S.line_h;
-
-  /*
-   * A wiggle that is swinging fewer than four frames says so, on the caption's
-   * fourth line.
-   *
-   * The count is what DECODED, not META's frameCount: a partial capture may
-   * be missing any one of the four and the document only records how many
-   * were stored, so the denominator is the four lenses and the numerator is
-   * what is actually on the card. Said only when it is short - a complete
-   * wiggle needs no note, and "4 OF 4 FRAMES" on every photograph is a label
-   * that teaches nothing and dilutes the one that does.
-   *
-   * In the column rather than over the picture: the well is a photograph and
-   * nothing this firmware has to say belongs inside it.
-   */
-  if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX) {
-    char note[24];
-    snprintf(note, sizeof note, "%d OF %d FRAMES", s_wig_count, GALLERY_FRAME_MAX);
-    text(&UI_FONT_S, PH_COL_X, cy + 8, note, D_DIM);
+  /* The line under the picture: what it is on the left, what can be done
+   * on the right. Words, lit or dim; a pressed word gets its underline. */
+  const int ly = PH_LINE_Y;
+  {
+    char facts[64];
+    if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX)
+      snprintf(facts, sizeof facts, "%s  %s  %d/4", s_photo_label, s_photo_mode, s_wig_count);
+    else
+      snprintf(facts, sizeof facts, "%s  %s  %d枚", s_photo_label, s_photo_mode, s_photo_frames);
+    upcase(facts);
+    jtext(PH_X0, ly, facts, 1, HDR_DIM);
   }
-
-  /* The three controls, stacked at the foot of the column, DELETE at the top
-   * and SEND TO ROLL at the bottom - the order they had left to right. */
-  const int bh = PH_BTN_H, bx = PH_COL_X, bw = PH_BTN_W;
-
-  const int dy = PH_BTN_Y(0);
-  const int dd = s_pressed == P_IT_DELETE ? 1 : 0;
-  button(bx, dy, bw, bh, dd);
-  text_mid(&UI_FONT_S, bx + bw / 2 + dd, dy + (bh - UI_FONT_S.line_h) / 2 + dd, "DELETE", W_TEXT);
-  /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
-   * zeroed, so reading it directly put a focus ring on DELETE the first time
-   * any photograph was opened, on a body whose only input is a finger. */
-  if (foc(SCR_PHOTO, P_IT_DELETE)) focus_inset(bx, dy, bw, bh, W_TEXT);
-
-  /* The star carries the state and the word carries the action, which is why
-   * the label does not change between them: a button reading "UNFAVOURITE" on
-   * a photograph that IS one, next to a lit star, says the same thing twice
-   * and in two different grammars. Gold star, it is a favourite; grey star, it
-   * is not. The button always toggles. It is also drawn pushed in while it is
-   * one, the same way a live segment is on every other screen here. */
-  const int fy = PH_BTN_Y(1);
-  const int fd = s_pressed == P_IT_FAV ? 1 : 0;
-  const int fpush = (fd || s_photo_fav) ? 1 : 0;
-  button(bx, fy, bw, bh, fd || s_photo_fav);
-  star(bx + 14 + fpush, fy + (bh - STAR_H) / 2 + fpush,
-       s_photo_fav ? RGB(0xd0, 0x9c, 0x00) : W_SHADOW);
-  text_mid(&UI_FONT_S, bx + bw / 2 + 10 + fpush, fy + (bh - UI_FONT_S.line_h) / 2 + fpush,
-           "FAVOURITE", W_TEXT);
-  if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, W_TEXT);
-
-  /* No radio on this body, so Roll cannot take it. Dimmed with the reason
-   * rather than hidden - a control that vanishes teaches nothing. */
-  const int ry = PH_BTN_Y(2);
-  button(bx, ry, bw, bh, false);
-  text_mid(&UI_FONT_S, bx + bw / 2, ry + (bh - UI_FONT_S.line_h) / 2, "SEND TO ROLL", W_GRAYTEXT);
+  {
+    const char *fav = s_photo_fav ? "★ お気に入り" : "☆ お気に入り";
+    const char *del = "削除";
+    const int fw = jtext_w(fav, 1), dw = jtext_w(del, 1);
+    s_ph_del_x1 = PH_X0 + PH_W;
+    s_ph_del_x0 = s_ph_del_x1 - dw;
+    s_ph_fav_x1 = s_ph_del_x0 - 28;
+    s_ph_fav_x0 = s_ph_fav_x1 - fw;
+    jtext(s_ph_fav_x0, ly, fav, 1, s_photo_fav ? C_YELLOW : C_INK);
+    jtext(s_ph_del_x0, ly, del, 1, C_INK);
+    if (s_pressed == P_IT_FAV) fill(s_ph_fav_x0, ly + 18, fw, 2, C_INK);
+    if (s_pressed == P_IT_DELETE) fill(s_ph_del_x0, ly + 18, dw, 2, C_RED);
+  }
 }
 
-/* ------------------------------------------------------------------ */
-/* Roll                                                                */
-/* ------------------------------------------------------------------ */
-
-/*
- * Draw a QR centred at `cx`, scaled to the largest whole module pitch that
- * fits `box` pixels, with the 4-module quiet zone the spec requires.
- *
- * The quiet zone is not optional and not decoration: without it a phone
- * cannot find the symbol's edges against the surrounding UI, and the failure
- * looks like a camera whose screen "does not scan" rather than a missing
- * margin. Drawn as an explicit white block for the same reason.
- */
 #define QR_QUIET 4
 
 static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
@@ -5273,7 +5065,7 @@ static int item_count(screen_t s) {
     /* The TARGET row is the last band, so WIGGLE simply stops short of it
      * and every index below keeps its meaning in both modes. */
     case SCR_LOOK: return mode_is_quad() ? FL_IT_COUNT : FL_IT_TARGET;
-    case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
+    case SCR_GALLERY: return GALLERY_PAGE;
     case SCR_PHOTO: return 2; /* Send to Roll is not fitted, so not focusable */
     case SCR_SETTINGS: return 5;
     case SCR_DISPLAY: return DSP_IT_COUNT;
@@ -5333,12 +5125,12 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_PHOTO: {
-      if (in(x, y, 0, 0, 150, 40)) return IT_HDR;
-      /* The same PH_BTN_Y/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
-       * not a target: it is drawn dead, and a press that lands on it should do
-       * nothing rather than raise a toast about a radio that is not there. */
-      if (in(x, y, PH_COL_X, PH_BTN_Y(0), PH_BTN_W, PH_BTN_H)) return P_IT_DELETE;
-      if (in(x, y, PH_COL_X, PH_BTN_Y(1), PH_BTN_W, PH_BTN_H)) return P_IT_FAV;
+      if (y < HEAD_H && x < 260) return IT_HDR;
+      /* The two words on the line under the picture, with room around them. */
+      if (y >= PH_LINE_Y - 14) {
+        if (x >= s_ph_del_x0 - 14 && x < s_ph_del_x1 + 14) return P_IT_DELETE;
+        if (x >= s_ph_fav_x0 - 14 && x < s_ph_fav_x1 + 14) return P_IT_FAV;
+      }
       return -1;
     }
 
@@ -5353,11 +5145,6 @@ static int hit_test(int x, int y) {
    * 8 px past PREV's left face, split down the 4 px between them - the same
    * margin-round-the-button rule the finder's back button uses, so a thumb
    * that lands on the bevel turns the page rather than leaving the gallery. */
-  if (s_screen == SCR_GALLERY && gallery_total() > 0 && gallery_pages() > 1) {
-    const int split = G_NEXT_X - G_PG_GAP / 2;
-    if (in(x, y, G_PREV_X - 8, 0, split - (G_PREV_X - 8), HEAD_H)) return G_IT_PREV;
-    if (in(x, y, split, 0, UI_W - split, HEAD_H)) return G_IT_NEXT;
-  }
   if (y < HEAD_H) return IT_HDR;
 
   switch (s_screen) {
@@ -5381,15 +5168,12 @@ static int hit_test(int x, int y) {
       return x < UI_W / 2 ? FL_IT_PREV : FL_IT_NEXT;
     }
     case SCR_GALLERY: {
-      if (gallery_total() == 0) return -1;
+      if (gallery_total() == 0 || s_gal_from_page >= 0) return -1; /* not while a page is sliding */
       for (int i = 0; i < GALLERY_PAGE; i++) {
         int gx, gy;
         gal_origin(i, &gx, &gy);
-        /* The tile itself: the facts are on it now, not in a strip under it. */
         if (in(x, y, gx, gy, G_TILE_W, G_TILE_H)) return i;
       }
-      /* PREV and NEXT are in the header and were tested above, before the
-       * band's own back target. */
       return -1;
     }
     case SCR_SETTINGS:
@@ -5582,8 +5366,6 @@ static void activate(int item) {
       break;
 
     case SCR_GALLERY:
-      if (item == G_IT_PREV) { gallery_turn(-1); break; }
-      if (item == G_IT_NEXT) { gallery_turn(1); break; }
       if (item >= 0 && item < GALLERY_PAGE) {
         const gallery_item_t *slots = gallery_slots();
         if (slots[item].state == TILE_EMPTY) break;
@@ -6013,6 +5795,10 @@ static uint32_t ui_pass(void) {
         klog("P4", "swipe %d px in %d ms", dx, (int)((now - g_down_us) / 1000));
         if (s_row_open) row_close();
         mode_swipe(dx < 0 ? 1 : -1);
+      } else if (quick && (dy > GEST_SWIPE || dy < -GEST_SWIPE) && dx < GEST_RISE && dx > -GEST_RISE &&
+                 s_dialog == DLG_NONE && !s_row_open) {
+        /* Up and down is the screen's own: the gallery turns its pages. */
+        if (s_screen == SCR_GALLERY) gal_turn(dy < 0 ? 1 : -1);
       }
       g_moved = false;
     }

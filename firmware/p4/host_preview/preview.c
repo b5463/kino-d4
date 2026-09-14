@@ -1395,6 +1395,17 @@ int main(int argc, char **argv) {
   row_close();
   s_screen = SCR_SHOOT;
 
+  /* ---- film: the gallery turning a page (a swipe up) ---- */
+  s_screen = SCR_GALLERY;
+  film_t0 = g_preview_clock_us + 1000000;
+  g_touch_down = true; g_touch_lx = 400; g_touch_ly = 380; FILM("page", -120);
+  g_touch_ly = 300; FILM("page", -90);
+  g_touch_ly = 220; FILM("page", -60);
+  g_touch_ly = 150; FILM("page", -30);
+  g_touch_down = false; FILM("page", 0);
+  FILM("page", 16); FILM("page", 50); FILM("page", 90); FILM("page", 140); FILM("page", 200); FILM("page", 300);
+  s_screen = SCR_SHOOT;
+
   /* ---- film: the capture ----
    *
    * The pipeline's stages and masks set by hand at the times a real capture
