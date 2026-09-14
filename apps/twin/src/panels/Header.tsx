@@ -2,6 +2,7 @@ import { profileById } from '@kino/test-fixtures';
 import { useState } from 'react';
 import { rebootDevice, setFlashEnabled, useSimStore } from '../state/simStore';
 import kinoD4Twin from '../assets/kino-d4-twin-light.png';
+import { SCREEN_HASH } from '../display/screenFocus';
 
 function simLabel(running: boolean, bootStage: string): string {
   if (!running) return 'SIM OFF';
@@ -112,6 +113,14 @@ export function Header() {
       >
         {busy === 'reboot' ? 'REBOOTING…' : 'REBOOT'}
       </button>
+
+      <a
+        className="twin-btn twin-header-control"
+        href={SCREEN_HASH}
+        title="Just the display, full window. Nothing else is drawn, so nothing can reset the view."
+      >
+        SCREEN VIEW
+      </a>
 
       <span className="twin-header-item">
         <span className={bootStage === 'READY' ? 'twin-dot twin-dot--ok' : running ? 'twin-dot twin-dot--warn' : 'twin-dot'} aria-hidden="true" />

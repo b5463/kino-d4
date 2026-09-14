@@ -20,6 +20,7 @@ import { getTwinRuntime, useSimStore } from '../state/simStore';
 import { useRollBridge } from '../roll/bridge';
 import { getDisplayPreview } from '../scene/displayPreview';
 import { DISPLAY_H, DISPLAY_W } from './deviceUi';
+import { moduleHash } from './moduleHash';
 import {
   BUTTON,
   CAPTURE_STAGE,
@@ -92,6 +93,20 @@ export type FirmwareUiVariant = 'placeholder' | 'w98';
 interface Compiled {
   module: WebAssembly.Module;
   variant: FirmwareUiVariant;
+  /** Where the bytes came from — the place a rebuilt bake will land too. */
+  url: URL;
+  /** Fingerprint of the bytes (moduleHash), so a rebuild is recognisable. */
+  hash: string;
+  /** When the bytes were fetched, epoch ms. */
+  loadedAt: number;
+}
+
+/** What the screen is running, for anyone who shows it. */
+export interface FirmwareUiLoaded {
+  variant: FirmwareUiVariant;
+  url: string;
+  hash: string;
+  loadedAt: number;
 }
 
 /** How often the viewfinder panes are refreshed from the virtual sensor while SHOOT is up. */
@@ -108,8 +123,7 @@ const decoder = new TextDecoder();
  * public/ (gitignored, `npm run twin:ui:bake -- --w98`) and wins when present;
  * the committed build with placeholder tiles is bundled with the app.
  */
-async function compileModule(): Promise<Compiled | null> {
-  if (typeof WebAssembly === 'undefined' || typeof fetch === 'undefined') return null;
+function moduleCandidates(): [URL, FirmwareUiVariant][] {
   const candidates: [URL, FirmwareUiVariant][] = [];
   try {
     const base = (import.meta.env?.BASE_URL as string | undefined) ?? './';
@@ -118,19 +132,40 @@ async function compileModule(): Promise<Compiled | null> {
     /* no window: nothing to prefer */
   }
   candidates.push([new URL('./firmware/kino-ui.wasm', import.meta.url), 'placeholder']);
-  for (const [url, variant] of candidates) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-      const type = response.headers.get('content-type') ?? '';
-      const module =
-        type.includes('application/wasm') && typeof WebAssembly.compileStreaming === 'function'
-          ? await WebAssembly.compileStreaming(response)
-          : await WebAssembly.compile(await response.arrayBuffer());
-      return { module, variant };
-    } catch {
-      /* try the next one */
-    }
+  return candidates;
+}
+
+/**
+ * The bytes at `url`, or null when nothing is there. Always straight from the
+ * server: a bake overwrites the file in place, and a cached copy would show
+ * the build before the one just made.
+ */
+async function fetchModuleBytes(url: URL): Promise<ArrayBuffer | null> {
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    return await response.arrayBuffer();
+  } catch {
+    return null;
+  }
+}
+
+async function compileFrom(url: URL, variant: FirmwareUiVariant): Promise<Compiled | null> {
+  const bytes = await fetchModuleBytes(url);
+  if (!bytes) return null;
+  try {
+    const module = await WebAssembly.compile(bytes);
+    return { module, variant, url, hash: moduleHash(bytes), loadedAt: Date.now() };
+  } catch {
+    return null; // not a module (a stale HTML 404 page, a half-written bake)
+  }
+}
+
+async function compileModule(): Promise<Compiled | null> {
+  if (typeof WebAssembly === 'undefined' || typeof fetch === 'undefined') return null;
+  for (const [url, variant] of moduleCandidates()) {
+    const compiled = await compileFrom(url, variant);
+    if (compiled) return compiled;
   }
   return null;
 }
@@ -163,6 +198,7 @@ export class FirmwareUi {
   private lastVfMs = 0;
   private captureCount = 0;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private reloading: Promise<'reloaded' | 'unchanged' | 'missing'> | null = null;
 
   version: string | null = null;
   variant: FirmwareUiVariant | null = null;
@@ -227,7 +263,55 @@ export class FirmwareUi {
     if (this.compiled !== undefined) return this.compiled;
     if (!this.compiling) this.compiling = compileModule();
     this.compiled = await this.compiling;
+    this.compiling = null;
     return this.compiled;
+  }
+
+  /** The module on screen: where from, which bytes, since when. Null before the first start. */
+  loaded(): FirmwareUiLoaded | null {
+    const c = this.compiled;
+    return c ? { variant: c.variant, url: c.url.href, hash: c.hash, loadedAt: c.loadedAt } : null;
+  }
+
+  /**
+   * Pick up a rebuilt module without reloading the page.
+   *
+   * `npm run twin:ui:bake` overwrites the file the running screen was loaded
+   * from. This fetches it again, and when the bytes differ (or `force`), takes
+   * the screen down and brings it up on the new build — the same restart the
+   * body does after a body-restart, against the same device state, so Studio's
+   * link, the card, the config and the Roll all survive. Returns what happened
+   * so a caller can say it in one word.
+   */
+  async reload(force = false): Promise<'reloaded' | 'unchanged' | 'missing'> {
+    if (this.reloading) return this.reloading;
+    this.reloading = (async () => {
+      const current = this.compiled ?? (await this.ensureCompiled());
+      const next = current
+        ? await compileFrom(current.url, current.variant)
+        : await compileModule();
+      if (!next) return 'missing' as const;
+      if (current && next.hash === current.hash && !force) return 'unchanged' as const;
+      const wasRunning = this.running;
+      if (wasRunning) this.stop();
+      this.compiled = next;
+      this.notifyStatus();
+      if (wasRunning) await this.start();
+      return 'reloaded' as const;
+    })();
+    try {
+      return await this.reloading;
+    } finally {
+      this.reloading = null;
+    }
+  }
+
+  /** True when the file the screen was loaded from now holds different bytes. */
+  async updateAvailable(): Promise<boolean> {
+    const current = this.compiled;
+    if (!current) return false;
+    const bytes = await fetchModuleBytes(current.url);
+    return bytes !== null && moduleHash(bytes) !== current.hash;
   }
 
   /** Bring the screen up: instantiate, feed the state, run the boot. */
@@ -244,7 +328,9 @@ export class FirmwareUi {
     x._initialize?.();
     if (x.kui_init() !== 0) return;
     this.x = x;
-    this.variant = compiled.variant;
+    // The module says which artwork it carries; the slot it was fetched from
+    // only says which file. After a hot reload the two can differ.
+    this.variant = typeof x.kui_icons_placeholder === 'function' ? (x.kui_icons_placeholder() ? 'placeholder' : 'w98') : compiled.variant;
     this.version = this.cstr(x.kui_version());
     this.running = true;
     this.galleryPage = 1;

@@ -16,6 +16,12 @@ export default defineConfig({
     // already reaches the workspace root; Vitest's server defaults to the app
     // root alone and would deny them, so say the repository root here.
     fs: { allow: [fileURLToPath(new URL('../..', import.meta.url))] },
+    // A bake (`npm run twin:ui:bake`) rewrites the firmware module in place.
+    // Left to Vite, a change under public/ reloads the whole page — which
+    // resets the simulator, drops Studio's link and empties the card, the
+    // opposite of what someone iterating on ui.c wants. The SCREEN VIEW
+    // watches the file itself and restarts only the screen.
+    watch: { ignored: ['**/kino-ui.wasm', '**/kino-ui.w98.wasm'] },
     // Roll development bridge (issue #75): same-origin /api reaches the Roll
     // API. ws:false keeps SSE passthrough intact — same setup as roll-web.
     proxy: {

@@ -148,3 +148,60 @@ describe('BroadcastTransport + TwinDeviceServer (§10 option 2)', () => {
     await expect(closed).resolves.toMatch(/rebooting/i);
   }, 10_000);
 });
+
+describe('TwinDeviceServer lease (background-tab throttling)', () => {
+  it('tells the client when its lease ends, instead of forgetting it silently', async () => {
+    const channel = uniqueChannel();
+    const sim = await bootedSim(33);
+    const server = new TwinDeviceServer(sim, { channelName: channel, heartbeatIntervalMs: 25, clientLeaseMs: 100 });
+    server.start();
+    try {
+      const transport = new BroadcastTransport(channel);
+      await transport.open();
+      const client = (transport as unknown as { client: string }).client;
+
+      // A tab that went quiet without dying: stop answering pings by cutting
+      // the transport's live listener, but keep our own ear on the channel.
+      const ear = new BroadcastChannel(channel);
+      const closed = new Promise<{ client: string; reason?: string }>((resolve) => {
+        ear.addEventListener('message', (ev) => {
+          const msg = ev.data as { t: string; client?: string; reason?: string };
+          if (msg.t === 'close' && msg.client === client) resolve({ client: msg.client, reason: msg.reason });
+        });
+      });
+      (transport as unknown as { unsubscribeLive: (() => void) | null }).unsubscribeLive?.();
+
+      const msg = await closed;
+      expect(msg.client).toBe(client);
+      expect(msg.reason).toMatch(/heartbeat/i);
+      ear.close();
+      (transport as unknown as { bus: { close(): void } | null }).bus?.close();
+    } finally {
+      server.stop();
+      sim.dispose();
+    }
+  }, 10_000);
+
+  it('counts the lease in heartbeats, so a client that answers every ping is never dropped', async () => {
+    const channel = uniqueChannel();
+    const sim = await bootedSim(34);
+    // A lease shorter than one heartbeat would be nonsense on a wall clock;
+    // in heartbeats it is the minimum of two unanswered pings.
+    const server = new TwinDeviceServer(sim, { channelName: channel, heartbeatIntervalMs: 20, clientLeaseMs: 10 });
+    server.start();
+    try {
+      const transport = new BroadcastTransport(channel);
+      let closedReason: string | null = null;
+      transport.onClose((reason) => {
+        closedReason = reason ?? 'closed';
+      });
+      await transport.open();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(closedReason).toBeNull();
+      await transport.close();
+    } finally {
+      server.stop();
+      sim.dispose();
+    }
+  }, 10_000);
+});

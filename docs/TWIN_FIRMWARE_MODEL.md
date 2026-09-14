@@ -92,3 +92,20 @@ body's physical key, through `ui.c`'s own button queue.
   2026-09-05 operator decision.
 - Before SIM READY, and in a browser without the module, `deviceUi.ts` still
   draws POWER OFF and the boot ladder.
+
+## Working on ui.c against the Twin
+
+Open the Twin at `#screen` (or press SCREEN VIEW in the header). That view is the
+display and nothing else: no 3D scene is mounted, so no view reset, pick or
+explode can interrupt the picture, and it fills the window at FIT, 1X or 2X
+(the integer scales are pixel-exact). Touch the canvas as you would the glass;
+SHUTTER and FN are the body's keys (Space and F).
+
+Rebuild with `npm run twin:ui:bake` (`--w98` for the private icon build). The
+bake rewrites the module the screen was loaded from; with WATCH on, the view
+notices the new bytes within two seconds and restarts only the screen on the
+new build. RELOAD (R) does the same on demand. The device underneath is not
+touched, so Studio's link, the card, the config and any Roll survive the
+swap. The bar prints the module's fingerprint and load time so a new bake is
+visible at a glance; the dev server is configured not to reload the page when
+either module file changes.

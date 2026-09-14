@@ -204,6 +204,8 @@ KINO has no published release yet. Changes intended for the first release collec
 - **Device page PHYSICAL CONTROLS say what D4-V1 has.** FUNCTION BUTTON and SLIDE SWITCH have no GPIO on this body (ECN-0003) and the firmware reads neither key; both selects are disabled with that note, and wiggle VIEWFINDER IN WIGGLE / SAVE ORIGINALS and quad slot FLASH / NOTE carry a one-line "not read by firmware" hint from one shared helper.
 - Studio: LOAD DEMO PACKAGE on Updates is developer-mode only and hidden unless the session is simulated — it was reachable in production in front of a real camera. Dead exports removed: `MASKED_PASSWORD`, `cloneRecipe`, `getRollLinks`, `clearCreatedRolls`, `resetUpdateState`, `setRollServerUrl`.
 - KINO Twin: the FAULTS tab gains a FIRMWARE PROFILE selector, so the Twin can answer as the shipped firmware (0.4.56, one camera wired, refusing what the camera refuses) or as the simulated-future demo device. Switching reboots the device with a new session, and a connected Studio sees the reboot the way it would a real one (HARDWARE ERROR, then connect again).
+- KINO Twin: SCREEN VIEW (`#screen`, a header button, or SCREEN VIEW on the SCREEN tab) shows just the camera's display, full window, with nothing else mounted — no 3D scene, panels or overlay, so no view reset or pick can get between you and the firmware. Touch, SHUTTER and FN work; FIT / 1X / 2X scaling (integer scales draw pixel-exact); Esc leaves. The simulator keeps running underneath, so Studio's link, the card and the config survive entering and leaving it.
+- KINO Twin: the firmware screen hot-reloads. `npm run twin:ui:bake` rewrites the module in place; SCREEN VIEW's WATCH notices the new bytes and restarts only the screen on the new build (RELOAD does it on demand), and the dev server no longer reloads the whole page when a bake lands. The bar shows the module fingerprint and when it was loaded.
 
 ### Removed
 
@@ -350,6 +352,8 @@ KINO has no published release yet. Changes intended for the first release collec
 - Studio Roll and Gallery sent NETWORK_STATUS / ROLL_STATUS ungated while the session poller gated them on `network` / `roll`; the pages use the same gates and hide the row when the firmware lacks the group instead of reporting a link fault.
 - Studio VIEWFINDER retried a refused CAMERA_PREVIEW every ~1 s forever; a firmware that NACKs it stops the loop and shows Unsupported ("This firmware has no host viewfinder").
 - Studio: `void refreshAll()` from the toolbar and the page-level `refreshDeviceInfo()` calls could reject with an unhandled `KinoTimeoutError: No response to GET_DEVICE_INFO`; both route through the poller's `pollFailed` freshness handling and SYNC reports the miss in the status bar.
+- Studio: a link that stays open while the camera stops answering (a hung board on USB CDC, a Twin that let go of the relay) no longer sits on KINO CONNECTED with every read timing out. Three unanswered polls in a row raise the close the transport never sends, and the strip reads HARDWARE ERROR with the reason.
+- KINO Twin: the device server's client lease is counted in heartbeats, not milliseconds, so a Studio in a background tab (throttled timers, but every ping answered) is no longer dropped; and when a lease does end the client is told with a close, instead of being forgotten silently.
 
 ### Known incomplete work
 

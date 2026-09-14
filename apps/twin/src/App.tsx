@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Assembly } from './scene/Assembly';
 import { Wiring } from './scene/Wiring';
 import { Optics } from './scene/Optics';
@@ -28,6 +28,26 @@ import { RollPanel } from './panels/RollPanel';
 import { Stage } from './scene/Stage';
 import { SensorRig } from './scene/SensorRig';
 import type { ViewPoseName } from './scene/viewPoses';
+import { ScreenView } from './panels/ScreenView';
+import { isScreenFocus } from './display/screenFocus';
+
+/** The `#screen` hash, live: a reload lands back in the SCREEN VIEW. */
+function useScreenFocus(): [boolean, () => void] {
+  const read = () => (typeof window === 'undefined' ? false : isScreenFocus(window.location.hash));
+  const [focus, setFocus] = useState(read);
+  useEffect(() => {
+    const onHash = () => setFocus(read());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const exit = () => {
+    // Clear the hash without adding a history entry or scrolling.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    setFocus(false);
+  };
+  return [focus, exit];
+}
+
 
 // KINO Twin app shell — §3 frame. The header identifies the app, the loaded
 // hardware profile, sim state, and the Studio link; the center pane renders
@@ -62,6 +82,7 @@ const RIGHT_TABS: { id: RightTab; label: string; blurb: string }[] = [
 export function App() {
   const canvasRef = useRef<TwinCanvasHandle>(null);
   const [rightTab, setRightTab] = useState<RightTab>('inspect');
+  const [screenFocus, exitScreenFocus] = useScreenFocus();
   const profile = useSceneStore((state) => state.profile);
   const overrides = useSceneStore((state) => state.overrides);
   const pitchMm = useSceneStore((state) => state.pitchMm);
@@ -71,6 +92,11 @@ export function App() {
   function handleView(name: ViewPoseName) {
     canvasRef.current?.applyView(name);
   }
+
+  // The SCREEN VIEW replaces the whole shell: the scene is not mounted at all,
+  // so nothing it does can reach the display. The simulator is global and keeps
+  // running either way.
+  if (screenFocus) return <ScreenView onExit={exitScreenFocus} />;
 
   return (
     <div className="twin-app">

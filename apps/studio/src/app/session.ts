@@ -94,6 +94,15 @@ let pollInFlight = false;
 let expectRebootUntil = 0;
 let generation = 0;
 let reconnecting = false;
+/** The transport factory of the live session, for a close Studio has to raise itself. */
+let lastFactory: (() => Transport) | null = null;
+/**
+ * Polls in a row that got no answer at all. A NACK or a busy device is an
+ * answer; only a timeout counts, and one is not a disconnect. Three are:
+ * twelve seconds of a link nobody is on the other end of.
+ */
+let silentPolls = 0;
+const SILENT_POLLS_LIMIT = 3;
 /**
  * Boot/session ID of the last camera this Studio spoke to. Studio builds a
  * fresh protocol client per connection, so the client cannot notice a reboot
@@ -213,6 +222,8 @@ const OPEN_TARGET_LABEL: Record<TransportKind, string> = {
 async function connectWith(factory: () => Transport, kind: TransportKind): Promise<void> {
   await teardown(false);
   lastKind = kind;
+  lastFactory = factory;
+  silentPolls = 0;
   const gen = ++generation;
   // While the reconnect loop runs, the shell stays up with a REBOOTING
   // banner — intermediate phases would flash the connect screen instead.
@@ -725,6 +736,7 @@ function startPolling() {
       // often enough for a status lamp and rare enough not to compete with
       // the camera poll for the link.
       if (tick % 5 === 0) await pollNetworkRoll(device);
+      silentPolls = 0;
       pollSucceeded();
     } catch (err) {
       // A single missed poll (busy device, injected timeout) is not a
@@ -735,6 +747,15 @@ function startPolling() {
       // a live reading. The values stay — they are all there is — and the
       // status bar says how old they are and why.
       pollFailed(message(err));
+      // A run of them is something else. A transport that never closes —
+      // USB CDC on a hung board, a relay whose Twin let go — leaves Studio
+      // CONNECTED with every read timing out, indefinitely. Three unanswered
+      // polls in a row (the third carries the liveness HELLO) is the link
+      // gone, and it is reported as one.
+      if (err instanceof KinoTimeoutError && ++silentPolls >= SILENT_POLLS_LIMIT) {
+        silentPolls = 0;
+        linkSilent();
+      }
     } finally {
       pollInFlight = false;
     }
@@ -745,6 +766,22 @@ function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
   pollInFlight = false;
+}
+
+/**
+ * The link is open and nobody answers. Raise the close the transport never
+ * will, with the reason on it, and let the close handler do what it does for
+ * a cable pulled: reconnect if a reboot was expected, HARDWARE ERROR if not.
+ * The transport is closed afterwards under a new generation, so its own
+ * close callback is stale and cannot overwrite the reason.
+ */
+function linkSilent(): void {
+  const factory = lastFactory;
+  const t = transport;
+  if (!factory || !t) return;
+  handleTransportClose(generation, factory, 'KINO stopped answering: three reads in a row timed out. Check the cable, then connect again.');
+  generation++;
+  void t.close().catch(() => {});
 }
 
 function handleTransportClose(gen: number, factory: () => Transport, reason?: string) {
