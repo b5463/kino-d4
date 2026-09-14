@@ -1390,6 +1390,18 @@ int main(int argc, char **argv) {
   g_stage = CAPTURE_IDLE;
   FILM("cap", 2600);
 
+  /* ---- film: a notice, and the four-camera one ---- */
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  notice_say("カード OK", RGB(0xf2, 0xf2, 0xee), 1400, false);
+  FILM("note", 0); FILM("note", 30); FILM("note", 70); FILM("note", 120); FILM("note", 200); FILM("note", 400);
+  FILM("note", 1200); FILM("note", 1300); FILM("note", 1380); FILM("note", 1450);
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  notice_say("同期 OK", RGB(0xf2, 0xf2, 0xee), 1200, true);
+  FILM("sync", 0); FILM("sync", 60); FILM("sync", 130); FILM("sync", 200); FILM("sync", 260); FILM("sync", 300);
+  FILM("sync", 380); FILM("sync", 500); FILM("sync", 1000); FILM("sync", 1400);
+
   if (g_write_failed) {
     fprintf(stderr, "one or more screens were not written\n");
     return 1;

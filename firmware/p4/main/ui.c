@@ -83,6 +83,9 @@ static const char *TAG = "ui";
 #define C_YELLOW RGB(0xf4, 0xc5, 0x42)
 #define C_RED RGB(0xc8, 0x3a, 0x3a)
 #define C_WELL RGB(0x26, 0x2e, 0x38)
+/* The native UI's inks: off-white type and the one strong colour an event is allowed. */
+#define C_INK RGB(0xf2, 0xf2, 0xee)
+#define C_COBALT RGB(0x2f, 0x70, 0xc9)
 #define C_OK C_GREEN
 #define C_BAD C_RED
 
@@ -1196,9 +1199,14 @@ static bool usb_attached(void) {
   return p.usb_attached;
 }
 
+static void notice_say(const char *text, uint16_t ink, int dur_ms, bool dots);
+/* Every remark a screen used to raise as a tooltip is a notice now: the
+ * same entrance, the same exit, the same place. The words themselves are
+ * still the old English ones and are rewritten screen by screen. */
 static void toast(const char *s) {
   snprintf(s_toast, sizeof s_toast, "%s", s);
   s_toast_us = esp_timer_get_time();
+  notice_say(s, RGB(0xf2, 0xf2, 0xee), 1500, false);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2057,6 +2065,139 @@ static void draw_menu(void) {
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
+/* Notices: status that enters the frame, stays long enough to read,    */
+/* and leaves. No acknowledgement, no permanent slot.                    */
+/*                                                                     */
+/* One at a time. A new one replaces the old from where it is - the    */
+/* camera does not queue remarks. The words are chosen where the fact  */
+/* is noticed (notice_watch, below the capture), so this knows nothing  */
+/* about cards or radios: it is given a string, an ink and a duration.  */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+  char text[48];
+  uint16_t ink;
+  int64_t t0_us;   /* 0 = nothing showing */
+  int dur_ms;
+  bool dots;       /* the four-camera prelude: ● ● ● ● gathering into one */
+  mo_val_t x;      /* the word's right edge, springing in from off screen */
+  int64_t last_us;
+} notice_t;
+static notice_t s_notice;
+
+#define NOTICE_RIGHT (UI_W - 24)
+#define NOTICE_Y 14
+#define NOTICE_DOTS_MS 260
+
+static bool notice_live(void) { return s_notice.t0_us != 0; }
+
+static void notice_say(const char *text, uint16_t ink, int dur_ms, bool dots) {
+  const int64_t now = esp_timer_get_time();
+  snprintf(s_notice.text, sizeof s_notice.text, "%s", text);
+  s_notice.ink = ink;
+  s_notice.t0_us = now;
+  s_notice.dur_ms = dur_ms;
+  s_notice.dots = dots;
+  s_notice.last_us = now;
+  /* From off the right edge, with a push, whatever it was doing before. */
+  mo_launch(&s_notice.x, (float)UI_W + jtext_bold_w(text, 2), (float)NOTICE_RIGHT, -0.9f);
+  s_mo_live_count++; /* a frame is owed, whichever screen is up */
+}
+
+/** Draw the notice if there is one; steps its spring. `over_picture` adds the shadow. */
+static void draw_notice(bool over_picture) {
+  if (!notice_live()) return;
+  const int64_t now = esp_timer_get_time();
+  const int64_t ms = (now - s_notice.t0_us) / 1000;
+  const int total = s_notice.dur_ms + (s_notice.dots ? NOTICE_DOTS_MS : 0);
+  if (ms >= total) {
+    s_notice.t0_us = 0;
+    return;
+  }
+  s_mo_live_count++;
+  const float dt = (float)(now - s_notice.last_us) / 1000.f;
+  s_notice.last_us = now;
+
+  if (s_notice.dots && ms < NOTICE_DOTS_MS) {
+    /* Four marks, one per camera, closing on one point: the moment they
+     * agree. Spacing runs from 34 px to 0 on an ease-out; the word follows. */
+    const float k = ease_out_cubic((float)ms / NOTICE_DOTS_MS);
+    const float cx = NOTICE_RIGHT - 40.f, cy = NOTICE_Y + 16.f;
+    const float gap = 34.f * (1.f - k);
+    for (int i = 0; i < 4; i++)
+      jtext_fx(cx + (i - 1.5f) * gap, cy, "●", 1.f, 0.f, s_notice.ink, 255, over_picture, false);
+    return;
+  }
+  if (s_notice.dots && ms == NOTICE_DOTS_MS) s_notice.last_us = now;
+  mo_spring(&s_notice.x, dt, MO_BOUNCE);
+  const int word_ms = (int)ms - (s_notice.dots ? NOTICE_DOTS_MS : 0);
+  const int out_ms = 180;
+  float alpha = 255.f, drift = 0.f;
+  if (word_ms > s_notice.dur_ms - out_ms) {
+    const float k = ease_in_quart((float)(word_ms - (s_notice.dur_ms - out_ms)) / out_ms);
+    alpha = 255.f * (1.f - k);
+    drift = 24.f * k;
+  }
+  const float w = (float)jtext_bold_w(s_notice.text, 2);
+  jtext_fx(s_notice.x.v - w / 2.f + drift, NOTICE_Y + 16.f, s_notice.text, 2.f, 0.f, s_notice.ink, (int)alpha,
+           over_picture, true);
+}
+
+/* What the finder counted live on its last draw, for notice_watch. */
+static int s_live_cams = -1;
+
+/**
+ * Watch the facts that deserve a word when they change, once per pass.
+ * Edges only, and never on the first pass: the state the camera boots into
+ * is not news. Each fact keeps its own previous value here.
+ */
+static void notice_watch(void) {
+  static bool primed;
+  static bool p_mounted, p_usb, p_low;
+  static net_state_t p_net;
+  static int p_live;
+
+  storage_status_t sd;
+  storage_get_status(&sd);
+  power_state_t ps;
+  power_get(&ps);
+  net_status_t net;
+  net_link_status(&net, esp_timer_get_time() / 1000);
+  const bool low = sd.mounted && sd.free_bytes < 300ull * 1024 * 1024;
+
+  if (!primed) {
+    primed = true;
+    p_mounted = sd.mounted;
+    p_usb = ps.usb_attached;
+    p_net = net.state;
+    p_low = low;
+    p_live = s_live_cams;
+    return;
+  }
+  if (sd.mounted != p_mounted) {
+    notice_say(sd.mounted ? "カード OK" : "カードなし", sd.mounted ? C_INK : C_RED, 1400, false);
+    p_mounted = sd.mounted;
+  }
+  if (ps.usb_attached != p_usb) {
+    notice_say(ps.usb_attached ? "USB 接続" : "USB 切断", ps.usb_attached ? C_COBALT : C_INK, 1300, false);
+    p_usb = ps.usb_attached;
+  }
+  if (net.radio_routed && net.state != p_net) {
+    if (net.state == NET_IP_READY) notice_say("WiFi OK", C_COBALT, 1400, false);
+    else if (p_net == NET_IP_READY) notice_say("WiFi なし", C_INK, 1400, false);
+    p_net = net.state;
+  }
+  if (low != p_low) {
+    if (low) notice_say("カード残り少", C_YELLOW, 1800, false);
+    p_low = low;
+  }
+  if (s_live_cams != p_live) {
+    if (s_live_cams == 4 && p_live >= 0 && p_live < 4) notice_say("同期 OK", C_INK, 1200, true);
+    p_live = s_live_cams;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* The capture, as an event                                            */
 /*                                                                     */
 /* Driven by what the pipeline reports - capture_stage(), the asked and  */
@@ -2065,9 +2206,6 @@ static void draw_menu(void) {
 /* event while frames come back, a result that lands. Then, sometimes,  */
 /* a word.                                                              */
 /* ------------------------------------------------------------------ */
-
-#define C_INK RGB(0xf2, 0xf2, 0xee)
-#define C_COBALT RGB(0x2f, 0x70, 0xc9)
 
 typedef struct {
   const char *text;
@@ -2506,6 +2644,7 @@ static void draw_shoot(void) {
    * Mode, look, flash and how many cameras are answering. Half-width type
    * with a shadow so it reads over any picture, and no bar under it: the
    * finder is for looking through. */
+  s_live_cams = live;
   char cams[24];
   snprintf(cams, sizeof cams, "%d/4", live);
   char look[KDP_RECIPE_NAME_MAX + 4];
@@ -5038,51 +5177,9 @@ static void draw_capture_banner(void) {
 }
 
 static void draw_toast(void) {
-  if (s_toast[0] == '\0') return;
-  if (esp_timer_get_time() - s_toast_us > 2200000) { s_toast[0] = '\0'; return; }
-  /*
-   * A tooltip, not a lozenge.
-   *
-   * It was a rounded dark gradient plate with a soft grey keyline - a modern
-   * toast, and the single most out-of-period object on the screen: nothing in
-   * 1998 had a rounded corner, and the two things this interface uses to say
-   * "surface" are a bevel and a groove, neither of which a rounded rectangle
-   * can carry. The system already had a word for a transient message that is
-   * not a window: INFOBK, one black hairline, black text, square corners. That
-   * is what this is now, and it is also more legible - the old plate put
-   * near-white 18 px type on a dark ground over whatever screen it covered.
-   */
-  /*
-   * Where it rests.
-   *
-   * It floated 44 px off the bottom on every screen, which on the menu put it
-   * across the SETTINGS tile's label - a tooltip covering the control it was
-   * raised by. "Mode: Quad" over the word SETTINGS is the exact failure: the
-   * message explains a press and hides what was pressed.
-   *
-   * So the strip is the bottom band, the height of the menu's status bar and
-   * flush with it, and on the menu that IS the status bar - which is where a
-   * windowed system has always put a transient message. On the gallery it
-   * lands across the foot of the bottom row of tiles, over picture and not
-   * over a control - the page buttons are in the header. On the list screens
-   * the band is bare face grey.
-   *
-   * The finder keeps controls down there and gets the band above instead: its
-   * status bar and capture banner both own the foot, so the toast sits over
-   * the picture - which is content, and content is what a tooltip is allowed
-   * to float over. The photograph's buttons are in a column on the left, so
-   * the band stays at the bottom and is centred over the well rather than the
-   * screen: every photograph message ("Favourite", "Card busy") is about the
-   * picture, and centred on the screen it would straddle the column's edge.
-   */
-  const int w = text_w(&UI_FONT_S, s_toast) + 32, h = 34;
-  int y = UI_H - 2 - h;
-  if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 8;
-  int x = (UI_W - w) / 2;
-  if (s_screen == SCR_PHOTO) x = PH_X0 + (PH_W - w) / 2;
-  fill(x, y, w, h, W_INFO);
-  outline(x, y, w, h, W_TEXT);
-  text_mid(&UI_FONT_S, x + w / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, W_TEXT);
+  /* Kept as the busy flag's source: s_toast clears itself after the notice
+   * has had time to leave. The drawing is draw_notice()'s. */
+  if (s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > 2200000) s_toast[0] = '\0';
 }
 
 static void draw_screen(void) {
@@ -5104,6 +5201,7 @@ static void draw_screen(void) {
   }
   draw_capture_banner();
   draw_toast();
+  draw_notice(s_screen == SCR_SHOOT || s_screen == SCR_PHOTO);
   draw_mode_row();
   if (s_dialog != DLG_NONE) draw_dialog();
 }
@@ -5759,6 +5857,7 @@ static uint32_t ui_pass(void) {
    * still moving" tally the tail reads to pick the next pass delay. */
   mo_begin_pass();
   cap_step();
+  notice_watch();
 
   /* Physical keys first: they were recorded on the buttons task and this
    * is the task that owns the canvas and the compositor. */
