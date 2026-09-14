@@ -128,3 +128,39 @@ status. No theatrical delay of real completion.
 `npm run dev -w @kino/twin`, open `#screen`, `npm run twin:ui:bake -- --w98`
 after each change; WATCH reloads the screen. `firmware/p4/host_preview` renders
 every state to PPM for review. `npm run font:jp:check` and `twin:ui:check` gate CI.
+
+## Where it stands
+
+Landed on `feat/native-ui`, in this order, each filmed in the host preview:
+
+1. Foundations: `ui_motion.h`, Shinonome type (`ui_font_jp.h`, `ui_text_jp.h`), the
+   five-mode shell with the header carrying the motion, swipe navigation, the
+   mode row. Twin harness on animation frames.
+2. The capture as an event: blink, `1 → 2 → 3 → 4` from the pipeline's own
+   masks (`capture_frames_in()`), the landing, the word.
+3. Notices: edge-triggered status that enters, is read, leaves; the four-dot
+   sync prelude; every old tooltip routed through it.
+4. FILTER (色): full-bleed picture, `C02 クローム`, per-look transitions; the
+   finder's reading line as the place for MODE and FLASH.
+5. ROLL (再生): pictures alone on dark ground, vertical page turns, the
+   photograph with one line of words under it.
+6. SETUP (設定) and CONNECT (接続): rows of words; dialogs as a question and
+   two words; the Roll and the link on one screen.
+
+Still to do: sound designed with the motion (audio.c has tick, shutter,
+warning; the sync cue and a transfer-complete cue are not written); the
+remaining contextual events (wake after a long idle → 続けよう。, connection →
+つながった！, an alternate shutdown line, a diagnostic long-press at boot); the
+Windows-era drawing code that nothing calls any more is still in `ui.c` and
+comes out in a cleanup pass; and a pass on the physical camera, where the
+timings above were tuned on a virtual clock and will need the panel's.
+
+## Filming a transition
+
+`firmware/p4/host_preview` has a fake clock and a fake finger. A scene sets
+`g_touch_*`, steps `g_preview_clock_us`, calls `ui_pass()` and writes the
+canvas as `film_<name>_<ms>.ppm` (the `FILM` macro). The swipe, the mode row,
+the capture, the notices, a preset change and a page turn each have one. A
+strip of those frames is how every timing in this document was chosen, and a
+change in one is a diff CI can see.
+

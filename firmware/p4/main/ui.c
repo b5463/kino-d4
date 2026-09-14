@@ -2756,7 +2756,7 @@ static void look_display(char *out, size_t cap) {
 static void look_step(int delta) {
   const int n = kdp_recipes_count();
   if (n <= 0) {
-    toast("No looks on this camera");
+    toast("ルックなし");
     return;
   }
   char cur[KDP_RECIPE_ID_MAX];
@@ -3604,7 +3604,7 @@ static const uint16_t *photo_pixels(void) {
 static void photo_toggle_favourite(void) {
   if (s_photo_id[0] == '\0') return;
   if (!storage_acquire(STORAGE_USER_UI, 2000)) {
-    toast("Card busy");
+    toast("カード使用中");
     audio_warning();
     return;
   }
@@ -3615,7 +3615,7 @@ static void photo_toggle_favourite(void) {
     /* NOT_FOUND is a capture with no META.JSON, which the gallery can show and
      * this cannot mark. One message for all of them: the user's next move is
      * the same whichever it was. */
-    toast("Could not save");
+    toast("保存できない");
     audio_warning();
     return;
   }
@@ -3624,7 +3624,7 @@ static void photo_toggle_favourite(void) {
   /* So the tile behind this screen carries the mark when the user goes back.
    * The refresh is a card rescan on the gallery task, not work done here. */
   gallery_refresh();
-  toast(want ? "Favourite" : "Not favourite");
+  toast(want ? "お気に入り" : "解除");
 }
 
 static int s_ph_del_x0, s_ph_del_x1, s_ph_fav_x0, s_ph_fav_x1;
@@ -3776,257 +3776,48 @@ static int roll_stat(int y, const char *value, const char *label) {
   return y + UI_FONT_S.line_h + 26;
 }
 
-static void draw_roll(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
-  draw_header(SCR_ROLL);
-
-  roll_state_t roll;
-  const bool active = roll_state_get(&roll);
-
-  upload_queue_report_t q;
-  upload_queue_status(&q);
-
-  net_status_t net;
-  net_link_status(&net, esp_timer_get_time() / 1000);
-  const bool online = net_link_can_upload(&net);
-
-  if (!active) {
-    /* No Roll. Say how to get one rather than only that there isn't one ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â and
-     * do not offer a CREATE button, because ROLL_CREATE is an HTTP POST this
-     * body cannot make. A control that cannot work is the same defect as a
-     * shutter that logs instead of capturing. */
-    /* This state's whole job is telling someone how to start a roll, so it
-     * gets the panel rather than three lines in the top third. */
-    /* The heading and its two lines are one block, centred in the space above
-     * the card well rather than pinned under the header - pinned, it left a
-     * 150 px hole in the middle of the panel with the well at the foot. */
-    const int wy = UI_H - 92, wh = 76;
-    const int block_h = UI_FONT_M.line_h * 2 + 24 + 32 + UI_FONT_M.line_h;
-    const int hy = BODY_Y + (wy - BODY_Y - block_h) / 2;
-    text_scaled_mid(&UI_FONT_M, UI_W / 2, hy, "NO ACTIVE ROLL", 2, W_TEXT);
-
-    const int cy = hy + UI_FONT_M.line_h * 2 + 24;
-    text_mid(&UI_FONT_M, UI_W / 2, cy, "Make a roll in Studio over USB-C.", W_TEXT);
-    text_mid(&UI_FONT_M, UI_W / 2, cy + 32, "It appears here with a code guests scan.", W_TEXT);
-
-    /* The card line, in a well at the foot, and made to mean something. The
-     * count alone answers "how many" but not the question someone on this
-     * screen is actually asking, which is what becomes of them. Photos on the
-     * card are not stranded for want of a roll - they import over USB-C either
-     * way - and saying so is the difference between a number and an answer. */
-    /* The index's count, exact and from RAM - gallery_total() is the shown
-     * list's length, capped, and 0 before the first walk (gallery.h). */
-    const int n = gallery_media_count() < 0 ? 0 : gallery_media_count();
-    well(RL_M, wy, UI_W - 2 * RL_M, wh);
-    if (n > 0) {
-      char line[56];
-      snprintf(line, sizeof line, "%d photo%s on the card", n, n == 1 ? "" : "s");
-      text_mid(&UI_FONT_M, UI_W / 2, wy + 14, line, W_TEXT);
-      text_mid(&UI_FONT_S, UI_W / 2, wy + 44,
-               "They import over USB-C, and upload if a roll is assigned later.", W_GRAYTEXT);
-    } else {
-      text_mid(&UI_FONT_M, UI_W / 2, wy + 14, "No photos on the card", W_TEXT);
-      text_mid(&UI_FONT_S, UI_W / 2, wy + 44, "Press the shutter to take one.", W_GRAYTEXT);
-    }
-    return;
-  }
-
-  /*
-   * The QR. This is the point of the screen: a guest scans the camera and is
-   * on the Roll, with no laptop involved.
-   *
-   * Encoded once per Roll and cached, not once per repaint. Two reasons, and
-   * the second is the one that matters: the screen repaints every 90 ms while
-   * anything is busy, and qr_encode() puts about 1.4 KB of bitfields and
-   * codeword buffers on the caller's stack ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â which here is the UI task's. Nine
-   * mask evaluations of a 57x57 grid on every frame would also be pure waste
-   * for a symbol that changes only when the Roll does.
-   *
-   * The cache is keyed on the URL, so a ROLL_LEAVE followed by a new
-   * assignment re-encodes and a repaint never does.
-   */
-  static qr_t s_qr;
-  static char s_qr_url[ROLL_GUEST_URL_LEN];
-  static bool s_qr_ok;
-  if (strcmp(s_qr_url, roll.guest_url) != 0) {
-    snprintf(s_qr_url, sizeof s_qr_url, "%s", roll.guest_url);
-    s_qr_ok = roll.guest_url[0] != '\0' && qr_encode(roll.guest_url, &s_qr);
-    if (!s_qr_ok) {
-      klog("P4", "roll guest url did not encode as a QR (%u chars)",
-           (unsigned)strlen(roll.guest_url));
-    }
-  }
-
-  /* ---- left column: the symbol, at whatever pitch the height allows ---- */
-  if (s_qr_ok) {
-    const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP, RL_QR_BOX);
-    if (side > 0) {
-      /* The plate the symbol sits on, as a well - a white square floating on
-       * face grey was the last piece of bare chrome on this screen.
-       *
-       * The bevel is drawn OUTSIDE the white block, not over its edge. The
-       * outer 4 modules of that block are the quiet zone the QR spec requires,
-       * and at this pitch that is 40 px: eating 2 of them for a frame would
-       * take the margin a phone needs to find the symbol's edges down to 3.8
-       * modules to buy a border. The screen grows 2 px instead. */
-      bevel_sunken(RL_QR_CX - side / 2 - 2, RL_TOP - 2, side + 4, side + 4);
-      /* The address under the symbol, without its scheme: a guest whose phone
-       * will not scan types this. Secondary to the QR by size and colour. */
-      const char *addr = roll.guest_url;
-      if (strncmp(addr, "https://", 8) == 0) addr += 8;
-      else if (strncmp(addr, "http://", 7) == 0) addr += 7;
-      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 8) {
-        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, addr, W_GRAYTEXT);
-      } else {
-        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
-      }
-    }
-  } else {
-    /* The URL did not encode, so the column shows the code itself, big. A
-     * guest can still type it, which is worth more than a QR-shaped block no
-     * phone reads - and at this size it is legible from where the QR would
-     * have been scanned from, which is the point of giving it the column. */
-    const int cy = RL_TOP + RL_QR_BOX / 2 - UI_FONT_M.line_h * 2;
-    text_scaled_mid(&UI_FONT_M, RL_QR_CX, cy, roll.slug,
-                    fit_scale(&UI_FONT_M, roll.slug, RL_QR_COL_W - 20), W_TEXT);
-    text_mid(&UI_FONT_S, RL_QR_CX, cy + UI_FONT_M.line_h * 2 + 16, "Enter this code to join",
-             W_GRAYTEXT);
-    text_mid(&UI_FONT_S, RL_QR_CX, cy + UI_FONT_M.line_h * 2 + 38,
-             "The join link is too long to encode.", W_GRAYTEXT);
-  }
-
-  /* ---- right column: the roll, and what is happening to it ----
-   *
-   * Name, code, one word for the connection, one big number for the card,
-   * and then only what is useful right now: nothing waiting reads "All
-   * uploaded" and when the last one landed; work in flight reads a count, a
-   * bar and "Uploading now"; work waiting with no way to send it reads the
-   * count and "Saved safely on camera". No queue internals reach a guest at a
-   * party. */
-  const int64_t now = esp_timer_get_time() / 1000;
-  const bool server_quiet = online && q.server_state == UPLOAD_SERVER_UNREACHABLE;
-  const bool can_send = online && !server_quiet && !q.halted;
-  const int waiting = q.pending + q.card_pending;
-
-  const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
-  int y = RL_TOP;
-  text_scaled(&UI_FONT_M, RL_RX, y, title, fit_scale(&UI_FONT_M, title, RL_RW), W_TEXT);
-  y += UI_FONT_M.line_h * 2 + 10;
-  if (roll.name[0] != '\0') {
-    /* The code only when the name is not already the code. */
-    text(&UI_FONT_M, RL_RX, y, roll.slug, W_GRAYTEXT);
-    y += UI_FONT_M.line_h + 26;
-  }
-
-  /* The connection word, with a square lamp in front of it. Green is "your
-   * photographs are leaving the camera"; grey is "not right now"; the third
-   * colour is the one case a guest can do nothing about and should not be
-   * told is their Wi-Fi. */
-  {
-    const char *word;
-    uint16_t lamp;
-    if (q.halted) {
-      word = "UPLOAD PAUSED";
-      lamp = C_BAD;
-    } else if (server_quiet) {
-      word = "KINO NOT ANSWERING";
-      lamp = C_BAD;
-    } else if (online) {
-      word = "ONLINE";
-      lamp = C_OK;
-    } else {
-      word = "OFFLINE";
-      lamp = W_SHADOW;
-    }
-    const int ly = y + (UI_FONT_M.line_h - 12) / 2;
-    fill(RL_RX, ly, 12, 12, W_TEXT);
-    fill(RL_RX + 2, ly + 2, 8, 8, lamp);
-    text(&UI_FONT_M, RL_RX + 22, y, word, W_TEXT);
-    y += UI_FONT_M.line_h + 30;
-  }
-
-  /* The card, as one big number. gallery_media_count() is the index in RAM,
-   * exact, the same figure the Storage screen shows; -1 only before the
-   * first index read after boot. */
-  {
-    const int total = gallery_media_count();
-    char big[24];
-    if (total < 0) snprintf(big, sizeof big, "- PHOTOS");
-    else snprintf(big, sizeof big, "%d %s", total, total == 1 ? "PHOTO" : "PHOTOS");
-    text_scaled(&UI_FONT_M, RL_RX, y, big, fit_scale(&UI_FONT_M, big, RL_RW) >= 2 ? 2 : 1, W_TEXT);
-    y += UI_FONT_M.line_h * 2 + 26;
-  }
-
-  /* What is happening to them. Three lines at most. */
-  char l1[48] = "", l2[48] = "", l3[48] = "";
-  bool bar = false;
-  int bar_done = 0, bar_total = 0;
-  if (q.halted) {
-    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
-    snprintf(l2, sizeof l2, "Saved safely on camera");
-    snprintf(l3, sizeof l3, "Check the roll in Studio.");
-  } else if (waiting > 0 || q.uploading > 0) {
-    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
-    if (can_send) {
-      bar = true;
-      bar_done = q.burst_done;
-      bar_total = q.burst_done + waiting + q.uploading;
-      snprintf(l2, sizeof l2, "%s", q.uploading > 0 ? "Uploading now" : "Starting upload");
-    } else {
-      snprintf(l2, sizeof l2, "Saved safely on camera");
-      snprintf(l3, sizeof l3, "%s",
-               server_quiet ? "Wi-Fi is up. They go when KINO answers."
-                            : "They go when Wi-Fi returns.");
-    }
-  } else if (!q.scan_complete) {
-    /* Nothing waiting that the queue knows of, and it has not seen the
-     * whole card since boot. Honest for the seconds it lasts. */
-    snprintf(l1, sizeof l1, "COUNTING THE CARD");
-  } else if (q.last_upload_ms > 0) {
-    snprintf(l1, sizeof l1, "All uploaded");
-    const int64_t ago_s = (now - q.last_upload_ms) / 1000;
-    if (ago_s < 60) snprintf(l2, sizeof l2, "Last upload %llds ago", (long long)ago_s);
-    else if (ago_s < 3600) snprintf(l2, sizeof l2, "Last upload %lldm ago", (long long)(ago_s / 60));
-    else snprintf(l2, sizeof l2, "Last upload %lldh ago", (long long)(ago_s / 3600));
-  } else if (can_send) {
-    snprintf(l1, sizeof l1, "All uploaded");
-  } else {
-    snprintf(l1, sizeof l1, "Nothing waiting");
-    if (!online) snprintf(l2, sizeof l2, "Uploads resume when Wi-Fi returns.");
-  }
-
-  if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 14; }
-  if (bar) {
-    /* The bar exists only while there is work: a full or empty bar with
-     * nothing behind it would be a decoration. */
-    const int bw = RL_RW - 4, bh = 14;
-    bevel_sunken(RL_RX, y, bw, bh);
-    fill(RL_RX + 2, y + 2, bw - 4, bh - 4, W_HILITE);
-    if (bar_total > 0) {
-      const int fw = (int)((int64_t)(bw - 4) * bar_done / bar_total);
-      if (fw > 0) fill(RL_RX + 2, y + 2, fw, bh - 4, RGB(0x00, 0x00, 0xa8));
-    }
-    y += bh + 14;
-  }
-  if (l2[0]) { text(&UI_FONT_S, RL_RX, y, l2, W_GRAYTEXT); y += UI_FONT_S.line_h + 10; }
-  if (l3[0]) { text(&UI_FONT_S, RL_RX, y, l3, W_GRAYTEXT); }
-}
 
 /* ------------------------------------------------------------------ */
 /* Settings                                                            */
 /* ------------------------------------------------------------------ */
 
-static const char *const SET_ROWS[5] = {"Display", "Sound", "Storage", "Power", "About"};
+/* ------------------------------------------------------------------ */
+/* SETUP (設定) and CONNECT (接続): facts and settings as rows of words    */
+/*                                                                     */
+/* A row is a name on the left, its value on the right, on the ground;  */
+/* no well, no bevel, no plate. A row that acts gets a mark (›) and a    */
+/* press underlines it; a row that only reads is dim.                   */
+/* ------------------------------------------------------------------ */
+
+#define NR_X 24
+#define NR_W (UI_W - 2 * NR_X)
+#define NR_Y0 (HEAD_H + 12)
+#define NR_H 52
+
+static void nrow(int i, const char *title, const char *value, bool acts, bool enabled, bool pressed) {
+  const int y = NR_Y0 + i * NR_H;
+  const uint16_t ink = enabled ? C_INK : HDR_DIM;
+  jtext_bold(NR_X, y + 10, title, 2, ink);
+  if (value && value[0]) jtext_right(NR_X + NR_W - (acts ? 30 : 0), y + 18, value, 1, enabled ? HDR_DIM : RGB(0x50, 0x56, 0x60));
+  if (acts) jtext(NR_X + NR_W - 16, y + 18, "→", 1, ink);
+  if (pressed) fill(NR_X, y + NR_H - 6, NR_W, 2, C_INK);
+  fill(NR_X, y + NR_H - 1, NR_W, 1, RGB(0x1c, 0x20, 0x26));
+}
+static int nrow_hit(int x, int y, int rows) {
+  (void)x;
+  if (y < NR_Y0 || y >= NR_Y0 + rows * NR_H) return -1;
+  return (y - NR_Y0) / NR_H;
+}
+
+static const char *const SET_ROWS[5] = {"表示", "音", "カード", "電源", "情報"};
+static const char *const SET_ROWS_EN[5] = {"DISPLAY", "SOUND", "CARD", "POWER", "ABOUT"};
 static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_STORAGE, SCR_POWER,
                                      SCR_ABOUT};
 
 static void draw_settings(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_SETTINGS);
-  draw_list_frame(5);
-  for (int i = 0; i < 5; i++)
-    draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), s_pressed == i, true, SET_ROWS[i], NULL,
-             true);
+  for (int i = 0; i < 5; i++) nrow(i, SET_ROWS[i], SET_ROWS_EN[i], true, true, s_pressed == i);
 }
 
 /* --- Display ------------------------------------------------------ */
@@ -4130,33 +3921,15 @@ static int dsp_selected(int row) {
   }
 }
 
+static const char *const DSP_JP[DSP_ROWS] = {"自動減光", "スリープ", "撮影後", "カメラ待機"};
 static void draw_display(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_DISPLAY);
-
-  const int f0 = s_focus_shown ? s_focus[SCR_DISPLAY] : -1;
   for (int r = 0; r < DSP_ROWS; r++) {
-    /* Four bands that used to sit under four bare words. The frame is what
-     * says which band each word names; the words are unchanged. */
-    group_box(DSP_BOX_X, DSP_LABEL_Y(r), DSP_BOX_W, DSP_BOX_H, DSP_ROW[r].label, W_TEXT, NULL);
-    draw_segments(DSP_X, DSP_BAND_Y(r), DSP_W, DSP_BAND_H, DSP_ROW[r].names, DSP_ROW[r].count,
-                  dsp_selected(r), band_rel(s_pressed, DSP_ROW[r].base, DSP_ROW[r].count),
-                  band_rel(f0, DSP_ROW[r].base, DSP_ROW[r].count));
+    const int sel = dsp_selected(r);
+    nrow(r, DSP_JP[r], DSP_ROW[r].names[sel], true, true, band_rel(s_pressed, DSP_ROW[r].base, DSP_ROW[r].count) >= 0);
   }
-
-  /* The backlight is a plain GPIO, on or off. A brightness control here would
-   * be a slider that moves and changes nothing, so it is greyed-out text on
-   * the dialog face - which is exactly how 1998 said "this does not apply".
-   * GET_CAPABILITIES says the same thing to Studio as brightnessControl.
-   *
-   * In a group box like the four live rows, because it is the fifth setting on
-   * this screen and not a footnote about the other four. An empty box with one
-   * grey sentence in it is also the clearest possible statement that there is
-   * nothing here to press. */
-  const int ny = DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18;
-  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + UI_FONT_S.line_h + 10, "BRIGHTNESS", W_GRAYTEXT, NULL);
-  text(&UI_FONT_S, DSP_X, ny + 22, "Not adjustable - the backlight on this body is on or off.",
-       W_GRAYTEXT);
+  jtext(NR_X, NR_Y0 + DSP_ROWS * NR_H + 16, "明るさ  ON / OFF のみ", 1, RGB(0x50, 0x56, 0x60));
 }
 
 /* --- Sound -------------------------------------------------------- */
@@ -4278,100 +4051,18 @@ static int sn_prev_x(void) { return sn_next_x() - 6 - SN_BTN; }
 static int sn_btn_y(void) { return LIST_Y + (ROW_H - SN_BTN) / 2; }
 
 static void draw_sound(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_SOUND);
-
-  const bool shut = config_bool("body.sounds.save", true);
-  const bool ui = config_bool("body.sounds.ui", true);
-
-  draw_list_frame(3);
-
-  /* Which sound the shutter makes, above the two rows that decide whether a
-   * sound is made at all. Those two used to be titled "Shutter sound" and
-   * "Button sound", which now collides with the picker - they are renamed to
-   * what they actually do, which is switch a sound on and off. */
   char clip[KDP_SOUND_NAME_MAX];
   snd_display(clip, sizeof clip);
-  draw_row(LIST_Y, false, false, true, "Shutter sound", NULL, false);
-  {
-    const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
-    text_right(&UI_FONT_M, px - 12, LIST_Y + (ROW_H - UI_FONT_M.line_h) / 2, clip, W_TEXT);
-    const int pd = s_pressed == SN_IT_PREV ? 1 : 0, nd = s_pressed == SN_IT_NEXT ? 1 : 0;
-    button(px, by, SN_BTN, SN_BTN, pd);
-    picker_arrow(px + SN_BTN / 2 + pd, by + SN_BTN / 2 + pd, false, W_TEXT);
-    button(nx, by, SN_BTN, SN_BTN, nd);
-    picker_arrow(nx + SN_BTN / 2 + nd, by + SN_BTN / 2 + nd, true, W_TEXT);
-    if (foc(SCR_SOUND, SN_IT_PREV)) focus_inset(px, by, SN_BTN, SN_BTN, W_TEXT);
-    if (foc(SCR_SOUND, SN_IT_NEXT)) focus_inset(nx, by, SN_BTN, SN_BTN, W_TEXT);
-
-    /* The position, under the row's title rather than beside the clip name -
-     * the right half of the row is already the name and two buttons. Same
-     * "3 / 7" the LOOK picker now carries. */
-    char pos[24];
-    snd_position(pos, sizeof pos);
-    if (pos[0] != '\0') {
-      text(&UI_FONT_S, LIST_X + 14 + text_w(&UI_FONT_M, "Shutter sound") + 16,
-           LIST_Y + (ROW_H - UI_FONT_S.line_h) / 2 + 2, pos, W_GRAYTEXT);
-    }
-  }
-
-  draw_row(LIST_Y + ROW_H, foc(SCR_SOUND, SN_IT_SHUTTER), s_pressed == SN_IT_SHUTTER, true,
-           "Play shutter sound", NULL, false);
-  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + ROW_H + (ROW_H - 26) / 2, shut, false);
-  draw_row(LIST_Y + 2 * ROW_H, foc(SCR_SOUND, SN_IT_BUTTON), s_pressed == SN_IT_BUTTON, true,
-           "Play button sound", NULL, false);
-  draw_toggle(LIST_X + LIST_W - 14 - 26, LIST_Y + 2 * ROW_H + (ROW_H - 26) / 2, ui, false);
-
-  const int y = LIST_Y + 3 * ROW_H + 26;
-  /* The one control on this screen that sat outside the list well, under a
-   * bare word. Same treatment as every other band on the camera, and the box
-   * reaches to the window margin the list well uses rather than to the band
-   * the band happens to be drawn at. */
-  group_box(LIST_X, y, LIST_W, 24 + 44 + 6, "VOLUME", W_TEXT, NULL);
   static const char *const VOL[3] = {"LOW", "MEDIUM", "HIGH"};
   static const int VOLV[3] = {3, 6, 9};
-  draw_segments(24, y + 24, UI_W - 48, 44, VOL, 3, nearest_idx(config_int("shoot.volume", 6), VOLV),
-                band_rel(s_pressed, SN_IT_VOL, 3),
-                band_rel(s_focus_shown ? s_focus[SCR_SOUND] : -1, SN_IT_VOL, 3));
-
-  /*
-   * The 155 px below the volume band.
-   *
-   * Two things the screen had no way to say. First, where the list the picker
-   * cycles comes from: five built-ins are compiled in and the rest are on the
-   * card, so a picker that gains three entries after a card swap is explained
-   * rather than mysterious, and a picker with none of them says the card is
-   * why. Second, and more important, whether the audio hardware came up at
-   * all - this screen offered a volume band and two toggles without ever
-   * consulting audio_ready(), so on a body whose I2S did not start it was three
-   * live-looking controls over silence.
-   *
-   * Below the volume band on purpose: the band is hit-tested at
-   * LIST_Y + 3 * ROW_H + 26 + 24 for 44 px, so everything here is clear of the
-   * only touch targets on the lower half of the screen.
-   */
-  const int ny = y + 24 + 44 + 30;
-  char line[72];
-
-  if (!audio_ready()) {
-    /* Named as hardware, not as a setting. "Muted" would read as something a
-     * user did and can undo from this screen, and it is not. */
-    text(&UI_FONT_M, 24, ny, "No audio output on this body", W_TEXT);
-    text(&UI_FONT_S, 24, ny + 30,
-         "The settings above are stored, and nothing plays until the amplifier starts.",
-         W_GRAYTEXT);
-    return;
-  }
-
-  const int custom = kdp_sounds_count();
-  if (custom > 0) {
-    snprintf(line, sizeof line, "%d built-in sounds, and %d clip%s from the card.", SND_BUILTINS,
-             custom, custom == 1 ? "" : "s");
-  } else {
-    snprintf(line, sizeof line, "%d built-in sounds. No clips on the card.", SND_BUILTINS);
-  }
-  text(&UI_FONT_S, 24, ny, line, W_GRAYTEXT);
-  text(&UI_FONT_S, 24, ny + 20, "Upload your own in Studio over USB-C.", W_GRAYTEXT);
+  const bool audio = audio_ready();
+  nrow(0, "シャッター音", clip, true, audio, s_pressed == SN_IT_NEXT || s_pressed == SN_IT_PREV);
+  nrow(1, "保存音", config_bool("body.sounds.save", true) ? "ON" : "OFF", true, audio, s_pressed == SN_IT_SHUTTER);
+  nrow(2, "操作音", config_bool("body.sounds.ui", true) ? "ON" : "OFF", true, audio, s_pressed == SN_IT_BUTTON);
+  nrow(3, "音量", VOL[nearest_idx(config_int("shoot.volume", 6), VOLV)], true, audio, band_rel(s_pressed, SN_IT_VOL, 3) >= 0);
+  if (!audio) jtext(NR_X, NR_Y0 + 4 * NR_H + 16, "音声出力なし", 1, RGB(0x50, 0x56, 0x60));
 }
 
 /* --- Connection --------------------------------------------------- */
@@ -4390,118 +4081,89 @@ static void draw_sound(void) {
  * once the transport lands. Nothing here is hard-coded to the V1 state.
  */
 static void draw_connection(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_CONNECTION);
-
   net_status_t net;
   net_link_status(&net, esp_timer_get_time() / 1000);
+  roll_state_t roll;
+  const bool active = roll_state_get(&roll);
+  upload_queue_report_t q;
+  upload_queue_status(&q);
+  const bool online = net_link_can_upload(&net);
 
-  /* Radio: is the part there at all. */
-  const char *radio = net.radio_fitted ? "ESP32-C6" : "None";
-
-  /* Link: can this firmware reach it. The distinction the old screen lost. */
-  const char *link;
-  switch (net.state) {
-    case NET_C6_NOT_ROUTED: link = "Not routed"; break;
-    case NET_C6_ABSENT: link = "No response"; break;
-    case NET_C6_BOOTING: link = "Starting"; break;
-    case NET_C6_LINK_READY: link = "Ready"; break;
-    case NET_ERROR: link = "Error"; break;
-    default: link = "Ready"; break; /* anything past LINK_READY implies it */
-  }
-
-  /* Wi-Fi: the SSID and signal when there is one, and otherwise a state a
-   * user can act on. Association without an address says "Getting address"
-   * rather than "Connected" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â claiming connected there is how a camera
-   * insists it is online while nothing resolves. */
+  /* The facts, as rows down the left: what is connected and how. */
   char wifi[64];
-  switch (net.state) {
-    case NET_IP_READY:
-      /* The channel goes on this row rather than getting one of its own: it is
-       * a property of the association, and net_status_t has carried it since
-       * the transport work without anything ever drawing it. */
-      snprintf(wifi, sizeof wifi, "%s  ch %d  %d dBm", net.ssid, net.channel, net.rssi);
-      break;
-    case NET_WIFI_ASSOCIATED:
-    case NET_IP_WAIT:
-      snprintf(wifi, sizeof wifi, "Getting address");
-      break;
-    case NET_WIFI_CONNECTING:
-      snprintf(wifi, sizeof wifi, "Connecting");
-      break;
-    case NET_WIFI_SCANNING:
-      snprintf(wifi, sizeof wifi, "Scanning");
-      break;
-    case NET_WIFI_IDLE:
-      snprintf(wifi, sizeof wifi, "Disconnected");
-      break;
-    default:
-      /* No radio route: the honest word is unavailable, not disconnected.
-       * "Disconnected" implies a connection is available to make. */
-      snprintf(wifi, sizeof wifi, "Unavailable");
-      break;
+  if (!net.radio_routed) snprintf(wifi, sizeof wifi, "なし");
+  else switch (net.state) {
+    case NET_IP_READY: snprintf(wifi, sizeof wifi, "%s  %d dBm", net.ssid, net.rssi); break;
+    case NET_WIFI_ASSOCIATED: case NET_IP_WAIT: snprintf(wifi, sizeof wifi, "アドレス取得中"); break;
+    case NET_WIFI_CONNECTING: snprintf(wifi, sizeof wifi, "接続中"); break;
+    case NET_WIFI_SCANNING: snprintf(wifi, sizeof wifi, "検索中"); break;
+    default: snprintf(wifi, sizeof wifi, "未接続"); break;
   }
-
-  char saved[16];
-  snprintf(saved, sizeof saved, "%u", (unsigned)wifi_creds_count());
-
-  /*
-   * Seven readings at a 46 px pitch rather than five at 52.
-   *
-   * The screen showed five rows and 85 px of face grey while net_status_t
-   * carried three facts nothing drew: the address, the channel, and the
-   * coprocessor's firmware version. The address in particular is the first
-   * thing anyone asks at a bench, and "Online" without one is the state this
-   * firmware is careful everywhere else NOT to claim.
-   *
-   * The tighter pitch is legitimate HERE and would not be on Settings or
-   * Power: this screen has no touch items at all - item_count() falls to 0 and
-   * hit_test() to -1, and only the header band goes anywhere - so no row here
-   * is a target that has to stay 52 px tall.
-   */
-  const char *addr = net.ip[0] != '\0' ? net.ip : "-";
-  /* Empty until a version exchange has happened, which on this body never
-   * happens - so a dash, not a blank. */
-  const char *c6fw = net.c6_version[0] != '\0' ? net.c6_version : "-";
-
-  const struct {
-    const char *title;
-    const char *value;
-    bool enabled;
-  } ROWS[] = {
-      {"Radio", radio, net.radio_fitted},
-      {"Radio firmware", c6fw, net.c6_version[0] != '\0'},
-      {"Link", link, net.radio_routed},
-      {"Wi-Fi", wifi, net.radio_routed},
-      {"Address", addr, net.ip[0] != '\0'},
-      {"Saved networks", saved, true},
-      {"USB", usb_attached() ? "Connected" : "Not connected", true},
+  const int left_w = active ? 440 : NR_W;
+  const struct { const char *t; const char *v; bool lit; } ROWS[] = {
+      {"USB", usb_attached() ? "接続" : "未接続", usb_attached()},
+      {"WiFi", wifi, net.state == NET_IP_READY},
+      {"アドレス", net.ip[0] ? net.ip : "-", net.ip[0] != '\0'},
+      {"ロール", active ? (roll.name[0] ? roll.name : roll.slug) : "なし", active},
   };
-  const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
-  const int pitch = 46;
+  for (int i = 0; i < 4; i++) {
+    const int y = NR_Y0 + i * NR_H;
+    jtext_bold(NR_X, y + 10, ROWS[i].t, 2, ROWS[i].lit ? C_INK : HDR_DIM);
+    jtext_right(NR_X + left_w, y + 18, ROWS[i].v, 1, ROWS[i].lit ? C_INK : HDR_DIM);
+    fill(NR_X, y + NR_H - 1, left_w, 1, RGB(0x1c, 0x20, 0x26));
+  }
+  if (!net.radio_routed)
+    jtext(NR_X, NR_Y0 + 4 * NR_H + 16, "無線なし。写真は USB-C で。", 1, RGB(0x50, 0x56, 0x60));
 
-  fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
-  const int lh = n * pitch + 4;
-  well(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh);
-  for (int i = 0; i < n; i++) {
-    draw_row_at(LIST_X, LIST_W, LIST_Y + i * pitch, pitch, false, false, ROWS[i].enabled,
-                ROWS[i].title, ROWS[i].value, false);
+  if (!active) return;
+
+  /* The Roll, on the right: the code a guest scans, and what is going where. */
+  static qr_t s_qr;
+  static char s_qr_url[ROLL_GUEST_URL_LEN];
+  static bool s_qr_ok;
+  if (strcmp(s_qr_url, roll.guest_url) != 0) {
+    snprintf(s_qr_url, sizeof s_qr_url, "%s", roll.guest_url);
+    s_qr_ok = roll.guest_url[0] != '\0' && qr_encode(roll.guest_url, &s_qr);
+    if (!s_qr_ok) klog("P4", "roll guest url did not encode as a QR (%u chars)", (unsigned)strlen(roll.guest_url));
+  }
+  const int qx = 620, qy = NR_Y0, qbox = 230;
+  if (s_qr_ok) {
+    const int side = draw_qr_centred(&s_qr, qx, qy, qbox);
+    jtext_fx(qx, qy + side + 20.f, roll.slug, 1.f, 0.f, C_INK, 255, false, true);
+  } else {
+    jtext_fx(qx, qy + qbox / 2.f, roll.slug, 3.f, 0.f, C_INK, 255, false, true);
   }
 
-  /* One line, and it has to say which of the two things is wrong. There is no
-   * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
-   * with no physical keys is worse than the USB path, and building a bad one
-   * to claim independence from Studio would be the wrong trade. */
-  const int y = LIST_Y + lh + 14;
-  if (!net.radio_fitted) {
-    text(&UI_FONT_S, 24, y, "No radio on this body. Photos leave over USB-C.", W_GRAYTEXT);
-  } else if (!net.radio_routed) {
-    text(&UI_FONT_S, 24, y, "The C6 radio is fitted, but this firmware has no", W_GRAYTEXT);
-    text(&UI_FONT_S, 24, y + 20, "route to it. Photos leave over USB-C.", W_GRAYTEXT);
-  } else if (net.state != NET_IP_READY) {
-    text(&UI_FONT_S, 24, y, "Set up Wi-Fi in Studio over USB-C.", W_GRAYTEXT);
-  } else {
-    text(&UI_FONT_S, 24, y, "Captures upload to the active roll.", W_GRAYTEXT);
+  /* What is going where, under the facts. Real counts, real states. */
+  const int waiting = q.pending + q.card_pending;
+  const bool server_quiet = online && q.server_state == UPLOAD_SERVER_UNREACHABLE;
+  const bool sending = online && !server_quiet && !q.halted && (waiting > 0 || q.uploading > 0);
+  char l1[64], l2[64] = "";
+  if (q.halted) { snprintf(l1, sizeof l1, "%d枚 待ち  停止中", waiting); snprintf(l2, sizeof l2, "STUDIO で確認"); }
+  else if (sending) { snprintf(l1, sizeof l1, "%d枚 送信中", waiting + q.uploading); }
+  else if (waiting > 0) { snprintf(l1, sizeof l1, "%d枚 待ち", waiting); snprintf(l2, sizeof l2, "%s", server_quiet ? "KINO ROLL が応答しない" : "WiFi が戻れば送る"); }
+  else if (!q.scan_complete) snprintf(l1, sizeof l1, "カード確認中");
+  else snprintf(l1, sizeof l1, "全部送信済");
+  const int ly = NR_Y0 + 4 * NR_H + 22;
+  jtext_bold(NR_X, ly, l1, 2, sending ? C_COBALT : C_INK);
+  if (l2[0]) jtext(NR_X, ly + 40, l2, 1, HDR_DIM);
+  if (sending) {
+    /* The four-camera language for the transfer: 1 → 2 → 3 → 4, lit by how
+     * far this burst has got, then KINO ROLL. Counted from the queue, not a
+     * clock. */
+    const int total = q.burst_done + waiting + q.uploading;
+    const int lit = total > 0 ? (q.burst_done * 4) / total : 0;
+    const char *const M[4] = {"1", "2", "3", "4"};
+    int x = NR_X + jtext_bold_w(l1, 2) + 30;
+    for (int i = 0; i < 4; i++) {
+      jtext_bold(x, ly + 8, M[i], 1, i < lit ? C_INK : RGB(0x50, 0x56, 0x60));
+      x += 16;
+      if (i < 3) { jtext(x + 2, ly + 8, "→", 1, RGB(0x50, 0x56, 0x60)); x += 22; }
+    }
+    jtext(x + 10, ly + 8, "KINO ROLL", 1, HDR_DIM);
+    s_mo_live_count++; /* the counts move; keep drawing */
   }
 }
 
@@ -4516,144 +4178,34 @@ static void draw_connection(void) {
 #define ST_IT_COUNT 2
 
 static void draw_storage(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_STORAGE);
-
   storage_status_t sd;
   storage_get_status(&sd);
-  char freeb[24], capb[24], cnt[16];
+  char freeb[24], capb[24], cnt[24];
   human_bytes(freeb, sizeof freeb, sd.free_bytes);
   human_bytes(capb, sizeof capb, sd.capacity_bytes);
-  /*
-   * The card's own count, not the gallery screen's.
-   *
-   * gallery_total() is how many captures the gallery LIST holds, capped at
-   * MAX_SCAN (240) and zero until the first walk has published. On a card of
-   * hundreds it under-reports, and before the walk it reads 0 - which is what
-   * put "0" on this row over a card holding a thousand photographs and, worse,
-   * disabled Delete All along with it. storage_media_count_cached() counts
-   * capture directories holding a committed META.JSON, exhaustively, and
-   * remembers the answer so this draw path pays nothing.
-   */
-  /*
-   * From the gallery's index, not a card walk.
-   *
-   * storage_media_count_cached() walks the card, and calling it from this draw
-   * path was the 0.4.39 regression: every shutter invalidates the count, so on
-   * a 1,325-directory card the walk ran on every redraw holding the card lock
-   * and grouped captures went from 4 s to 75 s. The index answers from RAM.
-   * The storage counter remains for reconciliation and recovery.
-   */
   const int media = gallery_media_count();
-  if (media < 0) snprintf(cnt, sizeof cnt, "-");
-  else snprintf(cnt, sizeof cnt, "%d", media);
-
-  /* While the wipe runs, the Photos row counts down instead of the label
-   * saying nothing for the minute a card of 500 captures takes. One line, in
-   * the row that owns the number, because the alternative is a progress dialog
-   * that has to be dismissed before the camera is usable again. */
-  char busy[24] = "";
   if (gallery_deleting()) {
     int done = 0, total = 0;
     gallery_delete_progress(&done, &total);
-    snprintf(busy, sizeof busy, "DELETING %d OF %d", done, total);
-  }
-  const bool wiping = busy[0] != '\0';
-
-  draw_list_frame(5);
-  draw_row(LIST_Y, false, false, true, "Card", sd.mounted ? capb : "None", false);
-  /* Low space is said where the number is, not discovered at a failed
-   * shutter. 512 MB is about 650 four-camera captures at the bench median of
-   * 0.77 MB per capture; below it the row appends LOW. */
-  char freerow[40];
+    snprintf(cnt, sizeof cnt, "削除中 %d / %d", done, total);
+  } else if (media < 0) snprintf(cnt, sizeof cnt, "-");
+  else snprintf(cnt, sizeof cnt, "%d枚", media);
   const bool low = sd.mounted && sd.free_bytes < (512ull << 20);
-  snprintf(freerow, sizeof freerow, "%s%s", sd.mounted ? freeb : "-", low ? "  LOW" : "");
-  draw_row(LIST_Y + ROW_H, false, false, true, "Free space", freerow, false);
-  draw_row(LIST_Y + 2 * ROW_H, false, false, true, "Photos", wiping ? busy : cnt, false);
-  /* Both destructive rows are live only with a card mounted, and neither is
-   * live while the other is running: a FORMAT pressed into a running wipe
-   * would be two things deleting the same directory. */
-  draw_row(LIST_Y + 3 * ROW_H, foc(SCR_STORAGE, ST_IT_DELETE_ALL),
-           s_pressed == ST_IT_DELETE_ALL, sd.mounted && !wiping && media > 0,
-           "Delete all photos", NULL, true);
-  /* Drawn dimmed: there is no format entry point in storage.c, and a live
-   * row that opens a confirm dialog and then says "not available" is a
-   * control that lies twice. The row stays so the layout and the hit test
-   * (row minus three) do not move. */
-  draw_row(LIST_Y + 4 * ROW_H, foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT, false,
-           "Format card", "Not available", false);
-
-  /*
-   * The 145 px under the list.
-   *
-   * Everything here was already in storage_status_t and none of it was drawn:
-   * the filesystem, the write test, the mount attempt count and the last error.
-   * The bar is not decoration either - it is the used/capacity ratio, which is
-   * the one thing "28.5 GB free" does not tell you at a glance, and the
-   * question this screen exists to answer is whether there is room for tonight.
-   *
-   * Strictly BELOW the five rows. The two destructive rows are hit-tested at
-   * LIST_Y + (3 + i) * ROW_H, so a row added above them would move both
-   * rectangles away from what is drawn and put FORMAT CARD under the finger
-   * aiming at DELETE ALL. Nothing here is a target and nothing here moved the
-   * list.
-   */
-  const int by = LIST_Y + 5 * ROW_H + 28;
-
-  if (!sd.mounted) {
-    /* Why, not just that. mount_attempts separates "no card in the slot" from
-     * "a card the driver has tried and failed to mount", which are different
-     * problems and the screen used to show the same "None" for both. */
-    text(&UI_FONT_M, 24, by, sd.present ? "Card present, not mounted" : "No card in the slot",
-         W_TEXT);
-    char detail[80];
-    if (sd.last_error != NULL && sd.last_error[0] != '\0') {
-      snprintf(detail, sizeof detail, "%s, after %u mount attempt%s", sd.last_error,
-               (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
-    } else {
-      snprintf(detail, sizeof detail, "%u mount attempt%s since boot",
-               (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
-    }
-    text(&UI_FONT_S, 24, by + 30, detail, W_GRAYTEXT);
-    return;
+  char freerow[40];
+  snprintf(freerow, sizeof freerow, "%s%s", sd.mounted ? freeb : "-", low ? "  残り少" : "");
+  nrow(0, "カード", sd.mounted ? capb : (sd.present ? "未マウント" : "なし"), false, true, false);
+  nrow(1, "空き", freerow, false, true, false);
+  nrow(2, "写真", cnt, false, true, false);
+  nrow(3, "全部削除", "", true, sd.mounted && !gallery_deleting() && media > 0, s_pressed == ST_IT_DELETE_ALL);
+  if (sd.mounted) {
+    /* How full, as a line: the whole width is the card. */
+    const int y = NR_Y0 + 4 * NR_H + 24;
+    const int used_w = sd.capacity_bytes ? (int)((uint64_t)NR_W * (sd.capacity_bytes - sd.free_bytes) / sd.capacity_bytes) : 0;
+    fill(NR_X, y, NR_W, 2, RGB(0x2a, 0x30, 0x38));
+    fill(NR_X, y, used_w, 2, low ? C_YELLOW : C_INK);
   }
-
-  /* The gauge: a sunken trough with a raised navy bar standing in it.
-   *
-   * The trough was already a well. What it held was a flat navy rectangle,
-   * which is the one surface on the interface with no edge on it at all - and
-   * on a gauge that is exactly the wrong thing to leave flat, because the
-   * boundary between full and empty IS the reading. A 2 px raised edge in two
-   * tones of the selection navy puts it where the eye already looks.
-   *
-   * Below 5 px of fill there is no room for a raised edge, so a nearly-empty
-   * card shows the flat sliver instead: a bevel wider than the thing it is
-   * bevelling is a solid block of highlight, which reads as MORE used space
-   * rather than less. */
-  const int bx = 24, bw = UI_W - 48, bh = 26;
-  const uint64_t total_b = sd.capacity_bytes;
-  const uint64_t used = total_b > sd.free_bytes ? total_b - sd.free_bytes : 0;
-  well(bx, by, bw, bh);
-  if (total_b > 0) {
-    /* 64-bit before the divide: a 32 GB card times bw overflows 32 bits. */
-    int fw = (int)((used * (uint64_t)(bw - 4)) / total_b);
-    /* A card with anything at all on it shows at least one pixel: a bar that
-     * is empty at 40 MB used looks like a bar that is not working. */
-    if (fw == 0 && used > 0) fw = 1;
-    fill(bx + 2, by + 2, fw, bh - 4, W_SEL);
-    if (fw >= 5) bevel4(bx + 2, by + 2, fw, bh - 4, W_SEL_LT, W_SEL, W_SEL_DK, W_SEL);
-  }
-
-  char usedb[24];
-  human_bytes(usedb, sizeof usedb, used);
-  char line[80];
-  snprintf(line, sizeof line, "%s used", usedb);
-  text(&UI_FONT_S, bx, by + bh + 8, line, W_GRAYTEXT);
-  /* The write test is the only thing here that says the card can be WRITTEN
-   * to, which is the property a capture depends on and free space is not. */
-  snprintf(line, sizeof line, "%s, write test %s", sd.filesystem != NULL ? sd.filesystem : "-",
-           sd.write_test != NULL ? sd.write_test : "none");
-  text_right(&UI_FONT_S, bx + bw, by + bh + 8, line, W_GRAYTEXT);
 }
 
 /* --- About -------------------------------------------------------- */
@@ -4727,117 +4279,36 @@ static void about_uptime(char *out, size_t cap) {
 }
 
 static void draw_about(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_ABOUT);
-
-  /* body.name, and only when someone has set one.
-   *
-   * Copied rather than held: config_str() hands back a slot in a four-deep
-   * ring shared by every task, and any second read is free to land in the same
-   * slot. 24 characters is the limit SET_CONFIG enforces; 32 is room for it and
-   * the NUL with margin. */
   char name[32];
   config_str_copy("body.name", name, sizeof name);
-  const bool named = name[0] != '\0';
-
   storage_status_t sd;
   storage_get_status(&sd);
-
-  /* card is sized off human_bytes's two 24-byte outputs plus the joining
-   * words, not off what a 32 GB card happens to format to. */
   char card[64], up[16], proto[16];
   if (sd.mounted) {
     char freeb[24], capb[24];
     human_bytes(freeb, sizeof freeb, sd.free_bytes);
     human_bytes(capb, sizeof capb, sd.capacity_bytes);
-    snprintf(card, sizeof card, "%s free of %s", freeb, capb);
+    snprintf(card, sizeof card, "%s / %s", freeb, capb);
   } else {
-    snprintf(card, sizeof card, "%s", sd.present ? "Not mounted" : "None");
+    snprintf(card, sizeof card, "%s", sd.present ? "未マウント" : "なし");
   }
   about_uptime(up, sizeof up);
   snprintf(proto, sizeof proto, "KDP %d", KDP_PROTOCOL_VERSION);
-
-  /* The serial. Still shown when a name is set: the name is what a person
-   * calls the camera, the serial is what a support question needs, and neither
-   * substitutes for the other. Empty only if the KDP server has not started,
-   * which cannot happen from this screen - app_main() starts it long before
-   * ui_start() - so a dash here would be a state nobody can reach. */
   const char *serial = kdp_device_serial();
-
-  /* ---- left column: the body ---- */
-  const struct {
-    const char *title;
-    const char *value;
-  } ROWS[] = {
-      {"Model", "KINO D4"},
-      {"Hardware", KDP_HARDWARE_REV},
-      {"Firmware", KINO_FW_VERSION},
-      {"Serial", serial[0] != '\0' ? serial : "-"},
-      {"Protocol", proto},
-      {"Card", card},
-      {"Uptime", up},
+  const struct { const char *title; const char *value; } ROWS[] = {
+      {"機種", name[0] ? name : "KINO D4"}, {"ファーム", KINO_FW_VERSION}, {"シリアル", serial[0] ? serial : "-"},
+      {"ハード", KDP_HARDWARE_REV},     {"プロトコル", proto},         {"カード", card},
+      {"稼働", up},
   };
   const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
-
-  const int lh = n * AB_ROW + 4;
-  well(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh);
   for (int i = 0; i < n; i++) {
-    draw_row_at(AB_LX, AB_LW, LIST_Y + i * AB_ROW, AB_ROW, false, false, true, ROWS[i].title,
-                ROWS[i].value, false);
+    /* Tighter than the settings rows: seven facts have to fit, and none acts. */
+    const int y = NR_Y0 + i * 44;
+    jtext(NR_X, y + 12, ROWS[i].title, 1, HDR_DIM);
+    jtext_right(NR_X + NR_W, y + 12, ROWS[i].value, 1, C_INK);
   }
-
-  /* The name under the list rather than in it: it is the only row here a
-   * person sets, so it is not the same kind of fact as the seven above. */
-  if (named) {
-    const int ny = LIST_Y + lh + 12;
-    /* NAME as a group-box legend, on the same rule as CAMERAS across the
-     * gutter: it was the last bare word on this screen, and a caption over a
-     * value with nothing round either is what the whole rework is removing. */
-    group_box(AB_LX - 8, ny, AB_LW + 16, 20 + UI_FONT_M.line_h + 8, "NAME", W_TEXT, NULL);
-    text(&UI_FONT_M, AB_LX, ny + 20, name, W_TEXT);
-  }
-
-  /* ---- right column: the four cameras ----
-   *
-   * CAMERAS was a bare grey word sitting above a well, which on a two-column
-   * screen is ambiguous about which column it names. It is the legend of a
-   * group box now, and the box encloses the well AND the two lines of note
-   * under it - the note is about these four rows and nothing else, and there
-   * was no mark on the screen that said so. */
-  const int cy0 = LIST_Y + 20;
-  const int ch = 4 * AB_CAM_ROW + 4;
-  group_box(AB_RX - 8, LIST_Y - 2, AB_RW + 16,
-            (cy0 + ch + 30 + UI_FONT_S.line_h + 8) - (LIST_Y - 2), "CAMERAS", W_TEXT, NULL);
-  well(AB_RX - 2, cy0 - 2, AB_RW + 4, ch);
-
-  const camlink_info_t *cams = about_cameras();
-  for (int i = 0; i < 4; i++) {
-    /* By pointer, not by value: the struct is about 128 bytes and this loop
-     * runs four times in a draw path with 8 KB of stack. */
-    const camlink_info_t *info = &cams[i];
-
-    char label[8];
-    snprintf(label, sizeof label, "CAM%d", i + 1);
-
-    /* Firmware and sensor when the node answered; "No answer" when it did not.
-     * NOT "not fitted": camlink cannot tell an empty header from a node that
-     * is wedged, and the two want different things done about them. */
-    char val[40]; /* firmware[16] + sensor[16] + the two spaces */
-    if (info->online) {
-      snprintf(val, sizeof val, "%s  %s", info->firmware,
-               info->sensor[0] != '\0' ? info->sensor : "no sensor");
-    } else {
-      snprintf(val, sizeof val, "No answer");
-    }
-    draw_row_at(AB_RX, AB_RW, cy0 + i * AB_CAM_ROW, AB_CAM_ROW, false, false, info->online, label,
-                val, false);
-  }
-
-  /* Node firmware is per camera and the four can differ - a node reflashed on
-   * its own is the normal way that happens - which is the whole reason this is
-   * four rows and not one summary line. */
-  text(&UI_FONT_S, AB_RX, cy0 + ch + 10, "Node firmware, then the sensor", W_GRAYTEXT);
-  text(&UI_FONT_S, AB_RX, cy0 + ch + 30, "each node reports.", W_GRAYTEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -4845,26 +4316,10 @@ static void draw_about(void) {
 /* ------------------------------------------------------------------ */
 
 static void draw_power(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
+  fill(0, 0, UI_W, UI_H, HDR_GROUND);
   draw_header(SCR_POWER);
-  /* Shut down is drawn disabled: power.c controls the backlight and the
-   * camera bank and has no power-off at all, and there is no soft latch in
-   * the pin map for one. Restart is real. */
-  /*
-   * In the list well every other list on this camera sits in, at LIST_Y.
-   *
-   * It was three bare rows drawn from BODY_Y with no frame at all, and the
-   * frame was not the only thing missing: hit_test() has always tested this
-   * screen at LIST_Y + i * ROW_H, which is 12 px BELOW where the rows were
-   * drawn. So the bottom 12 px of "Cancel" did nothing and the 12 px of face
-   * grey above "Shut down" quietly armed it. Moving the drawing to where the
-   * rectangles already are fixes both, and gives the screen the well.
-   */
-  draw_list_frame(3);
-  draw_row(LIST_Y, foc(SCR_POWER, 0), s_pressed == 0, false, "Shut down", "Hold the power slide",
-           false);
-  draw_row(LIST_Y + ROW_H, foc(SCR_POWER, 1), s_pressed == 1, true, "Restart", NULL, true);
-  draw_row(LIST_Y + 2 * ROW_H, foc(SCR_POWER, 2), s_pressed == 2, true, "Cancel", NULL, false);
+  nrow(0, "再起動", "RESTART", true, true, s_pressed == 1);
+  jtext(NR_X, NR_Y0 + NR_H + 20, "電源は USB-C。抜けば切れる。", 1, RGB(0x50, 0x56, 0x60));
 }
 
 /* ------------------------------------------------------------------ */
@@ -4881,28 +4336,25 @@ typedef struct {
 
 static void dialog_spec(dlg_spec_t *d) {
   static char sub[64];
+  const int n = gallery_media_count() < 0 ? 0 : gallery_media_count();
   switch (s_dialog) {
     case DLG_RESTART:
-      *d = (dlg_spec_t){"RESTART", "Back in a moment?", "KINO restarts and comes back to SHOOT.", "RESTART", false};
+      *d = (dlg_spec_t){"再起動", "再起動する？", "すぐ戻る。", "再起動", false};
       break;
     case DLG_DELETE:
-      snprintf(sub, sizeof sub, "%d frames. This cannot be undone.", s_photo_frames);
-      *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
+      snprintf(sub, sizeof sub, "%d枚。元に戻せない。", s_photo_frames);
+      *d = (dlg_spec_t){"削除", "この写真を削除？", sub, "削除", true};
       break;
     case DLG_DELETE_ALL:
-      snprintf(sub, sizeof sub, "%d photos. This cannot be undone.", gallery_media_count() < 0 ? 0 : gallery_media_count());
-      /* "photos", and the sub line says how many, because that is the number a
-       * person checks before pressing this. It says nothing about sounds,
-       * looks or settings on purpose: they are not touched, and listing what
-       * survives a destructive action reads as a warning about them. */
-      *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
+      snprintf(sub, sizeof sub, "%d枚 全部。元に戻せない。", n);
+      *d = (dlg_spec_t){"全部削除", "全部削除する？", sub, "全部削除", true};
       break;
     case DLG_FORMAT:
-      snprintf(sub, sizeof sub, "All %d photos will be deleted.", gallery_media_count() < 0 ? 0 : gallery_media_count());
-      *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", sub, "FORMAT", true};
+      snprintf(sub, sizeof sub, "%d枚 全部消える。", n);
+      *d = (dlg_spec_t){"初期化", "カードを初期化？", sub, "初期化", true};
       break;
     default:
-      *d = (dlg_spec_t){"SHUT DOWN", "Calling it a night?", "Hold the power slide to wake KINO up again.", "SHUT DOWN", false};
+      *d = (dlg_spec_t){"電源", "電源を切る？", "USB-C を抜けば切れる。", "切る", false};
       break;
   }
 }
@@ -4925,50 +4377,24 @@ static void dialog_spec(dlg_spec_t *d) {
 #define DLG_BTN_X1 (DLG_BTN_X2 - DLG_BTN_GAP - DLG_BTN_W)
 
 static void draw_dialog(void) {
-  /* Scrim over whatever is behind, so the decision is the only live thing.
-   * Heavy enough that the screen underneath reads as unavailable rather than
-   * merely tinted - a half-lit list still invites a press. */
-  scrim(0, 0, UI_W, UI_H, RGB(0x10, 0x16, 0x1e), 190);
-
+  /* Dim the screen, then the question on a plate of the ground colour, and
+   * two words. No title bar, no buttons drawn as buttons: the words are the
+   * controls, the way they are everywhere else, and the dangerous one is red. */
+  scrim(0, 0, UI_W, UI_H, RGB(0x06, 0x07, 0x09), 200);
   dlg_spec_t d;
   dialog_spec(&d);
-  const int h = d.sub ? 196 : 168;
-
-  /* A dialog window: raised face, a title bar in the same blue as a screen
-   * header, and buttons on the baseline. No minimise, no maximise, no drag -
-   * this is a camera, not a window manager. */
-  fill(DLG_X, DLG_Y, DLG_W, h, W_FACE);
-  bevel_raised(DLG_X, DLG_Y, DLG_W, h);
-
-  /* The same three surfaces as a screen header, at dialog scale: a raised bar
-   * inside the raised window, the caption plate on the bar, and the caption
-   * inset from the plate by the header's own padding. Dithered like the
-   * header - a 422 px ramp through RGB565 bands harder than a 790 px one, not
-   * less. */
-  const int bx = DLG_X + 3, by = DLG_Y + 3, bw = DLG_W - 6, bh = 32;
-  bevel_raised(bx, by, bw, bh);
-  grad_h(bx + 2, by + 2, bw - 4, bh - 4,
-         d.destructive ? RGB(0x80, 0x00, 0x00) : W_TITLE_L,
-         d.destructive ? RGB(0xd0, 0x40, 0x10) : W_TITLE_R);
-  text(&UI_FONT_S, bx + 2 + HD_CAP_PAD, by + (bh - UI_FONT_S.line_h) / 2, d.title, W_SELTEXT);
-
-  text(&UI_FONT_M, DLG_X + 20, DLG_Y + 56, d.body, W_TEXT);
-  if (d.sub) text(&UI_FONT_S, DLG_X + 20, DLG_Y + 90, d.sub, RGB(0x40, 0x40, 0x40));
-
+  const int h = 196;
+  fill(DLG_X, DLG_Y, DLG_W, h, HDR_GROUND);
+  fill(DLG_X, DLG_Y, DLG_W, 2, d.destructive ? C_RED : C_INK);
+  jtext_fx(UI_W / 2.f, DLG_Y + 62.f, d.body, 2.f, 0.f, C_INK, 255, false, true);
+  if (d.sub) jtext_fx(UI_W / 2.f, DLG_Y + 100.f, d.sub, 1.f, 0.f, HDR_DIM, 255, false, false);
   const int fy = DLG_BTN_Y(h);
-  const int b2 = DLG_BTN_X2;
-  const int b1 = DLG_BTN_X1;
-
-  button(b1, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 0);
-  text_mid(&UI_FONT_M, b1 + DLG_BTN_W / 2 + (s_pressed == 0 ? 1 : 0),
-           fy + (DLG_BTN_H - UI_FONT_M.line_h) / 2 + (s_pressed == 0 ? 1 : 0), "CANCEL", W_TEXT);
-  if (s_dlg_focus == 0) focus_inset(b1, fy, DLG_BTN_W, DLG_BTN_H, W_TEXT);
-
-  button(b2, fy, DLG_BTN_W, DLG_BTN_H, s_pressed == 1);
-  text_mid(&UI_FONT_M, b2 + DLG_BTN_W / 2 + (s_pressed == 1 ? 1 : 0),
-           fy + (DLG_BTN_H - UI_FONT_M.line_h) / 2 + (s_pressed == 1 ? 1 : 0), d.go,
-           d.destructive ? RGB(0x90, 0x00, 0x00) : W_TEXT);
-  if (s_dlg_focus == 1) focus_inset(b2, fy, DLG_BTN_W, DLG_BTN_H, W_TEXT);
+  const int b2 = DLG_BTN_X2, b1 = DLG_BTN_X1;
+  const uint16_t go_ink = d.destructive ? C_RED : C_INK;
+  jtext_fx(b1 + DLG_BTN_W / 2.f, fy + DLG_BTN_H / 2.f, "キャンセル", 1.f, 0.f, s_pressed == 0 ? C_INK : HDR_DIM, 255, false, s_pressed == 0);
+  jtext_fx(b2 + DLG_BTN_W / 2.f, fy + DLG_BTN_H / 2.f, d.go, 1.f, 0.f, go_ink, 255, false, true);
+  if (s_pressed == 0) fill(b1 + 20, fy + DLG_BTN_H - 6, DLG_BTN_W - 40, 2, C_INK);
+  if (s_pressed == 1) fill(b2 + 20, fy + DLG_BTN_H - 6, DLG_BTN_W - 40, 2, go_ink);
 }
 
 /* ------------------------------------------------------------------ */
@@ -5018,7 +4444,7 @@ static void draw_screen(void) {
     case SCR_LOOK: draw_look(); break;
     case SCR_GALLERY: draw_gallery(); break;
     case SCR_PHOTO: draw_photo(); break;
-    case SCR_ROLL: draw_roll(); break;
+    case SCR_ROLL: draw_connection(); break;
     case SCR_SETTINGS: draw_settings(); break;
     case SCR_DISPLAY: draw_display(); break;
     case SCR_SOUND: draw_sound(); break;
@@ -5177,51 +4603,33 @@ static int hit_test(int x, int y) {
       return -1;
     }
     case SCR_SETTINGS:
-      for (int i = 0; i < 5; i++)
-        if (in(x, y, LIST_X, LIST_Y + i * ROW_H, LIST_W, ROW_H)) return i;
-      return -1;
+      return nrow_hit(x, y, 5);
 
     case SCR_DISPLAY: {
-      /* The same table the draw walks, and the same cw arithmetic
-       * draw_segments() uses, so a band with five segments is tested at five
-       * segments rather than at the three the old literal assumed. */
-      for (int r = 0; r < DSP_ROWS; r++) {
-        const int by = DSP_BAND_Y(r);
-        if (y < by || y >= by + DSP_BAND_H) continue;
-        const int cw = DSP_W / DSP_ROW[r].count;
-        for (int i = 0; i < DSP_ROW[r].count; i++) {
-          if (in(x, y, DSP_X + i * cw, by, cw, DSP_BAND_H)) return DSP_ROW[r].base + i;
-        }
+      /* A row is its setting; the item is the NEXT value in that row's
+       * cycle, so activation stays one table write. */
+      const int r = nrow_hit(x, y, DSP_ROWS);
+      if (r < 0) return -1;
+      return DSP_ROW[r].base + (dsp_selected(r) + 1) % DSP_ROW[r].count;
+    }
+    case SCR_SOUND: {
+      const int r = nrow_hit(x, y, 4);
+      if (r == 0) return SN_IT_NEXT;
+      if (r == 1) return SN_IT_SHUTTER;
+      if (r == 2) return SN_IT_BUTTON;
+      if (r == 3) {
+        static const int VOLV[3] = {3, 6, 9};
+        return SN_IT_VOL + (nearest_idx(config_int("shoot.volume", 6), VOLV) + 1) % 3;
       }
       return -1;
     }
-    case SCR_SOUND: {
-      /* The picker's buttons before the row they sit in, or the row would
-       * swallow them. The rest of row 0 is not a target - the row is a label
-       * and a value, and only the arrows do anything. */
-      const int by = sn_btn_y();
-      if (in(x, y, sn_prev_x(), by, SN_BTN, SN_BTN)) return SN_IT_PREV;
-      if (in(x, y, sn_next_x(), by, SN_BTN, SN_BTN)) return SN_IT_NEXT;
-      if (in(x, y, LIST_X, LIST_Y + ROW_H, LIST_W, ROW_H)) return SN_IT_SHUTTER;
-      if (in(x, y, LIST_X, LIST_Y + 2 * ROW_H, LIST_W, ROW_H)) return SN_IT_BUTTON;
-      const int y0 = LIST_Y + 3 * ROW_H + 26, sw = (UI_W - 48) / 3;
-      for (int i = 0; i < 3; i++)
-        if (in(x, y, 24 + i * sw, y0 + 24, sw, 44)) return SN_IT_VOL + i;
-      return -1;
-    }
     case SCR_STORAGE:
-      /* Rows 0..2 are readings and take no press. The two that act are drawn
-       * at 3 and 4, so the item number is the row minus three - one place, so
-       * the draw and the hit test cannot disagree about which of two
-       * destructive rows was pressed. */
-      for (int i = 0; i < ST_IT_COUNT; i++)
-        if (in(x, y, LIST_X, LIST_Y + (3 + i) * ROW_H, LIST_W, ROW_H)) return i;
-      return -1;
+      /* Rows 0..2 read; row 3 acts. There is no format row any more: a thing
+       * the camera cannot do is not offered. */
+      return nrow_hit(x, y, 4) == 3 ? ST_IT_DELETE_ALL : -1;
 
     case SCR_POWER:
-      for (int i = 0; i < 3; i++)
-        if (in(x, y, LIST_X, LIST_Y + i * ROW_H, LIST_W, ROW_H)) return i;
-      return -1;
+      return nrow_hit(x, y, 1) == 0 ? 1 : -1; /* the one row is Restart, item 1 */
 
     default: return -1;
   }
@@ -5256,7 +4664,7 @@ static void dialog_commit(void) {
        * screen does not move, which is the only safe answer for an
        * irreversible operation. */
       if (!storage_acquire(STORAGE_USER_UI, 2000)) {
-        toast("Card busy");
+        toast("カード使用中");
         audio_warning();
         break;
       }
@@ -5272,7 +4680,7 @@ static void dialog_commit(void) {
        * of the card. Non-blocking; the gallery task does the work. */
       gallery_note_removed(s_photo_id);
       gallery_refresh();
-      toast("Deleted");
+      toast("削除した");
       go(SCR_GALLERY, 180);
       return;
     }
@@ -5283,16 +4691,16 @@ static void dialog_commit(void) {
        * gallery task takes the card in bursts and yields per folder, so a
        * photograph taken during the wipe still wins. */
       gallery_delete_all();
-      toast("Deleting photos");
+      toast("削除中");
       break;
     case DLG_FORMAT:
       /* Not wired: there is no format entry point in storage.c, and calling
        * a delete loop over user captures under the name "format" would be a
        * different operation wearing the label. */
-      toast("Format is not available yet");
+      toast("初期化はできない");
       break;
     default:
-      toast("Hold the power slide to switch off");
+      toast("電源は USB-C");
       break;
   }
   draw_screen();
@@ -5373,7 +4781,7 @@ static void activate(int item) {
          * say why rather than opening an empty photograph screen that looks
          * like a lost capture. */
         if (!photo_open(&slots[item])) {
-          toast("Card busy");
+          toast("カード使用中");
           audio_warning();
           break;
         }
@@ -5432,7 +4840,7 @@ static void activate(int item) {
       if (gallery_deleting()) break;
       if (item == ST_IT_DELETE_ALL) {
         if (gallery_media_count() <= 0) {
-          toast("No photos on the card");
+          toast("写真なし");
           break;
         }
         s_dialog = DLG_DELETE_ALL;
@@ -5440,12 +4848,12 @@ static void activate(int item) {
       } else if (item == ST_IT_FORMAT) {
         /* Dimmed row; a press still lands here from the hit test. Say so
          * without a confirm dialog for a thing that cannot happen. */
-        toast("Format is not available");
+        toast("初期化はできない");
       }
       break;
 
     case SCR_POWER:
-      if (item == 0) { toast("Hold the power slide to switch off"); break; }
+      if (item == 0) { toast("電源は USB-C"); break; }
       if (item == 1) { s_dialog = DLG_RESTART; s_dlg_focus = 0; break; }
       go_back();
       return;
