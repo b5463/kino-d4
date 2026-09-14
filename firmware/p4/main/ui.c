@@ -25,6 +25,11 @@
  * GET_DEVICE_INFO answers as `protocol`, not a second copy of the number. */
 #include "kdp/protocol.h"
 #include "kdp_recipes.h"
+
+/* A look is shown by its name, or by its id when the name is not on this
+ * camera, so any buffer that holds "what we call this look" has to fit the
+ * longer of the two. */
+#define LOOK_TEXT_MAX (KDP_RECIPE_ID_MAX > KDP_RECIPE_NAME_MAX ? KDP_RECIPE_ID_MAX : KDP_RECIPE_NAME_MAX)
 /* For media_favorite_set/get, and for kdp_device_serial() and
  * KDP_HARDWARE_REV, which is what the About screen's Serial and Hardware rows
  * are: the strings GET_DEVICE_INFO already answers. */
@@ -578,70 +583,6 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
     outline(cx, y, cell, cell, dark ? RGB(0x60, 0x6a, 0x78) : W_SHADOW);
   }
 }
-
-/* ------------------------------------------------------------------ */
-/* The glass                                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Composite video, not a shadow mask.
- *
- * The first version of this drew scanlines and RGB phosphor stripes, which
- * are artefacts of an RGB monitor and the wrong ones entirely. What made a
- * period screen look the way it did - and what artists of the era actually
- * composed against - is the bandwidth split in the composite/RF signal
- * itself:
- *
- *   luma    Y     ~4.5 MHz    edges stay sharp
- *   chroma  I, Q  ~0.5 MHz    colour smears sideways, about 9x wider
- *
- * That asymmetry is the whole effect. A dithered checkerboard of two colours
- * has a large CHROMA delta and a small LUMA delta, so the colours average
- * into a third colour that is not in the palette while the shape stays
- * crisp. A black keyline against a light face has a large LUMA delta, so it
- * survives untouched. Artists used exactly this: luma deltas for detail,
- * chroma deltas for blending.
- *
- * Which is why it belongs on these icons in particular. Windows 98 shell
- * artwork is full of hand-placed two-colour dither, drawn for 256-colour
- * displays. Run it through a real chroma bandwidth limit and that dither
- * does what it was always meant to do: resolve into shading.
- *
- * Implemented as a horizontal-only separable filter in YIQ, per row, in
- * integer arithmetic. Vertical is deliberately untouched - composite
- * band-limits along the scan line, not across lines.
- */
-
-/* One active line is about 52.6 us. Mapping the 800 px canvas onto it, the
- * smallest feature each band can carry is:
- *
- *   luma    1 / (2 * 4.5 MHz) = 111 ns  ->  ~1.7 px
- *   chroma  1 / (2 * 0.5 MHz) = 1.0 us  ->  ~15.2 px
- *
- * So chroma is CARRIED at one sample per eight pixels and interpolated back
- * up, which is what an encoder does rather than a trick to go faster - the
- * information is not in the signal to begin with. Averaging eight pixels
- * into one sample is itself a box filter of the right width; a [1 2 1] pass
- * over those samples rounds the roll-off off into a triangle about 24 px
- * wide at full resolution.
- *
- * The first version filtered chroma at full resolution with two nine-tap box
- * passes and a divide per tap. It measured 293 ms for one screen, which on a
- * menu that repaints when a tile is pressed is half a second of lag on every
- * touch. Same output, none of the divides. */
-/* Chroma carried at one sample per four pixels. Averaging four is a box of
- * 4, and the [1 2 1] over those samples convolves it into a triangle about
- * 12 px wide - the right order for a 15 px chroma feature. Eight was tried
- * first and bleeds visibly too far: a navy plate smeared twenty pixels into
- * the grey, which is a fault, not a period effect. */
-#define CH_SUB 4
-#define CH_N (UI_W / CH_SUB)
-
-static int16_t s_cy[UI_W];
-/* Two guard samples each side so the interpolation and the [1 2 1] never
- * index off the end, and the edge value simply repeats. */
-static int16_t s_ci[CH_N + 4], s_cq[CH_N + 4];
-static int16_t s_ci2[CH_N + 4], s_cq2[CH_N + 4];
 
 /* ------------------------------------------------------------------ */
 /* Configuration writes                                                */
@@ -1642,7 +1583,7 @@ static void look_display(char *out, size_t cap);
  */
 static const char *shoot_look_name(void) {
   static char s_id[KDP_RECIPE_ID_MAX];
-  static char s_name[KDP_RECIPE_NAME_MAX];
+  static char s_name[LOOK_TEXT_MAX];
   static bool s_have;
 
   char cur[KDP_RECIPE_ID_MAX];
@@ -1729,7 +1670,7 @@ static void draw_shoot(void) {
   s_live_cams = live;
   char cams[24];
   snprintf(cams, sizeof cams, "%d/4", live);
-  char look[KDP_RECIPE_NAME_MAX + 4];
+  char look[LOOK_TEXT_MAX + 4];
   snprintf(look, sizeof look, "%s", shoot_look_name());
   const char *mode_w = mode_is_quad() ? "QUAD" : "WIGGLE";
   char flash_w[24];
@@ -1969,7 +1910,7 @@ typedef struct {
   /* The identifier block moving: outgoing and incoming, like the header. */
   bool moving;
   mo_obj_t in_o, out_o;
-  char out_num[8], out_jp[KDP_RECIPE_NAME_MAX + 4];
+  char out_num[16], out_jp[LOOK_TEXT_MAX + 4];
   int64_t last_us;
 } fl_state_t;
 static fl_state_t s_fl;
@@ -2023,7 +1964,7 @@ static void fl_current(char *num, size_t ncap, char *jp, size_t jcap, char *en, 
 
 /** Step the preset and start its transition. */
 static void fl_change(int dir) {
-  char num[8], jp[KDP_RECIPE_NAME_MAX + 4], en[KDP_RECIPE_NAME_MAX + 4], id[KDP_RECIPE_ID_MAX];
+  char num[16], jp[LOOK_TEXT_MAX + 4], en[LOOK_TEXT_MAX + 4], id[KDP_RECIPE_ID_MAX];
   fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
   snprintf(s_fl.out_num, sizeof s_fl.out_num, "%s", num);
   snprintf(s_fl.out_jp, sizeof s_fl.out_jp, "%s", jp);
@@ -2146,7 +2087,7 @@ static void draw_look(void) {
   }
   draw_header_at(SCR_LOOK, true);
 
-  char num[8], jp[KDP_RECIPE_NAME_MAX + 4], en[KDP_RECIPE_NAME_MAX + 4], id[KDP_RECIPE_ID_MAX];
+  char num[16], jp[LOOK_TEXT_MAX + 4], en[LOOK_TEXT_MAX + 4], id[KDP_RECIPE_ID_MAX];
   fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
 
   /* The identifier, moving when it has just changed. */
@@ -2165,10 +2106,10 @@ static void draw_look(void) {
   }
 
   /* Under it: the Latin name, and what reaches the sensor. */
-  char facts[96];
+  char facts[LOOK_TEXT_MAX + 4 + 2 + 24 + 4 * 16];
   recipe_capture_t cap;
   if (id[0] && look_capture(id, &cap)) {
-    char ev[12] = "", gain[10] = "", q[10] = "", dn[10] = "", sh[10] = "";
+    char ev[24] = "", gain[16] = "", q[16] = "", dn[16] = "", sh[16] = "";
     if (cap.has_exposure_bias) {
       const int t10 = (int)(cap.exposure_bias * 10.0 + (cap.exposure_bias >= 0 ? 0.5 : -0.5));
       snprintf(ev, sizeof ev, "%s%d.%dEV ", t10 < 0 ? "-" : "+", (t10 < 0 ? -t10 : t10) / 10, (t10 < 0 ? -t10 : t10) % 10);
@@ -2186,7 +2127,7 @@ static void draw_look(void) {
   /* Where you are: n / N, small, right of the block's baseline. */
   {
     const int n = kdp_recipes_count();
-    char pos[16];
+    char pos[32];
     if (n > 0 && num[1] >= '0' && num[1] <= '9') snprintf(pos, sizeof pos, "%d / %d", atoi(num + 1), n);
     else snprintf(pos, sizeof pos, "%d", n);
     jtext_fx(UI_W - 24.f - jtext_w(pos, 1) / 2.f, FL_ID_Y + 66.f, pos, 1.f, 0.f, HDR_DIM, 255, true, false);
@@ -2253,30 +2194,6 @@ static void gal_origin(int slot, int *x, int *y) {
   *y = G_Y0 + (slot / G_COLS) * G_PITCH;
 }
 
-/* ------------------------------------------------------------------ */
-/* The favourite mark                                                  */
-/*                                                                     */
-/* A bitmap, not a scan-converted polygon. The mark has to be legible   */
-/* at 11 px in the corner of a 252 px tile, and at that size a computed */
-/* five-point star is a blob with three of its points lost to rounding. */
-/* The font is ASCII 32..126 and carries no star glyph, so this is the  */
-/* only way to draw one at all.                                        */
-/*                                                                     */
-/* One silhouette, two inks. An outline form was tried first and does   */
-/* not survive: at 11 px a hollow star is six disconnected 1 px runs and */
-/* reads as noise beside the word next to it - checked in the host       */
-/* preview, which is what that tool is for. Gold means it is a           */
-/* favourite, grey means the control would make it one, and the shape    */
-/* stays the same so the tile mark and the button are one thing.         */
-/* ------------------------------------------------------------------ */
-#define STAR_W 11
-#define STAR_H 10
-
-static const char *const STAR_ROWS[STAR_H] = {
-    ".....#.....", "....###....", "....###....", "###########", ".#########.",
-    "..#######..", "..#######..", ".###...###.", ".##.....##.", "#.........#",
-};
-
 /* The grid's vertical offset while a page turns: the old page slides out and
  * the new one in along the same spring. */
 static mo_val_t s_gal_dy;
@@ -2315,7 +2232,7 @@ static void gal_turn(int dir) {
 static void gal_marks(const gallery_item_t *it, int x, int y) {
   if (it->favorite) jtext_fx(x + G_TILE_W - 18.f, y + 14.f, "★", 1.f, 0.f, C_YELLOW, 255, true, false);
   if (it->partial) {
-    char n[8];
+    char n[16];
     snprintf(n, sizeof n, "%d/4", it->frames);
     jtext_fx(x + 8.f + jtext_w(n, 1) / 2.f, y + G_TILE_H - 14.f, n, 1.f, 0.f, C_YELLOW, 255, true, false);
   }
@@ -2332,7 +2249,7 @@ static void draw_gallery(void) {
   if (total == 0) {
     const bool counting = sd.mounted && gallery_loading();
     const int walked = gallery_scan_progress();
-    char h1[32];
+    char h1[48];
     if (!sd.mounted) snprintf(h1, sizeof h1, "カードなし");
     else if (counting && walked > 0) snprintf(h1, sizeof h1, "読込中 %d", walked);
     else if (counting) snprintf(h1, sizeof h1, "読込中");
@@ -2378,7 +2295,7 @@ static void draw_gallery(void) {
   /* Where you are, in the header's right end: page n / N and the count. */
   {
     const int pages = gallery_pages();
-    char pos[40];
+    char pos[64];
     if (gallery_loading()) {
       const int walked = gallery_scan_progress();
       if (walked > 0) snprintf(pos, sizeof pos, "読込中 %d", walked);
@@ -3231,7 +3148,7 @@ static void draw_storage(void) {
   draw_header(SCR_STORAGE);
   storage_status_t sd;
   storage_get_status(&sd);
-  char freeb[24], capb[24], cnt[24];
+  char freeb[24], capb[24], cnt[48];
   human_bytes(freeb, sizeof freeb, sd.free_bytes);
   human_bytes(capb, sizeof capb, sd.capacity_bytes);
   const int media = gallery_media_count();

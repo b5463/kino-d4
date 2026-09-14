@@ -150,10 +150,10 @@ Landed on `feat/native-ui`, in this order, each filmed in the host preview:
 Still to do: sound designed with the motion (audio.c has tick, shutter,
 warning; the sync cue and a transfer-complete cue are not written); the
 remaining contextual events (wake after a long idle → 続けよう。, connection →
-つながった！, an alternate shutdown line, a diagnostic long-press at boot); the
-Windows-era drawing code that nothing calls any more is still in `ui.c` and
-comes out in a cleanup pass; and a pass on the physical camera, where the
-timings above were tuned on a virtual clock and will need the panel's.
+つながった！, an alternate shutdown line, a diagnostic long-press at boot); and
+a pass on the physical camera, where the timings above were tuned on a
+virtual clock and will need the panel's. The Windows-era drawing code is out,
+and `ui.c` builds clean under the P4 toolchain (ESP-IDF 5.5.1, `-Werror=all`).
 
 ## Filming a transition
 
