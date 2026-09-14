@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { CAM_IDS } from '@kino/kdp';
 import type { CamId } from '@kino/kdp';
-import { SCENARIO_LIST } from '@kino/test-fixtures';
-import type { CamFault, ScenarioKey } from '@kino/test-fixtures';
+import { FIRMWARE_PROFILE_LIST, SCENARIO_LIST } from '@kino/test-fixtures';
+import type { CamFault, FirmwareProfile, FirmwareProfileId, ScenarioKey } from '@kino/test-fixtures';
 import { getTwinRuntime, useSimStore } from '../state/simStore';
 
 /** Exported so the Inspector's per-camera fault control offers the same list. */
@@ -20,6 +20,23 @@ export const CAM_FAULTS: CamFault[] = [
   'af-hunt',
 ];
 const BAUDS = [921_600, 1_500_000, 2_000_000, 3_000_000] as const;
+
+/**
+ * How a firmware profile reads in the selector: the version a camera flashed
+ * with it would report, then what the profile is. A simulated future is
+ * named as one (brief §42) so nobody mistakes the demo device for a build.
+ */
+export function profileOptionLabel(profile: FirmwareProfile): string {
+  return profile.simulatedFuture
+    ? `SIMULATED FUTURE · ${profile.label.replace(/^SIMULATED FUTURE\s*[—-]\s*/, '')}`
+    : `${profile.p4Fw} · ${profile.label.replace(/^CURRENT FIRMWARE\s+\S+\s*[—-]\s*/, '')}`;
+}
+
+/** Shipped builds first, newest at the top; the simulated future last. */
+export function profileOptions(list: readonly FirmwareProfile[] = FIRMWARE_PROFILE_LIST): FirmwareProfile[] {
+  const shipped = list.filter((p) => !p.simulatedFuture).reverse();
+  return [...shipped, ...list.filter((p) => p.simulatedFuture)];
+}
 
 /**
  * Per-camera fault injection — the one place in the app that pokes the
@@ -48,10 +65,36 @@ export function FaultPanel() {
     if (running) device().setScenario(key, value);
   }
 
+  /** A profile is a flashed image: switching one is a reflash, so the camera
+   * comes back as a new boot and a connected Studio sees the session change
+   * and re-reads capabilities instead of keeping the old report. */
+  function setFirmwareProfile(id: FirmwareProfileId) {
+    if (!running || id === snapshot?.firmwareProfile) return;
+    device().setFirmwareProfile(id);
+    device().setScenario('sessionRestart', true);
+  }
+
 
   return (
     <section className="twin-tool-panel" aria-label="Fault injection">
       <div className="twin-panel-heading"><span>FAULT INJECTION</span><span>SIM ONLY</span></div>
+      <div className="twin-panel-section">
+        <label className="twin-control-row">
+          <span>FIRMWARE PROFILE</span>
+          <select
+            className="twin-select"
+            disabled={!running}
+            value={snapshot?.firmwareProfile ?? 'd4-sim-full'}
+            title="Which firmware this device answers as. Shipped builds refuse what the camera refuses; the simulated future is the demo device."
+            onChange={(event) => setFirmwareProfile(event.target.value as FirmwareProfileId)}
+          >
+            {profileOptions().map((profile) => (
+              <option key={profile.id} value={profile.id}>{profileOptionLabel(profile)}</option>
+            ))}
+          </select>
+        </label>
+        <p className="twin-panel-note">Switching reboots the device (new session). Studio reconnects and re-reads capabilities.</p>
+      </div>
       <div className="twin-panel-section">
         <input
           className="twin-numeric twin-numeric--wide"

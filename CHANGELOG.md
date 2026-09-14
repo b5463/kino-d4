@@ -203,6 +203,7 @@ KINO has no published release yet. Changes intended for the first release collec
 - **REGISTER KINO writes `network.apiBase`.** The firmware's own uploader reads `network.apiBase` (`https://host[:port]`), not `roll.credentials.serverUrl`; registering against a server left the camera posting to the compiled default. Studio now writes the server origin there alongside the credentials, and the Roll page shows the camera's stored upload target.
 - **Device page PHYSICAL CONTROLS say what D4-V1 has.** FUNCTION BUTTON and SLIDE SWITCH have no GPIO on this body (ECN-0003) and the firmware reads neither key; both selects are disabled with that note, and wiggle VIEWFINDER IN WIGGLE / SAVE ORIGINALS and quad slot FLASH / NOTE carry a one-line "not read by firmware" hint from one shared helper.
 - Studio: LOAD DEMO PACKAGE on Updates is developer-mode only and hidden unless the session is simulated — it was reachable in production in front of a real camera. Dead exports removed: `MASKED_PASSWORD`, `cloneRecipe`, `getRollLinks`, `clearCreatedRolls`, `resetUpdateState`, `setRollServerUrl`.
+- KINO Twin: the FAULTS tab gains a FIRMWARE PROFILE selector, so the Twin can answer as the shipped firmware (0.4.56, one camera wired, refusing what the camera refuses) or as the simulated-future demo device. Switching reboots the device with a new session, and a connected Studio sees the reboot the way it would a real one (HARDWARE ERROR, then connect again).
 
 ### Removed
 
