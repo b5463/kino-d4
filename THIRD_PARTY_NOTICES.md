@@ -133,3 +133,15 @@ text is kept as `LICENSES/LicenseRef-Shinonome.txt`. The header is committed
 and ships in every build, including the Twin's, and no permission from this
 repository's MIT grant is needed or given for it.
 
+## BIZ UDPGothic (SIL Open Font License 1.1)
+
+`firmware/p4/main/ui_font_ui.h` is BIZ UDPGothic, Morisawa's universal-design
+gothic (Copyright 2022 The BIZ UDGothic Project Authors), rasterised by
+`tools/mkfont-ui.mjs` at 22 px and 34 px regular and 34 px bold for exactly
+the code points `ui.c` puts on the screen, from the TTFs at a pinned commit and
+digest of `googlefonts/morisawa-biz-ud-gothic`. It is the camera's interface
+type; the Shinonome face above remains as the fallback for glyphs outside that
+set. The header is a derivative of the font and stays under the OFL 1.1, kept
+as `LICENSES/OFL-1.1.txt`; the OFL's Reserved Font Name clause does not apply
+because the derivative is not distributed under the font's name.
+

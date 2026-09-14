@@ -1,8 +1,11 @@
 # KINO D4 firmware UI — direction
 
 Branch `feat/native-ui`. This replaces the Windows 98 shell with an interface
-native to the camera. The brief, distilled, and the decisions that turn it into
-code. Read this before touching `ui.c`.
+native to the camera: first the behaviour (motion, events, sound, the five
+modes), then a full visual reset on top of it - a modern embedded interface
+with the timing and irreverence of a late-90s Japanese arcade machine, and
+nothing that looks retro. The brief, distilled, and the decisions that turn it
+into code. Read this before touching `ui.c`.
 
 ## The idea
 
@@ -67,23 +70,68 @@ Timing guide (from the brief, adjusted to this loop):
 | Capture impact | 100–250 |
 | Japanese reaction | 450–1000, entry faster than exit |
 
+## Visual system
+
+The rule for every pixel: *what should the user be looking at right now?*
+Render that. Everything else earns its place. A still of the interface at
+rest should undersell it; it makes sense moving.
+
+**Primitives.** Type, image, one solid shape (`disc()`), the line, and motion.
+There is no control library: a row is two words, a control is a word that
+takes a line under it when pressed, a dialog is the darkened screen with a
+question and two words standing on it. Nothing is drawn as a button.
+
+**Ground.** Near-black (`C_GROUND`) under anything that is not a picture;
+off-white ink; one dim grey. The picture is full-bleed where there is one.
+
+**Colour is an event, not paint.** Cobalt while something moves (the FILTER
+identifier arriving, a transfer going out, a link coming up), yellow for a
+capture landing, red for a real failure. Afterwards the screen returns to
+ink on ground. One event, one colour; never the palette at once.
+
+**Removed, not replaced:** window chrome, bevels and 3D faces, the Windows
+palette, the CRT boot and collapse, the icon sheet, the second (English)
+script under every title, the tiny technical captions, the chevrons and
+rules between rows, the plated dialog, the pixel-doubled bitmap face as the
+interface's voice. Where an element was only there because the old UI had
+it, it is gone.
+
+**Each mode has its own spatial structure.** The finder is the picture with
+four marks in a corner; FILTER is the picture with its identifier bottom
+left; ROLL is a grid on dark ground with the count in the header's right;
+SETUP and CONNECT are rows of words; 情報 is denser and technical, and is
+allowed to be. Coherence comes from the type, the motion and the timing.
+
 ## Type
 
-Two faces, both bitmap, both scaled by whole numbers only:
+The interface type is **BIZ UDPGothic** (`ui_font_ui.h`, `tools/mkfont-ui.mjs`,
+OFL 1.1): Morisawa's universal-design gothic, rasterised anti-aliased at the
+sizes the interface uses and blended per pixel on the device (`ui_type.h`).
+Three faces:
 
-- **Shinonome 16** (`ui_font_jp.h`, `tools/mkfont-shinonome.mjs`): JIS X 0208 at
-  16×16 and 8×16 half-width, public domain. ×2 = 32 px for mode titles and
-  readings, ×3/×4 for transient display type. Japanese is part of the identity,
-  not a translation layer: use the language combination that makes each state
-  strongest, and do not duplicate everything bilingually.
-- The existing Latin atlas (`ui_font.h`, Tahoma-derived S/M) stays for dense
-  technical readings until it is replaced; new surfaces prefer Shinonome's
-  half-width Latin so a line can mix scripts on one baseline.
+| face | size | role |
+|---|---|---|
+| `UT_S`  | 22 px regular | values, captions, the one line under a picture, 情報 |
+| `UT_M`  | 34 px regular | rows, controls, words that act |
+| `UT_MB` | 34 px bold | the mode's name, identifiers, notices, reactions |
 
-`ui_text_jp.h` draws UTF-8 with the Shinonome faces: `jtext()` at an integer
-scale, `jtext_w()`, and `jtext_fx()` — the same string rasterised once into a
-scratch mask and blitted through a rotation/scale/opacity transform for the
-reaction typography (±4–12°, oversized entry, settling).
+On the 4.3" 217 ppi panel 34 px is 4 mm of em; 22 px is 2.6 mm. Display
+sizes - a reaction thrown at 2–3×, the FILTER identifier at 2×, a word four
+ems tall cut by the screen's edge - are `UT_MB` through `ut_fx()`: the string
+rasterised once into an 8-bit mask and sampled bilinearly through a
+scale/rotation/alpha transform. On this density the softening is a quarter
+of a millimetre. `ut_vdraw()` sets a word 縦書き.
+
+The glyph set is what `ui.c` says: every code point in its string literals,
+plus ASCII. Adding a Japanese word means `npm run font:ui:bake`; CI's
+`font:ui:check` fails on drift. A word from outside that set - a look named
+in Studio, a Wi-Fi network - falls back to **Shinonome 16** (`ui_font_jp.h`,
+public domain), visibly coarser, on the same baseline, rather than to a hole.
+
+Japanese is the identity, not a caption: one script per word. Latin appears
+where it is the identifier (`C02`, `QUAD`, `KINO ROLL`, `USB`, an address).
+Operational text stays restrained; transient text can be graphic, and each
+kind of word has its own manner (below).
 
 ## Events and personality
 
@@ -96,6 +144,14 @@ weight, and fire at most once per session. Adding one is one table row.
 
 One event = one visual idea: one colour (cobalt `#2f70c9`, yellow `#f4c542`,
 red `#c83a3a`, off-white), no container, typography only.
+
+One lifecycle, several manners (`react_style_t`): a word **thrown** (oversized,
+tilted ±4–12°, a back-ease landing, a drift out: 撮れた！ バッチリ。 完璧。); a
+word that **stands still** (cut in, cut out, no motion: よし。 4枚同期); a word
+**down the side** in 縦書き, each glyph a beat after the last (いいね。 まだ撮る？);
+a word **too big for the frame**, four ems tall and cut by the left edge
+(4枚！ 百枚！); a **small** word in the corner that says nothing loudly
+(もう一枚？). Not a toast component with variants: five presentations.
 
 Four-camera language: `1 → 2 → 3 → 4`, four marks that collapse to one on sync,
 used for capture, transfer and the occasional status event — never a permanent
@@ -127,7 +183,9 @@ status. No theatrical delay of real completion.
 
 `npm run dev -w @kino/twin`, open `#screen`, `npm run twin:ui:bake -- --w98`
 after each change; WATCH reloads the screen. `firmware/p4/host_preview` renders
-every state to PPM for review. `npm run font:jp:check` and `twin:ui:check` gate CI.
+every state to PPM for review. A new Japanese word in `ui.c` needs
+`npm run font:ui:bake`. `font:ui:check`, `font:jp:check` and `twin:ui:check`
+gate CI.
 
 ## Where it stands
 
@@ -159,6 +217,20 @@ Landed on `feat/native-ui`, in this order, each filmed in the host preview:
    続けよう。 on waking after twenty minutes or more dark; a finger held on the
    glass through the splash boots into 情報, the diagnostic page. There is no
    shutdown line to vary: the camera has no shutdown, it is unplugged.
+9. The visual reset. BIZ UDPGothic at three sizes replaces the pixel face as
+   the interface's voice (`tools/mkfont-ui.mjs`, `ui_type.h`); the Windows
+   palette, the CRT boot and collapse, the icon sheet, the bilingual titles,
+   the chevrons, rules, plates and captions are gone. Boot is black and the
+   name landing on one spring. The finder at rest is the picture and four
+   marks; its words show on entry, on a touch, on a change, and let go.
+   FILTER is the picture and `C02 白黒` at 2×, cobalt while it changes. Rows
+   are two words. The dialog is the darkened screen, a question, two words.
+   Capture and sync marks are discs. Reactions have five manners.
+10. Ambient: a screen's first visit this boot lets its rows arrive one after
+   another; a revisit is simply there. The finder shows its words longer the
+   first time. Screens cut rather than crossfade, except a photograph
+   opening from its tile. The Twin and the host preview build the same
+   files; `font_ui`, `font_jp` and `twin_ui` checks gate CI.
 
 Still to do: a pass on the physical camera, where the timings above were
 tuned on a virtual clock and will need the panel's, and where the two new

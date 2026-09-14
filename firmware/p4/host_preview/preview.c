@@ -27,7 +27,6 @@
 #include "capture.h"
 #include "gallery.h"
 #include "gfx.h"
-#include "icons.h"
 /* For recipe_capture_t: the LOOK screen's detail strip needs a capture block
  * per look, and the stub below has to match the real signature exactly. */
 #include "kdp_recipes.h"
@@ -848,11 +847,6 @@ int main(int argc, char **argv) {
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   s_cv = g_canvas;
 
-  if (icons_build() != ESP_OK) {
-    fprintf(stderr, "icons_build failed\n");
-    return 1;
-  }
-
   /* One helper, so every state below is "set the state, draw, name it" and
    * the list reads as the screen inventory it is meant to be. */
 #define SHOT(scr, name)      \
@@ -863,38 +857,6 @@ int main(int argc, char **argv) {
   } while (0)
 
   fake_gallery();
-
-  /* ---- the menu, which is the home screen ---- */
-  s_pressed = -1;
-  s_focus[SCR_MENU] = 0;
-  SHOT(SCR_MENU, "menu");
-
-  /*
-   * The focus ring, which no screenshot has ever contained.
-   *
-   * s_focus_shown is false until a physical key is used, and this harness has
-   * never set it - so "menu_settings_focus" was a picture of the menu with
-   * nothing focused, and every dotted rectangle in the firmware was unreviewed
-   * on every screen. It is set for the shots that are about focus and cleared
-   * again afterwards, so the plain shots stay plain.
-   */
-  s_focus_shown = true;
-  s_focus[SCR_MENU] = 4;
-  SHOT(SCR_MENU, "menu_settings_focus");
-  s_focus_shown = false;
-
-  s_pressed = 4;
-  SHOT(SCR_MENU, "menu_pressed");
-  s_pressed = -1;
-  s_focus[SCR_MENU] = 0;
-
-  /* Every icon on one sheet, at the size it is actually drawn, so the set can
-   * be judged against itself rather than one at a time. */
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
-  for (int i = 0; i < W98_COUNT; i++) {
-    icons_blit_centred(s_cv, UI_W, UI_H, i, 84 + i * 106, UI_H / 2);
-  }
-  shot("iconsheet");
 
   /*
    * ---- shoot: the four panes, the way out, and the status bar ----
@@ -908,6 +870,7 @@ int main(int argc, char **argv) {
    * again, the bar has stopped reading something.
    */
   s_focus[SCR_SHOOT] = 3; /* the shutter, where focus lands on entry */
+  sh_reveal(); /* as on entering the mode: the words are showing */
   SHOT(SCR_SHOOT, "shoot");
   g_flash_mode = "on";
   SHOT(SCR_SHOOT, "shoot_flash_on");
@@ -1329,7 +1292,7 @@ int main(int argc, char **argv) {
   /* On the menu it is the status bar's message. It used to float 44 px off the
    * bottom, which put it across the SETTINGS tile's label - a tooltip covering
    * the control that raised it, and this shot is the one that showed it. */
-  s_screen = SCR_MENU;
+  s_screen = SCR_SHOOT;
   toast("Mode: Quad");
   draw_screen();
   shot("toast");
@@ -1342,17 +1305,17 @@ int main(int argc, char **argv) {
   draw_screen();
   shot("toast_gallery");
 
-  /* ---- the type, as the new shell will set it ---- */
+  /* ---- the type: the three faces, and the display sizes made from the bold ---- */
   fill(0, 0, UI_W, UI_H, RGB(0x0e, 0x10, 0x14));
-  jtext(24, 20, "撮影", 2, RGB(0xf2, 0xf2, 0xee));
-  jtext(24 + jtext_w("撮影", 2) + 12, 20 + 14, "SHOOT", 1, RGB(0x80, 0x88, 0x94));
-  jtext(24, 70, "再生  色  接続  設定", 2, RGB(0x80, 0x88, 0x94));
-  jtext(24, 120, "C02 白黒  1/60  ISO 400  ﾌﾗｯｼｭ AUTO", 1, RGB(0xf2, 0xf2, 0xee));
-  jtext(24, 150, "C02 白黒", 3, RGB(0xf4, 0xc5, 0x42));
-  jtext_fx(560, 120, "撮れた！", 4.f, -7.f, RGB(0xf4, 0xc5, 0x42), 255, true, true);
-  jtext_fx(420, 300, "よし。", 5.5f, 5.f, RGB(0x2f, 0x70, 0xc9), 255, false, true);
-  jtext_fx(600, 400, "4枚同期", 3.f, -4.f, RGB(0xf2, 0xf2, 0xee), 160, true, false);
-  jtext_fx(180, 400, "1 → 2 → 3 → 4", 2.f, 0.f, RGB(0xc8, 0x3a, 0x3a), 255, false, false);
+  ut_draw(&UT_MB, 24, 14, "撮影", RGB(0xf2, 0xf2, 0xee));
+  ut_draw(&UT_M, 24, 70, "再生  色  接続  設定", RGB(0x80, 0x88, 0x94));
+  ut_draw(&UT_S, 24, 124, "QUAD  C02 白黒  フラッシュ 自動  12:34  3.7 GB", RGB(0xf2, 0xf2, 0xee));
+  ut_fx(&UT_MB, 24 + ut_w(&UT_MB, "C02 白黒"), 200, "C02 白黒", 2.f, 0.f, RGB(0xf2, 0xf2, 0xee), 255, false);
+  ut_fx(&UT_MB, 560, 120, "撮れた！", 2.6f, -7.f, RGB(0xf4, 0xc5, 0x42), 255, true);
+  ut_fx(&UT_MB, 430, 330, "よし。", 3.4f, 5.f, RGB(0x2f, 0x70, 0xc9), 255, false);
+  { const char *col[4] = {"い", "い", "ね", "。"}; for (int i = 0; i < 4; i++) ut_fx(&UT_MB, 740.f, 217.f + i * 34.f, col[i], 1.f, 0.f, RGB(0x2f, 0x70, 0xc9), 255, false); }
+  ut_fx(&UT_MB, 600, 430, "4枚同期", 1.8f, 0.f, RGB(0xf2, 0xf2, 0xee), 200, true);
+  for (int i = 0; i < 4; i++) disc(60.f + i * 36.f, 430.f, i < 3 ? 7.f : 3.f, i < 3 ? RGB(0xf2, 0xf2, 0xee) : RGB(0x80, 0x88, 0x94), 255);
   shot("type_sample");
 
   /* ---- film: the shell in motion ----
@@ -1434,6 +1397,37 @@ int main(int argc, char **argv) {
   FILM("cap", 1600); FILM("cap", 1750); FILM("cap", 1950); FILM("cap", 2050); FILM("cap", 2120); FILM("cap", 2250);
   g_stage = CAPTURE_IDLE;
   FILM("cap", 2600);
+
+  /* ---- film: two more manners of a word - down the side, and bigger than the frame ---- */
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  s_cap.armed = true;
+  cap_say(&REACTIONS[2], g_preview_clock_us); /* いいね。 */
+  FILM("react_v", 150); FILM("react_v", 220); FILM("react_v", 320); FILM("react_v", 500); FILM("react_v", 800);
+  film_t0 = g_preview_clock_us + 1500000;
+  g_preview_clock_us = film_t0;
+  s_cap.armed = true;
+  cap_say(&REACTIONS[5], g_preview_clock_us); /* 4枚！ */
+  FILM("react_h", 150); FILM("react_h", 200); FILM("react_h", 280); FILM("react_h", 500); FILM("react_h", 780);
+  film_t0 = g_preview_clock_us + 1500000;
+  g_preview_clock_us = film_t0;
+  s_cap.armed = true;
+  cap_say(&REACTIONS[4], g_preview_clock_us); /* もう一枚？ */
+  FILM("react_t", 200); FILM("react_t", 600);
+  s_cap.armed = false;
+  s_cap.react = NULL;
+
+  /* ---- film: a first visit to SETUP - the rows arrive; a second is simply there ---- */
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  s_visited[SCR_SETTINGS] = false;
+  go(SCR_SETTINGS, 0);
+  FILM("rows", 0); FILM("rows", 40); FILM("rows", 90); FILM("rows", 150); FILM("rows", 250); FILM("rows", 400);
+  go(SCR_SHOOT, 0);
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  go(SCR_SETTINGS, 0);
+  FILM("rows_again", 0); FILM("rows_again", 90);
 
   /* ---- film: a notice, and the four-camera one ---- */
   film_t0 = g_preview_clock_us + 1000000;

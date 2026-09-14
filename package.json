@@ -17,6 +17,8 @@
     "icons:check": "node scripts/bake-w98-icons.mjs --check",
     "font:jp:bake": "node tools/mkfont-shinonome.mjs",
     "font:jp:check": "node tools/mkfont-shinonome.mjs --check",
+    "font:ui:bake": "node tools/mkfont-ui.mjs",
+    "font:ui:check": "node tools/mkfont-ui.mjs --check",
     "firmware:daemon": "node scripts/firmware-daemon.mjs",
     "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
     "test:uploader": "tsx infra/scripts/test-uploader.ts",

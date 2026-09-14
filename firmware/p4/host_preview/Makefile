@@ -24,7 +24,7 @@ LDFLAGS := -lm
 # will ever play. It has no ESP-IDF dependency - that is what it is for.
 SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
-        $(MAIN)/ui_font.h $(MAIN)/ui_font_jp.h $(MAIN)/ui_motion.h $(MAIN)/ui_text_jp.h $(MAIN)/ui_labels.h $(MAIN)/logo_kino_d4.h \
+        $(MAIN)/ui_type.h $(MAIN)/ui_font_ui.h $(MAIN)/ui_font_jp.h $(MAIN)/ui_motion.h $(MAIN)/ui_text_jp.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
         $(MAIN)/roll_queue.h $(MAIN)/gallery.h $(MAIN)/audio.h \

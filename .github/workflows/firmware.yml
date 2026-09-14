@@ -153,6 +153,8 @@ jobs:
         with: { node-version: 22 }
       - name: The Japanese type is the pinned Shinonome sources, byte for byte
         run: npm run font:jp:check
+      - name: The interface type is BIZ UDPGothic at the pinned commit, rasterised for exactly what ui.c says
+        run: npm run font:ui:check
       - name: Rebuild kino-ui.wasm and compare with the committed artifact
         run: npm run twin:ui:check
 
