@@ -2419,8 +2419,11 @@ static void draw_cap_reaction(void) {
   }
 }
 
-/* One thing you can touch on this screen. */
-#define SH_IT_BACK 0
+/* What can be touched on the finder: the title band (the shell's IT_HDR),
+ * and the two words on the reading line that are decisions. */
+#define SH_IT_MODE 1
+#define SH_IT_FLASH 2
+static int s_sh_mode_x0, s_sh_mode_x1, s_sh_flash_x0, s_sh_flash_x1;
 
 /*
  * The two markings, and the only two.
@@ -2649,10 +2652,20 @@ static void draw_shoot(void) {
   snprintf(cams, sizeof cams, "%d/4", live);
   char look[KDP_RECIPE_NAME_MAX + 4];
   snprintf(look, sizeof look, "%s", shoot_look_name());
+  const char *mode_w = mode_is_quad() ? "QUAD" : "WIGGLE";
+  char flash_w[24];
+  snprintf(flash_w, sizeof flash_w, "FLASH %s", FLASH_NAMES[flash_index()]);
   char line[128];
-  snprintf(line, sizeof line, "%s  %s  %s %s  %s", mode_is_quad() ? "QUAD" : "WIGGLE", look,
-           "FLASH", FLASH_NAMES[flash_index()], cams);
+  snprintf(line, sizeof line, "%s  %s  %s  %s", mode_w, look, flash_w, cams);
   jtext_fx(HDR_X + jtext_w(line, 1) / 2.f, UI_H - 26.f, line, 1.f, 0.f, HDR_INK, 230, true, false);
+  /* Where the two decisions sit on that line, for the hit test. */
+  s_sh_mode_x0 = HDR_X;
+  s_sh_mode_x1 = HDR_X + jtext_w(mode_w, 1);
+  s_sh_flash_x0 = HDR_X + jtext_w(mode_w, 1) + 16 + jtext_w(look, 1) + 16;
+  s_sh_flash_x1 = s_sh_flash_x0 + jtext_w(flash_w, 1);
+  /* A pressed word lifts a shade, the acknowledgement. */
+  if (s_pressed == SH_IT_MODE) fill(s_sh_mode_x0, UI_H - 8, s_sh_mode_x1 - s_sh_mode_x0, 2, C_INK);
+  if (s_pressed == SH_IT_FLASH) fill(s_sh_flash_x0, UI_H - 8, s_sh_flash_x1 - s_sh_flash_x0, 2, C_INK);
 
   /* ---- the capture, when there is one ---- */
   draw_cap_marks(UI_H - 96, true);
@@ -2680,67 +2693,6 @@ static void look_set_mono(bool mono) {
     cfg_set_str(path, mono ? "mono" : "recipe");
   }
 }
-
-/* Five decisions about the photograph, in one place.
- *
- * Mode and flash used to live on the viewfinder, which put two pickers in
- * front of the thing they are meant to be describing. They are not part of
- * seeing the room, they are part of deciding what to do with it - the same
- * kind of decision as the look - so they are here, and the viewfinder is
- * only the room.
- *
- * Rows are a label, a 40 px control and 8 px of air, at a 68 px pitch. The
- * old 84 px pitch fitted three rows and there are now five, of which the
- * fifth exists in QUAD only. */
-#define LK_X 24
-#define LK_W (UI_W - 2 * LK_X)
-#define LK_Y0 (BODY_Y + 8)
-#define LK_ROW 68
-#define LK_CTL_H 40
-#define LK_PICK_BTN 56
-#define lk_label_y(r) (LK_Y0 + (r) * LK_ROW)
-#define lk_ctl_y(r) (lk_label_y(r) + 20)
-
-/* The group box round each row. It reaches 8 px wider than the control on
- * each side and starts on the legend's own line, so the etched top edge runs
- * through the middle of MODE, FLASH, LOOK, COLOUR and TARGET rather than above
- * them. 6 px of air under the control is what stops the bottom groove touching
- * a button's shadow. */
-#define LK_BOX_X (LK_X - 8)
-#define LK_BOX_W (LK_W + 16)
-#define LK_BOX_H (20 + LK_CTL_H + 6) /* legend line, control, air */
-
-_Static_assert(LK_X - 8 >= 2, "the LOOK group boxes run into the window frame");
-
-/* Rows in draw order: 0 MODE, 1 FLASH, 2 the look picker, 3 COLOUR/B&W,
- * 4 TARGET (QUAD only). The two footnotes follow the last drawn row. */
-#define LK_ROW_TARGET 4
-
-/* Item ranges. The target row is last so the item indices below it are the
- * same in both modes, which is what lets item_count() simply drop it. */
-#define LK_IT_MODE 0    /* 0..1  WIGGLE / QUAD */
-#define LK_IT_FLASH 2   /* 2..4  AUTO / ON / OFF */
-#define LK_IT_PREV 5    /* the look picker's left button */
-#define LK_IT_NEXT 6    /* and its right one */
-#define LK_IT_COLOR 7   /* 7..8  COLOUR / B&W */
-#define LK_IT_TARGET 9  /* 9..13 ALL / CAM1..CAM4, QUAD only */
-#define LK_IT_COUNT 14
-
-/* The detail strip under the last control row. Its height is here rather than
- * beside its drawing code so the assert below can see it. */
-#define LK_DET_H 52
-/* 14, not the 10 it was. The control rows are group boxes now, so the last one
- * has an etched bottom edge 6 px under its buttons; at a 10 px gap that groove
- * and the detail strip's sunken top edge landed 4 px apart and read as one
- * doubled line. There is room: the QUAD assert below still passes with 11 px
- * to spare. */
-#define LK_DET_GAP 14
-
-/* Five rows plus the detail strip is the tightest screen on the camera, and the
- * overflow would only show on a panel in QUAD - which is why the two lines of
- * footnote this replaced were checked the same way. */
-_Static_assert(lk_ctl_y(LK_ROW_TARGET) + LK_CTL_H + LK_DET_GAP + LK_DET_H <= UI_H,
-               "the LOOK detail strip falls off the bottom in QUAD");
 
 /* Which camera the picker writes to, in QUAD. 0 is ALL, 1..4 are cam1..cam4.
  * Not persisted: it is a question about the next press, not a setting. */
@@ -2851,8 +2803,6 @@ static void look_step(int delta) {
   char id[KDP_RECIPE_ID_MAX], name[KDP_RECIPE_NAME_MAX];
   if (!kdp_recipes_name(next, id, sizeof id, name, sizeof name)) return;
   look_apply(id);
-  upcase(name);
-  toast(name);
 }
 
 /* ---- what the selected look actually does -------------------------------
@@ -2864,7 +2814,6 @@ static void look_step(int delta) {
  * and where in the list you are - which is also the difference between cycling
  * a list and choosing from one.
  */
-#define LK_DET_COLS 5
 
 /**
  * The look's capture block, cached on its id.
@@ -2905,200 +2854,288 @@ static bool look_capture(const char *id, recipe_capture_t *out) {
  * NOT SET, and NOT SET means the mode's own value stays where it was, which is
  * exactly what an absent field means on the wire.
  */
-static void look_detail_col(int x, int w, int y, const char *value, bool set,
-                            const char *label) {
-  if (set) {
-    text_mid(&UI_FONT_M, x + w / 2, y, value, W_TEXT);
-  } else {
-    text_mid(&UI_FONT_S, x + w / 2, y + 4, "NOT SET", W_GRAYTEXT);
+/* ------------------------------------------------------------------ */
+/* FILTER (色): the picture, and the preset it will be taken with         */
+/*                                                                     */
+/* Full-bleed live picture from the finder camera; bottom left, the     */
+/* preset's number and name; nothing else unless the mode needs it.    */
+/* The left half of the picture steps back, the right half forward, and */
+/* each change has a transition of its own kind - a wipe, a flick, a    */
+/* hard cut, a moment of RGB separation - short enough to be felt more  */
+/* than watched. The preview is not graded on the device (the look's    */
+/* five numbers reach the sensor at capture, D19), so the transition is */
+/* the honest thing that changes when the preset does.                  */
+/* ------------------------------------------------------------------ */
+
+#define FL_IT_PREV 0   /* left half of the picture */
+#define FL_IT_NEXT 1   /* right half */
+#define FL_IT_MONO 2   /* 白黒 */
+#define FL_IT_TARGET 3 /* 3..7: ALL, 1..4 - QUAD only */
+#define FL_IT_COUNT 8
+
+/* The factory looks, named in the camera's own language. A custom look
+ * keeps the name it was given. */
+static const struct { const char *id; const char *jp; } LOOK_JP[] = {
+    {"party-neg", "パーティ"}, {"chrome", "クローム"},   {"superia", "スペリア"},  {"vivid", "ビビッド"},
+    {"mono", "白黒"},         {"motion", "モーション"}, {"flash-digi", "フラッシュ"}, {"warm-2007", "２００７"},
+    {"cold-flash", "コールド"}, {"disposable", "使い捨て"}, {"raw-digi", "生"},
+};
+
+typedef enum { FX_NONE = 0, FX_WIPE, FX_FLICK, FX_CUT, FX_RGB } fl_fx_t;
+
+typedef struct {
+  fl_fx_t fx;
+  int dir;             /* +1 forward, -1 back: the wipe's direction */
+  mo_tl_t tl;
+  /* The identifier block moving: outgoing and incoming, like the header. */
+  bool moving;
+  mo_obj_t in_o, out_o;
+  char out_num[8], out_jp[KDP_RECIPE_NAME_MAX + 4];
+  int64_t last_us;
+} fl_state_t;
+static fl_state_t s_fl;
+
+/* Which transition a look gets. Its character, not a random draw: a hard cut
+ * for the ungraded one, a flick for the flash looks, separation for motion,
+ * a wipe for the rest (mono's from the top, others in the direction of travel). */
+static fl_fx_t fl_fx_for(const char *id) {
+  if (strcmp(id, "raw-digi") == 0) return FX_CUT;
+  if (strcmp(id, "flash-digi") == 0 || strcmp(id, "cold-flash") == 0) return FX_FLICK;
+  if (strcmp(id, "motion") == 0) return FX_RGB;
+  return FX_WIPE;
+}
+static int fl_fx_ms(fl_fx_t fx) {
+  switch (fx) {
+    case FX_WIPE: return 160;
+    case FX_FLICK: return 60;
+    case FX_CUT: return 60;
+    case FX_RGB: return 110;
+    default: return 0;
   }
-  text_mid(&UI_FONT_S, x + w / 2, y + UI_FONT_M.line_h + 4, label, W_GRAYTEXT);
 }
 
-/** The detail strip, under the last control row. */
-static void draw_look_detail(int y) {
-  /* A well: five readings, no press. */
-  well(LK_X, y, LK_W, LK_DET_H);
-
-  char id[KDP_RECIPE_ID_MAX];
-  if (!look_current_id(id, sizeof id)) {
-    /* QUAD, target ALL, four slots that disagree. Showing cam1's numbers for
-     * all four would misdescribe three cameras, which is the same reason
-     * look_display() says MIXED rather than guessing. */
-    text_mid(&UI_FONT_S, UI_W / 2, y + (LK_DET_H - UI_FONT_S.line_h) / 2,
-             "The four cameras are on different looks. Pick one camera to see its settings.",
-             W_GRAYTEXT);
-    return;
-  }
-
-  recipe_capture_t cap;
-  if (!look_capture(id, &cap)) {
-    text_mid(&UI_FONT_S, UI_W / 2, y + (LK_DET_H - UI_FONT_S.line_h) / 2,
-             "This look sets nothing on the sensor.", W_GRAYTEXT);
-    return;
-  }
-
-  const int cw = LK_W / LK_DET_COLS;
-  const int ty = y + 5;
-  char v[16];
-
-  /*
-   * Exposure bias in tenths of an EV, formatted by integer arithmetic.
-   *
-   * `%f` is deliberately avoided: the value is a double in the recipe struct,
-   * but printing one pulls the full formatter in, and the contract's precision
-   * is one decimal anyway (D19: an EV in -2..+2 with one decimal, which the
-   * node then rounds to an integer AE step). Tenths is the whole range.
-   */
-  const double b = cap.exposure_bias;
-  const int t10 = (int)(b * 10.0 + (b >= 0 ? 0.5 : -0.5));
-  const int mag = t10 < 0 ? -t10 : t10;
-  snprintf(v, sizeof v, "%s%d.%d EV", t10 < 0 ? "-" : "+", mag / 10, mag % 10);
-  look_detail_col(LK_X, cw, ty, v, cap.has_exposure_bias, "EXPOSURE");
-
-  snprintf(v, sizeof v, "x%d", cap.gain_limit);
-  look_detail_col(LK_X + cw, cw, ty, v, cap.has_gain_limit, "GAIN CEILING");
-
-  snprintf(v, sizeof v, "%d%%", cap.jpeg_quality_percent);
-  look_detail_col(LK_X + 2 * cw, cw, ty, v, cap.has_jpeg_quality, "QUALITY");
-
-  snprintf(v, sizeof v, "%d", cap.denoise);
-  look_detail_col(LK_X + 3 * cw, cw, ty, v, cap.has_denoise, "DENOISE");
-
-  snprintf(v, sizeof v, "%d", cap.sharpness);
-  look_detail_col(LK_X + 4 * cw, cw, ty, v, cap.has_sharpness, "SHARPNESS");
-}
-
-/**
- * Where the selected look sits in the list, as "4 / 11".
- *
- * Written into `out` empty when there is no single answer - MIXED, or a look
- * the camera does not have - because a position in a list the look is not in is
- * a number that means nothing.
- *
- * Factory-or-custom is deliberately NOT shown. The boundary is
- * kdp_recipes.c's own `cJSON_GetArraySize(s_factory)` and no accessor publishes
- * it; hardcoding 11 here would be a second copy of an invariant that breaks
- * silently the first time a factory look is added.
- */
-static void look_position(char *out, size_t cap) {
-  out[0] = '\0';
+/** The look's number in the list (1-based) and its two names. */
+static void fl_current(char *num, size_t ncap, char *jp, size_t jcap, char *en, size_t ecap, char *id_out,
+                       size_t idcap) {
   char cur[KDP_RECIPE_ID_MAX];
-  if (!look_current_id(cur, sizeof cur)) return;
+  const bool single = look_current_id(cur, sizeof cur);
+  if (id_out) snprintf(id_out, idcap, "%s", single ? cur : "");
+  if (!single) {
+    snprintf(num, ncap, "C--");
+    snprintf(jp, jcap, "混合");
+    snprintf(en, ecap, "MIXED");
+    return;
+  }
   const int n = kdp_recipes_count();
+  int at = -1;
+  char name[KDP_RECIPE_NAME_MAX] = "";
   for (int i = 0; i < n; i++) {
     char id[KDP_RECIPE_ID_MAX];
-    if (kdp_recipes_name(i, id, sizeof id, NULL, 0) && strcmp(id, cur) == 0) {
-      snprintf(out, cap, "%d / %d", i + 1, n);
-      return;
+    if (kdp_recipes_name(i, id, sizeof id, name, sizeof name) && strcmp(id, cur) == 0) { at = i; break; }
+  }
+  snprintf(num, ncap, at >= 0 ? "C%02d" : "C??", at + 1);
+  const char *jpn = NULL;
+  for (size_t i = 0; i < sizeof LOOK_JP / sizeof LOOK_JP[0]; i++)
+    if (strcmp(LOOK_JP[i].id, cur) == 0) jpn = LOOK_JP[i].jp;
+  snprintf(jp, jcap, "%s", jpn ? jpn : (name[0] ? name : cur));
+  snprintf(en, ecap, "%s", name[0] ? name : cur);
+  upcase(en);
+}
+
+/** Step the preset and start its transition. */
+static void fl_change(int dir) {
+  char num[8], jp[KDP_RECIPE_NAME_MAX + 4], en[KDP_RECIPE_NAME_MAX + 4], id[KDP_RECIPE_ID_MAX];
+  fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
+  snprintf(s_fl.out_num, sizeof s_fl.out_num, "%s", num);
+  snprintf(s_fl.out_jp, sizeof s_fl.out_jp, "%s", jp);
+  look_step(dir);
+  fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
+  const int64_t now = esp_timer_get_time();
+  s_fl.fx = fl_fx_for(id);
+  s_fl.dir = dir;
+  mo_tl_start(&s_fl.tl, now, fl_fx_ms(s_fl.fx), 0);
+  /* The identifier: the old one leaves against the direction of travel, the
+   * new one arrives from it, 26 px of travel - a step, not a slide. */
+  if (!s_fl.moving) mo_obj_place(&s_fl.out_o, 0.f, 0.f);
+  else s_fl.out_o = s_fl.in_o;
+  s_fl.moving = true;
+  s_fl.last_us = now;
+  mo_to(&s_fl.out_o.x, -dir * 26.f);
+  mo_to(&s_fl.out_o.alpha, 0.f);
+  mo_obj_go(&s_fl.out_o, now);
+  mo_obj_place(&s_fl.in_o, dir * 26.f, 0.f);
+  mo_set(&s_fl.in_o.alpha, 0.f);
+  mo_to(&s_fl.in_o.x, 0.f);
+  mo_to(&s_fl.in_o.alpha, 255.f);
+  mo_obj_go(&s_fl.in_o, now);
+  s_mo_live_count++;
+}
+
+/* The full-screen preview: 320x240 cropped to 5:3 and scaled 2.5x by
+ * nearest neighbour, through two tables built once. */
+static uint16_t s_fl_xmap[UI_W];
+static uint16_t s_fl_ymap[UI_H];
+static bool s_fl_maps;
+static void fl_build_maps(void) {
+  const int crop = (VF_H - (VF_W * UI_H / UI_W)) / 2; /* 24 */
+  const int span = VF_H - 2 * crop;
+  for (int y = 0; y < UI_H; y++) s_fl_ymap[y] = (uint16_t)(crop + y * span / UI_H);
+  for (int x = 0; x < UI_W; x++) s_fl_xmap[x] = (uint16_t)(x * VF_W / UI_W);
+  s_fl_maps = true;
+}
+
+/** The picture, with whatever the current transition does to it. */
+static void fl_blit(const uint16_t *tile) {
+  if (!s_fl_maps) fl_build_maps();
+  const int64_t now = esp_timer_get_time();
+  const bool live = mo_tl_running(&s_fl.tl, now);
+  const float t = live ? mo_tl_at(&s_fl.tl, now) : 1.f;
+  const fl_fx_t fx = live ? s_fl.fx : FX_NONE;
+
+  if (fx == FX_FLICK && t < 0.6f) { fill(0, 0, UI_W, UI_H, RGB(0xff, 0xff, 0xff)); return; }
+  if (fx == FX_CUT && t < 0.7f) { fill(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00)); return; }
+
+  if (tile == NULL) {
+    fill(0, 0, UI_W, UI_H, HDR_GROUND);
+    return;
+  }
+  if (fx == FX_RGB) {
+    /* Red from a little to one side, blue from the other, closing to zero. */
+    const int d = (int)(7.f * (1.f - ease_out_cubic(t)));
+    for (int y = 0; y < UI_H; y++) {
+      const uint16_t *src = tile + (size_t)s_fl_ymap[y] * VF_W;
+      uint16_t *dst = s_cv + (size_t)y * UI_W;
+      for (int x = 0; x < UI_W; x++) {
+        int xr = x + d, xb = x - d;
+        if (xr >= UI_W) xr = UI_W - 1;
+        if (xb < 0) xb = 0;
+        const uint16_t g = src[s_fl_xmap[x]], r = src[s_fl_xmap[xr]], b = src[s_fl_xmap[xb]];
+        dst[x] = (uint16_t)((r & 0xf800) | (g & 0x07e0) | (b & 0x001f));
+      }
+    }
+    return;
+  }
+  for (int y = 0; y < UI_H; y++) {
+    const uint16_t *src = tile + (size_t)s_fl_ymap[y] * VF_W;
+    uint16_t *dst = s_cv + (size_t)y * UI_W;
+    for (int x = 0; x < UI_W; x++) dst[x] = src[s_fl_xmap[x]];
+  }
+  if (fx == FX_WIPE) {
+    /* A band of light 110 px wide crossing the picture in the direction of
+     * travel; a mono look's comes down from the top instead. */
+    const bool vertical = strcmp(s_fl.out_jp, "") == 0 ? false : false;
+    (void)vertical;
+    const float k = ease_out_cubic(t);
+    const int band = 110;
+    const int x0 = s_fl.dir > 0 ? (int)(-band + (UI_W + band) * k) : (int)(UI_W - (UI_W + band) * k);
+    for (int y = 0; y < UI_H; y++) {
+      uint16_t *dst = s_cv + (size_t)y * UI_W;
+      for (int x = x0 < 0 ? 0 : x0; x < x0 + band && x < UI_W; x++) {
+        const uint16_t p = dst[x];
+        int r = ((p >> 11) & 31) + 9, g = ((p >> 5) & 63) + 18, b = (p & 31) + 9;
+        if (r > 31) r = 31;
+        if (g > 63) g = 63;
+        if (b > 31) b = 31;
+        dst[x] = (uint16_t)((r << 11) | (g << 5) | b);
+      }
     }
   }
 }
 
-static void draw_look(void) {
-  fill(0, 0, UI_W, UI_H, W_FACE);
-  draw_header(SCR_LOOK);
+/* The identifier block: number x3 bold, name x3 bold beside it, the Latin
+ * name and the five numbers under them in half-width x1. */
+#define FL_ID_X 24
+#define FL_ID_Y (UI_H - 118)
 
-  static const char *const MODE_NAMES[2] = {"WIGGLE", "QUAD"};
-  static const char *const COLOR_NAMES[2] = {"COLOUR", "B&W"};
-  static const char *const TARGET_NAMES[5] = {"ALL", "CAM1", "CAM2", "CAM3", "CAM4"};
-
-  const int p0 = s_pressed;
-  const int f0 = s_focus_shown ? s_focus[SCR_LOOK] : -1;
-  const bool quad = mode_is_quad();
-
-  /* The label lines are 752 px wide with one short word on the left, so the
-   * notes that used to be stacked at the foot of the screen live on them
-   * instead - beside the control each one is actually about, and costing no
-   * vertical room at all. That is what freed the bottom of the screen for the
-   * detail strip.
-   *
-   * Both the word and the note are now IN the group box's top edge, which is
-   * what they always wanted to be: the label names the control under it and
-   * the note remarks on it, and until now nothing on screen tied either of
-   * them to the row of buttons below. Note that the frame is what carries the
-   * association - the strings are unchanged, every one of them. */
-  group_box(LK_BOX_X, lk_label_y(0), LK_BOX_W, LK_BOX_H, "MODE", W_TEXT,
-            "Both modes capture four frames. The difference is playback.");
-  draw_segments(LK_X, lk_ctl_y(0), LK_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
-                band_rel(p0, LK_IT_MODE, 2), band_rel(f0, LK_IT_MODE, 2));
-
-  group_box(LK_BOX_X, lk_label_y(1), LK_BOX_W, LK_BOX_H, "FLASH", W_TEXT, NULL);
-  draw_segments(LK_X, lk_ctl_y(1), LK_W, LK_CTL_H, FLASH_NAMES, 3, flash_index(),
-                band_rel(p0, LK_IT_FLASH, 3), band_rel(f0, LK_IT_FLASH, 3));
-
-  /* Sized by the id, not the name: look_display() falls back to the id when
-   * the look is not on this camera, and an id may be longer than a name. */
-  char look[KDP_RECIPE_ID_MAX];
-  look_display(look, sizeof look);
-  /* Where you are in the list. Cycling one at a time through up to 35 entries
-   * with no idea how many there are or how far round you have come is the
-   * complaint the picker earned; this is the cheapest honest answer to it. */
-  char pos[24];
-  look_position(pos, sizeof pos);
-  group_box(LK_BOX_X, lk_label_y(2), LK_BOX_W, LK_BOX_H, "LOOK", W_TEXT,
-            pos[0] != '\0' ? pos : NULL);
-  draw_picker(LK_X, lk_ctl_y(2), LK_W, LK_CTL_H, LK_PICK_BTN, look, kdp_recipes_count() > 0,
-              band_rel(p0, LK_IT_PREV, 2), band_rel(f0, LK_IT_PREV, 2));
-
-  /* COLOUR and B&W are a different field from the look - SlotColorMode is
-   * 'recipe' | 'mono' in the wire contract - so they stay their own row
-   * rather than becoming two more entries in the picker. */
-  /*
-   * The caption that replaces "Looks are applied when you import. The preview
-   * does not change."
-   *
-   * That was true of 0.4.8 and false from 0.4.9 on. Contract D19: the look's
-   * capture block goes to each node over NL_CMD_SENSOR before the trigger -
-   * exposure bias, gain ceiling, denoise, sharpness and quality - the node
-   * clamps each one and reports what it set, and META records it. So the look
-   * does reach the camera, and a caption saying otherwise tells someone their
-   * choice is decoration.
-   *
-   * What is NOT claimed: the look's colour science. Contrast, saturation and
-   * temperature are still applied at import and there is no grading anywhere in
-   * this firmware, so "grading is still at import" stays. Nor is the PREVIEW
-   * claimed - the viewfinder stream does not carry these settings, only the
-   * capture does, which is why the wording is "at capture" and not "now".
-   */
-  group_box(LK_BOX_X, lk_label_y(3), LK_BOX_W, LK_BOX_H, "COLOUR", W_TEXT,
-            "These reach the sensor at capture. Grading is still at import.");
-  draw_segments(LK_X, lk_ctl_y(3), LK_W, LK_CTL_H, COLOR_NAMES, 2, look_is_mono() ? 1 : 0,
-                band_rel(p0, LK_IT_COLOR, 2), band_rel(f0, LK_IT_COLOR, 2));
-
-  /* QUAD only, because it is the only mode with four independent slots. In
-   * WIGGLE there is one look and a target row would be a control with one
-   * legal value. */
-  if (quad) {
-    group_box(LK_BOX_X, lk_label_y(LK_ROW_TARGET), LK_BOX_W, LK_BOX_H, "TARGET", W_TEXT, NULL);
-    draw_segments(LK_X, lk_ctl_y(LK_ROW_TARGET), LK_W, LK_CTL_H, TARGET_NAMES, 5, s_look_target,
-                  band_rel(p0, LK_IT_TARGET, 5), band_rel(f0, LK_IT_TARGET, 5));
-  }
-
-  /* The bottom of the screen, which used to be 90 px of bare face grey in
-   * WIGGLE and two lines of small print in QUAD. The strip follows the last
-   * control row, so it sits at two different heights in the two modes and in
-   * both cases immediately under the thing it describes. */
-  draw_look_detail(lk_ctl_y(quad ? LK_ROW_TARGET : 3) + LK_CTL_H + LK_DET_GAP);
+static void fl_draw_id_at(float dx, int alpha, const char *num, const char *jp) {
+  const float y = FL_ID_Y + 24.f;
+  const float nw = (float)jtext_bold_w(num, 3);
+  jtext_fx(FL_ID_X + dx + nw / 2.f, y, num, 3.f, 0.f, C_YELLOW, alpha, true, true);
+  const float jw = (float)jtext_bold_w(jp, 3);
+  jtext_fx(FL_ID_X + dx + nw + 20.f + jw / 2.f, y, jp, 3.f, 0.f, C_INK, alpha, true, true);
 }
 
-/* ------------------------------------------------------------------ */
-/* Gallery                                                             */
-/* ------------------------------------------------------------------ */
+static void draw_look(void) {
+  const int vcam = 0;
+  {
+    /* The finder camera, as SHOOT reads it. */
+    const char *v = config_str("shoot.viewfinder", "cam2");
+    (void)vcam;
+    int cam = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
+    const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(cam) : NULL;
+    fl_blit(tile);
+  }
+  draw_header_at(SCR_LOOK, true);
 
-/*
- * The grid: 3x2 tiles of 252x189, and nothing else in the body.
- *
- * The body used to hold 208x156 tiles, a 20 px caption strip under each, and
- * a 40 px footer for PREV / NEXT and the count, and the pictures came to 39%
- * of the panel. The footer's three things now live in the header bar, which
- * had 700 px of caption plate for a 150 px word, and the caption strip is an
- * overlay along each tile's bottom edge. What that frees goes to the tiles:
- * 252x189 is the widest 4:3 tile three of which fit across 800 with the 6 px
- * block a well needs at each edge and 14 px between columns, and two rows of
- * it fit the 63..478 body with 8 px above and 9 below. THUMB.JPG is 288x224,
- * so a tile shows it at 13/16 - 234x182 - against 198x154 before.
- */
+  char num[8], jp[KDP_RECIPE_NAME_MAX + 4], en[KDP_RECIPE_NAME_MAX + 4], id[KDP_RECIPE_ID_MAX];
+  fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
+
+  /* The identifier, moving when it has just changed. */
+  if (s_fl.moving) {
+    const int64_t now = esp_timer_get_time();
+    const float dt = (float)(now - s_fl.last_us) / 1000.f;
+    s_fl.last_us = now;
+    bool live = false;
+    live |= mo_obj_step(&s_fl.out_o, now, dt, MO_SNAP);
+    live |= mo_obj_step(&s_fl.in_o, now, dt, MO_BOUNCE);
+    if (!live) s_fl.moving = false;
+    fl_draw_id_at(s_fl.out_o.x.v, (int)s_fl.out_o.alpha.v, s_fl.out_num, s_fl.out_jp);
+    fl_draw_id_at(s_fl.in_o.x.v, (int)s_fl.in_o.alpha.v, num, jp);
+  } else {
+    fl_draw_id_at(0.f, 255, num, jp);
+  }
+
+  /* Under it: the Latin name, and what reaches the sensor. */
+  char facts[96];
+  recipe_capture_t cap;
+  if (id[0] && look_capture(id, &cap)) {
+    char ev[12] = "", gain[10] = "", q[10] = "", dn[10] = "", sh[10] = "";
+    if (cap.has_exposure_bias) {
+      const int t10 = (int)(cap.exposure_bias * 10.0 + (cap.exposure_bias >= 0 ? 0.5 : -0.5));
+      snprintf(ev, sizeof ev, "%s%d.%dEV ", t10 < 0 ? "-" : "+", (t10 < 0 ? -t10 : t10) / 10, (t10 < 0 ? -t10 : t10) % 10);
+    }
+    if (cap.has_gain_limit) snprintf(gain, sizeof gain, "x%d ", cap.gain_limit);
+    if (cap.has_jpeg_quality) snprintf(q, sizeof q, "Q%d ", cap.jpeg_quality_percent);
+    if (cap.has_denoise) snprintf(dn, sizeof dn, "NR%d ", cap.denoise);
+    if (cap.has_sharpness) snprintf(sh, sizeof sh, "SH%d", cap.sharpness);
+    snprintf(facts, sizeof facts, "%s  %s%s%s%s%s", en, ev, gain, q, dn, sh);
+  } else {
+    snprintf(facts, sizeof facts, "%s", en);
+  }
+  jtext_fx(FL_ID_X + jtext_w(facts, 1) / 2.f, FL_ID_Y + 66.f, facts, 1.f, 0.f, HDR_DIM, 255, true, false);
+
+  /* Where you are: n / N, small, right of the block's baseline. */
+  {
+    const int n = kdp_recipes_count();
+    char pos[16];
+    if (n > 0 && num[1] >= '0' && num[1] <= '9') snprintf(pos, sizeof pos, "%d / %d", atoi(num + 1), n);
+    else snprintf(pos, sizeof pos, "%d", n);
+    jtext_fx(UI_W - 24.f - jtext_w(pos, 1) / 2.f, FL_ID_Y + 66.f, pos, 1.f, 0.f, HDR_DIM, 255, true, false);
+  }
+
+  /* 白黒, and in QUAD which camera the next choice lands on. Words, not
+   * boxes: lit when live, dim when not, a line under the live one. */
+  {
+    const bool mono = look_is_mono();
+    const int y = UI_H - 40;
+    int x = UI_W - 24 - jtext_w("白黒", 1) * 2;
+    jtext_fx(x + jtext_bold_w("白黒", 2) / 2.f, y + 16.f, "白黒", 2.f, 0.f, mono ? C_INK : HDR_DIM, 255, true, mono);
+    if (mono) fill(x, y + 36, jtext_bold_w("白黒", 2), 2, C_INK);
+    if (mode_is_quad()) {
+      static const char *const T[5] = {"ALL", "1", "2", "3", "4"};
+      int tx = x - 30;
+      for (int i = 4; i >= 0; i--) {
+        const int w = jtext_bold_w(T[i], 2);
+        tx -= w;
+        const bool on = s_look_target == i;
+        jtext_fx(tx + w / 2.f, y + 16.f, T[i], 2.f, 0.f, on ? C_INK : HDR_DIM, 255, true, on);
+        if (on) fill(tx, y + 36, w, 2, C_INK);
+        tx -= 22;
+      }
+    }
+  }
+}
+
 #define G_COLS GALLERY_COLS
 #define G_TILE_W GALLERY_TILE_W
 #define G_TILE_H GALLERY_TILE_H
@@ -5232,10 +5269,10 @@ static void go_back(void) {
 static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
-    case SCR_SHOOT: return 0;
+    case SCR_SHOOT: return 3;
     /* The TARGET row is the last band, so WIGGLE simply stops short of it
      * and every index below keeps its meaning in both modes. */
-    case SCR_LOOK: return mode_is_quad() ? LK_IT_COUNT : LK_IT_TARGET;
+    case SCR_LOOK: return mode_is_quad() ? FL_IT_COUNT : FL_IT_TARGET;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
     case SCR_PHOTO: return 2; /* Send to Roll is not fitted, so not focusable */
     case SCR_SETTINGS: return 5;
@@ -5286,9 +5323,14 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_SHOOT:
-      /* The title band is the one target on the finder; everything else is
-       * picture, and a swipe anywhere changes mode. */
-      return y < HEAD_H ? IT_HDR : -1;
+      /* The title band, and the reading line's two decisions; everything
+       * else is picture, and a swipe anywhere changes mode. */
+      if (y < HEAD_H) return IT_HDR;
+      if (y >= UI_H - 44) {
+        if (x >= s_sh_mode_x0 - 10 && x < s_sh_mode_x1 + 10) return SH_IT_MODE;
+        if (x >= s_sh_flash_x0 - 10 && x < s_sh_flash_x1 + 10) return SH_IT_FLASH;
+      }
+      return -1;
 
     case SCR_PHOTO: {
       if (in(x, y, 0, 0, 150, 40)) return IT_HDR;
@@ -5320,28 +5362,23 @@ static int hit_test(int x, int y) {
 
   switch (s_screen) {
     case SCR_LOOK: {
-      /* The picker first: its two buttons sit inside row 2, which no
-       * segmented band covers, so the order costs nothing and keeps the
-       * segment loop uniform. */
-      const int pry = lk_ctl_y(2);
-      if (in(x, y, LK_X, pry, LK_PICK_BTN, LK_CTL_H)) return LK_IT_PREV;
-      if (in(x, y, LK_X + LK_W - LK_PICK_BTN, pry, LK_PICK_BTN, LK_CTL_H)) return LK_IT_NEXT;
-
-      /* Row, base item, and how many segments - the same table the drawing
-       * walks, so a row moved there moves here. */
-      static const int ROW[4] = {0, 1, 3, LK_ROW_TARGET};
-      static const int BASE[4] = {LK_IT_MODE, LK_IT_FLASH, LK_IT_COLOR, LK_IT_TARGET};
-      static const int COUNT[4] = {2, 3, 2, 5};
-      const int rows = mode_is_quad() ? 4 : 3; /* no TARGET row in WIGGLE */
-      for (int r = 0; r < rows; r++) {
-        const int ry = lk_ctl_y(ROW[r]);
-        if (y < ry || y >= ry + LK_CTL_H) continue;
-        const int cw = LK_W / COUNT[r];
-        for (int i = 0; i < COUNT[r]; i++) {
-          if (in(x, y, LK_X + i * cw, ry, cw, LK_CTL_H)) return BASE[r] + i;
+      /* The foot: 白黒 and, in QUAD, the target words - generous bands
+       * round each. Then the picture: left half back, right half forward. */
+      if (y >= UI_H - 56) {
+        const int mono_x = UI_W - 24 - jtext_w("白黒", 1) * 2;
+        if (x >= mono_x - 12) return FL_IT_MONO;
+        if (mode_is_quad()) {
+          static const char *const T[5] = {"ALL", "1", "2", "3", "4"};
+          int tx = mono_x - 30;
+          for (int i = 4; i >= 0; i--) {
+            const int w = jtext_bold_w(T[i], 2);
+            tx -= w;
+            if (x >= tx - 11 && x < tx + w + 11) return FL_IT_TARGET + i;
+            tx -= 22;
+          }
         }
       }
-      return -1;
+      return x < UI_W / 2 ? FL_IT_PREV : FL_IT_NEXT;
     }
     case SCR_GALLERY: {
       if (gallery_total() == 0) return -1;
@@ -5522,25 +5559,25 @@ static void activate(int item) {
 
 
     case SCR_LOOK:
-      if (item < LK_IT_FLASH) {
-        cfg_set_str("mode", item == 1 ? "quad" : "wiggle");
-        toast(item == 1 ? "QUAD" : "WIGGLE");
-        /* WIGGLE has fewer items than QUAD, so a focus parked on the TARGET
-         * row has just stopped existing. Left alone it draws nowhere and the
-         * next key press acts on nothing. */
-        if (s_focus[SCR_LOOK] >= item_count(SCR_LOOK)) s_focus[SCR_LOOK] = 0;
-      } else if (item < LK_IT_PREV) {
-        cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
-      } else if (item <= LK_IT_NEXT) {
-        look_step(item == LK_IT_NEXT ? 1 : -1);
-      } else if (item < LK_IT_TARGET) {
-        look_set_mono(item == LK_IT_COLOR + 1);
-        toast(item == LK_IT_COLOR + 1 ? "B&W" : "COLOUR");
-      } else if (item < LK_IT_COUNT) {
-        /* Which camera the next look lands on. Nothing is written here: it
-         * changes what the picker above is describing, and pressing it must
-         * not overwrite four slots by itself. */
-        s_look_target = item - LK_IT_TARGET;
+      if (item == FL_IT_PREV || item == FL_IT_NEXT) fl_change(item == FL_IT_NEXT ? 1 : -1);
+      else if (item == FL_IT_MONO) {
+        look_set_mono(!look_is_mono());
+        notice_say(look_is_mono() ? "白黒" : "カラー", C_INK, 1000, false);
+      } else if (item >= FL_IT_TARGET && item < FL_IT_COUNT) {
+        s_look_target = item - FL_IT_TARGET;
+      }
+      break;
+
+    case SCR_SHOOT:
+      /* The reading line's two decisions, cycled in place and announced. */
+      if (item == SH_IT_MODE) {
+        cfg_set_str("mode", mode_is_quad() ? "wiggle" : "quad");
+        notice_say(mode_is_quad() ? "QUAD" : "WIGGLE", C_INK, 1000, false);
+      } else if (item == SH_IT_FLASH) {
+        flash_cycle();
+        char w[24];
+        snprintf(w, sizeof w, "FLASH %s", FLASH_NAMES[flash_index()]);
+        notice_say(w, C_INK, 1000, false);
       }
       break;
 
@@ -6013,7 +6050,7 @@ static uint32_t ui_pass(void) {
   /* The nodes are only asked for frames while the viewfinder is up. Left
    * running behind a menu it would be four sensors and four UARTs burning
    * battery to fill a buffer nobody reads. */
-  viewfinder_run(s_screen == SCR_SHOOT);
+  viewfinder_run(s_screen == SCR_SHOOT || s_screen == SCR_LOOK);
 
   const capture_stage_t cstage = capture_stage();
   if (cstage == CAPTURE_DONE) {

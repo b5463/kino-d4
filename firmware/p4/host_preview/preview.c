@@ -259,27 +259,59 @@ bool kdp_sounds_info(int index, char *id, size_t id_cap, char *name, size_t name
  * mutated a config file would be a surprising side effect of looking. The
  * cJSON stubs exist so ui.c's real write path compiles; main() drives the
  * globals above directly, so none of this is reached. */
-esp_err_t config_merge(const cJSON *patch) { (void)patch; return ESP_OK; }
+static char g_leaf_str[64];
+static double g_leaf_num;
+static bool g_leaf_bool;
+static enum { LEAF_NONE, LEAF_STR, LEAF_NUM, LEAF_BOOL } g_leaf_kind;
+static char g_patch_path[64];
+static char g_look_buf[KDP_RECIPE_ID_MAX];
+static char g_mode_buf[12], g_flash_buf[8];
+esp_err_t config_merge(const cJSON *patch) {
+  (void)patch;
+  if (g_leaf_kind == LEAF_STR) {
+    if (strcmp(g_patch_path, "wiggle.recipeId") == 0 || (strncmp(g_patch_path, "quad.slots.", 11) == 0 && strstr(g_patch_path, "recipeId"))) {
+      snprintf(g_look_buf, sizeof g_look_buf, "%s", g_leaf_str);
+      g_look = g_look_buf;
+    } else if (strcmp(g_patch_path, "mode") == 0) {
+      snprintf(g_mode_buf, sizeof g_mode_buf, "%s", g_leaf_str);
+      g_mode = g_mode_buf;
+    } else if (strcmp(g_patch_path, "shoot.flashMode") == 0) {
+      snprintf(g_flash_buf, sizeof g_flash_buf, "%s", g_leaf_str);
+      g_flash_mode = g_flash_buf;
+    } else if (strncmp(g_patch_path, "quad.slots.", 11) == 0 && strstr(g_patch_path, "colorMode")) {
+      g_mono = strcmp(g_leaf_str, "mono") == 0;
+    }
+  }
+  g_leaf_kind = LEAF_NONE;
+  return ESP_OK;
+}
 esp_err_t config_save(void) { return ESP_OK; }
 
 /* meta.c is not linked here - it needs the real cJSON, which lives in
  * ESP-IDF. Stubbed rather than left to the linker's dead-code elimination:
  * it resolved only because nothing in main() reaches the write path, so the
  * first screenshot that exercised a setting would have broken the build. */
+/* Config writes, remembered rather than dropped.
+ *
+ * The screens write through cfg_set_*() -> meta_patch_path -> config_merge,
+ * and the film scenes press controls that write: a preset step has to show
+ * the next preset. So the leaf and the path of the last patch are kept, and
+ * config_merge() applies the handful the stand-in config_str() answers from.
+ * Anything else is still discarded, as before. */
 void *meta_patch_path(const char *dotted, void *leaf);
 void *meta_patch_path(const char *dotted, void *leaf) {
-  (void)dotted;
+  snprintf(g_patch_path, sizeof g_patch_path, "%s", dotted);
   return leaf;
 }
-
 static struct cJSON { int unused; } g_json_stub;
 cJSON *cJSON_CreateObject(void) { return &g_json_stub; }
-cJSON *cJSON_CreateString(const char *s) { (void)s; return &g_json_stub; }
-cJSON *cJSON_CreateNumber(double v) { (void)v; return &g_json_stub; }
-cJSON *cJSON_CreateBool(bool v) { (void)v; return &g_json_stub; }
-void cJSON_AddItemToObject(cJSON *obj, const char *key, cJSON *item) {
-  (void)obj; (void)key; (void)item;
+cJSON *cJSON_CreateString(const char *s) {
+  snprintf(g_leaf_str, sizeof g_leaf_str, "%s", s);
+  g_leaf_kind = LEAF_STR;
+  return &g_json_stub;
 }
+cJSON *cJSON_CreateNumber(double v) { g_leaf_num = v; g_leaf_kind = LEAF_NUM; return &g_json_stub; }
+cJSON *cJSON_CreateBool(bool v) { g_leaf_bool = v; g_leaf_kind = LEAF_BOOL; return &g_json_stub; }
 void cJSON_Delete(cJSON *item) { (void)item; }
 
 void esp_restart(void) { fprintf(stderr, "esp_restart() in a preview - ignored\n"); }
@@ -890,7 +922,7 @@ int main(int argc, char **argv) {
 
   /* The back button held down, over a bright scene. It is the only control on
    * the screen and its press was an ink change on a fade until 0.4.17. */
-  s_pressed = SH_IT_BACK;
+  s_pressed = SH_IT_MODE;
   SHOT(SCR_SHOOT, "shoot_back_pressed");
   s_pressed = -1;
 
@@ -958,8 +990,8 @@ int main(int argc, char **argv) {
    * rectangle has to read inside a 40 px button that is itself inside an etched
    * frame, and at 1 px that is only judgeable as a picture. */
   s_focus_shown = true;
-  s_focus[SCR_LOOK] = LK_IT_NEXT;
-  s_pressed = LK_IT_FLASH + 1; /* FLASH / ON, held */
+  s_focus[SCR_LOOK] = FL_IT_NEXT;
+  s_pressed = FL_IT_MONO + 1; /* FLASH / ON, held */
   SHOT(SCR_LOOK, "look_focus_pressed");
   s_pressed = -1;
   s_focus_shown = false;
@@ -1401,6 +1433,15 @@ int main(int argc, char **argv) {
   notice_say("同期 OK", RGB(0xf2, 0xf2, 0xee), 1200, true);
   FILM("sync", 0); FILM("sync", 60); FILM("sync", 130); FILM("sync", 200); FILM("sync", 260); FILM("sync", 300);
   FILM("sync", 380); FILM("sync", 500); FILM("sync", 1000); FILM("sync", 1400);
+
+  /* ---- film: a preset change on FILTER (tap on the right half) ---- */
+  s_screen = SCR_LOOK;
+  film_t0 = g_preview_clock_us + 1000000;
+  g_touch_down = true; g_touch_lx = 600; g_touch_ly = 240; FILM("look", -40);
+  g_touch_down = false; FILM("look", 0);
+  FILM("look", 16); FILM("look", 40); FILM("look", 70); FILM("look", 100); FILM("look", 140); FILM("look", 200);
+  FILM("look", 300); FILM("look", 450);
+  s_screen = SCR_SHOOT;
 
   if (g_write_failed) {
     fprintf(stderr, "one or more screens were not written\n");
