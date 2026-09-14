@@ -546,6 +546,19 @@ static capture_report_t g_report;
 static uint32_t g_capture_count;
 
 bool capture_request(const char *source) { return js_capture_request(source ? source : "shutter") != 0; }
+/* The wall clock's hour, as the page knows it; -1 is an unset clock. */
+static int g_local_hour = -1;
+int clock_local_hour(void) { return g_local_hour; }
+KUI_EXPORT("kui_set_local_hour") void kui_set_local_hour(int hour) { g_local_hour = hour; }
+
+static uint32_t g_asked_mask, g_frames_in;
+uint32_t capture_asked_cams(void) { return g_asked_mask; }
+uint32_t capture_frames_in(void) { return g_frames_in; }
+/** Which cameras the running capture asked and which have delivered so far, bit 0 = CAM1. */
+KUI_EXPORT("kui_set_capture_frames") void kui_set_capture_frames(unsigned asked, unsigned in) {
+  g_asked_mask = asked;
+  g_frames_in = in;
+}
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
 bool capture_busy(void) { return g_stage != CAPTURE_IDLE && g_stage != CAPTURE_DONE; }

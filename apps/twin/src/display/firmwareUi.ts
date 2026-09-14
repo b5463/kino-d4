@@ -74,6 +74,8 @@ interface Kui {
   kui_set_capture_stage(stage: number): void;
   kui_set_capture_count(n: number): void;
   kui_set_capture_report(ok: number, id: number, stored: number, online: number, bytes: number, totalMs: number, err: number): void;
+  kui_set_capture_frames(asked: number, arrived: number): void;
+  kui_set_local_hour(hour: number): void;
   kui_gallery_set(total: number, page: number, pages: number, loading: number): void;
   kui_gallery_deleting(deleting: number, done: number, total: number): void;
   kui_gallery_slot(i: number, id: number, label: number, mode: number, frames: number, partial: number, favorite: number, state: number): void;
@@ -529,6 +531,9 @@ export class FirmwareUi {
 
     x.kui_set_serial(this.str(0, 'KD4-SIM-0001'));
     x.kui_set_power(POWER_STAGE.AWAKE, 0, 1, 1, sim.studioConnected ? 1 : 0);
+    // The page's wall clock stands in for the host-set clock a real camera
+    // gets over HELLO: enough for the screen to notice a late night.
+    x.kui_set_local_hour(new Date().getHours());
     x.kui_set_audio_ready(1);
     x.kui_set_capture_count(this.captureCount);
 
@@ -676,11 +681,30 @@ export class FirmwareUi {
 
   private subscribeTelemetry(): void {
     this.unsubscribeTelemetry?.();
-    this.unsubscribeTelemetry = this.device().onTelemetry((e: TwinTelemetry) => {
+    // The four-camera event on the screen is driven by which frames have
+    // crossed the link, which on the device is capture_frames_in(). The
+    // simulator's choreography emits the same fact per camera (STORED), so
+    // the masks are built from it rather than invented from a timer.
+    let asked = 0;
+    let arrived = 0;
+    const unSim = getTwinRuntime().sim.onEvent((ev) => {
+      const x = this.x;
+      if (!x || ev.t !== 'cam-stage') return;
+      const bit = 1 << CAM_IDS.indexOf(ev.cam);
+      if (ev.stage === 'ARMING') asked |= bit;
+      else if (ev.stage === 'STORED') arrived |= bit;
+      else return;
+      x.kui_set_capture_frames(asked, arrived);
+      if (!this.inPass) this.kick();
+    });
+    const unDev = this.device().onTelemetry((e: TwinTelemetry) => {
       const x = this.x;
       if (!x) return;
       if (e.t === 'capture') {
         if (e.phase === 'begin') {
+          asked = 0;
+          arrived = 0;
+          x.kui_set_capture_frames(0, 0);
           x.kui_set_capture_stage(CAPTURE_STAGE.READING);
         } else {
           this.captureCount++;
@@ -698,6 +722,10 @@ export class FirmwareUi {
         this.restartScreen();
       }
     });
+    this.unsubscribeTelemetry = () => {
+      unSim();
+      unDev();
+    };
   }
 
   private restartScreen(): void {

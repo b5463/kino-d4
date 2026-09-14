@@ -377,6 +377,11 @@ bool capture_request(const char *source) {
 static capture_stage_t g_stage = CAPTURE_IDLE;
 static capture_report_t g_report;
 
+static int g_local_hour = 21;
+int clock_local_hour(void) { return g_local_hour; }
+static uint32_t g_asked_mask = 0xf, g_frames_in;
+uint32_t capture_asked_cams(void) { return g_asked_mask; }
+uint32_t capture_frames_in(void) { return g_frames_in; }
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
 bool capture_busy(void) { return false; }
@@ -1357,6 +1362,33 @@ int main(int argc, char **argv) {
   FILM("row", 30); FILM("row", 60); FILM("row", 100); FILM("row", 150); FILM("row", 220); FILM("row", 320);
   row_close();
   s_screen = SCR_SHOOT;
+
+  /* ---- film: the capture ----
+   *
+   * The pipeline's stages and masks set by hand at the times a real capture
+   * produces them (a frame lands every few hundred ms over 921600 baud),
+   * then the report, then whatever the camera has to say about it. */
+  film_t0 = g_preview_clock_us + 1000000;
+  g_stage = CAPTURE_IDLE; g_frames_in = 0; g_asked_mask = 0;
+  FILM("cap", -20);
+  g_stage = CAPTURE_TRIGGERING; FILM("cap", 0); FILM("cap", 20); FILM("cap", 50); FILM("cap", 100);
+  g_asked_mask = 0xf; g_stage = CAPTURE_READING; FILM("cap", 200);
+  g_frames_in = 0x1; FILM("cap", 300); FILM("cap", 380);
+  g_frames_in = 0x3; FILM("cap", 600);
+  g_frames_in = 0x7; FILM("cap", 900);
+  g_frames_in = 0xf; FILM("cap", 1200); g_stage = CAPTURE_WRITING; FILM("cap", 1250);
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true; g_report.stored = 4; g_report.online = 4;
+  for (int i = 0; i < 4; i++) { g_report.cam[i].attempted = true; g_report.cam[i].ok = true; }
+  g_stage = CAPTURE_DONE;
+  mo_seed(7);
+  FILM("cap", 1300);
+  /* One word, chosen rather than rolled, so the strip always shows one. */
+  if (s_cap.react == NULL) cap_say(&REACTIONS[0], g_preview_clock_us);
+  FILM("cap", 1316); FILM("cap", 1350); FILM("cap", 1400); FILM("cap", 1460); FILM("cap", 1520);
+  FILM("cap", 1600); FILM("cap", 1750); FILM("cap", 1950); FILM("cap", 2050); FILM("cap", 2120); FILM("cap", 2250);
+  g_stage = CAPTURE_IDLE;
+  FILM("cap", 2600);
 
   if (g_write_failed) {
     fprintf(stderr, "one or more screens were not written\n");

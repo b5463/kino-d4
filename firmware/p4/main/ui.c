@@ -8,6 +8,7 @@
 #include "buttons.h"
 #include "cam_link.h"
 #include "capture.h"
+#include "clock.h"
 #include "cJSON.h"
 #include "gallery.h"
 #include "config_store.h"
@@ -2055,6 +2056,231 @@ static void draw_menu(void) {
 /* Viewfinder                                                          */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* The capture, as an event                                            */
+/*                                                                     */
+/* Driven by what the pipeline reports - capture_stage(), the asked and  */
+/* arrived masks, the report - never by a timer standing in for it. The */
+/* three phases the brief names: an immediate response, the four-camera */
+/* event while frames come back, a result that lands. Then, sometimes,  */
+/* a word.                                                              */
+/* ------------------------------------------------------------------ */
+
+#define C_INK RGB(0xf2, 0xf2, 0xee)
+#define C_COBALT RGB(0x2f, 0x70, 0xc9)
+
+typedef struct {
+  const char *text;
+  uint16_t ink;
+  int weight;      /* 0 = never by chance: contextual only */
+  int dur_ms;      /* time on screen, entry to exit */
+} reaction_t;
+
+/* The pool. NONE carries the most weight on purpose: a shutter that
+ * celebrates every time is noise, and the rare lines stay rare because most
+ * presses say nothing at all. Colour is one idea per event. */
+static const reaction_t REACT_NONE = {NULL, 0, 55, 0};
+static const reaction_t REACTIONS[] = {
+    {"撮れた！", C_YELLOW, 10, 800},  {"よし。", C_INK, 10, 600},     {"いいね。", C_COBALT, 8, 700},
+    {"バッチリ。", C_YELLOW, 5, 800}, {"もう一枚？", C_INK, 5, 900},  {"4枚！", C_COBALT, 5, 650},
+    {"完璧。", C_RED, 1, 900},
+};
+/* Contextual: chosen by a rule, each at most once per session. */
+static const reaction_t REACT_HUNDRED = {"百枚！", C_RED, 0, 1000};
+static const reaction_t REACT_SYNCED = {"4枚同期", C_COBALT, 0, 900};
+static const reaction_t REACT_LATE = {"まだ撮る？", C_INK, 0, 1000};
+static const reaction_t REACT_FAILED = {"撮れなかった", C_RED, 0, 1600};
+
+typedef struct {
+  bool armed;
+  int64_t t0_us;         /* the pass that saw the shutter open */
+  int64_t done_us;       /* the pass that saw the report, 0 before */
+  uint32_t seen_in;      /* frames_in as of the last pass */
+  int64_t arrive_us[4];  /* when each mark lit, 0 = not yet */
+  mo_val_t zoom;         /* the landing: panes at 1.06 settling to 1 */
+  mo_tl_t hit;           /* luminance hit at the landing */
+  const reaction_t *react;
+  mo_tl_t react_tl;
+  float react_x, react_y, react_rot, react_scale;
+  bool failed;
+  char fail_why[64];
+} cap_fx_t;
+static cap_fx_t s_cap;
+static uint32_t s_session_shots;
+static bool s_said_hundred, s_said_synced, s_said_late;
+
+static int64_t cap_since_ms(int64_t from_us) { return from_us ? (esp_timer_get_time() - from_us) / 1000 : -1; }
+
+/** Pick the word for this photograph, or NULL. Rules first, then the pool. */
+static const reaction_t *cap_pick(const capture_report_t *r) {
+  if (!r->ok) return &REACT_FAILED;
+  s_session_shots++;
+  if (s_session_shots == 100 && !s_said_hundred) { s_said_hundred = true; return &REACT_HUNDRED; }
+  if (r->stored == 4 && !s_said_synced) {
+    bool synced = true;
+    for (int i = 0; i < 4; i++) synced &= r->cam[i].attempted && r->cam[i].ok && r->cam[i].sync_class == PURE_SYNC_OK;
+    if (synced) { s_said_synced = true; return &REACT_SYNCED; }
+  }
+  {
+    const int hour = clock_local_hour();
+    if (hour >= 0 && hour < 4 && !s_said_late) { s_said_late = true; return &REACT_LATE; }
+  }
+  int total = REACT_NONE.weight;
+  for (size_t i = 0; i < sizeof REACTIONS / sizeof REACTIONS[0]; i++) total += REACTIONS[i].weight;
+  int pick = mo_rand_n(total);
+  if (pick < REACT_NONE.weight) return NULL;
+  pick -= REACT_NONE.weight;
+  for (size_t i = 0; i < sizeof REACTIONS / sizeof REACTIONS[0]; i++) {
+    if (pick < REACTIONS[i].weight) {
+      /* 4枚！ only when there were four. */
+      if (REACTIONS[i].text[0] == '4' && r->stored < 4) return NULL;
+      return &REACTIONS[i];
+    }
+    pick -= REACTIONS[i].weight;
+  }
+  return NULL;
+}
+
+/** Place a word: somewhere in the middle third, a little askew, entry faster than exit. */
+static void cap_say(const reaction_t *w, int64_t now) {
+  s_cap.react = w;
+  if (w == NULL) return;
+  const int glyphs = jtext_w(w->text, 1) / 16;
+  s_cap.react_scale = glyphs <= 4 ? 4.f : 3.f;
+  s_cap.react_rot = (mo_rand() & 1 ? 1.f : -1.f) * (4.f + mo_rand_pm(4.f) + 4.f);
+  s_cap.react_x = UI_W * 0.5f + mo_rand_pm(UI_W * 0.12f);
+  s_cap.react_y = UI_H * 0.46f + mo_rand_pm(UI_H * 0.10f);
+  if (w == &REACT_FAILED) { s_cap.react_rot = 0.f; s_cap.react_x = UI_W * 0.5f; s_cap.react_y = UI_H * 0.42f; s_cap.react_scale = 3.f; }
+  mo_tl_start(&s_cap.react_tl, now, w->dur_ms, w == &REACT_FAILED ? 0 : 140);
+}
+
+/**
+ * Read the pipeline once per pass and move the event along. Called from
+ * ui_pass() before anything draws, so the frame that follows already knows
+ * which camera just delivered.
+ */
+static void cap_step(void) {
+  const int64_t now = esp_timer_get_time();
+  const capture_stage_t st = capture_stage();
+  if (st == CAPTURE_IDLE) {
+    if (s_cap.armed && !mo_tl_running(&s_cap.react_tl, now)) {
+      s_cap.armed = false;
+      s_cap.react = NULL;
+    }
+    return;
+  }
+  if (!s_cap.armed) {
+    memset(&s_cap, 0, sizeof s_cap);
+    s_cap.armed = true;
+    s_cap.t0_us = now;
+    mo_set(&s_cap.zoom, 1.f);
+  }
+  if (st != CAPTURE_DONE) {
+    const uint32_t in = capture_frames_in();
+    const uint32_t fresh = in & ~s_cap.seen_in;
+    for (int i = 0; i < 4; i++)
+      if (fresh & (1u << i)) s_cap.arrive_us[i] = now;
+    s_cap.seen_in = in;
+    return;
+  }
+  if (s_cap.done_us == 0) {
+    s_cap.done_us = now;
+    capture_report_t r;
+    capture_last(&r);
+    s_cap.failed = !r.ok;
+    snprintf(s_cap.fail_why, sizeof s_cap.fail_why, "%.60s",
+             r.err_msg[0] ? r.err_msg : (r.err_code[0] ? r.err_code : "NO PHOTO"));
+    /* Frames the report knows about that no pass happened to catch. */
+    for (int i = 0; i < 4; i++)
+      if (r.cam[i].ok && s_cap.arrive_us[i] == 0) s_cap.arrive_us[i] = now;
+    if (r.ok) {
+      mo_set(&s_cap.zoom, 1.06f);
+      mo_to(&s_cap.zoom, 1.f);
+      mo_tl_start(&s_cap.hit, now, 110, 0);
+    }
+    cap_say(cap_pick(&r), now);
+  }
+}
+
+/* The luminance the landing adds to the picture, 0..31 per channel. */
+static int cap_lift(void) {
+  if (!s_cap.armed || s_cap.done_us == 0 || s_cap.failed) return 0;
+  const float t = mo_tl_at(&s_cap.hit, esp_timer_get_time());
+  return (int)(11.f * (1.f - ease_out_cubic(t)));
+}
+
+/* The panes' zoom this frame: stepped here because the finder is the only
+ * screen that draws it, and it draws every frame while it is live. */
+static float cap_zoom(void) {
+  if (!s_cap.armed || s_cap.done_us == 0) return 1.f;
+  static int64_t last_us;
+  const int64_t now = esp_timer_get_time();
+  const float dt = last_us ? (float)(now - last_us) / 1000.f : 0.f;
+  last_us = now;
+  mo_spring(&s_cap.zoom, dt, MO_SETTLE);
+  return s_cap.zoom.v;
+}
+
+/**
+ * The four-camera event: 1 → 2 → 3 → 4, each digit dim until its frame is
+ * in, bright the moment it lands and settling to the ink. Cameras the capture
+ * did not ask stay dim; a failed frame goes red when the report says so.
+ * `y` is the line's top; it is drawn wherever a capture is running.
+ */
+static void draw_cap_marks(int y, bool over_picture) {
+  if (!s_cap.armed) return;
+  const int64_t now = esp_timer_get_time();
+  const uint32_t asked = capture_asked_cams();
+  capture_report_t r;
+  const bool done = s_cap.done_us != 0;
+  if (done) capture_last(&r);
+  const int scale = 2, step = 16 * scale + 26;
+  const int w = 4 * step - 26;
+  const int x0 = (UI_W - w) / 2;
+  for (int i = 0; i < 4; i++) {
+    const int x = x0 + i * step;
+    char d[2] = {(char)('1' + i), 0};
+    uint16_t ink = RGB(0x55, 0x5c, 0x66);
+    if (done && r.cam[i].attempted && !r.cam[i].ok) ink = C_RED;
+    else if (s_cap.arrive_us[i]) {
+      const int64_t age = (now - s_cap.arrive_us[i]) / 1000;
+      ink = age < 160 ? C_YELLOW : C_INK;
+      if (age < 160) s_mo_live_count++; /* still changing */
+    } else if (asked == 0 || (asked & (1u << i))) {
+      ink = RGB(0x80, 0x88, 0x94);
+    }
+    jtext_fx(x + 8.f * scale, y + 8.f * scale, d, (float)scale, 0.f, ink, 255, over_picture, true);
+    if (i < 3) jtext_fx(x + 16.f * scale + 13.f, y + 8.f * scale, "→", 1.f, 0.f, RGB(0x55, 0x5c, 0x66), 255, over_picture, false);
+  }
+  if (!done) s_mo_live_count++; /* a capture in flight owes frames */
+}
+
+/** The word, if there is one this time. Entry fast and oversized, hold, exit softer. */
+static void draw_cap_reaction(void) {
+  const reaction_t *w = s_cap.react;
+  if (w == NULL) return;
+  const int64_t now = esp_timer_get_time();
+  if (!mo_tl_running(&s_cap.react_tl, now) && mo_tl_at(&s_cap.react_tl, now) >= 1.f) return;
+  const float t = mo_tl_at(&s_cap.react_tl, now); /* 0..1 over dur */
+  const int dur = w->dur_ms;
+  const float ms = t * dur;
+  const float in_ms = 130.f, out_ms = 170.f;
+  float scale = s_cap.react_scale, alpha = 255.f, dy = 0.f;
+  if (ms < in_ms) {
+    const float k = ease_out_back(ms / in_ms);
+    scale = s_cap.react_scale * (1.55f - 0.55f * k);
+    alpha = 255.f * ease_out_cubic(ms / (in_ms * 0.6f));
+  } else if (ms > dur - out_ms) {
+    const float k = ease_in_quart((ms - (dur - out_ms)) / out_ms);
+    alpha = 255.f * (1.f - k);
+    dy = -14.f * k;
+  }
+  jtext_fx(s_cap.react_x, s_cap.react_y + dy, w->text, scale, s_cap.react_rot, w->ink, (int)alpha, true, true);
+  if (w == &REACT_FAILED) {
+    jtext_fx(UI_W * 0.5f, s_cap.react_y + 48.f + dy, s_cap.fail_why, 1.f, 0.f, C_INK, (int)alpha, true, false);
+  }
+}
+
 /* One thing you can touch on this screen. */
 #define SH_IT_BACK 0
 
@@ -2132,6 +2358,36 @@ static void sh_blit(const uint16_t *tile, int px, int py) {
   }
 }
 
+/**
+ * The same blit with the landing on it: a crop-zoom into the pane's centre
+ * (zoom >= 1) and a lift added to every channel (0..31) - the result arriving
+ * a little large and bright and settling. Two per-frame tables and one
+ * saturating add per pixel, so it costs the plain blit plus a few cycles, and
+ * it runs only for the ~200 ms the landing lasts.
+ */
+static void sh_blit_fx(const uint16_t *tile, int px, int py, float zoom, int lift) {
+  if (zoom <= 1.001f && lift <= 0) { sh_blit(tile, px, py); return; }
+  static uint16_t xm[SH_PANE_W], ym[SH_PANE_H];
+  const float span_y = (VF_H - 2 * SH_CROP) / zoom, span_x = VF_W / zoom;
+  const float y0 = (VF_H - span_y) * 0.5f, x0 = (VF_W - span_x) * 0.5f;
+  for (int y = 0; y < SH_PANE_H; y++) ym[y] = (uint16_t)(y0 + y * span_y / SH_PANE_H);
+  for (int x = 0; x < SH_PANE_W; x++) xm[x] = (uint16_t)(x0 + x * span_x / SH_PANE_W);
+  const int lr = lift, lg = lift * 2, lb = lift;
+  for (int y = 0; y < SH_PANE_H; y++) {
+    const uint16_t *src = tile + (size_t)ym[y] * VF_W;
+    uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
+    for (int x = 0; x < SH_PANE_W; x++) {
+      const uint16_t p = src[xm[x]];
+      if (lift <= 0) { dst[x] = p; continue; }
+      int r = ((p >> 11) & 31) + lr, g = ((p >> 5) & 63) + lg, b = (p & 31) + lb;
+      if (r > 31) r = 31;
+      if (g > 63) g = 63;
+      if (b > 31) b = 31;
+      dst[x] = (uint16_t)((r << 11) | (g << 5) | b);
+    }
+  }
+}
+
 /* look_display() lives with the LOOK screen's other look plumbing, 200 lines
  * below. The finder needs the same string - the same look, spelled the same
  * way - and a second copy of that lookup is how two screens start disagreeing
@@ -2200,6 +2456,18 @@ static int sh_panel(int x, int w, const char *s) {
 static void draw_shoot(void) {
   static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
   int live = 0;
+  const float zoom = cap_zoom();
+  const int lift = cap_lift();
+  /* The immediate response: the shutter pass paints white, the next black,
+   * before a single byte has come back. Two flat fills, then the frozen
+   * finder (viewfinder_hold has the tiles) with the four-camera event on it. */
+  const int64_t shut_ms = s_cap.armed ? cap_since_ms(s_cap.t0_us) : -1;
+  if (shut_ms >= 0 && shut_ms < 90) {
+    fill(0, 0, UI_W, UI_H, shut_ms < 35 ? RGB(0xff, 0xff, 0xff) : RGB(0x00, 0x00, 0x00));
+    draw_header_at(SCR_SHOOT, true);
+    s_mo_live_count++;
+    return;
+  }
   for (int i = 0; i < 4; i++) {
     int px, py;
     sh_pane_rect(i, &px, &py);
@@ -2209,7 +2477,7 @@ static void draw_shoot(void) {
     if (viewfinder_ready()) viewfinder_status(i, &st);
 
     if (tile != NULL) {
-      sh_blit(tile, px, py);
+      sh_blit_fx(tile, px, py, zoom, lift);
       /* Counted here rather than from viewfinder_status(): what the strip
        * reports is what the screen is showing. A pane with pixels on it is a
        * camera that answered, whatever the status word says a moment later. */
@@ -2246,6 +2514,10 @@ static void draw_shoot(void) {
   snprintf(line, sizeof line, "%s  %s  %s %s  %s", mode_is_quad() ? "QUAD" : "WIGGLE", look,
            "FLASH", FLASH_NAMES[flash_index()], cams);
   jtext_fx(HDR_X + jtext_w(line, 1) / 2.f, UI_H - 26.f, line, 1.f, 0.f, HDR_INK, 230, true, false);
+
+  /* ---- the capture, when there is one ---- */
+  draw_cap_marks(UI_H - 96, true);
+  draw_cap_reaction();
 }
 
 /* ------------------------------------------------------------------ */
@@ -4754,62 +5026,15 @@ static void draw_dialog(void) {
  * The wording is the camera's, not an operating system's: 4/4 SAVED, and a
  * count rather than an apology when a camera missed.
  */
+/* A capture seen from any other screen: the four marks in a band at the foot,
+ * and the reason when it failed. The finder draws its own fuller version. */
 static void draw_capture_banner(void) {
-  const capture_stage_t cs = capture_stage();
-  if (cs == CAPTURE_IDLE) return;
-
-  capture_report_t r;
-  capture_last(&r);
-
-  fm_cell_t st[4] = {FM_OFF, FM_OFF, FM_OFF, FM_OFF};
-  char line[64];
-  uint16_t accent = C_BLUE;
-  switch (cs) {
-    case CAPTURE_TRIGGERING:
-      st[0] = FM_ON;
-      snprintf(line, sizeof line, "SHOOTING");
-      break;
-    case CAPTURE_READING:
-      st[0] = st[1] = FM_ON;
-      snprintf(line, sizeof line, "READING");
-      break;
-    case CAPTURE_WRITING:
-      st[0] = st[1] = st[2] = FM_ON;
-      snprintf(line, sizeof line, "SAVING");
-      break;
-    default:
-      if (!r.ok) {
-        for (int i = 0; i < 4; i++) st[i] = FM_LOST;
-        /* The reason a person can act on, not the contract code. "Needs
-         * 4096 KB, 812 KB free" was computed for every failure and never
-         * drawn; SD_FULL was. The code stays in the log and the KDP reply. */
-        snprintf(line, sizeof line, "%.60s",
-                 r.err_msg[0] ? r.err_msg : (r.err_code[0] ? r.err_code : "NO PHOTO"));
-        accent = C_BAD;
-      } else {
-        /* One cell per camera that actually delivered, and the rest marked
-         * lost. A partial capture says which, because "3/4" with three lit
-         * cells is a fact and "SAVED" alone is not. */
-        for (int i = 0; i < 4; i++) st[i] = i < r.stored ? FM_SPARK : FM_LOST;
-        snprintf(line, sizeof line, "%d/%d SAVED", r.stored, r.online);
-        accent = r.stored == r.online ? C_OK : C_BAD;
-      }
-      break;
-  }
-
-  /* Full width everywhere now. There is nothing in the bottom of the shoot
-   * screen to protect - it is all picture, and a report about the photograph
-   * is allowed to sit over the photograph for a moment. */
-  const int h = 40, y = UI_H - h;
-  const int w = UI_W;
-  fill(0, y, w, h, RGB(0x12, 0x16, 0x1c));
-  fill(0, y, w, 1, accent);
-  fill(0, y + 1, 5, h - 1, accent);
-
-  const int cell = 12;
-  four_mark(18, y + (h - cell) / 2, cell, st, true);
-  text(&UI_FONT_S, 18 + 4 * (cell + FM_GAP) + 10, y + (h - UI_FONT_S.line_h) / 2, line,
-       RGB(0xe4, 0xe9, 0xee));
+  if (s_screen == SCR_SHOOT || !s_cap.armed) return;
+  const int h = 60, y = UI_H - h;
+  fill(0, y, UI_W, h, HDR_GROUND);
+  draw_cap_marks(y + 14, false);
+  if (s_cap.done_us != 0 && s_cap.failed)
+    jtext_fx(UI_W * 0.5f, y + 30.f, s_cap.fail_why, 1.f, 0.f, C_RED, 255, false, false);
 }
 
 static void draw_toast(void) {
@@ -5533,6 +5758,7 @@ static uint32_t ui_pass(void) {
   /* Motion is stepped where it is drawn; this only clears the "anything
    * still moving" tally the tail reads to pick the next pass delay. */
   mo_begin_pass();
+  cap_step();
 
   /* Physical keys first: they were recorded on the buttons task and this
    * is the task that owns the canvas and the compositor. */

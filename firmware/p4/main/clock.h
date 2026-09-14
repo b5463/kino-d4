@@ -82,6 +82,14 @@ bool clock_trustworthy_for_tls(void);
 /** Milliseconds since the Unix epoch under the current belief. */
 int64_t clock_now_ms(void);
 
+/**
+ * The local hour, 0..23, or -1 while the clock is unset. Local means the
+ * offset the host or the network supplied; a persisted clock keeps the last
+ * offset it was given. For the screen to notice a late night with - never
+ * for a timestamp, which is clock_iso8601().
+ */
+int clock_local_hour(void);
+
 clock_source_t clock_source(void);
 const char *clock_source_str(void);
 

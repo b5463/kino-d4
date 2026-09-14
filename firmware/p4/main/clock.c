@@ -186,6 +186,12 @@ bool clock_trustworthy_for_tls(void) {
 
 int64_t clock_now_ms(void) { return wall_now_ms(); }
 
+int clock_local_hour(void) {
+  if (s_source == CLOCK_UNSET) return -1;
+  const int64_t local_min = clock_now_ms() / 60000 + s_offset_min;
+  return (int)(((local_min % 1440) + 1440) % 1440) / 60;
+}
+
 clock_source_t clock_source(void) { return s_source; }
 
 const char *clock_source_str(void) {
