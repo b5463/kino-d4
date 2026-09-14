@@ -115,9 +115,6 @@ static int jtext_bold_w(const char *s, int scale) {
   return w;
 }
 static int jtext(int x, int y, const char *s, int scale, uint16_t ink) { return jtext_tr(x, y, s, scale, 0, ink); }
-static void jtext_mid(int cx, int y, const char *s, int scale, uint16_t ink) {
-  jtext(cx - jtext_w(s, scale) / 2, y, s, scale, ink);
-}
 static void jtext_right(int right, int y, const char *s, int scale, uint16_t ink) {
   jtext(right - jtext_w(s, scale), y, s, scale, ink);
 }
