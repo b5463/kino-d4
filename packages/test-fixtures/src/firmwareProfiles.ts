@@ -101,7 +101,14 @@ const M1B_CAPABILITIES: ProfileCapabilities = {
   network: false,
   roll: false,
   rollUpload: false,
-  syncBench: false,
+  /**
+   * No `syncBench` key, on purpose. Firmware has never advertised one — the
+   * flag is the reference device's own (commands.md, "Capability
+   * negotiation") — so a profile that pins a real build omits it the way the
+   * build does. Under the contract's rule an absent flag reads as "no", which
+   * is right for 0.1.0..0.4.30 and is what a host sees from a 0.4.31+ body
+   * too: SYNC_BENCH answers there without a flag, exactly as in firmware.
+   */
   benchDiagnostics: true,
 };
 
@@ -299,6 +306,34 @@ const LOOKS_0_4_8_CAPABILITIES: ProfileCapabilities = {
  * reporting no flag at all, and Studio reads a missing flag as "not a gate" —
  * the slider would stay live on a body that cannot dim.
  */
+/**
+ * The KDP surface of `firmware/p4/main/kdp_server.c` from 0.4.9 up to the
+ * current firmware/VERSION — the releases `d4-settings-0-4-9` stands for.
+ *
+ * Two commands beyond 0.4.8 that the dispatcher answers and this profile
+ * refused for want of a whitelist entry:
+ *
+ * - `SYNC_BENCH` (0x46), implemented in 0.4.31 as the blocking SYNC-line edge
+ *   counter (contract commands.md, "SYNC_BENCH — 0x46"). Not gated by any
+ *   capability in firmware.
+ * - `STORAGE_BENCH` (0x4c). `handle_storage_bench` and its dispatch case are
+ *   in the tree from firmware/VERSION 0.3.0 (git: c42beef), covered by
+ *   `benchDiagnostics`; the earlier whitelists were written from the "reserved,
+ *   no handler" note commands.md carried for a while and are left as they are
+ *   — a profile that refuses a command an old build answered is a
+ *   conservative gap, a profile that refuses one today's build answers sends
+ *   a Studio built against it to a NACK the bench will not give.
+ *
+ * Nothing else changed between 0.4.9 and today: every other release in the
+ * PROFILE_FOR_VERSION run is behaviour behind surfaces that were already on
+ * the wire.
+ */
+export const SETTINGS_0_4_9_COMMANDS: readonly number[] = [
+  ...LOOKS_0_4_8_COMMANDS,
+  Cmd.SYNC_BENCH,
+  Cmd.STORAGE_BENCH,
+];
+
 const SETTINGS_0_4_9_CAPABILITIES: ProfileCapabilities = {
   ...LOOKS_0_4_8_CAPABILITIES,
   /**
@@ -379,27 +414,36 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   },
   'd4-settings-0-4-9': {
     id: 'd4-settings-0-4-9',
-    label: 'CURRENT FIRMWARE 0.4.9 — settings reach the hardware',
+    label: 'CURRENT FIRMWARE 0.4.56 — settings reach the hardware',
     simulatedFuture: false,
-    p4Fw: '0.4.9',
+    /* This profile covers every release from 0.4.9 up to the current
+     * firmware/VERSION (see PROFILE_FOR_VERSION) — none of them added a KDP
+     * command or a capability — so it reports the newest of them, which is
+     * what a camera flashed with today's build answers. Bump alongside
+     * firmware/VERSION. */
+    p4Fw: '0.4.56',
     /* The node image is built from the same firmware/VERSION, so a camera
-     * node on this body reports 0.4.9 too — 0.4.9 is the first release where
-     * the node has work of its own to do (NL_CMD_SENSOR). */
-    camFw: '0.4.9',
+     * node on this body reports the same version — 0.4.9 was the first
+     * release where the node has work of its own to do (NL_CMD_SENSOR). */
+    camFw: '0.4.56',
     /* Unchanged: one node is jumpered to the bench harness. Per-camera
      * exposure reaches the one sensor that is wired. */
     camsOnline: [true, false, false, false],
     capabilities: SETTINGS_0_4_9_CAPABILITIES,
-    /* Identical to 0.4.8 on purpose. Nothing here is a KDP command. */
-    implementedCommands: LOOKS_0_4_8_COMMANDS,
+    /* 0.4.8 plus SYNC_BENCH and STORAGE_BENCH — see SETTINGS_0_4_9_COMMANDS. */
+    implementedCommands: SETTINGS_0_4_9_COMMANDS,
     maxUartBaud: 921600,
   },
   'd4-sim-full': {
     id: 'd4-sim-full',
     label: 'SIMULATED FUTURE — full demo device',
     simulatedFuture: true,
-    p4Fw: '0.1.0',
-    camFw: '0.1.0',
+    /* The current firmware's version: this profile is today's build plus the
+     * capabilities it does not have yet (labelled SIMULATED FUTURE wherever
+     * they surface), and the version a body reports is the build's. Bump
+     * alongside firmware/VERSION. */
+    p4Fw: '0.4.56',
+    camFw: '0.4.56',
     camsOnline: [true, true, true, true],
     capabilities: null,
     maxUartBaud: 3_000_000,
@@ -602,4 +646,7 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // needs an explicit build flag, and the decoder counts one resync per
   // discarded frame. Nothing on the settings surface moved.
   '0.4.55': 'd4-settings-0-4-9',
+  // 0.4.56: GET_DEVICE_INFO/GET_RUNTIME_STATS report all four camera channels;
+  // SOUND_BEGIN validates the name (BAD_NAME). Device side only, same profile.
+  '0.4.56': 'd4-settings-0-4-9',
 };

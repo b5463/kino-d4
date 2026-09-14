@@ -109,21 +109,13 @@ export function forgetCreatedRoll(deviceRollId: string): void {
   });
 }
 
-export function clearCreatedRolls(): void {
-  saveCreated([]);
-  useRollLinks.setState({ created: [] });
-}
-
-export function getRollLinks(deviceRollId: string): RollLinks | null {
-  return useRollLinks.getState().byRollId[deviceRollId] ?? null;
-}
-
 /**
  * A new camera or a new session knows nothing about earlier Rolls.
  *
  * The created-Roll list is deliberately NOT cleared here: it outlives cameras
  * and sessions on purpose, because it is the operator's only spare copy of a
- * host link. `clearCreatedRolls` is the explicit way to drop it.
+ * host link. `forgetCreatedRoll` drops one entry at the operator's request;
+ * there is no wholesale clear.
  */
 export function resetRollLinks(): void {
   useRollLinks.setState({ byRollId: {} });

@@ -116,7 +116,10 @@ export function PowerLoadPanel() {
   const stamp = benchStamp(entry);
 
   const hasQuad = supports(state, 'quad');
-  const hasFlash = supports(state, 'flashControl');
+  // The rungs load the emitter, not the firmware's flash window: a body with
+  // `flashControl` but no `flashHardware` (D4-V1, ECN-0003) would run the
+  // flash rungs and measure the idle current under a FLASH HIGH label.
+  const hasFlash = supports(state, 'flashHardware');
   const hasLink = supports(state, 'linkBench');
 
   const rungs: PowerRung[] = powerLoadRungs({
@@ -209,7 +212,7 @@ export function PowerLoadPanel() {
       </p>
       {!hasFlash ? (
         <p className="dim" style={{ marginBottom: 6 }}>
-          No flash control on this firmware — the flash rungs are not in the ladder.
+          No flash emitter is fitted on this KINO — the flash rungs are not in the ladder.
         </p>
       ) : null}
       {!hasLink ? (

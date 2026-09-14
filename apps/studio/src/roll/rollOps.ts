@@ -75,8 +75,28 @@ export async function registerRollDevice(
         serverUrl: server.baseUrl,
       },
     },
+    // The firmware's own uploader reads `network.apiBase`, not
+    // `roll.credentials.serverUrl` (firmware-contract D-table; roll_http.c).
+    // Registering against a server and leaving the camera pointed at the
+    // compiled default sent every upload somewhere else.
+    network: { apiBase: cameraApiBase(server.baseUrl) },
   });
   return { deviceId: registered.deviceId };
+}
+
+/**
+ * `network.apiBase` as the firmware accepts it: `http(s)://host[:port]`, no
+ * path, no credentials, at most 96 characters. A URL that cannot be reduced
+ * to that is passed through untouched — the firmware NACKs what it cannot
+ * take, and the read-back diff names the field.
+ */
+export function cameraApiBase(serverUrl: string): string {
+  try {
+    const origin = new URL(serverUrl).origin;
+    return origin === 'null' ? serverUrl : origin;
+  } catch {
+    return serverUrl;
+  }
 }
 
 /**

@@ -25,7 +25,11 @@ export function parseManifest(json: unknown): { ok: true; manifest: FwManifest }
   if (typeof json !== 'object' || json === null) return { ok: false, error: 'manifest.json is not an object' };
   const m = json as Partial<FwManifest>;
   if (m.schema !== 1) return { ok: false, error: `Unsupported manifest schema ${String(m.schema)}` };
-  if (m.product !== 'kino-v1') return { ok: false, error: `Package is for "${String(m.product)}", not kino-v1` };
+  // Same normalisation as the hardware check below: `kino-v1`, `KINO-V1` and
+  // `V1` are one product. Anything that does not collapse to it is refused.
+  if (typeof m.product !== 'string' || !sameHardware(m.product, 'kino-v1')) {
+    return { ok: false, error: `Package is for "${String(m.product)}", not kino-v1` };
+  }
   if (typeof m.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(m.version)) {
     return { ok: false, error: 'Package version is missing or malformed' };
   }
@@ -127,10 +131,33 @@ export function isDowngrade(manifest: FwManifest, device: DeviceInfo): boolean {
   return compareVersions(manifest.p4.version, device.p4Firmware) < 0;
 }
 
+/**
+ * One hardware id out of the four spellings in circulation.
+ *
+ * GET_DEVICE_INFO says `V1`, GET_CAPABILITIES says `kino-v1`,
+ * `hardware/REVISION` says `D4-V1`, and catalog manifests write whatever the
+ * publisher typed (`v1`). They all name the same board. Lower-cased, with the
+ * product and family prefixes stripped, they collapse to `v1` — and a
+ * compatibility check that compared raw strings refused a package for the
+ * camera it was built for.
+ */
+export function canonicalHardwareId(id: string): string {
+  return id
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/^kino-/, '')
+    .replace(/^d4-/, '');
+}
+
+/** True when two hardware ids name the same board under any accepted spelling. */
+export function sameHardware(a: string, b: string): boolean {
+  return canonicalHardwareId(a) === canonicalHardwareId(b);
+}
+
 export function checkCompatibility(manifest: FwManifest, device: DeviceInfo): CompatibilityCheck {
   const problems: string[] = [];
-  const hw = device.hardware.toLowerCase();
-  if (!manifest.compatibility.hardware.map((h) => h.toLowerCase()).includes(hw)) {
+  if (!manifest.compatibility.hardware.some((h) => sameHardware(h, device.hardware))) {
     problems.push(`Package supports hardware ${manifest.compatibility.hardware.join(', ')} — this KINO is ${device.hardware}`);
   }
   if (device.protocol < manifest.compatibility.minimumProtocol) {

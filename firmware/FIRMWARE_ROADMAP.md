@@ -1687,28 +1687,34 @@ is not reusable on the device — it is a contract reference, not an implementat
 
 ## 13. Studio command triage
 
-31 of 71 implemented. Classifying the missing 40:
+56 of 72 implemented (0.4.56). This triage was written at 31 of 71 and the numbers went stale
+twice; the live count is `firmware-contract/README.md` D17, re-counted from `commands.ts` against
+the `case KDP_CMD_*` labels in `kdp_server.c`. Classifying the missing 16:
 
 ### V1 required
 
-`FW_QUERY/BEGIN/CHUNK/END/ABORT/STATUS` (M8 — Studio's client already exists) · `FACTORY_RESET` (a
-consumer device needs it) · `ENTER/EXIT_MAINTENANCE` (gates the update path safely)
+`FW_BEGIN/CHUNK/END/ABORT/STATUS` (M8 — Studio's client already exists; `FW_QUERY` is dispatched
+and `FW_ROLLBACK` is reserved, see D15) · `FACTORY_RESET` (a consumer device needs it) · `ENTER/EXIT_MAINTENANCE` (gates the update
+path safely)
 
 ### Useful diagnostic — schedule with the milestone that needs the number
 
-`STORAGE_BENCH` (M0.G — **already advertised**, so this is a correctness fix) · `LINK_BENCH` +
-`SET_LINK_BAUD` (Gate A fallback: if 921600 is unreliable, these become the tools) ·
-`CAMERA_PHASE` (M4.D2 — real once VSYNC is observed) · `SYNC_BENCH` (M4 — nothing to measure until
-arming exists) · `CAMERA_PREVIEW` (Studio-side viewfinder; the on-device one exists, so this is
-convenience)
+`LINK_BENCH` + `SET_LINK_BAUD` (Gate A fallback: if 921600 is unreliable, these become the tools) ·
+`CAMERA_PHASE` (M4.D2 — real once VSYNC is observed) · `CAMERA_PREVIEW` (Studio-side viewfinder;
+the on-device one exists, so this is convenience)
 
 ### Later
 
-`NETWORK_*` (M10) · `ROLL_*`, `UPLOAD_*` (M11) · `GET/SET/UPLOAD/DELETE_RECIPE` (needs a flash
-partition and a product decision on looks) · `GET_SOUNDS`, `SOUND_*` (needs a partition;
-`customSounds` correctly `false`) · `CAMERA_CALIBRATE` (alignment matters for wigglegram quality —
-revisit after Gate C, since it may be part of the answer) · `CAMERA_ARM` (subsumed by M4's node
-arming; the KDP-level command may not be needed)
+`CAMERA_CALIBRATE` (alignment matters for wigglegram quality — revisit after Gate C, since it may
+be part of the answer) · `CAMERA_ARM` (subsumed by M4's node arming; the KDP-level command may not
+be needed)
+
+### Done since this triage was written
+
+`STORAGE_BENCH` (0x4c) and `SYNC_BENCH` (0x46) are dispatched — the latter as a blocking edge
+counter, see `firmware-contract/commands.md` · `GET/SET/UPLOAD/DELETE_RECIPE` and `GET_SOUNDS`,
+`SOUND_*` are implemented on the SD card since 0.4.8 (no flash partition was needed) · `NETWORK_*`,
+`ROLL_*`, `UPLOAD_*` are dispatched (M10/M11)
 
 ### Intentionally unsupported
 

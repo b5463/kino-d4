@@ -416,7 +416,7 @@ async function populateAll() {
     }
   };
 
-  const [cams, power, storage, envelope, recipes, calibration, stats] = await Promise.all([
+  const [cams, power, storage, envelope, recipes, calibration, stats, modes] = await Promise.all([
     dev.getCameraInfo(),
     tolerate(() => dev.getPowerStatus()),
     dev.getStorageStatus(),
@@ -424,6 +424,9 @@ async function populateAll() {
     tolerate(() => dev.getRecipes()),
     tolerate(() => dev.getCalibration()),
     tolerate(() => dev.getRuntimeStats()),
+    // GET_MODES carries per-mode availability with the camera's own reason;
+    // a firmware that predates it leaves the Shoot page on its two defaults.
+    tolerate(() => dev.getModes()),
   ]);
 
   // Sounds arrived after V1 firmware — absence is a state, not an error.
@@ -461,6 +464,7 @@ async function populateAll() {
     soundLimits: sounds ? { maxCustom: sounds.maxCustom, maxSoundKB: sounds.maxSoundKB } : null,
     calibration,
     stats,
+    modes,
   });
   // After the state above, not inside it: the gate reads the capabilities
   // that call just stored.
@@ -475,12 +479,22 @@ async function populateAll() {
  * benches take. Without it a reflexive F5 contended on the UART with a running
  * burn-in and both reported numbers as if nothing had happened.
  */
-export async function refreshAll(): Promise<'done' | 'blocked' | 'offline'> {
+export async function refreshAll(): Promise<'done' | 'blocked' | 'offline' | 'failed'> {
   if (!device) return 'offline';
   if (!claimDevice('sync', 'SYNC')) return 'blocked';
   try {
     await populateAll();
+    pollSucceeded();
     return 'done';
+  } catch (err) {
+    // The first read in `populateAll` is GET_DEVICE_INFO and it is not
+    // tolerated there — on connect a camera that cannot answer it has failed
+    // the handshake. On a SYNC it is a missed read: the values on screen stay
+    // and the status bar says why, the same as a failed poll. Left to
+    // propagate, it surfaced as "Uncaught (in promise) KinoTimeoutError" from
+    // the toolbar's `void refreshAll()`.
+    pollFailed(message(err));
+    return 'failed';
   } finally {
     releaseDevice('sync');
   }
@@ -514,9 +528,45 @@ export function isSessionStale(): boolean {
   return staleAfterRestart;
 }
 
+/**
+ * Re-read GET_DEVICE_INFO after a write that changes it (mode, active look).
+ *
+ * A timeout here is a missed read, not a failed write: the write already
+ * ACKed. It is recorded the way a missed poll is — the status bar shows the
+ * age — instead of rejecting into whichever `void` call site asked, which was
+ * an unhandled KinoTimeoutError in the console and nothing on screen. Any
+ * other error (a NACK, a closed link) still propagates to the caller.
+ */
 export async function refreshDeviceInfo() {
   if (!device) return;
-  setDeviceState({ info: await device.getDeviceInfo() });
+  try {
+    setDeviceState({ info: await device.getDeviceInfo() });
+  } catch (err) {
+    if (err instanceof KinoTimeoutError) {
+      pollFailed(message(err));
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Re-read GET_MODES after SET_MODE: `active` moves, and availability may have
+ * changed with it. Tolerated like the populate read — a firmware without the
+ * command leaves the store's null alone.
+ */
+export async function refreshModes() {
+  if (!device) return;
+  try {
+    setDeviceState({ modes: await device.getModes() });
+  } catch (err) {
+    if (err instanceof KinoUnsupportedError) return;
+    if (err instanceof KinoTimeoutError) {
+      pollFailed(message(err));
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function refreshConfig() {

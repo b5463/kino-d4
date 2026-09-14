@@ -12,7 +12,7 @@ Line numbers are as of this commit.
 | Gallery "push to Roll" | 02 §16 | implemented now | `packages/kdp/src/protocol/commands.ts:101` (`UPLOAD_ENQUEUE = 0xaa`), `packages/test-fixtures/src/MockKinoDevice.ts:768,834`, `apps/studio/src/pages/Gallery/PushToRoll.tsx`, `apps/studio/src/pages/Gallery/CaptureInspector.tsx:309,542`. Tests: `rollPage.test.ts` → `(f) push to Roll` (7 cases) |
 | `.cube` LUT import, 17×17×17 device grid | 02 §14 | implemented now (parser); **partial** — no upload command | `apps/studio/src/recipes/cubeLut.ts`, wired at `apps/studio/src/pages/Looks/LooksPage.tsx:266,579`. Tests: `specAudit.test.ts` → `02 §14 — .cube LUT import` (7 cases). See deviation D-1 |
 | KINO look JSON import/export | 02 §14 | already present | `apps/studio/src/pages/Looks/LooksPage.tsx:232` (`importJson` → `validateRecipe`), `:337` IMPORT JSON, `:369` EXPORT JSON; `apps/studio/src/recipes/recipeTypes.ts:55` `validateRecipe`. Tests: `apps/studio/tests/recipes.test.ts` |
-| Time sync on connect | 02 §30 | **N/A — no KDP command exists** | No `SET_TIME`/clock/RTC command in `packages/kdp/src/protocol/commands.ts`, none in `MockKinoDevice`, none in `firmware-contract/commands.md`. See deviation D-2 |
+| Time sync on connect | 02 §30 | **met, without a command** | `HELLO` carries `hostEpochMs` / `hostUtcOffsetMin` and answers `clockSource` (firmware-contract README D14); Studio sends its clock on every handshake and the body reports `host` from then on. No `SET_TIME` was needed. See D-2 |
 | Unsupported-browser explanation | 02 §2 | already present | `apps/studio/src/state/connectionStore.ts:38` (`serialSupported`), `apps/studio/src/components/ConnectHome.tsx:49-53` (explicit "No Web Serial in this browser…" note, which now points at KINO Twin), `:63-64` (Web Serial NOT AVAILABLE fact row), `:33` (CONNECT disabled), and the CONNECT KINO TWIN / worksheet buttons stay enabled. Also `apps/studio/src/app/session.ts:123-131` — `connectSerial()` refuses with a stated reason rather than throwing |
 | Connection strip — nine states | 02 §6 | implemented now (2 of 9 were missing, 2 collapsed) | `apps/studio/src/state/connectionStore.ts` (`ConnectionFault`, `PHASE_LABEL`, `FAULT_LABEL`, `connectionStrip`), `apps/studio/src/components/ConnectionStrip.tsx`, rendered by **all three** strips: `Toolbar.tsx:124` (device cell), `Sidebar.tsx:126` (footer), `StatusBar.tsx:28` (bottom bar). Tests: `specAudit.test.ts` → `02 §6 — connection strip states` (30 cases) |
 | `recovery` phase swept through its consumers | 02 §6 | implemented now | `apps/studio/src/state/connectionStore.ts` (`canStartConnection`, named `canOpenDemo` until issue #110) used at `ConnectHome.tsx` to gate the Twin discovery probe; `apps/studio/src/state/benchResults.ts:146-155` invalidates bench results on `recovery` as well as `disconnected`/`error`. Tests: `specAudit.test.ts` → `02 §6 — recovery phase consumers` (3 cases) |
@@ -71,24 +71,25 @@ name, and the UI says so in as many words rather than implying the camera has th
 needs a chunked upload in the shape of `SOUND_BEGIN/CHUNK/END` (`0x27`–`0x29`) plus a `lut`
 capability flag — a firmware-contract addition, out of scope here.
 
-### D-2 — 02 §30 time sync has no command to ride on
+### D-2 — closed: 02 §30 time sync rides on HELLO, not on a command of its own
 
-"On connect, optionally sync camera time from computer." There is no `SET_TIME`-class command in KDP
-(`commands.ts` has no clock/RTC id in any block), the reference device has no handler, and
-`firmware-contract/commands.md` lists none. 04 §7 does not name one either.
+"On connect, optionally sync camera time from computer." When this audit was written there was no
+`SET_TIME`-class command in KDP, no handler in the reference device and no row in
+`firmware-contract/commands.md`, and the gap was recorded here with a three-part plan (a `0x14`
+command, a `timeSync` capability, a **mock** row).
 
-Rather than invent a protocol command inside a Studio task, this is recorded as a contract gap.
-Closing it needs the same three-part addition `UPLOAD_ENQUEUE` got in this commit:
-
-1. `Cmd.SET_TIME` in `packages/kdp/src/protocol/commands.ts` — next free slot in the Configuration
-   block (`0x14`), since the device clock is configuration, not diagnostics.
-2. A handler in `MockKinoDevice` plus a `timeSync` capability flag, so Studio can gate the prompt.
-3. A row and payload in `firmware-contract/commands.md`, labelled **mock** like the rest of the
-   Network/Roll group, and a deviation note in `firmware-contract/README.md` recording that this repo
-   allocated the value.
-
-Until then Studio does not offer the prompt: an optional prompt whose only outcome is a NACK is worse
-than no prompt.
+**Resolved differently, and no `SET_TIME` is needed.** The body has no RTC and no battery-backed
+clock, so a time it is told is worth exactly as much as its source — which is why the fix went into
+the handshake rather than into a settable clock (firmware-contract README D14): `HELLO` gained two
+optional request fields, `hostEpochMs` and `hostUtcOffsetMin`, and answers `clockSource`
+(`host` | `network` | `persisted` | `unset`). Studio sends its wall clock on every HELLO — including
+the single-attempt re-HELLO of the reboot watch (F-1) — so a connected body reports `host` and every
+capture it commits from then on carries a trustworthy `capturedAt`; a body restored across a power
+cycle says `persisted`, a never-told one says `unset`, and the reader is never handed a plausible
+false date. Firmware refuses a host time outside 2020–2100 (a seconds-for-milliseconds mix-up) and
+persists only a time it was actually given. The reference device (`MockKinoDevice`, HELLO) applies
+the same rule and the same bound. There is nothing to prompt for: the sync is not optional and has
+no failure mode a user could act on, so 02 §30's "optionally" is met by always doing it.
 
 ### D-3 — `UPLOAD_ENQUEUE` (`0xaa`) is a repo allocation
 

@@ -22,6 +22,7 @@ import { onUi } from '../../state/uiBus';
 import { useDraft } from '../../hooks/useDraft';
 import type { BodyConfig } from '@kino/kdp';
 import { formatMB } from '../../utils/format';
+import { NOT_WIRED_D4V1_HINT } from '../../utils/firmwareHints';
 import { diffConfigs } from '../../utils/diffConfig';
 import { configLabel, configValue } from '../../utils/configLabels';
 import { buildBackup, backupFilename, validateBackup, bytesToBase64, base64ToBytes } from '../../device/backup';
@@ -477,9 +478,15 @@ export function DevicePage() {
           </div>
 
           <Panel title="PHYSICAL CONTROLS">
+            {/* ECN-0003: neither key has a GPIO on D4-V1 and the firmware reads
+                neither. The settings stay in the schema and the backup for a
+                body that has them; the selects are disabled so nobody waits
+                for a button that is not there. */}
             <SelectField
               label="FUNCTION BUTTON"
               value={draft.buttons.fn}
+              disabled
+              hint={NOT_WIRED_D4V1_HINT}
               options={[
                 { value: 'flash', label: 'TOGGLE FLASH' },
                 { value: 'mode', label: 'SWITCH WIGGLE / QUAD' },
@@ -492,6 +499,8 @@ export function DevicePage() {
             <SelectField
               label="SLIDE SWITCH"
               value={draft.buttons.slide}
+              disabled
+              hint={NOT_WIRED_D4V1_HINT}
               options={[
                 { value: 'power-lock', label: 'POWER LOCK' },
                 { value: 'mode', label: 'MODE SELECTOR' },

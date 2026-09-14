@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { Led } from '../../components/Led';
@@ -17,17 +17,33 @@ interface TestRow {
   detail: string;
 }
 
+/**
+ * How long RUN SELF TEST may spin before Studio stops believing a `done`
+ * event is coming. The firmware's run is a few seconds; a minute covers a slow
+ * card check with room to spare, and after it the button comes back with the
+ * reason instead of staying busy until the page is left.
+ */
+export const SELF_TEST_TIMEOUT_MS = 60_000;
+
 export function OverviewPage() {
   const state = useDeviceStore();
   const [testRows, setTestRows] = useState<TestRow[] | null>(null);
   const [testRunning, setTestRunning] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
   const [camTestBusy, setCamTestBusy] = useState<string | null>(null);
   const [camTestResults, setCamTestResults] = useState<Record<string, string>>({});
+  // The uiBus subscription below is registered once, so it must read the
+  // *current* flag, not the one from the render that registered it. With the
+  // state captured directly, the toolbar's RUN SELF TEST saw `testRunning`
+  // false forever and could start a second run over the first.
+  const testRunningRef = useRef(false);
+  testRunningRef.current = testRunning;
 
   useEffect(() => {
     return onSelfTestEvent((e: SelfTestEvent) => {
       if (e.done) {
         setTestRunning(false);
+        setTestError(null);
         if (e.results) setTestRows(e.results.map((r) => ({ name: r.name, status: r.status, detail: r.detail })));
         return;
       }
@@ -44,17 +60,44 @@ export function OverviewPage() {
 
   const runSelfTest = async () => {
     const dev = getDevice();
-    if (!dev || testRunning) return;
+    if (!dev || testRunningRef.current) return;
     setTestRows([]);
+    setTestError(null);
     setTestRunning(true);
     try {
       await dev.startSelfTest();
-    } catch {
+    } catch (err) {
       setTestRunning(false);
+      setTestError(err instanceof Error ? err.message : String(err));
     }
   };
+  const runSelfTestRef = useRef(runSelfTest);
+  runSelfTestRef.current = runSelfTest;
 
-  useEffect(() => onUi('self-test', () => void runSelfTest()), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => onUi('self-test', () => void runSelfTestRef.current()), []);
+
+  // Two exits a `done` event cannot provide. The session ends (the device
+  // handle goes away, or another camera answers): the run belongs to a link
+  // that no longer exists. And a safety timeout: a firmware that started the
+  // test and never finished it must not leave the button busy for the rest of
+  // the session.
+  const serial = state.info?.serial ?? null;
+  useEffect(() => {
+    if (serial === null && testRunningRef.current) {
+      setTestRunning(false);
+      setTestError('KINO disconnected before the self test finished.');
+    }
+  }, [serial]);
+  useEffect(() => {
+    if (!testRunning) return;
+    const timer = setTimeout(() => {
+      setTestRunning(false);
+      setTestError(
+        `The self test did not finish within ${Math.round(SELF_TEST_TIMEOUT_MS / 1000)} s. The camera sent no result.`,
+      );
+    }, SELF_TEST_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [testRunning, serial]);
 
   const runCamTest = async (camId: CameraInfo['id']) => {
     const dev = getDevice();
@@ -89,7 +132,16 @@ export function OverviewPage() {
   if (power && power.batteryPct !== null && power.batteryPct <= 15 && !power.charging) issues.push('LOW BATTERY');
   const severity = issues.some((i) => i.includes('OFFLINE') || i.includes('NO SD')) ? 'err' : issues.length > 0 ? 'warn' : 'ok';
 
-  const supply = supplyRows({ storage, power, capabilities, network, roll, hasNetwork, hasRoll });
+  const supply = supplyRows({
+    storage,
+    power,
+    capabilities,
+    network,
+    roll,
+    hasNetwork,
+    hasRoll,
+    hasFlashHardware: supports(state, 'flashHardware'),
+  });
 
   return (
     <>
@@ -199,6 +251,7 @@ export function OverviewPage() {
           </Button>
         }
       >
+        {testError ? <p className="notice notice--err">{testError}</p> : null}
         {testRows === null ? (
           <p className="dim">Checks the P4, all four camera modules, storage, power and peripherals.</p>
         ) : (

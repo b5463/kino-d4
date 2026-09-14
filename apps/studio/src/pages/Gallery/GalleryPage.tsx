@@ -3,7 +3,7 @@ import { Panel } from '../../components/Panel';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { useConnectionStore } from '../../state/connectionStore';
-import { supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
+import { supports, supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
 import { getDevice, onCaptureEvent } from '../../app/session';
 import { getThumbUrl, dropThumb } from '../../device/media';
 import { useTetherStore, startTether, stopTether } from '../../device/tether';
@@ -52,7 +52,9 @@ export function GalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [rollView, setRollView] = useState<RollView | null>(null);
-  const rollUpload = useDeviceStore(supportsRollUpload);
+  // Push to Roll needs the queue AND a Roll to push to; ROLL_STATUS is the
+  // `roll` group's command, gated the way the session poller gates it.
+  const rollUpload = useDeviceStore((s) => supportsRollUpload(s) && supports(s, 'roll'));
   const [thumbBusy, setThumbBusy] = useState(0);
   const [retryTick, setRetryTick] = useState(0);
   const localImport = useLocalImport();

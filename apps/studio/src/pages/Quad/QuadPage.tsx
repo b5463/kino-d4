@@ -4,7 +4,9 @@ import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { ApplyBar } from '../../components/ApplyBar';
 import { SegField, SelectField, SliderField, TextField, ToggleField } from '../../components/fields';
-import { useDeviceStore, allRecipes } from '../../state/deviceStore';
+import { useDeviceStore, allRecipes, supports } from '../../state/deviceStore';
+import { FlashNotFittedNote } from '../../components/FlashNote';
+import { withNotReadHint } from '../../utils/firmwareHints';
 import { useDraft } from '../../hooks/useDraft';
 import { applyConfigChecked } from '../../app/session';
 import type { CamId, GainStrategy, QuadConfig, SlotColorMode, SlotFlash } from '@kino/kdp';
@@ -64,6 +66,9 @@ export function QuadPage() {
   if (!draft) return null;
 
   const policyOff = state.config?.shoot.flashMode === 'off';
+  // One note for the page, above the per-slot FIRE/SKIP: D4-V1 has no emitter
+  // (ECN-0003), so every flash control here sets the firmware's window only.
+  const hasFlashHardware = supports(state, 'flashHardware');
 
   const recipeOptions = allRecipes(state).map((r) => ({ value: r.id, label: r.name.toUpperCase() }));
 
@@ -129,6 +134,7 @@ export function QuadPage() {
           hintWarn={policyOff && draft.flash}
           onChange={(flash) => patch((d) => ({ ...d, flash }))}
         />
+        {!hasFlashHardware ? <FlashNotFittedNote /> : null}
       </Panel>
 
       <div className="quadgrid">
@@ -179,7 +185,10 @@ export function QuadPage() {
                 label="FLASH"
                 value={slot.flash}
                 disabled={!draft.flash}
-                hint={!draft.flash ? 'FLASH IN QUAD is off — no slot exposes on a pulse.' : undefined}
+                hint={withNotReadHint(
+                  !draft.flash ? 'FLASH IN QUAD is off — no slot exposes on a pulse.' : undefined,
+                  state.firmwareLabel,
+                )}
                 options={[
                   { value: 'fire', label: 'FIRE' },
                   { value: 'skip', label: 'SKIP' },
@@ -200,6 +209,7 @@ export function QuadPage() {
                 value={slot.note}
                 maxLength={32}
                 placeholder="note"
+                hint={withNotReadHint(undefined, state.firmwareLabel)}
                 onChange={(note) => patchSlot(cam, { note })}
               />
             </Panel>

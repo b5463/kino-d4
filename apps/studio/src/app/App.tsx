@@ -174,8 +174,13 @@ export function App() {
       .then((r) => {
         if (r === 'blocked') {
           setSyncNote(`${blockedBy('sync') ?? 'Another operation'} is using the link — SYNC skipped`);
+        } else if (r === 'failed') {
+          setSyncNote('SYNC did not complete — the camera missed a read; values on screen are the last good ones');
         }
       })
+      // `refreshAll` reports the read failures it expects; anything that
+      // still rejects is a bug, and it must not become an unhandled rejection.
+      .catch((err: unknown) => setSyncNote(`SYNC failed: ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => setSyncBusy(false));
   };
 

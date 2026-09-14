@@ -17,6 +17,7 @@ import type {
   LogEntry,
   LogSource,
   SelfTestCheck,
+  StorageBenchPass,
   StorageBenchRequest,
   StorageBenchResult,
   StorageSelfTestPhase,
@@ -41,7 +42,16 @@ function isCamTarget(target: TargetId): target is CamId {
 import { validateDeviceRecipe } from './recipes';
 import { FACTORY_RECIPES } from './factoryRecipes';
 import { BUILTIN_SHUTTER_SOUNDS, CONFIG_SCHEMA_VERSION, SOUND_NAME_MAX } from '@kino/kdp';
-import type { SoundInfo, GetModesResponse, CameraArmResponse } from '@kino/kdp';
+import type {
+  SoundInfo,
+  GetModesResponse,
+  CameraArmResponse,
+  PowerStatus,
+  RuntimeStats,
+  SyncBenchCameraEdges,
+  SyncBenchRequest,
+  SyncBenchResponse,
+} from '@kino/kdp';
 import { encodeWav, SOUND_SAMPLE_RATE } from './deviceAudio';
 import { sha256Hex } from './sha256';
 import type { ScenarioFlags, CamFault } from './scenarios';
@@ -214,6 +224,49 @@ const MAX_SOUND_KB = 128;
  */
 const SOUND_ID_RE = /^snd-[a-z0-9-]{1,19}$/;
 
+/**
+ * The viewfinder's drop reasons, keyed exactly as `vf_drop_str()` names them
+ * (firmware/p4/main/viewfinder.c) so a field on the wire and a line in the
+ * log cannot drift apart. Every key is always present, zero or not — a host
+ * reads a rate off two readings and a missing key is not a zero.
+ */
+const VIEWFINDER_DROP_REASONS = ['noLink', 'empty', 'oversize', 'shortRead', 'decode'] as const;
+
+/** How many recent preview frames the per-camera fps estimate is taken over. */
+const VIEWFINDER_FPS_WINDOW = 8;
+
+/**
+ * `network.apiBase` as `pure_api_base_ok()` accepts it (firmware/p4/main/pure.c,
+ * contract README D3): a scheme, a host, an optional numeric port, and nothing
+ * after — no path, no trailing slash, no credentials, no query, and at most
+ * 96 characters of printable ASCII.
+ */
+const API_BASE_MAX = 96;
+const API_BASE_RE = /^https?:\/\/[^\s@?#\/:]+(?::\d+)?$/;
+
+/**
+ * The SYNC_BENCH bounds `handle_sync_bench` enforces
+ * (firmware/p4/main/kdp_server.c). `gapMs` floors at twice the node's 10 ms
+ * sync-input dead time; anything outside either range is INVALID_ARGUMENT.
+ */
+const SYNC_BENCH_MAX_PULSES = 200;
+const SYNC_BENCH_MIN_GAP_MS = 20;
+const SYNC_BENCH_MAX_GAP_MS = 1000;
+/** `CAPTURE_TRIGGER_PULSE_US` — the width of one shared-SYNC pulse. */
+const SYNC_PULSE_WIDTH_US = 100;
+/** The node's sync-input dead time, in microseconds (0.4.31). */
+const SYNC_NODE_DEADTIME_US = 10_000;
+
+/**
+ * STORAGE_BENCH clamps rather than refuses (contract commands.md,
+ * "STORAGE_BENCH — 0x4c"): these are `storage_bench()`'s bounds and defaults.
+ */
+const STORAGE_BENCH_SIZE_KB = { min: 64, max: 8192, default: 1024 } as const;
+const STORAGE_BENCH_BLOCK_KB = { min: 4, max: 128, default: 32 } as const;
+const STORAGE_BENCH_PASSES = { min: 1, max: 8, default: 1 } as const;
+/** The 64 KiB run every STORAGE_BENCH reply carries as `small`. */
+const STORAGE_BENCH_SMALL_KB = 64;
+
 /** Captures on the card in the demo party, and under the 04 §19 2k scenario. */
 const DEMO_GALLERY_SIZE = 22;
 const LARGE_GALLERY_SIZE = 2048;
@@ -314,6 +367,25 @@ interface CamModel {
   focus: CameraFocus | null;
   /** SIMULATED exposure window (audit #56) until real sensor timing exists. */
   exposureUs: number;
+  /**
+   * What the preview pump did on this channel (firmware 0.4.18+): frames
+   * served, the timestamps of the last few for the fps estimate, and drops by
+   * reason. Cumulative for the session, like the firmware's — two readings
+   * give a rate.
+   */
+  viewfinder: {
+    frames: number;
+    stamps: number[];
+    drops: Record<(typeof VIEWFINDER_DROP_REASONS)[number], number>;
+  };
+}
+
+function freshViewfinder(): CamModel['viewfinder'] {
+  return {
+    frames: 0,
+    stamps: [],
+    drops: { noLink: 0, empty: 0, oversize: 0, shortRead: 0, decode: 0 },
+  };
 }
 
 /** Saved Wi-Fi network as the device keeps it (05 §13). */
@@ -394,9 +466,32 @@ export class MockKinoDevice implements MockDeviceLike {
   private bootBlockedUntil = 0;
   private resetReason = 'power-on';
   private maintenance = false;
+  /**
+   * The pack, as the Twin's own POWER tab models it. Twin-only: on D4-V1 no
+   * sense divider or gauge bus reaches the P4 (contract D10), so this figure
+   * goes on the wire only when the effective `powerTelemetry` capability is
+   * true — never on a profile that pins a real build, and not on the demo
+   * device either, because the firmware hardcodes the flag false.
+   */
   private batteryV = 4.02;
+  /**
+   * When a person last did something on the body — a press, a touch, a
+   * capture. Feeds `displayStage`/`idleSeconds` in GET_POWER_STATUS the way
+   * power.c's idle clock does: host traffic over KDP is deliberately not
+   * activity, so a body left on the bench while Studio polls it dims and
+   * sleeps exactly as the real one does.
+   */
+  private lastActivityAt: number;
+  /** End of the capture pipeline's hold on the cameras and the card — the
+   * capture lock `SYNC_BENCH`, `STORAGE_BENCH` and `STORAGE_SELF_TEST` answer
+   * BUSY against. */
+  private captureBusyUntil = 0;
+  /** Set once the body's own shutter fired a capture; HWV_BTN_SHUTTER's evidence. */
+  private shutterPressed = false;
+  /** SELF_TEST runs one suite at a time (firmware: BUSY while it does). */
+  private selfTestRunning = false;
   private sdFreeMB = 27431;
-  private p4Fw = '0.1.0';
+  private p4Fw = '0.4.56';
   // Set in the constructor: freshCams() draws from this.now()/this.randInt().
   private cams: Record<CamId, CamModel>;
   private config = defaultConfig();
@@ -516,7 +611,8 @@ export class MockKinoDevice implements MockDeviceLike {
     // These used to be field initializers, but they draw from this.now()/
     // this.randInt() and so must run after the two lines above.
     this.bootedAt = this.now();
-    this.cams = this.freshCams('0.1.0');
+    this.lastActivityAt = this.now();
+    this.cams = this.freshCams('0.4.56');
     this.networks = [
       { ssid: 'kino-bench', password: 'benchwifi2026', security: 'wpa2', autoJoin: true, lastSeen: this.now() - 40_000 },
       { ssid: 'loft-guest', password: 'partytime', security: 'wpa2', autoJoin: false, lastSeen: null },
@@ -555,6 +651,7 @@ export class MockKinoDevice implements MockDeviceLike {
       sensorProfile: 'OV3660',
       focus: null,
       exposureUs: 16_667 + this.randInt(-400, 400),
+      viewfinder: freshViewfinder(),
     });
     return { cam1: cam(), cam2: cam(), cam3: cam(), cam4: cam() };
   }
@@ -778,6 +875,65 @@ export class MockKinoDevice implements MockDeviceLike {
   // whole device. offline/power-open take the camera off the bus entirely
   // (per-cam commands NACK CAM_OFFLINE, CAMERA_STATUS/SELF_TEST report it);
   // the rest degrade a still-answering camera in one specific way.
+
+  // ---- the body's own screen ----
+  //
+  // KINO Twin runs the P4 firmware's ui.c in the browser against this device,
+  // the way the camera runs it against its own modules, so the screens need
+  // what those modules give them: the config store to read, the card to page,
+  // the shutter to fire. These are in-process reads and the same state changes
+  // SET_CONFIG, CAMERA_CAPTURE and REBOOT make - never a side channel that
+  // leaves a host looking at a device that did something it was not told.
+
+  /** The config document, as the body's config_store reads it. */
+  readConfig(): KinoConfig {
+    return structuredClone(this.config);
+  }
+
+  /** A setting written on the body's own screen: merged and revisioned
+   * exactly as SET_CONFIG merges a host's patch. */
+  applyConfigPatch(patch: Partial<KinoConfig>): number {
+    this.lastActivityAt = this.now();
+    this.config = deepMerge(this.config, patch);
+    this.configRevision++;
+    this.log('P4', `config updated from the body (revision ${this.configRevision})`);
+    return this.configRevision;
+  }
+
+  /** The card's captures, for the body's gallery and photograph screens. */
+  mediaStore(): MockMediaStore {
+    return this.media;
+  }
+
+  /** The shutter on the body. Same pipeline and the same one refusal as a
+   * host-triggered CAMERA_CAPTURE. */
+  requestCapture(source: string): boolean {
+    this.lastActivityAt = this.now();
+    if (/shutter|button/i.test(source)) this.shutterPressed = true;
+    if (this.scenarios.sdFull) {
+      this.log('P4', `capture refused (${source}) — SD card full`);
+      return false;
+    }
+    this.log('P4', `capture requested by ${source}`);
+    this.simulateCapture();
+    return true;
+  }
+
+  /** POWER → RESTART on the body: esp_restart(). */
+  requestReboot(reason: string): void {
+    this.reboot(reason);
+  }
+
+  /** The looks the LOOK screen pages through: factory, then the card's own,
+   * in the order GET_RECIPES lists them. */
+  recipesForBody(): { id: string; name: string }[] {
+    return [...FACTORY_RECIPES, ...this.customRecipes.values()].map((r) => ({ id: r.id, name: r.name }));
+  }
+
+  /** The shutter clips on the card, for the SOUND screen's picker. */
+  soundsForBody(): { id: string; name: string }[] {
+    return [...this.customSounds.values()].map((s) => ({ id: s.info.id, name: s.info.name }));
+  }
 
   setCamFault(cam: CamId, fault: CamFault | null): void {
     const model = this.cams[cam];
@@ -1008,7 +1164,12 @@ export class MockKinoDevice implements MockDeviceLike {
     const options: [LogSource, string][] = [
       ['P4', this.pick(['touch: mode dial', 'ui idle', 'preview stream 12 fps', 'wiggle armed', 'heap ok'])],
       [camSrc, this.pick(['AE converged in 3 frames', `exposure locked 1/60 gain ${this.randInt(4, 16)}`, 'awb warm bias applied', `frame sync ok, skew ${this.randInt(60, 420)} us`])],
-      ['PWR', `battery ${this.batteryV.toFixed(2)} V`],
+      [
+        'PWR',
+        this.effectiveCapabilities().powerTelemetry
+          ? `battery ${this.batteryV.toFixed(2)} V`
+          : `display ${this.powerStage().stage}, idle ${this.powerStage().idleSeconds} s`,
+      ],
       ['SD', this.pick([`free ${(this.sdFreeMB / 1024).toFixed(1)} GB`, `write burst ${this.rand(3.2, 4.4).toFixed(1)} MB/s`])],
       ['PROTO', this.pick(['usb host poll ok', 'trigger bus idle'])],
     ];
@@ -1204,6 +1365,10 @@ export class MockKinoDevice implements MockDeviceLike {
     const captureId = this.captureCounter;
     const n = String(this.captureCounter++).padStart(4, '0');
     const mode = this.config.mode;
+    // A shutter press is the body's activity clock; the pipeline holds the
+    // capture lock until the frames are on the card (set below, once the
+    // transfer time is known).
+    this.lastActivityAt = this.now();
     // KINO Twin §20 flashUnavailable: the capture proceeds — nothing about
     // §18's "no Roll/server condition may block a capture" scopes to flash,
     // but a missing flash still isn't a reason to fail the shot — only the
@@ -1282,6 +1447,7 @@ export class MockKinoDevice implements MockDeviceLike {
     // Concurrent transfer on four UARTs: wall clock is the slowest
     // channel, not the sum of four sequential transfers.
     const transferMs = Math.round((380 * 1024) / ((this.uartBaud / 10) * 0.9) * 1000);
+    this.captureBusyUntil = Math.max(this.captureBusyUntil, this.now() + delay + transferMs);
     this.afterCapture(delay + transferMs, () => {
       this.sdFreeMB = Math.max(0, this.sdFreeMB - 2);
       if (skipped > 0) {
@@ -1594,6 +1760,13 @@ export class MockKinoDevice implements MockDeviceLike {
                   : 'ready',
       latencyMs: offline ? 0 : timeout ? 900 : Math.round(this.rand(2, 9) * 10) / 10,
       uartErrors: cam.uartErrors,
+      // What the preview pump did on this channel (0.4.18+): counted for all
+      // four whatever the link says, like build_camera_info() does.
+      viewfinder: {
+        frames: cam.viewfinder.frames,
+        fpsX10: this.viewfinderFpsX10(id),
+        drops: { ...cam.viewfinder.drops },
+      },
       lastCapture: offline
         ? null
         : {
@@ -1649,12 +1822,17 @@ export class MockKinoDevice implements MockDeviceLike {
   ];
 
   /**
-   * The Network/Roll group plus the bench job. Unlike the commands above,
-   * these have no legacy check further down, so the gate here is the only
-   * thing enforcing them — and it has to use exactly the condition
-   * GET_CAPABILITIES reports for `network`/`rollUpload`/`syncBench`. A device
-   * that advertises no network support and then answers NETWORK_LIST is a
-   * worse mock than one that has no network support at all.
+   * The Network/Roll group. Unlike the commands above, these have no legacy
+   * check further down, so the gate here is the only thing enforcing them —
+   * and it has to use exactly the condition GET_CAPABILITIES reports for
+   * `network`/`roll`/`rollUpload`. A device that advertises no network support
+   * and then answers NETWORK_LIST is a worse mock than one that has no
+   * network support at all.
+   *
+   * SYNC_BENCH is not in this list any more. It was never a network command:
+   * firmware dispatches it unconditionally since 0.4.31 and it needs no
+   * radio. It is gated below with the diagnostics, on the same predicate as
+   * the mock-only `syncBench` flag, so the claim and the answer still agree.
    */
   private static readonly NETWORK_ROLL_COMMANDS: number[] = [
     Cmd.NETWORK_LIST,
@@ -1668,7 +1846,6 @@ export class MockKinoDevice implements MockDeviceLike {
     Cmd.UPLOAD_QUEUE_STATUS,
     Cmd.UPLOAD_QUEUE_RETRY,
     Cmd.UPLOAD_ENQUEUE,
-    Cmd.SYNC_BENCH,
   ];
 
   /** Single source of truth for both the capability report and the dispatcher. */
@@ -1693,7 +1870,9 @@ export class MockKinoDevice implements MockDeviceLike {
   // ---- Milestone 1B bench diagnostics ----
 
   private hex8(): string {
-    return ((this.randInt(0, 0xffff) << 16) >>> 0 | this.randInt(0, 0xffff)).toString(16).padStart(8, '0');
+    // `>>> 0` after the OR, not before: `a | b` is a signed int32 and a high
+    // bit set produced "-16497241" where a CRC's 8 hex digits were promised.
+    return (((this.randInt(0, 0xffff) << 16) | this.randInt(0, 0xffff)) >>> 0).toString(16).padStart(8, '0');
   }
 
   private mockUuid(): string {
@@ -1704,6 +1883,8 @@ export class MockKinoDevice implements MockDeviceLike {
   /** Set once a checksummed capture succeeded this session — feeds the
    * hardware-validation registry the same way real firmware marks items. */
   private captureProven = false;
+  /** Set once a STORAGE_BENCH read-back verified — what earns SD_LDO_CH4. */
+  private benchProven = false;
 
   /**
    * One simulated diagnostic capture over the node link. Shared by
@@ -1816,6 +1997,10 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   private handleStorageSelfTest(frame: Frame) {
+    if (this.captureBusy()) {
+      this.respondError(frame, 'BUSY', 'A capture or soak run is active');
+      return;
+    }
     const missing = this.scenarios.sdMissing;
     const full = this.scenarios.sdFull;
     this.after(missing ? 50 : 420, () => {
@@ -1835,40 +2020,98 @@ export class MockKinoDevice implements MockDeviceLike {
   }
 
   /**
-   * STORAGE_BENCH. Numbers come off the seeded rng, never Math.random, so a
-   * seeded Twin replays the same card. The worst block is deliberately far
-   * above the mean: real SD cards stall on an internal erase, and a bench
+   * STORAGE_BENCH, as `handle_storage_bench` answers it (contract commands.md,
+   * "STORAGE_BENCH — 0x4c"): a blocking request under the capture lock
+   * (BUSY), arguments **clamped** to the firmware's bounds rather than
+   * refused, `sizeKB` accepted beside `sizeMB`, a NACK whose code is the
+   * failing phase, and the typed five figures plus the additive block —
+   * `ok`, `failedPhase`, `passes`, `totalMs`, `cleanupOk`, and two per-pass
+   * records, `sustained` (the sized run) and `small` (64 KiB, comparable with
+   * STORAGE_SELF_TEST). Numbers come off the seeded rng, never Math.random,
+   * so a seeded Twin replays the same card. The worst block is deliberately
+   * far above the mean: real cards stall on an internal erase, and a bench
    * that only ever reports a tidy average never exercises the readout that
    * matters.
    */
   private handleStorageBench(frame: Frame) {
-    const req = decodeJson<Partial<StorageBenchRequest>>(frame.payload);
-    const sizeMB = Math.round(req.sizeMB ?? 16);
-    const blockKB = Math.round(req.blockKB ?? 64);
-    const passes = Math.round(req.passes ?? 1);
-    if (sizeMB < 1 || sizeMB > 512 || blockKB < 4 || blockKB > 4096 || passes < 1 || passes > 16) {
-      this.respondError(frame, 'INVALID_ARGUMENT', 'sizeMB 1–512, blockKB 4–4096, passes 1–16');
+    if (this.captureBusy()) {
+      this.respondError(frame, 'BUSY', 'A capture or soak run is active');
       return;
     }
+    const req = decodeJson<Partial<StorageBenchRequest> & { sizeKB?: number }>(frame.payload);
+    const clamp = (v: number, b: { min: number; max: number }) => Math.min(b.max, Math.max(b.min, v));
+    const askedKB =
+      typeof req.sizeKB === 'number' && req.sizeKB > 0
+        ? req.sizeKB
+        : typeof req.sizeMB === 'number' && req.sizeMB > 0
+          ? req.sizeMB * 1024
+          : STORAGE_BENCH_SIZE_KB.default;
+    const sizeKB = clamp(Math.round(askedKB), STORAGE_BENCH_SIZE_KB);
+    const blockKB = clamp(Math.round(typeof req.blockKB === 'number' && req.blockKB > 0 ? req.blockKB : STORAGE_BENCH_BLOCK_KB.default), STORAGE_BENCH_BLOCK_KB);
+    const passes = clamp(Math.round(typeof req.passes === 'number' && req.passes > 0 ? req.passes : STORAGE_BENCH_PASSES.default), STORAGE_BENCH_PASSES);
     if (this.scenarios.sdMissing) {
-      this.respondError(frame, 'SD_ERROR', 'No card mounted');
+      this.respondError(frame, 'SD_NOT_MOUNTED', 'Benchmark stopped at SD_NOT_MOUNTED after 0 ms — no card mounted');
       return;
     }
     if (this.scenarios.sdFull) {
-      this.respondError(frame, 'SD_ERROR', 'Not enough free space for the requested size');
+      this.respondError(frame, 'WRITE_FAILED', 'Benchmark stopped at WRITE_FAILED after 12 ms — no free space on the card');
       return;
     }
-    const bytes = sizeMB * 1024 * 1024 * passes;
     const writeMBs = Math.round(this.rand(7.5, 11.5) * 100) / 100;
     const readMBs = Math.round(this.rand(15, 21) * 100) / 100;
-    const meanBlockMs = blockKB / 1024 / writeMBs * 1000;
-    const p95BlockMs = Math.round(meanBlockMs * this.rand(1.6, 2.2) * 10) / 10;
-    const worstBlockMs = Math.round(p95BlockMs * this.rand(3, 9) * 10) / 10;
-    // Wall clock the transfer would actually take, capped so a large request
-    // does not stall the fixture's fake clock for a real minute.
-    this.after(Math.min(2000, Math.round((bytes / 1024 / 1024 / writeMBs) * 20)), () => {
-      this.log('SD', `bench ${sizeMB} MB × ${passes} @ ${blockKB} KB — write ${writeMBs} MB/s, worst block ${worstBlockMs} ms`);
-      const result: StorageBenchResult = { writeMBs, readMBs, worstBlockMs, p95BlockMs, bytes };
+    const pass = (kb: number, chunkKB: number): StorageBenchPass => {
+      const bytes = kb * 1024;
+      const chunkBytes = Math.min(chunkKB, kb) * 1024;
+      const chunks = Math.ceil(bytes / chunkBytes);
+      const writeMs = Math.max(1, Math.round((bytes / 1048576 / writeMBs) * 1000));
+      const readMs = Math.max(1, Math.round((bytes / 1048576 / readMBs) * 1000));
+      const meanUs = Math.round((writeMs * 1000) / chunks);
+      const p95Us = Math.round(meanUs * this.rand(1.6, 2.2));
+      const worstUs = Math.round(p95Us * this.rand(3, 9));
+      const crc = this.hex8();
+      return {
+        bytes,
+        writeMs,
+        readMs,
+        writeBytesPerSec: Math.round((bytes * 1000) / writeMs),
+        readBytesPerSec: Math.round((bytes * 1000) / readMs),
+        crc32Written: crc,
+        crc32Read: crc,
+        crcMatch: true,
+        chunkBytes,
+        chunks,
+        worstWriteChunkUs: worstUs,
+        bestWriteChunkUs: Math.max(1, Math.round(meanUs * this.rand(0.4, 0.7))),
+        meanWriteChunkUs: meanUs,
+        p95WriteChunkUs: p95Us,
+      };
+    };
+    const sustained = pass(sizeKB, blockKB);
+    const small = pass(STORAGE_BENCH_SMALL_KB, blockKB);
+    const totalMs = (sustained.writeMs + sustained.readMs) * passes + small.writeMs + small.readMs + this.randInt(20, 60);
+    const result: StorageBenchResult = {
+      writeMBs,
+      readMBs,
+      worstBlockMs: sustained.worstWriteChunkUs / 1000,
+      p95BlockMs: sustained.p95WriteChunkUs / 1000,
+      bytes: sustained.bytes,
+      ok: true,
+      failedPhase: null,
+      passes,
+      totalMs,
+      cleanupOk: true,
+      sustained,
+      small,
+    };
+    // Hold the lock for a scaled-down run, capped so a large request does
+    // not stall the fixture's clock for a real minute.
+    const holdMs = Math.min(2000, Math.round(totalMs / 20));
+    this.captureBusyUntil = Math.max(this.captureBusyUntil, this.now() + holdMs);
+    this.after(holdMs, () => {
+      // A verified round trip at a megabyte rather than 64 KB — the same
+      // evidence the firmware records for HWV SD_LDO_CH4.
+      this.benchProven = true;
+      this.log('SD', `bench ${sizeKB} KB × ${passes} @ ${blockKB} KB — write ${writeMBs} MB/s, worst block ${result.worstBlockMs.toFixed(1)} ms`);
       this.respond(frame, result);
     });
   }
@@ -1897,6 +2140,9 @@ export class MockKinoDevice implements MockDeviceLike {
       latencyMaxMs: link.latencyMaxMs,
       lastNodeBootReason: this.busUnreachable(cam) ? null : 'power-on',
       lastError: link.lastError,
+      // Every preview frame is a capture, a chunked read and a release over
+      // this UART, so the finder's rate is a link measurement.
+      viewfinderFpsX10: this.viewfinderFpsX10(cam),
     };
     this.respond(frame, stats);
   }
@@ -2031,32 +2277,97 @@ export class MockKinoDevice implements MockDeviceLike {
     });
   }
 
+  /**
+   * GET_HW_VALIDATION: the runtime registry, mirrored row for row from
+   * `hwv_item_t` (firmware/p4/main/hardware_validation.h) with the wire ids
+   * `ITEM_IDS` carries in the matching `.c` — no `HWV_` prefix on the wire,
+   * that is the C enum's spelling. 56 rows, in enum order, because the
+   * registry is append-only (statuses persist in NVS by index) and a host
+   * that counts them must see the number the firmware reports.
+   *
+   * An item is `validated` only on the terms the firmware uses: the real
+   * event, on this unit. The rows nothing in firmware marks — CAM_PWR_EN,
+   * SYNC_TRIGGER, the dead FLASH_EN_GPIO28 — stay `unvalidated` here too,
+   * and the C6 rows flip only on the simulated-future profile with the radio
+   * up, since no default build drives a pin toward the coprocessor.
+   */
   private handleHwValidation(frame: Frame) {
     const sd = !this.scenarios.sdMissing;
-    const cam1 = !this.busUnreachable('cam1');
-    const sensor1 = cam1 && this.cams.cam1.fault !== 'sensor-missing';
+    const future = FIRMWARE_PROFILES[this.firmwareProfileId].simulatedFuture;
+    const radioUp = future && !this.scenarios.wifiLost && this.networks.some((n) => n.autoJoin);
+    const serverUp = radioUp && !this.scenarios.rollServerUnreachable;
     const item = (id: string, ok: boolean, detail?: string): HwValidationItem =>
       ok ? { id, status: 'validated', ...(detail ? { detail } : {}) } : { id, status: 'unvalidated' };
+    const camUp = (id: CamId) => !this.busUnreachable(id) && this.cams[id].rebootUntil <= this.now();
+    const sensorUp = (id: CamId) => camUp(id) && this.cams[id].fault !== 'sensor-missing';
+    const sensorName = (id: CamId) => (this.cams[id].sensorProfile === 'OV5640_AF' ? 'OV5640' : 'OV3660');
+    const camRows = (id: CamId): HwValidationItem[] => {
+      const label = id.toUpperCase();
+      return [
+        item(`${label}_UART`, camUp(id), 'node HELLO answered'),
+        item(`${label}_NODE_LINK`, camUp(id), 'node HELLO answered'),
+        item(`${label}_SENSOR_DETECT`, sensorUp(id), sensorName(id)),
+        item(`${label}_JPEG_TRANSFER`, this.captureProven && camUp(id), 'transfer CRC matched node CRC'),
+        item(`${label}_SD_WRITE`, this.captureProven && camUp(id) && sd, 'frame written and closed clean'),
+      ];
+    };
     const items: HwValidationItem[] = [
       // The host is literally talking to this device, so its Studio
       // transport is proven by construction.
-      item('USB_SERIAL_JTAG', true, 'host frame decoded'),
+      item('USB_SERIAL_JTAG', true, 'host frame decoded over USB-Serial-JTAG'),
       item('SD_CLK_GPIO43', sd, 'mounted'),
       item('SD_CMD_GPIO44', sd, 'mounted'),
       item('SD_D0_GPIO39', sd, 'mounted'),
       item('SD_D1_GPIO40', sd, 'mounted'),
       item('SD_D2_GPIO41', sd, 'mounted'),
       item('SD_D3_GPIO42', sd, 'mounted'),
-      item('SD_LDO_CH4', sd, 'mounted'),
+      item('SD_LDO_CH4', sd, this.benchProven ? 'bench read-back CRC verified' : 'mounted'),
       // JP1 pins 7 and 9; board_d4v1.h BOARD_CAM1_TX / BOARD_CAM1_RX.
-      item('CAM1_TX_GPIO52', cam1, 'node HELLO answered'),
-      item('CAM1_RX_GPIO51', cam1, 'node HELLO answered'),
-      item('CAM1_BAUD_921600', cam1, 'node HELLO at 921600'),
-      item('CAM1_NODE_LINK', cam1, 'node HELLO answered'),
-      item('CAM1_SENSOR_DETECT', sensor1, 'OV3660'),
+      item('CAM1_TX_GPIO52', camUp('cam1'), 'node HELLO answered'),
+      item('CAM1_RX_GPIO51', camUp('cam1'), 'node HELLO answered'),
+      item('CAM1_BAUD_921600', camUp('cam1'), 'node HELLO at 921600'),
+      item('CAM1_NODE_LINK', camUp('cam1'), 'node HELLO answered'),
+      item('CAM1_SENSOR_DETECT', sensorUp('cam1'), sensorName('cam1')),
       item('CAM1_CAPTURE', this.captureProven, 'checksummed capture'),
-      item('CAM1_JPEG_TRANSFER', this.captureProven, 'transfer CRC matched'),
-      item('CAM1_SD_WRITE', this.captureProven && sd, 'stored file verified'),
+      item('CAM1_JPEG_TRANSFER', this.captureProven, 'transfer CRC matched node CRC'),
+      item('CAM1_SD_WRITE', this.captureProven && sd, 'stored file checksum verified'),
+      // The body. Each flips on the real event: the panel lit, the codec
+      // answered, samples were clocked out. All of that happened at boot.
+      item('DSI_PANEL_ST7701', true, 'init table accepted, DPI running'),
+      item('BACKLIGHT_GPIO23', true, 'driven high at panel init'),
+      item('I2C_SHARED_BUS', true, 'GT911 and ES8311 both answered'),
+      item('TOUCH_GT911', true, 'first touch reported'),
+      item('AUDIO_ES8311', true, 'answered at 0x18 on the shared bus'),
+      item('AUDIO_AMP_GPIO11', this.config.body.sounds.startup, 'samples clocked out with the amp enabled'),
+      // Driving the pin proves the P4 end and nothing past it: unmarked,
+      // like the firmware, until a meter on the bank's rail says otherwise.
+      item('CAM_PWR_EN_GPIO31', false),
+      ...camRows('cam2'),
+      ...camRows('cam3'),
+      ...camRows('cam4'),
+      // The shared trigger: capture.c drives it; the row waits on a node that
+      // says it saw the edge, or a scope on JP1 19.
+      item('SYNC_TRIGGER_GPIO32', false),
+      // Dead row since ECN-0003 — GPIO28 went to the shutter and the flash has
+      // no P4 pin. Can never flip on a D4-V1 body; kept for its NVS index.
+      item('FLASH_EN_GPIO28', false),
+      item('BTN_SHUTTER', this.shutterPressed, 'GPIO28 pressed on JP1 21'),
+      // ESP32-C6 radio, in bring-up order. None can flip in the default build.
+      item('SD_SLOT0', sd, 'mounted on slot 0'),
+      item('C6_EN_GPIO54', radioUp, 'enable line behaviour measured'),
+      item('C6_SDIO_PINS', radioUp, 'hosted transport enumerated on slot 1'),
+      item('C6_LINK_HANDSHAKE', radioUp, 'transport usable both directions'),
+      item('C6_SLAVE_VERSION', radioUp, 'hosted slave version matched'),
+      item('C6_WIFI_SCAN', radioUp, 'scan returned networks'),
+      item('C6_WIFI_ASSOCIATE', radioUp, 'associated to a named network'),
+      item('C6_DHCP', radioUp, '192.168.1.74'),
+      item('C6_DNS', serverUp, 'API host name resolved'),
+      item('C6_SNTP', radioUp && this.clockSource === 'network', 'wall clock adopted from the network'),
+      item('C6_TLS', serverUp, 'certificate-verified HTTPS response'),
+      item('SD_C6_COEXIST', radioUp && sd, 'scan succeeded before and after card I/O'),
+      item('C6_ROLL_UPLOAD', serverUp && this.uploads.uploaded > 0, 'one capture reached a Roll'),
+      item('ROLL_DEVICE_REGISTER', serverUp && this.rollCredentials !== null, 'server issued a device credential'),
+      item('ROLL_RECONNECT', false),
     ];
     this.respond(frame, { p4ResetReason: this.resetReason, items });
   }
@@ -2083,6 +2394,140 @@ export class MockKinoDevice implements MockDeviceLike {
     }
   }
 
+  /**
+   * The capability report, base flags merged with any Twin override (§11).
+   *
+   * One function rather than an object literal inside GET_CAPABILITIES, so a
+   * handler that has to behave according to a flag — GET_POWER_STATUS on
+   * `powerTelemetry` — reads the same object the host was shown. A device
+   * that reports a flag one way and acts another is the drift the report
+   * exists to prevent.
+   */
+  private effectiveCapabilities(): Record<string, boolean | number> {
+    const legacy = this.scenarios.legacyFirmware;
+    return {
+      cameraCount: 4,
+      wiggle: true,
+      quad: true,
+      gallery: true,
+      flashControl: true,
+      // A firmware that predates the timing work reports these false;
+      // Studio must degrade gracefully rather than time out.
+      vsyncTelemetry: !legacy,
+      phaseCalibration: !legacy,
+      xiaoProxyUpdate: !legacy,
+      linkBench: !legacy,
+      customSounds: !legacy,
+      // True, not `!legacy`, because the four recipe handlers below are
+      // unconditional: neither the legacy nor the unsupportedCommands
+      // scenario removes them, and a device that claimed otherwise while
+      // still answering would be the drift this report exists to prevent.
+      // A firmware profile that predates 0.4.8 turns the flag off through
+      // its own capability map instead.
+      recipes: true,
+      // OV5640_AF capability group (audit #55): derived from the actual
+      // per-camera sensor profiles, never assumed from a model name.
+      autofocus: !legacy && this.hasAutofocus(),
+      focusLock: !legacy && this.hasAutofocus(),
+      manualFocus: !legacy && this.hasAutofocus(),
+      // 04 §7 Network/Roll. Same predicate the dispatcher gates on, so
+      // what the device claims and what it answers cannot drift apart.
+      rollUpload: this.supportsNetworkRoll(),
+      network: this.supportsNetworkRoll(),
+      roll: this.supportsNetworkRoll(),
+      // The reference device's own flag (commands.md: "syncBench is the only
+      // flag the reference device reports that the interface does not
+      // declare"). Firmware never emits it and dispatches SYNC_BENCH without a
+      // gate; here it rides the same predicate as the gate on the command so
+      // the legacy scenario's claim and answer agree.
+      syncBench: this.supportsBench(),
+      // Milestone 1B bench diagnostics — same predicate as the gate on
+      // STORAGE_SELF_TEST / CAMERA_LINK_STATS(_RESET) / CAMERA_SOAK_TEST /
+      // GET_HW_VALIDATION below.
+      benchDiagnostics: this.supportsBench(),
+      // True for the demo device, which is a body whose backlight is on a
+      // PWM channel — `body.brightness` is stored and echoed and there is
+      // no panel here to darken, so nothing dims either way. It reports
+      // true so the enabled path of Studio's slider has a device to run
+      // against; D4-V1 hardware cannot dim (contract D11) and the 0.4.9
+      // firmware profile turns the flag off through its capability map.
+      brightnessControl: true,
+      // The seven flags D17 records the firmware advertising, stated here so
+      // the demo device stops under-advertising what every real profile
+      // already says. Each is a hardware or build fact, not a demo choice:
+      /** GET/SET/SAVE/RESET_CONFIG answer (0.2.0+). */
+      configStore: true,
+      /** MEDIA_LIST/INFO/DELETE/FAVORITE answer; `gallery` above is the pixels. */
+      mediaIndex: true,
+      /** autoDimS / sleepS / camIdleTimeoutS act — the half of power that works. */
+      powerManagement: true,
+      /**
+       * False, and the firmware hardcodes it false: nothing on D4-V1 routes a
+       * sense divider or a gauge bus to the P4 (contract D10). GET_POWER_STATUS
+       * reads this same object, so batteryV/batteryPct are null on the wire
+       * unless a Twin override flips it — the internal pack model is for the
+       * Twin's POWER tab, not for the protocol.
+       */
+      powerTelemetry: false,
+      /**
+       * False since ECN-0003: GPIO28 / JP1 21 went to the shutter and the
+       * flash became an external module with no P4 pin. `flashControl` above
+       * stays true — the firmware holds the window open with nothing on the
+       * other end, which is exactly the distinction the two flags exist for.
+       */
+      flashHardware: false,
+      /** The ESP32-C6 is on the Guition carrier whatever the build links. */
+      radioFitted: true,
+      /**
+       * A route to that radio is what the network group needs, so this rides
+       * the same predicate as `network`: the default D4-V1 build has none and
+       * every real profile overrides it to false; the demo device, which
+       * answers NETWORK_STATUS "connected", cannot honestly say otherwise.
+       */
+      radioRouted: this.supportsNetworkRoll(),
+      // KINO Twin §11: editable to test future firmware/hardware.
+      ...(this.capabilityOverrides ?? {}),
+    };
+  }
+
+  /**
+   * Where the panel's idle timeouts have got to (contract D11), from the
+   * body's own activity clock: `awake` → `dim` at `autoDimS` → `asleep` at
+   * `sleepS`, 0 meaning never. The camera bank has its own timeout and is not
+   * a stage. Tracked on hardware that cannot dim, exactly as the firmware
+   * tracks it — the stage is real, the brightness change is not.
+   */
+  private powerStage(): {
+    stage: 'awake' | 'dim' | 'asleep';
+    idleSeconds: number;
+    displayOn: boolean;
+    cameraBankPowered: boolean;
+  } {
+    const idleSeconds = Math.max(0, Math.floor((this.now() - this.lastActivityAt) / 1000));
+    const { autoDimS, sleepS, camIdleTimeoutS } = this.config.body;
+    const stage = sleepS > 0 && idleSeconds >= sleepS ? 'asleep' : autoDimS > 0 && idleSeconds >= autoDimS ? 'dim' : 'awake';
+    return {
+      stage,
+      idleSeconds,
+      displayOn: stage !== 'asleep',
+      cameraBankPowered: !(camIdleTimeoutS > 0 && idleSeconds >= camIdleTimeoutS),
+    };
+  }
+
+  /** The capture lock, as the diagnostics see it: a shot in flight or a soak run. */
+  private captureBusy(): boolean {
+    return this.soakRunning || this.now() < this.captureBusyUntil;
+  }
+
+  /** Per-camera viewfinder rate, tenths of a frame per second, from recent frames. */
+  private viewfinderFpsX10(id: CamId): number {
+    const stamps = this.cams[id].viewfinder.stamps;
+    if (stamps.length < 2) return 0;
+    const span = stamps[stamps.length - 1] - stamps[0];
+    if (span <= 0) return 0;
+    return Math.round(((stamps.length - 1) * 10_000) / span);
+  }
+
   private dispatchCommand(frame: Frame) {
     const cmd = frame.type as Cmd;
 
@@ -2105,7 +2550,8 @@ export class MockKinoDevice implements MockDeviceLike {
         MockKinoDevice.OPTIONAL_COMMANDS.includes(frame.type)) ||
       (!this.supportsNetworkRoll() &&
         MockKinoDevice.NETWORK_ROLL_COMMANDS.includes(frame.type)) ||
-      (!this.supportsBench() && MockKinoDevice.BENCH_COMMANDS.includes(frame.type));
+      (!this.supportsBench() && MockKinoDevice.BENCH_COMMANDS.includes(frame.type)) ||
+      (!this.supportsBench() && frame.type === Cmd.SYNC_BENCH);
     if (gated) {
       this.respondError(
         frame,
@@ -2206,57 +2652,11 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       }
       case Cmd.GET_CAPABILITIES: {
-        const legacy = this.scenarios.legacyFirmware;
-        const capabilities = {
-          cameraCount: 4,
-          wiggle: true,
-          quad: true,
-          gallery: true,
-          flashControl: true,
-          // A firmware that predates the timing work reports these false;
-          // Studio must degrade gracefully rather than time out.
-          vsyncTelemetry: !legacy,
-          phaseCalibration: !legacy,
-          xiaoProxyUpdate: !legacy,
-          linkBench: !legacy,
-          customSounds: !legacy,
-          // True, not `!legacy`, because the four recipe handlers below are
-          // unconditional: neither the legacy nor the unsupportedCommands
-          // scenario removes them, and a device that claimed otherwise while
-          // still answering would be the drift this report exists to prevent.
-          // A firmware profile that predates 0.4.8 turns the flag off through
-          // its own capability map instead.
-          recipes: true,
-          // OV5640_AF capability group (audit #55): derived from the actual
-          // per-camera sensor profiles, never assumed from a model name.
-          autofocus: !legacy && this.hasAutofocus(),
-          focusLock: !legacy && this.hasAutofocus(),
-          manualFocus: !legacy && this.hasAutofocus(),
-          // 04 §7 Network/Roll. Same predicate the dispatcher gates on, so
-          // what the device claims and what it answers cannot drift apart.
-          rollUpload: this.supportsNetworkRoll(),
-          network: this.supportsNetworkRoll(),
-          roll: this.supportsNetworkRoll(),
-          syncBench: this.supportsNetworkRoll(),
-          // Milestone 1B bench diagnostics — same predicate as the gate on
-          // STORAGE_SELF_TEST / CAMERA_LINK_STATS(_RESET) / CAMERA_SOAK_TEST /
-          // GET_HW_VALIDATION below.
-          benchDiagnostics: this.supportsBench(),
-          // True for the demo device, which is a body whose backlight is on a
-          // PWM channel — `body.brightness` is stored and echoed and there is
-          // no panel here to darken, so nothing dims either way. It reports
-          // true so the enabled path of Studio's slider has a device to run
-          // against; D4-V1 hardware cannot dim (contract D11) and the 0.4.9
-          // firmware profile turns the flag off through its capability map.
-          brightnessControl: true,
-          // KINO Twin §11: editable to test future firmware/hardware.
-          ...(this.capabilityOverrides ?? {}),
-        };
         this.respond(frame, {
           protocol: PROTOCOL_VERSION,
           hardware: 'kino-v1',
           firmware: this.p4Fw,
-          capabilities,
+          capabilities: this.effectiveCapabilities(),
           limits: {
             // M1B firmware honestly caps at its one validated baud (issue #72).
             maxUartBaud: FIRMWARE_PROFILES[this.firmwareProfileId].maxUartBaud,
@@ -2265,8 +2665,10 @@ export class MockKinoDevice implements MockDeviceLike {
             maxGalleryPageSize: 100,
           },
           configSchemaVersion: 1,
-          // KINO Twin §20 nodeFwMismatch: CAM4 is on an out-of-date build.
-          firmwareMismatch: this.scenarios.nodeFwMismatch,
+          // No `firmwareMismatch` here any more: the firmware never sends one
+          // and nothing in Studio or the Twin read it. The nodeFwMismatch
+          // scenario still shows in GET_DEVICE_INFO / FW_QUERY, where CAM4
+          // reports 0.0.9 — which is how a host detects it on hardware.
         });
         return;
       }
@@ -2294,6 +2696,32 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, { cameras: CAM_IDS.map((id) => this.cameraInfo(id)) });
         return;
       case Cmd.GET_POWER_STATUS: {
+        const stage = this.powerStage();
+        const measured = this.effectiveCapabilities().powerTelemetry === true;
+        if (!measured) {
+          /* What `handle_power_status()` sends on D4-V1 (contract D10): no
+           * gauge, no divider, so the two figures are null and say so. The
+           * state is the only distinction the board supports — a host is
+           * talking to it, which is `usb` — and nothing can sense a charger,
+           * so `charging` is never true. The Twin's pack model stays inside
+           * the Twin (TwinSnapshot.batteryV); the wire carries what the body
+           * knows, not what the simulator does. */
+          const status: PowerStatus = {
+            batteryV: null,
+            batteryPct: null,
+            batteryMeasured: false,
+            state: 'usb',
+            charging: false,
+            displayStage: stage.stage,
+            idleSeconds: stage.idleSeconds,
+            displayOn: stage.displayOn,
+            cameraBankPowered: stage.cameraBankPowered,
+          };
+          this.respond(frame, status);
+          return;
+        }
+        /* A body with telemetry (a Twin override, a future carrier): the pack
+         * model goes on the wire, with the same scenarios shaping it. */
         let v = this.batteryV;
         if (this.scenarios.lowBattery) v = 3.42;
         // KINO Twin §20 batterySag: a steady 3.55 V baseline that dips a
@@ -2301,9 +2729,10 @@ export class MockKinoDevice implements MockDeviceLike {
         else if (this.scenarios.batterySag) v = this.now() < this.batterySagUntil ? 3.3 : 3.55;
         const pct = Math.max(0, Math.min(100, Math.round(((v - 3.3) / (4.2 - 3.3)) * 100)));
         const charging = this.scenarios.chargerConnected;
-        this.respond(frame, {
+        const status: PowerStatus = {
           batteryV: Math.round(v * 100) / 100,
           batteryPct: pct,
+          batteryMeasured: true,
           state: charging ? 'usb' : 'battery',
           charging,
           chargingA: charging ? 0.6 : 0,
@@ -2311,7 +2740,12 @@ export class MockKinoDevice implements MockDeviceLike {
           // with the battery-sag transient, dead when the fuse is blown.
           busV: this.scenarios.fuseBlown ? 0 : this.scenarios.batterySag && this.now() < this.batterySagUntil ? 4.82 : 5.0,
           fuse: this.scenarios.fuseBlown ? 'blown' : 'ok',
-        });
+          displayStage: stage.stage,
+          idleSeconds: stage.idleSeconds,
+          displayOn: stage.displayOn,
+          cameraBankPowered: stage.cameraBankPowered,
+        };
+        this.respond(frame, status);
         return;
       }
       case Cmd.GET_STORAGE_STATUS: {
@@ -2359,6 +2793,28 @@ export class MockKinoDevice implements MockDeviceLike {
           return;
         }
         const patch = env.config ?? {};
+        /* network.apiBase, as pure_api_base_ok() reads it (README D3): a
+         * scheme, a host, an optional numeric port, nothing after, printable
+         * ASCII, at most 96 characters. Refused rather than stored-and-ignored
+         * so a host learns at the write, not at the first upload that goes to
+         * the production default instead. */
+        const apiBase = patch.network?.apiBase;
+        if (apiBase !== undefined) {
+          const ok =
+            typeof apiBase === 'string' &&
+            apiBase.length <= API_BASE_MAX &&
+            API_BASE_RE.test(apiBase) &&
+            // eslint-disable-next-line no-control-regex
+            !/[^\x21-\x7e]/.test(apiBase);
+          if (!ok) {
+            this.respondError(
+              frame,
+              'INVALID_ARGUMENT',
+              `network.apiBase must be http(s)://host[:port] with no path, at most ${API_BASE_MAX} characters`,
+            );
+            return;
+          }
+        }
         const credentials = patch.roll?.credentials;
         if (
           credentials?.deviceToken !== undefined &&
@@ -2471,7 +2927,13 @@ export class MockKinoDevice implements MockDeviceLike {
           this.respondError(frame, 'FACTORY_LOCKED', 'Factory recipes cannot be deleted');
           return;
         }
-        this.customRecipes.delete(id);
+        // kdp_recipes.c: a look that is not on the card is NOT_FOUND, not a
+        // silent `ok` — a host that deletes a look it misspelled learns so.
+        if (!this.customRecipes.delete(id)) {
+          this.respondError(frame, 'NOT_FOUND', 'No look with that id');
+          return;
+        }
+        this.log('P4', `look deleted: ${id}`);
         this.respond(frame, { ok: true });
         return;
       }
@@ -2494,11 +2956,14 @@ export class MockKinoDevice implements MockDeviceLike {
       }
       case Cmd.CAMERA_TEST: {
         const { cam } = decodeJson<{ cam: CamId }>(frame.payload);
-        // KINO Twin §20: offline/power-open NACK CAM_OFFLINE — a distinct
+        // KINO Twin §20: offline/power-open NACK CAMERA_OFFLINE — the code
+        // `handle_camera_test` uses ("Camera node not connected") — a distinct
         // code from cam2Timeout's CAM_UNREACHABLE, since one is "not there"
-        // and the other is "there but not answering in time".
+        // and the other is "there but not answering in time". These were
+        // CAM_OFFLINE / SENSOR_MISSING, the mock's own spellings, until the
+        // firmware's names became the ones to keep.
         if (this.busUnreachable(cam)) {
-          this.after(400, () => this.respondError(frame, 'CAM_OFFLINE', `${cam.toUpperCase()} did not answer test capture`));
+          this.after(400, () => this.respondError(frame, 'CAMERA_OFFLINE', `${cam.toUpperCase()} did not answer test capture`));
           return;
         }
         if (cam === 'cam2' && this.scenarios.cam2Timeout) {
@@ -2506,7 +2971,7 @@ export class MockKinoDevice implements MockDeviceLike {
           return;
         }
         if (this.cams[cam].fault === 'sensor-missing') {
-          this.after(400, () => this.respondError(frame, 'SENSOR_MISSING', `${cam.toUpperCase()} sensor not detected`));
+          this.after(400, () => this.respondError(frame, 'SENSOR_NOT_DETECTED', `${cam.toUpperCase()} node answers but reports no sensor`));
           return;
         }
         const r = this.benchCapture(cam);
@@ -2564,22 +3029,48 @@ export class MockKinoDevice implements MockDeviceLike {
       case Cmd.GET_HW_VALIDATION:
         this.handleHwValidation(frame);
         return;
-      case Cmd.GET_RUNTIME_STATS:
-        this.respond(frame, {
-          uptimeS: Math.round((this.now() - this.bootedAt) / 1000),
+      case Cmd.GET_RUNTIME_STATS: {
+        const uptimeMs = Math.max(0, this.now() - this.bootedAt);
+        const stats: RuntimeStats & { uartBaud: number } = {
+          uptimeS: Math.round(uptimeMs / 1000),
           resetReason: this.resetReason,
           freeHeapKB: this.randInt(148, 176),
           freePsramKB: this.randInt(11800, 14200),
-          tempC: { p4: Math.round(this.rand(38, 46)), cams: CAM_IDS.map(() => Math.round(this.rand(34, 44))) },
+          // A node that is not answering has no die temperature to report:
+          // null, never a plausible number (the type says so).
+          tempC: {
+            p4: Math.round(this.rand(38, 46)),
+            cams: CAM_IDS.map((id) => (this.cameraInfo(id).online ? Math.round(this.rand(34, 44)) : null)) as [
+              number | null,
+              number | null,
+              number | null,
+              number | null,
+            ],
+          },
           uartBaud: this.uartBaud,
           protocol: {
             droppedPackets: this.decoder.stats.resyncs,
             crcFailures: this.decoder.stats.crcFailures,
             cameraTimeouts: this.camTimeouts,
             sdErrors: this.sdErrors,
+            // This device writes to a sink that never blocks, so nothing is
+            // ever dropped for want of a draining host — the counters exist
+            // so a host reads a zero rather than an absence (0.4.10+).
+            droppedLogEvents: 0,
+            droppedTxFrames: 0,
           },
-        });
+          // The display loop's liveness (0.4.18+). The mock's UI loop is the
+          // Twin's, which turns over as long as the body is up: a pass every
+          // ~50 ms since boot, the last one a moment ago, never stalled.
+          ui: {
+            passes: Math.floor(uptimeMs / 50),
+            lastPassAgeMs: this.randInt(20, 90),
+            stalled: false,
+          },
+        };
+        this.respond(frame, stats);
         return;
+      }
       case Cmd.ENTER_MAINTENANCE:
         this.maintenance = true;
         this.stopAmbient();
@@ -2661,8 +3152,17 @@ export class MockKinoDevice implements MockDeviceLike {
         const { cam } = decodeJson<{ cam?: CamId }>(frame.payload);
         const camId = cam ?? this.config.shoot.viewfinder;
         if (this.busUnreachable(camId)) {
+          // `noLink`: the capture request never came back. Counted, never
+          // logged — on a V1 body three channels are unwired.
+          this.cams[camId].viewfinder.drops.noLink++;
           this.respondError(frame, 'CAM_OFFLINE', `${camId.toUpperCase()} is offline`);
           return;
+        }
+        {
+          const vf = this.cams[camId].viewfinder;
+          vf.frames++;
+          vf.stamps.push(this.now());
+          if (vf.stamps.length > VIEWFINDER_FPS_WINDOW) vf.stamps.shift();
         }
         const phaseMs = this.now() - this.bootedAt;
         const source = this.frameSource;
@@ -2781,9 +3281,38 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private handleNetwork(frame: Frame, cmd: Cmd) {
     switch (cmd) {
-      case Cmd.NETWORK_LIST:
-        this.respond(frame, { networks: this.networks.map((n) => this.networkView(n)) });
+      case Cmd.NETWORK_LIST: {
+        const req = decodeJson<{ scan?: boolean }>(frame.payload);
+        const networks = this.networks.map((n) => this.networkView(n));
+        if (req.scan !== true) {
+          this.respond(frame, { networks });
+          return;
+        }
+        /* `{ scan: true }` (README D3): one bounded scan, run inline, and the
+         * reply says what it found. The radio is the wifiLost scenario's:
+         * with it armed the scan comes back empty but complete, which is what
+         * a radio that hears nothing reports. */
+        const scanMs = this.randInt(900, 1600);
+        const heard = this.scenarios.wifiLost
+          ? []
+          : [
+              ...this.networks.map((n, i) => ({
+                ssid: n.ssid,
+                bssid: `a4:cf:12:${(0x30 + i).toString(16)}:5e:${(0x10 + i).toString(16)}`,
+                rssi: this.randInt(-70, -44),
+                channel: [1, 6, 11][i % 3],
+                security: n.security,
+                hidden: false,
+              })),
+              { ssid: 'neighbour-2g', bssid: 'c8:3a:35:7f:00:1c', rssi: this.randInt(-88, -76), channel: 11, security: 'wpa2', hidden: false },
+              { ssid: '', bssid: '3c:84:6a:12:9b:40', rssi: this.randInt(-84, -70), channel: 6, security: 'wpa3', hidden: true },
+            ];
+        this.after(Math.min(scanMs, 200), () => {
+          this.log('P4', `wifi scan: ${heard.length} network(s) in ${scanMs} ms`);
+          this.respond(frame, { networks, scanMs, scanComplete: true, available: heard });
+        });
         return;
+      }
       case Cmd.NETWORK_SET: {
         const req = decodeJson<{
           ssid?: string;
@@ -2840,21 +3369,55 @@ export class MockKinoDevice implements MockDeviceLike {
         return;
       }
       case Cmd.NETWORK_STATUS: {
+        const req = decodeJson<{ probe?: boolean }>(frame.payload);
         // KINO Twin §20: wifiLost overrides any saved auto-join network.
         const active = this.scenarios.wifiLost ? null : this.networks.find((n) => n.autoJoin) ?? null;
-        this.respond(
-          frame,
-          active
-            ? {
-                state: 'connected',
-                ssid: active.ssid,
-                ip: '192.168.1.74',
-                rssi: this.randInt(-68, -42),
-                since: this.bootedAt,
-                internet: true,
-              }
-            : { state: 'disconnected', ssid: null, ip: null, rssi: null, since: null, internet: false },
-        );
+        const status: Record<string, unknown> = active
+          ? {
+              state: 'connected',
+              ssid: active.ssid,
+              ip: '192.168.1.74',
+              rssi: this.randInt(-68, -42),
+              since: this.bootedAt,
+              internet: true,
+            }
+          : { state: 'disconnected', ssid: null, ip: null, rssi: null, since: null, internet: false };
+        if (req.probe !== true) {
+          this.respond(frame, status);
+          return;
+        }
+        /* `{ probe: true }` (README D3): a timed DNS lookup of the API host
+         * and one unauthenticated GET /api/healthz through the Roll client,
+         * reported step by step so a failure names the step. The base is the
+         * stored override, else the credential's server, else production. */
+        const base = this.config.network?.apiBase ?? this.rollCredentials?.serverUrl ?? 'https://kino.acronym.sk';
+        const host = base.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+        const probe: Record<string, unknown> = { base, host };
+        if (!active) {
+          probe.detail = 'no address: the radio is not associated';
+          this.respond(frame, { ...status, probe });
+          return;
+        }
+        const dnsMs = this.randInt(18, 60);
+        probe.dnsMs = dnsMs;
+        if (this.scenarios.rollServerUnreachable) {
+          probe.dnsOk = false;
+          probe.dnsRc = 202;
+          probe.detail = 'DNS lookup failed';
+          this.respond(frame, { ...status, probe });
+          return;
+        }
+        const httpMs = this.randInt(120, 420);
+        Object.assign(probe, {
+          dnsOk: true,
+          family: 'inet',
+          httpMs,
+          httpStatus: 200,
+          totalMs: dnsMs + httpMs,
+          tls: base.startsWith('https://'),
+          body: '{"ok":true}',
+        });
+        this.after(Math.min(dnsMs + httpMs, 200), () => this.respond(frame, { ...status, probe }));
         return;
       }
       default:
@@ -2864,9 +3427,23 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private rollView() {
     // KINO Twin §18 camera-side network state, orthogonal to whether a roll
-    // is currently joined.
+    // is currently joined. `serverState` is the firmware's four-way answer:
+    // `offline` when the radio has no address (nothing could be asked),
+    // `unknown` when nothing has been asked since boot, and otherwise what
+    // the last HTTP exchange found. `serverReachable` is the same fact as a
+    // boolean, false the moment the server stopped answering (0.4.43).
+    const online = !this.scenarios.wifiLost && this.networks.some((n) => n.autoJoin);
+    const asked = this.roll !== null || this.uploads.uploaded > 0 || this.uploads.failed > 0;
+    const serverState: 'offline' | 'reachable' | 'unreachable' | 'unknown' = !online
+      ? 'offline'
+      : this.scenarios.rollServerUnreachable
+        ? 'unreachable'
+        : asked
+          ? 'reachable'
+          : 'unknown';
     const network = {
-      serverReachable: !this.scenarios.rollServerUnreachable,
+      serverReachable: online && !this.scenarios.rollServerUnreachable,
+      serverState,
       tokenStatus: this.scenarios.rollTokenExpired ? ('token-expired' as const) : ('ok' as const),
     };
     if (!this.roll) return { active: false, roll: null, queue: this.uploadQueueReport(), ...network };
@@ -2908,12 +3485,18 @@ export class MockKinoDevice implements MockDeviceLike {
           joinedAt: this.now(),
         };
         this.log('P4', `roll created: ${slug}`);
+        // Firmware answers the full RollView (kdp_net.c `roll_view()`); Studio's
+        // `startRoll` (apps/studio/src/roll/rollOps.ts) still reads the five
+        // roll fields flat off the reply (`RollCreateResponse`). Both, so a
+        // host written against either shape parses this — the flat five are
+        // the same values `roll` carries.
         this.respond(frame, {
           rollId: this.roll.rollId,
           slug: this.roll.slug,
           guestUrl: this.roll.guestUrl,
           name: this.roll.name,
           role: this.roll.role,
+          ...this.rollView(),
         });
         return;
       }
@@ -2966,24 +3549,130 @@ export class MockKinoDevice implements MockDeviceLike {
 
   private uploadQueueReport() {
     const q = this.uploads;
+    // The nine fields `queue_object()` emits (kdp_net.c). `pending` is the
+    // active window and this device's card holds nothing beyond it, so
+    // `cardPending` is 0 with the scan complete; `halted` is the credential,
+    // not the jobs — an expired token stops the queue without failing any of
+    // them; `lastError` is the last thing the server said, or null.
     return {
       pending: q.pending,
       uploading: q.uploading,
       failed: q.failed,
       uploaded: q.uploaded,
+      cardPending: 0,
+      scanComplete: true,
       draining: this.uploadTimer !== null,
+      halted: this.scenarios.rollTokenExpired,
+      lastError: this.scenarios.rollTokenExpired
+        ? 'HTTP 401: device token expired'
+        : this.scenarios.rollServerUnreachable
+          ? 'connect: no route to host'
+          : q.failed > 0
+            ? 'HTTP 503: upload refused'
+            : null,
     };
   }
 
   // ---- async jobs (04 §15) ----
 
   /**
-   * SYNC_BENCH: fire N triggers and report per-camera timing for each. Runs
-   * through the job model because a hundred triggers outlives any request
-   * deadline. Deterministic per trigger index so the stats module downstream
-   * has a stable fixture to test against.
+   * SYNC_BENCH — two shapes, one per kind of profile.
+   *
+   * On every profile that pins a real build (`simulatedFuture: false`) this is
+   * what `handle_sync_bench` does since 0.4.31: one blocking RESPONSE of
+   * `SyncBenchResponse` — per-camera **edge counts**, no skew figures, no job.
+   * `pulses` 1..200 (default 100) and `gapMs` 20..1000 (default 100) are
+   * INVALID_ARGUMENT outside their ranges; a capture in flight is BUSY; a
+   * camera that is not on the bus is simply `watched: false`, because the
+   * bench counts edges on whatever channels have a sync block and there is
+   * no all-four-cameras rule. The run is answered promptly rather than after
+   * the real `pulses × gapMs` (up to ~200 s), scaled down so a suite is not
+   * held for a wall-clock minute; the figures are what a clean run reports.
+   *
+   * Only `d4-sim-full` keeps the older async-job form (per-trigger phase
+   * samples through JOB_PROGRESS / JOB_COMPLETE), which Studio's skew bench
+   * was written against and which no firmware ever spoke. It stays labelled
+   * SIMULATED FUTURE with the rest of that profile.
    */
   private handleSyncBench(frame: Frame) {
+    if (FIRMWARE_PROFILES[this.firmwareProfileId].simulatedFuture) {
+      this.handleSyncBenchJob(frame);
+      return;
+    }
+    const req = decodeJson<SyncBenchRequest & { triggers?: number }>(frame.payload);
+    // `triggers` is the async design's field; firmware never read it, and a
+    // request carrying only that runs the defaults.
+    const pulses = typeof req.pulses === 'number' ? Math.trunc(req.pulses) : 100;
+    const gapMs = typeof req.gapMs === 'number' ? Math.trunc(req.gapMs) : 100;
+    const poll = typeof req.poll === 'boolean' ? req.poll : true;
+    if (pulses < 1 || pulses > SYNC_BENCH_MAX_PULSES) {
+      this.respondError(frame, 'INVALID_ARGUMENT', 'pulses must be 1..200; a longer run is several calls');
+      return;
+    }
+    if (gapMs < SYNC_BENCH_MIN_GAP_MS || gapMs > SYNC_BENCH_MAX_GAP_MS) {
+      this.respondError(frame, 'INVALID_ARGUMENT', 'gapMs must be 20..1000, at least twice the node dead time');
+      return;
+    }
+    if (this.captureBusy()) {
+      this.respondError(frame, 'BUSY', 'A capture is running');
+      return;
+    }
+    // Deterministic per run so a seeded Twin replays the same bench.
+    const rnd = seeded(0x5e1f ^ pulses ^ (gapMs << 8) ^ this.bootCount);
+    const cameras: SyncBenchCameraEdges[] = CAM_IDS.map((cam) => {
+      // A node with no sync block at the start of the run is not watched:
+      // off the bus, or a build too old to timestamp the edge.
+      if (this.busUnreachable(cam) || this.cams[cam].rebootUntil > this.now()) return { cam, watched: false };
+      const seqBefore = Math.floor(rnd() * 4000);
+      // A noisy link (crc-noise) is the one fault that shows up as bounce on
+      // the sync input: extra raw edges the 10 ms dead time rejects.
+      const bounce = this.cams[cam].fault === 'crc-noise' ? Math.floor(rnd() * 3) + 1 : 0;
+      const accepted = pulses;
+      const raw = pulses + bounce;
+      const edges: SyncBenchCameraEdges = {
+        cam,
+        watched: true,
+        inputReady: true,
+        deadtimeUs: SYNC_NODE_DEADTIME_US,
+        seqBefore,
+        seqAfter: seqBefore + accepted,
+        acceptedEdges: accepted,
+        rawEdges: raw,
+        rejectedEdges: raw - accepted,
+        expected: pulses,
+        shortBy: pulses - accepted,
+        extraRaw: raw - pulses,
+      };
+      if (poll) {
+        edges.polledMissed = 0;
+        edges.polledExtra = 0;
+        edges.firstBadPulse = null;
+        edges.edgeMonotonic = true;
+      }
+      edges.clean = accepted === pulses;
+      return edges;
+    });
+    const result: SyncBenchResponse = {
+      ok: true,
+      pulses,
+      gapMs,
+      polled: poll,
+      refusedByCapture: 0,
+      pulseWidthUs: SYNC_PULSE_WIDTH_US,
+      cameras,
+    };
+    // The real run blocks for pulses × gapMs; this one is scaled to a
+    // hundredth of that, capped, so the reply is late enough to be visibly
+    // a run and early enough for a suite.
+    this.after(Math.min(1500, Math.round((pulses * gapMs) / 100)), () => {
+      const watched = cameras.filter((c) => c.watched).length;
+      this.log('P4', `sync bench: ${pulses} pulses at ${gapMs} ms, ${watched} camera(s) watched`);
+      this.respond(frame, result);
+    });
+  }
+
+  /** The `d4-sim-full` job form of SYNC_BENCH — see handleSyncBench. */
+  private handleSyncBenchJob(frame: Frame) {
     const req = decodeJson<{ triggers?: number }>(frame.payload);
     const triggers = Math.min(Math.max(1, Math.floor(req.triggers ?? 20)), 200);
     if (this.anyCamDown() || this.scenarios.cam2Timeout) {
@@ -3434,37 +4123,66 @@ export class MockKinoDevice implements MockDeviceLike {
 
   // ---- self test ----
 
+  /**
+   * SELF_TEST: the six checks `selftest_task` runs, by name and in order
+   * (firmware/p4/main/kdp_server.c) — "P4 heap", "PSRAM", "SD card",
+   * "SD write", "CAM1 link", "CAM1 sensor" — each announced `running` and
+   * then reported with the firmware's own detail strings, the last carrying
+   * `done: true` and the results array. Only what this hardware implements:
+   * no gauge row on a body with no gauge, no flash row on a body with no
+   * emitter, no speaker row because nothing measures one. The count grows
+   * with the milestones, never with the demo.
+   */
   private handleSelfTest(frame: Frame) {
+    if (this.selfTestRunning) {
+      this.respondError(frame, 'BUSY', 'Self test already running');
+      return;
+    }
+    this.selfTestRunning = true;
     this.respond(frame, { started: true });
+    const cam1 = this.cameraInfo('cam1');
     const checks: { name: string; run: () => SelfTestCheck }[] = [
-      { name: 'P4 heap', run: () => ({ name: 'P4 heap', status: 'pass', detail: `${this.randInt(148, 176)} KB free` }) },
-      { name: 'PSRAM', run: () => ({ name: 'PSRAM', status: 'pass', detail: `${this.randInt(11, 14)} MB free` }) },
-      { name: 'Touch panel', run: () => ({ name: 'Touch panel', status: 'pass', detail: 'controller responds' }) },
+      {
+        name: 'P4 heap',
+        run: () => {
+          const kb = this.randInt(148, 176);
+          return { name: 'P4 heap', status: kb > 32 ? 'pass' : 'fail', detail: `${kb} KB free` };
+        },
+      },
+      { name: 'PSRAM', run: () => ({ name: 'PSRAM', status: 'pass', detail: '32 MB' }) },
       {
         name: 'SD card',
-        run: () => this.scenarios.sdMissing
-          ? { name: 'SD card', status: 'fail', detail: 'no card detected' }
-          : this.scenarios.sdFull
-            ? { name: 'SD card', status: 'fail', detail: 'card full — 0 MB free' }
-            : { name: 'SD card', status: 'pass', detail: `write test ok, ${(this.sdFreeMB / 1024).toFixed(1)} GB free` },
+        run: () =>
+          this.scenarios.sdMissing
+            ? { name: 'SD card', status: 'fail', detail: 'no card' }
+            : { name: 'SD card', status: 'pass', detail: `${this.scenarios.sdFull ? 0 : this.sdFreeMB} MB free` },
       },
       {
-        name: 'Battery gauge',
-        run: () => this.scenarios.lowBattery
-          ? { name: 'Battery gauge', status: 'fail', detail: '3.42 V — charge before a long session' }
-          : { name: 'Battery gauge', status: 'pass', detail: `${this.batteryV.toFixed(2)} V` },
-      },
-      { name: 'Flash LED', run: () => ({ name: 'Flash LED', status: 'pass', detail: 'driver ok (not fired)' }) },
-      { name: 'Speaker', run: () => ({ name: 'Speaker', status: 'pass', detail: 'amp enabled' }) },
-      ...CAM_IDS.map((id) => ({
-        name: `${id.toUpperCase()} capture`,
-        run: (): SelfTestCheck => {
-          if (this.busUnreachable(id)) return { name: `${id.toUpperCase()} capture`, status: 'fail', detail: 'no response on camera bus' };
-          if (id === 'cam2' && this.scenarios.cam2Timeout) return { name: 'CAM2 capture', status: 'fail', detail: 'frame timeout after 900 ms' };
-          if (this.cams[id].fault === 'sensor-missing') return { name: `${id.toUpperCase()} capture`, status: 'fail', detail: 'sensor not detected' };
-          return { name: `${id.toUpperCase()} capture`, status: 'pass', detail: `OV3660, jpeg ${this.randInt(300, 560)} KB` };
+        name: 'SD write',
+        run: () => {
+          if (this.scenarios.sdMissing) return { name: 'SD write', status: 'skip', detail: 'no card' };
+          if (this.captureBusy()) return { name: 'SD write', status: 'skip', detail: 'capture busy' };
+          if (this.scenarios.sdFull) return { name: 'SD write', status: 'fail', detail: 'WRITE_FAILED' };
+          this.storageWriteTest = 'pass';
+          return { name: 'SD write', status: 'pass', detail: '64 KB verified' };
         },
-      })),
+      },
+      {
+        name: 'CAM1 link',
+        run: () =>
+          cam1.online
+            ? { name: 'CAM1 link', status: 'pass', detail: `answered in ${Math.max(1, Math.round(cam1.latencyMs))} ms` }
+            : { name: 'CAM1 link', status: 'fail', detail: 'no answer at 921600 baud' },
+      },
+      {
+        name: 'CAM1 sensor',
+        run: () =>
+          !cam1.online
+            ? { name: 'CAM1 sensor', status: 'skip', detail: 'link down' }
+            : cam1.sensorDetected
+              ? { name: 'CAM1 sensor', status: 'pass', detail: `${cam1.sensor} (${cam1.sensor === 'OV5640' ? '0x5640' : '0x3660'})` }
+              : { name: 'CAM1 sensor', status: 'fail', detail: 'node answers, no sensor' },
+      },
     ];
     const results: SelfTestCheck[] = [];
     let t = 250;
@@ -3473,14 +4191,22 @@ export class MockKinoDevice implements MockDeviceLike {
       this.after(t + 220, () => {
         const result = check.run();
         results.push(result);
-        this.sendEvent(Evt.SELF_TEST, { index: i, total: checks.length, name: result.name, status: result.status, detail: result.detail });
+        const last = i === checks.length - 1;
+        this.sendEvent(Evt.SELF_TEST, {
+          index: i,
+          total: checks.length,
+          name: result.name,
+          status: result.status,
+          detail: result.detail,
+          ...(last ? { done: true, results } : {}),
+        });
+        if (last) {
+          const passed = results.filter((r) => r.status === 'pass').length;
+          this.log('P4', `self-test done — ${passed}/${checks.length} pass`);
+          this.selfTestRunning = false;
+        }
       });
       t += this.randInt(280, 420);
-    });
-    this.after(t + 300, () => {
-      const failed = results.filter((r) => r.status === 'fail').length;
-      this.log('P4', failed === 0 ? 'self test passed' : `self test: ${failed} check(s) failed`);
-      this.sendEvent(Evt.SELF_TEST, { index: checks.length, total: checks.length, name: 'done', status: failed ? 'fail' : 'pass', done: true, results });
     });
   }
 
@@ -3595,6 +4321,17 @@ export class MockKinoDevice implements MockDeviceLike {
         }
         if (s.received < s.info.sizeBytes) {
           this.respondError(frame, 'SHORT_SOUND', `Received ${s.received} of ${s.info.sizeBytes} bytes`);
+          return;
+        }
+        /* The format check is here and not at SOUND_BEGIN because BEGIN sees
+         * only a size and a name (kdp_sounds.c `handle_end`, `wav_probe`).
+         * 16 kHz mono 16-bit PCM or BAD_FORMAT with the reason, and the
+         * session is gone — the clip never becomes a .WAV the shutter would
+         * later try to play as samples. */
+        const why = wavProbeWhy(s.data);
+        if (why !== null) {
+          this.soundSession = null;
+          this.respondError(frame, 'BAD_FORMAT', why);
           return;
         }
         this.soundSession = null;
@@ -3802,6 +4539,9 @@ export class MockKinoDevice implements MockDeviceLike {
     this.stopUploadDrain();
     this.resetReason = reason;
     this.bootedAt = this.now() + 2500;
+    this.lastActivityAt = this.bootedAt;
+    this.captureBusyUntil = 0;
+    this.selfTestRunning = false;
     this.bootBlockedUntil = this.now() + 2500;
     this.maintenance = false;
     this.fwStates.p4 = { state: 'idle' };
@@ -3811,6 +4551,54 @@ export class MockKinoDevice implements MockDeviceLike {
     this.forceCloseCb = null;
     closeCb?.();
   }
+}
+
+/**
+ * The header check `wav_probe()` makes (firmware/p4/main/wav_probe.c), with
+ * its refusal strings: RIFF/WAVE, a `fmt ` chunk saying PCM, 16-bit, mono, at
+ * SOUND_SAMPLE_RATE, and a `data` chunk. Null when the clip is playable.
+ * Chunks are walked word-aligned and every read is bounded by the buffer,
+ * never by the sizes the file declares.
+ */
+function wavProbeWhy(head: Uint8Array): string | null {
+  const tag = (at: number, four: string) =>
+    head.length >= at + 4 && String.fromCharCode(head[at], head[at + 1], head[at + 2], head[at + 3]) === four;
+  const rd16 = (at: number) => head[at] | (head[at + 1] << 8);
+  const rd32 = (at: number) => (head[at] | (head[at + 1] << 8) | (head[at + 2] << 16) | (head[at + 3] << 24)) >>> 0;
+  if (head.length < 12 || !tag(0, 'RIFF') || !tag(8, 'WAVE')) return 'not a RIFF/WAVE file';
+  let haveFmt = false;
+  let haveData = false;
+  let format = 0;
+  let channels = 0;
+  let rate = 0;
+  let bits = 0;
+  let pos = 12;
+  while (pos + 8 <= head.length) {
+    const size = rd32(pos + 4);
+    const body = pos + 8;
+    const avail = head.length - body;
+    if (tag(pos, 'fmt ')) {
+      if (size < 16 || avail < 16) return 'header ends inside the fmt chunk';
+      format = rd16(body);
+      channels = rd16(body + 2);
+      rate = rd32(body + 4);
+      bits = rd16(body + 14);
+      haveFmt = true;
+    } else if (tag(pos, 'data')) {
+      haveData = true;
+      break;
+    }
+    const step = size + (size & 1);
+    if (step > avail) break;
+    pos = body + step;
+  }
+  if (!haveFmt) return 'no fmt chunk';
+  if (format !== 1) return `not PCM (format ${format})`;
+  if (bits !== 16) return 'not 16-bit PCM';
+  if (channels !== 1) return 'not mono';
+  if (rate !== SOUND_SAMPLE_RATE) return `sample rate is ${rate} Hz, need ${SOUND_SAMPLE_RATE}`;
+  if (!haveData) return 'no data chunk';
+  return null;
 }
 
 function deepMerge<T>(base: T, patch: Partial<T>): T {

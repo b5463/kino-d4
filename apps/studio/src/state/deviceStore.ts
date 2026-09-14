@@ -5,6 +5,7 @@ import type {
   DeviceLimits,
   CameraInfo,
   DeviceInfo,
+  GetModesResponse,
   KinoConfig,
   PowerStatus,
   RuntimeStats,
@@ -68,6 +69,12 @@ interface DeviceState {
    */
   network: NetworkStatus | null;
   roll: RollView | null;
+  /**
+   * GET_MODES: what SET_MODE accepts and whether each mode can be shot now.
+   * Null when the firmware NACKed or never answered — the Shoot page then
+   * falls back to the two modes every body has, none marked unavailable.
+   */
+  modes: GetModesResponse | null;
   config: KinoConfig | null;
   factoryRecipes: Recipe[];
   customRecipes: Recipe[];
@@ -99,6 +106,7 @@ const initial: DeviceState = {
   storage: null,
   network: null,
   roll: null,
+  modes: null,
   config: null,
   factoryRecipes: [],
   customRecipes: [],

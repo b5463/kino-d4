@@ -17,6 +17,7 @@ import type {
   FwEndResponse,
   FwQueryResponse,
   FwStatusResponse,
+  GetModesResponse,
   HelloResponse,
   KinoConfig,
   LogEntry,
@@ -132,6 +133,15 @@ export class KinoDevice {
 
   setMode(mode: ShootMode) {
     return this.client.request(Cmd.SET_MODE, { mode });
+  }
+
+  /**
+   * GET_MODES (0x20): which modes SET_MODE will accept and whether each can be
+   * shot right now, in the camera's own words. The mode cards render this
+   * instead of assuming the whole `ShootMode` union is available.
+   */
+  getModes() {
+    return this.client.request<GetModesResponse>(Cmd.GET_MODES);
   }
 
   getRecipes() {

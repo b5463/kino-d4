@@ -12,10 +12,32 @@ import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { Unsupported } from '../../components/Unsupported';
 import { useDeviceStore } from '../../state/deviceStore';
+import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { getDevice } from '../../app/session';
 import { benchStamp, putBenchResult, useBenchResult } from '../../state/benchResults';
 import type { BenchEntry } from '../../state/benchResults';
 import { downloadText } from '../../utils/download';
+
+/**
+ * Owner id against `deviceBusy`. Every action here is a measurement on the
+ * link — a storage bench, a soak, link counters — so each takes the same
+ * exclusive claim PhasePanel and the Skew Bench take, with a label per action
+ * for the status bar. Without it a storage bench ran under a burn-in and both
+ * reported numbers measured on a contended UART.
+ */
+const OWNER = 'bench-diag';
+
+type BenchAction = 'selftest' | 'stats' | 'reset' | 'capture' | 'hw' | 'storagebench' | 'soak';
+
+const ACTION_LABEL: Record<BenchAction, string> = {
+  selftest: 'SD SELF TEST',
+  stats: 'LINK STATS',
+  reset: 'LINK STATS RESET',
+  capture: 'CAM1 TEST CAPTURE',
+  hw: 'HW VALIDATION',
+  storagebench: 'STORAGE BENCH',
+  soak: 'CAM1 SOAK',
+};
 
 /**
  * Milestone 1B bench diagnostics (issue #66): storage self-test, CAM1 link
@@ -48,8 +70,9 @@ export function BenchDiagnosticsPanel() {
   const state = useDeviceStore();
   const hasBench = state.capabilities?.benchDiagnostics === true;
 
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<BenchAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const blockedBy = useBlockedBy(OWNER);
   const [selfTest, setSelfTest] = useState<StorageSelfTestResult | null>(null);
   const [stats, setStats] = useState<CameraLinkStats | null>(null);
   const [capture, setCapture] = useState<CameraTestResult | null>(null);
@@ -63,9 +86,15 @@ export function BenchDiagnosticsPanel() {
   const [benchPasses, setBenchPasses] = useState(1);
   const storageBench = useBenchResult<StorageBenchResult>('storage');
 
-  async function run(label: string, action: () => Promise<void>) {
+  async function run(label: BenchAction, action: () => Promise<void>) {
     const dev = getDevice();
     if (!dev || busy) return;
+    // Take the link, or say who has it. A refused claim writes nothing to the
+    // wire — the number it would have measured would have been wrong anyway.
+    if (!claimDevice(OWNER, ACTION_LABEL[label])) {
+      setError(`${blockedBy ?? 'Another operation'} is using the link — ${ACTION_LABEL[label]} not started.`);
+      return;
+    }
     setBusy(label);
     setError(null);
     try {
@@ -73,9 +102,13 @@ export function BenchDiagnosticsPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      releaseDevice(OWNER);
       setBusy(null);
     }
   }
+
+  const blocked = blockedBy !== null;
+  const blockedTitle = blockedBy ? `${blockedBy} is running` : undefined;
 
   async function runSoak() {
     const dev = getDevice();
@@ -87,11 +120,15 @@ export function BenchDiagnosticsPanel() {
       captures: soakCaptures,
       delayMs: soakDelayMs,
     });
-    for await (const p of handle.progress) {
-      setSoakProgress(p.message ?? `${Math.round((p.progress ?? 0) * 100)}%`);
+    try {
+      for await (const p of handle.progress) {
+        setSoakProgress(p.message ?? `${Math.round((p.progress ?? 0) * 100)}%`);
+      }
+      setSoak(await handle.result);
+    } finally {
+      // A failed soak used to leave the button spinning forever.
+      setSoakProgress(null);
     }
-    setSoak(await handle.result);
-    setSoakProgress(null);
   }
 
   function exportSoak() {
@@ -121,24 +158,24 @@ export function BenchDiagnosticsPanel() {
       title="BENCH DIAGNOSTICS"
       actions={
         <>
-          <Button size="sm" busy={busy === 'selftest'} onClick={() => void run('selftest', async () => {
+          <Button size="sm" busy={busy === 'selftest'} disabled={blocked} title={blockedTitle} onClick={() => void run('selftest', async () => {
             setSelfTest(await getDevice()!.storageSelfTest());
           })}>
             SD SELF TEST
           </Button>
-          <Button size="sm" busy={busy === 'stats'} onClick={() => void run('stats', async () => {
+          <Button size="sm" busy={busy === 'stats'} disabled={blocked} title={blockedTitle} onClick={() => void run('stats', async () => {
             setStats(await getDevice()!.cameraLinkStats('cam1'));
           })}>
             LINK STATS
           </Button>
-          <Button size="sm" busy={busy === 'capture'} onClick={() => void run('capture', async () => {
+          <Button size="sm" busy={busy === 'capture'} disabled={blocked} title={blockedTitle} onClick={() => void run('capture', async () => {
             const result = await getDevice()!.cameraTest('cam1');
             setCapture(result.timing ? (result as CameraTestResult) : null);
             if (!result.timing) setError('Firmware answered the pre-1B CAMERA_TEST shape.');
           })}>
             CAM1 TEST CAPTURE
           </Button>
-          <Button size="sm" busy={busy === 'hw'} onClick={() => void run('hw', async () => {
+          <Button size="sm" busy={busy === 'hw'} disabled={blocked} title={blockedTitle} onClick={() => void run('hw', async () => {
             setHw(await getDevice()!.getHwValidation());
           })}>
             HW VALIDATION
@@ -161,7 +198,7 @@ export function BenchDiagnosticsPanel() {
           {stats.rxBytes} B · tx {stats.txFrames} frames · crc {stats.crcErrors} · resyncs{' '}
           {stats.decoderResyncs} · timeouts {stats.timeouts} · dup {stats.duplicateFrames} · node boot{' '}
           {stats.lastNodeBootReason ?? '—'} · last error {stats.lastError ?? '—'}{' '}
-          <Button size="sm" onClick={() => void run('reset', async () => {
+          <Button size="sm" busy={busy === 'reset'} disabled={blocked} title={blockedTitle} onClick={() => void run('reset', async () => {
             await getDevice()!.resetCameraLinkStats('cam1');
             setStats(await getDevice()!.cameraLinkStats('cam1'));
           })}>
@@ -218,7 +255,7 @@ export function BenchDiagnosticsPanel() {
           <input type="number" min={1} max={16} value={benchPasses}
             onChange={(e) => setBenchPasses(Number(e.target.value))} style={{ width: 60 }} />
         </label>
-        <Button size="sm" busy={busy === 'storagebench'} onClick={() => void run('storagebench', async () => {
+        <Button size="sm" busy={busy === 'storagebench'} disabled={blocked} title={blockedTitle} onClick={() => void run('storagebench', async () => {
           const result = await getDevice()!.storageBench({
             sizeMB: benchSizeMB,
             blockKB: benchBlockKB,
@@ -243,7 +280,7 @@ export function BenchDiagnosticsPanel() {
           <input type="number" min={100} max={60000} step={100} value={soakDelayMs}
             onChange={(e) => setSoakDelayMs(Number(e.target.value))} style={{ width: 80 }} />
         </label>
-        <Button size="sm" busy={soakProgress !== null} onClick={() => void run('soak', runSoak)}>
+        <Button size="sm" busy={soakProgress !== null} disabled={blocked} title={blockedTitle} onClick={() => void run('soak', runSoak)}>
           RUN CAM1 SOAK
         </Button>
         {soak ? (

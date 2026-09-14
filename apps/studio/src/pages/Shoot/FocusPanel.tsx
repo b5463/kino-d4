@@ -4,8 +4,8 @@ import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { Led } from '../../components/Led';
 import type { LedState } from '../../components/Led';
-import { useDeviceStore, setDeviceState } from '../../state/deviceStore';
-import { getDevice } from '../../app/session';
+import { useDeviceStore, setDeviceState, supports } from '../../state/deviceStore';
+import { getDevice, refreshConfig } from '../../app/session';
 
 const MODES: { mode: FocusMode; label: string; hint: string }[] = [
   { mode: 'party-auto', label: 'PARTY AUTO', hint: 'Autofocus before each capture, then lock' },
@@ -34,6 +34,11 @@ function focusLed(state: string): { led: LedState; label: string } {
 export function FocusPanel() {
   const cameras = useDeviceStore((s) => s.cameras);
   const config = useDeviceStore((s) => s.config);
+  // Two sub-capabilities of `autofocus`, each absent-is-no: a firmware can
+  // drive AF and still not hold a lock across a capture group, or not take a
+  // VCM position directly. The panel shows what the firmware said it does.
+  const hasFocusLock = useDeviceStore((s) => supports(s, 'focusLock'));
+  const hasManualFocus = useDeviceStore((s) => supports(s, 'manualFocus'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [manualCam, setManualCam] = useState<CamId>('cam1');
@@ -64,18 +69,29 @@ export function FocusPanel() {
   return (
     <Panel title="FOCUS">
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-        {MODES.map((m) => (
-          <Button
-            key={m.mode}
-            size="sm"
-            variant={mode === m.mode ? 'primary' : 'default'}
-            title={m.hint}
-            disabled={busy}
-            onClick={() => void run(() => getDevice()!.focusMode(m.mode))}
-          >
-            {m.label}
-          </Button>
-        ))}
+        {MODES.map((m) => {
+          const unsupported = m.mode === 'manual' && !hasManualFocus;
+          return (
+            <Button
+              key={m.mode}
+              size="sm"
+              variant={mode === m.mode ? 'primary' : 'default'}
+              title={unsupported ? 'This firmware does not take a VCM position directly (manualFocus).' : m.hint}
+              disabled={busy || unsupported}
+              // The mode lives in config (`wiggle.focusMode`), which is what
+              // the highlight and the MANUAL slider key on. Re-reading camera
+              // info alone left the old mode lit after a successful switch.
+              onClick={() =>
+                void run(async () => {
+                  await getDevice()!.focusMode(m.mode);
+                  await refreshConfig();
+                })
+              }
+            >
+              {m.label}
+            </Button>
+          );
+        })}
       </div>
 
       <table className="table" style={{ marginBottom: 8 }}>
@@ -113,24 +129,30 @@ export function FocusPanel() {
             nothing here could ask it to: `focusLock` had no caller and there
             was no unlock sender at all, so a lens stuck on the wrong subject
             could only be freed by changing mode. */}
-        <Button
-          size="sm"
-          disabled={busy || afCams.length === 0}
-          variant={anyLocked ? 'primary' : 'default'}
-          title={
-            anyLocked
-              ? 'Release the focus lock so the next capture can refocus'
-              : 'Hold the current lens positions for the capture group'
-          }
-          onClick={() => void run(() => (anyLocked ? getDevice()!.focusUnlock() : getDevice()!.focusLock(true)))}
-        >
-          {anyLocked ? 'RELEASE FOCUS' : 'HOLD FOCUS'}
-        </Button>
+        {hasFocusLock ? (
+          <Button
+            size="sm"
+            disabled={busy || afCams.length === 0}
+            variant={anyLocked ? 'primary' : 'default'}
+            title={
+              anyLocked
+                ? 'Release the focus lock so the next capture can refocus'
+                : 'Hold the current lens positions for the capture group'
+            }
+            onClick={() => void run(() => (anyLocked ? getDevice()!.focusUnlock() : getDevice()!.focusLock(true)))}
+          >
+            {anyLocked ? 'RELEASE FOCUS' : 'HOLD FOCUS'}
+          </Button>
+        ) : (
+          <span className="dim" title="This firmware does not hold a focus lock across a capture group (focusLock).">
+            NO FOCUS LOCK ON THIS FIRMWARE
+          </span>
+        )}
         <Button size="sm" disabled={busy} onClick={() => void run(() => getDevice()!.focusStoreFixed())}
           title="Persist the current locked positions as the PARTY FIXED calibration">
           STORE AS PARTY FIXED
         </Button>
-        {mode === 'manual' ? (
+        {mode === 'manual' && hasManualFocus ? (
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <select value={manualCam} disabled={busy} onChange={(e) => setManualCam(e.target.value as CamId)}>
               {afCams.map((cam) => (

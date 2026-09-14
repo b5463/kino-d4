@@ -8,10 +8,11 @@ import { useDeviceStore, supports } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { FocusPanel } from './FocusPanel';
 import { Unsupported } from '../../components/Unsupported';
+import { FlashNotFittedNote } from '../../components/FlashNote';
 import { useDraft } from '../../hooks/useDraft';
-import { applyConfigChecked, getDevice, refreshConfig, refreshDeviceInfo } from '../../app/session';
-import type { CamId, ShootConfig, ShootMode } from '@kino/kdp';
-import { BUILTIN_SHUTTER_SOUNDS } from '@kino/kdp';
+import { applyConfigChecked, getDevice, refreshConfig, refreshDeviceInfo, refreshModes } from '../../app/session';
+import type { CamId, ModeOption, ShootConfig, ShootMode } from '@kino/kdp';
+import { BUILTIN_SHUTTER_SOUNDS, KinoUnsupportedError } from '@kino/kdp';
 import type { BuiltinSoundId } from '../../utils/soundFx';
 import { playBuiltin, playWav } from '../../utils/soundFx';
 import { readSound } from '../../device/sounds';
@@ -32,11 +33,31 @@ import { CustomSoundsPanel } from './CustomSoundsPanel';
 // the wire.
 const VIEWFINDER_OWNER = 'viewfinder';
 
+/**
+ * The two modes every body has, for a firmware that does not answer
+ * GET_MODES. Neither is marked unavailable: absence of the command is not a
+ * statement about the card or the cameras.
+ */
+const DEFAULT_MODES: ModeOption[] = [
+  { id: 'wiggle', name: 'Wiggle', available: true, unavailableReason: null },
+  { id: 'quad', name: 'Quad', available: true, unavailableReason: null },
+];
+
+const MODE_DESCRIPTION: Record<ShootMode, string> = {
+  wiggle: 'Same settings on all four cameras. Playback 1→2→3→4→3→2.',
+  quad: 'Each camera uses its own look and exposure. One shutter press, four different photos.',
+};
+
 function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
+  const firmwareLabel = useDeviceStore((s) => s.firmwareLabel);
   const [running, setRunning] = useState(false);
   const [cam, setCam] = useState<CamId>(defaultCam);
   const [fpsActual, setFpsActual] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  // The firmware NACKed CAMERA_PREVIEW UNSUPPORTED_COMMAND. That is an answer
+  // for the whole session, not a frame to retry in 800 ms: the loop stops and
+  // the panel says so.
+  const [unsupported, setUnsupported] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const urlRef = useRef<string | null>(null);
   const blocked = useBlockedBy(VIEWFINDER_OWNER);
@@ -76,7 +97,14 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
           }
           setErr(null);
         } catch (e) {
-          if (alive) setErr(e instanceof Error ? e.message : String(e));
+          if (!alive) break;
+          if (e instanceof KinoUnsupportedError) {
+            setUnsupported(true);
+            setErr(null);
+            setRunning(false);
+            break;
+          }
+          setErr(e instanceof Error ? e.message : String(e));
           await new Promise((r) => setTimeout(r, 800));
         }
         await new Promise((r) => setTimeout(r, 180));
@@ -98,14 +126,27 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
         <Button
           variant={running ? 'default' : 'primary'}
           size="sm"
-          disabled={!running && blocked !== null}
-          title={!running && blocked ? `${blocked} is using the link` : undefined}
+          disabled={unsupported || (!running && blocked !== null)}
+          title={
+            unsupported
+              ? 'This firmware has no host viewfinder'
+              : !running && blocked
+                ? `${blocked} is using the link`
+                : undefined
+          }
           onClick={() => setRunning(!running)}
         >
           {running ? 'STOP' : 'START'}
         </Button>
       }
     >
+      {unsupported ? (
+        <Unsupported
+          feature="Viewfinder"
+          firmware={firmwareLabel}
+          note="This firmware has no host viewfinder (CAMERA_PREVIEW). The camera's own screen still shows BODY VIEWFINDER below."
+        />
+      ) : null}
       <div className="well well--dark" style={{ padding: 6, display: 'flex', justifyContent: 'center', minHeight: 180 }}>
         {running ? (
           <img ref={imgRef} alt={`Live view from ${cam.toUpperCase()}`} style={{ maxWidth: '100%', display: 'block' }} />
@@ -147,6 +188,7 @@ export function ShootPage() {
     label: 'Shoot',
   });
   const [modeBusy, setModeBusy] = useState(false);
+  const [modeError, setModeError] = useState<string | null>(null);
   const [playBusy, setPlayBusy] = useState(false);
 
   // M1B firmware NACKs GET_CONFIG: the capability report loaded and config
@@ -210,13 +252,22 @@ export function ShootPage() {
     const dev = getDevice();
     if (!dev) return;
     setModeBusy(true);
+    setModeError(null);
     try {
       await dev.setMode(mode);
-      await Promise.all([refreshConfig(), refreshDeviceInfo()]);
+      await Promise.all([refreshConfig(), refreshDeviceInfo(), refreshModes()]);
+    } catch (err) {
+      // Called through `void`: a refused SET_MODE or a timed-out read-back
+      // used to be an unhandled rejection and a card that never lit.
+      setModeError(err instanceof Error ? err.message : String(err));
     } finally {
       setModeBusy(false);
     }
   };
+
+  // The camera's list, or the two every body has when it does not answer
+  // GET_MODES. Availability and its reason are the camera's words.
+  const modeOptions: ModeOption[] = state.modes?.modes?.length ? state.modes.modes : DEFAULT_MODES;
 
   // Fenced by the exclusive link claim and read back — see applyConfigChecked.
   const apply = async () => {
@@ -224,6 +275,10 @@ export function ShootPage() {
     rebase(stored.shoot);
     return { refused };
   };
+
+  // D4-V1 keeps a flash window with no LED behind it (ECN-0003). The policy
+  // still reaches the camera; the note says what it does and does not do.
+  const hasFlashHardware = supports(state, 'flashHardware');
 
   // Rough shots-remaining estimate from free space and current resolution.
   const avgShotKB = (config.wiggle.resolution === '2048x1536' ? 560 : 420) * 4;
@@ -242,37 +297,35 @@ export function ShootPage() {
       </div>
 
       <div className="modeselect" role="group" aria-label="Shooting mode">
-        <button
-          type="button"
-          className="modecard"
-          aria-pressed={config.mode === 'wiggle'}
-          disabled={modeBusy}
-          onClick={() => void setMode('wiggle')}
-        >
-          <div className="modecard-name">
-            <Icon name="wiggle" />
-            WIGGLE
-          </div>
-          <p className="modecard-desc">
-            Same settings on all four cameras. Playback 1→2→3→4→3→2.
-          </p>
-        </button>
-        <button
-          type="button"
-          className="modecard"
-          aria-pressed={config.mode === 'quad'}
-          disabled={modeBusy}
-          onClick={() => void setMode('quad')}
-        >
-          <div className="modecard-name">
-            <Icon name="quad" />
-            QUAD
-          </div>
-          <p className="modecard-desc">
-            Each camera uses its own look and exposure. One shutter press, four different photos.
-          </p>
-        </button>
+        {modeOptions.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            className="modecard"
+            aria-pressed={config.mode === m.id}
+            // The stored selection may be a mode the camera cannot shoot right
+            // now (no card, no camera node); the card stays lit and disabled,
+            // and the reason is printed under it.
+            disabled={modeBusy || !m.available}
+            aria-disabled={!m.available || undefined}
+            title={m.available ? undefined : (m.unavailableReason ?? 'Not available now')}
+            data-available={m.available ? 'true' : 'false'}
+            onClick={() => void setMode(m.id)}
+          >
+            <div className="modecard-name">
+              <Icon name={m.id === 'quad' ? 'quad' : 'wiggle'} />
+              {m.name.toUpperCase()}
+            </div>
+            <p className="modecard-desc">{MODE_DESCRIPTION[m.id] ?? ''}</p>
+            {!m.available ? (
+              <p className="modecard-desc warn">
+                NOT AVAILABLE NOW — {m.unavailableReason ?? 'the camera gave no reason'}
+              </p>
+            ) : null}
+          </button>
+        ))}
       </div>
+      {modeError ? <p className="notice notice--err">{modeError}</p> : null}
 
       <ViewfinderPanel defaultCam={config.shoot.viewfinder} />
 
@@ -288,6 +341,7 @@ export function ShootPage() {
           hint="Top level. OFF here means nothing fires in either mode. AUTO fires when the meter says the scene is dark."
           onChange={(v) => patch((d) => ({ ...d, flashMode: v as ShootConfig['flashMode'] }))}
         />
+        {!hasFlashHardware ? <FlashNotFittedNote /> : null}
         <SegField
           label="BODY VIEWFINDER"
           value={draft.viewfinder}

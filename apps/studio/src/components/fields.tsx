@@ -409,6 +409,7 @@ export function TextField({
   maxLength,
   placeholder,
   disabled,
+  hint,
 }: {
   label: string;
   value: string;
@@ -416,10 +417,11 @@ export function TextField({
   maxLength?: number;
   placeholder?: string;
   disabled?: boolean;
+  hint?: string;
 }) {
   const id = useId();
   return (
-    <FieldRow label={label} htmlFor={id}>
+    <FieldRow label={label} htmlFor={id} hint={hint}>
       <input
         id={id}
         type="text"

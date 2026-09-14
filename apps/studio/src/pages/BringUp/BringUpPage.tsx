@@ -178,11 +178,12 @@ export function BringUpPage() {
 
       {notice ? <p className="notice">{notice}</p> : null}
       <p className="notice notice--warn">
-        First-power checklist from the V1 hardware spec. Do not connect the LiPo or solder the
-        provisional GPIO map until the relevant section passes. RUN buttons need a connected camera.
+        First-power checklist for the KINO_FIELD_BODY 0.1.4 build: a USB-C powered fixture with no
+        pack bay and no built-in flash. Do not put 5 V on the JP1 harness or solder the provisional
+        GPIO map until the relevant section passes. RUN buttons need a connected camera.
       </p>
       <p className="notice">
-        Sections past the battery path cover the printed body, the closed-body numbers V2 is
+        Sections past USB-C power cover the printed body, the closed-body numbers V2 is
         designed from, the effect itself and field reliability. Where a check has a value box,
         fill it in: most of those measurements cannot be taken again once the build is apart, and
         the device-side ones do not survive a power cycle. EXPORT RECORD carries them with the
@@ -291,7 +292,7 @@ export function BringUpPage() {
           aria-label="Bring-up notes"
           style={{ width: '100%' }}
           value={state.notes}
-          placeholder="battery polarity, BMS pads, IDC pin 1 orientation, measured currents…"
+          placeholder="which USB-C port is which, IDC pin 1 orientation, supply used, measured currents…"
           onChange={(e) => setNotes(e.target.value)}
         />
       </Panel>

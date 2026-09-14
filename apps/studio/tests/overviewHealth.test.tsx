@@ -46,9 +46,35 @@ function rows(patch: Partial<SupplyInput>): HealthRow[] {
     roll: null,
     hasNetwork: false,
     hasRoll: false,
+    hasFlashHardware: true,
     ...patch,
   });
 }
+
+describe('FLASH row', () => {
+  it('says CONTROL AVAILABLE when the firmware has the window and the body has the emitter', () => {
+    expect(row(rows({}), 'FLASH')).toEqual({ name: 'FLASH', state: 'ok', label: 'CONTROL AVAILABLE' });
+  });
+
+  it('says NOT FITTED on a body with no emitter, whatever flashControl says', () => {
+    // D4-V1 (ECN-0003): `flashControl: true` — the firmware keeps a flash
+    // window — with `flashHardware: false`. CONTROL AVAILABLE on that body is a
+    // claim about an LED that is not there.
+    expect(row(rows({ hasFlashHardware: false }), 'FLASH')).toEqual({
+      name: 'FLASH',
+      state: 'off',
+      label: 'NOT FITTED',
+    });
+  });
+
+  it('says NOT AVAILABLE when the firmware has no flash control at all', () => {
+    expect(row(rows({ capabilities: { ...CAPS, flashControl: false } }), 'FLASH').label).toBe('NOT AVAILABLE');
+  });
+
+  it('prints a dash before the capability report has loaded', () => {
+    expect(row(rows({ capabilities: null, hasFlashHardware: false }), 'FLASH').label).toBe('—');
+  });
+});
 
 const row = (list: HealthRow[], name: string): HealthRow => {
   const found = list.find((r) => r.name === name);

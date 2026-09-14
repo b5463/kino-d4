@@ -180,7 +180,7 @@ export const scenarios = {
   lowBattery: descriptor('lowBattery', 'LOW BATTERY', false, 'the pack reports 3.42 V'),
   sdMissing: descriptor('sdMissing', 'SD MISSING', false, 'no card is mounted'),
   legacyFirmware: descriptor('legacyFirmware', 'LEGACY FIRMWARE 0.1.0', false, 'pre-timing firmware without the optional features'),
-  mediaInfoAsShipped: descriptor('mediaInfoAsShipped', 'MEDIA_INFO AS SHIPPED', false, 'MEDIA_INFO omits per-file sha256 and the meta block, like real firmware'),
+  mediaInfoAsShipped: descriptor('mediaInfoAsShipped', 'MEDIA_INFO AS SHIPPED', false, 'MEDIA_INFO omits per-file sha256 and the meta block, like real firmware (ON by default; switch OFF to opt in to digests and meta)'),
   dropFirstHello: descriptor('dropFirstHello', 'DROP FIRST HELLO', true, 'the next HELLO after attach goes unanswered'),
   protocolMismatch: descriptor('protocolMismatch', 'PROTOCOL MISMATCH', false, 'HELLO answers protocol 99'),
   sdFull: descriptor('sdFull', 'SD FULL', false, 'the card reports 0 MB free; captures NACK SD_FULL'),
@@ -191,7 +191,7 @@ export const scenarios = {
   rollTokenExpired: descriptor('rollTokenExpired', 'ROLL TOKEN EXPIRED', false, 'ROLL_STATUS reports a token-expired auth state; uploads stall'),
   flashUnavailable: descriptor('flashUnavailable', 'FLASH UNAVAILABLE', false, 'capture proceeds with the flash skipped'),
   flashOverload: descriptor('flashOverload', 'FLASH OVERLOAD', false, 'the flash test reports a driver fault and a thermal flag'),
-  nodeFwMismatch: descriptor('nodeFwMismatch', 'NODE FW MISMATCH', false, 'CAM4 reports firmware 0.0.9, capabilities note the mismatch'),
+  nodeFwMismatch: descriptor('nodeFwMismatch', 'NODE FW MISMATCH', false, 'CAM4 reports firmware 0.0.9 in GET_DEVICE_INFO and FW_QUERY'),
   vsyncOffsetLarge: descriptor('vsyncOffsetLarge', 'VSYNC OFFSET LARGE', false, "CAM3's VSYNC phase jumps to 31,000 us"),
 
   chargerConnected: descriptor('chargerConnected', 'CHARGER CONNECTED', false, 'a USB charger feeds the pack at 0.6 A'),
@@ -224,6 +224,14 @@ export const SPEC_SCENARIO_KEYS = [
 
 export const SCENARIO_LIST: ScenarioDescriptor[] = Object.values(scenarios);
 
+/**
+ * Every scenario starts off, with one exception: `mediaInfoAsShipped` starts
+ * ON, because "as shipped" is what the reference device is for. No firmware
+ * has ever computed a per-file sha256 or attached `meta` to a capture whose
+ * META.JSON it could not read (contract D20), and a mock that defaulted to
+ * both was a device no host could be tested against. The key keeps its name
+ * and its sense — setting it false is how a suite opts IN to digests.
+ */
 export const DEFAULT_SCENARIOS: ScenarioFlags = Object.fromEntries(
-  SCENARIO_LIST.map((s) => [s.key, false]),
+  SCENARIO_LIST.map((s) => [s.key, s.key === 'mediaInfoAsShipped']),
 ) as unknown as ScenarioFlags;
