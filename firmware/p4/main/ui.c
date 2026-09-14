@@ -47,6 +47,7 @@
 #include "touch.h"
 #include "viewfinder.h"
 #include "ui_font.h"
+#include "ui_motion.h"
 #include "ui_labels.h"
 
 static const char *TAG = "ui";
@@ -323,12 +324,12 @@ static const int SCREEN_TITLE[SCR_COUNT] = {
 
 /* Where Back goes. One level, always, and never to a remembered screen. */
 static const screen_t SCREEN_PARENT[SCR_COUNT] = {
-    [SCR_MENU] = SCR_MENU, [SCR_SHOOT] = SCR_MENU,
-    [SCR_LOOK] = SCR_MENU, [SCR_GALLERY] = SCR_MENU,
-    [SCR_PHOTO] = SCR_GALLERY, [SCR_ROLL] = SCR_MENU, [SCR_SETTINGS] = SCR_MENU,
+    [SCR_MENU] = SCR_SHOOT, [SCR_SHOOT] = SCR_SHOOT,
+    [SCR_LOOK] = SCR_LOOK, [SCR_GALLERY] = SCR_GALLERY,
+    [SCR_PHOTO] = SCR_GALLERY, [SCR_ROLL] = SCR_CONNECTION, [SCR_SETTINGS] = SCR_SETTINGS,
     [SCR_DISPLAY] = SCR_SETTINGS, [SCR_SOUND] = SCR_SETTINGS,
-    [SCR_CONNECTION] = SCR_SETTINGS, [SCR_STORAGE] = SCR_SETTINGS,
-    [SCR_ABOUT] = SCR_SETTINGS, [SCR_POWER] = SCR_MENU,
+    [SCR_CONNECTION] = SCR_CONNECTION, [SCR_STORAGE] = SCR_SETTINGS,
+    [SCR_ABOUT] = SCR_SETTINGS, [SCR_POWER] = SCR_SETTINGS,
 };
 
 /* The six menu tiles, in grid order, and where each one goes. */
@@ -338,6 +339,59 @@ static const screen_t MENU_DEST[6] = {
 static const char *const MENU_LABEL[6] = {
     "SHOOT", "LOOK", "GALLERY", "ROLL", "SETTINGS", "POWER",
 };
+
+/* ------------------------------------------------------------------ */
+/* Modes                                                               */
+/*                                                                     */
+/* The camera is always in one of five modes; there is no home screen   */
+/* to come back to. Moving between them is horizontal - a swipe, or a   */
+/* pick from the mode row the title opens - and the header carries the   */
+/* motion (see hdr_* below). Each mode owns a screen tree; Back walks   */
+/* the tree and stops at the mode's home.                               */
+/* ------------------------------------------------------------------ */
+
+typedef enum { MODE_SHOOT = 0, MODE_ROLL, MODE_FILTER, MODE_CONNECT, MODE_SETUP, MODE_COUNT } kmode_t;
+
+typedef struct {
+  const char *jp;
+  const char *en;
+  screen_t home;
+} mode_def_t;
+
+static const mode_def_t MODES[MODE_COUNT] = {
+    {"撮影", "SHOOT", SCR_SHOOT},     {"再生", "ROLL", SCR_GALLERY},
+    {"色", "FILTER", SCR_LOOK},       {"接続", "CONNECT", SCR_CONNECTION},
+    {"設定", "SETUP", SCR_SETTINGS},
+};
+
+/* A child screen's own name, in both scripts, for the header. */
+static const char *const SCREEN_JP[SCR_COUNT] = {
+    [SCR_MENU] = "", [SCR_SHOOT] = "撮影", [SCR_LOOK] = "色", [SCR_GALLERY] = "再生",
+    [SCR_PHOTO] = "写真", [SCR_ROLL] = "ロール", [SCR_SETTINGS] = "設定", [SCR_DISPLAY] = "表示",
+    [SCR_SOUND] = "音", [SCR_CONNECTION] = "接続", [SCR_STORAGE] = "カード", [SCR_ABOUT] = "情報",
+    [SCR_POWER] = "電源",
+};
+static const char *const SCREEN_EN[SCR_COUNT] = {
+    [SCR_MENU] = "", [SCR_SHOOT] = "SHOOT", [SCR_LOOK] = "FILTER", [SCR_GALLERY] = "ROLL",
+    [SCR_PHOTO] = "PHOTO", [SCR_ROLL] = "KINO ROLL", [SCR_SETTINGS] = "SETUP", [SCR_DISPLAY] = "DISPLAY",
+    [SCR_SOUND] = "SOUND", [SCR_CONNECTION] = "CONNECT", [SCR_STORAGE] = "CARD", [SCR_ABOUT] = "ABOUT",
+    [SCR_POWER] = "POWER",
+};
+
+static kmode_t mode_of(screen_t sc) {
+  switch (sc) {
+    case SCR_GALLERY: case SCR_PHOTO: return MODE_ROLL;
+    case SCR_LOOK: return MODE_FILTER;
+    case SCR_CONNECTION: case SCR_ROLL: return MODE_CONNECT;
+    case SCR_SETTINGS: case SCR_DISPLAY: case SCR_SOUND: case SCR_STORAGE: case SCR_ABOUT: case SCR_POWER:
+      return MODE_SETUP;
+    default: return MODE_SHOOT;
+  }
+}
+
+/* Touch items the shell owns, above every screen's own range. */
+#define IT_HDR 201        /* the title: Back on a child screen, the mode row on a home */
+#define IT_MODE0 210      /* IT_MODE0 + kmode_t: a pick from the mode row */
 
 typedef enum {
   DLG_NONE = 0,
@@ -349,7 +403,7 @@ typedef enum {
 } dialog_t;
 
 static uint16_t *s_cv;
-static screen_t s_screen = SCR_MENU;
+static screen_t s_screen = SCR_SHOOT; /* a camera boots into its finder */
 static int s_focus[SCR_COUNT];
 /* Whether focus is worth DRAWING.
  *
@@ -810,6 +864,10 @@ static void text_fit(char *out, size_t cap, const ui_font_t *f, const char *s, i
 static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t ink) {
   text(f, cx - text_w(f, s) / 2, y, s, ink);
 }
+
+/* The Japanese faces and the transformed display type: needs draw_bits(),
+ * px_set(), mix() and s_cv above. */
+#include "ui_text_jp.h"
 
 /* Uppercase in place, ASCII only.
  *
@@ -1350,34 +1408,233 @@ static void crt_collapse(void) {
 
 _Static_assert(HD_BTN + 10 <= HD_BAR_H, "the header system button does not fit its bar");
 
-static void draw_header(screen_t s) {
-  /* The screen is one window: raised frame, raised bar inside it, caption
-   * plate on the bar. Three surfaces, each one step further forward. */
-  fill(0, 0, UI_W, HEAD_H, W_FACE);
-  bevel_raised(0, 0, UI_W, UI_H);
-  bevel_raised(HD_BAR_X, HD_BAR_Y, HD_BAR_W, HD_BAR_H);
+/* ------------------------------------------------------------------ */
+/* The header: the mode's name, and the motion between modes           */
+/* ------------------------------------------------------------------ */
 
-  grad_h(HD_CAP_X, HD_CAP_Y, HD_CAP_W, HD_CAP_H, W_TITLE_L, W_TITLE_R);
+#define HDR_X 24
+#define HDR_Y 14
+#define HDR_GROUND RGB(0x0e, 0x10, 0x14)
+#define HDR_INK RGB(0xf2, 0xf2, 0xee)
+#define HDR_DIM RGB(0x80, 0x88, 0x94)
+/* How far a title travels on the way in or out. Short: the corner is the
+ * anchor and a word that crosses the whole screen reads as a scroll. */
+#define HDR_TRAVEL 170.f
 
-  /* Back, as a system button. The mark is back_glyph(), which is the same
-   * chevron a row that opens a screen carries, at the scale a 44 px button
-   * wants and pointing the other way - so the two read as one family. */
-  const bool down = s_pressed == IT_BACK;
-  const int d = down ? 1 : 0;
-  button(HD_BTN_X, HD_BTN_Y, HD_BTN, HD_BTN, down);
-  back_glyph(HD_BTN_X + HD_BTN / 2 + d, HD_BTN_Y + HD_BTN / 2 + d, W_TEXT);
-  /* Nothing sets focus to IT_BACK today - touch deliberately does not, and
-   * there are no direction keys on this body - but the button is a focusable
-   * control the moment there are, and a header that cannot show focus is the
-   * one place a d-pad would strand a user. Two comparisons per header. */
-  if (foc(s, IT_BACK)) focus_inset(HD_BTN_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
+typedef struct {
+  kmode_t mode;   /* what the header names now (the incoming one during a move) */
+  kmode_t prev;   /* what it named before the move */
+  bool moving;
+  mo_obj_t in_t, in_s;   /* incoming title and its secondary word */
+  mo_obj_t out_t, out_s; /* outgoing */
+  int64_t last_us;
+} hdr_t;
+static hdr_t s_hdr = {.mode = MODE_SHOOT, .prev = MODE_SHOOT};
 
-  const int t = SCREEN_TITLE[s];
-  if (t >= 0 && t < UI_LABEL_COUNT) {
-    const ui_label_t *l = &UI_LABELS[t];
-    draw_bits(l->bits, l->w, l->h, l->stride, HD_CAP_X + HD_CAP_PAD,
-              HD_CAP_Y + (HD_CAP_H - l->h) / 2, 1, W_SELTEXT);
+/* The mode row: the five names under the header, opened by tapping the
+ * title on a mode's home. It drops in, the names arrive staggered, and a
+ * pick or a tap outside closes it. */
+#define MROW_Y (HEAD_H)
+#define MROW_H 96
+static bool s_row_open;
+static mo_val_t s_row_drop;         /* 0 closed .. 1 open */
+static mo_obj_t s_row_item[MODE_COUNT];
+static int64_t s_row_last_us;
+
+static void hdr_place_home(mo_obj_t *t, mo_obj_t *sec) {
+  mo_obj_place(t, HDR_X, HDR_Y);
+  mo_obj_place(sec, HDR_X, HDR_Y);
+}
+
+/**
+ * Start the move from `from` to `to`. `dir` is the direction of travel on
+ * screen: +1 when the new mode is to the right (swipe left), -1 the other way.
+ *
+ *   outgoing title    leaves at once, toward -dir, fading
+ *   outgoing word     follows 60 ms later
+ *   incoming title    enters from +dir with momentum, overshoots, settles
+ *   incoming word     60 ms behind it, softer
+ *
+ * A move issued during a move retargets from where things are: the incoming
+ * pair becomes the outgoing pair with its velocity intact.
+ */
+static void hdr_go(kmode_t from, kmode_t to, int dir, int64_t now_us) {
+  if (s_hdr.moving) {
+    s_hdr.out_t = s_hdr.in_t;
+    s_hdr.out_s = s_hdr.in_s;
+  } else {
+    hdr_place_home(&s_hdr.out_t, &s_hdr.out_s);
   }
+  s_hdr.prev = from;
+  s_hdr.mode = to;
+  s_hdr.moving = true;
+  s_hdr.last_us = now_us;
+
+  mo_to(&s_hdr.out_t.x, HDR_X - dir * HDR_TRAVEL);
+  mo_to(&s_hdr.out_t.alpha, 0.f);
+  s_hdr.out_t.delay_ms = 0;
+  mo_obj_go(&s_hdr.out_t, now_us);
+  mo_to(&s_hdr.out_s.x, HDR_X - dir * HDR_TRAVEL * 0.8f);
+  mo_to(&s_hdr.out_s.alpha, 0.f);
+  s_hdr.out_s.delay_ms = 60;
+  mo_obj_go(&s_hdr.out_s, now_us);
+
+  hdr_place_home(&s_hdr.in_t, &s_hdr.in_s);
+  mo_launch(&s_hdr.in_t.x, HDR_X + dir * HDR_TRAVEL, HDR_X, -dir * 0.45f);
+  mo_set(&s_hdr.in_t.alpha, 40.f);
+  mo_to(&s_hdr.in_t.alpha, 255.f);
+  s_hdr.in_t.delay_ms = 0;
+  mo_obj_go(&s_hdr.in_t, now_us);
+  mo_launch(&s_hdr.in_s.x, HDR_X + dir * HDR_TRAVEL * 0.7f, HDR_X, -dir * 0.3f);
+  mo_set(&s_hdr.in_s.alpha, 0.f);
+  mo_to(&s_hdr.in_s.alpha, 255.f);
+  s_hdr.in_s.delay_ms = 70;
+  mo_obj_go(&s_hdr.in_s, now_us);
+}
+
+/** Step the header's objects by the time since the last step. */
+static void hdr_step(int64_t now_us) {
+  if (!s_hdr.moving) return;
+  float dt = (float)(now_us - s_hdr.last_us) / 1000.f;
+  s_hdr.last_us = now_us;
+  bool live = false;
+  live |= mo_obj_step(&s_hdr.out_t, now_us, dt, MO_SNAP);
+  live |= mo_obj_step(&s_hdr.out_s, now_us, dt, MO_SNAP);
+  live |= mo_obj_step(&s_hdr.in_t, now_us, dt, MO_BOUNCE);
+  live |= mo_obj_step(&s_hdr.in_s, now_us, dt, MO_LAZY);
+  if (!live) s_hdr.moving = false;
+}
+
+/** One title: the Japanese word at x2 bold, the Latin word beside its baseline. */
+static void hdr_words(const mo_obj_t *t, const mo_obj_t *sec, const char *jp, const char *en,
+                      uint16_t ink, uint16_t dim, bool over_picture) {
+  const int a_t = (int)t->alpha.v, a_s = (int)sec->alpha.v;
+  if (a_t > 0) {
+    const float x = t->x.v + (float)(jtext_bold_w(jp, 2)) / 2.f, y = t->y.v + 16.f;
+    jtext_fx(x, y, jp, 2.f, 0.f, ink, a_t, over_picture, true);
+  }
+  if (a_s > 0 && en != NULL && en[0]) {
+    const int off = jtext_bold_w(jp, 2) + 12;
+    const float x = sec->x.v + (float)off + (float)jtext_w(en, 1) / 2.f, y = sec->y.v + 24.f;
+    jtext_fx(x, y, en, 1.f, 0.f, dim, a_s, over_picture, false);
+  }
+}
+
+/**
+ * The header for a screen. A home screen shows its mode; a child screen shows
+ * its own name after a small mark that means "up". The band is drawn on the
+ * ground colour unless `over_picture`, when it is type alone with a shadow.
+ */
+static void draw_header_at(screen_t sc, bool over_picture) {
+  const int64_t now = esp_timer_get_time();
+  hdr_step(now);
+  if (!over_picture) fill(0, 0, UI_W, HEAD_H, HDR_GROUND);
+
+  const kmode_t m = mode_of(sc);
+  const bool home = MODES[m].home == sc;
+  if (s_hdr.moving && home) {
+    hdr_words(&s_hdr.out_t, &s_hdr.out_s, MODES[s_hdr.prev].jp, MODES[s_hdr.prev].en, HDR_INK, HDR_DIM,
+              over_picture);
+    hdr_words(&s_hdr.in_t, &s_hdr.in_s, MODES[s_hdr.mode].jp, MODES[s_hdr.mode].en, HDR_INK, HDR_DIM,
+              over_picture);
+    return;
+  }
+  mo_obj_t t, sec;
+  hdr_place_home(&t, &sec);
+  if (home) {
+    hdr_words(&t, &sec, MODES[m].jp, MODES[m].en, HDR_INK, HDR_DIM, over_picture);
+  } else {
+    /* Up-mark, then the child's name. The mode's own name is one tap away,
+     * not a breadcrumb: two words in the corner is a heading, three is a path. */
+    jtext(HDR_X, HDR_Y + 8, "←", 1, HDR_DIM);
+    mo_obj_place(&t, HDR_X + 26, HDR_Y);
+    mo_obj_place(&sec, HDR_X + 26, HDR_Y);
+    hdr_words(&t, &sec, SCREEN_JP[sc], SCREEN_EN[sc], HDR_INK, HDR_DIM, over_picture);
+  }
+}
+
+static void draw_header(screen_t sc) { draw_header_at(sc, false); }
+
+/* ---- the mode row ---- */
+
+static void row_open(int64_t now_us) {
+  s_row_open = true;
+  s_row_last_us = now_us;
+  mo_to(&s_row_drop, 1.f);
+  for (int i = 0; i < MODE_COUNT; i++) {
+    mo_obj_place(&s_row_item[i], 0.f, 10.f);
+    mo_set(&s_row_item[i].alpha, 0.f);
+    mo_to(&s_row_item[i].alpha, 255.f);
+    mo_to(&s_row_item[i].y, 0.f);
+    s_row_item[i].delay_ms = 30 * i;
+    mo_obj_go(&s_row_item[i], now_us);
+  }
+}
+
+static void row_close(void) {
+  s_row_open = false;
+  mo_to(&s_row_drop, 0.f);
+}
+
+static void row_step(int64_t now_us) {
+  float dt = (float)(now_us - s_row_last_us) / 1000.f;
+  s_row_last_us = now_us;
+  mo_spring(&s_row_drop, dt, MO_SETTLE);
+  if (s_row_open)
+    for (int i = 0; i < MODE_COUNT; i++) mo_obj_step(&s_row_item[i], now_us, dt, MO_BOUNCE);
+}
+
+/* Each name's slot: five equal columns across the width. */
+static int row_col_x(int i) { return HDR_X + i * ((UI_W - 2 * HDR_X) / MODE_COUNT); }
+
+static void draw_mode_row(void) {
+  const int64_t now = esp_timer_get_time();
+  row_step(now);
+  const float k = s_row_drop.v;
+  if (k <= 0.01f && !s_row_open) return;
+  const int h = (int)(MROW_H * k);
+  if (h <= 0) return;
+  fill(0, MROW_Y, UI_W, h, HDR_GROUND);
+  fill(0, MROW_Y + h - 1, UI_W, 1, RGB(0x22, 0x26, 0x2c));
+  if (!s_row_open) return;
+  const kmode_t cur = mode_of(s_screen);
+  for (int i = 0; i < MODE_COUNT; i++) {
+    const mo_obj_t *o = &s_row_item[i];
+    const int a = (int)(o->alpha.v * k);
+    if (a <= 0) continue;
+    const int x = row_col_x(i);
+    const float y = MROW_Y + 22.f + o->y.v;
+    const uint16_t ink = i == cur ? HDR_INK : HDR_DIM;
+    jtext_fx(x + jtext_bold_w(MODES[i].jp, 2) / 2.f, y + 16.f, MODES[i].jp, 2.f, 0.f, ink, a, false, true);
+    jtext_fx(x + jtext_w(MODES[i].en, 1) / 2.f, y + 52.f, MODES[i].en, 1.f, 0.f, HDR_DIM, a, false, false);
+  }
+}
+
+/* Which mode a point in the open row is on, or -1. */
+static int row_hit(int x, int y) {
+  if (!s_row_open || y < MROW_Y || y >= MROW_Y + MROW_H) return -1;
+  const int cw = (UI_W - 2 * HDR_X) / MODE_COUNT;
+  for (int i = 0; i < MODE_COUNT; i++)
+    if (x >= row_col_x(i) - 8 && x < row_col_x(i) + cw) return i;
+  return -1;
+}
+
+static void go(screen_t s, int dissolve_ms);
+
+/** Move to mode `to`, with the header carrying the motion. */
+static void mode_go(kmode_t to, int dir) {
+  const kmode_t from = mode_of(s_screen);
+  if (to == from) return;
+  hdr_go(from, to, dir, esp_timer_get_time());
+  go(MODES[to].home, 0);
+}
+
+/** One step left or right along the row of modes; stops at the ends. */
+static void mode_swipe(int dir) {
+  const int cur = (int)mode_of(s_screen);
+  const int next = cur + dir;
+  if (next < 0 || next >= MODE_COUNT) return;
+  mode_go((kmode_t)next, dir);
 }
 
 /**
@@ -1973,77 +2230,22 @@ static void draw_shoot(void) {
              RGB(0x32, 0x38, 0x42));
   }
 
-  /* ---- the way out ---- */
+  /* ---- the name of the mode, over the room ---- */
+  draw_header_at(SCR_SHOOT, true);
 
-  /* A system button, pressed the way every other button on this interface is:
-   * the bevel inverts and the face goes in a pixel, taking the mark and the
-   * word with it. The glyph and the label are centred as one group, so the
-   * plate is padded evenly whatever the face measures the word at. */
-  const bool down = s_pressed == SH_IT_BACK;
-  const int d = down ? 1 : 0;
-  button(SH_BACK_X, SH_BACK_Y, SH_BACK_W, SH_BACK_H, down);
-  {
-    const int gw = 24, gap = 8;
-    const int tw = text_w(&UI_FONT_S, "MENU");
-    const int gx = SH_BACK_X + (SH_BACK_W - (gw + gap + tw)) / 2 + d;
-    back_glyph(gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, W_TEXT);
-    text(&UI_FONT_S, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - UI_FONT_S.line_h) / 2 + d, "MENU",
-         W_TEXT);
-  }
-  if (foc(SCR_SHOOT, SH_IT_BACK))
-    focus_inset(SH_BACK_X, SH_BACK_Y, SH_BACK_W, SH_BACK_H, W_TEXT);
-
-  /* ---- how it will shoot ---- */
-
-  const char *const flash = FLASH_NAMES[flash_index()];
-  /* `live` counts the four panes, so this is nine characters. The buffer is
-   * sized for a full int anyway: the compiler cannot see the bound and
-   * -Werror=format-truncation is right to insist, and a buffer that only fits
-   * the value the code happens to produce is one refactor from a cut string. */
+  /* ---- how it will shoot: one line, bottom left, and nothing else ----
+   *
+   * Mode, look, flash and how many cameras are answering. Half-width type
+   * with a shadow so it reads over any picture, and no bar under it: the
+   * finder is for looking through. */
   char cams[24];
-  snprintf(cams, sizeof cams, "%d/4 LIVE", live);
-
-  /* The bolt labels the flash panel so the word does not have to. It is the
-   * one drawn glyph in the build - the face is ASCII 32..126 and the Windows
-   * 98 archive has no flash asset - and it was drawn for the flash control
-   * that used to sit on this screen. This is where it went. */
-  const int bolt_w = 8, bolt_gap = 8;
-  const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
-  const int w_mode = text_w(&UI_FONT_S, mode) + 2 * SH_PN_PAD;
-  const int w_flash = bolt_w + bolt_gap + text_w(&UI_FONT_S, flash) + 2 * SH_PN_PAD;
-  const int w_cams = text_w(&UI_FONT_S, cams) + 2 * SH_PN_PAD;
-
-  fill(0, SH_BAR_Y, UI_W, SH_BAR_H, W_FACE);
-  /* Raised, unlike the menu's, which sits inside a window frame that supplies
-   * the edge. This screen has no frame - the panes run to all four sides - so
-   * the bar draws its own, and the white top line is what separates it from
-   * the picture rather than a keyline that belongs to neither. */
-  bevel_raised(0, SH_BAR_Y, UI_W, SH_BAR_H);
-
-  int x = 3;
-  x = sh_panel(x, w_mode, mode);
-  {
-    /* The flash panel by hand, because it is the one with a glyph in it. */
-    status_panel(x, SH_PN_Y, w_flash, SH_PN_H);
-    bolt(x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - 14) / 2, 1, W_TEXT);
-    text(&UI_FONT_S, x + SH_PN_PAD + bolt_w + bolt_gap,
-         SH_PN_Y + (SH_PN_H - UI_FONT_S.line_h) / 2, flash, W_TEXT);
-    x += w_flash + SH_PN_GAP;
-  }
-
-  /* The look takes what is left, and the camera count is flush right: one
-   * elastic panel and the rest sized to their contents, which is the split the
-   * menu's status bar uses. A look's name may be 40 characters by the wire
-   * contract, so it is the one reading that can outgrow its panel - and the
-   * elastic panel is the one that can afford to cut it. */
-  const int cams_x = UI_W - 3 - w_cams;
-  const int w_look = cams_x - SH_PN_GAP - x;
-  if (w_look > 2 * SH_PN_PAD + 24) {
-    char look[KDP_RECIPE_ID_MAX + 4];
-    text_fit(look, sizeof look, &UI_FONT_S, shoot_look_name(), w_look - 2 * SH_PN_PAD);
-    sh_panel(x, w_look, look);
-  }
-  sh_panel(cams_x, w_cams, cams);
+  snprintf(cams, sizeof cams, "%d/4", live);
+  char look[KDP_RECIPE_NAME_MAX + 4];
+  snprintf(look, sizeof look, "%s", shoot_look_name());
+  char line[128];
+  snprintf(line, sizeof line, "%s  %s  %s %s  %s", mode_is_quad() ? "QUAD" : "WIGGLE", look,
+           "FLASH", FLASH_NAMES[flash_index()], cams);
+  jtext_fx(HDR_X + jtext_w(line, 1) / 2.f, UI_H - 26.f, line, 1.f, 0.f, HDR_INK, 230, true, false);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3574,8 +3776,8 @@ static void draw_roll(void) {
 /* Settings                                                            */
 /* ------------------------------------------------------------------ */
 
-static const char *const SET_ROWS[5] = {"Display", "Sound", "Connection", "Storage", "About"};
-static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_CONNECTION, SCR_STORAGE,
+static const char *const SET_ROWS[5] = {"Display", "Sound", "Storage", "Power", "About"};
+static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_STORAGE, SCR_POWER,
                                      SCR_ABOUT};
 
 static void draw_settings(void) {
@@ -4677,6 +4879,7 @@ static void draw_screen(void) {
   }
   draw_capture_banner();
   draw_toast();
+  draw_mode_row();
   if (s_dialog != DLG_NONE) draw_dialog();
 }
 
@@ -4706,7 +4909,7 @@ static void go_back(void) {
 static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
-    case SCR_SHOOT: return 1;
+    case SCR_SHOOT: return 0;
     /* The TARGET row is the last band, so WIGGLE simply stops short of it
      * and every index below keeps its meaning in both modes. */
     case SCR_LOOK: return mode_is_quad() ? LK_IT_COUNT : LK_IT_TARGET;
@@ -4744,6 +4947,12 @@ static int hit_dialog(int x, int y) {
 static int hit_test(int x, int y) {
   if (s_dialog != DLG_NONE) return hit_dialog(x, y);
 
+  /* The mode row, when it is open, is the only thing on the screen. */
+  if (s_row_open) {
+    const int m = row_hit(x, y);
+    return m >= 0 ? IT_MODE0 + m : IT_HDR;
+  }
+
   switch (s_screen) {
     case SCR_MENU:
       for (int i = 0; i < 6; i++) {
@@ -4754,18 +4963,12 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_SHOOT:
-      /* The plate, plus 8 px of slop on every side. It was a bare 150x70 box
-       * in the corner, drawn from 0,0 - which was the only honest thing to do
-       * when the marking had no edges, and which meant a third of the target
-       * was over picture with nothing on it. Now the target is the button
-       * with a margin: 132x60 around a 116x44 plate, well over the 44 px
-       * floor, and every part of it looks pressable because it is. */
-      if (in(x, y, SH_BACK_X - 8, SH_BACK_Y - 8, SH_BACK_W + 16, SH_BACK_H + 16))
-        return SH_IT_BACK;
-      return -1;
+      /* The title band is the one target on the finder; everything else is
+       * picture, and a swipe anywhere changes mode. */
+      return y < HEAD_H ? IT_HDR : -1;
 
     case SCR_PHOTO: {
-      if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
+      if (in(x, y, 0, 0, 150, 40)) return IT_HDR;
       /* The same PH_BTN_Y/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
        * not a target: it is drawn dead, and a press that lands on it should do
        * nothing rather than raise a toast about a radio that is not there. */
@@ -4790,7 +4993,7 @@ static int hit_test(int x, int y) {
     if (in(x, y, G_PREV_X - 8, 0, split - (G_PREV_X - 8), HEAD_H)) return G_IT_PREV;
     if (in(x, y, split, 0, UI_W - split, HEAD_H)) return G_IT_NEXT;
   }
-  if (y < HEAD_H) return IT_BACK;
+  if (y < HEAD_H) return IT_HDR;
 
   switch (s_screen) {
     case SCR_LOOK: {
@@ -4965,6 +5168,27 @@ static void activate(int item) {
 
   if (item == IT_BACK) { go_back(); return; }
 
+  /* The shell's own items. A tap in the header on a child screen goes up;
+   * on a mode's home it opens the mode row (and closes it again). A pick
+   * from the row moves - to the left or the right of where we are, so the
+   * titles travel the way the row reads. */
+  if (item >= IT_MODE0 && item < IT_MODE0 + MODE_COUNT) {
+    const kmode_t to = (kmode_t)(item - IT_MODE0);
+    const kmode_t from = mode_of(s_screen);
+    row_close();
+    if (to != from) mode_go(to, to > from ? 1 : -1);
+    else { draw_screen(); gfx_present(); }
+    return;
+  }
+  if (item == IT_HDR) {
+    if (s_row_open) { row_close(); draw_screen(); gfx_present(); return; }
+    if (SCREEN_PARENT[s_screen] != s_screen) { go_back(); return; }
+    row_open(esp_timer_get_time());
+    draw_screen();
+    gfx_present();
+    return;
+  }
+
   switch (s_screen) {
     case SCR_MENU:
       if (item >= 0 && item < 6) {
@@ -4973,9 +5197,6 @@ static void activate(int item) {
       }
       return;
 
-    case SCR_SHOOT:
-      if (item == SH_IT_BACK) { go_back(); return; }
-      break;
 
     case SCR_LOOK:
       if (item < LK_IT_FLASH) {
@@ -5256,6 +5477,7 @@ void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled) {
 
 /* The boot sequence, once: the splash, then the first screen dissolving in. */
 static void ui_boot(void) {
+  mo_seed((uint32_t)esp_timer_get_time() ^ (capture_count() * 2654435761u));
   splash();
 
   for (int i = 0; i < 200 && !icons_ready(); i++) vTaskDelay(pdMS_TO_TICKS(10));
@@ -5291,6 +5513,15 @@ static bool was_asleep = false;
 /* True from the touch that dismissed a held report until that finger lifts,
  * so the dismissal does not also press whatever was underneath it. */
 static bool swallow_touch = false;
+/* The gesture recogniser's carry-over: where the finger landed and when,
+ * where it was last seen, and whether it has travelled. */
+static bool g_prev_down = false;
+static bool g_moved = false;
+static int g_down_x, g_down_y, g_last_x, g_last_y;
+static int64_t g_down_us;
+#define GEST_SLOP 24   /* px of travel before a press becomes a gesture */
+#define GEST_SWIPE 90  /* px of horizontal travel that is a swipe */
+#define GEST_RISE 90   /* px of vertical travel that makes it not one */
 
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
 static uint32_t ui_pass(void) {
@@ -5299,6 +5530,9 @@ static uint32_t ui_pass(void) {
    * that is merely swallowing a wake press. */
   s_ui_pass++;
   s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
+  /* Motion is stepped where it is drawn; this only clears the "anything
+   * still moving" tally the tail reads to pick the next pass delay. */
+  mo_begin_pass();
 
   /* Physical keys first: they were recorded on the buttons task and this
    * is the task that owns the canvas and the compositor. */
@@ -5371,12 +5605,60 @@ static uint32_t ui_pass(void) {
   }
   if (swallow_touch) return 20;
 
+  int lx = 0, ly = 0;
   if (down) {
     /* Touch reports in panel space, so the same quarter turn applies in
      * reverse: touch y is the logical x. */
-    const int lx = ty;
-    const int ly = DISPLAY_H_RES - 1 - tx;
+    lx = ty;
+    ly = DISPLAY_H_RES - 1 - tx;
     region = hit_test(lx, ly);
+  }
+
+  /*
+   * A swipe is a press that travelled. The finger's landing point is kept;
+   * once it has moved more than GEST_SLOP the press underneath is cancelled
+   * (the control un-paints, nothing fires on release) and the lift decides
+   * whether the travel was a horizontal swipe: enough distance, not much
+   * height, not too slow. A swipe changes mode; nothing else on the shell
+   * reads travel yet.
+   */
+  {
+    const int64_t now = esp_timer_get_time();
+    if (down && !g_prev_down) {
+      g_down_x = lx;
+      g_down_y = ly;
+      g_down_us = now;
+      g_moved = false;
+    }
+    if (down && !g_moved) {
+      const int dx = lx - g_down_x, dy = ly - g_down_y;
+      if (dx * dx + dy * dy > GEST_SLOP * GEST_SLOP) {
+        g_moved = true;
+        if (held != -1 || s_pressed != -1) {
+          s_pressed = -1;
+          held = -1;
+          draw_screen();
+          gfx_present();
+        }
+      }
+    }
+    if (down && g_moved) region = -1; /* a travelling finger presses nothing */
+    if (!down && g_prev_down && g_moved) {
+      const int dx = g_last_x - g_down_x, dy = g_last_y - g_down_y;
+      const bool quick = now - g_down_us < 600000;
+      if (quick && (dx > GEST_SWIPE || dx < -GEST_SWIPE) && dy < GEST_RISE && dy > -GEST_RISE &&
+          s_dialog == DLG_NONE) {
+        klog("P4", "swipe %d px in %d ms", dx, (int)((now - g_down_us) / 1000));
+        if (s_row_open) row_close();
+        mode_swipe(dx < 0 ? 1 : -1);
+      }
+      g_moved = false;
+    }
+    if (down) {
+      g_last_x = lx;
+      g_last_y = ly;
+    }
+    g_prev_down = down;
   }
 
   if (down && region != s_pressed) {
@@ -5485,6 +5767,7 @@ static uint32_t ui_pass(void) {
      * toast is exactly what FAVOURITE raises on this screen.
      */
     const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
+    if (mo_any_live()) return MO_FRAME_MS;
     return (busy && !wig_pacing) ? 90 : 20;
   }
 
@@ -5573,8 +5856,16 @@ static uint32_t ui_pass(void) {
     draw_screen();
     gfx_present();
     /* Paced against the link, not the panel: new frames arrive a few times
-     * a second at best. */
-    return 60;
+     * a second at best - unless something on the picture is moving. */
+    return mo_any_live() ? MO_FRAME_MS : 60;
+  }
+  /* An animation in flight owes a frame at the motion cadence; the redraw
+   * that steps it happens on the next pass, from the same place a busy
+   * screen repaints. */
+  if (mo_any_live()) {
+    draw_screen();
+    gfx_present();
+    return MO_FRAME_MS;
   }
   return 20;
 }

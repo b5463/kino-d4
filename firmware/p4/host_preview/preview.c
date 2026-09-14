@@ -82,11 +82,21 @@ void audio_tick(void) {}
 void audio_warning(void) {}
 
 esp_err_t touch_init(void) { return ESP_OK; }
-bool touch_ready(void) { return false; }
+/* The clock (see shim/esp_timer.h) and a finger. Touch reports in panel space,
+ * the way touch.c does, so ui_pass()'s own transposition is exercised. */
+int64_t g_preview_clock_us = 1000000;
+static bool g_touch_down;
+static int g_touch_lx, g_touch_ly;
+/* ui_pass() is now driven by the film scenes, so the parts of the loop that
+ * only it calls need stand-ins: no wake gesture on a preview. */
+bool power_wake_gesture(void) { return false; }
+void power_end_wake_gesture(void) {}
+bool touch_ready(void) { return true; }
 bool touch_get(uint16_t *x, uint16_t *y) {
-  (void)x;
-  (void)y;
-  return false;
+  if (!g_touch_down) return false;
+  if (x) *x = (uint16_t)(UI_H - 1 - g_touch_ly); /* the panel is UI_H wide */
+  if (y) *y = (uint16_t)g_touch_lx;
+  return true;
 }
 uint32_t touch_count(void) { return 0; }
 
@@ -543,9 +553,16 @@ const uint16_t *gallery_frame_pixels(int index) {
   return g_frame[index];
 }
 
+#include <stdarg.h>
+/* The device log, to stderr: the film scenes drive ui_pass() and its touch and
+ * gesture lines are how a frame that shows nothing gets explained. */
 void klog(const char *src, const char *fmt, ...) {
-  (void)src;
-  (void)fmt;
+  va_list ap;
+  va_start(ap, fmt);
+  fprintf(stderr, "K %s: ", src);
+  vfprintf(stderr, fmt, ap);
+  fputc('\n', stderr);
+  va_end(ap);
 }
 
 /* No card on a workstation, so every decode fails and the photograph view
@@ -1285,6 +1302,61 @@ int main(int argc, char **argv) {
   toast("Card busy");
   draw_screen();
   shot("toast_gallery");
+
+  /* ---- the type, as the new shell will set it ---- */
+  fill(0, 0, UI_W, UI_H, RGB(0x0e, 0x10, 0x14));
+  jtext(24, 20, "撮影", 2, RGB(0xf2, 0xf2, 0xee));
+  jtext(24 + jtext_w("撮影", 2) + 12, 20 + 14, "SHOOT", 1, RGB(0x80, 0x88, 0x94));
+  jtext(24, 70, "再生  色  接続  設定", 2, RGB(0x80, 0x88, 0x94));
+  jtext(24, 120, "C02 白黒  1/60  ISO 400  ﾌﾗｯｼｭ AUTO", 1, RGB(0xf2, 0xf2, 0xee));
+  jtext(24, 150, "C02 白黒", 3, RGB(0xf4, 0xc5, 0x42));
+  jtext_fx(560, 120, "撮れた！", 4.f, -7.f, RGB(0xf4, 0xc5, 0x42), 255, true, true);
+  jtext_fx(420, 300, "よし。", 5.5f, 5.f, RGB(0x2f, 0x70, 0xc9), 255, false, true);
+  jtext_fx(600, 400, "4枚同期", 3.f, -4.f, RGB(0xf2, 0xf2, 0xee), 160, true, false);
+  jtext_fx(180, 400, "1 → 2 → 3 → 4", 2.f, 0.f, RGB(0xc8, 0x3a, 0x3a), 255, false, false);
+  shot("type_sample");
+
+  /* ---- film: the shell in motion ----
+   *
+   * ui_pass() driven by hand with a fake finger and a fake clock. Each
+   * frame is the canvas after the pass that ran at that instant, named by
+   * its time, so a transition reads as a strip and a regression in its
+   * timing is a diff. */
+#define FILM(name, at_ms)                                          \
+  do {                                                             \
+    g_preview_clock_us = film_t0 + (int64_t)(at_ms) * 1000;        \
+    (void)ui_pass();                                               \
+    char fn[64];                                                   \
+    snprintf(fn, sizeof fn, "film_%s_%03d", name, (int)(at_ms));   \
+    shot(fn);                                                      \
+  } while (0)
+
+  s_pressed = -1;
+  s_dialog = DLG_NONE;
+  g_stage = CAPTURE_IDLE;
+  s_screen = SCR_SHOOT;
+  int64_t film_t0 = g_preview_clock_us + 1000000;
+  /* A swipe left across the finder: down, six moves, lift, then the header
+   * carrying SHOOT out and ROLL in. */
+  g_touch_down = true; g_touch_lx = 600; g_touch_ly = 300; FILM("swipe", -140);
+  g_touch_lx = 560; FILM("swipe", -120);
+  g_touch_lx = 500; FILM("swipe", -100);
+  g_touch_lx = 430; FILM("swipe", -80);
+  g_touch_lx = 360; FILM("swipe", -60);
+  g_touch_lx = 300; FILM("swipe", -40);
+  g_touch_lx = 250; FILM("swipe", -20);
+  g_touch_down = false; FILM("swipe", 0);
+  FILM("swipe", 16); FILM("swipe", 40); FILM("swipe", 70); FILM("swipe", 100);
+  FILM("swipe", 140); FILM("swipe", 190); FILM("swipe", 250); FILM("swipe", 320); FILM("swipe", 420);
+
+  /* A tap on the title opens the mode row. */
+  s_screen = SCR_GALLERY;
+  film_t0 = g_preview_clock_us + 1000000;
+  g_touch_down = true; g_touch_lx = 60; g_touch_ly = 30; FILM("row", -60);
+  g_touch_down = false; FILM("row", 0);
+  FILM("row", 30); FILM("row", 60); FILM("row", 100); FILM("row", 150); FILM("row", 220); FILM("row", 320);
+  row_close();
+  s_screen = SCR_SHOOT;
 
   if (g_write_failed) {
     fprintf(stderr, "one or more screens were not written\n");

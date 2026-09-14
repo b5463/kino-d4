@@ -133,3 +133,15 @@ path = ["firmware/c6/partitions_eh_cp_ota_4m.csv"]
 precedence = "override"
 SPDX-FileCopyrightText = "2021-2025 Espressif Systems (Shanghai) CO LTD"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The camera's Japanese type. Shinonome (東雲フォント) was released into the
+# public domain by /efont/ in 2001 - the licence text, in Japanese, says
+# every font, document and script in the archive is public domain, and that
+# the listed authors will not exercise the rights Japanese law does not let
+# them waive. The generated header is that artwork, mapped to Unicode and
+# packed; it is not ours to relabel MIT, and it needs no permission from us.
+[[annotations]]
+path = ["firmware/p4/main/ui_font_jp.h"]
+precedence = "override"
+SPDX-FileCopyrightText = "2000-2001 The Electronic Font Open Laboratory (/efont/), Yasuyuki Furukawa and the AUTHORS of the Shinonome font"
+SPDX-License-Identifier = "LicenseRef-Shinonome"

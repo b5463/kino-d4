@@ -119,3 +119,17 @@ with any redistribution, including the packaged `.exe`, which bundles the
 `.woff2` inside its resources.
 
 Source: <https://www.dafont.com/W95FA.font>.
+
+## Shinonome bitmap font (public domain)
+
+`firmware/p4/main/ui_font_jp.h` is Shinonome 16 (東雲フォント), the /efont/
+Electronic Font Open Laboratory's hand-drawn bitmap gothic: JIS X 0208 at
+16×16 and the 8×16 half-width set, mapped to Unicode by
+`tools/mkfont-shinonome.mjs` from the project's own `.bit` sources, pinned by
+commit and digest (`code4fukui/shinonome-font`). The archive's licence places
+every font, document and script in the public domain; where Japanese law does
+not allow a waiver, the authors declare they will not exercise the rights. The
+text is kept as `LICENSES/LicenseRef-Shinonome.txt`. The header is committed
+and ships in every build, including the Twin's, and no permission from this
+repository's MIT grant is needed or given for it.
+

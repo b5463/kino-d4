@@ -184,6 +184,9 @@ export class FirmwareUi {
   private x: Kui | null = null;
   private running = false;
   private passTimer: ReturnType<typeof setTimeout> | null = null;
+  private passRaf: number | null = null;
+  private frameRaf: number | null = null;
+  private frameQueue: QueuedFrame[] = [];
   private frameTimers: ReturnType<typeof setTimeout>[] = [];
   private inPass = false;
   private touch = { down: false, x: 0, y: 0 };
@@ -342,16 +345,20 @@ export class FirmwareUi {
     const now = performance.now();
     x.kui_boot(now);
     const last = this.playFrames(now);
-    this.passTimer = setTimeout(() => void this.runPass(), Math.max(1, last - (performance.now() - now)));
+    this.schedulePass(now + last);
     this.notifyStatus();
   }
 
   /** Take the screen down: the module goes with the boot it belonged to. */
   stop(): void {
-    if (this.passTimer) clearTimeout(this.passTimer);
-    this.passTimer = null;
+    this.cancelPass();
     for (const t of this.frameTimers) clearTimeout(t);
     this.frameTimers = [];
+    if (this.frameRaf !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.frameRaf);
+    this.frameRaf = null;
+    this.frameQueue = [];
+    this.touch = { down: false, x: 0, y: 0 };
+    this.touchSeen = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
     this.restartTimer = null;
     this.unsubscribeTelemetry?.();
@@ -368,9 +375,9 @@ export class FirmwareUi {
     this.unsubscribeStore = null;
   }
 
+  /** A pass as soon as possible: the next animation frame. */
   private kick(): void {
-    if (this.passTimer) clearTimeout(this.passTimer);
-    this.passTimer = setTimeout(() => void this.runPass(), 0);
+    this.schedulePass(0);
   }
 
   private runPass(): void {
@@ -385,10 +392,42 @@ export class FirmwareUi {
       const last = this.playFrames(now);
       const elapsed = x.kui_pass_elapsed_ms();
       const due = Math.max(last, elapsed) + delay;
-      this.passTimer = setTimeout(() => void this.runPass(), Math.max(1, due - (performance.now() - now)));
+      this.schedulePass(now + due);
     } finally {
       this.inPass = false;
     }
+  }
+
+  /**
+   * Run the next pass at `atMs` (performance.now() time), on the first
+   * animation frame that is not before it.
+   *
+   * Animation frames rather than a timer, for two reasons that both matter
+   * to a UI whose character is in its motion. A frame-aligned pass draws
+   * once per refresh and never twice between two refreshes, so a 16 ms
+   * cadence in ui.c is one canvas update per displayed frame. And a browser
+   * throttles timers in a tab it considers hidden to one a second - which
+   * the embedded pane this Twin often runs in counts as - while it keeps
+   * painting animation frames; a timer-driven loop ran the firmware at 1 Hz
+   * there and every gesture looked ten seconds long to it.
+   */
+  private schedulePass(atMs: number): void {
+    this.cancelPass();
+    const tick = () => {
+      this.passRaf = null;
+      if (!this.running) return;
+      if (performance.now() + 1 >= atMs) void this.runPass();
+      else this.passRaf = requestAnimationFrame(tick);
+    };
+    if (typeof requestAnimationFrame === 'function') this.passRaf = requestAnimationFrame(tick);
+    else this.passTimer = setTimeout(() => void this.runPass(), Math.max(1, atMs - performance.now()));
+  }
+
+  private cancelPass(): void {
+    if (this.passTimer) clearTimeout(this.passTimer);
+    this.passTimer = null;
+    if (this.passRaf !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.passRaf);
+    this.passRaf = null;
   }
 
   /**
@@ -410,17 +449,34 @@ export class FirmwareUi {
       const rgba = new Uint8ClampedArray(x.memory.buffer, ptr, DISPLAY_W * DISPLAY_H * 4);
       queue.push({ atMs: at, image: new ImageData(new Uint8ClampedArray(rgba), DISPLAY_W, DISPLAY_H) });
     }
-    for (const frame of queue) {
-      const wait = frame.atMs - (performance.now() - base);
-      const draw = () => {
-        ctx.putImageData(frame.image, 0, 0);
-        for (const cb of this.listeners) cb();
-      };
-      if (wait <= 0) draw();
-      else this.frameTimers.push(setTimeout(draw, wait));
-    }
-    if (this.frameTimers.length > 64) this.frameTimers = this.frameTimers.slice(-32);
+    /* Frames are presented on animation frames too: whatever is due is drawn
+     * at once (the last one wins - a frame that is already late is not worth
+     * a paint of its own), the rest wait for the frame whose time has come. */
+    for (const frame of queue) this.frameQueue.push({ atMs: base + frame.atMs, image: frame.image });
+    this.pumpFrames();
     return last;
+  }
+
+  private pumpFrames(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = performance.now();
+    let latest: QueuedFrame | null = null;
+    while (this.frameQueue.length > 0 && this.frameQueue[0].atMs <= now + 1) latest = this.frameQueue.shift()!;
+    if (latest) {
+      ctx.putImageData(latest.image, 0, 0);
+      for (const cb of this.listeners) cb();
+    }
+    if (this.frameQueue.length === 0) {
+      this.frameRaf = null;
+      return;
+    }
+    if (this.frameRaf === null && typeof requestAnimationFrame === 'function') {
+      this.frameRaf = requestAnimationFrame(() => {
+        this.frameRaf = null;
+        this.pumpFrames();
+      });
+    }
   }
 
   // ---- strings across the boundary ----

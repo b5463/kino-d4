@@ -1,10 +1,8 @@
-// Host shim.
+// The preview's clock is a variable, not the wall: a scene sets it, steps it,
+// and photographs the screen at chosen instants, so a 300 ms transition can
+// be reviewed frame by frame and compared in CI. vTaskDelay advances it too.
 #pragma once
 #include <stdint.h>
-#include <time.h>
 
-static inline int64_t esp_timer_get_time(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
-}
+extern int64_t g_preview_clock_us;
+static inline int64_t esp_timer_get_time(void) { return g_preview_clock_us; }
