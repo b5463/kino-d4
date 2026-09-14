@@ -80,6 +80,8 @@ bool audio_ready(void) { return g_audio_ready; }
 void audio_shutter(void) {}
 void audio_tick(void) {}
 void audio_warning(void) {}
+void audio_sync(void) {}
+void audio_done(void) {}
 
 esp_err_t touch_init(void) { return ESP_OK; }
 /* The clock (see shim/esp_timer.h) and a finger. Touch reports in panel space,
@@ -1444,6 +1446,23 @@ int main(int argc, char **argv) {
   notice_say("同期 OK", RGB(0xf2, 0xf2, 0xee), 1200, true);
   FILM("sync", 0); FILM("sync", 60); FILM("sync", 130); FILM("sync", 200); FILM("sync", 260); FILM("sync", 300);
   FILM("sync", 380); FILM("sync", 500); FILM("sync", 1000); FILM("sync", 1400);
+
+  /* ---- film: the link coming up, then a burst finishing ---- */
+  /* Down first, seen by one pass, so the edge is real. */
+  g_net_state = NET_C6_NOT_ROUTED; g_net_routed = false;
+  g_preview_clock_us += 2000000; (void)ui_pass();
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  g_net_state = NET_IP_READY; g_net_routed = true;
+  FILM("link", 0); FILM("link", 40); FILM("link", 90); FILM("link", 160); FILM("link", 300); FILM("link", 1450);
+  /* Three going out: notice_watch polls the queue at 2 Hz, so give it a beat. */
+  g_queue.pending = 3; g_queue.uploading = 1; g_queue.burst_done = 0;
+  g_preview_clock_us += 2000000; (void)ui_pass();
+  film_t0 = g_preview_clock_us + 1000000;
+  g_preview_clock_us = film_t0;
+  g_queue.pending = 0; g_queue.uploading = 0; g_queue.burst_done = 4; g_queue.uploaded += 4;
+  FILM("xfer", 0); FILM("xfer", 60); FILM("xfer", 130); FILM("xfer", 200); FILM("xfer", 260); FILM("xfer", 300);
+  FILM("xfer", 380); FILM("xfer", 500); FILM("xfer", 1000); FILM("xfer", 1500);
 
   /* ---- film: a preset change on FILTER (tap on the right half) ---- */
   s_screen = SCR_LOOK;

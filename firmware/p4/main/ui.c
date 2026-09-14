@@ -1122,7 +1122,10 @@ typedef struct {
   bool dots;       /* the four-camera prelude: ● ● ● ● gathering into one */
   mo_val_t x;      /* the word's right edge, springing in from off screen */
   int64_t last_us;
+  int cue;         /* NOTICE_CUE_*: the sound that goes with the word */
+  bool cued;       /* it has played */
 } notice_t;
+enum { NOTICE_CUE_NONE = 0, NOTICE_CUE_SYNC, NOTICE_CUE_DONE };
 static notice_t s_notice;
 
 #define NOTICE_RIGHT (UI_W - 24)
@@ -1139,9 +1142,29 @@ static void notice_say(const char *text, uint16_t ink, int dur_ms, bool dots) {
   s_notice.dur_ms = dur_ms;
   s_notice.dots = dots;
   s_notice.last_us = now;
+  s_notice.cue = NOTICE_CUE_NONE;
+  s_notice.cued = false;
   /* From off the right edge, with a push, whatever it was doing before. */
   mo_launch(&s_notice.x, (float)UI_W + jtext_bold_w(text, 2), (float)NOTICE_RIGHT, -0.9f);
   s_mo_live_count++; /* a frame is owed, whichever screen is up */
+}
+
+static void notice_play_cue(void) {
+  s_notice.cued = true;
+  if (s_notice.cue == NOTICE_CUE_SYNC) audio_sync();
+  else if (s_notice.cue == NOTICE_CUE_DONE) audio_done();
+}
+
+/**
+ * Give the notice just said a sound. Designed with the motion, not beside
+ * it: a notice with the four-dot prelude plays its cue on the frame the dots
+ * meet and the word lands (draw_notice), a plain one plays it now, as the
+ * word enters. The sound and the picture are one event either way.
+ */
+static void notice_cue(int cue) {
+  s_notice.cue = cue;
+  s_notice.cued = false;
+  if (!s_notice.dots) notice_play_cue();
 }
 
 /** Draw the notice if there is one; steps its spring. `over_picture` adds the shadow. */
@@ -1169,6 +1192,7 @@ static void draw_notice(bool over_picture) {
     return;
   }
   if (s_notice.dots && ms == NOTICE_DOTS_MS) s_notice.last_us = now;
+  if (s_notice.cue && !s_notice.cued) notice_play_cue(); /* the dots have met */
   mo_spring(&s_notice.x, dt, MO_BOUNCE);
   const int word_ms = (int)ms - (s_notice.dots ? NOTICE_DOTS_MS : 0);
   const int out_ms = 180;
@@ -1193,9 +1217,11 @@ static int s_live_cams = -1;
  */
 static void notice_watch(void) {
   static bool primed;
-  static bool p_mounted, p_usb, p_low;
+  static bool p_mounted, p_usb, p_low, p_online, p_sending;
   static net_state_t p_net;
   static int p_live;
+  static int64_t q_last_us;
+  static upload_queue_report_t q; /* polled at 2 Hz: it takes the queue's lock */
 
   storage_status_t sd;
   storage_get_status(&sd);
@@ -1204,6 +1230,15 @@ static void notice_watch(void) {
   net_status_t net;
   net_link_status(&net, esp_timer_get_time() / 1000);
   const bool low = sd.mounted && sd.free_bytes < 300ull * 1024 * 1024;
+  const bool online = net_link_can_upload(&net);
+  const int64_t now = esp_timer_get_time();
+  if (!primed || now - q_last_us >= 500000) {
+    upload_queue_status(&q);
+    q_last_us = now;
+  }
+  const int waiting = q.pending + q.card_pending;
+  const bool sending = online && q.server_state != UPLOAD_SERVER_UNREACHABLE && !q.halted &&
+                       (waiting > 0 || q.uploading > 0);
 
   if (!primed) {
     primed = true;
@@ -1212,6 +1247,8 @@ static void notice_watch(void) {
     p_net = net.state;
     p_low = low;
     p_live = s_live_cams;
+    p_online = online;
+    p_sending = sending;
     return;
   }
   if (sd.mounted != p_mounted) {
@@ -1222,17 +1259,36 @@ static void notice_watch(void) {
     notice_say(ps.usb_attached ? "USB 接続" : "USB 切断", ps.usb_attached ? C_COBALT : C_INK, 1300, false);
     p_usb = ps.usb_attached;
   }
+  /* つながった！ is the link to KINO ROLL coming up - the connection that
+   * means something can happen. An address alone is the quieter "WiFi OK",
+   * and not both in the same breath. */
+  const bool linked_now = online && !p_online;
   if (net.radio_routed && net.state != p_net) {
-    if (net.state == NET_IP_READY) notice_say("WiFi OK", C_COBALT, 1400, false);
+    if (net.state == NET_IP_READY) { if (!linked_now) notice_say("WiFi OK", C_COBALT, 1400, false); }
     else if (p_net == NET_IP_READY) notice_say("WiFi なし", C_INK, 1400, false);
     p_net = net.state;
   }
+  if (online != p_online) {
+    if (online) notice_say("つながった！", C_COBALT, 1500, false);
+    p_online = online;
+  }
+  /* A burst that was going out and has all arrived: the four marks meet,
+   * the word, the landed cue. A burst interrupted by the link dropping still
+   * has pictures waiting and says nothing - that is not a completion. */
+  if (p_sending && !sending && waiting == 0 && q.uploading == 0 && !q.halted) {
+    notice_say("送信済", C_COBALT, 1300, true);
+    notice_cue(NOTICE_CUE_DONE);
+  }
+  p_sending = sending;
   if (low != p_low) {
     if (low) notice_say("カード残り少", C_YELLOW, 1800, false);
     p_low = low;
   }
   if (s_live_cams != p_live) {
-    if (s_live_cams == 4 && p_live >= 0 && p_live < 4) notice_say("同期 OK", C_INK, 1200, true);
+    if (s_live_cams == 4 && p_live >= 0 && p_live < 4) {
+      notice_say("同期 OK", C_INK, 1200, true);
+      notice_cue(NOTICE_CUE_SYNC);
+    }
     p_live = s_live_cams;
   }
 }
@@ -1282,6 +1338,7 @@ typedef struct {
   float react_x, react_y, react_rot, react_scale;
   bool failed;
   char fail_why[64];
+  bool cue_pending;      /* 4枚同期 owes its sound when the word lands */
 } cap_fx_t;
 static cap_fx_t s_cap;
 static uint32_t s_session_shots;
@@ -1330,6 +1387,7 @@ static void cap_say(const reaction_t *w, int64_t now) {
   s_cap.react_y = UI_H * 0.46f + mo_rand_pm(UI_H * 0.10f);
   if (w == &REACT_FAILED) { s_cap.react_rot = 0.f; s_cap.react_x = UI_W * 0.5f; s_cap.react_y = UI_H * 0.42f; s_cap.react_scale = 3.f; }
   mo_tl_start(&s_cap.react_tl, now, w->dur_ms, w == &REACT_FAILED ? 0 : 140);
+  s_cap.cue_pending = w == &REACT_SYNCED;
 }
 
 /**
@@ -1339,6 +1397,13 @@ static void cap_say(const reaction_t *w, int64_t now) {
  */
 static void cap_step(void) {
   const int64_t now = esp_timer_get_time();
+  /* The sync cue goes with the word, not with the report: it fires on the
+   * pass the reaction's delay runs out and 4枚同期 enters. */
+  if (s_cap.cue_pending && s_cap.react_tl.start_us != 0 &&
+      now >= s_cap.react_tl.start_us + (int64_t)s_cap.react_tl.delay_ms * 1000) {
+    s_cap.cue_pending = false;
+    audio_sync();
+  }
   const capture_stage_t st = capture_stage();
   if (st == CAPTURE_IDLE) {
     if (s_cap.armed && !mo_tl_running(&s_cap.react_tl, now)) {
@@ -3952,6 +4017,18 @@ static void ui_boot(void) {
 
   for (int i = 0; i < 200 && !icons_ready(); i++) vTaskDelay(pdMS_TO_TICKS(10));
 
+  /* A finger held on the glass through the splash boots into 情報, the
+   * diagnostic page - serial, build, uptime, the cameras - without a menu to
+   * find it in. The press is swallowed the way a wake press is: nothing on
+   * that page acts, so there is nothing for it to hit. */
+  {
+    uint16_t bx, by;
+    if (touch_ready() && touch_get(&bx, &by)) {
+      s_screen = SCR_ABOUT;
+      klog("P4", "boot: finger on the glass - opening the diagnostic page");
+    }
+  }
+
   gfx_snapshot();
   draw_screen();
   uint32_t f0 = 0, f1 = 0, ms = 0;
@@ -3980,6 +4057,8 @@ static uint32_t s_ui_last_frames = 0;
 static ui_health_t health = {0};
 static int64_t wake_since_us = 0;
 static bool was_asleep = false;
+static int64_t s_slept_us = 0; /* when the panel went dark, for 続けよう。 */
+#define LONG_SLEEP_US (20LL * 60 * 1000000)
 /* True from the touch that dismissed a held report until that finger lifts,
  * so the dismissal does not also press whatever was underneath it. */
 static bool swallow_touch = false;
@@ -4030,9 +4109,15 @@ static uint32_t ui_pass(void) {
   power_state_t pst;
   power_get(&pst);
   const bool asleep_now = pst.stage == POWER_ASLEEP;
+  if (!was_asleep && asleep_now) s_slept_us = esp_timer_get_time();
   if (was_asleep && !asleep_now) {
     ESP_LOGI(TAG, "woke: repainting");
     klog("P4", "woke, repainting");
+    /* Picked up again after a while: one line, and back to work. A short
+     * doze says nothing - the screen just comes back. */
+    if (s_slept_us != 0 && esp_timer_get_time() - s_slept_us >= LONG_SLEEP_US)
+      notice_say("続けよう。", C_INK, 1600, false);
+    s_slept_us = 0;
     draw_screen();
     gfx_present();
   }

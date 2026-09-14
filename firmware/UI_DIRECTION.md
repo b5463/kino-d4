@@ -147,13 +147,24 @@ Landed on `feat/native-ui`, in this order, each filmed in the host preview:
 6. SETUP (設定) and CONNECT (接続): rows of words; dialogs as a question and
    two words; the Roll and the link on one screen.
 
-Still to do: sound designed with the motion (audio.c has tick, shutter,
-warning; the sync cue and a transfer-complete cue are not written); the
-remaining contextual events (wake after a long idle → 続けよう。, connection →
-つながった！, an alternate shutdown line, a diagnostic long-press at boot); and
-a pass on the physical camera, where the timings above were tuned on a
-virtual clock and will need the panel's. The Windows-era drawing code is out,
-and `ui.c` builds clean under the P4 toolchain (ESP-IDF 5.5.1, `-Werror=all`).
+7. Sound with the motion: two cues in `audio.c` beside the tick, shutter and
+   warning. `audio_sync()` is two short pitched taps 45 ms apart, shaped like
+   the four marks meeting; `audio_done()` is one soft mid tone, the body's only
+   single note. A notice carries its cue (`notice_cue`) and plays it on the
+   frame the dots meet and the word lands, or as a plain word enters; 4枚同期
+   plays the sync cue on the pass the word appears. Both obey `body.sounds.ui`.
+8. The remaining contextual events: つながった！ when the link to KINO ROLL
+   comes up (an address alone stays "WiFi OK"); 送信済 with the four-dot
+   prelude and the done cue when a burst that was going out has all arrived;
+   続けよう。 on waking after twenty minutes or more dark; a finger held on the
+   glass through the splash boots into 情報, the diagnostic page. There is no
+   shutdown line to vary: the camera has no shutdown, it is unplugged.
+
+Still to do: a pass on the physical camera, where the timings above were
+tuned on a virtual clock and will need the panel's, and where the two new
+sounds have not yet been heard through the speaker (levels are the shipping
+shutter's, give or take, and `audio_calibrate()` is there to measure them).
+`ui.c` builds clean under the P4 toolchain (ESP-IDF 5.5.1, `-Werror=all`).
 
 ## Filming a transition
 

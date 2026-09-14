@@ -64,7 +64,7 @@ static esp_codec_dev_handle_t s_dev;
 static bool s_ready;
 
 /* Playback happens on its own task; see the queue section below for why. */
-typedef enum { SND_SHUTTER, SND_TICK, SND_WARNING } sound_t;
+typedef enum { SND_SHUTTER, SND_TICK, SND_WARNING, SND_SYNC, SND_DONE } sound_t;
 static QueueHandle_t s_queue;
 static void audio_task(void *arg);
 static void post(sound_t which);
@@ -89,6 +89,12 @@ static size_t s_tick_bytes;
 /* body.sounds.warning: something did not work. Rendered once like the rest. */
 static int16_t *s_warn_pcm;
 static size_t s_warn_bytes;
+/* body.sounds.ui, like the tick: the two cues that go with the interface's
+ * own events - four cameras agreeing, a transfer landing. */
+static int16_t *s_sync_pcm;
+static size_t s_sync_bytes;
+static int16_t *s_done_pcm;
+static size_t s_done_bytes;
 /* The other three built-in shutter sounds the contract names
  * (BUILTIN_SHUTTER_SOUNDS in packages/kdp/src/protocol/types.ts). "silent" is
  * the fifth and needs no buffer. Same reasoning as the two above: rendered
@@ -522,6 +528,44 @@ static const click_t CLICK_WARNING = {.total_ms = 460,
                                       .thump_amp = 1.4f,
                                       .level = 0.45f};
 
+/*
+ * Four became one: the sync cue.
+ *
+ * It plays as the four marks on the screen close on a single point (the
+ * notice's prelude, ui.c), so it is shaped like that picture - two very
+ * short pitched taps 45 ms apart, closer than the shutter's two transients
+ * and nothing like them in texture. The tone is the whole character: 740 Hz
+ * is well inside what the small speaker radiates, the transient at decay 150
+ * is over in about 15 ms so it reads as an onset and not a click, and the
+ * pair is done inside 100 ms. Below the tick in level: it accompanies a
+ * word that is already on the screen, it does not announce itself.
+ */
+static const click_t CLICK_SYNC = {.total_ms = 150,
+                                   .spacing_ms = 45,
+                                   .bright = 0.6f,
+                                   .decay = 150.0f,
+                                   .thump_hz = 740.0f,
+                                   .thump_amp = 1.6f,
+                                   .level = 0.30f};
+
+/*
+ * Landed: the transfer-complete cue, and anything else that finishes.
+ *
+ * One soft tone and no second tap - the sync cue is a pair, the warning is a
+ * low pair, the tick is a click; this is the only single pitched note the
+ * body makes, which is what lets it mean "done" on its own. 520 Hz, a
+ * fifth under the sync cue so the two sit together when they follow each
+ * other, with the noise filtered nearly out (bright 0.25) and a slow decay so
+ * the onset is round rather than struck.
+ */
+static const click_t CLICK_DONE = {.total_ms = 220,
+                                   .spacing_ms = 0,
+                                   .bright = 0.25f,
+                                   .decay = 30.0f,
+                                   .thump_hz = 520.0f,
+                                   .thump_amp = 1.8f,
+                                   .level = 0.30f};
+
 /* The three alternative shutter sounds, built from the same click_t fields.
  *
  * Each is a shape, not a measurement: nothing here has been through
@@ -598,6 +642,16 @@ static void audio_render_sounds(void) {
     s_warn_bytes = 0;
     ESP_LOGW(TAG, "warning render failed - failed captures will be silent");
   }
+  if (render_click(&CLICK_SYNC, &s_sync_pcm, &s_sync_bytes) != ESP_OK) {
+    s_sync_pcm = NULL;
+    s_sync_bytes = 0;
+    ESP_LOGW(TAG, "sync cue render failed - four cameras will agree silently");
+  }
+  if (render_click(&CLICK_DONE, &s_done_pcm, &s_done_bytes) != ESP_OK) {
+    s_done_pcm = NULL;
+    s_done_bytes = 0;
+    ESP_LOGW(TAG, "done cue render failed - transfers will finish silently");
+  }
   /* The alternatives fail the same way and cost the same nothing: a NULL
    * buffer here makes shutter_pcm_for() fall back to the click, which is a
    * shutter someone did not choose rather than a camera that went quiet. */
@@ -617,10 +671,11 @@ static void audio_render_sounds(void) {
     ESP_LOGW(TAG, "mechanical render failed - it will fall back to the click");
   }
   ESP_LOGI(TAG,
-           "sounds rendered once: shutter %u B, tick %u B, warn %u B, digi %u B, beep %u B, "
-           "mech %u B",
+           "sounds rendered once: shutter %u B, tick %u B, warn %u B, sync %u B, done %u B, "
+           "digi %u B, beep %u B, mech %u B",
            (unsigned)s_shutter_bytes, (unsigned)s_tick_bytes, (unsigned)s_warn_bytes,
-           (unsigned)s_digi_bytes, (unsigned)s_beep_bytes, (unsigned)s_mech_bytes);
+           (unsigned)s_sync_bytes, (unsigned)s_done_bytes, (unsigned)s_digi_bytes,
+           (unsigned)s_beep_bytes, (unsigned)s_mech_bytes);
 }
 
 /* ------------------------------------------------------------------ */
@@ -863,6 +918,10 @@ static void audio_task(void *arg) {
       if (shutter_pcm_for(&pcm, &bytes)) play_click(pcm, bytes);
     } else if (which == SND_WARNING) {
       play_click(s_warn_pcm, s_warn_bytes);
+    } else if (which == SND_SYNC) {
+      play_click(s_sync_pcm, s_sync_bytes);
+    } else if (which == SND_DONE) {
+      play_click(s_done_pcm, s_done_bytes);
     } else {
       play_click(s_tick_pcm, s_tick_bytes);
     }
@@ -899,6 +958,19 @@ void audio_tick(void) { post(SND_TICK); }
 void audio_warning(void) {
   if (!config_bool("body.sounds.warning", true)) return;
   post(SND_WARNING);
+}
+
+/* Both gated here, on the interface-sound setting the tick obeys, for the
+ * reason audio_warning() gives: the sync cue has two callers already (the
+ * notice and the capture reaction) and the done cue will grow more. */
+void audio_sync(void) {
+  if (!config_bool("body.sounds.ui", true)) return;
+  post(SND_SYNC);
+}
+
+void audio_done(void) {
+  if (!config_bool("body.sounds.ui", true)) return;
+  post(SND_DONE);
 }
 
 /* ---------------------------------------------------------------------- */

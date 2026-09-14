@@ -263,6 +263,8 @@ bool audio_ready(void) { return g_audio_ready; }
 void audio_shutter(void) { js_audio(1); }
 void audio_tick(void) { js_audio(0); }
 void audio_warning(void) { js_audio(2); }
+void audio_sync(void) { js_audio(3); }
+void audio_done(void) { js_audio(4); }
 KUI_EXPORT("kui_set_audio_ready") void kui_set_audio_ready(int ready) { g_audio_ready = ready != 0; }
 
 /* ---- touch --------------------------------------------------------------- */
