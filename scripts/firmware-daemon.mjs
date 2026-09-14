@@ -26,11 +26,13 @@ const IDF_IMAGE = 'espressif/idf:v5.5.1';
 // Which WSL distro runs the host tests on Windows. Unset = the default
 // distro; set KINO_FWD_WSL_DISTRO to pin one (issue #90).
 const WSL_DISTRO = process.env.KINO_FWD_WSL_DISTRO;
-// GET_DEVICE_INFO.hardware — the string devices actually report
-// (firmware/p4/main/kdp_server.c). versions.json's "D4-V1" is the design
-// revision label; declaring it here made every built package BLOCKED at the
-// compatibility gate (issue #90).
-const DEVICE_HARDWARE = 'V1';
+// GET_DEVICE_INFO.hardware — the strings devices actually report. The P4
+// firmware answers "kino-v1" (firmware/p4/main/kdp_server.c, GET_DEVICE_INFO)
+// and KINO Twin answers "D4-V1" (packages/simulator-engine TwinSimulator
+// DEFAULT_IDENTITY). Studio compares case-insensitively against this list, so
+// a package must name both or it is BLOCKED at the compatibility gate on one
+// of them (issue #90 pinned a bare "V1", which matched neither).
+const DEVICE_HARDWARE = ['kino-v1', 'D4-V1'];
 
 const TARGETS = {
   p4: { dir: 'firmware/p4', bin: 'kino-p4.bin', chip: 'esp32p4', manifestTarget: 'main' },
@@ -182,7 +184,7 @@ async function runBuild(build, skipChecks) {
         channel: 'dev',
         protocolMin: versions.protocol.kdp,
         protocolMax: versions.protocol.kdp,
-        compatibleHardware: [DEVICE_HARDWARE],
+        compatibleHardware: DEVICE_HARDWARE,
         targets: {
           [target.manifestTarget]: { file: target.bin, sha256, version: firmwareVersion },
         },

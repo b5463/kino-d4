@@ -5254,8 +5254,8 @@ void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled) {
   }
 }
 
-static void ui_task(void *arg) {
-  (void)arg;
+/* The boot sequence, once: the splash, then the first screen dissolving in. */
+static void ui_boot(void) {
   splash();
 
   for (int i = 0; i < 200 && !icons_ready(); i++) vTaskDelay(pdMS_TO_TICKS(10));
@@ -5268,310 +5268,321 @@ static void ui_task(void *arg) {
   gfx_stats(&f1, &ms);
   ESP_LOGI(TAG, "boot dissolve: %lu frames in %lu ms (%lu fps)", (unsigned long)(f1 - f0),
            (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
+}
 
-  int held = -1;
-  int64_t s_ui_report_us = 0;
-  uint32_t s_ui_last_frames = 0;
-  ui_health_t health = {0};
-  int64_t wake_since_us = 0;
-  bool was_asleep = false;
-  /* True from the touch that dismissed a held report until that finger lifts,
-   * so the dismissal does not also press whatever was underneath it. */
-  bool swallow_touch = false;
+/*
+ * The loop's carry-over state, which used to be ui_task's locals.
+ *
+ * One pass of the loop is a function, ui_pass(), and the task below is the
+ * trivial `for (;;) vTaskDelay(ui_pass())`. That is what lets a host drive the
+ * same pass from its own scheduler: KINO Twin runs this file's real screens in
+ * a browser (firmware/p4/twin_ui) the way host_preview renders them, and a
+ * task that never returns cannot be stepped. Nothing about the camera changed:
+ * the body, its ordering and its sleeps are exactly what they were, and every
+ * `continue` became `return <the delay it used to sleep>`. The names are kept
+ * so the body reads as it did.
+ */
+static int held = -1;
+static int64_t s_ui_report_us = 0;
+static uint32_t s_ui_last_frames = 0;
+static ui_health_t health = {0};
+static int64_t wake_since_us = 0;
+static bool was_asleep = false;
+/* True from the touch that dismissed a held report until that finger lifts,
+ * so the dismissal does not also press whatever was underneath it. */
+static bool swallow_touch = false;
 
-  for (;;) {
-    /* The pulse, first thing and unconditionally. Several branches below
-     * `continue`, and a stamp that some passes skip reads as a wedge on a loop
-     * that is merely swallowing a wake press. */
-    s_ui_pass++;
-    s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
+/** One pass of the UI loop. Returns how long the task sleeps before the next. */
+static uint32_t ui_pass(void) {
+  /* The pulse, first thing and unconditionally. Several branches below
+   * `continue`, and a stamp that some passes skip reads as a wedge on a loop
+   * that is merely swallowing a wake press. */
+  s_ui_pass++;
+  s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
 
-    /* Physical keys first: they were recorded on the buttons task and this
-     * is the task that owns the canvas and the compositor. */
-    drain_buttons();
+  /* Physical keys first: they were recorded on the buttons task and this
+   * is the task that owns the canvas and the compositor. */
+  drain_buttons();
 
-    uint16_t tx = 0, ty = 0;
-    int region = -1;
-    const bool down = touch_ready() && touch_get(&tx, &ty);
+  uint16_t tx = 0, ty = 0;
+  int region = -1;
+  const bool down = touch_ready() && touch_get(&tx, &ty);
 
-    /* A touch that wakes a sleeping screen wakes it and does nothing else.
-     * Reaching into a bag for a camera whose backlight has timed out and
-     * having it fire whatever tile the thumb landed on is the worst possible
-     * answer, and it is what the naive version does. */
-    /* Repaint the moment the panel comes back, before anything else.
+  /* A touch that wakes a sleeping screen wakes it and does nothing else.
+   * Reaching into a bag for a camera whose backlight has timed out and
+   * having it fire whatever tile the thumb landed on is the worst possible
+   * answer, and it is what the naive version does. */
+  /* Repaint the moment the panel comes back, before anything else.
+   *
+   * Nothing else in the loop presents a frame while the menu is idle - it
+   * has no reason to, the picture has not changed - so after a sleep the
+   * screen depends entirely on the framebuffer having survived with the
+   * backlight off. If it did not, for any reason, the camera comes back
+   * showing nothing and every press lands on a screen the user cannot
+   * read, which is indistinguishable from a device that has stopped
+   * responding. One redraw makes that impossible. */
+  power_state_t pst;
+  power_get(&pst);
+  const bool asleep_now = pst.stage == POWER_ASLEEP;
+  if (was_asleep && !asleep_now) {
+    ESP_LOGI(TAG, "woke: repainting");
+    klog("P4", "woke, repainting");
+    draw_screen();
+    gfx_present();
+  }
+  was_asleep = asleep_now;
+
+  if (!down) {
+    power_end_wake_gesture();
+    wake_since_us = 0;
+  }
+  if (power_wake_gesture()) {
+    /* Swallow the press that woke the screen - but only for as long as a
+     * press can plausibly last.
      *
-     * Nothing else in the loop presents a frame while the menu is idle - it
-     * has no reason to, the picture has not changed - so after a sleep the
-     * screen depends entirely on the framebuffer having survived with the
-     * backlight off. If it did not, for any reason, the camera comes back
-     * showing nothing and every press lands on a screen the user cannot
-     * read, which is indistinguishable from a device that has stopped
-     * responding. One redraw makes that impossible. */
-    power_state_t pst;
-    power_get(&pst);
-    const bool asleep_now = pst.stage == POWER_ASLEEP;
-    if (was_asleep && !asleep_now) {
-      ESP_LOGI(TAG, "woke: repainting");
-      klog("P4", "woke, repainting");
-      draw_screen();
-      gfx_present();
-    }
-    was_asleep = asleep_now;
+     * The flag is cleared by the finger lifting, which is normally the
+     * next thing that happens. If anything stops that being seen - a
+     * dropped read on the bus the codec shares, or a stage that got put
+     * back to sleep underneath the wake - the UI would go permanently
+     * deaf, which is the worst failure this screen has. A ceiling costs
+     * nothing and makes that impossible. */
+    const int64_t now = esp_timer_get_time();
+    if (wake_since_us == 0) wake_since_us = now;
+    if (now - wake_since_us < 1200000) return 20;
+    power_end_wake_gesture();
+    wake_since_us = 0;
+    klog("P4", "wake gesture outlived a press - releasing the UI");
+  }
 
-    if (!down) {
-      power_end_wake_gesture();
-      wake_since_us = 0;
-    }
-    if (power_wake_gesture()) {
-      /* Swallow the press that woke the screen - but only for as long as a
-       * press can plausibly last.
-       *
-       * The flag is cleared by the finger lifting, which is normally the
-       * next thing that happens. If anything stops that being seen - a
-       * dropped read on the bus the codec shares, or a stage that got put
-       * back to sleep underneath the wake - the UI would go permanently
-       * deaf, which is the worst failure this screen has. A ceiling costs
-       * nothing and makes that impossible. */
-      const int64_t now = esp_timer_get_time();
-      if (wake_since_us == 0) wake_since_us = now;
-      if (now - wake_since_us < 1200000) {
-        vTaskDelay(pdMS_TO_TICKS(20));
-        continue;
-      }
-      power_end_wake_gesture();
-      wake_since_us = 0;
-      klog("P4", "wake gesture outlived a press - releasing the UI");
-    }
+  /*
+   * A held report is dismissed by the touch that lands on it, wherever it
+   * lands, and that touch does nothing else.
+   *
+   * Handled at the DOWN edge and swallowed until the finger lifts, rather
+   * than at the release, because a tap on empty screen never reaches the
+   * release path at all - hit_test() returns -1, `held` stays -1, and the
+   * branch below is skipped. A report on the SHOOT screen covers nothing but
+   * picture, so "tap anywhere" is the only gesture that always works.
+   */
+  if (!down) swallow_touch = false;
+  if (down && s_shot_hold) {
+    shot_hold_ack();
+    swallow_touch = true;
+  }
+  if (swallow_touch) return 20;
 
-    /*
-     * A held report is dismissed by the touch that lands on it, wherever it
-     * lands, and that touch does nothing else.
-     *
-     * Handled at the DOWN edge and swallowed until the finger lifts, rather
-     * than at the release, because a tap on empty screen never reaches the
-     * release path at all - hit_test() returns -1, `held` stays -1, and the
-     * branch below is skipped. A report on the SHOOT screen covers nothing but
-     * picture, so "tap anywhere" is the only gesture that always works.
-     */
-    if (!down) swallow_touch = false;
-    if (down && s_shot_hold) {
-      shot_hold_ack();
-      swallow_touch = true;
-    }
-    if (swallow_touch) {
-      vTaskDelay(pdMS_TO_TICKS(20));
-      continue;
-    }
+  if (down) {
+    /* Touch reports in panel space, so the same quarter turn applies in
+     * reverse: touch y is the logical x. */
+    const int lx = ty;
+    const int ly = DISPLAY_H_RES - 1 - tx;
+    region = hit_test(lx, ly);
+  }
 
-    if (down) {
-      /* Touch reports in panel space, so the same quarter turn applies in
-       * reverse: touch y is the logical x. */
-      const int lx = ty;
-      const int ly = DISPLAY_H_RES - 1 - tx;
-      region = hit_test(lx, ly);
-    }
-
-    if (down && region != s_pressed) {
-      /* Press paints; activation waits for the release, so a finger that
-       * lands on the wrong thing can be slid off it. */
-      s_pressed = region;
-      held = region;
-      if (region >= 0 && config_bool("body.sounds.ui", true)) audio_tick();
-      draw_screen();
-      gfx_present();
-    } else if (!down && held != -1) {
-      const int fired = (s_pressed == held) ? held : -1;
-      s_pressed = -1;
-      held = -1;
-      if (fired != -1) {
-        /* Touch sets focus as well as acting, so the two input models never
-         * disagree about what is selected. */
-        if (s_dialog != DLG_NONE) s_dlg_focus = fired;
-        else if (fired != IT_BACK && fired < item_count(s_screen)) s_focus[s_screen] = fired;
-        activate(fired);
-      } else {
-        draw_screen();
-        gfx_present();
-      }
-    }
-
-    /* The nodes are only asked for frames while the viewfinder is up. Left
-     * running behind a menu it would be four sensors and four UARTs burning
-     * battery to fill a buffer nobody reads. */
-    viewfinder_run(s_screen == SCR_SHOOT);
-
-    const capture_stage_t cstage = capture_stage();
-    if (cstage == CAPTURE_DONE) {
-      if (s_shot_seen_us == 0) {
-        /* The first pass on which the report exists, which is the only place
-         * the UI learns that a capture failed or came back short. The strip
-         * has said so since draw_capture_banner() was written; a strip in the
-         * corner of a viewfinder someone has already lowered says it to
-         * nobody. */
-        s_shot_seen_us = esp_timer_get_time();
-        capture_report_t r;
-        capture_last(&r);
-        /* A full or absent card arrives here too - it is a failed report with
-         * a STORAGE err_code, not a separate path - so this one call covers
-         * both halves of the requirement. */
-        if (!r.ok || r.stored < r.online) audio_warning();
-      }
-      /*
-       * -1 is HOLD: keep the report up until someone acknowledges it.
-       *
-       * It used to be multiplied straight into the deadline, so -1 gave a
-       * deadline one second in the PAST and the report was acknowledged on the
-       * first pass - hold behaved exactly like 0, which is the one value it
-       * is supposed to be the opposite of. 0 still means no hold at all: the
-       * comparison below is > 0 microseconds elapsed, which the next pass
-       * satisfies.
-       */
-      const int hold_s = config_int("shoot.displayAfterShotS", 2);
-      if (hold_s < 0) {
-        s_shot_hold = true;
-      } else if (esp_timer_get_time() - s_shot_seen_us > (int64_t)hold_s * 1000000) {
-        capture_ack();
-        s_shot_seen_us = 0;
-        if (s_screen == SCR_GALLERY) gallery_refresh();
-        draw_screen();
-        gfx_present();
-      }
-    } else if (cstage == CAPTURE_IDLE) {
-      s_shot_seen_us = 0;
-      s_shot_hold = false;
-    }
-
-    /* A capture in progress, a gallery still decoding, and a toast on its way
-     * out all change the screen without anyone touching anything. */
-    /* The wipe is the fourth: DELETE ALL PHOTOS runs on the gallery task for
-     * up to a minute on a full card, and the DELETING n OF m line on the
-     * storage screen is the only thing that says it is still going. */
-    const bool busy = cstage != CAPTURE_IDLE ||
-                      (s_screen == SCR_GALLERY && gallery_loading()) ||
-                      (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
-
-    /*
-     * The wigglegram advances here, above the busy branch rather than in the
-     * tail, so that a toast or a capture banner over the photograph does not
-     * freeze the picture underneath it. It is a state step and not a draw: it
-     * moves the frame index and says whether the screen owes a repaint.
-     *
-     * It is asked only on the screen that has one, and only with no finger
-     * down - a press repaints on its own edge, and stepping a frame under a
-     * held button would fight it for the canvas.
-     */
-    const bool wig_moved = (s_screen == SCR_PHOTO && held == -1) ? wiggle_tick() : false;
-
-    if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
-      draw_screen();
-      gfx_present();
-      /*
-       * 90 ms is the busy cadence; a wiggle frame that is only waiting for its
-       * own deadline goes back round at the loop's own 20 ms so the next
-       * deadline is not missed by 70.
-       *
-       * A PLAYING wigglegram keeps the 20 ms pass even while something is busy.
-       * #160 could take the 90 ms here because its deadline was a whole frame
-       * period, 66..200 ms; a crossfade sub-step is ~33 ms, so 90 ms would make
-       * the swing run at a third speed for as long as a toast was up - and a
-       * toast is exactly what FAVOURITE raises on this screen.
-       */
-      const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
-      vTaskDelay(pdMS_TO_TICKS((busy && !wig_pacing) ? 90 : 20));
-      continue;
-    }
-
-    /*
-     * Once a second: was a frame DUE, and did one come out?
-     *
-     * A stuck preview has three quite different causes and they are
-     * indistinguishable from the outside. The pump is known to keep running -
-     * measured at 5-6.7 fps while the screen looked frozen - so the question is
-     * what the UI is doing. If frames advance, the compositor is running and
-     * the panel is stale; if they stop while a frame was owed, the UI is
-     * looping without presenting; if the loop stops entirely, ui_liveness()
-     * says so to a host, because nothing running on this task can.
-     *
-     * "Was a frame due" is the whole of issue #140. The test used to be "did a
-     * frame come out", which an idle screen legitimately fails - it presents
-     * only when something changes - so the line fired every second forever and
-     * emptied the klog ring of the boot evidence someone needed. The decision
-     * lives in ui_health_step() (pure.c, host-tested) together with the
-     * reasoning and the rejected alternatives; this block supplies the two
-     * facts and prints the edges.
-     *
-     * `present_due` is the tail of this pass, below: the SHOOT screen with
-     * nothing latched is the one path that presents unconditionally. The busy
-     * path presents and `continue`s before reaching here, and a latched press
-     * means no repaint is owed - which is why the latch is watched separately
-     * rather than folded into the stall.
-     */
-    {
-      const int64_t ui_now_us = esp_timer_get_time();
-      if (ui_now_us - s_ui_report_us >= 1000000) {
-        s_ui_report_us = ui_now_us;
-        uint32_t ui_frames = 0;
-        gfx_stats(&ui_frames, NULL);
-        const bool frames_advanced = ui_frames != s_ui_last_frames;
-        /* A playing wigglegram is the second screen that owes frames, and it
-         * has to be counted or a photograph that stopped moving would read as
-         * a settled screen. It is stated as "playback is running" rather than
-         * "a frame is due on THIS pass", which is the only truthful form at
-         * this resolution: the check is once a second, a frame falls every
-         * 66-200 ms, and sampling the deadline would answer false on five
-         * passes out of six while the screen was in fact painting eight times
-         * a second. A photograph that is NOT playing - still loading, one
-         * frame, a quad - owes nothing and says so. */
-        /* A playing wigglegram owes frames only while it is actually stepping.
-         * Under a DELETE dialog or an in-flight capture wiggle_tick() pauses -
-         * s_wig_play stays set so the swing resumes in place, but nothing is due
-         * and nothing comes out, so a paused photo must read as owing nothing or
-         * the health watch calls the pause a stall (#161: paused owes none). */
-        const bool wig_presenting = s_screen == SCR_PHOTO && s_wig_play &&
-                                    s_dialog == DLG_NONE && cstage == CAPTURE_IDLE;
-        const bool present_due = held == -1 && (s_screen == SCR_SHOOT || wig_presenting);
-        const bool latched = held != -1 || s_pressed != -1;
-        switch (ui_health_step(&health, present_due, frames_advanced, latched)) {
-          case UI_HEALTH_STALLED:
-            klog("P4", "ui STALLED on screen %d - a frame was due, frames stuck at %lu",
-                 (int)s_screen, (unsigned long)ui_frames);
-            break;
-          case UI_HEALTH_PRESENTING:
-            klog("P4", "ui presenting again on screen %d, frames %lu", (int)s_screen,
-                 (unsigned long)ui_frames);
-            break;
-          case UI_HEALTH_STALL_ENDED:
-            klog("P4", "ui stall over on screen %d without a frame - nothing owed now",
-                 (int)s_screen);
-            break;
-          case UI_HEALTH_LATCH_STUCK:
-            klog("P4", "ui press latched %d s on screen %d (held %d pressed %d) - no lift",
-                 PURE_UI_LATCH_TICKS, (int)s_screen, held, s_pressed);
-            break;
-          case UI_HEALTH_LATCH_CLEARED:
-            klog("P4", "ui press released on screen %d", (int)s_screen);
-            break;
-          case UI_HEALTH_QUIET:
-            break;
-        }
-        /* Published for ui_liveness(), so a host reading GET_RUNTIME_STATS gets
-         * the same latched answer as the klog rather than having to find the
-         * line in a ring that may already have rolled past it. */
-        s_ui_stalled = health.stalled;
-        s_ui_last_frames = ui_frames;
-      }
-    }
-
-    if (s_screen == SCR_SHOOT && held == -1) {
-      draw_screen();
-      gfx_present();
-      /* Paced against the link, not the panel: new frames arrive a few times
-       * a second at best. */
-      vTaskDelay(pdMS_TO_TICKS(60));
+  if (down && region != s_pressed) {
+    /* Press paints; activation waits for the release, so a finger that
+     * lands on the wrong thing can be slid off it. */
+    s_pressed = region;
+    held = region;
+    if (region >= 0 && config_bool("body.sounds.ui", true)) audio_tick();
+    draw_screen();
+    gfx_present();
+  } else if (!down && held != -1) {
+    const int fired = (s_pressed == held) ? held : -1;
+    s_pressed = -1;
+    held = -1;
+    if (fired != -1) {
+      /* Touch sets focus as well as acting, so the two input models never
+       * disagree about what is selected. */
+      if (s_dialog != DLG_NONE) s_dlg_focus = fired;
+      else if (fired != IT_BACK && fired < item_count(s_screen)) s_focus[s_screen] = fired;
+      activate(fired);
     } else {
-      vTaskDelay(pdMS_TO_TICKS(20));
+      draw_screen();
+      gfx_present();
     }
   }
+
+  /* The nodes are only asked for frames while the viewfinder is up. Left
+   * running behind a menu it would be four sensors and four UARTs burning
+   * battery to fill a buffer nobody reads. */
+  viewfinder_run(s_screen == SCR_SHOOT);
+
+  const capture_stage_t cstage = capture_stage();
+  if (cstage == CAPTURE_DONE) {
+    if (s_shot_seen_us == 0) {
+      /* The first pass on which the report exists, which is the only place
+       * the UI learns that a capture failed or came back short. The strip
+       * has said so since draw_capture_banner() was written; a strip in the
+       * corner of a viewfinder someone has already lowered says it to
+       * nobody. */
+      s_shot_seen_us = esp_timer_get_time();
+      capture_report_t r;
+      capture_last(&r);
+      /* A full or absent card arrives here too - it is a failed report with
+       * a STORAGE err_code, not a separate path - so this one call covers
+       * both halves of the requirement. */
+      if (!r.ok || r.stored < r.online) audio_warning();
+    }
+    /*
+     * -1 is HOLD: keep the report up until someone acknowledges it.
+     *
+     * It used to be multiplied straight into the deadline, so -1 gave a
+     * deadline one second in the PAST and the report was acknowledged on the
+     * first pass - hold behaved exactly like 0, which is the one value it
+     * is supposed to be the opposite of. 0 still means no hold at all: the
+     * comparison below is > 0 microseconds elapsed, which the next pass
+     * satisfies.
+     */
+    const int hold_s = config_int("shoot.displayAfterShotS", 2);
+    if (hold_s < 0) {
+      s_shot_hold = true;
+    } else if (esp_timer_get_time() - s_shot_seen_us > (int64_t)hold_s * 1000000) {
+      capture_ack();
+      s_shot_seen_us = 0;
+      if (s_screen == SCR_GALLERY) gallery_refresh();
+      draw_screen();
+      gfx_present();
+    }
+  } else if (cstage == CAPTURE_IDLE) {
+    s_shot_seen_us = 0;
+    s_shot_hold = false;
+  }
+
+  /* A capture in progress, a gallery still decoding, and a toast on its way
+   * out all change the screen without anyone touching anything. */
+  /* The wipe is the fourth: DELETE ALL PHOTOS runs on the gallery task for
+   * up to a minute on a full card, and the DELETING n OF m line on the
+   * storage screen is the only thing that says it is still going. */
+  const bool busy = cstage != CAPTURE_IDLE ||
+                    (s_screen == SCR_GALLERY && gallery_loading()) ||
+                    (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
+
+  /*
+   * The wigglegram advances here, above the busy branch rather than in the
+   * tail, so that a toast or a capture banner over the photograph does not
+   * freeze the picture underneath it. It is a state step and not a draw: it
+   * moves the frame index and says whether the screen owes a repaint.
+   *
+   * It is asked only on the screen that has one, and only with no finger
+   * down - a press repaints on its own edge, and stepping a frame under a
+   * held button would fight it for the canvas.
+   */
+  const bool wig_moved = (s_screen == SCR_PHOTO && held == -1) ? wiggle_tick() : false;
+
+  if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
+    draw_screen();
+    gfx_present();
+    /*
+     * 90 ms is the busy cadence; a wiggle frame that is only waiting for its
+     * own deadline goes back round at the loop's own 20 ms so the next
+     * deadline is not missed by 70.
+     *
+     * A PLAYING wigglegram keeps the 20 ms pass even while something is busy.
+     * #160 could take the 90 ms here because its deadline was a whole frame
+     * period, 66..200 ms; a crossfade sub-step is ~33 ms, so 90 ms would make
+     * the swing run at a third speed for as long as a toast was up - and a
+     * toast is exactly what FAVOURITE raises on this screen.
+     */
+    const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
+    return (busy && !wig_pacing) ? 90 : 20;
+  }
+
+  /*
+   * Once a second: was a frame DUE, and did one come out?
+   *
+   * A stuck preview has three quite different causes and they are
+   * indistinguishable from the outside. The pump is known to keep running -
+   * measured at 5-6.7 fps while the screen looked frozen - so the question is
+   * what the UI is doing. If frames advance, the compositor is running and
+   * the panel is stale; if they stop while a frame was owed, the UI is
+   * looping without presenting; if the loop stops entirely, ui_liveness()
+   * says so to a host, because nothing running on this task can.
+   *
+   * "Was a frame due" is the whole of issue #140. The test used to be "did a
+   * frame come out", which an idle screen legitimately fails - it presents
+   * only when something changes - so the line fired every second forever and
+   * emptied the klog ring of the boot evidence someone needed. The decision
+   * lives in ui_health_step() (pure.c, host-tested) together with the
+   * reasoning and the rejected alternatives; this block supplies the two
+   * facts and prints the edges.
+   *
+   * `present_due` is the tail of this pass, below: the SHOOT screen with
+   * nothing latched is the one path that presents unconditionally. The busy
+   * path presents and `continue`s before reaching here, and a latched press
+   * means no repaint is owed - which is why the latch is watched separately
+   * rather than folded into the stall.
+   */
+  {
+    const int64_t ui_now_us = esp_timer_get_time();
+    if (ui_now_us - s_ui_report_us >= 1000000) {
+      s_ui_report_us = ui_now_us;
+      uint32_t ui_frames = 0;
+      gfx_stats(&ui_frames, NULL);
+      const bool frames_advanced = ui_frames != s_ui_last_frames;
+      /* A playing wigglegram is the second screen that owes frames, and it
+       * has to be counted or a photograph that stopped moving would read as
+       * a settled screen. It is stated as "playback is running" rather than
+       * "a frame is due on THIS pass", which is the only truthful form at
+       * this resolution: the check is once a second, a frame falls every
+       * 66-200 ms, and sampling the deadline would answer false on five
+       * passes out of six while the screen was in fact painting eight times
+       * a second. A photograph that is NOT playing - still loading, one
+       * frame, a quad - owes nothing and says so. */
+      /* A playing wigglegram owes frames only while it is actually stepping.
+       * Under a DELETE dialog or an in-flight capture wiggle_tick() pauses -
+       * s_wig_play stays set so the swing resumes in place, but nothing is due
+       * and nothing comes out, so a paused photo must read as owing nothing or
+       * the health watch calls the pause a stall (#161: paused owes none). */
+      const bool wig_presenting = s_screen == SCR_PHOTO && s_wig_play &&
+                                  s_dialog == DLG_NONE && cstage == CAPTURE_IDLE;
+      const bool present_due = held == -1 && (s_screen == SCR_SHOOT || wig_presenting);
+      const bool latched = held != -1 || s_pressed != -1;
+      switch (ui_health_step(&health, present_due, frames_advanced, latched)) {
+        case UI_HEALTH_STALLED:
+          klog("P4", "ui STALLED on screen %d - a frame was due, frames stuck at %lu",
+               (int)s_screen, (unsigned long)ui_frames);
+          break;
+        case UI_HEALTH_PRESENTING:
+          klog("P4", "ui presenting again on screen %d, frames %lu", (int)s_screen,
+               (unsigned long)ui_frames);
+          break;
+        case UI_HEALTH_STALL_ENDED:
+          klog("P4", "ui stall over on screen %d without a frame - nothing owed now",
+               (int)s_screen);
+          break;
+        case UI_HEALTH_LATCH_STUCK:
+          klog("P4", "ui press latched %d s on screen %d (held %d pressed %d) - no lift",
+               PURE_UI_LATCH_TICKS, (int)s_screen, held, s_pressed);
+          break;
+        case UI_HEALTH_LATCH_CLEARED:
+          klog("P4", "ui press released on screen %d", (int)s_screen);
+          break;
+        case UI_HEALTH_QUIET:
+          break;
+      }
+      /* Published for ui_liveness(), so a host reading GET_RUNTIME_STATS gets
+       * the same latched answer as the klog rather than having to find the
+       * line in a ring that may already have rolled past it. */
+      s_ui_stalled = health.stalled;
+      s_ui_last_frames = ui_frames;
+    }
+  }
+
+  if (s_screen == SCR_SHOOT && held == -1) {
+    draw_screen();
+    gfx_present();
+    /* Paced against the link, not the panel: new frames arrive a few times
+     * a second at best. */
+    return 60;
+  }
+  return 20;
+}
+
+static void ui_task(void *arg) {
+  (void)arg;
+  ui_boot();
+  for (;;) vTaskDelay(pdMS_TO_TICKS(ui_pass()));
 }
 
 esp_err_t ui_start(void) {

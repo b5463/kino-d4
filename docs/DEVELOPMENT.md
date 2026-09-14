@@ -165,6 +165,21 @@ Do not assign a command value from an empty-looking range without checking the f
 
 ## Firmware
 
+```bash
+# KINO Twin's device screen: the P4 firmware's ui.c as WebAssembly. Rebuild after
+# a ui.c change; the check fails CI on drift. --w98 builds the private variant
+# with the Windows 98 menu artwork into apps/twin/public/ (gitignored, #134).
+npm run twin:ui:bake
+npm run twin:ui:check
+
+# KINO Twin's body: bake the hardware profile's shells and placements from the
+# released CAD datums (hardware/cad/KINO_FIELD_BODY/twin/). --generate runs the
+# generator and promote first. The check fails CI on drift.
+npm run twin:body:bake
+npm run twin:body:check
+```
+
+
 The D4 firmware lives in `firmware/` (build, flash, and layout details in [`firmware/README.md`](../firmware/README.md)). Building needs no local ESP-IDF install; *flashing* does (the container cannot reach the serial port on Windows/macOS):
 
 ```bash

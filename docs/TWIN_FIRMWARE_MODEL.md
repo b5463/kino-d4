@@ -23,7 +23,7 @@ capture pipeline, the Roll surface, looks and settings all landed.
 | `d4-capture-0-3` | 0.3.0 | Capture pipeline and gallery: `wiggle`/`quad` capture and `gallery` pixels |
 | `d4-roll-0-4` | 0.4.0 – 0.4.7 | Network and Roll commands present, **no radio route** — the handlers answer with a reason rather than `UNSUPPORTED_COMMAND` |
 | `d4-looks-0-4-8` | 0.4.8 | Looks and sounds on the card: `recipes` and `customSounds` go true |
-| `d4-settings-0-4-9` | 0.4.9 – 0.4.53 | Settings reach the hardware. **The closest profile to today's firmware.** Every release from 0.4.10 on maps here because none of them adds a KDP command or a capability |
+| `d4-settings-0-4-9` | 0.4.9 – 0.4.55 | Settings reach the hardware. **The closest profile to today's firmware** — it reports the newest release it covers (`firmware/VERSION`). Every release from 0.4.10 on maps here because none of them adds a KDP command or a capability |
 | `d4-sim-full` | — | SIMULATED FUTURE: the full demo device — all cameras, all capability groups, OTA, gallery, network/Roll. Labeled SIMULATED FUTURE everywhere it surfaces (brief §42) |
 
 `FirmwareProfileId` and `PROFILE_FOR_VERSION` in
@@ -33,7 +33,7 @@ capture pipeline, the Roll surface, looks and settings all landed.
 firmware bump does not add its entry. Read the mapping there rather than
 inferring a profile from a version number.
 
-Switching: Twin → FIRMWARE tab (simulation control), or programmatically
+Switching: programmatically
 `device.setFirmwareProfile(id)`. Like a flashed image, the profile survives
 reboot and factory reset.
 
@@ -51,7 +51,7 @@ the narrowed capabilities (covered by
 
 ## Per-target versions
 
-`FW_QUERY`/`GET_DEVICE_INFO`/the Twin FIRMWARE tab report MAIN + CAM1..CAM4
+`FW_QUERY`/`GET_DEVICE_INFO` report MAIN + CAM1..CAM4
 versions independently; camera-node updates apply per target, and the
 `nodeFwMismatch` scenario models a stale CAM4 that Studio must flag.
 
@@ -63,3 +63,32 @@ versions independently; camera-node updates apply per target, and the
 - The Twin cannot execute the C firmware; the profile emulates its contract
   behavior. The contract test keeps the emulation honest; divergences found
   later get recorded in `docs/audit/STUDIO_TWIN_FIRMWARE_INTEGRATION_AUDIT.md`.
+
+## The screen
+
+The Twin's rear display is not drawn by the Twin. `firmware/p4/twin_ui` builds
+the P4 firmware's `ui.c` to WebAssembly - `#include`d as a translation unit, the
+way `host_preview` renders it natively - and `apps/twin/src/display/firmwareUi.ts`
+steps its loop (`ui_pass()`, one pass per host tick), feeds it the simulated
+device's state through setters (config store, gallery page and tiles, viewfinder
+frames, power, card, radio, Roll and queue, capture progress), hands it the
+touch point, and plays back every frame it presents at the virtual time it was
+presented. What the screens do comes back through host imports and lands on the
+mock device as the same state changes the KDP handlers make: the shutter tile
+runs the capture pipeline, a setting written on the body goes through
+`applyConfigPatch()`, DELETE deletes, FAVOURITE stars, RESTART reboots.
+
+Tap the glass in the 3D view, or the SCREEN panel. The SHUTTER button is the
+body's physical key, through `ui.c`'s own button queue.
+
+- `npm run twin:ui:bake` rebuilds `apps/twin/src/display/firmware/kino-ui.wasm`
+  (wasi-sdk, fetched into `.cache/` on first use); `npm run twin:ui:check` fails
+  on drift. The version on the ABOUT screen is `firmware/VERSION` at build time.
+- The committed module carries **placeholder menu glyphs**: the menu icons are
+  Microsoft's Windows 98 artwork (`THIRD_PARTY_NOTICES.md`, #134) and the Twin
+  is a web app in a public repository. `npm run twin:ui:bake -- --w98` builds
+  the private variant into `apps/twin/public/kino-ui.w98.wasm` (gitignored),
+  which the Twin prefers when present - for the owner's own machine, under the
+  2026-09-05 operator decision.
+- Before SIM READY, and in a browser without the module, `deviceUi.ts` still
+  draws POWER OFF and the boot ladder.

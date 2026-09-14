@@ -5,7 +5,7 @@ Manual walks that prove the guest loop end to end, with the Twin standing in for
 ## A. Party walk (Twin as the camera)
 
 1. Start postgres/redis/minio, API, worker, roll-web, twin.
-2. Twin: POWER ON → FIRMWARE tab → `SIMULATED FUTURE` profile.
+2. Twin: POWER ON (it boots on the `SIMULATED FUTURE` profile).
 3. ROLL tab → CREATE ROLL "Test Party". PASS: the virtual D4 display shows a `JOIN THIS ROLL` QR.
 4. Open the QR (phone on the LAN, or OPEN GUEST ROLL). PASS: an empty live Roll.
 5. STAGE tab: place a person ~1.5 m from the camera, set dim party lighting.

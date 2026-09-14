@@ -91,6 +91,13 @@ Consequences, stated plainly rather than deferred:
 Issue #134 records the decision and must be resolved before a release carries
 these files.
 
+KINO Twin's device screen (`firmware/p4/twin_ui`, built into
+`apps/twin/src/display/firmware/kino-ui.wasm`) compiles the same `ui.c`. The
+committed module is built against `icons_placeholder/icons_w98.h` - seven plain
+glyphs in the tiles' idiom - so nothing in the tree ships the artwork inside a
+web app. The private variant with the real icons is built locally with
+`npm run twin:ui:bake -- --w98` into a gitignored path.
+
 ## W95FA typeface (Alina Sava, OFL-1.1)
 
 `apps/prusa-print-98/public/fonts/w95fa.woff2` is W95FA, Alina Sava's modern

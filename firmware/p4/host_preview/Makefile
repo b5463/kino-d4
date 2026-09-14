@@ -1,4 +1,4 @@
-﻿# Render the camera's screens natively, using the firmware's own drawing code.
+# Render the camera's screens natively, using the firmware's own drawing code.
 #
 #   make && ./preview out/
 #

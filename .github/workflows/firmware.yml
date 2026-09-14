@@ -142,6 +142,18 @@ jobs:
       # cJSON) in the same commit. Two suites were un-run for several releases
       # because that did not happen.
 
+  twin-ui:
+    # The Twin's device screen is ui.c compiled to WebAssembly and committed
+    # into apps/twin. A ui.c change without `npm run twin:ui:bake` would leave
+    # the Twin showing yesterday's firmware while claiming today's version.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22 }
+      - name: Rebuild kino-ui.wasm and compare with the committed artifact
+        run: npm run twin:ui:check
+
   host-preview:
     # The native UI renderer. It compiles ui.c as a translation unit, so a
     # change that breaks the drawing code fails here rather than being found
