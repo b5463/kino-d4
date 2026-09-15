@@ -497,7 +497,11 @@ static void d4_head(const char *name, const char *right, int page, int pages) {
 #define D4_TH_H (D4_TH_W * 3 / 4)
 
 static void d4_roll(void) {
-  d_ground(D_PAPER);
+  /* Graphite. ROLL is a camera screen - it is full of photographs - and the
+   * rule is that photographs get the dark ground so they are the brightest
+   * thing on the panel. This was on paper, which put an off-white field
+   * around every picture and made the page about the page. */
+  d_ground(D_GRAPH);
   static char files[24];
   snprintf(files, sizeof files, "%d FILES", gallery_total());
   d4_head("ROLL", files, gallery_page(), gallery_pages());
@@ -511,7 +515,8 @@ static void d4_roll(void) {
      * fewer than four frames gets fewer sheets, so the stack is the count. */
     const int sheets = slots[i].frames > 0 ? slots[i].frames : 1;
     for (int k = sheets - 1; k >= 1; k--)
-      fill(cx - k * 4, cy - k * 4, D4_TH_W, D4_TH_H, k & 1 ? d_toward(D_GRAPH, D_PAPER, 120) : D_GRAPH);
+      fill(cx - k * 4, cy - k * 4, D4_TH_W, D4_TH_H,
+           k & 1 ? d_toward(D_PAPER, D_GRAPH, 150) : d_toward(D_PAPER, D_GRAPH, 90));
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       /* The one under the cursor plays; the rest are still. A page of eight
        * wigglegrams all moving at once is a page nobody can read, and the
@@ -526,8 +531,8 @@ static void d4_roll(void) {
       img_blit_tf(px, pw, ph, 0.f, 0.f, 1.f, 1.f, (float)(cx + D4_TH_W / 2), (float)(cy + D4_TH_H / 2),
                   (float)D4_TH_W, (float)D4_TH_H, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
     } else {
-      fill(cx, cy, D4_TH_W, D4_TH_H, d_toward(D_GRAPH, D_PAPER, 60));
-      df_draw_c(cx + D4_TH_W / 2, cy + D4_TH_H / 2 - 7, "-", 1, D_PAPER);
+      fill(cx, cy, D4_TH_W, D4_TH_H, d_toward(D_GRAPH, D_PAPER, 30));
+      df_draw_c(cx + D4_TH_W / 2, cy + D4_TH_H / 2 - 7, "-", 1, D_DIM);
     }
     /* The index in a solid tab under the corner of the stack: a file number
      * on a piece of equipment, not a caption. */
@@ -1039,9 +1044,11 @@ static const char *const D4_PLACES[4] = {"ROLL", "LOOK", "LINK", "SETUP"};
 
 static void d4_menu(void) {
   d4_live();
-  const int h = 96, y = UI_H - D_FOOT - h;
+  /* Over the picture, above the facts - the facts are still true while the
+   * menu is up, and covering them would say otherwise. */
+  const int h = 96, y = UI_H - D_BAND_B - h;
   fill(0, y, UI_W, h, D_GRAPH);
-  fill(0, y, UI_W, 1, D_FAINT);
+  fill(0, y, UI_W, 2, D_PAPER);
   for (int i = 0; i < 4; i++) {
     const int x = d_col_x(i);
     const bool on = d4.sel == i;

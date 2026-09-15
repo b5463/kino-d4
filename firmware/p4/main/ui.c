@@ -2018,6 +2018,31 @@ static uint32_t ui_pass(void) {
     ly = DISPLAY_H_RES - 1 - tx;
     region = hit_test(lx, ly);
   }
+#ifdef KINO_D4
+  /*
+   * The D4 interface takes the tap on its own terms. It cannot go through
+   * hit_test(): that is the old shell's region map, it knows nothing about
+   * these screens, and it returns -1 everywhere - which means the release
+   * branch below never runs and every tap is silently dropped. Which is
+   * exactly what happened the first time this was tried in the Twin.
+   */
+  {
+    static bool d4_down;
+    static int d4_x, d4_y;
+    if (down && !d4_down) {
+      d4_down = true;
+      d4_x = lx;
+      d4_y = ly;
+    } else if (!down && d4_down) {
+      d4_down = false;
+      d4_tap(d4_x, d4_y);
+      draw_screen();
+      gfx_present();
+      return 20;
+    }
+    if (down) return 20;
+  }
+#endif
 
   /*
    * A swipe is a press that travelled. The finger's landing point is kept;
@@ -2118,15 +2143,6 @@ static uint32_t ui_pass(void) {
     draw_screen();
     gfx_present();
   } else if (!down && held != -1) {
-#ifdef KINO_D4
-    /* A tap is a tap: where it landed, and nothing about how it got there. */
-    held = -1;
-    s_pressed = -1;
-    d4_tap(lx, ly);
-    draw_screen();
-    gfx_present();
-    return (int)MO_FRAME_MS;
-#endif
     const int fired = (s_pressed == held) ? held : -1;
     s_pressed = -1;
     held = -1;
