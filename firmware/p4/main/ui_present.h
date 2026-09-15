@@ -1768,6 +1768,15 @@ static void events_watch(void) {
 /* The frame                                                           */
 
 static void draw_screen(void) {
+#ifdef KINO_D4
+  /* The D4 interface draws the whole frame. While it is being built it sits
+   * behind this switch, so the host preview and the Twin show the new one and
+   * the camera keeps the one that is finished. When the new one is finished,
+   * the switch and everything below it go. */
+  d4_step();
+  d4_draw();
+  return;
+#endif
   const int64_t now = esp_timer_get_time();
   /* What the cameras see, then what sort of state that puts the camera in,
    * then what that does to the timing and the travel of everything below. */

@@ -1800,6 +1800,13 @@ static void handle_button(const btn_event_t *ev) {
    * else. Before the FN and shutter branches, so a press cannot both clear the
    * report and fire the next photograph. */
   if (shot_hold_ack()) return;
+#ifdef KINO_D4
+  d4_button(ev->id, ev->long_press);
+  if (ev->id == BTN_SHUTTER) fire_shutter(ev->long_press);
+  draw_screen();
+  gfx_present();
+  return;
+#endif
   if (ev->id == BTN_FN) {
     flash_cycle();
     return;
@@ -2111,6 +2118,15 @@ static uint32_t ui_pass(void) {
     draw_screen();
     gfx_present();
   } else if (!down && held != -1) {
+#ifdef KINO_D4
+    /* A tap is a tap: where it landed, and nothing about how it got there. */
+    held = -1;
+    s_pressed = -1;
+    d4_tap(lx, ly);
+    draw_screen();
+    gfx_present();
+    return (int)MO_FRAME_MS;
+#endif
     const int fired = (s_pressed == held) ? held : -1;
     s_pressed = -1;
     held = -1;

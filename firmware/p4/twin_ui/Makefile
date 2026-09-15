@@ -41,13 +41,14 @@ endif
 CFLAGS := --target=wasm32-wasip1 -O2 -std=gnu11 -Wall -Wno-unused-function -Wno-unknown-attributes \
           -mexec-model=reactor \
           -I shim $(ICON_INC) -I $(HOST_SHIM) -I $(MAIN) -I $(KDP_CORE) \
-          -DKINO_FW_VERSION=\"$(VERSION)\" -DKINO_TWIN_UI=1
+          -DKINO_FW_VERSION=\"$(VERSION)\" -DKINO_TWIN_UI=1 -DKINO_D4=1
 # The canvas, a snapshot for dissolves, the frame ring and the gallery tiles
 # are the bulk of the memory; 64 MB leaves room for the photograph frames.
 LDFLAGS := -Wl,--no-entry -Wl,--initial-memory=33554432 -Wl,--max-memory=134217728 -Wl,--export=__heap_base -lm
 
 SRCS := twin_ui.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
+        $(MAIN)/d4_style.h $(MAIN)/d4_font.h $(MAIN)/d4_ui.h \
         $(MAIN)/ui_type.h $(MAIN)/ui_font_ui.h $(MAIN)/ui_font_jp.h $(MAIN)/ui_text_jp.h \
         $(MAIN)/kmo.h $(MAIN)/kdraw.h $(MAIN)/kscene.h $(MAIN)/kbehave.h $(MAIN)/kmo_data.h $(MAIN)/ui_present.h $(MAIN)/ui_playground.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \

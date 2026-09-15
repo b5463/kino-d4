@@ -57,7 +57,7 @@ static struct {
   int flash_pct; /* 0 when the flash is not charging, else how far along */
 } d4;
 
-#define D4_WORD_MS 900
+#define D4_WORD_MS 1400
 
 static inline int d4_ms(int64_t t0) { return (int)((esp_timer_get_time() - t0) / 1000); }
 
@@ -1084,6 +1084,208 @@ static void d4_draw(void) {
     default:
       if (d4.flash_pct > 0) d4_flash_charging(d4.flash_pct);
       else d4_live();
+      break;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Input                                                               */
+/*
+ * The camera has two keys - a shutter and an FN - and a touch panel. That is
+ * the whole vocabulary, and it decides the shape of the interface more than
+ * any drawing does:
+ *
+ *   SHUTTER  takes a photograph, from anywhere. There is no state this
+ *            camera can be in where the shutter does something else.
+ *   FN       the menu: the four places, over the picture, and away again.
+ *            From inside a place it is the way back to the camera.
+ *   TOUCH    everything else, and only where something is drawn to touch.
+ *
+ * Nothing here is a gesture. A tap is a tap.
+ */
+
+/** Go home, stopping whatever the place was doing. */
+static void d4_home_go(void) {
+  d4.screen = D4_LIVE;
+  d4.sel = 0;
+  d4.page = 0;
+}
+
+static void d4_button(int id, bool long_press) {
+  if (id == BTN_SHUTTER) {
+    /* From anywhere. If the user is deep in SETUP and presses the shutter
+     * they get a photograph, because that is what the object in their hand
+     * is for. */
+    d4.screen = D4_LIVE;
+    d4.cap = D4_CAP_SHUTTER;
+    d4.cap_us = esp_timer_get_time();
+    return;
+  }
+  if (id != BTN_FN) return;
+  if (long_press) { d4_home_style = D4_HOME_SPREAD; return; } /* held: the spread check */
+  if (d4.screen == D4_LIVE) { d4.screen = D4_MENU; d4.sel = 0; }
+  else if (d4.screen == D4_MENU) d4_home_go();
+  else d4_home_go();
+}
+
+static void d4_button_up(int id) {
+  if (id == BTN_FN) d4_home_style = D4_HOME_WIGGLE; /* the check ends with the press */
+}
+
+/** A tap, at a place on the panel. Returns true when it meant something. */
+static bool d4_tap(int x, int y) {
+  /* The top band's left end is BACK on every screen that has one, which is
+   * every screen except the camera. */
+  if (d4.screen != D4_LIVE && d4.screen != D4_MENU && y < D_BAND_T && x < 200) {
+    if (d4.screen == D4_ITEM) { d4.screen = D4_ROLL; return true; }
+    d4_home_go();
+    return true;
+  }
+  switch (d4.screen) {
+    case D4_LIVE:
+      /* The flash cell in the foot band is the one thing on the camera that
+       * can be changed without leaving it. */
+      if (y > UI_H - D_BAND_B && x > D4_FEED_W && x < D4_FEED_W + 200) {
+        flash_cycle();
+        return true;
+      }
+      return false;
+    case D4_MENU: {
+      if (y < UI_H - D_BAND_B - 96) { d4_home_go(); return true; }
+      const int i = x / (UI_W / 4);
+      static const d4_screen_t PLACE[4] = {D4_ROLL, D4_LOOK, D4_LINK, D4_SETUP};
+      d4.screen = PLACE[i & 3];
+      d4.sel = 0;
+      d4.page = 0;
+      return true;
+    }
+    case D4_ROLL: {
+      if (y < D_BAND_T || y > UI_H - D_BAND_B) return false;
+      const int col = (x - D_MARGIN) / (D_COL_W + D_GUT);
+      const int row = (y - D_BAND_T - 20) / (D4_TH_H + 46);
+      const int i = row * 4 + col;
+      if (col < 0 || col > 3 || row < 0 || row > 1 || i >= GALLERY_PAGE) return false;
+      /* First tap selects - which is what starts that one playing - and the
+       * second opens it. A roll is browsed by looking, not by opening. */
+      if (d4.sel == i) d4.screen = D4_ITEM;
+      else d4.sel = i;
+      return true;
+    }
+    case D4_LOOK: {
+      const int n = kdp_recipes_count();
+      if (y > UI_H - D4_LOOK_STRIP) {
+        if (x < UI_W / 2 && d4.sel > 0) d4.sel--;
+        else if (x >= UI_W / 2 && d4.sel < n - 1) d4.sel++;
+        return true;
+      }
+      d4_home_go();
+      return true;
+    }
+    case D4_SETUP: {
+      const int top = D_BAND_T + 14, rh = 40;
+      const int i = (y - top) / rh;
+      if (y < top || i < 0 || i > 7) return false;
+      if (d4.sel == i) {
+        /* The rows that go somewhere, on the page that has them. */
+        if (d4.page == 1 && i == 0) d4.screen = D4_CAMERAS;
+        else if (d4.page == 1 && i == 1) { d4.screen = D4_CAL; d4.sel = 0; }
+        else if (d4.page == 0 && i == 7) {
+          d4.screen = D4_CONFIRM;
+          d4.confirm_n = gallery_total();
+          d4.confirm_noun = "FILES";
+          d4.confirm_yes = "FORMAT";
+          d4.sel = 0;
+        }
+      } else {
+        d4.sel = i;
+      }
+      return true;
+    }
+    case D4_CONFIRM:
+      d4.sel = x < UI_W / 2 ? 0 : 1;
+      return true;
+    case D4_ITEM:
+      d4.screen = D4_ROLL;
+      return true;
+    default:
+      d4_home_go();
+      return true;
+  }
+}
+
+/**
+ * Advance the capture, from what the pipeline is actually doing.
+ *
+ * Each phase ends because something real happened rather than because a timer
+ * expired: the shutter is one frame, CATCH ends when the fourth camera
+ * answers, MAKE ends when the file is written. PLAY is the only one with a
+ * clock on it, and that clock is how long a person wants to look at what they
+ * just made before the camera gets out of the way.
+ */
+#define D4_PLAY_MS 2200
+#define D4_CATCH_MAX_MS 2500 /* past this the pipeline is not going to answer */
+#define D4_MAKE_MAX_MS 4000  /* past this nothing is being written */
+
+/* Boot is over when the cameras are up, or when this much time has passed
+ * whatever they are doing. A camera that will not let you out of its logo
+ * until the hardware agrees is a camera you cannot take a photograph with. */
+#define D4_BOOT_MAX_MS 1400
+
+static void d4_step(void) {
+  const capture_stage_t st = capture_stage();
+  if (d4.screen == D4_BOOT) {
+    if (d4.boot_us == 0) d4.boot_us = esp_timer_get_time();
+    d_mark_t m[4];
+    d4_cam_marks(m);
+    int up = 0;
+    for (int i = 0; i < 4; i++) up += m[i] == D_MARK_ON ? 1 : 0;
+    /* READY is held for a moment so it is seen, then the camera. */
+    if ((up == 4 && d4_ms(d4.boot_us) > 500) || d4_ms(d4.boot_us) > D4_BOOT_MAX_MS) d4.screen = D4_LIVE;
+  }
+  switch (d4.cap) {
+    case D4_CAP_NONE:
+      /* A capture the camera started on its own - a held shutter repeating -
+       * still gets the whole sequence. */
+      if (st != CAPTURE_IDLE && st != CAPTURE_DONE) {
+        d4.cap = D4_CAP_SHUTTER;
+        d4.cap_us = esp_timer_get_time();
+      }
+      break;
+    case D4_CAP_SHUTTER:
+      /* One frame of white, and then the four are watched. */
+      d4.cap = D4_CAP_CATCH;
+      d4.cap_us = esp_timer_get_time();
+      break;
+    case D4_CAP_CATCH:
+      /* The fourth frame ends it - or the pipeline giving up does. A capture
+       * that waits forever for a camera that is never going to answer is a
+       * camera the user cannot use, so this ends whatever happens and says
+       * what it got. The Twin found this by having no capture pipeline at
+       * all: the count sat at 0/4 and nothing could be done about it. */
+      if (st == CAPTURE_DONE || capture_frames_in() == 0xF || d4_ms(d4.cap_us) > D4_CATCH_MAX_MS) {
+        d4.cap = D4_CAP_MAKE;
+        d4.cap_us = esp_timer_get_time();
+      }
+      break;
+    case D4_CAP_MAKE: {
+      capture_report_t r;
+      capture_last(&r);
+      const bool written = (st == CAPTURE_IDLE || st == CAPTURE_DONE) && r.stored > 0;
+      if (written) {
+        d4.cap = D4_CAP_PLAY;
+        d4.cap_us = esp_timer_get_time();
+      } else if (d4_ms(d4.cap_us) > D4_MAKE_MAX_MS) {
+        /* Nothing came back. There is nothing to play, so the camera says so
+         * once and returns to the picture rather than pretending. */
+        d4.cap = D4_CAP_NONE;
+        d4.word = capture_frames_in() ? "NOT SAVED" : "NOTHING CAME BACK";
+        d4.word_us = esp_timer_get_time();
+      }
+      break;
+    }
+    case D4_CAP_PLAY:
+      d4.wiggle = d4_wiggle_lens(NULL, (uint8_t[8]){0});
+      if (d4_ms(d4.cap_us) > D4_PLAY_MS) d4.cap = D4_CAP_NONE;
       break;
   }
 }
