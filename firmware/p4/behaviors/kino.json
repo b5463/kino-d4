@@ -330,14 +330,31 @@
   },
 
   "events": {
+    "_capture_success": "Context chooses the family; weight only chooses inside it. A burst gets out of the way. A clean four-way sync earns the convergence. A flash shot earns the separation. A frame held a long time earns a considered landing. A dark room is quieter. What is left is the ordinary mix, and most of it is silence.",
     "capture_success": [
-      { "clip": "cap_none", "w": 34 },
-      { "clip": "cap_quiet", "w": 26 },
-      { "clip": "cap_four_merge", "w": 16, "avoid_prev": 2, "texts": ["GOT IT.", "FOUR.", "OK."] },
-      { "clip": "cap_text_hit", "w": 14, "avoid_prev": 1, "max_repeats": 1, "texts": ["GOT IT.", "NICE.", "AGAIN?", "KEEP GOING."] },
-      { "clip": "cap_hard_cut", "w": 6, "avoid_prev": 3, "texts": ["OK.", "DONE."] },
-      { "clip": "cap_energy", "w": 4, "rare": true, "min_interval_s": 40, "texts": ["YES.", "PERFECT."] },
-      { "clip": "cap_hundred", "w": 0, "shots_eq": 100, "once_per_session": true, "texts": ["A HUNDRED."] }
+      { "_": "the hundredth this session", "clip": "cap_hundred", "w": 0, "shots_eq": 100, "once_per_session": true, "texts": ["A HUNDRED."] },
+
+      { "_": "a burst: stay out of the way and stay responsive", "clip": "cap_none", "w": 70, "burst_min": 3 },
+      { "clip": "cap_quiet", "w": 22, "burst_min": 3 },
+      { "clip": "cap_hard_cut", "w": 8, "burst_min": 3, "avoid_prev": 3, "texts": ["OK."] },
+
+      { "_": "four cameras that agreed to within a frame: earn the convergence", "clip": "cap_four_merge", "w": 30, "burst_max": 2, "sync_spread_max_ms": 18, "avoid_prev": 1, "texts": ["GOT IT.", "FOUR.", "OK."] },
+
+      { "_": "the flash fired: the separation belongs to a real event", "clip": "cap_energy", "w": 22, "burst_max": 2, "flash": 1, "min_interval_s": 25, "texts": ["YES.", "PERFECT."] },
+
+      { "_": "held a long time before the shutter: a considered landing", "clip": "cap_text_hit", "w": 26, "burst_max": 1, "framing_min_ms": 2500, "texts": ["GOT IT.", "NICE."] },
+
+      { "_": "first frame back after a while away", "clip": "cap_text_hit", "w": 24, "burst_max": 1, "idle_min_s": 900, "texts": ["AGAIN?", "KEEP GOING."] },
+
+      { "_": "a dark room: quieter, and never the loud one", "clip": "cap_none", "w": 46, "burst_max": 2, "lum_max": 28 },
+      { "clip": "cap_quiet", "w": 30, "burst_max": 2, "lum_max": 28 },
+
+      { "_": "the ordinary mix, in an ordinary room", "clip": "cap_none", "w": 34, "burst_max": 2, "lum_min": 29 },
+      { "clip": "cap_quiet", "w": 26, "burst_max": 2, "lum_min": 29 },
+      { "clip": "cap_four_merge", "w": 12, "burst_max": 2, "lum_min": 29, "avoid_prev": 2, "texts": ["GOT IT.", "FOUR.", "OK."] },
+      { "clip": "cap_text_hit", "w": 12, "burst_max": 2, "lum_min": 29, "avoid_prev": 1, "max_repeats": 1, "texts": ["GOT IT.", "NICE.", "AGAIN?"] },
+      { "clip": "cap_hard_cut", "w": 6, "burst_max": 2, "lum_min": 29, "avoid_prev": 3, "texts": ["OK.", "DONE."] },
+      { "_": "rare, and only when the camera is already lively", "clip": "cap_energy", "w": 5, "burst_max": 2, "energy_min": 55, "rare": true, "min_interval_s": 40, "texts": ["YES.", "PERFECT."] }
     ],
     "capture_fail": [
       { "clip": "cap_fail", "w": 1, "texts": ["NO FRAME."] }

@@ -166,6 +166,13 @@ typedef struct {
   int16_t idle_min_s;    /* the idle that preceded this event, at least */
   int8_t hour_lt;        /* -1 any, else local hour < this (late night) */
   int8_t first_boot;     /* -1 any, 1 only on the first boot ever */
+  /* Mood and scene bands, 0..100, -1 for don't care. What makes selection
+   * context-first: the qualifying set is decided here, and weight only
+   * chooses among what already fits. */
+  int8_t energy_min, energy_max, calm_min, calm_max, strain_min, strain_max, conf_min;
+  int8_t burst_min, burst_max;
+  int8_t lum_min, lum_max, motion_max;
+  int16_t framing_min_ms, sync_spread_max_ms;
   const char *const *texts; /* strings the clip's "label" role may show; NULL = none */
   uint8_t ntexts;
 } kb_variant_t;
@@ -353,6 +360,11 @@ typedef struct {
 
 static kmo_inst_t s_kmo_inst[KMO_MAX_INST];
 static int64_t s_kmo_now_us;
+/* What mood does to motion (kmood.h sets these once a pass). Tempo scales how
+ * fast a clip runs; vigour scales how far its additive tracks travel. Both are
+ * 1 at rest, so a film that never touches the mood is the camera at rest. */
+static float s_kmo_tempo = 1.f;
+static float s_kmo_vigour = 1.f;
 static float s_kmo_dt_ms = 16.f;
 static int s_kmo_live; /* instances that moved something this pass */
 
@@ -362,7 +374,7 @@ static void (*s_kmo_sound)(int cue);
 /** Clip time in ms for an instance at the current pass, after the warp. */
 static float kmo_inst_time(const kmo_inst_t *in) {
   const kmo_clip_t *c = &KMO_CLIPS[in->clip];
-  float t = (float)(s_kmo_now_us - in->t0_us) / 1000.f;
+  float t = (float)(s_kmo_now_us - in->t0_us) / 1000.f * s_kmo_tempo;
   if (c->warp && c->dur > 0) {
     const float u = t / (float)c->dur;
     t = kmo_curve(c->warp - 1, u) * (float)c->dur;

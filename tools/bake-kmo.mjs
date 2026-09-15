@@ -14,7 +14,12 @@
 //
 // Track key: "role.channel" (absolute), "role.channel+" (additive),
 // "role@path" (drives position along a path, x/y additive), "role@path~"
-// (and rotation follows the tangent). Keys: [t_ms, value, interp?, p0?, p1?]
+// (and rotation follows the tangent). A variant may also carry mood and scene
+// bands - energy_min/max, calm_min/max, strain_min/max, conf_min, burst_min/max,
+// lum_min/max, motion_max as percentages, framing_min_ms and sync_spread_max_ms
+// in milliseconds. Those decide which behaviours qualify at all, so weight only
+// chooses among what already fits the moment.
+// Keys: [t_ms, value, interp?, p0?, p1?]
 // with interp one of lin | hold | step:N | smooth | spring (p0 Hz, p1 zeta) |
 // exp (p0 tau ms) | <curve name>. A value "170*p1" is scaled by the
 // instance's parameter 1 at runtime (a direction, a distance).
@@ -40,11 +45,15 @@ function load() {
   const merged = { curves: {}, paths: {}, clips: {}, events: {} };
   for (const f of readdirSync(SRC_DIR).filter((n) => n.endsWith('.json')).sort()) {
     const j = JSON.parse(readFileSync(join(SRC_DIR, f), 'utf8'));
+    /* A key beginning with an underscore is a note to the reader, at every
+     * level of these files, and never data. */
     for (const k of ['curves', 'paths', 'clips']) for (const [n, v] of Object.entries(j[k] || {})) {
+      if (n.startsWith('_')) continue;
       if (merged[k][n]) throw new Error(`${f}: ${k} "${n}" defined twice`);
       merged[k][n] = v;
     }
     for (const [ev, list] of Object.entries(j.events || {})) {
+      if (ev.startsWith('_')) continue;
       if (!EVENTS.includes(ev)) throw new Error(`${f}: unknown event "${ev}"`);
       merged.events[ev] = (merged.events[ev] || []).concat(list);
     }
@@ -140,6 +149,13 @@ function bake(src) {
         avoid_prev_n: v.avoid_prev ?? 0, max_repeats: v.max_repeats ?? 0, rare: v.rare ? 1 : 0,
         shots_eq: v.shots_eq ?? -1, shots_min: v.shots_min ?? -1, flash: v.flash ?? -1, sync_ok: v.sync_ok ?? -1,
         quad: v.quad ?? -1, idle_min_s: v.idle_min_s ?? 0, hour_lt: v.hour_lt ?? -1, first_boot: v.first_boot ? 1 : -1,
+        // Mood and scene bands: what makes selection context-first.
+        energy_min: v.energy_min ?? -1, energy_max: v.energy_max ?? -1,
+        calm_min: v.calm_min ?? -1, calm_max: v.calm_max ?? -1,
+        strain_min: v.strain_min ?? -1, strain_max: v.strain_max ?? -1, conf_min: v.conf_min ?? -1,
+        burst_min: v.burst_min ?? -1, burst_max: v.burst_max ?? -1,
+        lum_min: v.lum_min ?? -1, lum_max: v.lum_max ?? -1, motion_max: v.motion_max ?? -1,
+        framing_min_ms: v.framing_min_ms ?? 0, sync_spread_max_ms: v.sync_spread_max_ms ?? -1,
         tp, ntexts: texts.length });
     }
   }
@@ -184,8 +200,8 @@ function emit(b) {
   L.push(`#define KMO_VARIANT_COUNT ${b.variants.length}`);
   L.push(`static const kb_variant_t KMO_VARIANTS[${Math.max(1, b.variants.length)}] = {`);
   for (const v of b.variants)
-    L.push(`  {${cstr(v.event)}, ${v.clip}, ${v.weight}, ${v.min_interval_s}, ${v.once_per_boot}, ${v.once_per_session}, ${v.avoid_prev_n}, ${v.max_repeats}, ${v.rare}, ${v.shots_eq}, ${v.shots_min}, ${v.flash}, ${v.sync_ok}, ${v.quad}, ${v.idle_min_s}, ${v.hour_lt}, ${v.first_boot}, ${v.tp >= 0 ? `KMO_TEXTS_${v.tp}` : 'NULL'}, ${v.ntexts}},`);
-  if (!b.variants.length) L.push('  {"", 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},');
+    L.push(`  {${cstr(v.event)}, ${v.clip}, ${v.weight}, ${v.min_interval_s}, ${v.once_per_boot}, ${v.once_per_session}, ${v.avoid_prev_n}, ${v.max_repeats}, ${v.rare}, ${v.shots_eq}, ${v.shots_min}, ${v.flash}, ${v.sync_ok}, ${v.quad}, ${v.idle_min_s}, ${v.hour_lt}, ${v.first_boot}, ${v.energy_min}, ${v.energy_max}, ${v.calm_min}, ${v.calm_max}, ${v.strain_min}, ${v.strain_max}, ${v.conf_min}, ${v.burst_min}, ${v.burst_max}, ${v.lum_min}, ${v.lum_max}, ${v.motion_max}, ${v.framing_min_ms}, ${v.sync_spread_max_ms}, ${v.tp >= 0 ? `KMO_TEXTS_${v.tp}` : 'NULL'}, ${v.ntexts}},`);
+  if (!b.variants.length) L.push('  {"", 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},');
   L.push('};');
   return L.join('\n') + '\n';
 }

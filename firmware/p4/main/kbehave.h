@@ -38,7 +38,8 @@ enum {
   KEV_COUNT
 };
 
-/* The caller's account of the world at the moment of the event. */
+/* The caller's account of the world at the moment of the event. Mood and the
+ * scene signals are percentages so a variant's condition reads as a band. */
 typedef struct {
   int shots_session;
   int flash_on;
@@ -47,6 +48,14 @@ typedef struct {
   int idle_s;
   int hour;       /* -1 unknown */
   int first_boot;
+  /* Mood, 0..100 (kmood.h). */
+  int energy, calm, confidence, strain;
+  /* What the cameras see and what the shot was like. */
+  int burst;      /* shots inside the burst window, this one included */
+  int lum;        /* 0 dark .. 100 bright; -1 when no camera answered */
+  int motion;     /* 0 still .. 100 */
+  int framing_ms; /* how long the scene was held before the shutter */
+  int sync_spread_ms; /* timing spread across the four source frames, -1 unknown */
 } kb_ctx_t;
 
 typedef struct {
@@ -73,6 +82,12 @@ static inline void kb_seed(uint32_t s) { s_kb_rng = s ? s : 0x2545f491u; }
 /** A new session: the once-per-session marks clear. Called on a long-idle wake. */
 static void kb_new_session(void) { memset(s_kb_fired_session, 0, sizeof s_kb_fired_session); }
 
+static inline bool kb_band(int v, int lo, int hi) {
+  if (lo >= 0 && v < lo) return false;
+  if (hi >= 0 && v > hi) return false;
+  return true;
+}
+
 static bool kb_conditions(const kb_variant_t *v, const kb_ctx_t *c) {
   if (v->shots_eq > 0 && c->shots_session != v->shots_eq) return false;
   if (v->shots_min > 0 && c->shots_session < v->shots_min) return false;
@@ -82,6 +97,17 @@ static bool kb_conditions(const kb_variant_t *v, const kb_ctx_t *c) {
   if (v->idle_min_s > 0 && c->idle_s < v->idle_min_s) return false;
   if (v->hour_lt >= 0 && !(c->hour >= 0 && c->hour < v->hour_lt)) return false;
   if (v->first_boot > 0 && !c->first_boot) return false;
+  /* Context decides the family; the weighted draw only chooses inside it. */
+  if (!kb_band(c->energy, v->energy_min, v->energy_max)) return false;
+  if (!kb_band(c->calm, v->calm_min, v->calm_max)) return false;
+  if (!kb_band(c->strain, v->strain_min, v->strain_max)) return false;
+  if (!kb_band(c->confidence, v->conf_min, -1)) return false;
+  if (!kb_band(c->burst, v->burst_min, v->burst_max)) return false;
+  if (c->lum >= 0 && !kb_band(c->lum, v->lum_min, v->lum_max)) return false;
+  if (!kb_band(c->motion, -1, v->motion_max)) return false;
+  if (v->framing_min_ms > 0 && c->framing_ms < v->framing_min_ms) return false;
+  if (v->sync_spread_max_ms >= 0 &&
+      !(c->sync_spread_ms >= 0 && c->sync_spread_ms <= v->sync_spread_max_ms)) return false;
   return true;
 }
 

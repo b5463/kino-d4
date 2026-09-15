@@ -1581,6 +1581,67 @@ int main(int argc, char **argv) {
     if (a) { ks_mod_clear(a); a->char_clip = -1; }
   }
 
+  /* ---- what the behaviour controller does with context ----
+   *
+   * The brief's requirement is that context chooses the family and weight
+   * only chooses inside it. This is the proof: the same event, drawn a
+   * thousand times under each of several worlds, printed as a distribution.
+   * A burst must be almost all silence; a clean sync must reach the
+   * convergence; a dark room must never reach the loud one. */
+  {
+    struct { const char *name; kb_ctx_t c; } W[] = {
+        {"at rest, ordinary room", {.shots_session = 4, .flash_on = 0, .sync_ok = 1, .quad = 0, .idle_s = 3,
+                                    .hour = 14, .first_boot = 0, .energy = 20, .calm = 70, .confidence = 50,
+                                    .strain = 0, .burst = 1, .lum = 55, .motion = 8, .framing_ms = 400,
+                                    .sync_spread_ms = 40}},
+        {"mid burst",              {.shots_session = 12, .flash_on = 0, .sync_ok = 1, .quad = 0, .idle_s = 0,
+                                    .hour = 22, .first_boot = 0, .energy = 90, .calm = 5, .confidence = 60,
+                                    .strain = 0, .burst = 5, .lum = 50, .motion = 60, .framing_ms = 0,
+                                    .sync_spread_ms = 50}},
+        {"clean four-way sync",    {.shots_session = 6, .flash_on = 0, .sync_ok = 1, .quad = 1, .idle_s = 5,
+                                    .hour = 14, .first_boot = 0, .energy = 30, .calm = 60, .confidence = 70,
+                                    .strain = 0, .burst = 1, .lum = 60, .motion = 10, .framing_ms = 900,
+                                    .sync_spread_ms = 8}},
+        {"flash fired",            {.shots_session = 8, .flash_on = 1, .sync_ok = 1, .quad = 0, .idle_s = 4,
+                                    .hour = 23, .first_boot = 0, .energy = 45, .calm = 40, .confidence = 55,
+                                    .strain = 0, .burst = 1, .lum = 35, .motion = 20, .framing_ms = 600,
+                                    .sync_spread_ms = 45}},
+        {"held a long time",       {.shots_session = 3, .flash_on = 0, .sync_ok = 1, .quad = 0, .idle_s = 9,
+                                    .hour = 11, .first_boot = 0, .energy = 10, .calm = 95, .confidence = 55,
+                                    .strain = 0, .burst = 1, .lum = 65, .motion = 2, .framing_ms = 4200,
+                                    .sync_spread_ms = 44}},
+        {"dark room",              {.shots_session = 5, .flash_on = 0, .sync_ok = 1, .quad = 0, .idle_s = 6,
+                                    .hour = 1, .first_boot = 0, .energy = 25, .calm = 60, .confidence = 50,
+                                    .strain = 0, .burst = 1, .lum = 12, .motion = 9, .framing_ms = 700,
+                                    .sync_spread_ms = 46}},
+    };
+    fprintf(stderr, "\n[behaviour] capture_success, 1000 draws per world\n");
+    for (size_t w = 0; w < sizeof W / sizeof W[0]; w++) {
+      int count[KMO_CLIP_COUNT];
+      memset(count, 0, sizeof count);
+      int none = 0;
+      /* A fresh history per world, so one world's rules do not shape the next. */
+      memset(s_kb_hist, 0, sizeof s_kb_hist);
+      s_kb_hist_n = 0;
+      memset(s_kb_fired_boot, 0, sizeof s_kb_fired_boot);
+      memset(s_kb_fired_session, 0, sizeof s_kb_fired_session);
+      memset(s_kb_last_us, 0, sizeof s_kb_last_us);
+      kb_seed(1234u + (uint32_t)w);
+      for (int i = 0; i < 1000; i++) {
+        /* Far enough apart that a minimum interval is never the reason. */
+        const kb_pick_t p = kb_event(KEV_CAPTURE_SUCCESS, &W[w].c, (int64_t)i * 60000000LL);
+        if (p.variant < 0) none++;
+        else count[p.clip]++;
+      }
+      fprintf(stderr, "  %-24s", W[w].name);
+      for (int c = 0; c < KMO_CLIP_COUNT; c++)
+        if (count[c]) fprintf(stderr, " %s=%d", KMO_CLIPS[c].name, count[c]);
+      if (none) fprintf(stderr, " (nothing=%d)", none);
+      fprintf(stderr, "\n");
+    }
+    fprintf(stderr, "\n");
+  }
+
   if (g_write_failed) {
     fprintf(stderr, "preview: one or more screens could not be written\n");
     return 1;

@@ -395,6 +395,8 @@ static void draw_bits(const uint8_t *bits, int w, int h, int stride, int x, int 
 #include "kdraw.h"
 #include "kscene.h"
 #include "kbehave.h"
+#include "ksense.h"
+#include "kmood.h"
 
 /* Said by the plumbing, defined by the presentation (ui_present.h). */
 static void ui_note(const char *text);
@@ -1867,6 +1869,7 @@ static void ui_boot(void) {
   kb_seed((uint32_t)esp_timer_get_time() ^ (capture_count() * 2654435761u));
   /* Device memory: the first boot ever is set a little more slowly than every
    * boot after it, and the camera remembers which this is. */
+  ui_identity();
   s_first_boot = !config_bool("body.booted", false);
   boot_show(s_first_boot);
   if (s_first_boot) cfg_set_bool("body.booted", true);
@@ -1955,6 +1958,7 @@ static uint32_t ui_pass(void) {
     /* Picked up again: a short doze says nothing, the screen just comes
      * back; after a long one the camera acknowledges the return, and the
      * session starts over for the once-per-session behaviours. */
+    ksense_reset(); /* the room may be somewhere else entirely now */
     s_idle_before_us = s_slept_us ? esp_timer_get_time() - s_slept_us : 0;
     if (s_slept_us != 0 && s_idle_before_us >= LONG_SLEEP_US) {
       kb_new_session();
@@ -2053,7 +2057,11 @@ static uint32_t ui_pass(void) {
       const bool quick = now - g_down_us < 600000;
       if (quick && (dx > GEST_SWIPE || dx < -GEST_SWIPE) && dy < GEST_RISE && dy > -GEST_RISE &&
           s_dialog == DLG_NONE) {
-        klog("P4", "swipe %d px in %d ms", dx, (int)((now - g_down_us) / 1000));
+        const int gest_ms = (int)((now - g_down_us) / 1000);
+        klog("P4", "swipe %d px in %d ms", dx, gest_ms);
+        /* How fast the finger moved is an input, not a threshold that was
+         * crossed: a flick and a drag should not settle identically. */
+        if (gest_ms > 0) kmood_gesture((float)(dx < 0 ? -dx : dx) / (float)gest_ms);
         if (s_row_open) row_close();
         mode_swipe(dx < 0 ? 1 : -1);
       } else if (quick && (dy > GEST_SWIPE || dy < -GEST_SWIPE) && dx < GEST_RISE && dx > -GEST_RISE &&
@@ -2097,7 +2105,15 @@ static uint32_t ui_pass(void) {
   /* The nodes are only asked for frames while the viewfinder is up. Left
    * running behind a menu it would be four sensors and four UARTs burning
    * battery to fill a buffer nobody reads. */
-  viewfinder_run(s_screen == SCR_SHOOT || s_screen == SCR_LOOK);
+  {
+    /* The grids are a difference against the last look at the room, so they
+     * are meaningless across a gap in which the cameras were not looking. */
+    static bool vf_was_on;
+    const bool vf_on = s_screen == SCR_SHOOT || s_screen == SCR_LOOK;
+    if (vf_was_on && !vf_on) ksense_reset();
+    vf_was_on = vf_on;
+    viewfinder_run(vf_on);
+  }
 
   const capture_stage_t cstage = capture_stage();
   if (cstage == CAPTURE_DONE) {

@@ -340,12 +340,12 @@ static void ks_apply_tracks(void) {
       if (tr->path) {
         float px, py, tan;
         kmo_path_eval(tr->path - 1, v, &px, &py, &tan);
-        node->ch[KC_X].add += px;
-        node->ch[KC_Y].add += py;
+        node->ch[KC_X].add += px * s_kmo_vigour;
+        node->ch[KC_Y].add += py * s_kmo_vigour;
         if (tr->add == 2) node->ch[KC_ROT].add += tan;
         node->ch[KC_PATH_U].drv = v; node->ch[KC_PATH_U].driven = true;
       } else if (tr->add) {
-        node->ch[tr->ch].add += v;
+        node->ch[tr->ch].add += v * s_kmo_vigour;
       } else {
         node->ch[tr->ch].drv = v;
         node->ch[tr->ch].driven = true;

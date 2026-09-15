@@ -144,6 +144,17 @@ static kb_ctx_t ui_ctx(void) {
   c.idle_s = (int)(s_idle_before_us / 1000000);
   c.hour = clock_local_hour();
   c.first_boot = s_first_boot;
+  /* Mood, as bands a variant can ask for. */
+  c.energy = (int)(s_kmood.energy * 100.f);
+  c.calm = (int)(s_kmood.calm * 100.f);
+  c.confidence = (int)(s_kmood.confidence * 100.f);
+  c.strain = (int)(s_kmood.strain * 100.f);
+  c.burst = s_kmood.recent_shots;
+  /* What the cameras see. */
+  c.lum = s_ksense.live ? (int)(s_ksense.lum_mean * 100.f) : -1;
+  c.motion = s_ksense.live ? (int)(s_ksense.motion_mean * 100.f) : 0;
+  c.framing_ms = 0;
+  c.sync_spread_ms = -1;
   return c;
 }
 
@@ -495,6 +506,10 @@ typedef struct {
   int64_t t0_us;
   bool reported;
   uint32_t seen_in;
+  /* What the shot itself was like, for the behaviour context. */
+  int framing_ms;       /* how long the scene was held before the shutter */
+  int64_t first_in_us;  /* the first source frame back */
+  int64_t last_in_us;   /* the last */
 } cap_watch_t;
 static cap_watch_t s_capw;
 
@@ -511,6 +526,12 @@ static void cap_watch(void) {
     s_capw.reported = false;
     s_capw.seen_in = 0;
     s_capw.t0_us = now;
+    /* Held still for how long before this was taken: a deliberate frame and
+     * the fifth of a burst are not the same shot. */
+    s_capw.framing_ms = ksense_still_ms();
+    s_capw.first_in_us = 0;
+    s_capw.last_in_us = 0;
+    kmood_shot(now);
     ks_node_t *ns[6] = {ks_peek("cap.white"), ks_peek("cap.black"), ks_peek("pane0"), ks_peek("pane1"), ks_peek("pane2"), ks_peek("pane3")};
     const char *rs[6] = {"white", "black", "f0", "f1", "f2", "f3"};
     ks_stop_tag("cap");
@@ -523,6 +544,10 @@ static void cap_watch(void) {
       static const char *const MARK[4] = {"m0", "m1", "m2", "m3"};
       ks_node_t *m = ks_peek(MARK[i]);
       if (m) { ks_impulse(m, KC_R, 0.14f); }
+      /* The spread between the first frame back and the last is the sync
+       * quality the behaviour can actually condition on. */
+      if (s_capw.first_in_us == 0) s_capw.first_in_us = now;
+      s_capw.last_in_us = now;
     }
   }
   s_capw.seen_in = in;
@@ -536,6 +561,13 @@ static void cap_watch(void) {
     bool synced = r.stored == 4;
     for (int i = 0; i < 4 && synced; i++) synced = r.cam[i].attempted && r.cam[i].ok && r.cam[i].sync_class == PURE_SYNC_OK;
     c.sync_ok = synced;
+    c.framing_ms = s_capw.framing_ms;
+    c.sync_spread_ms = s_capw.first_in_us ? (int)((s_capw.last_in_us - s_capw.first_in_us) / 1000) : -1;
+    /* The camera notices how it did: a clean four-way lands as confidence,
+     * a lost photograph as strain, and both colour what comes next. */
+    if (!r.ok) kmood_trouble(0.6f);
+    else if (r.stored < r.online) kmood_trouble(0.25f);
+    else if (synced) kmood_reward(0.3f);
     if (!r.ok) {
       snprintf(s_cap_fail_why, sizeof s_cap_fail_why, "%s", r.stored == 0 ? "NOTHING CAME BACK" : "NOT SAVED");
       ui_event_ctx(KEV_CAPTURE_FAIL, &c);
@@ -979,11 +1011,28 @@ static void sync_about(void) {
     nd_text(ROW_ID[i], ROWS[i].title, &UT_S, HDR_DIM, (float)NR_X, (float)(y + 10), 0.f, 0.f, 10, false);
     nd_text(VAL_ID[i], ROWS[i].value, &UT_S, C_INK, (float)(NR_X + NR_W), (float)(y + 10), 1.f, 0.f, 10, false);
   }
-  /* Runtime, for the bench: what the renderer is doing. */
-  static char perf[64];
-  snprintf(perf, sizeof perf, "SCENE %lu us  WORST %lu us  MISSED %lu", (unsigned long)(s_ks_perf.render_us + s_ks_perf.step_us),
-           (unsigned long)s_ks_perf.worst_render_us, (unsigned long)s_ks_perf.missed);
-  nd_text("about.perf", perf, &UT_S, C_FAINT, (float)NR_X, (float)(NR_Y0 + 7 * 44 + 10), 0.f, 0.f, 10, false);
+  /* The bench rows: the renderer, what the cameras see, and the mood. The
+   * mood is never shown anywhere else and never will be - this page exists to
+   * expose the machine, which is the one place it belongs. */
+  static char perf[80], scene[80], mood[80];
+  /* Grouped so each line is one thing: what the renderer costs and what mood
+   * is doing to it, what the cameras see, and the mood itself. */
+  snprintf(perf, sizeof perf, "SCENE %lu us  WORST %lu us  MISSED %lu  TEMPO %d  VIGOUR %d",
+           (unsigned long)(s_ks_perf.render_us + s_ks_perf.step_us), (unsigned long)s_ks_perf.worst_render_us,
+           (unsigned long)s_ks_perf.missed, (int)(kmood_tempo() * 100.f), (int)(kmood_vigour() * 100.f));
+  if (s_ksense.live)
+    snprintf(scene, sizeof scene, "LUM %d  MOTION %d  SPREAD %d  STILL %d ms  CAMS %d",
+             (int)(s_ksense.lum_mean * 100.f), (int)(s_ksense.motion_mean * 100.f),
+             (int)(s_ksense.spread * 100.f), ksense_still_ms(), s_ksense.live);
+  else snprintf(scene, sizeof scene, "NO CAMERA SIGNAL");
+  snprintf(mood, sizeof mood, "ENERGY %d  CALM %d  CONF %d  STRAIN %d  BURST %d",
+           (int)(s_kmood.energy * 100.f), (int)(s_kmood.calm * 100.f), (int)(s_kmood.confidence * 100.f),
+           (int)(s_kmood.strain * 100.f), s_kmood.recent_shots);
+  const int by = NR_Y0 + 7 * 44 + 10;
+  nd_text("about.perf", perf, &UT_S, C_FAINT, (float)NR_X, (float)by, 0.f, 0.f, 10, false);
+  nd_text("about.scene", scene, &UT_S, C_FAINT, (float)NR_X, (float)(by + 26), 0.f, 0.f, 10, false);
+  nd_text("about.mood", mood, &UT_S, C_FAINT, (float)NR_X, (float)(by + 52), 0.f, 0.f, 10, false);
+  s_kmo_live++; /* these numbers move; keep the page drawing */
   sync_note(false);
 }
 
@@ -1196,6 +1245,12 @@ static void events_watch(void) {
 
 static void draw_screen(void) {
   const int64_t now = esp_timer_get_time();
+  /* What the cameras see, then what sort of state that puts the camera in,
+   * then what that does to the timing and the travel of everything below. */
+  ksense_step();
+  kmood_step(now);
+  s_kmo_tempo = kmood_tempo();
+  s_kmo_vigour = kmood_vigour();
   s_kmo_live = 0;
   ks_begin(now);
   s_clip_x0 = 0; s_clip_y0 = 0; s_clip_x1 = UI_W; s_clip_y1 = UI_H;
@@ -1231,6 +1286,14 @@ static void draw_screen(void) {
  * normal cold boot lands it on one spring. Then the finder is posed under it
  * and the name lets go through continuity - no dissolve, no second screen.
  */
+/** This unit's own character, from its serial and its cameras' disagreement. */
+static void ui_identity(void) {
+  /* The spread is quantised so a shade of drift between boots does not make
+   * the camera a different character every time it is switched on. */
+  const uint32_t spread = (uint32_t)(s_ksense.spread * 20.f);
+  kmood_identity(kdp_device_serial(), spread);
+}
+
 static void boot_show(bool first) {
   ks_node_t *b = nd_text("brand", "KINO D4", &UT_MB, C_INK, UI_W * 0.5f, UI_H * 0.5f, 0.5f, 0.5f, 95, false);
   ks_pose(b, KC_SX, 2.f);

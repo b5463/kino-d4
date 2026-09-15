@@ -467,16 +467,39 @@ marks a change of state, not because something is always performing.
 
 ### Runtime work implied by this brief
 
-- **Mood state**, continuous, decaying, feeding selection and motion
-  parameters.
-- **Cheap frame signals** off the viewfinder, feeding mood.
+- ~~**Mood state**, continuous, decaying, feeding selection and motion
+  parameters.~~ **Done.** `kmood.h`: energy, calm, confidence and strain,
+  each with its own time constant, read as tempo and vigour by the motion
+  runtime and as bands by behaviour selection.
+- ~~**Cheap frame signals** off the viewfinder, feeding mood.~~ **Done.**
+  `ksense.h`: luminance, its rate, motion, contrast, stillness and
+  inter-camera spread, off a sparse grid at 12 Hz.
+- ~~**Per-unit seeding** from serial and measured camera differences.~~
+  **Done.** `kmood_identity()` seeds the behaviour RNG, a permanent tempo
+  bias, the leading camera and a skew bias.
 - **Event-gated choreography phases**, so a clip can wait on real data.
 - **Gesture-driven transforms**, with displacement and release velocity
-  as inputs.
+  as inputs. Release velocity already feeds mood; the transform itself is
+  still canned.
 - **Cross-state object identity**, so a scene object survives a mode
   change and changes role: live region, captured frame, selected
   photograph, roll thumbnail, transfer item.
-- **Per-unit seeding** from serial and measured camera differences.
+
+Selection is now context-first, proven by the distribution the host
+preview prints on every run. The same event, a thousand draws per world:
+
+```
+at rest, ordinary room   none=413 quiet=275 text_hit=130 four_merge=120 hard_cut=62
+mid burst                none=705 quiet=231 hard_cut=64
+clean four-way sync      none=320 four_merge=315 quiet=235 text_hit=93 hard_cut=37
+flash fired              none=328 quiet=249 energy=196 four_merge=93 text_hit=81
+held a long time         none=302 text_hit=339 quiet=231 four_merge=79 hard_cut=49
+dark room                none=587 quiet=413
+```
+
+A burst is 70% silence and reaches no decoration. A clean sync more than
+doubles the convergence. The flash brings in a behaviour that appears
+nowhere else except rarely. A dark room never reaches a loud one.
 
 ### Playground additions
 

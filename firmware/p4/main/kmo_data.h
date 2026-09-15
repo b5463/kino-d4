@@ -794,50 +794,64 @@ static const kmo_clip_t KMO_CLIPS[52] = {
 #define KCLIP_PG_MOVE_A 50
 #define KCLIP_PG_MOVE_B 51
 static const char *const KMO_EVENT_NAMES[18] = {"capture_success", "capture_fail", "capture_partial", "link_connected", "link_lost", "transfer_complete", "sync_good", "boot", "first_boot", "wake", "wake_long_idle", "card_in", "card_out", "card_low", "usb_attach", "usb_detach", "look_change", "mode_change"};
-static const char *const KMO_TEXTS_0[3] = {"GOT IT.", "FOUR.", "OK."};
-static const char *const KMO_TEXTS_1[4] = {"GOT IT.", "NICE.", "AGAIN?", "KEEP GOING."};
-static const char *const KMO_TEXTS_2[2] = {"OK.", "DONE."};
+static const char *const KMO_TEXTS_0[1] = {"A HUNDRED."};
+static const char *const KMO_TEXTS_1[1] = {"OK."};
+static const char *const KMO_TEXTS_2[3] = {"GOT IT.", "FOUR.", "OK."};
 static const char *const KMO_TEXTS_3[2] = {"YES.", "PERFECT."};
-static const char *const KMO_TEXTS_4[1] = {"A HUNDRED."};
-static const char *const KMO_TEXTS_5[1] = {"NO FRAME."};
-static const char *const KMO_TEXTS_6[1] = {"CONNECTED"};
-static const char *const KMO_TEXTS_7[1] = {"LINK LOST"};
-static const char *const KMO_TEXTS_8[1] = {"SENT"};
-static const char *const KMO_TEXTS_9[1] = {"SYNC OK"};
-static const char *const KMO_TEXTS_10[3] = {"BACK.", "STILL HERE.", "AGAIN."};
-static const char *const KMO_TEXTS_11[1] = {"CARD"};
-static const char *const KMO_TEXTS_12[1] = {"NO CARD"};
-static const char *const KMO_TEXTS_13[1] = {"CARD NEARLY FULL"};
-static const char *const KMO_TEXTS_14[1] = {"USB"};
-static const char *const KMO_TEXTS_15[1] = {"USB OUT"};
-#define KMO_VARIANT_COUNT 28
-static const kb_variant_t KMO_VARIANTS[28] = {
-  {"capture_success", 16, 34, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"capture_success", 11, 26, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"capture_success", 12, 16, 0, 0, 0, 2, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_0, 3},
-  {"capture_success", 13, 14, 0, 0, 0, 1, 1, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_1, 4},
-  {"capture_success", 14, 6, 0, 0, 0, 3, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_2, 2},
-  {"capture_success", 15, 4, 40, 0, 0, 0, 0, 1, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_3, 2},
-  {"capture_success", 17, 0, 0, 0, 1, 0, 0, 0, 100, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_4, 1},
-  {"capture_fail", 18, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_5, 1},
-  {"capture_partial", 11, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"link_connected", 20, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_6, 1},
-  {"link_lost", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_7, 1},
-  {"transfer_complete", 23, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_8, 1},
-  {"sync_good", 19, 1, 20, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_9, 1},
-  {"boot", 0, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"first_boot", 1, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"wake_long_idle", 3, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_10, 3},
-  {"card_in", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_11, 1},
-  {"card_out", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_12, 1},
-  {"card_low", 22, 1, 300, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_13, 1},
-  {"usb_attach", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_14, 1},
-  {"usb_detach", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, KMO_TEXTS_15, 1},
-  {"look_change", 25, 3, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"look_change", 26, 3, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"look_change", 27, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"look_change", 28, 3, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"look_change", 29, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"look_change", 30, 4, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
-  {"look_change", 31, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, NULL, 0},
+static const char *const KMO_TEXTS_4[2] = {"GOT IT.", "NICE."};
+static const char *const KMO_TEXTS_5[2] = {"AGAIN?", "KEEP GOING."};
+static const char *const KMO_TEXTS_6[3] = {"GOT IT.", "FOUR.", "OK."};
+static const char *const KMO_TEXTS_7[3] = {"GOT IT.", "NICE.", "AGAIN?"};
+static const char *const KMO_TEXTS_8[2] = {"OK.", "DONE."};
+static const char *const KMO_TEXTS_9[2] = {"YES.", "PERFECT."};
+static const char *const KMO_TEXTS_10[1] = {"NO FRAME."};
+static const char *const KMO_TEXTS_11[1] = {"CONNECTED"};
+static const char *const KMO_TEXTS_12[1] = {"LINK LOST"};
+static const char *const KMO_TEXTS_13[1] = {"SENT"};
+static const char *const KMO_TEXTS_14[1] = {"SYNC OK"};
+static const char *const KMO_TEXTS_15[3] = {"BACK.", "STILL HERE.", "AGAIN."};
+static const char *const KMO_TEXTS_16[1] = {"CARD"};
+static const char *const KMO_TEXTS_17[1] = {"NO CARD"};
+static const char *const KMO_TEXTS_18[1] = {"CARD NEARLY FULL"};
+static const char *const KMO_TEXTS_19[1] = {"USB"};
+static const char *const KMO_TEXTS_20[1] = {"USB OUT"};
+#define KMO_VARIANT_COUNT 37
+static const kb_variant_t KMO_VARIANTS[37] = {
+  {"capture_success", 17, 0, 0, 0, 1, 0, 0, 0, 100, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_0, 1},
+  {"capture_success", 16, 70, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"capture_success", 11, 22, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"capture_success", 14, 8, 0, 0, 0, 3, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, -1, -1, 0, -1, KMO_TEXTS_1, 1},
+  {"capture_success", 12, 30, 0, 0, 0, 1, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, -1, -1, -1, 0, 18, KMO_TEXTS_2, 3},
+  {"capture_success", 15, 22, 25, 0, 0, 0, 0, 0, -1, -1, 1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, -1, -1, -1, 0, -1, KMO_TEXTS_3, 2},
+  {"capture_success", 13, 26, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1, -1, 2500, -1, KMO_TEXTS_4, 2},
+  {"capture_success", 13, 24, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 900, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1, -1, 0, -1, KMO_TEXTS_5, 2},
+  {"capture_success", 16, 46, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, -1, 28, -1, 0, -1, NULL, 0},
+  {"capture_success", 11, 30, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, -1, 28, -1, 0, -1, NULL, 0},
+  {"capture_success", 16, 34, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 29, -1, -1, 0, -1, NULL, 0},
+  {"capture_success", 11, 26, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 29, -1, -1, 0, -1, NULL, 0},
+  {"capture_success", 12, 12, 0, 0, 0, 2, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 29, -1, -1, 0, -1, KMO_TEXTS_6, 3},
+  {"capture_success", 13, 12, 0, 0, 0, 1, 1, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 29, -1, -1, 0, -1, KMO_TEXTS_7, 3},
+  {"capture_success", 14, 6, 0, 0, 0, 3, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 29, -1, -1, 0, -1, KMO_TEXTS_8, 2},
+  {"capture_success", 15, 5, 40, 0, 0, 0, 0, 1, -1, -1, -1, -1, -1, 0, -1, -1, 55, -1, -1, -1, -1, -1, -1, -1, 2, -1, -1, -1, 0, -1, KMO_TEXTS_9, 2},
+  {"capture_fail", 18, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_10, 1},
+  {"capture_partial", 11, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"link_connected", 20, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_11, 1},
+  {"link_lost", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_12, 1},
+  {"transfer_complete", 23, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_13, 1},
+  {"sync_good", 19, 1, 20, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_14, 1},
+  {"boot", 0, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"first_boot", 1, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"wake_long_idle", 3, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_15, 3},
+  {"card_in", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_16, 1},
+  {"card_out", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_17, 1},
+  {"card_low", 22, 1, 300, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_18, 1},
+  {"usb_attach", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_19, 1},
+  {"usb_detach", 22, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_20, 1},
+  {"look_change", 25, 3, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"look_change", 26, 3, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"look_change", 27, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"look_change", 28, 3, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"look_change", 29, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"look_change", 30, 4, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"look_change", 31, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
 };
