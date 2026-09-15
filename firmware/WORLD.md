@@ -477,7 +477,13 @@ marks a change of state, not because something is always performing.
 - ~~**Per-unit seeding** from serial and measured camera differences.~~
   **Done.** `kmood_identity()` seeds the behaviour RNG, a permanent tempo
   bias, the leading camera and a skew bias.
-- **Event-gated choreography phases**, so a clip can wait on real data.
+- ~~**Event-gated choreography phases**, so a clip can wait on real data.~~
+  **Done.** A clip may carry gates (`{ t, wait }`); the runtime pins its clock
+  to the first gate still shut until the firmware opens it (`ks_open_gate`).
+  `cap_frames` gates each of the four panes on its own source frame, so early
+  data flows through at the authored timings and late data holds each pane
+  where it is while the procedural layer keeps it breathing. Filmed as
+  `world_delayed_data`.
 - **Gesture-driven transforms**, with displacement and release velocity
   as inputs. Release velocity already feeds mood; the transform itself is
   still canned.

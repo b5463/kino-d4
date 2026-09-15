@@ -102,7 +102,13 @@
     },
 
     "cap_frames": {
-      "_": "The shutter, always, from the pass that saw it: white for two frames, black for three, then the four source frames come back 13 ms apart, each a touch large and settling. Every capture behaviour follows this.",
+      "_": "The shutter, always, from the pass that saw it. White for two frames and black for three, then each of the four source frames appears WHEN IT ACTUALLY ARRIVES - the gates below hold the clip until the pipeline says so. Early data flows straight through and the timings read as authored; late data holds each pane mid-arrival while the noise keeps it breathing. No fake progress, no loader, and no fixed timeline the pipeline has to match.",
+      "gates": [
+        { "t": 92, "wait": "f0" },
+        { "t": 106, "wait": "f1" },
+        { "t": 119, "wait": "f2" },
+        { "t": 132, "wait": "f3" }
+      ],
       "tracks": {
         "white.alpha": [[0, 255, "hold"], [35, 0]],
         "black.alpha": [[0, 0, "hold"], [35, 255, "hold"], [92, 0]],
@@ -114,7 +120,11 @@
         "f1.sx": [[106, 1.03, "exp", 60], [300, 1]], "f1.sy": [[106, 1.03, "exp", 60], [300, 1]],
         "f2.sx": [[119, 1.03, "exp", 60], [300, 1]], "f2.sy": [[119, 1.03, "exp", 60], [300, 1]],
         "f3.sx": [[132, 1.03, "exp", 60], [300, 1]], "f3.sy": [[132, 1.03, "exp", 60], [300, 1]]
-      }
+      },
+      "mods": [
+        { "_": "while a gate holds, the authored motion is frozen and this is not: a wait reads as tension rather than as a stopped frame",
+          "role": "black", "noise": { "amp": [0.6, 0.4, 0, 0], "hz": 9 }, "from": 40 }
+      ]
     },
     "cap_quiet": {
       "_": "Quiet success: the frames come back, the finder settles with a small unequal breath, nothing else. The most common answer.",

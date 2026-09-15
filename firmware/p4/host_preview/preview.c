@@ -842,6 +842,17 @@ static void shot(const char *name) {
   write_ppm(path, g_canvas, UI_W, UI_H);
 }
 
+/** Empty a label node and forget where it was: between film scenes only. */
+static void scene_clear_word(const char *id) {
+  ks_node_t *n = ks_peek(id);
+  if (!n) return;
+  n->text = "";
+  n->w = 0.f;
+  n->char_clip = -1;
+  ks_pose(n, KC_ALPHA, 0.f);
+  ks_snap(n);
+}
+
 int main(int argc, char **argv) {
   snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
 
@@ -1318,6 +1329,16 @@ int main(int argc, char **argv) {
     if (s_dialog != DLG_NONE) dialog_close();                      \
     g_stage = CAPTURE_IDLE;                                        \
     g_frames_in = 0;                                               \
+    /* The tail of the last scene is not this scene's material: stop what it  \
+     * started and snap the words it left mid-flight. */            \
+    ks_stop_tag("cap");                                            \
+    ks_stop_tag("capture_success");                                \
+    ks_stop_tag("capture_fail");                                   \
+    ks_stop_tag("note");                                           \
+    scene_clear_word("cap.label");                                 \
+    scene_clear_word("cap.sub");                                   \
+    scene_clear_word("cap.big");                                   \
+    scene_clear_word("note");                                      \
   } while (0)
 
   s_pressed = -1;
@@ -1418,6 +1439,41 @@ int main(int argc, char **argv) {
       STEP(1600);
     }
   }
+
+  /* -- world_delayed_data: the pipeline is slow, and the choreography waits --
+   *
+   * The same capture, with the four source frames arriving hundreds of
+   * milliseconds late and out of order. Each pane holds at its gate until its
+   * own frame lands; the authored motion is frozen there and the procedural
+   * layer is not, so the wait reads as tension. Nothing loops and nothing
+   * lies about progress. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  g_stage = CAPTURE_READING;
+  g_frames_in = 0;
+  FILM("world_delayed_data", 0); FILM("world_delayed_data", 40); FILM("world_delayed_data", 96);
+  FILM("world_delayed_data", 200); FILM("world_delayed_data", 400);
+  g_frames_in = 1;                       /* the first, 500 ms late */
+  FILM("world_delayed_data", 500); FILM("world_delayed_data", 560);
+  g_frames_in = 1 | 4;                   /* the third next, out of order */
+  FILM("world_delayed_data", 760); FILM("world_delayed_data", 820);
+  g_frames_in = 1 | 2 | 4;
+  FILM("world_delayed_data", 1050);
+  g_frames_in = 15;                      /* and the last, a second and a half in */
+  FILM("world_delayed_data", 1500); FILM("world_delayed_data", 1560); FILM("world_delayed_data", 1650);
+  s_capw.reported = true;
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true; g_report.stored = 4; g_report.online = 4;
+  for (int c = 0; c < 4; c++) { g_report.cam[c].attempted = true; g_report.cam[c].ok = true; }
+  g_stage = CAPTURE_DONE;
+  STEP(1700);
+  ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_FOUR_MERGE, "GOT IT.");
+  film_t0 = g_preview_clock_us;
+  FILM("world_delayed_data", 1800); FILM("world_delayed_data", 1900); FILM("world_delayed_data", 2000);
+  FILM("world_delayed_data", 2100); FILM("world_delayed_data", 2300);
+  g_stage = CAPTURE_IDLE;
 
   /* -- stress: a second shutter while the first is still being celebrated -- */
   SCENE();

@@ -224,6 +224,7 @@ static kmo_inst_t *ks_play(int clip, const char *tag, const float *params, ks_no
   in->active = true;
   in->clip = (uint16_t)clip;
   in->t0_us = s_ks_now_us;
+  in->holding = -1;
   in->tag = tag;
   if (params) memcpy(in->params, params, sizeof in->params);
   for (int i = 0; i < nbind && i < KMO_MAX_BIND; i++) {
@@ -259,6 +260,35 @@ static kmo_inst_t *ks_play1(int clip, const char *tag, ks_node_t *n, const char 
 static void ks_stop_tag(const char *tag) {
   for (int i = 0; i < KMO_MAX_INST; i++)
     if (s_kmo_inst[i].active && s_kmo_inst[i].tag && strcmp(s_kmo_inst[i].tag, tag) == 0) s_kmo_inst[i].active = false;
+}
+
+/**
+ * Tell every instance started under `tag` that `gate` has happened. The real
+ * event, not a timer: the choreography was waiting for exactly this.
+ */
+static void ks_open_gate(const char *tag, const char *gate) {
+  int gi = -1;
+  for (int i = 0; i < KMO_GATE_COUNT; i++)
+    if (strcmp(KMO_GATE_NAMES[i], gate) == 0) { gi = i; break; }
+  if (gi < 0) return;
+  for (int i = 0; i < KMO_MAX_INST; i++) {
+    kmo_inst_t *in = &s_kmo_inst[i];
+    if (!in->active) continue;
+    if (tag && (in->tag == NULL || strcmp(in->tag, tag) != 0)) continue;
+    const kmo_clip_t *c = &KMO_CLIPS[in->clip];
+    for (int g = 0; g < c->ngates; g++)
+      if (KMO_GATES[c->gate0 + g].gate == (uint8_t)gi) in->gates_open |= 1u << g;
+  }
+}
+
+/** True while any instance under `tag` is waiting for something real. */
+static bool ks_holding_tag(const char *tag) {
+  for (int i = 0; i < KMO_MAX_INST; i++) {
+    const kmo_inst_t *in = &s_kmo_inst[i];
+    if (!in->active || in->holding < 0) continue;
+    if (tag == NULL || (in->tag && strcmp(in->tag, tag) == 0)) return true;
+  }
+  return false;
 }
 
 static bool ks_playing_tag(const char *tag) {
@@ -319,8 +349,9 @@ static void ks_apply_tracks(void) {
   for (int oi = 0; oi < n; oi++) {
     kmo_inst_t *in = &s_kmo_inst[order[oi]];
     const kmo_clip_t *c = &KMO_CLIPS[in->clip];
+    kmo_inst_advance(in);
     const float t = kmo_inst_time(in);
-    const float raw_ms = (float)(s_kmo_now_us - in->t0_us) / 1000.f;
+    const float raw_ms = (float)(s_kmo_now_us - in->t0_us - in->held_us) / 1000.f;
     /* Sounds land on the frame their marker is crossed. */
     for (int s = 0; s < c->nsounds && s < 32; s++) {
       if (in->sounds_fired & (1u << s)) continue;

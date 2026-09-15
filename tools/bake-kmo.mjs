@@ -83,7 +83,9 @@ function bake(src) {
     paths.push({ kind: p.quad ? 1 : 0, pt0: pts.length / 2, npts: arr.length });
     for (const [x, y] of arr) pts.push(x, y);
   }
-  const keys = [], tracks = [], sounds = [], mods = [], clips = [];
+  const keys = [], tracks = [], sounds = [], mods = [], clips = [], gates = [];
+  const gateNames = [];
+  const gateIdx = (n) => { let i = gateNames.indexOf(n); if (i < 0) { gateNames.push(n); i = gateNames.length - 1; } return i; };
   const clipNames = Object.keys(src.clips);
   const parseValue = (v) => {
     if (typeof v === 'number') return { v, pm: 0 };
@@ -94,7 +96,7 @@ function bake(src) {
   for (const cn of clipNames) {
     const c = src.clips[cn];
     const clip = { name: cn, dur: c.dur ?? 0, track0: tracks.length, ntracks: 0, sound0: sounds.length, nsounds: 0,
-      mod0: mods.length, nmods: 0, warp: 0, hold: c.hold ? 1 : 0 };
+      mod0: mods.length, nmods: 0, gate0: gates.length, ngates: 0, warp: 0, hold: c.hold ? 1 : 0 };
     if (c.warp) { const i = curveNames.indexOf(c.warp); if (i < 0) throw new Error(`${cn}: warp curve "${c.warp}"`); clip.warp = i + 1; }
     for (const [key, ks] of Object.entries(c.tracks || {})) {
       const tr = { role: 0, ch: 0, add: 0, path: 0, key0: keys.length, nkeys: ks.length };
@@ -124,6 +126,13 @@ function bake(src) {
       if (c.dur === undefined) clip.dur = Math.max(clip.dur, lastT);
     }
     for (const s of c.sounds || []) { if (!(s.cue in CUES)) throw new Error(`${cn}: cue "${s.cue}"`); sounds.push({ t: s.t, cue: CUES[s.cue] }); clip.nsounds++; }
+    /* Gates in ascending time: the runtime holds at the first one still shut. */
+    for (const g of (c.gates || []).slice().sort((a, b) => a.t - b.t)) {
+      if (!g.wait) throw new Error(`${cn}: a gate needs { t, wait }`);
+      gates.push({ t: g.t, gate: gateIdx(g.wait) });
+      clip.ngates++;
+    }
+    if (clip.ngates > 32) throw new Error(`${cn}: more than 32 gates`);
     for (const md of c.mods || []) {
       const kind = Object.keys(MODS).find((k) => md[k] !== undefined);
       if (!kind) throw new Error(`${cn}: mod needs noise | osc | boil | follow`);
@@ -159,7 +168,7 @@ function bake(src) {
         tp, ntexts: texts.length });
     }
   }
-  return { roles, curves, samples, paths, pts, keys, tracks, sounds, mods, clips, clipNames, variants, textPool };
+  return { roles, curves, samples, paths, pts, keys, tracks, sounds, mods, gates, gateNames, clips, clipNames, variants, textPool };
 }
 
 const f = (x) => { const s = Number(x).toString(); return /[.e]/.test(s) ? `${s}f` : `${s}.f`; };
@@ -188,11 +197,14 @@ function emit(b) {
   if (!b.tracks.length) L.push('  {0, 0, 0, 0, 0, 0},');
   L.push('};');
   L.push(`static const kmo_sound_t KMO_SOUNDS[${Math.max(1, b.sounds.length)}] = {${b.sounds.length ? b.sounds.map((s) => `{${s.t}, ${s.cue}}`).join(', ') : '{0, 0}'}};`);
+  L.push(`#define KMO_GATE_COUNT ${b.gateNames.length}`);
+  L.push(`static const char *const KMO_GATE_NAMES[${Math.max(1, b.gateNames.length)}] = {${b.gateNames.length ? b.gateNames.map(cstr).join(', ') : '""'}};`);
+  L.push(`static const kmo_gate_t KMO_GATES[${Math.max(1, b.gates.length)}] = {${b.gates.length ? b.gates.map((g) => `{${g.t}, ${g.gate}}`).join(', ') : '{0, 0}'}};`);
   L.push(`static const kmo_mod_t KMO_MODS[${Math.max(1, b.mods.length)}] = {${b.mods.length ? b.mods.map((m) => `{${m.role}, ${m.kind}, ${m.from}, ${m.to}, {${m.a.map(f).join(', ')}}, ${f(m.freq)}}`).join(', ') : '{0, 0, 0, 0, {0.f, 0.f, 0.f, 0.f}, 0.f}'}};`);
   L.push(`#define KMO_CLIP_COUNT ${b.clips.length}`);
   L.push(`static const kmo_clip_t KMO_CLIPS[${Math.max(1, b.clips.length)}] = {`);
-  for (const c of b.clips) L.push(`  {${cstr(c.name)}, ${c.dur}, ${c.track0}, ${c.ntracks}, ${c.sound0}, ${c.nsounds}, ${c.mod0}, ${c.nmods}, ${c.warp}, ${c.hold}},`);
-  if (!b.clips.length) L.push('  {"", 0, 0, 0, 0, 0, 0, 0, 0, 0},');
+  for (const c of b.clips) L.push(`  {${cstr(c.name)}, ${c.dur}, ${c.track0}, ${c.ntracks}, ${c.sound0}, ${c.nsounds}, ${c.mod0}, ${c.nmods}, ${c.gate0}, ${c.ngates}, ${c.warp}, ${c.hold}},`);
+  if (!b.clips.length) L.push('  {"", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},');
   L.push('};');
   b.clipNames.forEach((n, i) => L.push(`#define KCLIP_${n.toUpperCase().replace(/[^A-Z0-9]/g, '_')} ${i}`));
   L.push(`static const char *const KMO_EVENT_NAMES[${EVENTS.length}] = {${EVENTS.map(cstr).join(', ')}};`);
@@ -265,7 +277,7 @@ function main() {
     return;
   }
   writeFileSync(OUT, text);
-  console.log(`[kmo] wrote kmo_data.h: ${b.clips.length} clips, ${b.tracks.length} tracks, ${b.keys.length} keys, ${b.variants.length} variants, ${b.roles.length} roles, ${b.paths.length} paths, ${b.curves.length} curves`);
+  console.log(`[kmo] wrote kmo_data.h: ${b.clips.length} clips, ${b.tracks.length} tracks, ${b.keys.length} keys, ${b.variants.length} variants, ${b.roles.length} roles, ${b.paths.length} paths, ${b.curves.length} curves, ${b.gates.length} gates`);
 }
 
 main();

@@ -123,6 +123,17 @@ typedef struct {
   uint8_t cue;     /* KS_* */
 } kmo_sound_t;
 
+/* A point the clip will not pass until the firmware says the real thing has
+ * happened. The pipeline's latency varies and is not ours to predict, so the
+ * choreography waits for it rather than guessing at it: early data flows
+ * straight through, late data holds here. The authored motion freezes at the
+ * gate; procedural modifiers keep running on their own clock, which is what
+ * makes a hold read as tension rather than as a frozen frame. */
+typedef struct {
+  uint16_t t;
+  uint8_t gate;    /* index into KMO_GATE_NAMES */
+} kmo_gate_t;
+
 typedef struct {
   uint8_t role, kind;      /* KM_* */
   uint16_t from, to;       /* ms window within the clip; to = 0 means the clip's end */
@@ -136,6 +147,7 @@ typedef struct {
   uint16_t track0, ntracks;
   uint16_t sound0, nsounds;
   uint16_t mod0, nmods;
+  uint16_t gate0, ngates;
   uint8_t warp;            /* 0 none, else curve index + 1: u -> u' */
   uint8_t hold_end;        /* 1 = the last values stay until the instance is stopped */
 } kmo_clip_t;
@@ -350,6 +362,9 @@ typedef struct {
   bool active;
   uint16_t clip;
   int64_t t0_us;
+  int64_t held_us;      /* time spent waiting at gates, subtracted from the clock */
+  uint32_t gates_open;  /* which of the clip's gates the firmware has released */
+  int16_t holding;      /* the gate index being waited on, -1 when running */
   float params[4];
   struct ks_node *bind[KMO_MAX_BIND]; /* by role slot */
   uint8_t bind_role[KMO_MAX_BIND];
@@ -371,15 +386,55 @@ static int s_kmo_live; /* instances that moved something this pass */
 /* The sound hook: ui.c points this at the audio. */
 static void (*s_kmo_sound)(int cue);
 
-/** Clip time in ms for an instance at the current pass, after the warp. */
+/** Clip time in ms for an instance at the current pass, after holds and warp. */
 static float kmo_inst_time(const kmo_inst_t *in) {
   const kmo_clip_t *c = &KMO_CLIPS[in->clip];
-  float t = (float)(s_kmo_now_us - in->t0_us) / 1000.f * s_kmo_tempo;
+  float t = (float)(s_kmo_now_us - in->t0_us - in->held_us) / 1000.f * s_kmo_tempo;
+  /* The first gate still shut is as far as this clip has got. */
+  for (int g = 0; g < c->ngates; g++) {
+    const kmo_gate_t *gt = &KMO_GATES[c->gate0 + g];
+    if (in->gates_open & (1u << g)) continue;
+    if (t > (float)gt->t) t = (float)gt->t;
+    break;
+  }
   if (c->warp && c->dur > 0) {
     const float u = t / (float)c->dur;
     t = kmo_curve(c->warp - 1, u) * (float)c->dur;
   }
   return t;
+}
+
+/**
+ * Account for waiting. Called once per instance per pass, before its tracks
+ * are read: while a gate is shut the clip's own clock stops there, so the
+ * time spent waiting never appears in the choreography.
+ *
+ * The hold PINS the clock to the gate rather than winding it back a pass at
+ * a time. Winding back is the obvious implementation and it is wrong: each
+ * pass returns the clip to where it was before that pass, so a clip waiting
+ * through twenty passes drifts twenty passes backwards instead of standing
+ * still. Solving for the offset that puts the clock exactly on the gate is
+ * also self-correcting, which matters because tempo moves under it.
+ */
+static void kmo_inst_advance(kmo_inst_t *in) {
+  const kmo_clip_t *c = &KMO_CLIPS[in->clip];
+  if (c->ngates == 0) { in->holding = -1; return; }
+  int shut = -1;
+  for (int g = 0; g < c->ngates; g++) {
+    if (in->gates_open & (1u << g)) continue;
+    shut = g;
+    break;
+  }
+  if (shut < 0) { in->holding = -1; return; }
+  const float tempo = s_kmo_tempo > 0.01f ? s_kmo_tempo : 1.f;
+  const float gate_ms = (float)KMO_GATES[c->gate0 + shut].t;
+  const float raw = (float)(s_kmo_now_us - in->t0_us - in->held_us) / 1000.f * tempo;
+  if (raw > gate_ms) {
+    in->held_us = (s_kmo_now_us - in->t0_us) - (int64_t)(gate_ms * 1000.f / tempo);
+    in->holding = (int16_t)shut;
+  } else {
+    in->holding = -1;
+  }
 }
 
 static int kmo_role_index(const char *name) {

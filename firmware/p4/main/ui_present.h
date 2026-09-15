@@ -544,6 +544,9 @@ static void cap_watch(void) {
       static const char *const MARK[4] = {"m0", "m1", "m2", "m3"};
       ks_node_t *m = ks_peek(MARK[i]);
       if (m) { ks_impulse(m, KC_R, 0.14f); }
+      /* The choreography was waiting for exactly this frame. */
+      static const char *const GATE[4] = {"f0", "f1", "f2", "f3"};
+      ks_open_gate("cap", GATE[i]);
       /* The spread between the first frame back and the last is the sync
        * quality the behaviour can actually condition on. */
       if (s_capw.first_in_us == 0) s_capw.first_in_us = now;
@@ -1025,9 +1028,9 @@ static void sync_about(void) {
              (int)(s_ksense.lum_mean * 100.f), (int)(s_ksense.motion_mean * 100.f),
              (int)(s_ksense.spread * 100.f), ksense_still_ms(), s_ksense.live);
   else snprintf(scene, sizeof scene, "NO CAMERA SIGNAL");
-  snprintf(mood, sizeof mood, "ENERGY %d  CALM %d  CONF %d  STRAIN %d  BURST %d",
+  snprintf(mood, sizeof mood, "ENERGY %d  CALM %d  CONF %d  STRAIN %d  BURST %d%s",
            (int)(s_kmood.energy * 100.f), (int)(s_kmood.calm * 100.f), (int)(s_kmood.confidence * 100.f),
-           (int)(s_kmood.strain * 100.f), s_kmood.recent_shots);
+           (int)(s_kmood.strain * 100.f), s_kmood.recent_shots, ks_holding_tag(NULL) ? "  GATED" : "");
   const int by = NR_Y0 + 7 * 44 + 10;
   nd_text("about.perf", perf, &UT_S, C_FAINT, (float)NR_X, (float)by, 0.f, 0.f, 10, false);
   nd_text("about.scene", scene, &UT_S, C_FAINT, (float)NR_X, (float)(by + 26), 0.f, 0.f, 10, false);
