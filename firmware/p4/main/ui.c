@@ -188,6 +188,31 @@ static bool s_mcached;
 #define BACK_W 84
 #define ROW_H 52
 #define BODY_Y (HEAD_H + 1)
+
+/* The header bar's geometry.
+ *
+ * Up here with the rest of the layout rather than beside draw_header(),
+ * because the back button's origin is now every screen's back button origin -
+ * the viewfinder's and the photograph's included, and both of those are
+ * declared long before the header is.
+ */
+#define HD_BAR_X 2
+#define HD_BAR_Y 2
+#define HD_BAR_W (UI_W - 4)
+#define HD_BAR_H (HEAD_H - 4)
+#define HD_BTN 44
+#define HD_BTN_X (HD_BAR_X + 5)
+#define HD_BTN_Y (HD_BAR_Y + (HD_BAR_H - HD_BTN) / 2)
+#define HD_CAP_X (HD_BTN_X + HD_BTN + 5)
+#define HD_CAP_Y (HD_BAR_Y + 6)
+#define HD_CAP_W (UI_W - HD_BAR_X - 5 - HD_CAP_X)
+#define HD_CAP_H (HD_BAR_H - 12)
+/* The caption's own inset. A title that starts on the plate's first pixel is
+ * the detail that makes a bar read as a coloured rectangle rather than a
+ * caption bar; the system used 2 px and this panel is 800 px wide. */
+#define HD_CAP_PAD 10
+
+_Static_assert(HD_BTN + 10 <= HD_BAR_H, "the header system button does not fit its bar");
 /* The list well: inset from the window frame, the way a listbox sits inside
  * a dialog rather than bleeding to the edges. */
 #define LIST_X 16
@@ -259,18 +284,26 @@ static bool s_mcached;
  * viewfinder; the column starts under it at the same x. */
 #define PH_COL_X 14
 #define PH_COL_W 162
-#define PH_CAP_Y 48       /* the first caption line, under BACK */
+#define PH_CAP_Y (HD_BTN_Y + HD_BTN + 12) /* the first caption line, under the back button */
 #define PH_LINE 18        /* UI_FONT_S.line_h, which _Static_assert cannot read */
 #define PH_CAP_LINES 4    /* label, mode, frame count, and the short-wiggle note */
 /* Three buttons, full column width, top to bottom: DELETE, FAVOURITE, SEND TO
  * ROLL. Written as arithmetic rather than three literals because draw_photo()
  * and hit_test() both walk it, and the two used to carry different widths -
  * 150 drawn against 150 tested only by luck. */
-#define PH_BTN_H 34
+/* 44, not 34. The header's system buttons, the gallery's page buttons and the
+ * dialog's are all 44 because that is the floor a thumb needs, and the three
+ * controls on this screen - one of which deletes a photograph - were the only
+ * ones under it. */
+#define PH_BTN_H 44
 #define PH_BTN_W PH_COL_W
 #define PH_BTN_GAP 10     /* between buttons */
 #define PH_BTN_BOT 15     /* below the last button, to the bottom edge */
 #define PH_BTN_Y(i) (UI_H - PH_BTN_BOT - (3 - (i)) * PH_BTN_H - (2 - (i)) * PH_BTN_GAP)
+/* The middle of the column, between the facts and the controls: the frame
+ * mark, then the card and the power source on the line under it. */
+#define PH_FOUR_Y 132
+#define PH_STATE_Y (PH_FOUR_Y + 62)
 
 _Static_assert(PH_W * 3 == PH_H * 4, "photo pane is not 4:3");
 _Static_assert(PH_X0 >= 2 && PH_TOP >= 2 && PH_X0 + PH_W + 2 <= UI_W && PH_TOP + PH_H + 2 <= UI_H,
@@ -882,7 +915,7 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
 
 /* A small solid chevron, â€¹ or â€º.
  *
- * chevron() below is the dark chrome's, 26 px and left-only. The font is ASCII
+ * The font is ASCII
  * 32..126 and carries neither character, so the picker buttons, the header's
  * back button and a row that opens a screen get their own: six 2 px steps, one
  * shape, so all three read as one family. */
@@ -922,19 +955,6 @@ static void arrow_glyph(int cx, int cy, bool right, uint16_t ink) {
 }
 
 static void back_glyph(int cx, int cy, uint16_t ink) { arrow_glyph(cx, cy, false, ink); }
-
-/* A left-pointing chevron, drawn rather than set as a glyph: the font is ASCII
- * 32..126 and carries no such character. One caller left - the photograph -
- * where there is no button to put a small mark in and the glyph has to carry
- * the target on its own. The viewfinder used it for the same reason until it
- * got a real button; that leaves this shape on one screen, and if the
- * photograph ever gets a plate too it goes with it. */
-static void chevron(int x, int cy, uint16_t ink) {
-  for (int i = 0; i <= 12; i++) {
-    fill(x + i, cy - i - 2, 3, 3, ink);
-    fill(x + i, cy + i - 2, 3, 3, ink);
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* The glass                                                           */
@@ -1332,23 +1352,61 @@ static void crt_collapse(void) {
  * than a thumb - so the drawing had to fit the existing rectangle rather than
  * the other way round.
  */
-#define HD_BAR_X 2
-#define HD_BAR_Y 2
-#define HD_BAR_W (UI_W - 4)
-#define HD_BAR_H (HEAD_H - 4)
-#define HD_BTN 44
-#define HD_BTN_X (HD_BAR_X + 5)
-#define HD_BTN_Y (HD_BAR_Y + (HD_BAR_H - HD_BTN) / 2)
-#define HD_CAP_X (HD_BTN_X + HD_BTN + 5)
-#define HD_CAP_Y (HD_BAR_Y + 6)
-#define HD_CAP_W (UI_W - HD_BAR_X - 5 - HD_CAP_X)
-#define HD_CAP_H (HD_BAR_H - 12)
-/* The caption's own inset. A title that starts on the plate's first pixel is
- * the detail that makes a bar read as a coloured rectangle rather than a
- * caption bar; the system used 2 px and this panel is 800 px wide. */
-#define HD_CAP_PAD 10
 
-_Static_assert(HD_BTN + 10 <= HD_BAR_H, "the header system button does not fit its bar");
+/* PREV and NEXT are header system buttons at the right end of the bar, the
+ * mirror of the back button at HD_BTN_X: the same 44 px square, 5 px in from
+ * the bar's edge, with the caption plate cut 5 px short of them the way it
+ * starts 5 px after BACK. 4 px between the pair, so they read as one control
+ * with two ends rather than two buttons that happen to be adjacent.
+ *
+ * Declared with the rest of the header geometry rather than beside the
+ * gallery that uses them, because draw_header() has to keep its own readings
+ * clear of them and a constant two thousand lines away is one nobody checks.
+ */
+#define G_PG_GAP 4
+#define G_NEXT_X (UI_W - HD_BAR_X - 5 - HD_BTN)   /* 749 */
+#define G_PREV_X (G_NEXT_X - G_PG_GAP - HD_BTN)   /* 701 */
+
+/*
+ * What the camera is running on and what it has left, at the right end of
+ * whatever bar the screen has.
+ *
+ * This used to be on two screens out of six - the menu's status bar, and half
+ * of it on the viewfinder's. A body whose power source and remaining card are
+ * invisible for as long as someone is browsing photographs is a body they
+ * cannot plan around, and both readings cost a snprintf, so they belong on
+ * every screen rather than on the two that happened to have a bar for them.
+ *
+ * There is no fuel gauge on this board. This says where the power is coming
+ * from and never how much is left: a percentage here would be invented, which
+ * is the same rule the menu's status bar has always followed.
+ *
+ * Returns the left edge of what it drew, so a caller with something else on
+ * the same line can end before it.
+ */
+static int chrome_state(int right, int y, uint16_t ink) {
+  storage_status_t sd;
+  storage_get_status(&sd);
+  char card[24];
+  if (!sd.mounted) snprintf(card, sizeof card, "NO CARD");
+  else snprintf(card, sizeof card, "%d LEFT", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+  const char *const pwr = usb_attached() ? "USB" : "BATTERY";
+  int x = right - text_w(&UI_FONT_S, pwr);
+  text(&UI_FONT_S, x, y, pwr, ink);
+  x -= 18 + text_w(&UI_FONT_S, card);
+  text(&UI_FONT_S, x, y, card, ink);
+  return x;
+}
+
+/** Where chrome_state() ends on a header screen: short of the page buttons
+ *  where there are any, at the plate's own inset where there are not. */
+static int head_state_right(screen_t s) {
+  return s == SCR_GALLERY ? G_PREV_X - 10 : HD_CAP_X + HD_CAP_W - HD_CAP_PAD;
+}
+
+/* Where the header's state reading starts, for a screen with its own line of
+ * text on the same plate. Set by every draw_header(); read by the gallery. */
+static int s_head_state_left;
 
 static void draw_header(screen_t s) {
   /* The screen is one window: raised frame, raised bar inside it, caption
@@ -1357,7 +1415,11 @@ static void draw_header(screen_t s) {
   bevel_raised(0, 0, UI_W, UI_H);
   bevel_raised(HD_BAR_X, HD_BAR_Y, HD_BAR_W, HD_BAR_H);
 
-  grad_h(HD_CAP_X, HD_CAP_Y, HD_CAP_W, HD_CAP_H, W_TITLE_L, W_TITLE_R);
+  /* Flat, not a gradient. The plate is 700 px of the brightest thing on the
+   * panel and it carries one word; on the gallery it was out-shouting the
+   * photographs underneath it. A caption bar identifies the screen, and the
+   * contrast budget belongs to what the screen is for. */
+  fill(HD_CAP_X, HD_CAP_Y, HD_CAP_W, HD_CAP_H, W_TITLE_L);
 
   /* Back, as a system button. The mark is back_glyph(), which is the same
    * chevron a row that opens a screen carries, at the scale a 44 px button
@@ -1378,6 +1440,8 @@ static void draw_header(screen_t s) {
     draw_bits(l->bits, l->w, l->h, l->stride, HD_CAP_X + HD_CAP_PAD,
               HD_CAP_Y + (HD_CAP_H - l->h) / 2, 1, W_SELTEXT);
   }
+  s_head_state_left = chrome_state(head_state_right(s),
+                                   HD_CAP_Y + (HD_CAP_H - UI_FONT_S.line_h) / 2, W_SELTEXT);
 }
 
 /**
@@ -1747,7 +1811,20 @@ static void draw_menu(void) {
     /* Wide enough for BATTERY, the icon and the air round both. The left
      * panel takes the rest, which is the Win98 split: one elastic panel and
      * one sized to its contents. */
-    const int rw = text_w(&UI_FONT_S, "BATTERY") + be + 26;
+    /* Wide enough for the card reading, the power word, the icon and the air
+     * round all three - the same two facts, in the same order and the same
+     * words, that every other screen now carries at the right end of its own
+     * bar. The home screen is where someone looks before going out with it,
+     * so it is the last place that should be missing how much card is left. */
+    char card[24];
+    {
+      storage_status_t sd;
+      storage_get_status(&sd);
+      if (!sd.mounted) snprintf(card, sizeof card, "NO CARD");
+      else snprintf(card, sizeof card, "%d LEFT", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+    }
+    const char *const pwr = usb_attached() ? "USB" : "BATTERY";
+    const int rw = text_w(&UI_FONT_S, card) + 18 + text_w(&UI_FONT_S, pwr) + be + 26;
     const int rx = UI_W - 2 - rw;
     const int ty = sy + (sh - UI_FONT_S.line_h) / 2;
 
@@ -1760,7 +1837,7 @@ static void draw_menu(void) {
      * the box on a 34 px panel puts two transparent rows over each groove
      * rather than any artwork. */
     icons_blit(s_cv, UI_W, UI_H, bi, UI_W - 10 - be, sy + (sh - be) / 2);
-    text_right(&UI_FONT_S, UI_W - 16 - be, ty, usb_attached() ? "USB" : "BATTERY", W_TEXT);
+    chrome_state(UI_W - 16 - be, ty, W_TEXT);
   }
 
   /* ---- the glass ---- */
@@ -1828,10 +1905,21 @@ static void draw_menu(void) {
  *
  * 34 px of 480 is 7% of the picture. Everything else is room.
  */
-#define SH_BACK_X 10
-#define SH_BACK_Y 10
+/*
+ * The way out, at the header's own button origin.
+ *
+ * It used to be a 116x44 plate at 10,10 while every other screen put its back
+ * button at HD_BTN_X, HD_BTN_Y as a 44 px square - so the one control that is
+ * on every screen was in a different place and a different shape on this one,
+ * which is the loudest way an interface says it was assembled rather than
+ * designed. Origin and height now come from the header's constants; only the
+ * width differs, because this button carries the word as well as the mark and
+ * the viewfinder is the one screen with nothing else to say what it does.
+ */
+#define SH_BACK_X HD_BTN_X
+#define SH_BACK_Y HD_BTN_Y
 #define SH_BACK_W 116
-#define SH_BACK_H 44   /* the header's system button height, and the touch floor */
+#define SH_BACK_H HD_BTN
 #define SH_BAR_H 34    /* == M_STATUS_H: this is the menu's status bar */
 #define SH_BAR_Y (UI_H - SH_BAR_H)
 #define SH_PN_Y (SH_BAR_Y + 3)
@@ -2031,18 +2119,38 @@ static void draw_shoot(void) {
     x += w_flash + SH_PN_GAP;
   }
 
+  /* The card and the power source, in their own panels between the look and
+   * the camera count. The viewfinder is where someone stands with the body in
+   * their hands deciding whether to keep shooting, and how many photographs
+   * are left and what it is running on are the two facts that decision is
+   * made of. There is no fuel gauge on this board, so the power panel says
+   * where the power comes from and not how much of it there is. */
+  storage_status_t sd_bar;
+  storage_get_status(&sd_bar);
+  char card_bar[24];
+  if (!sd_bar.mounted) snprintf(card_bar, sizeof card_bar, "NO CARD");
+  else snprintf(card_bar, sizeof card_bar, "%d LEFT",
+                (int)(sd_bar.free_bytes / (6ull * 1024 * 1024)));
+  const char *const pwr_bar = usb_attached() ? "USB" : "BATTERY";
+  const int w_card = text_w(&UI_FONT_S, card_bar) + 2 * SH_PN_PAD;
+  const int w_pwr = text_w(&UI_FONT_S, pwr_bar) + 2 * SH_PN_PAD;
+
   /* The look takes what is left, and the camera count is flush right: one
    * elastic panel and the rest sized to their contents, which is the split the
    * menu's status bar uses. A look's name may be 40 characters by the wire
    * contract, so it is the one reading that can outgrow its panel - and the
    * elastic panel is the one that can afford to cut it. */
   const int cams_x = UI_W - 3 - w_cams;
-  const int w_look = cams_x - SH_PN_GAP - x;
+  const int pwr_x = cams_x - SH_PN_GAP - w_pwr;
+  const int card_x = pwr_x - SH_PN_GAP - w_card;
+  const int w_look = card_x - SH_PN_GAP - x;
   if (w_look > 2 * SH_PN_PAD + 24) {
     char look[KDP_RECIPE_ID_MAX + 4];
     text_fit(look, sizeof look, &UI_FONT_S, shoot_look_name(), w_look - 2 * SH_PN_PAD);
     sh_panel(x, w_look, look);
   }
+  sh_panel(card_x, w_card, card_bar);
+  sh_panel(pwr_x, w_pwr, pwr_bar);
   sh_panel(cams_x, w_cams, cams);
 }
 
@@ -2501,15 +2609,6 @@ static void draw_look(void) {
 #define G_IT_PREV 6
 #define G_IT_NEXT 7
 
-/* PREV and NEXT are header system buttons at the right end of the bar, the
- * mirror of the back button at HD_BTN_X: the same 44 px square, 5 px in from
- * the bar's edge, with the caption plate cut 5 px short of them the way it
- * starts 5 px after BACK. 4 px between the pair, so they read as one control
- * with two ends rather than two buttons that happen to be adjacent. */
-#define G_PG_GAP 4
-#define G_NEXT_X (UI_W - HD_BAR_X - 5 - HD_BTN)   /* 749 */
-#define G_PREV_X (G_NEXT_X - G_PG_GAP - HD_BTN)   /* 701 */
-
 /* Each tile is a well with a 2 px white mat, so the block round a photograph
  * is 6 px wider on every side than the photograph: 2 of selection plate, 2 of
  * sunken edge, 2 of mat. The gap between tiles has to hold two of them and the
@@ -2642,10 +2741,17 @@ static void draw_gallery(void) {
     const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
+    } else if (slots[i].state == TILE_PENDING) {
+      /* Not yet decoded is not the same state as will not decode, and they
+       * used to be drawn identically: the same grey word on the same dark
+       * well, so a card still being read looked like a card full of damage.
+       * A tile waiting for its picture is the empty frame the picture will
+       * arrive into - the well's own white, no word - and the cells in the
+       * strip below say how many frames the folder has. */
+      fill(x, y, G_TILE_W, G_TILE_H, W_WINDOW);
     } else {
       fill(x, y, G_TILE_W, G_TILE_H, C_WELL);
-      text_mid(&UI_FONT_S, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d,
-               slots[i].state == TILE_PENDING ? "LOADING" : "NO IMAGE", D_DIM);
+      text_mid(&UI_FONT_S, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d, "NO IMAGE", D_DIM);
     }
     /* The facts, on a plate along the picture's bottom edge rather than in a
      * strip under it. No filename, no size, no path: the picture is the
@@ -2675,8 +2781,13 @@ static void draw_gallery(void) {
      * the strip's middle on its own terms: 6 above the cells, 1 above the
      * line. Dark-ground cells, which is the variant the capture banner uses. */
     four_mark(x + 6 + d, sy0 + (G_STRIP - 8) / 2 + d, 8, st, true);
-    text_right(&UI_FONT_S, x + G_TILE_W - 6 + d, sy0 + (G_STRIP - UI_FONT_S.line_h) / 2 + d,
-               slots[i].mode, W_SELTEXT);
+    /* The mode, only when it is not the one every photograph has. Six tiles
+     * that all say `wiggle` is six copies of a word that distinguishes
+     * nothing, and a label that never varies stops being read - which is
+     * exactly when it fails to be read on the one tile where it differs. */
+    if (slots[i].mode[0] && strcmp(slots[i].mode, "wiggle") != 0)
+      text_right(&UI_FONT_S, x + G_TILE_W - 6 + d, sy0 + (G_STRIP - UI_FONT_S.line_h) / 2 + d,
+                 slots[i].mode, W_SELTEXT);
 
     /* Drawn after the strip so the press reads as the whole well, strip
      * included, going deeper. */
@@ -2735,15 +2846,16 @@ static void draw_gallery(void) {
     snprintf(mid, sizeof mid, "%d photo%s", total, total == 1 ? "" : "s");
   }
 
-  /* Right-aligned to the plate's end, or to the plate's new end when the
-   * buttons are there: the same HD_CAP_PAD inset the title has on the left. */
-  int plate_end = HD_CAP_X + HD_CAP_W;
+  /* The plate's new end when the buttons are there. */
   if (pages > 1) {
-    plate_end = G_PREV_X - 5;
+    const int plate_end = G_PREV_X - 5;
     fill(plate_end, HD_CAP_Y, HD_CAP_X + HD_CAP_W - plate_end, HD_CAP_H, W_FACE);
   }
-  text_right(&UI_FONT_S, plate_end - HD_CAP_PAD, HD_CAP_Y + (HD_CAP_H - UI_FONT_S.line_h) / 2,
-             mid, loading ? W_LIGHT : W_SELTEXT);
+  /* Ending where the card and power reading begins, not at the plate's edge:
+   * this line and that one share the right half of one 700 px plate, and
+   * right-aligning both to the same pixel printed them on top of each other. */
+  text_right(&UI_FONT_S, s_head_state_left - 18,
+             HD_CAP_Y + (HD_CAP_H - UI_FONT_S.line_h) / 2, mid, loading ? W_LIGHT : W_SELTEXT);
 
   if (pages > 1) {
     const int pd = s_pressed == G_IT_PREV ? 1 : 0, nd = s_pressed == G_IT_NEXT ? 1 : 0;
@@ -3156,23 +3268,28 @@ static void draw_photo(void) {
    * either raised or sunken, and a photograph is set into the body. */
   bevel_sunken_dark(px - 2, py - 2, PH_W + 4, PH_H + 4);
 
-  /* Back, top left, matching the viewfinder so the gesture is the same. */
-  const uint16_t bink = (s_pressed == IT_BACK) ? C_BLUE : D_TEXT;
-  chevron(14, 14, bink);
-  text(&UI_FONT_S, 32, 14 - UI_FONT_S.line_h / 2, "BACK", bink);
+  /* Back: the system button, at the header's own origin. This screen drew a
+   * bare chevron and the word BACK straight on the ground, the viewfinder
+   * drew a plate at 10,10 and every other screen a 44 px square at
+   * HD_BTN_X - three treatments of the one control that is on every screen.
+   * It is the same button in the same place everywhere now. */
+  {
+    const bool bdown = s_pressed == IT_BACK;
+    const int bd = bdown ? 1 : 0;
+    button(HD_BTN_X, HD_BTN_Y, HD_BTN, HD_BTN, bdown);
+    back_glyph(HD_BTN_X + HD_BTN / 2 + bd, HD_BTN_Y + HD_BTN / 2 + bd, W_TEXT);
+    if (foc(SCR_PHOTO, IT_BACK)) focus_inset(HD_BTN_X, HD_BTN_Y, HD_BTN, HD_BTN, W_TEXT);
+  }
 
-  /* The caption, one fact per line down the column: what it is called, what
-   * kind of capture, how many frames. It was one line under the picture, with
-   * three spaces between the facts; the column is 162 px and the line was
-   * wider than that, so it breaks where the spaces were. */
+  /* The caption, one fact per line down the column: what it is called and
+   * what kind of capture it is. The frame count was a third line - "4 frames"
+   * - and it is the mark below instead: the gallery already says this with
+   * four cells and saying it twice in two grammars is how an interface stops
+   * having one. */
   int cy = PH_CAP_Y;
   text(&UI_FONT_S, PH_COL_X, cy, s_photo_label, D_DIM);
   cy += UI_FONT_S.line_h;
   text(&UI_FONT_S, PH_COL_X, cy, s_photo_mode, D_DIM);
-  cy += UI_FONT_S.line_h;
-  char info[24];
-  snprintf(info, sizeof info, "%d frames", s_photo_frames);
-  text(&UI_FONT_S, PH_COL_X, cy, info, D_DIM);
   cy += UI_FONT_S.line_h;
 
   /*
@@ -3194,6 +3311,25 @@ static void draw_photo(void) {
     snprintf(note, sizeof note, "%d OF %d FRAMES", s_wig_count, GALLERY_FRAME_MAX);
     text(&UI_FONT_S, PH_COL_X, cy + 8, note, D_DIM);
   }
+
+  /*
+   * Which of the four lenses this photograph has, and what the body is
+   * running on - in the middle of the column, which was 250 px of nothing
+   * between the facts at the top and the buttons at the foot. Two clumps and
+   * a hole is what a screen looks like when its content was placed rather
+   * than composed.
+   *
+   * The mark is the gallery's, at the size a column can afford: the one
+   * object in this interface that says four cameras, in the one place the
+   * user is looking at what four cameras made.
+   */
+  {
+    fm_cell_t st[4];
+    for (int k = 0; k < 4; k++) st[k] = k < s_photo_frames ? FM_ON : FM_OFF;
+    four_mark(PH_COL_X, PH_FOUR_Y, 14, st, true);
+    text(&UI_FONT_S, PH_COL_X, PH_FOUR_Y + 22, "CAMERAS", D_DIM);
+  }
+  chrome_state(PH_COL_X + PH_COL_W, PH_STATE_Y, D_DIM);
 
   /* The three controls, stacked at the foot of the column, DELETE at the top
    * and SEND TO ROLL at the bottom - the order they had left to right. */
@@ -3578,13 +3714,63 @@ static const char *const SET_ROWS[5] = {"Display", "Sound", "Connection", "Stora
 static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_CONNECTION, SCR_STORAGE,
                                      SCR_ABOUT};
 
+/*
+ * Five rows, each carrying what it is set to.
+ *
+ * They were five bare names with a chevron at the far right - five doors, and
+ * the only way to learn the camera's state was to open all of them and come
+ * back. A settings list that shows its values is the state of the machine on
+ * one screen, which is what someone opens SETTINGS to find out: is the sound
+ * on, is it on the network, how much card is left.
+ *
+ * Every value is read the same way its own screen reads it. Nothing here
+ * paraphrases a setting or keeps a second copy of one - a summary that drifts
+ * from the screen it summarises is worse than no summary.
+ */
+static void settings_summary(int i, char *out, size_t cap) {
+  out[0] = 0;
+  switch (i) {
+    case 0: { /* Display: the sleep timeout, which is the one that changes behaviour */
+      const int s_sleep = config_int("body.sleepS", 120);
+      if (s_sleep >= 60) snprintf(out, cap, "%d min", s_sleep / 60);
+      else snprintf(out, cap, "%d s", s_sleep);
+      break;
+    }
+    case 1: { /* Sound: off when both families are, else the volume it is set to */
+      const bool shut = config_bool("body.sounds.save", true);
+      const bool ui = config_bool("body.sounds.ui", true);
+      if (!shut && !ui) snprintf(out, cap, "Off");
+      else snprintf(out, cap, "%d", config_int("shoot.volume", 6));
+      break;
+    }
+    case 2: { /* Connection: the network it is actually on */
+      net_status_t net;
+      net_link_status(&net, esp_timer_get_time() / 1000);
+      if (net.state == NET_IP_READY && net.ssid[0]) snprintf(out, cap, "%s", net.ssid);
+      else snprintf(out, cap, "Not connected");
+      break;
+    }
+    case 3: { /* Storage: what is left, in the unit a photographer counts in */
+      storage_status_t sd;
+      storage_get_status(&sd);
+      if (!sd.mounted) snprintf(out, cap, "No card");
+      else snprintf(out, cap, "%d left", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+      break;
+    }
+    default: snprintf(out, cap, "%s", KINO_FW_VERSION); break;
+  }
+}
+
 static void draw_settings(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_SETTINGS);
   draw_list_frame(5);
-  for (int i = 0; i < 5; i++)
-    draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), s_pressed == i, true, SET_ROWS[i], NULL,
-             true);
+  for (int i = 0; i < 5; i++) {
+    char v[40];
+    settings_summary(i, v, sizeof v);
+    draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), s_pressed == i, true, SET_ROWS[i],
+             v[0] ? v : NULL, true);
+  }
 }
 
 /* --- Display ------------------------------------------------------ */
@@ -4505,9 +4691,7 @@ static void draw_dialog(void) {
    * less. */
   const int bx = DLG_X + 3, by = DLG_Y + 3, bw = DLG_W - 6, bh = 32;
   bevel_raised(bx, by, bw, bh);
-  grad_h(bx + 2, by + 2, bw - 4, bh - 4,
-         d.destructive ? RGB(0x80, 0x00, 0x00) : W_TITLE_L,
-         d.destructive ? RGB(0xd0, 0x40, 0x10) : W_TITLE_R);
+  fill(bx + 2, by + 2, bw - 4, bh - 4, d.destructive ? RGB(0x80, 0x00, 0x00) : W_TITLE_L);
   text(&UI_FONT_S, bx + 2 + HD_CAP_PAD, by + (bh - UI_FONT_S.line_h) / 2, d.title, W_SELTEXT);
 
   text(&UI_FONT_M, DLG_X + 20, DLG_Y + 56, d.body, W_TEXT);
@@ -4765,7 +4949,12 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_PHOTO: {
-      if (in(x, y, 0, 0, 150, 40)) return IT_BACK;
+      /* The button plus 8 px of slop, the same rectangle the header and the
+       * viewfinder use. It was 150x40 from the origin - the target for the
+       * bare chevron this screen used to draw - which since the button
+       * arrived has covered the ground to its right and cut its bottom
+       * thirteen rows off. */
+      if (in(x, y, HD_BTN_X - 8, HD_BTN_Y - 8, HD_BTN + 16, HD_BTN + 16)) return IT_BACK;
       /* The same PH_BTN_Y/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
        * not a target: it is drawn dead, and a press that lands on it should do
        * nothing rather than raise a toast about a radio that is not there. */
