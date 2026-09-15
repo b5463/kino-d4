@@ -496,71 +496,110 @@ static void d4_head(const char *name, const char *right, int page, int pages) {
 #define D4_TH_W D_COL_W
 #define D4_TH_H (D4_TH_W * 3 / 4)
 
-static void d4_roll(void) {
-  /* Graphite. ROLL is a camera screen - it is full of photographs - and the
-   * rule is that photographs get the dark ground so they are the brightest
-   * thing on the panel. This was on paper, which put an off-white field
-   * around every picture and made the page about the page. */
-  d_ground(D_GRAPH);
-  static char files[24];
-  snprintf(files, sizeof files, "%d FILES", gallery_total());
-  d4_head("ROLL", files, gallery_page(), gallery_pages());
+/*
+ * ROLL, as a page rather than a grid.
+ *
+ * A roll of film is a catalogue of things you made, and a magazine knows how
+ * to lay a catalogue out: one item leads, the rest follow smaller, each is
+ * numbered, and each carries a caption line in small type underneath rather
+ * than a chrome strip over it. Nothing is edge to edge and nothing is the
+ * same size as everything else, because a page where every item is equal is a
+ * contact sheet, and a contact sheet is a thing you scan rather than read.
+ *
+ * The lead is the one under the cursor, so moving the cursor re-lays the page
+ * - which is the point: the thing you are looking at is the thing that is
+ * big, and it is the only one playing.
+ */
+#define D4_PG_M 34 /* the page margin: generous, and the same on both sides */
 
+static void d4_roll_caption(int x, int y, const gallery_item_t *it, int idx, bool lead) {
+  /* Index, then the facts, in the order a magazine gives them: what it is,
+   * when, and anything unusual about it. */
+  static char n[8];
+  snprintf(n, sizeof n, "%02d", idx);
+  int px = df_draw(x, y, n, 1, d_fg) + 10;
+  if (lead) {
+    d_text(&UT_RS, px, y - 4, "09.15", D_DIM);
+    px += ut_w(&UT_RS, "09.15") + 10;
+    d_text(&UT_RS, px, y - 4, "18:42", D_DIM);
+    px += ut_w(&UT_RS, "18:42") + 14;
+  }
+  if (it->frames < 4) {
+    static char fr[12];
+    snprintf(fr, sizeof fr, "%d/4", it->frames);
+    px = df_draw(px, y, fr, 1, D_YELLOW) + 6;
+    if (lead) d_label(px, y + 4, "FRAMES", D_DIM);
+  } else if (lead) {
+    d_label(px, y + 4, "WIGGLE", D_DIM);
+  }
+}
+
+static void d4_roll(void) {
+  d_ground(D_PAPER);
   const gallery_item_t *slots = gallery_slots();
-  for (int i = 0; i < GALLERY_PAGE; i++) {
-    const int cx = d_col_x(i % 4) + 6, cy = D_BAND_T + 20 + (i / 4) * (D4_TH_H + 46);
-    const bool on = d4.sel == i;
-    if (slots[i].state == TILE_EMPTY) continue;
-    /* Four sheets, offset, because that is what a wigglegram is. A file with
-     * fewer than four frames gets fewer sheets, so the stack is the count. */
-    const int sheets = slots[i].frames > 0 ? slots[i].frames : 1;
-    for (int k = sheets - 1; k >= 1; k--)
-      fill(cx - k * 4, cy - k * 4, D4_TH_W, D4_TH_H,
-           k & 1 ? d_toward(D_PAPER, D_GRAPH, 150) : d_toward(D_PAPER, D_GRAPH, 90));
-    if (slots[i].state == TILE_READY && slots[i].pixels) {
-      /* The one under the cursor plays; the rest are still. A page of eight
-       * wigglegrams all moving at once is a page nobody can read, and the
-       * camera only has the four frames of one of them decoded anyway - the
-       * input layer asks for them when the cursor lands. */
-      const uint16_t *px = slots[i].pixels;
-      int pw = GALLERY_TILE_W, ph = GALLERY_TILE_H;
-      if (on) {
-        const uint16_t *f = gallery_frame_pixels(d4_wiggle_lens(NULL, (uint8_t[8]){0}));
-        if (f) { px = f; pw = GALLERY_TILE_W; ph = GALLERY_TILE_H; }
-      }
-      img_blit_tf(px, pw, ph, 0.f, 0.f, 1.f, 1.f, (float)(cx + D4_TH_W / 2), (float)(cy + D4_TH_H / 2),
-                  (float)D4_TH_W, (float)D4_TH_H, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
+  const int sel = d4.sel < GALLERY_PAGE ? d4.sel : 0;
+
+  /* The masthead: the name in the mincho, the count and the page in the
+   * gothic, on one hairline. A magazine does not put its running head in a
+   * black bar. */
+  const int top = 26;
+  d_text(&UT_RL, D4_PG_M, top - 8, "Roll", d_fg);
+  static char files[24];
+  snprintf(files, sizeof files, "%d", gallery_total());
+  int rx = UI_W - D4_PG_M;
+  static char pg[12];
+  snprintf(pg, sizeof pg, "%d/%d", gallery_page() + 1, gallery_pages());
+  df_draw_r(rx, top + 6, pg, 1, d_fg);
+  rx -= df_w(pg, 1) + 16;
+  d_label_r(rx, top + 12, "PAGE", D_DIM);
+  rx -= d_label_w("PAGE") + 24;
+  d_label_r(rx, top + 12, "FILES", D_DIM);
+  rx -= d_label_w("FILES") + 8;
+  df_draw_r(rx, top + 6, files, 1, d_fg);
+  fill(D4_PG_M, top + 44, UI_W - 2 * D4_PG_M, 1, d_toward(d_fg, d_bg, 120));
+
+  /* The lead, left, large. It plays. */
+  const int ly = top + 68, lw = 396, lh = 264;
+  const gallery_item_t *it = &slots[sel];
+  {
+    const uint16_t *px = it->pixels;
+    const uint16_t *f = gallery_frame_pixels(d4_wiggle_lens(NULL, (uint8_t[8]){0}));
+    if (f) px = f;
+    if (px) {
+      img_blit_tf(px, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f, (float)(D4_PG_M + lw / 2),
+                  (float)(ly + lh / 2), (float)lw, (float)lh, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
     } else {
-      fill(cx, cy, D4_TH_W, D4_TH_H, d_toward(D_GRAPH, D_PAPER, 30));
-      df_draw_c(cx + D4_TH_W / 2, cy + D4_TH_H / 2 - 7, "-", 1, D_DIM);
+      fill(D4_PG_M, ly, lw, lh, d_toward(d_fg, d_bg, 200));
     }
-    /* The index in a solid tab under the corner of the stack: a file number
-     * on a piece of equipment, not a caption. */
-    static char idx[8];
-    snprintf(idx, sizeof idx, "%02d", gallery_page() * GALLERY_PAGE + i + 1);
-    const int tw = df_w(idx, 1) + 12;
-    fill(cx, cy + D4_TH_H, tw, 20, on ? D_COBALT : D_GRAPH);
-    df_draw(cx + 6, cy + D4_TH_H + 3, idx, 1, D_PAPER);
-    if (slots[i].frames < 4) {
-      static char fr[8];
-      snprintf(fr, sizeof fr, "%d/4", slots[i].frames);
-      fill(cx + tw + 4, cy + D4_TH_H, df_w(fr, 1) + 10, 20, D_YELLOW);
-      df_draw(cx + tw + 9, cy + D4_TH_H + 3, fr, 1, D_GRAPH);
-    }
-    if (slots[i].favorite) fill(cx + D4_TH_W - 14, cy, 14, 14, D_YELLOW);
-    if (on) for (int k = 1; k <= 3; k++) d_box(cx - k, cy - k, D4_TH_W + 2 * k, D4_TH_H + 2 * k, D_COBALT);
+    d4_roll_caption(D4_PG_M, ly + lh + 12, it, gallery_page() * GALLERY_PAGE + sel + 1, true);
   }
 
-  /* The foot band: the facts a camera prints under a page of files. */
+  /* The rest, right, in two columns of small ones, still. */
+  const int sx = D4_PG_M + lw + 40, sw = (UI_W - D4_PG_M - sx - 24) / 2, sh = sw * 2 / 3;
+  int k = 0;
+  for (int i = 0; i < GALLERY_PAGE && k < 4; i++) {
+    if (i == sel || slots[i].state == TILE_EMPTY) continue;
+    const int cx = sx + (k % 2) * (sw + 24), cy = ly + (k / 2) * (sh + 44);
+    if (slots[i].state == TILE_READY && slots[i].pixels) {
+      img_blit_tf(slots[i].pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f, (float)(cx + sw / 2),
+                  (float)(cy + sh / 2), (float)sw, (float)sh, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
+    } else {
+      fill(cx, cy, sw, sh, d_toward(d_fg, d_bg, 200));
+    }
+    d4_roll_caption(cx, cy + sh + 10, &slots[i], gallery_page() * GALLERY_PAGE + i + 1, false);
+    k++;
+  }
+
+  /* The foot: a folio, small, in the corner, the way a page is numbered. */
+  d_text(&UT_RS, D4_PG_M, UI_H - 40, "KINO D4", D_FAINT);
+  static char card[24];
   storage_status_t sd;
   storage_get_status(&sd);
-  const int fy = d_band_bottom(D_GRAPH);
-  static char card[24];
   const int pct = sd.capacity_bytes ? (int)(100 - 100 * sd.free_bytes / sd.capacity_bytes) : 0;
   snprintf(card, sizeof card, "%d%%", pct);
-  int fx2 = d_label(D_MARGIN, fy + 18, "CARD", d_toward(D_PAPER, D_GRAPH, 120)) + 8;
-  df_draw(fx2, fy + 12, card, 1, D_PAPER);
-  df_draw_r(UI_W - D_MARGIN, fy + 12, "09.15", 1, d_toward(D_PAPER, D_GRAPH, 120));
+  int fx = UI_W - D4_PG_M - df_w(card, 1);
+  df_draw(fx, UI_H - 42, card, 1, D_DIM);
+  d_label_r(fx - 10, UI_H - 36, "CARD", D_FAINT);
 }
 
 /* ------------------------------------------------------------------ */

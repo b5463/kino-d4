@@ -47,22 +47,44 @@ const UI_C = join(ROOT, 'firmware/p4/main/ui.c');
 const BEHAVIOURS = join(ROOT, 'firmware/p4/behaviors');
 const CACHE = join(ROOT, 'node_modules/.cache/bizud');
 
+/*
+ * Two families, from one foundry, under one licence.
+ *
+ * Morisawa's BIZ UD gothic and mincho are the same designers' answer to the
+ * same brief, which is what makes them a pair rather than two fonts that
+ * happen to be on the same page - and pairing a mincho with a gothic is what
+ * a Japanese magazine does: the mincho carries the editorial voice and the
+ * gothic carries the data. Both SIL OFL 1.1, both pinned by commit and
+ * digest, because a font that changes under you changes every screen.
+ */
 const SRC = { repo: 'googlefonts/morisawa-biz-ud-gothic', commit: '18934af56b9c003ca58c54bffbf226848cb11032' };
+const SRC_MINCHO = { repo: 'googlefonts/morisawa-biz-ud-mincho', commit: 'c30a6221b1f3d09afae9137ffe73c7cbec649947' };
 const FILES = {
   regular: { path: 'fonts/ttf/BIZUDPGothic-Regular.ttf', sha256: '258d7156c165f2ff774b6efee637c22c3b950de0d8a10e501137061bc8085d01' },
   bold: { path: 'fonts/ttf/BIZUDPGothic-Bold.ttf', sha256: '30eba52fc837e8b62c97d4b82e6706583149fb7294e3712dd71a655eaea80a90' },
+  mincho: { src: SRC_MINCHO, path: 'fonts/ttf/BIZUDPMincho-Regular.ttf', sha256: 'dbcea04578ac1e9d3484525e870ce491bd04361768f4d2ba4b827d96e20f891d' },
+  minchoBold: { src: SRC_MINCHO, path: 'fonts/ttf/BIZUDPMincho-Bold.ttf', sha256: '99618e39b881597efc03d58706bd194757c968c1bf7a7017a893efead6b1b260' },
 };
 
 /* XS is the units, indexes and metadata a piece of equipment prints next to
  * its numbers; SB is a value or a selection at body size. Both exist because
  * the interface is dense now: hierarchy comes from size and weight rather
  * than from space, which there is not much of on a 4.3 inch panel. */
+/*
+ * The gothic sizes are the data: values, rows, labels, the small print. The
+ * mincho sizes are the voice: a screen's name, a caption, the one line that
+ * is written rather than reported. Mixing them is the whole typographic idea,
+ * and it is why this does not look like software.
+ */
 const FACES = [
   { name: 'XS', file: 'regular', px: 16 },
   { name: 'S', file: 'regular', px: 22 },
   { name: 'SB', file: 'bold', px: 22 },
   { name: 'M', file: 'regular', px: 34 },
   { name: 'MB', file: 'bold', px: 34 },
+  { name: 'RS', file: 'mincho', px: 22 },
+  { name: 'RM', file: 'mincho', px: 30 },
+  { name: 'RL', file: 'minchoBold', px: 42 },
 ];
 
 /* Marks the drawing code uses that need not appear in a string literal. */
@@ -73,7 +95,8 @@ async function fetchFile(f) {
   let buf;
   if (existsSync(cached)) buf = readFileSync(cached);
   else {
-    const url = `https://raw.githubusercontent.com/${SRC.repo}/${SRC.commit}/${f.path}`;
+    const src = f.src ?? SRC;
+    const url = `https://raw.githubusercontent.com/${src.repo}/${src.commit}/${f.path}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
     buf = Buffer.from(await res.arrayBuffer());

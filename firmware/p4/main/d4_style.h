@@ -20,13 +20,26 @@
  * Crossing between them is a hard cut, and that cut is how the user always
  * knows which half of the product they are in.
  */
-#define D_PAPER RGB(0xEC, 0xEA, 0xE4) /* warm off-white */
-#define D_GRAPH RGB(0x17, 0x18, 0x1A) /* near-black */
+/*
+ * Printed colour, not screen colour.
+ *
+ * The first cut of this used digital primaries - a full-chroma blue, a full
+ * yellow, a pillarbox red - and that is most of what made it read as
+ * software. Ink on uncoated paper does not do that: it is warm, it is a
+ * little dirty, and it never reaches the corners of the gamut. These are
+ * mixed as if they had been printed.
+ *
+ * The black is warm too. A neutral graphite next to a cream ground looks
+ * like a bug; a warm near-black looks like ink.
+ */
+#define D_PAPER RGB(0xEF, 0xEA, 0xDE) /* uncoated cream */
+#define D_GRAPH RGB(0x1C, 0x1A, 0x18) /* warm near-black */
 
-/* Events, not palette. Most screens show none of these. */
-#define D_COBALT RGB(0x1B, 0x46, 0xC8) /* selection, connection, working */
-#define D_YELLOW RGB(0xF2, 0xC0, 0x1E) /* capture, ready, a photographic event */
-#define D_RED RGB(0xC8, 0x28, 0x1E)    /* a real error, a destructive action */
+/* Events, not palette. Most screens show none of these, and none of them is
+ * at full chroma. */
+#define D_COBALT RGB(0x2E, 0x4C, 0x8A) /* ink blue: connection, an operation */
+#define D_YELLOW RGB(0xD8, 0xA5, 0x2B) /* ochre: capture, a photographic event */
+#define D_RED RGB(0xA8, 0x3A, 0x2E)    /* faded red: a real error, a destruction */
 
 /* Secondary type and rules, as blends toward whichever ground is under them.
  * Computed rather than tabulated so the same call works on both grounds. */
