@@ -1624,7 +1624,44 @@ int main(int argc, char **argv) {
   FILM("world_link_roll", 160); FILM("world_link_roll", 260); FILM("world_link_roll", 420);
   FILM("world_link_roll", 620);
 
-  /* -- world_capture_joins_roll: the photograph that was just made --
+  /* -- world_capture: the whole thing, decided by the camera --
+   *
+   * Every other capture film names the clip it wants, which is useful for
+   * reviewing one behaviour and useless for reviewing the path. Here nothing
+   * is named: the stage changes, cap_watch arms the choreography, each source
+   * frame opens its own gate as it lands, the report goes to the behaviour
+   * controller at the end and the controller decides what - if anything - the
+   * camera says about it. A clean four-way sync on a scene held still, which
+   * is the shot the camera should be most pleased with.
+   *
+   * What this films against is a path that only works when a test drives it. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  for (int t = 0; t <= 600; t += 30) STEP(t);  /* held still: framing_ms earns its band */
+  film_t0 = g_preview_clock_us;
+  g_stage = CAPTURE_READING;
+  g_frames_in = 0;
+  FILM("world_capture", 0); FILM("world_capture", 30); FILM("world_capture", 60);
+  g_frames_in = 1;              FILM("world_capture", 110);
+  g_frames_in = 1 | 2;          FILM("world_capture", 150);
+  g_frames_in = 1 | 2 | 4;      FILM("world_capture", 190);
+  g_frames_in = 15;             FILM("world_capture", 230);
+  FILM("world_capture", 300); FILM("world_capture", 400);
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true; g_report.stored = 4; g_report.online = 4;
+  snprintf(g_report.id, sizeof g_report.id, "CAP_000037");
+  for (int c = 0; c < 4; c++) {
+    g_report.cam[c].attempted = true; g_report.cam[c].ok = true;
+    g_report.cam[c].sync_class = PURE_SYNC_OK;
+  }
+  g_stage = CAPTURE_DONE;       /* cap_watch reports; the controller chooses */
+  FILM("world_capture", 460); FILM("world_capture", 560); FILM("world_capture", 700);
+  FILM("world_capture", 900); FILM("world_capture", 1200); FILM("world_capture", 1700);
+  g_stage = CAPTURE_IDLE;
+  STEP(2000);
+
+  /* -- world_capture_roll: the photograph that was just made --
    *
    * The four views become one object, that object shrinks into the corner
    * rather than being thrown away, and opening the roll while it is still in
@@ -1640,7 +1677,7 @@ int main(int argc, char **argv) {
   STEP(0);
   g_stage = CAPTURE_READING;
   g_frames_in = 0;
-  FILM("world_capture_joins_roll", 0);
+  FILM("world_capture_roll", 0);
   g_frames_in = 15;
   STEP(120);
   s_capw.reported = false;
@@ -1651,17 +1688,17 @@ int main(int argc, char **argv) {
   for (int c = 0; c < 4; c++) { g_report.cam[c].attempted = true; g_report.cam[c].ok = true; }
   g_stage = CAPTURE_DONE;
   film_t0 = g_preview_clock_us;
-  FILM("world_capture_joins_roll", 0); FILM("world_capture_joins_roll", 40);
-  FILM("world_capture_joins_roll", 90); FILM("world_capture_joins_roll", 170);
-  FILM("world_capture_joins_roll", 300); FILM("world_capture_joins_roll", 500);
+  FILM("world_capture_roll", 0); FILM("world_capture_roll", 40);
+  FILM("world_capture_roll", 90); FILM("world_capture_roll", 170);
+  FILM("world_capture_roll", 300); FILM("world_capture_roll", 500);
   g_stage = CAPTURE_IDLE;
   /* ...and the roll is opened while it is still settling. */
   STEP(700);
   film_t0 = g_preview_clock_us;
   go(SCR_GALLERY, 0);
-  FILM("world_capture_joins_roll", 750); FILM("world_capture_joins_roll", 790);
-  FILM("world_capture_joins_roll", 850); FILM("world_capture_joins_roll", 950);
-  FILM("world_capture_joins_roll", 1100); FILM("world_capture_joins_roll", 1350);
+  FILM("world_capture_roll", 750); FILM("world_capture_roll", 790);
+  FILM("world_capture_roll", 850); FILM("world_capture_roll", 950);
+  FILM("world_capture_roll", 1100); FILM("world_capture_roll", 1350);
 
   /* -- world_transfer: the queue drains, and the photographs say so --
    *

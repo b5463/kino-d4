@@ -441,7 +441,7 @@ Priority order:
    oversize so a frame out of true overlaps its neighbour instead of
    opening a hole onto the ground.
 5. ~~a new capture joining ROLL~~ — **done.**
-   `world_capture_joins_roll`. A photograph does not stop existing when
+   `world_capture_roll`. A photograph does not stop existing when
    the shutter sequence ends. The four views that made it become one
    object at the size they were, that object shrinks into the corner of
    the finder, and it stays there for five seconds - still in the hand.
@@ -642,27 +642,39 @@ frame rate in a browser - the one place motion can actually be judged
 before there is hardware. A gesture-driven partial mode change, a capture
 result becoming a roll item, and delayed backend data need the input and
 capture paths, and are covered by the product films `world_drag_return`,
-`world_capture_joins_roll` and `world_delayed_data`.
+`world_capture_roll` and `world_delayed_data`.
 
 ### The films that become the design reviews
 
 ```
-world_shoot_look      four live surfaces resolve into one image
-world_look_roll       the current image becomes the roll
-world_roll_link       the roll reorganises into sharing
-world_interrupt       rapid gesture changes mid-transformation
-world_capture         full capture from the live state
-world_capture_roll    the result becomes the newest roll object
-world_transfer        photographs respond to real transfer progress
-world_delayed_data    late capture data, behaviour stays coherent
-world_drag_slow       the finger carries the world across, and commits
-world_drag_return     a gesture let go halfway, coming back from where it is
-world_drag_flick      short and fast: commits on speed, not distance
 world_shoot_look      the four cameras become the photograph
 world_look_shoot      and shrink back into their quarters
 world_roll_look       a photograph grows out of the grid it was in
 world_look_roll       and settles back into its slot
+world_roll_link       the roll reorganises into sharing
+world_link_roll       and re-forms from the column rather than rebuilding
+world_capture         full capture from the live state, nothing forced:
+                      the camera's own path decides what it says, if anything
+world_capture_roll    the result becomes the newest roll object
+world_transfer        photographs respond to real transfer progress
+world_delayed_data    late capture data, behaviour stays coherent
+world_camera_lost     the object loses a quarter, and gets it back
+world_wake            the world returns in the order the hardware does
+world_setup           the photographic world flattens into the rule
+world_setup_out       and opens back up out of it
+world_interrupt       a transformation reversed twice before it can land
+world_drag_slow       the finger carries the world across, and commits
+world_drag_return     a gesture let go halfway, coming back from where it is
+world_drag_flick      short and fast: commits on speed, not distance
 ```
+
+All of them exist, and the list above is the set the harness writes. Two
+of the names were owed: `world_capture` is the path with nothing named -
+the stage changes, the gates open on real frames, the report reaches the
+controller and the controller decides, which is what separates a path
+that works from one that only works when a test drives it. It chose to
+say nothing, which for a clean four-way sync is the most likely thing it
+can do.
 
 The three drag films exist because the requirement is about the frames
 *during* the gesture, not the ones after it. If the world only moves on
