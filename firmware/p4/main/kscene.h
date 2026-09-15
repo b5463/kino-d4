@@ -44,6 +44,7 @@ typedef struct ks_node {
   bool shown_prev;  /* acquired last pass */
   bool visible_prev;/* drawn last pass (shown and alpha > 0) */
   bool retarget;    /* content changed this pass: a different word or picture is a different object, no join */
+  uint16_t idle;    /* passes since anything asked for this node; the pool reclaims the oldest */
   int16_t parent;   /* node index or -1 */
   int16_t z;
   kch_t ch[KC_COUNT];
@@ -124,6 +125,37 @@ static bool ks_init(void) {
   return true;
 }
 
+static bool ks_bound(const ks_node_t *n);
+
+/* A node nothing has asked for in this many passes is forgotten when the pool
+ * needs the slot. Long enough that leaving a screen and coming straight back
+ * finds the same objects with their continuity intact, short enough that a
+ * card full of photographs cannot exhaust the pool: the ids are per capture,
+ * so the set of possible nodes is as large as the card is. */
+#define KS_IDLE_DEAD 180
+
+/**
+ * Take the slot of the node that has been forgotten longest.
+ *
+ * Never one a clip is driving, never one that is still somebody's parent -
+ * parents are held as indices, so handing that slot to a new object would
+ * silently reparent whatever pointed at it. Returns NULL when every slot is
+ * genuinely in use, which is the case the pool size is supposed to cover.
+ */
+static ks_node_t *ks_reclaim(void) {
+  int best = -1;
+  for (int i = 0; i < s_ks_count; i++) {
+    ks_node_t *n = &s_ks[i];
+    if (!n->used || n->idle < KS_IDLE_DEAD || ks_bound(n)) continue;
+    bool parented = false;
+    for (int j = 0; j < s_ks_count && !parented; j++)
+      if (s_ks[j].used && s_ks[j].parent == (int16_t)i && s_ks[j].idle < KS_IDLE_DEAD) parented = true;
+    if (parented) continue;
+    if (best < 0 || n->idle > s_ks[best].idle) best = i;
+  }
+  return best < 0 ? NULL : &s_ks[best];
+}
+
 /** The node called `id`, created on first sight; marked as in use this pass. */
 static ks_node_t *ks_get(const char *id, int kind) {
   const uint32_t h = ks_hash_id(id);
@@ -131,11 +163,17 @@ static ks_node_t *ks_get(const char *id, int kind) {
     ks_node_t *n = &s_ks[i];
     if (n->used && n->idh == h && strcmp(n->id, id) == 0) {
       n->shown = true;
+      n->idle = 0;
       return n;
     }
   }
-  if (s_ks_count >= KS_MAX_NODES) return &s_ks[0]; /* never; the pool is sized for the interface */
-  ks_node_t *n = &s_ks[s_ks_count++];
+  ks_node_t *n;
+  if (s_ks_count < KS_MAX_NODES) {
+    n = &s_ks[s_ks_count++];
+  } else {
+    n = ks_reclaim();
+    if (n == NULL) return &s_ks[0]; /* every slot alive at once: the pool is undersized */
+  }
   ks_node_reset(n, id, kind);
   n->shown = true;
   return n;
@@ -350,6 +388,8 @@ static void ks_begin(int64_t now_us) {
   for (int i = 0; i < s_ks_count; i++) {
     s_ks[i].shown_prev = s_ks[i].shown;
     s_ks[i].shown = false;
+    if (s_ks[i].shown_prev) s_ks[i].idle = 0;
+    else if (s_ks[i].idle < 0xffff) s_ks[i].idle++;
   }
 }
 

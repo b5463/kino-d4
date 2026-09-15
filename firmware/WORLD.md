@@ -431,7 +431,17 @@ Priority order:
    it. Where the pictures were going used to be spelled out beside the
    transfer marks; the code says it, so that label is gone.
 4. capture
-5. a new capture joining ROLL
+5. ~~a new capture joining ROLL~~ — **done.**
+   `world_capture_joins_roll`. A photograph does not stop existing when
+   the shutter sequence ends. The four views that made it become one
+   object at the size they were, that object shrinks into the corner of
+   the finder, and it stays there for five seconds - still in the hand.
+   Opening the roll inside that window carries the same object into the
+   first tile; leave it longer and it has settled into the roll like the
+   others. The card's own thumbnail has not been decoded yet, so the
+   object is born from the live views assembled the way the tile will be,
+   and the real pixels are swapped under it without a retarget when the
+   roll opens: same subject, sharper.
 6. transfer
 7. wake
 8. interruption and rapid navigation
@@ -511,7 +521,18 @@ marks a change of state, not because something is always performing.
   the same box with the same parent, so the user picks one up rather than
   being handed a copy; its neighbours push outward and are let go.
 
-Two rules the transitions turned up, both now in the code:
+- ~~**A scene pool that can outlive a session**, since a photograph's node
+  is named after its capture and a card holds more captures than the pool
+  holds slots.~~ **Done.** A node nobody has asked for in 180 passes is
+  reclaimed when the pool needs the slot, never one a clip is driving and
+  never one that is still somebody's parent - parents are held as
+  indices, so handing that slot out would silently reparent whatever
+  pointed at it. Before this, the 161st photograph was drawn as the
+  finder. The preview puts 400 photographs through the 160-slot pool and
+  reports whether the last one still has a node of its own; INFO shows
+  `NODES n/160`.
+
+Three rules the transitions turned up, all now in the code:
 
 - **Continuity works in local space, so a reparent breaks it.** A
   photograph parented to the grid in one state and to a photo group in

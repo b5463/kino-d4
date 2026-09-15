@@ -1009,33 +1009,6 @@ static void photo_toggle_favourite(void) {
 
 static int s_ph_del_x0, s_ph_del_x1, s_ph_fav_x0, s_ph_fav_x1;
 
-#define QR_QUIET 4
-
-static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
-  const int total = qr->size + 2 * QR_QUIET;
-  const int pitch = box / total;
-  if (pitch < 1) return 0; /* no room - the caller shows the code as text */
-
-  const int side = total * pitch;
-  const int x0 = cx - side / 2;
-
-  /* White ground for the symbol and its quiet zone together: full contrast,
-   * whatever the screen around it is doing, because a QR on anything less
-   * scans poorly from across a room. */
-  fill(x0, top, side, side, RGB(0xff, 0xff, 0xff));
-
-  const int m0 = x0 + QR_QUIET * pitch;
-  const int n0 = top + QR_QUIET * pitch;
-  for (int y = 0; y < qr->size; y++) {
-    for (int x = 0; x < qr->size; x++) {
-      if (qr_module(qr, x, y)) {
-        fill(m0 + x * pitch, n0 + y * pitch, pitch, pitch, RGB(0x00, 0x00, 0x00));
-      }
-    }
-  }
-  return side;
-}
-
 /*
  * Only about Roll. The card statistics the old screen carried moved to
  * Settings > Storage, where they belong.

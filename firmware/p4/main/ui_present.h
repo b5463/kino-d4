@@ -509,6 +509,154 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
   return live;
 }
 
+#define G_TILE_W GALLERY_TILE_W
+#define G_TILE_H GALLERY_TILE_H
+
+/**
+ * A photograph's name in the scene. Named after the capture rather than the
+ * slot it happens to occupy, so the same picture is the same object in the
+ * roll, on its own screen, and on the way between them.
+ */
+static const char *photo_node_id(char *buf, size_t cap, const char *label, const char *id) {
+  /* The label when there is one, because it is short and readable on the
+   * bench; the capture's own id otherwise, cut to fit. Cutting is deliberate
+   * and safe here: the name only has to tell six tiles and one open
+   * photograph apart, and captures differ well inside the first few
+   * characters. Written as a bounded copy rather than an snprintf of a longer
+   * string so that the truncation is the stated intent. */
+  const char *src = (label && label[0]) ? label : (id ? id : "");
+  size_t n = 0;
+  if (cap >= 4) {
+    buf[0] = 'p'; buf[1] = 'h'; buf[2] = ':';
+    n = 3;
+    while (src[n - 3] && n < cap - 1) { buf[n] = src[n - 3]; n++; }
+  }
+  buf[n] = 0;
+  return buf;
+}
+
+/* ------------------------------------------------------------------ */
+/* The latest photograph                                               */
+/*
+ * A photograph does not stop existing when the shutter sequence ends. For a
+ * few seconds after a capture the thing that was just made is still in the
+ * hand: it stays in the corner of the finder, and opening the roll in that
+ * window carries that same object into the first tile rather than drawing a
+ * new one there.
+ *
+ * The card has the real picture; the decode has not happened yet and will not
+ * until the roll is opened. So the object is born from what actually made it,
+ * which is the four live views, assembled the way the thumbnail will be. When
+ * the real thumbnail does arrive the pixels are swapped under the node with
+ * ks_image_lod - same subject, sharper - and nothing moves.
+ */
+#define LATEST_HOLD_MS 5200   /* still in the hand this long */
+#define LATEST_FADE_MS 700    /* the last of it */
+#define LATEST_X 86.f
+#define LATEST_Y (UI_H - 104.f)   /* clear of the settings row along the bottom */
+#define LATEST_SCALE 0.42f
+
+static uint16_t *s_latest_px;
+static char s_latest_id[KS_ID_MAX];
+static int64_t s_latest_us;
+static bool s_latest_born;
+
+/** Nearest-neighbour copy of one viewfinder tile into a box of the buffer. */
+static void latest_blit(const uint16_t *src, int dx, int dy, int dw, int dh) {
+  if (!src) return;
+  /* The finder crops the tile top and bottom; the photograph is the same
+   * framing, so the copy reads the same rows. */
+  const int sy0 = SH_CROP, sh = VF_H - 2 * SH_CROP;
+  for (int y = 0; y < dh; y++) {
+    const uint16_t *row = src + (size_t)(sy0 + y * sh / dh) * VF_W;
+    uint16_t *out = s_latest_px + (size_t)(dy + y) * G_TILE_W + dx;
+    for (int x = 0; x < dw; x++) out[x] = row[x * VF_W / dw];
+  }
+}
+
+/**
+ * Freeze what the cameras are looking at into the latest photograph.
+ *
+ * Four frames stored means the picture is the four of them, so the placeholder
+ * is the same 2x2 the tile will be. Fewer, and it is the one view that led.
+ * Returns false when there is nothing to freeze, and then no object is born:
+ * an invented photograph would be worse than none.
+ */
+static bool latest_build(const char *label, const char *uuid, int stored, int dominant) {
+  if (!viewfinder_ready()) return false;
+  if (s_latest_px == NULL) {
+    s_latest_px = heap_caps_malloc((size_t)G_TILE_W * G_TILE_H * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_latest_px == NULL) s_latest_px = malloc((size_t)G_TILE_W * G_TILE_H * 2);
+    if (s_latest_px == NULL) return false;
+  }
+  memset(s_latest_px, 0, (size_t)G_TILE_W * G_TILE_H * 2);
+  bool any = false;
+  if (stored >= 4) {
+    const int hw = G_TILE_W / 2, hh = G_TILE_H / 2;
+    for (int i = 0; i < 4; i++) {
+      const uint16_t *t = viewfinder_tile(i);
+      if (!t) continue;
+      latest_blit(t, (i % 2) * hw, (i / 2) * hh, hw, hh);
+      any = true;
+    }
+  } else {
+    const int cam = dominant >= 0 && dominant < 4 ? dominant : 0;
+    const uint16_t *t = viewfinder_tile(cam);
+    if (t) { latest_blit(t, 0, 0, G_TILE_W, G_TILE_H); any = true; }
+  }
+  if (!any) return false;
+  photo_node_id(s_latest_id, sizeof s_latest_id, label, uuid);
+  s_latest_us = esp_timer_get_time();
+  s_latest_born = false;
+  return true;
+}
+
+/** How much of the latest photograph is still there, 0..255. */
+static float latest_alpha(int64_t now) {
+  if (s_latest_id[0] == 0) return 0.f;
+  const int ms = (int)((now - s_latest_us) / 1000);
+  if (ms >= LATEST_HOLD_MS) return 0.f;
+  const int left = LATEST_HOLD_MS - ms;
+  return left >= LATEST_FADE_MS ? 255.f : 255.f * (float)left / (float)LATEST_FADE_MS;
+}
+
+/**
+ * Hold the latest photograph in the corner of whatever the camera is showing.
+ *
+ * It is born where it was made - the size and place of the capture result,
+ * which is the whole screen - and from the next pass on it is posed small and
+ * to the side. Nothing animates it: the join between those two poses is the
+ * animation, and it is the same join that carries the object on into the roll
+ * if the user opens it before the picture has finished settling.
+ */
+static void sync_latest(void) {
+  if (s_latest_id[0] == 0) return;
+  const int64_t now = esp_timer_get_time();
+  const float a = latest_alpha(now);
+  if (a <= 0.f) { s_latest_id[0] = 0; return; }
+  ks_node_t *n = nd(s_latest_id, KS_IMAGE);
+  ks_image_lod(n, s_latest_px, G_TILE_W, G_TILE_H, (float)G_TILE_W, (float)G_TILE_H);
+  if (!s_latest_born) {
+    /* One pass at the size of the thing that was on screen a moment ago. */
+    s_latest_born = true;
+    ks_snap(n);
+    ks_place(n, UI_W * 0.5f, UI_H * 0.5f, 0.5f, 0.5f);
+    ks_pose(n, KC_SX, (float)UI_W / (float)G_TILE_W);
+    ks_pose(n, KC_SY, (float)UI_W / (float)G_TILE_W);
+    ks_pose(n, KC_ALPHA, 255.f);
+    /* A print does not land square. */
+    ks_impulse(n, KC_ROT, -5.f);
+  } else {
+    ks_place(n, LATEST_X, LATEST_Y, 0.5f, 0.5f);
+    ks_pose(n, KC_SX, LATEST_SCALE);
+    ks_pose(n, KC_SY, LATEST_SCALE);
+    ks_pose(n, KC_ALPHA, a);
+  }
+  /* Above the four views it was made from, below the words about it. */
+  n->z = 46;
+  s_kmo_live++; /* it is on its way somewhere */
+}
+
 static void sync_shoot(void) {
   const int64_t now = esp_timer_get_time();
   /* The picture: four panes as children of one group centred on the screen,
@@ -675,6 +823,14 @@ static void cap_watch(void) {
     if (!r.ok) kmood_trouble(0.6f);
     else if (r.stored < r.online) kmood_trouble(0.25f);
     else if (synced) kmood_reward(0.3f);
+    if (r.ok) {
+      /* The photograph that was just made stays in the world. Built from the
+       * four views that made it, because the card's own thumbnail has not been
+       * decoded yet and will not be until the roll is opened. */
+      const char *v = config_str("shoot.viewfinder", "cam2");
+      const int dom = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
+      latest_build(r.id, r.uuid, r.stored, dom);
+    }
     if (!r.ok) {
       snprintf(s_cap_fail_why, sizeof s_cap_fail_why, "%s", r.stored == 0 ? "NOTHING CAME BACK" : "NOT SAVED");
       ui_event_ctx(KEV_CAPTURE_FAIL, &c);
@@ -783,41 +939,17 @@ static void sync_look(void) {
 /* ROLL: the grid                                                      */
 
 #define G_COLS GALLERY_COLS
-#define G_TILE_W GALLERY_TILE_W
-#define G_TILE_H GALLERY_TILE_H
 #define G_GAP 14
 #define G_X0 ((UI_W - (G_COLS * G_TILE_W + (G_COLS - 1) * G_GAP)) / 2)
 #define G_Y0 (HEAD_H + 9)
 #define G_PITCH (G_TILE_H + G_GAP)
 _Static_assert(G_Y0 + G_PITCH + G_TILE_H <= UI_H, "the bottom row runs off the screen");
 
-/**
- * A photograph's name in the scene. Named after the capture rather than the
- * slot it happens to occupy, so the same picture is the same object in the
- * roll, on its own screen, and on the way between them.
- */
-static const char *photo_node_id(char *buf, size_t cap, const char *label, const char *id) {
-  /* The label when there is one, because it is short and readable on the
-   * bench; the capture's own id otherwise, cut to fit. Cutting is deliberate
-   * and safe here: the name only has to tell six tiles and one open
-   * photograph apart, and captures differ well inside the first few
-   * characters. Written as a bounded copy rather than an snprintf of a longer
-   * string so that the truncation is the stated intent. */
-  const char *src = (label && label[0]) ? label : (id ? id : "");
-  size_t n = 0;
-  if (cap >= 4) {
-    buf[0] = 'p'; buf[1] = 'h'; buf[2] = ':';
-    n = 3;
-    while (src[n - 3] && n < cap - 1) { buf[n] = src[n - 3]; n++; }
-  }
-  buf[n] = 0;
-  return buf;
-}
-
 /* The photograph's box is always the thumbnail's, so growing to full screen
  * is a scale and not a rebuild; the pixels behind it are whatever resolution
  * has been decoded. */
 #define PH_GROW ((float)PH_W / (float)G_TILE_W)
+
 
 static void gal_origin(int slot, int *x, int *y) {
   *x = G_X0 + (slot % G_COLS) * (G_TILE_W + G_GAP);
@@ -1184,9 +1316,10 @@ static void sync_about(void) {
   static char perf[80], scene[80], mood[80];
   /* Grouped so each line is one thing: what the renderer costs and what mood
    * is doing to it, what the cameras see, and the mood itself. */
-  snprintf(perf, sizeof perf, "SCENE %lu us  WORST %lu us  MISSED %lu  TEMPO %d  VIGOUR %d",
+  snprintf(perf, sizeof perf, "SCENE %lu us  WORST %lu us  MISSED %lu  NODES %d/%d  TEMPO %d  VIGOUR %d",
            (unsigned long)(s_ks_perf.render_us + s_ks_perf.step_us), (unsigned long)s_ks_perf.worst_render_us,
-           (unsigned long)s_ks_perf.missed, (int)(kmood_tempo() * 100.f), (int)(kmood_vigour() * 100.f));
+           (unsigned long)s_ks_perf.missed, s_ks_count, KS_MAX_NODES,
+           (int)(kmood_tempo() * 100.f), (int)(kmood_vigour() * 100.f));
   if (s_ksense.live)
     snprintf(scene, sizeof scene, "LUM %d  MOTION %d  SPREAD %d  STILL %d ms  CAMS %d",
              (int)(s_ksense.lum_mean * 100.f), (int)(s_ksense.motion_mean * 100.f),
@@ -1218,6 +1351,9 @@ static void sync_about(void) {
  * 65 modules a side covers version 10 with its quiet zone, which is more than
  * a Roll's guest URL has ever needed.
  */
+/* The quiet zone is part of the symbol: a code with no white margin does not
+ * scan. Four modules is the specified minimum. */
+#define QR_QUIET 4
 #define QR_IMG_MAX (57 + 2 * QR_QUIET)
 static uint16_t s_qr_img[QR_IMG_MAX * QR_IMG_MAX];
 static int s_qr_img_side;
@@ -1536,6 +1672,10 @@ static void draw_screen(void) {
     case SCR_POWER: sync_power(); break;
     default: break;
   }
+  /* The roll and the open photograph pose this object themselves, and where
+   * they put it is where it belongs; everywhere else it is the thing still in
+   * the hand, in the corner. */
+  if (s_screen != SCR_GALLERY && s_screen != SCR_PHOTO) sync_latest();
   sync_capture_banner();
   if (s_dialog != DLG_NONE) sync_dialog();
   sync_brand_leaving();

@@ -1517,6 +1517,45 @@ int main(int argc, char **argv) {
   FILM("world_link_roll", 160); FILM("world_link_roll", 260); FILM("world_link_roll", 420);
   FILM("world_link_roll", 620);
 
+  /* -- world_capture_joins_roll: the photograph that was just made --
+   *
+   * The four views become one object, that object shrinks into the corner
+   * rather than being thrown away, and opening the roll while it is still in
+   * the hand carries the same object into the first tile. Nothing is drawn
+   * twice: there is one photograph, and the roll is where it ends up.
+   *
+   * `CAP_000037` is the preview roll's first slot, so the object born at the
+   * shutter and the tile it becomes are the same photograph, which is the
+   * whole point of the scene. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  g_stage = CAPTURE_READING;
+  g_frames_in = 0;
+  FILM("world_capture_joins_roll", 0);
+  g_frames_in = 15;
+  STEP(120);
+  s_capw.reported = false;
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true; g_report.stored = 4; g_report.online = 4;
+  snprintf(g_report.id, sizeof g_report.id, "CAP_000037");
+  snprintf(g_report.uuid, sizeof g_report.uuid, "preview-0");
+  for (int c = 0; c < 4; c++) { g_report.cam[c].attempted = true; g_report.cam[c].ok = true; }
+  g_stage = CAPTURE_DONE;
+  film_t0 = g_preview_clock_us;
+  FILM("world_capture_joins_roll", 0); FILM("world_capture_joins_roll", 40);
+  FILM("world_capture_joins_roll", 90); FILM("world_capture_joins_roll", 170);
+  FILM("world_capture_joins_roll", 300); FILM("world_capture_joins_roll", 500);
+  g_stage = CAPTURE_IDLE;
+  /* ...and the roll is opened while it is still settling. */
+  STEP(700);
+  film_t0 = g_preview_clock_us;
+  go(SCR_GALLERY, 0);
+  FILM("world_capture_joins_roll", 750); FILM("world_capture_joins_roll", 790);
+  FILM("world_capture_joins_roll", 850); FILM("world_capture_joins_roll", 950);
+  FILM("world_capture_joins_roll", 1100); FILM("world_capture_joins_roll", 1350);
+
   /* -- the mode strip -- */
   SCENE();
   go(SCR_GALLERY, 0);
@@ -1785,6 +1824,46 @@ int main(int argc, char **argv) {
   }
   g_stage = CAPTURE_IDLE;
   row_close();
+
+  /* ---- stress: more photographs than the scene has slots ----
+   *
+   * Every photograph is its own object, named after its capture, so a card
+   * with four hundred pictures on it wants four hundred node ids over the
+   * course of a session. The pool is 160. It has to reclaim what nobody is
+   * asking for any more, and it must never hand out a slot something else is
+   * still pointing at - the visible failure of that would be one photograph
+   * quietly wearing another's place. */
+  {
+    SCENE();
+    go(SCR_SHOOT, 0);
+    s_sh_words_up = false;
+    int ms = 0;
+    for (int i = 0; i < 400; i++) {
+      char id[16], uuid[40];
+      snprintf(id, sizeof id, "CAP_%06d", 1000 + i);
+      snprintf(uuid, sizeof uuid, "stress-%d", i);
+      latest_build(id, uuid, 4, 1);
+      /* Past the hold, so each one is finished with before the next arrives. */
+      for (int k = 0; k < 3; k++) { ms += 120; STEP(ms); }
+      s_latest_id[0] = 0;
+    }
+    /* The last one asked for has to be a node of its own. Without reclamation
+     * a full pool hands back slot 0, which is some fixed part of the
+     * interface: the photograph would be drawn as the finder, and looking it
+     * up by its own name would find nothing. */
+    char last[16];
+    snprintf(last, sizeof last, "CAP_%06d", 1399);
+    latest_build(last, "stress-last", 4, 1);
+    STEP(ms += 120);
+    char want[KS_ID_MAX];
+    photo_node_id(want, sizeof want, last, "stress-last");
+    const ks_node_t *got = ks_peek(want);
+    fprintf(stderr, "[scene] 400 photographs through a %d slot pool: %d in use, slot 0 is \"%s\", "
+                    "the last photograph %s\n",
+            KS_MAX_NODES, s_ks_count, s_ks[0].id,
+            got != NULL ? "has its own node" : "-- LOST, the pool handed back a fixed node");
+    s_latest_id[0] = 0;
+  }
 
   /* ---- the playground: every capability, filmed ---- */
   static const int PGT[] = {0, 16, 40, 80, 130, 200, 300, 420, 560, 720, 900, 1100, 1400};
