@@ -939,6 +939,14 @@ static void d4_rows(const d4_row_t *rows, int n, int sel) {
 }
 
 /** The page ticks down the right edge: four pages, and which one this is. */
+/* Two pages of eight, because there are sixteen settings. The screen used to
+ * claim four and draw two empty ticks for pages that do not exist. */
+#define D4_SETUP_PAGES 2
+/* The foot band's numerals are the page control: this is where a finger goes
+ * to turn the page, and it has to be the same rectangle the drawing uses. */
+#define D4_SETUP_PG_X D_MARGIN
+#define D4_SETUP_PG_W (df_w("12", 1) + 16)
+
 static void d4_page_ticks(int page, int pages) {
   const int x = UI_W - 13, y0 = D_BAND_T + 30;
   for (int i = 0; i < pages; i++) fill(x, y0 + i * 28, 6, i == page ? 20 : 3, i == page ? D_COBALT : D_FAINT);
@@ -946,14 +954,14 @@ static void d4_page_ticks(int page, int pages) {
 
 static void d4_setup(void) {
   d_ground(D_PAPER);
-  d4_head("SETUP", NULL, d4.page, 4);
-  d4_page_ticks(d4.page, 4);
+  d4_head("SETUP", NULL, d4.page, D4_SETUP_PAGES);
+  d4_page_ticks(d4.page, D4_SETUP_PAGES);
   static char shots[16], look[40];
   snprintf(shots, sizeof shots, "%d", config_int("shoot.volume", 6));
   kdp_recipes_name(0, NULL, 0, look, sizeof look);
   static const d4_row_t P0[8] = {
       {"IMAGE SIZE", "3M"},   {"FLASH", "AUTO"},      {"WIGGLE SPEED", "2"}, {"LOOK", "NORMAL"},
-      {"DATE STAMP", "OFF"},  {"SOUND", "ON"},        {"WLAN", "-----"},     {"FORMAT CARD", NULL},
+      {"DATE STAMP", "OFF"},  {"SOUND", "ON"},        {"WLAN", "-----"},     {"DELETE PHOTOS", NULL},
   };
   /*
    * The clock, as it actually is. This body has no RTC, so until something
@@ -980,13 +988,13 @@ static void d4_setup(void) {
   (void)shots;
   (void)look;
   d4_rows(d4.page == 0 ? P0 : P1, 8, d4.sel);
-  /* The foot band names the page, so four pages of eight are navigable
-   * without counting ticks. */
-  static const char *const PAGE_NAME[4] = {"PICTURE", "MACHINE", "-", "-"};
+  /* The foot band names the page and is how it is turned: the numerals are
+   * the control, the rule under one of them is where you are. */
+  static const char *const PAGE_NAME[D4_SETUP_PAGES] = {"PICTURE", "MACHINE"};
   const int fy = d_band_bottom(D_GRAPH);
-  df_draw(D_MARGIN, fy + 12, "1234", 1, d_toward(D_PAPER, D_GRAPH, 150));
-  fill(D_MARGIN + d4.page * (DF_ADV), fy + 32, DF_W, 3, D_COBALT);
-  d_label(D_MARGIN + df_w("1234", 1) + 18, fy + 18, PAGE_NAME[d4.page & 3], D_PAPER);
+  df_draw(D4_SETUP_PG_X, fy + 12, "12", 1, d_toward(D_PAPER, D_GRAPH, 150));
+  fill(D4_SETUP_PG_X + d4.page * DF_ADV, fy + 32, DF_W, 3, D_COBALT);
+  d_label(D4_SETUP_PG_X + df_w("12", 1) + 18, fy + 18, PAGE_NAME[d4.page % D4_SETUP_PAGES], D_PAPER);
   d_label_r(UI_W - D_MARGIN, fy + 18, "MENU TO LEAVE", d_toward(D_PAPER, D_GRAPH, 120));
 }
 
@@ -1357,6 +1365,13 @@ static bool d4_tap(int x, int y) {
       return true;
     }
     case D4_SETUP: {
+      /* The page, from the numerals in the foot band. */
+      if (y > UI_H - D_BAND_B && x < D4_SETUP_PG_X + D4_SETUP_PG_W) {
+        const int pg = (x - D4_SETUP_PG_X) / DF_ADV;
+        d4.page = pg < 0 ? 0 : pg >= D4_SETUP_PAGES ? D4_SETUP_PAGES - 1 : pg;
+        d4.sel = 0;
+        return true;
+      }
       const int top = D_BAND_T + 14, rh = 40;
       const int i = (y - top) / rh;
       if (y < top || i < 0 || i > 7) return false;
@@ -1366,9 +1381,12 @@ static bool d4_tap(int x, int y) {
         else if (d4.page == 1 && i == 1) { d4.screen = D4_CAL; d4.sel = 0; }
         else if (d4.page == 0 && i == 7) {
           d4.screen = D4_CONFIRM;
-          d4.confirm_n = gallery_total();
+          /* The number of photographs on the card, not the length of the
+           * gallery list: the list is capped, and on a card of 1,325 it is
+           * the wrong number to put in front of someone about to lose them. */
+          d4.confirm_n = gallery_media_count() >= 0 ? gallery_media_count() : gallery_total();
           d4.confirm_noun = "FILES";
-          d4.confirm_yes = "FORMAT";
+          d4.confirm_yes = "DELETE ALL";
           d4.sel = 0;
         }
       } else {
@@ -1376,9 +1394,18 @@ static bool d4_tap(int x, int y) {
       }
       return true;
     }
-    case D4_CONFIRM:
-      d4.sel = x < UI_W / 2 ? 0 : 1;
+    case D4_CONFIRM: {
+      /* One tap picks a side and the second takes it - the same two-step as
+       * the roll, and here it is the only thing between a finger and every
+       * photograph on the card. Before this the dialog could not be answered
+       * at all: the tap moved the cursor and nothing ever committed. */
+      const int side = x < UI_W / 2 ? 0 : 1;
+      if (d4.sel != side) { d4.sel = side; return true; }
+      if (side == 1) gallery_delete_all();
+      d4.screen = D4_SETUP;
+      d4.sel = 0;
       return true;
+    }
     case D4_ITEM:
       d4.screen = D4_ROLL;
       return true;
