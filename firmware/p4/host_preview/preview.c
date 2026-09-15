@@ -1599,6 +1599,53 @@ int main(int argc, char **argv) {
   g_queue.uploading = 0;
   FILM("world_transfer", 2700); FILM("world_transfer", 2900); FILM("world_transfer", 3200);
 
+  /* -- world_wake: the world comes back in the order the hardware does --
+   *
+   * Waking is not a title card and not a fade. The panel goes dark, so the
+   * cameras stop, so every one of them is news again when the camera is
+   * picked up - and each surface springs into its quarter on the frame its
+   * own sensor sends, tens of milliseconds apart. Nothing waits for the
+   * slowest and nothing pretends the fast ones were late. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  g_vf_dead = 0xF; /* asleep: nothing is answering */
+  STEP(40);
+  film_t0 = g_preview_clock_us;
+  FILM("world_wake", 0);
+  g_vf_dead = 0xE; FILM("world_wake", 40); FILM("world_wake", 70);
+  g_vf_dead = 0xA; FILM("world_wake", 110); FILM("world_wake", 150);
+  g_vf_dead = 0x8; FILM("world_wake", 200);
+  g_vf_dead = 0x0; FILM("world_wake", 260); FILM("world_wake", 320);
+  FILM("world_wake", 420); FILM("world_wake", 600);
+
+  /* -- world_interrupt: the world changes its mind, twice, mid-transformation --
+   *
+   * The hero transformation is the four surfaces converging into one image.
+   * Here it is reversed a third of the way in, and reversed again before THAT
+   * has finished. Nothing restarts, nothing snaps and no state is rebuilt:
+   * each reversal begins from the shape the surface had actually reached, so
+   * the second one starts from a quad that was never a resting quad. The user
+   * always wins, and the world is always somewhere real.
+   *
+   * The failure this films against is the one that looks fine in a still: a
+   * transformation that plays from its authored start pose every time, so an
+   * interrupted world jumps back to a shape it had already left. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  STEP(300);
+  film_t0 = g_preview_clock_us;
+  go(SCR_LOOK, 0);
+  FILM("world_interrupt", 0); FILM("world_interrupt", 60); FILM("world_interrupt", 120);
+  go(SCR_SHOOT, 0);                       /* a third of the way in, back */
+  FILM("world_interrupt", 160); FILM("world_interrupt", 200); FILM("world_interrupt", 250);
+  go(SCR_LOOK, 0);                        /* and again, before that has landed */
+  FILM("world_interrupt", 300); FILM("world_interrupt", 360); FILM("world_interrupt", 440);
+  FILM("world_interrupt", 560); FILM("world_interrupt", 760);
+
   /* -- the mode strip -- */
   SCENE();
   go(SCR_GALLERY, 0);

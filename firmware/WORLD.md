@@ -463,8 +463,22 @@ Priority order:
    completely still, because nothing is moving. The only number shown is
    the one the queue really has, which is how many are still owed, and it
    only ever goes down.
-7. wake
-8. interruption and rapid navigation
+7. ~~wake~~ — **done.** `world_wake`. No title card and no fade. The
+   panel goes dark, so the cameras stop, so every one of them is news
+   again when the camera is picked up: each surface springs into its
+   quarter on the frame its own sensor sends, tens of milliseconds
+   apart. Nothing waits for the slowest and nothing pretends the fast
+   ones were late. This needed no wake case at all - it is the same rule
+   that lights a camera's mark when it starts answering, applied to the
+   surface the mark stands for.
+8. ~~interruption and rapid navigation~~ — **done.**
+   `world_interrupt`. The hero transformation reversed a third of the
+   way in, and reversed again before that has finished. Each reversal
+   begins from the shape the surface had actually reached, so the second
+   starts from a quad that was never a resting quad. The failure it
+   films against is the one that looks fine in a still: a transformation
+   that plays from its authored start pose every time, so an interrupted
+   world jumps back to a shape it had already left.
 9. error
 10. SETUP entry and exit
 

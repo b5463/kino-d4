@@ -464,6 +464,12 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
    * makes that read as one surface being assembled rather than as four
    * rectangles twitching. */
   const uint8_t trace = ks_playing_tag("cap") ? 2 : 0;
+  /* Which cameras were answering last pass. A camera that starts answering is
+   * a real event - the first frame off a sensor that was asleep or busy - and
+   * the surface it belongs to arrives on it rather than on a clock. Waking
+   * needs no special case for this: the panel goes dark, the cameras stop, so
+   * every one of them is news again when the camera is picked up. */
+  static bool ks_had[4];
   static const char *const PANE[4] = {"pane0", "pane1", "pane2", "pane3"};
   static const char *const PLATE[4] = {"pane0.plate", "pane1.plate", "pane2.plate", "pane3.plate"};
   static const char *const NUM[4] = {"pane0.n", "pane1.n", "pane2.n", "pane3.n"};
@@ -495,6 +501,14 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
       ks_parent(p, g);
       p->ghost = trace;
       p->z = (int16_t)(lead ? 2 : 1);
+      /* This camera has just started answering: the surface springs up into
+       * its place rather than being there already. After a sleep the four do
+       * this a few tens of milliseconds apart, which is the world coming back
+       * in the order the hardware actually comes back. */
+      if (!ks_had[i]) {
+        ks_impulse(p, KC_SX, -2.4f);
+        ks_impulse(p, KC_SY, -2.4f);
+      }
       live++;
       has[i] = true;
       continue;
@@ -512,8 +526,10 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
     ks_node_t *w = nd_text(WHY[i], why, &UT_S, RGB(0x3a, 0x42, 0x4c), cx, cy + 12.f * sc, 0.5f, 0.5f, 2, false);
     ks_parent(w, g);
   }
+  for (int i = 0; i < 4; i++) ks_had[i] = has[i];
   return live;
 }
+
 
 #define G_TILE_W GALLERY_TILE_W
 #define G_TILE_H GALLERY_TILE_H
