@@ -2499,7 +2499,15 @@ static void look_detail_col(int x, int w, int y, const char *value, bool set,
 
 /** The detail strip, under the last control row. */
 static void draw_look_detail(int y) {
-  /* A well: five readings, no press. */
+  /* A well: five readings, no press.
+   *
+   * Deliberately NOT legended with the look's name. It was tried - every
+   * other block on this screen sits in a group box that names it, and this
+   * strip had nothing saying whose numbers it was showing - and it is wrong
+   * twice. The picker directly above it already says the name, so the legend
+   * is the same word twice in fifty pixels; and there is no room for one, in
+   * QUAD the strip already ends on the panel's last row. A well is a
+   * container: this was never content floating in grey. */
   well(LK_X, y, LK_W, LK_DET_H);
 
   char id[KDP_RECIPE_ID_MAX];
@@ -3698,9 +3706,19 @@ static void draw_roll(void) {
   text_scaled(&UI_FONT_M, RL_RX, y, title, fit_scale(&UI_FONT_M, title, RL_RW), W_TEXT);
   y += UI_FONT_M.line_h * 2 + 10;
   if (roll.name[0] != '\0') {
-    /* The code only when the name is not already the code. */
-    text(&UI_FONT_M, RL_RX, y, roll.slug, W_GRAYTEXT);
-    y += UI_FONT_M.line_h + 26;
+    /* The code, named, in a well. Only when the name is not already the code.
+     *
+     * It is the one string on this screen a guest reads out or types when a
+     * phone will not scan, and it was the quietest thing in the column: grey,
+     * at body size, under a name set twice as large. A value someone copies
+     * belongs in a well on this interface - it is where the look's name sits
+     * on LOOK and where every reading sits on ABOUT - and that well is also
+     * the container this column never had. */
+    text(&UI_FONT_S, RL_RX, y, "CODE", W_GRAYTEXT);
+    y += UI_FONT_S.line_h + 4;
+    well(RL_RX, y, RL_RW, UI_FONT_M.line_h + 12);
+    text(&UI_FONT_M, RL_RX + 10, y + 6, roll.slug, W_TEXT);
+    y += UI_FONT_M.line_h + 12 + 22;
   }
 
   /* The connection word, with a square lamp in front of it. Green is "your
