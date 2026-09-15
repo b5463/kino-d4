@@ -89,32 +89,28 @@ it. A list of eight settings is a list of eight settings.
 
 KINO has two registers and they are told apart by which way round they are.
 
-**Graphite ground — the camera.** Live view, capture, playback, an opened
-photograph, LOOK, LINK. The photograph is the brightest thing on the panel and
-everything else gets out of its way. Pale type on near-black.
+**Graphite — the camera.** Live view, capture, playback, an opened
+photograph, LOOK. The photograph is the brightest thing on the panel and
+everything else gets out of its way.
 
-**Paper ground — the machine.** SETUP, diagnostics, calibration, card,
-information, confirmations. Dark type on warm off-white, dense, printed, like
-the panel of a piece of equipment. No photograph here, so no reason to be dark.
+**Paper — the machine.** Boot, ROLL, LINK, SETUP, diagnostics, calibration,
+card, confirmations. Dark type on warm off-white, printed, like the panel of
+a piece of equipment.
 
-**Paper ground — the page.** ROLL, and only ROLL. A roll of film is not a
-screenful of controls, it is a set of prints, and a set of prints belongs on
-stock. See §10a.
-
-Crossing between them is a hard cut. That cut is the transition: you are
-either in the camera, in the machine, or looking at the page — and you always
-know which. Opening one photograph out of ROLL crosses from the page back to
-the camera, which is why an opened photograph is on graphite and fills the
-panel: on the page it was a print among prints, and now it is the picture.
+Crossing between them is a hard cut, and that cut is the transition: you are
+either in the camera or in the machine and you always know which. Opening one
+photograph out of ROLL crosses back to the camera, which is why it is on
+graphite and fills the panel — on the page it was a print among prints, and
+now it is the picture.
 
 ```
-  PAPER   #ECEAE4   warm off-white      machine ground, camera ink
-  GRAPH   #17181A   near-black          camera ground, machine ink
-  DIM     60% toward the ground         secondary type, inactive
-  FAINT   35% toward the ground         units, rules, disabled
-  COBALT  #1B46C8   selection, connection, an operation in progress
-  YELLOW  #F2C01E   capture, readiness, a photographic event
-  RED     #C8281E   a real error, a destructive action
+  PAPER   #EFEADE   warm off-white      machine ground, camera ink
+  GRAPH   #1C1A18   warm near-black     camera ground, machine ink
+  DIM     27% toward the ground         a row not under the cursor
+  FAINT   47% toward the ground         rules, units, a numeral as a heading
+  COBALT  #2E4C8A   an operation in progress
+  YELLOW  #D8A52B   capture, readiness, a photographic event
+  RED     #A83A2E   a real error, a destructive action
 ```
 
 Cobalt, yellow and red are events, not palette. Most screens show none of
@@ -122,73 +118,144 @@ them. Two on screen at once is already unusual; three is a bug.
 
 ---
 
-## 3. Grid
+## 3. The module
 
-800 × 480, 4.3 inch, 217 ppi.
+40 px. The panel is exactly 20 × 12 of them, and the field — one module in
+from every edge — is 18 × 10, from (40, 40) to (760, 440).
 
-Four columns, because of course four:
+Every structural edge is a whole number of modules and everything inside one
+is centred in it by arithmetic, not by eye:
 
 ```
-margin 16 │ col 186 │ 8 │ 186 │ 8 │ 186 │ 8 │ 186 │ margin 16
-          └ 109 ────┴─── 303 ──┴─── 497 ──┴─── 691 ┘   centres
+  UT_S / UT_SB   22 px   (40 - 22) / 2 =  9
+  UT_XS          16 px   (40 - 16) / 2 = 12
+  the drawn face 14 px   (40 - 14) / 2 = 13
 ```
 
-Vertical rhythm is 24. The top band is 40 and the foot band 44; everything
-else lives between them.
+All three are integers, which is why they are the sizes. Half a pixel of
+rounding in a row that repeats eight times is a list that visibly leans, and
+at 217 ppi that is visible.
 
-The four-column measure is the ROLL page (four across), the four cells of the
-camera's top band, the diagnostics columns and the settings value column. One
-measure, used everywhere.
+What falls out of it:
+
+```
+  eight settings rows        8 × 40   = 320 = the field from 120 to 440
+  a roll of eight prints     2 × 160  = 320, a print being 4 modules tall
+  a print                    168 × 126, which is 4:3 exactly
+  four prints and 3 gutters  4×168 + 3×16 = 720 = the field, to the pixel
+  ten progress blocks        30 + 10 gap = one module of pitch
+  the value column           6 modules, hung off the right edge of the field
+```
+
+The cell is 4:3 because every sensor on this camera is 4:3. A cell of any
+other proportion puts a mat down the side of every photograph the camera will
+ever take.
 
 ---
 
-## 4. Type
+## 4. The join
 
-BIZ UDPGothic, baked at the exact pixel sizes used. It is a Japanese universal
+Where two rules would meet, they do not. A vertical stops a quarter module —
+10 px — short of the horizontal at each end.
+
+That gap is the difference between a drawn table and a made object, and it is
+why there are no boxes in this interface: a closed rectangle has four of those
+joins and gets all four of them wrong.
+
+The same instinct, applied twice more:
+
+- **Selection is a mark, not a bar.** An 8 px square in the margin beside the
+  row, and the row itself going from dim to ink. A filled rectangle with the
+  type knocked out of it is loud, it destroys the ground, and on a list of
+  eight rows it is the only thing anyone sees.
+- **A label sits closer to its value than to the next pair.** Eight pixels up,
+  thirty-four down. Four evenly spaced lines read as eight unrelated ones.
+
+---
+
+## 5. Type
+
+BIZ UDPGothic, baked at the exact pixel sizes used. A Japanese universal
 design gothic — drawn to be legible small on equipment, not to be fashionable.
 
 ```
-  XS  16   units, indexes, metadata, the small print on the machine
-  S   22   body, list rows, labels
-  SB  22   the value in a row, a selection, a fact that matters
-  M   34   a screen's name, a number the user is meant to read across the room
-  MB  34   the count, the state word, the one thing on the screen
+  XS  16   labels, captions, every word on a machine screen that is not a value
+  S   22   a value, a list row, a look's name
+  SB  22   a value that is a word
+  M   34   the one thing on the screen: a code to read across a room
 ```
 
-No size above 34. Nothing is set large for effect; if something needs
-emphasis it is bold, inverted, or alone — not enormous.
+Nothing is set large for effect, so emphasis comes from **tracking** instead.
+Two steps and no more: a caption at 2 px, a screen's name at 6. At five or
+six letters that is about a module of extra width, and it is what makes a
+title a title without setting it any larger.
 
 Numerals are not set in this face at all. They are drawn — see `d4_font.h` —
 because they are the recurring objects in this interface and a downloaded text
-font is what makes an embedded panel look like a web page. The rule that falls
-out: **numbers are objects and are drawn; words are labels and are set,
-tracked out, in small caps.** They never look like each other.
+font is what makes an embedded panel look like a web page. **Numbers are
+objects and are drawn; words are labels and are set, tracked out, in small
+caps.** They never look like each other.
 
-Text over a photograph carries a two-pixel dark contour, because the ground
-underneath it is unknown and may be a blown-out window. Text on either flat
-ground does not.
+Text over a photograph is contoured, and the contour is **one pixel at caption
+sizes and two at display sizes**. Two pixels under a 16 px face is a fifth of
+the cap height: the word stops reading as contoured and starts reading as
+outlined, which is the loudest thing on a screen whose whole argument is that
+it is quiet.
 
 ---
 
-## 5. Marks, boxes and small drawn things
+## 5a. The camera's one line
 
-Icons are bitmaps on a 16 × 16 grid, one bit per pixel, drawn for this panel
-and no other. They are not from a library and they do not scale. There are
-only as many as the camera actually needs:
+The camera has no top band, no boxes and no rules. The photograph fills the
+panel down to y = 440 and the last module is the chrome: shots, flash, mode,
+card, on four fixed columns.
+
+The picture's own edge is the line, which is why there is not a drawn one.
+
+It costs a module of picture and it is worth it. The alternative is chrome
+laid over the photograph, and type over an unknown photograph has to be
+contoured or plated to survive a blown-out window — an outline around every
+word, or a sheet of grey glass, either of which is louder than the band it
+was avoiding.
+
+The columns are fixed rather than packed left to right: a fact that moves when
+its neighbour changes length is a fact you have to read instead of glance at.
+
+**The menu is that same line, in paper, saying something else.** Four numbered
+places on one module; it takes a choice and it is gone, and the photograph
+behind it does not lose a pixel to it.
+
+---
+
+## 5b. The four, on the top edge
+
+One tick per lens, each centred over the quarter of the picture its camera
+made — so the chrome is not a caption about the four cameras, it is them,
+standing where they are.
 
 ```
-  flash        a bolt, four pixels wide at the waist
-  flash off    the same bolt with a stroke through it
-  battery      a box, a tip, and up to four bars inside it   ← four again
-  card         a box with the top-right corner cut
-  link         two brackets facing each other
-  arrow        a three pixel triangle, right or down
-  lock         a box with a staple over it
-  warning      a triangle with a bar
+  16   the one on screen
+  12   answered
+   7   warming
+   4   not answering
 ```
 
-Everything else is rectangles and discs drawn in code: rules 1px, selection a
-filled rectangle with the type knocked out of it, progress a row of blocks.
+Four lengths, each visibly different from the next at arm's length. Two pixels
+wide with a one pixel dark surround, because a two pixel mark is geometry
+rather than type and a surround is enough to seat it over a photograph.
+
+Because the live view is already a wigglegram, the long tick steps across the
+top edge in time with the parallax. It is the only moving chrome in the
+product and it costs sixteen pixels at the very top of the frame, where a
+photographer has already left room.
+
+---
+
+## 5c. Marks, and progress
+
+The mark has five states and they are the whole vocabulary — `●` ready, `○`
+waiting, `◐` warming, `■` busy, `✕` not answering. Nothing else in the
+interface may use these five shapes for anything else.
 
 **Progress is blocks, never a bar and never a spinner.**
 
@@ -196,9 +263,9 @@ filled rectangle with the type knocked out of it, progress a row of blocks.
   ■■■■■■■□□□
 ```
 
-Ten blocks, 14 × 10, 4 apart. Blocks fill left to right and the count is real
-— frames written, files sent, cameras answered. A process that cannot report
-its own progress does not get blocks; it gets a word.
+Ten of them, 30 × 12 on a module of pitch, and the count is real — frames
+written, files sent, cameras answered. A process that cannot report its own
+progress does not get blocks; it gets a word.
 
 ---
 
@@ -299,24 +366,29 @@ off. Sound is not a substitute for a visible state.
 
 ---
 
-## 9a. What the bands are
+## 9a. What it is not
 
-Screens are built from full-width solid ink with the type knocked out of it,
-not from hairlines with grey text between them. A band is a structural fact:
-it says where the picture stops and the machine starts, and it says it at full
-contrast on a panel that gets read in a dark room and in direct sun on the
-same evening.
+Three things were built and thrown away, and they are worth keeping written
+down because each of them is the obvious answer.
 
-The top band on the camera is divided into four cells, one directly over the
-part of the picture its lens made — so the chrome is not a caption about the
-four cameras, it **is** them. The cell of the lens currently on screen is
-lit, so the band sweeps in time with the picture: the chrome moves because the
-photograph moves.
+**Bands.** Full-width solid ink with the type knocked out of it, top and
+bottom. It is legible in a dark room and in direct sun, which is a real
+argument, and it costs two modules of picture on a body whose entire case is
+the picture. The camera keeps exactly one band, at the foot, one module tall
+(§5a); every machine screen replaced its bands with a hairline and the space
+under it.
 
-The foot band carries the mundane facts on the camera, and on the machine it
-says what the screen is for and the way out. Colour lives in the band and
-almost nowhere else: black is neutral, cobalt is an operation in progress, red
-is something about to go wrong or be lost, yellow is a photographic event.
+**A highlight bar for selection.** On a settings list it is the only thing
+anyone sees; over a page of photographs it is louder than the photographs. It
+is an 8 px square in the margin now (§4).
+
+**Chrome over the photograph.** Contoured type survives a blown-out window,
+but at caption size a contour reads as an outline, and a translucent plate to
+sit it on is glass by another name. The picture stops a module short instead.
+
+And one that stays: a period costume. Not waves, not brushwork, not paper
+texture, not a fake CRT. The composition and the arithmetic are the idea; a
+texture on top of them would be the same mistake in a different decade.
 
 ---
 
@@ -326,12 +398,12 @@ The set, in the order a user meets them.
 
 ```
    1  boot                    the four come up, then the camera
-   2  live view               four feeds, almost nothing else
+   2  live view               the wiggle, full bleed, one line of chrome
    3  shutter                 one inverted frame
    4  capture                 the four marks filling on real arrivals
    5  processing              MAKING IT and ten blocks
    6  playback                the wiggle, looping, full width
-   7  ROLL                    a page of prints, on stock
+   7  ROLL                    eight prints on a page, one playing
    8  ROLL item               one photograph, its facts
    9  LOOK                    the picture, the looks as a strip
   10  LINK                    the code, the address, who is on
@@ -345,45 +417,36 @@ The set, in the order a user meets them.
   18  confirm                 paper, two choices, the destructive one on the right
 ```
 
-### 10a. ROLL is a page
+### 10a. ROLL
 
-Everything else in this product is a screen. ROLL is a page, and it is
-composed the way a print series is rather than the way a file browser is:
+Four across and two down, on stock, with the one under the cursor playing —
+section 0 has no exception for thumbnails.
 
 ```
-  ┌ 14 ─────────┐                              ┌──────────────┐
-  │ cut by the  │                              │ ┌──────────┐ │
-  └ margin ─────┘                              │ │   Roll   │ │
-   09    ┌────────────────────────────┐        │ ├──────────┤ │
-  wiggle │                            │        │ │ FILES 22 │ │
-  4/4    │   the lead, and it plays   │        │ │ PAGE 2/4 │ │
-         │                            │        │ │  ◄    ►  │ │
-         └────────────────────────────┘        └─┴──────────┴─┘
-                                                  ┌────────┐
-  KINO D4  10% CARD                               └── 10 ──┘
-                                                    ┌─────┐  ← smaller
-                                                    └─ 11 ┘     on purpose
+  ROLL                                          ‹  2/4  ›
+  ───────────────────────────────────────────────────────
+  ┌──────┐   ┌──────┐   ┌──────┐   ┌──────┐
+  │      │   │      │   │      │   │      │
+  └──────┘   └──────┘   └──────┘   └──────┘
+   ══════
+   09         10         11         12       ▪
+  ┌──────┐   ┌──────┐
+  │      │   │      │
+  └──────┘   └──────┘
+   13         14
+  ───────────────────────────────────────────────────────
+  22 FILES                            FN FOR THE CAMERA
 ```
 
-What is taken from the woodblock print: **asymmetry** — nothing is centred
-and no two blocks are the same size, so the eye is given an order to read in
-rather than a field to scan. **Cropping** — the neighbour runs off the left
-edge, which says the roll continues past the page better than an arrow would.
-**Layered planes** rather than a grid. **Ma** — the empty corner is what makes
-the rest legible and filling it is the mistake. **The cartouche** — a ruled
-title panel in a corner instead of a masthead, and since it is the only piece
-of furniture on the page it is also the only control: the page turns along its
-bottom edge. **The seal** — pressed two thirds onto a print the camera has
-been told to keep and one third onto the stock, the way a hand does it.
+Selection is the two pixel rule under the cell and the index going from faint
+to ink. Not a highlight: a highlight over a page of photographs is the loudest
+thing on the screen, and it is not the photographs. A tap on another print
+makes it the cursor — which is what starts it playing — and a tap on the one
+under the cursor opens it. A roll is browsed by looking.
 
-The seal's carved mark is the four. That is the part that makes this KINO's
-page and not borrowed japonisme, and it is why none of the costume comes with
-it: no waves, no blossoms, no brushwork, no paper texture, no registration
-offset. Those would be the "fake CRT" move under a different flag.
-
-The lead plays, because §0 does not have an exception for thumbnails. Tapping
-another print makes it the lead — which is what starts it playing — and
-tapping the lead opens it. A roll is browsed by looking.
+The small square at the right end of an index line is the kept flag. It is a
+fact about the file, so it is filed with the file's other facts rather than
+stamped across the picture.
 
 ---
 

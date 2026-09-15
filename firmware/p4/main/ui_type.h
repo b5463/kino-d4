@@ -199,12 +199,23 @@ static bool ut_raster(const ut_face_t *f, const char *s) {
  * large ones. Separable: a max across, then a max down, is the same as the
  * square kernel for a fraction of the reads.
  *
- * Two pixels, not one. The white pass that follows is antialiased, and its
- * own soft edge covers about a pixel of whatever is under it: a one pixel
- * contour is drawn and then painted over, which is what the first attempt at
- * this did - visible only as a slightly different white on white.
+ * Two pixels, not one, at display sizes. The white pass that follows is
+ * antialiased and its own soft edge covers about a pixel of whatever is
+ * under it: a one pixel contour is drawn and then painted over, which is
+ * what the first attempt at this did - visible only as a slightly different
+ * white on white.
+ *
+ * At caption sizes the same two pixels are a fifth of the cap height and the
+ * word reads as outlined rather than as contoured, so the radius is a
+ * parameter the caller sets from the size it is setting. It is a property of
+ * the type, not of the panel, which is why it lives here and not in the
+ * rasteriser's callers one at a time.
  */
 #define UT_HALO 2
+static int s_ut_halo_r = UT_HALO;
+
+/** The contour radius for the next string, in mask pixels. */
+static void ut_halo_radius(int r) { s_ut_halo_r = r < 1 ? 1 : r > UT_HALO ? UT_HALO : r; }
 
 static bool ut_halo(void) {
   if (s_ut_halo == NULL) {
@@ -218,7 +229,8 @@ static bool ut_halo(void) {
     uint8_t *o = &s_ut_halo[y * UT_MASK_W];
     for (int x = 0; x < w; x++) {
       uint8_t v = 0;
-      const int lo = x - UT_HALO < 0 ? 0 : x - UT_HALO, hi = x + UT_HALO >= w ? w - 1 : x + UT_HALO;
+      const int lo = x - s_ut_halo_r < 0 ? 0 : x - s_ut_halo_r,
+                hi = x + s_ut_halo_r >= w ? w - 1 : x + s_ut_halo_r;
       for (int k = lo; k <= hi; k++)
         if (m[k] > v) v = m[k];
       o[x] = v;
@@ -230,7 +242,8 @@ static bool ut_halo(void) {
     for (int y = 0; y < h; y++) col[y] = s_ut_halo[y * UT_MASK_W + x];
     for (int y = 0; y < h; y++) {
       uint8_t v = 0;
-      const int lo = y - UT_HALO < 0 ? 0 : y - UT_HALO, hi = y + UT_HALO >= h ? h - 1 : y + UT_HALO;
+      const int lo = y - s_ut_halo_r < 0 ? 0 : y - s_ut_halo_r,
+                hi = y + s_ut_halo_r >= h ? h - 1 : y + s_ut_halo_r;
       for (int k = lo; k <= hi; k++)
         if (col[k] > v) v = col[k];
       s_ut_halo[y * UT_MASK_W + x] = v;

@@ -2435,7 +2435,18 @@ int main(int argc, char **argv) {
     d4_draw(); shot("d4_12_menu");
     /* 7-8 the roll, and one out of it. The four frames of the selected file
      * are decoded when the cursor lands on it, which is what makes that one
-     * play and the rest sit still. */
+     * play and the rest sit still.
+     *
+     * The tiles are filled from the difficult-photography generator rather
+     * than fake_gallery()'s gradients: this page is a composition of
+     * photographs, and a page of eight identical colour ramps cannot be
+     * judged as one. A dark frame, a blown one and a busy one next to each
+     * other is what the layout has to survive. */
+    for (int i = 0; i < GALLERY_PAGE; i++)
+      for (int y = 0; y < GALLERY_TILE_H; y++)
+        for (int x = 0; x < GALLERY_TILE_W; x++)
+          g_tile[i][y * GALLERY_TILE_W + x] =
+              hard_px(i % HARD_COUNT, x + i * 11, y + i * 7, GALLERY_TILE_W, GALLERY_TILE_H, i & 3);
     d4.screen = D4_ROLL;
     d4.sel = 2; /* slot 5 is the pending one the stub keeps for that state */
     {

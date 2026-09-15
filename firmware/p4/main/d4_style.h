@@ -115,11 +115,21 @@ static void d_text_c(const ut_face_t *f, int cx, int y, const char *s, uint16_t 
   ut_draw(f, cx - ut_w(f, s) / 2, y, s, ink);
 }
 
-/** Type over a photograph: the ground underneath is unknown, so it is
- *  contoured. Everywhere else the ground is flat and it is not. */
+/*
+ * Type over a photograph: the ground underneath is unknown - it may be a
+ * blown-out window - so it is contoured. Everywhere else the ground is flat
+ * and it is not.
+ *
+ * The contour is one pixel at caption sizes and two at display sizes. Two
+ * pixels under a 16 px face is a fifth of the cap height: the word stops
+ * reading as contoured and starts reading as outlined, which is the loudest
+ * thing on a screen whose whole argument is that it is quiet.
+ */
 static void d_text_over(const ut_face_t *f, int x, int y, const char *s, uint16_t ink) {
+  ut_halo_radius(f->em >= 30 ? 2 : 1);
   ut_fx2(f, (float)x + ut_w(f, s) * 0.5f, (float)y + (f->asc + f->desc) * 0.5f, s, 1.f, 1.f, 0.f, 0.f, ink, 255,
          true, 0);
+  ut_halo_radius(2);
 }
 static void d_text_over_r(const ut_face_t *f, int right, int y, const char *s, uint16_t ink) {
   d_text_over(f, right - ut_w(f, s), y, s, ink);
@@ -143,6 +153,81 @@ static void d_box(int x, int y, int w, int h, uint16_t ink) {
 /** Selection is a filled rectangle with the type knocked out of it. Not a
  *  highlight, not a glow, not a rounded pill: a block of ink. */
 static void d_select(int x, int y, int w, int h, uint16_t ink) { fill(x, y, w, h, ink); }
+
+/* ------------------------------------------------------------------ */
+/* The module                                                          */
+/*
+ * 40 px, and the panel is exactly 20 x 12 of them. Every structural edge in
+ * this interface - the margin, the field, a rule, a row, the frame of a
+ * photograph - is a whole number of modules, and everything that sits inside
+ * one is centred in it by arithmetic rather than by eye:
+ *
+ *   UT_S / UT_SB   22 px   (40 - 22) / 2 =  9
+ *   UT_XS          16 px   (40 - 16) / 2 = 12
+ *   the drawn face 14 px   (40 - 14) / 2 = 13
+ *
+ * All three are integers, which is why these are the sizes the interface
+ * uses. Half a pixel of rounding in a row that repeats eight times is a list
+ * that visibly leans, and on a 217 ppi panel it is visible.
+ */
+#define D_MOD 40
+#define D_M2 (D_MOD / 2)
+#define D_M4 (D_MOD / 4)
+
+/* The field: one module in from each edge. 18 x 10 modules. Everything on a
+ * machine screen is inside it; a photograph is the one thing allowed past. */
+#define D_FX D_MOD
+#define D_FY D_MOD
+#define D_FW (UI_W - 2 * D_FX) /* 720 */
+#define D_FH (UI_H - 2 * D_FY) /* 400 */
+#define D_FR (D_FX + D_FW)     /* 760 - the right edge everything hangs from */
+#define D_FB (D_FY + D_FH)     /* 440 */
+
+/* The optical insets above. Named, so a screen never computes one inline and
+ * gets it a pixel out. */
+#define D_IN_S 9
+#define D_IN_XS 12
+#define D_IN_DF 13
+
+/* The value column on a machine screen: 6 modules wide, hung off the right
+ * edge of the field, with the rule that separates it 240 px in. */
+#define D_VX (D_FR - 6 * D_MOD) /* 520 */
+
+/*
+ * The join is the detail.
+ *
+ * Where two rules would meet, they do not: the vertical stops a quarter
+ * module short of the horizontal at each end. That gap is the whole
+ * difference between a drawn table and a made object, and it is why there
+ * are no boxes in this interface - a closed rectangle has four of those
+ * joins and gets all four of them wrong.
+ */
+#define D_REVEAL D_M4
+
+static void d_rule_h(int x, int y, int w, uint16_t ink) { fill(x, y, w, 1, ink); }
+static void d_rule_v(int x, int y, int h, uint16_t ink) {
+  if (h > 2 * D_REVEAL) fill(x, y + D_REVEAL, 1, h - 2 * D_REVEAL, ink);
+}
+
+/*
+ * Selection is a mark, not a bar.
+ *
+ * A filled rectangle with the type knocked out of it is loud, it destroys the
+ * ground it sits on, and on a list of eight rows it is the only thing anyone
+ * sees. An 8 px square in the margin beside the row says the same thing at a
+ * hundredth of the volume; the row itself goes from dim to ink, which is the
+ * other half of the same sentence.
+ */
+#define D_PIP 8
+static void d_pip(int x, int row_y, uint16_t ink) {
+  fill(x, row_y + (D_MOD - D_PIP) / 2, D_PIP, D_PIP, ink);
+}
+/** The same over a photograph, which needs an edge to sit against. */
+static void d_pip_over(int x, int row_y, uint16_t ink) {
+  const int y = row_y + (D_MOD - D_PIP) / 2;
+  fill(x - 1, y - 1, D_PIP + 2, D_PIP + 2, RGB(0x08, 0x08, 0x0A));
+  fill(x, y, D_PIP, D_PIP, ink);
+}
 
 /* ------------------------------------------------------------------ */
 /* The band                                                            */
@@ -205,24 +290,51 @@ static void d_tick_rule(int x, int y, int w, int every, int tick, uint16_t ink) 
 /** A boxed cell for a value, with the value's own baseline inside it. */
 static void d_cell(int x, int y, int w, int h, uint16_t ink) { d_box(x, y, w, h, ink); }
 
-/** A small caps label: tracked out, because a label is not a word. */
-static int d_label(int x, int y, const char *s, uint16_t ink) {
+/*
+ * A small caps label: tracked out, because a label is not a word.
+ *
+ * Two tracking steps and no more. A caption sits at 2, which is the smallest
+ * gap that still reads as deliberate at 16 px; a screen's name sits at 6,
+ * which at five or six letters is about a module of extra width and is what
+ * makes a title a title without setting it any larger. Nothing in this
+ * interface is set large for effect, so this is where the emphasis comes
+ * from.
+ */
+#define D_TRACK 2
+#define D_TRACK_TITLE 6
+
+static int d_label_t(int x, int y, const char *s, uint16_t ink, int track) {
   char one[2] = {0, 0};
   for (const char *p = s; *p; p++) {
     one[0] = *p;
     ut_draw(&UT_XS, x, y, one, ink);
-    x += ut_w(&UT_XS, one) + 2;
+    x += ut_w(&UT_XS, one) + track;
   }
-  return x;
+  return x > 0 ? x - track : x;
 }
-static int d_label_w(const char *s) {
+static int d_label_tw(const char *s, int track) {
   int w = 0;
   char one[2] = {0, 0};
   for (const char *p = s; *p; p++) {
     one[0] = *p;
-    w += ut_w(&UT_XS, one) + 2;
+    w += ut_w(&UT_XS, one) + track;
   }
-  return w > 0 ? w - 2 : 0;
+  return w > 0 ? w - track : 0;
+}
+static int d_label(int x, int y, const char *s, uint16_t ink) {
+  return d_label_t(x, y, s, ink, D_TRACK) + D_TRACK;
+}
+static int d_label_w(const char *s) { return d_label_tw(s, D_TRACK); }
+
+/** Tracked small caps over a photograph, contoured like the rest of it. */
+static int d_label_over(int x, int y, const char *s, uint16_t ink) {
+  char one[2] = {0, 0};
+  for (const char *p = s; *p; p++) {
+    one[0] = *p;
+    d_text_over(&UT_XS, x, y, one, ink);
+    x += ut_w(&UT_XS, one) + D_TRACK;
+  }
+  return x;
 }
 static void d_label_r(int right, int y, const char *s, uint16_t ink) { d_label(right - d_label_w(s), y, s, ink); }
 static void d_label_c(int cx, int y, const char *s, uint16_t ink) { d_label(cx - d_label_w(s) / 2, y, s, ink); }
@@ -234,11 +346,17 @@ static void d_label_c(int cx, int y, const char *s, uint16_t ink) { d_label(cx -
  * written, files sent, cameras answered. A process that cannot report its own
  * progress does not get blocks; it gets a word.
  */
-#define D_BLOCK_W 22
-#define D_BLOCK_H 16
-#define D_BLOCK_GAP 6
+/* On the module: a block is 30 and the gap is 10, so the pitch is exactly one
+ * module and ten of them are ten modules less a gap. A progress indicator
+ * that does not land on the same grid as everything else is the one object on
+ * the screen that looks pasted in. */
+#define D_BLOCK_W 30
+#define D_BLOCK_H 12
+#define D_BLOCK_GAP 10
 #define D_BLOCKS 10
 #define D_BLOCKS_W (D_BLOCKS * D_BLOCK_W + (D_BLOCKS - 1) * D_BLOCK_GAP)
+/* The inset that centres a block row in a module-tall row. */
+#define D_BLOCKS_IN ((D_MOD - D_BLOCK_H) / 2)
 
 static void d_blocks(int x, int y, int done, int total, uint16_t ink) {
   const int lit = total > 0 ? (done * D_BLOCKS + total / 2) / total : 0;
@@ -347,6 +465,47 @@ static void d_four(int cx, int y, int pitch, int r, const d_mark_t *m, bool numb
  * Not from a library, and they do not scale. Each is two bytes a row, high
  * bit leftmost, and there are only as many as the camera actually needs.
  */
+/* ------------------------------------------------------------------ */
+/* The four, on the top edge of a photograph                           */
+/*
+ * One tick per lens, each centred over the quarter of the picture its camera
+ * made. So the chrome is not a caption about the four cameras - it is them,
+ * standing in the place they are.
+ *
+ * The one on screen is twice the length of the others, and because the live
+ * view is already a wigglegram that length steps across the top edge in time
+ * with the parallax. It is the only moving chrome in the product and it
+ * costs sixteen pixels of picture at the very top of the frame, where a
+ * photographer has already left room.
+ *
+ * Two pixels wide with a one pixel dark surround, because it lives over a
+ * photograph and the photograph may be a blown-out window.
+ */
+/* Four lengths, each visibly different from the next at arm's length: the one
+ * on screen, one that has answered, one still warming, and one that has not.
+ * The first cut had answered at 8 and not-answered at 3, which is the
+ * difference this row exists to show and it could not be seen across a
+ * room. */
+#define D_TICK_W 2
+#define D_TICK_LIVE 16
+#define D_TICK_ON 12
+#define D_TICK_HALF 7
+#define D_TICK_OFF 4
+
+static void d_ticks(int live, const d_mark_t *m) {
+  for (int i = 0; i < 4; i++) {
+    const int cx = UI_W / 8 + i * (UI_W / 4);
+    int len = D_TICK_OFF;
+    uint16_t ink = d_toward(D_PAPER, D_GRAPH, 120);
+    if (i == live) { len = D_TICK_LIVE; ink = D_PAPER; }
+    else if (m[i] == D_MARK_ON) len = D_TICK_ON;
+    else if (m[i] == D_MARK_HALF || m[i] == D_MARK_BUSY) len = D_TICK_HALF;
+    else if (m[i] == D_MARK_FAIL) { len = D_TICK_ON; ink = D_RED; }
+    fill(cx - D_TICK_W / 2 - 1, 0, D_TICK_W + 2, len + 1, RGB(0x08, 0x08, 0x0A));
+    fill(cx - D_TICK_W / 2, 0, D_TICK_W, len, ink);
+  }
+}
+
 #define D_ICON 16
 typedef struct {
   uint8_t b[D_ICON * 2];
