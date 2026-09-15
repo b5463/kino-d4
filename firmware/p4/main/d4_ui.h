@@ -121,6 +121,157 @@ static void d4_cam_marks(d_mark_t *m) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Home: three ways, because the four have to live somewhere            */
+/*
+ * The fact that only belongs to KINO is not that it has four lenses. It is
+ * that what it makes MOVES: four viewpoints of one instant, played, so the
+ * picture has parallax in it. No other camera's photographs wiggle.
+ *
+ * So the rule the whole interface follows: KINO has no still images. Every
+ * place a photograph appears - the live view, the roll, a look preview, an
+ * opened file - it is playing. The only still things in this product are the
+ * machine screens, and that is the difference between the two halves of it.
+ *
+ * Which leaves the question of what the live view actually looks like, and
+ * these are three answers to it rather than one.
+ */
+typedef enum {
+  D4_HOME_WIGGLE = 0, /* one frame, cycling the four at the wiggle rate */
+  D4_HOME_PARALLAX,   /* one frame, with the other three ghosted where they diverge */
+  D4_HOME_STACK,      /* the four as physical sheets, the front one framed */
+} d4_home_t;
+
+static d4_home_t d4_home_style = D4_HOME_WIGGLE;
+
+/** Which lens the live wiggle is showing this instant, and the play order. */
+static int d4_wiggle_lens(int *order_len, uint8_t *order) {
+  bool repeats = false;
+  const int n = pure_wiggle_sequence(PURE_WIGGLE_BOUNCE, false, 0xF, order, 8, &repeats);
+  if (order_len) *order_len = n;
+  if (n < 2) return 1;
+  const int ms = (int)((esp_timer_get_time() / 1000) % (int64_t)(n * 110));
+  return order[ms / 110];
+}
+
+/** The whole panel, from one camera, cropped to fill rather than letterboxed. */
+static void d4_frame_fill(int lens, int y, int h, int alpha) {
+  const uint16_t *t = viewfinder_ready() ? viewfinder_tile(lens & 3) : NULL;
+  if (!t) {
+    fill(0, y, UI_W, h, d_toward(D_GRAPH, D_PAPER, 18));
+    return;
+  }
+  const float ch = (float)h / (float)UI_W * ((float)VF_W / (float)VF_H);
+  const float c0 = 0.5f - ch * 0.5f;
+  img_blit_tf(t, VF_W, VF_H, 0.f, c0 > 0.f ? c0 : 0.f, 1.f, c0 > 0.f ? c0 + ch : 1.f, (float)(UI_W / 2),
+              (float)(y + h / 2), (float)UI_W, (float)h, 0.f, 0.f, 0.f, 0.f, 0.f, 0, alpha, 0, 0.f);
+}
+
+/**
+ * A: the live view is already a wigglegram.
+ *
+ * One frame filling the panel, cycling 1 2 3 4 3 2 at the rate the
+ * photograph will play at. You are not framing a still that will later be
+ * turned into a wiggle - you are looking at the wiggle, live, and composing
+ * for the parallax you can see moving. What you see is what it makes.
+ *
+ * In a still this looks like an ordinary viewfinder with one lens lit, which
+ * is exactly the brief's point about screenshots underselling an interface.
+ */
+static void d4_home_wiggle(void) {
+  uint8_t order[8];
+  int n = 0;
+  const int lens = d4_wiggle_lens(&n, order);
+  d4_frame_fill(lens, D_BAND_T, UI_H - D_BAND_T - D_BAND_B, 255);
+
+  /* The band is the four, and the lit cell sweeps with the picture: the
+   * chrome moves because the photograph moves. */
+  d_band_top(D_GRAPH);
+  d_mark_t m[4];
+  d4_cam_marks(m);
+  for (int i = 0; i < 4; i++) {
+    const int cw = UI_W / 4, x = i * cw;
+    const bool live = i == lens;
+    if (live) fill(x, 0, cw, D_BAND_T, D_PAPER);
+    const uint16_t ink = live ? D_GRAPH : m[i] == D_MARK_FAIL ? D_RED : d_toward(D_PAPER, D_GRAPH, 120);
+    df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
+    d_mark(x + 44, 20, 6, m[i], ink);
+    if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
+  }
+}
+
+/**
+ * B: one frame to compose with, and the other three where they disagree.
+ *
+ * The lens you aim with fills the panel; the other three are laid over it
+ * faintly, each offset by its own mounting. Objects close to the camera
+ * triple and objects far away do not, so the ghosting IS the depth - you can
+ * see how much wiggle a composition will have before you take it.
+ */
+static void d4_home_parallax(void) {
+  const int y = D_BAND_T, h = UI_H - D_BAND_T - D_BAND_B;
+  const char *v = config_str("shoot.viewfinder", "cam2");
+  const int lead = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
+  d4_frame_fill(lead, y, h, 255);
+  for (int i = 0; i < 4; i++)
+    if (i != lead) d4_frame_fill(i, y, h, 70);
+
+  d_band_top(D_GRAPH);
+  d_mark_t m[4];
+  d4_cam_marks(m);
+  for (int i = 0; i < 4; i++) {
+    const int cw = UI_W / 4, x = i * cw;
+    const bool on = i == lead;
+    if (on) fill(x, 0, cw, D_BAND_T, D_PAPER);
+    const uint16_t ink = on ? D_GRAPH : m[i] == D_MARK_FAIL ? D_RED : d_toward(D_PAPER, D_GRAPH, 120);
+    df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
+    d_mark(x + 44, 20, 6, m[i], ink);
+    if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
+  }
+}
+
+/**
+ * C: the four as physical sheets.
+ *
+ * What the camera is about to make is a short stack of four pictures, so the
+ * live view is that stack seen from slightly above: the lens you aim with in
+ * front, the other three behind it and live, offset the way prints are when
+ * you fan them. The same object as the roll's thumbnails, at full size.
+ */
+static void d4_home_stack(void) {
+  const int y = D_BAND_T, h = UI_H - D_BAND_T - D_BAND_B;
+  const int off = 18, fw = UI_W - 3 * off - 12, fh = h - 3 * off - 12;
+  for (int k = 3; k >= 0; k--) {
+    const int sx = 6 + (3 - k) * off, sy = y + 6 + (3 - k) * off;
+    const uint16_t *t = viewfinder_ready() ? viewfinder_tile(3 - k) : NULL;
+    fill(sx - 2, sy - 2, fw + 4, fh + 4, D_PAPER);
+    if (t) {
+      const float ch = (float)fh / (float)fw * ((float)VF_W / (float)VF_H);
+      const float c0 = 0.5f - ch * 0.5f;
+      img_blit_tf(t, VF_W, VF_H, 0.f, c0 > 0.f ? c0 : 0.f, 1.f, c0 > 0.f ? c0 + ch : 1.f,
+                  (float)(sx + fw / 2), (float)(sy + fh / 2), (float)fw, (float)fh, 0.f, 0.f, 0.f, 0.f,
+                  0.f, 0, 255, 0, 0.f);
+    } else {
+      fill(sx, sy, fw, fh, d_toward(D_GRAPH, D_PAPER, 18));
+    }
+    /* Each sheet carries its own lens number in the corner that shows. */
+    /* Each sheet carries its own lens number on the edge that shows. */
+    df_draw(sx - 14, sy + fh / 2 - 7, (const char[]){(char)('1' + (3 - k)), 0}, 1,
+            k == 0 ? D_PAPER : d_toward(D_PAPER, D_GRAPH, 90));
+  }
+  d_band_top(D_GRAPH);
+  d_mark_t m[4];
+  d4_cam_marks(m);
+  for (int i = 0; i < 4; i++) {
+    const int cw = UI_W / 4, x = i * cw;
+    const uint16_t ink = m[i] == D_MARK_FAIL ? D_RED : m[i] == D_MARK_ON ? D_PAPER
+                                                                        : d_toward(D_PAPER, D_GRAPH, 150);
+    df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
+    d_mark(x + 44, 20, 6, m[i], ink);
+    if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
+  }
+}
+
 /**
  * The top band, divided into four cells, one over each feed.
  *
@@ -180,6 +331,9 @@ static void d4_band_facts(void) {
     x += 22 + d_label_w(fs) + 16;
   }
   d_label(x, y + 18, "WIGGLE", D_PAPER);
+  x += d_label_w("WIGGLE") + 22;
+  static const char *const HOME_WORD[3] = {"LIVE", "SPREAD", "SHEETS"};
+  d_label(x, y + 18, HOME_WORD[d4_home_style], d_toward(D_PAPER, D_GRAPH, 110));
 
   int rx = UI_W - D_MARGIN;
   if (ps.usb_attached) {
@@ -201,10 +355,11 @@ static void d4_band_facts(void) {
 
 static void d4_live(void) {
   d_ground(D_GRAPH);
-  d4_feeds(-1, 0xFFFFFFFFu);
-  d_mark_t m[4];
-  d4_cam_marks(m);
-  d4_band_four(m, NULL);
+  switch (d4_home_style) {
+    case D4_HOME_PARALLAX: d4_home_parallax(); break;
+    case D4_HOME_STACK: d4_home_stack(); break;
+    default: d4_home_wiggle(); break;
+  }
   d4_band_facts();
   /* The one dry word, when there is one: a yellow band across the picture,
    * because a camera that says something says it like a machine. */

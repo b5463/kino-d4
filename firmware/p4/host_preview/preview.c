@@ -334,22 +334,31 @@ static uint16_t g_vf[4][VF_W * VF_H];
 static bool g_vf_filled;
 
 static void fake_viewfinder(void) {
+  /*
+   * A scene with depth in it, because the whole product is parallax and a
+   * frame with none cannot be used to judge anything the interface does with
+   * it. Three planes: a far wall that does not move between the cameras, a
+   * mid object that shifts a little, and a near object that shifts a lot -
+   * which is exactly what four lenses 12 mm apart see.
+   *
+   * Still obviously synthetic. No screenshot from this tool should be
+   * mistakable for a frame off a sensor.
+   */
   for (int c = 0; c < 4; c++) {
+    const int near_dx = (c - 2) * 11, mid_dx = (c - 2) * 4;
     for (int y = 0; y < VF_H; y++) {
       for (int x = 0; x < VF_W; x++) {
-        /* The full 240 rows, including the 24 at each end that SH_CROP
-         * throws away - the point is to be able to see that it does. */
-        /* Each camera gets a different share of the red ramp. Scaled, not
-         * offset and masked: an offset wraps 31 back to 0 partway across the
-         * pane and puts a hard vertical seam in the middle of the picture,
-         * which is exactly what a torn blit would look like. */
-        const int r = (x * (31 - c * 6)) / VF_W;
-        const int g = (y * 63) / VF_H;
-        const int b = 31 - ((x + y) * 31) / (VF_W + VF_H);
+        /* Far: a flat wall with a slow vertical ramp and a seam of its own. */
+        int r = 5 + (y * 9) / VF_H, g = 9 + (y * 16) / VF_H, b = 13 + (y * 10) / VF_H;
+        /* Mid: a band across the middle distance. */
+        const int mx = x + mid_dx;
+        if (mx > 40 && mx < 150 && y > 60 && y < 200) { r = 22; g = 30; b = 12; }
+        /* Near: a bar that moves a lot between the four. */
+        const int nx = x + near_dx;
+        if (nx > 175 && nx < 240 && y > 30 && y < 230) { r = 30; g = 48; b = 26; }
+        /* And a small near mark, so the shift is countable rather than felt. */
+        if (nx > 196 && nx < 214 && y > 108 && y < 130) { r = 2; g = 4; b = 3; }
         uint16_t p = (uint16_t)(((r & 31) << 11) | ((g & 63) << 5) | (b & 31));
-        /* A one-pixel white frame round the source. Cropped top and bottom
-         * by design, so a pane that shows all four edges is a blit that is
-         * not cropping. */
         if (x == 0 || y == 0 || x == VF_W - 1 || y == VF_H - 1) p = 0xFFFF;
         g_vf[c][y * VF_W + x] = p;
       }
@@ -2371,8 +2380,21 @@ int main(int argc, char **argv) {
     g_vf_dead = 0x0;
     d4_draw(); shot("d4_03_boot_ready");
 
-    /* 2 live view. */
+    /* 2 live view - three ways, each as a run of frames so the motion that
+     * separates them is visible in a still contact sheet. */
     d4.screen = D4_LIVE;
+    static const char *const HOME[3] = {"wiggle", "parallax", "stack"};
+    for (int hs = 0; hs < 3; hs++) {
+      d4_home_style = (d4_home_t)hs;
+      for (int f = 0; f < 4; f++) {
+        g_preview_clock_us += 110000;
+        char n[40];
+        snprintf(n, sizeof n, "d4_home_%s_%d", HOME[hs], f + 1);
+        d4_draw();
+        shot(n);
+      }
+    }
+    d4_home_style = D4_HOME_WIGGLE;
     d4_draw(); shot("d4_04_live");
 
     /* 3-6 the capture, phase by phase. */
