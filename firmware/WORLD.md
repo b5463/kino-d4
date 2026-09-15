@@ -764,6 +764,22 @@ ROLL**.
 And the test the research adds: **with every word removed, the product
 should still feel alive.**
 
+That one can be run rather than argued about, so it is: the harness draws
+every state with the text suppressed and writes them as `mute_*`. The
+firmware compiles the switch away; it costs nothing on the device.
+
+Five of the seven states carry their meaning with no words at all — the
+four views and their four marks; one image filling the screen; six
+photographs with the marks on the ones kept; the photograph itself; the
+column of pictures being offered beside the code; and the capture, four
+frames arriving torn and agreeing, which is the most alive of the lot.
+
+SETUP and INFO do not, and that is the right answer rather than a defect
+— they are the two states the brief says should be words. What is left of
+the world in them is the rule, which is a live line made of what the
+cameras can see this second. Even where the product deliberately strips
+the world away, it does not stop.
+
 ---
 
 ## Final model

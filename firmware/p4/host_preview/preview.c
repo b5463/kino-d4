@@ -86,6 +86,7 @@ esp_err_t touch_init(void) { return ESP_OK; }
 /* The clock (see shim/esp_timer.h) and a finger. Touch reports in panel space,
  * the way touch.c does, so ui_pass()'s own transposition is exercised. */
 int64_t g_preview_clock_us = 1000000;
+int g_mute_words;
 static bool g_touch_down;
 static int g_touch_lx, g_touch_ly;
 /* ui_pass() is now driven by the film scenes, so the parts of the loop that
@@ -2242,6 +2243,59 @@ int main(int argc, char **argv) {
       g_frames_in = 0;
       g_roll_active = false;
     }
+  }
+
+  /* ---- the same interface with every word taken out of it ----
+   *
+   * WORLD.md's last acceptance test, and the one the STARBOY research adds:
+   * with the words removed the product should still feel alive. A state that
+   * is nothing but a list of labels fails it, and a state whose shape, motion
+   * and photographs carry the meaning passes.
+   *
+   * These are not pictures of a bug. They are the question asked plainly, and
+   * the answer is meant to be looked at rather than asserted.
+   */
+  {
+    g_mute_words = 1;
+    struct { const char *name; screen_t scr; bool roll; } MUTE[] = {
+        {"shoot", SCR_SHOOT, false},   {"look", SCR_LOOK, false},
+        {"roll", SCR_GALLERY, false},  {"photo", SCR_PHOTO, false},
+        {"link", SCR_CONNECTION, true}, {"setup", SCR_SETTINGS, false},
+        {"info", SCR_ABOUT, false},
+    };
+    for (size_t i = 0; i < sizeof MUTE / sizeof MUTE[0]; i++) {
+      SCENE();
+      g_roll_active = MUTE[i].roll;
+      if (g_roll_active) {
+        snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+        snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+        snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+      }
+      /* A photograph screen with no photograph open is a picture of nothing,
+       * which would answer a different question than the one being asked. */
+      if (MUTE[i].scr == SCR_PHOTO) {
+        const gallery_item_t *slots = gallery_slots();
+        for (int k = 0; k < GALLERY_PAGE; k++)
+          if (slots[k].state == TILE_READY && slots[k].pixels) { photo_open(&slots[k]); break; }
+      }
+      go(MUTE[i].scr, 0);
+      for (int t = 0; t <= 600; t += 30) STEP(t);
+      char fn[64];
+      snprintf(fn, sizeof fn, "mute_%s", MUTE[i].name);
+      shot(fn);
+      g_roll_active = false;
+    }
+    /* And the moment that has to work hardest without words: a capture. */
+    SCENE();
+    go(SCR_SHOOT, 0);
+    STEP(0);
+    g_stage = CAPTURE_READING;
+    g_frames_in = 15;
+    STEP(120);
+    STEP(200);
+    shot("mute_capture");
+    g_stage = CAPTURE_IDLE;
+    g_mute_words = 0;
   }
 
   /* ---- the playground: every capability, filmed ---- */

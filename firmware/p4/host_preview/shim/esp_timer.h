@@ -22,3 +22,8 @@ static inline int64_t preview_now_us(void) {
   return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
 #define KS_PERF_NOW() preview_now_us()
+
+/* WORLD.md's last test: the interface with every word taken out of it. The
+ * firmware compiles this away; here it is a flag the shot block turns on. */
+extern int g_mute_words;
+#define KS_TEXT_MUTED g_mute_words

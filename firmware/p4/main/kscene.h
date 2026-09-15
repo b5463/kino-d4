@@ -618,7 +618,20 @@ static inline void ks_box_centre(const ks_node_t *n, const ks_xf_t *w, float *cx
   *cy = w->y + ox * sn + oy * cs;
 }
 
+/*
+ * The harness's mute switch, and nothing else's.
+ *
+ * WORLD.md's last acceptance test is "with every word removed, the product
+ * should still feel alive", which is a question that can only be answered by
+ * actually removing them. Zero on the device, where the compiler deletes the
+ * branch; the preview points it at a flag and writes the `mute_*` shots.
+ */
+#ifndef KS_TEXT_MUTED
+#define KS_TEXT_MUTED 0
+#endif
+
 static void ks_draw_text(ks_node_t *n, const ks_xf_t *w) {
+  if (KS_TEXT_MUTED) return;
   if (!n->text || !n->text[0]) return;
   const int alpha = (int)(w->alpha * 255.f + 0.5f);
   if (alpha <= 0) return;
