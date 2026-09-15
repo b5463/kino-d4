@@ -9,11 +9,21 @@
 
 enum {
   PG_KEYS = 0, PG_CURVES, PG_SPRING, PG_PATH, PG_PARENT, PG_MASK, PG_CHAR, PG_TRACKING, PG_DEFORM, PG_RGB,
-  PG_NOISE, PG_BOIL, PG_OSC, PG_WARP, PG_SOUND, PG_INTERRUPT, PG_LAYERS, PG_COUNT
+  PG_NOISE, PG_BOIL, PG_OSC, PG_WARP, PG_SOUND, PG_INTERRUPT, PG_LAYERS,
+  /* The world scenes. These do not pose anything themselves: they drive the
+   * product's own screens on a loop, so what is under test is the
+   * transformation the camera actually performs rather than a second copy of
+   * it that can quietly drift from it. A shape test answers "does the runtime
+   * do this"; these answer "does the world hold together", which is the
+   * question the brief asks. */
+  PG_W_SURFACE, PG_W_ROLL, PG_W_LINK, PG_W_INTERRUPT, PG_W_DEFORM,
+  PG_COUNT
 };
+#define PG_WORLD0 PG_W_SURFACE
 static const char *const PG_NAME[PG_COUNT] = {
     "keys", "curves", "spring", "path", "parent", "mask", "char", "tracking", "deform", "rgb",
     "noise", "boil", "osc", "warp", "sound", "interrupt", "layers",
+    "world_surface", "world_roll", "world_link", "world_interrupt", "world_deform",
 };
 
 /** Take a node's procedural modifiers off: between scenes, so noise from one
@@ -200,8 +210,75 @@ static void pg_interrupt(void) {
   ks_play1(KCLIP_PG_MOVE_B, "pg", a, "a", NULL);
 }
 
+/**
+ * A world scene: put the camera in a state on a loop and let it draw itself.
+ *
+ * `go()` rather than an assignment to s_screen, because entering and leaving
+ * a state is part of what is being tested - what a state stops when it is
+ * left is exactly the sort of thing that only shows up on the fourth loop.
+ * Called every frame; it changes state only when the script says to, so the
+ * transformations run at their own speed and repeat forever.
+ */
+static void pg_world(int which, int64_t now_us) {
+  static int64_t t0;
+  static int last = -1;
+  if (which != last) { last = which; t0 = now_us; }
+  const int t = (int)(((now_us - t0) / 1000) % 4000);
+  screen_t want = s_screen;
+  switch (which) {
+    /* Four live regions becoming one image, and back. */
+    case PG_W_SURFACE: want = t < 2000 ? SCR_SHOOT : SCR_LOOK; break;
+    /* Six photographs resolving into one, and back out into six. The
+     * photograph has to be opened the way a tap opens it, or the screen has
+     * nothing to show and the scene tests a blank plate. */
+    case PG_W_ROLL: {
+      want = t < 2000 ? SCR_GALLERY : SCR_PHOTO;
+      if (want == SCR_PHOTO && s_screen != SCR_PHOTO) {
+        const gallery_item_t *slots = gallery_slots();
+        for (int i = 0; i < GALLERY_PAGE; i++)
+          if (slots[i].state == TILE_READY && slots[i].pixels) { photo_open(&slots[i]); break; }
+      }
+      break;
+    }
+    /* The roll reorganising into sharing, and the code growing into the room
+     * it makes. */
+    case PG_W_LINK: want = t < 2000 ? SCR_GALLERY : SCR_CONNECTION; break;
+    /* The same transformation reversed twice before it can land, so every
+     * reversal starts from a shape that was never a resting shape. */
+    case PG_W_INTERRUPT:
+      want = (t < 900 || (t >= 1150 && t < 1500) || t >= 2600) ? SCR_SHOOT : SCR_LOOK;
+      break;
+    /* Real image content under deformation: the capture's own choreography on
+     * the live surfaces, with its gates opened on a schedule rather than by a
+     * pipeline, so the tear and the tilt can be watched over a real room. */
+    case PG_W_DEFORM: {
+      want = SCR_SHOOT;
+      static int phase = -1;
+      const int p = t / 1000;
+      if (p != phase) {
+        phase = p;
+        if (p == 0) {
+          ks_node_t *ns[6] = {ks_peek("cap.white"), ks_peek("cap.black"), ks_peek("pane0"),
+                              ks_peek("pane1"), ks_peek("pane2"), ks_peek("pane3")};
+          static const char *const rs[6] = {"white", "black", "f0", "f1", "f2", "f3"};
+          ks_stop_tag("cap");
+          ks_play(KCLIP_CAP_FRAMES, "cap", NULL, ns, rs, 6);
+        } else if (p <= 4) {
+          static const char *const GATE[4] = {"f0", "f1", "f2", "f3"};
+          ks_open_gate("cap", GATE[p - 1]);
+        }
+      }
+      break;
+    }
+    default: break;
+  }
+  if (want != s_screen) go(want, 0);
+  draw_screen();
+}
+
 /** One playground frame: pose, step, draw. */
 static void pg_frame(int which, int64_t now_us) {
+  if (which >= PG_WORLD0) { pg_world(which, now_us); return; }
   s_kmo_live = 0;
   ks_begin(now_us);
   s_clip_x0 = 0; s_clip_y0 = 0; s_clip_x1 = UI_W; s_clip_y1 = UI_H;

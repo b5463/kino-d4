@@ -615,19 +615,34 @@ nowhere else except rarely. A dark room never reaches a loud one.
 
 ### Playground additions
 
-The existing scenes stay. Add world-level tests, which now matter more
-than isolated shape tests:
+~~The existing scenes stay. Add world-level tests, which now matter more
+than isolated shape tests.~~ **Done.** Five world scenes beside the
+seventeen shape tests, and the important thing about them is that they
+**drive the product's own screens on a loop** rather than posing a copy.
+A shape test answers "does the runtime do this"; these answer "does the
+world hold together", and a second implementation of a transformation is
+a test that can quietly drift from the thing it is testing. They change
+state through `go()`, not by assignment, because what a state stops when
+it is left is exactly the sort of thing that only shows up on the fourth
+loop.
 
-- four live regions morphing into one image
-- one image expanding into six
-- six resolving back into one
-- roll reorganising into LINK
-- the code emerging from existing structure
-- a capture result becoming a roll item
-- an interrupted world transformation
-- a gesture-driven partial mode change
-- delayed backend data during active choreography
-- real image content under deformation
+- `world_surface` — four live regions becoming one image, and back
+- `world_roll` — six photographs resolving into one, and back out into
+  six; the photograph is opened the way a tap opens it
+- `world_link` — the roll reorganising into sharing, and the code
+  growing into the room it makes
+- `world_interrupt` — the same transformation reversed twice before it
+  can land
+- `world_deform` — real image content under deformation: the capture's
+  own choreography on the live surfaces, gates opened on a schedule
+  rather than by a pipeline, so the tear can be watched over a real room
+
+They loop at four seconds, which means the Twin can show them at full
+frame rate in a browser - the one place motion can actually be judged
+before there is hardware. A gesture-driven partial mode change, a capture
+result becoming a roll item, and delayed backend data need the input and
+capture paths, and are covered by the product films `world_drag_return`,
+`world_capture_joins_roll` and `world_delayed_data`.
 
 ### The films that become the design reviews
 

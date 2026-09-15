@@ -2246,20 +2246,36 @@ int main(int argc, char **argv) {
 
   /* ---- the playground: every capability, filmed ---- */
   static const int PGT[] = {0, 16, 40, 80, 130, 200, 300, 420, 560, 720, 900, 1100, 1400};
+  /* The world scenes loop on four seconds and are sampled across the whole
+   * period, either side of each state change, rather than over the first
+   * second and a half of a single shape test. */
+  static const int PGW[] = {0, 60, 160, 340, 700, 1400, 1960, 2040, 2140, 2320, 2700, 3400, 3960};
   for (int which = 0; which < PG_COUNT; which++) {
+    const bool world = which >= PG_WORLD0;
+    const int *T = world ? PGW : PGT;
+    const size_t nT = world ? sizeof PGW / sizeof PGW[0] : sizeof PGT / sizeof PGT[0];
     g_preview_clock_us += 2000000;
+    /* The sharing state is only itself with a roll on it. */
+    g_roll_active = which == PG_W_LINK;
+    if (g_roll_active) {
+      snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+      snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+      snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+    }
     const int64_t t0 = g_preview_clock_us;
     pg_frame(which, t0);
-    pg_start(which, t0);
-    for (size_t k = 0; k < sizeof PGT / sizeof PGT[0]; k++) {
-      g_preview_clock_us = t0 + (int64_t)PGT[k] * 1000;
-      if (which == PG_INTERRUPT && PGT[k] == 300) pg_interrupt();
+    if (!world) pg_start(which, t0);
+    for (size_t k = 0; k < nT; k++) {
+      g_preview_clock_us = t0 + (int64_t)T[k] * 1000;
+      if (which == PG_INTERRUPT && T[k] == 300) pg_interrupt();
       pg_frame(which, g_preview_clock_us);
       char fn[80];
-      snprintf(fn, sizeof fn, "pg_%s_%04d", PG_NAME[which], PGT[k]);
+      snprintf(fn, sizeof fn, "pg_%s_%04d", PG_NAME[which], T[k]);
       shot(fn);
     }
     ks_stop_tag("pg");
+    ks_stop_tag("cap");
+    g_roll_active = false;
     ks_node_t *a = ks_peek("pg.a");
     if (a) { ks_mod_clear(a); a->char_clip = -1; }
   }
