@@ -1858,7 +1858,12 @@ static void draw_menu(void) {
     status_panel(2, sy, rx - 4, sh);
     status_panel(rx, sy, rw, sh);
 
-    text(&UI_FONT_S, 12, ty, "kino D4", W_TEXT);
+    /* The body's own name when someone has given it one, the model when they
+     * have not. A camera that has been named should say so on the screen it
+     * shows most, not only two levels down in ABOUT. */
+    char who[40];
+    config_str_copy("body.name", who, sizeof who);
+    text(&UI_FONT_S, 12, ty, who[0] ? who : "kino D4", W_TEXT);
     /* The sprite is a 32 px box with a much smaller glyph in it, so centring
      * the box on a 34 px panel puts two transparent rows over each groove
      * rather than any artwork. */
@@ -2056,6 +2061,10 @@ static int sh_panel(int x, int w, const char *s) {
  */
 static void draw_shoot(void) {
   static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
+  /* Which of the four are on screen, as the mark rather than as a sentence.
+   * Filled in by the pane loop below, for the same reason `live` is: what the
+   * strip reports is what the screen is showing. */
+  fm_cell_t cams_st[4] = {FM_OFF, FM_OFF, FM_OFF, FM_OFF};
   int live = 0;
   for (int i = 0; i < 4; i++) {
     int px, py;
@@ -2071,6 +2080,7 @@ static void draw_shoot(void) {
        * reports is what the screen is showing. A pane with pixels on it is a
        * camera that answered, whatever the status word says a moment later. */
       live++;
+      cams_st[i] = FM_ON;
       continue;
     }
 
@@ -2115,7 +2125,7 @@ static void draw_shoot(void) {
    * -Werror=format-truncation is right to insist, and a buffer that only fits
    * the value the code happens to produce is one refactor from a cut string. */
   char cams[24];
-  snprintf(cams, sizeof cams, "%d/4 LIVE", live);
+  snprintf(cams, sizeof cams, "%d/4", live);
 
   /* The bolt labels the flash panel so the word does not have to. It is the
    * one drawn glyph in the build - the face is ASCII 32..126 and the Windows
@@ -2125,7 +2135,10 @@ static void draw_shoot(void) {
   const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
   const int w_mode = text_w(&UI_FONT_S, mode) + 2 * SH_PN_PAD;
   const int w_flash = bolt_w + bolt_gap + text_w(&UI_FONT_S, flash) + 2 * SH_PN_PAD;
-  const int w_cams = text_w(&UI_FONT_S, cams) + 2 * SH_PN_PAD;
+  /* The mark, then the count. Four 8 px cells and three 6 px gaps. */
+#define SH_FM_CELL 8
+#define SH_FM_W (4 * SH_FM_CELL + 3 * FM_GAP)
+  const int w_cams = SH_FM_W + 10 + text_w(&UI_FONT_S, cams) + 2 * SH_PN_PAD;
 
   fill(0, SH_BAR_Y, UI_W, SH_BAR_H, W_FACE);
   /* Raised, unlike the menu's, which sits inside a window frame that supplies
@@ -2177,7 +2190,21 @@ static void draw_shoot(void) {
   }
   sh_panel(card_x, w_card, card_bar);
   sh_panel(pwr_x, w_pwr, pwr_bar);
-  sh_panel(cams_x, w_cams, cams);
+  /*
+   * The four, in the one place the four lenses are actually in front of you.
+   *
+   * This panel said "4/4 LIVE" in words, on the only screen where the mark
+   * that means four-frames-in-hand was missing - it is under every tile in
+   * the gallery, across the capture banner, beside an opened photograph and
+   * counting up through the boot splash, and not on the viewfinder. The
+   * product's own glyph belongs where its subject is.
+   */
+  {
+    status_panel(cams_x, SH_PN_Y, w_cams, SH_PN_H);
+    four_mark(cams_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - SH_FM_CELL) / 2, SH_FM_CELL, cams_st, false);
+    text(&UI_FONT_S, cams_x + SH_PN_PAD + SH_FM_W + 10,
+         SH_PN_Y + (SH_PN_H - UI_FONT_S.line_h) / 2, cams, W_TEXT);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -5740,7 +5767,24 @@ static uint32_t ui_pass(void) {
         /* A full or absent card arrives here too - it is a failed report with
          * a STORAGE err_code, not a separate path - so this one call covers
          * both halves of the requirement. */
-        if (!r.ok || r.stored < r.online) audio_warning();
+        if (!r.ok || r.stored < r.online) {
+          audio_warning();
+        } else {
+          /*
+           * The sound the body has always had for this and has never made.
+           *
+           * audio.h describes audio_sync() as "two short pitched taps, 45 ms
+           * apart, as the four marks on the screen close on a point. The UI
+           * fires it at that moment" - and the UI fired it nowhere. Five
+           * voices, three used, and the two unused ones were both the ones
+           * that mean it worked: the camera warned five ways when something
+           * went wrong and was silent when four cameras landed a photograph.
+           *
+           * This is that moment: the pass on which the report first exists,
+           * which is the pass the banner first draws the marks on.
+           */
+          audio_sync();
+        }
 
         /*
          * The first photograph is the one that measures the four cameras
@@ -5773,6 +5817,10 @@ static uint32_t ui_pass(void) {
             klog("P4", "calibrated %d cameras off %s: %+d,%+d %+d,%+d %+d,%+d %+d,%+d", n, r.id,
                  (int)off[0].x, (int)off[0].y, (int)off[1].x, (int)off[1].y, (int)off[2].x,
                  (int)off[2].y, (int)off[3].x, (int)off[3].y);
+            /* "Landed: one soft mid tone, for a transfer that finished and
+             * anything else that completes." A calibration that only ever
+             * finishes once in a body's life is exactly that. */
+            audio_done();
             toast("Cameras measured");
           } else {
             /* Not a failure worth a warning sound: the photograph is on the
