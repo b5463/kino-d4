@@ -99,6 +99,10 @@ function bake(src) {
       mod0: mods.length, nmods: 0, gate0: gates.length, ngates: 0, warp: 0, hold: c.hold ? 1 : 0 };
     if (c.warp) { const i = curveNames.indexOf(c.warp); if (i < 0) throw new Error(`${cn}: warp curve "${c.warp}"`); clip.warp = i + 1; }
     for (const [key, ks] of Object.entries(c.tracks || {})) {
+      /* A key starting with _ is a note to whoever reads the clip next, the
+       * same convention as everywhere else in this file. Tracks are grouped by
+       * what they are doing, and the groups deserve names. */
+      if (key.startsWith('_')) continue;
       const tr = { role: 0, ch: 0, add: 0, path: 0, key0: keys.length, nkeys: ks.length };
       let m;
       if ((m = /^([\w-]+)@([\w-]+)(~?)$/.exec(key))) {

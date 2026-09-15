@@ -430,7 +430,16 @@ Priority order:
    Returning re-forms the grid from the column rather than rebuilding
    it. Where the pictures were going used to be spelled out beside the
    transfer marks; the code says it, so that label is gone.
-4. capture
+4. ~~capture~~ — **done.** A frame does not arrive finished. Each of the
+   four arrives at its own gate off its place, torn into strips, colour
+   separated and a degree out of true, and then agrees with the other
+   three; the correction is the photograph being made. Each arrival
+   shoves the one before it, so what moves a pane is another camera
+   turning up rather than a clock. The panes keep a trace of where they
+   were while the capture runs, which is what makes four rectangles
+   twitching read as one surface being assembled. They arrive a shade
+   oversize so a frame out of true overlaps its neighbour instead of
+   opening a hole onto the ground.
 5. ~~a new capture joining ROLL~~ — **done.**
    `world_capture_joins_roll`. A photograph does not stop existing when
    the shutter sequence ends. The four views that made it become one

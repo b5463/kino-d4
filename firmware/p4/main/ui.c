@@ -343,12 +343,23 @@ static void fill(int x, int y, int w, int h, uint16_t colour) {
   }
 }
 
+/**
+ * Blend `b` over `a` by k/256.
+ *
+ * Rounded, not truncated. An arithmetic shift of a negative product floors,
+ * so a channel going down moved a whole 5-bit step for any k at all while the
+ * same channel going up did not move until k earned it. Every faint blend in
+ * the interface was therefore a little darker than it asked for, and a stack
+ * of nearly-invisible ones - four fragments and their ghosts, say - left a
+ * grey block on the picture. The +128 makes both directions round to nearest,
+ * which costs nothing and means alpha 1 of 255 changes nothing at all.
+ */
 static uint16_t mix(uint16_t a, uint16_t b, int k) {
   const int ar = (a >> 11) & 0x1F, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
   const int br = (b >> 11) & 0x1F, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
-  const int r = ar + (((br - ar) * k) >> 8);
-  const int g = ag + (((bg - ag) * k) >> 8);
-  const int bl = ab + (((bb - ab) * k) >> 8);
+  const int r = ar + (((br - ar) * k + 128) >> 8);
+  const int g = ag + (((bg - ag) * k + 128) >> 8);
+  const int bl = ab + (((bb - ab) * k + 128) >> 8);
   return (uint16_t)((r << 11) | (g << 5) | bl);
 }
 

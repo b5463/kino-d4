@@ -1684,7 +1684,8 @@ int main(int argc, char **argv) {
       film_t0 = g_preview_clock_us;
       FILM(CAP[i].name, 0); FILM(CAP[i].name, 40); FILM(CAP[i].name, 80); FILM(CAP[i].name, 120); FILM(CAP[i].name, 160);
       FILM(CAP[i].name, 200); FILM(CAP[i].name, 240); FILM(CAP[i].name, 280); FILM(CAP[i].name, 300); FILM(CAP[i].name, 330);
-      FILM(CAP[i].name, 380); FILM(CAP[i].name, 450); FILM(CAP[i].name, 550); FILM(CAP[i].name, 700); FILM(CAP[i].name, 900);
+      FILM(CAP[i].name, 380); FILM(CAP[i].name, 450); 
+      FILM(CAP[i].name, 550); FILM(CAP[i].name, 700); FILM(CAP[i].name, 900);
       FILM(CAP[i].name, 1100); FILM(CAP[i].name, 1300); FILM(CAP[i].name, 1500);
       g_stage = CAPTURE_IDLE;
       STEP(1600);

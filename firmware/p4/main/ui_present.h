@@ -459,6 +459,11 @@ static const char *shoot_look_word(char *buf, size_t cap) {
  * Returns how many answered, and fills `has` with which.
  */
 static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
+  /* While the capture is running the panes leave a trace of where they were.
+   * The four frames arrive out of place and correct, and the trace is what
+   * makes that read as one surface being assembled rather than as four
+   * rectangles twitching. */
+  const uint8_t trace = ks_playing_tag("cap") ? 2 : 0;
   static const char *const PANE[4] = {"pane0", "pane1", "pane2", "pane3"};
   static const char *const PLATE[4] = {"pane0.plate", "pane1.plate", "pane2.plate", "pane3.plate"};
   static const char *const NUM[4] = {"pane0.n", "pane1.n", "pane2.n", "pane3.n"};
@@ -488,6 +493,7 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
       ks_pose(p, KC_SY, sc);
       ks_pose(p, KC_ALPHA, alpha);
       ks_parent(p, g);
+      p->ghost = trace;
       p->z = (int16_t)(lead ? 2 : 1);
       live++;
       has[i] = true;

@@ -694,9 +694,17 @@ static void ks_draw_node(ks_node_t *n) {
   s_clip_y0 = w.cy0 > 0 ? w.cy0 : 0;
   s_clip_x1 = w.cx1 < UI_W ? w.cx1 : UI_W;
   s_clip_y1 = w.cy1 < UI_H ? w.cy1 : UI_H;
+  /* Below this the blend cannot move a 5-bit channel, so the draw is cost
+   * without a picture - and a pile of them used to be a picture. */
+  if (w.alpha < 0.008f) { s_clip_x0 = save[0]; s_clip_y0 = save[1]; s_clip_x1 = save[2]; s_clip_y1 = save[3]; return; }
   switch (n->kind) {
     case KS_TEXT: ks_draw_text(n, &w); break;
     case KS_IMAGE: {
+      /* A trace is of THIS movement. An object that was not on screen last
+       * pass has no trace, whatever is left in its history: without this, the
+       * first frame of a capture drags a ghost of where these panes were in
+       * some other state entirely, which reads as a rectangle from nowhere. */
+      if (!n->visible_prev) { n->hist[0].valid = false; n->hist[1].valid = false; }
       /* Ghosts first: where the object was, fainter. */
       for (int g = n->ghost; g >= 1; g--) {
         const ks_hist_t *h = &n->hist[g - 1];

@@ -103,6 +103,7 @@
 
     "cap_frames": {
       "_": "The shutter, always, from the pass that saw it. White for two frames and black for three, then each of the four source frames appears WHEN IT ACTUALLY ARRIVES - the gates below hold the clip until the pipeline says so. Early data flows straight through and the timings read as authored; late data holds each pane mid-arrival while the noise keeps it breathing. No fake progress, no loader, and no fixed timeline the pipeline has to match.",
+      "__": "A frame does not arrive finished. It arrives off its place, torn into strips, colour-separated and a degree out of true, and then it agrees with the other three. That disagreement is not decoration: four sensors on four mounts really do see the room four times, and the correction is the photograph being made. Each arrival also shoves the one before it, so what moves a pane is another camera turning up rather than a clock.",
       "gates": [
         { "t": 92, "wait": "f0" },
         { "t": 106, "wait": "f1" },
@@ -116,10 +117,46 @@
         "f1.alpha": [[0, 255, "hold"], [35, 0, "hold"], [106, 255]],
         "f2.alpha": [[0, 255, "hold"], [35, 0, "hold"], [119, 255]],
         "f3.alpha": [[0, 255, "hold"], [35, 0, "hold"], [132, 255]],
-        "f0.sx": [[92, 1.03, "exp", 60], [300, 1]], "f0.sy": [[92, 1.03, "exp", 60], [300, 1]],
-        "f1.sx": [[106, 1.03, "exp", 60], [300, 1]], "f1.sy": [[106, 1.03, "exp", 60], [300, 1]],
-        "f2.sx": [[119, 1.03, "exp", 60], [300, 1]], "f2.sy": [[119, 1.03, "exp", 60], [300, 1]],
-        "f3.sx": [[132, 1.03, "exp", 60], [300, 1]], "f3.sy": [[132, 1.03, "exp", 60], [300, 1]]
+
+        "__sc": "a shade oversize on arrival, so a frame out of true overlaps its neighbour instead of opening a gap onto the ground. Four exposures that do not quite agree; never a hole in the middle of the screen.",
+        "f0.sx": [[92, 1.07, "exp", 70], [330, 1]], "f0.sy": [[92, 1.07, "exp", 70], [330, 1]],
+        "f1.sx": [[106, 1.06, "exp", 70], [340, 1]], "f1.sy": [[106, 1.06, "exp", 70], [340, 1]],
+        "f2.sx": [[119, 1.08, "exp", 70], [350, 1]], "f2.sy": [[119, 1.08, "exp", 70], [350, 1]],
+        "f3.sx": [[132, 1.05, "exp", 70], [360, 1]], "f3.sy": [[132, 1.05, "exp", 70], [360, 1]],
+
+        "___": "where each one lands - crowding the middle, never leaving it - and the shove it takes when the next camera turns up",
+        "f0.x+": [[92, 15, "snap"], [106, 6, "settle"], [118, -5, "settle"], [330, 0]],
+        "f0.y+": [[92, 8, "snap"], [300, 0]],
+        "f0.rot+": [[92, -1.7, "settle"], [320, 0]],
+        "f1.x+": [[106, -13, "snap"], [340, 0]],
+        "f1.y+": [[106, 10, "snap"], [119, 4, "settle"], [131, -5, "settle"], [350, 0]],
+        "f1.rot+": [[106, 1.2, "settle"], [330, 0]],
+        "f2.x+": [[119, 11, "snap"], [132, 4, "settle"], [144, -5, "settle"], [360, 0]],
+        "f2.y+": [[119, -12, "snap"], [350, 0]],
+        "f2.rot+": [[119, -0.9, "settle"], [340, 0]],
+        "f3.x+": [[132, -9, "snap"], [370, 0]],
+        "f3.y+": [[132, -7, "snap"], [360, 0]],
+        "f3.rot+": [[132, 2.1, "settle"], [350, 0]],
+
+        "____": "torn into strips on arrival, and the tear travels as it closes",
+        "f0.strip_amp": [[92, 15, "exp", 70], [300, 0]],
+        "f0.strip_freq": [[92, 0.075, "hold"], [300, 0.075]],
+        "f0.strip_ph": [[92, 0, "lin"], [300, 2.4]],
+        "f1.strip_amp": [[106, 11, "exp", 70], [310, 0]],
+        "f1.strip_freq": [[106, 0.1, "hold"], [310, 0.1]],
+        "f1.strip_ph": [[106, 1.7, "lin"], [310, 4.6]],
+        "f2.strip_amp": [[119, 18, "exp", 70], [320, 0]],
+        "f2.strip_freq": [[119, 0.055, "hold"], [320, 0.055]],
+        "f2.strip_ph": [[119, 3.1, "lin"], [320, 0.9]],
+        "f3.strip_amp": [[132, 9, "exp", 70], [330, 0]],
+        "f3.strip_freq": [[132, 0.13, "hold"], [330, 0.13]],
+        "f3.strip_ph": [[132, 4.4, "lin"], [330, 6.8]],
+
+        "_____": "and not yet agreeing about colour",
+        "f0.rgb": [[92, 6, "exp", 60], [280, 0]],
+        "f1.rgb": [[106, 4, "exp", 60], [290, 0]],
+        "f2.rgb": [[119, 7, "exp", 60], [300, 0]],
+        "f3.rgb": [[132, 3, "exp", 60], [310, 0]]
       },
       "mods": [
         { "_": "while a gate holds, the authored motion is frozen and this is not: a wait reads as tension rather than as a stopped frame",
