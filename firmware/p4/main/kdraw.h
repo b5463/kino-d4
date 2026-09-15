@@ -10,16 +10,30 @@
 // are three more terms in the same mapping rather than three more passes.
 #pragma once
 
-static uint32_t s_kd_pixels; /* transformed pixels this pass, for the perf counters */
+static uint32_t s_kd_pixels; /* image pixels written this pass, for the perf counters */
+/* Of those, the ones that went through the inverse mapping rather than the
+ * row copy: rotation, shear, a strip tear or a colour split. Several times
+ * the cost each, so it is the number that says why a frame is slow. */
+static uint32_t s_kd_slow;
 
-/** Shift every channel by `lift` (in 5-bit units, -31..31) and pull toward grey by `desat` 0..1. */
-static inline uint16_t px_grade(uint16_t c, int lift, float desat) {
+/**
+ * Shift every channel by `lift` (in 5-bit units, -31..31) and pull toward grey
+ * by `d256`, the desaturation in 1/256ths.
+ *
+ * Integer, and the desaturation is converted once by the caller rather than
+ * per pixel. This runs on every pixel of a full screen photograph on LOOK,
+ * for as long as the user sits there deciding: it was the single most
+ * expensive thing the resting interface did, and none of it needed a float.
+ * The luma weights are Rec.601 in 8.8, with green's extra bit shifted out
+ * first so all three channels are in the same 5-bit space.
+ */
+static inline uint16_t px_grade(uint16_t c, int lift, int d256) {
   int r = (c >> 11) & 0x1F, g = (c >> 5) & 0x3F, b = c & 0x1F;
-  if (desat > 0.f) {
-    const float l5 = (0.299f * r + 0.587f * (g * 0.5f) + 0.114f * b);
-    r = (int)(r + (l5 - r) * desat);
-    g = (int)(g + (l5 * 2.f - g) * desat);
-    b = (int)(b + (l5 - b) * desat);
+  if (d256 > 0) {
+    const int l5 = (77 * r + 150 * (g >> 1) + 29 * b) >> 8;
+    r += ((l5 - r) * d256) >> 8;
+    g += ((l5 * 2 - g) * d256) >> 8;
+    b += ((l5 - b) * d256) >> 8;
   }
   if (lift) { r += lift; g += lift * 2; b += lift; }
   if (r < 0) r = 0;
@@ -94,7 +108,25 @@ static void img_blit_tf(const uint16_t *src, int sw, int sh, float c0x, float c0
   const float sx0 = c0x * (float)sw, sy0 = c0y * (float)sh;
   const float sxs = (c1x - c0x) * (float)sw, sys = (c1y - c0y) * (float)sh; /* source span */
   const bool graded = lift != 0 || desat > 0.005f;
-  const bool plain = fabsf(rot_deg) < 0.01f && fabsf(skew_deg) < 0.01f && fabsf(strip_amp) < 0.05f && rgb == 0 && !graded;
+  const int d256 = desat > 0.f ? (int)(desat * 256.f + 0.5f) : 0;
+  /*
+   * The row copy, or the inverse mapping, and the test between them is
+   * whether the deformation would move a pixel.
+   *
+   * These limits used to be set at "not quite zero", which sounds safe and is
+   * not: a transition's spring settles toward zero without arriving, so a
+   * strip of three quarters of a pixel - which nothing can see - kept a full
+   * screen photograph on the mapping path for as long as anyone looked at it,
+   * at four times the cost of copying it. They are set at the limit of what
+   * can be seen instead. Half a pixel of tear is sub-pixel by definition, and
+   * a twentieth of a degree across the whole panel moves a corner by a third
+   * of a pixel.
+   *
+   * A grade is not a deformation at all. It is a function of the colour, not
+   * of where the pixel came from, and only needed the mapping because it was
+   * lumped in with the rest.
+   */
+  const bool plain = fabsf(rot_deg) < 0.05f && fabsf(skew_deg) < 0.05f && fabsf(strip_amp) < 0.5f && rgb == 0;
   if (plain) {
     const int x0 = (int)lroundf(cx - bw * 0.5f), y0 = (int)lroundf(cy - bh * 0.5f);
     const int W = (int)lroundf(bw), H = (int)lroundf(bh);
@@ -114,8 +146,16 @@ static void img_blit_tf(const uint16_t *src, int sw, int sh, float c0x, float c0
       if (v >= sh) v = sh - 1;
       const uint16_t *srow = src + (size_t)v * sw;
       uint16_t *drow = s_cv + (size_t)y * UI_W;
-      if (alpha >= 255) for (int x = dx0; x < dx1; x++) drow[x] = srow[xmap[x - dx0]];
-      else for (int x = dx0; x < dx1; x++) drow[x] = mix(drow[x], srow[xmap[x - dx0]], alpha);
+      if (graded) {
+        for (int x = dx0; x < dx1; x++) {
+          const uint16_t c = px_grade(srow[xmap[x - dx0]], lift, d256);
+          drow[x] = alpha >= 255 ? c : mix(drow[x], c, alpha);
+        }
+      } else if (alpha >= 255) {
+        for (int x = dx0; x < dx1; x++) drow[x] = srow[xmap[x - dx0]];
+      } else {
+        for (int x = dx0; x < dx1; x++) drow[x] = mix(drow[x], srow[xmap[x - dx0]], alpha);
+      }
     }
     s_kd_pixels += (uint32_t)((dx1 - dx0) * (dy1 - dy0));
     return;
@@ -160,9 +200,10 @@ static void img_blit_tf(const uint16_t *src, int sw, int sh, float c0x, float c0
         const uint16_t cr = src[(size_t)iv * sw + ur], cb = src[(size_t)iv * sw + ub];
         c = (uint16_t)((cr & 0xF800) | (c & 0x07E0) | (cb & 0x001F));
       }
-      if (graded) c = px_grade(c, lift, desat);
+      if (graded) c = px_grade(c, lift, d256);
       row[x] = alpha >= 255 ? c : mix(row[x], c, alpha);
     }
   }
   s_kd_pixels += (uint32_t)((x1 - x0) * (y1 - y0));
+  s_kd_slow += (uint32_t)((x1 - x0) * (y1 - y0));
 }

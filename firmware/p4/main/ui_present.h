@@ -486,11 +486,14 @@ static const char *shoot_look_word(char *buf, size_t cap) {
 #define KSURF_RULE_W (UI_W - 48)   /* the rows' own margin, NR_X, defined further down */
 #define KSURF_RULE_H 3.f
 static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
-  /* While the capture is running the panes leave a trace of where they were.
-   * The four frames arrive out of place and correct, and the trace is what
-   * makes that read as one surface being assembled rather than as four
-   * rectangles twitching. */
-  const uint8_t trace = ks_playing_tag("cap") ? 2 : 0;
+  /* The panes used to leave a motion trace while the capture ran. They do
+   * not any more, and the reason is worth keeping: a trace is drawn under the
+   * object, so it only shows where the object has moved further than its own
+   * size. Four quarters correcting by ten pixels cover their own trace
+   * completely - two ghost layers were three fifths of the frame's cost and
+   * produced a picture indistinguishable from none at all, which the harness
+   * now measures and the eye confirmed side by side. The fragments in the
+   * merge do travel, and keep theirs. */
   /* Which cameras were answering last pass. A camera that starts answering is
    * a real event - the first frame off a sensor that was asleep or busy - and
    * the surface it belongs to arrives on it rather than on a clock. Waking
@@ -532,7 +535,6 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
       ks_pose(p, KC_SY, scy);
       ks_pose(p, KC_ALPHA, alpha);
       ks_parent(p, g);
-      p->ghost = trace;
       p->z = (int16_t)(lead ? 2 : 1);
       /* This camera has just started answering: the surface springs up into
        * its place rather than being there already. After a sleep the four do
@@ -1399,25 +1401,34 @@ static void sync_about(void) {
   /* The bench rows: the renderer, what the cameras see, and the mood. The
    * mood is never shown anywhere else and never will be - this page exists to
    * expose the machine, which is the one place it belongs. */
-  static char perf[80], scene[80], mood[80];
-  /* Grouped so each line is one thing: what the renderer costs and what mood
-   * is doing to it, what the cameras see, and the mood itself. */
-  snprintf(perf, sizeof perf, "SCENE %lu us  WORST %lu us  MISSED %lu  NODES %d/%d  TEMPO %d  VIGOUR %d",
+  static char cost[80], work[80], scene[80], mood[80];
+  /* Four lines, one thing each: what the frame cost, what it had to draw,
+   * what the cameras see, and the mood that colours all of it. Kept inside
+   * the panel's width - a figure that runs off the right edge is worse than
+   * no figure, because it reads as one that fitted. */
+  snprintf(cost, sizeof cost, "SCENE %lu us  WORST %lu us  MISSED %lu  NODES %d/%d",
            (unsigned long)(s_ks_perf.render_us + s_ks_perf.step_us), (unsigned long)s_ks_perf.worst_render_us,
-           (unsigned long)s_ks_perf.missed, s_ks_count, KS_MAX_NODES,
-           (int)(kmood_tempo() * 100.f), (int)(kmood_vigour() * 100.f));
+           (unsigned long)s_ks_perf.missed, s_ks_count, KS_MAX_NODES);
+  /* MAPPED is how many of those pixels went through the inverse mapping
+   * instead of the row copy - several times the cost each, so it is the
+   * figure that says why a frame was slow. */
+  snprintf(work, sizeof work, "PX %lu  MAPPED %lu  TEMPO %d  VIGOUR %d%s",
+           (unsigned long)s_ks_perf.pixels_tf, (unsigned long)s_kd_slow,
+           (int)(kmood_tempo() * 100.f), (int)(kmood_vigour() * 100.f),
+           ks_holding_tag(NULL) ? "  GATED" : "");
   if (s_ksense.live)
     snprintf(scene, sizeof scene, "LUM %d  MOTION %d  SPREAD %d  STILL %d ms  CAMS %d",
              (int)(s_ksense.lum_mean * 100.f), (int)(s_ksense.motion_mean * 100.f),
              (int)(s_ksense.spread * 100.f), ksense_still_ms(), s_ksense.live);
   else snprintf(scene, sizeof scene, "NO CAMERA SIGNAL");
-  snprintf(mood, sizeof mood, "ENERGY %d  CALM %d  CONF %d  STRAIN %d  BURST %d%s",
+  snprintf(mood, sizeof mood, "ENERGY %d  CALM %d  CONF %d  STRAIN %d  BURST %d",
            (int)(s_kmood.energy * 100.f), (int)(s_kmood.calm * 100.f), (int)(s_kmood.confidence * 100.f),
-           (int)(s_kmood.strain * 100.f), s_kmood.recent_shots, ks_holding_tag(NULL) ? "  GATED" : "");
-  const int by = NR_Y0 + 7 * 44 + 10;
-  nd_text("about.perf", perf, &UT_S, C_FAINT, (float)NR_X, (float)by, 0.f, 0.f, 10, false);
-  nd_text("about.scene", scene, &UT_S, C_FAINT, (float)NR_X, (float)(by + 26), 0.f, 0.f, 10, false);
-  nd_text("about.mood", mood, &UT_S, C_FAINT, (float)NR_X, (float)(by + 52), 0.f, 0.f, 10, false);
+           (int)(s_kmood.strain * 100.f), s_kmood.recent_shots);
+  const int by = NR_Y0 + 7 * 44 + 4;
+  nd_text("about.cost", cost, &UT_S, C_FAINT, (float)NR_X, (float)by, 0.f, 0.f, 10, false);
+  nd_text("about.work", work, &UT_S, C_FAINT, (float)NR_X, (float)(by + 24), 0.f, 0.f, 10, false);
+  nd_text("about.scene", scene, &UT_S, C_FAINT, (float)NR_X, (float)(by + 48), 0.f, 0.f, 10, false);
+  nd_text("about.mood", mood, &UT_S, C_FAINT, (float)NR_X, (float)(by + 72), 0.f, 0.f, 10, false);
   s_kmo_live++; /* these numbers move; keep the page drawing */
   sync_note(false);
 }

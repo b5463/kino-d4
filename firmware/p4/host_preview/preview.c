@@ -2186,6 +2186,64 @@ int main(int argc, char **argv) {
     s_latest_id[0] = 0;
   }
 
+  /* ---- what each state costs to draw ----
+   *
+   * Not a prediction of the P4: this is a desktop, and the numbers here are
+   * only good for comparing one state of the interface with another and for
+   * catching a change that made the work several times bigger. The clock is
+   * the wall (KS_PERF_NOW), because the rest of the runtime runs on a clock
+   * the harness winds by hand.
+   *
+   * The frame is drawn repeatedly with the clock held still, so every pass
+   * has the same thing on it and the figure is the cost of that picture
+   * rather than of a moment in a transition.
+   */
+  {
+    struct { const char *what; screen_t scr; bool words; bool capturing; } COST[] = {
+        {"shoot, at rest", SCR_SHOOT, false, false},
+        {"shoot, words up", SCR_SHOOT, true, false},
+        {"shoot, mid capture", SCR_SHOOT, false, true},
+        {"look", SCR_LOOK, false, false},
+        {"roll", SCR_GALLERY, false, false},
+        {"photo", SCR_PHOTO, false, false},
+        {"link", SCR_CONNECTION, false, false},
+        {"setup", SCR_SETTINGS, false, false},
+        {"info", SCR_ABOUT, false, false},
+    };
+    for (size_t i = 0; i < sizeof COST / sizeof COST[0]; i++) {
+      SCENE();
+      g_roll_active = COST[i].what[0] == 'l' && COST[i].scr == SCR_CONNECTION;
+      go(COST[i].scr, 0);
+      s_sh_words_up = COST[i].words;
+      if (COST[i].words) sh_reveal();
+      if (COST[i].capturing) {
+        g_stage = CAPTURE_READING;
+        g_frames_in = 15;
+        STEP(0);
+        STEP(160); /* into the arrival, where the strips and the tilt are on */
+      } else {
+        /* In steps a frame apart, not one jump: ks_begin clamps a pass to 50
+         * ms, so a single 400 ms step settles the springs by 50 ms and the
+         * bench would be measuring a screen still in motion. */
+        for (int t = 0; t <= 600; t += 30) STEP(t);
+      }
+      uint32_t worst = 0, sum = 0;
+      const int n = 40;
+      for (int k = 0; k < n; k++) {
+        draw_screen();
+        const uint32_t c = s_ks_perf.render_us + s_ks_perf.step_us;
+        sum += c;
+        if (c > worst) worst = c;
+      }
+      fprintf(stderr, "[cost] %-20s mean %5u us  worst %5u us  nodes %2u  px %6u (%u on the slow path)\n",
+              COST[i].what, (unsigned)(sum / n), (unsigned)worst,
+              (unsigned)s_ks_perf.nodes_drawn, (unsigned)s_ks_perf.pixels_tf, (unsigned)s_kd_slow);
+      g_stage = CAPTURE_IDLE;
+      g_frames_in = 0;
+      g_roll_active = false;
+    }
+  }
+
   /* ---- the playground: every capability, filmed ---- */
   static const int PGT[] = {0, 16, 40, 80, 130, 200, 300, 420, 560, 720, 900, 1100, 1400};
   for (int which = 0; which < PG_COUNT; which++) {

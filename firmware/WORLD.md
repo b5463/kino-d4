@@ -691,6 +691,43 @@ distance between the darkest and brightest sample and one white pixel in
 the grid is enough. The difficult frames carry a marker inside their own
 range instead.
 
+### What a frame costs
+
+The perf report had been printing zeros since it existed: the runtime
+reads one clock, and on the host preview that clock is a variable the
+harness winds forward by hand. Cost is the one figure that has to be
+measured on a clock that is running, so it has its own hook now, and the
+harness prints what every state costs to draw. The numbers are a desktop
+and say nothing about the P4 - they say whether a change made the work
+several times bigger, which is what they immediately did:
+
+```
+shoot, at rest        579 -> 317 us
+shoot, mid capture   5759 -> 1975 us
+look                 1466 ->  618 us
+```
+
+- **The motion trace on the panes was three fifths of the capture and
+  invisible.** A trace is drawn under the object, so it only shows where
+  the object has moved further than its own size. Four quarters
+  correcting by ten pixels cover their own trace completely. The
+  fragments in the merge do travel, and keep theirs.
+- **Text was four fifths of the cost of drawing the finder.** Giving
+  type a contour sent it down the general path, whose per-pixel rotation
+  and bilinear sample are pure waste for upright unscaled words. Type at
+  rest is redrawn every pass forever; it has its own loop now, and
+  anything moving or scaled still takes the general one.
+- **A strip of three quarters of a pixel kept a full screen photograph
+  on the mapping path.** The test between the row copy and the inverse
+  mapping was set at "not quite zero", and a transition's spring settles
+  toward zero without arriving. It is set at the limit of what can be
+  seen instead. A grade was on that path too, and is not a deformation
+  at all: it is a function of the colour, not of where the pixel came
+  from.
+
+INFO reports `PX` and `MAPPED` beside the frame cost, so the same
+question can be asked on the panel.
+
 ### Do not polish the wrong layer
 
 Before touching tracking, line length, label spacing or micro-animations,

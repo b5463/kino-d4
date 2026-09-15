@@ -88,6 +88,20 @@ static ks_node_t *s_ks;        /* KS_MAX_NODES, PSRAM */
 static int s_ks_count;
 static int64_t s_ks_now_us, s_ks_prev_us;
 static ks_perf_t s_ks_perf;
+
+/**
+ * The clock the frame cost is measured on.
+ *
+ * Everything else in the runtime reads esp_timer_get_time(), and on the host
+ * preview that is a fake clock the harness winds forward by whatever the film
+ * says - which means every figure in the perf report came out as zero, and
+ * has done since the report existed. Cost is the one thing that has to be
+ * measured on a clock that is actually running, so it gets its own hook. The
+ * device has only one clock and this is it; the preview overrides it.
+ */
+#ifndef KS_PERF_NOW
+#define KS_PERF_NOW() esp_timer_get_time()
+#endif
 static int s_ks_order[KS_MAX_NODES];
 
 /* ------------------------------------------------------------------ */
@@ -745,9 +759,10 @@ static void ks_draw_node(ks_node_t *n) {
 
 /** Step every node and draw the tree. Call once per pass after the screens have posed. */
 static void ks_render(void) {
-  const int64_t t0 = esp_timer_get_time();
+  const int64_t t0 = KS_PERF_NOW();
   s_ks_perf.nodes_drawn = 0;
   s_kd_pixels = 0;
+  s_kd_slow = 0;
   /* Tracks first (they set drv/add), then each node's step. */
   ks_apply_tracks();
   for (int i = 0; i < s_ks_count; i++) {
@@ -755,7 +770,7 @@ static void ks_render(void) {
     if (!n->used) continue;
     ks_step_node(n);
   }
-  const int64_t t1 = esp_timer_get_time();
+  const int64_t t1 = KS_PERF_NOW();
   /* z order, stable. */
   int cnt = 0;
   for (int i = 0; i < s_ks_count; i++) if (s_ks[i].used && (s_ks[i].shown || ks_bound(&s_ks[i]))) s_ks_order[cnt++] = i;
@@ -770,7 +785,7 @@ static void ks_render(void) {
     n->visible_prev = drawn;
     if (!drawn) { n->hist[0].valid = n->hist[1].valid = false; }
   }
-  const int64_t t2 = esp_timer_get_time();
+  const int64_t t2 = KS_PERF_NOW();
   s_ks_perf.pixels_tf = s_kd_pixels;
   s_ks_perf.step_us = (uint32_t)(t1 - t0);
   s_ks_perf.render_us = (uint32_t)(t2 - t1);

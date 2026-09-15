@@ -301,6 +301,48 @@ static void ut_fx2(const ut_face_t *f, float cx, float cy, const char *s, float 
   if (y1 > s_clip_y1) y1 = s_clip_y1;
   if (x0 >= x1 || y0 >= y1) return;
 
+  /*
+   * Upright, unscaled, unrotated text sits on the mask one for one, and the
+   * general path's per-pixel rotation and bilinear sample are pure waste
+   * there - waste that showed up as text being four fifths of the cost of
+   * drawing the whole finder once the contour sent it down this path. Type at
+   * rest is redrawn every pass forever, so it is worth its own loop. Anything
+   * in motion, or scaled, or on a fraction of a pixel, takes the general one:
+   * that is transient and wants to be right rather than quick.
+   */
+  if (fabsf(sx - 1.f) < 0.002f && fabsf(sy - 1.f) < 0.002f && fabsf(rot_deg) < 0.01f &&
+      fabsf(skew_deg) < 0.01f && rgb == 0) {
+    const float lx = cx - (float)mw * 0.5f, ly = cy - (float)mh * 0.5f;
+    const int ox = (int)lroundf(lx), oy = (int)lroundf(ly);
+    if (fabsf(lx - (float)ox) < 0.06f && fabsf(ly - (float)oy) < 0.06f) {
+      for (int pass = 0; pass < (shadow ? 2 : 1); pass++) {
+        const bool is_shadow = shadow && pass == 0;
+        const uint8_t *src = (is_shadow && halo) ? s_ut_halo : s_ut_mask;
+        const uint16_t col = is_shadow ? (uint16_t)0x0841 : ink;
+        const int a_run = is_shadow ? (alpha * 4) / 5 : alpha;
+        const int sx0 = ox + (is_shadow ? 1 : 0), sy0 = oy + (is_shadow ? 1 : 0);
+        int mx0 = s_clip_x0 - sx0, mx1 = s_clip_x1 - sx0;
+        int my0 = s_clip_y0 - sy0, my1 = s_clip_y1 - sy0;
+        if (mx0 < 0) mx0 = 0;
+        if (my0 < 0) my0 = 0;
+        if (mx1 > mw) mx1 = mw;
+        if (my1 > mh) my1 = mh;
+        for (int my = my0; my < my1; my++) {
+          const uint8_t *m = &src[my * UT_MASK_W];
+          uint16_t *row = s_cv + (size_t)(sy0 + my) * UI_W + sx0;
+          for (int mx = mx0; mx < mx1; mx++) {
+            const int cov = m[mx];
+            if (cov == 0) continue;
+            const int a = (cov * a_run) >> 8;
+            if (a >= 255) row[mx] = col;
+            else if (a > 0) row[mx] = mix(row[mx], col, a);
+          }
+        }
+      }
+      return;
+    }
+  }
+
   const float ix = 1.f / sx, iy = 1.f / sy;
   const int passes = shadow ? 2 : 1;
   for (int pass = 0; pass < passes; pass++) {
