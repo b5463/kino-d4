@@ -336,6 +336,9 @@ static void sh_reveal(void);
 static void look_show_id(void);
 
 /** Move to a screen. A cut: the words that move carry the change. */
+/* Set when LINK's code has played its entry this visit; cleared on leaving. */
+static bool s_qr_opened;
+
 static void go(screen_t s, int dissolve_ms) {
   (void)dissolve_ms;
   if (s == SCR_GALLERY) gallery_refresh();
@@ -347,6 +350,9 @@ static void go(screen_t s, int dissolve_ms) {
     ks_stop_tag("lookid");
     ks_stop_tag("look_change");
   }
+  /* The code opens once a visit, not once a pass. LINK is reachable under
+   * two screen ids and they are the same place to the user. */
+  if (s != SCR_CONNECTION && s != SCR_ROLL) s_qr_opened = false;
   const bool first = !s_visited[s];
   s_visited[s] = true;
   s_screen = s;
@@ -1197,12 +1203,56 @@ static void sync_about(void) {
   sync_note(false);
 }
 
-/* LINK: the facts, the code a guest scans, and what is going where. */
+/* ------------------------------------------------------------------ */
+/* LINK: the world opens itself to KINO ROLL                            */
+
+/*
+ * The code is an object in the scene, not something painted over it.
+ *
+ * It is rendered once into a buffer at one pixel per module and drawn as an
+ * image like any photograph, so it can grow into the space the roll makes for
+ * it and move with everything else. Nearest sampling is not a compromise
+ * here: a QR scaled by whole-ish numbers with no interpolation is exactly
+ * what a scanner wants, and the quiet zone comes along in the buffer.
+ *
+ * 65 modules a side covers version 10 with its quiet zone, which is more than
+ * a Roll's guest URL has ever needed.
+ */
+#define QR_IMG_MAX (57 + 2 * QR_QUIET)
+static uint16_t s_qr_img[QR_IMG_MAX * QR_IMG_MAX];
+static int s_qr_img_side;
+
+/** Paint the symbol into the buffer. Returns its side in modules, 0 on failure. */
+static int qr_to_image(const qr_t *qr) {
+  const int total = qr->size + 2 * QR_QUIET;
+  if (total > QR_IMG_MAX) return 0;
+  for (int i = 0; i < total * total; i++) s_qr_img[i] = RGB(0xff, 0xff, 0xff);
+  for (int y = 0; y < qr->size; y++)
+    for (int x = 0; x < qr->size; x++)
+      if (qr_module(qr, x, y))
+        s_qr_img[(y + QR_QUIET) * total + (x + QR_QUIET)] = RGB(0x00, 0x00, 0x00);
+  s_qr_img_side = total;
+  return total;
+}
+
+/*
+ * Where the roll's photographs go when the world opens itself outward.
+ *
+ * They are not cleared and they are not redrawn somewhere else: the same
+ * objects compress into a column down the left, overlapping, in the order
+ * they sit in the grid. That is the roll becoming shareable, and it is why
+ * the space on the right is somewhere the code can grow into rather than a
+ * region that was always empty.
+ */
+#define LINK_STACK_X 96.f
+#define LINK_STACK_Y0 150.f
+#define LINK_STACK_STEP 46.f
+#define LINK_STACK_SCALE 0.42f
+
 static qr_t s_qr;
 static char s_qr_url[ROLL_GUEST_URL_LEN];
 static bool s_qr_ok;
 static int s_qr_x, s_qr_y, s_qr_box;
-static bool s_qr_show;
 
 static void sync_connection(void) {
   sync_title(false, NULL);
@@ -1223,7 +1273,11 @@ static void sync_connection(void) {
     case NET_WIFI_SCANNING: snprintf(wifi, sizeof wifi, "SCANNING"); break;
     default: snprintf(wifi, sizeof wifi, "NOT CONNECTED"); break;
   }
-  const int left_w = active ? 440 : NR_W;
+  /* With a roll on, the facts move right to leave the left edge to the
+   * photographs: the connection resolves around the pictures rather than
+   * replacing them. */
+  const int left_w = active ? 350 : NR_W; /* values stop clear of the code */
+  const int rows_x = active ? NR_X + 150 : NR_X;
   static char rollname[64];
   snprintf(rollname, sizeof rollname, "%s", active ? (roll.name[0] ? roll.name : roll.slug) : "NONE");
   const struct { const char *t; const char *v; bool lit; } ROWS[] = {
@@ -1232,30 +1286,82 @@ static void sync_connection(void) {
       {"ADDRESS", net.ip[0] ? net.ip : "-", net.ip[0] != '\0'},
       {"ROLL", rollname, active},
   };
+  /* With the roll on, the facts are not the subject any more: they step down
+   * a size as well as across, which is what makes room for the value beside
+   * the label in half the width. */
+  const ut_face_t *row_face = active ? &UT_S : &UT_M;
   for (int i = 0; i < 4; i++) {
     const int y = NR_Y0 + i * NR_H;
-    nd_text(ROW_ID[i], ROWS[i].t, &UT_M, ROWS[i].lit ? C_INK : HDR_DIM, (float)NR_X, (float)NR_TITLE_TOP(y), 0.f, 0.f, 10, false);
-    nd_text(VAL_ID[i], ROWS[i].v, &UT_S, ROWS[i].lit ? C_INK : HDR_DIM, (float)(NR_X + left_w), (float)NR_VALUE_TOP(y), 1.f, 0.f, 10, false);
+    const int ty = active ? NR_VALUE_TOP(y) : NR_TITLE_TOP(y);
+    nd_text(ROW_ID[i], ROWS[i].t, row_face, ROWS[i].lit ? C_INK : HDR_DIM, (float)rows_x, (float)ty, 0.f, 0.f, 10, false);
+    nd_text(VAL_ID[i], ROWS[i].v, &UT_S, ROWS[i].lit ? C_INK : HDR_DIM, (float)(rows_x + left_w), (float)NR_VALUE_TOP(y), 1.f, 0.f, 10, false);
   }
-  if (!net.radio_routed) nnote("NO RADIO. PHOTOS GO OVER USB-C.", 4);
+  if (!net.radio_routed && !active) nnote("NO RADIO. PHOTOS GO OVER USB-C.", 4);
 
-  s_qr_show = false;
   if (active) {
     if (strcmp(s_qr_url, roll.guest_url) != 0) {
       snprintf(s_qr_url, sizeof s_qr_url, "%s", roll.guest_url);
-      s_qr_ok = roll.guest_url[0] != '\0' && qr_encode(roll.guest_url, &s_qr);
+      s_qr_ok = roll.guest_url[0] != '\0' && qr_encode(roll.guest_url, &s_qr) && qr_to_image(&s_qr) > 0;
       if (!s_qr_ok) klog("P4", "roll guest url did not encode as a QR (%u chars)", (unsigned)strlen(roll.guest_url));
     }
-    s_qr_x = 620; s_qr_y = NR_Y0; s_qr_box = 230;
+    s_qr_x = 560; s_qr_y = NR_Y0 + 6; s_qr_box = 236;
     static char slug[ROLL_SLUG_LEN];
     snprintf(slug, sizeof slug, "%s", roll.slug);
+
+    /* The roll itself, compressed into a column. The same photograph objects
+     * the grid was showing, so what the user sees being offered is these
+     * pictures rather than a page about networking. */
+    const gallery_item_t *slots = gallery_slots();
+    ks_node_t *sheet = nd("grid", KS_GROUP);
+    ks_place(sheet, 0.f, 0.f, 0.f, 0.f);
+    ks_pose(sheet, KC_MX0, 0.f);
+    ks_pose(sheet, KC_MY0, 0.f);
+    ks_pose(sheet, KC_MX1, (float)UI_W);
+    ks_pose(sheet, KC_MY1, (float)UI_H);
+    int stacked = 0;
+    for (int i = 0; i < GALLERY_PAGE; i++) {
+      if (slots[i].state != TILE_READY || !slots[i].pixels) continue;
+      char oid[KS_ID_MAX];
+      photo_node_id(oid, sizeof oid, slots[i].label, slots[i].id);
+      ks_node_t *o = nd(oid, KS_IMAGE);
+      ks_image_lod(o, slots[i].pixels, G_TILE_W, G_TILE_H, (float)G_TILE_W, (float)G_TILE_H);
+      ks_place(o, LINK_STACK_X, LINK_STACK_Y0 + stacked * LINK_STACK_STEP, 0.5f, 0.5f);
+      ks_pose(o, KC_SX, LINK_STACK_SCALE);
+      ks_pose(o, KC_SY, LINK_STACK_SCALE);
+      ks_pose(o, KC_ALPHA, 255.f);
+      ks_parent(o, sheet);
+      o->z = (int16_t)(20 - stacked); /* the next one out is on top of the pile */
+      stacked++;
+    }
+
     if (s_qr_ok) {
-      s_qr_show = true; /* drawn after the scene: a static symbol, not an object */
-      nd_text("link.slug", slug, &UT_S, C_INK, (float)s_qr_x, (float)(s_qr_y + s_qr_box + 14), 0.5f, 0.f, 10, false);
+      /* The code grows into the space the roll made for it. Nearest sampling
+       * is not a compromise for a symbol made of squares. */
+      ks_node_t *qn = nd("link.qr", KS_IMAGE);
+      ks_image_lod(qn, s_qr_img, s_qr_img_side, s_qr_img_side, (float)s_qr_img_side, (float)s_qr_img_side);
+      ks_place(qn, s_qr_x + s_qr_box * 0.5f, s_qr_y + s_qr_box * 0.5f, 0.5f, 0.5f);
+      const float qs = (float)s_qr_box / (float)s_qr_img_side;
+      ks_pose(qn, KC_SX, qs);
+      ks_pose(qn, KC_SY, qs);
+      ks_pose(qn, KC_ALPHA, 255.f);
+      qn->z = 12;
+      ks_node_t *sn = nd_text("link.slug", slug, &UT_S, C_INK,
+                              s_qr_x + s_qr_box * 0.5f, (float)(s_qr_y + s_qr_box + 14), 0.5f, 0.f, 12, false);
+      if (!s_qr_opened) {
+        s_qr_opened = true;
+        ks_node_t *ns[2] = {qn, sn};
+        static const char *const RS[2] = {"code", "slug"};
+        const float params[4] = {qs, 0.f, 0.f, 0.f};
+        ks_play(KCLIP_LINK_CODE, "qr", params, ns, RS, 2);
+      }
     } else {
-      ks_node_t *b = nd_text("link.slug", slug, &UT_MB, C_INK, (float)s_qr_x, s_qr_y + s_qr_box * 0.5f, 0.5f, 0.5f, 10, false);
-      ks_pose(b, KC_SX, 1.6f);
-      ks_pose(b, KC_SY, 1.6f);
+      /* No code: the slug is what the guest types instead, so it is set as
+       * large as the code's own square allows and no larger. */
+      ks_node_t *b = nd_text("link.slug", slug, &UT_MB, C_INK, s_qr_x + s_qr_box * 0.5f, s_qr_y + s_qr_box * 0.5f, 0.5f, 0.5f, 12, false);
+      const float w = ut_w(&UT_MB, slug);
+      const float bs = w > 1.f ? (float)s_qr_box / w : 1.f;
+      ks_pose(b, KC_SX, bs > 1.8f ? 1.8f : bs);
+      ks_pose(b, KC_SY, bs > 1.8f ? 1.8f : bs);
     }
 
     const int waiting = q.pending + q.card_pending;
@@ -1269,21 +1375,21 @@ static void sync_connection(void) {
     else if (!q.scan_complete) snprintf(l1, sizeof l1, "CHECKING CARD");
     else snprintf(l1, sizeof l1, "ALL SENT");
     const int ly = NR_Y0 + 4 * NR_H + 18;
-    nd_text("link.status", l1, &UT_MB, sending ? C_COBALT : C_INK, (float)NR_X, (float)ly, 0.f, 0.f, 10, false);
-    if (l2[0]) nd_text("link.sub", l2, &UT_S, HDR_DIM, (float)NR_X, (float)(ly + 44), 0.f, 0.f, 10, false);
+    nd_text("link.status", l1, &UT_MB, sending ? C_COBALT : C_INK, (float)rows_x, (float)ly, 0.f, 0.f, 10, false);
+    if (l2[0]) nd_text("link.sub", l2, &UT_S, HDR_DIM, (float)rows_x, (float)(ly + 44), 0.f, 0.f, 10, false);
     if (sending) {
-      /* Four points lit by how far this burst has got, then KINO ROLL.
-       * Counted from the queue, not a clock. */
+      /* Four points lit by how far this burst has got, counted from the queue
+       * rather than a clock. Where the pictures are going used to be spelled
+       * out here; the code beside them says it, and says it better. */
       const int total = q.burst_done + waiting + q.uploading;
       const int lit = total > 0 ? (q.burst_done * 4) / total : 0;
-      float x = NR_X + ut_w(&UT_MB, l1) + 34.f;
+      float x = rows_x + ut_w(&UT_MB, l1) + 34.f;
       const float cy = ly + UT_MB.em * 0.5f;
       static const char *const TM[4] = {"link.m0", "link.m1", "link.m2", "link.m3"};
       for (int i = 0; i < 4; i++) {
         nd_disc(TM[i], x, cy, i < lit ? 6.f : 3.f, i < lit ? C_COBALT : C_FAINT, 10);
         x += 22.f;
       }
-      nd_text("link.kr", "KINO ROLL", &UT_S, HDR_DIM, x + 6.f, ly + 7.f, 0.f, 0.f, 10, false);
       s_kmo_live++; /* the counts move; keep drawing */
     }
   }
@@ -1434,9 +1540,6 @@ static void draw_screen(void) {
   if (s_dialog != DLG_NONE) sync_dialog();
   sync_brand_leaving();
   ks_render();
-  /* The QR is a symbol, not an object: drawn once the scene is down. */
-  if ((s_screen == SCR_CONNECTION || s_screen == SCR_ROLL) && s_qr_show && s_dialog == DLG_NONE)
-    draw_qr_centred(&s_qr, s_qr_x, s_qr_y, s_qr_box);
 }
 
 /* ------------------------------------------------------------------ */

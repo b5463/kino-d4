@@ -894,6 +894,26 @@ int main(int argc, char **argv) {
     shot(name);              \
   } while (0)
 
+/**
+ * A shot of the state at rest.
+ *
+ * Plain SHOT renders one frame with no time passing, so whatever the previous
+ * shot left in flight is still in flight: a row that has just been told to
+ * move sits at its old place, a clip that has just started has not started
+ * moving. That is the right picture of a transition and the wrong picture of
+ * a layout. This one lets the scene settle first, which is what the screen
+ * looks like in the hand a second later.
+ */
+#define SHOT_REST(scr, name)                          \
+  do {                                                \
+    s_screen = (scr);                                 \
+    for (int rest_i = 0; rest_i < 30; rest_i++) {     \
+      g_preview_clock_us += 33000;                    \
+      draw_screen();                                  \
+    }                                                 \
+    shot(name);                                       \
+  } while (0)
+
   fake_gallery();
 
   /*
@@ -1023,7 +1043,7 @@ int main(int argc, char **argv) {
    * ever had a Roll assigned, and the QR in particular has never been on a
    * panel — so `roll_active` is where the symbol, its quiet zone and its
    * pitch get reviewed at all. */
-  SHOT(SCR_ROLL, "roll");
+  SHOT_REST(SCR_ROLL, "roll");
 
   g_roll_active = true;
   snprintf(g_roll.roll_id, sizeof g_roll.roll_id, "rol_8Fk2QmZ1pTx9vB3nLr4wYs");
@@ -1041,7 +1061,7 @@ int main(int argc, char **argv) {
   g_queue.scan_complete = true;
   g_queue.server_state = UPLOAD_SERVER_REACHABLE;
   g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 8000;
-  SHOT(SCR_ROLL, "roll_active");
+  SHOT_REST(SCR_ROLL, "roll_active");
 
   /* Online and working: five landed in this burst, one in flight, three
    * behind it - a bar with something to say. */
@@ -1050,7 +1070,7 @@ int main(int argc, char **argv) {
   g_queue.burst_done = 5;
   g_queue.draining = true;
   g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 2000;
-  SHOT(SCR_ROLL, "roll_uploading");
+  SHOT_REST(SCR_ROLL, "roll_uploading");
 
   /* Wi-Fi gone, three waiting: saved safely on the camera, not failed. */
   g_net_state = NET_WIFI_IDLE;
@@ -1058,14 +1078,14 @@ int main(int argc, char **argv) {
   memset(&g_queue, 0, sizeof g_queue);
   g_queue.pending = 3;
   g_queue.scan_complete = true;
-  SHOT(SCR_ROLL, "roll_offline");
+  SHOT_REST(SCR_ROLL, "roll_offline");
 
   /* Just booted: the card has not been counted yet and nothing is known to
    * be waiting. The line lasts seconds and then disappears. */
   g_net_state = NET_IP_READY;
   memset(&g_queue, 0, sizeof g_queue);
   g_queue.server_state = UPLOAD_SERVER_UNKNOWN;
-  SHOT(SCR_ROLL, "roll_counting");
+  SHOT_REST(SCR_ROLL, "roll_counting");
 
   /* Wi-Fi up, the server not answering: a different word from OFFLINE, and
    * still nothing a guest should read as a failed photograph. */
@@ -1073,7 +1093,7 @@ int main(int argc, char **argv) {
   g_queue.pending = 2;
   g_queue.scan_complete = true;
   g_queue.server_state = UPLOAD_SERVER_UNREACHABLE;
-  SHOT(SCR_ROLL, "roll_server_quiet");
+  SHOT_REST(SCR_ROLL, "roll_server_quiet");
 
   /* Stopped on a credential fault, which is not the same as failed. */
   memset(&g_queue, 0, sizeof g_queue);
@@ -1081,14 +1101,14 @@ int main(int argc, char **argv) {
   g_queue.pending = 8;
   g_queue.scan_complete = true;
   snprintf(g_queue.last_error, sizeof g_queue.last_error, "INVALID_DEVICE_TOKEN");
-  SHOT(SCR_ROLL, "roll_paused");
+  SHOT_REST(SCR_ROLL, "roll_paused");
 
   /* A guest URL too long to encode: the code is shown as text instead of a
    * QR-shaped block no phone can read. */
   memset(&g_queue, 0, sizeof g_queue);
   memset(g_roll.guest_url, 'x', sizeof g_roll.guest_url - 1);
   g_roll.guest_url[sizeof g_roll.guest_url - 1] = '\0';
-  SHOT(SCR_ROLL, "roll_qr_failed");
+  SHOT_REST(SCR_ROLL, "roll_qr_failed");
 
   g_roll_active = false;
   memset(&g_queue, 0, sizeof g_queue);
@@ -1469,6 +1489,33 @@ int main(int argc, char **argv) {
   STEP(0);
 #undef FINGER
 #undef LIFT
+
+  /* -- world_roll_link: the roll opens itself to KINO ROLL --
+   *
+   * The grid is not cleared and the code is not drawn onto an empty page.
+   * The same photograph objects compress into a column, the facts move right
+   * to leave them the edge, and the code grows into the space they made. */
+  SCENE();
+  g_roll_active = true;
+  /* An earlier scene deliberately leaves an unencodable URL behind to film
+   * the fallback; this one wants the code itself. */
+  snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+  snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+  snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+  go(SCR_GALLERY, 0);
+  STEP(0);
+  STEP(600);
+  film_t0 = g_preview_clock_us;
+  go(SCR_CONNECTION, 0);
+  FILM("world_roll_link", 0); FILM("world_roll_link", 30); FILM("world_roll_link", 60);
+  FILM("world_roll_link", 100); FILM("world_roll_link", 150); FILM("world_roll_link", 220);
+  FILM("world_roll_link", 320); FILM("world_roll_link", 460); FILM("world_roll_link", 650);
+  /* ...and straight back, which must re-form the grid rather than rebuild it. */
+  film_t0 = g_preview_clock_us;
+  go(SCR_GALLERY, 0);
+  FILM("world_link_roll", 0); FILM("world_link_roll", 40); FILM("world_link_roll", 90);
+  FILM("world_link_roll", 160); FILM("world_link_roll", 260); FILM("world_link_roll", 420);
+  FILM("world_link_roll", 620);
 
   /* -- the mode strip -- */
   SCENE();

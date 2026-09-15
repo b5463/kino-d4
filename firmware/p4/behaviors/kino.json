@@ -240,6 +240,16 @@
         "label.track": [[0, 6, "hold"], [700, 6, "settle"], [1100, 0]]
       }
     },
+    "link_code": {
+      "_": "The code opens into the space the roll just made for it: a full-width sliver that rises into a square, a shade wider than it needs to be on the way, and the slug lifts under it. p1 is the posed scale, so the additive tracks read as a fraction of it whatever size the code is drawn at.",
+      "tracks": {
+        "code.alpha": [[0, 0, "snap"], [70, 255]],
+        "code.sy+": [[0, "-0.97*p1", "snap"], [300, 0]],
+        "code.sx+": [[0, "-0.14*p1", "settle"], [300, "0.05*p1", "leave"], [520, 0]],
+        "slug.alpha": [[0, 0, "hold"], [200, 0, "snap"], [360, 255]],
+        "slug.y+": [[0, 18, "spring", 5, 0.4], [480, 0]]
+      }
+    },
     "note_char": {
       "tracks": {
         "char.x": [[0, 18, "spring", 5, 0.34], [420, 0]],

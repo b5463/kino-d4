@@ -418,9 +418,18 @@ but disconnected ones.
 
 Priority order:
 
-1. SHOOT to LOOK, both ways
-2. LOOK to ROLL, both ways
-3. ROLL to LINK, both ways
+1. ~~SHOOT to LOOK, both ways~~ — **done.** `world_shoot_look`,
+   `world_look_shoot`
+2. ~~LOOK to ROLL, both ways~~ — **done.** `world_roll_look`,
+   `world_look_roll`
+3. ~~ROLL to LINK, both ways~~ — **done.** `world_roll_link`,
+   `world_link_roll`. The photographs are not cleared: the same objects
+   compress into a column at the left edge, the connection facts move
+   right and step down a size, and the code opens into the space they
+   made as a full-width sliver that rises into a square (`link_code`).
+   Returning re-forms the grid from the column rather than rebuilding
+   it. Where the pictures were going used to be spelled out beside the
+   transfer marks; the code says it, so that label is gone.
 4. capture
 5. a new capture joining ROLL
 6. transfer
