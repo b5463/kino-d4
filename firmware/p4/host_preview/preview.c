@@ -828,6 +828,16 @@ int main(int argc, char **argv) {
 
   fake_gallery();
 
+  /* The first photograph's calibration, mid-measurement. The arithmetic runs
+   * on the card and there is none here, so this is the modal it puts up while
+   * it does - which is the part a person sees and the part worth checking. */
+  s_screen = SCR_SHOOT;
+  draw_screen(); /* what is underneath: the modal does not clear the canvas */
+  s_calibrating = true;
+  draw_screen();
+  shot("calibrating");
+  s_calibrating = false;
+
   /* ---- the menu, which is the home screen ---- */
   s_pressed = -1;
   s_focus[SCR_MENU] = 0;

@@ -10,6 +10,7 @@
 #include "capture.h"
 #include "cJSON.h"
 #include "gallery.h"
+#include "calibrate.h"
 #include "conditions.h"
 #include "config_store.h"
 #include "display.h"
@@ -1411,7 +1412,9 @@ static int chrome_state(int right, int y, uint16_t ink) {
   if (n > 0) {
     const cond_sev_t sev = conditions_worst();
     const uint16_t mark = sev == COND_FAULT ? C_RED : sev == COND_WARN ? C_YELLOW : W_GRAYTEXT;
-    char cnt[8];
+    /* Sized for a full int, not for the six this can be: the compiler cannot
+     * see the bound and -Werror=format-truncation is right to insist. */
+    char cnt[16];
     snprintf(cnt, sizeof cnt, "%d", n);
     x -= 18 + text_w(&UI_FONT_S, cnt);
     text(&UI_FONT_S, x, y, cnt, ink);
@@ -3053,10 +3056,14 @@ static bool photo_open(const gallery_item_t *it) {
      * baked WebP crop and shift identically, because both compute it from
      * pure_align_plan().
      */
+    static pure_cam_offset_t dev_cal[PURE_WIGGLE_FRAMES_MAX];
+    const bool have_dev = wiggle && calib_load(dev_cal) &&
+                          pure_align_has_offset(dev_cal, PURE_WIGGLE_FRAMES_MAX);
     const pure_cam_offset_t *off =
         (wiggle && it->cal_present && pure_align_has_offset(it->cal, PURE_WIGGLE_FRAMES_MAX))
             ? it->cal
-            : NULL;
+        : have_dev ? dev_cal
+                   : NULL;
     if (gallery_frames_begin(it->id, fw, fh, C_WELL, off, &gen) == ESP_OK) s_wig_gen = gen;
   }
   return true;
@@ -4913,7 +4920,35 @@ static void draw_toast(void) {
   text_mid(&UI_FONT_S, x + w / 2, y + (h - UI_FONT_S.line_h) / 2, s_toast, W_TEXT);
 }
 
+/*
+ * The four being measured against each other, while it happens.
+ *
+ * The search is a few hundred milliseconds on this task, and a screen that
+ * stops without a word for a few hundred milliseconds is a camera that has
+ * hung. It is drawn and presented before the arithmetic starts, so the frame
+ * the user is looking at during the wait is one that says what the wait is.
+ */
+static bool s_calibrating;
+
+static void draw_calibrating(void) {
+  const int bw = 420, bh = 150;
+  const int bx = (UI_W - bw) / 2, by = (UI_H - bh) / 2;
+  fill(bx, by, bw, bh, W_FACE);
+  bevel_raised(bx, by, bw, bh);
+  fill(bx + 2, by + 2, bw - 4, 30, W_TITLE_L);
+  text(&UI_FONT_S, bx + 10, by + 8, "FIRST PHOTOGRAPH", W_SELTEXT);
+  text_mid(&UI_FONT_M, bx + bw / 2, by + 52, "Measuring the cameras", W_TEXT);
+  text_mid(&UI_FONT_S, bx + bw / 2, by + 92, "Lining the four lenses up on each other.", W_GRAYTEXT);
+  fm_cell_t st[4];
+  for (int i = 0; i < 4; i++) st[i] = FM_ON;
+  four_mark(bx + bw / 2 - 2 * 14 - 9, by + 118, 14, st, false);
+}
+
 static void draw_screen(void) {
+  if (s_calibrating) {
+    draw_calibrating();
+    return;
+  }
   switch (s_screen) {
     case SCR_MENU: draw_menu(); break;
     case SCR_SHOOT: draw_shoot(); break;
@@ -5706,6 +5741,50 @@ static uint32_t ui_pass(void) {
          * a STORAGE err_code, not a separate path - so this one call covers
          * both halves of the requirement. */
         if (!r.ok || r.stored < r.online) audio_warning();
+
+        /*
+         * The first photograph is the one that measures the four cameras
+         * against each other.
+         *
+         * ui.c has said for as long as the wigglegram player has existed that
+         * step 2 of the offset rule - the live device calibration - does not
+         * exist on this body, so every capture on every card plays untouched.
+         * This is where it starts existing, and the first frame someone
+         * actually takes is better data than any calibration card: it is
+         * pointed at something with structure in it, at a distance they
+         * chose, at the exposure they wanted.
+         *
+         * On this task, at the one moment the task has nothing else to do -
+         * the report is up, the shutter is released, and the screen is about
+         * to hold a result for two seconds anyway. Behind a modal that says
+         * so, because a few hundred milliseconds of frozen screen with no
+         * explanation is indistinguishable from a hang.
+         */
+        if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
+          s_calibrating = true;
+          draw_screen();
+          gfx_present();
+          const char *const v = config_str("shoot.viewfinder", "cam2");
+          const int ref = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
+          pure_cam_offset_t off[PURE_WIGGLE_FRAMES_MAX];
+          const int n = calib_measure(r.dir, ref, off);
+          s_calibrating = false;
+          if (n > 0 && calib_store(off, r.id) == ESP_OK) {
+            klog("P4", "calibrated %d cameras off %s: %+d,%+d %+d,%+d %+d,%+d %+d,%+d", n, r.id,
+                 (int)off[0].x, (int)off[0].y, (int)off[1].x, (int)off[1].y, (int)off[2].x,
+                 (int)off[2].y, (int)off[3].x, (int)off[3].y);
+            toast("Cameras measured");
+          } else {
+            /* Not a failure worth a warning sound: the photograph is on the
+             * card and plays the way every photograph has played until now.
+             * The condition list keeps saying they are unmeasured, and the
+             * next first-photograph-shaped moment tries again. */
+            klog("P4", "calibration measured nothing off %s", r.id);
+            toast("Could not measure the cameras");
+          }
+          draw_screen();
+          gfx_present();
+        }
       }
       /*
        * -1 is HOLD: keep the report up until someone acknowledges it.
