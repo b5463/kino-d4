@@ -10,6 +10,7 @@
 #include "capture.h"
 #include "cJSON.h"
 #include "gallery.h"
+#include "conditions.h"
 #include "config_store.h"
 #include "display.h"
 #include "esp_heap_caps.h"
@@ -1395,6 +1396,28 @@ static int chrome_state(int right, int y, uint16_t ink) {
   text(&UI_FONT_S, x, y, pwr, ink);
   x -= 18 + text_w(&UI_FONT_S, card);
   text(&UI_FONT_S, x, y, card, ink);
+
+  /*
+   * And the chip, when something is wrong: a square in the severity's colour
+   * and how many there are. It exists only when a condition does, so an
+   * unmarked bar means a camera with nothing to say - which is the reading
+   * that has to be trustworthy for the mark to be worth anything.
+   *
+   * Not a target. The whole header band goes back on every screen that has
+   * one, and a control inside a band that does something else is how a user
+   * learns to trust neither. The route is SETTINGS, which lists them.
+   */
+  const int n = conditions_count();
+  if (n > 0) {
+    const cond_sev_t sev = conditions_worst();
+    const uint16_t mark = sev == COND_FAULT ? C_RED : sev == COND_WARN ? C_YELLOW : W_GRAYTEXT;
+    char cnt[8];
+    snprintf(cnt, sizeof cnt, "%d", n);
+    x -= 18 + text_w(&UI_FONT_S, cnt);
+    text(&UI_FONT_S, x, y, cnt, ink);
+    x -= 16;
+    fill(x, y + (UI_FONT_S.line_h - 10) / 2, 10, 10, mark);
+  }
   return x;
 }
 
@@ -3761,6 +3784,53 @@ static void settings_summary(int i, char *out, size_t cap) {
   }
 }
 
+/*
+ * What is wrong with the camera, under what it is set to.
+ *
+ * This is the third of the screen that was empty grey, and conditions are the
+ * right thing to put in it: a list of settings is where someone goes to find
+ * out about the body, and the body's own state was the one thing they could
+ * not find out there. No new screen, because a screen needs a baked title
+ * bitmap and the baker is a Playwright job with a hard-coded path on somebody
+ * else's desktop - which is its own finding, and why this is in the space the
+ * list already had rather than behind a sixth row.
+ *
+ * When nothing is wrong it says so. A status area that is blank when all is
+ * well is indistinguishable from one that is broken.
+ */
+#define SET_ST_Y (LIST_Y + 5 * ROW_H + 18)
+#define SET_ST_H (UI_H - 12 - SET_ST_Y)
+
+static void draw_settings_status(void) {
+  const int n = conditions_count();
+  char legend[24];
+  if (n > 0) snprintf(legend, sizeof legend, "STATUS");
+  else snprintf(legend, sizeof legend, "STATUS");
+  group_box(LIST_X - 8, SET_ST_Y, LIST_W + 16, SET_ST_H, legend, W_TEXT,
+            n > 0 ? NULL : "Nothing to report");
+
+  const int top = SET_ST_Y + 22;
+  const int row = 26;
+  /* Three at most: the box is a third of a screen, and a camera with four
+   * things wrong needs a service centre, not a longer list. The count in the
+   * chip is the whole truth; this is the part that fits. */
+  const int show = n < 3 ? n : 3;
+  for (int i = 0; i < show; i++) {
+    const cond_t *c = conditions_at(i);
+    const int y = top + i * row;
+    const uint16_t mark = c->sev == COND_FAULT ? C_RED : c->sev == COND_WARN ? C_YELLOW : W_SHADOW;
+    fill(LIST_X + 2, y + (UI_FONT_S.line_h - 10) / 2, 10, 10, mark);
+    const int tx = LIST_X + 20;
+    text(&UI_FONT_S, tx, y, c->title, W_TEXT);
+    text(&UI_FONT_S, tx + 240, y, c->detail, W_GRAYTEXT);
+  }
+  if (n > show) {
+    char more[32];
+    snprintf(more, sizeof more, "and %d more", n - show);
+    text(&UI_FONT_S, LIST_X + 20, top + show * row, more, W_GRAYTEXT);
+  }
+}
+
 static void draw_settings(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_SETTINGS);
@@ -3771,6 +3841,7 @@ static void draw_settings(void) {
     draw_row(LIST_Y + i * ROW_H, foc(SCR_SETTINGS, i), s_pressed == i, true, SET_ROWS[i],
              v[0] ? v : NULL, true);
   }
+  draw_settings_status();
 }
 
 /* --- Display ------------------------------------------------------ */
@@ -5493,6 +5564,24 @@ static uint32_t ui_pass(void) {
     /* Physical keys first: they were recorded on the buttons task and this
      * is the task that owns the canvas and the compositor. */
     drain_buttons();
+
+    /*
+     * The conditions, on a slow schedule of their own.
+     *
+     * Never in a draw: about_cameras() holds camlink's channel lock across a
+     * round trip, is cached for two seconds for exactly that reason, and the
+     * chip these feed is on every screen at every repaint. Two seconds is
+     * also as fast as any of this changes - a node does not come back, a card
+     * does not fill and a clock does not get set between two frames.
+     */
+    {
+      static int64_t scan_us;
+      const int64_t now_us = esp_timer_get_time();
+      if (scan_us == 0 || now_us - scan_us > 2000000) {
+        scan_us = now_us;
+        conditions_scan(about_cameras());
+      }
+    }
 
     uint16_t tx = 0, ty = 0;
     int region = -1;

@@ -24,6 +24,7 @@
 
 #include "buttons.h"
 #include "cam_link.h"
+#include "clock.h"
 #include "capture.h"
 #include "gallery.h"
 #include "gfx.h"
@@ -626,6 +627,15 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
  * the mount failure when it is not, and those are different layouts. */
 static bool g_card_mounted = true;
 
+/* The preview stands in for a body that has been plugged into Studio, so its
+ * clock has a source and the screens that report one have something to
+ * report. `g_clock_source` is here so a shot can ask for the other state -
+ * the one a camera out of the box is in, where the date is honestly unknown
+ * and every capture is dated from power on. */
+static clock_source_t g_clock_source = CLOCK_HOST;
+clock_source_t clock_source(void) { return g_clock_source; }
+void clock_iso8601(char *out, size_t cap) { snprintf(out, cap, "2026-09-16T18:42:11+02:00"); }
+
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
   if (!g_card_mounted) {
@@ -786,6 +796,15 @@ static void shot(const char *name) {
   write_ppm(path, g_canvas, UI_W, UI_H);
 }
 
+/* The conditions, before a screen is drawn. On the camera this runs on the UI
+ * loop's own two-second schedule; here there is no loop, so every shot takes
+ * its own reading and the pictures agree with the device state they were
+ * rendered from. Without it the cache is empty and every screenshot claims a
+ * camera with nothing wrong - which, with two nodes offline and two node
+ * versions apart in the stubs above, would be the one thing these pictures
+ * exist to catch. */
+static void scan_conditions(void) { conditions_scan(about_cameras()); }
+
 int main(int argc, char **argv) {
   snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
 
@@ -802,6 +821,7 @@ int main(int argc, char **argv) {
 #define SHOT(scr, name)      \
   do {                       \
     s_screen = (scr);        \
+    scan_conditions();       \
     draw_screen();           \
     shot(name);              \
   } while (0)
@@ -875,6 +895,7 @@ int main(int argc, char **argv) {
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
   g_stage = CAPTURE_READING;
+  scan_conditions();
   draw_screen();
   shot("capture_running");
 
@@ -886,15 +907,18 @@ int main(int argc, char **argv) {
   g_report.online = 4;
   g_report.bytes = 1043 * 1024;
   g_report.total_ms = 3120;
+  scan_conditions();
   draw_screen();
   shot("capture_saved");
 
   g_report.stored = 3;
+  scan_conditions();
   draw_screen();
   shot("capture_partial");
 
   g_report.ok = false;
   snprintf(g_report.err_code, sizeof g_report.err_code, "CARD FULL");
+  scan_conditions();
   draw_screen();
   shot("capture_failed");
   g_stage = CAPTURE_IDLE;
@@ -1133,6 +1157,7 @@ int main(int argc, char **argv) {
   s_screen = SCR_POWER;
   s_dialog = DLG_RESTART;
   s_dlg_focus = 0;
+  scan_conditions();
   draw_screen();
   shot("power_restart_confirm");
   s_dialog = DLG_NONE;
@@ -1155,7 +1180,8 @@ int main(int argc, char **argv) {
     s_focus[SCR_PHOTO] = P_IT_DELETE;
     s_dialog = DLG_DELETE;
     s_dlg_focus = 0;
-    draw_screen();
+    scan_conditions();
+  draw_screen();
     shot("photo_delete_confirm");
     s_dialog = DLG_NONE;
     photo_release();
@@ -1275,6 +1301,7 @@ int main(int argc, char **argv) {
    * the control that raised it, and this shot is the one that showed it. */
   s_screen = SCR_MENU;
   toast("Mode: Quad");
+  scan_conditions();
   draw_screen();
   shot("toast");
 
@@ -1283,6 +1310,7 @@ int main(int argc, char **argv) {
    * that it lands between PREV and NEXT rather than on either. */
   s_screen = SCR_GALLERY;
   toast("Card busy");
+  scan_conditions();
   draw_screen();
   shot("toast_gallery");
 
