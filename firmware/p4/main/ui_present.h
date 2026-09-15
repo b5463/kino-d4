@@ -37,6 +37,29 @@ static const char *const SCREEN_NAME[SCR_COUNT] = {
 static bool mo_any_live(void) { return s_kmo_live > 0; }
 static void draw_screen(void);
 static void sync_brand_leaving(void);
+
+/*
+ * A swipe is not a threshold that fires a canned transition. The world is
+ * displaced by the finger as it travels, so at a fifth of the way across the
+ * scene is already a fifth of the way into the next state, and a gesture
+ * abandoned halfway simply comes back. On release the pose snaps to whichever
+ * state was chosen and continuity absorbs the difference, carrying the
+ * finger's own speed into the settle - which is why a flick and a drag do not
+ * land the same way.
+ */
+#define DRAG_FULL 220.f   /* px of travel that is a whole state change */
+#define HDR_TRAVEL 170.f  /* how far the mode's word travels across a change */
+static float s_drag_dx;   /* the live displacement, 0 when nothing is dragging */
+static int s_drag_dir;    /* which way the world would go if released now */
+
+/** -1..1: how far the world has been taken toward the next state. */
+static float drag_u(void) {
+  float u = s_drag_dx / DRAG_FULL;
+  if (u < -1.f) u = -1.f;
+  if (u > 1.f) u = 1.f;
+  return u;
+}
+
 #define SH_SHOW_FIRST_MS 2600
 #define SH_SHOW_MS 1600
 static int s_sh_show_ms = SH_SHOW_FIRST_MS;
@@ -277,8 +300,10 @@ static void row_close(void) {
 static void sync_title(bool over_picture, ks_node_t *parent) {
   const kmode_t m = mode_of(s_screen);
   const bool home = MODES[m].home == s_screen;
+  /* The word leads the finger and travels further than the picture does. */
+  const float lead = home ? drag_u() * HDR_TRAVEL : 0.f;
   ks_node_t *t = nd_text("title", home ? MODE_NAME[m] : SCREEN_NAME[s_screen], &UT_MB, C_INK,
-                         home ? (float)HDR_X : (float)HDR_X + 44.f, (float)HDR_Y, 0.f, 0.f, 70, over_picture);
+                         (home ? (float)HDR_X : (float)HDR_X + 44.f) + lead, (float)HDR_Y, 0.f, 0.f, 70, over_picture);
   ks_parent(t, parent);
   ks_pose(t, KC_ALPHA, 255.f);
   if (!home) {
@@ -298,7 +323,7 @@ static void sync_title(bool over_picture, ks_node_t *parent) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Navigation: the title carries the change                            */
+/* Navigation: the finger moves the world, and the release finishes it  */
 
 static void sh_reveal(void);
 static void look_show_id(void);
@@ -320,29 +345,52 @@ static void go(screen_t s, int dissolve_ms) {
   gfx_present();
 }
 
-static void mode_go(kmode_t to, int dir) {
+/**
+ * Move to another mode. `vel` is the finger's speed at release in px/ms, 0
+ * when nothing was dragged.
+ *
+ * A mode change the finger already performed does not play the canned clip:
+ * the world is where the gesture left it, the pose becomes the new state's,
+ * and continuity carries it the rest of the way with the release velocity
+ * pushed into it. A mode change from a tap has no such momentum to inherit,
+ * so it gets the authored move instead.
+ */
+static void mode_go_vel(kmode_t to, int dir, float vel) {
   const kmode_t from = mode_of(s_screen);
   if (to == from) return;
-  /* The word that leaves is a second object with the old name; the title
-   * itself becomes the new word and arrives with momentum. Interrupting this
-   * mid-flight retargets both through continuity. */
-  ks_node_t *out = nd_text("title.out", MODE_NAME[from], &UT_MB, C_INK, (float)HDR_X, (float)HDR_Y, 0.f, 0.f, 70,
-                           to == MODE_SHOOT || from == MODE_SHOOT);
-  ks_snap(out);
   ks_node_t *t = ks_peek("title");
-  ks_node_t *ns[2] = {t, out};
-  const char *rs[2] = {"title", "out"};
-  const float params[4] = {(float)dir, 0, 0, 0};
-  ks_stop_tag("mode");
-  ks_play(KCLIP_MODE_MOVE, "mode", params, ns, rs, 2);
+  if (vel == 0.f) {
+    /* The word that leaves is a second object with the old name; the title
+     * itself becomes the new word and arrives with momentum. Interrupting
+     * this mid-flight retargets both through continuity. */
+    ks_node_t *out = nd_text("title.out", MODE_NAME[from], &UT_MB, C_INK, (float)HDR_X, (float)HDR_Y, 0.f, 0.f, 70,
+                             to == MODE_SHOOT || from == MODE_SHOOT);
+    ks_snap(out);
+    ks_node_t *ns[2] = {t, out};
+    const char *rs[2] = {"title", "out"};
+    const float params[4] = {(float)dir, 0, 0, 0};
+    ks_stop_tag("mode");
+    ks_play(KCLIP_MODE_MOVE, "mode", params, ns, rs, 2);
+  } else {
+    /* Whatever the canned move was doing, the finger has superseded it. */
+    ks_stop_tag("mode");
+    if (t) ks_impulse(t, KC_X, -vel * 0.9f);
+    ks_node_t *g = ks_peek("finder");
+    if (g) ks_impulse(g, KC_X, -vel * 0.35f);
+    ks_node_t *gr = ks_peek("grid");
+    if (gr) ks_impulse(gr, KC_X, -vel * 0.45f);
+  }
   go(MODES[to].home, 0);
 }
 
-static void mode_swipe(int dir) {
+static void mode_go(kmode_t to, int dir) { mode_go_vel(to, dir, 0.f); }
+
+/** One step along the row of modes; `vel` is the finger's speed, 0 for a tap. */
+static void mode_swipe_vel(int dir, float vel) {
   const int cur = (int)mode_of(s_screen);
   const int next = cur + dir;
   if (next < 0 || next >= MODE_COUNT) return;
-  mode_go((kmode_t)next, dir);
+  mode_go_vel((kmode_t)next, dir, vel);
 }
 
 /* ------------------------------------------------------------------ */
@@ -383,7 +431,9 @@ static void sync_shoot(void) {
    * so the group's scale and rotation - the result landing - act about the
    * centre and the panes inherit them. */
   ks_node_t *g = nd("finder", KS_GROUP);
-  ks_place(g, UI_W * 0.5f, UI_H * 0.5f, 0.f, 0.f);
+  /* The picture follows the finger at a fraction of it: the world moves, but
+   * the thing you are looking through moves least. */
+  ks_place(g, UI_W * 0.5f + drag_u() * 90.f, UI_H * 0.5f, 0.f, 0.f);
   g->z = 0;
   int live = 0;
   bool has[4] = {false, false, false, false};
@@ -735,7 +785,7 @@ static void sync_gallery(void) {
   }
 
   ks_node_t *grid = nd("grid", KS_GROUP);
-  ks_place(grid, 0.f, 0.f, 0.f, 0.f);
+  ks_place(grid, drag_u() * 110.f, 0.f, 0.f, 0.f);
   /* The grid is clipped to below the header, so a turning page slides in
    * under the title rather than across it. */
   ks_pose(grid, KC_MX0, 0.f);

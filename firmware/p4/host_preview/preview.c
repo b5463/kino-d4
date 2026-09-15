@@ -1350,16 +1350,78 @@ int main(int argc, char **argv) {
   SCENE();
   go(SCR_SHOOT, 0);
   STEP(0);
-  mode_swipe(1);
+  mode_swipe_vel(1, 0.f);
   FILM("swipe", 0); FILM("swipe", 16); FILM("swipe", 40); FILM("swipe", 70); FILM("swipe", 100); FILM("swipe", 140);
   FILM("swipe", 190); FILM("swipe", 250); FILM("swipe", 320); FILM("swipe", 420); FILM("swipe", 560);
   SCENE();
-  mode_swipe(1);
+  mode_swipe_vel(1, 0.f);
   FILM("rapid", 0); FILM("rapid", 40); FILM("rapid", 80);
-  mode_swipe(1);
+  mode_swipe_vel(1, 0.f);
   FILM("rapid", 90); FILM("rapid", 120); FILM("rapid", 160);
-  mode_swipe(-1);
+  mode_swipe_vel(-1, 0.f);
   FILM("rapid", 170); FILM("rapid", 200); FILM("rapid", 240); FILM("rapid", 300); FILM("rapid", 400); FILM("rapid", 560); FILM("rapid", 800);
+
+  /* -- world_drag: the finger carries the world, and the release finishes it --
+   *
+   * Three gestures on the same screen. A slow drag most of the way across,
+   * which commits. A drag a third of the way that is let go, which comes back.
+   * And a short fast flick, which commits on speed rather than distance.
+   * The point of the films is the frames DURING the gesture: the world should
+   * already be part of the way into the next state, in proportion to the
+   * finger. */
+#define FINGER(fx, at_ms)                                          \
+  do {                                                             \
+    g_touch_down = true;                                           \
+    g_touch_lx = (fx);                                             \
+    g_touch_ly = UI_H / 2;                                         \
+    FILM(dragname, at_ms);                                         \
+  } while (0)
+#define LIFT(at_ms)                                                \
+  do {                                                             \
+    g_touch_down = false;                                          \
+    FILM(dragname, at_ms);                                         \
+  } while (0)
+
+  {
+    const char *dragname = "world_drag_slow";
+    SCENE();
+    go(SCR_SHOOT, 0);
+    s_sh_words_up = false;
+    STEP(0);
+    FINGER(600, 0); FINGER(560, 60); FINGER(500, 120); FINGER(440, 180);
+    FINGER(380, 240); FINGER(330, 300); FINGER(300, 360);
+    LIFT(400);
+    FILM(dragname, 460); FILM(dragname, 540); FILM(dragname, 660); FILM(dragname, 820);
+  }
+  {
+    const char *dragname = "world_drag_return";
+    SCENE();
+    go(SCR_SHOOT, 0);
+    s_sh_words_up = false;
+    STEP(0);
+    FINGER(600, 0); FINGER(560, 60); FINGER(530, 120); FINGER(520, 200); FINGER(518, 300);
+    LIFT(360);
+    FILM(dragname, 420); FILM(dragname, 500); FILM(dragname, 620); FILM(dragname, 780);
+  }
+  {
+    /* Eighty pixels, short of the ninety that commit on distance alone,
+     * thrown at 2 px/ms, which is well over the speed that commits. The world
+     * has barely moved when the finger leaves and still lands on the next
+     * state, carrying the throw into the settle. */
+    const char *dragname = "world_drag_flick";
+    SCENE();
+    go(SCR_SHOOT, 0);
+    s_sh_words_up = false;
+    STEP(0);
+    FINGER(600, 0); FINGER(565, 16); FINGER(520, 32);
+    LIFT(40);
+    FILM(dragname, 70); FILM(dragname, 110); FILM(dragname, 170); FILM(dragname, 260); FILM(dragname, 400);
+    FILM(dragname, 600);
+  }
+  g_touch_down = false;
+  STEP(0);
+#undef FINGER
+#undef LIFT
 
   /* -- the mode strip -- */
   SCENE();
@@ -1499,7 +1561,7 @@ int main(int argc, char **argv) {
   ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_ENERGY, "YES.");
   film_t0 = g_preview_clock_us;
   FILM("capleave", 0); FILM("capleave", 120);
-  mode_swipe(1);
+  mode_swipe_vel(1, 0.f);
   FILM("capleave", 130); FILM("capleave", 170); FILM("capleave", 240); FILM("capleave", 340); FILM("capleave", 500);
   g_stage = CAPTURE_IDLE;
 
@@ -1507,7 +1569,7 @@ int main(int argc, char **argv) {
   SCENE();
   go(SCR_SHOOT, 0);
   STEP(0);
-  mode_swipe(1);
+  mode_swipe_vel(1, 0.f);
   FILM("ctx", 0); FILM("ctx", 80);
   ui_run_clip(KEV_LINK_CONNECTED, KCLIP_LINK_CONNECTED, "CONNECTED");
   FILM("ctx", 100); FILM("ctx", 140); FILM("ctx", 200); FILM("ctx", 280); FILM("ctx", 400); FILM("ctx", 600); FILM("ctx", 900); FILM("ctx", 1400); FILM("ctx", 1750);
@@ -1594,8 +1656,8 @@ int main(int argc, char **argv) {
   SCENE();
   go(SCR_SHOOT, 0);
   STEP(0);
-  mode_swipe(1);
-  mode_swipe(-1);
+  mode_swipe_vel(1, 0.f);
+  mode_swipe_vel(-1, 0.f);
   row_open(g_preview_clock_us);
   g_stage = CAPTURE_READING; STEP(10); g_frames_in = 15; s_capw.reported = true; g_stage = CAPTURE_DONE; STEP(20);
   ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_FOUR_MERGE, "GOT IT.");

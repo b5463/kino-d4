@@ -484,9 +484,14 @@ marks a change of state, not because something is always performing.
   data flows through at the authored timings and late data holds each pane
   where it is while the procedural layer keeps it breathing. Filmed as
   `world_delayed_data`.
-- **Gesture-driven transforms**, with displacement and release velocity
-  as inputs. Release velocity already feeds mood; the transform itself is
-  still canned.
+- ~~**Gesture-driven transforms**, with displacement and release velocity
+  as inputs.~~ **Done.** The world is displaced by the finger as it
+  travels: the mode's word leads, the picture follows at a fraction, and
+  the ends of the row resist. The release only chooses which state the
+  world was already heading for and lends it the finger's speed through an
+  impulse, so a flick and a drag do not settle the same way; a gesture let
+  go halfway comes back from where it is. Committing is distance OR speed.
+  Filmed as `world_drag_slow`, `world_drag_return` and `world_drag_flick`.
 - **Cross-state object identity**, so a scene object survives a mode
   change and changes role: live region, captured frame, selected
   photograph, roll thumbnail, transfer item.
@@ -534,7 +539,14 @@ world_capture         full capture from the live state
 world_capture_roll    the result becomes the newest roll object
 world_transfer        photographs respond to real transfer progress
 world_delayed_data    late capture data, behaviour stays coherent
+world_drag_slow       the finger carries the world across, and commits
+world_drag_return     a gesture let go halfway, coming back from where it is
+world_drag_flick      short and fast: commits on speed, not distance
 ```
+
+The three drag films exist because the requirement is about the frames
+*during* the gesture, not the ones after it. If the world only moves on
+release, the films look identical to the old canned transition.
 
 ### Test with difficult photography
 

@@ -2052,24 +2052,58 @@ static uint32_t ui_pass(void) {
       }
     }
     if (down && g_moved) region = -1; /* a travelling finger presses nothing */
+    {
+      /* The world follows the finger from the moment the gesture is clearly
+       * horizontal, not from the moment it is released. A drag that is mostly
+       * vertical, or one on a screen that is not a mode's home, moves
+       * nothing sideways. */
+      const int dx = lx - g_down_x, dy = ly - g_down_y;
+      const bool sideways = down && g_moved && (dx > 0 ? dx : -dx) > (dy > 0 ? dy : -dy) &&
+                            s_dialog == DLG_NONE && !s_row_open &&
+                            MODES[mode_of(s_screen)].home == s_screen;
+      const float was = s_drag_dx;
+      s_drag_dx = sideways ? (float)dx : 0.f;
+      /* At the ends of the row there is nowhere to go, so the world resists
+       * rather than travelling toward a state that does not exist. */
+      const int cur = (int)mode_of(s_screen);
+      if ((s_drag_dx > 0.f && cur == 0) || (s_drag_dx < 0.f && cur == MODE_COUNT - 1)) s_drag_dx *= 0.25f;
+      s_drag_dir = s_drag_dx < 0.f ? 1 : s_drag_dx > 0.f ? -1 : 0;
+      if (s_drag_dx != was) {
+        draw_screen();
+        gfx_present();
+      }
+    }
     if (!down && g_prev_down && g_moved) {
       const int dx = g_last_x - g_down_x, dy = g_last_y - g_down_y;
       const bool quick = now - g_down_us < 600000;
-      if (quick && (dx > GEST_SWIPE || dx < -GEST_SWIPE) && dy < GEST_RISE && dy > -GEST_RISE &&
-          s_dialog == DLG_NONE) {
-        const int gest_ms = (int)((now - g_down_us) / 1000);
-        klog("P4", "swipe %d px in %d ms", dx, gest_ms);
+      const int gest_ms = (int)((now - g_down_us) / 1000);
+      const float speed = gest_ms > 0 ? (float)(dx < 0 ? -dx : dx) / (float)gest_ms : 0.f;
+      /* Committed either by travelling far enough or by being thrown hard
+       * enough. A slow drag most of the way across counts; so does a flick
+       * that never got there. */
+      const bool committed = (dx > GEST_SWIPE || dx < -GEST_SWIPE) || speed > 1.4f;
+      if (quick && committed && dy < GEST_RISE && dy > -GEST_RISE && s_dialog == DLG_NONE) {
+        klog("P4", "swipe %d px in %d ms (%d px/s)", dx, gest_ms, (int)(speed * 1000.f));
         /* How fast the finger moved is an input, not a threshold that was
          * crossed: a flick and a drag should not settle identically. */
-        if (gest_ms > 0) kmood_gesture((float)(dx < 0 ? -dx : dx) / (float)gest_ms);
+        kmood_gesture(speed);
         if (s_row_open) row_close();
-        mode_swipe(dx < 0 ? 1 : -1);
+        /* The world is already where the finger left it; the release only
+         * chooses which state it is heading for and lends it the speed. */
+        s_drag_dx = 0.f;
+        mode_swipe_vel(dx < 0 ? 1 : -1, speed);
       } else if (quick && (dy > GEST_SWIPE || dy < -GEST_SWIPE) && dx < GEST_RISE && dx > -GEST_RISE &&
                  s_dialog == DLG_NONE && !s_row_open) {
         /* Up and down is the screen's own: the gallery turns its pages. */
         if (s_screen == SCR_GALLERY) gal_turn(dy < 0 ? 1 : -1);
       }
       g_moved = false;
+      if (s_drag_dx != 0.f) {
+        /* Not committed: the world simply comes back, from where it is. */
+        s_drag_dx = 0.f;
+        draw_screen();
+        gfx_present();
+      }
     }
     if (down) {
       g_last_x = lx;
