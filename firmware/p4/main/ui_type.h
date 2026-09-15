@@ -130,6 +130,9 @@ static void ut_mid(const ut_face_t *f, int cx, int top, const char *s, uint16_t 
 #define UT_MASK_W 1024
 #define UT_MASK_H 40
 static uint8_t *s_ut_mask;
+/* The same mask grown by a pixel, for type that has to be read over a
+ * photograph. See ut_halo(). */
+static uint8_t *s_ut_halo;
 static int s_ut_mask_w, s_ut_mask_h;
 
 static void ut_mask_put(int x, int y, int a) {
@@ -179,6 +182,78 @@ static bool ut_raster(const ut_face_t *f, const char *s) {
   return x > 0;
 }
 
+/**
+ * Grow the rasterised mask by one pixel in every direction.
+ *
+ * A drop shadow is a legibility device for type on a dark ground: it puts
+ * dark under the glyph, down and to the right. Over a photograph it does
+ * nothing at all where the picture is already bright - white type on a blown
+ * window, or on a crowd, has no edge and simply disappears, which the harness
+ * now films in `hard_bright_shoot` and `hard_busy_shoot`. What survives any
+ * ground is a contour: dark all the way round the letter, so the glyph's own
+ * edge is drawn rather than left to whatever is behind it.
+ *
+ * Grown once per string into its own buffer rather than as extra taps per
+ * output pixel, because the mask is smaller than the area it is drawn over
+ * whenever the type is scaled up - and the words that need this most are the
+ * large ones. Separable: a max across, then a max down, is the same as the
+ * square kernel for a fraction of the reads.
+ *
+ * Two pixels, not one. The white pass that follows is antialiased, and its
+ * own soft edge covers about a pixel of whatever is under it: a one pixel
+ * contour is drawn and then painted over, which is what the first attempt at
+ * this did - visible only as a slightly different white on white.
+ */
+#define UT_HALO 2
+
+static bool ut_halo(void) {
+  if (s_ut_halo == NULL) {
+    s_ut_halo = heap_caps_malloc(UT_MASK_W * UT_MASK_H, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_ut_halo == NULL) s_ut_halo = malloc(UT_MASK_W * UT_MASK_H);
+    if (s_ut_halo == NULL) return false;
+  }
+  const int w = s_ut_mask_w, h = s_ut_mask_h;
+  for (int y = 0; y < h; y++) {
+    const uint8_t *m = &s_ut_mask[y * UT_MASK_W];
+    uint8_t *o = &s_ut_halo[y * UT_MASK_W];
+    for (int x = 0; x < w; x++) {
+      uint8_t v = 0;
+      const int lo = x - UT_HALO < 0 ? 0 : x - UT_HALO, hi = x + UT_HALO >= w ? w - 1 : x + UT_HALO;
+      for (int k = lo; k <= hi; k++)
+        if (m[k] > v) v = m[k];
+      o[x] = v;
+    }
+  }
+  /* Down the same buffer, so the column is read into a window first. */
+  uint8_t col[UT_MASK_H];
+  for (int x = 0; x < w; x++) {
+    for (int y = 0; y < h; y++) col[y] = s_ut_halo[y * UT_MASK_W + x];
+    for (int y = 0; y < h; y++) {
+      uint8_t v = 0;
+      const int lo = y - UT_HALO < 0 ? 0 : y - UT_HALO, hi = y + UT_HALO >= h ? h - 1 : y + UT_HALO;
+      for (int k = lo; k <= hi; k++)
+        if (col[k] > v) v = col[k];
+      s_ut_halo[y * UT_MASK_W + x] = v;
+    }
+  }
+  return true;
+}
+
+/** Bilinear sample of `buf` at (ux, uy) in mask pixels; 0 outside. */
+static inline int ut_sample_of(const uint8_t *buf, float ux, float uy) {
+  const float fx = ux - 0.5f, fy = uy - 0.5f;
+  const int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
+  const float tx = fx - (float)x0, ty = fy - (float)y0;
+  int a00 = 0, a10 = 0, a01 = 0, a11 = 0;
+  const int w = s_ut_mask_w, h = s_ut_mask_h;
+  if ((unsigned)x0 < (unsigned)w && (unsigned)y0 < (unsigned)h) a00 = buf[y0 * UT_MASK_W + x0];
+  if ((unsigned)(x0 + 1) < (unsigned)w && (unsigned)y0 < (unsigned)h) a10 = buf[y0 * UT_MASK_W + x0 + 1];
+  if ((unsigned)x0 < (unsigned)w && (unsigned)(y0 + 1) < (unsigned)h) a01 = buf[(y0 + 1) * UT_MASK_W + x0];
+  if ((unsigned)(x0 + 1) < (unsigned)w && (unsigned)(y0 + 1) < (unsigned)h) a11 = buf[(y0 + 1) * UT_MASK_W + x0 + 1];
+  const float top = a00 + (a10 - a00) * tx, bot = a01 + (a11 - a01) * tx;
+  return (int)(top + (bot - top) * ty + 0.5f);
+}
+
 /** Bilinear sample of the mask at (ux, uy) in mask pixels; 0 outside. */
 static inline int ut_sample(float ux, float uy) {
   const float fx = ux - 0.5f, fy = uy - 0.5f;
@@ -206,6 +281,10 @@ static void ut_fx2(const ut_face_t *f, float cx, float cy, const char *s, float 
   if (alpha <= 0 || sx <= 0.f || sy <= 0.f) return;
   if (alpha > 255) alpha = 255;
   if (!ut_raster(f, s)) return;
+  /* `shadow` means "this is over a picture". What it gets is a contour, which
+   * is the only thing that survives a ground that might be black in one place
+   * and blown out in the next. */
+  const bool halo = shadow && ut_halo();
   const int mw = s_ut_mask_w, mh = s_ut_mask_h;
 
   const float rad = rot_deg * 3.14159265f / 180.f;
@@ -226,9 +305,12 @@ static void ut_fx2(const ut_face_t *f, float cx, float cy, const char *s, float 
   const int passes = shadow ? 2 : 1;
   for (int pass = 0; pass < passes; pass++) {
     const bool is_shadow = shadow && pass == 0;
-    const float ox = is_shadow ? 1.5f * sx : 0.f, oy = is_shadow ? 1.5f * sy : 0.f;
+    /* Still offset a little, so it reads as a letter with weight under it
+     * rather than as a sticker cut out of the picture. */
+    const float ox = is_shadow ? 0.7f * sx : 0.f, oy = is_shadow ? 0.7f * sy : 0.f;
     const uint16_t col = is_shadow ? (uint16_t)0x0841 : ink;
-    const int a_run = is_shadow ? (alpha * 3) / 5 : alpha;
+    const int a_run = is_shadow ? (alpha * 4) / 5 : alpha;
+    const uint8_t *src = (is_shadow && halo) ? s_ut_halo : s_ut_mask;
     for (int y = y0; y < y1; y++) {
       uint16_t *row = s_cv + (size_t)y * UI_W;
       const float dy = (float)y + 0.5f - cy - oy;
@@ -241,7 +323,7 @@ static void ut_fx2(const ut_face_t *f, float cx, float cy, const char *s, float 
         if (rgb == 0 || is_shadow) {
           const float ux = bx * ix + mw * 0.5f;
           if (ux < -1.f || ux > mw + 1.f) continue;
-          const int cov = ut_sample(ux, uy);
+          const int cov = ut_sample_of(src, ux, uy);
           if (cov == 0) continue;
           const int a = (cov * a_run) >> 8;
           if (a >= 255) row[x] = col;
@@ -249,7 +331,7 @@ static void ut_fx2(const ut_face_t *f, float cx, float cy, const char *s, float 
         } else {
           /* Three samples, one per channel, the ink split by the same amount. */
           const float uxr = (bx - (float)rgb) * ix + mw * 0.5f, uxg = bx * ix + mw * 0.5f, uxb = (bx + (float)rgb) * ix + mw * 0.5f;
-          const int cr = ut_sample(uxr, uy), cg = ut_sample(uxg, uy), cb = ut_sample(uxb, uy);
+          const int cr = ut_sample_of(src, uxr, uy), cg = ut_sample_of(src, uxg, uy), cb = ut_sample_of(src, uxb, uy);
           if (cr == 0 && cg == 0 && cb == 0) continue;
           const uint16_t d = row[x];
           const uint16_t mr = mix(d, col, (cr * a_run) >> 8), mg = mix(d, col, (cg * a_run) >> 8), mb = mix(d, col, (cb * a_run) >> 8);

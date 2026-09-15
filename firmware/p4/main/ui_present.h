@@ -1286,6 +1286,12 @@ static void sync_rule(void) {
   ks_node_t *g = nd("finder", KS_GROUP);
   ks_place(g, UI_W * 0.5f, (float)(NR_Y0 - 14), 0.f, 0.f);
   g->z = 0;
+  /* A hairline under the four, for the same reason type over a picture gets a
+   * contour: a rule made of a dark room is black on black, and the structure
+   * the settings hang from cannot be allowed to depend on the lighting. */
+  ks_node_t *e = nd_rect("rule.edge", -(KSURF_RULE_W * 0.5f) - 1.f, -(KSURF_RULE_H * 0.5f) - 1.f,
+                         KSURF_RULE_W + 2.f, KSURF_RULE_H + 2.f, RGB(0x2a, 0x30, 0x38), -1);
+  ks_parent(e, g);
   bool has[4] = {false, false, false, false};
   sync_camera_surface(g, KSURF_RULE, has);
 }

@@ -655,10 +655,41 @@ release, the films look identical to the old canned transition.
 
 ### Test with difficult photography
 
-Not just attractive samples. A dark frame, an overexposed one, high
+~~Not just attractive samples. A dark frame, an overexposed one, high
 motion, a flat beige wall, a face close-up, a crowded party, a nearly
 black frame, a heavily saturated scene. The system has to hold up when
-the photography itself is visually difficult.
+the photography itself is visually difficult.~~ **Done.** Six rooms an
+interface never gets shown in a portfolio - dark, blown out, a beige
+wall, a red-lit room, a face against a window, a crowd - and the finder,
+a capture, the roll, the sharing screen and the settings rule shot in
+each (`hard_*`). They are synthetic, but their statistics are the ones
+that matter, and the harness reports what the camera made of each room
+beside the picture.
+
+It found three real defects, none of them visible on a pleasant
+gradient:
+
+- **`over_picture` had never drawn anything.** Static text at its
+  natural size takes a fast path that blits glyphs straight from the
+  font with no mask behind it, so it silently dropped every shadow the
+  interface asked for - and that is exactly the text that sits on the
+  picture. Shadowed text now takes the path that can draw one.
+- **A drop shadow is the wrong device over photography.** It puts dark
+  down and to the right, which does nothing where the picture is
+  already bright: white type on a blown window or a crowd has no edge
+  at all. It is now a two pixel contour, grown from the glyph mask once
+  per string. One pixel is not enough - the white pass that follows is
+  antialiased and its own soft edge paints over it.
+- **The settings rule is black on black in a dark room.** The structure
+  the settings hang from cannot depend on the lighting, so it carries a
+  hairline of its own, for the same reason and in the same spirit as
+  the contour.
+
+It also found that the harness's own white frame marker pinned `ksense`
+contrast at full range in every preview run, because contrast is the
+distance between the darkest and brightest sample and one white pixel in
+the grid is enough. The difficult frames carry a marker inside their own
+range instead.
 
 ### Do not polish the wrong layer
 

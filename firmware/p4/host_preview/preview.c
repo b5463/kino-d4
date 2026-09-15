@@ -435,6 +435,112 @@ static uint16_t g_tile[GALLERY_PAGE][GALLERY_TILE_W * GALLERY_TILE_H];
 static gallery_item_t g_slot[GALLERY_PAGE];
 static int g_fake_total = 14;
 
+/* ---- difficult photography ---------------------------------------------
+ *
+ * The gradients everything else is shot on are pleasant, evenly exposed and
+ * full of contrast, which is exactly the photography an interface never has
+ * to survive. These are the frames that break things: a room with nothing in
+ * it, a window that has blown out, a beige wall, a face lit from behind, a
+ * crowd. They are synthetic - no screenshot from this tool should ever be
+ * mistakable for a sensor frame - but their statistics are the ones that
+ * matter: where the luminance sits, how much range there is, how much the
+ * four cameras disagree, and whether white text on a shadow can still be read
+ * over the top of it.
+ *
+ * Each camera gets a slightly different exposure and framing of the same
+ * scene, because four sensors on four mounts never agree, and that
+ * disagreement is a signal ksense.h reads.
+ */
+enum { HARD_DARK, HARD_BRIGHT, HARD_FLAT, HARD_SATURATED, HARD_BACKLIT, HARD_BUSY, HARD_COUNT };
+static const char *const HARD_NAME[HARD_COUNT] = {
+    "dark", "bright", "flat", "saturated", "backlit", "busy"};
+
+static inline uint16_t rgb565(int r, int g, int b) {
+  if (r < 0) r = 0; if (r > 31) r = 31;
+  if (g < 0) g = 0; if (g > 63) g = 63;
+  if (b < 0) b = 0; if (b > 31) b = 31;
+  return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+/** Deterministic value noise, so every run of the harness is the same run. */
+static inline int hard_noise(int x, int y, int salt) {
+  unsigned h = (unsigned)(x * 374761393 + y * 668265263 + salt * 2246822519u);
+  h = (h ^ (h >> 13)) * 1274126177u;
+  return (int)((h ^ (h >> 16)) & 0xff);
+}
+
+static uint16_t hard_px(int kind, int x, int y, int w, int h, int cam) {
+  const int n = hard_noise(x, y, kind * 7 + 1);
+  const int fx = (x * 256) / w, fy = (y * 256) / h;
+  /* Each camera a third of a stop apart, and a few pixels off. */
+  const int ev = cam - 1;
+  switch (kind) {
+    case HARD_DARK: {
+      /* A room with the lights off: everything inside two levels of black,
+       * one dim shape in it. Nothing here should make the interface shout. */
+      const int d = (fx - 150) * (fx - 150) + (fy - 120) * (fy - 120);
+      const int glow = d < 3000 ? (3000 - d) / 600 : 0;
+      return rgb565(1 + glow + ev + (n >> 7), 2 + glow * 2 + (n >> 6), 2 + glow + (n >> 7));
+    }
+    case HARD_BRIGHT: {
+      /* Blown out and clipped: no headroom left anywhere, so anything drawn
+       * in white over this has nothing to sit against. */
+      const int k = 28 + (n >> 6) + ev;
+      return rgb565(k + 3, (k + 3) * 2, k + 2);
+    }
+    case HARD_FLAT: {
+      /* A beige wall, which is the worst case for anything that reads
+       * contrast: the range is two levels and the four cameras agree. */
+      return rgb565(21 + (n >> 7) + ev, 40 + (n >> 6), 15 + (n >> 7));
+    }
+    case HARD_SATURATED: {
+      /* A red-lit room. The channels are nowhere near each other, which is
+       * where a colour-separation effect stops reading as an effect. */
+      return rgb565(29 + (n >> 7), (fy >> 4) + (n >> 6), 6 + (fx >> 5) + ev);
+    }
+    case HARD_BACKLIT: {
+      /* A face against a window: most of the frame is near black and a third
+       * of it is clipped white, with nothing in between. */
+      if (fx > 170) return rgb565(30, 60, 29);
+      const int k = 2 + (fx >> 6) + (n >> 7) + ev;
+      return rgb565(k, k * 2, k + 1);
+    }
+    default: {
+      /* A crowded room: high frequency everywhere, no large flat area, which
+       * is what makes a thin line or small type disappear. */
+      const int m = hard_noise(x >> 1, y >> 1, 99);
+      return rgb565((n >> 3) + (m >> 5), (m >> 2), (hard_noise(x, y, 5) >> 3) + ev);
+    }
+  }
+}
+
+static void fake_viewfinder_hard(int kind) {
+  for (int c = 0; c < 4; c++) {
+    for (int y = 0; y < VF_H; y++)
+      for (int x = 0; x < VF_W; x++) {
+        uint16_t p = hard_px(kind, x + c * 3, y + c * 2, VF_W, VF_H, c);
+        /* The harness's own mark. NOT the white border the gradient frames
+         * carry: ksense.h reads contrast as the range between the darkest and
+         * the brightest sample it takes, and a single white pixel in the grid
+         * pins that at full range whatever the room is actually like. The
+         * mark is the frame's own value lifted by a third instead - plainly a
+         * drawn line, and inside the range it is measuring. */
+        if (x == 0 || y == 0 || x == VF_W - 1 || y == VF_H - 1)
+          p = rgb565(((p >> 11) & 31) + 2, ((p >> 5) & 63) + 4, (p & 31) + 2);
+        g_vf[c][y * VF_W + x] = p;
+      }
+  }
+  g_vf_filled = true;
+}
+
+static void fake_gallery_hard(int kind) {
+  for (int i = 0; i < GALLERY_PAGE; i++)
+    for (int y = 0; y < GALLERY_TILE_H; y++)
+      for (int x = 0; x < GALLERY_TILE_W; x++)
+        g_tile[i][y * GALLERY_TILE_W + x] =
+            hard_px(kind, x + i * 11, y + i * 7, GALLERY_TILE_W, GALLERY_TILE_H, i & 3);
+}
+
 static void fake_gallery(void) {
   static const char *MODES[] = {"wiggle", "wiggle", "quad", "wiggle", "quad", "wiggle"};
   for (int i = 0; i < GALLERY_PAGE; i++) {
@@ -1692,6 +1798,83 @@ int main(int argc, char **argv) {
   events_watch();
   FILM("world_camera_lost", 600); FILM("world_camera_lost", 660); FILM("world_camera_lost", 760);
   FILM("world_camera_lost", 920);
+
+  /* ---- the same interface, over photography that fights it ----
+   *
+   * Six rooms an interface never gets shown in a portfolio. For each one the
+   * finder, a capture, the roll, the sharing screen and the settings rule, so
+   * that white type on a shadow, a three pixel line made of the picture, and
+   * a stack of photographs can all be looked at over content that gives them
+   * nothing to sit against. The numbers underneath say what the camera made
+   * of the room, which is the other half of the test: a behaviour that only
+   * ever fires on a pleasant gradient is not a behaviour.
+   */
+  for (int hk = 0; hk < HARD_COUNT; hk++) {
+    char nm[64];
+    fake_viewfinder_hard(hk);
+    fake_gallery_hard(hk);
+    ksense_reset();
+    SCENE();
+    /* Each room is walked into fresh. Without this the shot taken in the last
+     * room is still inside the burst window of the one before it - six
+     * captures inside twenty seconds of clock is a burst, and the mood would
+     * be reporting the harness rather than the photography. */
+    g_preview_clock_us += 180ll * 1000000;
+    film_t0 = g_preview_clock_us;
+    memset(&s_kmood, 0, sizeof s_kmood);
+    go(SCR_SHOOT, 0);
+    /* Long enough for the sparse sweep to have run several times. */
+    for (int t = 0; t <= 900; t += 90) STEP(t);
+    snprintf(nm, sizeof nm, "hard_%s_shoot", HARD_NAME[hk]);
+    shot(nm);
+    fprintf(stderr, "[hard] %-10s lum %3d  contrast %3d  spread %3d  motion %3d  -> energy %3d calm %3d\n",
+            HARD_NAME[hk], (int)(s_ksense.lum_mean * 100.f), (int)(s_ksense.contrast * 100.f),
+            (int)(s_ksense.spread * 100.f), (int)(s_ksense.motion_mean * 100.f),
+            (int)(s_kmood.energy * 100.f), (int)(s_kmood.calm * 100.f));
+
+    /* A capture, taken in that room, with the word it earns. */
+    g_stage = CAPTURE_READING;
+    g_frames_in = 0;
+    STEP(950);
+    g_frames_in = 15;
+    STEP(1010);
+    memset(&g_report, 0, sizeof g_report);
+    g_report.ok = true; g_report.stored = 4; g_report.online = 4;
+    snprintf(g_report.id, sizeof g_report.id, "CAP_000037");
+    for (int c = 0; c < 4; c++) { g_report.cam[c].attempted = true; g_report.cam[c].ok = true; }
+    s_capw.reported = true;
+    g_stage = CAPTURE_DONE;
+    STEP(1080);
+    ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_FOUR_MERGE, "GOT IT.");
+    STEP(1140);
+    snprintf(nm, sizeof nm, "hard_%s_capture", HARD_NAME[hk]);
+    shot(nm);
+    STEP(1600);
+    g_stage = CAPTURE_IDLE;
+
+    go(SCR_GALLERY, 0);
+    for (int t = 1700; t <= 2300; t += 150) STEP(t);
+    snprintf(nm, sizeof nm, "hard_%s_roll", HARD_NAME[hk]);
+    shot(nm);
+
+    g_roll_active = true;
+    snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+    snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+    snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+    go(SCR_CONNECTION, 0);
+    for (int t = 2400; t <= 3100; t += 150) STEP(t);
+    snprintf(nm, sizeof nm, "hard_%s_link", HARD_NAME[hk]);
+    shot(nm);
+    g_roll_active = false;
+
+    go(SCR_SETTINGS, 0);
+    for (int t = 3200; t <= 3900; t += 150) STEP(t);
+    snprintf(nm, sizeof nm, "hard_%s_setup", HARD_NAME[hk]);
+    shot(nm);
+  }
+  fake_viewfinder();  /* back to the frames every other shot is taken on */
+  fake_gallery();
+  ksense_reset();
 
   /* -- the mode strip -- */
   SCENE();

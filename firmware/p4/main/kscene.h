@@ -610,8 +610,14 @@ static void ks_draw_text(ks_node_t *n, const ks_xf_t *w) {
   if (alpha <= 0) return;
   const float track = n->ch[KC_TRACK].v;
   const float rgb = n->ch[KC_RGB].v;
-  const bool plain = fabsf(w->sx - 1.f) < 0.002f && fabsf(w->sy - 1.f) < 0.002f && fabsf(w->rot) < 0.01f &&
-                     fabsf(w->skew) < 0.01f && fabsf(rgb) < 0.1f && n->char_clip < 0 && fabsf(track) < 0.1f;
+  /* The fast path is a direct glyph blit with no mask behind it, so it cannot
+   * draw a contour. Text that says it is over a picture therefore does not
+   * take it - which is most of the text that needs the contour, since the
+   * words in the finder sit still at their natural size. This was silently
+   * dropping every shadow the interface asked for. */
+  const bool plain = !n->shadow && fabsf(w->sx - 1.f) < 0.002f && fabsf(w->sy - 1.f) < 0.002f &&
+                     fabsf(w->rot) < 0.01f && fabsf(w->skew) < 0.01f && fabsf(rgb) < 0.1f &&
+                     n->char_clip < 0 && fabsf(track) < 0.1f;
   const float tw = n->w + track * (float)(ut_len(n->text) - 1);
   float cx, cy;
   {
