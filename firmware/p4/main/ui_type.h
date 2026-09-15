@@ -50,6 +50,13 @@ static int ut_cp_adv(const ut_face_t *f, uint32_t cp) {
   return jglyph(cp).w * ut_fb_scale(f);
 }
 
+/** Glyphs in `s`. */
+static int ut_len(const char *s) {
+  int n = 0;
+  while (*s) { utf8_next(&s); n++; }
+  return n;
+}
+
 /** Width of `s` in pixels. */
 static int ut_w(const ut_face_t *f, const char *s) {
   int w = 0;
@@ -61,10 +68,10 @@ static int ut_w(const ut_face_t *f, const char *s) {
 static void ut_blit(const ut_glyph_t *g, const uint8_t *px, int x, int base, uint16_t ink, int alpha) {
   const int gx = x + g->bx, gy = base + g->by;
   int c0 = 0, r0 = 0, c1 = g->w, r1 = g->h;
-  if (gx < 0) c0 = -gx;
-  if (gy < 0) r0 = -gy;
-  if (gx + c1 > UI_W) c1 = UI_W - gx;
-  if (gy + r1 > UI_H) r1 = UI_H - gy;
+  if (gx < s_clip_x0) c0 = s_clip_x0 - gx;
+  if (gy < s_clip_y0) r0 = s_clip_y0 - gy;
+  if (gx + c1 > s_clip_x1) c1 = s_clip_x1 - gx;
+  if (gy + r1 > s_clip_y1) r1 = s_clip_y1 - gy;
   if (c0 >= c1 || r0 >= r1) return;
   for (int r = r0; r < r1; r++) {
     uint16_t *row = s_cv + (size_t)(gy + r) * UI_W + gx;
@@ -108,9 +115,6 @@ static int ut_draw_a(const ut_face_t *f, int x, int top, const char *s, uint16_t
 }
 static int ut_draw(const ut_face_t *f, int x, int top, const char *s, uint16_t ink) {
   return ut_draw_a(f, x, top, s, ink, 255);
-}
-static void ut_right(const ut_face_t *f, int right, int top, const char *s, uint16_t ink) {
-  ut_draw(f, right - ut_w(f, s), top, s, ink);
 }
 static void ut_mid(const ut_face_t *f, int cx, int top, const char *s, uint16_t ink) {
   ut_draw(f, cx - ut_w(f, s) / 2, top, s, ink);
@@ -191,38 +195,38 @@ static inline int ut_sample(float ux, float uy) {
 }
 
 /**
- * Draw `s` centred on (cx, cy), scaled by `scale` (any positive value),
- * rotated `rot_deg` (positive = clockwise on screen), in `ink` at `alpha`
- * 0..255. `shadow` lays a soft dark copy under it first, for legibility over
- * a picture; on a flat ground pass false.
+ * Draw `s` centred on (cx, cy) through a full 2D transform: scaled `sx` by
+ * `sy`, rotated `rot_deg` (positive = clockwise on screen), sheared
+ * `skew_deg`, in `ink` at `alpha` 0..255, with the red and blue channels
+ * displaced `rgb` px either side when non-zero. `shadow` lays a soft dark
+ * copy under it first, for legibility over a picture. Honours the clip rect.
  */
-static void ut_fx(const ut_face_t *f, float cx, float cy, const char *s, float scale, float rot_deg, uint16_t ink,
-                  int alpha, bool shadow) {
-  if (alpha <= 0 || scale <= 0.f) return;
+static void ut_fx2(const ut_face_t *f, float cx, float cy, const char *s, float sx, float sy, float rot_deg,
+                   float skew_deg, uint16_t ink, int alpha, bool shadow, int rgb) {
+  if (alpha <= 0 || sx <= 0.f || sy <= 0.f) return;
   if (alpha > 255) alpha = 255;
   if (!ut_raster(f, s)) return;
   const int mw = s_ut_mask_w, mh = s_ut_mask_h;
 
   const float rad = rot_deg * 3.14159265f / 180.f;
   const float cs = cosf(rad), sn = sinf(rad);
-  const float hw = mw * scale * 0.5f, hh = mh * scale * 0.5f;
-  const float ex = fabsf(hw * cs) + fabsf(hh * sn) + 2.f * scale;
-  const float ey = fabsf(hw * sn) + fabsf(hh * cs) + 2.f * scale;
+  const float sk = tanf(skew_deg * 3.14159265f / 180.f);
+  const float hw = mw * sx * 0.5f, hh = mh * sy * 0.5f;
+  const float ex = fabsf(hw * cs) + fabsf(hh * sn) + fabsf(sk) * hh + 2.f * sx + (float)(rgb < 0 ? -rgb : rgb);
+  const float ey = fabsf(hw * sn) + fabsf(hh * cs) + 2.f * sy;
   int x0 = (int)floorf(cx - ex) - 1, x1 = (int)ceilf(cx + ex) + 1;
   int y0 = (int)floorf(cy - ey) - 1, y1 = (int)ceilf(cy + ey) + 1;
-  if (x0 < 0) x0 = 0;
-  if (y0 < 0) y0 = 0;
-  if (x1 > UI_W) x1 = UI_W;
-  if (y1 > UI_H) y1 = UI_H;
+  if (x0 < s_clip_x0) x0 = s_clip_x0;
+  if (y0 < s_clip_y0) y0 = s_clip_y0;
+  if (x1 > s_clip_x1) x1 = s_clip_x1;
+  if (y1 > s_clip_y1) y1 = s_clip_y1;
   if (x0 >= x1 || y0 >= y1) return;
 
-  const float inv = 1.f / scale;
+  const float ix = 1.f / sx, iy = 1.f / sy;
   const int passes = shadow ? 2 : 1;
   for (int pass = 0; pass < passes; pass++) {
     const bool is_shadow = shadow && pass == 0;
-    /* The shadow sits a little down and right, scaled with the word, and is
-     * never more than 60% - a shape under the type, not a second word. */
-    const float ox = is_shadow ? 1.5f * scale : 0.f, oy = is_shadow ? 1.5f * scale : 0.f;
+    const float ox = is_shadow ? 1.5f * sx : 0.f, oy = is_shadow ? 1.5f * sy : 0.f;
     const uint16_t col = is_shadow ? (uint16_t)0x0841 : ink;
     const int a_run = is_shadow ? (alpha * 3) / 5 : alpha;
     for (int y = y0; y < y1; y++) {
@@ -230,15 +234,29 @@ static void ut_fx(const ut_face_t *f, float cx, float cy, const char *s, float s
       const float dy = (float)y + 0.5f - cy - oy;
       for (int x = x0; x < x1; x++) {
         const float dx = (float)x + 0.5f - cx - ox;
-        const float ux = (dx * cs + dy * sn) * inv + mw * 0.5f;
-        const float uy = (-dx * sn + dy * cs) * inv + mh * 0.5f;
-        if (ux < -1.f || uy < -1.f || ux > mw + 1.f || uy > mh + 1.f) continue;
-        const int cov = ut_sample(ux, uy);
-        if (cov == 0) continue;
-        const int a = (cov * a_run) >> 8;
-        if (a >= 255) row[x] = col;
-        else if (a > 0) row[x] = mix(row[x], col, a);
+        float bx = dx * cs + dy * sn, by = -dx * sn + dy * cs;
+        bx -= by * sk;
+        const float uy = by * iy + mh * 0.5f;
+        if (uy < -1.f || uy > mh + 1.f) continue;
+        if (rgb == 0 || is_shadow) {
+          const float ux = bx * ix + mw * 0.5f;
+          if (ux < -1.f || ux > mw + 1.f) continue;
+          const int cov = ut_sample(ux, uy);
+          if (cov == 0) continue;
+          const int a = (cov * a_run) >> 8;
+          if (a >= 255) row[x] = col;
+          else if (a > 0) row[x] = mix(row[x], col, a);
+        } else {
+          /* Three samples, one per channel, the ink split by the same amount. */
+          const float uxr = (bx - (float)rgb) * ix + mw * 0.5f, uxg = bx * ix + mw * 0.5f, uxb = (bx + (float)rgb) * ix + mw * 0.5f;
+          const int cr = ut_sample(uxr, uy), cg = ut_sample(uxg, uy), cb = ut_sample(uxb, uy);
+          if (cr == 0 && cg == 0 && cb == 0) continue;
+          const uint16_t d = row[x];
+          const uint16_t mr = mix(d, col, (cr * a_run) >> 8), mg = mix(d, col, (cg * a_run) >> 8), mb = mix(d, col, (cb * a_run) >> 8);
+          row[x] = (uint16_t)((mr & 0xF800) | (mg & 0x07E0) | (mb & 0x001F));
+        }
       }
     }
   }
 }
+

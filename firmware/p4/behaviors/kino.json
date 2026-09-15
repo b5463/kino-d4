@@ -1,0 +1,380 @@
+{
+  "_": "How KINO moves. Clips are choreography over roles; events map to variants with weights, rules and conditions. ui.c binds roles to scene nodes and reports events; nothing here knows about the camera, and nothing in the camera knows about these.",
+
+  "curves": {
+    "snap":    { "bezier": [0.12, 0.9, 0.22, 1.0] },
+    "settle":  { "bezier": [0.3, 0.0, 0.1, 1.0] },
+    "leave":   { "bezier": [0.6, 0.0, 0.9, 0.3] },
+    "hard":    { "bezier": [0.9, 0.0, 1.0, 0.1] },
+    "late":    { "samples": [0, 0.02, 0.05, 0.1, 0.2, 0.55, 0.85, 0.96, 1.0] }
+  },
+
+  "paths": {
+    "label_in": { "quad": [[220, 90], [90, -30], [0, 0]] },
+    "frag_nw":  { "quad": [[-200, -120], [-140, -30], [0, 0]] },
+    "frag_ne":  { "quad": [[200, -120], [110, -50], [0, 0]] },
+    "frag_sw":  { "quad": [[-200, 120], [-90, 60], [0, 0]] },
+    "frag_se":  { "quad": [[200, 120], [160, 30], [0, 0]] }
+  },
+
+  "clips": {
+
+    "boot_cold": {
+      "_": "The name rises the last forty pixels with a little overshoot and stays; the finder dissolves in over it from ui.c.",
+      "tracks": {
+        "title.y+": [[120, 40, "spring", 3.6, 0.36], [900, 0]],
+        "title.alpha": [[120, 0, "snap"], [260, 255]]
+      },
+      "hold": true
+    },
+    "boot_first": {
+      "_": "The first boot ever: the name arrives one letter at a time (char clip boot_char with a stagger), then the tracking closes.",
+      "tracks": {
+        "title.alpha": [[0, 255]],
+        "title.track": [[0, 10, "hold"], [700, 10, "settle"], [1100, 0]]
+      },
+      "hold": true
+    },
+    "boot_char": {
+      "tracks": {
+        "char.y": [[0, 34, "spring", 4.2, 0.3], [560, 0]],
+        "char.alpha": [[0, 0, "snap"], [90, 255]],
+        "char.sy": [[0, 1.25, "spring", 5, 0.4], [420, 1]]
+      }
+    },
+    "wake_long": {
+      "_": "Picked up after a while: the finder's words show themselves for longer, and BACK. sits small for a moment.",
+      "tracks": {
+        "label.alpha": [[0, 0, "hold"], [140, 255, "hold"], [1500, 255, "leave"], [1800, 0]],
+        "label.x": [[0, 0, "hold"], [140, 0, "settle"], [1800, -6]]
+      }
+    },
+
+    "mode_move": {
+      "_": "Navigation. p1 = direction (+1 the new mode is to the right). The title travels with momentum and lands; a second word follows later and softer. Parameterised, reusable, interruptible: continuity does the rest.",
+      "tracks": {
+        "title.x+": [[0, "170*p1", "spring", 3.4, 0.42], [520, 0]],
+        "title.alpha": [[0, 40, "snap"], [180, 255]],
+        "out.x+": [[0, 0, "leave"], [220, "-150*p1"]],
+        "out.alpha": [[0, 255, "leave"], [200, 0]]
+      }
+    },
+    "strip_open": {
+      "_": "The mode strip drops under the title; the five names arrive with a stagger (char-less: five roles).",
+      "tracks": {
+        "n0.y+": [[0, 10, "spring", 4.5, 0.4], [400, 0]], "n0.alpha": [[0, 0, "snap"], [120, 255]],
+        "n1.y+": [[30, 10, "spring", 4.5, 0.4], [430, 0]], "n1.alpha": [[30, 0, "snap"], [150, 255]],
+        "n2.y+": [[60, 10, "spring", 4.5, 0.4], [460, 0]], "n2.alpha": [[60, 0, "snap"], [180, 255]],
+        "n3.y+": [[90, 10, "spring", 4.5, 0.4], [490, 0]], "n3.alpha": [[90, 0, "snap"], [210, 255]],
+        "n4.y+": [[120, 10, "spring", 4.5, 0.4], [520, 0]], "n4.alpha": [[120, 0, "snap"], [240, 255]]
+      }
+    },
+    "strip_close": {
+      "tracks": {
+        "n0.alpha": [[0, 255, "leave"], [140, 0]], "n1.alpha": [[0, 255, "leave"], [140, 0]],
+        "n2.alpha": [[0, 255, "leave"], [140, 0]], "n3.alpha": [[0, 255, "leave"], [140, 0]],
+        "n4.alpha": [[0, 255, "leave"], [140, 0]]
+      }
+    },
+
+    "words_show": {
+      "_": "The finder's reading line and title: shown when there is a reason, held (p1 ms via ui.c's own timer), let go.",
+      "tracks": {
+        "line.alpha": [[0, 0, "snap"], [160, 255]],
+        "line.y+": [[0, 8, "settle"], [260, 0]]
+      },
+      "hold": true
+    },
+    "words_hide": {
+      "tracks": {
+        "line.alpha": [[0, 255, "leave"], [320, 0]],
+        "line.y+": [[0, 0, "leave"], [320, 6]]
+      }
+    },
+    "marks_in": {
+      "_": "The four marks, one per camera, arrive as the cameras do: each answered pane lights its mark with a small overshoot.",
+      "tracks": {
+        "m0.r": [[0, 0, "spring", 5, 0.35], [380, 5]],
+        "m1.r": [[40, 0, "spring", 5, 0.35], [420, 5]],
+        "m2.r": [[80, 0, "spring", 5, 0.35], [460, 5]],
+        "m3.r": [[120, 0, "spring", 5, 0.35], [500, 5]]
+      }
+    },
+
+    "cap_frames": {
+      "_": "The shutter, always, from the pass that saw it: white for two frames, black for three, then the four source frames come back 13 ms apart, each a touch large and settling. Every capture behaviour follows this.",
+      "tracks": {
+        "white.alpha": [[0, 255, "hold"], [35, 0]],
+        "black.alpha": [[0, 0, "hold"], [35, 255, "hold"], [92, 0]],
+        "f0.alpha": [[0, 255, "hold"], [35, 0, "hold"], [92, 255]],
+        "f1.alpha": [[0, 255, "hold"], [35, 0, "hold"], [106, 255]],
+        "f2.alpha": [[0, 255, "hold"], [35, 0, "hold"], [119, 255]],
+        "f3.alpha": [[0, 255, "hold"], [35, 0, "hold"], [132, 255]],
+        "f0.sx": [[92, 1.03, "exp", 60], [300, 1]], "f0.sy": [[92, 1.03, "exp", 60], [300, 1]],
+        "f1.sx": [[106, 1.03, "exp", 60], [300, 1]], "f1.sy": [[106, 1.03, "exp", 60], [300, 1]],
+        "f2.sx": [[119, 1.03, "exp", 60], [300, 1]], "f2.sy": [[119, 1.03, "exp", 60], [300, 1]],
+        "f3.sx": [[132, 1.03, "exp", 60], [300, 1]], "f3.sy": [[132, 1.03, "exp", 60], [300, 1]]
+      }
+    },
+    "cap_quiet": {
+      "_": "Quiet success: the frames come back, the finder settles with a small unequal breath, nothing else. The most common answer.",
+      "tracks": {
+        "finder.sx": [[70, 1.025, "spring", 4.2, 0.4], [520, 1]],
+        "finder.sy": [[70, 1.018, "spring", 3.8, 0.36], [560, 1]],
+        "finder.y+": [[70, -3, "spring", 4, 0.4], [520, 0]]
+      }
+    },
+    "cap_four_merge": {
+      "_": "Four fragments of the picture leave their corners on four different paths at four different speeds - one leads, one overshoots - and meet at the centre on one frame, where the sync cue lands; the result inherits the collision as a squash and a settle. Then the label.",
+      "tracks": {
+        "g0@frag_nw": [[70, 0, "snap"], [260, 1]],
+        "g1@frag_ne": [[76, 0, "settle"], [300, 1]],
+        "g2@frag_sw": [[70, 0, "hard"], [250, 1]],
+        "g3@frag_se": [[84, 0, "snap"], [330, 1.06, "spring", 5, 0.3], [430, 1]],
+        "g0.alpha": [[70, 255, "hold"], [300, 255, "leave"], [360, 0]],
+        "g1.alpha": [[70, 255, "hold"], [300, 255, "leave"], [360, 0]],
+        "g2.alpha": [[70, 255, "hold"], [300, 255, "leave"], [360, 0]],
+        "g3.alpha": [[70, 255, "hold"], [330, 255, "leave"], [390, 0]],
+        "g0.sx": [[70, 0.5, "lin"], [300, 0.5]], "g0.sy": [[70, 0.5, "lin"], [300, 0.5]],
+        "g1.sx": [[70, 0.5, "lin"], [300, 0.5]], "g1.sy": [[70, 0.5, "lin"], [300, 0.5]],
+        "g2.sx": [[70, 0.5, "lin"], [300, 0.5]], "g2.sy": [[70, 0.5, "lin"], [300, 0.5]],
+        "g3.sx": [[70, 0.5, "lin"], [300, 0.5]], "g3.sy": [[70, 0.5, "lin"], [300, 0.5]],
+        "result.alpha": [[0, 0, "hold"], [300, 255]],
+        "result.sx": [[300, 1.09, "spring", 5.2, 0.34], [780, 1]],
+        "result.sy": [[300, 0.93, "spring", 5.2, 0.34], [780, 1]],
+        "result.rot": [[300, -1.2, "spring", 4, 0.3], [780, 0]],
+        "label.alpha": [[0, 0, "hold"], [380, 255, "hold"], [1150, 255, "leave"], [1320, 0]],
+        "label.track": [[380, 14, "spring", 4.5, 0.4], [900, 0]],
+        "label.y+": [[380, 10, "spring", 4.5, 0.35], [900, 0]]
+      },
+      "sounds": [{ "t": 300, "cue": "sync" }],
+      "mods": [{ "role": "result", "noise": { "amp": [1.2, 0.8, 0.25, 0], "hz": 11 }, "from": 300, "to": 620 }]
+    },
+    "cap_text_hit": {
+      "_": "Text impact: the result lands with a small lift; the word arrives from the right on an arc, hits, opens its tracking, and one glyph lags behind through the char clip.",
+      "tracks": {
+        "result.sx": [[70, 1.05, "spring", 5, 0.4], [520, 1]],
+        "result.sy": [[70, 1.05, "spring", 5, 0.4], [520, 1]],
+        "label@label_in": [[110, 0, "snap"], [250, 1]],
+        "label.alpha": [[110, 0, "snap"], [180, 255, "hold"], [1000, 255, "leave"], [1180, 0]],
+        "label.rot": [[110, -8, "spring", 4, 0.3], [700, -3]],
+        "label.track": [[250, 16, "spring", 5, 0.45], [800, 2]],
+        "label.sx+": [[250, 0.25, "spring", 5.5, 0.4], [700, 0]],
+        "label.sy+": [[250, -0.2, "spring", 5.5, 0.4], [700, 0]]
+      }
+    },
+    "cap_hard_cut": {
+      "_": "The hard cut: black, then the picture, then a word that is simply there and simply gone. No motion at all is a manner too.",
+      "tracks": {
+        "black.alpha": [[70, 255, "hold"], [150, 255, "hold"], [151, 0]],
+        "result.alpha": [[0, 0, "hold"], [150, 255]],
+        "label.alpha": [[0, 0, "hold"], [420, 255, "hold"], [900, 255, "hold"], [901, 0]]
+      }
+    },
+    "cap_energy": {
+      "_": "High energy: the result overshoots hard, the channels separate and settle at different rates, ghosts trail it, the label is huge and cut by the frame's edge.",
+      "tracks": {
+        "result.sx": [[70, 1.16, "spring", 4.6, 0.26], [900, 1]],
+        "result.sy": [[70, 1.12, "spring", 4.2, 0.24], [900, 1]],
+        "result.rot": [[70, 2.5, "spring", 3.6, 0.22], [900, 0]],
+        "result.rgb": [[70, 10, "exp", 170], [700, 0]],
+        "label.alpha": [[0, 0, "hold"], [150, 255, "hold"], [900, 255, "leave"], [1050, 0]],
+        "label.x+": [[150, -60, "snap"], [330, 0]],
+        "label.skew": [[150, -14, "spring", 4, 0.3], [700, 0]]
+      },
+      "sounds": [{ "t": 70, "cue": "sync" }]
+    },
+    "cap_none": {
+      "_": "Nothing beyond the frames. Common, and what makes the others land.",
+      "dur": 10,
+      "tracks": { "finder.alpha": [[0, 255]] }
+    },
+    "cap_hundred": {
+      "_": "One hundred this session: the number, four ems tall and bigger than the frame, and a beat later the word.",
+      "tracks": {
+        "big.alpha": [[0, 0, "hold"], [160, 255, "hold"], [1500, 255, "leave"], [1700, 0]],
+        "big.x+": [[160, -30, "snap"], [360, 0]],
+        "big.sx+": [[160, 0.3, "spring", 4, 0.3], [900, 0]],
+        "big.sy+": [[160, -0.25, "spring", 4, 0.3], [900, 0]],
+        "label.alpha": [[0, 0, "hold"], [520, 255, "hold"], [1500, 255, "leave"], [1700, 0]],
+        "label.track": [[520, 20, "spring", 4, 0.4], [1100, 0]]
+      },
+      "sounds": [{ "t": 160, "cue": "done" }]
+    },
+    "cap_fail": {
+      "_": "It did not work: the word, still, red, and the reason under it. Nothing dramatic; clarity.",
+      "tracks": {
+        "label.alpha": [[0, 0, "hold"], [60, 255, "hold"], [1600, 255, "leave"], [1800, 0]],
+        "sub.alpha": [[0, 0, "hold"], [160, 255, "hold"], [1600, 255, "leave"], [1800, 0]]
+      },
+      "sounds": [{ "t": 60, "cue": "warn" }]
+    },
+
+    "sync_good": {
+      "_": "The fourth camera answers: the four marks pull together to one point on one frame (the sync cue there) and spring back to four.",
+      "tracks": {
+        "m0.x+": [[0, 0, "snap"], [240, 27, "spring", 5.5, 0.35], [600, 0]],
+        "m1.x+": [[0, 0, "snap"], [240, 9, "spring", 5.5, 0.35], [600, 0]],
+        "m2.x+": [[0, 0, "snap"], [240, -9, "spring", 5.5, 0.35], [600, 0]],
+        "m3.x+": [[0, 0, "snap"], [240, -27, "spring", 5.5, 0.35], [600, 0]],
+        "m0.r": [[220, 5, "spring", 6, 0.4], [240, 8], [600, 5]],
+        "label.alpha": [[0, 0, "hold"], [250, 255, "hold"], [1200, 255, "leave"], [1400, 0]],
+        "label.x+": [[250, 12, "settle"], [520, 0]]
+      },
+      "sounds": [{ "t": 240, "cue": "sync" }]
+    },
+    "link_connected": {
+      "_": "CONNECTED arrives letter by letter (char clip note_char with a stagger from ui.c), and the accent shows on the word and nowhere else.",
+      "tracks": {
+        "label.alpha": [[0, 255, "hold"], [1500, 255, "leave"], [1700, 0]],
+        "label.track": [[0, 6, "hold"], [700, 6, "settle"], [1100, 0]]
+      }
+    },
+    "note_char": {
+      "tracks": {
+        "char.x": [[0, 18, "spring", 5, 0.34], [420, 0]],
+        "char.alpha": [[0, 0, "snap"], [70, 255]],
+        "char.sx": [[0, 1.3, "spring", 5, 0.4], [400, 1]]
+      }
+    },
+    "note_plain": {
+      "_": "A notice with no manner: the word comes in from the right with momentum and leaves by drifting. Cards, USB, the link dropping.",
+      "tracks": {
+        "label.x+": [[0, 60, "spring", 3.6, 0.42], [480, 0]],
+        "label.alpha": [[0, 0, "snap"], [110, 255, "hold"], [1300, 255, "leave"], [1480, 0]]
+      }
+    },
+    "transfer_done": {
+      "_": "A burst has all arrived: the four points that counted it out close on one and SENT lands, the done cue on the frame they meet.",
+      "tracks": {
+        "m0.x+": [[0, 0, "snap"], [260, 33], [700, 33]],
+        "m1.x+": [[0, 0, "snap"], [260, 11], [700, 11]],
+        "m2.x+": [[0, 0, "snap"], [260, -11], [700, -11]],
+        "m3.x+": [[0, 0, "snap"], [260, -33], [700, -33]],
+        "m0.r": [[240, 4, "spring", 6, 0.4], [260, 9], [700, 6]],
+        "label.alpha": [[0, 0, "hold"], [270, 255, "hold"], [1300, 255, "leave"], [1500, 0]],
+        "label.track": [[270, 12, "spring", 4.5, 0.4], [800, 0]]
+      },
+      "sounds": [{ "t": 260, "cue": "done" }]
+    },
+
+    "look_id": {
+      "_": "The look's identifier shows on a change and goes away: number and name, the number a beat ahead.",
+      "tracks": {
+        "num.alpha": [[0, 0, "snap"], [90, 255, "hold"], [1100, 255, "leave"], [1300, 0]],
+        "num.x+": [[0, -18, "spring", 4.5, 0.4], [500, 0]],
+        "name.alpha": [[60, 0, "snap"], [160, 255, "hold"], [1100, 255, "leave"], [1300, 0]],
+        "name.x+": [[60, -12, "spring", 4.5, 0.4], [560, 0]]
+      }
+    },
+    "look_snap": {
+      "_": "Exposure snap: the picture goes bright for two frames and comes down.",
+      "tracks": { "image.p0": [[0, 0, "hold"], [16, 22, "hold"], [48, 22, "exp", 70], [300, 0]] }
+    },
+    "look_rgb": {
+      "_": "Colour-channel settling: the channels arrive apart and converge.",
+      "tracks": { "image.rgb": [[0, 12, "exp", 150], [600, 0]] }
+    },
+    "look_smear": {
+      "_": "A sideways smear that dies: the strips relax over a third of a second.",
+      "tracks": {
+        "image.strip_amp": [[0, 26, "exp", 120], [500, 0]],
+        "image.strip_freq": [[0, 0.06]],
+        "image.strip_ph": [[0, 0, "lin"], [500, 6]]
+      }
+    },
+    "look_wipe": {
+      "_": "A hard wipe: the new picture's mask edge crosses the frame. p1 = direction.",
+      "tracks": {
+        "image.mx0": [[0, 0]], "image.my0": [[0, 0]], "image.my1": [[0, 480]],
+        "image.mx1": [[0, 0, "snap"], [220, 800]]
+      }
+    },
+    "look_pulse": {
+      "_": "A luminance pulse: down, then up past, then rest.",
+      "tracks": { "image.p0": [[0, 0, "settle"], [60, -14, "snap"], [140, 10, "exp", 80], [400, 0]] }
+    },
+    "look_cut": {
+      "_": "A hard cut and nothing else.",
+      "dur": 10,
+      "tracks": { "image.alpha": [[0, 255]] }
+    },
+    "look_late_color": {
+      "_": "Delayed colour arrival: the picture appears as luminance and the colour follows.",
+      "tracks": { "image.p1": [[0, 1, "hold"], [120, 1, "late"], [520, 0]] }
+    },
+
+    "page_turn": {
+      "_": "ROLL's page: the grid arrives from below (p1 = +1) or above with momentum and lands. Interruptible.",
+      "tracks": { "grid.y+": [[0, "418*p1", "spring", 3.6, 0.44], [520, 0]] }
+    },
+    "photo_open": {
+      "_": "A photograph opens from its tile: p1, p2 are the tile's offset from the picture's place, p3 the tile's scale. It grows and travels on one snap, overshoots a touch, settles.",
+      "tracks": {
+        "photo.x+": [[0, "1*p1", "snap"], [260, 0]],
+        "photo.y+": [[0, "1*p2", "snap"], [260, 0]],
+        "photo.sx": [[0, "1*p3", "spring", 4.6, 0.42], [600, 1]],
+        "photo.sy": [[0, "1*p3", "spring", 4.6, 0.42], [600, 1]]
+      }
+    },
+    "dialog_in": {
+      "_": "A question and two words, on the darkened screen: the question settles from a little above, the words a beat later.",
+      "tracks": {
+        "q.alpha": [[0, 0, "snap"], [120, 255]],
+        "q.y+": [[0, -10, "spring", 4.5, 0.4], [500, 0]],
+        "a.alpha": [[90, 0, "snap"], [220, 255]],
+        "b.alpha": [[130, 0, "snap"], [260, 255]]
+      },
+      "hold": true
+    }
+  },
+
+  "events": {
+    "capture_success": [
+      { "clip": "cap_none", "w": 34 },
+      { "clip": "cap_quiet", "w": 26 },
+      { "clip": "cap_four_merge", "w": 16, "avoid_prev": 2, "texts": ["GOT IT.", "FOUR.", "OK."] },
+      { "clip": "cap_text_hit", "w": 14, "avoid_prev": 1, "max_repeats": 1, "texts": ["GOT IT.", "NICE.", "AGAIN?", "KEEP GOING."] },
+      { "clip": "cap_hard_cut", "w": 6, "avoid_prev": 3, "texts": ["OK.", "DONE."] },
+      { "clip": "cap_energy", "w": 4, "rare": true, "min_interval_s": 40, "texts": ["YES.", "PERFECT."] },
+      { "clip": "cap_hundred", "w": 0, "shots_eq": 100, "once_per_session": true, "texts": ["A HUNDRED."] }
+    ],
+    "capture_fail": [
+      { "clip": "cap_fail", "w": 1, "texts": ["NO FRAME."] }
+    ],
+    "capture_partial": [
+      { "clip": "cap_quiet", "w": 1 }
+    ],
+    "sync_good": [
+      { "clip": "sync_good", "w": 1, "min_interval_s": 20, "texts": ["SYNC OK"] }
+    ],
+    "link_connected": [
+      { "clip": "link_connected", "w": 1, "texts": ["CONNECTED"] }
+    ],
+    "link_lost": [
+      { "clip": "note_plain", "w": 1, "texts": ["LINK LOST"] }
+    ],
+    "transfer_complete": [
+      { "clip": "transfer_done", "w": 1, "texts": ["SENT"] }
+    ],
+    "wake_long_idle": [
+      { "clip": "wake_long", "w": 1, "texts": ["BACK.", "STILL HERE.", "AGAIN."] }
+    ],
+    "card_in": [ { "clip": "note_plain", "w": 1, "texts": ["CARD"] } ],
+    "card_out": [ { "clip": "note_plain", "w": 1, "texts": ["NO CARD"] } ],
+    "card_low": [ { "clip": "note_plain", "w": 1, "min_interval_s": 300, "texts": ["CARD NEARLY FULL"] } ],
+    "usb_attach": [ { "clip": "note_plain", "w": 1, "texts": ["USB"] } ],
+    "usb_detach": [ { "clip": "note_plain", "w": 1, "texts": ["USB OUT"] } ],
+    "boot": [ { "clip": "boot_cold", "w": 1 } ],
+    "first_boot": [ { "clip": "boot_first", "w": 1 } ],
+    "look_change": [
+      { "clip": "look_snap", "w": 3 },
+      { "clip": "look_rgb", "w": 3 },
+      { "clip": "look_smear", "w": 2 },
+      { "clip": "look_wipe", "w": 3 },
+      { "clip": "look_pulse", "w": 2 },
+      { "clip": "look_cut", "w": 4 },
+      { "clip": "look_late_color", "w": 2 }
+    ]
+  }
+}

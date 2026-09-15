@@ -1,249 +1,184 @@
 # KINO D4 firmware UI — direction
 
-Branch `feat/native-ui`. This replaces the Windows 98 shell with an interface
-native to the camera: first the behaviour (motion, events, sound, the five
-modes), then a full visual reset on top of it - a modern embedded interface
-with the timing and irreverence of a late-90s Japanese arcade machine, and
-nothing that looks retro. The brief, distilled, and the decisions that turn it
-into code. Read this before touching `ui.c`.
+Branch `feat/native-ui`. The interface is a continuously running visual
+system that happens to expose camera controls: very little on the screen,
+a great deal underneath. This is the brief distilled, the architecture that
+answers it, and how to work on it. Read this before touching `ui.c`,
+`ui_present.h` or `behaviors/`.
 
 ## The idea
 
-Proprietary firmware for a strange Japanese camera that could plausibly have
-existed around 1999–2003. The reference is late-90s Japanese arcade hardware and
-consumer electronics — but what is borrowed is **behaviour, motion, timing,
-typography and personality**, not visual clutter.
+A modern embedded interface with the behaviour, timing and irreverence of a
+late-90s Japanese arcade machine. Not retro, not themed, not a reskin.
 
-- **At rest: restrained.** A screenshot of the idle interface should not explain
-  the product. No permanent themed borders, widgets, fake CRT, status dashboards.
-- **In use: expressive.** Character emerges while interacting. The complexity
-  lives in the implementation, not in the number of visible things.
-- **After long use: slightly surprising.** The camera notices things, rarely.
-- **Responsive first, expressive second.** Input is acknowledged in 0–40 ms; the
-  visual continues afterwards. Animation never blocks input and never delays a
-  completed operation. No fake progress: motion is driven by real firmware
-  events (`capture_stage()`, `upload_queue`, `net_link`, `viewfinder_status`).
+- **At rest: minimal.** A still of the interface undersells it.
+- **On input: immediate.** Acknowledged in the pass that saw it; motion continues afterwards and never blocks input.
+- **In motion: authored.** Keyframes, curves, paths, hierarchy, deformation, sound on the frame - not slide/fade/scale/bounce.
+- **Under interruption: continuous.** The next motion begins from where the object is, at the speed it has. The user always wins.
+- **Over time: surprising.** Behaviours chosen from sets, with rules and rarity, from real state. No achievements, no list; things happen.
+- **Underneath: more than shows.** State ≠ behaviour selection ≠ animation ≠ rendering.
 
-## Sections
+English only, for now. If a word says `GOT IT.`, the type, motion, timing,
+composition and sound make it interesting.
 
-| Mode | 日本語 | English | Backed by (today) |
-|---|---|---|---|
-| Shoot | 撮影 | SHOOT | viewfinder, capture, look/flash readings |
-| Roll | 再生 | ROLL | gallery + photograph + send to Roll |
-| Filter | 色 | FILTER | looks (recipes) — full preview + `C01 ノーマル` identifier |
-| Connect | 接続 | CONNECT | USB link, Wi-Fi, Roll server, upload queue |
-| Setup | 設定 | SETUP | display, sound, storage, about, power |
+## Architecture
 
-The display is horizontal (800×480) and the only inputs are the touch panel and
-the shutter key (FN exists in the button path but has no GPIO on D4-V1).
-Navigation is therefore **horizontal**: a swipe left/right on any non-live
-surface moves between modes; the mode title can also be tapped to open the mode
-strip. Within a mode, vertical placement is content.
+```
+camera state / event            ui.c: capture, cards, links, wake, touch, keys
+        │
+        ▼
+behaviour controller            kbehave.h: kb_event() picks a variant by weight,
+        │                        rules (interval, once/boot, once/session,
+        │                        avoid-last-N, repeats, rare) and conditions
+        ▼                        (shots, flash, sync, quad, idle, hour, first boot)
+choreography                    kmo.h: clips of tracks over roles; keyframes with
+        │                        per-segment interpolation; curves; paths; time
+        │                        warps; sound markers; procedural modifiers
+        ▼
+scene graph                     kscene.h: nodes (text, image, disc, line, rect,
+        │                        group) with channels, parents, masks, ghosts;
+        │                        continuity joins every change
+        ▼
+renderer                        kdraw.h + ui_type.h: inverse-mapped image blit
+                                 (crop, asymmetric scale, rotation, skew, strip
+                                 deformation, colour separation, lift, desat),
+                                 anti-aliased type through a bilinear mask,
+                                 discs, capsules, clip rects
+```
 
-## Motion
+`ui_present.h` is the presentation: each screen is a SYNC function that
+acquires nodes by id and sets their resting pose from state, never their
+motion. Motion is the clips' and continuity's. Camera events go through
+`ui_event()`; the plumbing never chooses a clip.
 
-`ui_motion.h` is the one motion layer. Every animated thing is an object with
-position, velocity, target, scale, rotation, opacity and a timing offset, stepped
-once per pass by the clock (`mo_step`, dt in ms). Nothing is keyframed by frame
-count.
+### Channels
 
-- Springs (`mo_spring`) for anything that moves to a place: critically damped
-  for settling, under-damped (overshoot) for entrances. Parameters are named
-  presets (`MO_SNAP`, `MO_SETTLE`, `MO_BOUNCE`), not literals at call sites.
-- Eases (`ease_out_cubic`, `ease_out_back`, `ease_in_quart`) for fixed-length
-  events with a start and an end (a reaction's entry and exit).
-- Parent/child timing: children carry `delay_ms`; a sequence starts them
-  together and each one waits out its own offset. Primary reacts at 0 ms,
-  dependents at +40–100 ms.
-- While anything is live, `ui_pass()` returns `MO_FRAME_MS` (16) instead of its
-  idle cadence. `mo_any_live()` is the single question.
-- Every sequence is interruptible: a new input retargets objects from where
-  they are (velocity kept), it never waits for the previous sequence.
+Every node has x, y, sx, sy, rot, alpha, anchor, skew, tracking, mask rect,
+crop rect, colour separation, strip deformation, line width, radius, path
+position and four free parameters (p0 lifts an image's luminance, p1
+desaturates it). Each is driven independently in time.
 
-Timing guide (from the brief, adjusted to this loop):
+value = pose (the screen's) or an absolute track, + additive tracks,
++ continuity offset, + impulses, + procedural modifiers.
 
-| Event | ms |
-|---|---|
-| Input acknowledgement | 0–40 (same pass) |
-| Small UI transition | 120–250 |
-| Mode transition | 180–350 (title 0, secondary +60, incoming with overshoot) |
-| Capture impact | 100–250 |
-| Japanese reaction | 450–1000, entry faster than exit |
+### Continuity
 
-## Visual system
+Whenever what a channel follows would jump - a clip starts, interrupts
+another, ends, or the screen moves a resting pose - the difference and the
+object's velocity go into a continuity offset that decays critically damped
+(3.5 Hz for position and rotation, 5 Hz for scale, 7 Hz for opacity). A
+node whose content changed (a different word, a different picture) is a
+different object and snaps. Three mode changes in a second read as one thing.
 
-The rule for every pixel: *what should the user be looking at right now?*
-Render that. Everything else earns its place. A still of the interface at
-rest should undersell it; it makes sense moving.
+### Keyframes and curves
 
-**Primitives.** Type, image, one solid shape (`disc()`), the line, and motion.
-There is no control library: a row is two words, a control is a word that
-takes a line under it when pressed, a dialog is the darkened screen with a
-question and two words standing on it. Nothing is drawn as a button.
+A track is any number of keys; each segment chooses `lin`, a named curve
+(cubic Bezier, sampled, power), `hold`, `step:N`, `smooth` (Catmull-Rom),
+`spring` (analytic underdamped, f Hz and zeta), or `exp` (tau ms). All are
+pure functions of clip time, so a film is the camera. A clip can warp its
+own clock (rush, stall, release) with a curve.
 
-**Ground.** Near-black (`C_GROUND`) under anything that is not a picture;
-off-white ink; one dim grey. The picture is full-bleed where there is one.
+### Procedural layer
 
-**Colour is an event, not paint.** Cobalt while something moves (the FILTER
-identifier arriving, a transfer going out, a link coming up), yellow for a
-capture landing, red for a real failure. Afterwards the screen returns to
-ink on ground. One event, one colour; never the palette at once.
+Per node, windowed within a clip and faded in and out: deterministic noise
+on position/rotation/scale, line boil, damped oscillation on any channel,
+follow (inherit another node's departure from its pose, late). Impulses are
+velocity added to the continuity spring. Ghosts draw an image's previous
+transforms under it.
 
-**Removed, not replaced:** window chrome, bevels and 3D faces, the Windows
-palette, the CRT boot and collapse, the icon sheet, the second (English)
-script under every title, the tiny technical captions, the chevrons and
-rules between rows, the plated dialog, the pixel-doubled bitmap face as the
-interface's voice. Where an element was only there because the old UI had
-it, it is gone.
+### Type as geometry
 
-**Each mode has its own spatial structure.** The finder is the picture with
-four marks in a corner; FILTER is the picture with its identifier bottom
-left; ROLL is a grid on dark ground with the count in the header's right;
-SETUP and CONNECT are rows of words; 情報 is denser and technical, and is
-allowed to be. Coherence comes from the type, the motion and the timing.
+A text node draws as one shape through the transform, or one glyph at a
+time with a char clip and a stagger (arrive letter by letter, one lags,
+tracking opens on impact), or revealed by a mask edge. Faces: `UT_S` 22 px,
+`UT_M` 34 px, `UT_MB` 34 px bold (BIZ UDPGothic, baked by
+`tools/mkfont-ui.mjs` for exactly the glyphs `ui.c` uses).
 
-## Type
+## Authoring
 
-The interface type is **BIZ UDPGothic** (`ui_font_ui.h`, `tools/mkfont-ui.mjs`,
-OFL 1.1): Morisawa's universal-design gothic, rasterised anti-aliased at the
-sizes the interface uses and blended per pixel on the device (`ui_type.h`).
-Three faces:
+Choreography is data: `firmware/p4/behaviors/kino.json` (the product) and
+`playground.json` (the engine tests). `npm run kmo:bake` writes
+`kmo_data.h`; the host preview, the Twin and the camera include the same
+header. `npm run kmo:plot` draws every track of every clip as an SVG.
+`kmo:check`, `font:ui:check` and `twin:ui:check` gate CI.
 
-| face | size | role |
-|---|---|---|
-| `UT_S`  | 22 px regular | values, captions, the one line under a picture, 情報 |
-| `UT_M`  | 34 px regular | rows, controls, words that act |
-| `UT_MB` | 34 px bold | the mode's name, identifiers, notices, reactions |
+A track key is `role.channel` (absolute), `role.channel+` (additive),
+`role@path` (along a path) or `role@path~` (orientation on the tangent);
+keys are `[t_ms, value, interp?, p0?, p1?]`; a value `"170*p1"` scales by
+the instance's parameter (a direction, a distance). Events map to variants:
+`{clip, w, texts, avoid_prev, max_repeats, min_interval_s, once_per_boot,
+once_per_session, rare, shots_eq, flash, sync_ok, quad, idle_min_s, hour_lt,
+first_boot}`.
 
-On the 4.3" 217 ppi panel 34 px is 4 mm of em; 22 px is 2.6 mm. Display
-sizes - a reaction thrown at 2–3×, the FILTER identifier at 2×, a word four
-ems tall cut by the screen's edge - are `UT_MB` through `ut_fx()`: the string
-rasterised once into an 8-bit mask and sampled bilinearly through a
-scale/rotation/alpha transform. On this density the softening is a quarter
-of a millimetre. `ut_vdraw()` sets a word 縦書き.
+Roles bind to nodes in `role_node()` (ui_present.h): `label` is the corner
+note or, for a capture, the word at the centre; `result`/`finder` the four
+panes as one group; `f0..f3` the panes; `g0..g3` the fragments; `m0..m3`
+the marks; `image` the LOOK picture; `line` the finder's words; `q`/`a`/`b`
+the dialog.
 
-The glyph set is what `ui.c` says: every code point in its string literals,
-plus ASCII. Adding a Japanese word means `npm run font:ui:bake`; CI's
-`font:ui:check` fails on drift. A word from outside that set - a look named
-in Studio, a Wi-Fi network - falls back to **Shinonome 16** (`ui_font_jp.h`,
-public domain), visibly coarser, on the same baseline, rather than to a hole.
+## The playground
 
-Japanese is the identity, not a caption: one script per word. Latin appears
-where it is the identifier (`C02`, `QUAD`, `KINO ROLL`, `USB`, an address).
-Operational text stays restrained; transient text can be graphic, and each
-kind of word has its own manner (below).
+`ui_playground.h`, compiled into the host preview and the Twin only. One
+scene per capability: keyframes with mixed interpolation, five curves,
+spring against exponential, paths with tangent, parent/child with a
+following caption, mask reveal and strip assembly, per-glyph entry,
+tracking as animation, squash/skew/strip deformation, colour separation,
+noise, line boil, damped oscillation, time warp, sound markers,
+interruption, layers. The preview films each as `pg_<scene>_<ms>.ppm`; in
+the Twin's SCREEN VIEW, PLAYGROUND steps through them on the live screen.
 
-## Events and personality
+## Films and stress tests
 
-`ui_events` (in `ui.c`): a small pool of reactions, each `{text, colour, weight,
-rule}`. On a successful capture the pool is sampled — weighted, with an explicit
-"no reaction" weight, so most shutters are quiet and rare lines stay rare.
-Contextual rules (100th frame this session, midnight, wake after idle, all four
-nodes reporting the sync edge) are the same table with a predicate instead of a
-weight, and fire at most once per session. Adding one is one table row.
+`firmware/p4/host_preview` renders every static state and films
+(`film_<name>_<ms>.ppm`): `swipe`, `rapid` (three mode changes faster than
+the motion), `strip`, `page`, `photo` (opening from its tile), `dialog`,
+`words`, every capture behaviour (`cap_none`, `cap_quiet`, `cap_merge`,
+`cap_text`, `cap_cut`, `cap_energy`, `cap_hundred`, `cap_fail`), `capcap`
+(a second shutter mid-celebration), `capleave` (leaving the finder while the
+result lands), `ctx` (a link event during a mode change), `sync`, `sent`,
+`back`, `note`, every LOOK transition, `boot_cold`, `boot_first`, and
+`complex` (everything at once, with the renderer's counters on stderr).
 
-One event = one visual idea: one colour (cobalt `#2f70c9`, yellow `#f4c542`,
-red `#c83a3a`, off-white), no container, typography only.
+## Performance
 
-One lifecycle, several manners (`react_style_t`): a word **thrown** (oversized,
-tilted ±4–12°, a back-ease landing, a drift out: 撮れた！ バッチリ。 完璧。); a
-word that **stands still** (cut in, cut out, no motion: よし。 4枚同期); a word
-**down the side** in 縦書き, each glyph a beat after the last (いいね。 まだ撮る？);
-a word **too big for the frame**, four ems tall and cut by the left edge
-(4枚！ 百枚！); a **small** word in the corner that says nothing loudly
-(もう一枚？). Not a toast component with variants: five presentations.
+`s_ks_perf`: step and render microseconds, worst, nodes drawn, clips
+active, transformed pixels, missed frames (over 16 ms). Shown on INFO and
+through the Twin's `kui_perf`. Stable pacing over peak rate: the loop asks
+for 16 ms while anything is live and 20-60 ms otherwise. On the host the
+clock is virtual, so the times read zero; the pixel counts are real.
 
-Four-camera language: `1 → 2 → 3 → 4`, four marks that collapse to one on sync,
-used for capture, transfer and the occasional status event — never a permanent
-dashboard.
+## What the interface is now
 
-## Live view
+- **Boot.** Black; the name lands on one spring (first boot ever: one letter
+  at a time, then the tracking closes). The finder is posed under it and
+  the name lets go through continuity. Short wake: a repaint. Long idle:
+  `BACK.` and the finder's words shown longer; the session starts over.
+- **Navigation.** One title object, retargeted. `mode_move` (p1 = direction)
+  sends the old word out and brings the new one in with momentum;
+  interruptible. The mode strip drops under the title on a tap.
+- **SHOOT.** The picture and four marks. Title and reading line
+  (`WIGGLE   C01 PARTY NEG   FLASH AUTO`) show on entry, touch or change and
+  let go. The shutter: white two frames, black three, the four frames back
+  13 ms apart, each a touch large. Then a behaviour from the set: nothing;
+  a quiet breath; four fragments converging on one frame with the sync cue
+  and a squash; a word on an arc that opens its tracking on impact; a hard
+  cut; an overshoot with channels separating and a huge word cut by the
+  edge; `100` once a session. Silence is common on purpose.
+- **LOOK.** The picture; `C02 MONO` at 2x on a change and gone after; each
+  change one of: exposure snap, channel settling, smear, wipe, luminance
+  pulse, cut, late colour. MONO and the QUAD targets are words.
+- **ROLL.** The grid; pages turn on a spring; a photograph opens from its
+  tile. **LINK.** Facts, the code, and four points counting a burst out;
+  `SENT` with the done cue on the frame they meet. **SETUP.** Rows, plain.
+  **INFO.** Dense and technical, with the renderer's counters.
+- **Colour** is an event: cobalt while something moves or a link comes up,
+  yellow for a capture, red for a real failure; ink on ground after.
+- **Sound** is a channel: markers in clips; sync and done cues land on the
+  frame the picture resolves.
 
-The picture first. Permanent overlay: mode/look/flash reading in one line and
-the way out. Everything else is a transient that enters, is readable for
-~1.2 s, and leaves: `発光準備`, `同期 OK`, `電池 20%`, `カード残り少`. No modal for
-routine status.
+## Still to do
 
-## Capture
-
-1. **Immediate**: the shutter pass paints the response (luminance hit + the
-   panes freeze) before anything is processed.
-2. **Four**: `1 → 2 → 3 → 4` as each node's frame lands (`capture_stage()` +
-   per-cam facts), fast enough to be nearly subliminal.
-3. **Result**: the frame lands oversized (≈1.06) and settles to 1.0 with a
-   small impact, in 100–250 ms; then, sometimes, a reaction.
-
-## What is deliberately not done
-
-No achievements page, badges, XP or counters. No manga bubbles, outlined
-lettering, permanent neon, scanlines, cabinet art. No modal acknowledgement for
-status. No theatrical delay of real completion.
-
-## Working on it
-
-`npm run dev -w @kino/twin`, open `#screen`, `npm run twin:ui:bake -- --w98`
-after each change; WATCH reloads the screen. `firmware/p4/host_preview` renders
-every state to PPM for review. A new Japanese word in `ui.c` needs
-`npm run font:ui:bake`. `font:ui:check`, `font:jp:check` and `twin:ui:check`
-gate CI.
-
-## Where it stands
-
-Landed on `feat/native-ui`, in this order, each filmed in the host preview:
-
-1. Foundations: `ui_motion.h`, Shinonome type (`ui_font_jp.h`, `ui_text_jp.h`), the
-   five-mode shell with the header carrying the motion, swipe navigation, the
-   mode row. Twin harness on animation frames.
-2. The capture as an event: blink, `1 → 2 → 3 → 4` from the pipeline's own
-   masks (`capture_frames_in()`), the landing, the word.
-3. Notices: edge-triggered status that enters, is read, leaves; the four-dot
-   sync prelude; every old tooltip routed through it.
-4. FILTER (色): full-bleed picture, `C02 クローム`, per-look transitions; the
-   finder's reading line as the place for MODE and FLASH.
-5. ROLL (再生): pictures alone on dark ground, vertical page turns, the
-   photograph with one line of words under it.
-6. SETUP (設定) and CONNECT (接続): rows of words; dialogs as a question and
-   two words; the Roll and the link on one screen.
-
-7. Sound with the motion: two cues in `audio.c` beside the tick, shutter and
-   warning. `audio_sync()` is two short pitched taps 45 ms apart, shaped like
-   the four marks meeting; `audio_done()` is one soft mid tone, the body's only
-   single note. A notice carries its cue (`notice_cue`) and plays it on the
-   frame the dots meet and the word lands, or as a plain word enters; 4枚同期
-   plays the sync cue on the pass the word appears. Both obey `body.sounds.ui`.
-8. The remaining contextual events: つながった！ when the link to KINO ROLL
-   comes up (an address alone stays "WiFi OK"); 送信済 with the four-dot
-   prelude and the done cue when a burst that was going out has all arrived;
-   続けよう。 on waking after twenty minutes or more dark; a finger held on the
-   glass through the splash boots into 情報, the diagnostic page. There is no
-   shutdown line to vary: the camera has no shutdown, it is unplugged.
-9. The visual reset. BIZ UDPGothic at three sizes replaces the pixel face as
-   the interface's voice (`tools/mkfont-ui.mjs`, `ui_type.h`); the Windows
-   palette, the CRT boot and collapse, the icon sheet, the bilingual titles,
-   the chevrons, rules, plates and captions are gone. Boot is black and the
-   name landing on one spring. The finder at rest is the picture and four
-   marks; its words show on entry, on a touch, on a change, and let go.
-   FILTER is the picture and `C02 白黒` at 2×, cobalt while it changes. Rows
-   are two words. The dialog is the darkened screen, a question, two words.
-   Capture and sync marks are discs. Reactions have five manners.
-10. Ambient: a screen's first visit this boot lets its rows arrive one after
-   another; a revisit is simply there. The finder shows its words longer the
-   first time. Screens cut rather than crossfade, except a photograph
-   opening from its tile. The Twin and the host preview build the same
-   files; `font_ui`, `font_jp` and `twin_ui` checks gate CI.
-
-Still to do: a pass on the physical camera, where the timings above were
-tuned on a virtual clock and will need the panel's, and where the two new
-sounds have not yet been heard through the speaker (levels are the shipping
-shutter's, give or take, and `audio_calibrate()` is there to measure them).
-`ui.c` builds clean under the P4 toolchain (ESP-IDF 5.5.1, `-Werror=all`).
-
-## Filming a transition
-
-`firmware/p4/host_preview` has a fake clock and a fake finger. A scene sets
-`g_touch_*`, steps `g_preview_clock_us`, calls `ui_pass()` and writes the
-canvas as `film_<name>_<ms>.ppm` (the `FILM` macro). The swipe, the mode row,
-the capture, the notices, a preset change and a page turn each have one. A
-strip of those frames is how every timing in this document was chosen, and a
-change in one is a diff CI can see.
-
+The physical-device pass: LCD response, frame pacing, input latency, the
+two cues through the speaker, and every timing above re-tuned on the panel
+rather than the host's virtual clock. A curve editor beyond `kmo:plot`.
+Localisation, later.

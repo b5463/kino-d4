@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 
 #include "audio.h"
@@ -49,7 +50,6 @@
 #include "thumb.h"
 #include "touch.h"
 #include "viewfinder.h"
-#include "ui_motion.h"
 
 static const char *TAG = "ui";
 
@@ -76,8 +76,6 @@ static const char *TAG = "ui";
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
 /* ------------------------------------------------------------------ */
-
-
 
 /* Detail screens. */
 #define HEAD_H 62
@@ -115,6 +113,12 @@ static const char *TAG = "ui";
 #define SH_PANE_H (UI_H / 2)                                       /* 240 */
 /* Rows dropped from each end of the source to make 4:3 into 5:3. */
 #define SH_CROP ((VF_H - (VF_W * SH_PANE_H / SH_PANE_W)) / 2)      /* 24 */
+/* The photograph on its own screen: 600x450 centred, the one line under it. */
+#define PH_W 600
+#define PH_H 450
+#define PH_TOP 0
+#define PH_X0 ((UI_W - PH_W) / 2)
+#define PH_LINE_Y (PH_H + 6)
 
 /* The single-photograph view decodes at this size rather than scaling the
  * gallery thumbnail: thumb_load takes any target, so there is no reason to
@@ -141,11 +145,6 @@ static const char *TAG = "ui";
  * these was a loose number in the draw code and the overlap was invisible
  * until someone opened a photograph on the bench.
  */
-#define PH_W 600
-#define PH_H 450
-#define PH_TOP 0
-#define PH_X0 ((UI_W - PH_W) / 2)   /* 100: the picture centred, the title over its corner */
-#define PH_LINE_Y (PH_H + 6)        /* the one line under it: facts left, actions right */
 _Static_assert(PH_W * 3 == PH_H * 4, "photo pane is not 4:3");
 _Static_assert(PH_TOP + PH_H + 30 <= UI_H, "no room for the line under the photograph");
 
@@ -174,7 +173,6 @@ typedef enum {
   SCR_COUNT,
 } screen_t;
 
-
 /* Where Back goes. One level, always, and never to a remembered screen. */
 static const screen_t SCREEN_PARENT[SCR_COUNT] = {
     [SCR_MENU] = SCR_SHOOT, [SCR_SHOOT] = SCR_SHOOT,
@@ -184,7 +182,6 @@ static const screen_t SCREEN_PARENT[SCR_COUNT] = {
     [SCR_CONNECTION] = SCR_CONNECTION, [SCR_STORAGE] = SCR_SETTINGS,
     [SCR_ABOUT] = SCR_SETTINGS, [SCR_POWER] = SCR_SETTINGS,
 };
-
 
 /* ------------------------------------------------------------------ */
 /* Modes                                                               */
@@ -199,21 +196,11 @@ static const screen_t SCREEN_PARENT[SCR_COUNT] = {
 typedef enum { MODE_SHOOT = 0, MODE_ROLL, MODE_FILTER, MODE_CONNECT, MODE_SETUP, MODE_COUNT } kmode_t;
 
 typedef struct {
-  const char *jp;
   screen_t home;
 } mode_def_t;
 
 static const mode_def_t MODES[MODE_COUNT] = {
-    {"撮影", SCR_SHOOT}, {"再生", SCR_GALLERY}, {"色", SCR_LOOK}, {"接続", SCR_CONNECTION}, {"設定", SCR_SETTINGS},
-};
-
-/* A child screen's own name, for the header. One script: the Japanese word
- * is the identity, not a caption over an English one. */
-static const char *const SCREEN_JP[SCR_COUNT] = {
-    [SCR_MENU] = "", [SCR_SHOOT] = "撮影", [SCR_LOOK] = "色", [SCR_GALLERY] = "再生",
-    [SCR_PHOTO] = "写真", [SCR_ROLL] = "ロール", [SCR_SETTINGS] = "設定", [SCR_DISPLAY] = "表示",
-    [SCR_SOUND] = "音", [SCR_CONNECTION] = "接続", [SCR_STORAGE] = "カード", [SCR_ABOUT] = "情報",
-    [SCR_POWER] = "電源",
+    {SCR_SHOOT}, {SCR_GALLERY}, {SCR_LOOK}, {SCR_CONNECTION}, {SCR_SETTINGS},
 };
 
 static kmode_t mode_of(screen_t sc) {
@@ -253,7 +240,6 @@ static int s_focus[SCR_COUNT];
  * a physical key is actually used. */
 static bool s_focus_shown;
 
-static bool foc(screen_t sc, int i) { return s_focus_shown && s_focus[sc] == i; }
 static int s_pressed = -1;      /* held item index, -1 for none */
 static dialog_t s_dialog = DLG_NONE;
 static int s_dlg_focus;          /* 0 = safe action, 1 = the other one */
@@ -261,8 +247,6 @@ static int64_t s_shot_seen_us;
 /* shoot.displayAfterShotS = -1: the report is up and waiting to be dismissed
  * by a touch or a key rather than by a timer. See shot_hold_ack(). */
 static bool s_shot_hold;
-static char s_toast[48];
-static int64_t s_toast_us;
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
 static bool s_photo_ok;
 static char s_photo_id[40];
@@ -339,15 +323,19 @@ _Static_assert(PH_W == GALLERY_FRAME_MAX_W && PH_H == GALLERY_FRAME_MAX_H,
 /* Primitives                                                          */
 /* ------------------------------------------------------------------ */
 
+/* The clip rect every primitive honours: the whole screen unless a node's
+ * mask has narrowed it for the node being drawn. */
+static int s_clip_x0 = 0, s_clip_y0 = 0, s_clip_x1 = UI_W, s_clip_y1 = UI_H;
+
 static inline void px_set(int x, int y, uint16_t c) {
   if ((unsigned)x < UI_W && (unsigned)y < UI_H) s_cv[(size_t)y * UI_W + x] = c;
 }
 
 static void fill(int x, int y, int w, int h, uint16_t colour) {
-  if (x < 0) { w += x; x = 0; }
-  if (y < 0) { h += y; y = 0; }
-  if (x + w > UI_W) w = UI_W - x;
-  if (y + h > UI_H) h = UI_H - y;
+  if (x < s_clip_x0) { w -= s_clip_x0 - x; x = s_clip_x0; }
+  if (y < s_clip_y0) { h -= s_clip_y0 - y; y = s_clip_y0; }
+  if (x + w > s_clip_x1) w = s_clip_x1 - x;
+  if (y + h > s_clip_y1) h = s_clip_y1 - y;
   if (w <= 0 || h <= 0) return;
   for (int r = 0; r < h; r++) {
     uint16_t *row = s_cv + (size_t)(y + r) * UI_W + x;
@@ -365,34 +353,6 @@ static uint16_t mix(uint16_t a, uint16_t b, int k) {
 }
 
 /**
- * Dim what is behind, in place.
- *
- * The one compositing operation this grammar needs and cannot express with a
- * bevel: a modal has to make the screen under it read as unavailable, and a
- * half-lit list still invites a press. `k` is 0..255 towards `tint`.
- *
- * It is a per-pixel loop and there is no cheaper way to darken pixels that are
- * already on the canvas - but it is named and lives here so there is exactly
- * one of it. It was written out by hand inside draw_dialog(), which is how a
- * second one appeared on the viewfinder to keep MENU legible; that one is gone
- * (a plate does the job for nothing), and this is the only caller left.
- *
- * Only for surfaces that are drawn once and then held. Nothing on a path that
- * repaints at frame rate may call it: 800 x 480 is 384 000 unpack-mix-pack
- * round trips.
- */
-static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
-  if (x < 0) { w += x; x = 0; }
-  if (y < 0) { h += y; y = 0; }
-  if (x + w > UI_W) w = UI_W - x;
-  if (y + h > UI_H) h = UI_H - y;
-  for (int r = 0; r < h; r++) {
-    uint16_t *row = s_cv + (size_t)(y + r) * UI_W + x;
-    for (int c = 0; c < w; c++) row[c] = mix(row[c], tint, k);
-  }
-}
-
-/**
  * A filled disc with a soft edge: the one solid shape the interface draws,
  * for the four-camera marks. Coverage is the distance to the rim clamped to
  * one pixel, which at these radii is all the anti-aliasing a dot needs.
@@ -401,10 +361,10 @@ static void disc(float cx, float cy, float r, uint16_t ink, int alpha) {
   if (alpha <= 0 || r <= 0.f) return;
   const int x0 = (int)floorf(cx - r - 1.f), x1 = (int)ceilf(cx + r + 1.f);
   const int y0 = (int)floorf(cy - r - 1.f), y1 = (int)ceilf(cy + r + 1.f);
-  for (int y = y0 < 0 ? 0 : y0; y < y1 && y < UI_H; y++) {
+  for (int y = y0 < s_clip_y0 ? s_clip_y0 : y0; y < y1 && y < s_clip_y1; y++) {
     uint16_t *row = s_cv + (size_t)y * UI_W;
     const float dy = (float)y + 0.5f - cy;
-    for (int x = x0 < 0 ? 0 : x0; x < x1 && x < UI_W; x++) {
+    for (int x = x0 < s_clip_x0 ? s_clip_x0 : x0; x < x1 && x < s_clip_x1; x++) {
       const float dx = (float)x + 0.5f - cx;
       float k = r + 0.5f - sqrtf(dx * dx + dy * dy);
       if (k <= 0.f) continue;
@@ -431,6 +391,14 @@ static void draw_bits(const uint8_t *bits, int w, int h, int stride, int x, int 
  * px_set(), mix() and s_cv above. */
 #include "ui_text_jp.h"
 #include "ui_type.h"
+#include "kmo.h"
+#include "kdraw.h"
+#include "kscene.h"
+#include "kbehave.h"
+
+/* Said by the plumbing, defined by the presentation (ui_present.h). */
+static void ui_note(const char *text);
+static void toast(const char *s);
 
 /* Uppercase in place, ASCII only.
  *
@@ -493,16 +461,6 @@ static bool usb_attached(void) {
   return p.usb_attached;
 }
 
-static void notice_say(const char *text, uint16_t ink, int dur_ms, bool dots);
-/* Every remark a screen used to raise as a tooltip is a notice now: the
- * same entrance, the same exit, the same place. The words themselves are
- * still the old English ones and are rewritten screen by screen. */
-static void toast(const char *s) {
-  snprintf(s_toast, sizeof s_toast, "%s", s);
-  s_toast_us = esp_timer_get_time();
-  notice_say(s, RGB(0xf2, 0xf2, 0xee), 1500, false);
-}
-
 /* ------------------------------------------------------------------ */
 /* Flash and mode, the two controls that live on the viewfinder        */
 /* ------------------------------------------------------------------ */
@@ -532,266 +490,6 @@ static void flash_cycle(void) {
 
 static bool mode_is_quad(void) { return strcmp(config_str("mode", "wiggle"), "quad") == 0; }
 
-/* ------------------------------------------------------------------ */
-/* Boot                                                                */
-/* ------------------------------------------------------------------ */
-
-/**
- * Black, then the name lands.
- *
- * One object, one spring: the word rises the last forty pixels with a little
- * overshoot and settles, held long enough to be read, and the finder
- * dissolves in over it. Nothing here pretends to be a tube or a shutter,
- * and nothing counts to four on a timer - the cameras announce themselves
- * on the finder when they actually answer.
- */
-static void splash(void) {
-  const int64_t t0 = esp_timer_get_time();
-  mo_obj_t w;
-  mo_obj_place(&w, UI_W * 0.5f, UI_H * 0.5f + 40.f);
-  mo_set(&w.alpha, 0.f);
-  mo_to(&w.y, UI_H * 0.5f);
-  mo_to(&w.alpha, 255.f);
-  w.delay_ms = 120;
-  mo_obj_go(&w, t0);
-  int64_t last = t0;
-  for (;;) {
-    const int64_t now = esp_timer_get_time();
-    const float dt = (float)(now - last) / 1000.f;
-    last = now;
-    const bool live = mo_obj_step(&w, now, dt, MO_BOUNCE);
-    fill(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00));
-    ut_fx(&UT_MB, w.x.v, w.y.v, "KINO D4", 2.f, 0.f, C_INK, (int)w.alpha.v, false);
-    gfx_present();
-    if (!live && now - t0 > 1100000) break;
-    vTaskDelay(pdMS_TO_TICKS(16));
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* The header: the mode's name, and the motion between modes           */
-/* ------------------------------------------------------------------ */
-
-#define HDR_X 24
-#define HDR_Y 14
-#define HDR_GROUND C_GROUND
-#define HDR_INK RGB(0xf2, 0xf2, 0xee)
-#define HDR_DIM RGB(0x80, 0x88, 0x94)
-/* How far a title travels on the way in or out. Short: the corner is the
- * anchor and a word that crosses the whole screen reads as a scroll. */
-#define HDR_TRAVEL 170.f
-
-typedef struct {
-  kmode_t mode;   /* what the header names now (the incoming one during a move) */
-  kmode_t prev;   /* what it named before the move */
-  bool moving;
-  mo_obj_t in_t, in_s;   /* incoming title and its secondary word */
-  mo_obj_t out_t, out_s; /* outgoing */
-  int64_t last_us;
-} hdr_t;
-static hdr_t s_hdr = {.mode = MODE_SHOOT, .prev = MODE_SHOOT};
-
-/* The mode row: the five names under the header, opened by tapping the
- * title on a mode's home. It drops in, the names arrive staggered, and a
- * pick or a tap outside closes it. */
-#define MROW_Y (HEAD_H)
-#define MROW_H 72
-static bool s_row_open;
-static mo_val_t s_row_drop;         /* 0 closed .. 1 open */
-static mo_obj_t s_row_item[MODE_COUNT];
-static int64_t s_row_last_us;
-
-static void hdr_place_home(mo_obj_t *t, mo_obj_t *sec) {
-  mo_obj_place(t, HDR_X, HDR_Y);
-  mo_obj_place(sec, HDR_X, HDR_Y);
-}
-
-/**
- * Start the move from `from` to `to`. `dir` is the direction of travel on
- * screen: +1 when the new mode is to the right (swipe left), -1 the other way.
- *
- *   outgoing title    leaves at once, toward -dir, fading
- *   outgoing word     follows 60 ms later
- *   incoming title    enters from +dir with momentum, overshoots, settles
- *   incoming word     60 ms behind it, softer
- *
- * A move issued during a move retargets from where things are: the incoming
- * pair becomes the outgoing pair with its velocity intact.
- */
-static void hdr_go(kmode_t from, kmode_t to, int dir, int64_t now_us) {
-  if (s_hdr.moving) {
-    s_hdr.out_t = s_hdr.in_t;
-    s_hdr.out_s = s_hdr.in_s;
-  } else {
-    hdr_place_home(&s_hdr.out_t, &s_hdr.out_s);
-  }
-  s_hdr.prev = from;
-  s_hdr.mode = to;
-  s_hdr.moving = true;
-  s_hdr.last_us = now_us;
-
-  mo_to(&s_hdr.out_t.x, HDR_X - dir * HDR_TRAVEL);
-  mo_to(&s_hdr.out_t.alpha, 0.f);
-  s_hdr.out_t.delay_ms = 0;
-  mo_obj_go(&s_hdr.out_t, now_us);
-  mo_to(&s_hdr.out_s.x, HDR_X - dir * HDR_TRAVEL * 0.8f);
-  mo_to(&s_hdr.out_s.alpha, 0.f);
-  s_hdr.out_s.delay_ms = 60;
-  mo_obj_go(&s_hdr.out_s, now_us);
-
-  hdr_place_home(&s_hdr.in_t, &s_hdr.in_s);
-  mo_launch(&s_hdr.in_t.x, HDR_X + dir * HDR_TRAVEL, HDR_X, -dir * 0.45f);
-  mo_set(&s_hdr.in_t.alpha, 40.f);
-  mo_to(&s_hdr.in_t.alpha, 255.f);
-  s_hdr.in_t.delay_ms = 0;
-  mo_obj_go(&s_hdr.in_t, now_us);
-  mo_launch(&s_hdr.in_s.x, HDR_X + dir * HDR_TRAVEL * 0.7f, HDR_X, -dir * 0.3f);
-  mo_set(&s_hdr.in_s.alpha, 0.f);
-  mo_to(&s_hdr.in_s.alpha, 255.f);
-  s_hdr.in_s.delay_ms = 70;
-  mo_obj_go(&s_hdr.in_s, now_us);
-}
-
-/** Step the header's objects by the time since the last step. */
-static void hdr_step(int64_t now_us) {
-  if (!s_hdr.moving) return;
-  float dt = (float)(now_us - s_hdr.last_us) / 1000.f;
-  s_hdr.last_us = now_us;
-  bool live = false;
-  live |= mo_obj_step(&s_hdr.out_t, now_us, dt, MO_SNAP);
-  live |= mo_obj_step(&s_hdr.out_s, now_us, dt, MO_SNAP);
-  live |= mo_obj_step(&s_hdr.in_t, now_us, dt, MO_BOUNCE);
-  live |= mo_obj_step(&s_hdr.in_s, now_us, dt, MO_LAZY);
-  if (!live) s_hdr.moving = false;
-}
-
-/** One title: the mode's word in the bold face, able to move and fade. */
-static void hdr_word(const mo_obj_t *t, const char *jp, uint16_t ink, int alpha_mul, bool over_picture) {
-  const int a = (int)t->alpha.v * alpha_mul / 255;
-  if (a <= 0) return;
-  if (a >= 255 && !over_picture) {
-    ut_draw(&UT_MB, (int)t->x.v, (int)t->y.v, jp, ink);
-    return;
-  }
-  const float x = t->x.v + (float)ut_w(&UT_MB, jp) / 2.f, y = t->y.v + UT_MB.em / 2.f;
-  ut_fx(&UT_MB, x, y, jp, 1.f, 0.f, ink, a, over_picture);
-}
-
-/**
- * The header for a screen: on a mode's home its name, on a child screen a
- * mark that means "up" and the child's own name. On the ground colour unless
- * `over_picture`, when it is type alone with a shadow. `alpha` lets a screen
- * let it go - the finder does, once it has been read.
- */
-static void draw_header_a(screen_t sc, bool over_picture, int alpha) {
-  const int64_t now = esp_timer_get_time();
-  hdr_step(now);
-  if (!over_picture) fill(0, 0, UI_W, HEAD_H, HDR_GROUND);
-  if (alpha <= 0) return;
-
-  const kmode_t m = mode_of(sc);
-  const bool home = MODES[m].home == sc;
-  if (s_hdr.moving && home) {
-    hdr_word(&s_hdr.out_t, MODES[s_hdr.prev].jp, HDR_INK, alpha, over_picture);
-    hdr_word(&s_hdr.in_t, MODES[s_hdr.mode].jp, HDR_INK, alpha, over_picture);
-    return;
-  }
-  mo_obj_t t, sec;
-  hdr_place_home(&t, &sec);
-  if (home) {
-    hdr_word(&t, MODES[m].jp, HDR_INK, alpha, over_picture);
-    return;
-  }
-  /* The way up as a mark, then the child's name. Not a path: the mode's
-   * own name is one tap away. */
-  ut_draw_a(&UT_M, HDR_X, HDR_Y, "←", HDR_DIM, alpha);
-  mo_obj_place(&t, HDR_X + 44, HDR_Y);
-  hdr_word(&t, SCREEN_JP[sc], HDR_INK, alpha, over_picture);
-}
-static void draw_header_at(screen_t sc, bool over_picture) { draw_header_a(sc, over_picture, 255); }
-static void draw_header(screen_t sc) { draw_header_a(sc, false, 255); }
-
-/* ---- the mode row ---- */
-
-static void row_open(int64_t now_us) {
-  s_row_open = true;
-  s_row_last_us = now_us;
-  mo_to(&s_row_drop, 1.f);
-  for (int i = 0; i < MODE_COUNT; i++) {
-    mo_obj_place(&s_row_item[i], 0.f, 10.f);
-    mo_set(&s_row_item[i].alpha, 0.f);
-    mo_to(&s_row_item[i].alpha, 255.f);
-    mo_to(&s_row_item[i].y, 0.f);
-    s_row_item[i].delay_ms = 30 * i;
-    mo_obj_go(&s_row_item[i], now_us);
-  }
-}
-
-static void row_close(void) {
-  s_row_open = false;
-  mo_to(&s_row_drop, 0.f);
-}
-
-static void row_step(int64_t now_us) {
-  float dt = (float)(now_us - s_row_last_us) / 1000.f;
-  s_row_last_us = now_us;
-  mo_spring(&s_row_drop, dt, MO_SETTLE);
-  if (s_row_open)
-    for (int i = 0; i < MODE_COUNT; i++) mo_obj_step(&s_row_item[i], now_us, dt, MO_BOUNCE);
-}
-
-/* Each name's slot: five equal columns across the width. */
-static int row_col_x(int i) { return HDR_X + i * ((UI_W - 2 * HDR_X) / MODE_COUNT); }
-
-static void draw_mode_row(void) {
-  const int64_t now = esp_timer_get_time();
-  row_step(now);
-  const float k = s_row_drop.v;
-  if (k <= 0.01f && !s_row_open) return;
-  const int h = (int)(MROW_H * k);
-  if (h <= 0) return;
-  fill(0, MROW_Y, UI_W, h, HDR_GROUND);
-  fill(0, MROW_Y + h - 1, UI_W, 1, RGB(0x22, 0x26, 0x2c));
-  if (!s_row_open) return;
-  const kmode_t cur = mode_of(s_screen);
-  for (int i = 0; i < MODE_COUNT; i++) {
-    const mo_obj_t *o = &s_row_item[i];
-    const int a = (int)(o->alpha.v * k);
-    if (a <= 0) continue;
-    const int x = row_col_x(i);
-    const float y = MROW_Y + 18.f + o->y.v;
-    const uint16_t ink = i == cur ? HDR_INK : HDR_DIM;
-    ut_fx(&UT_MB, x + ut_w(&UT_MB, MODES[i].jp) / 2.f, y + UT_MB.em / 2.f, MODES[i].jp, 1.f, 0.f, ink, a, false);
-  }
-}
-
-/* Which mode a point in the open row is on, or -1. */
-static int row_hit(int x, int y) {
-  if (!s_row_open || y < MROW_Y || y >= MROW_Y + MROW_H) return -1;
-  const int cw = (UI_W - 2 * HDR_X) / MODE_COUNT;
-  for (int i = 0; i < MODE_COUNT; i++)
-    if (x >= row_col_x(i) - 8 && x < row_col_x(i) + cw) return i;
-  return -1;
-}
-
-static void go(screen_t s, int dissolve_ms);
-
-/** Move to mode `to`, with the header carrying the motion. */
-static void mode_go(kmode_t to, int dir) {
-  const kmode_t from = mode_of(s_screen);
-  if (to == from) return;
-  hdr_go(from, to, dir, esp_timer_get_time());
-  go(MODES[to].home, 0);
-}
-
-/** One step left or right along the row of modes; stops at the ends. */
-static void mode_swipe(int dir) {
-  const int cur = (int)mode_of(s_screen);
-  const int next = cur + dir;
-  if (next < 0 || next >= MODE_COUNT) return;
-  mode_go((kmode_t)next, dir);
-}
-
 /* Where an item index sits inside a band of `count` items starting at `base`,
  * or -1 when it is outside. Every segmented row and every picker on this
  * interface is such a band, and this is the arithmetic each of them used to
@@ -807,733 +505,10 @@ static void human_bytes(char *out, size_t n, uint64_t bytes) {
   else snprintf(out, n, "%llu MB", bytes / (1024ULL * 1024));
 }
 
-/* ------------------------------------------------------------------ */
-/* Notices: status that enters the frame, stays long enough to read,    */
-/* and leaves. No acknowledgement, no permanent slot.                    */
-/*                                                                     */
-/* One at a time. A new one replaces the old from where it is - the    */
-/* camera does not queue remarks. The words are chosen where the fact  */
-/* is noticed (notice_watch, below the capture), so this knows nothing  */
-/* about cards or radios: it is given a string, an ink and a duration.  */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-  char text[48];
-  uint16_t ink;
-  int64_t t0_us;   /* 0 = nothing showing */
-  int dur_ms;
-  bool dots;       /* the four-camera prelude: ● ● ● ● gathering into one */
-  mo_val_t x;      /* the word's right edge, springing in from off screen */
-  int64_t last_us;
-  int cue;         /* NOTICE_CUE_*: the sound that goes with the word */
-  bool cued;       /* it has played */
-} notice_t;
-enum { NOTICE_CUE_NONE = 0, NOTICE_CUE_SYNC, NOTICE_CUE_DONE };
-static notice_t s_notice;
-
-#define NOTICE_RIGHT (UI_W - 24)
-#define NOTICE_Y 14
-#define NOTICE_DOTS_MS 260
-
-static bool notice_live(void) { return s_notice.t0_us != 0; }
-
-static void notice_say(const char *text, uint16_t ink, int dur_ms, bool dots) {
-  const int64_t now = esp_timer_get_time();
-  snprintf(s_notice.text, sizeof s_notice.text, "%s", text);
-  s_notice.ink = ink;
-  s_notice.t0_us = now;
-  s_notice.dur_ms = dur_ms;
-  s_notice.dots = dots;
-  s_notice.last_us = now;
-  s_notice.cue = NOTICE_CUE_NONE;
-  s_notice.cued = false;
-  /* From off the right edge, with a push, whatever it was doing before. */
-  mo_launch(&s_notice.x, (float)UI_W + ut_w(&UT_MB, text), (float)NOTICE_RIGHT, -0.9f);
-  s_mo_live_count++; /* a frame is owed, whichever screen is up */
-}
-
-static void notice_play_cue(void) {
-  s_notice.cued = true;
-  if (s_notice.cue == NOTICE_CUE_SYNC) audio_sync();
-  else if (s_notice.cue == NOTICE_CUE_DONE) audio_done();
-}
-
-/**
- * Give the notice just said a sound. Designed with the motion, not beside
- * it: a notice with the four-dot prelude plays its cue on the frame the dots
- * meet and the word lands (draw_notice), a plain one plays it now, as the
- * word enters. The sound and the picture are one event either way.
- */
-static void notice_cue(int cue) {
-  s_notice.cue = cue;
-  s_notice.cued = false;
-  if (!s_notice.dots) notice_play_cue();
-}
-
-/** Draw the notice if there is one; steps its spring. `over_picture` adds the shadow. */
-static void draw_notice(bool over_picture) {
-  if (!notice_live()) return;
-  const int64_t now = esp_timer_get_time();
-  const int64_t ms = (now - s_notice.t0_us) / 1000;
-  const int total = s_notice.dur_ms + (s_notice.dots ? NOTICE_DOTS_MS : 0);
-  if (ms >= total) {
-    s_notice.t0_us = 0;
-    return;
-  }
-  s_mo_live_count++;
-  const float dt = (float)(now - s_notice.last_us) / 1000.f;
-  s_notice.last_us = now;
-
-  if (s_notice.dots && ms < NOTICE_DOTS_MS) {
-    /* Four marks, one per camera, closing on one point: the moment they
-     * agree. Spacing runs from 34 px to 0 on an ease-out; the word follows. */
-    const float k = ease_out_cubic((float)ms / NOTICE_DOTS_MS);
-    const float cx = NOTICE_RIGHT - 40.f, cy = NOTICE_Y + UT_MB.em / 2.f;
-    const float gap = 34.f * (1.f - k);
-    for (int i = 0; i < 4; i++) {
-      if (over_picture) disc(cx + (i - 1.5f) * gap + 1.5f, cy + 1.5f, 6.f, 0x0841, 150);
-      disc(cx + (i - 1.5f) * gap, cy, 6.f, s_notice.ink, 255);
-    }
-    return;
-  }
-  if (s_notice.dots && ms == NOTICE_DOTS_MS) s_notice.last_us = now;
-  if (s_notice.cue && !s_notice.cued) notice_play_cue(); /* the dots have met */
-  mo_spring(&s_notice.x, dt, MO_BOUNCE);
-  const int word_ms = (int)ms - (s_notice.dots ? NOTICE_DOTS_MS : 0);
-  const int out_ms = 180;
-  float alpha = 255.f, drift = 0.f;
-  if (word_ms > s_notice.dur_ms - out_ms) {
-    const float k = ease_in_quart((float)(word_ms - (s_notice.dur_ms - out_ms)) / out_ms);
-    alpha = 255.f * (1.f - k);
-    drift = 24.f * k;
-  }
-  const float w = (float)ut_w(&UT_MB, s_notice.text);
-  ut_fx(&UT_MB, s_notice.x.v - w / 2.f + drift, NOTICE_Y + UT_MB.em / 2.f, s_notice.text, 1.f, 0.f, s_notice.ink,
-        (int)alpha, over_picture);
-}
-
-/* What the finder counted live on its last draw, for notice_watch. */
-static int s_live_cams = -1;
-
-/**
- * Watch the facts that deserve a word when they change, once per pass.
- * Edges only, and never on the first pass: the state the camera boots into
- * is not news. Each fact keeps its own previous value here.
- */
-static void notice_watch(void) {
-  static bool primed;
-  static bool p_mounted, p_usb, p_low, p_online, p_sending;
-  static net_state_t p_net;
-  static int p_live;
-  static int64_t q_last_us;
-  static upload_queue_report_t q; /* polled at 2 Hz: it takes the queue's lock */
-
-  storage_status_t sd;
-  storage_get_status(&sd);
-  power_state_t ps;
-  power_get(&ps);
-  net_status_t net;
-  net_link_status(&net, esp_timer_get_time() / 1000);
-  const bool low = sd.mounted && sd.free_bytes < 300ull * 1024 * 1024;
-  const bool online = net_link_can_upload(&net);
-  const int64_t now = esp_timer_get_time();
-  if (!primed || now - q_last_us >= 500000) {
-    upload_queue_status(&q);
-    q_last_us = now;
-  }
-  const int waiting = q.pending + q.card_pending;
-  const bool sending = online && q.server_state != UPLOAD_SERVER_UNREACHABLE && !q.halted &&
-                       (waiting > 0 || q.uploading > 0);
-
-  if (!primed) {
-    primed = true;
-    p_mounted = sd.mounted;
-    p_usb = ps.usb_attached;
-    p_net = net.state;
-    p_low = low;
-    p_live = s_live_cams;
-    p_online = online;
-    p_sending = sending;
-    return;
-  }
-  if (sd.mounted != p_mounted) {
-    notice_say(sd.mounted ? "カード OK" : "カードなし", sd.mounted ? C_INK : C_RED, 1400, false);
-    p_mounted = sd.mounted;
-  }
-  if (ps.usb_attached != p_usb) {
-    notice_say(ps.usb_attached ? "USB 接続" : "USB 切断", ps.usb_attached ? C_COBALT : C_INK, 1300, false);
-    p_usb = ps.usb_attached;
-  }
-  /* つながった！ is the link to KINO ROLL coming up - the connection that
-   * means something can happen. An address alone is the quieter "WiFi OK",
-   * and not both in the same breath. */
-  const bool linked_now = online && !p_online;
-  if (net.radio_routed && net.state != p_net) {
-    if (net.state == NET_IP_READY) { if (!linked_now) notice_say("WiFi OK", C_COBALT, 1400, false); }
-    else if (p_net == NET_IP_READY) notice_say("WiFi なし", C_INK, 1400, false);
-    p_net = net.state;
-  }
-  if (online != p_online) {
-    if (online) notice_say("つながった！", C_COBALT, 1500, false);
-    p_online = online;
-  }
-  /* A burst that was going out and has all arrived: the four marks meet,
-   * the word, the landed cue. A burst interrupted by the link dropping still
-   * has pictures waiting and says nothing - that is not a completion. */
-  if (p_sending && !sending && waiting == 0 && q.uploading == 0 && !q.halted) {
-    notice_say("送信済", C_COBALT, 1300, true);
-    notice_cue(NOTICE_CUE_DONE);
-  }
-  p_sending = sending;
-  if (low != p_low) {
-    if (low) notice_say("カード残り少", C_YELLOW, 1800, false);
-    p_low = low;
-  }
-  if (s_live_cams != p_live) {
-    if (s_live_cams == 4 && p_live >= 0 && p_live < 4) {
-      notice_say("同期 OK", C_INK, 1200, true);
-      notice_cue(NOTICE_CUE_SYNC);
-    }
-    p_live = s_live_cams;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* The capture, as an event                                            */
-/*                                                                     */
-/* Driven by what the pipeline reports - capture_stage(), the asked and  */
-/* arrived masks, the report - never by a timer standing in for it. The */
-/* three phases the brief names: an immediate response, the four-camera */
-/* event while frames come back, a result that lands. Then, sometimes,  */
-/* a word.                                                              */
-/* ------------------------------------------------------------------ */
-
-/* How a word arrives. One lifecycle (cap_say, the timeline), several
- * presentations: a word that is thrown, one that stands still, one that
- * runs down the side, one that is small and says nothing loudly, one that
- * is bigger than the screen and cut by its edge. Consistency here would be
- * a toast component; variation is the personality. */
-typedef enum {
-  RS_THROW = 0, /* oversized, tilted, lands with a back-ease, drifts out */
-  RS_STILL,     /* cut in, cut out, no motion at all */
-  RS_VERT,      /* 縦書き down the right side, fading in */
-  RS_TINY,      /* small, bottom right, no motion */
-  RS_HUGE,      /* four ems tall, cropped by the left edge, slides a little */
-} react_style_t;
-
-typedef struct {
-  const char *text;
-  uint16_t ink;
-  int weight;      /* 0 = never by chance: contextual only */
-  int dur_ms;      /* time on screen, entry to exit */
-  react_style_t style;
-} reaction_t;
-
-/* The pool. NONE carries the most weight on purpose: a shutter that
- * celebrates every time is noise, and the rare lines stay rare because most
- * presses say nothing at all. Colour is one idea per event. */
-static const reaction_t REACT_NONE = {NULL, 0, 55, 0, RS_STILL};
-static const reaction_t REACTIONS[] = {
-    {"撮れた！", C_YELLOW, 10, 800, RS_THROW}, {"よし。", C_INK, 10, 600, RS_STILL},
-    {"いいね。", C_COBALT, 8, 800, RS_VERT},   {"バッチリ。", C_YELLOW, 5, 800, RS_THROW},
-    {"もう一枚？", C_INK, 5, 1000, RS_TINY},   {"4枚！", C_COBALT, 5, 700, RS_HUGE},
-    {"完璧。", C_RED, 1, 900, RS_THROW},
-};
-/* Contextual: chosen by a rule, each at most once per session. */
-static const reaction_t REACT_HUNDRED = {"百枚！", C_RED, 0, 1100, RS_HUGE};
-static const reaction_t REACT_SYNCED = {"4枚同期", C_COBALT, 0, 900, RS_STILL};
-static const reaction_t REACT_LATE = {"まだ撮る？", C_INK, 0, 1100, RS_VERT};
-static const reaction_t REACT_FAILED = {"撮れなかった", C_RED, 0, 1600, RS_STILL};
-
-typedef struct {
-  bool armed;
-  int64_t t0_us;         /* the pass that saw the shutter open */
-  int64_t done_us;       /* the pass that saw the report, 0 before */
-  uint32_t seen_in;      /* frames_in as of the last pass */
-  int64_t arrive_us[4];  /* when each mark lit, 0 = not yet */
-  mo_val_t zoom;         /* the landing: panes at 1.06 settling to 1 */
-  mo_tl_t hit;           /* luminance hit at the landing */
-  const reaction_t *react;
-  mo_tl_t react_tl;
-  float react_x, react_y, react_rot, react_scale;
-  bool failed;
-  char fail_why[64];
-  bool cue_pending;      /* 4枚同期 owes its sound when the word lands */
-} cap_fx_t;
-static cap_fx_t s_cap;
-static uint32_t s_session_shots;
-static bool s_said_hundred, s_said_synced, s_said_late;
-
-static int64_t cap_since_ms(int64_t from_us) { return from_us ? (esp_timer_get_time() - from_us) / 1000 : -1; }
-
-/** Pick the word for this photograph, or NULL. Rules first, then the pool. */
-static const reaction_t *cap_pick(const capture_report_t *r) {
-  if (!r->ok) return &REACT_FAILED;
-  s_session_shots++;
-  if (s_session_shots == 100 && !s_said_hundred) { s_said_hundred = true; return &REACT_HUNDRED; }
-  if (r->stored == 4 && !s_said_synced) {
-    bool synced = true;
-    for (int i = 0; i < 4; i++) synced &= r->cam[i].attempted && r->cam[i].ok && r->cam[i].sync_class == PURE_SYNC_OK;
-    if (synced) { s_said_synced = true; return &REACT_SYNCED; }
-  }
-  {
-    const int hour = clock_local_hour();
-    if (hour >= 0 && hour < 4 && !s_said_late) { s_said_late = true; return &REACT_LATE; }
-  }
-  int total = REACT_NONE.weight;
-  for (size_t i = 0; i < sizeof REACTIONS / sizeof REACTIONS[0]; i++) total += REACTIONS[i].weight;
-  int pick = mo_rand_n(total);
-  if (pick < REACT_NONE.weight) return NULL;
-  pick -= REACT_NONE.weight;
-  for (size_t i = 0; i < sizeof REACTIONS / sizeof REACTIONS[0]; i++) {
-    if (pick < REACTIONS[i].weight) {
-      /* 4枚！ only when there were four. */
-      if (REACTIONS[i].text[0] == '4' && r->stored < 4) return NULL;
-      return &REACTIONS[i];
-    }
-    pick -= REACTIONS[i].weight;
-  }
-  return NULL;
-}
-
-/** Place a word: somewhere in the middle third, a little askew, entry faster than exit. */
-static void cap_say(const reaction_t *w, int64_t now) {
-  s_cap.react = w;
-  if (w == NULL) return;
-  const int glyphs = ut_w(&UT_MB, w->text) / UT_MB.em;
-  switch (w->style) {
-    case RS_THROW:
-      s_cap.react_scale = glyphs <= 4 ? 2.6f : 2.f;
-      s_cap.react_rot = (mo_rand() & 1 ? 1.f : -1.f) * (4.f + mo_rand_pm(4.f) + 4.f);
-      s_cap.react_x = UI_W * 0.5f + mo_rand_pm(UI_W * 0.12f);
-      s_cap.react_y = UI_H * 0.46f + mo_rand_pm(UI_H * 0.10f);
-      break;
-    case RS_STILL:
-      s_cap.react_scale = 1.8f;
-      s_cap.react_rot = 0.f;
-      s_cap.react_x = UI_W * 0.5f;
-      s_cap.react_y = UI_H * (w == &REACT_FAILED ? 0.42f : 0.5f);
-      break;
-    case RS_VERT:
-      s_cap.react_scale = 1.3f;
-      s_cap.react_rot = 0.f;
-      s_cap.react_x = UI_W - 70.f;
-      s_cap.react_y = 90.f;
-      break;
-    case RS_TINY:
-      s_cap.react_scale = 1.f;
-      s_cap.react_rot = 0.f;
-      s_cap.react_x = UI_W - 24.f;
-      s_cap.react_y = UI_H - 24.f - UT_S.em;
-      break;
-    case RS_HUGE:
-      s_cap.react_scale = 4.4f;
-      s_cap.react_rot = 0.f;
-      s_cap.react_x = -30.f;
-      s_cap.react_y = UI_H * 0.52f;
-      break;
-  }
-  mo_tl_start(&s_cap.react_tl, now, w->dur_ms, w == &REACT_FAILED ? 0 : 140);
-  s_cap.cue_pending = w == &REACT_SYNCED;
-}
-
-/**
- * Read the pipeline once per pass and move the event along. Called from
- * ui_pass() before anything draws, so the frame that follows already knows
- * which camera just delivered.
- */
-static void cap_step(void) {
-  const int64_t now = esp_timer_get_time();
-  /* The sync cue goes with the word, not with the report: it fires on the
-   * pass the reaction's delay runs out and 4枚同期 enters. */
-  if (s_cap.cue_pending && s_cap.react_tl.start_us != 0 &&
-      now >= s_cap.react_tl.start_us + (int64_t)s_cap.react_tl.delay_ms * 1000) {
-    s_cap.cue_pending = false;
-    audio_sync();
-  }
-  const capture_stage_t st = capture_stage();
-  if (st == CAPTURE_IDLE) {
-    if (s_cap.armed && !mo_tl_running(&s_cap.react_tl, now)) {
-      s_cap.armed = false;
-      s_cap.react = NULL;
-    }
-    return;
-  }
-  if (!s_cap.armed) {
-    memset(&s_cap, 0, sizeof s_cap);
-    s_cap.armed = true;
-    s_cap.t0_us = now;
-    mo_set(&s_cap.zoom, 1.f);
-  }
-  if (st != CAPTURE_DONE) {
-    const uint32_t in = capture_frames_in();
-    const uint32_t fresh = in & ~s_cap.seen_in;
-    for (int i = 0; i < 4; i++)
-      if (fresh & (1u << i)) s_cap.arrive_us[i] = now;
-    s_cap.seen_in = in;
-    return;
-  }
-  if (s_cap.done_us == 0) {
-    s_cap.done_us = now;
-    capture_report_t r;
-    capture_last(&r);
-    s_cap.failed = !r.ok;
-    snprintf(s_cap.fail_why, sizeof s_cap.fail_why, "%.60s",
-             r.err_msg[0] ? r.err_msg : (r.err_code[0] ? r.err_code : "NO PHOTO"));
-    /* Frames the report knows about that no pass happened to catch. */
-    for (int i = 0; i < 4; i++)
-      if (r.cam[i].ok && s_cap.arrive_us[i] == 0) s_cap.arrive_us[i] = now;
-    if (r.ok) {
-      mo_set(&s_cap.zoom, 1.06f);
-      mo_to(&s_cap.zoom, 1.f);
-      mo_tl_start(&s_cap.hit, now, 110, 0);
-    }
-    cap_say(cap_pick(&r), now);
-  }
-}
-
-/* The luminance the landing adds to the picture, 0..31 per channel. */
-static int cap_lift(void) {
-  if (!s_cap.armed || s_cap.done_us == 0 || s_cap.failed) return 0;
-  const float t = mo_tl_at(&s_cap.hit, esp_timer_get_time());
-  return (int)(11.f * (1.f - ease_out_cubic(t)));
-}
-
-/* The panes' zoom this frame: stepped here because the finder is the only
- * screen that draws it, and it draws every frame while it is live. */
-static float cap_zoom(void) {
-  if (!s_cap.armed || s_cap.done_us == 0) return 1.f;
-  static int64_t last_us;
-  const int64_t now = esp_timer_get_time();
-  const float dt = last_us ? (float)(now - last_us) / 1000.f : 0.f;
-  last_us = now;
-  mo_spring(&s_cap.zoom, dt, MO_SETTLE);
-  return s_cap.zoom.v;
-}
-
-/**
- * The four-camera event: 1 → 2 → 3 → 4, each digit dim until its frame is
- * in, bright the moment it lands and settling to the ink. Cameras the capture
- * did not ask stay dim; a failed frame goes red when the report says so.
- * `y` is the line's top; it is drawn wherever a capture is running.
- */
-static void draw_cap_marks(int y, bool over_picture) {
-  if (!s_cap.armed) return;
-  const int64_t now = esp_timer_get_time();
-  const uint32_t asked = capture_asked_cams();
-  capture_report_t r;
-  const bool done = s_cap.done_us != 0;
-  if (done) capture_last(&r);
-  /* Four marks, one per camera, in the order the lenses sit on the bar. A
-   * small dim dot while the frame is owed, a full one the moment it lands -
-   * yellow for that moment, then ink - red for a camera that did not. */
-  const float step = 36.f, cy = y + 10.f;
-  const float x0 = UI_W * 0.5f - 1.5f * step;
-  for (int i = 0; i < 4; i++) {
-    const float cx = x0 + i * step;
-    uint16_t ink = RGB(0x55, 0x5c, 0x66);
-    float rad = 3.f;
-    if (done && r.cam[i].attempted && !r.cam[i].ok) { ink = C_RED; rad = 7.f; }
-    else if (s_cap.arrive_us[i]) {
-      const int64_t age = (now - s_cap.arrive_us[i]) / 1000;
-      const float k = age < 160 ? (float)age / 160.f : 1.f;
-      ink = age < 160 ? C_YELLOW : C_INK;
-      rad = 7.f + 3.f * (1.f - ease_out_cubic(k));
-      if (age < 160) s_mo_live_count++; /* still changing */
-    } else if (asked == 0 || (asked & (1u << i))) {
-      ink = RGB(0x80, 0x88, 0x94);
-    }
-    if (over_picture) disc(cx + 1.5f, cy + 1.5f, rad, 0x0841, 150);
-    disc(cx, cy, rad, ink, 255);
-  }
-  if (!done) s_mo_live_count++; /* a capture in flight owes frames */
-}
-
-/** The word, if there is one this time, in its own manner. */
-static void draw_cap_reaction(void) {
-  const reaction_t *w = s_cap.react;
-  if (w == NULL) return;
-  const int64_t now = esp_timer_get_time();
-  if (!mo_tl_running(&s_cap.react_tl, now) && mo_tl_at(&s_cap.react_tl, now) >= 1.f) return;
-  const float t = mo_tl_at(&s_cap.react_tl, now); /* 0..1 over dur */
-  const int dur = w->dur_ms;
-  const float ms = t * dur;
-  float scale = s_cap.react_scale, alpha = 255.f, dx = 0.f, dy = 0.f;
-  switch (w->style) {
-    case RS_THROW: {
-      const float in_ms = 130.f, out_ms = 170.f;
-      if (ms < in_ms) {
-        const float k = ease_out_back(ms / in_ms);
-        scale = s_cap.react_scale * (1.55f - 0.55f * k);
-        alpha = 255.f * ease_out_cubic(ms / (in_ms * 0.6f));
-      } else if (ms > dur - out_ms) {
-        const float k = ease_in_quart((ms - (dur - out_ms)) / out_ms);
-        alpha = 255.f * (1.f - k);
-        dy = -14.f * k;
-      }
-      ut_fx(&UT_MB, s_cap.react_x + dx, s_cap.react_y + dy, w->text, scale, s_cap.react_rot, w->ink, (int)alpha, true);
-      break;
-    }
-    case RS_STILL:
-      /* There and then not. The only motion is the picture's. */
-      ut_fx(&UT_MB, s_cap.react_x, s_cap.react_y, w->text, scale, 0.f, w->ink, 255, true);
-      if (w == &REACT_FAILED)
-        ut_fx(&UT_S, UI_W * 0.5f, s_cap.react_y + 52.f, s_cap.fail_why, 1.f, 0.f, C_INK, 255, true);
-      break;
-    case RS_VERT: {
-      /* Down the right edge, each glyph a beat after the one above it. */
-      const int a_in = 80;
-      const float out_ms = 160.f;
-      float a_all = 255.f;
-      if (ms > dur - out_ms) a_all = 255.f * (1.f - ease_in_quart((ms - (dur - out_ms)) / out_ms));
-      const char *p = w->text;
-      float ty = s_cap.react_y;
-      int i = 0;
-      char one[8];
-      while (*p) {
-        const char *at = p;
-        utf8_next(&p);
-        memcpy(one, at, (size_t)(p - at));
-        one[p - at] = 0;
-        const float since = ms - i * 45.f;
-        const float a = since <= 0 ? 0.f : (since >= a_in ? 1.f : ease_out_cubic(since / a_in));
-        const float rise = 10.f * (1.f - a);
-        ut_fx(&UT_MB, s_cap.react_x, ty + UT_MB.em * scale * 0.5f + rise, one, scale, 0.f, w->ink,
-              (int)(a * a_all), true);
-        ty += UT_MB.em * scale;
-        i++;
-      }
-      break;
-    }
-    case RS_TINY: {
-      /* Small, in the corner, said once. Right-aligned to the margin. */
-      const float wdt = (float)ut_w(&UT_S, w->text);
-      ut_fx(&UT_S, s_cap.react_x - wdt * 0.5f, s_cap.react_y + UT_S.em * 0.5f, w->text, 1.f, 0.f, w->ink, 255, true);
-      break;
-    }
-    case RS_HUGE: {
-      /* Taller than the frame is meant for, and cut by its left edge: the
-       * word is bigger than the screen, not fitted to it. Enters a little
-       * from the left, leaves by fading. */
-      const float in_ms = 160.f, out_ms = 150.f;
-      if (ms < in_ms) dx = -40.f * (1.f - ease_out_quint(ms / in_ms));
-      else if (ms > dur - out_ms) alpha = 255.f * (1.f - ease_in_quart((ms - (dur - out_ms)) / out_ms));
-      const float wdt = (float)ut_w(&UT_MB, w->text) * scale;
-      ut_fx(&UT_MB, s_cap.react_x + wdt * 0.5f + dx, s_cap.react_y, w->text, scale, 0.f, w->ink, (int)alpha, true);
-      break;
-    }
-  }
-}
-
-/* What can be touched on the finder: the title band (the shell's IT_HDR),
- * and the two words on the reading line that are decisions - while the line
- * is showing. */
-#define SH_IT_MODE 1
-#define SH_IT_FLASH 2
-static int s_sh_mode_x0, s_sh_mode_x1, s_sh_flash_x0, s_sh_flash_x1;
-
-/*
- * The finder at rest is the picture. The mode's name and the reading line -
- * how it will shoot - are shown when there is a reason to read them: on
- * entering the mode, on a touch, on a change; they hold for a moment and let
- * go. Four small marks in the corner stay, one per camera, lit when it is
- * answering: the one persistent thing, because it is the one fact that can
- * change under you without anything else moving.
- */
-#define SH_SHOW_FIRST_MS 2600 /* the first time this boot: long enough to learn the line */
-#define SH_SHOW_MS 1600       /* after that: a glance */
-#define SH_FADE_MS 320
-static int64_t s_sh_reveal_us;
-static int s_sh_show_ms = SH_SHOW_FIRST_MS;
-
-/** Something happened that deserves the words: show them, from now. */
-static void sh_reveal(void) { s_sh_reveal_us = esp_timer_get_time(); }
-
-/** 255 while the words are shown, easing to 0 after; counts as live while fading. */
-static int sh_words_alpha(void) {
-  if (s_sh_reveal_us == 0) return 0;
-  const int64_t ms = (esp_timer_get_time() - s_sh_reveal_us) / 1000;
-  if (ms < s_sh_show_ms) return 255;
-  if (ms >= s_sh_show_ms + SH_FADE_MS) return 0;
-  s_mo_live_count++;
-  return (int)(255.f * (1.f - ease_in_quart((float)(ms - s_sh_show_ms) / SH_FADE_MS)));
-}
-
-static const char *const FLASH_JP[3] = {"自動", "発光", "なし"};
-static void fl_current(char *num, size_t ncap, char *jp, size_t jcap, char *en, size_t ecap, char *id_out,
-                       size_t idcap);
-
-static void sh_pane_rect(int cam, int *x, int *y) {
-  *x = (cam % 2) * SH_PANE_W;
-  *y = (cam / 2) * SH_PANE_H;
-}
-
-/* Scaled to fill and cropped, rather than fitted and bordered.
- *
- * The source row and column for every destination pixel are fixed by four
- * compile-time constants, so they are worked out once into a pair of tables
- * instead of a multiply and a divide per pixel. Four panes of 400x240 is
- * 384 000 pixels a frame, and the finder redraws several times a second.
- * The tables are 1280 bytes together and the arithmetic is unchanged, so the
- * output is the same pixels as before, one for one. */
-static uint16_t s_sh_xmap[SH_PANE_W];
-static uint16_t s_sh_ymap[SH_PANE_H];
-static bool s_sh_map_built;
-
-static void sh_build_maps(void) {
-  const int span = VF_H - 2 * SH_CROP;
-  for (int y = 0; y < SH_PANE_H; y++) s_sh_ymap[y] = (uint16_t)(SH_CROP + y * span / SH_PANE_H);
-  for (int x = 0; x < SH_PANE_W; x++) s_sh_xmap[x] = (uint16_t)(x * VF_W / SH_PANE_W);
-  s_sh_map_built = true;
-}
-
-static void sh_blit(const uint16_t *tile, int px, int py) {
-  if (!s_sh_map_built) sh_build_maps();
-  for (int y = 0; y < SH_PANE_H; y++) {
-    const uint16_t *src = tile + (size_t)s_sh_ymap[y] * VF_W;
-    uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
-    for (int x = 0; x < SH_PANE_W; x++) dst[x] = src[s_sh_xmap[x]];
-  }
-}
-
-/**
- * The same blit with the landing on it: a crop-zoom into the pane's centre
- * (zoom >= 1) and a lift added to every channel (0..31) - the result arriving
- * a little large and bright and settling. Two per-frame tables and one
- * saturating add per pixel, so it costs the plain blit plus a few cycles, and
- * it runs only for the ~200 ms the landing lasts.
- */
-static void sh_blit_fx(const uint16_t *tile, int px, int py, float zoom, int lift) {
-  if (zoom <= 1.001f && lift <= 0) { sh_blit(tile, px, py); return; }
-  static uint16_t xm[SH_PANE_W], ym[SH_PANE_H];
-  const float span_y = (VF_H - 2 * SH_CROP) / zoom, span_x = VF_W / zoom;
-  const float y0 = (VF_H - span_y) * 0.5f, x0 = (VF_W - span_x) * 0.5f;
-  for (int y = 0; y < SH_PANE_H; y++) ym[y] = (uint16_t)(y0 + y * span_y / SH_PANE_H);
-  for (int x = 0; x < SH_PANE_W; x++) xm[x] = (uint16_t)(x0 + x * span_x / SH_PANE_W);
-  const int lr = lift, lg = lift * 2, lb = lift;
-  for (int y = 0; y < SH_PANE_H; y++) {
-    const uint16_t *src = tile + (size_t)ym[y] * VF_W;
-    uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
-    for (int x = 0; x < SH_PANE_W; x++) {
-      const uint16_t p = src[xm[x]];
-      if (lift <= 0) { dst[x] = p; continue; }
-      int r = ((p >> 11) & 31) + lr, g = ((p >> 5) & 63) + lg, b = (p & 31) + lb;
-      if (r > 31) r = 31;
-      if (g > 63) g = 63;
-      if (b > 31) b = 31;
-      dst[x] = (uint16_t)((r << 11) | (g << 5) | b);
-    }
-  }
-}
-
 /* The finder names the look the way FILTER does, through fl_current(), which
  * lives with the look plumbing below; one lookup, so two screens cannot
  * disagree about which look is loaded. */
 static bool look_current_id(char *out, size_t cap);
-
-/**
- * SHOOT: four streams, a way back, and how the next photograph will be taken.
- *
- * The decisions are made on LOOK - mode, flash, which look - because choosing
- * is not part of seeing. But a viewfinder that cannot tell you what it is set
- * to makes you leave it to check, which is worse than a 34 px bar. So the
- * finder states them and changes none of them: everything on the strip is a
- * reading, and the only thing on this screen that can be pressed is the way
- * out.
- *
- * Nothing on the strip is invented. Mode and flash are the config fields LOOK
- * writes, the look is the string LOOK's picker shows, and the count is the
- * panes that decoded a frame this pass - the same fact that decided whether
- * each quarter got a picture or a reason.
- */
-
-static void draw_shoot(void) {
-  int live = 0;
-  const float zoom = cap_zoom();
-  const int lift = cap_lift();
-  /* The immediate response: the shutter pass paints white, the next black,
-   * before a single byte has come back. Two flat fills, then the frozen
-   * finder (viewfinder_hold has the tiles) with the four-camera event on it. */
-  const int64_t shut_ms = s_cap.armed ? cap_since_ms(s_cap.t0_us) : -1;
-  if (shut_ms >= 0 && shut_ms < 90) {
-    fill(0, 0, UI_W, UI_H, shut_ms < 35 ? RGB(0xff, 0xff, 0xff) : RGB(0x00, 0x00, 0x00));
-    s_mo_live_count++;
-    return;
-  }
-  bool has[4] = {false, false, false, false};
-  for (int i = 0; i < 4; i++) {
-    int px, py;
-    sh_pane_rect(i, &px, &py);
-
-    const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(i) : NULL;
-    vf_status_t st = {0};
-    if (viewfinder_ready()) viewfinder_status(i, &st);
-
-    if (tile != NULL) {
-      sh_blit_fx(tile, px, py, zoom, lift);
-      /* Counted here rather than from viewfinder_status(): what the strip
-       * reports is what the screen is showing. A pane with pixels on it is a
-       * camera that answered, whatever the status word says a moment later. */
-      live++;
-      has[i] = true;
-      continue;
-    }
-
-    /* No pixels. Which camera, and quietly why - a black quarter could mean
-     * any of several things, and this is the one state where the screen has
-     * nothing better to show. */
-    fill(px, py, SH_PANE_W, SH_PANE_H, C_GROUND);
-    char n[2] = {(char)('1' + i), 0};
-    const char *why = st.state == VF_ERROR ? "画像なし" : st.state == VF_STALLED ? "更新なし" : "カメラなし";
-    ut_mid(&UT_M, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 30, n, RGB(0x3a, 0x42, 0x4c));
-    ut_mid(&UT_S, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 8, why, RGB(0x3a, 0x42, 0x4c));
-  }
-  s_live_cams = live;
-
-  /* ---- the words, while they are wanted ---- */
-  const int wa = sh_words_alpha();
-  draw_header_a(SCR_SHOOT, true, wa);
-  if (wa > 0) {
-    /* How it will shoot: mode, look, flash. Three words on one line, the
-     * first and last of them decisions you can take here. */
-    char num[16], jp[LOOK_TEXT_MAX + 4], en[LOOK_TEXT_MAX + 4], look[LOOK_TEXT_MAX + 24];
-    fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, NULL, 0);
-    snprintf(look, sizeof look, "%s %s", num, jp);
-    const char *mode_w = mode_is_quad() ? "QUAD" : "WIGGLE";
-    char flash_w[32];
-    snprintf(flash_w, sizeof flash_w, "フラッシュ %s", FLASH_JP[flash_index()]);
-    const int top = UI_H - 24 - UT_M.em;
-    const int gap = 28;
-    int x = HDR_X;
-    s_sh_mode_x0 = x;
-    x = ut_draw_a(&UT_M, x, top, mode_w, HDR_INK, wa);
-    s_sh_mode_x1 = x;
-    x += gap;
-    x = ut_draw_a(&UT_M, x, top, look, HDR_DIM, wa);
-    x += gap;
-    s_sh_flash_x0 = x;
-    x = ut_draw_a(&UT_M, x, top, flash_w, HDR_INK, wa);
-    s_sh_flash_x1 = x;
-    /* A pressed word takes a line under it, the acknowledgement. */
-    if (s_pressed == SH_IT_MODE) fill(s_sh_mode_x0, top + UT_M.em + 2, s_sh_mode_x1 - s_sh_mode_x0, 2, C_INK);
-    if (s_pressed == SH_IT_FLASH) fill(s_sh_flash_x0, top + UT_M.em + 2, s_sh_flash_x1 - s_sh_flash_x0, 2, C_INK);
-  } else {
-    s_sh_mode_x0 = s_sh_mode_x1 = s_sh_flash_x0 = s_sh_flash_x1 = -1000;
-  }
-
-  /* ---- the four marks, always ---- */
-  if (!s_cap.armed) {
-    const float cy = UI_H - 24.f - 5.f, x0 = UI_W - 24.f - 3 * 18.f - 5.f;
-    for (int i = 0; i < 4; i++) {
-      disc(x0 + i * 18.f + 1.5f, cy + 1.5f, 5.f, 0x0841, 120);
-      disc(x0 + i * 18.f, cy, has[i] ? 5.f : 3.f, has[i] ? C_INK : RGB(0x80, 0x88, 0x94), has[i] ? 230 : 200);
-    }
-  }
-
-  /* ---- the capture, when there is one ---- */
-  draw_cap_marks(UI_H - 60, true);
-  draw_cap_reaction();
-}
 
 /* ------------------------------------------------------------------ */
 /* Look                                                                */
@@ -1620,7 +595,7 @@ static void look_apply(const char *id) {
 static void look_step(int delta) {
   const int n = kdp_recipes_count();
   if (n <= 0) {
-    toast("ルックなし");
+    ui_note("NO LOOKS");
     return;
   }
   char cur[KDP_RECIPE_ID_MAX];
@@ -1679,52 +654,6 @@ static void look_step(int delta) {
 /* the honest thing that changes when the preset does.                  */
 /* ------------------------------------------------------------------ */
 
-#define FL_IT_PREV 0   /* left half of the picture */
-#define FL_IT_NEXT 1   /* right half */
-#define FL_IT_MONO 2   /* 白黒 */
-#define FL_IT_TARGET 3 /* 3..7: ALL, 1..4 - QUAD only */
-#define FL_IT_COUNT 8
-
-/* The factory looks, named in the camera's own language. A custom look
- * keeps the name it was given. */
-static const struct { const char *id; const char *jp; } LOOK_JP[] = {
-    {"party-neg", "パーティ"}, {"chrome", "クローム"},   {"superia", "スペリア"},  {"vivid", "ビビッド"},
-    {"mono", "白黒"},         {"motion", "モーション"}, {"flash-digi", "フラッシュ"}, {"warm-2007", "２００７"},
-    {"cold-flash", "コールド"}, {"disposable", "使い捨て"}, {"raw-digi", "生"},
-};
-
-typedef enum { FX_NONE = 0, FX_WIPE, FX_FLICK, FX_CUT, FX_RGB } fl_fx_t;
-
-typedef struct {
-  fl_fx_t fx;
-  int dir;             /* +1 forward, -1 back: the wipe's direction */
-  mo_tl_t tl;
-  /* The identifier block moving: outgoing and incoming, like the header. */
-  bool moving;
-  mo_obj_t in_o, out_o;
-  char out_num[16], out_jp[LOOK_TEXT_MAX + 4];
-  int64_t last_us;
-} fl_state_t;
-static fl_state_t s_fl;
-
-/* Which transition a look gets. Its character, not a random draw: a hard cut
- * for the ungraded one, a flick for the flash looks, separation for motion,
- * a wipe for the rest (mono's from the top, others in the direction of travel). */
-static fl_fx_t fl_fx_for(const char *id) {
-  if (strcmp(id, "raw-digi") == 0) return FX_CUT;
-  if (strcmp(id, "flash-digi") == 0 || strcmp(id, "cold-flash") == 0) return FX_FLICK;
-  if (strcmp(id, "motion") == 0) return FX_RGB;
-  return FX_WIPE;
-}
-static int fl_fx_ms(fl_fx_t fx) {
-  switch (fx) {
-    case FX_WIPE: return 160;
-    case FX_FLICK: return 60;
-    case FX_CUT: return 60;
-    case FX_RGB: return 110;
-    default: return 0;
-  }
-}
 
 /** The look's number in the list (1-based) and its two names. */
 static void fl_current(char *num, size_t ncap, char *jp, size_t jcap, char *en, size_t ecap, char *id_out,
@@ -1734,7 +663,7 @@ static void fl_current(char *num, size_t ncap, char *jp, size_t jcap, char *en, 
   if (id_out) snprintf(id_out, idcap, "%s", single ? cur : "");
   if (!single) {
     snprintf(num, ncap, "C--");
-    snprintf(jp, jcap, "混合");
+    snprintf(jp, jcap, "MIXED");
     snprintf(en, ecap, "MIXED");
     return;
   }
@@ -1746,334 +675,10 @@ static void fl_current(char *num, size_t ncap, char *jp, size_t jcap, char *en, 
     if (kdp_recipes_name(i, id, sizeof id, name, sizeof name) && strcmp(id, cur) == 0) { at = i; break; }
   }
   snprintf(num, ncap, at >= 0 ? "C%02d" : "C??", at + 1);
-  const char *jpn = NULL;
-  for (size_t i = 0; i < sizeof LOOK_JP / sizeof LOOK_JP[0]; i++)
-    if (strcmp(LOOK_JP[i].id, cur) == 0) jpn = LOOK_JP[i].jp;
-  snprintf(jp, jcap, "%s", jpn ? jpn : (name[0] ? name : cur));
+  snprintf(jp, jcap, "%s", name[0] ? name : cur);
   snprintf(en, ecap, "%s", name[0] ? name : cur);
   upcase(en);
 }
-
-/** Step the preset and start its transition. */
-static void fl_change(int dir) {
-  char num[16], jp[LOOK_TEXT_MAX + 4], en[LOOK_TEXT_MAX + 4], id[KDP_RECIPE_ID_MAX];
-  fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
-  snprintf(s_fl.out_num, sizeof s_fl.out_num, "%s", num);
-  snprintf(s_fl.out_jp, sizeof s_fl.out_jp, "%s", jp);
-  look_step(dir);
-  fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
-  const int64_t now = esp_timer_get_time();
-  s_fl.fx = fl_fx_for(id);
-  s_fl.dir = dir;
-  mo_tl_start(&s_fl.tl, now, fl_fx_ms(s_fl.fx), 0);
-  /* The identifier: the old one leaves against the direction of travel, the
-   * new one arrives from it, 26 px of travel - a step, not a slide. */
-  if (!s_fl.moving) mo_obj_place(&s_fl.out_o, 0.f, 0.f);
-  else s_fl.out_o = s_fl.in_o;
-  s_fl.moving = true;
-  s_fl.last_us = now;
-  mo_to(&s_fl.out_o.x, -dir * 26.f);
-  mo_to(&s_fl.out_o.alpha, 0.f);
-  mo_obj_go(&s_fl.out_o, now);
-  mo_obj_place(&s_fl.in_o, dir * 26.f, 0.f);
-  mo_set(&s_fl.in_o.alpha, 0.f);
-  mo_to(&s_fl.in_o.x, 0.f);
-  mo_to(&s_fl.in_o.alpha, 255.f);
-  mo_obj_go(&s_fl.in_o, now);
-  s_mo_live_count++;
-}
-
-/* The full-screen preview: 320x240 cropped to 5:3 and scaled 2.5x by
- * nearest neighbour, through two tables built once. */
-static uint16_t s_fl_xmap[UI_W];
-static uint16_t s_fl_ymap[UI_H];
-static bool s_fl_maps;
-static void fl_build_maps(void) {
-  const int crop = (VF_H - (VF_W * UI_H / UI_W)) / 2; /* 24 */
-  const int span = VF_H - 2 * crop;
-  for (int y = 0; y < UI_H; y++) s_fl_ymap[y] = (uint16_t)(crop + y * span / UI_H);
-  for (int x = 0; x < UI_W; x++) s_fl_xmap[x] = (uint16_t)(x * VF_W / UI_W);
-  s_fl_maps = true;
-}
-
-/** The picture, with whatever the current transition does to it. */
-static void fl_blit(const uint16_t *tile) {
-  if (!s_fl_maps) fl_build_maps();
-  const int64_t now = esp_timer_get_time();
-  const bool live = mo_tl_running(&s_fl.tl, now);
-  const float t = live ? mo_tl_at(&s_fl.tl, now) : 1.f;
-  const fl_fx_t fx = live ? s_fl.fx : FX_NONE;
-
-  if (fx == FX_FLICK && t < 0.6f) { fill(0, 0, UI_W, UI_H, RGB(0xff, 0xff, 0xff)); return; }
-  if (fx == FX_CUT && t < 0.7f) { fill(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00)); return; }
-
-  if (tile == NULL) {
-    fill(0, 0, UI_W, UI_H, HDR_GROUND);
-    return;
-  }
-  if (fx == FX_RGB) {
-    /* Red from a little to one side, blue from the other, closing to zero. */
-    const int d = (int)(7.f * (1.f - ease_out_cubic(t)));
-    for (int y = 0; y < UI_H; y++) {
-      const uint16_t *src = tile + (size_t)s_fl_ymap[y] * VF_W;
-      uint16_t *dst = s_cv + (size_t)y * UI_W;
-      for (int x = 0; x < UI_W; x++) {
-        int xr = x + d, xb = x - d;
-        if (xr >= UI_W) xr = UI_W - 1;
-        if (xb < 0) xb = 0;
-        const uint16_t g = src[s_fl_xmap[x]], r = src[s_fl_xmap[xr]], b = src[s_fl_xmap[xb]];
-        dst[x] = (uint16_t)((r & 0xf800) | (g & 0x07e0) | (b & 0x001f));
-      }
-    }
-    return;
-  }
-  for (int y = 0; y < UI_H; y++) {
-    const uint16_t *src = tile + (size_t)s_fl_ymap[y] * VF_W;
-    uint16_t *dst = s_cv + (size_t)y * UI_W;
-    for (int x = 0; x < UI_W; x++) dst[x] = src[s_fl_xmap[x]];
-  }
-  if (fx == FX_WIPE) {
-    /* A band of light 110 px wide crossing the picture in the direction of
-     * travel; a mono look's comes down from the top instead. */
-    const bool vertical = strcmp(s_fl.out_jp, "") == 0 ? false : false;
-    (void)vertical;
-    const float k = ease_out_cubic(t);
-    const int band = 110;
-    const int x0 = s_fl.dir > 0 ? (int)(-band + (UI_W + band) * k) : (int)(UI_W - (UI_W + band) * k);
-    for (int y = 0; y < UI_H; y++) {
-      uint16_t *dst = s_cv + (size_t)y * UI_W;
-      for (int x = x0 < 0 ? 0 : x0; x < x0 + band && x < UI_W; x++) {
-        const uint16_t p = dst[x];
-        int r = ((p >> 11) & 31) + 9, g = ((p >> 5) & 63) + 18, b = (p & 31) + 9;
-        if (r > 31) r = 31;
-        if (g > 63) g = 63;
-        if (b > 31) b = 31;
-        dst[x] = (uint16_t)((r << 11) | (g << 5) | b);
-      }
-    }
-  }
-}
-
-/* The identifier: the number and the name, the bold face at twice its size,
- * bottom left over the picture. Nothing under it - what the preset does is
- * what the picture shows. */
-#define FL_ID_X 24
-#define FL_ID_SCALE 2.f
-#define FL_ID_Y (UI_H - 24 - 68)
-
-static void fl_draw_id_at(float dx, int alpha, uint16_t ink, const char *num, const char *jp) {
-  const float y = FL_ID_Y + UT_MB.em * FL_ID_SCALE * 0.5f;
-  const float nw = (float)ut_w(&UT_MB, num) * FL_ID_SCALE;
-  ut_fx(&UT_MB, FL_ID_X + dx + nw / 2.f, y, num, FL_ID_SCALE, 0.f, ink, alpha, true);
-  const float jw = (float)ut_w(&UT_MB, jp) * FL_ID_SCALE;
-  ut_fx(&UT_MB, FL_ID_X + dx + nw + 28.f + jw / 2.f, y, jp, FL_ID_SCALE, 0.f, ink, alpha, true);
-}
-
-/* The words that act: 白黒 at the foot's right, and in QUAD, on the header's
- * line at the right, which camera the next choice lands on. One layout for
- * the draw and the hit test. */
-typedef struct { int x0, x1; } span_t;
-#define FL_FOOT_TOP (UI_H - 24 - 34)
-#define FL_TARGET_TOP HDR_Y
-static void fl_spans(span_t *mono, span_t targets[5]) {
-  static const char *const T[5] = {"ALL", "1", "2", "3", "4"};
-  mono->x1 = UI_W - 24;
-  mono->x0 = mono->x1 - ut_w(&UT_M, "白黒");
-  int right = UI_W - 24;
-  for (int i = 4; i >= 0; i--) {
-    targets[i].x1 = right;
-    targets[i].x0 = right - ut_w(&UT_M, T[i]);
-    right = targets[i].x0 - 26;
-  }
-}
-
-static void draw_look(void) {
-  const int vcam = 0;
-  {
-    /* The finder camera, as SHOOT reads it. */
-    const char *v = config_str("shoot.viewfinder", "cam2");
-    (void)vcam;
-    int cam = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
-    const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(cam) : NULL;
-    fl_blit(tile);
-  }
-  draw_header_at(SCR_LOOK, true);
-
-  char num[16], jp[LOOK_TEXT_MAX + 4], en[LOOK_TEXT_MAX + 4], id[KDP_RECIPE_ID_MAX];
-  fl_current(num, sizeof num, jp, sizeof jp, en, sizeof en, id, sizeof id);
-
-  /* The identifier, moving when it has just changed. */
-  if (s_fl.moving) {
-    const int64_t now = esp_timer_get_time();
-    const float dt = (float)(now - s_fl.last_us) / 1000.f;
-    s_fl.last_us = now;
-    bool live = false;
-    live |= mo_obj_step(&s_fl.out_o, now, dt, MO_SNAP);
-    live |= mo_obj_step(&s_fl.in_o, now, dt, MO_BOUNCE);
-    if (!live) s_fl.moving = false;
-    /* Cobalt while it moves, ink once it has landed: colour as the event. */
-    const int k = (int)s_fl.in_o.alpha.v;
-    fl_draw_id_at(s_fl.out_o.x.v, (int)s_fl.out_o.alpha.v, C_INK, s_fl.out_num, s_fl.out_jp);
-    fl_draw_id_at(s_fl.in_o.x.v, k, mix(C_COBALT, C_INK, k > 255 ? 255 : k), num, jp);
-  } else {
-    fl_draw_id_at(0.f, 255, C_INK, num, jp);
-  }
-
-  (void)en;
-  (void)id;
-
-  /* 白黒, and in QUAD which camera the next choice lands on. Words, not
-   * boxes: lit when live, dim when not, a line under the live one. */
-  {
-    span_t mono, tg[5];
-    fl_spans(&mono, tg);
-    const bool is_mono = look_is_mono();
-    ut_fx(&UT_M, (mono.x0 + mono.x1) * 0.5f, FL_FOOT_TOP + UT_M.em * 0.5f, "白黒", 1.f, 0.f, is_mono ? C_INK : HDR_DIM, 255, true);
-    if (is_mono) fill(mono.x0, FL_FOOT_TOP + UT_M.em + 2, mono.x1 - mono.x0, 2, C_INK);
-    if (mode_is_quad()) {
-      static const char *const T[5] = {"ALL", "1", "2", "3", "4"};
-      for (int i = 0; i < 5; i++) {
-        const bool on = s_look_target == i;
-        ut_fx(&UT_M, (tg[i].x0 + tg[i].x1) * 0.5f, FL_TARGET_TOP + UT_M.em * 0.5f, T[i], 1.f, 0.f, on ? C_INK : HDR_DIM, 255, true);
-        if (on) fill(tg[i].x0, FL_TARGET_TOP + UT_M.em + 2, tg[i].x1 - tg[i].x0, 2, C_INK);
-      }
-    }
-  }
-}
-
-#define G_COLS GALLERY_COLS
-#define G_TILE_W GALLERY_TILE_W
-#define G_TILE_H GALLERY_TILE_H
-#define G_GAP 14
-#define G_X0 ((UI_W - (G_COLS * G_TILE_W + (G_COLS - 1) * G_GAP)) / 2)   /* 8 */
-#define G_Y0 (BODY_Y + 8)                                               /* 71 */
-#define G_PITCH (G_TILE_H + G_GAP)                                      /* 203 */
-/* Items 0..5 are the tiles; the pages turn on a vertical swipe. */
-_Static_assert(G_Y0 + G_PITCH + G_TILE_H <= UI_H, "the bottom row runs off the screen");
-
-static void gal_origin(int slot, int *x, int *y) {
-  *x = G_X0 + (slot % G_COLS) * (G_TILE_W + G_GAP);
-  *y = G_Y0 + (slot / G_COLS) * G_PITCH;
-}
-
-/* The grid's vertical offset while a page turns: the old page slides out and
- * the new one in along the same spring. */
-static mo_val_t s_gal_dy;
-static int64_t s_gal_last_us;
-static int s_gal_from_page = -1; /* the page that is leaving, -1 when settled */
-
-/** Blit a tile at (x, y), clipped to the client area; `inset` shrinks it by that many px a side (a press). */
-static void gal_blit_at(const uint16_t *px, int x, int y, int inset) {
-  const int w = G_TILE_W - 2 * inset, h = G_TILE_H - 2 * inset;
-  for (int r = 0; r < h; r++) {
-    const int dy = y + inset + r;
-    if (dy < HEAD_H || dy >= UI_H) continue;
-    const uint16_t *src = px + (size_t)(inset ? r * G_TILE_H / h : r) * G_TILE_W;
-    uint16_t *dst = s_cv + (size_t)dy * UI_W + x + inset;
-    if (inset == 0) {
-      memcpy(dst, src, (size_t)w * sizeof(uint16_t));
-    } else {
-      for (int c = 0; c < w; c++) dst[c] = src[c * G_TILE_W / w];
-    }
-  }
-}
-
-/** Turn the page with the grid sliding: +1 up (next), -1 down (previous). */
-static void gal_turn(int dir) {
-  const int pages = gallery_pages();
-  const int page = gallery_page();
-  if ((dir > 0 && page >= pages - 1) || (dir < 0 && page <= 0)) return;
-  s_gal_from_page = page;
-  gallery_turn(dir);
-  mo_launch(&s_gal_dy, (float)(dir * (UI_H - HEAD_H)), 0.f, -dir * 0.6f);
-  s_gal_last_us = esp_timer_get_time();
-  s_mo_live_count++;
-}
-
-/** One tile's marks: a yellow dot for a favourite, the count only when frames are missing. */
-static void gal_marks(const gallery_item_t *it, int x, int y) {
-  if (it->favorite) {
-    disc(x + G_TILE_W - 16.f + 1.5f, y + 16.f + 1.5f, 6.f, 0x0841, 150);
-    disc(x + G_TILE_W - 16.f, y + 16.f, 6.f, C_YELLOW, 255);
-  }
-  if (it->partial) {
-    char n[16];
-    snprintf(n, sizeof n, "%d/4", it->frames);
-    ut_fx(&UT_S, x + 10.f + ut_w(&UT_S, n) / 2.f, y + G_TILE_H - 10.f - UT_S.em / 2.f, n, 1.f, 0.f, C_YELLOW, 255, true);
-  }
-}
-
-static void draw_gallery(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  storage_status_t sd;
-  storage_get_status(&sd);
-  const int total = gallery_total();
-
-  if (total == 0) {
-    const bool counting = sd.mounted && gallery_loading();
-    const int walked = gallery_scan_progress();
-    char h1[48];
-    if (!sd.mounted) snprintf(h1, sizeof h1, "カードなし");
-    else if (counting && walked > 0) snprintf(h1, sizeof h1, "読込中 %d", walked);
-    else if (counting) snprintf(h1, sizeof h1, "読込中");
-    else snprintf(h1, sizeof h1, "写真なし");
-    const char *h2 = !sd.mounted ? "カードを入れて" : counting ? "" : "シャッターを押して";
-    ut_fx(&UT_MB, UI_W / 2.f, UI_H / 2.f - 12.f, h1, 1.5f, 0.f, C_INK, 255, false);
-    if (h2[0]) ut_mid(&UT_S, UI_W / 2, UI_H / 2 + 34, h2, HDR_DIM);
-    draw_header(SCR_GALLERY);
-    return;
-  }
-
-  /* The slide: while a turn is in flight the grid is drawn displaced, and
-   * the page it replaces is not redrawn (its tiles are already gone from the
-   * slots) - the motion is the new page arriving, which is enough. */
-  {
-    const int64_t now = esp_timer_get_time();
-    const float dt = s_gal_last_us ? (float)(now - s_gal_last_us) / 1000.f : 0.f;
-    s_gal_last_us = now;
-    if (!mo_spring(&s_gal_dy, dt, MO_SETTLE)) s_gal_from_page = -1;
-  }
-  const int dy = (int)s_gal_dy.v;
-
-  const gallery_item_t *slots = gallery_slots();
-  for (int i = 0; i < GALLERY_PAGE; i++) {
-    if (slots[i].state == TILE_EMPTY) continue;
-    int x, y;
-    gal_origin(i, &x, &y);
-    y += dy;
-    if (y + G_TILE_H <= HEAD_H || y >= UI_H) continue;
-    const bool down = s_pressed == i;
-    if (slots[i].state == TILE_READY && slots[i].pixels) {
-      gal_blit_at(slots[i].pixels, x, y, down ? 6 : 0);
-    } else {
-      fill(x, y < HEAD_H ? HEAD_H : y, G_TILE_W, G_TILE_H - (y < HEAD_H ? HEAD_H - y : 0), RGB(0x1a, 0x1e, 0x24));
-      if (slots[i].state != TILE_PENDING) ut_mid(&UT_S, x + G_TILE_W / 2, y + G_TILE_H / 2 - UT_S.em / 2, "画像なし", HDR_DIM);
-    }
-    if (y >= HEAD_H) gal_marks(&slots[i], x, y);
-    if (foc(SCR_GALLERY, i)) fill(x, y + G_TILE_H + 3, G_TILE_W, 2, C_INK);
-  }
-
-  draw_header(SCR_GALLERY);
-  /* Where you are, in the header's right end: page n / N and the count. */
-  {
-    const int pages = gallery_pages();
-    char pos[64];
-    if (gallery_loading()) {
-      const int walked = gallery_scan_progress();
-      if (walked > 0) snprintf(pos, sizeof pos, "読込中 %d", walked);
-      else snprintf(pos, sizeof pos, "読込中");
-    } else if (pages > 1) {
-      snprintf(pos, sizeof pos, "%d / %d   %d枚", gallery_page() + 1, pages, total);
-    } else {
-      snprintf(pos, sizeof pos, "%d枚", total);
-    }
-    if (!notice_live()) ut_right(&UT_M, UI_W - 24, HDR_Y, pos, HDR_DIM);
-  }
-}
-
-#define P_IT_DELETE 0
-#define P_IT_FAV 1
-#define P_IT_ROLL 2
 
 /*
  * Stop playing and forget the job. Safe to call at any time, from this task.
@@ -2377,7 +982,7 @@ static const uint16_t *photo_pixels(void) {
 static void photo_toggle_favourite(void) {
   if (s_photo_id[0] == '\0') return;
   if (!storage_acquire(STORAGE_USER_UI, 2000)) {
-    toast("カード使用中");
+    ui_note("CARD BUSY");
     audio_warning();
     return;
   }
@@ -2388,7 +993,7 @@ static void photo_toggle_favourite(void) {
     /* NOT_FOUND is a capture with no META.JSON, which the gallery can show and
      * this cannot mark. One message for all of them: the user's next move is
      * the same whichever it was. */
-    toast("保存できない");
+    ui_note("CANNOT SAVE");
     audio_warning();
     return;
   }
@@ -2397,75 +1002,17 @@ static void photo_toggle_favourite(void) {
   /* So the tile behind this screen carries the mark when the user goes back.
    * The refresh is a card rescan on the gallery task, not work done here. */
   gallery_refresh();
-  toast(want ? "お気に入り" : "解除");
+  ui_note(want ? "FAVOURITE" : "UNMARKED");
 }
 
 static int s_ph_del_x0, s_ph_del_x1, s_ph_fav_x0, s_ph_fav_x1;
-
-static void draw_photo(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  const int px = PH_X0, py = PH_TOP;
-  const uint16_t *src = s_quad_ready ? NULL : photo_pixels();
-  if (s_quad_ready) {
-    const int qw = PH_W / 2, qh = PH_H / 2;
-    for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
-      const int qx = px + (i & 1) * qw, qy = py + (i >> 1) * qh;
-      const uint16_t *fp = (s_wig_have & (1u << i)) ? gallery_frame_pixels(i) : NULL;
-      if (fp != NULL) {
-        for (int r = 0; r < qh; r++)
-          memcpy(s_cv + (size_t)(qy + r) * UI_W + qx, fp + (size_t)r * qw, (size_t)qw * sizeof(uint16_t));
-      } else {
-        char lens[4];
-        snprintf(lens, sizeof lens, "%d", i + 1);
-        fill(qx, qy, qw, qh, RGB(0x1a, 0x1e, 0x24));
-        ut_mid(&UT_M, qx + qw / 2, qy + qh / 2 - UT_M.em / 2, lens, RGB(0x3a, 0x42, 0x4c));
-      }
-    }
-    fill(px + qw - 1, py, 2, PH_H, HDR_GROUND);
-    fill(px, py + qh - 1, PH_W, 2, HDR_GROUND);
-  } else if (src != NULL) {
-    for (int r = 0; r < PH_H; r++)
-      memcpy(s_cv + (size_t)(py + r) * UI_W + px, src + (size_t)r * PH_W, (size_t)PH_W * sizeof(uint16_t));
-  } else {
-    fill(px, py, PH_W, PH_H, RGB(0x1a, 0x1e, 0x24));
-    ut_mid(&UT_M, px + PH_W / 2, py + PH_H / 2 - UT_M.em / 2, "画像なし", HDR_DIM);
-  }
-  draw_header_at(SCR_PHOTO, true);
-
-  /* The line under the picture: what it is on the left, what can be done
-   * on the right. Words, lit or dim; a pressed word gets its underline. */
-  const int ly = PH_LINE_Y;
-  {
-    /* Only what is not already in the picture: how many frames it has,
-     * when that is fewer than four. The file's name is Studio's business. */
-    char facts[24] = "";
-    if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 && s_wig_count < GALLERY_FRAME_MAX)
-      snprintf(facts, sizeof facts, "%d/4", s_wig_count);
-    else if (s_photo_frames > 0 && s_photo_frames < GALLERY_FRAME_MAX)
-      snprintf(facts, sizeof facts, "%d/4", s_photo_frames);
-    if (facts[0]) ut_draw(&UT_S, PH_X0, ly, facts, HDR_DIM);
-  }
-  {
-    const char *fav = s_photo_fav ? "★ お気に入り" : "☆ お気に入り";
-    const char *del = "削除";
-    const int fw = ut_w(&UT_S, fav), dw = ut_w(&UT_S, del);
-    s_ph_del_x1 = PH_X0 + PH_W;
-    s_ph_del_x0 = s_ph_del_x1 - dw;
-    s_ph_fav_x1 = s_ph_del_x0 - 36;
-    s_ph_fav_x0 = s_ph_fav_x1 - fw;
-    ut_draw(&UT_S, s_ph_fav_x0, ly, fav, s_photo_fav ? C_YELLOW : C_INK);
-    ut_draw(&UT_S, s_ph_del_x0, ly, del, C_INK);
-    if (s_pressed == P_IT_FAV) fill(s_ph_fav_x0, ly + UT_S.em, fw, 2, C_INK);
-    if (s_pressed == P_IT_DELETE) fill(s_ph_del_x0, ly + UT_S.em, dw, 2, C_RED);
-  }
-}
 
 #define QR_QUIET 4
 
 static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
   const int total = qr->size + 2 * QR_QUIET;
   const int pitch = box / total;
-  if (pitch < 1) return 0; /* no room ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the caller shows the code as text */
+  if (pitch < 1) return 0; /* no room - the caller shows the code as text */
 
   const int side = total * pitch;
   const int x0 = cx - side / 2;
@@ -2537,74 +1084,6 @@ _Static_assert(RL_RW > 300, "the ROLL right column is too narrow for its numbers
 /* Settings                                                            */
 /* ------------------------------------------------------------------ */
 
-/* ------------------------------------------------------------------ */
-/* SETUP (設定) and CONNECT (接続): facts and settings as rows of words    */
-/*                                                                     */
-/* A row is a name on the left, its value on the right, on the ground;  */
-/* no well, no bevel, no plate, no rule between rows and no mark at the  */
-/* end: the words are the row. A press underlines it; a row that cannot  */
-/* act right now is dim.                                                 */
-/* ------------------------------------------------------------------ */
-
-#define NR_X 24
-#define NR_W (UI_W - 2 * NR_X)
-#define NR_Y0 (HEAD_H + 12)
-#define NR_H 58
-#define NR_TITLE_TOP(y) ((y) + (NR_H - 34) / 2)
-#define NR_VALUE_TOP(y) ((y) + (NR_H - 22) / 2 + 3)
-
-/* When the screen was entered, and whether for the first time this boot.
- * Set by go(). A first visit's rows arrive one after another from a little
- * to the right; a screen you have been to before is simply there - the
- * camera remembers, which is one of the small ways it is not a web page. */
-static int64_t s_enter_us;
-static bool s_enter_first;
-static bool s_visited[SCR_COUNT];
-#define ROW_ARRIVE_MS 220
-#define ROW_STAGGER_MS 28
-
-/** Row i's arrival: x offset and alpha for this pass. Settled rows cost nothing. */
-static void row_arrive(int i, int *dx, int *alpha) {
-  *dx = 0;
-  *alpha = 255;
-  if (!s_enter_first || s_enter_us == 0) return;
-  const int64_t ms = (esp_timer_get_time() - s_enter_us) / 1000 - (int64_t)i * ROW_STAGGER_MS;
-  if (ms >= ROW_ARRIVE_MS) return;
-  s_mo_live_count++;
-  if (ms <= 0) { *alpha = 0; *dx = 18; return; }
-  const float k = ease_out_quint((float)ms / ROW_ARRIVE_MS);
-  *dx = (int)(18.f * (1.f - k));
-  *alpha = (int)(255.f * k);
-}
-
-static void nrow(int i, const char *title, const char *value, bool acts, bool enabled, bool pressed) {
-  (void)acts;
-  const int y = NR_Y0 + i * NR_H;
-  int dx, a;
-  row_arrive(i, &dx, &a);
-  const uint16_t ink = enabled ? C_INK : HDR_DIM;
-  ut_draw_a(&UT_M, NR_X + dx, NR_TITLE_TOP(y), title, ink, a);
-  if (value && value[0])
-    ut_draw_a(&UT_S, NR_X + NR_W - ut_w(&UT_S, value) + dx, NR_VALUE_TOP(y), value,
-              enabled ? HDR_DIM : RGB(0x50, 0x56, 0x60), a);
-  if (pressed) fill(NR_X, y + NR_H - 4, NR_W, 2, C_INK);
-}
-static int nrow_hit(int x, int y, int rows) {
-  (void)x;
-  if (y < NR_Y0 || y >= NR_Y0 + rows * NR_H) return -1;
-  return (y - NR_Y0) / NR_H;
-}
-
-static const char *const SET_ROWS[5] = {"表示", "音", "カード", "電源", "情報"};
-static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_STORAGE, SCR_POWER,
-                                     SCR_ABOUT};
-
-static void draw_settings(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_SETTINGS);
-  for (int i = 0; i < 5; i++) nrow(i, SET_ROWS[i], NULL, true, true, s_pressed == i);
-}
-
 /* --- Display ------------------------------------------------------ */
 
 /*
@@ -2647,20 +1126,20 @@ _Static_assert(DSP_BOX_H < DSP_PITCH, "the DISPLAY group boxes overlap each othe
 
 static const int DIM_S[3] = {15, 30, 60};
 static const int SLEEP_S[3] = {60, 120, 300};
-static const char *const SECS_15[3] = {"15秒", "30秒", "60秒"};
-static const char *const SECS_60[3] = {"1分", "2分", "5分"};
+static const char *const SECS_15[3] = {"15 s", "30 s", "60 s"};
+static const char *const SECS_60[3] = {"1 min", "2 min", "5 min"};
 
 /* shoot.displayAfterShotS, including the -1 that means HOLD - the result
  * screen stays until it is acknowledged. Written as the contract's own values
  * so the row and the setting cannot drift apart. */
 static const int SHOT_S[5] = {0, 1, 2, 3, -1};
-static const char *const SHOT_NAMES[5] = {"なし", "1秒", "2秒", "3秒", "保持"};
+static const char *const SHOT_NAMES[5] = {"OFF", "1 s", "2 s", "3 s", "HOLD"};
 
 /* body.camIdleTimeoutS: how long before the camera bank is powered down.
  * 0 is NEVER, which is the contract's own encoding, not a sentinel invented
  * here - so NEVER is a value like the other two and not a missing setting. */
 static const int IDLE_S[3] = {60, 300, 0};
-static const char *const IDLE_NAMES[3] = {"1分", "5分", "なし"};
+static const char *const IDLE_NAMES[3] = {"1 min", "5 min", "NEVER"};
 
 static const struct {
   const char *label;
@@ -2703,16 +1182,6 @@ static int dsp_selected(int row) {
     case 1: return nearest_idx(config_int("body.sleepS", 120), SLEEP_S);
     case 2: return exact_idx(config_int("shoot.displayAfterShotS", 2), SHOT_S, 5);
     default: return exact_idx(config_int("body.camIdleTimeoutS", 300), IDLE_S, 3);
-  }
-}
-
-static const char *const DSP_JP[DSP_ROWS] = {"自動減光", "スリープ", "撮影後", "カメラ待機"};
-static void draw_display(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_DISPLAY);
-  for (int r = 0; r < DSP_ROWS; r++) {
-    const int sel = dsp_selected(r);
-    nrow(r, DSP_JP[r], DSP_ROW[r].names[sel], true, true, band_rel(s_pressed, DSP_ROW[r].base, DSP_ROW[r].count) >= 0);
   }
 }
 
@@ -2805,126 +1274,6 @@ static void snd_step(int delta) {
 #define SN_IT_VOL 4
 #define SN_IT_COUNT 7
 
-#define SN_BTN 36 /* the picker's â€¹ â€º buttons, inside a 52 px row */
-
-static void draw_sound(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_SOUND);
-  char clip[KDP_SOUND_NAME_MAX];
-  snd_display(clip, sizeof clip);
-  static const char *const VOL[3] = {"小", "中", "大"};
-  static const int VOLV[3] = {3, 6, 9};
-  const bool audio = audio_ready();
-  nrow(0, "シャッター音", clip, true, audio, s_pressed == SN_IT_NEXT || s_pressed == SN_IT_PREV);
-  nrow(1, "保存音", config_bool("body.sounds.save", true) ? "オン" : "オフ", true, audio, s_pressed == SN_IT_SHUTTER);
-  nrow(2, "操作音", config_bool("body.sounds.ui", true) ? "オン" : "オフ", true, audio, s_pressed == SN_IT_BUTTON);
-  nrow(3, "音量", VOL[nearest_idx(config_int("shoot.volume", 6), VOLV)], true, audio, band_rel(s_pressed, SN_IT_VOL, 3) >= 0);
-  if (!audio) ut_draw(&UT_S, NR_X, NR_Y0 + 4 * NR_H + 12, "音声出力なし", RGB(0x50, 0x56, 0x60));
-}
-
-/* --- Connection --------------------------------------------------- */
-
-/*
- * The radio's real state, not "Not fitted".
- *
- * "Not fitted" was wrong twice over: the ESP32-C6 IS on the Guition module,
- * and what is missing is the P4's route to it, which is a wiring question
- * rather than an absent part. A user reading "Not fitted" goes looking for a
- * component to add. So the screen reports the two facts separately ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the chip
- * is there, and the firmware cannot reach it ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the same way the capabilities
- * split `flashControl` from `flashHardware`.
- *
- * Every value comes from net_link, so this screen becomes correct on its own
- * once the transport lands. Nothing here is hard-coded to the V1 state.
- */
-static void draw_connection(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_CONNECTION);
-  net_status_t net;
-  net_link_status(&net, esp_timer_get_time() / 1000);
-  roll_state_t roll;
-  const bool active = roll_state_get(&roll);
-  upload_queue_report_t q;
-  upload_queue_status(&q);
-  const bool online = net_link_can_upload(&net);
-
-  /* The facts, as rows down the left: what is connected and how. */
-  char wifi[64];
-  if (!net.radio_routed) snprintf(wifi, sizeof wifi, "なし");
-  else switch (net.state) {
-    case NET_IP_READY: snprintf(wifi, sizeof wifi, "%s  %d dBm", net.ssid, net.rssi); break;
-    case NET_WIFI_ASSOCIATED: case NET_IP_WAIT: snprintf(wifi, sizeof wifi, "アドレス取得中"); break;
-    case NET_WIFI_CONNECTING: snprintf(wifi, sizeof wifi, "接続中"); break;
-    case NET_WIFI_SCANNING: snprintf(wifi, sizeof wifi, "検索中"); break;
-    default: snprintf(wifi, sizeof wifi, "未接続"); break;
-  }
-  const int left_w = active ? 440 : NR_W;
-  const struct { const char *t; const char *v; bool lit; } ROWS[] = {
-      {"USB", usb_attached() ? "接続" : "未接続", usb_attached()},
-      {"WiFi", wifi, net.state == NET_IP_READY},
-      {"アドレス", net.ip[0] ? net.ip : "-", net.ip[0] != '\0'},
-      {"ロール", active ? (roll.name[0] ? roll.name : roll.slug) : "なし", active},
-  };
-  for (int i = 0; i < 4; i++) {
-    const int y = NR_Y0 + i * NR_H;
-    int dx, a;
-    row_arrive(i, &dx, &a);
-    ut_draw_a(&UT_M, NR_X + dx, NR_TITLE_TOP(y), ROWS[i].t, ROWS[i].lit ? C_INK : HDR_DIM, a);
-    ut_draw_a(&UT_S, NR_X + left_w - ut_w(&UT_S, ROWS[i].v) + dx, NR_VALUE_TOP(y), ROWS[i].v,
-              ROWS[i].lit ? C_INK : HDR_DIM, a);
-  }
-  if (!net.radio_routed)
-    ut_draw(&UT_S, NR_X, NR_Y0 + 4 * NR_H + 12, "無線なし。写真は USB-C で。", RGB(0x50, 0x56, 0x60));
-
-  if (!active) return;
-
-  /* The Roll, on the right: the code a guest scans, and what is going where. */
-  static qr_t s_qr;
-  static char s_qr_url[ROLL_GUEST_URL_LEN];
-  static bool s_qr_ok;
-  if (strcmp(s_qr_url, roll.guest_url) != 0) {
-    snprintf(s_qr_url, sizeof s_qr_url, "%s", roll.guest_url);
-    s_qr_ok = roll.guest_url[0] != '\0' && qr_encode(roll.guest_url, &s_qr);
-    if (!s_qr_ok) klog("P4", "roll guest url did not encode as a QR (%u chars)", (unsigned)strlen(roll.guest_url));
-  }
-  const int qx = 620, qy = NR_Y0, qbox = 230;
-  if (s_qr_ok) {
-    const int side = draw_qr_centred(&s_qr, qx, qy, qbox);
-    ut_mid(&UT_S, qx, qy + side + 14, roll.slug, C_INK);
-  } else {
-    ut_fx(&UT_MB, (float)qx, qy + qbox / 2.f, roll.slug, 1.6f, 0.f, C_INK, 255, false);
-  }
-
-  /* What is going where, under the facts. Real counts, real states. */
-  const int waiting = q.pending + q.card_pending;
-  const bool server_quiet = online && q.server_state == UPLOAD_SERVER_UNREACHABLE;
-  const bool sending = online && !server_quiet && !q.halted && (waiting > 0 || q.uploading > 0);
-  char l1[64], l2[64] = "";
-  if (q.halted) { snprintf(l1, sizeof l1, "%d枚 待ち  停止中", waiting); snprintf(l2, sizeof l2, "STUDIO で確認"); }
-  else if (sending) { snprintf(l1, sizeof l1, "%d枚 送信中", waiting + q.uploading); }
-  else if (waiting > 0) { snprintf(l1, sizeof l1, "%d枚 待ち", waiting); snprintf(l2, sizeof l2, "%s", server_quiet ? "KINO ROLL が応答しない" : "WiFi が戻れば送る"); }
-  else if (!q.scan_complete) snprintf(l1, sizeof l1, "カード確認中");
-  else snprintf(l1, sizeof l1, "全部送信済");
-  const int ly = NR_Y0 + 4 * NR_H + 18;
-  ut_draw(&UT_MB, NR_X, ly, l1, sending ? C_COBALT : C_INK);
-  if (l2[0]) ut_draw(&UT_S, NR_X, ly + 44, l2, HDR_DIM);
-  if (sending) {
-    /* The four-camera language for the transfer: four marks lit by how far
-     * this burst has got, then KINO ROLL. Counted from the queue, not a
-     * clock. */
-    const int total = q.burst_done + waiting + q.uploading;
-    const int lit = total > 0 ? (q.burst_done * 4) / total : 0;
-    float x = NR_X + ut_w(&UT_MB, l1) + 34.f;
-    const float cy = ly + UT_MB.em * 0.5f;
-    for (int i = 0; i < 4; i++) {
-      disc(x, cy, i < lit ? 6.f : 3.f, i < lit ? C_COBALT : RGB(0x50, 0x56, 0x60), 255);
-      x += 22.f;
-    }
-    ut_draw(&UT_S, (int)x + 6, ly + 7, "KINO ROLL", HDR_DIM);
-    s_mo_live_count++; /* the counts move; keep drawing */
-  }
-}
-
 /* --- Storage ------------------------------------------------------ */
 
 /* The two live rows on the storage screen, in the order they are drawn. DELETE
@@ -2934,37 +1283,6 @@ static void draw_connection(void) {
 #define ST_IT_DELETE_ALL 0
 #define ST_IT_FORMAT 1
 #define ST_IT_COUNT 2
-
-static void draw_storage(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_STORAGE);
-  storage_status_t sd;
-  storage_get_status(&sd);
-  char freeb[24], capb[24], cnt[48];
-  human_bytes(freeb, sizeof freeb, sd.free_bytes);
-  human_bytes(capb, sizeof capb, sd.capacity_bytes);
-  const int media = gallery_media_count();
-  if (gallery_deleting()) {
-    int done = 0, total = 0;
-    gallery_delete_progress(&done, &total);
-    snprintf(cnt, sizeof cnt, "削除中 %d / %d", done, total);
-  } else if (media < 0) snprintf(cnt, sizeof cnt, "-");
-  else snprintf(cnt, sizeof cnt, "%d枚", media);
-  const bool low = sd.mounted && sd.free_bytes < (512ull << 20);
-  char freerow[40];
-  snprintf(freerow, sizeof freerow, "%s%s", sd.mounted ? freeb : "-", low ? "  残り少" : "");
-  nrow(0, "カード", sd.mounted ? capb : (sd.present ? "未マウント" : "なし"), false, true, false);
-  nrow(1, "空き", freerow, false, true, false);
-  nrow(2, "写真", cnt, false, true, false);
-  nrow(3, "全部削除", "", true, sd.mounted && !gallery_deleting() && media > 0, s_pressed == ST_IT_DELETE_ALL);
-  if (sd.mounted) {
-    /* How full, as a line: the whole width is the card. */
-    const int y = NR_Y0 + 4 * NR_H + 24;
-    const int used_w = sd.capacity_bytes ? (int)((uint64_t)NR_W * (sd.capacity_bytes - sd.free_bytes) / sd.capacity_bytes) : 0;
-    fill(NR_X, y, NR_W, 2, RGB(0x2a, 0x30, 0x38));
-    fill(NR_X, y, used_w, 2, low ? C_YELLOW : C_INK);
-  }
-}
 
 /* --- About -------------------------------------------------------- */
 
@@ -2987,13 +1305,6 @@ static void draw_storage(void) {
  * full-width 52 px rows need 416 px and there are 405 px below the header. The
  * left column is the body, the right column is the four cameras.
  */
-#define AB_LX LIST_X
-#define AB_LW 470
-#define AB_RX (AB_LX + AB_LW + 16)
-#define AB_RW (UI_W - AB_RX - LIST_X)
-#define AB_ROW 46              /* seven of these fit where six of ROW_H do */
-#define AB_CAM_ROW 40
-
 /** "3h 12m", or "4m" under the hour. Boot-relative, which is what uptime is. */
 static void about_uptime(char *out, size_t cap) {
   const int64_t s = esp_timer_get_time() / 1000000;
@@ -3007,53 +1318,8 @@ static void about_uptime(char *out, size_t cap) {
   else snprintf(out, cap, "%dm", m);
 }
 
-static void draw_about(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_ABOUT);
-  char name[32];
-  config_str_copy("body.name", name, sizeof name);
-  storage_status_t sd;
-  storage_get_status(&sd);
-  char card[64], up[16], proto[16];
-  if (sd.mounted) {
-    char freeb[24], capb[24];
-    human_bytes(freeb, sizeof freeb, sd.free_bytes);
-    human_bytes(capb, sizeof capb, sd.capacity_bytes);
-    snprintf(card, sizeof card, "%s / %s", freeb, capb);
-  } else {
-    snprintf(card, sizeof card, "%s", sd.present ? "未マウント" : "なし");
-  }
-  about_uptime(up, sizeof up);
-  snprintf(proto, sizeof proto, "KDP %d", KDP_PROTOCOL_VERSION);
-  const char *serial = kdp_device_serial();
-  const struct { const char *title; const char *value; } ROWS[] = {
-      {"機種", name[0] ? name : "KINO D4"}, {"ファーム", KINO_FW_VERSION}, {"シリアル", serial[0] ? serial : "-"},
-      {"ハード", KDP_HARDWARE_REV},     {"プロトコル", proto},         {"カード", card},
-      {"稼働", up},
-  };
-  const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
-  for (int i = 0; i < n; i++) {
-    /* The diagnostic page: denser than the rest, and allowed to be. Seven
-     * facts in the small face, none of them a control. */
-    const int y = NR_Y0 + i * 44;
-    int dx, a;
-    row_arrive(i, &dx, &a);
-    ut_draw_a(&UT_S, NR_X + dx, y + 10, ROWS[i].title, HDR_DIM, a);
-    ut_draw_a(&UT_S, NR_X + NR_W - ut_w(&UT_S, ROWS[i].value) + dx, y + 10, ROWS[i].value, C_INK, a);
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Power                                                               */
-/* ------------------------------------------------------------------ */
-
-static void draw_power(void) {
-  fill(0, 0, UI_W, UI_H, HDR_GROUND);
-  draw_header(SCR_POWER);
-  nrow(0, "再起動", NULL, true, true, s_pressed == 1);
-  ut_draw(&UT_S, NR_X, NR_Y0 + NR_H + 12, "電源は USB-C。抜けば切れる。", RGB(0x50, 0x56, 0x60));
-}
-
 /* ------------------------------------------------------------------ */
 /* Dialog                                                              */
 /* ------------------------------------------------------------------ */
@@ -3071,143 +1337,30 @@ static void dialog_spec(dlg_spec_t *d) {
   const int n = gallery_media_count() < 0 ? 0 : gallery_media_count();
   switch (s_dialog) {
     case DLG_RESTART:
-      *d = (dlg_spec_t){"再起動", "再起動する？", "すぐ戻る。", "再起動", false};
+      *d = (dlg_spec_t){"RESTART", "RESTART?", "BACK IN A MOMENT.", "RESTART", false};
       break;
     case DLG_DELETE:
-      snprintf(sub, sizeof sub, "%d枚。元に戻せない。", s_photo_frames);
-      *d = (dlg_spec_t){"削除", "この写真を削除？", sub, "削除", true};
+      snprintf(sub, sizeof sub, "%d FRAMES. CANNOT BE UNDONE.", s_photo_frames);
+      *d = (dlg_spec_t){"DELETE", "DELETE THIS PHOTO?", sub, "DELETE", true};
       break;
     case DLG_DELETE_ALL:
-      snprintf(sub, sizeof sub, "%d枚 全部。元に戻せない。", n);
-      *d = (dlg_spec_t){"全部削除", "全部削除する？", sub, "全部削除", true};
+      snprintf(sub, sizeof sub, "ALL %d. CANNOT BE UNDONE.", n);
+      *d = (dlg_spec_t){"DELETE ALL", "DELETE EVERYTHING?", sub, "DELETE ALL", true};
       break;
     case DLG_FORMAT:
-      snprintf(sub, sizeof sub, "%d枚 全部消える。", n);
-      *d = (dlg_spec_t){"初期化", "カードを初期化？", sub, "初期化", true};
+      snprintf(sub, sizeof sub, "ALL %d WILL GO.", n);
+      *d = (dlg_spec_t){"FORMAT", "FORMAT THE CARD?", sub, "FORMAT", true};
       break;
     default:
-      *d = (dlg_spec_t){"電源", "電源を切る？", "USB-C を抜けば切れる。", "切る", false};
+      *d = (dlg_spec_t){"POWER", "SWITCH OFF?", "UNPLUG USB-C TO SWITCH OFF.", "OFF", false};
       break;
   }
 }
 
-/* The two words' centres and the band they can be pressed in. One
- * definition, used by the draw and the hit test. */
-#define DLG_Q_Y (UI_H * 0.40f)
-#define DLG_WORD_Y (UI_H * 0.66f)
-#define DLG_X1 (UI_W * 0.36f)
-#define DLG_X2 (UI_W * 0.64f)
-#define DLG_BAND_H 72
-#define DLG_HIT_W 200
-
-static void draw_dialog(void) {
-  /* The screen under it goes dark, and the question stands on it: no plate,
-   * no bar, no buttons drawn as buttons. The two words are the controls, the
-   * way words are everywhere else, and the dangerous one is red. */
-  scrim(0, 0, UI_W, UI_H, RGB(0x04, 0x05, 0x07), 225);
-  dlg_spec_t d;
-  dialog_spec(&d);
-  ut_fx(&UT_MB, UI_W * 0.5f, DLG_Q_Y, d.body, 1.3f, 0.f, C_INK, 255, false);
-  if (d.sub) ut_mid(&UT_S, UI_W / 2, (int)DLG_Q_Y + 40, d.sub, HDR_DIM);
-  const uint16_t go_ink = d.destructive ? C_RED : C_INK;
-  const int top = (int)DLG_WORD_Y - UT_M.em / 2;
-  ut_mid(&UT_M, (int)DLG_X1, top, "キャンセル", s_pressed == 0 ? C_INK : HDR_DIM);
-  ut_mid(&UT_M, (int)DLG_X2, top, d.go, go_ink);
-  const int w1 = ut_w(&UT_M, "キャンセル"), w2 = ut_w(&UT_M, d.go);
-  if (s_pressed == 0) fill((int)DLG_X1 - w1 / 2, top + UT_M.em + 4, w1, 2, C_INK);
-  if (s_pressed == 1) fill((int)DLG_X2 - w2 / 2, top + UT_M.em + 4, w2, 2, go_ink);
-}
-
-/* ------------------------------------------------------------------ */
-/* Capture feedback and toast                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * What the shutter is doing, over whatever screen is up.
- *
- * Deliberately a strip and not a screen: the camera must be ready for the
- * next photograph immediately, and a full review application after every
- * press is what stops that.
- */
-/**
- * The capture, told with the four-frame mark.
- *
- * The cells are driven by the capture's real stages rather than by a timer:
- * one lights when the shutter fires, two when the frames are coming back,
- * three while they are going to the card, and all four spark yellow when
- * they are on it. It is honest progress and it happens to have exactly four
- * steps, which is the whole reason the mark works here.
- *
- * The wording is the camera's, not an operating system's: 4/4 SAVED, and a
- * count rather than an apology when a camera missed.
- */
-/* A capture seen from any other screen: the four marks in a band at the foot,
- * and the reason when it failed. The finder draws its own fuller version. */
-static void draw_capture_banner(void) {
-  if (s_screen == SCR_SHOOT || !s_cap.armed) return;
-  const int h = 60, y = UI_H - h;
-  fill(0, y, UI_W, h, HDR_GROUND);
-  draw_cap_marks(y + 14, false);
-  if (s_cap.done_us != 0 && s_cap.failed) ut_mid(&UT_S, UI_W / 2, y + 30, s_cap.fail_why, C_RED);
-}
-
-static void draw_toast(void) {
-  /* Kept as the busy flag's source: s_toast clears itself after the notice
-   * has had time to leave. The drawing is draw_notice()'s. */
-  if (s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > 2200000) s_toast[0] = '\0';
-}
-
-static void draw_screen(void) {
-  switch (s_screen) {
-    case SCR_SHOOT: draw_shoot(); break;
-    case SCR_LOOK: draw_look(); break;
-    case SCR_GALLERY: draw_gallery(); break;
-    case SCR_PHOTO: draw_photo(); break;
-    case SCR_ROLL: draw_connection(); break;
-    case SCR_SETTINGS: draw_settings(); break;
-    case SCR_DISPLAY: draw_display(); break;
-    case SCR_SOUND: draw_sound(); break;
-    case SCR_CONNECTION: draw_connection(); break;
-    case SCR_STORAGE: draw_storage(); break;
-    case SCR_ABOUT: draw_about(); break;
-    case SCR_POWER: draw_power(); break;
-    default: break;
-  }
-  draw_capture_banner();
-  draw_toast();
-  draw_notice(s_screen == SCR_SHOOT || s_screen == SCR_PHOTO);
-  draw_mode_row();
-  if (s_dialog != DLG_NONE) draw_dialog();
-}
-
-/* ------------------------------------------------------------------ */
-/* Navigation                                                          */
-/* ------------------------------------------------------------------ */
-
-static void fire_shutter(bool long_press);
-
-static void go(screen_t s, int dissolve_ms) {
-  const int64_t now = esp_timer_get_time();
-  if (s == SCR_GALLERY) gallery_refresh();
-  if (s == SCR_SHOOT && s_screen != SCR_SHOOT) {
-    s_sh_show_ms = s_visited[SCR_SHOOT] ? SH_SHOW_MS : SH_SHOW_FIRST_MS;
-    sh_reveal();
-  }
-  if (s_screen == SCR_PHOTO && s != SCR_PHOTO) photo_release();
-  /* No crossfade between screens: the words that move carry the change, the
-   * rest cuts. The one exception is a photograph opening from its tile and
-   * closing back to it, where a picture dissolving into pictures is the
-   * photographic idiom rather than a transition effect. */
-  if (s != SCR_PHOTO && s_screen != SCR_PHOTO) dissolve_ms = 0;
-  s_enter_first = !s_visited[s];
-  s_visited[s] = true;
-  s_enter_us = now;
-  s_screen = s;
-  s_pressed = -1;
-  gfx_snapshot();
-  draw_screen();
-  gfx_dissolve(dissolve_ms);
-}
+#include "ui_present.h"
+#ifdef KINO_PLAYGROUND
+#include "ui_playground.h"
+#endif
 
 static void go_back(void) {
   /* One level up, deterministically; a mode's home is where it stops. */
@@ -3261,7 +1414,7 @@ static int hit_test(int x, int y) {
       /* The title band, and the reading line's two decisions; everything
        * else is picture, and a swipe anywhere changes mode. */
       if (y < HEAD_H) return IT_HDR;
-      if (y >= UI_H - 24 - UT_M.em - 14 && sh_words_alpha() > 0) {
+      if (y >= UI_H - 24 - UT_M.em - 14 && sh_words_showing()) {
         if (x >= s_sh_mode_x0 - 10 && x < s_sh_mode_x1 + 10) return SH_IT_MODE;
         if (x >= s_sh_flash_x0 - 10 && x < s_sh_flash_x1 + 10) return SH_IT_FLASH;
       }
@@ -3302,7 +1455,7 @@ static int hit_test(int x, int y) {
       return x < UI_W / 2 ? FL_IT_PREV : FL_IT_NEXT;
     }
     case SCR_GALLERY: {
-      if (gallery_total() == 0 || s_gal_from_page >= 0) return -1; /* not while a page is sliding */
+      if (gallery_total() == 0 || s_gal_turning) return -1; /* not while a page is sliding */
       for (int i = 0; i < GALLERY_PAGE; i++) {
         int gx, gy;
         gal_origin(i, &gx, &gy);
@@ -3349,14 +1502,14 @@ static int hit_test(int x, int y) {
 
 static void dialog_commit(void) {
   const dialog_t d = s_dialog;
-  s_dialog = DLG_NONE;
+  dialog_close();
   switch (d) {
     case DLG_RESTART:
       config_save();
       /* What the camera is doing, not a farewell. It said GOOD NIGHT and
        * then came straight back up, which reads as a shutdown that failed. */
       fill(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00));
-      ut_mid(&UT_M, UI_W / 2, UI_H / 2 - UT_M.em / 2, "再起動", C_INK);
+      ut_mid(&UT_M, UI_W / 2, UI_H / 2 - UT_M.em / 2, "RESTARTING", C_INK);
       gfx_present();
       vTaskDelay(pdMS_TO_TICKS(500));
       esp_restart();
@@ -3371,7 +1524,7 @@ static void dialog_commit(void) {
        * screen does not move, which is the only safe answer for an
        * irreversible operation. */
       if (!storage_acquire(STORAGE_USER_UI, 2000)) {
-        toast("カード使用中");
+        ui_note("CARD BUSY");
         audio_warning();
         break;
       }
@@ -3387,7 +1540,7 @@ static void dialog_commit(void) {
        * of the card. Non-blocking; the gallery task does the work. */
       gallery_note_removed(s_photo_id);
       gallery_refresh();
-      toast("削除した");
+      ui_note("DELETED");
       go(SCR_GALLERY, 180);
       return;
     }
@@ -3398,16 +1551,16 @@ static void dialog_commit(void) {
        * gallery task takes the card in bursts and yields per folder, so a
        * photograph taken during the wipe still wins. */
       gallery_delete_all();
-      toast("削除中");
+      ui_note("DELETING");
       break;
     case DLG_FORMAT:
       /* Not wired: there is no format entry point in storage.c, and calling
        * a delete loop over user captures under the name "format" would be a
        * different operation wearing the label. */
-      toast("初期化はできない");
+      ui_note("CANNOT FORMAT");
       break;
     default:
-      toast("電源は USB-C");
+      ui_note("POWER IS USB-C");
       break;
   }
   draw_screen();
@@ -3418,7 +1571,7 @@ static void activate(int item) {
   if (s_dialog != DLG_NONE) {
     if (item == 1) dialog_commit();
     else {
-      s_dialog = DLG_NONE;
+      dialog_close();
       draw_screen();
       gfx_present();
     }
@@ -3454,7 +1607,6 @@ static void activate(int item) {
       if (item == FL_IT_PREV || item == FL_IT_NEXT) fl_change(item == FL_IT_NEXT ? 1 : -1);
       else if (item == FL_IT_MONO) {
         look_set_mono(!look_is_mono());
-        notice_say(look_is_mono() ? "白黒" : "カラー", C_INK, 1000, false);
       } else if (item >= FL_IT_TARGET && item < FL_IT_COUNT) {
         s_look_target = item - FL_IT_TARGET;
       }
@@ -3479,27 +1631,27 @@ static void activate(int item) {
          * say why rather than opening an empty photograph screen that looks
          * like a lost capture. */
         if (!photo_open(&slots[item])) {
-          toast("カード使用中");
+          ui_note("CARD BUSY");
           audio_warning();
           break;
         }
         s_focus[SCR_PHOTO] = P_IT_DELETE;
-        go(SCR_PHOTO, 200);
+        photo_open_from(item);
+        go(SCR_PHOTO, 0);
         return;
       }
       break;
 
     case SCR_PHOTO:
       if (item == P_IT_DELETE) {
-        s_dialog = DLG_DELETE;
-        s_dlg_focus = 0;
+        dialog_open(DLG_DELETE);
       } else if (item == P_IT_FAV) {
         photo_toggle_favourite();
       }
       break;
 
     case SCR_SETTINGS:
-      if (item >= 0 && item < 5) { go(SET_DEST[item], 200); return; }
+      if (item >= 0 && item < 5) { go(SET_DEST[item], 0); return; }
       break;
 
     case SCR_DISPLAY: {
@@ -3538,21 +1690,20 @@ static void activate(int item) {
       if (gallery_deleting()) break;
       if (item == ST_IT_DELETE_ALL) {
         if (gallery_media_count() <= 0) {
-          toast("写真なし");
+          ui_note("NO PHOTOS");
           break;
         }
-        s_dialog = DLG_DELETE_ALL;
-        s_dlg_focus = 0;
+        dialog_open(DLG_DELETE_ALL);
       } else if (item == ST_IT_FORMAT) {
         /* Dimmed row; a press still lands here from the hit test. Say so
          * without a confirm dialog for a thing that cannot happen. */
-        toast("初期化はできない");
+        ui_note("CANNOT FORMAT");
       }
       break;
 
     case SCR_POWER:
-      if (item == 0) { toast("電源は USB-C"); break; }
-      if (item == 1) { s_dialog = DLG_RESTART; s_dlg_focus = 0; break; }
+      if (item == 0) { ui_note("POWER IS USB-C"); break; }
+      if (item == 1) { dialog_open(DLG_RESTART); break; }
       go_back();
       return;
 
@@ -3713,31 +1864,19 @@ void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled) {
 
 /* The boot sequence, once: the splash, then the first screen dissolving in. */
 static void ui_boot(void) {
-  mo_seed((uint32_t)esp_timer_get_time() ^ (capture_count() * 2654435761u));
-  splash();
+  kb_seed((uint32_t)esp_timer_get_time() ^ (capture_count() * 2654435761u));
+  /* Device memory: the first boot ever is set a little more slowly than every
+   * boot after it, and the camera remembers which this is. */
+  s_first_boot = !config_bool("body.booted", false);
+  boot_show(s_first_boot);
+  if (s_first_boot) cfg_set_bool("body.booted", true);
   s_visited[SCR_SHOOT] = true;
-  sh_reveal();
-
-  /* A finger held on the glass through the splash boots into 情報, the
-   * diagnostic page - serial, build, uptime, the cameras - without a menu to
-   * find it in. The press is swallowed the way a wake press is: nothing on
-   * that page acts, so there is nothing for it to hit. */
-  {
-    uint16_t bx, by;
-    if (touch_ready() && touch_get(&bx, &by)) {
-      s_screen = SCR_ABOUT;
-      klog("P4", "boot: finger on the glass - opening the diagnostic page");
-    }
-  }
-
-  gfx_snapshot();
+  s_screen = SCR_SHOOT;
+  s_sh_show_ms = SH_SHOW_FIRST_MS;
   draw_screen();
-  uint32_t f0 = 0, f1 = 0, ms = 0;
-  gfx_stats(&f0, NULL);
-  gfx_dissolve(420);
-  gfx_stats(&f1, &ms);
-  ESP_LOGI(TAG, "boot dissolve: %lu frames in %lu ms (%lu fps)", (unsigned long)(f1 - f0),
-           (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
+  sh_reveal();
+  draw_screen();
+  gfx_present();
 }
 
 /*
@@ -3758,7 +1897,7 @@ static uint32_t s_ui_last_frames = 0;
 static ui_health_t health = {0};
 static int64_t wake_since_us = 0;
 static bool was_asleep = false;
-static int64_t s_slept_us = 0; /* when the panel went dark, for 続けよう。 */
+static int64_t s_slept_us = 0; /* when the panel went dark, for the long-idle wake */
 #define LONG_SLEEP_US (20LL * 60 * 1000000)
 /* True from the touch that dismissed a held report until that finger lifts,
  * so the dismissal does not also press whatever was underneath it. */
@@ -3782,9 +1921,8 @@ static uint32_t ui_pass(void) {
   s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
   /* Motion is stepped where it is drawn; this only clears the "anything
    * still moving" tally the tail reads to pick the next pass delay. */
-  mo_begin_pass();
-  cap_step();
-  notice_watch();
+  cap_watch();
+  events_watch();
 
   /* Physical keys first: they were recorded on the buttons task and this
    * is the task that owns the canvas and the compositor. */
@@ -3814,10 +1952,18 @@ static uint32_t ui_pass(void) {
   if (was_asleep && !asleep_now) {
     ESP_LOGI(TAG, "woke: repainting");
     klog("P4", "woke, repainting");
-    /* Picked up again after a while: one line, and back to work. A short
-     * doze says nothing - the screen just comes back. */
-    if (s_slept_us != 0 && esp_timer_get_time() - s_slept_us >= LONG_SLEEP_US)
-      notice_say("続けよう。", C_INK, 1600, false);
+    /* Picked up again: a short doze says nothing, the screen just comes
+     * back; after a long one the camera acknowledges the return, and the
+     * session starts over for the once-per-session behaviours. */
+    s_idle_before_us = s_slept_us ? esp_timer_get_time() - s_slept_us : 0;
+    if (s_slept_us != 0 && s_idle_before_us >= LONG_SLEEP_US) {
+      kb_new_session();
+      s_session_shots = 0;
+      ui_event(KEV_WAKE_LONG_IDLE);
+      if (s_screen == SCR_SHOOT) { s_sh_show_ms = SH_SHOW_FIRST_MS; sh_reveal(); }
+    } else {
+      ui_event(KEV_WAKE);
+    }
     s_slept_us = 0;
     draw_screen();
     gfx_present();
@@ -4001,7 +2147,7 @@ static uint32_t ui_pass(void) {
    * storage screen is the only thing that says it is still going. */
   const bool busy = cstage != CAPTURE_IDLE ||
                     (s_screen == SCR_GALLERY && gallery_loading()) ||
-                    (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
+                    (s_screen == SCR_STORAGE && gallery_deleting());
 
   /*
    * The wigglegram advances here, above the busy branch rather than in the
@@ -4148,6 +2294,8 @@ esp_err_t ui_start(void) {
     return err;
   }
   s_cv = gfx_canvas();
+  ks_init();
+  s_kmo_sound = kmo_sound_cb;
 
   /* The queue exists before the handler is registered, or a press arriving
    * between the two would be dropped by on_button's NULL guard. */

@@ -789,6 +789,7 @@ void upload_queue_status(upload_queue_report_t *out) {
 }
 int upload_queue_retry_all(void) { return 0; }
 
+#define KINO_PLAYGROUND 1
 #include "ui.c"
 
 /* ---- output ---- */
@@ -846,6 +847,9 @@ int main(int argc, char **argv) {
 
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   s_cv = g_canvas;
+  ks_init();
+  s_kmo_sound = kmo_sound_cb;
+  kb_seed(7);
 
   /* One helper, so every state below is "set the state, draw, name it" and
    * the list reads as the screen inventory it is meant to be. */
@@ -1288,187 +1292,297 @@ int main(int argc, char **argv) {
     g_slot[0].cal_present = false;
   }
 
-  /* ---- a toast, which every screen can raise ---- */
-  /* On the menu it is the status bar's message. It used to float 44 px off the
-   * bottom, which put it across the SETTINGS tile's label - a tooltip covering
-   * the control that raised it, and this shot is the one that showed it. */
-  s_screen = SCR_SHOOT;
-  toast("Mode: Quad");
-  draw_screen();
-  shot("toast");
-
-  /* The same band on the gallery, where the footer's two buttons sit. Every
-   * message this screen raises is "Card busy", and the point of the shot is
-   * that it lands between PREV and NEXT rather than on either. */
-  s_screen = SCR_GALLERY;
-  toast("Card busy");
-  draw_screen();
-  shot("toast_gallery");
-
-  /* ---- the type: the three faces, and the display sizes made from the bold ---- */
-  fill(0, 0, UI_W, UI_H, RGB(0x0e, 0x10, 0x14));
-  ut_draw(&UT_MB, 24, 14, "撮影", RGB(0xf2, 0xf2, 0xee));
-  ut_draw(&UT_M, 24, 70, "再生  色  接続  設定", RGB(0x80, 0x88, 0x94));
-  ut_draw(&UT_S, 24, 124, "QUAD  C02 白黒  フラッシュ 自動  12:34  3.7 GB", RGB(0xf2, 0xf2, 0xee));
-  ut_fx(&UT_MB, 24 + ut_w(&UT_MB, "C02 白黒"), 200, "C02 白黒", 2.f, 0.f, RGB(0xf2, 0xf2, 0xee), 255, false);
-  ut_fx(&UT_MB, 560, 120, "撮れた！", 2.6f, -7.f, RGB(0xf4, 0xc5, 0x42), 255, true);
-  ut_fx(&UT_MB, 430, 330, "よし。", 3.4f, 5.f, RGB(0x2f, 0x70, 0xc9), 255, false);
-  { const char *col[4] = {"い", "い", "ね", "。"}; for (int i = 0; i < 4; i++) ut_fx(&UT_MB, 740.f, 217.f + i * 34.f, col[i], 1.f, 0.f, RGB(0x2f, 0x70, 0xc9), 255, false); }
-  ut_fx(&UT_MB, 600, 430, "4枚同期", 1.8f, 0.f, RGB(0xf2, 0xf2, 0xee), 200, true);
-  for (int i = 0; i < 4; i++) disc(60.f + i * 36.f, 430.f, i < 3 ? 7.f : 3.f, i < 3 ? RGB(0xf2, 0xf2, 0xee) : RGB(0x80, 0x88, 0x94), 255);
-  shot("type_sample");
-
-  /* ---- film: the shell in motion ----
+  /* ---- film: the interface in motion ----
    *
-   * ui_pass() driven by hand with a fake finger and a fake clock. Each
-   * frame is the canvas after the pass that ran at that instant, named by
-   * its time, so a transition reads as a strip and a regression in its
-   * timing is a diff. */
+   * ui_pass() driven by hand with a fake clock. Each frame is the canvas
+   * after the pass that ran at that instant, named by its time, so a
+   * behaviour reads as a strip and a regression in its timing is a diff. */
 #define FILM(name, at_ms)                                          \
   do {                                                             \
     g_preview_clock_us = film_t0 + (int64_t)(at_ms) * 1000;        \
     (void)ui_pass();                                               \
-    char fn[64];                                                   \
-    snprintf(fn, sizeof fn, "film_%s_%03d", name, (int)(at_ms));   \
+    char fn[80];                                                   \
+    snprintf(fn, sizeof fn, "film_%s_%04d", name, (int)(at_ms));   \
     shot(fn);                                                      \
+  } while (0)
+#define STEP(at_ms)                                                \
+  do {                                                             \
+    g_preview_clock_us = film_t0 + (int64_t)(at_ms) * 1000;        \
+    (void)ui_pass();                                               \
+  } while (0)
+#define SCENE()                                                    \
+  do {                                                             \
+    g_preview_clock_us += 1500000;                                 \
+    film_t0 = g_preview_clock_us;                                  \
+    s_pressed = -1;                                                \
+    if (s_dialog != DLG_NONE) dialog_close();                      \
+    g_stage = CAPTURE_IDLE;                                        \
+    g_frames_in = 0;                                               \
   } while (0)
 
   s_pressed = -1;
   s_dialog = DLG_NONE;
   g_stage = CAPTURE_IDLE;
-  s_screen = SCR_SHOOT;
-  int64_t film_t0 = g_preview_clock_us + 1000000;
-  /* A swipe left across the finder: down, six moves, lift, then the header
-   * carrying SHOOT out and ROLL in. */
-  g_touch_down = true; g_touch_lx = 600; g_touch_ly = 300; FILM("swipe", -140);
-  g_touch_lx = 560; FILM("swipe", -120);
-  g_touch_lx = 500; FILM("swipe", -100);
-  g_touch_lx = 430; FILM("swipe", -80);
-  g_touch_lx = 360; FILM("swipe", -60);
-  g_touch_lx = 300; FILM("swipe", -40);
-  g_touch_lx = 250; FILM("swipe", -20);
-  g_touch_down = false; FILM("swipe", 0);
-  FILM("swipe", 16); FILM("swipe", 40); FILM("swipe", 70); FILM("swipe", 100);
-  FILM("swipe", 140); FILM("swipe", 190); FILM("swipe", 250); FILM("swipe", 320); FILM("swipe", 420);
+  int64_t film_t0 = g_preview_clock_us;
 
-  /* A tap on the title opens the mode row. */
-  s_screen = SCR_GALLERY;
-  film_t0 = g_preview_clock_us + 1000000;
-  g_touch_down = true; g_touch_lx = 60; g_touch_ly = 30; FILM("row", -60);
-  g_touch_down = false; FILM("row", 0);
-  FILM("row", 30); FILM("row", 60); FILM("row", 100); FILM("row", 150); FILM("row", 220); FILM("row", 320);
-  row_close();
-  s_screen = SCR_SHOOT;
-
-  /* ---- film: the gallery turning a page (a swipe up) ---- */
-  s_screen = SCR_GALLERY;
-  film_t0 = g_preview_clock_us + 1000000;
-  g_touch_down = true; g_touch_lx = 400; g_touch_ly = 380; FILM("page", -120);
-  g_touch_ly = 300; FILM("page", -90);
-  g_touch_ly = 220; FILM("page", -60);
-  g_touch_ly = 150; FILM("page", -30);
-  g_touch_down = false; FILM("page", 0);
-  FILM("page", 16); FILM("page", 50); FILM("page", 90); FILM("page", 140); FILM("page", 200); FILM("page", 300);
-  s_screen = SCR_SHOOT;
-
-  /* ---- film: the capture ----
-   *
-   * The pipeline's stages and masks set by hand at the times a real capture
-   * produces them (a frame lands every few hundred ms over 921600 baud),
-   * then the report, then whatever the camera has to say about it. */
-  film_t0 = g_preview_clock_us + 1000000;
-  g_stage = CAPTURE_IDLE; g_frames_in = 0; g_asked_mask = 0;
-  FILM("cap", -20);
-  g_stage = CAPTURE_TRIGGERING; FILM("cap", 0); FILM("cap", 20); FILM("cap", 50); FILM("cap", 100);
-  g_asked_mask = 0xf; g_stage = CAPTURE_READING; FILM("cap", 200);
-  g_frames_in = 0x1; FILM("cap", 300); FILM("cap", 380);
-  g_frames_in = 0x3; FILM("cap", 600);
-  g_frames_in = 0x7; FILM("cap", 900);
-  g_frames_in = 0xf; FILM("cap", 1200); g_stage = CAPTURE_WRITING; FILM("cap", 1250);
-  memset(&g_report, 0, sizeof g_report);
-  g_report.ok = true; g_report.stored = 4; g_report.online = 4;
-  for (int i = 0; i < 4; i++) { g_report.cam[i].attempted = true; g_report.cam[i].ok = true; }
-  g_stage = CAPTURE_DONE;
-  mo_seed(7);
-  FILM("cap", 1300);
-  /* One word, chosen rather than rolled, so the strip always shows one. */
-  if (s_cap.react == NULL) cap_say(&REACTIONS[0], g_preview_clock_us);
-  FILM("cap", 1316); FILM("cap", 1350); FILM("cap", 1400); FILM("cap", 1460); FILM("cap", 1520);
-  FILM("cap", 1600); FILM("cap", 1750); FILM("cap", 1950); FILM("cap", 2050); FILM("cap", 2120); FILM("cap", 2250);
-  g_stage = CAPTURE_IDLE;
-  FILM("cap", 2600);
-
-  /* ---- film: two more manners of a word - down the side, and bigger than the frame ---- */
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
-  s_cap.armed = true;
-  cap_say(&REACTIONS[2], g_preview_clock_us); /* いいね。 */
-  FILM("react_v", 150); FILM("react_v", 220); FILM("react_v", 320); FILM("react_v", 500); FILM("react_v", 800);
-  film_t0 = g_preview_clock_us + 1500000;
-  g_preview_clock_us = film_t0;
-  s_cap.armed = true;
-  cap_say(&REACTIONS[5], g_preview_clock_us); /* 4枚！ */
-  FILM("react_h", 150); FILM("react_h", 200); FILM("react_h", 280); FILM("react_h", 500); FILM("react_h", 780);
-  film_t0 = g_preview_clock_us + 1500000;
-  g_preview_clock_us = film_t0;
-  s_cap.armed = true;
-  cap_say(&REACTIONS[4], g_preview_clock_us); /* もう一枚？ */
-  FILM("react_t", 200); FILM("react_t", 600);
-  s_cap.armed = false;
-  s_cap.react = NULL;
-
-  /* ---- film: a first visit to SETUP - the rows arrive; a second is simply there ---- */
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
-  s_visited[SCR_SETTINGS] = false;
-  go(SCR_SETTINGS, 0);
-  FILM("rows", 0); FILM("rows", 40); FILM("rows", 90); FILM("rows", 150); FILM("rows", 250); FILM("rows", 400);
+  /* -- navigation: one swipe, then three faster than the motion finishes -- */
+  SCENE();
   go(SCR_SHOOT, 0);
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
+  STEP(0);
+  mode_swipe(1);
+  FILM("swipe", 0); FILM("swipe", 16); FILM("swipe", 40); FILM("swipe", 70); FILM("swipe", 100); FILM("swipe", 140);
+  FILM("swipe", 190); FILM("swipe", 250); FILM("swipe", 320); FILM("swipe", 420); FILM("swipe", 560);
+  SCENE();
+  mode_swipe(1);
+  FILM("rapid", 0); FILM("rapid", 40); FILM("rapid", 80);
+  mode_swipe(1);
+  FILM("rapid", 90); FILM("rapid", 120); FILM("rapid", 160);
+  mode_swipe(-1);
+  FILM("rapid", 170); FILM("rapid", 200); FILM("rapid", 240); FILM("rapid", 300); FILM("rapid", 400); FILM("rapid", 560); FILM("rapid", 800);
+
+  /* -- the mode strip -- */
+  SCENE();
+  go(SCR_GALLERY, 0);
+  STEP(0);
+  row_open(g_preview_clock_us);
+  FILM("strip", 0); FILM("strip", 30); FILM("strip", 60); FILM("strip", 100); FILM("strip", 150); FILM("strip", 220); FILM("strip", 320); FILM("strip", 500);
+  row_close();
+  FILM("strip", 520); FILM("strip", 580); FILM("strip", 700);
+
+  /* -- ROLL: a page turn, then a photograph opening from its tile -- */
+  SCENE();
+  go(SCR_GALLERY, 0);
+  STEP(0);
+  gal_turn(1);
+  FILM("page", 0); FILM("page", 30); FILM("page", 60); FILM("page", 100); FILM("page", 150); FILM("page", 220); FILM("page", 320); FILM("page", 480);
+  SCENE();
+  gal_turn(-1);
+  STEP(0);
+  STEP(700);
+  {
+    const gallery_item_t *slots = gallery_slots();
+    if (photo_open(&slots[4])) {
+      film_t0 = g_preview_clock_us;
+      photo_open_from(4);
+      go(SCR_PHOTO, 0);
+      FILM("photo", 0); FILM("photo", 30); FILM("photo", 60); FILM("photo", 100); FILM("photo", 150); FILM("photo", 220); FILM("photo", 320); FILM("photo", 500);
+      dialog_open(DLG_DELETE);
+      FILM("dialog", 0); FILM("dialog", 40); FILM("dialog", 90); FILM("dialog", 150); FILM("dialog", 260); FILM("dialog", 400);
+      dialog_close();
+    }
+  }
+
+  /* -- the finder's words showing and letting go -- */
+  SCENE();
+  s_sh_show_ms = 600;
+  go(SCR_SHOOT, 0);
+  film_t0 = g_preview_clock_us;
+  FILM("words", 0); FILM("words", 40); FILM("words", 90); FILM("words", 160); FILM("words", 300); FILM("words", 640); FILM("words", 720); FILM("words", 820); FILM("words", 960);
+
+  /* -- capture: the shutter response, then each behaviour by name -- */
+  {
+    struct { const char *name; int clip; const char *text; } CAP[] = {
+        {"cap_none", KCLIP_CAP_NONE, NULL},           {"cap_quiet", KCLIP_CAP_QUIET, NULL},
+        {"cap_merge", KCLIP_CAP_FOUR_MERGE, "GOT IT."}, {"cap_text", KCLIP_CAP_TEXT_HIT, "NICE."},
+        {"cap_cut", KCLIP_CAP_HARD_CUT, "OK."},       {"cap_energy", KCLIP_CAP_ENERGY, "YES."},
+        {"cap_hundred", KCLIP_CAP_HUNDRED, "A HUNDRED."}, {"cap_fail", KCLIP_CAP_FAIL, "NO FRAME."},
+    };
+    for (size_t i = 0; i < sizeof CAP / sizeof CAP[0]; i++) {
+      SCENE();
+      go(SCR_SHOOT, 0);
+      s_sh_words_up = false;
+      STEP(0);
+      g_stage = CAPTURE_READING;
+      g_frames_in = 0;
+      FILM(CAP[i].name, 0); FILM(CAP[i].name, 16); FILM(CAP[i].name, 36); FILM(CAP[i].name, 60); FILM(CAP[i].name, 96);
+      FILM(CAP[i].name, 110); FILM(CAP[i].name, 124); FILM(CAP[i].name, 140);
+      g_frames_in = 1; STEP(180); g_frames_in = 3; STEP(215); g_frames_in = 7; STEP(250); g_frames_in = 15;
+      FILM(CAP[i].name, 280);
+      /* The report: the film chooses the behaviour instead of the draw. */
+      memset(&g_report, 0, sizeof g_report);
+      g_report.ok = CAP[i].clip != KCLIP_CAP_FAIL;
+      g_report.stored = g_report.ok ? 4 : 0;
+      g_report.online = 4;
+      for (int c = 0; c < 4; c++) { g_report.cam[c].attempted = true; g_report.cam[c].ok = g_report.ok; }
+      s_capw.reported = true;
+      g_stage = CAPTURE_DONE;
+      STEP(360);
+      if (CAP[i].clip == KCLIP_CAP_FAIL) snprintf(s_cap_fail_why, sizeof s_cap_fail_why, "%s", "NOTHING CAME BACK");
+      ui_run_clip(g_report.ok ? KEV_CAPTURE_SUCCESS : KEV_CAPTURE_FAIL, CAP[i].clip, CAP[i].text);
+      film_t0 = g_preview_clock_us;
+      FILM(CAP[i].name, 0); FILM(CAP[i].name, 40); FILM(CAP[i].name, 80); FILM(CAP[i].name, 120); FILM(CAP[i].name, 160);
+      FILM(CAP[i].name, 200); FILM(CAP[i].name, 240); FILM(CAP[i].name, 280); FILM(CAP[i].name, 300); FILM(CAP[i].name, 330);
+      FILM(CAP[i].name, 380); FILM(CAP[i].name, 450); FILM(CAP[i].name, 550); FILM(CAP[i].name, 700); FILM(CAP[i].name, 900);
+      FILM(CAP[i].name, 1100); FILM(CAP[i].name, 1300); FILM(CAP[i].name, 1500);
+      g_stage = CAPTURE_IDLE;
+      STEP(1600);
+    }
+  }
+
+  /* -- stress: a second shutter while the first is still being celebrated -- */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  g_stage = CAPTURE_READING; STEP(0); g_frames_in = 15; s_capw.reported = true; g_stage = CAPTURE_DONE; STEP(300);
+  ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_FOUR_MERGE, "GOT IT.");
+  film_t0 = g_preview_clock_us;
+  FILM("capcap", 0); FILM("capcap", 100); FILM("capcap", 200); FILM("capcap", 300);
+  g_stage = CAPTURE_IDLE; STEP(340); g_stage = CAPTURE_READING; g_frames_in = 0; s_capw.reported = false;
+  FILM("capcap", 350); FILM("capcap", 370); FILM("capcap", 400); FILM("capcap", 450); FILM("capcap", 500);
+  g_frames_in = 15; s_capw.reported = true; g_stage = CAPTURE_DONE; STEP(600);
+  ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_TEXT_HIT, "AGAIN?");
+  FILM("capcap", 620); FILM("capcap", 700); FILM("capcap", 800); FILM("capcap", 1000); FILM("capcap", 1300);
+  g_stage = CAPTURE_IDLE;
+
+  /* -- stress: leaving the finder while the result is still landing -- */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  STEP(0);
+  g_stage = CAPTURE_READING; STEP(0); g_frames_in = 15; s_capw.reported = true; g_stage = CAPTURE_DONE; STEP(300);
+  ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_ENERGY, "YES.");
+  film_t0 = g_preview_clock_us;
+  FILM("capleave", 0); FILM("capleave", 120);
+  mode_swipe(1);
+  FILM("capleave", 130); FILM("capleave", 170); FILM("capleave", 240); FILM("capleave", 340); FILM("capleave", 500);
+  g_stage = CAPTURE_IDLE;
+
+  /* -- stress: a context event lands during a mode change -- */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  STEP(0);
+  mode_swipe(1);
+  FILM("ctx", 0); FILM("ctx", 80);
+  ui_run_clip(KEV_LINK_CONNECTED, KCLIP_LINK_CONNECTED, "CONNECTED");
+  FILM("ctx", 100); FILM("ctx", 140); FILM("ctx", 200); FILM("ctx", 280); FILM("ctx", 400); FILM("ctx", 600); FILM("ctx", 900); FILM("ctx", 1400); FILM("ctx", 1750);
+
+  /* -- the rest of what the camera says -- */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  ui_run_clip(KEV_SYNC_GOOD, KCLIP_SYNC_GOOD, "SYNC OK");
+  FILM("sync", 0); FILM("sync", 60); FILM("sync", 130); FILM("sync", 200); FILM("sync", 240); FILM("sync", 260); FILM("sync", 300); FILM("sync", 400); FILM("sync", 700); FILM("sync", 1300);
+  SCENE();
+  go(SCR_CONNECTION, 0);
+  STEP(0);
+  ui_run_clip(KEV_TRANSFER_COMPLETE, KCLIP_TRANSFER_DONE, "SENT");
+  FILM("sent", 0); FILM("sent", 80); FILM("sent", 160); FILM("sent", 240); FILM("sent", 260); FILM("sent", 300); FILM("sent", 400); FILM("sent", 700); FILM("sent", 1400);
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  ui_run_clip(KEV_WAKE_LONG_IDLE, KCLIP_WAKE_LONG, "BACK.");
+  FILM("back", 0); FILM("back", 150); FILM("back", 400); FILM("back", 1500); FILM("back", 1700);
+  SCENE();
   go(SCR_SETTINGS, 0);
-  FILM("rows_again", 0); FILM("rows_again", 90);
+  STEP(0);
+  ui_note("CARD");
+  FILM("note", 0); FILM("note", 40); FILM("note", 90); FILM("note", 160); FILM("note", 300); FILM("note", 1300); FILM("note", 1450);
 
-  /* ---- film: a notice, and the four-camera one ---- */
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
-  notice_say("カード OK", RGB(0xf2, 0xf2, 0xee), 1400, false);
-  FILM("note", 0); FILM("note", 30); FILM("note", 70); FILM("note", 120); FILM("note", 200); FILM("note", 400);
-  FILM("note", 1200); FILM("note", 1300); FILM("note", 1380); FILM("note", 1450);
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
-  notice_say("同期 OK", RGB(0xf2, 0xf2, 0xee), 1200, true);
-  FILM("sync", 0); FILM("sync", 60); FILM("sync", 130); FILM("sync", 200); FILM("sync", 260); FILM("sync", 300);
-  FILM("sync", 380); FILM("sync", 500); FILM("sync", 1000); FILM("sync", 1400);
+  /* -- LOOK: the identifier, and every transition -- */
+  {
+    struct { const char *name; int clip; } LK[] = {
+        {"look_snap", KCLIP_LOOK_SNAP}, {"look_rgb", KCLIP_LOOK_RGB}, {"look_smear", KCLIP_LOOK_SMEAR},
+        {"look_wipe", KCLIP_LOOK_WIPE}, {"look_pulse", KCLIP_LOOK_PULSE}, {"look_cut", KCLIP_LOOK_CUT},
+        {"look_late", KCLIP_LOOK_LATE_COLOR},
+    };
+    for (size_t i = 0; i < sizeof LK / sizeof LK[0]; i++) {
+      SCENE();
+      go(SCR_LOOK, 0);
+      STEP(0);
+      STEP(1500);
+      film_t0 = g_preview_clock_us;
+      look_step(1);
+      ui_run_clip(KEV_LOOK_CHANGE, LK[i].clip, NULL);
+      look_show_id();
+      FILM(LK[i].name, 0); FILM(LK[i].name, 16); FILM(LK[i].name, 40); FILM(LK[i].name, 80); FILM(LK[i].name, 130);
+      FILM(LK[i].name, 200); FILM(LK[i].name, 300); FILM(LK[i].name, 500); FILM(LK[i].name, 900); FILM(LK[i].name, 1300);
+    }
+  }
 
-  /* ---- film: the link coming up, then a burst finishing ---- */
-  /* Down first, seen by one pass, so the edge is real. */
-  g_net_state = NET_C6_NOT_ROUTED; g_net_routed = false;
-  g_preview_clock_us += 2000000; (void)ui_pass();
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
-  g_net_state = NET_IP_READY; g_net_routed = true;
-  FILM("link", 0); FILM("link", 40); FILM("link", 90); FILM("link", 160); FILM("link", 300); FILM("link", 1450);
-  /* Three going out: notice_watch polls the queue at 2 Hz, so give it a beat. */
-  g_queue.pending = 3; g_queue.uploading = 1; g_queue.burst_done = 0;
-  g_preview_clock_us += 2000000; (void)ui_pass();
-  film_t0 = g_preview_clock_us + 1000000;
-  g_preview_clock_us = film_t0;
-  g_queue.pending = 0; g_queue.uploading = 0; g_queue.burst_done = 4; g_queue.uploaded += 4;
-  FILM("xfer", 0); FILM("xfer", 60); FILM("xfer", 130); FILM("xfer", 200); FILM("xfer", 260); FILM("xfer", 300);
-  FILM("xfer", 380); FILM("xfer", 500); FILM("xfer", 1000); FILM("xfer", 1500);
+  /* -- boot: a cold boot, and the first ever -- */
+  for (int first = 0; first < 2; first++) {
+    SCENE();
+    ks_node_t *b = ks_get("brand", KS_TEXT);
+    ks_text(b, "KINO D4", &UT_MB, C_INK);
+    ks_place(b, UI_W * 0.5f, UI_H * 0.5f, 0.5f, 0.5f);
+    ks_pose(b, KC_SX, 2.f); ks_pose(b, KC_SY, 2.f);
+    b->z = 95;
+    ks_snap(b);
+    if (first) { ks_text_stagger(b, KCLIP_BOOT_CHAR, 55, g_preview_clock_us); ks_play1(KCLIP_BOOT_FIRST, "boot", b, "title", NULL); }
+    else ks_play1(KCLIP_BOOT_COLD, "boot", b, "title", NULL);
+    const char *nm = first ? "boot_first" : "boot_cold";
+    static const int T[] = {0, 60, 120, 160, 200, 260, 330, 420, 560, 760, 1000, 1300, 1800};
+    for (size_t k = 0; k < sizeof T / sizeof T[0]; k++) {
+      g_preview_clock_us = film_t0 + (int64_t)T[k] * 1000;
+      s_kmo_live = 0;
+      ks_begin(g_preview_clock_us);
+      fill(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00));
+      ks_get("brand", KS_TEXT);
+      ks_render();
+      char fn[80];
+      snprintf(fn, sizeof fn, "film_%s_%04d", nm, T[k]);
+      shot(fn);
+    }
+    ks_stop_tag("boot");
+    /* ...and the finder under it, the name letting go. */
+    s_screen = SCR_SHOOT;
+    s_sh_show_ms = SH_SHOW_FIRST_MS;
+    sh_reveal();
+    film_t0 = g_preview_clock_us;
+    FILM(nm, 1900); FILM(nm, 1950); FILM(nm, 2020); FILM(nm, 2150); FILM(nm, 2400);
+  }
 
-  /* ---- film: a preset change on FILTER (tap on the right half) ---- */
-  s_screen = SCR_LOOK;
-  film_t0 = g_preview_clock_us + 1000000;
-  g_touch_down = true; g_touch_lx = 600; g_touch_ly = 240; FILM("look", -40);
-  g_touch_down = false; FILM("look", 0);
-  FILM("look", 16); FILM("look", 40); FILM("look", 70); FILM("look", 100); FILM("look", 140); FILM("look", 200);
-  FILM("look", 300); FILM("look", 450);
-  s_screen = SCR_SHOOT;
+  /* -- the complex scene: everything at once, and what it costs -- */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  STEP(0);
+  mode_swipe(1);
+  mode_swipe(-1);
+  row_open(g_preview_clock_us);
+  g_stage = CAPTURE_READING; STEP(10); g_frames_in = 15; s_capw.reported = true; g_stage = CAPTURE_DONE; STEP(20);
+  ui_run_clip(KEV_CAPTURE_SUCCESS, KCLIP_CAP_FOUR_MERGE, "GOT IT.");
+  ui_run_clip(KEV_LINK_CONNECTED, KCLIP_LINK_CONNECTED, "CONNECTED");
+  film_t0 = g_preview_clock_us;
+  {
+    uint32_t worst = 0, sum = 0, n = 0;
+    for (int ms = 0; ms <= 900; ms += 16) {
+      STEP(ms);
+      const uint32_t cost = s_ks_perf.render_us + s_ks_perf.step_us;
+      sum += cost; n++;
+      if (cost > worst) worst = cost;
+      if (ms % 160 == 0) { char fn[80]; snprintf(fn, sizeof fn, "film_complex_%04d", ms); shot(fn); }
+    }
+    fprintf(stderr, "[perf] complex scene: %u frames, mean %u us, worst %u us, nodes %u, clips %u, pixels %u\n",
+            (unsigned)n, (unsigned)(sum / (n ? n : 1)), (unsigned)worst, (unsigned)s_ks_perf.nodes_drawn,
+            (unsigned)s_ks_perf.clips_active, (unsigned)s_ks_perf.pixels_tf);
+  }
+  g_stage = CAPTURE_IDLE;
+  row_close();
+
+  /* ---- the playground: every capability, filmed ---- */
+  static const int PGT[] = {0, 16, 40, 80, 130, 200, 300, 420, 560, 720, 900, 1100, 1400};
+  for (int which = 0; which < PG_COUNT; which++) {
+    g_preview_clock_us += 2000000;
+    const int64_t t0 = g_preview_clock_us;
+    pg_frame(which, t0);
+    pg_start(which, t0);
+    for (size_t k = 0; k < sizeof PGT / sizeof PGT[0]; k++) {
+      g_preview_clock_us = t0 + (int64_t)PGT[k] * 1000;
+      if (which == PG_INTERRUPT && PGT[k] == 300) pg_interrupt();
+      pg_frame(which, g_preview_clock_us);
+      char fn[80];
+      snprintf(fn, sizeof fn, "pg_%s_%04d", PG_NAME[which], PGT[k]);
+      shot(fn);
+    }
+    ks_stop_tag("pg");
+    ks_node_t *a = ks_peek("pg.a");
+    if (a) { ks_mod_clear(a); a->char_clip = -1; }
+  }
 
   if (g_write_failed) {
-    fprintf(stderr, "one or more screens were not written\n");
+    fprintf(stderr, "preview: one or more screens could not be written\n");
     return 1;
   }
   return 0;

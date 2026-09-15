@@ -155,6 +155,8 @@ jobs:
         run: npm run font:jp:check
       - name: The interface type is BIZ UDPGothic at the pinned commit, rasterised for exactly what ui.c says
         run: npm run font:ui:check
+      - name: The choreography is the behaviors/*.json, baked
+        run: npm run kmo:check
       - name: Rebuild kino-ui.wasm and compare with the committed artifact
         run: npm run twin:ui:check
 

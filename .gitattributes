@@ -11,3 +11,5 @@ REUSE.toml text eol=lf
 firmware/p4/main/ui_font_jp.h linguist-generated=true -diff
 # Generated from the pinned BIZ UDPGothic sources by tools/mkfont-ui.mjs; 1.3 MB of coverage tables nobody reviews by eye.
 firmware/p4/main/ui_font_ui.h linguist-generated=true -diff
+# Generated from firmware/p4/behaviors/*.json by tools/bake-kmo.mjs.
+firmware/p4/main/kmo_data.h linguist-generated=true
