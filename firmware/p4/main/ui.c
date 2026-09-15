@@ -1612,19 +1612,44 @@ static void draw_toggle(int x, int y, bool on, bool focused) {
 }
 
 /* A segmented selector: every option visible, the live one filled. */
+/*
+ * A row of positions, one of them live.
+ *
+ * Two things changed here and both of them run through every segmented
+ * control the camera has, which is what makes this one function worth
+ * touching rather than six screens.
+ *
+ * THE LIVE ONE IS THE ACCENT. It was drawn pushed in with a lighter face -
+ * the 1998 toolbar's toggled button - and on a row of three that is a
+ * difference of about ten per cent of a grey. On the DISPLAY screen, four
+ * rows of it, you had to hunt for which timeout the camera was actually set
+ * to. Selection on this interface already has a colour: every list row on
+ * every screen is navy with the type knocked out of it. A row of segments is
+ * a list laid sideways, so it gets the same treatment, and the answer to
+ * "which one is it" is now the only coloured thing in the group.
+ *
+ * THE POSITIONS ARE NUMBERED. A small index in each segment's corner, so a
+ * setting is a position you learn rather than a word you read: DIM AFTER is
+ * 2, AFTER SHOT is 3. It costs eleven pixels in a corner that was empty, it
+ * gives the camera the same vocabulary its four lenses already speak in, and
+ * it is what a numbered keypad would address the day this body has one.
+ */
 static void draw_segments(int x, int y, int w, int h, const char *const *names, int count,
                           int selected, int pressed_idx, int focus_idx) {
   const int cw = w / count;
   for (int i = 0; i < count; i++) {
     const int bx = x + i * cw;
     const bool on = i == selected;
-    /* The live option is drawn pushed in and stays pushed in - a radio
-     * button as a toggled button, which is how a 1998 toolbar showed state. */
     button(bx, y, cw - 2, h, on || pressed_idx == i);
-    if (on) fill(bx + 2, y + 2, cw - 6, h - 4, W_LIGHT);
+    if (on) fill(bx + 2, y + 2, cw - 6, h - 4, W_SEL);
     const int d = (on || pressed_idx == i) ? 1 : 0;
-    text_mid(&UI_FONT_M, bx + (cw - 2) / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, names[i],
-             W_TEXT);
+    const uint16_t ink = on ? W_SELTEXT : W_TEXT;
+    text_mid(&UI_FONT_M, bx + (cw - 2) / 2 + d, y + (h - UI_FONT_M.line_h) / 2 + d, names[i], ink);
+    /* Sized for a full int rather than for the five this can be: the
+     * compiler cannot see the bound and -Werror=format-truncation insists. */
+    char idx[16];
+    snprintf(idx, sizeof idx, "%d", i + 1);
+    text(&UI_FONT_S, bx + 7 + d, y + 4 + d, idx, on ? W_SELTEXT : W_GRAYTEXT);
     if (focus_idx == i) focus_inset(bx, y, cw - 2, h, W_TEXT);
   }
 }
@@ -1798,6 +1823,15 @@ static void draw_menu(void) {
     } else {
       /* No room for the cache. Slower and unfiltered, but still a menu. */
       icons_blit_centred(s_cv, UI_W, UI_H, i, icx + lift, icy + lift);
+    }
+
+    /* The tile's number, in the corner the artwork does not reach. The home
+     * screen is six positions and it never said so; a camera whose lenses are
+     * 1 2 3 4 should count its destinations the same way. */
+    {
+      char n[16];
+      snprintf(n, sizeof n, "%d", i + 1);
+      text(&UI_FONT_S, tx + 8, ty + 6, n, W_GRAYTEXT);
     }
 
     const int lw = text_w(&UI_FONT_M, MENU_LABEL[i]);
