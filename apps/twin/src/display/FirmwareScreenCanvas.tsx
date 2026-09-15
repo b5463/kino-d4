@@ -26,10 +26,26 @@ export function FirmwareScreenCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fw = firmwareUi();
 
+  /*
+   * The copy from the firmware's offscreen canvas to this one.
+   *
+   * The context is read from the ref on every redraw rather than captured
+   * once when the effect runs. It used to be captured, and a canvas element
+   * that React replaced without re-running the effect - which is what
+   * happens when this component is remounted under a different parent, as it
+   * is every time the app moves between the 3D view and SCREEN VIEW - left
+   * the copy writing into a detached element for the rest of the session.
+   * The firmware kept running and the screen stopped moving, which reads
+   * exactly like a hung camera and is the worst failure a device simulator
+   * can have: it lies about the device.
+   *
+   * The 150 ms tick is the floor, not the rate. onFrame() fires on every
+   * frame the firmware presents, so a dissolve is copied as it plays.
+   */
   useEffect(() => {
-    const ctx = canvasRef.current?.getContext('2d');
-    if (!ctx) return;
     const redraw = () => {
+      const ctx = canvasRef.current?.getContext('2d');
+      if (!ctx) return;
       if (fw.available()) ctx.drawImage(fw.screen, 0, 0);
       else drawDeviceUi(ctx, readDeviceUiState());
     };
