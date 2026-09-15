@@ -605,9 +605,32 @@ void klog(const char *src, const char *fmt, ...) {
 
 /* No card on a workstation, so every decode fails and the photograph view
  * renders its own "no image" state - which is a state worth photographing. */
+/**
+ * The still a photograph screen shows, painted rather than decoded.
+ *
+ * This used to fail unconditionally, which meant every photograph in every
+ * film went down the four-up quad branch and the single-image screen was
+ * never once rendered by the harness. The path matters now: a photograph is
+ * one scene object from the roll into the full screen, and there is no way to
+ * see that without a picture in it. The gradient is the fake gallery's, so
+ * the still and the thumbnail of the same capture look like the same photo.
+ */
 esp_err_t thumb_load(const char *path, uint16_t *tile, int tile_w, int tile_h, uint16_t pad) {
-  (void)path; (void)tile; (void)tile_w; (void)tile_h; (void)pad;
-  return ESP_FAIL;
+  (void)pad;
+  if (!tile || tile_w <= 0 || tile_h <= 0) return ESP_FAIL;
+  /* The capture's index, so each photograph is its own picture. */
+  int seed = 0;
+  for (const char *p = path ? path : ""; *p; p++) seed = seed * 31 + (unsigned char)*p;
+  seed = (seed & 7);
+  for (int y = 0; y < tile_h; y++) {
+    for (int x = 0; x < tile_w; x++) {
+      const int r = (x * 31) / tile_w;
+      const int g = (y * 63) / tile_h;
+      const int b = 31 - ((x + y) * 31) / (tile_w + tile_h);
+      tile[y * tile_w + x] = (uint16_t)((((r + seed * 3) & 31) << 11) | ((g & 63) << 5) | (b & 31));
+    }
+  }
+  return ESP_OK;
 }
 void storage_capture_delete(const char *dir) { (void)dir; }
 
@@ -1361,6 +1384,30 @@ int main(int argc, char **argv) {
   mode_swipe_vel(-1, 0.f);
   FILM("rapid", 170); FILM("rapid", 200); FILM("rapid", 240); FILM("rapid", 300); FILM("rapid", 400); FILM("rapid", 560); FILM("rapid", 800);
 
+  /* -- world_shoot_look: the four cameras become the photograph --
+   *
+   * The hero transformation, and the whole point of the world model. The same
+   * four pane objects are the quad in SHOOT and the single image in LOOK; the
+   * screen only changes what shape they are in, and continuity does the rest.
+   * Nothing is unloaded, so the user can follow the picture across. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  STEP(300);
+  film_t0 = g_preview_clock_us;
+  go(SCR_LOOK, 0);
+  FILM("world_shoot_look", 0); FILM("world_shoot_look", 30); FILM("world_shoot_look", 60);
+  FILM("world_shoot_look", 100); FILM("world_shoot_look", 150); FILM("world_shoot_look", 210);
+  FILM("world_shoot_look", 290); FILM("world_shoot_look", 380); FILM("world_shoot_look", 500);
+  FILM("world_shoot_look", 700);
+  /* ...and back, which must be the same object shrinking into its quarter. */
+  film_t0 = g_preview_clock_us;
+  go(SCR_SHOOT, 0);
+  FILM("world_look_shoot", 0); FILM("world_look_shoot", 40); FILM("world_look_shoot", 90);
+  FILM("world_look_shoot", 160); FILM("world_look_shoot", 260); FILM("world_look_shoot", 400);
+  FILM("world_look_shoot", 600);
+
   /* -- world_drag: the finger carries the world, and the release finishes it --
    *
    * Three gestures on the same screen. A slow drag most of the way across,
@@ -1444,11 +1491,24 @@ int main(int argc, char **argv) {
   STEP(700);
   {
     const gallery_item_t *slots = gallery_slots();
-    if (photo_open(&slots[4])) {
+    /* A wiggle capture, so this is the single-image path - a four-up quad is
+     * its own composition and has no one object to follow across. */
+    if (photo_open(&slots[1])) {
       film_t0 = g_preview_clock_us;
-      photo_open_from(4);
       go(SCR_PHOTO, 0);
-      FILM("photo", 0); FILM("photo", 30); FILM("photo", 60); FILM("photo", 100); FILM("photo", 150); FILM("photo", 220); FILM("photo", 320); FILM("photo", 500);
+      /* world_roll_look: the picture the user touched grows out of the grid.
+       * It is the same scene object throughout - no clip, no copy - and its
+       * neighbours are pushed outward and let go rather than cut. */
+      FILM("world_roll_look", 0); FILM("world_roll_look", 30); FILM("world_roll_look", 60);
+      FILM("world_roll_look", 100); FILM("world_roll_look", 150); FILM("world_roll_look", 220);
+      FILM("world_roll_look", 320); FILM("world_roll_look", 500);
+      /* ...and back into the grid it came from. */
+      film_t0 = g_preview_clock_us;
+      go(SCR_GALLERY, 0);
+      FILM("world_look_roll", 0); FILM("world_look_roll", 40); FILM("world_look_roll", 90);
+      FILM("world_look_roll", 160); FILM("world_look_roll", 260); FILM("world_look_roll", 420);
+      go(SCR_PHOTO, 0);
+      STEP(700);
       dialog_open(DLG_DELETE);
       FILM("dialog", 0); FILM("dialog", 40); FILM("dialog", 90); FILM("dialog", 150); FILM("dialog", 260); FILM("dialog", 400);
       dialog_close();

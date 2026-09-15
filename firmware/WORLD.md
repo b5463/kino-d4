@@ -492,9 +492,27 @@ marks a change of state, not because something is always performing.
   impulse, so a flick and a drag do not settle the same way; a gesture let
   go halfway comes back from where it is. Committing is distance OR speed.
   Filmed as `world_drag_slow`, `world_drag_return` and `world_drag_flick`.
-- **Cross-state object identity**, so a scene object survives a mode
-  change and changes role: live region, captured frame, selected
-  photograph, roll thumbnail, transfer item.
+- ~~**Cross-state object identity**, so a scene object survives a mode
+  change and changes role.~~ **Done.** A node carries its own id, so an
+  object can be named after the thing it shows rather than the slot it
+  occupies. The four live views are one surface (`sync_camera_surface`)
+  that SHOOT poses as a quad and LOOK poses with one view filling the
+  screen, so the cameras are seen to become the photograph. A photograph
+  is `ph:<capture>` in the roll and on its own screen, grown by scale from
+  the same box with the same parent, so the user picks one up rather than
+  being handed a copy; its neighbours push outward and are let go.
+
+Two rules the transitions turned up, both now in the code:
+
+- **Continuity works in local space, so a reparent breaks it.** A
+  photograph parented to the grid in one state and to a photo group in
+  the other appears to jump, because the offset the spring is holding
+  means something different on each side. Objects that travel between
+  states stay in one space.
+- **A clip still running holds its nodes on screen wherever the camera
+  goes next,** because a bound node is drawn whether or not the screen
+  asked for it. What belongs to a state is stopped when that state is
+  left.
 
 Selection is now context-first, proven by the distribution the host
 preview prints on every run. The same event, a thousand draws per world:
@@ -542,6 +560,10 @@ world_delayed_data    late capture data, behaviour stays coherent
 world_drag_slow       the finger carries the world across, and commits
 world_drag_return     a gesture let go halfway, coming back from where it is
 world_drag_flick      short and fast: commits on speed, not distance
+world_shoot_look      the four cameras become the photograph
+world_look_shoot      and shrink back into their quarters
+world_roll_look       a photograph grows out of the grid it was in
+world_look_roll       and settles back into its slot
 ```
 
 The three drag films exist because the requirement is about the frames

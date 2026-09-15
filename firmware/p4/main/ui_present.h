@@ -146,7 +146,14 @@ static ks_node_t *role_node(const char *role, int ev) {
   if (strcmp(role, "black") == 0) return ks_peek("cap.black");
   if (strcmp(role, "white") == 0) return ks_peek("cap.white");
   if (strcmp(role, "result") == 0 || strcmp(role, "finder") == 0) return ks_peek("finder");
-  if (strcmp(role, "image") == 0) return ks_peek("look.image");
+  if (strcmp(role, "image") == 0) {
+    /* The look's transitions act on whichever live view is filling the
+     * screen, because that IS the picture being graded. */
+    static const char *const PANE[4] = {"pane0", "pane1", "pane2", "pane3"};
+    const char *v = config_str("shoot.viewfinder", "cam2");
+    const int cam = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
+    return ks_peek(PANE[cam]);
+  }
   if (strcmp(role, "line") == 0) return ks_peek("words");
   if (role[0] == 'f' && role[2] == 0) { static const char *const P[4] = {"pane0", "pane1", "pane2", "pane3"}; return ks_peek(P[role[1] - '0']); }
   if (role[0] == 'g' && role[2] == 0) { static const char *const P[4] = {"frag0", "frag1", "frag2", "frag3"}; return ks_peek(P[role[1] - '0']); }
@@ -333,6 +340,13 @@ static void go(screen_t s, int dissolve_ms) {
   (void)dissolve_ms;
   if (s == SCR_GALLERY) gallery_refresh();
   if (s_screen == SCR_PHOTO && s != SCR_PHOTO) photo_release();
+  /* A clip still running holds its nodes on screen wherever the camera goes
+   * next, because a bound node is drawn whether or not the screen asked for
+   * it. What belonged to the state being left is stopped with it. */
+  if (s_screen == SCR_LOOK && s != SCR_LOOK) {
+    ks_stop_tag("lookid");
+    ks_stop_tag("look_change");
+  }
   const bool first = !s_visited[s];
   s_visited[s] = true;
   s_screen = s;
@@ -425,6 +439,70 @@ static const char *shoot_look_word(char *buf, size_t cap) {
   return buf;
 }
 
+/*
+ * The four live views, as one object.
+ *
+ * This is the product's fundamental visual body, and it is the same four
+ * nodes in every state that shows it. In SHOOT they are the four quarters of
+ * the screen. In LOOK one of them fills the screen and the other three
+ * collapse behind it. Nothing is destroyed and nothing is built: the surface
+ * changes shape and continuity carries it, which is why the four cameras are
+ * seen to BECOME the photograph rather than being replaced by it.
+ *
+ * `dominant` is -1 for the quad, or the camera that fills the screen.
+ * Returns how many answered, and fills `has` with which.
+ */
+static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
+  static const char *const PANE[4] = {"pane0", "pane1", "pane2", "pane3"};
+  static const char *const PLATE[4] = {"pane0.plate", "pane1.plate", "pane2.plate", "pane3.plate"};
+  static const char *const NUM[4] = {"pane0.n", "pane1.n", "pane2.n", "pane3.n"};
+  static const char *const WHY[4] = {"pane0.why", "pane1.why", "pane2.why", "pane3.why"};
+  static const char *const DIGIT[4] = {"1", "2", "3", "4"};
+  int live = 0;
+  for (int i = 0; i < 4; i++) {
+    /* Where this pane sits and how big it is, in the surface's own space. */
+    const bool lead = dominant >= 0 && i == dominant;
+    const float qx = (i % 2 ? 1.f : -1.f) * SH_PANE_W * 0.5f, qy = (i / 2 ? 1.f : -1.f) * SH_PANE_H * 0.5f;
+    const float cx = dominant < 0 ? qx : (lead ? 0.f : qx);
+    const float cy = dominant < 0 ? qy : (lead ? 0.f : qy);
+    /* The box never changes; the scale does, so the growth is animatable. */
+    const float sc = dominant < 0 ? 1.f : (lead ? 2.f : 0.08f);
+    const float alpha = dominant < 0 || lead ? 255.f : 0.f;
+
+    const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(i) : NULL;
+    vf_status_t st = {0};
+    if (viewfinder_ready()) viewfinder_status(i, &st);
+    if (tile) {
+      ks_node_t *p = nd(PANE[i], KS_IMAGE);
+      ks_image(p, tile, VF_W, VF_H, (float)SH_PANE_W, (float)SH_PANE_H);
+      ks_pose(p, KC_CY0, (float)SH_CROP / VF_H);
+      ks_pose(p, KC_CY1, (float)(VF_H - SH_CROP) / VF_H);
+      ks_place(p, cx, cy, 0.5f, 0.5f);
+      ks_pose(p, KC_SX, sc);
+      ks_pose(p, KC_SY, sc);
+      ks_pose(p, KC_ALPHA, alpha);
+      ks_parent(p, g);
+      p->z = (int16_t)(lead ? 2 : 1);
+      live++;
+      has[i] = true;
+      continue;
+    }
+    has[i] = false;
+    if (dominant >= 0 && !lead) continue; /* a dark quarter has nothing to say here */
+    ks_node_t *pl = nd_rect(PLATE[i], cx, cy, (float)SH_PANE_W, (float)SH_PANE_H, C_GROUND, 1);
+    ks_place(pl, cx, cy, 0.5f, 0.5f);
+    ks_pose(pl, KC_SX, sc);
+    ks_pose(pl, KC_SY, sc);
+    ks_parent(pl, g);
+    const char *why = st.state == VF_ERROR ? "NO PICTURE" : st.state == VF_STALLED ? "NO RECENT FRAME" : "NO CAMERA";
+    ks_node_t *n = nd_text(NUM[i], DIGIT[i], &UT_M, RGB(0x3a, 0x42, 0x4c), cx, cy - 30.f * sc, 0.5f, 0.5f, 2, false);
+    ks_parent(n, g);
+    ks_node_t *w = nd_text(WHY[i], why, &UT_S, RGB(0x3a, 0x42, 0x4c), cx, cy + 12.f * sc, 0.5f, 0.5f, 2, false);
+    ks_parent(w, g);
+  }
+  return live;
+}
+
 static void sync_shoot(void) {
   const int64_t now = esp_timer_get_time();
   /* The picture: four panes as children of one group centred on the screen,
@@ -437,37 +515,7 @@ static void sync_shoot(void) {
   g->z = 0;
   int live = 0;
   bool has[4] = {false, false, false, false};
-  static const char *const PANE[4] = {"pane0", "pane1", "pane2", "pane3"};
-  static const char *const PLATE[4] = {"pane0.plate", "pane1.plate", "pane2.plate", "pane3.plate"};
-  static const char *const NUM[4] = {"pane0.n", "pane1.n", "pane2.n", "pane3.n"};
-  static const char *const WHY[4] = {"pane0.why", "pane1.why", "pane2.why", "pane3.why"};
-  static const char *const DIGIT[4] = {"1", "2", "3", "4"};
-  for (int i = 0; i < 4; i++) {
-    const float cx = (i % 2 ? 1.f : -1.f) * SH_PANE_W * 0.5f, cy = (i / 2 ? 1.f : -1.f) * SH_PANE_H * 0.5f;
-    const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(i) : NULL;
-    vf_status_t st = {0};
-    if (viewfinder_ready()) viewfinder_status(i, &st);
-    if (tile) {
-      ks_node_t *p = nd(PANE[i], KS_IMAGE);
-      ks_image(p, tile, VF_W, VF_H, (float)SH_PANE_W, (float)SH_PANE_H);
-      ks_pose(p, KC_CY0, (float)SH_CROP / VF_H);
-      ks_pose(p, KC_CY1, (float)(VF_H - SH_CROP) / VF_H);
-      ks_place(p, cx, cy, 0.5f, 0.5f);
-      ks_parent(p, g);
-      p->z = 1;
-      live++;
-      has[i] = true;
-    } else {
-      ks_node_t *pl = nd_rect(PLATE[i], cx, cy, (float)SH_PANE_W, (float)SH_PANE_H, C_GROUND, 1);
-      ks_place(pl, cx, cy, 0.5f, 0.5f);
-      ks_parent(pl, g);
-      const char *why = st.state == VF_ERROR ? "NO PICTURE" : st.state == VF_STALLED ? "NO RECENT FRAME" : "NO CAMERA";
-      ks_node_t *n = nd_text(NUM[i], DIGIT[i], &UT_M, RGB(0x3a, 0x42, 0x4c), cx, cy - 30.f, 0.5f, 0.5f, 2, false);
-      ks_parent(n, g);
-      ks_node_t *w = nd_text(WHY[i], why, &UT_S, RGB(0x3a, 0x42, 0x4c), cx, cy + 12.f, 0.5f, 0.5f, 2, false);
-      ks_parent(w, g);
-    }
-  }
+  live = sync_camera_surface(g, -1, has);
   s_live_cams = live;
 
   /* The words: title and reading line in one group the clips fade. */
@@ -677,18 +725,16 @@ static void fl_change(int dir) {
 static void sync_look(void) {
   const char *v = config_str("shoot.viewfinder", "cam2");
   const int cam = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
-  const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(cam) : NULL;
-  ks_node_t *under = nd_rect("look.under", 0.f, 0.f, (float)UI_W, (float)UI_H, C_GROUND, 0);
-  (void)under;
-  ks_node_t *im = nd("look.image", KS_IMAGE);
-  ks_image(im, tile, VF_W, VF_H, (float)UI_W, (float)UI_H);
-  ks_pose(im, KC_CY0, (float)SH_CROP / VF_H);
-  ks_pose(im, KC_CY1, (float)(VF_H - SH_CROP) / VF_H);
-  ks_place(im, 0.f, 0.f, 0.f, 0.f);
-  im->z = 1;
-  if (!tile) {
-    nd_text("look.none", "NO CAMERA", &UT_M, RGB(0x3a, 0x42, 0x4c), UI_W * 0.5f, UI_H * 0.5f, 0.5f, 0.5f, 2, false);
-  }
+  nd_rect("look.under", 0.f, 0.f, (float)UI_W, (float)UI_H, C_GROUND, 0);
+  /* The same four views SHOOT shows, with this one filling the screen and
+   * the other three collapsing behind it. Coming from SHOOT, the quad is
+   * seen to resolve into the single image rather than being replaced by a
+   * picture that was built somewhere else. */
+  ks_node_t *g = nd("finder", KS_GROUP);
+  ks_place(g, UI_W * 0.5f + drag_u() * 90.f, UI_H * 0.5f, 0.f, 0.f);
+  g->z = 0;
+  bool has[4] = {false, false, false, false};
+  sync_camera_surface(g, cam, has);
   sync_title(true, NULL);
 
   char num[16], jp[LOOK_TEXT_MAX + 4], en[LOOK_TEXT_MAX + 4];
@@ -738,6 +784,34 @@ static void sync_look(void) {
 #define G_Y0 (HEAD_H + 9)
 #define G_PITCH (G_TILE_H + G_GAP)
 _Static_assert(G_Y0 + G_PITCH + G_TILE_H <= UI_H, "the bottom row runs off the screen");
+
+/**
+ * A photograph's name in the scene. Named after the capture rather than the
+ * slot it happens to occupy, so the same picture is the same object in the
+ * roll, on its own screen, and on the way between them.
+ */
+static const char *photo_node_id(char *buf, size_t cap, const char *label, const char *id) {
+  /* The label when there is one, because it is short and readable on the
+   * bench; the capture's own id otherwise, cut to fit. Cutting is deliberate
+   * and safe here: the name only has to tell six tiles and one open
+   * photograph apart, and captures differ well inside the first few
+   * characters. Written as a bounded copy rather than an snprintf of a longer
+   * string so that the truncation is the stated intent. */
+  const char *src = (label && label[0]) ? label : (id ? id : "");
+  size_t n = 0;
+  if (cap >= 4) {
+    buf[0] = 'p'; buf[1] = 'h'; buf[2] = ':';
+    n = 3;
+    while (src[n - 3] && n < cap - 1) { buf[n] = src[n - 3]; n++; }
+  }
+  buf[n] = 0;
+  return buf;
+}
+
+/* The photograph's box is always the thumbnail's, so growing to full screen
+ * is a scale and not a rebuild; the pixels behind it are whatever resolution
+ * has been decoded. */
+#define PH_GROW ((float)PH_W / (float)G_TILE_W)
 
 static void gal_origin(int slot, int *x, int *y) {
   *x = G_X0 + (slot % G_COLS) * (G_TILE_W + G_GAP);
@@ -793,7 +867,6 @@ static void sync_gallery(void) {
   ks_pose(grid, KC_MX1, (float)UI_W);
   ks_pose(grid, KC_MY1, (float)UI_H);
   const gallery_item_t *slots = gallery_slots();
-  static const char *const TILE[GALLERY_PAGE] = {"tile0", "tile1", "tile2", "tile3", "tile4", "tile5"};
   static const char *const PLATE[GALLERY_PAGE] = {"tile0.p", "tile1.p", "tile2.p", "tile3.p", "tile4.p", "tile5.p"};
   static const char *const FAV[GALLERY_PAGE] = {"tile0.fav", "tile1.fav", "tile2.fav", "tile3.fav", "tile4.fav", "tile5.fav"};
   static const char *const PART[GALLERY_PAGE] = {"tile0.n", "tile1.n", "tile2.n", "tile3.n", "tile4.n", "tile5.n"};
@@ -804,11 +877,14 @@ static void sync_gallery(void) {
     gal_origin(i, &x, &y);
     const bool down = s_pressed == i;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
-      ks_node_t *t = nd(TILE[i], KS_IMAGE);
-      ks_image(t, slots[i].pixels, G_TILE_W, G_TILE_H, (float)G_TILE_W, (float)G_TILE_H);
+      char nid[KS_ID_MAX];
+      photo_node_id(nid, sizeof nid, slots[i].label, slots[i].id);
+      ks_node_t *t = nd(nid, KS_IMAGE);
+      ks_image_lod(t, slots[i].pixels, G_TILE_W, G_TILE_H, (float)G_TILE_W, (float)G_TILE_H);
       ks_place(t, x + G_TILE_W * 0.5f, y + G_TILE_H * 0.5f, 0.5f, 0.5f);
       ks_pose(t, KC_SX, down ? 0.95f : 1.f);
       ks_pose(t, KC_SY, down ? 0.95f : 1.f);
+      ks_pose(t, KC_ALPHA, 255.f);
       ks_parent(t, grid);
       t->z = 5;
     } else {
@@ -851,19 +927,15 @@ static void sync_gallery(void) {
 #define P_IT_ROLL 2
 static int s_ph_fav_x0, s_ph_fav_x1, s_ph_del_x0, s_ph_del_x1;
 
-/** The photograph opens from its tile: called by activation with the tile's slot. */
-static void photo_open_from(int slot) {
-  int tx, ty;
-  gal_origin(slot, &tx, &ty);
-  ks_node_t *g = nd("photo.g", KS_GROUP);
-  ks_place(g, PH_X0 + PH_W * 0.5f, PH_TOP + PH_H * 0.5f, 0.f, 0.f);
-  ks_snap(g);
-  const float params[4] = {(tx + G_TILE_W * 0.5f) - (PH_X0 + PH_W * 0.5f), (ty + G_TILE_H * 0.5f) - (PH_TOP + PH_H * 0.5f),
-                           (float)G_TILE_W / PH_W, 0};
-  ks_stop_tag("photo");
-  ks_play1(KCLIP_PHOTO_OPEN, "photo", g, "photo", params);
-}
-
+/**
+ * Opening a photograph needs no clip any more.
+ *
+ * It used to play a move authored from the tile's rectangle to the picture's,
+ * with the offset and scale passed in as parameters. There is nothing left
+ * for that to do: the roll's tile and the full-screen photograph are the same
+ * scene object, so posing it at its new place is the whole animation and
+ * continuity carries it there at the speed it already had.
+ */
 static void sync_photo(void) {
   ks_node_t *g = nd("photo.g", KS_GROUP);
   ks_place(g, PH_X0 + PH_W * 0.5f, PH_TOP + PH_H * 0.5f, 0.f, 0.f);
@@ -893,11 +965,47 @@ static void sync_photo(void) {
       }
     }
   } else if (src) {
-    ks_node_t *p = nd("photo", KS_IMAGE);
-    ks_image(p, src, PH_W, PH_H, (float)PH_W, (float)PH_H);
-    ks_place(p, 0.f, 0.f, 0.5f, 0.5f);
-    ks_parent(p, g);
-    p->z = 5;
+    /* The photograph the roll was showing, grown into the screen. Same node,
+     * same subject, better pixels, and - critically - the same parent, so the
+     * pose it is travelling from and the pose it is travelling to are in one
+     * space and continuity can join them. A photograph that changed parent
+     * between the two states would appear to jump, because the offset the
+     * continuity spring is holding means something different on each side. */
+    ks_node_t *sheet = nd("grid", KS_GROUP);
+    ks_place(sheet, 0.f, 0.f, 0.f, 0.f);
+    ks_pose(sheet, KC_MX0, 0.f);
+    ks_pose(sheet, KC_MY0, 0.f);
+    ks_pose(sheet, KC_MX1, (float)UI_W);
+    ks_pose(sheet, KC_MY1, (float)UI_H);
+    char nid[KS_ID_MAX];
+    photo_node_id(nid, sizeof nid, s_photo_label, s_photo_id);
+    ks_node_t *p = nd(nid, KS_IMAGE);
+    ks_image_lod(p, src, PH_W, PH_H, (float)G_TILE_W, (float)G_TILE_H);
+    ks_place(p, PH_X0 + PH_W * 0.5f, PH_TOP + PH_H * 0.5f, 0.5f, 0.5f);
+    ks_pose(p, KC_SX, PH_GROW);
+    ks_pose(p, KC_SY, PH_GROW);
+    ks_pose(p, KC_ALPHA, 255.f);
+    ks_parent(p, sheet);
+    p->z = 6;
+    /* Its neighbours reorganise around it: still here, pushed outward from
+     * the centre and let go, so they are seen to leave rather than to vanish. */
+    const gallery_item_t *slots = gallery_slots();
+    for (int i = 0; i < GALLERY_PAGE; i++) {
+      if (slots[i].state != TILE_READY || !slots[i].pixels) continue;
+      char oid[KS_ID_MAX];
+      photo_node_id(oid, sizeof oid, slots[i].label, slots[i].id);
+      if (strcmp(oid, nid) == 0) continue;
+      ks_node_t *o = ks_peek(oid);
+      if (!o) continue;
+      int ox, oy;
+      gal_origin(i, &ox, &oy);
+      const float cx2 = ox + G_TILE_W * 0.5f, cy2 = oy + G_TILE_H * 0.5f;
+      ks_get(oid, KS_IMAGE);
+      ks_place(o, UI_W * 0.5f + (cx2 - UI_W * 0.5f) * 2.4f, UI_H * 0.5f + (cy2 - UI_H * 0.5f) * 2.4f, 0.5f, 0.5f);
+      ks_pose(o, KC_ALPHA, 0.f);
+      ks_parent(o, sheet);
+      o->z = 4;
+    }
   } else {
     ks_node_t *pl = nd_rect("photo.none", 0.f, 0.f, (float)PH_W, (float)PH_H, RGB(0x1a, 0x1e, 0x24), 5);
     ks_place(pl, 0.f, 0.f, 0.5f, 0.5f);

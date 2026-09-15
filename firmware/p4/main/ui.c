@@ -1638,7 +1638,6 @@ static void activate(int item) {
           break;
         }
         s_focus[SCR_PHOTO] = P_IT_DELETE;
-        photo_open_from(item);
         go(SCR_PHOTO, 0);
         return;
       }

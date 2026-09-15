@@ -22,6 +22,11 @@
 
 #define KS_MAX_NODES 160
 #define KS_MAX_MODS 3
+/* An id is copied into the node rather than pointed at, so a screen may name
+ * an object after the thing it is showing - "ph:CAP_000042" - instead of only
+ * after the slot it happens to occupy. That is what lets one photograph stay
+ * one object from the roll into the full screen and back. */
+#define KS_ID_MAX 28
 
 enum { KS_GROUP = 0, KS_TEXT, KS_IMAGE, KS_DISC, KS_LINE, KS_RECT };
 
@@ -31,7 +36,8 @@ typedef struct {
 } ks_hist_t;
 
 typedef struct ks_node {
-  const char *id;
+  char id[KS_ID_MAX];
+  uint32_t idh;     /* hash of the id: the lookup compares this before strcmp */
   uint8_t kind;
   bool used;        /* slot taken */
   bool shown;       /* acquired this pass */
@@ -86,16 +92,24 @@ static int s_ks_order[KS_MAX_NODES];
 /* ------------------------------------------------------------------ */
 /* Nodes                                                               */
 
+/** FNV-1a over the id: the lookup's fast reject, and the node's own seed. */
+static inline uint32_t ks_hash_id(const char *s) {
+  uint32_t h = 0x811c9dc5u;
+  for (; *s; s++) h = (h ^ (uint32_t)(unsigned char)*s) * 16777619u;
+  return h;
+}
+
 static void ks_node_reset(ks_node_t *n, const char *id, int kind) {
   memset(n, 0, sizeof *n);
-  n->id = id;
+  snprintf(n->id, sizeof n->id, "%s", id);
+  n->idh = ks_hash_id(n->id);
   n->kind = (uint8_t)kind;
   n->used = true;
   n->parent = -1;
   n->char_clip = -1;
   n->face = &UT_M;
   n->ink = 0xffff;
-  n->seed = kmo_hash((uint32_t)(uintptr_t)id ^ 0x9e37u);
+  n->seed = kmo_hash(n->idh ^ 0x9e37u);
   for (int c = 0; c < KC_COUNT; c++) {
     n->ch[c].pose = n->ch[c].v = n->ch[c].prev_drv_or_pose = kch_default(c);
   }
@@ -112,9 +126,10 @@ static bool ks_init(void) {
 
 /** The node called `id`, created on first sight; marked as in use this pass. */
 static ks_node_t *ks_get(const char *id, int kind) {
+  const uint32_t h = ks_hash_id(id);
   for (int i = 0; i < s_ks_count; i++) {
     ks_node_t *n = &s_ks[i];
-    if (n->used && (n->id == id || strcmp(n->id, id) == 0)) {
+    if (n->used && n->idh == h && strcmp(n->id, id) == 0) {
       n->shown = true;
       return n;
     }
@@ -128,10 +143,12 @@ static ks_node_t *ks_get(const char *id, int kind) {
 
 /** Acquire without showing: for a node another node follows, or a clip binds. */
 static ks_node_t *ks_peek(const char *id) {
+  const uint32_t h = ks_hash_id(id);
   for (int i = 0; i < s_ks_count; i++)
-    if (s_ks[i].used && (s_ks[i].id == id || strcmp(s_ks[i].id, id) == 0)) return &s_ks[i];
+    if (s_ks[i].used && s_ks[i].idh == h && strcmp(s_ks[i].id, id) == 0) return &s_ks[i];
   return NULL;
 }
+
 
 static inline int ks_index(const ks_node_t *n) { return (int)(n - s_ks); }
 static inline void ks_pose(ks_node_t *n, int ch, float v) { n->ch[ch].pose = v; }
@@ -153,6 +170,19 @@ static inline void ks_text(ks_node_t *n, const char *s, const ut_face_t *f, uint
   n->ink = ink;
   n->w = (float)ut_w(f, s);
   n->h = (float)f->em;
+}
+
+/**
+ * The same photograph at a different level of detail: the thumbnail the roll
+ * decoded and the full-size read of the same capture are one object, so
+ * swapping one for the other must NOT count as a change of subject.
+ */
+static inline void ks_image_lod(ks_node_t *n, const uint16_t *px, int w, int h, float box_w, float box_h) {
+  n->img = px;
+  n->img_w = (uint16_t)w;
+  n->img_h = (uint16_t)h;
+  n->w = box_w;
+  n->h = box_h;
 }
 
 static inline void ks_image(ks_node_t *n, const uint16_t *px, int w, int h, float box_w, float box_h) {
