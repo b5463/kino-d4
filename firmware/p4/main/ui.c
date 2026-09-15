@@ -2843,7 +2843,12 @@ static void draw_gallery(void) {
        * A tile waiting for its picture is the empty frame the picture will
        * arrive into - the well's own white, no word - and the cells in the
        * strip below say how many frames the folder has. */
-      fill(x, y, G_TILE_W, G_TILE_H, W_WINDOW);
+      /* The well's light grey, not its white. White is the brightest value
+       * the panel has, and on a page of six photographs a waiting tile in it
+       * is the loudest thing on the screen - which is the opposite of what a
+       * tile that has nothing to show yet should be. Seen on a contact sheet
+       * of the whole product, where it read as a hole in the grid. */
+      fill(x, y, G_TILE_W, G_TILE_H, W_LIGHT);
     } else {
       fill(x, y, G_TILE_W, G_TILE_H, C_WELL);
       text_mid(&UI_FONT_S, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d, "NO IMAGE", D_DIM);
@@ -4893,6 +4898,38 @@ static void draw_dialog(void) {
  * The wording is the camera's, not an operating system's: 4/4 SAVED, and a
  * count rather than an apology when a camera missed.
  */
+/*
+ * The strip: four cells, a word, an accent down the left edge.
+ *
+ * The camera's one way of saying something is happening. A capture uses it,
+ * and so does the first photograph's calibration - one object rather than
+ * two, because the two were a dark strip and a centred grey dialog and
+ * nothing about the difference between them was a difference in what the
+ * camera was doing.
+ *
+ * Full width everywhere. There is nothing in the bottom of the shoot screen
+ * to protect - it is all picture, and a report about the photograph is
+ * allowed to sit over the photograph for a moment.
+ */
+static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
+  const int h = 40, y = UI_H - h;
+  fill(0, y, UI_W, h, RGB(0x12, 0x16, 0x1c));
+  fill(0, y, UI_W, 1, accent);
+  fill(0, y + 1, 5, h - 1, accent);
+
+  const int cell = 12;
+  four_mark(18, y + (h - cell) / 2, cell, st, true);
+  text(&UI_FONT_S, 18 + 4 * (cell + FM_GAP) + 10, y + (h - UI_FONT_S.line_h) / 2, line,
+       RGB(0xe4, 0xe9, 0xee));
+}
+
+/** The camera at work on something that is not a capture. All four cells
+ *  lit, because this is about the four and not about one of them. */
+static void draw_working_banner(const char *line) {
+  const fm_cell_t st[4] = {FM_ON, FM_ON, FM_ON, FM_ON};
+  draw_strip(st, line, C_BLUE);
+}
+
 static void draw_capture_banner(void) {
   const capture_stage_t cs = capture_stage();
   if (cs == CAPTURE_IDLE) return;
@@ -4936,19 +4973,7 @@ static void draw_capture_banner(void) {
       break;
   }
 
-  /* Full width everywhere now. There is nothing in the bottom of the shoot
-   * screen to protect - it is all picture, and a report about the photograph
-   * is allowed to sit over the photograph for a moment. */
-  const int h = 40, y = UI_H - h;
-  const int w = UI_W;
-  fill(0, y, w, h, RGB(0x12, 0x16, 0x1c));
-  fill(0, y, w, 1, accent);
-  fill(0, y + 1, 5, h - 1, accent);
-
-  const int cell = 12;
-  four_mark(18, y + (h - cell) / 2, cell, st, true);
-  text(&UI_FONT_S, 18 + 4 * (cell + FM_GAP) + 10, y + (h - UI_FONT_S.line_h) / 2, line,
-       RGB(0xe4, 0xe9, 0xee));
+  draw_strip(st, line, accent);
 }
 
 static void draw_toast(void) {
@@ -5003,31 +5028,22 @@ static void draw_toast(void) {
  * The four being measured against each other, while it happens.
  *
  * The search is a few hundred milliseconds on this task, and a screen that
- * stops without a word for a few hundred milliseconds is a camera that has
- * hung. It is drawn and presented before the arithmetic starts, so the frame
- * the user is looking at during the wait is one that says what the wait is.
+ * stops without a word for that long is a camera that has hung. This is drawn
+ * and presented before the arithmetic starts, so the frame someone is looking
+ * at during the wait is one that says what the wait is.
+ *
+ * IN THE BANNER, NOT IN A MODAL. It was a centred grey dialog, and laid out
+ * beside the rest of the product that is the fault: the camera already has an
+ * object for "something is happening right now" - the strip along the bottom,
+ * four cells and a word, which is what a capture uses and what a toast uses -
+ * and this was a second one that blocked the whole screen for a state nobody
+ * has to answer. The rule the set now keeps: a strip when the camera is
+ * working, a modal only when it is asking, because a modal is a question and
+ * this is not one.
  */
 static bool s_calibrating;
 
-static void draw_calibrating(void) {
-  const int bw = 420, bh = 150;
-  const int bx = (UI_W - bw) / 2, by = (UI_H - bh) / 2;
-  fill(bx, by, bw, bh, W_FACE);
-  bevel_raised(bx, by, bw, bh);
-  fill(bx + 2, by + 2, bw - 4, 30, W_TITLE_L);
-  text(&UI_FONT_S, bx + 10, by + 8, "FIRST PHOTOGRAPH", W_SELTEXT);
-  text_mid(&UI_FONT_M, bx + bw / 2, by + 52, "Measuring the cameras", W_TEXT);
-  text_mid(&UI_FONT_S, bx + bw / 2, by + 92, "Lining the four lenses up on each other.", W_GRAYTEXT);
-  fm_cell_t st[4];
-  for (int i = 0; i < 4; i++) st[i] = FM_ON;
-  four_mark(bx + bw / 2 - 2 * 14 - 9, by + 118, 14, st, false);
-}
-
 static void draw_screen(void) {
-  if (s_calibrating) {
-    draw_calibrating();
-    return;
-  }
   switch (s_screen) {
     case SCR_MENU: draw_menu(); break;
     case SCR_SHOOT: draw_shoot(); break;
@@ -5045,6 +5061,7 @@ static void draw_screen(void) {
     default: break;
   }
   draw_capture_banner();
+  if (s_calibrating) draw_working_banner("MEASURING THE CAMERAS");
   draw_toast();
   if (s_dialog != DLG_NONE) draw_dialog();
 }
