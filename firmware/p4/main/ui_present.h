@@ -231,10 +231,28 @@ static void ui_run_clip(int ev, int clip, const char *text) {
  * nothing), the clip's roles are bound to the nodes that exist for this
  * screen, its text lands on the label, and it runs.
  */
+/* What the word standing in the corner is about, so that a fact which stops
+ * being true can take its own word down rather than leaving it to time out. */
+static int s_note_ev = -1;
+
 static void ui_event_ctx(int ev, const kb_ctx_t *ctx) {
   const kb_pick_t p = kb_event(ev, ctx, esp_timer_get_time());
   if (p.variant < 0) return;
+  if (p.text) s_note_ev = ev;
   ui_run_clip(ev, p.clip, p.text);
+}
+
+/**
+ * Retire the standing word if it was about `ev`, whose news is now stale.
+ *
+ * Stopping the clip is the whole of it: sync_note() poses the word's alpha
+ * from whether anything is still driving it, so a word nothing is saying any
+ * more is not on screen.
+ */
+static void ui_note_retire(int ev) {
+  if (s_note_ev != ev) return;
+  s_note_ev = -1;
+  ks_stop_tag(KMO_EVENT_NAMES[ev]);
 }
 static void ui_event(int ev) {
   const kb_ctx_t c = ui_ctx();
@@ -246,6 +264,7 @@ static void ui_event(int ev) {
 static void ui_note(const char *text) {
   ks_node_t *n = ks_peek("note");
   if (!n) return;
+  s_note_ev = -1; /* the corner is about something else now */
   n->text = text;
   n->w = (float)ut_w(n->face, text);
   n->char_clip = -1;
@@ -455,9 +474,17 @@ static const char *shoot_look_word(char *buf, size_t cap) {
  * changes shape and continuity carries it, which is why the four cameras are
  * seen to BECOME the photograph rather than being replaced by it.
  *
- * `dominant` is -1 for the quad, or the camera that fills the screen.
+ * `dominant` is -1 for the quad, the camera that fills the screen, or
+ * KSURF_RULE: the four flattened side by side into a rule a few pixels tall.
+ * That is how SETUP strips the photographic world away without throwing it
+ * out - the pictures leave, and what is left to organise the settings is made
+ * of them, the colour of the room the camera is actually in.
+ *
  * Returns how many answered, and fills `has` with which.
  */
+#define KSURF_RULE (-2)
+#define KSURF_RULE_W (UI_W - 48)   /* the rows' own margin, NR_X, defined further down */
+#define KSURF_RULE_H 3.f
 static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
   /* While the capture is running the panes leave a trace of where they were.
    * The four frames arrive out of place and correct, and the trace is what
@@ -479,12 +506,18 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
   for (int i = 0; i < 4; i++) {
     /* Where this pane sits and how big it is, in the surface's own space. */
     const bool lead = dominant >= 0 && i == dominant;
+    const bool rule = dominant == KSURF_RULE;
     const float qx = (i % 2 ? 1.f : -1.f) * SH_PANE_W * 0.5f, qy = (i / 2 ? 1.f : -1.f) * SH_PANE_H * 0.5f;
-    const float cx = dominant < 0 ? qx : (lead ? 0.f : qx);
-    const float cy = dominant < 0 ? qy : (lead ? 0.f : qy);
+    /* Four abreast in reading order when they are a rule; the quad's own
+     * order otherwise. */
+    const float rx = ((float)i - 1.5f) * (KSURF_RULE_W * 0.25f);
+    const float cx = rule ? rx : (dominant < 0 ? qx : (lead ? 0.f : qx));
+    const float cy = rule ? 0.f : (dominant < 0 ? qy : (lead ? 0.f : qy));
     /* The box never changes; the scale does, so the growth is animatable. */
-    const float sc = dominant < 0 ? 1.f : (lead ? 2.f : 0.08f);
-    const float alpha = dominant < 0 || lead ? 255.f : 0.f;
+    const float sc = dominant < 0 && !rule ? 1.f : (lead ? 2.f : 0.08f);
+    const float scx = rule ? (KSURF_RULE_W * 0.25f) / (float)SH_PANE_W : sc;
+    const float scy = rule ? KSURF_RULE_H / (float)SH_PANE_H : sc;
+    const float alpha = rule || dominant < 0 || lead ? 255.f : 0.f;
 
     const uint16_t *tile = viewfinder_ready() ? viewfinder_tile(i) : NULL;
     vf_status_t st = {0};
@@ -495,8 +528,8 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
       ks_pose(p, KC_CY0, (float)SH_CROP / VF_H);
       ks_pose(p, KC_CY1, (float)(VF_H - SH_CROP) / VF_H);
       ks_place(p, cx, cy, 0.5f, 0.5f);
-      ks_pose(p, KC_SX, sc);
-      ks_pose(p, KC_SY, sc);
+      ks_pose(p, KC_SX, scx);
+      ks_pose(p, KC_SY, scy);
       ks_pose(p, KC_ALPHA, alpha);
       ks_parent(p, g);
       p->ghost = trace;
@@ -515,11 +548,16 @@ static int sync_camera_surface(ks_node_t *g, int dominant, bool has[4]) {
     }
     has[i] = false;
     if (dominant >= 0 && !lead) continue; /* a dark quarter has nothing to say here */
-    ks_node_t *pl = nd_rect(PLATE[i], cx, cy, (float)SH_PANE_W, (float)SH_PANE_H, C_GROUND, 1);
+    ks_node_t *pl = nd_rect(PLATE[i], cx, cy, (float)SH_PANE_W, (float)SH_PANE_H,
+                            rule ? RGB(0x2a, 0x30, 0x38) : C_GROUND, 1);
     ks_place(pl, cx, cy, 0.5f, 0.5f);
-    ks_pose(pl, KC_SX, sc);
-    ks_pose(pl, KC_SY, sc);
+    ks_pose(pl, KC_SX, scx);
+    ks_pose(pl, KC_SY, scy);
     ks_parent(pl, g);
+    /* This camera has just stopped answering. The quarter does not fade
+     * politely: the picture falls out of it, which is what happened. */
+    if (ks_had[i] && !rule) ks_impulse(pl, KC_SY, -1.9f);
+    if (rule) continue; /* a rule says which camera is dark by being dark there */
     const char *why = st.state == VF_ERROR ? "NO PICTURE" : st.state == VF_STALLED ? "NO RECENT FRAME" : "NO CAMERA";
     ks_node_t *n = nd_text(NUM[i], DIGIT[i], &UT_M, RGB(0x3a, 0x42, 0x4c), cx, cy - 30.f * sc, 0.5f, 0.5f, 2, false);
     ks_parent(n, g);
@@ -737,6 +775,7 @@ static void sync_shoot(void) {
                            has[i] ? C_INK : HDR_DIM, 75);
     ks_pose(m, KC_ALPHA, has[i] ? 230.f : 200.f);
     if (has[i] && !had[i]) ks_impulse(m, KC_R, 0.09f);
+    if (!has[i] && had[i]) ks_impulse(m, KC_R, -0.12f);
     had[i] = has[i];
   }
 
@@ -1232,6 +1271,25 @@ static void nnote(const char *s, int after_rows) {
   nd_text("rows.note", s, &UT_S, C_FAINT, (float)NR_X, (float)(NR_Y0 + after_rows * NR_H + 12), 0.f, 0.f, 10, false);
 }
 
+/**
+ * The rule SETUP hangs its rows from.
+ *
+ * SETUP is the one state that is allowed to break the photographic world, and
+ * it does not do that by throwing the world away: the four live surfaces
+ * flatten into a line a few pixels tall above the first row. Continuity
+ * carries them there from whatever shape they were in, so the pictures are
+ * seen to leave rather than being cut. The line is the colour of the room the
+ * camera is standing in, which is the whole of the personality this state
+ * gets - the rest is text, selection and restraint.
+ */
+static void sync_rule(void) {
+  ks_node_t *g = nd("finder", KS_GROUP);
+  ks_place(g, UI_W * 0.5f, (float)(NR_Y0 - 14), 0.f, 0.f);
+  g->z = 0;
+  bool has[4] = {false, false, false, false};
+  sync_camera_surface(g, KSURF_RULE, has);
+}
+
 static const char *const SET_ROWS[5] = {"DISPLAY", "SOUND", "CARD", "POWER", "INFO"};
 static const screen_t SET_DEST[5] = {SCR_DISPLAY, SCR_SOUND, SCR_STORAGE, SCR_POWER, SCR_ABOUT};
 
@@ -1677,7 +1735,14 @@ static void events_watch(void) {
   p_sending = sending;
   if (low != p_low) { if (low) ui_event(KEV_CARD_LOW); p_low = low; }
   if (s_live_cams != p_live) {
+    /* Back to four: CAMERA OFF is no longer the case, and a word about a
+     * camera that is visibly answering again is a small lie left running. */
+    if (s_live_cams == 4) ui_note_retire(KEV_CAMERA_LOST);
     if (s_live_cams == 4 && p_live >= 0 && p_live < 4) ui_event(KEV_SYNC_GOOD);
+    /* A camera dropped out. Every camera stopping at once is not that - it is
+     * the finder being turned off, on the way to sleep or out of a mode - and
+     * the interface has nothing to complain about there. */
+    else if (s_live_cams > 0 && s_live_cams < p_live) ui_event(KEV_CAMERA_LOST);
     p_live = s_live_cams;
   }
 }
@@ -1703,12 +1768,13 @@ static void draw_screen(void) {
     case SCR_GALLERY: sync_gallery(); break;
     case SCR_PHOTO: sync_photo(); break;
     case SCR_ROLL: case SCR_CONNECTION: sync_connection(); break;
-    case SCR_SETTINGS: sync_settings(); break;
-    case SCR_DISPLAY: sync_display(); break;
-    case SCR_SOUND: sync_sound(); break;
-    case SCR_STORAGE: sync_storage(); break;
-    case SCR_ABOUT: sync_about(); break;
-    case SCR_POWER: sync_power(); break;
+    /* The SETUP family, every one of which hangs from the same rule. */
+    case SCR_SETTINGS: sync_rule(); sync_settings(); break;
+    case SCR_DISPLAY: sync_rule(); sync_display(); break;
+    case SCR_SOUND: sync_rule(); sync_sound(); break;
+    case SCR_STORAGE: sync_rule(); sync_storage(); break;
+    case SCR_ABOUT: sync_rule(); sync_about(); break;
+    case SCR_POWER: sync_rule(); sync_power(); break;
     default: break;
   }
   /* The roll and the open photograph pose this object themselves, and where

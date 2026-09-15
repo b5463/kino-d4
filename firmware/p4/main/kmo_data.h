@@ -905,7 +905,7 @@ static const kmo_clip_t KMO_CLIPS[53] = {
 #define KCLIP_PG_SOUND 50
 #define KCLIP_PG_MOVE_A 51
 #define KCLIP_PG_MOVE_B 52
-static const char *const KMO_EVENT_NAMES[18] = {"capture_success", "capture_fail", "capture_partial", "link_connected", "link_lost", "transfer_complete", "sync_good", "boot", "first_boot", "wake", "wake_long_idle", "card_in", "card_out", "card_low", "usb_attach", "usb_detach", "look_change", "mode_change"};
+static const char *const KMO_EVENT_NAMES[19] = {"capture_success", "capture_fail", "capture_partial", "link_connected", "link_lost", "transfer_complete", "sync_good", "boot", "first_boot", "wake", "wake_long_idle", "card_in", "card_out", "card_low", "usb_attach", "usb_detach", "look_change", "mode_change", "camera_lost"};
 static const char *const KMO_TEXTS_0[1] = {"A HUNDRED."};
 static const char *const KMO_TEXTS_1[1] = {"OK."};
 static const char *const KMO_TEXTS_2[3] = {"GOT IT.", "FOUR.", "OK."};
@@ -927,8 +927,9 @@ static const char *const KMO_TEXTS_17[1] = {"NO CARD"};
 static const char *const KMO_TEXTS_18[1] = {"CARD NEARLY FULL"};
 static const char *const KMO_TEXTS_19[1] = {"USB"};
 static const char *const KMO_TEXTS_20[1] = {"USB OUT"};
-#define KMO_VARIANT_COUNT 37
-static const kb_variant_t KMO_VARIANTS[37] = {
+static const char *const KMO_TEXTS_21[1] = {"CAMERA OFF"};
+#define KMO_VARIANT_COUNT 38
+static const kb_variant_t KMO_VARIANTS[38] = {
   {"capture_success", 17, 0, 0, 0, 1, 0, 0, 0, 100, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_0, 1},
   {"capture_success", 16, 70, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, -1, -1, 0, -1, NULL, 0},
   {"capture_success", 11, 22, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, -1, -1, 0, -1, NULL, 0},
@@ -966,4 +967,5 @@ static const kb_variant_t KMO_VARIANTS[37] = {
   {"look_change", 30, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
   {"look_change", 31, 4, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
   {"look_change", 32, 2, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, NULL, 0},
+  {"camera_lost", 23, 1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, KMO_TEXTS_21, 1},
 };

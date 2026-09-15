@@ -435,6 +435,11 @@
       { "clip": "wake_long", "w": 1, "texts": ["BACK.", "STILL HERE.", "AGAIN."] }
     ],
     "card_in": [ { "clip": "note_plain", "w": 1, "texts": ["CARD"] } ],
+    "_camera": "A camera dropping out is the fundamental object losing a quarter, and the surface already says so by going dark there. The word is for the case the user cannot see: it says which one, once, and then not again for a minute however many times the link flaps. Coming back says nothing at all - the quarter filling in IS the message, and a camera that reconnects twice a minute would otherwise be the loudest thing the camera does.",
+    "camera_lost": [
+      { "clip": "note_plain", "w": 1, "interval": 60000, "texts": ["CAMERA OFF"] }
+    ],
+
     "card_out": [ { "clip": "note_plain", "w": 1, "texts": ["NO CARD"] } ],
     "card_low": [ { "clip": "note_plain", "w": 1, "min_interval_s": 300, "texts": ["CARD NEARLY FULL"] } ],
     "usb_attach": [ { "clip": "note_plain", "w": 1, "texts": ["USB"] } ],

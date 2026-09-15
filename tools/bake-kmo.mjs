@@ -39,7 +39,7 @@ const CUES = { none: 0, sync: 1, done: 2, tick: 3, shutter: 4, warn: 5 };
 const MODS = { noise: 1, osc: 2, boil: 3, follow: 4 };
 const EVENTS = ['capture_success', 'capture_fail', 'capture_partial', 'link_connected', 'link_lost',
   'transfer_complete', 'sync_good', 'boot', 'first_boot', 'wake', 'wake_long_idle', 'card_in', 'card_out',
-  'card_low', 'usb_attach', 'usb_detach', 'look_change', 'mode_change'];
+  'card_low', 'usb_attach', 'usb_detach', 'look_change', 'mode_change', 'camera_lost'];
 
 function load() {
   const merged = { curves: {}, paths: {}, clips: {}, events: {} };

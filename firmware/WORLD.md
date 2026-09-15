@@ -479,8 +479,27 @@ Priority order:
    films against is the one that looks fine in a still: a transformation
    that plays from its authored start pose every time, so an interrupted
    world jumps back to a shape it had already left.
-9. error
-10. SETUP entry and exit
+9. ~~error~~ — **done.** `world_camera_lost`. The strongest error the
+   world model has is the fundamental object losing a quarter, and it had
+   been silent: a camera that stopped answering simply was not there any
+   more. Now the picture falls out of that quarter rather than fading
+   politely, its mark drops, and a rate-limited word says which one -
+   once, and not again for a minute however many times the link flaps.
+   The other three do not rearrange: the photograph is still a four-up
+   and one of the four is missing. Every camera stopping at once is not
+   this - it is the finder being turned off - and the interface has
+   nothing to say about that. Coming back says nothing either: the
+   quarter filling in is the message, and the word takes itself down
+   rather than timing out while the camera is visibly answering.
+10. ~~SETUP entry and exit~~ — **done.** `world_setup`,
+    `world_setup_out`. SETUP breaks the photographic world without
+    throwing it away: the four live surfaces flatten into a rule a few
+    pixels tall above the first row, and continuity carries them there
+    from whatever shape they were in, so the pictures are seen to leave.
+    What organises the settings is made of them and is the colour of the
+    room the camera is standing in. That is the whole of the personality
+    this state gets; the rest is text, selection and restraint. Every
+    screen in the SETUP family hangs from the same rule, INFO included.
 
 Then, once those are right, go deep rather than wide: more keys, more
 asymmetry, more per-frame decisions inside the same ten. That is where

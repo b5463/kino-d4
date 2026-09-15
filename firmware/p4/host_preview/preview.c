@@ -1646,6 +1646,53 @@ int main(int argc, char **argv) {
   FILM("world_interrupt", 300); FILM("world_interrupt", 360); FILM("world_interrupt", 440);
   FILM("world_interrupt", 560); FILM("world_interrupt", 760);
 
+  /* -- world_setup: the photographic world flattens into the rule --
+   *
+   * SETUP is the one state allowed to break the world, and it does not do
+   * that by throwing it away. The four live surfaces flatten into a line a
+   * few pixels tall above the first row - the pictures leave, and what
+   * organises the settings is made of them and is the colour of the room the
+   * camera is standing in. Coming back out, the same four open up again. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  STEP(300);
+  film_t0 = g_preview_clock_us;
+  go(SCR_SETTINGS, 0);
+  FILM("world_setup", 0); FILM("world_setup", 40); FILM("world_setup", 90);
+  FILM("world_setup", 150); FILM("world_setup", 230); FILM("world_setup", 340);
+  FILM("world_setup", 500); FILM("world_setup", 720);
+  film_t0 = g_preview_clock_us;
+  go(SCR_SHOOT, 0);
+  FILM("world_setup_out", 0); FILM("world_setup_out", 50); FILM("world_setup_out", 110);
+  FILM("world_setup_out", 190); FILM("world_setup_out", 300); FILM("world_setup_out", 460);
+  FILM("world_setup_out", 700);
+
+  /* -- world_camera_lost: the fundamental object loses a quarter --
+   *
+   * Camera 3 stops answering. The picture falls out of its quarter rather
+   * than fading politely, its mark drops, and the word says which one - once,
+   * and not again for a minute however many times the link flaps. The other
+   * three do not rearrange: the photograph is still a four-up, and one of the
+   * four is missing. Then it comes back, and the quarter filling in is the
+   * whole of the message. */
+  SCENE();
+  go(SCR_SHOOT, 0);
+  s_sh_words_up = false;
+  STEP(0);
+  STEP(400);
+  film_t0 = g_preview_clock_us;
+  FILM("world_camera_lost", 0);
+  g_vf_dead = 0x4;
+  events_watch();
+  FILM("world_camera_lost", 40); FILM("world_camera_lost", 80); FILM("world_camera_lost", 140);
+  FILM("world_camera_lost", 220); FILM("world_camera_lost", 340); FILM("world_camera_lost", 520);
+  g_vf_dead = 0x0;
+  events_watch();
+  FILM("world_camera_lost", 600); FILM("world_camera_lost", 660); FILM("world_camera_lost", 760);
+  FILM("world_camera_lost", 920);
+
   /* -- the mode strip -- */
   SCENE();
   go(SCR_GALLERY, 0);

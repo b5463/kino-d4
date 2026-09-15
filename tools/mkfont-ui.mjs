@@ -30,7 +30,7 @@
 // Pinned by commit and by digest like the other baked sources: a font that
 // changes under the build would move every word on the camera silently.
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -41,6 +41,10 @@ const opentype = require('opentype.js');
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'firmware/p4/main/ui_font_ui.h');
 const UI_C = join(ROOT, 'firmware/p4/main/ui.c');
+/* The words the behaviour tables put on screen live here rather than in ui.c,
+ * and a glyph the camera can display but the font does not carry draws as
+ * nothing at all. */
+const BEHAVIOURS = join(ROOT, 'firmware/p4/behaviors');
 const CACHE = join(ROOT, 'node_modules/.cache/bizud');
 
 const SRC = { repo: 'googlefonts/morisawa-biz-ud-gothic', commit: '18934af56b9c003ca58c54bffbf226848cb11032' };
@@ -75,21 +79,26 @@ async function fetchFile(f) {
   return buf;
 }
 
-/** Every code point ui.c can put on the screen from its own text. */
+/** Every code point the camera can put on the screen from its own text. */
 function glyphSet() {
-  const src = readFileSync(UI_C, 'utf8');
   const cps = new Set();
   for (let c = 0x20; c <= 0x7e; c++) cps.add(c);
   for (const ch of ALWAYS) cps.add(ch.codePointAt(0));
   /* String literals only, so a kanji in a comment does not cost flash. A
    * simple scanner: a double-quoted run on one line, escapes skipped. */
   const lit = /"((?:[^"\\\n]|\\.)*)"/g;
-  let m;
-  while ((m = lit.exec(src)) !== null)
-    for (const ch of m[1]) {
-      const cp = ch.codePointAt(0);
-      if (cp > 0x7e) cps.add(cp);
-    }
+  const add = (src) => {
+    let m;
+    while ((m = lit.exec(src)) !== null)
+      for (const ch of m[1]) {
+        const cp = ch.codePointAt(0);
+        if (cp > 0x7e) cps.add(cp);
+      }
+    lit.lastIndex = 0;
+  };
+  add(readFileSync(UI_C, 'utf8'));
+  for (const f of readdirSync(BEHAVIOURS))
+    if (f.endsWith('.json')) add(readFileSync(join(BEHAVIOURS, f), 'utf8'));
   return [...cps].sort((a, b) => a - b);
 }
 
