@@ -2425,13 +2425,31 @@ int main(int argc, char **argv) {
     d4.screen = D4_MENU;
     d4.sel = 1;
     d4_draw(); shot("d4_12_menu");
-    /* 7-8 the roll, and one out of it. */
+    /* 7-8 the roll, and one out of it. The four frames of the selected file
+     * are decoded when the cursor lands on it, which is what makes that one
+     * play and the rest sit still. */
     d4.screen = D4_ROLL;
-    d4.sel = 5;
-    d4_draw(); shot("d4_13_roll");
+    d4.sel = 2; /* slot 5 is the pending one the stub keeps for that state */
+    {
+      uint32_t gen = 0;
+      gallery_frames_begin("preview-2", GALLERY_TILE_W, GALLERY_TILE_H, 0, NULL, &gen);
+    }
+    for (int f = 0; f < 2; f++) {
+      g_preview_clock_us += 220000;
+      char n[32];
+      snprintf(n, sizeof n, "d4_13_roll%s", f ? "_b" : "");
+      d4_draw();
+      shot(n);
+    }
     d4.screen = D4_ITEM;
     d4.sel = 2;
-    d4_draw(); shot("d4_14_item");
+    for (int f = 0; f < 2; f++) {
+      g_preview_clock_us += 220000;
+      char n[32];
+      snprintf(n, sizeof n, "d4_14_item%s", f ? "_b" : "");
+      d4_draw();
+      shot(n);
+    }
 
     /* 9 looks. */
     d4.screen = D4_LOOK;

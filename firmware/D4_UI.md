@@ -5,7 +5,40 @@ git history and nothing is kept from it for continuity; what survives is the
 drawing code underneath — the blitter, the type rasteriser, the font — because
 those are the panel, not the design.
 
-The camera has four lenses. Everything below follows from that one fact.
+The camera has four lenses pointed at one instant, and what it makes moves.
+Everything below follows from that.
+
+---
+
+## 0. The one fact
+
+KINO does not have four lenses the way a phone has three. It has four lenses
+pointed at the same instant from four places a few millimetres apart, and what
+it makes out of them **moves**. That is the whole product. No other camera's
+photographs wiggle.
+
+Which gives the rule the rest of this document is built on:
+
+> **KINO has no still images.**
+>
+> Everywhere a photograph appears — the live view, a roll thumbnail under the
+> cursor, an opened file, a look preview — it is playing. The only still
+> things in this product are the machine screens, and that difference is how
+> you know which half of it you are in.
+
+The live view is therefore already a wigglegram: one frame filling the panel,
+cycling 1 2 3 4 3 2 through the camera's own `pure_wiggle_sequence()` at the
+rate the photograph will play at. You are not framing a still that will later
+be turned into a wiggle. You are looking at the wiggle, and composing for the
+parallax you can see moving.
+
+Two other arrangements were built and judged against it. **SPREAD** — the
+aiming lens sharp with the other three ghosted over it, so near objects triple
+and far ones do not — turned out to be a check rather than a home: it answers
+"how much wiggle will this composition have" and it degrades the picture to do
+it, so it is what the camera shows while a button is held. **SHEETS** — the
+four as fanned prints — was charming and cost a third of the framing area,
+which is not a trade a camera gets to make.
 
 ---
 
@@ -93,13 +126,12 @@ margin 16 │ col 186 │ 8 │ 186 │ 8 │ 186 │ 8 │ 186 │ margin 16
           └ 109 ────┴─── 303 ──┴─── 497 ──┴─── 691 ┘   centres
 ```
 
-Vertical rhythm is 24. The head strip is 34 tall and only exists where a
-screen needs a name; the camera does not need one. The foot strip is 30 and
-carries the mundane facts — count, card, battery — in XS.
+Vertical rhythm is 24. The top band is 40 and the foot band 44; everything
+else lives between them.
 
-The four-column grid is also the ROLL page (four across), the four feeds (four
-adjacent verticals, gutterless), the diagnostics columns and the settings
-value column. One measure, used everywhere.
+The four-column measure is the ROLL page (four across), the four cells of the
+camera's top band, the diagnostics columns and the settings value column. One
+measure, used everywhere.
 
 ---
 
@@ -119,8 +151,11 @@ design gothic — drawn to be legible small on equipment, not to be fashionable.
 No size above 34. Nothing is set large for effect; if something needs
 emphasis it is bold, inverted, or alone — not enormous.
 
-Numerals are the recurring objects. `1 2 3 4` appear at XS above the marks, at
-S in a list, at MB in a count. They are always the same numerals.
+Numerals are not set in this face at all. They are drawn — see `d4_font.h` —
+because they are the recurring objects in this interface and a downloaded text
+font is what makes an embedded panel look like a web page. The rule that falls
+out: **numbers are objects and are drawn; words are labels and are set,
+tracked out, in small caps.** They never look like each other.
 
 Text over a photograph carries a two-pixel dark contour, because the ground
 underneath it is unknown and may be a blown-out window. Text on either flat
@@ -254,6 +289,27 @@ is designed with them, not decorated by them.
 
 `complete` and `error` are the two that must never be missed; the rest may be
 off. Sound is not a substitute for a visible state.
+
+---
+
+## 9a. What the bands are
+
+Screens are built from full-width solid ink with the type knocked out of it,
+not from hairlines with grey text between them. A band is a structural fact:
+it says where the picture stops and the machine starts, and it says it at full
+contrast on a panel that gets read in a dark room and in direct sun on the
+same evening.
+
+The top band on the camera is divided into four cells, one directly over the
+part of the picture its lens made — so the chrome is not a caption about the
+four cameras, it **is** them. The cell of the lens currently on screen is
+lit, so the band sweeps in time with the picture: the chrome moves because the
+photograph moves.
+
+The foot band carries the mundane facts on the camera, and on the machine it
+says what the screen is for and the way out. Colour lives in the band and
+almost nowhere else: black is neutral, cobalt is an operation in progress, red
+is something about to go wrong or be lost, yellow is a photographic event.
 
 ---
 

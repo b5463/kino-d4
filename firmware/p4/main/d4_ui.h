@@ -136,10 +136,19 @@ static void d4_cam_marks(d_mark_t *m) {
  * Which leaves the question of what the live view actually looks like, and
  * these are three answers to it rather than one.
  */
+/*
+ * The home is the wiggle. SPREAD is not a second home: it is what the camera
+ * shows while a button is held, to answer "how much wiggle will this
+ * composition have" - a check, like a depth of field preview, not a state to
+ * live in. It degrades the picture on purpose and you would not frame in it.
+ *
+ * A third arrangement, the four as fanned sheets, was built and thrown away:
+ * it was charming and it cost a third of the framing area, which is not a
+ * trade a camera gets to make.
+ */
 typedef enum {
   D4_HOME_WIGGLE = 0, /* one frame, cycling the four at the wiggle rate */
-  D4_HOME_PARALLAX,   /* one frame, with the other three ghosted where they diverge */
-  D4_HOME_STACK,      /* the four as physical sheets, the front one framed */
+  D4_HOME_SPREAD,     /* held: the other three ghosted where they diverge */
 } d4_home_t;
 
 static d4_home_t d4_home_style = D4_HOME_WIGGLE;
@@ -168,7 +177,7 @@ static void d4_frame_fill(int lens, int y, int h, int alpha) {
 }
 
 /**
- * A: the live view is already a wigglegram.
+ * Home: the live view is already a wigglegram.
  *
  * One frame filling the panel, cycling 1 2 3 4 3 2 at the rate the
  * photograph will play at. You are not framing a still that will later be
@@ -201,7 +210,7 @@ static void d4_home_wiggle(void) {
 }
 
 /**
- * B: one frame to compose with, and the other three where they disagree.
+ * Held: one frame to compose with, and the other three where they disagree.
  *
  * The lens you aim with fills the panel; the other three are laid over it
  * faintly, each offset by its own mounting. Objects close to the camera
@@ -224,48 +233,6 @@ static void d4_home_parallax(void) {
     const bool on = i == lead;
     if (on) fill(x, 0, cw, D_BAND_T, D_PAPER);
     const uint16_t ink = on ? D_GRAPH : m[i] == D_MARK_FAIL ? D_RED : d_toward(D_PAPER, D_GRAPH, 120);
-    df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
-    d_mark(x + 44, 20, 6, m[i], ink);
-    if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
-  }
-}
-
-/**
- * C: the four as physical sheets.
- *
- * What the camera is about to make is a short stack of four pictures, so the
- * live view is that stack seen from slightly above: the lens you aim with in
- * front, the other three behind it and live, offset the way prints are when
- * you fan them. The same object as the roll's thumbnails, at full size.
- */
-static void d4_home_stack(void) {
-  const int y = D_BAND_T, h = UI_H - D_BAND_T - D_BAND_B;
-  const int off = 18, fw = UI_W - 3 * off - 12, fh = h - 3 * off - 12;
-  for (int k = 3; k >= 0; k--) {
-    const int sx = 6 + (3 - k) * off, sy = y + 6 + (3 - k) * off;
-    const uint16_t *t = viewfinder_ready() ? viewfinder_tile(3 - k) : NULL;
-    fill(sx - 2, sy - 2, fw + 4, fh + 4, D_PAPER);
-    if (t) {
-      const float ch = (float)fh / (float)fw * ((float)VF_W / (float)VF_H);
-      const float c0 = 0.5f - ch * 0.5f;
-      img_blit_tf(t, VF_W, VF_H, 0.f, c0 > 0.f ? c0 : 0.f, 1.f, c0 > 0.f ? c0 + ch : 1.f,
-                  (float)(sx + fw / 2), (float)(sy + fh / 2), (float)fw, (float)fh, 0.f, 0.f, 0.f, 0.f,
-                  0.f, 0, 255, 0, 0.f);
-    } else {
-      fill(sx, sy, fw, fh, d_toward(D_GRAPH, D_PAPER, 18));
-    }
-    /* Each sheet carries its own lens number in the corner that shows. */
-    /* Each sheet carries its own lens number on the edge that shows. */
-    df_draw(sx - 14, sy + fh / 2 - 7, (const char[]){(char)('1' + (3 - k)), 0}, 1,
-            k == 0 ? D_PAPER : d_toward(D_PAPER, D_GRAPH, 90));
-  }
-  d_band_top(D_GRAPH);
-  d_mark_t m[4];
-  d4_cam_marks(m);
-  for (int i = 0; i < 4; i++) {
-    const int cw = UI_W / 4, x = i * cw;
-    const uint16_t ink = m[i] == D_MARK_FAIL ? D_RED : m[i] == D_MARK_ON ? D_PAPER
-                                                                        : d_toward(D_PAPER, D_GRAPH, 150);
     df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
     d_mark(x + 44, 20, 6, m[i], ink);
     if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
@@ -332,8 +299,7 @@ static void d4_band_facts(void) {
   }
   d_label(x, y + 18, "WIGGLE", D_PAPER);
   x += d_label_w("WIGGLE") + 22;
-  static const char *const HOME_WORD[3] = {"LIVE", "SPREAD", "SHEETS"};
-  d_label(x, y + 18, HOME_WORD[d4_home_style], d_toward(D_PAPER, D_GRAPH, 110));
+  if (d4_home_style == D4_HOME_SPREAD) d_label(x, y + 18, "SPREAD", D_YELLOW);
 
   int rx = UI_W - D_MARGIN;
   if (ps.usb_attached) {
@@ -355,11 +321,8 @@ static void d4_band_facts(void) {
 
 static void d4_live(void) {
   d_ground(D_GRAPH);
-  switch (d4_home_style) {
-    case D4_HOME_PARALLAX: d4_home_parallax(); break;
-    case D4_HOME_STACK: d4_home_stack(); break;
-    default: d4_home_wiggle(); break;
-  }
+  if (d4_home_style == D4_HOME_SPREAD) d4_home_parallax();
+  else d4_home_wiggle();
   d4_band_facts();
   /* The one dry word, when there is one: a yellow band across the picture,
    * because a camera that says something says it like a machine. */
@@ -550,9 +513,18 @@ static void d4_roll(void) {
     for (int k = sheets - 1; k >= 1; k--)
       fill(cx - k * 4, cy - k * 4, D4_TH_W, D4_TH_H, k & 1 ? d_toward(D_GRAPH, D_PAPER, 120) : D_GRAPH);
     if (slots[i].state == TILE_READY && slots[i].pixels) {
-      img_blit_tf(slots[i].pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f,
-                  (float)(cx + D4_TH_W / 2), (float)(cy + D4_TH_H / 2), (float)D4_TH_W, (float)D4_TH_H,
-                  0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
+      /* The one under the cursor plays; the rest are still. A page of eight
+       * wigglegrams all moving at once is a page nobody can read, and the
+       * camera only has the four frames of one of them decoded anyway - the
+       * input layer asks for them when the cursor lands. */
+      const uint16_t *px = slots[i].pixels;
+      int pw = GALLERY_TILE_W, ph = GALLERY_TILE_H;
+      if (on) {
+        const uint16_t *f = gallery_frame_pixels(d4_wiggle_lens(NULL, (uint8_t[8]){0}));
+        if (f) { px = f; pw = GALLERY_TILE_W; ph = GALLERY_TILE_H; }
+      }
+      img_blit_tf(px, pw, ph, 0.f, 0.f, 1.f, 1.f, (float)(cx + D4_TH_W / 2), (float)(cy + D4_TH_H / 2),
+                  (float)D4_TH_W, (float)D4_TH_H, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
     } else {
       fill(cx, cy, D4_TH_W, D4_TH_H, d_toward(D_GRAPH, D_PAPER, 60));
       df_draw_c(cx + D4_TH_W / 2, cy + D4_TH_H / 2 - 7, "-", 1, D_PAPER);
@@ -593,32 +565,54 @@ static void d4_item(void) {
   d_ground(D_GRAPH);
   const gallery_item_t *slots = gallery_slots();
   const gallery_item_t *it = &slots[d4.sel < GALLERY_PAGE ? d4.sel : 0];
-  if (it->pixels) {
-    const float ch = (float)(UI_H - D_BAND_B) / (float)UI_W * ((float)GALLERY_TILE_W / (float)GALLERY_TILE_H);
+
+  /* It plays. A photograph from this camera is four frames and the camera
+   * never pretends otherwise, so there is no still state to fall back to
+   * except when the frames are genuinely missing. */
+  uint8_t order[8];
+  const int lens = d4_wiggle_lens(NULL, order);
+  const uint16_t *px = gallery_frame_pixels(lens);
+  if (!px) px = it->pixels;
+  const int h = UI_H - D_BAND_T - D_BAND_B;
+  if (px) {
+    const float ch = (float)h / (float)UI_W * ((float)GALLERY_TILE_W / (float)GALLERY_TILE_H);
     const float c0 = 0.5f - ch * 0.5f;
-    img_blit_tf(it->pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, c0 > 0.f ? c0 : 0.f, 1.f,
-                c0 > 0.f ? c0 + ch : 1.f, (float)(UI_W / 2), (float)((UI_H - D_BAND_B) / 2), (float)UI_W,
-                (float)(UI_H - D_BAND_B), 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
+    img_blit_tf(px, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, c0 > 0.f ? c0 : 0.f, 1.f,
+                c0 > 0.f ? c0 + ch : 1.f, (float)(UI_W / 2), (float)(D_BAND_T + h / 2), (float)UI_W,
+                (float)h, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
+  }
+
+  /* The band is the four again, with the frame that is showing lit - the
+   * same object as the live view, doing the same job. */
+  d_band_top(D_GRAPH);
+  for (int i = 0; i < 4; i++) {
+    const int cw = UI_W / 4, x = i * cw;
+    const bool live = i == lens, have = i < it->frames;
+    if (live) fill(x, 0, cw, D_BAND_T, D_PAPER);
+    const uint16_t ink = live ? D_GRAPH : have ? D_PAPER : d_toward(D_PAPER, D_GRAPH, 170);
+    df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
+    d_mark(x + 44, 20, 6, have ? D_MARK_ON : D_MARK_EMPTY, ink);
+    if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
   }
   static char idx[8];
   snprintf(idx, sizeof idx, "%02d", gallery_page() * GALLERY_PAGE + d4.sel + 1);
-  d_text_over(&UT_MB, D_MARGIN, D_MARGIN, idx, d_fg);
-  d_text_over_r(&UT_XS, UI_W - D_MARGIN, D_MARGIN + 8, "09.15  18:42", d_fg);
+  df_draw_r(UI_W - D_MARGIN, 13, idx, 1, D_PAPER);
 
-  /* The facts, on the graphite strip rather than over the picture. */
-  const int y = UI_H - D_BAND_B;
-  fill(0, y, UI_W, D_BAND_B, D_GRAPH);
+  const int fy = d_band_bottom(D_GRAPH);
   static char mode[16];
   snprintf(mode, sizeof mode, "%s", it->mode[0] ? it->mode : "wiggle");
   for (char *c = mode; *c; c++)
     if (*c >= 'a' && *c <= 'z') *c = (char)(*c - 32); /* the interface speaks in capitals */
   int x = D_MARGIN;
-  d_text(&UT_SB, x, y + 10, mode, d_fg);
-  x += ut_w(&UT_SB, mode) + 24;
-  d_mark_t m[4];
-  for (int i = 0; i < 4; i++) m[i] = i < it->frames ? D_MARK_ON : D_MARK_EMPTY;
-  d_four(x + 36, y + 14, 24, 5, m, false, NULL);
-  d_text_r(&UT_XS, UI_W - D_MARGIN, y + 15, it->label[0] ? it->label : it->id, D_DIM);
+  d_label(x, fy + 18, mode, D_PAPER);
+  x += d_label_w(mode) + 20;
+  static char fr[8];
+  snprintf(fr, sizeof fr, "%d/4", it->frames);
+  x = df_draw(x, fy + 12, fr, 1, it->frames < 4 ? D_YELLOW : D_PAPER) + 20;
+  if (it->favorite) fill(x, fy + 14, 14, 14, D_YELLOW);
+  df_draw_r(UI_W - D_MARGIN, fy + 12, "09.15", 1, d_toward(D_PAPER, D_GRAPH, 120));
+  d_label_r(UI_W - D_MARGIN - df_w("09.15", 1) - 20, fy + 18, it->label[0] ? it->label : it->id,
+            d_toward(D_PAPER, D_GRAPH, 120));
 }
 
 /* ------------------------------------------------------------------ */
@@ -633,16 +627,16 @@ static void d4_item(void) {
 
 static void d4_look(void) {
   d_ground(D_GRAPH);
-  const uint16_t *t = viewfinder_ready() ? viewfinder_tile(1) : NULL;
-  if (t) {
-    const float ch = (float)(UI_H - D4_LOOK_STRIP) / (float)UI_W * ((float)VF_W / (float)VF_H);
-    const float c0 = 0.5f - ch * 0.5f;
-    img_blit_tf(t, VF_W, VF_H, 0.f, c0, 1.f, c0 + ch, (float)(UI_W / 2), (float)((UI_H - D4_LOOK_STRIP) / 2),
-                (float)UI_W, (float)(UI_H - D4_LOOK_STRIP), 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
-  }
+  /* The preview plays, because a look is a thing you judge on a moving
+   * picture and this camera has no still ones. */
+  const int lens = d4_wiggle_lens(NULL, (uint8_t[8]){0});
+  d4_frame_fill(lens, D_BAND_T, UI_H - D_BAND_T - D4_LOOK_STRIP, 255);
+  d_band_top(D_GRAPH);
+  d_text(&UT_M, D_MARGIN, 3, "LOOK", D_PAPER);
   const int n = kdp_recipes_count();
   const int y = UI_H - D4_LOOK_STRIP;
   fill(0, y, UI_W, D4_LOOK_STRIP, D_GRAPH);
+  fill(0, y, UI_W, 2, D_YELLOW); /* the strip is a switch, and it has a rail */
 
   /* The strip scrolls so the selected look sits in the same place every
    * time - a switch has a position, and the position does not wander. */
@@ -667,7 +661,7 @@ static void d4_look(void) {
   }
   static char count[16];
   snprintf(count, sizeof count, "%d/%d", d4.sel + 1, n);
-  d_text_over_r(&UT_XS, UI_W - D_MARGIN, y - 28, count, D_PAPER);
+  df_draw_r(UI_W - D_MARGIN, 13, count, 1, D_PAPER);
 }
 
 /* ------------------------------------------------------------------ */
