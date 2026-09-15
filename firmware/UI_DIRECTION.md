@@ -1,5 +1,9 @@
 # KINO D4 firmware UI — direction
 
+**What is built.** The next phase is `WORLD.md`: one persistent
+photographic world rather than five screens, a mood layer, and behaviour
+driven by what the four cameras actually see.
+
 Branch `feat/native-ui`. The interface is a continuously running visual
 system that happens to expose camera controls: very little on the screen,
 a great deal underneath. This is the brief distilled, the architecture that
