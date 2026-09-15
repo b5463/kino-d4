@@ -105,78 +105,97 @@ static void d4_cam_marks(d_mark_t *m) {
 }
 
 /**
- * The strip along the bottom: how many are left, how it will be taken,
- * whether the four are up, and what the card is doing. Nothing else, no
- * background plate, no rule - the contour on the type is what makes it
- * readable and the picture keeps the whole panel.
+ * The strip along the bottom, and the marks that make the picture a frame.
  *
- * Laid out with pens rather than fixed offsets, because the strings change
- * width with the state and a column that fits AUTO does not fit NOT READY.
+ * Everything counted is in the drawn face; everything named is in tracked
+ * small caps. That split is the whole typographic rule of this interface -
+ * numbers are objects, words are labels, and they never look like each other.
  */
 #define D4_STRIP 46
 
 static void d4_live_strip(void) {
   const int y = UI_H - D4_STRIP;
-  const int ty = y + 10; /* XS baseline box, so everything sits on one line */
   storage_status_t sd;
   storage_get_status(&sd);
   power_state_t ps;
   power_get(&ps);
 
-  /* Left: what is left, which on a camera is the number in this corner. */
+  /* A hairline over the strip with a tick at each feed seam: the strip
+   * belongs to the four columns above it. */
+  fill(0, y - 1, UI_W, 1, d_toward(D_PAPER, D_GRAPH, 120));
+  for (int i = 1; i < 4; i++) fill(i * D4_FEED_W, y - 5, 1, 5, d_toward(D_PAPER, D_GRAPH, 120));
+
+  /* Left: what is left. The number is drawn; the unit is a label. */
   static char left[16];
   const int shots = sd.mounted && sd.capacity_bytes ? (int)(sd.free_bytes / (6ull * 1024 * 1024)) : 0;
-  snprintf(left, sizeof left, "%d", shots > 9999 ? 9999 : shots);
+  snprintf(left, sizeof left, "%d", shots > 999 ? 999 : shots);
   int x = D_MARGIN;
-  d_text_over(&UT_SB, x, y + 4, left, d_fg);
-  x += ut_w(&UT_SB, left) + 7;
-  d_text_over(&UT_XS, x, ty, "SHOTS", D_DIM);
+  x = df_draw_over(x, y + 12, left, 2, d_fg) + 8;
+  d_text_over(&UT_XS, x, y + 18, "SHOTS", D_DIM);
 
-  /* Then how it is going to take it. */
-  x = 210;
+  /* Then how it is going to take it, in a cell, because a mode is a setting
+   * and a setting has a position. */
   const int fl = flash_index();
-  d_icon(fl == 2 ? &D_IC_FLASH_OFF : &D_IC_FLASH, x, y + 4, fl == 1 ? D_YELLOW : d_fg);
-  x += 21;
   const char *fs = fl == 0 ? "AUTO" : fl == 1 ? "ON" : "OFF";
-  d_text_over(&UT_XS, x, ty, fs, fl == 1 ? D_YELLOW : d_fg);
-  x += ut_w(&UT_XS, fs) + 22;
-  d_text_over(&UT_XS, x, ty, "WIGGLE", d_fg);
+  x = D4_FEED_W + 14;
+  d_icon(fl == 2 ? &D_IC_FLASH_OFF : &D_IC_FLASH, x, y + 13, fl == 1 ? D_YELLOW : d_fg);
+  x += 20;
+  d_cell(x, y + 10, d_label_w(fs) + 14, 24, fl == 1 ? D_YELLOW : D_DIM);
+  d_label(x + 7, y + 16, fs, fl == 1 ? D_YELLOW : d_fg);
+  x += d_label_w(fs) + 14 + 14;
+  d_cell(x, y + 10, d_label_w("WIGGLE") + 14, 24, D_DIM);
+  d_label(x + 7, y + 16, "WIGGLE", d_fg);
 
-  /* The four, so readiness is never a word. */
+  /* The four, under their own numerals, because this is the row the whole
+   * interface is built from and the live view is where it is learned. */
   d_mark_t m[4];
   d4_cam_marks(m);
-  bool all = true;
-  for (int i = 0; i < 4; i++) all = all && m[i] == D_MARK_ON;
   uint16_t ink[4];
-  for (int i = 0; i < 4; i++) ink[i] = m[i] == D_MARK_FAIL ? D_RED : d_fg;
-  d_four(560, y + 9, 24, 5, m, false, ink);
-  if (!all) d_text_over(&UT_XS, 560 + 48, ty, "WAIT", D_DIM);
+  for (int i = 0; i < 4; i++) ink[i] = m[i] == D_MARK_FAIL ? D_RED : m[i] == D_MARK_ON ? d_fg : D_DIM;
+  const int fx = 2 * D4_FEED_W + 30;
+  for (int i = 0; i < 4; i++) {
+    df_draw_over(fx + i * 26, y + 8, (const char[]){(char)('1' + i), 0}, 1, D_DIM);
+    d_mark(fx + i * 26 + 5, y + 33, 5, m[i], ink[i]);
+  }
 
-  /* Right: the card, and the mains when it is there. No battery - this
-   * camera has no fuel gauge (power.h reports whether a host is attached and
-   * nothing else), and four bars that were not measured are worse than no
-   * symbol at all. d_battery() is in d4_style.h for when it can. */
+  /* Right: the card, and the mains when there is one. No battery: this camera
+   * has no fuel gauge, and four bars that were not measured are worse than no
+   * symbol at all. d_battery() waits in d4_style.h for when it can. */
   int rx = UI_W - D_MARGIN;
   if (ps.usb_attached) {
-    d_text_over_r(&UT_XS, rx, ty, "USB", D_COBALT);
-    rx -= ut_w(&UT_XS, "USB") + 16;
+    d_label_r(rx, y + 20, "USB", D_COBALT);
+    rx -= d_label_w("USB") + 18;
   }
-  static char card[12];
   const int pct = sd.capacity_bytes ? (int)(100 - 100 * sd.free_bytes / sd.capacity_bytes) : 0;
-  if (sd.mounted) snprintf(card, sizeof card, "%d%%", pct);
-  else snprintf(card, sizeof card, "NO CARD");
-  d_text_over_r(&UT_XS, rx, ty, card, sd.mounted ? d_fg : D_RED);
-  d_icon(&D_IC_CARD, rx - ut_w(&UT_XS, card) - 22, y + 4, sd.mounted ? d_fg : D_RED);
+  if (sd.mounted) {
+    static char card[12];
+    snprintf(card, sizeof card, "%d%%", pct);
+    df_draw_over_r(rx, y + 12, card, 2, d_fg);
+    rx -= df_w(card, 2) + 10;
+  } else {
+    d_label_r(rx, y + 20, "NO CARD", D_RED);
+    rx -= d_label_w("NO CARD") + 8;
+  }
+  d_icon(&D_IC_CARD, rx - 18, y + 13, sd.mounted ? d_fg : D_RED);
 }
 
 static void d4_live(void) {
   d_ground(D_GRAPH);
   d4_feeds(-1);
+  /* Framing marks on the picture, and a numeral at the head of each feed.
+   * A camera tells you where the frame is; a photo viewer does not. */
+  d_corners(6, 6, UI_W - 12, UI_H - D4_STRIP - 12, 22, 2, d_toward(D_PAPER, D_GRAPH, 40));
+  for (int i = 0; i < 4; i++)
+    df_draw_over(i * D4_FEED_W + 12, 12, (const char[]){(char)('1' + i), 0}, 1, D_PAPER);
   d4_live_strip();
   /* The one dry word, when there is one, in the corner and gone. */
-  if (d4.word && d4_ms(d4.word_us) < D4_WORD_MS)
-    d_text_over(&UT_MB, d_col_x(0), D_MARGIN, d4.word, d_fg);
-  else d4.word = NULL;
+  if (d4.word && d4_ms(d4.word_us) < D4_WORD_MS) {
+    const int w = ut_w(&UT_MB, d4.word);
+    d_select(D_MARGIN, 40, w + 28, 46, D_PAPER);
+    d_text(&UT_MB, D_MARGIN + 14, 46, d4.word, D_GRAPH);
+  } else {
+    d4.word = NULL;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -194,7 +213,7 @@ static void d4_shutter(void) { fill(0, 0, UI_W, UI_H, D_PAPER); }
 static void d4_catch(void) {
   d_ground(D_GRAPH);
   d4_feeds(-1);
-  fill_a(0, 0, UI_W, UI_H, D_GRAPH, 200); /* the picture is still there, under it */
+  fill_a(0, 0, UI_W, UI_H, D_GRAPH, 210); /* the picture is still there, under it */
 
   const uint32_t in = capture_frames_in();
   d_mark_t m[4];
@@ -206,10 +225,20 @@ static void d4_catch(void) {
     ink[i] = got ? D_YELLOW : D_DIM;
     n += got ? 1 : 0;
   }
-  d_four(UI_W / 2, UI_H / 2 - 58, 116, 20, m, true, ink);
+  /* The row, bracketed, each lens's numeral over its mark, and the count
+   * beside it in the same face - so what is filling and what is counted are
+   * visibly the same thing. */
+  const int cx = UI_W / 2, cy = UI_H / 2;
+  const int pitch = 84, bw = 3 * pitch + 76, bx = cx - bw / 2 - 46, by = cy - 62;
+  d_corners(bx, by, bw, 124, 20, 2, D_DIM);
+  for (int i = 0; i < 4; i++) {
+    const int mx = bx + 38 + i * pitch;
+    df_draw(mx - 5, by + 20, (const char[]){(char)('1' + i), 0}, 1, m[i] == D_MARK_ON ? D_YELLOW : D_DIM);
+    d_mark(mx, by + 84, 14, m[i], ink[i]);
+  }
   static char cnt[8];
   snprintf(cnt, sizeof cnt, "%d/4", n);
-  d_text_c(&UT_MB, UI_W / 2, UI_H / 2 + 34, cnt, n == 4 ? D_YELLOW : D_DIM);
+  df_draw(bx + bw + 32, by + 36, cnt, 4, n == 4 ? D_YELLOW : D_DIM);
 }
 
 /**
@@ -220,11 +249,15 @@ static void d4_catch(void) {
 static void d4_make(void) {
   d_ground(D_GRAPH);
   const int cx = UI_W / 2;
-  d_text_c(&UT_MB, cx, UI_H / 2 - 48, "MAKING IT", d_fg);
   capture_report_t r;
   capture_last(&r);
   const int done = r.stored > 0 ? r.stored : __builtin_popcount(capture_frames_in());
-  d_blocks(cx - D_BLOCKS_W / 2, UI_H / 2 + 6, done, 4, d_fg);
+  d_text_c(&UT_MB, cx, UI_H / 2 - 62, "MAKING IT", d_fg);
+  d_blocks(cx - D_BLOCKS_W / 2, UI_H / 2 - 4, done, 4, d_fg);
+  /* What it is actually doing, counted, in the face that counts. */
+  static char of[12];
+  snprintf(of, sizeof of, "%d/4", done);
+  df_draw_c(cx, UI_H / 2 + 34, of, 2, D_DIM);
 }
 
 /**
@@ -262,7 +295,12 @@ static void d4_boot(void) {
   d_ground(D_GRAPH);
   const int ms = d4_ms(d4.boot_us);
   const int cx = UI_W / 2;
-  d_text_c(&UT_M, cx, 150, "kino D4", d_fg);
+
+  /* The mark, drawn, with the model number set apart in the numeral face -
+   * the same face that counts the lenses one line below it. */
+  const int ws = 4, gap = 40, ww = dw_w(ws) + gap + df_w("D4", ws);
+  dw_draw(cx - ww / 2, 120, ws, d_fg);
+  df_draw(cx - ww / 2 + dw_w(ws) + gap, 116, "D4", ws, D_YELLOW);
 
   d_mark_t m[4];
   d4_cam_marks(m);
@@ -273,8 +311,15 @@ static void d4_boot(void) {
     if (m[i] != D_MARK_ON && ms < 900) m[i] = ms > 160 + i * 90 ? D_MARK_HALF : D_MARK_EMPTY;
     if (m[i] == D_MARK_ON) up++;
   }
-  d_four(cx, 250, 64, 10, m, true, NULL);
-  if (up == 4) d_text_c(&UT_SB, cx, 330, "READY", D_YELLOW);
+  /* The four, bracketed, because at boot they are the subject. */
+  const int bw = 3 * 72 + 44, bx = cx - bw / 2, by = 250;
+  d_corners(bx, by, bw, 76, 14, 2, D_DIM);
+  for (int i = 0; i < 4; i++) {
+    const int mx = bx + 22 + i * 72;
+    df_draw(mx - 5, by + 14, (const char[]){(char)('1' + i), 0}, 1, D_DIM);
+    d_mark(mx, by + 54, 9, m[i], m[i] == D_MARK_ON ? d_fg : D_DIM);
+  }
+  if (up == 4) d_label_c(cx, 352, "READY", D_YELLOW);
 }
 
 /* ------------------------------------------------------------------ */
@@ -328,10 +373,10 @@ static void d4_roll(void) {
      * photograph missing a frame says so here and nowhere else. */
     static char idx[8], frames[8];
     snprintf(idx, sizeof idx, "%02d", gallery_page() * GALLERY_PAGE + i + 1);
-    d_text(&UT_XS, cx, cy + D4_TH_H + 6, idx, on ? d_fg : D_DIM);
+    df_draw(cx, cy + D4_TH_H + 8, idx, 1, on ? d_fg : D_DIM);
     if (slots[i].frames < 4) {
       snprintf(frames, sizeof frames, "%d/4", slots[i].frames);
-      d_text_r(&UT_XS, cx + D4_TH_W, cy + D4_TH_H + 6, frames, D_YELLOW);
+      df_draw_r(cx + D4_TH_W, cy + D4_TH_H + 8, frames, 1, D_YELLOW);
     }
     if (slots[i].favorite) d_mark(cx + D4_TH_W - 9, cy + 9, 5, D_MARK_ON, D_YELLOW);
     /* Selection is a frame, because the thing selected is a picture and ink
@@ -348,9 +393,10 @@ static void d4_roll(void) {
   d_rule(D_MARGIN, fy - 8, UI_W - 2 * D_MARGIN);
   static char card[24];
   const int pct = sd.capacity_bytes ? (int)(100 - 100 * sd.free_bytes / sd.capacity_bytes) : 0;
-  snprintf(card, sizeof card, "CARD %d%%", pct);
-  d_text(&UT_XS, D_MARGIN, fy + 10, card, D_DIM);
-  d_text_r(&UT_XS, UI_W - D_MARGIN, fy + 10, "09.15", D_DIM);
+  snprintf(card, sizeof card, "%d%%", pct);
+  int fx2 = d_label(D_MARGIN, fy + 16, "CARD", D_DIM) + 8;
+  df_draw(fx2, fy + 10, card, 1, d_fg);
+  df_draw_r(UI_W - D_MARGIN, fy + 10, "09.15", 1, D_DIM);
 }
 
 /* ------------------------------------------------------------------ */
@@ -533,21 +579,41 @@ typedef struct {
 } d4_row_t;
 
 static void d4_rows(const d4_row_t *rows, int n, int sel) {
-  const int top = D_HEAD + 18;
+  const int top = D_HEAD + 20, rh = 42;
+  /* A rule down the page between the names and their values: the thing that
+   * makes a settings screen a panel rather than a web page. */
+  const int vx = UI_W - D_MARGIN - 200;
+  fill(vx - 24, top - 6, 1, n * rh + 2, D_FAINT);
   for (int i = 0; i < n; i++) {
-    const int y = top + i * 44;
+    const int y = top + i * rh;
     const bool on = i == sel;
-    if (on) d_select(D_MARGIN - 6, y - 4, UI_W - 2 * D_MARGIN + 12, 40, D_COBALT);
-    d_text(&UT_S, D_MARGIN, y + 6, rows[i].label, on ? D_PAPER : d_fg);
-    if (rows[i].value)
-      d_text_r(&UT_SB, UI_W - D_MARGIN - 26, y + 6, rows[i].value, on ? D_PAPER : d_fg);
-    d_arrow(UI_W - D_MARGIN - 14, y + 11, 0, on ? D_PAPER : d_fg);
+    if (on) d_select(D_MARGIN - 8, y - 4, UI_W - 2 * D_MARGIN + 16, rh - 4, D_COBALT);
+    /* Every row is numbered, and the number is drawn: the page reads as a
+     * numbered set of positions on a machine rather than as prose. */
+    df_draw(D_MARGIN, y + 4, (const char[]){(char)('1' + i), 0}, 1, on ? D_PAPER : D_FAINT);
+    d_text(&UT_S, D_MARGIN + 28, y + 4, rows[i].label, on ? D_PAPER : d_fg);
+    if (rows[i].value) {
+      /* A value that is a number is drawn; a value that is a word is set. */
+      bool numeric = rows[i].value[0] != 0;
+      for (const char *c = rows[i].value; *c; c++)
+        if (!((*c >= '0' && *c <= '9') || *c == '.' || *c == ':' || *c == '-' || *c == '%')) numeric = false;
+      if (numeric) df_draw(vx, y + 6, rows[i].value, 1, on ? D_PAPER : d_fg);
+      else d_text(&UT_SB, vx, y + 4, rows[i].value, on ? D_PAPER : d_fg);
+    }
+    d_arrow(UI_W - D_MARGIN - 14, y + 9, 0, on ? D_PAPER : d_fg);
   }
+}
+
+/** The page ticks down the right edge: four pages, and which one this is. */
+static void d4_page_ticks(int page, int pages) {
+  const int x = UI_W - 13, y0 = D_HEAD + 30;
+  for (int i = 0; i < pages; i++) fill(x, y0 + i * 28, 6, i == page ? 20 : 3, i == page ? D_COBALT : D_FAINT);
 }
 
 static void d4_setup(void) {
   d_ground(D_PAPER);
   d4_head("SETUP", NULL, d4.page, 4);
+  d4_page_ticks(d4.page, 4);
   static char shots[16], look[40];
   snprintf(shots, sizeof shots, "%d", config_int("shoot.volume", 6));
   kdp_recipes_name(0, NULL, 0, look, sizeof look);
@@ -578,7 +644,7 @@ static void d4_cameras(void) {
   int live_now = 0;
   for (int i = 0; i < 4; i++) {
     const int cx = d_col_cx(i);
-    d_text_c(&UT_M, cx, D_HEAD + 30, N[i], D_DIM);
+    df_draw_c(cx, D_HEAD + 26, N[i], 3, D_DIM);
 
     d_mark_t m = D_MARK_ON;
     const char *word = "OK";
@@ -592,23 +658,24 @@ static void d4_cameras(void) {
       else { m = D_MARK_HALF; word = "WARMING"; ink = D_DIM; }
     }
     if (m == D_MARK_ON) live_now++;
-    d_mark(cx, D_HEAD + 108, 16, m, ink);
-    d_text_c(&UT_SB, cx, D_HEAD + 140, word, ink);
+    d_mark(cx, D_HEAD + 124, 16, m, ink);
+    d_label_c(cx, D_HEAD + 156, word, ink);
 
     /* The mundane numbers underneath, which is what a diagnostics page is
      * for. Temperature is per module and the camera knows it. */
     static char t[12];
-    snprintf(t, sizeof t, "%d°C", 31 + (i & 1));
-    d_text_c(&UT_XS, cx, D_HEAD + 186, t, D_DIM);
-    if (i) fill(d_col_x(i) - D_GUT / 2, D_HEAD + 20, 1, 190, D_FAINT);
+    snprintf(t, sizeof t, "%d^C", 31 + (i & 1));
+    df_draw_c(cx, D_HEAD + 190, t, 1, D_DIM);
+    if (i) fill(d_col_x(i) - D_GUT / 2, D_HEAD + 20, 1, 196, D_FAINT);
   }
   /* Underneath, the last photograph these four took, which is the only
    * measurement of them that matters: who answered, and how far apart the
    * commands went out. */
-  d_rule(D_MARGIN, D_HEAD + 214, UI_W - 2 * D_MARGIN);
+  d_tick_rule(D_MARGIN, D_HEAD + 218, UI_W - 2 * D_MARGIN, (UI_W - 2 * D_MARGIN) / 4, 5, D_FAINT);
   capture_report_t r;
   capture_last(&r);
-  d_text(&UT_XS, D_MARGIN, D_HEAD + 232, "LAST PHOTOGRAPH", D_DIM);
+#define D4_VAL_X (D_MARGIN + 250)
+  d_label(D_MARGIN, D_HEAD + 238, "LAST PHOTOGRAPH", D_DIM);
   d_mark_t lm[4];
   uint16_t li[4];
   for (int i = 0; i < 4; i++) {
@@ -616,23 +683,26 @@ static void d4_cameras(void) {
     lm[i] = r.cam[i].attempted ? (ok ? D_MARK_ON : D_MARK_FAIL) : D_MARK_EMPTY;
     li[i] = ok ? d_fg : r.cam[i].attempted ? D_RED : D_DIM;
   }
-  d_four(D_MARGIN + 250, D_HEAD + 236, 30, 6, lm, false, li);
+  for (int i = 0; i < 4; i++) d_mark(D4_VAL_X + i * 26, D_HEAD + 243, 7, lm[i], li[i]);
   static char stored[24];
-  snprintf(stored, sizeof stored, "%d OF %d STORED", r.stored, r.online ? r.online : 4);
-  d_text(&UT_XS, D_MARGIN + 380, D_HEAD + 232, stored, d_fg);
+  snprintf(stored, sizeof stored, "%d/%d", r.stored, r.online ? r.online : 4);
+  int sx2 = df_draw(D4_VAL_X + 130, D_HEAD + 237, stored, 1, d_fg) + 6;
+  d_label(sx2, D_HEAD + 238, "STORED", D_DIM);
 
   static char sp[40];
-  snprintf(sp, sizeof sp, "%u us", (unsigned)r.spread_us);
-  d_text(&UT_XS, D_MARGIN, D_HEAD + 272, "COMMAND SPREAD", D_DIM);
-  d_text(&UT_SB, D_MARGIN + 250, D_HEAD + 266, sp, d_fg);
-  d_text(&UT_XS, D_MARGIN + 380, D_HEAD + 272, "NOT EXPOSURE SKEW", D_DIM);
+  snprintf(sp, sizeof sp, "%u", (unsigned)r.spread_us);
+  d_label(D_MARGIN, D_HEAD + 278, "COMMAND SPREAD", D_DIM);
+  int vx = df_draw(D4_VAL_X, D_HEAD + 277, sp, 1, d_fg) + 6;
+  d_label(vx, D_HEAD + 278, "US", D_DIM);
+  d_label(D4_VAL_X + 130, D_HEAD + 278, "NOT EXPOSURE SKEW", D_FAINT);
 
-  /* And what the finder is managing, which is the number that tells a user
-   * their camera is unwell before anything has failed outright. */
-  d_text(&UT_XS, D_MARGIN, D_HEAD + 312, "FINDER", D_DIM);
+  /* And what the finder is managing, which is the number that says a camera
+   * is unwell before anything has failed outright. */
+  d_label(D_MARGIN, D_HEAD + 318, "FINDER", D_DIM);
   static char fps[24];
-  snprintf(fps, sizeof fps, "%d LIVE", live_now);
-  d_text(&UT_SB, D_MARGIN + 250, D_HEAD + 306, fps, d_fg);
+  snprintf(fps, sizeof fps, "%d/4", live_now);
+  vx = df_draw(D4_VAL_X, D_HEAD + 317, fps, 1, d_fg) + 6;
+  d_label(vx, D_HEAD + 318, "LIVE", D_DIM);
 }
 
 /** Calibration: the same four, being brought into line, with real offsets. */

@@ -26,7 +26,7 @@ SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
         $(MAIN)/ui_type.h $(MAIN)/ui_font_ui.h $(MAIN)/ui_font_jp.h $(MAIN)/ui_text_jp.h \
         $(MAIN)/kmo.h $(MAIN)/kdraw.h $(MAIN)/kscene.h $(MAIN)/kbehave.h $(MAIN)/ksense.h $(MAIN)/kmood.h \
-        $(MAIN)/d4_style.h $(MAIN)/d4_ui.h \
+        $(MAIN)/d4_style.h $(MAIN)/d4_font.h $(MAIN)/d4_ui.h \
         $(MAIN)/kmo_data.h $(MAIN)/ui_present.h $(MAIN)/ui_playground.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \

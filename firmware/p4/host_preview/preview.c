@@ -2344,6 +2344,21 @@ int main(int argc, char **argv) {
     memset(&d4, 0, sizeof d4);
     g_preview_clock_us += 2000000;
 
+    /* A specimen of the drawn face, before anything is set in it. */
+    d_ground(D_PAPER);
+    dw_draw(40, 40, 3, d_fg);
+    df_draw(40, 150, "0123456789", 3, d_fg);
+    df_draw(40, 210, "0123456789", 2, d_fg);
+    df_draw(40, 250, "0123456789", 1, d_fg);
+    df_draw(360, 210, "4/4", 2, d_fg);
+    df_draw(460, 210, "68%", 2, d_fg);
+    df_draw(560, 210, "31^C", 2, d_fg);
+    df_draw(360, 250, "18:42", 1, d_fg);
+    df_draw(460, 250, "09.15", 1, d_fg);
+    df_draw(560, 250, "-1+2", 1, d_fg);
+    df_draw(40, 300, "1234", 6, d_fg);
+    shot("d4_00_specimen");
+
     /* 1 boot: the four coming up, then READY. */
     d4.boot_us = g_preview_clock_us;
     g_vf_dead = 0xF;

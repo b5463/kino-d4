@@ -101,6 +101,8 @@ static void d_text_over_r(const ut_face_t *f, int right, int y, const char *s, u
   d_text_over(f, right - ut_w(f, s), y, s, ink);
 }
 
+#include "d4_font.h"
+
 /* ------------------------------------------------------------------ */
 /* Rules, boxes and selection                                          */
 
@@ -117,6 +119,57 @@ static void d_box(int x, int y, int w, int h, uint16_t ink) {
 /** Selection is a filled rectangle with the type knocked out of it. Not a
  *  highlight, not a glow, not a rounded pill: a block of ink. */
 static void d_select(int x, int y, int w, int h, uint16_t ink) { fill(x, y, w, h, ink); }
+
+/* ------------------------------------------------------------------ */
+/* Furniture                                                           */
+/*
+ * The drawn parts that make a panel a panel. None of these is decoration:
+ * a bracket says where the frame is, a tick rule says a scale is divided,
+ * a cell says a value is a value and not a word.
+ */
+
+/** Framing brackets: four corners of an L, the way a camera marks a frame. */
+static void d_corners(int x, int y, int w, int h, int len, int wt, uint16_t ink) {
+  fill(x, y, len, wt, ink);
+  fill(x, y, wt, len, ink);
+  fill(x + w - len, y, len, wt, ink);
+  fill(x + w - wt, y, wt, len, ink);
+  fill(x, y + h - wt, len, wt, ink);
+  fill(x, y + h - len, wt, len, ink);
+  fill(x + w - len, y + h - wt, len, wt, ink);
+  fill(x + w - wt, y + h - len, wt, len, ink);
+}
+
+/** A rule with a tick every `every` pixels: a scale, not a line. */
+static void d_tick_rule(int x, int y, int w, int every, int tick, uint16_t ink) {
+  fill(x, y, w, 1, ink);
+  for (int i = 0; i <= w; i += every) fill(x + i, y, 1, tick, ink);
+}
+
+/** A boxed cell for a value, with the value's own baseline inside it. */
+static void d_cell(int x, int y, int w, int h, uint16_t ink) { d_box(x, y, w, h, ink); }
+
+/** A small caps label: tracked out, because a label is not a word. */
+static int d_label(int x, int y, const char *s, uint16_t ink) {
+  char one[2] = {0, 0};
+  for (const char *p = s; *p; p++) {
+    one[0] = *p;
+    ut_draw(&UT_XS, x, y, one, ink);
+    x += ut_w(&UT_XS, one) + 2;
+  }
+  return x;
+}
+static int d_label_w(const char *s) {
+  int w = 0;
+  char one[2] = {0, 0};
+  for (const char *p = s; *p; p++) {
+    one[0] = *p;
+    w += ut_w(&UT_XS, one) + 2;
+  }
+  return w > 0 ? w - 2 : 0;
+}
+static void d_label_r(int right, int y, const char *s, uint16_t ink) { d_label(right - d_label_w(s), y, s, ink); }
+static void d_label_c(int cx, int y, const char *s, uint16_t ink) { d_label(cx - d_label_w(s) / 2, y, s, ink); }
 
 /* ------------------------------------------------------------------ */
 /* Progress: blocks, never a bar and never a spinner                   */
