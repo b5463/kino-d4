@@ -1447,6 +1447,15 @@ static void sync_connection(void) {
     /* The roll itself, compressed into a column. The same photograph objects
      * the grid was showing, so what the user sees being offered is these
      * pictures rather than a page about networking. */
+    /* What the queue is actually doing, which is all the interface is allowed
+     * to say. The queue reports counts and the moment one landed; it does not
+     * report which capture is in flight, so nothing here singles a photograph
+     * out. The pile is being worked, and it settles when one leaves. */
+    const bool working = online && !q.halted && q.draining && (q.uploading > 0 || q.pending > 0);
+    static int64_t s_sent_at_ms;
+    const bool landed = q.last_upload_ms != 0 && q.last_upload_ms != s_sent_at_ms;
+    s_sent_at_ms = q.last_upload_ms;
+
     const gallery_item_t *slots = gallery_slots();
     ks_node_t *sheet = nd("grid", KS_GROUP);
     ks_place(sheet, 0.f, 0.f, 0.f, 0.f);
@@ -1464,9 +1473,18 @@ static void sync_connection(void) {
       ks_place(o, LINK_STACK_X, LINK_STACK_Y0 + stacked * LINK_STACK_STEP, 0.5f, 0.5f);
       ks_pose(o, KC_SX, LINK_STACK_SCALE);
       ks_pose(o, KC_SY, LINK_STACK_SCALE);
-      ks_pose(o, KC_ALPHA, 255.f);
+      ks_pose(o, KC_ALPHA, q.halted ? 120.f : 255.f);
       ks_parent(o, sheet);
       o->z = (int16_t)(20 - stacked); /* the next one out is on top of the pile */
+      /* Restless while the worker is working, still when it is not. Each
+       * photograph has its own seed, so the pile is unsettled rather than
+       * sliding about as one piece. */
+      if (working) {
+        const kmo_mod_t m = {0, KM_NOISE, 0, 0, {1.4f, 3.4f, 0.9f, 0.f}, 0.6f};
+        ks_mod(o, &m, s_kmo_now_us, -1);
+      } else {
+        ks_mod_clear(o);
+      }
       stacked++;
     }
 
@@ -1500,12 +1518,18 @@ static void sync_connection(void) {
       ks_pose(b, KC_SY, bs > 1.8f ? 1.8f : bs);
     }
 
+    /* One landed: a real, discrete thing happened, so the pile acknowledges it
+     * once. Nothing counts up, nothing interpolates toward a finish line. */
+    if (landed) ks_impulse(sheet, KC_Y, -26.f);
+
     const int waiting = q.pending + q.card_pending;
     const bool server_quiet = online && q.server_state == UPLOAD_SERVER_UNREACHABLE;
     const bool sending = online && !server_quiet && !q.halted && (waiting > 0 || q.uploading > 0);
     static char l1[64], l2[64];
     l2[0] = 0;
-    if (q.halted) { snprintf(l1, sizeof l1, "%d WAITING  STOPPED", waiting); snprintf(l2, sizeof l2, "SEE STUDIO"); }
+    /* The count is the headline in every state, so the line stays the same
+     * width whatever has gone wrong and never reaches the code. */
+    if (q.halted) { snprintf(l1, sizeof l1, "%d WAITING", waiting); snprintf(l2, sizeof l2, "STOPPED. SEE STUDIO"); }
     else if (sending) { snprintf(l1, sizeof l1, "%d SENDING", waiting + q.uploading); }
     else if (waiting > 0) { snprintf(l1, sizeof l1, "%d WAITING", waiting); snprintf(l2, sizeof l2, "%s", server_quiet ? "KINO ROLL IS NOT ANSWERING" : "SENDS WHEN WIFI RETURNS"); }
     else if (!q.scan_complete) snprintf(l1, sizeof l1, "CHECKING CARD");
@@ -1513,21 +1537,14 @@ static void sync_connection(void) {
     const int ly = NR_Y0 + 4 * NR_H + 18;
     nd_text("link.status", l1, &UT_MB, sending ? C_COBALT : C_INK, (float)rows_x, (float)ly, 0.f, 0.f, 10, false);
     if (l2[0]) nd_text("link.sub", l2, &UT_S, HDR_DIM, (float)rows_x, (float)(ly + 44), 0.f, 0.f, 10, false);
-    if (sending) {
-      /* Four points lit by how far this burst has got, counted from the queue
-       * rather than a clock. Where the pictures are going used to be spelled
-       * out here; the code beside them says it, and says it better. */
-      const int total = q.burst_done + waiting + q.uploading;
-      const int lit = total > 0 ? (q.burst_done * 4) / total : 0;
-      float x = rows_x + ut_w(&UT_MB, l1) + 34.f;
-      const float cy = ly + UT_MB.em * 0.5f;
-      static const char *const TM[4] = {"link.m0", "link.m1", "link.m2", "link.m3"};
-      for (int i = 0; i < 4; i++) {
-        nd_disc(TM[i], x, cy, i < lit ? 6.f : 3.f, i < lit ? C_COBALT : C_FAINT, 10);
-        x += 22.f;
-      }
-      s_kmo_live++; /* the counts move; keep drawing */
-    }
+    /* There used to be four points here lit by how far the burst had got: a
+     * progress bar with the bar taken off. The queue cannot say which
+     * photograph is in flight or how far through it is, so a fraction was
+     * never anything but a shape. The photographs carry it instead - they are
+     * unsettled while the worker works and settle when one lands - and the
+     * only number shown is the one the queue really has, which is how many
+     * are still owed. */
+    if (sending) s_kmo_live++; /* the counts move; keep drawing */
   }
   sync_note(false);
 }

@@ -1556,6 +1556,49 @@ int main(int argc, char **argv) {
   FILM("world_capture_joins_roll", 850); FILM("world_capture_joins_roll", 950);
   FILM("world_capture_joins_roll", 1100); FILM("world_capture_joins_roll", 1350);
 
+  /* -- world_transfer: the queue drains, and the photographs say so --
+   *
+   * No bar and no fraction: the queue cannot name the capture in flight or
+   * say how far through it is, so anything continuous would be a shape rather
+   * than a fact. What is real is that the worker is working - the pile is
+   * unsettled - and that at a particular instant one landed, which the pile
+   * acknowledges once. The number is the count still owed, and it only ever
+   * goes down. Then the radio goes and everything stops moving, because
+   * nothing is moving. */
+  SCENE();
+  g_roll_active = true;
+  snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+  snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+  snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+  g_net_state = NET_IP_READY;
+  g_net_routed = true;
+  memset(&g_queue, 0, sizeof g_queue);
+  g_queue.scan_complete = true;
+  g_queue.server_state = UPLOAD_SERVER_REACHABLE;
+  g_queue.draining = true;
+  g_queue.uploading = 1;
+  g_queue.pending = 4;
+  g_queue.burst_done = 0;
+  go(SCR_CONNECTION, 0);
+  STEP(0);
+  film_t0 = g_preview_clock_us;
+  FILM("world_transfer", 0); FILM("world_transfer", 180);
+  /* One lands. */
+  g_queue.uploaded = 1; g_queue.burst_done = 1; g_queue.pending = 3;
+  g_queue.last_upload_ms = g_preview_clock_us / 1000;
+  FILM("world_transfer", 360); FILM("world_transfer", 430); FILM("world_transfer", 560);
+  /* And another. */
+  g_queue.uploaded = 2; g_queue.burst_done = 2; g_queue.pending = 2;
+  g_queue.last_upload_ms = g_preview_clock_us / 1000 + 200;
+  FILM("world_transfer", 760); FILM("world_transfer", 830); FILM("world_transfer", 980);
+  /* Working, and nothing landing: the pile is restless and says nothing else. */
+  FILM("world_transfer", 1400); FILM("world_transfer", 1900); FILM("world_transfer", 2400);
+  /* The radio goes mid-queue: nothing is moving, so nothing moves. */
+  g_net_state = NET_WIFI_SCANNING;
+  g_queue.draining = false;
+  g_queue.uploading = 0;
+  FILM("world_transfer", 2700); FILM("world_transfer", 2900); FILM("world_transfer", 3200);
+
   /* -- the mode strip -- */
   SCENE();
   go(SCR_GALLERY, 0);

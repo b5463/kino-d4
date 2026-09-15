@@ -269,6 +269,11 @@ static void ks_mod(ks_node_t *n, const kmo_mod_t *m, int64_t now_us, int target_
   }
 }
 
+/** Take every modifier off a node: what set them is no longer the case. */
+static void ks_mod_clear(ks_node_t *n) {
+  for (int i = 0; i < KS_MAX_MODS; i++) n->mod_on[i] = false;
+}
+
 /* ------------------------------------------------------------------ */
 /* Instances                                                           */
 

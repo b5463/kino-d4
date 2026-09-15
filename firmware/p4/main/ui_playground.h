@@ -18,8 +18,6 @@ static const char *const PG_NAME[PG_COUNT] = {
 
 /** Take a node's procedural modifiers off: between scenes, so noise from one
  * does not follow the word into the next. */
-static void ks_mod_clear(ks_node_t *n) { for (int i = 0; i < KS_MAX_MODS; i++) n->mod_on[i] = false; }
-
 /* The picture the image scenes use: whatever the finder has for camera 1. */
 static const uint16_t *pg_picture(void) { return viewfinder_ready() ? viewfinder_tile(1) : NULL; }
 

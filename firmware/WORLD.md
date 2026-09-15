@@ -442,7 +442,18 @@ Priority order:
    object is born from the live views assembled the way the tile will be,
    and the real pixels are swapped under it without a retarget when the
    roll opens: same subject, sharper.
-6. transfer
+6. ~~transfer~~ — **done.** `world_transfer`. The four points lit by
+   `burst_done / total` are gone: they were a progress bar with the bar
+   taken off, and the queue cannot name the capture in flight or say how
+   far through it is, so the fraction was a shape rather than a fact. The
+   photographs carry it instead. Each one is restless on its own seed
+   while the worker is working, so the pile is unsettled rather than
+   sliding about as a piece; the pile takes one impulse at the instant
+   the queue says one landed, and nothing interpolates toward a finish
+   line; a stopped queue steps the photographs back and holds them
+   completely still, because nothing is moving. The only number shown is
+   the one the queue really has, which is how many are still owed, and it
+   only ever goes down.
 7. wake
 8. interruption and rapid navigation
 9. error
