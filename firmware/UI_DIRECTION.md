@@ -1,8 +1,9 @@
 # KINO D4 firmware UI — direction
 
-**What is built.** The next phase is `WORLD.md`: one persistent
-photographic world rather than five screens, a mood layer, and behaviour
-driven by what the four cameras actually see.
+**What is built.** `WORLD.md` is the phase that followed this one and it
+is done bar the hardware: one persistent photographic world rather than
+five screens, a mood layer, and behaviour driven by what the four cameras
+actually see. Where the two documents disagree, WORLD.md is the newer.
 
 Branch `feat/native-ui`. The interface is a continuously running visual
 system that happens to expose camera controls: very little on the screen,
@@ -146,10 +147,19 @@ result lands), `ctx` (a link event during a mode change), `sync`, `sent`,
 ## Performance
 
 `s_ks_perf`: step and render microseconds, worst, nodes drawn, clips
-active, transformed pixels, missed frames (over 16 ms). Shown on INFO and
-through the Twin's `kui_perf`. Stable pacing over peak rate: the loop asks
-for 16 ms while anything is live and 20-60 ms otherwise. On the host the
-clock is virtual, so the times read zero; the pixel counts are real.
+active, pixels written, missed frames (over 16 ms), and how many of those
+pixels went through the inverse mapping rather than the row copy - several
+times the cost each, so `MAPPED` is the figure that says why a frame was
+slow. Shown on INFO and through the Twin's `kui_perf`. Stable pacing over
+peak rate: the loop asks for 16 ms while anything is live and 20-60 ms
+otherwise.
+
+The runtime reads one clock and on the host that clock is a variable the
+harness winds by hand, so the cost figures used to read zero there.
+`KS_PERF_NOW` is the seam: the device's own timer, the wall on the host.
+The preview prints a `[cost]` table per state on every run - good only for
+comparing one state with another and for catching a change that made the
+work several times bigger, which is exactly what it is for.
 
 ## What the interface is now
 
@@ -172,8 +182,13 @@ clock is virtual, so the times read zero; the pixel counts are real.
   change one of: exposure snap, channel settling, smear, wipe, luminance
   pulse, cut, late colour. MONO and the QUAD targets are words.
 - **ROLL.** The grid; pages turn on a spring; a photograph opens from its
-  tile. **LINK.** Facts, the code, and four points counting a burst out;
-  `SENT` with the done cue on the frame they meet. **SETUP.** Rows, plain.
+  tile. **LINK.** With a roll on, the same photographs compress into a
+  column at the left edge, the facts step right and down a size, and the
+  code opens into the room they make; the photographs are restless while
+  the queue is being worked and settle when one lands. There is no progress
+  bar and no fraction: the queue cannot say which capture is in flight.
+  **SETUP.** Rows, plain, hung from a rule the four live views flatten into
+  - the one thing left of the world in the state that strips it away.
   **INFO.** Dense and technical, with the renderer's counters.
 - **Colour** is an event: cobalt while something moves or a link comes up,
   yellow for a capture, red for a real failure; ink on ground after.
@@ -184,5 +199,6 @@ clock is virtual, so the times read zero; the pixel counts are real.
 
 The physical-device pass: LCD response, frame pacing, input latency, the
 two cues through the speaker, and every timing above re-tuned on the panel
-rather than the host's virtual clock. A curve editor beyond `kmo:plot`.
-Localisation, later.
+rather than the host's virtual clock. The numbers to check against are the
+preview's `[cost]` table and INFO's `SCENE`, `WORST`, `MISSED`, `PX` and
+`MAPPED`. A curve editor beyond `kmo:plot`. Localisation, later.
