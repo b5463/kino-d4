@@ -89,16 +89,23 @@ it. A list of eight settings is a list of eight settings.
 
 KINO has two registers and they are told apart by which way round they are.
 
-**Graphite ground — the camera.** Live view, capture, playback, ROLL, LOOK,
-LINK. The photograph is the brightest thing on the panel and everything else
-gets out of its way. Pale type on near-black.
+**Graphite ground — the camera.** Live view, capture, playback, an opened
+photograph, LOOK, LINK. The photograph is the brightest thing on the panel and
+everything else gets out of its way. Pale type on near-black.
 
 **Paper ground — the machine.** SETUP, diagnostics, calibration, card,
 information, confirmations. Dark type on warm off-white, dense, printed, like
 the panel of a piece of equipment. No photograph here, so no reason to be dark.
 
+**Paper ground — the page.** ROLL, and only ROLL. A roll of film is not a
+screenful of controls, it is a set of prints, and a set of prints belongs on
+stock. See §10a.
+
 Crossing between them is a hard cut. That cut is the transition: you are
-either in the camera or in the machine, and you always know which.
+either in the camera, in the machine, or looking at the page — and you always
+know which. Opening one photograph out of ROLL crosses from the page back to
+the camera, which is why an opened photograph is on graphite and fills the
+panel: on the page it was a print among prints, and now it is the picture.
 
 ```
   PAPER   #ECEAE4   warm off-white      machine ground, camera ink
@@ -324,7 +331,7 @@ The set, in the order a user meets them.
    4  capture                 the four marks filling on real arrivals
    5  processing              MAKING IT and ten blocks
    6  playback                the wiggle, looping, full width
-   7  ROLL                    four across, indexed
+   7  ROLL                    a page of prints, on stock
    8  ROLL item               one photograph, its facts
    9  LOOK                    the picture, the looks as a strip
   10  LINK                    the code, the address, who is on
@@ -337,6 +344,48 @@ The set, in the order a user meets them.
   17  camera failure          a cross in the row, and what it means
   18  confirm                 paper, two choices, the destructive one on the right
 ```
+
+### 10a. ROLL is a page
+
+Everything else in this product is a screen. ROLL is a page, and it is
+composed the way a print series is rather than the way a file browser is:
+
+```
+  ┌ 14 ─────────┐                              ┌──────────────┐
+  │ cut by the  │                              │ ┌──────────┐ │
+  └ margin ─────┘                              │ │   Roll   │ │
+   09    ┌────────────────────────────┐        │ ├──────────┤ │
+  wiggle │                            │        │ │ FILES 22 │ │
+  4/4    │   the lead, and it plays   │        │ │ PAGE 2/4 │ │
+         │                            │        │ │  ◄    ►  │ │
+         └────────────────────────────┘        └─┴──────────┴─┘
+                                                  ┌────────┐
+  KINO D4  10% CARD                               └── 10 ──┘
+                                                    ┌─────┐  ← smaller
+                                                    └─ 11 ┘     on purpose
+```
+
+What is taken from the woodblock print: **asymmetry** — nothing is centred
+and no two blocks are the same size, so the eye is given an order to read in
+rather than a field to scan. **Cropping** — the neighbour runs off the left
+edge, which says the roll continues past the page better than an arrow would.
+**Layered planes** rather than a grid. **Ma** — the empty corner is what makes
+the rest legible and filling it is the mistake. **The cartouche** — a ruled
+title panel in a corner instead of a masthead, and since it is the only piece
+of furniture on the page it is also the only control: the page turns along its
+bottom edge. **The seal** — pressed two thirds onto a print the camera has
+been told to keep and one third onto the stock, the way a hand does it.
+
+The seal's carved mark is the four. That is the part that makes this KINO's
+page and not borrowed japonisme, and it is why none of the costume comes with
+it: no waves, no blossoms, no brushwork, no paper texture, no registration
+offset. Those would be the "fake CRT" move under a different flag.
+
+The lead plays, because §0 does not have an exception for thumbnails. Tapping
+another print makes it the lead — which is what starts it playing — and
+tapping the lead opens it. A roll is browsed by looking.
+
+---
 
 Sixteen of them are the same handful of objects rearranged: the four marks,
 the grid, the blocks, the two grounds, five type sizes. That is the point. A

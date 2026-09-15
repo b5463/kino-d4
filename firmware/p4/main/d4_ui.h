@@ -491,115 +491,207 @@ static void d4_head(const char *name, const char *right, int page, int pages) {
 }
 
 /* ------------------------------------------------------------------ */
-/* ROLL: four across, indexed, and mundane about it                    */
+/* ROLL: a page of prints, not a grid of thumbnails                    */
 
-#define D4_TH_W D_COL_W
-#define D4_TH_H (D4_TH_W * 3 / 4)
+#define D4_PG_M 34
+
+/** A ruled panel, double-lined on the inside, the way a title cartouche is. */
+static void d4_cartouche(int x, int y, int w, int h) {
+  d_box(x, y, w, h, d_fg);
+  d_box(x + 4, y + 4, w - 8, h - 8, d_toward(d_fg, d_bg, 130));
+}
+
+/* The cartouche sits upper right and the page is turned along its bottom
+ * edge, so the one piece of furniture on the page is also the one control. */
+#define D4_CT_W 150
+#define D4_CT_X (UI_W - D4_PG_M - D4_CT_W)
+#define D4_CT_Y 20
+#define D4_CT_H 148
+#define D4_CT_TURN_Y (D4_CT_Y + D4_CT_H - 38)
 
 /*
- * ROLL, as a page rather than a grid.
+ * Where the page puts its photographs.
  *
- * A roll of film is a catalogue of things you made, and a magazine knows how
- * to lay a catalogue out: one item leads, the rest follow smaller, each is
- * numbered, and each carries a caption line in small type underneath rather
- * than a chrome strip over it. Nothing is edge to edge and nothing is the
- * same size as everything else, because a page where every item is equal is a
- * contact sheet, and a contact sheet is a thing you scan rather than read.
+ * In one place, because the drawing and the finger have to agree about it.
+ * The first cut of this screen had them disagree - the composition changed to
+ * this one and the hit map was still the four-across grid it replaced - so
+ * every tap landed on the wrong photograph or on nothing at all.
  *
- * The lead is the one under the cursor, so moving the cursor re-lays the page
- * - which is the point: the thing you are looking at is the thing that is
- * big, and it is the only one playing.
+ *   [0]      the lead: large, low, off-centre, and playing
+ *   [1]      the one cut by the left margin, above it
+ *   [2] [3]  the small stack under the cartouche
+ *
+ * A rect whose `slot` is negative is not on this page.
  */
-#define D4_PG_M 34 /* the page margin: generous, and the same on both sides */
+typedef struct {
+  int16_t x, y, w, h;
+  int8_t slot;
+} d4_rect_t;
+#define D4_ROLL_N 4
 
-static void d4_roll_caption(int x, int y, const gallery_item_t *it, int idx, bool lead) {
-  /* Index, then the facts, in the order a magazine gives them: what it is,
-   * when, and anything unusual about it. */
-  static char n[8];
-  snprintf(n, sizeof n, "%02d", idx);
-  int px = df_draw(x, y, n, 1, d_fg) + 10;
-  if (lead) {
-    d_text(&UT_RS, px, y - 4, "09.15", D_DIM);
-    px += ut_w(&UT_RS, "09.15") + 10;
-    d_text(&UT_RS, px, y - 4, "18:42", D_DIM);
-    px += ut_w(&UT_RS, "18:42") + 14;
-  }
-  if (it->frames < 4) {
-    static char fr[12];
-    snprintf(fr, sizeof fr, "%d/4", it->frames);
-    px = df_draw(px, y, fr, 1, D_YELLOW) + 6;
-    if (lead) d_label(px, y + 4, "FRAMES", D_DIM);
-  } else if (lead) {
-    d_label(px, y + 4, "WIGGLE", D_DIM);
+static void d4_roll_layout(d4_rect_t out[D4_ROLL_N]) {
+  const gallery_item_t *slots = gallery_slots();
+  const int sel = d4.sel < GALLERY_PAGE ? d4.sel : 0;
+  for (int i = 0; i < D4_ROLL_N; i++) out[i] = (d4_rect_t){0, 0, 0, 0, -1};
+  /* The left margin is as wide as the inscription set in it - "wiggle" at
+   * UT_RS is the longest thing that goes there - and the block starts after
+   * it. The first cut had the block at +74 and the word ran under it. */
+  out[0] = (d4_rect_t){D4_PG_M + 90, 148, 400, 268, (int8_t)sel};
+
+  /* The neighbour that runs off the edge: the one before the lead, or the
+   * last on the page when the lead is the first. */
+  int prev = -1;
+  for (int i = sel - 1; i >= 0; i--)
+    if (slots[i].state != TILE_EMPTY) { prev = i; break; }
+  if (prev < 0)
+    for (int i = GALLERY_PAGE - 1; i > sel; i--)
+      if (slots[i].state != TILE_EMPTY) { prev = i; break; }
+  if (prev >= 0) out[1] = (d4_rect_t){-62, 22, 210, 118, (int8_t)prev};
+
+  /* Two more, right-aligned on the cartouche's edge and not the same size as
+   * each other: a print series repeats its margin, never its block. */
+  static const int16_t SW[2] = {150, 118}, SH[2] = {100, 78}, SY[2] = {186, 330};
+  int k = 0;
+  for (int i = 0; i < GALLERY_PAGE && k < 2; i++) {
+    if (i == sel || i == prev || slots[i].state == TILE_EMPTY) continue;
+    out[2 + k] = (d4_rect_t){(int16_t)(UI_W - D4_PG_M - SW[k]), SY[k], SW[k], SH[k], (int8_t)i};
+    k++;
   }
 }
 
+/**
+ * The seal, on the corner of a print the camera has been told to keep.
+ *
+ * Two thirds on the paper stock and one third off the block, the way a hand
+ * presses one: a seal squared up inside the picture is a watermark, and a
+ * watermark is the opposite of a mark someone made.
+ */
+static void d4_seal_on(const d4_rect_t *r, int side) {
+  d_seal(r->x + r->w - side * 2 / 3, r->y + r->h - side * 2 / 3, side, (uint32_t)r->slot * 7919u + 13u);
+}
+
+/** One photograph into a rect - `px` when the caller has a frame, the tile
+ * otherwise - or the flat block that stands in for one not decoded yet. */
+static void d4_roll_print(const gallery_item_t *it, const d4_rect_t *r, const uint16_t *px) {
+  if (px == NULL) px = it->pixels;
+  if (px) {
+    img_blit_tf(px, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f, (float)(r->x + r->w / 2),
+                (float)(r->y + r->h / 2), (float)r->w, (float)r->h, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0,
+                0.f);
+    return;
+  }
+  const int x = r->x < 0 ? 0 : r->x;
+  fill(x, r->y, r->x + r->w - x, r->h, d_toward(d_fg, d_bg, 200));
+}
+
+/** The number printed beside a photograph: its place in the whole roll. */
+static const char *d4_roll_index(int slot) {
+  static char idx[8];
+  snprintf(idx, sizeof idx, "%02d", gallery_page() * GALLERY_PAGE + slot + 1);
+  return idx;
+}
+
+/*
+ * ROLL, composed the way a print series is.
+ *
+ * A roll of film is a set of prints, and the woodblock tradition knows how to
+ * lay a set of prints out - which is not as a grid. What is taken from it:
+ *
+ *   ASYMMETRY. Nothing is centred and nothing is the same size as anything
+ *   else. The eye is given an order to read in rather than a field to scan.
+ *
+ *   CROPPING. A print lets its subject run off the edge of the block. Here
+ *   the second photograph is cut by the left margin, which says the roll
+ *   continues past the page far better than an arrow would.
+ *
+ *   MA. The empty corner is not a gap waiting to be filled. It is what makes
+ *   the rest legible, and filling it is the mistake.
+ *
+ *   THE CARTOUCHE. A title panel in a corner, ruled, rather than a masthead
+ *   across the top.
+ *
+ *   THE SEAL. Stamped on a photograph the camera has been told to keep, with
+ *   the four carved out of it - which is the part that makes this KINO's page
+ *   and not a borrowed style.
+ *
+ * What is deliberately not taken: waves, blossoms, brushwork, paper texture,
+ * registration offset. Those are a costume. The composition is the idea.
+ */
 static void d4_roll(void) {
   d_ground(D_PAPER);
   const gallery_item_t *slots = gallery_slots();
-  const int sel = d4.sel < GALLERY_PAGE ? d4.sel : 0;
 
-  /* The masthead: the name in the mincho, the count and the page in the
-   * gothic, on one hairline. A magazine does not put its running head in a
-   * black bar. */
-  const int top = 26;
-  d_text(&UT_RL, D4_PG_M, top - 8, "Roll", d_fg);
-  static char files[24];
+  /* The cartouche: the name, the count, the page, and the turn. */
+  d4_cartouche(D4_CT_X, D4_CT_Y, D4_CT_W, D4_CT_H);
+  d_text_c(&UT_RL, D4_CT_X + D4_CT_W / 2, D4_CT_Y + 6, "Roll", d_fg);
+  fill(D4_CT_X + 20, D4_CT_Y + 60, D4_CT_W - 40, 1, d_toward(d_fg, d_bg, 140));
+  static char files[16], pg[16];
   snprintf(files, sizeof files, "%d", gallery_total());
-  int rx = UI_W - D4_PG_M;
-  static char pg[12];
   snprintf(pg, sizeof pg, "%d/%d", gallery_page() + 1, gallery_pages());
-  df_draw_r(rx, top + 6, pg, 1, d_fg);
-  rx -= df_w(pg, 1) + 16;
-  d_label_r(rx, top + 12, "PAGE", D_DIM);
-  rx -= d_label_w("PAGE") + 24;
-  d_label_r(rx, top + 12, "FILES", D_DIM);
-  rx -= d_label_w("FILES") + 8;
-  df_draw_r(rx, top + 6, files, 1, d_fg);
-  fill(D4_PG_M, top + 44, UI_W - 2 * D4_PG_M, 1, d_toward(d_fg, d_bg, 120));
+  /* Label over value, stacked: a cartouche is read down, not across, and it
+   * keeps the drawn numerals off the same line as the set type. */
+  d_label(D4_CT_X + 20, D4_CT_Y + 70, "FILES", D_DIM);
+  df_draw_r(D4_CT_X + D4_CT_W - 20, D4_CT_Y + 66, files, 1, d_fg);
+  d_label(D4_CT_X + 20, D4_CT_Y + 96, "PAGE", D_DIM);
+  df_draw_r(D4_CT_X + D4_CT_W - 20, D4_CT_Y + 92, pg, 1, d_fg);
+  /* The turn. Faint rather than absent where there is nothing that way: a
+   * control that vanishes is one the user has to find again. */
+  fill(D4_CT_X + 20, D4_CT_TURN_Y, D4_CT_W - 40, 1, d_toward(d_fg, d_bg, 190));
+  d_arrow(D4_CT_X + 24, D4_CT_TURN_Y + 12, 2, gallery_page() > 0 ? D_DIM : D_FAINT);
+  d_arrow(D4_CT_X + D4_CT_W - 29, D4_CT_TURN_Y + 12, 0,
+          gallery_page() + 1 < gallery_pages() ? D_DIM : D_FAINT);
 
-  /* The lead, left, large. It plays. */
-  const int ly = top + 68, lw = 396, lh = 264;
-  const gallery_item_t *it = &slots[sel];
-  {
-    const uint16_t *px = it->pixels;
-    const uint16_t *f = gallery_frame_pixels(d4_wiggle_lens(NULL, (uint8_t[8]){0}));
-    if (f) px = f;
-    if (px) {
-      img_blit_tf(px, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f, (float)(D4_PG_M + lw / 2),
-                  (float)(ly + lh / 2), (float)lw, (float)lh, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
-    } else {
-      fill(D4_PG_M, ly, lw, lh, d_toward(d_fg, d_bg, 200));
+  if (gallery_total() <= 0) {
+    /* An empty card says so in the page's own voice and does not draw an
+     * empty grid to prove it. */
+    d_text(&UT_RM, D4_PG_M, 210, gallery_loading() ? "Reading the card" : "Nothing on the card", D_DIM);
+  } else {
+    d4_rect_t r[D4_ROLL_N];
+    d4_roll_layout(r);
+
+    /* The lead. It plays: it is the one under the cursor, and nothing in
+     * this product shows a photograph standing still. */
+    {
+      const gallery_item_t *it = &slots[r[0].slot];
+      d4_roll_print(it, &r[0], gallery_frame_pixels(d4_wiggle_lens(NULL, (uint8_t[8]){0})));
+      /* The inscription runs up the left margin, outside the block. Its
+       * facts are the ones the camera actually holds - the place in the
+       * roll, what was asked for, how many frames came back. There is no
+       * clock in this body, so there is no date here; inventing a plausible
+       * one is the mistake clock.h exists to refuse. */
+      df_draw(D4_PG_M, r[0].y + 4, d4_roll_index(r[0].slot), 2, d_fg);
+      if (it->mode[0]) d_text(&UT_RS, D4_PG_M, r[0].y + 52, it->mode, D_DIM);
+      static char fr[8];
+      snprintf(fr, sizeof fr, "%d/4", it->frames);
+      df_draw(D4_PG_M, r[0].y + 88, fr, 1, it->frames < 4 ? D_YELLOW : D_FAINT);
+      /* The seal is pressed half onto the print and half onto the paper, the
+       * way a hand does it. Big enough that the four in it can be read. */
+      if (it->favorite) d4_seal_on(&r[0], 44);
     }
-    d4_roll_caption(D4_PG_M, ly + lh + 12, it, gallery_page() * GALLERY_PAGE + sel + 1, true);
+
+    /* The other plane: the one cut by the margin, and the small stack. */
+    for (int i = 1; i < D4_ROLL_N; i++) {
+      if (r[i].slot < 0) continue;
+      const gallery_item_t *it = &slots[r[i].slot];
+      d4_roll_print(it, &r[i], NULL);
+      /* The cut one is numbered at its top corner, clear of the seal; the
+       * stack under the cartouche is numbered beneath, as a plate is. */
+      if (i == 1) df_draw(r[i].x + r[i].w + 12, r[i].y + 6, d4_roll_index(r[i].slot), 1, D_DIM);
+      else df_draw(r[i].x, r[i].y + r[i].h + 8, d4_roll_index(r[i].slot), 1, D_DIM);
+      if (it->favorite) d4_seal_on(&r[i], 30);
+    }
   }
 
-  /* The rest, right, in two columns of small ones, still. */
-  const int sx = D4_PG_M + lw + 40, sw = (UI_W - D4_PG_M - sx - 24) / 2, sh = sw * 2 / 3;
-  int k = 0;
-  for (int i = 0; i < GALLERY_PAGE && k < 4; i++) {
-    if (i == sel || slots[i].state == TILE_EMPTY) continue;
-    const int cx = sx + (k % 2) * (sw + 24), cy = ly + (k / 2) * (sh + 44);
-    if (slots[i].state == TILE_READY && slots[i].pixels) {
-      img_blit_tf(slots[i].pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f, (float)(cx + sw / 2),
-                  (float)(cy + sh / 2), (float)sw, (float)sh, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
-    } else {
-      fill(cx, cy, sw, sh, d_toward(d_fg, d_bg, 200));
-    }
-    d4_roll_caption(cx, cy + sh + 10, &slots[i], gallery_page() * GALLERY_PAGE + i + 1, false);
-    k++;
-  }
-
-  /* The foot: a folio, small, in the corner, the way a page is numbered. */
-  d_text(&UT_RS, D4_PG_M, UI_H - 40, "KINO D4", D_FAINT);
-  static char card[24];
+  /* The foot, left only. The right of the page is the ma and stays empty. */
+  d_text(&UT_RS, D4_PG_M, UI_H - 38, "KINO D4", D_FAINT);
   storage_status_t sd;
   storage_get_status(&sd);
   const int pct = sd.capacity_bytes ? (int)(100 - 100 * sd.free_bytes / sd.capacity_bytes) : 0;
+  static char card[16];
   snprintf(card, sizeof card, "%d%%", pct);
-  int fx = UI_W - D4_PG_M - df_w(card, 1);
-  df_draw(fx, UI_H - 42, card, 1, D_DIM);
-  d_label_r(fx - 10, UI_H - 36, "CARD", D_FAINT);
+  int fx = D4_PG_M + ut_w(&UT_RS, "KINO D4") + 28;
+  fx = df_draw(fx, UI_H - 40, card, 1, D_FAINT) + 6;
+  d_label(fx, UI_H - 34, "CARD", D_FAINT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -654,8 +746,10 @@ static void d4_item(void) {
   snprintf(fr, sizeof fr, "%d/4", it->frames);
   x = df_draw(x, fy + 12, fr, 1, it->frames < 4 ? D_YELLOW : D_PAPER) + 20;
   if (it->favorite) fill(x, fy + 14, 14, 14, D_YELLOW);
-  df_draw_r(UI_W - D_MARGIN, fy + 12, "09.15", 1, d_toward(D_PAPER, D_GRAPH, 120));
-  d_label_r(UI_W - D_MARGIN - df_w("09.15", 1) - 20, fy + 18, it->label[0] ? it->label : it->id,
+  /* The name of the file, and nothing else. There is no per-capture time in
+   * front of this screen, and a camera that prints a plausible date it does
+   * not have is the failure clock.h is written to refuse. */
+  d_label_r(UI_W - D_MARGIN, fy + 18, it->label[0] ? it->label : it->id,
             d_toward(D_PAPER, D_GRAPH, 120));
 }
 
@@ -861,10 +955,28 @@ static void d4_setup(void) {
       {"IMAGE SIZE", "3M"},   {"FLASH", "AUTO"},      {"WIGGLE SPEED", "2"}, {"LOOK", "NORMAL"},
       {"DATE STAMP", "OFF"},  {"SOUND", "ON"},        {"WLAN", "-----"},     {"FORMAT CARD", NULL},
   };
-  static const d4_row_t P1[8] = {
+  /*
+   * The clock, as it actually is. This body has no RTC, so until something
+   * tells it the time the two rows say so rather than showing a number -
+   * `clock_source()` is the whole point of that header and a settings screen
+   * that ignores it teaches the user to trust a date that is uptime.
+   */
+  static char dstr[12], tstr[12];
+  char iso[40];
+  clock_iso8601(iso, sizeof iso);
+  if (clock_source() == CLOCK_UNSET || strlen(iso) < 16) {
+    snprintf(dstr, sizeof dstr, "NOT SET");
+    snprintf(tstr, sizeof tstr, "NOT SET");
+  } else {
+    snprintf(dstr, sizeof dstr, "%.2s.%.2s", iso + 5, iso + 8);
+    snprintf(tstr, sizeof tstr, "%.5s", iso + 11);
+  }
+  static d4_row_t P1[8] = {
       {"CAMERAS", NULL},      {"CALIBRATE", NULL},    {"SCREEN", "3"},       {"SLEEP", "2 MIN"},
-      {"DATE", "09.15"},      {"TIME", "18:42"},      {"USB", "MASS"},       {"INFORMATION", NULL},
+      {"DATE", NULL},         {"TIME", NULL},         {"USB", "MASS"},       {"INFORMATION", NULL},
   };
+  P1[4].value = dstr;
+  P1[5].value = tstr;
   (void)shots;
   (void)look;
   d4_rows(d4.page == 0 ? P0 : P1, 8, d4.sel);
@@ -1168,21 +1280,26 @@ static void d4_button(int id, bool long_press) {
     return;
   }
   if (id != BTN_FN) return;
-  if (long_press) { d4_home_style = D4_HOME_SPREAD; return; } /* held: the spread check */
+  if (long_press) {
+    /* Held: the spread check, and held again to put it away. The buttons
+     * task reports presses and not releases, so there is no key-up to end it
+     * on - which is why the first cut of this left the camera stuck in the
+     * check with no way out of it. */
+    d4_home_style = d4_home_style == D4_HOME_SPREAD ? D4_HOME_WIGGLE : D4_HOME_SPREAD;
+    return;
+  }
   if (d4.screen == D4_LIVE) { d4.screen = D4_MENU; d4.sel = 0; }
   else if (d4.screen == D4_MENU) d4_home_go();
   else d4_home_go();
 }
 
-static void d4_button_up(int id) {
-  if (id == BTN_FN) d4_home_style = D4_HOME_WIGGLE; /* the check ends with the press */
-}
-
 /** A tap, at a place on the panel. Returns true when it meant something. */
 static bool d4_tap(int x, int y) {
-  /* The top band's left end is BACK on every screen that has one, which is
-   * every screen except the camera. */
-  if (d4.screen != D4_LIVE && d4.screen != D4_MENU && y < D_BAND_T && x < 200) {
+  /* The top band's left end is BACK on every screen that has one. The camera
+   * has no band, and ROLL is a page rather than a screen - it has a
+   * photograph up there instead, and an invisible control over a photograph
+   * is worse than none. Both leave by the FN key. */
+  if (d4.screen != D4_LIVE && d4.screen != D4_MENU && d4.screen != D4_ROLL && y < D_BAND_T && x < 200) {
     if (d4.screen == D4_ITEM) { d4.screen = D4_ROLL; return true; }
     d4_home_go();
     return true;
@@ -1206,16 +1323,28 @@ static bool d4_tap(int x, int y) {
       return true;
     }
     case D4_ROLL: {
-      if (y < D_BAND_T || y > UI_H - D_BAND_B) return false;
-      const int col = (x - D_MARGIN) / (D_COL_W + D_GUT);
-      const int row = (y - D_BAND_T - 20) / (D4_TH_H + 46);
-      const int i = row * 4 + col;
-      if (col < 0 || col > 3 || row < 0 || row > 1 || i >= GALLERY_PAGE) return false;
-      /* First tap selects - which is what starts that one playing - and the
-       * second opens it. A roll is browsed by looking, not by opening. */
-      if (d4.sel == i) d4.screen = D4_ITEM;
-      else d4.sel = i;
-      return true;
+      /* The turn, along the bottom of the cartouche: the left half goes
+       * back, the right half goes on. gallery_turn() stops at the ends
+       * rather than wrapping, so the arrows tell the truth. */
+      if (x >= D4_CT_X && x < D4_CT_X + D4_CT_W && y >= D4_CT_TURN_Y && y < D4_CT_Y + D4_CT_H) {
+        gallery_turn(x < D4_CT_X + D4_CT_W / 2 ? -1 : 1);
+        d4.sel = 0;
+        return true;
+      }
+      /* The photographs, from the same layout that drew them. */
+      d4_rect_t r[D4_ROLL_N];
+      d4_roll_layout(r);
+      for (int i = 0; i < D4_ROLL_N; i++) {
+        if (r[i].slot < 0) continue;
+        if (x < r[i].x || x >= r[i].x + r[i].w || y < r[i].y || y >= r[i].y + r[i].h) continue;
+        /* A tap on one of the others makes it the lead - which is what
+         * starts it playing - and a tap on the lead opens it. A roll is
+         * browsed by looking, not by opening. */
+        if (r[i].slot == d4.sel) d4.screen = D4_ITEM;
+        else d4.sel = r[i].slot;
+        return true;
+      }
+      return false;
     }
     case D4_LOOK: {
       const int n = kdp_recipes_count();

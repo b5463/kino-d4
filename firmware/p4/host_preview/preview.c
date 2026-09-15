@@ -24,6 +24,7 @@
 
 #include "buttons.h"
 #include "cam_link.h"
+#include "clock.h"
 #include "capture.h"
 #include "gallery.h"
 #include "gfx.h"
@@ -421,6 +422,13 @@ static capture_report_t g_report;
 
 static int g_local_hour = 21;
 int clock_local_hour(void) { return g_local_hour; }
+/* The preview stands in for a body that has been plugged into Studio, so its
+ * clock has a source and the machine page can show a date. `g_clock_source`
+ * is here so a shot can ask for the other state - the one a camera out of the
+ * box is in, where the rows say NOT SET rather than a plausible number. */
+static clock_source_t g_clock_source = CLOCK_HOST;
+clock_source_t clock_source(void) { return g_clock_source; }
+void clock_iso8601(char *out, size_t cap) { snprintf(out, cap, "2026-09-15T18:42:11+02:00"); }
 static uint32_t g_asked_mask = 0xf, g_frames_in;
 uint32_t capture_asked_cams(void) { return g_asked_mask; }
 uint32_t capture_frames_in(void) { return g_frames_in; }

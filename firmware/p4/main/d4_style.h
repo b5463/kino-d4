@@ -41,6 +41,17 @@
 #define D_YELLOW RGB(0xD8, 0xA5, 0x2B) /* ochre: capture, a photographic event */
 #define D_RED RGB(0xA8, 0x3A, 0x2E)    /* faded red: a real error, a destruction */
 
+/*
+ * Vermilion, and why it is not the red above.
+ *
+ * A seal is a mark, not a warning. It says a thing was made, approved, sent -
+ * it never says something is wrong, and it is always the same shape in the
+ * same place, which is what stops it reading as an alarm. The error red is
+ * darker and duller and only ever appears on words. Shu-iro as a printed ink,
+ * so it sits on the paper rather than glowing off it.
+ */
+#define D_VERMILION RGB(0xC9, 0x4A, 0x2C)
+
 /* Secondary type and rules, as blends toward whichever ground is under them.
  * Computed rather than tabulated so the same call works on both grounds. */
 static inline uint16_t d_toward(uint16_t ink, uint16_t ground, int k256) {
@@ -236,6 +247,36 @@ static void d_blocks(int x, int y, int done, int total, uint16_t ink) {
     if (i < lit) fill(bx, y, D_BLOCK_W, D_BLOCK_H, ink);
     else d_box(bx, y, D_BLOCK_W, D_BLOCK_H, d_toward(ink, d_bg, 130));
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* The seal                                                            */
+/*
+ * A hanko: a vermilion square with a mark carved out of it, stamped on a
+ * photograph the camera has done something with. It is the one ornamental
+ * object in this interface and it earns its place by not being ornamental -
+ * what is carved into it is the four, so the mark that says "this is one of
+ * mine" is the same sentence the rest of the camera speaks.
+ *
+ * Stamped, never drawn precisely: a seal is pressed by hand and the edge of
+ * the ink is not a rectangle. The nicks are deterministic per photograph, so
+ * one file's seal is always the same seal.
+ */
+static void d_seal(int x, int y, int side, uint32_t seed) {
+  fill(x, y, side, side, D_VERMILION);
+  /* The ink does not reach every corner. */
+  for (int i = 0; i < 4; i++) {
+    const uint32_t h = (seed * 2654435761u + i * 40503u);
+    const int n = 2 + (int)((h >> 5) & 3);
+    const int cx = (i & 1) ? x + side - n : x;
+    const int cy = (i & 2) ? y + side - n : y;
+    fill(cx, cy, n, n, d_bg);
+  }
+  /* The four, knocked out: two over two, the way a small seal is carved. */
+  const int m = side / 5, g = side / 9;
+  const int x0 = x + (side - 2 * m - g) / 2, y0 = y + (side - 2 * m - g) / 2;
+  for (int i = 0; i < 4; i++)
+    fill(x0 + (i % 2) * (m + g), y0 + (i / 2) * (m + g), m, m, d_bg);
 }
 
 /* ------------------------------------------------------------------ */

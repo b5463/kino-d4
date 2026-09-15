@@ -45,6 +45,7 @@
 #include "buttons.h"
 #include "cam_link.h"
 #include "capture.h"
+#include "clock.h"
 #include "display.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -552,6 +553,12 @@ bool capture_request(const char *source) { return js_capture_request(source ? so
 static int g_local_hour = -1;
 int clock_local_hour(void) { return g_local_hour; }
 KUI_EXPORT("kui_set_local_hour") void kui_set_local_hour(int hour) { g_local_hour = hour; }
+/* Nothing has told this body what day it is. The page knows the hour and
+ * passes it in for the behaviours that care about evening, but there is no
+ * host clock behind the Twin, so the camera reports exactly that - which is
+ * the state a body is in until Studio sets it. */
+clock_source_t clock_source(void) { return CLOCK_UNSET; }
+void clock_iso8601(char *out, size_t cap) { snprintf(out, cap, "1970-01-01T00:00:00+00:00"); }
 
 static uint32_t g_asked_mask, g_frames_in;
 uint32_t capture_asked_cams(void) { return g_asked_mask; }
