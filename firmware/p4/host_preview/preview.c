@@ -186,10 +186,9 @@ static const struct {
   const char *id;
   const char *name;
 } FAKE_LOOKS[] = {
-    {"party-neg", "Party Neg"}, {"chrome", "Chrome"},         {"superia", "Superia"},
-    {"vivid", "Vivid"},         {"mono", "Mono"},             {"motion", "Motion"},
-    {"flash-digi", "Flash Digi"}, {"warm-2007", "Warm 2007"}, {"cold-flash", "Cold Flash"},
-    {"disposable", "Disposable"}, {"raw-digi", "Raw Digi"},
+    {"normal", "NORMAL"},   {"flash", "FLASH"},       {"cheap", "CHEAP"},
+    {"blue", "BLUE"},       {"night-bus", "NIGHT BUS"}, {"morning", "MORNING"},
+    {"bad-ccd", "BAD CCD"}, {"2003", "2003"},         {"bw", "B/W"},
 };
 
 int kdp_recipes_count(void) { return (int)(sizeof FAKE_LOOKS / sizeof FAKE_LOOKS[0]); }
@@ -811,6 +810,7 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
  * the mount failure when it is not, and those are different layouts. */
 static bool g_card_mounted = true;
 
+static uint64_t g_card_free = 30648041472ULL;
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
   if (!g_card_mounted) {
@@ -825,7 +825,7 @@ void storage_get_status(storage_status_t *out) {
   out->mounted = true;
   out->filesystem = "FAT";
   out->capacity_bytes = 31914983424ULL;
-  out->free_bytes = 30648041472ULL;
+  out->free_bytes = g_card_free;
   out->write_test = "pass";
 }
 
@@ -2333,6 +2333,139 @@ int main(int argc, char **argv) {
     shot("mute_capture");
     g_stage = CAPTURE_IDLE;
     g_mute_words = 0;
+  }
+
+  /* ---- KINO D4: the interface, screen by screen ----
+   *
+   * The redesign (firmware/D4_UI.md). Drawn by the same functions the camera
+   * will call, from the same device state, at the panel's own size - these
+   * are the interface rather than pictures of it. */
+  {
+    memset(&d4, 0, sizeof d4);
+    g_preview_clock_us += 2000000;
+
+    /* 1 boot: the four coming up, then READY. */
+    d4.boot_us = g_preview_clock_us;
+    g_vf_dead = 0xF;
+    d4.screen = D4_BOOT;
+    d4_draw(); shot("d4_01_boot_cold");
+    g_preview_clock_us += 300000;
+    g_vf_dead = 0x6;
+    d4_draw(); shot("d4_02_boot_half");
+    g_preview_clock_us += 400000;
+    g_vf_dead = 0x0;
+    d4_draw(); shot("d4_03_boot_ready");
+
+    /* 2 live view. */
+    d4.screen = D4_LIVE;
+    d4_draw(); shot("d4_04_live");
+
+    /* 3-6 the capture, phase by phase. */
+    d4.cap = D4_CAP_SHUTTER;
+    d4_draw(); shot("d4_05_shutter");
+    d4.cap = D4_CAP_CATCH;
+    g_stage = CAPTURE_READING;
+    g_frames_in = 1;
+    d4_draw(); shot("d4_06_catch_1");
+    g_frames_in = 1 | 4;
+    d4_draw(); shot("d4_07_catch_3");
+    g_frames_in = 15;
+    d4_draw(); shot("d4_08_catch_4");
+    memset(&g_report, 0, sizeof g_report);
+    g_report.ok = true; g_report.stored = 2; g_report.online = 4;
+    d4.cap = D4_CAP_MAKE;
+    d4_draw(); shot("d4_09_making");
+    d4.cap = D4_CAP_PLAY;
+    for (int f = 0; f < 4; f++) { d4.wiggle = f; d4_draw(); char n[32]; snprintf(n, sizeof n, "d4_10_play_%d", f + 1); shot(n); }
+    d4.cap = D4_CAP_NONE;
+    g_stage = CAPTURE_IDLE;
+
+    /* the one dry word, and the menu. */
+    d4.word = "GOOD.";
+    d4.word_us = g_preview_clock_us;
+    d4_draw(); shot("d4_11_word");
+    d4.word = NULL;
+    d4.screen = D4_MENU;
+    d4.sel = 1;
+    d4_draw(); shot("d4_12_menu");
+    /* 7-8 the roll, and one out of it. */
+    d4.screen = D4_ROLL;
+    d4.sel = 5;
+    d4_draw(); shot("d4_13_roll");
+    d4.screen = D4_ITEM;
+    d4.sel = 2;
+    d4_draw(); shot("d4_14_item");
+
+    /* 9 looks. */
+    d4.screen = D4_LOOK;
+    d4.sel = 4;
+    d4_draw(); shot("d4_15_look");
+
+    /* 10-11 link, then a transfer running. */
+    g_roll_active = true;
+    snprintf(g_roll.guest_url, sizeof g_roll.guest_url, "https://kino.acronym.sk/r/K7M2QP");
+    snprintf(g_roll.slug, sizeof g_roll.slug, "K7M2QP");
+    snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+    g_net_state = NET_IP_READY;
+    g_net_routed = true;
+    memset(&g_queue, 0, sizeof g_queue);
+    g_queue.scan_complete = true;
+    g_queue.server_state = UPLOAD_SERVER_REACHABLE;
+    g_queue.uploaded = 12;
+    d4.screen = D4_LINK;
+    d4_draw(); shot("d4_16_link");
+    g_queue.draining = true;
+    g_queue.uploading = 1;
+    g_queue.pending = 9;
+    g_queue.burst_done = 12;
+    d4.screen = D4_TRANSFER;
+    d4_draw(); shot("d4_17_transfer");
+    g_roll_active = false;
+
+    /* 12 setup, both pages. */
+    d4.screen = D4_SETUP;
+    d4.page = 0;
+    d4.sel = 3;
+    d4_draw(); shot("d4_18_setup");
+    d4.page = 1;
+    d4.sel = 0;
+    d4_draw(); shot("d4_19_setup_b");
+
+    /* 13-14 the cameras, and bringing them into line. */
+    d4.page = 0;
+    d4.screen = D4_CAMERAS;
+    d4_draw(); shot("d4_20_cameras");
+    g_vf_dead = 0x2;
+    d4_draw(); shot("d4_21_cameras_warming");
+    g_vf_dead = 0x0;
+    d4.screen = D4_CAL;
+    d4.sel = 2;
+    d4_draw(); shot("d4_22_calibrate");
+
+    /* 15-17 the states that interrupt. */
+    d4.screen = D4_LIVE;
+    d4.flash_pct = 62;
+    d4_draw(); shot("d4_23_flash_charging");
+    d4.flash_pct = 0;
+    g_card_free = 380ull * 1024 * 1024;
+    d4.screen = D4_CARD;
+    d4_draw(); shot("d4_24_card_low");
+    g_card_free = 30648041472ULL;
+    g_vf_dead = 0x4;
+    d4.screen = D4_FAULT;
+    d4_draw(); shot("d4_25_camera_failure");
+    g_vf_dead = 0x0;
+
+    /* 18 the destructive one. */
+    d4.screen = D4_CONFIRM;
+    d4.confirm_q = "DELETE 27 FILES";
+    d4.confirm_yes = "DELETE";
+    d4.sel = 0;
+    d4_draw(); shot("d4_26_confirm");
+    d4.sel = 1;
+    d4_draw(); shot("d4_27_confirm_yes");
+    d4.confirm_q = NULL;
+    d4.screen = D4_LIVE;
   }
 
   /* ---- the playground: every capability, filmed ---- */

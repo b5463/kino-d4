@@ -53,8 +53,14 @@ const FILES = {
   bold: { path: 'fonts/ttf/BIZUDPGothic-Bold.ttf', sha256: '30eba52fc837e8b62c97d4b82e6706583149fb7294e3712dd71a655eaea80a90' },
 };
 
+/* XS is the units, indexes and metadata a piece of equipment prints next to
+ * its numbers; SB is a value or a selection at body size. Both exist because
+ * the interface is dense now: hierarchy comes from size and weight rather
+ * than from space, which there is not much of on a 4.3 inch panel. */
 const FACES = [
+  { name: 'XS', file: 'regular', px: 16 },
   { name: 'S', file: 'regular', px: 22 },
+  { name: 'SB', file: 'bold', px: 22 },
   { name: 'M', file: 'regular', px: 34 },
   { name: 'MB', file: 'bold', px: 34 },
 ];

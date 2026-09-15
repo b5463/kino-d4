@@ -20,7 +20,9 @@
 #include "esp_err.h"
 #include "pure.h" /* pure_cam_offset_t, carried per tile for aligned playback */
 
-#define GALLERY_COLS 3
+/* Four across, because the camera has four lenses and the interface counts in
+ * fours; two rows of them is a page. */
+#define GALLERY_COLS 4
 #define GALLERY_ROWS 2
 #define GALLERY_PAGE (GALLERY_COLS * GALLERY_ROWS)
 

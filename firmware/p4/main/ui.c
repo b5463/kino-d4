@@ -1343,6 +1343,13 @@ static void dialog_spec(dlg_spec_t *d) {
   }
 }
 
+/* The D4 interface. While it is being built it is compiled alongside the one
+ * it replaces, so the host preview can draw both and the camera keeps
+ * working; when the input paths move across, the old one goes. */
+#ifdef KINO_D4
+#include "d4_style.h"
+#include "d4_ui.h"
+#endif
 #include "ui_present.h"
 #ifdef KINO_PLAYGROUND
 #include "ui_playground.h"
