@@ -48,7 +48,11 @@ static struct {
   int wiggle;       /* which of the four is showing during playback */
   const char *word; /* the one dry word, when there is one */
   int64_t word_us;
-  const char *confirm_q;
+  /* What is about to be destroyed: how many, of what, and the word for
+   * doing it. Split, because the count is drawn and the noun is set, and
+   * parsing a number back out of a sentence is not a design. */
+  int confirm_n;
+  const char *confirm_noun;
   const char *confirm_yes;
   int flash_pct; /* 0 when the flash is not charging, else how far along */
 } d4;
@@ -67,27 +71,40 @@ static inline int d4_ms(int64_t t0) { return (int)((esp_timer_get_time() - t0) /
  */
 #define D4_FEED_W (UI_W / 4)
 
-static void d4_feeds(int frozen_frame) {
+#define D4_FEED_W (UI_W / 4)
+#define D4_FEED_Y D_BAND_T
+#define D4_FEED_H (UI_H - D_BAND_T - D_BAND_B)
+
+/**
+ * The four feeds, filling everything between the bands.
+ *
+ * `only` >= 0 draws that one alone; `got` is a bitmask of which have been
+ * captured, and any not in it goes black - which is what makes the capture a
+ * picture of four frames arriving rather than of four dots lighting up.
+ */
+static void d4_feeds(int only, uint32_t got) {
   for (int i = 0; i < 4; i++) {
-    const uint16_t *t = viewfinder_ready() ? viewfinder_tile(i) : NULL;
     const int x = i * D4_FEED_W;
+    if (only >= 0 && i != only) continue;
+    const bool masked = got != 0xFFFFFFFFu && !(got & (1u << i));
+    const uint16_t *t = (!masked && viewfinder_ready()) ? viewfinder_tile(i) : NULL;
     if (!t) {
-      fill(x, 0, D4_FEED_W, UI_H, d_toward(d_bg, D_PAPER, 24));
-      d_text_c(&UT_S, x + D4_FEED_W / 2, UI_H / 2 - 12, "--", D_FAINT);
+      fill(x, D4_FEED_Y, D4_FEED_W, D4_FEED_H, masked ? D_GRAPH : d_toward(D_GRAPH, D_PAPER, 22));
+      if (!masked) df_draw_c(x + D4_FEED_W / 2, D4_FEED_Y + D4_FEED_H / 2 - 7, "-", 2, D_DIM);
       continue;
     }
-    /* Centre crop to the pane's aspect: the panel is much taller than a
-     * sensor frame, so what is shown is the middle of each view. */
-    const float aspect = (float)D4_FEED_W / (float)UI_H;
+    /* Centre crop to the pane's shape: the panel is far taller than a sensor
+     * frame, so each pane is the middle of that camera's view, and the four
+     * of them together are the same scene four times a few millimetres
+     * apart. The seams are the product. */
+    const float aspect = (float)D4_FEED_W / (float)D4_FEED_H;
     const float cw = aspect * (float)VF_H / (float)VF_W;
     const float c0 = 0.5f - cw * 0.5f;
-    (void)frozen_frame;
-    img_blit_tf(t, VF_W, VF_H, c0, 0.f, c0 + cw, 1.f, (float)(x + D4_FEED_W / 2), (float)(UI_H / 2),
-                (float)D4_FEED_W, (float)UI_H, 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
-    /* One hairline per seam, so the four are visibly four rather than one
-     * wide picture that happens to be slightly wrong three times. */
-    if (i) fill(x, 0, 1, UI_H, D_GRAPH);
+    img_blit_tf(t, VF_W, VF_H, c0, 0.f, c0 + cw, 1.f, (float)(x + D4_FEED_W / 2),
+                (float)(D4_FEED_Y + D4_FEED_H / 2), (float)D4_FEED_W, (float)D4_FEED_H, 0.f, 0.f, 0.f, 0.f,
+                0.f, 0, 255, 0, 0.f);
   }
+  for (int i = 1; i < 4; i++) fill(i * D4_FEED_W, D4_FEED_Y, 1, D4_FEED_H, D_GRAPH);
 }
 
 /** What each camera is doing, as the row of marks. */
@@ -105,94 +122,96 @@ static void d4_cam_marks(d_mark_t *m) {
 }
 
 /**
- * The strip along the bottom, and the marks that make the picture a frame.
+ * The top band, divided into four cells, one over each feed.
  *
- * Everything counted is in the drawn face; everything named is in tracked
- * small caps. That split is the whole typographic rule of this interface -
- * numbers are objects, words are labels, and they never look like each other.
+ * This is the whole idea of the interface in one object: the chrome is not a
+ * caption about the four cameras, it IS the four cameras, and each cell sits
+ * directly over the picture its camera is making. A lens that stops answering
+ * goes dark in the band above its own feed, so there is never a question of
+ * which one.
  */
-#define D4_STRIP 46
+static void d4_band_four(const d_mark_t *m, const uint16_t *hilite) {
+  d_band_top(D_GRAPH);
+  for (int i = 0; i < 4; i++) {
+    const int x = i * D4_FEED_W;
+    const uint16_t cell = hilite ? hilite[i] : D_GRAPH;
+    if (cell != D_GRAPH) fill(x, 0, D4_FEED_W, D_BAND_T, cell);
+    const uint16_t ink = cell != D_GRAPH ? D_GRAPH : m[i] == D_MARK_FAIL ? D_RED
+                         : m[i] == D_MARK_ON                            ? D_PAPER
+                                                                        : d_toward(D_PAPER, D_GRAPH, 150);
+    df_draw(x + 14, 12, (const char[]){(char)('1' + i), 0}, 1, ink);
+    d_mark(x + 44, 20, 6, m[i], ink);
+    if (i) fill(x, 6, 1, D_BAND_T - 12, d_toward(D_PAPER, D_GRAPH, 190));
+  }
+}
 
-static void d4_live_strip(void) {
-  const int y = UI_H - D4_STRIP;
+/**
+ * The bottom band: what is left, how it will be taken, and what the card is
+ * doing. Everything counted is drawn; everything named is a tracked label.
+ */
+static void d4_band_facts(void) {
+  const int y = d_band_bottom(D_GRAPH);
   storage_status_t sd;
   storage_get_status(&sd);
   power_state_t ps;
   power_get(&ps);
 
-  /* A hairline over the strip with a tick at each feed seam: the strip
-   * belongs to the four columns above it. */
-  fill(0, y - 1, UI_W, 1, d_toward(D_PAPER, D_GRAPH, 120));
-  for (int i = 1; i < 4; i++) fill(i * D4_FEED_W, y - 5, 1, 5, d_toward(D_PAPER, D_GRAPH, 120));
-
-  /* Left: what is left. The number is drawn; the unit is a label. */
   static char left[16];
   const int shots = sd.mounted && sd.capacity_bytes ? (int)(sd.free_bytes / (6ull * 1024 * 1024)) : 0;
   snprintf(left, sizeof left, "%d", shots > 999 ? 999 : shots);
   int x = D_MARGIN;
-  x = df_draw_over(x, y + 12, left, 2, d_fg) + 8;
-  d_text_over(&UT_XS, x, y + 18, "SHOTS", D_DIM);
+  x = df_draw(x, y + 10, left, 2, D_PAPER) + 9;
+  d_label(x, y + 18, "SHOTS", d_toward(D_PAPER, D_GRAPH, 120));
 
-  /* Then how it is going to take it, in a cell, because a mode is a setting
-   * and a setting has a position. */
+  /* The mode, as a block of yellow when the flash will fire - a setting that
+   * changes the photograph is worth a colour, and it is the only one here. */
   const int fl = flash_index();
   const char *fs = fl == 0 ? "AUTO" : fl == 1 ? "ON" : "OFF";
-  x = D4_FEED_W + 14;
-  d_icon(fl == 2 ? &D_IC_FLASH_OFF : &D_IC_FLASH, x, y + 13, fl == 1 ? D_YELLOW : d_fg);
-  x += 20;
-  d_cell(x, y + 10, d_label_w(fs) + 14, 24, fl == 1 ? D_YELLOW : D_DIM);
-  d_label(x + 7, y + 16, fs, fl == 1 ? D_YELLOW : d_fg);
-  x += d_label_w(fs) + 14 + 14;
-  d_cell(x, y + 10, d_label_w("WIGGLE") + 14, 24, D_DIM);
-  d_label(x + 7, y + 16, "WIGGLE", d_fg);
-
-  /* The four, under their own numerals, because this is the row the whole
-   * interface is built from and the live view is where it is learned. */
-  d_mark_t m[4];
-  d4_cam_marks(m);
-  uint16_t ink[4];
-  for (int i = 0; i < 4; i++) ink[i] = m[i] == D_MARK_FAIL ? D_RED : m[i] == D_MARK_ON ? d_fg : D_DIM;
-  const int fx = 2 * D4_FEED_W + 30;
-  for (int i = 0; i < 4; i++) {
-    df_draw_over(fx + i * 26, y + 8, (const char[]){(char)('1' + i), 0}, 1, D_DIM);
-    d_mark(fx + i * 26 + 5, y + 33, 5, m[i], ink[i]);
+  x = D4_FEED_W + 16;
+  if (fl == 1) {
+    const int w = 22 + d_label_w(fs) + 14;
+    fill(x - 6, y + 8, w, 28, D_YELLOW);
+    d_icon(&D_IC_FLASH, x, y + 14, D_GRAPH);
+    d_label(x + 22, y + 18, fs, D_GRAPH);
+    x += w - 2;
+  } else {
+    d_icon(fl == 2 ? &D_IC_FLASH_OFF : &D_IC_FLASH, x, y + 14, D_PAPER);
+    d_label(x + 22, y + 18, fs, D_PAPER);
+    x += 22 + d_label_w(fs) + 16;
   }
+  d_label(x, y + 18, "WIGGLE", D_PAPER);
 
-  /* Right: the card, and the mains when there is one. No battery: this camera
-   * has no fuel gauge, and four bars that were not measured are worse than no
-   * symbol at all. d_battery() waits in d4_style.h for when it can. */
   int rx = UI_W - D_MARGIN;
   if (ps.usb_attached) {
-    d_label_r(rx, y + 20, "USB", D_COBALT);
+    d_label_r(rx, y + 18, "USB", D_COBALT);
     rx -= d_label_w("USB") + 18;
   }
   const int pct = sd.capacity_bytes ? (int)(100 - 100 * sd.free_bytes / sd.capacity_bytes) : 0;
   if (sd.mounted) {
     static char card[12];
     snprintf(card, sizeof card, "%d%%", pct);
-    df_draw_over_r(rx, y + 12, card, 2, d_fg);
+    df_draw_r(rx, y + 10, card, 2, D_PAPER);
     rx -= df_w(card, 2) + 10;
   } else {
-    d_label_r(rx, y + 20, "NO CARD", D_RED);
-    rx -= d_label_w("NO CARD") + 8;
+    d_label_r(rx, y + 18, "NO CARD", D_RED);
+    rx -= d_label_w("NO CARD") + 10;
   }
-  d_icon(&D_IC_CARD, rx - 18, y + 13, sd.mounted ? d_fg : D_RED);
+  d_icon(&D_IC_CARD, rx - 18, y + 14, sd.mounted ? D_PAPER : D_RED);
 }
 
 static void d4_live(void) {
   d_ground(D_GRAPH);
-  d4_feeds(-1);
-  /* Framing marks on the picture, and a numeral at the head of each feed.
-   * A camera tells you where the frame is; a photo viewer does not. */
-  d_corners(6, 6, UI_W - 12, UI_H - D4_STRIP - 12, 22, 2, d_toward(D_PAPER, D_GRAPH, 40));
-  for (int i = 0; i < 4; i++)
-    df_draw_over(i * D4_FEED_W + 12, 12, (const char[]){(char)('1' + i), 0}, 1, D_PAPER);
-  d4_live_strip();
-  /* The one dry word, when there is one, in the corner and gone. */
+  d4_feeds(-1, 0xFFFFFFFFu);
+  d_mark_t m[4];
+  d4_cam_marks(m);
+  d4_band_four(m, NULL);
+  d4_band_facts();
+  /* The one dry word, when there is one: a yellow band across the picture,
+   * because a camera that says something says it like a machine. */
   if (d4.word && d4_ms(d4.word_us) < D4_WORD_MS) {
-    const int w = ut_w(&UT_MB, d4.word);
-    d_select(D_MARGIN, 40, w + 28, 46, D_PAPER);
-    d_text(&UT_MB, D_MARGIN + 14, 46, d4.word, D_GRAPH);
+    const int by = D4_FEED_Y + 40;
+    fill(0, by, UI_W, 52, D_YELLOW);
+    d_text(&UT_MB, D_MARGIN, by + 8, d4.word, D_GRAPH);
   } else {
     d4.word = NULL;
   }
@@ -212,33 +231,31 @@ static void d4_shutter(void) { fill(0, 0, UI_W, UI_H, D_PAPER); }
  */
 static void d4_catch(void) {
   d_ground(D_GRAPH);
-  d4_feeds(-1);
-  fill_a(0, 0, UI_W, UI_H, D_GRAPH, 210); /* the picture is still there, under it */
-
+  /* The four frames themselves, each arriving in its own column. A lens that
+   * has not answered yet is black; the picture is the progress, and there is
+   * nothing standing in for it. */
   const uint32_t in = capture_frames_in();
+  d4_feeds(-1, in);
+
   d_mark_t m[4];
-  uint16_t ink[4];
+  uint16_t cell[4];
   int n = 0;
   for (int i = 0; i < 4; i++) {
     const bool got = (in & (1u << i)) != 0;
     m[i] = got ? D_MARK_ON : D_MARK_EMPTY;
-    ink[i] = got ? D_YELLOW : D_DIM;
+    cell[i] = got ? D_YELLOW : D_GRAPH;
     n += got ? 1 : 0;
   }
-  /* The row, bracketed, each lens's numeral over its mark, and the count
-   * beside it in the same face - so what is filling and what is counted are
-   * visibly the same thing. */
-  const int cx = UI_W / 2, cy = UI_H / 2;
-  const int pitch = 84, bw = 3 * pitch + 76, bx = cx - bw / 2 - 46, by = cy - 62;
-  d_corners(bx, by, bw, 124, 20, 2, D_DIM);
-  for (int i = 0; i < 4; i++) {
-    const int mx = bx + 38 + i * pitch;
-    df_draw(mx - 5, by + 20, (const char[]){(char)('1' + i), 0}, 1, m[i] == D_MARK_ON ? D_YELLOW : D_DIM);
-    d_mark(mx, by + 84, 14, m[i], ink[i]);
-  }
+  /* The band lights cell by cell with the frames underneath it. */
+  d4_band_four(m, cell);
+
+  /* The count across the bottom band, large, in the face that counts. */
+  const int y = d_band_bottom(n == 4 ? D_YELLOW : D_GRAPH);
   static char cnt[8];
   snprintf(cnt, sizeof cnt, "%d/4", n);
-  df_draw(bx + bw + 32, by + 36, cnt, 4, n == 4 ? D_YELLOW : D_DIM);
+  df_draw(D_MARGIN, y + 8, cnt, 2, n == 4 ? D_GRAPH : D_PAPER);
+  d_label(D_MARGIN + df_w(cnt, 2) + 12, y + 18, n == 4 ? "GOT IT" : "CATCHING",
+          n == 4 ? D_GRAPH : d_toward(D_PAPER, D_GRAPH, 110));
 }
 
 /**
@@ -330,17 +347,29 @@ static void d4_boot(void) {
  * moving between the two halves of the product changes the colour and
  * nothing else.
  */
+/** The foot band on a machine screen: what this screen is for, and the way
+ *  out. Equipment tells you which key does what; it does not make you guess. */
+static void d4_foot(const char *left, const char *right, uint16_t ink) {
+  const int y = d_band_bottom(ink);
+  const uint16_t fg = ink == D_RED || ink == D_GRAPH ? D_PAPER : D_GRAPH;
+  if (left) d_label(D_MARGIN, y + 18, left, fg);
+  if (right) d_label_r(UI_W - D_MARGIN, y + 18, right, d_toward(fg, ink, 110));
+}
+
 static void d4_head(const char *name, const char *right, int page, int pages) {
-  d_text(&UT_M, D_MARGIN, 8, name, d_fg);
+  /* A solid band with the name knocked out of it. Not a rule with grey text
+   * over it: this panel is read in a dark room and in direct sun on the same
+   * evening, and a hairline loses that argument both times. */
+  d_band_top(D_GRAPH);
+  d_text(&UT_M, D_MARGIN, 3, name, D_PAPER);
   int rx = UI_W - D_MARGIN;
   if (pages > 1) {
     static char pg[12];
     snprintf(pg, sizeof pg, "%d/%d", page + 1, pages);
-    d_text_r(&UT_SB, rx, 14, pg, d_fg);
-    rx -= ut_w(&UT_SB, pg) + 20;
+    df_draw_r(rx, 13, pg, 1, D_PAPER);
+    rx -= df_w(pg, 1) + 20;
   }
-  if (right && right[0]) d_text_r(&UT_XS, rx, 18, right, D_DIM);
-  d_rule(D_MARGIN, D_HEAD + 6, UI_W - 2 * D_MARGIN);
+  if (right && right[0]) d_label_r(rx, 14, right, d_toward(D_PAPER, D_GRAPH, 120));
 }
 
 /* ------------------------------------------------------------------ */
@@ -350,53 +379,56 @@ static void d4_head(const char *name, const char *right, int page, int pages) {
 #define D4_TH_H (D4_TH_W * 3 / 4)
 
 static void d4_roll(void) {
-  d_ground(D_GRAPH);
+  d_ground(D_PAPER);
   static char files[24];
   snprintf(files, sizeof files, "%d FILES", gallery_total());
   d4_head("ROLL", files, gallery_page(), gallery_pages());
 
   const gallery_item_t *slots = gallery_slots();
   for (int i = 0; i < GALLERY_PAGE; i++) {
-    const int cx = d_col_x(i % 4), cy = D_HEAD + 24 + (i / 4) * (D4_TH_H + 40);
+    const int cx = d_col_x(i % 4) + 6, cy = D_BAND_T + 20 + (i / 4) * (D4_TH_H + 46);
     const bool on = d4.sel == i;
+    if (slots[i].state == TILE_EMPTY) continue;
+    /* Four sheets, offset, because that is what a wigglegram is. A file with
+     * fewer than four frames gets fewer sheets, so the stack is the count. */
+    const int sheets = slots[i].frames > 0 ? slots[i].frames : 1;
+    for (int k = sheets - 1; k >= 1; k--)
+      fill(cx - k * 4, cy - k * 4, D4_TH_W, D4_TH_H, k & 1 ? d_toward(D_GRAPH, D_PAPER, 120) : D_GRAPH);
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       img_blit_tf(slots[i].pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, 0.f, 1.f, 1.f,
                   (float)(cx + D4_TH_W / 2), (float)(cy + D4_TH_H / 2), (float)D4_TH_W, (float)D4_TH_H,
                   0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
-    } else if (slots[i].state != TILE_EMPTY) {
-      fill(cx, cy, D4_TH_W, D4_TH_H, d_toward(d_bg, D_PAPER, 20));
-      d_text_c(&UT_XS, cx + D4_TH_W / 2, cy + D4_TH_H / 2 - 8, "...", D_FAINT);
     } else {
-      continue;
+      fill(cx, cy, D4_TH_W, D4_TH_H, d_toward(D_GRAPH, D_PAPER, 60));
+      df_draw_c(cx + D4_TH_W / 2, cy + D4_TH_H / 2 - 7, "-", 1, D_PAPER);
     }
-    /* The index under the picture, and how many of the four it has. A
-     * photograph missing a frame says so here and nowhere else. */
-    static char idx[8], frames[8];
+    /* The index in a solid tab under the corner of the stack: a file number
+     * on a piece of equipment, not a caption. */
+    static char idx[8];
     snprintf(idx, sizeof idx, "%02d", gallery_page() * GALLERY_PAGE + i + 1);
-    df_draw(cx, cy + D4_TH_H + 8, idx, 1, on ? d_fg : D_DIM);
+    const int tw = df_w(idx, 1) + 12;
+    fill(cx, cy + D4_TH_H, tw, 20, on ? D_COBALT : D_GRAPH);
+    df_draw(cx + 6, cy + D4_TH_H + 3, idx, 1, D_PAPER);
     if (slots[i].frames < 4) {
-      snprintf(frames, sizeof frames, "%d/4", slots[i].frames);
-      df_draw_r(cx + D4_TH_W, cy + D4_TH_H + 8, frames, 1, D_YELLOW);
+      static char fr[8];
+      snprintf(fr, sizeof fr, "%d/4", slots[i].frames);
+      fill(cx + tw + 4, cy + D4_TH_H, df_w(fr, 1) + 10, 20, D_YELLOW);
+      df_draw(cx + tw + 9, cy + D4_TH_H + 3, fr, 1, D_GRAPH);
     }
-    if (slots[i].favorite) d_mark(cx + D4_TH_W - 9, cy + 9, 5, D_MARK_ON, D_YELLOW);
-    /* Selection is a frame, because the thing selected is a picture and ink
-     * over it would hide the only useful part. */
-    if (on) {
-      for (int k = 1; k <= 3; k++) d_box(cx - k, cy - k, D4_TH_W + 2 * k, D4_TH_H + 2 * k, D_COBALT);
-    }
+    if (slots[i].favorite) fill(cx + D4_TH_W - 14, cy, 14, 14, D_YELLOW);
+    if (on) for (int k = 1; k <= 3; k++) d_box(cx - k, cy - k, D4_TH_W + 2 * k, D4_TH_H + 2 * k, D_COBALT);
   }
 
-  /* The foot: the facts a camera prints under a page of files. */
+  /* The foot band: the facts a camera prints under a page of files. */
   storage_status_t sd;
   storage_get_status(&sd);
-  const int fy = UI_H - D4_STRIP;
-  d_rule(D_MARGIN, fy - 8, UI_W - 2 * D_MARGIN);
+  const int fy = d_band_bottom(D_GRAPH);
   static char card[24];
   const int pct = sd.capacity_bytes ? (int)(100 - 100 * sd.free_bytes / sd.capacity_bytes) : 0;
   snprintf(card, sizeof card, "%d%%", pct);
-  int fx2 = d_label(D_MARGIN, fy + 16, "CARD", D_DIM) + 8;
-  df_draw(fx2, fy + 10, card, 1, d_fg);
-  df_draw_r(UI_W - D_MARGIN, fy + 10, "09.15", 1, D_DIM);
+  int fx2 = d_label(D_MARGIN, fy + 18, "CARD", d_toward(D_PAPER, D_GRAPH, 120)) + 8;
+  df_draw(fx2, fy + 12, card, 1, D_PAPER);
+  df_draw_r(UI_W - D_MARGIN, fy + 12, "09.15", 1, d_toward(D_PAPER, D_GRAPH, 120));
 }
 
 /* ------------------------------------------------------------------ */
@@ -407,11 +439,11 @@ static void d4_item(void) {
   const gallery_item_t *slots = gallery_slots();
   const gallery_item_t *it = &slots[d4.sel < GALLERY_PAGE ? d4.sel : 0];
   if (it->pixels) {
-    const float ch = (float)(UI_H - D4_STRIP) / (float)UI_W * ((float)GALLERY_TILE_W / (float)GALLERY_TILE_H);
+    const float ch = (float)(UI_H - D_BAND_B) / (float)UI_W * ((float)GALLERY_TILE_W / (float)GALLERY_TILE_H);
     const float c0 = 0.5f - ch * 0.5f;
     img_blit_tf(it->pixels, GALLERY_TILE_W, GALLERY_TILE_H, 0.f, c0 > 0.f ? c0 : 0.f, 1.f,
-                c0 > 0.f ? c0 + ch : 1.f, (float)(UI_W / 2), (float)((UI_H - D4_STRIP) / 2), (float)UI_W,
-                (float)(UI_H - D4_STRIP), 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
+                c0 > 0.f ? c0 + ch : 1.f, (float)(UI_W / 2), (float)((UI_H - D_BAND_B) / 2), (float)UI_W,
+                (float)(UI_H - D_BAND_B), 0.f, 0.f, 0.f, 0.f, 0.f, 0, 255, 0, 0.f);
   }
   static char idx[8];
   snprintf(idx, sizeof idx, "%02d", gallery_page() * GALLERY_PAGE + d4.sel + 1);
@@ -419,8 +451,8 @@ static void d4_item(void) {
   d_text_over_r(&UT_XS, UI_W - D_MARGIN, D_MARGIN + 8, "09.15  18:42", d_fg);
 
   /* The facts, on the graphite strip rather than over the picture. */
-  const int y = UI_H - D4_STRIP;
-  fill(0, y, UI_W, D4_STRIP, D_GRAPH);
+  const int y = UI_H - D_BAND_B;
+  fill(0, y, UI_W, D_BAND_B, D_GRAPH);
   static char mode[16];
   snprintf(mode, sizeof mode, "%s", it->mode[0] ? it->mode : "wiggle");
   for (char *c = mode; *c; c++)
@@ -515,40 +547,55 @@ static void d4_link(void) {
 
   d4_head("LINK", NULL, 0, 1);
 
+  /* The code is the screen. It is what a guest points a phone at, so it gets
+   * the right half of the panel and a white field of its own - and the thing
+   * they would type instead is set as large as it will go beside it. */
   if (on && roll.guest_url[0]) {
     if (strcmp(s_d4_qr_url, roll.guest_url) != 0) {
       snprintf(s_d4_qr_url, sizeof s_d4_qr_url, "%s", roll.guest_url);
       s_d4_qr_ok = qr_encode(roll.guest_url, &s_d4_qr);
     }
-    if (s_d4_qr_ok) d4_qr(UI_W - D_MARGIN - 300, D_HEAD + 30, 300);
+    if (s_d4_qr_ok) {
+      const int side = 300, qx = UI_W - side - 30, qy = D_BAND_T + 26;
+      fill(qx - 6, qy - 6, side + 12, side + 12, D_PAPER);
+      d4_qr(qx, qy, side);
+    }
   }
 
   const int x = D_MARGIN;
-  int y = D_HEAD + 40;
-  d_text(&UT_MB, x, y, online ? "LINK READY" : on ? "LINK OFF" : "NO ROLL", online ? D_COBALT : D_DIM);
-  y += 52;
+  int y = D_BAND_T + 34;
   if (on) {
-    d_text(&UT_XS, x, y, "ROLL", D_DIM);
-    d_text(&UT_SB, x + 80, y - 4, roll.name[0] ? roll.name : roll.slug, d_fg);
-    y += 34;
-    d_text(&UT_XS, x, y, "CODE", D_DIM);
-    d_text(&UT_SB, x + 80, y - 4, roll.slug, d_fg);
-    y += 34;
+    d_label(x, y, "ROLL", d_toward(D_PAPER, D_GRAPH, 120));
+    d_text(&UT_MB, x, y + 20, roll.name[0] ? roll.name : roll.slug, D_PAPER);
+    y += 92;
+    d_label(x, y, "CODE", d_toward(D_PAPER, D_GRAPH, 120));
+    /* The slug, as big as the column takes: it is a thing to be read out
+     * across a room, not a field in a form. */
+    d_text(&UT_MB, x, y + 18, roll.slug, D_YELLOW);
+    y += 86;
+  } else {
+    d_text(&UT_MB, x, y, "NO ROLL", d_toward(D_PAPER, D_GRAPH, 110));
+    y += 80;
   }
-  d_text(&UT_XS, x, y, "WLAN", D_DIM);
-  d_text(&UT_SB, x + 80, y - 4, net.state == NET_IP_READY ? net.ssid : "-----", d_fg);
-  y += 34;
-  d_text(&UT_XS, x, y, "ADDR", D_DIM);
-  d_text(&UT_SB, x + 80, y - 4, net.ip[0] ? net.ip : "-----", d_fg);
+  d_label(x, y, "WLAN", d_toward(D_PAPER, D_GRAPH, 120));
+  d_text(&UT_S, x + 78, y - 4, net.state == NET_IP_READY ? net.ssid : "-----", D_PAPER);
+  y += 32;
+  d_label(x, y, "ADDR", d_toward(D_PAPER, D_GRAPH, 120));
+  df_draw(x + 78, y - 4, net.ip[0] ? net.ip : "-", 1, D_PAPER);
 
+  /* The state, as a band. Cobalt is the colour of a link that is up, and it
+   * is the only place on the camera that colour means anything. */
+  const int fy = d_band_bottom(online ? D_COBALT : D_GRAPH);
+  d_label(D_MARGIN, fy + 18, online ? "LINK READY" : on ? "WAITING FOR WLAN" : "MAKE A ROLL IN SETUP",
+          online ? D_PAPER : d_toward(D_PAPER, D_GRAPH, 110));
   /* What the camera knows. It does not know how many people are looking at
-   * the gallery - the backend does - so it does not say "3 PEOPLE"; it says
-   * how many photographs it has managed to send, which it counted itself. */
-  y += 42;
-  d_text(&UT_XS, x, y, "SENT", D_DIM);
-  static char sent[32];
+   * the gallery - the backend does - so it says how many photographs it has
+   * managed to send, which it counted itself. */
+  static char sent[16];
   snprintf(sent, sizeof sent, "%d", q.uploaded);
-  d_text(&UT_SB, x + 80, y - 4, sent, d_fg);
+  int sx = UI_W - D_MARGIN - d_label_w("SENT");
+  d_label(sx, fy + 18, "SENT", online ? D_PAPER : d_toward(D_PAPER, D_GRAPH, 110));
+  df_draw_r(sx - 8, fy + 12, sent, 1, D_PAPER);
 }
 
 /** A transfer in progress: blocks, a count, and nothing invented. */
@@ -558,8 +605,8 @@ static void d4_transfer(void) {
   const int waiting = q.pending + q.card_pending + q.uploading;
   const int total = q.burst_done + waiting;
   d4_link();
-  const int y = UI_H - D4_STRIP - 44;
-  fill(0, y - 12, UI_W, D4_STRIP + 56, D_GRAPH);
+  const int y = UI_H - D_BAND_B - 44;
+  fill(0, y - 12, UI_W, D_BAND_B + 56, D_GRAPH);
   static char s[32];
   snprintf(s, sizeof s, "SENDING  %d/%d", q.burst_done, total > 0 ? total : q.burst_done);
   d_text(&UT_SB, D_MARGIN, y, s, D_COBALT);
@@ -579,7 +626,7 @@ typedef struct {
 } d4_row_t;
 
 static void d4_rows(const d4_row_t *rows, int n, int sel) {
-  const int top = D_HEAD + 20, rh = 42;
+  const int top = D_BAND_T + 14, rh = 40;
   /* A rule down the page between the names and their values: the thing that
    * makes a settings screen a panel rather than a web page. */
   const int vx = UI_W - D_MARGIN - 200;
@@ -606,7 +653,7 @@ static void d4_rows(const d4_row_t *rows, int n, int sel) {
 
 /** The page ticks down the right edge: four pages, and which one this is. */
 static void d4_page_ticks(int page, int pages) {
-  const int x = UI_W - 13, y0 = D_HEAD + 30;
+  const int x = UI_W - 13, y0 = D_BAND_T + 30;
   for (int i = 0; i < pages; i++) fill(x, y0 + i * 28, 6, i == page ? 20 : 3, i == page ? D_COBALT : D_FAINT);
 }
 
@@ -628,6 +675,14 @@ static void d4_setup(void) {
   (void)shots;
   (void)look;
   d4_rows(d4.page == 0 ? P0 : P1, 8, d4.sel);
+  /* The foot band names the page, so four pages of eight are navigable
+   * without counting ticks. */
+  static const char *const PAGE_NAME[4] = {"PICTURE", "MACHINE", "-", "-"};
+  const int fy = d_band_bottom(D_GRAPH);
+  df_draw(D_MARGIN, fy + 12, "1234", 1, d_toward(D_PAPER, D_GRAPH, 150));
+  fill(D_MARGIN + d4.page * (DF_ADV), fy + 32, DF_W, 3, D_COBALT);
+  d_label(D_MARGIN + df_w("1234", 1) + 18, fy + 18, PAGE_NAME[d4.page & 3], D_PAPER);
+  d_label_r(UI_W - D_MARGIN, fy + 18, "MENU TO LEAVE", d_toward(D_PAPER, D_GRAPH, 120));
 }
 
 /* ------------------------------------------------------------------ */
@@ -644,7 +699,7 @@ static void d4_cameras(void) {
   int live_now = 0;
   for (int i = 0; i < 4; i++) {
     const int cx = d_col_cx(i);
-    df_draw_c(cx, D_HEAD + 26, N[i], 3, D_DIM);
+    df_draw_c(cx, D_BAND_T + 26, N[i], 3, D_DIM);
 
     d_mark_t m = D_MARK_ON;
     const char *word = "OK";
@@ -658,24 +713,24 @@ static void d4_cameras(void) {
       else { m = D_MARK_HALF; word = "WARMING"; ink = D_DIM; }
     }
     if (m == D_MARK_ON) live_now++;
-    d_mark(cx, D_HEAD + 124, 16, m, ink);
-    d_label_c(cx, D_HEAD + 156, word, ink);
+    d_mark(cx, D_BAND_T + 124, 16, m, ink);
+    d_label_c(cx, D_BAND_T + 156, word, ink);
 
     /* The mundane numbers underneath, which is what a diagnostics page is
      * for. Temperature is per module and the camera knows it. */
     static char t[12];
     snprintf(t, sizeof t, "%d^C", 31 + (i & 1));
-    df_draw_c(cx, D_HEAD + 190, t, 1, D_DIM);
-    if (i) fill(d_col_x(i) - D_GUT / 2, D_HEAD + 20, 1, 196, D_FAINT);
+    df_draw_c(cx, D_BAND_T + 190, t, 1, D_DIM);
+    if (i) fill(d_col_x(i) - D_GUT / 2, D_BAND_T + 20, 1, 196, D_FAINT);
   }
   /* Underneath, the last photograph these four took, which is the only
    * measurement of them that matters: who answered, and how far apart the
    * commands went out. */
-  d_tick_rule(D_MARGIN, D_HEAD + 218, UI_W - 2 * D_MARGIN, (UI_W - 2 * D_MARGIN) / 4, 5, D_FAINT);
+  d_tick_rule(D_MARGIN, D_BAND_T + 218, UI_W - 2 * D_MARGIN, (UI_W - 2 * D_MARGIN) / 4, 5, D_FAINT);
   capture_report_t r;
   capture_last(&r);
 #define D4_VAL_X (D_MARGIN + 250)
-  d_label(D_MARGIN, D_HEAD + 238, "LAST PHOTOGRAPH", D_DIM);
+  d_label(D_MARGIN, D_BAND_T + 238, "LAST PHOTOGRAPH", D_DIM);
   d_mark_t lm[4];
   uint16_t li[4];
   for (int i = 0; i < 4; i++) {
@@ -683,26 +738,27 @@ static void d4_cameras(void) {
     lm[i] = r.cam[i].attempted ? (ok ? D_MARK_ON : D_MARK_FAIL) : D_MARK_EMPTY;
     li[i] = ok ? d_fg : r.cam[i].attempted ? D_RED : D_DIM;
   }
-  for (int i = 0; i < 4; i++) d_mark(D4_VAL_X + i * 26, D_HEAD + 243, 7, lm[i], li[i]);
+  for (int i = 0; i < 4; i++) d_mark(D4_VAL_X + i * 26, D_BAND_T + 243, 7, lm[i], li[i]);
   static char stored[24];
   snprintf(stored, sizeof stored, "%d/%d", r.stored, r.online ? r.online : 4);
-  int sx2 = df_draw(D4_VAL_X + 130, D_HEAD + 237, stored, 1, d_fg) + 6;
-  d_label(sx2, D_HEAD + 238, "STORED", D_DIM);
+  int sx2 = df_draw(D4_VAL_X + 130, D_BAND_T + 237, stored, 1, d_fg) + 6;
+  d_label(sx2, D_BAND_T + 238, "STORED", D_DIM);
 
   static char sp[40];
   snprintf(sp, sizeof sp, "%u", (unsigned)r.spread_us);
-  d_label(D_MARGIN, D_HEAD + 278, "COMMAND SPREAD", D_DIM);
-  int vx = df_draw(D4_VAL_X, D_HEAD + 277, sp, 1, d_fg) + 6;
-  d_label(vx, D_HEAD + 278, "US", D_DIM);
-  d_label(D4_VAL_X + 130, D_HEAD + 278, "NOT EXPOSURE SKEW", D_FAINT);
+  d_label(D_MARGIN, D_BAND_T + 278, "COMMAND SPREAD", D_DIM);
+  int vx = df_draw(D4_VAL_X, D_BAND_T + 277, sp, 1, d_fg) + 6;
+  d_label(vx, D_BAND_T + 278, "US", D_DIM);
+  d_label(D4_VAL_X + 130, D_BAND_T + 278, "NOT EXPOSURE SKEW", D_FAINT);
 
   /* And what the finder is managing, which is the number that says a camera
    * is unwell before anything has failed outright. */
-  d_label(D_MARGIN, D_HEAD + 318, "FINDER", D_DIM);
+  d_label(D_MARGIN, D_BAND_T + 318, "FINDER", D_DIM);
   static char fps[24];
   snprintf(fps, sizeof fps, "%d/4", live_now);
-  vx = df_draw(D4_VAL_X, D_HEAD + 317, fps, 1, d_fg) + 6;
-  d_label(vx, D_HEAD + 318, "LIVE", D_DIM);
+  vx = df_draw(D4_VAL_X, D_BAND_T + 317, fps, 1, d_fg) + 6;
+  d_label(vx, D_BAND_T + 318, "LIVE", D_DIM);
+  d4_foot("CAMERAS ARE CHECKED AT EVERY SHUTTER", "BACK", D_GRAPH);
 }
 
 /** Calibration: the same four, being brought into line, with real offsets. */
@@ -713,16 +769,17 @@ static void d4_cal(void) {
   const int step = d4.sel; /* which camera is being done */
   for (int i = 0; i < 4; i++) {
     const int cx = d_col_cx(i);
-    d_text_c(&UT_M, cx, D_HEAD + 30, N[i], D_DIM);
+    d_text_c(&UT_M, cx, D_BAND_T + 30, N[i], D_DIM);
     const d_mark_t m = i < step ? D_MARK_ON : i == step ? D_MARK_BUSY : D_MARK_EMPTY;
-    d_mark(cx, D_HEAD + 108, 16, m, i == step ? D_COBALT : d_fg);
+    d_mark(cx, D_BAND_T + 108, 16, m, i == step ? D_COBALT : d_fg);
     static char off[16];
     if (i < step) snprintf(off, sizeof off, "%+d,%+d", (i * 3) - 4, 2 - i);
     else snprintf(off, sizeof off, "--");
-    d_text_c(&UT_SB, cx, D_HEAD + 140, off, i < step ? d_fg : D_DIM);
+    d_text_c(&UT_SB, cx, D_BAND_T + 140, off, i < step ? d_fg : D_DIM);
   }
-  d_text_c(&UT_XS, UI_W / 2, D_HEAD + 190, "HOLD STILL", D_DIM);
-  d_blocks(UI_W / 2 - D_BLOCKS_W / 2, D_HEAD + 220, step, 4, D_COBALT);
+  d_label_c(UI_W / 2, D_BAND_T + 196, "HOLD STILL", D_DIM);
+  d_blocks(UI_W / 2 - D_BLOCKS_W / 2, D_BAND_T + 226, step, 4, D_COBALT);
+  d4_foot("POINT AT SOMETHING FLAT AND LIT", "SHUTTER TO GO", D_COBALT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -731,8 +788,8 @@ static void d4_cal(void) {
 /** The flash charging, on the live view: a busy mark where the bolt was. */
 static void d4_flash_charging(int pct) {
   d4_live();
-  const int y = UI_H - D4_STRIP;
-  fill(200, y, 190, D4_STRIP - 6, D_GRAPH);
+  const int y = UI_H - D_BAND_B;
+  fill(200, y, 190, D_BAND_B - 6, D_GRAPH);
   d_mark(210, y + 14, 7, D_MARK_BUSY, D_YELLOW);
   d_text_over(&UT_XS, 226, y + 10, "FLASH", D_YELLOW);
   d_blocks(226, y + 26, pct, 100, D_YELLOW);
@@ -748,18 +805,18 @@ static void d4_storage_warning(void) {
   storage_status_t sd;
   storage_get_status(&sd);
   const int cx = UI_W / 2;
-  d_icon_s(&D_IC_WARN, cx - 24, D_HEAD + 26, 3, D_RED);
+  d_icon_s(&D_IC_WARN, cx - 24, D_BAND_T + 26, 3, D_RED);
   const int shots = sd.capacity_bytes ? (int)(sd.free_bytes / (6ull * 1024 * 1024)) : 0;
   static char n[16];
   snprintf(n, sizeof n, "%d", shots);
-  d_text_c(&UT_MB, cx, D_HEAD + 96, n, D_RED);
-  d_text_c(&UT_S, cx, D_HEAD + 148, "SHOTS LEFT", d_fg);
+  d_text_c(&UT_MB, cx, D_BAND_T + 96, n, D_RED);
+  d_text_c(&UT_S, cx, D_BAND_T + 148, "SHOTS LEFT", d_fg);
   static char cap[48];
   human_bytes(cap, sizeof cap, sd.free_bytes);
   static char line[80];
   snprintf(line, sizeof line, "%s FREE", cap);
-  d_text_c(&UT_XS, cx, D_HEAD + 190, line, D_DIM);
-  d_text_c(&UT_XS, cx, D_HEAD + 222, "MOVE OR DELETE SOME", D_DIM);
+  d_label_c(cx, D_BAND_T + 196, line, D_DIM);
+  d4_foot("THE CARD IS NEARLY FULL", "ROLL TO DELETE SOME", D_RED);
 }
 
 /** A camera has stopped answering. The row says which; the words say what. */
@@ -775,12 +832,12 @@ static void d4_camera_failure(void) {
     ink[i] = ok ? d_fg : D_RED;
     if (!ok && bad < 0) bad = i;
   }
-  d_four(UI_W / 2, D_HEAD + 60, 116, 20, m, true, ink);
+  d_four(UI_W / 2, D_BAND_T + 60, 116, 20, m, true, ink);
   static char line[64];
   snprintf(line, sizeof line, "CAMERA %d IS NOT ANSWERING", bad + 1);
-  d_text_c(&UT_SB, UI_W / 2, D_HEAD + 140, line, D_RED);
-  d_text_c(&UT_XS, UI_W / 2, D_HEAD + 182, "PHOTOGRAPHS WILL HAVE 3 OF 4", D_DIM);
-  d_text_c(&UT_XS, UI_W / 2, D_HEAD + 210, "TURN OFF AND ON AGAIN TO RETRY", D_DIM);
+  d_text_c(&UT_SB, UI_W / 2, D_BAND_T + 140, line, D_RED);
+  d_label_c(UI_W / 2, D_BAND_T + 188, "PHOTOGRAPHS WILL HAVE 3 OF 4", D_DIM);
+  d4_foot("TURN OFF AND ON AGAIN TO RETRY", "SHUTTER TO CARRY ON", D_RED);
 }
 
 /**
@@ -789,27 +846,42 @@ static void d4_camera_failure(void) {
  */
 static void d4_confirm(void) {
   d_ground(D_PAPER);
+  /* A red band, then the number, then two solid choices that split the whole
+   * width. Not two small boxes floating in a grey field: this is the one
+   * screen where the camera is about to destroy something. */
+  d_band_top(D_RED);
+  d_text(&UT_M, D_MARGIN, 3, d4.confirm_yes ? d4.confirm_yes : "DELETE", D_PAPER);
+
   const int cx = UI_W / 2;
-  d_text_c(&UT_MB, cx, 150, d4.confirm_q ? d4.confirm_q : "ARE YOU SURE", d_fg);
-  d_text_c(&UT_XS, cx, 202, "THIS CANNOT BE UNDONE", D_DIM);
-  /* Two choices, and the destructive one is on the right - the side the thumb
-   * has to travel to, not the side it rests on. Whichever is under the cursor
-   * is a block of ink; the other is an outline. Red only ever appears on the
-   * one that cannot be undone. */
-  const int by = 268, bw = 236, bh = 64, gap = 24;
-  const bool yes = d4.sel == 1;
-  const int lx = cx - gap / 2 - bw, rx = cx + gap / 2;
-  if (yes) {
-    d_box(lx, by, bw, bh, d_fg);
-    d_select(rx, by, bw, bh, D_RED);
+  /* The count, drawn, because what is about to be lost is a number of
+   * photographs and that number is the whole argument. */
+  if (d4.confirm_n > 0) {
+    static char num[8];
+    snprintf(num, sizeof num, "%d", d4.confirm_n);
+    df_draw_c(cx, D_BAND_T + 34, num, 7, D_RED);
+    d_text_c(&UT_M, cx, D_BAND_T + 146, d4.confirm_noun ? d4.confirm_noun : "FILES", d_fg);
   } else {
-    d_select(lx, by, bw, bh, D_COBALT);
-    d_box(rx, by, bw, bh, D_RED);
+    d_text_c(&UT_MB, cx, D_BAND_T + 80, d4.confirm_noun ? d4.confirm_noun : "EVERYTHING", d_fg);
   }
-  d_text_c(&UT_S, lx + bw / 2, by + 19, "KEEP IT", yes ? d_fg : D_PAPER);
-  d_text_c(&UT_S, rx + bw / 2, by + 19, d4.confirm_yes ? d4.confirm_yes : "DELETE",
+  d_label_c(cx, D_BAND_T + 198, "THIS CANNOT BE UNDONE", D_DIM);
+
+  const bool yes = d4.sel == 1;
+  const int by = UI_H - D_BAND_B - 78, bh = 78, half = UI_W / 2;
+  /* The destructive choice is on the right: the side the thumb travels to,
+   * not the side it rests on. */
+  if (yes) {
+    d_box(0, by, half, bh, D_DIM);
+    fill(half, by, half, bh, D_RED);
+  } else {
+    fill(0, by, half, bh, D_GRAPH);
+    d_box(half, by, half, bh, D_RED);
+  }
+  d_text_c(&UT_M, half / 2, by + 20, "KEEP IT", yes ? d_fg : D_PAPER);
+  d_text_c(&UT_M, half + half / 2, by + 20, d4.confirm_yes ? d4.confirm_yes : "DELETE",
            yes ? D_PAPER : D_RED);
+  d4_foot(yes ? "RIGHT IS SELECTED" : "LEFT IS SELECTED", "SHUTTER TO CONFIRM", D_GRAPH);
 }
+
 
 /* ------------------------------------------------------------------ */
 /* The menu: four numbered places, over the picture, gone on a press   */

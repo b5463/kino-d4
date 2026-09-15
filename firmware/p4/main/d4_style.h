@@ -121,6 +121,38 @@ static void d_box(int x, int y, int w, int h, uint16_t ink) {
 static void d_select(int x, int y, int w, int h, uint16_t ink) { fill(x, y, w, h, ink); }
 
 /* ------------------------------------------------------------------ */
+/* The band                                                            */
+/*
+ * KINO's screens are built from full-width solid bands with the type knocked
+ * out of them, not from hairlines with grey text between them. A band is a
+ * structural fact: it says where the picture stops and the machine starts,
+ * and it says it at full contrast on a panel that will be looked at in a dark
+ * room and in direct sun on the same evening.
+ *
+ * Every screen has a top band and most have a bottom one. The top band on the
+ * camera is divided into four cells, one over each feed, so the chrome is the
+ * four rather than a caption about them.
+ */
+#define D_BAND_T 40 /* the top band: a name, or the four */
+#define D_BAND_B 44 /* the bottom band: the mundane facts */
+
+static uint16_t d_band_ink, d_band_fg;
+
+/** Lay the top band. Returns the y below it. */
+static int d_band_top(uint16_t ink) {
+  d_band_ink = ink;
+  d_band_fg = (ink == D_PAPER || ink == D_YELLOW) ? D_GRAPH : D_PAPER;
+  fill(0, 0, UI_W, D_BAND_T, ink);
+  return D_BAND_T;
+}
+
+/** Lay the bottom band. Returns its y. */
+static int d_band_bottom(uint16_t ink) {
+  fill(0, UI_H - D_BAND_B, UI_W, D_BAND_B, ink);
+  return UI_H - D_BAND_B;
+}
+
+/* ------------------------------------------------------------------ */
 /* Furniture                                                           */
 /*
  * The drawn parts that make a panel a panel. None of these is decoration:

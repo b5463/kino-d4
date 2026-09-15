@@ -2473,13 +2473,15 @@ int main(int argc, char **argv) {
 
     /* 18 the destructive one. */
     d4.screen = D4_CONFIRM;
-    d4.confirm_q = "DELETE 27 FILES";
+    d4.confirm_n = 27;
+    d4.confirm_noun = "FILES";
     d4.confirm_yes = "DELETE";
     d4.sel = 0;
     d4_draw(); shot("d4_26_confirm");
     d4.sel = 1;
     d4_draw(); shot("d4_27_confirm_yes");
-    d4.confirm_q = NULL;
+    d4.confirm_n = 0;
+    d4.confirm_noun = NULL;
     d4.screen = D4_LIVE;
   }
 
