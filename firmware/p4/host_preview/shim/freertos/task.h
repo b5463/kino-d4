@@ -2,8 +2,7 @@
 #pragma once
 #include "freertos/FreeRTOS.h"
 
-extern int64_t g_preview_clock_us;
-static inline void vTaskDelay(uint32_t t) { g_preview_clock_us += (int64_t)t * 1000; }
+static inline void vTaskDelay(uint32_t t) { (void)t; }
 static inline BaseType_t xTaskCreate(void (*fn)(void *), const char *name, uint32_t stack,
                                      void *arg, int prio, TaskHandle_t *out) {
   (void)fn;

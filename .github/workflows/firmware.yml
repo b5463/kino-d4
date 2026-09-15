@@ -151,12 +151,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22 }
-      - name: The Japanese type is the pinned Shinonome sources, byte for byte
-        run: npm run font:jp:check
-      - name: The interface type is BIZ UDPGothic at the pinned commit, rasterised for exactly what ui.c says
-        run: npm run font:ui:check
-      - name: The choreography is the behaviors/*.json, baked
-        run: npm run kmo:check
       - name: Rebuild kino-ui.wasm and compare with the committed artifact
         run: npm run twin:ui:check
 

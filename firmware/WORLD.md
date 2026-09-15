@@ -1,5 +1,10 @@
 # KINO D4 — the persistent photographic world
 
+> **Not in the tree.** The interface this describes was reverted on 2026-09-16: the
+> camera ships `origin/main`'s shell again. Everything below is kept as the
+> record of what was tried and why — the code is in git history at `32cdd19`
+> and its parents, and `firmware/p4/main/ui.c` is the interface now.
+
 The next phase. `UI_DIRECTION.md` records what is built; this is what to
 build next, and why. It is the original world brief with the STARBOY
 research folded in, marked where the research changed the argument.

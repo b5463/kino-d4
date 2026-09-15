@@ -76,10 +76,6 @@ interface Kui {
   kui_set_capture_report(ok: number, id: number, stored: number, online: number, bytes: number, totalMs: number, err: number): void;
   kui_set_capture_frames(asked: number, arrived: number): void;
   kui_set_local_hour(hour: number): void;
-  kui_playground(which: number, nowMs: number): void;
-  kui_playground_interrupt(): void;
-  kui_playground_count(): number;
-  kui_playground_name(which: number): number;
   kui_perf(which: number): number;
   kui_gallery_set(total: number, page: number, pages: number, loading: number): void;
   kui_gallery_deleting(deleting: number, done: number, total: number): void;
@@ -259,32 +255,6 @@ export class FirmwareUi {
   }
 
   /** A physical key: BUTTON.SHUTTER or BUTTON.FN, as the buttons task reports it. */
-  /** The engine's playground scenes (ui_playground.h): their names, in order. */
-  playgroundScenes(): string[] {
-    const x = this.x;
-    if (!x || typeof x.kui_playground_count !== 'function') return [];
-    const n = x.kui_playground_count();
-    const out: string[] = [];
-    for (let i = 0; i < n; i++) out.push(this.cstr(x.kui_playground_name(i)));
-    return out;
-  }
-
-  /** Run playground scene `which` on the screen instead of the interface; -1 hands the screen back. */
-  playground(which: number): void {
-    const x = this.x;
-    if (!x || !this.running || typeof x.kui_playground !== 'function') return;
-    x.kui_playground(which, performance.now());
-    this.kick();
-  }
-
-  /** The interruption test's second act. */
-  playgroundInterrupt(): void {
-    const x = this.x;
-    if (!x || !this.running || typeof x.kui_playground_interrupt !== 'function') return;
-    x.kui_playground_interrupt();
-    this.kick();
-  }
-
   /** The renderer's own counters: scene us, worst us, nodes drawn, clips active, transformed pixels, missed frames. */
   perf(): { sceneUs: number; worstUs: number; nodes: number; clips: number; pixels: number; missed: number } | null {
     const x = this.x;

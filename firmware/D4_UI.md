@@ -1,5 +1,10 @@
 # KINO D4 — the interface
 
+> **Not in the tree.** The interface this describes was reverted on 2026-09-16: the
+> camera ships `origin/main`'s shell again. Everything below is kept as the
+> record of what was tried and why — the code is in git history at `32cdd19`
+> and its parents, and `firmware/p4/main/ui.c` is the interface now.
+
 This is the interface, not a theme on top of one. The previous system is in
 git history and nothing is kept from it for continuity; what survives is the
 drawing code underneath — the blitter, the type rasteriser, the font — because

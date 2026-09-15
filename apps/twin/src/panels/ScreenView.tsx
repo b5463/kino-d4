@@ -36,18 +36,6 @@ export function ScreenView({ onExit }: { onExit: () => void }) {
     () => `${fw.available() ? 1 : 0}:${fw.loaded()?.hash ?? ''}`,
   );
   const live = fw.available();
-  const [pg, setPg] = useState(-1);
-  const pgScenes = live ? fw.playgroundScenes() : [];
-  const pgStep = (dir: number) => {
-    if (!pgScenes.length) return;
-    const next = pg < 0 ? (dir > 0 ? 0 : pgScenes.length - 1) : (pg + dir + pgScenes.length) % pgScenes.length;
-    setPg(next);
-    fw.playground(next);
-  };
-  const pgExit = () => {
-    setPg(-1);
-    fw.playground(-1);
-  };
   const loaded = fw.loaded();
   const [scale, setScale] = useState<ScreenScale>('fit');
   const [watch, setWatch] = useState(true);
@@ -157,28 +145,6 @@ export function ScreenView({ onExit }: { onExit: () => void }) {
         <button type="button" className="twin-btn" disabled={!live} title="The body's function key (F)" onClick={() => fw.button(BUTTON.FN)}>
           FN
         </button>
-        <span className="twin-screenview-group" role="group" aria-label="Playground">
-          <button type="button" className="twin-btn" disabled={!live || !pgScenes.length} title="The previous engine test scene" onClick={() => pgStep(-1)}>
-            ‹
-          </button>
-          <button
-            type="button"
-            className={pg >= 0 ? 'twin-btn twin-btn--active' : 'twin-btn'}
-            disabled={!live || !pgScenes.length}
-            title={pg >= 0 ? 'Replay this scene; the interrupt test restarts from wherever the word is' : 'Run the animation playground on the screen: the engine\'s test scenes, not the product'}
-            onClick={() => (pg >= 0 ? (pgScenes[pg] === 'interrupt' ? fw.playgroundInterrupt() : fw.playground(pg)) : pgStep(1))}
-          >
-            {pg >= 0 ? `PLAYGROUND · ${pgScenes[pg].toUpperCase()}` : 'PLAYGROUND'}
-          </button>
-          <button type="button" className="twin-btn" disabled={!live || !pgScenes.length} title="The next engine test scene" onClick={() => pgStep(1)}>
-            ›
-          </button>
-          {pg >= 0 ? (
-            <button type="button" className="twin-btn" title="Hand the screen back to the interface" onClick={pgExit}>
-              DONE
-            </button>
-          ) : null}
-        </span>
         <span className="twin-screenview-group" role="group" aria-label="Scale">
           {(['fit', '1x', '2x'] as ScreenScale[]).map((s) => (
             <button

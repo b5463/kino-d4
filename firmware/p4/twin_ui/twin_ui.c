@@ -1051,7 +1051,6 @@ static void kui_placeholder_icons(void) {}
 
 /* ---- the firmware itself -------------------------------------------------- */
 
-#define KINO_PLAYGROUND 1
 #include "ui.c"
 
 /* ---- the harness ----------------------------------------------------------- */
@@ -1073,8 +1072,6 @@ KUI_EXPORT("kui_init") int kui_init(void) {
     s_ready = true;
   }
   s_cv = g_canvas;
-  ks_init();
-  s_kmo_sound = kmo_sound_cb;
   /* What ui_start() does before it creates the task. */
   s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
   buttons_on_press(on_button);
@@ -1094,44 +1091,10 @@ KUI_EXPORT("kui_boot") void kui_boot(double now_ms) {
  * have slept before the next pass, in ms; the page schedules the next call
  * that long after the last frame's virtual time.
  */
-/* The playground: -1 = the interface; otherwise the scene being run (ui_playground.h). */
-static int s_pg = -1;
-static int64_t s_pg_t0;
-KUI_EXPORT("kui_playground") void kui_playground(int which, double now_ms) {
-  kui_now_us = (int64_t)(now_ms * 1000.0);
-  ks_stop_tag("pg");
-  ks_node_t *a = ks_peek("pg.a");
-  if (a) { ks_mod_clear(a); a->char_clip = -1; }
-  s_pg = which;
-  if (which >= 0 && which < PG_COUNT) {
-    s_pg_t0 = kui_now_us;
-    pg_frame(which, kui_now_us);
-    pg_start(which, kui_now_us);
-  }
-}
-KUI_EXPORT("kui_playground_interrupt") void kui_playground_interrupt(void) { pg_interrupt(); }
-KUI_EXPORT("kui_playground_count") int kui_playground_count(void) { return PG_COUNT; }
-KUI_EXPORT("kui_playground_name") const char *kui_playground_name(int which) { return which >= 0 && which < PG_COUNT ? PG_NAME[which] : ""; }
-KUI_EXPORT("kui_perf") unsigned kui_perf(int which) {
-  switch (which) {
-    case 0: return s_ks_perf.render_us + s_ks_perf.step_us;
-    case 1: return s_ks_perf.worst_render_us;
-    case 2: return s_ks_perf.nodes_drawn;
-    case 3: return s_ks_perf.clips_active;
-    case 4: return s_ks_perf.pixels_tf;
-    default: return s_ks_perf.missed;
-  }
-}
-
 KUI_EXPORT("kui_pass") int kui_pass(double now_ms, int down, int lx, int ly) {
   kui_now_us = (int64_t)(now_ms * 1000.0);
   s_pass_start_us = kui_now_us;
   s_frame_count = 0;
-  if (s_pg >= 0) {
-    pg_frame(s_pg, kui_now_us);
-    gfx_present();
-    return MO_FRAME_MS;
-  }
   if (down && !s_touch_down) s_touch_count++;
   s_touch_down = down != 0;
   s_touch_lx = lx < 0 ? 0 : lx >= UI_W ? UI_W - 1 : lx;

@@ -1,5 +1,10 @@
 # KINO D4 firmware UI — direction
 
+> **Not in the tree.** The interface this describes was reverted on 2026-09-16: the
+> camera ships `origin/main`'s shell again. Everything below is kept as the
+> record of what was tried and why — the code is in git history at `32cdd19`
+> and its parents, and `firmware/p4/main/ui.c` is the interface now.
+
 **What is built.** `WORLD.md` is the phase that followed this one and it
 is done bar the hardware: one persistent photographic world rather than
 five screens, a mood layer, and behaviour driven by what the four cameras
