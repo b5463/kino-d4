@@ -5869,7 +5869,20 @@ static uint32_t ui_pass(void) {
     /* The nodes are only asked for frames while the viewfinder is up. Left
      * running behind a menu it would be four sensors and four UARTs burning
      * battery to fill a buffer nobody reads. */
-    viewfinder_run(s_screen == SCR_SHOOT);
+    /*
+     * The guest half IS a viewfinder, so the cameras run for all of it.
+     *
+     * This read `s_screen == SCR_SHOOT` alone, and in guest mode s_screen is
+     * whatever the owner left behind - usually the menu. So every camera
+     * stayed off, no tile ever arrived, and the guest half decided all four
+     * lenses were down and put up CAMERAS DOWN. A guest would have been
+     * handed a camera that says it is broken, on a camera that is fine.
+     *
+     * Found in the Twin in about a minute, which is the whole argument for
+     * the Twin: the host preview draws states it is told to draw, and this
+     * one is a state nothing would have thought to ask for.
+     */
+    viewfinder_run(guest_mode() || s_screen == SCR_SHOOT);
 
     const capture_stage_t cstage = capture_stage();
     if (cstage == CAPTURE_DONE) {
@@ -6097,7 +6110,14 @@ static uint32_t ui_pass(void) {
       }
     }
 
-    if (s_screen == SCR_SHOOT && held == -1) {
+    /* The guest half is a live viewfinder and repaints on the same clock the
+     * shoot screen does. This branch read `s_screen == SCR_SHOOT` alone, so
+     * in guest mode - where s_screen is whatever the owner left behind -
+     * nothing ever drew a frame after the first: the module's canvas held the
+     * guest half and the panel was never handed one. The picture simply did
+     * not move. Second half of the same fault as viewfinder_run() above, and
+     * the Twin found both of them inside two minutes. */
+    if ((guest_mode() || s_screen == SCR_SHOOT) && held == -1) {
       draw_screen();
       gfx_present();
       /* Paced against the link, not the panel: new frames arrive a few times
