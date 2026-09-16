@@ -163,14 +163,95 @@ static void sp_c(sp_screen_t s) {
   }
 }
 
+/* ---------------------------------------------------------------- */
+/* D — THE FOUR STATES HAVE DIFFERENT JOBS                           */
+/*
+ * What the first three are evidence for rather than a fourth guess at the
+ * same thing.
+ *
+ * A, B and C each take one layout and apply it to four states, and each is
+ * forced into a compromise by whichever state it suits least: A cannot say a
+ * photograph happened, B dims the picture on a camera whose job is framing,
+ * C frames at a quarter size at the moment someone is aiming.
+ *
+ * But aiming, taking, looking and failing are four different jobs and there
+ * is no reason they should share furniture. What holds a product together is
+ * its vocabulary - the four, the one accent, the type - not four screens
+ * built the same way. So:
+ *
+ *   AIM     full bleed, one lens, nothing but the ticks and the count.
+ *           Framing is the whole job; the camera gets out of the way.
+ *   TAKING  the picture you framed, with the four arriving ACROSS it -
+ *           four bands lighting left to right as each lens lands. C's
+ *           information at A's size.
+ *   TAKEN   the wigglegram, full bleed, and nothing on it whatsoever. It is
+ *           the one thing no other camera does; it needs no help.
+ *   WRONG   the screen the camera takes for itself. Black, the four in red,
+ *           two words.
+ */
+
+static void sp_d(sp_screen_t s) {
+  fill(0, 0, UI_W, UI_H, SP_GROUND);
+
+  if (s == SP_WRONG) {
+    /* The only screen the camera takes away from the photograph, because the
+     * photograph is what did not happen. */
+    const int cell = 46, gap = 22;
+    const int w = 4 * cell + 3 * gap;
+    const int x0 = (UI_W - w) / 2, y0 = 150;
+    for (int i = 0; i < 4; i++) fill(x0 + i * (cell + gap), y0, cell, cell, SP_BAD);
+    text_scaled_mid(&UI_FONT_M, UI_W / 2, y0 + cell + 44, "NO ROOM", 2, SP_INK);
+    text_mid(&UI_FONT_M, UI_W / 2, y0 + cell + 116, "Hand it back to whoever brought it.", SP_DIM);
+    return;
+  }
+
+  /* Every other state is the photograph, at the size it deserves. */
+  sp_pic(viewfinder_tile(s == SP_TAKEN ? 2 : 1), 0, 0, UI_W, UI_H);
+
+  if (s == SP_TAKEN) return; /* the reward, and nothing on it */
+
+  if (s == SP_TAKING) {
+    /* Four bands across the frame, filling left to right as the lenses
+     * answer. A band still waiting is held back; one that has landed is the
+     * photograph at full strength with the accent under it. Two things a
+     * stranger reads without a word: something is happening, and it is
+     * happening four times. */
+    const int bw = UI_W / 4, landed = 2;
+    for (int i = 0; i < 4; i++) {
+      const int bx = i * bw;
+      if (i >= landed) {
+        for (int y = 0; y < UI_H; y++)
+          for (int x = bx; x < bx + bw; x++) {
+            uint16_t *px = &s_cv[(size_t)y * UI_W + x];
+            const int r = ((*px >> 11) & 31) / 3, g = ((*px >> 5) & 63) / 3, b = (*px & 31) / 3;
+            *px = (uint16_t)((r << 11) | (g << 5) | b);
+          }
+      } else {
+        fill(bx, UI_H - 10, bw, 10, SP_HOT);
+      }
+      if (i) fill(bx, 0, 2, UI_H, RGB(0x00, 0x00, 0x00));
+    }
+    return;
+  }
+
+  /* AIM. The ticks, and how many are left. Nothing else reaches the glass. */
+  const int len[4] = {12, 12, 12, 12};
+  const uint16_t ink[4] = {SP_INK, SP_INK, SP_INK, SP_INK};
+  sp_ticks(len, ink);
+  fill(18, UI_H - 76, 118, 58, RGB(0x00, 0x00, 0x00));
+  text_scaled(&UI_FONT_M, 30, UI_H - 66, "128", 2, SP_INK);
+}
+
 static void specimen_sheet(void) {
-  static const char *const REG[3] = {"a_says_nothing", "b_says_one_thing", "c_shows_its_work"};
+  static const char *const REG[4] = {"a_says_nothing", "b_says_one_thing", "c_shows_its_work",
+                                     "d_four_jobs"};
   static const char *const SCR[4] = {"1_aim", "2_taking", "3_taken", "4_wrong"};
-  for (int r = 0; r < 3; r++)
+  for (int r = 0; r < 4; r++)
     for (int s = 0; s < 4; s++) {
       if (r == 0) sp_a((sp_screen_t)s);
       else if (r == 1) sp_b((sp_screen_t)s);
-      else sp_c((sp_screen_t)s);
+      else if (r == 2) sp_c((sp_screen_t)s);
+      else sp_d((sp_screen_t)s);
       char name[64];
       snprintf(name, sizeof name, "spec_%s_%s", REG[r], SCR[s]);
       shot(name);

@@ -23,7 +23,12 @@ LDFLAGS := -lm
 # on the draw path, so a stub would mean the renders showed an order no camera
 # will ever play. It has no ESP-IDF dependency - that is what it is for.
 SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c $(MAIN)/pure.c
-DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
+# specimen.c is #included by preview.c, so make never sees it change unless it
+# is named here. It was not, and an edited specimen rendered the previous one
+# in silence - the same class of miss as a baked header left out of a
+# dependency list, and the reason a render you did not ask for is worse than a
+# build error.
+DEPS := $(SRCS) specimen.c $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
         $(MAIN)/ui_font.h $(MAIN)/ui_labels.h $(MAIN)/logo_kino_d4.h \
         $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
