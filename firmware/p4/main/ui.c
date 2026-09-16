@@ -1892,12 +1892,34 @@ static void draw_menu(void) {
     status_panel(2, sy, rx - 4, sh);
     status_panel(rx, sy, rw, sh);
 
-    /* The body's own name when someone has given it one, the model when they
-     * have not. A camera that has been named should say so on the screen it
-     * shows most, not only two levels down in ABOUT. */
-    char who[40];
-    config_str_copy("body.name", who, sizeof who);
-    text(&UI_FONT_S, 12, ty, who[0] ? who : "kino D4", W_TEXT);
+    /*
+     * What is wrong, and only the name when nothing is.
+     *
+     * This panel said "kino D4" and nothing else, ever, on the screen the
+     * owner lands on. D4_INTERACTION.md calls the conditions list the owner's
+     * landing page for the reason that is obvious once the halves are split:
+     * a guest cannot act on any of this and never sees it, so the first thing
+     * the person who CAN act on it should read is whether there is anything
+     * to act on.
+     *
+     * The worst one, in the severity's colour, with the mark and the count
+     * already at the other end of the same bar. Not the whole list - the list
+     * is one tap away in SETTINGS and this is a status bar, not a screen.
+     */
+    const cond_t *worst = conditions_at(0);
+    if (worst != NULL) {
+      const uint16_t mark = worst->sev == COND_FAULT ? C_RED
+                            : worst->sev == COND_WARN ? RGB(0xa0, 0x70, 0x00)
+                                                      : W_TEXT;
+      text(&UI_FONT_S, 12, ty, worst->title, mark);
+    } else {
+      /* The body's own name when someone has given it one, the model when
+       * they have not. A camera that has been named should say so on the
+       * screen it shows most, not only two levels down in ABOUT. */
+      char who[40];
+      config_str_copy("body.name", who, sizeof who);
+      text(&UI_FONT_S, 12, ty, who[0] ? who : "kino D4", W_TEXT);
+    }
     /* The sprite is a 32 px box with a much smaller glyph in it, so centring
      * the box on a 34 px panel puts two transparent rows over each groove
      * rather than any artwork. */
