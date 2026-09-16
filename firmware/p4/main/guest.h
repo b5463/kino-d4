@@ -99,17 +99,47 @@ typedef enum { G_AIM = 0, G_TAKING, G_TAKEN, G_WRONG } g_state_t;
 
 static int64_t s_g_taken_us; /* when the reward went up */
 
-/** The picture, scaled to a rectangle. The finder's own blit is built for the
- *  shell's 2x2 panes; this half puts one lens across the whole panel. */
+/**
+ * The picture, scaled to a rectangle.
+ *
+ * The finder's own blit is built for the shell's 2x2 panes; this half puts one
+ * lens across the whole panel.
+ *
+ * Mapped, not divided. It was `src[x * VF_W / dw]` inside the inner loop -
+ * an integer division for every one of 384,000 pixels, thirty times a second,
+ * on the screen a guest spends the entire evening looking at, plus one more
+ * per row for y. The shell solved this once already: sh_blit() carries
+ * prebuilt x and y maps for exactly this reason, and this half made the same
+ * mistake again from scratch.
+ *
+ * The maps hold the same expression the inner loop used, so the picture is
+ * identical to the pixel - a fixed-point step was tried first and is half a
+ * source pixel out at the edges, which is a different picture rather than a
+ * faster one. Rebuilt only when the destination size changes, which is when
+ * the screen changes shape, which is never during a party.
+ */
 static void g_pic(const uint16_t *tile, int dx, int dy, int dw, int dh) {
   if (tile == NULL) {
     fill(dx, dy, dw, dh, RGB(0x1a, 0x1e, 0x24));
     return;
   }
+  if (dw <= 0 || dw > UI_W || dh <= 0 || dh > UI_H) return;
+
+  static uint16_t xmap[UI_W], ymap[UI_H];
+  static int map_w, map_h;
+  if (map_w != dw) {
+    for (int x = 0; x < dw; x++) xmap[x] = (uint16_t)(x * VF_W / dw);
+    map_w = dw;
+  }
+  if (map_h != dh) {
+    for (int y = 0; y < dh; y++) ymap[y] = (uint16_t)(y * VF_H / dh);
+    map_h = dh;
+  }
+
   for (int y = 0; y < dh; y++) {
-    const uint16_t *src = tile + (size_t)(y * VF_H / dh) * VF_W;
+    const uint16_t *src = tile + (size_t)ymap[y] * VF_W;
     uint16_t *dst = s_cv + (size_t)(dy + y) * UI_W + dx;
-    for (int x = 0; x < dw; x++) dst[x] = src[x * VF_W / dw];
+    for (int x = 0; x < dw; x++) dst[x] = src[xmap[x]];
   }
 }
 

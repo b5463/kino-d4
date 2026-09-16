@@ -486,16 +486,46 @@ static inline void px_set(int x, int y, uint16_t c) {
   if ((unsigned)x < UI_W && (unsigned)y < UI_H) s_cv[(size_t)y * UI_W + x] = c;
 }
 
+/*
+ * A run of one colour, two pixels per store.
+ *
+ * The canvas is 800x480 RGB565 in PSRAM (gfx.c allocates it MALLOC_CAP_SPIRAM),
+ * and this used to write it one uint16_t at a time. A full-screen fill is
+ * 384,000 of those, over the MSPI bus, and every screen in the product starts
+ * with one - nineteen call sites of fill(0, 0, UI_W, UI_H, ...). Pairing them
+ * into 32-bit stores halves the transaction count on the bus that is the
+ * bottleneck, and the compiler cannot do it for us: it cannot prove the row
+ * pointer is aligned or that the span does not alias.
+ *
+ * Aligned first, because an unaligned 32-bit store to PSRAM is worse than the
+ * two 16-bit ones it replaces.
+ */
+static inline void fill_run(uint16_t *p, size_t n, uint16_t colour) {
+  if (n == 0) return;
+  if (((uintptr_t)p & 2u) != 0) { /* odd address: one pixel to reach a word */
+    *p++ = colour;
+    if (--n == 0) return;
+  }
+  const uint32_t pair = ((uint32_t)colour << 16) | colour;
+  uint32_t *q = (uint32_t *)(void *)p;
+  for (size_t i = n >> 1; i != 0; i--) *q++ = pair;
+  if ((n & 1u) != 0) *(uint16_t *)(void *)q = colour;
+}
+
 static void fill(int x, int y, int w, int h, uint16_t colour) {
   if (x < 0) { w += x; x = 0; }
   if (y < 0) { h += y; y = 0; }
   if (x + w > UI_W) w = UI_W - x;
   if (y + h > UI_H) h = UI_H - y;
   if (w <= 0 || h <= 0) return;
-  for (int r = 0; r < h; r++) {
-    uint16_t *row = s_cv + (size_t)(y + r) * UI_W + x;
-    for (int i = 0; i < w; i++) row[i] = colour;
+  /* A full-width rectangle is one contiguous run: the canvas is row-major, so
+   * the rows join and the per-row loop and its pointer arithmetic go away.
+   * This is the shape of the fill every screen opens with. */
+  if (x == 0 && w == UI_W) {
+    fill_run(s_cv + (size_t)y * UI_W, (size_t)h * UI_W, colour);
+    return;
   }
+  for (int r = 0; r < h; r++) fill_run(s_cv + (size_t)(y + r) * UI_W + x, (size_t)w, colour);
 }
 
 static uint16_t mix(uint16_t a, uint16_t b, int k) {
