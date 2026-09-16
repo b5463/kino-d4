@@ -90,18 +90,6 @@ static void g_pic(const uint16_t *tile, int dx, int dy, int dw, int dh) {
   }
 }
 
-/** The four on the top edge: one tick per lens, over the quarter of the
- *  picture its camera made. Red and the same length when it is not
- *  answering - a lens that is out should not also be quieter. */
-static void g_ticks(void) {
-  for (int i = 0; i < 4; i++) {
-    const bool ok = viewfinder_ready() && viewfinder_tile(i) != NULL;
-    const int cx = UI_W / 8 + i * (UI_W / 4);
-    fill(cx - 3, 0, 6, 14, RGB(0x00, 0x00, 0x00));
-    fill(cx - 2, 0, 4, 12, ok ? G_INK : G_BAD);
-  }
-}
-
 /** Which lens the live view is showing. The photograph moves, so the finder
  *  moves: this half never shows a still. */
 static int g_lens(void) {
@@ -115,10 +103,25 @@ static int g_lens(void) {
 /** 1. AIM. Framing is the whole job, so the camera gets out of the way. */
 static void g_draw_aim(void) {
   g_pic(viewfinder_ready() ? viewfinder_tile(g_lens()) : NULL, 0, 0, UI_W, UI_H);
-  g_ticks();
 
-  /* How many are left, and nothing else. On a plate, because it sits over a
-   * photograph nobody has taken yet and that photograph may be a window. */
+  /*
+   * The count, and nothing else at all.
+   *
+   * There were four ticks on the top edge, one per lens, saying which of them
+   * were answering. They came off, and the rule they broke is one written two
+   * files up: no chrome a guest cannot act on. A stranger can do nothing
+   * about a lens being down. If one is, the photograph comes back with three
+   * frames and TAKING shows that as it happens; if all four are, WRONG says
+   * so in words. Neither of those needs a permanent row of marks on the
+   * screen someone is framing with, and "it looks like our product" is not a
+   * reason a guest can act on.
+   *
+   * What is left is the picture and how many more they can take, which is
+   * the only thing on this screen anybody has ever wanted from it.
+   *
+   * On a plate, because it sits over a photograph nobody has taken yet and
+   * that photograph may be a window.
+   */
   storage_status_t sd;
   storage_get_status(&sd);
   char n[16];
@@ -132,25 +135,23 @@ static void g_draw_aim(void) {
 static void g_draw_taking(void) {
   g_pic(viewfinder_ready() ? viewfinder_tile(1) : NULL, 0, 0, UI_W, UI_H);
 
-  /* On the real arrivals, not on a timer: four sensors on four mounts do not
-   * agree, the row fills unevenly, and that unevenness is true. */
+  /*
+   * Four segments along the bottom edge, filling on the real arrivals -
+   * capture_frames_in(), not a timer, because four sensors on four mounts do
+   * not answer together and the unevenness is true.
+   *
+   * ALONG THE EDGE, NOT ACROSS THE PICTURE. The first cut dimmed three
+   * quarters of the frame to a third while the capture ran, which read well
+   * on a bright test gradient and read as a broken screen on an actual party
+   * photograph: dark stripes over a dark room. The photograph someone just
+   * took is the wrong thing to damage in order to report on it. The segments
+   * are 16 px of the bottom edge and the picture is untouched.
+   */
   const uint32_t in = capture_frames_in();
-  const int bw = UI_W / 4;
+  const int bw = UI_W / 4, h = 16, y = UI_H - h;
+  fill(0, y, UI_W, h, RGB(0x00, 0x00, 0x00));
   for (int i = 0; i < 4; i++) {
-    const int bx = i * bw;
-    if (in & (1u << i)) {
-      fill(bx, UI_H - 10, bw, 10, G_HOT);
-    } else {
-      /* Held back to a third rather than blacked out: the band is still the
-       * photograph being framed, it has simply not arrived. */
-      for (int y = 0; y < UI_H; y++)
-        for (int x = bx; x < bx + bw; x++) {
-          uint16_t *px = &s_cv[(size_t)y * UI_W + x];
-          const int r = ((*px >> 11) & 31) / 3, g = ((*px >> 5) & 63) / 3, b = (*px & 31) / 3;
-          *px = (uint16_t)((r << 11) | (g << 5) | b);
-        }
-    }
-    if (i) fill(bx, 0, 2, UI_H, RGB(0x00, 0x00, 0x00));
+    if (in & (1u << i)) fill(i * bw + 2, y + 3, bw - 4, h - 6, G_HOT);
   }
 }
 
