@@ -62,12 +62,35 @@
  * a body nobody can configure.
  */
 static inline bool guest_mode(void) {
-#ifdef BOARD_SW_GUEST
-#if BOARD_SW_GUEST != BOARD_BTN_NONE
+#if defined(BOARD_SW_GUEST) && BOARD_SW_GUEST != BOARD_BTN_NONE
   return gpio_get_level(BOARD_SW_GUEST) == 0;
-#endif
-#endif
+#else
+  /*
+   * OFF until the switch is hardware.
+   *
+   * It used to fall through to body.guestMode here so the half could be
+   * exercised before the pin existed, and that is exactly the thing ECN-0006
+   * argues against: a camera whose guest lock is a setting is not locked. An
+   * owner cannot see whether it is on, cannot turn it off without a laptop,
+   * and a config write from anywhere puts the camera into a state with no way
+   * out of it. A half-fitted lock is worse than no lock, because the first
+   * one gets trusted.
+   *
+   * So it is off, at the one gate, and the day SLIDE_MODE has a pin this
+   * function is the only thing that changes. Everything below still compiles
+   * and is still drawn by draw_screen()'s branch - it is unreachable, not
+   * deleted, because code that is commented out stops building and is worth
+   * nothing by the time anyone wants it back.
+   *
+   * To look at it: build with -DKINO_GUEST_PREVIEW=1, which is a bench flag
+   * and not a product state.
+   */
+#ifdef KINO_GUEST_PREVIEW
   return config_bool("body.guestMode", false);
+#else
+  return false;
+#endif
+#endif
 }
 
 /* Which of the four is on screen. Not a screen enum in ui.c's sense: the

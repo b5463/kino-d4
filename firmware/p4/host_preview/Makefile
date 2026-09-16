@@ -12,6 +12,11 @@ MAIN := ../main
 # that there is one of it.
 KDP_CORE := ../../components/kdp_core/include
 CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_CORE)
+# The guest half is unreachable on a body with no SLIDE_MODE pin (guest.h), and
+# it still has to be renderable or nobody can look at it before the switch
+# exists. A bench flag, in the renderer only: the Twin and the camera do not
+# get it, so neither can be put into a state a slide switch is supposed to own.
+CFLAGS += -DKINO_GUEST_PREVIEW=1
 LDFLAGS := -lm
 
 # qr.c is compiled for real, not stubbed: it has no ESP-IDF dependency, and a
