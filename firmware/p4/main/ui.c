@@ -5043,7 +5043,21 @@ static void draw_toast(void) {
  */
 static bool s_calibrating;
 
+#include "guest.h"
+
+/*
+ * The guest half takes the whole screen and nothing else runs.
+ *
+ * Not a screen in the shell's sense - it is the other half of the product,
+ * and while it is up the shell does not exist. No header, no status bar, no
+ * capture banner, no toast, no dialog: a guest cannot act on any of them and
+ * every one of them is furniture between a stranger and a photograph.
+ */
 static void draw_screen(void) {
+  if (guest_mode()) {
+    draw_guest();
+    return;
+  }
   switch (s_screen) {
     case SCR_MENU: draw_menu(); break;
     case SCR_SHOOT: draw_shoot(); break;
@@ -5128,6 +5142,12 @@ static int hit_dialog(int x, int y) {
 }
 
 static int hit_test(int x, int y) {
+  /* In guest mode the panel reaches nothing. Not a region, not a row, not a
+   * dialog - the glass is a viewfinder. This is the whole of "nothing a
+   * finger touches changes anything", and it is one line here rather than a
+   * guard on every control because a guard that has to be remembered on every
+   * new control is a guard that will be forgotten on one. */
+  if (guest_mode()) return -1;
   if (s_dialog != DLG_NONE) return hit_dialog(x, y);
 
   switch (s_screen) {
@@ -5584,6 +5604,13 @@ static void handle_button(const btn_event_t *ev) {
     return;
   }
   if (ev->id != BTN_SHUTTER) return;
+  /* In guest mode the shutter is the only control and it always takes a
+   * photograph. It never opens a screen, because there is no screen to open:
+   * away-from-the-finder means nothing when the finder is the product. */
+  if (guest_mode()) {
+    fire_shutter(ev->long_press);
+    return;
+  }
   if (s_screen != SCR_SHOOT) {
     go(SCR_SHOOT, 160);
     gfx_present();

@@ -107,8 +107,11 @@ int config_int(const char *path, int fallback) {
   if (strcmp(path, "shoot.volume") == 0) return 6;
   return fallback;
 }
+/* The guest/owner switch, which on a body with the pin fitted is a slide on
+ * the case. One run photographs both halves, so main() drives it. */
+static bool g_guest = false;
 bool config_bool(const char *path, bool fallback) {
-  (void)path;
+  if (strcmp(path, "body.guestMode") == 0) return g_guest;
   return fallback;
 }
 /* Driven from main() so one run can photograph a setting in each of its
@@ -367,6 +370,12 @@ bool capture_request(const char *source) {
 /* Driven by the preview so the result banner can be looked at. */
 static capture_stage_t g_stage = CAPTURE_IDLE;
 static capture_report_t g_report;
+/* Which of the four have landed, as the capture task reports it. The guest
+ * half fills its bands off this and not off the stage, because four sensors
+ * on four mounts do not answer together. */
+static uint32_t g_frames_in = 0xF;
+uint32_t capture_frames_in(void) { return g_frames_in; }
+uint32_t capture_asked_cams(void) { return 0xF; }
 
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
@@ -839,6 +848,39 @@ int main(int argc, char **argv) {
   draw_screen();
   shot("calibrating");
   s_calibrating = false;
+
+  /* The guest half, from the firmware rather than from the specimen: the four
+   * states as draw_guest() actually draws them, which is what has to be right
+   * now that the register is chosen. The stub capture below is driven the way
+   * a real one drives it - a stage and an arrival mask - so TAKING is the
+   * bands filling on frames_in and not on a number typed here. */
+  {
+    g_guest = true;
+    g_stage = CAPTURE_IDLE;
+    draw_screen();
+    shot("guest_1_aim");
+
+    g_stage = CAPTURE_READING;
+    g_frames_in = 0x3; /* two of the four have landed */
+    draw_screen();
+    shot("guest_2_taking");
+
+    g_stage = CAPTURE_DONE;
+    g_report.ok = true;
+    g_report.stored = 4;
+    g_report.online = 4;
+    s_g_taken_us = 0;
+    draw_screen();
+    shot("guest_3_taken");
+
+    g_stage = CAPTURE_IDLE;
+    g_card_mounted = false;
+    draw_screen();
+    shot("guest_4_wrong");
+    g_card_mounted = true;
+    g_frames_in = 0xF;
+    g_guest = false;
+  }
 
   specimen_sheet();
 
