@@ -805,6 +805,8 @@ static void shot(const char *name) {
  * exist to catch. */
 static void scan_conditions(void) { conditions_scan(about_cameras()); }
 
+#include "specimen.c"
+
 int main(int argc, char **argv) {
   snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
 
@@ -837,6 +839,8 @@ int main(int argc, char **argv) {
   draw_screen();
   shot("calibrating");
   s_calibrating = false;
+
+  specimen_sheet();
 
   /* ---- the menu, which is the home screen ---- */
   s_pressed = -1;
