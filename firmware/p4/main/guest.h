@@ -131,27 +131,53 @@ static void g_draw_aim(void) {
   text_scaled(&UI_FONT_M, 30, UI_H - 66, n, 2, G_INK);
 }
 
-/** 2. TAKING. The picture stays and the four arrive across it. */
+/**
+ * 2. TAKING. The picture stays and the four arrive under it.
+ *
+ * This is the one moment in the guest half where the camera MUST report, and
+ * it is the one that has been wrong twice.
+ *
+ * First it dimmed three quarters of the frame while the capture ran, which
+ * read as a broken screen on a real photograph - dark stripes over a dark
+ * room. Then it shrank to a 16 px strip on the bottom edge, which on an 800 x
+ * 480 panel held at arm's length in a party is not there at all. The correct
+ * size is the one a stranger reads without looking for it, and for the only
+ * feedback a camera gives that is large.
+ *
+ * Four blocks, each a quarter of the panel wide and 40 tall, on a black band.
+ * Empty is an outline so a block that has not arrived is still a block rather
+ * than a hole. Filled is the accent. They fill on capture_frames_in(), so
+ * four sensors on four mounts fill it unevenly and that is true.
+ *
+ * Nothing else: no count, no word. Four things that fill up is the count, and
+ * it is the only count in this product a guest has ever needed - "is it
+ * done yet" and "did it get them all" are the same question answered by the
+ * same four blocks.
+ */
+#define G_SEG_H 40
+#define G_SEG_BAND 64
+
 static void g_draw_taking(void) {
   g_pic(viewfinder_ready() ? viewfinder_tile(1) : NULL, 0, 0, UI_W, UI_H);
 
-  /*
-   * Four segments along the bottom edge, filling on the real arrivals -
-   * capture_frames_in(), not a timer, because four sensors on four mounts do
-   * not answer together and the unevenness is true.
-   *
-   * ALONG THE EDGE, NOT ACROSS THE PICTURE. The first cut dimmed three
-   * quarters of the frame to a third while the capture ran, which read well
-   * on a bright test gradient and read as a broken screen on an actual party
-   * photograph: dark stripes over a dark room. The photograph someone just
-   * took is the wrong thing to damage in order to report on it. The segments
-   * are 16 px of the bottom edge and the picture is untouched.
-   */
   const uint32_t in = capture_frames_in();
-  const int bw = UI_W / 4, h = 16, y = UI_H - h;
-  fill(0, y, UI_W, h, RGB(0x00, 0x00, 0x00));
+  const int by = UI_H - G_SEG_BAND;
+  fill(0, by, UI_W, G_SEG_BAND, RGB(0x00, 0x00, 0x00));
+
+  const int bw = UI_W / 4, gap = 6;
   for (int i = 0; i < 4; i++) {
-    if (in & (1u << i)) fill(i * bw + 2, y + 3, bw - 4, h - 6, G_HOT);
+    const int x = i * bw + gap, w = bw - 2 * gap;
+    const int y = by + (G_SEG_BAND - G_SEG_H) / 2;
+    if (in & (1u << i)) {
+      fill(x, y, w, G_SEG_H, G_HOT);
+    } else {
+      /* An outline, not a hole: a lens that has not answered yet is still one
+       * of the four and the row should read as four the whole way through. */
+      fill(x, y, w, 2, G_DIM);
+      fill(x, y + G_SEG_H - 2, w, 2, G_DIM);
+      fill(x, y, 2, G_SEG_H, G_DIM);
+      fill(x + w - 2, y, 2, G_SEG_H, G_DIM);
+    }
   }
 }
 

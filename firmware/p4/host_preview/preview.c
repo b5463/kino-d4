@@ -861,7 +861,10 @@ int main(int argc, char **argv) {
     shot("guest_1_aim");
 
     g_stage = CAPTURE_READING;
-    g_frames_in = 0x3; /* two of the four have landed */
+    g_frames_in = 0x1; /* the first has landed */
+    draw_screen();
+    shot("guest_2a_taking_1");
+    g_frames_in = 0x7; /* three, unevenly, the way four mounts answer */
     draw_screen();
     shot("guest_2_taking");
 
