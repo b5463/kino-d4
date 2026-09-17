@@ -1733,9 +1733,79 @@ static void human_bytes(char *out, size_t n, uint64_t bytes) {
 /* Main menu                                                           */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* The menu as a stack                                                  */
+/*
+ * One card and five rows, not six equal tiles.
+ *
+ * Six peers in a grid is a desktop metaphor and it has been wrong since the
+ * product split in two: the camera is not a sibling of SETTINGS. The stack
+ * says the hierarchy with geometry instead of with navigation - SHOOT is a
+ * card four times the height of anything else, and the rest are a list under
+ * it. Nothing about where a press goes changed; one tap still opens.
+ *
+ * The palette and the shapes are a revision, and the only one in the tree:
+ * near-black ground, one warm accent carrying the one thing that matters,
+ * deep green rows darkening as they descend, and a corner radius. The rest of
+ * the interface is still the utility shell.
+ */
+#define MZ_M 16                     /* the margin round the stack */
+#define MZ_CARD_H 170               /* the camera */
+#define MZ_ROW_H 50                 /* everything else */
+#define MZ_GAP 6
+#define MZ_R 14                     /* corner radius */
+#define MZ_W (UI_W - 2 * MZ_M)
+#define MZ_ROW_Y(i) (MZ_M + MZ_CARD_H + MZ_GAP + ((i) - 1) * (MZ_ROW_H + MZ_GAP))
+
+#define MZ_GROUND RGB(0x0b, 0x0d, 0x0c)
+#define MZ_CARD RGB(0xe8, 0xa1, 0x83)   /* the one warm thing on the screen */
+#define MZ_CARD_INK RGB(0x2a, 0x14, 0x0c)
+#define MZ_MINT RGB(0x86, 0xd6, 0xb4)
+#define MZ_ACCENT RGB(0xe8, 0x73, 0x4a)
+
+/** Where item `i` of the menu is. One function, so the drawing and the finger
+ *  cannot disagree - which they did, the last time this screen moved. */
+static void menu_rect(int i, int *x, int *y, int *w, int *h) {
+  *x = MZ_M;
+  *w = MZ_W;
+  if (i <= 0) {
+    *y = MZ_M;
+    *h = MZ_CARD_H;
+  } else {
+    *y = MZ_ROW_Y(i);
+    *h = MZ_ROW_H;
+  }
+}
+
+/* Kept for the composite cache, which still wants a tile origin. */
 static void tile_rect(int i, int *x, int *y) {
-  *x = M_MARGIN + (i % M_COLS) * (M_TILE_W + M_GAP);
-  *y = M_MARGIN + (i / M_COLS) * (M_TILE_H + M_GAP);
+  int w, h;
+  menu_rect(i, x, y, &w, &h);
+}
+
+/**
+ * A filled rectangle with its corners taken off.
+ *
+ * Square corners are the shell's grammar and this screen is deliberately not
+ * in it. Drawn as a run per row with the inset computed from a circle, which
+ * is a handful of integer square roots on a screen that repaints when someone
+ * presses something - not per frame, and not in the viewfinder's path.
+ */
+static void round_rect(int x, int y, int w, int h, int r, uint16_t c) {
+  if (r * 2 > w) r = w / 2;
+  if (r * 2 > h) r = h / 2;
+  for (int i = 0; i < h; i++) {
+    int inset = 0;
+    const int dy = (i < r) ? (r - 1 - i) : (i >= h - r ? i - (h - r) : -1);
+    if (dy >= 0) {
+      /* x = r - sqrt(r^2 - dy^2), by integer search: r is 14 and this runs
+       * 28 times per rectangle. */
+      int dx = 0;
+      while (dx < r && (r - dx) * (r - dx) + dy * dy > r * r) dx++;
+      inset = dx;
+    }
+    fill(x + inset, y + i, w - 2 * inset, 1, c);
+  }
 }
 
 /**
@@ -1814,179 +1884,84 @@ static void menu_prime(void) {
 }
 
 static void draw_menu(void) {
-  menu_prime();
-  /* The 1998 3D face, not a near-white canvas. It is the colour every window
-   * in that era sat on, it makes the saturated icons pop instead of glowing,
-   * and on a panel used in a dark room it is far kinder than white. */
-  fill(0, 0, UI_W, UI_H, W_FACE);
-  /* The screen is one window. */
-  bevel_raised(0, 0, UI_W, UI_H);
+  fill(0, 0, UI_W, UI_H, MZ_GROUND);
 
-  for (int i = 0; i < 6; i++) {
-    int tx, ty;
-    tile_rect(i, &tx, &ty);
-    const bool sel = (foc(SCR_MENU, i));
-    const bool down = (s_pressed == i);
-
-    /* The tile. Raised, and sunken while it is held - the same two states as
-     * every other button on the camera, at 250x205. The lift the icon used to
-     * do on focus is gone with it: a tile that moves is a tile whose edges
-     * move, and an edge that moves 2 px on selection reads as a rendering
-     * fault rather than as a highlight. Focus is the chip and the dots. */
-    button(tx, ty, M_TILE_W, M_TILE_H, down);
-
-    const int top = ty + (M_TILE_H - M_STACK) / 2;
-    const int icx = tx + M_TILE_W / 2;
-    const int icy = top + ICON_BOX / 2;
-
-    /* Everything inside a held tile moves with its face. */
-    const int lift = down ? 1 : 0;
-
-    const int bx = icx - MT_W / 2 + lift, by2 = icy - MT_H / 2 + lift;
-    if (s_mcache[i] != NULL) {
-      for (int r = 0; r < MT_H; r++) {
-        const int gy = by2 + r;
-        if (gy < 0 || gy >= UI_H) continue;
-        memcpy(s_cv + (size_t)gy * UI_W + bx, s_mcache[i] + (size_t)r * MT_W,
-               (size_t)MT_W * sizeof(uint16_t));
-      }
-    } else {
-      /* No room for the cache. Slower and unfiltered, but still a menu. */
-      icons_blit_centred(s_cv, UI_W, UI_H, i, icx + lift, icy + lift);
-    }
-
-    /* The tile's number, in the corner the artwork does not reach. The home
-     * screen is six positions and it never said so; a camera whose lenses are
-     * 1 2 3 4 should count its destinations the same way. */
-    {
-      char n[16];
-      snprintf(n, sizeof n, "%d", i + 1);
-      text(&UI_FONT_S, tx + 8, ty + 6, n, W_GRAYTEXT);
-    }
-
-    const int lw = text_w(&UI_FONT_M, MENU_LABEL[i]);
-    const int ly = top + ICON_BOX + 10 + lift;
-    const int px = icx - lw / 2 - 6 + lift, pw = lw + 12;
-
-    if (sel || down) {
-      fill(px, ly, pw, M_LABEL_H, W_SEL);
-      /* The spark. Cobalt is the structure; a two-pixel rule of KINO yellow
-       * under the selected word is the only warm thing on the screen, and it
-       * is what stops the selection reading as a plain system highlight. */
-      fill(px, ly + M_LABEL_H - 2, pw, 2, C_YELLOW);
-      text(&UI_FONT_M, icx - lw / 2 + lift, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
-           W_SELTEXT);
-    } else {
-      text(&UI_FONT_M, icx - lw / 2, ly + (M_LABEL_H - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
-           W_TEXT);
-    }
-    /* Inside the tile, not round the stack: 3 px in from the tile's own edge
-     * is where a focus rectangle goes in this grammar, and it also stops the
-     * dots landing on the icon artwork. */
-    if (sel) focus_inset(tx, ty, M_TILE_W, M_TILE_H, W_TEXT);
-  }
-
-  /*
-   * The status bar: the wordmark and where the power is coming from, each in
-   * its own recess, divided by the 2 px of face grey between the two panels.
-   *
-   * Both readings are exactly what they were. There is no battery gauge on
-   * this body, so the right panel says where the power comes from and nothing
-   * about how much is left - a percentage here would be invented.
-   */
+  /* ---- the camera, as a card ---- */
   {
-    const int sy = M_STATUS_Y, sh = M_STATUS_H;
-    const int bi = W98_BATTERY_IDX;
-    const int be = icons_edge(bi);
-    /* Wide enough for BATTERY, the icon and the air round both. The left
-     * panel takes the rest, which is the Win98 split: one elastic panel and
-     * one sized to its contents. */
-    /* Wide enough for the card reading, the power word, the icon and the air
-     * round all three - the same two facts, in the same order and the same
-     * words, that every other screen now carries at the right end of its own
-     * bar. The home screen is where someone looks before going out with it,
-     * so it is the last place that should be missing how much card is left. */
-    char card[24];
+    int x, y, w, h;
+    menu_rect(0, &x, &y, &w, &h);
+    const bool down = s_pressed == 0;
+    round_rect(x, y, w, h, MZ_R, down ? RGB(0xd0, 0x8b, 0x6f) : MZ_CARD);
+
+    /* The small line: what the camera has, in the place the reference puts
+     * its status. This is the only screen that carries the state reading in
+     * the accent rather than on a bar. */
+    char line[64];
     {
       storage_status_t sd;
       storage_get_status(&sd);
-      if (!sd.mounted) snprintf(card, sizeof card, "NO CARD");
-      else snprintf(card, sizeof card, "%d LEFT", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+      const cond_t *worst = conditions_at(0);
+      if (worst != NULL) snprintf(line, sizeof line, "%s", worst->title);
+      else if (!sd.mounted) snprintf(line, sizeof line, "NO CARD");
+      else
+        snprintf(line, sizeof line, "CAMERA  %d LEFT",
+                 (int)(sd.free_bytes / (6ull * 1024 * 1024)));
     }
-    const char *const pwr = usb_attached() ? "USB" : "BATTERY";
-    const int rw = text_w(&UI_FONT_S, card) + 18 + text_w(&UI_FONT_S, pwr) + be + 26;
-    const int rx = UI_W - 2 - rw;
-    const int ty = sy + (sh - UI_FONT_S.line_h) / 2;
+    for (char *c = line; *c; c++)
+      if (*c >= 'a' && *c <= 'z') *c = (char)(*c - 32);
+    text(&UI_FONT_S, x + 22, y + 16, line, MZ_CARD_INK);
 
-    status_bar(2, sy, UI_W - 4, sh);
-    status_panel(2, sy, rx - 4, sh);
-    status_panel(rx, sy, rw, sh);
+    /* The name, as large as this face goes. The word is the control. */
+    text_scaled(&UI_FONT_M, x + 20, y + 54, MENU_LABEL[0], 2, MZ_CARD_INK);
+    text(&UI_FONT_S, x + 22, y + h - 32, "TAP TO OPEN", MZ_CARD_INK);
+
+    /* The one piece of artwork left on the screen, at the far end of the one
+     * card that has room for it. */
+    const int e = icons_edge(0);
+    if (e > 0 && e < h - 8) icons_blit_centred(s_cv, UI_W, UI_H, 0, x + w - 24 - e / 2, y + h / 2);
+  }
+
+  /* ---- everything else, as a list that recedes ---- */
+  for (int i = 1; i < 6; i++) {
+    int x, y, w, h;
+    menu_rect(i, &x, &y, &w, &h);
+    const bool down = s_pressed == i;
+    /* Each row a step darker than the one above it: a stack seen edge-on,
+     * and the reason the eye starts at the top and not in the middle. */
+    static const uint16_t ROW[5] = {
+        RGB(0x1c, 0x4e, 0x3d), RGB(0x17, 0x40, 0x32), RGB(0x12, 0x33, 0x28),
+        RGB(0x0e, 0x26, 0x1e), RGB(0x0b, 0x1a, 0x15),
+    };
+    round_rect(x, y, w, h, MZ_R, down ? MZ_ACCENT : ROW[i - 1]);
 
     /*
-     * What is wrong, and only the name when nothing is.
+     * No artwork on a row. The reference carries a 16 px pictogram beside
+     * each word; this body's icons are the menu's old tile artwork, drawn for
+     * a 250 x 205 tile, and at a 50 px row they are twice the height of the
+     * row and land on their neighbours. Scaling tile art down is not a
+     * pictogram, it is a smaller mess.
      *
-     * This panel said "kino D4" and nothing else, ever, on the screen the
-     * owner lands on. D4_INTERACTION.md calls the conditions list the owner's
-     * landing page for the reason that is obvious once the halves are split:
-     * a guest cannot act on any of this and never sees it, so the first thing
-     * the person who CAN act on it should read is whether there is anything
-     * to act on.
-     *
-     * The worst one, in the severity's colour, with the mark and the count
-     * already at the other end of the same bar. Not the whole list - the list
-     * is one tap away in SETTINGS and this is a status bar, not a screen.
+     * So the word is the control, which is what the reference's big card says
+     * anyway. Small marks for these six are artwork somebody has to draw, and
+     * drawing them is a decision rather than a workaround.
      */
-    const cond_t *worst = conditions_at(0);
-    if (worst != NULL) {
-      const uint16_t mark = worst->sev == COND_FAULT ? C_RED
-                            : worst->sev == COND_WARN ? RGB(0xa0, 0x70, 0x00)
-                                                      : W_TEXT;
-      text(&UI_FONT_S, 12, ty, worst->title, mark);
-    } else {
-      /* The body's own name when someone has given it one, the model when
-       * they have not. A camera that has been named should say so on the
-       * screen it shows most, not only two levels down in ABOUT. */
-      char who[40];
-      config_str_copy("body.name", who, sizeof who);
-      text(&UI_FONT_S, 12, ty, who[0] ? who : "kino D4", W_TEXT);
+    text(&UI_FONT_M, x + 24, y + (h - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
+         down ? MZ_GROUND : MZ_MINT);
+
+    /* The count on the right of the roll's row, because it is the one row
+     * whose contents a person wonders about from here. */
+    if (MENU_DEST[i] == SCR_GALLERY) {
+      const int n = gallery_media_count();
+      if (n >= 0) {
+        char c[16];
+        snprintf(c, sizeof c, "%d", n);
+        text_right(&UI_FONT_S, x + w - 20, y + (h - UI_FONT_S.line_h) / 2, c,
+                   down ? MZ_GROUND : MZ_MINT);
+      }
     }
-    /* The sprite is a 32 px box with a much smaller glyph in it, so centring
-     * the box on a 34 px panel puts two transparent rows over each groove
-     * rather than any artwork. */
-    icons_blit(s_cv, UI_W, UI_H, bi, UI_W - 10 - be, sy + (sh - be) / 2);
-    chrome_state(UI_W - 16 - be, ty, W_TEXT);
-  }
-
-  /* ---- the glass ---- */
-
-  /* The labels, every repaint. Only the selected one carries chroma - the
-   * rest are black on neutral grey, where I and Q are zero - but the LUMA
-   * limit is not the identity on any of them: it is what softens a hard type
-   * edge, and filtering only the selected label would leave the other five
-   * visibly crisper than it. Cheap enough at six rows of 32.
-   *
-   * Inset 3 px from the tile now, not run to its full width. The luma pass is
-   * a [1 2 1] and a bevel is a one-pixel line: taking the tile's edges into
-   * the filter turned every highlight and shadow into a two-pixel smear, which
-   * is the one thing a 2 px bevel cannot survive. The label is the only thing
-   * in this band that wants the glass. */
-  static bool warm_timed;
-  const int64_t tl = warm_timed ? 0 : esp_timer_get_time();
-  for (int i = 0; i < 6; i++) {
-    int tx, ty;
-    tile_rect(i, &tx, &ty);
-    const int top = ty + (M_TILE_H - M_STACK) / 2;
-    crt_rect(tx + 3, top + ICON_BOX + 6, M_TILE_W - 6, M_LABEL_H + 8);
-  }
-  if (s_mcached && !warm_timed) {
-    warm_timed = true;
-    /* What every repaint after the first actually costs, which is what a
-     * press pays. Reported once so the number is measured rather than
-     * derived from the cold one. */
-    ESP_LOGI(TAG, "composite: labels only in %lu ms",
-             (unsigned long)((esp_timer_get_time() - tl) / 1000));
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Viewfinder                                                          */
@@ -5204,10 +5179,13 @@ static int hit_test(int x, int y) {
 
   switch (s_screen) {
     case SCR_MENU:
+      /* From menu_rect(), the same function that drew them: the card and the
+       * five rows are different sizes now and a fixed W/H hit map would land
+       * a press on the wrong one. */
       for (int i = 0; i < 6; i++) {
-        int tx, ty;
-        tile_rect(i, &tx, &ty);
-        if (in(x, y, tx, ty, M_TILE_W, M_TILE_H)) return i;
+        int tx, ty, tw, th;
+        menu_rect(i, &tx, &ty, &tw, &th);
+        if (in(x, y, tx, ty, tw, th)) return i;
       }
       return -1;
 
