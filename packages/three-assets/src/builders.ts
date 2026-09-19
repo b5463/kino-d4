@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ComponentDef, ResolvedDims } from '@kino/hardware-profiles';
 import { twinMaterials, XRAY_OPACITY } from './materials';
 import type { TwinMaterials } from './materials';
@@ -7,6 +6,11 @@ import type { TwinMaterials } from './materials';
 export interface BuildOpts {
   resolved: ResolvedDims;
   instanceId: string;
+  /** Where the lens sits relative to the body centre (the instance's
+   * opticalCenterOffsetMm). The XIAO Sense carries its camera at one end of
+   * the board, not in the middle; drawn at the centre the barrel missed the
+   * body's lens cell by 7 mm. Absent: the centre, as before. */
+  lensOffsetMm?: [number, number, number];
 }
 
 export type VisualMode = 'normal' | 'xray' | 'highlight' | 'selected' | 'hidden';
@@ -37,56 +41,6 @@ export function fallbackBoxMm(sizeMm: [number | null, number | null, number | nu
   return [sizeMm[0] ?? 5, sizeMm[1] ?? 5, sizeMm[2] ?? 5];
 }
 
-/** Edge-beam thickness of the enclosure skeleton frame. Fixed illustrative
- * value (Tier C, same convention as the flash fin count) — the profile has
- * no frame-section dimension yet. */
-const SKELETON_BEAM_MM = 4;
-
-/** Clear acrylic panel thickness (§7 construction note: "2-3mm clear acrylic
- * panels"). Shared with the app's panel builder so the skeleton inset below
- * can never drift from the rendered panel. */
-export const ENCLOSURE_PANEL_THICKNESS_MM = 3;
-
-/** Gap between the skeleton frame and each panel/envelope face. Without it
- * the frame's outer faces are exactly coplanar with the panels and z-fight. */
-const SKELETON_REVEAL_MM = 1;
-
-/**
- * Twelve edge beams merged into one geometry. The frame is inset from the
- * component envelope: the panels form the envelope's front/rear faces, so the
- * frame spans the space between them minus a reveal, and sits one reveal
- * inside the panel outline on X/Y — no face it owns is coplanar with a panel.
- * The X beams run full length; Y/Z beams are shortened by one beam width per
- * end so the corners are owned by a single beam instead of z-fighting.
- */
-function skeletonFrameGeometry(envelope: [number, number, number], beamMm: number): THREE.BufferGeometry {
-  const sx = envelope[0] - 2 * SKELETON_REVEAL_MM;
-  const sy = envelope[1] - 2 * SKELETON_REVEAL_MM;
-  const sz = envelope[2] - 2 * (ENCLOSURE_PANEL_THICKNESS_MM + SKELETON_REVEAL_MM);
-  const hx = (sx - beamMm) / 2;
-  const hy = (sy - beamMm) / 2;
-  const hz = (sz - beamMm) / 2;
-  const parts: THREE.BufferGeometry[] = [];
-  for (const y of [-hy, hy])
-    for (const z of [-hz, hz]) {
-      const g = new THREE.BoxGeometry(sx, beamMm, beamMm);
-      g.translate(0, y, z);
-      parts.push(g);
-    }
-  for (const x of [-hx, hx])
-    for (const z of [-hz, hz]) {
-      const g = new THREE.BoxGeometry(beamMm, sy - 2 * beamMm, beamMm);
-      g.translate(x, 0, z);
-      parts.push(g);
-    }
-  for (const x of [-hx, hx])
-    for (const y of [-hy, hy]) {
-      const g = new THREE.BoxGeometry(beamMm, beamMm, sz - 2 * beamMm);
-      g.translate(x, y, 0);
-      parts.push(g);
-    }
-  return mergeGeometries(parts);
-}
 
 function makeXrayVariant(normal: THREE.Material): THREE.Material {
   const clone = normal.clone();
@@ -140,8 +94,14 @@ function pickBodyMaterial(c: ComponentDef, mats: TwinMaterials): THREE.Material 
 }
 
 /** Component-specific detail meshes beyond the generic body box + keepouts. */
-function addComponentDetails(group: THREE.Group, c: ComponentDef, sizeMm: [number, number, number], mats: TwinMaterials): void {
-  const [, sy, sz] = sizeMm;
+function addComponentDetails(
+  group: THREE.Group,
+  c: ComponentDef,
+  sizeMm: [number, number, number],
+  mats: TwinMaterials,
+  lensOffsetMm?: [number, number, number],
+): void {
+  const [sx, sy, sz] = sizeMm;
 
   switch (c.id) {
     case 'camera-node': {
@@ -153,7 +113,7 @@ function addComponentDetails(group: THREE.Group, c: ComponentDef, sizeMm: [numbe
       const lens = new THREE.Mesh(new THREE.CylinderGeometry(lensRadius, lensRadius, lensHeight, 24), mats.metal);
       lens.name = 'lens';
       lens.rotation.x = Math.PI / 2; // CylinderGeometry's axis is Y by default; the lens points along Z
-      lens.position.set(0, 0, sz / 2 + lensHeight / 2);
+      lens.position.set(lensOffsetMm?.[0] ?? 0, lensOffsetMm?.[1] ?? 0, sz / 2 + lensHeight / 2);
       // Only wires/keepouts are exempt from xray — the lens ghosts like any
       // other detail mesh.
       lens.userData.materialVariants = { normal: mats.metal, xray: makeXrayVariant(mats.metal) } satisfies MaterialVariants;
@@ -163,6 +123,27 @@ function addComponentDetails(group: THREE.Group, c: ComponentDef, sizeMm: [numbe
       // the body so it never grows the group's bounding box.
       const usbSize: [number, number, number] = [8, 3, 3];
       addBox(group, 'usb', usbSize, [0, 0, -sz / 2 + usbSize[2] / 2], mats.metal);
+      break;
+    }
+
+    case 'light-stud': {
+      // A 1/4-20 stud is round: the box body stays for clearance, the
+      // visible part is the thread along Y.
+      const stud = new THREE.Mesh(new THREE.CylinderGeometry(sx / 2, sx / 2, sy, 20), mats.metal);
+      stud.name = 'thread';
+      stud.userData.materialVariants = { normal: mats.metal, xray: makeXrayVariant(mats.metal) } satisfies MaterialVariants;
+      group.add(stud);
+      break;
+    }
+
+    case 'top-light': {
+      // The emitter face toward the subject (+Z), and the 18 mm base plate
+      // the CAD measured, under the body. The body box itself is a
+      // PROVISIONAL envelope until the light is measured.
+      const emitter: [number, number, number] = [Math.max(sx - 6, 4), Math.max(sy - 6, 4), 0.8];
+      addBox(group, 'emitter', emitter, [0, 0, sz / 2 + emitter[2] / 2], mats.acrylicOpal);
+      const plate: [number, number, number] = [18, 3, 18];
+      addBox(group, 'base-plate', plate, [0, -sy / 2 - plate[1] / 2, 0], mats.metal);
       break;
     }
 
@@ -209,45 +190,14 @@ export function buildComponentObject(c: ComponentDef, o: BuildOpts): THREE.Group
   const mats = palette();
   const sizeMm = fallbackBoxMm(o.resolved.sizeMm);
 
-  // The enclosure is two components (audit #63): 'enclosure-chassis' (the
-  // skeleton frame instance) is built here; 'enclosure-shell' (the front and
-  // rear acrylic panel instances) is built separately, by
-  // `buildAcrylicPanel`, which is the "shell builder" this defers to.
-  // The skeleton is an open edge frame, not a solid block: rendering the
-  // full 126×80×36 envelope as one opaque box would hide every internal
-  // component in the normal view, which is the opposite of a clear-panel
-  // build. The frame is inset from the envelope (see skeletonFrameGeometry)
-  // so none of its faces z-fight with the acrylic panels; scene fit still
-  // spans the envelope because the panels themselves reach it.
-  if (c.id === 'enclosure-chassis') {
-    const frame = new THREE.Mesh(skeletonFrameGeometry(sizeMm, SKELETON_BEAM_MM), pickBodyMaterial(c, mats));
-    frame.name = 'skeleton';
-    frame.userData.materialVariants = {
-      normal: frame.material,
-      xray: makeXrayVariant(frame.material),
-    } satisfies MaterialVariants;
-    group.add(frame);
-  } else {
-    addBox(group, 'body', sizeMm, [0, 0, 0], pickBodyMaterial(c, mats));
-  }
+  addBox(group, 'body', sizeMm, [0, 0, 0], pickBodyMaterial(c, mats));
 
   addKeepouts(group, c, mats);
-  addComponentDetails(group, c, sizeMm, mats);
+  addComponentDetails(group, c, sizeMm, mats, o.lensOffsetMm);
 
   return group;
 }
 
-/** A flat clear enclosure panel (front/rear acrylic) — not driven by a ComponentDef. */
-export function buildAcrylicPanel(sizeMm: [number, number, number], name: string): THREE.Group {
-  const group = new THREE.Group();
-  group.name = name;
-  group.userData = { selectable: true };
-
-  const mats = palette();
-  addBox(group, 'body', sizeMm, [0, 0, 0], mats.glassClear);
-
-  return group;
-}
 
 /**
  * Swaps every mesh in `root` to the material variant matching `mode`.

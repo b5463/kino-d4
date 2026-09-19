@@ -35,7 +35,7 @@ describe('Twin engineering exports', () => {
     const parsed = parseVersioned(sceneLayoutDoc, JSON.parse(text));
     expect(parsed.profile).toBe('d4-v1');
     expect(parsed.transforms).toHaveLength(D4_V1.instances.length);
-    expect(parsed.transforms.find((item) => item.id === 'cam1')?.positionMm[0]).toBe(-33);
+    expect(parsed.transforms.find((item) => item.id === 'cam1')?.positionMm[0]).toBe(33);
   });
 
   it('marks the unresolved Guition dimensions as measure-to-lock', () => {

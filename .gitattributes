@@ -3,6 +3,13 @@ LICENSES/** text eol=lf
 REUSE.toml text eol=lf
 # Shell scripts run under bash, on the Windows host too: infra/scripts/backup.sh
 # is invoked by the scheduled backup task through Git Bash, and a CRLF checkout
-# makes bash read `set -Eeuo pipefail` as an invalid option and die on line 2
+# makes bash read `set -Eeuo pipefail
+` as an invalid option and die on line 2
 # with an error that names neither the file nor the cause.
 *.sh text eol=lf
+# Generated from the pinned Shinonome sources by tools/mkfont-shinonome.mjs; 1.3 MB of glyph tables nobody reviews by eye.
+firmware/p4/main/ui_font_jp.h linguist-generated=true -diff
+# Generated from the pinned BIZ UDPGothic sources by tools/mkfont-ui.mjs; 1.3 MB of coverage tables nobody reviews by eye.
+firmware/p4/main/ui_font_ui.h linguist-generated=true -diff
+# Generated from firmware/p4/behaviors/*.json by tools/bake-kmo.mjs.
+firmware/p4/main/kmo_data.h linguist-generated=true

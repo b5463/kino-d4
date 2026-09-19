@@ -46,6 +46,13 @@ not reach them:
   apps/twin/public/icon-*.png
   apps/roll-web/public/icon-*.png
 
+The camera is made by the studio Odd Jobs, and the firmware carries its mark:
+on the boot screen and at the foot of ABOUT, baked from the studio's own
+artwork into a coverage map. It is not KINO's mark and it is not ours to put
+under the MIT grant that covers firmware/**:
+
+  firmware/p4/main/logo_odd_jobs.h
+
 Those files are marked LicenseRef-KINO-Reserved. See
 LICENSES/LicenseRef-KINO-Reserved.txt.
 
@@ -56,15 +63,14 @@ Two committed files are neither ours to license nor covered by the grants
 above, and REUSE.toml overrides the blanket declaration on firmware/** for
 both:
 
-  firmware/p4/main/icons_w98.h              Microsoft Windows 98 shell icons,
-                                            LicenseRef-Microsoft-Proprietary,
-                                            no licence held
+  firmware/p4/main/ui_font.h                Inter and Oxanium, rasterised;
+                                            OFL-1.1, text in
+                                            LICENSES/OFL-1.1.txt
   firmware/c6/partitions_eh_cp_ota_4m.csv   Espressif Systems, Apache-2.0,
                                             text in LICENSES/Apache-2.0.txt
 
-Those annotations record ownership. They grant nothing. THIRD_PARTY_NOTICES.md
-states what each one means for anyone distributing a build, including the
-unresolved position on the icon artwork.
+Those annotations record ownership. THIRD_PARTY_NOTICES.md states what each
+one means for anyone distributing a build.
 
 Trademark
 ---------

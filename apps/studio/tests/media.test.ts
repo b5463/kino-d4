@@ -32,18 +32,28 @@ describe('media over the protocol', () => {
     expect(res.items.some((c) => c.kind === 'quad')).toBe(true);
   });
 
-  it('reports four files with checksums per capture', async () => {
+  it('reports four files per capture, without digests, like shipped firmware', async () => {
     const { device } = await connect();
     const list = await device.mediaList();
     const info = await device.mediaInfo(list.items[0].id);
     expect(info.files).toHaveLength(4);
     for (const f of info.files) {
-      expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
+      // Firmware 0.4.x never computes per-file sha256 (contract README D20);
+      // the reference device answers the same way unless a suite opts in.
+      expect(f.sha256).toBeUndefined();
       expect(f.sizeBytes).toBeGreaterThan(1000);
     }
   }, 15000);
 
-  it('downloads a file in chunks and the checksum matches', async () => {
+  it('reports checksums per file when a suite opts in to digests', async () => {
+    const { mock, device } = await connect();
+    mock.setScenario('mediaInfoAsShipped', false);
+    const list = await device.mediaList();
+    const info = await device.mediaInfo(list.items[0].id);
+    for (const f of info.files) expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
+  }, 15000);
+
+  it('downloads a file in chunks and hands it over unverified when the camera gave no digest', async () => {
     const { device } = await connect();
     const list = await device.mediaList();
     const info = await device.mediaInfo(list.items[0].id);
@@ -52,13 +62,23 @@ describe('media over the protocol', () => {
     // has to use the name MEDIA_INFO reported.
     expect(info.files[0].name).toBe('C1.JPG');
     const { data, verified } = await downloadCaptureFile(device, info, info.files[0].name, new TransferHandle());
-    expect(verified).toBe(true);
+    expect(verified).toBe(false);
     expect(data.length).toBe(info.files[0].sizeBytes);
-    expect(await sha256Hex(data)).toBe(info.files[0].sha256);
     // JPEG magic survives the trip
     expect(data[0]).toBe(0xff);
     expect(data[1]).toBe(0xd8);
-  }, 20000);
+  }, 15000);
+
+  it('downloads a file in chunks and the checksum matches when a digest was given', async () => {
+    const { mock, device } = await connect();
+    mock.setScenario('mediaInfoAsShipped', false);
+    const list = await device.mediaList();
+    const info = await device.mediaInfo(list.items[0].id);
+    const { data, verified } = await downloadCaptureFile(device, info, info.files[0].name, new TransferHandle());
+    expect(verified).toBe(true);
+    expect(data.length).toBe(info.files[0].sizeBytes);
+    expect(await sha256Hex(data)).toBe(info.files[0].sha256);
+  }, 15000);
 
   it('supports favorite and delete', async () => {
     const { device } = await connect();

@@ -11,9 +11,9 @@ import { instanceTransforms } from './transforms';
  * stage lights enable it; device geometry and engineering overlays do not. */
 export const SENSOR_LAYER = 2;
 
-/** Lens front relative to the camera-node center: half the module depth
- * (15 mm) plus the protruding barrel. */
-const LENS_FORWARD_MM = 12;
+/** The eye sits this far in front of the lens face, so the sensor's near
+ * plane clears the barrel and the face shell's cell wall. */
+const EYE_AHEAD_OF_LENS_MM = 2;
 
 export interface SensorPose {
   cam: CamId;
@@ -33,7 +33,10 @@ export function sensorPoses(profile: HardwareProfile, pitchMm: number): SensorPo
     const transform = transforms.get(instance.id);
     if (!transform) continue;
     const [x, y, z] = transform.positionMm;
-    cams.push({ cam: `cam${cams.length + 1}` as CamId, positionMm: [x, y, z + LENS_FORWARD_MM] });
+    // The lens, not the board centre: the XIAO Sense carries its camera at
+    // one end of the board (the profile's opticalCenterOffsetMm, from the CAD).
+    const [ox, oy, oz] = instance.opticalCenterOffsetMm ?? [0, 0, 0];
+    cams.push({ cam: `cam${cams.length + 1}` as CamId, positionMm: [x + ox, y + oy, z + oz + EYE_AHEAD_OF_LENS_MM] });
     if (cams.length === 4) break;
   }
   return cams;
@@ -52,4 +55,18 @@ export function verticalFovDeg(horizontalFovDeg: number, aspect: number): number
  */
 export function neighborParallaxDeg(pitchMm: number, subjectDistanceMm: number): number {
   return (Math.atan2(pitchMm, subjectDistanceMm) * 180) / Math.PI;
+}
+
+/**
+ * Where the external light sits: the `top-light` instance on the body's
+ * 1/4-20 stud, or null in a profile without one. The emitter is its +Z face.
+ */
+export function topLightPositionMm(profile: HardwareProfile, pitchMm: number): [number, number, number] | null {
+  const light = profile.instances.find((i) => i.component === 'top-light');
+  if (!light) return null;
+  const t = instanceTransforms(profile, pitchMm, 0).get(light.id);
+  if (!t) return null;
+  const component = profile.components.find((c) => c.id === light.component);
+  const depth = component?.sources[0]?.sizeMm[2] ?? 0;
+  return [t.positionMm[0], t.positionMm[1], t.positionMm[2] + depth / 2 + 1];
 }

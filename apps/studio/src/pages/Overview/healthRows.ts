@@ -47,6 +47,8 @@ export interface SupplyInput {
   /** `supports(state, 'network')` — the fail-closed gate, resolved by the caller. */
   hasNetwork: boolean;
   hasRoll: boolean;
+  /** `supports(state, 'flashHardware')`: an emitter is fitted, not merely a flash window kept. */
+  hasFlashHardware: boolean;
 }
 
 /**
@@ -54,7 +56,7 @@ export interface SupplyInput {
  * the status bar — this list is only what neither of them says.
  */
 export function supplyRows(input: SupplyInput): HealthRow[] {
-  const { storage, power, capabilities, network, roll, hasNetwork, hasRoll } = input;
+  const { storage, power, capabilities, network, roll, hasNetwork, hasRoll, hasFlashHardware } = input;
   return [
     storage?.present
       ? {
@@ -94,11 +96,18 @@ export function supplyRows(input: SupplyInput): HealthRow[] {
     // Device-reported only: the capability says whether this firmware exposes
     // flash control. Nothing here measures the flash itself — RUN SELF TEST
     // does that — so this lamp never claims READY on its own.
-    capabilities
-      ? capabilities.flashControl
-        ? { name: 'FLASH', state: 'ok', label: 'CONTROL AVAILABLE' }
-        : { name: 'FLASH', state: 'off', label: 'NOT AVAILABLE' }
-      : { name: 'FLASH', state: 'off', label: '—' },
+    //
+    // `hasFlashHardware` comes first: D4-V1 reports `flashControl: true` (the
+    // firmware keeps a flash window) with `flashHardware: false` (ECN-0003,
+    // no emitter), and CONTROL AVAILABLE on that body sent people looking for
+    // an LED that is not there.
+    !hasFlashHardware && capabilities
+      ? { name: 'FLASH', state: 'off', label: 'NOT FITTED' }
+      : capabilities
+        ? capabilities.flashControl
+          ? { name: 'FLASH', state: 'ok', label: 'CONTROL AVAILABLE' }
+          : { name: 'FLASH', state: 'off', label: 'NOT AVAILABLE' }
+        : { name: 'FLASH', state: 'off', label: '—' },
     // A row that printed DISCONNECTED for all three states made a NACK look
     // like a dropped access point.
     !hasNetwork

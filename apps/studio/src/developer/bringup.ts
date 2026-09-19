@@ -1,6 +1,16 @@
 // Hardware bring-up state: the spec's first-power checklists plus the
 // wiring record, persisted locally and exportable. One record per build.
 //
+// The build this worksheet describes is the KINO_FIELD_BODY 0.1.4
+// (hardware/cad/KINO_FIELD_BODY, ECN-0004): a USB-C powered fixture with no
+// pack bay — a battery bank in a pocket feeds the P4 over one USB-C cable and
+// the P4 powers the four XIAOs through the JP1 harness. There is no LiPo, BMS,
+// SW6106 or fuse in the camera, no built-in flash (ECN-0003 deleted the LED,
+// driver, heatsink, thermal pad and diffuser from the BOM; FLASH_EN has no P4
+// pin and JP1 21 / GPIO28 is BTN_SHUTTER), no Hall lid switch, and no
+// function button or slide switch GPIO. Audio lives on the Guition carrier
+// (ES8311 codec + NS4150 amp) rather than on a speaker we fit.
+//
 // V1 is a usable camera in a printed body, not a rig on a desk, and V2 is the
 // custom board in a moulded case. So the worksheet runs past the electrical
 // build: the printed body is structure that holds the lens baseline, the
@@ -8,6 +18,24 @@
 // measured, and a camera someone carries has to be reliable, not merely
 // functional. Items that produce a measurement capture it — a tick that
 // records no number wastes the run it came from.
+//
+// Item ids are the keys of the persisted record (localStorage and the
+// exported JSON), so an item that survives keeps its id and a new item gets a
+// new one. Ids retired with the battery build, so an old record's ticks can
+// still be read:
+//   a1–a5   LiPo inspection, battery connector, 1S cell, BMS pads, SW6106
+//           cell-voltage selector
+//   a15     conductor/screw vs pouch cell
+//   a16     flash chamber isolation from battery and cameras
+//   b9–b10  LED driver at 350 mA, flash off-at-reset
+//   c1–c10  the whole BATTERY-PATH BRING-UP section (fuse, OCV, BMS P+/P−,
+//           SW6106, 5 V out, battery sag, flash added last, first charge)
+//   d7–d8   flash chamber light path, pouch cell under body squeeze
+//   e1      peak per-rail current during a four-flash burst
+//   e6–e7   battery runtime to brownout, case temperature during charge
+//   g5      low battery during a flash burst
+// A tick on one of those in an imported record is history, not a check that
+// still applies.
 
 import { create } from 'zustand';
 import { D4_V1 } from '@kino/hardware-profiles';
@@ -57,72 +85,74 @@ export const CHECKLIST: ChecklistSection[] = [
   },
   {
     title: 'BEFORE ANY POWER',
+    note:
+      'Nothing in this camera stores energy: the only source is the USB-C cable, so the checks ' +
+      'here are about the harness and the hub board, not a cell. Run them with every cable out.',
     items: [
-      { id: 'a1', text: 'LiPo inspected — no dents, swelling, puncture, damaged seams' },
-      { id: 'a2', text: 'Battery connector +, − and NTC measured; wire colors not trusted' },
-      { id: 'a3', text: 'Cell confirmed as standard 1S, 4.20 V full' },
-      { id: 'a4', text: 'BMS pad labels and topology verified' },
-      { id: 'a5', text: 'SW6106 cell-voltage selector confirmed at 4.20 V' },
-      { id: 'a6', text: 'Perfboard pre-connected strips mapped' },
+      { id: 'a6', text: 'Hub board (perfboard) pre-connected strips mapped' },
       { id: 'a7', text: 'All four 1N5819 directions verified — band toward XIAO' },
       { id: 'a8', text: 'All four AO4407 source/drain/gate connections verified' },
       { id: 'a9', text: 'All four 2N3904 E/B/C verified for the delivered package' },
       { id: 'a10', text: 'Electrolytic capacitor polarity checked' },
-      { id: 'a11', text: '+5 V to GND not shorted' },
+      { id: 'a11', text: '+5 V (JP1 pins 2/4) to GND not shorted, harness plugged' },
       { id: 'a12', text: 'Camera switched outputs off with CAM_PWR_EN floating' },
-      { id: 'a13', text: 'Guition 26-pin header mapped; IDC orientation confirmed' },
-      { id: 'a14', text: 'Pin 1 marked permanently on PCB, cable, carrier, enclosure' },
-      { id: 'a15', text: 'No conductor or screw can touch the pouch cell' },
-      { id: 'a16', text: 'Flash chamber thermally and optically isolated from battery/cameras' },
+      { id: 'a13', text: 'Guition 26-pin JP1 header mapped; IDC orientation confirmed against the silkscreen' },
+      { id: 'a14', text: 'Pin 1 marked permanently on PCB, cable, hub board, body' },
+      { id: 'a17', text: 'GPIO35 (JP1 pin 15) confirmed unconnected — it is the bootloader strap, and a wire to ground there is a board that never boots' },
     ],
   },
   {
-    title: 'BENCH BRING-UP — LIPO DISCONNECTED',
+    title: 'BENCH BRING-UP — HARNESS OPEN, P4 ON ITS OWN USB-C',
     items: [
-      { id: 'b1', text: 'Unpopulated 5 V/GND carrier bus tested' },
+      { id: 'b1', text: 'Unpopulated 5 V/GND hub-board bus tested' },
       { id: 'b2', text: 'One MOSFET/NPN channel tested with a dummy load' },
       { id: 'b3', text: 'One XIAO powered through AO4407 + 1N5819; leakage and startup current checked' },
       { id: 'b4', text: 'All four power channels tested separately' },
-      { id: 'b5', text: 'Guition board tested alone at verified 5 V pins' },
+      { id: 'b5', text: 'Guition board tested alone on its USB-C; 5 V present at JP1 pins 2/4 before anything hangs off them' },
       { id: 'b6', text: 'One UART at low speed, then all four at 921600', test: 'uart-echo' },
       { id: 'b7', text: 'Shared trigger edges checked before connecting camera GPIOs', test: 'trigger' },
-      { id: 'b8', text: 'One-camera capture, then four armed captures without flash', test: 'captures' },
-      { id: 'b9', text: 'LED driver + LED tested separately at 350 mA; temperatures monitored' },
-      { id: 'b10', text: 'Flash control off-at-reset behavior proven before integration' },
-      { id: 'b11', text: 'SD writes and speaker verified at low volume', test: 'selftest' },
+      { id: 'b8', text: 'One-camera capture, then four armed captures', test: 'captures' },
+      { id: 'b11', text: 'SD writes and body sounds verified — shutter and tick from the carrier’s ES8311 codec + NS4150 amp', test: 'selftest' },
       { id: 'b12', text: 'All-camera capture while recording 5 V, current and skew', test: 'trigger' },
     ],
   },
   {
-    title: 'BATTERY-PATH BRING-UP',
+    title: 'USB-C POWER',
+    note:
+      'The field body is a USB-C powered fixture: no pack bay (ECN-0004), a battery bank in a ' +
+      'pocket feeding the P4 over one cable, and the P4 feeding four XIAOs through JP1. So the ' +
+      'source is whatever is on the other end of that cable, and a laptop port, a PD brick and a ' +
+      'power bank are three different supplies. Measure at JP1 pins 2/4, not at the plug — the ' +
+      'cable and the module’s own path are part of the drop.',
     items: [
-      { id: 'c1', text: '3 A fast fuse installed near battery/BMS output' },
-      { id: 'c2', text: 'Battery open-circuit voltage plausible for 1S LiPo' },
-      { id: 'c3', text: 'Voltage and polarity at BMS P+/P− confirmed before SW6106' },
-      { id: 'c4', text: 'SW6106 powered from protected cell with load disconnected' },
-      { id: 'c5', text: '5 V output confirmed before connecting the carrier' },
-      { id: 'c6', text: 'P4/display only — battery current and sag observed' },
-      { id: 'c7', text: 'One camera added, then all four' },
-      { id: 'c8', text: 'Flash added last' },
-      { id: 'c9', text: 'Connector/wire/battery/driver/LED temperatures measured during repeated shots' },
-      { id: 'c10', text: 'First charge: camera off, 5 V ~1 A, attended' },
+      { id: 'p1', text: 'Which physical USB-C port enumerates as USB-Serial-JTAG recorded; the other port’s role noted', record: 'port' },
+      { id: 'p2', text: 'Idle bus voltage at JP1 5 V with P4 and display only', record: 'V' },
+      { id: 'p3', text: 'Bus voltage during a four-camera capture, measured at JP1 5 V', record: 'V min' },
+      { id: 'p4', text: 'Brownout margin stated: lowest bus voltage against the XIAO regulator dropout and the P4 brownout threshold', record: 'V margin' },
+      { id: 'p5', text: 'Bus current: idle, one camera, four cameras idle, four-camera capture', record: 'mA ×4' },
+      { id: 'p6', text: 'Powered from a laptop port: capture completes or the port folds back — result recorded either way', record: 'ok / folds at mA' },
+      { id: 'p7', text: 'Powered from a PD brick or power bank: stays at 5 V and does not sleep between captures — a bank’s low-load cut-off is a field failure', record: 'supply / behaviour' },
+      { id: 'p8', text: 'Cable and plug temperature after 20 back-to-back captures; the exit slot and cable groove keep the plug straight', record: '°C' },
+      { id: 'p9', text: 'USB-C unplugged and replugged with cameras on: all four nodes come back without a manual reset' },
     ],
   },
   {
     title: 'PRINTED BODY — V1 STRUCTURE',
     note:
       'The printed body is not packaging: it holds the lens baseline, and baseline accuracy is ' +
-      'wiggle quality. PLA and PETG creep, so pitch is a measured property of the part in front ' +
-      'of you, never a number copied from CAD.',
+      'wiggle quality. PETG creeps, so pitch is a measured property of the part in front of you, ' +
+      'never a number copied from CAD — the 22.00 mm in the generator is what the part was asked ' +
+      'to be, not what it is.',
     items: [
-      { id: 'd1', text: 'Front plate material and print orientation recorded', record: 'material / orientation' },
+      { id: 'd1', text: 'Front half material and print orientation recorded', record: 'material / orientation' },
       { id: 'd2', text: 'Lens pitch measured as printed — all three gaps, not one doubled', record: 'mm, mm, mm' },
       { id: 'd3', text: 'Measured pitch entered in Twin and the hardware manifest (#11, #1)' },
       { id: 'd4', text: 'Plate checked for bow across the four-lens span', record: 'mm deviation' },
       { id: 'd5', text: 'All four lens axes parallel within measurement' },
       { id: 'd6', text: 'Camera modules seat without pre-load — no body flex reaches a sensor board' },
-      { id: 'd7', text: 'Flash chamber optically isolated inside the body — no light path into a lens' },
-      { id: 'd8', text: 'No screw, standoff or conductor can reach the pouch cell when the body is squeezed' },
+      { id: 'd12', text: 'Face shell glued on through the align tool; pitch re-measured through the shell’s bores after cure', record: 'mm, mm, mm' },
+      { id: 'd11', text: 'Lens cover slides open and closed by hand, the detent holds it, and all four cameras read dark with it down' },
+      { id: 'd13', text: 'Shutter button travels and returns; both leads leave the pocket through the lead channels, not across the switch' },
       { id: 'd9', text: 'Pitch re-measured after one full disassembly and reassembly', record: 'mm, mm, mm' },
       { id: 'd10', text: 'Pitch re-measured after the camera has lived in a bag for a month — creep is the number V2’s frame has to beat', record: 'mm, mm, mm' },
     ],
@@ -135,13 +165,13 @@ export const CHECKLIST: ChecklistSection[] = [
       'the body closed, and record the number even when the check passes — these size the ' +
       'custom board’s regulators, bulk capacitance and any venting the mould needs.',
     items: [
-      { id: 'e1', text: 'Peak per-rail current during a four-flash burst', record: 'A peak / ms' },
-      { id: 'e2', text: '5 V rail sag at the worst burst; brownout margin stated', record: 'V min' },
+      { id: 'e10', text: 'Peak bus current during a four-camera armed capture, body closed', record: 'A peak / ms' },
+      { id: 'e2', text: '5 V rail sag at the worst capture; brownout margin stated', record: 'V min' },
       { id: 'e3', text: 'P4 die temperature after 20 back-to-back captures, body closed', record: '°C' },
       { id: 'e4', text: 'Camera die temperatures on the same run', record: '°C ×4' },
       { id: 'e5', text: 'Same run with the body open — the delta is what the enclosure costs', record: '°C delta' },
-      { id: 'e6', text: 'Battery runtime to first brownout, captures counted', record: 'captures / min' },
-      { id: 'e7', text: 'Case surface temperature during an attended full charge, body closed', record: '°C' },
+      { id: 'e12', text: 'Case surface temperature at the module wall after the same run, vents unobstructed', record: '°C' },
+      { id: 'e11', text: 'Runtime from a named power bank to its first cut-off or brownout, captures counted', record: 'captures / min · bank' },
       { id: 'e8', text: 'Real JPEG size range across a mixed roll — sizes PSRAM and transfer budgets', record: 'KB min–max' },
       { id: 'e9', text: 'Worst-case node-link latency after a full session', test: 'snapshot', record: 'ms' },
     ],
@@ -169,7 +199,7 @@ export const CHECKLIST: ChecklistSection[] = [
       { id: 'g2', text: 'Card survives power loss mid-write and still mounts', test: 'selftest' },
       { id: 'g3', text: 'A node that stops answering recovers without a full power cycle' },
       { id: 'g4', text: 'A full card mid-roll produces a message, not a hang' },
-      { id: 'g5', text: 'Low battery during a flash burst behaves as defined, and the definition is written down' },
+      { id: 'g8', text: 'Bus dropout mid-capture (cable tug, bank sleeping) behaves as defined, and the definition is written down' },
       { id: 'g6', text: 'Device numbers captured after every failure, before power-cycling', test: 'snapshot' },
       { id: 'g7', text: 'Shutter reachable and the camera pointable without looking at it' },
     ],
@@ -219,7 +249,10 @@ const DEFAULT_WIRING: WiringRow[] = [
   // wire that used to be there has to be accounted for on a rebuild.
   row('FLASH_EN', 'FLASH_EN'),
   row('Shutter button', 'BTN_SHUTTER'),
-  row('Function button', 'BTN_FN'),
+  // No "Function button" row: the field body has no function button or mode
+  // slide, BTN_FN and SLIDE_MODE have no JP1 pin left to take, and unlike
+  // FLASH_EN no wire ever existed for them to be accounted for. A record
+  // written with the old row keeps it -- the wiring array is stored whole.
 ];
 
 export interface BringUpState {

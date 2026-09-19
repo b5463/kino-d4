@@ -7,8 +7,9 @@ import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { NumberField, SegField } from '../../components/fields';
+import { Unsupported } from '../../components/Unsupported';
 import { getDevice, refreshCalibration } from '../../app/session';
-import { useDeviceStore } from '../../state/deviceStore';
+import { supports, useDeviceStore } from '../../state/deviceStore';
 import { claimDevice, releaseDevice, useBlockedBy } from '../../state/deviceBusy';
 import { invalidateBench } from '../../state/benchResults';
 import type { CamId, FlashDistance, FlashLevel } from '@kino/kdp';
@@ -279,6 +280,11 @@ export function SpacingPanel() {
 
 export function FlashPanel() {
   const calibration = useDeviceStore((s) => s.calibration);
+  // `flashHardware`, not `flashControl`: the firmware keeps a flash window on
+  // D4-V1 (ECN-0003) but there is no emitter to calibrate. A test capture
+  // here would "fire" nothing and grade the room light.
+  const hasFlashHardware = useDeviceStore((s) => supports(s, 'flashHardware'));
+  const firmwareLabel = useDeviceStore((s) => s.firmwareLabel);
   const [level, setLevel] = useState<FlashLevel | null>(null);
   const [distance, setDistance] = useState<FlashDistance | null>(null);
   const [results, setResults] = useState<{ cam: CamId; clippedPct: number }[] | null>(null);
@@ -344,6 +350,18 @@ export function FlashPanel() {
       setBusy(false);
     }
   };
+
+  if (!hasFlashHardware) {
+    return (
+      <Panel title="FLASH">
+        <Unsupported
+          feature="Flash calibration"
+          firmware={firmwareLabel}
+          note="No flash emitter is fitted on this KINO (ECN-0003: capability flashHardware is false). The firmware keeps a flash window, but there is nothing to calibrate — the external top light is not controlled by the camera."
+        />
+      </Panel>
+    );
+  }
 
   return (
     <Panel

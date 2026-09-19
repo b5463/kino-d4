@@ -60,6 +60,13 @@ export const instanceDef = z.object({
    * (audit #63) — defaulting to [0,0,0] keeps apex = board center explicit.
    */
   opticalCenterOffsetMm: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
+  /**
+   * Where `opticalCenterOffsetMm` came from. OFFICIAL_CAD is the design's
+   * lens position (the body's camera pockets); MEASURED is the bench's. A
+   * non-zero offset is not a measurement, and the bench worksheet keys on
+   * this, not on the value.
+   */
+  opticalCenterConfidence: z.enum(SOURCE_KINDS).optional(),
 });
 export type InstanceDef = z.infer<typeof instanceDef>;
 

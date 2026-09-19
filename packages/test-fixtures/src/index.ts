@@ -13,6 +13,7 @@ export {
   FIRMWARE_PROFILE_LIST,
   profileById,
   M1B_COMMANDS,
+  SETTINGS_0_4_9_COMMANDS,
   PROFILE_FOR_VERSION,
   type FirmwareProfile,
   type FirmwareProfileId,

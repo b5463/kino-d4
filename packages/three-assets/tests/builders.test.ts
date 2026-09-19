@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { D4_V1, resolveDimensions } from '@kino/hardware-profiles';
 import type { ComponentDef } from '@kino/hardware-profiles';
-import { buildComponentObject, buildAcrylicPanel, applyVisualMode, fallbackBoxMm } from '../src/builders';
+import { buildComponentObject, applyVisualMode, fallbackBoxMm } from '../src/builders';
 
 function findComponent(id: string): ComponentDef {
   const c = D4_V1.components.find((x) => x.id === id);
@@ -28,8 +28,8 @@ describe('buildComponentObject — camera-node (XIAO ESP32-S3 Sense)', () => {
   const component = findComponent('camera-node');
   const resolved = resolveDimensions(component);
 
-  it('resolves the official 21x17.8x15mm spec with no conflict', () => {
-    expect(resolved.sizeMm).toEqual([21.0, 17.8, 15.0]);
+  it('resolves the official XIAO envelope (portrait in the bar: 17.8 x 21 x 15) with no conflict', () => {
+    expect(resolved.sizeMm).toEqual([17.8, 21, 15]);
     expect(resolved.confidence).toBe('OFFICIAL_SPEC');
   });
 
@@ -53,9 +53,10 @@ describe('buildComponentObject — camera-node (XIAO ESP32-S3 Sense)', () => {
     const size = box.getSize(new THREE.Vector3());
 
     // X/Y come straight from the resolved dims — the usb detail mesh is
-    // inset flush with the body, so nothing extends past them.
-    expect(size.x).toBeCloseTo(21, 1);
-    expect(size.y).toBeCloseTo(17.8, 1);
+    // inset flush with the body, so nothing extends past them. Portrait in
+    // the bar: 17.8 across, 21 tall.
+    expect(size.x).toBeCloseTo(17.8, 1);
+    expect(size.y).toBeCloseTo(21, 1);
     // Z includes the Ø8x4.5mm lens barrel protruding fully beyond the +Z
     // face, so it sits above the bare 15mm envelope by about the lens height.
     expect(size.z).toBeGreaterThan(15);
@@ -146,22 +147,6 @@ describe('buildComponentObject — battery', () => {
   });
 });
 
-describe('buildComponentObject — enclosure chassis', () => {
-  it('names its main mesh "skeleton" instead of "body" (panels are built by buildAcrylicPanel)', () => {
-    const component = findComponent('enclosure-chassis');
-    const resolved = resolveDimensions(component);
-    // The real profile's frame instance is itself called "skeleton" (§8), so
-    // the group and its main mesh legitimately share that name here — look
-    // among the immediate children rather than via getObjectByName, which
-    // would just match the group itself first.
-    const group = buildComponentObject(component, { resolved, instanceId: 'skeleton' });
-
-    const skeletonMesh = group.children.find((child) => child.name === 'skeleton');
-    expect(skeletonMesh).toBeInstanceOf(THREE.Mesh);
-    expect(group.children.some((child) => child.name === 'body')).toBe(false);
-  });
-});
-
 describe('applyVisualMode', () => {
   function buildCam() {
     const component = findComponent('camera-node');
@@ -232,17 +217,5 @@ describe('applyVisualMode', () => {
     applyVisualMode(group, 'hidden');
     applyVisualMode(group, 'normal');
     expect(raycaster.intersectObject(body, false).length).toBeGreaterThan(0);
-  });
-});
-
-describe('buildAcrylicPanel', () => {
-  it('builds a named group sized exactly to the given panel envelope', () => {
-    const group = buildAcrylicPanel([126, 80, 3], 'front-acrylic');
-    expect(group.name).toBe('front-acrylic');
-
-    const size = new THREE.Box3().setFromObject(group).getSize(new THREE.Vector3());
-    expect(size.x).toBeCloseTo(126, 5);
-    expect(size.y).toBeCloseTo(80, 5);
-    expect(size.z).toBeCloseTo(3, 5);
   });
 });

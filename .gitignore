@@ -77,3 +77,7 @@ firmware/*/build-*/
 # root is either work in flight or something that belongs under `scripts/`, and
 # ignoring it hides that decision from whoever has to make it.
 *.log
+
+# KINO Twin device screen: the private variant with the Windows 98 artwork (#134) and the toolchain cache
+.cache/
+firmware/p4/twin_ui/kino-ui.wasm

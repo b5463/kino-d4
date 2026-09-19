@@ -15,12 +15,12 @@ describe('transport hostility (audit #58)', () => {
     const { mock, client, transport } = await connect();
     try {
       mock.setScenario('duplicateFrame', true);
-      const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
-      expect(power.batteryV).toBeGreaterThan(3);
+      const power = await client.request<{ state: string }>(Cmd.GET_POWER_STATUS);
+      expect(power.state).toBe('usb');
       expect(mock.scenarios.duplicateFrame).toBe(false); // one-shot
       // The duplicate arrived, was unmatched by seq, and changed nothing.
-      const again = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
-      expect(again.batteryV).toBeGreaterThan(3);
+      const again = await client.request<{ state: string }>(Cmd.GET_POWER_STATUS);
+      expect(again.state).toBe('usb');
     } finally {
       client.dispose();
       await transport.close();
@@ -31,8 +31,8 @@ describe('transport hostility (audit #58)', () => {
     const { mock, client, transport } = await connect();
     try {
       mock.setScenario('droppedByte', true);
-      const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
-      expect(power.batteryV).toBeGreaterThan(3);
+      const power = await client.request<{ state: string }>(Cmd.GET_POWER_STATUS);
+      expect(power.state).toBe('usb');
       expect(client.stats.readRetries).toBe(1);
       expect(client.stats.crcFailures + client.stats.resyncs).toBeGreaterThanOrEqual(1);
     } finally {

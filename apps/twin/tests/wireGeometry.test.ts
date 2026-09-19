@@ -62,7 +62,7 @@ describe('wireCurve', () => {
 
   it('reports the net gauge radius alongside the sampled points', () => {
     const transforms = instanceTransforms(D4_V1, 22, 0);
-    expect(wireCurve(net('main-batt-fuse'), transforms).radiusMm).toBe(0.9); // 20AWG
+    expect(wireCurve(net('main-carrier-display'), transforms).radiusMm).toBe(0.9); // 20AWG
     expect(wireCurve(net('cam1-5v'), transforms).radiusMm).toBe(0.55); // 24AWG
     expect(wireCurve(net('cam1-tx'), transforms).radiusMm).toBe(0.35); // 28AWG
   });

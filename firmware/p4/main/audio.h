@@ -66,6 +66,21 @@ void audio_tick(void);
  */
 void audio_warning(void);
 
+/**
+ * Four became one: two short pitched taps, 45 ms apart, as the four marks on
+ * the screen close on a point. The UI fires it at that moment, not when the
+ * fact was learned - the sound belongs to the picture (firmware/UI_DIRECTION.md,
+ * "Sound"). Gated on `body.sounds.ui` inside. Non-blocking.
+ */
+void audio_sync(void);
+
+/**
+ * Landed: one soft mid tone, for a transfer that finished and anything else
+ * that completes. The only single pitched note the body makes. Gated on
+ * `body.sounds.ui` inside. Non-blocking.
+ */
+void audio_done(void);
+
 /* Bench calibration. 1 makes the boot run audio_calibrate(); 0 for normal
  * builds. Kept as a switch rather than deleted because the levels below will
  * need re-measuring the moment the speaker, its enclosure, or the amp rail

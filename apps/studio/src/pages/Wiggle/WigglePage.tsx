@@ -3,7 +3,9 @@ import { Icon } from '../../components/Icon';
 import { ApplyBar } from '../../components/ApplyBar';
 import { WiggleViz } from '../../components/WiggleViz';
 import { SegField, SelectField, SliderField, ToggleField } from '../../components/fields';
-import { useDeviceStore, allRecipes } from '../../state/deviceStore';
+import { useDeviceStore, allRecipes, supports } from '../../state/deviceStore';
+import { FlashNotFittedNote } from '../../components/FlashNote';
+import { withNotReadHint } from '../../utils/firmwareHints';
 import { useDraft } from '../../hooks/useDraft';
 import { applyConfigChecked, getDevice, refreshDeviceInfo } from '../../app/session';
 import type { CamId, Resolution, WiggleConfig, WiggleDirection, WiggleLoop } from '@kino/kdp';
@@ -150,6 +152,7 @@ export function WigglePage() {
           hintWarn={policyOff && draft.flash}
           onChange={(flash) => patch((d) => ({ ...d, flash }))}
         />
+        {!supports(state, 'flashHardware') ? <FlashNotFittedNote /> : null}
         <SelectField
           label="LOOK"
           value={draft.recipeId}
@@ -158,7 +161,10 @@ export function WigglePage() {
         />
         <SegField
           label="VIEWFINDER IN WIGGLE"
-          hint="Overrides Shoot › BODY VIEWFINDER while wiggle mode is active."
+          hint={withNotReadHint(
+            'Overrides Shoot › BODY VIEWFINDER while wiggle mode is active.',
+            state.firmwareLabel,
+          )}
           value={draft.previewCam}
           options={[
             { value: 'cam1', label: 'CAM1' },
@@ -196,6 +202,7 @@ export function WigglePage() {
         <ToggleField
           label="SAVE ORIGINALS"
           checked={draft.saveOriginals}
+          hint={withNotReadHint(undefined, state.firmwareLabel)}
           onChange={(saveOriginals) => patch((d) => ({ ...d, saveOriginals }))}
         />
         {!draft.saveOriginals ? (

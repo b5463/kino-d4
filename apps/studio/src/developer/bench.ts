@@ -35,7 +35,9 @@ export const BENCH_STAGES: BenchStage[] = [
   {
     title: 'A — P4 ONLY',
     items: [
-      { id: 'a1', text: 'Power the bare P4; watch SW6106 and P4 temperature by touch for the first minutes' },
+      // The field body is USB-C powered (ECN-0004): there is no SW6106 in the
+      // camera, so the first minutes are spent on the module's own regulators.
+      { id: 'a1', text: 'Power the bare P4 over its USB-C; watch the module’s regulators and the P4 by touch for the first minutes' },
       { id: 'a2', text: 'USB enumerates; note WHICH physical USB-C port is USB-Serial-JTAG' },
       { id: 'a3', text: 'Console (UART0, GPIO37/38, 115200) shows P4_BOOT, USB_TRANSPORT_READY, SD_MOUNT, KDP_READY' },
       { id: 'a4', text: 'Studio connects: HELLO inside the 3×500 ms budget with the nonce echoed' },
@@ -96,7 +98,7 @@ export const ACCEPTANCE_ITEMS: AcceptanceItem[] = [
   { id: 'hw-validation', text: 'HARDWARE_VALIDATION.md updated from GET_HW_VALIDATION after every stage', issue: 66 },
   { id: 'walk-46', text: 'Studio+Twin §46 acceptance walk performed by a human', issue: 72 },
   { id: 'gpio-lock', text: 'GPIO map validated on the delivered board and locked (Bring-Up wiring record → board_d4v1.h + profile gpio)', issue: 2 },
-  { id: 'power-records', text: 'Power, flash, UART, and timing results measured and recorded', issue: 4 },
+  { id: 'power-records', text: 'USB-C bus power, UART, and timing results measured and recorded', issue: 4 },
   { id: 'geometry', text: 'Provisional geometry replaced with measured components (Twin PARTS measured overrides → d4-v1.json)', issue: 1 },
   { id: 'twin-measured', text: 'Twin rebuilt from measured D4-V1 geometry, shells re-enter clearance checking', issue: 11 },
   { id: 'recovery-proof', text: 'Recovery paths (ROM loader, reboot, factory reset) proven on real hardware', issue: 6 },
@@ -124,28 +126,38 @@ const fmt = (dims: (number | null)[]) => dims.map((d) => (d === null ? '?' : Str
 export function measurementTasks(profile: HardwareProfile = D4_V1): MeasurementTask[] {
   const tasks: MeasurementTask[] = [];
 
-  if (profile.body.confidence !== 'MEASURED') {
+  // The body is OFFICIAL_CAD from hardware/cad/KINO_FIELD_BODY: the six shells
+  // are generated, gated and released, so the envelope is not owed a caliper
+  // the way a provisional box was. It is owed one again only if the data
+  // drops back to a provisional figure.
+  if (profile.body.confidence !== 'MEASURED' && profile.body.confidence !== 'OFFICIAL_CAD') {
     tasks.push({
       id: 'body',
-      task: 'Body envelope and shell geometry (panel thickness, skeleton ribs)',
+      task: 'Body envelope as printed (overall size across the chassis halves, face shell on)',
       current: `${profile.body.confidence} ${fmt(profile.body.sizeMm)} mm envelope`,
-      recordIn: 'd4-v1.json body + enclosure-shell/enclosure-chassis components (re-enables shell clearance checks)',
+      recordIn: 'd4-v1.json body + the field-* shell components (re-enables shell clearance checks)',
     });
   }
 
+  // Only parts that are actually placed in this build owe a measurement.
+  // `components` keeps the BOM history — battery, BMS, SW6106 module, fuse,
+  // speaker, caps, slide switch — but the field body fits none of them, and a
+  // part that is not in the camera cannot be put on the bench.
+  const fitted = new Set(profile.instances.map((instance) => instance.component));
   for (const component of profile.components) {
+    if (!fitted.has(component.id)) continue;
     const source = component.sources[0];
     if (!source) continue;
     const unmeasured = source.kind !== 'MEASURED' && source.kind !== 'OFFICIAL_CAD';
     const incomplete = source.sizeMm.some((axis) => axis === null);
-    // Both enclosure components share the body envelope; covered by the body row.
-    if (component.id === 'enclosure-shell' || component.id === 'enclosure-chassis') continue;
     if (unmeasured || incomplete) {
       tasks.push({
         id: `dims-${component.id}`,
         task: `Measure ${component.name} (${component.id}) dimensions`,
         current: `${source.kind} ${fmt(source.sizeMm)} mm${source.note ? ` — ${source.note}` : ''}`,
-        recordIn: 'Twin PARTS measured override, then d4-v1.json',
+        // The Twin's PARTS tree opens MEASURE ACTUAL PART on a component;
+        // SAVE MEASUREMENT stores the measured override.
+        recordIn: 'Twin PARTS → MEASURE ACTUAL PART (measured override), then d4-v1.json',
       });
     }
   }
@@ -161,13 +173,20 @@ export function measurementTasks(profile: HardwareProfile = D4_V1): MeasurementT
     });
   }
 
-  if (profile.instances.filter((i) => i.group === 'camera-bar').every((i) => (i.opticalCenterOffsetMm ?? [0, 0, 0]).every((v) => v === 0))) {
-    tasks.push({
-      id: 'optical-centers',
-      task: 'Measure per-camera optical-center offsets on the assembled bar',
-      current: 'all zero (unmeasured)',
-      recordIn: 'd4-v1.json instance opticalCenterOffsetMm',
-    });
+  {
+    // Keyed on provenance, not on the numbers: the CAD places every lens
+    // 6.95 mm off its board centre, which is a design figure and not a bench
+    // one, so a non-zero offset must not read as "measured".
+    const cams = profile.instances.filter((i) => i.group === 'camera-bar');
+    if (!cams.every((i) => (i.opticalCenterConfidence ?? 'PROVISIONAL') === 'MEASURED')) {
+      const kinds = [...new Set(cams.map((i) => i.opticalCenterConfidence ?? 'PROVISIONAL'))].join(', ');
+      tasks.push({
+        id: 'optical-centers',
+        task: 'Measure per-camera optical-center offsets on the assembled bar',
+        current: `${kinds} (from the body CAD, not the bench)`,
+        recordIn: 'd4-v1.json instance opticalCenterOffsetMm + opticalCenterConfidence',
+      });
+    }
   }
 
   const unassigned = Object.entries(profile.gpio).filter(([, pin]) => pin === null);

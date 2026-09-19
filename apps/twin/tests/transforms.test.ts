@@ -39,18 +39,18 @@ function agreeingCamBar(): InstanceDef[] {
 }
 
 describe('camBarX', () => {
-  it('places the four lens centers at -33/-11/+11/+33 at the 22 mm default pitch (§5)', () => {
-    expect(camBarX(1, 22)).toBe(-33);
-    expect(camBarX(2, 22)).toBe(-11);
-    expect(camBarX(3, 22)).toBe(11);
-    expect(camBarX(4, 22)).toBe(33);
+  it('places the four lens centers at +33/+11/-11/-33 at the 22 mm default pitch (§5) — camera 1 at +X', () => {
+    expect(camBarX(1, 22)).toBe(33);
+    expect(camBarX(2, 22)).toBe(11);
+    expect(camBarX(3, 22)).toBe(-11);
+    expect(camBarX(4, 22)).toBe(-33);
   });
 
-  it('scales with pitch — 20 mm pitch narrows the row to -30/-10/+10/+30', () => {
-    expect(camBarX(1, 20)).toBe(-30);
-    expect(camBarX(2, 20)).toBe(-10);
-    expect(camBarX(3, 20)).toBe(10);
-    expect(camBarX(4, 20)).toBe(30);
+  it('scales with pitch — 20 mm pitch narrows the row to +30/+10/-10/-30', () => {
+    expect(camBarX(1, 20)).toBe(30);
+    expect(camBarX(2, 20)).toBe(10);
+    expect(camBarX(3, 20)).toBe(-10);
+    expect(camBarX(4, 20)).toBe(-30);
   });
 });
 
@@ -88,16 +88,19 @@ describe('instanceTransforms — D4_V1', () => {
 
   it('re-pitches the camera bar independent of the profile-authored X (§5)', () => {
     const transforms = instanceTransforms(D4_V1, 20, 0);
-    expect(transforms.get('cam1')?.positionMm[0]).toBe(-30);
-    expect(transforms.get('cam2')?.positionMm[0]).toBe(-10);
-    expect(transforms.get('cam3')?.positionMm[0]).toBe(10);
-    expect(transforms.get('cam4')?.positionMm[0]).toBe(30);
+    // Camera 1 at +X: the photographer's left, as the field body's CAD has it.
+    expect(transforms.get('cam1')?.positionMm[0]).toBe(30);
+    expect(transforms.get('cam2')?.positionMm[0]).toBe(10);
+    expect(transforms.get('cam3')?.positionMm[0]).toBe(-10);
+    expect(transforms.get('cam4')?.positionMm[0]).toBe(-30);
   });
 
-  it('moves front-acrylic +108 mm on Z and leaves rear-acrylic in place at full explode', () => {
+  it('moves the face shell +96 mm on Z and leaves the rear door in place at full explode', () => {
     const transforms = instanceTransforms(D4_V1, 22, 1);
-    expect(transforms.get('front-acrylic')?.positionMm).toEqual([0, 0, 124.5]);
-    expect(transforms.get('rear-acrylic')?.positionMm).toEqual([0, 0, -16.5]);
+    const face = D4_V1.instances.find((i) => i.id === 'face-shell')!;
+    const door = D4_V1.instances.find((i) => i.id === 'rear-door')!;
+    expect(transforms.get('face-shell')?.positionMm).toEqual([face.positionMm[0], face.positionMm[1], face.positionMm[2] + 96]);
+    expect(transforms.get('rear-door')?.positionMm).toEqual(door.positionMm);
   });
 
   it('moves every camera-bar instance by the same explode offset — the bar rides as one rigid group (§5)', () => {

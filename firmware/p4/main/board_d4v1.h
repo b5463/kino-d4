@@ -151,6 +151,7 @@
 #define BOARD_BTN_SHUTTER_JP1 21
 #define BOARD_BTN_FN BOARD_BTN_NONE
 
+
 // --- TF/microSD, SDMMC slot 0, 4-bit ---
 //
 // These six are not a choice. They are the ESP32-P4's slot-0 IOMUX pads,

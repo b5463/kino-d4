@@ -21,9 +21,6 @@ export interface NetworkView {
   lastSeen: number | null;
 }
 
-/** The mask `NETWORK_LIST` reports in place of a stored passphrase. */
-export const MASKED_PASSWORD = '••••';
-
 export interface NetworkListResponse {
   networks: NetworkView[];
 }

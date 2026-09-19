@@ -30,7 +30,7 @@ function fixtureComponent(specs: Record<string, unknown> | undefined): Component
 describe('formatDims', () => {
   it('renders every known axis to one decimal, with the mm unit (camera-node, §8)', () => {
     const resolved = resolveDimensions(component('camera-node'));
-    expect(formatDims(resolved)).toBe('21.0 × 17.8 × 15.0 mm');
+    expect(formatDims(resolved)).toBe('17.8 × 21.0 × 15.0 mm');
   });
 
   it('renders unknown axes as "?" — never a guessed number (fuse: all axes null)', () => {
@@ -62,22 +62,22 @@ describe('connectedInstanceIds', () => {
   });
 
   it('returns an empty list for an instance with no nets', () => {
-    // The enclosure shell panels carry no wiring.
-    expect(connectedInstanceIds(D4_V1, 'skeleton')).toEqual([]);
+    // The body's shells carry no wiring.
+    expect(connectedInstanceIds(D4_V1, 'rear-door')).toEqual([]);
   });
 });
 
 describe('formatNetLine', () => {
   it('renders an outgoing net (this instance is the "from" side) with a forward arrow', () => {
-    const net = D4_V1.nets.find((n) => n.id === 'main-batt-fuse');
-    if (!net) throw new Error('fixture missing net "main-batt-fuse"');
-    expect(formatNetLine(net, 'battery')).toBe('POWER BAT+ → fuse');
+    const net = D4_V1.nets.find((n) => n.id === 'main-carrier-display');
+    if (!net) throw new Error('fixture missing net "main-carrier-display"');
+    expect(formatNetLine(net, 'carrier')).toBe('POWER 5V_BUS → display');
   });
 
   it('renders an incoming net (this instance is the "to" side) with a reverse arrow', () => {
-    const net = D4_V1.nets.find((n) => n.id === 'main-batt-fuse');
-    if (!net) throw new Error('fixture missing net "main-batt-fuse"');
-    expect(formatNetLine(net, 'fuse')).toBe('POWER IN ← battery');
+    const net = D4_V1.nets.find((n) => n.id === 'main-carrier-display');
+    if (!net) throw new Error('fixture missing net "main-carrier-display"');
+    expect(formatNetLine(net, 'display')).toBe('POWER 5V_IN ← carrier');
   });
 });
 
@@ -128,9 +128,9 @@ describe('formatSizeMm', () => {
 });
 
 describe('groupedInstances', () => {
-  it('groups D4_V1 instances into CAMERA BAR / BODY / POWER / SHELL, in that order', () => {
+  it('groups D4_V1 instances into CAMERA BAR / BODY / SHELL, in that order (no POWER: the field body places no pack)', () => {
     const groups = groupedInstances(D4_V1);
-    expect(groups.map((g) => g.label)).toEqual(['CAMERA BAR', 'BODY', 'POWER', 'SHELL']);
+    expect(groups.map((g) => g.label)).toEqual(['CAMERA BAR', 'BODY', 'SHELL']);
   });
 
   it('puts every camera in the CAMERA BAR group', () => {
@@ -160,9 +160,9 @@ describe('materialLabel/massLabel — recorded claims only (audit #63)', () => {
     expect(materialLabel(seller)).toEqual({ text: 'copper', tag: 'SELLER' });
   });
 
-  it('renders the split enclosure component materials with ESTIMATED tags', () => {
-    expect(materialLabel(component('enclosure-shell'))?.tag).toBe('ESTIMATED');
-    expect(materialLabel(component('enclosure-chassis'))?.text).toContain('PETG');
+  it('renders the body shells\' printed material with ESTIMATED tags', () => {
+    expect(materialLabel(component('field-face-shell'))?.tag).toBe('ESTIMATED');
+    expect(materialLabel(component('field-chassis-front'))?.text).toContain('PETG');
   });
 
   it('returns null (renders "not recorded") when the profile carries no claim — never a guess', () => {

@@ -25,7 +25,7 @@ path = [
   "docs/**",
   "hardware/**",
   "scripts/**",
-  # The generator tools next to scripts/ (tools/mkbitmap.mjs, tools/mktext.mjs).
+  # The generator tools next to scripts/ (tools/mkbitmap.mjs, tools/mkfont.swift).
   # Same kind of file, same grant; they were simply never listed, which left
   # them with no declared license at all.
   "tools/**",
@@ -82,17 +82,6 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 KINO contributors <https://github.com/b5463/kino-d4/graphs/contributors>"
 SPDX-License-Identifier = "LicenseRef-KINO-Reserved"
 
-# The D4 menu icons are Windows 98 shell icons, baked at native size by
-# scripts/bake-w98-icons.mjs. firmware/** is declared MIT three blocks up, which
-# would relabel Microsoft's artwork as ours to give away. It is not, and this
-# override says so. The annotation records the ownership; it grants nothing.
-# See LICENSES/LicenseRef-Microsoft-Proprietary.txt and THIRD_PARTY_NOTICES.md.
-[[annotations]]
-path = ["firmware/p4/main/icons_w98.h"]
-precedence = "override"
-SPDX-FileCopyrightText = "Microsoft Corporation"
-SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"
-
 # W95FA, the typeface KINO Print's Windows 98 styling is set in. Alina Sava's
 # recreation, under the SIL Open Font License 1.1 - and unlike the traced
 # Roboto outlines below, the font software itself IS shipped, in the app's
@@ -133,3 +122,35 @@ path = ["firmware/c6/partitions_eh_cp_ota_4m.csv"]
 precedence = "override"
 SPDX-FileCopyrightText = "2021-2025 Espressif Systems (Shanghai) CO LTD"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The camera's type, and there are two faces.
+#
+# Inter (Rasmus Andersson) carries everything a person reads as language: the
+# list rows, the values, the sentences. Oxanium (Severin Meyer) carries
+# everything the camera says as a machine: the titles, the technical caps, the
+# word on the card. Both are under the SIL Open Font License 1.1.
+#
+# The generated header is those typefaces rasterised to coverage at five sizes
+# for ASCII 32..126: a derivative of the fonts, which the OFL permits, and
+# which stays under the OFL - it is not ours to relabel MIT. The OFL's Reserved
+# Font Name clause does not apply because the derivative is not distributed
+# under either font's name.
+[[annotations]]
+path = ["firmware/p4/main/ui_font.h"]
+precedence = "override"
+SPDX-FileCopyrightText = "2016 The Inter Project Authors (https://github.com/rsms/inter), 2019 The Oxanium Project Authors (https://github.com/sevmeyer/oxanium)"
+SPDX-License-Identifier = "OFL-1.1"
+
+# Odd Jobs' mark, which is the studio's and not the project's.
+#
+# The camera opens with it and the About screen signs off with it, baked by
+# tools/mklogo.swift from the studio's own artwork into a 160x160 coverage map
+# - the same kind of derivation as the KINO wordmarks two blocks up, and the
+# same reason it needs saying: firmware/** is declared MIT, and an MIT grant
+# over somebody else's trade mark is a licence this project cannot give. The
+# annotation records whose the mark is; it grants nothing.
+[[annotations]]
+path = ["firmware/p4/main/logo_odd_jobs.h"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Odd Jobs"
+SPDX-License-Identifier = "LicenseRef-KINO-Reserved"

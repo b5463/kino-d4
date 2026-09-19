@@ -13,7 +13,7 @@ import type { MockFrameRequest } from '@kino/test-fixtures';
 import { useSceneStore } from '../state/sceneStore';
 import { useStageStore } from '../state/stageStore';
 import { useSimStore, getTwinRuntime } from '../state/simStore';
-import { sensorPoses, verticalFovDeg, SENSOR_LAYER } from './sensor';
+import { sensorPoses, topLightPositionMm, verticalFovDeg, SENSOR_LAYER } from './sensor';
 import { previewCanvas, markPreviewUpdated } from './displayPreview';
 import { viewfinderCam } from '../display/deviceUi';
 
@@ -80,7 +80,7 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
   function renderInto(cam: MockFrameRequest['cam'], width: number, height: number, withFlash = false): boolean {
     if (!workCtx) return false;
     const { profile, pitchMm } = useSceneStore.getState();
-    const { lensFovDeg } = useStageStore.getState();
+    const { lensFovDeg, topLight } = useStageStore.getState();
     const pose = sensorPoses(profile, pitchMm).find((p) => p.cam === cam);
     if (!pose) return false;
 
@@ -90,8 +90,13 @@ function createRig(gl: THREE.WebGLRenderer, scene: THREE.Scene): Rig {
     camera.position.set(...pose.positionMm);
     camera.lookAt(pose.positionMm[0], pose.positionMm[1], pose.positionMm[2] + 1000);
 
-    flash.position.set(0, pose.positionMm[1], pose.positionMm[2] + 2);
-    flash.intensity = withFlash ? FLASH_CD : 0;
+    // The light is the external unit on the body's top stud; without one in
+    // the profile it falls back to the old on-axis position between the lenses.
+    const light = topLightPositionMm(profile, pitchMm);
+    if (light) flash.position.set(light[0], light[1], light[2]);
+    else flash.position.set(0, pose.positionMm[1], pose.positionMm[2] + 2);
+    const lit = topLight === 'constant' || (topLight === 'flash' && withFlash);
+    flash.intensity = lit ? FLASH_CD : 0;
 
     const rt = target(width, height);
     const previous = gl.getRenderTarget();

@@ -63,7 +63,7 @@ Each channel uses an AO4407 or AO4407A P-channel MOSFET, a 100 kΩ gate pull-up,
 | `CAM_PWR_EN` | `GPIO_TBD` | bench validation required |
 | `BTN_SHUTTER` | `GPIO28` / JP1 21 | validated 2026-08-30 — `HWV_BTN_SHUTTER` earned on the first press, `firmware/HARDWARE_VALIDATION.md` |
 | `BTN_FN` | `GPIO_TBD` | bench validation required |
-| `SLIDE_MODE` | `GPIO_TBD` | bench validation required |
+| `SLIDE_MODE` | `GPIO_TBD` | unassigned. ECN-0006 proposed it as the guest lock and was withdrawn when the guest half of the interface was dropped; no firmware reads this signal. |
 
 The `PROVISIONAL` candidate for each row lives in `packages/hardware-profiles/src/profiles/d4-v1.json` (`gpio`, with the JP1 pin for each signal) and `firmware/p4/main/board_d4v1.h`. A row here moves off `GPIO_TBD` only with bench evidence.
 

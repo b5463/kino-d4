@@ -25,9 +25,9 @@ function resolvedSize(
   return { sizeMm: resolved.sizeMm, confidence: resolved.confidence };
 }
 
-/** The front panel's outline source: the shell component, else the body envelope. */
+/** The front panel's outline source: the face shell, else the body envelope. */
 function panelOutline(profile: HardwareProfile, overrides: MeasuredOverride[]): { w: number; h: number; confidence: string } {
-  const shell = resolvedSize(profile, overrides, 'enclosure-shell');
+  const shell = resolvedSize(profile, overrides, 'field-face-shell');
   const [w, h] = shell.sizeMm;
   if (w !== null && h !== null) return { w, h, confidence: shell.confidence };
   return { w: profile.body.sizeMm[0], h: profile.body.sizeMm[1], confidence: profile.body.confidence };
@@ -117,16 +117,14 @@ export function exportTransformsCsv(
 /**
  * STEP AP214 solid of the assembly envelope — one box, exactly what the
  * profile claims and nothing it does not: internal geometry is not modeled,
- * so exporting it would be invention. The box picks up measured overrides on
- * the shell component the same way the DXF outline does.
+ * so exporting it would be invention. The box is the profile's body envelope,
+ * which for the field body is the assembled extent of its released shells
+ * (scripts/bake-twin-body.mjs) — a shell override changes one shell, not the
+ * envelope, so none is read here.
  */
 export function exportEnvelopeStep(profile: HardwareProfile, overrides: MeasuredOverride[]): string {
-  const shell = resolvedSize(profile, overrides, 'enclosure-shell');
-  const size: [number, number, number] = [
-    shell.sizeMm[0] ?? profile.body.sizeMm[0],
-    shell.sizeMm[1] ?? profile.body.sizeMm[1],
-    shell.sizeMm[2] ?? profile.body.sizeMm[2],
-  ];
+  void overrides;
+  const size: [number, number, number] = [profile.body.sizeMm[0], profile.body.sizeMm[1], profile.body.sizeMm[2]];
   const [w, h, d] = size;
   const hx = w / 2;
   const hy = h / 2;
@@ -229,7 +227,7 @@ export function exportEnvelopeStep(profile: HardwareProfile, overrides: Measured
   return [
     'ISO-10303-21;',
     'HEADER;',
-    `FILE_DESCRIPTION(('KINO D4 assembly envelope ${w}x${h}x${d} mm (${shell.confidence}); envelope only, internal geometry not modeled'),'2;1');`,
+    `FILE_DESCRIPTION(('KINO D4 assembly envelope ${w}x${h}x${d} mm (${profile.body.confidence}); envelope only, internal geometry not modeled'),'2;1');`,
     `FILE_NAME('kino-d4-envelope.step','',('KINO Twin'),(''),'','','');`,
     "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
     'ENDSEC;',

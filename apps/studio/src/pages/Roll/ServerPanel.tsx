@@ -26,6 +26,7 @@ export function ServerPanel({
   onRegister,
   provisioningToken,
   onProvisioningTokenChange,
+  cameraApiBase,
 }: {
   url: string;
   busy: boolean;
@@ -36,6 +37,12 @@ export function ServerPanel({
   onRegister: () => Promise<void>;
   provisioningToken: string;
   onProvisioningTokenChange: (token: string) => void;
+  /**
+   * `network.apiBase` as GET_CONFIG reports it — where the camera's own
+   * uploader posts, which is not necessarily the URL typed above. `undefined`
+   * when the config carries no such key; `null` when config is unread.
+   */
+  cameraApiBase?: string | null;
 }) {
   const urlId = useId();
   const tokenId = useId();
@@ -77,6 +84,15 @@ export function ServerPanel({
           disabled={busy}
           onChange={(e) => onProvisioningTokenChange(e.target.value)}
         />
+      </FieldRow>
+
+      <FieldRow
+        label="CAMERA UPLOAD TARGET"
+        hint="Stored on the camera as network.apiBase and used by its own uploader. REGISTER KINO sets it to the server above."
+      >
+        <span className="mono" data-field="camera-api-base">
+          {cameraApiBase === null ? '—' : cameraApiBase ? cameraApiBase : 'NOT SET · firmware default'}
+        </span>
       </FieldRow>
 
       {result ? (

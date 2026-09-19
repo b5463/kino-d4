@@ -266,6 +266,12 @@ static int s_thumb_cam = -1;
 static capture_report_t s_last;
 static char s_device_id[20] = "kino-d4";
 static volatile capture_stage_t s_stage = CAPTURE_IDLE;
+/* Which cameras this capture asked, and which have staged a frame so far -
+ * two aligned words a UI may read from another task while the shutter is
+ * open. Set once per frame by its worker, cleared at the next trigger; no
+ * lock, no sequencing promise beyond "a bit set is a frame that arrived". */
+static volatile uint32_t s_asked_mask;
+static volatile uint32_t s_frames_in;
 static volatile uint32_t s_count;
 static capture_done_cb_t s_on_done[CAPTURE_MAX_LISTENERS];
 static int s_listeners;
@@ -777,6 +783,7 @@ static void do_frame(worker_t *w) {
   w->jpeg_bytes = cap.size;
   w->transfer_crc = transfer_crc;
   w->store_pending = true;
+  s_frames_in |= 1u << w->cam;
 }
 
 static void worker_task(void *arg) {
@@ -1416,6 +1423,8 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   esp_err_t committed = ESP_FAIL;
 
   s_stage = CAPTURE_TRIGGERING;
+  s_asked_mask = 0;
+  s_frames_in = 0;
   gpio_setup();
 
   if (!storage_present()) {
@@ -1597,6 +1606,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   /* Every worker sets its bit exactly once per capture, including on every
    * failure path, so this cannot hang on a camera that misbehaves — only on
    * one whose own timeouts have not expired yet, which they always do. */
+  s_asked_mask = ask;
   s_stage = CAPTURE_READING;
   xEventGroupWaitBits(s_done, ask, pdFALSE, pdTRUE, portMAX_DELAY);
   s_stage = CAPTURE_WRITING;
@@ -1894,6 +1904,8 @@ bool capture_request(const char *source) {
 }
 
 uint32_t capture_ready_cams(void) { return s_workers_ready; }
+uint32_t capture_asked_cams(void) { return s_asked_mask; }
+uint32_t capture_frames_in(void) { return s_frames_in; }
 
 capture_stage_t capture_stage(void) { return s_stage; }
 

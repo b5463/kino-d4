@@ -107,7 +107,8 @@ export class MockMediaStore {
   private fileCache = new Map<string, Uint8Array>();
   private thumbCache = new Map<string, Uint8Array>();
   private count = DEMO_CAPTURES;
-  private asShipped = false;
+  /** On by default — see DEFAULT_SCENARIOS.mediaInfoAsShipped. */
+  private asShipped = true;
 
   /**
    * Answer MEDIA_INFO the way a shipped body answers it (contract D20).

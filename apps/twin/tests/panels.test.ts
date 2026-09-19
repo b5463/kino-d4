@@ -1,59 +1,28 @@
-﻿import { describe, expect, it } from 'vitest';
-import type { TwinSnapshot } from '@kino/test-fixtures';
-import { syncRows, tagLabel } from '../src/panels/SyncPanel';
+import { describe, expect, it } from 'vitest';
+import { tagLabel } from '../src/panels/provenance';
 
-function snapshot(): TwinSnapshot {
-  const phases = { cam1: 0, cam2: 7_420, cam3: 21_880, cam4: 2_910 };
-  return {
-    sessionId: 'boot-1',
-    maintenance: false,
-    batteryV: 3.86,
-    sdPresent: true,
-    sdFreeMB: 1_024,
-    uartBaud: 1_500_000,
-    frameIntervalUs: 33_333,
-    phaseAligned: false,
-    p4Fw: '0.9.0',
-    firmwareProfile: 'd4-sim-full',
-    simulatedFuture: true,
-    flashEnabled: true,
-    cams: Object.fromEntries(
-      Object.entries(phases).map(([cam, phaseUs], index) => [
-        cam,
-        {
-          fw: '0.1.0',
-          phaseUs,
-          uartErrors: 0,
-          jpegKB: 1_000,
-          durationMs: 100,
-          gpioSkewUs: index * 100,
-          fault: null,
-          updating: false,
-    exposureUs: 16_667,
-    focus: null,
-        },
-      ]),
-    ) as TwinSnapshot['cams'],
-    roll: { joined: false, name: null },
-    uploads: { pending: 0, uploading: 0, failed: 0, uploaded: 0 },
-    wifi: 'connected',
-    scenarios: {} as TwinSnapshot['scenarios'],
-  };
-}
-
-describe('Task 19 panel helpers', () => {
-  it('returns exactly three distinct sync metrics and grades VSYNC spread', () => {
-    const rows = syncRows(snapshot());
-    expect(rows.map((row) => row.metric)).toEqual([
-      'GPIO DISTRIBUTION SKEW',
-      'VSYNC PHASE SKEW',
-      'EFFECTIVE EXPOSURE SKEW',
-    ]);
-    expect(rows[1]).toMatchObject({ spreadUs: 21_880, grade: { grade: 'unacceptable' } });
-  });
-
+describe('panel helpers', () => {
   it('keeps provenance labels blunt', () => {
     expect(tagLabel('ESTIMATED')).toBe('ESTIMATED');
     expect(tagLabel('SIMULATED')).toBe('SIMULATED');
+  });
+});
+
+import { FIRMWARE_PROFILE_LIST } from '@kino/test-fixtures';
+import { profileOptionLabel, profileOptions } from '../src/panels/FaultPanel';
+
+describe('firmware profile selector', () => {
+  it('lists shipped builds newest first and the simulated future last', () => {
+    const ids = profileOptions().map((p) => p.id);
+    expect(ids[0]).toBe('d4-settings-0-4-9');
+    expect(ids[ids.length - 1]).toBe('d4-sim-full');
+    expect(ids).toHaveLength(FIRMWARE_PROFILE_LIST.length);
+  });
+
+  it('names a shipped build by the version a flashed camera reports, and the demo device as simulated', () => {
+    const current = FIRMWARE_PROFILE_LIST.find((p) => p.id === 'd4-settings-0-4-9')!;
+    expect(profileOptionLabel(current)).toBe(`${current.p4Fw} · settings reach the hardware`);
+    const future = FIRMWARE_PROFILE_LIST.find((p) => p.id === 'd4-sim-full')!;
+    expect(profileOptionLabel(future)).toMatch(/^SIMULATED FUTURE · /);
   });
 });

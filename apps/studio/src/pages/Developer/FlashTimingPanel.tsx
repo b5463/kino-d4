@@ -3,7 +3,9 @@ import { CAM_IDS, flashBandRisk } from '@kino/kdp';
 import type { CamId, TimingResult } from '@kino/kdp';
 import { Panel } from '../../components/Panel';
 import { Button } from '../../components/Button';
+import { Unsupported } from '../../components/Unsupported';
 import { getDevice } from '../../app/session';
+import { supports, useDeviceStore } from '../../state/deviceStore';
 import { downloadText } from '../../utils/download';
 
 /**
@@ -15,6 +17,10 @@ import { downloadText } from '../../utils/download';
  * are measured and which are assumed.
  */
 export function FlashTimingPanel() {
+  // No emitter on D4-V1 (ECN-0003): a flash coverage figure for a pulse that
+  // lights nothing is a number with no referent.
+  const hasFlashHardware = useDeviceStore((s) => supports(s, 'flashHardware'));
+  const firmwareLabel = useDeviceStore((s) => s.firmwareLabel);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TimingResult | null>(null);
@@ -59,6 +65,18 @@ export function FlashTimingPanel() {
         null,
         2,
       ),
+    );
+  }
+
+  if (!hasFlashHardware) {
+    return (
+      <Panel title="FLASH TIMING">
+        <Unsupported
+          feature="Flash timing"
+          firmware={firmwareLabel}
+          note="No flash emitter is fitted on this KINO (ECN-0003: capability flashHardware is false), so there is no pulse whose coverage of the exposure window could be measured. Sensor phase is still measured on the PHASE panel."
+        />
+      </Panel>
     );
   }
 

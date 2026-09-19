@@ -4,7 +4,19 @@ import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { screenshotPng } from '../exports/exports';
 import { useSceneStore } from '../state/sceneStore';
+import type { HardwareProfile } from '@kino/hardware-profiles';
+import { instanceTransforms } from './transforms';
 import { bboxFromBodySizeMm, viewPose, type ViewPoseName } from './viewPoses';
+
+/** Camera 2's lens centre in scene mm: its instance origin plus optical offset. */
+function cam2LensMm(profile: HardwareProfile, pitchMm: number): [number, number, number] | undefined {
+  const cam2 = profile.instances.filter((i) => i.group === 'camera-bar')[1];
+  if (!cam2) return undefined;
+  const t = instanceTransforms(profile, pitchMm, 0).get(cam2.id);
+  if (!t) return undefined;
+  const o = cam2.opticalCenterOffsetMm ?? [0, 0, 0];
+  return [t.positionMm[0] + o[0], t.positionMm[1] + o[1], t.positionMm[2] + o[2]];
+}
 
 export interface TwinCanvasHandle {
   /** Imperatively drive the camera/controls to one viewport-bar pose (§3, Task 13). */
@@ -46,7 +58,7 @@ function CameraRig({ registerApplyView, registerScreenshot }: CameraRigProps) {
           }
         : undefined;
 
-      const pose = viewPose(name, bboxFromBodySizeMm(profile.body.sizeMm), pitchMm, current);
+      const pose = viewPose(name, bboxFromBodySizeMm(profile.body.sizeMm), pitchMm, current, cam2LensMm(profile, pitchMm));
       camera.position.set(...pose.position);
       camera.lookAt(...pose.target);
       if (controls) {

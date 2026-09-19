@@ -34,7 +34,7 @@ export function ClearancePanel({ findings, notEvaluated = [] }: ClearancePanelPr
       </div>
       {notEvaluated.length > 0 ? (
         <p className="twin-panel-note">
-          NOT EVALUATED: {notEvaluated.join(', ')} — envelope box only, no measured shell geometry yet.
+          NOT EVALUATED: {notEvaluated.join(', ')} — the shells are drawn from the released CAD, but clearance still tests their envelope boxes, not the meshes.
         </p>
       ) : null}
       {findings.length === 0 ? (
