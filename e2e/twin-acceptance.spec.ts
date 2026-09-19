@@ -175,20 +175,31 @@ test('Twin acceptance walk', async ({ context, page }) => {
     await expect(cam3Card).toContainText('READY', { timeout: CROSS_APP_MS });
   });
 
-  await test.step('FAULTS: battery sag reaches the Studio power row', async () => {
+  await test.step('FAULTS: battery sag moves the pack, and this body has no gauge to tell Studio with', async () => {
     const battery = studio.locator('.datarow').filter({ hasText: 'BATTERY' }).first();
-    const healthy = await battery.innerText();
+    const twinBattery = page.locator('.twin-status-cell').filter({ hasText: 'BAT' });
     const sag = page.locator('.twin-fault-row').filter({ hasText: 'BATTERY SAG' }).locator('input[type=checkbox]');
 
+    // This step used to assert the sagged voltage appeared in Studio's POWER
+    // & STORAGE row. It cannot, and that is the product's answer rather than
+    // a gap here: no sense divider and no gauge bus reach the P4 (contract
+    // D10), so GET_POWER_STATUS carries batteryV: null and batteryMeasured:
+    // false on every profile that pins a real build. The pack figures go on
+    // the wire only where the powerTelemetry capability is true, and the base
+    // report states it false because the firmware hardcodes it so.
+    //
+    // So the fault is still real and still worth walking - it is just visible
+    // in the Twin rather than in Studio, because the Twin IS the body and
+    // keeps the pack model the camera cannot measure. Asserting both halves
+    // is what pins the contract: the sag moves, and it stops at the wire.
+    await expect(battery).toContainText('NOT MEASURED');
+
     await sag.check();
-    // The pack reports 3.55 V and dips further under load. That is above the
-    // 15 % LOW BATTERY threshold, so the evidence is the reported voltage in
-    // the POWER & STORAGE row, not the ready bar.
-    await expect(battery).toContainText(/3\.[0-5]\d V/, { timeout: CROSS_APP_MS });
+    await expect(twinBattery).toContainText(/BAT 3\.[0-5]\dV/, { timeout: CROSS_APP_MS });
+    await expect(battery).toContainText('NOT MEASURED');
 
     await sag.uncheck();
-    await expect(battery).not.toContainText(/3\.[0-5]\d V/, { timeout: CROSS_APP_MS });
-    expect(healthy).toMatch(/\d\.\d\d V/);
+    await expect(twinBattery).not.toContainText(/BAT 3\.[0-5]\dV/, { timeout: CROSS_APP_MS });
   });
 
   await test.step('A measured override tags MEASURED and refreshes the clearance findings', async () => {
