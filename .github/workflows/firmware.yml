@@ -263,11 +263,27 @@ jobs:
       # the build now emits a fourth image, ota_data_initial.bin at 0xa000, and
       # a unit that gets the new partition table without it boots off whatever
       # bytes are already at 0xa000. build/flash_args carries all four.
+      # RAISED 1200 -> 1350 when the interface stopped being a bitmap.
+      #
+      # The type is the whole of it. ui_font.h is Inter and Oxanium rasterised
+      # to 8-BIT COVERAGE at five sizes for ASCII 32..126 - 304 KB of rodata
+      # where the 1-bit bitmaps it replaced were a fraction of that. That is
+      # the cost of glyphs that blend into what is behind them instead of
+      # being thresholded, and at 19 px it is most of what makes a face
+      # legible; the alternative is the staircase on every diagonal that the
+      # old header had. The studio's mark adds 25 KB as a 160x160 coverage
+      # map (logo_odd_jobs.h), and deleting icons_w98.h and ui_labels.h gave
+      # some back.
+      #
+      # 1,222 KB measured against a 3,072 KB ota_0. The new limit keeps about
+      # 10% of headroom over that, which is what makes this a trigger that
+      # still fires on the next surprise rather than a number moved to
+      # wherever the build happens to be.
       - name: Guard firmware size
         if: matrix.app == 'p4'
         shell: bash
         run: |
-          LIMIT_KB=1200
+          LIMIT_KB=1350
           BIN=firmware/p4/build/kino-p4.bin
           SIZE_B=$(stat -c %s "$BIN")
           SIZE_KB=$((SIZE_B / 1024))
@@ -332,10 +348,14 @@ jobs:
       #   - both OTA slots are sized for THIS binary, not the default one. An
       #     OTA writes into whichever slot is not running, so the radio image is
       #     what set 3 MB.
+      # RAISED 1600 -> 1900 for the same 8-bit type as the non-radio guard
+      # above: the font table is in both images and costs the same in each.
+      # 1,821 KB measured, against a 3,072 KB slot that the radio stack sized
+      # in the first place.
       - name: Guard radio firmware size
         shell: bash
         run: |
-          LIMIT_KB=1600
+          LIMIT_KB=1900
           BIN=firmware/p4/build/kino-p4.bin
           SIZE_B=$(stat -c %s "$BIN")
           SIZE_KB=$((SIZE_B / 1024))
