@@ -21,13 +21,14 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
 
 ## Stop-gates that are not in any script
 
-- **Firmware artwork.** `firmware/p4/main/icons_w98.h` carries Microsoft's
-  Windows 98 shell icons under `LicenseRef-Microsoft-Proprietary`
-  (`REUSE.toml`, `THIRD_PARTY_NOTICES.md`). Publishing any P4 binary built
-  from this tree redistributes them. Issue #134 has to be answered - a licence,
-  or original artwork in the same idiom - before a firmware release exists.
-  `npm run license:check` proves the mapping is intact; it does not make the
-  redistribution lawful. **Operator decision, 2026-09-05:** the project is not
+- **Firmware artwork - resolved, 2026-09-17.** The interface carried Microsoft's
+  Windows 98 shell icons, which blocked every firmware release (#134). It no
+  longer carries any baked artwork at all: the icons are gone with the tile
+  menu, the baked Tahoma labels are gone with the header, and the type is Inter
+  and Oxanium under the OFL, rasterised by `tools/mkfont.swift`. What follows
+  was the position while that was unresolved; it is kept because the release
+  records it governed are still in the tree. **Operator decision, 2026-09-05:**
+  the project is not
   sold or published; builds are for the owner's own units, and the artwork
   stays. The gate therefore applies only if a binary is ever distributed.
 - **Gate U — Roll on the internet.** The backend and web have been proven only
@@ -133,11 +134,11 @@ The table above is hand-written; `npm run version:check` verifies
   host-driven captures passed and the first two physical presses panicked
   the body (stack protection fault). A soak that fires the shutter over KDP
   does not exercise the shutter.
-- **Firmware binaries are private.** The P4 image carries Microsoft Windows 98
-  shell icons under an operator decision for the owner's own units (#134,
-  2026-09-05). Release bundles built from this tree are for private use;
-  nothing containing `icons_w98.h` may be published or handed on until the
-  artwork or its licence is resolved. Say so in every release record.
+- **Firmware binaries no longer carry unlicensed artwork.** The P4 image did,
+  under an operator decision for the owner's own units (#134, 2026-09-05);
+  since 2026-09-17 there is no baked artwork in the interface and the type is
+  OFL. Release records written before that date still carry the restriction
+  and it still applies to those bundles.
 - **Camnode provenance.** The camera-node binary in a bundle is stamped from
   `firmware/VERSION`; before publishing, either show the source delta since
   the last physically proven node image is version-only (`git diff <proven>..HEAD

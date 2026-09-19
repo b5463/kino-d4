@@ -84,12 +84,10 @@ body's physical key, through `ui.c`'s own button queue.
 - `npm run twin:ui:bake` rebuilds `apps/twin/src/display/firmware/kino-ui.wasm`
   (wasi-sdk, fetched into `.cache/` on first use); `npm run twin:ui:check` fails
   on drift. The version on the ABOUT screen is `firmware/VERSION` at build time.
-- The committed module carries **placeholder menu glyphs**: the menu icons are
-  Microsoft's Windows 98 artwork (`THIRD_PARTY_NOTICES.md`, #134) and the Twin
-  is a web app in a public repository. `npm run twin:ui:bake -- --w98` builds
-  the private variant into `apps/twin/public/kino-ui.w98.wasm` (gitignored),
-  which the Twin prefers when present - for the owner's own machine, under the
-  2026-09-05 operator decision.
+- One module, not two. The Twin used to carry placeholder menu glyphs because
+  the real ones were Microsoft's Windows 98 artwork and this is a public
+  repository; the interface has no baked artwork in it any more, so the
+  committed build is the build.
 - Before SIM READY, and in a browser without the module, `deviceUi.ts` still
   draws POWER OFF and the boot ladder.
 
@@ -101,7 +99,7 @@ explode can interrupt the picture, and it fills the window at FIT, 1X or 2X
 (the integer scales are pixel-exact). Touch the canvas as you would the glass;
 SHUTTER and FN are the body's keys (Space and F).
 
-Rebuild with `npm run twin:ui:bake` (`--w98` for the private icon build). The
+Rebuild with `npm run twin:ui:bake`. The
 bake rewrites the module the screen was loaded from; with WATCH on, the view
 notices the new bytes within two seconds and restarts only the screen on the
 new build. RELOAD (R) does the same on demand. The device underneath is not

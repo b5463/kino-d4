@@ -1,8 +1,8 @@
-# ECN-0006: `SLIDE_MODE` is the guest switch, and it is the one control the interface needs
+# ECN-0006 (WITHDRAWN): `SLIDE_MODE` is the guest switch, and it is the one control the interface needs
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Withdrawn |
 | Author | KINO contributors |
 | Date | 2026-09-16 |
 | Hardware revision | D4-V1 |
@@ -83,7 +83,7 @@ function the camera needs to take photographs.
 Unblocks: the guest half stops being a config key. `guest_mode()` in
 `guest.h` already reads `BOARD_SW_GUEST` when it is fitted and falls through
 to `body.guestMode` when it is not, so nothing in the interface changes on the
-day the pin exists.
+day the pin exists. *(Both were deleted with the guest half — see Decision.)*
 
 Does not unblock, and is worth saying: `BTN_FN` rides the same expander. The
 interface has numbered positions on every segmented control and a focus ring
@@ -126,6 +126,20 @@ mode without a laptop, and looks identical to one that is working.
 
 ## Decision
 
-Open. The pin depends on the expander decision deferred by ECN-0003, and this
-is the second signal asking for it. What is settled by this note is what
-`SLIDE_MODE` is *for*, which was blank on every revision before it.
+**Withdrawn, 2026-09-18.** The product dropped the guest/owner split before
+this reached a hardware decision: there is one interface now, the owner's, and
+`firmware/p4/main/guest.h` and `guest_mode()` are deleted. Everything this
+note argued was argued correctly *given* a guest half — a lock that is a
+config key is not a lock — and none of it survives the half going away.
+
+So `SLIDE_MODE` is an unassigned signal again, which is what it was before
+this note, and `hardware/WIRING.md` says so rather than crediting it to a
+switch nothing reads. The paragraphs above are kept, struck through by this
+line rather than edited, because the reasoning is the record: if a guest half
+is ever built again, it wants a switch and not a setting, and that conclusion
+should not have to be reached twice.
+
+`BTN_FN` is the part of this note that outlives it. The interface still has
+numbered positions and a focus ring that no input on this body can reach, and
+the expander deferred by ECN-0003 is still the standing route for it. That is
+one signal asking, not three, and it is not what this ECN asked for.

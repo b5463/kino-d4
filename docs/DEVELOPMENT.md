@@ -167,8 +167,8 @@ Do not assign a command value from an empty-looking range without checking the f
 
 ```bash
 # KINO Twin's device screen: the P4 firmware's ui.c as WebAssembly. Rebuild after
-# a ui.c change; the check fails CI on drift. --w98 builds the private variant
-# with the Windows 98 menu artwork into apps/twin/public/ (gitignored, #134).
+# a ui.c change; the check fails CI on drift. One artifact: the interface has no
+# baked artwork left in it, so there is no private variant any more.
 npm run twin:ui:bake
 npm run twin:ui:check
 
