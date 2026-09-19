@@ -79,6 +79,5 @@ firmware/*/build-*/
 *.log
 
 # KINO Twin device screen: the private variant with the Windows 98 artwork (#134) and the toolchain cache
-apps/twin/public/kino-ui.w98.wasm
 .cache/
 firmware/p4/twin_ui/kino-ui.wasm

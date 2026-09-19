@@ -6,9 +6,10 @@
 //                                   copy it to apps/twin/src/display/firmware/
 //   npm run twin:ui:check           build into a temp dir and compare with the
 //                                   committed artifact; fail on drift
-//   npm run twin:ui:bake -- --w98   the private variant with the real menu
-//                                   artwork, into apps/twin/public/ (ignored
-//                                   by git; see THIRD_PARTY_NOTICES.md, #134)
+//
+// One artifact. There used to be a second, built with private Windows 98
+// shell artwork for the menu tiles; the interface has no baked artwork left
+// in it, so there is nothing to keep out of the public build.
 //
 // The toolchain is wasi-sdk, pinned here by version and digest the way the
 // firmware pins espressif/idf. Set WASI_SDK to an unpacked root, or let this
@@ -23,7 +24,6 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(root, 'firmware', 'p4', 'twin_ui');
 const OUT = join(root, 'apps', 'twin', 'src', 'display', 'firmware', 'kino-ui.wasm');
-const OUT_W98 = join(root, 'apps', 'twin', 'public', 'kino-ui.w98.wasm');
 
 // wasi-sdk 34.0. The digests are the release's own (SHA-256 of the tarball).
 const WASI_SDK_VERSION = '34';
@@ -36,7 +36,6 @@ const WASI_SDK_ASSETS = {
 
 const args = new Set(process.argv.slice(2));
 const check = args.has('--check');
-const w98 = args.has('--w98');
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -69,8 +68,8 @@ function findWasiSdk() {
   return dir;
 }
 
-function build(wasiSdk, icons) {
-  const make = spawnSync('make', ['-C', SRC, '-B', `WASI_SDK=${wasiSdk}`, `ICONS=${icons}`], {
+function build(wasiSdk) {
+  const make = spawnSync('make', ['-C', SRC, '-B', `WASI_SDK=${wasiSdk}`], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
   });
@@ -85,7 +84,7 @@ function build(wasiSdk, icons) {
 }
 
 const wasiSdk = findWasiSdk();
-const built = build(wasiSdk, w98 ? 'w98' : 'placeholder');
+const built = build(wasiSdk);
 
 if (check) {
   if (!existsSync(OUT)) {
@@ -100,8 +99,7 @@ if (check) {
   }
   console.log(`[twin-ui] committed kino-ui.wasm matches the source (${a.slice(0, 12)})`);
 } else {
-  const dest = w98 ? OUT_W98 : OUT;
-  mkdirSync(dirname(dest), { recursive: true });
-  copyFileSync(built, dest);
-  console.log(`[twin-ui] wrote ${dest} (${readFileSync(dest).length} bytes, icons: ${w98 ? 'w98 (private)' : 'placeholder'})`);
+  mkdirSync(dirname(OUT), { recursive: true });
+  copyFileSync(built, OUT);
+  console.log(`[twin-ui] wrote ${OUT} (${readFileSync(OUT).length} bytes)`);
 }

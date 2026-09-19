@@ -9,7 +9,7 @@ function useFirmwareStatus(): string {
   const fw = firmwareUi();
   return useSyncExternalStore(
     (cb) => fw.onStatus(cb),
-    () => (fw.available() ? `${fw.version ?? '?'}:${fw.variant ?? ''}` : ''),
+    () => (fw.available() ? (fw.version ?? '?') : ''),
   );
 }
 
@@ -24,6 +24,11 @@ function useFirmwareStatus(): string {
  * captures - so it works whether or not Studio holds the link, as the key on
  * a camera does. Before SIM READY, and in a build without the module, the
  * sketch in deviceUi.ts draws POWER OFF and the boot ladder as before.
+ *
+ * There is one build of ui.c now. The panel used to say which variant was
+ * loaded because there were two - the real one and a second with placeholder
+ * menu glyphs, carried while the shell's artwork had a licence question over
+ * it. The artwork is gone and so is the variant.
  */
 export function DisplayPanel() {
   const bootStage = useSimStore((s) => s.bootStage);
@@ -49,9 +54,7 @@ export function DisplayPanel() {
   }
 
   const blocked = bootStage !== 'READY' || (!live && (studioConnected || shutter === 'working'));
-  const heading = live
-    ? `FIRMWARE ui.c ${fw.version ?? ''}${fw.variant === 'placeholder' ? ' · PLACEHOLDER ICONS' : ''}`
-    : 'SIMULATED';
+  const heading = live ? `FIRMWARE ui.c ${fw.version ?? ''}` : 'SIMULATED';
   return (
     <section className="twin-tool-panel" aria-label="Device display">
       <div className="twin-panel-heading"><span>DEVICE DISPLAY</span><span>{heading}</span></div>
@@ -60,7 +63,6 @@ export function DisplayPanel() {
         {live ? (
           <p className="twin-panel-note">
             The camera's own ui.c, running here. Tap the screen; SHUTTER is the body's key.
-            {fw.variant === 'placeholder' ? ' Menu tiles carry placeholder glyphs (THIRD_PARTY_NOTICES.md).' : ''}
           </p>
         ) : (
           <p className="twin-panel-note">Simulated device UI. Same state Studio reads over KDP.</p>

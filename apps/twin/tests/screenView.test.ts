@@ -10,8 +10,19 @@ describe('SCREEN VIEW sizing and mode', () => {
     expect(isScreenFocus('#screenshot')).toBe(false);
   });
 
-  it('FIT keeps 5:3 and fills the shorter side', () => {
-    expect(screenCssSize(1600, 480, 'fit')).toEqual({ width: 800, height: 480, integer: false });
+  /*
+   * FIT takes the largest WHOLE multiple that fits, and only falls to a
+   * fractional one when even 1x will not.
+   *
+   * A fractional scale resamples every pixel of an 800x480 panel through the
+   * browser's bilinear filter, which is what made the Twin's screen look soft
+   * when nothing about the firmware's own drawing was soft - the renderer's
+   * own PPMs were sharp and the panel was not. 1600x480 fits 1x exactly, so
+   * it is an integer scale and says so; 400x1000 cannot fit even one, so it
+   * still scales down and does not.
+   */
+  it('FIT prefers a whole multiple, and falls back when one will not fit', () => {
+    expect(screenCssSize(1600, 480, 'fit')).toEqual({ width: 800, height: 480, integer: true });
     expect(screenCssSize(400, 1000, 'fit')).toEqual({ width: 400, height: 240, integer: false });
   });
 

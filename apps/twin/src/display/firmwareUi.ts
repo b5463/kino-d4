@@ -56,7 +56,6 @@ interface Kui {
   kui_rgba(src: number): number;
   kui_screen(): number;
   kui_version(): number;
-  kui_icons_placeholder(): number;
   kui_scratch(i: number): number;
   kui_scratch_cap(): number;
   kui_button(id: number, longPress: number): void;
@@ -91,11 +90,8 @@ interface Kui {
   kui_set_queue(pending: number, uploading: number, failed: number, uploaded: number, scanComplete: number, draining: number, halted: number, server: number, lastUploadMs: number, burstDone: number, lastError: number): void;
 }
 
-export type FirmwareUiVariant = 'placeholder' | 'w98';
-
 interface Compiled {
   module: WebAssembly.Module;
-  variant: FirmwareUiVariant;
   /** Where the bytes came from — the place a rebuilt bake will land too. */
   url: URL;
   /** Fingerprint of the bytes (moduleHash), so a rebuild is recognisable. */
@@ -106,7 +102,6 @@ interface Compiled {
 
 /** What the screen is running, for anyone who shows it. */
 export interface FirmwareUiLoaded {
-  variant: FirmwareUiVariant;
   url: string;
   hash: string;
   loadedAt: number;
@@ -121,21 +116,9 @@ const CAMLINK_TEMP_C = 36;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-/**
- * Find the module. The private variant with the real menu artwork lives in
- * public/ (gitignored, `npm run twin:ui:bake -- --w98`) and wins when present;
- * the committed build with placeholder tiles is bundled with the app.
- */
-function moduleCandidates(): [URL, FirmwareUiVariant][] {
-  const candidates: [URL, FirmwareUiVariant][] = [];
-  try {
-    const base = (import.meta.env?.BASE_URL as string | undefined) ?? './';
-    candidates.push([new URL('kino-ui.w98.wasm', new URL(base, window.location.href)), 'w98']);
-  } catch {
-    /* no window: nothing to prefer */
-  }
-  candidates.push([new URL('./firmware/kino-ui.wasm', import.meta.url), 'placeholder']);
-  return candidates;
+/** Where the module is. One build, bundled with the app. */
+function moduleUrl(): URL {
+  return new URL('./firmware/kino-ui.wasm', import.meta.url);
 }
 
 /**
@@ -153,12 +136,12 @@ async function fetchModuleBytes(url: URL): Promise<ArrayBuffer | null> {
   }
 }
 
-async function compileFrom(url: URL, variant: FirmwareUiVariant): Promise<Compiled | null> {
+async function compileFrom(url: URL): Promise<Compiled | null> {
   const bytes = await fetchModuleBytes(url);
   if (!bytes) return null;
   try {
     const module = await WebAssembly.compile(bytes);
-    return { module, variant, url, hash: moduleHash(bytes), loadedAt: Date.now() };
+    return { module, url, hash: moduleHash(bytes), loadedAt: Date.now() };
   } catch {
     return null; // not a module (a stale HTML 404 page, a half-written bake)
   }
@@ -166,11 +149,7 @@ async function compileFrom(url: URL, variant: FirmwareUiVariant): Promise<Compil
 
 async function compileModule(): Promise<Compiled | null> {
   if (typeof WebAssembly === 'undefined' || typeof fetch === 'undefined') return null;
-  for (const [url, variant] of moduleCandidates()) {
-    const compiled = await compileFrom(url, variant);
-    if (compiled) return compiled;
-  }
-  return null;
+  return compileFrom(moduleUrl());
 }
 
 interface QueuedFrame {
@@ -191,6 +170,7 @@ export class FirmwareUi {
   private frameRaf: number | null = null;
   private frameQueue: QueuedFrame[] = [];
   private frameTimers: ReturnType<typeof setTimeout>[] = [];
+  private imagePool: ImageData[] = [];
   private inPass = false;
   private touch = { down: false, x: 0, y: 0 };
   private touchSeen = true;
@@ -207,7 +187,6 @@ export class FirmwareUi {
   private reloading: Promise<'reloaded' | 'unchanged' | 'missing'> | null = null;
 
   version: string | null = null;
-  variant: FirmwareUiVariant | null = null;
 
   constructor() {
     this.screen = document.createElement('canvas');
@@ -283,7 +262,7 @@ export class FirmwareUi {
   /** The module on screen: where from, which bytes, since when. Null before the first start. */
   loaded(): FirmwareUiLoaded | null {
     const c = this.compiled;
-    return c ? { variant: c.variant, url: c.url.href, hash: c.hash, loadedAt: c.loadedAt } : null;
+    return c ? { url: c.url.href, hash: c.hash, loadedAt: c.loadedAt } : null;
   }
 
   /**
@@ -301,7 +280,7 @@ export class FirmwareUi {
     this.reloading = (async () => {
       const current = this.compiled ?? (await this.ensureCompiled());
       const next = current
-        ? await compileFrom(current.url, current.variant)
+        ? await compileFrom(current.url)
         : await compileModule();
       if (!next) return 'missing' as const;
       if (current && next.hash === current.hash && !force) return 'unchanged' as const;
@@ -341,9 +320,6 @@ export class FirmwareUi {
     x._initialize?.();
     if (x.kui_init() !== 0) return;
     this.x = x;
-    // The module says which artwork it carries; the slot it was fetched from
-    // only says which file. After a hot reload the two can differ.
-    this.variant = typeof x.kui_icons_placeholder === 'function' ? (x.kui_icons_placeholder() ? 'placeholder' : 'w98') : compiled.variant;
     this.version = this.cstr(x.kui_version());
     this.running = true;
     this.galleryPage = 1;
@@ -367,6 +343,7 @@ export class FirmwareUi {
     if (this.frameRaf !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.frameRaf);
     this.frameRaf = null;
     this.frameQueue = [];
+    this.imagePool = [];
     this.touch = { down: false, x: 0, y: 0 };
     this.touchSeen = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
@@ -399,10 +376,27 @@ export class FirmwareUi {
       const now = performance.now();
       const delay = x.kui_pass(now, this.touch.down ? 1 : 0, this.touch.x, this.touch.y);
       this.touchSeen = true;
-      const last = this.playFrames(now);
+      /*
+       * The pass's frames are timed from the moment it RETURNS, not from the
+       * moment it started.
+       *
+       * A pass that presents a transition composites every one of its frames
+       * inside the one wasm call - ten or fifteen full screens - and that call
+       * blocks the main thread for as long as it takes. Timed from the start,
+       * every frame whose virtual time had already passed while the CPU was
+       * busy arrived late, and pumpFrames() drops a late frame (rightly: a
+       * frame that should have been on screen 40 ms ago is not worth a paint).
+       * So the first half of every transition was computed and thrown away,
+       * and what reached the panel was the tail, in two or three jumps.
+       *
+       * That is what "choppy" was. Not the frame rate - the frames existed -
+       * but a clock that started before the work instead of after it.
+       */
+      const ready = performance.now();
+      const last = this.playFrames(ready);
       const elapsed = x.kui_pass_elapsed_ms();
       const due = Math.max(last, elapsed) + delay;
-      this.schedulePass(now + due);
+      this.schedulePass(ready + due);
     } finally {
       this.inPass = false;
     }
@@ -451,20 +445,28 @@ export class FirmwareUi {
     if (!x || !ctx) return 0;
     const n = x.kui_frame_count();
     let last = 0;
-    const queue: QueuedFrame[] = [];
     for (let i = 0; i < n; i++) {
       const at = x.kui_frame_at_ms(i);
       last = at;
       const ptr = x.kui_rgba(x.kui_frame_ptr(i));
       const rgba = new Uint8ClampedArray(x.memory.buffer, ptr, DISPLAY_W * DISPLAY_H * 4);
-      queue.push({ atMs: at, image: new ImageData(new Uint8ClampedArray(rgba), DISPLAY_W, DISPLAY_H) });
+      /* Into a buffer taken from the pool rather than a fresh one: a
+       * transition is a dozen frames and each is 1.5 MB, so allocating per
+       * frame put 20 MB through the collector on every navigation - which
+       * lands as a pause in the middle of the animation it was allocated
+       * for. */
+      const image = this.takeImage();
+      image.data.set(rgba);
+      this.frameQueue.push({ atMs: base + at, image });
     }
-    /* Frames are presented on animation frames too: whatever is due is drawn
-     * at once (the last one wins - a frame that is already late is not worth
-     * a paint of its own), the rest wait for the frame whose time has come. */
-    for (const frame of queue) this.frameQueue.push({ atMs: base + frame.atMs, image: frame.image });
     this.pumpFrames();
     return last;
+  }
+
+  /** A frame buffer to copy into. Recycled once the frame has been drawn. */
+  private takeImage(): ImageData {
+    const free = this.imagePool.pop();
+    return free ?? new ImageData(DISPLAY_W, DISPLAY_H);
   }
 
   private pumpFrames(): void {
@@ -472,9 +474,13 @@ export class FirmwareUi {
     if (!ctx) return;
     const now = performance.now();
     let latest: QueuedFrame | null = null;
-    while (this.frameQueue.length > 0 && this.frameQueue[0].atMs <= now + 1) latest = this.frameQueue.shift()!;
+    while (this.frameQueue.length > 0 && this.frameQueue[0].atMs <= now + 1) {
+      if (latest) this.imagePool.push(latest.image);
+      latest = this.frameQueue.shift()!;
+    }
     if (latest) {
       ctx.putImageData(latest.image, 0, 0);
+      this.imagePool.push(latest.image);
       for (const cb of this.listeners) cb();
     }
     if (this.frameQueue.length === 0) {

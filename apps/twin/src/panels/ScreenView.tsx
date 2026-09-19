@@ -21,9 +21,9 @@ const WATCH_MS = 2000;
  * an offscreen canvas, so the SHOOT screen shows the viewfinder and a
  * capture photographs the same subjects the 3D view would.
  *
- * Built for firmware work: `npm run twin:ui:bake` (add `--w98` for the
- * private icons) rewrites the module the screen is running, and WATCH picks
- * that up and restarts the screen on the new build by itself. RELOAD does it
+ * Built for firmware work: `npm run twin:ui:bake` rewrites the module the
+ * screen is running, and WATCH picks that up and restarts the screen on the
+ * new build by itself. RELOAD does it
  * on demand. The device state survives either.
  */
 export function ScreenView({ onExit }: { onExit: () => void }) {
@@ -113,7 +113,7 @@ export function ScreenView({ onExit }: { onExit: () => void }) {
 
   const size = screenCssSize(stage.w, stage.h, scale);
   const label = live
-    ? `FIRMWARE ui.c ${fw.version ?? ''}${fw.variant === 'placeholder' ? ' · PLACEHOLDER ICONS' : ''}`
+    ? `FIRMWARE ui.c ${fw.version ?? ''}`
     : running
       ? bootStage === 'READY'
         ? 'FIRMWARE MODULE NOT LOADED'
@@ -182,7 +182,7 @@ export function ScreenView({ onExit }: { onExit: () => void }) {
         />
       </div>
       <p className="twin-screenview-hint">
-        Rebuild with <code>npm run twin:ui:bake</code> (<code>--w98</code> for the private icons). WATCH restarts the screen on the new module; the device underneath keeps its card, config and Studio link.
+        Rebuild with <code>npm run twin:ui:bake</code>. WATCH restarts the screen on the new module; the device underneath keeps its card, config and Studio link.
       </p>
     </div>
   );

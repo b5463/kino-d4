@@ -21,12 +21,34 @@ export type ScreenScale = 'fit' | '1x' | '2x';
  * scales (pixel work needs pixels), clamped to FIT so the screen never
  * overflows the window on a small display.
  */
+/**
+ * How big to draw the panel, and why FIT snaps.
+ *
+ * FIT used to take every pixel the pane offered, which is almost never an
+ * integer multiple of 800 x 480 - so the browser resampled the canvas
+ * bilinearly, at 0.98x in a narrow pane or 1.5x in a wide one. A 2% rescale is
+ * the worst case there is: every edge on the panel picks up a half-pixel of
+ * blur and the screen reads as soft when the device itself is pixel-exact.
+ *
+ * So FIT means "the largest whole multiple that fits" and the picture is
+ * nearest-neighbour at every one of them. Only when even 1x will not fit does
+ * it fall back to a fractional size, and then it is smoothed on purpose,
+ * because nearest-neighbour on a DOWNscale drops whole rows of pixels and
+ * loses type outright.
+ */
 export function screenCssSize(stageW: number, stageH: number, scale: ScreenScale): { width: number; height: number; integer: boolean } {
   const fitW = Math.max(1, Math.min(stageW, (stageH * DISPLAY_W) / DISPLAY_H));
-  const fit = { width: Math.floor(fitW), height: Math.floor((fitW * DISPLAY_H) / DISPLAY_W), integer: false };
-  if (scale === 'fit') return fit;
+  const whole = Math.floor(fitW / DISPLAY_W);
+  if (scale === 'fit') {
+    if (whole >= 1) {
+      return { width: DISPLAY_W * whole, height: DISPLAY_H * whole, integer: true };
+    }
+    return { width: Math.floor(fitW), height: Math.floor((fitW * DISPLAY_H) / DISPLAY_W), integer: false };
+  }
   const k = scale === '1x' ? 1 : 2;
-  if (DISPLAY_W * k > fit.width) return fit;
+  if (DISPLAY_W * k > fitW) {
+    return { width: Math.floor(fitW), height: Math.floor((fitW * DISPLAY_H) / DISPLAY_W), integer: false };
+  }
   return { width: DISPLAY_W * k, height: DISPLAY_H * k, integer: true };
 }
 
