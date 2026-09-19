@@ -175,36 +175,54 @@ test('Twin acceptance walk', async ({ context, page }) => {
     await expect(cam3Card).toContainText('READY', { timeout: CROSS_APP_MS });
   });
 
-  await test.step('FAULTS: battery sag moves the pack, and this body has no gauge to tell Studio with', async () => {
+  await test.step('FAULTS: the pack moves in the Twin, and this body has no gauge to tell Studio with', async () => {
     const battery = studio.locator('.datarow').filter({ hasText: 'BATTERY' }).first();
     const twinBattery = page.locator('.twin-status-cell').filter({ hasText: 'BAT' });
-    const sag = page.locator('.twin-fault-row').filter({ hasText: 'BATTERY SAG' }).locator('input[type=checkbox]');
+    const low = page.locator('.twin-fault-row').filter({ hasText: 'LOW BATTERY' }).locator('input[type=checkbox]');
+    const volts = async () => Number(((await twinBattery.innerText()).match(/([\d.]+)V/) ?? [, 'NaN'])[1]);
 
-    // This step used to assert the sagged voltage appeared in Studio's POWER
-    // & STORAGE row. It cannot, and that is the product's answer rather than
-    // a gap here: no sense divider and no gauge bus reach the P4 (contract
-    // D10), so GET_POWER_STATUS carries batteryV: null and batteryMeasured:
-    // false on every profile that pins a real build. The pack figures go on
-    // the wire only where the powerTelemetry capability is true, and the base
-    // report states it false because the firmware hardcodes it so.
+    // This step used to check BATTERY SAG and assert the sagged voltage
+    // appeared in Studio's POWER & STORAGE row. Neither half of that works
+    // any more, and both for reasons worth writing down.
     //
-    // So the fault is still real and still worth walking - it is just visible
-    // in the Twin rather than in Studio, because the Twin IS the body and
-    // keeps the pack model the camera cannot measure. Asserting both halves
-    // is what pins the contract: the sag moves, and it stops at the wire.
+    // Studio cannot show it: no sense divider and no gauge bus reach the P4
+    // (contract D10), so GET_POWER_STATUS carries batteryV: null and
+    // batteryMeasured: false on every profile that pins a real build. The
+    // pack figures go on the wire only where the powerTelemetry capability
+    // is true, and the base report states it false because the firmware
+    // hardcodes it so.
+    //
+    // And BATTERY SAG cannot be seen anywhere on such a profile: it shapes
+    // only that gated wire response and never touches the pack model the
+    // Twin draws from, so on a real body it is now an inert switch. LOW
+    // BATTERY is the one that moves the pack itself, so it is the fault this
+    // walks.
+    await expect(battery).toContainText('NOT MEASURED');
+    const healthy = await volts();
+    expect(healthy).toBeGreaterThan(3.3);
+
+    await low.check();
+    // Compared against the reading before rather than to a literal: the
+    // displayed volts are computed from state of charge under the current
+    // load, so the exact figure belongs to the power profile and moves when
+    // it is tuned. What this step is for is that the pack moved.
+    await expect.poll(volts, { timeout: CROSS_APP_MS }).toBeLessThan(healthy - 0.1);
+    // ...and that it stopped at the wire.
     await expect(battery).toContainText('NOT MEASURED');
 
-    await sag.check();
-    await expect(twinBattery).toContainText(/BAT 3\.[0-5]\dV/, { timeout: CROSS_APP_MS });
-    await expect(battery).toContainText('NOT MEASURED');
-
-    await sag.uncheck();
-    await expect(twinBattery).not.toContainText(/BAT 3\.[0-5]\dV/, { timeout: CROSS_APP_MS });
+    await low.uncheck();
+    await expect.poll(volts, { timeout: CROSS_APP_MS }).toBeGreaterThan(healthy - 0.1);
   });
 
   await test.step('A measured override tags MEASURED and refreshes the clearance findings', async () => {
     await page.getByRole('button', { name: 'PARTS', exact: true }).click();
-    await page.locator('.twin-tree-label').filter({ hasText: '505573 LiPo' }).click();
+    // The display, not the pack. This clicked '505573 LiPo' until the released
+    // field body landed: the ECNs removed the battery path, the flash
+    // assembly, the speaker and the bulk cap from the design, so those parts
+    // have no instances any more and the POWER group they made up is not in
+    // the tree at all. Any placed part exercises the measured-override flow,
+    // and the display is the one that is certain to stay in the body.
+    await page.locator('.twin-tree-label').filter({ hasText: 'Guition ESP32-P4' }).click();
     const before = await clearance.innerText();
 
     await page.getByRole('button', { name: 'MEASURE ACTUAL PART' }).click();
