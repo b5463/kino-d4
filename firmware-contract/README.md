@@ -388,11 +388,13 @@ cannot tell an absent chip from an unrouted one — which on the D4 V1 is exactl
 matters, since the chip is fitted and no P4-side transport pin for it is recorded anywhere
 (`firmware/C6_HARDWARE_MAP.md`).
 
-Known divergence: the reference device (`packages/test-fixtures/src/MockKinoDevice.ts`) reports five
-targets, not six. It simulates no C6, so reporting one would be an invented version. Studio's
-`FW_QUERY` conformance check asserts only that the five it knows are *present*, so both devices
-pass; a host must therefore treat a missing `c6` key as "this body has no radio", not as a protocol
-error.
+The reference device (`packages/test-fixtures/src/MockKinoDevice.ts`) reports all six targets. It
+simulates no C6, so its `c6` entry carries an empty `version` and `state: "idle"` — the two
+conventions above, applied: nothing could be read and nothing was attempted. (It reported five for a
+while, which is why this paragraph once called that a known divergence.) Studio's `FW_QUERY`
+conformance check asserts only that the five it knows are *present*, so an older body that omits
+`c6` still passes; a host must therefore treat a missing `c6` key as "this body has no radio", not
+as a protocol error.
 
 ### D16 — `clockSource` gains `network` in the radio build only
 

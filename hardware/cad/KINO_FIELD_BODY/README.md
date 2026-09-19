@@ -70,10 +70,28 @@ above, removes anything stale and runs the independent scan; `validate-stl.mjs`,
 in how many parts) are what it calls; `render-stl.py` and
 `audit-printability.mjs` make the previews and audits.
 
+## `twin/`: the same shells, assembled, for KINO Twin
+
+`twin/` holds the six shells in their **assembled** positions, in body
+coordinates (X across the front with camera 1 at low X, Y up, Z from the
+front plate face toward the door), with the lens cover open — written by the
+same generator, promoted by the same `promote.mjs`, held manifold by the same
+`validate-stl.mjs`, and not printable: the face sits at negative Z and the rear
+half carries its split face. Beside them, `field-body-twin-datums.json` records
+what the generator knows and the Twin needs: every part's bounding box, the
+camera axes and lens face, the XIAO seats, the P4 module bay and its standoff
+pattern, the hub board's measured box, the shutter. `apps/twin` loads the STLs
+straight from this folder as its Tier A meshes, and
+`npm run twin:body:bake` turns the datums into the Twin's hardware profile
+(`packages/hardware-profiles/src/profiles/d4-v1.json`), so a change here
+reaches the Twin without anyone re-typing a number; `npm run twin:body:check`
+fails CI on drift.
+
 ## What it is made of
 
 Twenty-one released files, all support-free, all reproduced by
-`generate-field-body.mjs`. Print orientation is baked into every STL.
+`generate-field-body.mjs`. Print orientation is baked into every STL. (The six
+`twin/` files above are the same shells assembled, not a print set.)
 
 **The camera (`print/`: eight parts, 15.0 h at 0.20 mm / 2 perimeters / 0.4 nozzle)**
 

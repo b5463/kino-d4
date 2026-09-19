@@ -32,12 +32,13 @@ describe('front panel DXF', () => {
 
   it('cutout positions follow the pitch', () => {
     const centers = lensCenters(D4_V1, 20).map((c) => c.x);
-    expect(centers).toEqual([-30, -10, 10, 30]);
+    // Camera 1 first, at +X (the photographer's left, as the field body has it).
+    expect(centers).toEqual([30, 10, -10, -30]);
     expect(exportFrontPanelDxf(D4_V1, [], 20)).toContain('10\n-30\n');
   });
 
   it('a measured shell override changes the outline', () => {
-    const dxf = exportFrontPanelDxf(D4_V1, [override('enclosure-shell', [130, 84, 3])], 22);
+    const dxf = exportFrontPanelDxf(D4_V1, [override('field-face-shell', [130, 84, 3])], 22);
     expect(dxf).toContain('10\n-65\n');
     expect(dxf).toContain('outline 130x84 mm (MEASURED)');
   });
@@ -49,13 +50,13 @@ describe('transforms CSV', () => {
     const lines = csv.trim().split('\n');
     expect(lines[0]).toBe('id,component,x_mm,y_mm,z_mm,rx_deg,ry_deg,rz_deg,w_mm,h_mm,d_mm,confidence');
     expect(lines).toHaveLength(1 + D4_V1.instances.length);
-    expect(csv).toContain('cam1,camera-node,-33,10,7,');
-    expect(csv).toMatch(/battery,.*ESTIMATED|battery,.*PROVISIONAL/);
+    expect(csv).toContain('cam1,camera-node,33,4.95,18.85,');
+    expect(csv).toMatch(/carrier,perfboard,.*SELLER_SPEC/);
   });
 
   it('a measured override lands in the row', () => {
-    const csv = exportTransformsCsv(D4_V1, [override('battery', [72.4, 54.8, 5.2])], 22);
-    expect(csv).toContain('72.4,54.8,5.2,MEASURED');
+    const csv = exportTransformsCsv(D4_V1, [override('perfboard', [54.2, 33.1, 12.6])], 22);
+    expect(csv).toContain('54.2,33.1,12.6,MEASURED');
   });
 });
 
@@ -70,15 +71,9 @@ describe('envelope STEP', () => {
     expect(step.match(/VERTEX_POINT/g)).toHaveLength(8);
     expect(step).toContain('CLOSED_SHELL');
     expect(step).toContain('SHAPE_DEFINITION_REPRESENTATION');
-    // 126×80×36 envelope → half extents in the corner coordinates.
-    expect(step).toContain("CARTESIAN_POINT('',(-63,-40,-18))");
-    expect(step).toContain("CARTESIAN_POINT('',(63,40,18))");
+    // 137.5×92.2×75.3 assembled field body → half extents in the corner coordinates.
+    expect(step).toContain("CARTESIAN_POINT('',(-68.75,-46.1,-37.65))");
+    expect(step).toContain("CARTESIAN_POINT('',(68.75,46.1,37.65))");
     expect(step).toContain('envelope only, internal geometry not modeled');
-  });
-
-  it('a measured shell override moves the corners', () => {
-    const step = exportEnvelopeStep(D4_V1, [override('enclosure-shell', [130, 84, 38])]);
-    expect(step).toContain("CARTESIAN_POINT('',(-65,-42,-19))");
-    expect(step).toContain('130x84x38 mm (MEASURED)');
   });
 });

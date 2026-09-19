@@ -838,8 +838,6 @@ static void handle_capabilities(uint32_t seq) {
 }
 
 static void handle_device_info(uint32_t seq) {
-  camlink_info_t cam1;
-  camlink_get_info(&cam1);
   storage_status_t sd;
   storage_get_status(&sd);
 
@@ -850,12 +848,20 @@ static void handle_device_info(uint32_t seq) {
   cJSON_AddNumberToObject(json, "protocol", KDP_PROTOCOL_VERSION);
   cJSON_AddStringToObject(json, "p4Firmware", KINO_FW_VERSION);
 
+  /* Every channel answers for itself, as in build_camera_info(): the node's
+   * firmware string and sensor name when the sweep has it online, "" when it
+   * is offline. This was `i == 0 && cam1.online` with cam2-4 hardcoded "",
+   * so a body with four nodes wired reported one node here and four in
+   * GET_CAMERA_INFO. */
   cJSON *fw = cJSON_AddArrayToObject(json, "cameraFirmware");
   cJSON *sensors = cJSON_AddArrayToObject(json, "sensors");
-  for (int i = 0; i < 4; i++) {
-    bool is_cam1 = i == 0 && cam1.online;
-    cJSON_AddItemToArray(fw, cJSON_CreateString(is_cam1 ? cam1.firmware : ""));
-    cJSON_AddItemToArray(sensors, cJSON_CreateString(is_cam1 ? cam1.sensor : ""));
+  for (int i = 0; i < CAMLINK_CAMS; i++) {
+    camlink_info_t info;
+    camlink_get_info_ch(i, &info);
+    const bool online = info.online;
+    cJSON_AddItemToArray(fw, cJSON_CreateString(online ? info.firmware : ""));
+    cJSON_AddItemToArray(sensors,
+                         cJSON_CreateString(online && info.sensor_detected ? info.sensor : ""));
   }
 
   cJSON_AddBoolToObject(json, "sdPresent", sd.present);
@@ -2366,8 +2372,7 @@ static void handle_runtime_stats(uint32_t seq) {
     cJSON_AddNumberToObject(json, "captureProbeWaits", capture_waits);
   }
 
-  // Real die temperatures or null — never a fabricated number. CAM2-4 gain
-  // readings when their links land in milestone 2.
+  // Real die temperatures or null — never a fabricated number.
   cJSON *temp = cJSON_AddObjectToObject(json, "tempC");
   float celsius = 0;
   if (s_tsens != NULL && temperature_sensor_get_celsius(s_tsens, &celsius) == ESP_OK) {
@@ -2375,15 +2380,21 @@ static void handle_runtime_stats(uint32_t seq) {
   } else {
     cJSON_AddNullToObject(temp, "p4");
   }
-  camlink_info_t info;
-  camlink_get_info(&info);
+  /* One entry per channel. A node's die temperature arrives in its STATUS
+   * reply, which the probe sweep in main.c now asks of every online channel
+   * (camlink_ping_ch); null for a channel that is offline or whose node has
+   * not reported one. This was cam1 followed by three hardcoded nulls, from
+   * before CAM2-4 had links. */
   cJSON *cams = cJSON_AddArrayToObject(temp, "cams");
-  if (info.online && info.temp_c != CAMLINK_TEMP_UNKNOWN) {
-    cJSON_AddItemToArray(cams, cJSON_CreateNumber(info.temp_c));
-  } else {
-    cJSON_AddItemToArray(cams, cJSON_CreateNull());
+  for (int i = 0; i < CAMLINK_CAMS; i++) {
+    camlink_info_t info;
+    camlink_get_info_ch(i, &info);
+    if (info.online && info.temp_c != CAMLINK_TEMP_UNKNOWN) {
+      cJSON_AddItemToArray(cams, cJSON_CreateNumber(info.temp_c));
+    } else {
+      cJSON_AddItemToArray(cams, cJSON_CreateNull());
+    }
   }
-  for (int i = 1; i < 4; i++) cJSON_AddItemToArray(cams, cJSON_CreateNull());
 
   camlink_stats_t link;
   camlink_get_stats(&link);

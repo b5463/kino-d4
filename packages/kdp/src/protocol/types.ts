@@ -335,6 +335,20 @@ export interface PowerStatus {
    * stage machine omits it.
    */
   displayStage?: 'awake' | 'dim' | 'asleep';
+  /**
+   * The rest of what `handle_power_status()` reports beside the stage, all
+   * optional and additive: seconds since the last touch or press, whether the
+   * panel is lit, and whether the camera bank rail is on (`camIdleTimeoutS`
+   * shows up here, not as a display stage). Firmware 0.2.0+.
+   */
+  idleSeconds?: number;
+  displayOn?: boolean;
+  cameraBankPowered?: boolean;
+  /**
+   * `usb` | `battery` on D4-V1, derived from whether a host is talking to the
+   * body — the SW6106 feeds the same 5 V rail either way and nothing senses a
+   * charger (contract D10). `charging` is therefore never true there.
+   */
   state: 'battery' | 'usb' | 'charging';
   charging: boolean;
   /** Charge current in amps when a charger is attached (audit #57). */
@@ -411,6 +425,40 @@ export interface StorageBenchResult {
   p95BlockMs: number;
   /** Bytes actually written, so the rates can be checked against the clock. */
   bytes: number;
+  // Additive fields the firmware reports beyond the five above
+  // (`handle_storage_bench`, firmware/p4/main/kdp_server.c). Optional because
+  // the typed result predates them; a reader that needs one checks for it.
+  ok?: boolean;
+  /** Null on success; a failed run NACKs with the phase as the code instead. */
+  failedPhase?: string | null;
+  /** Passes actually run — the request is clamped, not refused, so read this
+   * rather than assuming the request was honoured. */
+  passes?: number;
+  totalMs?: number;
+  cleanupOk?: boolean;
+  /** The sized run the top-level figures come from. */
+  sustained?: StorageBenchPass;
+  /** A 64 KiB run, directly comparable with STORAGE_SELF_TEST on the same card. */
+  small?: StorageBenchPass;
+}
+
+/** One STORAGE_BENCH pass as `bench_pass_json` emits it. */
+export interface StorageBenchPass {
+  bytes: number;
+  writeMs: number;
+  readMs: number;
+  writeBytesPerSec: number;
+  readBytesPerSec: number;
+  /** CRC-32 as 8 hex digits, the capture path's checksum convention. */
+  crc32Written: string;
+  crc32Read: string;
+  crcMatch: boolean;
+  chunkBytes: number;
+  chunks: number;
+  worstWriteChunkUs: number;
+  bestWriteChunkUs: number;
+  meanWriteChunkUs: number;
+  p95WriteChunkUs: number;
 }
 
 /**
@@ -779,6 +827,17 @@ export interface KinoConfig {
       hasDeviceToken?: boolean;
       serverUrl: string;
     };
+  };
+  /**
+   * Development override for the Roll API base (contract README D3):
+   * `https://host[:port]` (or `http://`, which only an explicitly flagged
+   * build will use), no path, no credentials, at most 96 characters. When set
+   * and valid it replaces the compiled production default for every API
+   * request. Optional: a body without one answers `GET_CONFIG` without the
+   * block, and absence means the default.
+   */
+  network?: {
+    apiBase?: string;
   };
 }
 

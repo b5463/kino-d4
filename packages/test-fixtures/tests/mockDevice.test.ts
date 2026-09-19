@@ -80,8 +80,9 @@ describe('mock device over the real protocol stack', () => {
     // The corrupted response fails CRC and the first attempt times out; the
     // read is idempotent, so the client retries once and the caller never
     // sees the fault — only the stats do.
-    const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
-    expect(power.batteryV).toBeGreaterThan(3);
+    const power = await client.request<{ batteryMeasured: boolean; state: string }>(Cmd.GET_POWER_STATUS);
+    expect(power.batteryMeasured).toBe(false);
+    expect(power.state).toBe('usb');
     expect(client.stats.crcFailures).toBeGreaterThanOrEqual(1);
     expect(client.stats.readRetries).toBe(1);
   }, 10000);

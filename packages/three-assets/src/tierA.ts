@@ -17,6 +17,7 @@
 //     fail; the scene shows the parametric box until (and unless) a mesh
 //     arrives.
 import * as THREE from 'three';
+import { XRAY_OPACITY } from './materials';
 
 export type MeshProvider = () => Promise<THREE.Object3D>;
 
@@ -45,6 +46,30 @@ export function glbProvider(url: string): MeshProvider {
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
     const gltf = await new GLTFLoader().loadAsync(url);
     return gltf.scene;
+  };
+}
+
+/**
+ * A provider that loads a binary STL with three's STLLoader and wraps it in a
+ * mesh using `material`. The released body parts are STL (the generator's own
+ * format, validated by each CAD folder's validate-stl.mjs), so a second
+ * conversion step would be a second place for a part to be stale.
+ */
+export function stlProvider(url: string, material: () => THREE.Material): MeshProvider {
+  return async () => {
+    const { STLLoader } = await import('three/examples/jsm/loaders/STLLoader.js');
+    const geometry = await new STLLoader().loadAsync(url);
+    geometry.computeVertexNormals();
+    const normal = material();
+    const xray = normal.clone();
+    xray.transparent = true;
+    xray.opacity = XRAY_OPACITY;
+    xray.depthWrite = false;
+    const mesh = new THREE.Mesh(geometry, normal);
+    // Its own variants, so applyVisualMode() keeps this material in NORMAL and
+    // X-RAY rather than the proxy's; attachComponentMesh() preserves them.
+    mesh.userData.materialVariants = { normal, xray };
+    return mesh;
   };
 }
 
@@ -101,7 +126,9 @@ export async function attachComponentMesh(
 
   fitMeshToBox(mesh, sizeMm);
   mesh.name = 'body';
-  mesh.userData = { ...body.userData, tierA: true };
+  // The proxy's userData (selection, ids) carries over; a provider that brings
+  // its own material variants keeps them, otherwise the proxy's apply.
+  mesh.userData = { ...body.userData, ...mesh.userData, tierA: true };
   group.remove(body);
   disposeProxy(body);
   group.add(mesh);

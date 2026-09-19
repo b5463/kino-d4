@@ -96,8 +96,3 @@ export function getRollServerClient(): RollServerClient {
 export function setRollServerClient(next: RollServerClient) {
   client = next;
 }
-
-/** Point the stub at a different base URL without changing the seam. */
-export function setRollServerUrl(baseUrl: string) {
-  client = client instanceof StubRollServerClient ? new StubRollServerClient(baseUrl) : client;
-}

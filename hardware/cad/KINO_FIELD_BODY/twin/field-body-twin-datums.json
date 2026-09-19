@@ -1,0 +1,260 @@
+{
+  "schema": "kino.twin-body",
+  "version": 1,
+  "body": "KINO_FIELD_BODY",
+  "designVersion": "0.1.4",
+  "frame": "Body coordinates: X 0..bodyW across the front (camera 1 at low X), Y 0..bodyH up, Z 0 at the chassis front plate face growing toward the rear door; the face shell sits at negative Z. Millimetres.",
+  "envelope": {
+    "w": 131,
+    "h": 90,
+    "d": 65.5
+  },
+  "assembly": {
+    "min": [
+      -6.5,
+      -2.2,
+      -9.8
+    ],
+    "max": [
+      131,
+      90,
+      65.5
+    ]
+  },
+  "parts": {
+    "chassis-front": {
+      "file": "KINO_TWIN_CHASSIS_FRONT.stl",
+      "print": "KINO_FIELD_BODY_FRONT_PRINT.stl",
+      "bbox": {
+        "min": [
+          0,
+          -2.2,
+          0
+        ],
+        "max": [
+          131,
+          90,
+          45.2
+        ]
+      },
+      "volumeCm3": 138.003
+    },
+    "chassis-rear": {
+      "file": "KINO_TWIN_CHASSIS_REAR.stl",
+      "print": "KINO_FIELD_BODY_REAR_PRINT.stl",
+      "bbox": {
+        "min": [
+          -6.5,
+          -2.2,
+          31.9
+        ],
+        "max": [
+          131,
+          90,
+          65.5
+        ]
+      },
+      "volumeCm3": 78.261
+    },
+    "face-shell": {
+      "file": "KINO_TWIN_FACE.stl",
+      "print": "KINO_FIELD_FACE_PRINT.stl",
+      "bbox": {
+        "min": [
+          0,
+          0,
+          -9
+        ],
+        "max": [
+          131,
+          90,
+          0
+        ]
+      },
+      "volumeCm3": 53.856
+    },
+    "lens-cover": {
+      "file": "KINO_TWIN_LENS_COVER.stl",
+      "print": "KINO_FIELD_LENS_SLIDER.stl",
+      "bbox": {
+        "min": [
+          21.3,
+          11.403,
+          -9.8
+        ],
+        "max": [
+          110.7,
+          31.795,
+          -6.8
+        ]
+      },
+      "volumeCm3": 3.863
+    },
+    "slider-keeper": {
+      "file": "KINO_TWIN_SLIDER_KEEPER.stl",
+      "print": "KINO_FIELD_SLIDER_KEEPER.stl",
+      "bbox": {
+        "min": [
+          21.3,
+          5.483,
+          -9
+        ],
+        "max": [
+          110.7,
+          11,
+          -6.8
+        ]
+      },
+      "volumeCm3": 0.916
+    },
+    "rear-door": {
+      "file": "KINO_TWIN_DOOR.stl",
+      "print": "KINO_FIELD_BEZEL_PRINT.stl",
+      "bbox": {
+        "min": [
+          0,
+          4.65,
+          61.5
+        ],
+        "max": [
+          125,
+          85.35,
+          65.5
+        ]
+      },
+      "volumeCm3": 12.247
+    }
+  },
+  "cameras": {
+    "pitch": 22,
+    "lensY": 43,
+    "xs": [
+      32.5,
+      54.5,
+      76.5,
+      98.5
+    ],
+    "lensFrontZ": 1.5,
+    "headDepth": 3.5,
+    "barrelD": 7,
+    "modulePcb": [
+      15.5,
+      17.9
+    ],
+    "fovDeg": 78
+  },
+  "xiao": {
+    "boardW": 17.8,
+    "boardH": 21,
+    "boardT": 7.6,
+    "xs": [
+      32.5,
+      54.5,
+      76.5,
+      98.5
+    ],
+    "centerY": 49.95,
+    "z": [
+      8.9,
+      16.5
+    ]
+  },
+  "module": {
+    "w": 117.01,
+    "h": 69.41,
+    "t": 13.8,
+    "x": [
+      6.995,
+      124.005
+    ],
+    "y": [
+      10.295,
+      79.705
+    ],
+    "pcbBackZ": 46.5,
+    "glassRearZ": 60.3,
+    "standoffs": {
+      "xs": [
+        25.25,
+        87.15
+      ],
+      "ys": [
+        17.6,
+        72.4
+      ],
+      "pitch": [
+        61.9,
+        54.8
+      ],
+      "od": 3.5
+    }
+  },
+  "bay": {
+    "z": [
+      31.9,
+      46.5
+    ],
+    "hub": {
+      "size": [
+        54,
+        33,
+        12.6
+      ],
+      "x": [
+        38.5,
+        92.5
+      ],
+      "y": [
+        26.5,
+        59.5
+      ],
+      "z": [
+        31.9,
+        44.5
+      ]
+    }
+  },
+  "shutter": {
+    "x": 115,
+    "z": 21,
+    "topWallY": 90,
+    "switchBody": [
+      6,
+      6,
+      4.3
+    ]
+  },
+  "light": {
+    "x": 66,
+    "z": 16,
+    "topWallY": 90,
+    "wallT": 6,
+    "boreD": 8.5,
+    "studLen": 25,
+    "studBuried": 6,
+    "studInside": 13,
+    "plate": 18,
+    "threadD": 6.35
+  },
+  "splitZ": 31.9,
+  "lensCover": {
+    "open": [
+      0,
+      -21.4,
+      0
+    ],
+    "travelMm": 21.4
+  },
+  "strapLug": {
+    "min": [
+      -6.5,
+      66,
+      31.9
+    ],
+    "max": [
+      2,
+      76,
+      39.9
+    ]
+  }
+}

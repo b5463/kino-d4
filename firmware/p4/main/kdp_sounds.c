@@ -449,6 +449,18 @@ static kdp_module_reply_t handle_begin(const cJSON *req) {
     return kdp_module_fail("BAD_ID", "Sound ids look like snd-<lowercase-slug>");
   }
 
+  /* The name is bounded, not truncated (firmware-contract D18, SOUND_NAME_MAX
+   * in types.ts). This used to snprintf whatever arrived into the 33-byte
+   * field, so a 40-character name came back from the next GET_SOUNDS as a
+   * clip the host never uploaded. A name the host omits is still derived from
+   * the id, as before; one it sends must be 1..32 characters. */
+  const bool name_given = jname != NULL && !cJSON_IsNull(jname);
+  const char *name = (cJSON_IsString(jname) && jname->valuestring) ? jname->valuestring : NULL;
+  if (name_given && (name == NULL || name[0] == '\0' || strlen(name) > KDP_SOUND_NAME_MAX - 1)) {
+    storage_release(STORAGE_USER_UI);
+    return kdp_module_fail("BAD_NAME", "name must be 1..32 characters");
+  }
+
   const double size = cJSON_IsNumber(jsize) ? jsize->valuedouble : 0.0;
   if (size < MIN_SOUND_BYTES || size > MAX_SOUND_BYTES) {
     storage_release(STORAGE_USER_UI);
@@ -483,10 +495,7 @@ static kdp_module_reply_t handle_begin(const cJSON *req) {
   s_session.open = true;
   s_session.id = ++s_session_counter;
   snprintf(s_session.sound_id, sizeof s_session.sound_id, "%s", id);
-  snprintf(s_session.name, sizeof s_session.name, "%s",
-           (cJSON_IsString(jname) && jname->valuestring && jname->valuestring[0])
-               ? jname->valuestring
-               : id);
+  snprintf(s_session.name, sizeof s_session.name, "%s", name != NULL ? name : id);
   s_session.size_bytes = (uint32_t)size;
   s_session.duration_ms = (cJSON_IsNumber(jdur) && jdur->valuedouble > 0)
                               ? (uint32_t)jdur->valuedouble

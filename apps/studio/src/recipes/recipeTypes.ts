@@ -47,10 +47,6 @@ export const IDENTITY_MATRIX: NonNullable<RecipeAdvanced['rgbMatrix']> = [
   1, 0, 0, 0, 1, 0, 0, 0, 1,
 ];
 
-export function cloneRecipe(recipe: Recipe): Recipe {
-  return JSON.parse(JSON.stringify(recipe)) as Recipe;
-}
-
 /** Structural validation for imported/uploaded recipe JSON. */
 export function validateRecipe(value: unknown): { ok: true; recipe: Recipe } | { ok: false; error: string } {
   if (typeof value !== 'object' || value === null) {

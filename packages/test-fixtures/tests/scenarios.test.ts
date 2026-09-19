@@ -366,7 +366,7 @@ describe('session restart', () => {
   }, 20000);
 });
 
-describe('SYNC_BENCH job', () => {
+describe('SYNC_BENCH job (d4-sim-full only — the simulated future keeps the async form)', () => {
   it('accepts a job, streams progress and completes with per-camera samples', async () => {
     const client = await connect(new MockKinoDevice());
     const job = await client.startJob(Cmd.SYNC_BENCH, { triggers: 20 });
@@ -499,16 +499,16 @@ describe('stream shaping', () => {
     mock.setScenario('badCrc', true);
     // Exactly one response is corrupted; the idempotent read retries once
     // and succeeds, so the caller sees a result while the stats see the CRC.
-    const first = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
-    expect(first.batteryV).toBeGreaterThan(3);
+    const first = await client.request<{ state: string }>(Cmd.GET_POWER_STATUS);
+    expect(first.state).toBe('usb');
     expect(client.stats.crcFailures).toBeGreaterThanOrEqual(1);
     expect(client.stats.readRetries).toBe(1);
 
     // One-shot: it disarms itself and the link is clean again.
     expect(mock.scenarios.badCrc).toBe(false);
     const after = client.stats.crcFailures;
-    const power = await client.request<{ batteryV: number }>(Cmd.GET_POWER_STATUS);
-    expect(power.batteryV).toBeGreaterThan(3);
+    const power = await client.request<{ state: string }>(Cmd.GET_POWER_STATUS);
+    expect(power.state).toBe('usb');
     expect(client.stats.crcFailures).toBe(after);
   }, 15000);
 

@@ -1,6 +1,6 @@
 {
   "status": "RELEASE_CHECKS_PASSED",
-  "generatedAt": "2026-09-08T21:58:31.674Z",
+  "generatedAt": "2026-09-13T18:19:33.619Z",
   "useCase": "first field test: four-camera wiggle capture, handheld, battery bank in a pocket feeding the P4 over one long USB-C cable; P4 powers the four XIAOs through the JP1 harness",
   "measured": {
     "p4StandoffPattern": [

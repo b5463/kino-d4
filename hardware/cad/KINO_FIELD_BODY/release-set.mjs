@@ -37,8 +37,18 @@ export const RELEASE_SET = [
   // Wall chunk + actuator + retainer: the whole shutter mechanism, which is the
   // only thing a user operates that had never been printed.
   { file: "KINO_SHUTTER_COUPON.stl", dir: "coupons", parts: 3 },
+  // KINO Twin: the shells in their ASSEMBLED positions, in body coordinates,
+  // the lens cover open. Not printable - the face sits at negative Z and the
+  // rear half carries its split face - but manifold, and validated as such.
+  // apps/twin loads them straight from this folder (see twin/ in the README).
+  { file: "KINO_TWIN_CHASSIS_FRONT.stl", dir: "twin", parts: 1 },
+  { file: "KINO_TWIN_CHASSIS_REAR.stl", dir: "twin", parts: 1 },
+  { file: "KINO_TWIN_FACE.stl", dir: "twin", parts: 1 },
+  { file: "KINO_TWIN_LENS_COVER.stl", dir: "twin", parts: 1 },
+  { file: "KINO_TWIN_SLIDER_KEEPER.stl", dir: "twin", parts: 1 },
+  { file: "KINO_TWIN_DOOR.stl", dir: "twin", parts: 1 },
 ];
-export const RELEASE_DIRS = ["print", "plates", "coupons"];
+export const RELEASE_DIRS = ["print", "plates", "coupons", "twin"];
 // Non-mesh outputs of a build and where they go.
 export const RELEASE_FILES = [
   { file: "field-body-release-report.json", dir: "reports" },
@@ -47,6 +57,10 @@ export const RELEASE_FILES = [
   // as evidence. Both carry a 100 mm calibration line as the backstop.
   { file: "KINO_P4_1TO1_HOLE_TEMPLATE.pdf", dir: "coupons" },
   { file: "KINO_DOOR_FOAM_TEMPLATE.pdf", dir: "coupons" },
+  // The datums the Twin places the electronics from: camera axes, XIAO seats,
+  // the module bay, the hub board's box, the shutter, every part's bounding
+  // box. JSON, so a reader outside this folder needs no Manifold.
+  { file: "field-body-twin-datums.json", dir: "twin" },
 ];
 // Extensions promote.mjs sweeps out of the release folders when they are not in
 // the set above. It used to sweep only ".stl", which meant a change of FORMAT
@@ -55,4 +69,4 @@ export const RELEASE_FILES = [
 // behind, promoted, validated and ALL CLEAR beside them. ".svg" stays on this
 // list precisely because nothing emits one any more: that is the case the sweep
 // has to catch.
-export const SWEEP_EXT = [".stl", ".pdf", ".svg"];
+export const SWEEP_EXT = [".stl", ".pdf", ".svg", ".json"];

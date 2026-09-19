@@ -111,14 +111,17 @@ const capabilitiesExample = {
 };
 
 const deviceConfigExample = {
-  // 02§28 config versioning
+  // 02§28 config versioning, body shaped like the GET_CONFIG wire envelope
+  // (KinoConfig): mode plus the four section objects, roll/network optional.
   schema: 'kino.device-config',
   version: 1,
   revision: 7,
   config: {
     mode: 'wiggle',
-    resolution: '1600x1200',
-    flash: 'auto',
+    wiggle: { resolution: '1600x1200', flash: true, fps: 10, loop: 'continuous', direction: 'ltr', recipeId: 'party-neg' },
+    quad: { flash: true, slots: {} },
+    shoot: { flashMode: 'auto', viewfinder: 'cam2', volume: 6 },
+    body: { name: '', brightness: 7, autoDimS: 20, sleepS: 120, camIdleTimeoutS: 180 },
   },
 };
 
@@ -289,34 +292,49 @@ describe('kino.device-capabilities', () => {
 });
 
 describe('kino.device-config', () => {
-  it('parses the spec example config (02§28)', () => {
+  it('parses a config shaped like the wire envelope (02§28, KinoConfig)', () => {
     const out = parseVersioned(deviceConfig, deviceConfigExample);
     expect(out.revision).toBe(7);
     expect(out.config.mode).toBe('wiggle');
-    expect(out.config.resolution).toBe('1600x1200');
-    expect(out.config.flash).toBe('auto');
+    expect(out.config.wiggle).toMatchObject({ resolution: '1600x1200', flash: true });
+    expect(out.config.body).toMatchObject({ brightness: 7 });
+    expect(out.config.roll).toBeUndefined();
+    expect(out.config.network).toBeUndefined();
   });
 
-  it('preserves nested config sections it does not model (04§8)', () => {
+  it('preserves section fields and sections it does not model (04§8)', () => {
     const out = parseVersioned(deviceConfig, {
-      schema: 'kino.device-config',
-      version: 1,
+      ...deviceConfigExample,
       revision: 12,
       config: {
-        mode: 'wiggle',
-        resolution: '1600x1200',
-        flash: 'auto',
-        wiggle: { fps: 10, direction: 'ltr', loop: 'bounce' },
+        ...deviceConfigExample.config,
+        wiggle: { fps: 10, direction: 'ltr', loop: 'bounce', jpegQuality: 86 },
+        network: { apiBase: 'https://kino.acronym.sk' },
+        roll: { credentials: { deviceId: 'dev_01', serverUrl: 'https://kino.acronym.sk', hasDeviceToken: true } },
+        future: { added: 'by later firmware' },
       },
     });
-    expect(out.config.wiggle).toEqual({ fps: 10, direction: 'ltr', loop: 'bounce' });
+    expect(out.config.wiggle).toEqual({ fps: 10, direction: 'ltr', loop: 'bounce', jpegQuality: 86 });
+    expect(out.config.network).toEqual({ apiBase: 'https://kino.acronym.sk' });
+    expect(out.config.roll).toMatchObject({ credentials: { hasDeviceToken: true } });
+    expect((out.config as Record<string, unknown>).future).toEqual({ added: 'by later firmware' });
   });
 
-  it('rejects a malformed resolution', () => {
+  it('rejects a body missing one of the four sections, or with a section that is not an object', () => {
+    const { body: _body, ...withoutBody } = deviceConfigExample.config;
+    expect(() => parseVersioned(deviceConfig, { ...deviceConfigExample, config: withoutBody })).toThrow();
+    expect(() =>
+      parseVersioned(deviceConfig, { ...deviceConfigExample, config: { ...deviceConfigExample.config, wiggle: 'auto' } }),
+    ).toThrow();
+  });
+
+  it('no longer expects the top-level resolution/flash that never existed on the wire', () => {
     expect(() =>
       parseVersioned(deviceConfig, {
-        ...deviceConfigExample,
-        config: { ...deviceConfigExample.config, resolution: '1600 by 1200' },
+        schema: 'kino.device-config',
+        version: 1,
+        revision: 1,
+        config: { mode: 'wiggle', resolution: '1600x1200', flash: 'auto' },
       }),
     ).toThrow();
   });

@@ -17,7 +17,7 @@ import {
   type CatalogRelease,
 } from '../../firmware/catalog';
 import { startUpdate, retryTarget, abortUpdate } from '../../firmware/updater';
-import { rebootAndReconnect, factoryResetAndReconnect } from '../../app/session';
+import { rebootAndReconnect, factoryResetAndReconnect, isSimulated } from '../../app/session';
 import { usePrefs } from '../../state/prefs';
 import { FirmwareBuildPanel } from './FirmwareBuildPanel';
 
@@ -245,9 +245,15 @@ export function UpdatesPage() {
             <Button busy={loadingPkg} disabled={busy} onClick={() => dirRef.current?.click()}>
               SELECT PACKAGE…
             </Button>
-            <Button variant="ghost" busy={loadingPkg} disabled={busy} onClick={() => void loadDemo()}>
-              LOAD DEMO PACKAGE
-            </Button>
+            {/* An in-memory package with placeholder images. It exists to walk
+                the update flow against a simulator; in front of a real camera
+                it is a way to flash garbage. Developer mode AND a simulated
+                session, the same gate as FirmwareBuildPanel plus the transport. */}
+            {developerMode && isSimulated() ? (
+              <Button variant="ghost" busy={loadingPkg} disabled={busy} onClick={() => void loadDemo()}>
+                LOAD DEMO PACKAGE
+              </Button>
+            ) : null}
             <input
               ref={dirRef}
               type="file"

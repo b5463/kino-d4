@@ -39,24 +39,21 @@ describe('nets + gpio (§8)', () => {
     expect(nets.every((n) => n.from.instance === 'cam2' || n.to.instance === 'cam2')).toBe(true);
   });
 
-  it('the battery -> fuse -> bms -> power-module chain is 20AWG POWER', () => {
-    const powerNets = netsByClass(D4_V1, 'POWER');
-    const chainPairs: Array<[string, string]> = [
-      ['battery', 'fuse'],
-      ['fuse', 'bms'],
-      ['bms', 'power-module'],
-      ['power-module', 'carrier'],
-      ['carrier', 'display'],
-    ];
-    for (const [from, to] of chainPairs) {
-      const net = powerNets.find(
-        (n) =>
-          (n.from.instance === from && n.to.instance === to) ||
-          (n.from.instance === to && n.to.instance === from),
-      );
-      expect(net).toBeDefined();
-      expect(net?.gauge).toBe('20AWG');
+  it('routes no pack chain: the field body is USB-C powered, so battery/fuse/bms/charger are not placed (ECN-0004)', () => {
+    const placed = new Set(D4_V1.instances.map((i) => i.id));
+    for (const id of ['battery', 'fuse', 'bms', 'power-module']) expect(placed.has(id)).toBe(false);
+    for (const net of D4_V1.nets) {
+      expect(placed.has(net.from.instance)).toBe(true);
+      expect(placed.has(net.to.instance)).toBe(true);
     }
+    // What is left of the power tree: the hub feeds the module.
+    const powerNets = netsByClass(D4_V1, 'POWER');
+    const hubToDisplay = powerNets.find(
+      (n) =>
+        (n.from.instance === 'carrier' && n.to.instance === 'display') ||
+        (n.from.instance === 'display' && n.to.instance === 'carrier'),
+    );
+    expect(hubToDisplay?.gauge).toBe('20AWG');
   });
 
   it('carries no FLASH net, and the button pair with its documented class', () => {

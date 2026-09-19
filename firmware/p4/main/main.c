@@ -140,7 +140,20 @@ static void cam_probe_task(void *arg) {
       const uint32_t probe_ms = was_online[cam] ? 3000u : OFFLINE_PROBE_MS;
       const bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
       capture_probe_end(cam);
-      if (online) online_count++;
+      if (online) {
+        online_count++;
+        /* A node that answered HELLO gets one STATUS too: that is the reply
+         * carrying its die temperature (and heap), which HELLO does not, and
+         * nothing else asked for it - GET_RUNTIME_STATS tempC.cams held
+         * whatever the last bench capture happened to leave on cam1 and null
+         * for the rest. Its own probe window, so a shutter press between the
+         * two transactions still lands in the gap; a deferral here leaves
+         * the previous sample standing, which is what "cached" means. */
+        if (capture_probe_begin(cam)) {
+          (void)camlink_ping_ch(cam, NULL);
+          capture_probe_end(cam);
+        }
+      }
       if (online == was_online[cam]) continue;
 
       char tag[4];

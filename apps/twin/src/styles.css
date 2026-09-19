@@ -1097,3 +1097,94 @@ input[type='range'] {
   height: 164px;
   display: block;
 }
+
+/* --- SCREEN VIEW: just the display, full window --- */
+
+.twin-screenview {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  background: #08090b;
+  color: var(--twin-text);
+  font-family: var(--twin-mono);
+  font-size: var(--twin-fs-md);
+}
+
+.twin-screenview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--twin-panel);
+  border-bottom: 1px solid var(--twin-line);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.twin-screenview-title {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.twin-screenview-status {
+  color: var(--twin-text-mut);
+}
+
+.twin-screenview-muted {
+  color: var(--twin-text-mut);
+  font-size: var(--twin-fs-sm);
+}
+
+.twin-screenview-spacer {
+  margin-left: auto;
+}
+
+.twin-screenview-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.twin-screenview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.twin-screenview-canvas {
+  display: block;
+  background: #000;
+  box-shadow: 0 0 0 1px var(--twin-line), 0 0 40px rgb(0 0 0 / 60%);
+}
+
+.twin-screenview-hint {
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--twin-line);
+  color: var(--twin-text-mut);
+  font-size: var(--twin-fs-sm);
+}
+
+.twin-screenview-hint code {
+  color: var(--twin-text);
+}
+
+a.twin-btn {
+  text-decoration: none;
+  display: inline-block;
+}
+
+/* The SCREEN VIEW's offscreen sensor host: present for WebGL, invisible to people. */
+.twin-sensor-stage {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}

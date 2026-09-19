@@ -208,7 +208,7 @@ for (const [enumName, cPrefix] of [['Cmd', 'KDP_CMD_'], ['Evt', 'KDP_EVT_']]) {
 // firmware version bump without a profile mapping silently breaks that
 // emulation (issue #90).
 const profiles = await text('packages/test-fixtures/src/firmwareProfiles.ts');
-const profileMapBody = profiles.match(/PROFILE_FOR_VERSION[\s\S]*?=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+const profileMapBody = profiles.match(/export const PROFILE_FOR_VERSION[^=]*=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
 const mappedVersions = [...profileMapBody.matchAll(/'([^']+)':/g)].map((m) => m[1]);
 check(
   mappedVersions.includes(versions.firmware.version),

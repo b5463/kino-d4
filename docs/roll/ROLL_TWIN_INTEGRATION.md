@@ -26,7 +26,7 @@ npm run dev -w @kino/twin       # twin, /api proxied to :3000
 
 Then in the Twin:
 
-1. POWER ON. Pick a firmware profile (FIRMWARE tab).
+1. POWER ON. The Twin boots on the `SIMULATED FUTURE` profile; `device.setFirmwareProfile(id)` or a Studio OTA install switches it.
 2. ROLL tab → CREATE ROLL. The virtual D4 display now shows the `JOIN THIS ROLL` QR; scan it with a phone (or click OPEN GUEST ROLL).
 3. STAGE tab → place a subject, set the lighting.
 4. Press SHUTTER. On the `SIMULATED FUTURE` profile the four rendered frames upload (thumb first); the guest feed updates live over SSE and the worker upgrades the tile to a Wiggle.

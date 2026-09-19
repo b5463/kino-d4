@@ -93,23 +93,43 @@ describe('handshake faults (KINO Twin §12)', () => {
 });
 
 describe('per-camera faults (KINO Twin §20)', () => {
-  it("offline: CAMERA_STATUS marks the cam offline and SELF_TEST fails that cam's check", async () => {
+  it("offline: CAMERA_STATUS marks the cam offline and SELF_TEST fails the link check", async () => {
     const mock = new MockKinoDevice();
     const client = await connect(mock);
-    mock.setCamFault('cam3', 'offline');
-    expect(mock.camFault('cam3')).toBe('offline');
+    mock.setCamFault('cam1', 'offline');
+    expect(mock.camFault('cam1')).toBe('offline');
 
-    const status = await client.request<{ online: boolean; state: string }>(Cmd.CAMERA_STATUS, { cam: 'cam3' });
+    const status = await client.request<{ online: boolean; state: string }>(Cmd.CAMERA_STATUS, { cam: 'cam1' });
     expect(status.online).toBe(false);
     expect(status.state).toBe('offline');
 
+    // The firmware's six checks, by name and in order (selftest_task): only
+    // CAM1 has a row, and a link that is down skips the sensor check rather
+    // than failing it twice.
     await client.request(Cmd.SELF_TEST);
     const results = await waitForSelfTest(client);
-    const cam3 = results.find((r) => r.name === 'CAM3 capture');
-    expect(cam3?.status).toBe('fail');
+    expect(results.map((r) => r.name)).toEqual(['P4 heap', 'PSRAM', 'SD card', 'SD write', 'CAM1 link', 'CAM1 sensor']);
+    expect(results.find((r) => r.name === 'CAM1 link')).toMatchObject({ status: 'fail', detail: 'no answer at 921600 baud' });
+    expect(results.find((r) => r.name === 'CAM1 sensor')).toMatchObject({ status: 'skip', detail: 'link down' });
   }, 15000);
 
-  it('power-open: a distinct log line, and per-cam commands NACK CAM_OFFLINE', async () => {
+  it('SELF_TEST reports exactly the six checks the firmware runs, with total 6 on every event', async () => {
+    const mock = new MockKinoDevice();
+    const client = await connect(mock);
+    const totals = new Set<number>();
+    const off = client.onEvent<SelfTestEvent>(Evt.SELF_TEST, (e) => totals.add(e.total));
+    await client.request(Cmd.SELF_TEST);
+    const results = await waitForSelfTest(client);
+    off();
+    expect(totals).toEqual(new Set([6]));
+    expect(results).toHaveLength(6);
+    expect(results.every((r) => r.status === 'pass')).toBe(true);
+    expect(results.map((r) => r.name)).not.toContain('Battery gauge');
+    expect(results.map((r) => r.name)).not.toContain('Flash LED');
+    expect(results.map((r) => r.name)).not.toContain('Speaker');
+  }, 15000);
+
+  it('power-open: a distinct log line, and per-cam commands NACK CAMERA_OFFLINE', async () => {
     const mock = new MockKinoDevice();
     const client = await connect(mock);
     mock.setCamFault('cam2', 'power-open');
@@ -118,7 +138,8 @@ describe('per-camera faults (KINO Twin §20)', () => {
     expect(status.online).toBe(false);
     expect(status.state).toBe('offline');
 
-    await expect(client.request(Cmd.CAMERA_TEST, { cam: 'cam2' })).rejects.toMatchObject({ code: 'CAM_OFFLINE' });
+    // The firmware's code (handle_camera_test), not the mock's old CAM_OFFLINE.
+    await expect(client.request(Cmd.CAMERA_TEST, { cam: 'cam2' })).rejects.toMatchObject({ code: 'CAMERA_OFFLINE' });
 
     const logs = await client.request<{ entries: { msg: string }[] }>(Cmd.GET_LOGS);
     expect(logs.entries.some((e) => e.msg.includes('no 5V rail on CAM2'))).toBe(true);
@@ -133,7 +154,7 @@ describe('per-camera faults (KINO Twin §20)', () => {
     expect(status.online).toBe(true); // the module still answers the bus
     expect(status.sensor).toBeNull();
 
-    await expect(client.request(Cmd.CAMERA_TEST, { cam: 'cam4' })).rejects.toMatchObject({ code: 'SENSOR_MISSING' });
+    await expect(client.request(Cmd.CAMERA_TEST, { cam: 'cam4' })).rejects.toMatchObject({ code: 'SENSOR_NOT_DETECTED' });
     await expect(client.request(Cmd.CAMERA_CALIBRATE, { action: 'start' })).rejects.toMatchObject({
       code: 'SENSOR_MISSING',
     });
@@ -275,8 +296,14 @@ describe('storage + power faults (KINO Twin §20)', () => {
     expect(mock.scenarios.fuseBlown).toBe(true); // persists — a blown fuse doesn't self-repair
     client.dispose();
 
-    // A new connection still sees the fuse blown.
+    // A new connection still sees the fuse blown — on a body that can sense
+    // its rail. D4-V1 cannot (D10), so the wire carries no `fuse` until the
+    // Twin's capability override says the body has telemetry.
     const client2 = await connect(mock);
+    const shipped = await client2.request<{ fuse?: string; batteryMeasured: boolean }>(Cmd.GET_POWER_STATUS);
+    expect(shipped.batteryMeasured).toBe(false);
+    expect(shipped.fuse).toBeUndefined();
+    mock.overrideCapabilities({ powerTelemetry: true });
     const power = await client2.request<{ fuse: string }>(Cmd.GET_POWER_STATUS);
     expect(power.fuse).toBe('blown');
   });
@@ -312,7 +339,7 @@ describe('flash faults (KINO Twin §20)', () => {
 });
 
 describe('node firmware + phase faults (KINO Twin §20)', () => {
-  it('nodeFwMismatch: CAM4 reports 0.0.9 and GET_CAPABILITIES notes the mismatch', async () => {
+  it('nodeFwMismatch: CAM4 reports 0.0.9 where a host reads versions, and GET_CAPABILITIES stays as firmware sends it', async () => {
     const mock = new MockKinoDevice();
     const client = await connect(mock);
     mock.setScenario('nodeFwMismatch', true);
@@ -321,8 +348,12 @@ describe('node firmware + phase faults (KINO Twin §20)', () => {
     expect(status.firmware).toBe('0.0.9');
     const info = await client.request<{ cameraFirmware: string[] }>(Cmd.GET_DEVICE_INFO);
     expect(info.cameraFirmware[3]).toBe('0.0.9');
-    const caps = await client.request<{ firmwareMismatch: boolean }>(Cmd.GET_CAPABILITIES);
-    expect(caps.firmwareMismatch).toBe(true);
+    const fw = await client.request<{ targets: Record<string, { version: string }> }>(Cmd.FW_QUERY);
+    expect(fw.targets.cam4.version).toBe('0.0.9');
+    // No `firmwareMismatch` top-level field: the firmware never sends one and
+    // nothing read it. A host detects the mismatch from the versions above.
+    const caps = await client.request<Record<string, unknown>>(Cmd.GET_CAPABILITIES);
+    expect(caps).not.toHaveProperty('firmwareMismatch');
   });
 
   it("vsyncOffsetLarge shows CAM3's phase at 31,000 us in the phase snapshot", async () => {
@@ -386,6 +417,10 @@ describe('gallery fixtures (KINO Twin §17)', () => {
 
   it('refuses a file name off the MEDIA_READ allow-list, and defaults to C1.JPG', async () => {
     const mock = new MockKinoDevice();
+    // The as-shipped default refuses META.JSON along with the `meta` block it
+    // feeds (D20); this test reads the document, so it opts into the richer
+    // card the way a suite opts into digests.
+    mock.setScenario('mediaInfoAsShipped', false);
     const client = await connect(mock);
     // BAD_REQUEST, not NOT_FOUND: the P4 joins this name onto a directory
     // path, so a name that can never exist is refused before it becomes one.
@@ -498,6 +533,9 @@ describe('capture-pipeline camera faults (deterministic, fake timers)', () => {
     try {
       const fixedNow = 1_755_300_000_000;
       const dev = new MockKinoDevice({ seed: 21, now: () => fixedNow });
+      // The sag is a pack figure, and D4-V1 puts no pack figure on the wire
+      // (D10); the override is the Twin's "this body has a gauge" switch.
+      dev.overrideCapabilities({ powerTelemetry: true });
       dev.setCamFault('cam1', 'slow-uart');
       dev.setCamFault('cam2', 'crc-noise');
       dev.setScenario('flashUnavailable', true);

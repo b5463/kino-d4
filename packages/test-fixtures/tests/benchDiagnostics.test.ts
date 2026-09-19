@@ -36,7 +36,22 @@ describe('capability gate', () => {
     const caps = await client.request<CapabilitiesResponse>(Cmd.GET_CAPABILITIES);
     expect(caps.capabilities.benchDiagnostics).toBe(true);
     const report = await client.request<HwValidationReport>(Cmd.GET_HW_VALIDATION);
-    expect(report.items).toHaveLength(16);
+    // hwv_item_t up to HWV_COUNT: 56 rows, in enum order, wire ids without
+    // the enum's HWV_ prefix (ITEM_IDS in hardware_validation.c).
+    expect(report.items).toHaveLength(56);
+    expect(report.items[0].id).toBe('USB_SERIAL_JTAG');
+    expect(report.items[7]).toMatchObject({ id: 'SD_LDO_CH4', status: 'validated' });
+    expect(report.items.at(-1)!.id).toBe('ROLL_RECONNECT');
+    expect(report.items.every((i) => !i.id.startsWith('HWV_'))).toBe(true);
+    // The dead row: FLASH_EN_GPIO28 can never flip on a D4-V1 body (ECN-0003).
+    expect(report.items.find((i) => i.id === 'FLASH_EN_GPIO28')).toEqual({ id: 'FLASH_EN_GPIO28', status: 'unvalidated' });
+  });
+
+  it('STORAGE_BENCH earns SD_LDO_CH4 its bench detail, like the firmware', async () => {
+    const { client } = await connect();
+    await client.request(Cmd.STORAGE_BENCH, { sizeKB: 64, blockKB: 32, passes: 1 }, 30000);
+    const report = await client.request<HwValidationReport>(Cmd.GET_HW_VALIDATION);
+    expect(report.items.find((i) => i.id === 'SD_LDO_CH4')).toMatchObject({ status: 'validated', detail: 'bench read-back CRC verified' });
   });
 
   it('legacy firmware neither advertises nor answers', async () => {

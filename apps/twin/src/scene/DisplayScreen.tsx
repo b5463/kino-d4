@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
 import { resolveDimensions } from '@kino/hardware-profiles';
 import { fallbackBoxMm } from '@kino/three-assets';
 import { useSceneStore } from '../state/sceneStore';
 import { useSimStore } from '../state/simStore';
 import { DISPLAY_H, DISPLAY_W, drawDeviceUi } from '../display/deviceUi';
 import type { DeviceUiState } from '../display/deviceUi';
+import { firmwareUi } from '../display/firmwareUi';
 import { instanceTransforms } from './transforms';
 import { getDisplayPreview } from './displayPreview';
 import { useRollBridge } from '../roll/bridge';
@@ -88,8 +90,12 @@ export function DisplayScreen() {
     if (!shown) return;
     const ctx = (texture.image as HTMLCanvasElement).getContext('2d');
     if (!ctx) return;
+    // Once SIM READY, the glass shows the firmware's own screens
+    // (display/firmwareUi.ts); until then, and without the module, the sketch.
+    const fw = firmwareUi();
     const redraw = () => {
-      drawDeviceUi(ctx, readDeviceUiState());
+      if (fw.available()) ctx.drawImage(fw.screen, 0, 0);
+      else drawDeviceUi(ctx, readDeviceUiState());
       texture.needsUpdate = true;
     };
 
@@ -104,17 +110,53 @@ export function DisplayScreen() {
       clearInterval(timer);
       timer = null;
     };
+    // A presented frame - a dissolve, a pressed button - goes up at once
+    // rather than on the next poll, but only while the panel is on screen.
+    const offFrame = fw.onFrame(() => {
+      if (timer !== null) redraw();
+    });
 
     const onVisibilityChange = () => (document.hidden ? stop() : start());
     if (!document.hidden) start();
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      offFrame();
       stop();
     };
   }, [texture, shown]);
 
   if (!position || !visible || viewMode === 'enclosure') return null;
+
+  // The glass is the touch panel. A hit's UV is the point on the screen:
+  // u runs left to right as the texture does, v runs bottom to top, so the
+  // logical row is (1 - v). Pointer events stop here so a tap on the screen is
+  // a tap on the screen, not a pick of the display part behind it; capture
+  // keeps a slide that leaves the glass ending in a lift, as ui.c expects.
+  const fw = firmwareUi();
+  const toScreen = (e: ThreeEvent<PointerEvent>) =>
+    e.uv ? { x: Math.round(e.uv.x * DISPLAY_W), y: Math.round((1 - e.uv.y) * DISPLAY_H) } : null;
+  const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!fw.available()) return;
+    const p = toScreen(e);
+    if (!p) return;
+    e.stopPropagation();
+    (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
+    fw.setTouch(true, p.x, p.y);
+  };
+  const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!fw.available() || e.buttons === 0) return;
+    const p = toScreen(e);
+    if (p) fw.setTouch(true, p.x, p.y);
+  };
+  const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
+    if (!fw.available()) return;
+    const p = toScreen(e);
+    (e.target as Element | null)?.releasePointerCapture?.(e.pointerId);
+    e.stopPropagation();
+    fw.setTouch(false, p?.x ?? 0, p?.y ?? 0);
+  };
+
   // The rear acrylic is a transparent pane between the viewer and this
   // screen; drawn after the screen it composites its milky tint on top.
   // Opaque geometry always renders before the transparent pass, so the fix
@@ -123,7 +165,18 @@ export function DisplayScreen() {
   // crisp. Depth testing still hides it from the front, where the opaque
   // module body wrote depth first.
   return (
-    <mesh position={position} rotation={[0, Math.PI, 0]} raycast={() => {}} renderOrder={10}>
+    <mesh
+      position={position}
+      rotation={[0, Math.PI, 0]}
+      renderOrder={10}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onPointerOver={(e) => { if (fw.available()) e.stopPropagation(); }}
+      onPointerOut={(e) => { if (fw.available()) e.stopPropagation(); }}
+      onClick={(e) => { if (fw.available()) e.stopPropagation(); }}
+    >
       <planeGeometry args={[ACTIVE_W_MM, ACTIVE_H_MM]} />
       <meshBasicMaterial map={texture} toneMapped={false} transparent opacity={1} />
     </mesh>

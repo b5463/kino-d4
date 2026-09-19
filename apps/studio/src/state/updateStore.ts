@@ -76,10 +76,6 @@ export function setUpdateState(patch: Partial<UpdateState>) {
   useUpdateStore.setState(patch);
 }
 
-export function resetUpdateState() {
-  useUpdateStore.setState(initial);
-}
-
 export function patchTarget(id: TargetId, patch: Partial<TargetProgress>) {
   useUpdateStore.setState((s) => ({
     targets: s.targets.map((t) => (t.id === id ? { ...t, ...patch } : t)),

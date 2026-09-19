@@ -94,6 +94,15 @@ let pollInFlight = false;
 let expectRebootUntil = 0;
 let generation = 0;
 let reconnecting = false;
+/** The transport factory of the live session, for a close Studio has to raise itself. */
+let lastFactory: (() => Transport) | null = null;
+/**
+ * Polls in a row that got no answer at all. A NACK or a busy device is an
+ * answer; only a timeout counts, and one is not a disconnect. Three are:
+ * twelve seconds of a link nobody is on the other end of.
+ */
+let silentPolls = 0;
+const SILENT_POLLS_LIMIT = 3;
 /**
  * Boot/session ID of the last camera this Studio spoke to. Studio builds a
  * fresh protocol client per connection, so the client cannot notice a reboot
@@ -213,6 +222,8 @@ const OPEN_TARGET_LABEL: Record<TransportKind, string> = {
 async function connectWith(factory: () => Transport, kind: TransportKind): Promise<void> {
   await teardown(false);
   lastKind = kind;
+  lastFactory = factory;
+  silentPolls = 0;
   const gen = ++generation;
   // While the reconnect loop runs, the shell stays up with a REBOOTING
   // banner — intermediate phases would flash the connect screen instead.
@@ -416,7 +427,7 @@ async function populateAll() {
     }
   };
 
-  const [cams, power, storage, envelope, recipes, calibration, stats] = await Promise.all([
+  const [cams, power, storage, envelope, recipes, calibration, stats, modes] = await Promise.all([
     dev.getCameraInfo(),
     tolerate(() => dev.getPowerStatus()),
     dev.getStorageStatus(),
@@ -424,6 +435,9 @@ async function populateAll() {
     tolerate(() => dev.getRecipes()),
     tolerate(() => dev.getCalibration()),
     tolerate(() => dev.getRuntimeStats()),
+    // GET_MODES carries per-mode availability with the camera's own reason;
+    // a firmware that predates it leaves the Shoot page on its two defaults.
+    tolerate(() => dev.getModes()),
   ]);
 
   // Sounds arrived after V1 firmware — absence is a state, not an error.
@@ -461,6 +475,7 @@ async function populateAll() {
     soundLimits: sounds ? { maxCustom: sounds.maxCustom, maxSoundKB: sounds.maxSoundKB } : null,
     calibration,
     stats,
+    modes,
   });
   // After the state above, not inside it: the gate reads the capabilities
   // that call just stored.
@@ -475,12 +490,22 @@ async function populateAll() {
  * benches take. Without it a reflexive F5 contended on the UART with a running
  * burn-in and both reported numbers as if nothing had happened.
  */
-export async function refreshAll(): Promise<'done' | 'blocked' | 'offline'> {
+export async function refreshAll(): Promise<'done' | 'blocked' | 'offline' | 'failed'> {
   if (!device) return 'offline';
   if (!claimDevice('sync', 'SYNC')) return 'blocked';
   try {
     await populateAll();
+    pollSucceeded();
     return 'done';
+  } catch (err) {
+    // The first read in `populateAll` is GET_DEVICE_INFO and it is not
+    // tolerated there — on connect a camera that cannot answer it has failed
+    // the handshake. On a SYNC it is a missed read: the values on screen stay
+    // and the status bar says why, the same as a failed poll. Left to
+    // propagate, it surfaced as "Uncaught (in promise) KinoTimeoutError" from
+    // the toolbar's `void refreshAll()`.
+    pollFailed(message(err));
+    return 'failed';
   } finally {
     releaseDevice('sync');
   }
@@ -514,9 +539,45 @@ export function isSessionStale(): boolean {
   return staleAfterRestart;
 }
 
+/**
+ * Re-read GET_DEVICE_INFO after a write that changes it (mode, active look).
+ *
+ * A timeout here is a missed read, not a failed write: the write already
+ * ACKed. It is recorded the way a missed poll is — the status bar shows the
+ * age — instead of rejecting into whichever `void` call site asked, which was
+ * an unhandled KinoTimeoutError in the console and nothing on screen. Any
+ * other error (a NACK, a closed link) still propagates to the caller.
+ */
 export async function refreshDeviceInfo() {
   if (!device) return;
-  setDeviceState({ info: await device.getDeviceInfo() });
+  try {
+    setDeviceState({ info: await device.getDeviceInfo() });
+  } catch (err) {
+    if (err instanceof KinoTimeoutError) {
+      pollFailed(message(err));
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Re-read GET_MODES after SET_MODE: `active` moves, and availability may have
+ * changed with it. Tolerated like the populate read — a firmware without the
+ * command leaves the store's null alone.
+ */
+export async function refreshModes() {
+  if (!device) return;
+  try {
+    setDeviceState({ modes: await device.getModes() });
+  } catch (err) {
+    if (err instanceof KinoUnsupportedError) return;
+    if (err instanceof KinoTimeoutError) {
+      pollFailed(message(err));
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function refreshConfig() {
@@ -675,6 +736,7 @@ function startPolling() {
       // often enough for a status lamp and rare enough not to compete with
       // the camera poll for the link.
       if (tick % 5 === 0) await pollNetworkRoll(device);
+      silentPolls = 0;
       pollSucceeded();
     } catch (err) {
       // A single missed poll (busy device, injected timeout) is not a
@@ -685,6 +747,15 @@ function startPolling() {
       // a live reading. The values stay — they are all there is — and the
       // status bar says how old they are and why.
       pollFailed(message(err));
+      // A run of them is something else. A transport that never closes —
+      // USB CDC on a hung board, a relay whose Twin let go — leaves Studio
+      // CONNECTED with every read timing out, indefinitely. Three unanswered
+      // polls in a row (the third carries the liveness HELLO) is the link
+      // gone, and it is reported as one.
+      if (err instanceof KinoTimeoutError && ++silentPolls >= SILENT_POLLS_LIMIT) {
+        silentPolls = 0;
+        linkSilent();
+      }
     } finally {
       pollInFlight = false;
     }
@@ -695,6 +766,22 @@ function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
   pollInFlight = false;
+}
+
+/**
+ * The link is open and nobody answers. Raise the close the transport never
+ * will, with the reason on it, and let the close handler do what it does for
+ * a cable pulled: reconnect if a reboot was expected, HARDWARE ERROR if not.
+ * The transport is closed afterwards under a new generation, so its own
+ * close callback is stale and cannot overwrite the reason.
+ */
+function linkSilent(): void {
+  const factory = lastFactory;
+  const t = transport;
+  if (!factory || !t) return;
+  handleTransportClose(generation, factory, 'KINO stopped answering: three reads in a row timed out. Check the cable, then connect again.');
+  generation++;
+  void t.close().catch(() => {});
 }
 
 function handleTransportClose(gen: number, factory: () => Transport, reason?: string) {

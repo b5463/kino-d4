@@ -4,7 +4,7 @@ import { ACTIVITY_PRESETS, computePower } from '@kino/simulator-engine';
 import type { ActivityState, PowerSample, ThermalZone } from '@kino/simulator-engine';
 import { useSimStore } from '../state/simStore';
 import { selectPower, useSceneStore } from '../state/sceneStore';
-import { tagLabel } from './SyncPanel';
+import { tagLabel } from './provenance';
 
 type PresetKey = keyof typeof ACTIVITY_PRESETS;
 const PRESET_LABELS: Record<PresetKey, string> = {

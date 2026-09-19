@@ -11,19 +11,63 @@ async function connect(mock = new MockKinoDevice({ seed: 9, ambientCaptures: fal
 }
 
 interface PowerStatus {
-  batteryV: number;
+  batteryV: number | null;
+  batteryPct: number | null;
+  batteryMeasured: boolean;
   state: string;
   charging: boolean;
-  chargingA: number;
+  chargingA?: number;
+  busV?: number;
+  fuse?: string;
+  displayStage: string;
+  idleSeconds: number;
+  displayOn: boolean;
+  cameraBankPowered: boolean;
 }
 
 describe('power faults (audit #57)', () => {
-  it('chargerConnected: GET_POWER_STATUS reports a USB charger at 0.6 A', async () => {
+  it('as shipped: GET_POWER_STATUS carries no pack telemetry on D4-V1 (D10), whatever the scenario says', async () => {
     const { mock, client, transport } = await connect();
     try {
+      const shipped = await client.request<PowerStatus>(Cmd.GET_POWER_STATUS);
+      expect(shipped).toMatchObject({
+        batteryV: null,
+        batteryPct: null,
+        batteryMeasured: false,
+        state: 'usb',
+        charging: false,
+        displayStage: 'awake',
+        displayOn: true,
+        cameraBankPowered: true,
+      });
+      expect(shipped.idleSeconds).toBeGreaterThanOrEqual(0);
+      expect(shipped).not.toHaveProperty('chargingA');
+      expect(shipped).not.toHaveProperty('busV');
+      expect(shipped).not.toHaveProperty('fuse');
+
+      // A charger or a low pack changes nothing the body can sense.
+      mock.setScenario('chargerConnected', true);
+      mock.setScenario('lowBattery', true);
+      const still = await client.request<PowerStatus>(Cmd.GET_POWER_STATUS);
+      expect(still).toMatchObject({ batteryV: null, batteryMeasured: false, charging: false });
+
+      // The pack model stays available to the Twin's own POWER tab.
+      expect(mock.twinSnapshot().batteryV).toBeCloseTo(3.42, 2);
+    } finally {
+      client.dispose();
+      await transport.close();
+    }
+  });
+
+  it('chargerConnected: with powerTelemetry overridden on, GET_POWER_STATUS reports a USB charger at 0.6 A', async () => {
+    const { mock, client, transport } = await connect();
+    try {
+      mock.overrideCapabilities({ powerTelemetry: true });
       const before = await client.request<PowerStatus>(Cmd.GET_POWER_STATUS);
       expect(before.charging).toBe(false);
       expect(before.state).toBe('battery');
+      expect(before.batteryMeasured).toBe(true);
+      expect(before.batteryV).toBeGreaterThan(3);
 
       mock.setScenario('chargerConnected', true);
       const on = await client.request<PowerStatus>(Cmd.GET_POWER_STATUS);

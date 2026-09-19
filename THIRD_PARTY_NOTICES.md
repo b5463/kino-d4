@@ -62,35 +62,6 @@ The ESP-Hosted component itself is a build-time dependency resolved into
 version in `firmware/c6/main/idf_component.yml` with its resolved hash in
 `firmware/c6/dependencies.lock`.
 
-## Windows 98 icon artwork (Microsoft, no licence held)
-
-`firmware/p4/main/icons_w98.h` contains seven icons from the Microsoft Windows
-98 shell, baked at their native 48x48 or 32x32 by `scripts/bake-w98-icons.mjs`
-from the `trapd00r/win95-winxp_icons` collection at commit `728a866a`, each
-verified by SHA-256. They are the six menu tiles - `w98_multimedia`,
-`w98_color_profile`, `w98_directory_pictures`, `w98_camera3_network`,
-`w98_settings_gear` and `w98_shut_down_normal` - plus the viewfinder battery,
-`w98_battery`.
-
-The artwork is Microsoft's. **KINO holds no licence to redistribute it**, and
-the upstream collection is an archive rather than a grant. `REUSE.toml` maps
-the header to `LicenseRef-Microsoft-Proprietary` so that the MIT declaration
-covering `firmware/**` does not extend to it; that annotation states the
-ownership and grants nothing.
-
-Consequences, stated plainly rather than deferred:
-
-- A firmware binary built from this tree embeds the artwork. Publishing that
-  binary is redistribution.
-- The icons are stored at their original size and scaled by an integer factor
-  at runtime, so what ships is a faithful reproduction rather than a
-  derivation. That makes the position clearer, not weaker.
-- The two ways out are a licence from Microsoft, or original artwork drawn for
-  this product in the same idiom.
-
-Issue #134 records the decision and must be resolved before a release carries
-these files.
-
 ## W95FA typeface (Alina Sava, OFL-1.1)
 
 `apps/prusa-print-98/public/fonts/w95fa.woff2` is W95FA, Alina Sava's modern
@@ -112,3 +83,46 @@ with any redistribution, including the packaged `.exe`, which bundles the
 `.woff2` inside its resources.
 
 Source: <https://www.dafont.com/W95FA.font>.
+
+## Inter and Oxanium (OFL-1.1)
+
+`firmware/p4/main/ui_font.h` is the camera's type, rasterised to 8-bit
+coverage by `tools/mkfont.swift` for ASCII 32..126 at the five sizes `ui.c`
+puts on the screen.
+
+Two faces, with two jobs:
+
+- **Inter** (Copyright 2016 The Inter Project Authors, `rsms/inter`, v4.1)
+  carries everything a person reads as language - the list rows, the values,
+  the sentences.
+- **Oxanium** (Copyright 2019 The Oxanium Project Authors, `sevmeyer/oxanium`)
+  carries everything the camera says as a machine - the screen titles, the
+  technical caps, the word on the menu card.
+
+Both are under the SIL Open Font License 1.1, kept as `LICENSES/OFL-1.1.txt`.
+The header is a derivative of the fonts, which the OFL permits, and stays
+under the OFL; the Reserved Font Name clause does not apply because the
+derivative is not distributed under either font's name. The font software
+itself is not redistributed - only the rasterised glyphs, which is what the
+firmware and the Twin's WebAssembly build both embed.
+
+The camera previously set its interface in a 1-bit rendering of Tahoma, baked
+through a headless browser, and its menu in Windows 98 shell icons for which
+no licence was held. Both are gone - the type is these two faces and the menu
+is drawn - and issue #134 closes with them. The one baked raster left in the
+interface is the studio's mark, below, and that one is baked because it is a
+drawing and not a shape a program should be guessing at.
+
+## The Odd Jobs mark (reserved)
+
+`firmware/p4/main/logo_odd_jobs.h` is the mark of Odd Jobs, the studio that
+makes this camera. `tools/mklogo.swift` bakes it from the studio's artwork
+into a 160x160 8-bit coverage map, which `ui.c` samples bilinearly - once at
+the centre of the boot bloom, once at the foot of the ABOUT screen.
+
+It is a trade mark, not source. `firmware/**` is declared MIT and that grant
+does not reach it: REUSE.toml marks the header `LicenseRef-KINO-Reserved`, the
+same terms the KINO wordmarks carry, and that annotation records ownership
+without granting anything. Anyone distributing a build of this firmware is
+distributing the studio's mark with it, and needs the studio's permission to
+do so under their own name.

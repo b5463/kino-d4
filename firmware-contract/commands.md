@@ -159,7 +159,13 @@ and nothing dims) and `flashHardware` (ECN-0003 took GPIO28 for the shutter and 
 no P4 pin).
 
 `syncBench` is now the only flag the reference device reports that the interface does not declare
-(**mock**). `rollUpload` is typed.
+(**mock**) — and only on `d4-sim-full`; the profiles that pin a real build omit it, as the firmware
+does, and `SYNC_BENCH` answers on 0.4.31+ without any flag. `rollUpload` is typed.
+
+The reply carries no top-level field beyond `protocol`, `hardware`, `firmware`, `capabilities`,
+`limits` and `configSchemaVersion`. The reference device used to add a `firmwareMismatch` boolean
+under its `nodeFwMismatch` scenario; the firmware never sent one and nothing consumed it, so it is
+gone — a host detects a stale node from the versions in `GET_DEVICE_INFO` / `FW_QUERY`.
 
 **A capability flag and the dispatcher must agree.** A device that advertises no network support and
 then answers `NETWORK_LIST` is worse than a device with no network support at all.
@@ -310,9 +316,9 @@ field is `look`** — writing `recipe` there parses clean and silently loses the
 | `GET_MODES` | `0x20` | → `{}` ← **typed** `GetModesResponse`. See below |
 | `SET_MODE` | `0x21` | → `{ "mode": "wiggle" \| "quad" }` ← **mock** `{ "ok": true }` |
 | `GET_RECIPES` | `0x22` | → `{}` ← **typed** `RecipesResponse` = `{ "factory": Recipe[], "custom": Recipe[] }` |
-| `SET_RECIPE` | `0x23` | → `{ "id": "party-neg" }` ← **mock** `{ "ok": true }` |
+| `SET_RECIPE` | `0x23` | → `{ "id": "party-neg", "cam"?: "cam1".."cam4" \| "all" }` ← `{ "ok": true, "id": "party-neg", "cam": "cam1" }` (`cam` echoed as sent, absent when omitted; see [README D18](README.md#d18--set_recipe-takes-a-cam-and-the-two-families-that-left-d17)) |
 | `UPLOAD_RECIPE` | `0x24` | → `{ "recipe": {...} }` ← **mock** `{ "ok": true }` |
-| `DELETE_RECIPE` | `0x25` | → `{ "id": "my-look" }` ← **mock** `{ "ok": true }` |
+| `DELETE_RECIPE` | `0x25` | → `{ "id": "my-look" }` ← `{ "ok": true }`; an id not on the card is `NOT_FOUND`, a factory id `FACTORY_LOCKED` |
 
 #### `GET_MODES` — 0x20
 
@@ -361,7 +367,7 @@ Not in spec 04§7 — a repo addition. Gated by the `customSounds` capability. C
 | `GET_SOUNDS` | `0x26` | → `{}` ← **typed** `SoundsResponse` = `{ "custom": SoundInfo[], "maxCustom": 8, "maxSoundKB": 128 }` |
 | `SOUND_BEGIN` | `0x27` | → **typed** `SoundBeginRequest` ← **typed** `SoundBeginResponse` = `{ "sessionId": 501, "chunkSize": 8192 }`. Timeout 8 s |
 | `SOUND_CHUNK` | `0x28` | → **BINARY**, 8-byte `sessionId`/`offset` header + data ← **inline** `{ "ok": true, "received": 8192 }`. Timeout 8 s |
-| `SOUND_END` | `0x29` | → `{}` ← **inline** `{ "ok": true, "sound": SoundInfo }`. Timeout 8 s |
+| `SOUND_END` | `0x29` | → `{}` ← **inline** `{ "ok": true, "sound": SoundInfo }`. Timeout 8 s. The header is checked here (`wav_probe`): RIFF/WAVE, PCM, 16-bit, mono, 16 kHz, with a `data` chunk — anything else is `BAD_FORMAT` naming the reason and the session is discarded |
 | `SOUND_READ` | `0x2a` | → `{ "id": "snd-ding", "offset": 0, "length": 8192 }` ← **BINARY** raw WAV bytes. Timeout 8 s |
 | `SOUND_DELETE` | `0x2b` | → `{ "id": "snd-ding" }` ← **mock** `{ "ok": true }` |
 
@@ -543,10 +549,11 @@ New NACK codes introduced by the 1B firmware paths, in the reference-device
 spirit of "reuse rather than reinvent": `SENSOR_NOT_DETECTED`,
 `NODE_BOOT_TIMEOUT`, `JPEG_INVALID`, `TRANSFER_TIMEOUT`,
 `TRANSFER_CRC_MISMATCH`, `SD_NOT_MOUNTED`, `SD_WRITE_FAILED`,
-`SD_VERIFY_FAILED`, `OUT_OF_MEMORY`. Known drift: the mock's legacy
-`CAMERA_TEST` guards still answer `CAM_OFFLINE`/`SENSOR_MISSING` where
-firmware says `CAMERA_OFFLINE`/`SENSOR_NOT_DETECTED`; both sides treat codes
-as strings, so neither breaks, and the firmware names are the ones to keep.
+`SD_VERIFY_FAILED`, `OUT_OF_MEMORY`. The reference device's `CAMERA_TEST`
+guards answer the firmware's `CAMERA_OFFLINE` / `SENSOR_NOT_DETECTED` (they
+were the mock's own `CAM_OFFLINE` / `SENSOR_MISSING` until 2026-09-13; the
+mock-only `CAMERA_CALIBRATE` and `CAMERA_PREVIEW` paths, which no firmware
+implements, keep their old spellings).
 
 `LogEntry` = `{ "t": 1755301234567, "src": "P4", "msg": "…" }`, `src` ∈
 `P4 | C1 | C2 | C3 | C4 | PWR | SD | PROTO`. Also pushed live as `LOG` events.
@@ -556,10 +563,16 @@ as strings, so neither breaks, and the firmware names are the ones to keep.
 ```json
 {
   "uptimeS": 4210, "resetReason": "power-on", "freeHeapKB": 162, "freePsramKB": 12900,
-  "tempC": { "p4": 42, "cams": [38, 39, 41, 40] },
-  "protocol": { "droppedPackets": 0, "crcFailures": 0, "cameraTimeouts": 0, "sdErrors": 0 }
+  "tempC": { "p4": 42, "cams": [38, null, null, null] },
+  "protocol": { "droppedPackets": 0, "crcFailures": 0, "cameraTimeouts": 0, "sdErrors": 0,
+                "droppedLogEvents": 0, "droppedTxFrames": 0 },
+  "ui": { "passes": 84200, "lastPassAgeMs": 41, "stalled": false }
 }
 ```
+
+`tempC.cams[i]` is `null` for a node that is not answering — never a fabricated figure.
+`protocol.droppedTxFrames` (0.4.10+) and `ui` (0.4.18+) are additive; the reference device reports
+both.
 
 `LinkBenchResult` — **all four camera UARTs stressed concurrently**, which is the V1 design:
 
@@ -749,12 +762,12 @@ by the `network` / `rollUpload` capability flags.
 
 | Cmd | Value | Payload |
 |---|---:|---|
-| `NETWORK_LIST` | `0xa0` | → `{}` ← `{ "networks": [NetworkView] }` |
+| `NETWORK_LIST` | `0xa0` | → `{}` or `{ "scan": true }` ← `{ "networks": [NetworkView] }`, plus `available[]`, `scanMs`, `scanComplete` when a scan was asked for ([README D3](README.md#d3--network--roll--upload-queue-numeric-values)) |
 | `NETWORK_SET` | `0xa1` | → `{ "ssid", "password"?, "security"?, "autoJoin"? }` ← `{ "ok": true, "networks": [NetworkView] }` |
 | `NETWORK_DELETE` | `0xa2` | → `{ "ssid": "loft-guest" }` ← `{ "ok": true, "networks": [NetworkView] }` |
-| `NETWORK_STATUS` | `0xa3` | → `{}` ← `{ "state", "ssid", "ip", "rssi", "since", "internet" }` |
+| `NETWORK_STATUS` | `0xa3` | → `{}` or `{ "probe": true }` ← `{ "state", "ssid", "ip", "rssi", "since", "internet" }`, plus a `probe{}` block when asked ([README D3](README.md#d3--network--roll--upload-queue-numeric-values)) |
 | `ROLL_STATUS` | `0xa4` | → `{}` ← `RollView` |
-| `ROLL_CREATE` | `0xa5` | → `{ "name": "Friday party" }` ← `RollView` (the reference device answers the full view; the five roll fields are inside `roll`) |
+| `ROLL_CREATE` | `0xa5` | → `{ "name": "Friday party" }` ← firmware answers the full `RollView` (the five roll fields inside `roll`). Studio's `startRoll` (`apps/studio/src/roll/rollOps.ts`) still reads `rollId`/`slug`/`guestUrl` flat off the reply (`RollCreateResponse`), so the reference device answers **both**: the five fields flat *and* the full view. A host should read `roll.*` — the flat copy is compatibility |
 | `ROLL_JOIN` | `0xa6` | → `{ "slug": "amber-001" }` (`code` accepted as an alias) ← `RollView` |
 | `ROLL_LEAVE` | `0xa7` | → `{}` ← `{ "ok": true, ...RollView }` |
 | `UPLOAD_QUEUE_STATUS` | `0xa8` | → `{}` ← `QueueReport` |

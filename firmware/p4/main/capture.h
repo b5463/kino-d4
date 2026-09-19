@@ -273,6 +273,18 @@ capture_stage_t capture_stage(void);
 uint32_t capture_ready_cams(void);
 
 /**
+ * Progress a screen can show while a capture runs: the cameras this capture
+ * asked (0 until the probe has decided), and the ones whose frame has crossed
+ * the link and passed its CRC so far. Both are bit 0 = CAM1, both are cleared
+ * at the trigger, and both are plain reads of a word the workers write - true
+ * at the instant they are read and never a promise about the next one. This
+ * is what the four-camera event on the display is driven by, in place of a
+ * timer pretending to be progress.
+ */
+uint32_t capture_asked_cams(void);
+uint32_t capture_frames_in(void);
+
+/**
  * Whether a capture or a bench command holds the pipeline, RIGHT NOW.
  *
  * Advisory, and for display only. It is a try-lock sample: it takes the capture

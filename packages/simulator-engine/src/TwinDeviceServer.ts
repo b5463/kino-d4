@@ -28,6 +28,8 @@ type WireMsg =
 
 /** Matches MockTransport's hardcoded reboot-close reason — reboot parity (brief §). */
 const REBOOT_REASON = 'KINO is rebooting';
+/** What a Studio hears when the Twin gives up waiting for its pongs. */
+const LEASE_REASON = 'KINO Twin dropped the link: Studio stopped answering its heartbeat';
 const HEARTBEAT_INTERVAL_MS = 1000;
 const CLIENT_LEASE_MS = 4000;
 
@@ -61,9 +63,12 @@ export class TwinDeviceServer {
   private attached = false;
   private bootDelayTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private lastClientSeenAt = 0;
+  /** Heartbeats sent since the client last said anything (data or pong). */
+  private missedPings = 0;
   private readonly heartbeatIntervalMs: number;
   private readonly clientLeaseMs: number;
+  /** The lease in heartbeats: how many unanswered pings end it. */
+  private readonly maxMissedPings: number;
   private readonly clientListeners = new Set<(connected: boolean) => void>();
 
   constructor(
@@ -75,6 +80,7 @@ export class TwinDeviceServer {
     this.recorder = opts?.recorder;
     this.heartbeatIntervalMs = opts?.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
     this.clientLeaseMs = opts?.clientLeaseMs ?? CLIENT_LEASE_MS;
+    this.maxMissedPings = Math.max(2, Math.ceil(this.clientLeaseMs / this.heartbeatIntervalMs));
   }
 
   start(): void {
@@ -131,12 +137,14 @@ export class TwinDeviceServer {
       this.handleConnect(msg.client);
     } else if (msg.t === 'data') {
       if (msg.from !== 'host' || msg.client !== this.activeClient || !this.attached) return;
-      this.lastClientSeenAt = Date.now();
+      this.missedPings = 0;
       const bytes = toBytes(msg.bytes);
       this.recorder?.noteIn(bytes);
       this.sim.device.receive(bytes);
     } else if (msg.t === 'pong') {
-      if (msg.client === this.activeClient && this.attached) this.lastClientSeenAt = Date.now();
+      if (msg.client === this.activeClient && this.attached) {
+        this.missedPings = 0;
+      }
     } else if (msg.t === 'close') {
       if (msg.client !== this.activeClient) return;
       if (this.attached) this.sim.device.detach();
@@ -155,7 +163,7 @@ export class TwinDeviceServer {
       return;
     }
     this.activeClient = client;
-    this.lastClientSeenAt = Date.now();
+    this.missedPings = 0;
 
     const delay = this.sim.device.bootDelayMs();
     this.bootDelayTimer = setTimeout(() => {
@@ -195,7 +203,6 @@ export class TwinDeviceServer {
         },
       );
       this.setConnected(true);
-      this.lastClientSeenAt = Date.now();
     }, delay);
   }
 
@@ -204,16 +211,30 @@ export class TwinDeviceServer {
    * short lease keeps that stale tab from owning Twin forever: responsive
    * Studio transports answer `ping`; silence detaches the device and frees
    * the one-client slot for the next connection.
+   *
+   * The lease is counted in heartbeats, not milliseconds. A background tab's
+   * timers are throttled — to once a second, then once a minute — so a wall
+   * clock read from a throttled heartbeat saw seconds of "silence" from a
+   * Studio that had answered every ping it was sent, and dropped it. Pongs
+   * are event-driven and never throttled, so counting unanswered pings is
+   * true under throttling on either side.
+   *
+   * When the lease does end, the client is told. Without the `close`, a
+   * Studio that was merely slow kept a link the Twin had already forgotten:
+   * CONNECTED on its strip, every read timing out, forever.
    */
   private readonly checkClientLease = (): void => {
     const client = this.activeClient;
     if (client === null || !this.attached) return;
-    if (Date.now() - this.lastClientSeenAt > this.clientLeaseMs) {
+    if (this.missedPings >= this.maxMissedPings) {
       this.sim.device.detach();
       this.activeClient = null;
+      this.missedPings = 0;
       this.setConnected(false);
+      this.post({ t: 'close', client, reason: LEASE_REASON });
       return;
     }
+    this.missedPings++;
     this.post({ t: 'ping', client });
   };
 }

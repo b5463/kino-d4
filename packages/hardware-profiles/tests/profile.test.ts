@@ -21,7 +21,8 @@ describe('kino.hardware-profile d4-v1', () => {
     const xs = ['cam1', 'cam2', 'cam3', 'cam4'].map(
       (id) => D4_V1.instances.find((i) => i.id === id)!.positionMm[0],
     );
-    expect(xs).toEqual([-33, -11, 11, 33]);
+    // Camera 1 at +X: the photographer's left, as the field body's CAD places it.
+    expect(xs).toEqual([33, 11, -11, -33]);
     expect(D4_V1.cameraPitchMm).toBe(22);
     expect(D4_V1.cameraPitchRangeMm).toEqual([20, 24]);
   });
@@ -50,21 +51,35 @@ describe('kino.hardware-profile d4-v1', () => {
     // built-in flash assembly, and no part left on the body carries a
     // seller-stated material. The point of the assertion is the tag, not the
     // tier: a material recorded here is always attributed.
-    const shell = D4_V1.components.find((c) => c.id === 'enclosure-shell')!;
+    const shell = D4_V1.components.find((c) => c.id === 'field-face-shell')!;
     expect(shell.material?.tag).toBe('ESTIMATED');
     // Seeed wiki states no weight for the XIAO ESP32-S3 Sense — so no massG.
     const cam = D4_V1.components.find((c) => c.id === 'camera-node')!;
     expect(cam.massG).toBeUndefined();
   });
-  it('splits the enclosure into shell + chassis on the same PROVISIONAL envelope (audit #63)', () => {
-    const shell = D4_V1.components.find((c) => c.id === 'enclosure-shell')!;
-    const chassis = D4_V1.components.find((c) => c.id === 'enclosure-chassis')!;
-    expect(D4_V1.components.some((c) => c.id === 'enclosure')).toBe(false);
-    expect(shell.sources[0]!.sizeMm).toEqual([126, 80, 36]);
-    expect(chassis.sources[0]!.sizeMm).toEqual([126, 80, 36]);
-    expect(D4_V1.instances.find((i) => i.id === 'front-acrylic')!.component).toBe('enclosure-shell');
-    expect(D4_V1.instances.find((i) => i.id === 'rear-acrylic')!.component).toBe('enclosure-shell');
-    expect(D4_V1.instances.find((i) => i.id === 'skeleton')!.component).toBe('enclosure-chassis');
+  it('carries the field body as six shells baked from the released CAD datums (ECN-0004)', () => {
+    // The provisional acrylic-and-skeleton box is gone; each shell's box is
+    // the assembled bounding box the generator measured, and the placement is
+    // the same half-turn of the body frame scripts/bake-twin-body.mjs applies.
+    expect(D4_V1.components.some((c) => c.id === 'enclosure' || c.id === 'enclosure-shell' || c.id === 'enclosure-chassis')).toBe(false);
+    const shells = ['chassis-front', 'chassis-rear', 'face-shell', 'lens-cover', 'slider-keeper', 'rear-door'];
+    for (const id of shells) {
+      const inst = D4_V1.instances.find((i) => i.id === id)!;
+      expect(inst.group).toBe('shell');
+      expect(inst.rotationDeg).toEqual([0, 180, 0]);
+      const c = D4_V1.components.find((k) => k.id === inst.component)!;
+      expect(c.meshTier).toBe('A');
+      expect(c.sources[0]!.kind).toBe('OFFICIAL_CAD');
+    }
+    const face = D4_V1.components.find((c) => c.id === 'field-face-shell')!;
+    expect(face.sources[0]!.sizeMm).toEqual([131, 90, 9]);
+    expect(D4_V1.body).toEqual({ sizeMm: [137.5, 92.2, 75.3], confidence: 'OFFICIAL_CAD' });
+    // No battery, BMS, charger or speaker sits in this body: it is a USB-C
+    // powered fixture. The components stay in the BOM; nothing is placed.
+    for (const id of ['battery', 'bms', 'power-module', 'fuse', 'speaker', 'bulk-cap']) {
+      expect(D4_V1.instances.some((i) => i.id === id)).toBe(false);
+      expect(D4_V1.components.some((c) => c.id === id)).toBe(true);
+    }
   });
   it('ships the 16340 bench pack as alternatePower — experimental, never the default block', () => {
     const bench = D4_V1.alternatePower['16340-bench']!;

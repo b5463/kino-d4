@@ -4014,6 +4014,82 @@ const plate2Info = writeBinaryStl("KINO_PLATE_2_FACE_DOOR_COVER.stl", plate2);
 // object instead of as parts in isolation. Not printable, not validated.
 writeBinaryStl("_ASSEMBLY_VIEW_reference_only.stl",
   fuse([body, face, bezel, sliderKeeper]));
+
+// ---- KINO Twin: the assembled camera, part by part ---------------------------
+// apps/twin shows this camera in 3D. It used to draw a provisional acrylic-and-
+// skeleton box that predates this body; it now loads THESE - every shell in the
+// body frame the gates above measure in, the lens cover OPEN because the Twin
+// is a camera that is shooting - and places the electronics from the datums
+// written beside them. Released, unlike the assembly view: promote.mjs carries
+// them into twin/, and scripts/bake-twin-body.mjs rebuilds the Twin's hardware
+// profile from the datums, so a change here reaches the Twin without anyone
+// re-typing a number. Not printable; validate-stl still holds them manifold.
+const r3 = (v) => Math.round(v * 1000) / 1000;
+const bbOf = (solid) => { const b = solid.boundingBox(); return { min: b.min.map(r3), max: b.max.map(r3) }; };
+const twinParts = {
+  "chassis-front": { file: "KINO_TWIN_CHASSIS_FRONT.stl", solid: bodyFront, print: "KINO_FIELD_BODY_FRONT_PRINT.stl" },
+  "chassis-rear": { file: "KINO_TWIN_CHASSIS_REAR.stl", solid: bodyRear, print: "KINO_FIELD_BODY_REAR_PRINT.stl" },
+  "face-shell": { file: "KINO_TWIN_FACE.stl", solid: face, print: "KINO_FIELD_FACE_PRINT.stl" },
+  "lens-cover": { file: "KINO_TWIN_LENS_COVER.stl", solid: lensSlider.translate(SLIDER_OPEN), print: "KINO_FIELD_LENS_SLIDER.stl" },
+  "slider-keeper": { file: "KINO_TWIN_SLIDER_KEEPER.stl", solid: sliderKeeper, print: "KINO_FIELD_SLIDER_KEEPER.stl" },
+  "rear-door": { file: "KINO_TWIN_DOOR.stl", solid: bezel, print: "KINO_FIELD_BEZEL_PRINT.stl" },
+};
+for (const t of Object.values(twinParts)) writeBinaryStl(t.file, t.solid);
+const twinBoxes = Object.values(twinParts).map((t) => t.solid.boundingBox());
+const twinDatums = {
+  schema: "kino.twin-body",
+  version: 1,
+  body: "KINO_FIELD_BODY",
+  designVersion: MANIFEST.designVersion,
+  frame: "Body coordinates: X 0..bodyW across the front (camera 1 at low X), Y 0..bodyH up, Z 0 at the chassis front plate face growing toward the rear door; the face shell sits at negative Z. Millimetres.",
+  envelope: { w: P.bodyW, h: P.bodyH, d: P.bodyD },
+  assembly: {
+    min: [0, 1, 2].map((i) => r3(Math.min(...twinBoxes.map((b) => b.min[i])))),
+    max: [0, 1, 2].map((i) => r3(Math.max(...twinBoxes.map((b) => b.max[i])))),
+  },
+  parts: Object.fromEntries(Object.entries(twinParts).map(([id, t]) =>
+    [id, { file: t.file, print: t.print, bbox: bbOf(t.solid), volumeCm3: r3(t.solid.volume() / 1000) }])),
+  cameras: {
+    pitch: P.cameraPitch, lensY: P.cameraLensY, xs: cameraXs.map(r3),
+    lensFrontZ: r3(lensFrontZ), headDepth: r3(camHeadReach), barrelD: P.camBarrelD,
+    modulePcb: P.camModulePcb, fovDeg: P.camFovDeg,
+  },
+  xiao: {
+    boardW: P.xiaoBoardW, boardH: P.xiaoBoardH, boardT: P.xiaoBoardT,
+    xs: cameraXs.map(r3), centerY: r3(boardCenterY), z: [r3(boardFrontZ), r3(boardBackZ)],
+  },
+  module: {
+    w: P.moduleW, h: P.moduleH, t: P.moduleT,
+    x: [r3(moduleMinX), r3(moduleMaxX)], y: [r3(moduleMinY), r3(moduleMaxY)],
+    pcbBackZ: r3(pcbBackZ), glassRearZ: r3(glassRearZ),
+    standoffs: { xs: mountXs.map(r3), ys: mountYs.map(r3), pitch: [P.p4HoleX, P.p4HoleY], od: P.p4StandoffOD },
+  },
+  bay: {
+    z: [r3(bayMinZ), r3(pcbBackZ)],
+    // The 54 x 33 hub board floats in the bay between the post rows (README,
+    // "Wiring room"): a box measured empty, centred on the lens axis.
+    hub: {
+      size: [P.piggyback[0], P.piggyback[1], r3(P.piggybackT + P.piggybackHeaders)],
+      x: [r3(centerX - P.piggyback[0] / 2), r3(centerX + P.piggyback[0] / 2)],
+      y: [r3(P.cameraLensY - P.piggyback[1] / 2), r3(P.cameraLensY + P.piggyback[1] / 2)],
+      z: [r3(bayMinZ), r3(bayMinZ + P.piggybackT + P.piggybackHeaders)],
+    },
+  },
+  shutter: { x: P.shutterX, z: P.shutterZ, topWallY: P.bodyH, switchBody: P.shutterSwitchBody },
+  // The external light's 1/4-20 stud through the top wall (README, Openings):
+  // 25 mm of stud, 6 buried in the light's 18 mm square base, the wall's own
+  // thickness, and the rest inside for its two nuts. The light itself is a
+  // bought part this file does not model.
+  light: {
+    x: P.quarterX, z: P.quarterZ, topWallY: P.bodyH, wallT: P.wallTop,
+    boreD: P.lightBoltD, studLen: P.lightStudLen, studBuried: P.lightStudBuried,
+    studInside: r3(P.lightStudLen - P.lightStudBuried - P.wallTop), plate: P.lightPlate, threadD: 6.35,
+  },
+  splitZ: r3(splitZ),
+  lensCover: { open: SLIDER_OPEN, travelMm: P.sliderTravel },
+  strapLug: bbOf(strapLug),
+};
+fs.writeFileSync(path.join(outDir, "field-body-twin-datums.json"), JSON.stringify(twinDatums, null, 2) + "\n");
 writeP4FitTemplatePdf();
 writeFoamGasketTemplatePdf();
 

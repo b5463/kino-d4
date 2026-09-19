@@ -40,7 +40,7 @@ describe('resolveDimensions', () => {
     const cam = D4_V1.components.find((c) => c.id === 'camera-node')!;
     const r = resolveDimensions(cam);
     expect(r.confidence).toBe('OFFICIAL_SPEC');
-    expect(r.sizeMm).toEqual([21.0, 17.8, 15.0]);
+    expect(r.sizeMm).toEqual([17.8, 21, 15]); // portrait in the field body's seat
     expect(r.conflict).toBeNull();
     expect(r.measureToLock).toBe(false);
   });

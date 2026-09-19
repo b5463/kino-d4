@@ -6,7 +6,489 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **A frame is drawn once, and a move is a state rather than a loop.** Four
+  things were wrong with the interface's motion and only one of them was the
+  easing curve. They were found by counting, not by looking: the renderer now
+  reports what each frame costs, in units of full 800x480 screens, and the
+  camera's own budget makes that number a time - the canvas is in PSRAM at
+  160 MB/s, the DPI panel eats 46 MB/s of that continuously whatever else is
+  happening, and 114 MB/s is 1.9 MB per frame at 60 Hz.
+
+  **A blocking move cannot survive the Twin.** Every animation was a `for(;;)`
+  that read the clock, drew, and presented until its time was up. The Twin
+  runs this same code as WebAssembly and a pass is ONE call: whatever it
+  presents lands in a ring of 40 frames and is played back afterwards. The
+  boot sequence presented about 119. Seventy-nine of them went into the same
+  slot, so the splash played its first third and snapped to its end - the
+  frames were computed and thrown away, and no easing curve was ever going to
+  fix that. Moves are state now, and `anim_tick()` advances one frame per UI
+  pass: measured on the shipping wasm, a menu open is 35 passes of exactly one
+  frame each, and the splash never puts more than two in a pass. The camera
+  gets the same fix for a different reason - a 2.1 s splash no longer owns the
+  UI task while a shutter press waits behind it.
+
+  **A frame that only moves should not be drawn again.** `gfx_layer_keep()` /
+  `gfx_layer_blit()` keep a second retained surface, and the menu's open move
+  carries its six cards as two blits instead of redrawing them. That took the
+  move from 1.38 screens a frame to 1.09, and - the part that matters - its
+  spread from 2.1x to 1.5x. Even frames are what the eye reads as smooth, more
+  than fast ones, and the old move was slowest at its start, which is exactly
+  where the eye is following it.
+
+  **And it ended with a hitch.** Every transition finished by calling
+  `draw_screen()` on the destination - up to 3.12 screens on GALLERY against
+  about 1.0 for a composited frame - to produce a picture the card was already
+  showing. Opening, the last frame is composited now; going back it is still a
+  real draw, because going back the stash holds the screen being left.
+
+- **The boot screen is the reference's field, traced frame by frame, and it
+  is the only thing on the screen.** The first attempt copied the wrong clip -
+  the round device's concentric bloom, which the reference does do and is not
+  what its startup is. The startup is a **square lattice of small glyphs**
+  that grows out of a seed of about four cells, fills the panel, holds, and
+  draws back in. Four things make it read the way it does and only the last is
+  a colour choice. Cells sit on a regular pitch in rows and columns, so the
+  diagonals you see are the lattice and not something drawn diagonally. Each
+  cell holds a mark from an alphabet rather than a dot, which is what stops
+  900 cells reading as noise. Weight falls with distance - hashes, discs and
+  solid squares in the middle, single dots and short runs at the rim - and
+  that gradient is why it looks like something radiating instead of a texture
+  somebody tiled. And **every cell changes what it is while you watch**: a
+  cell holds a mark for about 190 ms and then is a different one. Not off a
+  global counter, which makes the whole panel blink at once and reads as a
+  glitch, but off a clock offset per cell, so the changes scatter. Whether a
+  cell is lit at all is fixed by position and never re-rolled - a field whose
+  cells appear and vanish twinkles, and the reference's does not.
+
+  **Nine glyphs, and they are the reference's nine.** The first read of the
+  alphabet had a plus and a pair of HORIZONTAL bars where the reference draws
+  vertical ones - a mark turned ninety degrees is a different mark - and folded
+  the asterisk into the hash, which are the two commonest things on that screen
+  and are not the same shape: the hash has a dark centre and dark corners, the
+  asterisk is solid through the middle with its four diagonal points detached.
+  Most of the rim turns out to be pairs of short uprights. So: hash, asterisk,
+  a square ring broken at one corner with a dot inside, a stepped circle, a
+  solid square, two uprights, one upright, a short run of dots and a dot -
+  every one of them a 5x5 bitmap at three pixels to the bit.
+
+  **Nothing in the field is a drawn shape.** The circle and the square were
+  going through `disc()` and `round_rect()`, which put the one antialiased
+  curve in the whole picture - a smooth circle among nine pixel forms, which
+  is as wrong as a smooth letter in a bitmap font. Blown up twenty times the
+  reference's own circles step: a flat top a few pixels wide, out one, out
+  again. It is drawing a pixel circle, so this draws a pixel circle, and the
+  two forms differ only by whether the corner bits are set - which at three
+  pixels to the bit is the whole difference between a round thing and a square
+  one. The arrival is carried entirely in the ink now, which is where a bitmap
+  can carry it.
+
+  **And it is drawing this camera, not somebody else's lamp.** The reference
+  is a light remote, and both quantities in its display are facts about a
+  lamp: the field's size is how bright the light is, and its colour is the
+  colour the light is being set to under your finger. That is why it holds
+  attention - it is not decoration, it is the instrument's read-out. Copying
+  the picture without the meaning would have given us a screensaver.
+
+  A D4 is the opposite instrument: it does not emit light, it gathers it,
+  through four lenses. So the two quantities carry the two things that are
+  actually true about this machine while it wakes up.
+
+  **How far the field reaches is how many of the four cameras have answered.**
+  One quadrant each - cam 1 top left, running across then down, which is how
+  the four sit on the viewfinder, in the gallery's mark and on the body -
+  eased rather than switched, so a node answering part-way through the boot
+  opens its quarter out instead of making it appear. A camera that has not
+  answered holds its quarter at 42% rather than blacking it out, so the shape
+  stays a field instead of a pie chart with a slice missing, and the
+  quadrants blend across their axes because a hard quarter boundary draws a
+  cross through the middle and the reference's field has no cross in it. What
+  this buys: **a body with a dead node says so on the first screen it shows**,
+  without a word of type, in the product's own mark, which is four.
+
+  **What colour it is, is the look it will shoot with.** The lamp's colour is
+  the light; a camera's colour is its look, which is the recipe every
+  photograph gets graded through - the same role in the same grammar. The
+  field comes up cold and travels to the look's own colours as the cameras
+  answer: the camera finding what it is shooting with. The look is hashed to
+  one of four palettes rather than tabulated, because looks are the operator's
+  and are made in Studio, so there is no list here to colour by hand; what
+  matters is that it is stable, so a given look brings the same colour up
+  every time and the way your camera starts becomes something you know about
+  it. The palettes are the camera's own - the reference's hues where they fit
+  the product and dropped where they did not, because a camera that boots
+  violet is a camera pretending to be somebody else's object.
+
+  **The two snaps were the re-roll clock, not the motion.** The field's
+  geometry was provably continuous across its phases - the reach curve, and
+  the lit-pixel count measured off the rendered frames, show no step at either
+  boundary - and it still visibly hitched twice. Each cell picks its mark from
+  a generation counter derived from elapsed milliseconds, staggered by a
+  per-cell offset so the changes scatter; but that number was measured from
+  the start of the current PHASE, and starting a phase resets it. So at each
+  of the two internal boundaries the counter went back to zero and every cell
+  in the field re-rolled on the same frame. Three phases, two boundaries, two
+  whole-field flashes, in exactly the two places the motion was smoothest. It
+  runs off the start of the whole sequence now. Counting the interior pixels
+  that change per frame is what found it and is what shows it gone: flat at
+  about 1,500 through the hold, where it had been spiking threefold.
+
+  **And the motion itself is one motion.** The growth had been two eased
+  beats glued end to end - a seed easing out to a stop at 132 px and a bloom
+  easing back in from rest - and smootherstep has zero velocity at both ends,
+  so the field visibly stalled a third of the way out and set off again. It is
+  one curve now, 0 to 590 px. The retreat used `1 - smootherstep`, which
+  flattens as it finishes: the last of the field crept away over a third of a
+  second and then the panel sat empty waiting for the phase to end. Something
+  leaving should gather speed, so it is `1 - t^2` and hits nothing exactly as
+  the menu arrives. The field also starts at a 52 px seed rather than zero,
+  because smootherstep has moved six per cent a fifth of the way through and
+  the first four hundred milliseconds were a black screen; the reference's
+  first frame already has cells in it. The frontier is soft and ragged rather
+  than a hard expanding circle - each cell arrives at its own radius and comes
+  up out of the ground over 66 px of travel - and the jitter grows with
+  distance, because a thing spreading out is tight at its origin and ragged at
+  its edge. The whole sequence is 3.76 s, and it is centred on the panel: it
+  had been sitting 32 px high, holding a gap for a wordmark that is no longer
+  on this screen.
+
+  **Nothing else is on the boot screen.** It had carried the studio's disc at
+  its centre and the camera's wordmark under it with a four-cell mark under
+  that; the reference's startup carries none of it, and it is one thing
+  happening, which is why it holds attention for two seconds. Both marks keep
+  the place that is theirs: the studio signs the ABOUT screen, and the
+  wordmark is what the camera shows when it is **going away**. Shutting down
+  and restarting now put `kino D4` in the middle of the screen and then let go
+  of it, fading through the ground rather than cutting to black - the backlight
+  is still on for a moment after that returns, and a hard cut leaves an empty
+  lit rectangle. The old shutdown took the four cells out one at a time, which
+  is a sentence about the four cameras: the right thing to say while a capture
+  is happening and the wrong thing to say while the camera is switching off.
+
+- **The renderer fails a run that sets type outside the safe area, and it
+  found four screens doing it.** `text()` reports any string drawn outside the
+  page margin, deduped and named by the screen it happened on. Clipping is the
+  obvious fault, but the one the interface actually had is a sentence ending
+  2 px from the bezel: it does not look broken, it looks cheap, and it is much
+  harder to catch by eye. The viewfinder's status bar is exempt by saying so
+  at the bar, not by a magic range in the checker. What it caught: the About
+  screen's camera note running off the right of the panel and over the bezel
+  (the break was chosen by hand for the old bitmap face and never revisited
+  when the type changed - notes wrap on a measurement now, `text_block()`);
+  the ROLL screen's "Wi-Fi is up. They go when KINO answers." doing the same,
+  386 px in a 344 px column, on the one screen a guest reads at a party; the
+  Storage screen's two readings sitting 1 px past the bottom of the panel with
+  their descenders in the bezel, because 406 px of content was being asked to
+  fit a 401 px body; and the ABOUT name box overrunning by a pixel while the
+  maker's plate opposite it was already on the margin - the two columns of a
+  two-column screen were ending on rules 9 px apart. ABOUT lays its left
+  column from the margin back up now, and ROLL anchors the block whose height
+  depends on the camera's situation to the margin so its slack comes out of
+  the middle of the column, where nobody can see it move.
+
+- **The photograph screen's column had two grammars.** Bare type on bare
+  ground at the top, three rounded controls at the foot, 114 px of nothing
+  between them. The facts go in a well on the same rail as the buttons, and
+  CAMERAS sits above the mark it names rather than under it - every other
+  label on this interface is over the thing it labels. `PH_LINE` was also
+  still 18, the old bitmap face's line height, so the one assert standing
+  between the caption and the buttons had been measuring a column a third
+  shorter than the one being drawn.
+
+- **The guest half is gone from the records too.** `D4_INTERACTION.md` argued
+  for a guest/owner split behind a physical switch and was still telling
+  readers the shell is a Windows-era placeholder, the register is undecided,
+  and to build a specimen next - none of which is true. It records what
+  replaced it, and why the argument lost, and keeps the production-state list,
+  which was the most useful page in it and is not about guests. `ECN-0006`
+  asked hardware for a pin to switch a UI that no longer exists and is
+  withdrawn, with its reasoning kept: a lock that is a config key is not a
+  lock, and that should not have to be worked out twice. `hardware/WIRING.md`
+  says `SLIDE_MODE` is unassigned again. The renderer's `KINO_GUEST_PREVIEW`
+  flag was dead and is removed.
+
+- **The studio is named.** Odd Jobs makes this camera, and the firmware
+  carries its mark - baked from the studio's own artwork by `tools/mklogo.swift`
+  into a 160x160 coverage map that `ui.c` samples, at the centre of the boot
+  bloom and at the foot of ABOUT. It is a trade mark and not source:
+  `firmware/**` is MIT and that grant does not reach it, so REUSE.toml, LICENSE
+  and THIRD_PARTY_NOTICES all say whose it is, and `license:check` fails if any
+  of the three stops saying so.
+
+- **The camera stops being a Windows 98 desktop.** The interface was the 1998 shell - four-tone bevels, a navy title bar, six icon tiles, 1-bit Tahoma baked through a headless browser, and a composite-video filter that band-limited the chroma of anything with colour in it so the artwork would resolve the way it did on a CRT. All of it is gone, and what replaced it is one register with a short vocabulary: a near-black ground, one warm card, one warm accent, one mint, a single 10 px corner on every surface, and no edges at all. `W_FACE`, `W_WINDOW`, `W_SEL` and the rest keep their names because the *structure* those tokens describe - a face, a window, a selection - was never the problem; only what they are worth changed.
+
+  **Nothing is baked any more.** `icons_w98.h` (Microsoft's shell artwork, and the licence question that blocked every firmware release - #134), `ui_labels.h` (eleven screen titles stamped to bitmaps by a tool needing Playwright and a Windows path that only existed on one machine), `icons.c`, `tools/mktext.mjs`, `scripts/bake-w98-icons.mjs` and the Twin's second private wasm variant all go together. A screen title is one word in the interface's own voice; there was never a reason for it to be a different kind of object, and the reason it was is that the type could not draw it well enough.
+
+  **The type is Inter and Oxanium, at coverage rather than one bit.** Inter carries everything a person reads as language - the rows, the values, the sentences - and Oxanium, a chamfered techno face, carries everything the camera says as a machine: the screen titles, the technical caps, the word on the card. Both OFL, rasterised to 8-bit coverage by `tools/mkfont.swift` (CoreText, greyscale, never subpixel), so every glyph blends into whatever is behind it. The old header was thresholded to one bit and every diagonal on the panel was a staircase; at 19 px the difference between a stem 1.4 px wide and one rounded to 1 or 2 is most of what makes a face legible. Rounded rectangles, discs and the chevron are sampled the same way, so nothing on the interface has a hard edge on a curve.
+
+  **And it moves.** `gfx.c` gained three motions that ride the PPA the dissolve already used. `gfx_open()` is a row becoming a screen: the list parts (each row accelerating out of frame, the nearest first), the row lifts and grows in both directions, keeping its own face, its own word and its own corners the whole way, and the destination pours into it from the top edge once the card has been itself long enough to be recognised. `gfx_slide()` pushes one screen off another with the outgoing frame travelling three-eighths as far as the arriving one, because two sheets locked together read as one sheet. `gfx_cascade()` lands a list one row at a time. All three ease on smootherstep - no speed and no acceleration at either end - and run 340-700 ms, which is long enough to read; the first cut ran at 160-220 ms and was over before the eye found what had moved.
+
+  Two bugs in the Twin's own playback were fixed on the way, and they were most of what "choppy" meant. Its frame queue timed a pass's frames from the moment the pass *started*, so every frame computed while the CPU was busy arrived late and was dropped - the first half of every transition was computed and thrown away. And it allocated a 1.5 MB `ImageData` per frame, putting 20 MB through the collector during the animation it was allocating for; there is a pool now.
+
+  **The move is drawn, not composited.** The first cut of `gfx_open()` slid two
+  finished frames around each other, which is all a compositor can do, and it
+  is why the word on the card stopped following it: a rectangle of pixels cut
+  out of a 50 px row cannot become a 40 px title, because by the time it is a
+  picture the letters are the size they are. So the renderer keeps the one
+  thing it is good at - holding a frame (`gfx_stash`/`gfx_stash_blit`) - and
+  `open_anim()` in `ui.c` draws every frame of the move with the real fonts.
+  The word travels from where it sat in the row to where the screen's title
+  will be, changing face on the way, and arrives a moment before the title is
+  drawn there, so the eye follows one continuous object from the row it touched
+  to the screen it is looking at. The card's target is carried as an offset
+  INSIDE the card rather than as a screen position, which is the bug that had
+  the word reach the top of the panel long before the card did and land on the
+  menu row above it.
+
+  **And the register reaches the whole product, not the half of it that was
+  easy.** `draw_row_at()` is now one row grammar - a position, a name, and what
+  the name is set to - and every list on the camera is made of it: SETTINGS,
+  DISPLAY, SOUND, CONNECTION, STORAGE, ABOUT and POWER, at each one's own pitch,
+  with a one-line fallback for the narrow second column ABOUT keeps. The
+  confirmation dialogs and the toast were the last two objects still built out
+  of the 1998 grammar - a raised window with a caption bar, and a square
+  INFOBK plate - which is the worst place for an inconsistency, because
+  "delete this photograph" is the moment a person most needs to know what they
+  are looking at. Both are cards now. The last five bevel primitives have no
+  callers and are gone; there is no `bevel4` left in the file.
+
+  Three collisions the typeface change caused and the first pass shipped
+  unlooked-at are fixed, each at its cause rather than by nudging a number:
+  the camera column on ABOUT measured its two columns against the face it used
+  to be set in and now truncates against the space it actually has; the sound
+  picker was drawn through its own row's title and is now the row's value with
+  the buttons at the end; and the photograph's readout ran off the left edge of
+  the panel, so `chrome_state()` takes a left bound and drops a reading rather
+  than drawing past it - the condition chip is laid last and survives longest,
+  because it is the only part of that strip a person has to act on.
+
+  **The open, third time, and the sentence it finally makes: the row IS the
+  screen's header.** The destination is revealed inside the growing card,
+  cropped to it and hung from its top edge, so the first frame fills the row's
+  own rectangle with the top 50 px of the screen it opens - which is that
+  screen's header, with its title already in it. Nothing has to travel and
+  nothing has to be re-typeset, because the title was always in the right
+  place: the card's top edge is where a header lives. The row's colour washes
+  off over the first third, so the card visibly starts as the thing that was
+  touched and becomes the thing that was opened. The version before this flew
+  the word to where the title would be and left a large empty rectangle of the
+  pressed row's orange behind it for ten frames, which is the loudest thing an
+  interface can put on a panel. The per-row stagger went too: a near row
+  starting before a far one overtook it, so the card clipped the menu's own
+  card and the gaps went uneven; the list parts as two rigid blocks on the
+  card's curve now, because this is one gesture.
+
+  Going back was drawing the wrong frame entirely - the stash was taken after
+  the redraw, so the card shrinking into the GALLERY row contained the top of
+  the menu. The caller stashes whichever end of the move the card holds.
+
+  **And the animation is a sequence of stills you can hold up against each
+  other.** `prev_vclock_us` lets the host renderer own the clock and step it
+  once per presented frame, so `anim_open_00..27.ppm` and `anim_back_*` come
+  out of `npm run preview` like every other screen. The open could only be
+  judged by watching it in a browser before, which meant it could only be
+  judged carelessly.
+
+  **One page margin.** Measured on LOOK, a single screen had four left edges
+  and four right ones - 7, 16, 19, 24 and 775, 780, 783, 792. Nothing lined up
+  with anything, and that wobble down both sides of every detail screen is the
+  loudest thing on an interface that says nobody drew it. `PAGE_M` is 16 and
+  the header plate, the back button, the list cards, the group fields, the
+  segment tracks, the LOOK detail strip, the gallery grid, the viewfinder's
+  status panels and the photograph's column and well all sit on it. The
+  gallery's gutters gave way instead of its tiles (6 across, 8 down) because
+  the tile size is the decoder's; a static assert now fails if that grid stops
+  ending on the margin.
+
+  **The menu had no floor.** The row ramp ran to 0B1A15 against an 0B0D0C
+  ground - a summed channel distance of 20, where the top row has 129 - so the
+  bottom two rows had no container and the list appeared to fade out through
+  the foot of the panel. The ramp is shallower and stops well clear of the
+  page (68 at the darkest). With it: one left rule and one right rule for the
+  card and the rows, `text_ink()` so a 74 px headline and a 17 px caps line
+  share a left edge rather than differing by their side bearings, a chevron on
+  every row because every row opens a screen and that is what a chevron means
+  everywhere else in the product, the gallery count in the face every other
+  reading uses, and the severity dot on the card's state line so a fault and
+  an instruction are not in the same voice.
+
+  Four more, each measured rather than noticed: the viewfinder's status
+  readings were the last Inter on a strip of technical caps; the gallery's
+  `quad` badge was set in the near-black an accent plate is written in, on a
+  near-black strip, so the one word that tells two kinds of photograph apart
+  was the least legible thing on the screen; the photograph's capture id did
+  not fit its column at any size worth reading, and cutting it produced
+  "CAP_0000..." - the prefix every capture shares - so the number takes the
+  billing and the prefix drops to the line below; and `menu_word_at`,
+  `bevel4`, `bevel_raised`, `bevel_sunken`, `bevel_sunken_dark` and
+  `bevel_etched` have no callers left.
+
+  **The last four Windows 98 constructions, found by looking rather than by
+  grepping for the word.** The caption plate on every screen was a `fill()` -
+  a square-cornered rectangle, the one surface in the product without the
+  product's corner - and the gallery then painted a second square rectangle of
+  the page colour back over its right end to make room for the page buttons,
+  which left that plate with a rounded left edge and a hard-cut right one.
+  Patching a shape to the size you wanted is a habit from an interface made of
+  rectangles; `head_plate_right()` draws it at the width it needs instead. The
+  keyboard focus mark was a rectangle on alternating pixels - Win98's dotted
+  focus - which around a rounded card is two shapes disagreeing about what the
+  control is; it is a two-pixel rounded ring now. And the capture banner was a
+  full-bleed strip with a square corner, a hairline across the top and a
+  five-pixel tab down its left edge, sitting on the one screen whose other
+  chrome had just moved onto the page margin; it is a card on that margin, the
+  accent kept as a bar at its left end because a colour with no shape to hold
+  it is a stripe.
+
+  Two comment blocks went with them: the chrome section still opened with a
+  paragraph explaining the two-pixel 3D edge and why it reads as a physical
+  control, and the flash glyph still said every other icon came from the
+  Windows 98 archive. Both were true and neither is; a comment describing a
+  grammar the file no longer speaks is worse than no comment at all.
+
+  **The header bar had no rhythm, and the readout is now one layout with a
+  stated priority.** Measured on the gallery: six readings separated by gaps of
+  14, 34, 39 and 22 px, where the gap between two WORDS of one reading is 10.
+  A 14 px separator is four pixels wider than a word space, so "GALLERY" and
+  "2 OF 3" read as a single phrase and the whole bar collapsed into a run of
+  type nobody could parse. Two gaps now - `BAR_READ_GAP` between readings and
+  `BAR_GROUP_GAP` between the title and the group - and `chrome_state()` lays
+  every reading on the bar rather than two functions each spacing by eye.
+  It also measures everything first and keeps by importance rather than
+  position: the first version dropped whatever it reached when it ran out of
+  room, which cost the gallery its photograph count - the one reading that
+  screen exists to show - by two pixels. The page position moved to the bar's
+  right end, beside the buttons that change it.
+
+  **And three contradictions that rounding the corners had papered over.**
+  Making everything the same shape is not a design system; a system is roles
+  with consistent treatment, and the product was breaking its own:
+
+  - **Three radii calling themselves one.** 10 everywhere, 14 on the menu, 14
+    again on the dialog, under a comment that said "the product's one radius".
+    One now, with a stated rule: anything inset by n uses UI_R - n so the
+    curves stay concentric, which is geometry rather than a second radius.
+  - **`button()` and `well()` were byte-identical** - same fill, same corner -
+    so a control and a readout were the same object until you touched one. A
+    button carries a keyline one step off its ground; a well stays flat.
+  - **The confirm dialog was a rounded outsider.** Two chips side by side in a
+    card, which is what a dialog looks like everywhere else and is exactly the
+    problem: nothing else on this camera asks you to choose between two things
+    laid out that way. Its answers are `draw_row_at()` rows now - the same
+    function the settings list is made of - which also replaces a pair of
+    148 px targets with full-width ones.
+
+  Building it out of rows exposed a fourth, and it was the serious one:
+  **focus and selection rendered identically** (`focused || pressed` filled a
+  row with the accent), so the delete confirmation opened with CANCEL painted
+  as the brightest object on the panel. A press changes the face; focus only
+  adds the ring.
+
+  **And the screens compose.** Measured across all 64 renders: POWER was 54%
+  bare ground, the roll's empty state 71%, and DISPLAY, SOUND and CONNECTION
+  between 45 and 46% - three rows hanging from the top of a panel with two
+  hundred pixels of black under them. A screen that stops halfway down reads
+  as unfinished whatever is on it, because the eye takes the void as something
+  that failed to load. `body_top()` centres a body that does not fill the page
+  and leaves one that does at the top, and each list screen states the height
+  of its own content - rows, the block under them, and the line under that -
+  rather than being centred by eye.
+
+  It is one variable set by the draw and read by the hit test, the way
+  `s_head_state_left` already works, because a layout the touch map derives
+  separately is the bug this file keeps finding. `draw_screen()` resets it
+  before every screen: ABOUT, DISPLAY and ROLL read the value and never set
+  it, so without the reset they would have drawn at the previous screen's
+  offset and the hit test with them.
+
+  **The conditions got a screen, because they were information nobody could
+  reach.** They lived in a panel at the foot of SETTINGS that had room for two
+  of them however many there were, so a body with four things wrong showed two
+  and the words "and 2 more" - and there was nowhere in the product to read
+  the rest. `D4_INTERACTION.md` called that out before it was built: the
+  conditions are a list, and a list belongs on a screen. SETTINGS grows a
+  sixth row when there is something to say, carrying the worst one by name
+  ("Cameras are not answering, and 2 more") rather than a count somebody has
+  to open the screen to understand, and SCR_STATUS lists them all with their
+  severity and what to do about each.
+
+  **The focus ring is compiled out until something can move it.** Nothing on
+  this body can: the shutter fires, touch acts on what it lands on, and BTN_FN
+  has no pin until the expander ECN-0003 deferred arrives. A ring marking a
+  position no input can move is not a focus indicator, it is a decoration that
+  looks like a selection - and it was appearing on the last row anyone
+  touched. The ring, the focus array and all eighteen call sites stay; one
+  `#if` turns it back on the day that pin exists.
+
+  **The menu has its six marks, drawn rather than sourced.** The reference
+  carries a pictogram beside each row; this menu had none, because the icons
+  it used to have were tile artwork drawn for a 250 x 205 tile and at a 50 px
+  row they were twice the height of it. They are built here out of the same
+  primitives every other shape uses - a filled rectangle, a disc, a stroke -
+  so there is no file, no licence and nothing to bake, and they antialias with
+  everything else. One construction rule is what makes six drawings read as a
+  set: LOOK is the four frames with one picked, GALLERY the four as a grid,
+  ROLL two rings, SETTINGS three tracks with their knobs apart, POWER the
+  power mark.
+
+  **And the roll's empty state composes.** It was 71% bare ground - the most
+  of any screen - with its heading, its two lines and the card fact spaced by
+  three separate calculations, leaving 90 px of nothing above the heading and
+  95 more below the lines. One measured block, centred like every other body.
+
+  What is NOT here, and why: **undo on delete.** `storage_capture_delete()`
+  unlinks the files, so a grace period is a trash in storage.c rather than a
+  UI timer - and a UI that delays the call would show a photograph as deleted
+  while it is still on the card, with no persistence across a power cut. The
+  confirmation says it cannot be undone because it cannot.
+
+  **The unity audit, and the one it found that mattered.** Extracting every
+  typeface and colour token used by every draw function turned up five
+  all-caps labels set in the reading face, four different sizes for the one
+  role "this screen has nothing on it", and four colours outside the palette.
+  The last of those was the serious one: **the four-mark was blue.** It is the
+  product's signature - on the gallery tiles, the viewfinder's status bar, the
+  photograph's column, the capture banner and the boot screen - and it was
+  drawn in `2F70C9` with a yellow cell for the frame just taken, in a camera
+  whose palette is a near-black ground, one terracotta and one mint. Blue
+  appeared nowhere else, which made the one shape that says "this is a KINO"
+  the one shape that did not look like it. Mint for a frame in hand, the
+  accent for the one that just arrived, red when a lens lost it.
+
+  With it: the favourite star was yellow and is the accent, because a
+  favourite is not a warning; the capture banner's accent was blue and the
+  "saved" state green, and both are mint; `C_WELL` was a second name for
+  `W_WINDOW` and `W_LIGHT` a bevel token doing duty as a tile fill, and both
+  are gone with `C_BLUE` and `C_GREEN`. The sound picker's pressed state was
+  `MZ_CARD` where every other pressed state in the product is `W_SEL`.
+
+  And the type roles hold now: caps belong to the display face (SCAN TO JOIN,
+  CODE, NO IMAGE, RESTARTING were set in Inter), sentences to the reading
+  face, and an empty screen states itself at one size everywhere rather than
+  at 40, 26, 25 and 19 px on four different screens.
+
+  Still a documented divergence, not an oversight: the guest half
+  (`guest.h`) keeps the palette `D4_GUEST.md` specifies - `FFD22A` on near
+  black - which was written before this register existed. It is unreachable
+  until `SLIDE_MODE` gets a pin, and changing a written spec silently is worse
+  than carrying the difference.
+
+  P4 image 0x12a5f0, 61% of the app partition free, no warnings. `license:check`
+  and `twin:ui:check` green; all 65 host renders and both 28-frame transitions
+  inspected.
+
+- **The reference device answers like firmware 0.4.55 on D4-V1 hardware.** An audit of `packages/test-fixtures/src/MockKinoDevice.ts` against `firmware/p4/main/kdp_server.c` found the mock still describing the demo body in a dozen places; each is now the firmware's answer on every profile that pins a real build, with `d4-sim-full` the only place a simulated future remains (and only where labelled). `GET_POWER_STATUS` sends `batteryV: null`, `batteryPct: null`, `batteryMeasured: false`, `charging: false`, `state` from USB presence, plus `displayStage`, `idleSeconds`, `displayOn`, `cameraBankPowered` — the pack figures go on the wire only when the effective `powerTelemetry` capability is true, which no profile (the firmware hardcodes it false) but a Twin override can make it; the internal pack model stays for the Twin's own POWER tab. `SELF_TEST` runs the firmware's six checks by name and order (`P4 heap`, `PSRAM`, `SD card`, `SD write`, `CAM1 link`, `CAM1 sensor`) with its detail strings, and no gauge/flash/speaker rows. The base capability object states `flashHardware: false` (no emitter since ECN-0003), `powerTelemetry: false`, `configStore`, `mediaIndex`, `powerManagement`, `radioFitted`, `radioRouted`; the top-level `firmwareMismatch` field, which nothing consumed and no firmware sends, is gone. `SYNC_BENCH` on a real profile is one blocking `SyncBenchResponse` of per-camera edge counts (`pulses` 1–200, `gapMs` 20–1000, `poll`; `INVALID_ARGUMENT` / `BUSY`; an unwired camera is `watched: false`, not a refusal) and leaves the network/roll gate; the async-job form survives on `d4-sim-full` only. `CAMERA_TEST` answers `CAMERA_OFFLINE` / `SENSOR_NOT_DETECTED`; `DELETE_RECIPE` of an unknown id is `NOT_FOUND`; `SOUND_END` checks the WAV header (16 kHz mono 16-bit PCM, `BAD_FORMAT` with `wav_probe`'s reason); `GET_RUNTIME_STATS` adds `ui{}` and `protocol.droppedTxFrames` and nulls the die temperature of a node that is not answering; `GET_CAMERA_INFO` / `CAMERA_STATUS` carry `viewfinder{frames,fpsX10,drops}` and `CAMERA_LINK_STATS` `viewfinderFpsX10`; `NETWORK_LIST {scan:true}` and `NETWORK_STATUS {probe:true}` answer the D3 blocks; `ROLL_STATUS` carries `serverState`, `ROLL_CREATE` answers the full `RollView` beside the flat five fields Studio reads; `UPLOAD_QUEUE_STATUS` returns all nine fields; `STORAGE_BENCH` clamps instead of refusing, accepts `sizeKB`, takes the capture lock and returns `ok`/`failedPhase`/`passes`/`totalMs`/`cleanupOk`/`sustained{}`/`small{}`; `GET_HW_VALIDATION` mirrors all 56 rows of `hwv_item_t` (wire ids without the enum's `HWV_` prefix, `FLASH_EN_GPIO28` permanently unvalidated); `SET_CONFIG` validates `network.apiBase` per README D3; `MEDIA_INFO` omits digests and `meta` by default (`mediaInfoAsShipped` now starts ON; switching it off opts a suite into digests). A latent `hex8()` sign bug that could emit a negative "CRC" is fixed on the way.
+- `packages/test-fixtures/src/firmwareProfiles.ts`: `d4-settings-0-4-9` (0.4.9..0.4.56) uses a new `SETTINGS_0_4_9_COMMANDS` whitelist — 0.4.8's surface plus `SYNC_BENCH` (0x46, dispatched since 0.4.31) and `STORAGE_BENCH` (0x4c, whose handler has been in the tree since firmware/VERSION 0.3.0) — so the profile stops refusing two commands today's dispatcher answers. `PROFILE_FOR_VERSION` gains `0.4.56`. Real profiles no longer state a `syncBench: false` flag the firmware never emits.
+- `@kino/kdp` types: `PowerStatus` gains optional `idleSeconds`/`displayOn`/`cameraBankPowered`; `StorageBenchResult` gains the firmware's additive fields and a `StorageBenchPass` type; `KinoConfig` gains `network?: { apiBase?: string }`.
+- `@kino/schemas` `kino.device-config` mirrors the wire envelope — `config.mode` plus passthrough `wiggle`/`quad`/`shoot`/`body` and optional `roll`/`network` — instead of a top-level `resolution` and string `flash` that matched nothing a camera sends.
+- `firmware-contract/commands.md`: `SET_RECIPE` row carries `cam` and `{ok,id,cam}`; `DELETE_RECIPE`, `SOUND_END`, `NETWORK_LIST`, `NETWORK_STATUS`, `ROLL_CREATE` rows and the `RuntimeStats` example match the firmware; the `CAMERA_TEST` "known drift" note and the `GET_CAPABILITIES` `firmwareMismatch`/`syncBench` notes are updated. README D15's "five targets" clause is retired (the reference device reports six). `docs/studio-spec-audit.md` D-2 records that 02 §30 time sync is met through `HELLO` `hostEpochMs`/`hostUtcOffsetMin` + `clockSource` (D14), no `SET_TIME` needed.
+- **The Twin's cameras sit on the body's lens cells, and the external light is on its stud.** The XIAO envelope was drawn landscape with its lens at the board centre; in the field body the board stands portrait (17.8 across, 21 tall) with the camera 6.95 mm below its centre, so every barrel missed its cell by 7 mm and the virtual sensors photographed from the board centre. The proxy now draws the lens at the instance's optical offset, `sensorPoses()` puts each eye at the lens, and the profile's envelope is the portrait one. The 1/4-20 light stud (measured: 25 mm, 18 mm base) is placed from the CAD datums and carries an external constant light whose envelope is PROVISIONAL until the unit is measured; it is now the flash emitter the virtual sensors see, with a TOP LIGHT mode in STAGE - OFF, FLASH (fires for a capture the device asks a flash for), CONSTANT (on for every preview and capture, the video light that is fitted).
+- `kino.hardware-profile` instances gain an optional `opticalCenterConfidence` (a source kind: OFFICIAL_CAD, MEASURED, ...). Schema version unchanged: absent means what it meant before, PROVISIONAL. Studio's bench worksheet keys "measure the optical centres" on it instead of on the offsets being zero, because the CAD-derived offsets are non-zero and still not a measurement.
+- **KINO Twin is the field body.** The 3D twin used to be a provisional 126 x 80 x 36 acrylic-and-skeleton box with the boards guessed inside it; the released camera body (ECN-0004) is 131 x 90 x 65.5 with two chassis halves, a face shell, a sliding lens cover and a rear door. The CAD generator now writes those six shells assembled (`hardware/cad/KINO_FIELD_BODY/twin/`) and a datum manifest, the Twin loads the shells as Tier A meshes straight from the release folder, and `npm run twin:body:bake` places the P4 module, the four camera stations, the hub board and the shutter switch from the datums into `d4-v1.json` - the profile is derived from the CAD, not typed. Two consequences worth reading twice: camera 1 is now at +X (the CAD puts the shutter at high body-X, the photographer's right, so camera 1 is on the photographer's left), and the battery, fuse, BMS, SW6106, speaker and bulk capacitor are no longer placed - the field body is a USB-C powered fixture with no bay for them; they stay in the BOM and the power model. The LENS view reads camera 2's lens from the profile instead of a constant.
+- **KINO Twin's screen is the camera's own firmware.** The rear display used to be a TypeScript sketch of the 0.4.0 viewfinder; the camera had since grown a launcher, SHOOT, LOOK, GALLERY, PHOTO, ROLL, SETTINGS and POWER, and a Twin next to a camera showed a different product. `firmware/p4/twin_ui` now compiles the P4's `ui.c` to WebAssembly the way `host_preview` compiles it natively - the file is #included, nothing in it knows - and the Twin steps its real loop, feeds it the simulated device's state, hands it the touch point and plays back every frame it presents at the virtual time it was presented. Tap the glass in the 3D view or the SCREEN panel; a setting written on the body reaches the mock's config store, the shutter tile runs the capture pipeline, DELETE deletes, FAVOURITE stars, RESTART reboots. The committed `kino-ui.wasm` carries placeholder menu glyphs, because the menu's Windows 98 artwork is Microsoft's (#134, `THIRD_PARTY_NOTICES.md`); `npm run twin:ui:bake -- --w98` builds the private variant with the real artwork into `apps/twin/public/` (gitignored), which the Twin prefers when present. One firmware refactor made this possible and is behaviour-preserving: `ui_task()`'s loop body is `ui_pass()`, returning the sleep it used to take, and the task is `for (;;) vTaskDelay(ui_pass())`. All 59 `host_preview` renders are byte-identical before and after.
+- **The Twin's current-firmware profiles report the current firmware.** `d4-settings-0-4-9` covers every release from 0.4.9 to today's `firmware/VERSION` and was pinned to report `0.4.9`; it and the SIMULATED FUTURE profile now report `0.4.56`, which is what a body flashed with today's build answers. Bump alongside `firmware/VERSION`.
 - **The nine-track audit, and what it fixed.** A read-only sweep of the whole platform - API, worker, both web apps, the P4 and camera-node firmware, the KDP core, the contracts and the CI gates - found 84 items; this is the determinate half of them. The one that had been losing data since the first photograph: the camera wrote its active look into `kino.capture` as `recipeIds` while the schema and the API read `look`, and because that document is a passthrough schema it parsed clean every time, so `captures.look` was NULL for every capture ever taken and the guest app printed "KINO standard" over a photograph shot with `party-neg`. `firmware-contract/README.md` (D1) predicted it in those words - "a data-loss bug that validation cannot catch for you" - and the rule was crossed anyway; the document now carries both, because `recipeIds` is what the body's own MEDIA_LIST reads. Two more that could lose a photograph: a capture could be marked `ready` while an asset was still pending, because the recompute read assets and jobs on two connections and wrote unguarded, and `ready` is settled so convergence never revisited it - both reads and the write are one transaction now and the write carries the status it decided on in its WHERE clause; and a job's `queued` row was never retired on success, so the partial unique index that makes a second capture-complete a no-op also blocked every re-render, which meant a frame arriving after `complete` was baked out of the photograph permanently and both documented recovery paths were silent no-ops. Two security fixes: the host-log buffer clamped its copy length against the destination and never against the 192-byte source, so any ESP-Hosted line over 191 characters copied up to 5.9 kB of adjacent stack into a buffer `GET_LOGS` serves; and the production TLS switch the source told you to set did not exist in any build file, so every image accepted an `http://` API base out of NVS and put the device token on the air - it is plumbed now and fails secure, an image has to ask for cleartext with `-DKINO_ALLOW_HTTP_API_BASE=1` and CMake says so while it builds. The host dashboard's thumbnails could not authenticate at all: tile URLs were built as bare strings with no bearer, so every hidden or trashed tile 404'd and every tile on a PIN roll 401'd - the exact photographs the moderation grid exists to show. Upload completion no longer holds a row lock across two S3 round trips and a full sha256 re-stream on a ten-connection pool; the API has an error handler, so record ids stop reaching clients in 500 bodies and every error answers one envelope; Redis roll streams expire; the render endpoint and four unmetered host routes have their own budgets. Firmware: a camera abandoned at its capture timeout is released rather than left holding a frame mid-encode, which is the state that made a camera read offline on the next capture; the KDP decoder stops memmoving its whole buffer onto itself on every partial read, which was 8.5x amplification and ~5 MB of PSRAM traffic per four-camera set generated inside the window the validation record blames for tail loss; it counts one resync per discarded frame the way the normative decoder does, so every link-health figure in the bench record stops reading 2x pessimistic; the CRC table is `static const` rather than lazily built behind an unsynchronised flag; and the card-yield mismatch that charged a correct yield to the shutter as a failed upload attempt is gone, replaced by an out-parameter rather than two string literals that had to agree. Records: `infra/.env.staging.example` was missing the provisioning token that `docker-compose.prod.yml` refuses to start without, so the documented staging bring-up ended in a hard refusal; the device upload limit was documented as 60/minute in four places against a real 120/minute per route - 24 captures a minute, not four - and two reference load runs were sized off the wrong figure; the contract called two closed enums free strings, so a document its own prose endorsed would throw at parse time; and the host guide marked six shipped features "unverified", including restore, which told a host a recoverable photograph was gone. `version:check` now refuses a version that goes backwards, checks the migration journal for a file per entry and contiguous indices, and derives its workspace set from the root `package.json` so a new workspace cannot be silently unchecked - the monotonicity gate caught a real regression on its first run. 1,182 tests green across six workspaces (api 348, studio 301, roll-web 224, worker 132, schemas 95, kdp 82) and 6,246 firmware host checks across fifteen suites. Held for the bench, because they change measured-good behaviour on evidence the audit itself called insufficient: the L2 cache split, the per-channel UART receive ring size, the UHCI DMA migration, execute-in-place from PSRAM, the chunk-size raise, task stacks in PSRAM, and the UI redraw rework.
+
+- **Firmware 0.4.56: three replies stop describing a one-camera body.** (1) `GET_DEVICE_INFO` filled `cameraFirmware[1..3]` and `sensors[1..3]` with `""` no matter what was wired - a constant from before CAM2-4 had links, the same defect `GET_CAMERA_INFO` shed earlier - so a body with four nodes answered one here and four there. All four channels now report the way `build_camera_info()` does: the node's firmware string and sensor name when the sweep has it online, `""` when it is offline or reports no sensor. (2) `GET_RUNTIME_STATS` `tempC.cams` was cam1 followed by three hardcoded nulls, and cam1's figure was whatever the last bench capture happened to leave behind, because a node's die temperature travels in its STATUS reply and nothing asked for one. The probe sweep in `main.c` now follows each answered HELLO with one STATUS (`camlink_ping_ch`) in its own scheduler window, so every online channel carries a reading refreshed every sweep; null for a channel that is offline or whose node reported none, never a number that was not measured. (3) `SOUND_BEGIN` snprintf-truncated `name` into its 33-byte field, so a 40-character name came back from the next `GET_SOUNDS` as a clip the host never uploaded - the truncation `firmware-contract/README.md` D18 forbids. A name the host sends must be 1..32 characters or the reply is `BAD_NAME` "name must be 1..32 characters"; a name the host omits is still derived from the id. Compile-verified on `espressif/idf:v5.5.1` (P4: 0xe69f0 bytes, 70% of the app partition free), host suites and the renderer green, `kino-ui.wasm` re-baked so `kui_version` reports 0.4.56. `firmware/FIRMWARE_ROADMAP.md` §13 no longer says 31 of 71 commands are implemented: it is 56 of 72, and D17 is the live count.
 
 - **Firmware 0.4.53: the camera can see its own lens cover, and says so without acting on it yet.** The field body has a Hall switch and a magnet in the cover (hardware 0.1.4), but fitting the switch is a permanent step before the face shell is glued on, and no firmware read it. The cameras can answer the same question: closed, all four lenses face an opaque plate 0.2 mm away; open, all four see the room. The viewfinder already decodes a frame per camera for its tiles, so the watcher reads a mean off those - a strided pass over memory, no capture, no UART, no second JPEG decoder - and folds it into a state machine in `pure.c` that is tested on the host (`pure_lid_update`, 17 new checks). Three rules, each because the naive version is wrong: every camera that answered must agree, so one dark lens is a thumb and not the cover; there is a band between dark and lit where nobody has an opinion, so the state cannot chatter at dusk; and a candidate must hold before it wins, 1500 ms to close against 300 ms to open, because sleeping by mistake costs the shot. **It observes and logs and changes nothing.** The two luminance thresholds cannot be derived - the node runs auto-exposure, so a covered sensor reports amplified noise rather than zero, and how much is a property of the part - so they are `MEASURE_REQUIRED`, the watcher prints the four readings every four seconds for somebody to read at the bench, and `lid_set_acting(true)` is the one line that arms it afterwards. What it will never do is wake the camera: `camIdleTimeoutS` cuts the camera rail, a node needs one to two seconds to boot its sensor, and keeping one alive to watch for light would cost about 100 mA, roughly 30 h of standby off the 3000 mAh cell. Waking stays with touch, the shutter and the Hall switch. It also cannot tell a closed cover from a dark room, which is benign - if all four lenses see nothing there is nothing to photograph - and is why this drives idle behaviour and not a shutter interlock. `power_sleep_now()` ages the idle clock rather than switching the panel off, so the transition still goes through the one path that knows about the backlight and about a finger landing in the same pass. Issue #169.
 
@@ -183,9 +665,22 @@ KINO has no published release yet. Changes intended for the first release collec
 - Gallery is a photo browser instead of a dead end. Thumbnails are focusable and open a single photograph decoded at 520x390 through `thumb_load` rather than a 208 px tile blown up, and a capture can be deleted behind a confirmation. Captions are one short line - the mode, or "2 of 4" in red for a partial - with no filename, size or path.
 - The menu icons are Windows 98 shell icons at their native 48 or 32 px, scaled by an exact integer factor with nearest neighbour and given a much lighter display emulation than the XP set had. That last part matters: these are pixel art with hand-placed dither, and the sharp-bilinear pass built for smooth-scaled artwork averaged the dither into mush. `scripts/bake-w98-icons.mjs` decodes the ICO/DIB directly - taking the deepest frame at the largest size, because these files carry a 16-colour and a 256-colour copy of the same drawing and the first directory entry is the flat one.
 - Every setting a screen writes goes through `meta_patch_path`, which builds the nested patch `config_merge` expects. It lives in `meta.c` and is host-tested against the real cJSON because the first version dropped the first path segment - `body.sounds.ui` built `{"sounds":{"ui":...}}`, which merges into the config root perfectly happily and writes a key nothing reads. The screen would have looked right and the toggle would have moved.
+- **Studio's Bring-Up page is the field body's checklist, not the battery build's.** `KINO_FIELD_BODY` 0.1.4 is a USB-C powered fixture with no pack bay (ECN-0004), no built-in flash (ECN-0003), no Hall switch and no function button, and the 78-item sheet still opened with "LiPo inspected" and closed its electrical run with "Flash added last". Twenty-five items are retired - the LiPo/BMS/SW6106/fuse checks, the flash driver and chamber checks, the whole BATTERY-PATH section, battery runtime, the charge-temperature check, low-battery-during-flash - and seventeen are new: a USB-C POWER section (which port is USB-Serial-JTAG, bus voltage at JP1 under a four-camera capture, brownout margin, laptop port vs PD brick vs power bank, hot-replug), the GPIO35 strap check, the glued face shell, the sliding cover's all-four-dark test, the shutter's lead channels, peak bus current and a power-bank runtime for V2. 70 checks. Surviving items keep their ids so a saved record keeps its ticks; the retired ids are listed in `bringup.ts` so an old record's ticks can still be read. "SD writes and speaker verified at low volume" becomes "SD writes and body sounds verified" - the sounds come from the Guition carrier's ES8311 + NS4150, not from a part we fit. `FLASH_EN` stays in the wiring record reading unassigned, as before; the never-wired `Function button` row goes.
+- **Studio's Bench measurements table only asks for parts that are in the camera.** `measurementTasks()` iterated every `components` entry, and the profile keeps the battery build's BOM history there - battery, fuse, BMS, SW6106 module, camera switches, speaker, caps, slide switch, harnesses - none of which has an instance in the field body, so fourteen rows demanded calipers on parts nobody could pick up. It now iterates only components with a placed instance. The body row keyed on `confidence !== MEASURED` and still asked for "skeleton ribs" and `enclosure-shell/enclosure-chassis`, components that no longer exist; the body is OFFICIAL_CAD from `hardware/cad/KINO_FIELD_BODY` (the six `field-*` shells), so the row appears only for a provisional envelope and names the field shells. Stage A no longer watches an SW6106 that is not fitted, the acceptance item for issue #4 drops "flash", and the record-in text names the Twin's actual control (PARTS -> MEASURE ACTUAL PART). Tests cover the instance filter with a synthetic unplaced part.
+- **Studio's Skew Bench speaks the shipped SYNC_BENCH contract.** Firmware answers SYNC_BENCH with one blocking RESPONSE of per-camera edge counts (no timing) after up to pulses×gapMs; the reference device on `d4-sim-full` answers a job start. Studio sent `startJob` unconditionally, timed out at 3 s and threw JOB_NOT_ACCEPTED against every real camera. It now sends `{pulses, gapMs, poll}` as a plain request with a deadline sized to the run, adopts a job when the reply names one (`adoptJob`, previously unused), and otherwise renders an EDGE INTEGRITY report — accepted/raw/rejected edges, expected, short-by, monotonic and clean per camera, one TRIGGER WIRE CLEAN / DIRTY verdict — stating that exposure skew is not measured by this firmware. Run sizes are 25/100/200 pulses at 100 ms, the firmware's 1..200 bound. Overview's SENSOR SYNC tile quotes the edge verdict without inventing a skew figure.
+- **Studio gates flash on the emitter, not the flash window.** D4-V1 reports `flashControl: true` (the firmware keeps a window) with `flashHardware: false` (ECN-0003, no LED). Calibration FLASH and Developer FLASH TIMING are Unsupported with the reason, the power-load ladder drops its flash rungs, Overview's FLASH row reads NOT FITTED, and Shoot FLASH POLICY, Wiggle FLASH IN WIGGLE and Quad FLASH / FIRE-SKIP keep their controls with one visible note that they set the firmware's window only and the external top light is not camera-controlled.
+- **Studio's Shoot page renders GET_MODES.** The session fetches GET_MODES (tolerated when absent) into the device store; the mode cards render the camera's `available` / `unavailableReason` — a mode the camera cannot shoot now is a disabled card with its reason — instead of a hard-coded pair, and SET_MODE re-reads it.
+- **REGISTER KINO writes `network.apiBase`.** The firmware's own uploader reads `network.apiBase` (`https://host[:port]`), not `roll.credentials.serverUrl`; registering against a server left the camera posting to the compiled default. Studio now writes the server origin there alongside the credentials, and the Roll page shows the camera's stored upload target.
+- **Device page PHYSICAL CONTROLS say what D4-V1 has.** FUNCTION BUTTON and SLIDE SWITCH have no GPIO on this body (ECN-0003) and the firmware reads neither key; both selects are disabled with that note, and wiggle VIEWFINDER IN WIGGLE / SAVE ORIGINALS and quad slot FLASH / NOTE carry a one-line "not read by firmware" hint from one shared helper.
+- Studio: LOAD DEMO PACKAGE on Updates is developer-mode only and hidden unless the session is simulated — it was reachable in production in front of a real camera. Dead exports removed: `MASKED_PASSWORD`, `cloneRecipe`, `getRollLinks`, `clearCreatedRolls`, `resetUpdateState`, `setRollServerUrl`.
+- KINO Twin: the FAULTS tab gains a FIRMWARE PROFILE selector, so the Twin can answer as the shipped firmware (0.4.56, one camera wired, refusing what the camera refuses) or as the simulated-future demo device. Switching reboots the device with a new session, and a connected Studio sees the reboot the way it would a real one (HARDWARE ERROR, then connect again).
+- KINO Twin: SCREEN VIEW (`#screen`, a header button, or SCREEN VIEW on the SCREEN tab) shows just the camera's display, full window, with nothing else mounted — no 3D scene, panels or overlay, so no view reset or pick can get between you and the firmware. Touch, SHUTTER and FN work; FIT / 1X / 2X scaling (integer scales draw pixel-exact); Esc leaves. The simulator keeps running underneath, so Studio's link, the card and the config survive entering and leaving it.
+- KINO Twin: the firmware screen hot-reloads. `npm run twin:ui:bake` rewrites the module in place; SCREEN VIEW's WATCH notices the new bytes and restarts only the screen on the new build (RELOAD does it on demand), and the dev server no longer reloads the whole page when a bake lands. The bar shows the module fingerprint and when it was loaded.
 
 ### Removed
 
+- The provisional enclosure in the Twin: `enclosure-shell` (two clear acrylic panels) and `enclosure-chassis` (the skeleton frame), their builders in `@kino/three-assets`, and the five pack-chain nets that ran to parts the field body does not place. Studio's MEASURE checklist row "Final acrylic thickness" became "Face shell thickness".
+- KINO Twin's FIRMWARE, TIMING and FLASH tabs. FIRMWARE picked a firmware generation for the sketch; with the real `ui.c` on the screen the Twin boots as today's camera, and `device.setFirmwareProfile()` or a Studio OTA install still switch it for tests. TIMING and FLASH charted per-camera exposure numbers the code itself labelled SIMULATED and invented; next to a real firmware screen they read as measurements. `tagLabel` moved to `panels/provenance.ts` for POWER.
 - Studio's in-tab demo device. KINO Twin is the simulator: it runs the same reference device, over the same protocol and the same connect path, and has its own fault panel — Studio was shipping a second, weaker copy of it. Gone with it are the `OPEN DEMO DEVICE` and `DEMO` buttons, both demo menu items, and Studio's simulator-faults panel. The reference `MockKinoDevice` stays as test infrastructure and no longer ships in the product: the Studio bundle drops from 457 kB to 366 kB (144 kB to 115 kB gzipped) because the simulator is no longer reachable from app code. Two consequences were fixed rather than inherited — the device-only Roll path now recognises any simulated session, so a Twin session with no Roll server keeps the QR flow instead of silently losing it, and the connect screen says how to reach a Twin when none is answering, including the relay route for the split-port dev servers where the same-origin bridge cannot work.
 
 ### Added
@@ -294,6 +789,8 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Fixed
 
+- The firmware build daemon stamped every package `compatibleHardware: ["V1"]`, a string no device reports - the P4 firmware answers `kino-v1` and the Twin `D4-V1` - so a daemon build was BLOCKED at Studio's compatibility gate on any camera. It lists both.
+- `firmware/p4/host_preview/Makefile` began with a UTF-8 byte-order mark, which GNU make reads as a missing separator; `make -C firmware/p4/host_preview` failed before it parsed. The BOM is gone.
 
 - The published worker image installs the distribution's ffmpeg and drops the npm-fetched build, so the GPL obligation that MP4 rendering carries attaches to a binary whose corresponding source is published — recorded in `THIRD_PARTY_NOTICES.md` along with the development fallback.
 - The Twin's flash now reaches the photograph: a flash exposure lights the virtual sensors' render from the module's front (inverse-square falloff with subject distance, sensor layer only, so the 3D viewport stays unlit), previews never flash, and the flashUnavailable fault suppresses it. Before, FLASH ON changed only the log line and metadata — a dim-party capture rendered identically dark either way.
@@ -318,6 +815,15 @@ KINO has no published release yet. Changes intended for the first release collec
 - The Twin clearance panel stopped reporting the entire interior as colliding: shell parts carry only a PROVISIONAL whole-body envelope box and are excluded as NOT EVALUATED until measured shell geometry exists; with the noise gone the engine surfaced real conflicts, and the PROVISIONAL layout was re-placed to zero findings — the battery stands vertically on the left, the power module moved to the mid-plane, and all thirty harness routes were re-authored with endpoints pinned to instance positions.
 - The Roll stack starts as documented: the api and worker dev entries load `infra/.env` and default `NODE_ENV`, the API gained CORS for localhost origins and a `PORT` override, Studio and `preview:all` proxy `/api`, and the three web apps hold fixed dev ports. Joining a Roll no longer fabricates a guest link on the device's own origin — the server names it; Roll server calls time out instead of hanging; a failed TEST SERVER restores the device-only stub; dead navigation ends were removed (Simulator Faults toggle, recovery instructions inline, Twin re-probe after a failed connect, offline Bring-Up worksheet in developer mode).
 - The Studio firmware builder path works end to end: built packages declare the hardware string devices actually report instead of the design revision label (compatibility always read BLOCKED), three hardware-validation items no longer lose their bench evidence on reboot to over-long NVS keys, the build daemon reports missing tooling as missing tooling with the spawn error in the log, restricts its browser surface to localhost origins with a DNS-rebinding guard, and no longer blocks firmware builds on unrelated backend version drift.
+- Studio's hardware-compatibility check normalises the four spellings of one board (`V1` from GET_DEVICE_INFO, `kino-v1` from GET_CAPABILITIES, `D4-V1` from hardware/REVISION, catalog `compatibleHardware`) to one canonical id before comparing; a package built for the connected camera was refused on spelling.
+- Studio Developer BENCH DIAGNOSTICS took no link claim: SD self test, link stats, CAM1 test capture, HW validation, storage bench and the soak now claim and release the device like PHASE does, each with its own status-bar label, and a soak that fails no longer leaves the button spinning.
+- Studio Overview RUN SELF TEST read a stale `testRunning` from its first render through the toolbar's uiBus subscription; it reads the live flag, resets when the camera disconnects, and a 60 s safety timeout clears the busy state with an error instead of spinning for the session.
+- Studio FOCUS: switching mode re-reads config so the mode highlight and MANUAL slider follow; HOLD/RELEASE FOCUS is gated on `focusLock` and the manual VCM slider on `manualFocus`.
+- Studio Roll and Gallery sent NETWORK_STATUS / ROLL_STATUS ungated while the session poller gated them on `network` / `roll`; the pages use the same gates and hide the row when the firmware lacks the group instead of reporting a link fault.
+- Studio VIEWFINDER retried a refused CAMERA_PREVIEW every ~1 s forever; a firmware that NACKs it stops the loop and shows Unsupported ("This firmware has no host viewfinder").
+- Studio: `void refreshAll()` from the toolbar and the page-level `refreshDeviceInfo()` calls could reject with an unhandled `KinoTimeoutError: No response to GET_DEVICE_INFO`; both route through the poller's `pollFailed` freshness handling and SYNC reports the miss in the status bar.
+- Studio: a link that stays open while the camera stops answering (a hung board on USB CDC, a Twin that let go of the relay) no longer sits on KINO CONNECTED with every read timing out. Three unanswered polls in a row raise the close the transport never sends, and the strip reads HARDWARE ERROR with the reason.
+- KINO Twin: the device server's client lease is counted in heartbeats, not milliseconds, so a Studio in a background tab (throttled timers, but every ping answered) is no longer dropped; and when a lease does end the client is told with a close, instead of being forgotten silently.
 
 ### Known incomplete work
 

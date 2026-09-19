@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { Unsupported } from '../../components/Unsupported';
+import { KinoUnsupportedError } from '@kino/kdp';
 import { getDevice, isSimulated } from '../../app/session';
-import { supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
+import { supports, supportsRollUpload, useDeviceStore } from '../../state/deviceStore';
 import {
   forgetCreatedRoll,
   putRollLinks,
@@ -44,6 +45,12 @@ function message(err: unknown): string {
 export function RollPage() {
   const state = useDeviceStore();
   const supported = supportsRollUpload(state);
+  // The same gates the session poller uses (`pollNetworkRoll`). This page
+  // used to send NETWORK_STATUS and ROLL_STATUS regardless, so a firmware
+  // with the upload queue but no radio group NACKed every 4 s and the whole
+  // page read as a link fault.
+  const hasNetwork = supports(state, 'network');
+  const hasRoll = supports(state, 'roll');
 
   const [networks, setNetworks] = useState<NetworkView[]>([]);
   const [netStatus, setNetStatus] = useState<NetworkStatus | null>(null);
@@ -77,14 +84,24 @@ export function RollPage() {
   const refresh = useCallback(async () => {
     const dev = getDevice();
     if (!dev) return;
+    // An ungated command that the firmware refuses is a missing feature, not a
+    // dead link: it hides its own row and leaves the rest of the page alone.
+    const tolerate = async <T,>(read: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await read();
+      } catch (err) {
+        if (err instanceof KinoUnsupportedError) return null;
+        throw err;
+      }
+    };
     try {
       const [list, status, view, q] = await Promise.all([
-        dev.networkList(),
-        dev.networkStatus(),
-        dev.rollStatus(),
-        dev.uploadQueueStatus(),
+        hasNetwork ? tolerate(() => dev.networkList()) : Promise.resolve(null),
+        hasNetwork ? tolerate(() => dev.networkStatus()) : Promise.resolve(null),
+        hasRoll ? tolerate(() => dev.rollStatus()) : Promise.resolve(null),
+        tolerate(() => dev.uploadQueueStatus()),
       ]);
-      setNetworks(list.networks);
+      setNetworks(list?.networks ?? []);
       setNetStatus(status);
       setRollView(view);
       setQueue(q);
@@ -92,7 +109,7 @@ export function RollPage() {
     } catch (err) {
       setLoadError(message(err));
     }
-  }, []);
+  }, [hasNetwork, hasRoll]);
 
   useEffect(() => {
     if (!supported) return;
@@ -300,16 +317,25 @@ export function RollPage() {
           onRegister={registerServer}
           provisioningToken={provisioningToken}
           onProvisioningTokenChange={setProvisioningToken}
+          cameraApiBase={state.config ? (state.config.network?.apiBase ?? undefined) : null}
         />
 
-        <NetworkPanel
-          networks={networks}
-          status={netStatus}
-          busy={netBusy}
-          error={netError}
-          onSave={saveNetwork}
-          onForget={forgetNetwork}
-        />
+        {hasNetwork ? (
+          <NetworkPanel
+            networks={networks}
+            status={netStatus}
+            busy={netBusy}
+            error={netError}
+            onSave={saveNetwork}
+            onForget={forgetNetwork}
+          />
+        ) : (
+          <Unsupported
+            feature="Wi-Fi provisioning"
+            firmware={state.firmwareLabel}
+            note="This firmware advertises no network command group, so saved networks cannot be read or written from Studio."
+          />
+        )}
       </div>
 
       <p className="roll-offline">
