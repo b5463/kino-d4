@@ -33,12 +33,12 @@ const required = [
   'LICENSES/MIT.txt',
   'LICENSES/CERN-OHL-S-2.0.txt',
   'LICENSES/LicenseRef-KINO-Reserved.txt',
-  'LICENSES/LicenseRef-Microsoft-Proprietary.txt',
   // Espressif's vendored C6 partition table is Apache-2.0 and REUSE.toml says
   // so, which obliges the tree to carry the text it names.
   'LICENSES/Apache-2.0.txt',
-  // W95FA is the one piece of third-party FONT SOFTWARE this tree ships, in
-  // KINO Print's bundle and its packaged build. Same obligation.
+  // The OFL covers two things here: W95FA, the one piece of third-party FONT
+  // SOFTWARE this tree ships (KINO Print's bundle), and the camera's own
+  // ui_font.h, which is Inter and Oxanium rasterised. Same obligation.
   'LICENSES/OFL-1.1.txt',
   'REUSE.toml',
   'TRADEMARKS.md',
@@ -72,23 +72,25 @@ for (const marker of [
   '"apps/studio/public/icon-*.png"',
   '"apps/twin/public/icon-*.png"',
   '"apps/roll-web/public/icon-*.png"',
-  // The P4 home-screen icons are Microsoft's. firmware/** is MIT, so losing
-  // this override would declare that we are giving away someone else's
-  // artwork under our own grant.
-  'SPDX-License-Identifier = "LicenseRef-Microsoft-Proprietary"',
-  '"firmware/p4/main/icons_w98.h"',
   // Espressif's C6 partition table, same shape of override for the same
   // reason: firmware/** is MIT and this file is not ours to give away.
   'SPDX-License-Identifier = "Apache-2.0"',
   '"firmware/c6/partitions_eh_cp_ota_4m.csv"',
-  // tools/ holds the two bitmap generators. Declared with scripts/, because a
-  // path in neither block has no license at all.
+  // tools/ holds the bitmap and font generators. Declared with scripts/,
+  // because a path in neither block has no license at all.
   '"tools/**"',
   // The bundled W95FA typeface. apps/** is MIT, so losing this override would
   // relabel someone else's font software as ours - and unlike the traced
   // Roboto outlines, this file ships.
   'SPDX-License-Identifier = "OFL-1.1"',
   '"apps/prusa-print-98/public/fonts/w95fa.woff2"',
+  // The camera's type. firmware/** is MIT; the rasterised glyphs are a
+  // derivative of two OFL faces and stay under the OFL.
+  '"firmware/p4/main/ui_font.h"',
+  // The studio's mark, baked into the firmware the same way. Same reason as
+  // the app wordmarks: an MIT grant over somebody else's trade mark is a
+  // licence this project cannot give.
+  '"firmware/p4/main/logo_odd_jobs.h"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
 
 // LICENSE is what a human reads; REUSE.toml is what the tooling reads. They
@@ -101,24 +103,20 @@ for (const marker of [
   'apps/twin/src/assets/**',
   'apps/roll-web/src/assets/**',
   'apps/studio/public/icon-*.png',
-  'firmware/p4/main/icons_w98.h',
+  'firmware/p4/main/ui_font.h',
+  'firmware/p4/main/logo_odd_jobs.h',
   'firmware/c6/partitions_eh_cp_ota_4m.csv',
   'THIRD_PARTY_NOTICES.md',
 ]) check(license.includes(marker), `LICENSE no longer mentions ${marker}`);
 
-// The icon header is generated, so it is easy to regenerate without the
+// The font header is generated, so it is easy to regenerate without the
 // notice and easy to delete the notice without touching the header. Both
 // halves have to be present together.
-if (await exists('firmware/p4/main/icons_w98.h')) {
-  const icons = await text('firmware/p4/main/icons_w98.h');
-  check(
-    icons.includes('SPDX-License-Identifier: LicenseRef-Microsoft-Proprietary'),
-    'firmware/p4/main/icons_w98.h has lost its SPDX header; re-run npm run icons:bake',
-  );
+{
   const notices = await text('THIRD_PARTY_NOTICES.md');
   check(
-    notices.includes('icons_w98.h'),
-    'THIRD_PARTY_NOTICES.md does not mention the bundled Windows 98 icon artwork',
+    notices.includes('Inter') && notices.includes('Oxanium'),
+    'THIRD_PARTY_NOTICES.md does not name the two faces ui_font.h is rasterised from',
   );
 }
 

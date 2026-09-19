@@ -56,6 +56,52 @@ void gfx_snapshot(void);
  */
 void gfx_dissolve(int duration_ms);
 
+/** One screen pushing the other off. `from_right` is where the NEW frame
+ *  comes from; deeper is rightward. Needs gfx_snapshot() first, as the
+ *  dissolve does. */
+void gfx_slide(int duration_ms, bool from_right);
+
+/** A rectangle the compositor can move on its own. */
+typedef struct {
+  int16_t x, y, w, h;
+} gfx_band_t;
+
+/**
+ * Keep the frame just drawn, and hand pieces of it back.
+ *
+ * For a transition that has to be DRAWN rather than composited: stash the
+ * destination, draw each frame of the move yourself with the real fonts, and
+ * blit in the part of the destination that has arrived. gfx_stash_blit()
+ * copies from the stash into the canvas and clips both ends.
+ */
+void gfx_stash(void);
+void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
+
+/**
+ * A second retained layer, for the parts of a move that only translate.
+ *
+ * The stash holds where a transition is GOING. This holds a picture that is
+ * simply being carried around: draw it once with gfx_layer_keep(), then blit
+ * the pieces each frame instead of drawing them again.
+ *
+ * It is the one idea this renderer takes from a scene graph, and it is worth
+ * taking because of what it does to the frame's cost CURVE. A move that
+ * redraws its contents costs whatever those contents happen to cost at that
+ * phase; a move that blits them costs the same on every frame. Even frames
+ * are what the eye reads as smooth - more than fast ones.
+ */
+void gfx_layer_keep(void);
+void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
+
+/**
+ * A list arriving, one row at a time, over the frame already drawn.
+ *
+ * The bands come in from the right in order, staggered. `ground` is what is
+ * behind them - the page's own background, because the row is not there yet.
+ * Does not need a snapshot: everything it composites is the new frame.
+ */
+void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t ground);
+
 /** Frames presented and the time they took, for bandwidth checks. */
 void gfx_stats(uint32_t *frames, uint32_t *last_ms);
 

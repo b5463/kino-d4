@@ -28,7 +28,6 @@
 #include "capture.h"
 #include "gallery.h"
 #include "gfx.h"
-#include "icons.h"
 /* For recipe_capture_t: the LOOK screen's detail strip needs a capture block
  * per look, and the stub below has to match the real signature exactly. */
 #include "kdp_recipes.h"
@@ -54,9 +53,82 @@ void *display_panel(void) { return NULL; }
 esp_err_t gfx_init(void) { return ESP_OK; }
 bool gfx_ready(void) { return true; }
 uint16_t *gfx_canvas(void) { return g_canvas; }
-void gfx_present(void) {}
+static void write_ppm(const char *path, const uint16_t *px, int w, int h);
+extern char g_out[512];
+
+/*
+ * The renderer's frame sink.
+ *
+ * Normally nothing: a still is written by shot() when the caller asks for it.
+ * While an animation is being rendered this is where its frames come out, one
+ * numbered PPM each, and it is what steps the virtual clock - so the loop in
+ * ui.c that draws until its duration is up terminates after a known number of
+ * frames instead of running as fast as the host will let it.
+ */
+int64_t prev_vclock_us;
+int64_t prev_vclock_step_us = 16000;
+static const char *g_anim;
+static int g_anim_n;
+
+void gfx_present(void) {
+  if (g_anim != NULL) {
+    char path[600];
+    snprintf(path, sizeof path, "%s/%s_%02d.ppm", g_out, g_anim, g_anim_n++);
+    write_ppm(path, g_canvas, UI_W, UI_H);
+  }
+  if (prev_vclock_us != 0) prev_vclock_us += prev_vclock_step_us;
+}
 void gfx_snapshot(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
+/* The renderer writes stills, so a transition is its end state. */
+void gfx_slide(int ms, bool from_right) { (void)ms; (void)from_right; }
+static uint16_t *g_stash;
+void gfx_stash(void) {
+  if (g_stash == NULL) g_stash = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  if (g_stash != NULL) memcpy(g_stash, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+}
+void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
+  if (g_stash == NULL) return;
+  if (dx < 0) { w += dx; sx -= dx; dx = 0; }
+  if (dy < 0) { h += dy; sy -= dy; dy = 0; }
+  if (sx < 0) { w += sx; dx -= sx; sx = 0; }
+  if (sy < 0) { h += sy; dy -= sy; sy = 0; }
+  if (dx + w > UI_W) w = UI_W - dx;
+  if (sx + w > UI_W) w = UI_W - sx;
+  if (dy + h > UI_H) h = UI_H - dy;
+  if (sy + h > UI_H) h = UI_H - sy;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    memcpy(g_canvas + (size_t)(dy + r) * UI_W + dx, g_stash + (size_t)(sy + r) * UI_W + sx,
+           (size_t)w * sizeof(uint16_t));
+  }
+}
+/* The retained layer, same as the device's: a picture that only translates,
+ * drawn once and blitted per frame. */
+static uint16_t *g_layer;
+void gfx_layer_keep(void) {
+  if (g_layer == NULL) g_layer = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  if (g_layer != NULL) memcpy(g_layer, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+}
+void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
+  if (g_layer == NULL) return;
+  if (dx < 0) { w += dx; sx -= dx; dx = 0; }
+  if (dy < 0) { h += dy; sy -= dy; dy = 0; }
+  if (sx < 0) { w += sx; dx -= sx; sx = 0; }
+  if (sy < 0) { h += sy; dy -= sy; sy = 0; }
+  if (dx + w > UI_W) w = UI_W - dx;
+  if (sx + w > UI_W) w = UI_W - sx;
+  if (dy + h > UI_H) h = UI_H - dy;
+  if (sy + h > UI_H) h = UI_H - sy;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    memcpy(g_canvas + (size_t)(dy + r) * UI_W + dx, g_layer + (size_t)(sy + r) * UI_W + sx,
+           (size_t)w * sizeof(uint16_t));
+  }
+}
+void gfx_cascade(int ms, const gfx_band_t *b, int n, uint16_t g) {
+  (void)ms; (void)b; (void)n; (void)g;
+}
 void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = 0;
   if (ms) *ms = 0;
@@ -107,13 +179,7 @@ int config_int(const char *path, int fallback) {
   if (strcmp(path, "shoot.volume") == 0) return 6;
   return fallback;
 }
-/* The guest/owner switch, which on a body with the pin fitted is a slide on
- * the case. One run photographs both halves, so main() drives it. */
-static bool g_guest = false;
-bool config_bool(const char *path, bool fallback) {
-  if (strcmp(path, "body.guestMode") == 0) return g_guest;
-  return fallback;
-}
+bool config_bool(const char *path, bool fallback) { return fallback; }
 /* Driven from main() so one run can photograph a setting in each of its
  * states. The device reads these back through config_str after writing them;
  * here main() sets them directly, which is the same thing from the drawing
@@ -755,6 +821,94 @@ int upload_queue_retry_all(void) { return 0; }
 
 #include "ui.c"
 
+/* ---- the text-overflow audit ----
+ *
+ * ui.c calls this from text() when a string is set outside the safe area.
+ * Every hit is a line that the panel clips: on a screenshot it looks like a
+ * shorter sentence, which is why the About note sat over the bezel for a week
+ * after the type changed and nobody caught it by looking.
+ *
+ * Deduped on the string, because a row template that overflows overflows once
+ * per row and the interesting number is how many distinct strings are wrong,
+ * not how many times the loop ran. Reported with the screen that was being
+ * drawn when it happened - the whole point is to know where to look. */
+#define AUDIT_MAX 64
+static struct {
+  char s[80];
+  int x, y, w, h;
+  char screen[32];
+} g_audit[AUDIT_MAX];
+static int g_audit_n;
+
+void ui_audit_text(int x, int y, int w, int h, const char *s) {
+  /* Not during a transition. A screen sliding in from the right is *supposed*
+   * to have half its type off the canvas, and the first run of this audit
+   * reported eleven of those and one real fault - which is how a check that
+   * cries wolf gets switched off. Stills only, where the bound is a promise. */
+  if (g_anim != NULL) return;
+  for (int i = 0; i < g_audit_n; i++) {
+    if (strcmp(g_audit[i].s, s) == 0) return;
+  }
+  if (g_audit_n >= AUDIT_MAX) return;
+  snprintf(g_audit[g_audit_n].s, sizeof g_audit[0].s, "%s", s);
+  g_audit[g_audit_n].screen[0] = '\0'; /* shot() names it, once it knows */
+  g_audit[g_audit_n].x = x;
+  g_audit[g_audit_n].y = y;
+  g_audit[g_audit_n].w = w;
+  g_audit[g_audit_n].h = h;
+  g_audit_n++;
+}
+
+/* The drawing happens before the file is named, so the name is stamped on
+ * afterwards: anything reported since the last shot belongs to this one. */
+static void audit_name(const char *name) {
+  for (int i = 0; i < g_audit_n; i++) {
+    if (g_audit[i].screen[0] == '\0') {
+      snprintf(g_audit[i].screen, sizeof g_audit[0].screen, "%s", name);
+    }
+  }
+}
+
+/* Non-zero when anything overflowed, so main() can fail the run. A render
+ * that silently ships clipped type is the failure this was built to stop. */
+static int audit_report(void) {
+  if (g_audit_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s set outside the safe area:\n", g_audit_n,
+          g_audit_n == 1 ? "" : "s");
+  for (int i = 0; i < g_audit_n; i++) {
+    fprintf(stderr, "  %-24s x=%d..%d y=%d..%d  \"%s\"\n",
+            g_audit[i].screen[0] != '\0' ? g_audit[i].screen : "?",
+            g_audit[i].x, g_audit[i].x + g_audit[i].w, g_audit[i].y,
+            g_audit[i].y + g_audit[i].h, g_audit[i].s);
+  }
+  return g_audit_n;
+}
+
+/* ---- the frame-cost bench ----
+ *
+ * Reports how much of the canvas each kind of frame touches, in units of
+ * full screens (800 x 480). On this board that is the frame time: the canvas
+ * is in PSRAM at roughly 160 MB/s, so one opaque full-screen pass is ~4.8 ms
+ * and one blended pass ~9.6, before the PPA reads the whole thing again to
+ * rotate it onto the panel. Anything over about 2.0 screens of traffic cannot
+ * hold 60 Hz on this chip, and anything whose cost CHANGES across a
+ * transition will stutter no matter what the average is - which is the thing
+ * the numbers below were written to find.
+ */
+extern uint64_t g_px_write, g_px_blend;
+
+static void bench_reset(void) { g_px_write = g_px_blend = 0; }
+
+/* Blended pixels count double: read-modify-write on PSRAM is two passes. */
+static double bench_screens(void) {
+  const double per = (double)UI_W * UI_H;
+  return ((double)g_px_write + 2.0 * (double)g_px_blend) / per;
+}
+
+static void bench_line(const char *what, double screens) {
+  printf("  %-28s %6.2f screens  %6.2f ms @160MB/s\n", what, screens, screens * 4.8);
+}
+
 /* ---- output ---- */
 
 /* Set by any failed write. CI counts .ppm files and requires at least ten, so
@@ -764,6 +918,7 @@ int upload_queue_retry_all(void) { return 0; }
  * makes main() say so. */
 static bool g_write_failed;
 
+void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
   FILE *f = fopen(path, "wb");
   if (!f) {
@@ -798,10 +953,11 @@ static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
   printf("wrote %s (%dx%d)\n", path, w, h);
 }
 
-static char g_out[512];
+char g_out[512];
 static void shot(const char *name) {
   char path[600];
   snprintf(path, sizeof path, "%s/%s.ppm", g_out, name);
+  audit_name(name);
   write_ppm(path, g_canvas, UI_W, UI_H);
 }
 
@@ -814,18 +970,43 @@ static void shot(const char *name) {
  * exist to catch. */
 static void scan_conditions(void) { conditions_scan(about_cameras()); }
 
-#include "specimen.c"
+/*
+ * A transition, as a sequence of pictures.
+ *
+ * The menu's open animation could only be judged by watching it in a browser,
+ * which meant it could only be judged carelessly: a browser shows it once, at
+ * whatever rate the tab felt like, with no way to look at the fourth frame.
+ * Here it is `anim_open_00.ppm` onward, one per presented frame, on a clock
+ * the renderer owns - so every frame of it is a still that can be held up
+ * against the one before it.
+ */
+static void shot_anim(const char *name, screen_t from, screen_t to, int pressed) {
+  s_screen = from;
+  s_pressed = pressed;
+  scan_conditions();
+  draw_screen();
+
+  g_anim = name;
+  g_anim_n = 0;
+  prev_vclock_us = 1000000; /* the renderer owns the clock from here */
+  go(to, NAV_OPEN_MS);
+  /* go() starts the move now rather than running it, so the renderer drives
+   * it the way the UI loop does - one frame per tick, on the clock it owns. */
+  for (int guard = 0; anim_active() && guard < 4000; guard++) {
+    const uint32_t wait = anim_tick();
+    if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+  }
+  prev_vclock_us = 0;
+  g_anim = NULL;
+  printf("wrote %s_00..%02d (%d frames)\n", name, g_anim_n - 1, g_anim_n);
+}
+
 
 int main(int argc, char **argv) {
   snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
 
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   s_cv = g_canvas;
-
-  if (icons_build() != ESP_OK) {
-    fprintf(stderr, "icons_build failed\n");
-    return 1;
-  }
 
   /* One helper, so every state below is "set the state, draw, name it" and
    * the list reads as the screen inventory it is meant to be. */
@@ -849,44 +1030,6 @@ int main(int argc, char **argv) {
   shot("calibrating");
   s_calibrating = false;
 
-  /* The guest half, from the firmware rather than from the specimen: the four
-   * states as draw_guest() actually draws them, which is what has to be right
-   * now that the register is chosen. The stub capture below is driven the way
-   * a real one drives it - a stage and an arrival mask - so TAKING is the
-   * bands filling on frames_in and not on a number typed here. */
-  {
-    g_guest = true;
-    g_stage = CAPTURE_IDLE;
-    draw_screen();
-    shot("guest_1_aim");
-
-    g_stage = CAPTURE_READING;
-    g_frames_in = 0x1; /* the first has landed */
-    draw_screen();
-    shot("guest_2a_taking_1");
-    g_frames_in = 0x7; /* three, unevenly, the way four mounts answer */
-    draw_screen();
-    shot("guest_2_taking");
-
-    g_stage = CAPTURE_DONE;
-    g_report.ok = true;
-    g_report.stored = 4;
-    g_report.online = 4;
-    s_g_taken_us = 0;
-    draw_screen();
-    shot("guest_3_taken");
-
-    g_stage = CAPTURE_IDLE;
-    g_card_mounted = false;
-    draw_screen();
-    shot("guest_4_wrong");
-    g_card_mounted = true;
-    g_frames_in = 0xF;
-    g_guest = false;
-  }
-
-  specimen_sheet();
-
   /* ---- the menu, which is the home screen ---- */
   s_pressed = -1;
   s_focus[SCR_MENU] = 0;
@@ -906,18 +1049,39 @@ int main(int argc, char **argv) {
   SHOT(SCR_MENU, "menu_settings_focus");
   s_focus_shown = false;
 
+  /* The boot rings, frame by frame. */
+  {
+    g_anim = "anim_boot";
+    g_anim_n = 0;
+    /* The real sequence, through the real driver, on the renderer's clock -
+     * so the frames reviewed here are the frames the camera presents. The
+     * step is coarse (16 ms of virtual time per present) to keep the dump to
+     * a readable number of pictures. */
+    prev_vclock_us = 1000000;
+    prev_vclock_step_us = 60000;
+    s_screen = SCR_MENU;
+    splash();
+    /* The clock here only advances when a frame is presented, so a hold - a
+     * phase that returns a delay and draws nothing - has to move it by hand.
+     * On the camera and in the Twin the clock is real and this is free. */
+    for (int guard = 0; anim_active() && guard < 4000; guard++) {
+      const uint32_t wait = anim_tick();
+      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    }
+    prev_vclock_step_us = 16000;
+    prev_vclock_us = 0;
+    g_anim = NULL;
+  }
+
+  /* The menu's two moves, frame by frame. */
+  shot_anim("anim_open", SCR_MENU, SCR_GALLERY, 2);
+  shot_anim("anim_back", SCR_GALLERY, SCR_MENU, -1);
+  s_pressed = -1;
+
   s_pressed = 4;
   SHOT(SCR_MENU, "menu_pressed");
   s_pressed = -1;
   s_focus[SCR_MENU] = 0;
-
-  /* Every icon on one sheet, at the size it is actually drawn, so the set can
-   * be judged against itself rather than one at a time. */
-  fill(0, 0, UI_W, UI_H, C_CANVAS);
-  for (int i = 0; i < W98_COUNT; i++) {
-    icons_blit_centred(s_cv, UI_W, UI_H, i, 84 + i * 106, UI_H / 2);
-  }
-  shot("iconsheet");
 
   /*
    * ---- shoot: the four panes, the way out, and the status bar ----
@@ -1194,6 +1358,7 @@ int main(int argc, char **argv) {
   g_card_mounted = false;
   SHOT(SCR_STORAGE, "settings_storage_unmounted");
   g_card_mounted = true;
+  SHOT(SCR_STATUS, "settings_status");
   SHOT(SCR_ABOUT, "settings_about");
   /* With a name set: a fourth row appears above Device and the list frame
    * grows by one. The longest name SET_CONFIG accepts, so the row is
@@ -1354,6 +1519,35 @@ int main(int argc, char **argv) {
     g_slot[0].cal_present = false;
   }
 
+  /* The boot field at full reach, in the two states that matter: every camera
+   * answered, and two of them not. The second is the whole reason the field
+   * is drawn from the cameras rather than from a clock - a body with a dead
+   * node says so on the screen it shows first. */
+  {
+    for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
+    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    boot_field(BF_REACH, 900, 0, 1.0f);
+    shot("boot_field_all_four");
+
+    s_bf_cam[1] = s_bf_cam[3] = BF_DARK;
+    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    boot_field(BF_REACH, 900, 0, 1.0f);
+    shot("boot_field_two_silent");
+    for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
+  }
+
+  /* What the camera shows while it is going away: its own mark, centred,
+   * and then the screen letting go of it. Same picture for a restart. */
+  {
+    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    boot_mark();
+    shot("power_down");
+    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    boot_mark();
+    scrim(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00), 4 * 255 / 7);
+    shot("power_down_fading");
+  }
+
   /* ---- a toast, which every screen can raise ---- */
   /* On the menu it is the status bar's message. It used to float 44 px off the
    * bottom, which put it across the SETTINGS tile's label - a tooltip covering
@@ -1377,5 +1571,86 @@ int main(int argc, char **argv) {
     fprintf(stderr, "one or more screens were not written\n");
     return 1;
   }
+  /* ---- what a frame costs ---- */
+  printf("\nframe cost (1.00 screen = 800x480 opaque; blends count double)\n");
+  {
+    static const struct { screen_t sc; const char *name; } S[] = {
+        {SCR_MENU, "MENU"},      {SCR_SHOOT, "SHOOT"},   {SCR_GALLERY, "GALLERY"},
+        {SCR_LOOK, "LOOK"},      {SCR_ROLL, "ROLL"},     {SCR_PHOTO, "PHOTO"},
+        {SCR_SETTINGS, "SETTINGS"}, {SCR_ABOUT, "ABOUT"},
+    };
+    printf("\n  a still frame, by screen\n");
+    for (size_t i = 0; i < sizeof S / sizeof S[0]; i++) {
+      s_screen = S[i].sc;
+      scan_conditions();
+      bench_reset();
+      draw_screen();
+      bench_line(S[i].name, bench_screens());
+    }
+  }
+
+  /* Across a transition, frame by frame: the average is not the problem, the
+   * SHAPE is. A move whose last frame costs four times its first stutters at
+   * the end however good the average looks. */
+  {
+    printf("\n  the menu opening, frame by frame\n");
+    double lo = 1e9, hi = 0, sum = 0;
+    s_screen = SCR_MENU;
+    s_pressed = 2;
+    scan_conditions();
+    draw_screen();
+    g_anim = "bench";  /* suppress the audit; frames leave the safe area */
+    g_anim_n = 0;
+    prev_vclock_us = 1000000;
+    bench_reset();
+    double prev = 0;
+    for (int f = 0; f < 24; f++) {
+      const float t = (float)f / 24.0f;
+      bench_reset();
+      open_frame(2, t);
+      const double c = bench_screens();
+      if (f == 0 || f == 8 || f == 16 || f == 23) {
+        char lbl[32];
+        snprintf(lbl, sizeof lbl, "t=%.2f", (double)t);
+        bench_line(lbl, c);
+      }
+      if (c < lo) lo = c;
+      if (c > hi) hi = c;
+      sum += c;
+      prev = c;
+    }
+    (void)prev;
+    prev_vclock_us = 0;
+    g_anim = NULL;
+    printf("    -> min %.2f  max %.2f  mean %.2f  spread %.1fx\n", lo, hi, sum / 24.0,
+           hi / (lo > 0.01 ? lo : 0.01));
+  }
+
+  /* The splash, which is the one the eye judges first and the one whose cost
+   * grows fastest: each ring out adds a whole ring of cells. */
+  {
+    printf("\n  the boot field, frame by frame\n");
+    double lo = 1e9, hi = 0, sum = 0;
+    for (int f = 0; f <= 16; f++) {
+      const float reach = ease_ui((float)f / 16.0f) * BF_REACH;
+      bench_reset();
+      fill(0, 0, UI_W, UI_H, MZ_GROUND);
+      for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
+      boot_field(reach, 0, 0, 1.0f);
+      const double c = bench_screens();
+      if (f == 0 || f == 8 || f == 16) {
+        char lbl[32];
+        snprintf(lbl, sizeof lbl, "reach %.0f px", (double)reach);
+        bench_line(lbl, c);
+      }
+      if (c < lo) lo = c;
+      if (c > hi) hi = c;
+      sum += c;
+    }
+    printf("    -> min %.2f  max %.2f  mean %.2f  spread %.1fx\n", lo, hi, sum / 17.0,
+           hi / (lo > 0.01 ? lo : 0.01));
+  }
+
+  if (audit_report() > 0) return 1;
   return 0;
 }

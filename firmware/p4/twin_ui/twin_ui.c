@@ -40,6 +40,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 
 #include "buttons.h"
@@ -51,7 +52,6 @@
 #include "freertos/queue.h"
 #include "gallery.h"
 #include "gfx.h"
-#include "icons.h"
 #include "kdp_recipes.h"
 #include "config_store.h"
 #include "net_link.h"
@@ -150,7 +150,7 @@ static int64_t s_pass_start_us;
  * presents until the clock says stop (the splash bloom) would never stop. */
 #define KUI_PRESENT_US 12000
 
-#define KUI_FRAME_MAX 32
+#define KUI_FRAME_MAX 40
 typedef struct {
   uint16_t *px; /* UI_W * UI_H, allocated on first use */
   int32_t at_ms; /* virtual time since the pass began */
@@ -190,6 +190,20 @@ void gfx_present(void) {
 }
 void gfx_snapshot(void) { memcpy(g_snapshot, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
 
+/* How many frames a transition of `ms` is worth here.
+ *
+ * One per display refresh. The device runs its transitions off the clock and
+ * emits as many frames as the compositor can manage; the Twin runs on a
+ * virtual clock, so the number has to be chosen - and choosing anything other
+ * than the refresh interval guarantees judder, because a frame that lasts
+ * 1.4 refreshes is shown for one refresh and then two. */
+static int tw_steps(int ms) {
+  int n = (ms + 8) / 16;
+  if (n < 4) n = 4;
+  if (n > KUI_FRAME_MAX - 2) n = KUI_FRAME_MAX - 2;
+  return n;
+}
+
 static inline uint16_t blend565(uint16_t a, uint16_t b, int t, int n) {
   const int ar = (a >> 11) & 31, ag = (a >> 5) & 63, ab = a & 31;
   const int br = (b >> 11) & 31, bg = (b >> 5) & 63, bb = b & 31;
@@ -215,6 +229,135 @@ void gfx_dissolve(int duration_ms) {
   }
   gfx_present();
 }
+/*
+ * The push. On the device the two frames are composited in landscape and
+ * rotated per frame by the PPA; here there is no panel and no rotation, so it
+ * is the same row-wise composite straight into the blend buffer.
+ *
+ * Kept frame-stepped like the dissolve above rather than time-stepped: the
+ * Twin runs on a virtual clock, so "elapsed" is whatever this function says
+ * it is, and a fixed step is the honest version of that.
+ */
+void gfx_slide(int duration_ms, bool from_right) {
+  if (duration_ms <= 0) {
+    gfx_present();
+    return;
+  }
+  const int steps = tw_steps(duration_ms);
+  for (int k = 1; k < steps; k++) {
+    const float t = (float)k / (float)steps;
+    const float u = 1.0f - t;
+    const float e = 1.0f - u * u * u; /* out-cubic, as on the device */
+    int o = (int)(e * (float)UI_W);
+    if (o < 0) o = 0;
+    if (o > UI_W) o = UI_W;
+    for (int y = 0; y < UI_H; y++) {
+      uint16_t *dst = g_blend + (size_t)y * UI_W;
+      const uint16_t *old = g_snapshot + (size_t)y * UI_W;
+      const uint16_t *new_ = g_canvas + (size_t)y * UI_W;
+      if (from_right) {
+        memcpy(dst, old + o, (size_t)(UI_W - o) * sizeof(uint16_t));
+        memcpy(dst + (UI_W - o), new_, (size_t)o * sizeof(uint16_t));
+      } else {
+        memcpy(dst, new_ + (UI_W - o), (size_t)o * sizeof(uint16_t));
+        memcpy(dst + o, old, (size_t)(UI_W - o) * sizeof(uint16_t));
+      }
+    }
+    push_frame(g_blend);
+    s_frames_presented++;
+    kui_now_us += (int64_t)duration_ms * 1000 / steps;
+  }
+  gfx_present();
+}
+
+static inline float tw_settle(float t) {
+  return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
+}
+static inline float tw_in(float t) { return t * t; }
+static inline float tw_clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+
+static inline void tw_fill_rows(uint16_t *buf, int y, int h, uint16_t c) {
+  uint16_t *p = buf + (size_t)y * UI_W;
+  for (size_t i = (size_t)h * UI_W; i != 0; i--) *p++ = c;
+}
+
+/* The stash: the destination frame, kept while ui.c draws the move over it.
+ * Same as the device's, into the blend buffer. */
+void gfx_stash(void) { memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
+
+void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
+  if (dx < 0) { w += dx; sx -= dx; dx = 0; }
+  if (dy < 0) { h += dy; sy -= dy; dy = 0; }
+  if (sx < 0) { w += sx; dx -= sx; sx = 0; }
+  if (sy < 0) { h += sy; dy -= sy; sy = 0; }
+  if (dx + w > UI_W) w = UI_W - dx;
+  if (sx + w > UI_W) w = UI_W - sx;
+  if (dy + h > UI_H) h = UI_H - dy;
+  if (sy + h > UI_H) h = UI_H - sy;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    memcpy(g_canvas + (size_t)(dy + r) * UI_W + dx, g_blend + (size_t)(sy + r) * UI_W + sx,
+           (size_t)w * sizeof(uint16_t));
+  }
+}
+
+/* The retained layer, same as the device's. Its own buffer: the blend buffer
+ * is the stash and a transition uses both at once. */
+static uint16_t g_layer_buf[UI_W * UI_H];
+void gfx_layer_keep(void) {
+  memcpy(g_layer_buf, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+}
+void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
+  if (dx < 0) { w += dx; sx -= dx; dx = 0; }
+  if (dy < 0) { h += dy; sy -= dy; dy = 0; }
+  if (sx < 0) { w += sx; dx -= sx; sx = 0; }
+  if (sy < 0) { h += sy; dy -= sy; sy = 0; }
+  if (dx + w > UI_W) w = UI_W - dx;
+  if (sx + w > UI_W) w = UI_W - sx;
+  if (dy + h > UI_H) h = UI_H - dy;
+  if (sy + h > UI_H) h = UI_H - sy;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    memcpy(g_canvas + (size_t)(dy + r) * UI_W + dx, g_layer_buf + (size_t)(sy + r) * UI_W + sx,
+           (size_t)w * sizeof(uint16_t));
+  }
+}
+
+/* The cascade. Same stagger as the device's gfx_cascade(). */
+void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t ground) {
+  if (duration_ms <= 0 || bands == NULL || n <= 0) {
+    gfx_present();
+    return;
+  }
+  const float travel = 0.5f;
+  const float step = n > 1 ? (1.0f - travel) / (float)(n - 1) : 0.0f;
+  const int steps = tw_steps(duration_ms);
+
+  for (int k = 0; k < steps; k++) {
+    const float t = (float)k / (float)steps;
+    memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+    for (int i = 0; i < n; i++) {
+      float local = (t - step * (float)i) / travel;
+      if (local >= 1.0f) continue;
+      if (local < 0.0f) local = 0.0f;
+      const int x = bands[i].x, w = bands[i].w;
+      int o = (int)((1.0f - tw_settle(local)) * (float)(UI_W - x));
+      if (o < 0) o = 0;
+      if (o > w) o = w;
+      for (int y = bands[i].y; y < bands[i].y + bands[i].h && y < UI_H; y++) {
+        uint16_t *dst = g_blend + (size_t)y * UI_W + x;
+        const uint16_t *src = g_canvas + (size_t)y * UI_W + x;
+        for (int j = 0; j < o; j++) dst[j] = ground;
+        memcpy(dst + o, src, (size_t)(w - o) * sizeof(uint16_t));
+      }
+    }
+    push_frame(g_blend);
+    s_frames_presented++;
+    kui_now_us += (int64_t)duration_ms * 1000 / steps;
+  }
+  gfx_present();
+}
+
 void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = s_frames_presented;
   if (ms) *ms = s_last_present_ms;
@@ -948,107 +1091,6 @@ void kui_set_queue(int pending, int uploading, int failed, int uploaded, int sca
   COPY(g_queue.last_error, last_error);
 }
 
-/* ---- placeholder icons --------------------------------------------------- */
-
-#ifdef KUI_ICON_N
-uint16_t kui_icon_rgb[W98_COUNT][KUI_ICON_N * KUI_ICON_N];
-uint8_t kui_icon_alpha[W98_COUNT][KUI_ICON_N * KUI_ICON_N];
-
-#define P565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
-
-static void icon_px(int i, int x, int y, uint16_t c) {
-  if (x < 0 || y < 0 || x >= KUI_ICON_N || y >= KUI_ICON_N) return;
-  kui_icon_rgb[i][y * KUI_ICON_N + x] = c;
-  kui_icon_alpha[i][y * KUI_ICON_N + x] = 255;
-}
-static void icon_rect(int i, int x, int y, int w, int h, uint16_t c) {
-  for (int yy = y; yy < y + h; yy++)
-    for (int xx = x; xx < x + w; xx++) icon_px(i, xx, yy, c);
-}
-static void icon_frame(int i, int x, int y, int w, int h, uint16_t c) {
-  icon_rect(i, x, y, w, 1, c);
-  icon_rect(i, x, y + h - 1, w, 1, c);
-  icon_rect(i, x, y, 1, h, c);
-  icon_rect(i, x + w - 1, y, 1, h, c);
-}
-static void icon_disc(int i, int cx, int cy, int r, uint16_t c) {
-  for (int y = -r; y <= r; y++)
-    for (int x = -r; x <= r; x++)
-      if (x * x + y * y <= r * r) icon_px(i, cx + x, cy + y, c);
-}
-static void icon_ring(int i, int cx, int cy, int r, int t, uint16_t c) {
-  for (int y = -r; y <= r; y++)
-    for (int x = -r; x <= r; x++) {
-      const int d = x * x + y * y;
-      if (d <= r * r && d >= (r - t) * (r - t)) icon_px(i, cx + x, cy + y, c);
-    }
-}
-
-/*
- * Seven plain glyphs in the tile's own grammar - a grey body, a dark edge,
- * one motif each - so the launcher reads as a launcher and nobody mistakes
- * them for the artwork they stand in for.
- */
-static void kui_placeholder_icons(void) {
-  const uint16_t EDGE = P565(0x40, 0x40, 0x40), BODY = P565(0xc0, 0xc0, 0xc0), LIGHT = P565(0xff, 0xff, 0xff),
-                 BLUE = P565(0x00, 0x00, 0x80), TEAL = P565(0x00, 0x80, 0x80), RED = P565(0x80, 0x00, 0x00),
-                 OLIVE = P565(0x80, 0x80, 0x00), GREEN = P565(0x00, 0x80, 0x00);
-  memset(kui_icon_alpha, 0, sizeof kui_icon_alpha);
-  memset(kui_icon_rgb, 0, sizeof kui_icon_rgb);
-
-  /* SHOOT: a camera body with a lens. */
-  icon_rect(0, 3, 9, 26, 18, BODY);
-  icon_frame(0, 3, 9, 26, 18, EDGE);
-  icon_rect(0, 9, 6, 8, 3, BODY);
-  icon_frame(0, 9, 6, 8, 4, EDGE);
-  icon_ring(0, 17, 18, 7, 2, EDGE);
-  icon_disc(0, 17, 18, 4, BLUE);
-  icon_px(0, 25, 12, RED);
-
-  /* LOOK: a sheet with a colour wedge. */
-  icon_rect(1, 6, 3, 20, 26, LIGHT);
-  icon_frame(1, 6, 3, 20, 26, EDGE);
-  for (int y = 0; y < 12; y++)
-    for (int x = 0; x <= y; x++) icon_px(1, 16 - y / 2 + x, 10 + y, x % 3 == 0 ? RED : x % 3 == 1 ? GREEN : BLUE);
-
-  /* GALLERY: two pictures, one behind the other. */
-  icon_rect(2, 8, 4, 20, 15, LIGHT);
-  icon_frame(2, 8, 4, 20, 15, EDGE);
-  icon_rect(2, 4, 11, 20, 15, LIGHT);
-  icon_frame(2, 4, 11, 20, 15, EDGE);
-  icon_rect(2, 6, 19, 16, 5, TEAL);
-  icon_disc(2, 18, 15, 2, OLIVE);
-
-  /* ROLL: two overlapping rings, the party and its guests. */
-  icon_ring(3, 12, 16, 9, 3, BLUE);
-  icon_ring(3, 20, 16, 9, 3, RED);
-
-  /* SETTINGS: a gear. */
-  icon_ring(4, 16, 16, 10, 4, BODY);
-  icon_ring(4, 16, 16, 10, 1, EDGE);
-  icon_ring(4, 16, 16, 6, 1, EDGE);
-  for (int k = 0; k < 8; k++) {
-    static const int dx[8] = {0, 1, 1, 1, 0, -1, -1, -1}, dy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
-    icon_rect(4, 15 + dx[k] * 12 - 1, 15 + dy[k] * 12 - 1, 4, 4, EDGE);
-  }
-
-  /* POWER: the symbol. */
-  icon_ring(5, 16, 17, 10, 3, EDGE);
-  icon_rect(5, 13, 4, 6, 10, BODY);
-  icon_rect(5, 14, 3, 4, 14, EDGE);
-
-  /* BATTERY: drawn at 1:1 in the viewfinder header. */
-  icon_rect(6, 2, 10, 24, 12, LIGHT);
-  icon_frame(6, 2, 10, 24, 12, EDGE);
-  icon_rect(6, 26, 13, 3, 6, EDGE);
-  icon_rect(6, 4, 12, 6, 8, GREEN);
-  icon_rect(6, 11, 12, 6, 8, GREEN);
-  icon_rect(6, 18, 12, 6, 8, GREEN);
-}
-#else
-static void kui_placeholder_icons(void) {}
-#endif
-
 /* ---- the firmware itself -------------------------------------------------- */
 
 #include "ui.c"
@@ -1058,7 +1100,7 @@ static void kui_placeholder_icons(void) {}
 static bool s_ready;
 static uint8_t *g_rgba;
 
-/** Allocate the canvas, build the icons, point ui.c at the canvas. */
+/** Allocate the canvas and point ui.c at it. */
 KUI_EXPORT("kui_init") int kui_init(void) {
   if (!s_ready) {
     g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
@@ -1067,8 +1109,6 @@ KUI_EXPORT("kui_init") int kui_init(void) {
     g_rgba = calloc((size_t)UI_W * UI_H, 4);
     if (!g_canvas || !g_snapshot || !g_blend || !g_rgba) return -1;
     cam_defaults();
-    kui_placeholder_icons();
-    if (icons_build() != ESP_OK) return -2;
     s_ready = true;
   }
   s_cv = g_canvas;
@@ -1134,10 +1174,3 @@ KUI_EXPORT("kui_screen") int kui_screen(void) { return (int)s_screen; }
 KUI_EXPORT("kui_width") int kui_width(void) { return UI_W; }
 KUI_EXPORT("kui_height") int kui_height(void) { return UI_H; }
 KUI_EXPORT("kui_version") const char *kui_version(void) { return KINO_FW_VERSION; }
-KUI_EXPORT("kui_icons_placeholder") int kui_icons_placeholder(void) {
-#ifdef KUI_ICON_N
-  return 1;
-#else
-  return 0;
-#endif
-}

@@ -151,20 +151,6 @@
 #define BOARD_BTN_SHUTTER_JP1 21
 #define BOARD_BTN_FN BOARD_BTN_NONE
 
-/*
- * The guest switch: GUEST low, OWNER high, with the P4's internal pull-up, so
- * an open circuit or an unpopulated part reads OWNER. That polarity is the
- * decision, not an accident (ECN-0006): a camera that fails into the owner's
- * half is one someone can fix, and a camera that fails into the guest half
- * cannot be configured, cannot be taken out of guest mode without a laptop,
- * and looks exactly like one that is working.
- *
- * No pin on this carrier. `SLIDE_MODE` rides the I2C expander on JP1 23/25
- * that ECN-0003 deferred, and it is the second signal asking for it. Until it
- * exists guest_mode() reads body.guestMode from the config, which Studio sets
- * over USB-C.
- */
-#define BOARD_SW_GUEST BOARD_BTN_NONE
 
 // --- TF/microSD, SDMMC slot 0, 4-bit ---
 //

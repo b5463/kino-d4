@@ -8,7 +8,7 @@ set(kino_srcs
   # includes mesh3d.h and nothing else references a symbol from it, so the
   # object was compiled, linked and then dropped by --gc-sections at best.
   # The source stays on disk; it is just not in the image.
-  "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "icons.c" "board_i2c.c"
+  "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "board_i2c.c"
   "audio.c" "config_store.c" "power.c" "lid.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "gallery_index.c" "net_link.c"
     "wifi_creds.c"

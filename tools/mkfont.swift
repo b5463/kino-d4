@@ -1,0 +1,169 @@
+// Rasterise the interface type into ui_font.h.
+//
+//   swift tools/mkfont.swift <out.h> <face.ttf>:<name>:<px>:<tracking>[:<weight>] ...
+//
+// `weight` sets the wght axis of a variable font; leave it off for a static
+// one.
+//
+// Coverage, not a bitmap. The old header was one bit per pixel because it was
+// rendered through a headless browser and thresholded, and every letterform on
+// the panel had a staircase down its diagonals. Type at 20 px with no grey in
+// it is not small type, it is a different and worse typeface.
+//
+// CoreText renders each glyph into an 8-bit grey buffer and the header carries
+// that buffer, so ui.c blends the ink into whatever is already on the canvas.
+// One byte per pixel is four times the flash of one bit and it is the cheapest
+// quality in the product.
+import Foundation
+import CoreText
+import CoreGraphics
+import ImageIO
+
+struct Face {
+  let path: String, name: String, px: Int, tracking: Double, weight: Double?
+}
+
+let args = CommandLine.arguments
+guard args.count >= 3 else {
+  FileHandle.standardError.write("usage: mkfont.swift <out.h> <ttf>:<NAME>:<px>:<tracking> ...\n".data(using: .utf8)!)
+  exit(2)
+}
+let outPath = args[1]
+let faces: [Face] = args[2...].map { spec in
+  let p = spec.split(separator: ":").map(String.init)
+  return Face(path: p[0], name: p[1], px: Int(p[2])!, tracking: Double(p[3]) ?? 0,
+              weight: p.count > 4 ? Double(p[4]) : nil)
+}
+
+/// A glyph's coverage, and where it sits relative to the pen and the baseline.
+struct Glyph {
+  var w = 0, h = 0, bx = 0, by = 0, adv = 0
+  var cov: [UInt8] = []
+}
+
+func loadFont(_ path: String, _ px: Int, _ weight: Double?) -> CTFont {
+  guard let data = FileManager.default.contents(atPath: path) as CFData?,
+        let provider = CGDataProvider(data: data),
+        let cg = CGFont(provider) else {
+    FileHandle.standardError.write("cannot read \(path)\n".data(using: .utf8)!)
+    exit(1)
+  }
+  let font = CTFontCreateWithGraphicsFont(cg, CGFloat(px), nil, nil)
+  guard let w = weight else { return font }
+  /* 'wght', as a four-character code. A variable font ships one outline set
+   * and an axis; without this it renders at its default weight whatever the
+   * file is named. */
+  let desc = CTFontDescriptorCreateWithAttributes(
+    [kCTFontVariationAttribute: [0x77676874: w]] as CFDictionary)
+  return CTFontCreateCopyWithAttributes(font, CGFloat(px), nil, desc)
+}
+
+func rasterise(_ font: CTFont, _ ch: Character, _ tracking: Double) -> Glyph {
+  var g = Glyph()
+  let s = String(ch)
+  var uni = Array(s.utf16)
+  var ids = [CGGlyph](repeating: 0, count: uni.count)
+  guard CTFontGetGlyphsForCharacters(font, &uni, &ids, uni.count), ids[0] != 0 else { return g }
+  let gid = ids[0]
+
+  var advance = CGSize.zero
+  withUnsafeMutablePointer(to: &advance) { p in
+    _ = CTFontGetAdvancesForGlyphs(font, .horizontal, [gid], p, 1)
+  }
+  g.adv = Int((advance.width + CGFloat(tracking)).rounded())
+
+  var rect = CGRect.zero
+  withUnsafeMutablePointer(to: &rect) { p in
+    _ = CTFontGetBoundingRectsForGlyphs(font, .horizontal, [gid], p, 1)
+  }
+  if rect.isEmpty || rect.isNull { return g }
+
+  /* One pixel of slack all round: the rasteriser puts partial coverage
+   * outside the outline's own bounding box, and clipping it is exactly the
+   * hard edge this whole exercise is removing. */
+  let x0 = Int(floor(rect.minX)) - 1, y0 = Int(floor(rect.minY)) - 1
+  let x1 = Int(ceil(rect.maxX)) + 1, y1 = Int(ceil(rect.maxY)) + 1
+  g.w = x1 - x0
+  g.h = y1 - y0
+  g.bx = x0
+  g.by = y1   /* rows above the baseline; ui.c subtracts it from the baseline */
+
+  var buf = [UInt8](repeating: 0, count: g.w * g.h)
+  buf.withUnsafeMutableBytes { raw in
+    guard let ctx = CGContext(data: raw.baseAddress, width: g.w, height: g.h, bitsPerComponent: 8,
+                              bytesPerRow: g.w, space: CGColorSpaceCreateDeviceGray(),
+                              bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+    ctx.setAllowsAntialiasing(true)
+    ctx.setShouldAntialias(true)
+    /* Greyscale, never subpixel: the panel's subpixels are not where a Mac
+     * thinks they are, and a colour fringe baked into a header is wrong on
+     * every device that ever shows it. */
+    ctx.setShouldSmoothFonts(false)
+    ctx.setAllowsFontSmoothing(false)
+    ctx.setFillColor(gray: 0, alpha: 1)
+    ctx.fill(CGRect(x: 0, y: 0, width: g.w, height: g.h))
+    ctx.setFillColor(gray: 1, alpha: 1)
+    var pos = CGPoint(x: CGFloat(-x0), y: CGFloat(-y0))
+    withUnsafePointer(to: &pos) { pp in
+      CTFontDrawGlyphs(font, [gid], pp, 1, ctx)
+    }
+  }
+  /* A CGBitmapContext's buffer is already top-down - row 0 is the top of the
+   * image - while its drawing coordinates run upward. Both are true at once
+   * and flipping the rows "to match a framebuffer" turns every letter upside
+   * down, which is what the first cut of this file did. */
+  g.cov = buf
+  return g
+}
+
+var out = """
+// Generated by tools/mkfont.swift. Do not edit by hand.
+//
+// ASCII 32..126, one byte of coverage per pixel. Each glyph carries its own
+// box and its offset from the pen position and the baseline, so a string is a
+// row of blends at one constant baseline y.
+#pragma once
+#include <stdint.h>
+
+typedef struct {
+  uint8_t w, h, adv;
+  int8_t bx, by;
+  const uint8_t *cov;
+} ui_glyph_t;
+
+typedef struct {
+  const ui_glyph_t *glyphs;
+  uint8_t first, count, line_h, ascent;
+} ui_font_t;
+
+
+"""
+
+for face in faces {
+  let font = loadFont(face.path, face.px, face.weight)
+  let ascent = Int(CTFontGetAscent(font).rounded(.up))
+  let descent = Int(CTFontGetDescent(font).rounded(.up))
+  let lineH = ascent + descent
+  var table: [String] = []
+  for code in 32...126 {
+    let ch = Character(UnicodeScalar(UInt8(code)))
+    let g = rasterise(font, ch, face.tracking)
+    let sym = "G_\(face.name)_\(code)"
+    if g.cov.isEmpty {
+      table.append("    {0, 0, \(g.adv), 0, 0, NULL},")
+      continue
+    }
+    var bytes = ""
+    for (i, b) in g.cov.enumerated() {
+      if i % 16 == 0 { bytes += "\n    " }
+      bytes += String(format: "0x%02x,", b)
+    }
+    out += "static const uint8_t \(sym)[\(g.cov.count)] = {\(bytes)\n};\n"
+    table.append("    {\(g.w), \(g.h), \(g.adv), \(g.bx), \(g.by), \(sym)},")
+  }
+  out += "\nstatic const ui_glyph_t GLYPHS_\(face.name)[95] = {\n" + table.joined(separator: "\n") + "\n};\n"
+  out += "static const ui_font_t UI_FONT_\(face.name) = {GLYPHS_\(face.name), 32, 95, \(lineH), \(ascent)};\n\n"
+  FileHandle.standardError.write("[mkfont] \(face.name): \(face.px) px, line \(lineH), ascent \(ascent)\n".data(using: .utf8)!)
+}
+
+try! out.write(toFile: outPath, atomically: true, encoding: .utf8)

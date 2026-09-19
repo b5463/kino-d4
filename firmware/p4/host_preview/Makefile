@@ -12,11 +12,11 @@ MAIN := ../main
 # that there is one of it.
 KDP_CORE := ../../components/kdp_core/include
 CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_CORE)
-# The guest half is unreachable on a body with no SLIDE_MODE pin (guest.h), and
-# it still has to be renderable or nobody can look at it before the switch
-# exists. A bench flag, in the renderer only: the Twin and the camera do not
-# get it, so neither can be put into a state a slide switch is supposed to own.
-CFLAGS += -DKINO_GUEST_PREVIEW=1
+# text() reports any string it sets outside the safe area, and the run fails if
+# one did. Renderer only: on the camera it would be a check nobody reads, and
+# here it is a check that runs over every screen the product has every time
+# somebody looks at one of them.
+CFLAGS += -DKINO_UI_AUDIT=1
 LDFLAGS := -lm
 
 # qr.c is compiled for real, not stubbed: it has no ESP-IDF dependency, and a
@@ -27,16 +27,11 @@ LDFLAGS := -lm
 # be: the photograph screen's wigglegram order comes from pure_wiggle_sequence()
 # on the draw path, so a stub would mean the renders showed an order no camera
 # will ever play. It has no ESP-IDF dependency - that is what it is for.
-SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/icons.c $(MAIN)/qr.c $(MAIN)/pure.c
-# specimen.c is #included by preview.c, so make never sees it change unless it
-# is named here. It was not, and an edited specimen rendered the previous one
-# in silence - the same class of miss as a baked header left out of a
-# dependency list, and the reason a render you did not ask for is worse than a
-# build error.
-DEPS := $(SRCS) specimen.c $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h $(MAIN)/icons.h \
-        $(MAIN)/ui_font.h $(MAIN)/ui_labels.h $(MAIN)/logo_kino_d4.h \
-        $(MAIN)/guest.h $(MAIN)/conditions.h $(MAIN)/calibrate.h \
-        $(MAIN)/icons_w98.h $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
+SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/qr.c $(MAIN)/pure.c
+DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h \
+        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h $(MAIN)/logo_odd_jobs.h \
+        $(MAIN)/conditions.h $(MAIN)/calibrate.h \
+        $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
         $(MAIN)/roll_queue.h $(MAIN)/gallery.h $(MAIN)/audio.h \
         $(MAIN)/kdp_server.h $(MAIN)/kdp_recipes.h $(MAIN)/pure.h \
