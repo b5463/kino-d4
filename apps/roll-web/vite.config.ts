@@ -172,5 +172,20 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    /*
+     * A fixed zone, because shortDate() renders in the LOCAL one.
+     *
+     * That is the right behaviour - a guest at a party wants the date their
+     * own phone says, not UTC - but it makes any test that pins an absolute
+     * instant depend on where the machine running it happens to be. One did:
+     * `2026-08-14T22:30:00.000Z` is the 14th in UTC and the 15th anywhere
+     * east of UTC+1:30, so `pinGate` passed in Bratislava and failed on a CI
+     * runner for six weeks while the suite was red for other reasons and
+     * nobody read it.
+     *
+     * UTC rather than a product zone: it is what the runners already use, so
+     * a failure here reproduces on a developer machine without argument.
+     */
+    env: { TZ: 'UTC' },
   },
 });

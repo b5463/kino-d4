@@ -172,7 +172,7 @@ services:
     logging: *json-logging
 
   object-storage:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     # The console is pinned to 9001 instead of the release default, which picks a
     # free port at startup and therefore changes what is listening between runs.
@@ -219,7 +219,7 @@ services:
     logging: *json-logging
 
   createbucket:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
     depends_on:
       object-storage: { condition: service_healthy }
     environment:

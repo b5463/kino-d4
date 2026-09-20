@@ -59,10 +59,15 @@ jobs:
             echo "AWS_SECRET_ACCESS_KEY=$generated_secret"
             echo "S3_SECRET_KEY=$generated_secret"
           } >> "$GITHUB_ENV"
+          # quay.io, not Docker Hub: MinIO's Hub repository started answering
+          # `pull access denied ... may require 'docker login'` for this exact
+          # tag, which is what had been failing this job. quay.io/minio is
+          # MinIO's own registry and serves the same release tags, so this is a
+          # registry change, not a version change.
           docker run --detach --rm --name kino-ci-minio \
             -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=kino -e MINIO_ROOT_PASSWORD \
-            minio/minio:RELEASE.2025-04-22T22-12-26Z \
+            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z \
             server /data --console-address :9001
       # The readiness gate for MinIO, and a real existence check for the bucket.
       #
