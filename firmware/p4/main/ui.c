@@ -491,11 +491,30 @@ typedef enum {
 } dialog_t;
 
 /*
- * The canvas, fetched on every use rather than cached at start-up, so a
- * compositor that moves it between presents cannot be drawn into behind its
- * back. A call per access costs nothing next to the PSRAM write it precedes.
+ * The drawing target, fetched on every use rather than cached at start-up.
+ *
+ * It is a window onto the logical screen (gfx_target_t): most of the time
+ * the whole canvas, and inside a render pass one tile of it in internal
+ * SRAM. Every primitive below clips to the window and addresses pixels
+ * through cv_ptr(), so the same drawing code draws a whole frame or one band
+ * of it without knowing which. A call per access costs nothing next to the
+ * memory write it precedes.
  */
-#define s_cv (gfx_canvas())
+#define TG (gfx_target())
+
+/** Whether logical (x, y) is inside the target's window. */
+static inline bool cv_in(const gfx_target_t *t, int x, int y) {
+  return x >= t->x0 && y >= t->y0 && x < t->x0 + t->w && y < t->y0 + t->h;
+}
+
+/** The pixel at logical (x, y), which the caller has checked is inside. */
+static inline uint16_t *cv_ptr(const gfx_target_t *t, int x, int y) {
+  return t->px + (size_t)(y - t->y0) * (size_t)t->stride + (size_t)(x - t->x0);
+}
+
+/* The window's edges, for clamping a loop before it starts. */
+#define CV_X1(t) ((t)->x0 + (t)->w)
+#define CV_Y1(t) ((t)->y0 + (t)->h)
 static screen_t s_screen = SCR_MENU;
 static int s_focus[SCR_COUNT];
 /* Whether focus is worth DRAWING.
@@ -595,7 +614,8 @@ _Static_assert(PH_W == GALLERY_FRAME_MAX_W && PH_H == GALLERY_FRAME_MAX_H,
 /* ------------------------------------------------------------------ */
 
 static inline void px_set(int x, int y, uint16_t c) {
-  if ((unsigned)x < UI_W && (unsigned)y < UI_H) s_cv[(size_t)y * UI_W + x] = c;
+  const gfx_target_t *t = TG;
+  if (cv_in(t, x, y)) *cv_ptr(t, x, y) = c;
 }
 
 /*
@@ -649,19 +669,21 @@ static inline void fill_run(uint16_t *p, size_t n, uint16_t colour) {
 }
 
 static void fill(int x, int y, int w, int h, uint16_t colour) {
-  if (x < 0) { w += x; x = 0; }
-  if (y < 0) { h += y; y = 0; }
-  if (x + w > UI_W) w = UI_W - x;
-  if (y + h > UI_H) h = UI_H - y;
+  const gfx_target_t *t = TG;
+  if (x < t->x0) { w += x - t->x0; x = t->x0; }
+  if (y < t->y0) { h += y - t->y0; y = t->y0; }
+  if (x + w > CV_X1(t)) w = CV_X1(t) - x;
+  if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
   if (w <= 0 || h <= 0) return;
-  /* A full-width rectangle is one contiguous run: the canvas is row-major, so
-   * the rows join and the per-row loop and its pointer arithmetic go away.
-   * This is the shape of the fill every screen opens with. */
-  if (x == 0 && w == UI_W) {
-    fill_run(s_cv + (size_t)y * UI_W, (size_t)h * UI_W, colour);
+  /* A rectangle the full width of the window is one contiguous run: the
+   * target is row-major, so the rows join and the per-row loop and its
+   * pointer arithmetic go away. This is the shape of the fill every screen
+   * opens with. */
+  if (x == t->x0 && w == t->w && t->stride == t->w) {
+    fill_run(cv_ptr(t, x, y), (size_t)h * (size_t)w, colour);
     return;
   }
-  for (int r = 0; r < h; r++) fill_run(s_cv + (size_t)(y + r) * UI_W + x, (size_t)w, colour);
+  for (int r = 0; r < h; r++) fill_run(cv_ptr(t, x, y + r), (size_t)w, colour);
 }
 
 static uint16_t mix(uint16_t a, uint16_t b, int k) {
@@ -779,6 +801,9 @@ static void round_rect(int x, int y, int w, int h, int r, uint16_t c) {
    * the pixel's own centre; coverage falls from full to none across the one
    * pixel that straddles the edge, which is what a rasteriser does and what
    * the eye reads as a curve. */
+  const gfx_target_t *t = TG;
+  /* Nothing to sample when no corner box touches the window. */
+  if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
   const float rf = (float)r;
   for (int dy = 0; dy < r; dy++) {
     for (int dx = 0; dx < r; dx++) {
@@ -794,8 +819,8 @@ static void round_rect(int x, int y, int w, int h, int r, uint16_t c) {
       for (int a = 0; a < 2; a++) {
         for (int b = 0; b < 2; b++) {
           const int px = xs[a], py = ys[b];
-          if ((unsigned)px >= (unsigned)UI_W || (unsigned)py >= (unsigned)UI_H) continue;
-          uint16_t *dst = &s_cv[(size_t)py * UI_W + px];
+          if (!cv_in(t, px, py)) continue;
+          uint16_t *dst = cv_ptr(t, px, py);
           *dst = k >= 254 ? c : mix(*dst, c, k);
         }
       }
@@ -811,6 +836,8 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
   fill(x + r, y + h - 1, w - 2 * r, 1, c);
   fill(x, y + r, 1, h - 2 * r, c);
   fill(x + w - 1, y + r, 1, h - 2 * r, c);
+  const gfx_target_t *t = TG;
+  if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
   const float rf = (float)r;
   for (int dy = 0; dy < r; dy++) {
     for (int dx = 0; dx < r; dx++) {
@@ -823,8 +850,8 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
       const int ys[2] = {y + dy, y + h - 1 - dy};
       for (int a = 0; a < 2; a++)
         for (int b = 0; b < 2; b++) {
-          if ((unsigned)xs[a] >= (unsigned)UI_W || (unsigned)ys[b] >= (unsigned)UI_H) continue;
-          uint16_t *p = &s_cv[(size_t)ys[b] * UI_W + xs[a]];
+          if (!cv_in(t, xs[a], ys[b])) continue;
+          uint16_t *p = cv_ptr(t, xs[a], ys[b]);
           *p = mix(*p, c, k);
         }
     }
@@ -842,6 +869,8 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
  */
 static void cut_corners(int x, int y, int w, int h, float rad, uint16_t behind) {
   if (rad < 0.4f) return;
+  const gfx_target_t *t = TG;
+  if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
   const int r = (int)rad + 1;
   for (int dy = 0; dy < r; dy++) {
     for (int dx = 0; dx < r; dx++) {
@@ -856,8 +885,8 @@ static void cut_corners(int x, int y, int w, int h, float rad, uint16_t behind) 
       const int ys[2] = {y + dy, y + h - 1 - dy};
       for (int a = 0; a < 2; a++) {
         for (int b = 0; b < 2; b++) {
-          if ((unsigned)xs[a] >= (unsigned)UI_W || (unsigned)ys[b] >= (unsigned)UI_H) continue;
-          uint16_t *d = &s_cv[(size_t)ys[b] * UI_W + xs[a]];
+          if (!cv_in(t, xs[a], ys[b])) continue;
+          uint16_t *d = cv_ptr(t, xs[a], ys[b]);
           *d = k >= 254 ? behind : mix(*d, behind, k);
         }
       }
@@ -874,13 +903,16 @@ static void cut_corners(int x, int y, int w, int h, float rad, uint16_t behind) 
 static void disc(int cx, int cy, float r, uint16_t c) {
   PX_BLEND((size_t)((2.0f * r + 2.0f) * (2.0f * r + 2.0f)));
 
-  const int x0 = (int)(cx - r) - 1, x1 = (int)(cx + r) + 1;
-  const int y0 = (int)(cy - r) - 1, y1 = (int)(cy + r) + 1;
+  const gfx_target_t *t = TG;
+  int x0 = (int)(cx - r) - 1, x1 = (int)(cx + r) + 1;
+  int y0 = (int)(cy - r) - 1, y1 = (int)(cy + r) + 1;
+  if (x0 < t->x0) x0 = t->x0;
+  if (y0 < t->y0) y0 = t->y0;
+  if (x1 >= CV_X1(t)) x1 = CV_X1(t) - 1;
+  if (y1 >= CV_Y1(t)) y1 = CV_Y1(t) - 1;
   for (int py = y0; py <= y1; py++) {
-    if ((unsigned)py >= (unsigned)UI_H) continue;
-    uint16_t *row = s_cv + (size_t)py * UI_W;
+    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
     for (int px = x0; px <= x1; px++) {
-      if ((unsigned)px >= (unsigned)UI_W) continue;
       const float ox = (float)px + 0.5f - (float)cx;
       const float oy = (float)py + 0.5f - (float)cy;
       float cov = r - sqrtf(ox * ox + oy * oy) + 0.5f;
@@ -901,11 +933,14 @@ static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t
   int bx1 = (int)ceilf((x0 > x1 ? x0 : x1) + hw + 1);
   int by0 = (int)floorf((y0 < y1 ? y0 : y1) - hw - 1);
   int by1 = (int)ceilf((y0 > y1 ? y0 : y1) + hw + 1);
+  const gfx_target_t *t = TG;
+  if (bx0 < t->x0) bx0 = t->x0;
+  if (by0 < t->y0) by0 = t->y0;
+  if (bx1 >= CV_X1(t)) bx1 = CV_X1(t) - 1;
+  if (by1 >= CV_Y1(t)) by1 = CV_Y1(t) - 1;
   for (int py = by0; py <= by1; py++) {
-    if ((unsigned)py >= (unsigned)UI_H) continue;
-    uint16_t *row = s_cv + (size_t)py * UI_W;
+    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
     for (int px = bx0; px <= bx1; px++) {
-      if ((unsigned)px >= (unsigned)UI_W) continue;
       const float qx = (float)px + 0.5f - x0, qy = (float)py + 0.5f - y0;
       float t = len2 > 0.0f ? (qx * vx + qy * vy) / len2 : 0.0f;
       if (t < 0.0f) t = 0.0f;
@@ -1022,14 +1057,15 @@ static void well(int x, int y, int w, int h) {
  * round trips.
  */
 static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
-  if (x < 0) { w += x; x = 0; }
-  if (y < 0) { h += y; y = 0; }
-  if (x + w > UI_W) w = UI_W - x;
-  if (y + h > UI_H) h = UI_H - y;
+  const gfx_target_t *t = TG;
+  if (x < t->x0) { w += x - t->x0; x = t->x0; }
+  if (y < t->y0) { h += y - t->y0; y = t->y0; }
+  if (x + w > CV_X1(t)) w = CV_X1(t) - x;
+  if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
   if (w <= 0 || h <= 0) return;
   PX_BLEND((size_t)w * h);
   for (int r = 0; r < h; r++) {
-    uint16_t *row = s_cv + (size_t)(y + r) * UI_W + x;
+    uint16_t *row = cv_ptr(t, x, y + r);
     for (int c = 0; c < w; c++) row[c] = mix(row[c], tint, k);
   }
 }
@@ -1166,17 +1202,21 @@ static void glyph_blend(const ui_glyph_t *g, int pen, int baseline, uint16_t ink
   PX_BLEND((size_t)g->w * g->h);
   const int gx = pen + g->bx;
   const int gy = baseline - g->by;
+  const gfx_target_t *t = TG;
+  /* A glyph wholly outside the window costs nothing: in a tile pass the same
+   * text is set once per tile and most of it lands in other tiles. */
+  if (gx + g->w <= t->x0 || gy + g->h <= t->y0 || gx >= CV_X1(t) || gy >= CV_Y1(t)) return;
+  const int c0 = gx < t->x0 ? t->x0 - gx : 0;
+  const int c1 = gx + g->w > CV_X1(t) ? CV_X1(t) - gx : g->w;
   for (int r = 0; r < g->h; r++) {
     const int py = gy + r;
-    if ((unsigned)py >= (unsigned)UI_H) continue;
+    if (py < t->y0 || py >= CV_Y1(t)) continue;
     const uint8_t *src = g->cov + (size_t)r * g->w;
-    uint16_t *dst = s_cv + (size_t)py * UI_W;
-    for (int c = 0; c < g->w; c++) {
+    uint16_t *dst = cv_ptr(t, gx, py);
+    for (int c = c0; c < c1; c++) {
       const int a = src[c];
       if (a == 0) continue;
-      const int px = gx + c;
-      if ((unsigned)px >= (unsigned)UI_W) continue;
-      dst[px] = a >= 254 ? ink : mix(dst[px], ink, a);
+      dst[c] = a >= 254 ? ink : mix(dst[c], ink, a);
     }
   }
 }
@@ -1599,11 +1639,15 @@ static void oddjobs_mark(int cx, int cy, float r, uint16_t ink) {
 
   const int span = (int)r + 1;
   const float scale = (float)ODD_JOBS_MARK_N / (2.0f * r);
-  for (int py = cy - span; py <= cy + span; py++) {
-    if ((unsigned)py >= (unsigned)UI_H) continue;
-    uint16_t *row = s_cv + (size_t)py * UI_W;
-    for (int px = cx - span; px <= cx + span; px++) {
-      if ((unsigned)px >= (unsigned)UI_W) continue;
+  const gfx_target_t *t = TG;
+  int y0 = cy - span, y1 = cy + span, x0 = cx - span, x1 = cx + span;
+  if (x0 < t->x0) x0 = t->x0;
+  if (y0 < t->y0) y0 = t->y0;
+  if (x1 >= CV_X1(t)) x1 = CV_X1(t) - 1;
+  if (y1 >= CV_Y1(t)) y1 = CV_Y1(t) - 1;
+  for (int py = y0; py <= y1; py++) {
+    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
+    for (int px = x0; px <= x1; px++) {
       /* Into the map's own pixels, at its centre. */
       const float u = ((float)px + 0.5f - (float)cx) * scale + (float)ODD_JOBS_MARK_N / 2.0f;
       const float v = ((float)py + 0.5f - (float)cy) * scale + (float)ODD_JOBS_MARK_N / 2.0f;
@@ -1869,11 +1913,19 @@ static void boot_field(float reach, int32_t ms, int pal, float warm) {
   /* The furthest a cell can be and still be on the panel. */
   const float far = 470.0f;
   const int half = (5 * BF_BIT) / 2;
+  const gfx_target_t *tg = TG;
 
   for (int gy = -(UI_H / 2) / BF_PITCH - 1; gy <= (UI_H / 2) / BF_PITCH + 1; gy++) {
     for (int gx = -(UI_W / 2) / BF_PITCH - 1; gx <= (UI_W / 2) / BF_PITCH + 1; gx++) {
       const int cx = BF_CX + gx * BF_PITCH;
       const int cy = BF_CY + gy * BF_PITCH;
+      /* A cell whose glyph box misses the target's window costs nothing:
+       * in a tile pass the field is drawn once per tile and most of its 900
+       * cells land in other tiles. */
+      if (cx + half < tg->x0 || cy + half < tg->y0 || cx - half >= CV_X1(tg) ||
+          cy - half >= CV_Y1(tg)) {
+        continue;
+      }
       const float dx = (float)(cx - BF_CX), dy = (float)(cy - BF_CY);
       const float dist = sqrtf(dx * dx + dy * dy);
 
@@ -2033,9 +2085,64 @@ static void boot_mark(void) {
 /* Drawn later in the file; the driver only needs to be able to call them. */
 static void draw_screen(void);
 static void open_frame(int row, float t);
-static void open_present(void);
 static void go(screen_t s, int ms);
 static void boot_mark(void);
+static void boot_field(float reach, int32_t ms, int pal, float warm);
+
+/*
+ * The frames, as functions the compositor can call.
+ *
+ * gfx_render() decides where a frame is drawn - the whole canvas, or a band
+ * of it at a time - and calls the drawing back once per place. So every
+ * frame this file shows is one of these: a function of the UI's state and
+ * its context, drawing the whole logical screen, and nothing after it that
+ * draws. `render_screen` is the current screen; the others are the moves and
+ * the marks.
+ */
+static void render_screen(void *ctx) {
+  (void)ctx;
+  draw_screen();
+}
+
+typedef struct {
+  float reach;
+  int32_t ms;
+  int pal;
+  float warm;
+} field_frame_t;
+
+static void render_field(void *ctx) {
+  const field_frame_t *f = ctx;
+  fill(0, 0, UI_W, UI_H, MZ_GROUND);
+  boot_field(f->reach, f->ms, f->pal, f->warm);
+}
+
+/* render_open() is with the animation state it reads, below. */
+
+/* The camera's mark on the ground, and the same mark fading to black. */
+static void render_mark(void *ctx) {
+  (void)ctx;
+  fill(0, 0, UI_W, UI_H, MZ_GROUND);
+  boot_mark();
+}
+
+static void render_mark_fade(void *ctx) {
+  const int *k = ctx;
+  fill(0, 0, UI_W, UI_H, MZ_GROUND);
+  boot_mark();
+  scrim(0, 0, UI_W, UI_H, W_DKSHAD, *k);
+}
+
+static void render_black(void *ctx) {
+  (void)ctx;
+  fill(0, 0, UI_W, UI_H, W_DKSHAD);
+}
+
+static void render_restarting(void *ctx) {
+  (void)ctx;
+  fill(0, 0, UI_W, UI_H, W_FACE);
+  text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h / 2, "RESTARTING", W_TEXT);
+}
 
 /*
  * How long a move takes.
@@ -2101,7 +2208,7 @@ static struct {
   int64_t t0_us;   /* when THIS phase began */
   int64_t start_us; /* when the whole move began */
   uint32_t f0;      /* frames the compositor had presented when it began */
-  uint64_t present0_us; /* gfx_present_us_total() when it began */
+  uint64_t draw0_us, xpose0_us; /* gfx_pass_split() when it began */
   int32_t span_ms;
   int row;
   int pal;          /* which look's colours the boot field is wearing */
@@ -2109,6 +2216,12 @@ static struct {
 } s_anim;
 
 static bool anim_active(void) { return s_anim.kind != ANIM_NONE; }
+
+/* One frame of the open move at phase *ctx, as a frame the compositor calls. */
+static void render_open(void *ctx) {
+  const float *p = ctx;
+  open_frame(s_anim.row, *p);
+}
 
 static void anim_phase(int phase, int32_t span_ms) {
   s_anim.phase = phase;
@@ -2130,17 +2243,20 @@ static void anim_report(const char *what) {
   gfx_stats(&f1, NULL);
   const uint32_t ms = (uint32_t)((esp_timer_get_time() - s_anim.start_us) / 1000);
   const uint32_t frames = f1 - s_anim.f0;
-  const uint32_t present_ms = (uint32_t)((gfx_present_us_total() - s_anim.present0_us) / 1000);
-  klog("P4", "%s: %lu frames in %lu ms (%lu fps), %lu ms presenting, %lu ms/frame drawing", what,
-       (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
-       (unsigned long)present_ms, (unsigned long)(frames ? (ms - present_ms) / frames : 0));
+  uint64_t d1 = 0, x1 = 0;
+  gfx_pass_split(&d1, &x1);
+  const uint32_t draw_ms = (uint32_t)((d1 - s_anim.draw0_us) / 1000);
+  const uint32_t xpose_ms = (uint32_t)((x1 - s_anim.xpose0_us) / 1000);
+  klog("P4", "%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out",
+       what, (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
+       (unsigned long)(frames ? draw_ms / frames : 0), (unsigned long)(frames ? xpose_ms / frames : 0));
 }
 
 static void anim_start_splash(void) {
   s_anim.kind = ANIM_SPLASH;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
-  s_anim.present0_us = gfx_present_us_total();
+  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us);
 
   /*
    * The look decides the colour, and it is decided once: a look cannot change
@@ -2171,7 +2287,7 @@ static void anim_start_open(int row, bool opening, int ms) {
   s_anim.opening = opening;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
-  s_anim.present0_us = gfx_present_us_total();
+  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us);
   anim_phase(0, ms);
 }
 
@@ -2256,23 +2372,24 @@ static uint32_t anim_tick(void) {
            * from rest, so the opening cells still creep out of the middle
            * the way the reference's do - that beat was never a separate
            * phase, it is just the front of this curve. */
-          fill(0, 0, UI_W, UI_H, MZ_GROUND);
-          boot_field(BF_SEED + ease_ui(t) * (BF_REACH - BF_SEED), ms, s_anim.pal, warm);
-          gfx_present();
+          {
+            field_frame_t f = {BF_SEED + ease_ui(t) * (BF_REACH - BF_SEED), ms, s_anim.pal, warm};
+            gfx_render(render_field, &f);
+          }
           if (done) anim_phase(SPL_HELD, SPL_MS[SPL_HELD]);
           return 0;
 
         case SPL_HELD:
           /* Full, and still changing: the cells go on re-rolling, which is
            * the beat that says the field is alive rather than a picture. */
-          fill(0, 0, UI_W, UI_H, MZ_GROUND);
-          boot_field(BF_REACH, ms, s_anim.pal, warm);
-          gfx_present();
+          {
+            field_frame_t f = {BF_REACH, ms, s_anim.pal, warm};
+            gfx_render(render_field, &f);
+          }
           if (done) anim_phase(SPL_BACK, SPL_MS[SPL_BACK]);
           return 0;
 
         case SPL_BACK:
-          fill(0, 0, UI_W, UI_H, MZ_GROUND);
           /*
            * Accelerating away, not easing to a stop.
            *
@@ -2283,8 +2400,10 @@ static uint32_t anim_tick(void) {
            * gone: this hits zero exactly as the phase does, and the menu
            * arrives on the frame after.
            */
-          boot_field((1.0f - t * t) * BF_REACH, ms, s_anim.pal, warm);
-          gfx_present();
+          {
+            field_frame_t f = {(1.0f - t * t) * BF_REACH, ms, s_anim.pal, warm};
+            gfx_render(render_field, &f);
+          }
           if (done) {
             anim_report("splash");
             s_anim.kind = ANIM_NONE;
@@ -2304,20 +2423,12 @@ static uint32_t anim_tick(void) {
     case ANIM_OPEN: {
       float p = t;
       if (!s_anim.opening) p = 1.0f - p;
-      open_frame(s_anim.row, p);
-      open_present();
+      gfx_render(render_open, &p);
       if (done) {
-        /* The exact end. Opening, the stash already holds the destination and
-         * a composited frame IS it; going back, the destination has never
-         * been drawn, so it has to be drawn now. */
-        if (s_anim.opening) {
-          /* The whole destination, from the stash, in one call: the exact
-           * end, whatever rings the frames before it went out as. */
-          gfx_present_with_stash(0, 0, UI_W, UI_H, 0);
-        } else {
-          draw_screen();
-          gfx_present();
-        }
+        /* The exact end: the destination drawn as itself. The last composited
+         * frame is a pixel short of it - the ease does not land on 1.0 to the
+         * pixel - and going back the destination has never been drawn at all. */
+        gfx_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
         s_anim.kind = ANIM_NONE;
       }
@@ -2356,26 +2467,18 @@ static void power_down_anim(void) {
    * is switching off. What is leaving is the camera, so the camera's own mark
    * is what is on the screen, and then it is not.
    */
-  fill(0, 0, UI_W, UI_H, MZ_GROUND);
-  boot_mark();
-  gfx_present();
-  gfx_flush();
+  gfx_render(render_mark, NULL);
   vTaskDelay(pdMS_TO_TICKS(520));
 
   /* Out through the ground rather than to black in one step: the panel's
    * backlight is still on for a moment after this returns, and a hard cut
    * leaves it showing an empty lit rectangle. */
   for (int i = 1; i <= 7; i++) {
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
-    boot_mark();
-    scrim(0, 0, UI_W, UI_H, W_DKSHAD, i * 255 / 7);
-    gfx_present();
-    gfx_flush();
+    int k = i * 255 / 7;
+    gfx_render(render_mark_fade, &k);
     vTaskDelay(pdMS_TO_TICKS(55));
   }
-  fill(0, 0, UI_W, UI_H, W_DKSHAD);
-  gfx_present();
-  gfx_flush();
+  gfx_render(render_black, NULL);
   vTaskDelay(pdMS_TO_TICKS(140));
 }
 
@@ -3310,10 +3413,35 @@ static void sh_build_maps(void) {
 
 static void sh_blit(const uint16_t *tile, int px, int py) {
   if (!s_sh_map_built) sh_build_maps();
-  for (int y = 0; y < SH_PANE_H; y++) {
+  const gfx_target_t *t = TG;
+  int y0 = py < t->y0 ? t->y0 - py : 0, y1 = SH_PANE_H;
+  if (py + y1 > CV_Y1(t)) y1 = CV_Y1(t) - py;
+  int x0 = px < t->x0 ? t->x0 - px : 0, x1 = SH_PANE_W;
+  if (px + x1 > CV_X1(t)) x1 = CV_X1(t) - px;
+  if (y0 >= y1 || x0 >= x1) return;
+  for (int y = y0; y < y1; y++) {
     const uint16_t *src = tile + (size_t)s_sh_ymap[y] * VF_W;
-    uint16_t *dst = s_cv + (size_t)(py + y) * UI_W + px;
-    for (int x = 0; x < SH_PANE_W; x++) dst[x] = src[s_sh_xmap[x]];
+    uint16_t *dst = cv_ptr(t, px + x0, py + y);
+    for (int x = x0; x < x1; x++) dst[x - x0] = src[s_sh_xmap[x]];
+  }
+}
+
+/**
+ * Rows of a picture into the target, clipped to its window. Every blit of
+ * decoded pixels - a gallery tile, the photograph, a quad's quadrant - goes
+ * through this so the clipping is written once.
+ */
+static void blit_rows(const uint16_t *src, int src_stride, int x, int y, int w, int h) {
+  const gfx_target_t *t = TG;
+  int sx = 0, sy = 0;
+  if (x < t->x0) { sx = t->x0 - x; w -= sx; x = t->x0; }
+  if (y < t->y0) { sy = t->y0 - y; h -= sy; y = t->y0; }
+  if (x + w > CV_X1(t)) w = CV_X1(t) - x;
+  if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    memcpy(cv_ptr(t, x, y + r), src + (size_t)(sy + r) * (size_t)src_stride + sx,
+           (size_t)w * sizeof(uint16_t));
   }
 }
 
@@ -4131,9 +4259,7 @@ static void star(int x, int y, uint16_t ink) {
 }
 
 static void gal_blit(const uint16_t *px, int x, int y) {
-  for (int r = 0; r < G_TILE_H; r++)
-    memcpy(s_cv + (size_t)(y + r) * UI_W + x, px + (size_t)r * G_TILE_W,
-           (size_t)G_TILE_W * sizeof(uint16_t));
+  blit_rows(px, G_TILE_W, x, y, G_TILE_W, G_TILE_H);
 }
 
 static void draw_gallery(void) {
@@ -4777,9 +4903,7 @@ static void draw_photo(void) {
       const int qx = px + (i & 1) * qw, qy = py + (i >> 1) * qh;
       const uint16_t *fp = (s_wig_have & (1u << i)) ? gallery_frame_pixels(i) : NULL;
       if (fp != NULL) {
-        for (int r = 0; r < qh; r++)
-          memcpy(s_cv + (size_t)(qy + r) * UI_W + qx, fp + (size_t)r * qw,
-                 (size_t)qw * sizeof(uint16_t));
+        blit_rows(fp, qw, qx, qy, qw, qh);
       } else {
         char lens[4];
         snprintf(lens, sizeof lens, "C%d", i + 1);
@@ -4793,9 +4917,7 @@ static void draw_photo(void) {
     fill(px + qw - 1, py, 2, PH_H, D_GROUND);
     fill(px, py + qh - 1, PH_W, 2, D_GROUND);
   } else if (src != NULL) {
-    for (int r = 0; r < PH_H; r++)
-      memcpy(s_cv + (size_t)(py + r) * UI_W + px, src + (size_t)r * PH_W,
-             (size_t)PH_W * sizeof(uint16_t));
+    blit_rows(src, PH_W, px, py, PH_W, PH_H);
   } else {
     fill(px, py, PH_W, PH_H, D_PANE);
     text_mid(&UI_FONT_R, px + PH_W / 2, py + PH_H / 2 - 12, "NO IMAGE", D_DIM);
@@ -6761,9 +6883,16 @@ static void draw_capture_banner(void) {
   draw_strip(st, line, accent);
 }
 
+/* How long a toast stays. Expiry is decided in ui_pass, once per pass, and
+ * never inside a draw: a draw runs once per tile of a frame, and a toast that
+ * expired between two tiles would be half on the screen. */
+#define TOAST_MS 2200
+static bool toast_expired(void) {
+  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)TOAST_MS * 1000;
+}
+
 static void draw_toast(void) {
-  if (s_toast[0] == '\0') return;
-  if (esp_timer_get_time() - s_toast_us > 2200000) { s_toast[0] = '\0'; return; }
+  if (s_toast[0] == '\0' || toast_expired()) return;
   /*
    * A mint chip, floating.
    *
@@ -6921,18 +7050,6 @@ static void fire_shutter(bool long_press);
  * curve like that is what "choppy" actually means - the frames are not late
  * on average, they are late at the end, and the end is where the eye is.
  */
-/*
- * What open_frame() decided about the card rectangle, for open_present().
- *
- * Presenting only the ring where the card grew was tried and cannot work
- * here: the card is hung from the arriving screen's TOP edge, so as the card
- * rises every pixel inside it scrolls, and the change is the whole card on
- * every frame. What does work is not copying the card: the present rotates it
- * straight from the stash into its place on the panel.
- */
-static bool s_open_direct;
-static int s_open_x, s_open_y, s_open_w, s_open_h;
-
 static void open_frame(int row, float t) {
   int rx, ry, rw, rh;
   menu_rect(row, &rx, &ry, &rw, &rh);
@@ -7016,40 +7133,21 @@ static void open_frame(int row, float t) {
   /*
    * The screen, cropped to the card and hung from its top edge.
    *
-   * Two ways to put it there. While the card is small - the first half of
-   * the move - it is copied into the canvas so the row's colour can wash off
-   * over it and its corners can be cut: a few hundred KB, and the frames that
-   * carry the move's whole character. Once it covers half the panel the copy
-   * is the frame's biggest cost (a whole screen at the end, then rotated
-   * again), the wash is long gone and the corner radius is under 5 px, so
-   * the present takes the rectangle straight from the stash
-   * (gfx_present_with_stash) and the CPU copies nothing. The card is hung
-   * from the stash's top edge, so the present reads the stash from row 0 and
-   * lands it at the card's row oy.
+   * A copy out of the stash into the target. Presenting the card straight
+   * from the stash on the PPA was tried while frames were rotated out of a
+   * PSRAM canvas and saved the copy; with frames drawn in tiles the copy IS
+   * the frame's cost for that region, and there is no rotate to skip.
+   * (Presenting only the ring where the card grew cannot work: the card is
+   * hung from the arriving screen's TOP edge, so as it rises every pixel
+   * inside it scrolls.)
    */
-  const float wash = 1.0f - span01(t, 0.0f, 0.34f);
-  s_open_direct = false;
-  if (t >= 0.5f && wash <= 0.01f && gfx_blocks_ok()) {
-    s_open_direct = true;
-    s_open_x = ox;
-    s_open_y = oy;
-    s_open_w = ow;
-    s_open_h = oh;
-    return;
-  }
-
   gfx_stash_blit(ox, oy, ox, 0, ow, oh);
 
   /* The row's colour, washing off. */
+  const float wash = 1.0f - span01(t, 0.0f, 0.34f);
   if (wash > 0.01f) scrim(ox, oy, ow, oh, tint, (int)(wash * 255.0f));
 
   cut_corners(ox, oy, ow, oh, (float)UI_R * (1.0f - e), MZ_GROUND);
-}
-
-/* Present the frame open_frame() just drew, by whichever route it chose. */
-static void open_present(void) {
-  if (s_open_direct) gfx_present_with_stash(s_open_x, s_open_y, s_open_w, s_open_h, 0);
-  else gfx_present();
 }
 
 static void open_anim(int row, bool opening, int ms) {
@@ -7097,9 +7195,16 @@ static void go(screen_t s, int ms) {
    * back. Either way it is the menu row for whichever end is not the menu. */
   const int row = from == SCR_MENU ? menu_item_of(s) : (back && s == SCR_MENU ? menu_item_of(from) : -1);
 
-  if (from == SCR_LOOK && s != SCR_LOOK) s_look_from_shoot = false;
-  s_screen = s;
-  s_pressed = -1;
+  /*
+   * The screen being left, into the canvas.
+   *
+   * Frames go to the panel in tiles now and no copy of the one on screen
+   * exists in PSRAM, so the move's two ends are drawn here on purpose: the
+   * one being left first, while s_screen still names it and the pressed row
+   * is still pressed, for the snapshot the push and the dissolve start from
+   * and for whichever retained buffer this move wants it in.
+   */
+  gfx_render_canvas(render_screen, NULL);
   gfx_snapshot();
 
   /*
@@ -7107,22 +7212,25 @@ static void go(screen_t s, int ms) {
    *
    * open_anim() draws the menu itself and blits the OTHER end of the move
    * inside the growing card, so the stash has to hold whichever end that is:
-   * the screen being opened, which does not exist until draw_screen() runs,
-   * or the screen being left, which is on the canvas right now and will be
-   * painted over by it. Getting this backwards put the top of the menu inside
-   * the card on the way back - the SHOOT card shrinking into the GALLERY row,
-   * which is a sentence about nothing.
+   * the screen being opened, or the screen being left. Getting this
+   * backwards put the top of the menu inside the card on the way back - the
+   * SHOOT card shrinking into the GALLERY row, which is a sentence about
+   * nothing.
    */
   const bool opening = from == SCR_MENU;
-  /* Before draw_screen() the frame wanted is the one ON THE PANEL, which the
-   * pipelined compositor keeps apart from the canvas: the _shown variants. */
-  if (row >= 0 && !opening) gfx_stash_shown();
-  /* The menu into the retained layer, from whichever side of draw_screen() it
-   * is on: opening, it is what is on the panel now; closing, it is what
-   * draw_screen() is about to put on the canvas. open_frame() carries it in
-   * two blits rather than drawing six cards a frame. */
-  if (row >= 0 && opening) gfx_layer_keep_shown();
-  draw_screen();
+  if (row >= 0 && !opening) gfx_stash();
+  /* The menu into the retained layer, from whichever end of the move it is:
+   * opening, it is the screen being left; closing, the one arriving.
+   * open_frame() carries it in two blits rather than drawing six cards a
+   * frame. */
+  if (row >= 0 && opening) gfx_layer_keep();
+
+  if (from == SCR_LOOK && s != SCR_LOOK) s_look_from_shoot = false;
+  s_screen = s;
+  s_pressed = -1;
+
+  /* And the screen arriving, into the canvas, for the other buffer. */
+  gfx_render_canvas(render_screen, NULL);
   if (row >= 0 && opening) gfx_stash();
   if (row >= 0 && !opening) gfx_layer_keep();
 
@@ -7376,10 +7484,7 @@ static void dialog_commit(void) {
       config_save();
       /* What the camera is doing, not a farewell. It said GOOD NIGHT and
        * then came straight back up, which reads as a shutdown that failed. */
-      fill(0, 0, UI_W, UI_H, W_FACE);
-      text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h / 2, "RESTARTING", W_TEXT);
-      gfx_present();
-      gfx_flush();
+      gfx_render(render_restarting, NULL);
       vTaskDelay(pdMS_TO_TICKS(420));
       power_down_anim();
       esp_restart();
@@ -7433,8 +7538,7 @@ static void dialog_commit(void) {
       toast("Hold the power slide to switch off");
       break;
   }
-  draw_screen();
-  gfx_present();
+  gfx_render(render_screen, NULL);
 }
 
 static void activate(int item) {
@@ -7442,8 +7546,7 @@ static void activate(int item) {
     if (item == 1) dialog_commit();
     else {
       s_dialog = DLG_NONE;
-      draw_screen();
-      gfx_present();
+      gfx_render(render_screen, NULL);
     }
     return;
   }
@@ -7585,8 +7688,7 @@ static void activate(int item) {
   }
 
   s_pressed = -1;
-  draw_screen();
-  gfx_present();
+  gfx_render(render_screen, NULL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -7625,8 +7727,7 @@ static bool shot_hold_ack(void) {
   capture_ack();
   s_shot_seen_us = 0;
   if (s_screen == SCR_GALLERY) gallery_refresh();
-  draw_screen();
-  gfx_present();
+  gfx_render(render_screen, NULL);
   return true;
 }
 
@@ -7635,7 +7736,7 @@ static bool shot_hold_ack(void) {
 /*                                                                      */
 /* buttons.c calls the handler from its own task - priority 5, no core   */
 /* affinity. Everything a press does touches state the UI task owns: go()*/
-/* redraws s_cv, takes a gfx_snapshot() and runs a gfx_dissolve(), all of*/
+/* redraws the canvas, takes a gfx_snapshot() and runs a gfx_dissolve(), */
 /* which the ui task is doing at the same moment on CPU1. Two writers on */
 /* one canvas and two callers into the compositor is a torn frame at     */
 /* best and a PPA transaction started from under another one at worst.   */
@@ -7746,7 +7847,8 @@ static void ui_boot(void) { splash(); }
 /* The first screen, arriving out of the boot sequence. */
 static void boot_handoff(void) {
   gfx_snapshot();
-  draw_screen();
+  /* Into the canvas: the cascade composites the menu out of it. */
+  gfx_render_canvas(render_screen, NULL);
   uint32_t f0 = 0, f1 = 0, ms = 0;
   gfx_stats(&f0, NULL);
   /* The menu is a list and this is the one time it arrives out of nothing. */
@@ -7884,8 +7986,7 @@ static uint32_t ui_pass(void) {
       ESP_LOGI(TAG, "woke: repainting");
       klog("P4", "woke, repainting");
       s_sleep_mark = false;
-      draw_screen();
-      gfx_present();
+      gfx_render(render_screen, NULL);
     }
     was_asleep = asleep_now;
 
@@ -7899,17 +8000,13 @@ static uint32_t ui_pass(void) {
      * the panel is back, the screen underneath is redrawn.
      */
     if (power_sleep_pending() && !s_sleep_mark) {
-      fill(0, 0, UI_W, UI_H, MZ_GROUND);
-      boot_mark();
-      gfx_present();
-      gfx_flush();
+      gfx_render(render_mark, NULL);
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: mark up on screen %d", (int)s_screen);
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
       s_sleep_mark = false;
-      draw_screen();
-      gfx_present();
+      gfx_render(render_screen, NULL);
     }
 
     if (!down) {
@@ -7985,8 +8082,7 @@ static uint32_t ui_pass(void) {
           s_pressed = -1;
           held = -1;
           swallow_touch = true;
-          draw_screen();
-          gfx_present();
+          gfx_render(render_screen, NULL);
           return 20;
         }
       } else {
@@ -8002,8 +8098,7 @@ static uint32_t ui_pass(void) {
       s_pressed = region;
       held = region;
       if (region >= 0 && config_bool("body.sounds.ui", true)) audio_tick();
-      draw_screen();
-      gfx_present();
+      gfx_render(render_screen, NULL);
     } else if (!down && held != -1) {
       const int fired = (s_pressed == held) ? held : -1;
       s_pressed = -1;
@@ -8015,8 +8110,7 @@ static uint32_t ui_pass(void) {
         else if (fired != IT_BACK && fired < item_count(s_screen)) s_focus[s_screen] = fired;
         activate(fired);
       } else {
-        draw_screen();
-        gfx_present();
+        gfx_render(render_screen, NULL);
       }
     }
 
@@ -8107,8 +8201,7 @@ static uint32_t ui_pass(void) {
          */
         if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
           s_calibrating = true;
-          draw_screen();
-          gfx_present();
+          gfx_render(render_screen, NULL);
           const char *const v = config_str("shoot.viewfinder", "cam2");
           const int ref = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
           pure_cam_offset_t off[PURE_WIGGLE_FRAMES_MAX];
@@ -8131,8 +8224,7 @@ static uint32_t ui_pass(void) {
             klog("P4", "calibration measured nothing off %s", r.id);
             toast("Could not measure the cameras");
           }
-          draw_screen();
-          gfx_present();
+          gfx_render(render_screen, NULL);
         }
       }
       /*
@@ -8152,8 +8244,7 @@ static uint32_t ui_pass(void) {
         capture_ack();
         s_shot_seen_us = 0;
         if (s_screen == SCR_GALLERY) gallery_refresh();
-        draw_screen();
-        gfx_present();
+        gfx_render(render_screen, NULL);
       }
     } else if (cstage == CAPTURE_IDLE) {
       s_shot_seen_us = 0;
@@ -8165,6 +8256,9 @@ static uint32_t ui_pass(void) {
     /* The wipe is the fourth: DELETE ALL PHOTOS runs on the gallery task for
      * up to a minute on a full card, and the DELETING n OF m line on the
      * storage screen is the only thing that says it is still going. */
+    /* A toast that has run its time leaves here, between frames, and the
+     * repaint below is what takes it off the screen. */
+    if (toast_expired()) s_toast[0] = '\0';
     const bool busy = cstage != CAPTURE_IDLE ||
                       (s_screen == SCR_GALLERY && gallery_loading()) ||
                       (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
@@ -8182,8 +8276,7 @@ static uint32_t ui_pass(void) {
     const bool wig_moved = (s_screen == SCR_PHOTO && held == -1) ? wiggle_tick() : false;
 
     if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
-      draw_screen();
-      gfx_present();
+      gfx_render(render_screen, NULL);
       /*
        * 90 ms is the busy cadence; a wiggle frame that is only waiting for its
        * own deadline goes back round at the loop's own 20 ms so the next
@@ -8288,8 +8381,7 @@ static uint32_t ui_pass(void) {
      * not move. Second half of the same fault as viewfinder_run() above, and
      * the Twin found both of them inside two minutes. */
     if (s_screen == SCR_SHOOT && held == -1) {
-      draw_screen();
-      gfx_present();
+      gfx_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
        * a second at best. */
       return 60;

@@ -53,6 +53,12 @@ void *display_panel(void) { return NULL; }
 esp_err_t gfx_init(void) { return ESP_OK; }
 bool gfx_ready(void) { return true; }
 uint16_t *gfx_canvas(void) { return g_canvas; }
+/* The whole canvas, always: the renderer draws whole frames. */
+static gfx_target_t g_target;
+const gfx_target_t *gfx_target(void) {
+  if (g_target.px != g_canvas) g_target = (gfx_target_t){g_canvas, 0, 0, UI_W, UI_H, UI_W};
+  return &g_target;
+}
 static void write_ppm(const char *path, const uint16_t *px, int w, int h);
 extern char g_out[512];
 
@@ -79,8 +85,6 @@ void gfx_present(void) {
   if (prev_vclock_us != 0) prev_vclock_us += prev_vclock_step_us;
 }
 void gfx_snapshot(void) {}
-/* One canvas here, presented in zero time: the frame shown IS the canvas. */
-void gfx_flush(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
 void gfx_slide(int ms, bool from_right) { (void)ms; (void)from_right; }
@@ -89,16 +93,13 @@ void gfx_stash(void) {
   if (g_stash == NULL) g_stash = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_stash != NULL) memcpy(g_stash, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
 }
-void gfx_stash_shown(void) { gfx_stash(); }
-/* No engine here: the region comes through the canvas, then the frame goes
- * out as every other frame does. */
-void gfx_present_with_stash(int x, int y, int w, int h, int sy) {
-  gfx_stash_blit(x, y, x, sy, w, h);
+/* A frame is one call of its drawing on the whole canvas, then the frame
+ * goes out as every other frame does. */
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { draw(ctx); }
+void gfx_render(gfx_draw_fn draw, void *ctx) {
+  draw(ctx);
   gfx_present();
 }
-/* No block engine to check: the move's frames all go through the canvas
- * here, which is the picture the renderer wants anyway. */
-bool gfx_blocks_ok(void) { return false; }
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_stash == NULL) return;
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -122,7 +123,6 @@ void gfx_layer_keep(void) {
   if (g_layer == NULL) g_layer = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_layer != NULL) memcpy(g_layer, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
 }
-void gfx_layer_keep_shown(void) { gfx_layer_keep(); }
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_layer == NULL) return;
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -147,6 +147,10 @@ void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (ms) *ms = 0;
 }
 uint64_t gfx_present_us_total(void) { return 0; }
+void gfx_pass_split(uint64_t *d, uint64_t *x) {
+  if (d) *d = 0;
+  if (x) *x = 0;
+}
 
 /* ui.c registers its tasks so GET_RUNTIME_STATS can report their stack
  * headroom. There are no tasks here - ui.c's are never created - so this

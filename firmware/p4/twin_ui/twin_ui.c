@@ -182,6 +182,12 @@ void *display_panel(void) { return NULL; }
 esp_err_t gfx_init(void) { return ESP_OK; }
 bool gfx_ready(void) { return true; }
 uint16_t *gfx_canvas(void) { return g_canvas; }
+/* The whole canvas, always: the Twin presents whole frames in virtual time. */
+static gfx_target_t g_target;
+const gfx_target_t *gfx_target(void) {
+  if (g_target.px != g_canvas) g_target = (gfx_target_t){g_canvas, 0, 0, UI_W, UI_H, UI_W};
+  return &g_target;
+}
 void gfx_present(void) {
   push_frame(g_canvas);
   s_frames_presented++;
@@ -189,10 +195,6 @@ void gfx_present(void) {
   kui_now_us += KUI_PRESENT_US;
 }
 void gfx_snapshot(void) { memcpy(g_snapshot, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
-/* One canvas here, presented in zero virtual time: the frame shown IS the
- * canvas, so a flush has nothing to wait for and the _shown copies are the
- * plain ones. */
-void gfx_flush(void) {}
 
 /* How many frames a transition of `ms` is worth here.
  *
@@ -288,15 +290,13 @@ static inline void tw_fill_rows(uint16_t *buf, int y, int h, uint16_t c) {
 /* The stash: the destination frame, kept while ui.c draws the move over it.
  * Same as the device's, into the blend buffer. */
 void gfx_stash(void) { memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
-void gfx_stash_shown(void) { gfx_stash(); }
-/* No engine here: the region comes through the canvas, then the frame goes
- * out as every other frame does. */
-void gfx_present_with_stash(int x, int y, int w, int h, int sy) {
-  gfx_stash_blit(x, y, x, sy, w, h);
+/* A frame is one call of its drawing on the whole canvas, then the frame
+ * goes out in virtual time as every other frame does. */
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { draw(ctx); }
+void gfx_render(gfx_draw_fn draw, void *ctx) {
+  draw(ctx);
   gfx_present();
 }
-/* No block engine to check: every frame goes through the canvas here. */
-bool gfx_blocks_ok(void) { return false; }
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -320,7 +320,6 @@ static uint16_t g_layer_buf[UI_W * UI_H];
 void gfx_layer_keep(void) {
   memcpy(g_layer_buf, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
 }
-void gfx_layer_keep_shown(void) { gfx_layer_keep(); }
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
   if (dy < 0) { h += dy; sy -= dy; dy = 0; }
@@ -379,6 +378,10 @@ void gfx_stats(uint32_t *f, uint32_t *ms) {
 /* The Twin presents in zero virtual time; a move's report attributes it all
  * to drawing, which is the honest reading of a harness with no panel. */
 uint64_t gfx_present_us_total(void) { return 0; }
+void gfx_pass_split(uint64_t *d, uint64_t *x) {
+  if (d) *d = 0;
+  if (x) *x = 0;
+}
 
 void taskmon_register(const char *name, void *handle) {
   (void)name;

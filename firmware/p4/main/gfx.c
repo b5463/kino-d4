@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "klog.h"
 #include "ui.h"
@@ -18,6 +19,7 @@
 static const char *TAG = "gfx";
 
 static void measure_rotate(void);
+static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, void *user_data);
 
 #define FB_COUNT 2
 #define PANEL_PX ((size_t)DISPLAY_H_RES * DISPLAY_V_RES)
@@ -37,12 +39,19 @@ static void measure_rotate(void);
 
 static ppa_client_handle_t s_srm;
 static ppa_client_handle_t s_blend;
+/* Given by the SRM engine when a non-blocking rotate completes; the tile
+ * renderer waits on it before reusing a tile buffer or handing over a frame. */
+static SemaphoreHandle_t s_srm_done;
 /* Time spent inside gfx_present() since boot: the rotate and the hand-over,
  * which is the part of a frame the drawing code cannot see. A move's report
  * (ui.c, anim_report) subtracts it from the move's wall time to say how much
  * of each frame was drawing and how much was presenting. */
 static uint64_t s_present_us;
 static uint16_t *s_canvas;   /* landscape, what the UI draws into */
+/* Where the UI's primitives write right now: the whole canvas unless a
+ * render pass has pointed them at a tile. */
+static gfx_target_t s_target;
+const gfx_target_t *gfx_target(void) { return &s_target; }
 /*
  * Not pipelined, and measured not to be worth it (0.4.58, #177).
  *
@@ -125,6 +134,18 @@ esp_err_t gfx_init(void) {
     ESP_LOGE(TAG, "PPA SRM client failed: %s", esp_err_to_name(err));
     return err;
   }
+  /* The tile renderer's completion signal. Without it every tile is written
+   * out by the CPU, which is slower and right. */
+  s_srm_done = xSemaphoreCreateBinary();
+  if (s_srm_done != NULL) {
+    const ppa_event_callbacks_t cbs = {.on_trans_done = on_srm_done};
+    if (ppa_client_register_event_callbacks(s_srm, &cbs) != ESP_OK) {
+      ESP_LOGE(TAG, "PPA SRM callback refused; tiles go out by CPU");
+      vSemaphoreDelete(s_srm_done);
+      s_srm_done = NULL;
+    }
+  }
+
   ppa_client_config_t blend_cfg = {
       .oper_type = PPA_OPERATION_BLEND,
       .max_pending_trans_num = 1,
@@ -146,6 +167,7 @@ esp_err_t gfx_init(void) {
     ESP_LOGE(TAG, "no room for canvas + dissolve buffers");
     return ESP_ERR_NO_MEM;
   }
+  s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
 
   measure_rotate();
 
@@ -225,31 +247,10 @@ static esp_err_t rotate(const uint16_t *src, void *dst) {
 /** Rotate the canvas into a portrait destination. */
 static esp_err_t rotate_to(void *dst) { return rotate(s_canvas, dst); }
 
-/* Whether block rotates land where rotate_block() says they do, on this
- * board, checked once at init. False means gfx_present_with_stash() copies
- * through the canvas instead - slower and right. */
-static bool s_blocks_ok;
-
-/*
- * The region a frame takes from the stash rather than from the canvas.
- * Rotated in five blocks: four bands of the canvas round it and the region
- * itself out of the stash, read from stash row `sy` and landing at canvas
- * row y. Returns false if any block failed.
- */
-static bool rotate_round(void *fb, int x, int y, int w, int h, int sy) {
-  if (rotate_block(s_canvas, fb, 0, 0, UI_W, y, 0, 0) != ESP_OK) return false;
-  if (rotate_block(s_canvas, fb, 0, y + h, UI_W, UI_H - y - h, 0, y + h) != ESP_OK) return false;
-  if (rotate_block(s_canvas, fb, 0, y, x, h, 0, y) != ESP_OK) return false;
-  if (rotate_block(s_canvas, fb, x + w, y, UI_W - x - w, h, x + w, y) != ESP_OK) return false;
-  return rotate_block(s_mix, fb, x, sy, w, h, x, y) == ESP_OK;
-}
-
 /*
  * One rotate of a test pattern at init, timed into the log ring: the number
- * the frame budget is built on, read back from the camera with GET_LOGS rather
- * than assumed from a datasheet. Then the same pattern through five blocks,
- * compared byte for byte, which is what licenses gfx_present_with_stash() to
- * rotate a stash region straight into the framebuffer.
+ * the transitions that still rotate (push, dissolve, cascade) are budgeted
+ * on, read back from the camera with GET_LOGS rather than assumed.
  */
 static void measure_rotate(void) {
   for (int y = 0; y < UI_H; y++) {
@@ -260,19 +261,7 @@ static void measure_rotate(void) {
   const esp_err_t err = rotate_to(s_from);
   const int us = (int)(esp_timer_get_time() - t0);
   klog("GFX", "rotate %dx%d -> panel: %d us%s", UI_W, UI_H, us, err == ESP_OK ? "" : " (FAILED)");
-
-  /* The stash holds the same pattern, so a correct block mapping reproduces
-   * the reference exactly whichever buffer each block came from. */
-  memcpy(s_mix, s_canvas, CANVAS_BYTES);
-  memset(s_to, 0, PANEL_BYTES);
-  const int64_t t1 = esp_timer_get_time();
-  const bool ran = err == ESP_OK && rotate_round(s_to, 96, 64, 512, 288, 64);
-  const int us2 = (int)(esp_timer_get_time() - t1);
-  s_blocks_ok = ran && memcmp(s_from, s_to, PANEL_BYTES) == 0;
-  klog("GFX", "rotate in five blocks: %d us, %s", us2,
-       !ran ? "a block failed" : s_blocks_ok ? "identical" : "MISMATCH - not used");
   memset(s_canvas, 0, CANVAS_BYTES);
-  memset(s_mix, 0, CANVAS_BYTES);
 }
 
 /** Hand a framebuffer to the panel. The driver recognises its own buffer and
@@ -300,44 +289,166 @@ void gfx_present(void) {
   s_present_us += (uint64_t)dt;
 }
 
-/* Every present is synchronous, so a flush has nothing to wait for. Kept so
- * a caller that presents and then sleeps says so at the call site. */
-void gfx_flush(void) {}
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
+  if (!s_ready || draw == NULL) return;
+  s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
+  draw(ctx);
+}
 
-bool gfx_blocks_ok(void) { return s_ready && s_blocks_ok && s_mix != NULL; }
+/*
+ * The tile renderer: a frame without a rotate.
+ *
+ * Measured on the panel (0.4.58, #177): drawing a frame into a landscape
+ * canvas in PSRAM and turning it into the portrait framebuffer with the PPA
+ * moved about 2.5 MB over a bus that delivers ~90 MB/s, and the rotate alone
+ * was 16 ms of every frame. A frame is 768 KB. So the frame is drawn in
+ * bands - TILE_W x TILE_H pixels of the logical screen at a time, in a
+ * buffer in internal SRAM where the drawing costs no bus time at all - and
+ * each band is written into the framebuffer transposed: one logical column
+ * of the tile is TILE_H contiguous pixels of one panel row, 128 bytes, two
+ * cache lines, sequential. PSRAM sees the 768 KB write and nothing else.
+ *
+ * The price is that the drawing runs once per tile - 56 times a frame - so
+ * every primitive clips to the window before it does any work (ui.c), and
+ * the frame's drawing must be a function of state, not of the previous tile.
+ *
+ * The transposition is the mapping the PPA used: logical (x, y) lands at
+ * panel row x, panel column H_RES - 1 - y.
+ */
+/*
+ * Two tile buffers, so the engine writes one out while the CPU draws the
+ * next. 128 x 48 x 2 bytes x 2 = 24 KB of internal SRAM, which is the scarce
+ * pool on this board (#162): 70 tiles a frame rather than the 56 of 128 x 64,
+ * for 8 KB less of it. Cache-line aligned because the PPA reads them as
+ * pictures of their own.
+ */
+#define TILE_W 128
+#define TILE_H 48
+static uint16_t s_tiles[2][TILE_W * TILE_H] __attribute__((aligned(64)));
+_Static_assert(TILE_H % 2 == 0 && UI_H % TILE_H == 0 && DISPLAY_H_RES % 2 == 0,
+               "tiles must divide the height and the transposed write stores two pixels a word");
 
-void gfx_present_with_stash(int x, int y, int w, int h, int sy) {
-  if (!s_ready) return;
-  /* Even edges: the engine takes RGB565 blocks at pixel offsets, but two
-   * pixels to the word is the one alignment worth not arguing with. The
-   * source row moves with the destination row so the picture does not. */
-  if (x & 1) { x--; w++; }
-  if (y & 1) { y--; h++; sy--; }
-  if (w & 1) w++;
-  if (h & 1) h++;
-  if (x < 0) { w += x; x = 0; }
-  if (y < 0) { h += y; sy -= y; y = 0; }
-  if (sy < 0) { h += sy; y -= sy; sy = 0; }
-  if (x + w > UI_W) w = UI_W - x;
-  if (y + h > UI_H) h = UI_H - y;
-  if (sy + h > UI_H) h = UI_H - sy;
-  if (w <= 0 || h <= 0) {
-    gfx_present();
-    return;
+/* Where a pass spends its time, since boot: in the drawing callbacks, and in
+ * writing the tiles out (the wait for the engine, or the CPU transpose when
+ * the engine refused a tile). A move's report shows both. */
+static uint64_t s_draw_us, s_xpose_us;
+void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us) {
+  if (draw_us) *draw_us = s_draw_us;
+  if (xpose_us) *xpose_us = s_xpose_us;
+}
+
+/* The engine's completion, in interrupt context: one give, nothing else. */
+static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, void *user_data) {
+  (void)client;
+  (void)event;
+  (void)user_data;
+  BaseType_t woken = pdFALSE;
+  if (s_srm_done != NULL) xSemaphoreGiveFromISR(s_srm_done, &woken);
+  return woken == pdTRUE;
+}
+
+/**
+ * One tile, a picture of its own in internal SRAM, rotated by the engine
+ * into its place in the framebuffer. Non-blocking: the caller waits on
+ * s_srm_done before reusing the tile or handing over the frame.
+ */
+static esp_err_t rotate_tile_async(const uint16_t *tile, int w, int h, int tx, int ty, void *fb) {
+  ppa_srm_oper_config_t cfg = {
+      .in =
+          {
+              .buffer = tile,
+              .pic_w = (uint32_t)w,
+              .pic_h = (uint32_t)h,
+              .block_w = (uint32_t)w,
+              .block_h = (uint32_t)h,
+              .block_offset_x = 0,
+              .block_offset_y = 0,
+              .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
+          },
+      .out =
+          {
+              .buffer = fb,
+              .buffer_size = PANEL_BYTES,
+              .pic_w = DISPLAY_H_RES,
+              .pic_h = DISPLAY_V_RES,
+              .block_offset_x = (uint32_t)(DISPLAY_H_RES - ty - h),
+              .block_offset_y = (uint32_t)tx,
+              .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
+          },
+      .rotation_angle = PANEL_ROTATION,
+      .scale_x = 1.0f,
+      .scale_y = 1.0f,
+      .mode = PPA_TRANS_MODE_NON_BLOCKING,
+  };
+  return ppa_do_scale_rotate_mirror(s_srm, &cfg);
+}
+
+/* The same tile, written out by the CPU: the fallback when the engine will
+ * not take it. Column x of the tile is logical column tx + x, which is panel
+ * row tx + x; its h pixels run from panel column H_RES - ty - h (logical
+ * y = ty + h - 1) up to H_RES - 1 - ty (logical y = ty), so the tile column
+ * is read bottom to top, two pixels a word-aligned store. */
+static void transpose_tile(const uint16_t *tile, int w, int h, int tx, int ty, uint16_t *fb) {
+  for (int x = 0; x < w; x++) {
+    uint32_t *dst =
+        (uint32_t *)(void *)(fb + (size_t)(tx + x) * DISPLAY_H_RES + (DISPLAY_H_RES - ty - h));
+    const uint16_t *src = tile + (size_t)(h - 1) * (size_t)w + x;
+    for (int j = 0; j < h; j += 2) {
+      const uint32_t lo = *src;
+      src -= w;
+      const uint32_t hi = *src;
+      src -= w;
+      *dst++ = lo | (hi << 16);
+    }
   }
+}
 
+void gfx_render(gfx_draw_fn draw, void *ctx) {
+  if (!s_ready || draw == NULL) return;
   const int64_t t0 = esp_timer_get_time();
-  void *fb = s_fb[s_back];
-  bool done = false;
-  if (s_blocks_ok && s_mix != NULL) done = rotate_round(fb, x, y, w, h, sy);
-  if (!done) {
-    /* The right picture the slow way: the region through the canvas. */
-    gfx_stash_blit(x, y, x, sy, w, h);
-    if (rotate_to(fb) != ESP_OK) return;
+  uint16_t *fb = s_fb[s_back];
+  bool pending = false; /* a tile is on the engine */
+  int which = 0;
+
+  for (int ty = 0; ty < UI_H; ty += TILE_H) {
+    const int h = UI_H - ty < TILE_H ? UI_H - ty : TILE_H;
+    for (int tx = 0; tx < UI_W; tx += TILE_W) {
+      const int w = UI_W - tx < TILE_W ? UI_W - tx : TILE_W;
+      uint16_t *tile = s_tiles[which];
+      /* This buffer was last read by the engine two tiles ago, and that
+       * read was waited for before the tile in between was submitted. */
+      s_target = (gfx_target_t){tile, tx, ty, w, h, w};
+      const int64_t d0 = esp_timer_get_time();
+      draw(ctx);
+      const int64_t d1 = esp_timer_get_time();
+      s_draw_us += (uint64_t)(d1 - d0);
+
+      if (pending) {
+        if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
+          ESP_LOGE(TAG, "tile rotate did not complete in 50 ms");
+        }
+        pending = false;
+      }
+      if (s_srm_done != NULL && rotate_tile_async(tile, w, h, tx, ty, fb) == ESP_OK) {
+        pending = true;
+      } else {
+        transpose_tile(tile, w, h, tx, ty, fb);
+      }
+      s_xpose_us += (uint64_t)(esp_timer_get_time() - d1);
+      which ^= 1;
+    }
   }
+  if (pending) {
+    const int64_t w0 = esp_timer_get_time();
+    if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
+      ESP_LOGE(TAG, "last tile rotate did not complete in 50 ms");
+    }
+    s_xpose_us += (uint64_t)(esp_timer_get_time() - w0);
+  }
+  s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
+
   show(fb);
   s_back ^= 1;
-
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
   s_last_ms = (uint32_t)(dt / 1000);
@@ -474,23 +585,24 @@ void gfx_stash(void) {
   memcpy(s_mix, s_canvas, CANVAS_BYTES);
 }
 
-/* One canvas: the frame on the panel is the frame last drawn. */
-void gfx_stash_shown(void) { gfx_stash(); }
 
-/* One blit, from whichever retained buffer, with both ends clipped. */
+/* One blit, from whichever retained buffer into the current target, with
+ * both ends clipped: the source to the canvas, the destination to the
+ * target's window. */
 static void layer_blit(const uint16_t *src, int dx, int dy, int sx, int sy, int w, int h) {
-  if (dx < 0) { w += dx; sx -= dx; dx = 0; }
-  if (dy < 0) { h += dy; sy -= dy; dy = 0; }
+  const gfx_target_t *t = &s_target;
   if (sx < 0) { w += sx; dx -= sx; sx = 0; }
   if (sy < 0) { h += sy; dy -= sy; sy = 0; }
-  if (dx + w > UI_W) w = UI_W - dx;
+  if (dx < t->x0) { const int d = t->x0 - dx; w -= d; sx += d; dx = t->x0; }
+  if (dy < t->y0) { const int d = t->y0 - dy; h -= d; sy += d; dy = t->y0; }
+  if (dx + w > t->x0 + t->w) w = t->x0 + t->w - dx;
   if (sx + w > UI_W) w = UI_W - sx;
-  if (dy + h > UI_H) h = UI_H - dy;
+  if (dy + h > t->y0 + t->h) h = t->y0 + t->h - dy;
   if (sy + h > UI_H) h = UI_H - sy;
   if (w <= 0 || h <= 0) return;
   for (int r = 0; r < h; r++) {
-    memcpy(s_canvas + (size_t)(dy + r) * UI_W + dx, src + (size_t)(sy + r) * UI_W + sx,
-           (size_t)w * sizeof(uint16_t));
+    memcpy(t->px + (size_t)(dy - t->y0 + r) * t->stride + (dx - t->x0),
+           src + (size_t)(sy + r) * UI_W + sx, (size_t)w * sizeof(uint16_t));
   }
 }
 
@@ -499,7 +611,6 @@ void gfx_layer_keep(void) {
   memcpy(s_layer, s_canvas, CANVAS_BYTES);
 }
 
-void gfx_layer_keep_shown(void) { gfx_layer_keep(); }
 
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_layer == NULL) return;
@@ -508,19 +619,7 @@ void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_mix == NULL) return;
-  if (dx < 0) { w += dx; sx -= dx; dx = 0; }
-  if (dy < 0) { h += dy; sy -= dy; dy = 0; }
-  if (sx < 0) { w += sx; dx -= sx; sx = 0; }
-  if (sy < 0) { h += sy; dy -= sy; sy = 0; }
-  if (dx + w > UI_W) w = UI_W - dx;
-  if (sx + w > UI_W) w = UI_W - sx;
-  if (dy + h > UI_H) h = UI_H - dy;
-  if (sy + h > UI_H) h = UI_H - sy;
-  if (w <= 0 || h <= 0) return;
-  for (int r = 0; r < h; r++) {
-    memcpy(s_canvas + (size_t)(dy + r) * UI_W + dx, s_mix + (size_t)(sy + r) * UI_W + sx,
-           (size_t)w * sizeof(uint16_t));
-  }
+  layer_blit(s_mix, dx, dy, sx, sy, w, h);
 }
 
 /**

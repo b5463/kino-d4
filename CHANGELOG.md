@@ -89,7 +89,28 @@ KINO has no published release yet. Changes intended for the first release collec
   The splash draws each glyph row as one span instead of up to five squares.
   Measured on the camera: open moves 41-43 fps and back moves 37-39, from
   28-31 and 26-29, with the drawing down to 7-10 ms a frame; the 16 ms rotate
-  is now the frame, and only drawing in portrait would remove it. And sleep shows the camera's mark
+  was then the frame.
+  Fifth pass: the rotate is gone. A frame is no longer drawn into a landscape
+  canvas in PSRAM and turned by the PPA; `gfx_render()` draws it in 128 x 48
+  tiles into two buffers in internal SRAM, and the PPA rotates each finished
+  tile straight into the portrait framebuffer, non-blocking, while the CPU
+  draws the next. PSRAM carries the 768 KB write and nothing else. Every
+  primitive in ui.c draws through a clipped window (`gfx_target_t`, `cv_ptr`)
+  so the same screen code draws a whole frame or one band of it; every frame
+  the shell shows is a `gfx_draw_fn` the compositor calls once per tile
+  (`render_screen`, `render_field`, `render_open`, the marks), and a move's
+  two ends are drawn into the canvas on purpose (`gfx_render_canvas`) for the
+  stash, the layer and the snapshot the push and dissolve still use. The 189
+  preview renders are byte-identical before and after. On the camera: splash
+  76 fps (8 ms drawing, 4 ms waiting on the engine, per frame), from 32.
+  Toasts expire between frames, never inside a draw, because a draw now runs
+  once per tile. The direct-from-stash present and its block self-check are
+  gone with the rotate they skipped. Open moves 48-64 fps and back moves
+  53-61 (10-14 ms drawing a frame, most of it stash and layer reads from
+  PSRAM), against 41-43 and 37-39 before; the panel's 60 Hz is the ceiling
+  now. The cost to watch: the two tile buffers are 24 KB of internal SRAM,
+  and the boot's minimum free internal RAM went from 81 KB to 35 KB with the
+  radio's recovery reserve still held (2/2). And sleep shows the camera's mark
   before the backlight goes: power_task asks the UI (`power_sleep_pending`),
   the UI puts the mark up and answers (`power_sleep_shown`), the mark holds
   600 ms, then the light goes; a touch in that window calls the sleep off

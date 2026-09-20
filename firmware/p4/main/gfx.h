@@ -35,34 +35,47 @@ bool gfx_ready(void);
  */
 uint16_t *gfx_canvas(void);
 
+/**
+ * The drawing target: a window onto the logical UI_W x UI_H screen.
+ *
+ * `px` holds `w` x `h` pixels, `stride` per row, with logical (x0, y0) at
+ * px[0]. Pixels outside the window are not stored anywhere and every
+ * primitive clips to it. The whole canvas is the window most of the time;
+ * a tile renderer makes it a band of the screen in internal SRAM and runs the
+ * same drawing code once per band, which is how a frame reaches the panel
+ * without a landscape copy of it in PSRAM to rotate.
+ */
+typedef struct {
+  uint16_t *px;
+  int x0, y0, w, h;
+  int stride;
+} gfx_target_t;
+
+const gfx_target_t *gfx_target(void);
+
 /** Rotate the canvas onto the back framebuffer and show it. */
 void gfx_present(void);
 
-/**
- * Nothing today: every present is synchronous. A caller that presents and
- * then sleeps or restarts says so with this, so that a compositor which
- * defers the hand-over has one place to land the last frame. (One was built
- * and measured; see gfx.c for why it is not in use.)
- */
-void gfx_flush(void);
+/** A frame's drawing code: draws the whole logical screen into gfx_target(). */
+typedef void (*gfx_draw_fn)(void *ctx);
 
 /**
- * Present the canvas with one rectangle of it taken from the STASH.
+ * Draw a frame and put it on the panel.
  *
- * For a move whose destination has arrived inside a growing card: the
- * card's rectangle (x, y, w, h) is rotated straight out of the stash into
- * the panel, read from stash row `sy` (0 for a card hung from the arriving
- * screen's top edge), and the canvas round it is rotated as usual, so the
- * CPU never copies the card - at the end of an open move that copy was a
- * whole screen per frame. The caller draws everything outside the rectangle
- * as normal and nothing inside it. Falls back to copying through the canvas
- * if block rotates were found not to land exactly at init.
+ * The one way a frame reaches the screen. The compositor decides where
+ * `draw` draws - the whole canvas, or one band of the screen at a time in
+ * internal SRAM, written to the portrait framebuffer transposed - and `draw`
+ * must be a pure function of the UI's state: it may be called several times
+ * for one frame, and every call must draw the same picture.
  */
-void gfx_present_with_stash(int x, int y, int w, int h, int sy);
+void gfx_render(gfx_draw_fn draw, void *ctx);
 
-/** Whether block rotates were verified at init; a caller that skips drawing
- *  a region it means to present from the stash must check this first. */
-bool gfx_blocks_ok(void);
+/**
+ * Draw a frame into the landscape canvas in PSRAM and leave it there, so a
+ * transition can keep it (gfx_stash, gfx_layer_keep, gfx_snapshot, the push
+ * and the dissolve all read the canvas). Nothing reaches the panel.
+ */
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx);
 
 /**
  * Remember the canvas as the starting point of the next dissolve.
@@ -102,10 +115,6 @@ typedef struct {
  */
 void gfx_stash(void);
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
-/** Stash what is ON THE PANEL rather than what was just drawn. The same
- *  buffer today; kept apart at the call sites so a compositor that keeps
- *  them apart does not have to find them. */
-void gfx_stash_shown(void);
 
 /**
  * A second retained layer, for the parts of a move that only translate.
@@ -122,8 +131,6 @@ void gfx_stash_shown(void);
  */
 void gfx_layer_keep(void);
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
-/** Keep what is on the panel, not what was just drawn - see gfx_stash_shown(). */
-void gfx_layer_keep_shown(void);
 
 /**
  * A list arriving, one row at a time, over the frame already drawn.
@@ -139,5 +146,8 @@ void gfx_stats(uint32_t *frames, uint32_t *last_ms);
 
 /** Microseconds spent presenting (rotate plus hand-over) since boot. */
 uint64_t gfx_present_us_total(void);
+
+/** Microseconds a render pass has spent drawing and writing tiles out, since boot. */
+void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us);
 
 #endif
