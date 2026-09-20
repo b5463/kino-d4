@@ -95,8 +95,13 @@ body's physical key, through `ui.c`'s own button queue.
 
 Open the Twin at `#screen` (or press SCREEN VIEW in the header). That view is the
 display and nothing else: no 3D scene is mounted, so no view reset, pick or
-explode can interrupt the picture, and it fills the window at FIT, 1X or 2X
-(the integer scales are pixel-exact). Touch the canvas as you would the glass;
+explode can interrupt the picture, and it fills the window at FIT, 1X or 2X.
+Every one of them is pixel-exact now: FIT takes the largest WHOLE multiple
+that fits and only falls to a fractional scale when even 1X will not. A
+fractional scale resamples all 384,000 pixels through the browser's bilinear
+filter, which is what made the Twin's screen look soft while the renderer's
+own PPMs of the same frame were sharp - the fault was never in ui.c's
+drawing. Touch the canvas as you would the glass;
 SHUTTER and FN are the body's keys (Space and F).
 
 Rebuild with `npm run twin:ui:bake`. The

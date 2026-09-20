@@ -1,9 +1,13 @@
 # KINO D4 firmware UI — direction
 
-> **Not in the tree.** The interface this describes was reverted on 2026-09-16: the
-> camera ships `origin/main`'s shell again. Everything below is kept as the
-> record of what was tried and why — the code is in git history at `32cdd19`
-> and its parents, and `firmware/p4/main/ui.c` is the interface now.
+> **Not in the tree.** The interface this describes was reverted on 2026-09-16.
+> The banner used to say the camera ships `origin/main`'s shell again, and that
+> has stopped being true in the other direction: the Windows-era shell it meant
+> was itself replaced on 2026-09-19 (#170), so neither this document nor the
+> thing that displaced it is what the camera runs. Everything below is kept as
+> the record of what was tried and why — the code is in git history at `32cdd19`
+> and its parents. `firmware/p4/main/ui.c` is the interface, and the README's
+> "The screen on the camera" shows what it looks like now.
 
 **What is built.** `WORLD.md` is the phase that followed this one and it
 is done bar the hardware: one persistent photographic world rather than
