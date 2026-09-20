@@ -2208,7 +2208,7 @@ static struct {
   int64_t t0_us;   /* when THIS phase began */
   int64_t start_us; /* when the whole move began */
   uint32_t f0;      /* frames the compositor had presented when it began */
-  uint64_t draw0_us, xpose0_us; /* gfx_pass_split() when it began */
+  uint64_t draw0_us, xpose0_us, vsync0_us; /* gfx_pass_split() when it began */
   int32_t span_ms;
   int row;
   int pal;          /* which look's colours the boot field is wearing */
@@ -2243,20 +2243,24 @@ static void anim_report(const char *what) {
   gfx_stats(&f1, NULL);
   const uint32_t ms = (uint32_t)((esp_timer_get_time() - s_anim.start_us) / 1000);
   const uint32_t frames = f1 - s_anim.f0;
-  uint64_t d1 = 0, x1 = 0;
-  gfx_pass_split(&d1, &x1);
+  uint64_t d1 = 0, x1 = 0, v1 = 0;
+  gfx_pass_split(&d1, &x1, &v1);
   const uint32_t draw_ms = (uint32_t)((d1 - s_anim.draw0_us) / 1000);
   const uint32_t xpose_ms = (uint32_t)((x1 - s_anim.xpose0_us) / 1000);
-  klog("P4", "%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out",
+  const uint32_t vsync_ms = (uint32_t)((v1 - s_anim.vsync0_us) / 1000);
+  klog("P4",
+       "%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out, %lu ms "
+       "waiting for the panel",
        what, (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
-       (unsigned long)(frames ? draw_ms / frames : 0), (unsigned long)(frames ? xpose_ms / frames : 0));
+       (unsigned long)(frames ? draw_ms / frames : 0), (unsigned long)(frames ? xpose_ms / frames : 0),
+       (unsigned long)(frames ? vsync_ms / frames : 0));
 }
 
 static void anim_start_splash(void) {
   s_anim.kind = ANIM_SPLASH;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
-  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us);
+  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
 
   /*
    * The look decides the colour, and it is decided once: a look cannot change
@@ -2287,7 +2291,7 @@ static void anim_start_open(int row, bool opening, int ms) {
   s_anim.opening = opening;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
-  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us);
+  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
   anim_phase(0, ms);
 }
 

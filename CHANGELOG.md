@@ -110,7 +110,17 @@ KINO has no published release yet. Changes intended for the first release collec
   PSRAM), against 41-43 and 37-39 before; the panel's 60 Hz is the ceiling
   now. The cost to watch: the two tile buffers are 24 KB of internal SRAM,
   and the boot's minimum free internal RAM went from 81 KB to 35 KB with the
-  radio's recovery reserve still held (2/2). And sleep shows the camera's mark
+  radio's recovery reserve still held (2/2).
+  Sixth pass: frames are paced to the panel. Nothing waited for the refresh,
+  so a frame could be written into the framebuffer the panel was still
+  scanning (a tear), and frames landing whenever they were ready against a
+  fixed 60 Hz scan were shown for one refresh or two at random (the judder a
+  60 fps move still had). The DPI driver's refresh-end callback now gives a
+  semaphore, and whoever is about to write the back buffer waits for the first
+  refresh end after the last hand-over (`wait_back_free`). A frame that draws
+  in under 16.7 ms is shown exactly once: splash 76 -> 59 fps and steady,
+  3 ms of each frame waiting for the panel. The cascade, still on the PPA
+  composite path, goes 45 -> 40 for the same wait. And sleep shows the camera's mark
   before the backlight goes: power_task asks the UI (`power_sleep_pending`),
   the UI puts the mark up and answers (`power_sleep_shown`), the mark holds
   600 ms, then the light goes; a touch in that window calls the sleep off

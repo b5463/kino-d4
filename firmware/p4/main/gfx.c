@@ -5,6 +5,7 @@
 
 #include "display.h"
 #include "driver/ppa.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_ops.h"
@@ -20,6 +21,34 @@ static const char *TAG = "gfx";
 
 static void measure_rotate(void);
 static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, void *user_data);
+
+/* The panel's refresh end: see the note at s_target's neighbours below. */
+static SemaphoreHandle_t s_vsync;
+static volatile bool s_swap_pending; /* a hand-over happened; the panel has not yet switched */
+static uint64_t s_vsync_us;          /* time spent waiting for the panel, since boot */
+
+/* The refresh end, in interrupt context. In IRAM because the driver insists
+ * (it runs from the DMA's frame-end interrupt). */
+static bool IRAM_ATTR on_refresh_done(esp_lcd_panel_handle_t panel,
+                                      esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
+  (void)panel;
+  (void)edata;
+  (void)user_ctx;
+  BaseType_t woken = pdFALSE;
+  if (s_vsync != NULL) xSemaphoreGiveFromISR(s_vsync, &woken);
+  return woken == pdTRUE;
+}
+
+/** Block until the panel has let go of the back framebuffer. */
+static void wait_back_free(void) {
+  if (!s_swap_pending || s_vsync == NULL) return;
+  const int64_t t0 = esp_timer_get_time();
+  if (xSemaphoreTake(s_vsync, pdMS_TO_TICKS(40)) != pdTRUE) {
+    ESP_LOGW(TAG, "no refresh end within 40 ms; writing the back buffer anyway");
+  }
+  s_swap_pending = false;
+  s_vsync_us += (uint64_t)(esp_timer_get_time() - t0);
+}
 
 #define FB_COUNT 2
 #define PANEL_PX ((size_t)DISPLAY_H_RES * DISPLAY_V_RES)
@@ -42,6 +71,22 @@ static ppa_client_handle_t s_blend;
 /* Given by the SRM engine when a non-blocking rotate completes; the tile
  * renderer waits on it before reusing a tile buffer or handing over a frame. */
 static SemaphoreHandle_t s_srm_done;
+/*
+ * The panel's own beat.
+ *
+ * Given by the DPI driver at the end of every refresh. After a hand-over the
+ * panel goes on scanning the OLD framebuffer until the frame it is in ends,
+ * so a frame drawn into that buffer before then is drawn over a picture the
+ * eye is still being shown - a tear. And frames that land whenever they are
+ * ready against a fixed 60 Hz scan are shown for one refresh or two at
+ * random, which is the judder a 60 fps animation still has. Both are the one
+ * rule: nothing writes a framebuffer the panel has not let go of. Whoever is
+ * about to write the back buffer waits for the first refresh end after the
+ * last hand-over (wait_back_free), which also paces every animation to the
+ * refresh - a frame that draws in under 16.7 ms is shown exactly once.
+ */
+/* s_vsync, s_swap_pending and s_vsync_us are declared with the interrupt
+ * handler that gives the first of them, at the top of the file. */
 /* Time spent inside gfx_present() since boot: the rotate and the hand-over,
  * which is the part of a frame the drawing code cannot see. A move's report
  * (ui.c, anim_report) subtracts it from the move's wall time to say how much
@@ -134,6 +179,18 @@ esp_err_t gfx_init(void) {
     ESP_LOGE(TAG, "PPA SRM client failed: %s", esp_err_to_name(err));
     return err;
   }
+  /* The panel's refresh end, for wait_back_free(). Without it frames are
+   * written whenever they are ready, which tears and judders but shows. */
+  s_vsync = xSemaphoreCreateBinary();
+  if (s_vsync != NULL) {
+    const esp_lcd_dpi_panel_event_callbacks_t vcbs = {.on_refresh_done = on_refresh_done};
+    if (esp_lcd_dpi_panel_register_event_callbacks(panel, &vcbs, NULL) != ESP_OK) {
+      ESP_LOGE(TAG, "DPI refresh callback refused; frames are not paced to the panel");
+      vSemaphoreDelete(s_vsync);
+      s_vsync = NULL;
+    }
+  }
+
   /* The tile renderer's completion signal. Without it every tile is written
    * out by the CPU, which is slower and right. */
   s_srm_done = xSemaphoreCreateBinary();
@@ -269,8 +326,12 @@ static void measure_rotate(void) {
 static void show(void *fb) {
   esp_lcd_panel_handle_t panel = display_panel();
   if (panel == NULL) return;
+  /* Any refresh end that happened before this hand-over is not the one the
+   * next writer must wait for. */
+  if (s_vsync != NULL) xSemaphoreTake(s_vsync, 0);
   esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, fb);
   if (err != ESP_OK) ESP_LOGE(TAG, "present failed: %s", esp_err_to_name(err));
+  s_swap_pending = true;
 }
 
 void gfx_present(void) {
@@ -278,6 +339,7 @@ void gfx_present(void) {
   const int64_t t0 = esp_timer_get_time();
 
   void *fb = s_fb[s_back];
+  wait_back_free();
   if (rotate_to(fb) != ESP_OK) return;
   show(fb);
   s_back ^= 1; /* draw into the other one next time, so the panel keeps
@@ -332,9 +394,10 @@ _Static_assert(TILE_H % 2 == 0 && UI_H % TILE_H == 0 && DISPLAY_H_RES % 2 == 0,
  * writing the tiles out (the wait for the engine, or the CPU transpose when
  * the engine refused a tile). A move's report shows both. */
 static uint64_t s_draw_us, s_xpose_us;
-void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us) {
+void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us) {
   if (draw_us) *draw_us = s_draw_us;
   if (xpose_us) *xpose_us = s_xpose_us;
+  if (vsync_us) *vsync_us = s_vsync_us;
 }
 
 /* The engine's completion, in interrupt context: one give, nothing else. */
@@ -407,6 +470,8 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
   const int64_t t0 = esp_timer_get_time();
   uint16_t *fb = s_fb[s_back];
+  /* Before the first tile lands in it: the panel may still be scanning it. */
+  wait_back_free();
   bool pending = false; /* a tile is on the engine */
   int which = 0;
 
@@ -497,6 +562,7 @@ static inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f
  * pointed at from there for the length of one rotate and put back. */
 static bool mix_show(void) {
   void *fb = s_fb[s_back];
+  wait_back_free();
   const esp_err_t err = rotate(s_mix, fb);
   if (err != ESP_OK) return false;
   show(fb);
@@ -737,6 +803,7 @@ void gfx_dissolve(int duration_ms) {
     if (k > 255) k = 255;
 
     void *fb = s_fb[s_back];
+    wait_back_free();
     ppa_blend_oper_config_t cfg = {
         .in_bg =
             {

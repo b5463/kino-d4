@@ -378,9 +378,10 @@ void gfx_stats(uint32_t *f, uint32_t *ms) {
 /* The Twin presents in zero virtual time; a move's report attributes it all
  * to drawing, which is the honest reading of a harness with no panel. */
 uint64_t gfx_present_us_total(void) { return 0; }
-void gfx_pass_split(uint64_t *d, uint64_t *x) {
+void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
   if (d) *d = 0;
   if (x) *x = 0;
+  if (v) *v = 0;
 }
 
 void taskmon_register(const char *name, void *handle) {

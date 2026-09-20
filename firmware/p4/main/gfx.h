@@ -147,7 +147,8 @@ void gfx_stats(uint32_t *frames, uint32_t *last_ms);
 /** Microseconds spent presenting (rotate plus hand-over) since boot. */
 uint64_t gfx_present_us_total(void);
 
-/** Microseconds a render pass has spent drawing and writing tiles out, since boot. */
-void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us);
+/** Microseconds spent drawing, writing tiles out, and waiting for the panel's
+ *  refresh end, since boot. */
+void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us);
 
 #endif
