@@ -184,10 +184,13 @@ bool gfx_ready(void) { return true; }
 uint16_t *gfx_canvas(void) { return g_canvas; }
 /* The whole canvas, always: the Twin presents whole frames in virtual time. */
 static gfx_target_t g_target;
+static const gfx_target_t *g_view;
 const gfx_target_t *gfx_target(void) {
+  if (g_view != NULL) return g_view;
   if (g_target.px != g_canvas) g_target = (gfx_target_t){g_canvas, 0, 0, UI_W, UI_H, UI_W};
   return &g_target;
 }
+void gfx_target_view(const gfx_target_t *view) { g_view = view; }
 void gfx_present(void) {
   push_frame(g_canvas);
   s_frames_presented++;

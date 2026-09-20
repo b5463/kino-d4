@@ -2213,6 +2213,7 @@ static struct {
   int row;
   int pal;          /* which look's colours the boot field is wearing */
   bool opening;
+  screen_t card;    /* the screen drawn inside the card: arriving when opening, leaving when not */
 } s_anim;
 
 static bool anim_active(void) { return s_anim.kind != ANIM_NONE; }
@@ -2285,10 +2286,11 @@ static void anim_start_splash(void) {
   anim_phase(SPL_GROW, SPL_MS[SPL_GROW]);
 }
 
-static void anim_start_open(int row, bool opening, int ms) {
+static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.kind = ANIM_OPEN;
   s_anim.row = row;
   s_anim.opening = opening;
+  s_anim.card = card;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
@@ -3218,9 +3220,14 @@ static void menu_icon(int i, int cx, int cy, uint16_t ink) {
   }
 }
 
-static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_word) {
-  round_rect(x, y, w, h, UI_R, menu_face(i, down));
-
+/**
+ * Everything on a menu item but its face, in one ink.
+ *
+ * Split from menu_item() so a move can draw the touched item's words over the
+ * growing card in an ink that fades with the wash: the label dissolves into
+ * the screen arriving under it instead of vanishing on the first frame.
+ */
+static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool with_word) {
   /* One left rule and one right rule for everything on this screen. Three
    * left edges and two right ones is what it had, and a 10 px disagreement
    * between the card's type and the rows' type is visible at arm's length as
@@ -3240,14 +3247,14 @@ static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_wo
     int tx = lx;
     if (worst != NULL) {
       const char *sw = sev_word(worst->sev);
-      text(&UI_FONT_T, tx, y + 18, sw, MZ_CARD_INK);
+      text(&UI_FONT_T, tx, y + 18, sw, ink);
       tx += text_w(&UI_FONT_T, sw) + 14;
     }
     /* Cut to the card's own right rule. The card is half the panel now, and
      * a condition title is written for a full-width row. */
     char fitted[64];
     text_fit(fitted, sizeof fitted, &UI_FONT_T, line, rx - tx);
-    text(&UI_FONT_T, tx, y + 18, fitted, MZ_CARD_INK);
+    text(&UI_FONT_T, tx, y + 18, fitted, ink);
 
     /* The four, large, in the card's upper middle: the card is the panel's
      * full height now and the mark is the one thing on it that can carry
@@ -3257,17 +3264,17 @@ static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_wo
     const int mx = x + (w - mw) / 2;
     const int my = y + 18 + UI_FONT_T.line_h + 52;
     for (int k = 0; k < 4; k++) {
-      fill(mx + (k % 2) * (cell + gap), my + (k / 2) * (cell + gap), cell, cell, MZ_CARD_INK);
+      fill(mx + (k % 2) * (cell + gap), my + (k / 2) * (cell + gap), cell, cell, ink);
     }
 
-    text(&UI_FONT_T, lx, y + h - 18 - UI_FONT_T.line_h, "TAP TO OPEN", MZ_CARD_INK);
+    text(&UI_FONT_T, lx, y + h - 18 - UI_FONT_T.line_h, "TAP TO OPEN", ink);
   } else {
-    menu_icon(i, lx + MZ_ICON / 2, y + h / 2, down ? MZ_GROUND : MZ_MINT);
+    menu_icon(i, lx + MZ_ICON / 2, y + h / 2, ink);
     /* A chevron, because every row here opens a screen and a row that opens a
      * screen carries one everywhere else in the product. The menu was the one
      * list without them, which is the inconsistency rather than the
      * restraint. */
-    picker_arrow(rx - 3, y + h / 2, true, down ? MZ_GROUND : MZ_MINT);
+    picker_arrow(rx - 3, y + h / 2, true, ink);
 
     if (MENU_DEST[i] == SCR_GALLERY) {
       /* The count, in the face every other reading on the interface is set
@@ -3276,8 +3283,7 @@ static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_wo
       if (n >= 0) {
         char c[16];
         snprintf(c, sizeof c, "%d", n);
-        text_right(&UI_FONT_T, rx - 26, y + (h - UI_FONT_T.line_h) / 2, c,
-                   down ? MZ_GROUND : MZ_MINT);
+        text_right(&UI_FONT_T, rx - 26, y + (h - UI_FONT_T.line_h) / 2, c, ink);
       }
     }
   }
@@ -3294,9 +3300,18 @@ static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_wo
    * card's content to its bottom-left and leaves the air above. */
   if (i == 0)
     text_ink(&UI_FONT_XL, lx, y + h - 18 - UI_FONT_T.line_h - 6 - UI_FONT_XL.line_h, MENU_LABEL[0],
-             MZ_CARD_INK);
-  else text_ink(&UI_FONT_M, lx + MZ_ICON + 18, y + (h - UI_FONT_M.line_h) / 2, MENU_LABEL[i],
-                down ? MZ_GROUND : MZ_MINT);
+             ink);
+  else text_ink(&UI_FONT_M, lx + MZ_ICON + 18, y + (h - UI_FONT_M.line_h) / 2, MENU_LABEL[i], ink);
+}
+
+/** The ink an item's words are set in, on its face, pressed or not. */
+static uint16_t menu_ink(int i, bool down) {
+  return i == 0 ? MZ_CARD_INK : (down ? MZ_GROUND : MZ_MINT);
+}
+
+static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_word) {
+  round_rect(x, y, w, h, UI_R, menu_face(i, down));
+  menu_words(i, x, y, w, h, menu_ink(i, down), with_word);
 }
 
 static void draw_menu(void) {
@@ -7054,10 +7069,52 @@ static void fire_shutter(bool long_press);
  * curve like that is what "choppy" actually means - the frames are not late
  * on average, they are late at the end, and the end is where the eye is.
  */
+/**
+ * Draw something through a view: its own (0, 0) lands at canvas (dx, dy), and
+ * only the canvas rectangle (cx, cy, cw, ch) is drawn. Nested inside the
+ * current target's window, so it works on the whole canvas and on one tile
+ * alike, and the drawing code needs to know nothing about either.
+ */
+static void draw_placed(void (*draw)(void), int dx, int dy, int cx, int cy, int cw, int ch) {
+  const gfx_target_t *t = gfx_target();
+  int x0 = cx > t->x0 ? cx : t->x0, y0 = cy > t->y0 ? cy : t->y0;
+  int x1 = cx + cw < CV_X1(t) ? cx + cw : CV_X1(t);
+  int y1 = cy + ch < CV_Y1(t) ? cy + ch : CV_Y1(t);
+  if (x0 >= x1 || y0 >= y1) return;
+  const gfx_target_t view = {cv_ptr(t, x0, y0), x0 - dx, y0 - dy, x1 - x0, y1 - y0, t->stride};
+  gfx_target_view(&view);
+  draw();
+  gfx_target_view(NULL);
+}
+
+/* The screen inside the card, whichever it is, drawn as that screen. */
+static void draw_card_screen(void) {
+  const screen_t keep = s_screen;
+  s_screen = s_anim.card;
+  draw_screen();
+  s_screen = keep;
+}
+
+/*
+ * One frame of a row becoming a screen, or a screen becoming a row again.
+ *
+ * DRAWN, not composited. This used to blit the two ends of the move out of
+ * retained copies in PSRAM - the menu from one, the arriving screen from
+ * another - which cost a read of most of the screen on every frame, on the
+ * bus that is this board's limit, and two whole renders plus a rotate before
+ * the first frame could show. Now the menu's columns and the screen inside
+ * the card are drawn with their own screen code through a moved, clipped
+ * view (draw_placed), straight into the tile being rendered. Nothing is read
+ * back, nothing is prepared, and a frame costs what its pixels cost to draw.
+ */
 static void open_frame(int row, float t) {
   int rx, ry, rw, rh;
   menu_rect(row, &rx, &ry, &rw, &rh);
-  const uint16_t tint = menu_face(row, true);
+  /* The colour the card wears while the wash is on it: the pressed face on
+   * the way in, the RESTING face on the way back - so the last frame of a
+   * back move is the row as it will sit, and the settled menu that follows
+   * changes nothing. It landed on the pressed colour before, and snapped. */
+  const uint16_t tint = menu_face(row, s_anim.opening);
 
   const float e = ease_ui(t);
   int ox = lerpi(rx, 0, e), oy = lerpi(ry, 0, e);
@@ -7070,13 +7127,10 @@ static void open_frame(int row, float t) {
   /*
    * The ground, only where it will still be ground.
    *
-   * This cleared the whole canvas and then blitted the growing card over most
-   * of it: at the end of the move 768 KB written and 768 KB written again,
-   * on a bus the camera measured at 45-90 MB/s. The card's rectangle is
-   * overwritten whole by gfx_stash_blit() below, so only the four bands round
-   * it need the ground - nothing at the start of the move, everything but a
-   * shrinking frame as it goes, and a saving that is largest exactly where
-   * the frame was costliest, which is the end the eye is on.
+   * This cleared the whole canvas and then drew the growing card over most
+   * of it. The card's rectangle is drawn whole by draw_card_screen() below,
+   * so only the four bands round it need the ground - nothing at the start
+   * of the move, everything but a shrinking frame as it goes.
    */
   fill(0, 0, UI_W, oy, MZ_GROUND);
   fill(0, oy + oh, UI_W, UI_H - oy - oh, MZ_GROUND);
@@ -7084,20 +7138,17 @@ static void open_frame(int row, float t) {
   fill(ox + ow, oy, UI_W - ox - ow, oh, MZ_GROUND);
 
   /*
-   * The menu, parting - as blits out of the retained layer, not as six cards
-   * drawn again.
+   * The menu, parting - drawn through moved views of the menu's own drawing.
    *
    * Everything that is not the touched item is a rigid block: it translates
-   * and nothing about it changes. Redrawing them was costing this frame more
-   * than everything else in it put together, and costing it MOST at t=0,
-   * when all six are still on screen - so the move was slowest exactly where
-   * it starts, which is the part the eye is following.
+   * and nothing about it changes, so each block is the menu drawn with its
+   * origin moved and clipped to where the block now is.
    *
-   * Two columns now, so two kinds of parting. Opening the card, the rows
-   * column leaves as one block toward its own edge. Opening a row, the card
-   * leaves toward ITS edge while the rows above lift and the rows below
-   * drop - the list still parts around the row, and the card gets out of
-   * the way sideways, which is the direction it has.
+   * Two columns, so two kinds of parting. Opening the card, the rows column
+   * leaves as one block toward its own edge. Opening a row, the card leaves
+   * toward ITS edge while the rows above lift and the rows below drop - the
+   * list still parts around the row, and the card gets out of the way
+   * sideways, which is the direction it has.
    */
   {
     int cx0, cy0, cw0, ch0;
@@ -7120,42 +7171,47 @@ static void open_frame(int row, float t) {
     const int card_travel = (int)(ce * (float)(cw0 + MZ_M));
 
     if (row == 0) {
-      gfx_layer_blit(r1x + rows_dir * rows_travel, r1y, r1x, r1y, r1w, rows_h);
+      const int sx = rows_dir * rows_travel;
+      draw_placed(draw_menu, sx, 0, r1x + sx, r1y, r1w, rows_h);
     } else {
-      gfx_layer_blit(cx0 + card_dir * card_travel, cy0, cx0, cy0, cw0, ch0);
+      const int sx = card_dir * card_travel;
+      draw_placed(draw_menu, sx, 0, cx0 + sx, cy0, cw0, ch0);
       const int travel = (int)(e * (float)UI_H);
       /* Everything above the touched row, carried up. */
       const int top_h = ry - r1y;
-      if (top_h > 0) gfx_layer_blit(r1x, r1y - travel, r1x, r1y, r1w, top_h);
+      if (top_h > 0) draw_placed(draw_menu, 0, -travel, r1x, r1y - travel, r1w, top_h);
       /* Everything below it, carried down. */
       const int bot_y = ry + rh;
       const int bot_h = (r5y + r5h) - bot_y;
-      if (bot_h > 0) gfx_layer_blit(r1x, bot_y + travel, r1x, bot_y, r1w, bot_h);
+      if (bot_h > 0) draw_placed(draw_menu, 0, travel, r1x, bot_y + travel, r1w, bot_h);
     }
   }
 
-  /*
-   * The screen, cropped to the card and hung from its top edge.
-   *
-   * A copy out of the stash into the target. Presenting the card straight
-   * from the stash on the PPA was tried while frames were rotated out of a
-   * PSRAM canvas and saved the copy; with frames drawn in tiles the copy IS
-   * the frame's cost for that region, and there is no rotate to skip.
-   * (Presenting only the ring where the card grew cannot work: the card is
-   * hung from the arriving screen's TOP edge, so as it rises every pixel
-   * inside it scrolls.)
-   */
-  gfx_stash_blit(ox, oy, ox, 0, ow, oh);
+  /* The screen, drawn into the card and hung from its top edge: its row 0 at
+   * the card's row oy, its columns where they are, cut to the card. */
+  draw_placed(draw_card_screen, 0, oy, ox, oy, ow, oh);
 
-  /* The row's colour, washing off. */
+  /*
+   * The row's colour, washing off - and the row's own words with it.
+   *
+   * The first frame used to paint the card in the pressed colour and the
+   * label was simply gone: it had been on the row and now the row was a
+   * plate. The words are drawn over the wash in an ink that fades with it,
+   * so they dissolve into the screen arriving beneath them. On the way back
+   * they condense out of it, in the resting ink, onto the resting face.
+   */
   const float wash = 1.0f - span01(t, 0.0f, 0.34f);
-  if (wash > 0.01f) scrim(ox, oy, ow, oh, tint, (int)(wash * 255.0f));
+  if (wash > 0.01f) {
+    const int k = (int)(wash * 255.0f);
+    scrim(ox, oy, ow, oh, tint, k);
+    menu_words(row, rx, ry, rw, rh, mix(tint, menu_ink(row, s_anim.opening), k), true);
+  }
 
   cut_corners(ox, oy, ow, oh, (float)UI_R * (1.0f - e), MZ_GROUND);
 }
 
-static void open_anim(int row, bool opening, int ms) {
-  anim_start_open(row, opening, ms);
+static void open_anim(int row, bool opening, screen_t card, int ms) {
+  anim_start_open(row, opening, card, ms);
 }
 
 /** Which menu row leads to `s`, or -1 if none does. */
@@ -7199,47 +7255,32 @@ static void go(screen_t s, int ms) {
    * back. Either way it is the menu row for whichever end is not the menu. */
   const int row = from == SCR_MENU ? menu_item_of(s) : (back && s == SCR_MENU ? menu_item_of(from) : -1);
 
-  /*
-   * The screen being left, into the canvas.
-   *
-   * Frames go to the panel in tiles now and no copy of the one on screen
-   * exists in PSRAM, so the move's two ends are drawn here on purpose: the
-   * one being left first, while s_screen still names it and the pressed row
-   * is still pressed, for the snapshot the push and the dissolve start from
-   * and for whichever retained buffer this move wants it in.
-   */
-  gfx_render_canvas(render_screen, NULL);
-  gfx_snapshot();
+  const bool opening = from == SCR_MENU;
 
   /*
-   * Which frame the card holds.
-   *
-   * open_anim() draws the menu itself and blits the OTHER end of the move
-   * inside the growing card, so the stash has to hold whichever end that is:
-   * the screen being opened, or the screen being left. Getting this
-   * backwards put the top of the menu inside the card on the way back - the
-   * SHOOT card shrinking into the GALLERY row, which is a sentence about
-   * nothing.
+   * A row move is drawn from state and needs nothing prepared: its first
+   * frame follows the release by one pass. The push between two screens
+   * with no row behind them still composites, so it gets the screen being
+   * left into the canvas - while s_screen still names it and the pressed
+   * control is still pressed - and the snapshot it starts from.
    */
-  const bool opening = from == SCR_MENU;
-  if (row >= 0 && !opening) gfx_stash();
-  /* The menu into the retained layer, from whichever end of the move it is:
-   * opening, it is the screen being left; closing, the one arriving.
-   * open_frame() carries it in two blits rather than drawing six cards a
-   * frame. */
-  if (row >= 0 && opening) gfx_layer_keep();
+  if (row < 0) {
+    gfx_render_canvas(render_screen, NULL);
+    gfx_snapshot();
+  }
 
   if (from == SCR_LOOK && s != SCR_LOOK) s_look_from_shoot = false;
   s_screen = s;
   s_pressed = -1;
 
-  /* And the screen arriving, into the canvas, for the other buffer. */
-  gfx_render_canvas(render_screen, NULL);
-  if (row >= 0 && opening) gfx_stash();
-  if (row >= 0 && !opening) gfx_layer_keep();
-
-  if (row >= 0) open_anim(row, opening, ms);
-  else gfx_slide(ms, !back);
+  if (row >= 0) {
+    /* Inside the card: the screen arriving when a row opens, the screen being
+     * left when it closes. */
+    open_anim(row, opening, opening ? s : from, ms);
+  } else {
+    gfx_render_canvas(render_screen, NULL);
+    gfx_slide(ms, !back);
+  }
 }
 
 static void go_back(void) {

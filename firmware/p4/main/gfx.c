@@ -96,7 +96,9 @@ static uint16_t *s_canvas;   /* landscape, what the UI draws into */
 /* Where the UI's primitives write right now: the whole canvas unless a
  * render pass has pointed them at a tile. */
 static gfx_target_t s_target;
-const gfx_target_t *gfx_target(void) { return &s_target; }
+static const gfx_target_t *s_view; /* a sub-window of s_target with a moved origin, or NULL */
+const gfx_target_t *gfx_target(void) { return s_view != NULL ? s_view : &s_target; }
+void gfx_target_view(const gfx_target_t *view) { s_view = view; }
 /*
  * Not pipelined, and measured not to be worth it (0.4.58, #177).
  *

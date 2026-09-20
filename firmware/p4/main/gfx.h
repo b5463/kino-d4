@@ -53,6 +53,17 @@ typedef struct {
 
 const gfx_target_t *gfx_target(void);
 
+/**
+ * Draw through a view instead of the target proper, until cleared with NULL.
+ *
+ * A view is a target whose window is a sub-rectangle of the real one with its
+ * origin moved: drawing code that thinks it is at (0, 0) lands wherever the
+ * view says, clipped to it. This is how a move draws a whole screen into a
+ * growing card, or a menu column shifted sideways, with the screen's own
+ * drawing code and no copy of anything.
+ */
+void gfx_target_view(const gfx_target_t *view);
+
 /** Rotate the canvas onto the back framebuffer and show it. */
 void gfx_present(void);
 

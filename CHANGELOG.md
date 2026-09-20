@@ -126,6 +126,20 @@ KINO has no published release yet. Changes intended for the first release collec
   600 ms, then the light goes; a touch in that window calls the sleep off
   and the screen comes back. Sleep used to cut the light from whatever was
   on screen, which is what a crash looks like.
+  A seventh pass takes the menu moves off the compositor altogether. A row
+  opening or a card closing used to be assembled from a PSRAM stash of the
+  destination and a retained layer of the menu, blitted into place each
+  frame; the reads through PSRAM were most of the 10 ms of drawing left in a
+  frame, and preparing them was a visible hitch at the start of every move.
+  A move is now drawn from state: `gfx_target_view` lets the compositor
+  offset a drawing window, so the menu columns draw themselves shifted and
+  the destination screen draws itself into the growing card, tiled through
+  internal SRAM like any other frame. Nothing is prepared before the first
+  frame, so the move starts on the tap. The snap at either end goes with it:
+  the card face keeps the row's tint until a third of the way in and the
+  row's words fade out over that same third as the screen fades in under them;
+  on the way back the face carries the resting tint and the words fade in.
+  The host preview renders byte-identical except in that wash phase.
 - **Firmware 0.4.57: the on-device UI measured, and the numbers fixed (#176).**
   An audit of `firmware/p4/main/ui.c` as it runs in the Twin's SCREEN VIEW,
   with WCAG contrast computed from the palette defines and every screen
