@@ -13,7 +13,14 @@ import type { ConsoleMessage, Page } from '@playwright/test';
 /** Studio re-probes for a Twin tab every 3 s; a device poll is every 4 s and
  * the power/storage slice every 8 s. Cross-application assertions wait on
  * those intervals, never on a fixed sleep. */
-const CROSS_APP_MS = 60_000;
+/*
+ * The budget for anything that has to cross from one app to the other.
+ *
+ * Doubled on a runner for the reason playwright.config.ts gives: no GPU, the
+ * scene through SwiftShader, two tabs on shared cores. Used for the explicit
+ * overrides too, so there is one number to change rather than five.
+ */
+const CROSS_APP_MS = process.env.CI ? 120_000 : 60_000;
 
 interface Failure {
   where: string;
@@ -160,7 +167,7 @@ test('Twin acceptance walk', async ({ context, page }) => {
   await test.step('POWER ON boots the simulator to SIM READY', async () => {
     // POWER ON is on the header and on the welcome card until the sim runs.
     await page.getByRole('button', { name: 'POWER ON' }).first().click();
-    await expect(header).toContainText('SIM READY', { timeout: 60_000 });
+    await expect(header).toContainText('SIM READY', { timeout: CROSS_APP_MS });
     await expect(page.locator('.twin-welcome')).toHaveCount(0);
   });
 
@@ -184,7 +191,7 @@ test('Twin acceptance walk', async ({ context, page }) => {
     await expect(studio.locator('.connect-card')).toBeVisible();
     await expect(shutter).toBeEnabled({ timeout: CROSS_APP_MS });
     await shutter.click();
-    await expect(shutter).toHaveText('SHUTTER', { timeout: 60_000 });
+    await expect(shutter).toHaveText('SHUTTER', { timeout: CROSS_APP_MS });
 
     await connectStudioToTwin();
     await openStudioPage('Gallery');
@@ -282,7 +289,7 @@ test('Twin acceptance walk', async ({ context, page }) => {
 
     await expect(shutter).toBeEnabled();
     await shutter.click();
-    await expect(shutter).toHaveText('SHUTTER', { timeout: 60_000 });
+    await expect(shutter).toHaveText('SHUTTER', { timeout: CROSS_APP_MS });
 
     // STOP writes the session file; the download is accepted and discarded.
     const saved = page.waitForEvent('download');
