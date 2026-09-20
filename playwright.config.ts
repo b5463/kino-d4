@@ -10,7 +10,24 @@ const PORT = 4401;
 export default defineConfig({
   testDir: 'e2e',
   timeout: 300_000,
-  expect: { timeout: 20_000 },
+  /*
+   * A runner gets longer than a workstation, because it IS slower - not
+   * because the assertions are less true there.
+   *
+   * The walk finishes in about 35 seconds locally. On a GitHub runner there
+   * is no GPU, the Twin tab rasterises its 3D scene through SwiftShader, and
+   * two tabs share the cores; steps that take a second here take tens of
+   * seconds there, and the ones that cross from one app to the other through
+   * a BroadcastChannel are the worst of them.
+   *
+   * Every acceptance failure seen so far has been a TIMEOUT rather than a
+   * wrong value, on a step that passes locally and passes on a re-run. That
+   * is the signature of a budget set for the wrong machine. Raising it does
+   * not weaken the gate - a step that is genuinely broken still fails, just
+   * later - and the per-test budget (300 s, tripled by `test.slow()`) is the
+   * backstop that keeps a hang from running forever.
+   */
+  expect: { timeout: process.env.CI ? 45_000 : 20_000 },
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
