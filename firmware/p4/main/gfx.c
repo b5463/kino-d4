@@ -146,6 +146,7 @@ static void *s_fb[FB_COUNT]; /* the panel driver's own framebuffers */
 static int s_back = 0;
 static bool s_ready;
 static uint32_t s_frames;
+static uint32_t s_pass; /* drawing passes begun; see gfx_pass_id() */
 static uint32_t s_last_ms;
 
 bool gfx_ready(void) { return s_ready; }
@@ -355,6 +356,7 @@ void gfx_present(void) {
 
 void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
+  s_pass++;
   s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
   draw(ctx);
 }
@@ -386,8 +388,13 @@ void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
  * for 8 KB less of it. Cache-line aligned because the PPA reads them as
  * pictures of their own.
  */
-#define TILE_W 128
-#define TILE_H 48
+/* 48 x 96 rather than 128 x 48: a tile's landscape column is a run along a
+ * panel row, so the tile's HEIGHT is the run length the engine writes into
+ * PSRAM - 192 bytes here against 96. And 9 KB a tile rather than 12: the
+ * C6 recovery reserve (#162) needs two 16 KB blocks of this pool, and with
+ * 12 KB tiles plus the display list's boxes it found one. */
+#define TILE_W 48
+#define TILE_H 96
 static uint16_t s_tiles[2][TILE_W * TILE_H] __attribute__((aligned(64)));
 _Static_assert(TILE_H % 2 == 0 && UI_H % TILE_H == 0 && DISPLAY_H_RES % 2 == 0,
                "tiles must divide the height and the transposed write stores two pixels a word");
@@ -468,8 +475,27 @@ static void transpose_tile(const uint16_t *tile, int w, int h, int tx, int ty, u
   }
 }
 
+uint32_t gfx_pass_id(void) { return s_pass; }
+
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) {
+  if (!s_ready || draw == NULL) return 0;
+  s_pass++;
+  const int64_t t0 = esp_timer_get_time();
+  for (int ty = 0; ty < UI_H; ty += TILE_H) {
+    const int h = UI_H - ty < TILE_H ? UI_H - ty : TILE_H;
+    for (int tx = 0; tx < UI_W; tx += TILE_W) {
+      const int w = UI_W - tx < TILE_W ? UI_W - tx : TILE_W;
+      s_target = (gfx_target_t){s_tiles[0], tx, ty, w, h, w};
+      draw(ctx);
+    }
+  }
+  s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
+  return (uint32_t)(esp_timer_get_time() - t0);
+}
+
 void gfx_render(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
+  s_pass++;
   const int64_t t0 = esp_timer_get_time();
   uint16_t *fb = s_fb[s_back];
   /* Before the first tile lands in it: the panel may still be scanning it. */

@@ -126,20 +126,38 @@ KINO has no published release yet. Changes intended for the first release collec
   600 ms, then the light goes; a touch in that window calls the sleep off
   and the screen comes back. Sleep used to cut the light from whatever was
   on screen, which is what a crash looks like.
-  A seventh pass takes the menu moves off the compositor altogether. A row
-  opening or a card closing used to be assembled from a PSRAM stash of the
-  destination and a retained layer of the menu, blitted into place each
-  frame; the reads through PSRAM were most of the 10 ms of drawing left in a
-  frame, and preparing them was a visible hitch at the start of every move.
-  A move is now drawn from state: `gfx_target_view` lets the compositor
-  offset a drawing window, so the menu columns draw themselves shifted and
-  the destination screen draws itself into the growing card, tiled through
-  internal SRAM like any other frame. Nothing is prepared before the first
-  frame, so the move starts on the tap. The snap at either end goes with it:
-  the card face keeps the row's tint until a third of the way in and the
-  row's words fade out over that same third as the screen fades in under them;
-  on the way back the face carries the resting tint and the words fade in.
-  The host preview renders byte-identical except in that wash phase.
+  A seventh pass takes the menu moves off the compositor and then makes
+  the renderer pay for a frame once. A row opening or a card closing used to
+  be assembled from a PSRAM stash of the destination and a retained layer of
+  the menu; `gfx_target_view` offsets the drawing window instead, so the
+  menu columns and the destination screen draw themselves into place and
+  nothing is prepared before the first frame. The snap at either end goes
+  with it: the card face keeps the row's tint for the first third and the
+  row's words fade out as the screen fades in under them; the back move
+  carries the resting tint. Drawn that way the moves ran at 20 fps, and the
+  reason was measured: the tile renderer calls a screen's drawing code once
+  per tile, and the screens format strings, measure text and read state
+  before they touch a pixel, seventy times a frame (LOOK cost 30 ms to draw,
+  the splash 8). So a frame is now recorded once into a display list of
+  primitives (fills, rounded rectangles, text runs, strokes, blits) and the
+  tile pass replays the commands whose box touches the tile, through the
+  view each was recorded under; the boxes sit in internal SRAM, the commands
+  in PSRAM, and a full list falls back to direct drawing. Card and network
+  status are read once per pass. Profiling the replay per primitive then
+  found the pixel work: rounded corners took a square root per corner pixel
+  in every tile the rectangle touched (a coverage table per radius and a
+  per-corner window test), the ROLL and POWER icons were sixty short strokes
+  round a circle each (a `ring` primitive), and every tile painted the ground
+  under the card that then covered it (a tile's replay starts at the last
+  command that covers it opaquely). The ROLL QR is one bitmap command, not
+  a fill per module. Tiles are 48 x 96 rather than 128 x 48: twice the run
+  length into the panel buffer and 9 KB a tile rather than 12, because the
+  display list's boxes live in internal SRAM too and the C6 recovery reserve
+  (#162) must still find its two 16 KB blocks there. On the panel: the menu
+  frame 13.1 -> 6.7 ms, the heaviest screen 30 -> 8 ms, a move into LOOK
+  20 -> 50 fps before the pixel work was touched. The host preview renders
+  byte-identical except in the wash phase and the two ring icons, and now
+  renders every scene through the recorder.
 - **Firmware 0.4.57: the on-device UI measured, and the numbers fixed (#176).**
   An audit of `firmware/p4/main/ui.c` as it runs in the Twin's SCREEN VIEW,
   with WCAG contrast computed from the palette defines and every screen

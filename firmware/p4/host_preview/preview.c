@@ -98,8 +98,12 @@ void gfx_stash(void) {
 }
 /* A frame is one call of its drawing on the whole canvas, then the frame
  * goes out as every other frame does. */
-void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { draw(ctx); }
+static uint32_t s_pass;
+uint32_t gfx_pass_id(void) { return s_pass; }
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); return 0; }
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }
 void gfx_render(gfx_draw_fn draw, void *ctx) {
+  s_pass++;
   draw(ctx);
   gfx_present();
 }
@@ -844,6 +848,12 @@ void upload_queue_status(upload_queue_report_t *out) {
 int upload_queue_retry_all(void) { return 0; }
 
 #include "ui.c"
+
+/* Every scene here goes through ui_render(): recorded into the display list
+ * and replayed, exactly as the camera draws a frame. So the byte-compare of
+ * these pictures against the baseline tests the recorder, and a scene is a
+ * pass, which keeps the once-per-pass caches in ui.c honest. */
+#define draw_screen() ui_render(render_screen, NULL)
 
 /* ---- the text-overflow audit ----
  *

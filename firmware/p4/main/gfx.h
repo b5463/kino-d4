@@ -82,6 +82,18 @@ typedef void (*gfx_draw_fn)(void *ctx);
 void gfx_render(gfx_draw_fn draw, void *ctx);
 
 /**
+ * Which drawing pass this is. Goes up once per gfx_render() or
+ * gfx_render_canvas(), and stays the same across the many calls of `draw`
+ * inside one tile pass - so drawing code that gathers state it does not need
+ * to gather seventy times a frame can key a cache on it.
+ */
+uint32_t gfx_pass_id(void);
+
+/** Run `draw` through the tile pass and time only the drawing; nothing is
+ *  written out or shown. For finding out what a screen costs on the bench. */
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx);
+
+/**
  * Draw a frame into the landscape canvas in PSRAM and leave it there, so a
  * transition can keep it (gfx_stash, gfx_layer_keep, gfx_snapshot, the push
  * and the dissolve all read the canvas). Nothing reaches the panel.

@@ -295,8 +295,12 @@ static inline void tw_fill_rows(uint16_t *buf, int y, int h, uint16_t c) {
 void gfx_stash(void) { memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
 /* A frame is one call of its drawing on the whole canvas, then the frame
  * goes out in virtual time as every other frame does. */
-void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { draw(ctx); }
+static uint32_t s_pass;
+uint32_t gfx_pass_id(void) { return s_pass; }
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); return 0; }
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }
 void gfx_render(gfx_draw_fn draw, void *ctx) {
+  s_pass++;
   draw(ctx);
   gfx_present();
 }

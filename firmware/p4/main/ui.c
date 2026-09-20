@@ -515,6 +515,170 @@ static inline uint16_t *cv_ptr(const gfx_target_t *t, int x, int y) {
 /* The window's edges, for clamping a loop before it starts. */
 #define CV_X1(t) ((t)->x0 + (t)->w)
 #define CV_Y1(t) ((t)->y0 + (t)->h)
+/*
+ * State the screens read while drawing, gathered once per frame.
+ *
+ * A tile frame calls the screen's drawing code once per tile - about seventy
+ * times - and every call ran storage_get_status() (a FatFs free-space query
+ * behind its mutex) and net_link_status() (another lock) again. On the panel
+ * that was most of a 34 ms frame during a move into GALLERY or SETTINGS. The
+ * facts do not change inside a frame, so they are fetched on the first call
+ * of a pass and handed back from here for the rest of it.
+ */
+static const storage_status_t *sd_status(void) {
+  static storage_status_t sd;
+  static uint32_t pass = UINT32_MAX;
+  if (pass != gfx_pass_id()) {
+    storage_get_status(&sd);
+    pass = gfx_pass_id();
+  }
+  return &sd;
+}
+static const net_status_t *net_status(void) {
+  static net_status_t net;
+  static uint32_t pass = UINT32_MAX;
+  if (pass != gfx_pass_id()) {
+    net_link_status(&net, esp_timer_get_time() / 1000);
+    pass = gfx_pass_id();
+  }
+  return &net;
+}
+
+/*
+ * The display list: a frame's drawing, recorded once and replayed per tile.
+ *
+ * The tile renderer calls a frame's drawing code once per tile - about
+ * seventy times - and the screens' drawing code is not free to call: it
+ * formats strings, measures text, reads state and lays rows out before it
+ * touches a pixel. Measured on the panel (0.4.58, #177) with every primitive
+ * clipping perfectly, a static screen still cost 12-30 ms to draw through the
+ * tiles against 8 ms for the splash, and a move into LOOK cost 35 ms a frame:
+ * the fixed cost of the code, seventy times over.
+ *
+ * So the frame is drawn once, into a list of primitives, and the tile pass
+ * replays the list: for each tile, the primitives whose box touches it, in
+ * order, clipped by the primitive itself as before. The fixed cost is paid
+ * once; the per-tile cost is the pixels plus one rectangle test per command.
+ *
+ * The commands live in PSRAM and are read once per tile they touch; their
+ * boxes live in internal SRAM, because the test against every command runs
+ * seventy times a frame and must not go over the bus. A view (draw_placed)
+ * is recorded onto each command as its shift and clip, so a move records the
+ * menu's columns and the destination screen exactly as it drew them.
+ *
+ * If the list fills, the frame is drawn the old way; nothing is lost.
+ */
+#ifndef UI_DRAW_PROFILE
+#define UI_DRAW_PROFILE 0
+#endif
+enum {
+  DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_STROKE, DL_SCRIM, DL_TEXT,
+  DL_ODD, DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_RING,
+};
+#define DL_OPS (DL_RING + 1)
+/* What the per-tile pass needs about a command without touching PSRAM:
+ * its box, and whether it paints every pixel of that box (a fill, a blit)
+ * or every pixel but its corners (a rounded rectangle, radius r). */
+typedef struct {
+  int16_t x0, y0, x1, y1;
+  uint8_t r;
+  uint8_t opaque; /* bit 0: paints its whole box (but the corners when r > 0) */
+} dl_bb_t; /* 10 bytes; DL_MAX of them live in internal SRAM */
+typedef struct {
+  uint8_t op;
+  int16_t sx, sy;             /* the view's shift: logical -> canvas */
+  int16_t cx0, cy0, cx1, cy1; /* the view's clip, canvas coordinates */
+  uint16_t col;
+  int32_t a, b, c, d, e, g;
+  float f0, f1, f2, f3, f4;
+  const void *p;
+} dl_cmd_t;
+/* 384 x 10 bytes of internal SRAM for the boxes. The busiest frame seen is
+ * an open move at about 230 commands; a fuller one draws direct. */
+#define DL_MAX 384
+#define DL_STR 8192
+static struct {
+  bool rec;        /* primitives record instead of drawing */
+  bool full;       /* the list or the string arena ran out this frame */
+  bool play;       /* inside dl_replay(): primitives are being drawn from the list */
+  int n;
+  int str_n;
+  int16_t sx, sy;
+  int16_t cx0, cy0, cx1, cy1;
+  dl_cmd_t *cmd;   /* DL_MAX, PSRAM */
+  char *str;       /* DL_STR, PSRAM */
+  dl_bb_t bb[DL_MAX];    /* canvas-space box of each command; internal */
+#if UI_DRAW_PROFILE
+  bool prof;       /* bench: time each op type in dl_replay() */
+  uint32_t prof_us[DL_OPS];
+  uint32_t prof_n[DL_OPS];
+#endif
+} s_dl;
+
+static void dl_begin(void) {
+  if (s_dl.cmd == NULL) {
+    s_dl.cmd = heap_caps_aligned_calloc(64, DL_MAX, sizeof(dl_cmd_t), MALLOC_CAP_SPIRAM);
+    s_dl.str = heap_caps_aligned_calloc(64, 1, DL_STR, MALLOC_CAP_SPIRAM);
+  }
+  s_dl.n = 0;
+  s_dl.str_n = 0;
+  s_dl.full = s_dl.cmd == NULL || s_dl.str == NULL;
+  s_dl.sx = s_dl.sy = 0;
+  s_dl.cx0 = s_dl.cy0 = 0;
+  s_dl.cx1 = UI_W;
+  s_dl.cy1 = UI_H;
+  s_dl.rec = !s_dl.full;
+}
+/** Stop recording. True when the whole frame fitted. */
+static bool dl_end(void) {
+  s_dl.rec = false;
+  return !s_dl.full;
+}
+/**
+ * Append a command whose logical-space box is [x0,x1) x [y0,y1). Returns NULL
+ * when it lands wholly outside the view's clip (and is dropped) or the list
+ * is full (and the frame falls back to direct drawing).
+ */
+static dl_cmd_t *dl_push(uint8_t op, int x0, int y0, int x1, int y1) {
+  x0 += s_dl.sx; x1 += s_dl.sx;
+  y0 += s_dl.sy; y1 += s_dl.sy;
+  if (x0 < s_dl.cx0) x0 = s_dl.cx0;
+  if (y0 < s_dl.cy0) y0 = s_dl.cy0;
+  if (x1 > s_dl.cx1) x1 = s_dl.cx1;
+  if (y1 > s_dl.cy1) y1 = s_dl.cy1;
+  if (x0 >= x1 || y0 >= y1) return NULL;
+  if (s_dl.n >= DL_MAX) {
+    s_dl.full = true;
+    return NULL;
+  }
+  dl_cmd_t *c = &s_dl.cmd[s_dl.n];
+  dl_bb_t *b = &s_dl.bb[s_dl.n];
+  b->x0 = (int16_t)x0;
+  b->y0 = (int16_t)y0;
+  b->x1 = (int16_t)x1;
+  b->y1 = (int16_t)y1;
+  b->r = 0;
+  b->opaque = op == DL_FILL || op == DL_BLIT || op == DL_SHBLIT;
+  s_dl.n++;
+  c->op = op;
+  c->sx = s_dl.sx; c->sy = s_dl.sy;
+  c->cx0 = s_dl.cx0; c->cy0 = s_dl.cy0; c->cx1 = s_dl.cx1; c->cy1 = s_dl.cy1;
+  return c;
+}
+/** A copy of `str` in the arena, as an offset; -1 when it does not fit. */
+static int dl_str(const char *str) {
+  const size_t n = strlen(str) + 1;
+  if ((size_t)s_dl.str_n + n > DL_STR) {
+    s_dl.full = true;
+    return -1;
+  }
+  memcpy(s_dl.str + s_dl.str_n, str, n);
+  const int at = s_dl.str_n;
+  s_dl.str_n += (int)n;
+  return at;
+}
+static void dl_replay(void *ctx);
+
 static screen_t s_screen = SCR_MENU;
 static int s_focus[SCR_COUNT];
 /* Whether focus is worth DRAWING.
@@ -669,6 +833,11 @@ static inline void fill_run(uint16_t *p, size_t n, uint16_t colour) {
 }
 
 static void fill(int x, int y, int w, int h, uint16_t colour) {
+  if (s_dl.rec) {
+    dl_cmd_t *c = dl_push(DL_FILL, x, y, x + w, y + h);
+    if (c) { c->a = x; c->b = y; c->c = w; c->d = h; c->col = colour; }
+    return;
+  }
   const gfx_target_t *t = TG;
   if (x < t->x0) { w += x - t->x0; x = t->x0; }
   if (y < t->y0) { h += y - t->y0; y = t->y0; }
@@ -783,11 +952,59 @@ static void outline(int x, int y, int w, int h, uint16_t c) {
  * Nothing behind a corner is assumed: it reads the canvas and mixes into it,
  * so a card over a photograph is as correct as a card over the ground.
  */
+/*
+ * Coverage of a rounded corner of radius r, r*r bytes, (dx, dy) counted
+ * inward from the corner's outer edges: 255 inside the arc, 0 outside, the
+ * ramp across the one pixel the edge crosses. Kept for the last few radii;
+ * this interface uses two or three.
+ */
+#define CORNER_R_MAX 32
+static const uint8_t *corner_cov(int r) {
+  /* In PSRAM: a corner reads r*r bytes of it per tile, through the cache,
+   * and internal SRAM is the pool this board runs out of first. */
+  static int cache_r[4];
+  static uint8_t *cache[4];
+  static int next;
+  if (r > CORNER_R_MAX) r = CORNER_R_MAX;
+  for (int i = 0; i < 4; i++) {
+    if (cache[i] != NULL && cache_r[i] == r) return cache[i];
+  }
+  const int slot = next++ & 3;
+  if (cache[slot] == NULL) {
+    cache[slot] = heap_caps_aligned_calloc(64, 1, CORNER_R_MAX * CORNER_R_MAX, MALLOC_CAP_SPIRAM);
+    if (cache[slot] == NULL) return NULL; /* out of PSRAM: square corners */
+  }
+  cache_r[slot] = r;
+  const float rf = (float)r;
+  for (int dy = 0; dy < r; dy++) {
+    for (int dx = 0; dx < r; dx++) {
+      const float ox = (float)(r - dx) - 0.5f;
+      const float oy = (float)(r - dy) - 0.5f;
+      float cov = rf - sqrtf(ox * ox + oy * oy) + 0.5f;
+      if (cov <= 0.0f) cov = 0.0f;
+      if (cov > 1.0f) cov = 1.0f;
+      cache[slot][dy * r + dx] = (uint8_t)(int)(cov * 255.0f + 0.5f);
+    }
+  }
+  return cache[slot];
+}
+
 static void round_rect(int x, int y, int w, int h, int r, uint16_t c) {
   if (r * 2 > w) r = w / 2;
   if (r * 2 > h) r = h / 2;
   if (r < 1) {
     fill(x, y, w, h, c);
+    return;
+  }
+  if (r > CORNER_R_MAX) r = CORNER_R_MAX;
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_RRECT, x, y, x + w, y + h);
+    if (k) {
+      k->a = x; k->b = y; k->c = w; k->d = h; k->e = r; k->col = c;
+      /* Opaque everywhere but its corners; the per-tile pass knows the radius. */
+      s_dl.bb[s_dl.n - 1].r = (uint8_t)r;
+      s_dl.bb[s_dl.n - 1].opaque = 1;
+    }
     return;
   }
 
@@ -797,30 +1014,42 @@ static void round_rect(int x, int y, int w, int h, int r, uint16_t c) {
   fill(x + r, y, w - 2 * r, r, c);
   fill(x + r, y + h - r, w - 2 * r, r, c);
 
-  /* The four corners, sampled. `fr` is the distance from the arc centre to
-   * the pixel's own centre; coverage falls from full to none across the one
-   * pixel that straddles the edge, which is what a rasteriser does and what
-   * the eye reads as a curve. */
+  /*
+   * The four corners, sampled from a coverage table.
+   *
+   * Coverage at (dx, dy) inside a corner of radius r depends on r alone, so
+   * it is computed once per radius and kept: a corner is then r*r byte
+   * reads and blends, not r*r square roots. And each corner is tested
+   * against the window on its own before any of that - a card that spans
+   * forty tiles has a corner in four of them, and the other thirty-six used
+   * to pay for all four corners every frame. Profiled on the panel (0.4.58,
+   * #177) at 4.6 ms of a 13 ms menu frame; this is most of that back.
+   */
+  const uint8_t *cov = corner_cov(r);
+  if (cov == NULL) {
+    fill(x, y, w, r, c);
+    fill(x, y + h - r, w, r, c);
+    return;
+  }
   const gfx_target_t *t = TG;
-  /* Nothing to sample when no corner box touches the window. */
-  if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
-  const float rf = (float)r;
-  for (int dy = 0; dy < r; dy++) {
-    for (int dx = 0; dx < r; dx++) {
-      const float ox = (float)(r - dx) - 0.5f;
-      const float oy = (float)(r - dy) - 0.5f;
-      const float d = sqrtf(ox * ox + oy * oy);
-      float cov = rf - d + 0.5f;
-      if (cov <= 0.0f) continue;
-      if (cov > 1.0f) cov = 1.0f;
-      const int k = (int)(cov * 255.0f + 0.5f);
-      const int xs[2] = {x + dx, x + w - 1 - dx};
-      const int ys[2] = {y + dy, y + h - 1 - dy};
-      for (int a = 0; a < 2; a++) {
-        for (int b = 0; b < 2; b++) {
-          const int px = xs[a], py = ys[b];
-          if (!cv_in(t, px, py)) continue;
-          uint16_t *dst = cv_ptr(t, px, py);
+  const int cx[2] = {x, x + w - r};         /* left corners start, right corners start */
+  const int cy[2] = {y, y + h - r};
+  for (int a = 0; a < 2; a++) {
+    for (int b = 0; b < 2; b++) {
+      /* This corner's box, clipped to the window. */
+      int bx0 = cx[a] > t->x0 ? cx[a] : t->x0, by0 = cy[b] > t->y0 ? cy[b] : t->y0;
+      int bx1 = cx[a] + r < CV_X1(t) ? cx[a] + r : CV_X1(t);
+      int by1 = cy[b] + r < CV_Y1(t) ? cy[b] + r : CV_Y1(t);
+      if (bx0 >= bx1 || by0 >= by1) continue;
+      for (int py = by0; py < by1; py++) {
+        /* Distance index from the corner's outer edge: dy counts inward. */
+        const int dy = b == 0 ? py - cy[0] : (cy[1] + r - 1) - py;
+        const uint8_t *row = cov + (size_t)dy * (size_t)r;
+        uint16_t *dst = cv_ptr(t, bx0, py);
+        for (int px = bx0; px < bx1; px++, dst++) {
+          const int dx = a == 0 ? px - cx[0] : (cx[1] + r - 1) - px;
+          const int k = row[dx];
+          if (k == 0) continue;
           *dst = k >= 254 ? c : mix(*dst, c, k);
         }
       }
@@ -830,6 +1059,11 @@ static void round_rect(int x, int y, int w, int h, int r, uint16_t c) {
 
 /** A one-pixel rounded outline, on the shape round_rect() would fill. */
 static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_ROUTLINE, x, y, x + w, y + h);
+    if (k) { k->a = x; k->b = y; k->c = w; k->d = h; k->e = r; k->col = c; }
+    return;
+  }
   if (r * 2 > w) r = w / 2;
   if (r * 2 > h) r = h / 2;
   fill(x + r, y, w - 2 * r, 1, c);
@@ -869,6 +1103,11 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
  */
 static void cut_corners(int x, int y, int w, int h, float rad, uint16_t behind) {
   if (rad < 0.4f) return;
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_CUT, x, y, x + w, y + h);
+    if (k) { k->a = x; k->b = y; k->c = w; k->d = h; k->f0 = rad; k->col = behind; }
+    return;
+  }
   const gfx_target_t *t = TG;
   if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
   const int r = (int)rad + 1;
@@ -901,6 +1140,12 @@ static void cut_corners(int x, int y, int w, int h, float rad, uint16_t behind) 
  * answer to "what does an edge look like" rather than one per glyph.
  */
 static void disc(int cx, int cy, float r, uint16_t c) {
+  if (s_dl.rec) {
+    const int e = (int)r + 2;
+    dl_cmd_t *k = dl_push(DL_DISC, cx - e, cy - e, cx + e + 1, cy + e + 1);
+    if (k) { k->a = cx; k->b = cy; k->f0 = r; k->col = c; }
+    return;
+  }
   PX_BLEND((size_t)((2.0f * r + 2.0f) * (2.0f * r + 2.0f)));
 
   const gfx_target_t *t = TG;
@@ -924,9 +1169,58 @@ static void disc(int cx, int cy, float r, uint16_t c) {
   }
 }
 
+/**
+ * A ring: the annulus of radius `r` and width `width`, both edges
+ * antialiased. The two icons that used to be sixty short strokes each round
+ * a circle are this; the strokes cost 2 ms of every menu frame and overlapped
+ * unevenly where they met.
+ */
+static void ring(int cx, int cy, float r, float width, uint16_t c) {
+  const float hw = width * 0.5f;
+  const int e = (int)(r + hw) + 2;
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_RING, cx - e, cy - e, cx + e + 1, cy + e + 1);
+    if (k) { k->a = cx; k->b = cy; k->f0 = r; k->f1 = width; k->col = c; }
+    return;
+  }
+  const gfx_target_t *t = TG;
+  int x0 = cx - e, x1 = cx + e, y0 = cy - e, y1 = cy + e;
+  if (x0 < t->x0) x0 = t->x0;
+  if (y0 < t->y0) y0 = t->y0;
+  if (x1 >= CV_X1(t)) x1 = CV_X1(t) - 1;
+  if (y1 >= CV_Y1(t)) y1 = CV_Y1(t) - 1;
+  /* No square root outside the band the ring can touch. */
+  const float far2 = (r + hw + 0.5f) * (r + hw + 0.5f);
+  const float near = r - hw - 0.5f;
+  const float near2 = near > 0.0f ? near * near : 0.0f;
+  for (int py = y0; py <= y1; py++) {
+    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
+    for (int px = x0; px <= x1; px++) {
+      const float ox = (float)px + 0.5f - (float)cx;
+      const float oy = (float)py + 0.5f - (float)cy;
+      const float d2 = ox * ox + oy * oy;
+      if (d2 >= far2 || d2 < near2) continue;
+      const float dist = sqrtf(d2) - r;
+      float cov = hw - (dist < 0.0f ? -dist : dist) + 0.5f;
+      if (cov <= 0.0f) continue;
+      if (cov > 1.0f) cov = 1.0f;
+      const int k = (int)(cov * 255.0f + 0.5f);
+      row[px] = k >= 254 ? c : mix(row[px], c, k);
+    }
+  }
+}
+
 /** A line of some width, with both ends and both sides antialiased. */
 static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t c) {
   const float hw = width * 0.5f;
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_STROKE, (int)floorf((x0 < x1 ? x0 : x1) - hw - 1),
+                          (int)floorf((y0 < y1 ? y0 : y1) - hw - 1),
+                          (int)ceilf((x0 > x1 ? x0 : x1) + hw + 1) + 1,
+                          (int)ceilf((y0 > y1 ? y0 : y1) + hw + 1) + 1);
+    if (k) { k->f0 = x0; k->f1 = y0; k->f2 = x1; k->f3 = y1; k->f4 = width; k->col = c; }
+    return;
+  }
   const float vx = x1 - x0, vy = y1 - y0;
   const float len2 = vx * vx + vy * vy;
   int bx0 = (int)floorf((x0 < x1 ? x0 : x1) - hw - 1);
@@ -938,6 +1232,11 @@ static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t
   if (by0 < t->y0) by0 = t->y0;
   if (bx1 >= CV_X1(t)) bx1 = CV_X1(t) - 1;
   if (by1 >= CV_Y1(t)) by1 = CV_Y1(t) - 1;
+  /* The square root is only needed across the one-pixel edge band: a pixel
+   * whose squared distance is inside (hw - 0.5)^2 is solid and one outside
+   * (hw + 0.5)^2 is untouched. Most of a stroke's box is one or the other. */
+  const float in2 = hw > 0.5f ? (hw - 0.5f) * (hw - 0.5f) : -1.0f;
+  const float out2 = (hw + 0.5f) * (hw + 0.5f);
   for (int py = by0; py <= by1; py++) {
     uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
     for (int px = bx0; px <= bx1; px++) {
@@ -946,7 +1245,13 @@ static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t
       if (t < 0.0f) t = 0.0f;
       if (t > 1.0f) t = 1.0f;
       const float dx = qx - t * vx, dy = qy - t * vy;
-      float cov = hw - sqrtf(dx * dx + dy * dy) + 0.5f;
+      const float d2 = dx * dx + dy * dy;
+      if (d2 >= out2) continue;
+      if (d2 <= in2) {
+        row[px] = c;
+        continue;
+      }
+      float cov = hw - sqrtf(d2) + 0.5f;
       if (cov <= 0.0f) continue;
       if (cov > 1.0f) cov = 1.0f;
       const int k = (int)(cov * 255.0f + 0.5f);
@@ -1057,6 +1362,11 @@ static void well(int x, int y, int w, int h) {
  * round trips.
  */
 static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
+  if (s_dl.rec) {
+    dl_cmd_t *c = dl_push(DL_SCRIM, x, y, x + w, y + h);
+    if (c) { c->a = x; c->b = y; c->c = w; c->d = h; c->e = k; c->col = tint; }
+    return;
+  }
   const gfx_target_t *t = TG;
   if (x < t->x0) { w += x - t->x0; x = t->x0; }
   if (y < t->y0) { h += y - t->y0; y = t->y0; }
@@ -1103,6 +1413,11 @@ static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
 #endif
 
 static void focus_ring(int x, int y, int w, int h, int r, uint16_t ink) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_FOCUS, x - 6, y - 6, x + w + 6, y + h + 6);
+    if (k) { k->a = x; k->b = y; k->c = w; k->d = h; k->e = r; k->col = ink; }
+    return;
+  }
   if (!UI_FOCUS_VISIBLE) return;
   for (int e = 0; e < 2; e++) {
     const int ox = x + e, oy = y + e, ow = w - 2 * e, oh = h - 2 * e;
@@ -1142,6 +1457,11 @@ static void focus_inset(int x, int y, int w, int h, uint16_t ink) {
 
 static void draw_bits(const uint8_t *bits, int w, int h, int stride, int x, int y, int scale,
                       uint16_t ink) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_BITS, x, y, x + w * scale, y + h * scale);
+    if (k) { k->p = bits; k->a = w; k->b = h; k->c = stride; k->d = x; k->e = y; k->g = scale; k->col = ink; }
+    return;
+  }
   for (int row = 0; row < h; row++) {
     const uint8_t *src = bits + (size_t)row * stride;
     for (int col = 0; col < w; col++) {
@@ -1232,7 +1552,9 @@ static void text(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) 
    * Renderer only. It reports rather than asserts, because a long roll name
    * genuinely can outgrow its column and the answer there is fit_face() or
    * ellipsis(), not a crash on the bench. */
-  {
+  /* Once per string, at the recording call: a replay is the same string
+   * again, after the chrome flag has moved on. */
+  if (!s_dl.play) {
     /* The bound is the page margin, not the canvas edge. Clipping is the
      * obvious fault and the audit was built for it, but a sentence that ends
      * 2 px from the bezel is the fault the interface actually has - it does
@@ -1250,6 +1572,32 @@ static void text(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) 
   }
 #endif
   const int baseline = y + f->ascent;
+  if (s_dl.rec) {
+    /* The exact box of the set glyphs, so a string in another tile costs
+     * that tile nothing at all. */
+    int bx0 = INT32_MAX, by0 = INT32_MAX, bx1 = INT32_MIN, by1 = INT32_MIN, pen = x;
+    for (const char *q = s; *q; q++) {
+      const int i = (unsigned char)*q - f->first;
+      if (i < 0 || i >= f->count) continue;
+      const ui_glyph_t *g = &f->glyphs[i];
+      if (g->cov != NULL) {
+        const int gx = pen + g->bx, gy = baseline - g->by;
+        if (gx < bx0) bx0 = gx;
+        if (gy < by0) by0 = gy;
+        if (gx + g->w > bx1) bx1 = gx + g->w;
+        if (gy + g->h > by1) by1 = gy + g->h;
+      }
+      pen += g->adv;
+    }
+    if (bx0 >= bx1 || by0 >= by1) return;
+    dl_cmd_t *k = dl_push(DL_TEXT, bx0, by0, bx1, by1);
+    if (k) {
+      const int at = dl_str(s);
+      if (at < 0) { s_dl.n--; return; }
+      k->p = f; k->a = x; k->b = y; k->g = at; k->col = ink;
+    }
+    return;
+  }
   for (; *s; s++) {
     const int i = (unsigned char)*s - f->first;
     if (i < 0 || i >= f->count) continue;
@@ -1635,6 +1983,12 @@ static int lerpi(int a, int b, float e) { return a + (int)((float)(b - a) * e + 
  * coverage field is exactly what an antialiased scale-down is.
  */
 static void oddjobs_mark(int cx, int cy, float r, uint16_t ink) {
+  if (s_dl.rec) {
+    const int e = (int)r + 3;
+    dl_cmd_t *k = dl_push(DL_ODD, cx - e, cy - e, cx + e + 1, cy + e + 1);
+    if (k) { k->a = cx; k->b = cy; k->f0 = r; k->col = ink; }
+    return;
+  }
   PX_BLEND((size_t)((2.0f * r + 2.0f) * (2.0f * r + 2.0f)));
 
   const int span = (int)r + 1;
@@ -1909,6 +2263,11 @@ static float s_bf_cam[4];
 
 static void boot_field(float reach, int32_t ms, int pal, float warm) {
   if (reach <= 0.0f) return;
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_FIELD, 0, 0, UI_W, UI_H);
+    if (k) { k->f0 = reach; k->a = ms; k->b = pal; k->f1 = warm; }
+    return;
+  }
 
   /* The furthest a cell can be and still be on the panel. */
   const float far = 470.0f;
@@ -2099,6 +2458,8 @@ static void boot_field(float reach, int32_t ms, int pal, float warm);
  * draws. `render_screen` is the current screen; the others are the moves and
  * the marks.
  */
+static void ui_render(gfx_draw_fn draw, void *ctx);
+
 static void render_screen(void *ctx) {
   (void)ctx;
   draw_screen();
@@ -2249,10 +2610,11 @@ static void anim_report(const char *what) {
   const uint32_t draw_ms = (uint32_t)((d1 - s_anim.draw0_us) / 1000);
   const uint32_t xpose_ms = (uint32_t)((x1 - s_anim.xpose0_us) / 1000);
   const uint32_t vsync_ms = (uint32_t)((v1 - s_anim.vsync0_us) / 1000);
+  const char *const card = s_anim.kind == ANIM_OPEN ? SCREEN_NAME[s_anim.card] : NULL;
   klog("P4",
-       "%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out, %lu ms "
+       "%s%s%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out, %lu ms "
        "waiting for the panel",
-       what, (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
+       what, card ? " " : "", card ? card : "", (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
        (unsigned long)(frames ? draw_ms / frames : 0), (unsigned long)(frames ? xpose_ms / frames : 0),
        (unsigned long)(frames ? vsync_ms / frames : 0));
 }
@@ -2380,7 +2742,7 @@ static uint32_t anim_tick(void) {
            * phase, it is just the front of this curve. */
           {
             field_frame_t f = {BF_SEED + ease_ui(t) * (BF_REACH - BF_SEED), ms, s_anim.pal, warm};
-            gfx_render(render_field, &f);
+            ui_render(render_field, &f);
           }
           if (done) anim_phase(SPL_HELD, SPL_MS[SPL_HELD]);
           return 0;
@@ -2390,7 +2752,7 @@ static uint32_t anim_tick(void) {
            * the beat that says the field is alive rather than a picture. */
           {
             field_frame_t f = {BF_REACH, ms, s_anim.pal, warm};
-            gfx_render(render_field, &f);
+            ui_render(render_field, &f);
           }
           if (done) anim_phase(SPL_BACK, SPL_MS[SPL_BACK]);
           return 0;
@@ -2408,7 +2770,7 @@ static uint32_t anim_tick(void) {
            */
           {
             field_frame_t f = {(1.0f - t * t) * BF_REACH, ms, s_anim.pal, warm};
-            gfx_render(render_field, &f);
+            ui_render(render_field, &f);
           }
           if (done) {
             anim_report("splash");
@@ -2429,12 +2791,12 @@ static uint32_t anim_tick(void) {
     case ANIM_OPEN: {
       float p = t;
       if (!s_anim.opening) p = 1.0f - p;
-      gfx_render(render_open, &p);
+      ui_render(render_open, &p);
       if (done) {
         /* The exact end: the destination drawn as itself. The last composited
          * frame is a pixel short of it - the ease does not land on 1.0 to the
          * pixel - and going back the destination has never been drawn at all. */
-        gfx_render(render_screen, NULL);
+        ui_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
         s_anim.kind = ANIM_NONE;
       }
@@ -2473,7 +2835,7 @@ static void power_down_anim(void) {
    * is switching off. What is leaving is the camera, so the camera's own mark
    * is what is on the screen, and then it is not.
    */
-  gfx_render(render_mark, NULL);
+  ui_render(render_mark, NULL);
   vTaskDelay(pdMS_TO_TICKS(520));
 
   /* Out through the ground rather than to black in one step: the panel's
@@ -2481,10 +2843,10 @@ static void power_down_anim(void) {
    * leaves it showing an empty lit rectangle. */
   for (int i = 1; i <= 7; i++) {
     int k = i * 255 / 7;
-    gfx_render(render_mark_fade, &k);
+    ui_render(render_mark_fade, &k);
     vTaskDelay(pdMS_TO_TICKS(55));
   }
-  gfx_render(render_black, NULL);
+  ui_render(render_black, NULL);
   vTaskDelay(pdMS_TO_TICKS(140));
 }
 
@@ -3187,16 +3549,8 @@ static void menu_icon(int i, int cx, int cy, uint16_t ink) {
       break;
     }
     case 3: { /* ROLL: two rings, overlapping */
-      const int rr = 7;
-      for (int e = 0; e < 2; e++) {
-        const int ox = cx + (e ? 4 : -4);
-        for (int a = 0; a < 360; a += 6) {
-          const float t = (float)a * 3.14159265f / 180.0f;
-          stroke((float)ox + cosf(t) * (float)rr, (float)cy + sinf(t) * (float)rr,
-                 (float)ox + cosf(t + 0.12f) * (float)rr,
-                 (float)cy + sinf(t + 0.12f) * (float)rr, k - 0.5f, ink);
-        }
-      }
+      ring(cx - 4, cy, 7.0f, k - 0.5f, ink);
+      ring(cx + 4, cy, 7.0f, k - 0.5f, ink);
       break;
     }
     case 4: { /* SETTINGS: three tracks, three knobs */
@@ -3208,12 +3562,9 @@ static void menu_icon(int i, int cx, int cy, uint16_t ink) {
       break;
     }
     default: { /* POWER: the mark everything uses */
-      for (int a = 60; a <= 480; a += 6) {
-        const float t = (float)a * 3.14159265f / 180.0f;
-        stroke((float)cx + cosf(t) * 8.0f, (float)cy + 1.0f + sinf(t) * 8.0f,
-               (float)cx + cosf(t + 0.12f) * 8.0f, (float)cy + 1.0f + sinf(t + 0.12f) * 8.0f, k,
-               ink);
-      }
+      /* The arc ran 60..480 degrees in 6-degree strokes: a full ring, with the
+       * first sixty degrees drawn twice. One ring says the same thing. */
+      ring(cx, cy + 1, 8.0f, k, ink);
       stroke((float)cx, (float)(cy - 10), (float)cx, (float)(cy + 1), k, ink);
       break;
     }
@@ -3431,6 +3782,11 @@ static void sh_build_maps(void) {
 }
 
 static void sh_blit(const uint16_t *tile, int px, int py) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_SHBLIT, px, py, px + SH_PANE_W, py + SH_PANE_H);
+    if (k) { k->p = tile; k->a = px; k->b = py; }
+    return;
+  }
   if (!s_sh_map_built) sh_build_maps();
   const gfx_target_t *t = TG;
   int y0 = py < t->y0 ? t->y0 - py : 0, y1 = SH_PANE_H;
@@ -3451,6 +3807,11 @@ static void sh_blit(const uint16_t *tile, int px, int py) {
  * through this so the clipping is written once.
  */
 static void blit_rows(const uint16_t *src, int src_stride, int x, int y, int w, int h) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_BLIT, x, y, x + w, y + h);
+    if (k) { k->p = src; k->a = src_stride; k->b = x; k->c = y; k->d = w; k->e = h; }
+    return;
+  }
   const gfx_target_t *t = TG;
   int sx = 0, sy = 0;
   if (x < t->x0) { sx = t->x0 - x; w -= sx; x = t->x0; }
@@ -3461,6 +3822,130 @@ static void blit_rows(const uint16_t *src, int src_stride, int x, int y, int w, 
   for (int r = 0; r < h; r++) {
     memcpy(cv_ptr(t, x, y + r), src + (size_t)(sy + r) * (size_t)src_stride + sx,
            (size_t)w * sizeof(uint16_t));
+  }
+}
+
+/* One recorded command, drawn for real through whatever the target is now. */
+static void dl_exec(const dl_cmd_t *c) {
+  switch (c->op) {
+    case DL_FILL: fill(c->a, c->b, c->c, c->d, c->col); break;
+    case DL_RRECT: round_rect(c->a, c->b, c->c, c->d, c->e, c->col); break;
+    case DL_ROUTLINE: round_outline(c->a, c->b, c->c, c->d, c->e, c->col); break;
+    case DL_CUT: cut_corners(c->a, c->b, c->c, c->d, c->f0, c->col); break;
+    case DL_DISC: disc(c->a, c->b, c->f0, c->col); break;
+    case DL_STROKE: stroke(c->f0, c->f1, c->f2, c->f3, c->f4, c->col); break;
+    case DL_SCRIM: scrim(c->a, c->b, c->c, c->d, c->col, c->e); break;
+    case DL_TEXT: text((const ui_font_t *)c->p, c->a, c->b, s_dl.str + c->g, c->col); break;
+    case DL_ODD: oddjobs_mark(c->a, c->b, c->f0, c->col); break;
+    case DL_FIELD: boot_field(c->f0, c->a, c->b, c->f1); break;
+    case DL_SHBLIT: sh_blit((const uint16_t *)c->p, c->a, c->b); break;
+    case DL_BLIT: blit_rows((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
+    case DL_BITS: draw_bits((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->g, c->col); break;
+    case DL_FOCUS: focus_ring(c->a, c->b, c->c, c->d, c->e, c->col); break;
+    case DL_RING: ring(c->a, c->b, c->f0, c->f1, c->col); break;
+    default: break;
+  }
+}
+
+/**
+ * The tile pass's drawing function: every command whose box touches the
+ * target, in order, through a view that puts the command's shift and clip
+ * back the way they were when it was recorded.
+ */
+static void dl_replay(void *ctx) {
+  (void)ctx;
+  s_dl.play = true;
+  const gfx_target_t *t = gfx_target();
+  const int tx0 = t->x0, ty0 = t->y0, tx1 = CV_X1(t), ty1 = CV_Y1(t);
+  /*
+   * Nothing under the last thing that covers the whole tile is visible, so
+   * the replay starts there. The ground every screen opens with, and the
+   * ground under every card and well, used to be painted and painted over
+   * in every tile: on the panel the fills were 6 ms of a 10 ms GALLERY frame.
+   * A rounded rectangle covers the tile when the tile keeps clear of its
+   * corner squares.
+   */
+  int start = 0;
+  for (int i = s_dl.n - 1; i > 0; i--) {
+    const dl_bb_t *b = &s_dl.bb[i];
+    if (!b->opaque || b->x0 > tx0 || b->y0 > ty0 || b->x1 < tx1 || b->y1 < ty1) continue;
+    if (b->r > 0 && !((b->x0 + b->r <= tx0 && b->x1 - b->r >= tx1) ||
+                      (b->y0 + b->r <= ty0 && b->y1 - b->r >= ty1))) {
+      continue;
+    }
+    start = i;
+    break;
+  }
+  for (int i = start; i < s_dl.n; i++) {
+    const dl_bb_t *bb = &s_dl.bb[i];
+    if (bb->x1 <= tx0 || bb->x0 >= tx1 || bb->y1 <= ty0 || bb->y0 >= ty1) continue;
+    const dl_cmd_t *c = &s_dl.cmd[i];
+#if UI_DRAW_PROFILE
+    const int64_t p0 = s_dl.prof ? esp_timer_get_time() : 0;
+#endif
+    if (c->sx == 0 && c->sy == 0 && c->cx0 <= tx0 && c->cy0 <= ty0 && c->cx1 >= tx1 &&
+        c->cy1 >= ty1) {
+      dl_exec(c);
+#if UI_DRAW_PROFILE
+      if (s_dl.prof) { s_dl.prof_us[c->op] += (uint32_t)(esp_timer_get_time() - p0); s_dl.prof_n[c->op]++; }
+#endif
+      continue;
+    }
+    const int x0 = c->cx0 > tx0 ? c->cx0 : tx0, y0 = c->cy0 > ty0 ? c->cy0 : ty0;
+    const int x1 = c->cx1 < tx1 ? c->cx1 : tx1, y1 = c->cy1 < ty1 ? c->cy1 : ty1;
+    if (x0 >= x1 || y0 >= y1) continue;
+    const gfx_target_t view = {cv_ptr(t, x0, y0), x0 - c->sx, y0 - c->sy, x1 - x0, y1 - y0,
+                               t->stride};
+    gfx_target_view(&view);
+    dl_exec(c);
+    gfx_target_view(NULL);
+#if UI_DRAW_PROFILE
+    if (s_dl.prof) { s_dl.prof_us[c->op] += (uint32_t)(esp_timer_get_time() - p0); s_dl.prof_n[c->op]++; }
+#endif
+  }
+  s_dl.play = false;
+}
+
+/*
+ * Bench: replay `draw` once through the tiles with every op type timed, and
+ * put the totals in the ring. Build with -DUI_DRAW_PROFILE=1 to have boot log
+ * the menu, GALLERY, LOOK and an open frame this way; it is how the corner
+ * table, the ring primitive and the per-tile occlusion were found (#177).
+ */
+#if UI_DRAW_PROFILE
+static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
+  static const char *const OP[DL_OPS] = {"fill", "rrect", "routl", "cut", "disc", "stroke", "scrim", "text", "odd", "field", "shblit", "blit", "bits", "focus", "ring"};
+  dl_begin();
+  draw(ctx);
+  if (!dl_end()) return;
+  memset(s_dl.prof_us, 0, sizeof s_dl.prof_us);
+  memset(s_dl.prof_n, 0, sizeof s_dl.prof_n);
+  s_dl.prof = true;
+  const uint32_t total = gfx_measure_draw_us(dl_replay, NULL);
+  s_dl.prof = false;
+  char line[200];
+  int n = snprintf(line, sizeof line, "%s %lu.%lu ms:", what, (unsigned long)(total / 1000), (unsigned long)(total / 100 % 10));
+  for (int i = 0; i < DL_OPS && n < (int)sizeof line; i++) {
+    if (s_dl.prof_n[i] == 0) continue;
+    n += snprintf(line + n, sizeof line - (size_t)n, " %s %lu.%lu/%lu", OP[i], (unsigned long)(s_dl.prof_us[i] / 1000), (unsigned long)(s_dl.prof_us[i] / 100 % 10), (unsigned long)s_dl.prof_n[i]);
+  }
+  klog("P4", "%s", line);
+}
+#endif
+
+/**
+ * A frame to the panel: recorded once, replayed per tile. Falls back to
+ * drawing the frame directly into every tile when the list overflows.
+ */
+static void ui_render(gfx_draw_fn draw, void *ctx) {
+  dl_begin();
+  draw(ctx);
+  if (dl_end()) {
+    gfx_render(dl_replay, NULL);
+  } else {
+    static uint32_t warned;
+    if (warned++ == 0) klog("P4", "display list full at %d commands; frame drawn direct", s_dl.n);
+    gfx_render(draw, ctx);
   }
 }
 
@@ -3629,8 +4114,7 @@ static void draw_shoot(void) {
    * left and what it is running on are the two facts that decision is made
    * of. There is no fuel gauge on this board, so the power panel says where
    * the power comes from and not how much of it there is. */
-  storage_status_t sd_bar;
-  storage_get_status(&sd_bar);
+  const storage_status_t sd_bar = *sd_status();
   char card_bar[24];
   if (!sd_bar.mounted) snprintf(card_bar, sizeof card_bar, "NO CARD");
   else snprintf(card_bar, sizeof card_bar, "%d LEFT",
@@ -4306,8 +4790,7 @@ static void draw_gallery(void) {
   }
   draw_header(SCR_GALLERY);
 
-  storage_status_t sd;
-  storage_get_status(&sd);
+  const storage_status_t sd = *sd_status();
   const int total = gallery_total();
 
   if (total == 0) {
@@ -5170,13 +5653,10 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
 
   const int m0 = x0 + QR_QUIET * pitch;
   const int n0 = top + QR_QUIET * pitch;
-  for (int y = 0; y < qr->size; y++) {
-    for (int x = 0; x < qr->size; x++) {
-      if (qr_module(qr, x, y)) {
-        fill(m0 + x * pitch, n0 + y * pitch, pitch, pitch, W_TEXT);
-      }
-    }
-  }
+  /* The modules are a 1-bit row-major bitmap, most significant bit first,
+   * which is draw_bits()'s format - so the symbol is one command in the
+   * display list rather than four hundred fills. Same pixels. */
+  draw_bits(qr->modules[0], qr->size, qr->size, QR_ROW_BYTES, m0, n0, pitch, W_TEXT);
   return side;
 }
 
@@ -5257,8 +5737,7 @@ static void draw_roll(void) {
   upload_queue_report_t q;
   upload_queue_status(&q);
 
-  net_status_t net;
-  net_link_status(&net, esp_timer_get_time() / 1000);
+  const net_status_t net = *net_status();
   const bool online = net_link_can_upload(&net);
 
   if (!active) {
@@ -5605,15 +6084,13 @@ static void settings_summary(int i, char *out, size_t cap) {
       break;
     }
     case 2: { /* Connection: the network it is actually on */
-      net_status_t net;
-      net_link_status(&net, esp_timer_get_time() / 1000);
+      const net_status_t net = *net_status();
       if (net.state == NET_IP_READY && net.ssid[0]) snprintf(out, cap, "%s", net.ssid);
       else snprintf(out, cap, "Not connected");
       break;
     }
     case 3: { /* Storage: what is left, in the unit a photographer counts in */
-      storage_status_t sd;
-      storage_get_status(&sd);
+      const storage_status_t sd = *sd_status();
       if (!sd.mounted) snprintf(out, cap, "No card");
       else snprintf(out, cap, "%d left", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
       break;
@@ -6106,8 +6583,7 @@ static void draw_connection(void) {
   /* Seven rows and the line under them, from the header like every list. */
   s_list_top = LIST_TOP_DEFAULT;
 
-  net_status_t net;
-  net_link_status(&net, esp_timer_get_time() / 1000);
+  const net_status_t net = *net_status();
 
   /* Radio: is the part there at all. */
   const char *radio = net.radio_fitted ? "ESP32-C6" : "None";
@@ -6256,8 +6732,7 @@ static void draw_storage(void) {
    * renderer's safe-area audit is what guards the last line. */
   s_list_top = LIST_TOP_DEFAULT;
 
-  storage_status_t sd;
-  storage_get_status(&sd);
+  const storage_status_t sd = *sd_status();
   char freeb[24], capb[24], cnt[16];
   human_bytes(freeb, sizeof freeb, sd.free_bytes);
   human_bytes(capb, sizeof capb, sd.capacity_bytes);
@@ -6468,8 +6943,7 @@ static void draw_about(void) {
   config_str_copy("body.name", name, sizeof name);
   const bool named = name[0] != '\0';
 
-  storage_status_t sd;
-  storage_get_status(&sd);
+  const storage_status_t sd = *sd_status();
 
   /* card is sized off human_bytes's two 24-byte outputs plus the joining
    * words, not off what a 32 GB card happens to format to. */
@@ -7081,6 +7555,16 @@ static void draw_placed(void (*draw)(void), int dx, int dy, int cx, int cy, int 
   int x1 = cx + cw < CV_X1(t) ? cx + cw : CV_X1(t);
   int y1 = cy + ch < CV_Y1(t) ? cy + ch : CV_Y1(t);
   if (x0 >= x1 || y0 >= y1) return;
+  if (s_dl.rec) {
+    /* Recording: the view becomes each command's shift and clip. */
+    const int16_t sx = s_dl.sx, sy = s_dl.sy, cx0 = s_dl.cx0, cy0 = s_dl.cy0, cx1 = s_dl.cx1,
+                  cy1 = s_dl.cy1;
+    s_dl.sx = (int16_t)dx; s_dl.sy = (int16_t)dy;
+    s_dl.cx0 = (int16_t)x0; s_dl.cy0 = (int16_t)y0; s_dl.cx1 = (int16_t)x1; s_dl.cy1 = (int16_t)y1;
+    draw();
+    s_dl.sx = sx; s_dl.sy = sy; s_dl.cx0 = cx0; s_dl.cy0 = cy0; s_dl.cx1 = cx1; s_dl.cy1 = cy1;
+    return;
+  }
   const gfx_target_t view = {cv_ptr(t, x0, y0), x0 - dx, y0 - dy, x1 - x0, y1 - y0, t->stride};
   gfx_target_view(&view);
   draw();
@@ -7529,7 +8013,7 @@ static void dialog_commit(void) {
       config_save();
       /* What the camera is doing, not a farewell. It said GOOD NIGHT and
        * then came straight back up, which reads as a shutdown that failed. */
-      gfx_render(render_restarting, NULL);
+      ui_render(render_restarting, NULL);
       vTaskDelay(pdMS_TO_TICKS(420));
       power_down_anim();
       esp_restart();
@@ -7583,7 +8067,7 @@ static void dialog_commit(void) {
       toast("Hold the power slide to switch off");
       break;
   }
-  gfx_render(render_screen, NULL);
+  ui_render(render_screen, NULL);
 }
 
 static void activate(int item) {
@@ -7591,7 +8075,7 @@ static void activate(int item) {
     if (item == 1) dialog_commit();
     else {
       s_dialog = DLG_NONE;
-      gfx_render(render_screen, NULL);
+      ui_render(render_screen, NULL);
     }
     return;
   }
@@ -7733,7 +8217,7 @@ static void activate(int item) {
   }
 
   s_pressed = -1;
-  gfx_render(render_screen, NULL);
+  ui_render(render_screen, NULL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -7772,7 +8256,7 @@ static bool shot_hold_ack(void) {
   capture_ack();
   s_shot_seen_us = 0;
   if (s_screen == SCR_GALLERY) gallery_refresh();
-  gfx_render(render_screen, NULL);
+  ui_render(render_screen, NULL);
   return true;
 }
 
@@ -7908,6 +8392,61 @@ static void boot_handoff(void) {
   /* Into the ring as well: the console figure never reaches a host. */
   klog("P4", "menu cascade: %lu frames in %lu ms (%lu fps)", (unsigned long)(f1 - f0),
        (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
+
+  /* What each screen costs to draw through the tile pass, for the ring. The
+   * moves are drawn from these, so a slow one here is a slow move. Nothing
+   * is shown; the menu is already up. */
+  {
+    const screen_t keep = s_screen;
+    char line[160];
+    int n = 0;
+    for (int i = 0; i < 6; i++) {
+      s_screen = MENU_DEST[i];
+      const int64_t r0 = esp_timer_get_time();
+      dl_begin();
+      render_screen(NULL);
+      const bool ok = dl_end();
+      const uint32_t rec = (uint32_t)(esp_timer_get_time() - r0);
+      const uint32_t us = ok ? gfx_measure_draw_us(dl_replay, NULL) : gfx_measure_draw_us(render_screen, NULL);
+      if (i == 3) { klog("P4", "tile draw ms (record+replay/cmds): %s", line); n = 0; }
+      n += snprintf(line + n, sizeof line - (size_t)n, "%s%s %lu.%lu+%lu.%lu/%d", i && i != 3 ? ", " : "",
+                    MENU_LABEL[i], (unsigned long)(rec / 1000), (unsigned long)(rec / 100 % 10),
+                    (unsigned long)(us / 1000), (unsigned long)(us / 100 % 10), s_dl.n);
+    }
+    s_screen = keep;
+    klog("P4", "tile draw ms (record+replay/cmds): %s", line);
+#if UI_DRAW_PROFILE
+    s_screen = SCR_MENU;
+    dl_profile("menu", render_screen, NULL);
+    s_screen = SCR_GALLERY;
+    dl_profile("gallery", render_screen, NULL);
+    s_screen = SCR_LOOK;
+    dl_profile("look", render_screen, NULL);
+    s_screen = keep;
+#endif
+    s_anim.row = 2;
+    s_anim.card = SCR_GALLERY;
+    s_anim.opening = true;
+    n = 0;
+    for (int i = 0; i < 3; i++) {
+      float t = i == 0 ? 0.15f : i == 1 ? 0.5f : 0.9f;
+      const int64_t r0 = esp_timer_get_time();
+      dl_begin();
+      render_open(&t);
+      const bool ok = dl_end();
+      const uint32_t rec = (uint32_t)(esp_timer_get_time() - r0);
+      const uint32_t us = ok ? gfx_measure_draw_us(dl_replay, NULL) : gfx_measure_draw_us(render_open, &t);
+      n += snprintf(line + n, sizeof line - (size_t)n, "%st=%d.%02d %lu.%lu+%lu.%lu/%d", i ? ", " : "",
+                    (int)t, (int)(t * 100) % 100, (unsigned long)(rec / 1000),
+                    (unsigned long)(rec / 100 % 10), (unsigned long)(us / 1000),
+                    (unsigned long)(us / 100 % 10), s_dl.n);
+    }
+    klog("P4", "open GALLERY frame draw ms: %s", line);
+#if UI_DRAW_PROFILE
+    float t15 = 0.15f;
+    dl_profile("open t=0.15", render_open, &t15);
+#endif
+  }
 }
 
 /*
@@ -8031,7 +8570,7 @@ static uint32_t ui_pass(void) {
       ESP_LOGI(TAG, "woke: repainting");
       klog("P4", "woke, repainting");
       s_sleep_mark = false;
-      gfx_render(render_screen, NULL);
+      ui_render(render_screen, NULL);
     }
     was_asleep = asleep_now;
 
@@ -8045,13 +8584,13 @@ static uint32_t ui_pass(void) {
      * the panel is back, the screen underneath is redrawn.
      */
     if (power_sleep_pending() && !s_sleep_mark) {
-      gfx_render(render_mark, NULL);
+      ui_render(render_mark, NULL);
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: mark up on screen %d", (int)s_screen);
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
       s_sleep_mark = false;
-      gfx_render(render_screen, NULL);
+      ui_render(render_screen, NULL);
     }
 
     if (!down) {
@@ -8127,7 +8666,7 @@ static uint32_t ui_pass(void) {
           s_pressed = -1;
           held = -1;
           swallow_touch = true;
-          gfx_render(render_screen, NULL);
+          ui_render(render_screen, NULL);
           return 20;
         }
       } else {
@@ -8143,7 +8682,7 @@ static uint32_t ui_pass(void) {
       s_pressed = region;
       held = region;
       if (region >= 0 && config_bool("body.sounds.ui", true)) audio_tick();
-      gfx_render(render_screen, NULL);
+      ui_render(render_screen, NULL);
     } else if (!down && held != -1) {
       const int fired = (s_pressed == held) ? held : -1;
       s_pressed = -1;
@@ -8155,7 +8694,7 @@ static uint32_t ui_pass(void) {
         else if (fired != IT_BACK && fired < item_count(s_screen)) s_focus[s_screen] = fired;
         activate(fired);
       } else {
-        gfx_render(render_screen, NULL);
+        ui_render(render_screen, NULL);
       }
     }
 
@@ -8246,7 +8785,7 @@ static uint32_t ui_pass(void) {
          */
         if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
           s_calibrating = true;
-          gfx_render(render_screen, NULL);
+          ui_render(render_screen, NULL);
           const char *const v = config_str("shoot.viewfinder", "cam2");
           const int ref = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
           pure_cam_offset_t off[PURE_WIGGLE_FRAMES_MAX];
@@ -8269,7 +8808,7 @@ static uint32_t ui_pass(void) {
             klog("P4", "calibration measured nothing off %s", r.id);
             toast("Could not measure the cameras");
           }
-          gfx_render(render_screen, NULL);
+          ui_render(render_screen, NULL);
         }
       }
       /*
@@ -8289,7 +8828,7 @@ static uint32_t ui_pass(void) {
         capture_ack();
         s_shot_seen_us = 0;
         if (s_screen == SCR_GALLERY) gallery_refresh();
-        gfx_render(render_screen, NULL);
+        ui_render(render_screen, NULL);
       }
     } else if (cstage == CAPTURE_IDLE) {
       s_shot_seen_us = 0;
@@ -8321,7 +8860,7 @@ static uint32_t ui_pass(void) {
     const bool wig_moved = (s_screen == SCR_PHOTO && held == -1) ? wiggle_tick() : false;
 
     if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
-      gfx_render(render_screen, NULL);
+      ui_render(render_screen, NULL);
       /*
        * 90 ms is the busy cadence; a wiggle frame that is only waiting for its
        * own deadline goes back round at the loop's own 20 ms so the next
@@ -8426,7 +8965,7 @@ static uint32_t ui_pass(void) {
      * not move. Second half of the same fault as viewfinder_run() above, and
      * the Twin found both of them inside two minutes. */
     if (s_screen == SCR_SHOOT && held == -1) {
-      gfx_render(render_screen, NULL);
+      ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
        * a second at best. */
       return 60;
