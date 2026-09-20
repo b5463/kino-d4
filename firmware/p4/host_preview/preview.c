@@ -79,6 +79,8 @@ void gfx_present(void) {
   if (prev_vclock_us != 0) prev_vclock_us += prev_vclock_step_us;
 }
 void gfx_snapshot(void) {}
+/* One canvas here, presented in zero time: the frame shown IS the canvas. */
+void gfx_flush(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
 void gfx_slide(int ms, bool from_right) { (void)ms; (void)from_right; }
@@ -87,6 +89,16 @@ void gfx_stash(void) {
   if (g_stash == NULL) g_stash = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_stash != NULL) memcpy(g_stash, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
 }
+void gfx_stash_shown(void) { gfx_stash(); }
+/* No engine here: the region comes through the canvas, then the frame goes
+ * out as every other frame does. */
+void gfx_present_with_stash(int x, int y, int w, int h, int sy) {
+  gfx_stash_blit(x, y, x, sy, w, h);
+  gfx_present();
+}
+/* No block engine to check: the move's frames all go through the canvas
+ * here, which is the picture the renderer wants anyway. */
+bool gfx_blocks_ok(void) { return false; }
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_stash == NULL) return;
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -110,6 +122,7 @@ void gfx_layer_keep(void) {
   if (g_layer == NULL) g_layer = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_layer != NULL) memcpy(g_layer, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
 }
+void gfx_layer_keep_shown(void) { gfx_layer_keep(); }
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_layer == NULL) return;
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -133,6 +146,7 @@ void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = 0;
   if (ms) *ms = 0;
 }
+uint64_t gfx_present_us_total(void) { return 0; }
 
 /* ui.c registers its tasks so GET_RUNTIME_STATS can report their stack
  * headroom. There are no tasks here - ui.c's are never created - so this
@@ -659,6 +673,8 @@ bool media_favorite_get(const char *id) {
 
 void power_activity(void) {}
 void power_wake(void) {}
+bool power_sleep_pending(void) { return false; }
+void power_sleep_shown(void) {}
 void power_get(power_state_t *out) {
   if (out == NULL) return;
   out->stage = POWER_AWAKE;
@@ -1006,7 +1022,6 @@ int main(int argc, char **argv) {
   snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
 
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
-  s_cv = g_canvas;
 
   /* One helper, so every state below is "set the state, draw, name it" and
    * the list reads as the screen inventory it is meant to be. */

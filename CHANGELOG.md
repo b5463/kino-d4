@@ -6,6 +6,155 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.58: the on-device UI laid out for the hand that holds the shutter (#177).**
+  The shutter is at X 115 on the body's top wall, so the right hand wraps the
+  +X end, the index finger is on the button and the right thumb is the only
+  digit free for the glass. The panel is 93.6 x 56.2 mm for 800 x 480 px
+  (8.5 px/mm): the 44 px control this file called "the floor a thumb needs"
+  was 5.2 mm, and every screen's Back sat at x 16, the far corner from that
+  thumb. What moved: the header's system buttons - Back, and the gallery's
+  PREV / NEXT beside it - are a cluster at the hand's edge, 64 x 52 px, with
+  the caption plate taking the far side; the finder's MENU is in the same
+  corner and its status bar puts the readings (cameras, power, card) at the
+  far end and the three decisions (mode, flash, look) at the hand's end as one
+  control that opens LOOK, which returns to the finder; the menu is two
+  columns, the SHOOT card at the panel's full height on the hand's side and
+  the five rows an 84 px column on the other; the photograph screen puts the
+  picture on the far side and its column on the hand's, DELETE at the top,
+  FAVOURITE at the foot nearest the thumb's rest, and PREV / NEXT photograph
+  above the stack (within the page in place, past its end by turning the
+  page and returning to the grid); LOOK's trio runs COLOUR, MODE, FLASH so
+  the flash is under the picker, and the QUAD target row puts ALL at the
+  hand's end; a confirm dialog sits on the hand's side with the action on top
+  and Cancel on the bottom row, which is the one a thumb coming up from its
+  rest reaches first. Segment bands and picker buttons go to 52-56 px. The
+  open and back moves follow the two columns: opening the card, the rows
+  column leaves toward its edge; opening a row, the card leaves toward its
+  own edge while the rows part around the touched one. Two palm rules: a
+  contact that begins on the hand's edge is not a finger, and one that
+  drifts more than 40 px is released with nothing fired. All of it is one
+  flag, `body.hand` (`right` by default, `left` mirrors), read once per frame
+  and written as an inset from the hand's edge (`from_hand()`), so a
+  left-handed shooter is a config write. `kino-ui.wasm` re-baked;
+  `host_preview` renders every screen and the moves.
+  Second pass, from filming the moves in the Twin: the other menu column
+  leaves in the first half of an open move and returns in the second half of
+  the back move, so the growing screen never runs edge to edge against the
+  card it is replacing - on one clock the two edges moved together and read
+  as two cards racing. Every list hangs from the header (`LIST_TOP_DEFAULT`)
+  instead of centring when short: POWER's and STATUS's first rows sat a third
+  of the way down while SETTINGS' sat at the top, the same control in a
+  different place on every screen. POWER is RESTART, the shut-down
+  instruction, and a RUNNING ON group (USB or BATTERY, no gauge on this body);
+  the CANCEL row went, because Back is on every header. SOUND's volume band
+  goes to 52 px on the list's own margins. STORAGE's list-to-gauge gap goes
+  from 20 to 14 so its readings stay inside the safe area now that the list
+  starts at the top.
+  Third pass, on the camera: the moves were choppy on the panel and smooth
+  in the Twin, which steps virtual time and cannot be choppy, so every move
+  now reports frames, wall time, presenting time and drawing time per frame
+  to the log ring (`anim_report`, `gfx_present_us_total`), and the boot
+  measures one rotate. The numbers: the PPA rotate of a frame took 30 ms
+  with the PSRAM at 80 MHz and the CPU drew at 45 MB/s, so the splash ran
+  at 19 fps and the menu cascade at 15. Rotating in strips gained 4 percent
+  and is not kept. `CONFIG_SPIRAM_SPEED_200M` (with the experimental flag
+  IDF puts it behind on the P4) takes the rotate to 16 ms and halves the
+  drawing: splash 35 fps, cascade 27, memory test passing; the reasoning is
+  in `sdkconfig.defaults`. Also: opening the P4's USB serial port from
+  Windows resets the chip (`CHIP_USB_UART_RESET`), so the bench's first
+  request landed in the bootloader and every later one failed for want of
+  the lost HELLO; `kino-bench.mjs --settle <ms>` waits out the boot. A real
+  open move then measured 25 fps: 15 ms presenting and 23-29 ms drawing per
+  frame, most of it a whole-canvas clear under a blit that covered it, so
+  `open_frame()` clears only the ground round the card. A pipelined present
+  - a second canvas, the PPA rotating one frame while the CPU drew the next -
+  was built and measured too: 35 to 36 fps, because the drawing slowed by
+  what the presenting hid. The PPA and the CPU share the PSRAM bus and at its
+  practical 90 MB/s a full frame is 27 ms in any order, so the pipeline is
+  withdrawn and the finding is written at the top of gfx.c. The boot cascade
+  stops recopying the whole canvas every frame and writes only the rows still
+  moving. Moves on the camera now run at 26-30 fps, the splash at 35 and the
+  cascade at 45. And the boot field fills the panel by its own clock: its
+  reach was scaled by how many cameras had answered, so a body with four
+  silent nodes booted with a field stopping at 42 percent of the screen and
+  read as a failed boot; a quadrant whose camera is silent now stays in the
+  cold greys instead, which says the same thing without looking broken.
+  Fourth pass: the second half of an open move no longer copies the arriving
+  screen into the canvas - `gfx_present_with_stash()` rotates the card's
+  rectangle straight out of the stash and the canvas round it in four blocks,
+  checked byte for byte against the whole-frame rotate at boot and falling
+  back to the copy if they differ. (Presenting only the ring where the card
+  grew was built and found impossible here: the card is hung from the
+  arriving screen's top edge, so every pixel inside it scrolls as it rises.)
+  The splash draws each glyph row as one span instead of up to five squares.
+  Measured on the camera: open moves 41-43 fps and back moves 37-39, from
+  28-31 and 26-29, with the drawing down to 7-10 ms a frame; the 16 ms rotate
+  is now the frame, and only drawing in portrait would remove it. And sleep shows the camera's mark
+  before the backlight goes: power_task asks the UI (`power_sleep_pending`),
+  the UI puts the mark up and answers (`power_sleep_shown`), the mark holds
+  600 ms, then the light goes; a touch in that window calls the sleep off
+  and the screen comes back. Sleep used to cut the light from whatever was
+  on screen, which is what a crash looks like.
+- **Firmware 0.4.57: the on-device UI measured, and the numbers fixed (#176).**
+  An audit of `firmware/p4/main/ui.c` as it runs in the Twin's SCREEN VIEW,
+  with WCAG contrast computed from the palette defines and every screen
+  driven and captured through Playwright. What it found and what changed:
+  the second line of a list row was the title pulled a fixed 43% into the
+  row face, which measured 2.6:1 at the top of the ramp and 5.1:1 at the
+  foot; `dim_ink()` now measures the face and finds the quietest mix that
+  clears 4.5:1, and a disabled row (SHUT DOWN's "Hold the power slide" was
+  1.5:1) is set in that voice instead of a grey chosen for the dark face.
+  `W_GRAYTEXT` moves from 6E7D74 (4.4:1 on the face, 4.1:1 on a window) to
+  7A8A80 (5.2 / 4.8); red as 18 px type (the DELETE label, a destructive
+  dialog's title) gets `C_RED_INK` at 5.9:1 where `C_RED` measured 3.5.
+  Controls get an edge a thumb can find: `W_KEYLINE` at 3.4:1 on the face
+  replaces the 1.3:1 hairline on buttons and is added to segment tracks, the
+  off toggle and the picker buttons (WCAG 1.4.11). The header's condition
+  chip, the menu card's state line and the STATUS rows carry the severity as
+  a word - FAULT, WARN, NOTE - where a coloured dot carried it alone, and the
+  yellow dot on the terracotta plate measured 1.3:1. SOUND's picker buttons
+  go from 36 to 44 px and DISPLAY's bands from 40 to 44, the last controls
+  under the file's own floor. The list rows' position numbers are gated on
+  `UI_FOCUS_VISIBLE` like the segments' already were. Notes on SOUND,
+  CONNECTION and STORAGE move from a literal x of 24 to `PAGE_M`. Four
+  colours that were in no palette - two blue-greys for NO CAMERA, a
+  blue-tinted gallery strip, and the 1998 desktop's 0000A8 in the ROLL
+  progress fill - become `D_DIM`, `D_PANE` and `W_SEL`. And a touch or a key
+  during the 3.8 s splash now ends it on that pass and hands off to the menu;
+  a shutter press used to wait in its queue until the field had left.
+  `kino-ui.wasm` re-baked; `host_preview` renders every screen.
+- **Twin: a viewfinder pane that stops receiving frames stops being live.**
+  The firmware shim marked a pane live for ever once its buffer pointer had
+  been fetched, so SCREEN VIEW showed four black panes under a lit 4/4 when
+  the preview feed stalled - the rig's timer stops with a hidden tab, and
+  nothing noticed. The page now reports each landed frame (`kui_vf_landed`)
+  and the shim ages them on its virtual clock with the driver's own two-second
+  rule: NO RECENT FRAME, and out of the strip's count, exactly as
+  `viewfinder.c` reports it on the camera.
+- **Twin: the stage starts as the party scene, not as a void.** The stage
+  store began with no subjects and no room, so the virtual sensors
+  photographed nothing: four pure-black panes on SHOOT under a lit 4/4, and a
+  black JPEG from every capture, until someone found PARTY TEST SCENE on the
+  STAGE tab. The scene the brief asks for as the one useful default is now
+  the start state; CLEAR STAGE still empties it. Found by sampling every 2D
+  canvas the rig writes - the 320x240 preview was all zeros in both views.
+- **Firmware 0.4.57, second pass.** A control standing on a warm row draws
+  its edge in that row's quiet ink (`edge_ink()`): the grey keyline tuned
+  for the dark face measured 1.1:1 on the top terracotta row, under the SOUND
+  pickers and the off toggles. The STATUS rows drop the severity dot - the
+  word carries it - and start on the same left rule as every other list.
+- **Firmware 0.4.57: opening SHOOT no longer flashes the finished screen.**
+  The pass that opened the viewfinder ran on to the viewfinder's own repaint
+  tail - `s_screen` was already SHOOT and nothing was held - and presented
+  the destination at full size before the open move's first frame; the next
+  pass played the move from the card and landed on the same screen again.
+  Recorded at 80 ms intervals in the Twin: full screen, card, growth, full
+  screen. A pending move now owns the panel from the pass that starts it.
+  And a pane that has never had a frame holds its ground for 1.5 s
+  (`SH_SETTLE_US`) before it says NO CAMERA: the first frame is a request,
+  a JPEG and a decode away, and for that long every pane called four
+  answering cameras absent and then cut to pictures at once. STALLED and
+  ERROR are not waited out.
 - **A frame is drawn once, and a move is a state rather than a loop.** Four
   things were wrong with the interface's motion and only one of them was the
   easing curve. They were found by counting, not by looking: the renderer now

@@ -130,6 +130,12 @@ static cJSON *default_config(void) {
   cJSON_AddNumberToObject(b, "autoDimS", 30);
   cJSON_AddNumberToObject(b, "sleepS", 120);
   cJSON_AddNumberToObject(b, "camIdleTimeoutS", 300);
+  /* Which hand holds the body: "right" or "left". The on-device UI puts its
+   * chrome on that side (ui.c, from_hand). The shutter is on the +X wall, so
+   * right is the body's own answer; left is for a shooter who holds it the
+   * other way round. Firmware-only for now - firmware-contract/README.md
+   * D25 - so Studio passes it through untouched. */
+  cJSON_AddStringToObject(b, "hand", "right");
   cJSON *snd = cJSON_AddObjectToObject(b, "sounds");
   cJSON_AddBoolToObject(snd, "startup", true);
   cJSON_AddBoolToObject(snd, "ui", true);

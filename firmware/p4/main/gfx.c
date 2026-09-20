@@ -12,9 +12,12 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "klog.h"
 #include "ui.h"
 
 static const char *TAG = "gfx";
+
+static void measure_rotate(void);
 
 #define FB_COUNT 2
 #define PANEL_PX ((size_t)DISPLAY_H_RES * DISPLAY_V_RES)
@@ -34,7 +37,24 @@ static const char *TAG = "gfx";
 
 static ppa_client_handle_t s_srm;
 static ppa_client_handle_t s_blend;
+/* Time spent inside gfx_present() since boot: the rotate and the hand-over,
+ * which is the part of a frame the drawing code cannot see. A move's report
+ * (ui.c, anim_report) subtracts it from the move's wall time to say how much
+ * of each frame was drawing and how much was presenting. */
+static uint64_t s_present_us;
 static uint16_t *s_canvas;   /* landscape, what the UI draws into */
+/*
+ * Not pipelined, and measured not to be worth it (0.4.58, #177).
+ *
+ * A second canvas with the PPA rotating one frame while the CPU drew the next
+ * was built and run on the panel. It hid the 15 ms of presenting behind the
+ * drawing and the drawing grew by the same 10 ms: the splash went from 35 to
+ * 36 fps. The PPA and the CPU share one PSRAM bus and at its practical
+ * ~90 MB/s - with the panel scanning 46 of them - a full frame is 1.5 MB of
+ * rotate plus about 1 MB of drawing, 27 ms, in whatever order the two run.
+ * The pipeline bought one frame of latency on every tap and nothing else, so
+ * it is not here. Fewer bytes per frame is the lever that works.
+ */
 static uint16_t *s_from;     /* portrait, the dissolve's starting frame */
 static uint16_t *s_to;       /* portrait, the dissolve's ending frame */
 /*
@@ -127,24 +147,56 @@ esp_err_t gfx_init(void) {
     return ESP_ERR_NO_MEM;
   }
 
+  measure_rotate();
+
   s_ready = true;
   ESP_LOGI(TAG, "GFX_READY canvas %dx%d -> panel %dx%d, PPA rotate + blend, %d framebuffers", UI_W,
            UI_H, DISPLAY_H_RES, DISPLAY_V_RES, FB_COUNT);
   return ESP_OK;
 }
 
-/** Rotate the landscape canvas into a portrait destination. */
-static esp_err_t rotate_to(void *dst) {
+/*
+ * What the rotate costs, measured on the panel (0.4.58, #177).
+ *
+ * One PPA call turning the whole 800x480 canvas took 30 ms with the PSRAM at
+ * 80 MHz - 1.5 MB moved at 50 MB/s, on a bus rated for six times that - and
+ * the CPU's own drawing ran at the same 45 MB/s. Rotating in vertical strips
+ * (so the destination is written as whole rows) was tried at five widths
+ * against a byte-identical check and gained 4 percent, so the write pattern
+ * was never the limit; the PSRAM clock was. At 200 MHz the same call takes
+ * 16 ms, the drawing halves with it, and the strips still gain 4 percent, so
+ * they are not here. The clock lives in sdkconfig.defaults, with the numbers.
+ *
+ * Every present is timed (s_present_us), and a move reports its frames,
+ * presenting time and drawing time to the log ring (ui.c, anim_report), so
+ * the next change to this path is measured the same way.
+ */
+
+/**
+ * Rotate one block of a landscape buffer into a portrait destination.
+ *
+ * The block is read at (sx, sy) in `src` and lands where logical (dx, dy)
+ * lands on the panel. PANEL_ROTATION maps logical (x, y) to panel
+ * (H_RES - 1 - y, x), so the destination block is (H_RES - dy - h, dx, h, w).
+ * Checked at init against the whole-frame rotate (measure_rotate), because a
+ * block that lands one row off looks right and is not. Source and
+ * destination differ for exactly one caller: the card of an open move, which
+ * shows the arriving screen hung from the card's top edge - stash row 0 at
+ * canvas row dy.
+ */
+static esp_err_t rotate_block(const uint16_t *src, void *dst, int sx, int sy, int w, int h, int dx,
+                              int dy) {
+  if (w <= 0 || h <= 0) return ESP_OK;
   ppa_srm_oper_config_t cfg = {
       .in =
           {
-              .buffer = s_canvas,
+              .buffer = src,
               .pic_w = UI_W,
               .pic_h = UI_H,
-              .block_w = UI_W,
-              .block_h = UI_H,
-              .block_offset_x = 0,
-              .block_offset_y = 0,
+              .block_w = (uint32_t)w,
+              .block_h = (uint32_t)h,
+              .block_offset_x = (uint32_t)sx,
+              .block_offset_y = (uint32_t)sy,
               .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
           },
       .out =
@@ -153,8 +205,8 @@ static esp_err_t rotate_to(void *dst) {
               .buffer_size = PANEL_BYTES,
               .pic_w = DISPLAY_H_RES,
               .pic_h = DISPLAY_V_RES,
-              .block_offset_x = 0,
-              .block_offset_y = 0,
+              .block_offset_x = (uint32_t)(DISPLAY_H_RES - dy - h),
+              .block_offset_y = (uint32_t)dx,
               .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
           },
       .rotation_angle = PANEL_ROTATION,
@@ -163,6 +215,64 @@ static esp_err_t rotate_to(void *dst) {
       .mode = PPA_TRANS_MODE_BLOCKING,
   };
   return ppa_do_scale_rotate_mirror(s_srm, &cfg);
+}
+
+/** Rotate a whole landscape buffer into a portrait destination. */
+static esp_err_t rotate(const uint16_t *src, void *dst) {
+  return rotate_block(src, dst, 0, 0, UI_W, UI_H, 0, 0);
+}
+
+/** Rotate the canvas into a portrait destination. */
+static esp_err_t rotate_to(void *dst) { return rotate(s_canvas, dst); }
+
+/* Whether block rotates land where rotate_block() says they do, on this
+ * board, checked once at init. False means gfx_present_with_stash() copies
+ * through the canvas instead - slower and right. */
+static bool s_blocks_ok;
+
+/*
+ * The region a frame takes from the stash rather than from the canvas.
+ * Rotated in five blocks: four bands of the canvas round it and the region
+ * itself out of the stash, read from stash row `sy` and landing at canvas
+ * row y. Returns false if any block failed.
+ */
+static bool rotate_round(void *fb, int x, int y, int w, int h, int sy) {
+  if (rotate_block(s_canvas, fb, 0, 0, UI_W, y, 0, 0) != ESP_OK) return false;
+  if (rotate_block(s_canvas, fb, 0, y + h, UI_W, UI_H - y - h, 0, y + h) != ESP_OK) return false;
+  if (rotate_block(s_canvas, fb, 0, y, x, h, 0, y) != ESP_OK) return false;
+  if (rotate_block(s_canvas, fb, x + w, y, UI_W - x - w, h, x + w, y) != ESP_OK) return false;
+  return rotate_block(s_mix, fb, x, sy, w, h, x, y) == ESP_OK;
+}
+
+/*
+ * One rotate of a test pattern at init, timed into the log ring: the number
+ * the frame budget is built on, read back from the camera with GET_LOGS rather
+ * than assumed from a datasheet. Then the same pattern through five blocks,
+ * compared byte for byte, which is what licenses gfx_present_with_stash() to
+ * rotate a stash region straight into the framebuffer.
+ */
+static void measure_rotate(void) {
+  for (int y = 0; y < UI_H; y++) {
+    uint16_t *row = s_canvas + (size_t)y * UI_W;
+    for (int x = 0; x < UI_W; x++) row[x] = (uint16_t)((x * 7) ^ (y * 13) ^ (x >> 3));
+  }
+  const int64_t t0 = esp_timer_get_time();
+  const esp_err_t err = rotate_to(s_from);
+  const int us = (int)(esp_timer_get_time() - t0);
+  klog("GFX", "rotate %dx%d -> panel: %d us%s", UI_W, UI_H, us, err == ESP_OK ? "" : " (FAILED)");
+
+  /* The stash holds the same pattern, so a correct block mapping reproduces
+   * the reference exactly whichever buffer each block came from. */
+  memcpy(s_mix, s_canvas, CANVAS_BYTES);
+  memset(s_to, 0, PANEL_BYTES);
+  const int64_t t1 = esp_timer_get_time();
+  const bool ran = err == ESP_OK && rotate_round(s_to, 96, 64, 512, 288, 64);
+  const int us2 = (int)(esp_timer_get_time() - t1);
+  s_blocks_ok = ran && memcmp(s_from, s_to, PANEL_BYTES) == 0;
+  klog("GFX", "rotate in five blocks: %d us, %s", us2,
+       !ran ? "a block failed" : s_blocks_ok ? "identical" : "MISMATCH - not used");
+  memset(s_canvas, 0, CANVAS_BYTES);
+  memset(s_mix, 0, CANVAS_BYTES);
 }
 
 /** Hand a framebuffer to the panel. The driver recognises its own buffer and
@@ -185,8 +295,56 @@ void gfx_present(void) {
                 * scanning the frame it was given until the next is complete */
 
   s_frames++;
-  s_last_ms = (uint32_t)((esp_timer_get_time() - t0) / 1000);
+  const int64_t dt = esp_timer_get_time() - t0;
+  s_last_ms = (uint32_t)(dt / 1000);
+  s_present_us += (uint64_t)dt;
 }
+
+/* Every present is synchronous, so a flush has nothing to wait for. Kept so
+ * a caller that presents and then sleeps says so at the call site. */
+void gfx_flush(void) {}
+
+bool gfx_blocks_ok(void) { return s_ready && s_blocks_ok && s_mix != NULL; }
+
+void gfx_present_with_stash(int x, int y, int w, int h, int sy) {
+  if (!s_ready) return;
+  /* Even edges: the engine takes RGB565 blocks at pixel offsets, but two
+   * pixels to the word is the one alignment worth not arguing with. The
+   * source row moves with the destination row so the picture does not. */
+  if (x & 1) { x--; w++; }
+  if (y & 1) { y--; h++; sy--; }
+  if (w & 1) w++;
+  if (h & 1) h++;
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; sy -= y; y = 0; }
+  if (sy < 0) { h += sy; y -= sy; sy = 0; }
+  if (x + w > UI_W) w = UI_W - x;
+  if (y + h > UI_H) h = UI_H - y;
+  if (sy + h > UI_H) h = UI_H - sy;
+  if (w <= 0 || h <= 0) {
+    gfx_present();
+    return;
+  }
+
+  const int64_t t0 = esp_timer_get_time();
+  void *fb = s_fb[s_back];
+  bool done = false;
+  if (s_blocks_ok && s_mix != NULL) done = rotate_round(fb, x, y, w, h, sy);
+  if (!done) {
+    /* The right picture the slow way: the region through the canvas. */
+    gfx_stash_blit(x, y, x, sy, w, h);
+    if (rotate_to(fb) != ESP_OK) return;
+  }
+  show(fb);
+  s_back ^= 1;
+
+  s_frames++;
+  const int64_t dt = esp_timer_get_time() - t0;
+  s_last_ms = (uint32_t)(dt / 1000);
+  s_present_us += (uint64_t)dt;
+}
+
+uint64_t gfx_present_us_total(void) { return s_present_us; }
 
 void gfx_snapshot(void) {
   if (!s_ready) return;
@@ -228,10 +386,7 @@ static inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f
  * pointed at from there for the length of one rotate and put back. */
 static bool mix_show(void) {
   void *fb = s_fb[s_back];
-  uint16_t *keep = s_canvas;
-  s_canvas = s_mix;
-  const esp_err_t err = rotate_to(fb);
-  s_canvas = keep;
+  const esp_err_t err = rotate(s_mix, fb);
   if (err != ESP_OK) return false;
   show(fb);
   s_back ^= 1;
@@ -319,6 +474,9 @@ void gfx_stash(void) {
   memcpy(s_mix, s_canvas, CANVAS_BYTES);
 }
 
+/* One canvas: the frame on the panel is the frame last drawn. */
+void gfx_stash_shown(void) { gfx_stash(); }
+
 /* One blit, from whichever retained buffer, with both ends clipped. */
 static void layer_blit(const uint16_t *src, int dx, int dy, int sx, int sy, int w, int h) {
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -340,6 +498,8 @@ void gfx_layer_keep(void) {
   if (!s_ready || s_layer == NULL) return;
   memcpy(s_layer, s_canvas, CANVAS_BYTES);
 }
+
+void gfx_layer_keep_shown(void) { gfx_layer_keep(); }
 
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_layer == NULL) return;
@@ -389,15 +549,43 @@ void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t groun
   const int64_t start = esp_timer_get_time();
   const int64_t span = (int64_t)duration_ms * 1000;
 
+  /*
+   * The finished frame once, then only the rows that are still moving.
+   *
+   * This copied the whole canvas into the composite on every frame - 768 KB
+   * read and written before a single row moved - and then rewrote every
+   * travelling band on top. Measured on the panel (0.4.58, #177) the boot
+   * cascade ran at 27 fps with the rotate taking 16 of each frame's 37 ms:
+   * the copy was most of the rest. A row that has landed is already right
+   * from the frame it landed in; a row that has not started is ground the
+   * first copy put there. Only the bands in motion are written, each once
+   * more when it lands, so the composite's cost per frame is the rows moving
+   * and not the screen.
+   */
+  memcpy(s_mix, s_canvas, CANVAS_BYTES);
+  bool landed[16];
+  const int nb = n < 16 ? n : 16;
+  for (int i = 0; i < nb; i++) {
+    landed[i] = false;
+    /* Start every band fully out: ground where it will arrive. */
+    for (int y = bands[i].y; y < bands[i].y + bands[i].h && y < UI_H; y++) {
+      uint16_t *dst = s_mix + (size_t)y * UI_W + bands[i].x;
+      for (int k = 0; k < bands[i].w; k++) dst[k] = ground;
+    }
+  }
+
   for (;;) {
     const float t = (float)(esp_timer_get_time() - start) / (float)span;
     if (t >= 1.0f) break;
-    memcpy(s_mix, s_canvas, CANVAS_BYTES);
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < nb; i++) {
+      if (landed[i]) continue;
       float local = (t - step * (float)i) / travel;
-      if (local >= 1.0f) continue; /* landed; the copy above is already right */
-      if (local < 0.0f) local = 0.0f;
+      if (local < 0.0f) continue; /* not started: still ground */
+      if (local >= 1.0f) {
+        local = 1.0f;
+        landed[i] = true; /* this write is its last */
+      }
       const int x = bands[i].x, w = bands[i].w;
       int o = (int)((1.0f - ease_settle(local)) * (float)(UI_W - x));
       if (o < 0) o = 0;
@@ -433,7 +621,6 @@ void gfx_dissolve(int duration_ms) {
     gfx_present();
     return;
   }
-
   const int64_t start = esp_timer_get_time();
   const int64_t span = (int64_t)duration_ms * 1000;
 

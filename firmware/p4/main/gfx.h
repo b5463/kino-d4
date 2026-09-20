@@ -39,6 +39,32 @@ uint16_t *gfx_canvas(void);
 void gfx_present(void);
 
 /**
+ * Nothing today: every present is synchronous. A caller that presents and
+ * then sleeps or restarts says so with this, so that a compositor which
+ * defers the hand-over has one place to land the last frame. (One was built
+ * and measured; see gfx.c for why it is not in use.)
+ */
+void gfx_flush(void);
+
+/**
+ * Present the canvas with one rectangle of it taken from the STASH.
+ *
+ * For a move whose destination has arrived inside a growing card: the
+ * card's rectangle (x, y, w, h) is rotated straight out of the stash into
+ * the panel, read from stash row `sy` (0 for a card hung from the arriving
+ * screen's top edge), and the canvas round it is rotated as usual, so the
+ * CPU never copies the card - at the end of an open move that copy was a
+ * whole screen per frame. The caller draws everything outside the rectangle
+ * as normal and nothing inside it. Falls back to copying through the canvas
+ * if block rotates were found not to land exactly at init.
+ */
+void gfx_present_with_stash(int x, int y, int w, int h, int sy);
+
+/** Whether block rotates were verified at init; a caller that skips drawing
+ *  a region it means to present from the stash must check this first. */
+bool gfx_blocks_ok(void);
+
+/**
  * Remember the canvas as the starting point of the next dissolve.
  *
  * Call this, redraw the canvas into whatever should come next, then call
@@ -76,6 +102,10 @@ typedef struct {
  */
 void gfx_stash(void);
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
+/** Stash what is ON THE PANEL rather than what was just drawn. The same
+ *  buffer today; kept apart at the call sites so a compositor that keeps
+ *  them apart does not have to find them. */
+void gfx_stash_shown(void);
 
 /**
  * A second retained layer, for the parts of a move that only translate.
@@ -92,6 +122,8 @@ void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
  */
 void gfx_layer_keep(void);
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
+/** Keep what is on the panel, not what was just drawn - see gfx_stash_shown(). */
+void gfx_layer_keep_shown(void);
 
 /**
  * A list arriving, one row at a time, over the frame already drawn.
@@ -104,5 +136,8 @@ void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t groun
 
 /** Frames presented and the time they took, for bandwidth checks. */
 void gfx_stats(uint32_t *frames, uint32_t *last_ms);
+
+/** Microseconds spent presenting (rotate plus hand-over) since boot. */
+uint64_t gfx_present_us_total(void);
 
 #endif
