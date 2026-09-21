@@ -23,6 +23,7 @@ Start with the question you need answered. The repository contains working contr
 | How do I report a vulnerability? | [Security policy](../SECURITY.md) |
 | What must camera firmware implement? | [Firmware contract](../firmware-contract/README.md) |
 | How is the D4 firmware built and what exists? | [Firmware tree](../firmware/README.md) and [start plan](../firmware/FIRMWARE_START_PLAN.md) |
+| What does the camera say on its own screen, and when? | [Device copy](DEVICE_COPY.md) |
 | How do Studio, Twin and the firmware work as one system? | [Integration audit](audit/STUDIO_TWIN_FIRMWARE_INTEGRATION_AUDIT.md), [device integration](STUDIO_DEVICE_INTEGRATION.md), [acceptance tests](STUDIO_TWIN_ACCEPTANCE_TESTS.md) |
 | How does Studio build and flash firmware? | [Firmware builder](FIRMWARE_BUILDER.md) |
 | How does Twin model firmware and photograph a scene? | [Twin firmware model](TWIN_FIRMWARE_MODEL.md), [Twin virtual camera](TWIN_VIRTUAL_CAMERA.md) |

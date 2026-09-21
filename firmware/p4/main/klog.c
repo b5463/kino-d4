@@ -73,6 +73,25 @@ void klog(const char *src, const char *fmt, ...) {
   if (emit != NULL) emit(t, t_us, src, msg);
 }
 
+size_t klog_export(uint32_t *cursor, char *buf, size_t cap) {
+  if (s_lock == NULL || buf == NULL || cursor == NULL || cap < 128) return 0;
+  size_t used = 0;
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  const uint32_t first = s_count > KLOG_CAPACITY ? s_count - KLOG_CAPACITY : 0;
+  if (*cursor < first) *cursor = first; /* the ring moved on; what fell out is gone */
+  while (*cursor < s_count) {
+    const klog_entry_t *e = &s_ring[*cursor % KLOG_CAPACITY];
+    const int n = snprintf(buf + used, cap - used, "%6lld.%03lld %-5s %s\n",
+                           (long long)(e->t_us / 1000000), (long long)((e->t_us / 1000) % 1000),
+                           e->src, e->msg);
+    if (n < 0 || (size_t)n >= cap - used) break;
+    used += (size_t)n;
+    (*cursor)++;
+  }
+  xSemaphoreGive(s_lock);
+  return used;
+}
+
 void klog_clear(void) {
   if (s_lock == NULL) return;
   xSemaphoreTake(s_lock, portMAX_DELAY);

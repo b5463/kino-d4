@@ -51,6 +51,14 @@ void klog(const char *src, const char *fmt, ...);
 void klog_clear(void);
 
 /**
+ * The lines since *cursor, as text, one per line: "seconds.ms SRC message".
+ * Advances *cursor past what it wrote; returns bytes written, 0 when there is
+ * nothing new or `buf` cannot take the next line. Start with *cursor = 0.
+ * For the field log on the card (storage_watch.c).
+ */
+size_t klog_export(uint32_t *cursor, char *buf, size_t cap);
+
+/**
  * Monotonic microseconds since boot, the same source the ring stamps entries
  * with.
  *

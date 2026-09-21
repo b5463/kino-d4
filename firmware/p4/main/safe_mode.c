@@ -14,6 +14,7 @@
 
 static bool s_active;
 static int s_crashes;
+static bool s_brownout;
 
 static void write_count(uint32_t n) {
   nvs_handle_t nvs;
@@ -34,6 +35,10 @@ void safe_mode_boot(void) {
   const esp_reset_reason_t why = esp_reset_reason();
   const bool crash = why == ESP_RST_PANIC || why == ESP_RST_INT_WDT || why == ESP_RST_TASK_WDT ||
                      why == ESP_RST_WDT;
+  /* Not a crash: the supply fell out from under a running body. The cells
+   * are the only thing a person can do something about, so it is said. */
+  s_brownout = why == ESP_RST_BROWNOUT;
+  if (s_brownout) klog("P4", "boot after a brownout: the supply dropped while running");
   uint32_t n = 0;
   nvs_handle_t nvs;
   if (nvs_open("kino", NVS_READWRITE, &nvs) == ESP_OK) {
@@ -63,4 +68,5 @@ void safe_mode_boot(void) {
 }
 
 bool safe_mode_active(void) { return s_active; }
+bool safe_mode_brownout(void) { return s_brownout; }
 int safe_mode_crashes(void) { return s_crashes; }
