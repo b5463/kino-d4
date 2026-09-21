@@ -19,9 +19,13 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "factory_reset.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#ifdef ESP_PLATFORM
+#include "freertos/idf_additions.h" /* xTaskCreateWithCaps */
+#endif
 #include "gfx.h"
 /* For KDP_PROTOCOL_VERSION, which the About screen reports: the same constant
  * GET_DEVICE_INFO answers as `protocol`, not a second copy of the number. */
@@ -497,6 +501,8 @@ typedef enum {
   DLG_DELETE,
   DLG_DELETE_ALL,
   DLG_WELCOME, /* the first boot's one note */
+  DLG_FORMAT,
+  DLG_FACTORY,
 } dialog_t;
 
 /*
@@ -933,7 +939,10 @@ static uint16_t dim_ink(uint16_t ink, uint16_t face) {
 
 /* A condition's severity, as the word the mark's colour stood for alone. */
 static const char *sev_word(cond_sev_t sev) {
-  return sev == COND_FAULT ? "FAULT" : sev == COND_WARN ? "WARN" : "NOTE";
+  /* Plain words. FAULT and WARN were the log's words on a screen a person
+   * reads without the log: a PROBLEM stops photographs, a CHECK does not
+   * yet, a NOTE is information. */
+  return sev == COND_FAULT ? "PROBLEM" : sev == COND_WARN ? "CHECK" : "NOTE";
 }
 /* The severity's colour: the interface's red for a fault, its accent for a
  * warning, the quiet ink for a note. Used with the word, never instead of it. */
@@ -3014,7 +3023,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   storage_get_status(&sd);
   char card[24];
   if (!sd.mounted) snprintf(card, sizeof card, "NO CARD");
-  else snprintf(card, sizeof card, "%d LEFT", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+  else snprintf(card, sizeof card, "%d SHOTS", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
   const char *const pwr = usb_attached() ? "USB" : "BATTERY";
 
   /* The chip exists only when a condition does, so an unmarked bar means a
@@ -3027,9 +3036,11 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
    * beside the count, and on the title plate the yellow dot measured 1.3:1 -
    * a warning nobody could see, saying which kind it was in a colour alone.
    * The word is set in the plate's own ink like everything else on it. */
+  /* The word alone. "FAULT 3" counted notes in with the fault, so the
+   * number said nothing a person could act on; STATUS has the list. */
   const int cond_n = conditions_count();
   char cnt[16];
-  snprintf(cnt, sizeof cnt, "%s %d", sev_word(conditions_worst()), cond_n);
+  snprintf(cnt, sizeof cnt, "%s", sev_word(conditions_worst()));
 
   /* Spatial order, left to right, with the priority each one is kept by. */
   struct {
@@ -3558,7 +3569,7 @@ static void menu_card_line(char *out, size_t cap) {
   const cond_t *worst = conditions_at(0);
   if (worst != NULL) snprintf(out, cap, "%s", worst->title);
   else if (!sd.mounted) snprintf(out, cap, "NO CARD");
-  else snprintf(out, cap, "CAMERA  %d LEFT", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+  else snprintf(out, cap, "CAMERA  %d SHOTS", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
   upcase(out);
 }
 
@@ -4174,7 +4185,7 @@ static void draw_shoot(void) {
   const storage_status_t sd_bar = *sd_status();
   char card_bar[24];
   if (!sd_bar.mounted) snprintf(card_bar, sizeof card_bar, "NO CARD");
-  else snprintf(card_bar, sizeof card_bar, "%d LEFT",
+  else snprintf(card_bar, sizeof card_bar, "%d SHOTS",
                 (int)(sd_bar.free_bytes / (6ull * 1024 * 1024)));
   const char *const pwr_bar = usb_attached() ? "USB" : "BATTERY";
   const int w_card = text_w(&UI_FONT_T, card_bar) + 2 * SH_PN_PAD;
@@ -5640,7 +5651,7 @@ static void draw_photo(void) {
    */
   if (short_wiggle) {
     char note[24];
-    snprintf(note, sizeof note, "%d OF %d FRAMES", s_wig_count, GALLERY_FRAME_MAX);
+    snprintf(note, sizeof note, "%d MISSING", GALLERY_FRAME_MAX - s_wig_count);
     text(&UI_FONT_T, fx, cy + 6, note, D_DIM);
     cy += 6 + UI_FONT_T.line_h;
   }
@@ -6819,7 +6830,8 @@ static void draw_connection(void) {
  * wants: it clears the pictures and leaves the sounds, the looks, the config
  * and the upload queue alone, where FORMAT takes everything. */
 #define ST_IT_DELETE_ALL 0
-#define ST_IT_COUNT 1
+#define ST_IT_FORMAT 1
+#define ST_IT_COUNT 2
 
 /*
  * Three facts, the gauge with its two readings under them, then the two rows
@@ -6915,10 +6927,12 @@ static void draw_storage(void) {
   draw_row_at(LIST_X, LIST_W, ST_ACT_Y(0), ROW_H - ROW_GAP, 3, false,
               foc(SCR_STORAGE, ST_IT_DELETE_ALL), s_pressed == ST_IT_DELETE_ALL,
               sd.mounted && !wiping && media > 0, "Delete all photos", NULL, true);
-  /* Drawn dimmed: there is no format entry point in storage.c, and a live
-   * row that opens a confirm dialog and then says "not available" is a
-   * control that lies twice. The row stays so the layout and the hit test
-   * (row minus three) do not move. */
+  /* Live with a card in the slot, mounted or not: a card the camera cannot
+   * read is the one this row exists for. storage_format() mounts an
+   * unreadable card by formatting it. */
+  draw_row_at(LIST_X, LIST_W, ST_ACT_Y(1), ROW_H - ROW_GAP, 4, false,
+              foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT, sd.present && !wiping,
+              "Format card", sd.mounted ? "Erases every photo" : "The card cannot be read", true);
 
   /*
    * The 145 px under the list.
@@ -7190,7 +7204,8 @@ static void draw_about(void) {
 /* The two rows, in item order. */
 #define PW_IT_RESTART 0
 #define PW_IT_SHUTDOWN 1
-#define PW_IT_COUNT 2
+#define PW_IT_RESET 2
+#define PW_IT_COUNT 3
 
 /*
  * POWER: the one thing it can do, the one thing it cannot, and what it is
@@ -7218,6 +7233,8 @@ static void draw_power(void) {
    * one. The slide is the switch. */
   draw_row(PW_IT_SHUTDOWN, foc(SCR_POWER, PW_IT_SHUTDOWN), s_pressed == PW_IT_SHUTDOWN, false,
            "Shut down", "Hold the power slide", false);
+  draw_row(PW_IT_RESET, foc(SCR_POWER, PW_IT_RESET), s_pressed == PW_IT_RESET, true,
+           "Factory reset", "Settings, networks, roll", true);
 
   const int gy = LIST_Y + PW_IT_COUNT * ROW_H + 14;
   const int cap_h = UI_FONT_T.line_h + 4;
@@ -7259,6 +7276,14 @@ static void dialog_spec(dlg_spec_t *d) {
        * looks or settings on purpose: they are not touched, and listing what
        * survives a destructive action reads as a warning about them. */
       *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
+      break;
+    case DLG_FORMAT:
+      *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", "Every photo on it is deleted.", "FORMAT", true};
+      break;
+    case DLG_FACTORY:
+      /* Photos are not listed as surviving, for the reason DELETE ALL gives:
+       * a list of what stays reads as a warning about it. */
+      *d = (dlg_spec_t){"FACTORY RESET", "Reset the camera?", "Settings, networks and roll are erased.", "RESET", true};
       break;
     case DLG_WELCOME:
       /* Shown once, on a body that has never been through a first boot: what
@@ -7465,7 +7490,10 @@ static void draw_capture_banner(void) {
          * lost. A partial capture says which, because "3/4" with three lit
          * cells is a fact and "SAVED" alone is not. */
         for (int i = 0; i < 4; i++) st[i] = i < r.stored ? FM_SPARK : FM_LOST;
-        snprintf(line, sizeof line, "%d/%d SAVED", r.stored, r.online);
+        if (r.stored == r.online) snprintf(line, sizeof line, "SAVED");
+        else
+          snprintf(line, sizeof line, "SAVED, %d CAMERA%s MISSED", r.online - r.stored,
+                   r.online - r.stored == 1 ? "" : "S");
         accent = r.stored == r.online ? C_OK : C_BAD;
       }
       break;
@@ -7534,7 +7562,81 @@ static void draw_toast(void) {
  * working, a modal only when it is asking, because a modal is a question and
  * this is not one.
  */
-static bool s_calibrating;
+static bool s_formatting;
+
+/*
+ * The first photograph's measurement, on its own task.
+ *
+ * It ran on this task behind a MEASURING THE CAMERAS banner, and the screen
+ * and the shutter froze for the second it took - which on a first photograph
+ * is the one moment the camera is being judged. The search is arithmetic on
+ * four 160x120 tiles and has no business on the UI task; it gets a task with
+ * its stack in PSRAM, which is free, and reports back through s_calib_result.
+ * The store stays here: an NVS write runs with the flash cache off, and a
+ * task with an external stack must not be the one calling it.
+ */
+static volatile int s_calib_result; /* 0 nothing to report, >0 measured, <0 not */
+static bool s_calib_busy;
+static char s_calib_dir[128];
+static char s_calib_id[48];
+static pure_cam_offset_t s_calib_off[PURE_WIGGLE_FRAMES_MAX];
+
+static void calib_task(void *arg) {
+  (void)arg;
+  const char *const v = config_str("shoot.viewfinder", "cam2");
+  const int ref = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
+  int n = 0;
+  if (storage_acquire(STORAGE_USER_UI, 5000)) {
+    n = calib_measure(s_calib_dir, ref, s_calib_off);
+    storage_release(STORAGE_USER_UI);
+  }
+  s_calib_result = n > 0 ? n : -1;
+#ifdef ESP_PLATFORM
+  vTaskDelete(NULL);
+#endif
+}
+
+static void calib_start(const char *dir, const char *id) {
+  if (s_calib_busy || s_calib_result != 0) return;
+  snprintf(s_calib_dir, sizeof s_calib_dir, "%s", dir);
+  snprintf(s_calib_id, sizeof s_calib_id, "%s", id);
+  s_calib_busy = true;
+#ifdef ESP_PLATFORM
+  if (xTaskCreateWithCaps(calib_task, "calib", 8192, NULL, 3, NULL, MALLOC_CAP_SPIRAM) != pdPASS) {
+    klog("P4", "no task for the calibration; next photograph tries again");
+    s_calib_busy = false;
+  }
+#else
+  calib_task(NULL);
+#endif
+}
+
+/* The result, on the UI task: store, say so. */
+static void calib_poll(void) {
+  const int res = s_calib_result;
+  if (res == 0) return;
+  s_calib_result = 0;
+  s_calib_busy = false;
+  if (res > 0 && calib_store(s_calib_off, s_calib_id) == ESP_OK) {
+    klog("P4", "calibrated %d cameras off %s: %+d,%+d %+d,%+d %+d,%+d %+d,%+d", res, s_calib_id,
+         (int)s_calib_off[0].x, (int)s_calib_off[0].y, (int)s_calib_off[1].x,
+         (int)s_calib_off[1].y, (int)s_calib_off[2].x, (int)s_calib_off[2].y,
+         (int)s_calib_off[3].x, (int)s_calib_off[3].y);
+    /* "Landed: one soft mid tone, for a transfer that finished and anything
+     * else that completes." A calibration that only ever finishes once in a
+     * body's life is exactly that. */
+    audio_done();
+    toast("Cameras measured");
+  } else {
+    /* Not a failure worth a warning sound: the photograph is on the card and
+     * plays the way every photograph has played until now. The condition
+     * list keeps saying they are unmeasured, and the next photograph tries
+     * again. */
+    klog("P4", "calibration measured nothing off %s", s_calib_id);
+    toast("Not measured: aim at something with detail");
+  }
+  ui_render(render_screen, NULL);
+}
 
 /*
  * The guest half takes the whole screen and nothing else runs.
@@ -7577,7 +7679,7 @@ static void draw_screen(void) {
     default: break;
   }
   draw_capture_banner();
-  if (s_calibrating) draw_working_banner("MEASURING THE CAMERAS");
+  if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   draw_toast();
   if (s_dialog != DLG_NONE) draw_dialog();
 }
@@ -8194,6 +8296,38 @@ static void dialog_commit(void) {
       gallery_delete_all();
       toast("Deleting photos");
       break;
+    case DLG_FORMAT: {
+      /* On this task, behind the working banner: a format is a few seconds,
+       * and the card is locked for all of them - the gallery, the upload
+       * worker and a capture all wait, which is the one correct order for
+       * an operation that removes what they would be reading. */
+      if (!storage_acquire(STORAGE_USER_UI, 5000)) {
+        toast("Card busy");
+        audio_warning();
+        break;
+      }
+      s_formatting = true;
+      ui_render(render_screen, NULL);
+      const esp_err_t err = storage_format();
+      s_formatting = false;
+      storage_release(STORAGE_USER_UI);
+      gallery_refresh();
+      if (err == ESP_OK) {
+        audio_done();
+        toast("Card formatted");
+      } else {
+        audio_warning();
+        toast("The card could not be formatted");
+      }
+      break;
+    }
+    case DLG_FACTORY:
+      ui_render(render_restarting, NULL);
+      factory_reset_erase();
+      vTaskDelay(pdMS_TO_TICKS(420));
+      power_down_anim();
+      esp_restart();
+      break;
     default:
       toast("Hold the power slide to switch off");
       break;
@@ -8335,6 +8469,14 @@ static void activate(int item) {
         s_dialog = DLG_DELETE_ALL;
         s_dlg_focus = 0;
       }
+      if (item == ST_IT_FORMAT) {
+        if (!sd_status()->present) {
+          toast("No card in the slot");
+          break;
+        }
+        s_dialog = DLG_FORMAT;
+        s_dlg_focus = 0;
+      }
       break;
 
     case SCR_STATUS:
@@ -8350,6 +8492,7 @@ static void activate(int item) {
     case SCR_POWER:
       if (item == PW_IT_RESTART) { s_dialog = DLG_RESTART; s_dlg_focus = 0; break; }
       if (item == PW_IT_SHUTDOWN) toast("Hold the power slide to switch off");
+      if (item == PW_IT_RESET) { s_dialog = DLG_FACTORY; s_dlg_focus = 0; break; }
       break;
 
     default: break;
@@ -8713,8 +8856,12 @@ static uint32_t ui_pass(void) {
       if (scan_us == 0 || now_us - scan_us > 2000000) {
         scan_us = now_us;
         conditions_scan(about_cameras());
+        /* Above the warm line the finder drops to a few frames a second: the
+         * four nodes and the PPA are most of the heat. STATUS says why. */
+        viewfinder_throttle(conditions_has(COND_WARM));
       }
     }
+    calib_poll();
 
     uint16_t tx = 0, ty = 0;
     int region = -1;
@@ -8947,38 +9094,11 @@ static uint32_t ui_pass(void) {
          * pointed at something with structure in it, at a distance they
          * chose, at the exposure they wanted.
          *
-         * On this task, at the one moment the task has nothing else to do -
-         * the report is up, the shutter is released, and the screen is about
-         * to hold a result for two seconds anyway. Behind a modal that says
-         * so, because a few hundred milliseconds of frozen screen with no
-         * explanation is indistinguishable from a hang.
+         * Started here, at the moment the report is up; measured on its own
+         * task (calib_task), stored and announced by calib_poll() below.
          */
         if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
-          s_calibrating = true;
-          ui_render(render_screen, NULL);
-          const char *const v = config_str("shoot.viewfinder", "cam2");
-          const int ref = (v[3] >= '1' && v[3] <= '4') ? v[3] - '1' : 1;
-          pure_cam_offset_t off[PURE_WIGGLE_FRAMES_MAX];
-          const int n = calib_measure(r.dir, ref, off);
-          s_calibrating = false;
-          if (n > 0 && calib_store(off, r.id) == ESP_OK) {
-            klog("P4", "calibrated %d cameras off %s: %+d,%+d %+d,%+d %+d,%+d %+d,%+d", n, r.id,
-                 (int)off[0].x, (int)off[0].y, (int)off[1].x, (int)off[1].y, (int)off[2].x,
-                 (int)off[2].y, (int)off[3].x, (int)off[3].y);
-            /* "Landed: one soft mid tone, for a transfer that finished and
-             * anything else that completes." A calibration that only ever
-             * finishes once in a body's life is exactly that. */
-            audio_done();
-            toast("Cameras measured");
-          } else {
-            /* Not a failure worth a warning sound: the photograph is on the
-             * card and plays the way every photograph has played until now.
-             * The condition list keeps saying they are unmeasured, and the
-             * next first-photograph-shaped moment tries again. */
-            klog("P4", "calibration measured nothing off %s", r.id);
-            toast("Not measured: aim at something with detail");
-          }
-          ui_render(render_screen, NULL);
+          calib_start(r.dir, r.id);
         }
       }
       /*

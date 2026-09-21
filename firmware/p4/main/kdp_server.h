@@ -43,6 +43,12 @@ void kdp_server_import_roll_credential(void);
 const char *kdp_device_serial(void);
 
 /**
+ * The P4 die temperature, from the sensor GET_RUNTIME_STATS reports. False
+ * before the server is up or when the sensor would not install.
+ */
+bool kdp_p4_temp_c(float *out);
+
+/**
  * The favourite flag inside a capture's META.JSON, as MEDIA_FAVORITE writes it.
  *
  * Exposed so the body's own photograph screen can set the same flag the host

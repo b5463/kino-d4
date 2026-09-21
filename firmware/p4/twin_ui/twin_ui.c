@@ -799,6 +799,14 @@ void gallery_note_added(const char *id, uint64_t when) {
 void gallery_note_removed(const char *id) { js_capture_delete(id); }
 int gallery_scan_progress(void) { return 0; }
 void gallery_delete_all(void) { js_delete_all(); }
+
+/* #188: the consumer pass's new doors, none of which a picture needs. */
+esp_err_t storage_format(void) { return ESP_OK; }
+void factory_reset_erase(void) {}
+void viewfinder_throttle(bool on) { (void)on; }
+bool kdp_p4_temp_c(float *out) { (void)out; return false; }
+bool safe_mode_active(void) { return false; }
+int safe_mode_crashes(void) { return 0; }
 bool gallery_deleting(void) { return g_deleting; }
 void gallery_delete_progress(int *done, int *total) {
   if (done) *done = g_delete_done;
