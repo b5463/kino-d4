@@ -496,7 +496,7 @@ typedef enum {
   DLG_RESTART,
   DLG_DELETE,
   DLG_DELETE_ALL,
-  DLG_FORMAT
+  DLG_WELCOME, /* the first boot's one note */
 } dialog_t;
 
 /*
@@ -2475,6 +2475,7 @@ static void boot_field(float reach, int32_t ms, int pal, float warm);
 static void ui_render(gfx_draw_fn draw, void *ctx);
 static void render_cascade(void *ctx);
 static void boot_bench(void);
+static void first_start_note(void);
 
 static void render_screen(void *ctx) {
   (void)ctx;
@@ -2857,6 +2858,7 @@ static uint32_t anim_tick(void) {
         anim_report("menu cascade");
         s_anim.kind = ANIM_NONE;
         boot_bench();
+        first_start_note();
       }
       return 0;
     }
@@ -5041,8 +5043,7 @@ static void draw_gallery(void) {
  * because there is no radio on this body - but the number is kept in step with
  * the layout so it is right on the day one is fitted.
  *
- * item_count(SCR_PHOTO) is 2, not 3: DELETE and FAVOURITE both do something,
- * SEND TO ROLL does not, and a focus ring is a promise that pressing will act.
+ * item_count(SCR_PHOTO) is 3: DELETE, FAVOURITE and SEND TO ROLL all act.
  */
 #define P_IT_DELETE 0
 #define P_IT_FAV 1
@@ -5355,6 +5356,52 @@ static const uint16_t *photo_pixels(void) {
  * written and the star does not move, which is the only honest answer - a UI
  * that flips the star and loses the write is worse than one that says no.
  */
+/*
+ * Send this photograph to the active Roll.
+ *
+ * A photograph taken ON the Roll was queued by the shutter and the queue
+ * refuses to queue it twice (upload_queue_enqueue is the same path). One
+ * taken off any Roll - before the body joined one, or with the radio down -
+ * is a local photograph, and this is the one way to adopt it: queued for the
+ * Roll active now, with whichever frames the card actually holds.
+ */
+static void photo_send_to_roll(void) {
+  if (s_photo_id[0] == '\0') return;
+  if (!roll_state_active()) {
+    toast("No active roll");
+    audio_warning();
+    return;
+  }
+  /* What the card holds for this capture: the thumbnail, and which frames.
+   * Asked of the gallery, which owns the card's layout; this file never
+   * touches the filesystem itself. */
+  bool has_thumb = false;
+  uint8_t slots[4];
+  const int n = gallery_capture_files(s_photo_id, &has_thumb, slots, 4);
+  esp_err_t err = upload_queue_enqueue(s_photo_id, has_thumb);
+  if (err == ESP_ERR_INVALID_STATE) {
+    roll_state_t roll;
+    if (!roll_state_get(&roll) || roll.roll_id[0] == '\0') {
+      toast("No active roll");
+      audio_warning();
+      return;
+    }
+    if (n <= 0) {
+      toast("No frames on the card to send");
+      audio_warning();
+      return;
+    }
+    err = upload_queue_enqueue_slots(s_photo_id, roll.roll_id, slots, n, has_thumb);
+  }
+  if (err == ESP_OK) {
+    toast("Sent to the roll");
+    audio_done();
+  } else {
+    toast("Could not queue it for the roll");
+    audio_warning();
+  }
+}
+
 static void photo_toggle_favourite(void) {
   if (s_photo_id[0] == '\0') return;
   if (!storage_acquire(STORAGE_USER_UI, 2000)) {
@@ -5685,13 +5732,17 @@ static void draw_photo(void) {
            "FAVOURITE", on ? W_SELTEXT : W_TEXT);
   if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, W_TEXT);
 
-  /* No radio on this body, so Roll cannot take it. Dimmed with the reason
-   * rather than hidden - a control that vanishes teaches nothing. */
+  /* Live while the body is on a Roll; asleep, in the same shape, when it is
+   * not - a control that vanishes teaches nothing. */
   const int ry = PH_BTN_Y(1);
-  /* The same shape as its two neighbours, without the edge a live control
-   * carries: one column, three buttons of one size, one of them asleep. */
-  round_rect(bx, ry, bw, bh, UI_R, W_WINDOW);
-  text_mid(&UI_FONT_T, bx + bw / 2, ry + (bh - UI_FONT_T.line_h) / 2, "SEND TO ROLL", W_GRAYTEXT);
+  const bool rd = s_pressed == P_IT_ROLL;
+  const bool on_roll = roll_state_active();
+  if (rd) round_rect(bx, ry, bw, bh, UI_R, W_SEL);
+  else if (on_roll) button(bx, ry, bw, bh, false);
+  else round_rect(bx, ry, bw, bh, UI_R, W_WINDOW);
+  text_mid(&UI_FONT_T, bx + bw / 2, ry + (bh - UI_FONT_T.line_h) / 2, "SEND TO ROLL",
+           rd ? W_SELTEXT : on_roll ? W_TEXT : W_GRAYTEXT);
+  if (foc(SCR_PHOTO, P_IT_ROLL)) focus_inset(bx, ry, bw, bh, W_TEXT);
 }
 
 /* ------------------------------------------------------------------ */
@@ -6768,8 +6819,7 @@ static void draw_connection(void) {
  * wants: it clears the pictures and leaves the sounds, the looks, the config
  * and the upload queue alone, where FORMAT takes everything. */
 #define ST_IT_DELETE_ALL 0
-#define ST_IT_FORMAT 1
-#define ST_IT_COUNT 2
+#define ST_IT_COUNT 1
 
 /*
  * Three facts, the gauge with its two readings under them, then the two rows
@@ -6869,8 +6919,6 @@ static void draw_storage(void) {
    * row that opens a confirm dialog and then says "not available" is a
    * control that lies twice. The row stays so the layout and the hit test
    * (row minus three) do not move. */
-  draw_row_at(LIST_X, LIST_W, ST_ACT_Y(1), ROW_H - ROW_GAP, 4, false, foc(SCR_STORAGE, ST_IT_FORMAT),
-              s_pressed == ST_IT_FORMAT, false, "Format card", "Not available", false);
 
   /*
    * The 145 px under the list.
@@ -7212,9 +7260,13 @@ static void dialog_spec(dlg_spec_t *d) {
        * survives a destructive action reads as a warning about them. */
       *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
       break;
-    case DLG_FORMAT:
-      snprintf(sub, sizeof sub, "All %d photos will be deleted.", gallery_media_count() < 0 ? 0 : gallery_media_count());
-      *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", sub, "FORMAT", true};
+    case DLG_WELCOME:
+      /* Shown once, on a body that has never been through a first boot: what
+       * to do first, and where the rest is written down. */
+      /* Short lines: the box is 460 px and the body face runs 10 px a letter.
+       * The first wording ran 110 px past the box's edge. */
+      *d = (dlg_spec_t){"FIRST START", "Take a photograph first.",
+                        "It measures the cameras. See STATUS.", "GOT IT", false};
       break;
     default:
       *d = (dlg_spec_t){"SHUT DOWN", "Calling it a night?", "Hold the power slide to wake KINO up again.", "SHUT DOWN", false};
@@ -7863,7 +7915,7 @@ static int item_count(screen_t s) {
      * and every index below keeps its meaning in both modes. */
     case SCR_LOOK: return mode_is_quad() ? LK_IT_COUNT : LK_IT_TARGET;
     case SCR_GALLERY: return gallery_pages() > 1 ? 8 : GALLERY_PAGE;
-    case SCR_PHOTO: return 2; /* Send to Roll is not fitted, so not focusable */
+    case SCR_PHOTO: return 3;
     case SCR_SETTINGS: return settings_rows();
     case SCR_DISPLAY: return DSP_IT_COUNT;
     case SCR_SOUND: return SN_IT_COUNT;
@@ -7957,11 +8009,10 @@ static int hit_test(int x, int y) {
 
     case SCR_PHOTO: {
       if (hit_hand_button(x, y, hd_btn_x(), HD_BTN_Y, HD_BTN_W, HD_BTN)) return IT_BACK;
-      /* The same PH_BTN_Y/PH_BTN_W the draw uses. SEND TO ROLL is deliberately
-       * not a target: it is drawn dead, and a press that lands on it should do
-       * nothing rather than raise a toast about a radio that is not there. */
+      /* The same PH_BTN_Y/PH_BTN_W the draw uses. */
       const int cx = ph_col_x();
       if (in(x, y, cx, PH_BTN_Y(0), PH_BTN_W, PH_BTN_H)) return P_IT_DELETE;
+      if (in(x, y, cx, PH_BTN_Y(1), PH_BTN_W, PH_BTN_H)) return P_IT_ROLL;
       if (in(x, y, cx, PH_BTN_Y(2), PH_BTN_W, PH_BTN_H)) return P_IT_FAV;
       if (in(x, y, cx, PH_PN_Y, PH_PN_W, PH_PN_H)) return P_IT_PREV;
       if (in(x, y, cx + PH_PN_W + PH_BTN_GAP, PH_PN_Y, PH_PN_W, PH_PN_H)) return P_IT_NEXT;
@@ -8143,12 +8194,6 @@ static void dialog_commit(void) {
       gallery_delete_all();
       toast("Deleting photos");
       break;
-    case DLG_FORMAT:
-      /* Not wired: there is no format entry point in storage.c, and calling
-       * a delete loop over user captures under the name "format" would be a
-       * different operation wearing the label. */
-      toast("Format is not available yet");
-      break;
     default:
       toast("Hold the power slide to switch off");
       break;
@@ -8235,6 +8280,8 @@ static void activate(int item) {
         s_dlg_focus = 0;
       } else if (item == P_IT_FAV) {
         photo_toggle_favourite();
+      } else if (item == P_IT_ROLL) {
+        photo_send_to_roll();
       } else if (item == P_IT_PREV || item == P_IT_NEXT) {
         /* True when the step turned the page and started a move: nothing
          * below may present over it. */
@@ -8287,10 +8334,6 @@ static void activate(int item) {
         }
         s_dialog = DLG_DELETE_ALL;
         s_dlg_focus = 0;
-      } else if (item == ST_IT_FORMAT) {
-        /* Dimmed row; a press still lands here from the hit test. Say so
-         * without a confirm dialog for a thing that cannot happen. */
-        toast("Format is not available");
       }
       break;
 
@@ -8484,8 +8527,25 @@ static void boot_handoff(void) {
   boot_bench();
 }
 
+/*
+ * The one thing a fresh body says on its own: what to do first. A camera out
+ * of the box boots to a menu with "Cameras not measured" three screens deep
+ * in STATUS; this puts the first step in front of the person holding it,
+ * once. `body.firstRunSeen` is a firmware-only config key like `body.hand`.
+ */
+static void first_start_note(void) {
+  if (config_bool("body.firstRunSeen", false)) return;
+  cfg_set_bool("body.firstRunSeen", true);
+  s_dialog = DLG_WELCOME;
+  s_dlg_focus = 0;
+  ui_render(render_screen, NULL);
+}
+
 /* The figures a boot leaves in the ring for the bench: what internal SRAM is
- * left, and what each screen costs to draw. */
+ * left, and - with UI_BOOT_BENCH - what each screen costs to draw. */
+#ifndef UI_BOOT_BENCH
+#define UI_BOOT_BENCH 0
+#endif
 static void boot_bench(void) {
   /* Internal SRAM is the pool this board runs out of first (#162). The
    * recovery reserve's 2/2 says whether it fitted; this says by how much. */
@@ -8493,6 +8553,7 @@ static void boot_bench(void) {
        (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
        (unsigned long)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
 
+#if UI_BOOT_BENCH
   /* What each screen costs to draw through the tile pass, for the ring. The
    * moves are drawn from these, so a slow one here is a slow move. Nothing
    * is shown; the menu is already up. */
@@ -8547,6 +8608,7 @@ static void boot_bench(void) {
     dl_profile("open t=0.15", render_open, &t15);
 #endif
   }
+#endif
 }
 
 /*
@@ -8619,6 +8681,14 @@ static uint32_t ui_pass(void) {
         } else {
           return anim_tick();
         }
+      } else if (s_anim.kind == ANIM_CASCADE && s_btn_q != NULL &&
+                 uxQueueMessagesWaiting(s_btn_q) > 0) {
+        /* The shutter during the cascade: the menu lands now and the key is
+         * handled on this pass, so a body handed over mid-boot shoots when
+         * its button is pressed rather than 700 ms later. */
+        s_anim.kind = ANIM_NONE;
+        ui_render(render_screen, NULL);
+        boot_bench();
       } else {
         return anim_tick();
       }
@@ -8906,7 +8976,7 @@ static uint32_t ui_pass(void) {
              * The condition list keeps saying they are unmeasured, and the
              * next first-photograph-shaped moment tries again. */
             klog("P4", "calibration measured nothing off %s", r.id);
-            toast("Could not measure the cameras");
+            toast("Not measured: aim at something with detail");
           }
           ui_render(render_screen, NULL);
         }

@@ -920,14 +920,15 @@ None of this is exposure timing. `timing.gpioTriggerSkewUs`,
 time reference for frame-start measurement, not a trigger, and a rolling
 shutter integrates per row where this firmware cannot observe.
 
-### D25 — `body.hand` is a firmware-only config key
+### D25 — `body.hand` and `body.firstRunSeen` are firmware-only config keys
 
 Firmware 0.4.58 (#177). `BodyConfig` in `packages/kdp/src/protocol/types.ts`
 does not declare it, and `kino.device-config` (`packages/schemas/src/config.ts`)
 passes unknown keys through, so it travels in `GET_CONFIG` / `SET_CONFIG`
 untyped. Value `"right"` (default) or `"left"`: which hand holds the body, which
 is the side the on-device UI puts its chrome on (`firmware/p4/main/ui.c`,
-`from_hand()`). Studio shows no control for it. The key is written into
+`from_hand()`). Studio shows no control for it. `body.firstRunSeen` (0.4.58) is the same kind of key: `false` until the
+first boot's note has been shown once, then `true`; the UI writes it, nothing reads it but the UI. The key is written into
 `default_config()` so a fresh camera reports it; an older stored envelope reads
 as `right` through the accessor's fallback. Promote it into `BodyConfig` when a
 Studio control exists.

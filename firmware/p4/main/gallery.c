@@ -1523,6 +1523,22 @@ void gallery_note_removed(const char *id) {
  * list holds; on a card inside the cap they are equal, and past it `seen` is
  * the truthful one. Either way this is index state, not a card walk.
  */
+int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap) {
+  if (has_thumb != NULL) *has_thumb = false;
+  if (id == NULL || id[0] == ' ') return -1;
+  char path[160];
+  snprintf(path, sizeof path, "%s/%s", CAPTURES_DIR, id);
+  if (access(path, F_OK) != 0) return -1;
+  snprintf(path, sizeof path, "%s/%s/THUMB.JPG", CAPTURES_DIR, id);
+  if (has_thumb != NULL) *has_thumb = access(path, F_OK) == 0;
+  int n = 0;
+  for (int i = 0; i < 4 && n < cap; i++) {
+    snprintf(path, sizeof path, "%s/%s/C%d.JPG", CAPTURES_DIR, id, i + 1);
+    if (access(path, F_OK) == 0 && slots != NULL) slots[n++] = (uint8_t)(i + 1);
+  }
+  return n;
+}
+
 int gallery_media_count(void) {
   if (!s_have_list) return -1;
   const int n = s_total_seen > s_total ? s_total_seen : s_total;

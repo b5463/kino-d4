@@ -780,6 +780,13 @@ esp_err_t gallery_init(void) { return ESP_OK; }
 void gallery_refresh(void) { js_gallery_refresh(); }
 int gallery_total(void) { return g_total; }
 int gallery_media_count(void) { return g_total; }
+int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap) {
+  (void)id;
+  if (has_thumb != NULL) *has_thumb = true;
+  int n = 0;
+  for (int i = 0; i < 4 && n < cap; i++) slots[n++] = (uint8_t)(i + 1);
+  return n;
+}
 int gallery_page(void) { return g_page; }
 int gallery_pages(void) { return g_pages; }
 void gallery_turn(int delta) { js_gallery_turn(delta); }
@@ -1101,6 +1108,11 @@ esp_err_t upload_queue_start(void) { return ESP_OK; }
 esp_err_t upload_queue_enqueue(const char *uuid, bool thumb) {
   (void)uuid;
   (void)thumb;
+  return ESP_OK;
+}
+esp_err_t upload_queue_enqueue_slots(const char *uuid, const char *roll_id, const uint8_t *slots,
+                                     int count, bool thumb) {
+  (void)uuid; (void)roll_id; (void)slots; (void)count; (void)thumb;
   return ESP_OK;
 }
 void upload_queue_forget(const char *capture_uuid) { (void)capture_uuid; }

@@ -280,4 +280,13 @@ bool gallery_frames_state(uint32_t gen, uint32_t *have, bool *done);
  */
 const uint16_t *gallery_frame_pixels(int index);
 
+/**
+ * What the card holds for capture `id`: whether THUMB.JPG is there, and the
+ * cameras whose frame is (C1..C4.JPG as 1-based slots, in order, up to `cap`).
+ * Returns the slot count, or -1 when the folder is missing. For SEND TO ROLL,
+ * which queues a photograph with the frames that actually exist rather than
+ * the ones META.JSON expected; ui.c never touches the filesystem itself.
+ */
+int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap);
+
 #endif

@@ -102,6 +102,8 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   // The card lands first and the rows follow over the cascade's 700 ms; a tap
   // during the cascade is ignored, as it is on the camera.
   await sleep(900);
+  // A fresh body shows its first-start note once; GOT IT is the lit row.
+  if (near(await px(400, 255), SEL)) await tap(400, 255);
 
   await step('SHOOT from the card', () => tap(600, 240), isShoot);
   await step('LOOK from the finder bar', () => tap(740, 462), isLook);

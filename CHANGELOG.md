@@ -6,6 +6,21 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.58: the last steps before a body leaves the bench (#186).** The
+  shutter cuts the boot cascade as it already cut the splash, so a body handed
+  over mid-boot shoots on the press. FORMAT CARD is gone from STORAGE: there
+  is no format entry point and a row that says "not available" is a promise.
+  SEND TO ROLL on PHOTO works: a photograph taken on the Roll was queued by
+  the shutter and is not queued twice; one taken off any Roll is adopted into
+  the active one with the frames the card holds. A first boot shows one note,
+  once - what to do first and where the rest is written (`body.firstRunSeen`,
+  firmware-only like `body.hand`). The calibration search reports how much its
+  best match stands out from the sweep and refuses a flat scene (a wall, a
+  lens cap) instead of storing noise; the toast says what to point at. A
+  camera that was live and goes silent for 90 s gets the camera bank cycled,
+  once per ten minutes at most, which is the one reset the P4 has over a node.
+  The boot bench's screen timings sit behind `UI_BOOT_BENCH`; the heap and
+  reserve lines stay.
 - **Firmware 0.4.58: the camera can be updated without a cable (#184, M8).** `FW_BEGIN`,
   `FW_CHUNK`, `FW_END`, `FW_ABORT` and `FW_STATUS` answer for the P4 and for
   each camera node, matching Studio's updater. The P4 writes the image into
