@@ -123,6 +123,31 @@ The app offset did not change. `ota_0` starts at `0x10000`, where the old
 `factory` partition started, so a `kino-p4.bin` built before the repartition
 still flashes and boots there.
 
+### Updating over KDP, and the nodes' one-time flash
+
+Since 0.4.58 the P4 writes its own updates (`FW_BEGIN`..`FW_END`, `main/fw_update.c`)
+and forwards a node's image down its UART. From the bench:
+
+```
+npx tsx scripts/kino-fw-update.mjs --port COM8 --target p4 --image firmware/p4/build-hand-radio/kino-p4.bin
+npx tsx scripts/kino-fw-update.mjs --port COM8 --target cam2 --image firmware/camnode/build/kino-camnode.bin
+```
+
+Both images boot with rollback armed; the P4 confirms itself once the panel and the
+host link are up, a node when it answers its first HELLO. `--corrupt` flips a byte
+after hashing: `FW_END` must answer `CHECKSUM_FAILED` and the old slot keeps booting.
+
+A node can only be updated over the link once it is on `camnode/partitions.csv` (two
+OTA slots; the app moves from `0x10000` to `0x20000`). That first flash is over the
+node's own USB, from `firmware/camnode/build`:
+
+```
+esptool.py --chip esp32s3 -p <port> write_flash   0x0 bootloader/bootloader.bin   0x8000 partition_table/partition-table.bin   0x10000 ota_data_initial.bin   0x20000 kino-camnode.bin
+```
+
+A node still on the single-app table refuses `FW_BEGIN` with `HARDWARE_ERROR`, and the
+P4 relays that verbatim.
+
 ### A partition table change erases NVS
 
 Not a warning about what might happen — it is what happens. The old table put

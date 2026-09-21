@@ -278,6 +278,20 @@ esp_err_t camlink_read_ch(int cam, uint32_t frame_id, uint32_t offset, uint8_t *
                           size_t want, uint32_t timeout_ms, size_t *got);
 esp_err_t camlink_release_ch(int cam, uint32_t frame_id);
 
+/*
+ * Firmware update of one node over its link (NL_CMD_FW_*; fw_update.c is
+ * the caller). `code` receives the node's NACK reason when the result is
+ * ESP_ERR_INVALID_RESPONSE, so the host is told BAD_SIZE or FLASH_WRITE
+ * rather than "the node said no".
+ */
+esp_err_t camlink_fw_begin_ch(int cam, uint32_t size, const char *sha256_hex,
+                              const char *version, uint32_t *chunk_max, char *code,
+                              size_t code_cap);
+esp_err_t camlink_fw_chunk_ch(int cam, uint32_t offset, const uint8_t *data, size_t len,
+                              char *code, size_t code_cap);
+esp_err_t camlink_fw_end_ch(int cam, bool *verified, char *code, size_t code_cap);
+esp_err_t camlink_fw_abort_ch(int cam);
+
 void camlink_get_info(camlink_info_t *out);
 void camlink_get_stats(camlink_stats_t *out);
 void camlink_reset_stats(void);

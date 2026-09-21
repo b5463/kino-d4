@@ -6,6 +6,20 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.58: the camera can be updated without a cable (#184, M8).** `FW_BEGIN`,
+  `FW_CHUNK`, `FW_END`, `FW_ABORT` and `FW_STATUS` answer for the P4 and for
+  each camera node, matching Studio's updater. The P4 writes the image into
+  the OTA slot it is not running, verifies the whole thing against the SHA-256
+  the host named, selects the slot and restarts; a node's image goes down its
+  UART in 2 KB `NL_CMD_FW_*` frames and the node does the same for itself. Both
+  images now boot with rollback armed: the P4 confirms itself once the panel
+  and the host link are up, a node when it answers its first HELLO, and an
+  image that never gets there is rolled back by the bootloader on the next
+  reset - which the P4 forces on a silent node by cycling the camera bank. The
+  node moves to its own two-slot partition table (`firmware/camnode/partitions.csv`),
+  one USB flash per node to get there. `FW_QUERY` reported the nodes shifted
+  by one; fixed. `scripts/kino-fw-update.mjs` pushes an image from the bench,
+  with `--corrupt` for the negative test.
 - **Firmware: three quality-of-life fixes on the P4 and one on the node.** A move
   into or out of SHOOT or GALLERY now draws that screen once into the stash and
   blits the card from it, so the finder's four panes and a page of thumbnails

@@ -700,6 +700,13 @@ Reference-device rules: maintenance mode is required first (`MAINT_REQUIRED`); o
 `FW_END` before all bytes arrive gets `SHORT_IMAGE`. A P4 self-update reboots the device, which
 changes the session ID and drops the link — that is expected, not a failure.
 
+D4-V1 (firmware 0.4.58 on): the same rules without `MAINT_REQUIRED`, plus `INVALID_STATE` for a `BEGIN`
+during a capture, `BAD_OFFSET` for a chunk out of order, `CHECKSUM_FAILED` when the SHA-256 of what
+arrived differs from what `BEGIN` named or the image fails validation, `FLASH_WRITE` for a slot that
+would not open or write, and `CAM_UNREACHABLE` when the node behind a camera target does not answer.
+Camera targets move `receiving → verifying → rebooting → ready` and are polled with `FW_STATUS`; see
+[README D15](README.md#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_).
+
 `FW_PROGRESS` (`0x82`) exists as an event id but is reserved and unemitted in 0.x (README §Decided).
 It has no producer. Progress today is inferred host-side
 from `FW_CHUNK` acknowledgements. See [README, unspecified item 1](README.md#unspecified--firmware-team-decision-required).

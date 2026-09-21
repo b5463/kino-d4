@@ -91,4 +91,11 @@ void power_end_wake_gesture(void);
 bool power_sleep_pending(void);
 void power_sleep_shown(void);
 
+/**
+ * Cut the camera bank's power for a moment and restore it: the one reset the
+ * P4 has over the four nodes. Used when a node has stopped answering after
+ * a firmware update, so its bootloader can roll back; every node restarts.
+ */
+void power_cam_bank_cycle(void);
+
 #endif

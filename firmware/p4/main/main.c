@@ -17,6 +17,7 @@
 #include "viewfinder.h"
 #include "esp_log.h"
 #include "esp_app_desc.h"
+#include "fw_update.h"
 #include "esp_core_dump.h"
 #include "esp_heap_caps.h"
 #include "esp_mac.h"
@@ -410,6 +411,10 @@ void app_main(void) {
      * even if nothing can be pressed. */
     esp_err_t ui_err = ui_start();
     if (ui_err != ESP_OK) ESP_LOGE(TAG, "ui unavailable: %s", esp_err_to_name(ui_err));
+    /* This far - KDP answering, the panel drawing - is what a good image
+     * looks like. With rollback armed, saying so is what keeps the bootloader
+     * from returning to the previous slot on the next reset. */
+    if (ui_err == ESP_OK) fw_update_mark_healthy();
   }
 
   /*

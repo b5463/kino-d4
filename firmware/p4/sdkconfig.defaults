@@ -79,6 +79,11 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # and firmware/README.md have the flash sequence and what restores what.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# An image written over KDP boots PENDING_VERIFY; main.c confirms it once the
+# panel and the host link are up (fw_update_mark_healthy), and an image that
+# never gets that far is rolled back by the bootloader on the next reset.
+# Changing this reflashes the bootloader.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # The coredump partition is only useful if the panic handler is told to write
 # to it. Left at the IDF default (CONFIG_ESP_COREDUMP_ENABLE_TO_NONE) the
