@@ -35,12 +35,19 @@ const has = (name) => args.includes(name);
 
 const portPath = opt('--port', process.env.KINO_PORT);
 if (!portPath) {
-  console.error('usage: kino-bench.mjs --port <COM8|/dev/ttyACM0> [--sanity] [CMD [json]]');
+  console.error('usage: kino-bench.mjs --port <COM8|/dev/ttyACM0> [--settle ms] [--sanity] [CMD [json]]');
   process.exit(2);
 }
 // USB-Serial-JTAG ignores the line rate, but a real UART bridge does not.
 const baud = Number(opt('--baud', '921600'));
 const timeoutMs = Number(opt('--timeout', '15000'));
+// Opening the P4's USB-Serial-JTAG port from Windows toggles DTR/RTS, and the
+// chip takes that as a reset (rst:0x17 CHIP_USB_UART_RESET in the boot log).
+// A request sent on the pass after open() lands in the bootloader and is
+// never answered, and every later request fails the same way because the
+// session began with a lost HELLO. --settle waits this long after the open
+// before the first frame; 6000 covers a boot with the radio bring-up.
+const settleMs = Number(opt('--settle', '0'));
 
 const port = new SerialPort({ path: portPath, baudRate: baud, autoOpen: false });
 const decoder = new FrameDecoder();
@@ -164,13 +171,17 @@ const SANITY = [
 
 await open();
 console.log(`opened ${portPath} @ ${baud}`);
+if (settleMs > 0) {
+  console.log(`settling ${settleMs} ms for the reset the open caused`);
+  await new Promise((r) => setTimeout(r, settleMs));
+}
 
 if (has('--sanity')) {
   for (const [label, type, body] of SANITY) await run(label, type, body);
 } else {
   // Positionals only: --port COM8 would otherwise offer COM8 as a command,
   // since it matches the shape of one.
-  const VALUED = new Set(['--port', '--baud', '--timeout']);
+  const VALUED = new Set(['--port', '--baud', '--timeout', '--settle']);
   const positional = [];
   for (let i = 0; i < args.length; i += 1) {
     if (VALUED.has(args[i])) i += 1;

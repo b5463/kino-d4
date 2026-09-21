@@ -27,3 +27,8 @@ static inline BaseType_t xQueueReceive(QueueHandle_t q, void *out, uint32_t wait
   (void)wait;
   return pdFALSE;
 }
+/* Nothing is ever waiting: no keys here. */
+static inline uint32_t uxQueueMessagesWaiting(QueueHandle_t q) {
+  (void)q;
+  return 0;
+}

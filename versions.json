@@ -1,7 +1,7 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-09-05",
+  "updated": "2026-09-20",
   "software": [
     {
       "name": "kino-workspace",
@@ -149,7 +149,7 @@
     "latestMigration": "0014_roll_device_upload_paused"
   },
   "firmware": {
-    "version": "0.4.56",
+    "version": "0.4.58",
     "source": "firmware/VERSION",
     "protocolHeader": "firmware/components/kdp_core/include/kdp/protocol.h",
     "tagPrefix": "kino-fw-v"

@@ -53,6 +53,15 @@ void *display_panel(void) { return NULL; }
 esp_err_t gfx_init(void) { return ESP_OK; }
 bool gfx_ready(void) { return true; }
 uint16_t *gfx_canvas(void) { return g_canvas; }
+/* The whole canvas, always: the renderer draws whole frames. */
+static gfx_target_t g_target;
+static const gfx_target_t *g_view;
+const gfx_target_t *gfx_target(void) {
+  if (g_view != NULL) return g_view;
+  if (g_target.px != g_canvas) g_target = (gfx_target_t){g_canvas, 0, 0, UI_W, UI_H, UI_W};
+  return &g_target;
+}
+void gfx_target_view(const gfx_target_t *view) { g_view = view; }
 static void write_ppm(const char *path, const uint16_t *px, int w, int h);
 extern char g_out[512];
 
@@ -86,6 +95,17 @@ static uint16_t *g_stash;
 void gfx_stash(void) {
   if (g_stash == NULL) g_stash = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_stash != NULL) memcpy(g_stash, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+}
+/* A frame is one call of its drawing on the whole canvas, then the frame
+ * goes out as every other frame does. */
+static uint32_t s_pass;
+uint32_t gfx_pass_id(void) { return s_pass; }
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); return 0; }
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }
+void gfx_render(gfx_draw_fn draw, void *ctx) {
+  s_pass++;
+  draw(ctx);
+  gfx_present();
 }
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_stash == NULL) return;
@@ -126,12 +146,15 @@ void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
            (size_t)w * sizeof(uint16_t));
   }
 }
-void gfx_cascade(int ms, const gfx_band_t *b, int n, uint16_t g) {
-  (void)ms; (void)b; (void)n; (void)g;
-}
 void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = 0;
   if (ms) *ms = 0;
+}
+uint64_t gfx_present_us_total(void) { return 0; }
+void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
+  if (d) *d = 0;
+  if (x) *x = 0;
+  if (v) *v = 0;
 }
 
 /* ui.c registers its tasks so GET_RUNTIME_STATS can report their stack
@@ -659,6 +682,8 @@ bool media_favorite_get(const char *id) {
 
 void power_activity(void) {}
 void power_wake(void) {}
+bool power_sleep_pending(void) { return false; }
+void power_sleep_shown(void) {}
 void power_get(power_state_t *out) {
   if (out == NULL) return;
   out->stage = POWER_AWAKE;
@@ -820,6 +845,12 @@ void upload_queue_status(upload_queue_report_t *out) {
 int upload_queue_retry_all(void) { return 0; }
 
 #include "ui.c"
+
+/* Every scene here goes through ui_render(): recorded into the display list
+ * and replayed, exactly as the camera draws a frame. So the byte-compare of
+ * these pictures against the baseline tests the recorder, and a scene is a
+ * pass, which keeps the once-per-pass caches in ui.c honest. */
+#define draw_screen() ui_render(render_screen, NULL)
 
 /* ---- the text-overflow audit ----
  *
@@ -1006,7 +1037,6 @@ int main(int argc, char **argv) {
   snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
 
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
-  s_cv = g_canvas;
 
   /* One helper, so every state below is "set the state, draw, name it" and
    * the list reads as the screen inventory it is meant to be. */

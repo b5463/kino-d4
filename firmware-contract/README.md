@@ -894,3 +894,15 @@ None of this is exposure timing. `timing.gpioTriggerSkewUs`,
 `unavailableReason`, and `vsyncTelemetry` stays false: the edge is a common
 time reference for frame-start measurement, not a trigger, and a rolling
 shutter integrates per row where this firmware cannot observe.
+
+### D25 — `body.hand` is a firmware-only config key
+
+Firmware 0.4.58 (#177). `BodyConfig` in `packages/kdp/src/protocol/types.ts`
+does not declare it, and `kino.device-config` (`packages/schemas/src/config.ts`)
+passes unknown keys through, so it travels in `GET_CONFIG` / `SET_CONFIG`
+untyped. Value `"right"` (default) or `"left"`: which hand holds the body, which
+is the side the on-device UI puts its chrome on (`firmware/p4/main/ui.c`,
+`from_hand()`). Studio shows no control for it. The key is written into
+`default_config()` so a fresh camera reports it; an older stored envelope reads
+as `right` through the accessor's fallback. Promote it into `BodyConfig` when a
+Studio control exists.

@@ -182,6 +182,15 @@ void *display_panel(void) { return NULL; }
 esp_err_t gfx_init(void) { return ESP_OK; }
 bool gfx_ready(void) { return true; }
 uint16_t *gfx_canvas(void) { return g_canvas; }
+/* The whole canvas, always: the Twin presents whole frames in virtual time. */
+static gfx_target_t g_target;
+static const gfx_target_t *g_view;
+const gfx_target_t *gfx_target(void) {
+  if (g_view != NULL) return g_view;
+  if (g_target.px != g_canvas) g_target = (gfx_target_t){g_canvas, 0, 0, UI_W, UI_H, UI_W};
+  return &g_target;
+}
+void gfx_target_view(const gfx_target_t *view) { g_view = view; }
 void gfx_present(void) {
   push_frame(g_canvas);
   s_frames_presented++;
@@ -284,6 +293,17 @@ static inline void tw_fill_rows(uint16_t *buf, int y, int h, uint16_t c) {
 /* The stash: the destination frame, kept while ui.c draws the move over it.
  * Same as the device's, into the blend buffer. */
 void gfx_stash(void) { memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
+/* A frame is one call of its drawing on the whole canvas, then the frame
+ * goes out in virtual time as every other frame does. */
+static uint32_t s_pass;
+uint32_t gfx_pass_id(void) { return s_pass; }
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); return 0; }
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }
+void gfx_render(gfx_draw_fn draw, void *ctx) {
+  s_pass++;
+  draw(ctx);
+  gfx_present();
+}
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -323,44 +343,18 @@ void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   }
 }
 
-/* The cascade. Same stagger as the device's gfx_cascade(). */
-void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t ground) {
-  if (duration_ms <= 0 || bands == NULL || n <= 0) {
-    gfx_present();
-    return;
-  }
-  const float travel = 0.5f;
-  const float step = n > 1 ? (1.0f - travel) / (float)(n - 1) : 0.0f;
-  const int steps = tw_steps(duration_ms);
-
-  for (int k = 0; k < steps; k++) {
-    const float t = (float)k / (float)steps;
-    memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
-    for (int i = 0; i < n; i++) {
-      float local = (t - step * (float)i) / travel;
-      if (local >= 1.0f) continue;
-      if (local < 0.0f) local = 0.0f;
-      const int x = bands[i].x, w = bands[i].w;
-      int o = (int)((1.0f - tw_settle(local)) * (float)(UI_W - x));
-      if (o < 0) o = 0;
-      if (o > w) o = w;
-      for (int y = bands[i].y; y < bands[i].y + bands[i].h && y < UI_H; y++) {
-        uint16_t *dst = g_blend + (size_t)y * UI_W + x;
-        const uint16_t *src = g_canvas + (size_t)y * UI_W + x;
-        for (int j = 0; j < o; j++) dst[j] = ground;
-        memcpy(dst + o, src, (size_t)(w - o) * sizeof(uint16_t));
-      }
-    }
-    push_frame(g_blend);
-    s_frames_presented++;
-    kui_now_us += (int64_t)duration_ms * 1000 / steps;
-  }
-  gfx_present();
-}
 
 void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = s_frames_presented;
   if (ms) *ms = s_last_present_ms;
+}
+/* The Twin presents in zero virtual time; a move's report attributes it all
+ * to drawing, which is the honest reading of a harness with no panel. */
+uint64_t gfx_present_us_total(void) { return 0; }
+void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
+  if (d) *d = 0;
+  if (x) *x = 0;
+  if (v) *v = 0;
 }
 
 void taskmon_register(const char *name, void *handle) {
@@ -398,6 +392,7 @@ BaseType_t kui_queue_receive(QueueHandle_t q, void *out) {
   q->count--;
   return pdTRUE;
 }
+uint32_t kui_queue_waiting(QueueHandle_t q) { return q == NULL ? 0 : q->count; }
 
 /* ---- audio --------------------------------------------------------------- */
 
@@ -636,37 +631,64 @@ bool kdp_sounds_info(int index, char *id, size_t id_cap, char *name, size_t name
 
 /* Four RGB565 tiles the page fills from the virtual sensors. A tile the page
  * has never written is not a picture, so the pane says NO CAMERA until the
- * first frame lands - the same thing a node that has not answered shows. */
+ * first frame lands - the same thing a node that has not answered shows.
+ *
+ * And a tile the page STOPPED writing is not a picture either. The real
+ * driver ages its frames (viewfinder.c, VF_STALE_MS): a pane whose newest
+ * frame is older than two seconds reads NO RECENT FRAME and drops out of the
+ * strip's live count. This shim marked a pane live for ever once its pointer
+ * had been asked for, which is how the Twin showed four black panes under a
+ * 4/4 - the preview timer stops with a hidden tab, and nothing here noticed.
+ * The page now says when a frame has landed (kui_vf_landed), and the same
+ * two-second rule applies on the virtual clock. */
 static uint16_t g_vf[4][VF_W * VF_H];
-static unsigned g_vf_filled;
+static int64_t g_vf_at_us[4]; /* when the newest frame landed; 0 = never */
 static unsigned g_vf_dead;
 static bool g_vf_wanted;
+#define TWIN_VF_STALE_MS 2000
 
 KUI_EXPORT("kui_vf_ptr") uint16_t *kui_vf_ptr(int cam) {
   if (cam < 0 || cam >= 4) return NULL;
-  g_vf_filled |= 1u << cam;
   return g_vf[cam];
+}
+/* The page has written the tiles in `mask`. Stamps them on the virtual clock. */
+KUI_EXPORT("kui_vf_landed") void kui_vf_landed(unsigned mask) {
+  for (int cam = 0; cam < 4; cam++) {
+    if (mask & (1u << cam)) g_vf_at_us[cam] = kui_now_us > 0 ? kui_now_us : 1;
+  }
 }
 KUI_EXPORT("kui_set_vf_dead") void kui_set_vf_dead(unsigned mask) { g_vf_dead = mask & 0xf; }
 /* True while the SHOOT screen is up, so the page renders previews only then -
  * the nodes on the camera are asked for frames only then too. */
 KUI_EXPORT("kui_vf_wanted") int kui_vf_wanted(void) { return g_vf_wanted; }
 
+static uint32_t vf_age_ms(int cam) {
+  if (g_vf_at_us[cam] == 0) return UINT32_MAX;
+  const int64_t age = kui_now_us - g_vf_at_us[cam];
+  return age < 0 ? 0 : (uint32_t)(age / 1000);
+}
+
 esp_err_t viewfinder_init(void) { return ESP_OK; }
 bool viewfinder_ready(void) { return true; }
 void viewfinder_run(bool on) { g_vf_wanted = on; }
 const uint16_t *viewfinder_tile(int cam) {
   if (cam < 0 || cam >= 4) return NULL;
-  if ((g_vf_dead & (1u << cam)) || !(g_vf_filled & (1u << cam))) return NULL;
+  if (g_vf_dead & (1u << cam)) return NULL;
+  if (vf_age_ms(cam) > TWIN_VF_STALE_MS) return NULL;
   return g_vf[cam];
 }
 void viewfinder_status(int cam, vf_status_t *out) {
   if (out == NULL) return;
   memset(out, 0, sizeof *out);
-  const bool live = cam >= 0 && cam < 4 && !(g_vf_dead & (1u << cam)) && (g_vf_filled & (1u << cam));
-  out->state = live ? VF_LIVE : VF_NO_LINK;
-  out->frames = live ? 120 : 0;
-  out->last_ms = live ? 60 : 0;
+  if (cam < 0 || cam >= 4 || (g_vf_dead & (1u << cam)) || g_vf_at_us[cam] == 0) {
+    out->state = VF_NO_LINK;
+    return;
+  }
+  const uint32_t age = vf_age_ms(cam);
+  const bool live = age <= TWIN_VF_STALE_MS;
+  out->state = live ? VF_LIVE : VF_STALLED;
+  out->frames = 120;
+  out->last_ms = age;
   out->bytes = live ? 9200 : 0;
   out->fps_x10 = live ? 165 : 0;
 }
@@ -889,6 +911,10 @@ void power_activity(void) {}
 void power_wake(void) {}
 bool power_wake_gesture(void) { return false; }
 void power_end_wake_gesture(void) {}
+/* The Twin's power model sleeps without the hand-over; the mark is a device
+ * behaviour to add to the shim when the stage machine is modelled here. */
+bool power_sleep_pending(void) { return false; }
+void power_sleep_shown(void) {}
 void power_get(power_state_t *out) {
   if (out) *out = g_power;
 }
@@ -1111,7 +1137,6 @@ KUI_EXPORT("kui_init") int kui_init(void) {
     cam_defaults();
     s_ready = true;
   }
-  s_cv = g_canvas;
   /* What ui_start() does before it creates the task. */
   s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
   buttons_on_press(on_button);

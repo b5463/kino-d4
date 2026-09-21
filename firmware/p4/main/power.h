@@ -81,4 +81,14 @@ bool power_wake_gesture(void);
 /** Called by the UI when the finger lifts, ending any wake gesture. */
 void power_end_wake_gesture(void);
 
+/**
+ * The panel is about to go dark for sleep, and power_task is waiting for
+ * the UI to put the camera's mark on it first - so a sleep reads as the
+ * camera going away, not as a screen that failed. True for at most 900 ms;
+ * the UI answers with power_sleep_shown(), and the mark is held a moment
+ * before the backlight goes. A touch in that window calls the sleep off.
+ */
+bool power_sleep_pending(void);
+void power_sleep_shown(void);
+
 #endif
