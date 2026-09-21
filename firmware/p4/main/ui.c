@@ -755,6 +755,12 @@ static bool s_shot_hold;
 static char s_toast[48];
 static int64_t s_toast_us;
 static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
+/* The software dim: how dark the scrim over the screen is (0 = awake), and
+ * when the DIM stage began, for the three-step arrival. 150 of 255 leaves
+ * the screen readable and unmistakably dimmed. */
+#define DIM_SCRIM_K 150
+static int s_dim_k;
+static int64_t s_dim_since_us;
 static char s_undo_id[40];       /* a capture in the trash, restorable until s_undo_until_us */
 static int64_t s_undo_ms;
 static int64_t s_undo_until_us;
@@ -7883,6 +7889,9 @@ static void draw_screen(void) {
     draw_working_banner("RESTARTING THE CAMERAS");
   draw_toast();
   if (s_dialog != DLG_NONE) draw_dialog();
+  /* The software dim, last, over everything - it is the room going quiet,
+   * not a layer of the interface. */
+  if (s_dim_k > 0) scrim(0, 0, UI_W, UI_H, MZ_GROUND, s_dim_k);
 }
 
 /* ------------------------------------------------------------------ */
@@ -9298,6 +9307,30 @@ static uint32_t ui_pass(void) {
       ui_render(render_screen, NULL);
     }
     was_asleep = asleep_now;
+
+    /*
+     * Dim, in software. The backlight is a GPIO with no PWM, so power.c's
+     * DIM stage changed nothing a person could see: the screen sat at full
+     * brightness for the whole idle time and then, at the sleep, went out.
+     * The dim is drawn instead - a scrim over whatever is on the screen,
+     * arriving in three steps over half a second so it reads as the camera
+     * settling, not as a fault - and lifted the moment a touch or the
+     * shutter brings the stage back to AWAKE.
+     */
+    {
+      const bool dim_now = pst.stage == POWER_DIM && !power_sleep_pending() && !asleep_now;
+      if (dim_now && s_dim_since_us == 0) s_dim_since_us = esp_timer_get_time();
+      if (!dim_now) s_dim_since_us = 0;
+      int k = 0;
+      if (dim_now) {
+        const int64_t up = esp_timer_get_time() - s_dim_since_us;
+        k = up < 200000 ? 50 : up < 400000 ? 100 : DIM_SCRIM_K;
+      }
+      if (k != s_dim_k) {
+        s_dim_k = k;
+        ui_render(render_screen, NULL);
+      }
+    }
 
     /*
      * Going to sleep: the mark, then the dark.
