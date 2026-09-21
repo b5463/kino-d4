@@ -154,7 +154,7 @@ The camera runs its own interface on the 4.3-inch panel. No phone, no laptop, no
 
 SHOOT is a card three times the height of anything else because the camera is not a sibling of SETTINGS. The geometry says the hierarchy, so the screen needs no status strip at all — the card carries the worst condition when there is one and how many photographs are left when there is not.
 
-Type is Inter and Oxanium, rasterised to 8-bit coverage: Inter for everything a person reads as language, Oxanium for everything the camera says as a machine. Every corner, disc and chevron is drawn with per-pixel coverage rather than stamped from a bitmap, so no curve on the panel has a hard edge on it. The six menu marks are drawn too. One raster is left in the whole interface and it is the studio's own — the Odd Jobs mark, on the ABOUT screen below.
+Type is Inter and Oxanium, rasterised to 8-bit coverage: Inter for everything a person reads as language, Oxanium for everything the camera says as a machine. Every corner, disc and chevron is drawn with per-pixel coverage rather than stamped from a bitmap, so no curve on the panel has a hard edge on it. The six menu marks are drawn too. No raster artwork is left in the interface.
 
 #### It boots by showing you the camera
 

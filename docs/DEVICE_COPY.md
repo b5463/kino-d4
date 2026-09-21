@@ -110,7 +110,7 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 
 ## Sleep
 
-`GOING TO SLEEP.  TAP TO WAKE` under the mark, then the backlight drops. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
+`GOING TO SLEEP.  TAP TO WAKE` under the mark, then the mark alone dimming twice over a second and a half, then the backlight drops. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
 
 ## After a shot
 

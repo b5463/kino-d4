@@ -40,7 +40,6 @@
 #include "lid.h"
 #include "taskmon.h"
 #include "logo_kino_d4.h"
-#include "logo_odd_jobs.h"
 #include "meta.h"
 #include "mesh3d.h"
 #include "net_link.h"
@@ -627,7 +626,7 @@ static void date_words(char *out, size_t cap, int64_t ms) {
 #endif
 enum {
   DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_STROKE, DL_SCRIM, DL_TEXT,
-  DL_ODD, DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_RING,
+  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_RING,
 };
 #define DL_OPS (DL_RING + 1)
 /* What the per-tile pass needs about a command without touching PSRAM:
@@ -2036,62 +2035,6 @@ static float span01(float t, float from, float to) {
 }
 
 static int lerpi(int a, int b, float e) { return a + (int)((float)(b - a) * e + 0.5f); }
-
-/**
- * The Odd Jobs mark, from the studio's own artwork.
- *
- * It was drawn procedurally first - four discs unioned, four subtracted to
- * pinch the waists, one for the hole - on the theory that a logo made of
- * circles can be described as geometry. It cannot: the real mark is not
- * fourfold symmetric, its lobes are different sizes and its curvature varies,
- * and every parameter I tuned by eye moved it further from the thing rather
- * than closer. A logo is somebody's drawing. You trace it.
- *
- * So `tools/mklogo.swift` bakes the 2048 px master's alpha down to a 160 px
- * coverage map, trimmed to the mark's own bounding box, and this samples it
- * bilinearly at whatever size the caller wants. One map is sharp at the boot
- * screen's 124 px and at the ABOUT row's 34, because a bilinear sample of a
- * coverage field is exactly what an antialiased scale-down is.
- */
-static void oddjobs_mark(int cx, int cy, float r, uint16_t ink) {
-  if (s_dl.rec) {
-    const int e = (int)r + 3;
-    dl_cmd_t *k = dl_push(DL_ODD, cx - e, cy - e, cx + e + 1, cy + e + 1);
-    if (k) { k->a = cx; k->b = cy; k->f0 = r; k->col = ink; }
-    return;
-  }
-  PX_BLEND((size_t)((2.0f * r + 2.0f) * (2.0f * r + 2.0f)));
-
-  const int span = (int)r + 1;
-  const float scale = (float)ODD_JOBS_MARK_N / (2.0f * r);
-  const gfx_target_t *t = TG;
-  int y0 = cy - span, y1 = cy + span, x0 = cx - span, x1 = cx + span;
-  if (x0 < t->x0) x0 = t->x0;
-  if (y0 < t->y0) y0 = t->y0;
-  if (x1 >= CV_X1(t)) x1 = CV_X1(t) - 1;
-  if (y1 >= CV_Y1(t)) y1 = CV_Y1(t) - 1;
-  for (int py = y0; py <= y1; py++) {
-    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
-    for (int px = x0; px <= x1; px++) {
-      /* Into the map's own pixels, at its centre. */
-      const float u = ((float)px + 0.5f - (float)cx) * scale + (float)ODD_JOBS_MARK_N / 2.0f;
-      const float v = ((float)py + 0.5f - (float)cy) * scale + (float)ODD_JOBS_MARK_N / 2.0f;
-      if (u < 0.0f || v < 0.0f || u >= (float)ODD_JOBS_MARK_N - 1.0f ||
-          v >= (float)ODD_JOBS_MARK_N - 1.0f) {
-        continue;
-      }
-      const int iu = (int)u, iv = (int)v;
-      const float fu = u - (float)iu, fv = v - (float)iv;
-      const uint8_t *m = ODD_JOBS_MARK + (size_t)iv * ODD_JOBS_MARK_N + iu;
-      const float a = (float)m[0] * (1.0f - fu) + (float)m[1] * fu;
-      const float b = (float)m[ODD_JOBS_MARK_N] * (1.0f - fu) +
-                      (float)m[ODD_JOBS_MARK_N + 1] * fu;
-      const int k = (int)(a * (1.0f - fv) + b * fv + 0.5f);
-      if (k <= 0) continue;
-      row[px] = k >= 254 ? ink : mix(row[px], ink, k);
-    }
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* Boot                                                                */
@@ -4004,7 +3947,6 @@ static void dl_exec(const dl_cmd_t *c) {
     case DL_STROKE: stroke(c->f0, c->f1, c->f2, c->f3, c->f4, c->col); break;
     case DL_SCRIM: scrim(c->a, c->b, c->c, c->d, c->col, c->e); break;
     case DL_TEXT: text((const ui_font_t *)c->p, c->a, c->b, s_dl.str + c->g, c->col); break;
-    case DL_ODD: oddjobs_mark(c->a, c->b, c->f0, c->col); break;
     case DL_FIELD: boot_field(c->f0, c->a, c->b, c->f1); break;
     case DL_SHBLIT: sh_blit((const uint16_t *)c->p, c->a, c->b); break;
     case DL_BLIT: blit_rows((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
@@ -6067,26 +6009,19 @@ static void draw_roll(void) {
 
   /* ---- left column: the symbol, at whatever pitch the height allows ---- */
   if (s_qr_ok) {
-    const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP, RL_QR_BOX);
+    /* The QR on its own rounded card, with what it is for under it: the
+     * guests see this half from across a table, the owner reads the other.
+     * The quiet zone is inside draw_qr_centred's box; the card is outside it. */
+    round_rect(RL_M, RL_TOP, RL_QR_COL_W, UI_H - RL_TOP - PAGE_M, UI_R, W_ROW);
+    const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP + 12, RL_QR_BOX - 40);
     if (side > 0) {
-      /* The plate the symbol sits on, as a well - a white square floating on
-       * face grey was the last piece of bare chrome on this screen.
-       *
-       * The bevel is drawn OUTSIDE the white block, not over its edge. The
-       * outer 4 modules of that block are the quiet zone the QR spec requires,
-       * and at this pitch that is 40 px: eating 2 of them for a frame would
-       * take the margin a phone needs to find the symbol's edges down to 3.8
-       * modules to buy a border. The screen grows 2 px instead. */
-
-      /* The address under the symbol, without its scheme: a guest whose phone
-       * will not scan types this. Secondary to the QR by size and colour. */
       const char *addr = roll.guest_url;
       if (strncmp(addr, "https://", 8) == 0) addr += 8;
       else if (strncmp(addr, "http://", 7) == 0) addr += 7;
-      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 8) {
-        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, addr, W_GRAYTEXT);
-      } else {
-        text_mid(&UI_FONT_T, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
+      text_mid(&UI_FONT_T, RL_QR_CX, RL_TOP + 12 + side + 10, "SCAN TO JOIN", W_TEXT);
+      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 24) {
+        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + 12 + side + 10 + UI_FONT_T.line_h + 2, addr,
+                 W_GRAYTEXT);
       }
     }
   } else {
@@ -6115,137 +6050,105 @@ static void draw_roll(void) {
   const bool can_send = online && !server_quiet && !q.halted;
   const int waiting = q.pending + q.card_pending;
 
+  /*
+   * The right column in the grammar every other screen uses: the roll's
+   * name as the title, then facts in rows - CODE, STATUS, PHOTOS, UPLOADED -
+   * and under them one sentence about what is happening and, while it is
+   * happening, a bar. It was a stack of five type sizes with a lamp in the
+   * middle, and nothing on it lined up with anything else on the camera.
+   */
   const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
   int y = RL_TOP;
   const ui_font_t *tf = fit_face(title, RL_RW);
   text(tf, RL_RX, y, title, W_TEXT);
   y += tf->line_h + 10;
-  if (roll.name[0] != '\0') {
-    /* The code, named, in a well. Only when the name is not already the code.
-     *
-     * It is the one string on this screen a guest reads out or types when a
-     * phone will not scan, and it was the quietest thing in the column: grey,
-     * at body size, under a name set twice as large. A value someone copies
-     * belongs in a well on this interface - it is where the look's name sits
-     * on LOOK and where every reading sits on ABOUT - and that well is also
-     * the container this column never had. */
-    text(&UI_FONT_T, RL_RX, y, "CODE", W_GRAYTEXT);
-    y += UI_FONT_S.line_h + 4;
-    well(RL_RX, y, RL_RW, UI_FONT_M.line_h + 12);
-    text(&UI_FONT_M, RL_RX + 10, y + 6, roll.slug, W_TEXT);
-    y += UI_FONT_M.line_h + 12 + RL_GROUP;
+
+  const char *word;
+  uint16_t lamp;
+  if (q.halted) {
+    word = "Paused";
+    lamp = C_BAD;
+  } else if (server_quiet) {
+    word = "KINO not answering";
+    lamp = C_BAD;
+  } else if (online) {
+    word = "Online";
+    lamp = C_OK;
+  } else {
+    word = "Offline";
+    lamp = W_SHADOW;
+  }
+  const int total = gallery_media_count();
+  char photos[16], sent[32];
+  if (total < 0) snprintf(photos, sizeof photos, "-");
+  else snprintf(photos, sizeof photos, "%d", total);
+  if (total < 0 || !q.scan_complete) {
+    snprintf(sent, sizeof sent, "counting");
+  } else {
+    int done = total - waiting - q.uploading;
+    if (done < 0) done = 0;
+    snprintf(sent, sizeof sent, "%d of %d", done, total);
   }
 
-  /* The connection word, with a square lamp in front of it. Green is "your
-   * photographs are leaving the camera"; grey is "not right now"; the third
-   * colour is the one case a guest can do nothing about and should not be
-   * told is their Wi-Fi. */
+  const int ph = 44;
+  fact_row(RL_RX, RL_RW, y, ph, "Code", roll.slug, true, false);
+  fact_row(RL_RX, RL_RW, y + ph, ph, "Status", word, true, false);
+  /* The lamp, left of the status word: colour beside the word, never instead. */
   {
-    const char *word;
-    uint16_t lamp;
-    if (q.halted) {
-      word = "UPLOAD PAUSED";
-      lamp = C_BAD;
-    } else if (server_quiet) {
-      word = "KINO NOT ANSWERING";
-      lamp = C_BAD;
-    } else if (online) {
-      word = "ONLINE";
-      lamp = C_OK;
-    } else {
-      word = "OFFLINE";
-      lamp = W_SHADOW;
-    }
-    const int ly = y + (UI_FONT_M.line_h - 12) / 2;
-    fill(RL_RX, ly, 12, 12, W_TEXT);
-    fill(RL_RX + 2, ly + 2, 8, 8, lamp);
-    text(&UI_FONT_M, RL_RX + 22, y, word, W_TEXT);
-    y += UI_FONT_M.line_h + RL_GROUP;
+    const int lw = text_w(&UI_FONT_M, word);
+    const int lx = RL_RX + RL_RW - lw - 16 - 18;
+    const int ly = y + ph + (ph - 10) / 2;
+    fill(lx, ly, 10, 10, W_TEXT);
+    fill(lx + 2, ly + 2, 6, 6, lamp);
   }
+  fact_row(RL_RX, RL_RW, y + 2 * ph, ph, "Photos", photos, true, false);
+  fact_row(RL_RX, RL_RW, y + 3 * ph, ph, "Uploaded", sent, true, true);
+  y += 4 * ph + 16;
 
-  /* The card, as one big number. gallery_media_count() is the index in RAM,
-   * exact, the same figure the Storage screen shows; -1 only before the
-   * first index read after boot. */
-  {
-    const int total = gallery_media_count();
-    char big[24];
-    if (total < 0) snprintf(big, sizeof big, "- PHOTOS");
-    else snprintf(big, sizeof big, "%d %s", total, total == 1 ? "PHOTO" : "PHOTOS");
-    const ui_font_t *bf = fit_face(big, RL_RW);
-    text(bf, RL_RX, y, big, W_TEXT);
-    y += bf->line_h + RL_GROUP;
-  }
-
-  /* What is happening to them. Three lines at most. */
-  char l1[48] = "", l2[48] = "", l3[48] = "";
+  char l1[48] = "", l2[48] = "";
   bool bar = false;
   int bar_done = 0, bar_total = 0;
   if (q.halted) {
-    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
-    snprintf(l2, sizeof l2, "Saved safely on camera");
-    snprintf(l3, sizeof l3, "Check the roll in Studio.");
+    snprintf(l1, sizeof l1, "%d waiting, saved on the camera.", waiting);
+    snprintf(l2, sizeof l2, "Check the roll in Studio.");
   } else if (waiting > 0 || q.uploading > 0) {
-    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
     if (can_send) {
       bar = true;
       bar_done = q.burst_done;
       bar_total = q.burst_done + waiting + q.uploading;
-      snprintf(l2, sizeof l2, "%s", q.uploading > 0 ? "Uploading now" : "Starting upload");
+      snprintf(l1, sizeof l1, "%s, %d to go.", q.uploading > 0 ? "Uploading" : "Starting", waiting + q.uploading);
     } else {
-      snprintf(l2, sizeof l2, "Saved safely on camera");
-      snprintf(l3, sizeof l3, "%s",
-               server_quiet ? "Wi-Fi is up. They go when KINO answers."
-                            : "They go when Wi-Fi returns.");
+      snprintf(l1, sizeof l1, "%d waiting, saved on the camera.", waiting);
+      snprintf(l2, sizeof l2, "%s",
+               server_quiet ? "They go when KINO answers." : "They go when Wi-Fi returns.");
     }
   } else if (!q.scan_complete) {
-    /* Nothing waiting that the queue knows of, and it has not seen the
-     * whole card since boot. Honest for the seconds it lasts. */
-    snprintf(l1, sizeof l1, "COUNTING THE CARD");
+    snprintf(l1, sizeof l1, "Counting the card.");
   } else if (q.last_upload_ms > 0) {
-    snprintf(l1, sizeof l1, "All uploaded");
     const int64_t ago_s = (now - q.last_upload_ms) / 1000;
-    if (ago_s < 60) snprintf(l2, sizeof l2, "Last upload %llds ago", (long long)ago_s);
-    else if (ago_s < 3600) snprintf(l2, sizeof l2, "Last upload %lldm ago", (long long)(ago_s / 60));
-    else snprintf(l2, sizeof l2, "Last upload %lldh ago", (long long)(ago_s / 3600));
+    if (ago_s < 60) snprintf(l1, sizeof l1, "All uploaded, %llds ago.", (long long)ago_s);
+    else if (ago_s < 3600) snprintf(l1, sizeof l1, "All uploaded, %lldm ago.", (long long)(ago_s / 60));
+    else snprintf(l1, sizeof l1, "All uploaded, %lldh ago.", (long long)(ago_s / 3600));
   } else if (can_send) {
-    snprintf(l1, sizeof l1, "All uploaded");
+    snprintf(l1, sizeof l1, "All uploaded.");
   } else {
-    snprintf(l1, sizeof l1, "Nothing waiting");
+    snprintf(l1, sizeof l1, "Nothing waiting.");
     if (!online) snprintf(l2, sizeof l2, "Uploads resume when Wi-Fi returns.");
   }
 
-  /* Straight on from the count: the column is one stack of the roll's facts,
-   * top to bottom, with one interval between them. The status block used to
-   * be pinned to the page's foot, which left a hole in the middle of the
-   * column the size of whatever the camera had to say. The longest state -
-   * four lines - still ends 60 px clear of the bottom. */
-
-  if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 14; }
   if (bar) {
-    /* The bar exists only while there is work: a full or empty bar with
-     * nothing behind it would be a decoration. */
-    const int bw = RL_RW - 4, bh = 14;
-
-    fill(RL_RX + 2, y + 2, bw - 4, bh - 4, W_HILITE);
+    const int bh = 8;
+    round_rect(RL_RX, y, RL_RW, bh, 4, W_HILITE);
     if (bar_total > 0) {
-      const int fw = (int)((int64_t)(bw - 4) * bar_done / bar_total);
-      /* The accent, like the storage gauge. It was 0000A8 - the 1998 desktop's
-       * navy, the one colour the redesign was there to remove. */
-      if (fw > 0) fill(RL_RX + 2, y + 2, fw, bh - 4, W_SEL);
+      const int fw = (int)((int64_t)RL_RW * bar_done / bar_total);
+      if (fw > 8) round_rect(RL_RX, y, fw, bh, 4, W_SEL);
     }
-    y += bh + 14;
+    y += bh + 12;
   }
-  /* The two reading lines wrap. They are sentences, not labels, and the
-   * longest of them - "Wi-Fi is up. They go when KINO answers." - is 386 px
-   * against a 344 px column, so it had been losing "answers" off the right of
-   * the panel on the one screen a guest reads at a party. */
-  if (l2[0]) { y += text_block(&UI_FONT_S, RL_RX, y, RL_RW, l2, W_GRAYTEXT) + 10; }
-  if (l3[0]) { text_block(&UI_FONT_S, RL_RX, y, RL_RW, l3, W_GRAYTEXT); }
+  if (l1[0]) y += text_block(&UI_FONT_S, RL_RX, y, RL_RW, l1, W_TEXT) + 6;
+  if (l2[0]) text_block(&UI_FONT_S, RL_RX, y, RL_RW, l2, W_GRAYTEXT);
 }
 
-/* ------------------------------------------------------------------ */
-/* Settings                                                            */
-/* ------------------------------------------------------------------ */
 
 static const char *const SET_ROWS[6] = {"Display", "Sound",   "Connection",
                                         "Storage", "About",   "Status"};
@@ -7354,8 +7257,7 @@ static void draw_about(void) {
                serial[0] != '\0' ? serial : "KD4", KINO_FW_VERSION);
       encoded = qr_encode(url, qr);
     }
-    const int plate_top = UI_H - PAGE_M - (4 + UI_FONT_T.line_h + UI_FONT_S.line_h);
-    const int room = plate_top - note_y - 8 - UI_FONT_T.line_h - 6;
+    const int room = UI_H - PAGE_M - note_y - UI_FONT_T.line_h - 6;
     const int box = room < AB_RW ? room : AB_RW;
     if (encoded && qr != NULL && box >= 64) {
       draw_qr_centred(qr, AB_RX + AB_RW / 2, note_y, box);
@@ -7363,29 +7265,6 @@ static void draw_about(void) {
     }
   }
 
-  /*
-   * Who made it.
-   *
-   * At the foot of the one screen that says what this object is, with the
-   * studio's own mark beside its name - the same mark the camera opens with,
-   * drawn by the same function at a twentieth of the size. A maker's plate:
-   * every other line on this screen is a fact about the machine, and this is
-   * the one about the people.
-   */
-  {
-    /* The plate is as tall as the two lines in it. It was pinned to a flat 34
-     * and set two lines of 18 and 24 inside that, so "Studio" hung 12 px below
-     * where the plate claimed to end and finished 12 px past the page margin -
-     * the mark beside it looked high for the same reason, being centred on a
-     * box shorter than its contents. */
-    const int plate_h = 4 + UI_FONT_T.line_h + UI_FONT_S.line_h;
-    const int py = UI_H - PAGE_M - plate_h;
-    const float mr = plate_h / 2.0f;
-    oddjobs_mark(AB_RX + (int)mr, py + plate_h / 2, mr, MZ_ACCENT);
-    text(&UI_FONT_T, AB_RX + (int)(2 * mr) + 12, py + 4, "ODD JOBS", W_TEXT);
-    text(&UI_FONT_S, AB_RX + (int)(2 * mr) + 12, py + 4 + UI_FONT_T.line_h, "Studio",
-         W_GRAYTEXT);
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -7732,14 +7611,23 @@ static void timer_cancel(const char *why) {
   ui_render(render_screen, NULL);
 }
 
-/* The mark, and one line under it, so a screen going dark reads as sleep and
- * not as a crash. The wake is the one thing worth saying at that moment. */
+/*
+ * Going to sleep, in three frames over a second and a half: the mark with
+ * the line under it, then the mark alone and dimmer, then dimmer again -
+ * and then the light goes. A screen that shows one thing and cuts to black
+ * reads as a crash; one that visibly winds down reads as sleep. `ctx` is the
+ * stage, 0..2.
+ */
 static void render_sleep(void *ctx) {
-  (void)ctx;
+  const int stage = ctx != NULL ? *(const int *)ctx : 0;
   fill(0, 0, UI_W, UI_H, MZ_GROUND);
   boot_mark();
-  text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
-           W_GRAYTEXT);
+  if (stage == 0) {
+    text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
+             W_GRAYTEXT);
+  } else {
+    scrim(0, 0, UI_W, UI_H, MZ_GROUND, stage == 1 ? 120 : 200);
+  }
 }
 
 static void draw_working_banner(const char *line) {
@@ -9292,6 +9180,8 @@ static int s_down_x, s_down_y;
  * Touches are swallowed while it is, and the screen is redrawn when the sleep
  * is called off or over. */
 static bool s_sleep_mark = false;
+static int s_sleep_stage;
+static int64_t s_sleep_mark_us;
 
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
 static uint32_t ui_pass(void) {
@@ -9419,10 +9309,21 @@ static uint32_t ui_pass(void) {
      * the panel is back, the screen underneath is redrawn.
      */
     if (power_sleep_pending() && !s_sleep_mark) {
-      ui_render(render_sleep, NULL);
+      s_sleep_stage = 0;
+      s_sleep_mark_us = esp_timer_get_time();
+      ui_render(render_sleep, &s_sleep_stage);
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: mark up on screen %d", (int)s_screen);
+    } else if (s_sleep_mark && power_sleep_pending() && !asleep_now) {
+      /* The wind-down: power.c holds the light for a second and a half
+       * after the mark; the mark dims twice on the way. */
+      const int64_t up = esp_timer_get_time() - s_sleep_mark_us;
+      const int stage = up < 600000 ? 0 : up < 1100000 ? 1 : 2;
+      if (stage != s_sleep_stage) {
+        s_sleep_stage = stage;
+        ui_render(render_sleep, &s_sleep_stage);
+      }
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
       s_sleep_mark = false;
       ui_render(render_screen, NULL);
