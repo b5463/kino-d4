@@ -7263,8 +7263,10 @@ static void dialog_spec(dlg_spec_t *d) {
     case DLG_WELCOME:
       /* Shown once, on a body that has never been through a first boot: what
        * to do first, and where the rest is written down. */
-      *d = (dlg_spec_t){"FIRST START", "The first photograph measures the cameras.",
-                        "STATUS lists what the body still needs.", "GOT IT", false};
+      /* Short lines: the box is 460 px and the body face runs 10 px a letter.
+       * The first wording ran 110 px past the box's edge. */
+      *d = (dlg_spec_t){"FIRST START", "Take a photograph first.",
+                        "It measures the cameras. See STATUS.", "GOT IT", false};
       break;
     default:
       *d = (dlg_spec_t){"SHUT DOWN", "Calling it a night?", "Hold the power slide to wake KINO up again.", "SHUT DOWN", false};
